@@ -26,7 +26,7 @@ pub use self::{
     cfg::*,
     iter::{Item, Iter, RevIter},
     point::{utf8_char_width, Point},
-    search::{Searcher, RegexPattern},
+    search::{RegexPattern, Searcher},
     tags::{Marker, Tag, ToggleId},
     types::Part,
 };
@@ -35,7 +35,7 @@ use crate::{history::Change, input::Cursors, DuatError};
 /// The text in a given area.
 #[derive(Default, Clone, Eq)]
 pub struct Text {
-    buf: Box<GapBuffer<u8>>,
+    pub buf: Box<GapBuffer<u8>>,
     tags: Box<Tags>,
     records: Box<Records<(usize, usize, usize)>>,
     /// This [`Marker`] is used for the addition and removal of cursor
@@ -444,20 +444,18 @@ impl Text {
     ///
     /// The return value is the value of the gap, if the second `&str`
     /// is the contiguous one.
-    pub(crate) fn make_contiguous_in(&mut self, range: impl RangeBounds<usize>) -> Option<usize> {
+    pub(crate) fn make_contiguous_in(&mut self, range: impl RangeBounds<usize>) {
         let (start, end) = get_ends(range, self.len_bytes());
         let gap = self.buf.gap();
 
-        if end <= gap {
-            None
-        } else if start >= gap {
-            Some(gap)
-        } else if gap.abs_diff(start) < gap.abs_diff(end) {
+        if end <= gap || start >= gap {
+            return;
+        }
+
+        if gap.abs_diff(start) < gap.abs_diff(end) {
             self.buf.set_gap(start);
-            Some(self.buf.gap())
         } else {
             self.buf.set_gap(end);
-            None
         }
     }
 
@@ -475,7 +473,8 @@ impl Text {
             if end == self.buf.gap() {
                 s0.get_unchecked(start..end)
             } else {
-                s1.get_unchecked(0..(end - start))
+                let gap = self.buf.gap();
+                s1.get_unchecked((start - gap)..(end - gap))
             }
         }
     }

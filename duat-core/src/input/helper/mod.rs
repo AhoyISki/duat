@@ -729,11 +729,11 @@ where
     /// ```
     ///
     /// [match]: Pattern::Match
-    pub fn search(
+    pub fn search<R: RegexPattern>(
         &mut self,
-        pat: impl RegexPattern,
+        pat: R,
         end: Option<Point>,
-    ) -> impl Iterator<Item = (Point, Point)> + '_ {
+    ) -> impl Iterator<Item = R::Match> + '_ {
         self.text
             .search_from(pat, self.cursor.caret(), end)
             .unwrap()
@@ -768,11 +768,11 @@ where
     /// ```
     ///
     /// [match]: Pattern::Match
-    pub fn search_rev(
+    pub fn search_rev<R: RegexPattern>(
         &mut self,
-        pat: impl RegexPattern,
+        pat: R,
         start: Option<Point>,
-    ) -> impl Iterator<Item = (Point, Point)> + '_ {
+    ) -> impl Iterator<Item = R::Match> + '_ {
         self.text
             .search_from_rev(pat, self.cursor.caret(), start)
             .unwrap()

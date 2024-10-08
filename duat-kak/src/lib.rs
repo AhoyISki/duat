@@ -1,6 +1,6 @@
 #![feature(let_chains, iter_map_windows, type_alias_impl_trait, if_let_guard)]
 
-use std::{collections::HashMap, iter::Peekable, ops::RangeInclusive, sync::LazyLock};
+use std::{collections::HashMap, ops::RangeInclusive, sync::LazyLock};
 
 use duat_core::{
     data::{Context, RwData, RwLock},
@@ -10,7 +10,7 @@ use duat_core::{
         key, Cursors, EditHelper, InputForFiles, InputMethod, KeyCode::*, KeyEvent as Event,
         KeyMod as Mod, Mover,
     },
-    text::{err, text, Point, Text},
+    text::{err, text, Point, Text, WordChars},
     ui::{Area, Ui},
     widgets::File,
 };
@@ -246,10 +246,10 @@ impl KeyMap {
 
             ////////// Word and WORD selection keys.
             key!(Char('w'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each(|m| {
-                let init = peekable_no_nl_windows(m.iter()).next();
+                let init = no_nl_windows(m.iter()).next();
 
                 if let Some(((p0, c0), (p1, c1))) = init {
-                    if m.w_chars().contains(c0) == m.w_chars().contains(c1) {
+                    if Category::of(c0, m) == Category::of(c1, m) {
                         m.move_to(p0);
                     } else {
                         m.move_to(p1);
@@ -264,10 +264,10 @@ impl KeyMap {
                 };
             }),
             key!(Char('e'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each(|m| {
-                let init = peekable_no_nl_windows(m.iter()).next();
+                let init = no_nl_windows(m.iter()).next();
 
                 if let Some(((p0, c0), (p1, c1))) = init {
-                    if m.w_chars().contains(c0) == m.w_chars().contains(c1) {
+                    if Category::of(c0, m) == Category::of(c1, m) {
                         m.move_to(p0);
                     } else {
                         m.move_to(p1);
@@ -284,13 +284,13 @@ impl KeyMap {
             key!(Char('b'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each(|m| {
                 let init = {
                     let iter = [(m.caret(), m.char())].into_iter().chain(m.iter_rev());
-                    peekable_no_nl_windows(iter).next()
+                    no_nl_windows(iter).next()
                 };
 
                 if let Some(((_, c1), (_, c0))) = init {
                     let points = m.search_rev(word_and_space(m, mf), None).next();
                     if let Some((p0, _)) = points {
-                        if m.w_chars().contains(c0) != m.w_chars().contains(c1) {
+                        if Category::of(c0, m) != Category::of(c1, m) {
                             m.move_hor(-1);
                         }
                         m.set_anchor();
@@ -650,12 +650,11 @@ fn select_and_move_each_wrapped<S>(
     });
 }
 
-fn peekable_no_nl_windows<'a>(
+fn no_nl_windows<'a>(
     iter: impl Iterator<Item = (Point, char)> + 'a,
-) -> Peekable<impl Iterator<Item = ((Point, char), (Point, char))> + 'a> {
+) -> impl Iterator<Item = ((Point, char), (Point, char))> + 'a {
     iter.map_windows(|[first, second]| (*first, *second))
         .skip_while(|((_, c0), (_, c1))| *c0 == '\n' || *c1 == '\n')
-        .peekable()
 }
 
 enum Side {
@@ -716,32 +715,34 @@ impl Hookable for OnModeChange {
 }
 
 fn word_and_space<S>(m: &Mover<impl Area, S>, mf: Mod) -> &'static str {
+    const WORD: &str = "[^ \t\n]*[ \t]*";
     static UNWS: RegexStrs = LazyLock::new(RwLock::default);
 
     let mut unws = UNWS.write();
-    if let Some((r0, r1)) = unws.get(m.w_chars().ranges()) {
-        if mf.contains(Mod::ALT) { r1 } else { r0 }
+    if let Some(word) = unws.get(m.w_chars().ranges()) {
+        if mf.contains(Mod::ALT) { WORD } else { word }
     } else {
         let cat = w_char_cat(m.w_chars().ranges());
-        let r0 = format!("([{cat}]*|[^{cat} \t\n]*)[ \t]*").leak();
-        let r1 = "[^ \t\n]*[ \t]*";
-        unws.insert(m.w_chars().ranges(), (r0, r1));
-        if mf.contains(Mod::ALT) { r1 } else { r0 }
+        let word = format!("([{cat}]+|[^{cat} \t\n]+)[ \t]*|[ \t\n]+").leak();
+
+        unws.insert(m.w_chars().ranges(), word);
+        if mf.contains(Mod::ALT) { WORD } else { word }
     }
 }
 
 fn space_and_word<S>(m: &Mover<impl Area, S>, mf: Mod) -> &'static str {
+    const WORD: &str = "[ \t]*[^ \t]*";
     static EOWS: RegexStrs = LazyLock::new(RwLock::default);
 
     let mut eows = EOWS.write();
-    if let Some((r0, r1)) = eows.get(m.w_chars().ranges()) {
-        if mf.contains(Mod::ALT) { r1 } else { r0 }
+    if let Some(word) = eows.get(m.w_chars().ranges()) {
+        if mf.contains(Mod::ALT) { WORD } else { word }
     } else {
         let cat = w_char_cat(m.w_chars().ranges());
-        let r0 = format!("[ \t]*([{cat}]*|[^{cat} \t\n]*)").leak();
-        let r1 = "[ \t]*[^ \t]*";
-        eows.insert(m.w_chars().ranges(), (r0, r1));
-        if mf.contains(Mod::ALT) { r1 } else { r0 }
+        let word = format!("[ \t\n]*([{cat}]+|[^{cat} \t\n]+)|[ \t\n]+").leak();
+
+        eows.insert(m.w_chars().ranges(), word);
+        if mf.contains(Mod::ALT) { WORD } else { word }
     }
 }
 
@@ -758,5 +759,23 @@ fn w_char_cat(ranges: &'static [RangeInclusive<char>]) -> String {
         .collect()
 }
 
-type RegexStrs =
-    LazyLock<RwLock<HashMap<&'static [RangeInclusive<char>], (&'static str, &'static str)>>>;
+type RegexStrs = LazyLock<RwLock<HashMap<&'static [RangeInclusive<char>], &'static str>>>;
+
+#[derive(PartialEq, Eq)]
+enum Category {
+    Word,
+    Special,
+    Space,
+}
+
+impl Category {
+    fn of<S>(char: char, m: &Mover<impl Area, S>) -> Self {
+        if m.w_chars().contains(char) {
+            Category::Word
+        } else if [' ', '\t', '\n'].contains(&char) {
+            Category::Space
+        } else {
+            Category::Special
+        }
+    }
+}

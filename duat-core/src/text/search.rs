@@ -3,35 +3,36 @@ use std::{collections::HashMap, sync::LazyLock};
 use parking_lot::{RwLock, RwLockWriteGuard};
 use regex_automata::{
     hybrid::{
-        dfa::{Builder, Cache, DFA},
+        dfa::{Cache, DFA},
         BuildError,
     },
     nfa::thompson::Config,
-    Anchored, Input,
+    Anchored, Input, MatchKind, PatternID,
 };
 use regex_syntax::hir::{Hir, HirKind};
 
 use super::{Point, Text};
 
 impl Text {
-    pub fn search_from(
+    pub fn search_from<R>(
         &mut self,
-        pat: impl RegexPattern,
+        pat: R,
         at: Point,
         end: Option<Point>,
-    ) -> Result<impl Iterator<Item = (Point, Point)> + '_, Box<BuildError>> {
+    ) -> Result<impl Iterator<Item = R::Match> + '_, Box<BuildError>>
+    where
+        R: RegexPattern,
+    {
         let dfas = dfas_from_pat(pat)?;
 
-        let (gap, haystack) = match end {
+        let haystack = match end {
             Some(end) => unsafe {
-                let gap = self.make_contiguous_in(at.byte()..end.byte());
-                let hay = self.continuous_in_unchecked(at.byte()..end.byte());
-                (gap.unwrap_or(0), hay)
+                self.make_contiguous_in(at.byte()..end.byte());
+                self.continuous_in_unchecked(at.byte()..end.byte())
             },
             None => unsafe {
-                let gap = self.make_contiguous_in(at.byte()..);
-                let hay = self.continuous_in_unchecked(at.byte()..);
-                (gap.unwrap_or(0), hay)
+                self.make_contiguous_in(at.byte()..);
+                self.continuous_in_unchecked(at.byte()..)
             },
         };
         let mut fwd_input = Input::new(haystack);
@@ -40,6 +41,7 @@ impl Text {
         let mut rev_cache = dfas.rev.1.write();
 
         let ref_self = self as &Text;
+        let gap = at.byte();
         Ok(std::iter::from_fn(move || {
             let Ok(Some(half)) = dfas.fwd.0.try_search_fwd(&mut fwd_cache, &fwd_input) else {
                 return None;
@@ -54,29 +56,33 @@ impl Text {
             };
             let start = half.offset();
 
-            Some((ref_self.point_at(start + gap), ref_self.point_at(end + gap)))
+            let p0 = ref_self.point_at(start + gap);
+            let p1 = ref_self.point_at(end + gap);
+
+            Some(R::get_match((p0, p1), half.pattern()))
         }))
     }
 
     /// Returns an iterator over the reverse matches of the regex
-    pub fn search_from_rev(
+    pub fn search_from_rev<R>(
         &mut self,
-        pat: impl RegexPattern,
+        pat: R,
         at: Point,
         start: Option<Point>,
-    ) -> Result<impl Iterator<Item = (Point, Point)> + '_, Box<BuildError>> {
+    ) -> Result<impl Iterator<Item = R::Match> + '_, Box<BuildError>>
+    where
+        R: RegexPattern,
+    {
         let dfas = dfas_from_pat(pat)?;
 
-        let (gap, haystack) = match start {
+        let haystack = match start {
             Some(start) => unsafe {
-                let gap = self.make_contiguous_in(start.byte()..at.byte());
-                let hay = self.continuous_in_unchecked(start.byte()..at.byte());
-                (gap.unwrap_or(0), hay)
+                self.make_contiguous_in(start.byte()..at.byte());
+                self.continuous_in_unchecked(start.byte()..at.byte())
             },
             None => unsafe {
-                let gap = self.make_contiguous_in(..at.byte());
-                let hay = self.continuous_in_unchecked(..at.byte());
-                (gap.unwrap_or(0), hay)
+                self.make_contiguous_in(..at.byte());
+                self.continuous_in_unchecked(..at.byte())
             },
         };
         let mut fwd_input = Input::new(haystack).anchored(Anchored::Yes);
@@ -85,6 +91,7 @@ impl Text {
         let mut rev_cache = dfas.rev.1.write();
 
         let ref_self = self as &Text;
+        let gap = start.map(|p| p.byte()).unwrap_or(0);
         Ok(std::iter::from_fn(move || {
             let Ok(Some(half)) = dfas.rev.0.try_search_rev(&mut rev_cache, &rev_input) else {
                 return None;
@@ -99,7 +106,10 @@ impl Text {
             };
             let end = half.offset();
 
-            Some((ref_self.point_at(start + gap), ref_self.point_at(end + gap)))
+            let p0 = ref_self.point_at(start + gap);
+            let p1 = ref_self.point_at(end + gap);
+
+            Some(R::get_match((p0, p1), half.pattern()))
         }))
     }
 }
@@ -131,16 +141,14 @@ impl<'a> Searcher<'a> {
             }
         };
 
-        let (gap, haystack) = match end {
+        let haystack = match end {
             Some(end) => unsafe {
-                let gap = text.make_contiguous_in(at.byte()..end.byte());
-                let hay = text.continuous_in_unchecked(at.byte()..end.byte());
-                (gap.unwrap_or(0), hay)
+                text.make_contiguous_in(at.byte()..end.byte());
+                text.continuous_in_unchecked(at.byte()..end.byte())
             },
             None => unsafe {
-                let gap = text.make_contiguous_in(at.byte()..);
-                let hay = text.continuous_in_unchecked(at.byte()..);
-                (gap.unwrap_or(0), hay)
+                text.make_contiguous_in(at.byte()..);
+                text.continuous_in_unchecked(at.byte()..)
             },
         };
         let mut fwd_input = Input::new(haystack).anchored(Anchored::Yes);
@@ -152,6 +160,7 @@ impl<'a> Searcher<'a> {
         let rev_dfa = &self.rev_dfa;
         let fwd_cache = &mut self.fwd_cache;
         let rev_cache = &mut self.rev_cache;
+        let gap = at.byte();
         std::iter::from_fn(move || {
             while let Some((start, end)) = matches.list.get_mut(match_i) {
                 fwd_input.set_start(start.byte() - gap);
@@ -216,16 +225,14 @@ impl<'a> Searcher<'a> {
             }
         };
 
-        let (gap, haystack) = match start {
+        let haystack = match start {
             Some(start) => unsafe {
-                let gap = text.make_contiguous_in(start.byte()..at.byte());
-                let hay = text.continuous_in_unchecked(start.byte()..at.byte());
-                (gap.unwrap_or(0), hay)
+                text.make_contiguous_in(start.byte()..at.byte());
+                text.continuous_in_unchecked(start.byte()..at.byte())
             },
             None => unsafe {
-                let gap = text.make_contiguous_in(..at.byte());
-                let hay = text.continuous_in_unchecked(..at.byte());
-                (gap.unwrap_or(0), hay)
+                text.make_contiguous_in(..at.byte());
+                text.continuous_in_unchecked(..at.byte())
             },
         };
         let mut fwd_input = Input::new(haystack).anchored(Anchored::Yes);
@@ -237,6 +244,7 @@ impl<'a> Searcher<'a> {
         let rev_dfa = &self.rev_dfa;
         let fwd_cache = &mut self.fwd_cache;
         let rev_cache = &mut self.rev_cache;
+        let gap = start.map(|p| p.byte()).unwrap_or(0);
         std::iter::from_fn(move || {
             while let Some((start, end)) = matches.list.get_mut(match_i) {
                 fwd_input.set_start(start.byte() - gap);
@@ -423,56 +431,160 @@ fn is_prefix_of(prefix: &Hir, to_check: &Hir) -> bool {
 }
 
 fn dfas_from_pat(pat: impl RegexPattern) -> Result<&'static DFAs, Box<BuildError>> {
-    static DFA_LIST: LazyLock<RwLock<HashMap<&'static str, &'static DFAs>>> =
+    static DFA_LIST: LazyLock<RwLock<HashMap<Patterns<'static>, &'static DFAs>>> =
         LazyLock::new(RwLock::default);
 
     let mut list = DFA_LIST.write();
 
     let mut bytes = [0; 4];
-    let pat = pat.as_str(&mut bytes);
+    let pat = pat.as_patterns(&mut bytes);
 
-    if let Some(dfas) = list.get(pat) {
+    if let Some(dfas) = list.get(&pat) {
         Ok(*dfas)
     } else {
-        let fwd = Builder::new().build(pat)?;
-        let rev = DFA::builder()
-            .thompson(Config::new().reverse(true))
-            .build(pat)?;
+        let pat = pat.leak();
+        let (fwd, rev) = pat.dfas()?;
 
         let (fwd_cache, rev_cache) = (Cache::new(&fwd), Cache::new(&rev));
         let dfas = Box::new(DFAs {
             fwd: (fwd, RwLock::new(fwd_cache)),
             rev: (rev, RwLock::new(rev_cache)),
         });
-        let _ = list.insert(pat.to_string().leak(), Box::leak(dfas));
-        Ok(*list.get(pat).unwrap())
+        let _ = list.insert(pat, Box::leak(dfas));
+        Ok(*list.get(&pat).unwrap())
     }
 }
 
-pub trait RegexPattern {
-    fn as_str<'b>(&'b self, bytes: &'b mut [u8; 4]) -> &'b str;
+pub trait RegexPattern: InnerRegexPattern {
+    type Match;
+
+    fn get_match(points: (Point, Point), pattern: PatternID) -> Self::Match;
 }
 
 impl<'a> RegexPattern for &'a str {
-    fn as_str<'b>(&'b self, _bytes: &'b mut [u8; 4]) -> &'b str {
-        self
+    type Match = (Point, Point);
+
+    fn get_match(points: (Point, Point), _pattern: PatternID) -> Self::Match {
+        points
     }
 }
 
 impl RegexPattern for String {
-    fn as_str<'b>(&'b self, _bytes: &'b mut [u8; 4]) -> &'b str {
-        self
+    type Match = (Point, Point);
+
+    fn get_match(points: (Point, Point), _pattern: PatternID) -> Self::Match {
+        points
     }
 }
 
 impl<'a> RegexPattern for &'a String {
-    fn as_str<'b>(&'b self, _bytes: &'b mut [u8; 4]) -> &'b str {
-        self
+    type Match = (Point, Point);
+
+    fn get_match(points: (Point, Point), _pattern: PatternID) -> Self::Match {
+        points
     }
 }
 
 impl RegexPattern for char {
-    fn as_str<'b>(&'b self, bytes: &'b mut [u8; 4]) -> &'b str {
-        self.encode_utf8(bytes) as &str
+    type Match = (Point, Point);
+
+    fn get_match(points: (Point, Point), _pattern: PatternID) -> Self::Match {
+        points
+    }
+}
+
+impl<const N: usize> RegexPattern for [&'static str; N] {
+    type Match = (Point, Point, usize);
+
+    fn get_match(points: (Point, Point), pattern: PatternID) -> Self::Match {
+        (points.0, points.1, pattern.as_usize())
+    }
+}
+
+impl<'a> RegexPattern for &'a [&'static str] {
+    type Match = (Point, Point, usize);
+
+    fn get_match(points: (Point, Point), pattern: PatternID) -> Self::Match {
+        (points.0, points.1, pattern.as_usize())
+    }
+}
+
+trait InnerRegexPattern {
+    fn as_patterns<'b>(&'b self, bytes: &'b mut [u8; 4]) -> Patterns<'b>;
+}
+
+impl<'a> InnerRegexPattern for &'a str {
+    fn as_patterns<'b>(&'b self, _bytes: &'b mut [u8; 4]) -> Patterns<'b> {
+        Patterns::One(self)
+    }
+}
+
+impl InnerRegexPattern for String {
+    fn as_patterns<'b>(&'b self, _bytes: &'b mut [u8; 4]) -> Patterns<'b> {
+        Patterns::One(self)
+    }
+}
+
+impl<'a> InnerRegexPattern for &'a String {
+    fn as_patterns<'b>(&'b self, _bytes: &'b mut [u8; 4]) -> Patterns<'b> {
+        Patterns::One(self)
+    }
+}
+
+impl InnerRegexPattern for char {
+    fn as_patterns<'b>(&'b self, bytes: &'b mut [u8; 4]) -> Patterns<'b> {
+        Patterns::One(self.encode_utf8(bytes) as &str)
+    }
+}
+
+impl<const N: usize> InnerRegexPattern for [&'static str; N] {
+    fn as_patterns<'b>(&'b self, _bytes: &'b mut [u8; 4]) -> Patterns<'b> {
+        Patterns::Many(self)
+    }
+}
+
+impl<'a> InnerRegexPattern for &'a [&'static str] {
+    fn as_patterns<'b>(&'b self, _bytes: &'b mut [u8; 4]) -> Patterns<'b> {
+        Patterns::Many(self)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum Patterns<'a> {
+    One(&'a str),
+    Many(&'a [&'static str]),
+}
+
+impl Patterns<'_> {
+    fn leak(&self) -> Patterns<'static> {
+        match self {
+            Patterns::One(str) => Patterns::One(String::from(*str).leak()),
+            Patterns::Many(strs) => Patterns::Many(Vec::from(*strs).leak()),
+        }
+    }
+
+    fn dfas(&self) -> Result<(DFA, DFA), Box<BuildError>> {
+        let mut rev_builder = DFA::builder();
+        rev_builder
+            .configure(
+                DFA::config()
+                    .prefilter(None)
+                    .specialize_start_states(false)
+                    .match_kind(MatchKind::All),
+            )
+            .thompson(Config::new().reverse(true));
+
+        match self {
+            Patterns::One(pat) => {
+                let fwd = DFA::new(pat)?;
+                let rev = rev_builder.build(pat)?;
+                Ok((fwd, rev))
+            }
+            Patterns::Many(pats) => {
+                let fwd = DFA::new_many(pats)?;
+                let rev = rev_builder.build_many(pats)?;
+                Ok((fwd, rev))
+            }
+        }
     }
 }
