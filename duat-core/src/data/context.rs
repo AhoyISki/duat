@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    fmt::Display,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, LazyLock,
@@ -8,11 +9,11 @@ use std::{
 
 use super::{private::InnerData, RoData, RwData, RwLock};
 use crate::{
-    commands::Commands,
+    commands::{Args, CmdResult, Commands, Flags},
     duat_name,
     input::InputMethod,
     text::Text,
-    ui::Ui,
+    ui::{Ui, Window},
     widgets::{ActiveWidget, CommandLineMode, File, PassiveWidget, RelatedWidgets, Widget},
     Error, Result,
 };
@@ -21,8 +22,9 @@ pub struct Context<U>
 where
     U: Ui,
 {
-    pub commands: &'static Commands<U>,
-    notifications: &'static LazyLock<RwData<Text>>,
+    commands: &'static Commands<U>,
+    notifications: &'static RwData<Text>,
+    windows: &'static RwData<Vec<Window<U>>>,
     cur_file: &'static CurFile<U>,
     cur_widget: &'static CurWidget<U>,
     has_ended: &'static AtomicBool,
@@ -46,15 +48,17 @@ where
     #[doc(hidden)]
     pub const fn new(
         commands: &'static Commands<U>,
-        notifications: &'static LazyLock<RwData<Text>>,
-        current_file: &'static CurFile<U>,
-        current_widget: &'static CurWidget<U>,
+        notifications: &'static RwData<Text>,
+        windows: &'static RwData<Vec<Window<U>>>,
+        cur_file: &'static CurFile<U>,
+        cur_widget: &'static CurWidget<U>,
         has_ended: &'static AtomicBool,
         cmd_modes: &'static CommandLineModes<U>,
     ) -> Self {
         Self {
-            cur_file: current_file,
-            cur_widget: current_widget,
+            cur_file,
+            cur_widget,
+            windows,
             commands,
             has_ended,
             notifications,
@@ -66,55 +70,96 @@ where
     ///
     /// You should use this function in order to check if loops inside
     /// of threads should break.
-    pub fn has_ended(&self) -> bool {
+    pub fn has_ended(self) -> bool {
         self.has_ended.load(Ordering::Relaxed)
     }
 
-    pub fn fixed_reader(&self) -> Result<FileReader<U>, File> {
+    pub fn fixed_reader(self) -> Result<FileReader<U>, File> {
         self.cur_file.0.read().as_ref().ok_or(Error::NoFileYet)?;
         Ok(self.cur_file.fixed_reader())
     }
 
-    pub fn dyn_reader(&self) -> Result<FileReader<U>, File> {
+    pub fn dyn_reader(self) -> Result<FileReader<U>, File> {
         self.cur_file.0.read().as_ref().ok_or(Error::NoFileYet)?;
         Ok(self.cur_file.dyn_reader())
     }
 
-    pub fn cur_file(&self) -> Result<&'static CurFile<U>, File> {
+    pub fn cur_file(self) -> Result<&'static CurFile<U>, File> {
         self.cur_file.0.read().as_ref().ok_or(Error::NoFileYet)?;
         Ok(self.cur_file)
     }
 
-    pub fn cur_widget(&self) -> Result<&'static CurWidget<U>, File> {
+    pub fn cur_widget(self) -> Result<&'static CurWidget<U>, File> {
         // `cur_widget doesn't exist iff cur_file doesn't exist`.
         self.cur_file.0.read().as_ref().ok_or(Error::NoWidgetYet)?;
         Ok(self.cur_widget)
     }
 
-    pub fn add_cmd_mode(&self, mode: impl CommandLineMode<U> + 'static) {
-        self.cmd_modes.add(mode);
-    }
+    pub fn add_cmd_mode(self, mode: impl CommandLineMode<U> + 'static) {}
 
-    pub fn notifications(&self) -> &RwData<Text> {
+    pub fn set_cmd_mode(self) {}
+
+    pub fn notifications(self) -> &'static RwData<Text> {
         self.notifications
     }
 
-    pub fn notify(&self, text: Text) {
+    pub fn notify(self, text: Text) {
         *self.notifications.write() = text;
     }
 
-    pub(crate) fn end_duat(&self) {
+    pub fn add_cmd(
+        self,
+        callers: impl IntoIterator<Item = impl ToString>,
+        f: impl FnMut(Flags, Args) -> CmdResult + 'static,
+    ) -> Result<(), ()> {
+        self.commands.add(callers, f)
+    }
+
+    pub fn add_cmd_for_current<T: 'static>(
+        self,
+        callers: impl IntoIterator<Item = impl ToString>,
+        f: impl FnMut(&RwData<T>, Flags, Args) -> CmdResult + 'static,
+    ) -> Result<(), ()> {
+        self.commands.add_for_current(callers, f)
+    }
+
+    pub fn add_cmd_for_widget<W: PassiveWidget<U>>(
+        self,
+        callers: impl IntoIterator<Item = impl ToString>,
+        f: impl FnMut(&RwData<W>, &U::Area, Flags, Args) -> CmdResult + 'static,
+    ) -> Result<(), ()> {
+        self.commands.add_for_widget(callers, f)
+    }
+
+    pub fn run_cmd(self, call: impl Display) -> Result<Option<Text>, ()> {
+        self.commands.run(call)
+    }
+
+    pub fn run_cmd_notify(self, call: impl Display) -> Result<Option<Text>, ()> {
+        self.commands.run_notify(call)
+    }
+
+    pub(crate) fn end_duat(self) {
         self.has_ended.store(true, Ordering::Relaxed);
     }
 
-    pub(crate) fn set_cur(&self, parts: FileParts<U>, widget: Widget<U>) {
+    pub(crate) fn set_cur(self, parts: FileParts<U>, widget: Widget<U>) {
         let area = parts.1.clone();
         *self.cur_file.0.write() = Some(parts);
         *self.cur_widget.0.write() = Some((widget, area));
     }
 
-    pub(crate) fn get_cmd_mode(&self, name: &str) -> Option<RwData<dyn CommandLineMode<U>>> {
+    pub(crate) fn get_cmd_mode(self, name: &str) -> Option<RwData<dyn CommandLineMode<U>>> {
         self.cmd_modes.get(name)
+    }
+
+    pub(crate) fn windows(self) -> &'static RwData<Vec<Window<U>>> {
+        self.windows
+    }
+
+    pub(crate) fn add_windows(self, windows: Vec<Window<U>>) -> &'static RwData<Vec<Window<U>>> {
+        *self.windows.write() = windows;
+        self.windows
     }
 }
 

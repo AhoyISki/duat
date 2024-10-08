@@ -62,11 +62,11 @@ where
         };
 
         let (window, area) = Window::new(&mut self.ui, widget.clone(), checker, (self.layout)());
-        self.context.commands.add_windows(vec![window]);
+        let windows = self.context.add_windows(vec![window]);
 
         let mut session = Session {
             ui: self.ui,
-            windows: self.context.commands.get_windows(),
+            windows,
             current_window: Arc::new(AtomicUsize::new(0)),
             file_cfg: self.file_cfg,
             context: self.context,
@@ -78,11 +78,11 @@ where
         add_session_commands(&session, self.context, session.tx.clone());
 
         // Open and process files.
-        build_file(&session.windows, area, self.context);
+        build_file(session.windows, area, self.context);
         args.for_each(|file| session.open_file(PathBuf::from(file)));
 
         // Build the window's widgets.
-        let builder = WindowBuilder::new(&session.windows, 0, self.context);
+        let builder = WindowBuilder::new(session.windows, 0, self.context);
         hooks::trigger::<OnWindowOpen<U>>(builder);
 
         session
@@ -107,11 +107,11 @@ where
         let (widget, checker) = file_cfg.build();
 
         let (window, area) = Window::new(&mut self.ui, widget.clone(), checker, (self.layout)());
-        self.context.commands.add_windows(vec![window]);
+        let windows = self.context.add_windows(vec![window]);
 
         let mut session = Session {
             ui: self.ui,
-            windows: self.context.commands.get_windows(),
+            windows,
             current_window: Arc::new(AtomicUsize::new(0)),
             file_cfg: self.file_cfg,
             context: self.context,
@@ -172,7 +172,7 @@ where
     U: Ui,
 {
     ui: U,
-    windows: RwData<Vec<Window<U>>>,
+    windows: &'static RwData<Vec<Window<U>>>,
     current_window: Arc<AtomicUsize>,
     file_cfg: FileCfg<U>,
     context: Context<U>,
@@ -433,8 +433,7 @@ where
     U: Ui,
 {
     context
-        .commands
-        .add(["quit", "q"], {
+        .add_cmd(["quit", "q"], {
             let tx = tx.clone();
 
             move |_flags, _args| {
@@ -445,8 +444,7 @@ where
         .unwrap();
 
     context
-        .commands
-        .add(["write", "w"], move |_flags, mut args| {
+        .add_cmd(["write", "w"], move |_flags, mut args| {
             let file = context.cur_file()?;
 
             let paths = {
@@ -497,8 +495,7 @@ where
         .unwrap();
 
     context
-        .commands
-        .add(["edit", "e"], {
+        .add_cmd(["edit", "e"], {
             let windows = session.windows.clone();
 
             move |_, mut args| {
@@ -540,8 +537,7 @@ where
         .unwrap();
 
     context
-        .commands
-        .add(["buffer", "b"], {
+        .add_cmd(["buffer", "b"], {
             let windows = session.windows.clone();
 
             move |_, mut args| {
@@ -578,8 +574,7 @@ where
         .unwrap();
 
     context
-        .commands
-        .add(["switch-to"], {
+        .add_cmd(["switch-to"], {
             let windows = session.windows.clone();
             let current_window = session.current_window.clone();
 
@@ -617,8 +612,7 @@ where
         .unwrap();
 
     context
-        .commands
-        .add(["next-file"], {
+        .add_cmd(["next-file"], {
             let windows = session.windows.clone();
             let current_window = session.current_window.clone();
 
@@ -633,7 +627,7 @@ where
                     .unwrap();
 
                 let (new_window, entry) = if flags.word("global") {
-                    iter_around(&read_windows, window_index, widget_index)
+                    iter_around::<U>(&read_windows, window_index, widget_index)
                         .find(|(_, (widget, _))| widget.data_is::<File>())
                         .ok_or_else(|| err!("There are no other open files."))?
                 } else {
@@ -659,8 +653,7 @@ where
         .unwrap();
 
     context
-        .commands
-        .add(["prev-file"], {
+        .add_cmd(["prev-file"], {
             let windows = session.windows.clone();
             let current_window = session.current_window.clone();
 
@@ -675,7 +668,7 @@ where
                     .unwrap();
 
                 let (new_window, entry) = if flags.word("global") {
-                    iter_around_rev(&read_windows, window_index, widget_index)
+                    iter_around_rev::<U>(&read_windows, window_index, widget_index)
                         .find(|(_, (widget, _))| widget.data_is::<File>())
                         .ok_or_else(|| err!("There are no other open files."))?
                 } else {
@@ -701,8 +694,7 @@ where
         .unwrap();
 
     context
-        .commands
-        .add(["return-to-file"], {
+        .add_cmd(["return-to-file"], {
             let windows = session.windows.clone();
             let current_window = session.current_window.clone();
 

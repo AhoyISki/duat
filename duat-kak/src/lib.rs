@@ -10,7 +10,7 @@ use duat_core::{
         key, Cursors, EditHelper, InputForFiles, InputMethod, KeyCode::*, KeyEvent as Event,
         KeyMod as Mod, Mover,
     },
-    text::{err, text, Point, Text, WordChars},
+    text::{err, text, Point, Text},
     ui::{Area, Ui},
     widgets::File,
 };
@@ -708,7 +708,7 @@ enum SelType {
 /// Arguments:
 /// * The previous [`Mode`]
 /// * The current [`Mode`]
-pub struct OnModeChange {}
+pub struct OnModeChange;
 
 impl Hookable for OnModeChange {
     type Args<'args> = (Mode, Mode);
@@ -731,7 +731,7 @@ fn word_and_space<S>(m: &Mover<impl Area, S>, mf: Mod) -> &'static str {
 }
 
 fn space_and_word<S>(m: &Mover<impl Area, S>, mf: Mod) -> &'static str {
-    const WORD: &str = "[ \t]*[^ \t]*";
+    const WORD: &str = "[ \t]*[^ \t\n]*";
     static EOWS: RegexStrs = LazyLock::new(RwLock::default);
 
     let mut eows = EOWS.write();

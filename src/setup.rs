@@ -5,7 +5,7 @@ use duat_core::{
     data::{CommandLineModes, Context, CurFile, CurWidget, RwData},
     session::SessionCfg,
     text::{PrintCfg, Text},
-    ui::{Event, Ui as TraitUi},
+    ui::{Event, Ui as TraitUi, Window},
     widgets::{File, RunCommands, ShowNotifications},
 };
 use duat_term::VertRule;
@@ -20,16 +20,18 @@ use crate::{
 // Context's statics.
 static CUR_FILE: CurFile<Ui> = CurFile::new();
 static CUR_WIDGET: CurWidget<Ui> = CurWidget::new();
+static WINDOWS: LazyLock<RwLock<Vec<Window<Ui>>>>;
 static NOTIFICATIONS: LazyLock<RwData<Text>> = LazyLock::new(RwData::default);
 static HAS_ENDED: AtomicBool = AtomicBool::new(false);
 static CMD_MODES: CommandLineModes<Ui> = CommandLineModes::new();
-pub static COMMANDS: Commands<Ui> = Commands::new(&CUR_FILE, &CUR_WIDGET, &NOTIFICATIONS);
+pub static COMMANDS: Commands<Ui> = Commands::new(&WINDOWS, &CUR_FILE, &CUR_WIDGET, &NOTIFICATIONS);
 
 pub static CONTEXT: Context<Ui> = Context::new(
     &COMMANDS,
     &NOTIFICATIONS,
     &CUR_FILE,
     &CUR_WIDGET,
+    &WINDOWS,
     &HAS_ENDED,
     &CMD_MODES,
 );

@@ -128,7 +128,7 @@ impl<U> Hookable for OnFileOpen<U>
 where
     U: Ui,
 {
-    type Args<'a> = &'a mut FileBuilder<'a, U>;
+    type Args<'a> = &'a mut FileBuilder<U>;
 }
 
 /// Triggers whenever a new window is opened
@@ -147,7 +147,7 @@ impl<U> Hookable for OnWindowOpen<U>
 where
     U: Ui,
 {
-    type Args<'a> = WindowBuilder<'a, U>;
+    type Args<'a> = WindowBuilder<U>;
 }
 
 /// Triggers whenever the given [`widget`] is focused

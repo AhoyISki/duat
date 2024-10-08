@@ -626,7 +626,7 @@ where
 }
 
 pub(crate) fn build_file<U>(
-    windows: &RwData<Vec<Window<U>>>,
+    windows: &'static RwData<Vec<Window<U>>>,
     mod_area: U::Area,
     context: Context<U>,
 ) where

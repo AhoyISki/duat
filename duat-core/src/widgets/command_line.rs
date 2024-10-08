@@ -178,8 +178,7 @@ where
         forms::set_weak("Prompt", Form::new().cyan());
 
         context
-            .commands
-            .add_for_widget::<CommandLine<U>>(
+            .add_cmd_for_widget::<CommandLine<U>>(
                 ["set-prompt"],
                 move |command_line, _, _, mut args| {
                     let new_prompt: String = args.collect();
@@ -190,15 +189,17 @@ where
             .unwrap();
 
         context
-            .commands
-            .add_for_widget::<CommandLine<U>>(["set-cmd-mode"], move |cmd_line, _, _, mut args| {
-                let new_mode = args.next()?;
-                *cmd_line.read().mode.write() = context
-                    .get_cmd_mode(new_mode)
-                    .ok_or(err!("There is no " [*a] new_mode [] " mode."))?;
+            .add_cmd_for_widget::<CommandLine<U>>(
+                ["set-cmd-mode"],
+                move |cmd_line, _, _, mut args| {
+                    let new_mode = args.next()?;
+                    *cmd_line.read().mode.write() = context
+                        .get_cmd_mode(new_mode)
+                        .ok_or(err!("There is no " [*a] new_mode [] " mode."))?;
 
-                Ok(None)
-            })
+                    Ok(None)
+                },
+            )
             .unwrap()
     }
 }
@@ -261,7 +262,8 @@ where
 
         let cmd = text.to_string();
         if !cmd.is_empty() {
-            crate::thread::spawn(|| self.0.commands.run_notify(cmd));
+            let context = self.0;
+            crate::thread::spawn(move || context.run_cmd_notify(cmd));
         }
     }
 }

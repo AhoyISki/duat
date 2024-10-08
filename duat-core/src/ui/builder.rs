@@ -36,23 +36,23 @@ use crate::{
 /// that is opened will have a
 /// [`LineNumbers<U>`][crate::widgets::LineNumbers] widget attached to
 /// it.
-pub struct FileBuilder<'a, U>
+pub struct FileBuilder<U>
 where
     U: Ui,
 {
-    windows: &'a RwData<Vec<Window<U>>>,
+    windows: &'static RwData<Vec<Window<U>>>,
     window_i: usize,
     mod_area: RefCell<U::Area>,
     context: Context<U>,
 }
 
-impl<'a, U> FileBuilder<'a, U>
+impl<U> FileBuilder<U>
 where
     U: Ui,
 {
     /// Creates a new [`FileBuilder<U>`].
     pub fn new(
-        windows: &'a RwData<Vec<Window<U>>>,
+        windows: &'static RwData<Vec<Window<U>>>,
         mod_area: U::Area,
         window_i: usize,
         context: Context<U>,
@@ -291,22 +291,26 @@ where
     }
 }
 
-pub struct WindowBuilder<'a, U>
+pub struct WindowBuilder<U>
 where
     U: Ui,
 {
-    windows: &'a RwData<Vec<Window<U>>>,
+    windows: &'static RwData<Vec<Window<U>>>,
     window_i: usize,
     mod_area: RefCell<U::Area>,
     context: Context<U>,
 }
 
-impl<'a, U> WindowBuilder<'a, U>
+impl<U> WindowBuilder<U>
 where
     U: Ui,
 {
     /// Creates a new [`FileBuilder<U>`].
-    pub fn new(windows: &'a RwData<Vec<Window<U>>>, window_i: usize, context: Context<U>) -> Self {
+    pub fn new(
+        windows: &'static RwData<Vec<Window<U>>>,
+        window_i: usize,
+        context: Context<U>,
+    ) -> Self {
         let mod_area = windows.read()[window_i].files_area.clone();
         Self {
             windows,

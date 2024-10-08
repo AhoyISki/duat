@@ -94,12 +94,12 @@ where
                 helper.edit_on_main(|editor| editor.replace(""));
                 drop(helper);
                 self.cursors = Cursors::new_exclusive();
-                context.commands.return_to_file().unwrap();
+                context.run_cmd("return-to-file").unwrap();
             }
             key!(KeyCode::Enter) => {
                 drop(helper);
                 self.cursors = Cursors::new_exclusive();
-                context.commands.return_to_file().unwrap();
+                context.run_cmd("return-to-file").unwrap();
             }
             _ => {}
         }

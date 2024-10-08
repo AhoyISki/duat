@@ -63,7 +63,7 @@ where
     U: Ui,
 {
     inner: LazyLock<RwData<InnerCommands>>,
-    windows: LazyLock<RwData<Vec<Window<U>>>>,
+    windows: &'static RwLock<Vec<Window<U>>>,
     current_file: &'static CurFile<U>,
     current_widget: &'static CurWidget<U>,
     notifications: &'static LazyLock<RwData<Text>>,
@@ -76,6 +76,7 @@ where
     /// Returns a new instance of [`Commands`].
     #[doc(hidden)]
     pub const fn new(
+        windows: &'static RwLock<Vec<Window<U>>>,
         current_file: &'static CurFile<U>,
         current_widget: &'static CurWidget<U>,
         notifications: &'static LazyLock<RwData<Text>>,
@@ -109,7 +110,7 @@ where
 
                 inner
             }),
-            windows: LazyLock::new(|| RwData::new(Vec::new())),
+            windows,
             current_file,
             current_widget,
             notifications,
@@ -586,7 +587,7 @@ where
         callers: impl IntoIterator<Item = impl ToString>,
         mut f: impl FnMut(&RwData<W>, &U::Area, Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
-        let windows = self.windows.clone();
+        let windows = self.windows;
 
         let command = Command::new(callers, move |flags, args| {
             self.current_file
@@ -616,15 +617,6 @@ where
         });
 
         self.inner.write().try_add(command)
-    }
-
-    /// Adds a [`WidgetGetter`] to [`self`].
-    pub(crate) fn add_windows(&self, windows: Vec<Window<U>>) {
-        *self.windows.write() = windows
-    }
-
-    pub(crate) fn get_windows(&self) -> RwData<Vec<Window<U>>> {
-        self.windows.clone()
     }
 }
 
