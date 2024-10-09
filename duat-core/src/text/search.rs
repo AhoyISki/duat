@@ -115,6 +115,7 @@ impl Text {
 }
 
 pub struct Searcher<'a> {
+    pat: &'a str,
     fwd_dfa: &'static DFA,
     rev_dfa: &'static DFA,
     fwd_cache: RwLockWriteGuard<'static, Cache>,
@@ -290,6 +291,10 @@ impl<'a> Searcher<'a> {
             Some((start, end))
         })
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.pat.is_empty()
+    }
 }
 
 pub struct SavedMatches {
@@ -301,7 +306,7 @@ pub struct SavedMatches {
 
 impl SavedMatches {
     pub fn new(pat: String) -> Result<Self, Box<BuildError>> {
-        let _ = dfas_from_pat(&pat)?;
+        dfas_from_pat(&pat)?;
         let hir = regex_syntax::Parser::new().parse(&pat).unwrap();
         Ok(Self {
             pat,
@@ -314,10 +319,11 @@ impl SavedMatches {
     pub fn searcher(&mut self) -> Searcher<'_> {
         let dfas = dfas_from_pat(&self.pat).unwrap();
         Searcher {
+            pat: &self.pat,
             fwd_dfa: &dfas.fwd.0,
             fwd_cache: dfas.fwd.1.write(),
             rev_dfa: &dfas.rev.0,
-            rev_cache: dfas.fwd.1.write(),
+            rev_cache: dfas.rev.1.write(),
             fwd_matches: &mut self.fwd,
             rev_matches: &mut self.rev,
         }
@@ -446,12 +452,12 @@ fn dfas_from_pat(pat: impl RegexPattern) -> Result<&'static DFAs, Box<BuildError
         let (fwd, rev) = pat.dfas()?;
 
         let (fwd_cache, rev_cache) = (Cache::new(&fwd), Cache::new(&rev));
-        let dfas = Box::new(DFAs {
+        let dfas = Box::leak(Box::new(DFAs {
             fwd: (fwd, RwLock::new(fwd_cache)),
             rev: (rev, RwLock::new(rev_cache)),
-        });
-        let _ = list.insert(pat, Box::leak(dfas));
-        Ok(*list.get(&pat).unwrap())
+        }));
+        let _ = list.insert(pat, dfas);
+        Ok(dfas)
     }
 }
 

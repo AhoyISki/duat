@@ -16,15 +16,20 @@
 //! by running the `set-prompt` [`Command`].
 use std::{
     marker::PhantomData,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
+use parking_lot::RwLock;
+
 use crate::{
-    data::{Context, RoData, RwData},
+    data::{Context, CurFile, RoData, RwData},
     forms::{self, Form},
     hooks,
     input::{Commander, InputMethod},
-    text::{err, text, Ghost, PrintCfg, SavedMatches, Text},
+    text::{text, Ghost, PrintCfg, SavedMatches, Text},
     ui::{PushSpecs, Ui},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
 };
@@ -108,11 +113,15 @@ where
     type Widget = CommandLine<U>;
 
     fn build(self, context: Context<U>, _: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
-        let mode = if hooks::group_exists("CmdLineNotifications") {
-            RwData::new(context.get_cmd_mode("ShowNotifications").unwrap())
+        let mode = RwData::new(if hooks::group_exists("CmdLineNotifications") {
+            RwData::<dyn CommandLineMode<U>>::new_unsized::<ShowNotifications>(Arc::new(
+                RwLock::new(ShowNotifications::new(context)),
+            ))
         } else {
-            RwData::new(context.get_cmd_mode("RunCommands<Ui>").unwrap())
-        };
+            RwData::<dyn CommandLineMode<U>>::new_unsized::<RunCommands<U>>(Arc::new(RwLock::new(
+                RunCommands::new(context),
+            )))
+        });
 
         let cmd_line = CommandLine {
             text: Text::new(),
@@ -152,6 +161,10 @@ where
     pub fn cfg() -> CommandLineCfg<Commander, U> {
         CommandLineCfg::new()
     }
+
+    pub(crate) fn set_mode<M: CommandLineMode<U>>(&mut self, context: Context<U>) {
+        *self.mode.write() = RwData::new_unsized::<M>(Arc::new(RwLock::new(M::new(context))));
+    }
 }
 
 impl<U> PassiveWidget<U> for CommandLine<U>
@@ -187,20 +200,6 @@ where
                 },
             )
             .unwrap();
-
-        context
-            .add_cmd_for_widget::<CommandLine<U>>(
-                ["set-cmd-mode"],
-                move |cmd_line, _, _, mut args| {
-                    let new_mode = args.next()?;
-                    *cmd_line.read().mode.write() = context
-                        .get_cmd_mode(new_mode)
-                        .ok_or(err!("There is no " [*a] new_mode [] " mode."))?;
-
-                    Ok(None)
-                },
-            )
-            .unwrap()
     }
 }
 
@@ -224,10 +223,14 @@ where
 
 unsafe impl<U> Send for CommandLine<U> where U: Ui {}
 
-pub trait CommandLineMode<U>: Sync + Send
+pub trait CommandLineMode<U>: Sync + Send + 'static
 where
     U: Ui,
 {
+    fn new(context: Context<U>) -> Self
+    where
+        Self: Sized;
+
     fn on_focus(&self, _text: &mut Text) {}
 
     fn on_unfocus(&self, _text: &mut Text) {}
@@ -243,20 +246,18 @@ pub struct RunCommands<U>(Context<U>)
 where
     U: Ui;
 
-impl<U> RunCommands<U>
-where
-    U: Ui,
-{
-    #[doc(hidden)]
-    pub fn new(context: Context<U>) -> Self {
-        Self(context)
-    }
-}
-
 impl<U> CommandLineMode<U> for RunCommands<U>
 where
     U: Ui,
 {
+    fn new(context: Context<U>) -> Self
+    where
+        Self: Sized,
+    {
+        context.switch_to::<CommandLine<U>>();
+        Self(context)
+    }
+
     fn on_unfocus(&self, text: &mut Text) {
         let text = std::mem::take(text);
 
@@ -269,27 +270,24 @@ where
 }
 
 pub struct ShowNotifications {
-    notifications: RoData<Text>,
+    notifications: &'static RwData<Text>,
     has_changed: AtomicBool,
-}
-
-impl ShowNotifications {
-    #[doc(hidden)]
-    pub fn new<U>(context: Context<U>) -> Self
-    where
-        U: Ui,
-    {
-        Self {
-            notifications: RoData::from(context.notifications()),
-            has_changed: AtomicBool::new(false),
-        }
-    }
 }
 
 impl<U> CommandLineMode<U> for ShowNotifications
 where
     U: Ui,
 {
+    fn new(context: Context<U>) -> Self
+    where
+        Self: Sized,
+    {
+        Self {
+            notifications: context.notifications(),
+            has_changed: AtomicBool::default(),
+        }
+    }
+
     fn has_changed(&self) -> bool {
         let has_changed = self.notifications.has_changed();
         if has_changed {
@@ -305,22 +303,63 @@ where
     }
 }
 
-pub struct IncSearch {
-    current: RwData<SavedMatches>,
-    list: RwData<Vec<SavedMatches>>,
-}
-
-impl<U> CommandLineMode<U> for IncSearch
+pub struct IncSearch<U>
 where
     U: Ui,
 {
+    list: RwData<Vec<SavedMatches>>,
+    cur_file: &'static CurFile<U>,
+}
+
+impl<U> CommandLineMode<U> for IncSearch<U>
+where
+    U: Ui,
+{
+    fn new(context: Context<U>) -> Self
+    where
+        Self: Sized,
+    {
+        let inc_search = Self {
+            list: RwData::default(),
+            cur_file: context.cur_file().unwrap(),
+        };
+
+        crate::thread::spawn(move || {
+            inc_search
+                .cur_file
+                .mutate_dyn_input(|input| input.write().begin_inc_search());
+            context.switch_to::<CommandLine<U>>();
+        });
+
+        inc_search
+    }
+
     fn update(&self, text: &mut Text) {
         let mut list = self.list.write();
         if let Some(saved) = list.iter_mut().find(|s| s.pat_is(text)) {
+            let searcher = saved.searcher();
+            self.cur_file
+                .mutate_dyn_input(|input| input.write().search_inc(searcher))
         } else if let Ok(mut saved) = SavedMatches::new(text.to_string()) {
             if let Some(prev) = list.iter().find(|s| s.is_prefix_of(&saved)) {
                 saved.take_matches_from(prev);
             }
+
+            let searcher = saved.searcher();
+            self.cur_file
+                .mutate_dyn_input(|input| input.write().search_inc(searcher));
+
+            list.push(saved);
         }
+    }
+}
+
+impl<U> Drop for IncSearch<U>
+where
+    U: Ui,
+{
+    fn drop(&mut self) {
+        self.cur_file
+            .mutate_dyn_input(|input| input.write().end_inc_search())
     }
 }

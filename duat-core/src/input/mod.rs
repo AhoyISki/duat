@@ -14,7 +14,7 @@ pub use self::{
 };
 use crate::{
     data::{Context, RwData},
-    text::SavedMatches,
+    text::Searcher,
     ui::Ui,
     widgets::{ActiveWidget, File},
 };
@@ -67,6 +67,32 @@ where
         None
     }
 
+    fn on_focus(&mut self, _area: &U::Area)
+    where
+        Self: Sized,
+    {
+    }
+
+    fn on_unfocus(&mut self, _area: &U::Area)
+    where
+        Self: Sized,
+    {
+    }
+
+    fn begin_inc_search(&mut self) {
+        unimplemented!(
+            "This InputMethod does not handle incremental search, yet it was asked to. STRANGE, \
+             isn't it?"
+        );
+    }
+
+    fn end_inc_search(&mut self) {
+        unimplemented!(
+            "This InputMethod does not handle incremental search, yet it was asked to. STRANGE, \
+             isn't it?"
+        );
+    }
+
     /// Handles incremental search from [`IncSearch`]
     ///
     /// This should work similarly to [`send_key`], i.e., treat this
@@ -84,23 +110,11 @@ where
     /// [`move_main`]: EditHelper::move_main
     /// [`move_each`]: EditHelper::move_each
     /// [`search_inc`]: helper::Mover::search_inc
-    fn handle_inc_search(&mut self, _inc_matches: &mut SavedMatches) {
+    fn search_inc(&mut self, _searcher: Searcher) {
         unimplemented!(
-            "This InputMethod does not handle incremental search, but a request was sent, so it \
-             should do so."
+            "This InputMethod does not handle incremental search, yet it was asked to. STRANGE, \
+             isn't it?"
         );
-    }
-
-    fn on_focus(&mut self, _area: &U::Area)
-    where
-        Self: Sized,
-    {
-    }
-
-    fn on_unfocus(&mut self, _area: &U::Area)
-    where
-        Self: Sized,
-    {
     }
 }
 

@@ -201,7 +201,7 @@ pub mod hooks {
     /// [`widget`]: duat_core::widgets::ActiveWidget
     pub type FocusedOn<W> = duat_core::hooks::FocusedOn<W, Ui>;
 
-    /// Triggers whenever the given [`widget`] is focused
+    /// Triggers whenever the given [`widget`] is unfocused
     ///
     /// # Arguments
     ///

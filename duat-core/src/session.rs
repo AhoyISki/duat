@@ -2,7 +2,7 @@ use std::{
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
-        mpsc, Arc,
+        mpsc,
     },
     time::Duration,
 };
@@ -62,12 +62,12 @@ where
         };
 
         let (window, area) = Window::new(&mut self.ui, widget.clone(), checker, (self.layout)());
-        let windows = self.context.add_windows(vec![window]);
+        let (windows, cur_window) = self.context.set_windows(vec![window]);
 
         let mut session = Session {
             ui: self.ui,
             windows,
-            current_window: Arc::new(AtomicUsize::new(0)),
+            cur_window,
             file_cfg: self.file_cfg,
             context: self.context,
             tx,
@@ -107,12 +107,12 @@ where
         let (widget, checker) = file_cfg.build();
 
         let (window, area) = Window::new(&mut self.ui, widget.clone(), checker, (self.layout)());
-        let windows = self.context.add_windows(vec![window]);
+        let (windows, cur_window) = self.context.set_windows(vec![window]);
 
         let mut session = Session {
             ui: self.ui,
             windows,
-            current_window: Arc::new(AtomicUsize::new(0)),
+            cur_window,
             file_cfg: self.file_cfg,
             context: self.context,
             tx,
@@ -123,14 +123,14 @@ where
         add_session_commands(&session, self.context, session.tx.clone());
 
         // Open and process files..
-        build_file(&session.windows, area, self.context);
+        build_file(session.windows, area, self.context);
 
         for (file_cfg, is_active) in inherited_cfgs {
             session.open_file_from_cfg(file_cfg, is_active);
         }
 
         // Build the window's widgets.
-        let builder = WindowBuilder::new(&session.windows, 0, self.context);
+        let builder = WindowBuilder::new(session.windows, 0, self.context);
         hooks::trigger::<OnWindowOpen<U>>(builder);
 
         session
@@ -173,7 +173,7 @@ where
 {
     ui: U,
     windows: &'static RwData<Vec<Window<U>>>,
-    current_window: Arc<AtomicUsize>,
+    cur_window: &'static AtomicUsize,
     file_cfg: FileCfg<U>,
     context: Context<U>,
     tx: mpsc::Sender<Event>,
@@ -185,13 +185,13 @@ where
 {
     pub fn open_file(&mut self, path: PathBuf) {
         let pushed = self.windows.mutate(|windows| {
-            let current_window = self.current_window.load(Ordering::Relaxed);
+            let cur_window = self.cur_window.load(Ordering::Relaxed);
             let (file, checker) = self.file_cfg.clone().open_path(path).build();
-            windows[current_window].push_file(file, checker)
+            windows[cur_window].push_file(file, checker)
         });
 
         match pushed {
-            Ok((area, _)) => build_file(&self.windows, area, self.context),
+            Ok((area, _)) => build_file(self.windows, area, self.context),
             Err(err) => self.context.notify(err.into()),
         }
     }
@@ -203,8 +203,8 @@ where
     where
         F: Fn() -> bool + 'static,
     {
-        let current_window = self.current_window.load(Ordering::Relaxed);
-        self.windows.write()[current_window].push_to_master(widget, checker, specs)
+        let cur_window = self.cur_window.load(Ordering::Relaxed);
+        self.windows.write()[cur_window].push_to_master(widget, checker, specs)
     }
 
     pub fn push_widget_to<F>(
@@ -215,8 +215,8 @@ where
     where
         F: Fn() -> bool + 'static,
     {
-        let current_window = self.current_window.load(Ordering::Relaxed);
-        self.windows.write()[current_window].push(widget, area, checker, specs, false)
+        let cur_window = self.cur_window.load(Ordering::Relaxed);
+        self.windows.write()[cur_window].push(widget, area, checker, specs, false)
     }
 
     pub fn group_widget_with<F>(
@@ -227,8 +227,8 @@ where
     where
         F: Fn() -> bool + 'static,
     {
-        let current_window = self.current_window.load(Ordering::Relaxed);
-        self.windows.write()[current_window].push(widget, area, checker, specs, true)
+        let cur_window = self.cur_window.load(Ordering::Relaxed);
+        self.windows.write()[cur_window].push(widget, area, checker, specs, true)
     }
 
     /// Start the application, initiating a read/response loop.
@@ -265,7 +265,7 @@ where
 
         // The main loop.
         loop {
-            let current_window = self.current_window.load(Ordering::Relaxed);
+            let cur_window = self.cur_window.load(Ordering::Relaxed);
             self.windows.inspect(|windows| {
                 while windows
                     .iter()
@@ -277,7 +277,7 @@ where
                     }
                 }
 
-                for (widget, area) in windows[current_window].widgets() {
+                for (widget, area) in windows[cur_window].widgets() {
                     widget.update_and_print(area);
                 }
             });
@@ -347,12 +347,12 @@ where
     /// The primary application loop, executed while no breaking
     /// commands have been sent to [`Controls`].
     fn session_loop(&mut self, rx: &mpsc::Receiver<Event>) -> BreakTo {
-        let current_window = self.current_window.load(Ordering::Relaxed);
+        let cur_window = self.cur_window.load(Ordering::Relaxed);
         let windows = self.windows.read();
 
         std::thread::scope(|s| {
             loop {
-                let active_window = &windows[current_window];
+                let active_window = &windows[cur_window];
 
                 if let Ok(event) = rx.recv_timeout(Duration::from_millis(10)) {
                     match event {
@@ -382,11 +382,11 @@ where
 
     fn open_file_from_cfg(&mut self, file_cfg: FileCfg<U>, is_active: bool) {
         let pushed = self.windows.mutate(|windows| {
-            let current_window = self.current_window.load(Ordering::Relaxed);
+            let cur_window = self.cur_window.load(Ordering::Relaxed);
 
             let (widget, checker) = file_cfg.build();
 
-            let pushed = windows[current_window].push_file(widget.clone(), checker);
+            let pushed = windows[cur_window].push_file(widget.clone(), checker);
 
             if let Ok((area, _)) = &pushed
                 && is_active
@@ -398,7 +398,7 @@ where
         });
 
         match pushed {
-            Ok((area, _)) => build_file(&self.windows, area, self.context),
+            Ok((area, _)) => build_file(self.windows, area, self.context),
             Err(err) => self.context.notify(err.into()),
         }
     }
@@ -574,52 +574,14 @@ where
         .unwrap();
 
     context
-        .add_cmd(["switch-to"], {
-            let windows = session.windows.clone();
-            let current_window = session.current_window.clone();
-
-            move |_, mut args| {
-                let file = context.cur_file()?;
-                let ty = args.next_else(err!("No widget supplied."))?;
-
-                let read_windows = windows.read();
-                let window_index = current_window.load(Ordering::Acquire);
-
-                let (window, entry) = if let Some((widget, _)) = file.get_related_widget(ty) {
-                    read_windows
-                        .iter()
-                        .enumerate()
-                        .flat_map(|(i, window)| window.widgets().map(move |entry| (i, entry)))
-                        .find(|(_, (cmp, _))| cmp.ptr_eq(&widget))
-                } else {
-                    iter_around(&read_windows, window_index, 0)
-                        .filter(|(_, (widget, _))| widget.as_active().is_some())
-                        .find(|(_, (widget, _))| widget.type_name() == ty)
-                }
-                .ok_or(err!("No widget of type " [*a] ty [] " found."))?;
-
-                let (widget, area) = (entry.0.clone(), entry.1.clone());
-                let windows = windows.clone();
-                let current_window = current_window.clone();
-                std::thread::spawn(move || {
-                    switch_widget(&(widget, area), &windows.read(), window_index, context);
-                    current_window.store(window, Ordering::Release);
-                });
-
-                ok!("Switched to " [*a] ty [] ".")
-            }
-        })
-        .unwrap();
-
-    context
         .add_cmd(["next-file"], {
             let windows = session.windows.clone();
-            let current_window = session.current_window.clone();
+            let cur_window = session.cur_window;
 
             move |flags, _| {
                 let file = context.cur_file()?;
                 let read_windows = windows.read();
-                let window_index = current_window.load(Ordering::Acquire);
+                let window_index = cur_window.load(Ordering::Acquire);
 
                 let widget_index = read_windows[window_index]
                     .widgets()
@@ -641,10 +603,10 @@ where
 
                 let (widget, area) = (entry.0.clone(), entry.1.clone());
                 let windows = windows.clone();
-                let current_window = current_window.clone();
+                let cur_window = cur_window;
                 std::thread::spawn(move || {
                     switch_widget(&(widget, area), &windows.read(), window_index, context);
-                    current_window.store(new_window, Ordering::Release);
+                    cur_window.store(new_window, Ordering::Release);
                 });
 
                 ok!("Switched to " [*a] { file_name(&entry) } [] ".")
@@ -655,12 +617,12 @@ where
     context
         .add_cmd(["prev-file"], {
             let windows = session.windows.clone();
-            let current_window = session.current_window.clone();
+            let cur_window = session.cur_window;
 
             move |flags, _| {
                 let file = context.cur_file()?;
                 let read_windows = windows.read();
-                let window_index = current_window.load(Ordering::Acquire);
+                let window_index = cur_window.load(Ordering::Acquire);
 
                 let widget_index = read_windows[window_index]
                     .widgets()
@@ -682,10 +644,9 @@ where
 
                 let (widget, area) = (entry.0.clone(), entry.1.clone());
                 let windows = windows.clone();
-                let current_window = current_window.clone();
                 std::thread::spawn(move || {
                     switch_widget(&(widget, area), &windows.read(), window_index, context);
-                    current_window.store(new_window, Ordering::Release);
+                    cur_window.store(new_window, Ordering::Release);
                 });
 
                 ok!("Switched to " [*a] { file_name(&entry) } [] ".")
@@ -696,12 +657,12 @@ where
     context
         .add_cmd(["return-to-file"], {
             let windows = session.windows.clone();
-            let current_window = session.current_window.clone();
+            let cur_window = session.cur_window;
 
             move |_, _| {
                 let file = context.cur_file()?;
                 let read_windows = windows.read();
-                let window_i = current_window.load(Ordering::Acquire);
+                let window_i = cur_window.load(Ordering::Acquire);
 
                 let (new_window, entry) = read_windows
                     .iter()
@@ -713,10 +674,9 @@ where
                 std::thread::spawn({
                     let (widget, area) = (entry.0.clone(), entry.1.clone());
                     let windows = windows.clone();
-                    let current_window = current_window.clone();
                     move || {
                         switch_widget(&(widget, area), &windows.read(), window_i, context);
-                        current_window.store(new_window, Ordering::Release);
+                        cur_window.store(new_window, Ordering::Release);
                     }
                 });
 
@@ -734,7 +694,7 @@ fn window_index_widget<U: Ui>(
     window.widgets().map(move |widget| (index, widget))
 }
 
-fn iter_around<U: Ui>(
+pub(crate) fn iter_around<U: Ui>(
     windows: &[Window<U>],
     window: usize,
     widget: usize,
@@ -757,7 +717,7 @@ fn iter_around<U: Ui>(
         )
 }
 
-fn iter_around_rev<U: Ui>(
+pub(crate) fn iter_around_rev<U: Ui>(
     windows: &[Window<U>],
     window: usize,
     widget: usize,
@@ -785,7 +745,7 @@ fn iter_around_rev<U: Ui>(
         )
 }
 
-fn switch_widget<U: Ui>(
+pub(crate) fn switch_widget<U: Ui>(
     entry: &(Widget<U>, U::Area),
     windows: &[Window<U>],
     window: usize,

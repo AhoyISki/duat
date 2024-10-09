@@ -1,20 +1,22 @@
 use std::{
-    collections::HashMap,
     fmt::Display,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
-        Arc, LazyLock,
+        LazyLock,
     },
 };
 
-use super::{private::InnerData, RoData, RwData, RwLock};
+use super::{private::InnerData, RoData, RwData};
 use crate::{
     commands::{Args, CmdResult, Commands, Flags},
     duat_name,
     input::InputMethod,
+    session::{iter_around, switch_widget},
     text::Text,
     ui::{Ui, Window},
-    widgets::{ActiveWidget, CommandLineMode, File, PassiveWidget, RelatedWidgets, Widget},
+    widgets::{
+        ActiveWidget, CommandLine, CommandLineMode, File, PassiveWidget, RelatedWidgets, Widget,
+    },
     Error, Result,
 };
 
@@ -22,13 +24,13 @@ pub struct Context<U>
 where
     U: Ui,
 {
-    commands: &'static Commands<U>,
-    notifications: &'static RwData<Text>,
-    windows: &'static RwData<Vec<Window<U>>>,
     cur_file: &'static CurFile<U>,
     cur_widget: &'static CurWidget<U>,
+    cur_window: &'static AtomicUsize,
+    windows: &'static LazyLock<RwData<Vec<Window<U>>>>,
+    commands: &'static Commands<U>,
+    notifications: &'static LazyLock<RwData<Text>>,
     has_ended: &'static AtomicBool,
-    cmd_modes: &'static CommandLineModes<U>,
 }
 
 impl<U> Clone for Context<U>
@@ -47,22 +49,22 @@ where
 {
     #[doc(hidden)]
     pub const fn new(
-        commands: &'static Commands<U>,
-        notifications: &'static RwData<Text>,
-        windows: &'static RwData<Vec<Window<U>>>,
         cur_file: &'static CurFile<U>,
         cur_widget: &'static CurWidget<U>,
+        cur_window: &'static AtomicUsize,
+        windows: &'static LazyLock<RwData<Vec<Window<U>>>>,
+        commands: &'static Commands<U>,
+        notifications: &'static LazyLock<RwData<Text>>,
         has_ended: &'static AtomicBool,
-        cmd_modes: &'static CommandLineModes<U>,
     ) -> Self {
         Self {
             cur_file,
             cur_widget,
+            cur_window,
             windows,
             commands,
-            has_ended,
             notifications,
-            cmd_modes,
+            has_ended,
         }
     }
 
@@ -95,9 +97,54 @@ where
         Ok(self.cur_widget)
     }
 
-    pub fn add_cmd_mode(self, mode: impl CommandLineMode<U> + 'static) {}
+    pub fn switch_to<W: ActiveWidget<U>>(self) {
+        let windows = self.windows.read();
+        let w = self.cur_window.load(Ordering::Acquire);
 
-    pub fn set_cmd_mode(self) {}
+        let (window, entry) = if let Some((widget, _)) = self.cur_file.get_related_widget::<W>() {
+            windows
+                .iter()
+                .enumerate()
+                .flat_map(|(i, window)| window.widgets().map(move |entry| (i, entry)))
+                .find(|(_, (cmp, _))| cmp.ptr_eq(&widget))
+        } else {
+            iter_around(&windows, w, 0)
+                .filter(|(_, (widget, _))| widget.as_active().is_some())
+                .find(|(_, (widget, _))| widget.data_is::<W>())
+        }
+        .unwrap_or_else(|| panic!("No widget of type {} found.", duat_name::<W>()));
+
+        let (widget, area) = (entry.0.clone(), entry.1.clone());
+        std::thread::spawn(move || {
+            switch_widget(&(widget, area), &self.windows.read(), w, self);
+            self.cur_window.store(window, Ordering::Release);
+        });
+    }
+
+    pub fn set_cmd_mode<M: CommandLineMode<U>>(self) {
+        self.cur_file
+            .mutate_related_widget::<CommandLine<U>, ()>(|widget, _| {
+                widget.write().set_mode::<M>(self)
+            })
+            .unwrap_or_else(|| {
+                let windows = self.windows.read();
+                let w = self.cur_window.load(Ordering::Relaxed);
+                let cur_window = &windows[w];
+
+                let mut widgets = {
+                    let previous = windows[..w].iter().flat_map(Window::widgets);
+                    let following = windows[(w + 1)..].iter().flat_map(Window::widgets);
+                    cur_window.widgets().chain(previous).chain(following)
+                };
+
+                if let Some(cmd_line) = widgets.find_map(|(w, _)| {
+                    w.data_is::<CommandLine<U>>()
+                        .then(|| w.downcast::<CommandLine<U>>().unwrap())
+                }) {
+                    cmd_line.write().set_mode::<M>(self)
+                }
+            })
+    }
 
     pub fn notifications(self) -> &'static RwData<Text> {
         self.notifications
@@ -149,17 +196,12 @@ where
         *self.cur_widget.0.write() = Some((widget, area));
     }
 
-    pub(crate) fn get_cmd_mode(self, name: &str) -> Option<RwData<dyn CommandLineMode<U>>> {
-        self.cmd_modes.get(name)
-    }
-
-    pub(crate) fn windows(self) -> &'static RwData<Vec<Window<U>>> {
-        self.windows
-    }
-
-    pub(crate) fn add_windows(self, windows: Vec<Window<U>>) -> &'static RwData<Vec<Window<U>>> {
+    pub(crate) fn set_windows(
+        self,
+        windows: Vec<Window<U>>,
+    ) -> (&'static RwData<Vec<Window<U>>>, &'static AtomicUsize) {
         *self.windows.write() = windows;
-        self.windows
+        (self.windows, self.cur_window)
     }
 }
 
@@ -247,6 +289,16 @@ where
             .map(|rel| f(&rel))
     }
 
+    pub(crate) fn mutate_dyn_input<R>(
+        &self,
+        f: impl FnOnce(&RwData<dyn InputMethod<U>>) -> R,
+    ) -> R {
+        let data = self.0.raw_read();
+        let (.., input, _) = data.as_ref().unwrap();
+
+        f(input)
+    }
+
     pub(crate) fn mutate_related_widget<W: 'static, R>(
         &self,
         f: impl FnOnce(&RwData<W>, &U::Area) -> R,
@@ -272,16 +324,15 @@ where
         *self.0.write() = Some(parts);
     }
 
-    pub(crate) fn get_related_widget(
-        &self,
-        type_name: &str,
-    ) -> Option<(RwData<dyn PassiveWidget<U>>, U::Area)> {
+    pub(crate) fn get_related_widget<W: ActiveWidget<U>>(&self) -> Option<(RwData<W>, U::Area)> {
         let data = self.0.write();
         let (.., related) = data.as_ref().unwrap();
         let related = related.read();
 
-        related.iter().find_map(|(widget, area, cmp)| {
-            (*cmp == type_name).then(|| (widget.clone(), area.clone()))
+        related.iter().find_map(|(widget, area, _)| {
+            widget
+                .data_is::<W>()
+                .then(|| (widget.try_downcast().unwrap(), area.clone()))
         })
     }
 
@@ -503,17 +554,6 @@ where
     pub(crate) fn set(&self, widget: Widget<U>, area: U::Area) {
         *self.0.write() = Some((widget, area.clone()));
     }
-
-    pub(crate) fn mutate_data<R>(
-        &self,
-        f: impl FnOnce(&RwData<dyn ActiveWidget<U>>, &U::Area, &RwData<dyn InputMethod<U>>) -> R,
-    ) -> R {
-        let data = self.0.read();
-        let (widget, area) = data.as_ref().unwrap();
-        let (widget, input) = widget.as_active().unwrap();
-
-        f(widget, area, input)
-    }
 }
 
 impl<U> Default for CurWidget<U>
@@ -522,36 +562,6 @@ where
 {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-pub struct CommandLineModes<U>(
-    LazyLock<RwData<HashMap<&'static str, RwData<dyn CommandLineMode<U>>>>>,
-)
-where
-    U: Ui;
-
-impl<U> CommandLineModes<U>
-where
-    U: Ui,
-{
-    #[doc(hidden)]
-    pub const fn new() -> Self {
-        Self(LazyLock::new(|| RwData::new(HashMap::new())))
-    }
-
-    pub fn add<M>(&self, mode: M)
-    where
-        M: CommandLineMode<U> + 'static,
-    {
-        self.0.write().insert(
-            duat_name::<M>(),
-            RwData::new_unsized::<M>(Arc::new(RwLock::new(mode))),
-        );
-    }
-
-    fn get(&self, mode_name: &str) -> Option<RwData<dyn CommandLineMode<U>>> {
-        self.0.read().get(mode_name).cloned()
     }
 }
 

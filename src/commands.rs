@@ -144,9 +144,18 @@
 //! ```
 
 pub use duat_core::commands::{Args, Flags};
-use duat_core::{commands::CmdResult, data::RwData, text::Text, ui, widgets::PassiveWidget};
+use duat_core::{
+    commands::CmdResult,
+    data::RwData,
+    text::Text,
+    ui,
+    widgets::{CommandLineMode, PassiveWidget},
+};
 
-use crate::{setup::COMMANDS, Ui};
+use crate::{
+    setup::{COMMANDS, CONTEXT},
+    Ui,
+};
 
 /// Runs a full command, with a caller, [`Flags`], and [`Args`].
 ///
@@ -448,6 +457,13 @@ pub fn add_for_widget<W: PassiveWidget<Ui>>(
     f: impl FnMut(&RwData<W>, &<Ui as ui::Ui>::Area, Flags, Args) -> CmdResult + 'static,
 ) -> Result<()> {
     COMMANDS.add_for_widget::<W>(callers, f)
+}
+
+/// Sets the mode of the [`CommandLine`]
+///
+/// [`CommandLine`]: crate::widgets::CommandLine
+pub fn set_mode<M: CommandLineMode<Ui>>() {
+    CONTEXT.set_cmd_mode::<M>()
 }
 
 type Result<T> = duat_core::Result<T, ()>;

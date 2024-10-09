@@ -1,12 +1,15 @@
-use std::sync::{atomic::AtomicBool, mpsc, LazyLock, RwLock};
+use std::sync::{
+    atomic::{AtomicBool, AtomicUsize},
+    mpsc, LazyLock, RwLock,
+};
 
 use duat_core::{
     commands::Commands,
-    data::{CommandLineModes, Context, CurFile, CurWidget, RwData},
+    data::{Context, CurFile, CurWidget, RwData},
     session::SessionCfg,
     text::{PrintCfg, Text},
     ui::{Event, Ui as TraitUi, Window},
-    widgets::{File, RunCommands, ShowNotifications},
+    widgets::{File, ShowNotifications},
 };
 use duat_term::VertRule;
 
@@ -20,20 +23,27 @@ use crate::{
 // Context's statics.
 static CUR_FILE: CurFile<Ui> = CurFile::new();
 static CUR_WIDGET: CurWidget<Ui> = CurWidget::new();
-static WINDOWS: LazyLock<RwLock<Vec<Window<Ui>>>>;
+static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
+static WINDOWS: LazyLock<RwData<Vec<Window<Ui>>>> = LazyLock::new(RwData::default);
 static NOTIFICATIONS: LazyLock<RwData<Text>> = LazyLock::new(RwData::default);
 static HAS_ENDED: AtomicBool = AtomicBool::new(false);
-static CMD_MODES: CommandLineModes<Ui> = CommandLineModes::new();
-pub static COMMANDS: Commands<Ui> = Commands::new(&WINDOWS, &CUR_FILE, &CUR_WIDGET, &NOTIFICATIONS);
 
-pub static CONTEXT: Context<Ui> = Context::new(
-    &COMMANDS,
-    &NOTIFICATIONS,
+pub static COMMANDS: Commands<Ui> = Commands::new(
     &CUR_FILE,
     &CUR_WIDGET,
+    &CUR_WINDOW,
     &WINDOWS,
+    &NOTIFICATIONS,
+);
+
+pub static CONTEXT: Context<Ui> = Context::new(
+    &CUR_FILE,
+    &CUR_WIDGET,
+    &CUR_WINDOW,
+    &WINDOWS,
+    &COMMANDS,
+    &NOTIFICATIONS,
     &HAS_ENDED,
-    &CMD_MODES,
 );
 
 // Setup statics.
@@ -55,10 +65,8 @@ pub fn pre_setup() {
     });
 
     hooks::add_grouped::<UnfocusedFrom<CommandLine>>("CmdLineNotifications", |_cmd_line| {
-        commands::run("set-cmd-mode ShowNotifications").unwrap();
+        commands::set_mode::<ShowNotifications>();
     });
-
-    CONTEXT.add_cmd_mode(RunCommands::new(CONTEXT));
 }
 
 #[doc(hidden)]
@@ -69,10 +77,6 @@ pub fn run_duat(
     statics: <Ui as TraitUi>::StaticFns,
 ) -> Vec<(RwData<File>, bool)> {
     let mut ui = Ui::new(statics);
-
-    if hooks::group_exists("CmdLineNotifications") {
-        CONTEXT.add_cmd_mode(ShowNotifications::new(CONTEXT));
-    }
 
     duat_core::hooks::trigger::<OnUiStart>(&mut ui);
 

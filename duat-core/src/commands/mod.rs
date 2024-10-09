@@ -34,14 +34,17 @@
 use std::{
     collections::HashMap,
     fmt::Display,
-    sync::{Arc, LazyLock},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, LazyLock,
+    },
 };
 
 pub use self::parameters::{split_flags_and_args, Args, Flags};
 use crate::{
-    data::{CurFile, CurWidget, Data, RwData, RwLock},
+    data::{CurFile, CurWidget, RwData, RwLock},
     duat_name,
-    text::{err, text, Text},
+    text::{err, ok, text, Text},
     ui::{Ui, Window},
     widgets::{ActiveWidget, PassiveWidget},
     Error,
@@ -63,9 +66,10 @@ where
     U: Ui,
 {
     inner: LazyLock<RwData<InnerCommands>>,
-    windows: &'static RwLock<Vec<Window<U>>>,
-    current_file: &'static CurFile<U>,
-    current_widget: &'static CurWidget<U>,
+    cur_file: &'static CurFile<U>,
+    cur_widget: &'static CurWidget<U>,
+    cur_window: &'static AtomicUsize,
+    windows: &'static LazyLock<RwData<Vec<Window<U>>>>,
     notifications: &'static LazyLock<RwData<Text>>,
 }
 
@@ -76,9 +80,10 @@ where
     /// Returns a new instance of [`Commands`].
     #[doc(hidden)]
     pub const fn new(
-        windows: &'static RwLock<Vec<Window<U>>>,
-        current_file: &'static CurFile<U>,
-        current_widget: &'static CurWidget<U>,
+        cur_file: &'static CurFile<U>,
+        cur_widget: &'static CurWidget<U>,
+        cur_window: &'static AtomicUsize,
+        windows: &'static LazyLock<RwData<Vec<Window<U>>>>,
         notifications: &'static LazyLock<RwData<Text>>,
     ) -> Self {
         Self {
@@ -110,9 +115,10 @@ where
 
                 inner
             }),
+            cur_window,
+            cur_file,
+            cur_widget,
             windows,
-            current_file,
-            current_widget,
             notifications,
         }
     }
@@ -347,7 +353,7 @@ where
     ///
     /// This object can be one of three things, a [`PassiveWidget`],
     /// an [`InputMethod`], or the [`File`] itself. When the
-    /// command is ran, Duat will look at the currently active
+    /// command is executed, Duat will look at the currently active
     /// file for any instance of an [`RwData<Thing>`] it can find.
     /// Those will either be the file itself, or will be added in
     /// the [`Session`]'s "file_fn".
@@ -427,12 +433,12 @@ where
     ) -> Result<()> {
         let command = Command::new(callers, move |flags, args| {
             let result = self
-                .current_file
+                .cur_file
                 .mutate_related::<T, CmdResult>(|t| f(t, flags, args.clone()));
 
             result
                 .or_else(|| {
-                    self.current_widget
+                    self.cur_widget
                         .mutate_as::<T, CmdResult>(|t| f(t, flags, args.clone()))
                 })
                 .transpose()?
@@ -453,17 +459,12 @@ where
     /// This command will look for the [`PassiveWidget`] in the
     /// following order:
     ///
-    /// 1. Any instance that is "related" to the currently active
-    ///    [`File`], that is, any widgets that were added during the
-    ///    [`Session`]'s "`file_fn`".
-    /// 2. Other widgets in the currently active window, related or
-    ///    not to any given [`File`].
-    /// 3. Any instance of the [`PassiveWidget`] that is found in
-    ///    other windows, looking first at windows ahead.
+    /// 1. Any widget directly attached to the current file.
+    /// 2. One other instance in the active window.
+    /// 3. Instances in other windows.
     ///
-    /// Keep in mind that the search is deterministic, that is, if
-    /// there are multiple instances of the widget that fit the
-    /// same category, only one of them will ever be used.
+    /// Keep in mind that this command will always execute on the
+    /// first widget found.
     ///
     /// This search algorithm allows a more versatile configuration of
     /// widgets, for example, one may have a [`CommandLine`] per
@@ -500,7 +501,7 @@ where
     /// impl PassiveWidget for Timer {
     ///     fn build<U: Ui>() -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
     ///         let timer = Self {
-    ///             text: text!(AlignCenter [Counter] "0ms"),
+    ///             text: text!(AlignCenter [Counter] 0 [] "ms"),
     ///             instant: Instant::now(),
     ///             // No need to use an `RwData`, since
     ///             // `RwData::has_changed` is never called.
@@ -526,11 +527,10 @@ where
     ///             let duration = self.instant.elapsed();
     ///             let duration = format!("{:.3?}", duration);
     ///             self.text = text!(
-    ///                 AlignCenter [Counter] duration [] "elapsed"
+    ///                 AlignCenter [Counter] duration [] "ms"
     ///             );
     ///         }
     ///     }
-    ///     
     ///
     ///     fn text(&self) -> &Text {
     ///         &self.text
@@ -590,7 +590,7 @@ where
         let windows = self.windows;
 
         let command = Command::new(callers, move |flags, args| {
-            self.current_file
+            self.cur_file
                 .mutate_related_widget::<W, CmdResult>(|widget, area| {
                     f(widget, area, flags, args.clone())
                 })
@@ -604,15 +604,13 @@ where
                         ));
                     }
 
-                    self.current_widget.mutate_data(|widget, _, _| {
-                        let widget = widget.clone().to_passive();
-                        if let Some((w, a)) = get_from_name(&windows, duat_name::<W>(), &widget) {
-                            f(&w.try_downcast().unwrap(), a, flags, args)
-                        } else {
-                            let name = duat_name::<W>();
-                            Err(err!("No widget of type " [*a] name [] " found"))
-                        }
-                    })
+                    if let Some((w, a)) = get_from_name(&windows, duat_name::<W>(), self.cur_window)
+                    {
+                        f(&w.try_downcast().unwrap(), a, flags, args)
+                    } else {
+                        let name = duat_name::<W>();
+                        Err(err!("No widget of type " [*a] name [] " found"))
+                    }
                 })
         });
 
@@ -713,15 +711,12 @@ impl InnerCommands {
         if let Some(command) = cmds.find(|cmd| cmd.callers().contains(&caller)) {
             let entry = (command.clone(), call.clone());
             match self.aliases.insert(alias.clone(), entry) {
-                Some((_, prev_call)) => Ok(Some(text!(
-                    "Aliased " [AccentOk] alias []
-                    " from " [AccentOk] prev_call []
-                    " to " [AccentOk] call [] "."
-                ))),
-                None => Ok(Some(text!(
-                     "Aliased " [AccentOk] alias []
-                     " to " [AccentOk] call [] "."
-                ))),
+                Some((_, prev_call)) => ok!(
+                    "Aliased " [*a] alias []
+                    " from " [*a] prev_call []
+                    " to " [*a] call [] "."
+                ),
+                None => ok!("Aliased " [*a] alias [] " to " [*a] call [] "."),
             }
         } else {
             Err(Error::CallerNotFound(caller))
@@ -735,16 +730,12 @@ type Result<T> = crate::Result<T, ()>;
 fn get_from_name<'a, U: Ui>(
     windows: &'a [Window<U>],
     type_name: &'static str,
-    widget: &impl Data<dyn PassiveWidget<U>>,
+    cur_window: &'static AtomicUsize,
 ) -> Option<(&'a RwData<dyn PassiveWidget<U>>, &'a U::Area)> {
-    let window = windows
-        .iter()
-        .position(|w| w.widgets().any(|(cmp, _)| cmp.ptr_eq(widget)))
-        .unwrap();
-
-    let on_window = windows[window].widgets();
-    let previous = windows.iter().take(window).flat_map(|w| w.widgets());
-    let following = windows.iter().skip(window + 1).flat_map(|w| w.widgets());
+    let w = cur_window.load(Ordering::Relaxed);
+    let on_window = windows[w].widgets();
+    let previous = windows.iter().take(w).flat_map(|w| w.widgets());
+    let following = windows.iter().skip(w + 1).flat_map(|w| w.widgets());
 
     on_window
         .chain(following)

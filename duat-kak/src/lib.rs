@@ -12,7 +12,7 @@ use duat_core::{
     },
     text::{err, text, Point, Text},
     ui::{Area, Ui},
-    widgets::File,
+    widgets::{File, IncSearch, RunCommands},
 };
 
 const ALTSHIFT: Mod = Mod::ALT.union(Mod::SHIFT);
@@ -22,6 +22,7 @@ pub struct KeyMap {
     cursors: Cursors,
     mode: Mode,
     sel_type: SelType,
+    searching: Option<Cursors>
 }
 
 impl KeyMap {
@@ -31,6 +32,7 @@ impl KeyMap {
             cursors: Cursors::new_inclusive(),
             mode: Mode::Normal,
             sel_type: SelType::Normal,
+            searching: None
         }
     }
 
@@ -400,14 +402,9 @@ impl KeyMap {
 
             ////////// Other mode changing keys.
             key!(Char(':')) => {
-                if context.commands.run("switch-to CommandLine<Ui>").is_ok() {
-                    context
-                        .commands
-                        .run("set-cmd-mode RunCommands<Ui>")
-                        .unwrap();
-                    self.mode = Mode::Other("command");
-                    hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Other("command")));
-                }
+                context.set_cmd_mode::<RunCommands<U>>();
+                self.mode = Mode::Other("command");
+                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Other("command")));
             }
             key!(Char('G'), Mod::SHIFT) => {
                 self.mode = Mode::OneKey("go to");
@@ -417,6 +414,11 @@ impl KeyMap {
             key!(Char('g')) => {
                 self.mode = Mode::OneKey("go to");
                 hooks::trigger::<OnModeChange>((Mode::Normal, Mode::OneKey("go to")));
+            }
+            key!(Char('/')) => {
+                context.set_cmd_mode::<IncSearch<U>>();
+                self.mode = Mode::Other("search");
+                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Other("search")));
             }
 
             ////////// Temporary.
@@ -484,7 +486,7 @@ impl KeyMap {
             ////////// File change keys.
             key!(Char('a')) => {
                 if let Some(file) = last_file
-                    && context.commands.run_notify(format!("b {file}")).is_ok()
+                    && context.run_cmd_notify(format!("b {file}")).is_ok()
                 {
                     *LAST_FILE.write() = Some(cur_name);
                 } else {
@@ -492,12 +494,12 @@ impl KeyMap {
                 }
             }
             key!(Char('n')) => {
-                if context.commands.run_notify("next-file").is_ok() {
+                if context.run_cmd_notify("next-file").is_ok() {
                     *LAST_FILE.write() = Some(cur_name);
                 }
             }
             key!(Char('N'), Mod::SHIFT) => {
-                if context.commands.run_notify("prev-file").is_ok() {
+                if context.run_cmd_notify("prev-file").is_ok() {
                     *LAST_FILE.write() = Some(cur_name);
                 }
             }
@@ -602,6 +604,18 @@ where
         let prev = self.mode;
         self.mode = Mode::Normal;
         hooks::trigger::<OnModeChange>((prev, Mode::Normal));
+    }
+
+    fn begin_inc_search(&mut self) {
+        self.searching = Some(self.cursors.clone());
+    }
+
+    fn end_inc_search(&mut self) {
+        self.searching = None;
+    }
+
+    fn search_inc(&mut self, searcher: duat_core::text::Searcher) {
+
     }
 }
 
