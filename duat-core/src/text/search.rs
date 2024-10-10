@@ -340,7 +340,9 @@ impl SavedMatches {
 
     pub fn pat_is(&self, text: &Text) -> bool {
         let (s0, s1) = text.slices();
-        &self.pat[..s0.len()] == s0 && &self.pat[s0.len()..] == s1
+        self.pat.len() == s0.len() + s1.len()
+            && &self.pat[..s0.len()] == s0
+            && &self.pat[s0.len()..] == s1
     }
 }
 

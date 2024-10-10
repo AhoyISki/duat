@@ -22,7 +22,7 @@ pub struct KeyMap {
     cursors: Cursors,
     mode: Mode,
     sel_type: SelType,
-    searching: Option<Cursors>
+    searching: Option<Cursors>,
 }
 
 impl KeyMap {
@@ -32,7 +32,7 @@ impl KeyMap {
             cursors: Cursors::new_inclusive(),
             mode: Mode::Normal,
             sel_type: SelType::Normal,
-            searching: None
+            searching: None,
         }
     }
 
@@ -614,9 +614,7 @@ where
         self.searching = None;
     }
 
-    fn search_inc(&mut self, searcher: duat_core::text::Searcher) {
-
-    }
+    fn search_inc(&mut self, searcher: duat_core::text::Searcher) {}
 }
 
 impl<U> InputForFiles<U> for KeyMap
@@ -725,7 +723,7 @@ enum SelType {
 pub struct OnModeChange;
 
 impl Hookable for OnModeChange {
-    type Args<'args> = (Mode, Mode);
+    type Args = (Mode, Mode);
 }
 
 fn word_and_space<S>(m: &Mover<impl Area, S>, mf: Mod) -> &'static str {

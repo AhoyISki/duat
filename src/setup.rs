@@ -61,7 +61,7 @@ pub fn pre_setup() {
 
     hooks::add_grouped::<OnWindowOpen>("WindowWidgets", |builder| {
         let (child, _) = builder.push::<StatusLine>();
-        builder.push_cfg_to(CommandLine::cfg().left_ratioed(2, 5), child);
+        builder.push_cfg_to(CommandLine::cfg().left_ratioed(4, 7), child);
     });
 
     hooks::add_grouped::<UnfocusedFrom<CommandLine>>("CmdLineNotifications", |_cmd_line| {
@@ -76,9 +76,9 @@ pub fn run_duat(
     rx: mpsc::Receiver<Event>,
     statics: <Ui as TraitUi>::StaticFns,
 ) -> Vec<(RwData<File>, bool)> {
-    let mut ui = Ui::new(statics);
+    let ui = RwData::new(Ui::new(statics));
 
-    duat_core::hooks::trigger::<OnUiStart>(&mut ui);
+    duat_core::hooks::trigger::<OnUiStart>(ui.clone());
 
     let mut cfg = SessionCfg::new(ui, CONTEXT);
 

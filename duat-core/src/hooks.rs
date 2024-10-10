@@ -66,7 +66,7 @@
 //! [commands]: crate::commands
 use std::{any::TypeId, collections::HashMap, marker::PhantomData, sync::LazyLock};
 
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 
 pub use self::global::*;
 use crate::{
@@ -108,7 +108,7 @@ impl<U> Hookable for OnUiStart<U>
 where
     U: Ui,
 {
-    type Args<'args> = &'args mut U;
+    type Args = RwData<U>;
 }
 
 /// Triggers whenever a [`File`] is opened
@@ -128,7 +128,7 @@ impl<U> Hookable for OnFileOpen<U>
 where
     U: Ui,
 {
-    type Args<'a> = &'a mut FileBuilder<U>;
+    type Args = FileBuilder<U>;
 }
 
 /// Triggers whenever a new window is opened
@@ -147,7 +147,7 @@ impl<U> Hookable for OnWindowOpen<U>
 where
     U: Ui,
 {
-    type Args<'a> = WindowBuilder<U>;
+    type Args = WindowBuilder<U>;
 }
 
 /// Triggers whenever the given [`widget`] is focused
@@ -167,7 +167,7 @@ where
     W: ActiveWidget<U>,
     U: Ui,
 {
-    type Args<'args> = &'args RwData<W>;
+    type Args = RwData<W>;
 }
 
 /// Triggers whenever the given [`widget`] is focused
@@ -187,7 +187,7 @@ where
     W: ActiveWidget<U>,
     U: Ui,
 {
-    type Args<'args> = &'args RwData<W>;
+    type Args = RwData<W>;
 }
 
 /// Triggers whenever a [key] is sent
@@ -207,7 +207,7 @@ impl<U> Hookable for KeySent<U>
 where
     U: Ui,
 {
-    type Args<'args> = (KeyEvent, &'args RwData<dyn ActiveWidget<U>>);
+    type Args = (KeyEvent, RwData<dyn ActiveWidget<U>>);
 }
 
 /// Triggers whenever a [key] is sent to `W`
@@ -228,7 +228,7 @@ where
     W: ActiveWidget<U> + ?Sized,
     U: Ui,
 {
-    type Args<'args> = (KeyEvent, &'args RwData<W>);
+    type Args = (KeyEvent, RwData<W>);
 }
 
 /// Hook functions
@@ -244,8 +244,8 @@ mod global {
     ///
     /// [hook]: Hookable
     /// [`hooks::add_grouped`]: add_grouped
-    pub fn add<H: Hookable>(f: impl for<'a, 'b> FnMut(&H::Args<'a>) + Send + Sync + 'static) {
-        HOOKS.add::<H>("", f)
+    pub fn add<H: Hookable>(f: impl FnMut(&H::Args) + Send + 'static) {
+        crate::thread::queue(move || HOOKS.add::<H>("", f))
     }
 
     /// Adds a grouped [hook]
@@ -257,11 +257,8 @@ mod global {
     /// [hook]: Hookable
     /// [`hooks::remove_group`]: remove_group
     /// [`hooks::add`]: add
-    pub fn add_grouped<H: Hookable>(
-        group: &'static str,
-        f: impl for<'a, 'b> FnMut(&H::Args<'a>) + Send + Sync + 'static,
-    ) {
-        HOOKS.add::<H>(group, f)
+    pub fn add_grouped<H: Hookable>(group: &'static str, f: impl FnMut(&H::Args) + Send + 'static) {
+        crate::thread::queue(move || HOOKS.add::<H>(group, f))
     }
 
     /// Removes a [hook] group
@@ -272,7 +269,7 @@ mod global {
     /// [hook]: Hookable
     /// [`hooks::add_grouped`]: add_grouped
     pub fn remove_group(group: &'static str) {
-        HOOKS.remove(group)
+        crate::thread::queue(move || HOOKS.remove(group))
     }
 
     /// Triggers a hooks for a [`Hookable`] struct
@@ -284,8 +281,8 @@ mod global {
     /// [hook]: Hookable
     /// [`hooks::add`]: add
     /// [`hooks::add_grouped`]: add_grouped
-    pub fn trigger<H: Hookable>(args: H::Args<'_>) {
-        HOOKS.trigger::<H>(args)
+    pub fn trigger<H: Hookable>(args: H::Args) {
+        crate::thread::queue(move || HOOKS.trigger::<H>(args));
     }
 
     /// Checks if a give group exists
@@ -312,7 +309,7 @@ mod global {
 ///
 /// [`hooks::trigger`]: trigger
 pub trait Hookable: Sized + 'static {
-    type Args<'args>;
+    type Args: Send + 'static;
 }
 
 /// An intermediary trait, meant for group removal
@@ -322,7 +319,7 @@ trait HookHolder: Send + Sync {
 }
 
 /// An intermediary struct, meant to hold the hooks of a [`Hookable`]
-struct HooksOf<H>(RwLock<Vec<Hook<H>>>)
+struct HooksOf<H>(Mutex<Vec<Hook<H>>>)
 where
     H: Hookable;
 
@@ -330,7 +327,7 @@ impl<H: Hookable> HookHolder for HooksOf<H> {
     fn remove_group(&mut self, group: &str) {
         let mut hooks = None;
         while hooks.is_none() {
-            hooks = self.0.try_write();
+            hooks = self.0.try_lock();
         }
         hooks.unwrap().extract_if(|(g, _)| *g == group).last();
     }
@@ -355,7 +352,7 @@ impl Hooks {
     fn add<H: Hookable>(
         &self,
         group: &'static str,
-        f: impl for<'a> FnMut(&H::Args<'a>) + Send + Sync + 'static,
+        f: impl for<'a> FnMut(&'a H::Args) + Send + 'static,
     ) {
         let mut map = self.types.write();
 
@@ -372,9 +369,9 @@ impl Hooks {
                 ptr.as_mut().unwrap()
             };
 
-            hooks_of.0.write().push((group, Box::new(f)))
+            hooks_of.0.lock().push((group, Box::new(f)))
         } else {
-            let hooks_of = HooksOf::<H>(RwLock::new(vec![(group, Box::new(f))]));
+            let hooks_of = HooksOf::<H>(Mutex::new(vec![(group, Box::new(f))]));
 
             map.insert(TypeId::of::<H>(), Box::new(hooks_of));
         }
@@ -392,7 +389,8 @@ impl Hooks {
     }
 
     /// Triggers hooks with args of the [`Hookable`]
-    fn trigger<H: Hookable>(&self, args: H::Args<'_>) {
+    fn trigger<H: Hookable>(&self, args: H::Args) {
+        
         let map = self.types.read();
 
         if let Some(holder) = map.get(&TypeId::of::<H>()) {
@@ -401,7 +399,7 @@ impl Hooks {
                 ptr.as_ref().unwrap()
             };
 
-            for (_, f) in &mut *hooks_of.0.write() {
+            for (_, f) in &mut *hooks_of.0.lock() {
                 f(&args)
             }
         }
@@ -415,5 +413,5 @@ impl Hooks {
 
 type Hook<H> = (
     &'static str,
-    Box<dyn for<'a, 'b> FnMut(&<H as Hookable>::Args<'a>) + Send + Sync>,
+    Box<dyn for<'a> FnMut(&'a <H as Hookable>::Args) + Send + 'static>,
 );

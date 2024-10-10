@@ -30,7 +30,7 @@ use crate::{
 
 /// All the methods that a working gui/tui will need to implement, in
 /// order to use Parsec.
-pub trait Ui: Sized + 'static {
+pub trait Ui: Sized + Send + Sync + 'static {
     /// This is the underlying type that will be handled dynamically
     type StaticFns: Default + Clone + Copy + Send + Sync;
     type Area: Area<Ui = Self> + Clone + PartialEq;
@@ -653,8 +653,8 @@ pub(crate) fn build_file<U>(
         (window_i, old_file)
     };
 
-    let mut builder = FileBuilder::new(windows, mod_area, window_i, context);
-    hooks::trigger::<OnFileOpen<U>>(&mut builder);
+    let builder = FileBuilder::new(windows, mod_area, window_i, context);
+    hooks::trigger::<OnFileOpen<U>>(builder);
 
     if let Some(parts) = old_file {
         context.cur_file().unwrap().swap(parts);

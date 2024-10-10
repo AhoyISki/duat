@@ -1,5 +1,7 @@
 use std::{cell::RefCell, sync::LazyLock};
 
+use parking_lot::RwLock;
+
 use super::{Area, Ui, Window};
 use crate::{
     data::{Context, RwData},
@@ -7,14 +9,14 @@ use crate::{
     widgets::{PassiveWidget, WidgetCfg},
 };
 
-/// A constructor helper for [`Widget<U>`]s.
+/// A constructor helper for [`Widget`]s.
 ///
-/// When pushing [`Widget<U>`]s to the layout, this struct can be used
+/// When pushing [`Widget`]s to the layout, this struct can be used
 /// to further actions to be taken. It is used in contexts where a
 /// widget has just been inserted to the screen, inside closures.
 ///
-/// Here, [`LineNumbers<U>`][crate::widgets::LineNumbers<U>] is pushed
-/// to the left of a widget (which in this case is a [`FileWidget<U>`]
+/// Here, [`LineNumbers`] is pushed to the left of a widget (which
+/// in this case is a [`FileWidget`]
 ///
 /// ```rust
 /// # use duat_core::{
@@ -34,15 +36,17 @@ use crate::{
 /// By using the `file_fn()` function as the `constructor_hook`
 /// argument for [`Session::new()`][crate::Session::new()], every file
 /// that is opened will have a
-/// [`LineNumbers<U>`][crate::widgets::LineNumbers] widget attached to
+/// [`LineNumbers`] widget attached to
 /// it.
+///
+/// [`LineNumbers`]: crate::widgets::LineNumbers
 pub struct FileBuilder<U>
 where
     U: Ui,
 {
     windows: &'static RwData<Vec<Window<U>>>,
     window_i: usize,
-    mod_area: RefCell<U::Area>,
+    mod_area: RwLock<U::Area>,
     context: Context<U>,
 }
 
@@ -50,7 +54,7 @@ impl<U> FileBuilder<U>
 where
     U: Ui,
 {
-    /// Creates a new [`FileBuilder<U>`].
+    /// Creates a new [`FileBuilder`].
     pub fn new(
         windows: &'static RwData<Vec<Window<U>>>,
         mod_area: U::Area,
@@ -60,12 +64,12 @@ where
         Self {
             windows,
             window_i,
-            mod_area: RefCell::new(mod_area),
+            mod_area: RwLock::new(mod_area),
             context,
         }
     }
 
-    /// Pushes a [`Widget<U>`] to [`self`], given [`PushSpecs`] and a
+    /// Pushes a [`Widget`] to [`self`], given [`PushSpecs`] and a
     /// constructor function.
     ///
     /// Do note that this function will should change the index of
@@ -75,11 +79,11 @@ where
     /// # Returns
     ///
     /// The first element is the `area_index` of the newly created
-    /// [`Widget<U>`], you can use it to push new [`Widget<U>`]s.
+    /// [`Widget`], you can use it to push new [`Widget`]s.
     /// The second element, of type [`Option<usize>`] is
     /// [`Some(..)`] only when a new parent was created to
-    /// accomodate the new [`Widget<U>`], and represents the new
-    /// `area_index` of the old [`Widget<U>`], which has now
+    /// accomodate the new [`Widget`], and represents the new
+    /// `area_index` of the old [`Widget`], which has now
     /// become a child.
     ///
     /// # Examples
@@ -111,7 +115,7 @@ where
         let (widget, checker, specs) = W::build(self.context, true);
 
         let mut windows = self.windows.write();
-        let mut mod_area = self.mod_area.borrow_mut();
+        let mut mod_area = self.mod_area.write();
         let window = &mut windows[self.window_i];
 
         let related = widget.as_passive().clone();
@@ -141,7 +145,7 @@ where
         (child, parent)
     }
 
-    /// Pushes a [`Widget<U>`] to [`self`], given [`PushSpecs`] and a
+    /// Pushes a [`Widget`] to [`self`], given [`PushSpecs`] and a
     /// constructor function.
     ///
     /// Do note that this function will should change the index of
@@ -151,11 +155,11 @@ where
     /// # Returns
     ///
     /// The first element is the `area_index` of the newly created
-    /// [`Widget<U>`], you can use it to push new [`Widget<U>`]s.
+    /// [`Widget`], you can use it to push new [`Widget`]s.
     /// The second element, of type [`Option<usize>`] is
     /// [`Some(..)`] only when a new parent was created to
-    /// accomodate the new [`Widget<U>`], and represents the new
-    /// `area_index` of the old [`Widget<U>`], which has now
+    /// accomodate the new [`Widget`], and represents the new
+    /// `area_index` of the old [`Widget`], which has now
     /// become a child.
     ///
     /// # Examples
@@ -190,7 +194,7 @@ where
         let (widget, checker, specs) = cfg.build(self.context, true);
 
         let mut windows = self.windows.write();
-        let mut mod_area = self.mod_area.borrow_mut();
+        let mut mod_area = self.mod_area.write();
         let window = &mut windows[self.window_i];
 
         let related = widget.as_passive().clone();
@@ -220,14 +224,14 @@ where
         (child, parent)
     }
 
-    /// Pushes a [`Widget<U>`] to a specific `area`, given
+    /// Pushes a [`Widget`] to a specific `area`, given
     /// [`PushSpecs`] and a constructor function.
     ///
     /// # Examples
     ///
     /// Given that [`self`] has an index of `0`, and other widgets
     /// have already been pushed, one can push to a specific
-    /// [`Widget<U>`], given an area index.
+    /// [`Widget`], given an area index.
     ///
     /// ╭────────0────────╮     ╭────────0────────╮
     /// │╭──2───╮╭───1───╮│     │╭──2───╮╭───1───╮│
@@ -253,14 +257,14 @@ where
         (child, parent)
     }
 
-    /// Pushes a [`Widget<U>`] to a specific `area`, given
+    /// Pushes a [`Widget`] to a specific `area`, given
     /// [`PushSpecs`] and a constructor function.
     ///
     /// # Examples
     ///
     /// Given that [`self`] has an index of `0`, and other widgets
     /// have already been pushed, one can push to a specific
-    /// [`Widget<U>`], given an area index.
+    /// [`Widget`], given an area index.
     ///
     /// ╭────────0────────╮     ╭────────0────────╮
     /// │╭──2───╮╭───1───╮│     │╭──2───╮╭───1───╮│
@@ -305,7 +309,7 @@ impl<U> WindowBuilder<U>
 where
     U: Ui,
 {
-    /// Creates a new [`FileBuilder<U>`].
+    /// Creates a new [`FileBuilder`].
     pub fn new(
         windows: &'static RwData<Vec<Window<U>>>,
         window_i: usize,
@@ -320,14 +324,14 @@ where
         }
     }
 
-    /// Pushes a [`Widget<U>`] to the file's area, given a
-    /// [`Widget<U>`] builder function.
+    /// Pushes a [`Widget`] to the file's area, given a
+    /// [`Widget`] builder function.
     ///
     /// In Duat, windows have two parts: the central area and the
     /// periphery. The central part is the "file's region", it
-    /// contains all [`FileWidget<U>`]s, as well as all directly
-    /// related [`Widget<U>`]s ([`LineNumbers<U>`]s,
-    /// [`StatusLine<U>`]s, etc.). These widgets are all
+    /// contains all [`FileWidget`]s, as well as all directly
+    /// related [`Widget`]s ([`LineNumbers`]s,
+    /// [`StatusLine`]s, etc.). These widgets are all
     /// "clustered" to their main file, that is, moving the file will
     /// move the widget with it.
     ///
@@ -337,8 +341,8 @@ where
     /// switches to display information about the currently active
     /// file. These widgets may be clustered together (not with
     /// any widget in the central area), and be moved in unison. One
-    /// could, for example, cluster a [`CommandLine<U>`] with a
-    /// [`StatusLine<U>`], to keep them together when moving
+    /// could, for example, cluster a [`CommandLine`] with a
+    /// [`StatusLine`], to keep them together when moving
     /// either of them around. By default, no widgets
     /// are clustered together, but you can cluster them with the
     /// [`cluster_to`] function.
@@ -363,9 +367,9 @@ where
     /// ```rust
     /// ```
     ///
-    /// [`FileWidget<U>`]: crate::widgets::FileWidget
-    /// [`LineNumbers<U>`]: crate::widgets::LineNumbers
-    /// [`StatusLine<U>`]: crate::widgets::StatusLine
+    /// [`FileWidget`]: crate::widgets::FileWidget
+    /// [`LineNumbers`]: crate::widgets::LineNumbers
+    /// [`StatusLine`]: crate::widgets::StatusLine
     /// [`push_to`]: Self::<U>::push_to
     /// [`Session`]: crate::session::Session
     pub fn push<W: PassiveWidget<U>>(&self) -> (U::Area, Option<U::Area>) {
@@ -385,14 +389,14 @@ where
         (child, parent)
     }
 
-    /// Pushes a [`Widget<U>`] to the file's area, given a
-    /// [`Widget<U>`] builder function.
+    /// Pushes a [`Widget`] to the file's area, given a
+    /// [`Widget`] builder function.
     ///
     /// In Duat, windows have two parts: the central area and the
     /// periphery. The central part is the "file's region", it
-    /// contains all [`FileWidget<U>`]s, as well as all directly
-    /// related [`Widget<U>`]s ([`LineNumbers<U>`]s,
-    /// [`StatusLine<U>`]s, etc.). These widgets are all
+    /// contains all [`FileWidget`]s, as well as all directly
+    /// related [`Widget`]s ([`LineNumbers`]s,
+    /// [`StatusLine`]s, etc.). These widgets are all
     /// "clustered" to their main file, that is, moving the file will
     /// move the widget with it.
     ///
@@ -402,8 +406,8 @@ where
     /// switches to display information about the currently active
     /// file. These widgets may be clustered together (not with
     /// any widget in the central area), and be moved in unison. One
-    /// could, for example, cluster a [`CommandLine<U>`] with a
-    /// [`StatusLine<U>`], to keep them together when moving
+    /// could, for example, cluster a [`CommandLine`] with a
+    /// [`StatusLine`], to keep them together when moving
     /// either of them around. By default, no widgets
     /// are clustered together, but you can cluster them with the
     /// [`cluster_to`] function.
@@ -428,9 +432,9 @@ where
     /// ```rust
     /// ```
     ///
-    /// [`FileWidget<U>`]: crate::widgets::FileWidget
-    /// [`LineNumbers<U>`]: crate::widgets::LineNumbers
-    /// [`StatusLine<U>`]: crate::widgets::StatusLine
+    /// [`FileWidget`]: crate::widgets::FileWidget
+    /// [`LineNumbers`]: crate::widgets::LineNumbers
+    /// [`StatusLine`]: crate::widgets::StatusLine
     /// [`push_to`]: Self::<U>::push_to
     /// [`Session`]: crate::session::Session
     pub fn push_cfg<W: PassiveWidget<U>>(
@@ -453,14 +457,14 @@ where
         (child, parent)
     }
 
-    /// Pushes a [`Widget<U>`] to a specific `area`, given
+    /// Pushes a [`Widget`] to a specific `area`, given
     /// [`PushSpecs`] and a constructor function.
     ///
     /// # Examples
     ///
     /// Given that [`self`] has an index of `0`, and other widgets
     /// have already been pushed, one can push to a specific
-    /// [`Widget<U>`], given an area index.
+    /// [`Widget`], given an area index.
     ///
     /// ╭────────0────────╮     ╭────────0────────╮
     /// │╭──2───╮╭───1───╮│     │╭──2───╮╭───1───╮│
@@ -478,14 +482,13 @@ where
         window.push(widget, &area, checker, specs, true)
     }
 
-    /// Pushes a [`Widget<U>`] to a specific `area`, given
-    /// [`PushSpecs`] and a constructor function.
+    /// Pushes a [`Widget`] to a specific `area`, given a [cfg]
     ///
     /// # Examples
     ///
     /// Given that [`self`] has an index of `0`, and other widgets
     /// have already been pushed, one can push to a specific
-    /// [`Widget<U>`], given an area index.
+    /// [`Widget`], given an area index.
     ///
     /// ╭────────0────────╮     ╭────────0────────╮
     /// │╭──2───╮╭───1───╮│     │╭──2───╮╭───1───╮│
@@ -493,6 +496,9 @@ where
     /// ││      ││       ││     ││      │╭───3───╮│
     /// │╰──────╯╰───────╯│     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
+    ///
+    /// [`Widget`]: PassiveWidget
+    /// [cfg]: crate::widgets::WidgetCfg
     pub fn push_cfg_to<W: PassiveWidget<U>>(
         &self,
         cfg: impl WidgetCfg<U, Widget = W>,

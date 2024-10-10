@@ -26,7 +26,7 @@ pub struct SessionCfg<U>
 where
     U: Ui,
 {
-    ui: U,
+    ui: RwData<U>,
     file_cfg: FileCfg<U>,
     context: Context<U>,
     layout: Box<dyn Fn() -> Box<dyn Layout<U> + 'static>>,
@@ -37,7 +37,7 @@ impl<U> SessionCfg<U>
 where
     U: Ui,
 {
-    pub fn new(ui: U, context: Context<U>) -> Self {
+    pub fn new(ui: RwData<U>, context: Context<U>) -> Self {
         crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
 
         SessionCfg {
@@ -49,8 +49,9 @@ where
         }
     }
 
-    pub fn session_from_args(mut self, tx: mpsc::Sender<Event>) -> Session<U> {
-        self.ui.open();
+    pub fn session_from_args(self, tx: mpsc::Sender<Event>) -> Session<U> {
+        let mut ui = self.ui.write();
+        ui.open();
 
         let mut args = std::env::args();
         let first = args.nth(1).map(PathBuf::from);
@@ -61,11 +62,11 @@ where
             self.file_cfg.clone().build()
         };
 
-        let (window, area) = Window::new(&mut self.ui, widget.clone(), checker, (self.layout)());
+        let (window, area) = Window::new(&mut *ui, widget.clone(), checker, (self.layout)());
         let (windows, cur_window) = self.context.set_windows(vec![window]);
 
         let mut session = Session {
-            ui: self.ui,
+            ui: self.ui.clone(),
             windows,
             cur_window,
             file_cfg: self.file_cfg,
@@ -89,12 +90,14 @@ where
     }
 
     pub fn session_from_prev(
-        mut self,
-        prev_files: Vec<(RwData<File>, bool)>,
+        self,
+        prev: Vec<(RwData<File>, bool)>,
         tx: mpsc::Sender<Event>,
     ) -> Session<U> {
+        let mut ui = self.ui.write();
+
         let mut inherited_cfgs = Vec::new();
-        for (file, is_active) in prev_files {
+        for (file, is_active) in prev {
             let mut file = file.write();
             let file_cfg = self.file_cfg.clone().take_from_prev(&mut file);
             inherited_cfgs.push((file_cfg, is_active))
@@ -106,11 +109,11 @@ where
 
         let (widget, checker) = file_cfg.build();
 
-        let (window, area) = Window::new(&mut self.ui, widget.clone(), checker, (self.layout)());
+        let (window, area) = Window::new(&mut *ui, widget.clone(), checker, (self.layout)());
         let (windows, cur_window) = self.context.set_windows(vec![window]);
 
         let mut session = Session {
-            ui: self.ui,
+            ui: self.ui.clone(),
             windows,
             cur_window,
             file_cfg: self.file_cfg,
@@ -171,7 +174,7 @@ pub struct Session<U>
 where
     U: Ui,
 {
-    ui: U,
+    ui: RwData<U>,
     windows: &'static RwData<Vec<Window<U>>>,
     cur_window: &'static AtomicUsize,
     file_cfg: FileCfg<U>,
@@ -260,8 +263,10 @@ where
             }
         });
 
-        self.ui.flush_layout();
-        self.ui.start(Sender::new(self.tx.clone()), self.context);
+        self.ui.mutate(|ui| {
+            ui.flush_layout();
+            ui.start(Sender::new(self.tx.clone()), self.context);
+        });
 
         // The main loop.
         loop {
@@ -286,7 +291,7 @@ where
 
             match reason_to_break {
                 BreakTo::QuitDuat => {
-                    self.ui.close();
+                    self.ui.write().close();
                     self.context.end_duat();
                     self.save_cache(true);
 
@@ -325,8 +330,8 @@ where
         }
     }
 
-    fn reload_config(mut self) -> Vec<(RwData<File>, bool)> {
-        self.ui.end();
+    fn reload_config(self) -> Vec<(RwData<File>, bool)> {
+        self.ui.write().end();
         self.context.end_duat();
         while crate::thread::still_running() {
             std::thread::sleep(Duration::from_micros(500));
@@ -671,7 +676,7 @@ where
                     .find(|(_, (widget, _))| file.file_ptr_eq(widget))
                     .unwrap();
 
-                std::thread::spawn({
+                crate::thread::queue({
                     let (widget, area) = (entry.0.clone(), entry.1.clone());
                     let windows = windows.clone();
                     move || {

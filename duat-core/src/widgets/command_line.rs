@@ -319,19 +319,12 @@ where
     where
         Self: Sized,
     {
-        let inc_search = Self {
+        context.switch_to::<CommandLine<U>>();
+
+        Self {
             list: RwData::default(),
             cur_file: context.cur_file().unwrap(),
-        };
-
-        crate::thread::spawn(move || {
-            inc_search
-                .cur_file
-                .mutate_dyn_input(|input| input.write().begin_inc_search());
-            context.switch_to::<CommandLine<U>>();
-        });
-
-        inc_search
+        }
     }
 
     fn update(&self, text: &mut Text) {
@@ -339,7 +332,7 @@ where
         if let Some(saved) = list.iter_mut().find(|s| s.pat_is(text)) {
             let searcher = saved.searcher();
             self.cur_file
-                .mutate_dyn_input(|input| input.write().search_inc(searcher))
+                .mutate_dyn_input(move |input| input.write().search_inc(searcher))
         } else if let Ok(mut saved) = SavedMatches::new(text.to_string()) {
             if let Some(prev) = list.iter().find(|s| s.is_prefix_of(&saved)) {
                 saved.take_matches_from(prev);
@@ -352,14 +345,16 @@ where
             list.push(saved);
         }
     }
-}
 
-impl<U> Drop for IncSearch<U>
-where
-    U: Ui,
-{
-    fn drop(&mut self) {
+    fn on_focus(&self, _text: &mut Text) {
         self.cur_file
-            .mutate_dyn_input(|input| input.write().end_inc_search())
+            .mutate_dyn_input(|input| input.write().begin_inc_search());
+    }
+
+    fn on_unfocus(&self, _text: &mut Text) {
+        //let cur_file = self.cur_file;
+        //crate::thread::spawn(move || {
+        //    cur_file.mutate_dyn_input(|input| input.write().end_inc_search())
+        //});
     }
 }

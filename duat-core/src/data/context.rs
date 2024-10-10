@@ -98,52 +98,57 @@ where
     }
 
     pub fn switch_to<W: ActiveWidget<U>>(self) {
-        let windows = self.windows.read();
-        let w = self.cur_window.load(Ordering::Acquire);
+        crate::thread::queue(move || {
+            let windows = self.windows.read();
+            let w = self.cur_window.load(Ordering::Acquire);
 
-        let (window, entry) = if let Some((widget, _)) = self.cur_file.get_related_widget::<W>() {
-            windows
-                .iter()
-                .enumerate()
-                .flat_map(|(i, window)| window.widgets().map(move |entry| (i, entry)))
-                .find(|(_, (cmp, _))| cmp.ptr_eq(&widget))
-        } else {
-            iter_around(&windows, w, 0)
-                .filter(|(_, (widget, _))| widget.as_active().is_some())
-                .find(|(_, (widget, _))| widget.data_is::<W>())
-        }
-        .unwrap_or_else(|| panic!("No widget of type {} found.", duat_name::<W>()));
+            let (window, entry) =
+                if let Some((widget, _)) = self.cur_file.get_related_widget::<W>() {
+                    windows
+                        .iter()
+                        .enumerate()
+                        .flat_map(|(i, window)| window.widgets().map(move |entry| (i, entry)))
+                        .find(|(_, (cmp, _))| cmp.ptr_eq(&widget))
+                } else {
+                    iter_around(&windows, w, 0)
+                        .filter(|(_, (widget, _))| widget.as_active().is_some())
+                        .find(|(_, (widget, _))| widget.data_is::<W>())
+                }
+                .unwrap_or_else(|| panic!("No widget of type {} found.", duat_name::<W>()));
 
-        let (widget, area) = (entry.0.clone(), entry.1.clone());
-        std::thread::spawn(move || {
-            switch_widget(&(widget, area), &self.windows.read(), w, self);
-            self.cur_window.store(window, Ordering::Release);
-        });
+            let (widget, area) = (entry.0.clone(), entry.1.clone());
+            std::thread::spawn(move || {
+                switch_widget(&(widget, area), &self.windows.read(), w, self);
+                self.cur_window.store(window, Ordering::Release);
+            });
+        })
     }
 
     pub fn set_cmd_mode<M: CommandLineMode<U>>(self) {
-        self.cur_file
-            .mutate_related_widget::<CommandLine<U>, ()>(|widget, _| {
-                widget.write().set_mode::<M>(self)
-            })
-            .unwrap_or_else(|| {
-                let windows = self.windows.read();
-                let w = self.cur_window.load(Ordering::Relaxed);
-                let cur_window = &windows[w];
+        crate::thread::queue(move || {
+            self.cur_file
+                .mutate_related_widget::<CommandLine<U>, ()>(|widget, _| {
+                    widget.write().set_mode::<M>(self)
+                })
+                .unwrap_or_else(|| {
+                    let windows = self.windows.read();
+                    let w = self.cur_window.load(Ordering::Relaxed);
+                    let cur_window = &windows[w];
 
-                let mut widgets = {
-                    let previous = windows[..w].iter().flat_map(Window::widgets);
-                    let following = windows[(w + 1)..].iter().flat_map(Window::widgets);
-                    cur_window.widgets().chain(previous).chain(following)
-                };
+                    let mut widgets = {
+                        let previous = windows[..w].iter().flat_map(Window::widgets);
+                        let following = windows[(w + 1)..].iter().flat_map(Window::widgets);
+                        cur_window.widgets().chain(previous).chain(following)
+                    };
 
-                if let Some(cmd_line) = widgets.find_map(|(w, _)| {
-                    w.data_is::<CommandLine<U>>()
-                        .then(|| w.downcast::<CommandLine<U>>().unwrap())
-                }) {
-                    cmd_line.write().set_mode::<M>(self)
-                }
-            })
+                    if let Some(cmd_line) = widgets.find_map(|(w, _)| {
+                        w.data_is::<CommandLine<U>>()
+                            .then(|| w.downcast::<CommandLine<U>>().unwrap())
+                    }) {
+                        cmd_line.write().set_mode::<M>(self)
+                    }
+                })
+        })
     }
 
     pub fn notifications(self) -> &'static RwData<Text> {
@@ -290,7 +295,7 @@ where
     }
 
     pub(crate) fn mutate_dyn_input<R>(
-        &self,
+        &'static self,
         f: impl FnOnce(&RwData<dyn InputMethod<U>>) -> R,
     ) -> R {
         let data = self.0.raw_read();

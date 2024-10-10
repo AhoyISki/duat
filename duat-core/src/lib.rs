@@ -23,6 +23,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc, LazyLock, Mutex, Once,
     },
+    time::Duration,
 };
 
 use parking_lot::RwLock;
@@ -129,7 +130,7 @@ where
 /// `checker` must be returned in order to update the widget.
 ///
 /// [`PassiveWidget::build`]: crate::widgets::PassiveWidget::build
-pub fn periodic_checker<U>(context: Context<U>, duration: std::time::Duration) -> impl Fn() -> bool
+pub fn periodic_checker<U>(context: Context<U>, duration: Duration) -> impl Fn() -> bool
 where
     U: Ui,
 {
@@ -149,9 +150,15 @@ where
 
 pub mod thread {
     use std::{
-        sync::atomic::{AtomicUsize, Ordering},
+        sync::{
+            atomic::{AtomicUsize, Ordering},
+            LazyLock,
+        },
         thread::JoinHandle,
+        time::Duration,
     };
+
+    use parking_lot::{Mutex, Once};
 
     /// Duat's [`JoinHandle`]s
     static HANDLES: AtomicUsize = AtomicUsize::new(0);
@@ -171,6 +178,33 @@ pub mod thread {
             let ret = f();
             HANDLES.fetch_sub(1, Ordering::Relaxed);
             ret
+        })
+    }
+
+    pub(crate) fn queue(f: impl FnOnce() + Send + 'static) {
+        static LOOP: Once = Once::new();
+        static ACTIONS: LazyLock<Mutex<Vec<Box<dyn FnOnce() + Send>>>> =
+            LazyLock::new(Mutex::default);
+
+        if still_running() {
+            ACTIONS.lock().push(Box::new(f));
+        }
+
+        LOOP.call_once(|| {
+            spawn(|| {
+                while still_running() {
+                    if let Some(mut actions) = ACTIONS.try_lock_for(Duration::from_micros(100)) {
+                        if !actions.is_empty() {
+                            let mut taken = std::mem::take(&mut *actions);
+                            drop(actions);
+
+                            for action in taken.drain(..) {
+                                action();
+                            }
+                        }
+                    }
+                }
+            });
         })
     }
 
