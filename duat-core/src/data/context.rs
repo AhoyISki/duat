@@ -1,7 +1,7 @@
 use std::{
     fmt::Display,
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicUsize, Ordering},
         LazyLock,
     },
 };
@@ -30,7 +30,6 @@ where
     windows: &'static LazyLock<RwData<Vec<Window<U>>>>,
     commands: &'static Commands<U>,
     notifications: &'static LazyLock<RwData<Text>>,
-    has_ended: &'static AtomicBool,
 }
 
 impl<U> Clone for Context<U>
@@ -55,7 +54,6 @@ where
         windows: &'static LazyLock<RwData<Vec<Window<U>>>>,
         commands: &'static Commands<U>,
         notifications: &'static LazyLock<RwData<Text>>,
-        has_ended: &'static AtomicBool,
     ) -> Self {
         Self {
             cur_file,
@@ -64,16 +62,7 @@ where
             windows,
             commands,
             notifications,
-            has_ended,
         }
-    }
-
-    /// Returns `true` if Duat must quit/reload
-    ///
-    /// You should use this function in order to check if loops inside
-    /// of threads should break.
-    pub fn has_ended(self) -> bool {
-        self.has_ended.load(Ordering::Relaxed)
     }
 
     pub fn fixed_reader(self) -> Result<FileReader<U>, File> {
@@ -189,10 +178,6 @@ where
 
     pub fn run_cmd_notify(self, call: impl Display) -> Result<Option<Text>, ()> {
         self.commands.run_notify(call)
-    }
-
-    pub(crate) fn end_duat(self) {
-        self.has_ended.store(true, Ordering::Relaxed);
     }
 
     pub(crate) fn set_cur(self, parts: FileParts<U>, widget: Widget<U>) {

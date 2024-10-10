@@ -156,20 +156,6 @@ pub mod forms {
 pub mod hooks {
     pub use duat_core::hooks::{add, add_grouped, group_exists, remove_group};
 
-    /// Triggers when Duat's [`Ui`] is created
-    ///
-    /// # Args
-    /// - The [`Ui`] itself
-    ///
-    /// # Notes
-    ///
-    /// The majority of [commands] won't work here, since this is the
-    /// very beginning of Duat, there are no widgets open, no inputs
-    /// created, the only thing that can be affected is the [`Ui`].
-    ///
-    /// [commands]: crate::commands
-    pub type OnUiStart = duat_core::hooks::OnUiStart<Ui>;
-
     use crate::Ui;
     /// Triggers whenever a [`File`] is created
     ///

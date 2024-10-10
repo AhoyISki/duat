@@ -1,5 +1,5 @@
 use std::sync::{
-    atomic::{AtomicBool, AtomicUsize},
+    atomic::{AtomicUsize},
     mpsc, LazyLock, RwLock,
 };
 
@@ -26,7 +26,6 @@ static CUR_WIDGET: CurWidget<Ui> = CurWidget::new();
 static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
 static WINDOWS: LazyLock<RwData<Vec<Window<Ui>>>> = LazyLock::new(RwData::default);
 static NOTIFICATIONS: LazyLock<RwData<Text>> = LazyLock::new(RwData::default);
-static HAS_ENDED: AtomicBool = AtomicBool::new(false);
 
 pub static COMMANDS: Commands<Ui> = Commands::new(
     &CUR_FILE,
@@ -43,7 +42,6 @@ pub static CONTEXT: Context<Ui> = Context::new(
     &WINDOWS,
     &COMMANDS,
     &NOTIFICATIONS,
-    &HAS_ENDED,
 );
 
 // Setup statics.
@@ -76,9 +74,7 @@ pub fn run_duat(
     rx: mpsc::Receiver<Event>,
     statics: <Ui as TraitUi>::StaticFns,
 ) -> Vec<(RwData<File>, bool)> {
-    let ui = RwData::new(Ui::new(statics));
-
-    duat_core::hooks::trigger::<OnUiStart>(ui.clone());
+    let ui = Ui::new(statics);
 
     let mut cfg = SessionCfg::new(ui, CONTEXT);
 

@@ -26,7 +26,7 @@ pub struct SessionCfg<U>
 where
     U: Ui,
 {
-    ui: RwData<U>,
+    ui: U,
     file_cfg: FileCfg<U>,
     context: Context<U>,
     layout: Box<dyn Fn() -> Box<dyn Layout<U> + 'static>>,
@@ -37,7 +37,7 @@ impl<U> SessionCfg<U>
 where
     U: Ui,
 {
-    pub fn new(ui: RwData<U>, context: Context<U>) -> Self {
+    pub fn new(ui: U, context: Context<U>) -> Self {
         crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
 
         SessionCfg {
@@ -49,9 +49,8 @@ where
         }
     }
 
-    pub fn session_from_args(self, tx: mpsc::Sender<Event>) -> Session<U> {
-        let mut ui = self.ui.write();
-        ui.open();
+    pub fn session_from_args(mut self, tx: mpsc::Sender<Event>) -> Session<U> {
+        self.ui.open();
 
         let mut args = std::env::args();
         let first = args.nth(1).map(PathBuf::from);
@@ -62,11 +61,11 @@ where
             self.file_cfg.clone().build()
         };
 
-        let (window, area) = Window::new(&mut *ui, widget.clone(), checker, (self.layout)());
+        let (window, area) = Window::new(&mut self.ui, widget.clone(), checker, (self.layout)());
         let (windows, cur_window) = self.context.set_windows(vec![window]);
 
         let mut session = Session {
-            ui: self.ui.clone(),
+            ui: self.ui,
             windows,
             cur_window,
             file_cfg: self.file_cfg,
@@ -84,18 +83,16 @@ where
 
         // Build the window's widgets.
         let builder = WindowBuilder::new(session.windows, 0, self.context);
-        hooks::trigger::<OnWindowOpen<U>>(builder);
+        hooks::trigger_now::<OnWindowOpen<U>>(builder);
 
         session
     }
 
     pub fn session_from_prev(
-        self,
+        mut self,
         prev: Vec<(RwData<File>, bool)>,
         tx: mpsc::Sender<Event>,
     ) -> Session<U> {
-        let mut ui = self.ui.write();
-
         let mut inherited_cfgs = Vec::new();
         for (file, is_active) in prev {
             let mut file = file.write();
@@ -109,11 +106,11 @@ where
 
         let (widget, checker) = file_cfg.build();
 
-        let (window, area) = Window::new(&mut *ui, widget.clone(), checker, (self.layout)());
+        let (window, area) = Window::new(&mut self.ui, widget.clone(), checker, (self.layout)());
         let (windows, cur_window) = self.context.set_windows(vec![window]);
 
         let mut session = Session {
-            ui: self.ui.clone(),
+            ui: self.ui,
             windows,
             cur_window,
             file_cfg: self.file_cfg,
@@ -134,7 +131,7 @@ where
 
         // Build the window's widgets.
         let builder = WindowBuilder::new(session.windows, 0, self.context);
-        hooks::trigger::<OnWindowOpen<U>>(builder);
+        hooks::trigger_now::<OnWindowOpen<U>>(builder);
 
         session
     }
@@ -174,7 +171,7 @@ pub struct Session<U>
 where
     U: Ui,
 {
-    ui: RwData<U>,
+    ui: U,
     windows: &'static RwData<Vec<Window<U>>>,
     cur_window: &'static AtomicUsize,
     file_cfg: FileCfg<U>,
@@ -263,10 +260,8 @@ where
             }
         });
 
-        self.ui.mutate(|ui| {
-            ui.flush_layout();
-            ui.start(Sender::new(self.tx.clone()), self.context);
-        });
+        self.ui.flush_layout();
+        self.ui.start(Sender::new(self.tx.clone()), self.context);
 
         // The main loop.
         loop {
@@ -291,8 +286,8 @@ where
 
             match reason_to_break {
                 BreakTo::QuitDuat => {
-                    self.ui.write().close();
-                    self.context.end_duat();
+                    self.ui.close();
+                    crate::end_session();
                     self.save_cache(true);
 
                     break Vec::new();
@@ -330,9 +325,9 @@ where
         }
     }
 
-    fn reload_config(self) -> Vec<(RwData<File>, bool)> {
-        self.ui.write().end();
-        self.context.end_duat();
+    fn reload_config(mut self) -> Vec<(RwData<File>, bool)> {
+        self.ui.end();
+        crate::end_session();
         while crate::thread::still_running() {
             std::thread::sleep(Duration::from_micros(500));
         }

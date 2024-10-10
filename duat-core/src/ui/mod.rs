@@ -654,7 +654,7 @@ pub(crate) fn build_file<U>(
     };
 
     let builder = FileBuilder::new(windows, mod_area, window_i, context);
-    hooks::trigger::<OnFileOpen<U>>(builder);
+    hooks::trigger_now::<OnFileOpen<U>>(builder);
 
     if let Some(parts) = old_file {
         context.cur_file().unwrap().swap(parts);

@@ -76,41 +76,6 @@ use crate::{
     widgets::ActiveWidget,
 };
 
-/// Triggers when Duat's [`Ui`] is created
-///
-/// # Args
-/// - The [`Ui`] itself
-///
-/// # Notes
-///
-/// The majority of [commands] won't work here, since this is the
-/// very beginning of Duat, there are no widgets open, no inputs
-/// created, the only thing that can be affected is the [`Ui`].
-///
-/// [commands]: crate::commands
-pub struct OnUiStart<U>(PhantomData<U>)
-where
-    U: Ui;
-
-/// Triggers when Duat's [`Ui`] is created
-///
-/// # Args
-/// - The [`Ui`] itself
-///
-/// # Notes
-///
-/// The majority of [commands] won't work here, since this is the
-/// very beginning of Duat, there are no widgets open, no inputs
-/// created, the only thing that can be affected is the [`Ui`].
-///
-/// [commands]: crate::commands
-impl<U> Hookable for OnUiStart<U>
-where
-    U: Ui,
-{
-    type Args = RwData<U>;
-}
-
 /// Triggers whenever a [`File`] is opened
 ///
 /// # Arguments
@@ -285,6 +250,10 @@ mod global {
         crate::thread::queue(move || HOOKS.trigger::<H>(args));
     }
 
+    pub(crate) fn trigger_now<H: Hookable>(args: H::Args) {
+        HOOKS.trigger::<H>(args)
+    }
+
     /// Checks if a give group exists
     ///
     /// Returns `true` if said group was added via
@@ -390,7 +359,6 @@ impl Hooks {
 
     /// Triggers hooks with args of the [`Hookable`]
     fn trigger<H: Hookable>(&self, args: H::Args) {
-        
         let map = self.types.read();
 
         if let Some(holder) = map.get(&TypeId::of::<H>()) {

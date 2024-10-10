@@ -77,7 +77,7 @@ impl ui::Ui for Ui {
         }
     }
 
-    fn start(&mut self, sender: ui::Sender, context: Context<Self>) {
+    fn start(&mut self, sender: ui::Sender, _context: Context<Self>) {
         let functions = FUNCTIONS.get().unwrap();
         let printer = self.printer.clone();
         duat_core::thread::spawn(move || {
@@ -102,7 +102,7 @@ impl ui::Ui for Ui {
 
                 printer.read().print();
 
-                if context.has_ended() {
+                if duat_core::has_ended() {
                     break;
                 }
             }

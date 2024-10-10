@@ -29,6 +29,8 @@ use std::{
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
+pub(crate) use self::app::end_session;
+pub use self::app::has_ended;
 use self::{
     data::Context,
     text::{err, hint, Text},
@@ -124,13 +126,31 @@ where
         Self: Sized;
 }
 
+mod app {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static HAS_ENDED: AtomicBool = AtomicBool::new(false);
+
+    /// Returns `true` if Duat must quit/reload
+    ///
+    /// You should use this function in order to check if loops inside
+    /// of threads should break.
+    pub fn has_ended() -> bool {
+        HAS_ENDED.load(Ordering::Relaxed)
+    }
+
+    pub fn end_session() {
+        HAS_ENDED.store(true, Ordering::Relaxed)
+    }
+}
+
 /// A checker that returns `true` every `duration`
 ///
 /// This is primarily used within [`PassiveWidget::build`], where a
 /// `checker` must be returned in order to update the widget.
 ///
 /// [`PassiveWidget::build`]: crate::widgets::PassiveWidget::build
-pub fn periodic_checker<U>(context: Context<U>, duration: Duration) -> impl Fn() -> bool
+pub fn periodic_checker<U>(duration: Duration) -> impl Fn() -> bool
 where
     U: Ui,
 {
@@ -138,7 +158,7 @@ where
     crate::thread::spawn({
         let check = check.clone();
         move || {
-            while !context.has_ended() {
+            while !crate::has_ended() {
                 std::thread::sleep(duration);
                 check.store(true, Ordering::Release);
             }
@@ -192,8 +212,8 @@ pub mod thread {
 
         LOOP.call_once(|| {
             spawn(|| {
-                while still_running() {
-                    if let Some(mut actions) = ACTIONS.try_lock_for(Duration::from_micros(100)) {
+                while !crate::has_ended() {
+                    if let Some(mut actions) = ACTIONS.try_lock_for(Duration::from_micros(500)) {
                         if !actions.is_empty() {
                             let mut taken = std::mem::take(&mut *actions);
                             drop(actions);
