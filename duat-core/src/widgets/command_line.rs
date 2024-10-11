@@ -26,13 +26,7 @@ use parking_lot::RwLock;
 
 use super::File;
 use crate::{
-    data::{Context, RoData, RwData},
-    forms::{self, Form},
-    hooks,
-    input::{Commander, InputMethod},
-    text::{Ghost, PrintCfg, SavedMatches, Text, text},
-    ui::{Area, PushSpecs, Ui},
-    widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
+    data::{Context, RoData, RwData}, forms::{self, Form}, hooks, input::{Commander, InputMethod}, log_info, text::{text, Ghost, PrintCfg, SavedMatches, Text}, ui::{Area, PushSpecs, Ui}, widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg}
 };
 
 #[derive(Clone)]
@@ -321,11 +315,11 @@ where
         Self: Sized,
     {
         crate::switch_to::<CommandLine<U>>();
-
         Self { list: RwData::default(), context }
     }
 
     fn update(&self, text: &mut Text) {
+        log_info!("update");
         let cur_file = self.context.cur_file().unwrap();
         let mut list = self.list.write();
         if let Some(saved) = list.iter_mut().find(|s| s.pat_is(text)) {
@@ -348,11 +342,13 @@ where
     }
 
     fn on_focus(&self, _text: &mut Text) {
+        log_info!("on_focus");
         let cur_file = self.context.cur_file().unwrap();
         cur_file.mutate_data(|_, _, input| input.write().begin_inc_search());
     }
 
     fn on_unfocus(&self, _text: &mut Text) {
+        log_info!("on_unfocus");
         let cur_file = self.context.cur_file().unwrap();
         cur_file.mutate_data(|_, _, input| input.write().end_inc_search());
     }
