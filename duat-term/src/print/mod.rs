@@ -584,8 +584,7 @@ impl SavedVar {
 }
 
 fn print_edges(edges: &[Edge]) {
-    static FRAME_FORM: LazyLock<FormId> =
-        LazyLock::new(|| forms::set_weak_ref("Frame", "Default"));
+    static FRAME_FORM: LazyLock<FormId> = LazyLock::new(|| forms::set_weak_ref("Frame", "Default"));
     let frame_form = forms::from_id(*FRAME_FORM);
 
     let mut stdout = std::io::stdout().lock();

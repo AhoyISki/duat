@@ -394,7 +394,7 @@ pub struct InnerFlags<'a> {
     word: Vec<&'a str>,
 }
 
-impl<'a> InnerFlags<'a> {
+impl InnerFlags<'_> {
     /// Checks if all of the [`char`]s in the `blob` passed.
     pub fn blob(&self, blob: impl AsRef<str>) -> bool {
         let mut all_chars = true;

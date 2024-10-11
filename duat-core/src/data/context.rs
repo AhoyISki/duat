@@ -1,23 +1,21 @@
 use std::{
     fmt::Display,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         LazyLock,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 
-use super::{private::InnerData, RoData, RwData};
+use super::{RoData, RwData, private::InnerData};
 use crate::{
+    Error, Result,
     commands::{Args, CmdResult, Commands, Flags},
-    duat_name,
     input::InputMethod,
-    session::{iter_around, switch_widget},
     text::Text,
     ui::{Ui, Window},
     widgets::{
         ActiveWidget, CommandLine, CommandLineMode, File, PassiveWidget, RelatedWidgets, Widget,
     },
-    Error, Result,
 };
 
 pub struct Context<U>
@@ -84,33 +82,6 @@ where
         // `cur_widget doesn't exist iff cur_file doesn't exist`.
         self.cur_file.0.read().as_ref().ok_or(Error::NoWidgetYet)?;
         Ok(self.cur_widget)
-    }
-
-    pub fn switch_to<W: ActiveWidget<U>>(self) {
-        crate::thread::queue(move || {
-            let windows = self.windows.read();
-            let w = self.cur_window.load(Ordering::Acquire);
-
-            let (window, entry) =
-                if let Some((widget, _)) = self.cur_file.get_related_widget::<W>() {
-                    windows
-                        .iter()
-                        .enumerate()
-                        .flat_map(|(i, window)| window.widgets().map(move |entry| (i, entry)))
-                        .find(|(_, (cmp, _))| cmp.ptr_eq(&widget))
-                } else {
-                    iter_around(&windows, w, 0)
-                        .filter(|(_, (widget, _))| widget.as_active().is_some())
-                        .find(|(_, (widget, _))| widget.data_is::<W>())
-                }
-                .unwrap_or_else(|| panic!("No widget of type {} found.", duat_name::<W>()));
-
-            let (widget, area) = (entry.0.clone(), entry.1.clone());
-            std::thread::spawn(move || {
-                switch_widget(&(widget, area), &self.windows.read(), w, self);
-                self.cur_window.store(window, Ordering::Release);
-            });
-        })
     }
 
     pub fn set_cmd_mode<M: CommandLineMode<U>>(self) {
@@ -279,14 +250,14 @@ where
             .map(|rel| f(&rel))
     }
 
-    pub(crate) fn mutate_dyn_input<R>(
-        &'static self,
-        f: impl FnOnce(&RwData<dyn InputMethod<U>>) -> R,
+    pub(crate) fn mutate_data<R>(
+        &self,
+        f: impl FnOnce(&RwData<File>, &U::Area, &RwData<dyn InputMethod<U>>) -> R,
     ) -> R {
         let data = self.0.raw_read();
-        let (.., input, _) = data.as_ref().unwrap();
+        let (file, area, input, _) = data.as_ref().unwrap();
 
-        f(input)
+        f(file, area, input)
     }
 
     pub(crate) fn mutate_related_widget<W: 'static, R>(
@@ -314,15 +285,16 @@ where
         *self.0.write() = Some(parts);
     }
 
-    pub(crate) fn get_related_widget<W: ActiveWidget<U>>(&self) -> Option<(RwData<W>, U::Area)> {
+    pub(crate) fn get_related_widget(
+        &self,
+        name: &str,
+    ) -> Option<(RwData<dyn PassiveWidget<U>>, U::Area)> {
         let data = self.0.write();
         let (.., related) = data.as_ref().unwrap();
         let related = related.read();
 
-        related.iter().find_map(|(widget, area, _)| {
-            widget
-                .data_is::<W>()
-                .then(|| (widget.try_downcast().unwrap(), area.clone()))
+        related.iter().find_map(|(widget, area, w_name)| {
+            (*w_name == name).then_some((widget.clone(), area.clone()))
         })
     }
 

@@ -1,7 +1,4 @@
-use std::sync::{
-    atomic::{AtomicUsize},
-    mpsc, LazyLock, RwLock,
-};
+use std::sync::{atomic::AtomicUsize, mpsc, LazyLock, RwLock};
 
 use duat_core::{
     commands::Commands,
@@ -15,7 +12,7 @@ use duat_term::VertRule;
 
 use crate::{
     commands,
-    hooks::{self, OnFileOpen, OnUiStart, OnWindowOpen, UnfocusedFrom},
+    hooks::{self, OnFileOpen, OnWindowOpen, UnfocusedFrom},
     prelude::{CommandLine, LineNumbers, StatusLine},
     CfgFn, Ui,
 };

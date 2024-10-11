@@ -11,7 +11,7 @@ pub use self::cursors::{Cursor, Cursors};
 use crate::{
     data::RwData,
     history::Change,
-    text::{Point, PrintCfg, RegexPattern, SavedMatches, Searcher, Text, WordChars},
+    text::{Point, PrintCfg, RegexPattern, Searcher, Text, WordChars},
     ui::Area,
     widgets::{ActiveWidget, File, PassiveWidget},
 };
@@ -177,17 +177,12 @@ where
 {
     /// Returns a new instance of [`EditHelper`]
     pub fn new(widget: &'a RwData<W>, area: &'a A, cursors: &'a mut Cursors) -> Self {
-        let cfg = {
-            let mut widget = widget.write();
-            widget.text_mut().remove_cursor_tags(cursors);
-            widget.print_cfg()
-        };
-
+        let cfg = widget.read().print_cfg();
         EditHelper { widget, cursors, area, cfg, searcher: () }
     }
 }
 
-impl<'a, W, A, S> EditHelper<'a, W, A, S>
+impl<W, A, S> EditHelper<'_, W, A, S>
 where
     W: ActiveWidget<A::Ui> + 'static,
     A: Area,
@@ -401,7 +396,7 @@ where
     }
 }
 
-impl<'a, A, S> EditHelper<'a, File, A, S>
+impl<A, S> EditHelper<'_, File, A, S>
 where
     A: Area,
 {
@@ -436,35 +431,23 @@ where
     }
 }
 
-impl<'a, W, A, S> Drop for EditHelper<'a, W, A, S>
+impl<'a, 'b, A> EditHelper<'a, File, A, Searcher<'b>>
 where
-    W: ActiveWidget<A::Ui> + 'static,
-    A: Area,
-{
-    fn drop(&mut self) {
-        self.widget.write().text_mut().add_cursor_tags(self.cursors);
-    }
-}
-
-impl<'a, W, A> EditHelper<'a, W, A, Searcher<'a>>
-where
-    W: ActiveWidget<A::Ui> + 'static,
     A: Area,
 {
     /// Returns a new instance of [`EditHelper`]
     pub fn new_inc(
-        widget: &'a RwData<W>,
+        widget: &'a RwData<File>,
         area: &'a A,
         cursors: &'a mut Cursors,
-        saved_matches: &'a mut SavedMatches,
+        searcher: Searcher<'b>,
     ) -> Self {
         let cfg = {
-            let mut widget = widget.write();
-            widget.text_mut().remove_cursor_tags(cursors);
-            widget.print_cfg()
+            let mut file = widget.write();
+            <File as ActiveWidget<A::Ui>>::text_mut(&mut file).remove_cursor_tags(cursors);
+            <File as PassiveWidget<A::Ui>>::print_cfg(&file)
         };
 
-        let searcher = saved_matches.searcher();
         EditHelper { widget, cursors, area, cfg, searcher }
     }
 }
@@ -866,7 +849,7 @@ where
     }
 }
 
-impl<'a, A> Mover<'a, A, Searcher<'a>>
+impl<A> Mover<'_, A, Searcher<'_>>
 where
     A: Area,
 {
@@ -877,10 +860,7 @@ where
     /// searches, reducing the cost of searching very large files.
     ///
     /// [`IncSearch`]: crate::widgets::IncSearch
-    pub fn search_inc(
-        &'a mut self,
-        end: Option<Point>,
-    ) -> impl Iterator<Item = (Point, Point)> + 'a {
+    pub fn search_inc(&mut self, end: Option<Point>) -> impl Iterator<Item = (Point, Point)> + '_ {
         self.inc_matches
             .search_from(self.text, self.cursor.caret(), end)
     }
@@ -891,9 +871,9 @@ where
     /// [`IncPattern`], and it can take advantage of previous
     /// searches, reducing the cost of searching very large files.
     pub fn search_inc_rev(
-        &'a mut self,
+        &mut self,
         end: Option<Point>,
-    ) -> impl Iterator<Item = (Point, Point)> + 'a {
+    ) -> impl Iterator<Item = (Point, Point)> + '_ {
         self.inc_matches
             .search_from_rev(self.text, self.cursor.caret(), end)
     }

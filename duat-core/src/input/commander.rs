@@ -33,73 +33,69 @@ where
         key: KeyEvent,
         widget: &RwData<Self::Widget>,
         area: &U::Area,
-        context: Context<U>,
+        _context: Context<U>,
     ) {
         let mut helper = EditHelper::new(widget, area, &mut self.cursors);
 
         match key {
             key!(KeyCode::Backspace) => {
-                helper.move_main(|mover| {
-                    mover.set_anchor();
-                    mover.move_hor(-1);
+                helper.move_main(|m| {
+                    m.set_anchor();
+                    m.move_hor(-1);
                 });
-                helper.edit_on_main(|editor| {
-                    editor.replace("");
-                });
-                helper.move_main(|mover| {
-                    mover.unset_anchor();
+                helper.edit_on_main(|e| e.replace(""));
+                helper.move_main(|m| {
+                    m.unset_anchor();
                 });
             }
             key!(KeyCode::Delete) => {
-                helper.move_main(|mover| {
-                    mover.set_anchor();
-                    mover.move_hor(1);
+                helper.move_main(|m| {
+                    m.set_anchor();
+                    m.move_hor(1);
                 });
-                helper.edit_on_main(|editor| {
-                    editor.replace("");
+                helper.edit_on_main(|e| {
+                    e.replace("");
                 });
-                helper.move_main(|mover| {
-                    mover.unset_anchor();
+                helper.move_main(|m| {
+                    m.unset_anchor();
                 });
             }
 
             key!(KeyCode::Char(char)) => {
-                helper.edit_on_main(|editor| editor.insert(char));
-                helper.move_main(|mover| mover.move_hor(1));
+                helper.edit_on_main(|e| e.insert(char));
+                helper.move_main(|m| m.move_hor(1));
             }
             key!(KeyCode::Char(char), KeyMod::SHIFT) => {
-                helper.edit_on_main(|editor| editor.insert(char));
-                helper.move_main(|mover| mover.move_hor(1));
+                helper.edit_on_main(|e| e.insert(char));
+                helper.move_main(|m| m.move_hor(1));
             }
 
             key!(KeyCode::Left) => {
-                helper.move_main(|mover| {
-                    mover.unset_anchor();
-                    mover.move_hor(-1)
+                helper.move_main(|m| {
+                    m.unset_anchor();
+                    m.move_hor(-1)
                 });
             }
             key!(KeyCode::Right) => {
-                helper.move_main(|mover| {
-                    mover.unset_anchor();
-                    mover.move_hor(1)
+                helper.move_main(|m| {
+                    m.unset_anchor();
+                    m.move_hor(1)
                 });
             }
 
             key!(KeyCode::Esc) => {
-                helper.move_main(|mover| {
-                    mover.move_hor(isize::MIN);
-                    mover.set_anchor();
-                    mover.move_hor(isize::MAX);
+                helper.move_main(|m| {
+                    m.move_hor(isize::MIN);
+                    m.set_anchor();
+                    m.move_hor(isize::MAX);
                 });
-                helper.edit_on_main(|editor| editor.replace(""));
-                drop(helper);
+                helper.edit_on_main(|e| e.replace(""));
                 self.cursors = Cursors::new_exclusive();
-                context.run_cmd("return-to-file").unwrap();
+                crate::return_to_file();
             }
             key!(KeyCode::Enter) => {
-                drop(helper);
                 self.cursors = Cursors::new_exclusive();
-                context.run_cmd("return-to-file").unwrap();
+                crate::return_to_file();
             }
             _ => {}
         }

@@ -429,11 +429,17 @@ impl Text {
     }
 
     /// Clones the inner [`GapBuffer`] as a [`String`]
+    ///
+    /// This function will also cut out a final '\n' from the string.
     // NOTE: Inherent because I don't want this to implement Display
     #[allow(clippy::inherent_to_string)]
     pub fn to_string(&self) -> String {
         let [s0, s1] = self.strs_in_range(..);
-        s0.to_string() + s1
+        if !s1.is_empty() {
+            s0.to_string() + s1.strip_suffix('\n').unwrap_or(s1)
+        } else {
+            s0.strip_suffix('\n').unwrap_or(s0).to_string()
+        }
     }
 
     pub fn strs_in_point_range(&self, (p1, p2): (Point, Point)) -> [&str; 2] {

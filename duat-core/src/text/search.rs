@@ -124,13 +124,13 @@ pub struct Searcher<'a> {
     rev_matches: &'a mut Vec<Matches>,
 }
 
-impl<'a> Searcher<'a> {
-    pub fn search_from(
-        &'a mut self,
-        text: &'a mut Text,
+impl Searcher<'_> {
+    pub fn search_from<'b>(
+        &'b mut self,
+        text: &'b mut Text,
         at: Point,
         end: Option<Point>,
-    ) -> impl Iterator<Item = (Point, Point)> + 'a {
+    ) -> impl Iterator<Item = (Point, Point)> + 'b {
         let matches = match self
             .fwd_matches
             .binary_search_by_key(&at.byte(), |m| m.start.byte())
@@ -186,6 +186,8 @@ impl<'a> Searcher<'a> {
                 fwd_input.set_start(matches.end.byte() - gap);
             }
 
+            //log_info!("{fwd_input:#?}");
+
             let Ok(Some(half)) = fwd_dfa.try_search_fwd(fwd_cache, &fwd_input) else {
                 matches.end = end.unwrap_or_else(|| text.len_point());
                 return None;
@@ -205,16 +207,18 @@ impl<'a> Searcher<'a> {
             matches.list.push((start, end));
             matches.end = end;
 
+            //log_info!("{start:#?}, {end:#?}");
+
             Some((start, end))
         })
     }
 
-    pub fn search_from_rev(
-        &'a mut self,
-        text: &'a mut Text,
+    pub fn search_from_rev<'b>(
+        &'b mut self,
+        text: &'b mut Text,
         at: Point,
         start: Option<Point>,
-    ) -> impl Iterator<Item = (Point, Point)> + 'a {
+    ) -> impl Iterator<Item = (Point, Point)> + 'b {
         let matches = match self
             .rev_matches
             .binary_search_by_key(&at.byte(), |m| m.end.byte())
@@ -287,6 +291,7 @@ impl<'a> Searcher<'a> {
             let (start, end) = (text.point_at(start + gap), text.point_at(end + gap));
             matches.list.push((start, end));
             matches.start = start;
+
 
             Some((start, end))
         })
@@ -469,7 +474,7 @@ pub trait RegexPattern: InnerRegexPattern {
     fn get_match(points: (Point, Point), pattern: PatternID) -> Self::Match;
 }
 
-impl<'a> RegexPattern for &'a str {
+impl RegexPattern for &str {
     type Match = (Point, Point);
 
     fn get_match(points: (Point, Point), _pattern: PatternID) -> Self::Match {
@@ -485,7 +490,7 @@ impl RegexPattern for String {
     }
 }
 
-impl<'a> RegexPattern for &'a String {
+impl RegexPattern for &String {
     type Match = (Point, Point);
 
     fn get_match(points: (Point, Point), _pattern: PatternID) -> Self::Match {
@@ -509,7 +514,7 @@ impl<const N: usize> RegexPattern for [&'static str; N] {
     }
 }
 
-impl<'a> RegexPattern for &'a [&'static str] {
+impl RegexPattern for &[&'static str] {
     type Match = (Point, Point, usize);
 
     fn get_match(points: (Point, Point), pattern: PatternID) -> Self::Match {
@@ -521,7 +526,7 @@ trait InnerRegexPattern {
     fn as_patterns<'b>(&'b self, bytes: &'b mut [u8; 4]) -> Patterns<'b>;
 }
 
-impl<'a> InnerRegexPattern for &'a str {
+impl InnerRegexPattern for &str {
     fn as_patterns<'b>(&'b self, _bytes: &'b mut [u8; 4]) -> Patterns<'b> {
         Patterns::One(self)
     }
@@ -533,7 +538,7 @@ impl InnerRegexPattern for String {
     }
 }
 
-impl<'a> InnerRegexPattern for &'a String {
+impl InnerRegexPattern for &String {
     fn as_patterns<'b>(&'b self, _bytes: &'b mut [u8; 4]) -> Patterns<'b> {
         Patterns::One(self)
     }
@@ -551,7 +556,7 @@ impl<const N: usize> InnerRegexPattern for [&'static str; N] {
     }
 }
 
-impl<'a> InnerRegexPattern for &'a [&'static str] {
+impl InnerRegexPattern for &[&'static str] {
     fn as_patterns<'b>(&'b self, _bytes: &'b mut [u8; 4]) -> Patterns<'b> {
         Patterns::Many(self)
     }

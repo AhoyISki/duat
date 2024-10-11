@@ -8,17 +8,18 @@ use std::{
 };
 
 use crate::{
+    Plugin,
     cache::{delete_cache, load_cache, store_cache},
+    control::SwitchTo,
     data::{Context, RwData},
     hooks::{self, OnWindowOpen},
     input::InputForFiles,
-    text::{err, ok, text, PrintCfg, Text},
+    text::{PrintCfg, Text, err, ok},
     ui::{
-        build_file, Area, Event, Layout, MasterOnLeft, Node, PushSpecs, Sender, Ui, Window,
-        WindowBuilder,
+        Area, Event, Layout, MasterOnLeft, Node, PushSpecs, Sender, Ui, Window, WindowBuilder,
+        build_file,
     },
     widgets::{ActiveWidget, File, FileCfg, Widget},
-    Plugin,
 };
 
 #[doc(hidden)]
@@ -75,7 +76,7 @@ where
 
         session.set_active_file(widget, &area);
 
-        add_session_commands(&session, self.context, session.tx.clone());
+        add_session_commands(&session, self.context, session.tx.clone()).unwrap();
 
         // Open and process files.
         build_file(session.windows, area, self.context);
@@ -120,7 +121,7 @@ where
 
         session.set_active_file(widget, &area);
 
-        add_session_commands(&session, self.context, session.tx.clone());
+        add_session_commands(&session, self.context, session.tx.clone()).unwrap();
 
         // Open and process files..
         build_file(session.windows, area, self.context);
@@ -287,7 +288,7 @@ where
             match reason_to_break {
                 BreakTo::QuitDuat => {
                     self.ui.close();
-                    crate::end_session();
+                    crate::control::end_session();
                     self.save_cache(true);
 
                     break Vec::new();
@@ -327,7 +328,7 @@ where
 
     fn reload_config(mut self) -> Vec<(RwData<File>, bool)> {
         self.ui.end();
-        crate::end_session();
+        crate::control::end_session();
         while crate::thread::still_running() {
             std::thread::sleep(Duration::from_micros(500));
         }
@@ -345,22 +346,23 @@ where
     }
 
     /// The primary application loop, executed while no breaking
-    /// commands have been sent to [`Controls`].
+    /// functions have been called
     fn session_loop(&mut self, rx: &mpsc::Receiver<Event>) -> BreakTo {
-        let cur_window = self.cur_window.load(Ordering::Relaxed);
+        let context = self.context;
+        let cw = self.cur_window;
         let windows = self.windows.read();
 
         std::thread::scope(|s| {
             loop {
-                let active_window = &windows[cur_window];
+                let cur_window = &windows[cw.load(Ordering::Relaxed)];
 
                 if let Ok(event) = rx.recv_timeout(Duration::from_millis(10)) {
                     match event {
                         Event::Key(key) => {
-                            active_window.send_key(key, self.context);
+                            cur_window.send_key(key, self.context);
                         }
                         Event::Resize | Event::FormChange => {
-                            for node in active_window.nodes() {
+                            for node in cur_window.nodes() {
                                 s.spawn(|| node.update_and_print());
                             }
                             continue;
@@ -371,7 +373,29 @@ where
                     }
                 }
 
-                for node in active_window.nodes() {
+                if let Some(switch_to) = crate::control::requested_switch() {
+                    let entry = match switch_to {
+                        SwitchTo::ActiveFile => {
+                            let name = context.cur_file().unwrap().name();
+                            file_entry(&windows, &name)
+                        }
+                        SwitchTo::File(name) => file_entry(&windows, &name),
+                        SwitchTo::Widget(w_name) => {
+                            let cw = cw.load(Ordering::Relaxed);
+                            widget_entry(&windows, w_name, context, cw)
+                        }
+                    };
+
+                    match entry {
+                        Ok((window, entry)) => {
+                            switch_widget(entry, &windows, window, context);
+                            cw.store(window, Ordering::Relaxed);
+                        }
+                        Err(msg) => context.notify(msg),
+                    }
+                }
+
+                for node in cur_window.nodes() {
                     if node.needs_update() {
                         s.spawn(|| node.update_and_print());
                     }
@@ -428,270 +452,227 @@ enum BreakTo {
     QuitDuat,
 }
 
-fn add_session_commands<U>(session: &Session<U>, context: Context<U>, tx: mpsc::Sender<Event>)
+fn add_session_commands<U>(
+    session: &Session<U>,
+    context: Context<U>,
+    tx: mpsc::Sender<Event>,
+) -> crate::Result<(), ()>
 where
     U: Ui,
 {
-    context
-        .add_cmd(["quit", "q"], {
-            let tx = tx.clone();
+    context.add_cmd(["quit", "q"], {
+        let tx = tx.clone();
 
-            move |_flags, _args| {
-                tx.send(Event::Quit).unwrap();
-                Ok(None)
+        move |_flags, _args| {
+            tx.send(Event::Quit).unwrap();
+            Ok(None)
+        }
+    })?;
+
+    context.add_cmd(["write", "w"], move |_flags, mut args| {
+        let file = context.cur_file()?;
+
+        let paths = {
+            let mut paths = Vec::new();
+
+            while let Ok(arg) = args.next() {
+                paths.push(arg.to_string());
             }
-        })
-        .unwrap();
 
-    context
-        .add_cmd(["write", "w"], move |_flags, mut args| {
-            let file = context.cur_file()?;
+            paths
+        };
 
-            let paths = {
-                let mut paths = Vec::new();
-
-                while let Ok(arg) = args.next() {
-                    paths.push(arg.to_string());
+        if paths.is_empty() {
+            file.inspect(|file, _, _| {
+                if let Some(name) = file.set_name() {
+                    let bytes = file.write()?;
+                    ok!("Wrote " [*a] bytes [] " bytes to " [*a] name [] ".")
+                } else {
+                    Err(err!("Give the file a name, to write it with"))
+                }
+            })
+        } else {
+            file.inspect(|file, _, _| {
+                let mut bytes = 0;
+                for path in &paths {
+                    bytes = file.write_to(path)?;
                 }
 
-                paths
+                let files_text = {
+                    let mut builder = Text::builder();
+                    ok!(builder, [*a] { &paths[0] });
+
+                    for path in paths.iter().skip(1).take(paths.len() - 1) {
+                        ok!(builder, [] ", " [*a] path)
+                    }
+
+                    if paths.len() > 1 {
+                        ok!(builder, [] " and " [*a] { paths.last().unwrap() })
+                    }
+
+                    builder.finish()
+                };
+
+                ok!("Wrote " [*a] bytes [] " bytes to " files_text [] ".")
+            })
+        }
+    })?;
+
+    context.add_cmd(["edit", "e"], {
+        let wins = session.windows;
+
+        move |_, mut args| {
+            let file = args.next_else(err!("No path supplied."))?;
+
+            let path = PathBuf::from(file);
+            let name = path
+                .file_name()
+                .ok_or(err!("No file in path"))?
+                .to_string_lossy()
+                .to_string();
+
+            if !wins.read().iter().flat_map(Window::widgets).any(|(w, _)| {
+                matches!(
+                    w.inspect_as::<File, bool>(|file| file.name() == name),
+                    Some(true)
+                )
+            }) {
+                tx.send(Event::OpenFile(path)).unwrap();
+                return ok!("Opened " [*a] file [] ".");
+            }
+
+            crate::switch_to_file(&name);
+            ok!("Switched to " [*a] name [] ".")
+        }
+    })?;
+
+    context.add_cmd(["buffer", "b"], move |_, mut args| {
+        let path: PathBuf = args.next_as()?;
+        let name = path
+            .file_name()
+            .ok_or(err!("No file in path"))?
+            .to_string_lossy()
+            .to_string();
+
+        crate::switch_to_file(&name);
+        ok!("Switched to " [*a] name [] ".")
+    })?;
+
+    context.add_cmd(["next-file"], {
+        let windows = session.windows.clone();
+        let cur_window = session.cur_window;
+
+        move |flags, _| {
+            let file = context.cur_file()?;
+            let read_windows = windows.read();
+            let window_index = cur_window.load(Ordering::Acquire);
+
+            let widget_index = read_windows[window_index]
+                .widgets()
+                .position(|(widget, _)| file.file_ptr_eq(widget))
+                .unwrap();
+
+            let name = if flags.word("global") {
+                iter_around::<U>(&read_windows, window_index, widget_index)
+                    .find_map(|(_, (widget, _))| {
+                        widget.inspect_as::<File, String>(|file| file.name())
+                    })
+                    .ok_or_else(|| err!("There are no other open files."))?
+            } else {
+                let slice = &read_windows[window_index..=window_index];
+                iter_around(slice, 0, widget_index)
+                    .find_map(|(_, (widget, _))| {
+                        widget.inspect_as::<File, String>(|file| file.name())
+                    })
+                    .ok_or_else(|| err!("There are no other files open in this window."))?
             };
 
-            if paths.is_empty() {
-                file.inspect(|file, _, _| {
-                    if let Some(name) = file.set_name() {
-                        let bytes = file.write()?;
-                        ok!("Wrote " [*a] bytes [] " bytes to " [*a] name [] ".")
-                    } else {
-                        Err(err!("Give the file a name, to write it with"))
-                    }
-                })
+            crate::switch_to_file(&name);
+            ok!("Switched to " [*a] name [] ".")
+        }
+    })?;
+
+    context.add_cmd(["prev-file"], {
+        let windows = session.windows.clone();
+        let cur_window = session.cur_window;
+
+        move |flags, _| {
+            let file = context.cur_file()?;
+            let windows = windows.read();
+            let window_index = cur_window.load(Ordering::Acquire);
+
+            let widget_index = windows[window_index]
+                .widgets()
+                .position(|(widget, _)| file.file_ptr_eq(widget))
+                .unwrap();
+
+            let name = if flags.word("global") {
+                iter_around_rev::<U>(&windows, window_index, widget_index)
+                    .find_map(|(_, (widget, _))| {
+                        widget.inspect_as::<File, String>(|file| file.name())
+                    })
+                    .ok_or_else(|| err!("There are no other open files."))?
             } else {
-                file.inspect(|file, _, _| {
-                    let mut bytes = 0;
-                    for path in &paths {
-                        bytes = file.write_to(path)?;
-                    }
-
-                    let files_text = {
-                        let mut builder = Text::builder();
-                        ok!(builder, [*a] { &paths[0] });
-
-                        for path in paths.iter().skip(1).take(paths.len() - 1) {
-                            ok!(builder, [] ", " [*a] path)
-                        }
-
-                        if paths.len() > 1 {
-                            ok!(builder, [] " and " [*a] { paths.last().unwrap() })
-                        }
-
-                        builder.finish()
-                    };
-
-                    ok!("Wrote " [*a] bytes [] " bytes to " files_text [] ".")
-                })
-            }
-        })
-        .unwrap();
-
-    context
-        .add_cmd(["edit", "e"], {
-            let windows = session.windows.clone();
-
-            move |_, mut args| {
-                let file = args.next_else(err!("No path supplied."))?;
-
-                let path = PathBuf::from(file);
-                let name = path
-                    .file_name()
-                    .ok_or(err!("No file in path"))?
-                    .to_string_lossy()
-                    .to_string();
-
-                let read_windows = windows.read();
-                let Some((window_index, entry)) = read_windows
-                    .iter()
-                    .enumerate()
-                    .flat_map(window_index_widget)
-                    .find(|(_, (widget, ..))| {
-                        widget
-                            .inspect_as::<File, bool>(|file| {
-                                file.set_name().is_some_and(|cmp| cmp == name)
-                            })
-                            .unwrap_or(false)
+                let slice = &windows[window_index..=window_index];
+                iter_around_rev(slice, 0, widget_index)
+                    .find_map(|(_, (widget, _))| {
+                        widget.inspect_as::<File, String>(|file| file.name())
                     })
-                else {
-                    tx.send(Event::OpenFile(path)).unwrap();
-                    return ok!("Created " [*a] file [] ".");
-                };
+                    .ok_or_else(|| err!("There are no other files open in this window."))?
+            };
 
-                let (widget, area) = (entry.0.clone(), entry.1.clone());
-                let windows = windows.clone();
-                std::thread::spawn(move || {
-                    switch_widget(&(widget, area), &windows.read(), window_index, context);
-                });
+            crate::switch_to_file(&name);
 
-                ok!("Switched to " [*a] { file_name(&entry) } [] ".")
-            }
+            ok!("Switched to " [*a] name [] ".")
+        }
+    })?;
+
+    Ok(())
+}
+
+fn file_entry<'a, U: Ui>(
+    windows: &'a [Window<U>],
+    name: &str,
+) -> Result<(usize, (&'a Widget<U>, &'a U::Area)), Text> {
+    windows
+        .iter()
+        .enumerate()
+        .flat_map(window_index_widget)
+        .find(|(_, (widget, _))| {
+            matches!(
+                widget.inspect_as::<File, bool>(|file| file.name() == name),
+                Some(true)
+            )
         })
-        .unwrap();
+        .ok_or_else(|| err!("File with name " [*a] name [] " not found."))
+}
 
-    context
-        .add_cmd(["buffer", "b"], {
-            let windows = session.windows.clone();
+fn widget_entry<'a, U: Ui>(
+    windows: &'a [Window<U>],
+    w_name: &str,
+    context: Context<U>,
+    window: usize,
+) -> Result<(usize, (&'a Widget<U>, &'a U::Area)), Text> {
+    let cur_file = context.cur_file().unwrap();
 
-            move |_, mut args| {
-                let path: PathBuf = args.next_as()?;
-                let name = path
-                    .file_name()
-                    .ok_or(err!("No file in path"))?
-                    .to_string_lossy()
-                    .to_string();
-
-                let read_windows = windows.read();
-                let (window_index, entry) = read_windows
-                    .iter()
-                    .enumerate()
-                    .flat_map(window_index_widget)
-                    .find(|(_, (widget, ..))| {
-                        widget
-                            .inspect_as::<File, bool>(|file| {
-                                file.set_name().is_some_and(|cmp| cmp == name)
-                            })
-                            .unwrap_or(false)
-                    })
-                    .ok_or(err!("No open files named " [*a] name [] "."))?;
-
-                let (widget, area) = (entry.0.clone(), entry.1.clone());
-                let windows = windows.clone();
-                std::thread::spawn(move || {
-                    switch_widget(&(widget, area), &windows.read(), window_index, context);
-                });
-
-                ok!("Switched to " [*a] { file_name(&entry) } [] ".")
-            }
-        })
-        .unwrap();
-
-    context
-        .add_cmd(["next-file"], {
-            let windows = session.windows.clone();
-            let cur_window = session.cur_window;
-
-            move |flags, _| {
-                let file = context.cur_file()?;
-                let read_windows = windows.read();
-                let window_index = cur_window.load(Ordering::Acquire);
-
-                let widget_index = read_windows[window_index]
-                    .widgets()
-                    .position(|(widget, _)| file.file_ptr_eq(widget))
-                    .unwrap();
-
-                let (new_window, entry) = if flags.word("global") {
-                    iter_around::<U>(&read_windows, window_index, widget_index)
-                        .find(|(_, (widget, _))| widget.data_is::<File>())
-                        .ok_or_else(|| err!("There are no other open files."))?
-                } else {
-                    let slice = &read_windows[window_index..=window_index];
-                    let (_, entry) = iter_around(slice, 0, widget_index)
-                        .find(|(_, (widget, _))| widget.data_is::<File>())
-                        .ok_or_else(|| err!("There are no other files open in this window."))?;
-
-                    (window_index, entry)
-                };
-
-                let (widget, area) = (entry.0.clone(), entry.1.clone());
-                let windows = windows.clone();
-                let cur_window = cur_window;
-                std::thread::spawn(move || {
-                    switch_widget(&(widget, area), &windows.read(), window_index, context);
-                    cur_window.store(new_window, Ordering::Release);
-                });
-
-                ok!("Switched to " [*a] { file_name(&entry) } [] ".")
-            }
-        })
-        .unwrap();
-
-    context
-        .add_cmd(["prev-file"], {
-            let windows = session.windows.clone();
-            let cur_window = session.cur_window;
-
-            move |flags, _| {
-                let file = context.cur_file()?;
-                let read_windows = windows.read();
-                let window_index = cur_window.load(Ordering::Acquire);
-
-                let widget_index = read_windows[window_index]
-                    .widgets()
-                    .position(|(widget, _)| file.file_ptr_eq(widget))
-                    .unwrap();
-
-                let (new_window, entry) = if flags.word("global") {
-                    iter_around_rev::<U>(&read_windows, window_index, widget_index)
-                        .find(|(_, (widget, _))| widget.data_is::<File>())
-                        .ok_or_else(|| err!("There are no other open files."))?
-                } else {
-                    let slice = &read_windows[window_index..=window_index];
-                    let (_, entry) = iter_around_rev(slice, 0, widget_index)
-                        .find(|(_, (widget, _))| widget.data_is::<File>())
-                        .ok_or_else(|| err!("There are no other files open in this window."))?;
-
-                    (window_index, entry)
-                };
-
-                let (widget, area) = (entry.0.clone(), entry.1.clone());
-                let windows = windows.clone();
-                std::thread::spawn(move || {
-                    switch_widget(&(widget, area), &windows.read(), window_index, context);
-                    cur_window.store(new_window, Ordering::Release);
-                });
-
-                ok!("Switched to " [*a] { file_name(&entry) } [] ".")
-            }
-        })
-        .unwrap();
-
-    context
-        .add_cmd(["return-to-file"], {
-            let windows = session.windows.clone();
-            let cur_window = session.cur_window;
-
-            move |_, _| {
-                let file = context.cur_file()?;
-                let read_windows = windows.read();
-                let window_i = cur_window.load(Ordering::Acquire);
-
-                let (new_window, entry) = read_windows
-                    .iter()
-                    .enumerate()
-                    .flat_map(window_index_widget)
-                    .find(|(_, (widget, _))| file.file_ptr_eq(widget))
-                    .unwrap();
-
-                crate::thread::queue({
-                    let (widget, area) = (entry.0.clone(), entry.1.clone());
-                    let windows = windows.clone();
-                    move || {
-                        switch_widget(&(widget, area), &windows.read(), window_i, context);
-                        cur_window.store(new_window, Ordering::Release);
-                    }
-                });
-
-                Ok(Some(
-                    text!("Returned to " [*a] { file_name(&entry) } [] "."),
-                ))
-            }
-        })
-        .unwrap();
+    if let Some((widget, _)) = cur_file.get_related_widget(w_name) {
+        windows
+            .iter()
+            .enumerate()
+            .flat_map(window_index_widget)
+            .find(|(_, (cmp, _))| cmp.ptr_eq(&widget))
+    } else {
+        iter_around(windows, window, 0)
+            .filter(|(_, (widget, _))| widget.as_active().is_some())
+            .find(|(_, (widget, _))| widget.type_name() == w_name)
+    }
+    .ok_or(err!("No widget of type " [*a] w_name [] " found."))
 }
 
 fn window_index_widget<U: Ui>(
     (index, window): (usize, &Window<U>),
 ) -> impl DoubleEndedIterator<Item = (usize, (&Widget<U>, &U::Area))> {
-    window.widgets().map(move |widget| (index, widget))
+    window.widgets().map(move |entry| (index, entry))
 }
 
 pub(crate) fn iter_around<U: Ui>(
@@ -746,7 +727,7 @@ pub(crate) fn iter_around_rev<U: Ui>(
 }
 
 pub(crate) fn switch_widget<U: Ui>(
-    entry: &(Widget<U>, U::Area),
+    entry: (&Widget<U>, &U::Area),
     windows: &[Window<U>],
     window: usize,
     context: Context<U>,
@@ -756,7 +737,6 @@ pub(crate) fn switch_widget<U: Ui>(
         .find(|(widget, _)| context.cur_widget().unwrap().widget_ptr_eq(widget))
     {
         widget.on_unfocus(area);
-        widget.update_and_print(area);
     }
 
     let (widget, area) = entry;
@@ -781,14 +761,9 @@ pub(crate) fn switch_widget<U: Ui>(
     if entry.0.as_active().unwrap().0.data_is::<File>() {
         BACK_TO_FILE.store(true, Ordering::Relaxed)
     };
-    widget.update_and_print(area);
 }
 
 pub static BACK_TO_FILE: AtomicBool = AtomicBool::new(false);
-
-fn file_name<U: Ui>((widget, _): &(&Widget<U>, &U::Area)) -> String {
-    widget.inspect_as::<File, String>(File::name).unwrap()
-}
 
 unsafe impl<U: Ui> Send for SessionCfg<U> {}
 unsafe impl<U: Ui> Sync for SessionCfg<U> {}

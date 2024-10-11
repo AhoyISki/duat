@@ -8,20 +8,16 @@
     decl_macro,
     step_trait,
     type_alias_impl_trait,
-    is_none_or,
-    if_let_guard,
-    const_mut_refs,
-    const_char_from_u32_unchecked,
-    const_refs_to_static
+    if_let_guard
 )]
 
 use std::{
-    any::{type_name, TypeId},
+    any::{TypeId, type_name},
     collections::HashMap,
     marker::PhantomData,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, LazyLock, Mutex, Once,
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
@@ -29,11 +25,10 @@ use std::{
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
-pub(crate) use self::app::end_session;
-pub use self::app::has_ended;
+pub use self::control::{has_ended, return_to_file, switch_to, switch_to_file};
 use self::{
     data::Context,
-    text::{err, hint, Text},
+    text::{Text, err, hint},
     ui::Ui,
 };
 
@@ -126,10 +121,22 @@ where
         Self: Sized;
 }
 
-mod app {
+mod control {
     use std::sync::atomic::{AtomicBool, Ordering};
 
+    use parking_lot::Mutex;
+
+    use crate::{duat_name, ui::Ui, widgets::ActiveWidget};
+
     static HAS_ENDED: AtomicBool = AtomicBool::new(false);
+    static SWITCH_TO: Mutex<Option<SwitchTo>> = Mutex::new(None);
+
+    /// A request to switch widgets
+    pub enum SwitchTo {
+        ActiveFile,
+        File(String),
+        Widget(&'static str),
+    }
 
     /// Returns `true` if Duat must quit/reload
     ///
@@ -139,40 +146,44 @@ mod app {
         HAS_ENDED.load(Ordering::Relaxed)
     }
 
+    /// Ends duat, either for reloading the config, or quitting
     pub fn end_session() {
         HAS_ENDED.store(true, Ordering::Relaxed)
     }
-}
 
-/// A checker that returns `true` every `duration`
-///
-/// This is primarily used within [`PassiveWidget::build`], where a
-/// `checker` must be returned in order to update the widget.
-///
-/// [`PassiveWidget::build`]: crate::widgets::PassiveWidget::build
-pub fn periodic_checker<U>(duration: Duration) -> impl Fn() -> bool
-where
-    U: Ui,
-{
-    let check = Arc::new(AtomicBool::new(false));
-    crate::thread::spawn({
-        let check = check.clone();
-        move || {
-            while !crate::has_ended() {
-                std::thread::sleep(duration);
-                check.store(true, Ordering::Release);
-            }
-        }
-    });
+    /// Switches to a given widget type
+    // I could change this to W: ActiveWindow<impl Ui>, but that seems to
+    // make Rust Analyzer panic.
+    pub fn switch_to<W: ActiveWidget<impl Ui>>() {
+        *SWITCH_TO.lock() = Some(SwitchTo::Widget(duat_name::<W>()))
+    }
 
-    move || check.fetch_and(false, Ordering::Acquire)
+    /// Returns to the active file
+    ///
+    /// You will want to do this if the current widget is a non file
+    /// widget, like [`CommandLine`].
+    ///
+    /// [`CommandLine`]: crate::widgets::CommandLine
+    pub fn return_to_file() {
+        *SWITCH_TO.lock() = Some(SwitchTo::ActiveFile);
+    }
+
+    /// Switches to the file with the given name
+    pub fn switch_to_file(file: impl std::fmt::Display) {
+        *SWITCH_TO.lock() = Some(SwitchTo::File(file.to_string()))
+    }
+
+    /// A requested widget switch, if any was called
+    pub fn requested_switch() -> Option<SwitchTo> {
+        SWITCH_TO.lock().take()
+    }
 }
 
 pub mod thread {
     use std::{
         sync::{
-            atomic::{AtomicUsize, Ordering},
             LazyLock,
+            atomic::{AtomicUsize, Ordering},
         },
         thread::JoinHandle,
         time::Duration,
@@ -234,6 +245,30 @@ pub mod thread {
     }
 }
 
+/// A checker that returns `true` every `duration`
+///
+/// This is primarily used within [`PassiveWidget::build`], where a
+/// `checker` must be returned in order to update the widget.
+///
+/// [`PassiveWidget::build`]: crate::widgets::PassiveWidget::build
+pub fn periodic_checker<U>(duration: Duration) -> impl Fn() -> bool
+where
+    U: Ui,
+{
+    let check = Arc::new(AtomicBool::new(false));
+    crate::thread::spawn({
+        let check = check.clone();
+        move || {
+            while !crate::has_ended() {
+                std::thread::sleep(duration);
+                check.store(true, Ordering::Release);
+            }
+        }
+    });
+
+    move || check.fetch_and(false, Ordering::Acquire)
+}
+
 /// An error that can be displayed as [`Text`] in Duat
 pub trait DuatError {
     fn into_text(self) -> Text;
@@ -242,8 +277,6 @@ pub trait DuatError {
 /// Error for failures in Duat
 #[derive(Clone)]
 pub enum Error<E> {
-    /// # Command related errors:
-
     /// An alias wasn't just a single word
     AliasNotSingleWord(String),
     /// The caller for a command already pertains to another
@@ -254,9 +287,6 @@ pub enum Error<E> {
     CommandFailed(Text),
     /// There was no caller and no arguments
     Empty,
-
-    /// # Context related errors:
-
     /// The [`Ui`] still hasn't created the first file
     ///
     /// [`Ui`]: ui::Ui
@@ -273,21 +303,14 @@ pub enum Error<E> {
     WidgetIsNot,
     /// The checked input is not of the type given
     InputIsNot(PhantomData<E>),
-
-    /// # Layout related errors:
-
     /// The [`Layout`] does not allow for anothe file to open
     ///
     /// [`Layout`]: ui::Layout
     LayoutDisallowsFile,
-
-    /// # Cache related errors:
-
     /// The [cache] was not found in the string
     ///
     /// [cache]: cache::Cacheable
     CacheNotFound,
-
     /// The [cache] was not parsed properly
     ///
     /// [cache]: cache::Cacheable

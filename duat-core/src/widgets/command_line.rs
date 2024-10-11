@@ -17,20 +17,21 @@
 use std::{
     marker::PhantomData,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
 use parking_lot::RwLock;
 
+use super::File;
 use crate::{
-    data::{Context, CurFile, RoData, RwData},
+    data::{Context, RoData, RwData},
     forms::{self, Form},
     hooks,
     input::{Commander, InputMethod},
-    text::{text, Ghost, PrintCfg, SavedMatches, Text},
-    ui::{PushSpecs, Ui},
+    text::{Ghost, PrintCfg, SavedMatches, Text, text},
+    ui::{Area, PushSpecs, Ui},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
 };
 
@@ -254,7 +255,7 @@ where
     where
         Self: Sized,
     {
-        context.switch_to::<CommandLine<U>>();
+        crate::switch_to::<CommandLine<U>>();
         Self(context)
     }
 
@@ -308,7 +309,7 @@ where
     U: Ui,
 {
     list: RwData<Vec<SavedMatches>>,
-    cur_file: &'static CurFile<U>,
+    context: Context<U>,
 }
 
 impl<U> CommandLineMode<U> for IncSearch<U>
@@ -319,42 +320,74 @@ where
     where
         Self: Sized,
     {
-        context.switch_to::<CommandLine<U>>();
+        crate::switch_to::<CommandLine<U>>();
 
-        Self {
-            list: RwData::default(),
-            cur_file: context.cur_file().unwrap(),
-        }
+        Self { list: RwData::default(), context }
     }
 
     fn update(&self, text: &mut Text) {
+        let cur_file = self.context.cur_file().unwrap();
         let mut list = self.list.write();
         if let Some(saved) = list.iter_mut().find(|s| s.pat_is(text)) {
             let searcher = saved.searcher();
-            self.cur_file
-                .mutate_dyn_input(move |input| input.write().search_inc(searcher))
+            cur_file.mutate_data(|file, area, input| {
+                self.update_inc_search(file, area, input, searcher);
+            });
         } else if let Ok(mut saved) = SavedMatches::new(text.to_string()) {
             if let Some(prev) = list.iter().find(|s| s.is_prefix_of(&saved)) {
                 saved.take_matches_from(prev);
             }
 
             let searcher = saved.searcher();
-            self.cur_file
-                .mutate_dyn_input(|input| input.write().search_inc(searcher));
+            cur_file.mutate_data(|file, area, input| {
+                self.update_inc_search(file, area, input, searcher);
+            });
 
             list.push(saved);
         }
     }
 
     fn on_focus(&self, _text: &mut Text) {
-        self.cur_file
-            .mutate_dyn_input(|input| input.write().begin_inc_search());
+        let cur_file = self.context.cur_file().unwrap();
+        cur_file.mutate_data(|_, _, input| input.write().begin_inc_search());
     }
 
     fn on_unfocus(&self, _text: &mut Text) {
-        //let cur_file = self.cur_file;
-        //crate::thread::spawn(move || {
-        //    cur_file.mutate_dyn_input(|input| input.write().end_inc_search())
-        //});
+        let cur_file = self.context.cur_file().unwrap();
+        cur_file.mutate_data(|_, _, input| input.write().end_inc_search());
+    }
+}
+
+impl<U> IncSearch<U>
+where
+    U: Ui,
+{
+    fn update_inc_search(
+        &self,
+        file: &RwData<File>,
+        area: &<U as Ui>::Area,
+        input: &RwData<dyn InputMethod<U>>,
+        searcher: crate::text::Searcher,
+    ) {
+        let mut input = input.write();
+        if let Some(cursors) = input.cursors() {
+            <File as ActiveWidget<U>>::text_mut(&mut file.write()).remove_cursor_tags(cursors);
+        }
+
+        input.search_inc(file, area, self.context, searcher);
+
+        if let Some(cursors) = input.cursors() {
+            let mut file = file.write();
+            <File as ActiveWidget<U>>::text_mut(&mut file).add_cursor_tags(cursors);
+
+            area.scroll_around_point(
+                file.text(),
+                cursors.main().caret(),
+                <File as PassiveWidget<U>>::print_cfg(&file),
+            );
+
+            <File as PassiveWidget<U>>::update(&mut file, area);
+            <File as PassiveWidget<U>>::print(&mut file, area);
+        }
     }
 }

@@ -555,7 +555,7 @@ pub struct RoWindow<'a, U>(&'a Window<U>)
 where
     U: Ui;
 
-impl<'a, U> RoWindow<'a, U>
+impl<U> RoWindow<'_, U>
 where
     U: Ui,
 {

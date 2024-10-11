@@ -147,9 +147,7 @@ pub mod cursor {
 ///
 /// [`Form`]: duat_core::palette::Form
 pub mod forms {
-    pub use duat_core::forms::{
-        from_id, to_id, set, set_ref, CursorShape, Form,
-    };
+    pub use duat_core::forms::{from_id, set, set_ref, to_id, CursorShape, Form};
 }
 
 /// Hook utilites
@@ -270,7 +268,7 @@ pub mod prelude {
     pub use crate::{
         commands, control, cursor,
         forms::{self, CursorShape, Form},
-        hooks::{self, OnFileOpen, OnUiStart, OnWindowOpen},
+        hooks::{self, OnFileOpen, OnWindowOpen},
         input, print, setup_duat,
         state::*,
         widgets::*,

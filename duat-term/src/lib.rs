@@ -1,10 +1,8 @@
 #![feature(
     iter_collect_into,
     let_chains,
-    control_flow_enum,
     if_let_guard,
     extract_if,
-    is_none_or,
     decl_macro,
     map_many_mut
 )]
@@ -12,7 +10,7 @@
 use std::{
     fmt::Debug,
     io,
-    sync::{atomic::Ordering, OnceLock},
+    sync::{OnceLock, atomic::Ordering},
     time::Duration,
 };
 
@@ -22,9 +20,10 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 use duat_core::{
+    DuatError,
     data::{Context, RwData},
     text::err,
-    ui, DuatError,
+    ui,
 };
 
 use self::{layout::Layout, print::Printer};

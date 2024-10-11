@@ -101,22 +101,6 @@ impl TagRange {
     pub fn is_bounded(&self) -> bool {
         matches!(self, Self::Bounded(..))
     }
-
-    /// Returns `true` if the tag range is [`From`].
-    ///
-    /// [`From`]: TagRange::From
-    #[must_use]
-    pub fn is_from(&self) -> bool {
-        matches!(self, Self::From(..))
-    }
-
-    /// Returns `true` if the tag range is [`Until`].
-    ///
-    /// [`Until`]: TagRange::Until
-    #[must_use]
-    pub fn is_until(&self) -> bool {
-        matches!(self, Self::Until(..))
-    }
 }
 
 impl std::fmt::Debug for TagRange {

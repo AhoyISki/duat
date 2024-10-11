@@ -132,7 +132,14 @@ where
     W: ActiveWidget<U>,
     U: Ui,
 {
-    type Args = RwData<W>;
+    type Args = (RwData<W>, U::Area);
+
+    fn post_hook(args: &Self::Args) {
+        let (widget, area) = args;
+        let mut widget = widget.write();
+        widget.update(area);
+        widget.print(area);
+    }
 }
 
 /// Triggers whenever the given [`widget`] is focused
@@ -152,7 +159,14 @@ where
     W: ActiveWidget<U>,
     U: Ui,
 {
-    type Args = RwData<W>;
+    type Args = (RwData<W>, U::Area);
+
+    fn post_hook(args: &Self::Args) {
+        let (widget, area) = args;
+        let mut widget = widget.write();
+        widget.update(area);
+        widget.print(area);
+    }
 }
 
 /// Triggers whenever a [key] is sent
@@ -279,6 +293,10 @@ mod global {
 /// [`hooks::trigger`]: trigger
 pub trait Hookable: Sized + 'static {
     type Args: Send + 'static;
+
+    /// A function to be trigggered after all hooks are done.
+    #[allow(unused)]
+    fn post_hook(args: &Self::Args) {}
 }
 
 /// An intermediary trait, meant for group removal
@@ -370,6 +388,8 @@ impl Hooks {
             for (_, f) in &mut *hooks_of.0.lock() {
                 f(&args)
             }
+
+            H::post_hook(&args);
         }
     }
 

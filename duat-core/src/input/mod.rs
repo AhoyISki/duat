@@ -67,13 +67,15 @@ where
         None
     }
 
-    fn on_focus(&mut self, _area: &U::Area)
+    #[allow(unused)]
+    fn on_focus(&mut self, area: &U::Area)
     where
         Self: Sized,
     {
     }
 
-    fn on_unfocus(&mut self, _area: &U::Area)
+    #[allow(unused)]
+    fn on_unfocus(&mut self, area: &U::Area)
     where
         Self: Sized,
     {
@@ -103,6 +105,12 @@ where
     /// [`search_inc`] methods, making use of the requested
     /// incremental search.
     ///
+    /// # NOTE
+    ///
+    /// You can implement this trai in types where the widget is not
+    /// [`File`], however, the implementation will never end up being
+    /// used.
+    ///
     /// [`IncSearch`]: crate::widgets::IncSearch
     /// [`send_key`]: InputMethod::send_key
     /// [`new`]: EditHelper::new
@@ -110,7 +118,14 @@ where
     /// [`move_main`]: EditHelper::move_main
     /// [`move_each`]: EditHelper::move_each
     /// [`search_inc`]: helper::Mover::search_inc
-    fn search_inc(&mut self, _searcher: Searcher) {
+    #[allow(unused)]
+    fn search_inc(
+        &mut self,
+        widget: &RwData<File>,
+        area: &U::Area,
+        context: Context<U>,
+        searcher: Searcher,
+    ) {
         unimplemented!(
             "This InputMethod does not handle incremental search, yet it was asked to. STRANGE, \
              isn't it?"

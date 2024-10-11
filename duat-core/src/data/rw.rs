@@ -837,7 +837,7 @@ where
     cur_state: &'a Arc<AtomicUsize>,
 }
 
-impl<'a, T> std::ops::Deref for ReadWriteGuard<'a, T>
+impl<T> std::ops::Deref for ReadWriteGuard<'_, T>
 where
     T: ?Sized,
 {
@@ -848,7 +848,7 @@ where
     }
 }
 
-impl<'a, T> std::ops::DerefMut for ReadWriteGuard<'a, T>
+impl<T> std::ops::DerefMut for ReadWriteGuard<'_, T>
 where
     T: ?Sized,
 {
@@ -857,7 +857,7 @@ where
     }
 }
 
-impl<'a, T> Drop for ReadWriteGuard<'a, T>
+impl<T> Drop for ReadWriteGuard<'_, T>
 where
     T: ?Sized,
 {

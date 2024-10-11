@@ -35,12 +35,11 @@ fn main() {
         let src = crate_dir.join("src");
         let toml = crate_dir.join("Cargo.toml");
 
-        let mut watcher = notify::recommended_watcher(|res| match res {
-            Ok(Event { kind: EventKind::Modify(_), .. }) => {
+        let mut watcher = notify::recommended_watcher(|res| {
+            if let Ok(Event { kind: EventKind::Modify(_), .. }) = res {
                 FILES_CHANGED.store(true, Ordering::Relaxed);
                 atomic_wait::wake_one(&BREAK);
             }
-            Ok(_) | Err(_) => {}
         })
         .unwrap();
 

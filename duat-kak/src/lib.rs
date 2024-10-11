@@ -60,15 +60,15 @@ impl KeyMap {
 
         match event {
             key!(Char(char)) => {
-                helper.edit_on_each(|editor| editor.insert(char));
+                helper.edit_on_each(|e| e.insert(char));
                 helper.move_each(|m| m.move_hor(1));
             }
             key!(Char(char), Mod::SHIFT) => {
-                helper.edit_on_each(|editor| editor.insert(char));
+                helper.edit_on_each(|e| e.insert(char));
                 helper.move_each(|m| m.move_hor(1));
             }
             key!(Enter) => {
-                helper.edit_on_each(|editor| editor.insert('\n'));
+                helper.edit_on_each(|e| e.insert('\n'));
                 helper.move_each(|m| m.move_hor(1));
             }
             key!(Backspace) => {
@@ -390,13 +390,13 @@ impl KeyMap {
                 hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
             }
             key!(Char('c')) => {
-                helper.edit_on_each(|editor| editor.replace(""));
+                helper.edit_on_each(|e| e.replace(""));
                 helper.move_each(|m| m.unset_anchor());
                 self.mode = Mode::Insert;
                 hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
             }
             key!(Char('d')) => {
-                helper.edit_on_each(|editor| editor.replace(""));
+                helper.edit_on_each(|e| e.replace(""));
                 helper.move_each(|m| m.unset_anchor());
             }
 
@@ -589,12 +589,11 @@ where
             }
         }
 
-        drop(helper);
         self.cursors = cursors;
     }
 
     fn cursors(&self) -> Option<&Cursors> {
-        Some(&self.cursors)
+        self.searching.as_ref().or(Some(&self.cursors))
     }
 
     fn on_focus(&mut self, _area: &U::Area)
@@ -611,10 +610,39 @@ where
     }
 
     fn end_inc_search(&mut self) {
-        self.searching = None;
+        self.cursors = self.searching.take().unwrap();
     }
 
-    fn search_inc(&mut self, searcher: duat_core::text::Searcher) {}
+    fn search_inc(
+        &mut self,
+        widget: &RwData<Self::Widget>,
+        area: &<U as Ui>::Area,
+        _context: Context<U>,
+        searcher: duat_core::text::Searcher,
+    ) where
+        Self: Sized,
+    {
+        let mut cursors = self.cursors.clone();
+        if searcher.is_empty() {
+            self.searching = Some(cursors);
+            return;
+        }
+
+        let mut helper = EditHelper::new_inc(widget, area, &mut cursors, searcher);
+
+        helper.move_each(|m| {
+            let next = m.search_inc(None).next();
+            if let Some((p0, p1)) = next {
+                m.move_to(p0);
+                m.set_anchor();
+                m.move_to(p1);
+                m.move_hor(-1);
+            }
+        });
+
+        drop(helper);
+        self.searching = Some(cursors);
+    }
 }
 
 impl<U> InputForFiles<U> for KeyMap
