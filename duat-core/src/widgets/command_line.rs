@@ -333,6 +333,7 @@ where
 
             let searcher = saved.searcher();
             cur_file.mutate_data(|file, area, input| {
+                log_info!("yep, triggered again.");
                 self.update_inc_search(file, area, input, searcher);
             });
 

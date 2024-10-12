@@ -12,7 +12,6 @@ use regex_automata::{
 use regex_syntax::hir::{Hir, HirKind};
 
 use super::{Point, Text};
-use crate::log_info;
 
 impl Text {
     pub fn search_from<R>(
@@ -143,7 +142,6 @@ impl Searcher<'_> {
             }
         };
 
-        log_info!("matches: {matches:#?}");
 
         let haystack = match end {
             Some(end) => unsafe {
@@ -167,7 +165,6 @@ impl Searcher<'_> {
         let gap = at.byte();
         std::iter::from_fn(move || {
             while let Some((start, end)) = matches.list.get_mut(match_i) {
-                log_info!("got a match");
                 fwd_input.set_start(start.byte() - gap);
 
                 match fwd_dfa.try_search_fwd(fwd_cache, &fwd_input) {
@@ -175,7 +172,6 @@ impl Searcher<'_> {
                         match_i += 1;
                         *end = text.point_at(half.offset() + gap);
                         matches.end = matches.end.max(*end);
-                        log_info!("returned somehow");
                         return Some((*start, *end));
                     }
                     _ => {
@@ -184,7 +180,6 @@ impl Searcher<'_> {
                 }
             }
 
-            log_info!("matches.end is now {:#?}", matches.end);
 
             // To prevent subsequently added matches from being checked.
             if match_i != usize::MAX {
@@ -195,7 +190,6 @@ impl Searcher<'_> {
 
             let Ok(Some(half)) = fwd_dfa.try_search_fwd(fwd_cache, &fwd_input) else {
                 matches.end = end.unwrap_or_else(|| text.len_point());
-                log_info!("set matches.end = {:#?}", matches.end);
                 return None;
             };
             let end = half.offset();
@@ -368,7 +362,6 @@ pub struct Matches {
 
 impl Matches {
     pub fn new(start: Point) -> Self {
-        log_info!("new matches");
         Self { start, end: start, list: Vec::new() }
     }
 

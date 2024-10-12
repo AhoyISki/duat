@@ -218,8 +218,6 @@ where
         self.cursors.insert_removed(was_main, cursor);
         self.cursors
             .shift(n, diff, widget.text(), self.area, &self.cfg);
-
-        widget.update(self.area);
     }
 
     /// Edits on each of the [`Cursor`]'s selection
@@ -253,8 +251,6 @@ where
 
             self.cursors.insert_removed(was_main, cursor);
         }
-
-        widget.update(self.area);
     }
 
     /// Moves the nth [`Cursor`]'s selection
@@ -287,7 +283,6 @@ where
         ));
 
         self.cursors.insert_removed(was_main, cursor);
-        widget.update(self.area);
     }
 
     /// Moves each [`Cursor`]'s selection
@@ -321,8 +316,6 @@ where
 
             self.cursors.insert_removed(was_main, cursor);
         }
-
-        widget.update(self.area);
     }
 
     /// Edits on the main [`Cursor`]'s selection
