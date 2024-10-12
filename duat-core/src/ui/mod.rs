@@ -86,6 +86,7 @@ pub trait Area: Send + Sync + Sized {
     type Ui: Ui<Area = Self>;
     type ConstraintChangeErr: std::error::Error + DuatError;
     type Cache: Default + Serialize + Deserialize<'static> + 'static;
+    type PrintInfo: Clone + Send + Sync;
 
     /// Returns the statics from `self`
     fn cache(&self) -> Option<Self::Cache>;
@@ -139,6 +140,11 @@ pub trait Area: Send + Sync + Sized {
     /// text.
     fn request_width_to_fit(&self, text: &str) -> Result<(), Self::ConstraintChangeErr>;
 
+    /// Sets a previously acquired [`PrintInfo`] to the area
+    ///
+    /// [`PrintInfo`]: Area::PrintInfo
+    fn set_print_info(&self, info: Self::PrintInfo);
+
     //////////////////// Queries
     /// Wether or not [`self`] has changed
     ///
@@ -159,6 +165,9 @@ pub trait Area: Send + Sync + Sized {
     /// senior member of said cluster, which must hold all other
     /// members of the cluster.
     fn get_cluster_master(&self) -> Option<Self>;
+
+	/// The current printing information of the area
+    fn get_print_info(&self) -> Self::PrintInfo;
 
     /// Returns a printing iterator
     ///

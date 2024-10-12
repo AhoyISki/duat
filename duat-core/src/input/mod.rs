@@ -81,14 +81,16 @@ where
     {
     }
 
-    fn begin_inc_search(&mut self) {
+	#[allow(unused)]
+    fn begin_inc_search(&mut self, file: &RwData<File>, area: &U::Area, context: Context<U>) {
         unimplemented!(
             "This InputMethod does not handle incremental search, yet it was asked to. STRANGE, \
              isn't it?"
         );
     }
 
-    fn end_inc_search(&mut self) {
+	#[allow(unused)]
+    fn end_inc_search(&mut self, file: &RwData<File>, area: &U::Area, context: Context<U>) {
         unimplemented!(
             "This InputMethod does not handle incremental search, yet it was asked to. STRANGE, \
              isn't it?"
@@ -121,7 +123,7 @@ where
     #[allow(unused)]
     fn search_inc(
         &mut self,
-        widget: &RwData<File>,
+        file: &RwData<File>,
         area: &U::Area,
         context: Context<U>,
         searcher: Searcher,

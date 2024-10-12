@@ -15,7 +15,7 @@ use duat_core::{
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
 
-use crate::{layout::Layout, AreaId, ConstraintErr};
+use crate::{AreaId, ConstraintErr, layout::Layout};
 
 macro_rules! queue {
     ($writer:expr $(, $command:expr)* $(,)?) => {
@@ -212,6 +212,7 @@ impl Area {
 impl ui::Area for Area {
     type Cache = PrintInfo;
     type ConstraintChangeErr = ConstraintErr;
+    type PrintInfo = PrintInfo;
     type Ui = crate::Ui;
 
     fn cache(&self) -> Option<Self::Cache> {
@@ -446,6 +447,17 @@ impl ui::Area for Area {
         cfg: IterCfg<'a>,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         rev_print_iter(iter, cfg.wrap_width(self.width()), cfg)
+    }
+
+    fn get_print_info(&self) -> Self::PrintInfo {
+        let layout = self.layout.read();
+        let info = layout.get(self.id).unwrap().print_info().unwrap().read();
+        *info
+    }
+
+    fn set_print_info(&self, info: Self::PrintInfo) {
+        let layout = self.layout.read();
+        *layout.get(self.id).unwrap().print_info().unwrap().write() = info;
     }
 }
 

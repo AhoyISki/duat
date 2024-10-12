@@ -26,7 +26,13 @@ use parking_lot::RwLock;
 
 use super::File;
 use crate::{
-    data::{Context, RoData, RwData}, forms::{self, Form}, hooks, input::{Commander, InputMethod}, log_info, text::{text, Ghost, PrintCfg, SavedMatches, Text}, ui::{Area, PushSpecs, Ui}, widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg}
+    data::{Context, RoData, RwData},
+    forms::{self, Form},
+    hooks,
+    input::{Commander, InputMethod},
+    text::{Ghost, PrintCfg, SavedMatches, Text, text},
+    ui::{Area, PushSpecs, Ui},
+    widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
 };
 
 #[derive(Clone)]
@@ -333,7 +339,6 @@ where
 
             let searcher = saved.searcher();
             cur_file.mutate_data(|file, area, input| {
-                log_info!("yep, triggered again.");
                 self.update_inc_search(file, area, input, searcher);
             });
 
@@ -343,12 +348,16 @@ where
 
     fn on_focus(&self, _text: &mut Text) {
         let cur_file = self.context.cur_file().unwrap();
-        cur_file.mutate_data(|_, _, input| input.write().begin_inc_search());
+        cur_file.mutate_data(|file, area, input| {
+            input.write().begin_inc_search(file, area, self.context)
+        });
     }
 
     fn on_unfocus(&self, _text: &mut Text) {
         let cur_file = self.context.cur_file().unwrap();
-        cur_file.mutate_data(|_, _, input| input.write().end_inc_search());
+        cur_file.mutate_data(|file, area, input| {
+            input.write().end_inc_search(file, area, self.context)
+        });
     }
 }
 

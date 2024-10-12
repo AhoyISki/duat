@@ -7,25 +7,24 @@ use duat_core::{
     forms::{self, Form},
     hooks::{self, Hookable},
     input::{
-        key, Cursors, EditHelper, InputForFiles, InputMethod, KeyCode::*, KeyEvent as Event,
-        KeyMod as Mod, Mover,
+        Cursors, EditHelper, InputForFiles, InputMethod, KeyCode::*, KeyEvent as Event,
+        KeyMod as Mod, Mover, key,
     },
-    text::{err, text, Point, Text},
+    text::{Point, Text, err, text},
     ui::{Area, Ui},
     widgets::{File, IncSearch, RunCommands},
 };
 
 const ALTSHIFT: Mod = Mod::ALT.union(Mod::SHIFT);
 
-#[derive(Clone)]
-pub struct KeyMap {
+pub struct KeyMap<U: Ui> {
     cursors: Cursors,
     mode: Mode,
     sel_type: SelType,
-    searching: Option<Cursors>,
+    searching: Option<(Cursors, <<U as Ui>::Area as Area>::PrintInfo)>,
 }
 
-impl KeyMap {
+impl<U: Ui> KeyMap<U> {
     pub fn new() -> Self {
         forms::set_weak("Mode", Form::new().green());
         KeyMap {
@@ -135,7 +134,7 @@ impl KeyMap {
     }
 
     /// Commands that are available in `Mode::Normal`.
-    fn match_normal<U: Ui, S>(
+    fn match_normal<S>(
         &mut self,
         helper: &mut EditHelper<File, U::Area, S>,
         event: Event,
@@ -432,7 +431,7 @@ impl KeyMap {
     }
 
     /// Commands that are available in `Mode::GoTo`.
-    fn match_goto<U: Ui, S>(
+    fn match_goto<S>(
         &mut self,
         helper: &mut EditHelper<File, U::Area, S>,
         event: Event,
@@ -511,13 +510,13 @@ impl KeyMap {
     }
 }
 
-impl Default for KeyMap {
+impl<U: Ui> Default for KeyMap<U> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<U> InputMethod<U> for KeyMap
+impl<U> InputMethod<U> for KeyMap<U>
 where
     U: Ui,
 {
@@ -593,7 +592,10 @@ where
     }
 
     fn cursors(&self) -> Option<&Cursors> {
-        self.searching.as_ref().or(Some(&self.cursors))
+        self.searching
+            .as_ref()
+            .map(|(c, _)| c)
+            .or(Some(&self.cursors))
     }
 
     fn on_focus(&mut self, _area: &U::Area)
@@ -605,17 +607,17 @@ where
         hooks::trigger::<OnModeChange>((prev, Mode::Normal));
     }
 
-    fn begin_inc_search(&mut self) {
-        self.searching = Some(self.cursors.clone());
+    fn begin_inc_search(&mut self, _file: &RwData<File>, area: &U::Area, _context: Context<U>) {
+        self.searching = Some((self.cursors.clone(), area.get_print_info()));
     }
 
-    fn end_inc_search(&mut self) {
-        self.cursors = self.searching.take().unwrap();
+    fn end_inc_search(&mut self, _file: &RwData<File>, _area: &U::Area, _context: Context<U>) {
+        self.cursors = self.searching.take().map(|(c, _)| c).unwrap();
     }
 
     fn search_inc(
         &mut self,
-        widget: &RwData<Self::Widget>,
+        file: &RwData<File>,
         area: &<U as Ui>::Area,
         _context: Context<U>,
         searcher: duat_core::text::Searcher,
@@ -624,11 +626,13 @@ where
     {
         let mut cursors = self.cursors.clone();
         if searcher.is_empty() {
-            self.searching = Some(cursors);
+            let (s_cursors, info) = self.searching.as_mut().unwrap();
+            *s_cursors = cursors;
+            area.set_print_info(info.clone());
             return;
         }
 
-        let mut helper = EditHelper::new_inc(widget, area, &mut cursors, searcher);
+        let mut helper = EditHelper::new_inc(file, area, &mut cursors, searcher);
 
         helper.move_each(|m| {
             let next = m.search_inc(None).next();
@@ -637,21 +641,31 @@ where
                 m.set_anchor();
                 m.move_to(p1);
                 m.move_hor(-1);
+            } else if m.is_main() {
+                area.set_print_info(self.searching.as_ref().unwrap().1.clone());
             }
         });
 
         drop(helper);
-        self.searching = Some(cursors);
+        self.searching.as_mut().map(|(c, _)| *c = cursors);
     }
 }
 
-impl<U> InputForFiles<U> for KeyMap
-where
-    U: Ui,
-{
+impl<U: Ui> InputForFiles<U> for KeyMap<U> {
     fn set_cursors(&mut self, mut cursors: Cursors) {
         cursors.set_inclusive();
         self.cursors = cursors;
+    }
+}
+
+impl<U: Ui> Clone for KeyMap<U> {
+    fn clone(&self) -> Self {
+        Self {
+            cursors: self.cursors.clone(),
+            mode: self.mode.clone(),
+            sel_type: self.sel_type.clone(),
+            searching: None,
+        }
     }
 }
 

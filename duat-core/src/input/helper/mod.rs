@@ -213,6 +213,7 @@ where
             self.area,
             &self.cfg,
             &mut diff,
+            was_main
         ));
 
         self.cursors.insert_removed(was_main, cursor);
@@ -247,6 +248,7 @@ where
                 self.area,
                 &self.cfg,
                 &mut diff,
+                was_main
             ));
 
             self.cursors.insert_removed(was_main, cursor);
@@ -279,6 +281,7 @@ where
             widget.text_mut(),
             self.area,
             &self.cfg,
+            was_main,
             &mut self.searcher,
         ));
 
@@ -311,6 +314,7 @@ where
                 widget.text_mut(),
                 self.area,
                 &self.cfg,
+                was_main,
                 &mut self.searcher,
             ));
 
@@ -486,6 +490,7 @@ where
     area: &'c A,
     cfg: &'a PrintCfg,
     diff: &'d mut Diff,
+    is_main: bool,
 }
 
 impl<'a, 'b, 'c, 'd, A, W> Editor<'a, 'b, 'c, 'd, A, W>
@@ -500,8 +505,9 @@ where
         area: &'c A,
         cfg: &'a PrintCfg,
         diff: &'d mut Diff,
+        is_main: bool,
     ) -> Self {
-        Self { cursor, widget, area, cfg, diff }
+        Self { cursor, widget, area, cfg, diff, is_main }
     }
 
     /// Replaces the entire selection with new text
@@ -578,6 +584,10 @@ where
             self.diff.changes += change_diff;
         }
     }
+
+    pub fn is_main(&self) -> bool {
+        self.is_main
+    }
 }
 
 /// A cursor that can alter the selection, but can't edit
@@ -589,6 +599,7 @@ where
     text: &'a mut Text,
     area: &'a A,
     cfg: &'a PrintCfg,
+    is_main: bool,
     inc_matches: &'a mut S,
 }
 
@@ -602,9 +613,17 @@ where
         text: &'a mut Text,
         area: &'a A,
         cfg: &'a PrintCfg,
+        is_main: bool,
         inc_matches: &'a mut S,
     ) -> Self {
-        Self { cursor, text, area, cfg, inc_matches }
+        Self {
+            cursor,
+            text,
+            area,
+            cfg,
+            is_main,
+            inc_matches,
+        }
     }
 
     ////////// Public movement functions
@@ -839,6 +858,10 @@ where
         } else {
             self.caret().byte()..anchor.byte()
         }
+    }
+
+    pub fn is_main(&self) -> bool {
+        self.is_main
     }
 }
 
