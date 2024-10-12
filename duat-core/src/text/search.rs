@@ -2,16 +2,17 @@ use std::{collections::HashMap, sync::LazyLock};
 
 use parking_lot::{RwLock, RwLockWriteGuard};
 use regex_automata::{
+    Anchored, Input, MatchKind, PatternID,
     hybrid::{
-        dfa::{Cache, DFA},
         BuildError,
+        dfa::{Cache, DFA},
     },
     nfa::thompson::Config,
-    Anchored, Input, MatchKind, PatternID,
 };
 use regex_syntax::hir::{Hir, HirKind};
 
 use super::{Point, Text};
+use crate::log_info;
 
 impl Text {
     pub fn search_from<R>(
@@ -142,6 +143,8 @@ impl Searcher<'_> {
             }
         };
 
+        log_info!("matches: {matches:#?}");
+
         let haystack = match end {
             Some(end) => unsafe {
                 text.make_contiguous_in(at.byte()..end.byte());
@@ -164,6 +167,7 @@ impl Searcher<'_> {
         let gap = at.byte();
         std::iter::from_fn(move || {
             while let Some((start, end)) = matches.list.get_mut(match_i) {
+                log_info!("got a match");
                 fwd_input.set_start(start.byte() - gap);
 
                 match fwd_dfa.try_search_fwd(fwd_cache, &fwd_input) {
@@ -171,6 +175,7 @@ impl Searcher<'_> {
                         match_i += 1;
                         *end = text.point_at(half.offset() + gap);
                         matches.end = matches.end.max(*end);
+                        log_info!("returned somehow");
                         return Some((*start, *end));
                     }
                     _ => {
@@ -179,6 +184,8 @@ impl Searcher<'_> {
                 }
             }
 
+            log_info!("matches.end is now {:#?}", matches.end);
+
             // To prevent subsequently added matches from being checked.
             if match_i != usize::MAX {
                 match_i = usize::MAX;
@@ -186,10 +193,9 @@ impl Searcher<'_> {
                 fwd_input.set_start(matches.end.byte() - gap);
             }
 
-            //log_info!("{fwd_input:#?}");
-
             let Ok(Some(half)) = fwd_dfa.try_search_fwd(fwd_cache, &fwd_input) else {
                 matches.end = end.unwrap_or_else(|| text.len_point());
+                log_info!("set matches.end = {:#?}", matches.end);
                 return None;
             };
             let end = half.offset();
@@ -197,17 +203,17 @@ impl Searcher<'_> {
             fwd_input.set_start(end);
             rev_input.set_end(end);
 
-            let half = rev_dfa
-                .try_search_rev(rev_cache, &rev_input)
-                .unwrap()
-                .unwrap();
+            let half = unsafe {
+                rev_dfa
+                    .try_search_rev(rev_cache, &rev_input)
+                    .unwrap()
+                    .unwrap_unchecked()
+            };
             let start = half.offset();
 
             let (start, end) = (text.point_at(start + gap), text.point_at(end + gap));
             matches.list.push((start, end));
-            matches.end = end;
-
-            //log_info!("{start:#?}, {end:#?}");
+            matches.end = matches.end.max(end);
 
             Some((start, end))
         })
@@ -292,7 +298,6 @@ impl Searcher<'_> {
             matches.list.push((start, end));
             matches.start = start;
 
-
             Some((start, end))
         })
     }
@@ -354,7 +359,7 @@ impl SavedMatches {
 // NOTE: The start field is where the search is supposed to begin,
 // which in reverse search, would start at the end of the searched
 // range.
-#[derive(Default, Clone)]
+#[derive(Clone, Default, Debug)]
 pub struct Matches {
     start: Point,
     end: Point,
@@ -363,6 +368,7 @@ pub struct Matches {
 
 impl Matches {
     pub fn new(start: Point) -> Self {
+        log_info!("new matches");
         Self { start, end: start, list: Vec::new() }
     }
 

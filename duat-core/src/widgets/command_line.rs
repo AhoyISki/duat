@@ -319,7 +319,6 @@ where
     }
 
     fn update(&self, text: &mut Text) {
-        log_info!("update");
         let cur_file = self.context.cur_file().unwrap();
         let mut list = self.list.write();
         if let Some(saved) = list.iter_mut().find(|s| s.pat_is(text)) {
@@ -328,7 +327,7 @@ where
                 self.update_inc_search(file, area, input, searcher);
             });
         } else if let Ok(mut saved) = SavedMatches::new(text.to_string()) {
-            if let Some(prev) = list.iter().find(|s| s.is_prefix_of(&saved)) {
+            if let Some(prev) = list.iter().rev().find(|s| s.is_prefix_of(&saved)) {
                 saved.take_matches_from(prev);
             }
 
@@ -342,13 +341,11 @@ where
     }
 
     fn on_focus(&self, _text: &mut Text) {
-        log_info!("on_focus");
         let cur_file = self.context.cur_file().unwrap();
         cur_file.mutate_data(|_, _, input| input.write().begin_inc_search());
     }
 
     fn on_unfocus(&self, _text: &mut Text) {
-        log_info!("on_unfocus");
         let cur_file = self.context.cur_file().unwrap();
         cur_file.mutate_data(|_, _, input| input.write().end_inc_search());
     }
