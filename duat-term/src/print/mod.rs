@@ -1,13 +1,13 @@
 use std::{
     fmt::Alignment,
-    io::{stdout, Write},
+    io::{Write, stdout},
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, LazyLock, Mutex,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
 
-use cassowary::{strength::STRONG, AddConstraintError, Solver, Variable};
+use cassowary::{AddConstraintError, Solver, Variable, strength::STRONG};
 use crossterm::{
     cursor::{self, MoveTo, MoveToColumn, MoveToNextLine},
     execute,
@@ -15,12 +15,12 @@ use crossterm::{
     terminal,
 };
 use duat_core::{
-    forms::{self, FormId, DEFAULT_FORM_ID},
+    forms::{self, DEFAULT_ID, FormId},
     ui::Axis,
 };
 
 use self::frame::Edge;
-use crate::{area::Coord, Coords, Equality};
+use crate::{Coords, Equality, area::Coord};
 
 mod frame;
 mod line;
@@ -449,7 +449,7 @@ impl Write for Lines {
 
     fn flush(&mut self) -> std::io::Result<()> {
         const BLANK: [u8; 1000] = [b' '; 1000];
-        let default_form = duat_core::forms::from_id(DEFAULT_FORM_ID);
+        let default_form = duat_core::forms::from_id(DEFAULT_ID);
 
         let align_start = match self.align {
             Alignment::Left => 0,
@@ -584,7 +584,7 @@ impl SavedVar {
 }
 
 fn print_edges(edges: &[Edge]) {
-    static FRAME_FORM: LazyLock<FormId> = LazyLock::new(|| forms::set_weak_ref("Frame", "Default"));
+    static FRAME_FORM: LazyLock<FormId> = LazyLock::new(|| forms::set_weak("Frame", "Default"));
     let frame_form = forms::from_id(*FRAME_FORM);
 
     let mut stdout = std::io::stdout().lock();

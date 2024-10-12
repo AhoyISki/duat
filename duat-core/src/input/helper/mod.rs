@@ -213,7 +213,7 @@ where
             self.area,
             &self.cfg,
             &mut diff,
-            was_main
+            was_main,
         ));
 
         self.cursors.insert_removed(was_main, cursor);
@@ -248,7 +248,7 @@ where
                 self.area,
                 &self.cfg,
                 &mut diff,
-                was_main
+                was_main,
             ));
 
             self.cursors.insert_removed(was_main, cursor);

@@ -1,4 +1,4 @@
-use super::{key, Cursors, EditHelper, InputForFiles, KeyCode, KeyEvent, KeyMod};
+use super::{Cursors, EditHelper, InputForFiles, KeyCode, KeyEvent, KeyMod, key};
 use crate::{
     data::{Context, RwData},
     ui::{Area, Ui},

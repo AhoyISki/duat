@@ -26,7 +26,7 @@ pub struct KeyMap<U: Ui> {
 
 impl<U: Ui> KeyMap<U> {
     pub fn new() -> Self {
-        forms::set_weak("Mode", Form::new().green());
+        forms::set_weak("Mode", Form::green());
         KeyMap {
             cursors: Cursors::new_inclusive(),
             mode: Mode::Normal,
@@ -647,7 +647,7 @@ where
         });
 
         drop(helper);
-        self.searching.as_mut().map(|(c, _)| *c = cursors);
+        self.searching.as_mut().unwrap().0 = cursors;
     }
 }
 
@@ -662,8 +662,8 @@ impl<U: Ui> Clone for KeyMap<U> {
     fn clone(&self) -> Self {
         Self {
             cursors: self.cursors.clone(),
-            mode: self.mode.clone(),
-            sel_type: self.sel_type.clone(),
+            mode: self.mode,
+            sel_type: self.sel_type,
             searching: None,
         }
     }

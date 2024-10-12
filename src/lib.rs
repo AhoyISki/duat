@@ -147,7 +147,7 @@ pub mod cursor {
 ///
 /// [`Form`]: duat_core::palette::Form
 pub mod forms {
-    pub use duat_core::forms::{from_id, set, set_ref, to_id, CursorShape, Form};
+    pub use duat_core::forms::{from_id, set, to_id, CursorShape, Form};
 }
 
 /// Hook utilites

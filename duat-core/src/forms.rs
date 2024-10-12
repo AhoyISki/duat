@@ -2,31 +2,66 @@ use std::sync::LazyLock;
 
 pub use crossterm::cursor::SetCursorStyle as CursorShape;
 use crossterm::style::{Attribute, Color, ContentStyle, Stylize};
-pub use self::global::*;
+use parking_lot::{RwLock, RwLockWriteGuard};
 
-use crate::data::{RwData, RwLockReadGuard};
+pub use self::global::*;
+use crate::data::RwLockReadGuard;
 
 mod global {
-    use super::{CursorShape, Form, FormId, Painter, Palette};
+    use parking_lot::Mutex;
+
+    use super::{CursorShape, Form, FormFmt, FormId, Kind, Painter, Palette};
 
     static PALETTE: Palette = Palette::new();
+    static FORMS: Mutex<Vec<&str>> = Mutex::new(Vec::new());
 
     /// Sets the `Form` with a given name to a new one.
-    pub fn set(name: impl AsRef<str>, form: Form) -> FormId {
-        PALETTE.set_form(name, form)
+    pub fn set(name: impl ToString, form: impl FormFmt) -> FormId {
+        let kind = form.kind();
+        let name: &'static str = name.to_string().leak();
+
+        match kind {
+            Kind::Form(form) => crate::thread::queue(move || PALETTE.set_form(name, form)),
+            Kind::Ref(refed) => crate::thread::queue(move || PALETTE.set_ref(name, refed)),
+        }
+
+        let mut forms = FORMS.lock();
+        if let Kind::Ref(refed) = kind
+            && !forms.contains(&refed)
+        {
+            forms.push(refed);
+        }
+
+        if let Some(id) = forms.iter().position(|form| *form == name) {
+            FormId(id as u16)
+        } else {
+            forms.push(name);
+            FormId(forms.len() as u16 - 1)
+        }
     }
 
-    pub fn set_weak(name: impl AsRef<str>, form: Form) -> FormId {
-        PALETTE.set_weak_form(name, form)
-    }
+    pub fn set_weak(name: impl ToString, form: impl FormFmt) -> FormId {
+        let kind = form.kind();
+        let name: &'static str = name.to_string().leak();
 
-    /// Sets the `Form` with a given name to a new one.
-    pub fn set_ref(name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
-        PALETTE.set_ref(name, referenced)
-    }
+        match kind {
+            Kind::Form(form) => crate::thread::queue(move || PALETTE.set_weak_form(name, form)),
+            Kind::Ref(refed) => crate::thread::queue(move || PALETTE.set_weak_ref(name, refed)),
+        }
 
-    pub fn set_weak_ref(name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
-        PALETTE.set_weak_ref(name, referenced)
+        let mut forms = FORMS.lock();
+        if let Kind::Ref(refed) = kind
+            && !forms.contains(&refed)
+        {
+            forms.push(refed);
+        }
+
+        if let Some(id) = forms.iter().position(|form| *form == name) {
+            FormId(id as u16)
+        } else {
+            forms.push(name);
+            FormId(forms.len() as u16 - 1)
+        }
     }
 
     /// Returns the `Form` associated to a given name with the index
@@ -34,8 +69,18 @@ mod global {
     ///
     /// If a [`Form`] with the given name was not added prior, it will
     /// be added with the same form as the "Default" form.
-    pub fn to_id(name: impl AsRef<str>) -> FormId {
-        PALETTE.id_from_name(name)
+    pub fn to_id(name: impl ToString) -> FormId {
+        let name: &'static str = name.to_string().leak();
+
+        crate::thread::queue(move || PALETTE.set_weak_form(name, Form::default()));
+
+        let mut forms = FORMS.lock();
+        if let Some(id) = forms.iter().position(|form| *form == name) {
+            FormId(id as u16)
+        } else {
+            forms.push(name);
+            FormId(forms.len() as u16 - 1)
+        }
     }
 
     /// Returns a form, given an index.
@@ -56,19 +101,19 @@ mod global {
     }
 
     pub fn set_main_cursor(shape: CursorShape) {
-        PALETTE.set_main_cursor(shape)
+        crate::thread::queue(move || PALETTE.set_main_cursor(shape));
     }
 
     pub fn set_extra_cursor(shape: CursorShape) {
-        PALETTE.set_extra_cursor(shape)
+        crate::thread::queue(move || PALETTE.set_extra_cursor(shape));
     }
 
     pub fn unset_main_cursor() {
-        PALETTE.unset_main_cursor()
+        crate::thread::queue(move || PALETTE.unset_main_cursor());
     }
 
     pub fn unset_extra_cursor() {
-        PALETTE.unset_extra_cursor()
+        crate::thread::queue(move || PALETTE.unset_extra_cursor());
     }
 
     pub fn painter() -> Painter {
@@ -108,22 +153,22 @@ impl Form {
     mimic_method!(rapid_blink);
     mimic_method!(hidden);
     mimic_method!(crossed_out);
-    mimic_method!(black on_black underline_black);
-    mimic_method!(dark_grey on_dark_grey underline_dark_grey);
-    mimic_method!(red on_red underline_red);
-    mimic_method!(dark_red on_dark_red underline_dark_red);
-    mimic_method!(green on_green underline_green);
-    mimic_method!(dark_green on_dark_green underline_dark_green);
-    mimic_method!(yellow on_yellow underline_yellow);
-    mimic_method!(dark_yellow on_dark_yellow underline_dark_yellow);
-    mimic_method!(blue on_blue underline_blue);
-    mimic_method!(dark_blue on_dark_blue underline_dark_blue);
-    mimic_method!(magenta on_magenta underline_magenta);
-    mimic_method!(dark_magenta on_dark_magenta underline_dark_magenta);
-    mimic_method!(cyan on_cyan underline_cyan);
-    mimic_method!(dark_cyan on_dark_cyan underline_dark_cyan);
-    mimic_method!(white on_white underline_white);
-    mimic_method!(grey on_grey underline_grey);
+    mimic_method!(on_black underline_black, black);
+    mimic_method!(on_dark_grey underline_dark_grey, dark_grey);
+    mimic_method!(on_red underline_red, red);
+    mimic_method!(on_dark_red underline_dark_red, dark_red);
+    mimic_method!(on_green underline_green, green);
+    mimic_method!(on_dark_green underline_dark_green, dark_green);
+    mimic_method!(on_yellow underline_yellow, yellow);
+    mimic_method!(on_dark_yellow underline_dark_yellow, dark_yellow);
+    mimic_method!(on_blue underline_blue, blue);
+    mimic_method!(on_dark_blue underline_dark_blue, dark_blue);
+    mimic_method!(on_magenta underline_magenta, magenta);
+    mimic_method!(on_dark_magenta underline_dark_magenta, dark_magenta);
+    mimic_method!(on_cyan underline_cyan, cyan);
+    mimic_method!(on_dark_cyan underline_dark_cyan, dark_cyan);
+    mimic_method!(on_white underline_white, white);
+    mimic_method!(on_grey underline_grey, grey);
 
     pub fn new() -> Self {
         Self { style: ContentStyle::new(), is_final: false }
@@ -138,246 +183,194 @@ impl Form {
     }
 }
 
-pub const DEFAULT_FORM_ID: FormId = FormId(0);
-pub const MAIN_CURSOR_FORM_ID: FormId = FormId(8);
-pub const EXTRA_CURSOR_FORM_ID: FormId = FormId(9);
-pub const MAIN_SEL_FORM_ID: FormId = FormId(10);
-pub const EXTRA_SEL_FORM_ID: FormId = FormId(11);
+pub const DEFAULT_ID: FormId = FormId(0);
+pub const M_CUR_ID: FormId = FormId(8);
+pub const E_CUR_ID: FormId = FormId(9);
+pub const M_SEL_ID: FormId = FormId(10);
+pub const E_SEL_ID: FormId = FormId(11);
 pub const INACTIVE_ID: FormId = FormId(12);
 
 #[derive(Debug, Clone, Copy)]
 enum Kind {
     Form(Form),
-    Ref(FormId),
+    Ref(&'static str),
 }
+
+pub trait FormFmt: InnerFormFmt {}
+
+trait InnerFormFmt {
+    fn kind(self) -> Kind;
+}
+
+impl InnerFormFmt for Form {
+    fn kind(self) -> Kind {
+        Kind::Form(self)
+    }
+}
+
+impl FormFmt for Form {}
+
+impl InnerFormFmt for &str {
+    fn kind(self) -> Kind {
+        Kind::Ref(self.to_string().leak())
+    }
+}
+
+impl FormFmt for &str {}
 
 struct InnerPalette {
     main_cursor: Option<CursorShape>,
     extra_cursor: Option<CursorShape>,
-    forms: Vec<(&'static str, Kind)>,
-}
-
-impl InnerPalette {
-    fn form_of_id(&self, id: FormId) -> Form {
-        let nth = self.forms.get(id.0 as usize).map(|(_, kind)| match kind {
-            Kind::Form(form) => *form,
-            Kind::Ref(new) => self.form_of_id(*new),
-        });
-
-        let Some(ret) = nth else {
-            unreachable!("Form with id {} not found, this should never happen", id.0);
-        };
-        ret
-    }
+    forms: Vec<(&'static str, Form, Option<FormId>)>,
 }
 
 /// The list of forms to be used when rendering.
-struct Palette {
-    inner: LazyLock<RwData<InnerPalette>>,
-    weak_refs: LazyLock<RwData<Vec<(&'static str, u16)>>>,
-}
+struct Palette(LazyLock<RwLock<InnerPalette>>);
 
 impl Palette {
     /// Returns a new instance of [`FormPalette`]
     const fn new() -> Self {
-        Self {
-            inner: LazyLock::new(|| {
-                let main_cursor = Some(CursorShape::DefaultUserShape);
+        Self(LazyLock::new(|| {
+            let main_cursor = Some(CursorShape::DefaultUserShape);
 
-                let forms = vec![
-                    ("Default", Kind::Form(Form::new())),
-                    ("Accent", Kind::Form(Form::new().bold())),
-                    ("DefaultOk", Kind::Form(Form::new().blue())),
-                    ("AccentOk", Kind::Form(Form::new().cyan())),
-                    ("DefaultErr", Kind::Form(Form::new().red())),
-                    ("AccentErr", Kind::Form(Form::new().red().bold())),
-                    ("DefaultHint", Kind::Form(Form::new().grey())),
-                    ("AccentHint", Kind::Form(Form::new().grey().bold())),
-                    ("MainCursor", Kind::Form(Form::new().reverse())),
-                    ("ExtraCursor", Kind::Ref(MAIN_CURSOR_FORM_ID)),
-                    ("MainSelection", Kind::Form(Form::new().on_dark_grey())),
-                    ("ExtraSelection", Kind::Ref(MAIN_SEL_FORM_ID)),
-                    ("Inactive", Kind::Form(Form::new().grey())),
-                ];
+            let forms = vec![
+                ("Default", Form::new(), None),
+                ("Accent", Form::new().bold(), None),
+                ("DefaultOk", Form::blue(), None),
+                ("AccentOk", Form::cyan(), None),
+                ("DefaultErr", Form::red(), None),
+                ("AccentErr", Form::red().bold(), None),
+                ("DefaultHint", Form::grey(), None),
+                ("AccentHint", Form::grey().bold(), None),
+                ("MainCursor", Form::new().reverse(), None),
+                ("ExtraCursor", Form::new().reverse(), Some(M_CUR_ID)),
+                ("MainSelection", Form::new().on_dark_grey(), None),
+                ("ExtraSelection", Form::new().on_dark_grey(), Some(M_SEL_ID)),
+                ("Inactive", Form::grey(), None),
+            ];
 
-                RwData::new(InnerPalette {
-                    main_cursor,
-                    extra_cursor: main_cursor,
-                    forms,
-                })
-            }),
-            weak_refs: LazyLock::new(RwData::default),
-        }
+            RwLock::new(InnerPalette {
+                main_cursor,
+                extra_cursor: main_cursor,
+                forms,
+            })
+        }))
     }
 
     /// Sets a [`Form`]
-    fn set_form(&self, name: impl AsRef<str>, form: Form) -> FormId {
+    fn set_form(&self, name: impl AsRef<str>, form: Form) {
         let name: &str = name.as_ref().to_string().leak();
         let form = match name {
             "MainCursor" | "ExtraCursor" => form.as_final(),
             _ => form,
         };
 
-        let mut inner = self.inner.write();
+        let mut inner = self.0.write();
 
-        if let Some((_, id)) = self
-            .weak_refs
-            .mutate(|weak_refs| weak_refs.extract_if(|(cmp, _)| *cmp == name).next())
-        {
-            let max = ((id + 1) as usize).max(inner.forms.len());
-            inner.forms.resize(max, ("", Kind::Ref(DEFAULT_FORM_ID)));
-            inner.forms[id as usize] = (name, Kind::Form(form));
-            FormId(id)
-        } else if let Some((index, (_, old_form))) = inner
-            .forms
-            .iter_mut()
-            .enumerate()
-            .find(|(_, (cmp, _))| *cmp == name)
-        {
-            *old_form = Kind::Form(form);
-            FormId(index as u16)
+        let i = if let Some(i) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
+            inner.forms[i].1 = form;
+            i
         } else {
-            inner.forms.push((name, Kind::Form(form)));
-            FormId((inner.forms.len() - 1) as u16)
+            inner.forms.push((name, form, None));
+            inner.forms.len() - 1
+        };
+
+        for refed in refs_of(&inner, i) {
+            inner.forms[refed].1 = form;
         }
     }
 
     /// Sets a [`Form`] "weakly"
-    fn set_weak_form(&self, name: impl AsRef<str>, form: Form) -> FormId {
+    fn set_weak_form(&self, name: impl AsRef<str>, form: Form) {
         let name: &str = name.as_ref().to_string().leak();
         let form = match name {
             "MainCursor" | "ExtraCursor" => form.as_final(),
             _ => form,
         };
 
-        let mut inner = self.inner.write();
+        let mut inner = self.0.write();
 
-        if let Some((_, id)) = self
-            .weak_refs
-            .mutate(|weak_refs| weak_refs.extract_if(|(n, _)| *n == name).next())
-        {
-            let max = ((id + 1) as usize).max(inner.forms.len());
-            inner.forms.resize(max, ("", Kind::Ref(DEFAULT_FORM_ID)));
-            inner.forms[id as usize] = (name, Kind::Form(form));
-            FormId(id)
-        } else if let Some((index, _)) = inner
-            .forms
-            .iter()
-            .enumerate()
-            .find(|(_, (cmp, _))| *cmp == name)
-        {
-            FormId(index as u16)
-        } else {
-            inner.forms.push((name, Kind::Form(form)));
-            FormId((inner.forms.len() - 1) as u16)
+        if !inner.forms.iter().any(|(cmp, ..)| *cmp == name) {
+            inner.forms.push((name, form, None));
+            for refed in refs_of(&inner, inner.forms.len() - 1) {
+                inner.forms[refed].1 = form;
+            }
         }
     }
 
     /// Sets a [`Form`] to reference another
     ///
     /// Returns `None` if the referenced form doesn't exist.
-    fn set_ref(&self, name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
+    fn set_ref(&self, name: impl AsRef<str>, refed: impl AsRef<str>) {
         let name = name.as_ref().to_string().leak();
-        let referenced: &'static str = referenced.as_ref().to_string().leak();
-        let ref_id = self.create_id_from_name(referenced);
+        let refed = {
+            let refed: &'static str = refed.as_ref().to_string().leak();
+            self.id_from_name(refed)
+        };
 
-        let mut inner = self.inner.write();
+        let mut inner = self.0.write();
+        let (_, form, _) = inner.forms[refed.0 as usize];
 
-        if let Some((_, id)) = self
-            .weak_refs
-            .mutate(|weak_refs| weak_refs.extract_if(|(cmp, _)| *cmp == name).next())
-        {
-            let max = ((id + 1) as usize).max(inner.forms.len());
-            inner.forms.resize(max, ("", Kind::Ref(DEFAULT_FORM_ID)));
-            inner.forms[id as usize] = (name, Kind::Ref(ref_id));
-            FormId(id)
-        } else if let Some((index, (_, old_form))) = inner
-            .forms
-            .iter_mut()
-            .enumerate()
-            .find(|(_, (cmp, _))| *cmp == name)
-        {
-            *old_form = Kind::Ref(ref_id);
-            FormId(index as u16)
+        if let Some(i) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
+            // If it would be circular, we just don't reference anything.
+            if would_be_circular(&inner, i, refed.0 as usize) {
+                inner.forms.push((name, form, None));
+            } else {
+                inner.forms.push((name, form, Some(refed)))
+            }
+
+            for refed in refs_of(&inner, i) {
+                inner.forms[refed].1 = form;
+            }
         } else {
-            inner.forms.push((name, Kind::Ref(ref_id)));
-            FormId((inner.forms.len() - 1) as u16)
+            // If the form didn't previously exist, nothing was referencing it, so
+            // no checks are done.
+            inner.forms.push((name, form, Some(refed)));
         }
     }
 
     /// Makes a [`Form`] reference another "weakly"
-    fn set_weak_ref(&self, name: impl AsRef<str>, referenced: impl AsRef<str>) -> FormId {
+    fn set_weak_ref(&self, name: impl AsRef<str>, refed: impl AsRef<str>) {
         let name = name.as_ref().to_string().leak();
-        let referenced: &'static str = referenced.as_ref().to_string().leak();
-        let ref_id = self.create_id_from_name(referenced);
+        let refed = {
+            let refed: &'static str = refed.as_ref().to_string().leak();
+            self.id_from_name(refed)
+        };
 
-        let mut inner = self.inner.write();
+        let mut inner = self.0.write();
+        let (_, form, _) = inner.forms[refed.0 as usize];
 
-        if let Some((_, id)) = self
-            .weak_refs
-            .mutate(|weak_refs| weak_refs.extract_if(|(cmp, _)| *cmp == name).next())
-        {
-            let max = ((id + 1) as usize).max(inner.forms.len());
-            inner.forms.resize(max, ("", Kind::Ref(DEFAULT_FORM_ID)));
-            inner.forms[id as usize] = (name, Kind::Ref(ref_id));
-            FormId(id)
-        } else if let Some((index, _)) = inner
-            .forms
-            .iter_mut()
-            .enumerate()
-            .find(|(_, (cmp, _))| *cmp == name)
-        {
-            FormId(index as u16)
-        } else {
-            inner.forms.push((name, Kind::Ref(ref_id)));
-            FormId((inner.forms.len() - 1) as u16)
-        }
-    }
-
-    /// Returns the [`FormId`] from a given `name`
-    ///
-    /// If the named form doesn't exist, create a temporary one.
-    fn id_from_name(&self, name: impl AsRef<str>) -> FormId {
-        let name = name.as_ref().to_string().leak();
-
-        let inner = self.inner.read();
-
-        if let Some(id) = inner.forms.iter().position(|(cmp, _)| *cmp == name) {
-            FormId(id as u16)
-        } else {
-            let mut weak_refs = self.weak_refs.write();
-            let id = inner.forms.len() + weak_refs.len();
-            weak_refs.push((name, id as u16));
-            FormId(id as u16)
+        // For weak refs, no checks are done, since a form is only set if it
+        // doesn't exist, and for there to be refs to it, it must exist.
+        if !inner.forms.iter().any(|(cmp, ..)| *cmp == name) {
+            inner.forms.push((name, form, Some(refed)));
         }
     }
 
     /// Returns the [`FormId`] from a given `name`
     ///
     /// If the named form doesn't exist, create it.
-    fn create_id_from_name(&self, name: impl AsRef<str>) -> FormId {
-        let name = name.as_ref().to_string().leak();
+    fn id_from_name(&self, name: &'static str) -> FormId {
+        let mut inner = self.0.write();
 
-        let mut inner = self.inner.write();
-
-        if let Some(id) = inner.forms.iter().position(|(cmp, _)| *cmp == name) {
+        if let Some(id) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
             FormId(id as u16)
         } else {
-            inner.forms.push((name, Kind::Ref(FormId(0))));
+            inner.forms.push((name, Form::new(), None));
             FormId((inner.forms.len() - 1) as u16)
         }
     }
 
     /// Returns a form, given an index.
     fn form_from_id(&self, id: FormId) -> Form {
-        let inner = self.inner.read();
-        inner.form_of_id(id)
+        let inner = self.0.read_recursive();
+        inner.forms[id.0 as usize].1
     }
 
     /// Returns the name of the [`FormId`]
     fn name_from_id(&self, id: FormId) -> &'static str {
-        let inner = self.inner.read();
-        let nth = inner.forms.get(id.0 as usize).map(|(name, _)| name);
+        let inner = self.0.read_recursive();
+        let nth = inner.forms.get(id.0 as usize).map(|(name, ..)| name);
 
         let Some(ret) = nth else {
             unreachable!("Form with id {} not found, this should never happen", id.0);
@@ -387,56 +380,50 @@ impl Palette {
 
     /// The [`Form`] and [`CursorShape`] of the main cursor
     fn main_cursor(&self) -> (Form, Option<CursorShape>) {
-        let form = self.form_from_id(MAIN_CURSOR_FORM_ID);
-        (form, self.inner.read().main_cursor)
+        let form = self.form_from_id(M_CUR_ID);
+        (form, self.0.read_recursive().main_cursor)
     }
 
     /// The [`Form`] and [`CursorShape`] of extra cursors
     fn extra_cursor(&self) -> (Form, Option<CursorShape>) {
-        let form = self.form_from_id(EXTRA_CURSOR_FORM_ID);
-        (form, self.inner.read().extra_cursor)
+        let form = self.form_from_id(E_CUR_ID);
+        (form, self.0.read_recursive().extra_cursor)
     }
 
     /// Sets the [`CursorShape`] of the main cursor
     fn set_main_cursor(&self, shape: CursorShape) {
-        self.inner.write().main_cursor = Some(shape);
+        self.0.write().main_cursor = Some(shape);
     }
 
     /// Sets the [`CursorShape`] of extra cursors
     fn set_extra_cursor(&self, shape: CursorShape) {
-        self.inner.write().extra_cursor = Some(shape);
+        self.0.write().extra_cursor = Some(shape);
     }
 
     /// Unsets the [`CursorShape`] of the main cursor
     fn unset_main_cursor(&self) {
-        self.inner.write().main_cursor = None;
+        self.0.write().main_cursor = None;
     }
 
     /// Unsets the [`CursorShape`] of the extra cursors
     fn unset_extra_cursor(&self) {
-        self.inner.write().extra_cursor = None;
+        self.0.write().extra_cursor = None;
     }
 
     /// Returns a [`Painter`]
     fn painter(&'static self) -> Painter {
-        let inner = self.inner.read();
-        let default_form = inner.form_of_id(DEFAULT_FORM_ID);
+        let inner = self.0.read();
+        let cur_form = inner.forms[DEFAULT_ID.0 as usize].1;
         Painter {
-            palette: inner,
-            forms: vec![(default_form, DEFAULT_FORM_ID)],
-            cur_form: default_form,
+            inner,
+            forms: vec![(cur_form, DEFAULT_ID)],
+            cur_form,
         }
     }
 }
 
-impl Default for Palette {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 pub struct Painter {
-    palette: RwLockReadGuard<'static, InnerPalette>,
+    inner: RwLockReadGuard<'static, InnerPalette>,
     forms: Vec<(Form, FormId)>,
     cur_form: Form,
 }
@@ -446,9 +433,11 @@ impl Painter {
     /// given previous triggers.
     #[inline(always)]
     pub fn apply(&mut self, id: FormId) -> Form {
-        let form = self.get_form(id);
+        let (_, form, _) = unsafe {
+            self.inner.forms.get_unchecked(id.0 as usize)
+        };
 
-        self.forms.push((form, id));
+        self.forms.push((*form, id));
         self.cur_form = self.make_form();
         self.cur_form
     }
@@ -513,30 +502,46 @@ impl Painter {
 
     /// The [`Form`] "ExtraCursor", and its shape.
     pub fn main_cursor(&self) -> (Form, Option<CursorShape>) {
-        (self.get_form(MAIN_CURSOR_FORM_ID), self.palette.main_cursor)
+        let (_, form, _) = unsafe {
+            self.inner.forms.get_unchecked(M_CUR_ID.0 as usize)
+        };
+        (*form, self.inner.main_cursor)
     }
 
     /// The [`Form`] "ExtraCursor", and its shape.
     pub fn extra_cursor(&self) -> (Form, Option<CursorShape>) {
-        (
-            self.get_form(EXTRA_CURSOR_FORM_ID),
-            self.palette.extra_cursor,
-        )
+        let (_, form, _) = unsafe {
+            self.inner.forms.get_unchecked(E_CUR_ID.0 as usize)
+        };
+        (*form, self.inner.extra_cursor)
     }
 
     pub fn get_default(&self) -> Form {
         self.forms[0].0
     }
+}
 
-    /// Gets the [`Form`] from a [`FormId`].
-    fn get_form(&self, mut id: FormId) -> Form {
-        loop {
-            match self.palette.forms.get(id.0 as usize) {
-                Some((_, Kind::Form(form))) => break *form,
-                Some((_, Kind::Ref(referenced))) => id = *referenced,
-                None => break self.get_default(),
-            }
+fn refs_of(inner: &RwLockWriteGuard<InnerPalette>, n: usize) -> Vec<usize> {
+    let mut refs = Vec::new();
+    for (i, (.., refed)) in inner.forms.iter().enumerate() {
+        if let Some(refed) = refed
+            && refed.0 as usize == n
+        {
+            refs.push(i);
+            refs.extend(refs_of(inner, i));
         }
+    }
+    refs
+}
+
+fn would_be_circular(inner: &RwLockWriteGuard<InnerPalette>, referee: usize, refed: usize) -> bool {
+    if let (.., Some(refed_ref)) = inner.forms[refed] {
+        match refed_ref.0 as usize == referee {
+            true => true,
+            false => would_be_circular(inner, referee, refed_ref.0 as usize),
+        }
+    } else {
+        false
     }
 }
 
@@ -548,12 +553,18 @@ macro mimic_method {
         }
     },
 
-    ($($method:ident)+) => {
+    ($($method:ident)+ $(, $fg:ident)?) => {
         $(
-        pub fn $method(self) -> Self {
-            let Form { style, is_final } = self;
-            Form { style: Stylize::$method(style), is_final }
-        }
+        	pub fn $fg() -> Self {
+        	    Form { style: ContentStyle::new().$fg(), is_final: false }
+        	}
+        )?
+
+        $(
+            pub fn $method(self) -> Self {
+                let Form { style, is_final } = self;
+                Form { style: Stylize::$method(style), is_final }
+            }
         )*
     }
 }

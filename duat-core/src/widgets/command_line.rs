@@ -189,7 +189,7 @@ where
     }
 
     fn once(context: Context<U>) {
-        forms::set_weak("Prompt", Form::new().cyan());
+        forms::set_weak("Prompt", Form::cyan());
 
         context
             .add_cmd_for_widget::<CommandLine<U>>(

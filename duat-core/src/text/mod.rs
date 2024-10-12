@@ -742,19 +742,19 @@ mod point {
 fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
     use tags::Tag::{ExtraCursor, MainCursor, PopForm, PushForm};
 
-    use crate::forms::{EXTRA_SEL_FORM_ID, MAIN_SEL_FORM_ID};
+    use crate::forms::{E_SEL_ID, M_SEL_ID};
 
     if is_main {
         (
             MainCursor,
-            PushForm(MAIN_SEL_FORM_ID),
-            PopForm(MAIN_SEL_FORM_ID),
+            PushForm(M_SEL_ID),
+            PopForm(M_SEL_ID),
         )
     } else {
         (
             ExtraCursor,
-            PushForm(EXTRA_SEL_FORM_ID),
-            PopForm(EXTRA_SEL_FORM_ID),
+            PushForm(E_SEL_ID),
+            PopForm(E_SEL_ID),
         )
     }
 }

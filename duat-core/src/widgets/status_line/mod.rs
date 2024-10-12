@@ -59,7 +59,7 @@ pub use self::state::State;
 use crate::{
     data::{Context, FileReader},
     forms::{self, Form},
-    text::{text, AlignRight, Builder, PrintCfg, Tag, Text},
+    text::{AlignRight, Builder, PrintCfg, Tag, Text, text},
     ui::{PushSpecs, Ui},
     widgets::{File, PassiveWidget, Widget, WidgetCfg},
 };
@@ -223,10 +223,10 @@ where
     }
 
     fn once(_context: Context<U>) {
-        forms::set_weak("File", Form::new().yellow().italic());
-        forms::set_weak("Selections", Form::new().dark_blue());
-        forms::set_weak("Coord", Form::new().dark_red());
-        forms::set_weak("Separator", Form::new().cyan());
+        forms::set_weak("File", Form::yellow().italic());
+        forms::set_weak("Selections", Form::dark_blue());
+        forms::set_weak("Coord", Form::dark_red());
+        forms::set_weak("Separator", Form::cyan());
     }
 
     fn print_cfg(&self) -> PrintCfg {
