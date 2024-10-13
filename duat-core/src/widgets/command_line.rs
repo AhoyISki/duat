@@ -291,15 +291,15 @@ where
 
     fn has_changed(&self) -> bool {
         let has_changed = self.notifications.has_changed();
-        if has_changed {
-            self.has_changed.store(true, Ordering::Release);
-        }
+        self.has_changed.fetch_or(has_changed, Ordering::Release);
         has_changed
     }
 
     fn update(&self, text: &mut Text) {
         if self.has_changed.fetch_and(false, Ordering::Acquire) {
             *text = self.notifications.read().clone();
+        } else {
+            *text = Text::new();
         }
     }
 }
@@ -325,7 +325,6 @@ where
     }
 
     fn update(&self, text: &mut Text) {
-        crate::log_info!("{}", text.to_string());
         let cur_file = self.context.cur_file().unwrap();
         let mut list = self.list.write();
         if let Some(saved) = list.iter_mut().find(|s| s.pat_is(text)) {
