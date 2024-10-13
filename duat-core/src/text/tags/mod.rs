@@ -129,6 +129,7 @@ impl Tags {
             .get_skip_at(at)
             .unwrap_or((self.buf.len(), self.len_bytes(), 0));
 
+		// Don't add the tag, if it already exists in that position.
         if b == at
             && iter_range_rev(&self.buf, ..n)
                 .map_while(|ts| ts.as_tag())

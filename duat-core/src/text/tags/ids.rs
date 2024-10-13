@@ -5,7 +5,7 @@ use std::{
 
 static TEXT_COUNT: AtomicU16 = AtomicU16::new(0);
 static TOGGLE_COUNT: AtomicU16 = AtomicU16::new(0);
-static MARKER_COUNT: AtomicU16 = AtomicU16::new(1);
+static MARKER_COUNT: AtomicU16 = AtomicU16::new(2);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TextId(u16);
@@ -114,6 +114,11 @@ impl Key {
     /// [`File`]: crate::widgets::File
     pub const fn basic() -> Self {
         Self(0)
+    }
+    
+	/// A [`Key`] specifically for cursors
+    pub(in crate::text) const fn for_cursors() -> Self {
+        Self(1)
     }
 }
 

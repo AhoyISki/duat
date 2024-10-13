@@ -38,9 +38,6 @@ pub struct Text {
     pub buf: Box<GapBuffer<u8>>,
     tags: Box<Tags>,
     records: Box<Records<(usize, usize, usize)>>,
-    /// This [`Key`] is used for the addition and removal of cursor
-    /// [`Tag`]s.
-    key: Key,
 }
 
 impl Text {
@@ -49,7 +46,6 @@ impl Text {
         Self {
             buf: Box::new(GapBuffer::new()),
             tags: Box::new(Tags::new()),
-            key: Key::basic(),
             records: Box::new(Records::new()),
         }
     }
@@ -65,7 +61,6 @@ impl Text {
         Self {
             buf,
             tags,
-            key: Key::basic(),
             records: Box::new(Records::with_max((
                 file.len(),
                 file.chars().count(),
@@ -83,7 +78,6 @@ impl Text {
     /// ```rust
     /// use duat_core::text::{Tag, Text, text};
     /// let mut builder = Text::builder();
-    /// 
     /// ```
     pub fn builder() -> Builder {
         Builder::new()
@@ -143,7 +137,7 @@ impl Text {
                 let point = self.point_at(b);
                 let record = (point.byte(), point.char(), point.line());
                 self.records.insert(record);
-                self.tags.insert(b, tag, self.key);
+                self.tags.insert(b, tag, Key::for_cursors());
             }
         }
     }
@@ -165,7 +159,7 @@ impl Text {
             };
 
             for ch_index in [start.byte(), end_byte].into_iter().skip(skip) {
-                self.tags.remove_at(ch_index, self.key);
+                self.tags.remove_at(ch_index, Key::for_cursors());
             }
         }
     }
@@ -881,7 +875,6 @@ macro impl_from_to_string($t:ty) {
             Self {
                 buf,
                 tags,
-                key: Key::new(),
                 records: Box::new(Records::with_max((
                     value.len(),
                     value.chars().count(),

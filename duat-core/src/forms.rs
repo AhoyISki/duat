@@ -636,11 +636,11 @@ impl Palette {
     /// Returns a [`Painter`]
     fn painter(&'static self) -> Painter {
         let inner = self.0.read();
-        let cur_form = inner.forms[DEFAULT_ID.0 as usize].1;
+        let default = inner.forms[DEFAULT_ID.0 as usize].1;
         Painter {
             inner,
-            forms: vec![(cur_form, DEFAULT_ID)],
-            cur_form,
+            forms: vec![(default, DEFAULT_ID)],
+            cur_sty: default.style,
         }
     }
 }
@@ -648,44 +648,44 @@ impl Palette {
 pub struct Painter {
     inner: RwLockReadGuard<'static, InnerPalette>,
     forms: Vec<(Form, FormId)>,
-    cur_form: Form,
+    cur_sty: ContentStyle,
 }
 
 impl Painter {
     /// Applies the `Form` with the given `id` and returns the result,
     /// given previous triggers.
     #[inline(always)]
-    pub fn apply(&mut self, id: FormId) -> Form {
+    pub fn apply(&mut self, id: FormId) -> ContentStyle {
         let (_, form, _) = unsafe { self.inner.forms.get_unchecked(id.0 as usize) };
 
         self.forms.push((*form, id));
-        self.cur_form = self.make_form();
-        self.cur_form
+        self.cur_sty = self.make_style();
+        self.cur_sty
     }
 
     /// Removes the [`Form`] with the given `id` and returns the
     /// result, given previous triggers.
     #[inline(always)]
-    pub fn remove(&mut self, id: FormId) -> Form {
+    pub fn remove(&mut self, id: FormId) -> ContentStyle {
         let mut applied_forms = self.forms.iter().enumerate();
         if let Some((index, _)) = applied_forms.rfind(|(_, &(_, i))| i == id) {
             self.forms.remove(index);
-            self.cur_form = self.make_form();
+            self.cur_sty = self.make_style();
         }
-        self.cur_form
+        self.cur_sty
     }
 
     #[inline(always)]
-    pub fn reset(&mut self) -> Form {
+    pub fn reset(&mut self) -> ContentStyle {
         self.forms.splice(1.., []);
-        self.cur_form = self.make_form();
-        self.cur_form
+        self.cur_sty = self.make_style();
+        self.cur_sty
     }
 
     /// Generates the form to be printed, given all the previously
     /// pushed forms in the `Form` stack.
     #[inline(always)]
-    pub fn make_form(&self) -> Form {
+    pub fn make_style(&self) -> ContentStyle {
         let mut form = Form {
             style: ContentStyle::default(),
             is_final: false,
@@ -718,19 +718,37 @@ impl Painter {
             }
         }
 
-        form
+        form.style
+    }
+
+    #[inline(always)]
+    pub fn apply_main_cursor(&mut self) -> ContentStyle {
+        self.apply(M_CUR_ID)
+    }
+
+    #[inline(always)]
+    pub fn remove_main_cursor(&mut self) -> ContentStyle {
+        self.remove(M_CUR_ID)
+    }
+
+    #[inline(always)]
+    pub fn apply_extra_cursor(&mut self) -> ContentStyle {
+        self.apply(E_CUR_ID)
+    }
+
+    #[inline(always)]
+    pub fn remove_extra_cursor(&mut self) -> ContentStyle {
+        self.remove(E_CUR_ID)
     }
 
     /// The [`Form`] "ExtraCursor", and its shape.
-    pub fn main_cursor(&self) -> (Form, Option<CursorShape>) {
-        let (_, form, _) = unsafe { self.inner.forms.get_unchecked(M_CUR_ID.0 as usize) };
-        (*form, self.inner.main_cursor)
+    pub fn main_cursor(&self) -> Option<CursorShape> {
+        self.inner.main_cursor
     }
 
     /// The [`Form`] "ExtraCursor", and its shape.
-    pub fn extra_cursor(&self) -> (Form, Option<CursorShape>) {
-        let (_, form, _) = unsafe { self.inner.forms.get_unchecked(E_CUR_ID.0 as usize) };
-        (*form, self.inner.extra_cursor)
+    pub fn extra_cursor(&self) -> Option<CursorShape> {
+        self.inner.extra_cursor
     }
 
     /// The `"Default"` form's [`Form`]

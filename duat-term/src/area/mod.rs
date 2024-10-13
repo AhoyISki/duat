@@ -115,11 +115,16 @@ impl Area {
 
         let mut lines = sender.lines(info.x_shift, cap);
 
+        enum Cursor {
+            Main,
+            Extra,
+        }
+
         let lines_left = {
             let (mut painter, mut f) = (painter, f);
             // The y here represents the bottom of the current row of cells.
             let mut y = sender.coords().tl.y;
-            let mut prev_style = None;
+            let mut cursor = None;
 
             for (caret, item) in iter {
                 f(&caret, &item);
@@ -135,7 +140,7 @@ impl Area {
                         break;
                     }
                     (0..x).for_each(|_| lines.push_char(' ', 1));
-                    queue!(lines, SetStyle(painter.make_form().style));
+                    queue!(lines, SetStyle(painter.make_style()));
                     if part.is_char() {
                         y += 1
                     }
@@ -148,30 +153,35 @@ impl Area {
                             '\n' => {}
                             char => lines.push_char(char, len),
                         }
-                        if let Some(style) = prev_style.take() {
-                            queue!(lines, ResetColor, SetStyle(style))
+                        if let Some(cursor) = cursor.take() {
+                            let style = match cursor {
+                                Cursor::Main => painter.remove_main_cursor(),
+                                Cursor::Extra => painter.remove_extra_cursor(),
+                            };
+                            queue!(lines, ResetColor, SetStyle(style));
                         }
                     }
                     Part::PushForm(id) => {
-                        queue!(lines, ResetColor, SetStyle(painter.apply(id).style));
+                        queue!(lines, ResetColor, SetStyle(painter.apply(id)));
                     }
                     Part::PopForm(id) => {
-                        queue!(lines, ResetColor, SetStyle(painter.remove(id).style))
+                        queue!(lines, ResetColor, SetStyle(painter.remove(id)))
                     }
                     Part::MainCursor => {
-                        let (form, shape) = painter.main_cursor();
-                        if let (Some(shape), true) = (shape, active) {
+                        if let Some(shape) = painter.main_cursor()
+                            && active
+                        {
                             lines.show_real_cursor();
                             queue!(lines, shape, cursor::SavePosition);
                         } else {
+                            cursor = Some(Cursor::Main);
                             lines.hide_real_cursor();
-                            queue!(lines, ResetColor, SetStyle(form.style));
-                            prev_style = Some(painter.make_form().style);
+                            queue!(lines, ResetColor, SetStyle(painter.apply_main_cursor()));
                         }
                     }
                     Part::ExtraCursor => {
-                        queue!(lines, SetStyle(painter.extra_cursor().0.style));
-                        prev_style = Some(painter.make_form().style);
+                        queue!(lines, SetStyle(painter.apply_extra_cursor()));
+                        cursor = Some(Cursor::Extra);
                     }
                     Part::AlignLeft if !cfg.wrap_method().is_no_wrap() => {
                         lines.realign(Alignment::Left)
@@ -183,7 +193,7 @@ impl Area {
                         lines.realign(Alignment::Right)
                     }
                     Part::Termination => {
-                        queue!(lines, SetStyle(painter.reset().style))
+                        queue!(lines, SetStyle(painter.reset()))
                     }
                     Part::ToggleStart(_) => todo!(),
                     Part::ToggleEnd(_) => todo!(),

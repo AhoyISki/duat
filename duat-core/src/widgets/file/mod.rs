@@ -91,16 +91,16 @@ where
                 text::{Key, Tag},
             };
 
-            let marker = Marker::new();
-            let form1 = forms::set("form1lmao", Form::new().red());
+            let key = Key::new();
+            let form1 = forms::set("form1lmao", Form::red());
             let form2 = forms::set("form2lmao", Form::new().undercurled().underline_blue());
             for i in (500..text.len_bytes()).step_by(500) {
-                text.insert_tag(i - 490, Tag::PushForm(form1), marker);
-                text.insert_tag(i - 380, Tag::PopForm(form1), marker);
-                text.insert_tag(i - 310, Tag::PushForm(form2), marker);
-                text.insert_tag(i - 230, Tag::PushForm(form1), marker);
-                text.insert_tag(i - 160, Tag::PopForm(form2), marker);
-                text.insert_tag(i - 80, Tag::PopForm(form1), marker);
+                text.insert_tag(i - 490, Tag::PushForm(form1), key);
+                text.insert_tag(i - 380, Tag::PopForm(form1), key);
+                text.insert_tag(i - 310, Tag::PushForm(form2), key);
+                text.insert_tag(i - 230, Tag::PushForm(form1), key);
+                text.insert_tag(i - 160, Tag::PopForm(form2), key);
+                text.insert_tag(i - 80, Tag::PopForm(form1), key);
             }
 
             text

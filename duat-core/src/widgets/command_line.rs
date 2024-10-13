@@ -14,13 +14,7 @@
 //!
 //! Currently, you can also change the prompt of a [`CommandLine`],
 //! by running the `set-prompt` [`Command`].
-use std::{
-    marker::PhantomData,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+use std::{marker::PhantomData, sync::Arc};
 
 use parking_lot::RwLock;
 
@@ -30,6 +24,7 @@ use crate::{
     forms::{self, Form},
     hooks,
     input::{Commander, InputMethod},
+    log_info,
     text::{Ghost, Key, PrintCfg, SavedMatches, Tag, Text, text},
     ui::{Area, PushSpecs, Ui},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
@@ -132,7 +127,7 @@ where
 
         let checker = {
             let mode = RoData::from(&cmd_line.mode);
-            move || mode.read().read().has_changed()
+            move || mode.read().write().has_changed()
         };
         let widget = Widget::active(cmd_line, self.input);
         (widget, checker, self.specs)
@@ -177,7 +172,7 @@ where
     }
 
     fn update(&mut self, _area: &<U as Ui>::Area) {
-        self.mode.read().read().update(&mut self.text);
+        self.mode.read().write().update(&mut self.text);
     }
 
     fn text(&self) -> &Text {
@@ -215,11 +210,11 @@ where
 
     fn on_focus(&mut self, _area: &U::Area) {
         self.text = text!({ Ghost(text!({ &self.prompt })) } '\n');
-        self.mode.read().read().on_focus(&mut self.text);
+        self.mode.read().write().on_focus(&mut self.text);
     }
 
     fn on_unfocus(&mut self, _area: &<U as Ui>::Area) {
-        self.mode.read().read().on_unfocus(&mut self.text);
+        self.mode.read().write().on_unfocus(&mut self.text);
     }
 }
 
@@ -233,13 +228,13 @@ where
     where
         Self: Sized;
 
-    fn on_focus(&self, _text: &mut Text) {}
+    fn on_focus(&mut self, _text: &mut Text) {}
 
-    fn on_unfocus(&self, _text: &mut Text) {}
+    fn on_unfocus(&mut self, _text: &mut Text) {}
 
-    fn update(&self, _text: &mut Text) {}
+    fn update(&mut self, _text: &mut Text) {}
 
-    fn has_changed(&self) -> bool {
+    fn has_changed(&mut self) -> bool {
         false
     }
 }
@@ -260,7 +255,7 @@ where
         Self(context)
     }
 
-    fn on_unfocus(&self, text: &mut Text) {
+    fn on_unfocus(&mut self, text: &mut Text) {
         let text = std::mem::take(text);
 
         let cmd = text.to_string();
@@ -273,7 +268,7 @@ where
 
 pub struct ShowNotifications {
     notifications: &'static RwData<Text>,
-    has_changed: AtomicBool,
+    has_changed: bool,
 }
 
 impl<U> CommandLineMode<U> for ShowNotifications
@@ -286,18 +281,18 @@ where
     {
         Self {
             notifications: context.notifications(),
-            has_changed: AtomicBool::default(),
+            has_changed: false,
         }
     }
 
-    fn has_changed(&self) -> bool {
-        let has_changed = self.notifications.has_changed();
-        self.has_changed.fetch_or(has_changed, Ordering::Release);
-        has_changed
+    fn has_changed(&mut self) -> bool {
+        self.has_changed = self.notifications.has_changed();
+        self.has_changed
     }
 
-    fn update(&self, text: &mut Text) {
-        if self.has_changed.fetch_and(false, Ordering::Acquire) {
+    fn update(&mut self, text: &mut Text) {
+        if self.has_changed {
+            self.has_changed = false;
             *text = self.notifications.read().clone();
         } else {
             *text = Text::new();
@@ -311,6 +306,8 @@ where
 {
     list: RwData<Vec<SavedMatches>>,
     context: Context<U>,
+    error_range: Option<(usize, usize)>,
+    key: Key,
 }
 
 impl<U> CommandLineMode<U> for IncSearch<U>
@@ -322,11 +319,19 @@ where
         Self: Sized,
     {
         crate::switch_to::<CommandLine<U>>();
-        Self { list: RwData::default(), context }
+        Self {
+            list: RwData::default(),
+            context,
+            error_range: None,
+            key: Key::new(),
+        }
     }
 
-    fn update(&self, text: &mut Text) {
-        text.clear_tags();
+    fn update(&mut self, text: &mut Text) {
+        if let Some((start, end)) = self.error_range.take() {
+            text.remove_tags_on(start, self.key);
+            text.remove_tags_on(end, self.key);
+        }
 
         let cur_file = self.context.cur_file().unwrap();
         let mut list = self.list.write();
@@ -358,21 +363,21 @@ where
                     let span = error.span();
                     let id = crate::forms::to_id!("ParseCommandErr");
 
-                    text.insert_tag(span.start.offset, Tag::PushForm(id), Key::basic());
-                    text.insert_tag(span.end.offset, Tag::PopForm(id), Key::basic());
+                    text.insert_tag(span.start.offset, Tag::PushForm(id), self.key);
+                    text.insert_tag(span.end.offset, Tag::PopForm(id), self.key);
                 }
             }
         }
     }
 
-    fn on_focus(&self, _text: &mut Text) {
+    fn on_focus(&mut self, _text: &mut Text) {
         let cur_file = self.context.cur_file().unwrap();
         cur_file.mutate_data(|file, area, input| {
             input.write().begin_inc_search(file, area, self.context)
         });
     }
 
-    fn on_unfocus(&self, _text: &mut Text) {
+    fn on_unfocus(&mut self, _text: &mut Text) {
         let cur_file = self.context.cur_file().unwrap();
         cur_file.mutate_data(|file, area, input| {
             input.write().end_inc_search(file, area, self.context)
