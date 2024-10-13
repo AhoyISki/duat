@@ -20,17 +20,17 @@ use point::TwoPoints;
 use records::Records;
 
 pub(crate) use self::search::SavedMatches;
-use self::tags::{Markers, RawTag, Tags};
+use self::tags::{Keys, RawTag, Tags};
 pub use self::{
-    builder::{err, hint, ok, text, AlignCenter, AlignLeft, AlignRight, Builder, Ghost},
+    builder::{AlignCenter, AlignLeft, AlignRight, Builder, Ghost, err, hint, ok, text},
     cfg::*,
     iter::{Item, Iter, RevIter},
-    point::{utf8_char_width, Point},
+    point::{Point, utf8_char_width},
     search::{RegexPattern, Searcher},
-    tags::{Marker, Tag, ToggleId},
+    tags::{Key, Tag, ToggleId},
     types::Part,
 };
-use crate::{history::Change, input::Cursors, DuatError};
+use crate::{DuatError, history::Change, input::Cursors};
 
 /// The text in a given area.
 #[derive(Default, Clone, Eq)]
@@ -38,21 +38,25 @@ pub struct Text {
     pub buf: Box<GapBuffer<u8>>,
     tags: Box<Tags>,
     records: Box<Records<(usize, usize, usize)>>,
-    /// This [`Marker`] is used for the addition and removal of cursor
+    /// This [`Key`] is used for the addition and removal of cursor
     /// [`Tag`]s.
-    marker: Marker,
+    key: Key,
 }
 
 impl Text {
+    /// Returns a new, empty [`Text`]
     pub fn new() -> Self {
         Self {
             buf: Box::new(GapBuffer::new()),
             tags: Box::new(Tags::new()),
-            marker: Marker::base(),
+            key: Key::basic(),
             records: Box::new(Records::new()),
         }
     }
 
+    /// Creates a [`Text`] from a file's [path]
+    ///
+    /// [path]: Path
     pub fn from_file(path: impl AsRef<Path>) -> Self {
         let file = std::fs::read_to_string(path).expect("File failed to open");
         let buf = Box::new(GapBuffer::from_iter(file.bytes()));
@@ -61,7 +65,7 @@ impl Text {
         Self {
             buf,
             tags,
-            marker: Marker::base(),
+            key: Key::basic(),
             records: Box::new(Records::with_max((
                 file.len(),
                 file.chars().count(),
@@ -70,16 +74,27 @@ impl Text {
         }
     }
 
+    /// Returns a [`Builder`] for [`Text`]
+    ///
+    /// This builder can be used to iteratively create text, by
+    /// assuming that the user wants no* [`Tag`] overlap, and that
+    /// they want to construct the [`Text`] in [`Tag`]/content pairs.
+    ///
+    /// ```rust
+    /// use duat_core::text::{Tag, Text, text};
+    /// let mut builder = Text::builder();
+    /// 
+    /// ```
     pub fn builder() -> Builder {
         Builder::new()
     }
 
-    pub fn insert_tag(&mut self, at: usize, tag: Tag, marker: Marker) {
-        self.tags.insert(at, tag, marker);
+    pub fn insert_tag(&mut self, at: usize, tag: Tag, key: Key) {
+        self.tags.insert(at, tag, key);
     }
 
-    pub fn remove_tags_on(&mut self, b: usize, markers: impl Markers) {
-        self.tags.remove_at(b, markers)
+    pub fn remove_tags_on(&mut self, b: usize, keys: impl Keys) {
+        self.tags.remove_at(b, keys)
     }
 
     pub fn clear_tags(&mut self) {
@@ -128,7 +143,7 @@ impl Text {
                 let point = self.point_at(b);
                 let record = (point.byte(), point.char(), point.line());
                 self.records.insert(record);
-                self.tags.insert(b, tag, self.marker);
+                self.tags.insert(b, tag, self.key);
             }
         }
     }
@@ -150,7 +165,7 @@ impl Text {
             };
 
             for ch_index in [start.byte(), end_byte].into_iter().skip(skip) {
-                self.tags.remove_at(ch_index, self.marker);
+                self.tags.remove_at(ch_index, self.key);
             }
         }
     }
@@ -216,6 +231,16 @@ impl Text {
         self.buf.is_empty()
     }
 
+    /// The [`Point`] corresponding to the byte position, 0 indexed
+    ///
+    /// If the byte position would fall in between two characters
+    /// (because the first one comprises more than one byte), the
+    /// first character is chosen as the [`Point`] where the byte is
+    /// located.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `at` is greater than the lenght of the text
     #[inline(always)]
     pub fn point_at(&self, at: usize) -> Point {
         assert!(
@@ -258,6 +283,12 @@ impl Text {
             .unwrap_or(self.len_point())
     }
 
+    /// The [`Point`] associated with a char position, 0 indexed
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `at` is greater than the number of chars in the
+    /// text.
     #[inline(always)]
     pub fn point_at_char(&self, at: usize) -> Point {
         assert!(
@@ -300,6 +331,15 @@ impl Text {
             .unwrap_or(self.len_point())
     }
 
+    /// The [`Point`] where the `at`th line starts, 0 indexed
+    ///
+    /// If `at == number_of_lines`, returns the last point of the
+    /// text.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the number `at` is greater than the number of
+    /// lines on the text
     #[inline(always)]
     pub fn point_at_line(&self, at: usize) -> Point {
         assert!(
@@ -341,6 +381,14 @@ impl Text {
             .unwrap_or(self.len_point())
     }
 
+    /// The maximum [points] in the `at`th byte
+    ///
+    /// This point is essentially the [point] at that byte, plus the
+    /// last possible [`Point`] of any [`Tag::GhostText`]s in that
+    /// position.
+    ///
+    /// [points]: TwoPoints
+    /// [point]: Self::point_at
     #[inline(always)]
     pub fn ghost_max_points_at(&self, at: usize) -> (Point, Option<Point>) {
         let point = self.point_at(at);
@@ -363,6 +411,7 @@ impl Text {
             .nth(1)
     }
 
+    /// The `char` at the [`Point`]'s position
     pub fn char_at(&self, point: Point) -> Option<char> {
         let (s0, s1) = self.slices();
         if point.byte() < s0.len() {
@@ -372,27 +421,48 @@ impl Text {
         }
     }
 
+    /// How many bytes are in the text
     pub fn len_bytes(&self) -> usize {
         self.buf.len()
     }
 
+    /// How many chars are in the text
     pub fn len_chars(&self) -> usize {
         self.records.max().1
     }
 
+    /// How many lines are in the text
     pub fn len_lines(&self) -> usize {
         self.records.max().2
     }
 
+    /// The [`Point`] at the end of the text
     pub fn len_point(&self) -> Point {
         let (b, c, l) = self.records.max();
         Point::from_coords(b, c, l)
     }
 
+    /// The [points] at the end of the text
+    ///
+    /// This will essentially return the [last point] of the text,
+    /// alongside the last possible [`Point`] of any
+    /// [`Tag::GhostText`] at the end of the text.
+    ///
+    /// [points]: TwoPoints
+    /// [last point]: Self::len_point
     pub fn len_points(&self) -> (Point, Option<Point>) {
         self.ghost_max_points_at(self.len_point().byte())
     }
 
+    /// The last [`Point`] associated with a `char`
+    ///
+    /// This will give the [`Point`] of the last `char` of the text.
+    /// The difference between this method and [`len_point`] is that
+    /// it will return a [`Point`] one position earlier than it. If
+    /// however, the text is completely empty, it will return
+    /// [`None`].
+    ///
+    /// [`len_point`]: Self::len_point
     pub fn last_point(&self) -> Option<Point> {
         self.strs_in_range(..)
             .into_iter()
@@ -442,6 +512,18 @@ impl Text {
         }
     }
 
+    /// This method will return two [`&str`]s at the [`Point`] range
+    ///
+    /// This function treats any [`Point`]s outside the range as if
+    /// they where the last point in the text.
+    ///
+    /// # Note
+    ///
+    /// The reason why this function returns two strings is that the
+    /// contents of the text are stored in a [`GapBuffer`], which
+    /// works with two strings.
+    ///
+    /// [`&str`]: str
     pub fn strs_in_point_range(&self, (p1, p2): (Point, Point)) -> [&str; 2] {
         self.strs_in_range(p1.byte()..p2.byte())
     }
@@ -485,6 +567,7 @@ impl Text {
         }
     }
 
+    /// Returns the two `&str`s in the byte range.
     fn strs_in_range(&self, range: impl RangeBounds<usize>) -> [&str; 2] {
         let (s0, s1) = self.buf.as_slices();
         let (start, end) = get_ends(range, self.len_bytes());
@@ -745,17 +828,9 @@ fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
     use crate::forms::{E_SEL_ID, M_SEL_ID};
 
     if is_main {
-        (
-            MainCursor,
-            PushForm(M_SEL_ID),
-            PopForm(M_SEL_ID),
-        )
+        (MainCursor, PushForm(M_SEL_ID), PopForm(M_SEL_ID))
     } else {
-        (
-            ExtraCursor,
-            PushForm(E_SEL_ID),
-            PopForm(E_SEL_ID),
-        )
+        (ExtraCursor, PushForm(E_SEL_ID), PopForm(E_SEL_ID))
     }
 }
 
@@ -806,7 +881,7 @@ macro impl_from_to_string($t:ty) {
             Self {
                 buf,
                 tags,
-                marker: Marker::new(),
+                key: Key::new(),
                 records: Box::new(Records::with_max((
                     value.len(),
                     value.chars().count(),

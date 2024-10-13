@@ -1,10 +1,7 @@
-use std::{fmt::Write, sync::LazyLock};
+use std::fmt::Write;
 
-use super::{Marker, Tag, Text, ToggleId};
-use crate::{
-    data::{RoData, RwData},
-    forms::FormId,
-};
+use super::{Key, Tag, Text, ToggleId};
+use crate::data::{RoData, RwData};
 
 /// Builds and modifies a [`Text`], based on replacements applied
 /// to it.
@@ -27,7 +24,7 @@ use crate::{
 pub struct Builder {
     text: Text,
     last_form: Option<Tag>,
-    marker: Marker,
+    marker: Key,
     buffer: String,
 }
 
@@ -46,42 +43,8 @@ impl Builder {
         self.text
     }
 
-    pub fn push_str(&mut self, display: impl std::fmt::Display) {
-        self.buffer.clear();
-        write!(self.buffer, "{display}").unwrap();
-        self.text.insert_str(self.text.len_bytes(), &self.buffer)
-    }
-
-    /// Pushes a [`Tag`] to the end of the list of [`Tag`]s, as well
-    /// as its inverse at the end of the [`Text`].
-    pub fn push_tag(&mut self, tag: Tag) -> Option<ToggleId> {
-        let len = self.text.len_bytes();
-        let last_form = if let Tag::PushForm(id) = tag {
-            self.last_form.replace(Tag::PopForm(id))
-        } else {
-            None
-        };
-
-        if let Some(tag) = last_form {
-            self.text.tags.insert(len, tag, self.marker);
-        }
-
-        self.text.tags.insert(len, tag, self.marker)
-    }
-
-    pub fn push_text(&mut self, text: Text) {
-        let end = self.text.len_bytes();
-
-        if let Some(tag) = self.last_form.take() {
-            self.text.tags.insert(end, tag, self.marker);
-        }
-
-        self.text.buf.splice(end..end, *text.buf);
-        self.text.tags.extend(*text.tags);
-    }
-
-    pub fn push_part<D: std::fmt::Display>(&mut self, part: BuilderPart<D>) {
-        match part {
+    pub fn push<D: std::fmt::Display>(&mut self, part: impl Into<BuilderPart<D>>) {
+        match part.into() {
             BuilderPart::Text(text) => self.push_text(text),
             BuilderPart::Tag(tag) => {
                 self.push_tag(tag);
@@ -91,6 +54,46 @@ impl Builder {
             _ => {}
         }
     }
+
+    pub(crate) fn push_str(&mut self, display: impl std::fmt::Display) {
+        self.buffer.clear();
+        write!(self.buffer, "{display}").unwrap();
+        self.text.insert_str(self.text.len_bytes(), &self.buffer)
+    }
+
+    /// Pushes a [`Tag`] to the end of the list of [`Tag`]s, as well
+    /// as its inverse at the end of the [`Text`].
+    pub(crate) fn push_tag(&mut self, tag: Tag) -> Option<ToggleId> {
+        let len = self.text.len_bytes();
+        if let Tag::PushForm(id) = tag {
+            let last_form = match id == crate::forms::DEFAULT_ID {
+                true => self.last_form.take(),
+                false => self.last_form.replace(Tag::PopForm(id)),
+            };
+
+            if let Some(tag) = last_form {
+                self.text.tags.insert(len, tag, self.marker);
+            }
+
+            match id == crate::forms::DEFAULT_ID {
+                true => None,
+                false => self.text.tags.insert(len, tag, self.marker),
+            }
+        } else {
+            self.text.tags.insert(len, tag, self.marker)
+        }
+    }
+
+    pub(crate) fn push_text(&mut self, text: Text) {
+        let end = self.text.len_bytes();
+
+        if let Some(tag) = self.last_form.take() {
+            self.text.tags.insert(end, tag, self.marker);
+        }
+
+        self.text.buf.splice(end..end, *text.buf);
+        self.text.tags.extend(*text.tags);
+    }
 }
 
 impl Default for Builder {
@@ -98,7 +101,7 @@ impl Default for Builder {
         Builder {
             text: Text::default(),
             last_form: None,
-            marker: Marker::base(),
+            marker: Key::basic(),
             buffer: String::with_capacity(50),
         }
     }
@@ -194,29 +197,22 @@ where
 pub macro text {
     // Forms
     (@push $builder:expr, []) => {
-        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::to_id("Default")
-        });
-        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+        let id = crate::forms::to_id!("Default");
+        $builder.push(crate::text::Tag::PushForm(id))
     },
     (@push $builder:expr, [*a]) => {
-        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::to_id("Accent")
-        });
-        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+        let id = crate::forms::to_id!("Accent");
+        $builder.push(crate::text::Tag::PushForm(id))
     },
 
     (@push $builder:expr, [$form:ident]) => {
-        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::to_id(stringify!($form))
-        });
-        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+        let id = crate::forms::to_id!(stringify!($form));
+        $builder.push(crate::text::Tag::PushForm(id))
     },
 
     // Plain text
     (@push $builder:expr, $part:expr) => {
-        let part = BuilderPart::from($part);
-        $builder.push_part(part)
+        $builder.push($part)
     },
 
     (@parse $builder:expr, $part:tt $($parts:tt)*) => {{
@@ -239,29 +235,22 @@ pub macro text {
 pub macro ok {
     // Forms
     (@push $builder:expr, []) => {
-        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::to_id("DefaultOk")
-        });
-        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+        let id = crate::forms::to_id!("DefaultOk");
+        $builder.push(crate::text::Tag::PushForm(id))
     },
     (@push $builder:expr, [*a]) => {
-        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::to_id("AccentOk")
-        });
-        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+        let id = crate::forms::to_id!("AccentOk");
+        $builder.push(crate::text::Tag::PushForm(id))
     },
 
     (@push $builder:expr, [$form:ident]) => {
-        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::to_id(stringify!($form))
-        });
-        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+        let id = crate::forms::to_id!(stringify!($form));
+        $builder.push(crate::text::Tag::PushForm(id))
     },
 
     // Plain text
     (@push $builder:expr, $part:expr) => {
-        let part = BuilderPart::from($part);
-        $builder.push_part(part)
+        $builder.push($part)
     },
 
     (@parse $builder:expr, $part:tt $($parts:tt)*) => {{
@@ -284,29 +273,22 @@ pub macro ok {
 pub macro err {
     // Forms
     (@push $builder:expr, []) => {
-        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::to_id("DefaultErr")
-        });
-        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+        let id = crate::forms::to_id!("DefaultErr");
+        $builder.push(crate::text::Tag::PushForm(id))
     },
     (@push $builder:expr, [*a]) => {
-        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::to_id("AccentErr")
-        });
-        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+        let id = crate::forms::to_id!("AccentErr");
+        $builder.push(crate::text::Tag::PushForm(id))
     },
 
     (@push $builder:expr, [$form:ident]) => {
-        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::to_id(stringify!($form))
-        });
-        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+        let id = crate::forms::to_id!(stringify!($form));
+        $builder.push(crate::text::Tag::PushForm(id))
     },
 
     // Plain text
     (@push $builder:expr, $part:expr) => {
-        let part = BuilderPart::from($part);
-        $builder.push_part(part)
+        $builder.push($part)
     },
 
     (@parse $builder:expr, $part:tt $($parts:tt)*) => {{
@@ -329,29 +311,22 @@ pub macro err {
 pub macro hint {
     // Forms
     (@push $builder:expr, []) => {
-        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::to_id("DefaultHint")
-        });
-        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+        let id = crate::forms::to_id!("DefaultHint");
+        $builder.push(crate::text::Tag::PushForm(id))
     },
     (@push $builder:expr, [*a]) => {
-        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::to_id("AccentHint")
-        });
-        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+        let id = crate::forms::to_id!("AccentHint");
+        $builder.push(crate::text::Tag::PushForm(id))
     },
 
     (@push $builder:expr, [$form:ident]) => {
-        static FORM_ID: __FormIdLock = __FormIdLock::new(|| {
-            crate::forms::to_id(stringify!($form))
-        });
-        $builder.push_tag(crate::text::Tag::PushForm(*FORM_ID))
+        let id = crate::forms::to_id!(stringify!($form));
+        $builder.push(crate::text::Tag::PushForm(id))
     },
 
     // Plain text
     (@push $builder:expr, $part:expr) => {
-        let part = BuilderPart::from($part);
-        $builder.push_part(part)
+        $builder.push($part)
     },
 
     (@parse $builder:expr, $part:tt $($parts:tt)*) => {{
@@ -369,22 +344,4 @@ pub macro hint {
         hint!(builder, [DefaultHint] $($parts)+);
         builder.finish()
     }},
-}
-
-#[doc(hidden)]
-pub struct __FormIdLock(LazyLock<FormId>);
-
-impl std::ops::Deref for __FormIdLock {
-    type Target = FormId;
-
-    fn deref(&self) -> &FormId {
-        self.0.deref()
-    }
-}
-
-impl __FormIdLock {
-    #[doc(hidden)]
-    pub const fn new(f: fn() -> FormId) -> Self {
-        Self(LazyLock::new(f))
-    }
 }

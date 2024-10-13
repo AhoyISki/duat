@@ -9,7 +9,7 @@ use regex_automata::{
     },
     nfa::thompson::Config,
 };
-use regex_syntax::hir::{Hir, HirKind};
+use regex_syntax::{hir::{Hir, HirKind}, Error};
 
 use super::{Point, Text};
 
@@ -309,9 +309,9 @@ pub struct SavedMatches {
 }
 
 impl SavedMatches {
-    pub fn new(pat: String) -> Result<Self, Box<BuildError>> {
-        dfas_from_pat(&pat)?;
-        let hir = regex_syntax::Parser::new().parse(&pat).unwrap();
+    pub fn new(pat: String) -> Result<Self, Box<Error>> {
+        let hir = regex_syntax::Parser::new().parse(&pat)?;
+        dfas_from_pat(&pat).unwrap();
         Ok(Self {
             pat,
             hir,

@@ -7,7 +7,7 @@ use std::{
 use gapbuf::{gap_buffer, GapBuffer};
 
 pub use self::{
-    ids::{Marker, Markers, TextId, ToggleId},
+    ids::{Key, Keys, TextId, ToggleId},
     types::{
         RawTag::{self, *},
         Tag,
@@ -122,8 +122,8 @@ impl Tags {
         self.records.clear();
     }
 
-    pub fn insert(&mut self, at: usize, tag: Tag, marker: Marker) -> Option<ToggleId> {
-        let (tag, toggle_id) = tag.to_raw(marker, &mut self.texts, &mut self.toggles);
+    pub fn insert(&mut self, at: usize, tag: Tag, key: Key) -> Option<ToggleId> {
+        let (tag, toggle_id) = tag.to_raw(key, &mut self.texts, &mut self.toggles);
 
         let (n, b, skip) = self
             .get_skip_at(at)
@@ -192,9 +192,9 @@ impl Tags {
         self.cull_small_ranges();
     }
 
-    /// Removes all [`Tag`]s associated with a given [`Marker`] in the
+    /// Removes all [`Tag`]s associated with a given [`Key`] in the
     /// `pos`.
-    pub fn remove_at(&mut self, at: usize, markers: impl Markers) {
+    pub fn remove_at(&mut self, at: usize, keys: impl Keys) {
         let (n, b, skip) = match self.get_skip_at(at) {
             Some((n, b, skip)) if b == at => (n, b, skip),
             None => (self.buf.len(), self.len_bytes(), 0),
@@ -209,7 +209,7 @@ impl Tags {
                 .enumerate()
                 .map_while(|(i, ts)| Some(n - (i + 1)).zip(ts.as_tag()))
                 .inspect(|_| total += 1)
-                .filter(|(_, tag)| markers.clone().contains(tag.marker()))
+                .filter(|(_, tag)| keys.clone().contains(tag.key()))
                 .collect();
 
             (removed, total)
@@ -326,14 +326,14 @@ impl Tags {
         let tags = {
             let iter = iter_range(&self.buf, n..).filter_map(raw_from(b));
             iter.map(|(b, tag)| match tag {
-                StartConceal(marker) => {
+                StartConceal(key) => {
                     match self
                         .ranges
                         .iter()
-                        .find(|range| range.starts_with(&(b, StartConceal(marker))))
+                        .find(|range| range.starts_with(&(b, StartConceal(key))))
                     {
                         Some(t_range) => (b, ConcealUntil(t_range.end() as u32)),
-                        None => (b, StartConceal(marker)),
+                        None => (b, StartConceal(key)),
                     }
                 }
                 tag => (b, tag),
@@ -367,15 +367,15 @@ impl Tags {
         let raw_tags = {
             let iter = iter_range_rev(&self.buf, ..n).filter_map(raw_from_rev(b));
             iter.map(|(b, tag)| match tag {
-                EndConceal(marker) => {
+                EndConceal(key) => {
                     if let Some(range) = self
                         .ranges
                         .iter()
-                        .find(|range| range.ends_with(&(b, EndConceal(marker))))
+                        .find(|range| range.ends_with(&(b, EndConceal(key))))
                     {
                         (b, ConcealUntil(range.start() as u32))
                     } else {
-                        (b, EndConceal(marker))
+                        (b, EndConceal(key))
                     }
                 }
                 tag => (b, tag),

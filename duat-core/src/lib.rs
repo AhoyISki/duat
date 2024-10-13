@@ -212,10 +212,14 @@ pub mod thread {
         })
     }
 
-    pub(crate) fn queue(f: impl FnOnce() + Send + 'static) {
+    pub(crate) fn queue<R>(f: impl FnOnce() -> R + Send + 'static) {
         static LOOP: Once = Once::new();
         static ACTIONS: LazyLock<Mutex<Vec<Box<dyn FnOnce() + Send>>>> =
             LazyLock::new(Mutex::default);
+
+        let f = move || {
+            f();
+        };
 
         if still_running() {
             ACTIONS.lock().push(Box::new(f));

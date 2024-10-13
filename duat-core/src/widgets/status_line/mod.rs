@@ -239,11 +239,11 @@ unsafe impl<U> Sync for StatusLine<U> where U: Ui {}
 
 pub macro status {
     (@append $ui:ty, $text_fn:expr, $checker:expr, []) => {{
-        let form_id = forms::to_id("Default");
+        let form_id = forms::to_id!("Default");
 
         let text_fn = move |builder: &mut Builder, reader: &FileReader<$ui>| {
             $text_fn(builder, reader);
-            builder.push_tag(Tag::PushForm(form_id));
+            builder.push(Tag::PushForm(form_id));
         };
 
         (text_fn, $checker)
@@ -251,11 +251,11 @@ pub macro status {
 
     // Insertion of directly named forms.
     (@append $ui:ty, $text_fn:expr, $checker:expr, [$form:ident]) => {{
-        let id = forms::to_id(stringify!($form));
+        let id = forms::to_id!(stringify!($form));
 
         let text_fn = move |builder: &mut Builder, reader: &FileReader<$ui>| {
             $text_fn(builder, reader);
-            builder.push_tag(Tag::PushForm(id));
+            builder.push(Tag::PushForm(id));
         };
 
         (text_fn, $checker)

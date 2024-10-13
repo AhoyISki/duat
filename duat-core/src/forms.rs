@@ -5,7 +5,10 @@ use crossterm::style::{Attribute, ContentStyle, Stylize};
 pub use crossterm::{cursor::SetCursorStyle as CursorShape, style::Color};
 use parking_lot::{RwLock, RwLockWriteGuard};
 
-pub use self::global::*;
+pub use self::global::{
+    FormFmt, extra_cursor, from_id, main_cursor, name_from_id, painter, set, set_extra_cursor,
+    set_main_cursor, set_weak, to_id, unset_extra_cursor, unset_main_cursor,
+};
 use crate::data::RwLockReadGuard;
 
 /// The functions that will be exposed for public use.
@@ -128,26 +131,6 @@ mod global {
             forms.push(refed);
         }
 
-        if let Some(id) = forms.iter().position(|form| *form == name) {
-            FormId(id as u16)
-        } else {
-            forms.push(name);
-            FormId(forms.len() as u16 - 1)
-        }
-    }
-
-    /// Returns the [`FormId`] of the form
-    ///
-    /// If it doesn't exist, it will be created with [`Form::new()`]
-    /// as its form.
-    pub fn to_id(name: impl ToString) -> FormId {
-        let name: &'static str = name.to_string().leak();
-
-        crate::thread::queue(move || {
-            PALETTE.id_from_name(name);
-        });
-
-        let mut forms = FORMS.lock();
         if let Some(id) = forms.iter().position(|form| *form == name) {
             FormId(id as u16)
         } else {
@@ -288,6 +271,53 @@ mod global {
         PALETTE.painter()
     }
 
+    /// Returns the [`FormId`] from the name of a [`Form`]
+    ///
+    /// You can also pass multiple names, in order to get a list of
+    /// ids.
+    ///
+    /// # Note
+    ///
+    /// This is a macro because, in order to be as efficient as
+    /// possible, it is better to store this value inside of a
+    /// static variable, since it is guaranteed to not change. This
+    /// way, you only have to figure it out once, and it is much
+    /// faster than with a [`HashMap`] (how this is usually done).
+    ///
+    /// [`HashMap`]: std::collections::HashMap
+    pub macro to_id {
+        // Since this variable will only ever be accessed by one thread, it is perfectly reasonable to use a `static mut`, even if unsafe.
+        ($form:expr) => {{
+            static ID: LazyLock<FormId> = LazyLock::new(|| inner_to_id($form));
+            *ID
+        }},
+        ($($form:expr),+) => {{
+            static IDS: LazyLock<&[FormId]> = LazyLock::new(|| {
+    			let mut ids = Vec::new();
+    			$(
+        			ids.push(inner_to_id($form));
+    			)+
+    			ids.leak()
+			});
+			*ID
+        }}
+    }
+
+    /// Returns the [`FormId`] of the form's name
+    pub fn inner_to_id(name: impl ToString) -> FormId {
+        let name: &'static str = name.to_string().leak();
+
+        crate::thread::queue(move || PALETTE.id_from_name(name));
+
+        let mut forms = FORMS.lock();
+        if let Some(id) = forms.iter().position(|form| *form == name) {
+            FormId(id as u16)
+        } else {
+            forms.push(name);
+            FormId(forms.len() as u16 - 1)
+        }
+    }
+
     /// A kind of [`Form`]
     #[derive(Debug, Clone, Copy)]
     enum Kind {
@@ -326,11 +356,11 @@ mod global {
 /// directly, instead of using a macro like [`text!`]
 ///
 /// [`text!`]: crate::text::text
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FormId(u16);
 
 /// A style for text.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Form {
     pub style: ContentStyle,
     /// Wether or not the `Form`s colors and attributes should
