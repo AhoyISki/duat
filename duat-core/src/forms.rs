@@ -1,21 +1,72 @@
+//! Utilities for stylizing the text of Duat
 use std::sync::LazyLock;
 
-pub use crossterm::cursor::SetCursorStyle as CursorShape;
-use crossterm::style::{Attribute, Color, ContentStyle, Stylize};
+use crossterm::style::{Attribute, ContentStyle, Stylize};
+pub use crossterm::{cursor::SetCursorStyle as CursorShape, style::Color};
 use parking_lot::{RwLock, RwLockWriteGuard};
 
 pub use self::global::*;
 use crate::data::RwLockReadGuard;
 
+/// The functions that will be exposed for public use.
 mod global {
+    use std::sync::LazyLock;
+
     use parking_lot::Mutex;
 
-    use super::{CursorShape, Form, FormFmt, FormId, Kind, Painter, Palette};
+    use super::{CursorShape, Form, FormId, Painter, Palette};
 
     static PALETTE: Palette = Palette::new();
-    static FORMS: Mutex<Vec<&str>> = Mutex::new(Vec::new());
+    static FORMS: LazyLock<Mutex<Vec<&str>>> = LazyLock::new(|| {
+        Mutex::new(vec![
+            "Default",
+            "Accent",
+            "DefaultOk",
+            "AccentOk",
+            "DefaultErr",
+            "AccentErr",
+            "DefaultHint",
+            "AccentHint",
+            "MainCursor",
+            "ExtraCursor",
+            "MainSelection",
+            "ExtraSelection",
+            "Inactive",
+        ])
+    });
 
-    /// Sets the `Form` with a given name to a new one.
+    /// Either a [`Form`] or a name of a form
+    ///
+    /// Note that the referenced form does not need to exist for
+    /// [`forms::set`] or [`forms::set_weak`] to work properly.
+    ///
+    /// [`forms::set`]: set
+    /// [`forms::set_weak`]: set_weak
+    pub trait FormFmt: InnerFormFmt {}
+    impl FormFmt for Form {}
+    impl FormFmt for &str {}
+
+    /// Sets the [`Form`] by the name of `name`
+    ///
+    /// This will create a new form or replace one that already
+    /// exists, and you can either set it to a [`Form`] directly, or
+    /// reference another form by its name:
+    ///
+    /// ```rust
+    /// # use duat_core::forms::{self, Form};
+    /// // Creates a regular form
+    /// forms::set("MyRegularForm", Form::red());
+    /// // Creates a form that references the first
+    /// forms::set("MyRefForm", "MyRegularForm");
+    /// // Sets both "MyRegularForm" and "MyRefForm" to blue
+    /// forms::set("MyRegularForm", Form::blue());
+    /// ```
+    ///
+    /// If you are creating a plugin, or another kind of tool for
+    /// others using Duat, use [`forms::set_weak`] instead of this
+    /// function.
+    ///
+    /// [`forms::set_weak`]: set_weak
     pub fn set(name: impl ToString, form: impl FormFmt) -> FormId {
         let kind = form.kind();
         let name: &'static str = name.to_string().leak();
@@ -40,13 +91,34 @@ mod global {
         }
     }
 
+    /// Sets a form, "weakly"
+    ///
+    /// The difference between this function and [`forms::set`] is
+    /// that this function will only trigger if the form didn't
+    /// already exist.
+    ///
+    /// This is useful for plugins, since it prioritizes the user's
+    /// preferences, no matter in what order this function and
+    /// [`forms::set`] are called:
+    ///
+    /// ```rust
+    /// use duat_core::forms::{self, Form};
+    /// // Creates a form
+    /// forms::set_weak("WeakForm", Form::blue().on_white());
+    /// // Creates a form "strongly"
+    /// forms::set("StrongForm", Form::new().bold());
+    /// // Does nothing
+    /// forms::set_weak("StrongForm", "Default");
+    /// ```
+    ///
+    /// [`forms::set`]: set
     pub fn set_weak(name: impl ToString, form: impl FormFmt) -> FormId {
         let kind = form.kind();
         let name: &'static str = name.to_string().leak();
 
         match kind {
-            Kind::Form(form) => crate::thread::queue(move || PALETTE.set_weak_form(name, form)),
-            Kind::Ref(refed) => crate::thread::queue(move || PALETTE.set_weak_ref(name, refed)),
+            Kind::Form(form) => PALETTE.set_weak_form(name, form),
+            Kind::Ref(refed) => PALETTE.set_weak_ref(name, refed),
         }
 
         let mut forms = FORMS.lock();
@@ -64,15 +136,16 @@ mod global {
         }
     }
 
-    /// Returns the `Form` associated to a given name with the index
-    /// for efficient access.
+    /// Returns the [`FormId`] of the form
     ///
-    /// If a [`Form`] with the given name was not added prior, it will
-    /// be added with the same form as the "Default" form.
+    /// If it doesn't exist, it will be created with [`Form::new()`]
+    /// as its form.
     pub fn to_id(name: impl ToString) -> FormId {
         let name: &'static str = name.to_string().leak();
 
-        crate::thread::queue(move || PALETTE.set_weak_form(name, Form::default()));
+        crate::thread::queue(move || {
+            PALETTE.id_from_name(name);
+        });
 
         let mut forms = FORMS.lock();
         if let Some(id) = forms.iter().position(|form| *form == name) {
@@ -83,44 +156,176 @@ mod global {
         }
     }
 
-    /// Returns a form, given an index.
+    /// Returns a [`Form`], given a [`FormId`].
+    ///
+    /// If you are thinking of using this for printing purposes,
+    /// consider using [`forms::painter`] instead.
+    ///
+    /// [`forms::painter`]: painter
     pub fn from_id(id: FormId) -> Form {
-        PALETTE.form_from_id(id)
+        PALETTE.form_from_id(id).unwrap_or_default()
     }
 
+    /// The name of a form, given a [`FormId`]
     pub fn name_from_id(id: FormId) -> &'static str {
         PALETTE.name_from_id(id)
     }
 
+    /// The current main cursor, with the `"MainCursor"` [`Form`]
     pub fn main_cursor() -> (Form, Option<CursorShape>) {
         PALETTE.main_cursor()
     }
 
+    /// The current extra cursor, with the `"ExtraCursor"` [`Form`]
     pub fn extra_cursor() -> (Form, Option<CursorShape>) {
         PALETTE.extra_cursor()
     }
 
+    /// Sets the main cursor's [shape]
+    ///
+    /// Cursors in Duat can either be a distinct [shape], or can be
+    /// defined as a [`Form`], just like the rest of the styling.
+    ///
+    /// This is done because some UIs (like a terminal) lack the
+    /// ability to show multiple cursors, so extra cursors are usually
+    /// printed as solid blocks with a background color.
+    ///
+    /// If you want to set the cursor's color, do something like this:
+    ///
+    /// ```rust
+    /// # use duat_core::forms::{self, Form, Color};
+    /// forms::set(
+    ///     "MainCursor",
+    ///     Form::black().on(Color::Rgb { r: 240, g: 210, b: 200 }),
+    /// )
+    /// ```
+    ///
+    /// However, if possible, Duat will still try to use the main
+    /// cursor's [shape]. If you don't want that to happen, see
+    /// [`forms::unset_main_cursor`].
+    ///
+    /// [shape]: CursorShape
+    /// [`forms::unset_main_cursor`]: unset_main_cursor
     pub fn set_main_cursor(shape: CursorShape) {
         crate::thread::queue(move || PALETTE.set_main_cursor(shape));
     }
 
+    /// Sets extra cursors's [shape]s
+    ///
+    /// Cursors in Duat can either be a distinct [shape], or can be
+    /// defined as a [`Form`], just like the rest of the styling.
+    ///
+    /// This is done because some UIs (like a terminal) lack the
+    /// ability to show multiple cursors, so extra cursors are usually
+    /// printed as solid blocks with a background color.
+    ///
+    /// If you want to set the cursor's color, do something like this:
+    ///
+    /// ```rust
+    /// # use duat_core::forms::{self, Form, Color};
+    /// forms::set(
+    ///     "MainCursor",
+    ///     Form::black().on(Color::Rgb { r: 240, g: 210, b: 200 }),
+    /// )
+    /// ```
+    ///
+    /// However, if possible, Duat will still try to use the main
+    /// cursor's [shape]. If you don't want that to happen, see
+    /// [`forms::unset_extra_cursor`].
+    ///
+    /// [shape]: CursorShape
+    /// [`forms::unset_extra_cursor`]: unset_extra_cursor
     pub fn set_extra_cursor(shape: CursorShape) {
         crate::thread::queue(move || PALETTE.set_extra_cursor(shape));
     }
 
+    /// Removes the main cursor's [shape]
+    ///
+    /// By doing this, you will force Duat to draw the main cursor by
+    /// use of the `"MainCursor"` form.
+    ///
+    /// If you want to set the [shape] instead, see
+    /// [`forms::set_main_cursor`].
+    ///
+    /// [shape]: CursorShape
+    /// [`forms::set_main_cursor`]: set_main_cursor
     pub fn unset_main_cursor() {
         crate::thread::queue(move || PALETTE.unset_main_cursor());
     }
 
+    /// Removes extra cursors's [shape]s
+    ///
+    /// By doing this, you will force Duat to draw the extra cursor by
+    /// use of the `"MainCursor"` form. Do note however that, in
+    /// something like a terminal, extra cursors would never be
+    /// printed as a [shape] anyways, since terminals can only
+    /// print one cursor at a time.
+    ///
+    /// If you want to set the [shape] instead, see
+    /// [`forms::set_extra_cursor`].
+    ///
+    /// [shape]: CursorShape
+    /// [`forms::set_extra_cursor`]: set_extra_cursor
     pub fn unset_extra_cursor() {
         crate::thread::queue(move || PALETTE.unset_extra_cursor());
     }
 
+    /// A [`Painter`] for coloring text efficiently
+    ///
+    /// This function will be used primarily when printing widgets to
+    /// the screen, which is something that only [`Ui`]s should be
+    /// doing.
+    ///
+    /// One thing to note is that a [`Painter`] will lock the form
+    /// palette while it is being used. This means that, if a form is
+    /// changed while a widget is in the middle of printing, the
+    /// printed form will be the old version, not the new one. Only
+    /// after said widget is done printing will the new form come into
+    /// effect.
+    ///
+    /// [`Ui`]: crate::ui::Ui
     pub fn painter() -> Painter {
         PALETTE.painter()
     }
+
+    /// A kind of [`Form`]
+    #[derive(Debug, Clone, Copy)]
+    enum Kind {
+        Form(Form),
+        Ref(&'static str),
+    }
+
+    /// So [`Form`]s and [`impl ToString`]s are arguments for [`set`]
+    ///
+    /// [`impl ToString`]: ToString
+    trait InnerFormFmt {
+        /// The kind of [`Form`] that this type represents
+        fn kind(self) -> Kind;
+    }
+
+    impl InnerFormFmt for Form {
+        fn kind(self) -> Kind {
+            Kind::Form(self)
+        }
+    }
+
+    impl InnerFormFmt for &str {
+        fn kind(self) -> Kind {
+            Kind::Ref(self.to_string().leak())
+        }
+    }
 }
 
+/// An identifier of a [`Form`]
+///
+/// This struct is always going to point to the same form, since those
+/// cannot be destroyed.
+///
+/// The main use for keeping these things directly is in order to
+/// modify a file's text in an efficient manner, by adding tags
+/// directly, instead of using a macro like [`text!`]
+///
+/// [`text!`]: crate::text::text
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FormId(u16);
 
@@ -135,7 +340,6 @@ pub struct Form {
 
 #[rustfmt::skip]
 impl Form {
-    mimic_method!(with Color);
     mimic_method!(on Color);
     mimic_method!(underline Color );
     mimic_method!(attribute Attribute );
@@ -170,6 +374,10 @@ impl Form {
     mimic_method!(on_white underline_white, white);
     mimic_method!(on_grey underline_grey, grey);
 
+    pub fn with(color: Color) -> Self {
+        Self { style: ContentStyle::new().with(color), is_final: false }
+    }
+
     pub fn new() -> Self {
         Self { style: ContentStyle::new(), is_final: false }
     }
@@ -183,45 +391,23 @@ impl Form {
     }
 }
 
+/// The [`FormId`] of the `"Default"` form
 pub const DEFAULT_ID: FormId = FormId(0);
+/// The [`FormId`] of the `"MainCursor"` form
 pub const M_CUR_ID: FormId = FormId(8);
+/// The [`FormId`] of the `"ExtraCursor"` form
 pub const E_CUR_ID: FormId = FormId(9);
+/// The [`FormId`] of the `"MainSelection"` form
 pub const M_SEL_ID: FormId = FormId(10);
+/// The [`FormId`] of the `"ExtraSelection"` form
 pub const E_SEL_ID: FormId = FormId(11);
+/// The [`FormId`] of the `"Inactive"` form
 pub const INACTIVE_ID: FormId = FormId(12);
-
-#[derive(Debug, Clone, Copy)]
-enum Kind {
-    Form(Form),
-    Ref(&'static str),
-}
-
-pub trait FormFmt: InnerFormFmt {}
-
-trait InnerFormFmt {
-    fn kind(self) -> Kind;
-}
-
-impl InnerFormFmt for Form {
-    fn kind(self) -> Kind {
-        Kind::Form(self)
-    }
-}
-
-impl FormFmt for Form {}
-
-impl InnerFormFmt for &str {
-    fn kind(self) -> Kind {
-        Kind::Ref(self.to_string().leak())
-    }
-}
-
-impl FormFmt for &str {}
 
 struct InnerPalette {
     main_cursor: Option<CursorShape>,
     extra_cursor: Option<CursorShape>,
-    forms: Vec<(&'static str, Form, Option<FormId>)>,
+    forms: Vec<(&'static str, Form, FormType)>,
 }
 
 /// The list of forms to be used when rendering.
@@ -231,22 +417,23 @@ impl Palette {
     /// Returns a new instance of [`FormPalette`]
     const fn new() -> Self {
         Self(LazyLock::new(|| {
+            use FormType::*;
             let main_cursor = Some(CursorShape::DefaultUserShape);
 
             let forms = vec![
-                ("Default", Form::new(), None),
-                ("Accent", Form::new().bold(), None),
-                ("DefaultOk", Form::blue(), None),
-                ("AccentOk", Form::cyan(), None),
-                ("DefaultErr", Form::red(), None),
-                ("AccentErr", Form::red().bold(), None),
-                ("DefaultHint", Form::grey(), None),
-                ("AccentHint", Form::grey().bold(), None),
-                ("MainCursor", Form::new().reverse(), None),
-                ("ExtraCursor", Form::new().reverse(), Some(M_CUR_ID)),
-                ("MainSelection", Form::new().on_dark_grey(), None),
-                ("ExtraSelection", Form::new().on_dark_grey(), Some(M_SEL_ID)),
-                ("Inactive", Form::grey(), None),
+                ("Default", Form::new(), Normal),
+                ("Accent", Form::new().bold(), Normal),
+                ("DefaultOk", Form::blue(), Normal),
+                ("AccentOk", Form::cyan(), Normal),
+                ("DefaultErr", Form::red(), Normal),
+                ("AccentErr", Form::red().bold(), Normal),
+                ("DefaultHint", Form::grey(), Normal),
+                ("AccentHint", Form::grey().bold(), Normal),
+                ("MainCursor", Form::new().reverse(), Normal),
+                ("ExtraCursor", Form::new().reverse(), Ref(M_CUR_ID)),
+                ("MainSelection", Form::new().on_dark_grey(), Normal),
+                ("ExtraSelection", Form::new().on_dark_grey(), Ref(M_SEL_ID)),
+                ("Inactive", Form::grey(), Normal),
             ];
 
             RwLock::new(InnerPalette {
@@ -258,8 +445,7 @@ impl Palette {
     }
 
     /// Sets a [`Form`]
-    fn set_form(&self, name: impl AsRef<str>, form: Form) {
-        let name: &str = name.as_ref().to_string().leak();
+    fn set_form(&self, name: &'static str, form: Form) {
         let form = match name {
             "MainCursor" | "ExtraCursor" => form.as_final(),
             _ => form,
@@ -271,7 +457,7 @@ impl Palette {
             inner.forms[i].1 = form;
             i
         } else {
-            inner.forms.push((name, form, None));
+            inner.forms.push((name, form, FormType::Normal));
             inner.forms.len() - 1
         };
 
@@ -281,8 +467,7 @@ impl Palette {
     }
 
     /// Sets a [`Form`] "weakly"
-    fn set_weak_form(&self, name: impl AsRef<str>, form: Form) {
-        let name: &str = name.as_ref().to_string().leak();
+    fn set_weak_form(&self, name: &'static str, form: Form) {
         let form = match name {
             "MainCursor" | "ExtraCursor" => form.as_final(),
             _ => form,
@@ -290,19 +475,22 @@ impl Palette {
 
         let mut inner = self.0.write();
 
-        if !inner.forms.iter().any(|(cmp, ..)| *cmp == name) {
-            inner.forms.push((name, form, None));
+        if let Some(i) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
+            let (_, f, ty) = &mut inner.forms[i];
+            if let FormType::Weakest = ty {
+                *f = form;
+                *ty = FormType::Normal
+            }
+        } else {
+            inner.forms.push((name, form, FormType::Normal));
             for refed in refs_of(&inner, inner.forms.len() - 1) {
                 inner.forms[refed].1 = form;
             }
         }
     }
 
-    /// Sets a [`Form`] to reference another
-    ///
-    /// Returns `None` if the referenced form doesn't exist.
-    fn set_ref(&self, name: impl AsRef<str>, refed: impl AsRef<str>) {
-        let name = name.as_ref().to_string().leak();
+    /// Makes a [`Form`] reference another
+    fn set_ref(&self, name: &'static str, refed: impl AsRef<str>) {
         let refed = {
             let refed: &'static str = refed.as_ref().to_string().leak();
             self.id_from_name(refed)
@@ -314,9 +502,9 @@ impl Palette {
         if let Some(i) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
             // If it would be circular, we just don't reference anything.
             if would_be_circular(&inner, i, refed.0 as usize) {
-                inner.forms.push((name, form, None));
+                inner.forms.push((name, form, FormType::Normal));
             } else {
-                inner.forms.push((name, form, Some(refed)))
+                inner.forms.push((name, form, FormType::Ref(refed)))
             }
 
             for refed in refs_of(&inner, i) {
@@ -325,13 +513,12 @@ impl Palette {
         } else {
             // If the form didn't previously exist, nothing was referencing it, so
             // no checks are done.
-            inner.forms.push((name, form, Some(refed)));
+            inner.forms.push((name, form, FormType::Ref(refed)));
         }
     }
 
     /// Makes a [`Form`] reference another "weakly"
-    fn set_weak_ref(&self, name: impl AsRef<str>, refed: impl AsRef<str>) {
-        let name = name.as_ref().to_string().leak();
+    fn set_weak_ref(&self, name: &'static str, refed: impl AsRef<str>) {
         let refed = {
             let refed: &'static str = refed.as_ref().to_string().leak();
             self.id_from_name(refed)
@@ -342,8 +529,14 @@ impl Palette {
 
         // For weak refs, no checks are done, since a form is only set if it
         // doesn't exist, and for there to be refs to it, it must exist.
-        if !inner.forms.iter().any(|(cmp, ..)| *cmp == name) {
-            inner.forms.push((name, form, Some(refed)));
+        if let Some(i) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
+            let (_, f, ty) = &mut inner.forms[i];
+            if let FormType::Weakest = ty {
+                *f = form;
+                *ty = FormType::Ref(refed);
+            }
+        } else {
+            inner.forms.push((name, form, FormType::Ref(refed)));
         }
     }
 
@@ -356,15 +549,15 @@ impl Palette {
         if let Some(id) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
             FormId(id as u16)
         } else {
-            inner.forms.push((name, Form::new(), None));
+            inner.forms.push((name, Form::new(), FormType::Weakest));
             FormId((inner.forms.len() - 1) as u16)
         }
     }
 
-    /// Returns a form, given an index.
-    fn form_from_id(&self, id: FormId) -> Form {
+    /// Returns a form, given a [`FormId`].
+    fn form_from_id(&self, id: FormId) -> Option<Form> {
         let inner = self.0.read_recursive();
-        inner.forms[id.0 as usize].1
+        inner.forms.get(id.0 as usize).map(|(_, form, _)| *form)
     }
 
     /// Returns the name of the [`FormId`]
@@ -380,13 +573,13 @@ impl Palette {
 
     /// The [`Form`] and [`CursorShape`] of the main cursor
     fn main_cursor(&self) -> (Form, Option<CursorShape>) {
-        let form = self.form_from_id(M_CUR_ID);
+        let form = self.form_from_id(M_CUR_ID).unwrap();
         (form, self.0.read_recursive().main_cursor)
     }
 
     /// The [`Form`] and [`CursorShape`] of extra cursors
     fn extra_cursor(&self) -> (Form, Option<CursorShape>) {
-        let form = self.form_from_id(E_CUR_ID);
+        let form = self.form_from_id(E_CUR_ID).unwrap();
         (form, self.0.read_recursive().extra_cursor)
     }
 
@@ -433,9 +626,7 @@ impl Painter {
     /// given previous triggers.
     #[inline(always)]
     pub fn apply(&mut self, id: FormId) -> Form {
-        let (_, form, _) = unsafe {
-            self.inner.forms.get_unchecked(id.0 as usize)
-        };
+        let (_, form, _) = unsafe { self.inner.forms.get_unchecked(id.0 as usize) };
 
         self.forms.push((*form, id));
         self.cur_form = self.make_form();
@@ -502,29 +693,34 @@ impl Painter {
 
     /// The [`Form`] "ExtraCursor", and its shape.
     pub fn main_cursor(&self) -> (Form, Option<CursorShape>) {
-        let (_, form, _) = unsafe {
-            self.inner.forms.get_unchecked(M_CUR_ID.0 as usize)
-        };
+        let (_, form, _) = unsafe { self.inner.forms.get_unchecked(M_CUR_ID.0 as usize) };
         (*form, self.inner.main_cursor)
     }
 
     /// The [`Form`] "ExtraCursor", and its shape.
     pub fn extra_cursor(&self) -> (Form, Option<CursorShape>) {
-        let (_, form, _) = unsafe {
-            self.inner.forms.get_unchecked(E_CUR_ID.0 as usize)
-        };
+        let (_, form, _) = unsafe { self.inner.forms.get_unchecked(E_CUR_ID.0 as usize) };
         (*form, self.inner.extra_cursor)
     }
 
+    /// The `"Default"` form's [`Form`]
     pub fn get_default(&self) -> Form {
         self.forms[0].0
     }
 }
 
+/// An enum that helps in the modification of forms
+enum FormType {
+    Normal,
+    Ref(FormId),
+    Weakest,
+}
+
+/// The position of each form that eventually references the `n`th
 fn refs_of(inner: &RwLockWriteGuard<InnerPalette>, n: usize) -> Vec<usize> {
     let mut refs = Vec::new();
-    for (i, (.., refed)) in inner.forms.iter().enumerate() {
-        if let Some(refed) = refed
+    for (i, (.., f_ty)) in inner.forms.iter().enumerate() {
+        if let FormType::Ref(refed) = f_ty
             && refed.0 as usize == n
         {
             refs.push(i);
@@ -534,8 +730,9 @@ fn refs_of(inner: &RwLockWriteGuard<InnerPalette>, n: usize) -> Vec<usize> {
     refs
 }
 
+/// If form references would eventually lead to a loop
 fn would_be_circular(inner: &RwLockWriteGuard<InnerPalette>, referee: usize, refed: usize) -> bool {
-    if let (.., Some(refed_ref)) = inner.forms[refed] {
+    if let (.., FormType::Ref(refed_ref)) = inner.forms[refed] {
         match refed_ref.0 as usize == referee {
             true => true,
             false => would_be_circular(inner, referee, refed_ref.0 as usize),
@@ -545,6 +742,7 @@ fn would_be_circular(inner: &RwLockWriteGuard<InnerPalette>, referee: usize, ref
     }
 }
 
+/// Mimics [`ContentStyle`] methods for the [`Form`] type
 macro mimic_method {
     ($method:ident $type:ty) => {
         pub fn $method(self, val: $type) -> Self {

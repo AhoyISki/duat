@@ -388,9 +388,9 @@ impl Hooks {
             for (_, f) in &mut *hooks_of.0.lock() {
                 f(&args)
             }
-
-            H::post_hook(&args);
         }
+        
+        H::post_hook(&args);
     }
 
     /// Checks if a hook group exists

@@ -57,7 +57,7 @@ pub use self::{
     },
     file::{File, FileCfg},
     line_numbers::{LineNumbers, LineNumbersCfg},
-    status_line::{common, status, State, StatusLine, StatusLineCfg},
+    status_line::{State, StatusLine, StatusLineCfg, common, status},
 };
 use crate::{
     data::{Context, Data, RwData, RwLock},
@@ -675,16 +675,16 @@ where
 
         input.send_key(key, &self.widget, area, context);
 
+        let mut widget = self.widget.write();
+        
         if let Some(cursors) = input.cursors() {
-            let mut widget = self.widget.write();
-
             widget.text_mut().add_cursor_tags(cursors);
 
             area.scroll_around_point(widget.text(), cursors.main().caret(), widget.print_cfg());
-
-            widget.update(area);
-            widget.print(area);
         }
+
+        widget.update(area);
+        widget.print(area);
     }
 
     fn on_focus(&self, area: &<U as Ui>::Area) {

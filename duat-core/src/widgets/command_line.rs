@@ -325,6 +325,7 @@ where
     }
 
     fn update(&self, text: &mut Text) {
+        crate::log_info!("{}", text.to_string());
         let cur_file = self.context.cur_file().unwrap();
         let mut list = self.list.write();
         if let Some(saved) = list.iter_mut().find(|s| s.pat_is(text)) {
@@ -379,8 +380,9 @@ where
 
         input.search_inc(file, area, self.context, searcher);
 
+        let mut file = file.write();
+
         if let Some(cursors) = input.cursors() {
-            let mut file = file.write();
             <File as ActiveWidget<U>>::text_mut(&mut file).add_cursor_tags(cursors);
 
             area.scroll_around_point(
@@ -388,9 +390,9 @@ where
                 cursors.main().caret(),
                 <File as PassiveWidget<U>>::print_cfg(&file),
             );
-
-            <File as PassiveWidget<U>>::update(&mut file, area);
-            <File as PassiveWidget<U>>::print(&mut file, area);
         }
+
+        <File as PassiveWidget<U>>::update(&mut file, area);
+        <File as PassiveWidget<U>>::print(&mut file, area);
     }
 }

@@ -1,6 +1,7 @@
-use super::{key, Cursors, EditHelper, InputMethod, KeyCode, KeyEvent, KeyMod};
+use super::{Cursors, EditHelper, InputMethod, KeyCode, KeyEvent, KeyMod, key};
 use crate::{
     data::{Context, RwData},
+    text::Point,
     ui::Ui,
     widgets::CommandLine,
 };
@@ -85,9 +86,9 @@ where
 
             key!(KeyCode::Esc) => {
                 helper.move_main(|m| {
-                    m.move_hor(isize::MIN);
+                    m.move_to(Point::default());
                     m.set_anchor();
-                    m.move_hor(isize::MAX);
+                    m.move_to(m.len_point());
                 });
                 helper.edit_on_main(|e| e.replace(""));
                 self.cursors = Cursors::new_exclusive();
