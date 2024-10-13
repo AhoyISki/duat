@@ -18,15 +18,13 @@ use std::{marker::PhantomData, sync::Arc};
 
 use parking_lot::RwLock;
 
-use super::File;
 use crate::{
     data::{Context, RoData, RwData},
     forms::{self, Form},
     hooks,
     input::{Commander, InputMethod},
-    log_info,
     text::{Ghost, Key, PrintCfg, SavedMatches, Tag, Text, text},
-    ui::{Area, PushSpecs, Ui},
+    ui::{PushSpecs, Ui},
     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
 };
 
@@ -339,7 +337,7 @@ where
         if let Some(saved) = list.iter_mut().find(|s| s.pat_is(text)) {
             let searcher = saved.searcher();
             cur_file.mutate_data(|file, area, input| {
-                self.update_inc_search(file, area, input, searcher);
+                input.write().search_inc(file, area, self.context, searcher);
             });
         } else {
             match SavedMatches::new(text.to_string()) {
@@ -350,7 +348,7 @@ where
 
                     let searcher = saved.searcher();
                     cur_file.mutate_data(|file, area, input| {
-                        self.update_inc_search(file, area, input, searcher);
+                        input.write().search_inc(file, area, self.context, searcher);
                     });
 
                     list.push(saved);
@@ -382,40 +380,5 @@ where
         cur_file.mutate_data(|file, area, input| {
             input.write().end_inc_search(file, area, self.context)
         });
-    }
-}
-
-impl<U> IncSearch<U>
-where
-    U: Ui,
-{
-    fn update_inc_search(
-        &self,
-        file: &RwData<File>,
-        area: &<U as Ui>::Area,
-        input: &RwData<dyn InputMethod<U>>,
-        searcher: crate::text::Searcher,
-    ) {
-        let mut input = input.write();
-        if let Some(cursors) = input.cursors() {
-            <File as ActiveWidget<U>>::text_mut(&mut file.write()).remove_cursor_tags(cursors);
-        }
-
-        input.search_inc(file, area, self.context, searcher);
-
-        let mut file = file.write();
-
-        if let Some(cursors) = input.cursors() {
-            <File as ActiveWidget<U>>::text_mut(&mut file).add_cursor_tags(cursors);
-
-            area.scroll_around_point(
-                file.text(),
-                cursors.main().caret(),
-                <File as PassiveWidget<U>>::print_cfg(&file),
-            );
-        }
-
-        <File as PassiveWidget<U>>::update(&mut file, area);
-        <File as PassiveWidget<U>>::print(&mut file, area);
     }
 }

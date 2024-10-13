@@ -71,7 +71,7 @@ use parking_lot::{Mutex, RwLock};
 pub use self::global::*;
 use crate::{
     data::RwData,
-    input::KeyEvent,
+    input::{InputMethod, KeyEvent},
     ui::{FileBuilder, Ui, WindowBuilder},
     widgets::ActiveWidget,
 };
@@ -132,11 +132,17 @@ where
     W: ActiveWidget<U>,
     U: Ui,
 {
-    type Args = (RwData<W>, U::Area);
+    type Args = (RwData<W>, RwData<dyn InputMethod<U>>, U::Area);
 
     fn post_hook(args: &Self::Args) {
-        let (widget, area) = args;
+        let (widget, input, area) = args;
+        let input = input.read();
         let mut widget = widget.write();
+
+		if let Some(cursors) = input.cursors() {
+    		widget.text_mut().add_cursor_tags(cursors);
+		}
+        
         widget.update(area);
         widget.print(area);
     }
@@ -159,11 +165,17 @@ where
     W: ActiveWidget<U>,
     U: Ui,
 {
-    type Args = (RwData<W>, U::Area);
+    type Args = (RwData<W>, RwData<dyn InputMethod<U>>, U::Area);
 
     fn post_hook(args: &Self::Args) {
-        let (widget, area) = args;
+        let (widget, input, area) = args;
+        let input = input.read();
         let mut widget = widget.write();
+
+		if let Some(cursors) = input.cursors() {
+    		widget.text_mut().add_cursor_tags(cursors);
+		}
+        
         widget.update(area);
         widget.print(area);
     }

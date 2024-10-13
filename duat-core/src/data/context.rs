@@ -12,7 +12,7 @@ use crate::{
     commands::{Args, CmdResult, Commands, Flags},
     input::InputMethod,
     text::Text,
-    ui::{Ui, Window},
+    ui::{Area, Ui, Window},
     widgets::{
         ActiveWidget, CommandLine, CommandLineMode, File, PassiveWidget, RelatedWidgets, Widget,
     },
@@ -255,7 +255,30 @@ where
         let data = self.0.raw_read();
         let (file, area, input, _) = data.as_ref().unwrap();
 
-        f(file, area, input)
+        input.inspect(|input| {
+            if let Some(cursors) = input.cursors() {
+                <File as ActiveWidget<U>>::text_mut(&mut file.write()).remove_cursor_tags(cursors);
+            }
+        });
+
+        let ret = f(file, area, input);
+
+        let input = input.read();
+        let mut file = file.write();
+        if let Some(cursors) = input.cursors() {
+            <File as ActiveWidget<U>>::text_mut(&mut file).add_cursor_tags(cursors);
+
+            area.scroll_around_point(
+                file.text(),
+                cursors.main().caret(),
+                <File as PassiveWidget<U>>::print_cfg(&file),
+            );
+        }
+
+        <File as PassiveWidget<U>>::update(&mut file, area);
+        <File as PassiveWidget<U>>::print(&mut file, area);
+
+        ret
     }
 
     pub(crate) fn mutate_related_widget<W: 'static, R>(

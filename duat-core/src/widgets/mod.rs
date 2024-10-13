@@ -676,7 +676,7 @@ where
         input.send_key(key, &self.widget, area, context);
 
         let mut widget = self.widget.write();
-        
+
         if let Some(cursors) = input.cursors() {
             widget.text_mut().add_cursor_tags(cursors);
 
@@ -688,15 +688,30 @@ where
     }
 
     fn on_focus(&self, area: &<U as Ui>::Area) {
+        self.input.inspect(|input| {
+            if let Some(cursors) = input.cursors() {
+                self.widget.write().text_mut().remove_cursor_tags(cursors);
+            }
+        });
+
         self.input.mutate(|input| input.on_focus(area));
         self.widget.mutate(|widget| widget.on_focus(area));
-        hooks::trigger::<FocusedOn<W, U>>((self.widget.clone(), area.clone()));
+
+        hooks::trigger::<FocusedOn<W, U>>((
+            self.widget.clone(),
+            self.dyn_input.clone(),
+            area.clone(),
+        ));
     }
 
     fn on_unfocus(&self, area: &<U as Ui>::Area) {
         self.input.mutate(|input| input.on_unfocus(area));
         self.widget.mutate(|widget| widget.on_unfocus(area));
-        hooks::trigger::<UnfocusedFrom<W, U>>((self.widget.clone(), area.clone()));
+        hooks::trigger::<UnfocusedFrom<W, U>>((
+            self.widget.clone(),
+            self.dyn_input.clone(),
+            area.clone(),
+        ));
     }
 
     fn related_widgets(&self) -> Option<RelatedWidgets<U>> {
