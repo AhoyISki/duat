@@ -341,7 +341,19 @@ impl Text {
             "byte out of bounds: the len is {}, but the byte is {at}",
             self.len_bytes()
         );
-        let (b, c, mut l) = self.records.closest_to_by(at, |(.., l)| *l);
+        let (b, c, mut l) = {
+            let (mut b, mut c, l) = self.records.closest_to_by(at, |(.., l)| *l);
+            self.strs_in_range(..b)
+                .into_iter()
+                .flat_map(str::chars)
+                .rev()
+                .take_while(|c| *c != '\n')
+                .for_each(|char| {
+                    b -= char.len_utf8();
+                    c -= 1;
+                });
+            (b, c, l)
+        };
 
         let found = if at >= l {
             let [s0, s1] = self.strs_in_range(b..);
@@ -748,6 +760,12 @@ mod point {
     impl TwoPoints for Item {
         fn to_points(self) -> (Point, Option<Point>) {
             (self.real, self.ghost)
+        }
+    }
+
+    impl std::fmt::Display for Point {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "b{}, c{}, l{}", self.b, self.c, self.l)
         }
     }
 

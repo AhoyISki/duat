@@ -525,7 +525,7 @@ mod cursor {
 
     impl std::fmt::Display for Cursor {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "{}:{}", self.caret.line() + 1, self.caret.vcol() + 1)
+            write!(f, "{}:{}, {}", self.caret.line() + 1, self.caret.vcol() + 1, self.caret.dcol)
         }
     }
 
