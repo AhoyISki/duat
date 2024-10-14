@@ -184,6 +184,7 @@ pub mod thread {
         sync::{
             LazyLock,
             atomic::{AtomicUsize, Ordering},
+            mpsc,
         },
         thread::JoinHandle,
         time::Duration,
@@ -214,33 +215,34 @@ pub mod thread {
 
     pub(crate) fn queue<R>(f: impl FnOnce() -> R + Send + 'static) {
         static LOOP: Once = Once::new();
-        static ACTIONS: LazyLock<Mutex<Vec<Box<dyn FnOnce() + Send>>>> =
-            LazyLock::new(Mutex::default);
+        static ACTIONS: LazyLock<(
+            mpsc::Sender<Box<dyn FnOnce() + Send>>,
+            Mutex<mpsc::Receiver<Box<dyn FnOnce() + Send>>>,
+        )> = LazyLock::new(|| {
+            let (sender, receiver) = mpsc::channel();
+            (sender, Mutex::new(receiver))
+        });
 
-        let f = move || {
-            f();
-        };
+        let (sender, receiver) = &*ACTIONS;
 
         if still_running() {
-            ACTIONS.lock().push(Box::new(f));
+            sender
+                .send(Box::new(move || {
+                    f();
+                }))
+                .unwrap();
         }
 
         LOOP.call_once(|| {
             spawn(|| {
+                let recv = receiver.lock();
                 while !crate::has_ended() {
-                    if let Some(mut actions) = ACTIONS.try_lock_for(Duration::from_micros(500)) {
-                        if !actions.is_empty() {
-                            let mut taken = std::mem::take(&mut *actions);
-                            drop(actions);
-
-                            for action in taken.drain(..) {
-                                action();
-                            }
-                        }
+                    if let Ok(f) = recv.recv_timeout(Duration::from_millis(10)) {
+                        f();
                     }
                 }
             });
-        })
+        });
     }
 
     /// Returns true if there are any threads still running

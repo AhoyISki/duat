@@ -260,7 +260,7 @@ mod global {
     /// [hook]: Hookable
     /// [`hooks::add_grouped`]: add_grouped
     pub fn remove_group(group: &'static str) {
-        crate::thread::queue(move || HOOKS.remove(group))
+        crate::thread::queue(move || HOOKS.remove(group));
     }
 
     /// Triggers a hooks for a [`Hookable`] struct
@@ -378,13 +378,11 @@ impl Hooks {
 
     /// Removes hooks with said group
     fn remove(&'static self, group: &'static str) {
-        crate::thread::spawn(move || {
-            self.groups.write().extract_if(|g| *g == group).next();
-            let mut map = self.types.write();
-            for holder in map.iter_mut() {
-                holder.1.remove_group(group)
-            }
-        });
+        self.groups.write().extract_if(|g| *g == group).next();
+        let mut map = self.types.write();
+        for holder in map.iter_mut() {
+            holder.1.remove_group(group)
+        }
     }
 
     /// Triggers hooks with args of the [`Hookable`]
