@@ -139,10 +139,10 @@ where
         let input = input.read();
         let mut widget = widget.write();
 
-		if let Some(cursors) = input.cursors() {
-    		widget.text_mut().add_cursor_tags(cursors);
-		}
-        
+        if let Some(cursors) = input.cursors() {
+            widget.text_mut().add_cursor_tags(cursors);
+        }
+
         widget.update(area);
         widget.print(area);
     }
@@ -172,10 +172,10 @@ where
         let input = input.read();
         let mut widget = widget.write();
 
-		if let Some(cursors) = input.cursors() {
-    		widget.text_mut().add_cursor_tags(cursors);
-		}
-        
+        if let Some(cursors) = input.cursors() {
+            widget.text_mut().add_cursor_tags(cursors);
+        }
+
         widget.update(area);
         widget.print(area);
     }
@@ -401,7 +401,7 @@ impl Hooks {
                 f(&args)
             }
         }
-        
+
         H::post_hook(&args);
     }
 

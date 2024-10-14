@@ -705,8 +705,15 @@ where
     }
 
     fn on_unfocus(&self, area: &<U as Ui>::Area) {
+        self.input.inspect(|input| {
+            if let Some(cursors) = input.cursors() {
+                self.widget.write().text_mut().remove_cursor_tags(cursors);
+            }
+        });
+
         self.input.mutate(|input| input.on_unfocus(area));
         self.widget.mutate(|widget| widget.on_unfocus(area));
+
         hooks::trigger::<UnfocusedFrom<W, U>>((
             self.widget.clone(),
             self.dyn_input.clone(),

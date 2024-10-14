@@ -363,6 +363,7 @@ where
 
                     text.insert_tag(span.start.offset, Tag::PushForm(id), self.key);
                     text.insert_tag(span.end.offset, Tag::PopForm(id), self.key);
+                    self.error_range = Some((span.start.offset, span.end.offset));
                 }
             }
         }
