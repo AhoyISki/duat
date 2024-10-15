@@ -205,9 +205,10 @@ pub mod thread {
         })
     }
 
-	/// Queues an action
-	///
-	/// All queued actions will be done in the sequence that they came in, sequentially in a single thread.
+    /// Queues an action
+    ///
+    /// All queued actions will be done in the sequence that they came
+    /// in, sequentially in a single thread.
     pub(crate) fn queue<R>(f: impl FnOnce() -> R + Send + 'static) {
         static LOOP: Once = Once::new();
         static ACTIONS: LazyLock<(

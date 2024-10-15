@@ -82,7 +82,6 @@ where
 {
     pub fn new() -> Self {
         status!(
-            U,
             [File] { File::name } " " [Selections] selections_fmt " "
             [Coords] main_col [Separator] ":" [Coords] main_line
             [Separator] "/" [Coords] { File::len_lines }
@@ -280,69 +279,73 @@ unsafe impl<U> Send for StatusLine<U> where U: Ui {}
 unsafe impl<U> Sync for StatusLine<U> where U: Ui {}
 
 pub macro status {
-    (@append $ui:ty, $text_fn:expr, $checker:expr, []) => {{
+    (@append $ui:ty, $pre_fn:expr, $checker:expr, []) => {{
         let form_id = forms::to_id!("Default");
 
-        let text_fn = move |builder: &mut Builder, reader: &FileReader<$ui>| {
-            $text_fn(builder, reader);
+        let pre_fn = move |builder: &mut Builder, reader: &FileReader<$ui>| {
+            $pre_fn(builder, reader);
             builder.push(Tag::PushForm(form_id));
         };
 
-        (text_fn, $checker)
+        (pre_fn, $checker)
     }},
 
     // Insertion of directly named forms.
-    (@append $ui:ty, $text_fn:expr, $checker:expr, [$form:ident]) => {{
+    (@append $ui:ty, $pre_fn:expr, $checker:expr, [$form:ident]) => {{
         let id = forms::to_id!(stringify!($form));
 
-        let text_fn = move |builder: &mut Builder, reader: &FileReader<$ui>| {
-            $text_fn(builder, reader);
+        let pre_fn = move |builder: &mut Builder, reader: &FileReader<$ui>| {
+            $pre_fn(builder, reader);
             builder.push(Tag::PushForm(id));
         };
 
-        (text_fn, $checker)
+        (pre_fn, $checker)
     }},
 
-	// Insertion of text, reading functions, or tags.
-    (@append $ui:ty, $text_fn:expr, $checker:expr, $text:expr) => {{
+    // Insertion of text, reading functions, or tags.
+    (@append $ui:ty, $pre_fn:expr, $checker:expr, $text:expr) => {{
         let (mut appender, checker) = State::from($text).fns();
 
         let checker = move || { $checker() || checker() };
 
-        let text_fn = move |builder: &mut Builder, reader: &FileReader<$ui>| {
-            $text_fn(builder, reader);
+        let pre_fn = move |builder: &mut Builder, reader: &FileReader<$ui>| {
+            $pre_fn(builder, reader);
             appender(builder, reader);
         };
 
-        (text_fn, checker)
+        (pre_fn, checker)
     }},
 
-    (@parse $ui:ty, $text_fn:expr, $checker:expr,) => { ($text_fn, $checker) },
+    (@parse $ui:ty, $pre_fn:expr, $checker:expr,) => { ($pre_fn, $checker) },
 
-    (@parse $ui:ty, $text_fn:expr, $checker:expr, $part:tt $($parts:tt)*) => {{
-        let (mut text_fn, checker) = status!(@append $ui, $text_fn, $checker, $part);
-        status!(@parse $ui, text_fn, checker, $($parts)*)
+    (@parse $ui:ty, $pre_fn:expr, $checker:expr, $part:tt $($parts:tt)*) => {{
+        #[allow(unused_mut)]
+        let (mut pre_fn, checker) = status!(@append $ui, $pre_fn, $checker, $part);
+        status!(@parse $ui, pre_fn, checker, $($parts)*)
     }},
 
     (@parse $ui:ty, $($parts:tt)*) => {{
-        let text_fn = |_: &mut Builder, _: &FileReader<$ui>| {};
+        let pre_fn = |_: &mut Builder, _: &FileReader<$ui>| {};
         let checker = || { false };
-        status!(@parse $ui, text_fn, checker, $($parts)*)
+        status!(@parse $ui, pre_fn, checker, $($parts)*)
     }},
 
-    ($ui:ty, $($parts:tt)*) => {{
+    ($($parts:tt)*) => {{
         use $crate::text::Builder;
-		#[allow(unused_mut)]
-        let (mut text_fn, checker) = status!(@parse $ui, $($parts)*);
 
-        let text_fn = move |mut builder: Builder, reader: &FileReader<$ui>| {
-            text!(builder, AlignRight);
-            text_fn(&mut builder, reader);
-            builder.finish()
-        };
+        fn fn_former<U: Ui>() -> (impl FnMut(Builder, &FileReader<U>) -> Text, impl Fn() -> bool) {
+            let (mut pre_fn, checker) = status!(@parse U, $($parts)*);
+            let pre_fn = move |mut builder: Builder, reader: &FileReader<U>| {
+                pre_fn(&mut builder, reader);
+                builder.finish()
+            };
+            (pre_fn, checker)
+        }
+
+        let (pre_fn, checker) = fn_former();
 
         StatusLineCfg::new_with(
-            Box::new(text_fn),
+            Box::new(pre_fn),
             Box::new(checker),
             PushSpecs::below().with_ver_len(1.0)
         )

@@ -227,14 +227,9 @@ pub mod plugin {
 
 pub mod widgets {
     //! Duat's builtin widgets
-    pub use duat_core::{ui::Constraint, widgets::File};
+    pub use duat_core::{ui::Constraint, widgets::{File, status}};
 
     use crate::Ui;
-
-    pub macro status($($tree:tt)*) {{
-        use $crate::prelude::duat_core::widgets::status;
-        status!(Ui, $($tree)*)
-    }}
 
     pub type CommandLine = duat_core::widgets::CommandLine<Ui>;
     pub type CommandLineCfg<I> = duat_core::widgets::CommandLineCfg<I, Ui>;

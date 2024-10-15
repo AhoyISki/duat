@@ -34,7 +34,7 @@ use crate::{
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::add::<OnFileOpen<U>>(|builder: &FileBuilder<U>| {
-///     builder.push(LineNumbers::<U>::cfg());
+///     builder.push(LineNumbers::cfg());
 /// });
 /// # }
 /// ```
@@ -75,11 +75,10 @@ use crate::{
 /// # fn test<U: Ui>() {
 /// hooks::remove_group("FileWidgets");
 /// hooks::add::<OnFileOpen<U>>(|builder: &FileBuilder<U>| {
-///     let line_numbers_cfg =
-///         LineNumbers::<U>::cfg().relative().on_the_right();
+///     let line_numbers_cfg = LineNumbers::cfg().relative().on_the_right();
 ///     builder.push(line_numbers_cfg);
 ///     // Push a StatusLine to the bottom.
-///     builder.push(StatusLine::<U>::cfg());
+///     builder.push(StatusLine::cfg());
 ///     // Push a CommandLine to the bottom.
 ///     builder.push(CommandLine::cfg());
 /// });
@@ -157,12 +156,10 @@ where
     /// # fn test<U: Ui>() {
     /// hooks::remove_group("FileWidgets");
     /// hooks::add::<OnFileOpen<U>>(|builder: &FileBuilder<U>| {
-    ///     let line_numbers_cfg = LineNumbers::<U>::cfg().rel_abs();
+    ///     let line_numbers_cfg = LineNumbers::cfg().rel_abs();
     ///     builder.push(line_numbers_cfg);
     ///
-    ///     let status_line_cfg = status!(U,
-    ///         { File::name } " " selections_fmt
-    ///     );
+    ///     let status_line_cfg = status!({ File::name } " " selections_fmt);
     ///     builder.push(status_line_cfg);
     /// });
     /// # }
@@ -240,14 +237,14 @@ where
     /// # fn test<U: Ui>() {
     /// hooks::remove_group("FileWidgets");
     /// hooks::add::<OnFileOpen<U>>(|builder: &FileBuilder<U>| {
-    ///     builder.push(LineNumbers::<U>::cfg());
+    ///     builder.push(LineNumbers::cfg());
     ///     
-    ///     let right_status = status!(U,
+    ///     let right_status = status!(
     ///         { File::name } " " selections_fmt " " main_fmt
     ///     );
     ///     let (right_status_area, _) = builder.push(right_status);
     ///
-    ///     let left_status = status!(U, mode_fmt).push_left();
+    ///     let left_status = status!(mode_fmt).push_left();
     ///     builder.push_to(left_status, right_status_area);
     ///
     ///     builder.push(CommandLine::cfg());
@@ -323,7 +320,7 @@ where
 /// # fn test<U: Ui>() {
 /// hooks::remove_group("FileWidgets");
 /// hooks::add::<OnFileOpen<U>>(|builder| {
-///     builder.push(LineNumbers::<U>::cfg());
+///     builder.push(LineNumbers::cfg());
 ///     builder.push(StatusLine::cfg());
 /// });
 ///
@@ -441,7 +438,7 @@ where
     /// # };
     /// # fn test<U: Ui>(builder: &WindowBuilder<U>) {
     /// // StatusLine goes below by default
-    /// let (status_area, _) = builder.push(StatusLine::<U>::cfg());
+    /// let (status_area, _) = builder.push(StatusLine::cfg());
     /// let cmd_line_cfg = CommandLine::cfg().left_ratioed(3, 5);
     /// builder.push_to(cmd_line_cfg, status_area);
     /// # }
