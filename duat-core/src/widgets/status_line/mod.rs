@@ -53,13 +53,15 @@
 pub mod common;
 mod state;
 
+use std::fmt::Alignment;
+
 use common::{main_col, main_line, selections_fmt};
 
 pub use self::state::State;
 use crate::{
     data::{Context, FileReader},
     forms::{self, Form},
-    text::{AlignRight, Builder, PrintCfg, Tag, Text, text},
+    text::{AlignCenter, AlignRight, Builder, PrintCfg, Tag, Text, text},
     ui::{PushSpecs, Ui},
     widgets::{File, PassiveWidget, Widget, WidgetCfg},
 };
@@ -68,9 +70,10 @@ pub struct StatusLineCfg<U>
 where
     U: Ui,
 {
-    text_fn: TextFn<U>,
+    pre_fn: Box<dyn FnMut(crate::text::Builder, &FileReader<U>) -> Text>,
     checker: Box<dyn Fn() -> bool>,
     specs: PushSpecs,
+    alignment: Alignment,
 }
 
 impl<U> StatusLineCfg<U>
@@ -86,8 +89,17 @@ where
         )
     }
 
-    pub fn new_with(text_fn: TextFn<U>, checker: Box<dyn Fn() -> bool>, specs: PushSpecs) -> Self {
-        Self { text_fn, checker, specs }
+    pub fn new_with(
+        pre_fn: Box<dyn FnMut(Builder, &FileReader<U>) -> Text>,
+        checker: Box<dyn Fn() -> bool>,
+        specs: PushSpecs,
+    ) -> Self {
+        Self {
+            pre_fn,
+            checker,
+            specs,
+            alignment: Alignment::Right,
+        }
     }
 
     pub fn above(self) -> Self {
@@ -95,6 +107,14 @@ where
             specs: PushSpecs::above().with_ver_len(1.0),
             ..self
         }
+    }
+
+    pub fn aligh_left(self) -> Self {
+        Self { alignment: Alignment::Left, ..self }
+    }
+
+    pub fn aligh_center(self) -> Self {
+        Self { alignment: Alignment::Center, ..self }
     }
 }
 
@@ -105,7 +125,7 @@ where
     type Widget = StatusLine<U>;
 
     fn build(
-        self,
+        mut self,
         context: Context<U>,
         on_file: bool,
     ) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
@@ -121,11 +141,21 @@ where
             (reader, Box::new(checker) as Box<dyn Fn() -> bool>)
         };
 
-        let widget = Widget::passive(StatusLine {
-            reader,
-            text_fn: self.text_fn,
-            text: Text::default(),
-        });
+        let text_fn: TextFn<U> = match self.alignment {
+            Alignment::Left => Box::new(move |file| (self.pre_fn)(Text::builder(), file)),
+            Alignment::Right => Box::new(move |file| {
+                let mut builder = Text::builder();
+                text!(builder, AlignRight);
+                (self.pre_fn)(builder, file)
+            }),
+            Alignment::Center => Box::new(move |file| {
+                let mut builder = Text::builder();
+                text!(builder, AlignCenter);
+                (self.pre_fn)(builder, file)
+            }),
+        };
+
+        let widget = Widget::passive(StatusLine { reader, text_fn, text: Text::default() });
 
         (widget, checker, self.specs)
     }
@@ -201,7 +231,7 @@ impl<U> StatusLine<U>
 where
     U: Ui,
 {
-    pub fn config() -> StatusLineCfg<U> {
+    pub fn cfg() -> StatusLineCfg<U> {
         StatusLineCfg::new()
     }
 }
@@ -211,7 +241,7 @@ where
     U: Ui,
 {
     fn build(context: Context<U>, on_file: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
-        Self::config().build(context, on_file)
+        Self::cfg().build(context, on_file)
     }
 
     fn update(&mut self, _area: &U::Area) {
@@ -289,11 +319,11 @@ pub macro status {
     }},
 
     ($ui:ty, $($parts:tt)*) => {{
+        use $crate::text::Builder;
 		#[allow(unused_mut)]
         let (mut text_fn, checker) = status!(@parse $ui, $($parts)*);
 
-        let text_fn = move |reader: &FileReader<$ui>| {
-            let mut builder = Builder::new();
+        let text_fn = move |mut builder: Builder, reader: &FileReader<$ui>| {
             text!(builder, AlignRight);
             text_fn(&mut builder, reader);
             builder.finish()
