@@ -1,3 +1,6 @@
+//! Options concerning the printing of [`File`]s
+//!
+//! [`File`]: crate::widgets::File
 #[allow(unused_imports)]
 use duat_core::text::{word_chars as w_chars, PrintCfg, WordChars};
 

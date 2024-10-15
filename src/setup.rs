@@ -1,4 +1,5 @@
-use std::sync::{atomic::AtomicUsize, mpsc, LazyLock, RwLock};
+//! Internal handling of [`Context`]
+use std::sync::{LazyLock, RwLock, atomic::AtomicUsize, mpsc};
 
 use duat_core::{
     commands::Commands,
@@ -11,10 +12,9 @@ use duat_core::{
 use duat_term::VertRule;
 
 use crate::{
-    commands,
+    CfgFn, Ui, commands,
     hooks::{self, OnFileOpen, OnWindowOpen, UnfocusedFrom},
     prelude::{CommandLine, LineNumbers, StatusLine},
-    CfgFn, Ui,
 };
 
 // Context's statics.
@@ -50,13 +50,13 @@ pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
 #[doc(hidden)]
 pub fn pre_setup() {
     hooks::add_grouped::<OnFileOpen>("FileWidgets", |builder| {
-        builder.push::<VertRule>();
-        builder.push::<LineNumbers>();
+        builder.push(VertRule::cfg());
+        builder.push(LineNumbers::cfg());
     });
 
     hooks::add_grouped::<OnWindowOpen>("WindowWidgets", |builder| {
-        let (child, _) = builder.push::<StatusLine>();
-        builder.push_cfg_to(CommandLine::cfg().left_ratioed(4, 7), child);
+        let (child, _) = builder.push(StatusLine::cfg());
+        builder.push_to(CommandLine::cfg().left_ratioed(4, 7), child);
     });
 
     hooks::add_grouped::<UnfocusedFrom<CommandLine>>("CmdLineNotifications", |_cmd_line| {

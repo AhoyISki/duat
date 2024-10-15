@@ -356,7 +356,7 @@ where
             loop {
                 let cur_window = &windows[cw.load(Ordering::Relaxed)];
 
-                if let Ok(event) = rx.recv_timeout(Duration::from_millis(10)) {
+                if let Ok(event) = rx.recv_timeout(Duration::from_millis(50)) {
                     match event {
                         Event::Key(key) => {
                             cur_window.send_key(key, self.context);

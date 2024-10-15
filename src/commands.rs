@@ -142,6 +142,8 @@
 //!     )))
 //! });
 //! ```
+//!
+//! [`Form`]: crate::forms::Form
 
 pub use duat_core::commands::{Args, Flags};
 use duat_core::{
@@ -314,8 +316,8 @@ pub fn add(
 /// .unwrap();
 /// ```
 ///
-/// [`File`]: duat_core::file::File
-/// [`InputMethod`]: crate::config::input::InputMethod
+/// [`File`]: crate::widgets::File
+/// [`InputMethod`]: crate::input::InputMethod
 /// [`Session`]: crate::session::Session
 /// [`RwData`]: crate::prelude::data::RwData
 #[inline(never)]
@@ -448,8 +450,9 @@ pub fn add_for_current<T: 'static>(
 /// }
 /// ```
 ///
+/// [`Session`]: duat_core::session::Session
 /// [`dyn Area`]: duat_core::ui::Area
-/// [`File`]: duat_core::file::File
+/// [`File`]: crate::widgets::File
 /// [`CommandLine`]: crate::widgets::CommandLine
 #[inline(never)]
 pub fn add_for_widget<W: PassiveWidget<Ui>>(

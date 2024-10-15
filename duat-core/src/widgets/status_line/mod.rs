@@ -109,12 +109,24 @@ where
         }
     }
 
-    pub fn aligh_left(self) -> Self {
+    pub fn align_left(self) -> Self {
         Self { alignment: Alignment::Left, ..self }
     }
 
-    pub fn aligh_center(self) -> Self {
-        Self { alignment: Alignment::Center, ..self }
+    pub fn push_left(self) -> Self {
+        Self {
+            alignment: Alignment::Left,
+            specs: self.specs.to_left(),
+            ..self
+        }
+    }
+
+    pub fn push_left_centered(self) -> Self {
+        Self {
+            alignment: Alignment::Center,
+            specs: self.specs.to_left(),
+            ..self
+        }
     }
 }
 

@@ -658,6 +658,7 @@ impl Painter {
     pub fn apply(&mut self, id: FormId) -> ContentStyle {
         let (_, form, _) = unsafe { self.inner.forms.get_unchecked(id.0 as usize) };
 
+        // So the cursor is always the last form
         self.forms.push((*form, id));
         self.cur_sty = self.make_style();
         self.cur_sty

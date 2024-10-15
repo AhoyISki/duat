@@ -19,13 +19,13 @@ pub use self::{
     layout::{FileId, Layout, MasterOnLeft},
 };
 use crate::{
+    DuatError,
     cache::load_cache,
     data::{Context, RoData, RwData},
     forms::Painter,
     hooks::{self, OnFileOpen},
     text::{Item, Iter, IterCfg, Point, PrintCfg, RevIter, Text},
     widgets::{File, PassiveWidget, Widget},
-    DuatError,
 };
 
 /// All the methods that a working gui/tui will need to implement, in
@@ -116,7 +116,7 @@ pub trait Area: Send + Sync + Sized {
     /// Only one [`Area`] should be active at any given moment.
     fn is_active(&self) -> bool;
 
-    /// Prints the [`Text`][crate::text::Text] via an [`Iterator`]
+    /// Prints the [`Text`] via an [`Iterator`]
     fn print(&self, text: &Text, cfg: PrintCfg, painter: Painter);
 
     fn print_with<'a>(
@@ -166,7 +166,7 @@ pub trait Area: Send + Sync + Sized {
     /// members of the cluster.
     fn get_cluster_master(&self) -> Option<Self>;
 
-	/// The current printing information of the area
+    /// The current printing information of the area
     fn get_print_info(&self) -> Self::PrintInfo;
 
     /// Returns a printing iterator

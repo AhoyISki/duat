@@ -1,28 +1,35 @@
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 
 use duat_core::ui::Axis;
 
 use crate::{area::Coord, print::VarPoint};
 
-/// What type of line should be used to [`Frame`] a given [`Rect`].
+/// What type of line should separate widgets
 #[derive(Default, Clone, Copy, Debug)]
 pub enum Brush {
+    /// Uses `─`, `│`, `┐`
     #[default]
     Regular,
+    /// Uses `━`, `┃`, `┓`
     Thick,
+    /// Uses `╌`, `╎`, `┐`
     Dashed,
+    /// Uses `╍`, `╏`, `┓`
     ThickDashed,
+    /// Uses `═`, `║`, `╗`
     Double,
+    /// Uses `─`, `│`, `╮`
     Rounded,
+    /// Uses `-`, `|`, `+`
     Ascii,
+    /// Uses `char` for all positions
     Custom(char),
 }
 
-/// Detailings of a framed side of a [`Rect`], automatically kept up
-/// to date.
+/// Details of the right/bottom edge of a widget
 #[derive(Debug)]
 pub struct Edge {
     pub width: Arc<AtomicUsize>,
@@ -78,7 +85,7 @@ pub struct EdgeCoords {
 }
 
 impl EdgeCoords {
-    pub fn new(tl: Coord, br: Coord, axis: Axis, line: Option<Brush>) -> Self {
+    fn new(tl: Coord, br: Coord, axis: Axis, line: Option<Brush>) -> Self {
         Self { tl, br, axis, line }
     }
 
@@ -135,25 +142,26 @@ impl EdgeCoords {
     }
 }
 
-/// Configuration about how frame a [`Rect`] with a given [`Line`].
+/// Where to apply a [`Brush`] around widgets
 ///
-/// The ways in which a [`Rect`] can be framed are as follows:
+/// This type serves to determine wether frames will be applied only
+/// between widgets, around the whole application, or not at all:
 ///
-/// - [`Empty`][Frame::Empty]: Do not frame at all.
+/// - [`Empty`]: Do not frame at all.
 /// - [`Surround`]: Frame on all sides.
-/// - [`Border`]: Frame only when the [`Edge`] in question would
-///   separate two [`Rect`]s (i.e. don't surround the application.
-/// - [`Vertical`][Frame::Vertical]: Like [`Surround`], but only
-///   applies vertical lines.
-/// - [`VerBorder`][Frame::VerBorder]: Like [`Border`], but only
-///   applies vertical lines.
-/// - [`Horizontal`][Frame::Horizontal]: Like [`Surround`], but only
-///   applies horizontal lines.
-/// - [`HorBorder`][Frame::HorBorder]: Like [`Border`], but only
-///   applies horizontal lines.
+/// - [`Border`]: Frame only around files.
+/// - [`Vertical`]: Like [`Surround`], but only on vertical lines.
+/// - [`VerBorder`]: Like [`Border`], but only on vertical lines.
+/// - [`Horizontal`]: Like [`Surround`], but only on horizontal lines.
+/// - [`HorBorder`]: Like [`Border`], but only on horizontal lines.
 ///
+/// [`Empty`]: Frame::Empty
 /// [`Surround`]: Frame::Surround
 /// [`Border`]: Frame::Border
+/// [`Vertical`]: Frame::Vertical
+/// [`VerBorder`]: Frame::VerBorder
+/// [`Horizontal`]: Frame::Horizontal
+/// [`HorBorder`]: Frame::HorBorder
 #[derive(Clone, Copy, Debug)]
 pub enum Frame {
     /// No frame
@@ -179,35 +187,10 @@ impl Default for Frame {
 }
 
 impl Frame {
-    /// Assuming that the [`Rect`] in question is the main [`Rect`],
-    /// determine which sides are supposed to be framed.
-    pub fn files_edges(&self) -> (f64, f64) {
-        match self {
-            Self::Surround(_) => (1.0, 1.0),
-            Self::Vertical(_) => (1.0, 0.0),
-            Self::Horizontal(_) => (0.0, 1.0),
-            _ => (0.0, 0.0),
-        }
-    }
-
-    pub fn border_edges(&self) -> (f64, f64) {
-        match self {
-            Self::Surround(_) | Self::Border(_) => (1.0, 1.0),
-            Self::Vertical(_) | Self::VerBorder(_) => (1.0, 0.0),
-            Self::Horizontal(_) | Self::HorBorder(_) => (0.0, 1.0),
-            Self::Empty => (0.0, 0.0),
-        }
-    }
-
-    pub fn border_edge_on(&self, axis: Axis) -> f64 {
-        let (hor_fr, ver_fr) = self.border_edges();
-        match axis {
-            Axis::Horizontal => hor_fr,
-            Axis::Vertical => ver_fr,
-        }
-    }
-
-    pub fn files_egde_on(&self, axis: Axis) -> f64 {
+    /// Same as [`files_edges`], but on only one [`Axis`]
+    ///
+    /// [`files_edges`]: Self::files_edges
+    pub(crate) fn files_edge_on(&self, axis: Axis) -> f64 {
         let (hor_fr, ver_fr) = self.files_edges();
         match axis {
             Axis::Horizontal => hor_fr,
@@ -215,9 +198,19 @@ impl Frame {
         }
     }
 
-    /// The [`Line`] of [`self`], which is [`None`] in the
-    /// [`Self::Empty`] case.
-    pub fn brush(&self) -> Option<Brush> {
+    /// Same as [`border_edges`], but on only one [`Axis`]
+    ///
+    /// [`border_edges`]: Self::border_edges
+    pub(crate) fn border_edge_on(&self, axis: Axis) -> f64 {
+        let (hor_fr, ver_fr) = self.border_edges();
+        match axis {
+            Axis::Horizontal => hor_fr,
+            Axis::Vertical => ver_fr,
+        }
+    }
+
+    /// The [`Brush`] in use, [`None`] for [`Frame::Empty`]
+    fn brush(&self) -> Option<Brush> {
         match self {
             Self::Empty => None,
             Self::Surround(brush)
@@ -226,6 +219,30 @@ impl Frame {
             | Self::VerBorder(brush)
             | Self::Horizontal(brush)
             | Self::HorBorder(brush) => Some(*brush),
+        }
+    }
+
+    /// The edges below and to the right of [`File`] regions
+    ///
+    /// [`File`]: duat_core::widgets::File
+    fn files_edges(&self) -> (f64, f64) {
+        match self {
+            Self::Surround(_) => (1.0, 1.0),
+            Self::Vertical(_) => (1.0, 0.0),
+            Self::Horizontal(_) => (0.0, 1.0),
+            _ => (0.0, 0.0),
+        }
+    }
+
+    /// The edges below and to the right of the [`File`]s region
+    ///
+    /// [`File`]: duat_core::widgets::File
+    fn border_edges(&self) -> (f64, f64) {
+        match self {
+            Self::Surround(_) | Self::Border(_) => (1.0, 1.0),
+            Self::Vertical(_) | Self::VerBorder(_) => (1.0, 0.0),
+            Self::Horizontal(_) | Self::HorBorder(_) => (0.0, 1.0),
+            Self::Empty => (0.0, 0.0),
         }
     }
 }

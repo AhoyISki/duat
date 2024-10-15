@@ -1,5 +1,5 @@
 //! A [`Widget`] that shows the visible line numbers of a
-//! [`FileWidget<U>`].
+//! [`File`].
 //!
 //! This widget has various options to configure the presentation of
 //! the lines. These can be found in the [`LineNumbersCfg`] struct.
@@ -20,7 +20,7 @@
 //! numbers will be printed. This struct shows up twice in
 //! [`LineNumbersCfg`], once for the main cursor's line, and once for
 //! all other lines. Its [`Right`][Alignment::Right] by default.
-use std::fmt::Alignment;
+use std::{fmt::Alignment, marker::PhantomData};
 
 use crate::{
     data::{Context, FileReader},
@@ -38,14 +38,14 @@ where
 {
     reader: FileReader<U>,
     text: Text,
-    cfg: LineNumbersCfg,
+    cfg: LineNumbersCfg<U>,
 }
 
 impl<U> LineNumbers<U>
 where
     U: Ui,
 {
-    pub fn cfg() -> LineNumbersCfg {
+    pub fn cfg() -> LineNumbersCfg<U> {
         LineNumbersCfg::new()
     }
 
@@ -140,21 +140,22 @@ enum Numbers {
 
 /// Configuration options for the [`LineNumbers<U>`] widget.
 #[derive(Debug, Clone, Copy)]
-pub struct LineNumbersCfg {
+pub struct LineNumbersCfg<U> {
     numbers: Numbers,
     align: Alignment,
     main_align: Alignment,
     show_wraps: bool,
     specs: PushSpecs,
+    ghost: PhantomData<U>,
 }
 
-impl Default for LineNumbersCfg {
+impl<U> Default for LineNumbersCfg<U> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl LineNumbersCfg {
+impl<U> LineNumbersCfg<U> {
     pub fn new() -> Self {
         Self {
             numbers: Numbers::Absolute,
@@ -162,6 +163,7 @@ impl LineNumbersCfg {
             main_align: Alignment::Right,
             show_wraps: false,
             specs: PushSpecs::left(),
+            ghost: PhantomData,
         }
     }
 
@@ -226,7 +228,7 @@ impl LineNumbersCfg {
     }
 }
 
-impl<U> WidgetCfg<U> for LineNumbersCfg
+impl<U> WidgetCfg<U> for LineNumbersCfg<U>
 where
     U: Ui,
 {
@@ -249,12 +251,12 @@ where
 }
 
 /// Writes the text of the line number to a given [`String`].
-fn push_text(
+fn push_text<U>(
     builder: &mut Builder,
     line: usize,
     main: Option<usize>,
     is_wrapped: bool,
-    cfg: &LineNumbersCfg,
+    cfg: &LineNumbersCfg<U>,
 ) {
     if is_wrapped && !cfg.show_wraps {
         text!(*builder, "\n");

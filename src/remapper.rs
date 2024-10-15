@@ -1,3 +1,4 @@
+//! An [`InputMethod`] that remaps keys and sends them forward
 use duat_core::{
     data::{Context, RwData},
     input::{InputMethod, KeyCode::*, KeyEvent as Event},

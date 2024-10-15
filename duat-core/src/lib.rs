@@ -32,40 +32,32 @@ use self::{
     ui::Ui,
 };
 
-/// A cache for Duat
 pub mod cache;
-/// Commands for Duat
 pub mod commands;
-/// Data holders, like [`RwData`], and the [`Context`] for Duat
 pub mod data;
-/// [`Form`]s and other [`Text`](crate::text::Text) styling utilities
 pub mod forms;
-/// A [`History`] for [`File`](crate::widgets::File)s in Duat
 pub mod history;
-/// Hooks for Duat
 pub mod hooks;
-/// Input handling utilities, like [`InputMethod`] and [`EditHelper`]
 pub mod input;
-/// The [`Session`] for Duat. Might make it hidden
 pub mod session;
-/// [`Text`] and supporting utilities, like [`Tag`]s and iterators
 pub mod text;
-/// The [`Ui`] for Duat, and utilities for building it
 pub mod ui;
-/// Traits for widgets, alongside some builtin ones
 pub mod widgets;
 
 /// A plugin for Duat
 ///
 /// A plugin is something that can be invoked in the configuration
-/// crate for Duat:
+/// crate for Duat, and can apply a multitude of effects upon its
+/// creation.
 ///
-/// ```rust
-/// ```
-pub trait Plugin<U>: 'static
-where
-    U: Ui,
-{
+/// Plugins are how most Duat extensions should be "imported" to a
+/// confi crate, since they get access to the [`Context`] of Duat,
+/// letting them do things like:
+///
+/// - Run commands;
+/// - Get references to the active file/widget;
+/// - Mutate widgets;
+pub trait Plugin<U: Ui>: 'static {
     /// A [`Cacheable`] struct for your plugin
     ///
     /// If you want data to be stored between executions, you can
@@ -213,6 +205,9 @@ pub mod thread {
         })
     }
 
+	/// Queues an action
+	///
+	/// All queued actions will be done in the sequence that they came in, sequentially in a single thread.
     pub(crate) fn queue<R>(f: impl FnOnce() -> R + Send + 'static) {
         static LOOP: Once = Once::new();
         static ACTIONS: LazyLock<(
@@ -237,7 +232,7 @@ pub mod thread {
             spawn(|| {
                 let recv = receiver.lock();
                 while !crate::has_ended() {
-                    if let Ok(f) = recv.recv_timeout(Duration::from_millis(10)) {
+                    if let Ok(f) = recv.recv_timeout(Duration::from_millis(50)) {
                         f();
                     }
                 }

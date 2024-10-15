@@ -1,4 +1,4 @@
-//! Controls for Duat
+//! Prebuilt general controls for Duat
 //!
 //! This module contains the expected commands of a
 //! text editor that don't involve particular widgets
@@ -13,7 +13,7 @@ use std::fmt::Display;
 
 use duat_core::{duat_name, text::Text, widgets::ActiveWidget};
 
-use crate::{setup::COMMANDS, Ui};
+use crate::{Ui, setup::COMMANDS};
 
 /// Canonical way to quit Duat.
 ///
@@ -33,7 +33,7 @@ pub fn quit() {
 /// 2. Other instances of it in the current window.
 /// 3. Instances in other windows.
 ///
-/// [`File`]: duat_core::file::File
+/// [`File`]: crate::widgets::File
 /// [`Session`]: crate::sessSession
 #[inline(never)]
 pub fn switch_to<W: ActiveWidget<Ui>>() -> Result<Option<Text>> {
@@ -47,7 +47,7 @@ pub fn switch_to<W: ActiveWidget<Ui>>() -> Result<Option<Text>> {
 ///
 /// If there are more arguments, they will be ignored.
 ///
-/// [`File`]: duat_core::file::File
+/// [`File`]: crate::widgets::File
 /// [`commands::buffer`]: buffer
 #[inline(never)]
 pub fn edit(file: impl Display) -> Result<Option<Text>> {
@@ -61,7 +61,7 @@ pub fn edit(file: impl Display) -> Result<Option<Text>> {
 ///
 /// If there are more arguments, they will be ignored.
 ///
-/// [`File`]: duat_core::file::File
+/// [`File`]: crate::widgets::File
 /// [`commands::edit`]: edit
 #[inline(never)]
 pub fn buffer(file: impl Display) -> Result<Option<Text>> {
@@ -74,7 +74,7 @@ pub fn buffer(file: impl Display) -> Result<Option<Text>> {
 /// current window. If you want to include other windows in the
 /// search, use [`commands::next_global_file`].
 ///
-/// [`File`]: duat_core::file::File
+/// [`File`]: crate::widgets::File
 /// [`commands::next_global_file`]: next_global_file
 #[inline(never)]
 pub fn next_file() -> Result<Option<Text>> {
@@ -87,7 +87,7 @@ pub fn next_file() -> Result<Option<Text>> {
 /// current window. If you want to include other windows in the
 /// search, use [`commands::prev_global_file`].
 ///
-/// [`File`]: duat_core::file::File
+/// [`File`]: crate::widgets::File
 /// [`commands::prev_global_file`]: prev_global_file
 #[inline(never)]
 pub fn prev_file() -> Result<Option<Text>> {
@@ -100,7 +100,7 @@ pub fn prev_file() -> Result<Option<Text>> {
 /// to limit the search to just the current window, use
 /// [`commands::next_file`].
 ///
-/// [`File`]: duat_core::file::File
+/// [`File`]: crate::widgets::File
 /// [`commands::next_file`]: next_file
 #[inline(never)]
 pub fn next_global_file() -> Result<Option<Text>> {
@@ -113,7 +113,7 @@ pub fn next_global_file() -> Result<Option<Text>> {
 /// to limit the search to just the current window, use
 /// [`commands::prev_file`].
 ///
-/// [`File`]: duat_core::file::File
+/// [`File`]: crate::widgets::File
 /// [`commands::prev_file`]: prev_file
 #[inline(never)]
 pub fn prev_global_file() -> Result<Option<Text>> {
@@ -126,7 +126,7 @@ pub fn prev_global_file() -> Result<Option<Text>> {
 /// (e.g. [`CommandLine`], a file tree, etc), and you want to
 /// return to the file seamlessly.
 ///
-/// [`File`]: duat_core::file::File
+/// [`File`]: crate::widgets::File
 /// [`CommandLine`]: crate::widgets::CommandLine
 #[inline(never)]
 pub fn return_to_file() -> Result<Option<Text>> {
@@ -137,7 +137,7 @@ pub fn return_to_file() -> Result<Option<Text>> {
 ///
 /// Returns an [`Err`] if the `alias` is already a caller for
 /// another command, or if `command` is not a real caller to an
-/// exisiting [`Command`].
+/// exisiting command.
 #[inline(never)]
 pub fn alias(alias: impl ToString, command: impl ToString) -> Result<Option<Text>> {
     COMMANDS.alias(alias, command)

@@ -151,7 +151,7 @@ impl Rect {
         if let Some((next, _)) = children.get(i) {
             let edge = match self.on_files == next.on_files {
                 true => fr.border_edge_on(axis),
-                false => fr.files_egde_on(axis),
+                false => fr.files_edge_on(axis),
             };
 
             if edge == 1.0 && !*clustered {

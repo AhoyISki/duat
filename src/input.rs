@@ -1,3 +1,6 @@
+//! Options concerning the [`File`]'s [`InputMethod`]
+//!
+//! [`File`]: crate::widgets::File
 use duat_core::input::InputForFiles;
 pub use duat_core::input::InputMethod;
 

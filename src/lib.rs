@@ -104,13 +104,15 @@
 //! with arguments supported by Rust's type system:
 //! ```rust
 //! # use crate::prelude;
-//! let callers = ["collapse-command-line", "ccl"];
+//! let callers = ["collapse-command-line", "collapse-cmd"];
 //! commands::add_for_widget::<CommandLine>(callers, |command_line, area| {
-//!     area.change_constraint(
+//!     area.constrain_ver(Constraint::Length(0))?;
+//!
+//!     Ok(None)
 //! })
 //! ```
 //!
-//! [tags]: duat_core::text::tags
+//! [tags]: duat_core::text::Tag
 #![feature(decl_macro)]
 
 use std::sync::RwLock;
@@ -119,23 +121,17 @@ use duat_core::session::SessionCfg;
 pub use duat_core::thread;
 pub use setup::{pre_setup, run_duat};
 
-/// Utilities for addition and execution of commands
 pub mod commands;
-/// Control functions that are prebuilt with Duat
 pub mod control;
-/// Options concerning the [`File`]'s [`InputMethod`]
 pub mod input;
-/// Options concerning the printing of [`File`]s
-///
-/// [`File`]: duat_core::file::File
 pub mod print;
-/// An [`InputMethod`] that takes keys and sends to another
 mod remapper;
-/// Internal handling of [`Context`]
 mod setup;
 
-/// Functions to alter the cursors of Duat
 pub mod cursor {
+    //! Functions to alter the [`Cursors`] of Duat
+    //!
+    //! [`Cursors`]: duat_core::input::Cursors
     pub use duat_core::forms::{
         extra_cursor as get_extra, main_cursor as get_main, set_extra_cursor as set_extra,
         set_main_cursor as set_main, unset_extra_cursor as unset_extra,
@@ -143,15 +139,13 @@ pub mod cursor {
     };
 }
 
-/// Functions to alter the [`Form`]s of Duat
-///
-/// [`Form`]: duat_core::palette::Form
 pub mod forms {
-    pub use duat_core::forms::{from_id, set, to_id, CursorShape, Form};
+    //! Functions to alter the [`Form`]s of Duat
+    pub use duat_core::forms::{CursorShape, Form, from_id, set, to_id};
 }
 
-/// Hook utilites
 pub mod hooks {
+    //! Hook utilites
     pub use duat_core::hooks::{add, add_grouped, group_exists, remove_group};
 
     use crate::Ui;
@@ -195,13 +189,13 @@ pub mod hooks {
     pub type UnfocusedFrom<W> = duat_core::hooks::UnfocusedFrom<W, Ui>;
 }
 
-/// Functions to load [`Plugin`]s
 pub mod plugin {
-    use duat_core::Plugin;
+    //! Functions to load [`Plugin`]s
+    pub use duat_core::Plugin;
 
     use crate::{
-        setup::{CONTEXT, PLUGIN_FN},
         Ui,
+        setup::{CONTEXT, PLUGIN_FN},
     };
 
     /// Loads the [`Plugin`]
@@ -231,8 +225,8 @@ pub mod plugin {
     }
 }
 
-/// Native widgets to Duat
 pub mod widgets {
+    //! Duat's builtin widgets
     pub use duat_core::{ui::Constraint, widgets::File};
 
     use crate::Ui;
@@ -249,36 +243,36 @@ pub mod widgets {
     pub type LineNumbers = duat_core::widgets::LineNumbers<Ui>;
 }
 
-/// Common [`StatusLine`](crate::widgets::StatusLine) fields
 pub mod state {
+    //! Common [`StatusLine`] fields
+    //!
+    //! [`StatusLine`]: crate::widgets::StatusLine
     pub use duat_core::widgets::common::*;
 }
 
-/// The prelude of Duat, imports most of what a configuration needs
 pub mod prelude {
+    //! The prelude of Duat
     pub use duat_core::{
-        self, data,
-        text::{err, hint, ok, text, Builder, Text},
+        self, DuatError, Error, data,
+        text::{Builder, Text, err, hint, ok, text},
         ui::Area,
-        DuatError, Error,
     };
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self as ui, VertRule};
 
     pub use crate::{
-        commands, control, cursor,
+        Ui, commands, control, cursor,
         forms::{self, CursorShape, Form},
         hooks::{self, OnFileOpen, OnWindowOpen},
         input, print, setup_duat,
         state::*,
         widgets::*,
-        Ui,
     };
 }
 
 /// Pre and post setup for Duat
 ///
-/// This macro *MUST* be used in order for duat to run,
+/// This macro *MUST* be used in order for the program to run,
 /// it will generate the function that actually runs Duat.
 pub macro setup_duat($setup:expr) {
     use std::sync::mpsc;
@@ -307,6 +301,9 @@ pub macro setup_duat($setup:expr) {
 #[cfg(not(feature = "term-ui"))]
 compile_error!("No ui has been chosen to compile Duat with.");
 
+/// The [`Ui`](duat_core::ui::Ui) that Duat is using
+///
+/// In this case, that would be [`duat_term`]'s [`Ui`]
 #[cfg(feature = "term-ui")]
 pub type Ui = duat_term::Ui;
 
