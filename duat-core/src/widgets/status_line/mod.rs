@@ -52,13 +52,12 @@ where
     }
 
     pub fn new_with(
-        fns: (
+        (pre_fn, checker): (
             Box<dyn FnMut(Builder, &FileReader<U>) -> Text + 'static>,
             Box<dyn Fn() -> bool + 'static>,
         ),
         specs: PushSpecs,
     ) -> Self {
-        let (pre_fn, checker) = fns;
         Self {
             pre_fn,
             checker,
@@ -312,11 +311,9 @@ unsafe impl<U> Sync for StatusLine<U> where U: Ui {}
 /// * Any [`impl Display`], such as numbers, strings, chars, etc;
 /// * [`RwData`] and [`RoData`]s of the previous two types. These will
 ///   update whenever the data inside is changed;
-/// * [`FnMut() -> Arg`]s, where `Arg == Text || impl Display`. These
-///   update whenever any other argument or the file is updated;
-/// * An [`(FnMut() -> Arg, FnMut() -> bool)`] tuple. The first
-///   function returns what will be shown, while the second function
-///   tells it to update;
+/// * An [`(FnMut() -> Arg, FnMut() -> bool)`] tuple, where `Arg ==
+///   Text || impl Display`. The first function returns what will be
+///   shown, while the second function tells it to update;
 ///
 /// Here's some examples:
 ///
@@ -326,19 +323,25 @@ unsafe impl<U> Sync for StatusLine<U> where U: Ui {}
 /// #     data::RwData, input::InputMethod, text::text, ui::Ui, widgets::{File, status},
 /// #     hooks::{self, OnWindowOpen}
 /// # };
-/// fn update_counter() -> usize {
+/// # fn test<U: Ui>() {
+/// let changing_text = RwData::new(text!("Prev text"));
+///
+/// fn counter() -> usize {
 ///     static COUNT: AtomicUsize = AtomicUsize::new(0);
 ///     COUNT.fetch_add(1, Ordering::Relaxed)
 /// }
 ///
-/// # fn test<U: Ui>() {
-/// let changing_text = RwData::new(text!("Prev text"));
 ///
 /// hooks::add::<OnWindowOpen<U>>({
 ///     let changing_text = changing_text.clone();
 ///     move |builder| {
+///         let changing_text = changing_text.clone();
+///         let checker = {
+///             let changing_text = changing_text.clone();
+///             move || changing_text.has_changed()
+///         };
 ///         let text = text!("Static text");
-///         builder.push(status!(changing_text " " update_counter " " text));
+///         builder.push(status!(changing_text " " (counter, checker) " " text));
 ///     }
 /// });
 ///
@@ -360,7 +363,7 @@ pub macro status {
     (@append $pre_fn:expr, $checker:expr, []) => {{
         let form_id = forms::to_id!("DefaultStatus");
 
-        let pre_fn = move |builder: &mut Builder, reader: &FileReader<$ui>| {
+        let pre_fn = move |builder: &mut Builder, reader: &FileReader<_>| {
             $pre_fn(builder, reader);
             builder.push(Tag::PushForm(form_id));
         };
@@ -415,21 +418,6 @@ pub macro status {
         let checker = || { false };
         status!(@parse pre_fn, checker, $($parts)*)
     }},
-
-	(@forms $forms:expr, [] $($rest:tt)*) => {{
-    	$forms.push(forms::to_id!("Default"));
-    	status!(@forms $forms, $($rest)*)
-	}},
-	(@forms $forms:expr, [$form:ident] $($rest:tt)*) => {{
-    	$forms.push(forms::to_id!(stringify!($form)));
-    	status!(@forms $forms, $($rest)*)
-	}},
-    (@forms $forms:expr, $other:tt $($rest:tt)*) => {
-        status!(@forms $forms, $($rest)*)
-    },
-    (@forms $forms:expr, ) => {
-        $forms
-    },
 
     ($($parts:tt)*) => {{
         StatusLineCfg::new_with(
