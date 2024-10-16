@@ -1,11 +1,18 @@
+//! Identification types for [`RawTag`]s
+//!
+//! There is an id for [`Text`]s in ghost text tags, an id for
+//! buttons, and the main id of this module is the [`Key`], which can
+//! be used to discern the origin of tags, even if the tags do the
+//! same thing.
+//!
+//! [`RawTag`]: super::RawTag
+//! [`Text`]: crate::text::Text
 use std::{
     ops::Range,
     sync::atomic::{AtomicU16, Ordering},
 };
 
-static TEXT_COUNT: AtomicU16 = AtomicU16::new(0);
-static TOGGLE_COUNT: AtomicU16 = AtomicU16::new(0);
-static MARKER_COUNT: AtomicU16 = AtomicU16::new(2);
+static KEY_COUNT: AtomicU16 = AtomicU16::new(2);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TextId(u16);
@@ -15,6 +22,8 @@ pub struct ToggleId(u16);
 
 impl TextId {
     pub fn new() -> Self {
+        static TEXT_COUNT: AtomicU16 = AtomicU16::new(0);
+
         Self(TEXT_COUNT.fetch_add(1, Ordering::Relaxed))
     }
 }
@@ -27,6 +36,8 @@ impl Default for TextId {
 
 impl ToggleId {
     pub fn new() -> Self {
+        static TOGGLE_COUNT: AtomicU16 = AtomicU16::new(0);
+
         Self(TOGGLE_COUNT.fetch_add(1, Ordering::Relaxed))
     }
 }
@@ -49,15 +60,15 @@ impl Default for ToggleId {
 /// interfere with eachother's work, keys were implemented:
 ///
 /// ```rust
-/// use duat_core::{forms, text::{text, Key, Tag};
+/// use duat_core::{forms, text::{text, Key, Tag}};
 /// let mut text = text!("This is text with no tags in it");
 /// // This key will be used to modify text.
 /// let key1 = Key::new();
 ///
 /// let id = forms::to_id!("Invisible");
 ///
-/// text.insert_tag(17, Tag::PushForm(id), key1);
-/// text.insert_tag(20, Tag::PopForm(id), key1);
+/// text.insert_tag(18, Tag::PushForm(id), key1);
+/// text.insert_tag(21, Tag::PopForm(id), key1);
 ///
 /// assert_eq!(
 ///     text,
@@ -84,7 +95,7 @@ pub struct Key(u16);
 impl Key {
     /// Returns a new, unique [`Key`]
     pub fn new() -> Self {
-        Self(MARKER_COUNT.fetch_add(1, Ordering::Relaxed))
+        Self(KEY_COUNT.fetch_add(1, Ordering::Relaxed))
     }
 
     /// Returns a number of new, unique [`Key`]s
@@ -95,8 +106,8 @@ impl Key {
     ///
     /// [`Text`]: super::Text
     pub fn new_many(amount: usize) -> Range<Self> {
-        let start = Self(MARKER_COUNT.fetch_add(1, Ordering::Relaxed));
-        let end = Self(MARKER_COUNT.fetch_add(amount as u16, Ordering::Relaxed));
+        let start = Self(KEY_COUNT.fetch_add(1, Ordering::Relaxed));
+        let end = Self(KEY_COUNT.fetch_add(amount as u16, Ordering::Relaxed));
 
         start..end
     }
@@ -115,8 +126,8 @@ impl Key {
     pub const fn basic() -> Self {
         Self(0)
     }
-    
-	/// A [`Key`] specifically for cursors
+
+    /// A [`Key`] specifically for cursors
     pub(in crate::text) const fn for_cursors() -> Self {
         Self(1)
     }

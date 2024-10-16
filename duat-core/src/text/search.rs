@@ -9,7 +9,10 @@ use regex_automata::{
     },
     nfa::thompson::Config,
 };
-use regex_syntax::{hir::{Hir, HirKind}, Error};
+use regex_syntax::{
+    Error,
+    hir::{Hir, HirKind},
+};
 
 use super::{Point, Text};
 
@@ -142,7 +145,6 @@ impl Searcher<'_> {
             }
         };
 
-
         let haystack = match end {
             Some(end) => unsafe {
                 text.make_contiguous_in(at.byte()..end.byte());
@@ -179,7 +181,6 @@ impl Searcher<'_> {
                     }
                 }
             }
-
 
             // To prevent subsequently added matches from being checked.
             if match_i != usize::MAX {
@@ -468,7 +469,7 @@ fn dfas_from_pat(pat: impl RegexPattern) -> Result<&'static DFAs, Box<BuildError
 }
 
 pub trait RegexPattern: InnerRegexPattern {
-    type Match;
+    type Match: 'static;
 
     fn get_match(points: (Point, Point), pattern: PatternID) -> Self::Match;
 }

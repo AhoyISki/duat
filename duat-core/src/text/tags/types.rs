@@ -3,8 +3,8 @@ use std::{collections::HashMap, rc::Rc};
 use crossterm::event::MouseEventKind;
 
 use super::{
-    ids::{TextId, ToggleId},
     Key,
+    ids::{TextId, ToggleId},
 };
 use crate::{
     forms::FormId,
@@ -95,7 +95,7 @@ impl Tag {
 unsafe impl Send for Tag {}
 unsafe impl Sync for Tag {}
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialOrd, Ord)]
 pub enum RawTag {
     // Implemented:
     /// Appends a form to the stack.
@@ -272,6 +272,32 @@ impl std::fmt::Debug for RawTag {
             RawTag::GhostText(id, key) => write!(f, "GhostText({id:?}, {key:?})"),
             RawTag::ToggleStart(id, key) => write!(f, "ToggleStart({id:?}, {key:?})"),
             RawTag::ToggleEnd(id, key) => write!(f, "ToggleEnd({id:?}, {key:?})"),
+        }
+    }
+}
+
+impl Eq for RawTag {}
+
+impl PartialEq for RawTag {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (RawTag::PushForm(_, lhs), RawTag::PushForm(_, rhs)) => lhs == rhs,
+            (RawTag::PopForm(_, lhs), RawTag::PopForm(_, rhs)) => lhs == rhs,
+            (RawTag::MainCursor(_), RawTag::MainCursor(_)) => true,
+            (RawTag::ExtraCursor(_), RawTag::ExtraCursor(_)) => true,
+            (RawTag::StartAlignLeft(_), RawTag::StartAlignLeft(_)) => true,
+            (RawTag::EndAlignLeft(_), RawTag::EndAlignLeft(_)) => true,
+            (RawTag::StartAlignCenter(_), RawTag::StartAlignCenter(_)) => true,
+            (RawTag::EndAlignCenter(_), RawTag::EndAlignCenter(_)) => true,
+            (RawTag::StartAlignRight(_), RawTag::StartAlignRight(_)) => true,
+            (RawTag::EndAlignRight(_), RawTag::EndAlignRight(_)) => true,
+            (RawTag::StartConceal(_), RawTag::StartConceal(_)) => true,
+            (RawTag::EndConceal(_), RawTag::EndConceal(_)) => true,
+            (RawTag::ConcealUntil(_), RawTag::ConcealUntil(_)) => true,
+            (RawTag::GhostText(_, lhs), RawTag::GhostText(_, rhs)) => lhs == rhs,
+            (RawTag::ToggleStart(_, lhs), RawTag::ToggleStart(_, rhs)) => lhs == rhs,
+            (RawTag::ToggleEnd(_, lhs), RawTag::ToggleEnd(_, rhs)) => lhs == rhs,
+            (..) => false,
         }
     }
 }

@@ -462,7 +462,7 @@ where
 ///
 /// ```rust
 /// # use duat_core::{input::EditHelper, ui::Area, widgets::File};
-/// # fn test(helper: &mut EditHelper<File, impl Area>) {
+/// # fn test<S>(helper: &mut EditHelper<File, impl Area, S>) {
 /// helper.edit_on_main(|e| {
 ///     e.replace("my replacement");
 ///     e.insert(" and my edit");
@@ -711,10 +711,13 @@ where
     ///
     /// ```rust
     /// # use duat_core::{input::EditHelper, ui::Area, widgets::File};
-    /// fn search_nth_paren(helper: &mut EditHelper<File, impl Area>, n: usize) {
+    /// fn search_nth_paren<S>(
+    ///     helper: &mut EditHelper<File, impl Area, S>,
+    ///     n: usize,
+    /// ) {
     ///     helper.move_each(|m| {
-    ///         let mut searcher = m.search('(', None);
-    ///         if let Some(((start, end), _)) = searcher.nth(n) {
+    ///         let mut nth = m.search('(', None).nth(n);
+    ///         if let Some((start, end)) = nth {
     ///             m.move_to(start);
     ///             m.set_anchor();
     ///             m.move_to(end);
@@ -746,14 +749,14 @@ where
     ///
     /// ```rust
     /// # use duat_core::{input::EditHelper, ui::Area, widgets::File};
-    /// fn search_nth_str_rev(
-    ///     helper: &mut EditHelper<File, impl Area>,
+    /// fn search_nth_str_rev<S>(
+    ///     helper: &mut EditHelper<File, impl Area, S>,
     ///     n: usize,
     ///     s: &str,
     /// ) {
     ///     helper.move_each(|m| {
-    ///         let mut searcher = m.search_rev(s, None);
-    ///         if let Some(((start, end), _)) = searcher.nth(n) {
+    ///         let mut nth = m.search_rev(s, None).nth(n);
+    ///         if let Some((start, end)) = nth {
     ///             m.move_to(start);
     ///             m.set_anchor();
     ///             m.move_to(end);
