@@ -7,7 +7,7 @@ use parking_lot::{RwLock, RwLockWriteGuard};
 
 pub use self::global::{
     FormFmt, extra_cursor, from_id, main_cursor, name_from_id, painter, set, set_extra_cursor,
-    set_main_cursor, set_weak, to_id, unset_extra_cursor, unset_main_cursor,
+    set_main_cursor, set_weak, id_of as id_of, unset_extra_cursor, unset_main_cursor,
 };
 use crate::data::RwLockReadGuard;
 
@@ -282,7 +282,7 @@ mod global {
     /// faster than with a [`HashMap`] (how this is usually done).
     ///
     /// [`HashMap`]: std::collections::HashMap
-    pub macro to_id {
+    pub macro id_of {
         // Since this variable will only ever be accessed by one thread, it is perfectly reasonable to use a `static mut`, even if unsafe.
         ($form:expr) => {{
             static ID: LazyLock<FormId> = LazyLock::new(|| inner_to_id($form));

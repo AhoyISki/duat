@@ -1,12 +1,12 @@
 use std::{
     any::TypeId,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 
-use super::{private::InnerData, Data, RwData};
+use super::{Data, RwData, private::InnerData};
 // use parking_lot::{RwLock, RwLockReadGuard};
 use super::{RwLock, RwLockReadGuard};
 use crate::{
@@ -22,16 +22,16 @@ use crate::{
 /// containing [`RwData`]. For example, when opening a new file, we
 /// use a hook, called the `constructor_hook`, to do certain actions
 /// to that file, like opening surroundig [`Widget`]s. This hook can
-/// provide an [`RoData<FileWidget<U>>`], which is then queryed by the
+/// provide an [`RoData`], which is then queryed by the
 /// widget for information about the file. This also prevents the
 /// modification of data by third parties which shouldn`t be able to
 /// do so.
 ///
 /// Can only be created by cloning the [`Arc<RwLock<T>>`] from a
-/// [`RwData<T>`], or through cloning.
+/// [`RwData`], or through cloning.
 ///
 /// [`Widget`]: crate::widgets::Widget
-/// [`RoData<FileWidget<U>>`]: RoData
+/// [`RoData`]: RoData
 pub struct RoData<T>
 where
     T: ?Sized + 'static,
@@ -43,7 +43,7 @@ where
 }
 
 impl<T> RoData<T> {
-    /// Returns a new instance of a [`RoData<T>`], assuming that it is
+    /// Returns a new instance of a [`RoData`], assuming that it is
     /// sized.
     ///
     /// This has to be sized because of some Rust limitations, as you
@@ -64,7 +64,7 @@ impl<T> RoData<T>
 where
     T: ?Sized,
 {
-    /// Returns a new instance of [`RoData<T>`], assuming that it is
+    /// Returns a new instance of [`RoData`], assuming that it is
     /// unsized.
     ///
     /// This method is only required if you're dealing with types that
@@ -91,11 +91,8 @@ where
     /// Since this is a blocking read, the thread will hault while the
     /// data is being written to:
     /// ```rust
-    /// # use std::{
-    /// #     thread,
-    /// #     time::{Duration, Instant}
-    /// # };
-    /// # use duat_core::data::{ReadableData, RoData, RwData};
+    /// # use std::{thread, time::{Duration, Instant}};
+    /// # use duat_core::data::{Data, RoData, RwData};
     /// let read_write_data = RwData::new("☹️");
     /// let read_only_data = RoData::from(&read_write_data);
     /// let instant = Instant::now();
@@ -119,11 +116,8 @@ where
     /// Note that other reads will **NOT** block reading in this way,
     /// only writes:
     /// ```rust
-    /// # use std::{
-    /// #     thread,
-    /// #     time::{Duration, Instant}
-    /// # };
-    /// # use duat_core::data::{ReadableData, RoData, RwData};
+    /// # use std::{thread, time::{Duration, Instant} };
+    /// # use duat_core::data::{Data, RoData, RwData};
     /// let read_write_data = RwData::new("☹️");
     /// let read_only_data = RoData::from(&read_write_data);
     /// let instant = Instant::now();
@@ -160,7 +154,7 @@ where
     ///
     /// You can do this:
     /// ```rust
-    /// # use duat_core::data::{ReadableData, RoData, RwData};
+    /// # use duat_core::data::{Data, RoData, RwData};
     /// # fn add_to_count(count: &mut usize) {}
     /// # fn new_count() -> usize {
     /// #     0
@@ -180,7 +174,7 @@ where
     /// ```
     /// Instead of this:
     /// ```rust
-    /// # use duat_core::data::{ReadableData, RoData, RwData};
+    /// # use duat_core::data::{Data, RoData, RwData};
     /// # fn add_to_count(count: &mut usize) {}
     /// # fn new_count() -> usize {
     /// #     0
@@ -202,7 +196,7 @@ where
     /// ```
     /// Or this:
     /// ```rust
-    /// # use duat_core::data::{ReadableData, RoData, RwData};
+    /// # use duat_core::data::{Data, RoData, RwData};
     /// # fn add_to_count(count: &mut usize) {}
     /// # fn new_count() -> usize {
     /// #     0
@@ -241,15 +235,14 @@ where
     /// Unlike [`read`], can fail to return a reference to the
     /// underlying data:
     /// ```rust
-    /// # use std::{sync::TryLockError};
-    /// # use duat_core::data::{ReadableData, RwData};
+    /// # use duat_core::data::{Data, RwData};
     /// let new_data = RwData::new("hello 👋");
     ///
     /// let mut blocking_write = new_data.write();
     /// *blocking_write = "bye 👋";
     ///
     /// let try_read = new_data.try_read();
-    /// assert!(matches!(try_read, Err(TryLockError::WouldBlock)));
+    /// assert!(matches!(try_read, None));
     /// ```
     ///
     /// [`has_changed`]: Self::has_changed
@@ -271,8 +264,7 @@ where
     /// Unlike [`inspect`], can fail to return a reference to the
     /// underlying data:
     /// ```rust
-    /// # use std::sync::TryLockError;
-    /// # use duat_core::data::{ReadableData, RwData};
+    /// # use duat_core::data::{Data, RwData};
     /// let new_data = RwData::new("hello 👋");
     ///
     /// let try_inspect = new_data.mutate(|blocking_mutate| {
@@ -281,7 +273,7 @@ where
     ///     new_data.try_inspect(|try_inspect| *try_inspect == "bye 👋")
     /// });
     ///
-    /// assert!(matches!(try_inspect, Err(TryLockError::WouldBlock)));
+    /// assert!(matches!(try_inspect, None));
     /// ```
     ///
     /// [`has_changed`]: Self::has_changed
@@ -300,14 +292,14 @@ where
     /// [`mutate`], [`try_write`], or [`try_mutate`], are called on an
     /// [`RwData`]. Once `has_changed` is called, the data will be
     /// considered unchanged since the last `has_changed` call, for
-    /// that specific instance of a [`ReadableData`].
+    /// that specific instance of a [`Data`].
     ///
-    /// When first creating a [`ReadableData`] type, `has_changed`
+    /// When first creating a [`Data`] type, `has_changed`
     /// will return `false`;
     ///
     /// # Examples
     /// ```rust
-    /// use duat_core::data::{ReadableData, RoData, RwData};
+    /// use duat_core::data::{Data, RoData, RwData};
     /// let new_data = RwData::new("Initial text");
     /// assert!(!new_data.has_changed());
     ///
@@ -331,12 +323,12 @@ where
         cur_state > read_state
     }
 
-    /// Returns `true` if both [`ReadableData<T>`]s point to the same
+    /// Returns `true` if both [`Data<T>`]s point to the same
     /// data.
     ///
     /// # Examples
     /// ```rust
-    /// # use duat_core::data::{ReadableData, RwData};
+    /// # use duat_core::data::{Data, RwData};
     /// let data_1 = RwData::new(false);
     /// let data_1_clone = data_1.clone();
     ///
@@ -357,43 +349,35 @@ where
     /// # Examples
     ///
     /// You may want this method if you're storing a list of
-    /// [`RwData<dyn Trait>`], and want to know, at runtime, what type
+    /// [`RwData`]s, and want to know, at runtime, what type
     /// each element is:
+    ///
     /// ```rust
-    /// # use std::{
-    /// #     any::Any,
-    /// #     fmt::Display,
-    /// #     sync::{Arc, RwLock}
-    /// # };
-    /// # use duat_core::data::{RwData};
-    /// # struct DownCastableChar(char);
-    /// # struct DownCastableString(String);
-    /// # impl AsAny for DownCastableChar {
-    /// #     fn as_any(&self) -> &dyn Any {
-    /// #         self
-    /// #     }
-    /// # }
-    /// let list: [RwData<dyn Any>; 3] = [
-    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableString(
-    ///         String::from("I can show you the world"),
+    /// # use std::{any::Any, fmt::Display, sync::Arc};
+    /// # use duat_core::data::{RwData, RwLock};
+    /// let list: [RwData<dyn Display>; 3] = [
+    ///     RwData::new_unsized::<String>(Arc::new(RwLock::new(String::from(
+    ///         "I can show you the world",
     ///     )))),
-    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableString(
-    ///         String::from("Shining, shimmering, splendid"),
+    ///     RwData::new_unsized::<String>(Arc::new(RwLock::new(String::from(
+    ///         "Shining, shimmering, splendid",
     ///     )))),
-    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableChar('🧞')))),
+    ///     RwData::new_unsized::<char>(Arc::new(RwLock::new(
+    ///         '🧞',
+    ///     ))),
     /// ];
     ///
     /// assert!(matches!(
-    ///     list[2].inspect_as::<DownCastableChar, char>(|char| char.0),
-    ///     Some('🧞')
+    ///     list[2].inspect_as::<char, bool>(|char| char.is_ascii()),
+    ///     Some(false)
     /// ));
     /// assert!(matches!(
-    ///     list[1].inspect_as::<DownCastableChar, char>(|char| char.0),
+    ///     list[1].inspect_as::<char, bool>(|char| char.is_ascii()),
     ///     None
     /// ));
     /// ```
     ///
-    /// [`RwData<dyn Trait>`]: RwData
+    /// [`RwData`]: RwData
     pub fn inspect_as<U: 'static, R>(&self, f: impl FnOnce(&U) -> R) -> Option<R> {
         self.data_is::<U>().then(|| {
             let ptr = Arc::as_ptr(&self.data);

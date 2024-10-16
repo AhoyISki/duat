@@ -197,16 +197,16 @@ where
 pub macro text {
     // Forms
     (@push $builder:expr, []) => {
-        let id = crate::forms::to_id!("Default");
+        let id = crate::forms::id_of!("Default");
         $builder.push(crate::text::Tag::PushForm(id))
     },
     (@push $builder:expr, [*a]) => {
-        let id = crate::forms::to_id!("Accent");
+        let id = crate::forms::id_of!("Accent");
         $builder.push(crate::text::Tag::PushForm(id))
     },
 
     (@push $builder:expr, [$form:ident]) => {
-        let id = crate::forms::to_id!(stringify!($form));
+        let id = crate::forms::id_of!(stringify!($form));
         $builder.push(crate::text::Tag::PushForm(id))
     },
 
@@ -235,16 +235,16 @@ pub macro text {
 pub macro ok {
     // Forms
     (@push $builder:expr, []) => {
-        let id = crate::forms::to_id!("DefaultOk");
+        let id = crate::forms::id_of!("DefaultOk");
         $builder.push(crate::text::Tag::PushForm(id))
     },
     (@push $builder:expr, [*a]) => {
-        let id = crate::forms::to_id!("AccentOk");
+        let id = crate::forms::id_of!("AccentOk");
         $builder.push(crate::text::Tag::PushForm(id))
     },
 
     (@push $builder:expr, [$form:ident]) => {
-        let id = crate::forms::to_id!(stringify!($form));
+        let id = crate::forms::id_of!(stringify!($form));
         $builder.push(crate::text::Tag::PushForm(id))
     },
 
@@ -273,16 +273,16 @@ pub macro ok {
 pub macro err {
     // Forms
     (@push $builder:expr, []) => {
-        let id = crate::forms::to_id!("DefaultErr");
+        let id = crate::forms::id_of!("DefaultErr");
         $builder.push(crate::text::Tag::PushForm(id))
     },
     (@push $builder:expr, [*a]) => {
-        let id = crate::forms::to_id!("AccentErr");
+        let id = crate::forms::id_of!("AccentErr");
         $builder.push(crate::text::Tag::PushForm(id))
     },
 
     (@push $builder:expr, [$form:ident]) => {
-        let id = crate::forms::to_id!(stringify!($form));
+        let id = crate::forms::id_of!(stringify!($form));
         $builder.push(crate::text::Tag::PushForm(id))
     },
 
@@ -311,16 +311,16 @@ pub macro err {
 pub macro hint {
     // Forms
     (@push $builder:expr, []) => {
-        let id = crate::forms::to_id!("DefaultHint");
+        let id = crate::forms::id_of!("DefaultHint");
         $builder.push(crate::text::Tag::PushForm(id))
     },
     (@push $builder:expr, [*a]) => {
-        let id = crate::forms::to_id!("AccentHint");
+        let id = crate::forms::id_of!("AccentHint");
         $builder.push(crate::text::Tag::PushForm(id))
     },
 
     (@push $builder:expr, [$form:ident]) => {
-        let id = crate::forms::to_id!(stringify!($form));
+        let id = crate::forms::id_of!(stringify!($form));
         $builder.push(crate::text::Tag::PushForm(id))
     },
 

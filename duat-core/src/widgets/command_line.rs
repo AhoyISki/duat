@@ -245,11 +245,11 @@ impl<U: Ui> CommandLineMode<U> for RunCommands<U> {
         let caller = command.split_whitespace().next();
         if let Some(caller) = caller {
             if self.context.caller_exists(caller) {
-                let id = forms::to_id!("CallerExists");
+                let id = forms::id_of!("CallerExists");
                 text.insert_tag(0, Tag::PushForm(id), self.key);
                 text.insert_tag(caller.len(), Tag::PopForm(id), self.key);
             } else {
-                let id = forms::to_id!("CallerNotFound");
+                let id = forms::id_of!("CallerNotFound");
                 text.insert_tag(0, Tag::PushForm(id), self.key);
                 text.insert_tag(caller.len(), Tag::PopForm(id), self.key);
             }
@@ -352,7 +352,7 @@ impl<U: Ui> CommandLineMode<U> for IncSearch<U> {
                     };
 
                     let span = error.span();
-                    let id = crate::forms::to_id!("ParseCommandErr");
+                    let id = crate::forms::id_of!("ParseCommandErr");
 
                     text.insert_tag(span.start.offset, Tag::PushForm(id), self.key);
                     text.insert_tag(span.end.offset, Tag::PopForm(id), self.key);

@@ -364,7 +364,7 @@ unsafe impl<U> Sync for StatusLine<U> where U: Ui {}
 /// [`(FnMut() -> Arg, FnMut() -> bool)`]: FnMut
 pub macro status {
     (@append $pre_fn:expr, $checker:expr, []) => {{
-        let form_id = forms::to_id!("DefaultStatus");
+        let form_id = forms::id_of!("DefaultStatus");
 
         let pre_fn = move |builder: &mut Builder, reader: &FileReader<_>| {
             $pre_fn(builder, reader);
@@ -376,7 +376,7 @@ pub macro status {
 
     // Insertion of directly named forms.
     (@append $pre_fn:expr, $checker:expr, [$form:ident]) => {{
-        let id = forms::to_id!(stringify!($form));
+        let id = forms::id_of!(stringify!($form));
 
         let pre_fn = move |builder: &mut Builder, reader: &FileReader<_>| {
             $pre_fn(builder, reader);

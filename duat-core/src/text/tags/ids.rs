@@ -65,7 +65,7 @@ impl Default for ToggleId {
 /// // This key will be used to modify text.
 /// let key1 = Key::new();
 ///
-/// let id = forms::to_id!("Invisible");
+/// let id = forms::id_of!("Invisible");
 ///
 /// text.insert_tag(18, Tag::PushForm(id), key1);
 /// text.insert_tag(21, Tag::PopForm(id), key1);

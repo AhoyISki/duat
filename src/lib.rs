@@ -141,7 +141,7 @@ pub mod cursor {
 
 pub mod forms {
     //! Functions to alter the [`Form`]s of Duat
-    pub use duat_core::forms::{CursorShape, Form, from_id, set, to_id};
+    pub use duat_core::forms::{CursorShape, Form, from_id, set, id_of};
 }
 
 pub mod hooks {
