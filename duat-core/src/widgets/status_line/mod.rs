@@ -1,55 +1,18 @@
-//! A [`NormalWidget`] that serves the purpose of showing general
-//! information.
+//! A widget that shows general information, usually about a [`File`]
 //!
-//! This widget has an associated [`File`] that's used as a
-//! reference. This conotates that a [`StatusLine`] must be tied to
-//! a single file, but this is not really the case. The end user may
-//! be able to open multiple files and have just a single
-//! [`StatusLine`] that displays the information of only the
-//! currently active [`File`]:
+//! The [`StatusLine`] is a very convenient widget when the user
+//! simply wants to show some informatioon. The information, when
+//! relevant, can automatically be tied to the active file, saving
+//! some keystrokes for the user's configuration.
 //!
-//! ```rust
-//! # use duat_core::{
-//! #     tags::form::FormPalette,
-//! #     text::PrintCfg,
-//! #     ui::{ModNode, PushSpecs, Constraint, Ui},
-//! #     widgets::StatusLine,
-//! #     session::Session
-//! # };
-//! #
-//! # fn test_fn<U>(ui: U, print_cfg: PrintCfg, forms: FormPalette)
-//! # where
-//! #     U: Ui
-//! # {
-//! let constructor_hook = move |mod_node: ModNode<U>, file| {
-//!     let specs = PushSpecs::below(Constraint::Length(1.0));
-//!     mod_node.push(StatusLine::default_fn(), specs);
-//! };
+//! There is also the [`status!`] macro, which is an extremely
+//! convenient way to modify the text of the status line, letting you
+//! place forms, in the same way that [`text!`] does, and
+//! automatically recognizing a ton of different types of functions,
+//! that can read from the file, from other places, from [data] types,
+//! etc.
 //!
-//! let mut session = Session::new(ui, print_cfg, forms, constructor_hook);
-//! let specs = PushSpecs::below(Constraint::Length(1.0));
-//! session.push(StatusLine::default_global_fn(), specs);
-//! # }
-//! ```
-//!
-//! In the example above, every time a [`File`] is opened
-//! with a new file, a [`StatusLine`] will be pushed below it, as
-//! seen in the `constructor_hook`. This [`StatusLine`] will show
-//! information about that specific [`File`].
-//!
-//! Also in the example above, you can see that a second
-//! [`StatusLine`] is pushed by [`PushSpecs::below()`]. As such,
-//! this widget will be placed below all others, and the
-//! [`default_global_fn()`][StatusLine::default_global_fn()] means
-//! that it is global, and instead of pointing to a specific
-//! [`File`], it will change to always point at the currently
-//! active one.
-//!
-//! In a real life situation, you would choose only one of these
-//! aproaches, as having two [`StatusLine`]s showing the same
-//! information at the same time is quite redundant. But this is a
-//! good showing for the flexibility of this widget.
-
+//! [data]: crate::data
 pub mod common;
 mod state;
 
@@ -89,10 +52,13 @@ where
     }
 
     pub fn new_with(
-        pre_fn: Box<dyn FnMut(Builder, &FileReader<U>) -> Text>,
-        checker: Box<dyn Fn() -> bool>,
+        fns: (
+            Box<dyn FnMut(Builder, &FileReader<U>) -> Text + 'static>,
+            Box<dyn Fn() -> bool + 'static>,
+        ),
         specs: PushSpecs,
     ) -> Self {
+        let (pre_fn, checker) = fns;
         Self {
             pre_fn,
             checker,
@@ -181,54 +147,60 @@ where
     }
 }
 
-/// A [`NormalWidget`] that can display information about Duat and
-/// its extensions.
+/// A widget to show information, usually about a [`File`]
 ///
-/// The [`StatusLine`] is built around a [`Vec<Reader>`], which
-/// determines exacly how it will be updated. There is a default form
-/// for the [`Vec<Reader>`] in [`StatusLine::default_fn()`], which
-/// you can read if you want to.
-///
-/// # Examples
-///
-/// Here's a very simple example, that will show the name of the file,
-/// as well as the main cursor's coordinates.
+/// This widget is updated whenever any of its parts needs to be
+/// updated, and it also automatically adjusts to where it was pushed.
+/// For example, if you push it with [`OnFileOpen`], it's information
+/// will point to the [`File`] to which it was pushed. However, if you
+/// push it with [`OnWindowOpen`], it will always point to the
+/// currently active [`File`]:
 ///
 /// ```rust
 /// # use duat_core::{
-/// #     data::RoData,
-/// #     tags::form::FormPalette,
-/// #     ui::{PushSpecs, Ui},
-/// #     widgets::{
-/// #         file_parts::{file_name, main_cursor},
-/// #         status_parts, File, StatusLine, WidgetType
-/// #     },
-/// #     Controler
+/// #     hooks::{self, OnFileOpen, OnWindowOpen}, ui::Ui,
+/// #     widgets::{CommandLine, File, LineNumbers, PassiveWidget, StatusLine, status, common::*},
 /// # };
-/// # fn test_fn<U>(
-/// #     file_fn: impl Fn() -> RoData<File<U>>,
-/// #     forms_fn: impl Fn() -> FormPalette
-/// # ) -> impl FnOnce(&Controler<U>) -> (WidgetType<U>, Box<dyn Fn() -> bool>, PushSpecs)
-/// # where
-/// #     U: Ui
-/// # {
-/// let file: RoData<File<U>> = file_fn();
-/// let forms: FormPalette = forms_fn();
+/// # fn test<U: Ui>() {
+/// hooks::remove_group("FileWidgets");
+/// hooks::add::<OnFileOpen<U>>(|builder| {
+///     builder.push(LineNumbers::cfg());
+///     builder.push(status!([File] { File::name }));
+/// });
 ///
-/// let parts = status_parts![
-///     "file name: [File]",
-///     file_name::<U>(),
-///     "[] main cursor: [Coords]",
-///     main_cursor(),
-/// ];
-///
-/// StatusLine::parts_fn(parts)
+/// hooks::remove_group("WindowWidgets");
+/// hooks::add::<OnWindowOpen<U>>(|builder| {
+///     let (status_area, _) = builder.push(status!(
+///         [File] { File::name } " " selections_fmt " " main_fmt
+///     ));
+///     builder.push_to(CommandLine::cfg().left_ratioed(2, 3), status_area);
+/// });
 /// # }
 /// ```
 ///
-/// The `"[FileName]"`, `"[Default]"` and `"[Coords]"` additions serve
-/// to change the active [`Form`][crate::tags::form::Form] to print
-/// the next characters.
+/// In the above example, each file would have a status line with the
+/// name of the file, and there would be a global status line, showing
+/// more information about the currently active file.
+///
+/// You will usually want to create [`StatusLine`]s via the
+/// [`status!`] macro, since that is how you can customize it.
+/// Although, if you want the regular status line, you can just:
+///
+/// ```rust
+/// # use duat_core::{
+/// #     hooks::{self, OnFileOpen}, ui::{Ui}, widgets::{LineNumbers, PassiveWidget, StatusLine},
+/// # };
+/// # fn test<U: Ui>() {
+/// hooks::remove_group("FileWidgets");
+/// hooks::add::<OnFileOpen<U>>(|builder| {
+///     builder.push(LineNumbers::cfg());
+///     builder.push(StatusLine::cfg());
+/// });
+/// # }
+/// ```
+///
+/// [`OnFileOpen`]: crate::hooks::OnFileOpen
+/// [`OnWindowOpen`]: crate::hooks::OnWindowOpen
 pub struct StatusLine<U>
 where
     U: Ui,
@@ -238,21 +210,14 @@ where
     text: Text,
 }
 
-impl<U> StatusLine<U>
-where
-    U: Ui,
-{
-    pub fn cfg() -> StatusLineCfg<U> {
-        StatusLineCfg::new()
-    }
-}
-
 impl<U> PassiveWidget<U> for StatusLine<U>
 where
     U: Ui,
 {
-    fn build(context: Context<U>, on_file: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
-        Self::cfg().build(context, on_file)
+    type Cfg = StatusLineCfg<U>;
+
+    fn cfg() -> Self::Cfg {
+        StatusLineCfg::new()
     }
 
     fn update(&mut self, _area: &U::Area) {
@@ -264,6 +229,7 @@ where
     }
 
     fn once(_context: Context<U>) {
+        forms::set_weak("DefaultStatus", "Default");
         forms::set_weak("File", Form::yellow().italic());
         forms::set_weak("Selections", Form::dark_blue());
         forms::set_weak("Coord", Form::dark_red());
@@ -278,9 +244,121 @@ where
 unsafe impl<U> Send for StatusLine<U> where U: Ui {}
 unsafe impl<U> Sync for StatusLine<U> where U: Ui {}
 
+/// The macro that creates a [`StatusLine`]
+///
+/// This macro mimics the functionality of the [`text!`] macro, in
+/// that [`Form`]s are denoted with `[{FormName}]`. However, it
+/// differss in that the [`text!`] macro is evaluated immediately,
+/// whereas this macro generates a [`Text`] whenever one of its
+/// components is updated.
+///
+/// The macro will primarily read from the [`File`] widget and its
+/// related structs. In order to do that, it will accept functions as
+/// arguments. These functions are able to take the following types of
+/// arguments:
+///
+/// * The [`&File`] widget;
+/// * A [`&dyn InputMethod`], the one that is active on said file;
+/// * A specific [`&impl InputMethod`];
+/// * A specific [`&impl PassiveWidget`], which will be a satellite;
+///
+/// Here's some examples:
+///
+/// ```rust
+/// # use duat_core::{
+/// #     input::InputMethod, text::{Text, text}, ui::Ui, widgets::{File, status},
+/// #     hooks::{self, OnWindowOpen}
+/// # };
+/// fn name_but_funky(file: &File) -> String {
+///     let mut name = String::new();
+///     
+///     for byte in unsafe { name.as_bytes_mut().iter_mut().step_by(2) } {
+///         *byte = byte.to_ascii_uppercase();
+///     }
+///     
+///     name
+/// }
+///
+/// fn powerline_main_fmt<U: Ui>(file: &File, input: &dyn InputMethod<U>) -> Text {
+///    let cursor = input.cursors().unwrap().main().clone();
+///
+///    text!(
+///        [Separator] "" [Coord] { cursor.column() }
+///        [Separator] "" [Coord] { cursor.line() }
+///        [Separator] "" [Coord] { file.len_lines() }
+///    )
+/// }
+///
+/// # fn test<U: Ui>() {
+/// hooks::add::<OnWindowOpen<U>>(|builder| {
+///     builder.push(status!([File] name_but_funky [] " " powerline_main_fmt));
+/// });
+/// # }
+/// ```
+///
+/// As you can see, you can also pass multiple of these arguments,
+/// here's the pairings you can make:
+///
+/// * A [`File`] and the [`&dyn InputMethod`];
+/// * A [`File`] and a [`&impl InputMethod`];
+/// * A [`File`] and a [`&impl PassiveWidget`];
+///
+/// Now, there are other types of arguments that you can also pass.
+/// They update differently from the previous ones. The previous
+/// arguments update when the [`File`] updates. The following types of
+/// arguments update independently or not at all:
+///
+/// * A [`Text`] argument can include [`Form`]s and buttons;
+/// * Any [`impl Display`], such as numbers, strings, chars, etc;
+/// * [`RwData`] and [`RoData`]s of the previous two types. These will
+///   update whenever the data inside is changed;
+/// * [`FnMut() -> Arg`]s, where `Arg == Text || impl Display`. These
+///   update whenever any other argument or the file is updated;
+/// * An [`(FnMut() -> Arg, FnMut() -> bool)`] tuple. The first
+///   function returns what will be shown, while the second function
+///   tells it to update;
+///
+/// Here's some examples:
+///
+/// ```rust
+/// # use std::sync::atomic::{AtomicUsize, Ordering};
+/// # use duat_core::{
+/// #     data::RwData, input::InputMethod, text::text, ui::Ui, widgets::{File, status},
+/// #     hooks::{self, OnWindowOpen}
+/// # };
+/// fn update_counter() -> usize {
+///     static COUNT: AtomicUsize = AtomicUsize::new(0);
+///     COUNT.fetch_add(1, Ordering::Relaxed)
+/// }
+///
+/// # fn test<U: Ui>() {
+/// let changing_text = RwData::new(text!("Prev text"));
+///
+/// hooks::add::<OnWindowOpen<U>>({
+///     let changing_text = changing_text.clone();
+///     move |builder| {
+///         let text = text!("Static text");
+///         builder.push(status!(changing_text " " update_counter " " text));
+///     }
+/// });
+///
+/// // When I do this, the StatusLine will instantly update
+/// *changing_text.write() = text!( "New text 😎");
+/// # }
+/// ```
+///
+/// [`&File`]: File
+/// [`&dyn InputMethod`]: crate::input::InputMethod
+/// [`&impl InputMethod`]: crate::input::InputMethod
+/// [`&impl PassiveWidget`]: PassiveWidget
+/// [`impl Display`]: std::fmt::Display
+/// [`RwData`]: crate::data::RwData
+/// [`RoData`]: crate::data::RoData
+/// [`FnMut() -> Arg`]: FnMut
+/// [`(FnMut() -> Arg, FnMut() -> bool)`]: FnMut
 pub macro status {
-    (@append $ui:ty, $pre_fn:expr, $checker:expr, []) => {{
-        let form_id = forms::to_id!("Default");
+    (@append $pre_fn:expr, $checker:expr, []) => {{
+        let form_id = forms::to_id!("DefaultStatus");
 
         let pre_fn = move |builder: &mut Builder, reader: &FileReader<$ui>| {
             $pre_fn(builder, reader);
@@ -291,10 +369,10 @@ pub macro status {
     }},
 
     // Insertion of directly named forms.
-    (@append $ui:ty, $pre_fn:expr, $checker:expr, [$form:ident]) => {{
+    (@append $pre_fn:expr, $checker:expr, [$form:ident]) => {{
         let id = forms::to_id!(stringify!($form));
 
-        let pre_fn = move |builder: &mut Builder, reader: &FileReader<$ui>| {
+        let pre_fn = move |builder: &mut Builder, reader: &FileReader<_>| {
             $pre_fn(builder, reader);
             builder.push(Tag::PushForm(id));
         };
@@ -303,12 +381,12 @@ pub macro status {
     }},
 
     // Insertion of text, reading functions, or tags.
-    (@append $ui:ty, $pre_fn:expr, $checker:expr, $text:expr) => {{
+    (@append $pre_fn:expr, $checker:expr, $text:expr) => {{
         let (mut appender, checker) = State::from($text).fns();
 
         let checker = move || { $checker() || checker() };
 
-        let pre_fn = move |builder: &mut Builder, reader: &FileReader<$ui>| {
+        let pre_fn = move |builder: &mut Builder, reader: &FileReader<_>| {
             $pre_fn(builder, reader);
             appender(builder, reader);
         };
@@ -316,37 +394,46 @@ pub macro status {
         (pre_fn, checker)
     }},
 
-    (@parse $ui:ty, $pre_fn:expr, $checker:expr,) => { ($pre_fn, $checker) },
+    (@parse $pre_fn:expr, $checker:expr,) => {{
+        (
+            Box::new(move |mut builder: Builder, reader: &FileReader<_>| {
+                $pre_fn(&mut builder, reader);
+                builder.finish()
+            }),
+            Box::new($checker)
+        )
+    }},
 
-    (@parse $ui:ty, $pre_fn:expr, $checker:expr, $part:tt $($parts:tt)*) => {{
+    (@parse $pre_fn:expr, $checker:expr, $part:tt $($parts:tt)*) => {{
         #[allow(unused_mut)]
-        let (mut pre_fn, checker) = status!(@append $ui, $pre_fn, $checker, $part);
-        status!(@parse $ui, pre_fn, checker, $($parts)*)
+        let (mut pre_fn, checker) = status!(@append $pre_fn, $checker, $part);
+        status!(@parse pre_fn, checker, $($parts)*)
     }},
 
-    (@parse $ui:ty, $($parts:tt)*) => {{
-        let pre_fn = |_: &mut Builder, _: &FileReader<$ui>| {};
+    (@parse $($parts:tt)*) => {{
+        let pre_fn = |_: &mut Builder, _: &FileReader<_>| {};
         let checker = || { false };
-        status!(@parse $ui, pre_fn, checker, $($parts)*)
+        status!(@parse pre_fn, checker, $($parts)*)
     }},
+
+	(@forms $forms:expr, [] $($rest:tt)*) => {{
+    	$forms.push(forms::to_id!("Default"));
+    	status!(@forms $forms, $($rest)*)
+	}},
+	(@forms $forms:expr, [$form:ident] $($rest:tt)*) => {{
+    	$forms.push(forms::to_id!(stringify!($form)));
+    	status!(@forms $forms, $($rest)*)
+	}},
+    (@forms $forms:expr, $other:tt $($rest:tt)*) => {
+        status!(@forms $forms, $($rest)*)
+    },
+    (@forms $forms:expr, ) => {
+        $forms
+    },
 
     ($($parts:tt)*) => {{
-        use $crate::text::Builder;
-
-        fn fn_former<U: Ui>() -> (impl FnMut(Builder, &FileReader<U>) -> Text, impl Fn() -> bool) {
-            let (mut pre_fn, checker) = status!(@parse U, $($parts)*);
-            let pre_fn = move |mut builder: Builder, reader: &FileReader<U>| {
-                pre_fn(&mut builder, reader);
-                builder.finish()
-            };
-            (pre_fn, checker)
-        }
-
-        let (pre_fn, checker) = fn_former();
-
         StatusLineCfg::new_with(
-            Box::new(pre_fn),
-            Box::new(checker),
+            status!(@parse $($parts)*),
             PushSpecs::below().with_ver_len(1.0)
         )
     }}

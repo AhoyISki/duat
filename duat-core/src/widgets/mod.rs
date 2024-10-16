@@ -18,10 +18,8 @@
 //! screen for the widget.
 //!
 //! ```rust
-//! # use crate::ui::{Constraint, PushSpecs};
-//! let specs = PushSpecs::left()
-//!     .constrain_hor(Constraint::Min(10.0))
-//!     .constrain_ver(Constraint::Len(2.0));
+//! # use duat_core::ui::PushSpecs;
+//! let specs = PushSpecs::left().with_hor_min(10.0).with_ver_len(2.0);
 //! ```
 //!
 //! When pushing a widget with these `specs` to another widget, Duat
@@ -68,13 +66,9 @@ use crate::{
     ui::{Area, PushSpecs, Ui},
 };
 
-/// A text prompt that can be used for many functions
 mod command_line;
-/// An opened [`File`](std::fs::File), in the form of a widget
 mod file;
-/// Line numbers to accompany a [`File`](crate::widgets::File)
 mod line_numbers;
-/// A widget showing information about the state of Duat
 mod status_line;
 
 /// An area where [`Text`] will be printed to the screen
@@ -95,76 +89,117 @@ mod status_line;
 /// ```
 ///
 /// In order to be a proper widget, it must have a [`Text`] to
-/// display. Next, i must implement [`PassiveWidget`]:
+/// display. Next, I must implement [`PassiveWidget`]:
 ///
 /// ```rust
-/// # use std::{
-/// #     sync::OnceLock,
-/// #     time::{Duration, Instant},
-/// # };
+/// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
 /// # use duat_core::{
-/// #     data::Context,
-/// #     hooks, periodic_checker,
-/// #     text::Text,
-/// #     ui::{PushSpecs, Ui},
-/// #     widgets::{PassiveWidget, Widget},
+/// #     data::Context, hooks, periodic_checker, text::Text, ui::{PushSpecs, Ui},
+/// #     widgets::{PassiveWidget, Widget, WidgetCfg},
 /// # };
 /// # struct UpTime(Text);
+/// # struct UpTimeCfg<U>(PhantomData<U>);
+/// # impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
+/// #     type Widget = UpTime;
+/// #     fn build(
+/// #         self,
+/// #         _: Context<U>,
+/// #         _: bool,
+/// #     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
+/// #         let widget = Widget::passive(UpTime(Text::new()));
+/// #         (widget, || false, PushSpecs::below())
+/// #     }
+/// # }
 /// impl<U: Ui> PassiveWidget<U> for UpTime {
+///     type Cfg = UpTimeCfg<U>;
+///
+///     fn cfg() -> Self::Cfg {
+///         UpTimeCfg(PhantomData)
+///     }
+///     // ...
+/// #     fn text(&self) -> &Text {
+/// #         &self.0
+/// #     }
+/// #     fn once(context: Context<U>) {}
+/// }
+/// ```
+///
+/// Note the [`Cfg`](PassiveWidget::Cfg) type, and the [`cfg`] method.
+/// These exist to give the user the ability to modify the widgets
+/// before they are pushed. The `Cfg` type, which implements
+/// [`WidgetCfg`] is the thing that will actually construct the
+/// widget. Let's look at `UpTimeCfg`:
+///
+/// ```rust
+/// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
+/// # use duat_core::{
+/// #     data::Context, hooks, periodic_checker, text::Text,
+/// #     ui::{PushSpecs, Ui}, widgets::{PassiveWidget, Widget, WidgetCfg},
+/// # };
+/// # struct UpTime(Text);
+/// struct UpTimeCfg<U>(PhantomData<U>);
+///
+/// impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
+///     type Widget = UpTime;
+///
 ///     fn build(
+///         self,
 ///         context: Context<U>,
 ///         on_file: bool,
 ///     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
 ///         let widget = UpTime(Text::new());
-///         let checker = periodic_checker(context, Duration::new(1, 0));
+///         let checker = periodic_checker(Duration::new(1, 0));
 ///         let specs = PushSpecs::below().with_ver_len(1.0);
 ///
 ///         (Widget::passive(widget), checker, specs)
 ///     }
-///     // ...
-/// #   fn text(&self) -> &Text {
-/// #       &self.0
-/// #   }
-/// #   fn once(context: Context<U>) {}
 /// }
+/// # impl<U: Ui> PassiveWidget<U> for UpTime {
+/// #     type Cfg = UpTimeCfg<U>;
+/// #     fn cfg() -> Self::Cfg {
+/// #         UpTimeCfg(PhantomData)
+/// #     }
+/// #     fn text(&self) -> &Text {
+/// #         &self.0
+/// #     }
+/// #     fn once(context: Context<U>) {}
+/// # }
 /// ```
 ///
-/// The [`build`] method is what will be called whenever this widget
-/// is created. It returns three objects:
+/// The [`build`] method should return 3 objects:
 ///
-/// - A [`Widget`], which is an intermediary type, and can either be
-///   [passive] or [active].
-/// - A `checker` function, which returns `true` whenever the widget
-///   is supposed to be updated.
-/// - [`PushSpecs`], which tell Duat where to place the widget in
-///   relation to the widget to which it was pushed.
+/// * The widget itself, can either be [passive] or [active].
+/// * A checker function that tells Duat when to update the widget.
+/// * [How] to push the widget into the [`File`]/window.
 ///
 /// In this case, [`periodic_checker`] returns a function that returns
 /// `true` every `duration` that passes.
+///
+/// Also, note that `UpTimeCfg` includes a [`PhantomData<U>`]. This is
+/// done so that the end user does not need to specify a [`Ui`] when
+/// using [`WidgetCfg`]s.
 ///
 /// Now, there are some other methods from [`PassiveWidget`] that need
 /// to be implemented for this to work. First of all, there needs to
 /// be a starting [`Instant`] to compare with the current moment in
 /// time.
 ///
-/// This [`Instant`] should be set whenever the [`Ui`] is initiated.
-/// You can do this via the [`OnUiStart`] hook:
+/// The best time to do something like this is after Duat is done with
+/// initial setup. This happens when the [`SessionStarted`] hook is
+/// triggered.
 ///
 /// ```rust
 /// # use std::{sync::OnceLock, time::Instant};
-/// # use duat_core::{
-/// #     hooks::{self, OnUiStart},
-/// #     ui::Ui,
-/// # };
+/// # use duat_core::{hooks::{self, SessionStarted}, ui::Ui};
 /// # fn test<U: Ui>() {
 /// static START_TIME: OnceLock<Instant> = OnceLock::new();
-/// hooks::add::<OnUiStart<U>>(|_| {
+/// hooks::add::<SessionStarted<U>>(|_context| {
 ///     START_TIME.set(Instant::now()).unwrap();
 /// });
 /// # }
 /// ```
 ///
-/// I could put this code inside the [`build`] method, however, by
+/// I could put this code inside the [`cfg`] method, however, by
 /// doing so, it will be called every time this widget is added to the
 /// ui.
 ///
@@ -173,71 +208,80 @@ mod status_line;
 /// to the ui:
 ///
 /// ```rust
-/// # use std::{sync::OnceLock, time::Instant};
+/// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
 /// # use duat_core::{
-/// #     data::Context,
-/// #     hooks::{self, OnUiStart},
-/// #     palette::{set_weak, Form},
-/// #     text::Text,
-/// #     ui::{PushSpecs, Ui},
-/// #     widgets::{PassiveWidget, Widget},
+/// #     data::Context, forms::{self, Form}, hooks::{self, SessionStarted}, periodic_checker,
+/// #     text::Text, ui::{PushSpecs, Ui}, widgets::{PassiveWidget, Widget, WidgetCfg},
 /// # };
 /// # struct UpTime(Text);
+/// # struct UpTimeCfg<U>(PhantomData<U>);
+/// # impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
+/// #     type Widget = UpTime;
+/// #     fn build(
+/// #         self,
+/// #         context: Context<U>,
+/// #         on_file: bool,
+/// #     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
+/// #         let widget = Widget::passive(UpTime(Text::new()));
+/// #         (widget, || false, PushSpecs::below())
+/// #     }
+/// # }
 /// static START_TIME: OnceLock<Instant> = OnceLock::new();
 ///
 /// impl<U: Ui> PassiveWidget<U> for UpTime {
-/// #   fn build(
-/// #       context: Context<U>,
-/// #       on_file: bool,
-/// #   ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
-/// #       let widget = Widget::passive(UpTime(Text::new()));
-/// #       (widget, || false, PushSpecs::below())
-/// #   }
-/// #   fn text(&self) -> &Text {
-/// #       &self.0
-/// #   }
+/// #     type Cfg = UpTimeCfg<U>;
+/// #     fn cfg() -> Self::Cfg {
+/// #         UpTimeCfg(PhantomData)
+/// #     }
+/// #     fn text(&self) -> &Text {
+/// #         &self.0
+/// #     }
 ///     // ...
 ///     fn once(context: Context<U>) {
-///         set_weak("UpTime", Form::new().cyan());
-///
-///         hooks::add::<OnUiStart<U>>(|_| {
+///         hooks::add::<SessionStarted<U>>(|_context| {
 ///             START_TIME.set(Instant::now()).unwrap();
 ///         });
+///         forms::set_weak("UpTime", Form::cyan());
 ///     }
 /// }
 /// ```
 ///
 /// I also added the `"UpTime"` [`Form`], which will be used by the
 /// widget when it is updated. When adding forms, you should use the
-/// [`palette::set_weak*`] functions, in order to not interfere with
+/// [`forms::set_weak*`] functions, in order to not interfere with
 /// the configuration crate.
 ///
 /// Next, I need to implement the [`update`] method, which will simply
 /// format the [`Text`] into a readable format:
 ///
 /// ```rust
-/// # use std::{sync::OnceLock, time::Instant};
+/// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
 /// # use duat_core::{
-/// #     data::{Context, RwData},
-/// #     hooks,
-/// #     text::{text, Text},
-/// #     ui::{PushSpecs, Ui},
-/// #     widgets::{PassiveWidget, Widget},
+/// #     data::Context, hooks, periodic_checker, text::{Text, text}, ui::{PushSpecs, Ui},
+/// #     widgets::{PassiveWidget, Widget, WidgetCfg},
 /// # };
 /// # struct UpTime(Text);
-/// static START_TIME: OnceLock<Instant> = OnceLock::new();
-///
+/// # struct UpTimeCfg<U>(PhantomData<U>);
+/// # impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
+/// #     type Widget = UpTime;
+/// #     fn build(
+/// #         self,
+/// #         context: Context<U>,
+/// #         on_file: bool,
+/// #     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
+/// #         let widget = Widget::passive(UpTime(Text::new()));
+/// #         (widget, || false, PushSpecs::below())
+/// #     }
+/// # }
+/// # static START_TIME: OnceLock<Instant> = OnceLock::new();
 /// impl<U: Ui> PassiveWidget<U> for UpTime {
-/// #   fn build(
-/// #       context: Context<U>,
-/// #       on_file: bool,
-/// #   ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
-/// #       let widget = Widget::passive(UpTime(Text::new()));
-/// #       (widget, || false, PushSpecs::below())
-/// #   }
-/// #   fn text(&self) -> &Text {
-/// #       &self.0
-/// #   }
+/// #     type Cfg = UpTimeCfg<U>;
+/// #     fn cfg() -> Self::Cfg {
+/// #         UpTimeCfg(PhantomData)
+/// #     }
+/// #     fn text(&self) -> &Text {
+/// #         &self.0
+/// #     }
 ///     // ...
 ///     fn update(&mut self, _area: &U::Area) {
 ///         let Some(start) = START_TIME.get() else {
@@ -253,56 +297,82 @@ mod status_line;
 /// }
 /// ```
 ///
-/// [`build`]: PassiveWidget::build
+/// [`cfg`]: PassiveWidget::cfg
 /// [passive]: Widget::passive
 /// [active]: Widget::active
+/// [`build`]: WidgetCfg::build
+/// [How]: PushSpecs
 /// [`periodic_checker`]: crate::periodic_checker
+/// [`PhantomData<U>`]: std::marker::PhantomData
 /// [`Instant`]: std::time::Instant
-/// [`OnUiStart`]: crate::hooks::OnUiStart
+/// [`SessionStarted`]: crate::hooks::SessionStarted
 /// [`update`]: PassiveWidget::update
-/// [`Form`]: crate::palette::Form
-/// [`palette::set_weak*`]: crate::palette::set_weak
+/// [`Form`]: crate::forms::Form
+/// [`forms::set_weak*`]: crate::forms::set_weak
 /// [`text!`]: crate::text::text
 pub trait PassiveWidget<U>: Send + Sync + 'static
 where
     U: Ui,
 {
-    /// Builds the widget
+    /// The configuration type
+    type Cfg: WidgetCfg<U, Widget = Self>
+    where
+        Self: Sized;
+
+    /// Returns a [`WidgetCfg`], for use in layout construction
     ///
-    /// Will be called to create the widget. It returns three objects:
+    /// This function exists primarily so the [`WidgetCfg`]s
+    /// themselves don't need to be in scope. You will want to use
+    /// these in [hooks] like [`OnFileOpen`]:
     ///
-    /// - A [`Widget`], which is an intermediary type, and can either
-    ///   be [passive] or [active].
-    /// - A `checker` function, which returns `true` whenever the
-    ///   widget is supposed to be updated.
-    /// - [`PushSpecs`], which tell Duat where to place the widget in
-    ///   relation to the widget to which it was pushed.
+    /// ```rust
+    /// # use duat_core::{
+    /// #     hooks::{self, OnFileOpen},
+    /// #     ui::{FileBuilder, Ui},
+    /// #     widgets::{File, LineNumbers, PassiveWidget, common::selections_fmt, status},
+    /// # };
+    /// # fn test<U: Ui>() {
+    /// hooks::remove_group("FileWidgets");
+    /// hooks::add::<OnFileOpen<U>>(|builder| {
+    ///     // Screw it, LineNumbers on both sides.
+    ///     builder.push(LineNumbers::cfg());
+    ///     builder.push(LineNumbers::cfg().on_the_right().align_right());
+    /// });
+    /// # }
+    /// ```
     ///
-    ///
-    /// [passive]: Widget::passive
-    /// [active]: Widget::active
-    fn build(
-        context: Context<U>,
-        on_file: bool,
-    ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs)
+    /// [`OnFileOpen`]: crate::hooks::OnFileOpen
+    fn cfg() -> Self::Cfg
     where
         Self: Sized;
 
     /// Updates the widget, allowing the modification of its [`Area`]
     ///
-    /// This function will be called when Duat determines that the
-    /// [`WidgetNode`]
+    /// There are a few contexts in which this function is triggered:
+    ///
+    /// * A key was sent to the widget, if it is an [`ActiveWidget`]
+    /// * It was modified externally by something like [`IncSearch`]
+    /// * The window was resized, so all widgets must be reprinted
+    ///
+    /// In this function, the text should be updated to match its new
+    /// conditions, or request changes to its [`Area`]. As an example,
+    /// the [`LineNumbers`] widget asks for [more or less width],
+    /// depending on the number of lines in the file, in order
+    /// to show an appropriate number of digits.
     ///
     /// [`Session`]: crate::session::Session
+    /// [more or less width]: Area::constrain_hor
     fn update(&mut self, _area: &U::Area) {}
 
     /// The text that this widget prints out
     fn text(&self) -> &Text;
 
-    /// The configuration for how to print [`Text`]
+    /// The [configuration] for how to print [`Text`]
     ///
     /// The default configuration, used when `print_cfg` is not
-    /// implemented,can be found at [`PrintCfg::default`].
+    /// implemented,can be found at [`PrintCfg::new`].
+    ///
+    /// [configuration]: PrintCfg
     fn print_cfg(&self) -> PrintCfg {
         PrintCfg::new()
     }
@@ -331,6 +401,29 @@ where
 
 /// A configuration struct for a [passive] or an [active] widget
 ///
+/// This configuration is used to make adjustments on how a widget
+/// will be added to a file or a window. These adjustments are
+/// primarily configurations for the widget itself, and to what
+/// direction it will be pushed:
+///
+/// ```rust
+/// # use duat_core::{
+/// #     hooks::{self, OnFileOpen},
+/// #     ui::Ui,
+/// #     widgets::{LineNumbers, PassiveWidget},
+/// # };
+/// # fn test<U: Ui>() {
+/// hooks::add::<OnFileOpen<U>>(|builder| {
+///     // Change pushing direction to the right.
+///     let cfg = LineNumbers::cfg().on_the_right();
+///     // Changes to where the numbers will be placed.
+///     let cfg = cfg.align_right().align_main_left();
+///
+///     builder.push(cfg);
+/// });
+/// # }
+/// ```
+///
 /// [passive]: PassiveWidget
 /// [active]: ActiveWidget
 pub trait WidgetCfg<U>: Sized
@@ -338,6 +431,7 @@ where
     U: Ui,
 {
     type Widget: PassiveWidget<U>;
+
     fn build(
         self,
         context: Context<U>,
@@ -348,7 +442,8 @@ where
 /// A widget that can be modified by input
 ///
 /// Here is how you can create an [`ActiveWidget`]. First, create the
-/// struct that will become said widget:
+/// struct that will become said widget, see [`PassiveWidget`] for
+/// what you need:
 ///
 /// ```rust
 /// # use duat_core::text::Text;
@@ -427,16 +522,14 @@ where
 /// documented on the documentation entry for [`InputMethod`], you can
 /// check it out next, to see how that was handled.
 ///
-/// Now i'll implement [`PassiveWidget`]:
+/// Now I'll implement [`PassiveWidget`]:
 ///
 /// ```rust
+/// # use std::marker::PhantomData;
 /// # use duat_core::{
-/// #     data::{Context, RwData},
-/// #     input::{InputMethod, KeyEvent},
-/// #     palette::{self, Form},
-/// #     text::{text, Text},
-/// #     ui::{PushSpecs, Ui},
-/// #     widgets::{ActiveWidget, PassiveWidget, Widget},
+/// #     data::{Context, RwData}, input::{InputMethod, KeyEvent}, forms::{self, Form},
+/// #     text::{text, Text}, ui::{PushSpecs, Ui},
+/// #     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
 /// # };
 /// # #[derive(Default)]
 /// # struct Menu {
@@ -453,18 +546,17 @@ where
 /// # struct MenuInput;
 /// # impl<U: Ui> InputMethod<U> for MenuInput {
 /// #     type Widget = Menu;
-/// #     fn send_key(
-/// #         &mut self,
-/// #         key: KeyEvent,
-/// #         widget: &RwData<Self::Widget>,
-/// #         area: &U::Area,
-/// #         context: Context<U>,
-/// #     ) {
+/// #     fn send_key(&mut self, _: KeyEvent, _: &RwData<Menu>, _: &U::Area, _: Context<U>) {
 /// #         todo!();
 /// #     }
 /// # }
-/// impl<U: Ui> PassiveWidget<U> for Menu {
+/// struct MenuCfg<U>(PhantomData<U>);
+///
+/// impl<U: Ui> WidgetCfg<U> for MenuCfg<U> {
+///     type Widget = Menu;
+///
 ///     fn build(
+///         self,
 ///         context: Context<U>,
 ///         on_file: bool,
 ///     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
@@ -478,16 +570,24 @@ where
 ///
 ///         (Widget::active(widget, input), checker, specs)
 ///     }
+/// }
+///
+/// impl<U: Ui> PassiveWidget<U> for Menu {
+///     type Cfg = MenuCfg<U>;
+///
+///     fn cfg() -> Self::Cfg {
+///         MenuCfg(PhantomData)
+///     }
 ///
 ///     fn text(&self) -> &Text {
 ///         &self.text
 ///     }
 ///
 ///     fn once(_context: Context<U>) {
-///         palette::set_weak_ref("MenuInactive", "Inactive");
-///         palette::set_weak_ref("MenuSelected", "Inactive");
-///         palette::set_weak("MenuActive", Form::new().blue());
-///         palette::set_weak("MenuSelActive", Form::new().blue());
+///         forms::set_weak("MenuInactive", "Inactive");
+///         forms::set_weak("MenuSelected", "Inactive");
+///         forms::set_weak("MenuActive", Form::blue());
+///         forms::set_weak("MenuSelActive", Form::blue());
 ///     }
 /// }
 /// # impl<U: Ui> ActiveWidget<U> for Menu {
@@ -504,13 +604,11 @@ where
 /// Now, all that is needed is an implementation of [`ActiveWidget`]:
 ///
 /// ```rust
+/// # use std::marker::PhantomData;
 /// # use duat_core::{
-/// #     data::{Context, RwData},
-/// #     input::{InputMethod, KeyEvent},
-/// #     palette::{self, Form},
-/// #     text::{text, Text},
-/// #     ui::{PushSpecs, Ui},
-/// #     widgets::{ActiveWidget, PassiveWidget, Widget},
+/// #     data::{Context, RwData}, input::{InputMethod, KeyEvent}, forms::{self, Form},
+/// #     text::{text, Text}, ui::{PushSpecs, Ui},
+/// #     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
 /// # };
 /// # #[derive(Default)]
 /// # struct Menu {
@@ -518,12 +616,21 @@ where
 /// #     selected_entry: usize,
 /// #     active_entry: Option<usize>,
 /// # }
-/// # impl<U: Ui> PassiveWidget<U> for Menu {
+/// # struct MenuCfg<U>(PhantomData<U>);
+/// # impl<U: Ui> WidgetCfg<U> for MenuCfg<U> {
+/// #     type Widget = Menu;
 /// #     fn build(
+/// #         self,
 /// #         context: Context<U>,
 /// #         on_file: bool,
 /// #     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
-/// #       (Widget::passive(Menu::default()), || false, PushSpecs::left())
+/// #         (Widget::passive(Menu::default()), || false, PushSpecs::left())
+/// #     }
+/// # }
+/// # impl<U: Ui> PassiveWidget<U> for Menu {
+/// #     type Cfg = MenuCfg<U>;
+/// #     fn cfg() -> Self::Cfg {
+/// #         MenuCfg(PhantomData)
 /// #     }
 /// #     fn text(&self) -> &Text {
 /// #         &self.text
@@ -536,15 +643,15 @@ where
 ///     }
 ///
 ///     fn on_focus(&mut self, _area: &U::Area) {
-///         palette::set_weak_ref("MenuInactive", "Default");
-///         palette::set_weak("MenuSelected", Form::new().on_grey());
-///         palette::set_weak("MenuSelActive",Form::new().blue().on_grey());
+///         forms::set_weak("MenuInactive", "Default");
+///         forms::set_weak("MenuSelected", Form::new().on_grey());
+///         forms::set_weak("MenuSelActive", Form::blue().on_grey());
 ///     }
 ///
 ///     fn on_unfocus(&mut self, _area: &U::Area) {
-///         palette::set_weak_ref("MenuInactive", "Inactive");
-///         palette::set_weak_ref("MenuSelected", "Inactive");
-///         palette::set_weak("MenuSelActive", Form::new().blue());
+///         forms::set_weak("MenuInactive", "Inactive");
+///         forms::set_weak("MenuSelected", "Inactive");
+///         forms::set_weak("MenuSelActive", Form::blue());
 ///     }
 /// }
 /// ```
@@ -565,7 +672,7 @@ where
 /// [`on_focus`]: ActiveWidget::on_focus
 /// [`on_unfocus`]: ActiveWidget::on_unfocus
 /// [resizing]: Area::constrain_ver
-/// [`Form`]: crate::palette::Form
+/// [`Form`]: crate::forms::Form
 pub trait ActiveWidget<U>: PassiveWidget<U>
 where
     U: Ui,

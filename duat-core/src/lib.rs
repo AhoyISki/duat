@@ -8,7 +8,8 @@
     decl_macro,
     step_trait,
     type_alias_impl_trait,
-    if_let_guard
+    if_let_guard,
+    closure_lifetime_binder
 )]
 
 use std::{
@@ -253,10 +254,7 @@ pub mod thread {
 /// `checker` must be returned in order to update the widget.
 ///
 /// [`PassiveWidget::build`]: crate::widgets::PassiveWidget::build
-pub fn periodic_checker<U>(duration: Duration) -> impl Fn() -> bool
-where
-    U: Ui,
-{
+pub fn periodic_checker(duration: Duration) -> impl Fn() -> bool {
     let check = Arc::new(AtomicBool::new(false));
     crate::thread::spawn({
         let check = check.clone();

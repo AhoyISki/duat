@@ -7,7 +7,7 @@ use duat_core::{
     session::SessionCfg,
     text::{PrintCfg, Text},
     ui::{Event, Ui as TraitUi, Window},
-    widgets::{File, ShowNotifications},
+    widgets::{File, ShowNotifications, PassiveWidget},
 };
 use duat_term::VertRule;
 

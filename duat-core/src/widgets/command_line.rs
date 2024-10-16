@@ -152,10 +152,6 @@ impl<U> CommandLine<U>
 where
     U: Ui,
 {
-    pub fn cfg() -> CommandLineCfg<Commander, U> {
-        CommandLineCfg::new()
-    }
-
     pub(crate) fn set_mode<M: CommandLineMode<U>>(&mut self, context: Context<U>) {
         *self.mode.write() = RwData::new_unsized::<M>(Arc::new(RwLock::new(M::new(context))));
     }
@@ -165,8 +161,10 @@ impl<U> PassiveWidget<U> for CommandLine<U>
 where
     U: Ui,
 {
-    fn build(context: Context<U>, on_file: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
-        CommandLineCfg::new().build(context, on_file)
+    type Cfg = CommandLineCfg<Commander, U>;
+
+    fn cfg() -> Self::Cfg {
+        CommandLineCfg::new()
     }
 
     fn update(&mut self, _area: &<U as Ui>::Area) {
@@ -245,10 +243,7 @@ impl<U> CommandLineMode<U> for RunCommands<U>
 where
     U: Ui,
 {
-    fn new(context: Context<U>) -> Self
-    where
-        Self: Sized,
-    {
+    fn new(context: Context<U>) -> Self {
         crate::switch_to::<CommandLine<U>>();
         Self(context)
     }
@@ -273,10 +268,7 @@ impl<U> CommandLineMode<U> for ShowNotifications
 where
     U: Ui,
 {
-    fn new(context: Context<U>) -> Self
-    where
-        Self: Sized,
-    {
+    fn new(context: Context<U>) -> Self {
         Self {
             notifications: context.notifications(),
             has_changed: false,
@@ -312,10 +304,7 @@ impl<U> CommandLineMode<U> for IncSearch<U>
 where
     U: Ui,
 {
-    fn new(context: Context<U>) -> Self
-    where
-        Self: Sized,
-    {
+    fn new(context: Context<U>) -> Self {
         crate::switch_to::<CommandLine<U>>();
         Self {
             list: RwData::default(),

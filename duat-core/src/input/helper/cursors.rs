@@ -450,7 +450,7 @@ mod cursor {
         }
 
         /// The column of the caret. Indexed at 0.
-        pub fn vcol(&self) -> usize {
+        pub fn column(&self) -> usize {
             self.caret.vcol()
         }
 

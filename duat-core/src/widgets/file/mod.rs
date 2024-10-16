@@ -11,13 +11,13 @@
 //!
 //! [`FileWidget`]s can have attached extensions called
 //! [`Observer`]s, that can read the [`Text`] within, and are also
-//! notified of any [`Change`][crate::history::Change]s made to the
+//! notified of any [`Change`]s made to the
 //! file.
 //!
 //! The [`FileWidget`] also provides a list of printed lines
 //! through the [`printed_lines()`][FileWidget::printed_lines()`]
 //! method. This method is notably used by the
-//! [`LineNumbers`][crate::widgets::LineNumbers] widget, that shows
+//! [`LineNumbers`] widget, that shows
 //! the numbers of the currently printed lines.
 use std::{fs, io::ErrorKind, path::PathBuf, sync::Arc};
 
@@ -365,12 +365,10 @@ impl<U> PassiveWidget<U> for File
 where
     U: Ui,
 {
-    fn build(_context: Context<U>, _: bool) -> (Widget<U>, impl Fn() -> bool, crate::ui::PushSpecs)
-    where
-        Self: Sized,
-    {
-        let (widget, checker) = FileCfg::new().build();
-        (widget, checker, PushSpecs::above())
+    type Cfg = FileCfg<U>;
+
+    fn cfg() -> Self::Cfg {
+        FileCfg::new()
     }
 
     fn update(&mut self, _area: &U::Area) {}

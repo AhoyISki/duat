@@ -30,7 +30,7 @@ use crate::{
 /// # use duat_core::{
 /// #     hooks::{self, OnFileOpen},
 /// #     ui::{FileBuilder, Ui},
-/// #     widgets::LineNumbers,
+/// #     widgets::{LineNumbers, PassiveWidget},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::add::<OnFileOpen<U>>(|builder: &FileBuilder<U>| {
@@ -47,7 +47,7 @@ use crate::{
 /// # use duat_core::{
 /// #     hooks::{self, OnFileOpen},
 /// #     ui::{FileBuilder, Ui},
-/// #     widgets::LineNumbers,
+/// #     widgets::{LineNumbers, PassiveWidget},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::add::<OnFileOpen<U>>(|builder: &FileBuilder<U>| {
@@ -70,7 +70,7 @@ use crate::{
 /// # use duat_core::{
 /// #     hooks::{self, OnFileOpen},
 /// #     ui::{FileBuilder, Ui},
-/// #     widgets::{CommandLine, LineNumbers, StatusLine},
+/// #     widgets::{CommandLine, LineNumbers, PassiveWidget, StatusLine},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::remove_group("FileWidgets");
@@ -151,7 +151,7 @@ where
     /// # use duat_core::{
     /// #     hooks::{self, OnFileOpen},
     /// #     ui::{FileBuilder, Ui},
-    /// #     widgets::{File, LineNumbers, common::selections_fmt, status},
+    /// #     widgets::{File, LineNumbers, PassiveWidget, common::selections_fmt, status},
     /// # };
     /// # fn test<U: Ui>() {
     /// hooks::remove_group("FileWidgets");
@@ -230,7 +230,7 @@ where
     /// #     text::Text,
     /// #     ui::{FileBuilder, Ui},
     /// #     widgets::{
-    /// #         CommandLine, File, LineNumbers,
+    /// #         CommandLine, File, LineNumbers, PassiveWidget,
     /// #         common::{selections_fmt, main_fmt}, status
     /// #     },
     /// # };
@@ -290,7 +290,7 @@ where
 /// # use duat_core::{
 /// #     hooks::{self, OnWindowOpen},
 /// #     ui::{Ui, WindowBuilder},
-/// #     widgets::{CommandLine, StatusLine},
+/// #     widgets::{CommandLine, PassiveWidget, StatusLine},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::add::<OnWindowOpen<U>>(|builder: &WindowBuilder<U>| {
@@ -315,7 +315,7 @@ where
 /// # use duat_core::{
 /// #     hooks::{self, OnFileOpen, OnWindowOpen},
 /// #     ui::{WindowBuilder, Ui},
-/// #     widgets::{CommandLine, LineNumbers, StatusLine},
+/// #     widgets::{CommandLine, LineNumbers, PassiveWidget, StatusLine},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::remove_group("FileWidgets");
@@ -434,7 +434,7 @@ where
     /// ```rust
     /// # use duat_core::{
     /// #     ui::{Ui, WindowBuilder},
-    /// #     widgets::{CommandLine, StatusLine},
+    /// #     widgets::{CommandLine, PassiveWidget, StatusLine},
     /// # };
     /// # fn test<U: Ui>(builder: &WindowBuilder<U>) {
     /// // StatusLine goes below by default

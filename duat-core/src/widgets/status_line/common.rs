@@ -26,7 +26,7 @@ pub fn main_col<U>(input: &dyn InputMethod<U>) -> Option<usize>
 where
     U: Ui,
 {
-    main_cursor(input).map(|c| c.vcol() + 1)
+    main_cursor(input).map(|c| c.column() + 1)
 }
 
 /// The line of the main cursor in the file. Indexed at 1.

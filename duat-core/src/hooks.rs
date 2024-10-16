@@ -25,13 +25,11 @@
 //!
 //! Currently, these are the existing hooks in `duat-core`:
 //!
-//! - [`OnUiStart`], which lets you mutate the [`Ui`] as it's created.
+//! - [`SessionStarted`], happening after the initial setup is done.
 //! - [`OnFileOpen`], which lets you push widgets around a [`File`].
 //! - [`OnWindowOpen`], which lets you push widgets around the window.
-//! - [`FocusedOn`] lets you act on a [widget] whenever the focus is
-//!   changed to it.
-//! - [`UnfocusedFrom`] lets you act on a [widget] whenever the focus
-//!   is moved away from it.
+//! - [`FocusedOn`] lets you act on a [widget] whenever it is focused.
+//! - [`UnfocusedFrom`] lets you act on a [widget] when unfocused.
 //! - [`KeySent`] lets you act on a [dyn ActiveWidget], depending on
 //!   the [key] sent to it.
 //! - [`KeySentTo`], unlike [`KeySent`], lets you act on a specific
@@ -70,11 +68,17 @@ use parking_lot::{Mutex, RwLock};
 
 pub use self::global::*;
 use crate::{
-    data::RwData,
+    data::{Context, RwData},
     input::{InputMethod, KeyEvent},
     ui::{FileBuilder, Ui, WindowBuilder},
     widgets::ActiveWidget,
 };
+
+pub struct SessionStarted<U: Ui>(PhantomData<U>);
+
+impl<U: Ui> Hookable for SessionStarted<U> {
+    type Args = Context<U>;
+}
 
 /// Triggers whenever a [`File`] is opened
 ///
@@ -85,14 +89,9 @@ use crate::{
 ///
 /// [`File`]: crate::widgets::File
 /// [builder]: crate::ui::FileBuilder
-pub struct OnFileOpen<U>(PhantomData<U>)
-where
-    U: Ui;
+pub struct OnFileOpen<U: Ui>(PhantomData<U>);
 
-impl<U> Hookable for OnFileOpen<U>
-where
-    U: Ui,
-{
+impl<U: Ui> Hookable for OnFileOpen<U> {
     type Args = FileBuilder<U>;
 }
 
@@ -104,14 +103,9 @@ where
 ///   edges of the window, surrounding the inner file region.
 ///
 /// [builder]: crate::ui::WindowBuilder
-pub struct OnWindowOpen<U>(PhantomData<U>)
-where
-    U: Ui;
+pub struct OnWindowOpen<U: Ui>(PhantomData<U>);
 
-impl<U> Hookable for OnWindowOpen<U>
-where
-    U: Ui,
-{
+impl<U: Ui> Hookable for OnWindowOpen<U> {
     type Args = WindowBuilder<U>;
 }
 
@@ -190,14 +184,9 @@ where
 ///   the key was sent.
 ///
 /// [key]: KeyEvent
-pub struct KeySent<U>(PhantomData<U>)
-where
-    U: Ui;
+pub struct KeySent<U: Ui>(PhantomData<U>);
 
-impl<U> Hookable for KeySent<U>
-where
-    U: Ui,
-{
+impl<U: Ui> Hookable for KeySent<U> {
     type Args = (KeyEvent, RwData<dyn ActiveWidget<U>>);
 }
 

@@ -1,5 +1,4 @@
-//! A [`Widget`] that shows the visible line numbers of a
-//! [`File`].
+//! Line numbers for a [`File`]
 //!
 //! This widget has various options to configure the presentation of
 //! the lines. These can be found in the [`LineNumbersCfg`] struct.
@@ -20,6 +19,8 @@
 //! numbers will be printed. This struct shows up twice in
 //! [`LineNumbersCfg`], once for the main cursor's line, and once for
 //! all other lines. Its [`Right`][Alignment::Right] by default.
+//!
+//! [`File`]: super::File
 use std::{fmt::Alignment, marker::PhantomData};
 
 use crate::{
@@ -45,10 +46,6 @@ impl<U> LineNumbers<U>
 where
     U: Ui,
 {
-    pub fn cfg() -> LineNumbersCfg<U> {
-        LineNumbersCfg::new()
-    }
-
     /// The minimum width that would be needed to show the last line.
     fn calculate_width(&mut self) -> f64 {
         // "+ 1" because we index from 1, not from 0.
@@ -97,13 +94,10 @@ impl<U> PassiveWidget<U> for LineNumbers<U>
 where
     U: Ui,
 {
-    /// Returns a function that outputs a [`LineNumbers`], taking a
-    /// [`LineNumbersCfg`] as argument.
-    fn build(
-        context: Context<U>,
-        on_file: bool,
-    ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
-        LineNumbersCfg::default().build(context, on_file)
+    type Cfg = LineNumbersCfg<U>;
+
+    fn cfg() -> Self::Cfg {
+        LineNumbersCfg::new()
     }
 
     fn update(&mut self, area: &U::Area) {

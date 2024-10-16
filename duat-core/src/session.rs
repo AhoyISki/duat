@@ -12,7 +12,7 @@ use crate::{
     cache::{delete_cache, load_cache, store_cache},
     control::SwitchTo,
     data::{Context, RwData},
-    hooks::{self, OnWindowOpen},
+    hooks::{self, OnWindowOpen, SessionStarted},
     input::InputForFiles,
     text::{PrintCfg, Text, err, ok},
     ui::{
@@ -234,6 +234,8 @@ where
 
     /// Start the application, initiating a read/response loop.
     pub fn start(mut self, rx: mpsc::Receiver<Event>) -> Vec<(RwData<File>, bool)> {
+        hooks::trigger::<SessionStarted<U>>(self.context);
+
         // This loop is very useful when trying to find deadlocks.
         #[cfg(feature = "deadlocks")]
         crate::thread::spawn(|| {

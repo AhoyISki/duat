@@ -1,7 +1,7 @@
 use duat_core::{
     data::{Context, FileReader},
     forms::{self, Form},
-    text::{text, Text},
+    text::{Text, text},
     ui::{Area as UiArea, PushSpecs},
     widgets::{PassiveWidget, Widget, WidgetCfg},
 };
@@ -19,15 +19,11 @@ pub struct VertRule {
     sep_char: SepChar,
 }
 
-impl VertRule {
-    pub fn cfg() -> VertRuleCfg {
-        VertRuleCfg::new()
-    }
-}
-
 impl PassiveWidget<Ui> for VertRule {
-    fn build(globals: Context<Ui>, on_file: bool) -> (Widget<Ui>, impl Fn() -> bool, PushSpecs) {
-        VertRuleCfg::new().build(globals, on_file)
+    type Cfg = VertRuleCfg;
+
+    fn cfg() -> Self::Cfg {
+        VertRuleCfg::new()
     }
 
     fn update(&mut self, area: &Area) {
