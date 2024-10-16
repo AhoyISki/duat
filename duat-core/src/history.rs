@@ -1,4 +1,4 @@
-//! Duat's history system.
+//! Duat's history system
 //!
 //! The history system is comprised of 2 concepts: [`Moment`]s and
 //! [`Change`]s. A [`Moment`] contains any number of [`Change`]s, and
@@ -15,7 +15,7 @@
 //! which is strictly one [`Change`] per [`Moment`], or Kakoune, where
 //! [`Moment`]s may contain as many [`Change`]s as is desired.
 //!
-//! [`Cursor`]: crate::position::Cursor
+//! [`Cursor`]: crate::input::Cursor
 use std::{
     cmp::Ordering,
     ops::{Range, RangeBounds},
@@ -28,14 +28,14 @@ use crate::{
 };
 
 /// A change in a file, empty vectors indicate a pure insertion or
-/// deletion.
+/// deletion
 #[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Change {
     /// The starting `byte` of the [`Change`]
     pub start: usize,
-    /// The text that was added in this change.
+    /// The text that was added in this change
     pub added_text: String,
-    /// The text that was replaced in this change.
+    /// The text that was replaced in this change
     pub taken_text: String,
 }
 
@@ -97,22 +97,22 @@ impl Change {
         }
     }
 
-    /// Returns the initial [Range].
+    /// Returns the initial [Range]
     pub fn taken_range(&self) -> Range<usize> {
         self.start..self.taken_end()
     }
 
-    /// Returns the final [Range].
+    /// Returns the final [Range]
     pub fn added_range(&self) -> Range<usize> {
         self.start..self.added_end()
     }
 
-    /// Returns the end of the [Change], before it was applied.
+    /// Returns the end of the [Change], before it was applied
     pub fn taken_end(&self) -> usize {
         self.start + self.taken_text.len()
     }
 
-    /// Returns the end of the [Change], after it was applied.
+    /// Returns the end of the [Change], after it was applied
     pub fn added_end(&self) -> usize {
         self.start + self.added_text.len()
     }
@@ -139,20 +139,20 @@ fn precedes(lhs: Range<usize>, rhs: Range<usize>) -> bool {
 }
 
 /// A moment in history, which may contain changes, or may just
-/// contain selections.
+/// contain selections
 ///
 /// It also contains information about how to print the file, so that
 /// going back in time is less jaring.
 #[derive(Default, Debug, Clone)]
 pub struct Moment {
     /// A list of actions, which may be changes, or simply selections
-    /// of text.
+    /// of text
     pub(crate) changes: Vec<Change>,
 }
 
 impl Moment {
     /// First try to merge this change with as many changes as
-    /// possible, then add it in.
+    /// possible, then add it in
     ///
     /// # Returns
     ///
@@ -209,7 +209,7 @@ impl Moment {
     }
 
     /// Searches for the first [`Change`] that can be merged with the
-    /// one inserted on `last_index`.
+    /// one inserted on `last_index`
     fn find_first_merger(&self, change: &Change, last_index: usize) -> Option<usize> {
         let mut first_index = None;
         let change_iter = self.changes.iter().enumerate().take(last_index).rev();
@@ -225,7 +225,7 @@ impl Moment {
     }
 
     /// Finds a [Change] inside of a [Vec<Change>] that intersects
-    /// another at its end.
+    /// another at its end
     fn find_last_merger(&self, change: &Change) -> usize {
         match self
             .changes
@@ -237,12 +237,12 @@ impl Moment {
     }
 }
 
-/// The history of edits, contains all moments.
+/// The history of edits, contains all moments
 #[derive(Default, Debug, Clone)]
 pub struct History {
-    /// The list of moments in this file's editing history.
+    /// The list of moments in this file's editing history
     moments: Vec<Moment>,
-    /// The currently active moment.
+    /// The currently active moment
     current_moment: usize,
 }
 
@@ -252,7 +252,7 @@ impl History {
     }
 
     /// Gets a mutable reference to the current [Moment], if not at
-    /// the very beginning.
+    /// the very beginning
     fn mut_current_moment(&mut self) -> Option<&mut Moment> {
         if self.current_moment > 0 {
             self.moments.get_mut(self.current_moment - 1)
@@ -262,7 +262,7 @@ impl History {
     }
 
     /// Gets a reference to the current [Moment], if not at the very
-    /// beginning.
+    /// beginning
     pub fn current_moment(&self) -> Option<&Moment> {
         if self.current_moment > 0 {
             self.moments.get(self.current_moment - 1)
@@ -272,7 +272,7 @@ impl History {
     }
 
     /// Adds a [Change] to the current [Moment], or adds it to a new
-    /// one, if no [Moment] exists.
+    /// one, if no [Moment] exists
     ///
     /// # Returns
     ///
@@ -300,7 +300,7 @@ impl History {
     }
 
     /// Declares that the current [Moment] is complete and starts a
-    /// new one.
+    /// new one
     pub fn new_moment(&mut self) {
         // If the last moment in history is empty, we can keep using it.
         if self
@@ -315,7 +315,7 @@ impl History {
         }
     }
 
-    /// Undoes the last [`Moment`][crate::history::Moment].
+    /// Undoes the last [`Moment`]
     pub fn undo(
         &mut self,
         text: &mut Text,
@@ -341,8 +341,7 @@ impl History {
         }
     }
 
-    /// Redoes the last [`Moment`][crate::history::Moment] in the
-    /// [`History`].
+    /// Redoes the last [`Moment`] in the [`History`]
     pub fn redo(
         &mut self,
         text: &mut Text,

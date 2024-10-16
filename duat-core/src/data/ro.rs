@@ -362,9 +362,7 @@ where
     ///     RwData::new_unsized::<String>(Arc::new(RwLock::new(String::from(
     ///         "Shining, shimmering, splendid",
     ///     )))),
-    ///     RwData::new_unsized::<char>(Arc::new(RwLock::new(
-    ///         '🧞',
-    ///     ))),
+    ///     RwData::new_unsized::<char>(Arc::new(RwLock::new('🧞'))),
     /// ];
     ///
     /// assert!(matches!(

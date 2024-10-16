@@ -362,12 +362,13 @@ where
     /// ```rust
     /// # use duat_core::{
     /// #     commands::{self, Result},
-    /// #     file::File,
-    /// #     text::text,
+    /// #     data::{Context, RwData},
+    /// #     input::InputMethod,
+    /// #     text::{Text, text},
     /// #     ui::Ui,
-    /// #     Context,
+    /// #     widgets::File
     /// # };
-    /// # fn test<U: Ui>(context: Context<U>) -> Result<Option<Text>> {
+    /// # fn test<U: Ui>(context: Context<U>) {
     /// #[derive(Debug)]
     /// enum Mode {
     ///     Normal,
@@ -380,26 +381,25 @@ where
     ///     mode: Mode,
     /// }
     ///
-    /// impl InputMethod for ModalEditor {
+    /// impl<U: Ui> InputMethod<U> for ModalEditor {
     ///     /* Implementation details. */
-    /// # type Widget = File
-    /// # where
-    /// #     Self: Sized;
+    /// # type Widget = File;
     /// # fn send_key(
     /// #     &mut self,
     /// #     key: crossterm::event::KeyEvent,
     /// #     widget: &RwData<Self::Widget>,
-    /// #     area: &impl duat_core::ui::Area,
-    /// # ) where
-    /// #     Self: Sized,
+    /// #     area: &U::Area,
+    /// #     context: Context<U>
+    /// # )
     /// # {
-    /// #     todo!()
+    /// #     todo!();
     /// # }
     /// }
     ///
-    /// context.commands.add_for_current::<ModalEditor>(
+    /// context.add_cmd_for_current::<ModalEditor>(
     ///     ["set-mode"],
     ///     |modal, flags, mut args| {
+    ///         let mut modal = modal.write();
     ///         let mode = args.next_else(text!("No mode given"))?;
     ///
     ///         match mode {
@@ -420,6 +420,7 @@ where
     ///     }
     /// )
     /// .unwrap();
+    /// # }
     /// ```
     ///
     /// [`File`]: crate::widgets::File
@@ -733,7 +734,7 @@ impl InnerCommands {
     }
 }
 
-type Result<T> = crate::Result<T, ()>;
+pub type Result<T> = crate::Result<T, ()>;
 
 /// Gets a widget, given its duat name.
 fn get_from_name<'a, U: Ui>(
