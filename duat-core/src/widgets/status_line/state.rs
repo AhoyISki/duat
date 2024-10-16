@@ -1,9 +1,25 @@
+//! The acceptable patterns in a [`StatusLine`]
+//!
+//! The patterns that can be put in a [`StatusLine`] are largely the
+//! same as the ones that can be put inside a [`text!`] macro,
+//! however, some additions are made.
+//!
+//! Specifically, arguments that read from the [`File`] and its
+//! related structs are also accepted by [`status!`].
+//!
+//! In addition, arguments with arbitrary update schedules are also
+//! accepted, such as the [data] types, and parser/checker function
+//! pairs.
+//!
+//! [`StatusLine`]: super::StatusLine
+//! [`status!`]: super::status
+//! [data]: crate::data
 use std::{fmt::Display, marker::PhantomData};
 
 use crate::{
     data::{FileReader, RoData, RwData},
     input::InputMethod,
-    text::{text, Builder, Tag, Text},
+    text::{Builder, Tag, Text, text},
     ui::Ui,
     widgets::{File, PassiveWidget},
 };

@@ -331,21 +331,24 @@ unsafe impl<U> Sync for StatusLine<U> where U: Ui {}
 ///     COUNT.fetch_add(1, Ordering::Relaxed)
 /// }
 ///
-///
 /// hooks::add::<OnWindowOpen<U>>({
 ///     let changing_text = changing_text.clone();
 ///     move |builder| {
 ///         let changing_text = changing_text.clone();
+///         
 ///         let checker = {
 ///             let changing_text = changing_text.clone();
 ///             move || changing_text.has_changed()
 ///         };
+///         
 ///         let text = text!("Static text");
+///         
 ///         builder.push(status!(changing_text " " (counter, checker) " " text));
 ///     }
 /// });
 ///
 /// // When I do this, the StatusLine will instantly update
+/// // Both the `changing_text` and `counter` will change.
 /// *changing_text.write() = text!( "New text 😎");
 /// # }
 /// ```

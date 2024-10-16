@@ -1,3 +1,16 @@
+//! Common items in a [`StatusLine`]
+//!
+//! These functions are meant to be simple to use, you can just put
+//! them inside a [`status!`] macro, and they will be understood with
+//! no other meddling.
+//!
+//! These functions are primarily about a [`&dyn InputMethod`], and
+//! retrieve information about its [`Cursors`], assuming that they
+//! exist, panicking otherwise.
+//!
+//! [`StatusLine`]: super::StatusLine
+//! [`status!`]: super::status
+//! [`&dyn InputMethod`]: crate::input::InputMethod
 use crate::{
     input::{Cursor, Cursors, InputMethod},
     text::{Text, text},
