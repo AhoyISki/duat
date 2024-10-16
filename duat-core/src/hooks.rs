@@ -9,11 +9,11 @@
 //! # use duat_core::{
 //! #     hooks::{self, *},
 //! #     ui::Ui,
-//! #     widgets::{File, LineNumbers},
+//! #     widgets::{File, LineNumbers, PassiveWidget},
 //! # };
 //! # fn test<U: Ui>() {
 //! hooks::add::<OnFileOpen<U>>(|builder| {
-//!     builder.push::<LineNumbers<U>>();
+//!     builder.push(LineNumbers::cfg());
 //! });
 //! # }
 //! ```
@@ -47,7 +47,7 @@
 //! # use duat_core::hooks::{self, *};
 //! struct CustomHook;
 //! impl Hookable for CustomHook {
-//!     type Args<'args> = usize;
+//!     type Args = usize;
 //! }
 //!
 //! let arg = 42;

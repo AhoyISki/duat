@@ -4,7 +4,7 @@ use std::{
     ops::{Range, RangeBounds},
 };
 
-use gapbuf::{gap_buffer, GapBuffer};
+use gapbuf::{GapBuffer, gap_buffer};
 
 pub use self::{
     ids::{Key, Keys, TextId, ToggleId},
@@ -17,7 +17,7 @@ use self::{
     ranges::TagRange::{self, *},
     types::Toggle,
 };
-use super::{get_ends, records::Records, Point, Text};
+use super::{Point, Text, get_ends, records::Records};
 
 mod ids;
 mod ranges;
@@ -129,7 +129,7 @@ impl Tags {
             .get_skip_at(at)
             .unwrap_or((self.buf.len(), self.len_bytes(), 0));
 
-		// Don't add the tag, if it already exists in that position.
+        // Don't add the tag, if it already exists in that position.
         if b == at
             && iter_range_rev(&self.buf, ..n)
                 .map_while(|ts| ts.as_tag())
@@ -234,6 +234,18 @@ impl Tags {
         }
 
         deintersect(&mut self.ranges, self.range_min);
+    }
+
+    pub fn remove_tags_of(&mut self, keys: impl Keys) {
+        let keys = keys.range();
+        let b_to_remove: Vec<usize> = iter_range(&self.buf, ..)
+            .filter_map(raw_from(0))
+            .filter_map(|(i, t)| keys.clone().contains(t.key()).then_some(i))
+            .collect();
+
+        for b in b_to_remove {
+            self.remove_at(b, keys.clone());
+        }
     }
 
     pub fn transform(&mut self, old: Range<usize>, new_end: usize) {

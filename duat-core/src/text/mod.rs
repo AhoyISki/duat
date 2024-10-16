@@ -91,6 +91,10 @@ impl Text {
         self.tags.remove_at(b, keys)
     }
 
+    pub fn remove_tags_of(&mut self, keys: impl Keys) {
+        self.tags.remove_tags_of(keys)
+    }
+
     pub fn clear_tags(&mut self) {
         self.tags = Box::new(Tags::with_len(self.buf.len()));
     }

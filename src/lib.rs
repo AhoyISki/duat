@@ -227,7 +227,10 @@ pub mod plugin {
 
 pub mod widgets {
     //! Duat's builtin widgets
-    pub use duat_core::{ui::Constraint, widgets::{File, status}};
+    pub use duat_core::{
+        ui::Constraint,
+        widgets::{File, status},
+    };
 
     use crate::Ui;
 
@@ -251,6 +254,7 @@ pub mod prelude {
         self, DuatError, Error, data,
         text::{Builder, Text, err, hint, ok, text},
         ui::Area,
+        widgets::PassiveWidget,
     };
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self as ui, VertRule};

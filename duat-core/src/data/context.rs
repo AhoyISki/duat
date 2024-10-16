@@ -149,6 +149,10 @@ where
         self.commands.run_notify(call)
     }
 
+    pub fn caller_exists(self, caller: &str) -> bool {
+        self.commands.caller_exists(caller)
+    }
+
     pub(crate) fn set_cur(self, parts: FileParts<U>, widget: Widget<U>) {
         let area = parts.1.clone();
         *self.cur_file.0.write() = Some(parts);

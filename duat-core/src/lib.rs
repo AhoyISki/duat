@@ -95,10 +95,10 @@ pub trait Plugin<U: Ui>: 'static {
     ///     type Cache = ();
     ///
     ///     fn new(cache: Self::Cache, context: Context<U>) -> Self {
-    ///         hooks::add::<KeySentTo<File, U>>(|&(key, _)| {
+    ///         hooks::add::<KeySentTo<File, U>>(move |&(key, _)| {
     ///             // Assuming that we are leaving an insert mode
     ///             if let key!(KeyCode::Esc) = key {
-    ///                 context.commands.run("write").unwrap();
+    ///                 context.run_cmd("write").unwrap();
     ///             }
     ///         });
     ///         AutoSaver

@@ -12,7 +12,7 @@
 //! Here's an example of a command being used by a plugin:
 //!
 //! ```rust
-//! use duat_core::{data::Context, ui::Ui, Plugin};
+//! use duat_core::{Plugin, data::Context, ui::Ui};
 //! struct MyPlugin;
 //!
 //! impl<U: Ui> Plugin for MyPlugin {
@@ -30,24 +30,23 @@
 //! [duat]: https://docs.rs/duat/latest/duat/index.html
 //! [`commands`]: https://docs.rs/duat/latest/duat/prelude/commands/index.html
 //! [`Context`]: crate::data::Context
-
 use std::{
     collections::HashMap,
     fmt::Display,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc, LazyLock,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 
-pub use self::parameters::{split_flags_and_args, Args, Flags};
+pub use self::parameters::{Args, Flags, split_flags_and_args};
 use crate::{
+    Error,
     data::{CurFile, CurWidget, RwData, RwLock},
     duat_name,
-    text::{err, ok, text, Text},
+    text::{Text, err, ok, text},
     ui::{Ui, Window},
     widgets::{ActiveWidget, PassiveWidget},
-    Error,
 };
 
 mod parameters;
@@ -615,6 +614,16 @@ where
         });
 
         self.inner.write().try_add(command)
+    }
+
+    pub(crate) fn caller_exists(&self, caller: &str) -> bool {
+        let inner = self.inner.read();
+        inner.aliases.contains_key(caller)
+            || inner
+                .list
+                .iter()
+                .flat_map(|cmd| cmd.callers.iter())
+                .any(|c| c == caller)
     }
 }
 

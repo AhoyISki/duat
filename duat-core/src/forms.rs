@@ -180,7 +180,7 @@ mod global {
     /// forms::set(
     ///     "MainCursor",
     ///     Form::black().on(Color::Rgb { r: 240, g: 210, b: 200 }),
-    /// )
+    /// );
     /// ```
     ///
     /// However, if possible, Duat will still try to use the main
@@ -206,10 +206,7 @@ mod global {
     ///
     /// ```rust
     /// # use duat_core::forms::{self, Form, Color};
-    /// forms::set(
-    ///     "MainCursor",
-    ///     Form::black().on(Color::Rgb { r: 240, g: 210, b: 200 }),
-    /// )
+    /// forms::set("ExtraCursor", Form::black().on_cyan());
     /// ```
     ///
     /// However, if possible, Duat will still try to use the main

@@ -1,57 +1,18 @@
 use std::{
     any::TypeId,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 
-use super::{private::InnerData, Data, RoData, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use super::{Data, RoData, RwLock, RwLockReadGuard, RwLockWriteGuard, private::InnerData};
 use crate::{
     ui::Ui,
     widgets::{ActiveWidget, PassiveWidget},
 };
 
-/// A read-write reference to information, that can tell readers if
-/// said information has changed.
-///
-/// The reading part is done through the [`ReadableData`] trait, as
-/// such, you need to import it in order to read the data of this
-/// struct.
-///
-/// Unlike [`RoData`], this struct can read and write over itself, and
-/// also implements [`Clone`] and [`Into<RoData>`], so you can have as
-/// many readers and writers as you want.
-///
-/// All reads and writes are thread safe, allowing Duat to run many
-/// different tasks at once, without letting the program hang from one
-/// particularly slow task (most commonly a slow [`Widget`]).
-///
-/// The most common usecase for this data type are [`Widget`]s that
-/// read from a [`FileWidget`], such as [`LineNumbers`], which do so
-/// by holding an [`RoData<FileWidget<U>`], which was acquired from an
-/// existing [`RoData<FileWidget<U>`].
-/// ```rust
-/// # use duat_core::{data::RoData, ui::Ui, widgets::FileWidget};
-/// # struct OtherStuff;
-/// struct WidgetThatReadsFromFile<U>
-/// where
-///     U: Ui,
-/// {
-///     file: RoData<FileWidget<U>>,
-///     other_stuff: OtherStuff,
-/// }
-/// ```
-/// Internally, all [`Widget`]s are stored inside [`RwData`]s, so
-/// access to them is always thread safe and available (read only) to
-/// everyone who wants to read them.
-///
-/// [`Into<RoData>`]: Into
-/// [`Widget`]: crate::widgets::Widget
-/// [`FileWidget`]: crate::widgets::FileWidget
-/// [`LineNumbers`]: crate::widgets::LineNumbers
-/// [`RoData<FileWidget<U>`]: RoData
-/// [`RwData<FileWidget<U>`]: RoData
+/// A read write shared reference to data
 pub struct RwData<T>
 where
     T: ?Sized + 'static,
@@ -116,7 +77,7 @@ where
     /// #     thread,
     /// #     time::{Duration, Instant}
     /// # };
-    /// # use duat_core::data::{ReadableData, RoData, RwData};
+    /// # use duat_core::data::{RoData, RwData};
     /// let read_write_data = RwData::new("☹️");
     /// let read_only_data = RoData::from(&read_write_data);
     /// let instant = Instant::now();
@@ -144,7 +105,7 @@ where
     /// #     thread,
     /// #     time::{Duration, Instant}
     /// # };
-    /// # use duat_core::data::{ReadableData, RoData, RwData};
+    /// # use duat_core::data::{RoData, RwData};
     /// let read_write_data = RwData::new("☹️");
     /// let read_only_data = RoData::from(&read_write_data);
     /// let instant = Instant::now();
@@ -181,7 +142,7 @@ where
     ///
     /// You can do this:
     /// ```rust
-    /// # use duat_core::data::{ReadableData, RoData, RwData};
+    /// # use duat_core::data::{RoData, RwData};
     /// # fn add_to_count(count: &mut usize) {}
     /// # fn new_count() -> usize {
     /// #     0
@@ -201,7 +162,7 @@ where
     /// ```
     /// Instead of this:
     /// ```rust
-    /// # use duat_core::data::{ReadableData, RoData, RwData};
+    /// # use duat_core::data::{RoData, RwData};
     /// # fn add_to_count(count: &mut usize) {}
     /// # fn new_count() -> usize {
     /// #     0
@@ -223,7 +184,7 @@ where
     /// ```
     /// Or this:
     /// ```rust
-    /// # use duat_core::data::{ReadableData, RoData, RwData};
+    /// # use duat_core::data::{RoData, RwData};
     /// # fn add_to_count(count: &mut usize) {}
     /// # fn new_count() -> usize {
     /// #     0
@@ -263,14 +224,14 @@ where
     /// underlying data:
     /// ```rust
     /// # use std::{sync::TryLockError};
-    /// # use duat_core::data::{ReadableData, RwData};
+    /// # use duat_core::data::RwData;
     /// let new_data = RwData::new("hello 👋");
     ///
     /// let mut blocking_write = new_data.write();
     /// *blocking_write = "bye 👋";
     ///
     /// let try_read = new_data.try_read();
-    /// assert!(matches!(try_read, Err(TryLockError::WouldBlock)));
+    /// assert!(matches!(try_read, None));
     /// ```
     ///
     /// [`has_changed`]: Self::has_changed
@@ -293,7 +254,7 @@ where
     /// underlying data:
     /// ```rust
     /// # use std::sync::TryLockError;
-    /// # use duat_core::data::{ReadableData, RwData};
+    /// # use duat_core::data::RwData;
     /// let new_data = RwData::new("hello 👋");
     ///
     /// let try_inspect = new_data.mutate(|blocking_mutate| {
@@ -302,7 +263,7 @@ where
     ///     new_data.try_inspect(|try_inspect| *try_inspect == "bye 👋")
     /// });
     ///
-    /// assert!(matches!(try_inspect, Err(TryLockError::WouldBlock)));
+    /// assert!(matches!(try_inspect, None));
     /// ```
     ///
     /// [`has_changed`]: Self::has_changed
@@ -321,14 +282,14 @@ where
     /// [`mutate`], [`try_write`], or [`try_mutate`], are called on an
     /// [`RwData`]. Once `has_changed` is called, the data will be
     /// considered unchanged since the last `has_changed` call, for
-    /// that specific instance of a [`ReadableData`].
+    /// that specific instance of a [`Data`].
     ///
-    /// When first creating a [`ReadableData`] type, `has_changed`
+    /// When first creating a [`Data`] type, `has_changed`
     /// will return `false`;
     ///
     /// # Examples
     /// ```rust
-    /// use duat_core::data::{ReadableData, RoData, RwData};
+    /// use duat_core::data::{RoData, RwData};
     /// let new_data = RwData::new("Initial text");
     /// assert!(!new_data.has_changed());
     ///
@@ -352,12 +313,12 @@ where
         cur_state > read_state
     }
 
-    /// Returns `true` if both [`ReadableData<T>`]s point to the same
+    /// Returns `true` if both [`Data`]s point to the same
     /// data.
     ///
     /// # Examples
     /// ```rust
-    /// # use duat_core::data::{ReadableData, RwData};
+    /// # use duat_core::data::{RwData};
     /// let data_1 = RwData::new(false);
     /// let data_1_clone = data_1.clone();
     ///
@@ -415,7 +376,7 @@ where
     /// deadlocks.
     ///
     ///
-    /// [`has_changed`]: ReadableData::has_changed
+    /// [`has_changed`]: Data::has_changed
     pub fn write(&self) -> ReadWriteGuard<T> {
         let guard = self.data.write();
         ReadWriteGuard { guard, cur_state: &self.cur_state }
@@ -433,7 +394,7 @@ where
     /// returning an [`Err`] instead.
     /// ```
     /// # use std::{mem, thread, time::Duration};
-    /// # use duat_core::data::{ReadableData, RwData};
+    /// # use duat_core::data::RwData;
     /// let data_1 = RwData::new('😀');
     /// let data_2 = RwData::new('😁');
     ///
@@ -442,7 +403,7 @@ where
     ///         let mut data_1 = data_1.try_write();
     ///         thread::sleep(Duration::from_millis(100));
     ///         let mut data_2 = data_2.try_write();
-    ///         if let (Ok(mut data_1), Ok(mut data_2)) = (data_1, data_2) {
+    ///         if let (Some(mut data_1), Some(mut data_2)) = (data_1, data_2) {
     ///             mem::swap(&mut data_1, &mut data_2);
     ///         }
     ///     });
@@ -451,7 +412,7 @@ where
     ///         let mut data_2 = data_2.try_write();
     ///         thread::sleep(Duration::from_millis(100));
     ///         let mut data_1 = data_1.try_write();
-    ///         if let (Ok(mut data_1), Ok(mut data_2)) = (data_1, data_2) {
+    ///         if let (Some(mut data_1), Some(mut data_2)) = (data_1, data_2) {
     ///             mem::swap(&mut data_1, &mut data_2);
     ///         }
     ///     });
@@ -464,7 +425,7 @@ where
     /// The downside is that you may not want it to fail ever, in
     /// which case, you should probably use [`RwData::write`].
     ///
-    /// [`has_changed`]: ReadableData::has_changed
+    /// [`has_changed`]: Data::has_changed
     pub fn try_write(&self) -> Option<ReadWriteGuard<'_, T>> {
         self.data
             .try_write()
@@ -510,7 +471,7 @@ where
     /// Generally, you should favor this method for longer functions
     /// in which the data is only needed for a short time.
     ///
-    /// [`has_changed`]: ReadableData::has_changed
+    /// [`has_changed`]: Data::has_changed
     pub fn mutate<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
         f(&mut self.write().guard)
     }
@@ -527,7 +488,7 @@ where
     /// failing instead. Generally, you should use this method only
     /// when you are fine with not writing the data.
     ///
-    /// [`has_changed`]: ReadableData::has_changed
+    /// [`has_changed`]: Data::has_changed
     pub fn try_mutate<R>(&self, f: impl FnOnce(&mut T) -> R) -> Option<R> {
         let res = self.try_write();
         res.map(|mut data| f(&mut *data))
@@ -560,37 +521,21 @@ where
     /// [`RwData<dyn Trait>`], and want to know, at runtime, what type
     /// each element is:
     /// ```rust
-    /// # use std::{
-    /// #     any::Any,
-    /// #     fmt::Display,
-    /// #     sync::{Arc, RwLock}
-    /// # };
-    /// # use duat_core::data::{RwData, AsAny};
-    /// # struct DownCastableChar(char);
-    /// # struct DownCastableString(String);
-    /// # impl AsAny for DownCastableChar {
-    /// #     fn as_any(&self) -> &dyn Any {
-    /// #         self
-    /// #     }
-    /// # }
-    /// # impl AsAny for DownCastableString {
-    /// #     fn as_any(&self) -> &dyn Any {
-    /// #         self
-    /// #     }
-    /// # }
-    /// let list: [RwData<dyn AsAny>; 3] = [
-    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableString(
-    ///         String::from("I can show you the world"),
+    /// # use std::{any::Any, fmt::Display, sync::Arc};
+    /// # use duat_core::data::{RwData, RwLock};
+    /// let list: [RwData<dyn Display>; 3] = [
+    ///     RwData::new_unsized::<String>(Arc::new(RwLock::new(String::from(
+    ///         "I can show you the world",
     ///     )))),
-    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableString(
-    ///         String::from("Shining, shimmering, splendid"),
+    ///     RwData::new_unsized::<String>(Arc::new(RwLock::new(String::from(
+    ///         "Shining, shimmering, splendid",
     ///     )))),
-    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableChar('🧞')))),
+    ///     RwData::new_unsized::<char>(Arc::new(RwLock::new('🧞'))),
     /// ];
     ///
-    /// assert!(list[0].data_is::<DownCastableString>());
-    /// assert!(list[1].data_is::<DownCastableString>());
-    /// assert!(list[2].data_is::<DownCastableChar>());
+    /// assert!(list[0].data_is::<String>());
+    /// assert!(list[1].data_is::<String>());
+    /// assert!(list[2].data_is::<char>());
     /// ```
     ///
     /// [`RwData<dyn Trait>`]: RwData
@@ -609,40 +554,24 @@ where
     /// [`RwData<dyn Trait>`], and want to know, at runtime, what type
     /// each element is:
     /// ```rust
-    /// # use std::{
-    /// #     any::Any,
-    /// #     fmt::Display,
-    /// #     sync::{Arc, RwLock}
-    /// # };
-    /// # use duat_core::data::{RwData, AsAny};
-    /// # struct DownCastableChar(char);
-    /// # struct DownCastableString(String);
-    /// # impl AsAny for DownCastableChar {
-    /// #     fn as_any(&self) -> &dyn Any {
-    /// #         self
-    /// #     }
-    /// # }
-    /// # impl AsAny for DownCastableString {
-    /// #     fn as_any(&self) -> &dyn Any {
-    /// #         self
-    /// #     }
-    /// # }
-    /// let list: [RwData<dyn AsAny>; 3] = [
-    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableString(
-    ///         String::from("I can show you the world"),
+    /// # use std::{fmt::Display, sync::Arc};
+    /// # use duat_core::data::{RwData, RwLock};
+    /// let list: [RwData<dyn Display>; 3] = [
+    ///     RwData::new_unsized::<String>(Arc::new(RwLock::new(String::from(
+    ///         "I can show you the world",
     ///     )))),
-    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableString(
-    ///         String::from("Shining, shimmering, splendid"),
+    ///     RwData::new_unsized::<String>(Arc::new(RwLock::new(String::from(
+    ///         "Shining, shimmering, splendid",
     ///     )))),
-    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableChar('🧞')))),
+    ///     RwData::new_unsized::<char>(Arc::new(RwLock::new('🧞'))),
     /// ];
     ///
-    /// let maybe_char = list[2].clone().try_downcast::<DownCastableChar>();
-    /// assert!(maybe_char.is_ok());
-    /// *maybe_char.unwrap().write() = DownCastableChar('👳');
+    /// let maybe_char = list[2].clone().try_downcast::<char>();
+    /// assert!(maybe_char.is_some());
+    /// *maybe_char.unwrap().write() = '👳';
     ///
-    /// let maybe_string = list[0].clone().try_downcast::<DownCastableChar>();
-    /// assert!(maybe_string.is_err());
+    /// let maybe_string = list[0].clone().try_downcast::<char>();
+    /// assert!(maybe_string.is_none());
     /// ```
     /// If you don't need to write to the data, consider using
     /// [`RwData::inspect_as`]. If you only need to know if the type
@@ -676,40 +605,24 @@ where
     /// [`RwData<dyn Trait>`], and want to know, at runtime, what type
     /// each element is:
     /// ```rust
-    /// # use std::{
-    /// #     any::Any,
-    /// #     fmt::Display,
-    /// #     sync::{Arc, RwLock}
-    /// # };
-    /// # use duat_core::data::{RwData, AsAny};
-    /// # struct DownCastableChar(char);
-    /// # struct DownCastableString(String);
-    /// # impl AsAny for DownCastableChar {
-    /// #     fn as_any(&self) -> &dyn Any {
-    /// #         self
-    /// #     }
-    /// # }
-    /// # impl AsAny for DownCastableString {
-    /// #     fn as_any(&self) -> &dyn Any {
-    /// #         self
-    /// #     }
-    /// # }
-    /// let list: [RwData<dyn AsAny>; 3] = [
-    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableString(
-    ///         String::from("I can show you the world"),
+    /// # use std::{any::Any, fmt::Display, sync::Arc};
+    /// # use duat_core::data::{RwData, RwLock};
+    /// let list: [RwData<dyn Display>; 3] = [
+    ///     RwData::new_unsized::<String>(Arc::new(RwLock::new(String::from(
+    ///         "I can show you the world",
     ///     )))),
-    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableString(
-    ///         String::from("Shining, shimmering, splendid"),
+    ///     RwData::new_unsized::<String>(Arc::new(RwLock::new(String::from(
+    ///         "Shining, shimmering, splendid",
     ///     )))),
-    ///     RwData::new_unsized(Arc::new(RwLock::new(DownCastableChar('🧞')))),
+    ///     RwData::new_unsized::<char>(Arc::new(RwLock::new('🧞'))),
     /// ];
     ///
     /// assert!(matches!(
-    ///     list[2].inspect_as::<DownCastableChar, char>(|char| char.0),
-    ///     Some('🧞')
+    ///     list[2].inspect_as::<char, usize>(|char| char.len_utf8()),
+    ///     Some(4)
     /// ));
     /// assert!(matches!(
-    ///     list[1].inspect_as::<DownCastableChar, char>(|char| char.0),
+    ///     list[1].inspect_as::<char, char>(|char| char.to_ascii_uppercase()),
     ///     None
     /// ));
     /// ```
