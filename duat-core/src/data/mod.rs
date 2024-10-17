@@ -1,24 +1,26 @@
 //! Data types that are meant to be shared and read across Duat.
 //!
-//! The data types revolve around the [`RwLock<T>`] struct from std,
-//! and are adapters that may block the mutation of the inner data,
-//! for the purpose of making it available for reading to any
-//! extension on Duat.
+//! The data types revolve around the [`RwLock`] struct from
+//! [`parking_lot`], and are adapters that may block the mutation of
+//! the inner data, for the purpose of making it available for reading
+//! to any extension on Duat.
 //!
-//! The first data type is [`RwData<T>`], which is a read and write
+//! The first data type is [`RwData`], which is a read and write
 //! wrapper over information. It should mostly not be shared, being
 //! used instead to write information while making sure that no other
 //! part of the code is still reading it. The second data type is
-//! [`RoData<T>`], or read only data. It is derived from the first
+//! [`RoData`], or read only data. It is derived from the first
 //! one, and cannot mutate the inner data.
 //!
-//! The most common usecase for these data types is in the
-//! [`FileWidget], where many readers
-//! can peer into the [`Text`] or other useful
-//! information, such as the printed lines, cursors, etc.
+//! This type is used internally in order to keep track of state, like
+//! widgets, input methods, etc.
 //!
-//! [`FileWidget]: crate::FileWidget<U>
+//! One of the main external uses for this macro is in creating
+//! automatically update [`StatusLine`] fields.
+//!
+//! [`File`]: crate::widgets::File
 //! [`Text`]: crate::text::Text
+//! [`StatusLine`]: crate::widgets::StatusLine
 pub use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 pub use self::{
@@ -32,9 +34,6 @@ mod ro;
 mod rw;
 
 /// Private trait for the [`RwData`] and [`RoData`] structs.
-///
-/// [`RwData`]: super::RwData
-/// [`RoData`]: super::RoData
 pub trait Data<T>: private::InnerData<T>
 where
     T: ?Sized,
@@ -45,7 +44,7 @@ where
 }
 
 mod private {
-    use std::sync::{atomic::AtomicUsize, Arc};
+    use std::sync::{Arc, atomic::AtomicUsize};
 
     use super::RwLockReadGuard;
 

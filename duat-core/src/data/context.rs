@@ -220,12 +220,12 @@ where
         input.inspect_as::<I, R>(|input| f(&file.read(), area, input))
     }
 
-    /// The name of the active [`FileWidget`]'s file.
+    /// The name of the active [`File`]'s file.
     pub fn name(&self) -> String {
         self.0.raw_read().as_ref().unwrap().0.read().name()
     }
 
-    /// The name of the active [`FileWidget`]'s file.
+    /// The name of the active [`File`]'s file.
     pub fn path(&self) -> String {
         self.0.raw_read().as_ref().unwrap().0.read().path()
     }
@@ -416,7 +416,7 @@ where
         }
     }
 
-    /// The name of the active [`FileWidget`]'s file.
+    /// The name of the active [`File`]'s file.
     pub fn name(&self) -> String {
         self.data.read().as_ref().unwrap().0.read().name()
     }

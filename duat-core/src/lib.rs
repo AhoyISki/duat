@@ -59,7 +59,7 @@ pub mod widgets;
 /// - Get references to the active file/widget;
 /// - Mutate widgets;
 pub trait Plugin<U: Ui>: 'static {
-    /// A [`Cacheable`] struct for your plugin
+    /// A cacheable struct for your plugin
     ///
     /// If you want data to be stored between executions, you can
     /// store it in this struct, and it will be returned to the
@@ -69,16 +69,16 @@ pub trait Plugin<U: Ui>: 'static {
     where
         Self: Sized;
 
-    /// Returns a new instance from an old [cache]
+    /// Returns a new instance from an old cache
     ///
     /// If this is the first time the plugin was loaded, it will
     /// receive [`Cache::default()`] as the argument.
     ///
     /// Through this function, you also get access to the [`Context`]
     /// of Duat, letting you do things like run [commands], get
-    /// references to the active [`File`]/[`Widget`], send
+    /// references to the active [`File`]/widget, send
     /// notifications, etc. You also have access to `duat_core`
-    /// modules such as [`palette`] and [`hooks`], letting you change
+    /// modules such as [`forms`] and [`hooks`], letting you change
     /// [forms] and add or trigger [hooks].
     ///
     /// ```rust
@@ -106,9 +106,9 @@ pub trait Plugin<U: Ui>: 'static {
     /// }
     /// ```
     ///
-    /// [cache]: Cacheable
     /// [`Cache::default()`]: Default::default
-    /// [forms]: palette::Form
+    /// [forms]: forms::Form
+    /// [`File`]: widgets::File
     fn new(cache: Self::Cache, context: Context<U>) -> Self
     where
         Self: Sized;
@@ -250,10 +250,10 @@ pub mod thread {
 
 /// A checker that returns `true` every `duration`
 ///
-/// This is primarily used within [`PassiveWidget::build`], where a
+/// This is primarily used within [`WidgetCfg::build`], where a
 /// `checker` must be returned in order to update the widget.
 ///
-/// [`PassiveWidget::build`]: crate::widgets::PassiveWidget::build
+/// [`WidgetCfg::build`]: crate::widgets::WidgetCfg::build
 pub fn periodic_checker(duration: Duration) -> impl Fn() -> bool {
     let check = Arc::new(AtomicBool::new(false));
     crate::thread::spawn({
@@ -307,14 +307,6 @@ pub enum Error<E> {
     ///
     /// [`Layout`]: ui::Layout
     LayoutDisallowsFile,
-    /// The [cache] was not found in the string
-    ///
-    /// [cache]: cache::Cacheable
-    CacheNotFound,
-    /// The [cache] was not parsed properly
-    ///
-    /// [cache]: cache::Cacheable
-    CacheNotParsed,
 }
 
 impl<E1> Error<E1> {
@@ -333,8 +325,6 @@ impl<E1> Error<E1> {
             Self::WidgetIsNot => Error::WidgetIsNot,
             Self::InputIsNot(_) => Error::InputIsNot(PhantomData),
             Self::LayoutDisallowsFile => Error::LayoutDisallowsFile,
-            Self::CacheNotFound => Error::CacheNotFound,
-            Self::CacheNotParsed => Error::CacheNotParsed,
         }
     }
 }
@@ -371,12 +361,6 @@ impl<E> DuatError for Error<E> {
             Self::LayoutDisallowsFile => err!(
                 "The " [*a] "Layout" [] " disallows the addition of more files."
             ),
-            Self::CacheNotFound => err!(
-                "The cache for " [*a] { type_name::<E>() } [] " was incomplete."
-            ),
-            Self::CacheNotParsed => err!(
-                "The cache for " [*a] { type_name::<E>() } [] " could not be parsed."
-            ),
         }
     }
 }
@@ -395,8 +379,6 @@ impl<E> std::fmt::Debug for Error<E> {
             Self::WidgetIsNot => "WidgetIsNot ",
             Self::InputIsNot(_) => "InputIsNot",
             Self::LayoutDisallowsFile => "LayoutDisallowsFile",
-            Self::CacheNotFound => "CacheNotFound",
-            Self::CacheNotParsed => "CacheNotParsed",
         });
 
         match self {
@@ -410,9 +392,7 @@ impl<E> std::fmt::Debug for Error<E> {
             | Self::NoWidgetYet
             | Self::WidgetIsNot
             | Self::InputIsNot(_)
-            | Self::LayoutDisallowsFile
-            | Self::CacheNotFound
-            | Self::CacheNotParsed => &mut debug,
+            | Self::LayoutDisallowsFile => &mut debug,
         }
         .finish()
     }

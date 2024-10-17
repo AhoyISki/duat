@@ -10,7 +10,7 @@
 //!
 //! - Being pushed to a file via the hook [`OnFileOpen`];
 //! - Being pushed to the outer edges via [`OnWindowOpen`];
-//! - Being pushed to popup widgets via [`OnPopupOpen`];
+//! - Being pushed to popup widgets via `OnPopupOpen` (TODO);
 //!
 //! These widgets can be pushed to all 4 sides of other widgets,
 //! through the use of [`PushSpecs`]. When pushing widgets, you can
@@ -682,10 +682,10 @@ where
     /// [`&mut Text`]: Text
     fn text_mut(&mut self) -> &mut Text;
 
-    /// Actions to do whenever this [`ActionableWidget`] is focused.
+    /// Actions to do whenever this [`ActiveWidget`] is focused.
     fn on_focus(&mut self, _area: &U::Area) {}
 
-    /// Actions to do whenever this [`ActionableWidget`] is unfocused.
+    /// Actions to do whenever this [`ActiveWidget`] is unfocused.
     fn on_unfocus(&mut self, _area: &U::Area) {}
 }
 

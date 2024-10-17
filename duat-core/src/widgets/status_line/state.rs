@@ -44,8 +44,13 @@ enum Appender<T, U> {
     Text(Text),
 }
 
-/// Part of the [`StatusLine`], can either be a
-/// [`&'static str`][str], or a dynamically updated [`Reader`].
+/// A part of the [`StatusLine`]
+///
+/// This can either be a static part, like [`Text`], [`impl Display`] type, or it can be a reader of the [`File`] and its
+/// structs, or it can update independently.
+///
+/// [`StatusLine`]: super::StatusLine
+/// [`impl Display`]: std::fmt::Display
 pub struct State<T: 'static, Dummy, U> {
     appender: Appender<T, U>,
     checker: Option<Box<dyn Fn() -> bool + Send + Sync>>,

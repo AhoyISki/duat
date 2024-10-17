@@ -377,7 +377,7 @@ where
     ///
     /// This widget will be pushed to the "main" area, i.e., the area
     /// that contains all other widgets. After that, the widget's
-    /// parent will become the main area, which can be [pushed] onto
+    /// parent will become the main area, which can be pushed onto
     /// again.
     ///
     /// This means that, if you push widget *A* to the right of the

@@ -192,7 +192,7 @@ impl Area {
                     Part::AlignRight if !cfg.wrap_method().is_no_wrap() => {
                         lines.realign(Alignment::Right)
                     }
-                    Part::Termination => {
+                    Part::ResetState => {
                         queue!(lines, SetStyle(painter.reset()))
                     }
                     Part::ToggleStart(_) => todo!(),

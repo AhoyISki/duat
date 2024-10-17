@@ -25,13 +25,13 @@ where
 }
 
 impl<T> RwData<T> {
-    /// Returns a new instance of a [`RwData<T>`], assuming that it is
+    /// Returns a new instance of a [`RwData`], assuming that it is
     /// sized.
     ///
     /// This has to be sized because of some Rust limitations, as you
     /// can`t really pass an unsized argument to a function (for now).
     /// If you're looking to store unsized types (`dyn Trait`,
-    /// `[Type]`, etc) on a [`RwData`], see [`RwData::new_unsized`].
+    /// `\[Type\]`, etc) on an [`RwData`], see [`RwData::new_unsized`].
     pub fn new(data: T) -> Self {
         Self {
             data: Arc::new(RwLock::new(data)),
@@ -46,7 +46,7 @@ impl<T> RwData<T>
 where
     T: ?Sized + 'static,
 {
-    /// Returns a new instance of [`RwData<T>`], assuming that it is
+    /// Returns a new instance of [`RwData`], assuming that it is
     /// unsized.
     ///
     /// This method is only required if you're dealing with types that
@@ -64,7 +64,7 @@ where
         }
     }
 
-    /// Blocking reference to the information.
+    /// Blocking reference to the information
     ///
     /// Also makes it so that [`has_changed`] returns `false`.
     ///
@@ -131,7 +131,7 @@ where
         self.data()
     }
 
-    /// Blocking inspection of the inner data.
+    /// Blocking inspection of the inner data
     ///
     /// Also makes it so that [`has_changed`] returns `false`.
     ///
@@ -213,7 +213,7 @@ where
         f(&self.data())
     }
 
-    /// Non blocking reference to the information.
+    /// Non blocking reference to the information
     ///
     /// If successful, also makes it so that [`has_changed`] returns
     /// `false`.
@@ -243,7 +243,7 @@ where
         })
     }
 
-    /// Non blocking inspection of the inner data.
+    /// Non blocking inspection of the inner data
     ///
     /// If successful, also makes it so that [`has_changed`] returns
     /// `false`.
@@ -276,7 +276,7 @@ where
         })
     }
 
-    /// Wether or not it has changed since it was last read.
+    /// Wether or not it has changed since it was last read
     ///
     /// A "change" is defined as any time the methods [`write`],
     /// [`mutate`], [`try_write`], or [`try_mutate`], are called on an
@@ -334,10 +334,10 @@ where
         Arc::as_ptr(self.cur_state()) == Arc::as_ptr(other.cur_state())
     }
 
-    /// Blocking mutable reference to the information.
+    /// Blocking mutable reference to the information
     ///
     /// Also makes it so that [`has_changed`] returns true for
-    /// [`self`] or any of its clones, be they [`RoData`] or
+    /// `self` or any of its clones, be they [`RoData`] or
     /// [`RwData`].
     ///
     /// # Safety
@@ -382,10 +382,10 @@ where
         ReadWriteGuard { guard, cur_state: &self.cur_state }
     }
 
-    /// Non Blocking mutable reference to the information.
+    /// Non Blocking mutable reference to the information
     ///
     /// Also makes it so that [`has_changed`] returns true for
-    /// [`self`] or any of its clones, be they [`RoData`] or
+    /// `self` or any of its clones, be they [`RoData`] or
     /// [`RwData`].
     ///
     /// # Safety
@@ -432,10 +432,10 @@ where
             .map(|guard| ReadWriteGuard { guard, cur_state: &self.cur_state })
     }
 
-    /// Blocking mutation of the inner data.
+    /// Blocking mutation of the inner data
     ///
     /// Also makes it so that [`has_changed`] returns true for
-    /// [`self`] or any of its clones, be they [`RoData`] or
+    /// `self` or any of its clones, be they [`RoData`] or
     /// [`RwData`].
     ///
     /// # Safety
@@ -476,10 +476,10 @@ where
         f(&mut self.write().guard)
     }
 
-    /// Non blocking mutation of the inner data.
+    /// Non blocking mutation of the inner data
     ///
     /// Also makes it so that [`has_changed`] returns true for
-    /// [`self`] or any of its clones, be they [`RoData`] or
+    /// `self` or any of its clones, be they [`RoData`] or
     /// [`RwData`].
     ///
     /// # Safety
@@ -494,16 +494,19 @@ where
         res.map(|mut data| f(&mut *data))
     }
 
-    /// Blocking reference to the information.
+    /// Blocking reference to the information
     ///
-    /// Unlike [`read()`][Self::read()], *DOES NOT* make it so
-    /// [`has_changed()`][Self::has_changed()] returns `false`.
+    /// Unlike [`read`], *DOES NOT* make it so
+    /// [`has_changed`] returns `false`.
     ///
     /// This method should only be used in very specific
     /// circumstances, such as when multiple owners have nested
-    /// [`RwData`]s, thus referencing the same inner [`RwData<T>`], in
+    /// [`RwData`]s, thus referencing the same inner [`RwData`], in
     /// a way that reading from one point would interfere in the
     /// update detection of the other point.
+    ///
+    /// [`read`]: Self::read,
+    /// [`has_changed`]: Self::has_changed
     pub(crate) fn raw_read(&self) -> RwLockReadGuard<'_, T> {
         self.data()
     }
@@ -513,7 +516,7 @@ impl<T> RwData<T>
 where
     T: ?Sized + 'static,
 {
-    /// Returns `true` if the data is of the concrete type `T`.
+    /// Returns `true` if the data is of the concrete type `T`
     ///
     /// # Examples
     ///
@@ -546,7 +549,7 @@ where
         self.type_id == TypeId::of::<U>()
     }
 
-    /// Tries to downcast to a concrete type.
+    /// Tries to downcast to a concrete type
     ///
     /// # Examples
     ///
@@ -597,7 +600,7 @@ where
         }
     }
 
-    /// Blocking inspection of the inner data.
+    /// Blocking inspection of the inner data
     ///
     /// # Examples
     ///

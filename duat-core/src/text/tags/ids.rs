@@ -50,8 +50,9 @@ impl Default for ToggleId {
 
 /// A key letting one add and remove [`Tag`]s to a [`Text`]
 ///
-/// With keys, you can use the methods [`Text::insert_tag`] and
-/// [`Text::remove_on`] to add and remove tags to a text.
+/// With keys, you can use the methods [`Text::insert_tag`],
+/// [`Text::remove_tags_on`], and [`Text::remove_tags_of`] to add and
+/// remove tags to a text.
 ///
 /// The reason why keys exist is mainly for the sake of [`File`]
 /// widgets. In files, it is very expected that there will be many
@@ -89,6 +90,9 @@ impl Default for ToggleId {
 /// [`Tag`]: super::Tag
 /// [`Text`]: super::Text
 /// [`File`]: crate::widgets::File
+/// [`Text::insert_tag`]: super::Text::insert_tag
+/// [`Text::remove_tags_on`]: super::Text::remove_tags_on
+/// [`Text::remove_tags_of`]: super::Text::remove_tags_of
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Key(u16);
 

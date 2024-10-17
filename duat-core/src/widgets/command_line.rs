@@ -132,13 +132,27 @@ where
     }
 }
 
-/// An [`ActiveWidget<U>`] whose primary purpose is to execute
-/// [`Command`]s.
+/// A multi purpose, [promptable] widget
 ///
-/// While this is the primary purpose of the [`CommandLine<U>`], in
-/// the future, it will be able to change its functionality to, for
-/// example, search for pieces of text on a
-/// [`File`][parsec_core::file::File] in real time.
+/// This widget, as the name implies, is most associated with running
+/// commands. However, it can have a variety of [modes], granting it
+/// differing functionality. In Duat, there are 3 predefined modes:
+///
+/// * [`RunCommands`], which runs commands (duh);
+/// * [`ShowNotifications`], which shows notifications, usually about
+///   commands;
+/// * [`IncSearch`], which is used by [`InputMethod`]s in order to do
+///   incremental search from the command line.
+///
+/// By default, Duat will have the `"CmdLineNotifications"` [hook]
+/// active. This hook changes the mode of the [`CommandLine`] to
+/// [`ShowNotifications`] whenever it is unfocused. If you don't want
+/// this functionality, or want notifications somewhere else, you can
+/// use [`hooks::remove_group`].
+///
+/// [promptable]: ActiveWidget
+/// [modes]: CommandLineMode
+/// [hook]: crate::hooks
 pub struct CommandLine<U: Ui> {
     text: Text,
     prompt: RwData<String>,

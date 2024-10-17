@@ -284,7 +284,7 @@ impl<'a> Args<'a> {
     }
 }
 
-/// A struct representing flags passed down to [`Command`]s when
+/// A struct representing flags passed down to commands when
 /// running them.
 ///
 /// There are 2 types of flag, the `blob` and `word` flags.
@@ -387,7 +387,7 @@ impl<'a, 'b> Flags<'a, 'b> {
     }
 }
 
-/// A struct representing flags passed down to [`Command`]s when
+/// A struct representing flags passed down to commands when
 /// running them.
 pub struct InnerFlags<'a> {
     blob: String,

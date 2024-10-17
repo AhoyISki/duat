@@ -5,7 +5,7 @@ pub mod reader;
 mod records;
 mod search;
 mod tags;
-mod types;
+mod part;
 
 use std::{
     ops::{Range, RangeBounds},
@@ -16,7 +16,6 @@ use std::{
 };
 
 use gapbuf::GapBuffer;
-use point::TwoPoints;
 use records::Records;
 
 pub(crate) use self::search::SavedMatches;
@@ -25,10 +24,10 @@ pub use self::{
     builder::{AlignCenter, AlignLeft, AlignRight, Builder, Ghost, err, hint, ok, text},
     cfg::*,
     iter::{Item, Iter, RevIter},
-    point::{Point, utf8_char_width},
+    point::{Point, TwoPoints, utf8_char_width},
     search::{RegexPattern, Searcher},
     tags::{Key, Tag, ToggleId},
-    types::Part,
+    part::Part,
 };
 use crate::{DuatError, history::Change, input::Cursors};
 
@@ -677,6 +676,8 @@ mod point {
     use super::Item;
 
     /// A position in [`Text`].
+    ///
+    /// [`Text`]: super::Text
     #[derive(
         Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
     )]

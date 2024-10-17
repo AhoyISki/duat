@@ -49,7 +49,7 @@ impl<T> RoData<T> {
     /// This has to be sized because of some Rust limitations, as you
     /// can`t really pass an unsized argument to a function (for now).
     /// If you're looking to store unsized types (`dyn Trait`,
-    /// `[Type]`, etc) on a [`RwData`], see [`RwData::new_unsized`].
+    /// `\[Type\]`, etc) on a [`RwData`], see [`RwData::new_unsized`].
     pub fn new(data: T) -> Self {
         Self {
             data: Arc::new(RwLock::new(data)),

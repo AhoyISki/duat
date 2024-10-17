@@ -1,3 +1,9 @@
+//! [`Text`] building macros
+//!
+//! This module contains 4 macros for text building: [`text!`],
+//! [`err!`], [`ok!`] and [`hint!`]. These are supposed to be used in
+//! various contexts, and they have differences on what the `Default`
+//! and `Accent` forms.
 use std::fmt::Write;
 
 use super::{Key, Tag, Text, ToggleId};
@@ -6,21 +12,28 @@ use crate::data::{RoData, RwData};
 /// Builds and modifies a [`Text`], based on replacements applied
 /// to it.
 ///
-/// The generation of text by the [`TextBuilder`] has a few
-/// peculiarities that are convenient in the situations where it is
-/// useful:
+/// This struct is meant to be used alongside the [`text!`] family of
+/// macros. You pass it as the first argument, and the [`Text`] will
+/// be extended by the macro. This lets you write a [`Text`] with
+/// multiple macro invocations:
 ///
-/// - The user cannot insert [`Tag`]s directly, only by appending and
-///   modifying existing tags.
-/// - All [`Tag`]s that are appended result in an inverse [`Tag`]
-///   being placed before the next one, or at the end of the [`Tags`]
-///   (e.g. [`Tag::PushForm`] would be followed a [`Tag::PopForm`]).
-/// - You can insert swappable text with
-///   [`push_swappable()`][Self::push_swappable].
+/// ```rust
+/// # use duat_core::text::{Text, hint};
+/// fn is_more_than_two(num: usize) -> Text {
+///     let mut builder = Text::builder();
+///     hint!(builder, "The number " [*a] num [] " is ");
+///     if num > 2 {
+///         hint!(builder, [*a] "more" [] " than 2.");
+///     } else {
+///         hint!(builder, [*a] "not more" [] " than 2.");
+///     }
+///     builder.finish()
+/// }
+/// ```
 ///
-/// These properties allow for quick and easy modification of the
-/// [`Text`] within, which can then be accessed with
-/// [`text`][Self::text].
+/// [`impl Display`]: std::fmt::Display
+/// [tag]: AlignCenter
+/// [`Form`]: crate::forms::Form
 pub struct Builder {
     text: Text,
     last_form: Option<Tag>,
@@ -29,10 +42,21 @@ pub struct Builder {
 }
 
 impl Builder {
+    /// Returns a new instance of [`Builder`]
+    ///
+    /// Use [`Text::builder`] if you don't want to bring [`Builder`]
+    /// into scope.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Finish construction and returns the [`Text`]
+    ///
+    /// Will also finish the last [`Form`] tag, pushing a [`PopForm`]
+    /// at the very end.
+    ///
+    /// [`Form`]: crate::forms::Form
+    /// [`PopForm`]: Tag::PopForm
     pub fn finish(mut self) -> Text {
         let len = self.text.len_bytes();
 
@@ -43,6 +67,14 @@ impl Builder {
         self.text
     }
 
+    /// Pushes a part of the text
+    ///
+    /// This can be an [`impl Display`] type, a [`Data`] type holding
+    /// an [`impl Display`] or a [tag surrogate].
+    ///
+    /// [`impl Display`]: std::fmt::Display
+    /// [`Data`]: crate::data::Data
+    /// [tag surrogate]: Ghost
     pub fn push<D: std::fmt::Display>(&mut self, part: impl Into<BuilderPart<D>>) {
         match part.into() {
             BuilderPart::Text(text) => self.push_text(text),
@@ -55,6 +87,9 @@ impl Builder {
         }
     }
 
+    /// Pushes an [`impl Display`] to the [`Text`]
+    ///
+    /// [`impl Display`]: std::fmt::Display
     pub(crate) fn push_str(&mut self, display: impl std::fmt::Display) {
         self.buffer.clear();
         write!(self.buffer, "{display}").unwrap();
@@ -62,7 +97,7 @@ impl Builder {
     }
 
     /// Pushes a [`Tag`] to the end of the list of [`Tag`]s, as well
-    /// as its inverse at the end of the [`Text`].
+    /// as its inverse at the end of the [`Text`]
     pub(crate) fn push_tag(&mut self, tag: Tag) -> Option<ToggleId> {
         let len = self.text.len_bytes();
         if let Tag::PushForm(id) = tag {
@@ -84,6 +119,7 @@ impl Builder {
         }
     }
 
+    /// Pushes [`Text`] directly
     pub(crate) fn push_text(&mut self, text: Text) {
         let end = self.text.len_bytes();
 
@@ -107,11 +143,19 @@ impl Default for Builder {
     }
 }
 
+/// Aligns the line centrally
 pub struct AlignCenter;
+/// Aligns the line on the left
 pub struct AlignLeft;
+/// Aligns the ine on the right, which is the default
 pub struct AlignRight;
+/// Places ghost text
+///
+/// This is useful for, for example, creating command line prompts,
+/// since the text is non interactable.
 pub struct Ghost(pub Text);
 
+/// A part to be pushed to a [`Builder`] by a macro
 pub enum BuilderPart<D>
 where
     D: std::fmt::Display,
@@ -194,6 +238,9 @@ where
     }
 }
 
+/// The standard [`Text`] construction macro
+///
+/// TODO: Docs
 pub macro text {
     // Forms
     (@push $builder:expr, []) => {
@@ -232,6 +279,9 @@ pub macro text {
     }},
 }
 
+/// The standard [`Text`] construction macro
+///
+/// TODO: Docs
 pub macro ok {
     // Forms
     (@push $builder:expr, []) => {
@@ -270,6 +320,9 @@ pub macro ok {
     }},
 }
 
+/// The standard [`Text`] construction macro
+///
+/// TODO: Docs
 pub macro err {
     // Forms
     (@push $builder:expr, []) => {
@@ -308,6 +361,9 @@ pub macro err {
     }},
 }
 
+/// The standard [`Text`] construction macro
+///
+/// TODO: Docs
 pub macro hint {
     // Forms
     (@push $builder:expr, []) => {

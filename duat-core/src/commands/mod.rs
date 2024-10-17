@@ -1,35 +1,6 @@
-//! Interaction with Duat through [`Command`]s
+//! Interaction with Duat through commands
 //!
-//! This module defines the [`Commands`](Commands) struct, which
-//! contains all of the same facilities that makes Duat's [`commands`]
-//! module work.
-//!
-//! This struct should be used in plugins, since those should not
-//! rely on the [duat] crate, only on duat-core. More specifically
-//! it is going to be used through the [`Context`] struct, which
-//! will in turn be provided by Duat, with a defined [`Ui`].
-//!
-//! Here's an example of a command being used by a plugin:
-//!
-//! ```rust
-//! use duat_core::{Plugin, data::Context, ui::Ui};
-//! struct MyPlugin;
-//!
-//! impl<U: Ui> Plugin for MyPlugin {
-//!     type Cache = ();
-//!
-//!     fn new(cache: Self::Cache, context: Context<U>) -> Self {
-//!         asdf
-//!     }
-//! }
-//! ```
-//!
-//! The rules for command creation and execution are the same as
-//! the
-//!
-//! [duat]: https://docs.rs/duat/latest/duat/index.html
-//! [`commands`]: https://docs.rs/duat/latest/duat/prelude/commands/index.html
-//! [`Context`]: crate::data::Context
+//! TO BE DONE
 use std::{
     collections::HashMap,
     fmt::Display,
@@ -51,13 +22,13 @@ use crate::{
 
 mod parameters;
 
-/// A list of [`Command`]s.
+/// A list of commands.
 ///
-/// This list contains all of the [`Command`]s that have been
+/// This list contains all of the commands that have been
 /// added to Duat, as well as info on the current [`File`],
 /// [widget] and all of the [windows].
 ///
-/// [`File`]: crate::file::File
+/// [`File`]: crate::widgets::File
 /// [widget]: crate::widgets::ActiveWidget
 /// [windows]: crate::ui::Window
 pub struct Commands<U>
@@ -152,7 +123,7 @@ where
     ///
     /// If there are more arguments, they will be ignored.
     ///
-    /// [`File`]: crate::file::File
+    /// [`File`]: crate::widgets::File
     /// [`Commands::buffer`]: Commands::buffer
     pub fn edit(&self, file: impl Display) -> Result<Option<Text>> {
         self.run(format!("edit {file}"))
@@ -235,7 +206,7 @@ where
     ///
     /// Returns an [`Err`] if the `caller` is already a caller for
     /// another command, or if `command` is not a real caller to an
-    /// exisiting [`Command`].
+    /// existing command.
     pub fn alias(&self, alias: impl ToString, command: impl ToString) -> Result<Option<Text>> {
         self.inner.write().try_alias(alias, command)
     }
@@ -633,6 +604,8 @@ where
 ///
 /// This error _must_ include an error message in case of failure. It
 /// may also include a success message, but that is not required.
+///
+/// [`run`]: Commands::run
 pub type CmdResult = std::result::Result<Option<Text>, Text>;
 
 /// A function that can be called by name.
@@ -643,7 +616,7 @@ struct Command {
 }
 
 impl Command {
-    /// Returns a new instance of [`Command`].
+    /// Returns a new instance of command.
     fn new<F>(callers: impl IntoIterator<Item = impl ToString>, f: F) -> Self
     where
         F: FnMut(Flags, Args) -> CmdResult + 'static,
@@ -685,7 +658,7 @@ struct InnerCommands {
 }
 
 impl InnerCommands {
-    /// Tries to add the given [`Command`] to the list.
+    /// Tries to add the given command to the list.
     fn try_add(&mut self, command: Command) -> Result<()> {
         let mut new_callers = command.callers().iter();
 

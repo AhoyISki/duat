@@ -1,24 +1,13 @@
 //! Line numbers for a [`File`]
 //!
-//! This widget has various options to configure the presentation of
-//! the lines. These can be found in the [`LineNumbersCfg`] struct.
+//! These are pretty standard like in most text editors. Usually,
+//! they'll be printed on the right of the [`File`], but there is an
+//! option to print them on the right, if you need such functionality.
 //!
-//! The first option is [`Numbering`], which determines the numbers
-//! that will show up on the lines. They can be
-//! [`Absolute`][Numbering::Absolute], which shows the number as the
-//! index from the first line, [`Relative`][Numbering::Relative],
-//! which show the numbers relative to the main cursor's line, or
-//! [`Hybrid`][Numbering::Hybrid], which is like
-//! [`Absolute`][Numbering::Absolute] for the main cursor's line, and
-//! like [`Hybrid`][Numbering::Hybrid] for all other lines. It is
-//! [`Absolute`][Numbering::Absolute] by default.
-//!
-//! The second option is [`Alignment`], which can be
-//! [`Left`][Alignment::Left], [`Right`][Alignment::Right], or
-//! [`Center`][Alignment::Center], it determines the side where the
-//! numbers will be printed. This struct shows up twice in
-//! [`LineNumbersCfg`], once for the main cursor's line, and once for
-//! all other lines. Its [`Right`][Alignment::Right] by default.
+//! You can also change other things, like the
+//! relativeness/absoluteness of the numbers, as well as the alignment
+//! of the numbers, with one more option to change that of the main
+//! cursor's line number.
 //!
 //! [`File`]: super::File
 use std::{fmt::Alignment, marker::PhantomData};
@@ -31,21 +20,13 @@ use crate::{
     widgets::{PassiveWidget, Widget, WidgetCfg},
 };
 
-/// A simple [`Widget`] that shows what lines of a
-/// [`FileWidget`] are shown on screen.
-pub struct LineNumbers<U>
-where
-    U: Ui,
-{
+pub struct LineNumbers<U: Ui> {
     reader: FileReader<U>,
     text: Text,
     cfg: LineNumbersCfg<U>,
 }
 
-impl<U> LineNumbers<U>
-where
-    U: Ui,
-{
+impl<U: Ui> LineNumbers<U> {
     /// The minimum width that would be needed to show the last line.
     fn calculate_width(&mut self) -> f64 {
         // "+ 1" because we index from 1, not from 0.
@@ -53,8 +34,6 @@ where
         len.ilog10() as f64
     }
 
-    /// Updates the [`TextBuilder`]'s [`Text`] with the
-    /// `FileWidget::<U>::printed_lines()` slice.
     fn update_text(&mut self) {
         self.text = self.reader.inspect(|file, _, input| {
             let printed_lines = file.printed_lines();
@@ -90,10 +69,7 @@ where
     }
 }
 
-impl<U> PassiveWidget<U> for LineNumbers<U>
-where
-    U: Ui,
-{
+impl<U: Ui> PassiveWidget<U> for LineNumbers<U> {
     type Cfg = LineNumbersCfg<U>;
 
     fn cfg() -> Self::Cfg {
@@ -222,10 +198,7 @@ impl<U> LineNumbersCfg<U> {
     }
 }
 
-impl<U> WidgetCfg<U> for LineNumbersCfg<U>
-where
-    U: Ui,
-{
+impl<U: Ui> WidgetCfg<U> for LineNumbersCfg<U> {
     type Widget = LineNumbers<U>;
 
     fn build(self, context: Context<U>, _: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {

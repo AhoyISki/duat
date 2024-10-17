@@ -98,7 +98,9 @@ pub trait Area: Send + Sync + Sized {
     fn height(&self) -> usize;
 
     /// Scrolls the [`Text`] (up or down) until the main cursor is
-    /// within the [`ScrollOff`][crate::text::ScrollOff] range.
+    /// within the [`ScrollOff`] range.
+    ///
+    /// [`ScrollOff`]: crate::text::ScrollOff
     fn scroll_around_point(&self, text: &Text, point: Point, cfg: PrintCfg);
 
     // Returns the [`Point`]s that would printed first.
@@ -151,6 +153,8 @@ pub trait Area: Send + Sync + Sized {
     /// This would mean anything relevant that wouldn't be determined
     /// by [`PrintInfo`], this is most likely going to be the bounding
     /// box, but it may be something else.
+    ///
+    /// [`PrintInfo`]: Area::PrintInfo
     fn has_changed(&self) -> bool;
 
     /// Wether or not [`self`] is the "master" of `other`
@@ -171,32 +175,14 @@ pub trait Area: Send + Sync + Sized {
 
     /// Returns a printing iterator
     ///
-    /// Given an [`Iterator`] with an [`Item`] of type `(usize,
-    /// usize, Part)`, where:
+    /// Given an iterator of [`text::Item`]s, returns an iterator
+    /// which assigns to each of them a [`Caret`]. This struct
+    /// essentially represents where horizontally would this character
+    /// be printed.
     ///
-    /// - The first `usize` is the byte index from the file's start;
-    /// - The second `usize` is the current line;
-    /// - The [`Part`] is either a `char` or a [`Text`] modifier;
+    /// If you want a reverse iterator, see [`Area::rev_print_iter`].
     ///
-    /// Returns an [`Iterator`] with an [`Item`] of type `((usize,
-    /// usize, Option<usize>), (usize, Part))`, where:
-    ///
-    /// * On the first tuple:
-    ///   - The first `usize` is the current horizontal position;
-    ///   - The second `usize` is the length of the [`Part`]. It is
-    ///     only greater than 0 if the part is a `char`;
-    ///   - The [`Option<usize>`] represents a wrapping. It is
-    ///     [`Some(usize)`], where the number is the current line,
-    ///     only if the `char` wraps around. For example, any `char`
-    ///     following a `'\n'` should return `Some(current_line)`,
-    ///
-    /// * On the second tuple:
-    ///   - The `usize` is the byte index from the file's start;
-    ///   - The [`Part`] is either a `char` or a [`Text`] modifier;
-    ///
-    /// [`Item`]: Iterator::Item
-    /// [`Option<usize>`]: Option
-    /// [`Some(usize)`]: Some
+    /// [`text::Item`]: Item
     fn print_iter<'a>(
         &self,
         iter: Iter<'a>,
@@ -213,35 +199,16 @@ pub trait Area: Send + Sync + Sized {
     where
         Self: Sized;
 
-    /// Returns a reverse printing iterator
+    /// Returns a reversed printing iterator
     ///
-    /// Given an [`Iterator`] with an [`Item`] of type `(usize,
-    /// usize, Part)`, where:
+    /// Given an iterator of [`text::Item`]s, returns a reversed
+    /// iterator which assigns to each of them a [`Caret`]. This
+    /// struct essentially represents where horizontally each
+    /// character would be printed.
     ///
-    /// - The first `usize` is the byte index from the file's start;
-    /// - The second `usize` is the current line;
-    /// - The [`Part`] is either a `char` or a [`Text`] modifier;
+    /// If you want a forwards iterator, see [`Area::print_iter`].
     ///
-    /// Returns an [`Iterator`] with an [`Item`] of type `((usize,
-    /// usize, Option<usize>), (usize, Part))`, where:
-    ///
-    /// * On the first tuple:
-    ///   - The first `usize` is the current horizontal position;
-    ///   - The second `usize` is the length of the [`Part`]. It is
-    ///     only greater than 0 if the part is a `char`;
-    ///   - The [`Option<usize>`] represents a wrapping. It is
-    ///     [`Some(usize)`], where the number is the current line,
-    ///     only if the `char` wraps around. For example, any `char`
-    ///     following a `'\n'` should return `Some(current_line)`,
-    ///     since they show up in the next line;
-    ///
-    /// * On the second tuple:
-    ///   - The `usize` is the byte index from the file's start;
-    ///   - The [`Part`] is either a `char` or a [`Text`] modifier;
-    ///
-    /// [`Item`]: Iterator::Item
-    /// [`Option<usize>`]: Option
-    /// [`Some(usize)`]: Some
+    /// [`text::Item`]: Item
     fn rev_print_iter<'a>(
         &self,
         iter: RevIter<'a>,
@@ -259,32 +226,31 @@ pub trait Area: Send + Sync + Sized {
     /// 2 new areas:
     ///
     /// ```text
-    /// ╭────────0────────╮     ╭────────0────────╮
-    /// │                 │     │╭──2───╮╭───1───╮│
+    /// ╭────────0────────╮     ╭────────1────────╮
+    /// │                 │     │╭──2───╮╭───0───╮│
     /// │      self       │ --> ││      ││ self  ││
     /// │                 │     │╰──────╯╰───────╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     /// ```
     ///
-    /// This means that `0` is now the index of the newly created
-    /// parent, `2` is the index of the new area, and `1` is the new
-    /// index of the initial area. In the end, [`Window::bisect()`]
-    /// should return `(2, Some(1))`.
+    /// So now, there is a new area `1`, which is the parent of the
+    /// areas `0` and `2`. When a new parent is created, it should be
+    /// returned as the second element in the tuple.
     ///
     /// That doesn't always happen though. For example, pushing
-    /// another area to the [`Side::Right`] of `1`, `2`, or `0`, in
-    /// this situation, should not result in the creation of a new
-    /// parent:
+    /// another area to the [`Side::Right`] of `1`, `2`, or `0`,
+    /// in this situation, should not result in the creation of a
+    /// new parent:
     ///
     /// ```text
-    /// ╭────────0────────╮     ╭────────0────────╮
-    /// │╭──2───╮╭───1───╮│     │╭─2─╮╭──1──╮╭─3─╮│
+    /// ╭────────1────────╮     ╭────────1────────╮
+    /// │╭──2───╮╭───0───╮│     │╭─2─╮╭──0──╮╭─3─╮│
     /// ││      ││ self  ││     ││   ││self ││   ││
     /// │╰──────╯╰───────╯│     │╰───╯╰─────╯╰───╯│
     /// ╰─────────────────╯     ╰─────────────────╯
     /// ```
     ///
-    /// And so [`Window::bisect()`] should return `(3, None)`.
+    /// And so [`Area::bisect`] should return `(3, None)`.
     fn bisect(
         &self,
         specs: PushSpecs,
@@ -345,7 +311,7 @@ where
         (window, area)
     }
 
-    /// Pushes a [`Widget<U>`] onto an existing one
+    /// Pushes a [`Widget`] onto an existing one
     pub fn push(
         &mut self,
         widget: Widget<U>,
@@ -389,7 +355,7 @@ where
     ///
     /// This function will push to the edge of `self.files_parent`
     /// This is an area, usually in the center, that contains all
-    /// [`File`]s, and their associated [`Widget<U>`]s,
+    /// [`File`]s, and their associated [`Widget`]s,
     /// with others being at the perifery of this area.
     pub fn push_file(
         &mut self,
@@ -413,7 +379,7 @@ where
         Ok((child, parent))
     }
 
-    /// Pushes a [`Widget<U>`] to the master node of the current
+    /// Pushes a [`Widget`] to the master node of the current
     /// window.
     pub fn push_to_master<Checker>(
         &mut self,
@@ -428,7 +394,7 @@ where
         self.push(widget, &master_area, checker, specs, false)
     }
 
-    /// Returns an [`Iterator`] over the [`Widget<U>`]s of [`self`]
+    /// Returns an [`Iterator`] over the [`Widget`]s of [`self`]
     pub fn widgets(&self) -> impl DoubleEndedIterator<Item = (&Widget<U>, &U::Area)> + Clone + '_ {
         self.nodes
             .iter()
@@ -440,7 +406,9 @@ where
     }
 
     /// Returns an [`Iterator`] over the names of [`File`]s
-    /// and their respective [`ActionableWidget`] indices.
+    /// and their respective [`ActiveWidget`] indices.
+    ///
+    /// [`ActiveWidget`]: crate::widgets::ActiveWidget
     pub fn file_names(&self) -> impl Iterator<Item = (usize, String)> + Clone + '_ {
         self.nodes
             .iter()
@@ -466,7 +434,7 @@ where
     }
 }
 
-/// Elements related to the [`Widget<U>`]s
+/// Elements related to the [`Widget`]s
 pub struct Node<U>
 where
     U: Ui,
@@ -670,34 +638,27 @@ pub(crate) fn build_file<U>(
     };
 }
 
-/// Information on how a [`Widget<U>`] should be pushed onto another
+/// Information on how a [`Widget`] should be pushed onto another
 ///
-/// The side member determines what direction to push into, in
-/// relation to the original widget.
+/// This information is composed of three parts:
 ///
-/// The [`Constraint`] can be one of five types:
+/// * A side to push;
+/// * A horizontal [`Constraint`];
+/// * A vertical [`Constraint`];
 ///
-/// - [`Min(min)`][Constraint::Min] represents the minimum length, in
-///   the side's [`Axis`], that this new widget needs.
-/// - [`Max(max)`][Constraint::Max] represents the minimum length, in
-///   the side's [`Axis`], that this new widget needs.
-/// - [`Length(len)`][Constraint::Length] represents a length, in the
-///   side's [`Axis`], that cannot be altered by any means.
-/// - [`Ratio(den, div)`][Constraint::Ratio] represents a ratio
-///   between the length of the child and the length of the parent.
-/// - [`Percent(per)`][Constraint::Percent] represents the percent of
-///   the parent that the child must take. Must go from 0 to 100
-///   percent.
+/// Constraints are demands that must be met by the widget's [`Area`],
+/// on a best effort basis.
 ///
-/// So if, for example, if a widget is pushed with
-/// [`PushSpecs::left(Constraint::Min(3.0)`][Self::left()]
+/// So, for example, if the [`PushSpecs`] are:
 ///
-/// into another widget, then it will be placed on the left side of
-/// that widget, and will have a minimum `width` of `3`.
+/// ```rust
+/// use duat_core::ui::PushSpecs;
+/// let specs = PushSpecs::left().with_hor_len(3).with_ver_ratio(2, 3);
+/// ```
 ///
-/// If it were pushed with either [`PushSpecs::above()`] or
-/// [`PushSpecs::below()`], it would instead have a minimum `height`
-/// of `3`.
+/// Then the widget should be pushed to the left, with a width of 3,
+/// and its height should be equal to two thirds of the area directly
+/// below.
 #[derive(Debug, Clone, Copy)]
 pub struct PushSpecs {
     side: Side,
@@ -861,7 +822,7 @@ pub enum Constraint {
     Max(f64),
 }
 
-/// A direction, where a [`Widget<U>`] will be placed in relation to
+/// A direction, where a [`Widget`] will be placed in relation to
 /// another.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {

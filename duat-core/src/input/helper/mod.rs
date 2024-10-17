@@ -152,10 +152,14 @@ mod cursors;
 /// [`RwData<Self::Widget>`]: RwData
 /// [`mutate`]: RwData::mutate
 /// [`inspect`]: RwData::inspect
+/// [`InputMethod::send_key`]: super::InputMethod::send_key
 /// [key]: super::KeyEvent
 /// [resizing]: crate::ui::Area::constrain_ver
+/// [`Ui::Area`]: crate::ui::Ui::Area
 /// [`Context`]: crate::data::Context
 /// [commands]: crate::commands
+/// [`key!`]: super::key
+/// [`KeyEvent`]: super::KeyEvent
 /// [editing]: Editor
 /// [moving]: Mover
 pub struct EditHelper<'a, W, A, S>
@@ -702,7 +706,7 @@ where
     /// Searches the [`Text`] for a regex
     ///
     /// The search will begin on the `caret`, and returns the bounding
-    /// [`Point`]s, alongside the [match]. If an `end` is provided,
+    /// [`Point`]s, alongside the match. If an `end` is provided,
     /// the search will stop at the given [`Point`].
     ///
     /// # Panics
@@ -725,8 +729,6 @@ where
     ///     })
     /// }
     /// ```
-    ///
-    /// [match]: Pattern::Match
     pub fn search<R: RegexPattern>(
         &mut self,
         pat: R,
@@ -740,7 +742,7 @@ where
     /// Searches the [`Text`] for a regex, in reverse
     ///
     /// The search will begin on the `caret`, and returns the bounding
-    /// [`Point`]s, alongside the [match]. If a `start` is provided,
+    /// [`Point`]s, alongside the match. If a `start` is provided,
     /// the search will stop at the given [`Point`].
     ///
     /// # Panics
@@ -749,7 +751,7 @@ where
     ///
     /// ```rust
     /// # use duat_core::{input::EditHelper, ui::Area, widgets::File};
-    /// fn search_nth_str_rev<S>(
+    /// fn search_nth_rev<S>(
     ///     helper: &mut EditHelper<File, impl Area, S>,
     ///     n: usize,
     ///     s: &str,
@@ -764,8 +766,6 @@ where
     ///     })
     /// }
     /// ```
-    ///
-    /// [match]: Pattern::Match
     pub fn search_rev<R: RegexPattern>(
         &mut self,
         pat: R,
@@ -874,9 +874,9 @@ where
 {
     /// Search incrementally from an [`IncSearch`] request
     ///
-    /// This method will search for pattern matching the requested
-    /// [`IncPattern`], and it can take advantage of previous
-    /// searches, reducing the cost of searching very large files.
+    /// This will match the Regex pattern from the current position of
+    /// the caret. if `end` is [`Some`], the search will end at the
+    /// requested [`Point`].
     ///
     /// [`IncSearch`]: crate::widgets::IncSearch
     pub fn search_inc(&mut self, end: Option<Point>) -> impl Iterator<Item = (Point, Point)> + '_ {
@@ -886,15 +886,17 @@ where
 
     /// Search incrementally from an [`IncSearch`] request in reverse
     ///
-    /// This method will searech for ranges matching the requested
-    /// [`IncPattern`], and it can take advantage of previous
-    /// searches, reducing the cost of searching very large files.
+    /// This will match the Regex pattern from the current position of
+    /// the caret in reverse. if `start` is [`Some`], the search will
+    /// end at the requested [`Point`].
+    ///
+    /// [`IncSearch`]: crate::widgets::IncSearch
     pub fn search_inc_rev(
         &mut self,
-        end: Option<Point>,
+        start: Option<Point>,
     ) -> impl Iterator<Item = (Point, Point)> + '_ {
         self.inc_matches
-            .search_from_rev(self.text, self.cursor.caret(), end)
+            .search_from_rev(self.text, self.cursor.caret(), start)
     }
 }
 
