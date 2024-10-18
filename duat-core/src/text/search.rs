@@ -18,7 +18,7 @@ use super::{Point, Text};
 
 impl Text {
     pub fn search_from<R>(
-        &mut self,
+        &self,
         pat: R,
         at: Point,
         end: Option<Point>,
@@ -29,14 +29,8 @@ impl Text {
         let dfas = dfas_from_pat(pat)?;
 
         let haystack = match end {
-            Some(end) => unsafe {
-                self.make_contiguous_in(at.byte()..end.byte());
-                self.continuous_in_unchecked(at.byte()..end.byte())
-            },
-            None => unsafe {
-                self.make_contiguous_in(at.byte()..);
-                self.continuous_in_unchecked(at.byte()..)
-            },
+            Some(end) => unsafe { self.continuous_in_unchecked(at.byte()..end.byte()) },
+            None => unsafe { self.continuous_in_unchecked(at.byte()..) },
         };
         let mut fwd_input = Input::new(haystack);
         let mut rev_input = Input::new(haystack).anchored(Anchored::Yes);

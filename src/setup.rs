@@ -24,7 +24,7 @@ static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
 static WINDOWS: LazyLock<RwData<Vec<Window<Ui>>>> = LazyLock::new(RwData::default);
 static NOTIFICATIONS: LazyLock<RwData<Text>> = LazyLock::new(RwData::default);
 
-pub static COMMANDS: Commands<Ui> = Commands::new(
+pub static COMMANDS: Commands = Commands::new(
     &CUR_FILE,
     &CUR_WIDGET,
     &CUR_WINDOW,

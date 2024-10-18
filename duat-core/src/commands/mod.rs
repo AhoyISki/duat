@@ -2,6 +2,7 @@
 //!
 //! TO BE DONE
 use std::{
+    any::Any,
     collections::HashMap,
     fmt::Display,
     sync::{
@@ -22,6 +23,14 @@ use crate::{
 
 mod parameters;
 
+mod global {
+    use std::sync::OnceLock;
+
+    use super::Commands;
+
+    // static COMMANDS: OnceLock<Commands> = OnceLock::new();
+}
+
 /// A list of commands.
 ///
 /// This list contains all of the commands that have been
@@ -31,25 +40,19 @@ mod parameters;
 /// [`File`]: crate::widgets::File
 /// [widget]: crate::widgets::ActiveWidget
 /// [windows]: crate::ui::Window
-pub struct Commands<U>
-where
-    U: Ui,
-{
+pub struct Commands {
     inner: LazyLock<RwData<InnerCommands>>,
-    cur_file: &'static CurFile<U>,
-    cur_widget: &'static CurWidget<U>,
+    cur_file: &'static (dyn Any + Send + Sync),
+    cur_widget: &'static (dyn Any + Send + Sync),
     cur_window: &'static AtomicUsize,
-    windows: &'static LazyLock<RwData<Vec<Window<U>>>>,
+    windows: &'static (dyn Any + Send + Sync),
     notifications: &'static LazyLock<RwData<Text>>,
 }
 
-impl<U> Commands<U>
-where
-    U: Ui,
-{
+impl Commands {
     /// Returns a new instance of [`Commands`].
     #[doc(hidden)]
-    pub const fn new(
+    pub const fn new<U: Ui>(
         cur_file: &'static CurFile<U>,
         cur_widget: &'static CurWidget<U>,
         cur_window: &'static AtomicUsize,
@@ -82,7 +85,6 @@ where
                 };
 
                 inner.write().try_add(alias).unwrap();
-
                 inner
             }),
             cur_window,
@@ -112,7 +114,7 @@ where
     ///
     /// [`File`]: crate::widgets::File
     /// [`Session`]: crate::session::Session
-    pub fn switch_to<W: ActiveWidget<U>>(&self) -> Result<Option<Text>> {
+    pub fn switch_to<W: ActiveWidget<impl Ui>>(&self) -> Result<Option<Text>> {
         self.run(format!("switch-to {}", duat_name::<W>()))
     }
 
@@ -397,21 +399,26 @@ where
     /// [`File`]: crate::widgets::File
     /// [`InputMethod`]: crate::input::InputMethod
     /// [`Session`]: crate::session::Session
-    pub fn add_for_current<T: 'static>(
+    pub fn add_for_current<T: 'static, U: Ui>(
         &'static self,
         callers: impl IntoIterator<Item = impl ToString>,
         mut f: impl FnMut(&RwData<T>, Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
+        let cur_file = self
+            .cur_file
+            .downcast_ref::<CurFile<U>>()
+            .expect("You are using more than one UI!!! Stop!");
+
+        let cur_widget = self
+            .cur_widget
+            .downcast_ref::<CurWidget<U>>()
+            .expect("You are using more than one UI!!! Stop!");
+
         let command = Command::new(callers, move |flags, args| {
-            let result = self
-                .cur_file
-                .mutate_related::<T, CmdResult>(|t| f(t, flags, args.clone()));
+            let result = cur_file.mutate_related::<T, CmdResult>(|t| f(t, flags, args.clone()));
 
             result
-                .or_else(|| {
-                    self.cur_widget
-                        .mutate_as::<T, CmdResult>(|t| f(t, flags, args.clone()))
-                })
+                .or_else(|| cur_widget.mutate_as::<T, CmdResult>(|t| f(t, flags, args.clone())))
                 .transpose()?
                 .ok_or_else(|| {
                     text!(
@@ -553,15 +560,23 @@ where
     /// [`File`]: crate::widgets::File
     /// [`Session`]: crate::session::Session
     /// [`CommandLine`]: crate::widgets::CommandLine
-    pub fn add_for_widget<W: PassiveWidget<U>>(
+    pub fn add_for_widget<W: PassiveWidget<U>, U: Ui>(
         &'static self,
         callers: impl IntoIterator<Item = impl ToString>,
         mut f: impl FnMut(&RwData<W>, &U::Area, Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
-        let windows = self.windows;
+        let cur_file = self
+            .cur_file
+            .downcast_ref::<CurFile<U>>()
+            .expect("You are using more than one UI!!! Stop!");
+
+        let windows = self
+            .windows
+            .downcast_ref::<LazyLock<RwData<Vec<Window<U>>>>>()
+            .expect("You are using more than one UI!!! Stop!");
 
         let command = Command::new(callers, move |flags, args| {
-            self.cur_file
+            cur_file
                 .mutate_related_widget::<W, CmdResult>(|widget, area| {
                     f(widget, area, flags, args.clone())
                 })

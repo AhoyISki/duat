@@ -26,7 +26,7 @@ where
     cur_widget: &'static CurWidget<U>,
     cur_window: &'static AtomicUsize,
     windows: &'static LazyLock<RwData<Vec<Window<U>>>>,
-    commands: &'static Commands<U>,
+    commands: &'static Commands,
     notifications: &'static LazyLock<RwData<Text>>,
 }
 
@@ -50,7 +50,7 @@ where
         cur_widget: &'static CurWidget<U>,
         cur_window: &'static AtomicUsize,
         windows: &'static LazyLock<RwData<Vec<Window<U>>>>,
-        commands: &'static Commands<U>,
+        commands: &'static Commands,
         notifications: &'static LazyLock<RwData<Text>>,
     ) -> Self {
         Self {
@@ -130,7 +130,7 @@ where
         callers: impl IntoIterator<Item = impl ToString>,
         f: impl FnMut(&RwData<T>, Flags, Args) -> CmdResult + 'static,
     ) -> Result<(), ()> {
-        self.commands.add_for_current(callers, f)
+        self.commands.add_for_current::<T, U>(callers, f)
     }
 
     pub fn add_cmd_for_widget<W: PassiveWidget<U>>(

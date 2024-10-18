@@ -325,7 +325,7 @@ pub fn add_for_current<T: 'static>(
     callers: impl IntoIterator<Item = impl ToString>,
     f: impl FnMut(&RwData<T>, Flags, Args) -> CmdResult + 'static,
 ) -> Result<()> {
-    COMMANDS.add_for_current(callers, f)
+    COMMANDS.add_for_current::<T, Ui>(callers, f)
 }
 
 /// Adds a command that can mutate a widget of the given type,
@@ -459,7 +459,7 @@ pub fn add_for_widget<W: PassiveWidget<Ui>>(
     callers: impl IntoIterator<Item = impl ToString>,
     f: impl FnMut(&RwData<W>, &<Ui as ui::Ui>::Area, Flags, Args) -> CmdResult + 'static,
 ) -> Result<()> {
-    COMMANDS.add_for_widget::<W>(callers, f)
+    COMMANDS.add_for_widget::<W, Ui>(callers, f)
 }
 
 /// Sets the mode of the [`CommandLine`]
