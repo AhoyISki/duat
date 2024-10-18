@@ -154,7 +154,7 @@ use duat_core::{
     widgets::{CommandLineMode, PassiveWidget},
 };
 
-use crate::{Ui, setup::CONTEXT};
+use crate::Ui;
 
 /// Runs a full command, with a caller, [`Flags`], and [`Args`].
 ///
@@ -463,7 +463,7 @@ pub fn add_for_widget<W: PassiveWidget<Ui>>(
 ///
 /// [`CommandLine`]: crate::widgets::CommandLine
 pub fn set_mode<M: CommandLineMode<Ui>>() {
-    CONTEXT.set_cmd_mode::<M>()
+    commands::set_cmd_mode::<M, Ui>()
 }
 
 type Result<T> = duat_core::Result<T, ()>;

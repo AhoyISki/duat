@@ -24,7 +24,6 @@ use std::{fs, io::ErrorKind, path::PathBuf, sync::Arc};
 use self::read::{Reader, RevSearcher, Searcher};
 use crate::{
     cache::load_cache,
-    data::Context,
     forms,
     history::History,
     input::{Cursors, InputForFiles, KeyMap},
@@ -148,7 +147,7 @@ where
 {
     type Widget = File;
 
-    fn build(self, _context: Context<U>, _: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+    fn build(self, _: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
         let specs = self.specs;
         let (widget, checker) = self.build();
         (widget, checker, specs)

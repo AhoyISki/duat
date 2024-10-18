@@ -13,7 +13,7 @@
 use std::{fmt::Alignment, marker::PhantomData};
 
 use crate::{
-    data::{Context, FileReader},
+    context::{self, FileReader},
     forms::{self, Form},
     text::{Builder, Tag, Text, text},
     ui::{Area, Constraint, PushSpecs, Ui},
@@ -201,8 +201,8 @@ impl<U> LineNumbersCfg<U> {
 impl<U: Ui> WidgetCfg<U> for LineNumbersCfg<U> {
     type Widget = LineNumbers<U>;
 
-    fn build(self, context: Context<U>, _: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
-        let reader = context.cur_file().unwrap().fixed_reader();
+    fn build(self, _: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+        let reader = context::cur_file().unwrap().fixed_reader();
         let specs = self.specs;
 
         let mut line_numbers = LineNumbers {

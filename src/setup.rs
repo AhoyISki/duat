@@ -1,10 +1,15 @@
 //! Internal handling of [`Context`]
-use std::sync::{LazyLock, RwLock, atomic::AtomicUsize, mpsc};
+use std::sync::{
+    LazyLock, RwLock,
+    atomic::{AtomicUsize, Ordering},
+    mpsc,
+};
 
 use duat_core::{
-    data::{Context, CurFile, CurWidget, RwData},
+    context::{CurFile, CurWidget},
+    data::RwData,
     session::SessionCfg,
-    text::{PrintCfg, Text},
+    text::{PrintCfg},
     ui::{Event, Ui as TraitUi, Window},
     widgets::{File, PassiveWidget, ShowNotifications},
 };
@@ -21,15 +26,6 @@ static CUR_FILE: CurFile<Ui> = CurFile::new();
 static CUR_WIDGET: CurWidget<Ui> = CurWidget::new();
 static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
 static WINDOWS: LazyLock<RwData<Vec<Window<Ui>>>> = LazyLock::new(RwData::default);
-static NOTIFICATIONS: LazyLock<RwData<Text>> = LazyLock::new(RwData::default);
-
-pub static CONTEXT: Context<Ui> = Context::new(
-    &CUR_FILE,
-    &CUR_WIDGET,
-    &CUR_WINDOW,
-    &WINDOWS,
-    &NOTIFICATIONS,
-);
 
 // Setup statics.
 pub static CFG_FN: CfgFn = RwLock::new(None);
@@ -39,12 +35,11 @@ pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
 
 #[doc(hidden)]
 pub fn pre_setup() {
-    duat_core::commands::setup(
+    duat_core::context::setup(
         &CUR_FILE,
         &CUR_WIDGET,
-        &CUR_WINDOW,
+        CUR_WINDOW.load(Ordering::Relaxed),
         &WINDOWS,
-        &NOTIFICATIONS,
     );
 
     hooks::add_grouped::<OnFileOpen>("FileWidgets", |builder| {
@@ -71,7 +66,7 @@ pub fn run_duat(
 ) -> Vec<(RwData<File>, bool)> {
     let ui = Ui::new(statics);
 
-    let mut cfg = SessionCfg::new(ui, CONTEXT);
+    let mut cfg = SessionCfg::new(ui);
 
     if let Some(cfg_fn) = CFG_FN.write().unwrap().take() {
         cfg_fn(&mut cfg)

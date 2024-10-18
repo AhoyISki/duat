@@ -79,7 +79,6 @@ where
     /// # };
     /// # use duat_core::data::{RoData, RwData};
     /// let read_wite_data = RwData::new("☹️");
-    /// 
     /// let read_only_data = RoData::from(&read_write_data);
     /// let instant = Instant::now();
     /// thread::scope(|scope| {

@@ -16,7 +16,8 @@ use parking_lot::RwLock;
 
 use super::{Area, Ui, Window};
 use crate::{
-    data::{Context, RwData},
+    context,
+    data::RwData,
     duat_name,
     widgets::{PassiveWidget, WidgetCfg},
 };
@@ -99,7 +100,6 @@ where
     windows: &'static RwData<Vec<Window<U>>>,
     window_i: usize,
     mod_area: RwLock<U::Area>,
-    context: Context<U>,
 }
 
 impl<U> FileBuilder<U>
@@ -111,13 +111,11 @@ where
         windows: &'static RwData<Vec<Window<U>>>,
         mod_area: U::Area,
         window_i: usize,
-        context: Context<U>,
     ) -> Self {
         Self {
             windows,
             window_i,
             mod_area: RwLock::new(mod_area),
-            context,
         }
     }
 
@@ -178,7 +176,7 @@ where
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
-        let (widget, checker, specs) = cfg.build(self.context, true);
+        let (widget, checker, specs) = cfg.build(true);
 
         let mut windows = self.windows.write();
         let mut mod_area = self.mod_area.write();
@@ -189,7 +187,7 @@ where
         let (child, parent) = {
             let (child, parent) = window.push(widget, &*mod_area, checker, specs, true);
 
-            self.context.cur_file().unwrap().add_related_widget((
+            context::cur_file().unwrap().add_related_widget((
                 related,
                 child.clone(),
                 duat_name::<W>(),
@@ -260,7 +258,7 @@ where
         area: U::Area,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
-        let (widget, checker, specs) = cfg.build(self.context, true);
+        let (widget, checker, specs) = cfg.build(true);
 
         let mut windows = self.windows.write();
         let window = &mut windows[self.window_i];
@@ -268,11 +266,9 @@ where
         let related = widget.as_passive().clone();
 
         let (child, parent) = window.push(widget, &area, checker, specs, true);
-        self.context.cur_file().unwrap().add_related_widget((
-            related,
-            child.clone(),
-            duat_name::<W>(),
-        ));
+        context::cur_file()
+            .unwrap()
+            .add_related_widget((related, child.clone(), duat_name::<W>()));
         (child, parent)
     }
 }
@@ -344,32 +340,20 @@ where
 /// [`OnWindowOpen`]: crate::hooks::OnWindowOpen
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [`CommandLine`]: crate::widgets::CommandLine
-pub struct WindowBuilder<U>
-where
-    U: Ui,
-{
+pub struct WindowBuilder<U: Ui> {
     windows: &'static RwData<Vec<Window<U>>>,
     window_i: usize,
     mod_area: RefCell<U::Area>,
-    context: Context<U>,
 }
 
-impl<U> WindowBuilder<U>
-where
-    U: Ui,
-{
+impl<U: Ui> WindowBuilder<U> {
     /// Creates a new [`WindowBuilder`].
-    pub(crate) fn new(
-        windows: &'static RwData<Vec<Window<U>>>,
-        window_i: usize,
-        context: Context<U>,
-    ) -> Self {
+    pub(crate) fn new(windows: &'static RwData<Vec<Window<U>>>, window_i: usize) -> Self {
         let mod_area = windows.read()[window_i].files_area.clone();
         Self {
             windows,
             window_i,
             mod_area: RefCell::new(mod_area),
-            context,
         }
     }
 
@@ -406,7 +390,7 @@ where
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
-        let (widget, checker, specs) = cfg.build(self.context, false);
+        let (widget, checker, specs) = cfg.build(false);
 
         let mut windows = self.windows.write();
         let mut mod_area = self.mod_area.borrow_mut();
@@ -468,7 +452,7 @@ where
         area: U::Area,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
-        let (widget, checker, specs) = cfg.build(self.context, false);
+        let (widget, checker, specs) = cfg.build(false);
 
         let mut windows = self.windows.write();
         let window = &mut windows[self.window_i];

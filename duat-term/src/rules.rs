@@ -1,5 +1,5 @@
 use duat_core::{
-    data::{Context, FileReader},
+    context::{self, FileReader},
     forms::{self, Form},
     text::{Text, text},
     ui::{Area as UiArea, PushSpecs},
@@ -157,12 +157,8 @@ impl Default for VertRuleCfg {
 impl WidgetCfg<Ui> for VertRuleCfg {
     type Widget = VertRule;
 
-    fn build(
-        self,
-        context: Context<Ui>,
-        on_file: bool,
-    ) -> (Widget<Ui>, impl Fn() -> bool + 'static, PushSpecs) {
-        let reader = on_file.then_some(context.fixed_reader().unwrap());
+    fn build(self, on_file: bool) -> (Widget<Ui>, impl Fn() -> bool + 'static, PushSpecs) {
+        let reader = on_file.then_some(context::fixed_reader().unwrap());
 
         let vert_rule = VertRule {
             reader: reader.clone(),

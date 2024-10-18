@@ -21,7 +21,8 @@ pub use self::{
 use crate::{
     DuatError,
     cache::load_cache,
-    data::{Context, RoData, RwData},
+    context,
+    data::{RoData, RwData},
     forms::Painter,
     hooks::{self, OnFileOpen},
     text::{Item, Iter, IterCfg, Point, PrintCfg, RevIter, Text},
@@ -52,7 +53,7 @@ pub trait Ui: Sized + Send + Sync + 'static {
     ///
     /// This is different from [`Ui::open`], as this is going to run
     /// on reloads as well.
-    fn start(&mut self, sender: Sender, context: Context<Self>);
+    fn start(&mut self, sender: Sender);
 
     /// Ends the Ui
     ///
@@ -417,12 +418,12 @@ where
             })
     }
 
-    pub fn send_key(&self, key: KeyEvent, context: Context<U>) {
+    pub fn send_key(&self, key: KeyEvent) {
         if let Some(node) = self
             .nodes()
-            .find(|node| context.cur_widget().unwrap().widget_ptr_eq(&node.widget))
+            .find(|node| context::cur_widget().unwrap().widget_ptr_eq(&node.widget))
         {
-            node.widget.send_key(key, &node.area, context);
+            node.widget.send_key(key, &node.area);
         }
     }
 
@@ -599,13 +600,7 @@ where
     }
 }
 
-pub(crate) fn build_file<U>(
-    windows: &'static RwData<Vec<Window<U>>>,
-    mod_area: U::Area,
-    context: Context<U>,
-) where
-    U: Ui,
-{
+pub(crate) fn build_file<U: Ui>(windows: &'static RwData<Vec<Window<U>>>, mod_area: U::Area) {
     let (window_i, old_file) = {
         let windows = windows.read();
         let (window_i, node) = windows
@@ -616,7 +611,7 @@ pub(crate) fn build_file<U>(
             .unwrap();
 
         let old_file = node.widget.downcast::<File>().map(|file| {
-            context.cur_file().unwrap().swap((
+            context::cur_file().unwrap().swap((
                 file,
                 node.area.clone(),
                 node.widget.input().unwrap().clone(),
@@ -627,11 +622,11 @@ pub(crate) fn build_file<U>(
         (window_i, old_file)
     };
 
-    let builder = FileBuilder::new(windows, mod_area, window_i, context);
+    let builder = FileBuilder::new(windows, mod_area, window_i);
     hooks::trigger_now::<OnFileOpen<U>>(builder);
 
     if let Some(parts) = old_file {
-        context.cur_file().unwrap().swap(parts);
+        context::cur_file().unwrap().swap(parts);
     };
 }
 

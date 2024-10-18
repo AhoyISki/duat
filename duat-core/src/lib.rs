@@ -26,9 +26,8 @@ use std::{
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
-pub use self::control::{has_ended, return_to_file, switch_to, switch_to_file};
+pub use self::{commands::has_ended, data::context};
 use self::{
-    data::Context,
     text::{Text, err, hint},
     ui::Ui,
 };
@@ -109,67 +108,9 @@ pub trait Plugin<U: Ui>: 'static {
     /// [`Cache::default()`]: Default::default
     /// [forms]: forms::Form
     /// [`File`]: widgets::File
-    fn new(cache: Self::Cache, context: Context<U>) -> Self
+    fn new(cache: Self::Cache) -> Self
     where
         Self: Sized;
-}
-
-mod control {
-    use std::sync::atomic::{AtomicBool, Ordering};
-
-    use parking_lot::Mutex;
-
-    use crate::{duat_name, ui::Ui, widgets::ActiveWidget};
-
-    static HAS_ENDED: AtomicBool = AtomicBool::new(false);
-    static SWITCH_TO: Mutex<Option<SwitchTo>> = Mutex::new(None);
-
-    /// A request to switch widgets
-    pub enum SwitchTo {
-        ActiveFile,
-        File(String),
-        Widget(&'static str),
-    }
-
-    /// Returns `true` if Duat must quit/reload
-    ///
-    /// You should use this function in order to check if loops inside
-    /// of threads should break.
-    pub fn has_ended() -> bool {
-        HAS_ENDED.load(Ordering::Relaxed)
-    }
-
-    /// Ends duat, either for reloading the config, or quitting
-    pub fn end_session() {
-        HAS_ENDED.store(true, Ordering::Relaxed)
-    }
-
-    /// Switches to a given widget type
-    // I could change this to W: ActiveWindow<impl Ui>, but that seems to
-    // make Rust Analyzer panic.
-    pub fn switch_to<W: ActiveWidget<impl Ui>>() {
-        *SWITCH_TO.lock() = Some(SwitchTo::Widget(duat_name::<W>()))
-    }
-
-    /// Returns to the active file
-    ///
-    /// You will want to do this if the current widget is a non file
-    /// widget, like [`CommandLine`].
-    ///
-    /// [`CommandLine`]: crate::widgets::CommandLine
-    pub fn return_to_file() {
-        *SWITCH_TO.lock() = Some(SwitchTo::ActiveFile);
-    }
-
-    /// Switches to the file with the given name
-    pub fn switch_to_file(file: impl std::fmt::Display) {
-        *SWITCH_TO.lock() = Some(SwitchTo::File(file.to_string()))
-    }
-
-    /// A requested widget switch, if any was called
-    pub fn requested_switch() -> Option<SwitchTo> {
-        SWITCH_TO.lock().take()
-    }
 }
 
 pub mod thread {

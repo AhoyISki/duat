@@ -24,12 +24,11 @@
 pub use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 pub use self::{
-    context::{Context, CurFile, CurWidget, FileReader},
     ro::RoData,
     rw::{ReadWriteGuard, RwData},
 };
 
-mod context;
+pub mod context;
 mod ro;
 mod rw;
 

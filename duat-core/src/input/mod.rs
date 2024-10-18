@@ -13,7 +13,7 @@ pub use self::{
     helper::{Cursor, Cursors, EditHelper, Editor, Mover},
 };
 use crate::{
-    data::{Context, RwData},
+    data::RwData,
     text::Searcher,
     ui::Ui,
     widgets::{ActiveWidget, File},
@@ -54,13 +54,8 @@ where
     where
         Self: Sized;
 
-    fn send_key(
-        &mut self,
-        key: KeyEvent,
-        widget: &RwData<Self::Widget>,
-        area: &U::Area,
-        context: Context<U>,
-    ) where
+    fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area)
+    where
         Self: Sized;
 
     fn cursors(&self) -> Option<&Cursors> {
@@ -81,16 +76,16 @@ where
     {
     }
 
-	#[allow(unused)]
-    fn begin_inc_search(&mut self, file: &RwData<File>, area: &U::Area, context: Context<U>) {
+    #[allow(unused)]
+    fn begin_inc_search(&mut self, file: &RwData<File>, area: &U::Area) {
         unimplemented!(
             "This InputMethod does not handle incremental search, yet it was asked to. STRANGE, \
              isn't it?"
         );
     }
 
-	#[allow(unused)]
-    fn end_inc_search(&mut self, file: &RwData<File>, area: &U::Area, context: Context<U>) {
+    #[allow(unused)]
+    fn end_inc_search(&mut self, file: &RwData<File>, area: &U::Area) {
         unimplemented!(
             "This InputMethod does not handle incremental search, yet it was asked to. STRANGE, \
              isn't it?"
@@ -121,13 +116,7 @@ where
     /// [`move_each`]: EditHelper::move_each
     /// [`search_inc`]: helper::Mover::search_inc
     #[allow(unused)]
-    fn search_inc(
-        &mut self,
-        file: &RwData<File>,
-        area: &U::Area,
-        context: Context<U>,
-        searcher: Searcher,
-    ) {
+    fn search_inc(&mut self, file: &RwData<File>, area: &U::Area, searcher: Searcher) {
         unimplemented!(
             "This InputMethod does not handle incremental search, yet it was asked to. STRANGE, \
              isn't it?"

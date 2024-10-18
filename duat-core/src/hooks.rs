@@ -68,7 +68,7 @@ use parking_lot::{Mutex, RwLock};
 
 pub use self::global::*;
 use crate::{
-    data::{Context, RwData},
+    data::RwData,
     input::{InputMethod, KeyEvent},
     ui::{FileBuilder, Ui, WindowBuilder},
     widgets::ActiveWidget,
@@ -77,7 +77,7 @@ use crate::{
 pub struct SessionStarted<U: Ui>(PhantomData<U>);
 
 impl<U: Ui> Hookable for SessionStarted<U> {
-    type Args = Context<U>;
+    type Args = ();
 }
 
 /// Triggers whenever a [`File`] is opened

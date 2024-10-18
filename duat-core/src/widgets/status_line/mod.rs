@@ -22,7 +22,7 @@ use common::{main_col, main_line, selections_fmt};
 
 pub use self::state::State;
 use crate::{
-    data::{Context, FileReader},
+    context::{self, FileReader},
     forms::{self, Form},
     text::{AlignCenter, AlignRight, Builder, PrintCfg, Tag, Text, text},
     ui::{PushSpecs, Ui},
@@ -100,15 +100,11 @@ where
 {
     type Widget = StatusLine<U>;
 
-    fn build(
-        mut self,
-        context: Context<U>,
-        on_file: bool,
-    ) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+    fn build(mut self, on_file: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
         let (reader, checker) = {
             let reader = match on_file {
-                true => context.fixed_reader().unwrap(),
-                false => context.dyn_reader().unwrap(),
+                true => context::fixed_reader().unwrap(),
+                false => context::dyn_reader().unwrap(),
             };
             let checker = {
                 let reader = reader.clone();

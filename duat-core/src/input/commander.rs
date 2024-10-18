@@ -1,10 +1,5 @@
 use super::{Cursors, EditHelper, InputMethod, KeyCode, KeyEvent, KeyMod, key};
-use crate::{
-    data::{Context, RwData},
-    text::Point,
-    ui::Ui,
-    widgets::CommandLine,
-};
+use crate::{commands, data::RwData, text::Point, ui::Ui, widgets::CommandLine};
 
 #[derive(Clone)]
 pub struct Commander {
@@ -29,13 +24,7 @@ where
 {
     type Widget = CommandLine<U>;
 
-    fn send_key(
-        &mut self,
-        key: KeyEvent,
-        widget: &RwData<Self::Widget>,
-        area: &U::Area,
-        _context: Context<U>,
-    ) {
+    fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area) {
         let mut helper = EditHelper::new(widget, area, &mut self.cursors);
 
         match key {
@@ -92,11 +81,11 @@ where
                 });
                 helper.edit_on_main(|e| e.replace(""));
                 self.cursors = Cursors::new_exclusive();
-                crate::return_to_file();
+                commands::return_to_file();
             }
             key!(KeyCode::Enter) => {
                 self.cursors = Cursors::new_exclusive();
-                crate::return_to_file();
+                commands::return_to_file();
             }
             _ => {}
         }

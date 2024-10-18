@@ -3,8 +3,8 @@
 use std::{collections::HashMap, ops::RangeInclusive, sync::LazyLock};
 
 use duat_core::{
-    commands,
-    data::{Context, RwData, RwLock},
+    commands, context,
+    data::{RwData, RwLock},
     forms::{self, Form},
     hooks::{self, Hookable},
     input::{
@@ -135,12 +135,7 @@ impl<U: Ui> KeyMap<U> {
     }
 
     /// Commands that are available in `Mode::Normal`.
-    fn match_normal<S>(
-        &mut self,
-        helper: &mut EditHelper<File, U::Area, S>,
-        event: Event,
-        context: Context<U>,
-    ) {
+    fn match_normal<S>(&mut self, helper: &mut EditHelper<File, U::Area, S>, event: Event) {
         if let key!(Char('h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e') | Down | Up) = event {
             helper.move_each(|m| m.unset_anchor())
         }
@@ -402,7 +397,7 @@ impl<U: Ui> KeyMap<U> {
 
             ////////// Other mode changing keys.
             key!(Char(':')) => {
-                context.set_cmd_mode::<RunCommands>();
+                commands::set_cmd_mode::<RunCommands, U>();
                 self.mode = Mode::Other("command");
                 hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Other("command")));
             }
@@ -416,7 +411,7 @@ impl<U: Ui> KeyMap<U> {
                 hooks::trigger::<OnModeChange>((Mode::Normal, Mode::OneKey("go to")));
             }
             key!(Char('/')) => {
-                context.set_cmd_mode::<IncSearch<U>>();
+                commands::set_cmd_mode::<IncSearch, U>();
                 self.mode = Mode::Other("search");
                 hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Other("search")));
             }
@@ -432,15 +427,10 @@ impl<U: Ui> KeyMap<U> {
     }
 
     /// Commands that are available in `Mode::GoTo`.
-    fn match_goto<S>(
-        &mut self,
-        helper: &mut EditHelper<File, U::Area, S>,
-        event: Event,
-        context: Context<U>,
-    ) {
+    fn match_goto<S>(&mut self, helper: &mut EditHelper<File, U::Area, S>, event: Event) {
         static LAST_FILE: LazyLock<RwData<Option<String>>> = LazyLock::new(RwData::default);
         let last_file = LAST_FILE.read().clone();
-        let cur_name = context.cur_file().unwrap().name();
+        let cur_name = context::cur_file::<U>().unwrap().name();
 
         if let key!(Char('h' | 'j' | 'k' | 'l' | 'i' | 't' | 'b' | 'c' | '.')) = event
             && let SelType::Normal = self.sel_type
@@ -490,7 +480,7 @@ impl<U: Ui> KeyMap<U> {
                 {
                     *LAST_FILE.write() = Some(cur_name);
                 } else {
-                    context.notify(err!("There is no previous file."))
+                    context::notify(err!("There is no previous file."))
                 }
             }
             key!(Char('n')) => {
@@ -505,7 +495,7 @@ impl<U: Ui> KeyMap<U> {
             }
             Event { code, .. } => {
                 let code = format!("{code:?}");
-                context.notify(err!("Key " [*a] code [] " not mapped on " [*a] "go to" [] "."))
+                context::notify(err!("Key " [*a] code [] " not mapped on " [*a] "go to" [] "."))
             }
         }
     }
@@ -517,19 +507,10 @@ impl<U: Ui> Default for KeyMap<U> {
     }
 }
 
-impl<U> InputMethod<U> for KeyMap<U>
-where
-    U: Ui,
-{
+impl<U: Ui> InputMethod<U> for KeyMap<U> {
     type Widget = File;
 
-    fn send_key(
-        &mut self,
-        event: Event,
-        widget: &RwData<Self::Widget>,
-        area: &U::Area,
-        context: Context<U>,
-    ) {
+    fn send_key(&mut self, event: Event, widget: &RwData<Self::Widget>, area: &U::Area) {
         let mut cursors = std::mem::take(&mut self.cursors);
         let mut helper = EditHelper::new(widget, area, &mut cursors);
 
@@ -541,11 +522,11 @@ where
                 if !end_of_line.contains(code) || (*mf != Mod::SHIFT && *mf != Mod::NONE) {
                     self.sel_type = SelType::Normal;
                 }
-                self.match_normal(&mut helper, event, context);
+                self.match_normal(&mut helper, event);
             }
             Mode::OneKey(one_key) => {
                 match one_key {
-                    "go to" => self.match_goto(&mut helper, event, context),
+                    "go to" => self.match_goto(&mut helper, event),
                     "find" | "until" if let key!(Char(char), Mod::SHIFT | Mod::NONE) = event => {
                         use SelType::*;
                         helper.move_each(|m| {
@@ -572,7 +553,7 @@ where
                                     m.move_hor(back);
                                 }
                             } else {
-                                context.notify(err!("Char " [*a] {char} [] " not found."))
+                                context::notify(err!("Char " [*a] {char} [] " not found."))
                             }
                         })
                     }
@@ -599,20 +580,17 @@ where
             .or(Some(&self.cursors))
     }
 
-    fn on_focus(&mut self, _area: &U::Area)
-    where
-        Self: Sized,
-    {
+    fn on_focus(&mut self, _area: &U::Area) {
         let prev = self.mode;
         self.mode = Mode::Normal;
         hooks::trigger::<OnModeChange>((prev, Mode::Normal));
     }
 
-    fn begin_inc_search(&mut self, _file: &RwData<File>, area: &U::Area, _context: Context<U>) {
+    fn begin_inc_search(&mut self, _file: &RwData<File>, area: &U::Area) {
         self.searching = Some((self.cursors.clone(), area.get_print_info()));
     }
 
-    fn end_inc_search(&mut self, _file: &RwData<File>, _area: &U::Area, _context: Context<U>) {
+    fn end_inc_search(&mut self, _file: &RwData<File>, _area: &U::Area) {
         self.cursors = self.searching.take().map(|(c, _)| c).unwrap();
     }
 
@@ -620,11 +598,8 @@ where
         &mut self,
         file: &RwData<File>,
         area: &<U as Ui>::Area,
-        _context: Context<U>,
         searcher: duat_core::text::Searcher,
-    ) where
-        Self: Sized,
-    {
+    ) {
         let mut cursors = self.cursors.clone();
         if searcher.is_empty() {
             let (s_cursors, info) = self.searching.as_mut().unwrap();

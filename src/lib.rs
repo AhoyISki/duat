@@ -192,34 +192,25 @@ pub mod plugin {
     //! Functions to load [`Plugin`]s
     pub use duat_core::Plugin;
 
-    use crate::{
-        Ui,
-        setup::{CONTEXT, PLUGIN_FN},
-    };
+    use crate::{Ui, setup::PLUGIN_FN};
 
     /// Loads the [`Plugin`]
-    pub fn load<P>()
-    where
-        P: Plugin<Ui>,
-    {
+    pub fn load<P: Plugin<Ui>>() {
         let mut old = PLUGIN_FN.write().unwrap();
         let old_f = std::mem::replace(&mut *old, Box::new(|_| {}));
         *old = Box::new(|cfg| {
             old_f(cfg);
-            cfg.load_plugin::<P>(CONTEXT);
+            cfg.load_plugin::<P>();
         });
     }
 
     /// Loads the [`Plugin`], then mutates it
-    pub fn load_then<P>(f: impl FnOnce(&mut P) + Send + Sync + 'static)
-    where
-        P: Plugin<Ui>,
-    {
+    pub fn load_and<P: Plugin<Ui>>(f: impl FnOnce(&mut P) + Send + Sync + 'static) {
         let mut old = PLUGIN_FN.write().unwrap();
         let old_f = std::mem::replace(&mut *old, Box::new(|_| {}));
         *old = Box::new(|cfg| {
             old_f(cfg);
-            cfg.load_plugin_then::<P>(CONTEXT, f);
+            cfg.load_plugin_and(f);
         });
     }
 }

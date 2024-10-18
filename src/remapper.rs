@@ -1,6 +1,6 @@
 //! An [`InputMethod`] that remaps keys and sends them forward
 use duat_core::{
-    data::{Context, RwData},
+    data::RwData,
     input::{InputMethod, KeyCode::*, KeyEvent as Event},
 };
 
@@ -145,7 +145,6 @@ where
         key: Event,
         widget: &RwData<Self::Widget>,
         area: &<Ui as duat_core::ui::Ui>::Area,
-        globals: Context<Ui>,
     ) {
         let remaps = self
             .remaps
@@ -185,11 +184,11 @@ where
         }
 
         for key in keys_to_send {
-            self.input_method.send_key(key, widget, area, globals);
+            self.input_method.send_key(key, widget, area);
         }
 
         if new_to_check.is_empty() {
-            self.input_method.send_key(key, widget, area, globals);
+            self.input_method.send_key(key, widget, area);
         }
 
         self.to_check = new_to_check;

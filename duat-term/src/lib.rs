@@ -19,12 +19,7 @@ use crossterm::{
     cursor, event, execute,
     terminal::{self, ClearType},
 };
-use duat_core::{
-    DuatError,
-    data::{Context, RwData},
-    text::err,
-    ui,
-};
+use duat_core::{DuatError, data::RwData, text::err, ui};
 
 use self::{layout::Layout, print::Printer};
 pub use self::{
@@ -76,7 +71,7 @@ impl ui::Ui for Ui {
         }
     }
 
-    fn start(&mut self, sender: ui::Sender, _context: Context<Self>) {
+    fn start(&mut self, sender: ui::Sender) {
         let functions = FUNCTIONS.get().unwrap();
         let printer = self.printer.clone();
         duat_core::thread::spawn(move || {

@@ -1,6 +1,7 @@
 use super::{Cursors, EditHelper, InputForFiles, KeyCode, KeyEvent, KeyMod, key};
 use crate::{
-    data::{Context, RwData},
+    commands,
+    data::RwData,
     ui::{Area, Ui},
     widgets::{CommandLine, File},
 };
@@ -28,13 +29,7 @@ where
 {
     type Widget = File;
 
-    fn send_key(
-        &mut self,
-        key: KeyEvent,
-        widget: &RwData<Self::Widget>,
-        area: &U::Area,
-        _context: Context<U>,
-    ) {
+    fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area) {
         let mut helper = EditHelper::new(widget, area, &mut self.cursors);
         match key {
             // Characters
@@ -100,7 +95,7 @@ where
             key!(KeyCode::Down) => move_each(helper, Side::Bottom, 1),
 
             // Control
-            key!(KeyCode::Char('p'), KeyMod::CONTROL) => crate::switch_to::<CommandLine<U>>(),
+            key!(KeyCode::Char('p'), KeyMod::CONTROL) => commands::switch_to::<CommandLine<U>, U>(),
 
             _ => {}
         }

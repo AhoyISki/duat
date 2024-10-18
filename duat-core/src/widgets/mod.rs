@@ -58,7 +58,7 @@ pub use self::{
     status_line::{State, StatusLine, StatusLineCfg, common, status},
 };
 use crate::{
-    data::{Context, Data, RwData, RwLock},
+    data::{Data, RwData, RwLock},
     duat_name, forms,
     hooks::{self, FocusedOn, KeySent, KeySentTo, UnfocusedFrom},
     input::InputMethod,
@@ -432,11 +432,7 @@ where
 {
     type Widget: PassiveWidget<U>;
 
-    fn build(
-        self,
-        context: Context<U>,
-        on_file: bool,
-    ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs);
+    fn build(self, on_file: bool) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs);
 }
 
 /// A widget that can be modified by input
@@ -715,7 +711,7 @@ where
 
     fn input(&self) -> &RwData<dyn InputMethod<U>>;
 
-    fn send_key(&self, key: KeyEvent, area: &U::Area, context: Context<U>);
+    fn send_key(&self, key: KeyEvent, area: &U::Area);
 
     fn on_focus(&self, area: &U::Area);
 
@@ -770,7 +766,7 @@ where
         &self.dyn_input
     }
 
-    fn send_key(&self, key: KeyEvent, area: &<U as Ui>::Area, context: Context<U>) {
+    fn send_key(&self, key: KeyEvent, area: &<U as Ui>::Area) {
         let mut input = self.input.write();
 
         if let Some(cursors) = input.cursors() {
@@ -780,7 +776,7 @@ where
         hooks::trigger::<KeySent<U>>((key, self.dyn_active.clone()));
         hooks::trigger::<KeySentTo<W, U>>((key, self.widget.clone()));
 
-        input.send_key(key, &self.widget, area, context);
+        input.send_key(key, &self.widget, area);
 
         let mut widget = self.widget.write();
 
@@ -1007,10 +1003,10 @@ where
         }
     }
 
-    pub(crate) fn send_key(&self, key: KeyEvent, area: &U::Area, context: Context<U>) {
+    pub(crate) fn send_key(&self, key: KeyEvent, area: &U::Area) {
         match self {
             Widget::Passive(..) => unreachable!("Sending keys to passive widgets is impossible"),
-            Widget::Active(holder) => holder.send_key(key, area, context),
+            Widget::Active(holder) => holder.send_key(key, area),
         }
     }
 

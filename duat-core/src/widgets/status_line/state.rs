@@ -17,7 +17,8 @@
 use std::{fmt::Display, marker::PhantomData};
 
 use crate::{
-    data::{FileReader, RoData, RwData},
+    data::{RoData, RwData},
+    context::FileReader,
     input::InputMethod,
     text::{Builder, Tag, Text, text},
     ui::Ui,
@@ -46,8 +47,9 @@ enum Appender<T, U> {
 
 /// A part of the [`StatusLine`]
 ///
-/// This can either be a static part, like [`Text`], [`impl Display`] type, or it can be a reader of the [`File`] and its
-/// structs, or it can update independently.
+/// This can either be a static part, like [`Text`], [`impl Display`]
+/// type, or it can be a reader of the [`File`] and its structs, or it
+/// can update independently.
 ///
 /// [`StatusLine`]: super::StatusLine
 /// [`impl Display`]: std::fmt::Display

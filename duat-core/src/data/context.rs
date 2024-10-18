@@ -3,88 +3,68 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
+pub use self::global::*;
 use super::{RoData, RwData, private::InnerData};
 use crate::{
-    Error, Result,
     input::InputMethod,
-    text::Text,
-    ui::{Area, Ui, Window},
-    widgets::{
-        ActiveWidget, CommandLine, CommandLineMode, File, PassiveWidget, RelatedWidgets, Widget,
-    },
+    ui::{Area, Ui},
+    widgets::{ActiveWidget, File, PassiveWidget, RelatedWidgets, Widget},
 };
 
-pub struct Context<U>
-where
-    U: Ui,
-{
-    cur_file: &'static CurFile<U>,
-    cur_widget: &'static CurWidget<U>,
-    cur_window: &'static AtomicUsize,
-    windows: &'static LazyLock<RwData<Vec<Window<U>>>>,
-    notifications: &'static LazyLock<RwData<Text>>,
-}
+mod global {
+    use std::{
+        any::Any,
+        sync::{
+            LazyLock, OnceLock,
+            atomic::{AtomicUsize, Ordering},
+        },
+    };
 
-impl<U> Clone for Context<U>
-where
-    U: Ui,
-{
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-impl<U> Copy for Context<U> where U: Ui {}
+    use super::{CurFile, CurWidget, FileParts, FileReader};
+    use crate::{
+        Error, Result,
+        data::RwData,
+        text::Text,
+        ui::{Ui, Window},
+        widgets::{CommandLine, CommandLineMode, File, Widget},
+    };
 
-impl<U> Context<U>
-where
-    U: Ui,
-{
-    #[doc(hidden)]
-    pub const fn new(
-        cur_file: &'static CurFile<U>,
-        cur_widget: &'static CurWidget<U>,
-        cur_window: &'static AtomicUsize,
-        windows: &'static LazyLock<RwData<Vec<Window<U>>>>,
-        notifications: &'static LazyLock<RwData<Text>>,
-    ) -> Self {
-        Self {
-            cur_file,
-            cur_widget,
-            cur_window,
-            windows,
-            notifications,
-        }
+    static CUR_FILE: OnceLock<&'static (dyn Any + Send + Sync)> = OnceLock::new();
+    static CUR_WIDGET: OnceLock<&'static (dyn Any + Send + Sync)> = OnceLock::new();
+    static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
+    static WINDOWS: OnceLock<&'static (dyn Any + Send + Sync)> = OnceLock::new();
+    static NOTIFICATIONS: LazyLock<RwData<Text>> = LazyLock::new(RwData::default);
+
+    pub fn fixed_reader<U: Ui>() -> Result<FileReader<U>, File> {
+        Ok(cur_file()?.fixed_reader())
     }
 
-    pub fn fixed_reader(self) -> Result<FileReader<U>, File> {
-        self.cur_file.0.read().as_ref().ok_or(Error::NoFileYet)?;
-        Ok(self.cur_file.fixed_reader())
+    pub fn dyn_reader<U: Ui>() -> Result<FileReader<U>, File> {
+        Ok(cur_file()?.dyn_reader())
     }
 
-    pub fn dyn_reader(self) -> Result<FileReader<U>, File> {
-        self.cur_file.0.read().as_ref().ok_or(Error::NoFileYet)?;
-        Ok(self.cur_file.dyn_reader())
+    pub fn cur_file<U: Ui>() -> Result<&'static CurFile<U>, File> {
+        let cur_file = inner_cur_file();
+        cur_file.0.read().as_ref().ok_or(Error::NoFileYet)?;
+        Ok(cur_file)
     }
 
-    pub fn cur_file(self) -> Result<&'static CurFile<U>, File> {
-        self.cur_file.0.read().as_ref().ok_or(Error::NoFileYet)?;
-        Ok(self.cur_file)
+    pub fn cur_widget<U: Ui>() -> Result<&'static CurWidget<U>, File> {
+        let cur_widget = inner_cur_widget();
+        cur_widget.0.read().as_ref().ok_or(Error::NoWidgetYet)?;
+        Ok(cur_widget)
     }
 
-    pub fn cur_widget(self) -> Result<&'static CurWidget<U>, File> {
-        // `cur_widget doesn't exist iff cur_file doesn't exist`.
-        self.cur_file.0.read().as_ref().ok_or(Error::NoWidgetYet)?;
-        Ok(self.cur_widget)
+    pub fn cur_window() -> usize {
+        CUR_WINDOW.load(Ordering::Relaxed)
     }
 
-    pub fn set_cmd_mode<M: CommandLineMode<U>>(self) {
-        self.cur_file
-            .mutate_related_widget::<CommandLine<U>, ()>(|widget, _| {
-                widget.write().set_mode::<M>(self)
-            })
+    pub fn set_cmd_mode<M: CommandLineMode<U>, U: Ui>() {
+        inner_cur_file::<U>()
+            .mutate_related_widget::<CommandLine<U>, ()>(|w, _| w.write().set_mode::<M>())
             .unwrap_or_else(|| {
-                let windows = self.windows.read();
-                let w = self.cur_window.load(Ordering::Relaxed);
+                let windows = windows::<U>().read();
+                let w = cur_window();
                 let cur_window = &windows[w];
 
                 let mut widgets = {
@@ -97,31 +77,67 @@ where
                     w.data_is::<CommandLine<U>>()
                         .then(|| w.downcast::<CommandLine<U>>().unwrap())
                 }) {
-                    cmd_line.write().set_mode::<M>(self)
+                    cmd_line.write().set_mode::<M>()
                 }
             })
     }
 
-    pub fn notifications(self) -> &'static RwData<Text> {
-        self.notifications
+    pub fn notifications() -> &'static RwData<Text> {
+        &NOTIFICATIONS
     }
 
-    pub fn notify(self, text: Text) {
-        *self.notifications.write() = text;
+    pub fn notify(msg: Text) {
+        *NOTIFICATIONS.write() = msg
     }
 
-    pub(crate) fn set_cur(self, parts: FileParts<U>, widget: Widget<U>) {
+    pub fn setup<U: Ui>(
+        cur_file: &'static CurFile<U>,
+        cur_widget: &'static CurWidget<U>,
+        cur_window: usize,
+        windows: &'static RwData<Vec<Window<U>>>,
+    ) {
+        CUR_FILE.set(cur_file).expect("setup ran twice");
+        CUR_WIDGET.set(cur_widget).expect("setup ran twice");
+        CUR_WINDOW.store(cur_window, Ordering::Relaxed);
+        WINDOWS.set(windows).expect("setup ran twice");
+    }
+
+    pub(crate) fn set_cur<U: Ui>(parts: FileParts<U>, widget: Widget<U>) {
         let area = parts.1.clone();
-        *self.cur_file.0.write() = Some(parts);
-        *self.cur_widget.0.write() = Some((widget, area));
+        *inner_cur_file().0.write() = Some(parts);
+        *inner_cur_widget().0.write() = Some((widget, area));
     }
 
-    pub(crate) fn set_windows(
-        self,
-        windows: Vec<Window<U>>,
+    pub(crate) fn set_windows<U: Ui>(
+        win: Vec<Window<U>>,
     ) -> (&'static RwData<Vec<Window<U>>>, &'static AtomicUsize) {
-        *self.windows.write() = windows;
-        (self.windows, self.cur_window)
+        let windows = windows();
+        *windows.write() = win;
+        (windows, &CUR_WINDOW)
+    }
+
+    pub(crate) fn windows<U: Ui>() -> &'static RwData<Vec<Window<U>>> {
+        WINDOWS
+            .get()
+            .unwrap()
+            .downcast_ref::<RwData<Vec<Window<U>>>>()
+            .expect("You are using more than one UI!!! Stop!")
+    }
+
+    pub(crate) fn inner_cur_file<U: Ui>() -> &'static CurFile<U> {
+        CUR_FILE
+            .get()
+            .unwrap()
+            .downcast_ref::<CurFile<U>>()
+            .expect("You are using more than one UI!!! Stop!")
+    }
+
+    pub(crate) fn inner_cur_widget<U: Ui>() -> &'static CurWidget<U> {
+        CUR_WIDGET
+            .get()
+            .unwrap()
+            .downcast_ref::<CurWidget<U>>()
+            .expect("You are using more than one UI!!! Stop!")
     }
 }
 

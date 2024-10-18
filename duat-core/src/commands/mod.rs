@@ -2,22 +2,19 @@
 //!
 //! TO BE DONE
 use std::{
-    any::Any,
     collections::HashMap,
     fmt::Display,
-    sync::{
-        Arc, LazyLock,
-        atomic::{AtomicUsize, Ordering},
-    },
+    sync::{Arc, LazyLock},
 };
 
 pub use self::{
+    control::*,
     global::*,
     parameters::{Args, Flags, split_flags_and_args},
 };
 use crate::{
-    Error,
-    data::{CurFile, CurWidget, RwData, RwLock},
+    Error, context,
+    data::{RwData, RwLock},
     duat_name,
     text::{Text, err, ok, text},
     ui::{Ui, Window},
@@ -27,39 +24,16 @@ use crate::{
 mod parameters;
 
 mod global {
-    use std::sync::{LazyLock, OnceLock, atomic::AtomicUsize};
-
     use super::{Args, CmdResult, Commands, Flags, Result};
     use crate::{
-        data::{CurFile, CurWidget, RwData},
-        duat_name,
+        context,
+        data::RwData,
         text::Text,
         ui::{Ui, Window},
-        widgets::{ActiveWidget, PassiveWidget},
+        widgets::{CommandLine, CommandLineMode, PassiveWidget},
     };
 
-    static COMMANDS: OnceLock<Commands> = OnceLock::new();
-
-    /// Setup for commands, meant to be used only by the duat crate
-    #[doc(hidden)]
-    pub fn setup<U: Ui>(
-        cur_file: &'static CurFile<U>,
-        cur_widget: &'static CurWidget<U>,
-        cur_window: &'static AtomicUsize,
-        windows: &'static LazyLock<RwData<Vec<Window<U>>>>,
-        notifications: &'static LazyLock<RwData<Text>>,
-    ) {
-        COMMANDS
-            .set(Commands::new(
-                cur_file,
-                cur_widget,
-                cur_window,
-                windows,
-                notifications,
-            ))
-            .ok()
-            .expect("Setup function ran more than one time");
-    }
+    static COMMANDS: Commands = Commands::new();
 
     /// Canonical way to quit Duat.
     ///
@@ -67,24 +41,7 @@ mod global {
     /// tasks, and then Duat will execute a program closing
     /// function, as defined by the [`Ui`].
     pub fn quit() {
-        COMMANDS.get().unwrap().run("quit").unwrap();
-    }
-
-    /// Switches to the given [`ActiveWidget`].
-    ///
-    /// The widget will be chosen in the following order:
-    ///
-    /// 1. The first of said widget pushed to the current [`File`].
-    /// 2. Other instances of it in the current window.
-    /// 3. Instances in other windows.
-    ///
-    /// [`File`]: crate::widgets::File
-    /// [`Session`]: crate::session::Session
-    pub fn switch_to<W: ActiveWidget<impl Ui>>() -> Result<Option<Text>> {
-        COMMANDS
-            .get()
-            .unwrap()
-            .run(format!("switch-to {}", duat_name::<W>()))
+        COMMANDS.run("quit").unwrap();
     }
 
     /// Switches to/opens a [`File`] with the given name.
@@ -97,7 +54,7 @@ mod global {
     /// [`File`]: crate::widgets::File
     /// [`Commands::buffer`]: Commands::buffer
     pub fn edit(file: impl std::fmt::Display) -> Result<Option<Text>> {
-        COMMANDS.get().unwrap().run(format!("edit {file}"))
+        COMMANDS.run(format!("edit {file}"))
     }
 
     /// Switches to a [`File`] with the given name.
@@ -110,7 +67,7 @@ mod global {
     /// [`File`]: crate::widgets::File
     /// [`Commands::edit`]: Commands::edit
     pub fn buffer(file: impl std::fmt::Display) -> Result<Option<Text>> {
-        COMMANDS.get().unwrap().run(format!("buffer {file}"))
+        COMMANDS.run(format!("buffer {file}"))
     }
 
     /// Switches to the next [`File`].
@@ -122,7 +79,7 @@ mod global {
     /// [`File`]: crate::widgets::File
     /// [`Commands::next_global_file`]: Commands::next_global_file
     pub fn next_file() -> Result<Option<Text>> {
-        COMMANDS.get().unwrap().run("next-file")
+        COMMANDS.run("next-file")
     }
 
     /// Switches to the previous [`File`].
@@ -134,7 +91,7 @@ mod global {
     /// [`File`]: crate::widgets::File
     /// [`Commands::prev_global_file`]: Commands::prev_global_file
     pub fn prev_file() -> Result<Option<Text>> {
-        COMMANDS.get().unwrap().run("prev-file")
+        COMMANDS.run("prev-file")
     }
 
     /// Switches to the next [`File`].
@@ -146,7 +103,7 @@ mod global {
     /// [`File`]: crate::widgets::File
     /// [`Commands::next_file`]: Commands::next_file
     pub fn next_global_file() -> Result<Option<Text>> {
-        COMMANDS.get().unwrap().run("next-file --global")
+        COMMANDS.run("next-file --global")
     }
 
     /// Switches to the previous [`File`].
@@ -158,19 +115,7 @@ mod global {
     /// [`File`]: crate::widgets::File
     /// [`Commands::prev_file`]: Commands::prev_file
     pub fn prev_global_file() -> Result<Option<Text>> {
-        COMMANDS.get().unwrap().run("prev-file --global")
-    }
-
-    /// If not in a [`File`], switches to the last active [`File`].
-    ///
-    /// This is useful if the currently active widget is not a file
-    /// (e.g. [`CommandLine`], a file tree, etc), and you want to
-    /// return to the file seamlessly.
-    ///
-    /// [`File`]: crate::widgets::File
-    /// [`CommandLine`]: crate::widgets::CommandLine
-    pub fn return_to_file() -> Result<Option<Text>> {
-        COMMANDS.get().unwrap().run("return-to-file")
+        COMMANDS.run("prev-file --global")
     }
 
     /// Tries to alias a `caller` to an existing `command`.
@@ -179,7 +124,31 @@ mod global {
     /// another command, or if `command` is not a real caller to an
     /// existing command.
     pub fn alias(alias: impl ToString, command: impl ToString) -> Result<Option<Text>> {
-        COMMANDS.get().unwrap().alias(alias, command)
+        COMMANDS.alias(alias, command)
+    }
+
+    pub fn set_cmd_mode<M: CommandLineMode<U>, U: Ui>() {
+        context::cur_file::<U>()
+            .unwrap()
+            .mutate_related_widget::<CommandLine<U>, ()>(|w, _| w.write().set_mode::<M>())
+            .unwrap_or_else(|| {
+                let windows = context::windows::<U>().read();
+                let w = context::cur_window();
+                let cur_window = &windows[w];
+
+                let mut widgets = {
+                    let previous = windows[..w].iter().flat_map(Window::widgets);
+                    let following = windows[(w + 1)..].iter().flat_map(Window::widgets);
+                    cur_window.widgets().chain(previous).chain(following)
+                };
+
+                if let Some(cmd_line) = widgets.find_map(|(w, _)| {
+                    w.data_is::<CommandLine<U>>()
+                        .then(|| w.downcast::<CommandLine<U>>().unwrap())
+                }) {
+                    cmd_line.write().set_mode::<M>()
+                }
+            })
     }
 
     /// Runs a full command, with a caller, [`Flags`], and [`Args`].
@@ -208,14 +177,14 @@ mod global {
     /// [`CommandLine`]: crate::widgets::CommandLine
     /// [`Commands::add_for_widget`]: Commands::add_for_widget
     pub fn run(call: impl std::fmt::Display) -> Result<Option<Text>> {
-        COMMANDS.get().unwrap().run(call)
+        COMMANDS.run(call)
     }
 
     /// Like [`run`], but notifies the result, not returning it
     ///
     /// [`run`]: Commands::run
     pub fn run_notify(call: impl std::fmt::Display) -> Result<Option<Text>> {
-        COMMANDS.get().unwrap().run_notify(call)
+        COMMANDS.run_notify(call)
     }
 
     /// Adds a command to the global list of commands.
@@ -255,7 +224,7 @@ mod global {
         callers: impl IntoIterator<Item = impl ToString>,
         f: impl FnMut(Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
-        COMMANDS.get().unwrap().add(callers, f)
+        COMMANDS.add(callers, f)
     }
 
     /// Adds a command to an object "related" to the current [`File`]
@@ -340,7 +309,7 @@ mod global {
         callers: impl IntoIterator<Item = impl ToString>,
         f: impl FnMut(&RwData<T>, Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
-        COMMANDS.get().unwrap().add_for_current::<T, U>(callers, f)
+        COMMANDS.add_for_current::<T, U>(callers, f)
     }
 
     /// Adds a command that can mutate a widget of the given type,
@@ -476,11 +445,76 @@ mod global {
         callers: impl IntoIterator<Item = impl ToString>,
         f: impl FnMut(&RwData<W>, &U::Area, Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
-        COMMANDS.get().unwrap().add_for_widget(callers, f)
+        COMMANDS.add_for_widget(callers, f)
     }
 
     pub(crate) fn caller_exists(caller: &str) -> bool {
-        COMMANDS.get().unwrap().caller_exists(caller)
+        COMMANDS.caller_exists(caller)
+    }
+}
+
+mod control {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use parking_lot::Mutex;
+
+    use crate::{duat_name, ui::Ui, widgets::ActiveWidget};
+
+    static HAS_ENDED: AtomicBool = AtomicBool::new(false);
+    static SWITCH_TO: Mutex<Option<SwitchTo>> = Mutex::new(None);
+
+    /// A request to switch widgets
+    pub(crate) enum SwitchTo {
+        ActiveFile,
+        File(String),
+        Widget(&'static str),
+    }
+
+    /// Returns `true` if Duat must quit/reload
+    ///
+    /// You should use this function in order to check if loops inside
+    /// of threads should break.
+    pub fn has_ended() -> bool {
+        HAS_ENDED.load(Ordering::Relaxed)
+    }
+
+    /// Switches to the given [`ActiveWidget`].
+    ///
+    /// The widget will be chosen in the following order:
+    ///
+    /// 1. The first of said widget pushed to the current [`File`].
+    /// 2. Other instances of it in the current window.
+    /// 3. Instances in other windows.
+    ///
+    /// [`File`]: crate::widgets::File
+    /// [`Session`]: crate::session::Session
+    pub fn switch_to<W: ActiveWidget<U>, U: Ui>() {
+        *SWITCH_TO.lock() = Some(SwitchTo::Widget(duat_name::<W>()))
+    }
+
+    /// Returns to the active file
+    ///
+    /// You will want to do this if the current widget is a non file
+    /// widget, like [`CommandLine`].
+    ///
+    /// [`CommandLine`]: crate::widgets::CommandLine
+    pub fn return_to_file() {
+        *SWITCH_TO.lock() = Some(SwitchTo::ActiveFile);
+    }
+
+    /// Switches to the file with the given name
+    pub fn switch_to_file(file: impl std::fmt::Display) {
+        *SWITCH_TO.lock() = Some(SwitchTo::File(file.to_string()))
+    }
+
+    /// Ends duat, either for reloading the config, or quitting
+    pub(crate) fn end_session() {
+        HAS_ENDED.store(true, Ordering::Relaxed)
+    }
+
+    /// A requested widget switch, if any was called
+    pub(crate) fn requested_switch() -> Option<SwitchTo> {
+        SWITCH_TO.lock().take()
     }
 }
 
@@ -493,63 +527,44 @@ mod global {
 /// [`File`]: crate::widgets::File
 /// [widget]: crate::widgets::ActiveWidget
 /// [windows]: crate::ui::Window
-struct Commands {
-    inner: RwData<InnerCommands>,
-    cur_file: &'static (dyn Any + Send + Sync),
-    cur_widget: &'static (dyn Any + Send + Sync),
-    cur_window: &'static AtomicUsize,
-    windows: &'static (dyn Any + Send + Sync),
-    notifications: &'static LazyLock<RwData<Text>>,
-}
+struct Commands(LazyLock<RwData<InnerCommands>>);
 
 impl Commands {
     /// Returns a new instance of [`Commands`].
     #[doc(hidden)]
-    fn new<U: Ui>(
-        cur_file: &'static CurFile<U>,
-        cur_widget: &'static CurWidget<U>,
-        cur_window: &'static AtomicUsize,
-        windows: &'static LazyLock<RwData<Vec<Window<U>>>>,
-        notifications: &'static LazyLock<RwData<Text>>,
-    ) -> Self {
-        let inner = RwData::new(InnerCommands {
-            list: Vec::new(),
-            aliases: HashMap::new(),
-        });
+    const fn new() -> Self {
+        Self(LazyLock::new(|| {
+            let inner = RwData::new(InnerCommands {
+                list: Vec::new(),
+                aliases: HashMap::new(),
+            });
 
-        let alias = {
-            let inner = inner.clone();
-            Command::new(["alias"], move |flags, mut args| {
-                if !flags.is_empty() {
-                    Err(err!(
-                        "An alias cannot take any flags, try moving them after the command, like \
-                         \"alias my-alias my-caller --foo --bar\", instead of \"alias --foo --bar \
-                         my-alias my-caller\""
-                    ))
-                } else {
-                    let alias = args.next()?.to_string();
-                    let args: String = args.collect();
+            let alias = {
+                let inner = inner.clone();
+                Command::new(["alias"], move |flags, mut args| {
+                    if !flags.is_empty() {
+                        Err(err!(
+                            "An alias cannot take any flags, try moving them after the command, \
+                             like \"alias my-alias my-caller --foo --bar\", instead of \"alias \
+                             --foo --bar my-alias my-caller\""
+                        ))
+                    } else {
+                        let alias = args.next()?.to_string();
+                        let args: String = args.collect();
 
-                    Ok(inner.write().try_alias(alias, args)?)
-                }
-            })
-        };
+                        Ok(inner.write().try_alias(alias, args)?)
+                    }
+                })
+            };
 
-        inner.write().try_add(alias).unwrap();
-
-        Self {
-            inner,
-            cur_window,
-            cur_file,
-            cur_widget,
-            windows,
-            notifications,
-        }
+            inner.write().try_add(alias).unwrap();
+            inner
+        }))
     }
 
     /// Aliases a command to a specific word
     pub fn alias(&self, alias: impl ToString, command: impl ToString) -> Result<Option<Text>> {
-        self.inner.write().try_alias(alias, command)
+        self.0.write().try_alias(alias, command)
     }
 
     /// Runs a command from a call
@@ -558,7 +573,7 @@ impl Commands {
         let mut args = call.split_whitespace();
         let caller = args.next().ok_or(Error::Empty)?.to_string();
 
-        let (command, call) = self.inner.inspect(|inner| {
+        let (command, call) = self.0.inspect(|inner| {
             if let Some(command) = inner.aliases.get(&caller) {
                 let (command, call) = command;
                 let mut call = call.clone() + " ";
@@ -585,8 +600,8 @@ impl Commands {
     pub fn run_notify(&self, call: impl Display) -> Result<Option<Text>> {
         let ret = self.run(call);
         match ret.as_ref() {
-            Ok(Some(ok)) => *self.notifications.write() = ok.clone(),
-            Err(err) => *self.notifications.write() = err.clone().into(),
+            Ok(Some(ok)) => context::notify(ok.clone()),
+            Err(err) => context::notify(err.clone().into()),
             _ => {}
         }
         ret
@@ -599,7 +614,7 @@ impl Commands {
         f: impl FnMut(Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
         let command = Command::new(callers, f);
-        self.inner.write().try_add(command)
+        self.0.write().try_add(command)
     }
 
     /// Adds a command for a current struct of type `T`
@@ -608,15 +623,8 @@ impl Commands {
         callers: impl IntoIterator<Item = impl ToString>,
         mut f: impl FnMut(&RwData<T>, Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
-        let cur_file = self
-            .cur_file
-            .downcast_ref::<CurFile<U>>()
-            .expect("You are using more than one UI!!! Stop!");
-
-        let cur_widget = self
-            .cur_widget
-            .downcast_ref::<CurWidget<U>>()
-            .expect("You are using more than one UI!!! Stop!");
+        let cur_file = context::inner_cur_file::<U>();
+        let cur_widget = context::inner_cur_widget::<U>();
 
         let command = Command::new(callers, move |flags, args| {
             let result = cur_file.mutate_related::<T, CmdResult>(|t| f(t, flags, args.clone()));
@@ -632,7 +640,7 @@ impl Commands {
                 })
         });
 
-        self.inner.write().try_add(command)
+        self.0.write().try_add(command)
     }
 
     /// Adds a command for a widget of type `W`
@@ -641,15 +649,9 @@ impl Commands {
         callers: impl IntoIterator<Item = impl ToString>,
         mut f: impl FnMut(&RwData<W>, &U::Area, Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
-        let cur_file = self
-            .cur_file
-            .downcast_ref::<CurFile<U>>()
-            .expect("You are using more than one UI!!! Stop!");
-
-        let windows = self
-            .windows
-            .downcast_ref::<LazyLock<RwData<Vec<Window<U>>>>>()
-            .expect("You are using more than one UI!!! Stop!");
+        let cur_file = context::inner_cur_file::<U>();
+        let windows = context::windows::<U>();
+        let w = context::cur_window();
 
         let command = Command::new(callers, move |flags, args| {
             cur_file
@@ -666,9 +668,8 @@ impl Commands {
                         ));
                     }
 
-                    if let Some((w, a)) = get_from_name(&windows, duat_name::<W>(), self.cur_window)
-                    {
-                        f(&w.try_downcast().unwrap(), a, flags, args)
+                    if let Some((widget, area)) = get_from_name(&windows, duat_name::<W>(), w) {
+                        f(&widget.try_downcast().unwrap(), area, flags, args)
                     } else {
                         let name = duat_name::<W>();
                         Err(err!("No widget of type " [*a] name [] " found"))
@@ -676,12 +677,12 @@ impl Commands {
                 })
         });
 
-        self.inner.write().try_add(command)
+        self.0.write().try_add(command)
     }
 
     /// Checks if a caller/alias exists or not
     pub(crate) fn caller_exists(&self, caller: &str) -> bool {
-        let inner = self.inner.read();
+        let inner = self.0.read();
         inner.aliases.contains_key(caller)
             || inner
                 .list
@@ -805,9 +806,8 @@ pub type Result<T> = crate::Result<T, ()>;
 fn get_from_name<'a, U: Ui>(
     windows: &'a [Window<U>],
     type_name: &'static str,
-    cur_window: &'static AtomicUsize,
+    w: usize,
 ) -> Option<(&'a RwData<dyn PassiveWidget<U>>, &'a U::Area)> {
-    let w = cur_window.load(Ordering::Relaxed);
     let on_window = windows[w].widgets();
     let previous = windows.iter().take(w).flat_map(|w| w.widgets());
     let following = windows.iter().skip(w + 1).flat_map(|w| w.widgets());

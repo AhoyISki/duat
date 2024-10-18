@@ -23,7 +23,7 @@ use parking_lot::RwLock;
 
 use crate::{
     commands,
-    data::{Context, RoData, RwData},
+    data::{RoData, RwData, context},
     duat_name,
     forms::{self, Form},
     hooks,
@@ -105,23 +105,23 @@ where
 {
     type Widget = CommandLine<U>;
 
-    fn build(self, context: Context<U>, _: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
-        let mode = RwData::new(if hooks::group_exists("CmdLineNotifications") {
-            run_once::<ShowNotifications, U>(context);
-            RwData::<dyn CommandLineMode<U>>::new_unsized::<ShowNotifications>(Arc::new(
-                RwLock::new(ShowNotifications::new(context)),
-            ))
-        } else {
-            run_once::<RunCommands, U>(context);
-            RwData::<dyn CommandLineMode<U>>::new_unsized::<RunCommands>(Arc::new(RwLock::new(
-                RunCommands::new(context),
+    fn build(self, _: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+        let mode: RwData<dyn CommandLineMode<U>> = if hooks::group_exists("CmdLineNotifications") {
+            run_once::<ShowNotifications, U>();
+            RwData::new_unsized::<ShowNotifications>(Arc::new(RwLock::new(
+                <ShowNotifications as CommandLineMode<U>>::new(),
             )))
-        });
+        } else {
+            run_once::<RunCommands, U>();
+            RwData::new_unsized::<RunCommands>(Arc::new(RwLock::new(
+                <RunCommands as CommandLineMode<U>>::new(),
+            )))
+        };
 
         let cmd_line = CommandLine {
             text: Text::new(),
             prompt: RwData::new(self.prompt.clone()),
-            mode,
+            mode: RwData::new(mode),
         };
 
         let checker = {
@@ -161,9 +161,9 @@ pub struct CommandLine<U: Ui> {
 }
 
 impl<U: Ui> CommandLine<U> {
-    pub(crate) fn set_mode<M: CommandLineMode<U>>(&mut self, context: Context<U>) {
-        run_once::<M, U>(context);
-        *self.mode.write() = RwData::new_unsized::<M>(Arc::new(RwLock::new(M::new(context))));
+    pub(crate) fn set_mode<M: CommandLineMode<U>>(&mut self) {
+        run_once::<M, U>();
+        *self.mode.write() = RwData::new_unsized::<M>(Arc::new(RwLock::new(M::new())));
     }
 }
 
@@ -217,10 +217,8 @@ impl<U: Ui> ActiveWidget<U> for CommandLine<U> {
     }
 }
 
-unsafe impl<U: Ui> Send for CommandLine<U> {}
-
-pub trait CommandLineMode<U: Ui>: Sync + Send + 'static {
-    fn new(context: Context<U>) -> Self
+pub trait CommandLineMode<U: Ui>: Send + Sync + 'static {
+    fn new() -> Self
     where
         Self: Sized;
 
@@ -234,7 +232,7 @@ pub trait CommandLineMode<U: Ui>: Sync + Send + 'static {
         false
     }
 
-    fn once(_context: Context<U>)
+    fn once()
     where
         Self: Sized,
     {
@@ -246,8 +244,8 @@ pub struct RunCommands {
 }
 
 impl<U: Ui> CommandLineMode<U> for RunCommands {
-    fn new(_context: Context<U>) -> Self {
-        crate::switch_to::<CommandLine<U>>();
+    fn new() -> Self {
+        commands::switch_to::<CommandLine<U>, U>();
         Self { key: Key::new() }
     }
 
@@ -278,7 +276,7 @@ impl<U: Ui> CommandLineMode<U> for RunCommands {
         }
     }
 
-    fn once(_context: Context<U>) {
+    fn once() {
         forms::set_weak("CallerExists", "AccentOk");
         forms::set_weak("CallerNotFound", "AccentErr");
     }
@@ -290,9 +288,9 @@ pub struct ShowNotifications {
 }
 
 impl<U: Ui> CommandLineMode<U> for ShowNotifications {
-    fn new(context: Context<U>) -> Self {
+    fn new() -> Self {
         Self {
-            notifications: context.notifications(),
+            notifications: context::notifications(),
             has_changed: false,
         }
     }
@@ -312,19 +310,17 @@ impl<U: Ui> CommandLineMode<U> for ShowNotifications {
     }
 }
 
-pub struct IncSearch<U: Ui> {
+pub struct IncSearch {
     list: RwData<Vec<SavedMatches>>,
-    context: Context<U>,
     error_range: Option<(usize, usize)>,
     key: Key,
 }
 
-impl<U: Ui> CommandLineMode<U> for IncSearch<U> {
-    fn new(context: Context<U>) -> Self {
-        crate::switch_to::<CommandLine<U>>();
+impl<U: Ui> CommandLineMode<U> for IncSearch {
+    fn new() -> Self {
+        commands::switch_to::<CommandLine<U>, U>();
         Self {
             list: RwData::default(),
-            context,
             error_range: None,
             key: Key::new(),
         }
@@ -336,13 +332,13 @@ impl<U: Ui> CommandLineMode<U> for IncSearch<U> {
             text.remove_tags_on(end, self.key);
         }
 
-        let cur_file = self.context.cur_file().unwrap();
+        let cur_file = context::cur_file::<U>().unwrap();
         let mut list = self.list.write();
 
         if let Some(saved) = list.iter_mut().find(|s| s.pat_is(text)) {
             let searcher = saved.searcher();
             cur_file.mutate_data(|file, area, input| {
-                input.write().search_inc(file, area, self.context, searcher);
+                input.write().search_inc(file, area, searcher);
             });
         } else {
             match SavedMatches::new(text.to_string()) {
@@ -353,7 +349,7 @@ impl<U: Ui> CommandLineMode<U> for IncSearch<U> {
 
                     let searcher = saved.searcher();
                     cur_file.mutate_data(|file, area, input| {
-                        input.write().search_inc(file, area, self.context, searcher);
+                        input.write().search_inc(file, area, searcher);
                     });
 
                     list.push(saved);
@@ -375,30 +371,28 @@ impl<U: Ui> CommandLineMode<U> for IncSearch<U> {
     }
 
     fn on_focus(&mut self, _text: &mut Text) {
-        let cur_file = self.context.cur_file().unwrap();
-        cur_file.mutate_data(|file, area, input| {
-            input.write().begin_inc_search(file, area, self.context)
-        });
+        context::cur_file::<U>()
+            .unwrap()
+            .mutate_data(|file, area, input| input.write().begin_inc_search(file, area));
     }
 
     fn on_unfocus(&mut self, _text: &mut Text) {
-        let cur_file = self.context.cur_file().unwrap();
-        cur_file.mutate_data(|file, area, input| {
-            input.write().end_inc_search(file, area, self.context)
-        });
+        context::cur_file::<U>()
+            .unwrap()
+            .mutate_data(|file, area, input| input.write().end_inc_search(file, area));
     }
 }
 
 /// Runs the [`once`] function of widgets.
 ///
 /// [`once`]: PassiveWidget::once
-fn run_once<M: CommandLineMode<U>, U: Ui>(context: Context<U>) {
+fn run_once<M: CommandLineMode<U>, U: Ui>() {
     static ONCE_LIST: LazyLock<RwData<Vec<&'static str>>> =
         LazyLock::new(|| RwData::new(Vec::new()));
 
     let mut once_list = ONCE_LIST.write();
     if !once_list.contains(&duat_name::<M>()) {
-        M::once(context);
+        M::once();
         once_list.push(duat_name::<M>());
     }
 }
