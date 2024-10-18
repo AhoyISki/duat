@@ -49,14 +49,6 @@ pub mod widgets;
 /// A plugin is something that can be invoked in the configuration
 /// crate for Duat, and can apply a multitude of effects upon its
 /// creation.
-///
-/// Plugins are how most Duat extensions should be "imported" to a
-/// confi crate, since they get access to the [`Context`] of Duat,
-/// letting them do things like:
-///
-/// - Run commands;
-/// - Get references to the active file/widget;
-/// - Mutate widgets;
 pub trait Plugin<U: Ui>: 'static {
     /// A cacheable struct for your plugin
     ///
@@ -72,13 +64,6 @@ pub trait Plugin<U: Ui>: 'static {
     ///
     /// If this is the first time the plugin was loaded, it will
     /// receive [`Cache::default()`] as the argument.
-    ///
-    /// Through this function, you also get access to the [`Context`]
-    /// of Duat, letting you do things like run [commands], get
-    /// references to the active [`File`]/widget, send
-    /// notifications, etc. You also have access to `duat_core`
-    /// modules such as [`forms`] and [`hooks`], letting you change
-    /// [forms] and add or trigger [hooks].
     ///
     /// ```rust
     /// # use duat_core::{

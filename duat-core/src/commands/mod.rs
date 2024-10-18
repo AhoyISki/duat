@@ -47,12 +47,11 @@ mod global {
     /// Switches to/opens a [`File`] with the given name.
     ///
     /// If you wish to specifically switch to files that are already
-    /// open, use [`Commands::buffer`].
+    /// open, use [`buffer`].
     ///
     /// If there are more arguments, they will be ignored.
     ///
     /// [`File`]: crate::widgets::File
-    /// [`Commands::buffer`]: Commands::buffer
     pub fn edit(file: impl std::fmt::Display) -> Result<Option<Text>> {
         COMMANDS.run(format!("edit {file}"))
     }
@@ -60,12 +59,11 @@ mod global {
     /// Switches to a [`File`] with the given name.
     ///
     /// If there is no file open with that name, does nothing. Use
-    /// [`Commands::edit`] if you wish to open files.
+    /// [`edit`] if you wish to open files.
     ///
     /// If there are more arguments, they will be ignored.
     ///
     /// [`File`]: crate::widgets::File
-    /// [`Commands::edit`]: Commands::edit
     pub fn buffer(file: impl std::fmt::Display) -> Result<Option<Text>> {
         COMMANDS.run(format!("buffer {file}"))
     }
@@ -74,10 +72,9 @@ mod global {
     ///
     /// This function will only look at files that are opened in the
     /// current window. If you want to include other windows in the
-    /// search, use [`Commands::next_global_file`].
+    /// search, use [`next_global_file`].
     ///
     /// [`File`]: crate::widgets::File
-    /// [`Commands::next_global_file`]: Commands::next_global_file
     pub fn next_file() -> Result<Option<Text>> {
         COMMANDS.run("next-file")
     }
@@ -86,10 +83,9 @@ mod global {
     ///
     /// This function will only look at files that are opened in the
     /// current window. If you want to include other windows in the
-    /// search, use [`Commands::prev_global_file`].
+    /// search, use [`prev_global_file`].
     ///
     /// [`File`]: crate::widgets::File
-    /// [`Commands::prev_global_file`]: Commands::prev_global_file
     pub fn prev_file() -> Result<Option<Text>> {
         COMMANDS.run("prev-file")
     }
@@ -98,10 +94,9 @@ mod global {
     ///
     /// This function will look for files in all windows. If you want
     /// to limit the search to just the current window, use
-    /// [`Commands::next_file`].
+    /// [`next_file`].
     ///
     /// [`File`]: crate::widgets::File
-    /// [`Commands::next_file`]: Commands::next_file
     pub fn next_global_file() -> Result<Option<Text>> {
         COMMANDS.run("next-file --global")
     }
@@ -110,10 +105,9 @@ mod global {
     ///
     /// This function will look for files in all windows. If you want
     /// to limit the search to just the current window, use
-    /// [`Commands::prev_file`].
+    /// [`prev_file`].
     ///
     /// [`File`]: crate::widgets::File
-    /// [`Commands::prev_file`]: Commands::prev_file
     pub fn prev_global_file() -> Result<Option<Text>> {
         COMMANDS.run("prev-file --global")
     }
@@ -171,18 +165,13 @@ mod global {
     /// ```
     ///
     /// In this case we're running a command that will affect the most
-    /// relevant [`CommandLine`]. See [`Commands::add_for_widget`] for
+    /// relevant [`CommandLine`]. See [`add_for_widget`] for
     /// more information.
-    ///
-    /// [`CommandLine`]: crate::widgets::CommandLine
-    /// [`Commands::add_for_widget`]: Commands::add_for_widget
     pub fn run(call: impl std::fmt::Display) -> Result<Option<Text>> {
         COMMANDS.run(call)
     }
 
     /// Like [`run`], but notifies the result, not returning it
-    ///
-    /// [`run`]: Commands::run
     pub fn run_notify(call: impl std::fmt::Display) -> Result<Option<Text>> {
         COMMANDS.run_notify(call)
     }
@@ -563,12 +552,12 @@ impl Commands {
     }
 
     /// Aliases a command to a specific word
-    pub fn alias(&self, alias: impl ToString, command: impl ToString) -> Result<Option<Text>> {
+    fn alias(&self, alias: impl ToString, command: impl ToString) -> Result<Option<Text>> {
         self.0.write().try_alias(alias, command)
     }
 
     /// Runs a command from a call
-    pub fn run(&self, call: impl Display) -> Result<Option<Text>> {
+    fn run(&self, call: impl Display) -> Result<Option<Text>> {
         let call = call.to_string();
         let mut args = call.split_whitespace();
         let caller = args.next().ok_or(Error::Empty)?.to_string();
@@ -597,7 +586,7 @@ impl Commands {
     }
 
     /// Runs a command and notifies its result
-    pub fn run_notify(&self, call: impl Display) -> Result<Option<Text>> {
+    fn run_notify(&self, call: impl Display) -> Result<Option<Text>> {
         let ret = self.run(call);
         match ret.as_ref() {
             Ok(Some(ok)) => context::notify(ok.clone()),
@@ -608,7 +597,7 @@ impl Commands {
     }
 
     /// Adds a command to the list of commands
-    pub fn add(
+    fn add(
         &self,
         callers: impl IntoIterator<Item = impl ToString>,
         f: impl FnMut(Flags, Args) -> CmdResult + 'static,
@@ -618,7 +607,7 @@ impl Commands {
     }
 
     /// Adds a command for a current struct of type `T`
-    pub fn add_for_current<T: 'static, U: Ui>(
+    fn add_for_current<T: 'static, U: Ui>(
         &'static self,
         callers: impl IntoIterator<Item = impl ToString>,
         mut f: impl FnMut(&RwData<T>, Flags, Args) -> CmdResult + 'static,
@@ -644,7 +633,7 @@ impl Commands {
     }
 
     /// Adds a command for a widget of type `W`
-    pub fn add_for_widget<W: PassiveWidget<U>, U: Ui>(
+    fn add_for_widget<W: PassiveWidget<U>, U: Ui>(
         &'static self,
         callers: impl IntoIterator<Item = impl ToString>,
         mut f: impl FnMut(&RwData<W>, &U::Area, Flags, Args) -> CmdResult + 'static,
@@ -681,7 +670,7 @@ impl Commands {
     }
 
     /// Checks if a caller/alias exists or not
-    pub(crate) fn caller_exists(&self, caller: &str) -> bool {
+    fn caller_exists(&self, caller: &str) -> bool {
         let inner = self.0.read();
         inner.aliases.contains_key(caller)
             || inner
@@ -697,8 +686,6 @@ impl Commands {
 ///
 /// This error _must_ include an error message in case of failure. It
 /// may also include a success message, but that is not required.
-///
-/// [`run`]: Commands::run
 pub type CmdResult = std::result::Result<Option<Text>, Text>;
 
 /// A function that can be called by name.

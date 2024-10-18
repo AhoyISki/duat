@@ -9,7 +9,7 @@ use duat_core::{
     context::{CurFile, CurWidget},
     data::RwData,
     session::SessionCfg,
-    text::{PrintCfg},
+    text::PrintCfg,
     ui::{Event, Ui as TraitUi, Window},
     widgets::{File, PassiveWidget, ShowNotifications},
 };

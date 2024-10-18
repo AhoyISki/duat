@@ -27,10 +27,7 @@ mod cursors;
 ///
 /// ```rust
 /// # use duat_core::{
-/// #     data::{RwData, Context},
-/// #     input::{EditHelper, InputMethod, KeyEvent, Cursors},
-/// #     ui::Ui,
-/// #     widgets::File,
+/// #     data::RwData, input::{EditHelper, InputMethod, KeyEvent, Cursors}, ui::Ui, widgets::File,
 /// # };
 /// /// A very basic example InputMethod.
 /// struct PlacesCharactersAndMoves(Cursors);
@@ -43,7 +40,6 @@ mod cursors;
 /// #       key: KeyEvent,
 /// #       widget: &RwData<Self::Widget>,
 /// #       area: &U::Area,
-/// #       context: Context<U>,
 /// #   ) {
 /// #       todo!();
 /// #   }
@@ -54,15 +50,12 @@ mod cursors;
 /// [`InputMethod::send_key`] method. In it, you receive a
 /// [key], an [`RwData<Self::Widget>`], that you use in order to
 /// [`mutate`] or [`inspect`] the widget. You will also receive a
-/// [`Ui::Area`], letting you do things like [resizing]. You
-/// also get access to the [`Context`], letting you run [commands].
+/// [`Ui::Area`], letting you do things like [resizing].
 ///
 /// ```rust
 /// # use duat_core::{
-/// #     data::{RwData, Context},
-/// #     input::{key, Cursors, EditHelper, InputMethod, KeyCode, KeyEvent},
-/// #     ui::Ui,
-/// #     widgets::File,
+/// #     data::RwData, input::{key, Cursors, EditHelper, InputMethod, KeyCode, KeyEvent},
+/// #     ui::Ui, widgets::File,
 /// # };
 /// # struct PlacesCharactersAndMoves(Cursors);
 /// impl<U: Ui> InputMethod<U> for PlacesCharactersAndMoves {
@@ -73,7 +66,6 @@ mod cursors;
 ///         key: KeyEvent,
 ///         widget: &RwData<Self::Widget>,
 ///         area: &U::Area,
-///         context: Context<U>,
 ///     ) where
 ///         Self: Sized,
 ///     {
@@ -98,12 +90,8 @@ mod cursors;
 ///
 /// ```rust
 /// # use duat_core::{
-/// #     data::{RwData, Context},
-/// #     input::{
-/// #         key, Cursors, EditHelper, InputMethod, KeyCode, KeyEvent, KeyMod,
-/// #     },
-/// #     ui::Ui,
-/// #     widgets::File,
+/// #     data::RwData, input::{ key, Cursors, EditHelper, InputMethod, KeyCode, KeyEvent, KeyMod},
+/// #     ui::Ui, widgets::File,
 /// # };
 /// # struct PlacesCharactersAndMoves(Cursors);
 /// impl<U: Ui> InputMethod<U> for PlacesCharactersAndMoves {
@@ -114,7 +102,6 @@ mod cursors;
 ///         key: KeyEvent,
 ///         widget: &RwData<Self::Widget>,
 ///         area: &U::Area,
-///         context: Context<U>,
 ///     ) where
 ///         Self: Sized,
 ///     {
@@ -156,7 +143,6 @@ mod cursors;
 /// [key]: super::KeyEvent
 /// [resizing]: crate::ui::Area::constrain_ver
 /// [`Ui::Area`]: crate::ui::Ui::Area
-/// [`Context`]: crate::data::Context
 /// [commands]: crate::commands
 /// [`key!`]: super::key
 /// [`KeyEvent`]: super::KeyEvent

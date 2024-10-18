@@ -59,29 +59,6 @@ mod global {
         CUR_WINDOW.load(Ordering::Relaxed)
     }
 
-    pub fn set_cmd_mode<M: CommandLineMode<U>, U: Ui>() {
-        inner_cur_file::<U>()
-            .mutate_related_widget::<CommandLine<U>, ()>(|w, _| w.write().set_mode::<M>())
-            .unwrap_or_else(|| {
-                let windows = windows::<U>().read();
-                let w = cur_window();
-                let cur_window = &windows[w];
-
-                let mut widgets = {
-                    let previous = windows[..w].iter().flat_map(Window::widgets);
-                    let following = windows[(w + 1)..].iter().flat_map(Window::widgets);
-                    cur_window.widgets().chain(previous).chain(following)
-                };
-
-                if let Some(cmd_line) = widgets.find_map(|(w, _)| {
-                    w.data_is::<CommandLine<U>>()
-                        .then(|| w.downcast::<CommandLine<U>>().unwrap())
-                }) {
-                    cmd_line.write().set_mode::<M>()
-                }
-            })
-    }
-
     pub fn notifications() -> &'static RwData<Text> {
         &NOTIFICATIONS
     }

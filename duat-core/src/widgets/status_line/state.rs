@@ -17,8 +17,8 @@
 use std::{fmt::Display, marker::PhantomData};
 
 use crate::{
-    data::{RoData, RwData},
     context::FileReader,
+    data::{RoData, RwData},
     input::InputMethod,
     text::{Builder, Tag, Text, text},
     ui::Ui,
