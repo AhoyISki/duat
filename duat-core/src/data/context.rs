@@ -1,15 +1,11 @@
-use std::{
-    fmt::Display,
-    sync::{
-        LazyLock,
-        atomic::{AtomicUsize, Ordering},
-    },
+use std::sync::{
+    LazyLock,
+    atomic::{AtomicUsize, Ordering},
 };
 
 use super::{RoData, RwData, private::InnerData};
 use crate::{
     Error, Result,
-    commands::{Args, CmdResult, Commands, Flags},
     input::InputMethod,
     text::Text,
     ui::{Area, Ui, Window},
@@ -26,7 +22,6 @@ where
     cur_widget: &'static CurWidget<U>,
     cur_window: &'static AtomicUsize,
     windows: &'static LazyLock<RwData<Vec<Window<U>>>>,
-    commands: &'static Commands,
     notifications: &'static LazyLock<RwData<Text>>,
 }
 
@@ -50,7 +45,6 @@ where
         cur_widget: &'static CurWidget<U>,
         cur_window: &'static AtomicUsize,
         windows: &'static LazyLock<RwData<Vec<Window<U>>>>,
-        commands: &'static Commands,
         notifications: &'static LazyLock<RwData<Text>>,
     ) -> Self {
         Self {
@@ -58,7 +52,6 @@ where
             cur_widget,
             cur_window,
             windows,
-            commands,
             notifications,
         }
     }
@@ -115,42 +108,6 @@ where
 
     pub fn notify(self, text: Text) {
         *self.notifications.write() = text;
-    }
-
-    pub fn add_cmd(
-        self,
-        callers: impl IntoIterator<Item = impl ToString>,
-        f: impl FnMut(Flags, Args) -> CmdResult + 'static,
-    ) -> Result<(), ()> {
-        self.commands.add(callers, f)
-    }
-
-    pub fn add_cmd_for_current<T: 'static>(
-        self,
-        callers: impl IntoIterator<Item = impl ToString>,
-        f: impl FnMut(&RwData<T>, Flags, Args) -> CmdResult + 'static,
-    ) -> Result<(), ()> {
-        self.commands.add_for_current::<T, U>(callers, f)
-    }
-
-    pub fn add_cmd_for_widget<W: PassiveWidget<U>>(
-        self,
-        callers: impl IntoIterator<Item = impl ToString>,
-        f: impl FnMut(&RwData<W>, &U::Area, Flags, Args) -> CmdResult + 'static,
-    ) -> Result<(), ()> {
-        self.commands.add_for_widget(callers, f)
-    }
-
-    pub fn run_cmd(self, call: impl Display) -> Result<Option<Text>, ()> {
-        self.commands.run(call)
-    }
-
-    pub fn run_cmd_notify(self, call: impl Display) -> Result<Option<Text>, ()> {
-        self.commands.run_notify(call)
-    }
-
-    pub fn caller_exists(self, caller: &str) -> bool {
-        self.commands.caller_exists(caller)
     }
 
     pub(crate) fn set_cur(self, parts: FileParts<U>, widget: Widget<U>) {

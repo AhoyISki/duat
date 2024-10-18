@@ -22,6 +22,7 @@ use std::{
 use parking_lot::RwLock;
 
 use crate::{
+    commands,
     data::{Context, RoData, RwData},
     duat_name,
     forms::{self, Form},
@@ -111,8 +112,8 @@ where
                 RwLock::new(ShowNotifications::new(context)),
             ))
         } else {
-            run_once::<RunCommands<U>, U>(context);
-            RwData::<dyn CommandLineMode<U>>::new_unsized::<RunCommands<U>>(Arc::new(RwLock::new(
+            run_once::<RunCommands, U>(context);
+            RwData::<dyn CommandLineMode<U>>::new_unsized::<RunCommands>(Arc::new(RwLock::new(
                 RunCommands::new(context),
             )))
         });
@@ -185,20 +186,19 @@ impl<U: Ui> PassiveWidget<U> for CommandLine<U> {
         PrintCfg::default_for_input().with_forced_scrolloff()
     }
 
-    fn once(context: Context<U>) {
+    fn once() {
         forms::set_weak("Prompt", Form::cyan());
         forms::set_weak("ParseCommandErr", "DefaultErr");
 
-        context
-            .add_cmd_for_widget::<CommandLine<U>>(
-                ["set-prompt"],
-                move |command_line, _, _, mut args| {
-                    let new_prompt: String = args.collect();
-                    *command_line.read().prompt.write() = new_prompt;
-                    Ok(None)
-                },
-            )
-            .unwrap();
+        commands::add_for_widget::<CommandLine<U>, U>(
+            ["set-prompt"],
+            move |command_line, _, _, mut args| {
+                let new_prompt: String = args.collect();
+                *command_line.read().prompt.write() = new_prompt;
+                Ok(None)
+            },
+        )
+        .unwrap();
     }
 }
 
@@ -241,15 +241,14 @@ pub trait CommandLineMode<U: Ui>: Sync + Send + 'static {
     }
 }
 
-pub struct RunCommands<U: Ui> {
-    context: Context<U>,
+pub struct RunCommands {
     key: Key,
 }
 
-impl<U: Ui> CommandLineMode<U> for RunCommands<U> {
-    fn new(context: Context<U>) -> Self {
+impl<U: Ui> CommandLineMode<U> for RunCommands {
+    fn new(_context: Context<U>) -> Self {
         crate::switch_to::<CommandLine<U>>();
-        Self { context, key: Key::new() }
+        Self { key: Key::new() }
     }
 
     fn update(&mut self, text: &mut Text) {
@@ -258,7 +257,7 @@ impl<U: Ui> CommandLineMode<U> for RunCommands<U> {
         let command = text.to_string();
         let caller = command.split_whitespace().next();
         if let Some(caller) = caller {
-            if self.context.caller_exists(caller) {
+            if commands::caller_exists(caller) {
                 let id = forms::id_of!("CallerExists");
                 text.insert_tag(0, Tag::PushForm(id), self.key);
                 text.insert_tag(caller.len(), Tag::PopForm(id), self.key);
@@ -275,8 +274,7 @@ impl<U: Ui> CommandLineMode<U> for RunCommands<U> {
 
         let cmd = text.to_string();
         if !cmd.is_empty() {
-            let context = self.context;
-            crate::thread::queue(move || context.run_cmd_notify(cmd));
+            crate::thread::queue(move || commands::run_notify(cmd));
         }
     }
 

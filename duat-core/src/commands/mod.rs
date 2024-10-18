@@ -11,88 +11,54 @@ use std::{
     },
 };
 
-pub use self::parameters::{Args, Flags, split_flags_and_args};
+pub use self::{
+    global::*,
+    parameters::{Args, Flags, split_flags_and_args},
+};
 use crate::{
     Error,
     data::{CurFile, CurWidget, RwData, RwLock},
     duat_name,
     text::{Text, err, ok, text},
     ui::{Ui, Window},
-    widgets::{ActiveWidget, PassiveWidget},
+    widgets::PassiveWidget,
 };
 
 mod parameters;
 
 mod global {
-    use std::sync::OnceLock;
+    use std::sync::{LazyLock, OnceLock, atomic::AtomicUsize};
 
-    use super::Commands;
+    use super::{Args, CmdResult, Commands, Flags, Result};
+    use crate::{
+        data::{CurFile, CurWidget, RwData},
+        duat_name,
+        text::Text,
+        ui::{Ui, Window},
+        widgets::{ActiveWidget, PassiveWidget},
+    };
 
-    // static COMMANDS: OnceLock<Commands> = OnceLock::new();
-}
+    static COMMANDS: OnceLock<Commands> = OnceLock::new();
 
-/// A list of commands.
-///
-/// This list contains all of the commands that have been
-/// added to Duat, as well as info on the current [`File`],
-/// [widget] and all of the [windows].
-///
-/// [`File`]: crate::widgets::File
-/// [widget]: crate::widgets::ActiveWidget
-/// [windows]: crate::ui::Window
-pub struct Commands {
-    inner: LazyLock<RwData<InnerCommands>>,
-    cur_file: &'static (dyn Any + Send + Sync),
-    cur_widget: &'static (dyn Any + Send + Sync),
-    cur_window: &'static AtomicUsize,
-    windows: &'static (dyn Any + Send + Sync),
-    notifications: &'static LazyLock<RwData<Text>>,
-}
-
-impl Commands {
-    /// Returns a new instance of [`Commands`].
+    /// Setup for commands, meant to be used only by the duat crate
     #[doc(hidden)]
-    pub const fn new<U: Ui>(
+    pub fn setup<U: Ui>(
         cur_file: &'static CurFile<U>,
         cur_widget: &'static CurWidget<U>,
         cur_window: &'static AtomicUsize,
         windows: &'static LazyLock<RwData<Vec<Window<U>>>>,
         notifications: &'static LazyLock<RwData<Text>>,
-    ) -> Self {
-        Self {
-            inner: LazyLock::new(|| {
-                let inner = RwData::new(InnerCommands {
-                    list: Vec::new(),
-                    aliases: HashMap::new(),
-                });
-
-                let alias = {
-                    let inner = inner.clone();
-                    Command::new(["alias"], move |flags, mut args| {
-                        if !flags.is_empty() {
-                            Err(err!(
-                                "An alias cannot take any flags, try moving them after the \
-                                 command, like \"alias my-alias my-caller --foo --bar\", instead \
-                                 of \"alias --foo --bar my-alias my-caller\""
-                            ))
-                        } else {
-                            let alias = args.next()?.to_string();
-                            let args: String = args.collect();
-
-                            Ok(inner.write().try_alias(alias, args)?)
-                        }
-                    })
-                };
-
-                inner.write().try_add(alias).unwrap();
-                inner
-            }),
-            cur_window,
-            cur_file,
-            cur_widget,
-            windows,
-            notifications,
-        }
+    ) {
+        COMMANDS
+            .set(Commands::new(
+                cur_file,
+                cur_widget,
+                cur_window,
+                windows,
+                notifications,
+            ))
+            .ok()
+            .expect("Setup function ran more than one time");
     }
 
     /// Canonical way to quit Duat.
@@ -100,8 +66,8 @@ impl Commands {
     /// By calling the quit command, all threads will finish their
     /// tasks, and then Duat will execute a program closing
     /// function, as defined by the [`Ui`].
-    pub fn quit(&self) {
-        self.run("quit").unwrap();
+    pub fn quit() {
+        COMMANDS.get().unwrap().run("quit").unwrap();
     }
 
     /// Switches to the given [`ActiveWidget`].
@@ -114,8 +80,11 @@ impl Commands {
     ///
     /// [`File`]: crate::widgets::File
     /// [`Session`]: crate::session::Session
-    pub fn switch_to<W: ActiveWidget<impl Ui>>(&self) -> Result<Option<Text>> {
-        self.run(format!("switch-to {}", duat_name::<W>()))
+    pub fn switch_to<W: ActiveWidget<impl Ui>>() -> Result<Option<Text>> {
+        COMMANDS
+            .get()
+            .unwrap()
+            .run(format!("switch-to {}", duat_name::<W>()))
     }
 
     /// Switches to/opens a [`File`] with the given name.
@@ -127,8 +96,8 @@ impl Commands {
     ///
     /// [`File`]: crate::widgets::File
     /// [`Commands::buffer`]: Commands::buffer
-    pub fn edit(&self, file: impl Display) -> Result<Option<Text>> {
-        self.run(format!("edit {file}"))
+    pub fn edit(file: impl std::fmt::Display) -> Result<Option<Text>> {
+        COMMANDS.get().unwrap().run(format!("edit {file}"))
     }
 
     /// Switches to a [`File`] with the given name.
@@ -140,8 +109,8 @@ impl Commands {
     ///
     /// [`File`]: crate::widgets::File
     /// [`Commands::edit`]: Commands::edit
-    pub fn buffer(&self, file: impl Display) -> Result<Option<Text>> {
-        self.run(format!("buffer {file}"))
+    pub fn buffer(file: impl std::fmt::Display) -> Result<Option<Text>> {
+        COMMANDS.get().unwrap().run(format!("buffer {file}"))
     }
 
     /// Switches to the next [`File`].
@@ -152,8 +121,8 @@ impl Commands {
     ///
     /// [`File`]: crate::widgets::File
     /// [`Commands::next_global_file`]: Commands::next_global_file
-    pub fn next_file(&self) -> Result<Option<Text>> {
-        self.run("next-file")
+    pub fn next_file() -> Result<Option<Text>> {
+        COMMANDS.get().unwrap().run("next-file")
     }
 
     /// Switches to the previous [`File`].
@@ -164,8 +133,8 @@ impl Commands {
     ///
     /// [`File`]: crate::widgets::File
     /// [`Commands::prev_global_file`]: Commands::prev_global_file
-    pub fn prev_file(&self) -> Result<Option<Text>> {
-        self.run("prev-file")
+    pub fn prev_file() -> Result<Option<Text>> {
+        COMMANDS.get().unwrap().run("prev-file")
     }
 
     /// Switches to the next [`File`].
@@ -176,8 +145,8 @@ impl Commands {
     ///
     /// [`File`]: crate::widgets::File
     /// [`Commands::next_file`]: Commands::next_file
-    pub fn next_global_file(&self) -> Result<Option<Text>> {
-        self.run("next-file --global")
+    pub fn next_global_file() -> Result<Option<Text>> {
+        COMMANDS.get().unwrap().run("next-file --global")
     }
 
     /// Switches to the previous [`File`].
@@ -188,8 +157,8 @@ impl Commands {
     ///
     /// [`File`]: crate::widgets::File
     /// [`Commands::prev_file`]: Commands::prev_file
-    pub fn prev_global_file(&self) -> Result<Option<Text>> {
-        self.run("prev-file --global")
+    pub fn prev_global_file() -> Result<Option<Text>> {
+        COMMANDS.get().unwrap().run("prev-file --global")
     }
 
     /// If not in a [`File`], switches to the last active [`File`].
@@ -200,8 +169,8 @@ impl Commands {
     ///
     /// [`File`]: crate::widgets::File
     /// [`CommandLine`]: crate::widgets::CommandLine
-    pub fn return_to_file(&self) -> Result<Option<Text>> {
-        self.run("return-to-file")
+    pub fn return_to_file() -> Result<Option<Text>> {
+        COMMANDS.get().unwrap().run("return-to-file")
     }
 
     /// Tries to alias a `caller` to an existing `command`.
@@ -209,8 +178,8 @@ impl Commands {
     /// Returns an [`Err`] if the `caller` is already a caller for
     /// another command, or if `command` is not a real caller to an
     /// existing command.
-    pub fn alias(&self, alias: impl ToString, command: impl ToString) -> Result<Option<Text>> {
-        self.inner.write().try_alias(alias, command)
+    pub fn alias(alias: impl ToString, command: impl ToString) -> Result<Option<Text>> {
+        COMMANDS.get().unwrap().alias(alias, command)
     }
 
     /// Runs a full command, with a caller, [`Flags`], and [`Args`].
@@ -238,45 +207,15 @@ impl Commands {
     ///
     /// [`CommandLine`]: crate::widgets::CommandLine
     /// [`Commands::add_for_widget`]: Commands::add_for_widget
-    pub fn run(&self, call: impl Display) -> Result<Option<Text>> {
-        let call = call.to_string();
-        let mut args = call.split_whitespace();
-        let caller = args.next().ok_or(Error::Empty)?.to_string();
-
-        let (command, call) = self.inner.inspect(|inner| {
-            if let Some(command) = inner.aliases.get(&caller) {
-                let (command, call) = command;
-                let mut call = call.clone() + " ";
-                call.extend(args);
-
-                Ok((command.clone(), call))
-            } else {
-                let command = inner
-                    .list
-                    .iter()
-                    .find(|cmd| cmd.callers().contains(&caller))
-                    .ok_or(Error::CallerNotFound(caller))?;
-
-                Ok((command.clone(), call.clone()))
-            }
-        })?;
-
-        let (flags, args) = split_flags_and_args(&call);
-
-        command.try_exec(Flags::new(&flags), args)
+    pub fn run(call: impl std::fmt::Display) -> Result<Option<Text>> {
+        COMMANDS.get().unwrap().run(call)
     }
 
     /// Like [`run`], but notifies the result, not returning it
     ///
     /// [`run`]: Commands::run
-    pub fn run_notify(&self, call: impl Display) -> Result<Option<Text>> {
-        let ret = self.run(call);
-        match ret.as_ref() {
-            Ok(Some(ok)) => *self.notifications.write() = ok.clone(),
-            Err(err) => *self.notifications.write() = err.clone().into(),
-            _ => {}
-        }
-        ret
+    pub fn run_notify(call: impl std::fmt::Display) -> Result<Option<Text>> {
+        COMMANDS.get().unwrap().run_notify(call)
     }
 
     /// Adds a command to the global list of commands.
@@ -313,12 +252,10 @@ impl Commands {
     /// [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
     /// [`RoData`]: crate::data::RoData
     pub fn add(
-        &self,
         callers: impl IntoIterator<Item = impl ToString>,
         f: impl FnMut(Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
-        let command = Command::new(callers, f);
-        self.inner.write().try_add(command)
+        COMMANDS.get().unwrap().add(callers, f)
     }
 
     /// Adds a command to an object "related" to the current [`File`]
@@ -400,35 +337,10 @@ impl Commands {
     /// [`InputMethod`]: crate::input::InputMethod
     /// [`Session`]: crate::session::Session
     pub fn add_for_current<T: 'static, U: Ui>(
-        &'static self,
         callers: impl IntoIterator<Item = impl ToString>,
-        mut f: impl FnMut(&RwData<T>, Flags, Args) -> CmdResult + 'static,
+        f: impl FnMut(&RwData<T>, Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
-        let cur_file = self
-            .cur_file
-            .downcast_ref::<CurFile<U>>()
-            .expect("You are using more than one UI!!! Stop!");
-
-        let cur_widget = self
-            .cur_widget
-            .downcast_ref::<CurWidget<U>>()
-            .expect("You are using more than one UI!!! Stop!");
-
-        let command = Command::new(callers, move |flags, args| {
-            let result = cur_file.mutate_related::<T, CmdResult>(|t| f(t, flags, args.clone()));
-
-            result
-                .or_else(|| cur_widget.mutate_as::<T, CmdResult>(|t| f(t, flags, args.clone())))
-                .transpose()?
-                .ok_or_else(|| {
-                    text!(
-                        "The current file has no related structs of type {}"
-                        { std::any::type_name::<T>() }
-                    )
-                })
-        });
-
-        self.inner.write().try_add(command)
+        COMMANDS.get().unwrap().add_for_current::<T, U>(callers, f)
     }
 
     /// Adds a command that can mutate a widget of the given type,
@@ -561,6 +473,170 @@ impl Commands {
     /// [`Session`]: crate::session::Session
     /// [`CommandLine`]: crate::widgets::CommandLine
     pub fn add_for_widget<W: PassiveWidget<U>, U: Ui>(
+        callers: impl IntoIterator<Item = impl ToString>,
+        f: impl FnMut(&RwData<W>, &U::Area, Flags, Args) -> CmdResult + 'static,
+    ) -> Result<()> {
+        COMMANDS.get().unwrap().add_for_widget(callers, f)
+    }
+
+    pub(crate) fn caller_exists(caller: &str) -> bool {
+        COMMANDS.get().unwrap().caller_exists(caller)
+    }
+}
+
+/// A list of commands.
+///
+/// This list contains all of the commands that have been
+/// added to Duat, as well as info on the current [`File`],
+/// [widget] and all of the [windows].
+///
+/// [`File`]: crate::widgets::File
+/// [widget]: crate::widgets::ActiveWidget
+/// [windows]: crate::ui::Window
+struct Commands {
+    inner: RwData<InnerCommands>,
+    cur_file: &'static (dyn Any + Send + Sync),
+    cur_widget: &'static (dyn Any + Send + Sync),
+    cur_window: &'static AtomicUsize,
+    windows: &'static (dyn Any + Send + Sync),
+    notifications: &'static LazyLock<RwData<Text>>,
+}
+
+impl Commands {
+    /// Returns a new instance of [`Commands`].
+    #[doc(hidden)]
+    fn new<U: Ui>(
+        cur_file: &'static CurFile<U>,
+        cur_widget: &'static CurWidget<U>,
+        cur_window: &'static AtomicUsize,
+        windows: &'static LazyLock<RwData<Vec<Window<U>>>>,
+        notifications: &'static LazyLock<RwData<Text>>,
+    ) -> Self {
+        let inner = RwData::new(InnerCommands {
+            list: Vec::new(),
+            aliases: HashMap::new(),
+        });
+
+        let alias = {
+            let inner = inner.clone();
+            Command::new(["alias"], move |flags, mut args| {
+                if !flags.is_empty() {
+                    Err(err!(
+                        "An alias cannot take any flags, try moving them after the command, like \
+                         \"alias my-alias my-caller --foo --bar\", instead of \"alias --foo --bar \
+                         my-alias my-caller\""
+                    ))
+                } else {
+                    let alias = args.next()?.to_string();
+                    let args: String = args.collect();
+
+                    Ok(inner.write().try_alias(alias, args)?)
+                }
+            })
+        };
+
+        inner.write().try_add(alias).unwrap();
+
+        Self {
+            inner,
+            cur_window,
+            cur_file,
+            cur_widget,
+            windows,
+            notifications,
+        }
+    }
+
+    /// Aliases a command to a specific word
+    pub fn alias(&self, alias: impl ToString, command: impl ToString) -> Result<Option<Text>> {
+        self.inner.write().try_alias(alias, command)
+    }
+
+    /// Runs a command from a call
+    pub fn run(&self, call: impl Display) -> Result<Option<Text>> {
+        let call = call.to_string();
+        let mut args = call.split_whitespace();
+        let caller = args.next().ok_or(Error::Empty)?.to_string();
+
+        let (command, call) = self.inner.inspect(|inner| {
+            if let Some(command) = inner.aliases.get(&caller) {
+                let (command, call) = command;
+                let mut call = call.clone() + " ";
+                call.extend(args);
+
+                Ok((command.clone(), call))
+            } else {
+                let command = inner
+                    .list
+                    .iter()
+                    .find(|cmd| cmd.callers().contains(&caller))
+                    .ok_or(Error::CallerNotFound(caller))?;
+
+                Ok((command.clone(), call.clone()))
+            }
+        })?;
+
+        let (flags, args) = split_flags_and_args(&call);
+
+        command.try_exec(Flags::new(&flags), args)
+    }
+
+    /// Runs a command and notifies its result
+    pub fn run_notify(&self, call: impl Display) -> Result<Option<Text>> {
+        let ret = self.run(call);
+        match ret.as_ref() {
+            Ok(Some(ok)) => *self.notifications.write() = ok.clone(),
+            Err(err) => *self.notifications.write() = err.clone().into(),
+            _ => {}
+        }
+        ret
+    }
+
+    /// Adds a command to the list of commands
+    pub fn add(
+        &self,
+        callers: impl IntoIterator<Item = impl ToString>,
+        f: impl FnMut(Flags, Args) -> CmdResult + 'static,
+    ) -> Result<()> {
+        let command = Command::new(callers, f);
+        self.inner.write().try_add(command)
+    }
+
+    /// Adds a command for a current struct of type `T`
+    pub fn add_for_current<T: 'static, U: Ui>(
+        &'static self,
+        callers: impl IntoIterator<Item = impl ToString>,
+        mut f: impl FnMut(&RwData<T>, Flags, Args) -> CmdResult + 'static,
+    ) -> Result<()> {
+        let cur_file = self
+            .cur_file
+            .downcast_ref::<CurFile<U>>()
+            .expect("You are using more than one UI!!! Stop!");
+
+        let cur_widget = self
+            .cur_widget
+            .downcast_ref::<CurWidget<U>>()
+            .expect("You are using more than one UI!!! Stop!");
+
+        let command = Command::new(callers, move |flags, args| {
+            let result = cur_file.mutate_related::<T, CmdResult>(|t| f(t, flags, args.clone()));
+
+            result
+                .or_else(|| cur_widget.mutate_as::<T, CmdResult>(|t| f(t, flags, args.clone())))
+                .transpose()?
+                .ok_or_else(|| {
+                    text!(
+                        "The current file has no related structs of type {}"
+                        { std::any::type_name::<T>() }
+                    )
+                })
+        });
+
+        self.inner.write().try_add(command)
+    }
+
+    /// Adds a command for a widget of type `W`
+    pub fn add_for_widget<W: PassiveWidget<U>, U: Ui>(
         &'static self,
         callers: impl IntoIterator<Item = impl ToString>,
         mut f: impl FnMut(&RwData<W>, &U::Area, Flags, Args) -> CmdResult + 'static,
@@ -603,6 +679,7 @@ impl Commands {
         self.inner.write().try_add(command)
     }
 
+    /// Checks if a caller/alias exists or not
     pub(crate) fn caller_exists(&self, caller: &str) -> bool {
         let inner = self.inner.read();
         inner.aliases.contains_key(caller)

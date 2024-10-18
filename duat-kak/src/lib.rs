@@ -3,6 +3,7 @@
 use std::{collections::HashMap, ops::RangeInclusive, sync::LazyLock};
 
 use duat_core::{
+    commands,
     data::{Context, RwData, RwLock},
     forms::{self, Form},
     hooks::{self, Hookable},
@@ -401,7 +402,7 @@ impl<U: Ui> KeyMap<U> {
 
             ////////// Other mode changing keys.
             key!(Char(':')) => {
-                context.set_cmd_mode::<RunCommands<U>>();
+                context.set_cmd_mode::<RunCommands>();
                 self.mode = Mode::Other("command");
                 hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Other("command")));
             }
@@ -485,7 +486,7 @@ impl<U: Ui> KeyMap<U> {
             ////////// File change keys.
             key!(Char('a')) => {
                 if let Some(file) = last_file
-                    && context.run_cmd_notify(format!("b {file}")).is_ok()
+                    && commands::run_notify(format!("b {file}")).is_ok()
                 {
                     *LAST_FILE.write() = Some(cur_name);
                 } else {
@@ -493,12 +494,12 @@ impl<U: Ui> KeyMap<U> {
                 }
             }
             key!(Char('n')) => {
-                if context.run_cmd_notify("next-file").is_ok() {
+                if commands::run_notify("next-file").is_ok() {
                     *LAST_FILE.write() = Some(cur_name);
                 }
             }
             key!(Char('N'), Mod::SHIFT) => {
-                if context.run_cmd_notify("prev-file").is_ok() {
+                if commands::run_notify("prev-file").is_ok() {
                     *LAST_FILE.write() = Some(cur_name);
                 }
             }

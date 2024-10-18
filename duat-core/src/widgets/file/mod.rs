@@ -381,7 +381,7 @@ where
         self.cfg
     }
 
-    fn once(_context: crate::data::Context<U>) {}
+    fn once() {}
 
     fn print(&mut self, area: &<U as Ui>::Area) {
         let (start, _) = area.top_left();

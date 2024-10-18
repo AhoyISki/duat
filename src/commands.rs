@@ -147,17 +147,14 @@
 
 pub use duat_core::commands::{Args, Flags};
 use duat_core::{
-    commands::CmdResult,
+    commands::{self, CmdResult},
     data::RwData,
     text::Text,
     ui,
     widgets::{CommandLineMode, PassiveWidget},
 };
 
-use crate::{
-    setup::{COMMANDS, CONTEXT},
-    Ui,
-};
+use crate::{Ui, setup::CONTEXT};
 
 /// Runs a full command, with a caller, [`Flags`], and [`Args`].
 ///
@@ -185,7 +182,7 @@ use crate::{
 /// [`commands::add_for_widget`]: add_for_widget
 #[inline(never)]
 pub fn run(call: impl std::fmt::Display) -> Result<Option<Text>> {
-    COMMANDS.run(call)
+    commands::run(call)
 }
 
 /// Adds a command to the global list of commands.
@@ -241,7 +238,7 @@ pub fn add(
     callers: impl IntoIterator<Item = impl ToString>,
     f: impl FnMut(Flags, Args) -> CmdResult + 'static,
 ) -> Result<()> {
-    COMMANDS.add(callers, f)
+    commands::add(callers, f)
 }
 
 /// Adds a command to an object "related" to the current [`File`]
@@ -325,7 +322,7 @@ pub fn add_for_current<T: 'static>(
     callers: impl IntoIterator<Item = impl ToString>,
     f: impl FnMut(&RwData<T>, Flags, Args) -> CmdResult + 'static,
 ) -> Result<()> {
-    COMMANDS.add_for_current::<T, Ui>(callers, f)
+    commands::add_for_current::<T, Ui>(callers, f)
 }
 
 /// Adds a command that can mutate a widget of the given type,
@@ -459,7 +456,7 @@ pub fn add_for_widget<W: PassiveWidget<Ui>>(
     callers: impl IntoIterator<Item = impl ToString>,
     f: impl FnMut(&RwData<W>, &<Ui as ui::Ui>::Area, Flags, Args) -> CmdResult + 'static,
 ) -> Result<()> {
-    COMMANDS.add_for_widget::<W, Ui>(callers, f)
+    commands::add_for_widget::<W, Ui>(callers, f)
 }
 
 /// Sets the mode of the [`CommandLine`]

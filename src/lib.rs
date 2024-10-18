@@ -122,7 +122,6 @@ pub use duat_core::thread;
 pub use setup::{pre_setup, run_duat};
 
 pub mod commands;
-pub mod control;
 pub mod input;
 pub mod print;
 mod remapper;
@@ -141,7 +140,7 @@ pub mod cursor {
 
 pub mod forms {
     //! Functions to alter the [`Form`]s of Duat
-    pub use duat_core::forms::{CursorShape, Form, from_id, set, id_of};
+    pub use duat_core::forms::{CursorShape, Form, from_id, id_of, set};
 }
 
 pub mod hooks {
@@ -246,6 +245,24 @@ pub mod state {
     //!
     //! [`StatusLine`]: crate::widgets::StatusLine
     pub use duat_core::widgets::common::*;
+}
+
+pub mod control {
+    //! Prebuilt general controls for Duat
+    //!
+    //! This module contains the expected commands of a
+    //! text editor that don't involve particular widgets
+    //! or other more specific concepts
+    //!
+    //! All of the functions listed in here also have a [command]
+    //! equivalent, that you can call from the [`CommandLine`].
+    //!
+    //! [command]: duat_core::commands
+    //! [`CommandLine`]: crate::prelude::CommandLine
+    pub use duat_core::commands::{
+        alias, buffer, edit, next_file, next_global_file, prev_file, prev_global_file, quit,
+        return_to_file, switch_to,
+    };
 }
 
 pub mod prelude {

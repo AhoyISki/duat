@@ -87,7 +87,7 @@ impl<U: Ui> PassiveWidget<U> for LineNumbers<U> {
         &self.text
     }
 
-    fn once(_context: Context<U>) {
+    fn once() {
         forms::set_weak("LineNum", Form::grey());
         forms::set_weak("MainLineNum", Form::yellow());
         forms::set_weak("WrappedLineNum", Form::cyan().italic());

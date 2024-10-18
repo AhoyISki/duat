@@ -2,12 +2,11 @@
 use std::sync::{LazyLock, RwLock, atomic::AtomicUsize, mpsc};
 
 use duat_core::{
-    commands::Commands,
     data::{Context, CurFile, CurWidget, RwData},
     session::SessionCfg,
     text::{PrintCfg, Text},
     ui::{Event, Ui as TraitUi, Window},
-    widgets::{File, ShowNotifications, PassiveWidget},
+    widgets::{File, PassiveWidget, ShowNotifications},
 };
 use duat_term::VertRule;
 
@@ -24,20 +23,11 @@ static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
 static WINDOWS: LazyLock<RwData<Vec<Window<Ui>>>> = LazyLock::new(RwData::default);
 static NOTIFICATIONS: LazyLock<RwData<Text>> = LazyLock::new(RwData::default);
 
-pub static COMMANDS: Commands = Commands::new(
-    &CUR_FILE,
-    &CUR_WIDGET,
-    &CUR_WINDOW,
-    &WINDOWS,
-    &NOTIFICATIONS,
-);
-
 pub static CONTEXT: Context<Ui> = Context::new(
     &CUR_FILE,
     &CUR_WIDGET,
     &CUR_WINDOW,
     &WINDOWS,
-    &COMMANDS,
     &NOTIFICATIONS,
 );
 
@@ -49,6 +39,14 @@ pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
 
 #[doc(hidden)]
 pub fn pre_setup() {
+    duat_core::commands::setup(
+        &CUR_FILE,
+        &CUR_WIDGET,
+        &CUR_WINDOW,
+        &WINDOWS,
+        &NOTIFICATIONS,
+    );
+
     hooks::add_grouped::<OnFileOpen>("FileWidgets", |builder| {
         builder.push(VertRule::cfg());
         builder.push(LineNumbers::cfg());

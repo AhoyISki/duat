@@ -227,7 +227,7 @@ where
         &self.text
     }
 
-    fn once(_context: Context<U>) {
+    fn once() {
         forms::set_weak("DefaultStatus", "Default");
         forms::set_weak("File", Form::yellow().italic());
         forms::set_weak("Selections", Form::dark_blue());

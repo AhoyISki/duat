@@ -10,6 +10,7 @@ use std::{
 use crate::{
     Plugin,
     cache::{delete_cache, load_cache, store_cache},
+    commands,
     control::SwitchTo,
     data::{Context, RwData},
     hooks::{self, OnWindowOpen, SessionStarted},
@@ -462,7 +463,7 @@ fn add_session_commands<U>(
 where
     U: Ui,
 {
-    context.add_cmd(["quit", "q"], {
+    commands::add(["quit", "q"], {
         let tx = tx.clone();
 
         move |_flags, _args| {
@@ -471,7 +472,7 @@ where
         }
     })?;
 
-    context.add_cmd(["write", "w"], move |_flags, mut args| {
+    commands::add(["write", "w"], move |_flags, mut args| {
         let file = context.cur_file()?;
 
         let paths = {
@@ -520,7 +521,7 @@ where
         }
     })?;
 
-    context.add_cmd(["edit", "e"], {
+    commands::add(["edit", "e"], {
         let wins = session.windows;
 
         move |_, mut args| {
@@ -548,7 +549,7 @@ where
         }
     })?;
 
-    context.add_cmd(["buffer", "b"], move |_, mut args| {
+    commands::add(["buffer", "b"], move |_, mut args| {
         let path: PathBuf = args.next_as()?;
         let name = path
             .file_name()
@@ -560,7 +561,7 @@ where
         ok!("Switched to " [*a] name [] ".")
     })?;
 
-    context.add_cmd(["next-file"], {
+    commands::add(["next-file"], {
         let windows = session.windows.clone();
         let cur_window = session.cur_window;
 
@@ -594,7 +595,7 @@ where
         }
     })?;
 
-    context.add_cmd(["prev-file"], {
+    commands::add(["prev-file"], {
         let windows = session.windows.clone();
         let cur_window = session.cur_window;
 

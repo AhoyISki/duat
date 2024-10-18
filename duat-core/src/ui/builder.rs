@@ -177,7 +177,7 @@ where
         &self,
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
-        run_once::<W, U>(self.context);
+        run_once::<W, U>();
         let (widget, checker, specs) = cfg.build(self.context, true);
 
         let mut windows = self.windows.write();
@@ -259,7 +259,7 @@ where
         cfg: impl WidgetCfg<U, Widget = W>,
         area: U::Area,
     ) -> (U::Area, Option<U::Area>) {
-        run_once::<W, U>(self.context);
+        run_once::<W, U>();
         let (widget, checker, specs) = cfg.build(self.context, true);
 
         let mut windows = self.windows.write();
@@ -405,7 +405,7 @@ where
         &self,
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
-        run_once::<W, U>(self.context);
+        run_once::<W, U>();
         let (widget, checker, specs) = cfg.build(self.context, false);
 
         let mut windows = self.windows.write();
@@ -467,7 +467,7 @@ where
         cfg: impl WidgetCfg<U, Widget = W>,
         area: U::Area,
     ) -> (U::Area, Option<U::Area>) {
-        run_once::<W, U>(self.context);
+        run_once::<W, U>();
         let (widget, checker, specs) = cfg.build(self.context, false);
 
         let mut windows = self.windows.write();
@@ -480,13 +480,13 @@ where
 /// Runs the [`once`] function of widgets.
 ///
 /// [`once`]: PassiveWidget::once
-fn run_once<W: PassiveWidget<U>, U: Ui>(context: Context<U>) {
+fn run_once<W: PassiveWidget<U>, U: Ui>() {
     static ONCE_LIST: LazyLock<RwData<Vec<&'static str>>> =
         LazyLock::new(|| RwData::new(Vec::new()));
 
     let mut once_list = ONCE_LIST.write();
     if !once_list.contains(&duat_name::<W>()) {
-        W::once(context);
+        W::once();
         once_list.push(duat_name::<W>());
     }
 }

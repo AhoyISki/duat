@@ -394,7 +394,7 @@ where
     /// functions, [hooks], [commands] you want executed only once
     ///
     /// [commands]: crate::commands
-    fn once(context: Context<U>)
+    fn once()
     where
         Self: Sized;
 }

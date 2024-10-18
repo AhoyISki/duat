@@ -325,9 +325,6 @@ where
         {
             cache
         } else {
-            if widget.data_is::<File>() {
-                panic!();
-            }
             <U::Area as Area>::Cache::default()
         };
 
