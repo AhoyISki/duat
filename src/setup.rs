@@ -1,4 +1,9 @@
-//! Internal handling of [`Context`]
+//! Pre configuration setup of Duat
+//!
+//! Before loading the user's config crate, Duat needs to do some
+//! initial setup. For example, the [`CurFile`] and [`CurWidget`]
+//! variables are not set in the start of the program, since they
+//! require a [`Ui`], which cannot be defined in static time.
 use std::sync::{
     LazyLock, RwLock,
     atomic::{AtomicUsize, Ordering},
@@ -21,7 +26,6 @@ use crate::{
     prelude::{CommandLine, LineNumbers, StatusLine},
 };
 
-// Context's statics.
 static CUR_FILE: CurFile<Ui> = CurFile::new();
 static CUR_WIDGET: CurWidget<Ui> = CurWidget::new();
 static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
