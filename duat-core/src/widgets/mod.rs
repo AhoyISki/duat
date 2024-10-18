@@ -94,18 +94,14 @@ mod status_line;
 /// ```rust
 /// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
 /// # use duat_core::{
-/// #     data::Context, hooks, periodic_checker, text::Text, ui::{PushSpecs, Ui},
+/// #     hooks, periodic_checker, text::Text, ui::{PushSpecs, Ui},
 /// #     widgets::{PassiveWidget, Widget, WidgetCfg},
 /// # };
 /// # struct UpTime(Text);
 /// # struct UpTimeCfg<U>(PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
 /// #     type Widget = UpTime;
-/// #     fn build(
-/// #         self,
-/// #         _: Context<U>,
-/// #         _: bool,
-/// #     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
+/// #     fn build(self,_: bool) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
 /// #         let widget = Widget::passive(UpTime(Text::new()));
 /// #         (widget, || false, PushSpecs::below())
 /// #     }
@@ -120,7 +116,7 @@ mod status_line;
 /// #     fn text(&self) -> &Text {
 /// #         &self.0
 /// #     }
-/// #     fn once(context: Context<U>) {}
+/// #     fn once() {}
 /// }
 /// ```
 ///
@@ -133,7 +129,7 @@ mod status_line;
 /// ```rust
 /// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
 /// # use duat_core::{
-/// #     data::Context, hooks, periodic_checker, text::Text,
+/// #     hooks, periodic_checker, text::Text,
 /// #     ui::{PushSpecs, Ui}, widgets::{PassiveWidget, Widget, WidgetCfg},
 /// # };
 /// # struct UpTime(Text);
@@ -142,11 +138,7 @@ mod status_line;
 /// impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
 ///     type Widget = UpTime;
 ///
-///     fn build(
-///         self,
-///         context: Context<U>,
-///         on_file: bool,
-///     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
+///     fn build(self, on_file: bool) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
 ///         let widget = UpTime(Text::new());
 ///         let checker = periodic_checker(Duration::new(1, 0));
 ///         let specs = PushSpecs::below().with_ver_len(1.0);
@@ -162,7 +154,7 @@ mod status_line;
 /// #     fn text(&self) -> &Text {
 /// #         &self.0
 /// #     }
-/// #     fn once(context: Context<U>) {}
+/// #     fn once() {}
 /// # }
 /// ```
 ///
@@ -210,18 +202,14 @@ mod status_line;
 /// ```rust
 /// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
 /// # use duat_core::{
-/// #     data::Context, forms::{self, Form}, hooks::{self, SessionStarted}, periodic_checker,
+/// #     forms::{self, Form}, hooks::{self, SessionStarted}, periodic_checker,
 /// #     text::Text, ui::{PushSpecs, Ui}, widgets::{PassiveWidget, Widget, WidgetCfg},
 /// # };
 /// # struct UpTime(Text);
 /// # struct UpTimeCfg<U>(PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
 /// #     type Widget = UpTime;
-/// #     fn build(
-/// #         self,
-/// #         context: Context<U>,
-/// #         on_file: bool,
-/// #     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
+/// #     fn build(self, on_file: bool) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
 /// #         let widget = Widget::passive(UpTime(Text::new()));
 /// #         (widget, || false, PushSpecs::below())
 /// #     }
@@ -237,8 +225,8 @@ mod status_line;
 /// #         &self.0
 /// #     }
 ///     // ...
-///     fn once(context: Context<U>) {
-///         hooks::add::<SessionStarted<U>>(|_context| {
+///     fn once() {
+///         hooks::add::<SessionStarted<U>>(|_| {
 ///             START_TIME.set(Instant::now()).unwrap();
 ///         });
 ///         forms::set_weak("UpTime", Form::cyan());
@@ -257,18 +245,14 @@ mod status_line;
 /// ```rust
 /// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
 /// # use duat_core::{
-/// #     data::Context, hooks, periodic_checker, text::{Text, text}, ui::{PushSpecs, Ui},
+/// #     hooks, periodic_checker, text::{Text, text}, ui::{PushSpecs, Ui},
 /// #     widgets::{PassiveWidget, Widget, WidgetCfg},
 /// # };
 /// # struct UpTime(Text);
 /// # struct UpTimeCfg<U>(PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
 /// #     type Widget = UpTime;
-/// #     fn build(
-/// #         self,
-/// #         context: Context<U>,
-/// #         on_file: bool,
-/// #     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
+/// #     fn build(self, on_file: bool) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
 /// #         let widget = Widget::passive(UpTime(Text::new()));
 /// #         (widget, || false, PushSpecs::below())
 /// #     }
@@ -293,7 +277,7 @@ mod status_line;
 ///         self.0 = text!([UpTime] mins "m " secs "s");
 ///     }
 ///     // ...
-/// #   fn once(context: Context<U>) {}
+///     fn once() {}
 /// }
 /// ```
 ///
@@ -523,7 +507,7 @@ where
 /// ```rust
 /// # use std::marker::PhantomData;
 /// # use duat_core::{
-/// #     data::{Context, RwData}, input::{InputMethod, KeyEvent}, forms::{self, Form},
+/// #     data::RwData, input::{InputMethod, KeyEvent}, forms::{self, Form},
 /// #     text::{text, Text}, ui::{PushSpecs, Ui},
 /// #     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
 /// # };
@@ -542,7 +526,7 @@ where
 /// # struct MenuInput;
 /// # impl<U: Ui> InputMethod<U> for MenuInput {
 /// #     type Widget = Menu;
-/// #     fn send_key(&mut self, _: KeyEvent, _: &RwData<Menu>, _: &U::Area, _: Context<U>) {
+/// #     fn send_key(&mut self, _: KeyEvent, _: &RwData<Menu>, _: &U::Area) {
 /// #         todo!();
 /// #     }
 /// # }
@@ -551,11 +535,7 @@ where
 /// impl<U: Ui> WidgetCfg<U> for MenuCfg<U> {
 ///     type Widget = Menu;
 ///
-///     fn build(
-///         self,
-///         context: Context<U>,
-///         on_file: bool,
-///     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
+///     fn build(self, on_file: bool) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
 ///         let checker = || false;
 ///
 ///         let mut widget = Menu::default();
@@ -579,7 +559,7 @@ where
 ///         &self.text
 ///     }
 ///
-///     fn once(_context: Context<U>) {
+///     fn once() {
 ///         forms::set_weak("MenuInactive", "Inactive");
 ///         forms::set_weak("MenuSelected", "Inactive");
 ///         forms::set_weak("MenuActive", Form::blue());
@@ -602,7 +582,7 @@ where
 /// ```rust
 /// # use std::marker::PhantomData;
 /// # use duat_core::{
-/// #     data::{Context, RwData}, input::{InputMethod, KeyEvent}, forms::{self, Form},
+/// #     data::RwData, input::{InputMethod, KeyEvent}, forms::{self, Form},
 /// #     text::{text, Text}, ui::{PushSpecs, Ui},
 /// #     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
 /// # };
@@ -615,11 +595,7 @@ where
 /// # struct MenuCfg<U>(PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for MenuCfg<U> {
 /// #     type Widget = Menu;
-/// #     fn build(
-/// #         self,
-/// #         context: Context<U>,
-/// #         on_file: bool,
-/// #     ) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
+/// #     fn build(self, on_file: bool) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
 /// #         (Widget::passive(Menu::default()), || false, PushSpecs::left())
 /// #     }
 /// # }
@@ -631,7 +607,7 @@ where
 /// #     fn text(&self) -> &Text {
 /// #         &self.text
 /// #     }
-/// #     fn once(_context: Context<U>) {}
+/// #     fn once() {}
 /// # }
 /// impl<U: Ui> ActiveWidget<U> for Menu {
 ///     fn text_mut(&mut self) -> &mut Text {

@@ -100,7 +100,7 @@ where
     ///     scope.spawn(|| {
     ///         let mut read_write = read_write_data.write();
     ///         // Supposedly long computations.
-    ///         thread::sleep(Duration::from_millis(100));
+    ///         thread::sleep(Duration::from_millis(101));
     ///         *read_write = "☺️";
     ///     });
     ///

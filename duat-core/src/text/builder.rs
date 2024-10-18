@@ -6,8 +6,11 @@
 //! and `Accent` forms.
 use std::fmt::Write;
 
-use super::{Key, Tag, Text, ToggleId};
-use crate::data::{RoData, RwData};
+use super::{Key, Tag, Text, ToggleId, tags::RawTag};
+use crate::{
+    data::{RoData, RwData},
+    forms::FormId,
+};
 
 /// Builds and modifies a [`Text`], based on replacements applied
 /// to it.
@@ -36,8 +39,7 @@ use crate::data::{RoData, RwData};
 /// [`Form`]: crate::forms::Form
 pub struct Builder {
     text: Text,
-    last_form: Option<Tag>,
-    marker: Key,
+    last_form: Option<FormId>,
     buffer: String,
 }
 
@@ -61,7 +63,7 @@ impl Builder {
         let len = self.text.len_bytes();
 
         if let Some(tag) = self.last_form {
-            self.text.tags.insert(len, tag, self.marker);
+            self.text.tags.insert(len, Tag::PopForm(tag), Key::basic());
         }
 
         self.text
@@ -103,28 +105,37 @@ impl Builder {
         if let Tag::PushForm(id) = tag {
             let last_form = match id == crate::forms::DEFAULT_ID {
                 true => self.last_form.take(),
-                false => self.last_form.replace(Tag::PopForm(id)),
+                false => self.last_form.replace(id),
             };
 
-            if let Some(tag) = last_form {
-                self.text.tags.insert(len, tag, self.marker);
+            if let Some(id) = last_form {
+                self.text.tags.insert(len, Tag::PopForm(id), Key::basic());
             }
 
             match id == crate::forms::DEFAULT_ID {
                 true => None,
-                false => self.text.tags.insert(len, tag, self.marker),
+                false => self.text.tags.insert(len, tag, Key::basic()),
             }
         } else {
-            self.text.tags.insert(len, tag, self.marker)
+            self.text.tags.insert(len, tag, Key::basic())
         }
     }
 
     /// Pushes [`Text`] directly
-    pub(crate) fn push_text(&mut self, text: Text) {
+    pub(crate) fn push_text(&mut self, mut text: Text) {
         let end = self.text.len_bytes();
 
-        if let Some(tag) = self.last_form.take() {
-            self.text.tags.insert(end, tag, self.marker);
+        if let Some(last_id) = self.last_form.take() {
+            let initial = text.tags().next();
+            if let Some((0, RawTag::PushForm(_, id))) = initial
+                && id == last_id
+            {
+                text.tags.remove_at_if(0, |t| t.key() == Key::basic());
+            } else {
+                self.text
+                    .tags
+                    .insert(end, Tag::PopForm(last_id), Key::basic());
+            }
         }
 
         self.text.buf.splice(end..end, *text.buf);
@@ -137,7 +148,6 @@ impl Default for Builder {
         Builder {
             text: Text::default(),
             last_form: None,
-            marker: Key::basic(),
             buffer: String::with_capacity(50),
         }
     }

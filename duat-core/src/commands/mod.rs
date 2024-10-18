@@ -154,14 +154,8 @@ mod global {
     /// # Examples
     ///
     /// ```rust
-    /// # use duat_core::{
-    /// #     commands::{self, Result},
-    /// #     ui::Ui,
-    /// #     Context,
-    /// # };
-    /// # fn test<U: Ui>(context: Context<U>) -> Result<Option<Text>> {
-    /// context.commands.run("set-prompt new-prompt")
-    /// # }
+    /// # use duat_core::commands;
+    /// commands::run("set-prompt new-prompt");
     /// ```
     ///
     /// In this case we're running a command that will affect the most
@@ -185,12 +179,14 @@ mod global {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
-    /// // Shared state, which will be displayed in a `StatusLine`.
+    /// ```rust
+    /// # use duat_core::{
+    ///     commands, data::RwData, hooks::{self, OnWindowOpen}, ui::Ui, widgets::status
+    /// };
+    /// # fn test<U: Ui>() {
     /// let var = RwData::new(35);
     ///
-    /// /* inside of a plugin, where a `Context` could be found */
-    /// context.commands.add(["set-var"], {
+    /// commands::add(["set-var"], {
     ///     let var = var.clone();
     ///     move |_flags, mut args| {
     ///         let value: usize = args.next_as()?;
@@ -199,9 +195,12 @@ mod global {
     ///         Ok(None)
     ///     }
     /// });
-    /// /* */
     ///
-    /// let status_cfg = status!("The value is currently " var);
+    /// hooks::add::<OnWindowOpen<U>>(move |builder| {
+    ///     let var = var.clone();
+    ///     builder.push(status!("The value is currently " var));
+    /// });
+    /// # }
     /// ```
     ///
     /// Since `var` is an [`RwData`], it will be updated
@@ -230,13 +229,13 @@ mod global {
     /// ```rust
     /// # use duat_core::{
     /// #     commands::{self, Result},
-    /// #     data::{Context, RwData},
+    /// #     data::RwData,
     /// #     input::InputMethod,
     /// #     text::{Text, text},
     /// #     ui::Ui,
     /// #     widgets::File
     /// # };
-    /// # fn test<U: Ui>(context: Context<U>) {
+    /// # fn test<U: Ui>() {
     /// #[derive(Debug)]
     /// enum Mode {
     ///     Normal,
@@ -257,14 +256,13 @@ mod global {
     /// #     key: crossterm::event::KeyEvent,
     /// #     widget: &RwData<Self::Widget>,
     /// #     area: &U::Area,
-    /// #     context: Context<U>
     /// # )
     /// # {
     /// #     todo!();
     /// # }
     /// }
     ///
-    /// context.add_cmd_for_current::<ModalEditor>(
+    /// commands::add_for_current::<ModalEditor, U>(
     ///     ["set-mode"],
     ///     |modal, flags, mut args| {
     ///         let mut modal = modal.write();
@@ -328,27 +326,25 @@ mod global {
     /// ```rust
     /// // Required feature for widgets.
     /// # use std::{
-    /// #    sync::{
-    /// #        atomic::{AtomicBool, Ordering},
-    /// #        Arc,
-    /// #    },
-    /// #    time::Instant,
+    /// #     sync::{atomic::{AtomicBool, Ordering}, Arc}, marker::PhantomData, time::Instant
     /// # };
     /// # use duat_core::{
-    /// #    commands,
-    /// #    palette::{self, Form},
-    /// #    text::{text, Text, AlignCenter},
-    /// #    ui::{Area, PushSpecs, Ui},
-    /// #    widgets::{PassiveWidget, Widget},
+    /// #     commands, forms::{self, Form}, text::{text, Text, AlignCenter},
+    /// #     ui::{Area, PushSpecs, Ui}, widgets::{PassiveWidget, Widget, WidgetCfg},
     /// # };
-    /// # pub struct Timer {
-    /// #    text: Text,
-    /// #    instant: Instant,
-    /// #    running: Arc<AtomicBool>,
-    /// # }
-    /// impl PassiveWidget for Timer {
-    ///     fn build<U: Ui>() -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
-    ///         let timer = Self {
+    /// struct Timer {
+    ///     text: Text,
+    ///     instant: Instant,
+    ///     running: Arc<AtomicBool>,
+    /// }
+    ///
+    /// struct TimerCfg<U>(PhantomData<U>);
+    ///
+    /// impl<U: Ui> WidgetCfg<U> for TimerCfg<U> {
+    ///     type Widget = Timer;
+    ///
+    ///     fn build(self, _is_file: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+    ///         let timer = Timer {
     ///             text: text!(AlignCenter [Counter] 0 [] "ms"),
     ///             instant: Instant::now(),
     ///             // No need to use an `RwData`, since
@@ -365,12 +361,20 @@ mod global {
     ///             move || running.load(Ordering::Relaxed)
     ///         };
     ///
-    ///         let specs = PushSpecs::below().with_lenght(1.0);
+    ///         let specs = PushSpecs::below().with_ver_len(1.0);
     ///
     ///         (Widget::passive(timer), checker, specs)
     ///     }
+    /// }
     ///
-    ///     fn update(&mut self, _area: &impl Area) {
+    /// impl<U: Ui> PassiveWidget<U> for Timer {
+    ///     type Cfg = TimerCfg<U>;
+    ///
+    ///     fn cfg() -> Self::Cfg {
+    ///         TimerCfg(PhantomData)
+    ///     }
+    ///     
+    ///     fn update(&mut self, _area: &U::Area) {
     ///         if self.running.load(Ordering::Relaxed) {
     ///             let duration = self.instant.elapsed();
     ///             let duration = format!("{:.3?}", duration);
@@ -394,30 +398,30 @@ mod global {
     ///         // That means that a user of the widget will be able to
     ///         // control that form by changing it before or after this
     ///         // widget is pushed.
-    ///         palette::set_weak_form("Counter", Form::new().green());
+    ///         forms::set_weak("Counter", Form::green());
     ///
-    ///         commands::add_for_widget::<Timer>(
+    ///         commands::add_for_widget::<Timer, U>(
     ///             ["play"],
     ///             |timer, _area, _flags, _args| {
-    ///                 timer.running.store(true, Ordering::Relaxed);
+    ///                 timer.read().running.store(true, Ordering::Relaxed);
     ///
     ///                 Ok(None)
     ///             })
     ///             .unwrap();
     ///
-    ///         commands::add_for_widget::<Timer>(
+    ///         commands::add_for_widget::<Timer, U>(
     ///             ["pause"],
     ///             |timer, _area, _flags, _args| {
-    ///                 timer.running.store(false, Ordering::Relaxed);
+    ///                 timer.read().running.store(false, Ordering::Relaxed);
     ///
     ///                 Ok(None)
     ///             })
     ///             .unwrap();
     ///
-    ///         commands::add_for_widget::<Timer>(
+    ///         commands::add_for_widget::<Timer, U>(
     ///             ["pause"],
     ///             |timer, _area, _flags, _args| {
-    ///                 timer.instant = Instant::now();
+    ///                 timer.write().instant = Instant::now();
     ///
     ///                 Ok(None)
     ///             })

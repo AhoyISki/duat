@@ -31,7 +31,8 @@ impl<T> RwData<T> {
     /// This has to be sized because of some Rust limitations, as you
     /// can`t really pass an unsized argument to a function (for now).
     /// If you're looking to store unsized types (`dyn Trait`,
-    /// `\[Type\]`, etc) on an [`RwData`], see [`RwData::new_unsized`].
+    /// `\[Type\]`, etc) on an [`RwData`], see
+    /// [`RwData::new_unsized`].
     pub fn new(data: T) -> Self {
         Self {
             data: Arc::new(RwLock::new(data)),
@@ -73,19 +74,16 @@ where
     /// Since this is a blocking read, the thread will hault while the
     /// data is being written to:
     /// ```rust
-    /// # use std::{
-    /// #     thread,
-    /// #     time::{Duration, Instant}
-    /// # };
+    /// # use std::{thread, time::{Duration, Instant}};
     /// # use duat_core::data::{RoData, RwData};
-    /// let read_wite_data = RwData::new("☹️");
+    /// let read_write_data = RwData::new("☹️");
     /// let read_only_data = RoData::from(&read_write_data);
     /// let instant = Instant::now();
     /// thread::scope(|scope| {
     ///     scope.spawn(|| {
     ///         let mut read_write = read_write_data.write();
     ///         // Supposedly long computations.
-    ///         thread::sleep(Duration::from_millis(100));
+    ///         thread::sleep(Duration::from_millis(150));
     ///         *read_write = "☺️";
     ///     });
     ///
@@ -101,10 +99,7 @@ where
     /// Note that other reads will **NOT** block reading in this way,
     /// only writes:
     /// ```rust
-    /// # use std::{
-    /// #     thread,
-    /// #     time::{Duration, Instant}
-    /// # };
+    /// # use std::{thread, time::{Duration, Instant}};
     /// # use duat_core::data::{RoData, RwData};
     /// let read_write_data = RwData::new("☹️");
     /// let read_only_data = RoData::from(&read_write_data);

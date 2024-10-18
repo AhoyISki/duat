@@ -91,7 +91,7 @@ impl Text {
     }
 
     pub fn remove_tags_of(&mut self, keys: impl Keys) {
-        self.tags.remove_tags_of(keys)
+        self.tags.remove_of(keys)
     }
 
     pub fn clear_tags(&mut self) {

@@ -67,7 +67,7 @@ pub trait Plugin<U: Ui>: 'static {
     ///
     /// ```rust
     /// # use duat_core::{
-    /// #     data::Context,
+    /// #     commands,
     /// #     hooks::{self, *},
     /// #     input::{key, KeyCode},
     /// #     ui::Ui,
@@ -78,11 +78,11 @@ pub trait Plugin<U: Ui>: 'static {
     /// impl<U: Ui> Plugin<U> for AutoSaver {
     ///     type Cache = ();
     ///
-    ///     fn new(cache: Self::Cache, context: Context<U>) -> Self {
+    ///     fn new(cache: Self::Cache) -> Self {
     ///         hooks::add::<KeySentTo<File, U>>(move |&(key, _)| {
     ///             // Assuming that we are leaving an insert mode
     ///             if let key!(KeyCode::Esc) = key {
-    ///                 context.run_cmd("write").unwrap();
+    ///                 commands::run("write").unwrap();
     ///             }
     ///         });
     ///         AutoSaver

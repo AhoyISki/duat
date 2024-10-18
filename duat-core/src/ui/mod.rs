@@ -645,7 +645,7 @@ pub(crate) fn build_file<U: Ui>(windows: &'static RwData<Vec<Window<U>>>, mod_ar
 ///
 /// ```rust
 /// use duat_core::ui::PushSpecs;
-/// let specs = PushSpecs::left().with_hor_len(3).with_ver_ratio(2, 3);
+/// let specs = PushSpecs::left().with_hor_len(3.0).with_ver_ratio(2, 3);
 /// ```
 ///
 /// Then the widget should be pushed to the left, with a width of 3,

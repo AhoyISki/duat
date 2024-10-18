@@ -26,7 +26,7 @@ mod global {
         data::RwData,
         text::Text,
         ui::{Ui, Window},
-        widgets::{CommandLine, CommandLineMode, File, Widget},
+        widgets::{File, Widget},
     };
 
     static CUR_FILE: OnceLock<&'static (dyn Any + Send + Sync)> = OnceLock::new();

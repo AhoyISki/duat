@@ -196,6 +196,22 @@ impl Tags {
     /// Removes all [`Tag`]s associated with a given [`Key`] in the
     /// `pos`.
     pub fn remove_at(&mut self, at: usize, keys: impl Keys) {
+        self.remove_at_if(at, |t| keys.clone().contains(t.key()));
+    }
+
+    pub fn remove_of(&mut self, keys: impl Keys) {
+        let keys = keys.range();
+        let b_to_remove: Vec<usize> = iter_range(&self.buf, ..)
+            .filter_map(raw_from(0))
+            .filter_map(|(i, t)| keys.clone().contains(t.key()).then_some(i))
+            .collect();
+
+        for b in b_to_remove {
+            self.remove_at(b, keys.clone());
+        }
+    }
+
+    pub fn remove_at_if(&mut self, at: usize, f: impl Fn(&RawTag) -> bool) {
         let (n, b, skip) = match self.get_skip_at(at) {
             Some((n, b, skip)) if b == at => (n, b, skip),
             None => (self.buf.len(), self.len_bytes(), 0),
@@ -210,7 +226,7 @@ impl Tags {
                 .enumerate()
                 .map_while(|(i, ts)| Some(n - (i + 1)).zip(ts.as_tag()))
                 .inspect(|_| total += 1)
-                .filter(|(_, tag)| keys.clone().contains(tag.key()))
+                .filter(|(_, t)| f(t))
                 .collect();
 
             (removed, total)
@@ -234,18 +250,6 @@ impl Tags {
         }
 
         deintersect(&mut self.ranges, self.range_min);
-    }
-
-    pub fn remove_tags_of(&mut self, keys: impl Keys) {
-        let keys = keys.range();
-        let b_to_remove: Vec<usize> = iter_range(&self.buf, ..)
-            .filter_map(raw_from(0))
-            .filter_map(|(i, t)| keys.clone().contains(t.key()).then_some(i))
-            .collect();
-
-        for b in b_to_remove {
-            self.remove_at(b, keys.clone());
-        }
     }
 
     pub fn transform(&mut self, old: Range<usize>, new_end: usize) {

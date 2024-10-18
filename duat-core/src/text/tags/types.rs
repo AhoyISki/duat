@@ -229,7 +229,7 @@ impl RawTag {
         )
     }
 
-    pub(super) fn key(&self) -> Key {
+    pub(in crate::text) fn key(&self) -> Key {
         match self {
             Self::PushForm(key, _)
             | Self::PopForm(key, _)
