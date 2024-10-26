@@ -12,8 +12,6 @@
 //! [`File`]: crate::widgets::File
 use std::{cell::RefCell, sync::LazyLock};
 
-use parking_lot::RwLock;
-
 use super::{Area, Ui};
 use crate::{
     context::{self, FileParts},
@@ -99,7 +97,7 @@ where
 {
     window_i: usize,
     node: Node<U>,
-    area: RwLock<U::Area>,
+    area: RefCell<U::Area>,
     prev: Option<FileParts<U>>,
 }
 
@@ -115,7 +113,7 @@ where
         Self {
             window_i,
             node,
-            area: RwLock::new(area),
+            area: RefCell::new(area),
             prev,
         }
     }
@@ -180,7 +178,7 @@ where
         let (widget, checker, specs) = cfg.build(true);
 
         let mut windows = context::windows().write();
-        let mut area = self.area.write();
+        let mut area = self.area.borrow_mut();
         let window = &mut windows[self.window_i];
 
         let (child, parent) = {
@@ -345,7 +343,7 @@ impl<U: Ui> Drop for FileBuilder<U> {
 /// [`CommandLine`]: crate::widgets::CommandLine
 pub struct WindowBuilder<U: Ui> {
     window_i: usize,
-    mod_area: RefCell<U::Area>,
+    area: RefCell<U::Area>,
 }
 
 impl<U: Ui> WindowBuilder<U> {
@@ -355,7 +353,7 @@ impl<U: Ui> WindowBuilder<U> {
         let mod_area = windows.read()[window_i].files_area.clone();
         Self {
             window_i,
-            mod_area: RefCell::new(mod_area),
+            area: RefCell::new(mod_area),
         }
     }
 
@@ -395,13 +393,13 @@ impl<U: Ui> WindowBuilder<U> {
         let (widget, checker, specs) = cfg.build(false);
 
         let mut windows = context::windows().write();
-        let mut mod_area = self.mod_area.borrow_mut();
+        let mut area = self.area.borrow_mut();
         let window = &mut windows[self.window_i];
 
-        let (child, parent) = window.push(widget, &*mod_area, checker, specs, false);
+        let (child, parent) = window.push(widget, &*area, checker, specs, false);
 
         if let Some(parent) = &parent {
-            *mod_area = parent.clone();
+            *area = parent.clone();
         }
 
         (child.area().clone(), parent)

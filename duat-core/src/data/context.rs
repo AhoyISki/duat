@@ -439,12 +439,14 @@ impl<U: Ui> CurWidget<U> {
         let ret = Some(f(&widget, area, cursors));
 
         cursors.inspect(|c| {
+            let mut widget = widget.write();
             if let Some(c) = c.as_ref() {
-                let mut widget = widget.write();
                 widget.text_mut().add_cursor_tags(c);
                 area.scroll_around_point(widget.text(), c.main().caret(), widget.print_cfg());
             }
         });
+
+        node.update_and_print();
 
         ret
     }

@@ -11,12 +11,7 @@ use std::sync::{
 };
 
 use duat_core::{
-    context::{CurFile, CurWidget},
-    data::RwData,
-    session::SessionCfg,
-    text::PrintCfg,
-    ui::{Event, Ui as TraitUi, Window},
-    widgets::{File, ShowNotifications, Widget},
+    context::{CurFile, CurWidget}, data::RwData, input::Regular, session::SessionCfg, text::PrintCfg, ui::{Event, Ui as TraitUi, Window}, widgets::{File, ShowNotifications, Widget}
 };
 use duat_term::VertRule;
 
@@ -39,6 +34,8 @@ pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
 
 #[doc(hidden)]
 pub fn pre_setup() {
+    commands::set_default_mode(Regular);
+
     duat_core::context::setup(
         &CUR_FILE,
         &CUR_WIDGET,

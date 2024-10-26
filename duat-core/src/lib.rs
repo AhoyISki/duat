@@ -148,14 +148,6 @@ pub mod thread {
 
         let (sender, receiver) = &*ACTIONS;
 
-        if still_running() {
-            sender
-                .send(Box::new(move || {
-                    f();
-                }))
-                .unwrap();
-        }
-
         LOOP.call_once(|| {
             spawn(|| {
                 let recv = receiver.lock();
@@ -166,6 +158,14 @@ pub mod thread {
                 }
             });
         });
+
+        if still_running() {
+            sender
+                .send(Box::new(move || {
+                    f();
+                }))
+                .unwrap();
+        }
     }
 
     /// Returns true if there are any threads still running

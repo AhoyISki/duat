@@ -145,7 +145,7 @@
 //!
 //! [`Form`]: crate::forms::Form
 
-pub use duat_core::commands::{Args, Flags};
+pub use duat_core::commands::{Args, Flags, reset_mode};
 use duat_core::{
     commands::{self, CmdResult},
     data::RwData,
@@ -461,6 +461,10 @@ pub fn add_for_widget<W: Widget<Ui>>(
 }
 
 type Result<T> = duat_core::Result<T, ()>;
+
+pub fn set_default_mode(mode: impl Mode<Ui>) {
+    commands::set_default_mode(mode)
+}
 
 pub fn set_mode(mode: impl Mode<Ui>) {
     commands::set_mode(mode);

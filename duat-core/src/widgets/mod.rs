@@ -520,7 +520,7 @@ impl<U: Ui> Node<U> {
     }
 
     pub(crate) fn update(&self) {
-        self.widget.write().update(&self.area)
+        self.widget.raw_write().update(&self.area)
     }
 
     pub(crate) fn as_active(&self) -> (&RwData<dyn Widget<U>>, &U::Area, &RwData<Option<Cursors>>) {
