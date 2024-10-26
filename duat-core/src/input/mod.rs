@@ -351,11 +351,11 @@ impl<U: Ui> IncSearcher<U> for Fwd<U> {
         file: &RwData<File>,
         area: &U::Area,
         searcher: Searcher,
-        cursors: Option<Cursors>,
+        _cursors: Option<Cursors>,
     ) -> Option<Cursors> {
         if searcher.is_empty() {
             area.set_print_info(self.info.clone());
-            return cursors;
+            return Some(self.cursors.clone());
         }
 
         let mut cursors = self.cursors.clone();

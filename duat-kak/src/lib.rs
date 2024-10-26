@@ -35,7 +35,7 @@ impl<U: Ui> Mode<U> for Normal {
         area: &U::Area,
         cursors: Option<Cursors>,
     ) -> Option<Cursors> {
-        let mut cursors = cursors.unwrap_or_else(Cursors::new_inclusive);
+        let mut cursors = inclusive(cursors);
         let mut helper = EditHelper::new(widget, area, &mut cursors);
 
         if let key!(Char('h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e') | Down | Up) = key {
@@ -332,7 +332,7 @@ impl<U: Ui> Mode<U> for Insert {
         area: &<U as Ui>::Area,
         cursors: Option<Cursors>,
     ) -> Option<Cursors> {
-        let mut cursors = cursors.unwrap_or_else(Cursors::new_inclusive);
+        let mut cursors = inclusive(cursors);
         let mut helper = EditHelper::new(widget, area, &mut cursors);
 
         if let key!(Left | Down | Up | Right) = key {
@@ -408,6 +408,7 @@ impl<U: Ui> Mode<U> for Insert {
 
             key!(Esc) => {
                 helper.new_moment();
+                commands::set_mode::<U>(Normal::new());
             }
             _ => {}
         }
@@ -424,7 +425,11 @@ enum OneKey {
 }
 
 impl OneKey {
-    fn match_goto<S, U: Ui>(&mut self, helper: &mut EditHelper<File, U::Area, S>, key: Event) {
+    fn match_goto<S, U: Ui>(
+        &mut self,
+        helper: &mut EditHelper<File, U::Area, S>,
+        key: Event,
+    ) -> SelType {
         static LAST_FILE: LazyLock<RwData<Option<String>>> = LazyLock::new(RwData::default);
         let last_file = LAST_FILE.read().clone();
         let cur_name = context::cur_file::<U>().unwrap().name();
@@ -499,6 +504,8 @@ impl OneKey {
                 context::notify(err!("Key " [*a] code [] " not mapped on " [*a] "go to" [] "."))
             }
         }
+
+        self.sel_type()
     }
 
     fn sel_type(&self) -> SelType {
@@ -520,11 +527,11 @@ impl<U: Ui> Mode<U> for OneKey {
         area: &<U as Ui>::Area,
         cursors: Option<Cursors>,
     ) -> Option<Cursors> {
-        let mut cursors = cursors.unwrap_or_else(Cursors::new_inclusive);
+        let mut cursors = inclusive(cursors);
         let mut helper = EditHelper::new(widget, area, &mut cursors);
-        let sel_type = self.sel_type();
+        let mut sel_type = self.sel_type();
 
-        match self {
+        sel_type = match self {
             OneKey::GoTo(_) => self.match_goto::<(), U>(&mut helper, key),
             OneKey::Find(_) | OneKey::Until(_)
                 if let key!(Char(char), Mod::SHIFT | Mod::NONE) = key =>
@@ -555,11 +562,13 @@ impl<U: Ui> Mode<U> for OneKey {
                         context::notify(err!("Char " [*a] {char} [] " not found."))
                     }
                 });
-            }
-            _ => {}
-        }
 
-        commands::set_mode::<U>(Normal(self.sel_type()));
+                SelType::Normal
+            }
+            _ => SelType::Normal,
+        };
+
+        commands::set_mode::<U>(Normal(sel_type));
 
         Some(cursors)
     }
@@ -687,5 +696,15 @@ impl Category {
         } else {
             Category::Special
         }
+    }
+}
+
+fn inclusive(cursors: Option<Cursors>) -> Cursors {
+    match cursors {
+        Some(mut c) => {
+            c.set_inclusive();
+            c
+        }
+        None => Cursors::new_inclusive(),
     }
 }
