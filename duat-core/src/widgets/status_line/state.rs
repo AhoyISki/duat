@@ -19,6 +19,7 @@ use std::{fmt::Display, marker::PhantomData};
 use crate::{
     context::FileReader,
     data::{RoData, RwData},
+    input::Cursors,
     text::{Builder, Tag, Text, text},
     ui::Ui,
     widgets::{File, Widget},
@@ -28,10 +29,10 @@ use crate::{
 enum Appender<T> {
     NoArgsStr(Box<dyn FnMut() -> String + Send + Sync + 'static>),
     NoArgsText(Box<dyn FnMut() -> Text + Send + Sync + 'static>),
-    FromWidgetStr(RelatedStrFn<T>),
-    FromWidgetText(RelatedTextFn<T>),
-    FromFileAndWidgetStr(FileAndRelatedStrFn<T>),
-    FromFileAndWidgetText(FileAndRelatedTextFn<T>),
+    FromRelatedStr(RelatedStrFn<T>),
+    FromRelatedText(RelatedTextFn<T>),
+    FromFileAndRelatedStr(FileAndRelatedStrFn<T>),
+    FromFileAndRelatedText(FileAndRelatedTextFn<T>),
     Str(String),
     Text(Text),
 }
@@ -56,22 +57,22 @@ impl<T: 'static, Dummy, U: Ui> State<T, Dummy, U> {
             match self.appender {
                 Appender::NoArgsStr(mut f) => Box::new(move |builder, _| builder.push_str(f())),
                 Appender::NoArgsText(mut f) => Box::new(move |builder, _| builder.push_text(f())),
-                Appender::FromWidgetStr(mut f) => Box::new(move |builder, reader| {
+                Appender::FromRelatedStr(mut f) => Box::new(move |builder, reader| {
                     if let Some(str) = reader.inspect_related(&mut f) {
                         builder.push_str(str)
                     }
                 }),
-                Appender::FromWidgetText(mut f) => Box::new(move |builder, reader| {
+                Appender::FromRelatedText(mut f) => Box::new(move |builder, reader| {
                     if let Some(text) = reader.inspect_related(&mut f) {
                         builder.push_text(text)
                     }
                 }),
-                Appender::FromFileAndWidgetStr(mut f) => Box::new(move |builder, reader| {
+                Appender::FromFileAndRelatedStr(mut f) => Box::new(move |builder, reader| {
                     if let Some(str) = reader.inspect_file_and(|file, widget| f(file, widget)) {
                         builder.push_str(str)
                     }
                 }),
-                Appender::FromFileAndWidgetText(mut f) => Box::new(move |builder, reader| {
+                Appender::FromFileAndRelatedText(mut f) => Box::new(move |builder, reader| {
                     if let Some(text) = reader.inspect_file_and(|file, widget| f(file, widget)) {
                         builder.push_text(text)
                     }
@@ -208,7 +209,7 @@ where
     fn from(reader: ReadFn) -> Self {
         let reader = move |arg: &W| reader(arg).to_string();
         State {
-            appender: Appender::FromWidgetStr(Box::new(reader)),
+            appender: Appender::FromRelatedStr(Box::new(reader)),
             checker: None,
             ghost: PhantomData,
         }
@@ -224,7 +225,7 @@ where
     fn from(reader: ReadFn) -> Self {
         let reader = move |arg: &W| reader(arg);
         State {
-            appender: Appender::FromWidgetText(Box::new(reader)),
+            appender: Appender::FromRelatedText(Box::new(reader)),
             checker: None,
             ghost: PhantomData,
         }
@@ -241,7 +242,7 @@ where
     fn from(reader: ReadFn) -> Self {
         let reader = move |file: &File, arg: &W| reader(file, arg).to_string();
         State {
-            appender: Appender::FromFileAndWidgetStr(Box::new(reader)),
+            appender: Appender::FromFileAndRelatedStr(Box::new(reader)),
             checker: None,
             ghost: PhantomData,
         }
@@ -256,7 +257,81 @@ where
 {
     fn from(reader: ReadFn) -> Self {
         State {
-            appender: Appender::FromFileAndWidgetText(Box::new(reader)),
+            appender: Appender::FromFileAndRelatedText(Box::new(reader)),
+            checker: None,
+            ghost: PhantomData,
+        }
+    }
+}
+
+impl<D, ReadFn, U> From<ReadFn> for State<Option<Cursors>, CursorsArg<String>, U>
+where
+    D: Display + Send + Sync,
+    ReadFn: Fn(&Cursors) -> D + Send + Sync + 'static,
+    U: Ui,
+{
+    fn from(reader: ReadFn) -> Self {
+        let reader = move |arg: &Option<Cursors>| match arg {
+            Some(c) => reader(c).to_string(),
+            None => String::default(),
+        };
+        State {
+            appender: Appender::FromRelatedStr(Box::new(reader)),
+            checker: None,
+            ghost: PhantomData,
+        }
+    }
+}
+
+impl<ReadFn, U> From<ReadFn> for State<Option<Cursors>, CursorsArg<Text>, U>
+where
+    ReadFn: Fn(&Cursors) -> Text + Send + Sync + 'static,
+    U: Ui,
+{
+    fn from(reader: ReadFn) -> Self {
+        let reader = move |arg: &Option<Cursors>| match arg {
+            Some(c) => reader(c),
+            None => Text::default(),
+        };
+        State {
+            appender: Appender::FromRelatedText(Box::new(reader)),
+            checker: None,
+            ghost: PhantomData,
+        }
+    }
+}
+
+impl<D, ReadFn, U> From<ReadFn> for State<Option<Cursors>, FileAndCursorsArg<String>, U>
+where
+    D: Display + Send + Sync,
+    ReadFn: Fn(&File, &Cursors) -> D + Send + Sync + 'static,
+    U: Ui,
+{
+    fn from(reader: ReadFn) -> Self {
+        let reader = move |file: &File, arg: &Option<Cursors>| match arg {
+            Some(c) => reader(file, c).to_string(),
+            None => String::default(),
+        };
+        State {
+            appender: Appender::FromFileAndRelatedStr(Box::new(reader)),
+            checker: None,
+            ghost: PhantomData,
+        }
+    }
+}
+
+impl<ReadFn, U> From<ReadFn> for State<Option<Cursors>, FileAndCursorsArg<Text>, U>
+where
+    ReadFn: Fn(&File, &Cursors) -> Text + Send + Sync + 'static,
+    U: Ui,
+{
+    fn from(reader: ReadFn) -> Self {
+        let reader = move |file: &File, arg: &Option<Cursors>| match arg {
+            Some(c) => reader(file, c),
+            None => Text::default(),
+        };
+        State {
+            appender: Appender::FromFileAndRelatedText(Box::new(reader)),
             checker: None,
             ghost: PhantomData,
         }
@@ -272,6 +347,10 @@ pub struct NoArg<T>(PhantomData<T>);
 pub struct WidgetArg<T>(PhantomData<T>);
 #[doc(hidden)]
 pub struct FileAndWidgetArg<T>(PhantomData<T>);
+#[doc(hidden)]
+pub struct CursorsArg<T>(PhantomData<T>);
+#[doc(hidden)]
+pub struct FileAndCursorsArg<T>(PhantomData<T>);
 
 // The various types of function aliases
 type RelatedStrFn<T> = Box<dyn FnMut(&T) -> String + Send + Sync + 'static>;

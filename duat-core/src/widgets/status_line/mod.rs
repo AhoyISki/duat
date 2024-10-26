@@ -18,13 +18,15 @@ mod state;
 
 use std::fmt::Alignment;
 
+use common::{main_col, main_line, selections_fmt};
+
 pub use self::state::State;
 use crate::{
     context::{self, FileReader},
     forms::{self, Form},
-    text::{AlignCenter, AlignRight, Builder, PrintCfg, Text, text},
+    text::{AlignCenter, AlignRight, Builder, PrintCfg, Tag, Text, text},
     ui::{PushSpecs, Ui},
-    widgets::{Widget, WidgetCfg},
+    widgets::{File, Widget, WidgetCfg},
 };
 
 pub struct StatusLineCfg<U: Ui> {
@@ -36,13 +38,11 @@ pub struct StatusLineCfg<U: Ui> {
 
 impl<U: Ui> StatusLineCfg<U> {
     pub fn new() -> Self {
-        // status!(
-        //    [File] { File::name } " " [Selections] selections_fmt "
-        // "    [Coords] main_col [Separator] ":" [Coords]
-        // main_line    [Separator] "/" [Coords] {
-        // File::len_lines }
-        //)
-        todo!()
+        status!(
+            [File] { File::name } " " [Selections] selections_fmt " "
+            [Coords] main_col [Separator] ":" [Coords] main_line
+            [Separator] "/" [Coords] { File::len_lines }
+        )
     }
 
     pub fn new_with(

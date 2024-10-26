@@ -313,6 +313,12 @@ impl<U: Ui> Mode<U> for Normal {
     }
 }
 
+impl Default for Normal {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone)]
 pub struct Insert;
 
