@@ -6,8 +6,8 @@ pub use crossterm::{cursor::SetCursorStyle as CursorShape, style::Color};
 use parking_lot::{RwLock, RwLockWriteGuard};
 
 pub use self::global::{
-    FormFmt, extra_cursor, from_id, main_cursor, name_from_id, painter, set, set_extra_cursor,
-    set_main_cursor, set_weak, id_of as id_of, unset_extra_cursor, unset_main_cursor,
+    FormFmt, extra_cursor, from_id, id_of, main_cursor, name_from_id, painter, set,
+    set_extra_cursor, set_main_cursor, set_weak, unset_extra_cursor, unset_main_cursor,
 };
 use crate::data::RwLockReadGuard;
 
@@ -18,6 +18,7 @@ mod global {
     use parking_lot::Mutex;
 
     use super::{CursorShape, Form, FormId, Painter, Palette};
+    use crate::log_info;
 
     static PALETTE: Palette = Palette::new();
     static FORMS: LazyLock<Mutex<Vec<&str>>> = LazyLock::new(|| {
@@ -120,8 +121,8 @@ mod global {
         let name: &'static str = name.to_string().leak();
 
         match kind {
-            Kind::Form(form) => PALETTE.set_weak_form(name, form),
-            Kind::Ref(refed) => PALETTE.set_weak_ref(name, refed),
+            Kind::Form(form) => crate::thread::queue(move || PALETTE.set_weak_form(name, form)),
+            Kind::Ref(refed) => crate::thread::queue(move || PALETTE.set_weak_ref(name, refed)),
         }
 
         let mut forms = FORMS.lock();
@@ -431,6 +432,7 @@ pub const E_SEL_ID: FormId = FormId(11);
 /// The [`FormId`] of the `"Inactive"` form
 pub const INACTIVE_ID: FormId = FormId(12);
 
+#[derive(Debug)]
 struct InnerPalette {
     main_cursor: Option<CursorShape>,
     extra_cursor: Option<CursorShape>,
@@ -642,6 +644,7 @@ impl Palette {
     }
 }
 
+#[derive(Debug)]
 pub struct Painter {
     inner: RwLockReadGuard<'static, InnerPalette>,
     forms: Vec<(Form, FormId)>,
@@ -756,6 +759,7 @@ impl Painter {
 }
 
 /// An enum that helps in the modification of forms
+#[derive(Debug)]
 enum FormType {
     Normal,
     Ref(FormId),
