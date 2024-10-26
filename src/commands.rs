@@ -151,7 +151,7 @@ use duat_core::{
     data::RwData,
     text::Text,
     ui,
-    widgets::{CommandLineMode, PassiveWidget},
+    widgets::{CommandLineMode, Widget},
 };
 
 use crate::Ui;
@@ -243,7 +243,7 @@ pub fn add(
 
 /// Adds a command to an object "related" to the current [`File`]
 ///
-/// This object can be one of three things, a [`PassiveWidget`],
+/// This object can be one of three things, a [`Widget`],
 /// an [`InputMethod`], or the [`File`]. When the
 /// command is ran, Duat will look at the currently active
 /// file for any instance of an [`RwData`] it can find.
@@ -328,7 +328,7 @@ pub fn add_for_current<T: 'static>(
 /// Adds a command that can mutate a widget of the given type,
 /// along with its associated [`dyn Area`].
 ///
-/// This command will look for the [`PassiveWidget`] in the
+/// This command will look for the [`Widget`] in the
 /// following order:
 ///
 /// 1. Any instance that is "related" to the currently active
@@ -336,7 +336,7 @@ pub fn add_for_current<T: 'static>(
 ///    [`Session`]'s "`file_fn`".
 /// 2. Other widgets in the currently active window, related or not to
 ///    any given [`File`].
-/// 3. Any instance of the [`PassiveWidget`] that is found in other
+/// 3. Any instance of the [`Widget`] that is found in other
 ///    windows, looking first at windows ahead.
 ///
 /// This ordering means that, wether your [`CommandLine`] is
@@ -366,14 +366,14 @@ pub fn add_for_current<T: 'static>(
 /// #    palette::{self, Form},
 /// #    text::{text, Text, AlignCenter},
 /// #    ui::{Area, PushSpecs, Ui},
-/// #    widgets::{PassiveWidget, Widget},
+/// #    widgets::{Widget, Widget},
 /// # };
 /// # pub struct Timer {
 /// #    text: Text,
 /// #    instant: Instant,
 /// #    running: Arc<AtomicBool>,
 /// # }
-/// impl PassiveWidget for Timer {
+/// impl Widget for Timer {
 ///     fn build<U: Ui>() -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
 ///         let timer = Self {
 ///             text: text!(AlignCenter [Counter] "0ms"),
@@ -409,7 +409,7 @@ pub fn add_for_current<T: 'static>(
 ///         &COMMANDS.text
 ///     }
 ///
-///     // The `once` function of a `PassiveWidget` is only called
+///     // The `once` function of a `Widget` is only called
 ///     // when that widget is first created.
 ///     // It is useful to add commands and set forms.
 ///     fn once() {
@@ -452,7 +452,7 @@ pub fn add_for_current<T: 'static>(
 /// [`File`]: crate::widgets::File
 /// [`CommandLine`]: crate::widgets::CommandLine
 #[inline(never)]
-pub fn add_for_widget<W: PassiveWidget<Ui>>(
+pub fn add_for_widget<W: Widget<Ui>>(
     callers: impl IntoIterator<Item = impl ToString>,
     f: impl FnMut(&RwData<W>, &<Ui as ui::Ui>::Area, Flags, Args) -> CmdResult + 'static,
 ) -> Result<()> {

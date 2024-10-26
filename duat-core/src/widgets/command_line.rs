@@ -15,6 +15,7 @@
 //! Currently, you can also change the prompt of a [`CommandLine`],
 //! by running the `set-prompt` [`Command`].
 use std::{
+    any::TypeId,
     marker::PhantomData,
     sync::{Arc, LazyLock},
 };
@@ -24,31 +25,23 @@ use parking_lot::RwLock;
 use crate::{
     commands,
     data::{RoData, RwData, context},
-    duat_name,
     forms::{self, Form},
     hooks,
-    input::{Commander, InputMethod},
+    input::Command,
     text::{Ghost, Key, PrintCfg, SavedMatches, Tag, Text, text},
     ui::{PushSpecs, Ui},
-    widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
+    widgets::{Widget, WidgetCfg},
 };
 
-#[derive(Clone)]
-pub struct CommandLineCfg<I, U>
-where
-    I: InputMethod<U, Widget = CommandLine<U>> + Clone + 'static,
-    U: Ui,
-{
-    input: I,
+pub struct CommandLineCfg<U> {
     prompt: String,
     specs: PushSpecs,
     ghost: PhantomData<U>,
 }
 
-impl<U: Ui> CommandLineCfg<Commander, U> {
+impl<U> CommandLineCfg<U> {
     pub fn new() -> Self {
         CommandLineCfg {
-            input: Commander::new(),
             prompt: String::from(":"),
             specs: PushSpecs::below().with_ver_len(1.0),
             ghost: PhantomData,
@@ -56,17 +49,13 @@ impl<U: Ui> CommandLineCfg<Commander, U> {
     }
 }
 
-impl<U: Ui> Default for CommandLineCfg<Commander, U> {
+impl<U: Ui> Default for CommandLineCfg<U> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<I, U> CommandLineCfg<I, U>
-where
-    I: InputMethod<U, Widget = CommandLine<U>> + Clone,
-    U: Ui,
-{
+impl<U: Ui> CommandLineCfg<U> {
     pub fn with_prompt(self, prompt: impl ToString) -> Self {
         Self { prompt: prompt.to_string(), ..self }
     }
@@ -84,28 +73,12 @@ where
             ..self
         }
     }
-
-    pub fn with_input<NewI>(self, input: NewI) -> CommandLineCfg<NewI, U>
-    where
-        NewI: InputMethod<U, Widget = CommandLine<U>> + Clone,
-    {
-        CommandLineCfg {
-            input,
-            prompt: self.prompt,
-            specs: self.specs,
-            ghost: PhantomData,
-        }
-    }
 }
 
-impl<I, U> WidgetCfg<U> for CommandLineCfg<I, U>
-where
-    I: InputMethod<U, Widget = CommandLine<U>> + Clone,
-    U: Ui,
-{
+impl<U: Ui> WidgetCfg<U> for CommandLineCfg<U> {
     type Widget = CommandLine<U>;
 
-    fn build(self, _: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+    fn build(self, _: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
         let mode: RwData<dyn CommandLineMode<U>> = if hooks::group_exists("CmdLineNotifications") {
             run_once::<ShowNotifications, U>();
             RwData::new_unsized::<ShowNotifications>(Arc::new(RwLock::new(
@@ -118,17 +91,17 @@ where
             )))
         };
 
-        let cmd_line = CommandLine {
+        let widget = CommandLine {
             text: Text::new(),
             prompt: RwData::new(self.prompt.clone()),
             mode: RwData::new(mode),
         };
 
         let checker = {
-            let mode = RoData::from(&cmd_line.mode);
+            let mode = RoData::from(&widget.mode);
             move || mode.read().write().has_changed()
         };
-        let widget = Widget::active(cmd_line, self.input);
+
         (widget, checker, self.specs)
     }
 }
@@ -142,7 +115,7 @@ where
 /// * [`RunCommands`], which runs commands (duh);
 /// * [`ShowNotifications`], which shows notifications, usually about
 ///   commands;
-/// * [`IncSearch`], which is used by [`InputMethod`]s in order to do
+/// * [`IncSearch`], which is used by [`Mode`]s in order to do
 ///   incremental search from the command line.
 ///
 /// By default, Duat will have the `"CmdLineNotifications"` [hook]
@@ -167,8 +140,8 @@ impl<U: Ui> CommandLine<U> {
     }
 }
 
-impl<U: Ui> PassiveWidget<U> for CommandLine<U> {
-    type Cfg = CommandLineCfg<Commander, U>;
+impl<U: Ui> Widget<U> for CommandLine<U> {
+    type Cfg = CommandLineCfg<U>;
 
     fn cfg() -> Self::Cfg {
         CommandLineCfg::new()
@@ -180,6 +153,10 @@ impl<U: Ui> PassiveWidget<U> for CommandLine<U> {
 
     fn text(&self) -> &Text {
         &self.text
+    }
+
+    fn text_mut(&mut self) -> &mut Text {
+        &mut self.text
     }
 
     fn print_cfg(&self) -> crate::text::PrintCfg {
@@ -199,12 +176,6 @@ impl<U: Ui> PassiveWidget<U> for CommandLine<U> {
             },
         )
         .unwrap();
-    }
-}
-
-impl<U: Ui> ActiveWidget<U> for CommandLine<U> {
-    fn text_mut(&mut self) -> &mut Text {
-        &mut self.text
     }
 
     fn on_focus(&mut self, _area: &U::Area) {
@@ -245,7 +216,7 @@ pub struct RunCommands {
 
 impl<U: Ui> CommandLineMode<U> for RunCommands {
     fn new() -> Self {
-        commands::switch_to::<CommandLine<U>, U>();
+        commands::set_mode::<Command, U>();
         Self { key: Key::new() }
     }
 
@@ -318,7 +289,7 @@ pub struct IncSearch {
 
 impl<U: Ui> CommandLineMode<U> for IncSearch {
     fn new() -> Self {
-        commands::switch_to::<CommandLine<U>, U>();
+        commands::set_mode::<Command, U>();
         Self {
             list: RwData::default(),
             error_range: None,
@@ -337,8 +308,9 @@ impl<U: Ui> CommandLineMode<U> for IncSearch {
 
         if let Some(saved) = list.iter_mut().find(|s| s.pat_is(text)) {
             let searcher = saved.searcher();
-            cur_file.mutate_data(|file, area, input| {
-                input.write().search_inc(file, area, searcher);
+            cur_file.mutate_data(|file, area, mode, cursors| {
+                let mut c = cursors.write();
+                *c = mode.write().search_inc(file, area, searcher, c.take());
             });
         } else {
             match SavedMatches::new(text.to_string()) {
@@ -348,8 +320,9 @@ impl<U: Ui> CommandLineMode<U> for IncSearch {
                     }
 
                     let searcher = saved.searcher();
-                    cur_file.mutate_data(|file, area, input| {
-                        input.write().search_inc(file, area, searcher);
+                    cur_file.mutate_data(|file, area, mode, cursors| {
+                        let mut c = cursors.write();
+                        *c = mode.write().search_inc(file, area, searcher, c.take());
                     });
 
                     list.push(saved);
@@ -373,26 +346,31 @@ impl<U: Ui> CommandLineMode<U> for IncSearch {
     fn on_focus(&mut self, _text: &mut Text) {
         context::cur_file::<U>()
             .unwrap()
-            .mutate_data(|file, area, input| input.write().begin_inc_search(file, area));
+            .mutate_data(|file, area, mode, cursors| {
+                let mut c = cursors.write();
+                *c = mode.write().begin_inc_search(file, area, c.take())
+            });
     }
 
     fn on_unfocus(&mut self, _text: &mut Text) {
         context::cur_file::<U>()
             .unwrap()
-            .mutate_data(|file, area, input| input.write().end_inc_search(file, area));
+            .mutate_data(|file, area, mode, cursors| {
+                let mut c = cursors.write();
+                *c = mode.write().end_inc_search(file, area, c.take())
+            });
     }
 }
 
 /// Runs the [`once`] function of widgets.
 ///
-/// [`once`]: PassiveWidget::once
+/// [`once`]: Widget::once
 fn run_once<M: CommandLineMode<U>, U: Ui>() {
-    static ONCE_LIST: LazyLock<RwData<Vec<&'static str>>> =
-        LazyLock::new(|| RwData::new(Vec::new()));
+    static LIST: LazyLock<RwData<Vec<TypeId>>> = LazyLock::new(|| RwData::new(Vec::new()));
 
-    let mut once_list = ONCE_LIST.write();
-    if !once_list.contains(&duat_name::<M>()) {
+    let mut list = LIST.write();
+    if !list.contains(&TypeId::of::<M>()) {
         M::once();
-        once_list.push(duat_name::<M>());
+        list.push(TypeId::of::<M>());
     }
 }

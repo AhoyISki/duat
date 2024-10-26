@@ -1,9 +1,9 @@
 //! APIs for the construction of widgets, and a few common ones.
 //!
-//! This module declares two traits for widgets, [`PassiveWidget`]s
-//! and [`ActiveWidget`]s. [`PassiveWidget`]s simply show information,
-//! and cannot receive input or be focused. [`ActiveWidget`]s can be
-//! modified by an external [`InputMethod`], thus they react to user
+//! This module declares two traits for widgets, [`Widget`]s
+//! and [`Widget`]s. [`Widget`]s simply show information,
+//! and cannot receive input or be focused. [`Widget`]s can be
+//! modified by an external [`Mode`], thus they react to user
 //! input whenever they are in focus.
 //!
 //! These widgets will be used in one of three contexts:
@@ -27,8 +27,8 @@
 //! `10.0`, and a height of `2.0`.
 //!
 //! The module also provides 4 native widgets, [`StatusLine`] and
-//! [`LineNumbers`], which are [`PassiveWidget`]s, and
-//! [`File`] and [`CommandLine`] which are [`ActiveWidget`]s.
+//! [`LineNumbers`], which are [`Widget`]s, and
+//! [`File`] and [`CommandLine`] which are [`Widget`]s.
 //!
 //! These 4 widgets are supposed to be universal, not needing a
 //! specific [`Ui`] implementation to work. In contrast, you can
@@ -45,9 +45,10 @@
 //! [`OnFileOpen`]: crate::hooks::OnFileOpen
 //! [`OnWindowOpen`]: crate::hooks::OnWindowOpen
 //! [`Constraint`]: crate::ui::Constraint
-use std::{any::TypeId, sync::Arc};
-
-use crossterm::event::KeyEvent;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, AtomicUsize, Ordering},
+};
 
 pub use self::{
     command_line::{
@@ -58,10 +59,11 @@ pub use self::{
     status_line::{State, StatusLine, StatusLineCfg, common, status},
 };
 use crate::{
+    context::FileParts,
     data::{Data, RwData, RwLock},
-    duat_name, forms,
-    hooks::{self, FocusedOn, KeySent, KeySentTo, UnfocusedFrom},
-    input::InputMethod,
+    forms,
+    hooks::{self, FocusedOn, UnfocusedFrom},
+    input::{Cursors, Mode},
     text::{PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
 };
@@ -89,13 +91,13 @@ mod status_line;
 /// ```
 ///
 /// In order to be a proper widget, it must have a [`Text`] to
-/// display. Next, I must implement [`PassiveWidget`]:
+/// display. Next, I must implement [`Widget`]:
 ///
 /// ```rust
 /// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
 /// # use duat_core::{
 /// #     hooks, periodic_checker, text::Text, ui::{PushSpecs, Ui},
-/// #     widgets::{PassiveWidget, Widget, WidgetCfg},
+/// #     widgets::{Widget, Widget, WidgetCfg},
 /// # };
 /// # struct UpTime(Text);
 /// # struct UpTimeCfg<U>(PhantomData<U>);
@@ -106,7 +108,7 @@ mod status_line;
 /// #         (widget, || false, PushSpecs::below())
 /// #     }
 /// # }
-/// impl<U: Ui> PassiveWidget<U> for UpTime {
+/// impl<U: Ui> Widget<U> for UpTime {
 ///     type Cfg = UpTimeCfg<U>;
 ///
 ///     fn cfg() -> Self::Cfg {
@@ -120,7 +122,7 @@ mod status_line;
 /// }
 /// ```
 ///
-/// Note the [`Cfg`](PassiveWidget::Cfg) type, and the [`cfg`] method.
+/// Note the [`Cfg`](Widget::Cfg) type, and the [`cfg`] method.
 /// These exist to give the user the ability to modify the widgets
 /// before they are pushed. The `Cfg` type, which implements
 /// [`WidgetCfg`] is the thing that will actually construct the
@@ -130,7 +132,7 @@ mod status_line;
 /// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
 /// # use duat_core::{
 /// #     hooks, periodic_checker, text::Text,
-/// #     ui::{PushSpecs, Ui}, widgets::{PassiveWidget, Widget, WidgetCfg},
+/// #     ui::{PushSpecs, Ui}, widgets::{Widget, Widget, WidgetCfg},
 /// # };
 /// # struct UpTime(Text);
 /// struct UpTimeCfg<U>(PhantomData<U>);
@@ -146,7 +148,7 @@ mod status_line;
 ///         (Widget::passive(widget), checker, specs)
 ///     }
 /// }
-/// # impl<U: Ui> PassiveWidget<U> for UpTime {
+/// # impl<U: Ui> Widget<U> for UpTime {
 /// #     type Cfg = UpTimeCfg<U>;
 /// #     fn cfg() -> Self::Cfg {
 /// #         UpTimeCfg(PhantomData)
@@ -171,7 +173,7 @@ mod status_line;
 /// done so that the end user does not need to specify a [`Ui`] when
 /// using [`WidgetCfg`]s.
 ///
-/// Now, there are some other methods from [`PassiveWidget`] that need
+/// Now, there are some other methods from [`Widget`] that need
 /// to be implemented for this to work. First of all, there needs to
 /// be a starting [`Instant`] to compare with the current moment in
 /// time.
@@ -195,7 +197,7 @@ mod status_line;
 /// doing so, it will be called every time this widget is added to the
 /// ui.
 ///
-/// Instead, I'll put it in [`PassiveWidget::once`]. This function is
+/// Instead, I'll put it in [`Widget::once`]. This function is
 /// only triggered once, no matter how many times the widget is added
 /// to the ui:
 ///
@@ -203,7 +205,7 @@ mod status_line;
 /// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
 /// # use duat_core::{
 /// #     forms::{self, Form}, hooks::{self, SessionStarted}, periodic_checker,
-/// #     text::Text, ui::{PushSpecs, Ui}, widgets::{PassiveWidget, Widget, WidgetCfg},
+/// #     text::Text, ui::{PushSpecs, Ui}, widgets::{Widget, Widget, WidgetCfg},
 /// # };
 /// # struct UpTime(Text);
 /// # struct UpTimeCfg<U>(PhantomData<U>);
@@ -216,7 +218,7 @@ mod status_line;
 /// # }
 /// static START_TIME: OnceLock<Instant> = OnceLock::new();
 ///
-/// impl<U: Ui> PassiveWidget<U> for UpTime {
+/// impl<U: Ui> Widget<U> for UpTime {
 /// #     type Cfg = UpTimeCfg<U>;
 /// #     fn cfg() -> Self::Cfg {
 /// #         UpTimeCfg(PhantomData)
@@ -246,7 +248,7 @@ mod status_line;
 /// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
 /// # use duat_core::{
 /// #     hooks, periodic_checker, text::{Text, text}, ui::{PushSpecs, Ui},
-/// #     widgets::{PassiveWidget, Widget, WidgetCfg},
+/// #     widgets::{Widget, Widget, WidgetCfg},
 /// # };
 /// # struct UpTime(Text);
 /// # struct UpTimeCfg<U>(PhantomData<U>);
@@ -258,7 +260,7 @@ mod status_line;
 /// #     }
 /// # }
 /// # static START_TIME: OnceLock<Instant> = OnceLock::new();
-/// impl<U: Ui> PassiveWidget<U> for UpTime {
+/// impl<U: Ui> Widget<U> for UpTime {
 /// #     type Cfg = UpTimeCfg<U>;
 /// #     fn cfg() -> Self::Cfg {
 /// #         UpTimeCfg(PhantomData)
@@ -281,7 +283,7 @@ mod status_line;
 /// }
 /// ```
 ///
-/// [`cfg`]: PassiveWidget::cfg
+/// [`cfg`]: Widget::cfg
 /// [passive]: Widget::passive
 /// [active]: Widget::active
 /// [`build`]: WidgetCfg::build
@@ -290,11 +292,11 @@ mod status_line;
 /// [`PhantomData<U>`]: std::marker::PhantomData
 /// [`Instant`]: std::time::Instant
 /// [`SessionStarted`]: crate::hooks::SessionStarted
-/// [`update`]: PassiveWidget::update
+/// [`update`]: Widget::update
 /// [`Form`]: crate::forms::Form
 /// [`forms::set_weak*`]: crate::forms::set_weak
 /// [`text!`]: crate::text::text
-pub trait PassiveWidget<U>: Send + Sync + 'static
+pub trait Widget<U>: Send + Sync + 'static
 where
     U: Ui,
 {
@@ -313,7 +315,7 @@ where
     /// # use duat_core::{
     /// #     hooks::{self, OnFileOpen},
     /// #     ui::{FileBuilder, Ui},
-    /// #     widgets::{File, LineNumbers, PassiveWidget, common::selections_fmt, status},
+    /// #     widgets::{File, LineNumbers, Widget, common::selections_fmt, status},
     /// # };
     /// # fn test<U: Ui>() {
     /// hooks::remove_group("FileWidgets");
@@ -334,7 +336,7 @@ where
     ///
     /// There are a few contexts in which this function is triggered:
     ///
-    /// * A key was sent to the widget, if it is an [`ActiveWidget`]
+    /// * A key was sent to the widget, if it is an [`Widget`]
     /// * It was modified externally by something like [`IncSearch`]
     /// * The window was resized, so all widgets must be reprinted
     ///
@@ -350,6 +352,19 @@ where
 
     /// The text that this widget prints out
     fn text(&self) -> &Text;
+
+    /// Returns the [`&mut Text`] that is printed
+    ///
+    /// [`&mut Text`]: Text
+    fn text_mut(&mut self) -> &mut Text;
+
+    /// Actions to do whenever this [`Widget`] is focused.
+    #[allow(unused)]
+    fn on_focus(&mut self, area: &U::Area) {}
+
+    /// Actions to do whenever this [`Widget`] is unfocused.
+    #[allow(unused)]
+    fn on_unfocus(&mut self, area: &U::Area) {}
 
     /// The [configuration] for how to print [`Text`]
     ///
@@ -394,7 +409,7 @@ where
 /// # use duat_core::{
 /// #     hooks::{self, OnFileOpen},
 /// #     ui::Ui,
-/// #     widgets::{LineNumbers, PassiveWidget},
+/// #     widgets::{LineNumbers, Widget},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::add::<OnFileOpen<U>>(|builder| {
@@ -408,536 +423,86 @@ where
 /// # }
 /// ```
 ///
-/// [passive]: PassiveWidget
-/// [active]: ActiveWidget
+/// [passive]: Widget
+/// [active]: Widget
 pub trait WidgetCfg<U>: Sized
 where
     U: Ui,
 {
-    type Widget: PassiveWidget<U>;
+    type Widget: Widget<U>;
 
-    fn build(self, on_file: bool) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs);
+    fn build(self, on_file: bool) -> (Self::Widget, impl Fn() -> bool + 'static, PushSpecs);
 }
 
-/// A widget that can be modified by input
-///
-/// Here is how you can create an [`ActiveWidget`]. First, create the
-/// struct that will become said widget, see [`PassiveWidget`] for
-/// what you need:
-///
-/// ```rust
-/// # use duat_core::text::Text;
-/// #[derive(Default)]
-/// struct Menu {
-///     text: Text,
-///     selected_entry: usize,
-///     active_etry: Option<usize>,
-/// }
-/// ```
-/// In this widget, I will create a menu whose entries can be selected
-/// by an [`InputMethod`].
-///
-/// Let's say that said menu has five entries, and one of them can be
-/// active at a time:
-///
-/// ```rust
-/// # #![feature(let_chains)]
-/// # use duat_core::text::{Text, text, AlignCenter};
-/// # struct Menu {
-/// #     text: Text,
-/// #     selected_entry: usize,
-/// #     active_entry: Option<usize>,
-/// # }
-/// impl Menu {
-///     pub fn shift_selection(&mut self, shift: i32) {
-///         let selected = self.selected_entry as i32 + shift;
-///         self.selected_entry = if selected < 0 {
-///             4
-///         } else if selected > 4 {
-///             0
-///         } else {
-///             selected as usize
-///         };
-///     }
-///
-///     pub fn toggle(&mut self) {
-///         self.active_entry = match self.active_entry {
-///             Some(entry) if entry == self.selected_entry => None,
-///             Some(_) | None => Some(self.selected_entry),
-///         };
-///     }
-///
-///     fn build_text(&mut self) {
-///         let mut builder = Text::builder();
-///         text!(builder, AlignCenter);
-///
-///         for i in 0..5 {
-///             if let Some(active) = self.active_entry
-///                 && active == i
-///             {
-///                 if self.selected_entry == i {
-///                     text!(builder, [MenuSelActive])
-///                 } else {
-///                     text!(builder, [MenuActive])
-///                 }
-///             } else if self.selected_entry == i {
-///                 text!(builder, [MenuSelected]);
-///             } else {
-///                 text!(builder, [MenuInactive]);
-///             }
-///
-///             text!(builder, "Entry " i);
-///         }
-///
-///         self.text = builder.finish();
-///     }
-/// }
-/// ```
-///
-/// By making `shift_selection` and `toggle` `pub`, I can allow an end
-/// user to create their own [`InputMethod`] for this widget.
-///
-/// Let's say that I have created an [`InputMethod`] `MenuInput` for
-/// the `Menu`. This input method is actually the one that is
-/// documented on the documentation entry for [`InputMethod`], you can
-/// check it out next, to see how that was handled.
-///
-/// Now I'll implement [`PassiveWidget`]:
-///
-/// ```rust
-/// # use std::marker::PhantomData;
-/// # use duat_core::{
-/// #     data::RwData, input::{InputMethod, KeyEvent}, forms::{self, Form},
-/// #     text::{text, Text}, ui::{PushSpecs, Ui},
-/// #     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
-/// # };
-/// # #[derive(Default)]
-/// # struct Menu {
-/// #     text: Text,
-/// #     selected_entry: usize,
-/// #     active_entry: Option<usize>,
-/// # }
-/// # impl Menu {
-/// #     fn build_text(&mut self) {
-/// #         todo!();
-/// #     }
-/// # }
-/// # #[derive(Default)]
-/// # struct MenuInput;
-/// # impl<U: Ui> InputMethod<U> for MenuInput {
-/// #     type Widget = Menu;
-/// #     fn send_key(&mut self, _: KeyEvent, _: &RwData<Menu>, _: &U::Area) {
-/// #         todo!();
-/// #     }
-/// # }
-/// struct MenuCfg<U>(PhantomData<U>);
-///
-/// impl<U: Ui> WidgetCfg<U> for MenuCfg<U> {
-///     type Widget = Menu;
-///
-///     fn build(self, on_file: bool) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
-///         let checker = || false;
-///
-///         let mut widget = Menu::default();
-///         widget.build_text();
-///
-///         let input = MenuInput::default();
-///         let specs = PushSpecs::left().with_hor_len(10.0).with_ver_len(5.0);
-///
-///         (Widget::active(widget, input), checker, specs)
-///     }
-/// }
-///
-/// impl<U: Ui> PassiveWidget<U> for Menu {
-///     type Cfg = MenuCfg<U>;
-///
-///     fn cfg() -> Self::Cfg {
-///         MenuCfg(PhantomData)
-///     }
-///
-///     fn text(&self) -> &Text {
-///         &self.text
-///     }
-///
-///     fn once() {
-///         forms::set_weak("MenuInactive", "Inactive");
-///         forms::set_weak("MenuSelected", "Inactive");
-///         forms::set_weak("MenuActive", Form::blue());
-///         forms::set_weak("MenuSelActive", Form::blue());
-///     }
-/// }
-/// # impl<U: Ui> ActiveWidget<U> for Menu {
-/// #     fn text_mut(&mut self) -> &mut Text {
-/// #         &mut self.text
-/// #     }
-/// # }
-/// ```
-///
-/// We can use `let checker = || false` here, since [`ActiveWidget`]s
-/// get automatically updated whenever they are focused and a key is
-/// sent.
-///
-/// Now, all that is needed is an implementation of [`ActiveWidget`]:
-///
-/// ```rust
-/// # use std::marker::PhantomData;
-/// # use duat_core::{
-/// #     data::RwData, input::{InputMethod, KeyEvent}, forms::{self, Form},
-/// #     text::{text, Text}, ui::{PushSpecs, Ui},
-/// #     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
-/// # };
-/// # #[derive(Default)]
-/// # struct Menu {
-/// #     text: Text,
-/// #     selected_entry: usize,
-/// #     active_entry: Option<usize>,
-/// # }
-/// # struct MenuCfg<U>(PhantomData<U>);
-/// # impl<U: Ui> WidgetCfg<U> for MenuCfg<U> {
-/// #     type Widget = Menu;
-/// #     fn build(self, on_file: bool) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
-/// #         (Widget::passive(Menu::default()), || false, PushSpecs::left())
-/// #     }
-/// # }
-/// # impl<U: Ui> PassiveWidget<U> for Menu {
-/// #     type Cfg = MenuCfg<U>;
-/// #     fn cfg() -> Self::Cfg {
-/// #         MenuCfg(PhantomData)
-/// #     }
-/// #     fn text(&self) -> &Text {
-/// #         &self.text
-/// #     }
-/// #     fn once() {}
-/// # }
-/// impl<U: Ui> ActiveWidget<U> for Menu {
-///     fn text_mut(&mut self) -> &mut Text {
-///         &mut self.text
-///     }
-///
-///     fn on_focus(&mut self, _area: &U::Area) {
-///         forms::set_weak("MenuInactive", "Default");
-///         forms::set_weak("MenuSelected", Form::new().on_grey());
-///         forms::set_weak("MenuSelActive", Form::blue().on_grey());
-///     }
-///
-///     fn on_unfocus(&mut self, _area: &U::Area) {
-///         forms::set_weak("MenuInactive", "Inactive");
-///         forms::set_weak("MenuSelected", "Inactive");
-///         forms::set_weak("MenuSelActive", Form::blue());
-///     }
-/// }
-/// ```
-///
-/// Notice that [`ActiveWidget`]s have [`on_focus`] and [`on_unfocus`]
-/// methods, so you can make something happen whenever your widget
-/// becomes focused or unfocused. These methods also provide you with
-/// the [`Area`], so you can do things like [resizing] it.
-///
-/// In this case, I chose to replace the [`Form`]s with "inactive"
-/// variants, to visually show when the widget is not active.
-///
-/// Do also note that [`on_focus`] and [`on_unfocus`] are optional
-/// methods.
-///
-/// [`Cursor`]: crate::input::Cursor
-/// [`print`]: PassiveWidget::print
-/// [`on_focus`]: ActiveWidget::on_focus
-/// [`on_unfocus`]: ActiveWidget::on_unfocus
-/// [resizing]: Area::constrain_ver
-/// [`Form`]: crate::forms::Form
-pub trait ActiveWidget<U>: PassiveWidget<U>
-where
-    U: Ui,
-{
-    /// Returns the [`&mut Text`] that is printed
-    ///
-    /// [`&mut Text`]: Text
-    fn text_mut(&mut self) -> &mut Text;
+// Elements related to the [`Widget`]s
+pub struct Node<U: Ui> {
+    widget: RwData<dyn Widget<U>>,
+    area: U::Area,
+    modes: Modes<U>,
+    cursors: RwData<Option<Cursors>>,
 
-    /// Actions to do whenever this [`ActiveWidget`] is focused.
-    fn on_focus(&mut self, _area: &U::Area) {}
+    checker: Arc<dyn Fn() -> bool>,
+    busy_updating: Arc<AtomicBool>,
 
-    /// Actions to do whenever this [`ActiveWidget`] is unfocused.
-    fn on_unfocus(&mut self, _area: &U::Area) {}
+    related_widgets: Option<RwData<Vec<Node<U>>>>,
+    on_focus: fn(&Node<U>),
+    on_unfocus: fn(&Node<U>),
 }
 
-#[allow(private_interfaces)]
-trait ActiveHolder<U>: Send + Sync
-where
-    U: Ui,
-{
-    // General widget methods
-    fn passive_widget(&self) -> &RwData<dyn PassiveWidget<U>>;
+impl<U: Ui> Node<U> {
+    pub fn new<W: Widget<U>>(
+        widget: RwData<dyn Widget<U>>,
+        area: U::Area,
+        checker: impl Fn() -> bool + 'static,
+    ) -> Self {
+        let (cursors, related_widgets) = widget
+            .inspect_as(|file: &File| {
+                let cursors = crate::cache::load_cache::<Cursors>(file.path());
+                let related = RwData::default();
+                (cursors.unwrap_or_default(), related)
+            })
+            .unzip();
 
-    /// Updates the widget, allowing the modification of its
-    /// [`Area`][Ui::Area].
-    ///
-    /// This function will be called when Duat determines that the
-    /// [`WidgetNode`]
-    ///
-    /// [`Session`]: crate::session::Session
-    fn update_and_print(&self, area: &U::Area);
+        Self {
+            widget,
+            area,
+            modes: Modes::new(),
+            cursors: RwData::new(cursors),
 
-    fn update(&self, area: &U::Area);
+            checker: Arc::new(checker),
+            busy_updating: Arc::new(AtomicBool::new(false)),
 
-    fn type_name(&self) -> &'static str;
-
-    // Active widget methods
-    fn active_widget(&self) -> &RwData<dyn ActiveWidget<U>>;
-
-    fn input(&self) -> &RwData<dyn InputMethod<U>>;
-
-    fn send_key(&self, key: KeyEvent, area: &U::Area);
-
-    fn on_focus(&self, area: &U::Area);
-
-    fn on_unfocus(&self, area: &U::Area);
-
-    fn related_widgets(&self) -> Option<RelatedWidgets<U>>;
-}
-
-struct InnerActiveWidget<W, I, U>
-where
-    W: ActiveWidget<U>,
-    I: InputMethod<U, Widget = W>,
-    U: Ui,
-{
-    widget: RwData<W>,
-    dyn_active: RwData<dyn ActiveWidget<U>>,
-    dyn_passive: RwData<dyn PassiveWidget<U>>,
-    input: RwData<I>,
-    dyn_input: RwData<dyn InputMethod<U>>,
-    related: Option<RelatedWidgets<U>>,
-}
-
-impl<W, I, U> ActiveHolder<U> for InnerActiveWidget<W, I, U>
-where
-    W: ActiveWidget<U>,
-    I: InputMethod<U, Widget = W>,
-    U: Ui,
-{
-    fn passive_widget(&self) -> &RwData<dyn PassiveWidget<U>> {
-        &self.dyn_passive
-    }
-
-    fn update_and_print(&self, area: &U::Area) {
-        let mut widget = self.widget.raw_write();
-        widget.update(area);
-        widget.print(area);
-    }
-
-    fn update(&self, area: &<U as Ui>::Area) {
-        self.widget.raw_write().update(area)
-    }
-
-    fn type_name(&self) -> &'static str {
-        duat_name::<W>()
-    }
-
-    fn active_widget(&self) -> &RwData<dyn ActiveWidget<U>> {
-        &self.dyn_active
-    }
-
-    fn input(&self) -> &RwData<dyn InputMethod<U>> {
-        &self.dyn_input
-    }
-
-    fn send_key(&self, key: KeyEvent, area: &<U as Ui>::Area) {
-        let mut input = self.input.write();
-
-        if let Some(cursors) = input.cursors() {
-            self.widget.write().text_mut().remove_cursor_tags(cursors);
-        }
-
-        hooks::trigger::<KeySent<U>>((key, self.dyn_active.clone()));
-        hooks::trigger::<KeySentTo<W, U>>((key, self.widget.clone()));
-
-        input.send_key(key, &self.widget, area);
-
-        let mut widget = self.widget.write();
-
-        if let Some(cursors) = input.cursors() {
-            widget.text_mut().add_cursor_tags(cursors);
-
-            area.scroll_around_point(widget.text(), cursors.main().caret(), widget.print_cfg());
-        }
-
-        widget.update(area);
-        widget.print(area);
-    }
-
-    fn on_focus(&self, area: &<U as Ui>::Area) {
-        self.input.inspect(|input| {
-            if let Some(cursors) = input.cursors() {
-                self.widget.write().text_mut().remove_cursor_tags(cursors);
-            }
-        });
-
-        self.input.mutate(|input| input.on_focus(area));
-        self.widget.mutate(|widget| widget.on_focus(area));
-
-        hooks::trigger::<FocusedOn<W, U>>((
-            self.widget.clone(),
-            self.dyn_input.clone(),
-            area.clone(),
-        ));
-    }
-
-    fn on_unfocus(&self, area: &<U as Ui>::Area) {
-        self.input.inspect(|input| {
-            if let Some(cursors) = input.cursors() {
-                self.widget.write().text_mut().remove_cursor_tags(cursors);
-            }
-        });
-
-        self.input.mutate(|input| input.on_unfocus(area));
-        self.widget.mutate(|widget| widget.on_unfocus(area));
-
-        hooks::trigger::<UnfocusedFrom<W, U>>((
-            self.widget.clone(),
-            self.dyn_input.clone(),
-            area.clone(),
-        ));
-    }
-
-    fn related_widgets(&self) -> Option<RelatedWidgets<U>> {
-        self.related.clone()
-    }
-}
-
-#[allow(private_interfaces)]
-pub enum Widget<U>
-where
-    U: Ui,
-{
-    Passive(RwData<dyn PassiveWidget<U>>, &'static str),
-    Active(Arc<dyn ActiveHolder<U>>),
-}
-
-impl<U> Clone for Widget<U>
-where
-    U: Ui,
-{
-    fn clone(&self) -> Self {
-        match self {
-            Self::Passive(widget, name) => Self::Passive(widget.clone(), name),
-            Self::Active(widget) => Self::Active(widget.clone()),
+            related_widgets,
+            on_focus: Self::on_focus_fn::<W>,
+            on_unfocus: Self::on_unfocus_fn::<W>,
         }
     }
-}
 
-impl<U> Widget<U>
-where
-    U: Ui,
-{
-    pub fn passive<W>(widget: W) -> Self
-    where
-        W: PassiveWidget<U>,
-    {
-        Widget::Passive(
-            RwData::new_unsized::<W>(Arc::new(RwLock::new(widget))),
-            duat_name::<W>(),
-        )
-    }
-
-    pub fn active<W, I>(widget: W, input: I) -> Self
-    where
-        W: ActiveWidget<U>,
-        I: InputMethod<U, Widget = W>,
-    {
-        let dyn_active: RwData<dyn ActiveWidget<U>> =
-            RwData::new_unsized::<W>(Arc::new(RwLock::new(widget)));
-        let dyn_passive = dyn_active.clone().to_passive();
-
-        let dyn_input: RwData<dyn InputMethod<U>> =
-            RwData::new_unsized::<I>(Arc::new(RwLock::new(input)));
-        let input = dyn_input.try_downcast::<I>().unwrap();
-
-        if let Some(file) = dyn_active.try_downcast::<File>()
-            && let Some(cursors) = input.read().cursors()
-        {
-            ActiveWidget::<U>::text_mut(&mut *file.write()).add_cursor_tags(cursors)
-        }
-
-        let inner = InnerActiveWidget {
-            widget: dyn_active.clone().try_downcast::<W>().unwrap(),
-            dyn_active,
-            dyn_passive,
-            input,
-            dyn_input,
-            related: if TypeId::of::<W>() == TypeId::of::<File>() {
-                Some(RwData::new(Vec::new()))
-            } else {
-                None
-            },
-        };
-
-        Widget::Active(Arc::new(inner))
-    }
-
-    pub fn update_and_print(&self, area: &U::Area) {
-        match self {
-            Widget::Passive(widget, _) => {
-                let mut widget = widget.raw_write();
-                widget.update(area);
-                widget.print(area);
-            }
-            Widget::Active(holder) => {
-                holder.update_and_print(area);
-            }
-        }
+    pub fn widget(&self) -> &RwData<dyn Widget<U>> {
+        &self.widget
     }
 
     /// Returns the downcast ref of this [`Widget`].
-    pub fn downcast<W>(&self) -> Option<RwData<W>>
-    where
-        W: PassiveWidget<U>,
-    {
-        match self {
-            Widget::Passive(widget, _) => widget.clone().try_downcast::<W>(),
-            Widget::Active(holder) => holder.active_widget().clone().try_downcast::<W>(),
-        }
+    pub fn try_downcast<W>(&self) -> Option<RwData<W>> {
+        self.widget.try_downcast()
     }
 
-    pub fn data_is<W>(&self) -> bool
-    where
-        W: 'static,
-    {
-        match self {
-            Widget::Passive(widget, _) => widget.data_is::<W>(),
-            Widget::Active(holder) => holder.active_widget().data_is::<W>(),
-        }
+    pub fn data_is<W: 'static>(&self) -> bool {
+        self.widget.data_is::<W>()
     }
 
-    pub fn inspect_as<W, B>(&self, f: impl FnOnce(&W) -> B) -> Option<B>
-    where
-        W: PassiveWidget<U>,
-    {
-        match self {
-            Widget::Passive(widget, _) => widget.inspect_as::<W, B>(f),
-            Widget::Active(holder) => holder.active_widget().inspect_as::<W, B>(f),
-        }
+    pub fn update_and_print(&self) {
+        self.busy_updating.store(true, Ordering::Release);
+
+        let mut widget = self.widget.raw_write();
+        widget.update(&self.area);
+        widget.print(&self.area);
+
+        self.busy_updating.store(false, Ordering::Release);
     }
 
-    pub fn as_passive(&self) -> &RwData<dyn PassiveWidget<U>> {
-        match self {
-            Widget::Passive(widget, _) => widget,
-            Widget::Active(holder) => holder.passive_widget(),
-        }
-    }
-
-    pub fn as_active(&self) -> Option<(&RwData<dyn ActiveWidget<U>>, &RwData<dyn InputMethod<U>>)> {
-        match self {
-            Widget::Active(holder) => Some((holder.active_widget(), holder.input())),
-            _ => None,
-        }
-    }
-
-    pub fn input(&self) -> Option<&RwData<dyn InputMethod<U>>> {
-        match self {
-            Widget::Passive(..) => None,
-            Widget::Active(holder) => Some(holder.input()),
-        }
+    pub fn inspect_as<W: 'static, B>(&self, f: impl FnOnce(&W) -> B) -> Option<B> {
+        self.widget.inspect_as(f)
     }
 
     pub fn ptr_eq<W, D>(&self, other: &D) -> bool
@@ -945,61 +510,182 @@ where
         W: ?Sized,
         D: Data<W> + ?Sized,
     {
-        match self {
-            Widget::Passive(widget, _) => widget.ptr_eq(other),
-            Widget::Active(holder) => holder.active_widget().ptr_eq(other),
+        self.widget.ptr_eq(other)
+    }
+
+    pub fn needs_update(&self) -> bool {
+        if !self.busy_updating.load(Ordering::Acquire) {
+            (self.checker)() || self.area.has_changed()
+        } else {
+            false
         }
     }
 
-    pub fn update(&self, area: &U::Area) {
-        match self {
-            Widget::Passive(widget, _) => widget.raw_write().update(area),
-            Widget::Active(holder) => holder.update(area),
-        }
+    pub(crate) fn update(&self) {
+        self.widget.write().update(&self.area)
     }
 
-    pub fn type_name(&self) -> &'static str {
-        match self {
-            Widget::Passive(_, name) => name,
-            Widget::Active(holder) => holder.type_name(),
-        }
+    pub(crate) fn as_active(
+        &self,
+    ) -> (
+        &RwData<dyn Widget<U>>,
+        &U::Area,
+        &Modes<U>,
+        &RwData<Option<Cursors>>,
+    ) {
+        // Since this function is only ever used on widgets that became active
+        // via `command::set_mode`, tecnically speaking, every widget is
+        // active, so no need to return an `Option`.
+        (&self.widget, &self.area, &self.modes, &self.cursors)
     }
 
-    pub(crate) fn on_focus(&self, area: &U::Area) {
-        match self {
-            Widget::Passive(..) => {}
-            Widget::Active(holder) => holder.on_focus(area),
-        }
+    pub(crate) fn as_file(&self) -> Option<FileParts<U>> {
+        self.widget.try_downcast().map(|file| {
+            (
+                file,
+                self.area.clone(),
+                self.modes.clone(),
+                self.cursors.clone(),
+                self.related_widgets.clone().unwrap(),
+            )
+        })
     }
 
-    pub(crate) fn on_unfocus(&self, area: &U::Area) {
-        match self {
-            Widget::Passive(..) => {}
-            Widget::Active(holder) => holder.on_unfocus(area),
-        }
+    pub(crate) fn on_focus(&self) {
+        self.area.set_as_active();
+        (self.on_focus)(self)
     }
 
-    pub(crate) fn send_key(&self, key: KeyEvent, area: &U::Area) {
-        match self {
-            Widget::Passive(..) => unreachable!("Sending keys to passive widgets is impossible"),
-            Widget::Active(holder) => holder.send_key(key, area),
-        }
+    pub(crate) fn on_unfocus(&self) {
+        (self.on_unfocus)(self)
     }
 
-    pub(crate) fn raw_inspect<B>(&self, f: impl FnOnce(&dyn PassiveWidget<U>) -> B) -> B {
-        match self {
-            Widget::Passive(widget, _) => f(&*widget.raw_read()),
-            Widget::Active(holder) => f(&*holder.active_widget().raw_read()),
-        }
+    pub(crate) fn raw_inspect<B>(&self, f: impl FnOnce(&dyn Widget<U>) -> B) -> B {
+        let widget = self.widget.raw_read();
+        f(&*widget)
     }
 
-    pub(crate) fn related_widgets(&self) -> Option<RelatedWidgets<U>> {
-        match self {
-            Widget::Passive(..) => None,
-            Widget::Active(holder) => holder.related_widgets(),
+    pub(crate) fn area(&self) -> &U::Area {
+        &self.area
+    }
+
+    pub(crate) fn related_widgets(&self) -> Option<&RwData<Vec<Node<U>>>> {
+        self.related_widgets.as_ref()
+    }
+
+    fn on_focus_fn<W: Widget<U>>(&self) {
+        self.cursors.inspect(|c| {
+            if let Some(c) = c.as_ref() {
+                let mut widget = self.widget.write();
+                widget.text_mut().remove_cursor_tags(c);
+            }
+        });
+
+        self.modes.mutate_cur(|m| m.on_focus(&self.area));
+        self.widget.write().on_focus(&self.area);
+
+        let widget = self.widget.try_downcast().unwrap();
+
+        hooks::trigger::<FocusedOn<W, U>>((widget, self.cursors.clone(), self.area.clone()));
+    }
+
+    fn on_unfocus_fn<W: Widget<U>>(&self) {
+        self.cursors.inspect(|c| {
+            if let Some(c) = c.as_ref() {
+                let mut widget = self.widget.write();
+                widget.text_mut().remove_cursor_tags(c);
+            }
+        });
+
+        self.modes.mutate_cur(|m| m.on_unfocus(&self.area));
+        self.widget.write().on_unfocus(&self.area);
+
+        let widget = self.widget.try_downcast().unwrap();
+
+        hooks::trigger::<UnfocusedFrom<W, U>>((widget, self.cursors.clone(), self.area.clone()));
+    }
+}
+
+impl<U: Ui> Clone for Node<U> {
+    fn clone(&self) -> Self {
+        Self {
+            widget: self.widget.clone(),
+            area: self.area.clone(),
+            modes: self.modes.clone(),
+            cursors: self.cursors.clone(),
+            checker: self.checker.clone(),
+            busy_updating: self.busy_updating.clone(),
+            related_widgets: self.related_widgets.clone(),
+            on_focus: self.on_focus,
+            on_unfocus: self.on_unfocus,
         }
     }
 }
 
-pub type RelatedWidgets<U> =
-    RwData<Vec<(RwData<dyn PassiveWidget<U>>, <U as Ui>::Area, &'static str)>>;
+unsafe impl<U: Ui> Send for Node<U> {}
+unsafe impl<U: Ui> Sync for Node<U> {}
+
+pub struct Modes<U: Ui> {
+    cur: Arc<AtomicUsize>,
+    list: RwData<Vec<RwData<dyn Mode<U>>>>,
+}
+
+impl<U: Ui> Modes<U> {
+    fn new() -> Self {
+        Self {
+            cur: Arc::new(AtomicUsize::new(0)),
+            list: RwData::default(),
+        }
+    }
+
+    pub fn cur(&self) -> RwData<dyn Mode<U>> {
+        let list = self.list.read();
+        list.get(self.cur.load(Ordering::Relaxed)).unwrap().clone()
+    }
+
+    pub fn mutate_cur<R>(&self, f: impl FnOnce(&mut dyn Mode<U>) -> R) -> R {
+        let list = self.list.read();
+        let mut main = list[self.cur.load(Ordering::Relaxed)].write();
+        f(&mut *main)
+    }
+
+    pub fn has<I: 'static>(&self) -> bool {
+        let list = self.list.read();
+        list.iter().any(RwData::data_is::<I>)
+    }
+
+    pub fn mutate_as<I: 'static, R>(&self, f: impl FnOnce(&mut I) -> R) -> Option<R> {
+        let list = self.list.read();
+        list.iter()
+            .find(|i| i.data_is::<I>())
+            .and_then(|i| i.mutate_as(f))
+    }
+
+    pub fn try_downcast<I: 'static>(&self) -> Option<RwData<I>> {
+        let list = self.list.read();
+        list.iter().find_map(|i| i.try_downcast())
+    }
+
+    pub fn add_set<M: Mode<U>>(&self) {
+        let mut list = self.list.write();
+
+        let i = match list.iter().position(RwData::data_is::<M>) {
+            Some(i) => i,
+            None => {
+                list.push(RwData::new_unsized::<M>(Arc::new(RwLock::new(M::new()))));
+                list.len() - 1
+            }
+        };
+
+        self.cur.store(i, Ordering::Relaxed);
+    }
+}
+
+impl<U: Ui> Clone for Modes<U> {
+    fn clone(&self) -> Self {
+        Self {
+            cur: self.cur.clone(),
+            list: self.list.clone(),
+        }
+    }
+}

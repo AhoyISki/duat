@@ -1,5 +1,5 @@
 use std::{
-    any::TypeId,
+    any::{Any, TypeId},
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -7,10 +7,6 @@ use std::{
 };
 
 use super::{Data, RoData, RwLock, RwLockReadGuard, RwLockWriteGuard, private::InnerData};
-use crate::{
-    ui::Ui,
-    widgets::{ActiveWidget, PassiveWidget},
-};
 
 /// A read write shared reference to data
 pub struct RwData<T>
@@ -539,9 +535,9 @@ where
     /// [`RwData<dyn Trait>`]: RwData
     pub fn data_is<U>(&self) -> bool
     where
-        U: 'static,
+        U: ?Sized + 'static,
     {
-        self.type_id == TypeId::of::<U>()
+        self.data.type_id() == TypeId::of::<Arc<RwLock<U>>>() || self.type_id == TypeId::of::<U>()
     }
 
     /// Tries to downcast to a concrete type
@@ -582,13 +578,13 @@ where
     {
         if self.data_is::<U>() {
             let Self { data, cur_state, read_state, .. } = self.clone();
-            let pointer = Arc::into_raw(data);
-            let data = unsafe { Arc::from_raw(pointer.cast::<RwLock<U>>()) };
+            let ptr = Arc::into_raw(data);
+            let data = unsafe { Arc::from_raw(ptr.cast()) };
             Some(RwData {
                 data,
                 cur_state,
                 read_state,
-                type_id: TypeId::of::<U>(),
+                type_id: self.type_id,
             })
         } else {
             None
@@ -710,20 +706,6 @@ where
 
     fn read_state(&self) -> &AtomicUsize {
         &self.read_state
-    }
-}
-
-impl<U> RwData<dyn ActiveWidget<U>>
-where
-    U: Ui,
-{
-    pub fn to_passive(self) -> RwData<dyn PassiveWidget<U>> {
-        RwData {
-            data: self.data as Arc<RwLock<dyn PassiveWidget<U>>>,
-            cur_state: self.cur_state.clone(),
-            read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1),
-            type_id: self.type_id,
-        }
     }
 }
 

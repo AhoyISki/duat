@@ -69,9 +69,9 @@ use parking_lot::{Mutex, RwLock};
 pub use self::global::*;
 use crate::{
     data::RwData,
-    input::{InputMethod, KeyEvent},
+    input::{Cursors, KeyEvent},
     ui::{FileBuilder, Ui, WindowBuilder},
-    widgets::ActiveWidget,
+    widgets::Widget,
 };
 
 pub struct SessionStarted<U: Ui>(PhantomData<U>);
@@ -116,24 +116,17 @@ impl<U: Ui> Hookable for OnWindowOpen<U> {
 /// - The widget itself.
 ///
 /// [`widget`]: crate::widgets::ActiveWidget
-pub struct FocusedOn<W, U>(PhantomData<(W, U)>)
-where
-    W: ActiveWidget<U>,
-    U: Ui;
+pub struct FocusedOn<W: Widget<U>, U: Ui>(PhantomData<(W, U)>);
 
-impl<W, U> Hookable for FocusedOn<W, U>
-where
-    W: ActiveWidget<U>,
-    U: Ui,
-{
-    type Args = (RwData<W>, RwData<dyn InputMethod<U>>, U::Area);
+impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
+    type Args = (RwData<W>, RwData<Option<Cursors>>, U::Area);
 
     fn post_hook(args: &Self::Args) {
-        let (widget, input, area) = args;
-        let input = input.read();
+        let (widget, cursors, area) = args;
+        let cursors = cursors.read();
         let mut widget = widget.write();
 
-        if let Some(cursors) = input.cursors() {
+        if let Some(cursors) = cursors.as_ref() {
             widget.text_mut().add_cursor_tags(cursors);
         }
 
@@ -149,24 +142,17 @@ where
 /// - The widget itself.
 ///
 /// [`widget`]: crate::widgets::ActiveWidget
-pub struct UnfocusedFrom<W, U>(PhantomData<(W, U)>)
-where
-    W: ActiveWidget<U>,
-    U: Ui;
+pub struct UnfocusedFrom<W: Widget<U>, U: Ui>(PhantomData<(W, U)>);
 
-impl<W, U> Hookable for UnfocusedFrom<W, U>
-where
-    W: ActiveWidget<U>,
-    U: Ui,
-{
-    type Args = (RwData<W>, RwData<dyn InputMethod<U>>, U::Area);
+impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
+    type Args = (RwData<W>, RwData<Option<Cursors>>, U::Area);
 
     fn post_hook(args: &Self::Args) {
-        let (widget, input, area) = args;
-        let input = input.read();
+        let (widget, cursors, area) = args;
+        let cursors = cursors.read();
         let mut widget = widget.write();
 
-        if let Some(cursors) = input.cursors() {
+        if let Some(cursors) = cursors.as_ref() {
             widget.text_mut().add_cursor_tags(cursors);
         }
 
@@ -187,7 +173,7 @@ where
 pub struct KeySent<U: Ui>(PhantomData<U>);
 
 impl<U: Ui> Hookable for KeySent<U> {
-    type Args = (KeyEvent, RwData<dyn ActiveWidget<U>>);
+    type Args = (KeyEvent, RwData<dyn Widget<U>>);
 }
 
 /// Triggers whenever a [key] is sent to `W`
@@ -198,16 +184,9 @@ impl<U: Ui> Hookable for KeySent<U> {
 /// - An [`RwData<W>`] for the widget active when the key was sent.
 ///
 /// [key]: KeyEvent
-pub struct KeySentTo<W, U>(PhantomData<(&'static W, U)>)
-where
-    W: ActiveWidget<U> + ?Sized,
-    U: Ui;
+pub struct KeySentTo<W: Widget<U>, U: Ui>(PhantomData<(&'static W, U)>);
 
-impl<W, U> Hookable for KeySentTo<W, U>
-where
-    W: ActiveWidget<U> + ?Sized,
-    U: Ui,
-{
+impl<W: Widget<U>, U: Ui> Hookable for KeySentTo<W, U> {
     type Args = (KeyEvent, RwData<W>);
 }
 
@@ -231,11 +210,11 @@ mod global {
     /// Adds a grouped [hook]
     ///
     /// A grouped hook is one that, along with others on the same
-    /// group, can be removed by [`hooks::remove_group`]. If you do
+    /// group, can be removed by [`hooks::remove`]. If you do
     /// not need/want this feature, take a look at [`hooks::add`]
     ///
     /// [hook]: Hookable
-    /// [`hooks::remove_group`]: remove_group
+    /// [`hooks::remove`]: remove
     /// [`hooks::add`]: add
     pub fn add_grouped<H: Hookable>(group: &'static str, f: impl FnMut(&H::Args) + Send + 'static) {
         crate::thread::queue(move || HOOKS.add::<H>(group, f))
@@ -248,7 +227,7 @@ mod global {
     ///
     /// [hook]: Hookable
     /// [`hooks::add_grouped`]: add_grouped
-    pub fn remove_group(group: &'static str) {
+    pub fn remove(group: &'static str) {
         crate::thread::queue(move || HOOKS.remove(group));
     }
 
@@ -272,11 +251,11 @@ mod global {
     /// Checks if a give group exists
     ///
     /// Returns `true` if said group was added via
-    /// [`hooks::add_grouped`], and no [`hooks::remove_group`]
+    /// [`hooks::add_grouped`], and no [`hooks::remove`]
     /// followed these additions
     ///
     /// [`hooks::add_grouped`]: add_grouped
-    /// [`hooks::remove_group`]: remove_group
+    /// [`hooks::remove`]: remove
     pub fn group_exists(group: &'static str) -> bool {
         HOOKS.group_exists(group)
     }
@@ -303,16 +282,14 @@ pub trait Hookable: Sized + 'static {
 /// An intermediary trait, meant for group removal
 trait HookHolder: Send + Sync {
     /// Remove the given group from hooks of this holder
-    fn remove_group(&mut self, group: &str);
+    fn remove(&mut self, group: &str);
 }
 
 /// An intermediary struct, meant to hold the hooks of a [`Hookable`]
-struct HooksOf<H>(Mutex<Vec<Hook<H>>>)
-where
-    H: Hookable;
+struct HooksOf<H: Hookable>(Mutex<Vec<Hook<H>>>);
 
 impl<H: Hookable> HookHolder for HooksOf<H> {
-    fn remove_group(&mut self, group: &str) {
+    fn remove(&mut self, group: &str) {
         let mut hooks = None;
         while hooks.is_none() {
             hooks = self.0.try_lock();
@@ -370,7 +347,7 @@ impl Hooks {
         self.groups.write().extract_if(|g| *g == group).next();
         let mut map = self.types.write();
         for holder in map.iter_mut() {
-            holder.1.remove_group(group)
+            holder.1.remove(group)
         }
     }
 

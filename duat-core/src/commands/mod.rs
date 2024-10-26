@@ -2,6 +2,7 @@
 //!
 //! TO BE DONE
 use std::{
+    any::type_name,
     collections::HashMap,
     fmt::Display,
     sync::{Arc, LazyLock},
@@ -15,10 +16,9 @@ pub use self::{
 use crate::{
     Error, context,
     data::{RwData, RwLock},
-    duat_name,
     text::{Text, err, ok, text},
     ui::{Ui, Window},
-    widgets::PassiveWidget,
+    widgets::{File, Node, Widget},
 };
 
 mod parameters;
@@ -30,7 +30,7 @@ mod global {
         data::RwData,
         text::Text,
         ui::{Ui, Window},
-        widgets::{CommandLine, CommandLineMode, PassiveWidget},
+        widgets::{CommandLine, CommandLineMode, Widget},
     };
 
     static COMMANDS: Commands = Commands::new();
@@ -131,14 +131,14 @@ mod global {
                 let cur_window = &windows[w];
 
                 let mut widgets = {
-                    let previous = windows[..w].iter().flat_map(Window::widgets);
-                    let following = windows[(w + 1)..].iter().flat_map(Window::widgets);
-                    cur_window.widgets().chain(previous).chain(following)
+                    let previous = windows[..w].iter().flat_map(Window::nodes);
+                    let following = windows[(w + 1)..].iter().flat_map(Window::nodes);
+                    cur_window.nodes().chain(previous).chain(following)
                 };
 
-                if let Some(cmd_line) = widgets.find_map(|(w, _)| {
-                    w.data_is::<CommandLine<U>>()
-                        .then(|| w.downcast::<CommandLine<U>>().unwrap())
+                if let Some(cmd_line) = widgets.find_map(|node| {
+                    node.data_is::<CommandLine<U>>()
+                        .then(|| node.try_downcast::<CommandLine<U>>().unwrap())
                 }) {
                     cmd_line.write().set_mode::<M>()
                 }
@@ -217,8 +217,8 @@ mod global {
 
     /// Adds a command to an object "related" to the current [`File`]
     ///
-    /// This object can be one of three things, a [`PassiveWidget`],
-    /// an [`InputMethod`], or the [`File`] itself. When the
+    /// This object can be one of three things, a [`Widget`],
+    /// an [`Mode`], or the [`File`] itself. When the
     /// command is executed, Duat will look at the currently active
     /// file for any instance of an [`RwData<Thing>`] it can find.
     /// Those will either be the file itself, or will be added in
@@ -230,7 +230,7 @@ mod global {
     /// # use duat_core::{
     /// #     commands::{self, Result},
     /// #     data::RwData,
-    /// #     input::InputMethod,
+    /// #     input::Mode,
     /// #     text::{Text, text},
     /// #     ui::Ui,
     /// #     widgets::File
@@ -248,7 +248,7 @@ mod global {
     ///     mode: Mode,
     /// }
     ///
-    /// impl<U: Ui> InputMethod<U> for ModalEditor {
+    /// impl<U: Ui> Mode<U> for ModalEditor {
     ///     /* Implementation details. */
     /// # type Widget = File;
     /// # fn send_key(
@@ -290,7 +290,7 @@ mod global {
     /// ```
     ///
     /// [`File`]: crate::widgets::File
-    /// [`InputMethod`]: crate::input::InputMethod
+    /// [`Mode`]: crate::input::Mode
     /// [`Session`]: crate::session::Session
     pub fn add_for_current<T: 'static, U: Ui>(
         callers: impl IntoIterator<Item = impl ToString>,
@@ -302,7 +302,7 @@ mod global {
     /// Adds a command that can mutate a widget of the given type,
     /// along with its associated [`dyn Area`].
     ///
-    /// This command will look for the [`PassiveWidget`] in the
+    /// This command will look for the [`Widget`] in the
     /// following order:
     ///
     /// 1. Any widget directly attached to the current file.
@@ -330,7 +330,7 @@ mod global {
     /// # };
     /// # use duat_core::{
     /// #     commands, forms::{self, Form}, text::{text, Text, AlignCenter},
-    /// #     ui::{Area, PushSpecs, Ui}, widgets::{PassiveWidget, Widget, WidgetCfg},
+    /// #     ui::{Area, PushSpecs, Ui}, widgets::{Widget, Widget, WidgetCfg},
     /// # };
     /// struct Timer {
     ///     text: Text,
@@ -367,7 +367,7 @@ mod global {
     ///     }
     /// }
     ///
-    /// impl<U: Ui> PassiveWidget<U> for Timer {
+    /// impl<U: Ui> Widget<U> for Timer {
     ///     type Cfg = TimerCfg<U>;
     ///
     ///     fn cfg() -> Self::Cfg {
@@ -388,7 +388,7 @@ mod global {
     ///         &self.text
     ///     }
     ///
-    ///     // The `once` function of a `PassiveWidget` is only called
+    ///     // The `once` function of a `Widget` is only called
     ///     // when that widget is first created.
     ///     // It is generally useful to add commands and set forms
     ///     // in the `palette`.
@@ -434,7 +434,7 @@ mod global {
     /// [`File`]: crate::widgets::File
     /// [`Session`]: crate::session::Session
     /// [`CommandLine`]: crate::widgets::CommandLine
-    pub fn add_for_widget<W: PassiveWidget<U>, U: Ui>(
+    pub fn add_for_widget<W: Widget<U>, U: Ui>(
         callers: impl IntoIterator<Item = impl ToString>,
         f: impl FnMut(&RwData<W>, &U::Area, Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
@@ -447,21 +447,32 @@ mod global {
 }
 
 mod control {
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::{
+        any::TypeId,
+        path::PathBuf,
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            mpsc,
+        },
+    };
 
+    use crossterm::event::KeyEvent;
     use parking_lot::Mutex;
 
-    use crate::{duat_name, ui::Ui, widgets::ActiveWidget};
+    use super::{file_entry, widget_entry};
+    use crate::{
+        commands::{self, iter_around, iter_around_rev},
+        context,
+        input::Mode,
+        text::{Text, err, ok},
+        ui::{Event, Ui, Window},
+        widgets::{File, Node},
+    };
 
+    static SEND_KEY: Mutex<fn(KeyEvent)> = Mutex::new(drop_key);
+    static RESET_MODE: Mutex<fn()> = Mutex::new(empty);
+    static SET_MODE: Mutex<Option<fn()>> = Mutex::new(None);
     static HAS_ENDED: AtomicBool = AtomicBool::new(false);
-    static SWITCH_TO: Mutex<Option<SwitchTo>> = Mutex::new(None);
-
-    /// A request to switch widgets
-    pub(crate) enum SwitchTo {
-        ActiveFile,
-        File(String),
-        Widget(&'static str),
-    }
 
     /// Returns `true` if Duat must quit/reload
     ///
@@ -471,33 +482,38 @@ mod control {
         HAS_ENDED.load(Ordering::Relaxed)
     }
 
-    /// Switches to the given [`ActiveWidget`].
-    ///
-    /// The widget will be chosen in the following order:
-    ///
-    /// 1. The first of said widget pushed to the current [`File`].
-    /// 2. Other instances of it in the current window.
-    /// 3. Instances in other windows.
-    ///
-    /// [`File`]: crate::widgets::File
-    /// [`Session`]: crate::session::Session
-    pub fn switch_to<W: ActiveWidget<U>, U: Ui>() {
-        *SWITCH_TO.lock() = Some(SwitchTo::Widget(duat_name::<W>()))
+    pub fn was_mode_set() -> Option<fn()> {
+        SET_MODE.lock().take()
     }
 
-    /// Returns to the active file
-    ///
-    /// You will want to do this if the current widget is a non file
-    /// widget, like [`CommandLine`].
-    ///
-    /// [`CommandLine`]: crate::widgets::CommandLine
-    pub fn return_to_file() {
-        *SWITCH_TO.lock() = Some(SwitchTo::ActiveFile);
+    pub fn set_default_mode<M: Mode<U>, U: Ui>() {
+        *RESET_MODE.lock() = set_mode::<M, U>;
+        *SET_MODE.lock() = Some(set_mode::<M, U>);
+        *SEND_KEY.lock() = send_key_fn::<M, U>;
+    }
+
+    pub fn reset_mode() {
+        *SET_MODE.lock() = Some(*RESET_MODE.lock())
+    }
+
+    pub fn set_mode<M: Mode<U>, U: Ui>() {
+        *SET_MODE.lock() = Some(set_mode_fn::<M, U>);
     }
 
     /// Switches to the file with the given name
-    pub fn switch_to_file(file: impl std::fmt::Display) {
-        *SWITCH_TO.lock() = Some(SwitchTo::File(file.to_string()))
+    pub fn switch_to_file<U: Ui>(name: impl std::fmt::Display) {
+        let windows = context::windows::<U>().read();
+        let name = name.to_string();
+        match file_entry(&windows, &name) {
+            Ok((_, node)) => switch_widget(node.clone()),
+            Err(_) => todo!(),
+        }
+
+        *SET_MODE.lock() = Some(*RESET_MODE.lock());
+    }
+
+    pub(crate) fn send_key(key: KeyEvent) {
+        SEND_KEY.lock()(key)
     }
 
     /// Ends duat, either for reloading the config, or quitting
@@ -505,10 +521,219 @@ mod control {
         HAS_ENDED.store(true, Ordering::Relaxed)
     }
 
-    /// A requested widget switch, if any was called
-    pub(crate) fn requested_switch() -> Option<SwitchTo> {
-        SWITCH_TO.lock().take()
+    pub(crate) fn switch_widget<U: Ui>(node: Node<U>) {
+        if let Ok(widget) = context::cur_widget::<U>() {
+            widget.node().on_unfocus();
+        }
+
+        context::cur_widget().unwrap().set(node.clone());
+
+        if let Some(file_parts) = node.as_file() {
+            context::cur_file().unwrap().set(file_parts);
+        }
+
+        node.on_focus();
     }
+
+    pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<Event>) -> crate::Result<(), ()> {
+        commands::add(["quit", "q"], {
+            let tx = tx.clone();
+
+            move |_flags, _args| {
+                tx.send(Event::Quit).unwrap();
+                Ok(None)
+            }
+        })?;
+
+        commands::add(["write", "w"], move |_flags, mut args| {
+            let file = context::cur_file::<U>()?;
+
+            let paths = {
+                let mut paths = Vec::new();
+
+                while let Ok(arg) = args.next() {
+                    paths.push(arg.to_string());
+                }
+
+                paths
+            };
+
+            if paths.is_empty() {
+                file.inspect(|file, _, _, _| {
+                    if let Some(name) = file.set_name() {
+                        let bytes = file.write()?;
+                        ok!("Wrote " [*a] bytes [] " bytes to " [*a] name [] ".")
+                    } else {
+                        Err(err!("Give the file a name, to write it with"))
+                    }
+                })
+            } else {
+                file.inspect(|file, _, _, _| {
+                    let mut bytes = 0;
+                    for path in &paths {
+                        bytes = file.write_to(path)?;
+                    }
+
+                    let files_text = {
+                        let mut builder = Text::builder();
+                        ok!(builder, [*a] { &paths[0] });
+
+                        for path in paths.iter().skip(1).take(paths.len() - 1) {
+                            ok!(builder, [] ", " [*a] path)
+                        }
+
+                        if paths.len() > 1 {
+                            ok!(builder, [] " and " [*a] { paths.last().unwrap() })
+                        }
+
+                        builder.finish()
+                    };
+
+                    ok!("Wrote " [*a] bytes [] " bytes to " files_text [] ".")
+                })
+            }
+        })?;
+
+        commands::add(["edit", "e"], {
+            let windows = context::windows::<U>();
+
+            move |_, mut args| {
+                let windows = windows.read();
+                let file = args.next_else(err!("No path supplied."))?;
+
+                let path = PathBuf::from(file);
+                let name = path
+                    .file_name()
+                    .ok_or(err!("No file in path"))?
+                    .to_string_lossy()
+                    .to_string();
+
+                if !windows.iter().flat_map(Window::nodes).any(|node| {
+                    matches!(
+                        node.inspect_as::<File, bool>(|f| f.name() == name),
+                        Some(true)
+                    )
+                }) {
+                    tx.send(Event::OpenFile(path)).unwrap();
+                    return ok!("Opened " [*a] file [] ".");
+                }
+
+                commands::switch_to_file::<U>(&name);
+                ok!("Switched to " [*a] name [] ".")
+            }
+        })?;
+
+        commands::add(["buffer", "b"], move |_, mut args| {
+            let path: PathBuf = args.next_as()?;
+            let name = path
+                .file_name()
+                .ok_or(err!("No file in path"))?
+                .to_string_lossy()
+                .to_string();
+
+            commands::switch_to_file::<U>(&name);
+            ok!("Switched to " [*a] name [] ".")
+        })?;
+
+        commands::add(["next-file"], {
+            let windows = context::windows();
+
+            move |flags, _| {
+                let file = context::cur_file()?;
+                let read_windows = windows.read();
+                let w = context::cur_window();
+
+                let widget_index = read_windows[w]
+                    .nodes()
+                    .position(|node| file.file_ptr_eq(node))
+                    .unwrap();
+
+                let name = if flags.word("global") {
+                    iter_around::<U>(&read_windows, w, widget_index)
+                        .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
+                        .ok_or_else(|| err!("There are no other open files."))?
+                } else {
+                    let slice = &read_windows[w..=w];
+                    iter_around(slice, 0, widget_index)
+                        .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
+                        .ok_or_else(|| err!("There are no other files open in this window."))?
+                };
+
+                commands::switch_to_file::<U>(&name);
+                ok!("Switched to " [*a] name [] ".")
+            }
+        })?;
+
+        commands::add(["prev-file"], {
+            let windows = context::windows();
+
+            move |flags, _| {
+                let file = context::cur_file()?;
+                let windows = windows.read();
+                let w = context::cur_window();
+
+                let widget_i = windows[w]
+                    .nodes()
+                    .position(|node| file.file_ptr_eq(node))
+                    .unwrap();
+
+                let name = if flags.word("global") {
+                    iter_around_rev::<U>(&windows, w, widget_i)
+                        .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
+                        .ok_or_else(|| err!("There are no other open files."))?
+                } else {
+                    let slice = &windows[w..=w];
+                    iter_around_rev(slice, 0, widget_i)
+                        .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
+                        .ok_or_else(|| err!("There are no other files open in this window."))?
+                };
+
+                commands::switch_to_file::<U>(&name);
+
+                ok!("Switched to " [*a] name [] ".")
+            }
+        })?;
+
+        Ok(())
+    }
+
+    fn send_key_fn<M: Mode<U>, U: Ui>(key: KeyEvent) {
+        let widget = context::cur_widget::<U>().unwrap();
+        widget.mutate_data_as(|widget, area, modes, cursors| {
+            let mut cursors = cursors.write();
+            modes.add_set::<M>();
+            *cursors = modes
+                .mutate_as(|m: &mut M| m.send_key(key, widget, area, cursors.take()))
+                .flatten();
+        });
+    }
+
+    fn set_mode_fn<M: Mode<U>, U: Ui>() {
+        // If we are on the correct widget, no switch is needed.
+        if context::cur_widget::<U>().unwrap().type_id() == TypeId::of::<M::Widget>() {
+            let windows = context::windows().read();
+            let w = context::cur_window();
+            let entry = if TypeId::of::<M::Widget>() == TypeId::of::<File>() {
+                let name = context::cur_file::<U>().unwrap().name();
+                file_entry(&windows, &name)
+            } else {
+                widget_entry::<M::Widget, U>(&windows, w)
+            };
+
+            match entry {
+                Ok((_, node)) => switch_widget(node.clone()),
+                Err(err) => {
+                    context::notify(err);
+                    return;
+                }
+            };
+        }
+
+        *SEND_KEY.lock() = send_key_fn::<M, U>;
+    }
+
+    fn drop_key(_key: KeyEvent) {}
+    fn empty() {}
 }
 
 /// A list of commands.
@@ -637,7 +862,7 @@ impl Commands {
     }
 
     /// Adds a command for a widget of type `W`
-    fn add_for_widget<W: PassiveWidget<U>, U: Ui>(
+    fn add_for_widget<W: Widget<U>, U: Ui>(
         &'static self,
         callers: impl IntoIterator<Item = impl ToString>,
         mut f: impl FnMut(&RwData<W>, &U::Area, Flags, Args) -> CmdResult + 'static,
@@ -661,12 +886,9 @@ impl Commands {
                         ));
                     }
 
-                    if let Some((widget, area)) = get_from_name(&windows, duat_name::<W>(), w) {
-                        f(&widget.try_downcast().unwrap(), area, flags, args)
-                    } else {
-                        let name = duat_name::<W>();
-                        Err(err!("No widget of type " [*a] name [] " found"))
-                    }
+                    let (_, node) = widget_entry::<W, U>(&windows, w)?;
+                    let w = node.widget();
+                    f(&w.try_downcast().unwrap(), node.area(), flags, args)
                 })
         });
 
@@ -793,19 +1015,94 @@ impl InnerCommands {
 
 pub type Result<T> = crate::Result<T, ()>;
 
-/// Gets a widget, given its duat name.
-fn get_from_name<'a, U: Ui>(
+fn file_entry<'a, U: Ui>(
     windows: &'a [Window<U>],
-    type_name: &'static str,
-    w: usize,
-) -> Option<(&'a RwData<dyn PassiveWidget<U>>, &'a U::Area)> {
-    let on_window = windows[w].widgets();
-    let previous = windows.iter().take(w).flat_map(|w| w.widgets());
-    let following = windows.iter().skip(w + 1).flat_map(|w| w.widgets());
+    name: &str,
+) -> std::result::Result<(usize, &'a Node<U>), Text> {
+    windows
+        .iter()
+        .enumerate()
+        .flat_map(window_index_widget)
+        .find(|(_, node)| {
+            matches!(
+                node.inspect_as::<File, bool>(|file| file.name() == name),
+                Some(true)
+            )
+        })
+        .ok_or_else(|| err!("File with name " [*a] name [] " not found."))
+}
 
-    on_window
-        .chain(following)
-        .chain(previous)
-        .find(|(w, _)| w.type_name() == type_name)
-        .map(|(w, a)| (w.as_passive(), a))
+fn widget_entry<W: Widget<U>, U: Ui>(
+    windows: &[Window<U>],
+    w: usize,
+) -> std::result::Result<(usize, &Node<U>), Text> {
+    let cur_file = context::cur_file::<U>().unwrap();
+
+    if let Some(node) = cur_file.get_related_widget::<W>() {
+        windows
+            .iter()
+            .enumerate()
+            .flat_map(window_index_widget)
+            .find(|(_, n)| n.ptr_eq(node.widget()))
+    } else {
+        iter_around(windows, w, 0).find(|(_, node)| node.data_is::<W>())
+    }
+    .ok_or(err!("No widget of type " [*a] { type_name::<W>() } [] " found."))
+}
+
+fn window_index_widget<U: Ui>(
+    (index, window): (usize, &Window<U>),
+) -> impl DoubleEndedIterator<Item = (usize, &Node<U>)> {
+    window.nodes().map(move |entry| (index, entry))
+}
+
+fn iter_around<U: Ui>(
+    windows: &[Window<U>],
+    window: usize,
+    widget: usize,
+) -> impl Iterator<Item = (usize, &Node<U>)> + '_ {
+    let prev_len: usize = windows.iter().take(window).map(Window::len_widgets).sum();
+
+    windows
+        .iter()
+        .enumerate()
+        .skip(window)
+        .flat_map(window_index_widget)
+        .skip(widget + 1)
+        .chain(
+            windows
+                .iter()
+                .enumerate()
+                .take(window + 1)
+                .flat_map(window_index_widget)
+                .take(prev_len + widget),
+        )
+}
+
+fn iter_around_rev<U: Ui>(
+    windows: &[Window<U>],
+    window: usize,
+    widget: usize,
+) -> impl Iterator<Item = (usize, &Node<U>)> {
+    let next_len: usize = windows.iter().skip(window).map(Window::len_widgets).sum();
+
+    windows
+        .iter()
+        .enumerate()
+        .rev()
+        .skip(windows.len() - window)
+        .flat_map(move |(i, win)| {
+            window_index_widget((i, win))
+                .rev()
+                .skip(win.len_widgets() - widget)
+        })
+        .chain(
+            windows
+                .iter()
+                .enumerate()
+                .rev()
+                .take(windows.len() - window)
+                .flat_map(move |(i, win)| window_index_widget((i, win)).rev())
+                .take(next_len - (widget + 1)),
+        )
 }

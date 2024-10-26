@@ -145,7 +145,7 @@ pub mod forms {
 
 pub mod hooks {
     //! Hook utilites
-    pub use duat_core::hooks::{add, add_grouped, group_exists, remove_group};
+    pub use duat_core::hooks::{add, add_grouped, group_exists, remove};
 
     use crate::Ui;
     /// Triggers whenever a [`File`] is created
@@ -225,7 +225,7 @@ pub mod widgets {
     use crate::Ui;
 
     pub type CommandLine = duat_core::widgets::CommandLine<Ui>;
-    pub type CommandLineCfg<I> = duat_core::widgets::CommandLineCfg<I, Ui>;
+    pub type CommandLineCfg = duat_core::widgets::CommandLineCfg<Ui>;
     pub type StatusLine = duat_core::widgets::StatusLine<Ui>;
     pub type StatusLineCfg = duat_core::widgets::StatusLineCfg<Ui>;
     pub type LineNumbers = duat_core::widgets::LineNumbers<Ui>;
@@ -252,7 +252,7 @@ pub mod control {
     //! [`CommandLine`]: crate::prelude::CommandLine
     pub use duat_core::commands::{
         alias, buffer, edit, next_file, next_global_file, prev_file, prev_global_file, quit,
-        return_to_file, switch_to,
+        reset_mode, set_default_mode, set_mode,
     };
 }
 
@@ -262,7 +262,7 @@ pub mod prelude {
         self, DuatError, Error, data,
         text::{Builder, Text, err, hint, ok, text},
         ui::Area,
-        widgets::PassiveWidget,
+        widgets::Widget,
     };
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self as ui, VertRule};

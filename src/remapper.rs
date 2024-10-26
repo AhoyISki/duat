@@ -1,17 +1,14 @@
-//! An [`InputMethod`] that remaps keys and sends them forward
+//! An [`Mode`] that remaps keys and sends them forward
 use duat_core::{
     data::RwData,
-    input::{InputMethod, KeyCode::*, KeyEvent as Event},
+    input::{Cursors, KeyCode::*, KeyEvent as Event, Mode},
 };
 
 use super::Ui;
 
 /// A sequence of characters that should be turned into another
 /// sequence of characters.
-pub struct Remap<I>
-where
-    I: InputMethod<Ui> + Clone,
-{
+pub struct Remap<M: Mode<Ui>> {
     /// Takes this sequence of [`Event`]s.
     takes: Vec<Event>,
     /// And turns it into this new sequence of [`Event`]s.
@@ -20,18 +17,15 @@ where
     send_taken: bool,
     /// A condition to ask the `InputScheme`, if it returns `true`,
     /// then we remap.
-    condition: std::rc::Rc<dyn Fn(&I) -> bool>,
+    condition: std::rc::Rc<dyn Fn(&M) -> bool>,
 }
 
-impl<I> Remap<I>
-where
-    I: InputMethod<Ui> + Clone,
-{
+impl<M: Mode<Ui>> Remap<M> {
     pub fn new(
         takes: impl Into<Vec<Event>>,
         gives: impl Into<Vec<Event>>,
         send_taken: bool,
-        condition: impl Fn(&I) -> bool + 'static,
+        condition: impl Fn(&M) -> bool + 'static,
     ) -> Self {
         Self {
             takes: takes.into(),
@@ -42,34 +36,16 @@ where
     }
 }
 
-impl<I> Clone for Remap<I>
-where
-    I: InputMethod<Ui> + Clone,
-{
-    fn clone(&self) -> Self {
-        Self {
-            takes: self.takes.clone(),
-            gives: self.gives.clone(),
-            send_taken: self.send_taken,
-            condition: self.condition.clone(),
-        }
-    }
-}
-
-unsafe impl<I: InputMethod<Ui> + Clone> Send for Remap<I> {}
-unsafe impl<I: InputMethod<Ui> + Clone> Sync for Remap<I> {}
+unsafe impl<M: Mode<Ui>> Send for Remap<M> {}
+unsafe impl<M: Mode<Ui>> Sync for Remap<M> {}
 
 /// The structure responsible for remapping sequences of characters.
-#[derive(Clone)]
-pub struct Remapper<I>
-where
-    I: InputMethod<Ui> + Clone,
-{
-    /// The [`InputMethod`] to send the characters to.
-    input_method: I,
+pub struct Remapper<M: Mode<Ui>> {
+    /// The [`Mode`] to send the characters to.
+    input_method: M,
     /// The list of remapped sequences to be used with the
     /// `EditingScheme`.
-    remaps: Vec<Remap<I>>,
+    remaps: Vec<Remap<M>>,
     /// The sequence of yet to be fully matched characters that have
     /// been typed.
     current_sequence: Vec<Event>,
@@ -78,11 +54,8 @@ where
     to_check: Vec<usize>,
 }
 
-impl<I> Remapper<I>
-where
-    I: InputMethod<Ui> + Clone,
-{
-    pub fn new(input_method: I) -> Self {
+impl<M: Mode<Ui>> Remapper<M> {
+    pub fn new(input_method: M) -> Self {
         Remapper {
             remaps: Vec::new(),
             current_sequence: Vec::new(),
@@ -98,7 +71,7 @@ where
 
     pub fn remap_on(
         &mut self,
-        check: impl Fn(&I) -> bool + 'static,
+        check: impl Fn(&M) -> bool + 'static,
         takes: impl Into<Vec<Event>>,
         gives: impl Into<Vec<Event>>,
     ) {
@@ -109,7 +82,7 @@ where
         self.unmap_on(takes, |_| true)
     }
 
-    pub fn unmap_on(&mut self, takes: impl Into<Vec<Event>>, check: impl Fn(&I) -> bool + 'static) {
+    pub fn unmap_on(&mut self, takes: impl Into<Vec<Event>>, check: impl Fn(&M) -> bool + 'static) {
         self.remaps.insert(0, Remap::new(takes, [], false, check))
     }
 
@@ -121,7 +94,7 @@ where
         &mut self,
         takes: impl Into<Vec<Event>>,
         gives: impl Into<Vec<Event>>,
-        checker: impl Fn(&I) -> bool + 'static,
+        checker: impl Fn(&M) -> bool + 'static,
     ) {
         let takes: Vec<Event> = takes.into();
         let mut gives: Vec<Event> = gives.into();
@@ -134,18 +107,20 @@ where
     }
 }
 
-impl<I> InputMethod<Ui> for Remapper<I>
-where
-    I: InputMethod<Ui> + Clone,
-{
-    type Widget = I::Widget;
+impl<M: Mode<Ui>> Mode<Ui> for Remapper<M> {
+    type Widget = M::Widget;
+
+    fn new() -> Self {
+        Self::new(M::new())
+    }
 
     fn send_key(
         &mut self,
         key: Event,
         widget: &RwData<Self::Widget>,
         area: &<Ui as duat_core::ui::Ui>::Area,
-    ) {
+        mut cursors: Option<Cursors>,
+    ) -> Option<Cursors> {
         let remaps = self
             .remaps
             .iter()
@@ -184,25 +159,24 @@ where
         }
 
         for key in keys_to_send {
-            self.input_method.send_key(key, widget, area);
+            cursors = self.input_method.send_key(key, widget, area, cursors);
         }
 
         if new_to_check.is_empty() {
-            self.input_method.send_key(key, widget, area);
+            cursors = self.input_method.send_key(key, widget, area, cursors);
         }
 
         self.to_check = new_to_check;
+
+        cursors
     }
 }
 
-pub trait Remapable: InputMethod<Ui> + Clone + Sized {
+pub trait Remapable: Mode<Ui> + Sized {
     fn remapper(self) -> Remapper<Self>;
 }
 
-impl<I> Remapable for I
-where
-    I: InputMethod<Ui> + Clone,
-{
+impl<M: Mode<Ui>> Remapable for M {
     fn remapper(self) -> Remapper<Self> {
         Remapper::new(self)
     }

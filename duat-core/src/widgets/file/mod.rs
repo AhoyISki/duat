@@ -19,50 +19,55 @@
 //! method. This method is notably used by the
 //! [`LineNumbers`] widget, that shows
 //! the numbers of the currently printed lines.
-use std::{fs, io::ErrorKind, path::PathBuf, sync::Arc};
+use std::{fs, io::ErrorKind, path::PathBuf};
 
 use self::read::{Reader, RevSearcher, Searcher};
 use crate::{
-    cache::load_cache,
     forms,
     history::History,
-    input::{Cursors, InputForFiles, KeyMap},
+    input::Cursors,
     text::{IterCfg, Point, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
-    widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
+    widgets::{Widget, WidgetCfg},
 };
 
 mod read;
 
-pub struct FileCfg<U>
-where
-    U: Ui,
-{
+#[derive(Default, Clone)]
+pub struct FileCfg {
     text_op: TextOp,
-    builder: Arc<dyn Fn(File, Cursors) -> Widget<U> + Send + Sync + 'static>,
     cfg: PrintCfg,
-    specs: PushSpecs,
 }
 
-impl<U> FileCfg<U>
-where
-    U: Ui,
-{
+impl FileCfg {
     pub(crate) fn new() -> Self {
         FileCfg {
             text_op: TextOp::NewBuffer,
-            builder: Arc::new(|file, cursors| {
-                let mut input = KeyMap::new();
-                InputForFiles::<U>::set_cursors(&mut input, cursors);
-                Widget::active(file, input)
-            }),
             cfg: PrintCfg::default_for_input(),
-            // Kinda arbitrary.
-            specs: PushSpecs::above(),
         }
     }
 
-    pub(crate) fn build(self) -> (Widget<U>, Box<dyn Fn() -> bool>) {
+    pub(crate) fn open_path(self, path: PathBuf) -> Self {
+        Self { text_op: TextOp::OpenPath(path), ..self }
+    }
+
+    pub(crate) fn take_from_prev(self, prev: &mut File) -> Self {
+        let text = std::mem::take(&mut prev.text);
+        Self {
+            text_op: TextOp::TakeText(text, prev.path.clone()),
+            ..self
+        }
+    }
+
+    pub(crate) fn set_print_cfg(&mut self, cfg: PrintCfg) {
+        self.cfg = cfg;
+    }
+}
+
+impl<U: Ui> WidgetCfg<U> for FileCfg {
+    type Widget = File;
+
+    fn build(self, _: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
         let (text, path) = match self.text_op {
             TextOp::NewBuffer => (Text::new(), Path::new_unset()),
             TextOp::TakeText(text, path) => (text, path),
@@ -112,68 +117,8 @@ where
             _readers: Vec::new(),
         };
 
-        let cursors = load_cache::<Cursors>(file.path()).unwrap_or_default();
-        ((self.builder)(file, cursors), Box::new(|| false))
-    }
-
-    pub(crate) fn open_path(self, path: PathBuf) -> Self {
-        Self { text_op: TextOp::OpenPath(path), ..self }
-    }
-
-    pub(crate) fn take_from_prev(self, prev: &mut File) -> Self {
-        let text = std::mem::take(&mut prev.text);
-        Self {
-            text_op: TextOp::TakeText(text, prev.path.clone()),
-            ..self
-        }
-    }
-
-    pub(crate) fn set_print_cfg(&mut self, cfg: PrintCfg) {
-        self.cfg = cfg;
-    }
-
-    pub(crate) fn set_input(&mut self, input: impl InputForFiles<U> + Clone) {
-        self.builder = Arc::new(move |file, cursors| {
-            let mut input = input.clone();
-            input.set_cursors(cursors);
-            Widget::active(file, input)
-        });
-    }
-}
-
-impl<U> WidgetCfg<U> for FileCfg<U>
-where
-    U: Ui,
-{
-    type Widget = File;
-
-    fn build(self, _: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
-        let specs = self.specs;
-        let (widget, checker) = self.build();
-        (widget, checker, specs)
-    }
-}
-
-impl<U> Default for FileCfg<U>
-where
-    U: Ui,
-{
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<U> Clone for FileCfg<U>
-where
-    U: Ui,
-{
-    fn clone(&self) -> Self {
-        Self {
-            text_op: TextOp::NewBuffer,
-            builder: self.builder.clone(),
-            cfg: self.cfg,
-            specs: self.specs,
-        }
+        // The PushSpecs don't matter
+        (file, Box::new(|| false), PushSpecs::above())
     }
 }
 
@@ -360,11 +305,8 @@ impl File {
     }
 }
 
-impl<U> PassiveWidget<U> for File
-where
-    U: Ui,
-{
-    type Cfg = FileCfg<U>;
+impl<U: Ui> Widget<U> for File {
+    type Cfg = FileCfg;
 
     fn cfg() -> Self::Cfg {
         FileCfg::new()
@@ -374,6 +316,10 @@ where
 
     fn text(&self) -> &Text {
         &self.text
+    }
+
+    fn text_mut(&mut self) -> &mut Text {
+        &mut self.text
     }
 
     fn print_cfg(&self) -> PrintCfg {
@@ -412,18 +358,6 @@ where
     }
 }
 
-impl<U> ActiveWidget<U> for File
-where
-    U: Ui,
-{
-    fn text_mut(&mut self) -> &mut Text {
-        &mut self.text
-    }
-}
-
-unsafe impl Send for File {}
-unsafe impl Sync for File {}
-
 #[derive(Clone)]
 enum Path {
     SetExists(PathBuf),
@@ -440,7 +374,9 @@ impl Path {
     }
 }
 
+#[derive(Default, Clone)]
 enum TextOp {
+    #[default]
     NewBuffer,
     TakeText(Text, Path),
     OpenPath(PathBuf),

@@ -1,36 +1,43 @@
-use super::{Cursors, EditHelper, InputForFiles, KeyCode, KeyEvent, KeyMod, key};
+use super::{Command, Cursors, EditHelper, KeyCode, KeyEvent, KeyMod, key};
 use crate::{
     commands,
     data::RwData,
     ui::{Area, Ui},
-    widgets::{CommandLine, File},
+    widgets::File,
 };
 
 #[derive(Clone)]
-pub struct KeyMap {
-    cursors: Cursors,
-}
+pub struct Regular;
 
-impl KeyMap {
+impl Regular {
     pub fn new() -> Self {
-        Self { cursors: Cursors::new_exclusive() }
+        Self
     }
 }
 
-impl Default for KeyMap {
+impl Default for Regular {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<U> super::InputMethod<U> for KeyMap
-where
-    U: Ui,
-{
+impl<U: Ui> super::Mode<U> for Regular {
     type Widget = File;
 
-    fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area) {
-        let mut helper = EditHelper::new(widget, area, &mut self.cursors);
+    fn new() -> Self {
+        Self
+    }
+
+    fn send_key(
+        &mut self,
+        key: KeyEvent,
+        widget: &RwData<Self::Widget>,
+        area: &U::Area,
+        cursors: Option<Cursors>,
+    ) -> Option<Cursors> {
+        let mut cursors = cursors.unwrap_or_else(Cursors::new_exclusive);
+
+        let mut helper = EditHelper::new(widget, area, &mut cursors);
         match key {
             // Characters
             key!(KeyCode::Char(char), KeyMod::SHIFT | KeyMod::NONE) => {
@@ -95,24 +102,12 @@ where
             key!(KeyCode::Down) => move_each(helper, Side::Bottom, 1),
 
             // Control
-            key!(KeyCode::Char('p'), KeyMod::CONTROL) => commands::switch_to::<CommandLine<U>, U>(),
+            key!(KeyCode::Char('p'), KeyMod::CONTROL) => commands::set_mode::<Command, U>(),
 
             _ => {}
         }
-    }
 
-    fn cursors(&self) -> Option<&Cursors> {
-        Some(&self.cursors)
-    }
-}
-
-impl<U> InputForFiles<U> for KeyMap
-where
-    U: Ui,
-{
-    fn set_cursors(&mut self, cursors: Cursors) {
-        self.cursors = cursors;
-        self.cursors.set_exclusive();
+        Some(cursors)
     }
 }
 

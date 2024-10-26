@@ -9,10 +9,6 @@ use std::{
 use super::{Data, RwData, private::InnerData};
 // use parking_lot::{RwLock, RwLockReadGuard};
 use super::{RwLock, RwLockReadGuard};
-use crate::{
-    ui::Ui,
-    widgets::{ActiveWidget, PassiveWidget},
-};
 
 /// A read-only reference to information.
 ///
@@ -485,20 +481,6 @@ where
             data: self.data.clone(),
             cur_state: self.cur_state.clone(),
             read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed)),
-            type_id: self.type_id,
-        }
-    }
-}
-
-impl<U> RoData<dyn ActiveWidget<U>>
-where
-    U: Ui,
-{
-    pub fn to_passive(self) -> RoData<dyn PassiveWidget<U>> {
-        RoData {
-            data: self.data as Arc<RwLock<dyn PassiveWidget<U>>>,
-            cur_state: self.cur_state.clone(),
-            read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1),
             type_id: self.type_id,
         }
     }

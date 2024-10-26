@@ -13,7 +13,7 @@ use crate::{
     history::Change,
     text::{Point, PrintCfg, RegexPattern, Searcher, Text, WordChars},
     ui::Area,
-    widgets::{ActiveWidget, File, PassiveWidget},
+    widgets::{File, Widget},
 };
 
 /// The [`Cursor`] and [`Cursors`] structs
@@ -150,7 +150,7 @@ mod cursors;
 /// [moving]: Mover
 pub struct EditHelper<'a, W, A, S>
 where
-    W: ActiveWidget<A::Ui> + 'static,
+    W: Widget<A::Ui> + 'static,
     A: Area,
 {
     widget: &'a RwData<W>,
@@ -162,7 +162,7 @@ where
 
 impl<'a, W, A> EditHelper<'a, W, A, ()>
 where
-    W: ActiveWidget<A::Ui> + 'static,
+    W: Widget<A::Ui> + 'static,
     A: Area,
 {
     /// Returns a new instance of [`EditHelper`]
@@ -174,7 +174,7 @@ where
 
 impl<W, A, S> EditHelper<'_, W, A, S>
 where
-    W: ActiveWidget<A::Ui> + 'static,
+    W: Widget<A::Ui> + 'static,
     A: Area,
 {
     /// Edits on the `nth` [`Cursor`]'s selection
@@ -405,7 +405,7 @@ where
     pub fn undo(&mut self) {
         let mut widget = self.widget.write();
         widget.undo(self.area, self.cursors);
-        <File as PassiveWidget<A::Ui>>::update(&mut widget, self.area);
+        <File as Widget<A::Ui>>::update(&mut widget, self.area);
     }
 
     /// Redoes the next [`Moment`]
@@ -414,7 +414,7 @@ where
     pub fn redo(&mut self) {
         let mut widget = self.widget.write();
         widget.redo(self.area, self.cursors);
-        <File as PassiveWidget<A::Ui>>::update(&mut widget, self.area);
+        <File as Widget<A::Ui>>::update(&mut widget, self.area);
     }
 }
 
@@ -431,8 +431,8 @@ where
     ) -> Self {
         let cfg = {
             let mut file = widget.write();
-            <File as ActiveWidget<A::Ui>>::text_mut(&mut file).remove_cursor_tags(cursors);
-            <File as PassiveWidget<A::Ui>>::print_cfg(&file)
+            <File as Widget<A::Ui>>::text_mut(&mut file).remove_cursor_tags(cursors);
+            <File as Widget<A::Ui>>::print_cfg(&file)
         };
 
         EditHelper { widget, cursors, area, cfg, searcher }
@@ -473,7 +473,7 @@ where
 pub struct Editor<'a, 'b, 'c, 'd, A, W>
 where
     A: Area,
-    W: ActiveWidget<A::Ui>,
+    W: Widget<A::Ui>,
 {
     cursor: &'a mut Cursor,
     widget: &'b mut W,
@@ -486,7 +486,7 @@ where
 impl<'a, 'b, 'c, 'd, A, W> Editor<'a, 'b, 'c, 'd, A, W>
 where
     A: Area,
-    W: ActiveWidget<A::Ui>,
+    W: Widget<A::Ui>,
 {
     /// Returns a new instance of [`Editor`]
     fn new(

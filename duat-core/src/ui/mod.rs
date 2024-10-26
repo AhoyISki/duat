@@ -4,14 +4,12 @@ mod layout;
 use std::{
     fmt::Debug,
     path::PathBuf,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        mpsc,
-    },
+    sync::{Arc, mpsc},
 };
 
 use crossterm::event::KeyEvent;
 use layout::iter_files_for_layout;
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
 pub use self::{
@@ -21,12 +19,10 @@ pub use self::{
 use crate::{
     DuatError,
     cache::load_cache,
-    context,
     data::{RoData, RwData},
     forms::Painter,
-    hooks::{self, OnFileOpen},
     text::{Item, Iter, IterCfg, Point, PrintCfg, RevIter, Text},
-    widgets::{File, PassiveWidget, Widget},
+    widgets::{File, Node, Widget},
 };
 
 /// All the methods that a working gui/tui will need to implement, in
@@ -34,7 +30,7 @@ use crate::{
 pub trait Ui: Sized + Send + Sync + 'static {
     /// This is the underlying type that will be handled dynamically
     type StaticFns: Default + Clone + Copy + Send + Sync;
-    type Area: Area<Ui = Self> + Clone + PartialEq;
+    type Area: Area<Ui = Self> + Clone + PartialEq + Send + Sync;
 
     fn new(statics: Self::StaticFns) -> Self;
 
@@ -277,12 +273,14 @@ where
     U: Ui + 'static,
 {
     /// Returns a new instance of [`Window<U>`]
-    pub fn new(
+    pub fn new<W: Widget<U>>(
         ui: &mut U,
-        widget: Widget<U>,
-        checker: impl Fn() -> bool + 'static,
+        widget: W,
+        checker: impl Fn() -> bool + Send + Sync + 'static,
         layout: Box<dyn Layout<U>>,
-    ) -> (Self, U::Area) {
+    ) -> (Self, Node<U>) {
+        let widget = RwData::<dyn Widget<U>>::new_unsized::<W>(Arc::new(RwLock::new(widget)));
+
         let cache = if let Some(path) = widget.inspect_as(|file: &File| file.path())
             && let Some(cache) = load_cache::<<U::Area as Area>::Cache>(path)
         {
@@ -293,34 +291,30 @@ where
 
         let area = ui.new_root(cache);
 
-        widget.update(&area);
-
-        let main_node = Node {
-            widget,
-            checker: Box::new(checker),
-            area: area.clone(),
-            busy_updating: AtomicBool::new(false),
-        };
+        let node = Node::new::<W>(widget, area.clone(), checker);
+        node.update();
 
         let window = Self {
-            nodes: vec![main_node],
+            nodes: vec![node.clone()],
             files_area: area.clone(),
             master_area: area.clone(),
             layout,
         };
 
-        (window, area)
+        (window, node)
     }
 
     /// Pushes a [`Widget`] onto an existing one
-    pub fn push(
+    pub fn push<W: Widget<U>>(
         &mut self,
-        widget: Widget<U>,
+        widget: W,
         area: &U::Area,
         checker: impl Fn() -> bool + 'static,
         specs: PushSpecs,
         cluster: bool,
-    ) -> (U::Area, Option<U::Area>) {
+    ) -> (Node<U>, Option<U::Area>) {
+        let widget = RwData::<dyn Widget<U>>::new_unsized::<W>(Arc::new(RwLock::new(widget)));
+
         let cache = if let Some(path) = widget.inspect_as::<File, String>(|file| file.path())
             && let Some(cache) = load_cache::<<U::Area as Area>::Cache>(path)
         {
@@ -332,21 +326,14 @@ where
         let on_files = self.files_area.is_master_of(area);
         let (child, parent) = area.bisect(specs, cluster, on_files, cache);
 
-        let node = Node {
-            widget,
-            checker: Box::new(checker),
-            area: child.clone(),
-            busy_updating: AtomicBool::new(false),
-        };
-
         if *area == self.master_area
             && let Some(new_master_area) = parent.clone()
         {
             self.master_area = new_master_area;
         }
 
-        self.nodes.push(node);
-        (child, parent)
+        self.nodes.push(Node::new::<W>(widget, child, checker));
+        (self.nodes.last().unwrap().clone(), parent)
     }
 
     /// Pushes a [`File`] to the file's parent
@@ -357,17 +344,15 @@ where
     /// with others being at the perifery of this area.
     pub fn push_file(
         &mut self,
-        widget: Widget<U>,
+        file: File,
         checker: impl Fn() -> bool + 'static,
-    ) -> crate::Result<(U::Area, Option<U::Area>), ()> {
-        let (id, specs) = widget
-            .inspect_as::<File, crate::Result<(FileId<U>, PushSpecs), ()>>(|file| {
-                self.layout
-                    .new_file(file, iter_files_for_layout(&self.nodes))
-            })
-            .unwrap()?;
+    ) -> crate::Result<(Node<U>, Option<U::Area>), ()> {
+        let (id, specs) = self
+            .layout
+            .new_file(&file, iter_files_for_layout(&self.nodes))?;
 
-        let (child, parent) = self.push(widget, &id.0, checker, specs, false);
+        let (child, parent) = self.push(file, &id.0, checker, specs, false);
+
         if let Some(parent) = &parent
             && id.0 == self.files_area
         {
@@ -377,29 +362,7 @@ where
         Ok((child, parent))
     }
 
-    /// Pushes a [`Widget`] to the master node of the current
-    /// window.
-    pub fn push_to_master<Checker>(
-        &mut self,
-        widget: Widget<U>,
-        checker: Checker,
-        specs: PushSpecs,
-    ) -> (U::Area, Option<U::Area>)
-    where
-        Checker: Fn() -> bool + 'static,
-    {
-        let master_area = self.master_area.clone();
-        self.push(widget, &master_area, checker, specs, false)
-    }
-
-    /// Returns an [`Iterator`] over the [`Widget`]s of [`self`]
-    pub fn widgets(&self) -> impl DoubleEndedIterator<Item = (&Widget<U>, &U::Area)> + Clone + '_ {
-        self.nodes
-            .iter()
-            .map(|Node { widget, area, .. }| (widget, area))
-    }
-
-    pub fn nodes(&self) -> impl Iterator<Item = &Node<U>> {
+    pub fn nodes(&self) -> impl DoubleEndedIterator<Item = &Node<U>> {
         self.nodes.iter()
     }
 
@@ -408,62 +371,14 @@ where
     ///
     /// [`ActiveWidget`]: crate::widgets::ActiveWidget
     pub fn file_names(&self) -> impl Iterator<Item = (usize, String)> + Clone + '_ {
-        self.nodes
-            .iter()
-            .enumerate()
-            .filter_map(|(pos, Node { widget, .. })| {
-                widget
-                    .downcast::<File>()
-                    .map(|file| (pos, file.read().name()))
-            })
-    }
-
-    pub fn send_key(&self, key: KeyEvent) {
-        if let Some(node) = self
-            .nodes()
-            .find(|node| context::cur_widget().unwrap().widget_ptr_eq(&node.widget))
-        {
-            node.widget.send_key(key, &node.area);
-        }
+        self.nodes.iter().enumerate().filter_map(|(pos, node)| {
+            node.try_downcast::<File>()
+                .map(|file| (pos, file.read().name()))
+        })
     }
 
     pub fn len_widgets(&self) -> usize {
         self.nodes.len()
-    }
-}
-
-/// Elements related to the [`Widget`]s
-pub struct Node<U>
-where
-    U: Ui,
-{
-    widget: Widget<U>,
-    checker: Box<dyn Fn() -> bool>,
-    area: U::Area,
-    busy_updating: AtomicBool,
-}
-
-unsafe impl<U: Ui> Send for Node<U> {}
-unsafe impl<U: Ui> Sync for Node<U> {}
-
-impl<U> Node<U>
-where
-    U: Ui,
-{
-    pub fn needs_update(&self) -> bool {
-        if !self.busy_updating.load(Ordering::Acquire) {
-            (self.checker)() || self.area.has_changed()
-        } else {
-            false
-        }
-    }
-
-    pub fn update_and_print(&self) {
-        self.busy_updating.store(true, Ordering::Release);
-
-        self.widget.update_and_print(&self.area);
-
-        self.busy_updating.store(false, Ordering::Release);
     }
 }
 
@@ -544,16 +459,13 @@ where
     /// inner [`RwData<W>`], and because [`Iterator`]s cannot return
     /// references to themselves.
     pub fn fold_files<B>(&self, init: B, mut f: impl FnMut(B, &File) -> B) -> B {
-        self.0
-            .nodes
-            .iter()
-            .fold(init, |accum, Node { widget, .. }| {
-                if let Some(file) = widget.downcast::<File>() {
-                    f(accum, &file.read())
-                } else {
-                    accum
-                }
-            })
+        self.0.nodes.iter().fold(init, |accum, node| {
+            if let Some(file) = node.try_downcast::<File>() {
+                f(accum, &file.read())
+            } else {
+                accum
+            }
+        })
     }
 
     /// Similar to the [`Iterator::fold`] operation, folding each
@@ -565,14 +477,11 @@ where
     /// reference, as to not do unnecessary cloning of the widget's
     /// inner [`RwData<W>`], and because [`Iterator`]s cannot return
     /// references to themselves.
-    pub fn fold_widgets<B>(&self, init: B, mut f: impl FnMut(B, &dyn PassiveWidget<U>) -> B) -> B {
-        self.0
-            .nodes
-            .iter()
-            .fold(init, |accum, Node { widget, .. }| {
-                let f = &mut f;
-                widget.raw_inspect(|widget| f(accum, widget))
-            })
+    pub fn fold_widgets<B>(&self, init: B, mut f: impl FnMut(B, &dyn Widget<U>) -> B) -> B {
+        self.0.nodes.iter().fold(init, |accum, node| {
+            let f = &mut f;
+            node.raw_inspect(|widget| f(accum, widget))
+        })
     }
 }
 
@@ -598,36 +507,6 @@ where
             .try_read()
             .and_then(|windows| windows.get(index).map(|window| f(RoWindow(window))))
     }
-}
-
-pub(crate) fn build_file<U: Ui>(windows: &'static RwData<Vec<Window<U>>>, mod_area: U::Area) {
-    let (window_i, old_file) = {
-        let windows = windows.read();
-        let (window_i, node) = windows
-            .iter()
-            .enumerate()
-            .flat_map(|(i, w)| w.nodes().map(move |n| (i, n)))
-            .find(|(_, Node { area, .. })| *area == mod_area)
-            .unwrap();
-
-        let old_file = node.widget.downcast::<File>().map(|file| {
-            context::cur_file().unwrap().swap((
-                file,
-                node.area.clone(),
-                node.widget.input().unwrap().clone(),
-                node.widget.related_widgets().unwrap(),
-            ))
-        });
-
-        (window_i, old_file)
-    };
-
-    let builder = FileBuilder::new(windows, mod_area, window_i);
-    hooks::trigger_now::<OnFileOpen<U>>(builder);
-
-    if let Some(parts) = old_file {
-        context::cur_file().unwrap().swap(parts);
-    };
 }
 
 /// Information on how a [`Widget`] should be pushed onto another

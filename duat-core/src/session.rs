@@ -1,7 +1,7 @@
 use std::{
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicUsize, Ordering},
         mpsc,
     },
     time::Duration,
@@ -10,17 +10,12 @@ use std::{
 use crate::{
     Plugin,
     cache::{delete_cache, load_cache, store_cache},
-    commands::{self, SwitchTo},
-    context,
+    commands, context,
     data::RwData,
-    hooks::{self, OnWindowOpen, SessionStarted},
-    input::InputForFiles,
-    text::{PrintCfg, Text, err, ok},
-    ui::{
-        Area, Event, Layout, MasterOnLeft, Node, PushSpecs, Sender, Ui, Window, WindowBuilder,
-        build_file,
-    },
-    widgets::{ActiveWidget, File, FileCfg, Widget},
+    hooks::{self, OnFileOpen, OnWindowOpen, SessionStarted},
+    text::PrintCfg,
+    ui::{Area, Event, FileBuilder, Layout, MasterOnLeft, Sender, Ui, Window, WindowBuilder},
+    widgets::{File, FileCfg, Node, Widget, WidgetCfg},
 };
 
 #[doc(hidden)]
@@ -29,7 +24,7 @@ where
     U: Ui,
 {
     ui: U,
-    file_cfg: FileCfg<U>,
+    file_cfg: FileCfg,
     layout: Box<dyn Fn() -> Box<dyn Layout<U> + 'static>>,
     plugins: Vec<Box<dyn Plugin<U>>>,
 }
@@ -55,33 +50,33 @@ where
         let mut args = std::env::args();
         let first = args.nth(1).map(PathBuf::from);
 
-        let (widget, checker) = if let Some(path) = first {
-            self.file_cfg.clone().open_path(path).build()
+        let (widget, checker, _) = if let Some(path) = first {
+            <FileCfg as WidgetCfg<U>>::build(self.file_cfg.clone().open_path(path), false)
         } else {
-            self.file_cfg.clone().build()
+            self.file_cfg.clone().build(false)
         };
 
-        let (window, area) = Window::new(&mut self.ui, widget.clone(), checker, (self.layout)());
-        let (windows, cur_window) = context::set_windows(vec![window]);
+        let (window, node) = Window::new(&mut self.ui, widget, checker, (self.layout)());
+        let cur_window = context::set_windows(vec![window]);
 
         let mut session = Session {
             ui: self.ui,
-            windows,
             cur_window,
             file_cfg: self.file_cfg,
             tx,
         };
 
-        session.set_active_file(widget, &area);
-
-        add_session_commands(&session, session.tx.clone()).unwrap();
+        context::set_cur(node.as_file(), node.clone());
+        commands::add_session_commands::<U>(session.tx.clone()).unwrap();
 
         // Open and process files.
-        build_file(session.windows, area);
+        let builder = FileBuilder::new(node, context::cur_window());
+        hooks::trigger_now::<OnFileOpen<U>>(builder);
+
         args.for_each(|file| session.open_file(PathBuf::from(file)));
 
         // Build the window's widgets.
-        let builder = WindowBuilder::new(session.windows, 0);
+        let builder = WindowBuilder::new(0);
         hooks::trigger_now::<OnWindowOpen<U>>(builder);
 
         session
@@ -103,40 +98,34 @@ where
             unreachable!("There should've been at least one file.")
         };
 
-        let (widget, checker) = file_cfg.build();
+        let (widget, checker, _) = <FileCfg as WidgetCfg<U>>::build(file_cfg, false);
 
-        let (window, area) = Window::new(&mut self.ui, widget.clone(), checker, (self.layout)());
-        let (windows, cur_window) = context::set_windows(vec![window]);
+        let (window, node) = Window::new(&mut self.ui, widget, checker, (self.layout)());
+        let cur_window = context::set_windows(vec![window]);
 
         let mut session = Session {
             ui: self.ui,
-            windows,
             cur_window,
             file_cfg: self.file_cfg,
             tx,
         };
 
-        session.set_active_file(widget, &area);
+        context::set_cur(node.as_file(), node.clone());
+        commands::add_session_commands::<U>(session.tx.clone()).unwrap();
 
-        add_session_commands(&session, session.tx.clone()).unwrap();
-
-        // Open and process files..
-        build_file(session.windows, area);
+        // Open and process files.
+        let builder = FileBuilder::new(node, context::cur_window());
+        hooks::trigger_now::<OnFileOpen<U>>(builder);
 
         for (file_cfg, is_active) in inherited_cfgs {
             session.open_file_from_cfg(file_cfg, is_active);
         }
 
         // Build the window's widgets.
-        let builder = WindowBuilder::new(session.windows, 0);
+        let builder = WindowBuilder::new(0);
         hooks::trigger_now::<OnWindowOpen<U>>(builder);
 
         session
-    }
-
-    #[doc(hidden)]
-    pub fn set_input(&mut self, input: impl InputForFiles<U> + Clone) {
-        self.file_cfg.set_input(input);
     }
 
     #[doc(hidden)]
@@ -161,59 +150,28 @@ where
 
 pub struct Session<U: Ui> {
     ui: U,
-    windows: &'static RwData<Vec<Window<U>>>,
     cur_window: &'static AtomicUsize,
-    file_cfg: FileCfg<U>,
+    file_cfg: FileCfg,
     tx: mpsc::Sender<Event>,
 }
 
 impl<U: Ui> Session<U> {
     pub fn open_file(&mut self, path: PathBuf) {
-        let pushed = self.windows.mutate(|windows| {
+        let windows = context::windows::<U>();
+        let pushed = windows.mutate(|windows| {
             let cur_window = self.cur_window.load(Ordering::Relaxed);
-            let (file, checker) = self.file_cfg.clone().open_path(path).build();
+            let (file, checker, _) =
+                <FileCfg as WidgetCfg<U>>::build(self.file_cfg.clone().open_path(path), false);
             windows[cur_window].push_file(file, checker)
         });
 
         match pushed {
-            Ok((area, _)) => build_file(self.windows, area),
+            Ok((node, _)) => {
+                let builder = FileBuilder::new(node, context::cur_window());
+                hooks::trigger_now::<OnFileOpen<U>>(builder);
+            }
             Err(err) => context::notify(err.into()),
         }
-    }
-
-    pub fn push_widget<F>(
-        &mut self,
-        (widget, checker, specs): (Widget<U>, F, PushSpecs),
-    ) -> (U::Area, Option<U::Area>)
-    where
-        F: Fn() -> bool + 'static,
-    {
-        let cur_window = self.cur_window.load(Ordering::Relaxed);
-        self.windows.write()[cur_window].push_to_master(widget, checker, specs)
-    }
-
-    pub fn push_widget_to<F>(
-        &mut self,
-        (widget, checker, specs): (Widget<U>, F, PushSpecs),
-        area: &U::Area,
-    ) -> (U::Area, Option<U::Area>)
-    where
-        F: Fn() -> bool + 'static,
-    {
-        let cur_window = self.cur_window.load(Ordering::Relaxed);
-        self.windows.write()[cur_window].push(widget, area, checker, specs, false)
-    }
-
-    pub fn group_widget_with<F>(
-        &mut self,
-        (widget, checker, specs): (Widget<U>, F, PushSpecs),
-        area: &U::Area,
-    ) -> (U::Area, Option<U::Area>)
-    where
-        F: Fn() -> bool + 'static,
-    {
-        let cur_window = self.cur_window.load(Ordering::Relaxed);
-        self.windows.write()[cur_window].push(widget, area, checker, specs, true)
     }
 
     /// Start the application, initiating a read/response loop.
@@ -253,19 +211,19 @@ impl<U: Ui> Session<U> {
         // The main loop.
         loop {
             let cur_window = self.cur_window.load(Ordering::Relaxed);
-            self.windows.inspect(|windows| {
+            context::windows::<U>().inspect(|windows| {
                 while windows
                     .iter()
                     .flat_map(Window::nodes)
                     .any(Node::needs_update)
                 {
-                    for (widget, area) in windows.iter().flat_map(Window::widgets) {
-                        widget.update(area);
+                    for node in windows.iter().flat_map(Window::nodes) {
+                        node.update();
                     }
                 }
 
-                for (widget, area) in windows[cur_window].widgets() {
-                    widget.update_and_print(area);
+                for node in windows[cur_window].nodes() {
+                    node.update_and_print();
                 }
             });
 
@@ -289,61 +247,23 @@ impl<U: Ui> Session<U> {
         }
     }
 
-    fn save_cache(&self, is_quitting_duat: bool) {
-        let windows = self.windows.read();
-        for (widget, area) in windows.iter().flat_map(Window::widgets) {
-            widget.inspect_as::<File, ()>(|file| {
-                if is_quitting_duat && !file.exists() {
-                    delete_cache(file.path());
-                    return;
-                }
-                if let Some(cache) = area.cache() {
-                    store_cache(file.path(), cache);
-                }
-
-                let input = widget.input().unwrap().read();
-
-                let mut cursors = input.cursors().unwrap().clone();
-                if is_quitting_duat {
-                    cursors.remove_extras();
-                }
-                store_cache(file.path(), cursors);
-            });
-        }
-    }
-
-    fn reload_config(mut self) -> Vec<(RwData<File>, bool)> {
-        self.ui.end();
-        commands::end_session();
-        while crate::thread::still_running() {
-            std::thread::sleep(Duration::from_micros(500));
-        }
-        let windows = self.windows.read();
-        windows
-            .iter()
-            .flat_map(Window::widgets)
-            .filter_map(|(widget, area)| {
-                widget.downcast::<File>().map(|file| {
-                    ActiveWidget::<U>::text_mut(&mut *file.write()).clear_tags();
-                    (file, area.is_active())
-                })
-            })
-            .collect()
-    }
-
     /// The primary application loop, executed while no breaking
     /// functions have been called
     fn session_loop(&mut self, rx: &mpsc::Receiver<Event>) -> BreakTo {
-        let cw = self.cur_window;
-        let windows = self.windows.read();
+        let w = self.cur_window;
+        let windows = context::windows::<U>().read();
 
         std::thread::scope(|s| {
             loop {
-                let cur_window = &windows[cw.load(Ordering::Relaxed)];
+                let cur_window = &windows[w.load(Ordering::Relaxed)];
+
+                if let Some(set_mode) = commands::was_mode_set() {
+                    set_mode();
+                }
 
                 if let Ok(event) = rx.recv_timeout(Duration::from_millis(50)) {
                     match event {
-                        Event::Key(key) => cur_window.send_key(key),
+                        Event::Key(key) => commands::send_key(key),
                         Event::Resize | Event::FormChange => {
                             for node in cur_window.nodes() {
                                 s.spawn(|| node.update_and_print());
@@ -356,28 +276,6 @@ impl<U: Ui> Session<U> {
                     }
                 }
 
-                if let Some(switch_to) = commands::requested_switch() {
-                    let entry = match switch_to {
-                        SwitchTo::ActiveFile => {
-                            let name = context::cur_file::<U>().unwrap().name();
-                            file_entry(&windows, &name)
-                        }
-                        SwitchTo::File(name) => file_entry(&windows, &name),
-                        SwitchTo::Widget(w_name) => {
-                            let cw = cw.load(Ordering::Relaxed);
-                            widget_entry(&windows, w_name, cw)
-                        }
-                    };
-
-                    match entry {
-                        Ok((window, entry)) => {
-                            switch_widget(entry, &windows, window);
-                            cw.store(window, Ordering::Relaxed);
-                        }
-                        Err(msg) => context::notify(msg),
-                    }
-                }
-
                 for node in cur_window.nodes() {
                     if node.needs_update() {
                         s.spawn(|| node.update_and_print());
@@ -387,45 +285,77 @@ impl<U: Ui> Session<U> {
         })
     }
 
-    fn open_file_from_cfg(&mut self, file_cfg: FileCfg<U>, is_active: bool) {
-        let pushed = self.windows.mutate(|windows| {
-            let cur_window = self.cur_window.load(Ordering::Relaxed);
+    fn save_cache(&self, is_quitting_duat: bool) {
+        let windows = context::windows::<U>().read();
+        for (file, area, _, cursors, _) in windows
+            .iter()
+            .flat_map(Window::nodes)
+            .filter_map(|node| node.as_file())
+        {
+            let file = file.read();
 
-            let (widget, checker) = file_cfg.build();
-
-            let pushed = windows[cur_window].push_file(widget.clone(), checker);
-
-            if let Ok((area, _)) = &pushed
-                && is_active
-            {
-                self.set_active_file(widget, area);
+            if is_quitting_duat && !file.exists() {
+                delete_cache(file.path());
+                return;
+            }
+            if let Some(cache) = area.cache() {
+                store_cache(file.path(), cache);
             }
 
-            pushed
-        });
-
-        match pushed {
-            Ok((area, _)) => build_file(self.windows, area),
-            Err(err) => context::notify(err.into()),
+            if let Some(mut c) = cursors.write().take() {
+                if is_quitting_duat {
+                    c.remove_extras();
+                }
+                store_cache(file.path(), c);
+            }
         }
     }
 
-    fn set_active_file(&self, widget: Widget<U>, area: &U::Area) {
-        let Some((_, file, input)) = widget.as_active().and_then(|(active, input)| {
-            let file = active.clone().try_downcast::<File>()?;
-            Some((active, file, input))
-        }) else {
-            return;
-        };
-        context::set_cur(
-            (
-                file,
-                area.clone(),
-                input.clone(),
-                widget.related_widgets().unwrap(),
-            ),
-            widget,
-        );
+    fn reload_config(mut self) -> Vec<(RwData<File>, bool)> {
+        self.ui.end();
+        commands::end_session();
+        while crate::thread::still_running() {
+            std::thread::sleep(Duration::from_micros(500));
+        }
+
+        let windows = context::windows::<U>().read();
+
+        windows
+            .iter()
+            .flat_map(Window::nodes)
+            .filter_map(|node| {
+                node.try_downcast::<File>().map(|file| {
+                    Widget::<U>::text_mut(&mut *file.write()).clear_tags();
+                    (file, node.area().is_active())
+                })
+            })
+            .collect()
+    }
+
+    fn open_file_from_cfg(&mut self, file_cfg: FileCfg, is_active: bool) {
+        let pushed = context::windows().mutate(|windows| {
+            let cur_window = self.cur_window.load(Ordering::Relaxed);
+
+            let (widget, checker, _) = <FileCfg as WidgetCfg<U>>::build(file_cfg, false);
+
+            let result = windows[cur_window].push_file(widget, checker);
+
+            if let Ok((node, _)) = &result
+                && is_active
+            {
+                context::set_cur(node.as_file(), node.clone());
+            }
+
+            result
+        });
+
+        match pushed {
+            Ok((node, _)) => {
+                let builder = FileBuilder::new(node, context::cur_window());
+                hooks::trigger_now::<OnFileOpen<U>>(builder);
+            }
+            Err(err) => context::notify(err.into()),
+        }
     }
 }
 
@@ -434,312 +364,6 @@ enum BreakTo {
     OpenFile(PathBuf),
     QuitDuat,
 }
-
-fn add_session_commands<U: Ui>(
-    session: &Session<U>,
-    tx: mpsc::Sender<Event>,
-) -> crate::Result<(), ()> {
-    commands::add(["quit", "q"], {
-        let tx = tx.clone();
-
-        move |_flags, _args| {
-            tx.send(Event::Quit).unwrap();
-            Ok(None)
-        }
-    })?;
-
-    commands::add(["write", "w"], move |_flags, mut args| {
-        let file = context::cur_file::<U>()?;
-
-        let paths = {
-            let mut paths = Vec::new();
-
-            while let Ok(arg) = args.next() {
-                paths.push(arg.to_string());
-            }
-
-            paths
-        };
-
-        if paths.is_empty() {
-            file.inspect(|file, _, _| {
-                if let Some(name) = file.set_name() {
-                    let bytes = file.write()?;
-                    ok!("Wrote " [*a] bytes [] " bytes to " [*a] name [] ".")
-                } else {
-                    Err(err!("Give the file a name, to write it with"))
-                }
-            })
-        } else {
-            file.inspect(|file, _, _| {
-                let mut bytes = 0;
-                for path in &paths {
-                    bytes = file.write_to(path)?;
-                }
-
-                let files_text = {
-                    let mut builder = Text::builder();
-                    ok!(builder, [*a] { &paths[0] });
-
-                    for path in paths.iter().skip(1).take(paths.len() - 1) {
-                        ok!(builder, [] ", " [*a] path)
-                    }
-
-                    if paths.len() > 1 {
-                        ok!(builder, [] " and " [*a] { paths.last().unwrap() })
-                    }
-
-                    builder.finish()
-                };
-
-                ok!("Wrote " [*a] bytes [] " bytes to " files_text [] ".")
-            })
-        }
-    })?;
-
-    commands::add(["edit", "e"], {
-        let wins = session.windows;
-
-        move |_, mut args| {
-            let file = args.next_else(err!("No path supplied."))?;
-
-            let path = PathBuf::from(file);
-            let name = path
-                .file_name()
-                .ok_or(err!("No file in path"))?
-                .to_string_lossy()
-                .to_string();
-
-            if !wins.read().iter().flat_map(Window::widgets).any(|(w, _)| {
-                matches!(
-                    w.inspect_as::<File, bool>(|file| file.name() == name),
-                    Some(true)
-                )
-            }) {
-                tx.send(Event::OpenFile(path)).unwrap();
-                return ok!("Opened " [*a] file [] ".");
-            }
-
-            commands::switch_to_file(&name);
-            ok!("Switched to " [*a] name [] ".")
-        }
-    })?;
-
-    commands::add(["buffer", "b"], move |_, mut args| {
-        let path: PathBuf = args.next_as()?;
-        let name = path
-            .file_name()
-            .ok_or(err!("No file in path"))?
-            .to_string_lossy()
-            .to_string();
-
-        commands::switch_to_file(&name);
-        ok!("Switched to " [*a] name [] ".")
-    })?;
-
-    commands::add(["next-file"], {
-        let windows = session.windows.clone();
-        let cur_window = session.cur_window;
-
-        move |flags, _| {
-            let file = context::cur_file()?;
-            let read_windows = windows.read();
-            let window_index = cur_window.load(Ordering::Acquire);
-
-            let widget_index = read_windows[window_index]
-                .widgets()
-                .position(|(widget, _)| file.file_ptr_eq(widget))
-                .unwrap();
-
-            let name = if flags.word("global") {
-                iter_around::<U>(&read_windows, window_index, widget_index)
-                    .find_map(|(_, (widget, _))| {
-                        widget.inspect_as::<File, String>(|file| file.name())
-                    })
-                    .ok_or_else(|| err!("There are no other open files."))?
-            } else {
-                let slice = &read_windows[window_index..=window_index];
-                iter_around(slice, 0, widget_index)
-                    .find_map(|(_, (widget, _))| {
-                        widget.inspect_as::<File, String>(|file| file.name())
-                    })
-                    .ok_or_else(|| err!("There are no other files open in this window."))?
-            };
-
-            commands::switch_to_file(&name);
-            ok!("Switched to " [*a] name [] ".")
-        }
-    })?;
-
-    commands::add(["prev-file"], {
-        let windows = session.windows.clone();
-        let cur_window = session.cur_window;
-
-        move |flags, _| {
-            let file = context::cur_file()?;
-            let windows = windows.read();
-            let window_index = cur_window.load(Ordering::Acquire);
-
-            let widget_index = windows[window_index]
-                .widgets()
-                .position(|(widget, _)| file.file_ptr_eq(widget))
-                .unwrap();
-
-            let name = if flags.word("global") {
-                iter_around_rev::<U>(&windows, window_index, widget_index)
-                    .find_map(|(_, (widget, _))| {
-                        widget.inspect_as::<File, String>(|file| file.name())
-                    })
-                    .ok_or_else(|| err!("There are no other open files."))?
-            } else {
-                let slice = &windows[window_index..=window_index];
-                iter_around_rev(slice, 0, widget_index)
-                    .find_map(|(_, (widget, _))| {
-                        widget.inspect_as::<File, String>(|file| file.name())
-                    })
-                    .ok_or_else(|| err!("There are no other files open in this window."))?
-            };
-
-            commands::switch_to_file(&name);
-
-            ok!("Switched to " [*a] name [] ".")
-        }
-    })?;
-
-    Ok(())
-}
-
-fn file_entry<'a, U: Ui>(
-    windows: &'a [Window<U>],
-    name: &str,
-) -> Result<(usize, (&'a Widget<U>, &'a U::Area)), Text> {
-    windows
-        .iter()
-        .enumerate()
-        .flat_map(window_index_widget)
-        .find(|(_, (widget, _))| {
-            matches!(
-                widget.inspect_as::<File, bool>(|file| file.name() == name),
-                Some(true)
-            )
-        })
-        .ok_or_else(|| err!("File with name " [*a] name [] " not found."))
-}
-
-fn widget_entry<'a, U: Ui>(
-    windows: &'a [Window<U>],
-    w_name: &str,
-    window: usize,
-) -> Result<(usize, (&'a Widget<U>, &'a U::Area)), Text> {
-    let cur_file = context::cur_file::<U>().unwrap();
-
-    if let Some((widget, _)) = cur_file.get_related_widget(w_name) {
-        windows
-            .iter()
-            .enumerate()
-            .flat_map(window_index_widget)
-            .find(|(_, (cmp, _))| cmp.ptr_eq(&widget))
-    } else {
-        iter_around(windows, window, 0)
-            .filter(|(_, (widget, _))| widget.as_active().is_some())
-            .find(|(_, (widget, _))| widget.type_name() == w_name)
-    }
-    .ok_or(err!("No widget of type " [*a] w_name [] " found."))
-}
-
-fn window_index_widget<U: Ui>(
-    (index, window): (usize, &Window<U>),
-) -> impl DoubleEndedIterator<Item = (usize, (&Widget<U>, &U::Area))> {
-    window.widgets().map(move |entry| (index, entry))
-}
-
-pub(crate) fn iter_around<U: Ui>(
-    windows: &[Window<U>],
-    window: usize,
-    widget: usize,
-) -> impl Iterator<Item = (usize, (&Widget<U>, &U::Area))> {
-    let prev_len: usize = windows.iter().take(window).map(Window::len_widgets).sum();
-
-    windows
-        .iter()
-        .enumerate()
-        .skip(window)
-        .flat_map(window_index_widget)
-        .skip(widget + 1)
-        .chain(
-            windows
-                .iter()
-                .enumerate()
-                .take(window + 1)
-                .flat_map(window_index_widget)
-                .take(prev_len + widget),
-        )
-}
-
-pub(crate) fn iter_around_rev<U: Ui>(
-    windows: &[Window<U>],
-    window: usize,
-    widget: usize,
-) -> impl Iterator<Item = (usize, (&Widget<U>, &U::Area))> {
-    let next_len: usize = windows.iter().skip(window).map(Window::len_widgets).sum();
-
-    windows
-        .iter()
-        .enumerate()
-        .rev()
-        .skip(windows.len() - window)
-        .flat_map(move |(i, win)| {
-            window_index_widget((i, win))
-                .rev()
-                .skip(win.len_widgets() - widget)
-        })
-        .chain(
-            windows
-                .iter()
-                .enumerate()
-                .rev()
-                .take(windows.len() - window)
-                .flat_map(move |(i, win)| window_index_widget((i, win)).rev())
-                .take(next_len - (widget + 1)),
-        )
-}
-
-pub(crate) fn switch_widget<U: Ui>(
-    entry: (&Widget<U>, &U::Area),
-    windows: &[Window<U>],
-    window: usize,
-) {
-    if let Some((widget, area)) = windows[window]
-        .widgets()
-        .find(|(widget, _)| context::cur_widget().unwrap().widget_ptr_eq(widget))
-    {
-        widget.on_unfocus(area);
-    }
-
-    let (widget, area) = entry;
-
-    context::cur_widget()
-        .unwrap()
-        .set(widget.clone(), area.clone());
-
-    let (active, input) = widget.as_active().unwrap();
-    if let Some(file) = active.try_downcast::<File>() {
-        context::cur_file().unwrap().set((
-            file,
-            area.clone(),
-            input.clone(),
-            widget.related_widgets().unwrap(),
-        ));
-    }
-
-    area.set_as_active();
-    widget.on_focus(area);
-    if entry.0.as_active().unwrap().0.data_is::<File>() {
-        BACK_TO_FILE.store(true, Ordering::Relaxed)
-    };
-}
-
-pub static BACK_TO_FILE: AtomicBool = AtomicBool::new(false);
 
 unsafe impl<U: Ui> Send for SessionCfg<U> {}
 unsafe impl<U: Ui> Sync for SessionCfg<U> {}

@@ -18,37 +18,31 @@ mod state;
 
 use std::fmt::Alignment;
 
-use common::{main_col, main_line, selections_fmt};
-
 pub use self::state::State;
 use crate::{
     context::{self, FileReader},
     forms::{self, Form},
-    text::{AlignCenter, AlignRight, Builder, PrintCfg, Tag, Text, text},
+    text::{AlignCenter, AlignRight, Builder, PrintCfg, Text, text},
     ui::{PushSpecs, Ui},
-    widgets::{File, PassiveWidget, Widget, WidgetCfg},
+    widgets::{Widget, WidgetCfg},
 };
 
-pub struct StatusLineCfg<U>
-where
-    U: Ui,
-{
+pub struct StatusLineCfg<U: Ui> {
     pre_fn: Box<dyn FnMut(crate::text::Builder, &FileReader<U>) -> Text>,
     checker: Box<dyn Fn() -> bool>,
     specs: PushSpecs,
     alignment: Alignment,
 }
 
-impl<U> StatusLineCfg<U>
-where
-    U: Ui,
-{
+impl<U: Ui> StatusLineCfg<U> {
     pub fn new() -> Self {
-        status!(
-            [File] { File::name } " " [Selections] selections_fmt " "
-            [Coords] main_col [Separator] ":" [Coords] main_line
-            [Separator] "/" [Coords] { File::len_lines }
-        )
+        // status!(
+        //    [File] { File::name } " " [Selections] selections_fmt "
+        // "    [Coords] main_col [Separator] ":" [Coords]
+        // main_line    [Separator] "/" [Coords] {
+        // File::len_lines }
+        //)
+        todo!()
     }
 
     pub fn new_with(
@@ -94,13 +88,10 @@ where
     }
 }
 
-impl<U> WidgetCfg<U> for StatusLineCfg<U>
-where
-    U: Ui,
-{
+impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
     type Widget = StatusLine<U>;
 
-    fn build(mut self, on_file: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+    fn build(mut self, on_file: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
         let (reader, checker) = {
             let reader = match on_file {
                 true => context::fixed_reader().unwrap(),
@@ -127,16 +118,12 @@ where
             }),
         };
 
-        let widget = Widget::passive(StatusLine { reader, text_fn, text: Text::default() });
-
+        let widget = StatusLine { reader, text_fn, text: Text::default() };
         (widget, checker, self.specs)
     }
 }
 
-impl<U> Default for StatusLineCfg<U>
-where
-    U: Ui,
-{
+impl<U: Ui> Default for StatusLineCfg<U> {
     fn default() -> Self {
         Self::new()
     }
@@ -154,7 +141,7 @@ where
 /// ```rust
 /// # use duat_core::{
 /// #     hooks::{self, OnFileOpen, OnWindowOpen}, ui::Ui,
-/// #     widgets::{CommandLine, File, LineNumbers, PassiveWidget, StatusLine, status, common::*},
+/// #     widgets::{CommandLine, File, LineNumbers, Widget, StatusLine, status, common::*},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::remove_group("FileWidgets");
@@ -183,7 +170,7 @@ where
 ///
 /// ```rust
 /// # use duat_core::{
-/// #     hooks::{self, OnFileOpen}, ui::{Ui}, widgets::{LineNumbers, PassiveWidget, StatusLine},
+/// #     hooks::{self, OnFileOpen}, ui::{Ui}, widgets::{LineNumbers, Widget, StatusLine},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::remove_group("FileWidgets");
@@ -196,19 +183,13 @@ where
 ///
 /// [`OnFileOpen`]: crate::hooks::OnFileOpen
 /// [`OnWindowOpen`]: crate::hooks::OnWindowOpen
-pub struct StatusLine<U>
-where
-    U: Ui,
-{
+pub struct StatusLine<U: Ui> {
     reader: FileReader<U>,
     text_fn: TextFn<U>,
     text: Text,
 }
 
-impl<U> PassiveWidget<U> for StatusLine<U>
-where
-    U: Ui,
-{
+impl<U: Ui> Widget<U> for StatusLine<U> {
     type Cfg = StatusLineCfg<U>;
 
     fn cfg() -> Self::Cfg {
@@ -221,6 +202,10 @@ where
 
     fn text(&self) -> &Text {
         &self.text
+    }
+
+    fn text_mut(&mut self) -> &mut Text {
+        &mut self.text
     }
 
     fn once() {
@@ -236,8 +221,8 @@ where
     }
 }
 
-unsafe impl<U> Send for StatusLine<U> where U: Ui {}
-unsafe impl<U> Sync for StatusLine<U> where U: Ui {}
+unsafe impl<U: Ui> Send for StatusLine<U> {}
+unsafe impl<U: Ui> Sync for StatusLine<U> {}
 
 /// The macro that creates a [`StatusLine`]
 ///
@@ -253,15 +238,15 @@ unsafe impl<U> Sync for StatusLine<U> where U: Ui {}
 /// arguments:
 ///
 /// * The [`&File`] widget;
-/// * A [`&dyn InputMethod`], the one that is active on said file;
-/// * A specific [`&impl InputMethod`];
-/// * A specific [`&impl PassiveWidget`], which will be a satellite;
+/// * A [`&dyn Mode`], the one that is active on said file;
+/// * A specific [`&impl Mode`];
+/// * A specific [`&impl Widget`], which will be a satellite;
 ///
 /// Here's some examples:
 ///
 /// ```rust
 /// # use duat_core::{
-/// #     input::InputMethod, text::{Text, text}, ui::Ui, widgets::{File, status},
+/// #     input::Mode, text::{Text, text}, ui::Ui, widgets::{File, status},
 /// #     hooks::{self, OnWindowOpen}
 /// # };
 /// fn name_but_funky(file: &File) -> String {
@@ -274,7 +259,7 @@ unsafe impl<U> Sync for StatusLine<U> where U: Ui {}
 ///     name
 /// }
 ///
-/// fn powerline_main_fmt<U: Ui>(file: &File, input: &dyn InputMethod<U>) -> Text {
+/// fn powerline_main_fmt<U: Ui>(file: &File, input: &dyn Mode<U>) -> Text {
 ///    let cursor = input.cursors().unwrap().main().clone();
 ///
 ///    text!(
@@ -294,9 +279,9 @@ unsafe impl<U> Sync for StatusLine<U> where U: Ui {}
 /// As you can see, you can also pass multiple of these arguments,
 /// here's the pairings you can make:
 ///
-/// * A [`File`] and the [`&dyn InputMethod`];
-/// * A [`File`] and a [`&impl InputMethod`];
-/// * A [`File`] and a [`&impl PassiveWidget`];
+/// * A [`File`] and the [`&dyn Mode`];
+/// * A [`File`] and a [`&impl Mode`];
+/// * A [`File`] and a [`&impl Widget`];
 ///
 /// Now, there are other types of arguments that you can also pass.
 /// They update differently from the previous ones. The previous
@@ -316,7 +301,7 @@ unsafe impl<U> Sync for StatusLine<U> where U: Ui {}
 /// ```rust
 /// # use std::sync::atomic::{AtomicUsize, Ordering};
 /// # use duat_core::{
-/// #     data::RwData, input::InputMethod, text::text, ui::Ui, widgets::{File, status},
+/// #     data::RwData, input::Mode, text::text, ui::Ui, widgets::{File, status},
 /// #     hooks::{self, OnWindowOpen}
 /// # };
 /// # fn test<U: Ui>() {
@@ -350,9 +335,9 @@ unsafe impl<U> Sync for StatusLine<U> where U: Ui {}
 /// ```
 ///
 /// [`&File`]: File
-/// [`&dyn InputMethod`]: crate::input::InputMethod
-/// [`&impl InputMethod`]: crate::input::InputMethod
-/// [`&impl PassiveWidget`]: PassiveWidget
+/// [`&dyn Mode`]: crate::input::Mode
+/// [`&impl Mode`]: crate::input::Mode
+/// [`&impl Widget`]: Widget
 /// [`impl Display`]: std::fmt::Display
 /// [`RwData`]: crate::data::RwData
 /// [`RoData`]: crate::data::RoData

@@ -3,7 +3,7 @@ use duat_core::{
     forms::{self, Form},
     text::{Text, text},
     ui::{Area as UiArea, PushSpecs},
-    widgets::{PassiveWidget, Widget, WidgetCfg},
+    widgets::{Widget, WidgetCfg},
 };
 
 use crate::{Area, Ui};
@@ -19,7 +19,7 @@ pub struct VertRule {
     sep_char: SepChar,
 }
 
-impl PassiveWidget<Ui> for VertRule {
+impl Widget<Ui> for VertRule {
     type Cfg = VertRuleCfg;
 
     fn cfg() -> Self::Cfg {
@@ -30,8 +30,8 @@ impl PassiveWidget<Ui> for VertRule {
         self.text = if let Some(reader) = self.reader.as_ref()
             && let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = self.sep_char
         {
-            reader.inspect(|file, _, input| {
-                let main_line = input.cursors().unwrap().main().line();
+            reader.inspect(|file, _, _, cursors| {
+                let main_line = cursors.as_ref().unwrap().main().line();
                 let lines = file.printed_lines();
 
                 let upper = lines.iter().filter(|&(line, _)| *line < main_line).count();
@@ -55,6 +55,10 @@ impl PassiveWidget<Ui> for VertRule {
 
     fn text(&self) -> &Text {
         &self.text
+    }
+
+    fn text_mut(&mut self) -> &mut Text {
+        &mut self.text
     }
 
     fn once() {
@@ -157,10 +161,10 @@ impl Default for VertRuleCfg {
 impl WidgetCfg<Ui> for VertRuleCfg {
     type Widget = VertRule;
 
-    fn build(self, on_file: bool) -> (Widget<Ui>, impl Fn() -> bool + 'static, PushSpecs) {
+    fn build(self, on_file: bool) -> (Self::Widget, impl Fn() -> bool + 'static, PushSpecs) {
         let reader = on_file.then_some(context::fixed_reader().unwrap());
 
-        let vert_rule = VertRule {
+        let widget = VertRule {
             reader: reader.clone(),
             text: Text::default(),
             sep_char: self.sep_char,
@@ -172,7 +176,6 @@ impl WidgetCfg<Ui> for VertRuleCfg {
             Box::new(move || false)
         };
 
-        let widget = Widget::passive(vert_rule);
         (widget, checker, self.specs)
     }
 }

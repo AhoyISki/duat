@@ -8,7 +8,7 @@ use crate::{
     text::{Iter, Part, Point, RevIter},
 };
 
-pub trait Reader {
+pub trait Reader: Send + Sync {
     fn _read_change(&mut self, file: &mut File, change: Change);
 
     fn _read_click(&mut self, file: &mut File, point: Point);

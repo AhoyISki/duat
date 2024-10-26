@@ -19,10 +19,10 @@ use std::{fmt::Display, marker::PhantomData};
 use crate::{
     context::FileReader,
     data::{RoData, RwData},
-    input::InputMethod,
+    input::Mode,
     text::{Builder, Tag, Text, text},
     ui::Ui,
-    widgets::{File, PassiveWidget},
+    widgets::{File, Widget},
 };
 
 /// A struct that reads state in order to return [`Text`].
@@ -92,10 +92,10 @@ where
                 }),
 
                 Appender::FromDynInputStr(mut f) => Box::new(move |builder, reader| {
-                    builder.push_str(reader.inspect(|_, _, input| f(input)))
+                    builder.push_str(reader.inspect(|_, _, input, _| f(input)))
                 }),
                 Appender::FromDynInputText(mut f) => Box::new(move |builder, reader| {
-                    builder.push_text(reader.inspect(|_, _, input| f(input)))
+                    builder.push_text(reader.inspect(|_, _, input, _| f(input)))
                 }),
 
                 Appender::FromFileAndWidgetStr(mut f) => Box::new(move |builder, reader| {
@@ -121,10 +121,10 @@ where
                 }),
 
                 Appender::FromFileAndDynInputStr(mut f) => Box::new(move |builder, reader| {
-                    builder.push_str(reader.inspect(|file, _, input| f(file, input)))
+                    builder.push_str(reader.inspect(|file, _, input, _| f(file, input)))
                 }),
                 Appender::FromFileAndDynInputText(mut f) => Box::new(move |builder, reader| {
-                    builder.push_text(reader.inspect(|file, _, input| f(file, input)))
+                    builder.push_text(reader.inspect(|file, _, input, _| f(file, input)))
                 }),
 
                 Appender::Str(str) => Box::new(move |builder, _| builder.push_str(str.clone())),
@@ -276,7 +276,7 @@ where
 impl<D, Input, ReadFn, U> From<ReadFn> for State<Input, InputArg<String>, U>
 where
     D: Display + Send + Sync,
-    Input: InputMethod<U, Widget = File> + Sized,
+    Input: Mode<U, Widget = File> + Sized,
     ReadFn: Fn(&Input) -> D + Send + Sync + 'static,
     U: Ui,
 {
@@ -292,7 +292,7 @@ where
 
 impl<Input, ReadFn, U> From<ReadFn> for State<Input, InputArg<Text>, U>
 where
-    Input: InputMethod<U, Widget = File> + Sized,
+    Input: Mode<U, Widget = File> + Sized,
     ReadFn: Fn(&Input) -> Text + Send + Sync + 'static,
     U: Ui,
 {
@@ -306,15 +306,15 @@ where
     }
 }
 
-impl<D, Widget, ReadFn, U> From<ReadFn> for State<Widget, WidgetArg<String>, U>
+impl<D, W, ReadFn, U> From<ReadFn> for State<W, WidgetArg<String>, U>
 where
     D: Display + Send + Sync,
-    Widget: PassiveWidget<U> + Sized,
-    ReadFn: Fn(&Widget) -> D + Send + Sync + 'static,
+    W: Widget<U> + Sized,
+    ReadFn: Fn(&W) -> D + Send + Sync + 'static,
     U: Ui,
 {
     fn from(reader: ReadFn) -> Self {
-        let reader = move |arg: &Widget| reader(arg).to_string();
+        let reader = move |arg: &W| reader(arg).to_string();
         State {
             appender: Appender::FromWidgetStr(Box::new(reader)),
             checker: None,
@@ -323,14 +323,14 @@ where
     }
 }
 
-impl<Widget, ReadFn, U> From<ReadFn> for State<Widget, WidgetArg<Text>, U>
+impl<W, ReadFn, U> From<ReadFn> for State<W, WidgetArg<Text>, U>
 where
-    Widget: PassiveWidget<U> + Sized,
-    ReadFn: Fn(&Widget) -> Text + Send + Sync + 'static,
+    W: Widget<U> + Sized,
+    ReadFn: Fn(&W) -> Text + Send + Sync + 'static,
     U: Ui,
 {
     fn from(reader: ReadFn) -> Self {
-        let reader = move |arg: &Widget| reader(arg);
+        let reader = move |arg: &W| reader(arg);
         State {
             appender: Appender::FromWidgetText(Box::new(reader)),
             checker: None,
@@ -342,11 +342,11 @@ where
 impl<D, ReadFn, U> From<ReadFn> for State<(), DynInputArg<String>, U>
 where
     D: Display + Send + Sync,
-    ReadFn: Fn(&dyn InputMethod<U>) -> D + Send + Sync + 'static,
+    ReadFn: Fn(&dyn Mode<U>) -> D + Send + Sync + 'static,
     U: Ui,
 {
     fn from(reader: ReadFn) -> Self {
-        let reader = move |arg: &dyn InputMethod<U>| reader(arg).to_string();
+        let reader = move |arg: &dyn Mode<U>| reader(arg).to_string();
         State {
             appender: Appender::FromDynInputStr(Box::new(reader)),
             checker: None,
@@ -357,7 +357,7 @@ where
 
 impl<ReadFn, U> From<ReadFn> for State<(), DynInputArg<Text>, U>
 where
-    ReadFn: Fn(&dyn InputMethod<U>) -> Text + Send + Sync + 'static,
+    ReadFn: Fn(&dyn Mode<U>) -> Text + Send + Sync + 'static,
     U: Ui,
 {
     fn from(reader: ReadFn) -> Self {
@@ -372,7 +372,7 @@ where
 impl<D, Input, ReadFn, U> From<ReadFn> for State<Input, FileAndInputArg<String>, U>
 where
     D: Display + Send + Sync,
-    Input: InputMethod<U, Widget = File> + Sized,
+    Input: Mode<U, Widget = File> + Sized,
     ReadFn: Fn(&File, &Input) -> D + Send + Sync + 'static,
     U: Ui,
 {
@@ -388,7 +388,7 @@ where
 
 impl<Input, ReadFn, U> From<ReadFn> for State<Input, FileAndInputArg<Text>, U>
 where
-    Input: InputMethod<U, Widget = File> + Sized,
+    Input: Mode<U, Widget = File> + Sized,
     ReadFn: Fn(&File, &Input) -> Text + Send + Sync + 'static,
     U: Ui,
 {
@@ -401,15 +401,15 @@ where
     }
 }
 
-impl<D, Widget, ReadFn, U> From<ReadFn> for State<Widget, FileAndWidgetArg<String>, U>
+impl<D, W, ReadFn, U> From<ReadFn> for State<W, FileAndWidgetArg<String>, U>
 where
     D: Display + Send + Sync,
-    Widget: PassiveWidget<U>,
-    ReadFn: Fn(&File, &Widget) -> D + Send + Sync + 'static,
+    W: Widget<U>,
+    ReadFn: Fn(&File, &W) -> D + Send + Sync + 'static,
     U: Ui,
 {
     fn from(reader: ReadFn) -> Self {
-        let reader = move |file: &File, arg: &Widget| reader(file, arg).to_string();
+        let reader = move |file: &File, arg: &W| reader(file, arg).to_string();
         State {
             appender: Appender::FromFileAndWidgetStr(Box::new(reader)),
             checker: None,
@@ -418,10 +418,10 @@ where
     }
 }
 
-impl<Widget, ReadFn, U> From<ReadFn> for State<Widget, FileAndWidgetArg<Text>, U>
+impl<W, ReadFn, U> From<ReadFn> for State<W, FileAndWidgetArg<Text>, U>
 where
-    Widget: PassiveWidget<U>,
-    ReadFn: Fn(&File, &Widget) -> Text + Send + Sync + 'static,
+    W: Widget<U>,
+    ReadFn: Fn(&File, &W) -> Text + Send + Sync + 'static,
     U: Ui,
 {
     fn from(reader: ReadFn) -> Self {
@@ -436,11 +436,11 @@ where
 impl<D, ReadFn, U> From<ReadFn> for State<(), FileAndDynInputArg<String>, U>
 where
     D: Display + Send + Sync,
-    ReadFn: Fn(&File, &dyn InputMethod<U>) -> D + Send + Sync + 'static,
+    ReadFn: Fn(&File, &dyn Mode<U>) -> D + Send + Sync + 'static,
     U: Ui,
 {
     fn from(reader: ReadFn) -> Self {
-        let reader = move |file: &File, arg: &dyn InputMethod<U>| reader(file, arg).to_string();
+        let reader = move |file: &File, arg: &dyn Mode<U>| reader(file, arg).to_string();
         State {
             appender: Appender::FromFileAndDynInputStr(Box::new(reader)),
             checker: None,
@@ -451,7 +451,7 @@ where
 
 impl<ReadFn, U> From<ReadFn> for State<(), FileAndDynInputArg<Text>, U>
 where
-    ReadFn: Fn(&File, &dyn InputMethod<U>) -> Text + Send + Sync + 'static,
+    ReadFn: Fn(&File, &dyn Mode<U>) -> Text + Send + Sync + 'static,
     U: Ui,
 {
     fn from(reader: ReadFn) -> Self {
@@ -486,11 +486,10 @@ type RelatedStrFn<T> = Box<dyn FnMut(&T) -> String + Send + Sync + 'static>;
 type RelatedTextFn<T> = Box<dyn FnMut(&T) -> Text + Send + Sync + 'static>;
 type FileAndRelatedStrFn<T> = Box<dyn FnMut(&File, &T) -> String + Send + Sync + 'static>;
 type FileAndRelatedTextFn<T> = Box<dyn FnMut(&File, &T) -> Text + Send + Sync + 'static>;
-type DynInputStrFn<U> = Box<dyn FnMut(&dyn InputMethod<U>) -> String + Send + Sync + 'static>;
-type DynInputTextFn<U> = Box<dyn FnMut(&dyn InputMethod<U>) -> Text + Send + Sync + 'static>;
+type DynInputStrFn<U> = Box<dyn FnMut(&dyn Mode<U>) -> String + Send + Sync + 'static>;
+type DynInputTextFn<U> = Box<dyn FnMut(&dyn Mode<U>) -> Text + Send + Sync + 'static>;
 type FileAndDynInputStrFn<U> =
-    Box<dyn FnMut(&File, &dyn InputMethod<U>) -> String + Send + Sync + 'static>;
-type FileAndDynInputTextFn<U> =
-    Box<dyn FnMut(&File, &dyn InputMethod<U>) -> Text + Send + Sync + 'static>;
+    Box<dyn FnMut(&File, &dyn Mode<U>) -> String + Send + Sync + 'static>;
+type FileAndDynInputTextFn<U> = Box<dyn FnMut(&File, &dyn Mode<U>) -> Text + Send + Sync + 'static>;
 
 type ReaderFn<U> = Box<dyn FnMut(&mut Builder, &FileReader<U>) + Send + Sync>;

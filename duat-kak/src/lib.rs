@@ -1,146 +1,31 @@
 #![feature(let_chains, iter_map_windows, type_alias_impl_trait, if_let_guard)]
 
-use std::{collections::HashMap, ops::RangeInclusive, sync::LazyLock};
+use std::{ops::RangeInclusive, sync::LazyLock};
 
 use duat_core::{
     commands, context,
     data::{RwData, RwLock},
-    forms::{self, Form},
-    hooks::{self, Hookable},
-    input::{
-        Cursors, EditHelper, InputForFiles, InputMethod, KeyCode::*, KeyEvent as Event,
-        KeyMod as Mod, Mover, key,
-    },
-    text::{Point, Text, err, text},
+    input::{Cursors, EditHelper, KeyCode::*, KeyEvent as Event, KeyMod as Mod, Mode, Mover, key},
+    text::{Point, err},
     ui::{Area, Ui},
     widgets::{File, IncSearch, RunCommands},
 };
 
 const ALTSHIFT: Mod = Mod::ALT.union(Mod::SHIFT);
 
-pub struct KeyMap<U: Ui> {
-    cursors: Cursors,
-    mode: Mode,
+pub struct Normal<U: Ui> {
     sel_type: SelType,
+    action: Action,
     searching: Option<(Cursors, <<U as Ui>::Area as Area>::PrintInfo)>,
 }
 
-impl<U: Ui> KeyMap<U> {
-    pub fn new() -> Self {
-        forms::set_weak("Mode", Form::green());
-        KeyMap {
-            cursors: Cursors::new_inclusive(),
-            mode: Mode::Normal,
-            sel_type: SelType::Normal,
-            searching: None,
-        }
-    }
-
-    pub fn mode(&self) -> &'static str {
-        self.mode.generic_name()
-    }
-
-    pub fn precise_mode(&self) -> &'static str {
-        self.mode.specific_name()
-    }
-
-    pub fn mode_fmt(&self) -> Text {
-        text!([Mode] { self.mode.generic_name() })
-    }
-
-    pub fn precise_mode_fmt(&self) -> Text {
-        text!([Mode] { self.mode.specific_name() })
-    }
-
-    /// Commands that are available in `Mode::Insert`.
-    fn match_insert<S>(&mut self, helper: &mut EditHelper<File, impl Area, S>, event: Event) {
-        if let key!(Left | Down | Up | Right) = event {
+impl<U: Ui> Normal<U> {
+    fn match_normal<S>(&mut self, helper: &mut EditHelper<File, U::Area, S>, key: Event) {
+        if let key!(Char('h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e') | Down | Up) = key {
             helper.move_each(|m| m.unset_anchor())
         }
 
-        match event {
-            key!(Char(char)) => {
-                helper.edit_on_each(|e| e.insert(char));
-                helper.move_each(|m| m.move_hor(1));
-            }
-            key!(Char(char), Mod::SHIFT) => {
-                helper.edit_on_each(|e| e.insert(char));
-                helper.move_each(|m| m.move_hor(1));
-            }
-            key!(Enter) => {
-                helper.edit_on_each(|e| e.insert('\n'));
-                helper.move_each(|m| m.move_hor(1));
-            }
-            key!(Backspace) => {
-                let mut anchors = Vec::with_capacity(helper.cursors_len());
-                helper.move_each(|m| {
-                    anchors.push({
-                        let c = m.caret();
-                        m.unset_anchor().map(|a| match a > c {
-                            true => a.char() as isize - c.char() as isize,
-                            false => a.char() as isize - (c.char() as isize - 1),
-                        })
-                    });
-                    m.move_hor(-1);
-                });
-                let mut anchors = anchors.into_iter().cycle();
-                helper.edit_on_each(|editor| editor.replace(""));
-                helper.move_each(|m| {
-                    if let Some(Some(diff)) = anchors.next() {
-                        m.set_anchor();
-                        m.move_hor(diff);
-                        m.swap_ends()
-                    }
-                });
-            }
-            key!(Delete) => {
-                let mut anchors = Vec::with_capacity(helper.cursors_len());
-                helper.move_each(|m| {
-                    let caret = m.caret();
-                    anchors.push(m.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
-                    m.set_anchor();
-                    m.move_hor(1);
-                });
-                let mut anchors = anchors.into_iter().cycle();
-                helper.edit_on_each(|editor| {
-                    editor.replace("");
-                });
-                helper.move_each(|m| {
-                    if let Some(Some((anchor, _))) = anchors.next() {
-                        m.set_anchor();
-                        m.move_to(anchor);
-                        m.swap_ends()
-                    } else {
-                        m.unset_anchor();
-                    }
-                });
-            }
-            key!(Left, Mod::SHIFT) => select_and_move_each(helper, Side::Left, 1),
-            key!(Right, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Right, 1),
-            key!(Up, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Top, 1),
-            key!(Down, Mod::SHIFT) => select_and_move_each(helper, Side::Bottom, 1),
-
-            key!(Left) => helper.move_each(|m| m.move_hor(-1)),
-            key!(Down) => helper.move_each(|m| m.move_ver_wrapped(1)),
-            key!(Up) => helper.move_each(|m| m.move_ver_wrapped(-1)),
-            key!(Right) => helper.move_each(|m| m.move_hor(1)),
-
-            key!(Esc) => {
-                helper.new_moment();
-                self.mode = Mode::Normal;
-                hooks::trigger::<OnModeChange>((Mode::Insert, Mode::Normal))
-            }
-            _ => {}
-        }
-    }
-
-    /// Commands that are available in `Mode::Normal`.
-    fn match_normal<S>(&mut self, helper: &mut EditHelper<File, U::Area, S>, event: Event) {
-        if let key!(Char('h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e') | Down | Up) = event {
-            helper.move_each(|m| m.unset_anchor())
-        }
-
-        match event {
+        match key {
             ////////// hjkl and arrow selection keys.
             key!(Char('h')) => helper.move_each(|m| m.move_hor(-1)),
             key!(Char('j')) => match self.sel_type {
@@ -356,12 +241,12 @@ impl<U: Ui> KeyMap<U> {
                     (false, true) => SelType::Reverse,
                     (false, false) => SelType::Normal,
                 };
-                self.mode = Mode::OneKey(if let 'f' | 'F' = char {
-                    "find"
+
+                self.action = if let 'f' | 'F' = char {
+                    Action::Find
                 } else {
-                    "until"
-                });
-                hooks::trigger::<OnModeChange>((Mode::Normal, self.mode));
+                    Action::Until
+                };
             }
             key!(Char('%')) => helper.move_main(|m| {
                 m.move_to(Point::default());
@@ -376,19 +261,13 @@ impl<U: Ui> KeyMap<U> {
             ////////// Text modifying keys.
             key!(Char('i')) => {
                 helper.move_each(|m| m.set_caret_on_start());
-                self.mode = Mode::Insert;
-                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
             }
             key!(Char('a')) => {
                 helper.move_each(|m| m.set_caret_on_end());
-                self.mode = Mode::Insert;
-                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
             }
             key!(Char('c')) => {
                 helper.edit_on_each(|e| e.replace(""));
                 helper.move_each(|m| m.unset_anchor());
-                self.mode = Mode::Insert;
-                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Insert));
             }
             key!(Char('d')) => {
                 helper.edit_on_each(|e| e.replace(""));
@@ -398,22 +277,17 @@ impl<U: Ui> KeyMap<U> {
             ////////// Other mode changing keys.
             key!(Char(':')) => {
                 commands::set_cmd_mode::<RunCommands, U>();
-                self.mode = Mode::Other("command");
-                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Other("command")));
             }
             key!(Char('G'), Mod::SHIFT) => {
-                self.mode = Mode::OneKey("go to");
+                self.action = Action::GoTo;
                 self.sel_type = SelType::Extend;
-                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::OneKey("go to")));
             }
             key!(Char('g')) => {
-                self.mode = Mode::OneKey("go to");
-                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::OneKey("go to")));
+                self.action = Action::GoTo;
             }
             key!(Char('/')) => {
                 commands::set_cmd_mode::<IncSearch, U>();
-                self.mode = Mode::Other("search");
-                hooks::trigger::<OnModeChange>((Mode::Normal, Mode::Other("search")));
+                // self.mode = Mode::Other("search");
             }
 
             ////////// Temporary.
@@ -498,100 +372,90 @@ impl<U: Ui> KeyMap<U> {
                 context::notify(err!("Key " [*a] code [] " not mapped on " [*a] "go to" [] "."))
             }
         }
+
+        self.action = Action::Normal;
     }
 }
 
-impl<U: Ui> Default for KeyMap<U> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<U: Ui> InputMethod<U> for KeyMap<U> {
+impl<U: Ui> Mode<U> for Normal<U> {
     type Widget = File;
 
-    fn send_key(&mut self, event: Event, widget: &RwData<Self::Widget>, area: &U::Area) {
-        let mut cursors = std::mem::take(&mut self.cursors);
+    fn new() -> Self {
+        Normal {
+            sel_type: SelType::Normal,
+            action: Action::Normal,
+            searching: None,
+        }
+    }
+
+    fn send_key(
+        &mut self,
+        key: Event,
+        widget: &RwData<Self::Widget>,
+        area: &U::Area,
+        cursors: Option<Cursors>,
+    ) -> Option<Cursors> {
+        let mut cursors = cursors.unwrap_or_else(Cursors::new_inclusive);
         let mut helper = EditHelper::new(widget, area, &mut cursors);
 
-        match self.mode {
-            Mode::Insert => self.match_insert(&mut helper, event),
-            Mode::Normal => {
-                let (code, mf) = (&event.code, &event.modifiers);
-                let end_of_line = [Char('j'), Char('J'), Char('k'), Char('K'), Down, Up];
-                if !end_of_line.contains(code) || (*mf != Mod::SHIFT && *mf != Mod::NONE) {
-                    self.sel_type = SelType::Normal;
-                }
-                self.match_normal(&mut helper, event);
-            }
-            Mode::OneKey(one_key) => {
-                match one_key {
-                    "go to" => self.match_goto(&mut helper, event),
-                    "find" | "until" if let key!(Char(char), Mod::SHIFT | Mod::NONE) = event => {
-                        use SelType::*;
-                        helper.move_each(|m| {
-                            let cur = m.caret();
-                            let (points, back) = match self.sel_type {
-                                Reverse | ExtendRev => {
-                                    (m.search_rev(char, None).find(|(p, _)| *p != cur), 1)
-                                }
-                                Normal | Extend => {
-                                    (m.search(char, None).find(|(p, _)| *p != cur), -1)
-                                }
-                                _ => unreachable!(),
-                            };
+        match self.action {
+            Action::Normal => self.match_normal(&mut helper, key),
+            Action::GoTo => self.match_goto(&mut helper, key),
+            Action::Find | Action::Until if let key!(Char(char), Mod::SHIFT | Mod::NONE) = key => {
+                use SelType::*;
+                helper.move_each(|m| {
+                    let cur = m.caret();
+                    let (points, back) = match self.sel_type {
+                        Reverse | ExtendRev => {
+                            (m.search_rev(char, None).find(|(p, _)| *p != cur), 1)
+                        }
+                        Normal | Extend => (m.search(char, None).find(|(p, _)| *p != cur), -1),
+                        _ => unreachable!(),
+                    };
 
-                            if let Some((p0, _)) = points
-                                && p0 != m.caret()
-                            {
-                                let is_extension = !matches!(self.sel_type, Extend | ExtendRev);
-                                if is_extension || m.anchor().is_none() {
-                                    m.set_anchor();
-                                }
-                                m.move_to(p0);
-                                if one_key == "until" {
-                                    m.move_hor(back);
-                                }
-                            } else {
-                                context::notify(err!("Char " [*a] {char} [] " not found."))
-                            }
-                        })
+                    if let Some((p0, _)) = points
+                        && p0 != m.caret()
+                    {
+                        let is_extension = !matches!(self.sel_type, Extend | ExtendRev);
+                        if is_extension || m.anchor().is_none() {
+                            m.set_anchor();
+                        }
+                        m.move_to(p0);
+                        if let Action::Until = self.action {
+                            m.move_hor(back);
+                        }
+                    } else {
+                        context::notify(err!("Char " [*a] {char} [] " not found."))
                     }
-                    _ => {}
-                }
-                self.mode = Mode::Normal;
-                if !matches!(self.sel_type, SelType::UntilNL) {
-                    self.sel_type = SelType::Normal;
-                }
-                hooks::trigger::<OnModeChange>((Mode::OneKey(one_key), Mode::Normal));
+                });
+
+                self.action = Action::Normal;
             }
-            Mode::Other(_) => {
-                unreachable!("The editor is not supposed to be focused if this is the current mode")
-            }
+            _ => {}
         }
 
-        self.cursors = cursors;
+        Some(cursors)
     }
 
-    fn cursors(&self) -> Option<&Cursors> {
-        self.searching
-            .as_ref()
-            .map(|(c, _)| c)
-            .or(Some(&self.cursors))
+    fn begin_inc_search(
+        &mut self,
+        _file: &RwData<File>,
+        area: &U::Area,
+        cursors: Option<Cursors>,
+    ) -> Option<Cursors> {
+        let cursors = cursors.unwrap_or_else(Cursors::new_inclusive);
+        self.searching = Some((cursors.clone(), area.get_print_info()));
+        Some(cursors)
     }
 
-    fn on_focus(&mut self, _area: &U::Area) {
-        let prev = self.mode;
-        self.mode = Mode::Normal;
-        hooks::trigger::<OnModeChange>((prev, Mode::Normal));
-    }
-
-    fn begin_inc_search(&mut self, _file: &RwData<File>, area: &U::Area) {
-        self.searching = Some((self.cursors.clone(), area.get_print_info()));
-    }
-
-    fn end_inc_search(&mut self, _file: &RwData<File>, _area: &U::Area) {
-        self.cursors = self.searching.take().map(|(c, _)| c).unwrap();
+    fn end_inc_search(
+        &mut self,
+        _file: &RwData<File>,
+        _area: &U::Area,
+        cursors: Option<Cursors>,
+    ) -> Option<Cursors> {
+        self.searching = None;
+        cursors
     }
 
     fn search_inc(
@@ -599,16 +463,17 @@ impl<U: Ui> InputMethod<U> for KeyMap<U> {
         file: &RwData<File>,
         area: &<U as Ui>::Area,
         searcher: duat_core::text::Searcher,
-    ) {
-        let mut cursors = self.cursors.clone();
+        cursors: Option<Cursors>,
+    ) -> Option<Cursors> {
         if searcher.is_empty() {
-            let (s_cursors, info) = self.searching.as_mut().unwrap();
-            *s_cursors = cursors;
+            let (_, info) = self.searching.as_mut().unwrap();
             area.set_print_info(info.clone());
-            return;
+            return cursors;
         }
 
-        let mut helper = EditHelper::new_inc(file, area, &mut cursors, searcher);
+        let mut searching = self.searching.as_ref().map(|(c, _)| c).cloned().unwrap();
+
+        let mut helper = EditHelper::new_inc(file, area, &mut searching, searcher);
 
         helper.move_each(|m| {
             let next = m.search_inc(None).next();
@@ -623,25 +488,108 @@ impl<U: Ui> InputMethod<U> for KeyMap<U> {
         });
 
         drop(helper);
-        self.searching.as_mut().unwrap().0 = cursors;
+
+        Some(searching)
     }
 }
 
-impl<U: Ui> InputForFiles<U> for KeyMap<U> {
-    fn set_cursors(&mut self, mut cursors: Cursors) {
-        cursors.set_inclusive();
-        self.cursors = cursors;
-    }
-}
+pub struct Insert;
 
-impl<U: Ui> Clone for KeyMap<U> {
-    fn clone(&self) -> Self {
-        Self {
-            cursors: self.cursors.clone(),
-            mode: self.mode,
-            sel_type: self.sel_type,
-            searching: None,
+impl<U: Ui> Mode<U> for Insert {
+    type Widget = File;
+
+    fn new() -> Self {
+        Self
+    }
+
+    fn send_key(
+        &mut self,
+        key: Event,
+        widget: &RwData<Self::Widget>,
+        area: &<U as Ui>::Area,
+        cursors: Option<Cursors>,
+    ) -> Option<Cursors> {
+        let mut cursors = cursors.unwrap_or_else(Cursors::new_inclusive);
+        let mut helper = EditHelper::new(widget, area, &mut cursors);
+
+        if let key!(Left | Down | Up | Right) = key {
+            helper.move_each(|m| m.unset_anchor())
         }
+
+        match key {
+            key!(Char(char)) => {
+                helper.edit_on_each(|e| e.insert(char));
+                helper.move_each(|m| m.move_hor(1));
+            }
+            key!(Char(char), Mod::SHIFT) => {
+                helper.edit_on_each(|e| e.insert(char));
+                helper.move_each(|m| m.move_hor(1));
+            }
+            key!(Enter) => {
+                helper.edit_on_each(|e| e.insert('\n'));
+                helper.move_each(|m| m.move_hor(1));
+            }
+            key!(Backspace) => {
+                let mut anchors = Vec::with_capacity(helper.cursors_len());
+                helper.move_each(|m| {
+                    anchors.push({
+                        let c = m.caret();
+                        m.unset_anchor().map(|a| match a > c {
+                            true => a.char() as isize - c.char() as isize,
+                            false => a.char() as isize - (c.char() as isize - 1),
+                        })
+                    });
+                    m.move_hor(-1);
+                });
+                let mut anchors = anchors.into_iter().cycle();
+                helper.edit_on_each(|editor| editor.replace(""));
+                helper.move_each(|m| {
+                    if let Some(Some(diff)) = anchors.next() {
+                        m.set_anchor();
+                        m.move_hor(diff);
+                        m.swap_ends()
+                    }
+                });
+            }
+            key!(Delete) => {
+                let mut anchors = Vec::with_capacity(helper.cursors_len());
+                helper.move_each(|m| {
+                    let caret = m.caret();
+                    anchors.push(m.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
+                    m.set_anchor();
+                    m.move_hor(1);
+                });
+                let mut anchors = anchors.into_iter().cycle();
+                helper.edit_on_each(|editor| {
+                    editor.replace("");
+                });
+                helper.move_each(|m| {
+                    if let Some(Some((anchor, _))) = anchors.next() {
+                        m.set_anchor();
+                        m.move_to(anchor);
+                        m.swap_ends()
+                    } else {
+                        m.unset_anchor();
+                    }
+                });
+            }
+            key!(Left, Mod::SHIFT) => select_and_move_each(&mut helper, Side::Left, 1),
+            key!(Right, Mod::SHIFT) => select_and_move_each_wrapped(&mut helper, Side::Right, 1),
+            key!(Up, Mod::SHIFT) => select_and_move_each_wrapped(&mut helper, Side::Top, 1),
+            key!(Down, Mod::SHIFT) => select_and_move_each(&mut helper, Side::Bottom, 1),
+
+            key!(Left) => helper.move_each(|m| m.move_hor(-1)),
+            key!(Down) => helper.move_each(|m| m.move_ver_wrapped(1)),
+            key!(Up) => helper.move_each(|m| m.move_ver_wrapped(-1)),
+            key!(Right) => helper.move_each(|m| m.move_hor(1)),
+
+            key!(Esc) => {
+                helper.new_moment();
+            }
+            _ => {}
+        }
+
+        Some(cursors)
     }
 }
 
@@ -694,35 +642,6 @@ enum Side {
     Bottom,
 }
 
-#[derive(Default, Clone, Copy, PartialEq)]
-pub enum Mode {
-    Insert,
-    #[default]
-    Normal,
-    OneKey(&'static str),
-    Other(&'static str),
-}
-
-impl Mode {
-    fn generic_name(&self) -> &'static str {
-        match self {
-            Mode::Insert => "insert",
-            Mode::Normal => "normal",
-            Mode::Other(other) => other,
-            Mode::OneKey(_) => "one key",
-        }
-    }
-
-    fn specific_name(&self) -> &'static str {
-        match self {
-            Mode::Insert => "insert",
-            Mode::Normal => "normal",
-            Mode::Other(widget) => widget,
-            Mode::OneKey(one_key) => one_key,
-        }
-    }
-}
-
 #[derive(Clone, Copy)]
 enum SelType {
     UntilNL,
@@ -733,15 +652,11 @@ enum SelType {
     Normal,
 }
 
-/// Triggers whenever the mode changes
-///
-/// Arguments:
-/// * The previous [`Mode`]
-/// * The current [`Mode`]
-pub struct OnModeChange;
-
-impl Hookable for OnModeChange {
-    type Args = (Mode, Mode);
+enum Action {
+    Normal,
+    GoTo,
+    Find,
+    Until,
 }
 
 fn word_and_space<S>(m: &Mover<impl Area, S>, mf: Mod) -> &'static str {
@@ -749,13 +664,13 @@ fn word_and_space<S>(m: &Mover<impl Area, S>, mf: Mod) -> &'static str {
     static UNWS: RegexStrs = LazyLock::new(RwLock::default);
 
     let mut unws = UNWS.write();
-    if let Some(word) = unws.get(m.w_chars().ranges()) {
+    if let Some((_, word)) = unws.iter().find(|(r, _)| *r == m.w_chars().ranges()) {
         if mf.contains(Mod::ALT) { WORD } else { word }
     } else {
         let cat = w_char_cat(m.w_chars().ranges());
         let word = format!("([{cat}]+|[^{cat} \t\n]+)[ \t]*|[ \t\n]+").leak();
 
-        unws.insert(m.w_chars().ranges(), word);
+        unws.push((m.w_chars().ranges(), word));
         if mf.contains(Mod::ALT) { WORD } else { word }
     }
 }
@@ -765,13 +680,13 @@ fn space_and_word<S>(m: &Mover<impl Area, S>, mf: Mod) -> &'static str {
     static EOWS: RegexStrs = LazyLock::new(RwLock::default);
 
     let mut eows = EOWS.write();
-    if let Some(word) = eows.get(m.w_chars().ranges()) {
+    if let Some((_, word)) = eows.iter().find(|(r, _)| *r == m.w_chars().ranges()) {
         if mf.contains(Mod::ALT) { WORD } else { word }
     } else {
         let cat = w_char_cat(m.w_chars().ranges());
         let word = format!("[ \t\n]*([{cat}]+|[^{cat} \t\n]+)|[ \t\n]+").leak();
 
-        eows.insert(m.w_chars().ranges(), word);
+        eows.push((m.w_chars().ranges(), word));
         if mf.contains(Mod::ALT) { WORD } else { word }
     }
 }
@@ -789,7 +704,7 @@ fn w_char_cat(ranges: &'static [RangeInclusive<char>]) -> String {
         .collect()
 }
 
-type RegexStrs = LazyLock<RwLock<HashMap<&'static [RangeInclusive<char>], &'static str>>>;
+type RegexStrs = LazyLock<RwLock<Vec<(&'static [RangeInclusive<char>], &'static str)>>>;
 
 #[derive(PartialEq, Eq)]
 enum Category {

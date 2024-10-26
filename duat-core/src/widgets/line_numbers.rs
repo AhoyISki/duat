@@ -17,7 +17,7 @@ use crate::{
     forms::{self, Form},
     text::{Builder, Tag, Text, text},
     ui::{Area, Constraint, PushSpecs, Ui},
-    widgets::{PassiveWidget, Widget, WidgetCfg},
+    widgets::{Widget, WidgetCfg},
 };
 
 pub struct LineNumbers<U: Ui> {
@@ -30,26 +30,27 @@ impl<U: Ui> LineNumbers<U> {
     /// The minimum width that would be needed to show the last line.
     fn calculate_width(&mut self) -> f64 {
         // "+ 1" because we index from 1, not from 0.
-        let len = self.reader.inspect(|file, _, _| file.len_lines()) + 1;
+        let len = self.reader.inspect(|file, _, _, _| file.len_lines()) + 1;
         len.ilog10() as f64
     }
 
     fn update_text(&mut self) {
-        self.text = self.reader.inspect(|file, _, input| {
+        self.text = self.reader.inspect(|file, _, _, cursors| {
             let printed_lines = file.printed_lines();
-            let main_line = input.cursors().map(|cursors| cursors.main().line());
+            let main_line = cursors
+                .as_ref()
+                .map(|c| c.main().line())
+                .unwrap_or(usize::MAX);
 
             let mut builder = Text::builder();
             text!(builder, { tag_from_align(self.cfg.align) });
 
             for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
-                let is_main_line = main_line.is_some_and(|main| main == *line);
-
-                if is_main_line {
+                if main_line == *line {
                     text!(builder, { tag_from_align(self.cfg.main_align) });
                 }
 
-                match (is_main_line, is_wrapped) {
+                match (main_line == *line, is_wrapped) {
                     (false, false) => text!(builder, [LineNum]),
                     (true, false) => text!(builder, [MainLineNum]),
                     (false, true) => text!(builder, [WrappedLineNum]),
@@ -59,7 +60,7 @@ impl<U: Ui> LineNumbers<U> {
                 let is_wrapped = *is_wrapped && index > 0;
                 push_text(&mut builder, *line, main_line, is_wrapped, &self.cfg);
 
-                if is_main_line {
+                if main_line == *line {
                     text!(builder, { tag_from_align(self.cfg.align) });
                 }
             }
@@ -69,7 +70,7 @@ impl<U: Ui> LineNumbers<U> {
     }
 }
 
-impl<U: Ui> PassiveWidget<U> for LineNumbers<U> {
+impl<U: Ui> Widget<U> for LineNumbers<U> {
     type Cfg = LineNumbersCfg<U>;
 
     fn cfg() -> Self::Cfg {
@@ -85,6 +86,10 @@ impl<U: Ui> PassiveWidget<U> for LineNumbers<U> {
 
     fn text(&self) -> &Text {
         &self.text
+    }
+
+    fn text_mut(&mut self) -> &mut Text {
+        &mut self.text
     }
 
     fn once() {
@@ -201,18 +206,17 @@ impl<U> LineNumbersCfg<U> {
 impl<U: Ui> WidgetCfg<U> for LineNumbersCfg<U> {
     type Widget = LineNumbers<U>;
 
-    fn build(self, _: bool) -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
+    fn build(self, _: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
         let reader = context::cur_file().unwrap().fixed_reader();
         let specs = self.specs;
 
-        let mut line_numbers = LineNumbers {
+        let mut widget = LineNumbers {
             reader: reader.clone(),
             text: Text::default(),
             cfg: self,
         };
-        line_numbers.update_text();
+        widget.update_text();
 
-        let widget = Widget::passive(line_numbers);
         (widget, move || reader.has_changed(), specs)
     }
 }
@@ -221,13 +225,13 @@ impl<U: Ui> WidgetCfg<U> for LineNumbersCfg<U> {
 fn push_text<U>(
     builder: &mut Builder,
     line: usize,
-    main: Option<usize>,
+    main: usize,
     is_wrapped: bool,
     cfg: &LineNumbersCfg<U>,
 ) {
     if is_wrapped && !cfg.show_wraps {
         text!(*builder, "\n");
-    } else if let Some(main) = main {
+    } else if main != usize::MAX {
         let num = match cfg.numbers {
             Numbers::Absolute => line + 1,
             Numbers::Relative => line.abs_diff(main),

@@ -1,14 +1,17 @@
-use std::sync::{
-    LazyLock,
-    atomic::{AtomicUsize, Ordering},
+use std::{
+    any::TypeId,
+    sync::{
+        LazyLock,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 pub use self::global::*;
 use super::{RoData, RwData, private::InnerData};
 use crate::{
-    input::InputMethod,
+    input::{Cursors, Mode},
     ui::{Area, Ui},
-    widgets::{ActiveWidget, File, PassiveWidget, RelatedWidgets, Widget},
+    widgets::{File, Modes, Node, Widget},
 };
 
 mod global {
@@ -26,13 +29,13 @@ mod global {
         data::RwData,
         text::Text,
         ui::{Ui, Window},
-        widgets::{File, Widget},
+        widgets::{File, Node},
     };
 
-    static CUR_FILE: OnceLock<&'static (dyn Any + Send + Sync)> = OnceLock::new();
-    static CUR_WIDGET: OnceLock<&'static (dyn Any + Send + Sync)> = OnceLock::new();
+    static CUR_FILE: OnceLock<&(dyn Any + Send + Sync)> = OnceLock::new();
+    static CUR_WIDGET: OnceLock<&(dyn Any + Send + Sync)> = OnceLock::new();
     static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
-    static WINDOWS: OnceLock<&'static (dyn Any + Send + Sync)> = OnceLock::new();
+    static WINDOWS: OnceLock<&(dyn Any + Send + Sync)> = OnceLock::new();
     static NOTIFICATIONS: LazyLock<RwData<Text>> = LazyLock::new(RwData::default);
 
     pub fn fixed_reader<U: Ui>() -> Result<FileReader<U>, File> {
@@ -79,95 +82,72 @@ mod global {
         WINDOWS.set(windows).expect("setup ran twice");
     }
 
-    pub(crate) fn set_cur<U: Ui>(parts: FileParts<U>, widget: Widget<U>) {
-        let area = parts.1.clone();
-        *inner_cur_file().0.write() = Some(parts);
-        *inner_cur_widget().0.write() = Some((widget, area));
+    pub(crate) fn set_cur<U: Ui>(
+        parts: Option<FileParts<U>>,
+        node: Node<U>,
+    ) -> Option<(FileParts<U>, Node<U>)> {
+        let prev = parts.and_then(|p| inner_cur_file().0.write().replace(p));
+
+        prev.zip(inner_cur_widget().0.write().replace(node))
     }
 
-    pub(crate) fn set_windows<U: Ui>(
-        win: Vec<Window<U>>,
-    ) -> (&'static RwData<Vec<Window<U>>>, &'static AtomicUsize) {
-        let windows = windows();
-        *windows.write() = win;
-        (windows, &CUR_WINDOW)
+    pub(crate) fn set_windows<U: Ui>(win: Vec<Window<U>>) -> &'static AtomicUsize {
+        *windows().write() = win;
+        &CUR_WINDOW
     }
 
     pub(crate) fn windows<U: Ui>() -> &'static RwData<Vec<Window<U>>> {
-        WINDOWS
-            .get()
-            .unwrap()
-            .downcast_ref::<RwData<Vec<Window<U>>>>()
-            .expect("You are using more than one UI!!! Stop!")
+        WINDOWS.get().unwrap().downcast_ref().expect("1 Ui only")
     }
 
     pub(crate) fn inner_cur_file<U: Ui>() -> &'static CurFile<U> {
-        CUR_FILE
-            .get()
-            .unwrap()
-            .downcast_ref::<CurFile<U>>()
-            .expect("You are using more than one UI!!! Stop!")
+        CUR_FILE.get().unwrap().downcast_ref().expect("1 Ui only")
     }
 
     pub(crate) fn inner_cur_widget<U: Ui>() -> &'static CurWidget<U> {
-        CUR_WIDGET
-            .get()
-            .unwrap()
-            .downcast_ref::<CurWidget<U>>()
-            .expect("You are using more than one UI!!! Stop!")
+        CUR_WIDGET.get().unwrap().downcast_ref().expect("1 Ui only")
     }
 }
 
-pub struct CurFile<U>(LazyLock<RwData<Option<FileParts<U>>>>)
-where
-    U: Ui;
+pub struct CurFile<U: Ui>(LazyLock<RwData<Option<FileParts<U>>>>);
 
-impl<U> CurFile<U>
-where
-    U: Ui,
-{
+impl<U: Ui> CurFile<U> {
     pub const fn new() -> Self {
         Self(LazyLock::new(|| RwData::new(None)))
     }
 
     pub fn fixed_reader(&self) -> FileReader<U> {
         let data = self.0.raw_read();
-        let (file, area, input, related) = data.clone().unwrap();
+        let (file, area, modes, cursors, related) = data.clone().unwrap();
         let file_state = AtomicUsize::new(file.cur_state().load(Ordering::Relaxed));
-        let input_state = AtomicUsize::new(input.cur_state().load(Ordering::Relaxed));
+        let cursors_state = AtomicUsize::new(cursors.cur_state.load(Ordering::Relaxed));
 
         FileReader {
-            data: RoData::new(Some((file, area, input, related))),
+            data: RoData::new(Some((file, area, modes, cursors, related))),
             file_state,
-            input_state,
+            cursors_state,
         }
     }
 
     pub fn dyn_reader(&self) -> FileReader<U> {
         let data = self.0.raw_read();
-        let (file, _, input, _) = data.clone().unwrap();
+        let (file, .., cursors, _) = data.clone().unwrap();
 
         FileReader {
             data: RoData::from(&*self.0),
             file_state: AtomicUsize::new(file.cur_state.load(Ordering::Relaxed)),
-            input_state: AtomicUsize::new(input.cur_state.load(Ordering::Relaxed)),
+            cursors_state: AtomicUsize::new(cursors.cur_state.load(Ordering::Relaxed)),
         }
     }
 
-    pub fn inspect<R>(&self, f: impl FnOnce(&File, &U::Area, &dyn InputMethod<U>) -> R) -> R {
-        let data = self.0.raw_read();
-        let (file, area, input, _) = data.as_ref().unwrap();
-        input.inspect(|input| f(&file.read(), area, input))
-    }
-
-    pub fn inspect_as<I: InputMethod<U>, R>(
+    pub fn inspect<R>(
         &self,
-        f: impl FnOnce(&File, &U::Area, &I) -> R,
-    ) -> Option<R> {
+        f: impl FnOnce(&File, &U::Area, &dyn Mode<U>, &Option<Cursors>) -> R,
+    ) -> R {
         let data = self.0.raw_read();
-        let (file, area, input, _) = data.as_ref().unwrap();
+        let (file, area, modes, cursors, _) = data.as_ref().unwrap();
 
-        input.inspect_as::<I, R>(|input| f(&file.read(), area, input))
+        cursors.inspect(|c| modes.mutate_cur(|m| f(&file.read(), area, m, c)))
     }
 
     /// The name of the active [`File`]'s file.
@@ -182,7 +162,7 @@ where
 
     // NOTE: Doesn't return result, since it is expected that widgets can
     // only be created after the file exists.
-    pub fn file_ptr_eq(&self, other: &Widget<U>) -> bool {
+    pub fn file_ptr_eq(&self, other: &Node<U>) -> bool {
         other.ptr_eq(&self.0.read().as_ref().unwrap().0)
     }
 
@@ -191,46 +171,60 @@ where
         f: impl FnOnce(&RwData<T>) -> R,
     ) -> Option<R> {
         let data = self.0.raw_read();
-        let (file, _, input, rel) = data.as_ref().unwrap();
+        let (file, _, modes, cursors, rel) = data.as_ref().unwrap();
 
-        file.try_downcast()
-            .or_else(|| input.try_downcast())
+        cursors.inspect(|c| {
+            if let Some(c) = c.as_ref() {
+                <File as Widget<U>>::text_mut(&mut *file.write()).remove_cursor_tags(c);
+            }
+        });
+
+        let ret = file
+            .try_downcast()
+            .or_else(|| modes.try_downcast())
+            .or_else(|| cursors.try_downcast())
             .or_else(|| {
                 let rel = rel.read();
-                rel.iter().find_map(|(widget, ..)| widget.try_downcast())
+                rel.iter().find_map(|node| node.try_downcast())
             })
-            .map(|rel| f(&rel))
+            .map(|rel| f(&rel));
+
+        cursors.inspect(|c| {
+            if let Some(c) = c.as_ref() {
+                <File as Widget<U>>::text_mut(&mut *file.write()).add_cursor_tags(c);
+            }
+        });
+
+        ret
     }
 
     pub(crate) fn mutate_data<R>(
         &self,
-        f: impl FnOnce(&RwData<File>, &U::Area, &RwData<dyn InputMethod<U>>) -> R,
+        f: impl FnOnce(&RwData<File>, &U::Area, &RwData<dyn Mode<U>>, &RwData<Option<Cursors>>) -> R,
     ) -> R {
         let data = self.0.raw_read();
-        let (file, area, input, _) = data.as_ref().unwrap();
+        let (file, area, modes, cursors, _) = data.as_ref().unwrap();
 
-        input.inspect(|input| {
-            if let Some(cursors) = input.cursors() {
-                <File as ActiveWidget<U>>::text_mut(&mut file.write()).remove_cursor_tags(cursors);
-            }
-        });
+        if let Some(cursors) = &*cursors.read() {
+            <File as Widget<U>>::text_mut(&mut file.write()).remove_cursor_tags(cursors);
+        }
 
-        let ret = f(file, area, input);
+        let mode = modes.cur();
+        let ret = f(file, area, &mode, cursors);
 
-        let input = input.read();
         let mut file = file.write();
-        if let Some(cursors) = input.cursors() {
-            <File as ActiveWidget<U>>::text_mut(&mut file).add_cursor_tags(cursors);
+        if let Some(cursors) = &*cursors.read() {
+            <File as Widget<U>>::text_mut(&mut file).add_cursor_tags(cursors);
 
             area.scroll_around_point(
                 file.text(),
                 cursors.main().caret(),
-                <File as PassiveWidget<U>>::print_cfg(&file),
+                <File as Widget<U>>::print_cfg(&file),
             );
         }
 
-        <File as PassiveWidget<U>>::update(&mut file, area);
-        <File as PassiveWidget<U>>::print(&mut file, area);
+        <File as Widget<U>>::update(&mut file, area);
+        <File as Widget<U>>::print(&mut file, area);
 
         ret
     }
@@ -240,129 +234,124 @@ where
         f: impl FnOnce(&RwData<W>, &U::Area) -> R,
     ) -> Option<R> {
         let data = self.0.raw_read();
-        let (file, area, _, rel) = data.as_ref().unwrap();
+        let (file, area, .., rel) = data.as_ref().unwrap();
         let rel = rel.read();
 
         file.try_downcast()
-            .map(|w| (w, area))
+            .zip(Some(area))
             .or_else(|| {
                 rel.iter()
-                    .find_map(|(widget, area, _)| widget.try_downcast().zip(Some(area)))
+                    .find_map(|node| node.try_downcast().zip(Some(node.area())))
             })
             .map(|(widget, area)| f(&widget, area))
     }
 
-    pub(crate) fn swap(&self, parts: FileParts<U>) -> FileParts<U> {
-        std::mem::replace(self.0.write().as_mut().unwrap(), parts)
+    pub(crate) fn set(&self, parts: FileParts<U>) -> Option<FileParts<U>> {
+        std::mem::replace(&mut *self.0.write(), Some(parts))
     }
 
-    pub(crate) fn set(&self, parts: FileParts<U>) {
-        *self.0.write() = Some(parts);
-    }
-
-    pub(crate) fn get_related_widget(
-        &self,
-        name: &str,
-    ) -> Option<(RwData<dyn PassiveWidget<U>>, U::Area)> {
+    pub(crate) fn get_related_widget<W: Widget<U>>(&self) -> Option<Node<U>> {
         let data = self.0.write();
         let (.., related) = data.as_ref().unwrap();
         let related = related.read();
 
-        related.iter().find_map(|(widget, area, w_name)| {
-            (*w_name == name).then_some((widget.clone(), area.clone()))
-        })
-    }
-
-    pub(crate) fn add_related_widget(
-        &self,
-        new: (RwData<dyn PassiveWidget<U>>, U::Area, &'static str),
-    ) {
-        let data = self.0.write();
-        let (.., related) = data.as_ref().unwrap();
-        let mut related = related.write();
-
-        related.push(new)
+        related.iter().find(|node| node.data_is::<W>()).cloned()
     }
 }
 
-impl<U> Default for CurFile<U>
-where
-    U: Ui,
-{
+impl<U: Ui> Default for CurFile<U> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-pub struct FileReader<U>
-where
-    U: Ui,
-{
+pub struct FileReader<U: Ui> {
     data: RoData<Option<FileParts<U>>>,
     file_state: AtomicUsize,
-    input_state: AtomicUsize,
+    cursors_state: AtomicUsize,
 }
 
-impl<U> FileReader<U>
-where
-    U: Ui,
-{
-    pub fn inspect<R>(&self, f: impl FnOnce(&File, &U::Area, &dyn InputMethod<U>) -> R) -> R {
+impl<U: Ui> FileReader<U> {
+    pub fn inspect<R>(
+        &self,
+        f: impl FnOnce(&File, &U::Area, &dyn Mode<U>, Option<&Cursors>) -> R,
+    ) -> R {
         let data = self.data.read();
-        let (file, area, input, _) = data.as_ref().unwrap();
+        let (file, area, modes, cursors, _) = data.as_ref().unwrap();
 
         self.file_state
             .store(file.cur_state().load(Ordering::Acquire), Ordering::Release);
-        self.input_state
-            .store(input.cur_state().load(Ordering::Acquire), Ordering::Release);
+        self.cursors_state.store(
+            cursors.cur_state().load(Ordering::Acquire),
+            Ordering::Release,
+        );
 
-        input.inspect(|input| f(&file.read(), area, input))
+        let cursors = cursors.read();
+        modes.mutate_cur(|m| {
+            let file = file.read();
+            f(&file, area, m, cursors.as_ref())
+        })
     }
 
-    pub fn inspect_input<I: InputMethod<U>, R>(
+    pub fn inspect_input<M: Mode<U, Widget = File>, R>(
         &self,
-        f: impl FnOnce(&File, &U::Area, &I) -> R,
+        f: impl FnOnce(&File, &U::Area, &M, &Option<Cursors>) -> R,
     ) -> Option<R> {
         let data = self.data.read();
-        let (file, area, input, _) = data.as_ref().unwrap();
+        let (file, area, modes, cursors, _) = data.as_ref().unwrap();
 
         self.file_state
             .store(file.cur_state().load(Ordering::Acquire), Ordering::Release);
-        self.input_state
-            .store(input.cur_state().load(Ordering::Acquire), Ordering::Release);
+        self.cursors_state.store(
+            cursors.cur_state().load(Ordering::Acquire),
+            Ordering::Release,
+        );
 
-        file.inspect_as::<I, R>(|input| f(&file.raw_read(), area, input))
+        let cursors = cursors.raw_read();
+        modes.mutate_as(|m| f(&file.raw_read(), area, m, &cursors))
     }
 
     pub fn inspect_related<T: 'static, R>(&self, f: impl FnOnce(&T) -> R) -> Option<R> {
         let data = self.data.read();
-        let (file, _, input, related) = data.as_ref().unwrap();
+        let (file, _, modes, cursors, related) = data.as_ref().unwrap();
 
         if file.data_is::<T>() {
             file.inspect_as(f)
-        } else if input.data_is::<T>() {
-            input.inspect_as(f)
+        } else if modes.has::<T>() {
+            modes.mutate_as(|i| f(i))
+        } else if cursors.data_is::<T>() {
+            cursors.inspect_as(f)
+        } else if TypeId::of::<T>() == TypeId::of::<Cursors>() {
+            cursors
+                .inspect_as::<Option<T>, Option<R>>(|c| c.as_ref().map(f))
+                .flatten()
         } else {
             let related = related.read();
             related
                 .iter()
-                .find_map(|(widget, ..)| widget.data_is::<T>().then_some(widget))
-                .and_then(|widget| widget.inspect_as(f))
+                .find(|node| node.data_is::<T>())
+                .and_then(|w| w.inspect_as(f))
         }
     }
 
     pub fn inspect_file_and<T: 'static, R>(&self, f: impl FnOnce(&File, &T) -> R) -> Option<R> {
         let data = self.data.read();
-        let (file, _, input, related) = data.as_ref().unwrap();
+        let (file, _, modes, cursors, related) = data.as_ref().unwrap();
 
-        if input.data_is::<T>() {
-            input.inspect_as(|input| f(&file.read(), input))
+        if cursors.data_is::<T>() {
+            cursors.inspect_as(|c| f(&file.read(), c))
+        } else if modes.has::<T>() {
+            modes.mutate_as(|i| f(&file.read(), i))
+        } else if TypeId::of::<T>() == TypeId::of::<Cursors>() {
+            cursors
+                .inspect_as::<Option<T>, Option<R>>(|c| c.as_ref().map(|c| f(&file.read(), c)))
+                .flatten()
         } else {
             let related = related.read();
             related
                 .iter()
-                .find_map(|(widget, ..)| widget.data_is::<T>().then_some(widget))
-                .and_then(|widget| widget.inspect_as(|widget| f(&file.read(), widget)))
+                .find(|node| node.data_is::<T>())
+                .and_then(|node| node.inspect_as(|widget| f(&file.read(), widget)))
         }
     }
 
@@ -376,135 +365,146 @@ where
     }
 
     pub fn has_changed(&self) -> bool {
+        // In the case where the active file has changed, this function will
+        // return true, while also making sure that the `_state` fields point
+        // to the new file.
         let mut has_changed = self.data.has_changed();
         let data = self.data.read();
-        let (file, _, input, _) = data.as_ref().unwrap();
+        let (file, .., cursors, _) = data.as_ref().unwrap();
 
         has_changed |= {
-            let file_state = file.cur_state().load(Ordering::Acquire);
-
-            file_state > self.file_state.swap(file_state, Ordering::Acquire)
+            let state = file.cur_state().load(Ordering::Acquire);
+            state > self.file_state.swap(state, Ordering::Acquire)
         };
-
         has_changed |= {
-            let input_state = input.cur_state().load(Ordering::Acquire);
-
-            input_state > self.input_state.swap(input_state, Ordering::Acquire)
+            let state = cursors.cur_state().load(Ordering::Acquire);
+            state > self.cursors_state.swap(state, Ordering::Acquire)
         };
 
         has_changed
     }
 }
 
-impl<U> Clone for FileReader<U>
-where
-    U: Ui,
-{
+impl<U: Ui> Clone for FileReader<U> {
     fn clone(&self) -> Self {
-        let (file, _, input, _) = self.data.read().clone().unwrap();
+        let (file, .., cursors, _) = self.data.read().clone().unwrap();
 
         Self {
             data: self.data.clone(),
             file_state: AtomicUsize::new(file.cur_state().load(Ordering::Relaxed)),
-            input_state: AtomicUsize::new(input.cur_state().load(Ordering::Relaxed)),
+            cursors_state: AtomicUsize::new(cursors.cur_state().load(Ordering::Relaxed)),
         }
     }
 }
 
-pub struct CurWidget<U>(LazyLock<RwData<Option<(Widget<U>, U::Area)>>>)
-where
-    U: Ui;
+pub struct CurWidget<U: Ui>(LazyLock<RwData<Option<Node<U>>>>);
 
-impl<U> CurWidget<U>
-where
-    U: Ui,
-{
+impl<U: Ui> CurWidget<U> {
     pub const fn new() -> Self {
         Self(LazyLock::new(|| RwData::new(None)))
     }
 
-    pub fn type_name_is(&self, name: &'static str) -> bool {
-        let data = self.0.raw_read();
-        let (widget, _) = data.as_ref().unwrap();
-        widget.type_name() == name
+    pub fn type_id(&self) -> TypeId {
+        self.0.type_id
     }
 
     pub fn inspect<R>(
         &self,
-        f: impl FnOnce(&dyn ActiveWidget<U>, &U::Area, &dyn InputMethod<U>) -> R,
+        f: impl FnOnce(&dyn Widget<U>, &U::Area, &dyn Mode<U>, &Option<Cursors>) -> R,
     ) -> R {
         let data = self.0.raw_read();
-        let (widget, area) = data.as_ref().unwrap();
-        let (widget, input) = widget.as_active().unwrap();
-        input.inspect(|input| f(&*widget.read(), area, input))
+        let (widget, area, modes, cursors) = data.as_ref().unwrap().as_active();
+        let cursors = cursors.read();
+
+        modes.mutate_cur(|m| f(&*widget.read(), area, m, &cursors))
     }
 
     pub fn inspect_widget_as<W, R>(
         &self,
-        f: impl FnOnce(&W, &U::Area, &dyn InputMethod<U>) -> R,
+        f: impl FnOnce(&W, &U::Area, &dyn Mode<U>, &Option<Cursors>) -> R,
     ) -> Option<R>
     where
-        W: ActiveWidget<U>,
+        W: Widget<U>,
     {
         let data = self.0.raw_read();
-        let (widget, area) = data.as_ref().unwrap();
-        let (widget, input) = widget.as_active().unwrap();
-        let input = input.read();
-        widget.inspect_as::<W, R>(|widget| f(widget, area, &*input))
+        let (widget, area, modes, cursors) = data.as_ref().unwrap().as_active();
+        let cursors = cursors.read();
+
+        modes.mutate_cur(|m| widget.inspect_as::<W, R>(|widget| f(widget, area, m, &cursors)))
     }
 
-    pub fn inspect_as<W, I, R>(&self, f: impl FnOnce(&W, &U::Area, &I) -> R) -> Option<R>
-    where
-        W: ActiveWidget<U>,
-        I: InputMethod<U>,
-    {
+    pub fn inspect_as<W: Widget<U>, M: Mode<U>, R>(
+        &self,
+        f: impl FnOnce(&W, &U::Area, &M, &Option<Cursors>) -> R,
+    ) -> Option<R> {
         let data = self.0.raw_read();
-        let (widget, area) = data.as_ref().unwrap();
-        let (widget, input) = widget.as_active().unwrap();
+        let (widget, area, modes, cursors) = data.as_ref().unwrap().as_active();
+        let cursors = cursors.read();
 
-        input
-            .inspect_as::<I, Option<R>>(|input| {
-                widget.inspect_as::<W, R>(|widget| f(widget, area, input))
-            })
+        modes
+            .mutate_as(|i| widget.inspect_as(|w| f(w, area, i, &cursors)))
             .flatten()
     }
 
-    pub fn widget_ptr_eq(&self, other: &Widget<U>) -> bool {
-        let data = self.0.raw_read();
-        let (widget, _) = data.as_ref().unwrap();
-        let (widget, _) = widget.as_active().unwrap();
-
-        other.ptr_eq(widget)
-    }
-
-    pub(crate) fn mutate_as<T: 'static, R>(&self, mut f: impl FnMut(&RwData<T>) -> R) -> Option<R> {
+    pub(crate) fn mutate_as<T: 'static, R>(&self, f: impl FnOnce(&RwData<T>) -> R) -> Option<R> {
         let data = self.0.read();
-        let (widget, _) = data.as_ref().unwrap();
-        let (widget, input) = widget.as_active().unwrap();
+        let (widget, _, modes, cursors) = data.as_ref().unwrap().as_active();
 
         widget
             .try_downcast()
-            .or_else(|| input.try_downcast())
-            .map(|t| f(&t))
+            .or_else(|| modes.try_downcast())
+            .or_else(|| cursors.try_downcast())
+            .map(|data| f(&data))
     }
 
-    pub(crate) fn set(&self, widget: Widget<U>, area: U::Area) {
-        *self.0.write() = Some((widget, area.clone()));
+    pub(crate) fn mutate_data_as<W: Widget<U>, R>(
+        &self,
+        f: impl FnOnce(&RwData<W>, &U::Area, &Modes<U>, &RwData<Option<Cursors>>) -> R,
+    ) -> Option<R> {
+        let data = self.0.read();
+        let node = data.as_ref().unwrap();
+        let (widget, area, modes, cursors) = node.as_active();
+
+        let widget = widget.try_downcast::<W>()?;
+
+        cursors.inspect(|c| {
+            if let Some(c) = c.as_ref() {
+                widget.write().text_mut().remove_cursor_tags(c)
+            }
+        });
+
+        let ret = Some(f(&widget, area, modes, cursors));
+
+        cursors.inspect(|c| {
+            if let Some(c) = c.as_ref() {
+                let mut widget = widget.write();
+                widget.text_mut().add_cursor_tags(c);
+                area.scroll_around_point(widget.text(), c.main().caret(), widget.print_cfg());
+            }
+        });
+
+        ret
+    }
+
+    pub(crate) fn set(&self, node: Node<U>) {
+        *self.0.write() = Some(node);
+    }
+
+    pub(crate) fn node(&self) -> Node<U> {
+        self.0.read().as_ref().unwrap().clone()
     }
 }
 
-impl<U> Default for CurWidget<U>
-where
-    U: Ui,
-{
+impl<U: Ui> Default for CurWidget<U> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-type FileParts<U> = (
+pub(crate) type FileParts<U> = (
     RwData<File>,
     <U as Ui>::Area,
-    RwData<dyn InputMethod<U>>,
-    RelatedWidgets<U>,
+    Modes<U>,
+    RwData<Option<Cursors>>,
+    RwData<Vec<Node<U>>>,
 );

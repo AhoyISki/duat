@@ -1,31 +1,24 @@
-use super::{Cursors, EditHelper, InputMethod, KeyCode, KeyEvent, KeyMod, key};
+use super::{Cursors, EditHelper, KeyCode, KeyEvent, KeyMod, Mode, key};
 use crate::{commands, data::RwData, text::Point, ui::Ui, widgets::CommandLine};
 
-#[derive(Clone)]
-pub struct Commander {
-    cursors: Cursors,
-}
+pub struct Command;
 
-impl Commander {
-    pub fn new() -> Self {
-        Self { cursors: Cursors::new_exclusive() }
-    }
-}
-
-impl Default for Commander {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<U> InputMethod<U> for Commander
-where
-    U: Ui,
-{
+impl<U: Ui> Mode<U> for Command {
     type Widget = CommandLine<U>;
 
-    fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area) {
-        let mut helper = EditHelper::new(widget, area, &mut self.cursors);
+    fn new() -> Self {
+        Self
+    }
+
+    fn send_key(
+        &mut self,
+        key: KeyEvent,
+        widget: &RwData<Self::Widget>,
+        area: &U::Area,
+        cursors: Option<Cursors>,
+    ) -> Option<Cursors> {
+        let mut cursors = cursors.unwrap_or_else(Cursors::new_exclusive);
+        let mut helper = EditHelper::new(widget, area, &mut cursors);
 
         match key {
             key!(KeyCode::Backspace) => {
@@ -80,18 +73,16 @@ where
                     m.move_to(m.len_point());
                 });
                 helper.edit_on_main(|e| e.replace(""));
-                self.cursors = Cursors::new_exclusive();
-                commands::return_to_file();
+                cursors = Cursors::new_exclusive();
+                commands::reset_mode();
             }
             key!(KeyCode::Enter) => {
-                self.cursors = Cursors::new_exclusive();
-                commands::return_to_file();
+                cursors = Cursors::new_exclusive();
+                commands::reset_mode();
             }
             _ => {}
         }
-    }
 
-    fn cursors(&self) -> Option<&Cursors> {
-        Some(&self.cursors)
+        Some(cursors)
     }
 }

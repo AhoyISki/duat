@@ -14,12 +14,12 @@ use std::{cell::RefCell, sync::LazyLock};
 
 use parking_lot::RwLock;
 
-use super::{Area, Ui, Window};
+use super::{Area, Ui};
 use crate::{
-    context,
+    context::{self, FileParts},
     data::RwData,
     duat_name,
-    widgets::{PassiveWidget, WidgetCfg},
+    widgets::{Node, Widget, WidgetCfg},
 };
 
 /// A constructor helper for [`File`] initiations
@@ -31,7 +31,7 @@ use crate::{
 /// # use duat_core::{
 /// #     hooks::{self, OnFileOpen},
 /// #     ui::{FileBuilder, Ui},
-/// #     widgets::{LineNumbers, PassiveWidget},
+/// #     widgets::{LineNumbers, Widget},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::add::<OnFileOpen<U>>(|builder: &FileBuilder<U>| {
@@ -48,7 +48,7 @@ use crate::{
 /// # use duat_core::{
 /// #     hooks::{self, OnFileOpen},
 /// #     ui::{FileBuilder, Ui},
-/// #     widgets::{LineNumbers, PassiveWidget},
+/// #     widgets::{LineNumbers, Widget},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::add::<OnFileOpen<U>>(|builder: &FileBuilder<U>| {
@@ -71,7 +71,7 @@ use crate::{
 /// # use duat_core::{
 /// #     hooks::{self, OnFileOpen},
 /// #     ui::{FileBuilder, Ui},
-/// #     widgets::{CommandLine, LineNumbers, PassiveWidget, StatusLine},
+/// #     widgets::{CommandLine, LineNumbers, Widget, StatusLine},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::remove_group("FileWidgets");
@@ -97,9 +97,10 @@ pub struct FileBuilder<U>
 where
     U: Ui,
 {
-    windows: &'static RwData<Vec<Window<U>>>,
     window_i: usize,
-    mod_area: RwLock<U::Area>,
+    node: Node<U>,
+    area: RwLock<U::Area>,
+    prev: Option<FileParts<U>>,
 }
 
 impl<U> FileBuilder<U>
@@ -107,15 +108,15 @@ where
     U: Ui,
 {
     /// Creates a new [`FileBuilder`].
-    pub(crate) fn new(
-        windows: &'static RwData<Vec<Window<U>>>,
-        mod_area: U::Area,
-        window_i: usize,
-    ) -> Self {
+    pub(crate) fn new(node: Node<U>, window_i: usize) -> Self {
+        let (prev, _) = context::set_cur(node.as_file(), node.clone()).unzip();
+        let area = node.area().clone();
+
         Self {
-            windows,
             window_i,
-            mod_area: RwLock::new(mod_area),
+            node,
+            area: RwLock::new(area),
+            prev,
         }
     }
 
@@ -149,7 +150,7 @@ where
     /// # use duat_core::{
     /// #     hooks::{self, OnFileOpen},
     /// #     ui::{FileBuilder, Ui},
-    /// #     widgets::{File, LineNumbers, PassiveWidget, common::selections_fmt, status},
+    /// #     widgets::{File, LineNumbers, Widget, common::selections_fmt, status},
     /// # };
     /// # fn test<U: Ui>() {
     /// hooks::remove_group("FileWidgets");
@@ -171,27 +172,23 @@ where
     /// [`LineNumbers`]: crate::widgets::LineNumbers
     /// [`relative/absolute`]: crate::widgets::LineNumbersCfg::rel_abs
     /// [`StatusLine`]: crate::widgets::StatusLine
-    pub fn push<W: PassiveWidget<U>>(
+    pub fn push<W: Widget<U>>(
         &self,
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
         let (widget, checker, specs) = cfg.build(true);
 
-        let mut windows = self.windows.write();
-        let mut mod_area = self.mod_area.write();
+        let mut windows = context::windows().write();
+        let mut area = self.area.write();
         let window = &mut windows[self.window_i];
 
-        let related = widget.as_passive().clone();
-
         let (child, parent) = {
-            let (child, parent) = window.push(widget, &*mod_area, checker, specs, true);
+            let (node, parent) = window.push(widget, &*area, checker, specs, true);
 
-            context::cur_file().unwrap().add_related_widget((
-                related,
-                child.clone(),
-                duat_name::<W>(),
-            ));
+            if let Some(related) = self.node.related_widgets() {
+                related.write().push(node.clone())
+            }
 
             if let Some(parent) = &parent {
                 if parent.is_master_of(&window.files_area) {
@@ -199,11 +196,11 @@ where
                 }
             }
 
-            (child, parent)
+            (node.area().clone(), parent)
         };
 
         if let Some(parent) = &parent {
-            *mod_area = parent.clone();
+            *area = parent.clone();
         }
 
         (child, parent)
@@ -228,7 +225,7 @@ where
     /// #     text::Text,
     /// #     ui::{FileBuilder, Ui},
     /// #     widgets::{
-    /// #         CommandLine, File, LineNumbers, PassiveWidget,
+    /// #         CommandLine, File, LineNumbers, Widget,
     /// #         common::{selections_fmt, main_fmt}, status
     /// #     },
     /// # };
@@ -252,7 +249,7 @@ where
     ///
     /// [`File`]: crate::widgets::File
     /// [`StatusLine`]: crate::widgets::StatusLine
-    pub fn push_to<W: PassiveWidget<U>>(
+    pub fn push_to<W: Widget<U>>(
         &self,
         cfg: impl WidgetCfg<U, Widget = W>,
         area: U::Area,
@@ -260,16 +257,22 @@ where
         run_once::<W, U>();
         let (widget, checker, specs) = cfg.build(true);
 
-        let mut windows = self.windows.write();
+        let mut windows = context::windows().write();
         let window = &mut windows[self.window_i];
 
-        let related = widget.as_passive().clone();
+        let (node, parent) = window.push(widget, &area, checker, specs, true);
+        if let Some(related) = self.node.related_widgets() {
+            related.write().push(node.clone())
+        }
+        (node.area().clone(), parent)
+    }
+}
 
-        let (child, parent) = window.push(widget, &area, checker, specs, true);
-        context::cur_file()
-            .unwrap()
-            .add_related_widget((related, child.clone(), duat_name::<W>()));
-        (child, parent)
+impl<U: Ui> Drop for FileBuilder<U> {
+    fn drop(&mut self) {
+        if let Some(prev) = self.prev.take() {
+            context::cur_file().unwrap().set(prev);
+        }
     }
 }
 
@@ -286,7 +289,7 @@ where
 /// # use duat_core::{
 /// #     hooks::{self, OnWindowOpen},
 /// #     ui::{Ui, WindowBuilder},
-/// #     widgets::{CommandLine, PassiveWidget, StatusLine},
+/// #     widgets::{CommandLine, Widget, StatusLine},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::add::<OnWindowOpen<U>>(|builder: &WindowBuilder<U>| {
@@ -311,7 +314,7 @@ where
 /// # use duat_core::{
 /// #     hooks::{self, OnFileOpen, OnWindowOpen},
 /// #     ui::{WindowBuilder, Ui},
-/// #     widgets::{CommandLine, LineNumbers, PassiveWidget, StatusLine},
+/// #     widgets::{CommandLine, LineNumbers, Widget, StatusLine},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::remove_group("FileWidgets");
@@ -341,17 +344,16 @@ where
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [`CommandLine`]: crate::widgets::CommandLine
 pub struct WindowBuilder<U: Ui> {
-    windows: &'static RwData<Vec<Window<U>>>,
     window_i: usize,
     mod_area: RefCell<U::Area>,
 }
 
 impl<U: Ui> WindowBuilder<U> {
     /// Creates a new [`WindowBuilder`].
-    pub(crate) fn new(windows: &'static RwData<Vec<Window<U>>>, window_i: usize) -> Self {
+    pub(crate) fn new(window_i: usize) -> Self {
+        let windows = context::windows::<U>();
         let mod_area = windows.read()[window_i].files_area.clone();
         Self {
-            windows,
             window_i,
             mod_area: RefCell::new(mod_area),
         }
@@ -383,16 +385,16 @@ impl<U: Ui> WindowBuilder<U> {
     /// well as an [`Area`] for the parent of the two widgets, if a
     /// new one was created.
     ///
-    /// [widget]: PassiveWidget
+    /// [widget]: Widget
     /// [cfg]: WidgetCfg
-    pub fn push<W: PassiveWidget<U>>(
+    pub fn push<W: Widget<U>>(
         &self,
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
         let (widget, checker, specs) = cfg.build(false);
 
-        let mut windows = self.windows.write();
+        let mut windows = context::windows().write();
         let mut mod_area = self.mod_area.borrow_mut();
         let window = &mut windows[self.window_i];
 
@@ -402,7 +404,7 @@ impl<U: Ui> WindowBuilder<U> {
             *mod_area = parent.clone();
         }
 
-        (child, parent)
+        (child.area().clone(), parent)
     }
 
     /// Pushes a widget to a specific area
@@ -418,7 +420,7 @@ impl<U: Ui> WindowBuilder<U> {
     /// ```rust
     /// # use duat_core::{
     /// #     ui::{Ui, WindowBuilder},
-    /// #     widgets::{CommandLine, PassiveWidget, StatusLine},
+    /// #     widgets::{CommandLine, Widget, StatusLine},
     /// # };
     /// # fn test<U: Ui>(builder: &WindowBuilder<U>) {
     /// // StatusLine goes below by default
@@ -446,7 +448,7 @@ impl<U: Ui> WindowBuilder<U> {
     /// [`push`]: Self::push
     /// [`StatusLine`]: crate::widgets::StatusLine
     /// [`CommandLine`]: crate::widgets::CommandLine
-    pub fn push_to<W: PassiveWidget<U>>(
+    pub fn push_to<W: Widget<U>>(
         &self,
         cfg: impl WidgetCfg<U, Widget = W>,
         area: U::Area,
@@ -454,17 +456,19 @@ impl<U: Ui> WindowBuilder<U> {
         run_once::<W, U>();
         let (widget, checker, specs) = cfg.build(false);
 
-        let mut windows = self.windows.write();
+        let mut windows = context::windows().write();
         let window = &mut windows[self.window_i];
 
-        window.push(widget, &area, checker, specs, true)
+        let (node, parent) = window.push(widget, &area, checker, specs, true);
+
+        (node.area().clone(), parent)
     }
 }
 
 /// Runs the [`once`] function of widgets.
 ///
-/// [`once`]: PassiveWidget::once
-fn run_once<W: PassiveWidget<U>, U: Ui>() {
+/// [`once`]: Widget::once
+fn run_once<W: Widget<U>, U: Ui>() {
     static ONCE_LIST: LazyLock<RwData<Vec<&'static str>>> =
         LazyLock::new(|| RwData::new(Vec::new()));
 
