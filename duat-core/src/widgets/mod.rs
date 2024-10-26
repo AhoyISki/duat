@@ -47,12 +47,12 @@
 //! [`Constraint`]: crate::ui::Constraint
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, AtomicUsize, Ordering},
+    atomic::{AtomicBool, Ordering},
 };
 
 pub use self::{
     command_line::{
-        CommandLine, CommandLineCfg, CommandLineMode, IncSearch, RunCommands, ShowNotifications,
+        CommandLine, CommandLineCfg, CmdLineMode, IncSearch, RunCommands, ShowNotifications,
     },
     file::{File, FileCfg},
     line_numbers::{LineNumbers, LineNumbersCfg},
@@ -60,10 +60,10 @@ pub use self::{
 };
 use crate::{
     context::FileParts,
-    data::{Data, RwData, RwLock},
+    data::{Data, RwData},
     forms,
     hooks::{self, FocusedOn, UnfocusedFrom},
-    input::{Cursors, Mode},
+    input::Cursors,
     text::{PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
 };
@@ -438,7 +438,6 @@ where
 pub struct Node<U: Ui> {
     widget: RwData<dyn Widget<U>>,
     area: U::Area,
-    modes: Modes<U>,
     cursors: RwData<Option<Cursors>>,
 
     checker: Arc<dyn Fn() -> bool>,
@@ -466,7 +465,6 @@ impl<U: Ui> Node<U> {
         Self {
             widget,
             area,
-            modes: Modes::new(),
             cursors: RwData::new(cursors),
 
             checker: Arc::new(checker),
@@ -525,18 +523,11 @@ impl<U: Ui> Node<U> {
         self.widget.write().update(&self.area)
     }
 
-    pub(crate) fn as_active(
-        &self,
-    ) -> (
-        &RwData<dyn Widget<U>>,
-        &U::Area,
-        &Modes<U>,
-        &RwData<Option<Cursors>>,
-    ) {
+    pub(crate) fn as_active(&self) -> (&RwData<dyn Widget<U>>, &U::Area, &RwData<Option<Cursors>>) {
         // Since this function is only ever used on widgets that became active
         // via `command::set_mode`, tecnically speaking, every widget is
         // active, so no need to return an `Option`.
-        (&self.widget, &self.area, &self.modes, &self.cursors)
+        (&self.widget, &self.area, &self.cursors)
     }
 
     pub(crate) fn as_file(&self) -> Option<FileParts<U>> {
@@ -544,7 +535,6 @@ impl<U: Ui> Node<U> {
             (
                 file,
                 self.area.clone(),
-                self.modes.clone(),
                 self.cursors.clone(),
                 self.related_widgets.clone().unwrap(),
             )
@@ -581,7 +571,6 @@ impl<U: Ui> Node<U> {
             }
         });
 
-        self.modes.mutate_cur(|m| m.on_focus(&self.area));
         self.widget.write().on_focus(&self.area);
 
         let widget = self.widget.try_downcast().unwrap();
@@ -597,7 +586,6 @@ impl<U: Ui> Node<U> {
             }
         });
 
-        self.modes.mutate_cur(|m| m.on_unfocus(&self.area));
         self.widget.write().on_unfocus(&self.area);
 
         let widget = self.widget.try_downcast().unwrap();
@@ -611,7 +599,6 @@ impl<U: Ui> Clone for Node<U> {
         Self {
             widget: self.widget.clone(),
             area: self.area.clone(),
-            modes: self.modes.clone(),
             cursors: self.cursors.clone(),
             checker: self.checker.clone(),
             busy_updating: self.busy_updating.clone(),
@@ -624,68 +611,3 @@ impl<U: Ui> Clone for Node<U> {
 
 unsafe impl<U: Ui> Send for Node<U> {}
 unsafe impl<U: Ui> Sync for Node<U> {}
-
-pub struct Modes<U: Ui> {
-    cur: Arc<AtomicUsize>,
-    list: RwData<Vec<RwData<dyn Mode<U>>>>,
-}
-
-impl<U: Ui> Modes<U> {
-    fn new() -> Self {
-        Self {
-            cur: Arc::new(AtomicUsize::new(0)),
-            list: RwData::default(),
-        }
-    }
-
-    pub fn cur(&self) -> RwData<dyn Mode<U>> {
-        let list = self.list.read();
-        list.get(self.cur.load(Ordering::Relaxed)).unwrap().clone()
-    }
-
-    pub fn mutate_cur<R>(&self, f: impl FnOnce(&mut dyn Mode<U>) -> R) -> R {
-        let list = self.list.read();
-        let mut main = list[self.cur.load(Ordering::Relaxed)].write();
-        f(&mut *main)
-    }
-
-    pub fn has<I: 'static>(&self) -> bool {
-        let list = self.list.read();
-        list.iter().any(RwData::data_is::<I>)
-    }
-
-    pub fn mutate_as<I: 'static, R>(&self, f: impl FnOnce(&mut I) -> R) -> Option<R> {
-        let list = self.list.read();
-        list.iter()
-            .find(|i| i.data_is::<I>())
-            .and_then(|i| i.mutate_as(f))
-    }
-
-    pub fn try_downcast<I: 'static>(&self) -> Option<RwData<I>> {
-        let list = self.list.read();
-        list.iter().find_map(|i| i.try_downcast())
-    }
-
-    pub fn add_set<M: Mode<U>>(&self) {
-        let mut list = self.list.write();
-
-        let i = match list.iter().position(RwData::data_is::<M>) {
-            Some(i) => i,
-            None => {
-                list.push(RwData::new_unsized::<M>(Arc::new(RwLock::new(M::new()))));
-                list.len() - 1
-            }
-        };
-
-        self.cur.store(i, Ordering::Relaxed);
-    }
-}
-
-impl<U: Ui> Clone for Modes<U> {
-    fn clone(&self) -> Self {
-        Self {
-            cur: self.cur.clone(),
-            list: self.list.clone(),
-        }
-    }
-}

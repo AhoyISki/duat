@@ -24,10 +24,6 @@ impl Default for Regular {
 impl<U: Ui> super::Mode<U> for Regular {
     type Widget = File;
 
-    fn new() -> Self {
-        Self
-    }
-
     fn send_key(
         &mut self,
         key: KeyEvent,
@@ -102,7 +98,7 @@ impl<U: Ui> super::Mode<U> for Regular {
             key!(KeyCode::Down) => move_each(helper, Side::Bottom, 1),
 
             // Control
-            key!(KeyCode::Char('p'), KeyMod::CONTROL) => commands::set_mode::<Command, U>(),
+            key!(KeyCode::Char('p'), KeyMod::CONTROL) => commands::set_mode::<U>(Command),
 
             _ => {}
         }

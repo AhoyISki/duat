@@ -15,7 +15,7 @@ pub use self::{
 use crate::{
     data::RwData,
     text::Searcher,
-    ui::Ui,
+    ui::{Area, Ui},
     widgets::{File, Widget},
 };
 
@@ -278,15 +278,8 @@ use crate::{
 /// [`duat-kak`]: https://docs.rs/duat-kak/latest/duat_kak/index.html
 /// [Kakoune]: https://github.com/mawww/kakoune
 /// [`Text`]: crate::Text
-pub trait Mode<U>: Send + Sync + 'static
-where
-    U: Ui,
-{
+pub trait Mode<U: Ui>: Clone + Send + Sync + 'static {
     type Widget: Widget<U>
-    where
-        Self: Sized;
-
-    fn new() -> Self
     where
         Self: Sized;
 
@@ -305,65 +298,85 @@ where
 
     #[allow(unused)]
     fn on_unfocus(&mut self, area: &U::Area) {}
+}
+
+pub trait IncSearcher<U: Ui>: Sized + Send + Sync + 'static {
+    fn new(
+        file: &RwData<File>,
+        area: &U::Area,
+        cursors: Option<Cursors>,
+    ) -> (Self, Option<Cursors>);
+
+    fn search(
+        &mut self,
+        file: &RwData<File>,
+        area: &U::Area,
+        searcher: Searcher,
+        cursors: Option<Cursors>,
+    ) -> Option<Cursors>;
 
     #[allow(unused)]
-    fn begin_inc_search(
+    fn finish(
         &mut self,
         file: &RwData<File>,
         area: &U::Area,
         cursors: Option<Cursors>,
     ) -> Option<Cursors> {
-        unimplemented!(
-            "This Mode does not handle incremental search, yet it was asked to. STRANGE, isn't it?"
-        );
+        cursors
     }
+}
 
-    #[allow(unused)]
-    fn end_inc_search(
-        &mut self,
-        file: &RwData<File>,
+pub struct Fwd<U: Ui> {
+    cursors: Cursors,
+    info: <U::Area as Area>::PrintInfo,
+}
+
+impl<U: Ui> IncSearcher<U> for Fwd<U> {
+    fn new(
+        _file: &RwData<File>,
         area: &U::Area,
         cursors: Option<Cursors>,
-    ) -> Option<Cursors> {
-        unimplemented!(
-            "This Mode does not handle incremental search, yet it was asked to. STRANGE, isn't it?"
-        );
+    ) -> (Self, Option<Cursors>) {
+        (
+            Self {
+                cursors: cursors.clone().unwrap_or_default(),
+                info: area.get_print_info(),
+            },
+            cursors,
+        )
     }
 
-    /// Handles incremental search from [`IncSearch`]
-    ///
-    /// This should work similarly to [`send_key`], i.e., treat this
-    /// like if a key was sent to the [`Mode`]. When
-    /// implementing this, you should use [`EditHelper::new_inc`]
-    /// instead of [`new`], which, when using [`Mover`]s (by
-    /// [`move_main`], [`move_each`], etc), allow the use of the
-    /// [`search_inc`] methods, making use of the requested
-    /// incremental search.
-    ///
-    /// # NOTE
-    ///
-    /// You can implement this trai in types where the widget is not
-    /// [`File`], however, the implementation will never end up being
-    /// used.
-    ///
-    /// [`IncSearch`]: crate::widgets::IncSearch
-    /// [`send_key`]: Mode::send_key
-    /// [`new`]: EditHelper::new
-    /// [`Mover`]: helper::Mover
-    /// [`move_main`]: EditHelper::move_main
-    /// [`move_each`]: EditHelper::move_each
-    /// [`search_inc`]: helper::Mover::search_inc
-    #[allow(unused)]
-    fn search_inc(
+    fn search(
         &mut self,
         file: &RwData<File>,
         area: &U::Area,
         searcher: Searcher,
         cursors: Option<Cursors>,
     ) -> Option<Cursors> {
-        unimplemented!(
-            "This Mode does not handle incremental search, yet it was asked to. STRANGE, isn't it?"
-        );
+        if searcher.is_empty() {
+            area.set_print_info(self.info.clone());
+            return cursors;
+        }
+
+        let mut cursors = self.cursors.clone();
+
+        let mut helper = EditHelper::new_inc(file, area, &mut cursors, searcher);
+
+        helper.move_each(|m| {
+            let next = m.search_inc(None).next();
+            if let Some((p0, p1)) = next {
+                m.move_to(p0);
+                m.set_anchor();
+                m.move_to(p1);
+                m.move_hor(-1);
+            } else if m.is_main() {
+                area.set_print_info(self.info.clone());
+            }
+        });
+
+        drop(helper);
+
+        Some(cursors)
     }
 }
 

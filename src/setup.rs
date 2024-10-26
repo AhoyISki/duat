@@ -16,7 +16,7 @@ use duat_core::{
     session::SessionCfg,
     text::PrintCfg,
     ui::{Event, Ui as TraitUi, Window},
-    widgets::{File, Widget, ShowNotifications},
+    widgets::{File, ShowNotifications, Widget},
 };
 use duat_term::VertRule;
 
@@ -57,7 +57,7 @@ pub fn pre_setup() {
     });
 
     hooks::add_grouped::<UnfocusedFrom<CommandLine>>("CmdLineNotifications", |_cmd_line| {
-        commands::set_mode::<ShowNotifications>();
+        commands::set_cmd_mode(ShowNotifications::new());
     });
 }
 

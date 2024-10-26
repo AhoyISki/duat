@@ -5,7 +5,10 @@ use std::{ops::RangeInclusive, sync::LazyLock};
 use duat_core::{
     commands, context,
     data::{RwData, RwLock},
-    input::{Cursors, EditHelper, KeyCode::*, KeyEvent as Event, KeyMod as Mod, Mode, Mover, key},
+    input::{
+        Cursors, EditHelper, Fwd, IncSearcher, KeyCode::*, KeyEvent as Event, KeyMod as Mod, Mode,
+        Mover, key,
+    },
     text::{Point, err},
     ui::{Area, Ui},
     widgets::{File, IncSearch, RunCommands},
@@ -13,14 +16,28 @@ use duat_core::{
 
 const ALTSHIFT: Mod = Mod::ALT.union(Mod::SHIFT);
 
-pub struct Normal<U: Ui> {
-    sel_type: SelType,
-    action: Action,
-    searching: Option<(Cursors, <<U as Ui>::Area as Area>::PrintInfo)>,
+#[derive(Clone)]
+pub struct Normal(SelType);
+
+impl Normal {
+    pub fn new() -> Self {
+        Normal(SelType::Normal)
+    }
 }
 
-impl<U: Ui> Normal<U> {
-    fn match_normal<S>(&mut self, helper: &mut EditHelper<File, U::Area, S>, key: Event) {
+impl<U: Ui> Mode<U> for Normal {
+    type Widget = File;
+
+    fn send_key(
+        &mut self,
+        key: Event,
+        widget: &RwData<Self::Widget>,
+        area: &U::Area,
+        cursors: Option<Cursors>,
+    ) -> Option<Cursors> {
+        let mut cursors = cursors.unwrap_or_else(Cursors::new_inclusive);
+        let mut helper = EditHelper::new(widget, area, &mut cursors);
+
         if let key!(Char('h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e') | Down | Up) = key {
             helper.move_each(|m| m.unset_anchor())
         }
@@ -28,7 +45,7 @@ impl<U: Ui> Normal<U> {
         match key {
             ////////// hjkl and arrow selection keys.
             key!(Char('h')) => helper.move_each(|m| m.move_hor(-1)),
-            key!(Char('j')) => match self.sel_type {
+            key!(Char('j')) => match self.0 {
                 SelType::EndOfNl => helper.move_each(|m| {
                     m.move_ver(1);
                     let (p0, _) = m.search("\n", None).next().unzip();
@@ -49,7 +66,7 @@ impl<U: Ui> Normal<U> {
                 SelType::Normal => helper.move_each(|m| m.move_ver(1)),
                 _ => unreachable!(),
             },
-            key!(Char('k')) => match self.sel_type {
+            key!(Char('k')) => match self.0 {
                 SelType::EndOfNl => helper.move_each(|m| {
                     m.move_ver(-1);
                     let (p0, _) = m.search("\n", None).next().unzip();
@@ -72,8 +89,8 @@ impl<U: Ui> Normal<U> {
             },
             key!(Char('l')) => helper.move_each(|m| m.move_hor(1)),
 
-            key!(Char('H'), Mod::SHIFT) => select_and_move_each(helper, Side::Left, 1),
-            key!(Char('J'), Mod::SHIFT) => match self.sel_type {
+            key!(Char('H'), Mod::SHIFT) => select_and_move_each(&mut helper, Side::Left, 1),
+            key!(Char('J'), Mod::SHIFT) => match self.0 {
                 SelType::EndOfNl => helper.move_each(|m| {
                     m.move_ver(1);
                     let (p0, _) = m.search("\n", None).next().unzip();
@@ -91,10 +108,10 @@ impl<U: Ui> Normal<U> {
                         m.move_to(p);
                     }
                 }),
-                SelType::Normal => select_and_move_each(helper, Side::Bottom, 1),
+                SelType::Normal => select_and_move_each(&mut helper, Side::Bottom, 1),
                 _ => unreachable!(),
             },
-            key!(Char('K'), Mod::SHIFT) => match self.sel_type {
+            key!(Char('K'), Mod::SHIFT) => match self.0 {
                 SelType::EndOfNl => helper.move_each(|m| {
                     m.move_ver(-1);
                     let (p0, _) = m.search("\n", None).next().unzip();
@@ -112,19 +129,19 @@ impl<U: Ui> Normal<U> {
                         m.move_to(p);
                     }
                 }),
-                SelType::Normal => select_and_move_each(helper, Side::Top, 1),
+                SelType::Normal => select_and_move_each(&mut helper, Side::Top, 1),
                 _ => unreachable!(),
             },
-            key!(Char('L'), Mod::SHIFT) => select_and_move_each(helper, Side::Right, 1),
+            key!(Char('L'), Mod::SHIFT) => select_and_move_each(&mut helper, Side::Right, 1),
 
             key!(Left) => helper.move_each(|m| m.move_hor(-1)),
             key!(Down) => helper.move_each(|m| m.move_ver_wrapped(1)),
             key!(Up) => helper.move_each(|m| m.move_ver_wrapped(-1)),
             key!(Right) => helper.move_each(|m| m.move_hor(1)),
-            key!(Left, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Left, 1),
-            key!(Down, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Bottom, 1),
-            key!(Up, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Top, 1),
-            key!(Right, Mod::SHIFT) => select_and_move_each_wrapped(helper, Side::Right, 1),
+            key!(Left, Mod::SHIFT) => select_and_move_each_wrapped(&mut helper, Side::Left, 1),
+            key!(Down, Mod::SHIFT) => select_and_move_each_wrapped(&mut helper, Side::Bottom, 1),
+            key!(Up, Mod::SHIFT) => select_and_move_each_wrapped(&mut helper, Side::Top, 1),
+            key!(Right, Mod::SHIFT) => select_and_move_each_wrapped(&mut helper, Side::Right, 1),
 
             ////////// Word and WORD selection keys.
             key!(Char('w'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each(|m| {
@@ -216,7 +233,7 @@ impl<U: Ui> Normal<U> {
 
             ////////// Other selection keys.
             key!(Char('x')) => {
-                self.sel_type = SelType::EndOfNl;
+                self.0 = SelType::EndOfNl;
                 helper.move_each(|m| {
                     m.set_caret_on_start();
 
@@ -235,18 +252,18 @@ impl<U: Ui> Normal<U> {
                 if let 'f' | 'F' | 't' | 'T' = char
                     && (mf.intersects(ALTSHIFT) || mf == Mod::NONE) =>
             {
-                self.sel_type = match (mf.contains(Mod::SHIFT), mf.contains(Mod::ALT)) {
+                let sel_type = match (mf.contains(Mod::SHIFT), mf.contains(Mod::ALT)) {
                     (true, true) => SelType::ExtendRev,
                     (true, false) => SelType::Extend,
                     (false, true) => SelType::Reverse,
                     (false, false) => SelType::Normal,
                 };
 
-                self.action = if let 'f' | 'F' = char {
-                    Action::Find
+                commands::set_mode::<U>(if let 'f' | 'F' = char {
+                    OneKey::Find(sel_type)
                 } else {
-                    Action::Until
-                };
+                    OneKey::Until(sel_type)
+                });
             }
             key!(Char('%')) => helper.move_main(|m| {
                 m.move_to(Point::default());
@@ -261,13 +278,16 @@ impl<U: Ui> Normal<U> {
             ////////// Text modifying keys.
             key!(Char('i')) => {
                 helper.move_each(|m| m.set_caret_on_start());
+                commands::set_mode::<U>(Insert);
             }
             key!(Char('a')) => {
                 helper.move_each(|m| m.set_caret_on_end());
+                commands::set_mode::<U>(Insert);
             }
             key!(Char('c')) => {
                 helper.edit_on_each(|e| e.replace(""));
                 helper.move_each(|m| m.unset_anchor());
+                commands::set_mode::<U>(Insert);
             }
             key!(Char('d')) => {
                 helper.edit_on_each(|e| e.replace(""));
@@ -275,20 +295,10 @@ impl<U: Ui> Normal<U> {
             }
 
             ////////// Other mode changing keys.
-            key!(Char(':')) => {
-                commands::set_cmd_mode::<RunCommands, U>();
-            }
-            key!(Char('G'), Mod::SHIFT) => {
-                self.action = Action::GoTo;
-                self.sel_type = SelType::Extend;
-            }
-            key!(Char('g')) => {
-                self.action = Action::GoTo;
-            }
-            key!(Char('/')) => {
-                commands::set_cmd_mode::<IncSearch, U>();
-                // self.mode = Mode::Other("search");
-            }
+            key!(Char(':')) => commands::set_cmd_mode::<U>(RunCommands::new()),
+            key!(Char('G'), Mod::SHIFT) => commands::set_mode::<U>(OneKey::GoTo(SelType::Extend)),
+            key!(Char('g')) => commands::set_mode::<U>(OneKey::GoTo(SelType::Normal)),
+            key!(Char('/')) => commands::set_cmd_mode::<U>(IncSearch::new(Fwd::new)),
 
             ////////// Temporary.
             key!(Char('q')) => panic!("Panicked on purpose"),
@@ -298,209 +308,16 @@ impl<U: Ui> Normal<U> {
             key!(Char('U'), Mod::SHIFT) => helper.redo(),
             _ => {}
         }
-    }
-
-    /// Commands that are available in `Mode::GoTo`.
-    fn match_goto<S>(&mut self, helper: &mut EditHelper<File, U::Area, S>, event: Event) {
-        static LAST_FILE: LazyLock<RwData<Option<String>>> = LazyLock::new(RwData::default);
-        let last_file = LAST_FILE.read().clone();
-        let cur_name = context::cur_file::<U>().unwrap().name();
-
-        if let key!(Char('h' | 'j' | 'k' | 'l' | 'i' | 't' | 'b' | 'c' | '.')) = event
-            && let SelType::Normal = self.sel_type
-        {
-            helper.move_each(|m| m.unset_anchor())
-        } else {
-            helper.move_each(|m| {
-                if m.anchor().is_none() {
-                    m.set_anchor()
-                }
-            })
-        }
-
-        match event {
-            key!(Char('h')) => helper.move_each(|m| {
-                let (_, p1) = m.search_rev("\n", None).next().unzip();
-                m.move_to(p1.unwrap_or_default());
-            }),
-            key!(Char('j')) => helper.move_each(|m| m.move_ver(isize::MAX)),
-            key!(Char('k')) => helper.move_each(|m| m.move_to_coords(0, 0)),
-            key!(Char('l')) => helper.move_each(|m| {
-                self.sel_type = SelType::UntilNL;
-                let pre_nl = match m.char() {
-                    '\n' => m.iter_rev().take_while(|(_, char)| *char != '\n').next(),
-                    _ => m.iter().take_while(|(_, char)| *char != '\n').last(),
-                };
-                if let Some((p, _)) = pre_nl {
-                    m.move_to(p);
-                }
-            }),
-            key!(Char('i')) => helper.move_each(|m| {
-                let (_, p1) = m.search_rev("(^|\n)[ \t]*", None).next().unzip();
-                if let Some(p1) = p1 {
-                    m.move_to(p1);
-
-                    let points = m.search("[^ \t]", None).next();
-                    if let Some((p0, _)) = points {
-                        m.move_to(p0)
-                    }
-                }
-            }),
-
-            ////////// File change keys.
-            key!(Char('a')) => {
-                if let Some(file) = last_file
-                    && commands::run_notify(format!("b {file}")).is_ok()
-                {
-                    *LAST_FILE.write() = Some(cur_name);
-                } else {
-                    context::notify(err!("There is no previous file."))
-                }
-            }
-            key!(Char('n')) => {
-                if commands::run_notify("next-file").is_ok() {
-                    *LAST_FILE.write() = Some(cur_name);
-                }
-            }
-            key!(Char('N'), Mod::SHIFT) => {
-                if commands::run_notify("prev-file").is_ok() {
-                    *LAST_FILE.write() = Some(cur_name);
-                }
-            }
-            Event { code, .. } => {
-                let code = format!("{code:?}");
-                context::notify(err!("Key " [*a] code [] " not mapped on " [*a] "go to" [] "."))
-            }
-        }
-
-        self.action = Action::Normal;
-    }
-}
-
-impl<U: Ui> Mode<U> for Normal<U> {
-    type Widget = File;
-
-    fn new() -> Self {
-        Normal {
-            sel_type: SelType::Normal,
-            action: Action::Normal,
-            searching: None,
-        }
-    }
-
-    fn send_key(
-        &mut self,
-        key: Event,
-        widget: &RwData<Self::Widget>,
-        area: &U::Area,
-        cursors: Option<Cursors>,
-    ) -> Option<Cursors> {
-        let mut cursors = cursors.unwrap_or_else(Cursors::new_inclusive);
-        let mut helper = EditHelper::new(widget, area, &mut cursors);
-
-        match self.action {
-            Action::Normal => self.match_normal(&mut helper, key),
-            Action::GoTo => self.match_goto(&mut helper, key),
-            Action::Find | Action::Until if let key!(Char(char), Mod::SHIFT | Mod::NONE) = key => {
-                use SelType::*;
-                helper.move_each(|m| {
-                    let cur = m.caret();
-                    let (points, back) = match self.sel_type {
-                        Reverse | ExtendRev => {
-                            (m.search_rev(char, None).find(|(p, _)| *p != cur), 1)
-                        }
-                        Normal | Extend => (m.search(char, None).find(|(p, _)| *p != cur), -1),
-                        _ => unreachable!(),
-                    };
-
-                    if let Some((p0, _)) = points
-                        && p0 != m.caret()
-                    {
-                        let is_extension = !matches!(self.sel_type, Extend | ExtendRev);
-                        if is_extension || m.anchor().is_none() {
-                            m.set_anchor();
-                        }
-                        m.move_to(p0);
-                        if let Action::Until = self.action {
-                            m.move_hor(back);
-                        }
-                    } else {
-                        context::notify(err!("Char " [*a] {char} [] " not found."))
-                    }
-                });
-
-                self.action = Action::Normal;
-            }
-            _ => {}
-        }
 
         Some(cursors)
     }
-
-    fn begin_inc_search(
-        &mut self,
-        _file: &RwData<File>,
-        area: &U::Area,
-        cursors: Option<Cursors>,
-    ) -> Option<Cursors> {
-        let cursors = cursors.unwrap_or_else(Cursors::new_inclusive);
-        self.searching = Some((cursors.clone(), area.get_print_info()));
-        Some(cursors)
-    }
-
-    fn end_inc_search(
-        &mut self,
-        _file: &RwData<File>,
-        _area: &U::Area,
-        cursors: Option<Cursors>,
-    ) -> Option<Cursors> {
-        self.searching = None;
-        cursors
-    }
-
-    fn search_inc(
-        &mut self,
-        file: &RwData<File>,
-        area: &<U as Ui>::Area,
-        searcher: duat_core::text::Searcher,
-        cursors: Option<Cursors>,
-    ) -> Option<Cursors> {
-        if searcher.is_empty() {
-            let (_, info) = self.searching.as_mut().unwrap();
-            area.set_print_info(info.clone());
-            return cursors;
-        }
-
-        let mut searching = self.searching.as_ref().map(|(c, _)| c).cloned().unwrap();
-
-        let mut helper = EditHelper::new_inc(file, area, &mut searching, searcher);
-
-        helper.move_each(|m| {
-            let next = m.search_inc(None).next();
-            if let Some((p0, p1)) = next {
-                m.move_to(p0);
-                m.set_anchor();
-                m.move_to(p1);
-                m.move_hor(-1);
-            } else if m.is_main() {
-                area.set_print_info(self.searching.as_ref().unwrap().1.clone());
-            }
-        });
-
-        drop(helper);
-
-        Some(searching)
-    }
 }
 
+#[derive(Clone)]
 pub struct Insert;
 
 impl<U: Ui> Mode<U> for Insert {
     type Widget = File;
-
-    fn new() -> Self {
-        Self
-    }
 
     fn send_key(
         &mut self,
@@ -593,6 +410,155 @@ impl<U: Ui> Mode<U> for Insert {
     }
 }
 
+#[derive(Clone)]
+enum OneKey {
+    GoTo(SelType),
+    Find(SelType),
+    Until(SelType),
+}
+
+impl OneKey {
+    fn match_goto<S, U: Ui>(&mut self, helper: &mut EditHelper<File, U::Area, S>, key: Event) {
+        static LAST_FILE: LazyLock<RwData<Option<String>>> = LazyLock::new(RwData::default);
+        let last_file = LAST_FILE.read().clone();
+        let cur_name = context::cur_file::<U>().unwrap().name();
+
+        let OneKey::GoTo(sel_type) = self else {
+            unreachable!();
+        };
+
+        if let key!(Char('h' | 'j' | 'k' | 'l' | 'i' | 't' | 'b' | 'c' | '.')) = key
+            && let SelType::Normal = sel_type
+        {
+            helper.move_each(|m| m.unset_anchor())
+        } else {
+            helper.move_each(|m| {
+                if m.anchor().is_none() {
+                    m.set_anchor()
+                }
+            })
+        }
+
+        match key {
+            key!(Char('h')) => helper.move_each(|m| {
+                let (_, p1) = m.search_rev("\n", None).next().unzip();
+                m.move_to(p1.unwrap_or_default());
+            }),
+            key!(Char('j')) => helper.move_each(|m| m.move_ver(isize::MAX)),
+            key!(Char('k')) => helper.move_each(|m| m.move_to_coords(0, 0)),
+            key!(Char('l')) => helper.move_each(|m| {
+                *sel_type = SelType::UntilNL;
+                let pre_nl = match m.char() {
+                    '\n' => m.iter_rev().take_while(|(_, char)| *char != '\n').next(),
+                    _ => m.iter().take_while(|(_, char)| *char != '\n').last(),
+                };
+                if let Some((p, _)) = pre_nl {
+                    m.move_to(p);
+                }
+            }),
+            key!(Char('i')) => helper.move_each(|m| {
+                let (_, p1) = m.search_rev("(^|\n)[ \t]*", None).next().unzip();
+                if let Some(p1) = p1 {
+                    m.move_to(p1);
+
+                    let points = m.search("[^ \t]", None).next();
+                    if let Some((p0, _)) = points {
+                        m.move_to(p0)
+                    }
+                }
+            }),
+
+            ////////// File change keys.
+            key!(Char('a')) => {
+                if let Some(file) = last_file
+                    && commands::run_notify(format!("b {file}")).is_ok()
+                {
+                    *LAST_FILE.write() = Some(cur_name);
+                } else {
+                    context::notify(err!("There is no previous file."))
+                }
+            }
+            key!(Char('n')) => {
+                if commands::run_notify("next-file").is_ok() {
+                    *LAST_FILE.write() = Some(cur_name);
+                }
+            }
+            key!(Char('N'), Mod::SHIFT) => {
+                if commands::run_notify("prev-file").is_ok() {
+                    *LAST_FILE.write() = Some(cur_name);
+                }
+            }
+            Event { code, .. } => {
+                let code = format!("{code:?}");
+                context::notify(err!("Key " [*a] code [] " not mapped on " [*a] "go to" [] "."))
+            }
+        }
+    }
+
+    fn sel_type(&self) -> SelType {
+        match self {
+            OneKey::GoTo(sel_type) => *sel_type,
+            OneKey::Find(sel_type) => *sel_type,
+            OneKey::Until(sel_type) => *sel_type,
+        }
+    }
+}
+
+impl<U: Ui> Mode<U> for OneKey {
+    type Widget = File;
+
+    fn send_key(
+        &mut self,
+        key: Event,
+        widget: &RwData<Self::Widget>,
+        area: &<U as Ui>::Area,
+        cursors: Option<Cursors>,
+    ) -> Option<Cursors> {
+        let mut cursors = cursors.unwrap_or_else(Cursors::new_inclusive);
+        let mut helper = EditHelper::new(widget, area, &mut cursors);
+        let sel_type = self.sel_type();
+
+        match self {
+            OneKey::GoTo(_) => self.match_goto::<(), U>(&mut helper, key),
+            OneKey::Find(_) | OneKey::Until(_)
+                if let key!(Char(char), Mod::SHIFT | Mod::NONE) = key =>
+            {
+                use SelType::*;
+                helper.move_each(|m| {
+                    let cur = m.caret();
+                    let (points, back) = match sel_type {
+                        Reverse | ExtendRev => {
+                            (m.search_rev(char, None).find(|(p, _)| *p != cur), 1)
+                        }
+                        Normal | Extend => (m.search(char, None).find(|(p, _)| *p != cur), -1),
+                        _ => unreachable!(),
+                    };
+
+                    if let Some((p0, _)) = points
+                        && p0 != m.caret()
+                    {
+                        let is_extension = !matches!(sel_type, Extend | ExtendRev);
+                        if is_extension || m.anchor().is_none() {
+                            m.set_anchor();
+                        }
+                        m.move_to(p0);
+                        if let OneKey::Until(_) = self {
+                            m.move_hor(back);
+                        }
+                    } else {
+                        context::notify(err!("Char " [*a] {char} [] " not found."))
+                    }
+                });
+            }
+            _ => {}
+        }
+
+        commands::set_mode::<U>(Normal(self.sel_type()));
+
+        Some(cursors)
+    }
+}
+
 fn select_and_move_each<S>(
     helper: &mut EditHelper<File, impl Area, S>,
     direction: Side,
@@ -650,13 +616,6 @@ enum SelType {
     Extend,
     ExtendRev,
     Normal,
-}
-
-enum Action {
-    Normal,
-    GoTo,
-    Find,
-    Until,
 }
 
 fn word_and_space<S>(m: &Mover<impl Area, S>, mf: Mod) -> &'static str {

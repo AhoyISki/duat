@@ -19,28 +19,19 @@ use std::{fmt::Display, marker::PhantomData};
 use crate::{
     context::FileReader,
     data::{RoData, RwData},
-    input::Mode,
     text::{Builder, Tag, Text, text},
     ui::Ui,
     widgets::{File, Widget},
 };
 
 /// A struct that reads state in order to return [`Text`].
-enum Appender<T, U> {
+enum Appender<T> {
     NoArgsStr(Box<dyn FnMut() -> String + Send + Sync + 'static>),
     NoArgsText(Box<dyn FnMut() -> Text + Send + Sync + 'static>),
-    FromInputStr(RelatedStrFn<T>),
-    FromInputText(RelatedTextFn<T>),
     FromWidgetStr(RelatedStrFn<T>),
     FromWidgetText(RelatedTextFn<T>),
-    FromDynInputStr(DynInputStrFn<U>),
-    FromDynInputText(DynInputTextFn<U>),
     FromFileAndWidgetStr(FileAndRelatedStrFn<T>),
     FromFileAndWidgetText(FileAndRelatedTextFn<T>),
-    FromFileAndInputStr(FileAndRelatedStrFn<T>),
-    FromFileAndInputText(FileAndRelatedTextFn<T>),
-    FromFileAndDynInputStr(FileAndDynInputStrFn<U>),
-    FromFileAndDynInputText(FileAndDynInputTextFn<U>),
     Str(String),
     Text(Text),
 }
@@ -54,32 +45,17 @@ enum Appender<T, U> {
 /// [`StatusLine`]: super::StatusLine
 /// [`impl Display`]: std::fmt::Display
 pub struct State<T: 'static, Dummy, U> {
-    appender: Appender<T, U>,
+    appender: Appender<T>,
     checker: Option<Box<dyn Fn() -> bool + Send + Sync>>,
-    _u: PhantomData<Dummy>,
+    ghost: PhantomData<(Dummy, U)>,
 }
 
-impl<T: 'static, Dummy, U> State<T, Dummy, U>
-where
-    U: Ui,
-{
+impl<T: 'static, Dummy, U: Ui> State<T, Dummy, U> {
     pub fn fns(self) -> (ReaderFn<U>, Box<dyn Fn() -> bool>) {
         (
             match self.appender {
                 Appender::NoArgsStr(mut f) => Box::new(move |builder, _| builder.push_str(f())),
                 Appender::NoArgsText(mut f) => Box::new(move |builder, _| builder.push_text(f())),
-
-                Appender::FromInputStr(mut f) => Box::new(move |builder, reader| {
-                    if let Some(str) = reader.inspect_related(&mut f) {
-                        builder.push_str(str)
-                    }
-                }),
-                Appender::FromInputText(mut f) => Box::new(move |builder, reader| {
-                    if let Some(text) = reader.inspect_related(&mut f) {
-                        builder.push_text(text)
-                    }
-                }),
-
                 Appender::FromWidgetStr(mut f) => Box::new(move |builder, reader| {
                     if let Some(str) = reader.inspect_related(&mut f) {
                         builder.push_str(str)
@@ -90,14 +66,6 @@ where
                         builder.push_text(text)
                     }
                 }),
-
-                Appender::FromDynInputStr(mut f) => Box::new(move |builder, reader| {
-                    builder.push_str(reader.inspect(|_, _, input, _| f(input)))
-                }),
-                Appender::FromDynInputText(mut f) => Box::new(move |builder, reader| {
-                    builder.push_text(reader.inspect(|_, _, input, _| f(input)))
-                }),
-
                 Appender::FromFileAndWidgetStr(mut f) => Box::new(move |builder, reader| {
                     if let Some(str) = reader.inspect_file_and(|file, widget| f(file, widget)) {
                         builder.push_str(str)
@@ -108,25 +76,6 @@ where
                         builder.push_text(text)
                     }
                 }),
-
-                Appender::FromFileAndInputStr(mut f) => Box::new(move |builder, reader| {
-                    if let Some(str) = reader.inspect_file_and(|file, input| f(file, input)) {
-                        builder.push_str(str)
-                    }
-                }),
-                Appender::FromFileAndInputText(mut f) => Box::new(move |builder, reader| {
-                    if let Some(text) = reader.inspect_file_and(|file, input| f(file, input)) {
-                        builder.push_text(text)
-                    }
-                }),
-
-                Appender::FromFileAndDynInputStr(mut f) => Box::new(move |builder, reader| {
-                    builder.push_str(reader.inspect(|file, _, input, _| f(file, input)))
-                }),
-                Appender::FromFileAndDynInputText(mut f) => Box::new(move |builder, reader| {
-                    builder.push_text(reader.inspect(|file, _, input, _| f(file, input)))
-                }),
-
                 Appender::Str(str) => Box::new(move |builder, _| builder.push_str(str.clone())),
                 Appender::Text(text) => Box::new(move |builder, _| builder.push_text(text.clone())),
             },
@@ -135,108 +84,84 @@ where
     }
 }
 
-impl<D, U> From<D> for State<(), String, U>
-where
-    D: Display + Send + Sync,
-    U: Ui,
-{
+impl<D: Display + Send + Sync, U: Ui> From<D> for State<(), String, U> {
     fn from(value: D) -> Self {
         Self {
-            appender: Appender::Str::<(), U>(value.to_string()),
+            appender: Appender::Str::<()>(value.to_string()),
             checker: None,
-            _u: PhantomData,
+            ghost: PhantomData,
         }
     }
 }
 
-impl<U> From<Text> for State<(), Text, U>
-where
-    U: Ui,
-{
+impl<U: Ui> From<Text> for State<(), Text, U> {
     fn from(value: Text) -> Self {
         Self {
-            appender: Appender::Text::<(), U>(value),
+            appender: Appender::Text::<()>(value),
             checker: None,
-            _u: PhantomData,
+            ghost: PhantomData,
         }
     }
 }
 
-impl<U> From<Tag> for State<(), Tag, U>
-where
-    U: Ui,
-{
+impl<U: Ui> From<Tag> for State<(), Tag, U> {
     fn from(value: Tag) -> Self {
         Self {
-            appender: Appender::Text::<(), U>(text!(value)),
+            appender: Appender::Text::<()>(text!(value)),
             checker: None,
-            _u: PhantomData,
+            ghost: PhantomData,
         }
     }
 }
 
-impl<D, U> From<RwData<D>> for State<(), DataArg<String>, U>
-where
-    D: Display + Send + Sync,
-    U: Ui,
-{
+impl<D: Display + Send + Sync, U: Ui> From<RwData<D>> for State<(), DataArg<String>, U> {
     fn from(value: RwData<D>) -> Self {
         Self {
-            appender: Appender::NoArgsStr::<(), U>({
+            appender: Appender::NoArgsStr::<()>({
                 let value = RoData::from(&value);
                 Box::new(move || value.read().to_string())
             }),
             checker: Some(Box::new(move || value.has_changed())),
-            _u: PhantomData,
+            ghost: PhantomData,
         }
     }
 }
 
-impl<U> From<RwData<Text>> for State<(), DataArg<Text>, U>
-where
-    U: Ui,
-{
+impl<U: Ui> From<RwData<Text>> for State<(), DataArg<Text>, U> {
     fn from(value: RwData<Text>) -> Self {
         Self {
-            appender: Appender::NoArgsText::<(), U>({
+            appender: Appender::NoArgsText::<()>({
                 let value = RoData::from(&value);
                 Box::new(move || value.read().clone())
             }),
             checker: Some(Box::new(move || value.has_changed())),
-            _u: PhantomData,
+            ghost: PhantomData,
         }
     }
 }
 
-impl<D, U> From<RoData<D>> for State<(), DataArg<String>, U>
-where
-    D: Display + Send + Sync,
-    U: Ui,
-{
+impl<D: Display + Send + Sync, U: Ui> From<RoData<D>> for State<(), DataArg<String>, U> {
     fn from(value: RoData<D>) -> Self {
         Self {
-            appender: Appender::NoArgsStr::<(), U>({
+            appender: Appender::NoArgsStr::<()>({
                 let value = value.clone();
                 Box::new(move || value.read().to_string())
             }),
             checker: Some(Box::new(move || value.has_changed())),
-            _u: PhantomData,
+            ghost: PhantomData,
         }
     }
 }
 
-impl<U> From<RoData<Text>> for State<(), DataArg<Text>, U>
-where
-    U: Ui,
-{
+impl<U: Ui> From<RoData<Text>> for State<(), DataArg<Text>, U> {
     fn from(value: RoData<Text>) -> Self {
         Self {
-            appender: Appender::NoArgsText::<(), U>({
+            appender: Appender::NoArgsText::<()>({
                 let value = value.clone();
                 Box::new(move || value.read().clone())
             }),
             checker: Some(Box::new(move || value.has_changed())),
-            _u: PhantomData,
+            ghost: PhantomData,
         }
     }
 }
@@ -251,9 +176,9 @@ where
     fn from((reader, checker): (Reader, Checker)) -> Self {
         let reader = move || reader().to_string();
         State {
-            appender: Appender::NoArgsStr::<(), U>(Box::new(reader)),
+            appender: Appender::NoArgsStr::<()>(Box::new(reader)),
             checker: Some(Box::new(checker)),
-            _u: PhantomData,
+            ghost: PhantomData,
         }
     }
 }
@@ -266,42 +191,9 @@ where
 {
     fn from((reader, checker): (Reader, Checker)) -> Self {
         State {
-            appender: Appender::NoArgsText::<(), U>(Box::new(reader)),
+            appender: Appender::NoArgsText::<()>(Box::new(reader)),
             checker: Some(Box::new(checker)),
-            _u: PhantomData,
-        }
-    }
-}
-
-impl<D, Input, ReadFn, U> From<ReadFn> for State<Input, InputArg<String>, U>
-where
-    D: Display + Send + Sync,
-    Input: Mode<U, Widget = File> + Sized,
-    ReadFn: Fn(&Input) -> D + Send + Sync + 'static,
-    U: Ui,
-{
-    fn from(reader: ReadFn) -> Self {
-        let reader = move |arg: &Input| reader(arg).to_string();
-        State {
-            appender: Appender::FromInputStr(Box::new(reader)),
-            checker: None,
-            _u: PhantomData,
-        }
-    }
-}
-
-impl<Input, ReadFn, U> From<ReadFn> for State<Input, InputArg<Text>, U>
-where
-    Input: Mode<U, Widget = File> + Sized,
-    ReadFn: Fn(&Input) -> Text + Send + Sync + 'static,
-    U: Ui,
-{
-    fn from(reader: ReadFn) -> Self {
-        let reader = move |arg: &Input| reader(arg);
-        State {
-            appender: Appender::FromInputText(Box::new(reader)),
-            checker: None,
-            _u: PhantomData,
+            ghost: PhantomData,
         }
     }
 }
@@ -318,7 +210,7 @@ where
         State {
             appender: Appender::FromWidgetStr(Box::new(reader)),
             checker: None,
-            _u: PhantomData,
+            ghost: PhantomData,
         }
     }
 }
@@ -334,69 +226,7 @@ where
         State {
             appender: Appender::FromWidgetText(Box::new(reader)),
             checker: None,
-            _u: PhantomData,
-        }
-    }
-}
-
-impl<D, ReadFn, U> From<ReadFn> for State<(), DynInputArg<String>, U>
-where
-    D: Display + Send + Sync,
-    ReadFn: Fn(&dyn Mode<U>) -> D + Send + Sync + 'static,
-    U: Ui,
-{
-    fn from(reader: ReadFn) -> Self {
-        let reader = move |arg: &dyn Mode<U>| reader(arg).to_string();
-        State {
-            appender: Appender::FromDynInputStr(Box::new(reader)),
-            checker: None,
-            _u: PhantomData,
-        }
-    }
-}
-
-impl<ReadFn, U> From<ReadFn> for State<(), DynInputArg<Text>, U>
-where
-    ReadFn: Fn(&dyn Mode<U>) -> Text + Send + Sync + 'static,
-    U: Ui,
-{
-    fn from(reader: ReadFn) -> Self {
-        State {
-            appender: Appender::FromDynInputText(Box::new(reader)),
-            checker: None,
-            _u: PhantomData,
-        }
-    }
-}
-
-impl<D, Input, ReadFn, U> From<ReadFn> for State<Input, FileAndInputArg<String>, U>
-where
-    D: Display + Send + Sync,
-    Input: Mode<U, Widget = File> + Sized,
-    ReadFn: Fn(&File, &Input) -> D + Send + Sync + 'static,
-    U: Ui,
-{
-    fn from(reader: ReadFn) -> Self {
-        let reader = move |file: &File, arg: &Input| reader(file, arg).to_string();
-        State {
-            appender: Appender::FromFileAndInputStr(Box::new(reader)),
-            checker: None,
-            _u: PhantomData,
-        }
-    }
-}
-
-impl<Input, ReadFn, U> From<ReadFn> for State<Input, FileAndInputArg<Text>, U>
-where
-    Input: Mode<U, Widget = File> + Sized,
-    ReadFn: Fn(&File, &Input) -> Text + Send + Sync + 'static,
-    U: Ui,
-{
-    fn from(reader: ReadFn) -> Self {
-        State {
-            appender: Appender::FromFileAndInputText(Box::new(reader)),
-            checker: None,
-            _u: PhantomData,
+            ghost: PhantomData,
         }
     }
 }
@@ -413,7 +243,7 @@ where
         State {
             appender: Appender::FromFileAndWidgetStr(Box::new(reader)),
             checker: None,
-            _u: PhantomData,
+            ghost: PhantomData,
         }
     }
 }
@@ -428,37 +258,7 @@ where
         State {
             appender: Appender::FromFileAndWidgetText(Box::new(reader)),
             checker: None,
-            _u: PhantomData,
-        }
-    }
-}
-
-impl<D, ReadFn, U> From<ReadFn> for State<(), FileAndDynInputArg<String>, U>
-where
-    D: Display + Send + Sync,
-    ReadFn: Fn(&File, &dyn Mode<U>) -> D + Send + Sync + 'static,
-    U: Ui,
-{
-    fn from(reader: ReadFn) -> Self {
-        let reader = move |file: &File, arg: &dyn Mode<U>| reader(file, arg).to_string();
-        State {
-            appender: Appender::FromFileAndDynInputStr(Box::new(reader)),
-            checker: None,
-            _u: PhantomData,
-        }
-    }
-}
-
-impl<ReadFn, U> From<ReadFn> for State<(), FileAndDynInputArg<Text>, U>
-where
-    ReadFn: Fn(&File, &dyn Mode<U>) -> Text + Send + Sync + 'static,
-    U: Ui,
-{
-    fn from(reader: ReadFn) -> Self {
-        State {
-            appender: Appender::FromFileAndDynInputText(Box::new(reader)),
-            checker: None,
-            _u: PhantomData,
+            ghost: PhantomData,
         }
     }
 }
@@ -469,27 +269,14 @@ pub struct DataArg<T>(PhantomData<T>);
 #[doc(hidden)]
 pub struct NoArg<T>(PhantomData<T>);
 #[doc(hidden)]
-pub struct InputArg<T>(PhantomData<T>);
-#[doc(hidden)]
 pub struct WidgetArg<T>(PhantomData<T>);
 #[doc(hidden)]
-pub struct DynInputArg<T>(PhantomData<T>);
-#[doc(hidden)]
-pub struct FileAndInputArg<T>(PhantomData<T>);
-#[doc(hidden)]
 pub struct FileAndWidgetArg<T>(PhantomData<T>);
-#[doc(hidden)]
-pub struct FileAndDynInputArg<T>(PhantomData<T>);
 
 // The various types of function aliases
 type RelatedStrFn<T> = Box<dyn FnMut(&T) -> String + Send + Sync + 'static>;
 type RelatedTextFn<T> = Box<dyn FnMut(&T) -> Text + Send + Sync + 'static>;
 type FileAndRelatedStrFn<T> = Box<dyn FnMut(&File, &T) -> String + Send + Sync + 'static>;
 type FileAndRelatedTextFn<T> = Box<dyn FnMut(&File, &T) -> Text + Send + Sync + 'static>;
-type DynInputStrFn<U> = Box<dyn FnMut(&dyn Mode<U>) -> String + Send + Sync + 'static>;
-type DynInputTextFn<U> = Box<dyn FnMut(&dyn Mode<U>) -> Text + Send + Sync + 'static>;
-type FileAndDynInputStrFn<U> =
-    Box<dyn FnMut(&File, &dyn Mode<U>) -> String + Send + Sync + 'static>;
-type FileAndDynInputTextFn<U> = Box<dyn FnMut(&File, &dyn Mode<U>) -> Text + Send + Sync + 'static>;
 
 type ReaderFn<U> = Box<dyn FnMut(&mut Builder, &FileReader<U>) + Send + Sync>;

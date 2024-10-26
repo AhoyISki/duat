@@ -287,7 +287,7 @@ impl<U: Ui> Session<U> {
 
     fn save_cache(&self, is_quitting_duat: bool) {
         let windows = context::windows::<U>().read();
-        for (file, area, _, cursors, _) in windows
+        for (file, area, cursors, _) in windows
             .iter()
             .flat_map(Window::nodes)
             .filter_map(|node| node.as_file())

@@ -30,7 +30,7 @@ impl Widget<Ui> for VertRule {
         self.text = if let Some(reader) = self.reader.as_ref()
             && let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = self.sep_char
         {
-            reader.inspect(|file, _, _, cursors| {
+            reader.inspect(|file, _, cursors| {
                 let main_line = cursors.as_ref().unwrap().main().line();
                 let lines = file.printed_lines();
 

@@ -8,6 +8,7 @@ use super::Ui;
 
 /// A sequence of characters that should be turned into another
 /// sequence of characters.
+#[derive(Clone)]
 pub struct Remap<M: Mode<Ui>> {
     /// Takes this sequence of [`Event`]s.
     takes: Vec<Event>,
@@ -40,6 +41,7 @@ unsafe impl<M: Mode<Ui>> Send for Remap<M> {}
 unsafe impl<M: Mode<Ui>> Sync for Remap<M> {}
 
 /// The structure responsible for remapping sequences of characters.
+#[derive(Clone)]
 pub struct Remapper<M: Mode<Ui>> {
     /// The [`Mode`] to send the characters to.
     input_method: M,
@@ -109,10 +111,6 @@ impl<M: Mode<Ui>> Remapper<M> {
 
 impl<M: Mode<Ui>> Mode<Ui> for Remapper<M> {
     type Widget = M::Widget;
-
-    fn new() -> Self {
-        Self::new(M::new())
-    }
 
     fn send_key(
         &mut self,

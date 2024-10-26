@@ -149,9 +149,10 @@ pub use duat_core::commands::{Args, Flags};
 use duat_core::{
     commands::{self, CmdResult},
     data::RwData,
+    input::Mode,
     text::Text,
     ui,
-    widgets::{CommandLineMode, Widget},
+    widgets::{CmdLineMode, Widget},
 };
 
 use crate::Ui;
@@ -336,8 +337,8 @@ pub fn add_for_current<T: 'static>(
 ///    [`Session`]'s "`file_fn`".
 /// 2. Other widgets in the currently active window, related or not to
 ///    any given [`File`].
-/// 3. Any instance of the [`Widget`] that is found in other
-///    windows, looking first at windows ahead.
+/// 3. Any instance of the [`Widget`] that is found in other windows,
+///    looking first at windows ahead.
 ///
 /// This ordering means that, wether your [`CommandLine`] is
 /// attached to a [`File`], or to edges of the window, it will
@@ -459,11 +460,12 @@ pub fn add_for_widget<W: Widget<Ui>>(
     commands::add_for_widget::<W, Ui>(callers, f)
 }
 
-/// Sets the mode of the [`CommandLine`]
-///
-/// [`CommandLine`]: crate::widgets::CommandLine
-pub fn set_mode<M: CommandLineMode<Ui>>() {
-    commands::set_cmd_mode::<M, Ui>()
+type Result<T> = duat_core::Result<T, ()>;
+
+pub fn set_mode(mode: impl Mode<Ui>) {
+    commands::set_mode(mode);
 }
 
-type Result<T> = duat_core::Result<T, ()>;
+pub fn set_cmd_mode(mode: impl CmdLineMode<Ui>) {
+    commands::set_cmd_mode(mode)
+}
