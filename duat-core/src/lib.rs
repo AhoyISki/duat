@@ -9,7 +9,8 @@
     step_trait,
     type_alias_impl_trait,
     if_let_guard,
-    closure_lifetime_binder
+    closure_lifetime_binder,
+    trait_alias
 )]
 
 use std::{

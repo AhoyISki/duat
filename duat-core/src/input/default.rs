@@ -1,25 +1,13 @@
-use super::{Command, Cursors, EditHelper, KeyCode, KeyEvent, KeyMod, key};
+use super::{Cursors, EditHelper, Fwd, IncSearcher, KeyCode, KeyEvent, KeyMod, key};
 use crate::{
     commands,
     data::RwData,
     ui::{Area, Ui},
-    widgets::File,
+    widgets::{File, IncSearch, RunCommands},
 };
 
 #[derive(Clone)]
 pub struct Regular;
-
-impl Regular {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Default for Regular {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 impl<U: Ui> super::Mode<U> for Regular {
     type Widget = File;
@@ -98,7 +86,12 @@ impl<U: Ui> super::Mode<U> for Regular {
             key!(KeyCode::Down) => move_each(helper, Side::Bottom, 1),
 
             // Control
-            key!(KeyCode::Char('p'), KeyMod::CONTROL) => commands::set_mode::<U>(Command),
+            key!(KeyCode::Char('p'), KeyMod::CONTROL) => {
+                commands::set_cmd_mode::<U>(RunCommands::new())
+            }
+            key!(KeyCode::Char('f'), KeyMod::CONTROL) => {
+                commands::set_cmd_mode::<U>(IncSearch::new(Fwd::new))
+            }
 
             _ => {}
         }

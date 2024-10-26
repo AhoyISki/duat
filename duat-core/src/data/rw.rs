@@ -719,9 +719,6 @@ impl<T: ?Sized> Data<T> for RwData<T> {
     }
 }
 
-unsafe impl<T: ?Sized + Send> Send for RwData<T> {}
-unsafe impl<T: ?Sized + Sync> Sync for RwData<T> {}
-
 pub struct ReadWriteGuard<'a, T>
 where
     T: ?Sized,

@@ -207,8 +207,9 @@ impl<U: Ui> CurFile<U> {
 
         let ret = f(file, area, cursors);
 
+        let cursors = cursors.read();
         let mut file = file.write();
-        if let Some(cursors) = &*cursors.read() {
+        if let Some(cursors) = &*cursors {
             <File as Widget<U>>::text_mut(&mut file).add_cursor_tags(cursors);
 
             area.scroll_around_point(
@@ -432,27 +433,24 @@ impl<U: Ui> CurWidget<U> {
 
         cursors.inspect(|c| {
             if let Some(c) = c.as_ref() {
-                widget.write().text_mut().remove_cursor_tags(c)
+                widget.raw_write().text_mut().remove_cursor_tags(c)
             }
         });
 
         let ret = Some(f(&widget, area, cursors));
 
-        cursors.inspect(|c| {
-            let mut widget = widget.write();
-            if let Some(c) = c.as_ref() {
-                widget.text_mut().add_cursor_tags(c);
-                area.scroll_around_point(widget.text(), c.main().caret(), widget.print_cfg());
-            }
-        });
+        let cursors = cursors.read();
+        let mut widget = widget.write();
 
-        node.update_and_print();
+        if let Some(c) = &*cursors {
+            widget.text_mut().add_cursor_tags(c);
+            area.scroll_around_point(widget.text(), c.main().caret(), widget.print_cfg());
+        }
+
+        widget.update(area);
+        widget.print(area);
 
         ret
-    }
-
-    pub(crate) fn set(&self, node: Node<U>) {
-        *self.0.write() = Some(node);
     }
 
     pub(crate) fn node(&self) -> Node<U> {

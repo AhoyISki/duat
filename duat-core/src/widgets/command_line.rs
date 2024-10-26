@@ -296,7 +296,7 @@ impl<U: Ui> Default for ShowNotifications<U> {
 }
 
 pub struct IncSearch<I: IncSearcher<U>, U: Ui> {
-    inc: I,
+    fn_or_inc: FnOrInc<I, U>,
     list: Vec<SavedMatches>,
     error_range: Option<(usize, usize)>,
     key: Key,
@@ -304,22 +304,11 @@ pub struct IncSearch<I: IncSearcher<U>, U: Ui> {
 }
 
 impl<I: IncSearcher<U>, U: Ui> IncSearch<I, U> {
-    pub fn new(
-        f: impl FnOnce(&RwData<File>, &U::Area, Option<Cursors>) -> (I, Option<Cursors>),
-    ) -> Self {
+    pub fn new(f: impl IncFn<I, U> + Send + Sync + 'static) -> Self {
         commands::set_mode::<U>(Command);
 
-        let inc = context::cur_file::<U>()
-            .unwrap()
-            .mutate_data(|file, area, cursors| {
-                let mut cursors = cursors.write();
-                let (inc, c) = f(file, area, cursors.take());
-                *cursors = c;
-                inc
-            });
-
         Self {
-            inc,
+            fn_or_inc: FnOrInc::Fn(Some(Box::new(f))),
             list: Vec::new(),
             error_range: None,
             key: Key::new(),
@@ -330,6 +319,10 @@ impl<I: IncSearcher<U>, U: Ui> IncSearch<I, U> {
 
 impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
     fn update(&mut self, text: &mut Text) {
+        let FnOrInc::Inc(inc, _) = &mut self.fn_or_inc else {
+            unreachable!();
+        };
+
         if let Some((start, end)) = self.error_range.take() {
             text.remove_tags_on(start, self.key);
             text.remove_tags_on(end, self.key);
@@ -341,7 +334,7 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
             let searcher = saved.searcher();
             cur_file.mutate_data(|file, area, cursors| {
                 let mut c = cursors.write();
-                *c = self.inc.search(file, area, searcher, c.take());
+                *c = inc.search(file, area, searcher, c.take());
             });
         } else {
             match SavedMatches::new(text.to_string()) {
@@ -353,7 +346,7 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
                     let searcher = saved.searcher();
                     cur_file.mutate_data(|file, area, cursors| {
                         let mut c = cursors.write();
-                        *c = self.inc.search(file, area, searcher, c.take());
+                        *c = inc.search(file, area, searcher, c.take());
                     });
 
                     self.list.push(saved);
@@ -374,12 +367,25 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
         }
     }
 
+    fn on_focus(&mut self, _text: &mut Text) {
+        context::cur_file::<U>()
+            .unwrap()
+            .mutate_data(|file, area, cursors| {
+                let mut cursors = cursors.write();
+                *cursors = self.fn_or_inc.as_inc(file, area, cursors.take());
+            })
+    }
+
     fn on_unfocus(&mut self, _text: &mut Text) {
+        let FnOrInc::Inc(inc, _) = &mut self.fn_or_inc else {
+            unreachable!();
+        };
+
         context::cur_file::<U>()
             .unwrap()
             .mutate_data(|file, area, cursors| {
                 let mut c = cursors.write();
-                *c = self.inc.finish(file, area, c.take())
+                *c = inc.finish(file, area, c.take())
             });
     }
 }
@@ -396,3 +402,29 @@ fn run_once<M: CmdLineMode<U>, U: Ui>() {
         list.push(TypeId::of::<M>());
     }
 }
+
+enum FnOrInc<I, U: Ui> {
+    Fn(Option<Box<dyn IncFn<I, U> + Send + Sync>>),
+    Inc(I, PhantomData<U>),
+}
+
+impl<I, U: Ui> FnOrInc<I, U> {
+    fn as_inc(
+        &mut self,
+        file: &RwData<File>,
+        area: &U::Area,
+        cursors: Option<Cursors>,
+    ) -> Option<Cursors> {
+        let FnOrInc::Fn(f) = self else {
+            unreachable!();
+        };
+
+        let (inc, cursors) = f.take().unwrap()(file, area, cursors);
+
+        *self = FnOrInc::Inc(inc, PhantomData);
+
+        cursors
+    }
+}
+
+trait IncFn<I, U: Ui> = FnOnce(&RwData<File>, &U::Area, Option<Cursors>) -> (I, Option<Cursors>);

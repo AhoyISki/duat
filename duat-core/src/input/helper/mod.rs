@@ -194,7 +194,7 @@ where
             panic!("Cursor index {n} out of bounds.");
         };
 
-        let mut widget = self.widget.write();
+        let mut widget = self.widget.raw_write();
         let mut diff = Diff::default();
 
         edit(&mut Editor::<A, W>::new(
@@ -226,7 +226,7 @@ where
     pub fn edit_on_each(&mut self, mut f: impl FnMut(&mut Editor<A, W>)) {
         let removed_cursors: Vec<(Cursor, bool)> = self.cursors.drain().collect();
 
-        let mut widget = self.widget.write();
+        let mut widget = self.widget.raw_write();
         let mut diff = Diff::default();
 
         for (mut cursor, was_main) in removed_cursors.into_iter() {
@@ -264,7 +264,7 @@ where
         let Some((mut cursor, was_main)) = self.cursors.remove(n) else {
             panic!("Cursor index {n} out of bounds.");
         };
-        let mut widget = self.widget.write();
+        let mut widget = self.widget.raw_write();
 
         mov(&mut Mover::new(
             &mut cursor,
@@ -296,7 +296,7 @@ where
     pub fn move_each<_T>(&mut self, mut mov: impl FnMut(&mut Mover<A, S>) -> _T) {
         let removed_cursors: Vec<(Cursor, bool)> = self.cursors.drain().collect();
 
-        let mut widget = self.widget.write();
+        let mut widget = self.widget.raw_write();
 
         for (mut cursor, was_main) in removed_cursors.into_iter() {
             mov(&mut Mover::new(
@@ -396,14 +396,14 @@ where
     /// [`Moment`]: crate::history::Moment
     /// [`undo`]: EditHelper::undo
     pub fn new_moment(&mut self) {
-        self.widget.write().add_moment();
+        self.widget.raw_write().add_moment();
     }
 
     /// Undoes the last [`Moment`]
     ///
     /// [`Moment`]: crate::history::Moment
     pub fn undo(&mut self) {
-        let mut widget = self.widget.write();
+        let mut widget = self.widget.raw_write();
         widget.undo(self.area, self.cursors);
         <File as Widget<A::Ui>>::update(&mut widget, self.area);
     }
@@ -412,7 +412,7 @@ where
     ///
     /// [`Moment`]: crate::history::Moment
     pub fn redo(&mut self) {
-        let mut widget = self.widget.write();
+        let mut widget = self.widget.raw_write();
         widget.redo(self.area, self.cursors);
         <File as Widget<A::Ui>>::update(&mut widget, self.area);
     }
@@ -430,7 +430,7 @@ where
         searcher: Searcher<'b>,
     ) -> Self {
         let cfg = {
-            let mut file = widget.write();
+            let mut file = widget.raw_write();
             <File as Widget<A::Ui>>::text_mut(&mut file).remove_cursor_tags(cursors);
             <File as Widget<A::Ui>>::print_cfg(&file)
         };

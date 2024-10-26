@@ -25,13 +25,7 @@ mod parameters;
 
 mod global {
     use super::{Args, CmdResult, Commands, Flags, Result};
-    use crate::{
-        context,
-        data::RwData,
-        text::Text,
-        ui::{Ui, Window},
-        widgets::{CmdLineMode, CommandLine, Widget},
-    };
+    use crate::{data::RwData, text::Text, ui::Ui, widgets::Widget};
 
     static COMMANDS: Commands = Commands::new();
 
@@ -119,36 +113,6 @@ mod global {
     /// existing command.
     pub fn alias(alias: impl ToString, command: impl ToString) -> Result<Option<Text>> {
         COMMANDS.alias(alias, command)
-    }
-
-    pub fn set_cmd_mode<U: Ui>(mode: impl CmdLineMode<U>) {
-        let Ok(cur_file) = context::cur_file::<U>() else {
-            return;
-        };
-
-        if let Some(node) = cur_file.get_related_widget::<CommandLine<U>>() {
-            node.try_downcast::<CommandLine<U>>()
-                .unwrap()
-                .write()
-                .set_mode(mode);
-        } else {
-            let windows = context::windows::<U>().read();
-            let w = context::cur_window();
-            let cur_window = &windows[w];
-
-            let mut widgets = {
-                let previous = windows[..w].iter().flat_map(Window::nodes);
-                let following = windows[(w + 1)..].iter().flat_map(Window::nodes);
-                cur_window.nodes().chain(previous).chain(following)
-            };
-
-            if let Some(cmd_line) = widgets.find_map(|node| {
-                node.data_is::<CommandLine<U>>()
-                    .then(|| node.try_downcast::<CommandLine<U>>().unwrap())
-            }) {
-                cmd_line.write().set_mode(mode)
-            }
-        };
     }
 
     /// Runs a full command, with a caller, [`Flags`], and [`Args`].
@@ -473,7 +437,7 @@ mod control {
         input::Mode,
         text::{Text, err, ok},
         ui::{Event, Ui, Window},
-        widgets::{File, Node},
+        widgets::{CmdLineMode, CommandLine, File, Node},
     };
 
     static SEND_KEY: LazyLock<Mutex<Box<dyn FnMut(KeyEvent) + Send + Sync>>> =
@@ -508,13 +472,43 @@ mod control {
         *SET_MODE.lock() = Some(Arc::new(move || set_mode_fn(mode.clone())));
     }
 
+    pub fn set_cmd_mode<U: Ui>(mode: impl CmdLineMode<U>) {
+        let Ok(cur_file) = context::cur_file::<U>() else {
+            return;
+        };
+
+        if let Some(node) = cur_file.get_related_widget::<CommandLine<U>>() {
+            node.try_downcast::<CommandLine<U>>()
+                .unwrap()
+                .write()
+                .set_mode(mode);
+        } else {
+            let windows = context::windows::<U>().read();
+            let w = context::cur_window();
+            let cur_window = &windows[w];
+
+            let mut widgets = {
+                let previous = windows[..w].iter().flat_map(Window::nodes);
+                let following = windows[(w + 1)..].iter().flat_map(Window::nodes);
+                cur_window.nodes().chain(previous).chain(following)
+            };
+
+            if let Some(cmd_line) = widgets.find_map(|node| {
+                node.data_is::<CommandLine<U>>()
+                    .then(|| node.try_downcast::<CommandLine<U>>().unwrap())
+            }) {
+                cmd_line.write().set_mode(mode)
+            }
+        }
+    }
+
     /// Switches to the file with the given name
     pub fn switch_to_file<U: Ui>(name: impl std::fmt::Display) {
         let windows = context::windows::<U>().read();
         let name = name.to_string();
         match file_entry(&windows, &name) {
             Ok((_, node)) => switch_widget(node.clone()),
-            Err(_) => todo!(),
+            Err(err) => context::notify(err),
         }
 
         *SET_MODE.lock() = Some(RESET_MODE.lock().clone());
@@ -534,11 +528,7 @@ mod control {
             widget.node().on_unfocus();
         }
 
-        context::cur_widget().unwrap().set(node.clone());
-
-        if let Some(file_parts) = node.as_file() {
-            context::cur_file().unwrap().set(file_parts);
-        }
+        context::set_cur(node.as_file(), node.clone());
 
         node.on_focus();
     }
@@ -711,14 +701,14 @@ mod control {
         };
 
         widget.mutate_data_as(|widget, area, cursors| {
-            let mut cursors = cursors.write();
-            *cursors = mode.send_key(key, widget, area, cursors.take())
+            let mut c = cursors.write();
+            *c = mode.send_key(key, widget, area, c.take())
         });
     }
 
     fn set_mode_fn<M: Mode<U>, U: Ui>(mut mode: M) {
         // If we are on the correct widget, no switch is needed.
-        if context::cur_widget::<U>().unwrap().type_id() == TypeId::of::<M::Widget>() {
+        if context::cur_widget::<U>().unwrap().type_id() != TypeId::of::<M::Widget>() {
             let windows = context::windows().read();
             let w = context::cur_window();
             let entry = if TypeId::of::<M::Widget>() == TypeId::of::<File>() {
