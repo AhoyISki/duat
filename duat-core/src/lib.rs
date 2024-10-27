@@ -107,13 +107,17 @@ pub mod thread {
             mpsc,
         },
         thread::JoinHandle,
-        time::Duration,
     };
 
     use parking_lot::{Mutex, Once};
 
     /// Duat's [`JoinHandle`]s
     static HANDLES: AtomicUsize = AtomicUsize::new(0);
+    static ACTIONS: LazyLock<(mpsc::Sender<SentHook>, Mutex<mpsc::Receiver<SentHook>>)> =
+        LazyLock::new(|| {
+            let (sender, receiver) = mpsc::channel();
+            (sender, Mutex::new(receiver))
+        });
 
     /// Spawns a new thread, returning a [`JoinHandle`] for it.
     ///
@@ -139,32 +143,28 @@ pub mod thread {
     /// in, sequentially in a single thread.
     pub(crate) fn queue<R>(f: impl FnOnce() -> R + Send + 'static) {
         static LOOP: Once = Once::new();
-        static ACTIONS: LazyLock<(
-            mpsc::Sender<Box<dyn FnOnce() + Send>>,
-            Mutex<mpsc::Receiver<Box<dyn FnOnce() + Send>>>,
-        )> = LazyLock::new(|| {
-            let (sender, receiver) = mpsc::channel();
-            (sender, Mutex::new(receiver))
-        });
-
         let (sender, receiver) = &*ACTIONS;
 
         LOOP.call_once(|| {
             spawn(|| {
                 let recv = receiver.lock();
-                while !crate::has_ended() {
-                    if let Ok(f) = recv.recv_timeout(Duration::from_millis(50)) {
-                        f();
+                loop {
+                    match recv.recv() {
+                        Ok(SentHook::Fn(f)) => f(),
+                        Ok(SentHook::Quit) => {
+                            break;
+                        }
+                        Err(_) => break,
                     }
                 }
             });
         });
 
-        if still_running() {
+        if !crate::has_ended() {
             sender
-                .send(Box::new(move || {
+                .send(SentHook::Fn(Box::new(move || {
                     f();
-                }))
+                })))
                 .unwrap();
         }
     }
@@ -172,6 +172,17 @@ pub mod thread {
     /// Returns true if there are any threads still running
     pub(crate) fn still_running() -> bool {
         HANDLES.load(Ordering::Relaxed) > 0
+    }
+
+    /// Stops the thread running the queue
+    pub(crate) fn quit_queue() {
+        let (sender, _) = &*ACTIONS;
+        sender.send(SentHook::Quit).unwrap()
+    }
+
+    enum SentHook {
+        Fn(Box<dyn FnOnce() + Send>),
+        Quit,
     }
 }
 

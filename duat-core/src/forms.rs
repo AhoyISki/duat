@@ -18,7 +18,6 @@ mod global {
     use parking_lot::Mutex;
 
     use super::{CursorShape, Form, FormId, Painter, Palette};
-    use crate::log_info;
 
     static PALETTE: Palette = Palette::new();
     static FORMS: LazyLock<Mutex<Vec<&str>>> = LazyLock::new(|| {

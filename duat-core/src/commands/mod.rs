@@ -421,10 +421,8 @@ mod control {
         any::TypeId,
         path::PathBuf,
         sync::{
-            Arc, LazyLock,
-            atomic::{AtomicBool, Ordering},
-            mpsc,
-        },
+            atomic::{AtomicBool, Ordering}, mpsc, Arc, LazyLock
+        }, time::Duration,
     };
 
     use crossterm::event::KeyEvent;
@@ -520,7 +518,10 @@ mod control {
 
     /// Ends duat, either for reloading the config, or quitting
     pub(crate) fn end_session() {
-        HAS_ENDED.store(true, Ordering::Relaxed)
+        HAS_ENDED.store(true, Ordering::Relaxed);
+        while crate::thread::still_running() {
+            std::thread::sleep(Duration::from_micros(500));
+        }
     }
 
     pub(crate) fn switch_widget<U: Ui>(node: Node<U>) {

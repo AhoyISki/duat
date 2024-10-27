@@ -231,14 +231,18 @@ impl<U: Ui> Session<U> {
 
             match reason_to_break {
                 BreakTo::QuitDuat => {
-                    self.ui.close();
+                    crate::thread::quit_queue();
                     commands::end_session();
                     self.save_cache(true);
+                    self.ui.close();
 
                     break Vec::new();
                 }
                 BreakTo::ReloadConfig => {
+                    crate::thread::quit_queue();
+                    commands::end_session();
                     self.save_cache(false);
+        self.ui.end();
 
                     break self.reload_config();
                 }
@@ -312,11 +316,7 @@ impl<U: Ui> Session<U> {
     }
 
     fn reload_config(mut self) -> Vec<(RwData<File>, bool)> {
-        self.ui.end();
         commands::end_session();
-        while crate::thread::still_running() {
-            std::thread::sleep(Duration::from_micros(500));
-        }
 
         let windows = context::windows::<U>().read();
 

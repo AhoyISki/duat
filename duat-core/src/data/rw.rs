@@ -6,6 +6,8 @@ use std::{
     },
 };
 
+use follow::DataId;
+
 use super::{Data, RoData, RwLock, RwLockReadGuard, RwLockWriteGuard, private::InnerData};
 
 /// A read write shared reference to data
@@ -18,6 +20,7 @@ where
     pub(super) cur_state: Arc<AtomicUsize>,
     read_state: AtomicUsize,
     pub(super) type_id: TypeId,
+    pub(super) id: DataId,
 }
 
 impl<T> RwData<T> {
@@ -35,6 +38,7 @@ impl<T> RwData<T> {
             cur_state: Arc::new(AtomicUsize::new(1)),
             read_state: AtomicUsize::new(1),
             type_id: TypeId::of::<T>(),
+            id: DataId::new(),
         }
     }
 }
@@ -58,6 +62,7 @@ where
             cur_state: Arc::new(AtomicUsize::new(1)),
             read_state: AtomicUsize::new(1),
             type_id: TypeId::of::<SizedT>(),
+            id: DataId::new(),
         }
     }
 
@@ -585,6 +590,7 @@ where
                 cur_state,
                 read_state,
                 type_id: self.type_id,
+                id: self.id,
             })
         } else {
             None
@@ -670,6 +676,7 @@ where
             cur_state: self.cur_state.clone(),
             read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1),
             type_id: self.type_id,
+            id: self.id,
         }
     }
 }
@@ -684,6 +691,7 @@ where
             cur_state: Arc::new(AtomicUsize::new(1)),
             read_state: AtomicUsize::new(1),
             type_id: TypeId::of::<T>(),
+            id: DataId::new(),
         }
     }
 }
@@ -753,5 +761,66 @@ where
 {
     fn drop(&mut self) {
         self.cur_state.fetch_add(1, Ordering::Release);
+    }
+}
+
+mod follow {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    use parking_lot::{Mutex, Once};
+
+    use super::RwData;
+
+    static UPDATERS: Mutex<Vec<(DataId, Vec<Arc<Mutex<dyn FnMut() + Send + Sync>>>)>> =
+        Mutex::new(Vec::new());
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub struct DataId(usize);
+
+    impl DataId {
+        pub fn new() -> Self {
+            static COUNT: AtomicUsize = AtomicUsize::new(0);
+            DataId(COUNT.fetch_add(1, Ordering::Relaxed))
+        }
+    }
+
+    pub struct Subscription(Vec<DataId>);
+
+    impl Subscription {
+        pub fn new<T>(data: &RwData<T>) -> Self {
+            Self(vec![data.id])
+        }
+
+        pub fn add<T>(&mut self, data: &RwData<T>) {
+            if self.0.contains(&data.id) {
+                panic!("Don't subscribe to the same thing twice.")
+            }
+            self.0.push(data.id);
+        }
+
+        pub fn finish<T: Send + Sync + 'static>(
+            self,
+            data: &RwData<T>,
+            mut f: impl FnMut(&mut T) + Send + Sync + 'static,
+        ) {
+            let data = data.clone();
+            let f = Arc::new(Mutex::new(move || f(&mut *data.write())));
+            let mut updaters = UPDATERS.lock();
+            for id in self.0 {
+                if let Some(i) = updaters.iter().position(|(other, _)| id == *other) {
+                    updaters[i].1.push(f.clone());
+                } else {
+                    updaters.push((id, vec![f.clone()]));
+                }
+            }
+        }
+    }
+
+    pub(super) fn update(id: DataId) {
+        static ONCE: Once = Once::new();
+        
     }
 }
