@@ -52,7 +52,7 @@ use std::sync::{
 
 pub use self::{
     command_line::{
-        CommandLine, CommandLineCfg, CmdLineMode, IncSearch, RunCommands, ShowNotifications,
+        CmdLineMode, CommandLine, CommandLineCfg, IncSearch, RunCommands, ShowNotifications,
     },
     file::{File, FileCfg},
     line_numbers::{LineNumbers, LineNumbersCfg},
@@ -565,32 +565,35 @@ impl<U: Ui> Node<U> {
 
     fn on_focus_fn<W: Widget<U>>(&self) {
         self.cursors.inspect(|c| {
+            let mut widget = self.widget.write();
+
             if let Some(c) = c.as_ref() {
-                let mut widget = self.widget.write();
                 widget.text_mut().remove_cursor_tags(c);
             }
-        });
 
-        self.widget.write().on_focus(&self.area);
+            widget.on_focus(&self.area);
+            self.area.set_as_active();
+        });
 
         let widget = self.widget.try_downcast().unwrap();
 
-        hooks::trigger::<FocusedOn<W, U>>((widget, self.cursors.clone(), self.area.clone()));
+        hooks::trigger::<FocusedOn<W, U>>((widget, self.area.clone(), self.cursors.clone()));
     }
 
     fn on_unfocus_fn<W: Widget<U>>(&self) {
         self.cursors.inspect(|c| {
+            let mut widget = self.widget.write();
+
             if let Some(c) = c.as_ref() {
-                let mut widget = self.widget.write();
                 widget.text_mut().remove_cursor_tags(c);
             }
-        });
 
-        self.widget.write().on_unfocus(&self.area);
+            widget.on_unfocus(&self.area);
+        });
 
         let widget = self.widget.try_downcast().unwrap();
 
-        hooks::trigger::<UnfocusedFrom<W, U>>((widget, self.cursors.clone(), self.area.clone()));
+        hooks::trigger::<UnfocusedFrom<W, U>>((widget, self.area.clone(), self.cursors.clone()));
     }
 }
 

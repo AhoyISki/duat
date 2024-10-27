@@ -147,15 +147,9 @@ pub mod thread {
 
         LOOP.call_once(|| {
             spawn(|| {
-                let recv = receiver.lock();
-                loop {
-                    match recv.recv() {
-                        Ok(SentHook::Fn(f)) => f(),
-                        Ok(SentHook::Quit) => {
-                            break;
-                        }
-                        Err(_) => break,
-                    }
+                let receiver = receiver.lock();
+                while let Ok(SentHook::Fn(f)) = receiver.recv() {
+                    f();
                 }
             });
         });

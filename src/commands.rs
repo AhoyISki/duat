@@ -321,7 +321,7 @@ pub fn add(
 #[inline(never)]
 pub fn add_for_current<T: 'static>(
     callers: impl IntoIterator<Item = impl ToString>,
-    f: impl FnMut(&RwData<T>, Flags, Args) -> CmdResult + 'static,
+    f: impl FnMut(&mut T, Flags, Args) -> CmdResult + 'static,
 ) -> Result<()> {
     commands::add_for_current::<T, Ui>(callers, f)
 }

@@ -1,10 +1,10 @@
 use cassowary::{
-    strength::{REQUIRED, STRONG, WEAK},
     Expression,
     WeightedRelation::{EQ, GE, LE},
+    strength::{REQUIRED, STRONG, WEAK},
 };
 use duat_core::{
-    data::RwData,
+    data::{AreaResizeId, RwData},
     ui::{
         Axis::{self, *},
         Constraint, PushSpecs,
@@ -13,13 +13,13 @@ use duat_core::{
 
 use super::Constraints;
 use crate::{
+    Area, AreaId, Equality, Frame,
     area::{Coord, PrintInfo},
     print::{Printer, Sender, VarPoint, VarValue},
-    Area, AreaId, Equality, Frame,
 };
 
 enum Kind {
-    End(Sender, RwData<PrintInfo>),
+    End(Sender, RwData<PrintInfo>, AreaResizeId),
     Middle {
         children: Vec<(Rect, Constraints)>,
         axis: Axis,
@@ -28,8 +28,8 @@ enum Kind {
 }
 
 impl Kind {
-    fn end(sender: Sender, info: PrintInfo) -> Self {
-        Self::End(sender, RwData::new(info))
+    fn end(sender: Sender, info: PrintInfo, resize_id: AreaResizeId) -> Self {
+        Self::End(sender, RwData::new(info), resize_id)
     }
 
     fn middle(axis: Axis, clustered: bool) -> Self {
@@ -283,14 +283,14 @@ impl Rect {
 
     pub fn sender(&self) -> Option<&Sender> {
         match &self.kind {
-            Kind::End(sender, _) => Some(sender),
+            Kind::End(sender, ..) => Some(sender),
             Kind::Middle { .. } => None,
         }
     }
 
     pub fn print_info(&self) -> Option<&RwData<PrintInfo>> {
         match &self.kind {
-            Kind::End(_, info) => Some(info),
+            Kind::End(_, info, _) => Some(info),
             Kind::Middle { .. } => None,
         }
     }
@@ -338,9 +338,9 @@ pub struct Rects {
 }
 
 impl Rects {
-    pub fn new(p: &mut Printer, fr: Frame, info: PrintInfo) -> Self {
+    pub fn new(p: &mut Printer, fr: Frame, info: PrintInfo, resize_id: AreaResizeId) -> Self {
         let (tl, br) = (p.var_point(), p.var_point());
-        let kind = Kind::end(p.sender(&tl, &br), info);
+        let kind = Kind::end(p.sender(&tl, &br), info, resize_id);
         let mut main = Rect::new(tl, br, true, kind);
         main.eqs.extend([
             main.tl.x() | EQ(REQUIRED) | 0.0,
@@ -360,12 +360,13 @@ impl Rects {
         p: &mut Printer,
         on_files: bool,
         info: PrintInfo,
+        resize_id: AreaResizeId,
     ) -> AreaId {
         let fr = self.fr;
 
         let mut rect = {
             let (tl, br) = (p.var_point(), p.var_point());
-            let kind = Kind::end(p.sender(&tl, &br), info);
+            let kind = Kind::end(p.sender(&tl, &br), info, resize_id);
             Rect::new(tl, br, on_files, kind)
         };
         let new_id = rect.id();

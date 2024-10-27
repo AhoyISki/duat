@@ -119,10 +119,10 @@ impl<U: Ui> Hookable for OnWindowOpen<U> {
 pub struct FocusedOn<W: Widget<U>, U: Ui>(PhantomData<(W, U)>);
 
 impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
-    type Args = (RwData<W>, RwData<Option<Cursors>>, U::Area);
+    type Args = (RwData<W>, U::Area, RwData<Option<Cursors>>);
 
     fn post_hook(args: &Self::Args) {
-        let (widget, cursors, area) = args;
+        let (widget, area, cursors) = args;
         let cursors = cursors.read();
         let mut widget = widget.write();
 
@@ -145,10 +145,10 @@ impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
 pub struct UnfocusedFrom<W: Widget<U>, U: Ui>(PhantomData<(W, U)>);
 
 impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
-    type Args = (RwData<W>, RwData<Option<Cursors>>, U::Area);
+    type Args = (RwData<W>, U::Area, RwData<Option<Cursors>>);
 
     fn post_hook(args: &Self::Args) {
-        let (widget, cursors, area) = args;
+        let (widget, area, cursors) = args;
         let cursors = cursors.read();
         let mut widget = widget.write();
 

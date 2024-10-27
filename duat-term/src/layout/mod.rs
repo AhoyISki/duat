@@ -1,11 +1,11 @@
-use cassowary::{strength::STRONG, WeightedRelation::*};
+use cassowary::{WeightedRelation::*, strength::STRONG};
 use duat_core::{
-    data::RwData,
+    data::{AreaResizeId, RwData},
     ui::{Axis, Constraint, PushSpecs},
 };
 
 use self::rect::{Rect, Rects};
-use crate::{area::PrintInfo, print::Printer, AreaId, Equality, Frame};
+use crate::{AreaId, Equality, Frame, area::PrintInfo, print::Printer};
 
 mod rect;
 
@@ -110,9 +110,14 @@ pub struct Layout {
 impl Layout {
     /// Returns a new instance of [`Layout`], applying a given
     /// [`Frame`] to all inner [`Rect`]s.
-    pub fn new(fr: Frame, printer: RwData<Printer>, info: PrintInfo) -> Self {
+    pub fn new(
+        fr: Frame,
+        printer: RwData<Printer>,
+        info: PrintInfo,
+        resize_id: AreaResizeId,
+    ) -> Self {
         printer.write().flush_equalities().unwrap();
-        let rects = Rects::new(&mut printer.write(), fr, info);
+        let rects = Rects::new(&mut printer.write(), fr, info, resize_id);
         let main_id = rects.main.id();
 
         Layout { rects, active_id: main_id, printer }
@@ -146,7 +151,8 @@ impl Layout {
         ps: PushSpecs,
         cluster: bool,
         on_files: bool,
-        info: PrintInfo
+        info: PrintInfo,
+        resize_id: AreaResizeId,
     ) -> (AreaId, Option<AreaId>) {
         let mut p = self.printer.write();
         let axis = ps.axis();
@@ -191,7 +197,9 @@ impl Layout {
             (id, Some(parent.id()))
         };
 
-        let new_id = self.rects.push(ps, target, &mut p, on_files, info);
+        let new_id = self
+            .rects
+            .push(ps, target, &mut p, on_files, info, resize_id);
         (new_id, new_parent_id)
     }
 

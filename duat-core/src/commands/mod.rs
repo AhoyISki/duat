@@ -264,7 +264,7 @@ mod global {
     /// [`Session`]: crate::session::Session
     pub fn add_for_current<T: 'static, U: Ui>(
         callers: impl IntoIterator<Item = impl ToString>,
-        f: impl FnMut(&RwData<T>, Flags, Args) -> CmdResult + 'static,
+        f: impl FnMut(&mut T, Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
         COMMANDS.add_for_current::<T, U>(callers, f)
     }
@@ -421,8 +421,11 @@ mod control {
         any::TypeId,
         path::PathBuf,
         sync::{
-            atomic::{AtomicBool, Ordering}, mpsc, Arc, LazyLock
-        }, time::Duration,
+            Arc, LazyLock,
+            atomic::{AtomicBool, Ordering},
+            mpsc,
+        },
+        time::Duration,
     };
 
     use crossterm::event::KeyEvent;
@@ -442,7 +445,7 @@ mod control {
         LazyLock::new(|| Mutex::new(Box::new(|_| {})));
     static RESET_MODE: LazyLock<Mutex<Arc<dyn Fn() + Send + Sync>>> =
         LazyLock::new(|| Mutex::new(Arc::new(|| {})));
-    static SET_MODE: Mutex<Option<Arc<dyn Fn() + Send + Sync>>> = Mutex::new(None);
+    static SET_MODE: Mutex<Option<Box<dyn FnOnce() + Send + Sync>>> = Mutex::new(None);
     static HAS_ENDED: AtomicBool = AtomicBool::new(false);
 
     /// Returns `true` if Duat must quit/reload
@@ -453,21 +456,35 @@ mod control {
         HAS_ENDED.load(Ordering::Relaxed)
     }
 
-    pub fn was_mode_set() -> Option<Arc<dyn Fn() + Send + Sync>> {
+    pub fn was_mode_set() -> Option<Box<dyn FnOnce() + Send + Sync>> {
         SET_MODE.lock().take()
     }
 
     pub fn set_default_mode<M: Mode<U>, U: Ui>(mode: M) {
         *RESET_MODE.lock() = Arc::new(move || set_mode_fn::<M, U>(mode.clone()));
-        *SET_MODE.lock() = Some(RESET_MODE.lock().clone());
+        let mut set_mode = SET_MODE.lock();
+        let prev = set_mode.take();
+        *set_mode = Some(Box::new(move || {
+            if let Some(f) = prev {
+                f()
+            }
+            RESET_MODE.lock()()
+        }));
     }
 
     pub fn reset_mode() {
-        *SET_MODE.lock() = Some(RESET_MODE.lock().clone())
+        *SET_MODE.lock() = Some(Box::new(|| RESET_MODE.lock()()))
     }
 
     pub fn set_mode<U: Ui>(mode: impl Mode<U>) {
-        *SET_MODE.lock() = Some(Arc::new(move || set_mode_fn(mode.clone())));
+        let mut set_mode = SET_MODE.lock();
+        let prev = set_mode.take();
+        *set_mode = Some(Box::new(move || {
+            if let Some(f) = prev {
+                f()
+            }
+            set_mode_fn(mode)
+        }));
     }
 
     pub fn set_cmd_mode<U: Ui>(mode: impl CmdLineMode<U>) {
@@ -505,11 +522,15 @@ mod control {
         let windows = context::windows::<U>().read();
         let name = name.to_string();
         match file_entry(&windows, &name) {
-            Ok((_, node)) => switch_widget(node.clone()),
+            Ok((_, node)) => {
+                let node = node.clone();
+                *SET_MODE.lock() = Some(Box::new(move || {
+                    switch_widget(node);
+                    RESET_MODE.lock().clone()()
+                }));
+            }
             Err(err) => context::notify(err),
         }
-
-        *SET_MODE.lock() = Some(RESET_MODE.lock().clone());
     }
 
     pub(crate) fn send_key(key: KeyEvent) {
@@ -520,7 +541,7 @@ mod control {
     pub(crate) fn end_session() {
         HAS_ENDED.store(true, Ordering::Relaxed);
         while crate::thread::still_running() {
-            std::thread::sleep(Duration::from_micros(500));
+            std::thread::sleep(std::time::Duration::from_micros(500));
         }
     }
 
@@ -835,16 +856,20 @@ impl Commands {
     fn add_for_current<T: 'static, U: Ui>(
         &'static self,
         callers: impl IntoIterator<Item = impl ToString>,
-        mut f: impl FnMut(&RwData<T>, Flags, Args) -> CmdResult + 'static,
+        mut f: impl FnMut(&mut T, Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
         let cur_file = context::inner_cur_file::<U>();
         let cur_widget = context::inner_cur_widget::<U>();
 
         let command = Command::new(callers, move |flags, args| {
-            let result = cur_file.mutate_related::<T, CmdResult>(|t| f(t, flags, args.clone()));
+            let result = cur_file
+                .mutate_related::<T, CmdResult>(|t| f(&mut *t.write(), flags, args.clone()));
 
             result
-                .or_else(|| cur_widget.mutate_as::<T, CmdResult>(|t| f(t, flags, args.clone())))
+                .or_else(|| {
+                    cur_widget
+                        .mutate_as::<T, CmdResult>(|t| f(&mut *t.write(), flags, args.clone()))
+                })
                 .transpose()?
                 .ok_or_else(|| {
                     text!(

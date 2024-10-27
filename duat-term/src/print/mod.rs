@@ -114,7 +114,7 @@ impl Printer {
 
     /// Updates the value of all [`VarPoint`]s that have changed,
     /// returning true if any of them have.
-    pub fn update(&mut self, change_max: bool) -> bool {
+    pub fn update(&mut self, change_max: bool) {
         if change_max {
             let (width, height) = crossterm::terminal::size().unwrap();
             let (width, height) = (width as f64, height as f64);
@@ -124,7 +124,6 @@ impl Printer {
             self.solver.suggest_value(max.y_var(), height).unwrap();
         }
 
-        let mut any_has_changed = false;
         let (framed, mut frames, copies) = {
             let mut framed = Vec::new();
             let mut frames = Vec::new();
@@ -136,7 +135,6 @@ impl Printer {
                     Some((_, SavedVar::Val { value, has_changed })) => {
                         let new = new.round() as usize;
                         let old = value.swap(new, Ordering::Release);
-                        any_has_changed |= old != new;
                         has_changed.store(old != new, Ordering::Release);
                     }
                     Some((_, SavedVar::Edge { width: frame, rhs, value, has_changed })) => {
@@ -157,26 +155,21 @@ impl Printer {
             if let Some((_, new)) = frames.extract_if(|(var, _)| **var == frame.var).next() {
                 let new = new.round() as usize;
                 let old = frame.value.swap(new, Ordering::Release);
-                any_has_changed |= old != new;
                 has_changed.store(old != new, Ordering::Release);
             }
 
             let new = rhs.load(Ordering::Acquire) - frame.value();
             let old = value.swap(new, Ordering::Release);
-            any_has_changed |= old != new;
             has_changed.fetch_or(old != new, Ordering::Acquire);
         }
 
         for (copy, value, has_changed) in copies {
             let new = copy.load(Ordering::Acquire);
             let old = value.swap(new, Ordering::Release);
-            any_has_changed = old != new;
             has_changed.store(old != new, Ordering::Release);
         }
 
         print_edges(&self.edges);
-
-        any_has_changed
     }
 
     pub fn sender(&mut self, tl: &VarPoint, br: &VarPoint) -> Sender {

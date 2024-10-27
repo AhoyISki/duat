@@ -8,7 +8,7 @@ use crossterm::{
 };
 use duat_core::{
     cache::{Deserialize, Serialize},
-    data::RwData,
+    data::{AreaResizeId, RwData},
     forms::Painter,
     text::{Item, Iter, IterCfg, Part, Point, PrintCfg, RevIter, Text},
     ui::{self, Axis, Caret, Constraint, PushSpecs},
@@ -412,11 +412,12 @@ impl ui::Area for Area {
         cluster: bool,
         on_files: bool,
         cache: PrintInfo,
+        resize_id: AreaResizeId,
     ) -> (Area, Option<Area>) {
         let mut layout = self.layout.write();
         let layout = &mut *layout;
 
-        let (child, parent) = layout.bisect(self.id, specs, cluster, on_files, cache);
+        let (child, parent) = layout.bisect(self.id, specs, cluster, on_files, cache, resize_id);
 
         (
             Area::new(child, self.layout.clone()),

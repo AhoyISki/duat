@@ -2,12 +2,13 @@ use std::{
     any::{Any, TypeId},
     sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
 
-use follow::DataId;
-
+pub use self::follow::AreaResizeId;
+pub(crate) use self::follow::quit_updates;
+use self::follow::{DataId, Subscription};
 use super::{Data, RoData, RwLock, RwLockReadGuard, RwLockWriteGuard, private::InnerData};
 
 /// A read write shared reference to data
@@ -21,6 +22,7 @@ where
     read_state: AtomicUsize,
     pub(super) type_id: TypeId,
     pub(super) id: DataId,
+    is_updater: Arc<AtomicBool>,
 }
 
 impl<T> RwData<T> {
@@ -39,6 +41,7 @@ impl<T> RwData<T> {
             read_state: AtomicUsize::new(1),
             type_id: TypeId::of::<T>(),
             id: DataId::new(),
+            is_updater: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -63,6 +66,7 @@ where
             read_state: AtomicUsize::new(1),
             type_id: TypeId::of::<SizedT>(),
             id: DataId::new(),
+            is_updater: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -375,6 +379,9 @@ where
     /// [`has_changed`]: Data::has_changed
     pub fn write(&self) -> ReadWriteGuard<T> {
         let guard = self.data.write();
+        if self.is_updater.load(Ordering::Relaxed) {
+            follow::update(self.id);
+        }
         ReadWriteGuard { guard, cur_state: &self.cur_state }
     }
 
@@ -423,9 +430,12 @@ where
     ///
     /// [`has_changed`]: Data::has_changed
     pub fn try_write(&self) -> Option<ReadWriteGuard<'_, T>> {
-        self.data
-            .try_write()
-            .map(|guard| ReadWriteGuard { guard, cur_state: &self.cur_state })
+        self.data.try_write().map(|guard| {
+            if self.is_updater.load(Ordering::Relaxed) {
+                follow::update(self.id);
+            }
+            ReadWriteGuard { guard, cur_state: &self.cur_state }
+        })
     }
 
     /// Blocking mutation of the inner data
@@ -506,12 +516,7 @@ where
     pub(crate) fn raw_read(&self) -> RwLockReadGuard<'_, T> {
         self.data()
     }
-}
 
-impl<T> RwData<T>
-where
-    T: ?Sized + 'static,
-{
     /// Returns `true` if the data is of the concrete type `T`
     ///
     /// # Examples
@@ -591,6 +596,7 @@ where
                 read_state,
                 type_id: self.type_id,
                 id: self.id,
+                is_updater: self.is_updater.clone(),
             })
         } else {
             None
@@ -648,8 +654,16 @@ where
             self.read_state
                 .store(self.cur_state.load(Ordering::Acquire), Ordering::Release);
 
-            f(&mut cast.write())
+            let mut guard = cast.write();
+            if self.is_updater.load(Ordering::Relaxed) {
+                follow::update(self.id);
+            }
+            f(&mut guard)
         })
+    }
+
+    pub fn subscribe(&self) -> Subscription {
+        Subscription::new(self)
     }
 
     pub(crate) fn raw_write(&self) -> RwLockWriteGuard<'_, T> {
@@ -677,6 +691,7 @@ where
             read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1),
             type_id: self.type_id,
             id: self.id,
+            is_updater: self.is_updater.clone(),
         }
     }
 }
@@ -692,6 +707,7 @@ where
             read_state: AtomicUsize::new(1),
             type_id: TypeId::of::<T>(),
             id: DataId::new(),
+            is_updater: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -766,42 +782,73 @@ where
 
 mod follow {
     use std::sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
+        Arc, LazyLock,
+        atomic::{AtomicU16, Ordering},
+        mpsc,
     };
 
     use parking_lot::{Mutex, Once};
 
     use super::RwData;
+    use crate::{
+        context::{CurFile, FileReader},
+        thread::spawn,
+        ui::Ui,
+    };
 
     static UPDATERS: Mutex<Vec<(DataId, Vec<Arc<Mutex<dyn FnMut() + Send + Sync>>>)>> =
         Mutex::new(Vec::new());
+    static UPDATES: LazyLock<(mpsc::Sender<Update>, Mutex<mpsc::Receiver<Update>>)> =
+        LazyLock::new(|| {
+            let (sender, receiver) = mpsc::channel();
+            (sender, Mutex::new(receiver))
+        });
 
     #[derive(Clone, Copy, PartialEq, Eq)]
-    pub struct DataId(usize);
+    pub struct DataId(u16);
 
     impl DataId {
-        pub fn new() -> Self {
-            static COUNT: AtomicUsize = AtomicUsize::new(0);
+        pub(super) fn new() -> Self {
+            static COUNT: AtomicU16 = AtomicU16::new(0);
             DataId(COUNT.fetch_add(1, Ordering::Relaxed))
+        }
+    }
+
+    /// An indicator that an [`Area`] has been resized
+    ///
+    /// [`Area`]: crate::ui::Area
+    #[derive(Clone, Copy)]
+    pub struct AreaResizeId(DataId);
+
+    impl AreaResizeId {
+        /// Returns a new [`AreaResizeId`]
+        pub(crate) fn new() -> Self {
+            Self(DataId::new())
+        }
+
+        /// Signals to Duat tha this area has been resized
+        ///
+        /// This is used to update widgets accordingly.
+        pub fn update(&self) {
+            update(self.0)
         }
     }
 
     pub struct Subscription(Vec<DataId>);
 
     impl Subscription {
-        pub fn new<T>(data: &RwData<T>) -> Self {
+        pub fn new<T: ?Sized>(data: &RwData<T>) -> Self {
             Self(vec![data.id])
         }
 
-        pub fn add<T>(&mut self, data: &RwData<T>) {
-            if self.0.contains(&data.id) {
-                panic!("Don't subscribe to the same thing twice.")
+        pub fn add(&mut self, updater: impl Updater) {
+            let id = updater.id();
+            if !self.0.contains(&id) {
+                self.0.push(id);
             }
-            self.0.push(data.id);
         }
 
-        pub fn finish<T: Send + Sync + 'static>(
+        pub fn finish<T: ?Sized + Send + Sync>(
             self,
             data: &RwData<T>,
             mut f: impl FnMut(&mut T) + Send + Sync + 'static,
@@ -819,8 +866,66 @@ mod follow {
         }
     }
 
+    pub(crate) fn quit_updates() {
+        let (sender, _) = &*UPDATES;
+        sender.send(Update::Quit).unwrap();
+    }
+
     pub(super) fn update(id: DataId) {
-        static ONCE: Once = Once::new();
-        
+        static LOOP: Once = Once::new();
+        let (sender, receiver) = &*UPDATES;
+
+        //LOOP.call_once(|| {
+        //    spawn(|| {
+        //        let receiver = receiver.lock();
+        //        while let Ok(Update::Data(id)) = receiver.recv() {
+        //            let updaters = UPDATERS.lock();
+        //            if let Some((_, fns)) = updaters.iter().find(|(other, _)| *other == id) {
+        //                for f in fns {
+        //                    let f = f.clone();
+        //                    spawn(move || f.lock()());
+        //                }
+        //            }
+        //        }
+        //    });
+        //});
+
+        //if !crate::has_ended() {
+        //    sender.send(Update::Data(id)).unwrap();
+        //}
+    }
+
+    trait Updater {
+        fn id(&self) -> DataId;
+    }
+
+    impl<T: ?Sized> Updater for &RwData<T> {
+        fn id(&self) -> DataId {
+            self.is_updater.store(true, Ordering::Relaxed);
+            self.id
+        }
+    }
+
+    impl Updater for AreaResizeId {
+        fn id(&self) -> DataId {
+            self.0
+        }
+    }
+
+    impl<U: Ui> Updater for CurFile<U> {
+        fn id(&self) -> DataId {
+            self.mutate_data(|file, _, _| file.id)
+        }
+    }
+
+    impl<U: Ui> Updater for FileReader<U> {
+        fn id(&self) -> DataId {
+            self.inspect_data(|file, _, _| file.id)
+        }
+    }
+
+    enum Update {
+        Data(DataId),
+        Quit,
     }
 }

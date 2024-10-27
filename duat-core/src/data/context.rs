@@ -242,10 +242,6 @@ impl<U: Ui> CurFile<U> {
             .map(|(widget, area)| f(&widget, area))
     }
 
-    pub(crate) fn set(&self, parts: FileParts<U>) -> Option<FileParts<U>> {
-        std::mem::replace(&mut *self.0.write(), Some(parts))
-    }
-
     pub(crate) fn get_related_widget<W: Widget<U>>(&self) -> Option<Node<U>> {
         let data = self.0.write();
         let (.., related) = data.as_ref().unwrap();
@@ -351,6 +347,15 @@ impl<U: Ui> FileReader<U> {
         };
 
         has_changed
+    }
+
+    pub(super) fn inspect_data<R>(
+        &self,
+        f: impl Fn(&RwData<File>, &U::Area, &RwData<Option<Cursors>>) -> R,
+    ) -> R {
+        let data = self.data.read();
+        let (file, area, cursors, _) = data.as_ref().unwrap();
+        f(file, area, cursors)
     }
 }
 

@@ -19,7 +19,12 @@ use crossterm::{
     cursor, event, execute,
     terminal::{self, ClearType},
 };
-use duat_core::{DuatError, data::RwData, text::err, ui};
+use duat_core::{
+    DuatError,
+    data::{AreaResizeId, RwData},
+    text::err,
+    ui,
+};
 
 use self::{layout::Layout, print::Printer};
 pub use self::{
@@ -103,10 +108,14 @@ impl ui::Ui for Ui {
         });
     }
 
-    fn new_root(&mut self, cache: <Self::Area as ui::Area>::Cache) -> Self::Area {
+    fn new_root(
+        &mut self,
+        cache: <Self::Area as ui::Area>::Cache,
+        resize_id: AreaResizeId,
+    ) -> Self::Area {
         self.printer.write().flush_equalities().unwrap();
 
-        let layout = Layout::new(self.fr, self.printer.clone(), cache);
+        let layout = Layout::new(self.fr, self.printer.clone(), cache, resize_id);
         let root = Area::new(layout.main_index(), RwData::new(layout));
         let area = root.clone();
 
@@ -225,7 +234,7 @@ impl AreaId {
         use std::sync::atomic::AtomicUsize;
         static INDEX_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-        AreaId(INDEX_COUNTER.fetch_add(1, Ordering::SeqCst))
+        AreaId(INDEX_COUNTER.fetch_add(1, Ordering::Relaxed))
     }
 }
 

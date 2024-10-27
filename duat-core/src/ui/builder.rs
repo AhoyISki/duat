@@ -14,7 +14,7 @@ use std::{cell::RefCell, sync::LazyLock};
 
 use super::{Area, Ui};
 use crate::{
-    context::{self, FileParts},
+    context::{self},
     data::RwData,
     duat_name,
     widgets::{Node, Widget, WidgetCfg},
@@ -98,7 +98,7 @@ where
     window_i: usize,
     node: Node<U>,
     area: RefCell<U::Area>,
-    prev: Option<FileParts<U>>,
+    prev: Option<Node<U>>,
 }
 
 impl<U> FileBuilder<U>
@@ -107,7 +107,7 @@ where
 {
     /// Creates a new [`FileBuilder`].
     pub(crate) fn new(node: Node<U>, window_i: usize) -> Self {
-        let (prev, _) = context::set_cur(node.as_file(), node.clone()).unzip();
+        let (_, prev) = context::set_cur(node.as_file(), node.clone()).unzip();
         let area = node.area().clone();
 
         Self {
@@ -269,7 +269,7 @@ where
 impl<U: Ui> Drop for FileBuilder<U> {
     fn drop(&mut self) {
         if let Some(prev) = self.prev.take() {
-            context::cur_file().unwrap().set(prev);
+            context::set_cur(prev.as_file(), prev);
         }
     }
 }
@@ -351,10 +351,7 @@ impl<U: Ui> WindowBuilder<U> {
     pub(crate) fn new(window_i: usize) -> Self {
         let windows = context::windows::<U>();
         let mod_area = windows.read()[window_i].files_area.clone();
-        Self {
-            window_i,
-            area: RefCell::new(mod_area),
-        }
+        Self { window_i, area: RefCell::new(mod_area) }
     }
 
     /// Pushes a [widget] to an edge of the window, given a [cfg]
