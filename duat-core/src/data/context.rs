@@ -27,16 +27,24 @@ mod global {
     use crate::{
         Error, Result,
         data::RwData,
+        duat_name,
+        input::Regular,
         text::Text,
         ui::{Ui, Window},
         widgets::{File, Node},
     };
 
+    static MODE_NAME: LazyLock<RwData<&str>> =
+        LazyLock::new(|| RwData::new(duat_name::<Regular>()));
     static CUR_FILE: OnceLock<&(dyn Any + Send + Sync)> = OnceLock::new();
     static CUR_WIDGET: OnceLock<&(dyn Any + Send + Sync)> = OnceLock::new();
     static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
     static WINDOWS: OnceLock<&(dyn Any + Send + Sync)> = OnceLock::new();
     static NOTIFICATIONS: LazyLock<RwData<Text>> = LazyLock::new(RwData::default);
+
+    pub fn mode_name() -> &'static RwData<&'static str> {
+        &MODE_NAME
+    }
 
     pub fn fixed_reader<U: Ui>() -> Result<FileReader<U>, File> {
         Ok(cur_file()?.fixed_reader())

@@ -18,7 +18,7 @@ use std::{fmt::Display, marker::PhantomData};
 
 use crate::{
     context::FileReader,
-    data::{RoData, RwData},
+    data::{DataMap, RoData, RwData},
     input::Cursors,
     text::{Builder, Tag, Text, text},
     ui::Ui,
@@ -167,9 +167,40 @@ impl<U: Ui> From<RoData<Text>> for State<(), DataArg<Text>, U> {
     }
 }
 
+impl<U, I, O> From<DataMap<I, O>> for State<(), DataArg<String>, U>
+where
+    U: Ui,
+    I: ?Sized + Send + Sync,
+    O: Display + 'static,
+{
+    fn from(value: DataMap<I, O>) -> Self {
+        let (mut reader, checker) = value.fns();
+        State {
+            appender: Appender::NoArgsStr(Box::new(move || reader().to_string())),
+            checker: Some(checker),
+            ghost: PhantomData,
+        }
+    }
+}
+
+impl<U, I> From<DataMap<I, Text>> for State<(), DataArg<Text>, U>
+where
+    U: Ui,
+    I: ?Sized + Send + Sync,
+{
+    fn from(value: DataMap<I, Text>) -> Self {
+        let (reader, checker) = value.fns();
+        State {
+            appender: Appender::NoArgsText(reader),
+            checker: Some(checker),
+            ghost: PhantomData,
+        }
+    }
+}
+
 impl<D, Reader, Checker, U> From<(Reader, Checker)> for State<(), NoArg<String>, U>
 where
-    D: Display + Send + Sync,
+    D: Display,
     Reader: Fn() -> D + Send + Sync + 'static,
     Checker: Fn() -> bool + Send + Sync + 'static,
     U: Ui,

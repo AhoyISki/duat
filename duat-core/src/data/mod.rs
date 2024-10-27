@@ -42,6 +42,39 @@ where
     fn has_changed(&self) -> bool;
 }
 
+pub struct DataMap<I: ?Sized + Send + Sync + 'static, O> {
+    data: RoData<I>,
+    f: Box<dyn FnMut() -> O + Send + Sync>,
+}
+
+impl<I: ?Sized + Send + Sync + 'static, O> DataMap<I, O> {
+    pub fn fns(
+        self,
+    ) -> (
+        Box<dyn FnMut() -> O + Send + Sync>,
+        Box<dyn Fn() -> bool + Send + Sync>,
+    ) {
+        let checker = Box::new(move || self.data.has_changed());
+        (self.f, checker)
+    }
+}
+
+impl<I: ?Sized + Send + Sync + 'static> RwData<I> {
+    pub fn map<O>(&self, mut f: impl FnMut(&I) -> O + Send + Sync + 'static) -> DataMap<I, O> {
+        let data = RoData::from(self);
+        let f = move || f(&*data.read());
+        DataMap { data: RoData::from(self), f: Box::new(f) }
+    }
+}
+
+impl<I: ?Sized + Send + Sync + 'static> RoData<I> {
+    pub fn map<O>(&self, mut f: impl FnMut(&I) -> O + Send + Sync + 'static) -> DataMap<I, O> {
+        let data = self.clone();
+        let f = move || f(&*data.read());
+        DataMap { data: self.clone(), f: Box::new(f) }
+    }
+}
+
 mod private {
     use std::sync::{Arc, atomic::AtomicUsize};
 
