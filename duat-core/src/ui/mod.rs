@@ -436,7 +436,7 @@ impl Sender {
         self.0.send(Event::ReloadConfig)
     }
 
-    pub(crate) fn _send_form_changed(&self) -> Result<(), mpsc::SendError<Event>> {
+    pub(crate) fn send_form_changed(&self) -> Result<(), mpsc::SendError<Event>> {
         self.0.send(Event::FormChange)
     }
 }

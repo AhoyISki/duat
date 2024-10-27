@@ -59,6 +59,15 @@ impl<I: ?Sized + Send + Sync + 'static, O> DataMap<I, O> {
     }
 }
 
+impl<I: ?Sized + Send + Sync + 'static, O: 'static> DataMap<I, O> {
+    pub fn map<O2>(mut self, mut f: impl FnMut(O) -> O2 + Send + Sync + 'static) -> DataMap<I, O2> {
+        DataMap {
+            data: self.data,
+            f: Box::new(move || f((self.f)())),
+        }
+    }
+}
+
 impl<I: ?Sized + Send + Sync + 'static> RwData<I> {
     pub fn map<O>(&self, mut f: impl FnMut(&I) -> O + Send + Sync + 'static) -> DataMap<I, O> {
         let data = RoData::from(self);

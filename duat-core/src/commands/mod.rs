@@ -21,7 +21,6 @@ use crate::{
     widgets::{File, Node, Widget},
 };
 
-
 mod control;
 mod parameters;
 

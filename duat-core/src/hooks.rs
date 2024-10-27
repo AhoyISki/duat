@@ -30,8 +30,8 @@
 //! - [`OnWindowOpen`], which lets you push widgets around the window.
 //! - [`FocusedOn`] lets you act on a [widget] whenever it is focused.
 //! - [`UnfocusedFrom`] lets you act on a [widget] when unfocused.
-//! - [`KeySent`] lets you act on a [dyn ActiveWidget], depending on
-//!   the [key] sent to it.
+//! - [`KeySent`] lets you act on a [dyn Widget], depending on the
+//!   [key] sent to it.
 //! - [`KeySentTo`], unlike [`KeySent`], lets you act on a specific
 //!   [widget], given a [key].
 //!
@@ -57,8 +57,8 @@
 //!
 //! [`File`]: crate::widgets::File
 //! [`LineNumbers`]: crate::widgets::LineNumbers
-//! [widget]: ActiveWidget
-//! [dyn ActiveWidget]: ActiveWidget
+//! [widget]: Widget
+//! [dyn Widget]: Widget
 //! [key]: KeyEvent
 //! [deadlocks]: https://en.wikipedia.org/wiki/Deadlock_(computer_science)
 //! [commands]: crate::commands
@@ -114,8 +114,11 @@ impl<U: Ui> Hookable for OnWindowOpen<U> {
 /// # Arguments
 ///
 /// - The widget itself.
+/// - Its [area].
+/// - Its [`Cursors`]
 ///
-/// [`widget`]: crate::widgets::ActiveWidget
+/// [`widget`]: crate::widgets::Widget
+/// [area]: crate::ui::Area
 pub struct FocusedOn<W: Widget<U>, U: Ui>(PhantomData<(W, U)>);
 
 impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
@@ -140,8 +143,11 @@ impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
 /// # Arguments
 ///
 /// - The widget itself.
+/// - Its [area].
+/// - Its [`Cursors`]
 ///
-/// [`widget`]: crate::widgets::ActiveWidget
+/// [`widget`]: crate::widgets::Widget
+/// [area]: crate::ui::Area
 pub struct UnfocusedFrom<W: Widget<U>, U: Ui>(PhantomData<(W, U)>);
 
 impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
@@ -161,13 +167,31 @@ impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
     }
 }
 
+/// The [`Mode`] has changed
+///
+/// # Arguments
+///
+/// - The previous mode.
+/// - The current mode.
+///
+/// # Note
+///
+/// You should try to avoid more than one [`Mode`] with the same name.
+/// This can happen if you're using two structs with the same name,
+/// but from different crates.
+pub struct ModeSwitched;
+
+impl Hookable for ModeSwitched {
+    type Args = (&'static str, &'static str);
+}
+
 /// Triggers whenever a [key] is sent
 ///
 /// # Arguments
 ///
 /// - The [key] sent.
-/// - An [`RwData<dyn ActiveWidget<U>>`] for the widget active when
-///   the key was sent.
+/// - An [`RwData<dyn Widget<U>>`] for the widget active when the key
+///   was sent.
 ///
 /// [key]: KeyEvent
 pub struct KeySent<U: Ui>(PhantomData<U>);

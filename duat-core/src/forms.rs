@@ -1,5 +1,5 @@
 //! Utilities for stylizing the text of Duat
-use std::sync::LazyLock;
+use std::sync::{LazyLock, OnceLock};
 
 use crossterm::style::{Attribute, ContentStyle, Stylize};
 pub use crossterm::{cursor::SetCursorStyle as CursorShape, style::Color};
@@ -9,7 +9,9 @@ pub use self::global::{
     FormFmt, extra_cursor, from_id, id_of, main_cursor, name_from_id, painter, set,
     set_extra_cursor, set_main_cursor, set_weak, unset_extra_cursor, unset_main_cursor,
 };
-use crate::data::RwLockReadGuard;
+use crate::{data::RwLockReadGuard, ui::Sender};
+
+static SENDER: OnceLock<Sender> = OnceLock::new();
 
 /// The functions that will be exposed for public use.
 mod global {
@@ -481,17 +483,19 @@ impl Palette {
 
         let mut inner = self.0.write();
 
-        let i = if let Some(i) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
+        if let Some(i) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
             inner.forms[i].1 = form;
-            i
+
+            for refed in refs_of(&inner, i) {
+                inner.forms[refed].1 = form;
+            }
+
+            if let Some(sender) = SENDER.get() {
+                sender.send_form_changed().unwrap()
+            }
         } else {
             inner.forms.push((name, form, FormType::Normal));
-            inner.forms.len() - 1
         };
-
-        for refed in refs_of(&inner, i) {
-            inner.forms[refed].1 = form;
-        }
     }
 
     /// Sets a [`Form`] "weakly"
@@ -507,7 +511,11 @@ impl Palette {
             let (_, f, ty) = &mut inner.forms[i];
             if let FormType::Weakest = ty {
                 *f = form;
-                *ty = FormType::Normal
+                *ty = FormType::Normal;
+
+                if let Some(sender) = SENDER.get() {
+                    sender.send_form_changed().unwrap()
+                }
             }
         } else {
             inner.forms.push((name, form, FormType::Normal));
@@ -538,6 +546,10 @@ impl Palette {
             for refed in refs_of(&inner, i) {
                 inner.forms[refed].1 = form;
             }
+
+            if let Some(sender) = SENDER.get() {
+                sender.send_form_changed().unwrap()
+            }
         } else {
             // If the form didn't previously exist, nothing was referencing it, so
             // no checks are done.
@@ -562,6 +574,10 @@ impl Palette {
             if let FormType::Weakest = ty {
                 *f = form;
                 *ty = FormType::Ref(refed);
+
+                if let Some(sender) = SENDER.get() {
+                    sender.send_form_changed().unwrap()
+                }
             }
         } else {
             inner.forms.push((name, form, FormType::Ref(refed)));
@@ -755,6 +771,12 @@ impl Painter {
     pub fn get_default(&self) -> Form {
         self.forms[0].0
     }
+}
+
+pub(crate) fn set_sender(sender: Sender) {
+    SENDER
+        .set(sender)
+        .unwrap_or_else(|_| panic!("Sender set more than once"));
 }
 
 /// An enum that helps in the modification of forms

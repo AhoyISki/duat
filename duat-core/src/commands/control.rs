@@ -13,7 +13,13 @@ use parking_lot::Mutex;
 
 use super::{file_entry, widget_entry};
 use crate::{
-    commands::{self, iter_around, iter_around_rev}, context, duat_name, input::Mode, text::{err, ok, Text}, ui::{Event, Ui, Window}, widgets::{CmdLineMode, CommandLine, File, Node}
+    commands::{self, iter_around, iter_around_rev},
+    context, duat_name,
+    hooks::{self, ModeSwitched},
+    input::Mode,
+    text::{Text, err, ok},
+    ui::{Event, Ui, Window},
+    widgets::{CmdLineMode, CommandLine, File, Node},
 };
 
 static SEND_KEY: LazyLock<Mutex<Box<dyn FnMut(KeyEvent) + Send + Sync>>> =
@@ -324,7 +330,11 @@ fn set_mode_fn<M: Mode<U>, U: Ui>(mut mode: M) {
         };
     }
 
-    *context::mode_name().write() = duat_name::<M>();
+    context::mode_name().mutate(|mode| {
+        let new_mode = duat_name::<M>();
+        hooks::trigger::<ModeSwitched>((mode, new_mode));
+        *mode = new_mode;
+    });
 
     *SEND_KEY.lock() = Box::new(move |key| send_key_fn::<U>(&mut mode, key));
 }

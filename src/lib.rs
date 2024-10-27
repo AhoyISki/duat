@@ -145,7 +145,7 @@ pub mod forms {
 
 pub mod hooks {
     //! Hook utilites
-    pub use duat_core::hooks::{add, add_grouped, group_exists, remove};
+    pub use duat_core::hooks::{add, add_grouped, group_exists, remove, ModeSwitched};
 
     use crate::Ui;
     /// Triggers whenever a [`File`] is created
@@ -270,7 +270,7 @@ pub mod prelude {
     pub use crate::{
         Ui, commands, control, cursor,
         forms::{self, CursorShape, Form},
-        hooks::{self, OnFileOpen, OnWindowOpen},
+        hooks::{self, OnFileOpen, OnWindowOpen, ModeSwitched},
         input, print, setup_duat,
         state::*,
         widgets::*,
