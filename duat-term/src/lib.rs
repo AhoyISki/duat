@@ -161,7 +161,7 @@ pub struct StaticFns {
 impl Default for StaticFns {
     fn default() -> Self {
         fn poll() -> Result<bool, io::Error> {
-            crossterm::event::poll(Duration::from_millis(10))
+            crossterm::event::poll(Duration::from_millis(13))
         }
 
         Self { poll, read: crossterm::event::read }

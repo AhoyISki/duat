@@ -12,10 +12,20 @@
 //! [`status!`]: super::status
 //! [`&dyn InputMethod`]: crate::input::InputMethod
 use crate::{
+    context,
+    data::DataMap,
     input::{Cursor, Cursors},
     text::{Text, text},
     widgets::File,
 };
+
+pub fn mode() -> DataMap<&'static str, String> {
+    context::mode_name().map(|mode| mode.to_lowercase())
+}
+
+pub fn mode_fmt() -> DataMap<&'static str, Text> {
+    context::mode_name().map(|mode| text!([Mode] { mode.to_lowercase() }))
+}
 
 /// The byte of the main cursor in the file. Indexed at 1.
 pub fn main_byte(cursors: &Cursors) -> usize {

@@ -198,6 +198,39 @@ where
     }
 }
 
+impl<U, F, I, O> From<F> for State<(), IntoDataArg<String>, U>
+where
+    U: Ui,
+    F: FnOnce() -> DataMap<I, O>,
+    I: ?Sized + Send + Sync + 'static,
+    O: Display + 'static,
+{
+    fn from(value: F) -> Self {
+        let (mut reader, checker) = value().fns();
+        State {
+            appender: Appender::NoArgsStr(Box::new(move || reader().to_string())),
+            checker: Some(checker),
+            ghost: PhantomData,
+        }
+    }
+}
+
+impl<U, F, I> From<F> for State<(), IntoDataArg<Text>, U>
+where
+    U: Ui,
+    F: FnOnce() -> DataMap<I, Text>,
+    I: ?Sized + Send + Sync + 'static,
+{
+    fn from(value: F) -> Self {
+        let (reader, checker) = value().fns();
+        State {
+            appender: Appender::NoArgsText(reader),
+            checker: Some(checker),
+            ghost: PhantomData,
+        }
+    }
+}
+
 impl<D, Reader, Checker, U> From<(Reader, Checker)> for State<(), NoArg<String>, U>
 where
     D: Display,
@@ -372,6 +405,8 @@ where
 // Dummy structs to prevent implementation conflicts.
 #[doc(hidden)]
 pub struct DataArg<T>(PhantomData<T>);
+#[doc(hidden)]
+pub struct IntoDataArg<T>(PhantomData<T>);
 #[doc(hidden)]
 pub struct NoArg<T>(PhantomData<T>);
 #[doc(hidden)]

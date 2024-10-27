@@ -214,6 +214,7 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
         forms::set_weak("Selections", Form::dark_blue());
         forms::set_weak("Coord", Form::dark_red());
         forms::set_weak("Separator", Form::cyan());
+        forms::set_weak("Mode", Form::green());
     }
 
     fn print_cfg(&self) -> PrintCfg {

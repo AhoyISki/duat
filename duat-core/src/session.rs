@@ -19,20 +19,14 @@ use crate::{
 };
 
 #[doc(hidden)]
-pub struct SessionCfg<U>
-where
-    U: Ui,
-{
+pub struct SessionCfg<U: Ui> {
     ui: U,
     file_cfg: FileCfg,
     layout: Box<dyn Fn() -> Box<dyn Layout<U> + 'static>>,
     plugins: Vec<Box<dyn Plugin<U>>>,
 }
 
-impl<U> SessionCfg<U>
-where
-    U: Ui,
-{
+impl<U: Ui> SessionCfg<U> {
     pub fn new(ui: U) -> Self {
         crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
 
@@ -265,7 +259,7 @@ impl<U: Ui> Session<U> {
                     set_mode();
                 }
 
-                if let Ok(event) = rx.recv_timeout(Duration::from_millis(50)) {
+                if let Ok(event) = rx.recv_timeout(Duration::from_millis(10)) {
                     match event {
                         Event::Key(key) => commands::send_key(key),
                         Event::Resize | Event::FormChange => {
