@@ -4,7 +4,7 @@ use cassowary::{
     strength::{REQUIRED, STRONG, WEAK},
 };
 use duat_core::{
-    data::{AreaResizeId, RwData},
+    data::RwData,
     ui::{
         Axis::{self, *},
         Constraint, PushSpecs,
@@ -19,7 +19,7 @@ use crate::{
 };
 
 enum Kind {
-    End(Sender, RwData<PrintInfo>, AreaResizeId),
+    End(Sender, RwData<PrintInfo>),
     Middle {
         children: Vec<(Rect, Constraints)>,
         axis: Axis,
@@ -28,8 +28,8 @@ enum Kind {
 }
 
 impl Kind {
-    fn end(sender: Sender, info: PrintInfo, resize_id: AreaResizeId) -> Self {
-        Self::End(sender, RwData::new(info), resize_id)
+    fn end(sender: Sender, info: PrintInfo) -> Self {
+        Self::End(sender, RwData::new(info))
     }
 
     fn middle(axis: Axis, clustered: bool) -> Self {
@@ -290,7 +290,7 @@ impl Rect {
 
     pub fn print_info(&self) -> Option<&RwData<PrintInfo>> {
         match &self.kind {
-            Kind::End(_, info, _) => Some(info),
+            Kind::End(_, info) => Some(info),
             Kind::Middle { .. } => None,
         }
     }
@@ -338,9 +338,9 @@ pub struct Rects {
 }
 
 impl Rects {
-    pub fn new(p: &mut Printer, fr: Frame, info: PrintInfo, resize_id: AreaResizeId) -> Self {
+    pub fn new(p: &mut Printer, fr: Frame, info: PrintInfo) -> Self {
         let (tl, br) = (p.var_point(), p.var_point());
-        let kind = Kind::end(p.sender(&tl, &br), info, resize_id);
+        let kind = Kind::end(p.sender(&tl, &br), info);
         let mut main = Rect::new(tl, br, true, kind);
         main.eqs.extend([
             main.tl.x() | EQ(REQUIRED) | 0.0,
@@ -360,13 +360,12 @@ impl Rects {
         p: &mut Printer,
         on_files: bool,
         info: PrintInfo,
-        resize_id: AreaResizeId,
     ) -> AreaId {
         let fr = self.fr;
 
         let mut rect = {
             let (tl, br) = (p.var_point(), p.var_point());
-            let kind = Kind::end(p.sender(&tl, &br), info, resize_id);
+            let kind = Kind::end(p.sender(&tl, &br), info);
             Rect::new(tl, br, on_files, kind)
         };
         let new_id = rect.id();

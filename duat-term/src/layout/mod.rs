@@ -1,6 +1,6 @@
 use cassowary::{WeightedRelation::*, strength::STRONG};
 use duat_core::{
-    data::{AreaResizeId, RwData},
+    data::RwData,
     ui::{Axis, Constraint, PushSpecs},
 };
 
@@ -110,14 +110,9 @@ pub struct Layout {
 impl Layout {
     /// Returns a new instance of [`Layout`], applying a given
     /// [`Frame`] to all inner [`Rect`]s.
-    pub fn new(
-        fr: Frame,
-        printer: RwData<Printer>,
-        info: PrintInfo,
-        resize_id: AreaResizeId,
-    ) -> Self {
+    pub fn new(fr: Frame, printer: RwData<Printer>, info: PrintInfo) -> Self {
         printer.write().flush_equalities().unwrap();
-        let rects = Rects::new(&mut printer.write(), fr, info, resize_id);
+        let rects = Rects::new(&mut printer.write(), fr, info);
         let main_id = rects.main.id();
 
         Layout { rects, active_id: main_id, printer }
@@ -152,7 +147,6 @@ impl Layout {
         cluster: bool,
         on_files: bool,
         info: PrintInfo,
-        resize_id: AreaResizeId,
     ) -> (AreaId, Option<AreaId>) {
         let mut p = self.printer.write();
         let axis = ps.axis();
@@ -197,9 +191,7 @@ impl Layout {
             (id, Some(parent.id()))
         };
 
-        let new_id = self
-            .rects
-            .push(ps, target, &mut p, on_files, info, resize_id);
+        let new_id = self.rects.push(ps, target, &mut p, on_files, info);
         (new_id, new_parent_id)
     }
 

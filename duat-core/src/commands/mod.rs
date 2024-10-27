@@ -425,7 +425,6 @@ mod control {
             atomic::{AtomicBool, Ordering},
             mpsc,
         },
-        time::Duration,
     };
 
     use crossterm::event::KeyEvent;

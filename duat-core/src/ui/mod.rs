@@ -19,7 +19,7 @@ pub use self::{
 use crate::{
     DuatError,
     cache::load_cache,
-    data::{AreaResizeId, RoData, RwData},
+    data::{RoData, RwData},
     forms::Painter,
     text::{Item, Iter, IterCfg, Point, PrintCfg, RevIter, Text},
     widgets::{File, Node, Widget},
@@ -40,11 +40,7 @@ pub trait Ui: Sized + Send + Sync + 'static {
     /// a new window, that is, a plain region with nothing in it.
     ///
     /// [`Area`]: Ui::Area
-    fn new_root(
-        &mut self,
-        cache: <Self::Area as Area>::Cache,
-        resize_id: AreaResizeId,
-    ) -> Self::Area;
+    fn new_root(&mut self, cache: <Self::Area as Area>::Cache) -> Self::Area;
 
     /// Functions to trigger when the program begins
     fn open(&mut self);
@@ -258,7 +254,6 @@ pub trait Area: Send + Sync + Sized {
         cluster: bool,
         on_files: bool,
         cache: Self::Cache,
-        resize_id: AreaResizeId,
     ) -> (Self, Option<Self>);
 }
 
@@ -294,7 +289,7 @@ where
             <U::Area as Area>::Cache::default()
         };
 
-        let area = ui.new_root(cache, AreaResizeId::new());
+        let area = ui.new_root(cache);
 
         let node = Node::new::<W>(widget, area.clone(), checker);
         node.update();
@@ -329,7 +324,7 @@ where
         };
 
         let on_files = self.files_area.is_master_of(area);
-        let (child, parent) = area.bisect(specs, cluster, on_files, cache, AreaResizeId::new());
+        let (child, parent) = area.bisect(specs, cluster, on_files, cache);
 
         if *area == self.master_area
             && let Some(new_master_area) = parent.clone()

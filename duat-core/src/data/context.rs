@@ -348,15 +348,6 @@ impl<U: Ui> FileReader<U> {
 
         has_changed
     }
-
-    pub(super) fn inspect_data<R>(
-        &self,
-        f: impl Fn(&RwData<File>, &U::Area, &RwData<Option<Cursors>>) -> R,
-    ) -> R {
-        let data = self.data.read();
-        let (file, area, cursors, _) = data.as_ref().unwrap();
-        f(file, area, cursors)
-    }
 }
 
 impl<U: Ui> Clone for FileReader<U> {

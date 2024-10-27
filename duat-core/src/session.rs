@@ -11,7 +11,7 @@ use crate::{
     Plugin,
     cache::{delete_cache, load_cache, store_cache},
     commands, context,
-    data::{self, RwData},
+    data::RwData,
     hooks::{self, OnFileOpen, OnWindowOpen, SessionStarted},
     text::PrintCfg,
     ui::{Area, Event, FileBuilder, Layout, MasterOnLeft, Sender, Ui, Window, WindowBuilder},
@@ -183,13 +183,13 @@ impl<U: Ui> Session<U> {
         crate::thread::spawn(|| {
             use std::io::Write;
 
-                let mut file = std::io::BufWriter::new(
-                    std::fs::OpenOptions::new()
-                        .append(true)
-                        .create(true)
-                        .open("deadlocks")
-                        .unwrap(),
-                );
+            let mut file = std::io::BufWriter::new(
+                std::fs::OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open("deadlocks")
+                    .unwrap(),
+            );
 
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(2));
@@ -232,7 +232,6 @@ impl<U: Ui> Session<U> {
             match reason_to_break {
                 BreakTo::QuitDuat => {
                     crate::thread::quit_queue();
-                    data::quit_updates();
                     commands::end_session();
                     self.save_cache(true);
                     self.ui.close();
@@ -241,7 +240,6 @@ impl<U: Ui> Session<U> {
                 }
                 BreakTo::ReloadConfig => {
                     crate::thread::quit_queue();
-                    data::quit_updates();
                     commands::end_session();
                     self.save_cache(false);
                     self.ui.end();

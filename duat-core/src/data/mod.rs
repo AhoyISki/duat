@@ -23,10 +23,9 @@
 //! [`StatusLine`]: crate::widgets::StatusLine
 pub use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-pub(crate) use self::rw::quit_updates;
 pub use self::{
     ro::RoData,
-    rw::{ReadWriteGuard, RwData, AreaResizeId},
+    rw::{ReadWriteGuard, RwData},
 };
 
 pub mod context;
