@@ -41,6 +41,7 @@ pub struct Builder {
     text: Text,
     last_form: Option<FormId>,
     buffer: String,
+    last_was_empty: bool,
 }
 
 impl Builder {
@@ -89,13 +90,26 @@ impl Builder {
         }
     }
 
+    /// Wether or not the last added piece was empty
+    ///
+    /// This happens when an empty [`String`] or an empty [`Text`] is
+    /// pushed.
+    pub fn last_was_empty(&self) -> bool {
+        self.last_was_empty
+    }
+
     /// Pushes an [`impl Display`] to the [`Text`]
     ///
     /// [`impl Display`]: std::fmt::Display
     pub(crate) fn push_str(&mut self, display: impl std::fmt::Display) {
         self.buffer.clear();
         write!(self.buffer, "{display}").unwrap();
-        self.text.insert_str(self.text.len_bytes(), &self.buffer)
+        if self.buffer.is_empty() {
+            self.last_was_empty = true
+        } else {
+            self.last_was_empty = false;
+            self.text.insert_str(self.text.len_bytes(), &self.buffer)
+        }
     }
 
     /// Pushes a [`Tag`] to the end of the list of [`Tag`]s, as well
@@ -123,6 +137,7 @@ impl Builder {
 
     /// Pushes [`Text`] directly
     pub(crate) fn push_text(&mut self, mut text: Text) {
+        self.last_was_empty = text.is_empty();
         let end = self.text.len_bytes();
 
         if let Some(last_id) = self.last_form.take() {
@@ -149,6 +164,7 @@ impl Default for Builder {
             text: Text::default(),
             last_form: None,
             buffer: String::with_capacity(50),
+            last_was_empty: false,
         }
     }
 }

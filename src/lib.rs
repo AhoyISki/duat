@@ -403,7 +403,7 @@ pub mod prelude {
         Ui, commands, control, cursor,
         forms::{self, CursorShape, Form},
         hooks::{self, ModeSwitched, OnFileOpen, OnWindowOpen},
-        mode, print, setup_duat,
+        mode::{self, map}, print, setup_duat,
         state::*,
         widgets::*,
     };

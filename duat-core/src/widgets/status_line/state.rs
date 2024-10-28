@@ -77,7 +77,11 @@ impl<T: 'static, Dummy, U: Ui> State<T, Dummy, U> {
                         builder.push_text(text)
                     }
                 }),
-                Appender::Str(str) => Box::new(move |builder, _| builder.push_str(str.clone())),
+                Appender::Str(str) => Box::new(move |builder, _| {
+                    if str != " " || !builder.last_was_empty() {
+                        builder.push_str(str.clone())
+                    }
+                }),
                 Appender::Text(text) => Box::new(move |builder, _| builder.push_text(text.clone())),
             },
             Box::new(move || self.checker.as_ref().is_some_and(|check| check())),

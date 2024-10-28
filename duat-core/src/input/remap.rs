@@ -1,18 +1,18 @@
-use std::any::TypeId;
+use std::{any::TypeId, sync::LazyLock};
 
 use crossterm::event::KeyEvent;
 use parking_lot::Mutex;
 
 pub use self::global::*;
 use super::Mode;
-use crate::{commands, ui::Ui};
+use crate::{commands, data::RwData, ui::Ui};
 
 mod global {
     use crossterm::event::KeyEvent;
     use parking_lot::Mutex;
 
     use super::Remapper;
-    use crate::{input::Mode, ui::Ui};
+    use crate::{data::RoData, input::Mode, ui::Ui};
 
     static REMAPPER: Remapper = Remapper::new();
     static SEND_KEY: Mutex<fn(KeyEvent)> = Mutex::new(empty);
@@ -31,6 +31,10 @@ mod global {
     pub fn send_key(key: KeyEvent) {
         let f = { *SEND_KEY.lock() };
         f(key)
+    }
+
+    pub fn cur_sequence() -> RoData<Vec<KeyEvent>> {
+        RoData::from(&*REMAPPER.cur_seq)
     }
 
     pub(crate) fn set_send_key<M: Mode<U>, U: Ui>() {
@@ -70,14 +74,14 @@ struct Remapper {
     remaps: Mutex<Vec<(TypeId, Vec<Remap>)>>,
     /// The sequence of yet to be fully matched characters that have
     /// been typed.
-    cur_seq: Mutex<Vec<KeyEvent>>,
+    cur_seq: LazyLock<RwData<Vec<KeyEvent>>>,
 }
 
 impl Remapper {
     const fn new() -> Self {
         Remapper {
             remaps: Mutex::new(Vec::new()),
-            cur_seq: Mutex::new(Vec::new()),
+            cur_seq: LazyLock::new(RwData::default),
         }
     }
 
@@ -135,7 +139,7 @@ impl Remapper {
             return;
         };
 
-        let mut cur_seq = self.cur_seq.lock();
+        let mut cur_seq = self.cur_seq.write();
         cur_seq.push(key);
 
         if let Some(remap) = remaps.iter().find(|r| r.takes.starts_with(&cur_seq)) {
