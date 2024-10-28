@@ -176,7 +176,7 @@
 //! # use duat::prelude::*;
 //! # fn test() -> Result<(), Error<()>> {
 //! let callers = ["collapse-command-line", "collapse-cmd"];
-//! commands::add_for_widget::<CommandLine>(
+//! commands::add_for::<CommandLine>(
 //!     callers,
 //!     |_command_line, area, _cursors, _flags, _args| {
 //!         area.constrain_ver(Constraint::Length(0.0))?;

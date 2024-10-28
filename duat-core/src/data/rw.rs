@@ -84,7 +84,7 @@ where
     ///     });
     ///
     ///     // Just making sure that the read happens slighly after the write.
-    ///     thread::sleep(Duration::from_millis(1));
+    ///     thread::sleep(Duration::from_millis(10));
     ///
     ///     let read_only = read_only_data.read();
     ///     let time_elapsed = Instant::now().duration_since(instant);

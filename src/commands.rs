@@ -158,11 +158,11 @@ use crate::{Area, Ui};
 /// ```
 ///
 /// In this case we're running a command that will affect the most
-/// relevant [`CommandLine`]. See [`commands::add_for_widget`] for
+/// relevant [`CommandLine`]. See [`commands::add_for`] for
 /// more information.
 ///
 /// [`CommandLine`]: crate::widgets::CommandLine
-/// [`commands::add_for_widget`]: add_for_widget
+/// [`commands::add_for`]: add_for
 #[inline(never)]
 pub fn run(call: impl std::fmt::Display) -> Result<Option<Text>> {
     commands::run(call)
@@ -360,7 +360,7 @@ pub fn add(
 ///     fn once() {
 ///         forms::set_weak("Counter", Form::green());
 ///
-///         commands::add_for_widget::<Timer, U>(
+///         commands::add_for::<Timer, U>(
 ///             ["play"],
 ///             |timer, _area, _cursors, _flags, _args| {
 ///                 timer.running.store(true, Ordering::Relaxed);
@@ -369,7 +369,7 @@ pub fn add(
 ///             })
 ///             .unwrap();
 ///
-///         commands::add_for_widget::<Timer, U>(
+///         commands::add_for::<Timer, U>(
 ///             ["pause"],
 ///             |timer, _, _, _, _| {
 ///                 timer.running.store(false, Ordering::Relaxed);
@@ -378,7 +378,7 @@ pub fn add(
 ///             })
 ///             .unwrap();
 ///
-///         commands::add_for_widget::<Timer, U>(
+///         commands::add_for::<Timer, U>(
 ///             ["reset"],
 ///             |timer, _, _, _, _| {
 ///                 timer.instant = Instant::now();
@@ -403,11 +403,11 @@ pub fn add(
 /// [`forms::set`]: crate::forms::set
 /// [`forms::set_weak`]: duat_core::forms::set_weak
 #[inline(never)]
-pub fn add_for_widget<W: Widget<Ui>>(
+pub fn add_for<W: Widget<Ui>>(
     callers: impl IntoIterator<Item = impl ToString>,
     f: impl FnMut(&mut W, &Area, &mut Option<Cursors>, Flags, Args) -> CmdResult + 'static,
 ) -> Result<()> {
-    commands::add_for_widget(callers, f)
+    commands::add_for(callers, f)
 }
 
 type Result<T> = duat_core::Result<T, ()>;

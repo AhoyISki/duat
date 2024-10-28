@@ -131,7 +131,7 @@ mod global {
     /// ```
     ///
     /// In this case we're running a command that will affect the most
-    /// relevant [`CommandLine`]. See [`add_for_widget`] for
+    /// relevant [`CommandLine`]. See [`add_for`] for
     /// more information.
     ///
     /// [`CommandLine`]: crate::widgets::CommandLine
@@ -327,7 +327,7 @@ mod global {
     ///     fn once() {
     ///         forms::set_weak("Counter", Form::green());
     ///
-    ///         commands::add_for_widget::<Timer, U>(
+    ///         commands::add_for::<Timer, U>(
     ///             ["play"],
     ///             |timer, _area, _cursors, _flags, _args| {
     ///                 timer.running.store(true, Ordering::Relaxed);
@@ -336,7 +336,7 @@ mod global {
     ///             })
     ///             .unwrap();
     ///
-    ///         commands::add_for_widget::<Timer, U>(
+    ///         commands::add_for::<Timer, U>(
     ///             ["pause"],
     ///             |timer, _, _, _, _| {
     ///                 timer.running.store(false, Ordering::Relaxed);
@@ -345,7 +345,7 @@ mod global {
     ///             })
     ///             .unwrap();
     ///
-    ///         commands::add_for_widget::<Timer, U>(
+    ///         commands::add_for::<Timer, U>(
     ///             ["reset"],
     ///             |timer, _, _, _, _| {
     ///                 timer.instant = Instant::now();
@@ -369,11 +369,11 @@ mod global {
     /// [`Form`]: crate::forms::Form
     /// [`forms::set`]: crate::forms::set
     /// [`forms::set_weak`]: crate::forms::set_weak
-    pub fn add_for_widget<W: Widget<U>, U: Ui>(
+    pub fn add_for<W: Widget<U>, U: Ui>(
         callers: impl IntoIterator<Item = impl ToString>,
         f: impl FnMut(&mut W, &U::Area, &mut Option<Cursors>, Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
-        COMMANDS.add_for_widget(callers, f)
+        COMMANDS.add_for(callers, f)
     }
 
     pub(crate) fn caller_exists(caller: &str) -> bool {
@@ -481,7 +481,7 @@ impl Commands {
     }
 
     /// Adds a command for a widget of type `W`
-    fn add_for_widget<W: Widget<U>, U: Ui>(
+    fn add_for<W: Widget<U>, U: Ui>(
         &'static self,
         callers: impl IntoIterator<Item = impl ToString>,
         mut f: impl FnMut(&mut W, &U::Area, &mut Option<Cursors>, Flags, Args) -> CmdResult + 'static,
