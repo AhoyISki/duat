@@ -1,19 +1,62 @@
-//! Duat is a text editor built with extensibility and performance in
-//! mind, while still having very sensible defaults. It is configured
-//! in Rust, by use of a crate. The choice of Rust for configuration
-//! grants several benefits:
+//! # Duat
 //!
-//! * Safe code by default;
-//! * Top quality code checking through rust-analyzer;
-//! * Cargo is the plugin manager;
-//! * The vast expressiveness of the Rust type system;
-//! * Rust is just a fun language to code in;
+//! Duat is a text editor with Rust as its configuration language. It
+//! makes use of a configuration crate in the user's `~/.config`
+//! directory. This configuration crate works just like a regular Rust
+//! crate, but it is dynamically loaded by Duat and executed on
+//! startup.
 //!
-//! The use of Rust, to some, may seem like a mistake, since it is not
-//! a "beginner friendly language", but Duat is developed with ease of
-//! configuration in mind, so an average configuration file won't be
-//! as verbose as a lot of Rust code, while maintaining good levels of
-//! readability:
+//! When installed, Duat will be able to automatically detect changes
+//! in the user's configuration, adapting to them automatically, with
+//! a very short delay.
+//!
+//! ## Features
+//!
+//! Duat provides a lot of features, trying to be as configurable as
+//! possible, here are some of the things that Duat is capable of:
+//!
+//! - Completely custom input methods, with full Vim style remapping
+//! - Completely custom widgets, with user created input methods
+//! - Arbitrary concealment of text, and arbitrary ghost text
+//! - Custom hooks, whose activation is up to the creator
+//! - Multi UI adaptability, although for now, only a terminal UI has
+//!   been made
+//! - And many others still being planned
+//!
+//! Additionaly, by choosing Rust as its configuration language, Duat
+//! also gains the following features:
+//!
+//! - Complete type safety
+//! - A very functional programming language, with lots of native
+//!   features
+//! - Cargo is the plugin manager
+//!
+//! ## How to use
+//!
+//! In order to use it, you must have `cargo` installed. If you do,
+//! run
+//!
+//! `cargo install duat`
+//!
+//! This will install the default version of Duat, which uses a
+//! terminal user interface. It will also create a configuration
+//! directory in `$XDG_CONFIG_HOME/duat/` or `~/.config/duat/`. This
+//! config will have some default changes, but you can modify it as
+//! you wish. It also has some documentation explaining the basics of
+//! Duat.
+//!
+//! For now, it has a barebones configuration, which is based on
+//! Kakoune, so if you are familiar with that text editor, many of the
+//! commands are going to be the same.
+//!
+//! ## Configuration
+//!
+//! In the configuration file, there should be a `setup_duat!` macro.
+//! This macro takes in a function pointer and executes it as setup
+//! for Duat.
+//!
+//! Here's an example configuration file, which makes use of
+//! `duat-kak`
 //!
 //! ```rust
 //! # mod duat_kak {
@@ -38,6 +81,7 @@
 //! use duat_kak::Normal;
 //!
 //! fn setup() {
+//!     mode::set_default(Normal);
 //!     print::wrap_on_width();
 //!
 //!     hooks::remove("FileWidgets");
@@ -57,8 +101,6 @@
 //!         builder.push_to(CommandLine::cfg().left_ratioed(3, 7), child);
 //!     });
 //!
-//!     mode::set_default(Normal);
-//!
 //!     hooks::add::<ModeSwitched>(|&(_, new)| match new {
 //!         "Insert" => cursor::set_main(CursorShape::SteadyBar),
 //!         _ => cursor::set_main(CursorShape::SteadyBlock)
@@ -70,13 +112,13 @@
 //!
 //! This configuration does the following things:
 //!
+//! - Changes the default mode to a Kakoune inspired `Normal`;
 //! - Changes the wrapping;
 //! - Removes the hook group "FileWidgets";
 //! - Pushes a vertical rule and line numbers to every file;
 //! - Removes the hook group "WindowWidgets";
-//! - Pushes a status line and command line to the bottom of the
-//!   screen;
-//! - Changes the input method to a Kakoune inspired duat-kak;
+//! - Pushes a custom status line and command line to the bottom of
+//!   the screen;
 //! - Adds hooks for mode changes in said input method;
 //! - Changes the style of the mode printed on the status line;
 //!
@@ -86,9 +128,9 @@
 //! ```rust
 //! # use duat::prelude::*;
 //! hooks::add::<OnFileOpen>(|builder| {
-//!     builder.push(VertRule::cfg());
 //!     builder.push(LineNumbers::cfg());
-//!     builder.push(VertRule::cfg().on_the_right());
+//!     builder.push(LineNumbers::cfg());
+//!     builder.push(LineNumbers::cfg().on_the_right());
 //!     builder.push(LineNumbers::cfg().on_the_right());
 //! });
 //! ```
@@ -133,6 +175,76 @@
 //! # }
 //! ```
 //!
+//!
+//! ## Roadmap
+//!
+//! These are the goals that have been acomplished or are on their
+//! way:
+//!
+//! - [x] Implement basic visual functionality (printing, scrolling,
+//!   etc);
+//! - [x] Implement wrapping;
+//! - [x] Implement editing;
+//! - [x] Create a kak mode;
+//! - [x] Implement the use of multiple cursors;
+//! - [x] Implement a history system;
+//! - [x] Implement colors;
+//! - [x] Implement widgets and designated areas;
+//! - [x] Make all of these things easy to use on a public interface;
+//! - [x] Create a number line and a separator line;
+//! - [x] Create a status line;
+//! - [x] File switching;
+//! - [x] Create a command creation interface and a command line;
+//! - [x] Add the ability to frame areas;
+//! - [x] Implement concealment;
+//! - [x] Implement hot reloading of configuration;
+//! - [x] Create a "normal editing" mode;
+//! - [x] Add the ability to create hooks;
+//! - [x] Create a more generalized plugin system;
+//! - [x] Implement incremental Regex searching;
+//! - [ ] Add floating widgets, not tied to the session layout;
+//! - [ ] Implement autocompletion lists;
+//! - [ ] Implement tree-sitter;
+//! - [ ] Create an LSP plugin;
+//! - [ ] Create a vim mode;
+//!
+//! ︙
+//!
+//! - [ ] Create an Iced frontend;
+//!
+//! __NOTE:__ These are not set in stone, and may be done out of
+//! order.
+//!
+//! ## Why should I use this?
+//!
+//! I don't know what your personal reasoning would be, but in my
+//! case, I really like Kakoune's editing model, but was frustrated
+//! with the lack of some
+//! features, like folding, multiple file editing, the general
+//! barebonesness of the configuration, etc.
+//!
+//! I know that Neovim has all of these features, and Helix supposedly
+//! tries to
+//! solve some of these issues. But I don't really like either of
+//! their editing
+//! styles to be honest.
+//!
+//! And so I thought, why not make my own text editor?
+//!
+//! I thought, why not make a text editor that is as modular as
+//! possible, while
+//! still having a sensible default configuration? That I could modify
+//! however I
+//! wanted, and with a language that I love?
+//!
+//! That is why I decided to embark on this journey.
+//!
+//! ## Why the name
+//!
+//! idk, cool sounding word that I got from Spelunky 2.
+//!
+//! Also, just wanted to say that no AI was used in this project, cuz
+//! I don't like it.
 //! [tags]: duat_core::text::Tag
 #![feature(decl_macro)]
 
@@ -281,7 +393,8 @@ pub mod prelude {
     pub use duat_core::{
         self, DuatError, Error, data,
         text::{Builder, Text, err, hint, ok, text},
-        ui::Area, widgets::Widget,
+        ui::Area,
+        widgets::Widget,
     };
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self as ui, VertRule};
