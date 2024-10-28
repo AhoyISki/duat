@@ -32,14 +32,14 @@ impl Cursors {
         }
     }
 
-    pub fn set_exclusive(&mut self) {
+    pub fn make_exclusive(&mut self) {
         self.inclusive_ranges = false;
         for cursor in self.buf.iter_mut() {
             cursor.set_inclusivity(false);
         }
     }
 
-    pub fn set_inclusive(&mut self) {
+    pub fn make_inclusive(&mut self) {
         self.inclusive_ranges = true;
         for cursor in self.buf.iter_mut() {
             cursor.set_inclusivity(true);

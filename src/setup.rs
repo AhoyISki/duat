@@ -11,13 +11,20 @@ use std::sync::{
 };
 
 use duat_core::{
-    context::{CurFile, CurWidget}, data::RwData, input::Regular, session::SessionCfg, text::PrintCfg, ui::{Event, Ui as TraitUi, Window}, widgets::{File, ShowNotifications, Widget}
+    context::{CurFile, CurWidget},
+    data::RwData,
+    input::Regular,
+    session::SessionCfg,
+    text::PrintCfg,
+    ui::{Event, Ui as TraitUi, Window},
+    widgets::{File, ShowNotifications, Widget},
 };
 use duat_term::VertRule;
 
 use crate::{
-    CfgFn, Ui, commands,
+    CfgFn, Ui,
     hooks::{self, OnFileOpen, OnWindowOpen, UnfocusedFrom},
+    mode,
     prelude::{CommandLine, LineNumbers, StatusLine},
 };
 
@@ -34,7 +41,7 @@ pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
 
 #[doc(hidden)]
 pub fn pre_setup() {
-    commands::set_default_mode(Regular);
+    mode::set_default(Regular);
 
     duat_core::context::setup(
         &CUR_FILE,
@@ -54,7 +61,7 @@ pub fn pre_setup() {
     });
 
     hooks::add_grouped::<UnfocusedFrom<CommandLine>>("CmdLineNotifications", |_cmd_line| {
-        commands::set_cmd_mode(ShowNotifications::new());
+        mode::set_cmd(ShowNotifications::new());
     });
 }
 

@@ -4,13 +4,13 @@
 //! them inside a [`status!`] macro, and they will be understood with
 //! no other meddling.
 //!
-//! These functions are primarily about a [`&dyn InputMethod`], and
-//! retrieve information about its [`Cursors`], assuming that they
-//! exist, panicking otherwise.
+//! Examples of functions in here are [`main_fmt`], which will show a
+//! formatted version of the main [`Cursor`], and [`mode_fmt`] which
+//! will show a formatted version of the current [`Mode`] of Duat.
 //!
 //! [`StatusLine`]: super::StatusLine
 //! [`status!`]: super::status
-//! [`&dyn InputMethod`]: crate::input::InputMethod
+//! [`Mode`]: crate::input::Mode
 use crate::{
     context,
     data::DataMap,

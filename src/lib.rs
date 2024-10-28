@@ -15,39 +15,56 @@
 //! as verbose as a lot of Rust code, while maintaining good levels of
 //! readability:
 //!
-//! ```rust,ignore
+//! ```rust
+//! # mod duat_kak {
+//! #     use duat::{prelude::{mode::*, data::RwData}, Area, Ui, widgets::File};
+//! #     #[derive(Clone)]
+//! #     pub struct Normal;
+//! #     impl Mode<Ui> for Normal {
+//! #         type Widget = File;
+//! #         fn send_key(
+//! #             &mut self,
+//! #             key: KeyEvent,
+//! #             widget: &RwData<File>,
+//! #             area: &Area,
+//! #             cursors: Option<Cursors>,
+//! #         ) -> Option<Cursors> {
+//! #             todo!();
+//! #         }
+//! #     }
+//! # }
+//! setup_duat!(setup);
 //! use duat::prelude::*;
-//! use duat_kak::{KeyMap, Mode, OnModeChange};
+//! use duat_kak::Normal;
 //!
-//! run! {
+//! fn setup() {
 //!     print::wrap_on_width();
 //!
-//!     hooks::remove_group("FileWidgets");
+//!     hooks::remove("FileWidgets");
 //!     hooks::add::<OnFileOpen>(|builder| {
-//!         builder.push::<VertRule>();
-//!         builder.push::<LineNumbers>();
+//!         builder.push(VertRule::cfg());
+//!         builder.push(LineNumbers::cfg());
 //!     });
 //!
-//!     hooks::remove_group("WindowWidgets");
+//!     hooks::remove("WindowWidgets");
 //!     hooks::add::<OnWindowOpen>(|builder| {
 //!         let status = status!(
 //!             [File] { File::name } " "
-//!             { KeyMap::mode_fmt } " "
-//!             selections_fmt " " main_fmt
+//!             mode " " selections_fmt " " main_fmt
 //!         );
 //!
-//!         let (child, _) = builder.push_cfg(status);
-//!         builder.push_cfg_to(CommandLine::cfg().left_with_percent(30), child);
+//!         let (child, _) = builder.push(status);
+//!         builder.push_to(CommandLine::cfg().left_ratioed(3, 7), child);
 //!     });
 //!
-//!     input::set(KeyMap::new());
+//!     mode::set_default(Normal);
 //!
-//!     hooks::add::<OnModeChange>(|(_, new)| match new {
-//!         Mode::Insert => cursor::set_main(CursorShape::SteadyBar),
+//!     hooks::add::<ModeSwitched>(|&(_, new)| match new {
+//!         "Insert" => cursor::set_main(CursorShape::SteadyBar),
 //!         _ => cursor::set_main(CursorShape::SteadyBlock)
 //!     });
 //!
-//!     forms::set("Mode", Form::new().dark_magenta());
+//!     forms::set("Mode", Form::dark_magenta());
 //! }
 //! ```
 //!
@@ -63,18 +80,16 @@
 //! - Adds hooks for mode changes in said input method;
 //! - Changes the style of the mode printed on the status line;
 //!
-//! These are some of the configurations available for usage in Duat,
-//! and one might perceive how these can be tinkered with to change a
-//! lot of things within Duat. For example, the usage of hooks to push
-//! widgets to files means that you could do this:
+//! These are some of the ways you can configure Duat. You might
+//! notice some things that can be done with these simle options:
 //!
 //! ```rust
-//! # use crate::prelude::*;
+//! # use duat::prelude::*;
 //! hooks::add::<OnFileOpen>(|builder| {
-//!     builder.push::<VertRule>();
-//!     builder.push::<LineNumbers>();
-//!     builder.push_cfg(LineNumbers::cfg().on_the_right());
-//!     builder.push_cfg(LineNumbers::cfg().on_the_right());
+//!     builder.push(VertRule::cfg());
+//!     builder.push(LineNumbers::cfg());
+//!     builder.push(VertRule::cfg().on_the_right());
+//!     builder.push(LineNumbers::cfg().on_the_right());
 //! });
 //! ```
 //!
@@ -86,8 +101,8 @@
 //! significantly eases the creation of widgets:
 //!
 //! ```rust
-//! # use crate::prelude::*
-//! let styled text = text!([MyForm] "Waow it's my text" [] "not anymore 😢");
+//! # use duat::prelude::*;
+//! let text = text!([MyForm] "Waow it's my form! " [] "not anymore 😢");
 //! ```
 //!
 //! In this example, I'm using the "MyForm" form in order to style the
@@ -102,14 +117,20 @@
 //!
 //! Duat also has a simple command system, that lets you add commands
 //! with arguments supported by Rust's type system:
-//! ```rust
-//! # use crate::prelude;
-//! let callers = ["collapse-command-line", "collapse-cmd"];
-//! commands::add_for_widget::<CommandLine>(callers, |command_line, area| {
-//!     area.constrain_ver(Constraint::Length(0))?;
 //!
-//!     Ok(None)
-//! })
+//! ```rust
+//! # use duat::prelude::*;
+//! # fn test() -> Result<(), Error<()>> {
+//! let callers = ["collapse-command-line", "collapse-cmd"];
+//! commands::add_for_widget::<CommandLine>(
+//!     callers,
+//!     |command_line, area, _, _| {
+//!         area.constrain_ver(Constraint::Length(0.0))?;
+//!
+//!         Ok(None)
+//!     },
+//! )
+//! # }
 //! ```
 //!
 //! [tags]: duat_core::text::Tag
@@ -122,7 +143,7 @@ pub use duat_core::thread;
 pub use setup::{pre_setup, run_duat};
 
 pub mod commands;
-pub mod input;
+pub mod mode;
 pub mod print;
 mod remapper;
 mod setup;
@@ -145,7 +166,7 @@ pub mod forms {
 
 pub mod hooks {
     //! Hook utilites
-    pub use duat_core::hooks::{add, add_grouped, group_exists, remove, ModeSwitched};
+    pub use duat_core::hooks::{ModeSwitched, add, add_grouped, group_exists, remove};
 
     use crate::Ui;
     /// Triggers whenever a [`File`] is created
@@ -169,22 +190,22 @@ pub mod hooks {
     /// [builder]: duat_core::ui::WindowBuilder
     pub type OnWindowOpen = duat_core::hooks::OnWindowOpen<Ui>;
 
-    /// Triggers whenever the given [`widget`] is focused
+    /// Triggers whenever the given [`Widget`] is focused
     ///
     /// # Arguments
     ///
     /// - The widget itself.
     ///
-    /// [`widget`]: duat_core::widgets::ActiveWidget
+    /// [`widget`]: duat_core::widgets::Widget
     pub type FocusedOn<W> = duat_core::hooks::FocusedOn<W, Ui>;
 
-    /// Triggers whenever the given [`widget`] is unfocused
+    /// Triggers whenever the given [`Widget`] is unfocused
     ///
     /// # Arguments
     ///
     /// - The widget itself.
     ///
-    /// [`widget`]: duat_core::widgets::ActiveWidget
+    /// [`widget`]: duat_core::widgets::Widget
     pub type UnfocusedFrom<W> = duat_core::hooks::UnfocusedFrom<W, Ui>;
 }
 
@@ -252,7 +273,6 @@ pub mod control {
     //! [`CommandLine`]: crate::prelude::CommandLine
     pub use duat_core::commands::{
         alias, buffer, edit, next_file, next_global_file, prev_file, prev_global_file, quit,
-        reset_mode, set_default_mode, set_mode,
     };
 }
 
@@ -261,8 +281,7 @@ pub mod prelude {
     pub use duat_core::{
         self, DuatError, Error, data,
         text::{Builder, Text, err, hint, ok, text},
-        ui::Area,
-        widgets::Widget,
+        ui::Area, widgets::Widget,
     };
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self as ui, VertRule};
@@ -270,8 +289,8 @@ pub mod prelude {
     pub use crate::{
         Ui, commands, control, cursor,
         forms::{self, CursorShape, Form},
-        hooks::{self, OnFileOpen, OnWindowOpen, ModeSwitched},
-        input, print, setup_duat,
+        hooks::{self, ModeSwitched, OnFileOpen, OnWindowOpen},
+        mode, print, setup_duat,
         state::*,
         widgets::*,
     };
@@ -313,6 +332,8 @@ compile_error!("No ui has been chosen to compile Duat with.");
 /// In this case, that would be [`duat_term`]'s [`Ui`]
 #[cfg(feature = "term-ui")]
 pub type Ui = duat_term::Ui;
+#[cfg(feature = "term-ui")]
+pub type Area = <duat_term::Ui as duat_core::ui::Ui>::Area;
 
 /// A function that sets the [`SessionCfg`].
 type CfgFn = RwLock<Option<Box<dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync>>>;

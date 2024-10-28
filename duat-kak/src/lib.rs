@@ -702,7 +702,7 @@ impl Category {
 fn inclusive(cursors: Option<Cursors>) -> Cursors {
     match cursors {
         Some(mut c) => {
-            c.set_inclusive();
+            c.make_inclusive();
             c
         }
         None => Cursors::new_inclusive(),

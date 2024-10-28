@@ -1,4 +1,4 @@
-//! An [`ActiveWidget`] capable of running [`Command`]s.
+//! An [`Widget`] capable of running [`Command`]s.
 //!
 //! This widget is capable of running [`Command`]s that are defined
 //! and stored in the [`Commands`] struct. It does so by treating the
@@ -105,7 +105,7 @@ impl<U: Ui> WidgetCfg<U> for CommandLineCfg<U> {
     }
 }
 
-/// A multi purpose, [promptable] widget
+/// A multi purpose text widget
 ///
 /// This widget, as the name implies, is most associated with running
 /// commands. However, it can have a variety of [modes], granting it
@@ -114,17 +114,17 @@ impl<U: Ui> WidgetCfg<U> for CommandLineCfg<U> {
 /// * [`RunCommands`], which runs commands (duh);
 /// * [`ShowNotifications`], which shows notifications, usually about
 ///   commands;
-/// * [`IncSearch`], which is used by [`Mode`]s in order to do
-///   incremental search from the command line.
+/// * [`IncSearch<Inc>`], which will perform an incremental search,
+///   based on [`Inc`].
 ///
 /// By default, Duat will have the `"CmdLineNotifications"` [hook]
 /// active. This hook changes the mode of the [`CommandLine`] to
 /// [`ShowNotifications`] whenever it is unfocused. If you don't want
 /// this functionality, or want notifications somewhere else, you can
-/// use [`hooks::remove_group`].
+/// use [`hooks::remove`].
 ///
-/// [promptable]: ActiveWidget
-/// [modes]: CommandLineMode
+/// [modes]: CmdLineMode
+/// [`Inc`]: IncSearcher
 /// [hook]: crate::hooks
 pub struct CommandLine<U: Ui> {
     text: Text,

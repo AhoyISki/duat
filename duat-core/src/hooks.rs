@@ -6,11 +6,7 @@
 //! whenever said [`Hookable`] is triggered:
 //!
 //! ```rust
-//! # use duat_core::{
-//! #     hooks::{self, *},
-//! #     ui::Ui,
-//! #     widgets::{File, LineNumbers, PassiveWidget},
-//! # };
+//! # use duat_core::{hooks::{self, *}, ui::Ui, widgets::{File, LineNumbers, Widget}};
 //! # fn test<U: Ui>() {
 //! hooks::add::<OnFileOpen<U>>(|builder| {
 //!     builder.push(LineNumbers::cfg());
@@ -179,6 +175,8 @@ impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
 /// You should try to avoid more than one [`Mode`] with the same name.
 /// This can happen if you're using two structs with the same name,
 /// but from different crates.
+///
+/// [`Mode`]: crate::input::Mode
 pub struct ModeSwitched;
 
 impl Hookable for ModeSwitched {

@@ -63,7 +63,7 @@ use crate::{
 /// By default, there already exists a [hook group] that adds widgets
 /// to a file, the `"FileWidgets"` group. If you want to get rid of
 /// this group in order to create your own widget layout, you should
-/// use [`hooks::remove_group`]:
+/// use [`hooks::remove`]:
 ///
 /// ```rust
 /// # use duat_core::{
@@ -72,7 +72,7 @@ use crate::{
 /// #     widgets::{CommandLine, LineNumbers, Widget, StatusLine},
 /// # };
 /// # fn test<U: Ui>() {
-/// hooks::remove_group("FileWidgets");
+/// hooks::remove("FileWidgets");
 /// hooks::add::<OnFileOpen<U>>(|builder: &FileBuilder<U>| {
 ///     let line_numbers_cfg = LineNumbers::cfg().relative().on_the_right();
 ///     builder.push(line_numbers_cfg);
@@ -90,7 +90,7 @@ use crate::{
 /// [relative]: crate::widgets::LineNumbersCfg::relative
 /// [absolute]: crate::widgets::LineNumbersCfg::absolute
 /// [hook group]: crate::hooks::add_grouped
-/// [`hooks::remove_group`]: crate::hooks::remove_group
+/// [`hooks::remove`]: crate::hooks::remove
 pub struct FileBuilder<U>
 where
     U: Ui,
@@ -151,7 +151,7 @@ where
     /// #     widgets::{File, LineNumbers, Widget, common::selections_fmt, status},
     /// # };
     /// # fn test<U: Ui>() {
-    /// hooks::remove_group("FileWidgets");
+    /// hooks::remove("FileWidgets");
     /// hooks::add::<OnFileOpen<U>>(|builder: &FileBuilder<U>| {
     ///     let line_numbers_cfg = LineNumbers::cfg().rel_abs();
     ///     builder.push(line_numbers_cfg);
@@ -228,7 +228,7 @@ where
     /// #     },
     /// # };
     /// # fn test<U: Ui>() {
-    /// hooks::remove_group("FileWidgets");
+    /// hooks::remove("FileWidgets");
     /// hooks::add::<OnFileOpen<U>>(|builder: &FileBuilder<U>| {
     ///     builder.push(LineNumbers::cfg());
     ///     
@@ -315,13 +315,13 @@ impl<U: Ui> Drop for FileBuilder<U> {
 /// #     widgets::{CommandLine, LineNumbers, Widget, StatusLine},
 /// # };
 /// # fn test<U: Ui>() {
-/// hooks::remove_group("FileWidgets");
+/// hooks::remove("FileWidgets");
 /// hooks::add::<OnFileOpen<U>>(|builder| {
 ///     builder.push(LineNumbers::cfg());
 ///     builder.push(StatusLine::cfg());
 /// });
 ///
-/// hooks::remove_group("WindowWidgets");
+/// hooks::remove("WindowWidgets");
 /// hooks::add::<OnWindowOpen<U>>(|builder| {
 ///     builder.push(CommandLine::cfg());
 /// });

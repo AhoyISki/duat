@@ -1,14 +1,13 @@
 //! APIs for the construction of widgets, and a few common ones.
 //!
-//! This module declares two traits for widgets, [`Widget`]s
-//! and [`Widget`]s. [`Widget`]s simply show information,
-//! and cannot receive input or be focused. [`Widget`]s can be
-//! modified by an external [`Mode`], thus they react to user
-//! input whenever they are in focus.
+//! This module has the [`Widget`] trait, which is a region on the
+//! window containing a [`Text`], and may be modified by user input
+//! (but not necessarily).
 //!
-//! These widgets will be used in one of three contexts:
+//! With the exception of the [`File`], these widgets will show up in
+//! one of three contexts:
 //!
-//! - Being pushed to a file via the hook [`OnFileOpen`];
+//! - Being pushed to a [`File`] via the hook [`OnFileOpen`];
 //! - Being pushed to the outer edges via [`OnWindowOpen`];
 //! - Being pushed to popup widgets via `OnPopupOpen` (TODO);
 //!
@@ -26,9 +25,9 @@
 //! will put it on the left, and _try_ to give it a minimum width of
 //! `10.0`, and a height of `2.0`.
 //!
-//! The module also provides 4 native widgets, [`StatusLine`] and
-//! [`LineNumbers`], which are [`Widget`]s, and
-//! [`File`] and [`CommandLine`] which are [`Widget`]s.
+//! The module also provides 4 native widgets, [`File`] and
+//! [`CommandLine`], which can receive user input, and [`StatusLine`]
+//! and [`LineNumbers`] which are not supposed to.
 //!
 //! These 4 widgets are supposed to be universal, not needing a
 //! specific [`Ui`] implementation to work. In contrast, you can
@@ -37,8 +36,8 @@
 //! Duat, defines the [`VertRule`] widget, which is a separator that
 //! only makes sense in the context of a terminal.
 //!
-//! This module also describes a [`WidgetCfg`], which is an optional
-//! struct for widgets that details how they can be customized.
+//! This module also describes a [`WidgetCfg`], which is used in
+//! widget construction.
 //!
 //! [`duat-term`]: https://docs.rs/duat-term/latest/duat_term/
 //! [`VertRule`]: https://docs.rs/duat-term/latest/duat_term/struct.VertRule.html
@@ -76,7 +75,8 @@ mod status_line;
 /// An area where [`Text`] will be printed to the screen
 ///
 /// Most widgets are supposed to be passive widgets, that simply show
-/// information about the current state of Duat.
+/// information about the current state of Duat. If you want to see
+/// how to create a widget that takes in input, see [`Mode`]
 ///
 /// In order to show that information, widgets make use of [`Text`],
 /// which can show stylized text, buttons, and all sorts of other
@@ -97,15 +97,14 @@ mod status_line;
 /// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
 /// # use duat_core::{
 /// #     hooks, periodic_checker, text::Text, ui::{PushSpecs, Ui},
-/// #     widgets::{Widget, Widget, WidgetCfg},
+/// #     widgets::{Widget, WidgetCfg},
 /// # };
 /// # struct UpTime(Text);
 /// # struct UpTimeCfg<U>(PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
 /// #     type Widget = UpTime;
-/// #     fn build(self,_: bool) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
-/// #         let widget = Widget::passive(UpTime(Text::new()));
-/// #         (widget, || false, PushSpecs::below())
+/// #     fn build(self,_: bool) -> (Self::Widget, impl Fn() -> bool + 'static, PushSpecs) {
+/// #         (UpTime(Text::new()), || false, PushSpecs::below())
 /// #     }
 /// # }
 /// impl<U: Ui> Widget<U> for UpTime {
@@ -117,6 +116,9 @@ mod status_line;
 ///     // ...
 /// #     fn text(&self) -> &Text {
 /// #         &self.0
+/// #     }
+/// #     fn text_mut(&mut self) -> &mut Text {
+/// #        &mut self.0
 /// #     }
 /// #     fn once() {}
 /// }
@@ -131,8 +133,7 @@ mod status_line;
 /// ```rust
 /// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
 /// # use duat_core::{
-/// #     hooks, periodic_checker, text::Text,
-/// #     ui::{PushSpecs, Ui}, widgets::{Widget, Widget, WidgetCfg},
+/// #     hooks, periodic_checker, text::Text, ui::{PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
 /// # };
 /// # struct UpTime(Text);
 /// struct UpTimeCfg<U>(PhantomData<U>);
@@ -140,12 +141,12 @@ mod status_line;
 /// impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
 ///     type Widget = UpTime;
 ///
-///     fn build(self, on_file: bool) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
+///     fn build(self, on_file: bool) -> (UpTime, impl Fn() -> bool + 'static, PushSpecs) {
 ///         let widget = UpTime(Text::new());
 ///         let checker = periodic_checker(Duration::new(1, 0));
 ///         let specs = PushSpecs::below().with_ver_len(1.0);
 ///
-///         (Widget::passive(widget), checker, specs)
+///         (widget, checker, specs)
 ///     }
 /// }
 /// # impl<U: Ui> Widget<U> for UpTime {
@@ -156,13 +157,16 @@ mod status_line;
 /// #     fn text(&self) -> &Text {
 /// #         &self.0
 /// #     }
+/// #     fn text_mut(&mut self) -> &mut Text{
+/// #         &mut self.0
+/// #     }
 /// #     fn once() {}
 /// # }
 /// ```
 ///
 /// The [`build`] method should return 3 objects:
 ///
-/// * The widget itself, can either be [passive] or [active].
+/// * The widget itself.
 /// * A checker function that tells Duat when to update the widget.
 /// * [How] to push the widget into the [`File`]/window.
 ///
@@ -205,15 +209,14 @@ mod status_line;
 /// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
 /// # use duat_core::{
 /// #     forms::{self, Form}, hooks::{self, SessionStarted}, periodic_checker,
-/// #     text::Text, ui::{PushSpecs, Ui}, widgets::{Widget, Widget, WidgetCfg},
+/// #     text::Text, ui::{PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
 /// # };
 /// # struct UpTime(Text);
 /// # struct UpTimeCfg<U>(PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
 /// #     type Widget = UpTime;
-/// #     fn build(self, on_file: bool) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
-/// #         let widget = Widget::passive(UpTime(Text::new()));
-/// #         (widget, || false, PushSpecs::below())
+/// #     fn build(self, on_file: bool) -> (UpTime, impl Fn() -> bool + 'static, PushSpecs) {
+/// #         (UpTime(Text::new()), || false, PushSpecs::below())
 /// #     }
 /// # }
 /// static START_TIME: OnceLock<Instant> = OnceLock::new();
@@ -225,6 +228,9 @@ mod status_line;
 /// #     }
 /// #     fn text(&self) -> &Text {
 /// #         &self.0
+/// #     }
+/// #     fn text_mut(&mut self) -> &mut Text {
+/// #         &mut self.0
 /// #     }
 ///     // ...
 ///     fn once() {
@@ -248,15 +254,14 @@ mod status_line;
 /// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
 /// # use duat_core::{
 /// #     hooks, periodic_checker, text::{Text, text}, ui::{PushSpecs, Ui},
-/// #     widgets::{Widget, Widget, WidgetCfg},
+/// #     widgets::{Widget, WidgetCfg},
 /// # };
 /// # struct UpTime(Text);
 /// # struct UpTimeCfg<U>(PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
 /// #     type Widget = UpTime;
-/// #     fn build(self, on_file: bool) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
-/// #         let widget = Widget::passive(UpTime(Text::new()));
-/// #         (widget, || false, PushSpecs::below())
+/// #     fn build(self, on_file: bool) -> (UpTime, impl Fn() -> bool + 'static, PushSpecs) {
+/// #         (UpTime(Text::new()), || false, PushSpecs::below())
 /// #     }
 /// # }
 /// # static START_TIME: OnceLock<Instant> = OnceLock::new();
@@ -267,6 +272,9 @@ mod status_line;
 /// #     }
 /// #     fn text(&self) -> &Text {
 /// #         &self.0
+/// #     }
+/// #     fn text_mut(&mut self) -> &mut Text {
+/// #         &mut self.0
 /// #     }
 ///     // ...
 ///     fn update(&mut self, _area: &U::Area) {
@@ -283,9 +291,8 @@ mod status_line;
 /// }
 /// ```
 ///
+/// [`Mode`]: crate::input::Mode
 /// [`cfg`]: Widget::cfg
-/// [passive]: Widget::passive
-/// [active]: Widget::active
 /// [`build`]: WidgetCfg::build
 /// [How]: PushSpecs
 /// [`periodic_checker`]: crate::periodic_checker
@@ -318,7 +325,7 @@ where
     /// #     widgets::{File, LineNumbers, Widget, common::selections_fmt, status},
     /// # };
     /// # fn test<U: Ui>() {
-    /// hooks::remove_group("FileWidgets");
+    /// hooks::remove("FileWidgets");
     /// hooks::add::<OnFileOpen<U>>(|builder| {
     ///     // Screw it, LineNumbers on both sides.
     ///     builder.push(LineNumbers::cfg());
@@ -398,7 +405,7 @@ where
         Self: Sized;
 }
 
-/// A configuration struct for a [passive] or an [active] widget
+/// A configuration struct for a [`Widget`]
 ///
 /// This configuration is used to make adjustments on how a widget
 /// will be added to a file or a window. These adjustments are
@@ -422,9 +429,6 @@ where
 /// });
 /// # }
 /// ```
-///
-/// [passive]: Widget
-/// [active]: Widget
 pub trait WidgetCfg<U>: Sized
 where
     U: Ui,

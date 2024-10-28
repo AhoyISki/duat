@@ -22,12 +22,8 @@
 //! Here's a simple example of how one would add a command:
 //!
 //! ```rust
-//! # use crate::prelude::commands::{self, Flags, Args};
-//! # use std::sync::{
-//! #     atomic::{AtomicBool, Ordering},
-//! #     Arc
-//! # };
-//! #
+//! # use duat::prelude::commands::{self, Flags, Args};
+//! # use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
 //! // Any of these callers will work for running the command.
 //! let callers = ["my-command", "mc"];
 //!
@@ -44,32 +40,28 @@
 //! To run that command, simply do the following:
 //!
 //! ```rust
-//! # use crate::prelude::commands;
+//! # use duat::prelude::commands;
 //! commands::run("my-command");
 //! ```
 //!
 //! Here's a simple command that makes use of [`Flags`]:
 //!
 //! ```rust
-//! # use duat_core::commands;
-//! # use std::sync::{
-//! #     atomic::{AtomicU32, Ordering},
-//! #     Arc
-//! # };
-//! #
+//! # use duat::commands;
+//! # use std::sync::{atomic::{AtomicU32, Ordering}, Arc};
 //! let expression = Arc::new(AtomicU32::default());
 //! let callers = ["my-command", "mc"];
 //! let my_command = {
 //!     let expression = expression.clone();
 //!     commands::add(callers, move |flags, _args| {
 //!         // `Flags::long` checks for `--` flags
-//!         if flags.long("happy") {
+//!         if flags.word("happy") {
 //!             expression.store('😁' as u32, Ordering::Relaxed)
 //!         // `Flags::short` checks for `-` flags
 //!         // They can check for any valid unicode character.
-//!         } else if flags.short("🤯") {
+//!         } else if flags.blob("🤯") {
 //!             expression.store('🤯' as u32, Ordering::Relaxed)
-//!         } else if flags.long("sad") {
+//!         } else if flags.word("sad") {
 //!             expression.store('😢' as u32, Ordering::Relaxed)
 //!         } else {
 //!             expression.store('😶' as u32, Ordering::Relaxed)
@@ -90,29 +82,26 @@
 //!
 //! ```rust
 //! # use std::path::PathBuf;
-//! # use crate::prelude::{commands, text};
+//! # use duat::prelude::{commands, err, ok};
 //! commands::add(["copy", "cp"], move |flags, mut args| {
 //!     // The `?` is very handy to get a specific number of args.
 //!     let source = args.next()?;
 //!     // You can also return custom error messages.
-//!     let target_1 = args.next_else(text!([CommandErr] "No target given."))?;
+//!     let target_1 = args.next_else(err!([*a] "No target given."))?;
 //!     // And also parse the arguments.
-//!     let target_2 = args.next_as::<PathBuf>()?;
+//!     let target_2: PathBuf = args.next_as()?;
 //!
 //!     // If you want to error out on too many commands.
 //!     args.ended()?;
 //!
-//!     if flags.long("link") {
+//!     if flags.word("link") {
 //!         unimplemented!("Logic for linking files.");
 //!     } else {
 //!         unimplemented!("Logic for copying files.");
 //!     }
 //!
 //!     // You can return a success message, but this is optional.
-//!     Ok(Some(text!(
-//!         "Copied from " [AccentOk] source []
-//!         " to " [AccentOk] target_1 [] "."
-//!     )))
+//!     ok!("Copied from " [*a] source [] " to " [*a] target_1 [] ".")
 //! });
 //! ```
 //!
@@ -129,7 +118,7 @@
 //! results".
 //!
 //! ```rust
-//! # use crate::prelude::{commands, text};
+//! # use duat::prelude::{commands, ok};
 //! commands::add(["write", "w"], move |_flags, mut args| {
 //!     let mut count = 0;
 //!     while let Ok(arg) = args.next() {
@@ -137,9 +126,7 @@
 //!         /* Logic for writing to files */
 //!     }
 //!
-//!     Ok(Some(text!(
-//!         "Wrote to " [AccentOk] count [] " files successfully."
-//!     )))
+//!     ok!("Wrote to " [*a] count [] " files successfully.")
 //! });
 //! ```
 //!
@@ -149,10 +136,9 @@ pub use duat_core::commands::{Args, Flags, reset_mode};
 use duat_core::{
     commands::{self, CmdResult},
     data::RwData,
-    input::Mode,
     text::Text,
     ui,
-    widgets::{CmdLineMode, Widget},
+    widgets::{Widget},
 };
 
 use crate::Ui;
@@ -166,10 +152,7 @@ use crate::Ui;
 /// # Examples
 ///
 /// ```rust
-/// # use duat_core::{
-/// #     commands::{self, Result},
-/// #     text::Text,
-/// # };
+/// # use duat_core::{commands::{self, Result}, text::Text};
 /// # fn test() -> Result<Option<Text>> {
 /// commands::run("set-prompt new-prompt")
 /// # }
@@ -196,12 +179,8 @@ pub fn run(call: impl std::fmt::Display) -> Result<Option<Text>> {
 /// # Examples
 ///
 /// ```rust
-/// # use duat_core::{
-/// #     commands,
-/// #     data::RwData,
-/// #     text::{text, Text},
-/// #     widgets::status
-/// # };
+/// # use duat::prelude::{commands, data::RwData, status, StatusLineCfg};
+/// # fn test() -> StatusLineCfg {
 /// // Shared state, which will be displayed in a `StatusLine`.
 /// let var = RwData::new(35);
 ///
@@ -221,6 +200,8 @@ pub fn run(call: impl std::fmt::Display) -> Result<Option<Text>> {
 ///
 /// // A `StatusLineCfg` that can be used to create a `StatusLine`.
 /// let status_cfg = status!("The value is currently " var);
+/// status_cfg
+/// # }
 /// ```
 ///
 /// In the above example, we created a variable that can be
@@ -242,204 +223,166 @@ pub fn add(
     commands::add(callers, f)
 }
 
-/// Adds a command to an object "related" to the current [`File`]
-///
-/// This object can be one of three things, a [`Widget`],
-/// an [`InputMethod`], or the [`File`]. When the
-/// command is ran, Duat will look at the currently active
-/// file for any instance of an [`RwData`] it can find.
-///
-/// # Examples
-///
-/// ```rust
-/// # use duat_core::{
-/// #     commands,
-/// #     data::RwData,
-/// #     input::{InputMethod, MultiCursorEditor},
-/// #     text::text,
-/// #     widgets::File,
-/// # };
-/// #[derive(Debug)]
-/// enum Mode {
-///     Normal,
-///     Insert,
-///     Prompt,
-///     Visual,
-/// }
-///
-/// struct ModalEditor {
-///     mode: Mode,
-/// }
-///
-/// impl InputMethod for ModalEditor {
-///     /* Implementation details. */
-/// # type Widget = File
-/// # where
-/// #     Self: Sized;
-///
-/// # fn send_key(
-/// #     &mut self,
-/// #     key: crossterm::event::KeyEvent,
-/// #     widget: &RwData<Self::Widget>,
-/// #     area: &impl duat_core::ui::Area,
-/// # ) where
-/// #     Self: Sized,
-/// # {
-/// #     todo!()
-/// # }
-/// }
-///
-/// commands::add_for_current::<ModalEditor>(
-///     ["set-mode"],
-///     |modal, flags, mut args| {
-///         let mode = args.next_else(text!("No mode given"))?;
-///
-///         match mode {
-///             "normal" | "Normal" => modal.mode = Mode::Normal,
-///             "insert" | "Insert" => modal.mode = Mode::Insert,
-///             "prompt" | "Prompt" => modal.mode = Mode::Prompt,
-///             "visual" | "Visual" => modal.mode = Mode::Visual,
-///             mode => {
-///                 return Err(text!(
-///                     "Mode" [AccentErr] mode []
-///                     "is not a valid mode"
-///                 ));
-///             }
-///         }
-///
-///         let mode = format!("{:?}", modal.mode);
-///         Ok(Some(text!("Mode was set to " [AccentOk] mode [] ".")))
-///     }
-/// )
-/// .unwrap();
-/// ```
-///
-/// [`File`]: crate::widgets::File
-/// [`InputMethod`]: crate::input::InputMethod
-/// [`Session`]: crate::session::Session
-/// [`RwData`]: crate::prelude::data::RwData
-#[inline(never)]
-pub fn add_for_current<T: 'static>(
-    callers: impl IntoIterator<Item = impl ToString>,
-    f: impl FnMut(&mut T, Flags, Args) -> CmdResult + 'static,
-) -> Result<()> {
-    commands::add_for_current::<T, Ui>(callers, f)
-}
-
 /// Adds a command that can mutate a widget of the given type,
 /// along with its associated [`dyn Area`].
 ///
 /// This command will look for the [`Widget`] in the
 /// following order:
 ///
-/// 1. Any instance that is "related" to the currently active
-///    [`File`], that is, any widgets that were added during the
-///    [`Session`]'s "`file_fn`".
-/// 2. Other widgets in the currently active window, related or not to
-///    any given [`File`].
-/// 3. Any instance of the [`Widget`] that is found in other windows,
-///    looking first at windows ahead.
+/// 1. Any widget directly attached to the current file.
+/// 2. One other instance in the active window.
+/// 3. Instances in other windows.
 ///
-/// This ordering means that, wether your [`CommandLine`] is
-/// attached to a [`File`], or to edges of the window, it will
-/// respond to `"set-prompt"`.
+/// Keep in mind that this command will always execute on the
+/// first widget found.
 ///
-/// Note that the search will only look for the first instance of
-/// said widget to be found.
+/// This search algorithm allows a more versatile configuration of
+/// widgets, for example, one may have a [`CommandLine`] per
+/// [`File`], or one singular [`CommandLine`] that acts upon
+/// all files in the window, and both would respond correctly
+/// to the `"set-prompt"` command.
 ///
 /// # Examples
 ///
-/// In this example, we create a simple `Timer` widget, along with
-/// some control commands.
+/// In this example, we'll create a simple `Timer` widget:
 ///
 /// ```rust
 /// // Required feature for widgets.
-/// #![feature(return_position_impl_trait_in_trait)]
 /// # use std::{
-/// #    sync::{
-/// #        atomic::{AtomicBool, Ordering},
-/// #        Arc,
-/// #    },
-/// #    time::Instant,
+/// #     sync::{atomic::{AtomicBool, Ordering}, Arc}, marker::PhantomData,
+/// #     time::{Duration, Instant}
 /// # };
 /// # use duat_core::{
-/// #    commands,
-/// #    palette::{self, Form},
-/// #    text::{text, Text, AlignCenter},
-/// #    ui::{Area, PushSpecs, Ui},
-/// #    widgets::{Widget, Widget},
+/// #     commands, forms::{self, Form}, text::{text, Text, AlignCenter},
+/// #     ui::{Area, PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
 /// # };
-/// # pub struct Timer {
-/// #    text: Text,
-/// #    instant: Instant,
-/// #    running: Arc<AtomicBool>,
-/// # }
-/// impl Widget for Timer {
-///     fn build<U: Ui>() -> (Widget<U>, impl Fn() -> bool, PushSpecs) {
-///         let timer = Self {
-///             text: text!(AlignCenter [Counter] "0ms"),
+/// struct TimerCfg<U>(PhantomData<U>);
+///
+/// impl<U: Ui> WidgetCfg<U> for TimerCfg<U> {
+///     type Widget = Timer;
+///
+///     fn build(self, _is_file: bool) -> (Timer, impl Fn() -> bool, PushSpecs) {
+///         let widget = Timer {
+///             text: text!(AlignCenter [Counter] 0 [] "ms"),
 ///             instant: Instant::now(),
 ///             // No need to use an `RwData`, since
 ///             // `RwData::has_changed` is never called.
 ///             running: Arc::new(AtomicBool::new(false)),
 ///         };
-///         
-///         // The checker determines when updates happen.
+///
 ///         let checker = {
-///             let running = timer.running.clone();
-///             move || running.load(Ordering::Relaxed)
+///             let p = duat_core::periodic_checker(Duration::from_millis(100));
+///             let running = widget.running.clone();
+///             move || p() && running.load(Ordering::Relaxed)
 ///         };
 ///
-///         let specs = PushSpecs::below().with_lenght(1.0);
+///         let specs = PushSpecs::below().with_ver_len(1.0);
 ///
-///         (Widget::passive(timer), checker, specs)
+///         (widget, checker, specs)
 ///     }
+/// }
 ///
-///     fn update(&mut self, _area: &impl Area) {
-///         if COMMANDS.running.load(Ordering::Relaxed) {
-///             let duration = COMMANDS.instant.elapsed();
-///             let duration = format!("{:.3?}", duration);
-///             COMMANDS.text = text!(
-///                 AlignCenter [Counter] duration [] "elapsed"
-///             );
-///         }
+/// struct Timer {
+///     text: Text,
+///     instant: Instant,
+///     running: Arc<AtomicBool>,
+/// }
+///
+/// impl<U: Ui> Widget<U> for Timer {
+///     type Cfg = TimerCfg<U>;
+///
+///     fn cfg() -> Self::Cfg {
+///         TimerCfg(PhantomData)
 ///     }
 ///     
-///
-///     fn text() -> &Text {
-///         &COMMANDS.text
+///     fn update(&mut self, _area: &U::Area) {
+///         if self.running.load(Ordering::Relaxed) {
+///             let duration = self.instant.elapsed();
+///             let time = format!("{:.3?}", duration);
+///             self.text = text!(AlignCenter [Counter] time [] "ms");
+///         }
 ///     }
+///     // ...
+/// #    fn text(&self) -> &Text {
+/// #        &self.text
+/// #    }
+/// #    fn text_mut(&mut self) -> &mut Text {
+/// #        &mut self.text
+/// #    }
+/// #    fn once() {}
+/// }
+/// ```
 ///
-///     // The `once` function of a `Widget` is only called
-///     // when that widget is first created.
-///     // It is useful to add commands and set forms.
+/// Next, we'll add three commands for this widget, "`play`",
+/// "`pause`" and "`reset`". The best place to add them is in the
+/// [`once`] function of [`Widget`]s
+///
+/// ```rust
+/// // Required feature for widgets.
+/// # use std::{
+/// #     sync::{atomic::{AtomicBool, Ordering}, Arc}, marker::PhantomData,
+/// #     time::{Duration, Instant}
+/// # };
+/// # use duat_core::{
+/// #     commands, forms::{self, Form}, text::{text, Text, AlignCenter},
+/// #     ui::{Area, PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
+/// # };
+/// # struct TimerCfg<U>(PhantomData<U>);
+/// # impl<U: Ui> WidgetCfg<U> for TimerCfg<U> {
+/// #     type Widget = Timer;
+/// #     fn build(self, _is_file: bool) -> (Timer, impl Fn() -> bool, PushSpecs) {
+/// #         let widget = Timer {
+/// #             text: text!(AlignCenter [Counter] 0 [] "ms"),
+/// #             instant: Instant::now(),
+/// #             running: Arc::new(AtomicBool::new(false)),
+/// #         };
+/// #         (widget, || false, PushSpecs::below().with_ver_len(1.0))
+/// #     }
+/// # }
+/// # struct Timer {
+/// #     text: Text,
+/// #     instant: Instant,
+/// #     running: Arc<AtomicBool>,
+/// # }
+/// impl<U: Ui> Widget<U> for Timer {
+/// #    type Cfg = TimerCfg<U>;
+/// #    fn cfg() -> Self::Cfg {
+/// #        TimerCfg(PhantomData)
+/// #    }
+/// #    fn update(&mut self, _area: &U::Area) {
+/// #    }
+/// #    fn text(&self) -> &Text {
+/// #        &self.text
+/// #    }
+/// #    fn text_mut(&mut self) -> &mut Text {
+/// #        &mut self.text
+/// #    }
+///     // ...
 ///     fn once() {
-///         // "weak" forms are only created if they don't exist.
-///         // If writing a plugin, always use weak forms.
-///         palette::set_weak_form("Counter", Form::new().green());
+///         forms::set_weak("Counter", Form::green());
 ///
-///         commands::add_for_widget::<Timer>(
+///         commands::add_for_widget::<Timer, U>(
 ///             ["play"],
 ///             |timer, _area, _flags, _args| {
-///                 timer.running.store(true, Ordering::Relaxed);
+///                 timer.read().running.store(true, Ordering::Relaxed);
 ///
 ///                 Ok(None)
 ///             })
 ///             .unwrap();
 ///
-///         commands::add_for_widget::<Timer>(
+///         commands::add_for_widget::<Timer, U>(
 ///             ["pause"],
 ///             |timer, _area, _flags, _args| {
-///                 timer.running.store(false, Ordering::Relaxed);
+///                 timer.read().running.store(false, Ordering::Relaxed);
 ///
 ///                 Ok(None)
 ///             })
 ///             .unwrap();
 ///
-///         commands::add_for_widget::<Timer>(
+///         commands::add_for_widget::<Timer, U>(
 ///             ["reset"],
 ///             |timer, _area, _flags, _args| {
-///                 timer.instant = Instant::now();
+///                 timer.write().instant = Instant::now();
 ///
 ///                 Ok(None)
 ///             })
@@ -448,28 +391,24 @@ pub fn add_for_current<T: 'static>(
 /// }
 /// ```
 ///
-/// [`Session`]: duat_core::session::Session
+/// I also added a [`Form`] in the [`once`] function. You should
+/// use [`forms::set_weak`] instead of [`forms::set`], as to not
+/// interfere with the user configuration.
+///
 /// [`dyn Area`]: duat_core::ui::Area
 /// [`File`]: crate::widgets::File
+/// [`Session`]: crate::session::Session
 /// [`CommandLine`]: crate::widgets::CommandLine
+/// [`once`]: Widget::once
+/// [`Form`]: crate::forms::Form
+/// [`forms::set`]: crate::forms::set
+/// [`forms::set_weak`]: duat_core::forms::set_weak
 #[inline(never)]
 pub fn add_for_widget<W: Widget<Ui>>(
     callers: impl IntoIterator<Item = impl ToString>,
     f: impl FnMut(&RwData<W>, &<Ui as ui::Ui>::Area, Flags, Args) -> CmdResult + 'static,
 ) -> Result<()> {
-    commands::add_for_widget::<W, Ui>(callers, f)
+    commands::add_for_widget(callers, f)
 }
 
 type Result<T> = duat_core::Result<T, ()>;
-
-pub fn set_default_mode(mode: impl Mode<Ui>) {
-    commands::set_default_mode(mode)
-}
-
-pub fn set_mode(mode: impl Mode<Ui>) {
-    commands::set_mode(mode);
-}
-
-pub fn set_cmd_mode(mode: impl CmdLineMode<Ui>) {
-    commands::set_cmd_mode(mode)
-}

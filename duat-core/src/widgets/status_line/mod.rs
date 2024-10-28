@@ -144,13 +144,13 @@ impl<U: Ui> Default for StatusLineCfg<U> {
 /// #     widgets::{CommandLine, File, LineNumbers, Widget, StatusLine, status, common::*},
 /// # };
 /// # fn test<U: Ui>() {
-/// hooks::remove_group("FileWidgets");
+/// hooks::remove("FileWidgets");
 /// hooks::add::<OnFileOpen<U>>(|builder| {
 ///     builder.push(LineNumbers::cfg());
 ///     builder.push(status!([File] { File::name }));
 /// });
 ///
-/// hooks::remove_group("WindowWidgets");
+/// hooks::remove("WindowWidgets");
 /// hooks::add::<OnWindowOpen<U>>(|builder| {
 ///     let (status_area, _) = builder.push(status!(
 ///         [File] { File::name } " " selections_fmt " " main_fmt
@@ -173,7 +173,7 @@ impl<U: Ui> Default for StatusLineCfg<U> {
 /// #     hooks::{self, OnFileOpen}, ui::{Ui}, widgets::{LineNumbers, Widget, StatusLine},
 /// # };
 /// # fn test<U: Ui>() {
-/// hooks::remove_group("FileWidgets");
+/// hooks::remove("FileWidgets");
 /// hooks::add::<OnFileOpen<U>>(|builder| {
 ///     builder.push(LineNumbers::cfg());
 ///     builder.push(StatusLine::cfg());
@@ -227,27 +227,23 @@ unsafe impl<U: Ui> Sync for StatusLine<U> {}
 
 /// The macro that creates a [`StatusLine`]
 ///
-/// This macro mimics the functionality of the [`text!`] macro, in
-/// that [`Form`]s are denoted with `[{FormName}]`. However, it
-/// differss in that the [`text!`] macro is evaluated immediately,
-/// whereas this macro generates a [`Text`] whenever one of its
-/// components is updated.
+/// This macro works like the [`text!`] macro, in  that [`Form`]s are
+/// pushed with `[{FormName}]`. However, [`text!`]  is evaluated
+/// immediately, while [`status!`] is evaluated when  updates occur.
 ///
-/// The macro will primarily read from the [`File`] widget and its
+/// The macro will mostly read from the [`File`] widget and its
 /// related structs. In order to do that, it will accept functions as
-/// arguments. These functions are able to take the following types of
-/// arguments:
+/// arguments. These functions take the following parameters:
 ///
 /// * The [`&File`] widget;
-/// * A [`&dyn Mode`], the one that is active on said file;
-/// * A specific [`&impl Mode`];
-/// * A specific [`&impl Widget`], which will be a satellite;
+/// * The [`&Cursors`] of the [`File`]
+/// * A specific [`&impl Widget`], which will surrounds the [`File`];
 ///
 /// Here's some examples:
 ///
 /// ```rust
 /// # use duat_core::{
-/// #     input::Mode, text::{Text, text}, ui::Ui, widgets::{File, status},
+/// #     input::Cursors, text::{Text, text}, ui::Ui, widgets::{File, status},
 /// #     hooks::{self, OnWindowOpen}
 /// # };
 /// fn name_but_funky(file: &File) -> String {
@@ -260,8 +256,8 @@ unsafe impl<U: Ui> Sync for StatusLine<U> {}
 ///     name
 /// }
 ///
-/// fn powerline_main_fmt<U: Ui>(file: &File, input: &dyn Mode<U>) -> Text {
-///    let cursor = input.cursors().unwrap().main().clone();
+/// fn powerline_main_fmt(file: &File, cursors: &Cursors) -> Text {
+///    let cursor = cursors.main();
 ///
 ///    text!(
 ///        [Separator] "" [Coord] { cursor.column() }
@@ -336,8 +332,7 @@ unsafe impl<U: Ui> Sync for StatusLine<U> {}
 /// ```
 ///
 /// [`&File`]: File
-/// [`&dyn Mode`]: crate::input::Mode
-/// [`&impl Mode`]: crate::input::Mode
+/// [`&Cursors`]: crate::input::Cursors
 /// [`&impl Widget`]: Widget
 /// [`impl Display`]: std::fmt::Display
 /// [`RwData`]: crate::data::RwData

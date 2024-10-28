@@ -1,29 +1,38 @@
-/// An [`Mode`] for the [`CommandLine`]
-mod commander;
-/// The default [`Mode`], inspired by VSCode
-mod default;
-/// A helper struct, used in aiding "cursored" [`Mode`]s
-mod helper;
-
 pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
 
 pub use self::{
     commander::Command,
     default::Regular,
     helper::{Cursor, Cursors, EditHelper, Editor, Mover},
+    inc_search::{Fwd, IncSearcher},
 };
-use crate::{
-    data::RwData,
-    text::Searcher,
-    ui::{Area, Ui},
-    widgets::{File, Widget},
-};
+use crate::{data::RwData, ui::Ui, widgets::Widget};
 
-/// A widget that can be modified by input
+mod commander;
+mod default;
+mod helper;
+mod inc_search;
+
+/// An input method for a [`Widget`]
 ///
-/// Here is how you can create an [`ActiveWidget`]. First, create the
-/// struct that will become said widget, see [`PassiveWidget`] for
-/// what you need:
+/// Input methods are the way that Duat decides how keys are going to
+/// modify widgets.
+///
+/// In principle, there are two types of `Mode`, the ones which use
+/// [`Cursors`], and the ones which don't. In [`Mode::send_key`], you
+/// receive an [`Option<Cursors>`], and must return [`Some(cursors)`]
+/// if you want them to show up.
+///
+/// If a [`Mode`] has cursors, it _must_ use the [`EditHelper`] struct
+/// in order to modify of the widget's [`Text`].
+///
+/// If your widget/input method combo is not based on cursors. You get
+/// more freedom to modify things as you wish, but you should refrain
+/// from using [`Cursor`]s in order to prevent bugs.
+///
+/// For this example, I will create a `Menu` widget, which is not
+/// supposed to have [`Cursor`]s. For an example with [`Cursor`]s, see
+/// [`EditHelper`]:
 ///
 /// ```rust
 /// # use duat_core::text::Text;
@@ -102,14 +111,13 @@ use crate::{
 /// documented on the documentation entry for [`Mode`], you can
 /// check it out next, to see how that was handled.
 ///
-/// Now I'll implement [`PassiveWidget`]:
+/// Now I'll implement [`Widget`]:
 ///
 /// ```rust
 /// # use std::marker::PhantomData;
 /// # use duat_core::{
 /// #     data::RwData, input::{Mode, KeyEvent}, forms::{self, Form},
-/// #     text::{text, Text}, ui::{PushSpecs, Ui},
-/// #     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
+/// #     text::{text, Text}, ui::{PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
 /// # };
 /// # #[derive(Default)]
 /// # struct Menu {
@@ -122,33 +130,24 @@ use crate::{
 /// #         todo!();
 /// #     }
 /// # }
-/// # #[derive(Default)]
-/// # struct MenuInput;
-/// # impl<U: Ui> Mode<U> for MenuInput {
-/// #     type Widget = Menu;
-/// #     fn send_key(&mut self, _: KeyEvent, _: &RwData<Menu>, _: &U::Area) {
-/// #         todo!();
-/// #     }
-/// # }
 /// struct MenuCfg<U>(PhantomData<U>);
 ///
 /// impl<U: Ui> WidgetCfg<U> for MenuCfg<U> {
 ///     type Widget = Menu;
 ///
-///     fn build(self, on_file: bool) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
+///     fn build(self, on_file: bool) -> (Menu, impl Fn() -> bool + 'static, PushSpecs) {
 ///         let checker = || false;
 ///
 ///         let mut widget = Menu::default();
 ///         widget.build_text();
 ///
-///         let input = MenuInput::default();
 ///         let specs = PushSpecs::left().with_hor_len(10.0).with_ver_len(5.0);
 ///
-///         (Widget::active(widget, input), checker, specs)
+///         (widget, checker, specs)
 ///     }
 /// }
 ///
-/// impl<U: Ui> PassiveWidget<U> for Menu {
+/// impl<U: Ui> Widget<U> for Menu {
 ///     type Cfg = MenuCfg<U>;
 ///
 ///     fn cfg() -> Self::Cfg {
@@ -158,6 +157,10 @@ use crate::{
 ///     fn text(&self) -> &Text {
 ///         &self.text
 ///     }
+///   
+///     fn text_mut(&mut self) -> &mut Text {
+///         &mut self.text
+///     }
 ///
 ///     fn once() {
 ///         forms::set_weak("MenuInactive", "Inactive");
@@ -166,25 +169,21 @@ use crate::{
 ///         forms::set_weak("MenuSelActive", Form::blue());
 ///     }
 /// }
-/// # impl<U: Ui> ActiveWidget<U> for Menu {
-/// #     fn text_mut(&mut self) -> &mut Text {
-/// #         &mut self.text
-/// #     }
-/// # }
 /// ```
 ///
-/// We can use `let checker = || false` here, since [`ActiveWidget`]s
-/// get automatically updated whenever they are focused and a key is
+/// We can use `let checker = || false` here, since active [`Widget`]s
+/// get automatically updated whenever they are focused or a key is
 /// sent.
 ///
-/// Now, all that is needed is an implementation of [`ActiveWidget`]:
+/// Now, let's take a look at some [`Widget`] methods that are unique
+/// to widgets that can take input. Those are the [`on_focus`] and
+/// [`on_unfocus`] methods:
 ///
 /// ```rust
 /// # use std::marker::PhantomData;
 /// # use duat_core::{
-/// #     data::RwData, input::{Mode, KeyEvent}, forms::{self, Form},
-/// #     text::{text, Text}, ui::{PushSpecs, Ui},
-/// #     widgets::{ActiveWidget, PassiveWidget, Widget, WidgetCfg},
+/// #     data::RwData, forms::{self, Form}, text::{text, Text}, ui::{PushSpecs, Ui},
+/// #     widgets::{Widget, WidgetCfg},
 /// # };
 /// # #[derive(Default)]
 /// # struct Menu {
@@ -195,11 +194,11 @@ use crate::{
 /// # struct MenuCfg<U>(PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for MenuCfg<U> {
 /// #     type Widget = Menu;
-/// #     fn build(self, on_file: bool) -> (Widget<U>, impl Fn() -> bool + 'static, PushSpecs) {
-/// #         (Widget::passive(Menu::default()), || false, PushSpecs::left())
+/// #     fn build(self, on_file: bool) -> (Menu, impl Fn() -> bool + 'static, PushSpecs) {
+/// #         (Menu::default(), || false, PushSpecs::left())
 /// #     }
 /// # }
-/// # impl<U: Ui> PassiveWidget<U> for Menu {
+/// impl<U: Ui> Widget<U> for Menu {
 /// #     type Cfg = MenuCfg<U>;
 /// #     fn cfg() -> Self::Cfg {
 /// #         MenuCfg(PhantomData)
@@ -208,12 +207,10 @@ use crate::{
 /// #         &self.text
 /// #     }
 /// #     fn once() {}
-/// # }
-/// impl<U: Ui> ActiveWidget<U> for Menu {
-///     fn text_mut(&mut self) -> &mut Text {
-///         &mut self.text
-///     }
-///
+/// #     fn text_mut(&mut self) -> &mut Text {
+/// #         &mut self.text
+/// #     }
+///     // ...
 ///     fn on_focus(&mut self, _area: &U::Area) {
 ///         forms::set_weak("MenuInactive", "Default");
 ///         forms::set_weak("MenuSelected", Form::new().on_grey());
@@ -228,56 +225,97 @@ use crate::{
 /// }
 /// ```
 ///
-/// Notice that [`ActiveWidget`]s have [`on_focus`] and [`on_unfocus`]
-/// methods, so you can make something happen whenever your widget
-/// becomes focused or unfocused. These methods also provide you with
-/// the [`Area`], so you can do things like [resizing] it.
+/// These methods can do work when the wiget is focused or unfocused.
 ///
 /// In this case, I chose to replace the [`Form`]s with "inactive"
 /// variants, to visually show when the widget is not active.
 ///
 /// Do also note that [`on_focus`] and [`on_unfocus`] are optional
-/// methods.
+/// methods, since a change on focus is not always necessary.
+///
+/// Now, all that is left to do is  the `MenuInput` [`Mode`]. We just
+/// need to create an empty struct and call the methods of the `Menu`:
+///
+/// ```rust
+/// # #![feature(let_chains)]
+/// # use std::marker::PhantomData;
+/// # use duat_core::{
+/// #     data::RwData, input::{key, Cursors, Mode, KeyCode, KeyEvent}, forms::{self, Form},
+/// #     text::{text, Text}, ui::{PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
+/// # };
+/// # #[derive(Default)]
+/// # struct Menu {
+/// #     text: Text,
+/// #     selected_entry: usize,
+/// #     active_entry: Option<usize>,
+/// # }
+/// # impl Menu {
+/// #     pub fn shift_selection(&mut self, shift: i32) {}
+/// #     pub fn toggle(&mut self) {}
+/// #     fn build_text(&mut self) {}
+/// # }
+/// # struct MenuCfg<U>(PhantomData<U>);
+/// # impl<U: Ui> WidgetCfg<U> for MenuCfg<U> {
+/// #     type Widget = Menu;
+/// #     fn build(self, on_file: bool) -> (Menu, impl Fn() -> bool + 'static, PushSpecs) {
+/// #         (Menu::default(), || false, PushSpecs::left())
+/// #     }
+/// # }
+/// # impl<U: Ui> Widget<U> for Menu {
+/// #     type Cfg = MenuCfg<U>;
+/// #     fn cfg() -> Self::Cfg {
+/// #         MenuCfg(PhantomData)
+/// #     }
+/// #     fn text(&self) -> &Text {
+/// #         &self.text
+/// #     }
+/// #     fn once() {}
+/// #     fn text_mut(&mut self) -> &mut Text {
+/// #         &mut self.text
+/// #     }
+/// # }
+/// #[derive(Clone)]
+/// struct MenuInput;
+///
+/// impl<U: Ui> Mode<U> for MenuInput {
+///     type Widget = Menu;
+///
+///     fn send_key(
+///         &mut self,
+///         key: KeyEvent,
+///         widget: &RwData<Menu>,
+///         area: &U::Area,
+///         cursors: Option<Cursors>,
+///     ) -> Option<Cursors> {
+///         use KeyCode::*;
+///         let mut menu = widget.write();
+///         
+///         match key {
+///             key!(Down) => menu.shift_selection(1),
+///             key!(Up) => menu.shift_selection(-1),
+///             key!(Enter | Tab | Char(' ')) => menu.toggle(),
+///             _ => {}
+///         }
+///
+///         None
+///     }
+/// }
+/// ```
+/// Notice the [`key!`] macro. This macro is useful for pattern
+/// matching [`KeyEvent`]s on [`Mode`]s.
 ///
 /// [`Cursor`]: crate::input::Cursor
-/// [`print`]: PassiveWidget::print
-/// [`on_focus`]: ActiveWidget::on_focus
-/// [`on_unfocus`]: ActiveWidget::on_unfocus
+/// [`print`]: Widget::print
+/// [`on_focus`]: Widget::on_focus
+/// [`on_unfocus`]: Widget::on_unfocus
 /// [resizing]: Area::constrain_ver
 /// [`Form`]: crate::forms::Form
-///
-///
-///
-///
-///
-///
-/// An input method for an [`ActiveWidget`]
-///
-/// Input methods are the way that Duat decides how keys are going to
-/// modify widgets.
-///
-/// The reasoning for them being separate from the widgets is to allow
-/// an end user to replace input methods. For example, by default
-/// [`File`]s are created with the [default] key mapping, inspired by
-/// Visual Studio Code. But there are other input methods, such as the
-/// one defined by [`duat-kak`], which is obviously inspired by the
-/// [Kakoune] text editor.
-///
-/// In principle, there are two types of `Mode`, the ones with
-/// [`Cursors`], and the ones without them. This is determined by the
-/// [`Mode::cursors`] method, and will determine how the widget
-/// can be modified by input. If you have an `Mode` that has
-/// cursors, you should use the [`EditHelper`] struct in order to aide
-/// in the modification of the widget's [`Text`].
-///
-/// If your widget/input method combo is not based on cursors. You get
-/// more freedom to modify things as you wish, but you should refrain
-/// from using [`Cursor`]s in order to prevent bugs.
 ///
 /// [default]: default::KeyMap
 /// [`duat-kak`]: https://docs.rs/duat-kak/latest/duat_kak/index.html
 /// [Kakoune]: https://github.com/mawww/kakoune
 /// [`Text`]: crate::Text
+/// [`Some(cursors)`]: Option::Some
 pub trait Mode<U: Ui>: Clone + Send + Sync + 'static {
     type Widget: Widget<U>
     where
@@ -298,86 +336,6 @@ pub trait Mode<U: Ui>: Clone + Send + Sync + 'static {
 
     #[allow(unused)]
     fn on_unfocus(&mut self, area: &U::Area) {}
-}
-
-pub trait IncSearcher<U: Ui>: Sized + Send + Sync + 'static {
-    fn new(
-        file: &RwData<File>,
-        area: &U::Area,
-        cursors: Option<Cursors>,
-    ) -> (Self, Option<Cursors>);
-
-    fn search(
-        &mut self,
-        file: &RwData<File>,
-        area: &U::Area,
-        searcher: Searcher,
-        cursors: Option<Cursors>,
-    ) -> Option<Cursors>;
-
-    #[allow(unused)]
-    fn finish(
-        &mut self,
-        file: &RwData<File>,
-        area: &U::Area,
-        cursors: Option<Cursors>,
-    ) -> Option<Cursors> {
-        cursors
-    }
-}
-
-pub struct Fwd<U: Ui> {
-    cursors: Cursors,
-    info: <U::Area as Area>::PrintInfo,
-}
-
-impl<U: Ui> IncSearcher<U> for Fwd<U> {
-    fn new(
-        _file: &RwData<File>,
-        area: &U::Area,
-        cursors: Option<Cursors>,
-    ) -> (Self, Option<Cursors>) {
-        (
-            Self {
-                cursors: cursors.clone().unwrap_or_default(),
-                info: area.get_print_info(),
-            },
-            cursors,
-        )
-    }
-
-    fn search(
-        &mut self,
-        file: &RwData<File>,
-        area: &U::Area,
-        searcher: Searcher,
-        _cursors: Option<Cursors>,
-    ) -> Option<Cursors> {
-        if searcher.is_empty() {
-            area.set_print_info(self.info.clone());
-            return Some(self.cursors.clone());
-        }
-
-        let mut cursors = self.cursors.clone();
-
-        let mut helper = EditHelper::new_inc(file, area, &mut cursors, searcher);
-
-        helper.move_each(|m| {
-            let next = m.search_inc(None).next();
-            if let Some((p0, p1)) = next {
-                m.move_to(p0);
-                m.set_anchor();
-                m.move_to(p1);
-                m.move_hor(-1);
-            } else if m.is_main() {
-                area.set_print_info(self.info.clone());
-            }
-        });
-
-        drop(helper);
-
-        Some(cursors)
-    }
 }
 
 /// Returns a sequence of [`KeyEvent`]s

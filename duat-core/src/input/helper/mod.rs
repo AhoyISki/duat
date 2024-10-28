@@ -1,10 +1,10 @@
-//! A helper struct for [`InputMethod`]s with [`Cursors`]
+//! A helper struct for [`Mode`]s with [`Cursors`]
 //!
 //! This struct can edit [`Text`] in a declarative way, freeing the
-//! [`InputMethod`]s from worrying about synchronization of the
+//! [`Mode`]s from worrying about synchronization of the
 //! cursors and dealing with editing the text directly.
 //!
-//! [`InputMethod`]: super::InputMethod
+//! [`Mode`]: super::Mode
 use std::{any::TypeId, ops::Range};
 
 pub use self::cursors::{Cursor, Cursors};
@@ -19,20 +19,21 @@ use crate::{
 /// The [`Cursor`] and [`Cursors`] structs
 mod cursors;
 
-/// A struct used by [`InputMethod`]s to edit [`Text`]
+/// A struct used by [`Mode`]s to edit [`Text`]
 ///
-/// You will want to use this struct when editing [`ActiveWidget`]s
+/// You will want to use this struct when editing [`Widget`]s
 /// with [`Cursors`]. For example, let's say you want to create an
 /// input method for the [`File`] widget:
 ///
 /// ```rust
 /// # use duat_core::{
-/// #     data::RwData, input::{EditHelper, InputMethod, KeyEvent, Cursors}, ui::Ui, widgets::File,
+/// #     data::RwData, input::{EditHelper, Mode, KeyEvent, Cursors}, ui::Ui, widgets::File,
 /// # };
-/// /// A very basic example InputMethod.
-/// struct PlacesCharactersAndMoves(Cursors);
+/// /// A very basic example Mode.
+/// #[derive(Clone)]
+/// struct PlacesCharactersAndMoves;
 ///
-/// impl<U: Ui> InputMethod<U> for PlacesCharactersAndMoves {
+/// impl<U: Ui> Mode<U> for PlacesCharactersAndMoves {
 ///     type Widget = File;
 ///     /* ... */
 /// #   fn send_key(
@@ -40,25 +41,33 @@ mod cursors;
 /// #       key: KeyEvent,
 /// #       widget: &RwData<Self::Widget>,
 /// #       area: &U::Area,
-/// #   ) {
+/// #       cursors: Option<Cursors>
+/// #   ) -> Option<Cursors> {
 /// #       todo!();
 /// #   }
 /// # }
 /// ```
 ///
 /// In order to modify the widget, you must implement the
-/// [`InputMethod::send_key`] method. In it, you receive a
-/// [key], an [`RwData<Self::Widget>`], that you use in order to
-/// [`mutate`] or [`inspect`] the widget. You will also receive a
-/// [`Ui::Area`], letting you do things like [resizing].
+/// [`Mode::send_key`] method. In it, you receive the following:
+///
+/// - The [key].
+/// - An [`RwData`] of [`Self::Widget`].
+/// - An [`Area`], which you can resize and modify it in other ways.
+/// - The current [`Cursors`] of the widget, these should be modified
+///   by the [`EditHelper`].
+///
+/// In a [`Mode`] without cursors, you'd return [`None`], however,
+/// since we are using cursors, you must return [`Some(cursors)`]:
 ///
 /// ```rust
 /// # use duat_core::{
-/// #     data::RwData, input::{key, Cursors, EditHelper, InputMethod, KeyCode, KeyEvent},
+/// #     data::RwData, input::{key, Cursors, EditHelper, Mode, KeyCode, KeyEvent},
 /// #     ui::Ui, widgets::File,
 /// # };
-/// # struct PlacesCharactersAndMoves(Cursors);
-/// impl<U: Ui> InputMethod<U> for PlacesCharactersAndMoves {
+/// # #[derive(Clone)]
+/// # struct PlacesCharactersAndMoves;
+/// impl<U: Ui> Mode<U> for PlacesCharactersAndMoves {
 /// #   type Widget = File;
 ///     /* ... */
 ///     fn send_key(
@@ -66,17 +75,18 @@ mod cursors;
 ///         key: KeyEvent,
 ///         widget: &RwData<Self::Widget>,
 ///         area: &U::Area,
-///     ) where
-///         Self: Sized,
-///     {
+///         cursors: Option<Cursors>
+///     ) -> Option<Cursors> {
 ///         match key {
 ///             // actions based on the key pressed
 ///             key!(KeyCode::Char('c')) => {
-///                 /* Do something when the 'c' is typed. */
+///                 /* Do something when the character 'c' is typed. */
 ///             }
 ///             /* Matching the rest of the keys */
 /// #           _ => todo!()
 ///         }
+///         // We haven't done anything with them yet
+///         cursors
 ///     }
 /// # }
 /// ```
@@ -90,11 +100,12 @@ mod cursors;
 ///
 /// ```rust
 /// # use duat_core::{
-/// #     data::RwData, input::{ key, Cursors, EditHelper, InputMethod, KeyCode, KeyEvent, KeyMod},
+/// #     data::RwData, input::{ key, Cursors, EditHelper, Mode, KeyCode, KeyEvent, KeyMod},
 /// #     ui::Ui, widgets::File,
 /// # };
-/// # struct PlacesCharactersAndMoves(Cursors);
-/// impl<U: Ui> InputMethod<U> for PlacesCharactersAndMoves {
+/// # #[derive(Clone)]
+/// # struct PlacesCharactersAndMoves;
+/// impl<U: Ui> Mode<U> for PlacesCharactersAndMoves {
 /// #   type Widget = File;
 ///     /* ... */
 ///     fn send_key(
@@ -102,10 +113,11 @@ mod cursors;
 ///         key: KeyEvent,
 ///         widget: &RwData<Self::Widget>,
 ///         area: &U::Area,
-///     ) where
-///         Self: Sized,
-///     {
-///         let mut helper = EditHelper::new(widget, area, &mut self.0);
+///         cursors: Option<Cursors>
+///     ) -> Option<Cursors> {
+///         let mut cursors = cursors.unwrap_or_else(Cursors::new_exclusive);
+///         cursors.make_exclusive();
+///         let mut helper = EditHelper::new(widget, area, &mut cursors);
 ///         
 ///         match key {
 ///             key!(KeyCode::Char(c)) => {
@@ -129,19 +141,29 @@ mod cursors;
 ///             /* Predictable remaining implementations */
 /// #           _ => todo!()
 ///         }
+///
+///         Some(cursors)
 ///     }
 /// # }
 /// ```
 ///
-/// [`InputMethod`]: super::InputMethod
+/// Notice the [`Cursors::new_exclusive`] and
+/// [`Cursors::make_exclusive`]. In Duat, there are two types of
+/// [`Cursors`], inclusive and exclusive. The only difference between
+/// them is that in inclusive cursors, the selection includes the
+/// character that the cursor is on, while that is not the case in
+/// exclusive [`Cursors`].
+///
+/// [`Mode`]: super::Mode
 /// [`Text`]: crate::text::Text
 /// [`CommandLine`]: crate::widgets::CommandLine
 /// [`RwData<Self::Widget>`]: RwData
 /// [`mutate`]: RwData::mutate
 /// [`inspect`]: RwData::inspect
-/// [`InputMethod::send_key`]: super::InputMethod::send_key
+/// [`Mode::send_key`]: super::Mode::send_key
 /// [key]: super::KeyEvent
-/// [resizing]: crate::ui::Area::constrain_ver
+/// [`Self::Widget`]: super::Mode::Widget
+/// [`Some(cursors)`]: Some
 /// [`Ui::Area`]: crate::ui::Ui::Area
 /// [commands]: crate::commands
 /// [`key!`]: super::key

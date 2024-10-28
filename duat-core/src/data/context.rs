@@ -171,37 +171,6 @@ impl<U: Ui> CurFile<U> {
         other.ptr_eq(&self.0.read().as_ref().unwrap().0)
     }
 
-    pub(crate) fn mutate_related<T: 'static, R>(
-        &self,
-        f: impl FnOnce(&RwData<T>) -> R,
-    ) -> Option<R> {
-        let data = self.0.raw_read();
-        let (file, _, cursors, rel) = data.as_ref().unwrap();
-
-        cursors.inspect(|c| {
-            if let Some(c) = c.as_ref() {
-                <File as Widget<U>>::text_mut(&mut *file.write()).remove_cursor_tags(c);
-            }
-        });
-
-        let ret = file
-            .try_downcast()
-            .or_else(|| cursors.try_downcast())
-            .or_else(|| {
-                let rel = rel.read();
-                rel.iter().find_map(|node| node.try_downcast())
-            })
-            .map(|rel| f(&rel));
-
-        cursors.inspect(|c| {
-            if let Some(c) = c.as_ref() {
-                <File as Widget<U>>::text_mut(&mut *file.write()).add_cursor_tags(c);
-            }
-        });
-
-        ret
-    }
-
     pub(crate) fn mutate_data<R>(
         &self,
         f: impl FnOnce(&RwData<File>, &U::Area, &RwData<Option<Cursors>>) -> R,
@@ -413,16 +382,6 @@ impl<U: Ui> CurWidget<U> {
         let cursors = cursors.read();
 
         widget.inspect_as(|w| f(w, area, &cursors))
-    }
-
-    pub(crate) fn mutate_as<T: 'static, R>(&self, f: impl FnOnce(&RwData<T>) -> R) -> Option<R> {
-        let data = self.0.read();
-        let (widget, _, cursors) = data.as_ref().unwrap().as_active();
-
-        widget
-            .try_downcast()
-            .or_else(|| cursors.try_downcast())
-            .map(|data| f(&data))
     }
 
     pub(crate) fn mutate_data_as<W: Widget<U>, R>(
