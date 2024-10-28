@@ -16,6 +16,7 @@ pub use self::{
 use crate::{
     Error, context,
     data::{RwData, RwLock},
+    input::Cursors,
     text::{Text, err, ok},
     ui::{Ui, Window},
     widgets::{File, Node, Widget},
@@ -26,7 +27,7 @@ mod parameters;
 
 mod global {
     use super::{Args, CmdResult, Commands, Flags, Result};
-    use crate::{data::RwData, text::Text, ui::Ui, widgets::Widget};
+    use crate::{input::Cursors, text::Text, ui::Ui, widgets::Widget};
 
     static COMMANDS: Commands = Commands::new();
 
@@ -328,8 +329,8 @@ mod global {
     ///
     ///         commands::add_for_widget::<Timer, U>(
     ///             ["play"],
-    ///             |timer, _area, _flags, _args| {
-    ///                 timer.read().running.store(true, Ordering::Relaxed);
+    ///             |timer, _area, _cursors, _flags, _args| {
+    ///                 timer.running.store(true, Ordering::Relaxed);
     ///
     ///                 Ok(None)
     ///             })
@@ -337,8 +338,8 @@ mod global {
     ///
     ///         commands::add_for_widget::<Timer, U>(
     ///             ["pause"],
-    ///             |timer, _area, _flags, _args| {
-    ///                 timer.read().running.store(false, Ordering::Relaxed);
+    ///             |timer, _, _, _, _| {
+    ///                 timer.running.store(false, Ordering::Relaxed);
     ///
     ///                 Ok(None)
     ///             })
@@ -346,8 +347,8 @@ mod global {
     ///
     ///         commands::add_for_widget::<Timer, U>(
     ///             ["reset"],
-    ///             |timer, _area, _flags, _args| {
-    ///                 timer.write().instant = Instant::now();
+    ///             |timer, _, _, _, _| {
+    ///                 timer.instant = Instant::now();
     ///
     ///                 Ok(None)
     ///             })
@@ -370,7 +371,7 @@ mod global {
     /// [`forms::set_weak`]: crate::forms::set_weak
     pub fn add_for_widget<W: Widget<U>, U: Ui>(
         callers: impl IntoIterator<Item = impl ToString>,
-        f: impl FnMut(&RwData<W>, &U::Area, Flags, Args) -> CmdResult + 'static,
+        f: impl FnMut(&mut W, &U::Area, &mut Option<Cursors>, Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
         COMMANDS.add_for_widget(callers, f)
     }
@@ -483,7 +484,7 @@ impl Commands {
     fn add_for_widget<W: Widget<U>, U: Ui>(
         &'static self,
         callers: impl IntoIterator<Item = impl ToString>,
-        mut f: impl FnMut(&RwData<W>, &U::Area, Flags, Args) -> CmdResult + 'static,
+        mut f: impl FnMut(&mut W, &U::Area, &mut Option<Cursors>, Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
         let cur_file = context::inner_cur_file::<U>();
         let windows = context::windows::<U>();
@@ -491,8 +492,8 @@ impl Commands {
 
         let command = Command::new(callers, move |flags, args| {
             cur_file
-                .mutate_related_widget::<W, CmdResult>(|widget, area| {
-                    f(widget, area, flags, args.clone())
+                .mutate_related_widget::<W, CmdResult>(|widget, area, cursors| {
+                    f(widget, area, cursors, flags, args.clone())
                 })
                 .unwrap_or_else(|| {
                     let windows = windows.read();
@@ -505,8 +506,10 @@ impl Commands {
                     }
 
                     let (_, node) = widget_entry::<W, U>(&windows, w)?;
-                    let w = node.widget();
-                    f(&w.try_downcast().unwrap(), node.area(), flags, args)
+                    let (w, a, c) = node.as_active();
+                    let mut c = c.write();
+
+                    w.mutate_as(|w| f(w, a, &mut c, flags, args)).unwrap()
                 })
         });
 

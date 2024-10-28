@@ -168,9 +168,9 @@ impl<U: Ui> Widget<U> for CommandLine<U> {
 
         commands::add_for_widget::<CommandLine<U>, U>(
             ["set-prompt"],
-            move |command_line, _, _, mut args| {
+            move |command_line, _, _, _, mut args| {
                 let new_prompt: String = args.collect();
-                *command_line.read().prompt.write() = new_prompt;
+                *command_line.prompt.write() = new_prompt;
                 Ok(None)
             },
         )

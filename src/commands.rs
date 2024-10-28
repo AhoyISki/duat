@@ -135,13 +135,12 @@
 pub use duat_core::commands::{Args, Flags, reset_mode};
 use duat_core::{
     commands::{self, CmdResult},
-    data::RwData,
+    input::Cursors,
     text::Text,
-    ui,
     widgets::Widget,
 };
 
-use crate::Ui;
+use crate::{Area, Ui};
 
 /// Runs a full command, with a caller, [`Flags`], and [`Args`].
 ///
@@ -363,8 +362,8 @@ pub fn add(
 ///
 ///         commands::add_for_widget::<Timer, U>(
 ///             ["play"],
-///             |timer, _area, _flags, _args| {
-///                 timer.read().running.store(true, Ordering::Relaxed);
+///             |timer, _area, _cursors, _flags, _args| {
+///                 timer.running.store(true, Ordering::Relaxed);
 ///
 ///                 Ok(None)
 ///             })
@@ -372,8 +371,8 @@ pub fn add(
 ///
 ///         commands::add_for_widget::<Timer, U>(
 ///             ["pause"],
-///             |timer, _area, _flags, _args| {
-///                 timer.read().running.store(false, Ordering::Relaxed);
+///             |timer, _, _, _, _| {
+///                 timer.running.store(false, Ordering::Relaxed);
 ///
 ///                 Ok(None)
 ///             })
@@ -381,8 +380,8 @@ pub fn add(
 ///
 ///         commands::add_for_widget::<Timer, U>(
 ///             ["reset"],
-///             |timer, _area, _flags, _args| {
-///                 timer.write().instant = Instant::now();
+///             |timer, _, _, _, _| {
+///                 timer.instant = Instant::now();
 ///
 ///                 Ok(None)
 ///             })
@@ -406,7 +405,7 @@ pub fn add(
 #[inline(never)]
 pub fn add_for_widget<W: Widget<Ui>>(
     callers: impl IntoIterator<Item = impl ToString>,
-    f: impl FnMut(&RwData<W>, &<Ui as ui::Ui>::Area, Flags, Args) -> CmdResult + 'static,
+    f: impl FnMut(&mut W, &Area, &mut Option<Cursors>, Flags, Args) -> CmdResult + 'static,
 ) -> Result<()> {
     commands::add_for_widget(callers, f)
 }

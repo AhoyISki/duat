@@ -75,13 +75,29 @@
 //! #             todo!();
 //! #         }
 //! #     }
+//! #     #[derive(Clone)]
+//! #     pub struct Insert;
+//! #     impl Mode<Ui> for Insert {
+//! #         type Widget = File;
+//! #         fn send_key(
+//! #             &mut self,
+//! #             key: KeyEvent,
+//! #             widget: &RwData<File>,
+//! #             area: &Area,
+//! #             cursors: Option<Cursors>,
+//! #         ) -> Option<Cursors> {
+//! #             todo!();
+//! #         }
+//! #     }
 //! # }
 //! setup_duat!(setup);
 //! use duat::prelude::*;
-//! use duat_kak::Normal;
+//! use duat_kak::{Insert, Normal};
 //!
 //! fn setup() {
 //!     mode::set_default(Normal);
+//!     map::<Insert>(keys!("jk"), keys!(Esc));
+//!
 //!     print::wrap_on_width();
 //!
 //!     hooks::remove("FileWidgets");
@@ -112,15 +128,17 @@
 //!
 //! This configuration does the following things:
 //!
-//! - Changes the default mode to a Kakoune inspired `Normal`;
-//! - Changes the wrapping;
-//! - Removes the hook group "FileWidgets";
-//! - Pushes a vertical rule and line numbers to every file;
+//! - Changes the [default mode] to a Kakoune inspired `Normal`;
+//! - [Maps] jk to [esc];
+//! - [Changes] the wrapping;
+//! - [Removes] the hook [group] "FileWidgets";
+//! - [Pushes] a [vertical rule] and [line numbers] to every file;
 //! - Removes the hook group "WindowWidgets";
-//! - Pushes a custom status line and command line to the bottom of
-//!   the screen;
-//! - Adds hooks for mode changes in said input method;
-//! - Changes the style of the mode printed on the status line;
+//! - Pushes a [custom status line] and [command line] to the bottom
+//!   of the screen;
+//! - [Adds] hooks for [mode changes] in Duat;
+//! - [Changes](forms::set) the [style] of the mode printed on the
+//!   status line;
 //!
 //! These are some of the ways you can configure Duat. You might
 //! notice some things that can be done with these simle options:
@@ -148,14 +166,8 @@
 //! ```
 //!
 //! In this example, I'm using the "MyForm" form in order to style the
-//! text, while `[]` reverts back to the "Default" form.
-//!
-//! With the [tags] provided by Duat, you can also change the
-//! alignment, conceal text, add ghost text that can't be interacted
-//! with, and also add buttons that take mouse input (in the future).
-//! These other tags are particularly useful when one wants to style
-//! the file, where multiple plugins may insert tags that do not
-//! interact with eachother.
+//! text, while `[]` reverts back to the "Default" form. The
+//! [`status!`] macro works similarly.
 //!
 //! Duat also has a simple command system, that lets you add commands
 //! with arguments supported by Rust's type system:
@@ -166,7 +178,7 @@
 //! let callers = ["collapse-command-line", "collapse-cmd"];
 //! commands::add_for_widget::<CommandLine>(
 //!     callers,
-//!     |command_line, area, _, _| {
+//!     |_command_line, area, _cursors, _flags, _args| {
 //!         area.constrain_ver(Constraint::Length(0.0))?;
 //!
 //!         Ok(None)
@@ -175,6 +187,7 @@
 //! # }
 //! ```
 //!
+//! The 2 arguments
 //!
 //! ## Roadmap
 //!
@@ -245,6 +258,22 @@
 //!
 //! Also, just wanted to say that no AI was used in this project, cuz
 //! I don't like it.
+//!
+//! [default mode]: mode::set_default
+//! [Maps]: prelude::map
+//! [esc]: prelude::keys
+//! [Changes]: prelude::print::wrap_on_width
+//! [Removes]: hooks::remove
+//! [group]: hooks::add_grouped
+//! [Pushes]: duat_core::ui::FileBuilder
+//! [vertical rule]: prelude::VertRule
+//! [line numbers]: prelude::LineNumbers
+//! [custom status line]: prelude::status
+//! [command line]: prelude::CommandLine
+//! [Adds]: hooks::add
+//! [mode changes]: hooks::ModeSwitched
+//! [style]: forms::Form
+//! [`status!`]: prelude::status
 //! [tags]: duat_core::text::Tag
 #![feature(decl_macro)]
 
@@ -403,7 +432,8 @@ pub mod prelude {
         Ui, commands, control, cursor,
         forms::{self, CursorShape, Form},
         hooks::{self, ModeSwitched, OnFileOpen, OnWindowOpen},
-        mode::{self, map}, print, setup_duat,
+        mode::{self, keys, map},
+        print, setup_duat,
         state::*,
         widgets::*,
     };

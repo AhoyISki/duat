@@ -202,21 +202,43 @@ impl<U: Ui> CurFile<U> {
         ret
     }
 
-    pub(crate) fn mutate_related_widget<W: 'static, R>(
+    pub(crate) fn mutate_related_widget<W: Widget<U>, R>(
         &self,
-        f: impl FnOnce(&RwData<W>, &U::Area) -> R,
+        f: impl FnOnce(&mut W, &U::Area, &mut Option<Cursors>) -> R,
     ) -> Option<R> {
-        let data = self.0.raw_read();
-        let (file, area, .., rel) = data.as_ref().unwrap();
-        let rel = rel.read();
+        let f = move |w: &mut W, a, c: &mut Option<Cursors>| {
+            if let Some(c) = c.as_ref() {
+                w.text_mut().remove_cursor_tags(c);
+            }
 
-        file.try_downcast()
-            .zip(Some(area))
-            .or_else(|| {
-                rel.iter()
-                    .find_map(|node| node.try_downcast().zip(Some(node.area())))
-            })
-            .map(|(widget, area)| f(&widget, area))
+            let ret = f(w, a, &mut *c);
+
+            if let Some(c) = c.as_ref() {
+                w.text_mut().add_cursor_tags(c);
+            }
+
+            w.update(a);
+            w.print(a);
+
+            ret
+        };
+
+        let data = self.0.raw_read();
+        let (file, area, cursors, rel) = data.as_ref().unwrap();
+
+        let rel = rel.read();
+        if file.data_is::<W>() {
+            let mut cursors = cursors.write();
+            file.mutate_as(|w| f(w, area, &mut cursors))
+        } else {
+            rel.iter()
+                .find(|node| node.data_is::<W>())
+                .and_then(|node| {
+                    let (widget, area, cursors) = node.as_active();
+                    let mut cursors = cursors.write();
+                    widget.mutate_as(|w| f(w, area, &mut cursors))
+                })
+        }
     }
 
     pub(crate) fn get_related_widget<W: Widget<U>>(&self) -> Option<Node<U>> {
