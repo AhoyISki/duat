@@ -330,6 +330,8 @@ fn set_mode_fn<M: Mode<U>, U: Ui>(mut mode: M) {
         };
     }
 
+    crate::input::set_send_key::<M, U>();
+
     context::mode_name().mutate(|mode| {
         let new_mode = duat_name::<M>();
         hooks::trigger::<ModeSwitched>((mode, new_mode));

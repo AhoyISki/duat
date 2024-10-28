@@ -12,7 +12,7 @@ use std::{
     sync::atomic::{AtomicU16, Ordering},
 };
 
-static KEY_COUNT: AtomicU16 = AtomicU16::new(2);
+static KEY_COUNT: AtomicU16 = AtomicU16::new(3);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TextId(u16);
@@ -134,6 +134,11 @@ impl Key {
     /// A [`Key`] specifically for cursors
     pub(in crate::text) const fn for_cursors() -> Self {
         Self(1)
+    }
+
+	/// A [`Key`] specifically for remaps
+    pub(crate) const fn for_remap() -> Self {
+        Self(2)
     }
 }
 

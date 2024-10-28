@@ -138,7 +138,7 @@ use duat_core::{
     data::RwData,
     text::Text,
     ui,
-    widgets::{Widget},
+    widgets::Widget,
 };
 
 use crate::Ui;

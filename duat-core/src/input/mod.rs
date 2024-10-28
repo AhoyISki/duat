@@ -1,6 +1,7 @@
 pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
 
 pub use self::{
+    remap::*,
     commander::Command,
     default::Regular,
     helper::{Cursor, Cursors, EditHelper, Editor, Mover},
@@ -12,6 +13,7 @@ mod commander;
 mod default;
 mod helper;
 mod inc_search;
+mod remap;
 
 /// An input method for a [`Widget`]
 ///

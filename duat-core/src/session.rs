@@ -8,14 +8,7 @@ use std::{
 };
 
 use crate::{
-    Plugin,
-    cache::{delete_cache, load_cache, store_cache},
-    commands, context,
-    data::RwData,
-    hooks::{self, OnFileOpen, OnWindowOpen, SessionStarted},
-    text::PrintCfg,
-    ui::{Area, Event, FileBuilder, Layout, MasterOnLeft, Sender, Ui, Window, WindowBuilder},
-    widgets::{File, FileCfg, Node, Widget, WidgetCfg},
+    cache::{delete_cache, load_cache, store_cache}, commands, context, data::RwData, hooks::{self, OnFileOpen, OnWindowOpen, SessionStarted}, input, text::PrintCfg, ui::{Area, Event, FileBuilder, Layout, MasterOnLeft, Sender, Ui, Window, WindowBuilder}, widgets::{File, FileCfg, Node, Widget, WidgetCfg}, Plugin
 };
 
 #[doc(hidden)]
@@ -262,7 +255,7 @@ impl<U: Ui> Session<U> {
 
                 if let Ok(event) = rx.recv_timeout(Duration::from_millis(10)) {
                     match event {
-                        Event::Key(key) => commands::send_key(key),
+                        Event::Key(key) => input::send_key(key),
                         Event::Resize | Event::FormChange => {
                             for node in cur_window.nodes() {
                                 s.spawn(|| node.update_and_print());
