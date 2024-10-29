@@ -84,7 +84,7 @@
 //!
 //! fn setup() {
 //!     mode::set_default(Normal);
-//!     map::<Insert>(keys!("jk"), keys!(Esc));
+//!     map::<Insert>("jk", "<Esc>");
 //!
 //!     print::wrap_on_width();
 //!
@@ -117,7 +117,7 @@
 //! This configuration does the following things:
 //!
 //! - Changes the [default mode] to a Kakoune inspired `Normal`;
-//! - [Maps] jk to [esc];
+//! - [Maps] jk to esc;
 //! - [Changes] the wrapping;
 //! - [Removes] the hook [group] "FileWidgets";
 //! - [Pushes] a [vertical rule] and [line numbers] to every file;
@@ -249,7 +249,6 @@
 //!
 //! [default mode]: mode::set_default
 //! [Maps]: prelude::map
-//! [esc]: prelude::keys
 //! [Changes]: prelude::print::wrap_on_width
 //! [Removes]: hooks::remove
 //! [group]: hooks::add_grouped

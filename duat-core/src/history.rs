@@ -15,14 +15,14 @@
 //! which is strictly one [`Change`] per [`Moment`], or Kakoune, where
 //! [`Moment`]s may contain as many [`Change`]s as is desired.
 //!
-//! [`Cursor`]: crate::input::Cursor
+//! [`Cursor`]: crate::mode::Cursor
 use std::{
     cmp::Ordering,
     ops::{Range, RangeBounds},
 };
 
 use crate::{
-    input::Cursors,
+    mode::Cursors,
     text::{PrintCfg, Text},
     ui::Area,
 };

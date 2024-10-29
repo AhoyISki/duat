@@ -23,11 +23,11 @@ mod cursors;
 ///
 /// You will want to use this struct when editing [`Widget`]s
 /// with [`Cursors`]. For example, let's say you want to create an
-/// input method for the [`File`] widget:
+/// mode for the [`File`] widget:
 ///
 /// ```rust
 /// # use duat_core::{
-/// #     data::RwData, input::{EditHelper, Mode, KeyEvent, Cursors}, ui::Ui, widgets::File,
+/// #     data::RwData, mode::{EditHelper, Mode, KeyEvent, Cursors}, ui::Ui, widgets::File,
 /// # };
 /// /// A very basic example Mode.
 /// #[derive(Clone)]
@@ -62,7 +62,7 @@ mod cursors;
 ///
 /// ```rust
 /// # use duat_core::{
-/// #     data::RwData, input::{key, Cursors, EditHelper, Mode, KeyCode, KeyEvent},
+/// #     data::RwData, mode::{key, Cursors, EditHelper, Mode, KeyCode, KeyEvent},
 /// #     ui::Ui, widgets::File,
 /// # };
 /// # #[derive(Clone)]
@@ -98,7 +98,7 @@ mod cursors;
 ///
 /// ```rust
 /// # use duat_core::{
-/// #     data::RwData, input::{ key, Cursors, EditHelper, Mode, KeyCode, KeyEvent, KeyMod},
+/// #     data::RwData, mode::{ key, Cursors, EditHelper, Mode, KeyCode, KeyEvent, KeyMod},
 /// #     ui::Ui, widgets::File,
 /// # };
 /// # #[derive(Clone)]
@@ -473,7 +473,7 @@ where
 /// either in the start or the end of the selection.
 ///
 /// ```rust
-/// # use duat_core::{input::EditHelper, ui::Area, widgets::File};
+/// # use duat_core::{mode::EditHelper, ui::Area, widgets::File};
 /// # fn test<S>(helper: &mut EditHelper<File, impl Area, S>) {
 /// helper.edit_on_main(|e| {
 ///     e.replace("my replacement");
@@ -743,7 +743,7 @@ where
     /// If the regex is not valid, this method will panic.
     ///
     /// ```rust
-    /// # use duat_core::{input::EditHelper, ui::Area, widgets::File};
+    /// # use duat_core::{mode::EditHelper, ui::Area, widgets::File};
     /// fn search_nth_paren<S>(
     ///     helper: &mut EditHelper<File, impl Area, S>,
     ///     n: usize,
@@ -779,7 +779,7 @@ where
     /// If the regex is not valid, this method will panic.
     ///
     /// ```rust
-    /// # use duat_core::{input::EditHelper, ui::Area, widgets::File};
+    /// # use duat_core::{mode::EditHelper, ui::Area, widgets::File};
     /// fn search_nth_rev<S>(
     ///     helper: &mut EditHelper<File, impl Area, S>,
     ///     n: usize,

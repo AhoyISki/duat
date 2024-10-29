@@ -132,10 +132,10 @@
 //!
 //! [`Form`]: crate::forms::Form
 
-pub use duat_core::commands::{Args, Flags, reset_mode};
+pub use duat_core::commands::{Args, Flags};
 use duat_core::{
     commands::{self, CmdResult},
-    input::Cursors,
+    mode::Cursors,
     text::Text,
     widgets::Widget,
 };

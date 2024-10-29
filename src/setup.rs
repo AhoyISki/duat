@@ -13,7 +13,7 @@ use std::sync::{
 use duat_core::{
     context::{CurFile, CurWidget},
     data::RwData,
-    input::Regular,
+    mode::Regular,
     session::SessionCfg,
     text::PrintCfg,
     ui::{Event, Ui as TraitUi, Window},

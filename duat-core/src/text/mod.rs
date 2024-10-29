@@ -29,7 +29,7 @@ pub use self::{
     search::{RegexPattern, Searcher},
     tags::{Key, Tag, ToggleId},
 };
-use crate::{DuatError, history::Change, input::Cursors};
+use crate::{DuatError, history::Change, mode::Cursors};
 
 /// The text in a given area.
 #[derive(Default, Clone, Eq)]

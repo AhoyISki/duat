@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::LazyLock};
 
 use parking_lot::{RwLock, RwLockWriteGuard};
 use regex_automata::{
-    Anchored, Input, MatchKind, PatternID,
+    Anchored, Input, PatternID,
     hybrid::{
         BuildError,
         dfa::{Cache, DFA},
@@ -15,7 +15,6 @@ use regex_syntax::{
 };
 
 use super::{Point, Text};
-use crate::log_info;
 
 impl Text {
     pub fn search_from<R>(

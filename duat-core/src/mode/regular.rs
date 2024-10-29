@@ -1,6 +1,5 @@
 use super::{Cursors, EditHelper, Fwd, IncSearcher, KeyCode, KeyEvent, KeyMod, key};
 use crate::{
-    commands,
     data::RwData,
     ui::{Area, Ui},
     widgets::{File, IncSearch, RunCommands},
@@ -86,11 +85,9 @@ impl<U: Ui> super::Mode<U> for Regular {
             key!(KeyCode::Down) => move_each(helper, Side::Bottom, 1),
 
             // Control
-            key!(KeyCode::Char('p'), KeyMod::CONTROL) => {
-                commands::set_cmd_mode::<U>(RunCommands::new())
-            }
+            key!(KeyCode::Char('p'), KeyMod::CONTROL) => super::set_cmd::<U>(RunCommands::new()),
             key!(KeyCode::Char('f'), KeyMod::CONTROL) => {
-                commands::set_cmd_mode::<U>(IncSearch::new(Fwd::new))
+                super::set_cmd::<U>(IncSearch::new(Fwd::new))
             }
 
             _ => {}

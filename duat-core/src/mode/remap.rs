@@ -6,21 +6,20 @@ use parking_lot::Mutex;
 pub use self::global::*;
 use super::Mode;
 use crate::{
-    commands, context,
+    context,
     data::RwData,
     text::{Key, Tag, Text, text},
     ui::Ui,
 };
 
 mod global {
-    use crossterm::event::KeyEvent;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
     use parking_lot::Mutex;
 
     use super::{Gives, Remapper};
     use crate::{
-        commands,
         data::RoData,
-        input::{Mode, str_to_keys},
+        mode::Mode,
         text::{Text, text},
         ui::Ui,
     };
@@ -28,18 +27,45 @@ mod global {
     static REMAPPER: Remapper = Remapper::new();
     static SEND_KEY: Mutex<fn(KeyEvent)> = Mutex::new(empty);
 
-    /// Maps a sequence of [keys] to another
+    /// Maps a sequence of keys to another
+    ///
+    /// The keys follow the same rules as Vim, so regular, standalone
+    /// characters are mapped verbatim, while "`<{mod}-{key}>`" and
+    /// "`<{special}>`" sequences are mapped like in Vim.
+    ///
+    /// Here are the available special keys:
+    ///
+    /// - `<Enter> => Enter`,
+    /// - `<Tab> => Tab`,
+    /// - `<Bspc> => Backspace`,
+    /// - `<Del> => Delete`,
+    /// - `<Esc> => Esc`,
+    /// - `<Up> => Up`,
+    /// - `<Down> => Down`,
+    /// - `<Left> => Left`,
+    /// - `<Right> => Right`,
+    /// - `<PageU> => PageUp`,
+    /// - `<PageD> => PageDown`,
+    /// - `<Home> => Home`,
+    /// - `<End> => End`,
+    /// - `<Ins> => Insert`,
+    /// - `<F{1-12}> => F({1-12})`,
+    ///
+    /// And the following modifiers are available:
+    ///
+    /// - `C => Control`,
+    /// - `A => Alt`,
+    /// - `S => Shift`,
+    /// - `M => Meta`,
     ///
     /// If another sequence already exists on the same mode, which
     /// would intersect with this one, the new sequence will not be
     /// added.
-    ///
-    /// [keys]: crate::input::keys
     pub fn map<M: Mode<U>, U: Ui>(take: &str, give: impl AsGives<U>) {
         REMAPPER.remap::<M, U>(str_to_keys(take), give.into_gives(), false);
     }
 
-    /// Aliases a sequence of [keys] to another
+    /// Aliases a sequence of keys to another
     ///
     /// The difference between aliasing and mapping is that an alias
     /// will be displayed on the text as a [ghost text], making it
@@ -53,7 +79,13 @@ mod global {
     /// would intersect with this one, the new sequence will not be
     /// added.
     ///
-    /// [keys]: crate::input::keys
+    /// # Note
+    ///
+    /// This sequence is not like Vim typing, in that if you make a
+    /// mistake while typing the sequence, the alias is undone, and
+    /// you will be just typing normally.
+    ///
+    /// [ghost text]: crate::text::Tag::GhostText
     pub fn alias<M: Mode<U>, U: Ui>(take: &str, give: impl AsGives<U>) {
         REMAPPER.remap::<M, U>(str_to_keys(take), give.into_gives(), true);
     }
@@ -149,6 +181,115 @@ mod global {
         seq
     }
 
+    /// Converts an `&str` to a sequence of [`KeyEvent`]s
+    ///
+    /// The conversion follows the same rules as remaps in Vim, that
+    /// is:
+    pub fn str_to_keys(str: &str) -> Vec<KeyEvent> {
+        const MODS: [(char, KeyMod); 4] = [
+            ('C', KeyMod::CONTROL),
+            ('A', KeyMod::ALT),
+            ('S', KeyMod::SHIFT),
+            ('M', KeyMod::META),
+        ];
+
+        let mut keys = Vec::new();
+        let mut on_special = false;
+
+        for seq in str.split_inclusive(['<', '>']) {
+            if !on_special {
+                let end = if seq.ends_with('<') {
+                    on_special = true;
+                    seq.len() - 1
+                } else {
+                    seq.len()
+                };
+
+                keys.extend(seq[..end].chars().map(|c| KeyEvent::from(KeyCode::Char(c))));
+            } else if seq.ends_with('>') {
+                let trimmed = seq.trim_end_matches('>');
+                let mut parts = trimmed.split('-');
+
+                let modifs = if trimmed.contains('-')
+                    && let Some(seq) = parts.next()
+                {
+                    let mut modifs = KeyMod::empty();
+
+                    for (str, modif) in MODS {
+                        if seq.contains(str) {
+                            modifs.set(modif, true);
+                        }
+                    }
+
+                    let doubles = ['C', 'A', 'S', 'M']
+                        .iter()
+                        .any(|c| seq.chars().filter(|char| char == c).count() > 1);
+
+                    let not_modifs = seq.chars().any(|c| !['C', 'A', 'S', 'M'].contains(&c));
+
+                    if modifs.is_empty() || doubles || not_modifs {
+                        keys.push(KeyEvent::from(KeyCode::Char('<')));
+                        keys.extend(seq.chars().map(|c| KeyEvent::from(KeyCode::Char(c))));
+                        on_special = false;
+                        continue;
+                    }
+
+                    modifs
+                } else {
+                    KeyMod::empty()
+                };
+
+                let code = match parts.next() {
+                    Some("Enter") => KeyCode::Enter,
+                    Some("Tab") => KeyCode::Tab,
+                    Some("Bspc") => KeyCode::Backspace,
+                    Some("Del") => KeyCode::Delete,
+                    Some("Esc") => KeyCode::Esc,
+                    Some("Up") => KeyCode::Up,
+                    Some("Down") => KeyCode::Down,
+                    Some("Left") => KeyCode::Left,
+                    Some("Right") => KeyCode::Right,
+                    Some("PageU") => KeyCode::PageUp,
+                    Some("PageD") => KeyCode::PageDown,
+                    Some("Home") => KeyCode::Home,
+                    Some("End") => KeyCode::End,
+                    Some("Ins") => KeyCode::Insert,
+                    Some("F1") => KeyCode::F(1),
+                    Some("F2") => KeyCode::F(2),
+                    Some("F3") => KeyCode::F(3),
+                    Some("F4") => KeyCode::F(4),
+                    Some("F5") => KeyCode::F(5),
+                    Some("F6") => KeyCode::F(6),
+                    Some("F7") => KeyCode::F(7),
+                    Some("F8") => KeyCode::F(8),
+                    Some("F9") => KeyCode::F(9),
+                    Some("F10") => KeyCode::F(10),
+                    Some("F11") => KeyCode::F(11),
+                    Some("F12") => KeyCode::F(12),
+                    Some(seq)
+                        if let Some(char) = seq.chars().next()
+                            && (char.is_lowercase()
+                                || (char.is_uppercase() && modifs.contains(KeyMod::SHIFT)))
+                            && seq.chars().count() == 1 =>
+                    {
+                        KeyCode::Char(char)
+                    }
+                    _ => {
+                        keys.push(KeyEvent::from(KeyCode::Char('<')));
+                        keys.extend(seq.chars().map(|c| KeyEvent::from(KeyCode::Char(c))));
+                        on_special = false;
+                        continue;
+                    }
+                };
+
+                on_special = false;
+                keys.push(KeyEvent::new(code, modifs));
+            }
+        }
+
+        keys
+    }
+
     pub trait AsGives<U> {
         fn into_gives(self) -> Gives;
     }
@@ -162,7 +303,7 @@ mod global {
     impl<M: Mode<U>, U: Ui> AsGives<U> for &M {
         fn into_gives(self) -> Gives {
             let mode = self.clone();
-            Gives::Mode(Box::new(move || commands::set_mode(mode.clone())))
+            Gives::Mode(Box::new(move || crate::mode::set(mode.clone())))
         }
     }
 
@@ -214,7 +355,7 @@ impl Remapper {
     fn send_key<M: Mode<U>, U: Ui>(&self, key: KeyEvent) {
         let remaps = self.remaps.lock();
         let Some((_, remaps)) = remaps.iter().find(|(m, _)| TypeId::of::<M>() == *m) else {
-            commands::send_key(key);
+            super::send_key_to(key);
             return;
         };
 
@@ -235,7 +376,7 @@ impl Remapper {
                 match &remap.gives {
                     Gives::Keys(keys) => {
                         for key in keys {
-                            commands::send_key(*key);
+                            super::send_key_to(*key);
                         }
                     }
                     Gives::Mode(f) => f(),
@@ -255,7 +396,7 @@ impl Remapper {
             }
             *is_alias = false;
             for key in cur_seq.drain(..) {
-                commands::send_key(key);
+                super::send_key_to(key);
             }
         }
     }

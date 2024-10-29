@@ -63,10 +63,12 @@ Here’s an example configuration file, which makes use of
 ```rust
 setup_duat!(setup);
 use duat::prelude::*;
-use duat_kak::Normal;
+use duat_kak::{Insert, Normal};
 
 fn setup() {
     mode::set_default(Normal);
+    map::<Insert>(keys!("jk"), keys!(Esc));
+
     print::wrap_on_width();
 
     hooks::remove("FileWidgets");
@@ -97,15 +99,17 @@ fn setup() {
 
 This configuration does the following things:
 
-* Changes the default mode to a Kakoune inspired `Normal`;
-* Changes the wrapping;
-* Removes the hook group “FileWidgets”;
-* Pushes a vertical rule and line numbers to every file;
+* Changes the [default mode][__link0] to a Kakoune inspired `Normal`;
+* [Maps][__link1] jk to [esc][__link2];
+* [Changes][__link3] the wrapping;
+* [Removes][__link4] the hook [group][__link5] “FileWidgets”;
+* [Pushes][__link6] a [vertical rule][__link7] and [line numbers][__link8] to every file;
 * Removes the hook group “WindowWidgets”;
-* Pushes a custom status line and command line to the bottom of
-  the screen;
-* Adds hooks for mode changes in said input method;
-* Changes the style of the mode printed on the status line;
+* Pushes a [custom status line][__link9] and [command line][__link10] to the bottom
+  of the screen;
+* [Adds][__link11] hooks for [mode changes][__link12] in Duat;
+* [Changes][__link13] the [style][__link14] of the mode printed on the
+  status line;
 
 These are some of the ways you can configure Duat. You might
 notice some things that can be done with these simle options:
@@ -131,23 +135,17 @@ let text = text!([MyForm] "Waow it's my form! " [] "not anymore 😢");
 ```
 
 In this example, I’m using the “MyForm” form in order to style the
-text, while `[]` reverts back to the “Default” form.
-
-With the [tags][__link0] provided by Duat, you can also change the
-alignment, conceal text, add ghost text that can’t be interacted
-with, and also add buttons that take mouse input (in the future).
-These other tags are particularly useful when one wants to style
-the file, where multiple plugins may insert tags that do not
-interact with eachother.
+text, while `[]` reverts back to the “Default” form. The
+[`status!`][__link15] macro works similarly.
 
 Duat also has a simple command system, that lets you add commands
 with arguments supported by Rust’s type system:
 
 ```rust
 let callers = ["collapse-command-line", "collapse-cmd"];
-commands::add_for_widget::<CommandLine>(
+commands::add_for::<CommandLine>(
     callers,
-    |command_line, area, _, _| {
+    |_command_line, area, _cursors, _flags, _args| {
         area.constrain_ver(Constraint::Length(0.0))?;
 
         Ok(None)
@@ -155,11 +153,15 @@ commands::add_for_widget::<CommandLine>(
 )
 ```
 
+The 2 arguments
+
 ### Roadmap
 
-These are the goals that have been acomplished or are on their way:
+These are the goals that have been acomplished or are on their
+way:
 
-* [x] Implement basic visual functionality (printing, scrolling, etc);
+* [x] Implement basic visual functionality (printing, scrolling,
+  etc);
 * [x] Implement wrapping;
 * [x] Implement editing;
 * [x] Create a kak mode;
@@ -189,28 +191,27 @@ These are the goals that have been acomplished or are on their way:
 
 * [ ] Create an Iced frontend;
 
-**NOTE:** These are not set in stone, and may be done out of order.
+**NOTE:** These are not set in stone, and may be done out of
+order.
 
 ### Why should I use this?
 
-I don’t know what your personal reasoning would be, but in my case, I
-really
-like Kakoune’s editing model, but was frustrated with the lack of
-some
+I don’t know what your personal reasoning would be, but in my
+case, I really like Kakoune’s editing model, but was frustrated
+with the lack of some
 features, like folding, multiple file editing, the general
-barebonesness of the
-configuration, etc.
+barebonesness of the configuration, etc.
 
 I know that Neovim has all of these features, and Helix supposedly
 tries to
-solve some of these issues. But I don’t really like either of their
-editing
+solve some of these issues. But I don’t really like either of
+their editing
 styles to be honest.
 
 And so I thought, why not make my own text editor?
 
-I thought, why not make a text editor that is as modular as possible,
-while
+I thought, why not make a text editor that is as modular as
+possible, while
 still having a sensible default configuration? That I could modify
 however I
 wanted, and with a language that I love?
@@ -221,10 +222,24 @@ That is why I decided to embark on this journey.
 
 idk, cool sounding word that I got from Spelunky 2.
 
-Also, just wanted to say that no AI was used in this project, cuz I
-don’t like
-it.
+Also, just wanted to say that no AI was used in this project, cuz
+I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG421KSudx-APGyGeV0cmOLhwG9JFVXntRVKGG1mVgK00jzjXYWSBgmlkdWF0X2NvcmVlMC4xLjM
- [__link0]: https://docs.rs/duat_core/0.1.3/duat_core/?search=text::Tag
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG4o1F1NeB2tPGywwk9sQ9szQGzU44AwsYOcnG29Aesm4EjJAYWSCgmRkdWF0ZTAuMS4zgmlkdWF0X2NvcmVlMC4xLjM
+ [__link0]: https://docs.rs/duat/0.1.3/duat/?search=mode::set_default
+ [__link1]: https://docs.rs/duat/0.1.3/duat/?search=prelude::map
+ [__link10]: https://docs.rs/duat/0.1.3/duat/?search=prelude::CommandLine
+ [__link11]: https://docs.rs/duat/0.1.3/duat/?search=hooks::add
+ [__link12]: https://docs.rs/duat/0.1.3/duat/?search=hooks::ModeSwitched
+ [__link13]: https://docs.rs/duat/0.1.3/duat/?search=forms::set
+ [__link14]: https://docs.rs/duat/0.1.3/duat/?search=forms::Form
+ [__link15]: https://docs.rs/duat/0.1.3/duat/?search=prelude::status
+ [__link2]: https://docs.rs/duat/0.1.3/duat/?search=prelude::keys
+ [__link3]: https://docs.rs/duat/0.1.3/duat/?search=prelude::print::wrap_on_width
+ [__link4]: https://docs.rs/duat/0.1.3/duat/?search=hooks::remove
+ [__link5]: https://docs.rs/duat/0.1.3/duat/?search=hooks::add_grouped
+ [__link6]: https://docs.rs/duat_core/0.1.3/duat_core/?search=ui::FileBuilder
+ [__link7]: https://docs.rs/duat/0.1.3/duat/?search=prelude::VertRule
+ [__link8]: https://docs.rs/duat/0.1.3/duat/?search=prelude::LineNumbers
+ [__link9]: https://docs.rs/duat/0.1.3/duat/?search=prelude::status

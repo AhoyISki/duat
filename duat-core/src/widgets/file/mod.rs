@@ -25,7 +25,7 @@ use self::read::{Reader, RevSearcher, Searcher};
 use crate::{
     forms,
     history::History,
-    input::Cursors,
+    mode::Cursors,
     text::{IterCfg, Point, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},

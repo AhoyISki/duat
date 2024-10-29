@@ -25,11 +25,11 @@ use parking_lot::RwLock;
 use super::File;
 use crate::{
     commands,
-    data::{RoData, RwData, context},
+    data::{context, RoData, RwData},
     forms::{self, Form},
     hooks,
-    input::{Command, Cursors, IncSearcher},
-    text::{Ghost, Key, PrintCfg, SavedMatches, Tag, Text, text},
+    mode::{self, Command, Cursors, IncSearcher},
+    text::{text, Ghost, Key, PrintCfg, SavedMatches, Tag, Text},
     ui::{PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
 };
@@ -216,7 +216,7 @@ pub struct RunCommands<U> {
 
 impl<U: Ui> RunCommands<U> {
     pub fn new() -> Self {
-        commands::set_mode::<U>(Command);
+        mode::set::<U>(Command);
         Self { key: Key::new(), ghost: PhantomData }
     }
 }
@@ -317,7 +317,7 @@ pub struct IncSearch<I: IncSearcher<U>, U: Ui> {
 
 impl<I: IncSearcher<U>, U: Ui> IncSearch<I, U> {
     pub fn new(f: impl IncFn<I, U> + Send + Sync + 'static) -> Self {
-        commands::set_mode::<U>(Command);
+        mode::set::<U>(Command);
 
         Self {
             fn_or_inc: FnOrInc::Fn(Some(Box::new(f))),

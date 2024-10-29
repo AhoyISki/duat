@@ -1,5 +1,5 @@
 use super::{Cursors, EditHelper, KeyCode, KeyEvent, KeyMod, Mode, key};
-use crate::{commands, data::RwData, text::Point, ui::Ui, widgets::CommandLine};
+use crate::{data::RwData, text::Point, ui::Ui, widgets::CommandLine};
 
 #[derive(Clone)]
 pub struct Command;
@@ -71,11 +71,11 @@ impl<U: Ui> Mode<U> for Command {
                 });
                 helper.edit_on_main(|e| e.replace(""));
                 cursors.clear();
-                commands::reset_mode();
+                super::reset();
             }
             key!(KeyCode::Enter) => {
                 cursors.clear();
-                commands::reset_mode();
+                super::reset();
             }
             _ => {}
         }

@@ -13,7 +13,7 @@
 //!
 //! ```rust
 //! # use duat_core::{
-//! #     commands, data::RwData, input::{Cursors, EditHelper, KeyCode, KeyEvent, Mode, key},
+//! #     data::RwData, mode::{self, Cursors, EditHelper, KeyCode, KeyEvent, Mode, key},
 //! #     ui::Ui, widgets::File,
 //! # };
 //! #[derive(Default, Clone)]
@@ -33,7 +33,7 @@
 //!         let mut helper = EditHelper::new(widget, area, cursors);
 //!
 //!         let key!(Char(c)) = key else {
-//!             commands::reset_mode();
+//!             mode::reset();
 //!             return;
 //!         };
 //!         let Some(first) = self.0 else {
@@ -52,9 +52,9 @@
 //!                     m.move_hor(-1)
 //!                 }
 //!             }
-//!         })
+//!         });
 //!
-//!         commands::reset_mode();
+//!         mode::reset();
 //!     }
 //! }
 //! ```
@@ -72,7 +72,7 @@
 //! ```rust
 //! # use std::any::Any;
 //! # use duat_core::{
-//! #     commands, data::RwData, input::{Cursors, EditHelper, KeyCode, KeyEvent, Mode, key, keys},
+//! #     commands, data::RwData, mode::{Cursors, EditHelper, KeyCode, KeyEvent, Mode, key},
 //! #     ui::Ui, widgets::File,
 //! # };
 //! # struct Normal;
@@ -90,13 +90,13 @@
 //! #         todo!();
 //! #     }
 //! # }
-//! # fn map<M>(take: impl Into<Vec<KeyEvent>>, give: impl Any) {}
-//! map::<Normal>(keys!(C-"s"), 
+//! # fn map<M>(take: &str, give: &impl Any) {}
+//! map::<Normal>("<C-s>", &FindSeq::default());
 //! ```
-//! 
-//! 
 //!
-//! [`Mode`]: crate::input::Mode
+//!
+//!
+//! [`Mode`]: crate::mode::Mode
 //! [`File`]: crate::widgets::File
 #![feature(
     extract_if,
@@ -109,7 +109,7 @@
     type_alias_impl_trait,
     if_let_guard,
     closure_lifetime_binder,
-    trait_alias,
+    trait_alias
 )]
 
 use std::{
@@ -125,6 +125,8 @@ use std::{
 
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use ui::Window;
+use widgets::{File, Node, Widget};
 
 pub use self::{commands::has_ended, data::context};
 use self::{
@@ -138,7 +140,7 @@ pub mod data;
 pub mod forms;
 pub mod history;
 pub mod hooks;
-pub mod input;
+pub mod mode;
 pub mod session;
 pub mod text;
 pub mod ui;
@@ -169,7 +171,7 @@ pub trait Plugin<U: Ui>: 'static {
     /// # use duat_core::{
     /// #     commands,
     /// #     hooks::{self, *},
-    /// #     input::{key, KeyCode},
+    /// #     mode::{key, KeyCode},
     /// #     ui::Ui,
     /// #     widgets::File,
     /// #     Plugin,
@@ -332,12 +334,10 @@ pub enum Error<E> {
     NoWidgetYet,
     /// The checked widget is not of the type given
     WidgetIsNot,
-    /// The checked input is not of the type given
-    InputIsNot(PhantomData<E>),
     /// The [`Layout`] does not allow for anothe file to open
     ///
     /// [`Layout`]: ui::Layout
-    LayoutDisallowsFile,
+    LayoutDisallowsFile(PhantomData<E>),
 }
 
 impl<E1> Error<E1> {
@@ -354,8 +354,7 @@ impl<E1> Error<E1> {
             Self::NoFileForRelated => Error::NoFileForRelated,
             Self::NoWidgetYet => Error::NoWidgetYet,
             Self::WidgetIsNot => Error::WidgetIsNot,
-            Self::InputIsNot(_) => Error::InputIsNot(PhantomData),
-            Self::LayoutDisallowsFile => Error::LayoutDisallowsFile,
+            Self::LayoutDisallowsFile(_) => Error::LayoutDisallowsFile(PhantomData),
         }
     }
 }
@@ -386,10 +385,7 @@ impl<E> DuatError for Error<E> {
             Self::WidgetIsNot => err!(
                 "The widget is not " [*a] { type_name::<E>() } [] ". " early
             ),
-            Self::InputIsNot(..) => err!(
-                "This file's input is not " [*a] { type_name::<E>() } [] ". " early
-            ),
-            Self::LayoutDisallowsFile => err!(
+            Self::LayoutDisallowsFile(_) => err!(
                 "The " [*a] "Layout" [] " disallows the addition of more files."
             ),
         }
@@ -408,8 +404,7 @@ impl<E> std::fmt::Debug for Error<E> {
             Self::NoFileForRelated => "NoFileForRelated ",
             Self::NoWidgetYet => "NoWidgetYet ",
             Self::WidgetIsNot => "WidgetIsNot ",
-            Self::InputIsNot(_) => "InputIsNot",
-            Self::LayoutDisallowsFile => "LayoutDisallowsFile",
+            Self::LayoutDisallowsFile(_) => "LayoutDisallowsFile",
         });
 
         match self {
@@ -422,8 +417,7 @@ impl<E> std::fmt::Debug for Error<E> {
             | Self::NoFileForRelated
             | Self::NoWidgetYet
             | Self::WidgetIsNot
-            | Self::InputIsNot(_)
-            | Self::LayoutDisallowsFile => &mut debug,
+            | Self::LayoutDisallowsFile(_) => &mut debug,
         }
         .finish()
     }
@@ -489,6 +483,105 @@ where
         crates.insert(type_id, src_crate);
         crates.get(&type_id).unwrap()
     }
+}
+
+// Internal functions used for widget switching
+
+/// An entry for a file with the given name
+fn file_entry<'a, U: Ui>(
+    windows: &'a [Window<U>],
+    name: &str,
+) -> std::result::Result<(usize, &'a Node<U>), Text> {
+    windows
+        .iter()
+        .enumerate()
+        .flat_map(window_index_widget)
+        .find(|(_, node)| {
+            matches!(
+                node.inspect_as::<File, bool>(|file| file.name() == name),
+                Some(true)
+            )
+        })
+        .ok_or_else(|| err!("File with name " [*a] name [] " not found."))
+}
+
+/// An entry for a widget of a specific type
+fn widget_entry<W: Widget<U>, U: Ui>(
+    windows: &[Window<U>],
+    w: usize,
+) -> std::result::Result<(usize, &Node<U>), Text> {
+    let cur_file = context::cur_file::<U>().unwrap();
+
+    if let Some(node) = cur_file.get_related_widget::<W>() {
+        windows
+            .iter()
+            .enumerate()
+            .flat_map(window_index_widget)
+            .find(|(_, n)| n.ptr_eq(node.widget()))
+    } else {
+        iter_around(windows, w, 0).find(|(_, node)| node.data_is::<W>())
+    }
+    .ok_or(err!("No widget of type " [*a] { type_name::<W>() } [] " found."))
+}
+
+/// Iterator over a group of windows, that returns the window's index
+fn window_index_widget<U: Ui>(
+    (index, window): (usize, &Window<U>),
+) -> impl DoubleEndedIterator<Item = (usize, &Node<U>)> {
+    window.nodes().map(move |entry| (index, entry))
+}
+
+/// Iterates around a specific widget, going forwards
+fn iter_around<U: Ui>(
+    windows: &[Window<U>],
+    window: usize,
+    widget: usize,
+) -> impl Iterator<Item = (usize, &Node<U>)> + '_ {
+    let prev_len: usize = windows.iter().take(window).map(Window::len_widgets).sum();
+
+    windows
+        .iter()
+        .enumerate()
+        .skip(window)
+        .flat_map(window_index_widget)
+        .skip(widget + 1)
+        .chain(
+            windows
+                .iter()
+                .enumerate()
+                .take(window + 1)
+                .flat_map(window_index_widget)
+                .take(prev_len + widget),
+        )
+}
+
+/// Iterates around a specific widget, going backwards
+fn iter_around_rev<U: Ui>(
+    windows: &[Window<U>],
+    window: usize,
+    widget: usize,
+) -> impl Iterator<Item = (usize, &Node<U>)> {
+    let next_len: usize = windows.iter().skip(window).map(Window::len_widgets).sum();
+
+    windows
+        .iter()
+        .enumerate()
+        .rev()
+        .skip(windows.len() - window)
+        .flat_map(move |(i, win)| {
+            window_index_widget((i, win))
+                .rev()
+                .skip(win.len_widgets() - widget)
+        })
+        .chain(
+            windows
+                .iter()
+                .enumerate()
+                .rev()
+                .take(windows.len() - window)
+                .flat_map(move |(i, win)| window_index_widget((i, win)).rev())
+                .take(next_len - (widget + 1)),
+        )
 }
 
 // Debugging objects.

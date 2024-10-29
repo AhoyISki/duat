@@ -9,7 +9,7 @@ use std::{
 pub use self::global::*;
 use super::{RoData, RwData, private::InnerData};
 use crate::{
-    input::Cursors,
+    mode::Cursors,
     ui::{Area, Ui},
     widgets::{File, Node, Widget},
 };
@@ -28,7 +28,7 @@ mod global {
         Error, Result,
         data::RwData,
         duat_name,
-        input::Regular,
+        mode::Regular,
         text::Text,
         ui::{Ui, Window},
         widgets::{File, Node},

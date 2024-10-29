@@ -24,8 +24,8 @@
 //! ```
 //!
 //! [`Ui`]: crate::ui::Ui
-//! [`Cursors`]: crate::input::Cursors
-//! [`Cursor`]: crate::input::Cursor
+//! [`Cursors`]: crate::mode::Cursors
+//! [`Cursor`]: crate::mode::Cursor
 //! [`Point`]: crate::text::Point
 use std::{any::TypeId, io::Write, path::PathBuf};
 

@@ -243,7 +243,7 @@ unsafe impl<U: Ui> Sync for StatusLine<U> {}
 ///
 /// ```rust
 /// # use duat_core::{
-/// #     input::Cursors, text::{Text, text}, ui::Ui, widgets::{File, status},
+/// #     mode::Cursors, text::{Text, text}, ui::Ui, widgets::{File, status},
 /// #     hooks::{self, OnWindowOpen}
 /// # };
 /// fn name_but_funky(file: &File) -> String {
@@ -298,7 +298,7 @@ unsafe impl<U: Ui> Sync for StatusLine<U> {}
 /// ```rust
 /// # use std::sync::atomic::{AtomicUsize, Ordering};
 /// # use duat_core::{
-/// #     data::RwData, input::Mode, text::text, ui::Ui, widgets::{File, status},
+/// #     data::RwData, mode::Mode, text::text, ui::Ui, widgets::{File, status},
 /// #     hooks::{self, OnWindowOpen}
 /// # };
 /// # fn test<U: Ui>() {
@@ -332,7 +332,7 @@ unsafe impl<U: Ui> Sync for StatusLine<U> {}
 /// ```
 ///
 /// [`&File`]: File
-/// [`&Cursors`]: crate::input::Cursors
+/// [`&Cursors`]: crate::mode::Cursors
 /// [`&impl Widget`]: Widget
 /// [`impl Display`]: std::fmt::Display
 /// [`RwData`]: crate::data::RwData

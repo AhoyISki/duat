@@ -19,7 +19,7 @@ use std::{fmt::Display, marker::PhantomData};
 use crate::{
     context::FileReader,
     data::{DataMap, RoData, RwData},
-    input::Cursors,
+    mode::Cursors,
     text::{Builder, Tag, Text, text},
     ui::Ui,
     widgets::{File, Widget},

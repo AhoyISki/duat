@@ -5,9 +5,9 @@ use std::{ops::RangeInclusive, sync::LazyLock};
 use duat_core::{
     commands, context,
     data::{RwData, RwLock},
-    input::{
-        Cursors, EditHelper, Fwd, IncSearcher, KeyCode::*, KeyEvent as Event, KeyMod as Mod, Mode,
-        Mover, key,
+    mode::{
+        self, Cursors, EditHelper, Fwd, IncSearcher, KeyCode::*, KeyEvent as Event, KeyMod as Mod,
+        Mode, Mover, key,
     },
     text::{Point, err},
     ui::{Area, Ui},
@@ -259,7 +259,7 @@ impl<U: Ui> Mode<U> for Normal {
                     (false, false) => SelType::Normal,
                 };
 
-                commands::set_mode::<U>(if let 'f' | 'F' = char {
+                mode::set::<U>(if let 'f' | 'F' = char {
                     OneKey::Find(sel_type)
                 } else {
                     OneKey::Until(sel_type)
@@ -278,19 +278,19 @@ impl<U: Ui> Mode<U> for Normal {
             ////////// Text modifying keys.
             key!(Char('i')) => {
                 helper.move_each(|m| m.set_caret_on_start());
-                commands::set_mode::<U>(Insert);
+                mode::set::<U>(Insert);
             }
             key!(Char('a')) => {
                 helper.move_each(|m| {
                     m.set_caret_on_end();
                     m.move_hor(1);
                 });
-                commands::set_mode::<U>(Insert);
+                mode::set::<U>(Insert);
             }
             key!(Char('c')) => {
                 helper.edit_on_each(|e| e.replace(""));
                 helper.move_each(|m| m.unset_anchor());
-                commands::set_mode::<U>(Insert);
+                mode::set::<U>(Insert);
             }
             key!(Char('d')) => {
                 helper.edit_on_each(|e| e.replace(""));
@@ -298,10 +298,10 @@ impl<U: Ui> Mode<U> for Normal {
             }
 
             ////////// Other mode changing keys.
-            key!(Char(':')) => commands::set_cmd_mode::<U>(RunCommands::new()),
-            key!(Char('G'), Mod::SHIFT) => commands::set_mode::<U>(OneKey::GoTo(SelType::Extend)),
-            key!(Char('g')) => commands::set_mode::<U>(OneKey::GoTo(SelType::Normal)),
-            key!(Char('/')) => commands::set_cmd_mode::<U>(IncSearch::new(Fwd::new)),
+            key!(Char(':')) => mode::set_cmd::<U>(RunCommands::new()),
+            key!(Char('G'), Mod::SHIFT) => mode::set::<U>(OneKey::GoTo(SelType::Extend)),
+            key!(Char('g')) => mode::set::<U>(OneKey::GoTo(SelType::Normal)),
+            key!(Char('/')) => mode::set_cmd::<U>(IncSearch::new(Fwd::new)),
 
             ////////// Temporary.
             key!(Char('q')) => panic!("Panicked on purpose"),
@@ -409,7 +409,7 @@ impl<U: Ui> Mode<U> for Insert {
 
             key!(Esc) => {
                 helper.new_moment();
-                commands::set_mode::<U>(Normal::new());
+                mode::set::<U>(Normal::new());
             }
             _ => {}
         }
@@ -567,7 +567,7 @@ impl<U: Ui> Mode<U> for OneKey {
             _ => SelType::Normal,
         };
 
-        commands::set_mode::<U>(Normal(sel_type));
+        mode::set::<U>(Normal(sel_type));
     }
 }
 

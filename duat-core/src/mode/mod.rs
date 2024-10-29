@@ -4,20 +4,181 @@ pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
 
 pub use self::{
     commander::Command,
-    default::Regular,
     helper::{Cursor, Cursors, EditHelper, Editor, Mover},
     inc_search::{Fwd, IncSearcher},
+    regular::Regular,
     remap::*,
+    switch::*,
 };
 use crate::{data::RwData, ui::Ui, widgets::Widget};
 
 mod commander;
-mod default;
 mod helper;
 mod inc_search;
+mod regular;
 mod remap;
 
-/// An input method for a [`Widget`]
+mod switch {
+    use std::{
+        any::TypeId,
+        sync::{Arc, LazyLock},
+    };
+
+    use crossterm::event::KeyEvent;
+    use parking_lot::Mutex;
+
+    use super::Mode;
+    use crate::{
+        context, duat_name, file_entry,
+        hooks::{self, ModeSwitched},
+        ui::{Ui, Window},
+        widget_entry,
+        widgets::{CmdLineMode, CommandLine, File, Node},
+    };
+
+    static SEND_KEY: LazyLock<Mutex<Box<dyn FnMut(KeyEvent) + Send + Sync>>> =
+        LazyLock::new(|| Mutex::new(Box::new(|_| {})));
+    static RESET_MODE: LazyLock<Mutex<Arc<dyn Fn() + Send + Sync>>> =
+        LazyLock::new(|| Mutex::new(Arc::new(|| {})));
+    static SET_MODE: Mutex<Option<Box<dyn FnOnce() + Send + Sync>>> = Mutex::new(None);
+
+    pub fn was_set() -> Option<Box<dyn FnOnce() + Send + Sync>> {
+        SET_MODE.lock().take()
+    }
+
+    pub fn set_default<M: Mode<U>, U: Ui>(mode: M) {
+        *RESET_MODE.lock() = Arc::new(move || set_mode_fn::<M, U>(mode.clone()));
+        let mut set_mode = SET_MODE.lock();
+        let prev = set_mode.take();
+        *set_mode = Some(Box::new(move || {
+            if let Some(f) = prev {
+                f()
+            }
+            RESET_MODE.lock()()
+        }));
+    }
+
+    pub fn reset() {
+        *SET_MODE.lock() = Some(Box::new(|| RESET_MODE.lock()()))
+    }
+
+    pub fn set<U: Ui>(mode: impl Mode<U>) {
+        let mut set_mode = SET_MODE.lock();
+        let prev = set_mode.take();
+        *set_mode = Some(Box::new(move || {
+            if let Some(f) = prev {
+                f()
+            }
+            set_mode_fn(mode)
+        }));
+    }
+
+    pub fn set_cmd<U: Ui>(mode: impl CmdLineMode<U>) {
+        let Ok(cur_file) = context::cur_file::<U>() else {
+            return;
+        };
+
+        if let Some(node) = cur_file.get_related_widget::<CommandLine<U>>() {
+            node.try_downcast::<CommandLine<U>>()
+                .unwrap()
+                .write()
+                .set_mode(mode);
+        } else {
+            let windows = context::windows::<U>().read();
+            let w = context::cur_window();
+            let cur_window = &windows[w];
+
+            let mut widgets = {
+                let previous = windows[..w].iter().flat_map(Window::nodes);
+                let following = windows[(w + 1)..].iter().flat_map(Window::nodes);
+                cur_window.nodes().chain(previous).chain(following)
+            };
+
+            if let Some(cmd_line) = widgets.find_map(|node| {
+                node.data_is::<CommandLine<U>>()
+                    .then(|| node.try_downcast::<CommandLine<U>>().unwrap())
+            }) {
+                cmd_line.write().set_mode(mode)
+            }
+        }
+    }
+
+    /// Switches to the file with the given name
+    pub fn reset_switch_to<U: Ui>(name: impl std::fmt::Display) {
+        let windows = context::windows::<U>().read();
+        let name = name.to_string();
+        match file_entry(&windows, &name) {
+            Ok((_, node)) => {
+                let node = node.clone();
+                *SET_MODE.lock() = Some(Box::new(move || {
+                    switch_widget(node);
+                    RESET_MODE.lock().clone()()
+                }));
+            }
+            Err(err) => context::notify(err),
+        }
+    }
+
+    /// Switches to a certain widget
+    pub(crate) fn switch_widget<U: Ui>(node: Node<U>) {
+        if let Ok(widget) = context::cur_widget::<U>() {
+            widget.node().on_unfocus();
+        }
+
+        context::set_cur(node.as_file(), node.clone());
+
+        node.on_focus();
+    }
+
+    pub(crate) fn send_key_to(key: KeyEvent) {
+        SEND_KEY.lock()(key);
+    }
+
+    fn send_key_fn<U: Ui>(mode: &mut impl Mode<U>, key: KeyEvent) {
+        let Ok(widget) = context::cur_widget::<U>() else {
+            return;
+        };
+
+        widget.mutate_data_as(|widget, area, cursors| {
+            let mut c = cursors.write();
+            mode.send_key(key, widget, area, &mut c)
+        });
+    }
+
+    fn set_mode_fn<M: Mode<U>, U: Ui>(mut mode: M) {
+        // If we are on the correct widget, no switch is needed.
+        if context::cur_widget::<U>().unwrap().type_id() != TypeId::of::<M::Widget>() {
+            let windows = context::windows().read();
+            let w = context::cur_window();
+            let entry = if TypeId::of::<M::Widget>() == TypeId::of::<File>() {
+                let name = context::cur_file::<U>().unwrap().name();
+                file_entry(&windows, &name)
+            } else {
+                widget_entry::<M::Widget, U>(&windows, w)
+            };
+
+            match entry {
+                Ok((_, node)) => switch_widget(node.clone()),
+                Err(err) => {
+                    context::notify(err);
+                    return;
+                }
+            };
+        }
+
+        crate::mode::set_send_key::<M, U>();
+
+        context::mode_name().mutate(|mode| {
+            let new_mode = duat_name::<M>();
+            hooks::trigger::<ModeSwitched>((mode, new_mode));
+            *mode = new_mode;
+        });
+
+        *SEND_KEY.lock() = Box::new(move |key| send_key_fn::<U>(&mut mode, key));
+    }
+}
+
+/// A mode for a [`Widget`]
 ///
 /// Input methods are the way that Duat decides how keys are going to
 /// modify widgets.
@@ -31,7 +192,7 @@ mod remap;
 /// If a [`Mode`] has cursors, it _must_ use the [`EditHelper`] struct
 /// in order to modify of the widget's [`Text`].
 ///
-/// If your widget/input method combo is not based on cursors. You get
+/// If your widget/mode combo is not based on cursors. You get
 /// more freedom to modify things as you wish, but you should refrain
 /// from using [`Cursor`]s in order to prevent bugs.
 ///
@@ -112,16 +273,16 @@ mod remap;
 /// user to create their own [`Mode`] for this widget.
 ///
 /// Let's say that I have created an [`Mode`] `MenuInput` for
-/// the `Menu`. This input method is actually the one that is
-/// documented on the documentation entry for [`Mode`], you can
-/// check it out next, to see how that was handled.
+/// the `Menu`. This mode is actually the one that is documented on
+/// the documentation entry for [`Mode`], you can check it out next,
+/// to see how that was handled.
 ///
 /// Now I'll implement [`Widget`]:
 ///
 /// ```rust
 /// # use std::marker::PhantomData;
 /// # use duat_core::{
-/// #     data::RwData, input::{Mode, KeyEvent}, forms::{self, Form},
+/// #     data::RwData, mode::{Mode, KeyEvent}, forms::{self, Form},
 /// #     text::{text, Text}, ui::{PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
 /// # };
 /// # #[derive(Default)]
@@ -181,7 +342,7 @@ mod remap;
 /// sent.
 ///
 /// Now, let's take a look at some [`Widget`] methods that are unique
-/// to widgets that can take input. Those are the [`on_focus`] and
+/// to widgets that can take mode. Those are the [`on_focus`] and
 /// [`on_unfocus`] methods:
 ///
 /// ```rust
@@ -245,7 +406,7 @@ mod remap;
 /// # #![feature(let_chains)]
 /// # use std::marker::PhantomData;
 /// # use duat_core::{
-/// #     data::RwData, input::{key, Cursors, Mode, KeyCode, KeyEvent}, forms::{self, Form},
+/// #     data::RwData, mode::{key, Cursors, Mode, KeyCode, KeyEvent}, forms::{self, Form},
 /// #     text::{text, Text}, ui::{PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
 /// # };
 /// # #[derive(Default)]
@@ -308,7 +469,7 @@ mod remap;
 /// Notice the [`key!`] macro. This macro is useful for pattern
 /// matching [`KeyEvent`]s on [`Mode`]s.
 ///
-/// [`Cursor`]: crate::input::Cursor
+/// [`Cursor`]: crate::mode::Cursor
 /// [`print`]: Widget::print
 /// [`on_focus`]: Widget::on_focus
 /// [`on_unfocus`]: Widget::on_unfocus
@@ -343,7 +504,7 @@ pub trait Mode<U: Ui>: Sized + Clone + Send + Sync + 'static {
 /// [`Mode`]:
 ///
 /// ```rust
-/// # use duat_core::input::{KeyEvent, KeyCode, KeyMod, key};
+/// # use duat_core::mode::{KeyEvent, KeyCode, KeyMod, key};
 /// # fn test(key: KeyEvent) {
 /// if let key!(KeyCode::Char('o'), KeyMod::NONE) = key { /* Code */ }
 /// // as opposed to
@@ -359,7 +520,7 @@ pub trait Mode<U: Ui>: Sized + Clone + Send + Sync + 'static {
 /// You can also assign while matching:
 ///
 /// ```rust
-/// # use duat_core::input::{KeyEvent, KeyCode, KeyMod, key};
+/// # use duat_core::mode::{KeyEvent, KeyCode, KeyMod, key};
 /// # fn test(key: KeyEvent) {
 /// if let key!(code, KeyMod::SHIFT | KeyMod::ALT) = key { /* Code */ }
 /// // as opposed to

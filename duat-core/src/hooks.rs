@@ -65,7 +65,7 @@ use parking_lot::{Mutex, RwLock};
 pub use self::global::*;
 use crate::{
     data::RwData,
-    input::{Cursors, KeyEvent},
+    mode::{Cursors, KeyEvent},
     ui::{Area, FileBuilder, Ui, WindowBuilder},
     widgets::Widget,
 };
@@ -178,7 +178,7 @@ impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
 /// This can happen if you're using two structs with the same name,
 /// but from different crates.
 ///
-/// [`Mode`]: crate::input::Mode
+/// [`Mode`]: crate::mode::Mode
 pub struct ModeSwitched;
 
 impl Hookable for ModeSwitched {

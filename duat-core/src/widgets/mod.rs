@@ -1,7 +1,7 @@
 //! APIs for the construction of widgets, and a few common ones.
 //!
 //! This module has the [`Widget`] trait, which is a region on the
-//! window containing a [`Text`], and may be modified by user input
+//! window containing a [`Text`], and may be modified by user mode
 //! (but not necessarily).
 //!
 //! With the exception of the [`File`], these widgets will show up in
@@ -26,7 +26,7 @@
 //! `10.0`, and a height of `2.0`.
 //!
 //! The module also provides 4 native widgets, [`File`] and
-//! [`CommandLine`], which can receive user input, and [`StatusLine`]
+//! [`CommandLine`], which can receive user mode, and [`StatusLine`]
 //! and [`LineNumbers`] which are not supposed to.
 //!
 //! These 4 widgets are supposed to be universal, not needing a
@@ -62,7 +62,7 @@ use crate::{
     data::{Data, RwData},
     forms,
     hooks::{self, FocusedOn, UnfocusedFrom},
-    input::Cursors,
+    mode::Cursors,
     text::{PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
 };
@@ -76,7 +76,7 @@ mod status_line;
 ///
 /// Most widgets are supposed to be passive widgets, that simply show
 /// information about the current state of Duat. If you want to see
-/// how to create a widget that takes in input, see [`Mode`]
+/// how to create a widget that takes in mode, see [`Mode`]
 ///
 /// In order to show that information, widgets make use of [`Text`],
 /// which can show stylized text, buttons, and all sorts of other
@@ -291,7 +291,7 @@ mod status_line;
 /// }
 /// ```
 ///
-/// [`Mode`]: crate::input::Mode
+/// [`Mode`]: crate::mode::Mode
 /// [`cfg`]: Widget::cfg
 /// [`build`]: WidgetCfg::build
 /// [How]: PushSpecs

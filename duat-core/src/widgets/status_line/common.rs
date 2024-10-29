@@ -10,14 +10,14 @@
 //!
 //! [`StatusLine`]: super::StatusLine
 //! [`status!`]: super::status
-//! [`Cursor`]: crate::input::Cursor
-//! [`Mode`]: crate::input::Mode
+//! [`Cursor`]: crate::mode::Cursor
+//! [`Mode`]: crate::mode::Mode
 use crossterm::event::KeyEvent;
 
 use crate::{
     context,
     data::DataMap,
-    input::{self, Cursors},
+    mode::{self, Cursors},
     text::{Text, text},
     widgets::File,
 };
@@ -97,7 +97,7 @@ pub fn selections(cursors: &Cursors) -> usize {
 ///
 /// When there is more than one [`Cursor`]
 ///
-/// [`Cursor`]: crate::input::Cursor
+/// [`Cursor`]: crate::mode::Cursor
 pub fn selections_fmt(cursors: &Cursors) -> Text {
     if cursors.len() == 1 {
         text!([Selections] "1 sel")
@@ -107,12 +107,12 @@ pub fn selections_fmt(cursors: &Cursors) -> Text {
 }
 
 pub fn cur_map_fmt() -> DataMap<(Vec<KeyEvent>, bool), Text> {
-    let data = input::cur_sequence();
+    let data = mode::cur_sequence();
     data.map(|(keys, is_alias)| {
         if *is_alias {
             Text::new()
         } else {
-            input::keys_to_text(keys)
+            mode::keys_to_text(keys)
         }
     })
 }

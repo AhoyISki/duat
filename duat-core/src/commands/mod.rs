@@ -2,7 +2,6 @@
 //!
 //! TO BE DONE
 use std::{
-    any::type_name,
     collections::HashMap,
     fmt::Display,
     sync::{Arc, LazyLock},
@@ -14,20 +13,211 @@ pub use self::{
     parameters::{Args, Flags, split_flags_and_args},
 };
 use crate::{
-    Error, context,
-    data::{RwData, RwLock},
-    input::Cursors,
-    text::{Text, err, ok},
-    ui::{Ui, Window},
-    widgets::{File, Node, Widget},
+    context, data::{RwData, RwLock}, mode::Cursors, text::{err, ok, Text}, ui::Ui, widget_entry, widgets::Widget, Error
 };
 
-mod control;
+mod control {
+    use std::{
+        path::PathBuf,
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            mpsc,
+        },
+    };
+
+    use crate::{
+        commands, context, iter_around, iter_around_rev, mode,
+        text::{Text, err, ok},
+        ui::{Event, Ui, Window},
+        widgets::File,
+    };
+
+    static HAS_ENDED: AtomicBool = AtomicBool::new(false);
+
+    /// Returns `true` if Duat must quit/reload
+    ///
+    /// You should use this function in order to check if loops inside
+    /// of threads should break.
+    pub fn has_ended() -> bool {
+        HAS_ENDED.load(Ordering::Relaxed)
+    }
+
+    /// Ends duat, either for reloading the config, or quitting
+    pub(crate) fn end_session() {
+        HAS_ENDED.store(true, Ordering::Relaxed);
+        while crate::thread::still_running() {
+            std::thread::sleep(std::time::Duration::from_micros(500));
+        }
+    }
+
+    pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<Event>) -> crate::Result<(), ()> {
+        commands::add(["quit", "q"], {
+            let tx = tx.clone();
+
+            move |_flags, _args| {
+                tx.send(Event::Quit).unwrap();
+                Ok(None)
+            }
+        })?;
+
+        commands::add(["write", "w"], move |_flags, mut args| {
+            let file = context::cur_file::<U>()?;
+
+            let paths = {
+                let mut paths = Vec::new();
+
+                while let Ok(arg) = args.next() {
+                    paths.push(arg.to_string());
+                }
+
+                paths
+            };
+
+            if paths.is_empty() {
+                file.inspect(|file, _, _| {
+                    if let Some(name) = file.set_name() {
+                        let bytes = file.write()?;
+                        ok!("Wrote " [*a] bytes [] " bytes to " [*a] name [] ".")
+                    } else {
+                        Err(err!("Give the file a name, to write it with"))
+                    }
+                })
+            } else {
+                file.inspect(|file, _, _| {
+                    let mut bytes = 0;
+                    for path in &paths {
+                        bytes = file.write_to(path)?;
+                    }
+
+                    let files_text = {
+                        let mut builder = Text::builder();
+                        ok!(builder, [*a] { &paths[0] });
+
+                        for path in paths.iter().skip(1).take(paths.len() - 1) {
+                            ok!(builder, [] ", " [*a] path)
+                        }
+
+                        if paths.len() > 1 {
+                            ok!(builder, [] " and " [*a] { paths.last().unwrap() })
+                        }
+
+                        builder.finish()
+                    };
+
+                    ok!("Wrote " [*a] bytes [] " bytes to " files_text [] ".")
+                })
+            }
+        })?;
+
+        commands::add(["edit", "e"], {
+            let windows = context::windows::<U>();
+
+            move |_, mut args| {
+                let windows = windows.read();
+                let file = args.next_else(err!("No path supplied."))?;
+
+                let path = PathBuf::from(file);
+                let name = path
+                    .file_name()
+                    .ok_or(err!("No file in path"))?
+                    .to_string_lossy()
+                    .to_string();
+
+                if !windows.iter().flat_map(Window::nodes).any(|node| {
+                    matches!(
+                        node.inspect_as::<File, bool>(|f| f.name() == name),
+                        Some(true)
+                    )
+                }) {
+                    tx.send(Event::OpenFile(path)).unwrap();
+                    return ok!("Opened " [*a] file [] ".");
+                }
+
+                mode::reset_switch_to::<U>(&name);
+                ok!("Switched to " [*a] name [] ".")
+            }
+        })?;
+
+        commands::add(["buffer", "b"], move |_, mut args| {
+            let path: PathBuf = args.next_as()?;
+            let name = path
+                .file_name()
+                .ok_or(err!("No file in path"))?
+                .to_string_lossy()
+                .to_string();
+
+            mode::reset_switch_to::<U>(&name);
+            ok!("Switched to " [*a] name [] ".")
+        })?;
+
+        commands::add(["next-file"], {
+            let windows = context::windows();
+
+            move |flags, _| {
+                let file = context::cur_file()?;
+                let read_windows = windows.read();
+                let w = context::cur_window();
+
+                let widget_index = read_windows[w]
+                    .nodes()
+                    .position(|node| file.file_ptr_eq(node))
+                    .unwrap();
+
+                let name = if flags.word("global") {
+                    iter_around::<U>(&read_windows, w, widget_index)
+                        .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
+                        .ok_or_else(|| err!("There are no other open files."))?
+                } else {
+                    let slice = &read_windows[w..=w];
+                    iter_around(slice, 0, widget_index)
+                        .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
+                        .ok_or_else(|| err!("There are no other files open in this window."))?
+                };
+
+                mode::reset_switch_to::<U>(&name);
+                ok!("Switched to " [*a] name [] ".")
+            }
+        })?;
+
+        commands::add(["prev-file"], {
+            let windows = context::windows();
+
+            move |flags, _| {
+                let file = context::cur_file()?;
+                let windows = windows.read();
+                let w = context::cur_window();
+
+                let widget_i = windows[w]
+                    .nodes()
+                    .position(|node| file.file_ptr_eq(node))
+                    .unwrap();
+
+                let name = if flags.word("global") {
+                    iter_around_rev::<U>(&windows, w, widget_i)
+                        .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
+                        .ok_or_else(|| err!("There are no other open files."))?
+                } else {
+                    let slice = &windows[w..=w];
+                    iter_around_rev(slice, 0, widget_i)
+                        .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
+                        .ok_or_else(|| err!("There are no other files open in this window."))?
+                };
+
+                mode::reset_switch_to::<U>(&name);
+
+                ok!("Switched to " [*a] name [] ".")
+            }
+        })?;
+
+        Ok(())
+    }
+}
+
 mod parameters;
 
 mod global {
     use super::{Args, CmdResult, Commands, Flags, Result};
-    use crate::{input::Cursors, text::Text, ui::Ui, widgets::Widget};
+    use crate::{mode::Cursors, text::Text, ui::Ui, widgets::Widget};
 
     static COMMANDS: Commands = Commands::new();
 
@@ -636,95 +826,3 @@ impl InnerCommands {
 }
 
 pub type Result<T> = crate::Result<T, ()>;
-
-fn file_entry<'a, U: Ui>(
-    windows: &'a [Window<U>],
-    name: &str,
-) -> std::result::Result<(usize, &'a Node<U>), Text> {
-    windows
-        .iter()
-        .enumerate()
-        .flat_map(window_index_widget)
-        .find(|(_, node)| {
-            matches!(
-                node.inspect_as::<File, bool>(|file| file.name() == name),
-                Some(true)
-            )
-        })
-        .ok_or_else(|| err!("File with name " [*a] name [] " not found."))
-}
-
-fn widget_entry<W: Widget<U>, U: Ui>(
-    windows: &[Window<U>],
-    w: usize,
-) -> std::result::Result<(usize, &Node<U>), Text> {
-    let cur_file = context::cur_file::<U>().unwrap();
-
-    if let Some(node) = cur_file.get_related_widget::<W>() {
-        windows
-            .iter()
-            .enumerate()
-            .flat_map(window_index_widget)
-            .find(|(_, n)| n.ptr_eq(node.widget()))
-    } else {
-        iter_around(windows, w, 0).find(|(_, node)| node.data_is::<W>())
-    }
-    .ok_or(err!("No widget of type " [*a] { type_name::<W>() } [] " found."))
-}
-
-fn window_index_widget<U: Ui>(
-    (index, window): (usize, &Window<U>),
-) -> impl DoubleEndedIterator<Item = (usize, &Node<U>)> {
-    window.nodes().map(move |entry| (index, entry))
-}
-
-fn iter_around<U: Ui>(
-    windows: &[Window<U>],
-    window: usize,
-    widget: usize,
-) -> impl Iterator<Item = (usize, &Node<U>)> + '_ {
-    let prev_len: usize = windows.iter().take(window).map(Window::len_widgets).sum();
-
-    windows
-        .iter()
-        .enumerate()
-        .skip(window)
-        .flat_map(window_index_widget)
-        .skip(widget + 1)
-        .chain(
-            windows
-                .iter()
-                .enumerate()
-                .take(window + 1)
-                .flat_map(window_index_widget)
-                .take(prev_len + widget),
-        )
-}
-
-fn iter_around_rev<U: Ui>(
-    windows: &[Window<U>],
-    window: usize,
-    widget: usize,
-) -> impl Iterator<Item = (usize, &Node<U>)> {
-    let next_len: usize = windows.iter().skip(window).map(Window::len_widgets).sum();
-
-    windows
-        .iter()
-        .enumerate()
-        .rev()
-        .skip(windows.len() - window)
-        .flat_map(move |(i, win)| {
-            window_index_widget((i, win))
-                .rev()
-                .skip(win.len_widgets() - widget)
-        })
-        .chain(
-            windows
-                .iter()
-                .enumerate()
-                .rev()
-                .take(windows.len() - window)
-                .flat_map(move |(i, win)| window_index_widget((i, win)).rev())
-                .take(next_len - (widget + 1)),
-        )
-}

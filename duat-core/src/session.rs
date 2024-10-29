@@ -13,7 +13,7 @@ use crate::{
     commands, context,
     data::RwData,
     hooks::{self, OnFileOpen, OnWindowOpen, SessionStarted},
-    input,
+    mode,
     text::PrintCfg,
     ui::{Area, Event, FileBuilder, Layout, MasterOnLeft, Sender, Ui, Window, WindowBuilder},
     widgets::{File, FileCfg, Node, Widget, WidgetCfg},
@@ -257,13 +257,13 @@ impl<U: Ui> Session<U> {
             loop {
                 let cur_window = &windows[w.load(Ordering::Relaxed)];
 
-                if let Some(set_mode) = commands::was_mode_set() {
+                if let Some(set_mode) = mode::was_set() {
                     set_mode();
                 }
 
                 if let Ok(event) = rx.recv_timeout(Duration::from_millis(10)) {
                     match event {
-                        Event::Key(key) => input::send_key(key),
+                        Event::Key(key) => mode::send_key_to(key),
                         Event::Resize | Event::FormChange => {
                             for node in cur_window.nodes() {
                                 s.spawn(|| node.update_and_print());
