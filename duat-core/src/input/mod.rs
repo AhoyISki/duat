@@ -1,3 +1,5 @@
+use core::str;
+
 pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
 
 pub use self::{
@@ -590,4 +592,109 @@ pub fn key_events<const LEN: usize>(str: &str, modif: KeyMod) -> [KeyEvent; LEN]
     }
 
     events
+}
+
+pub fn str_to_keys(str: &str) -> Vec<KeyEvent> {
+    const MODS: [(char, KeyMod); 4] = [
+        ('C', KeyMod::CONTROL),
+        ('A', KeyMod::ALT),
+        ('S', KeyMod::SHIFT),
+        ('M', KeyMod::META),
+    ];
+
+    let mut keys = Vec::new();
+    let mut on_special = false;
+
+    for seq in str.split_inclusive(['<', '>']) {
+        if !on_special {
+            let end = if seq.ends_with('<') {
+                on_special = true;
+                seq.len() - 1
+            } else {
+                seq.len()
+            };
+
+            keys.extend(seq[..end].chars().map(|c| KeyEvent::from(KeyCode::Char(c))));
+        } else if seq.ends_with('>') {
+            let trimmed = seq.trim_end_matches('>');
+            let mut parts = trimmed.split('-');
+
+            let modifs = if trimmed.contains('-')
+                && let Some(seq) = parts.next()
+            {
+                let mut modifs = KeyMod::empty();
+
+                for (str, modif) in MODS {
+                    if seq.contains(str) {
+                        modifs.set(modif, true);
+                    }
+                }
+
+                let doubles = ['C', 'A', 'S', 'M']
+                    .iter()
+                    .any(|c| seq.chars().filter(|char| char == c).count() > 1);
+
+                let not_modifs = seq.chars().any(|c| !['C', 'A', 'S', 'M'].contains(&c));
+
+                if modifs.is_empty() || doubles || not_modifs {
+                    keys.push(KeyEvent::from(KeyCode::Char('<')));
+                    keys.extend(seq.chars().map(|c| KeyEvent::from(KeyCode::Char(c))));
+                    on_special = false;
+                    continue;
+                }
+
+                modifs
+            } else {
+                KeyMod::empty()
+            };
+
+            let code = match parts.next() {
+                Some("Enter") => KeyCode::Enter,
+                Some("Tab") => KeyCode::Tab,
+                Some("Backspace") => KeyCode::Backspace,
+                Some("Del") => KeyCode::Delete,
+                Some("Esc") => KeyCode::Esc,
+                Some("Up") => KeyCode::Up,
+                Some("Down") => KeyCode::Down,
+                Some("Left") => KeyCode::Left,
+                Some("Right") => KeyCode::Right,
+                Some("PageUp") => KeyCode::PageUp,
+                Some("PageDown") => KeyCode::PageDown,
+                Some("Home") => KeyCode::Home,
+                Some("End") => KeyCode::End,
+                Some("Insert") => KeyCode::Insert,
+                Some("F1") => KeyCode::F(1),
+                Some("F2") => KeyCode::F(2),
+                Some("F3") => KeyCode::F(3),
+                Some("F4") => KeyCode::F(4),
+                Some("F5") => KeyCode::F(5),
+                Some("F6") => KeyCode::F(6),
+                Some("F7") => KeyCode::F(7),
+                Some("F8") => KeyCode::F(8),
+                Some("F9") => KeyCode::F(9),
+                Some("F10") => KeyCode::F(10),
+                Some("F11") => KeyCode::F(11),
+                Some("F12") => KeyCode::F(12),
+                Some(seq)
+                    if let Some(char) = seq.chars().next()
+                        && (char.is_lowercase()
+                            || (char.is_uppercase() && modifs.contains(KeyMod::SHIFT)))
+                        && seq.chars().count() == 1 =>
+                {
+                    KeyCode::Char(char)
+                }
+                _ => {
+                    keys.push(KeyEvent::from(KeyCode::Char('<')));
+                    keys.extend(seq.chars().map(|c| KeyEvent::from(KeyCode::Char(c))));
+                    on_special = false;
+                    continue;
+                }
+            };
+
+            on_special = false;
+            keys.push(KeyEvent::new(code, modifs));
+        }
+    }
+
+    keys
 }

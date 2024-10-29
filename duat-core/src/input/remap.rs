@@ -13,14 +13,14 @@ use crate::{
 };
 
 mod global {
-    use crossterm::event::{KeyCode, KeyEvent};
+    use crossterm::event::KeyEvent;
     use parking_lot::Mutex;
 
     use super::{Gives, Remapper};
     use crate::{
         commands,
         data::RoData,
-        input::Mode,
+        input::{Mode, str_to_keys},
         text::{Text, text},
         ui::Ui,
     };
@@ -35,8 +35,8 @@ mod global {
     /// added.
     ///
     /// [keys]: crate::input::keys
-    pub fn map<M: Mode<U>, U: Ui>(take: impl AsTakes, give: impl AsGives<U>) {
-        REMAPPER.remap::<M, U>(take.into_takes(), give.into_gives(), false);
+    pub fn map<M: Mode<U>, U: Ui>(take: &str, give: impl AsGives<U>) {
+        REMAPPER.remap::<M, U>(str_to_keys(take), give.into_gives(), false);
     }
 
     /// Aliases a sequence of [keys] to another
@@ -54,8 +54,8 @@ mod global {
     /// added.
     ///
     /// [keys]: crate::input::keys
-    pub fn alias<M: Mode<U>, U: Ui>(take: impl AsTakes, give: impl AsGives<U>) {
-        REMAPPER.remap::<M, U>(take.into_takes(), give.into_gives(), true);
+    pub fn alias<M: Mode<U>, U: Ui>(take: &str, give: impl AsGives<U>) {
+        REMAPPER.remap::<M, U>(str_to_keys(take), give.into_gives(), true);
     }
 
     pub fn send_key(key: KeyEvent) {
@@ -149,41 +149,13 @@ mod global {
         seq
     }
 
-    pub trait AsTakes {
-        fn into_takes(self) -> Vec<KeyEvent>;
-    }
-
-    impl<const LEN: usize> AsTakes for [KeyEvent; LEN] {
-        fn into_takes(self) -> Vec<KeyEvent> {
-            self.into()
-        }
-    }
-
-    impl AsTakes for &str {
-        fn into_takes(self) -> Vec<KeyEvent> {
-            self.chars()
-                .map(|char| KeyEvent::from(KeyCode::Char(char)))
-                .collect()
-        }
-    }
-
     pub trait AsGives<U> {
         fn into_gives(self) -> Gives;
     }
 
-    impl<const LEN: usize, U: Ui> AsGives<U> for [KeyEvent; LEN] {
-        fn into_gives(self) -> Gives {
-            Gives::Keys(self.into())
-        }
-    }
-
     impl<U: Ui> AsGives<U> for &str {
         fn into_gives(self) -> Gives {
-            Gives::Keys(
-                self.chars()
-                    .map(|char| KeyEvent::from(KeyCode::Char(char)))
-                    .collect(),
-            )
+            Gives::Keys(str_to_keys(self))
         }
     }
 
@@ -318,7 +290,7 @@ fn remove_alias_and<U: Ui>(f: impl FnOnce(&mut Text, usize)) {
         let mut file = file.write();
 
         if let Some(main) = cursors.get_main() {
-            let main = main.line();
+            let main = main.byte();
             file.text_mut().remove_tags_on(main, Key::for_alias());
             f(file.text_mut(), main)
         }

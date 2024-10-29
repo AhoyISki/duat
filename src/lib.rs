@@ -407,7 +407,8 @@ pub mod control {
 pub mod prelude {
     //! The prelude of Duat
     pub use duat_core::{
-        self, DuatError, Error, data,
+        self, DuatError, Error,
+        data::{self, RwData},
         text::{Builder, Text, err, hint, ok, text},
         ui::Area,
         widgets::Widget,
@@ -419,7 +420,7 @@ pub mod prelude {
         Ui, commands, control, cursor,
         forms::{self, CursorShape, Form},
         hooks::{self, ModeSwitched, OnFileOpen, OnWindowOpen},
-        mode::{self, alias, keys, map},
+        mode::{self, Mode, alias, keys, map},
         print, setup_duat,
         state::*,
         widgets::*,

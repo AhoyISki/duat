@@ -12,7 +12,92 @@
 //! can work on various different interfaces:
 //!
 //! ```rust
+//! # use duat_core::{
+//! #     commands, data::RwData, input::{Cursors, EditHelper, KeyCode, KeyEvent, Mode, key},
+//! #     ui::Ui, widgets::File,
+//! # };
+//! #[derive(Default, Clone)]
+//! struct FindSeq(Option<char>);
+//!
+//! impl<U: Ui> Mode<U> for FindSeq {
+//!     type Widget = File;
+//!
+//!     fn send_key(
+//!         &mut self,
+//!         key: KeyEvent,
+//!         widget: &RwData<Self::Widget>,
+//!         area: &<U as Ui>::Area,
+//!         cursors: &mut Cursors,
+//!     ) {
+//!         use KeyCode::*;
+//!         let mut helper = EditHelper::new(widget, area, cursors);
+//!
+//!         let key!(Char(c)) = key else {
+//!             commands::reset_mode();
+//!             return;
+//!         };
+//!         let Some(first) = self.0 else {
+//!             self.0 = Some(c);
+//!             return;
+//!         };
+//!
+//!         helper.move_each(|m| {
+//!             let pat: String = [first, c].iter().collect();
+//!             let matched = m.search(pat, None).next();
+//!             if let Some((p0, p1)) = matched {
+//!                 m.move_to(p0);
+//!                 m.set_anchor();
+//!                 m.move_to(p1);
+//!                 if m.is_incl() {
+//!                     m.move_hor(-1)
+//!                 }
+//!             }
+//!         })
+//!
+//!         commands::reset_mode();
+//!     }
+//! }
 //! ```
+//!
+//! In this example, I have created a [`Mode`] for [`File`]s. This
+//! mode is (I think) popular within Vim circles. It's like the `f`
+//! key in Vim, but it lets you look for a sequence of 2 characters,
+//! inst ead of just one.
+//!
+//! What's great about this mode is that it will work no matter what
+//! editing model the user is using. It could be Vim inspired, Kakoune
+//! inspired, Emacs inspired, doesn't matter. All the user has to do
+//! to use this mode is this:
+//!
+//! ```rust
+//! # use std::any::Any;
+//! # use duat_core::{
+//! #     commands, data::RwData, input::{Cursors, EditHelper, KeyCode, KeyEvent, Mode, key, keys},
+//! #     ui::Ui, widgets::File,
+//! # };
+//! # struct Normal;
+//! # #[derive(Default, Clone)]
+//! # struct FindSeq(Option<char>);
+//! # impl<U: Ui> Mode<U> for FindSeq {
+//! #     type Widget = File;
+//! #     fn send_key(
+//! #         &mut self,
+//! #         key: KeyEvent,
+//! #         widget: &RwData<Self::Widget>,
+//! #         area: &<U as Ui>::Area,
+//! #         cursors: &mut Cursors,
+//! #     ) {
+//! #         todo!();
+//! #     }
+//! # }
+//! # fn map<M>(take: impl Into<Vec<KeyEvent>>, give: impl Any) {}
+//! map::<Normal>(keys!(C-"s"), 
+//! ```
+//! 
+//! 
+//!
+//! [`Mode`]: crate::input::Mode
+//! [`File`]: crate::widgets::File
 #![feature(
     extract_if,
     iter_advance_by,

@@ -182,6 +182,7 @@ mod global {
     ///
     /// [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
     /// [`RoData`]: crate::data::RoData
+    /// [`RwData`]: crate::data::RwData
     pub fn add(
         callers: impl IntoIterator<Item = impl ToString>,
         f: impl FnMut(Flags, Args) -> CmdResult + 'static,

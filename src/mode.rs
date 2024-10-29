@@ -23,10 +23,10 @@ pub fn reset() {
     commands::reset_mode();
 }
 
-pub fn map<M: Mode<Ui>>(take: impl AsTakes, give: impl AsGives<Ui>) {
+pub fn map<M: Mode<Ui>>(take: &str, give: impl AsGives<Ui>) {
     input::map::<M, Ui>(take, give);
 }
 
-pub fn alias<M: Mode<Ui>>(take: impl AsTakes, give: impl AsGives<Ui>) {
+pub fn alias<M: Mode<Ui>>(take: &str, give: impl AsGives<Ui>) {
     input::alias::<M, Ui>(take, give);
 }

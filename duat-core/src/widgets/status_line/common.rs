@@ -10,6 +10,7 @@
 //!
 //! [`StatusLine`]: super::StatusLine
 //! [`status!`]: super::status
+//! [`Cursor`]: crate::input::Cursor
 //! [`Mode`]: crate::input::Mode
 use crossterm::event::KeyEvent;
 
@@ -94,7 +95,9 @@ pub fn selections(cursors: &Cursors) -> usize {
 /// [Selections] n " sels"
 /// ```
 ///
-/// When there are more
+/// When there is more than one [`Cursor`]
+///
+/// [`Cursor`]: crate::input::Cursor
 pub fn selections_fmt(cursors: &Cursors) -> Text {
     if cursors.len() == 1 {
         text!([Selections] "1 sel")

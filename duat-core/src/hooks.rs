@@ -157,7 +157,7 @@ impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
 
         widget.text_mut().add_cursor_tags(&cursors);
         if let Some(main) = cursors.get_main() {
-        area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
+            area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
         }
 
         widget.update(area);

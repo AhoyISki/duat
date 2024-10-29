@@ -173,7 +173,7 @@ pub fn run(call: impl std::fmt::Display) -> Result<Option<Text>> {
 /// This command cannot take any arguments beyond the [`Flags`]
 /// and [`Args`], so any mutation of state must be done
 /// through captured variables, usually in the form of
-/// [`RwData<T>`]s.
+/// [`RwData`]s.
 ///
 /// # Examples
 ///

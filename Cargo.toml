@@ -15,8 +15,9 @@ edition = "2021"
 members = [
   "duat-core",
   "duat-kak",
-  "duat-term", "testing",
+  "duat-term",
 ]
+exclude = [ "testing" ]
 
 [dependencies]
 duat-core = { version = ">=0.1.0", path = "duat-core" }

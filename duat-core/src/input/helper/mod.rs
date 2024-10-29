@@ -292,6 +292,7 @@ where
             &self.cfg,
             was_main,
             &mut self.searcher,
+            self.cursors.is_incl(),
         ));
 
         self.cursors.insert_removed(was_main, cursor);
@@ -325,6 +326,7 @@ where
                 &self.cfg,
                 was_main,
                 &mut self.searcher,
+                self.cursors.is_incl(),
             ));
 
             self.cursors.insert_removed(was_main, cursor);
@@ -612,6 +614,10 @@ where
     pub fn is_main(&self) -> bool {
         self.is_main
     }
+
+    pub fn is_incl(&self) -> bool {
+        self.is_incl
+    }
 }
 
 /// A cursor that can alter the selection, but can't edit
@@ -625,6 +631,7 @@ where
     cfg: &'a PrintCfg,
     is_main: bool,
     inc_matches: &'a mut S,
+    is_incl: bool,
 }
 
 impl<'a, A, S> Mover<'a, A, S>
@@ -639,6 +646,7 @@ where
         cfg: &'a PrintCfg,
         is_main: bool,
         inc_matches: &'a mut S,
+        is_incl: bool,
     ) -> Self {
         Self {
             cursor,
@@ -647,6 +655,7 @@ where
             cfg,
             is_main,
             inc_matches,
+            is_incl,
         }
     }
 
@@ -885,6 +894,10 @@ where
 
     pub fn is_main(&self) -> bool {
         self.is_main
+    }
+
+    pub fn is_incl(&self) -> bool {
+        self.is_incl
     }
 }
 

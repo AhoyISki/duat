@@ -283,8 +283,6 @@ impl<U: Ui> FileReader<U> {
             file.inspect_as(f)
         } else if cursors.data_is::<T>() {
             cursors.inspect_as(f)
-        } else if TypeId::of::<T>() == TypeId::of::<Cursors>() {
-            cursors.inspect_as(f)
         } else {
             let related = related.read();
             related
@@ -300,7 +298,7 @@ impl<U: Ui> FileReader<U> {
 
         if cursors.data_is::<T>() {
             cursors.inspect_as(|c| f(&file.read(), c))
-        } else if TypeId::of::<T>() == TypeId::of::<Cursors>() {
+        } else if cursors.data_is::<T>() {
             cursors.inspect_as::<T, R>(|c| f(&file.read(), c))
         } else {
             let related = related.read();
