@@ -187,11 +187,11 @@ impl<U: Ui> Mode<U> for Normal {
                 };
 
                 if let Some(((_, c1), (_, c0))) = init {
+                    if Category::of(c0, m) != Category::of(c1, m) {
+                        m.move_hor(-1);
+                    }
                     let points = m.search_rev(word_and_space(m, mf), None).next();
                     if let Some((p0, _)) = points {
-                        if Category::of(c0, m) != Category::of(c1, m) {
-                            m.move_hor(-1);
-                        }
                         m.set_anchor();
                         m.move_to(p0);
                     }
@@ -281,7 +281,10 @@ impl<U: Ui> Mode<U> for Normal {
                 commands::set_mode::<U>(Insert);
             }
             key!(Char('a')) => {
-                helper.move_each(|m| m.set_caret_on_end());
+                helper.move_each(|m| {
+                    m.set_caret_on_end();
+                    m.move_hor(1);
+                });
                 commands::set_mode::<U>(Insert);
             }
             key!(Char('c')) => {

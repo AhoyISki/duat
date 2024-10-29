@@ -110,7 +110,6 @@
     if_let_guard,
     closure_lifetime_binder,
     trait_alias,
-    min_specialization
 )]
 
 use std::{

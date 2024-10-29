@@ -567,7 +567,7 @@ impl Text {
         let (start, end) = get_ends(range, self.len_bytes());
         let (s0, s1) = self.slices();
         unsafe {
-            if end == self.buf.gap() {
+            if end <= self.buf.gap() {
                 s0.get_unchecked(start..end)
             } else {
                 let gap = self.buf.gap();

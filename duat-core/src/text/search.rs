@@ -15,10 +15,11 @@ use regex_syntax::{
 };
 
 use super::{Point, Text};
+use crate::log_info;
 
 impl Text {
     pub fn search_from<R>(
-        &self,
+        &mut self,
         pat: R,
         at: Point,
         end: Option<Point>,
@@ -29,8 +30,14 @@ impl Text {
         let dfas = dfas_from_pat(pat)?;
 
         let haystack = match end {
-            Some(end) => unsafe { self.continuous_in_unchecked(at.byte()..end.byte()) },
-            None => unsafe { self.continuous_in_unchecked(at.byte()..) },
+            Some(end) => unsafe {
+                self.make_contiguous_in(at.byte()..end.byte());
+                self.continuous_in_unchecked(at.byte()..end.byte())
+            },
+            None => unsafe {
+                self.make_contiguous_in(at.byte()..);
+                self.continuous_in_unchecked(at.byte()..)
+            },
         };
         let mut fwd_input = Input::new(haystack);
         let mut rev_input = Input::new(haystack).anchored(Anchored::Yes);
@@ -572,14 +579,7 @@ impl Patterns<'_> {
 
     fn dfas(&self) -> Result<(DFA, DFA), Box<BuildError>> {
         let mut rev_builder = DFA::builder();
-        rev_builder
-            .configure(
-                DFA::config()
-                    .prefilter(None)
-                    .specialize_start_states(false)
-                    .match_kind(MatchKind::All),
-            )
-            .thompson(Config::new().reverse(true));
+        rev_builder.thompson(Config::new().reverse(true));
 
         match self {
             Patterns::One(pat) => {

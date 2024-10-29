@@ -420,7 +420,7 @@ pub mod prelude {
         Ui, commands, control, cursor,
         forms::{self, CursorShape, Form},
         hooks::{self, ModeSwitched, OnFileOpen, OnWindowOpen},
-        mode::{self, Mode, alias, keys, map},
+        mode::{self, Mode, alias, map},
         print, setup_duat,
         state::*,
         widgets::*,

@@ -177,13 +177,9 @@ mod global {
     fn empty(_: KeyEvent) {}
 }
 
-/// The structure responsible for remapping sequences of characters.
+/// The structure responsible for remapping sequences of characters
 struct Remapper {
-    /// The list of remapped sequences to be used with the
-    /// `EditingScheme`.
     remaps: Mutex<Vec<(TypeId, Vec<Remap>)>>,
-    /// The sequence of yet to be fully matched characters that have
-    /// been typed.
     cur_seq: LazyLock<RwData<(Vec<KeyEvent>, bool)>>,
 }
 
@@ -195,7 +191,7 @@ impl Remapper {
         }
     }
 
-    /// Maps a sequence of characters to another.
+    /// Maps a sequence of characters to another
     fn remap<M: Mode<U>, U: Ui>(&self, take: Vec<KeyEvent>, give: Gives, is_alias: bool) {
         let ty = TypeId::of::<M>();
         let remap = Remap::new(take, give, is_alias);
@@ -214,6 +210,7 @@ impl Remapper {
         }
     }
 
+    /// Sends a key to be remapped or not
     fn send_key<M: Mode<U>, U: Ui>(&self, key: KeyEvent) {
         let remaps = self.remaps.lock();
         let Some((_, remaps)) = remaps.iter().find(|(m, _)| TypeId::of::<M>() == *m) else {
@@ -265,7 +262,7 @@ impl Remapper {
 }
 
 /// A sequence of characters that should be turned into another
-/// sequence of characters.
+/// sequence of characters
 struct Remap {
     takes: Vec<KeyEvent>,
     gives: Gives,
