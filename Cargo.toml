@@ -15,7 +15,7 @@ edition = "2021"
 members = [
   "duat-core",
   "duat-kak",
-  "duat-term",
+  "duat-term", "testing",
 ]
 
 [dependencies]

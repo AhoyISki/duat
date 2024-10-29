@@ -65,13 +65,7 @@
 //! #     pub struct Normal;
 //! #     impl Mode<Ui> for Normal {
 //! #         type Widget = File;
-//! #         fn send_key(
-//! #             &mut self,
-//! #             key: KeyEvent,
-//! #             widget: &RwData<File>,
-//! #             area: &Area,
-//! #             cursors: Option<Cursors>,
-//! #         ) -> Option<Cursors> {
+//! #         fn send_key(&mut self, _: KeyEvent, _: &RwData<File>, _: &Area, _: &mut Cursors) {
 //! #             todo!();
 //! #         }
 //! #     }
@@ -79,13 +73,7 @@
 //! #     pub struct Insert;
 //! #     impl Mode<Ui> for Insert {
 //! #         type Widget = File;
-//! #         fn send_key(
-//! #             &mut self,
-//! #             key: KeyEvent,
-//! #             widget: &RwData<File>,
-//! #             area: &Area,
-//! #             cursors: Option<Cursors>,
-//! #         ) -> Option<Cursors> {
+//! #         fn send_key(&mut self, _: KeyEvent, _: &RwData<File>, _: &Area, _: &mut Cursors) {
 //! #             todo!();
 //! #         }
 //! #     }
@@ -286,7 +274,6 @@ pub use setup::{pre_setup, run_duat};
 pub mod commands;
 pub mod mode;
 pub mod print;
-mod remapper;
 mod setup;
 
 pub mod cursor {
@@ -432,7 +419,7 @@ pub mod prelude {
         Ui, commands, control, cursor,
         forms::{self, CursorShape, Form},
         hooks::{self, ModeSwitched, OnFileOpen, OnWindowOpen},
-        mode::{self, keys, map},
+        mode::{self, alias, keys, map},
         print, setup_duat,
         state::*,
         widgets::*,

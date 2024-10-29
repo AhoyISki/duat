@@ -8,7 +8,15 @@ use std::{
 };
 
 use crate::{
-    cache::{delete_cache, load_cache, store_cache}, commands, context, data::RwData, hooks::{self, OnFileOpen, OnWindowOpen, SessionStarted}, input, text::PrintCfg, ui::{Area, Event, FileBuilder, Layout, MasterOnLeft, Sender, Ui, Window, WindowBuilder}, widgets::{File, FileCfg, Node, Widget, WidgetCfg}, Plugin
+    Plugin,
+    cache::{delete_cache, load_cache, store_cache},
+    commands, context,
+    data::RwData,
+    hooks::{self, OnFileOpen, OnWindowOpen, SessionStarted},
+    input,
+    text::PrintCfg,
+    ui::{Area, Event, FileBuilder, Layout, MasterOnLeft, Sender, Ui, Window, WindowBuilder},
+    widgets::{File, FileCfg, Node, Widget, WidgetCfg},
 };
 
 #[doc(hidden)]
@@ -179,7 +187,7 @@ impl<U: Ui> Session<U> {
             );
 
             loop {
-                std::thread::sleep(std::time::Duration::from_secs(2));
+                std::thread::sleep(std::time::Duration::new(2, 0));
                 let deadlocks = parking_lot::deadlock::check_deadlock();
                 writeln!(file, "{} deadlocks detected", deadlocks.len()).unwrap();
                 for (i, threads) in deadlocks.iter().enumerate() {
@@ -294,11 +302,12 @@ impl<U: Ui> Session<U> {
                 store_cache(file.path(), cache);
             }
 
-            if let Some(mut c) = cursors.write().take() {
+            let mut cursors = cursors.write();
+            if !cursors.is_empty() {
                 if is_quitting_duat {
-                    c.remove_extras();
+                    cursors.remove_extras();
                 }
-                store_cache(file.path(), c);
+                store_cache(file.path(), std::mem::take(&mut *cursors));
             }
         }
     }

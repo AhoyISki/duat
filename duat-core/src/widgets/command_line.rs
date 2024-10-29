@@ -188,6 +188,10 @@ impl<U: Ui> Widget<U> for CommandLine<U> {
 }
 
 pub trait CmdLineMode<U: Ui>: Send + Sync + 'static {
+    fn clone(&self) -> Self
+    where
+        Self: Sized;
+
     fn on_focus(&mut self, _text: &mut Text) {}
 
     fn on_unfocus(&mut self, _text: &mut Text) {}
@@ -218,6 +222,10 @@ impl<U: Ui> RunCommands<U> {
 }
 
 impl<U: Ui> CmdLineMode<U> for RunCommands<U> {
+    fn clone(&self) -> Self {
+        Self::new()
+    }
+
     fn update(&mut self, text: &mut Text) {
         text.remove_tags_of(self.key);
 
@@ -274,6 +282,10 @@ impl<U: Ui> ShowNotifications<U> {
 }
 
 impl<U: Ui> CmdLineMode<U> for ShowNotifications<U> {
+    fn clone(&self) -> Self {
+        Self::new()
+    }
+
     fn has_changed(&mut self) -> bool {
         self.has_changed = self.notifications.has_changed();
         self.has_changed
@@ -318,6 +330,10 @@ impl<I: IncSearcher<U>, U: Ui> IncSearch<I, U> {
 }
 
 impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
+    fn clone(&self) -> Self {
+        Self::new(I::new)
+    }
+
     fn update(&mut self, text: &mut Text) {
         let FnOrInc::Inc(inc, _) = &mut self.fn_or_inc else {
             unreachable!();
@@ -334,7 +350,7 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
             let searcher = saved.searcher();
             cur_file.mutate_data(|file, area, cursors| {
                 let mut c = cursors.write();
-                *c = inc.search(file, area, searcher, c.take());
+                inc.search(file, area, searcher, &mut c);
             });
         } else {
             match SavedMatches::new(text.to_string()) {
@@ -346,7 +362,7 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
                     let searcher = saved.searcher();
                     cur_file.mutate_data(|file, area, cursors| {
                         let mut c = cursors.write();
-                        *c = inc.search(file, area, searcher, c.take());
+                        inc.search(file, area, searcher, &mut c);
                     });
 
                     self.list.push(saved);
@@ -371,8 +387,8 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
         context::cur_file::<U>()
             .unwrap()
             .mutate_data(|file, area, cursors| {
-                let mut cursors = cursors.write();
-                *cursors = self.fn_or_inc.as_inc(file, area, cursors.take());
+                let mut c = cursors.write();
+                self.fn_or_inc.as_inc(file, area, &mut c);
             })
     }
 
@@ -385,7 +401,7 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
             .unwrap()
             .mutate_data(|file, area, cursors| {
                 let mut c = cursors.write();
-                *c = inc.finish(file, area, c.take())
+                inc.finish(file, area, &mut c)
             });
     }
 }
@@ -409,22 +425,14 @@ enum FnOrInc<I, U: Ui> {
 }
 
 impl<I, U: Ui> FnOrInc<I, U> {
-    fn as_inc(
-        &mut self,
-        file: &RwData<File>,
-        area: &U::Area,
-        cursors: Option<Cursors>,
-    ) -> Option<Cursors> {
+    fn as_inc(&mut self, file: &RwData<File>, area: &U::Area, cursors: &mut Cursors) {
         let FnOrInc::Fn(f) = self else {
             unreachable!();
         };
 
-        let (inc, cursors) = f.take().unwrap()(file, area, cursors);
-
+        let inc = f.take().unwrap()(file, area, cursors);
         *self = FnOrInc::Inc(inc, PhantomData);
-
-        cursors
     }
 }
 
-trait IncFn<I, U: Ui> = FnOnce(&RwData<File>, &U::Area, Option<Cursors>) -> (I, Option<Cursors>);
+trait IncFn<I, U: Ui> = FnOnce(&RwData<File>, &U::Area, &mut Cursors) -> I;

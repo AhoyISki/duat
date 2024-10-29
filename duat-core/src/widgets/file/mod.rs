@@ -133,6 +133,18 @@ pub struct File {
 }
 
 impl File {
+    pub fn history_mut(&mut self) -> &mut History {
+        &mut self.history
+    }
+
+    pub fn text_mut(&mut self) -> &mut Text {
+        &mut self.text
+    }
+
+    pub fn text(&self) -> &Text {
+        &self.text
+    }
+
     pub fn write(&self) -> Result<usize, String> {
         if let Path::SetExists(path) = &self.path {
             self.text
@@ -150,14 +162,6 @@ impl File {
     pub fn write_to(&self, path: impl AsRef<str>) -> std::io::Result<usize> {
         self.text
             .write_to(std::io::BufWriter::new(fs::File::create(path.as_ref())?))
-    }
-
-    pub fn history_mut(&mut self) -> &mut History {
-        &mut self.history
-    }
-
-    pub fn text(&self) -> &Text {
-        &self.text
     }
 }
 

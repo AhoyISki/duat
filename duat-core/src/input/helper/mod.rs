@@ -41,8 +41,8 @@ mod cursors;
 /// #       key: KeyEvent,
 /// #       widget: &RwData<Self::Widget>,
 /// #       area: &U::Area,
-/// #       cursors: Option<Cursors>
-/// #   ) -> Option<Cursors> {
+/// #       cursors: &mut Cursors
+/// #   ) {
 /// #       todo!();
 /// #   }
 /// # }
@@ -57,8 +57,8 @@ mod cursors;
 /// - The current [`Cursors`] of the widget, these should be modified
 ///   by the [`EditHelper`].
 ///
-/// In a [`Mode`] without cursors, you'd return [`None`], however,
-/// since we are using cursors, you must return [`Some(cursors)`]:
+/// In a [`Mode`] without cursors, you'd probably want to run
+/// [`Cursors::clear`], in order to make sure there are no cursors.
 ///
 /// ```rust
 /// # use duat_core::{
@@ -75,8 +75,8 @@ mod cursors;
 ///         key: KeyEvent,
 ///         widget: &RwData<Self::Widget>,
 ///         area: &U::Area,
-///         cursors: Option<Cursors>
-///     ) -> Option<Cursors> {
+///         cursors: &mut Cursors
+///     ) {
 ///         match key {
 ///             // actions based on the key pressed
 ///             key!(KeyCode::Char('c')) => {
@@ -85,8 +85,6 @@ mod cursors;
 ///             /* Matching the rest of the keys */
 /// #           _ => todo!()
 ///         }
-///         // We haven't done anything with them yet
-///         cursors
 ///     }
 /// # }
 /// ```
@@ -113,11 +111,10 @@ mod cursors;
 ///         key: KeyEvent,
 ///         widget: &RwData<Self::Widget>,
 ///         area: &U::Area,
-///         cursors: Option<Cursors>
-///     ) -> Option<Cursors> {
-///         let mut cursors = cursors.unwrap_or_else(Cursors::new_exclusive);
-///         cursors.make_exclusive();
-///         let mut helper = EditHelper::new(widget, area, &mut cursors);
+///         cursors: &mut Cursors
+///     ) {
+///         cursors.make_excl();
+///         let mut helper = EditHelper::new(widget, area, cursors);
 ///         
 ///         match key {
 ///             key!(KeyCode::Char(c)) => {
@@ -141,14 +138,11 @@ mod cursors;
 ///             /* Predictable remaining implementations */
 /// #           _ => todo!()
 ///         }
-///
-///         Some(cursors)
 ///     }
 /// # }
 /// ```
 ///
-/// Notice the [`Cursors::new_exclusive`] and
-/// [`Cursors::make_exclusive`]. In Duat, there are two types of
+/// Notice the [`Cursors::make_excl`]. In Duat, there are two types of
 /// [`Cursors`], inclusive and exclusive. The only difference between
 /// them is that in inclusive cursors, the selection includes the
 /// character that the cursor is on, while that is not the case in
@@ -189,6 +183,7 @@ where
 {
     /// Returns a new instance of [`EditHelper`]
     pub fn new(widget: &'a RwData<W>, area: &'a A, cursors: &'a mut Cursors) -> Self {
+        cursors.populate();
         let cfg = widget.read().print_cfg();
         EditHelper { widget, cursors, area, cfg, searcher: () }
     }
@@ -226,6 +221,7 @@ where
             &self.cfg,
             &mut diff,
             was_main,
+            self.cursors.is_incl(),
         ));
 
         self.cursors.insert_removed(was_main, cursor);
@@ -261,6 +257,7 @@ where
                 &self.cfg,
                 &mut diff,
                 was_main,
+                self.cursors.is_incl(),
             ));
 
             self.cursors.insert_removed(was_main, cursor);
@@ -451,6 +448,7 @@ where
         cursors: &'a mut Cursors,
         searcher: Searcher<'b>,
     ) -> Self {
+        cursors.populate();
         let cfg = {
             let mut file = widget.raw_write();
             <File as Widget<A::Ui>>::text_mut(&mut file).remove_cursor_tags(cursors);
@@ -503,6 +501,7 @@ where
     cfg: &'a PrintCfg,
     diff: &'d mut Diff,
     is_main: bool,
+    is_incl: bool,
 }
 
 impl<'a, 'b, 'c, 'd, A, W> Editor<'a, 'b, 'c, 'd, A, W>
@@ -518,8 +517,17 @@ where
         cfg: &'a PrintCfg,
         diff: &'d mut Diff,
         is_main: bool,
+        is_incl: bool,
     ) -> Self {
-        Self { cursor, widget, area, cfg, diff, is_main }
+        Self {
+            cursor,
+            widget,
+            area,
+            cfg,
+            diff,
+            is_main,
+            is_incl,
+        }
     }
 
     /// Replaces the entire selection with new text
@@ -534,7 +542,11 @@ where
     ///
     /// [`insert`]: Self::insert
     pub fn replace(&mut self, edit: impl ToString) {
-        let change = Change::new(edit.to_string(), self.cursor.range(), self.widget.text());
+        let change = Change::new(
+            edit.to_string(),
+            self.cursor.range(self.is_incl),
+            self.widget.text(),
+        );
         let edit_len = change.added_text.len();
         let end = change.added_end();
 

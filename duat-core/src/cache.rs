@@ -19,7 +19,7 @@
 //! #[derive(Deserialize, Serialize)]
 //! #[serde(crate = "duat_core::cache::serde")]
 //! enum MyCacheableEnum {
-//! // ...
+//!     // ...
 //! }
 //! ```
 //!

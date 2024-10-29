@@ -25,7 +25,7 @@
     if_let_guard,
     closure_lifetime_binder,
     trait_alias,
-    generic_arg_infer
+    min_specialization
 )]
 
 use std::{

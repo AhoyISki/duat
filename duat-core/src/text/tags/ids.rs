@@ -137,7 +137,7 @@ impl Key {
     }
 
 	/// A [`Key`] specifically for remaps
-    pub(crate) const fn for_remap() -> Self {
+    pub(crate) const fn for_alias() -> Self {
         Self(2)
     }
 }

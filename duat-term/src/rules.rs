@@ -31,12 +31,16 @@ impl Widget<Ui> for VertRule {
             && let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = self.sep_char
         {
             reader.inspect(|file, _, cursors| {
-                let main_line = cursors.as_ref().unwrap().main().line();
                 let lines = file.printed_lines();
-
-                let upper = lines.iter().filter(|&(line, _)| *line < main_line).count();
-                let middle = lines.iter().filter(|&(line, _)| *line == main_line).count();
-                let lower = lines.iter().filter(|&(line, _)| *line > main_line).count();
+                let (upper, middle, lower) = if let Some(main) = cursors.get_main() {
+                    let main = main.line();
+                    let upper = lines.iter().filter(|&(line, _)| *line < main).count();
+                    let middle = lines.iter().filter(|&(line, _)| *line == main).count();
+                    let lower = lines.iter().filter(|&(line, _)| *line > main).count();
+                    (upper, middle, lower)
+                } else {
+                    (0, lines.len(), 0)
+                };
 
                 let chars = self.sep_char.chars();
 

@@ -33,10 +33,10 @@ impl<U: Ui> Mode<U> for Normal {
         key: Event,
         widget: &RwData<Self::Widget>,
         area: &U::Area,
-        cursors: Option<Cursors>,
-    ) -> Option<Cursors> {
-        let mut cursors = inclusive(cursors);
-        let mut helper = EditHelper::new(widget, area, &mut cursors);
+        cursors: &mut Cursors,
+    ) {
+        cursors.make_incl();
+        let mut helper = EditHelper::new(widget, area, cursors);
 
         if let key!(Char('h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e') | Down | Up) = key {
             helper.move_each(|m| m.unset_anchor())
@@ -308,8 +308,6 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('U'), Mod::SHIFT) => helper.redo(),
             _ => {}
         }
-
-        Some(cursors)
     }
 }
 
@@ -330,10 +328,10 @@ impl<U: Ui> Mode<U> for Insert {
         key: Event,
         widget: &RwData<Self::Widget>,
         area: &<U as Ui>::Area,
-        cursors: Option<Cursors>,
-    ) -> Option<Cursors> {
-        let mut cursors = inclusive(cursors);
-        let mut helper = EditHelper::new(widget, area, &mut cursors);
+        cursors: &mut Cursors,
+    ) {
+        cursors.make_incl();
+        let mut helper = EditHelper::new(widget, area, cursors);
 
         if let key!(Left | Down | Up | Right) = key {
             helper.move_each(|m| m.unset_anchor())
@@ -412,8 +410,6 @@ impl<U: Ui> Mode<U> for Insert {
             }
             _ => {}
         }
-
-        Some(cursors)
     }
 }
 
@@ -525,10 +521,10 @@ impl<U: Ui> Mode<U> for OneKey {
         key: Event,
         widget: &RwData<Self::Widget>,
         area: &<U as Ui>::Area,
-        cursors: Option<Cursors>,
-    ) -> Option<Cursors> {
-        let mut cursors = inclusive(cursors);
-        let mut helper = EditHelper::new(widget, area, &mut cursors);
+        cursors: &mut Cursors,
+    ) {
+        cursors.make_incl();
+        let mut helper = EditHelper::new(widget, area, cursors);
         let mut sel_type = self.sel_type();
 
         sel_type = match self {
@@ -569,8 +565,6 @@ impl<U: Ui> Mode<U> for OneKey {
         };
 
         commands::set_mode::<U>(Normal(sel_type));
-
-        Some(cursors)
     }
 }
 
@@ -696,15 +690,5 @@ impl Category {
         } else {
             Category::Special
         }
-    }
-}
-
-fn inclusive(cursors: Option<Cursors>) -> Cursors {
-    match cursors {
-        Some(mut c) => {
-            c.make_inclusive();
-            c
-        }
-        None => Cursors::new_inclusive(),
     }
 }

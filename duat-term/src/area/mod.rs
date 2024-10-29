@@ -97,7 +97,8 @@ impl Area {
             let sender = rect.sender();
             let info = rect.print_info();
             sender.zip(info).map(|(sender, info)| {
-                let info = info.read();
+                let mut info = info.write();
+                info.fix(text);
                 (sender, *info)
             })
         }) else {
@@ -487,6 +488,14 @@ pub struct PrintInfo {
     x_shift: usize,
     /// The last position of the main cursor.
     last_main: Point,
+}
+
+impl PrintInfo {
+    fn fix(&mut self, text: &Text) {
+        let max = text.len_point().min(self.points.0);
+        let (_, max_ghost) = text.ghost_max_points_at(max.byte());
+        self.points = (max, self.points.1.min(max_ghost))
+    }
 }
 
 /// Scrolls down until the gap between the main cursor and the

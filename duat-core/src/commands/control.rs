@@ -305,7 +305,7 @@ fn send_key_fn<U: Ui>(mode: &mut impl Mode<U>, key: KeyEvent) {
 
     widget.mutate_data_as(|widget, area, cursors| {
         let mut c = cursors.write();
-        *c = mode.send_key(key, widget, area, c.take())
+        mode.send_key(key, widget, area, &mut c)
     });
 }
 

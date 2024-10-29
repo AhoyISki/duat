@@ -332,17 +332,14 @@ where
     }
 }
 
-impl<D, ReadFn, U> From<ReadFn> for State<Option<Cursors>, CursorsArg<String>, U>
+impl<D, ReadFn, U> From<ReadFn> for State<Cursors, CursorsArg<String>, U>
 where
     D: Display + Send + Sync,
     ReadFn: Fn(&Cursors) -> D + Send + Sync + 'static,
     U: Ui,
 {
     fn from(reader: ReadFn) -> Self {
-        let reader = move |arg: &Option<Cursors>| match arg {
-            Some(c) => reader(c).to_string(),
-            None => String::default(),
-        };
+        let reader = move |arg: &Cursors| reader(arg).to_string();
         State {
             appender: Appender::FromRelatedStr(Box::new(reader)),
             checker: None,
@@ -351,16 +348,13 @@ where
     }
 }
 
-impl<ReadFn, U> From<ReadFn> for State<Option<Cursors>, CursorsArg<Text>, U>
+impl<ReadFn, U> From<ReadFn> for State<Cursors, CursorsArg<Text>, U>
 where
     ReadFn: Fn(&Cursors) -> Text + Send + Sync + 'static,
     U: Ui,
 {
     fn from(reader: ReadFn) -> Self {
-        let reader = move |arg: &Option<Cursors>| match arg {
-            Some(c) => reader(c),
-            None => Text::default(),
-        };
+        let reader = move |arg: &Cursors| reader(arg);
         State {
             appender: Appender::FromRelatedText(Box::new(reader)),
             checker: None,
@@ -369,17 +363,14 @@ where
     }
 }
 
-impl<D, ReadFn, U> From<ReadFn> for State<Option<Cursors>, FileAndCursorsArg<String>, U>
+impl<D, ReadFn, U> From<ReadFn> for State<Cursors, FileAndCursorsArg<String>, U>
 where
     D: Display + Send + Sync,
     ReadFn: Fn(&File, &Cursors) -> D + Send + Sync + 'static,
     U: Ui,
 {
     fn from(reader: ReadFn) -> Self {
-        let reader = move |file: &File, arg: &Option<Cursors>| match arg {
-            Some(c) => reader(file, c).to_string(),
-            None => String::default(),
-        };
+        let reader = move |file: &File, arg: &Cursors| reader(file, arg).to_string();
         State {
             appender: Appender::FromFileAndRelatedStr(Box::new(reader)),
             checker: None,
@@ -388,16 +379,13 @@ where
     }
 }
 
-impl<ReadFn, U> From<ReadFn> for State<Option<Cursors>, FileAndCursorsArg<Text>, U>
+impl<ReadFn, U> From<ReadFn> for State<Cursors, FileAndCursorsArg<Text>, U>
 where
     ReadFn: Fn(&File, &Cursors) -> Text + Send + Sync + 'static,
     U: Ui,
 {
     fn from(reader: ReadFn) -> Self {
-        let reader = move |file: &File, arg: &Option<Cursors>| match arg {
-            Some(c) => reader(file, c),
-            None => Text::default(),
-        };
+        let reader = move |file: &File, arg: &Cursors| reader(file, arg);
         State {
             appender: Appender::FromFileAndRelatedText(Box::new(reader)),
             checker: None,

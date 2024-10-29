@@ -1,11 +1,11 @@
 mod builder;
 mod cfg;
 mod iter;
+mod part;
 pub mod reader;
 mod records;
 mod search;
 mod tags;
-mod part;
 
 use std::{
     ops::{Range, RangeBounds},
@@ -24,10 +24,10 @@ pub use self::{
     builder::{AlignCenter, AlignLeft, AlignRight, Builder, Ghost, err, hint, ok, text},
     cfg::*,
     iter::{Item, Iter, RevIter},
+    part::Part,
     point::{Point, TwoPoints, utf8_char_width},
     search::{RegexPattern, Searcher},
     tags::{Key, Tag, ToggleId},
-    part::Part,
 };
 use crate::{DuatError, history::Change, input::Cursors};
 
@@ -123,7 +123,7 @@ impl Text {
 
             let end_byte = if let Some(anchor) = cursor.anchor()
                 && anchor > start
-                && cursor.is_inclusive()
+                && cursors.is_incl()
             {
                 end.byte() + 1
             } else {
@@ -154,7 +154,7 @@ impl Text {
 
             let end_byte = if let Some(anchor) = cursor.anchor()
                 && anchor > start
-                && cursor.is_inclusive()
+                && cursors.is_incl()
             {
                 end.byte() + 1
             } else {

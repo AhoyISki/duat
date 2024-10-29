@@ -371,7 +371,7 @@ mod global {
     /// [`forms::set_weak`]: crate::forms::set_weak
     pub fn add_for<W: Widget<U>, U: Ui>(
         callers: impl IntoIterator<Item = impl ToString>,
-        f: impl FnMut(&mut W, &U::Area, &mut Option<Cursors>, Flags, Args) -> CmdResult + 'static,
+        f: impl FnMut(&mut W, &U::Area, &mut Cursors, Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
         COMMANDS.add_for(callers, f)
     }
@@ -484,7 +484,7 @@ impl Commands {
     fn add_for<W: Widget<U>, U: Ui>(
         &'static self,
         callers: impl IntoIterator<Item = impl ToString>,
-        mut f: impl FnMut(&mut W, &U::Area, &mut Option<Cursors>, Flags, Args) -> CmdResult + 'static,
+        mut f: impl FnMut(&mut W, &U::Area, &mut Cursors, Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
         let cur_file = context::inner_cur_file::<U>();
         let windows = context::windows::<U>();

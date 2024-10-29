@@ -405,7 +405,7 @@ pub fn add(
 #[inline(never)]
 pub fn add_for<W: Widget<Ui>>(
     callers: impl IntoIterator<Item = impl ToString>,
-    f: impl FnMut(&mut W, &Area, &mut Option<Cursors>, Flags, Args) -> CmdResult + 'static,
+    f: impl FnMut(&mut W, &Area, &mut Cursors, Flags, Args) -> CmdResult + 'static,
 ) -> Result<()> {
     commands::add_for(callers, f)
 }

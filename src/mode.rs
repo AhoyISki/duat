@@ -1,7 +1,7 @@
 //! Options concerning the [`File`]'s [`Mode`]
 //!
 //! [`File`]: crate::widgets::File
-//! [`ode`]: duat_core::input::Mode
+//! [`Mode`]: duat_core::input::Mode
 pub use duat_core::input::*;
 use duat_core::{commands, input, widgets::CmdLineMode};
 
@@ -23,6 +23,10 @@ pub fn reset() {
     commands::reset_mode();
 }
 
-pub fn map<M: Mode<Ui>>(take: impl Into<Vec<KeyEvent>>, give: impl Into<Vec<KeyEvent>>) {
+pub fn map<M: Mode<Ui>>(take: impl AsTakes, give: impl AsGives<Ui>) {
     input::map::<M, Ui>(take, give);
+}
+
+pub fn alias<M: Mode<Ui>>(take: impl AsTakes, give: impl AsGives<Ui>) {
+    input::alias::<M, Ui>(take, give);
 }

@@ -11,7 +11,7 @@
 //! [`StatusLine`]: super::StatusLine
 //! [`status!`]: super::status
 //! [`Mode`]: crate::input::Mode
-use crossterm::event::{KeyEvent};
+use crossterm::event::KeyEvent;
 
 use crate::{
     context,
@@ -39,22 +39,22 @@ pub fn mode_fmt() -> DataMap<&'static str, Text> {
 
 /// The byte of the main cursor in the file. Indexed at 1
 pub fn main_byte(cursors: &Cursors) -> usize {
-    cursors.main().clone().byte() + 1
+    cursors.get_main().unwrap_or_default().byte() + 1
 }
 
 /// The char of the main cursor in the file. Indexed at 1
 pub fn main_char(cursors: &Cursors) -> usize {
-    cursors.main().clone().char() + 1
+    cursors.get_main().unwrap_or_default().char() + 1
 }
 
 /// The col of the main cursor in the file. Indexed at 1
 pub fn main_col(cursors: &Cursors) -> usize {
-    cursors.main().clone().column() + 1
+    cursors.get_main().unwrap_or_default().column() + 1
 }
 
 /// The line of the main cursor in the file. Indexed at 1
 pub fn main_line(cursors: &Cursors) -> usize {
-    cursors.main().clone().line() + 1
+    cursors.get_main().unwrap_or_default().line() + 1
 }
 
 /// The main cursor, formatted
@@ -65,6 +65,9 @@ pub fn main_line(cursors: &Cursors) -> usize {
 /// [Coord] col [Separator] ":" [Coord] line [Separator] "/" [Coord] lines
 /// ```
 pub fn main_fmt(file: &File, cursors: &Cursors) -> Text {
+    if cursors.is_empty() {
+        return Text::new();
+    }
     text!(
         [Coord] { main_col(cursors) } [Separator] ":"
         [Coord] { main_line(cursors) } [Separator] "/"
@@ -100,45 +103,13 @@ pub fn selections_fmt(cursors: &Cursors) -> Text {
     }
 }
 
-pub fn cur_sequence_fmt() -> DataMap<Vec<KeyEvent>, Text> {
-    use crossterm::event::KeyCode::*;
-
+pub fn cur_map_fmt() -> DataMap<(Vec<KeyEvent>, bool), Text> {
     let data = input::cur_sequence();
-    data.map(|keys| {
-        let mut seq = Text::builder();
-
-        for key in keys {
-            match key.code {
-                Backspace => text!(seq, [SeqSpecialKey] "BS"),
-                Enter => text!(seq, [SeqSpecialKey] "Enter"),
-                Left => text!(seq, [SeqSpecialKey] "Left"),
-                Right => text!(seq, [SeqSpecialKey] "Right"),
-                Up => text!(seq, [SeqSpecialKey] "Up"),
-                Down => text!(seq, [SeqSpecialKey] "Down"),
-                Home => text!(seq, [SeqSpecialKey] "Home"),
-                End => text!(seq, [SeqSpecialKey] "End"),
-                PageUp => text!(seq, [SeqSpecialKey] "PageU"),
-                PageDown => text!(seq, [SeqSpecialKey] "PageD"),
-                Tab => text!(seq, [SeqSpecialKey] "Tab"),
-                BackTab => text!(seq, [SeqSpecialKey] "BTab"),
-                Delete => text!(seq, [SeqSpecialKey] "Del"),
-                Insert => text!(seq, [SeqSpecialKey] "Ins"),
-                F(num) => text!(seq, [SeqSpecialKey] "F" num),
-                Char(char) => text!(seq, [SeqCharKey] char),
-                Null => text!(seq, [SeqSpecialKey] "Null"),
-                Esc => text!(seq, [SeqSpecialKey] "Esc"),
-                CapsLock => text!(seq, [SeqSpecialKey] "CapsL"),
-                ScrollLock => text!(seq, [SeqSpecialKey] "ScrollL"),
-                NumLock => text!(seq, [SeqSpecialKey] "NumL"),
-                PrintScreen => text!(seq, [SeqSpecialKey] "PrSc"),
-                Pause => text!(seq, [SeqSpecialKey] "Pause"),
-                Menu => text!(seq, [SeqSpecialKey] "Menu"),
-                KeypadBegin => text!(seq, [SeqSpecialKey] "KeypadBeg"),
-                Media(m_code) => text!(seq, [SeqSpecialKey] "Media" m_code),
-                Modifier(m_code) => text!(seq, [SeqSpecialKey] "Mod" m_code),
-            }
+    data.map(|(keys, is_alias)| {
+        if *is_alias {
+            Text::new()
+        } else {
+            input::keys_to_text(keys)
         }
-
-        seq.finish()
     })
 }

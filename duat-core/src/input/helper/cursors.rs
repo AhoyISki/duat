@@ -1,5 +1,5 @@
-use gapbuf::{gap_buffer, GapBuffer};
-use serde::{de::Visitor, ser::SerializeSeq, Deserialize, Serialize};
+use gapbuf::{GapBuffer, gap_buffer};
+use serde::{Deserialize, Serialize, de::Visitor, ser::SerializeSeq};
 
 pub use self::cursor::Cursor;
 use super::Diff;
@@ -12,38 +12,32 @@ use crate::{
 pub struct Cursors {
     buf: CursorGapBuffer,
     main: usize,
-    inclusive_ranges: bool,
+    is_incl: bool,
 }
 
 impl Cursors {
-    pub fn new_exclusive() -> Self {
+    pub fn new_excl() -> Self {
         Self {
-            buf: CursorGapBuffer(gap_buffer![Cursor::new_at_0(false)]),
+            buf: CursorGapBuffer(gap_buffer![Cursor::default()]),
             main: 0,
-            inclusive_ranges: false,
+            is_incl: false,
         }
     }
 
-    pub fn new_inclusive() -> Self {
+    pub fn new_incl() -> Self {
         Self {
-            buf: CursorGapBuffer(gap_buffer![Cursor::new_at_0(true)]),
+            buf: CursorGapBuffer(gap_buffer![Cursor::default()]),
             main: 0,
-            inclusive_ranges: true,
+            is_incl: true,
         }
     }
 
-    pub fn make_exclusive(&mut self) {
-        self.inclusive_ranges = false;
-        for cursor in self.buf.iter_mut() {
-            cursor.set_inclusivity(false);
-        }
+    pub fn make_excl(&mut self) {
+        self.is_incl = false;
     }
 
-    pub fn make_inclusive(&mut self) {
-        self.inclusive_ranges = true;
-        for cursor in self.buf.iter_mut() {
-            cursor.set_inclusivity(true);
-        }
+    pub fn make_incl(&mut self) {
+        self.is_incl = true;
     }
 
     pub fn insert_from_parts(
@@ -54,9 +48,9 @@ impl Cursors {
         area: &impl Area,
         cfg: &PrintCfg,
     ) -> usize {
-        let mut cursor = Cursor::new(point, text, area, cfg, self.inclusive_ranges);
+        let mut cursor = Cursor::new(point, text, area, cfg);
 
-        let range = match self.inclusive_ranges {
+        let range = match self.is_incl {
             true => range.saturating_sub(1),
             false => range,
         };
@@ -65,8 +59,9 @@ impl Cursors {
             cursor.set_anchor();
             cursor.move_hor(range as isize, text, area, cfg);
         }
-        let start = cursor.range().start;
-        let (Ok(i) | Err(i)) = binary_search_by_key(&self.buf, start, |c| c.range().start);
+        let start = cursor.range(self.is_incl).start;
+        let (Ok(i) | Err(i)) =
+            binary_search_by_key(&self.buf, start, |c| c.range(self.is_incl).start);
 
         if !self.try_merge_on(i, &mut cursor) {
             self.buf.insert(i, cursor);
@@ -90,13 +85,24 @@ impl Cursors {
     }
 
     pub fn remove_extras(&mut self) {
-        let cursor = self.buf[self.main].clone();
-        self.buf = CursorGapBuffer(gap_buffer![cursor]);
+        if !self.is_empty() {
+            let cursor = self.buf[self.main].clone();
+            self.buf = CursorGapBuffer(gap_buffer![cursor]);
+        }
         self.main = 0;
     }
 
+    /// The main [`Cursor`] in use
+    ///
+    /// # Panics
+    ///
+    /// Will panic if there are no [`Cursor`]s
     pub fn main(&self) -> &Cursor {
         &self.buf[self.main]
+    }
+
+    pub fn get_main(&self) -> Option<Cursor> {
+        self.get(self.main)
     }
 
     pub fn get(&self, i: usize) -> Option<Cursor> {
@@ -123,16 +129,12 @@ impl Cursors {
         self.len() == 0
     }
 
-    pub fn is_inclusive(&self) -> bool {
-        self.inclusive_ranges
+    pub fn is_incl(&self) -> bool {
+        self.is_incl
     }
 
-    pub fn reset(&mut self) {
-        self.buf = CursorGapBuffer(gap_buffer![Cursor::new_at_0(self.inclusive_ranges)])
-    }
-
-    pub(crate) fn clear(&mut self) {
-        self.buf.clear()
+    pub fn clear(&mut self) {
+        self.buf = CursorGapBuffer(GapBuffer::new())
     }
 
     pub(super) fn remove(&mut self, i: usize) -> Option<(Cursor, bool)> {
@@ -146,8 +148,9 @@ impl Cursors {
     }
 
     pub(super) fn insert_removed(&mut self, was_main: bool, mut cursor: Cursor) -> usize {
-        let start = cursor.range().start;
-        let (Ok(i) | Err(i)) = binary_search_by_key(&self.buf, start, |c| c.range().start);
+        let start = cursor.range(self.is_incl).start;
+        let (Ok(i) | Err(i)) =
+            binary_search_by_key(&self.buf, start, |c| c.range(self.is_incl).start);
 
         if was_main {
             self.main = i;
@@ -191,13 +194,20 @@ impl Cursors {
             })
     }
 
+    pub(super) fn populate(&mut self) {
+        if self.buf.0.is_empty() {
+            self.main = 0;
+            self.buf.0 = gap_buffer![Cursor::default()];
+        }
+    }
+
     /// Tries to merge this cursor with a cursor behind and cursors
     /// ahead
     ///
     /// Returns `true` if the cursor behind got merged.
     fn try_merge_on(&mut self, i: usize, cursor: &mut Cursor) -> bool {
         while let Some(ahead) = self.buf.get(i)
-            && cursor.range().end > ahead.range().start
+            && cursor.range(self.is_incl).end > ahead.range(self.is_incl).start
         {
             cursor.merge_ahead(self.buf.remove(i));
             if self.main > i {
@@ -206,7 +216,7 @@ impl Cursors {
         }
         if let Some(prev_i) = i.checked_sub(1)
             && let Some(prev) = self.buf.get_mut(prev_i)
-            && prev.range().end > cursor.range().start
+            && prev.range(self.is_incl).end > cursor.range(self.is_incl).start
         {
             prev.merge_ahead(cursor.clone());
             if self.main > prev_i {
@@ -222,9 +232,9 @@ impl Cursors {
 impl Default for Cursors {
     fn default() -> Self {
         Self {
-            buf: CursorGapBuffer(gap_buffer![Cursor::new_at_0(false)]),
+            buf: CursorGapBuffer(GapBuffer::new()),
             main: 0,
-            inclusive_ranges: false,
+            is_incl: false,
         }
     }
 }
@@ -241,47 +251,21 @@ mod cursor {
 
     /// A cursor in the text file. This is an editing cursor, not
     /// a printing cursor.
-    #[derive(Debug, Serialize, Deserialize)]
+    #[derive(Default, Debug, Serialize, Deserialize)]
     pub struct Cursor {
-        /// Current position of the cursor in the file.
         caret: VPoint,
-
-        /// An anchor for a selection.
         anchor: Option<VPoint>,
-
-        /// Wether or not the selection of this cursor is
-        /// inclusive or not.
-        is_inclusive: bool,
-
-        /// The index to a `Change` in the current `Moment`, used
-        /// for greater efficiency.
         pub(crate) assoc_index: Option<usize>,
     }
 
     impl Cursor {
-        pub fn new_at_0(inclusive: bool) -> Self {
-            Self {
-                is_inclusive: inclusive,
-                caret: VPoint::default(),
-                anchor: None,
-                assoc_index: None,
-            }
-        }
-
         /// Returns a new instance of [`Cursor`].
-        pub(super) fn new(
-            point: Point,
-            text: &Text,
-            area: &impl Area,
-            cfg: &PrintCfg,
-            inclusive: bool,
-        ) -> Cursor {
+        pub(super) fn new(point: Point, text: &Text, area: &impl Area, cfg: &PrintCfg) -> Cursor {
             Cursor {
                 caret: VPoint::new(point, text, area, cfg),
                 // This should be fine.
                 anchor: None,
                 assoc_index: None,
-                is_inclusive: inclusive,
             }
         }
 
@@ -424,10 +408,6 @@ mod cursor {
             }
         }
 
-        pub(super) fn set_inclusivity(&mut self, inclusive: bool) {
-            self.is_inclusive = inclusive;
-        }
-
         /// Returns the cursor's position on the screen.
         pub fn caret(&self) -> Point {
             self.caret.point
@@ -468,7 +448,7 @@ mod cursor {
         /// This function will return the range that is supposed
         /// to be replaced, if `self.is_inclusive()`, this means that
         /// it will return one more byte at the end, i.e. start..=end.
-        pub fn range(&self) -> Range<usize> {
+        pub fn range(&self, inclusive: bool) -> Range<usize> {
             let anchor = self.anchor.unwrap_or(self.caret);
             let (start, end) = if anchor < self.caret {
                 (anchor.byte(), self.caret.byte())
@@ -476,7 +456,7 @@ mod cursor {
                 (self.caret.byte(), anchor.byte())
             };
 
-            match self.is_inclusive {
+            match inclusive {
                 true => start..(end + 1),
                 false => start..end,
             }
@@ -496,10 +476,6 @@ mod cursor {
                 self.caret.point.min(anchor.point),
                 self.caret.point.max(anchor.point),
             )
-        }
-
-        pub fn is_inclusive(&self) -> bool {
-            self.is_inclusive
         }
 
         pub(super) fn merge_ahead(&mut self, other: Cursor) {
@@ -525,7 +501,13 @@ mod cursor {
 
     impl std::fmt::Display for Cursor {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "{}:{}, {}", self.caret.line() + 1, self.caret.vcol() + 1, self.caret.dcol)
+            write!(
+                f,
+                "{}:{}, {}",
+                self.caret.line() + 1,
+                self.caret.vcol() + 1,
+                self.caret.dcol
+            )
         }
     }
 

@@ -7,29 +7,18 @@ use crate::{
 };
 
 pub trait IncSearcher<U: Ui>: Sized + Send + Sync + 'static {
-    fn new(
-        file: &RwData<File>,
-        area: &U::Area,
-        cursors: Option<Cursors>,
-    ) -> (Self, Option<Cursors>);
+    fn new(file: &RwData<File>, area: &U::Area, cursors: &mut Cursors) -> Self;
 
     fn search(
         &mut self,
         file: &RwData<File>,
         area: &U::Area,
         searcher: Searcher,
-        cursors: Option<Cursors>,
-    ) -> Option<Cursors>;
+        cursors: &mut Cursors,
+    );
 
     #[allow(unused)]
-    fn finish(
-        &mut self,
-        file: &RwData<File>,
-        area: &U::Area,
-        cursors: Option<Cursors>,
-    ) -> Option<Cursors> {
-        cursors
-    }
+    fn finish(&mut self, file: &RwData<File>, area: &U::Area, cursors: &mut Cursors) {}
 }
 
 pub struct Fwd<U: Ui> {
@@ -38,18 +27,11 @@ pub struct Fwd<U: Ui> {
 }
 
 impl<U: Ui> IncSearcher<U> for Fwd<U> {
-    fn new(
-        _file: &RwData<File>,
-        area: &U::Area,
-        cursors: Option<Cursors>,
-    ) -> (Self, Option<Cursors>) {
-        (
-            Self {
-                cursors: cursors.clone().unwrap_or_default(),
-                info: area.get_print_info(),
-            },
-            cursors,
-        )
+    fn new(_file: &RwData<File>, area: &U::Area, cursors: &mut Cursors) -> Self {
+        Self {
+            cursors: cursors.clone(),
+            info: area.get_print_info(),
+        }
     }
 
     fn search(
@@ -57,16 +39,16 @@ impl<U: Ui> IncSearcher<U> for Fwd<U> {
         file: &RwData<File>,
         area: &U::Area,
         searcher: Searcher,
-        _cursors: Option<Cursors>,
-    ) -> Option<Cursors> {
+        cursors: &mut Cursors,
+    ) {
         if searcher.is_empty() {
             area.set_print_info(self.info.clone());
-            return Some(self.cursors.clone());
+            return;
         }
 
-        let mut cursors = self.cursors.clone();
+        *cursors = self.cursors.clone();
 
-        let mut helper = EditHelper::new_inc(file, area, &mut cursors, searcher);
+        let mut helper = EditHelper::new_inc(file, area, cursors, searcher);
 
         helper.move_each(|m| {
             let next = m.search_inc(None).next();
@@ -79,9 +61,5 @@ impl<U: Ui> IncSearcher<U> for Fwd<U> {
                 area.set_print_info(self.info.clone());
             }
         });
-
-        drop(helper);
-
-        Some(cursors)
     }
 }

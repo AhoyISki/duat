@@ -66,7 +66,7 @@ pub use self::global::*;
 use crate::{
     data::RwData,
     input::{Cursors, KeyEvent},
-    ui::{FileBuilder, Ui, WindowBuilder},
+    ui::{Area, FileBuilder, Ui, WindowBuilder},
     widgets::Widget,
 };
 
@@ -118,15 +118,16 @@ impl<U: Ui> Hookable for OnWindowOpen<U> {
 pub struct FocusedOn<W: Widget<U>, U: Ui>(PhantomData<(W, U)>);
 
 impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
-    type Args = (RwData<W>, U::Area, RwData<Option<Cursors>>);
+    type Args = (RwData<W>, U::Area, RwData<Cursors>);
 
     fn post_hook(args: &Self::Args) {
         let (widget, area, cursors) = args;
         let cursors = cursors.read();
         let mut widget = widget.write();
 
-        if let Some(cursors) = cursors.as_ref() {
-            widget.text_mut().add_cursor_tags(cursors);
+        widget.text_mut().add_cursor_tags(&cursors);
+        if let Some(main) = cursors.get_main() {
+            area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
         }
 
         widget.update(area);
@@ -147,15 +148,16 @@ impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
 pub struct UnfocusedFrom<W: Widget<U>, U: Ui>(PhantomData<(W, U)>);
 
 impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
-    type Args = (RwData<W>, U::Area, RwData<Option<Cursors>>);
+    type Args = (RwData<W>, U::Area, RwData<Cursors>);
 
     fn post_hook(args: &Self::Args) {
         let (widget, area, cursors) = args;
         let cursors = cursors.read();
         let mut widget = widget.write();
 
-        if let Some(cursors) = cursors.as_ref() {
-            widget.text_mut().add_cursor_tags(cursors);
+        widget.text_mut().add_cursor_tags(&cursors);
+        if let Some(main) = cursors.get_main() {
+        area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
         }
 
         widget.update(area);

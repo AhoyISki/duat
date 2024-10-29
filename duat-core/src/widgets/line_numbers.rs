@@ -37,10 +37,11 @@ impl<U: Ui> LineNumbers<U> {
     fn update_text(&mut self) {
         self.text = self.reader.inspect(|file, _, cursors| {
             let printed_lines = file.printed_lines();
-            let main_line = cursors
-                .as_ref()
-                .map(|c| c.main().line())
-                .unwrap_or(usize::MAX);
+            let main_line = if cursors.is_empty() {
+                usize::MAX
+            } else {
+                cursors.main().line()
+            };
 
             let mut builder = Text::builder();
             text!(builder, { tag_from_align(self.cfg.align) });

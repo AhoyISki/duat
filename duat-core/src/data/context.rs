@@ -148,7 +148,7 @@ impl<U: Ui> CurFile<U> {
         }
     }
 
-    pub fn inspect<R>(&self, f: impl FnOnce(&File, &U::Area, &Option<Cursors>) -> R) -> R {
+    pub fn inspect<R>(&self, f: impl FnOnce(&File, &U::Area, &Cursors) -> R) -> R {
         let data = self.0.raw_read();
         let (file, area, cursors, _) = data.as_ref().unwrap();
 
@@ -173,25 +173,26 @@ impl<U: Ui> CurFile<U> {
 
     pub(crate) fn mutate_data<R>(
         &self,
-        f: impl FnOnce(&RwData<File>, &U::Area, &RwData<Option<Cursors>>) -> R,
+        f: impl FnOnce(&RwData<File>, &U::Area, &RwData<Cursors>) -> R,
     ) -> R {
         let data = self.0.raw_read();
         let (file, area, cursors, _) = data.as_ref().unwrap();
 
-        if let Some(cursors) = &*cursors.read() {
-            <File as Widget<U>>::text_mut(&mut file.write()).remove_cursor_tags(cursors);
-        }
+        cursors.inspect(|c| {
+            <File as Widget<U>>::text_mut(&mut file.write()).remove_cursor_tags(c);
+        });
 
         let ret = f(file, area, cursors);
 
         let cursors = cursors.read();
-        let mut file = file.write();
-        if let Some(cursors) = &*cursors {
-            <File as Widget<U>>::text_mut(&mut file).add_cursor_tags(cursors);
 
+        let mut file = file.write();
+        file.text_mut().add_cursor_tags(&cursors);
+
+        if let Some(main) = cursors.get_main() {
             area.scroll_around_point(
                 file.text(),
-                cursors.main().caret(),
+                main.caret(),
                 <File as Widget<U>>::print_cfg(&file),
             );
         }
@@ -204,19 +205,14 @@ impl<U: Ui> CurFile<U> {
 
     pub(crate) fn mutate_related_widget<W: Widget<U>, R>(
         &self,
-        f: impl FnOnce(&mut W, &U::Area, &mut Option<Cursors>) -> R,
+        f: impl FnOnce(&mut W, &U::Area, &mut Cursors) -> R,
     ) -> Option<R> {
-        let f = move |w: &mut W, a, c: &mut Option<Cursors>| {
-            if let Some(c) = c.as_ref() {
-                w.text_mut().remove_cursor_tags(c);
-            }
+        let f = move |w: &mut W, a, c: &mut Cursors| {
+            w.text_mut().remove_cursor_tags(c);
 
             let ret = f(w, a, &mut *c);
 
-            if let Some(c) = c.as_ref() {
-                w.text_mut().add_cursor_tags(c);
-            }
-
+            w.text_mut().add_cursor_tags(c);
             w.update(a);
             w.print(a);
 
@@ -263,7 +259,7 @@ pub struct FileReader<U: Ui> {
 }
 
 impl<U: Ui> FileReader<U> {
-    pub fn inspect<R>(&self, f: impl FnOnce(&File, &U::Area, Option<&Cursors>) -> R) -> R {
+    pub fn inspect<R>(&self, f: impl FnOnce(&File, &U::Area, &Cursors) -> R) -> R {
         let data = self.data.read();
         let (file, area, cursors, _) = data.as_ref().unwrap();
 
@@ -276,7 +272,7 @@ impl<U: Ui> FileReader<U> {
 
         let cursors = cursors.read();
         let file = file.read();
-        f(&file, area, cursors.as_ref())
+        f(&file, area, &cursors)
     }
 
     pub fn inspect_related<T: 'static, R>(&self, f: impl FnOnce(&T) -> R) -> Option<R> {
@@ -288,9 +284,7 @@ impl<U: Ui> FileReader<U> {
         } else if cursors.data_is::<T>() {
             cursors.inspect_as(f)
         } else if TypeId::of::<T>() == TypeId::of::<Cursors>() {
-            cursors
-                .inspect_as::<Option<T>, Option<R>>(|c| c.as_ref().map(f))
-                .flatten()
+            cursors.inspect_as(f)
         } else {
             let related = related.read();
             related
@@ -307,9 +301,7 @@ impl<U: Ui> FileReader<U> {
         if cursors.data_is::<T>() {
             cursors.inspect_as(|c| f(&file.read(), c))
         } else if TypeId::of::<T>() == TypeId::of::<Cursors>() {
-            cursors
-                .inspect_as::<Option<T>, Option<R>>(|c| c.as_ref().map(|c| f(&file.read(), c)))
-                .flatten()
+            cursors.inspect_as::<T, R>(|c| f(&file.read(), c))
         } else {
             let related = related.read();
             related
@@ -372,7 +364,7 @@ impl<U: Ui> CurWidget<U> {
         self.0.type_id
     }
 
-    pub fn inspect<R>(&self, f: impl FnOnce(&dyn Widget<U>, &U::Area, &Option<Cursors>) -> R) -> R {
+    pub fn inspect<R>(&self, f: impl FnOnce(&dyn Widget<U>, &U::Area, &Cursors) -> R) -> R {
         let data = self.0.raw_read();
         let (widget, area, cursors) = data.as_ref().unwrap().as_active();
         let cursors = cursors.read();
@@ -381,10 +373,7 @@ impl<U: Ui> CurWidget<U> {
         f(&*widget, area, &cursors)
     }
 
-    pub fn inspect_widget_as<W, R>(
-        &self,
-        f: impl FnOnce(&W, &U::Area, &Option<Cursors>) -> R,
-    ) -> Option<R>
+    pub fn inspect_widget_as<W, R>(&self, f: impl FnOnce(&W, &U::Area, &Cursors) -> R) -> Option<R>
     where
         W: Widget<U>,
     {
@@ -397,7 +386,7 @@ impl<U: Ui> CurWidget<U> {
 
     pub fn inspect_as<W: Widget<U>, R>(
         &self,
-        f: impl FnOnce(&W, &U::Area, &Option<Cursors>) -> R,
+        f: impl FnOnce(&W, &U::Area, &Cursors) -> R,
     ) -> Option<R> {
         let data = self.0.raw_read();
         let (widget, area, cursors) = data.as_ref().unwrap().as_active();
@@ -408,7 +397,7 @@ impl<U: Ui> CurWidget<U> {
 
     pub(crate) fn mutate_data_as<W: Widget<U>, R>(
         &self,
-        f: impl FnOnce(&RwData<W>, &U::Area, &RwData<Option<Cursors>>) -> R,
+        f: impl FnOnce(&RwData<W>, &U::Area, &RwData<Cursors>) -> R,
     ) -> Option<R> {
         let data = self.0.read();
         let node = data.as_ref().unwrap();
@@ -416,24 +405,21 @@ impl<U: Ui> CurWidget<U> {
 
         let widget = widget.try_downcast::<W>()?;
 
-        cursors.inspect(|c| {
-            if let Some(c) = c.as_ref() {
-                widget.raw_write().text_mut().remove_cursor_tags(c)
-            }
-        });
+        cursors.inspect(|c| widget.raw_write().text_mut().remove_cursor_tags(c));
 
         let ret = Some(f(&widget, area, cursors));
 
-        let cursors = cursors.read();
-        let mut widget = widget.write();
+        cursors.inspect(|c| {
+            let mut widget = widget.write();
 
-        if let Some(c) = &*cursors {
             widget.text_mut().add_cursor_tags(c);
-            area.scroll_around_point(widget.text(), c.main().caret(), widget.print_cfg());
-        }
+            if let Some(main) = c.get_main() {
+                area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
+            }
 
-        widget.update(area);
-        widget.print(area);
+            widget.update(area);
+            widget.print(area);
+        });
 
         ret
     }
@@ -452,6 +438,6 @@ impl<U: Ui> Default for CurWidget<U> {
 pub(crate) type FileParts<U> = (
     RwData<File>,
     <U as Ui>::Area,
-    RwData<Option<Cursors>>,
+    RwData<Cursors>,
     RwData<Vec<Node<U>>>,
 );

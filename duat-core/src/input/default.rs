@@ -17,11 +17,11 @@ impl<U: Ui> super::Mode<U> for Regular {
         key: KeyEvent,
         widget: &RwData<Self::Widget>,
         area: &U::Area,
-        cursors: Option<Cursors>,
-    ) -> Option<Cursors> {
-        let mut cursors = cursors.unwrap_or_else(Cursors::new_exclusive);
+        cursors: &mut Cursors,
+    ) {
+        cursors.make_excl();
+        let mut helper = EditHelper::new(widget, area, cursors);
 
-        let mut helper = EditHelper::new(widget, area, &mut cursors);
         match key {
             // Characters
             key!(KeyCode::Char(char), KeyMod::SHIFT | KeyMod::NONE) => {
@@ -95,8 +95,6 @@ impl<U: Ui> super::Mode<U> for Regular {
 
             _ => {}
         }
-
-        Some(cursors)
     }
 }
 

@@ -5,27 +5,57 @@ use parking_lot::Mutex;
 
 pub use self::global::*;
 use super::Mode;
-use crate::{commands, data::RwData, ui::Ui};
+use crate::{
+    commands, context,
+    data::RwData,
+    text::{Key, Tag, Text, text},
+    ui::Ui,
+};
 
 mod global {
-    use crossterm::event::KeyEvent;
+    use crossterm::event::{KeyCode, KeyEvent};
     use parking_lot::Mutex;
 
-    use super::Remapper;
-    use crate::{data::RoData, input::Mode, ui::Ui};
+    use super::{Gives, Remapper};
+    use crate::{
+        commands,
+        data::RoData,
+        input::Mode,
+        text::{Text, text},
+        ui::Ui,
+    };
 
     static REMAPPER: Remapper = Remapper::new();
     static SEND_KEY: Mutex<fn(KeyEvent)> = Mutex::new(empty);
 
-    pub fn map<M: Mode<U>, U: Ui>(take: impl Into<Vec<KeyEvent>>, give: impl Into<Vec<KeyEvent>>) {
-        REMAPPER.remap::<M, U>(take, give);
+    /// Maps a sequence of [keys] to another
+    ///
+    /// If another sequence already exists on the same mode, which
+    /// would intersect with this one, the new sequence will not be
+    /// added.
+    ///
+    /// [keys]: crate::input::keys
+    pub fn map<M: Mode<U>, U: Ui>(take: impl AsTakes, give: impl AsGives<U>) {
+        REMAPPER.remap::<M, U>(take.into_takes(), give.into_gives(), false);
     }
 
-    pub fn alias<M: Mode<U>, U: Ui>(
-        take: impl Into<Vec<KeyEvent>>,
-        give: impl Into<Vec<KeyEvent>>,
-    ) {
-        REMAPPER.alias::<M, U>(take, give)
+    /// Aliases a sequence of [keys] to another
+    ///
+    /// The difference between aliasing and mapping is that an alias
+    /// will be displayed on the text as a [ghost text], making it
+    /// seem like you are pressing the sequence in real time.
+    ///
+    /// The main use usecase of aliasing is mapping words to other
+    /// words, so that it seems like you are typing normally, but the
+    /// sequence changes at the end.
+    ///
+    /// If another sequence already exists on the same mode, which
+    /// would intersect with this one, the new sequence will not be
+    /// added.
+    ///
+    /// [keys]: crate::input::keys
+    pub fn alias<M: Mode<U>, U: Ui>(take: impl AsTakes, give: impl AsGives<U>) {
+        REMAPPER.remap::<M, U>(take.into_takes(), give.into_gives(), true);
     }
 
     pub fn send_key(key: KeyEvent) {
@@ -33,8 +63,135 @@ mod global {
         f(key)
     }
 
-    pub fn cur_sequence() -> RoData<Vec<KeyEvent>> {
+    pub fn cur_sequence() -> RoData<(Vec<KeyEvent>, bool)> {
         RoData::from(&*REMAPPER.cur_seq)
+    }
+
+    /// Turns a sequence of [`KeyEvent`]s into a [`Text`]
+    pub fn keys_to_text(keys: &[KeyEvent]) -> Text {
+        use crossterm::event::KeyCode::*;
+        let mut seq = Text::builder();
+
+        for key in keys {
+            match key.code {
+                Backspace => text!(seq, [SeqSpecialKey] "BS"),
+                Enter => text!(seq, [SeqSpecialKey] "Enter"),
+                Left => text!(seq, [SeqSpecialKey] "Left"),
+                Right => text!(seq, [SeqSpecialKey] "Right"),
+                Up => text!(seq, [SeqSpecialKey] "Up"),
+                Down => text!(seq, [SeqSpecialKey] "Down"),
+                Home => text!(seq, [SeqSpecialKey] "Home"),
+                End => text!(seq, [SeqSpecialKey] "End"),
+                PageUp => text!(seq, [SeqSpecialKey] "PageU"),
+                PageDown => text!(seq, [SeqSpecialKey] "PageD"),
+                Tab => text!(seq, [SeqSpecialKey] "Tab"),
+                BackTab => text!(seq, [SeqSpecialKey] "BTab"),
+                Delete => text!(seq, [SeqSpecialKey] "Del"),
+                Insert => text!(seq, [SeqSpecialKey] "Ins"),
+                F(num) => text!(seq, [SeqSpecialKey] "F" num),
+                Char(char) => text!(seq, [SeqCharKey] char),
+                Null => text!(seq, [SeqSpecialKey] "Null"),
+                Esc => text!(seq, [SeqSpecialKey] "Esc"),
+                CapsLock => text!(seq, [SeqSpecialKey] "CapsL"),
+                ScrollLock => text!(seq, [SeqSpecialKey] "ScrollL"),
+                NumLock => text!(seq, [SeqSpecialKey] "NumL"),
+                PrintScreen => text!(seq, [SeqSpecialKey] "PrSc"),
+                Pause => text!(seq, [SeqSpecialKey] "Pause"),
+                Menu => text!(seq, [SeqSpecialKey] "Menu"),
+                KeypadBegin => text!(seq, [SeqSpecialKey] "KeypadBeg"),
+                Media(m_code) => text!(seq, [SeqSpecialKey] "Media" m_code),
+                Modifier(m_code) => text!(seq, [SeqSpecialKey] "Mod" m_code),
+            }
+        }
+
+        seq.finish()
+    }
+
+    /// Turns a string of [`KeyEvent`]s into a [`String`]
+    pub fn keys_to_string(keys: &[KeyEvent]) -> String {
+        use std::fmt::Write;
+
+        use crossterm::event::KeyCode::*;
+        let mut seq = String::new();
+
+        for key in keys {
+            match key.code {
+                Backspace => seq.push_str("BS"),
+                Enter => seq.push_str("Enter"),
+                Left => seq.push_str("Left"),
+                Right => seq.push_str("Right"),
+                Up => seq.push_str("Up"),
+                Down => seq.push_str("Down"),
+                Home => seq.push_str("Home"),
+                End => seq.push_str("End"),
+                PageUp => seq.push_str("PageU"),
+                PageDown => seq.push_str("PageD"),
+                Tab => seq.push_str("Tab"),
+                BackTab => seq.push_str("BTab"),
+                Delete => seq.push_str("Del"),
+                Insert => seq.push_str("Ins"),
+                F(num) => write!(seq, "F{num}").unwrap(),
+                Char(char) => write!(seq, "{char}").unwrap(),
+                Null => seq.push_str("Null"),
+                Esc => seq.push_str("Esc"),
+                CapsLock => seq.push_str("CapsL"),
+                ScrollLock => seq.push_str("ScrollL"),
+                NumLock => seq.push_str("NumL"),
+                PrintScreen => seq.push_str("PrSc"),
+                Pause => seq.push_str("Pause"),
+                Menu => seq.push_str("Menu"),
+                KeypadBegin => seq.push_str("KeypadBeg"),
+                Media(m_code) => write!(seq, "Media{m_code}").unwrap(),
+                Modifier(m_code) => write!(seq, "Mod{m_code}").unwrap(),
+            }
+        }
+
+        seq
+    }
+
+    pub trait AsTakes {
+        fn into_takes(self) -> Vec<KeyEvent>;
+    }
+
+    impl<const LEN: usize> AsTakes for [KeyEvent; LEN] {
+        fn into_takes(self) -> Vec<KeyEvent> {
+            self.into()
+        }
+    }
+
+    impl AsTakes for &str {
+        fn into_takes(self) -> Vec<KeyEvent> {
+            self.chars()
+                .map(|char| KeyEvent::from(KeyCode::Char(char)))
+                .collect()
+        }
+    }
+
+    pub trait AsGives<U> {
+        fn into_gives(self) -> Gives;
+    }
+
+    impl<const LEN: usize, U: Ui> AsGives<U> for [KeyEvent; LEN] {
+        fn into_gives(self) -> Gives {
+            Gives::Keys(self.into())
+        }
+    }
+
+    impl<U: Ui> AsGives<U> for &str {
+        fn into_gives(self) -> Gives {
+            Gives::Keys(
+                self.chars()
+                    .map(|char| KeyEvent::from(KeyCode::Char(char)))
+                    .collect(),
+            )
+        }
+    }
+
+    impl<M: Mode<U>, U: Ui> AsGives<U> for &M {
+        fn into_gives(self) -> Gives {
+            let mode = self.clone();
+            Gives::Mode(Box::new(move || commands::set_mode(mode.clone())))
+        }
     }
 
     pub(crate) fn set_send_key<M: Mode<U>, U: Ui>() {
@@ -48,25 +205,6 @@ mod global {
     fn empty(_: KeyEvent) {}
 }
 
-/// A sequence of characters that should be turned into another
-/// sequence of characters.
-#[derive(Clone)]
-struct Remap {
-    /// Takes this sequence of [`KeyEvent`]s.
-    takes: Vec<KeyEvent>,
-    /// And turns it into this new sequence of [`KeyEvent`]s.
-    gives: Vec<KeyEvent>,
-}
-
-impl Remap {
-    pub fn new(takes: impl Into<Vec<KeyEvent>>, gives: impl Into<Vec<KeyEvent>>) -> Self {
-        Self { takes: takes.into(), gives: gives.into() }
-    }
-}
-
-unsafe impl Send for Remap {}
-unsafe impl Sync for Remap {}
-
 /// The structure responsible for remapping sequences of characters.
 struct Remapper {
     /// The list of remapped sequences to be used with the
@@ -74,7 +212,7 @@ struct Remapper {
     remaps: Mutex<Vec<(TypeId, Vec<Remap>)>>,
     /// The sequence of yet to be fully matched characters that have
     /// been typed.
-    cur_seq: LazyLock<RwData<Vec<KeyEvent>>>,
+    cur_seq: LazyLock<RwData<(Vec<KeyEvent>, bool)>>,
 }
 
 impl Remapper {
@@ -86,47 +224,19 @@ impl Remapper {
     }
 
     /// Maps a sequence of characters to another.
-    fn remap<M: Mode<U>, U: Ui>(
-        &self,
-        take: impl Into<Vec<KeyEvent>>,
-        give: impl Into<Vec<KeyEvent>>,
-    ) {
+    fn remap<M: Mode<U>, U: Ui>(&self, take: Vec<KeyEvent>, give: Gives, is_alias: bool) {
         let ty = TypeId::of::<M>();
-        let remap = Remap::new(take, give);
+        let remap = Remap::new(take, give, is_alias);
 
         let mut remaps = self.remaps.lock();
 
         if let Some((_, remaps)) = remaps.iter_mut().find(|(m, _)| ty == *m) {
-            remaps.push(remap);
-        } else {
-            remaps.push((ty, vec![remap]));
-        }
-    }
-
-    fn alias<M: Mode<U>, U: Ui>(
-        &self,
-        takes: impl Into<Vec<KeyEvent>>,
-        gives: impl Into<Vec<KeyEvent>>,
-    ) {
-        use super::KeyCode::*;
-
-        let takes: Vec<KeyEvent> = takes.into();
-        let gives: Vec<KeyEvent> = {
-            let mut gives = gives.into();
-            gives.splice(
-                0..0,
-                std::iter::repeat(KeyEvent::from(Backspace)).take(takes.len()),
-            );
-            gives
-        };
-
-        let ty = TypeId::of::<M>();
-        let remap = Remap::new(takes, gives);
-
-        let mut remaps = self.remaps.lock();
-
-        if let Some((_, remaps)) = remaps.iter_mut().find(|(m, _)| ty == *m) {
-            remaps.push(remap);
+            if remaps
+                .iter()
+                .all(|r| !(r.takes.starts_with(&remap.takes) || remap.takes.starts_with(&r.takes)))
+            {
+                remaps.push(remap);
+            }
         } else {
             remaps.push((ty, vec![remap]));
         }
@@ -140,19 +250,77 @@ impl Remapper {
         };
 
         let mut cur_seq = self.cur_seq.write();
+        let (cur_seq, is_alias) = &mut *cur_seq;
         cur_seq.push(key);
 
-        if let Some(remap) = remaps.iter().find(|r| r.takes.starts_with(&cur_seq)) {
+        if let Some(remap) = remaps.iter().find(|r| r.takes.starts_with(cur_seq)) {
+            *is_alias = remap.is_alias;
             if remap.takes.len() == cur_seq.len() {
-                cur_seq.clear();
-                for key in remap.gives.iter() {
-                    commands::send_key(*key);
+                if *is_alias {
+                    remove_alias_and::<U>(|_, _| {});
                 }
+
+                *is_alias = false;
+
+                cur_seq.clear();
+                match &remap.gives {
+                    Gives::Keys(keys) => {
+                        for key in keys {
+                            commands::send_key(*key);
+                        }
+                    }
+                    Gives::Mode(f) => f(),
+                }
+            } else if *is_alias {
+                remove_alias_and::<U>(|text, main| {
+                    text.insert_tag(
+                        main,
+                        Tag::ghost_text(text!([Alias] { keys_to_string(cur_seq) })),
+                        Key::for_alias(),
+                    );
+                })
             }
         } else {
+            if *is_alias {
+                remove_alias_and::<U>(|_, _| {});
+            }
+            *is_alias = false;
             for key in cur_seq.drain(..) {
                 commands::send_key(key);
             }
         }
     }
+}
+
+/// A sequence of characters that should be turned into another
+/// sequence of characters.
+struct Remap {
+    takes: Vec<KeyEvent>,
+    gives: Gives,
+    is_alias: bool,
+}
+
+impl Remap {
+    pub fn new(takes: Vec<KeyEvent>, gives: Gives, is_alias: bool) -> Self {
+        Self { takes, gives, is_alias }
+    }
+}
+
+pub enum Gives {
+    Keys(Vec<KeyEvent>),
+    Mode(Box<dyn Fn() + Send>),
+}
+
+fn remove_alias_and<U: Ui>(f: impl FnOnce(&mut Text, usize)) {
+    let file = context::cur_file::<U>().unwrap();
+    file.mutate_data(|file, _, cursors| {
+        let cursors = cursors.read();
+        let mut file = file.write();
+
+        if let Some(main) = cursors.get_main() {
+            let main = main.line();
+            file.text_mut().remove_tags_on(main, Key::for_alias());
+            f(file.text_mut(), main)
+        }
+    })
 }

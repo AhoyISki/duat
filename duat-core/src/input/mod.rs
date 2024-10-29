@@ -1,11 +1,11 @@
 pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
 
 pub use self::{
-    remap::*,
     commander::Command,
     default::Regular,
     helper::{Cursor, Cursors, EditHelper, Editor, Mover},
     inc_search::{Fwd, IncSearcher},
+    remap::*,
 };
 use crate::{data::RwData, ui::Ui, widgets::Widget};
 
@@ -22,8 +22,9 @@ mod remap;
 ///
 /// In principle, there are two types of `Mode`, the ones which use
 /// [`Cursors`], and the ones which don't. In [`Mode::send_key`], you
-/// receive an [`Option<Cursors>`], and must return [`Some(cursors)`]
-/// if you want them to show up.
+/// receive an [`&mut Cursors`], and if you're not using cursors, you
+/// should run [`Cursors::clear`], in order to make sure there are no
+/// cursors.
 ///
 /// If a [`Mode`] has cursors, it _must_ use the [`EditHelper`] struct
 /// in order to modify of the widget's [`Text`].
@@ -287,8 +288,9 @@ mod remap;
 ///         key: KeyEvent,
 ///         widget: &RwData<Menu>,
 ///         area: &U::Area,
-///         cursors: Option<Cursors>,
-///     ) -> Option<Cursors> {
+///         cursors: &mut Cursors,
+///     ) {
+///         cursors.clear();
 ///         use KeyCode::*;
 ///         let mut menu = widget.write();
 ///         
@@ -298,8 +300,6 @@ mod remap;
 ///             key!(Enter | Tab | Char(' ')) => menu.toggle(),
 ///             _ => {}
 ///         }
-///
-///         None
 ///     }
 /// }
 /// ```
@@ -312,26 +312,21 @@ mod remap;
 /// [`on_unfocus`]: Widget::on_unfocus
 /// [resizing]: Area::constrain_ver
 /// [`Form`]: crate::forms::Form
-///
 /// [default]: default::KeyMap
 /// [`duat-kak`]: https://docs.rs/duat-kak/latest/duat_kak/index.html
 /// [Kakoune]: https://github.com/mawww/kakoune
 /// [`Text`]: crate::Text
-/// [`Some(cursors)`]: Option::Some
-pub trait Mode<U: Ui>: Clone + Send + Sync + 'static {
-    type Widget: Widget<U>
-    where
-        Self: Sized;
+/// [`&mut Cursors`]: Cursors
+pub trait Mode<U: Ui>: Sized + Clone + Send + Sync + 'static {
+    type Widget: Widget<U>;
 
     fn send_key(
         &mut self,
         key: KeyEvent,
         widget: &RwData<Self::Widget>,
         area: &U::Area,
-        cursors: Option<Cursors>,
-    ) -> Option<Cursors>
-    where
-        Self: Sized;
+        cursors: &mut Cursors,
+    );
 
     #[allow(unused)]
     fn on_focus(&mut self, area: &U::Area) {}

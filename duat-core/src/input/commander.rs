@@ -12,10 +12,10 @@ impl<U: Ui> Mode<U> for Command {
         key: KeyEvent,
         widget: &RwData<Self::Widget>,
         area: &U::Area,
-        cursors: Option<Cursors>,
-    ) -> Option<Cursors> {
-        let mut cursors = cursors.unwrap_or_else(Cursors::new_exclusive);
-        let mut helper = EditHelper::new(widget, area, &mut cursors);
+        cursors: &mut Cursors,
+    ) {
+        cursors.make_excl();
+        let mut helper = EditHelper::new(widget, area, cursors);
 
         match key {
             key!(KeyCode::Backspace) => {
@@ -70,16 +70,14 @@ impl<U: Ui> Mode<U> for Command {
                     m.move_to(m.len_point());
                 });
                 helper.edit_on_main(|e| e.replace(""));
-                cursors = Cursors::new_exclusive();
+                cursors.clear();
                 commands::reset_mode();
             }
             key!(KeyCode::Enter) => {
-                cursors = Cursors::new_exclusive();
+                cursors.clear();
                 commands::reset_mode();
             }
             _ => {}
         }
-
-        Some(cursors)
     }
 }

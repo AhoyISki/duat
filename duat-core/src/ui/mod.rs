@@ -83,7 +83,7 @@ pub trait Area: Send + Sync + Sized {
     type Ui: Ui<Area = Self>;
     type ConstraintChangeErr: std::error::Error + DuatError;
     type Cache: Default + Serialize + Deserialize<'static> + 'static;
-    type PrintInfo: Clone + Send + Sync;
+    type PrintInfo: Default + Clone + Send + Sync;
 
     /// Returns the statics from `self`
     fn cache(&self) -> Option<Self::Cache>;

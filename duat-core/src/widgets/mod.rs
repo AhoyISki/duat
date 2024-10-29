@@ -442,7 +442,7 @@ where
 pub struct Node<U: Ui> {
     widget: RwData<dyn Widget<U>>,
     area: U::Area,
-    cursors: RwData<Option<Cursors>>,
+    cursors: RwData<Cursors>,
 
     checker: Arc<dyn Fn() -> bool>,
     busy_updating: Arc<AtomicBool>,
@@ -462,14 +462,14 @@ impl<U: Ui> Node<U> {
             .inspect_as(|file: &File| {
                 let cursors = crate::cache::load_cache::<Cursors>(file.path());
                 let related = RwData::default();
-                (cursors.unwrap_or_default(), related)
+                (cursors.unwrap_or(Cursors::new_excl()), related)
             })
             .unzip();
 
         Self {
             widget,
             area,
-            cursors: RwData::new(cursors),
+            cursors: RwData::new(cursors.unwrap_or_default()),
 
             checker: Arc::new(checker),
             busy_updating: Arc::new(AtomicBool::new(false)),
@@ -527,7 +527,7 @@ impl<U: Ui> Node<U> {
         self.widget.raw_write().update(&self.area)
     }
 
-    pub(crate) fn as_active(&self) -> (&RwData<dyn Widget<U>>, &U::Area, &RwData<Option<Cursors>>) {
+    pub(crate) fn as_active(&self) -> (&RwData<dyn Widget<U>>, &U::Area, &RwData<Cursors>) {
         // Since this function is only ever used on widgets that became active
         // via `command::set_mode`, tecnically speaking, every widget is
         // active, so no need to return an `Option`.
@@ -570,15 +570,11 @@ impl<U: Ui> Node<U> {
     fn on_focus_fn<W: Widget<U>>(&self) {
         self.cursors.inspect(|c| {
             let mut widget = self.widget.write();
-
-            if let Some(c) = c.as_ref() {
-                widget.text_mut().remove_cursor_tags(c);
-            }
-
+            widget.text_mut().remove_cursor_tags(c);
             widget.on_focus(&self.area);
-            self.area.set_as_active();
         });
 
+        self.area.set_as_active();
         let widget = self.widget.try_downcast().unwrap();
 
         hooks::trigger::<FocusedOn<W, U>>((widget, self.area.clone(), self.cursors.clone()));
@@ -587,11 +583,7 @@ impl<U: Ui> Node<U> {
     fn on_unfocus_fn<W: Widget<U>>(&self) {
         self.cursors.inspect(|c| {
             let mut widget = self.widget.write();
-
-            if let Some(c) = c.as_ref() {
-                widget.text_mut().remove_cursor_tags(c);
-            }
-
+            widget.text_mut().remove_cursor_tags(c);
             widget.on_unfocus(&self.area);
         });
 
