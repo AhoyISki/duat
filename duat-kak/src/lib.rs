@@ -40,21 +40,21 @@ impl<U: Ui> Mode<U> for Normal {
         let w_chars = helper.cfg().word_chars;
 
         if let key!(Char('h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e') | Down | Up) = key {
-            helper.move_each(|m| m.unset_anchor())
+            helper.move_each(|mut m| m.unset_anchor())
         }
 
         match key {
             ////////// hjkl and arrow selection keys.
-            key!(Char('h')) => helper.move_each(|m| m.move_hor(-1)),
+            key!(Char('h')) => helper.move_each(|mut m| m.move_hor(-1)),
             key!(Char('j')) => match self.0 {
-                SelType::EndOfNl => helper.move_each(|m| {
+                SelType::EndOfNl => helper.move_each(|mut m| {
                     m.move_ver(1);
                     let (p0, _) = m.search("\n", None).next().unzip();
                     if let Some(point) = p0.or(m.last_point()) {
                         m.move_to(point);
                     }
                 }),
-                SelType::UntilNL => helper.move_each(|m| {
+                SelType::UntilNL => helper.move_each(|mut m| {
                     m.move_ver(1);
                     let pre_nl = match m.char() {
                         '\n' => m.iter_rev().take_while(|(_, char)| *char != '\n').next(),
@@ -64,18 +64,18 @@ impl<U: Ui> Mode<U> for Normal {
                         m.move_to(p);
                     }
                 }),
-                SelType::Normal => helper.move_each(|m| m.move_ver(1)),
+                SelType::Normal => helper.move_each(|mut m| m.move_ver(1)),
                 _ => unreachable!(),
             },
             key!(Char('k')) => match self.0 {
-                SelType::EndOfNl => helper.move_each(|m| {
+                SelType::EndOfNl => helper.move_each(|mut m| {
                     m.move_ver(-1);
                     let (p0, _) = m.search("\n", None).next().unzip();
                     if let Some(point) = p0.or(m.last_point()) {
                         m.move_to(point);
                     }
                 }),
-                SelType::UntilNL => helper.move_each(|m| {
+                SelType::UntilNL => helper.move_each(|mut m| {
                     m.move_ver(-1);
                     let pre_nl = match m.char() {
                         '\n' => m.iter_rev().take_while(|(_, char)| *char != '\n').next(),
@@ -85,21 +85,21 @@ impl<U: Ui> Mode<U> for Normal {
                         m.move_to(p);
                     }
                 }),
-                SelType::Normal => helper.move_each(|m| m.move_ver(-1)),
+                SelType::Normal => helper.move_each(|mut m| m.move_ver(-1)),
                 _ => unreachable!(),
             },
-            key!(Char('l')) => helper.move_each(|m| m.move_hor(1)),
+            key!(Char('l')) => helper.move_each(|mut m| m.move_hor(1)),
 
             key!(Char('H'), Mod::SHIFT) => select_and_move_each(&mut helper, Side::Left, 1),
             key!(Char('J'), Mod::SHIFT) => match self.0 {
-                SelType::EndOfNl => helper.move_each(|m| {
+                SelType::EndOfNl => helper.move_each(|mut m| {
                     m.move_ver(1);
                     let (p0, _) = m.search("\n", None).next().unzip();
                     if let Some(point) = p0.or(m.last_point()) {
                         m.move_to(point);
                     }
                 }),
-                SelType::UntilNL => helper.move_each(|m| {
+                SelType::UntilNL => helper.move_each(|mut m| {
                     m.move_ver(1);
                     let pre_nl = match m.char() {
                         '\n' => m.iter_rev().take_while(|(_, char)| *char != '\n').next(),
@@ -113,14 +113,14 @@ impl<U: Ui> Mode<U> for Normal {
                 _ => unreachable!(),
             },
             key!(Char('K'), Mod::SHIFT) => match self.0 {
-                SelType::EndOfNl => helper.move_each(|m| {
+                SelType::EndOfNl => helper.move_each(|mut m| {
                     m.move_ver(-1);
                     let (p0, _) = m.search("\n", None).next().unzip();
                     if let Some(point) = p0.or(m.last_point()) {
                         m.move_to(point);
                     }
                 }),
-                SelType::UntilNL => helper.move_each(|m| {
+                SelType::UntilNL => helper.move_each(|mut m| {
                     m.move_ver(-1);
                     let pre_nl = match m.char() {
                         '\n' => m.iter_rev().take_while(|(_, char)| *char != '\n').next(),
@@ -135,17 +135,17 @@ impl<U: Ui> Mode<U> for Normal {
             },
             key!(Char('L'), Mod::SHIFT) => select_and_move_each(&mut helper, Side::Right, 1),
 
-            key!(Left) => helper.move_each(|m| m.move_hor(-1)),
-            key!(Down) => helper.move_each(|m| m.move_ver_wrapped(1)),
-            key!(Up) => helper.move_each(|m| m.move_ver_wrapped(-1)),
-            key!(Right) => helper.move_each(|m| m.move_hor(1)),
+            key!(Left) => helper.move_each(|mut m| m.move_hor(-1)),
+            key!(Down) => helper.move_each(|mut m| m.move_ver_wrapped(1)),
+            key!(Up) => helper.move_each(|mut m| m.move_ver_wrapped(-1)),
+            key!(Right) => helper.move_each(|mut m| m.move_hor(1)),
             key!(Left, Mod::SHIFT) => select_and_move_each_wrapped(&mut helper, Side::Left, 1),
             key!(Down, Mod::SHIFT) => select_and_move_each_wrapped(&mut helper, Side::Bottom, 1),
             key!(Up, Mod::SHIFT) => select_and_move_each_wrapped(&mut helper, Side::Top, 1),
             key!(Right, Mod::SHIFT) => select_and_move_each_wrapped(&mut helper, Side::Right, 1),
 
             ////////// Word and WORD selection keys.
-            key!(Char('w'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each(|m| {
+            key!(Char('w'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each(|mut m| {
                 let init = no_nl_windows(m.iter()).next();
 
                 if let Some(((p0, c0), (p1, c1))) = init {
@@ -163,7 +163,7 @@ impl<U: Ui> Mode<U> for Normal {
                     }
                 };
             }),
-            key!(Char('e'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each(|m| {
+            key!(Char('e'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each(|mut m| {
                 let init = no_nl_windows(m.iter()).next();
 
                 if let Some(((p0, c0), (p1, c1))) = init {
@@ -181,7 +181,7 @@ impl<U: Ui> Mode<U> for Normal {
                     }
                 };
             }),
-            key!(Char('b'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each(|m| {
+            key!(Char('b'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each(|mut m| {
                 let init = {
                     let iter = [(m.caret(), m.char())].into_iter().chain(m.iter_rev());
                     no_nl_windows(iter).next()
@@ -199,7 +199,7 @@ impl<U: Ui> Mode<U> for Normal {
                 };
             }),
 
-            key!(Char('W'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each(|m| {
+            key!(Char('W'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each(|mut m| {
                 if m.anchor().is_none() {
                     m.set_anchor();
                 }
@@ -210,7 +210,7 @@ impl<U: Ui> Mode<U> for Normal {
                     m.move_hor(-1);
                 }
             }),
-            key!(Char('E'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each(|m| {
+            key!(Char('E'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each(|mut m| {
                 if m.anchor().is_none() {
                     m.set_anchor();
                 }
@@ -221,7 +221,7 @@ impl<U: Ui> Mode<U> for Normal {
                     m.move_hor(-1);
                 }
             }),
-            key!(Char('B'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each(|m| {
+            key!(Char('B'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each(|mut m| {
                 if m.anchor().is_none() {
                     m.set_anchor();
                 }
@@ -235,7 +235,7 @@ impl<U: Ui> Mode<U> for Normal {
             ////////// Other selection keys.
             key!(Char('x')) => {
                 self.0 = SelType::EndOfNl;
-                helper.move_each(|m| {
+                helper.move_each(|mut m| {
                     if m.anchor_is_start() {
                         m.swap_ends()
                     }
@@ -268,19 +268,19 @@ impl<U: Ui> Mode<U> for Normal {
                     OneKey::Until(sel_type)
                 });
             }
-            key!(Char('%')) => helper.move_main(|m| {
+            key!(Char('%')) => helper.move_main(|mut m| {
                 m.move_to(Point::default());
                 m.set_anchor();
                 m.move_to(m.last_point().unwrap())
             }),
-            key!(Char(';'), Mod::ALT) => helper.move_each(|m| m.swap_ends()),
-            key!(Char(';')) => helper.move_each(|m| m.unset_anchor()),
+            key!(Char(';'), Mod::ALT) => helper.move_each(|mut m| m.swap_ends()),
+            key!(Char(';')) => helper.move_each(|mut m| m.unset_anchor()),
             key!(Char(')')) => helper.rotate_main(1),
             key!(Char('(')) => helper.rotate_main(-1),
 
             ////////// Text modifying keys.
             key!(Char('i')) => {
-                helper.move_each(|m| {
+                helper.move_each(|mut m| {
                     if !m.anchor_is_start() {
                         m.swap_ends();
                     }
@@ -288,7 +288,7 @@ impl<U: Ui> Mode<U> for Normal {
                 mode::set::<U>(Insert);
             }
             key!(Char('a')) => {
-                helper.move_each(|m| {
+                helper.move_each(|mut m| {
                     if m.anchor_is_start() {
                         m.swap_ends();
                     }
@@ -298,12 +298,12 @@ impl<U: Ui> Mode<U> for Normal {
             }
             key!(Char('c')) => {
                 helper.edit_each(|e| e.replace(""));
-                helper.move_each(|m| m.unset_anchor());
+                helper.move_each(|mut m| m.unset_anchor());
                 mode::set::<U>(Insert);
             }
             key!(Char('d')) => {
                 helper.edit_each(|e| e.replace(""));
-                helper.move_each(|m| m.unset_anchor());
+                helper.move_each(|mut m| m.unset_anchor());
             }
 
             ////////// Other mode changing keys.
@@ -346,25 +346,25 @@ impl<U: Ui> Mode<U> for Insert {
         let mut helper = EditHelper::new(widget, area, cursors);
 
         if let key!(Left | Down | Up | Right) = key {
-            helper.move_each(|m| m.unset_anchor())
+            helper.move_each(|mut m| m.unset_anchor())
         }
 
         match key {
             key!(Char(char)) => {
                 helper.edit_each(|e| e.insert(char));
-                helper.move_each(|m| m.move_hor(1));
+                helper.move_each(|mut m| m.move_hor(1));
             }
             key!(Char(char), Mod::SHIFT) => {
                 helper.edit_each(|e| e.insert(char));
-                helper.move_each(|m| m.move_hor(1));
+                helper.move_each(|mut m| m.move_hor(1));
             }
             key!(Enter) => {
                 helper.edit_each(|e| e.insert('\n'));
-                helper.move_each(|m| m.move_hor(1));
+                helper.move_each(|mut m| m.move_hor(1));
             }
             key!(Backspace) => {
                 let mut anchors = Vec::with_capacity(helper.cursors().len());
-                helper.move_each(|m| {
+                helper.move_each(|mut m| {
                     anchors.push({
                         let c = m.caret();
                         m.unset_anchor().map(|a| match a > c {
@@ -376,7 +376,7 @@ impl<U: Ui> Mode<U> for Insert {
                 });
                 let mut anchors = anchors.into_iter().cycle();
                 helper.edit_each(|editor| editor.replace(""));
-                helper.move_each(|m| {
+                helper.move_each(|mut m| {
                     if let Some(Some(diff)) = anchors.next() {
                         m.set_anchor();
                         m.move_hor(diff);
@@ -386,7 +386,7 @@ impl<U: Ui> Mode<U> for Insert {
             }
             key!(Delete) => {
                 let mut anchors = Vec::with_capacity(helper.cursors().len());
-                helper.move_each(|m| {
+                helper.move_each(|mut m| {
                     let caret = m.caret();
                     anchors.push(m.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
                     m.set_anchor();
@@ -396,7 +396,7 @@ impl<U: Ui> Mode<U> for Insert {
                 helper.edit_each(|editor| {
                     editor.replace("");
                 });
-                helper.move_each(|m| {
+                helper.move_each(|mut m| {
                     if let Some(Some((anchor, _))) = anchors.next() {
                         m.set_anchor();
                         m.move_to(anchor);
@@ -411,10 +411,10 @@ impl<U: Ui> Mode<U> for Insert {
             key!(Up, Mod::SHIFT) => select_and_move_each_wrapped(&mut helper, Side::Top, 1),
             key!(Down, Mod::SHIFT) => select_and_move_each(&mut helper, Side::Bottom, 1),
 
-            key!(Left) => helper.move_each(|m| m.move_hor(-1)),
-            key!(Down) => helper.move_each(|m| m.move_ver_wrapped(1)),
-            key!(Up) => helper.move_each(|m| m.move_ver_wrapped(-1)),
-            key!(Right) => helper.move_each(|m| m.move_hor(1)),
+            key!(Left) => helper.move_each(|mut m| m.move_hor(-1)),
+            key!(Down) => helper.move_each(|mut m| m.move_ver_wrapped(1)),
+            key!(Up) => helper.move_each(|mut m| m.move_ver_wrapped(-1)),
+            key!(Right) => helper.move_each(|mut m| m.move_hor(1)),
 
             key!(Esc) => {
                 helper.new_moment();
@@ -449,9 +449,9 @@ impl OneKey {
         if let key!(Char('h' | 'j' | 'k' | 'l' | 'i' | 't' | 'b' | 'c' | '.')) = key
             && let SelType::Normal = sel_type
         {
-            helper.move_each(|m| m.unset_anchor())
+            helper.move_each(|mut m| m.unset_anchor())
         } else {
-            helper.move_each(|m| {
+            helper.move_each(|mut m| {
                 if m.anchor().is_none() {
                     m.set_anchor()
                 }
@@ -459,13 +459,13 @@ impl OneKey {
         }
 
         match key {
-            key!(Char('h')) => helper.move_each(|m| {
+            key!(Char('h')) => helper.move_each(|mut m| {
                 let (_, p1) = m.search_rev("\n", None).next().unzip();
                 m.move_to(p1.unwrap_or_default());
             }),
-            key!(Char('j')) => helper.move_each(|m| m.move_ver(isize::MAX)),
-            key!(Char('k')) => helper.move_each(|m| m.move_to_coords(0, 0)),
-            key!(Char('l')) => helper.move_each(|m| {
+            key!(Char('j')) => helper.move_each(|mut m| m.move_ver(isize::MAX)),
+            key!(Char('k')) => helper.move_each(|mut m| m.move_to_coords(0, 0)),
+            key!(Char('l')) => helper.move_each(|mut m| {
                 *sel_type = SelType::UntilNL;
                 let pre_nl = match m.char() {
                     '\n' => m.iter_rev().take_while(|(_, char)| *char != '\n').next(),
@@ -475,7 +475,7 @@ impl OneKey {
                     m.move_to(p);
                 }
             }),
-            key!(Char('i')) => helper.move_each(|m| {
+            key!(Char('i')) => helper.move_each(|mut m| {
                 let (_, p1) = m.search_rev("(^|\n)[ \t]*", None).next().unzip();
                 if let Some(p1) = p1 {
                     m.move_to(p1);
@@ -545,7 +545,7 @@ impl<U: Ui> Mode<U> for OneKey {
                 if let key!(Char(char), Mod::SHIFT | Mod::NONE) = key =>
             {
                 use SelType::*;
-                helper.move_each(|m| {
+                helper.move_each(|mut m| {
                     let cur = m.caret();
                     let (points, back) = match sel_type {
                         Reverse | ExtendRev => {
@@ -585,7 +585,7 @@ fn select_and_move_each<S>(
     direction: Side,
     amount: usize,
 ) {
-    helper.move_each(|m| {
+    helper.move_each(|mut m| {
         if m.anchor().is_none() {
             m.set_anchor()
         }
@@ -603,7 +603,7 @@ fn select_and_move_each_wrapped<S>(
     direction: Side,
     amount: usize,
 ) {
-    helper.move_each(|m| {
+    helper.move_each(|mut m| {
         if m.anchor().is_none() {
             m.set_anchor();
         }

@@ -60,6 +60,8 @@ mod global {
     /// - `A => Alt`,
     /// - `S => Shift`,
     /// - `M => Meta`,
+    /// - `super => Super`,
+    /// - `hyper => Hyper`,
     ///
     /// If another sequence already exists on the same mode, which
     /// would intersect with this one, the new sequence will not be
@@ -72,11 +74,8 @@ mod global {
     ///
     /// The difference between aliasing and mapping is that an alias
     /// will be displayed on the text as a [ghost text], making it
-    /// seem like you are pressing the sequence in real time.
-    ///
-    /// The main use usecase of aliasing is mapping words to other
-    /// words, so that it seems like you are typing normally, but the
-    /// sequence changes at the end.
+    /// seem like you are typing normally. This text will be printed
+    /// with the `Alias` [form].
     ///
     /// If another sequence already exists on the same mode, which
     /// would intersect with this one, the new sequence will not be
@@ -84,18 +83,18 @@ mod global {
     ///
     /// # Note
     ///
-    /// This sequence is not like Vim typing, in that if you make a
+    /// This sequence is not like Vim's `alias`, in that if you make a
     /// mistake while typing the sequence, the alias is undone, and
     /// you will be just typing normally.
     ///
+    /// The alias command also works on any [`Mode`], not just
+    /// "insert like" modes. You can also use any key in the input or
+    /// output of this `alias`
+    ///
     /// [ghost text]: crate::text::Tag::GhostText
+    /// [form]: crate::forms::Form
     pub fn alias<M: Mode<U>, U: Ui>(take: &str, give: impl AsGives<U>) {
         REMAPPER.remap::<M, U>(str_to_keys(take), give.into_gives(), true);
-    }
-
-    pub fn send_key(key: KeyEvent) {
-        let f = { *SEND_KEY.lock() };
-        f(key)
     }
 
     pub fn cur_sequence() -> RoData<(Vec<KeyEvent>, bool)> {
@@ -285,16 +284,26 @@ mod global {
         }
     }
 
-    pub(crate) fn set_send_key<M: Mode<U>, U: Ui>() {
+    /// Sends a key to be remapped
+    pub(crate) fn send_key(key: KeyEvent) {
+        let f = { *SEND_KEY.lock() };
+        f(key)
+    }
+
+    /// Sets the key sending function
+    pub(in crate::mode) fn set_send_key<M: Mode<U>, U: Ui>() {
         *SEND_KEY.lock() = send_key_fn::<M, U>;
     }
 
+    /// The key sending function, to be used as a pointer
     fn send_key_fn<M: Mode<U>, U: Ui>(key: KeyEvent) {
         REMAPPER.send_key::<M, U>(key);
     }
 
+    /// Null key sending function
     fn empty(_: KeyEvent) {}
 
+    /// List of special charactes available for remapping
     const SPECIAL: &[(&str, KeyCode)] = &[
         ("Enter", KeyCode::Enter),
         ("Tab", KeyCode::Tab),
@@ -323,6 +332,7 @@ mod global {
         ("F11", KeyCode::F(11)),
         ("F12", KeyCode::F(12)),
     ];
+    /// List of modifiers available for remapping
     const MODS: &[(&str, KeyMod)] = &[
         ("C", KeyMod::CONTROL),
         ("A", KeyMod::ALT),
@@ -340,6 +350,7 @@ struct Remapper {
 }
 
 impl Remapper {
+    /// Returns a new instance of [`Remapper`]
     const fn new() -> Self {
         Remapper {
             remaps: Mutex::new(Vec::new()),

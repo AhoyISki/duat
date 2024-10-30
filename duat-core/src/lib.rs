@@ -43,7 +43,7 @@
 //!             return;
 //!         };
 //!
-//!         helper.move_each(|m| {
+//!         helper.move_each(|mut m| {
 //!             let pat: String = [first, c].iter().collect();
 //!             let matched = m.search(pat, None).next();
 //!             if let Some((p0, p1)) = matched {

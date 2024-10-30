@@ -76,7 +76,7 @@ impl Cursors {
 
     pub fn remove_extras(&mut self) {
         if !self.is_empty() {
-            let cursor = self.buf[self.main].clone();
+            let cursor = self.buf[self.main];
             self.buf = CursorGapBuffer(gap_buffer![cursor]);
         }
         self.main = 0;
@@ -137,7 +137,7 @@ impl Cursors {
         })
     }
 
-    pub(super) fn insert_removed(&mut self, was_main: bool, mut cursor: Cursor) -> usize {
+    pub(super) fn insert(&mut self, was_main: bool, mut cursor: Cursor) -> usize {
         let start = cursor.range(self.is_incl).start;
         let (Ok(i) | Err(i)) =
             binary_search_by_key(&self.buf, start, |c| c.range(self.is_incl).start);
@@ -208,7 +208,7 @@ impl Cursors {
             && let Some(prev) = self.buf.get_mut(prev_i)
             && prev.range(self.is_incl).end > cursor.range(self.is_incl).start
         {
-            prev.merge_ahead(cursor.clone());
+            prev.merge_ahead(*cursor);
             if self.main > prev_i {
                 self.main -= 1;
             }
@@ -241,7 +241,7 @@ mod cursor {
 
     /// A cursor in the text file. This is an editing cursor, not
     /// a printing cursor.
-    #[derive(Default, Debug, Serialize, Deserialize)]
+    #[derive(Default, Clone, Copy, Debug, Serialize, Deserialize)]
     pub struct Cursor {
         caret: VPoint,
         anchor: Option<VPoint>,
@@ -501,13 +501,7 @@ mod cursor {
         }
     }
 
-    impl Clone for Cursor {
-        fn clone(&self) -> Self {
-            Cursor { assoc_index: None, ..*self }
-        }
-    }
-
-    #[derive(Default, Debug, Clone, Copy, Eq, Serialize, Deserialize)]
+    #[derive(Default, Clone, Copy, Eq, Debug, Serialize, Deserialize)]
     pub struct VPoint {
         point: Point,
         vcol: usize,

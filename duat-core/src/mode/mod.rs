@@ -46,10 +46,17 @@ mod switch {
         LazyLock::new(|| Mutex::new(Arc::new(|| {})));
     static SET_MODE: Mutex<Option<Box<dyn FnOnce() + Send + Sync>>> = Mutex::new(None);
 
+	/// Wether or not the [`Mode`] has changed
     pub fn was_set() -> Option<Box<dyn FnOnce() + Send + Sync>> {
         SET_MODE.lock().take()
     }
 
+    /// Sets the new default mode
+    ///
+    /// This is the mode that will be set when [`mode::reset`] is
+    /// called.
+    ///
+    /// [`mode::reset`]: reset
     pub fn set_default<M: Mode<U>, U: Ui>(mode: M) {
         *RESET_MODE.lock() = Arc::new(move || set_mode_fn::<M, U>(mode.clone()));
         let mut set_mode = SET_MODE.lock();
@@ -62,10 +69,16 @@ mod switch {
         }));
     }
 
+    /// Resets the mode to the [default]
+    ///
+    /// [default]: set_default
     pub fn reset() {
         *SET_MODE.lock() = Some(Box::new(|| RESET_MODE.lock()()))
     }
 
+    /// Sets the [`Mode`], switching to the appropriate [`Widget`]
+    ///
+    /// [`Widget`]: Mode::Widget
     pub fn set<U: Ui>(mode: impl Mode<U>) {
         let mut set_mode = SET_MODE.lock();
         let prev = set_mode.take();
@@ -77,6 +90,7 @@ mod switch {
         }));
     }
 
+    /// Sets the [`CmdLineMode`]
     pub fn set_cmd<U: Ui>(mode: impl CmdLineMode<U>) {
         let Ok(cur_file) = context::cur_file::<U>() else {
             return;
@@ -123,14 +137,19 @@ mod switch {
         }
     }
 
+    /// Wether or not printing has been stopped
+    ///
+    /// This is done when sending multiple keys at the same time
     pub(crate) fn is_printing_stopped() -> bool {
         PRINTING_IS_STOPPED.load(Ordering::Acquire)
     }
 
+	/// Stop printing
     pub(super) fn stop_printing() {
         PRINTING_IS_STOPPED.store(true, Ordering::Release);
     }
 
+	/// Resume printing
     pub(super) fn resume_printing() {
         PRINTING_IS_STOPPED.store(false, Ordering::Release);
     }

@@ -15,8 +15,8 @@
 //! Duat provides a lot of features, trying to be as configurable as
 //! possible, here are some of the things that Duat is capable of:
 //!
-//! - Completely custom input methods, with full Vim style remapping
-//! - Completely custom widgets, with user created input methods
+//! - Completely custom modes, with full Vim style remapping
+//! - Completely custom widgets, with user created modes
 //! - Arbitrary concealment of text, and arbitrary ghost text
 //! - Custom hooks, whose activation is up to the creator
 //! - Multi UI adaptability, although for now, only a terminal UI has
@@ -271,14 +271,115 @@ pub use duat_core::thread;
 pub use setup::{pre_setup, run_duat};
 
 pub mod commands;
-pub mod mode;
 pub mod print;
 mod setup;
+
+pub mod mode {
+    //! Commands for the manipulation of [`Mode`]s
+    pub use duat_core::mode::*;
+    use duat_core::{mode, widgets::CmdLineMode};
+
+    use crate::Ui;
+
+    /// Sets the new default mode
+    ///
+    /// This is the mode that will be set when [`mode::reset`] is
+    /// called.
+    ///
+    /// [`mode::reset`]: reset
+    pub fn set_default(mode: impl Mode<Ui>) {
+        mode::set_default(mode);
+    }
+
+    /// Sets the [`Mode`], switching to the appropriate [`Widget`]
+    ///
+    /// [`Widget`]: Mode::Widget
+    pub fn set(mode: impl Mode<Ui>) {
+        mode::set(mode);
+    }
+
+    /// Resets the mode to the [default]
+    ///
+    /// [default]: set_default
+    pub fn reset() {
+        mode::reset();
+    }
+
+    /// Sets the [`CmdLineMode`]
+    pub fn set_cmd(mode: impl CmdLineMode<Ui>) {
+        mode::set_cmd(mode);
+    }
+
+    /// Maps a sequence of keys to another
+    ///
+    /// The keys follow the same rules as Vim, so regular, standalone
+    /// characters are mapped verbatim, while "`<{mod}-{key}>`" and
+    /// "`<{special}>`" sequences are mapped like in Vim.
+    ///
+    /// Here are the available special keys:
+    ///
+    /// - `<Enter> => Enter`,
+    /// - `<Tab> => Tab`,
+    /// - `<Bspc> => Backspace`,
+    /// - `<Del> => Delete`,
+    /// - `<Esc> => Esc`,
+    /// - `<Up> => Up`,
+    /// - `<Down> => Down`,
+    /// - `<Left> => Left`,
+    /// - `<Right> => Right`,
+    /// - `<PageU> => PageUp`,
+    /// - `<PageD> => PageDown`,
+    /// - `<Home> => Home`,
+    /// - `<End> => End`,
+    /// - `<Ins> => Insert`,
+    /// - `<F{1-12}> => F({1-12})`,
+    ///
+    /// And the following modifiers are available:
+    ///
+    /// - `C => Control`,
+    /// - `A => Alt`,
+    /// - `S => Shift`,
+    /// - `M => Meta`,
+    ///
+    /// If another sequence already exists on the same mode, which
+    /// would intersect with this one, the new sequence will not be
+    /// added.
+    pub fn map<M: Mode<Ui>>(take: &str, give: impl AsGives<Ui>) {
+        mode::map::<M, Ui>(take, give);
+    }
+
+    /// Aliases a sequence of keys to another
+    ///
+    /// The difference between aliasing and mapping is that an alias
+    /// will be displayed on the text as a [ghost text], making it
+    /// seem like you are typing normally. This text will be printed
+    /// with the `Alias` [form].
+    ///
+    /// If another sequence already exists on the same mode, which
+    /// would intersect with this one, the new sequence will not be
+    /// added.
+    ///
+    /// # Note
+    ///
+    /// This sequence is not like Vim's `alias`, in that if you make a
+    /// mistake while typing the sequence, the alias is undone, and
+    /// you will be just typing normally.
+    ///
+    /// The alias command also works on any [`Mode`], not just
+    /// "insert like" modes. You can also use any key in the input or
+    /// output of this `alias`
+    ///
+    /// [ghost text]: crate::text::Tag::GhostText
+    /// [form]: crate::forms::Form
+    pub fn alias<M: Mode<Ui>>(take: &str, give: impl AsGives<Ui>) {
+        mode::alias::<M, Ui>(take, give);
+    }
+}
 
 pub mod cursor {
     //! Functions to alter the [`Cursors`] of Duat
     //!
-    //! [`Cursors`]: duat_core::input::Cursors
+    //! [`Cursors`]: duat_core::mode::Cursors
     pub use duat_core::forms::{
         extra_cursor as get_extra, main_cursor as get_main, set_extra_cursor as set_extra,
         set_main_cursor as set_main, unset_extra_cursor as unset_extra,

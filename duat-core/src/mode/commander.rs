@@ -19,45 +19,45 @@ impl<U: Ui> Mode<U> for Command {
 
         match key {
             key!(KeyCode::Backspace) => {
-                helper.move_main(|m| {
+                helper.move_main(|mut m| {
                     m.set_anchor();
                     m.move_hor(-1);
                 });
                 helper.edit_main(|e| e.replace(""));
-                helper.move_main(|m| {
+                helper.move_main(|mut m| {
                     m.unset_anchor();
                 });
             }
             key!(KeyCode::Delete) => {
-                helper.move_main(|m| {
+                helper.move_main(|mut m| {
                     m.set_anchor();
                     m.move_hor(1);
                 });
                 helper.edit_main(|e| {
                     e.replace("");
                 });
-                helper.move_main(|m| {
+                helper.move_main(|mut m| {
                     m.unset_anchor();
                 });
             }
 
             key!(KeyCode::Char(char)) => {
                 helper.edit_main(|e| e.insert(char));
-                helper.move_main(|m| m.move_hor(1));
+                helper.move_main(|mut m| m.move_hor(1));
             }
             key!(KeyCode::Char(char), KeyMod::SHIFT) => {
                 helper.edit_main(|e| e.insert(char));
-                helper.move_main(|m| m.move_hor(1));
+                helper.move_main(|mut m| m.move_hor(1));
             }
 
             key!(KeyCode::Left) => {
-                helper.move_main(|m| {
+                helper.move_main(|mut m| {
                     m.unset_anchor();
                     m.move_hor(-1)
                 });
             }
             key!(KeyCode::Right) => {
-                helper.move_main(|m| {
+                helper.move_main(|mut m| {
                     m.unset_anchor();
                     m.move_hor(1)
                 });
@@ -65,7 +65,7 @@ impl<U: Ui> Mode<U> for Command {
 
             key!(KeyCode::Esc) => {
                 let p = helper.len_point();
-                helper.move_main(|m| {
+                helper.move_main(|mut m| {
                     m.move_to(Point::default());
                     m.set_anchor();
                     m.move_to(p);

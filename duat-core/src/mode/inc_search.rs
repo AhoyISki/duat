@@ -50,7 +50,7 @@ impl<U: Ui> IncSearcher<U> for Fwd<U> {
 
         let mut helper = EditHelper::new_inc(file, area, cursors, searcher);
 
-        helper.move_each(|m| {
+        helper.move_each(|mut m| {
             let next = m.search_inc(None).next();
             if let Some((p0, p1)) = next {
                 m.move_to(p0);

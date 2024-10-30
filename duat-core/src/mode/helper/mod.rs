@@ -119,10 +119,10 @@ mod cursors;
 ///         match key {
 ///             key!(KeyCode::Char(c)) => {
 ///                 helper.edit_each(|e| e.insert('c'));
-///                 helper.move_each(|m| m.move_hor(1));
+///                 helper.move_each(|mut m| m.move_hor(1));
 ///             },
 ///             key!(KeyCode::Right, KeyMod::SHIFT) => {
-///                 helper.move_each(|m| {
+///                 helper.move_each(|mut m| {
 ///                     if m.anchor().is_none() {
 ///                         m.set_anchor()
 ///                     }
@@ -130,7 +130,7 @@ mod cursors;
 ///                 })
 ///             }
 ///             key!(KeyCode::Right) => {
-///                 helper.move_each(|m| {
+///                 helper.move_each(|mut m| {
 ///                     m.unset_anchor();
 ///                     m.move_hor(1)
 ///                 })
@@ -206,7 +206,7 @@ where
     /// [`move_nth`]: Self::move_nth
     /// [`edit_main`]: Self::edit_main
     /// [`edit_each`]: Self::edit_each
-    pub fn edit_nth(&mut self, mut edit: impl FnMut(&mut Editor<A, W>), n: usize) {
+    pub fn edit_nth(&mut self, edit: impl FnOnce(&mut Editor<A, W>), n: usize) {
         let Some((mut cursor, was_main)) = self.cursors.remove(n) else {
             panic!("Cursor index {n} out of bounds.");
         };
@@ -224,7 +224,7 @@ where
             self.cursors.is_incl(),
         ));
 
-        self.cursors.insert_removed(was_main, cursor);
+        self.cursors.insert(was_main, cursor);
         self.cursors
             .shift(n, diff, widget.text(), self.area, &self.cfg);
     }
@@ -260,7 +260,7 @@ where
                 self.cursors.is_incl(),
             ));
 
-            self.cursors.insert_removed(was_main, cursor);
+            self.cursors.insert(was_main, cursor);
         }
     }
 
@@ -279,23 +279,26 @@ where
     /// [`edit_nth`]: Self::edit_nth
     /// [`move_main`]: Self::move_main
     /// [`move_each`]: Self::move_each
-    pub fn move_nth<_T>(&mut self, mut mov: impl FnMut(&mut Mover<A, S>) -> _T, n: usize) {
-        let Some((mut cursor, was_main)) = self.cursors.remove(n) else {
+    pub fn move_nth<_T>(&mut self, mov: impl FnOnce(Mover<A, S>) -> _T, n: usize) {
+        let Some((cursor, is_main)) = self.cursors.remove(n) else {
             panic!("Cursor index {n} out of bounds.");
         };
         let mut widget = self.widget.raw_write();
 
-        mov(&mut Mover::new(
+        let mut cursor = Some(cursor);
+        mov(Mover::new(
             &mut cursor,
+            is_main,
             widget.text_mut(),
             self.area,
+            self.cursors,
             self.cfg,
-            was_main,
             &mut self.searcher,
-            self.cursors.is_incl(),
         ));
 
-        self.cursors.insert_removed(was_main, cursor);
+        if let Some(cursor) = cursor {
+            self.cursors.insert(is_main, cursor);
+        }
     }
 
     /// Moves each [`Cursor`]'s selection
@@ -313,23 +316,26 @@ where
     /// [`edit_each`]: Self::edit_each
     /// [`move_nth`]: Self::move_nth
     /// [`move_main`]: Self::move_main
-    pub fn move_each<_T>(&mut self, mut mov: impl FnMut(&mut Mover<A, S>) -> _T) {
+    pub fn move_each<_T>(&mut self, mut mov: impl FnMut(Mover<A, S>) -> _T) {
         let removed_cursors: Vec<(Cursor, bool)> = self.cursors.drain().collect();
 
         let mut widget = self.widget.raw_write();
 
-        for (mut cursor, was_main) in removed_cursors.into_iter() {
-            mov(&mut Mover::new(
+        for (cursor, is_main) in removed_cursors.into_iter() {
+            let mut cursor = Some(cursor);
+            mov(Mover::new(
                 &mut cursor,
+                is_main,
                 widget.text_mut(),
                 self.area,
+                self.cursors,
                 self.cfg,
-                was_main,
                 &mut self.searcher,
-                self.cursors.is_incl(),
             ));
 
-            self.cursors.insert_removed(was_main, cursor);
+            if let Some(cursor) = cursor {
+                self.cursors.insert(is_main, cursor);
+            }
         }
     }
 
@@ -345,7 +351,7 @@ where
     /// [`move_main`]: Self::move_main
     /// [`edit_nth`]: Self::edit_nth
     /// [`edit_each`]: Self::edit_each
-    pub fn edit_main(&mut self, edit: impl FnMut(&mut Editor<A, W>)) {
+    pub fn edit_main(&mut self, edit: impl FnOnce(&mut Editor<A, W>)) {
         self.edit_nth(edit, self.cursors.main_index());
     }
 
@@ -364,7 +370,7 @@ where
     /// [`edit_main`]: Self::edit_main
     /// [`move_main`]: Self::move_main
     /// [`move_each`]: Self::move_each
-    pub fn move_main<_T>(&mut self, mov: impl FnMut(&mut Mover<A, S>) -> _T) {
+    pub fn move_main<_T>(&mut self, mov: impl FnOnce(Mover<A, S>) -> _T) {
         self.move_nth(mov, self.cursors.main_index());
     }
 
@@ -473,7 +479,7 @@ where
 ///     e.replace("my replacement");
 ///     e.insert(" and my edit");
 /// });
-/// helper.move_main(|m| {
+/// helper.move_main(|mut m| {
 ///     m.move_hor(" and my edit".chars().count() as isize);
 ///     m.set_anchor();
 ///     m.move_hor(-("my replacement and my edit".chars().count() as isize));
@@ -619,13 +625,13 @@ pub struct Mover<'a, A, S>
 where
     A: Area,
 {
-    cursor: &'a mut Cursor,
+    cursor: &'a mut Option<Cursor>,
+    is_main: bool,
     text: &'a mut Text,
     area: &'a A,
+    cursors: &'a mut Cursors,
     cfg: PrintCfg,
-    is_main: bool,
-    inc_matches: &'a mut S,
-    is_incl: bool,
+    inc_searcher: &'a mut S,
 }
 
 impl<'a, A, S> Mover<'a, A, S>
@@ -634,22 +640,22 @@ where
 {
     /// Returns a new instance of `Mover`
     fn new(
-        cursor: &'a mut Cursor,
+        cursor: &'a mut Option<Cursor>,
+        is_main: bool,
         text: &'a mut Text,
         area: &'a A,
+        cursors: &'a mut Cursors,
         cfg: PrintCfg,
-        is_main: bool,
-        inc_matches: &'a mut S,
-        is_incl: bool,
+        inc_searcher: &'a mut S,
     ) -> Self {
         Self {
             cursor,
+            is_main,
             text,
             area,
+            cursors,
             cfg,
-            is_main,
-            inc_matches,
-            is_incl,
+            inc_searcher,
         }
     }
 
@@ -657,18 +663,20 @@ where
 
     /// Moves the cursor horizontally. May cause vertical movement
     pub fn move_hor(&mut self, count: isize) {
-        self.cursor.move_hor(count, self.text, self.area, &self.cfg);
+        let cursor = self.cursor.as_mut().unwrap();
+        cursor.move_hor(count, self.text, self.area, &self.cfg);
     }
 
     /// Moves the cursor vertically. May cause horizontal movement
     pub fn move_ver(&mut self, count: isize) {
-        self.cursor.move_ver(count, self.text, self.area, &self.cfg);
+        let cursor = self.cursor.as_mut().unwrap();
+        cursor.move_ver(count, self.text, self.area, &self.cfg);
     }
 
     /// Moves the cursor vertically. May cause horizontal movement
     pub fn move_ver_wrapped(&mut self, count: isize) {
-        self.cursor
-            .move_ver_wrapped(count, self.text, self.area, &self.cfg);
+        let cursor = self.cursor.as_mut().unwrap();
+        cursor.move_ver_wrapped(count, self.text, self.area, &self.cfg);
     }
 
     /// Moves the cursor to a [`Point`]
@@ -676,7 +684,8 @@ where
     /// - If the position isn't valid, it will move to the "maximum"
     ///   position allowed.
     pub fn move_to(&mut self, point: Point) {
-        self.cursor.move_to(point, self.text, self.area, &self.cfg);
+        let cursor = self.cursor.as_mut().unwrap();
+        cursor.move_to(point, self.text, self.area, &self.cfg);
     }
 
     /// Moves the cursor to a `line` and a `column`
@@ -689,28 +698,55 @@ where
         self.move_to(point);
     }
 
+    ////////// Cursor addition and removal
+
+    /// Copies the current [`Cursor`] in place
+    ///
+    /// This will leave an additional [`Cursor`] with the current
+    /// selection. Do note that normal intersection rules apply, so,
+    /// if at the end of the movement, this cursor intersects with any
+    /// other, one of them will be deleted.
+    ///
+    /// Returns the index of the new [`Cursor`], note that this might
+    /// change throughout the movement function, as new cursors might
+    /// be added before it, moving it ahead.
+    pub fn copy(&mut self) -> usize {
+        self.cursors.insert(false, self.cursor.unwrap())
+    }
+
+    /// Destroys the current [`Cursor`]
+    ///
+    /// If this was the main cursor, the main cursor will now be the
+    /// cursor immediately behind it.
+    pub fn destroy(self) {
+        *self.cursor = None;
+    }
+
     ////////// Anchor Manipulation
 
     /// Returns and takes the anchor of the [`Cursor`].
     pub fn unset_anchor(&mut self) -> Option<Point> {
-        self.cursor.unset_anchor()
+        let cursor = self.cursor.as_mut().unwrap();
+        cursor.unset_anchor()
     }
 
     /// Sets the `anchor` to the current `caret`
     pub fn set_anchor(&mut self) {
-        self.cursor.set_anchor()
+        let cursor = self.cursor.as_mut().unwrap();
+        cursor.set_anchor()
     }
 
     /// Swaps the position of the `caret` and `anchor`
     pub fn swap_ends(&mut self) {
-        self.cursor.swap_ends();
+        let cursor = self.cursor.as_mut().unwrap();
+        cursor.swap_ends();
     }
 
     ////////// Text queries
 
     /// Returns the [`char`] in the `caret`
     pub fn char(&self) -> char {
-        self.text.char_at(self.cursor.caret()).unwrap()
+        self.text.char_at(self.cursor.unwrap().caret()).unwrap()
     }
 
     /// Returns the [`Cursor`]'s selection
@@ -778,7 +814,7 @@ where
     ///     helper: &mut EditHelper<File, impl Area, S>,
     ///     n: usize,
     /// ) {
-    ///     helper.move_each(|m| {
+    ///     helper.move_each(|mut m| {
     ///         let mut nth = m.search('(', None).nth(n);
     ///         if let Some((start, end)) = nth {
     ///             m.move_to(start);
@@ -793,9 +829,8 @@ where
         pat: R,
         end: Option<Point>,
     ) -> impl Iterator<Item = R::Match> + '_ {
-        self.text
-            .search_from(pat, self.cursor.caret(), end)
-            .unwrap()
+        let cursor = self.cursor.unwrap();
+        self.text.search_from(pat, cursor.caret(), end).unwrap()
     }
 
     /// Searches the [`Text`] for a regex, in reverse
@@ -815,7 +850,7 @@ where
     ///     n: usize,
     ///     s: &str,
     /// ) {
-    ///     helper.move_each(|m| {
+    ///     helper.move_each(|mut m| {
     ///         let mut nth = m.search_rev(s, None).nth(n);
     ///         if let Some((start, end)) = nth {
     ///             m.move_to(start);
@@ -830,21 +865,19 @@ where
         pat: R,
         start: Option<Point>,
     ) -> impl Iterator<Item = R::Match> + '_ {
-        self.text
-            .search_from_rev(pat, self.cursor.caret(), start)
-            .unwrap()
+        self.text.search_from_rev(pat, self.caret(), start).unwrap()
     }
 
     ////////// Cursor queries
 
     /// Returns the `caret`
     pub fn caret(&self) -> Point {
-        self.cursor.caret()
+        self.cursor.unwrap().caret()
     }
 
     /// Returns the `anchor`
     pub fn anchor(&self) -> Option<Point> {
-        self.cursor.anchor()
+        self.cursor.unwrap().anchor()
     }
 
     /// Returns `true` if the `anchor` exists before the `caret`
@@ -859,7 +892,7 @@ where
 
     /// Wether or not this cursor's selections are inclusive
     pub fn is_incl(&self) -> bool {
-        self.is_incl
+        self.cursors.is_incl()
     }
 }
 
@@ -878,8 +911,7 @@ where
     ///
     /// [`IncSearch`]: crate::widgets::IncSearch
     pub fn search_inc(&mut self, end: Option<Point>) -> impl Iterator<Item = (Point, Point)> + '_ {
-        self.inc_matches
-            .search_from(self.text, self.cursor.caret(), end)
+        self.inc_searcher.search_from(self.text, self.caret(), end)
     }
 
     /// Search incrementally from an [`IncSearch`] request in reverse
@@ -893,8 +925,8 @@ where
         &mut self,
         start: Option<Point>,
     ) -> impl Iterator<Item = (Point, Point)> + '_ {
-        self.inc_matches
-            .search_from_rev(self.text, self.cursor.caret(), start)
+        self.inc_searcher
+            .search_from_rev(self.text, self.caret(), start)
     }
 }
 
