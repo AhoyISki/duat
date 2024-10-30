@@ -7,9 +7,9 @@ use duat_core::{
     data::{RwData, RwLock},
     mode::{
         self, Cursors, EditHelper, Fwd, IncSearcher, KeyCode::*, KeyEvent as Event, KeyMod as Mod,
-        Mode, Mover, key,
+        Mode, key,
     },
-    text::{Point, err},
+    text::{Point, WordChars, err},
     ui::{Area, Ui},
     widgets::{File, IncSearch, RunCommands},
 };
@@ -37,6 +37,7 @@ impl<U: Ui> Mode<U> for Normal {
     ) {
         cursors.make_incl();
         let mut helper = EditHelper::new(widget, area, cursors);
+        let w_chars = helper.cfg().word_chars;
 
         if let key!(Char('h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e') | Down | Up) = key {
             helper.move_each(|m| m.unset_anchor())
@@ -148,13 +149,13 @@ impl<U: Ui> Mode<U> for Normal {
                 let init = no_nl_windows(m.iter()).next();
 
                 if let Some(((p0, c0), (p1, c1))) = init {
-                    if Category::of(c0, m) == Category::of(c1, m) {
+                    if Category::of(c0, w_chars) == Category::of(c1, w_chars) {
                         m.move_to(p0);
                     } else {
                         m.move_to(p1);
                     }
 
-                    let (_, p1) = m.search(word_and_space(m, mf), None).next().unzip();
+                    let (_, p1) = m.search(word_and_space(mf, w_chars), None).next().unzip();
                     if let Some(p1) = p1 {
                         m.set_anchor();
                         m.move_to(p1);
@@ -166,13 +167,13 @@ impl<U: Ui> Mode<U> for Normal {
                 let init = no_nl_windows(m.iter()).next();
 
                 if let Some(((p0, c0), (p1, c1))) = init {
-                    if Category::of(c0, m) == Category::of(c1, m) {
+                    if Category::of(c0, w_chars) == Category::of(c1, w_chars) {
                         m.move_to(p0);
                     } else {
                         m.move_to(p1);
                     }
 
-                    let (_, p1) = m.search(space_and_word(m, mf), None).next().unzip();
+                    let (_, p1) = m.search(space_and_word(mf, w_chars), None).next().unzip();
                     if let Some(p1) = p1 {
                         m.set_anchor();
                         m.move_to(p1);
@@ -187,10 +188,10 @@ impl<U: Ui> Mode<U> for Normal {
                 };
 
                 if let Some(((_, c1), (_, c0))) = init {
-                    if Category::of(c0, m) != Category::of(c1, m) {
+                    if Category::of(c0, w_chars) != Category::of(c1, w_chars) {
                         m.move_hor(-1);
                     }
-                    let points = m.search_rev(word_and_space(m, mf), None).next();
+                    let points = m.search_rev(word_and_space(mf, w_chars), None).next();
                     if let Some((p0, _)) = points {
                         m.set_anchor();
                         m.move_to(p0);
@@ -203,7 +204,7 @@ impl<U: Ui> Mode<U> for Normal {
                     m.set_anchor();
                 }
 
-                let points = m.search(word_and_space(m, mf), None).next();
+                let points = m.search(word_and_space(mf, w_chars), None).next();
                 if let Some((_, p1)) = points {
                     m.move_to(p1);
                     m.move_hor(-1);
@@ -214,7 +215,7 @@ impl<U: Ui> Mode<U> for Normal {
                     m.set_anchor();
                 }
 
-                let points = m.search(space_and_word(m, mf), None).next();
+                let points = m.search(space_and_word(mf, w_chars), None).next();
                 if let Some((_, p1)) = points {
                     m.move_to(p1);
                     m.move_hor(-1);
@@ -225,7 +226,7 @@ impl<U: Ui> Mode<U> for Normal {
                     m.set_anchor();
                 }
 
-                let points = m.search_rev(word_and_space(m, mf), None).next();
+                let points = m.search_rev(word_and_space(mf, w_chars), None).next();
                 if let Some((p0, _)) = points {
                     m.move_to(p0);
                 }
@@ -235,10 +236,12 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('x')) => {
                 self.0 = SelType::EndOfNl;
                 helper.move_each(|m| {
-                    m.set_caret_on_start();
+                    if m.anchor_is_start() {
+                        m.swap_ends()
+                    }
 
                     let (p0, _) = m.search_rev("\n", None).next().unwrap_or_default();
-                    m.set_caret_on_end();
+                    m.swap_ends();
                     m.move_to(p0);
 
                     let (p1, _) = m.search("\n", None).next().unzip();
@@ -272,28 +275,34 @@ impl<U: Ui> Mode<U> for Normal {
             }),
             key!(Char(';'), Mod::ALT) => helper.move_each(|m| m.swap_ends()),
             key!(Char(';')) => helper.move_each(|m| m.unset_anchor()),
-            key!(Char(')')) => helper.rotate_main_fwd(),
-            key!(Char('(')) => helper.rotate_main_rev(),
+            key!(Char(')')) => helper.rotate_main(1),
+            key!(Char('(')) => helper.rotate_main(-1),
 
             ////////// Text modifying keys.
             key!(Char('i')) => {
-                helper.move_each(|m| m.set_caret_on_start());
+                helper.move_each(|m| {
+                    if !m.anchor_is_start() {
+                        m.swap_ends();
+                    }
+                });
                 mode::set::<U>(Insert);
             }
             key!(Char('a')) => {
                 helper.move_each(|m| {
-                    m.set_caret_on_end();
+                    if m.anchor_is_start() {
+                        m.swap_ends();
+                    }
                     m.move_hor(1);
                 });
                 mode::set::<U>(Insert);
             }
             key!(Char('c')) => {
-                helper.edit_on_each(|e| e.replace(""));
+                helper.edit_each(|e| e.replace(""));
                 helper.move_each(|m| m.unset_anchor());
                 mode::set::<U>(Insert);
             }
             key!(Char('d')) => {
-                helper.edit_on_each(|e| e.replace(""));
+                helper.edit_each(|e| e.replace(""));
                 helper.move_each(|m| m.unset_anchor());
             }
 
@@ -342,19 +351,19 @@ impl<U: Ui> Mode<U> for Insert {
 
         match key {
             key!(Char(char)) => {
-                helper.edit_on_each(|e| e.insert(char));
+                helper.edit_each(|e| e.insert(char));
                 helper.move_each(|m| m.move_hor(1));
             }
             key!(Char(char), Mod::SHIFT) => {
-                helper.edit_on_each(|e| e.insert(char));
+                helper.edit_each(|e| e.insert(char));
                 helper.move_each(|m| m.move_hor(1));
             }
             key!(Enter) => {
-                helper.edit_on_each(|e| e.insert('\n'));
+                helper.edit_each(|e| e.insert('\n'));
                 helper.move_each(|m| m.move_hor(1));
             }
             key!(Backspace) => {
-                let mut anchors = Vec::with_capacity(helper.cursors_len());
+                let mut anchors = Vec::with_capacity(helper.cursors().len());
                 helper.move_each(|m| {
                     anchors.push({
                         let c = m.caret();
@@ -366,7 +375,7 @@ impl<U: Ui> Mode<U> for Insert {
                     m.move_hor(-1);
                 });
                 let mut anchors = anchors.into_iter().cycle();
-                helper.edit_on_each(|editor| editor.replace(""));
+                helper.edit_each(|editor| editor.replace(""));
                 helper.move_each(|m| {
                     if let Some(Some(diff)) = anchors.next() {
                         m.set_anchor();
@@ -376,7 +385,7 @@ impl<U: Ui> Mode<U> for Insert {
                 });
             }
             key!(Delete) => {
-                let mut anchors = Vec::with_capacity(helper.cursors_len());
+                let mut anchors = Vec::with_capacity(helper.cursors().len());
                 helper.move_each(|m| {
                     let caret = m.caret();
                     anchors.push(m.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
@@ -384,7 +393,7 @@ impl<U: Ui> Mode<U> for Insert {
                     m.move_hor(1);
                 });
                 let mut anchors = anchors.into_iter().cycle();
-                helper.edit_on_each(|editor| {
+                helper.edit_each(|editor| {
                     editor.replace("");
                 });
                 helper.move_each(|m| {
@@ -630,34 +639,34 @@ enum SelType {
     Normal,
 }
 
-fn word_and_space<S>(m: &Mover<impl Area, S>, mf: Mod) -> &'static str {
+fn word_and_space(mf: Mod, w_chars: WordChars) -> &'static str {
     const WORD: &str = "[^ \t\n]*[ \t]*";
     static UNWS: RegexStrs = LazyLock::new(RwLock::default);
 
     let mut unws = UNWS.write();
-    if let Some((_, word)) = unws.iter().find(|(r, _)| *r == m.w_chars().ranges()) {
+    if let Some((_, word)) = unws.iter().find(|(r, _)| *r == w_chars.ranges()) {
         if mf.contains(Mod::ALT) { WORD } else { word }
     } else {
-        let cat = w_char_cat(m.w_chars().ranges());
+        let cat = w_char_cat(w_chars.ranges());
         let word = format!("([{cat}]+|[^{cat} \t\n]+)[ \t]*|[ \t\n]+").leak();
 
-        unws.push((m.w_chars().ranges(), word));
+        unws.push((w_chars.ranges(), word));
         if mf.contains(Mod::ALT) { WORD } else { word }
     }
 }
 
-fn space_and_word<S>(m: &Mover<impl Area, S>, mf: Mod) -> &'static str {
+fn space_and_word(mf: Mod, w_chars: WordChars) -> &'static str {
     const WORD: &str = "[ \t]*[^ \t\n]*";
     static EOWS: RegexStrs = LazyLock::new(RwLock::default);
 
     let mut eows = EOWS.write();
-    if let Some((_, word)) = eows.iter().find(|(r, _)| *r == m.w_chars().ranges()) {
+    if let Some((_, word)) = eows.iter().find(|(r, _)| *r == w_chars.ranges()) {
         if mf.contains(Mod::ALT) { WORD } else { word }
     } else {
-        let cat = w_char_cat(m.w_chars().ranges());
+        let cat = w_char_cat(w_chars.ranges());
         let word = format!("[ \t\n]*([{cat}]+|[^{cat} \t\n]+)|[ \t\n]+").leak();
 
-        eows.push((m.w_chars().ranges(), word));
+        eows.push((w_chars.ranges(), word));
         if mf.contains(Mod::ALT) { WORD } else { word }
     }
 }
@@ -685,8 +694,8 @@ enum Category {
 }
 
 impl Category {
-    fn of<S>(char: char, m: &Mover<impl Area, S>) -> Self {
-        if m.w_chars().contains(char) {
+    fn of(char: char, w_chars: WordChars) -> Self {
+        if w_chars.contains(char) {
             Category::Word
         } else if [' ', '\t', '\n'].contains(&char) {
             Category::Space

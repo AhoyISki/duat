@@ -32,10 +32,12 @@
 //!         use KeyCode::*;
 //!         let mut helper = EditHelper::new(widget, area, cursors);
 //!
+//!         // Make sure that the typed key is a character.
 //!         let key!(Char(c)) = key else {
 //!             mode::reset();
 //!             return;
 //!         };
+//!         // Checking if a character was already sent.
 //!         let Some(first) = self.0 else {
 //!             self.0 = Some(c);
 //!             return;
@@ -94,10 +96,19 @@
 //! map::<Normal>("<C-s>", &FindSeq::default());
 //! ```
 //!
+//! And now, whenever the usert types Control S in `Normal` mode, the
+//! mode will switch to `FindSeq`. You could replace `Normal` with any
+//! other mode, from any other editing model, and this would still
+//! work.
+//!
+//! Of course, this is most useful for plugins, for your own
+//! configuration, you should probably just rely on [`map`] to
+//! accomplish the same thing.
 //!
 //!
 //! [`Mode`]: crate::mode::Mode
 //! [`File`]: crate::widgets::File
+//! [`map`]: 
 #![feature(
     extract_if,
     iter_advance_by,

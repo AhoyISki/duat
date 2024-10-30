@@ -23,7 +23,7 @@ impl<U: Ui> Mode<U> for Command {
                     m.set_anchor();
                     m.move_hor(-1);
                 });
-                helper.edit_on_main(|e| e.replace(""));
+                helper.edit_main(|e| e.replace(""));
                 helper.move_main(|m| {
                     m.unset_anchor();
                 });
@@ -33,7 +33,7 @@ impl<U: Ui> Mode<U> for Command {
                     m.set_anchor();
                     m.move_hor(1);
                 });
-                helper.edit_on_main(|e| {
+                helper.edit_main(|e| {
                     e.replace("");
                 });
                 helper.move_main(|m| {
@@ -42,11 +42,11 @@ impl<U: Ui> Mode<U> for Command {
             }
 
             key!(KeyCode::Char(char)) => {
-                helper.edit_on_main(|e| e.insert(char));
+                helper.edit_main(|e| e.insert(char));
                 helper.move_main(|m| m.move_hor(1));
             }
             key!(KeyCode::Char(char), KeyMod::SHIFT) => {
-                helper.edit_on_main(|e| e.insert(char));
+                helper.edit_main(|e| e.insert(char));
                 helper.move_main(|m| m.move_hor(1));
             }
 
@@ -64,12 +64,13 @@ impl<U: Ui> Mode<U> for Command {
             }
 
             key!(KeyCode::Esc) => {
+                let p = helper.len_point();
                 helper.move_main(|m| {
                     m.move_to(Point::default());
                     m.set_anchor();
-                    m.move_to(m.len_point());
+                    m.move_to(p);
                 });
-                helper.edit_on_main(|e| e.replace(""));
+                helper.edit_main(|e| e.replace(""));
                 cursors.clear();
                 super::reset();
             }

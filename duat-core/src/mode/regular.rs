@@ -24,17 +24,17 @@ impl<U: Ui> super::Mode<U> for Regular {
         match key {
             // Characters
             key!(KeyCode::Char(char), KeyMod::SHIFT | KeyMod::NONE) => {
-                helper.edit_on_each(|e| e.insert(char));
+                helper.edit_each(|e| e.insert(char));
                 helper.move_each(|m| m.move_hor(1));
             }
             key!(KeyCode::Enter) => {
-                helper.edit_on_each(|e| e.insert('\n'));
+                helper.edit_each(|e| e.insert('\n'));
                 helper.move_each(|m| m.move_hor(1));
             }
 
             // Text Removal
             key!(KeyCode::Backspace) => {
-                let mut anchors = Vec::with_capacity(helper.cursors_len());
+                let mut anchors = Vec::with_capacity(helper.cursors().len());
                 helper.move_each(|m| {
                     let caret = m.caret();
                     anchors.push(m.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
@@ -42,7 +42,7 @@ impl<U: Ui> super::Mode<U> for Regular {
                     m.move_hor(-1);
                 });
                 let mut anchors = anchors.into_iter().cycle();
-                helper.edit_on_each(|e| e.replace(""));
+                helper.edit_each(|e| e.replace(""));
                 helper.move_each(|m| {
                     if let Some(Some((anchor, _))) = anchors.next() {
                         m.set_anchor();
@@ -54,7 +54,7 @@ impl<U: Ui> super::Mode<U> for Regular {
                 });
             }
             key!(KeyCode::Delete) => {
-                let mut anchors = Vec::with_capacity(helper.cursors_len());
+                let mut anchors = Vec::with_capacity(helper.cursors().len());
                 helper.move_each(|m| {
                     let caret = m.caret();
                     anchors.push(m.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
@@ -62,7 +62,7 @@ impl<U: Ui> super::Mode<U> for Regular {
                     m.move_hor(1);
                 });
                 let mut anchors = anchors.into_iter().cycle();
-                helper.edit_on_each(|e| e.replace(""));
+                helper.edit_each(|e| e.replace(""));
                 helper.move_each(|m| {
                     if let Some(Some((anchor, _))) = anchors.next() {
                         m.set_anchor();

@@ -70,18 +70,8 @@ impl Cursors {
         i
     }
 
-    pub fn rotate_main_fwd(&mut self) {
-        match self.main == self.buf.len() - 1 {
-            true => self.main = 0,
-            false => self.main += 1,
-        }
-    }
-
-    pub fn rotate_main_rev(&mut self) {
-        match self.main == 0 {
-            true => self.main = self.buf.len() - 1,
-            false => self.main -= 1,
-        }
+    pub fn rotate_main(&mut self, amount: i32) {
+        self.main = (self.main as i32 + amount).rem_euclid(100) as usize
     }
 
     pub fn remove_extras(&mut self) {

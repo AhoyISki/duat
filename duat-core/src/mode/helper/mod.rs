@@ -5,13 +5,13 @@
 //! cursors and dealing with editing the text directly.
 //!
 //! [`Mode`]: super::Mode
-use std::{any::TypeId, ops::Range};
+use std::any::TypeId;
 
 pub use self::cursors::{Cursor, Cursors};
 use crate::{
     data::RwData,
     history::Change,
-    text::{Point, PrintCfg, RegexPattern, Searcher, Text, WordChars},
+    text::{Point, PrintCfg, RegexPattern, Searcher, Text},
     ui::Area,
     widgets::{File, Widget},
 };
@@ -118,7 +118,7 @@ mod cursors;
 ///         
 ///         match key {
 ///             key!(KeyCode::Char(c)) => {
-///                 helper.edit_on_each(|e| e.insert('c'));
+///                 helper.edit_each(|e| e.insert('c'));
 ///                 helper.move_each(|m| m.move_hor(1));
 ///             },
 ///             key!(KeyCode::Right, KeyMod::SHIFT) => {
@@ -200,13 +200,13 @@ where
     /// you cannot change the selection of the [`Cursor`].
     ///
     /// If you want to move the `nth` cursor, see [`move_nth`],
-    /// if you want to edit on the main cursor, see [`edit_on_main`],
-    /// if you want to edit each cursor, see [`edit_on_each`].
+    /// if you want to edit on the main cursor, see [`edit_main`],
+    /// if you want to edit each cursor, see [`edit_each`].
     ///
     /// [`move_nth`]: Self::move_nth
-    /// [`edit_on_main`]: Self::edit_on_main
-    /// [`edit_on_each`]: Self::edit_on_each
-    pub fn edit_on_nth(&mut self, mut edit: impl FnMut(&mut Editor<A, W>), n: usize) {
+    /// [`edit_main`]: Self::edit_main
+    /// [`edit_each`]: Self::edit_each
+    pub fn edit_nth(&mut self, mut edit: impl FnMut(&mut Editor<A, W>), n: usize) {
         let Some((mut cursor, was_main)) = self.cursors.remove(n) else {
             panic!("Cursor index {n} out of bounds.");
         };
@@ -235,13 +235,13 @@ where
     /// you cannot change the selection of the [`Cursor`].
     ///
     /// If you want to move each cursor, see [`move_each`],
-    /// if you want to edit on a specific cursor, see [`edit_on_nth`]
-    /// or [`edit_on_main`].
+    /// if you want to edit on a specific cursor, see [`edit_nth`]
+    /// or [`edit_main`].
     ///
     /// [`move_each`]: Self::move_each
-    /// [`edit_on_nth`]: Self::edit_on_nth
-    /// [`edit_on_main`]: Self::edit_on_main
-    pub fn edit_on_each(&mut self, mut f: impl FnMut(&mut Editor<A, W>)) {
+    /// [`edit_nth`]: Self::edit_nth
+    /// [`edit_main`]: Self::edit_main
+    pub fn edit_each(&mut self, mut f: impl FnMut(&mut Editor<A, W>)) {
         let removed_cursors: Vec<(Cursor, bool)> = self.cursors.drain().collect();
 
         let mut widget = self.widget.raw_write();
@@ -272,14 +272,14 @@ where
     /// At the end of the movement, if the cursor intersects any
     /// other, they will be merged into one.
     ///
-    /// If you want to edit on the `nth` cursor, see [`edit_on_nth`],
+    /// If you want to edit on the `nth` cursor, see [`edit_nth`],
     /// if you want to move the main cursor, see [`move_main`], if you
     /// want to move each cursor, see [`move_each`].
     ///
-    /// [`edit_on_nth`]: Self::edit_on_nth
+    /// [`edit_nth`]: Self::edit_nth
     /// [`move_main`]: Self::move_main
     /// [`move_each`]: Self::move_each
-    pub fn move_nth(&mut self, mut mov: impl FnMut(&mut Mover<A, S>), n: usize) {
+    pub fn move_nth<_T>(&mut self, mut mov: impl FnMut(&mut Mover<A, S>) -> _T, n: usize) {
         let Some((mut cursor, was_main)) = self.cursors.remove(n) else {
             panic!("Cursor index {n} out of bounds.");
         };
@@ -289,7 +289,7 @@ where
             &mut cursor,
             widget.text_mut(),
             self.area,
-            &self.cfg,
+            self.cfg,
             was_main,
             &mut self.searcher,
             self.cursors.is_incl(),
@@ -306,11 +306,11 @@ where
     /// At the end of the movement, if any of the cursors intersect
     /// with each other, they will be merged into one.
     ///
-    /// If you want to edit on each cursor, see [`edit_on_each`],
+    /// If you want to edit on each cursor, see [`edit_each`],
     /// if you want to move a specific cursor, see [`move_nth`]
     /// or [`move_main`].
     ///
-    /// [`edit_on_each`]: Self::edit_on_each
+    /// [`edit_each`]: Self::edit_each
     /// [`move_nth`]: Self::move_nth
     /// [`move_main`]: Self::move_main
     pub fn move_each<_T>(&mut self, mut mov: impl FnMut(&mut Mover<A, S>) -> _T) {
@@ -323,7 +323,7 @@ where
                 &mut cursor,
                 widget.text_mut(),
                 self.area,
-                &self.cfg,
+                self.cfg,
                 was_main,
                 &mut self.searcher,
                 self.cursors.is_incl(),
@@ -339,14 +339,14 @@ where
     /// you cannot change the selection of the [`Cursor`].
     ///
     /// If you want to move the main cursor, see [`move_main`],
-    /// if you want to edit on the `nth` cursor, see [`edit_on_nth`],
-    /// if you want to edit each cursor, see [`edit_on_each`].
+    /// if you want to edit on the `nth` cursor, see [`edit_nth`],
+    /// if you want to edit each cursor, see [`edit_each`].
     ///
     /// [`move_main`]: Self::move_main
-    /// [`edit_on_nth`]: Self::edit_on_nth
-    /// [`edit_on_each`]: Self::edit_on_each
-    pub fn edit_on_main(&mut self, edit: impl FnMut(&mut Editor<A, W>)) {
-        self.edit_on_nth(edit, self.cursors.main_index());
+    /// [`edit_nth`]: Self::edit_nth
+    /// [`edit_each`]: Self::edit_each
+    pub fn edit_main(&mut self, edit: impl FnMut(&mut Editor<A, W>)) {
+        self.edit_nth(edit, self.cursors.main_index());
     }
 
     /// Moves the main [`Cursor`]'s selection
@@ -357,14 +357,14 @@ where
     /// At the end of the movement, if the cursor intersects any
     /// other, they will be merged into one.
     ///
-    /// If you want to move the main cursor, see [`edit_on_main`],
+    /// If you want to move the main cursor, see [`edit_main`],
     /// if you want to move the main cursor, see [`move_main`], if you
     /// want to move each cursor, see [`move_each`].
     ///
-    /// [`edit_on_main`]: Self::edit_on_main
+    /// [`edit_main`]: Self::edit_main
     /// [`move_main`]: Self::move_main
     /// [`move_each`]: Self::move_each
-    pub fn move_main(&mut self, mov: impl FnMut(&mut Mover<A, S>)) {
+    pub fn move_main<_T>(&mut self, mov: impl FnMut(&mut Mover<A, S>) -> _T) {
         self.move_nth(mov, self.cursors.main_index());
     }
 
@@ -373,34 +373,27 @@ where
         self.cursors.remove_extras();
     }
 
-    /// Rotates the main cursor index forwards
-    pub fn rotate_main_fwd(&mut self) {
-        self.cursors.rotate_main_fwd()
+    pub fn rotate_main(&mut self, amount: i32) {
+        self.cursors.rotate_main(amount);    }
+
+    /// The [`Cursors`] in use
+    pub fn cursors(&self) -> &Cursors {
+        self.cursors
     }
 
-    /// Rotates the main cursor index backwards
-    pub fn rotate_main_rev(&mut self) {
-        self.cursors.rotate_main_rev()
+    /// The [`PrintCfg`] in use
+    pub fn cfg(&self) -> PrintCfg {
+        self.cfg
     }
 
-    /// The main [`Cursor`]
-    pub fn main_cursor(&self) -> &Cursor {
-        self.cursors.main()
+    /// Returns the lenght of the [`Text`], in [`Point`]
+    pub fn len_point(&self) -> Point {
+        self.widget.read().text().len_point()
     }
 
-    /// Returns the `nth` [`Cursor`], if it exists
-    pub fn get_cursor(&self, n: usize) -> Option<Cursor> {
-        self.cursors.get(n)
-    }
-
-    /// The main cursor index
-    pub fn main_cursor_index(&self) -> usize {
-        self.cursors.main_index()
-    }
-
-    /// The amount of active [`Cursor`]s in the [`Text`]
-    pub fn cursors_len(&self) -> usize {
-        self.cursors.len()
+    /// Returns the position of the last [`char`] if there is one
+    pub fn last_point(&self) -> Option<Point> {
+        self.widget.read().text().last_point()
     }
 }
 
@@ -475,7 +468,7 @@ where
 /// ```rust
 /// # use duat_core::{mode::EditHelper, ui::Area, widgets::File};
 /// # fn test<S>(helper: &mut EditHelper<File, impl Area, S>) {
-/// helper.edit_on_main(|e| {
+/// helper.edit_main(|e| {
 ///     e.replace("my replacement");
 ///     e.insert(" and my edit");
 /// });
@@ -489,7 +482,7 @@ where
 /// # }
 /// ```
 ///
-/// [`edit_*`]: EditHelper::edit_on_nth
+/// [`edit_*`]: EditHelper::edit_nth
 /// [`replace`]: Editor::replace
 /// [`insert`]: Editor::insert
 pub struct Editor<'a, 'b, 'c, 'd, A, W>
@@ -628,7 +621,7 @@ where
     cursor: &'a mut Cursor,
     text: &'a mut Text,
     area: &'a A,
-    cfg: &'a PrintCfg,
+    cfg: PrintCfg,
     is_main: bool,
     inc_matches: &'a mut S,
     is_incl: bool,
@@ -643,7 +636,7 @@ where
         cursor: &'a mut Cursor,
         text: &'a mut Text,
         area: &'a A,
-        cfg: &'a PrintCfg,
+        cfg: PrintCfg,
         is_main: bool,
         inc_matches: &'a mut S,
         is_incl: bool,
@@ -659,43 +652,43 @@ where
         }
     }
 
-    ////////// Public movement functions
+    ////////// Movement functions
 
     /// Moves the cursor horizontally. May cause vertical movement
     pub fn move_hor(&mut self, count: isize) {
-        self.cursor.move_hor(count, self.text, self.area, self.cfg);
+        self.cursor.move_hor(count, self.text, self.area, &self.cfg);
     }
 
     /// Moves the cursor vertically. May cause horizontal movement
     pub fn move_ver(&mut self, count: isize) {
-        self.cursor.move_ver(count, self.text, self.area, self.cfg);
+        self.cursor.move_ver(count, self.text, self.area, &self.cfg);
     }
 
     /// Moves the cursor vertically. May cause horizontal movement
     pub fn move_ver_wrapped(&mut self, count: isize) {
         self.cursor
-            .move_ver_wrapped(count, self.text, self.area, self.cfg);
+            .move_ver_wrapped(count, self.text, self.area, &self.cfg);
     }
 
     /// Moves the cursor to a [`Point`]
     ///
     /// - If the position isn't valid, it will move to the "maximum"
     ///   position allowed.
-    /// - This command sets `desired_x`.
     pub fn move_to(&mut self, point: Point) {
-        self.cursor.move_to(point, self.text, self.area, self.cfg);
+        self.cursor.move_to(point, self.text, self.area, &self.cfg);
     }
 
     /// Moves the cursor to a `line` and a `column`
     ///
     /// - If the coords isn't valid, it will move to the "maximum"
     ///   position allowed.
-    /// - This command sets `desired_x`.
     pub fn move_to_coords(&mut self, line: usize, col: usize) {
         let point = self.text.point_at_line(line.min(self.text.len_lines()));
         let (point, _) = self.text.iter_chars_at(point).take(col + 1).last().unwrap();
         self.move_to(point);
     }
+
+    ////////// Anchor Manipulation
 
     /// Returns and takes the anchor of the [`Cursor`].
     pub fn unset_anchor(&mut self) -> Option<Point> {
@@ -712,25 +705,61 @@ where
         self.cursor.swap_ends();
     }
 
-    /// Places the `caret` at the beginning of the selection
-    pub fn set_caret_on_start(&mut self) {
-        if let Some(anchor) = self.cursor.anchor()
-            && self.cursor.caret() > anchor
-        {
-            self.cursor.swap_ends();
-        }
+    ////////// Text queries
+
+    /// Returns the [`char`] in the `caret`
+    pub fn char(&self) -> char {
+        self.text.char_at(self.cursor.caret()).unwrap()
     }
 
-    /// Places the `caret` at the end of the selection
-    pub fn set_caret_on_end(&mut self) {
-        if let Some(anchor) = self.cursor.anchor()
-            && anchor > self.cursor.caret()
-        {
-            self.cursor.swap_ends();
-        }
+    /// Returns the [`Cursor`]'s selection
+    ///
+    /// The reason why this return value is `[&str; 2]` is because the
+    /// [`Text`] utilizes an underlying [`GapBuffer`] to store the
+    /// characters. This means that the text is always separated into
+    /// two distinct chunks.
+    ///
+    /// If this [`Cursor`]'s selection happens to be entirely within
+    /// one of these chunks, the other `&str` will just be empty.
+    ///
+    /// [`GapBuffer`]: gapbuf::GapBuffer
+    pub fn selection(&self) -> [&str; 2] {
+        let anchor = self.anchor().unwrap_or(self.caret());
+        let range = if anchor < self.caret() {
+            (anchor, self.caret())
+        } else {
+            (self.caret(), anchor)
+        };
+        self.text.strs_in_point_range(range)
     }
 
-    ////////// Lookup functions
+    /// Returns the lenght of the [`Text`], in [`Point`]
+    pub fn len_point(&self) -> Point {
+        self.text.len_point()
+    }
+
+    /// Returns the position of the last [`char`] if there is one
+    pub fn last_point(&self) -> Option<Point> {
+        self.text.last_point()
+    }
+
+    ////////// Iteration functions
+
+    /// Iterates over the [`char`]s
+    ///
+    /// This iteration will begin on the `caret`. It will also include
+    /// the [`Point`] of each `char`
+    pub fn iter(&self) -> impl Iterator<Item = (Point, char)> + '_ {
+        self.text.iter_chars_at(self.caret())
+    }
+
+    /// Iterates over the [`char`]s, in reverse
+    ///
+    /// This iteration will begin on the `caret`. It will also include
+    /// the [`Point`] of each `char`
+    pub fn iter_rev(&self) -> impl Iterator<Item = (Point, char)> + '_ {
+        self.text.iter_chars_at_rev(self.caret())
+    }
 
     /// Searches the [`Text`] for a regex
     ///
@@ -805,45 +834,11 @@ where
             .unwrap()
     }
 
-    /// Returns the [`char`] in the `caret`
-    pub fn char(&self) -> char {
-        self.text.char_at(self.cursor.caret()).unwrap()
-    }
+    ////////// Cursor queries
 
-    /// Returns the lenght of the [`Text`], in [`Point`]
-    pub fn len_point(&self) -> Point {
-        self.text.len_point()
-    }
-
-    /// Returns the position of the last [`char`] if there is one
-    pub fn last_point(&self) -> Option<Point> {
-        self.text.last_point()
-    }
-
-    /// Returns the [`PrintCfg`] in use
-    pub fn cfg(&self) -> &PrintCfg {
-        self.cfg
-    }
-
-    /// Returns the [`WordChars`] in use
-    pub fn w_chars(&self) -> &WordChars {
-        &self.cfg.word_chars
-    }
-
-    /// Iterates over the [`char`]s
-    ///
-    /// This iteration will begin on the `caret`. It will also include
-    /// the [`Point`] of each `char`
-    pub fn iter(&self) -> impl Iterator<Item = (Point, char)> + '_ {
-        self.text.iter_chars_at(self.caret())
-    }
-
-    /// Iterates over the [`char`]s, in reverse
-    ///
-    /// This iteration will begin on the `caret`. It will also include
-    /// the [`Point`] of each `char`
-    pub fn iter_rev(&self) -> impl Iterator<Item = (Point, char)> + '_ {
-        self.text.iter_chars_at_rev(self.caret())
+    /// Returns the `caret`
+    pub fn caret(&self) -> Point {
+        self.cursor.caret()
     }
 
     /// Returns the `anchor`
@@ -851,56 +846,25 @@ where
         self.cursor.anchor()
     }
 
-    /// Returns the `caret`
-    pub fn caret(&self) -> Point {
-        self.cursor.caret()
-    }
-
     /// Returns `true` if the `anchor` exists before the `caret`
     pub fn anchor_is_start(&self) -> bool {
         self.anchor().is_none_or(|anchor| anchor < self.caret())
     }
 
-    /// Returns the [`Cursor`]'s selection
-    ///
-    /// The reason why this return value is `[&str; 2]` is because the
-    /// [`Text`] utilizes an underlying [`GapBuffer`] to store the
-    /// characters. This means that the text is always separated into
-    /// two distinct chunks.
-    ///
-    /// If this `Cursor`'s selection happens to be entirely within one
-    /// of these chunks, the other `&str` will just be empty.
-    ///
-    /// [`GapBuffer`]: gapbuf::GapBuffer
-    pub fn selection(&self) -> [&str; 2] {
-        let anchor = self.anchor().unwrap_or(self.caret());
-        let range = if anchor < self.caret() {
-            (anchor, self.caret())
-        } else {
-            (self.caret(), anchor)
-        };
-        self.text.strs_in_point_range(range)
-    }
-
-    /// The range of the [`Cursor`]'s selection, in bytes
-    pub fn byte_range(&self) -> Range<usize> {
-        let anchor = self.anchor().unwrap_or(self.caret());
-        if anchor < self.caret() {
-            anchor.byte()..self.caret().byte()
-        } else {
-            self.caret().byte()..anchor.byte()
-        }
-    }
-
+    /// Wether or not this is the main [`Cursor`]
     pub fn is_main(&self) -> bool {
         self.is_main
     }
 
+    /// Wether or not this cursor's selections are inclusive
     pub fn is_incl(&self) -> bool {
         self.is_incl
     }
 }
 
+/// Incremental search functions, only available on [`IncSearcher`]s
+///
+/// [`IncSearcher`]: crate::mode::IncSearcher
 impl<A> Mover<'_, A, Searcher<'_>>
 where
     A: Area,
