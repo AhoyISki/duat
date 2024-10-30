@@ -6,10 +6,9 @@ use duat_core::{
     commands, context,
     data::{RwData, RwLock},
     mode::{
-        self, Cursors, EditHelper, Fwd, IncSearcher, KeyCode::*, KeyEvent as Event, KeyMod as Mod,
-        Mode, key,
+        self, key, Cursors, EditHelper, Fwd, IncSearcher, KeyCode::*, KeyEvent as Event, KeyMod as Mod, Mode, Rev
     },
-    text::{Point, WordChars, err},
+    text::{err, Point, WordChars},
     ui::{Area, Ui},
     widgets::{File, IncSearch, RunCommands},
 };
@@ -306,11 +305,23 @@ impl<U: Ui> Mode<U> for Normal {
                 helper.move_each(|mut m| m.unset_anchor());
             }
 
+            ////////// Cursor creation and destruction.
+            key!(Char('C'), Mod::SHIFT) => helper.move_nth(helper.cursors().len() - 1, |mut m| {
+                m.copy();
+                m.move_ver(1);
+            }),
+            key!(Char('C'), ALTSHIFT) => helper.move_nth(0, |mut m| {
+                m.copy();
+                m.move_ver(-1);
+            }),
+            key!(Char(',')) => helper.remove_extra_cursors(),
+
             ////////// Other mode changing keys.
             key!(Char(':')) => mode::set_cmd::<U>(RunCommands::new()),
             key!(Char('G'), Mod::SHIFT) => mode::set::<U>(OneKey::GoTo(SelType::Extend)),
             key!(Char('g')) => mode::set::<U>(OneKey::GoTo(SelType::Normal)),
             key!(Char('/')) => mode::set_cmd::<U>(IncSearch::new(Fwd::new)),
+            key!(Char('/'), Mod::ALT) => mode::set_cmd::<U>(IncSearch::new(Rev::new)),
 
             ////////// Temporary.
             key!(Char('q')) => panic!("Panicked on purpose"),

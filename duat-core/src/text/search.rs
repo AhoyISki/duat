@@ -283,10 +283,7 @@ impl Searcher<'_> {
             fwd_input.set_start(start);
             rev_input.set_end(start);
 
-            let half = fwd_dfa
-                .try_search_rev(fwd_cache, &fwd_input)
-                .unwrap()
-                .unwrap();
+            let half = fwd_dfa.try_search_fwd(fwd_cache, &fwd_input).unwrap().unwrap();
             let end = half.offset();
 
             let (start, end) = (text.point_at(start + gap), text.point_at(end + gap));

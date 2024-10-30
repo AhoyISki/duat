@@ -130,7 +130,7 @@ impl Cursors {
     pub(super) fn remove(&mut self, i: usize) -> Option<(Cursor, bool)> {
         (i < self.buf.len()).then(|| {
             let was_main = self.main == i;
-            if self.main > i {
+            if self.main >= i {
                 self.main -= 1;
             }
             (self.buf.remove(i), was_main)

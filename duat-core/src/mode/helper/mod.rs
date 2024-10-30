@@ -279,7 +279,7 @@ where
     /// [`edit_nth`]: Self::edit_nth
     /// [`move_main`]: Self::move_main
     /// [`move_each`]: Self::move_each
-    pub fn move_nth<_T>(&mut self, mov: impl FnOnce(Mover<A, S>) -> _T, n: usize) {
+    pub fn move_nth<_T>(&mut self, n: usize, mov: impl FnOnce(Mover<A, S>) -> _T) {
         let Some((cursor, is_main)) = self.cursors.remove(n) else {
             panic!("Cursor index {n} out of bounds.");
         };
@@ -371,7 +371,7 @@ where
     /// [`move_main`]: Self::move_main
     /// [`move_each`]: Self::move_each
     pub fn move_main<_T>(&mut self, mov: impl FnOnce(Mover<A, S>) -> _T) {
-        self.move_nth(mov, self.cursors.main_index());
+        self.move_nth(self.cursors.main_index(), mov);
     }
 
     /// Removes all but the main cursor from the list
@@ -716,10 +716,14 @@ where
 
     /// Destroys the current [`Cursor`]
     ///
+    /// Will not destroy it if it is the last [`Cursor`] left
+    ///
     /// If this was the main cursor, the main cursor will now be the
     /// cursor immediately behind it.
     pub fn destroy(self) {
-        *self.cursor = None;
+        if self.cursors.len() > 1 {
+            *self.cursor = None;
+        }
     }
 
     ////////// Anchor Manipulation

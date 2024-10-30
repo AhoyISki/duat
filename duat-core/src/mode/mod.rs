@@ -5,7 +5,7 @@ pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
 pub use self::{
     commander::Command,
     helper::{Cursor, Cursors, EditHelper, Editor, Mover},
-    inc_search::{Fwd, IncSearcher},
+    inc_search::{Fwd, IncSearcher, Rev},
     regular::Regular,
     remap::*,
     switch::*,
@@ -46,7 +46,7 @@ mod switch {
         LazyLock::new(|| Mutex::new(Arc::new(|| {})));
     static SET_MODE: Mutex<Option<Box<dyn FnOnce() + Send + Sync>>> = Mutex::new(None);
 
-	/// Wether or not the [`Mode`] has changed
+    /// Wether or not the [`Mode`] has changed
     pub fn was_set() -> Option<Box<dyn FnOnce() + Send + Sync>> {
         SET_MODE.lock().take()
     }
@@ -69,13 +69,6 @@ mod switch {
         }));
     }
 
-    /// Resets the mode to the [default]
-    ///
-    /// [default]: set_default
-    pub fn reset() {
-        *SET_MODE.lock() = Some(Box::new(|| RESET_MODE.lock()()))
-    }
-
     /// Sets the [`Mode`], switching to the appropriate [`Widget`]
     ///
     /// [`Widget`]: Mode::Widget
@@ -88,6 +81,13 @@ mod switch {
             }
             set_mode_fn(mode)
         }));
+    }
+
+    /// Resets the mode to the [default]
+    ///
+    /// [default]: set_default
+    pub fn reset() {
+        *SET_MODE.lock() = Some(Box::new(|| RESET_MODE.lock()()))
     }
 
     /// Sets the [`CmdLineMode`]
@@ -144,12 +144,12 @@ mod switch {
         PRINTING_IS_STOPPED.load(Ordering::Acquire)
     }
 
-	/// Stop printing
+    /// Stop printing
     pub(super) fn stop_printing() {
         PRINTING_IS_STOPPED.store(true, Ordering::Release);
     }
 
-	/// Resume printing
+    /// Resume printing
     pub(super) fn resume_printing() {
         PRINTING_IS_STOPPED.store(false, Ordering::Release);
     }
