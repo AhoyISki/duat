@@ -263,7 +263,7 @@ impl<U: Ui> Session<U> {
 
                 if let Ok(event) = rx.recv_timeout(Duration::from_millis(10)) {
                     match event {
-                        Event::Key(key) => mode::send_key_to(key),
+                        Event::Key(key) => mode::send_key(key),
                         Event::Resize | Event::FormChange => {
                             for node in cur_window.nodes() {
                                 s.spawn(|| node.update_and_print());

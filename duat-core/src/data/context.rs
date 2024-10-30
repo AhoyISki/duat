@@ -9,7 +9,7 @@ use std::{
 pub use self::global::*;
 use super::{RoData, RwData, private::InnerData};
 use crate::{
-    mode::Cursors,
+    mode::{self, Cursors},
     ui::{Area, Ui},
     widgets::{File, Node, Widget},
 };
@@ -198,7 +198,9 @@ impl<U: Ui> CurFile<U> {
         }
 
         <File as Widget<U>>::update(&mut file, area);
-        <File as Widget<U>>::print(&mut file, area);
+        if !mode::is_printing_stopped() {
+            <File as Widget<U>>::print(&mut file, area);
+        }
 
         ret
     }
@@ -214,7 +216,9 @@ impl<U: Ui> CurFile<U> {
 
             w.text_mut().add_cursor_tags(c);
             w.update(a);
-            w.print(a);
+            if !mode::is_printing_stopped() {
+                w.print(a);
+            }
 
             ret
         };
@@ -393,13 +397,40 @@ impl<U: Ui> CurWidget<U> {
         widget.inspect_as(|w| f(w, area, &cursors))
     }
 
+    pub(crate) fn mutate_data<R>(
+        &self,
+        f: impl FnOnce(&RwData<dyn Widget<U>>, &U::Area, &RwData<Cursors>) -> R,
+    ) -> R {
+        let data = self.0.read();
+        let (widget, area, cursors) = data.as_ref().unwrap().as_active();
+
+        cursors.inspect(|c| widget.raw_write().text_mut().remove_cursor_tags(c));
+
+        let ret = f(widget, area, cursors);
+
+        cursors.inspect(|c| {
+            let mut widget = widget.write();
+
+            widget.text_mut().add_cursor_tags(c);
+            if let Some(main) = c.get_main() {
+                area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
+            }
+
+            widget.update(area);
+            if !mode::is_printing_stopped() {
+                widget.print(area);
+            }
+        });
+
+        ret
+    }
+
     pub(crate) fn mutate_data_as<W: Widget<U>, R>(
         &self,
         f: impl FnOnce(&RwData<W>, &U::Area, &RwData<Cursors>) -> R,
     ) -> Option<R> {
         let data = self.0.read();
-        let node = data.as_ref().unwrap();
-        let (widget, area, cursors) = node.as_active();
+        let (widget, area, cursors) = data.as_ref().unwrap().as_active();
 
         let widget = widget.try_downcast::<W>()?;
 
@@ -416,7 +447,9 @@ impl<U: Ui> CurWidget<U> {
             }
 
             widget.update(area);
-            widget.print(area);
+            if !mode::is_printing_stopped() {
+                widget.print(area);
+            }
         });
 
         ret

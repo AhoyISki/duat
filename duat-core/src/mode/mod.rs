@@ -21,7 +21,10 @@ mod remap;
 mod switch {
     use std::{
         any::TypeId,
-        sync::{Arc, LazyLock},
+        sync::{
+            Arc, LazyLock,
+            atomic::{AtomicBool, Ordering},
+        },
     };
 
     use crossterm::event::KeyEvent;
@@ -36,6 +39,7 @@ mod switch {
         widgets::{CmdLineMode, CommandLine, File, Node},
     };
 
+    static PRINTING_IS_STOPPED: AtomicBool = AtomicBool::new(false);
     static SEND_KEY: LazyLock<Mutex<Box<dyn FnMut(KeyEvent) + Send + Sync>>> =
         LazyLock::new(|| Mutex::new(Box::new(|_| {})));
     static RESET_MODE: LazyLock<Mutex<Arc<dyn Fn() + Send + Sync>>> =
@@ -119,8 +123,20 @@ mod switch {
         }
     }
 
+    pub(crate) fn is_printing_stopped() -> bool {
+        PRINTING_IS_STOPPED.load(Ordering::Acquire)
+    }
+
+    pub(super) fn stop_printing() {
+        PRINTING_IS_STOPPED.store(true, Ordering::Release);
+    }
+
+    pub(super) fn resume_printing() {
+        PRINTING_IS_STOPPED.store(false, Ordering::Release);
+    }
+
     /// Switches to a certain widget
-    pub(crate) fn switch_widget<U: Ui>(node: Node<U>) {
+    pub(super) fn switch_widget<U: Ui>(node: Node<U>) {
         if let Ok(widget) = context::cur_widget::<U>() {
             widget.node().on_unfocus();
         }
@@ -130,10 +146,12 @@ mod switch {
         node.on_focus();
     }
 
-    pub(crate) fn send_key_to(key: KeyEvent) {
+    /// Sends the [`KeyEvent`] to the active [`Mode`]
+    pub(super) fn send_key_to(key: KeyEvent) {
         SEND_KEY.lock()(key);
     }
 
+    /// Inner function that sends [`KeyEvent`]s
     fn send_key_fn<U: Ui>(mode: &mut impl Mode<U>, key: KeyEvent) {
         let Ok(widget) = context::cur_widget::<U>() else {
             return;
@@ -145,6 +163,7 @@ mod switch {
         });
     }
 
+    /// Inner function that sets [`Mode`]s
     fn set_mode_fn<M: Mode<U>, U: Ui>(mut mode: M) {
         // If we are on the correct widget, no switch is needed.
         if context::cur_widget::<U>().unwrap().type_id() != TypeId::of::<M::Widget>() {
@@ -569,112 +588,4 @@ pub fn key_events<const LEN: usize>(str: &str, modif: KeyMod) -> [KeyEvent; LEN]
     }
 
     events
-}
-
-/// Converts an `&str` to a sequence of [`KeyEvent`]s
-///
-/// The conversion follows the same rules as remaps in Vim, that is:
-pub fn str_to_keys(str: &str) -> Vec<KeyEvent> {
-    const MODS: [(char, KeyMod); 4] = [
-        ('C', KeyMod::CONTROL),
-        ('A', KeyMod::ALT),
-        ('S', KeyMod::SHIFT),
-        ('M', KeyMod::META),
-    ];
-
-    let mut keys = Vec::new();
-    let mut on_special = false;
-
-    for seq in str.split_inclusive(['<', '>']) {
-        if !on_special {
-            let end = if seq.ends_with('<') {
-                on_special = true;
-                seq.len() - 1
-            } else {
-                seq.len()
-            };
-
-            keys.extend(seq[..end].chars().map(|c| KeyEvent::from(KeyCode::Char(c))));
-        } else if seq.ends_with('>') {
-            let trimmed = seq.trim_end_matches('>');
-            let mut parts = trimmed.split('-');
-
-            let modifs = if trimmed.contains('-')
-                && let Some(seq) = parts.next()
-            {
-                let mut modifs = KeyMod::empty();
-
-                for (str, modif) in MODS {
-                    if seq.contains(str) {
-                        modifs.set(modif, true);
-                    }
-                }
-
-                let doubles = ['C', 'A', 'S', 'M']
-                    .iter()
-                    .any(|c| seq.chars().filter(|char| char == c).count() > 1);
-
-                let not_modifs = seq.chars().any(|c| !['C', 'A', 'S', 'M'].contains(&c));
-
-                if modifs.is_empty() || doubles || not_modifs {
-                    keys.push(KeyEvent::from(KeyCode::Char('<')));
-                    keys.extend(seq.chars().map(|c| KeyEvent::from(KeyCode::Char(c))));
-                    on_special = false;
-                    continue;
-                }
-
-                modifs
-            } else {
-                KeyMod::empty()
-            };
-
-            let code = match parts.next() {
-                Some("Enter") => KeyCode::Enter,
-                Some("Tab") => KeyCode::Tab,
-                Some("Backspace") => KeyCode::Backspace,
-                Some("Del") => KeyCode::Delete,
-                Some("Esc") => KeyCode::Esc,
-                Some("Up") => KeyCode::Up,
-                Some("Down") => KeyCode::Down,
-                Some("Left") => KeyCode::Left,
-                Some("Right") => KeyCode::Right,
-                Some("PageUp") => KeyCode::PageUp,
-                Some("PageDown") => KeyCode::PageDown,
-                Some("Home") => KeyCode::Home,
-                Some("End") => KeyCode::End,
-                Some("Insert") => KeyCode::Insert,
-                Some("F1") => KeyCode::F(1),
-                Some("F2") => KeyCode::F(2),
-                Some("F3") => KeyCode::F(3),
-                Some("F4") => KeyCode::F(4),
-                Some("F5") => KeyCode::F(5),
-                Some("F6") => KeyCode::F(6),
-                Some("F7") => KeyCode::F(7),
-                Some("F8") => KeyCode::F(8),
-                Some("F9") => KeyCode::F(9),
-                Some("F10") => KeyCode::F(10),
-                Some("F11") => KeyCode::F(11),
-                Some("F12") => KeyCode::F(12),
-                Some(seq)
-                    if let Some(char) = seq.chars().next()
-                        && (char.is_lowercase()
-                            || (char.is_uppercase() && modifs.contains(KeyMod::SHIFT)))
-                        && seq.chars().count() == 1 =>
-                {
-                    KeyCode::Char(char)
-                }
-                _ => {
-                    keys.push(KeyEvent::from(KeyCode::Char('<')));
-                    keys.extend(seq.chars().map(|c| KeyEvent::from(KeyCode::Char(c))));
-                    on_special = false;
-                    continue;
-                }
-            };
-
-            on_special = false;
-            keys.push(KeyEvent::new(code, modifs));
-        }
-    }
-
-    keys
 }

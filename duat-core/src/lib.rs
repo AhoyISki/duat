@@ -108,7 +108,7 @@
 //!
 //! [`Mode`]: crate::mode::Mode
 //! [`File`]: crate::widgets::File
-//! [`map`]: 
+//! [`map`]: https://docs.rs/duat/0.1.3/duat/prelude/fn.map.html
 #![feature(
     extract_if,
     iter_advance_by,

@@ -8,6 +8,7 @@ use super::Mode;
 use crate::{
     context,
     data::RwData,
+    mode,
     text::{Key, Tag, Text, text},
     ui::Ui,
 };
@@ -355,7 +356,7 @@ impl Remapper {
     fn send_key<M: Mode<U>, U: Ui>(&self, key: KeyEvent) {
         let remaps = self.remaps.lock();
         let Some((_, remaps)) = remaps.iter().find(|(m, _)| TypeId::of::<M>() == *m) else {
-            super::send_key_to(key);
+            mode::send_key_to(key);
             return;
         };
 
@@ -366,7 +367,8 @@ impl Remapper {
         if let Some(remap) = remaps.iter().find(|r| r.takes.starts_with(cur_seq)) {
             *is_alias = remap.is_alias;
             if remap.takes.len() == cur_seq.len() {
-                if *is_alias {
+                if remap.is_alias {
+                    mode::stop_printing();
                     remove_alias_and::<U>(|_, _| {});
                 }
 
@@ -375,11 +377,26 @@ impl Remapper {
                 cur_seq.clear();
                 match &remap.gives {
                     Gives::Keys(keys) => {
-                        for key in keys {
-                            super::send_key_to(*key);
+                        for (i, key) in keys.iter().enumerate() {
+                            if keys.len() > 1 {
+                                if i < keys.len() - 1 {
+                                    mode::stop_printing()
+                                } else {
+                                    mode::resume_printing()
+                                }
+                            }
+
+                            mode::send_key_to(*key);
+                            if let Some(set_mode) = mode::was_set() {
+                                set_mode()
+                            }
                         }
                     }
                     Gives::Mode(f) => f(),
+                }
+
+                if remap.is_alias {
+                    mode::resume_printing();
                 }
             } else if *is_alias {
                 remove_alias_and::<U>(|text, main| {
@@ -395,8 +412,20 @@ impl Remapper {
                 remove_alias_and::<U>(|_, _| {});
             }
             *is_alias = false;
-            for key in cur_seq.drain(..) {
-                super::send_key_to(key);
+            let end = cur_seq.len() - 1;
+            for (i, key) in cur_seq.drain(..).enumerate() {
+                if end > 0 {
+                    if i < end {
+                        mode::stop_printing()
+                    } else {
+                        mode::resume_printing()
+                    }
+                }
+
+                mode::send_key_to(key);
+                if let Some(set_mode) = mode::was_set() {
+                    set_mode()
+                }
             }
         }
     }
@@ -422,10 +451,10 @@ pub enum Gives {
 }
 
 fn remove_alias_and<U: Ui>(f: impl FnOnce(&mut Text, usize)) {
-    let file = context::cur_file::<U>().unwrap();
-    file.mutate_data(|file, _, cursors| {
+    let widget = context::cur_widget::<U>().unwrap();
+    widget.mutate_data(|widget, _, cursors| {
         let cursors = cursors.read();
-        let mut file = file.write();
+        let mut file = widget.write();
 
         if let Some(main) = cursors.get_main() {
             let main = main.byte();

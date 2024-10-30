@@ -374,7 +374,8 @@ where
     }
 
     pub fn rotate_main(&mut self, amount: i32) {
-        self.cursors.rotate_main(amount);    }
+        self.cursors.rotate_main(amount);
+    }
 
     /// The [`Cursors`] in use
     pub fn cursors(&self) -> &Cursors {

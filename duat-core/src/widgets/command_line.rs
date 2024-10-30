@@ -25,11 +25,11 @@ use parking_lot::RwLock;
 use super::File;
 use crate::{
     commands,
-    data::{context, RoData, RwData},
+    data::{RoData, RwData, context},
     forms::{self, Form},
     hooks,
     mode::{self, Command, Cursors, IncSearcher},
-    text::{text, Ghost, Key, PrintCfg, SavedMatches, Tag, Text},
+    text::{Ghost, Key, PrintCfg, SavedMatches, Tag, Text, text},
     ui::{PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
 };

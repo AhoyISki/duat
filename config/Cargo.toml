@@ -13,7 +13,7 @@ crate-type = ["dylib"]
 
 [dependencies]
 # You can get rid of this one, if you don't want the duat-kak editor.
-duat-kak = ">=0.1.3"
+duat-kak = ">=0.2.0"
 
 [dependencies.duat]
-version = ">=0.1.3"
+version = ">=0.2.0"

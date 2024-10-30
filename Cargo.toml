@@ -17,7 +17,7 @@ members = [
   "duat-kak",
   "duat-term",
 ]
-exclude = [ "testing" ]
+exclude = [ "testing", "config" ]
 
 [dependencies]
 duat-core = { version = ">=0.1.0", path = "duat-core" }
