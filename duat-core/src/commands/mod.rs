@@ -75,7 +75,7 @@ mod control {
 
             if paths.is_empty() {
                 file.inspect(|file, _, _| {
-                    if let Some(name) = file.set_name() {
+                    if let Some(name) = file.path_set() {
                         let bytes = file.write()?;
                         ok!("Wrote " [*a] bytes [] " bytes to " [*a] name [] ".")
                     } else {

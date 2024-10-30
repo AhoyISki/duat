@@ -5,7 +5,7 @@ pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
 pub use self::{
     commander::Command,
     helper::{Cursor, Cursors, EditHelper, Editor, Mover},
-    inc_search::{Fwd, IncSearcher, Rev},
+    inc_search::{ExtendFwd, ExtendRev, Fwd, IncSearcher, Rev},
     regular::Regular,
     remap::*,
     switch::*,

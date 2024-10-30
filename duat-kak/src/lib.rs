@@ -6,9 +6,10 @@ use duat_core::{
     commands, context,
     data::{RwData, RwLock},
     mode::{
-        self, key, Cursors, EditHelper, Fwd, IncSearcher, KeyCode::*, KeyEvent as Event, KeyMod as Mod, Mode, Rev
+        self, Cursors, EditHelper, ExtendFwd, ExtendRev, Fwd, IncSearcher, KeyCode::*,
+        KeyEvent as Event, KeyMod as Mod, Mode, Rev, key,
     },
-    text::{err, Point, WordChars},
+    text::{Point, WordChars, err},
     ui::{Area, Ui},
     widgets::{File, IncSearch, RunCommands},
 };
@@ -280,7 +281,7 @@ impl<U: Ui> Mode<U> for Normal {
             ////////// Text modifying keys.
             key!(Char('i')) => {
                 helper.move_each(|mut m| {
-                    if !m.anchor_is_start() {
+                    if m.anchor_is_start() {
                         m.swap_ends();
                     }
                 });
@@ -288,7 +289,7 @@ impl<U: Ui> Mode<U> for Normal {
             }
             key!(Char('a')) => {
                 helper.move_each(|mut m| {
-                    if m.anchor_is_start() {
+                    if !m.anchor_is_start() {
                         m.swap_ends();
                     }
                     m.move_hor(1);
@@ -306,6 +307,7 @@ impl<U: Ui> Mode<U> for Normal {
             }
 
             ////////// Cursor creation and destruction.
+            key!(Char(',')) => helper.remove_extra_cursors(),
             key!(Char('C'), Mod::SHIFT) => helper.move_nth(helper.cursors().len() - 1, |mut m| {
                 m.copy();
                 m.move_ver(1);
@@ -314,14 +316,18 @@ impl<U: Ui> Mode<U> for Normal {
                 m.copy();
                 m.move_ver(-1);
             }),
-            key!(Char(',')) => helper.remove_extra_cursors(),
 
             ////////// Other mode changing keys.
             key!(Char(':')) => mode::set_cmd::<U>(RunCommands::new()),
             key!(Char('G'), Mod::SHIFT) => mode::set::<U>(OneKey::GoTo(SelType::Extend)),
             key!(Char('g')) => mode::set::<U>(OneKey::GoTo(SelType::Normal)),
+
+            ////////// Incremental search methods.
             key!(Char('/')) => mode::set_cmd::<U>(IncSearch::new(Fwd::new)),
             key!(Char('/'), Mod::ALT) => mode::set_cmd::<U>(IncSearch::new(Rev::new)),
+            key!(Char('?')) => mode::set_cmd::<U>(IncSearch::new(ExtendFwd::new)),
+            key!(Char('?'), Mod::ALT) => mode::set_cmd::<U>(IncSearch::new(ExtendRev::new)),
+            key!(Char('s')) => mode::set_cmd::<U>(IncSearch::new(Select::new)),
 
             ////////// Temporary.
             key!(Char('q')) => panic!("Panicked on purpose"),
@@ -713,5 +719,58 @@ impl Category {
         } else {
             Category::Special
         }
+    }
+}
+
+struct Select<U: Ui> {
+    cursors: Cursors,
+    info: <U::Area as Area>::PrintInfo,
+}
+
+impl<U: Ui> IncSearcher<U> for Select<U> {
+    fn new(_: &RwData<File>, area: &<U as Ui>::Area, cursors: &mut Cursors) -> Self {
+        Self {
+            cursors: cursors.clone(),
+            info: area.print_info(),
+        }
+    }
+
+    fn search(
+        &mut self,
+        file: &RwData<File>,
+        area: &<U as Ui>::Area,
+        cursors: &mut Cursors,
+        searcher: duat_core::text::Searcher,
+    ) {
+        *cursors = self.cursors.clone();
+        if searcher.is_empty() {
+            area.set_print_info(self.info.clone());
+            return;
+        }
+
+        let mut helper = EditHelper::new_inc(file, area, cursors, searcher);
+
+        helper.move_each(|mut m| {
+            if m.anchor_is_start() {
+                m.swap_ends();
+            }
+            if let Some(anchor) = m.anchor() {
+                let ranges: Vec<(Point, Point)> = m.search_inc(Some(anchor)).collect();
+
+                for (i, &(p0, p1)) in ranges.iter().enumerate() {
+                    m.move_to(p0);
+                    if p1 > p0 {
+                        m.set_anchor();
+                        m.move_to(p1);
+                        m.move_hor(-1);
+                    } else {
+                        m.unset_anchor();
+                    }
+                    if i < ranges.len() - 1 {
+                        m.copy();
+                    }
+                }
+            }
+        })
     }
 }

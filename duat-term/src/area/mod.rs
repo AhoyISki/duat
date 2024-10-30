@@ -460,7 +460,7 @@ impl ui::Area for Area {
         rev_print_iter(iter, cfg.wrap_width(self.width()), cfg)
     }
 
-    fn get_print_info(&self) -> Self::PrintInfo {
+    fn print_info(&self) -> Self::PrintInfo {
         let layout = self.layout.read();
         let info = layout.get(self.id).unwrap().print_info().unwrap().read();
         *info

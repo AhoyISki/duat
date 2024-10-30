@@ -350,7 +350,7 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
             let searcher = saved.searcher();
             cur_file.mutate_data(|file, area, cursors| {
                 let mut c = cursors.write();
-                inc.search(file, area, searcher, &mut c);
+                inc.search(file, area, &mut c, searcher);
             });
         } else {
             match SavedMatches::new(text.to_string()) {
@@ -362,7 +362,7 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
                     let searcher = saved.searcher();
                     cur_file.mutate_data(|file, area, cursors| {
                         let mut c = cursors.write();
-                        inc.search(file, area, searcher, &mut c);
+                        inc.search(file, area, &mut c, searcher);
                     });
 
                     self.list.push(saved);

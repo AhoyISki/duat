@@ -108,7 +108,6 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
             cfg: self.cfg,
             history: History::new(),
             printed_lines: Vec::new(),
-            _readers: Vec::new(),
         };
 
         // The PushSpecs don't matter

@@ -932,6 +932,18 @@ where
         self.inc_searcher
             .search_from_rev(self.text, self.caret(), start)
     }
+
+    /// Wether the [`Cursor`]'s selection matches the [`IncSearch`]
+    /// request
+    ///
+    /// [`IncSearch`]: crate::widgets::IncSearch
+    pub fn matches_inc(&mut self) -> bool {
+        let range = self.cursor.unwrap().range(self.cursors.is_incl());
+        self.text.make_contiguous_in(range.clone());
+        let str = unsafe { self.text.continuous_in_unchecked(range) };
+
+        self.inc_searcher.matches(str)
+    }
 }
 
 /// An accumulator used specifically for editing with [`Editor`]s

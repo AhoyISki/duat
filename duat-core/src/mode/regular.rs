@@ -1,4 +1,4 @@
-use super::{Cursors, EditHelper, Fwd, IncSearcher, KeyCode, KeyEvent, KeyMod, key};
+use super::{Cursors, EditHelper, ExtendFwd, IncSearcher, KeyCode, KeyEvent, KeyMod, key};
 use crate::{
     data::RwData,
     ui::{Area, Ui},
@@ -87,7 +87,7 @@ impl<U: Ui> super::Mode<U> for Regular {
             // Control
             key!(KeyCode::Char('p'), KeyMod::CONTROL) => super::set_cmd::<U>(RunCommands::new()),
             key!(KeyCode::Char('f'), KeyMod::CONTROL) => {
-                super::set_cmd::<U>(IncSearch::new(Fwd::new))
+                super::set_cmd::<U>(IncSearch::new(ExtendFwd::new))
             }
 
             _ => {}

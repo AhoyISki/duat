@@ -131,7 +131,7 @@ impl Cursors {
         (i < self.buf.len()).then(|| {
             let was_main = self.main == i;
             if self.main >= i {
-                self.main -= 1;
+                self.main = self.main.saturating_sub(1);
             }
             (self.buf.remove(i), was_main)
         })

@@ -168,7 +168,7 @@ pub trait Area: Send + Sync + Sized {
     fn get_cluster_master(&self) -> Option<Self>;
 
     /// The current printing information of the area
-    fn get_print_info(&self) -> Self::PrintInfo;
+    fn print_info(&self) -> Self::PrintInfo;
 
     /// Returns a printing iterator
     ///

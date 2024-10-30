@@ -15,6 +15,7 @@ use regex_syntax::{
 };
 
 use super::{Point, Text};
+use crate::log_info;
 
 impl Text {
     pub fn search_from<R>(
@@ -189,11 +190,20 @@ impl Searcher<'_> {
                 fwd_input.set_start(matches.end.byte() - gap);
             }
 
-            let Ok(Some(half)) = fwd_dfa.try_search_fwd(fwd_cache, &fwd_input) else {
-                matches.end = end.unwrap_or_else(|| text.len_point());
-                return None;
+            let init = fwd_input.start();
+            let end = loop {
+                if let Ok(Some(half)) = fwd_dfa.try_search_fwd(fwd_cache, &fwd_input) {
+                    // Ignore empty matches at the start of the input.
+                    if half.offset() == init {
+                        fwd_input.set_start(init + 1);
+                    } else {
+                        break half.offset();
+                    }
+                } else {
+                    matches.end = end.unwrap_or_else(|| text.len_point());
+                    return None;
+                }
             };
-            let end = half.offset();
 
             fwd_input.set_start(end);
             rev_input.set_end(end);
@@ -206,7 +216,12 @@ impl Searcher<'_> {
             };
             let start = half.offset();
 
-            let (start, end) = (text.point_at(start + gap), text.point_at(end + gap));
+            let (start, end) = if start == end {
+                let point = text.point_at(start + gap);
+                (point, point)
+            } else {
+                (text.point_at(start + gap), text.point_at(end + gap))
+            };
             matches.list.push((start, end));
             matches.end = matches.end.max(end);
 
@@ -274,16 +289,28 @@ impl Searcher<'_> {
                 rev_input.set_end(matches.start.byte() - gap);
             }
 
-            let Ok(Some(half)) = rev_dfa.try_search_rev(rev_cache, &rev_input) else {
-                matches.start = start.unwrap_or_default();
-                return None;
+            let init = fwd_input.end();
+            let start = loop {
+                if let Ok(Some(half)) = rev_dfa.try_search_rev(rev_cache, &rev_input) {
+                    // Ignore empty matches at the end of the input.
+                    if half.offset() == init {
+                        rev_input.set_end(init - 1);
+                    } else {
+                        break half.offset();
+                    }
+                } else {
+                    matches.start = start.unwrap_or_default();
+                    return None;
+                }
             };
-            let start = half.offset();
 
             fwd_input.set_start(start);
             rev_input.set_end(start);
 
-            let half = fwd_dfa.try_search_fwd(fwd_cache, &fwd_input).unwrap().unwrap();
+            let half = fwd_dfa
+                .try_search_fwd(fwd_cache, &fwd_input)
+                .unwrap()
+                .unwrap();
             let end = half.offset();
 
             let (start, end) = (text.point_at(start + gap), text.point_at(end + gap));
@@ -294,6 +321,18 @@ impl Searcher<'_> {
         })
     }
 
+    /// Wether or not the regex matches a specific pattern
+    pub fn matches(&mut self, query: impl AsRef<[u8]>) -> bool {
+        let input = Input::new(&query).anchored(Anchored::Yes);
+
+        let Ok(Some(half)) = self.fwd_dfa.try_search_fwd(&mut self.fwd_cache, &input) else {
+            return false;
+        };
+
+        half.offset() == query.as_ref().len()
+    }
+
+    /// Wether or not there even is a pattern to search for
     pub fn is_empty(&self) -> bool {
         self.pat.is_empty()
     }
@@ -308,6 +347,7 @@ pub struct SavedMatches {
 
 impl SavedMatches {
     pub fn new(pat: String) -> Result<Self, Box<Error>> {
+        let pat = pat.replace("\\b", "(?-u:\\b)");
         let hir = regex_syntax::Parser::new().parse(&pat)?;
         dfas_from_pat(&pat).unwrap();
         Ok(Self {
@@ -574,17 +614,19 @@ impl Patterns<'_> {
     }
 
     fn dfas(&self) -> Result<(DFA, DFA), Box<BuildError>> {
+        let mut fwd_builder = DFA::builder();
+        fwd_builder.thompson(Config::new().utf8(false));
         let mut rev_builder = DFA::builder();
-        rev_builder.thompson(Config::new().reverse(true));
+        rev_builder.thompson(Config::new().reverse(true).utf8(false));
 
         match self {
             Patterns::One(pat) => {
-                let fwd = DFA::new(pat)?;
+                let fwd = fwd_builder.build(pat)?;
                 let rev = rev_builder.build(pat)?;
                 Ok((fwd, rev))
             }
             Patterns::Many(pats) => {
-                let fwd = DFA::new_many(pats)?;
+                let fwd = fwd_builder.build_many(pats)?;
                 let rev = rev_builder.build_many(pats)?;
                 Ok((fwd, rev))
             }
