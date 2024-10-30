@@ -165,7 +165,7 @@ impl<U: Ui> Widget<U> for CommandLine<U> {
     fn once() {
         forms::set_weak("Prompt", Form::cyan());
         forms::set_weak("ParseCommandErr", "DefaultErr");
-
+        
         commands::add_for::<CommandLine<U>, U>(
             ["set-prompt"],
             move |command_line, _, _, _, mut args| {

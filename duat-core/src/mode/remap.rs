@@ -14,6 +14,8 @@ use crate::{
 };
 
 mod global {
+    use std::str::Chars;
+
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
     use parking_lot::Mutex;
 
@@ -149,33 +151,33 @@ mod global {
 
         for key in keys {
             match key.code {
-                Backspace => seq.push_str("BS"),
-                Enter => seq.push_str("Enter"),
-                Left => seq.push_str("Left"),
-                Right => seq.push_str("Right"),
-                Up => seq.push_str("Up"),
-                Down => seq.push_str("Down"),
-                Home => seq.push_str("Home"),
-                End => seq.push_str("End"),
-                PageUp => seq.push_str("PageU"),
-                PageDown => seq.push_str("PageD"),
-                Tab => seq.push_str("Tab"),
-                BackTab => seq.push_str("BTab"),
-                Delete => seq.push_str("Del"),
-                Insert => seq.push_str("Ins"),
-                F(num) => write!(seq, "F{num}").unwrap(),
+                Backspace => seq.push_str("<BS>"),
+                Enter => seq.push_str("<Enter>"),
+                Left => seq.push_str("<Left>"),
+                Right => seq.push_str("<Right>"),
+                Up => seq.push_str("<Up>"),
+                Down => seq.push_str("<Down>"),
+                Home => seq.push_str("<Home>"),
+                End => seq.push_str("<End>"),
+                PageUp => seq.push_str("<PageU>"),
+                PageDown => seq.push_str("<PageD>"),
+                Tab => seq.push_str("<Tab>"),
+                BackTab => seq.push_str("<BTab>"),
+                Delete => seq.push_str("<Del>"),
+                Insert => seq.push_str("<Ins>"),
+                F(num) => write!(seq, "<F{num}>").unwrap(),
                 Char(char) => write!(seq, "{char}").unwrap(),
-                Null => seq.push_str("Null"),
-                Esc => seq.push_str("Esc"),
-                CapsLock => seq.push_str("CapsL"),
-                ScrollLock => seq.push_str("ScrollL"),
-                NumLock => seq.push_str("NumL"),
-                PrintScreen => seq.push_str("PrSc"),
-                Pause => seq.push_str("Pause"),
-                Menu => seq.push_str("Menu"),
-                KeypadBegin => seq.push_str("KeypadBeg"),
-                Media(m_code) => write!(seq, "Media{m_code}").unwrap(),
-                Modifier(m_code) => write!(seq, "Mod{m_code}").unwrap(),
+                Null => seq.push_str("<Null>"),
+                Esc => seq.push_str("<Esc>"),
+                CapsLock => seq.push_str("<CapsL>"),
+                ScrollLock => seq.push_str("<ScrollL>"),
+                NumLock => seq.push_str("<NumL>"),
+                PrintScreen => seq.push_str("<PrSc>"),
+                Pause => seq.push_str("<Pause>"),
+                Menu => seq.push_str("<Menu>"),
+                KeypadBegin => seq.push_str("<KeypadBeg>"),
+                Media(m_code) => write!(seq, "<Media{m_code}>").unwrap(),
+                Modifier(m_code) => write!(seq, "<Mod{m_code}>").unwrap(),
             }
         }
 
@@ -187,105 +189,80 @@ mod global {
     /// The conversion follows the same rules as remaps in Vim, that
     /// is:
     pub fn str_to_keys(str: &str) -> Vec<KeyEvent> {
-        const MODS: [(char, KeyMod); 4] = [
-            ('C', KeyMod::CONTROL),
-            ('A', KeyMod::ALT),
-            ('S', KeyMod::SHIFT),
-            ('M', KeyMod::META),
-        ];
+        fn match_key(chars: Chars) -> Option<(KeyEvent, Chars)> {
+            let matched_mods = {
+                let mut chars = chars.clone();
+                let mut mods = KeyMod::empty();
+                let mut seq = String::new();
 
-        let mut keys = Vec::new();
-        let mut on_special = false;
-
-        for seq in str.split_inclusive(['<', '>']) {
-            if !on_special {
-                let end = if seq.ends_with('<') {
-                    on_special = true;
-                    seq.len() - 1
-                } else {
-                    seq.len()
-                };
-
-                keys.extend(seq[..end].chars().map(|c| KeyEvent::from(KeyCode::Char(c))));
-            } else if seq.ends_with('>') {
-                let trimmed = seq.trim_end_matches('>');
-                let mut parts = trimmed.split('-');
-
-                let modifs = if trimmed.contains('-')
-                    && let Some(seq) = parts.next()
-                {
-                    let mut modifs = KeyMod::empty();
-
-                    for (str, modif) in MODS {
-                        if seq.contains(str) {
-                            modifs.set(modif, true);
+                loop {
+                    let char = chars.next()?;
+                    if char == '-' {
+                        match mods.is_empty() {
+                            true => break None,
+                            false => break Some((mods, chars)),
                         }
                     }
 
-                    let doubles = ['C', 'A', 'S', 'M']
-                        .iter()
-                        .any(|c| seq.chars().filter(|char| char == c).count() > 1);
+                    seq.push(char);
 
-                    let not_modifs = seq.chars().any(|c| !['C', 'A', 'S', 'M'].contains(&c));
-
-                    if modifs.is_empty() || doubles || not_modifs {
-                        keys.push(KeyEvent::from(KeyCode::Char('<')));
-                        keys.extend(seq.chars().map(|c| KeyEvent::from(KeyCode::Char(c))));
-                        on_special = false;
-                        continue;
-                    }
-
-                    modifs
-                } else {
-                    KeyMod::empty()
-                };
-
-                let code = match parts.next() {
-                    Some("Enter") => KeyCode::Enter,
-                    Some("Tab") => KeyCode::Tab,
-                    Some("Bspc") => KeyCode::Backspace,
-                    Some("Del") => KeyCode::Delete,
-                    Some("Esc") => KeyCode::Esc,
-                    Some("Up") => KeyCode::Up,
-                    Some("Down") => KeyCode::Down,
-                    Some("Left") => KeyCode::Left,
-                    Some("Right") => KeyCode::Right,
-                    Some("PageU") => KeyCode::PageUp,
-                    Some("PageD") => KeyCode::PageDown,
-                    Some("Home") => KeyCode::Home,
-                    Some("End") => KeyCode::End,
-                    Some("Ins") => KeyCode::Insert,
-                    Some("F1") => KeyCode::F(1),
-                    Some("F2") => KeyCode::F(2),
-                    Some("F3") => KeyCode::F(3),
-                    Some("F4") => KeyCode::F(4),
-                    Some("F5") => KeyCode::F(5),
-                    Some("F6") => KeyCode::F(6),
-                    Some("F7") => KeyCode::F(7),
-                    Some("F8") => KeyCode::F(8),
-                    Some("F9") => KeyCode::F(9),
-                    Some("F10") => KeyCode::F(10),
-                    Some("F11") => KeyCode::F(11),
-                    Some("F12") => KeyCode::F(12),
-                    Some(seq)
-                        if let Some(char) = seq.chars().next()
-                            && (char.is_lowercase()
-                                || (char.is_uppercase() && modifs.contains(KeyMod::SHIFT)))
-                            && seq.chars().count() == 1 =>
+                    if let Some((_, m)) = MODS.iter().find(|(str, _)| str == &seq)
+                        && !mods.contains(*m)
                     {
-                        KeyCode::Char(char)
+                        mods = mods.union(*m);
+                        seq.clear();
+                    } else if !MODS[4..6].iter().any(|(str, _)| str.starts_with(&seq)) {
+                        break None;
                     }
-                    _ => {
-                        keys.push(KeyEvent::from(KeyCode::Char('<')));
-                        keys.extend(seq.chars().map(|c| KeyEvent::from(KeyCode::Char(c))));
-                        on_special = false;
-                        continue;
-                    }
-                };
+                }
+            };
 
-                on_special = false;
-                keys.push(KeyEvent::new(code, modifs));
+            let (mods, mut chars) = match matched_mods {
+                Some((mods, chars)) => (mods, chars),
+                None => (KeyMod::empty(), chars),
+            };
+
+            let mut code = Some(chars.next().map(KeyCode::Char)?);
+            let mut seq = code.unwrap().to_string();
+
+            loop {
+                if let Some(c) = code.take() {
+                    match chars.next()? {
+                        '>' if seq.len() > 1 || !mods.is_empty() => {
+                            break Some((KeyEvent::new(c, mods), chars));
+                        }
+                        _ if seq.len() > 1 => break None,
+                        char => seq.push(char),
+                    }
+                }
+
+                if let Some((str, c)) = SPECIAL.iter().find(|(str, _)| str.starts_with(&seq)) {
+                    if str == &seq {
+                        code = Some(*c);
+                    } else {
+                        seq.push(chars.next()?);
+                    }
+                } else {
+                    break None;
+                }
             }
+        }
+
+        let mut keys = Vec::new();
+        let mut chars = str.chars();
+        let mut next = chars.next();
+
+        while let Some(char) = next {
+            if char == '<'
+                && let Some((key, ahead)) = match_key(chars.clone())
+            {
+                keys.push(key);
+                chars = ahead;
+            } else {
+                keys.push(KeyEvent::from(KeyCode::Char(char)));
+            }
+
+            next = chars.next();
         }
 
         keys
@@ -317,6 +294,43 @@ mod global {
     }
 
     fn empty(_: KeyEvent) {}
+
+    const SPECIAL: &[(&str, KeyCode)] = &[
+        ("Enter", KeyCode::Enter),
+        ("Tab", KeyCode::Tab),
+        ("Bspc", KeyCode::Backspace),
+        ("Del", KeyCode::Delete),
+        ("Esc", KeyCode::Esc),
+        ("Up", KeyCode::Up),
+        ("Down", KeyCode::Down),
+        ("Left", KeyCode::Left),
+        ("Right", KeyCode::Right),
+        ("PageU", KeyCode::PageUp),
+        ("PageD", KeyCode::PageDown),
+        ("Home", KeyCode::Home),
+        ("End", KeyCode::End),
+        ("Ins", KeyCode::Insert),
+        ("F1", KeyCode::F(1)),
+        ("F2", KeyCode::F(2)),
+        ("F3", KeyCode::F(3)),
+        ("F4", KeyCode::F(4)),
+        ("F5", KeyCode::F(5)),
+        ("F6", KeyCode::F(6)),
+        ("F7", KeyCode::F(7)),
+        ("F8", KeyCode::F(8)),
+        ("F9", KeyCode::F(9)),
+        ("F10", KeyCode::F(10)),
+        ("F11", KeyCode::F(11)),
+        ("F12", KeyCode::F(12)),
+    ];
+    const MODS: &[(&str, KeyMod)] = &[
+        ("C", KeyMod::CONTROL),
+        ("A", KeyMod::ALT),
+        ("S", KeyMod::SHIFT),
+        ("M", KeyMod::META),
+        ("super", KeyMod::SUPER),
+        ("hyper", KeyMod::HYPER),
+    ];
 }
 
 /// The structure responsible for remapping sequences of characters

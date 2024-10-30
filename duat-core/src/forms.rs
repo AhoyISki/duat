@@ -630,21 +630,33 @@ impl Palette {
     /// Sets the [`CursorShape`] of the main cursor
     fn set_main_cursor(&self, shape: CursorShape) {
         self.0.write().main_cursor = Some(shape);
+        if let Some(sender) = SENDER.get() {
+            sender.send_form_changed().unwrap()
+        }
     }
 
     /// Sets the [`CursorShape`] of extra cursors
     fn set_extra_cursor(&self, shape: CursorShape) {
         self.0.write().extra_cursor = Some(shape);
+        if let Some(sender) = SENDER.get() {
+            sender.send_form_changed().unwrap()
+        }
     }
 
     /// Unsets the [`CursorShape`] of the main cursor
     fn unset_main_cursor(&self) {
         self.0.write().main_cursor = None;
+        if let Some(sender) = SENDER.get() {
+            sender.send_form_changed().unwrap()
+        }
     }
 
     /// Unsets the [`CursorShape`] of the extra cursors
     fn unset_extra_cursor(&self) {
         self.0.write().extra_cursor = None;
+        if let Some(sender) = SENDER.get() {
+            sender.send_form_changed().unwrap()
+        }
     }
 
     /// Returns a [`Painter`]
@@ -653,7 +665,7 @@ impl Palette {
         let default = inner.forms[DEFAULT_ID.0 as usize].1;
         Painter {
             inner,
-            forms: vec![(default, DEFAULT_ID)],
+            cur: vec![(default, DEFAULT_ID)],
             cur_sty: default.style,
         }
     }
@@ -662,7 +674,7 @@ impl Palette {
 #[derive(Debug)]
 pub struct Painter {
     inner: RwLockReadGuard<'static, InnerPalette>,
-    forms: Vec<(Form, FormId)>,
+    cur: Vec<(Form, FormId)>,
     cur_sty: ContentStyle,
 }
 
@@ -671,10 +683,12 @@ impl Painter {
     /// given previous triggers.
     #[inline(always)]
     pub fn apply(&mut self, id: FormId) -> ContentStyle {
-        let (_, form, _) = unsafe { self.inner.forms.get_unchecked(id.0 as usize) };
+        let i = id.0 as usize;
+        let forms = &self.inner.forms;
+        let form = forms.get(i).map(|(_, f, _)| *f).unwrap_or_default();
 
         // So the cursor is always the last form
-        self.forms.push((*form, id));
+        self.cur.push((form, id));
         self.cur_sty = self.make_style();
         self.cur_sty
     }
@@ -683,9 +697,9 @@ impl Painter {
     /// result, given previous triggers.
     #[inline(always)]
     pub fn remove(&mut self, id: FormId) -> ContentStyle {
-        let mut applied_forms = self.forms.iter().enumerate();
+        let mut applied_forms = self.cur.iter().enumerate();
         if let Some((index, _)) = applied_forms.rfind(|(_, &(_, i))| i == id) {
-            self.forms.remove(index);
+            self.cur.remove(index);
             self.cur_sty = self.make_style();
         }
         self.cur_sty
@@ -693,7 +707,7 @@ impl Painter {
 
     #[inline(always)]
     pub fn reset(&mut self) -> ContentStyle {
-        self.forms.splice(1.., []);
+        self.cur.splice(1.., []);
         self.cur_sty = self.make_style();
         self.cur_sty
     }
@@ -709,7 +723,7 @@ impl Painter {
 
         let (mut fg_done, mut bg_done, mut ul_done, mut attr_done) = (false, false, false, false);
 
-        for &(Form { style, is_final }, _) in &self.forms {
+        for &(Form { style, is_final }, _) in &self.cur {
             if let Some(new_fg) = style.foreground_color
                 && (!fg_done || is_final)
             {
@@ -769,7 +783,7 @@ impl Painter {
 
     /// The `"Default"` form's [`Form`]
     pub fn get_default(&self) -> Form {
-        self.forms[0].0
+        self.cur[0].0
     }
 }
 
