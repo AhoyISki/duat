@@ -15,7 +15,6 @@ use regex_syntax::{
 };
 
 use super::{Point, Text};
-use crate::log_info;
 
 impl Text {
     pub fn search_from<R>(
@@ -160,7 +159,7 @@ impl Searcher<'_> {
         let mut rev_input = Input::new(haystack).anchored(Anchored::Yes);
         let mut match_i = 0;
 
-        let text = text as &Text;
+        let text: &Text = text;
         let fwd_dfa = &self.fwd_dfa;
         let rev_dfa = &self.rev_dfa;
         let fwd_cache = &mut self.fwd_cache;
@@ -173,7 +172,9 @@ impl Searcher<'_> {
                 match fwd_dfa.try_search_fwd(fwd_cache, &fwd_input) {
                     Ok(Some(half)) => {
                         match_i += 1;
-                        *end = text.point_at(half.offset() + gap);
+                        *end = haystack.as_bytes()[(end.byte() - gap)..half.offset()]
+                            .iter()
+                            .fold(*end, |p, b| p.fwd_byte(*b));
                         matches.end = matches.end.max(*end);
                         return Some((*start, *end));
                     }
@@ -216,12 +217,13 @@ impl Searcher<'_> {
             };
             let start = half.offset();
 
-            let (start, end) = if start == end {
-                let point = text.point_at(start + gap);
-                (point, point)
-            } else {
-                (text.point_at(start + gap), text.point_at(end + gap))
-            };
+            let start = haystack.as_bytes()[(matches.end.byte() - gap)..start]
+                .iter()
+                .fold(matches.end, |prev, b| prev.fwd_byte(*b));
+            let end = haystack.as_bytes()[(start.byte() - gap)..end]
+                .iter()
+                .fold(start, |p, b| p.fwd_byte(*b));
+
             matches.list.push((start, end));
             matches.end = matches.end.max(end);
 
@@ -273,7 +275,9 @@ impl Searcher<'_> {
                 match fwd_dfa.try_search_fwd(fwd_cache, &fwd_input) {
                     Ok(Some(half)) => {
                         match_i += 1;
-                        *end = text.point_at(half.offset() + gap);
+                        *end = haystack.as_bytes()[(end.byte() - gap)..half.offset()]
+                            .iter()
+                            .fold(*end, |p, b| p.fwd_byte(*b));
                         return Some((*start, *end));
                     }
                     _ => {
@@ -311,9 +315,14 @@ impl Searcher<'_> {
                 .try_search_fwd(fwd_cache, &fwd_input)
                 .unwrap()
                 .unwrap();
-            let end = half.offset();
 
-            let (start, end) = (text.point_at(start + gap), text.point_at(end + gap));
+            let end = haystack.as_bytes()[half.offset()..(matches.start.byte() - gap)]
+                .iter()
+                .fold(matches.start, |p, b| p.rev_byte(*b));
+            let start = haystack.as_bytes()[start..(end.byte() - gap)]
+                .iter()
+                .fold(end, |p, b| p.rev_byte(*b));
+
             matches.list.push((start, end));
             matches.start = start;
 
