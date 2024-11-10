@@ -64,7 +64,7 @@ impl<U: Ui> Mode<U> for Command {
             }
 
             key!(KeyCode::Esc) => {
-                let p = helper.len_point();
+                let p = helper.len();
                 helper.move_main(|mut m| {
                     m.move_to(Point::default());
                     m.set_anchor();

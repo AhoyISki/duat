@@ -78,7 +78,7 @@ impl<T: 'static, Dummy, U: Ui> State<T, Dummy, U> {
                     }
                 }),
                 Appender::Str(str) => Box::new(move |builder, _| {
-                    if str != " " || !builder.last_was_empty() {
+                    if !(str == " " && builder.last_was_empty()) {
                         builder.push_str(str.clone())
                     }
                 }),

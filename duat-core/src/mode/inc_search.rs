@@ -51,7 +51,7 @@ impl<U: Ui> IncSearcher<U> for Fwd<U> {
 
         helper.move_each(|mut m| {
             let caret = m.caret();
-            let next = m.search_inc(None).find(|(p, _)| *p != caret);
+            let next = m.search_inc_fwd(None).find(|(p, _)| *p != caret);
             if let Some((p0, p1)) = next {
                 m.move_to(p0);
                 if p1 > p0 {
@@ -141,7 +141,7 @@ impl<U: Ui> IncSearcher<U> for ExtendFwd<U> {
 
         helper.move_each(|mut m| {
             let caret = m.caret();
-            let next = m.search_inc(None).find(|(p, _)| *p != caret);
+            let next = m.search_inc_fwd(None).find(|(p, _)| *p != caret);
             if let Some((_, p1)) = next {
                 if m.anchor().is_none() {
                     m.set_anchor();

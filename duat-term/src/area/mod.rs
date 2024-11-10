@@ -107,7 +107,7 @@ impl Area {
 
         let (iter, cfg) = {
             let line_start = text.visual_line_start(info.points);
-            (text.iter_at(line_start), IterCfg::new(&cfg).outsource_lfs())
+            (text.iter_fwd(line_start), IterCfg::new(cfg).outsource_lfs())
         };
 
         let cap = cfg.wrap_width(sender.coords().width());
@@ -260,8 +260,8 @@ impl ui::Area for Area {
             (*info, width, height)
         };
 
-        let info = scroll_ver_around(info, w, h, point, text, IterCfg::new(&cfg).outsource_lfs());
-        let info = scroll_hor_around(info, w, point, text, IterCfg::new(&cfg).outsource_lfs());
+        let info = scroll_ver_around(info, w, h, point, text, IterCfg::new(cfg).outsource_lfs());
+        let info = scroll_hor_around(info, w, point, text, IterCfg::new(cfg).outsource_lfs());
 
         let layout = self.layout.read();
         let rect = layout.get(self.id).unwrap();
@@ -428,7 +428,7 @@ impl ui::Area for Area {
     fn print_iter<'a>(
         &self,
         iter: Iter<'a>,
-        cfg: IterCfg<'a>,
+        cfg: IterCfg,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         let points = iter.points();
         print_iter(iter, cfg.wrap_width(self.width()), cfg, points)
@@ -437,7 +437,7 @@ impl ui::Area for Area {
     fn print_iter_from_top<'a>(
         &self,
         text: &'a Text,
-        cfg: IterCfg<'a>,
+        cfg: IterCfg,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         let info = {
             let layout = self.layout.read();
@@ -447,7 +447,7 @@ impl ui::Area for Area {
             *info
         };
         let line_start = text.visual_line_start(info.points);
-        let iter = text.iter_at(line_start);
+        let iter = text.iter_fwd(line_start);
 
         print_iter(iter, cfg.wrap_width(self.width()), cfg, info.points)
     }
@@ -455,7 +455,7 @@ impl ui::Area for Area {
     fn rev_print_iter<'a>(
         &self,
         iter: RevIter<'a>,
-        cfg: IterCfg<'a>,
+        cfg: IterCfg,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         rev_print_iter(iter, cfg.wrap_width(self.width()), cfg)
     }
@@ -469,6 +469,47 @@ impl ui::Area for Area {
     fn set_print_info(&self, info: Self::PrintInfo) {
         let layout = self.layout.read();
         *layout.get(self.id).unwrap().print_info().unwrap().write() = info;
+    }
+
+    fn first_point(&self, _text: &Text, _cfg: PrintCfg) -> Point {
+        let layout = self.layout.read();
+        let rect = layout.get(self.id).unwrap();
+        let info = rect.print_info().unwrap();
+        let info = info.read();
+        info.points.0
+    }
+
+    fn last_point(&self, text: &Text, cfg: PrintCfg) -> Point {
+        let info = {
+            let layout = self.layout.read();
+            let rect = layout.get(self.id).unwrap();
+            let info = rect.print_info().unwrap();
+            let info = info.read();
+            *info
+        };
+        let line_start = text.visual_line_start(info.points);
+        let iter = text.iter_fwd(line_start);
+        let cfg = IterCfg::new(cfg);
+
+        let iter = print_iter(iter, cfg.wrap_width(self.width()), cfg, info.points);
+        let mut point = info.points.0;
+        let mut y = 0;
+        let height = self.height();
+
+        for (Caret { wrap, .. }, Item { part, real, .. }) in iter {
+            if wrap {
+                if y == height {
+                    break;
+                }
+                if part.is_char() {
+                    y += 1
+                }
+            } else {
+                point = real;
+            }
+        }
+
+        point
     }
 }
 
@@ -492,7 +533,7 @@ pub struct PrintInfo {
 
 impl PrintInfo {
     fn fix(&mut self, text: &Text) {
-        let max = text.len_point().min(self.points.0);
+        let max = text.len().min(self.points.0);
         let (_, max_ghost) = text.ghost_max_points_at(max.byte());
         self.points = (max, self.points.1.min(max_ghost))
     }
@@ -512,7 +553,7 @@ fn scroll_ver_around(
     let after = text.points_after(points).unwrap_or(text.len_points());
 
     let cap = cfg.wrap_width(width);
-    let mut iter = rev_print_iter(text.rev_iter_at(after), cap, cfg)
+    let mut iter = rev_print_iter(text.iter_rev(after), cap, cfg)
         .filter_map(|(caret, item)| caret.wrap.then_some(item.points()));
 
     let target = match info.last_main > point {
@@ -544,7 +585,7 @@ fn scroll_hor_around(
         let points = text.ghost_max_points_at(point.byte());
         let after = text.points_after(points).unwrap_or(text.len_points());
 
-        let mut iter = rev_print_iter(text.rev_iter_at(after), cap, cfg);
+        let mut iter = rev_print_iter(text.iter_rev(after), cap, cfg);
 
         let (points, start, end, wrap) = iter
             .find_map(|(Caret { x, len, wrap }, item)| {
@@ -562,7 +603,7 @@ fn scroll_hor_around(
                     .unwrap()
             };
 
-            let len = print_iter_indented(text.iter_at(points), cap, cfg, indent)
+            let len = print_iter_indented(text.iter_fwd(points), cap, cfg, indent)
                 .inspect(|(_, Item { part, .. })| match part {
                     Part::AlignLeft => align = Alignment::Left,
                     Part::AlignCenter => align = Alignment::Center,

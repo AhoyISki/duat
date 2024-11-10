@@ -139,6 +139,15 @@ pub trait Area: Send + Sync + Sized {
     /// text.
     fn request_width_to_fit(&self, text: &str) -> Result<(), Self::ConstraintChangeErr>;
 
+    /// The current printing information of the area
+    fn print_info(&self) -> Self::PrintInfo;
+
+    /// The first point that should be printed
+    fn first_point(&self, text: &Text, cfg: PrintCfg) -> Point;
+
+    /// The last point that should be printed
+    fn last_point(&self, text: &Text, cfg: PrintCfg) -> Point;
+
     /// Sets a previously acquired [`PrintInfo`] to the area
     ///
     /// [`PrintInfo`]: Area::PrintInfo
@@ -167,9 +176,6 @@ pub trait Area: Send + Sync + Sized {
     /// members of the cluster.
     fn get_cluster_master(&self) -> Option<Self>;
 
-    /// The current printing information of the area
-    fn print_info(&self) -> Self::PrintInfo;
-
     /// Returns a printing iterator
     ///
     /// Given an iterator of [`text::Item`]s, returns an iterator
@@ -183,7 +189,7 @@ pub trait Area: Send + Sync + Sized {
     fn print_iter<'a>(
         &self,
         iter: Iter<'a>,
-        cfg: IterCfg<'a>,
+        cfg: IterCfg,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a
     where
         Self: Sized;
@@ -191,7 +197,7 @@ pub trait Area: Send + Sync + Sized {
     fn print_iter_from_top<'a>(
         &self,
         text: &'a Text,
-        cfg: IterCfg<'a>,
+        cfg: IterCfg,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a
     where
         Self: Sized;
@@ -209,7 +215,7 @@ pub trait Area: Send + Sync + Sized {
     fn rev_print_iter<'a>(
         &self,
         iter: RevIter<'a>,
-        cfg: IterCfg<'a>,
+        cfg: IterCfg,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
 
     /// Bisects the [`Area`][Ui::Area] with the given index into

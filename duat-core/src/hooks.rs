@@ -124,8 +124,9 @@ impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
         let (widget, area, cursors) = args;
         let cursors = cursors.read();
         let mut widget = widget.write();
+        let cfg = widget.print_cfg();
 
-        widget.text_mut().add_cursor_tags(&cursors);
+        widget.text_mut().add_cursors(&cursors, area, cfg);
         if let Some(main) = cursors.get_main() {
             area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
         }
@@ -154,8 +155,9 @@ impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
         let (widget, area, cursors) = args;
         let cursors = cursors.read();
         let mut widget = widget.write();
+        let cfg = widget.print_cfg();
 
-        widget.text_mut().add_cursor_tags(&cursors);
+        widget.text_mut().add_cursors(&cursors, area, cfg);
         if let Some(main) = cursors.get_main() {
             area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
         }

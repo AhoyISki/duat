@@ -30,7 +30,7 @@ impl<U: Ui> LineNumbers<U> {
     /// The minimum width that would be needed to show the last line.
     fn calculate_width(&mut self) -> f64 {
         // "+ 1" because we index from 1, not from 0.
-        let len = self.reader.inspect(|file, _, _| file.len_lines()) + 1;
+        let len = self.reader.inspect(|file, _, _| file.text().len().line()) + 1;
         len.ilog10() as f64
     }
 

@@ -6,9 +6,9 @@ use std::{
 use gapbuf::GapBuffer;
 
 use super::{
+    Part, Point, Text,
     point::TwoPoints,
     tags::{self, RawTag},
-    Part, Point, Text,
 };
 use crate::mode::Cursor;
 
@@ -79,13 +79,13 @@ pub struct Iter<'a> {
 impl<'a> Iter<'a> {
     pub(super) fn new_at(text: &'a Text, tp: impl TwoPoints) -> Self {
         let (real, ghost) = tp.to_points();
-        let point = real.min(text.len_point());
+        let point = real.min(text.len());
 
         Self {
             text,
             point,
             chars: buf_chars(&text.buf, point.byte()),
-            tags: text.tags.iter_at(point.byte()),
+            tags: text.tags_fwd(point.byte()),
             conceals: 0,
 
             main_iter: None,
@@ -116,7 +116,7 @@ impl<'a> Iter<'a> {
     }
 
     pub fn skip_to(&mut self, tp: impl TwoPoints) {
-        *self = self.text.iter_at(tp.to_points().max(self.points()))
+        *self = self.text.iter_fwd(tp.to_points().max(self.points()))
     }
 
     #[inline]
@@ -129,8 +129,8 @@ impl<'a> Iter<'a> {
                 let text = self.text.tags.get_text(id).unwrap();
 
                 let (this_ghost, total_ghost) = if let Some((ghost, dist)) = &mut self.ghost {
-                    if ghost.byte() >= *dist + text.len_bytes() {
-                        *dist += text.len_bytes();
+                    if ghost.byte() >= *dist + text.len().byte() {
+                        *dist += text.len().byte();
                         return true;
                     }
                     (text.point_at(ghost.byte() - *dist), *ghost)
@@ -138,7 +138,7 @@ impl<'a> Iter<'a> {
                     (Point::default(), Point::default())
                 };
 
-                let iter = text.iter_at(this_ghost);
+                let iter = text.iter_fwd(this_ghost);
                 let point = std::mem::replace(&mut self.point, this_ghost);
                 let chars = std::mem::replace(&mut self.chars, iter.chars);
                 let tags = std::mem::replace(&mut self.tags, iter.tags);
@@ -249,7 +249,7 @@ pub struct RevIter<'a> {
 impl<'a> RevIter<'a> {
     pub(super) fn new_at(text: &'a Text, tp: impl TwoPoints) -> Self {
         let (real, ghost) = tp.to_points();
-        let point = real.min(text.len_point());
+        let point = real.min(text.len());
 
         let ghost = ghost.map(|ghost| {
             let dist = text.tags.ghosts_total_at(real.byte()).unwrap().byte();
@@ -259,7 +259,7 @@ impl<'a> RevIter<'a> {
         Self {
             text,
             chars: buf_chars_rev(&text.buf, point.byte()),
-            tags: text.tags.rev_iter_at(point.byte()),
+            tags: text.tags_rev(point.byte()),
             point,
             conceals: 0,
 
@@ -293,21 +293,21 @@ impl<'a> RevIter<'a> {
                 let text = self.text.tags.get_text(id).unwrap();
 
                 let (this_ghost, total_ghost) = if let Some((total, dist)) = &mut self.ghost {
-                    if *dist - text.len_bytes() >= total.byte() {
-                        *dist -= text.len_bytes();
+                    if *dist - text.len().byte() >= total.byte() {
+                        *dist -= text.len().byte();
                         return true;
                     }
                     (
-                        text.point_at(total.byte() + text.len_bytes() - *dist),
+                        text.point_at(total.byte() + text.len().byte() - *dist),
                         *total,
                     )
                 } else {
-                    let this = text.len_point();
+                    let this = text.len();
                     let total = self.text.tags.ghosts_total_at(b);
                     (this, total.unwrap())
                 };
 
-                let iter = text.rev_iter_at(this_ghost);
+                let iter = text.iter_rev(this_ghost);
                 let point = std::mem::replace(&mut self.point, total_ghost);
                 let chars = std::mem::replace(&mut self.chars, iter.chars);
                 let tags = std::mem::replace(&mut self.tags, iter.tags);

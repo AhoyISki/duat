@@ -29,7 +29,7 @@ use crate::{
     forms::{self, Form},
     hooks,
     mode::{self, Command, Cursors, IncSearcher},
-    text::{Ghost, Key, PrintCfg, SavedMatches, Tag, Text, text},
+    text::{Ghost, Key, PrintCfg, Searcher, Tag, Text, text},
     ui::{PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
 };
@@ -165,7 +165,7 @@ impl<U: Ui> Widget<U> for CommandLine<U> {
     fn once() {
         forms::set_weak("Prompt", Form::cyan());
         forms::set_weak("ParseCommandErr", "DefaultErr");
-        
+
         commands::add_for::<CommandLine<U>, U>(
             ["set-prompt"],
             move |command_line, _, _, _, mut args| {
@@ -309,8 +309,6 @@ impl<U: Ui> Default for ShowNotifications<U> {
 
 pub struct IncSearch<I: IncSearcher<U>, U: Ui> {
     fn_or_inc: FnOrInc<I, U>,
-    list: Vec<SavedMatches>,
-    error_range: Option<(usize, usize)>,
     key: Key,
     ghost: PhantomData<U>,
 }
@@ -321,8 +319,6 @@ impl<I: IncSearcher<U>, U: Ui> IncSearch<I, U> {
 
         Self {
             fn_or_inc: FnOrInc::Fn(Some(Box::new(f))),
-            list: Vec::new(),
-            error_range: None,
             key: Key::new(),
             ghost: PhantomData,
         }
@@ -339,46 +335,27 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
             unreachable!();
         };
 
-        if let Some((start, end)) = self.error_range.take() {
-            text.remove_tags_on(start, self.key);
-            text.remove_tags_on(end, self.key);
-        }
+        text.remove_tags_of(self.key);
 
         let cur_file = context::cur_file::<U>().unwrap();
 
-        if let Some(saved) = self.list.iter_mut().find(|s| s.pat_is(text)) {
-            let searcher = saved.searcher();
-            cur_file.mutate_data(|file, area, cursors| {
-                let mut c = cursors.write();
-                inc.search(file, area, &mut c, searcher);
-            });
-        } else {
-            match SavedMatches::new(text.to_string()) {
-                Ok(mut saved) => {
-                    if let Some(prev) = self.list.iter().rev().find(|s| s.is_prefix_of(&saved)) {
-                        saved.take_matches_from(prev);
-                    }
+        match Searcher::new(text.to_string()) {
+            Ok(searcher) => {
+                cur_file.mutate_data(|file, area, cursors| {
+                    let mut c = cursors.write();
+                    inc.search(file, area, &mut c, searcher);
+                });
+            }
+            Err(err) => {
+                let regex_syntax::Error::Parse(err) = *err else {
+                    unreachable!("As far as I can tell, this would be a bug with regex_syntax");
+                };
 
-                    let searcher = saved.searcher();
-                    cur_file.mutate_data(|file, area, cursors| {
-                        let mut c = cursors.write();
-                        inc.search(file, area, &mut c, searcher);
-                    });
+                let span = err.span();
+                let id = crate::forms::id_of!("ParseCommandErr");
 
-                    self.list.push(saved);
-                }
-                Err(error) => {
-                    let regex_syntax::Error::Parse(error) = *error else {
-                        unreachable!("As far as I can tell, this would be a bug with regex_syntax");
-                    };
-
-                    let span = error.span();
-                    let id = crate::forms::id_of!("ParseCommandErr");
-
-                    text.insert_tag(span.start.offset, Tag::PushForm(id), self.key);
-                    text.insert_tag(span.end.offset, Tag::PopForm(id), self.key);
-                    self.error_range = Some((span.start.offset, span.end.offset));
-                }
+                text.insert_tag(span.start.offset, Tag::PushForm(id), self.key);
+                text.insert_tag(span.end.offset, Tag::PopForm(id), self.key);
             }
         }
     }

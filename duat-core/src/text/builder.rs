@@ -61,7 +61,7 @@ impl Builder {
     /// [`Form`]: crate::forms::Form
     /// [`PopForm`]: Tag::PopForm
     pub fn finish(mut self) -> Text {
-        let len = self.text.len_bytes();
+        let len = self.text.len().byte();
 
         if let Some(tag) = self.last_form {
             self.text.tags.insert(len, Tag::PopForm(tag), Key::basic());
@@ -105,17 +105,18 @@ impl Builder {
         self.buffer.clear();
         write!(self.buffer, "{display}").unwrap();
         if self.buffer.is_empty() {
-            self.last_was_empty = true
+            self.last_was_empty = true;
         } else {
             self.last_was_empty = false;
-            self.text.insert_str(self.text.len_bytes(), &self.buffer)
+            let end = self.text.len();
+            self.text.replace_range_inner((end, end), &self.buffer)
         }
     }
 
     /// Pushes a [`Tag`] to the end of the list of [`Tag`]s, as well
     /// as its inverse at the end of the [`Text`]
     pub(crate) fn push_tag(&mut self, tag: Tag) -> Option<ToggleId> {
-        let len = self.text.len_bytes();
+        let len = self.text.len().byte();
         if let Tag::PushForm(id) = tag {
             let last_form = match id == crate::forms::DEFAULT_ID {
                 true => self.last_form.take(),
@@ -138,10 +139,11 @@ impl Builder {
     /// Pushes [`Text`] directly
     pub(crate) fn push_text(&mut self, mut text: Text) {
         self.last_was_empty = text.is_empty();
-        let end = self.text.len_bytes();
+        let end = self.text.len();
+        let len_p = text.len();
 
         if let Some(last_id) = self.last_form.take() {
-            let initial = text.tags().next();
+            let initial = text.tags_fwd(0).next();
             if let Some((0, RawTag::PushForm(_, id))) = initial
                 && id == last_id
             {
@@ -149,11 +151,14 @@ impl Builder {
             } else {
                 self.text
                     .tags
-                    .insert(end, Tag::PopForm(last_id), Key::basic());
+                    .insert(end.byte(), Tag::PopForm(last_id), Key::basic());
             }
         }
 
-        self.text.buf.splice(end..end, *text.buf);
+        self.text.buf.splice(end.byte()..end.byte(), *text.buf);
+        let end = (end.byte(), end.char(), end.line());
+        let new = (len_p.byte(), len_p.char(), len_p.line());
+        self.text.records.transform(end, (0, 0, 0), new);
         self.text.tags.extend(*text.tags);
     }
 }

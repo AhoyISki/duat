@@ -179,7 +179,9 @@ impl<U: Ui> CurFile<U> {
         let (file, area, cursors, _) = data.as_ref().unwrap();
 
         cursors.inspect(|c| {
-            <File as Widget<U>>::text_mut(&mut file.write()).remove_cursor_tags(c);
+            let mut file = file.write();
+            let cfg = <File as Widget<U>>::print_cfg(&file);
+            <File as Widget<U>>::text_mut(&mut file).remove_cursors(c, area, cfg);
         });
 
         let ret = f(file, area, cursors);
@@ -187,7 +189,7 @@ impl<U: Ui> CurFile<U> {
         let cursors = cursors.read();
 
         let mut file = file.write();
-        file.text_mut().add_cursor_tags(&cursors);
+        let cfg = <File as Widget<U>>::print_cfg(&file);
 
         if let Some(main) = cursors.get_main() {
             area.scroll_around_point(
@@ -196,6 +198,7 @@ impl<U: Ui> CurFile<U> {
                 <File as Widget<U>>::print_cfg(&file),
             );
         }
+        file.text_mut().add_cursors(&cursors, area, cfg);
 
         <File as Widget<U>>::update(&mut file, area);
         if !mode::is_printing_stopped() {
@@ -210,11 +213,17 @@ impl<U: Ui> CurFile<U> {
         f: impl FnOnce(&mut W, &U::Area, &mut Cursors) -> R,
     ) -> Option<R> {
         let f = move |w: &mut W, a, c: &mut Cursors| {
-            w.text_mut().remove_cursor_tags(c);
+            let cfg = w.print_cfg();
+            w.text_mut().remove_cursors(c, a, cfg);
 
             let ret = f(w, a, &mut *c);
 
-            w.text_mut().add_cursor_tags(c);
+            let cfg = w.print_cfg();
+
+            if let Some(main) = c.get_main() {
+                a.scroll_around_point(w.text(), main.caret(), w.print_cfg());
+            }
+            w.text_mut().add_cursors(c, a, cfg);
             w.update(a);
             if !mode::is_printing_stopped() {
                 w.print(a);
@@ -404,17 +413,22 @@ impl<U: Ui> CurWidget<U> {
         let data = self.0.read();
         let (widget, area, cursors) = data.as_ref().unwrap().as_active();
 
-        cursors.inspect(|c| widget.raw_write().text_mut().remove_cursor_tags(c));
+        cursors.inspect(|c| {
+            let mut widget = widget.raw_write();
+            let cfg = widget.print_cfg();
+            widget.text_mut().remove_cursors(c, area, cfg)
+        });
 
         let ret = f(widget, area, cursors);
 
         cursors.inspect(|c| {
             let mut widget = widget.write();
+            let cfg = widget.print_cfg();
 
-            widget.text_mut().add_cursor_tags(c);
             if let Some(main) = c.get_main() {
                 area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
             }
+            widget.text_mut().add_cursors(c, area, cfg);
 
             widget.update(area);
             if !mode::is_printing_stopped() {
@@ -434,17 +448,22 @@ impl<U: Ui> CurWidget<U> {
 
         let widget = widget.try_downcast::<W>()?;
 
-        cursors.inspect(|c| widget.raw_write().text_mut().remove_cursor_tags(c));
+        cursors.inspect(|c| {
+            let mut widget = widget.raw_write();
+            let cfg = widget.print_cfg();
+            widget.text_mut().remove_cursors(c, area, cfg)
+        });
 
         let ret = Some(f(&widget, area, cursors));
 
         cursors.inspect(|c| {
             let mut widget = widget.write();
+            let cfg = widget.print_cfg();
 
-            widget.text_mut().add_cursor_tags(c);
             if let Some(main) = c.get_main() {
                 area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
             }
+            widget.text_mut().add_cursors(c, area, cfg);
 
             widget.update(area);
             if !mode::is_printing_stopped() {

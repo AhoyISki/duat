@@ -318,7 +318,7 @@ impl Tags {
         self.records.max().1
     }
 
-    pub fn iter_at(&self, at: usize) -> FwdTags {
+    pub fn fwd_at(&self, at: usize) -> FwdTags {
         let at = at.min(self.len_bytes()).saturating_sub(self.range_min);
 
         let (n, b) = {
@@ -360,7 +360,7 @@ impl Tags {
         ranges.chain(tags).peekable()
     }
 
-    pub fn rev_iter_at(&self, at: usize) -> RevTags {
+    pub fn rev_at(&self, at: usize) -> RevTags {
         let at = (at + self.range_min).min(self.len_bytes());
 
         let (n, b) = self
@@ -417,7 +417,7 @@ impl Tags {
     pub fn ghosts_total_at(&self, at: usize) -> Option<Point> {
         self.iter_only_at(at).fold(None, |p, tag| match tag {
             RawTag::GhostText(_, id) => {
-                let max_point = self.texts.get(&id).unwrap().len_point();
+                let max_point = self.texts.get(&id).unwrap().len();
                 Some(p.map_or(max_point, |p| p + max_point))
             }
             _ => p,

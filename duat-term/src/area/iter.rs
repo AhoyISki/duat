@@ -13,7 +13,7 @@ fn indents<'a>(
     iter: impl Iterator<Item = Item> + Clone + 'a,
     cap: usize,
     initial: (usize, bool),
-    cfg: IterCfg<'a>,
+    cfg: IterCfg,
 ) -> impl Iterator<Item = (usize, Item)> + Clone + 'a {
     iter.scan(initial, move |(indent, on_indent), item| {
         if cfg.indent_wrap() {
@@ -37,7 +37,7 @@ fn indents<'a>(
 fn parts<'a>(
     iter: impl Iterator<Item = (usize, Item)> + Clone + 'a,
     cap: usize,
-    cfg: IterCfg<'a>,
+    cfg: IterCfg,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     iter.scan(
         (0, true, None),
@@ -52,7 +52,7 @@ fn parts<'a>(
 fn words<'a>(
     iter: impl Iterator<Item = (usize, Item)> + Clone + 'a,
     width: usize,
-    cfg: IterCfg<'a>,
+    cfg: IterCfg,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     let mut iter = iter.peekable();
     let mut indent = 0;
@@ -184,12 +184,12 @@ where
 /// This function will function properly given that, elsewhere in
 /// the code, the passed [`PrintInfo`] and `width` have beend
 /// validated.
-pub fn print_iter<'a>(
-    mut iter: TextIter<'a>,
+pub fn print_iter(
+    mut iter: TextIter<'_>,
     cap: usize,
-    cfg: IterCfg<'a>,
+    cfg: IterCfg,
     points: (Point, Option<Point>),
-) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
+) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
     let (Continue(indent) | Break(indent)) = iter
         .clone()
         .take_while(|&Item { real, ghost, .. }| (real, ghost) < points)
@@ -213,20 +213,20 @@ pub fn print_iter<'a>(
 /// This function will function properly given that, elsewhere in
 /// the code, the passed [`PrintInfo`] and `width` have beend
 /// validated.
-pub(super) fn print_iter_indented<'a>(
-    iter: TextIter<'a>,
+pub(super) fn print_iter_indented(
+    iter: TextIter<'_>,
     cap: usize,
-    cfg: IterCfg<'a>,
+    cfg: IterCfg,
     indent: usize,
-) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
+) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
     inner_iter(iter, cap, (indent, false), cfg)
 }
 
-pub fn rev_print_iter<'a>(
-    mut iter: RevTextIter<'a>,
+pub fn rev_print_iter(
+    mut iter: RevTextIter<'_>,
     width: usize,
-    cfg: IterCfg<'a>,
-) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
+    cfg: IterCfg,
+) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
     let mut returns = Vec::new();
     let mut prev_line_nl = None;
 
@@ -260,7 +260,7 @@ fn inner_iter<'a>(
     iter: impl Iterator<Item = Item> + Clone + 'a,
     cap: usize,
     initial: (usize, bool),
-    cfg: IterCfg<'a>,
+    cfg: IterCfg,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     let indents = indents(iter, cap, initial, cfg);
 

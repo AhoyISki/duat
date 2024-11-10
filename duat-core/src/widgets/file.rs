@@ -15,8 +15,6 @@ use std::{fs, io::ErrorKind, path::PathBuf};
 
 use crate::{
     forms,
-    history::History,
-    mode::Cursors,
     text::{IterCfg, PrintCfg, Text},
     ui::{Area, PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
@@ -106,7 +104,6 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
             path,
             text,
             cfg: self.cfg,
-            history: History::new(),
             printed_lines: Vec::new(),
         };
 
@@ -120,7 +117,6 @@ pub struct File {
     path: Path,
     text: Text,
     cfg: PrintCfg,
-    history: History,
     printed_lines: Vec<(usize, bool)>,
 }
 
@@ -150,33 +146,6 @@ impl File {
     pub fn write_to(&self, path: impl AsRef<str>) -> std::io::Result<usize> {
         self.text
             .write_to(std::io::BufWriter::new(fs::File::create(path.as_ref())?))
-    }
-
-    /////////// # History related functions.
-
-    /// Begins a new moment in history.
-    ///
-    /// A new moment makes it so that "undoing" or "redoing" will undo
-    /// or redo all the changes in the moment. The previous moment can
-    /// be undone, undoing multiple changes at once.
-    pub fn add_moment(&mut self) {
-        self.history.new_moment()
-    }
-
-    /// Redoes the next moment, if there is one.
-    pub fn redo(&mut self, area: &impl Area, cursors: &mut Cursors) {
-        self.history.redo(&mut self.text, area, &self.cfg, cursors)
-    }
-
-    /// Undoes the last moment, if there was one.
-    pub fn undo(&mut self, area: &impl Area, cursors: &mut Cursors) {
-        self.history.undo(&mut self.text, area, &self.cfg, cursors)
-    }
-
-    /// Returns a mutable reference to the [`Text`] and [`History`] of
-    /// the [`File`].
-    pub fn mut_text_and_history(&mut self) -> (&mut Text, &mut History) {
-        (&mut self.text, &mut self.history)
     }
 
     ////////// Path querying functions
@@ -245,15 +214,19 @@ impl File {
 
     ////////// General querying functions
 
-    /// The mutable [`History`] of the [`File`]
-    ///
-    /// This history will contain a list of [`Moment`], each of which
-    /// will contain a list of [`Change`]s
-    ///
-    /// [`Moment`]: crate::history::Moment
-    /// [`Change`]: crate::history::Change
-    pub fn history_mut(&mut self) -> &mut History {
-        &mut self.history
+    /// The number of bytes in the file.
+    pub fn len_bytes(&self) -> usize {
+        self.text.len().byte()
+    }
+
+    /// The number of [`char`]s in the file.
+    pub fn len_chars(&self) -> usize {
+        self.text.len().char()
+    }
+
+    /// The number of lines in the file.
+    pub fn len_lines(&self) -> usize {
+        self.text.len().line()
     }
 
     /// The [`Text`] of the [`File`]
@@ -270,21 +243,6 @@ impl File {
     pub fn exists(&self) -> bool {
         self.path_set()
             .is_some_and(|p| std::fs::exists(PathBuf::from(&p)).is_ok_and(|e| e))
-    }
-
-    /// The number of bytes in the file.
-    pub fn len_bytes(&self) -> usize {
-        self.text.len_bytes()
-    }
-
-    /// The number of [`char`]s in the file.
-    pub fn len_chars(&self) -> usize {
-        self.text.len_chars()
-    }
-
-    /// The number of lines in the file.
-    pub fn len_lines(&self) -> usize {
-        self.text.len_lines()
     }
 }
 
@@ -315,7 +273,7 @@ impl<U: Ui> Widget<U> for File {
         let (start, _) = area.top_left();
 
         let mut last_line = area
-            .rev_print_iter(self.text.rev_iter_at(start), IterCfg::new(&self.cfg))
+            .rev_print_iter(self.text.iter_rev(start), IterCfg::new(self.cfg))
             .find_map(|(caret, item)| caret.wrap.then_some(item.line()));
 
         self.printed_lines.clear();

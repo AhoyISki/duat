@@ -49,7 +49,7 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('j')) => match self.0 {
                 SelType::EndOfNl => helper.move_each(|mut m| {
                     m.move_ver(1);
-                    let (p0, _) = m.search("\n", None).next().unzip();
+                    let (p0, _) = m.search_fwd("\n", None).next().unzip();
                     if let Some(point) = p0.or(m.last_point()) {
                         m.move_to(point);
                     }
@@ -70,7 +70,7 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('k')) => match self.0 {
                 SelType::EndOfNl => helper.move_each(|mut m| {
                     m.move_ver(-1);
-                    let (p0, _) = m.search("\n", None).next().unzip();
+                    let (p0, _) = m.search_fwd("\n", None).next().unzip();
                     if let Some(point) = p0.or(m.last_point()) {
                         m.move_to(point);
                     }
@@ -94,7 +94,7 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('J'), Mod::SHIFT) => match self.0 {
                 SelType::EndOfNl => helper.move_each(|mut m| {
                     m.move_ver(1);
-                    let (p0, _) = m.search("\n", None).next().unzip();
+                    let (p0, _) = m.search_fwd("\n", None).next().unzip();
                     if let Some(point) = p0.or(m.last_point()) {
                         m.move_to(point);
                     }
@@ -115,7 +115,7 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('K'), Mod::SHIFT) => match self.0 {
                 SelType::EndOfNl => helper.move_each(|mut m| {
                     m.move_ver(-1);
-                    let (p0, _) = m.search("\n", None).next().unzip();
+                    let (p0, _) = m.search_fwd("\n", None).next().unzip();
                     if let Some(point) = p0.or(m.last_point()) {
                         m.move_to(point);
                     }
@@ -155,7 +155,10 @@ impl<U: Ui> Mode<U> for Normal {
                         m.move_to(p1);
                     }
 
-                    let (_, p1) = m.search(word_and_space(mf, w_chars), None).next().unzip();
+                    let (_, p1) = m
+                        .search_fwd(word_and_space(mf, w_chars), None)
+                        .next()
+                        .unzip();
                     if let Some(p1) = p1 {
                         m.set_anchor();
                         m.move_to(p1);
@@ -173,7 +176,10 @@ impl<U: Ui> Mode<U> for Normal {
                         m.move_to(p1);
                     }
 
-                    let (_, p1) = m.search(space_and_word(mf, w_chars), None).next().unzip();
+                    let (_, p1) = m
+                        .search_fwd(space_and_word(mf, w_chars), None)
+                        .next()
+                        .unzip();
                     if let Some(p1) = p1 {
                         m.set_anchor();
                         m.move_to(p1);
@@ -204,7 +210,7 @@ impl<U: Ui> Mode<U> for Normal {
                     m.set_anchor();
                 }
 
-                let points = m.search(word_and_space(mf, w_chars), None).next();
+                let points = m.search_fwd(word_and_space(mf, w_chars), None).next();
                 if let Some((_, p1)) = points {
                     m.move_to(p1);
                     m.move_hor(-1);
@@ -215,7 +221,7 @@ impl<U: Ui> Mode<U> for Normal {
                     m.set_anchor();
                 }
 
-                let points = m.search(space_and_word(mf, w_chars), None).next();
+                let points = m.search_fwd(space_and_word(mf, w_chars), None).next();
                 if let Some((_, p1)) = points {
                     m.move_to(p1);
                     m.move_hor(-1);
@@ -244,7 +250,7 @@ impl<U: Ui> Mode<U> for Normal {
                     m.swap_ends();
                     m.move_to(p0);
 
-                    let (p1, _) = m.search("\n", None).next().unzip();
+                    let (p1, _) = m.search_fwd("\n", None).next().unzip();
                     if let Some(p1) = p1.or(m.last_point()) {
                         m.set_anchor();
                         m.move_to(p1);
@@ -369,7 +375,9 @@ impl<U: Ui> Mode<U> for Insert {
         match key {
             key!(Char(char)) => {
                 helper.edit_each(|e| e.insert(char));
-                helper.move_each(|mut m| m.move_hor(1));
+                helper.move_each(|mut m| {
+                    m.move_hor(1)
+                });
             }
             key!(Char(char), Mod::SHIFT) => {
                 helper.edit_each(|e| e.insert(char));
@@ -497,7 +505,7 @@ impl OneKey {
                 if let Some(p1) = p1 {
                     m.move_to(p1);
 
-                    let points = m.search("[^ \t]", None).next();
+                    let points = m.search_fwd("[^ \t]", None).next();
                     if let Some((p0, _)) = points {
                         m.move_to(p0)
                     }
@@ -568,7 +576,7 @@ impl<U: Ui> Mode<U> for OneKey {
                         Reverse | ExtendRev => {
                             (m.search_rev(char, None).find(|(p, _)| *p != cur), 1)
                         }
-                        Normal | Extend => (m.search(char, None).find(|(p, _)| *p != cur), -1),
+                        Normal | Extend => (m.search_fwd(char, None).find(|(p, _)| *p != cur), -1),
                         _ => unreachable!(),
                     };
 
@@ -755,7 +763,60 @@ impl<U: Ui> IncSearcher<U> for Select<U> {
                 m.swap_ends();
             }
             if let Some(anchor) = m.anchor() {
-                let ranges: Vec<(Point, Point)> = m.search_inc(Some(anchor)).collect();
+                let ranges: Vec<(Point, Point)> = m.search_inc_fwd(Some(anchor)).collect();
+
+                for (i, &(p0, p1)) in ranges.iter().enumerate() {
+                    m.move_to(p0);
+                    if p1.char() > p0.char() + 1 {
+                        m.set_anchor();
+                        m.move_to(p1);
+                        m.move_hor(-1);
+                    } else {
+                        m.unset_anchor();
+                    }
+                    if i < ranges.len() - 1 {
+                        m.copy();
+                    }
+                }
+            }
+        });
+    }
+}
+
+struct Split<U: Ui> {
+    cursors: Cursors,
+    info: <U::Area as Area>::PrintInfo,
+}
+
+impl<U: Ui> IncSearcher<U> for Split<U> {
+    fn new(_: &RwData<File>, area: &<U as Ui>::Area, cursors: &mut Cursors) -> Self {
+        Self {
+            cursors: cursors.clone(),
+            info: area.print_info(),
+        }
+    }
+
+    fn search(
+        &mut self,
+        file: &RwData<File>,
+        area: &<U as Ui>::Area,
+        cursors: &mut Cursors,
+        searcher: duat_core::text::Searcher,
+    ) {
+        *cursors = self.cursors.clone();
+        if searcher.is_empty() {
+            area.set_print_info(self.info.clone());
+            return;
+        }
+
+        let mut helper = EditHelper::new_inc(file, area, cursors, searcher);
+
+        helper.move_each(|mut m| {
+            if m.anchor_is_start() {
+                m.swap_ends();
+            }
+            if let Some(anchor) = m.anchor() {
+                let ranges: Vec<(Point, Point)> = m.search_inc_fwd(Some(anchor)).collect();
 
                 for (i, &(p0, p1)) in ranges.iter().enumerate() {
                     m.move_to(p0);

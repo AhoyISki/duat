@@ -253,15 +253,15 @@ impl Default for PrintCfg {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct IterCfg<'a> {
-    cfg: &'a PrintCfg,
+pub struct IterCfg {
+    cfg: PrintCfg,
     iter_lfs: bool,
     force_wrap: Option<WrapMethod>,
     no_indent_wrap: bool,
 }
 
-impl<'a> IterCfg<'a> {
-    pub const fn new(cfg: &'a PrintCfg) -> Self {
+impl IterCfg {
+    pub const fn new(cfg: PrintCfg) -> Self {
         Self {
             cfg,
             iter_lfs: true,

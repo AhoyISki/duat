@@ -570,7 +570,8 @@ impl<U: Ui> Node<U> {
     fn on_focus_fn<W: Widget<U>>(&self) {
         self.cursors.inspect(|c| {
             let mut widget = self.widget.write();
-            widget.text_mut().remove_cursor_tags(c);
+            let cfg = widget.print_cfg();
+            widget.text_mut().remove_cursors(c, &self.area, cfg);
             widget.on_focus(&self.area);
         });
 
@@ -583,7 +584,8 @@ impl<U: Ui> Node<U> {
     fn on_unfocus_fn<W: Widget<U>>(&self) {
         self.cursors.inspect(|c| {
             let mut widget = self.widget.write();
-            widget.text_mut().remove_cursor_tags(c);
+            let cfg = widget.print_cfg();
+            widget.text_mut().remove_cursors(c, &self.area, cfg);
             widget.on_unfocus(&self.area);
         });
 

@@ -2,7 +2,6 @@ use gapbuf::{GapBuffer, gap_buffer};
 use serde::{Deserialize, Serialize, de::Visitor, ser::SerializeSeq};
 
 pub use self::cursor::Cursor;
-use super::Diff;
 use crate::{
     text::{Point, PrintCfg, Text},
     ui::Area,
@@ -42,13 +41,14 @@ impl Cursors {
 
     pub fn insert_from_parts(
         &mut self,
+        guess_i: usize,
         point: Point,
         range: usize,
         text: &Text,
         area: &impl Area,
-        cfg: &PrintCfg,
+        cfg: PrintCfg,
     ) -> usize {
-        let mut cursor = Cursor::new(point, text, area, cfg);
+        let mut cursor = Cursor::new(point, text, area, &cfg);
 
         let range = match self.is_incl {
             true => range.saturating_sub(1),
@@ -57,11 +57,20 @@ impl Cursors {
 
         if range > 0 {
             cursor.set_anchor();
-            cursor.move_hor(range as isize, text, area, cfg);
+            cursor.move_hor(range as isize, text, area, &cfg);
         }
-        let start = cursor.range(self.is_incl).start;
-        let (Ok(i) | Err(i)) =
-            binary_search_by_key(&self.buf, start, |c| c.range(self.is_incl).start);
+        let start = cursor.start().byte();
+        // Do a check for a "guessed position", if it doesn't work, try
+        // binary search.
+        let (Ok(i) | Err(i)) = if let Some(prev_i) = guess_i.checked_sub(1)
+            && let Some(c) = self.get(prev_i)
+            && c.start().byte() <= start
+            && self.get(guess_i).is_none_or(|c| start < c.start().byte())
+        {
+            Ok(guess_i)
+        } else {
+            binary_search_by_key(&self.buf, start, |c| c.start().byte())
+        };
 
         if !self.try_merge_on(i, &mut cursor) {
             self.buf.insert(i, cursor);
@@ -137,16 +146,18 @@ impl Cursors {
         })
     }
 
-    pub(super) fn insert(&mut self, was_main: bool, mut cursor: Cursor) -> usize {
-        let start = cursor.range(self.is_incl).start;
-        let (Ok(i) | Err(i)) =
-            binary_search_by_key(&self.buf, start, |c| c.range(self.is_incl).start);
+    pub(super) fn insert(&mut self, guess_i: usize, was_main: bool, mut cursor: Cursor) -> usize {
+        let (Ok(i) | Err(i)) = if let Some(prev_i) = guess_i.checked_sub(1)
+            && let Some(c) = self.get(prev_i)
+            && c.start() <= cursor.start()
+            && self.get(guess_i).is_none_or(|c| cursor.start() < c.start())
+        {
+            Ok(guess_i)
+        } else {
+            binary_search_by_key(&self.buf, cursor.start().byte(), |c| c.start().byte())
+        };
 
-        if was_main {
-            self.main = i;
-        }
-
-        if self.try_merge_on(i, &mut cursor) {
+        let final_i = if self.try_merge_on(i, &mut cursor) {
             i - 1
         } else {
             self.buf.insert(i, cursor);
@@ -154,22 +165,26 @@ impl Cursors {
                 self.main += 1;
             }
             i
+        };
+
+        if was_main {
+            self.main = final_i;
         }
+
+        final_i
     }
 
-    pub(super) fn shift(
+    pub(super) fn shift_by(
         &mut self,
-        after: usize,
-        diff: Diff,
+        from: usize,
+        shift: (isize, isize, isize),
         text: &Text,
         area: &impl Area,
         cfg: &PrintCfg,
     ) {
-        if !diff.no_change() {
-            for cursor in self.buf.iter_mut().skip(after + 1) {
-                diff.shift_cursor(cursor, text, area, cfg);
+            for cursor in self.buf.iter_mut().skip(from) {
+                cursor.shift_by(shift, text, area, cfg);
             }
-        }
     }
 
     pub(super) fn drain(&mut self) -> impl Iterator<Item = (Cursor, bool)> + '_ {
@@ -197,7 +212,7 @@ impl Cursors {
     /// Returns `true` if the cursor behind got merged.
     fn try_merge_on(&mut self, i: usize, cursor: &mut Cursor) -> bool {
         while let Some(ahead) = self.buf.get(i)
-            && cursor.range(self.is_incl).end > ahead.range(self.is_incl).start
+            && cursor.range(self.is_incl).end > ahead.start().byte()
         {
             cursor.merge_ahead(self.buf.remove(i));
             if self.main > i {
@@ -206,7 +221,7 @@ impl Cursors {
         }
         if let Some(prev_i) = i.checked_sub(1)
             && let Some(prev) = self.buf.get_mut(prev_i)
-            && prev.range(self.is_incl).end > cursor.range(self.is_incl).start
+            && prev.range(self.is_incl).end > cursor.start().byte()
         {
             prev.merge_ahead(*cursor);
             if self.main > prev_i {
@@ -245,7 +260,7 @@ mod cursor {
     pub struct Cursor {
         caret: VPoint,
         anchor: Option<VPoint>,
-        pub(crate) assoc_index: Option<usize>,
+        pub(in crate::mode::helper) change_i: Option<u32>,
     }
 
     impl Cursor {
@@ -255,7 +270,7 @@ mod cursor {
                 caret: VPoint::new(point, text, area, cfg),
                 // This should be fine.
                 anchor: None,
-                assoc_index: None,
+                change_i: None,
             }
         }
 
@@ -279,10 +294,31 @@ mod cursor {
             };
             let target = self.caret.point.char().saturating_add_signed(by);
 
-            if target <= last.char() {
-                let point = text.point_at_char(target);
-                self.caret = VPoint::new(point, text, area, cfg);
-            }
+            let point = if target == 0 {
+                Point::default()
+            } else if target >= last.char() {
+                last
+            } else if by.abs() < 500 {
+                if by > 0 {
+                    let (point, _) = text
+                        .chars_fwd(self.caret())
+                        .take(by as usize + 1)
+                        .last()
+                        .unwrap();
+                    point
+                } else {
+                    let (point, _) = text
+                        .chars_rev(self.caret())
+                        .take(by.unsigned_abs())
+                        .last()
+                        .unwrap();
+                    point
+                }
+            } else {
+                text.point_at_char(target)
+            };
+
+            self.caret = VPoint::new(point, text, area, cfg);
         }
 
         /// Internal vertical movement function.
@@ -290,14 +326,14 @@ mod cursor {
             let (Some(last), false) = (text.last_point(), by == 0) else {
                 return;
             };
-            let cfg = IterCfg::new(cfg).dont_wrap();
+            let cfg = IterCfg::new(*cfg).dont_wrap();
             let dcol = self.caret.dcol;
 
             let point = {
                 let target = self.caret.line().saturating_add_signed(by).min(last.line());
                 let point = text.point_at_line(target);
 
-                area.print_iter(text.iter_at(point), cfg)
+                area.print_iter(text.iter_fwd(point), cfg)
                     .filter_map(|(caret, item)| Some(caret).zip(item.as_real_char()))
                     .find_map(|(Caret { x, len, .. }, (p, char))| {
                         (p.line() == target && (x + len > dcol || char == '\n')).then_some(p)
@@ -320,7 +356,7 @@ mod cursor {
             if text.last_point().is_none() || by == 0 {
                 return;
             };
-            let cfg = IterCfg::new(cfg);
+            let cfg = IterCfg::new(*cfg);
             let dwcol = self.caret.dwcol;
 
             let mut wraps = 0;
@@ -330,7 +366,7 @@ mod cursor {
             let point = if by > 0 {
                 let line_start = text.visual_line_start(self.caret.point);
 
-                area.print_iter(text.iter_at(line_start), cfg)
+                area.print_iter(text.iter_fwd(line_start), cfg)
                     .skip_while(|(_, item)| item.byte() <= self.byte())
                     .filter_map(|(caret, item)| {
                         wraps += caret.wrap as isize;
@@ -351,7 +387,7 @@ mod cursor {
             } else {
                 let end = text.points_after(self.caret.point).unwrap();
 
-                area.rev_print_iter(text.rev_iter_at(end), cfg)
+                area.rev_print_iter(text.iter_rev(end), cfg)
                     .filter_map(|(Caret { x, wrap, .. }, item)| {
                         let old_wraps = wraps;
                         wraps -= wrap as isize;
@@ -372,6 +408,23 @@ mod cursor {
 
             self.caret.point = point.unwrap_or(last_valid);
             self.caret.vcol = vcol(self.caret.point, text, area, cfg.dont_wrap())
+        }
+
+        pub fn shift_by(
+            &mut self,
+            shift: (isize, isize, isize),
+            text: &Text,
+            area: &impl Area,
+            cfg: &PrintCfg,
+        ) {
+            let shifted_caret = self.caret().shift_by(shift);
+            self.move_to(shifted_caret, text, area, cfg);
+            if let Some(anchor) = self.anchor() {
+                let shifted_anchor = anchor.shift_by(shift);
+                self.swap_ends();
+                self.move_to(shifted_anchor, text, area, cfg);
+                self.swap_ends();
+            }
         }
 
         /// Sets the position of the anchor to be the same as the
@@ -452,6 +505,15 @@ mod cursor {
             }
         }
 
+        /// The starting [`Point`] of this [`Cursor`]
+        pub fn start(&self) -> Point {
+            if let Some(anchor) = self.anchor {
+                anchor.point.min(self.caret.point)
+            } else {
+                self.caret.point
+            }
+        }
+
         /// Returns the range between `target` and `anchor`.
         ///
         /// If `anchor` isn't set, returns an empty range on `target`.
@@ -460,12 +522,13 @@ mod cursor {
         ///
         /// Unlike [`Self::range()`], this function ignores the
         /// "inclusiveness" of the range.
-        pub fn point_range(&self) -> (Point, Point) {
+        pub fn point_range(&self, is_incl: bool, text: &Text) -> (Point, Point) {
             let anchor = self.anchor.unwrap_or(self.caret);
-            (
-                self.caret.point.min(anchor.point),
-                self.caret.point.max(anchor.point),
-            )
+            let mut end = self.caret.point.max(anchor.point);
+            if is_incl {
+                end = end.fwd(text.char_at(end).unwrap())
+            }
+            (self.caret.point.min(anchor.point), end)
         }
 
         pub(super) fn merge_ahead(&mut self, other: Cursor) {
@@ -528,10 +591,11 @@ mod cursor {
     }
 
     impl VPoint {
+        #[allow(unused)]
         fn new(point: Point, text: &Text, area: &impl Area, cfg: &PrintCfg) -> Self {
-            let cfg = IterCfg::new(cfg);
-            let dwcol = vcol(point, text, area, cfg);
-            let vcol = vcol(point, text, area, cfg.dont_wrap());
+            let cfg = IterCfg::new(*cfg);
+            let dwcol = 0; // vcol(point, text, area, cfg);
+            let vcol = 0; //vcol(point, text, area, cfg.dont_wrap());
             Self { point, vcol, dcol: vcol, dwcol }
         }
 
@@ -554,11 +618,11 @@ mod cursor {
 
     fn vcol(point: Point, text: &Text, area: &impl Area, cfg: IterCfg) -> usize {
         if let Some(after) = text.points_after(point) {
-            area.rev_print_iter(text.rev_iter_at(after), cfg)
+            area.rev_print_iter(text.iter_rev(after), cfg)
                 .find_map(|(caret, item)| item.part.is_char().then_some(caret.x))
                 .unwrap_or(0)
         } else {
-            area.rev_print_iter(text.rev_iter_at(text.len_point()), cfg)
+            area.rev_print_iter(text.iter_rev(text.len()), cfg)
                 .find_map(|(caret, item)| item.part.is_char().then_some(caret.x + caret.len))
                 .unwrap_or(0)
         }

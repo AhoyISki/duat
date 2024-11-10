@@ -1,3 +1,74 @@
+//! The primary data structure in Duat
+//!
+//! This struct is responsible for all of the text that will be
+//! printed to the screen, as well as any modifications of it.
+//!
+//! The [`Text`] is a very versatile holder for characters, below is a
+//! list of some of its capabilities:
+//!
+//! - Be cheaply* edited at any point, due to its two [gap buffers];
+//! - Be [colored] in any way, at any point;
+//! - Have any arbitrary range concealed, that is, hidden from view,
+//!   but still in there;
+//! - Arbitrary [ghost text], that is, [`Text`] that shows up, but is
+//!   not actually part of the [`Text`], i.e., it can be easily
+//!   ignored by external modifiers (like an LSP or tree-sitter) of
+//!   the file, without any special checks;
+//! - Left/right/center alignment of output (although that is
+//!   implemented by the [`Ui`]);
+//! - The ability to undo/redo changes in the history;
+//! - In the future, button ranges that can interact with the mouse;
+//!
+//! The [`Text`] struct is created in two different ways:
+//!
+//! - By calling [`Text::new`] or one of its [`From`] implementations;
+//! - By building it with the [`text!`] macro;
+//!
+//! The first method is recommended if you want a [`Text`] that will
+//! be modified by input. The only real example of this is the
+//! [`File`] widget.
+//!
+//! The second method is what should be used most of the time, as it
+//! lets you quickly create formatted [`Widget`]s/[`StatusLine`] parts
+//! in a very modular way:
+//!
+//! ```rust
+//! # use duat_core::text::{text, Text};
+//! fn number_of_horses(count: usize) -> Text {
+//!     if count == 1 {
+//!         text!([HorseCount] 1 " " [Horses] "horse")
+//!     } else {
+//!         text!([HorseCount] count " " [Horses] "horses")
+//!     }
+//! }
+//! ```
+//!
+//! You can use this whenever you need to update a widget, for
+//! example, just create a new [`Text`] to printed to the screen.
+//!
+//! However, when recreating the entire [`Text`] with a [`text!`]
+//! macro would be too expensive, you can use [`Text`] modifying
+//! functions:
+//!
+//! ```rust
+//! # use duat_core::text::{text, Text};
+//! let mut prompted = text!([Prompt] "type a key:");
+//! let end = prompted.len();
+//! prompted.replace_range((end, end), "a")
+//! ```
+//!
+//! These would be used mostly on the [`File`] widget and other whose
+//! [`Mode`]s make use of [`EditHelper`]s.
+//!
+//! [gap buffers]: GapBuffer
+//! [colored]: crate::forms::Form
+//! [ghost text]: Tag::GhostText
+//! [`Ui`]: crate::ui::Ui
+//! [`File`]: crate::widgets::File
+//! [`Widget`]: crate::widgets::Widget
+//! [`StatusLine`]: crate::widgets::StatusLine
+//! [`Mode`]: crate::mode::Mode
+//! [`EditHelper`]: crate::mode::EditHelper
 mod builder;
 mod cfg;
 mod history;
@@ -19,6 +90,7 @@ use self::tags::{Keys, Tags};
 pub use self::{
     builder::{AlignCenter, AlignLeft, AlignRight, Builder, Ghost, err, hint, ok, text},
     cfg::*,
+    history::Change,
     iter::{Item, Iter, RevIter},
     part::Part,
     point::{Point, TwoPoints, utf8_char_width},
@@ -31,7 +103,7 @@ use crate::{
     ui::Area,
 };
 
-/// The text in a given area
+/// The text in a given [`Area`]
 #[derive(Default, Clone)]
 pub struct Text {
     buf: Box<GapBuffer<u8>>,
@@ -49,7 +121,7 @@ impl Text {
             buf: Box::new(GapBuffer::new()),
             tags: Box::new(Tags::new()),
             records: Box::new(Records::new()),
-            history: History::new()
+            history: History::new(),
         }
     }
 
@@ -69,7 +141,7 @@ impl Text {
                 file.chars().count(),
                 file.bytes().filter(|b| *b == b'\n').count(),
             ))),
-            history: Vec::new(),
+            history: History::new(),
         }
     }
 
@@ -419,18 +491,21 @@ impl Text {
     ////////// String modification functions
 
     pub fn replace_range(&mut self, range: (Point, Point), edit: impl ToString) {
-        self.replace_range_inner(range, edit);
+        self.replace_range_inner(range, edit.to_string());
+        self.history
+            .add_change(None, Change::new(edit, range, self));
     }
 
-    /// Applies a [`Change`] to the [`Text`] without saving it
-    ///
-    /// This function should only be used by the [`EditHelper`], since
-    /// it will keep track of [`Change`]s to the [`Text`] separately,
-    /// and then add them afterwards.
-    pub(crate) fn apply_change(&mut self, change: &Change) {
-        let start = change.start();
-        let end = change.taken_end();
-        self.replace_range_inner((start, end), change.added_text());
+    pub(crate) unsafe fn apply_desync_change(
+        &mut self,
+        guess_i: usize,
+        change: Change,
+        shift: (isize, isize, isize),
+        sh_from: usize
+    ) -> (usize, i32) {
+        let range = (change.start(), change.taken_end());
+        self.replace_range_inner(range, change.added_text());
+        self.history.add_desync_change(guess_i, change, shift, sh_from)
     }
 
     /// Merges `String`s with the body of text, given a range to
@@ -460,6 +535,63 @@ impl Text {
 
         let new_end = start.byte() + edit.len();
         self.tags.transform(start.byte()..end.byte(), new_end);
+    }
+
+    ////////// History manipulation functions
+
+    /// Undoes the last moment, if there was one
+    pub fn undo(&mut self, area: &impl Area, cursors: &mut Cursors, cfg: PrintCfg) {
+        let mut history = std::mem::take(&mut self.history);
+        let Some(moment) = history.move_backwards() else {
+            return;
+        };
+
+        cursors.clear();
+
+        let mut shift = (0, 0, 0);
+
+        for (i, change) in moment.iter().enumerate() {
+            let start = change.start().shift_by(shift);
+            let end = change.added_end().shift_by(shift);
+            self.replace_range_inner((start, end), change.taken_text());
+
+            cursors.insert_from_parts(i, start, change.taken_text().len(), self, area, cfg);
+
+            shift.0 += change.taken_end().byte() as isize - change.added_end().byte() as isize;
+            shift.1 += change.taken_end().char() as isize - change.added_end().char() as isize;
+            shift.2 += change.taken_end().line() as isize - change.added_end().line() as isize;
+        }
+
+        self.history = history;
+    }
+
+    /// Redoes the last moment in the history, if there is one
+    pub fn redo(&mut self, area: &impl Area, cursors: &mut Cursors, cfg: PrintCfg) {
+        let mut history = std::mem::take(&mut self.history);
+        let Some(moment) = history.move_forward() else {
+            return;
+        };
+
+        cursors.clear();
+
+        for (i, change) in moment.iter().enumerate() {
+            let start = change.start();
+            let end = change.taken_end();
+            self.replace_range_inner((start, end), change.added_text());
+
+            cursors.insert_from_parts(i, start, change.added_text().len(), self, area, cfg);
+        }
+
+        self.history = history;
+    }
+
+    /// Finishes the current moment and adds a new one to the history
+    pub fn new_moment(&mut self) {
+        self.history.new_moment();
+    }
+
+    pub(crate) fn changes_mut(&mut self) -> &mut [Change] {
+        self.history.changes_mut()
     }
 
     ////////// Writing functions
@@ -914,7 +1046,7 @@ mod point {
 
     impl std::fmt::Display for Point {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "b{}, c{}, l{}", self.b, self.c, self.l)
+            write!(f, "{}, {}, {}", self.b, self.c, self.l)
         }
     }
 
@@ -1049,7 +1181,7 @@ macro impl_from_to_string($t:ty) {
                     value.chars().count(),
                     value.lines().count(),
                 ))),
-                history: Vec::new(),
+                history: History::new(),
             }
         }
     }

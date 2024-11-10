@@ -5,13 +5,11 @@
 //! cursors and dealing with editing the text directly.
 //!
 //! [`Mode`]: super::Mode
-use std::any::TypeId;
-
 pub use self::cursors::{Cursor, Cursors};
 use crate::{
+    binary_search_by_key_and_index,
     data::RwData,
-    history::Change,
-    text::{Point, PrintCfg, RegexPattern, Searcher, Text},
+    text::{Change, Point, PrintCfg, RegexPattern, Searcher, Text},
     ui::Area,
     widgets::{File, Widget},
 };
@@ -212,21 +210,54 @@ where
         };
 
         let mut widget = self.widget.raw_write();
-        let mut diff = Diff::default();
+        let mut shift = (0, 0, 0);
+
+        let c_i = {
+            let changes = widget.text_mut().changes_mut();
+            let start = cursor.start();
+
+            if let Some(c_i) = cursor.change_i
+                && let Some(c) = changes.get(c_i as usize)
+                && (c.start() <= start && c.added_end() <= start)
+            {
+                c_i as usize
+            } else {
+                match changes.binary_search_by_key(&start, |c| c.start()) {
+                    Err(i)
+                        if let Some(prev_i) = i.checked_sub(1)
+                            && start <= changes[prev_i].added_end() =>
+                    {
+                        prev_i
+                    }
+                    Ok(i) | Err(i) => i,
+                }
+            }
+        };
+
+        cursor.change_i = Some(c_i as u32);
 
         edit(&mut Editor::<A, W>::new(
             &mut cursor,
             &mut widget,
             self.area,
             &self.cfg,
-            &mut diff,
+            &mut shift,
             was_main,
             self.cursors.is_incl(),
+            c_i,
+            usize::MAX,
         ));
 
-        self.cursors.insert(was_main, cursor);
-        self.cursors
-            .shift(n, diff, widget.text(), self.area, &self.cfg);
+        self.cursors.insert(n, was_main, cursor);
+
+        if shift != (0, 0, 0) {
+            self.cursors
+                .shift_by(n + 1, shift, widget.text(), self.area, &self.cfg);
+
+            for change in widget.text_mut().changes_mut().iter_mut().skip(c_i + 1) {
+                change.shift_by(shift);
+            }
+        }
     }
 
     /// Edits on each of the [`Cursor`]'s selection
@@ -242,25 +273,94 @@ where
     /// [`edit_nth`]: Self::edit_nth
     /// [`edit_main`]: Self::edit_main
     pub fn edit_each(&mut self, mut f: impl FnMut(&mut Editor<A, W>)) {
-        let removed_cursors: Vec<(Cursor, bool)> = self.cursors.drain().collect();
+        let removed: Vec<_> = self.cursors.drain().collect();
 
         let mut widget = self.widget.raw_write();
-        let mut diff = Diff::default();
+        let cfg = widget.print_cfg();
+        let mut shift = (0, 0, 0);
+        let mut sh_from = 0;
 
-        for (mut cursor, was_main) in removed_cursors.into_iter() {
-            diff.shift_cursor(&mut cursor, widget.text(), self.area, &self.cfg);
+        for (i, (mut cursor, was_main)) in removed.into_iter().enumerate() {
+            // A function that shifts a Point forwards in order to compare
+            // correcly. This only happens if the point was not already shifted.
+            let sh = |rhs: usize| if sh_from <= rhs { shift } else { (0, 0, 0) };
 
-            f(&mut Editor::new(
+            let c_i = {
+                cursor.shift_by(shift, widget.text(), self.area, &cfg);
+
+                let (start, end) = cursor.point_range(self.cursors.is_incl(), widget.text());
+                let changes = widget.text_mut().changes_mut();
+
+                let (c_i, next_i) = if let Some(c_i) = cursor.change_i.map(|n| n as usize)
+                    && let Some(c) = changes.get(c_i as usize)
+                    && c.start().shift_by(sh(c_i)) <= start
+                    && start <= c.added_end().shift_by(sh(c_i))
+                {
+                    (c_i as usize, c_i + 1)
+                } else {
+                    let f = |i: usize, c: &Change| c.start().shift_by(sh(i));
+                    match binary_search_by_key_and_index(changes, start, f) {
+                        Ok(i) => (i, i + 1),
+                        Err(i)
+                            if let Some(prev_i) = i.checked_sub(1)
+                                && start <= changes[prev_i].added_end().shift_by(sh(prev_i)) =>
+                        {
+                            (prev_i, prev_i + 1)
+                        }
+                        Err(i) => (i, i),
+                    }
+                };
+
+                // Check if the next change is being intersected.
+                let end_i = if changes
+                    .get(next_i)
+                    .is_none_or(|c| end < c.start().shift_by(sh(c_i + 1)))
+                {
+                    next_i
+                // If it is, find the last change that is also being
+                // intersected.
+                } else {
+                    let f = |i: usize, c: &Change| c.start().shift_by(sh(next_i + i));
+                    let (Ok(end_i) | Err(end_i)) =
+                        binary_search_by_key_and_index(&changes[next_i..], end, f);
+                    next_i + end_i
+                };
+
+                if shift != (0, 0, 0) {
+                    for change in changes.iter_mut().take(end_i).skip(sh_from) {
+                        change.shift_by(shift)
+                    }
+                }
+
+                sh_from = end_i;
+
+                c_i
+            };
+
+            cursor.change_i = Some(c_i as u32);
+            let mut editor = Editor::new(
                 &mut cursor,
-                &mut widget,
+                &mut *widget,
                 self.area,
                 &self.cfg,
-                &mut diff,
+                &mut shift,
                 was_main,
                 self.cursors.is_incl(),
-            ));
+                c_i,
+                sh_from,
+            );
+            f(&mut editor);
 
-            self.cursors.insert(was_main, cursor);
+            sh_from = (sh_from as i32 + editor.change_diff) as usize;
+
+            self.cursors.insert(i, was_main, cursor);
+        }
+
+        let changes = widget.text_mut().changes_mut();
+        if shift != (0, 0, 0) {
+            for change in changes.iter_mut().skip(sh_from) {
+                change.shift_by(shift);
+            }
         }
     }
 
@@ -297,7 +397,7 @@ where
         ));
 
         if let Some(cursor) = cursor {
-            self.cursors.insert(is_main, cursor);
+            self.cursors.insert(n, is_main, cursor);
         }
     }
 
@@ -321,7 +421,7 @@ where
 
         let mut widget = self.widget.raw_write();
 
-        for (cursor, is_main) in removed_cursors.into_iter() {
+        for (i, (cursor, is_main)) in removed_cursors.into_iter().enumerate() {
             let mut cursor = Some(cursor);
             mov(Mover::new(
                 &mut cursor,
@@ -334,7 +434,7 @@ where
             ));
 
             if let Some(cursor) = cursor {
-                self.cursors.insert(is_main, cursor);
+                self.cursors.insert(i, is_main, cursor);
             }
         }
     }
@@ -394,52 +494,44 @@ where
     }
 
     /// Returns the lenght of the [`Text`], in [`Point`]
-    pub fn len_point(&self) -> Point {
-        self.widget.read().text().len_point()
+    pub fn len(&self) -> Point {
+        self.widget.read().text().len()
     }
 
     /// Returns the position of the last [`char`] if there is one
     pub fn last_point(&self) -> Option<Point> {
         self.widget.read().text().last_point()
     }
-}
 
-impl<A, S> EditHelper<'_, File, A, S>
-where
-    A: Area,
-{
-    /// Begins a new [`Moment`]
+    /// Begins a new moment
     ///
-    /// A new `Moment` signifies a break in the history of this
-    /// [`File`], that is, if you [`undo`], the changes prior to the
-    /// creation of this `Moment` will be kept.
+    /// A new moment indicates a break in the history of the [`Text`],
+    /// that is, if you [`undo`], the changes prior to the
+    /// creation of this moment will be kept.
     ///
-    /// [`Moment`]: crate::history::Moment
     /// [`undo`]: EditHelper::undo
     pub fn new_moment(&mut self) {
-        self.widget.raw_write().add_moment();
+        self.widget.raw_write().text_mut().new_moment();
     }
 
-    /// Undoes the last [`Moment`]
-    ///
-    /// [`Moment`]: crate::history::Moment
+    /// Undoes the last moment
     pub fn undo(&mut self) {
         let mut widget = self.widget.raw_write();
-        widget.undo(self.area, self.cursors);
-        <File as Widget<A::Ui>>::update(&mut widget, self.area);
+        let cfg = widget.print_cfg();
+        widget.text_mut().undo(self.area, self.cursors, cfg);
+        widget.update(self.area);
     }
 
-    /// Redoes the next [`Moment`]
-    ///
-    /// [`Moment`]: crate::history::Moment
+    /// Redoes the next moment
     pub fn redo(&mut self) {
         let mut widget = self.widget.raw_write();
-        widget.redo(self.area, self.cursors);
-        <File as Widget<A::Ui>>::update(&mut widget, self.area);
+        let cfg = widget.print_cfg();
+        widget.text_mut().redo(self.area, self.cursors, cfg);
+        widget.update(self.area);
     }
 }
 
-impl<'a, 'b, A> EditHelper<'a, File, A, Searcher<'b>>
+impl<'a, A> EditHelper<'a, File, A, Searcher>
 where
     A: Area,
 {
@@ -448,12 +540,13 @@ where
         widget: &'a RwData<File>,
         area: &'a A,
         cursors: &'a mut Cursors,
-        searcher: Searcher<'b>,
+        searcher: Searcher,
     ) -> Self {
         cursors.populate();
         let cfg = {
             let mut file = widget.raw_write();
-            <File as Widget<A::Ui>>::text_mut(&mut file).remove_cursor_tags(cursors);
+            let cfg = <File as Widget<A::Ui>>::print_cfg(&file);
+            <File as Widget<A::Ui>>::text_mut(&mut file).remove_cursors(cursors, area, cfg);
             <File as Widget<A::Ui>>::print_cfg(&file)
         };
 
@@ -492,43 +585,52 @@ where
 /// [`edit_*`]: EditHelper::edit_nth
 /// [`replace`]: Editor::replace
 /// [`insert`]: Editor::insert
-pub struct Editor<'a, 'b, 'c, 'd, A, W>
+pub struct Editor<'a, 'b, A, W>
 where
     A: Area,
     W: Widget<A::Ui>,
 {
     cursor: &'a mut Cursor,
     widget: &'b mut W,
-    area: &'c A,
+    area: &'b A,
     cfg: &'a PrintCfg,
-    diff: &'d mut Diff,
+    shift: &'a mut (isize, isize, isize),
     is_main: bool,
     is_incl: bool,
+    change_i: usize,
+    sh_from: usize,
+    change_diff: i32,
 }
 
-impl<'a, 'b, 'c, 'd, A, W> Editor<'a, 'b, 'c, 'd, A, W>
+impl<'a, 'b, A, W> Editor<'a, 'b, A, W>
 where
     A: Area,
     W: Widget<A::Ui>,
 {
     /// Returns a new instance of [`Editor`]
+    #[allow(clippy::too_many_arguments)]
     fn new(
         cursor: &'a mut Cursor,
         widget: &'b mut W,
-        area: &'c A,
+        area: &'b A,
         cfg: &'a PrintCfg,
-        diff: &'d mut Diff,
+        shift: &'a mut (isize, isize, isize),
         is_main: bool,
         is_incl: bool,
+        change_i: usize,
+        sh_from: usize,
     ) -> Self {
         Self {
             cursor,
             widget,
             area,
             cfg,
-            diff,
+            shift,
             is_main,
             is_incl,
+            change_i,
+            sh_from,
+            change_diff: 0,
         }
     }
 
@@ -546,27 +648,26 @@ where
     pub fn replace(&mut self, edit: impl ToString) {
         let change = Change::new(
             edit.to_string(),
-            self.cursor.range(self.is_incl),
+            self.cursor.point_range(self.is_incl, self.widget.text()),
             self.widget.text(),
         );
-        let edit_len = change.added_text.len();
+        let edit_len = change.added_text().len();
         let end = change.added_end();
 
         self.edit(change);
 
         let text = self.widget.text();
-        let end_p = text.point_at(end);
 
         if let Some(anchor) = self.cursor.anchor()
             && anchor >= self.cursor.caret()
             && edit_len > 0
         {
             self.cursor.swap_ends();
-            self.cursor.move_to(end_p, text, self.area, self.cfg);
+            self.cursor.move_to(end, text, self.area, self.cfg);
             self.cursor.swap_ends();
         } else {
             self.cursor.unset_anchor();
-            self.cursor.move_to(end_p, text, self.area, self.cfg);
+            self.cursor.move_to(end, text, self.area, self.cfg);
         }
     }
 
@@ -579,7 +680,7 @@ where
     ///
     /// [`replace`]: Self::replace
     pub fn insert(&mut self, edit: impl ToString) {
-        let range = self.cursor.byte()..self.cursor.byte();
+        let range = (self.cursor.caret(), self.cursor.caret());
         let change = Change::new(edit.to_string(), range, self.widget.text());
         let diff = change.chars_diff();
 
@@ -588,27 +689,26 @@ where
         if let Some(anchor) = self.cursor.anchor()
             && anchor >= self.cursor.caret()
         {
-            let text = self.widget.text();
             self.cursor.swap_ends();
-            self.cursor.move_hor(diff, text, self.area, self.cfg);
+            self.cursor
+                .move_hor(diff, self.widget.text(), self.area, self.cfg);
             self.cursor.swap_ends();
         }
     }
 
     /// Edits the file with a [`Change`]
     fn edit(&mut self, change: Change) {
-        self.widget.text_mut().apply_change(&change);
-        self.diff.bytes += change.added_end() as isize - change.taken_end() as isize;
+        let shift = *self.shift;
+        self.shift.0 += change.added_end().byte() as isize - change.taken_end().byte() as isize;
+        self.shift.1 += change.added_end().char() as isize - change.taken_end().char() as isize;
+        self.shift.2 += change.added_end().line() as isize - change.taken_end().line() as isize;
+        let (_, diff) = unsafe {
+            self.widget
+                .text_mut()
+                .apply_desync_change(self.change_i, change, shift, self.sh_from)
+        };
 
-        if TypeId::of::<W>() == TypeId::of::<File>() {
-            let file = unsafe { std::mem::transmute_copy::<&mut W, &mut File>(&self.widget) };
-
-            let (insertion_index, change_diff) = file
-                .history_mut()
-                .add_change(change, self.cursor.assoc_index);
-            self.cursor.assoc_index = Some(insertion_index);
-            self.diff.changes += change_diff;
-        }
+        self.change_diff += diff;
     }
 
     pub fn is_main(&self) -> bool {
@@ -693,8 +793,8 @@ where
     /// - If the coords isn't valid, it will move to the "maximum"
     ///   position allowed.
     pub fn move_to_coords(&mut self, line: usize, col: usize) {
-        let point = self.text.point_at_line(line.min(self.text.len_lines()));
-        let (point, _) = self.text.iter_chars_at(point).take(col + 1).last().unwrap();
+        let at = self.text.point_at_line(line.min(self.text.len().line()));
+        let (point, _) = self.text.chars_fwd(at).take(col + 1).last().unwrap();
         self.move_to(point);
     }
 
@@ -711,7 +811,7 @@ where
     /// change throughout the movement function, as new cursors might
     /// be added before it, moving it ahead.
     pub fn copy(&mut self) -> usize {
-        self.cursors.insert(false, self.cursor.unwrap())
+        self.cursors.insert(0, false, self.cursor.unwrap())
     }
 
     /// Destroys the current [`Cursor`]
@@ -771,12 +871,12 @@ where
         } else {
             (self.caret(), anchor)
         };
-        self.text.strs_in_point_range(range)
+        self.text.strs_in_range(range)
     }
 
     /// Returns the lenght of the [`Text`], in [`Point`]
-    pub fn len_point(&self) -> Point {
-        self.text.len_point()
+    pub fn len(&self) -> Point {
+        self.text.len()
     }
 
     /// Returns the position of the last [`char`] if there is one
@@ -791,7 +891,7 @@ where
     /// This iteration will begin on the `caret`. It will also include
     /// the [`Point`] of each `char`
     pub fn iter(&self) -> impl Iterator<Item = (Point, char)> + '_ {
-        self.text.iter_chars_at(self.caret())
+        self.text.chars_fwd(self.caret())
     }
 
     /// Iterates over the [`char`]s, in reverse
@@ -799,7 +899,7 @@ where
     /// This iteration will begin on the `caret`. It will also include
     /// the [`Point`] of each `char`
     pub fn iter_rev(&self) -> impl Iterator<Item = (Point, char)> + '_ {
-        self.text.iter_chars_at_rev(self.caret())
+        self.text.chars_rev(self.caret())
     }
 
     /// Searches the [`Text`] for a regex
@@ -828,13 +928,13 @@ where
     ///     })
     /// }
     /// ```
-    pub fn search<R: RegexPattern>(
+    pub fn search_fwd<R: RegexPattern>(
         &mut self,
         pat: R,
         end: Option<Point>,
     ) -> impl Iterator<Item = R::Match> + '_ {
         let cursor = self.cursor.unwrap();
-        self.text.search_from(pat, cursor.caret(), end).unwrap()
+        self.text.search_fwd(pat, cursor.caret(), end).unwrap()
     }
 
     /// Searches the [`Text`] for a regex, in reverse
@@ -869,7 +969,7 @@ where
         pat: R,
         start: Option<Point>,
     ) -> impl Iterator<Item = R::Match> + '_ {
-        self.text.search_from_rev(pat, self.caret(), start).unwrap()
+        self.text.search_rev(pat, self.caret(), start).unwrap()
     }
 
     ////////// Cursor queries
@@ -903,7 +1003,7 @@ where
 /// Incremental search functions, only available on [`IncSearcher`]s
 ///
 /// [`IncSearcher`]: crate::mode::IncSearcher
-impl<A> Mover<'_, A, Searcher<'_>>
+impl<A> Mover<'_, A, Searcher>
 where
     A: Area,
 {
@@ -914,8 +1014,11 @@ where
     /// requested [`Point`].
     ///
     /// [`IncSearch`]: crate::widgets::IncSearch
-    pub fn search_inc(&mut self, end: Option<Point>) -> impl Iterator<Item = (Point, Point)> + '_ {
-        self.inc_searcher.search_from(self.text, self.caret(), end)
+    pub fn search_inc_fwd(
+        &mut self,
+        end: Option<Point>,
+    ) -> impl Iterator<Item = (Point, Point)> + '_ {
+        self.inc_searcher.search_fwd(self.text, self.caret(), end)
     }
 
     /// Search incrementally from an [`IncSearch`] request in reverse
@@ -929,8 +1032,7 @@ where
         &mut self,
         start: Option<Point>,
     ) -> impl Iterator<Item = (Point, Point)> + '_ {
-        self.inc_searcher
-            .search_from_rev(self.text, self.caret(), start)
+        self.inc_searcher.search_rev(self.text, self.caret(), start)
     }
 
     /// Wether the [`Cursor`]'s selection matches the [`IncSearch`]
@@ -943,35 +1045,5 @@ where
         let str = unsafe { self.text.continuous_in_unchecked(range) };
 
         self.inc_searcher.matches(str)
-    }
-}
-
-/// An accumulator used specifically for editing with [`Editor`]s
-#[derive(Default)]
-struct Diff {
-    bytes: isize,
-    changes: isize,
-}
-
-impl Diff {
-    /// Shifts a [`Cursor`] by the edits before it
-    fn shift_cursor(&self, cursor: &mut Cursor, text: &Text, area: &impl Area, cfg: &PrintCfg) {
-        cursor
-            .assoc_index
-            .as_mut()
-            .map(|i| i.saturating_add_signed(self.changes));
-
-        cursor.move_hor(self.bytes, text, area, cfg);
-        if cursor.anchor().is_some() {
-            cursor.swap_ends();
-            cursor.move_hor(self.bytes, text, area, cfg);
-            cursor.swap_ends();
-        }
-    }
-
-    /// Returns true if the [`Text`] was altered to the same len, and
-    /// no new changes took place
-    fn no_change(&self) -> bool {
-        self.bytes == 0 && self.changes == 0
     }
 }

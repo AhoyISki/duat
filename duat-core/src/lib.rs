@@ -149,7 +149,6 @@ pub mod cache;
 pub mod commands;
 pub mod data;
 pub mod forms;
-pub mod history;
 pub mod hooks;
 pub mod mode;
 pub mod session;
@@ -494,6 +493,36 @@ where
         crates.insert(type_id, src_crate);
         crates.get(&type_id).unwrap()
     }
+}
+
+/// Binary searching by key taking into account the index
+fn binary_search_by_key_and_index<T, K>(
+    vec: &[T],
+    key: K,
+    f: impl Fn(usize, &T) -> K,
+) -> std::result::Result<usize, usize>
+where
+    K: PartialEq + Eq + PartialOrd + Ord,
+{
+    let mut size = vec.len();
+    let mut left = 0;
+    let mut right = size;
+
+    while left < right {
+        let mid = left + size / 2;
+
+        let k = f(mid, &vec[mid]);
+
+        match k.cmp(&key) {
+            std::cmp::Ordering::Less => left = mid + 1,
+            std::cmp::Ordering::Equal => return Ok(mid),
+            std::cmp::Ordering::Greater => right = mid,
+        }
+
+        size = right - left;
+    }
+
+    Err(left)
 }
 
 // Internal functions used for widget switching

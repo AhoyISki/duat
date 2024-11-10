@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 const LEN_PER_RECORD: usize = 150;
 
-pub trait Record: Debug + 'static {
+pub trait Record: Default + Debug + Clone + Copy + Eq + Ord + 'static {
     fn bytes(&self) -> usize;
 
     fn add(self, other: Self) -> Self;
@@ -49,19 +49,13 @@ impl Record for (usize, usize, usize) {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct Records<R>
-where
-    R: Default + Debug + Clone + Copy + Eq + Ord + Record + 'static,
-{
+pub struct Records<R: Record> {
     last: (usize, R),
     max: R,
     pub stored: Vec<R>,
 }
 
-impl<R> Records<R>
-where
-    R: Default + Debug + Clone + Copy + Eq + Ord + Record + 'static,
-{
+impl<R: Record> Records<R> {
     pub fn new() -> Self {
         Self::default()
     }
@@ -209,10 +203,7 @@ where
     }
 }
 
-impl<R: Default> Default for Records<R>
-where
-    R: Default + Debug + Clone + Copy + Eq + Ord + Record,
-{
+impl<R: Record> Default for Records<R> {
     fn default() -> Self {
         Self {
             last: (0, R::default()),
@@ -222,10 +213,7 @@ where
     }
 }
 
-impl<R: Debug> Debug for Records<R>
-where
-    R: Default + Debug + Clone + Copy + Eq + Ord + Record,
-{
+impl<R: Record> Debug for Records<R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Records")
             .field("last", &format!("{:?}", self.last))
