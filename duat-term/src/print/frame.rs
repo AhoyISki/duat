@@ -1,6 +1,6 @@
 use std::sync::{
     Arc,
-    atomic::{AtomicUsize, Ordering},
+    atomic::{AtomicU32, Ordering},
 };
 
 use duat_core::ui::Axis;
@@ -32,7 +32,7 @@ pub enum Brush {
 /// Details of the right/bottom edge of a widget
 #[derive(Debug)]
 pub struct Edge {
-    pub width: Arc<AtomicUsize>,
+    pub width: Arc<AtomicU32>,
     lhs: VarPoint,
     rhs: VarPoint,
     axis: Axis,
@@ -42,7 +42,7 @@ pub struct Edge {
 impl Edge {
     /// Returns a new instance of [`Edge`].
     pub fn new(
-        width: &Arc<AtomicUsize>,
+        width: &Arc<AtomicU32>,
         lhs: &VarPoint,
         rhs: &VarPoint,
         axis: Axis,

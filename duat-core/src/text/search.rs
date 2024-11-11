@@ -58,8 +58,8 @@ impl Text {
             };
             let start = half.offset();
 
-            let p0 = ref_self.point_at(start + gap);
-            let p1 = ref_self.point_at(end + gap);
+            let p0 = ref_self.point_at(start as u32 + gap);
+            let p1 = ref_self.point_at(end as u32 + gap);
 
             Some(R::get_match((p0, p1), half.pattern()))
         }))
@@ -114,8 +114,8 @@ impl Text {
             };
             let end = half.offset();
 
-            let p0 = ref_self.point_at(start + gap);
-            let p1 = ref_self.point_at(end + gap);
+            let p0 = ref_self.point_at(start as u32 + gap);
+            let p1 = ref_self.point_at(end as u32 + gap);
 
             Some(R::get_match((p0, p1), half.pattern()))
         }))
@@ -193,10 +193,10 @@ impl Searcher {
             };
             let start = half.offset();
 
-            let start = haystack.as_bytes()[(last_point.byte() - gap)..start]
+            let start = haystack.as_bytes()[(last_point.byte() - gap) as usize..start]
                 .iter()
                 .fold(last_point, |p, b| p.fwd_byte(*b));
-            let end = haystack.as_bytes()[(start.byte() - gap)..end]
+            let end = haystack.as_bytes()[(start.byte() - gap) as usize..end]
                 .iter()
                 .fold(start, |p, b| p.fwd_byte(*b));
 
@@ -254,10 +254,10 @@ impl Searcher {
                 .unwrap()
                 .unwrap();
 
-            let end = haystack.as_bytes()[half.offset()..(last_point.byte() - gap)]
+            let end = haystack.as_bytes()[half.offset()..((last_point.byte() - gap) as usize)]
                 .iter()
                 .fold(last_point, |p, b| p.rev_byte(*b));
-            let start = haystack.as_bytes()[start..(end.byte() - gap)]
+            let start = haystack.as_bytes()[start..((end.byte() - gap) as usize)]
                 .iter()
                 .fold(end, |p, b| p.rev_byte(*b));
 

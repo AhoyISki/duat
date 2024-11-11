@@ -28,17 +28,17 @@ pub struct LineNumbers<U: Ui> {
 
 impl<U: Ui> LineNumbers<U> {
     /// The minimum width that would be needed to show the last line.
-    fn calculate_width(&mut self) -> f64 {
+    fn calculate_width(&mut self) -> f32 {
         // "+ 1" because we index from 1, not from 0.
         let len = self.reader.inspect(|file, _, _| file.text().len().line()) + 1;
-        len.ilog10() as f64
+        len.ilog10() as f32
     }
 
     fn update_text(&mut self) {
         self.text = self.reader.inspect(|file, _, cursors| {
             let printed_lines = file.printed_lines();
             let main_line = if cursors.is_empty() {
-                usize::MAX
+                u32::MAX
             } else {
                 cursors.main().line()
             };
@@ -225,14 +225,14 @@ impl<U: Ui> WidgetCfg<U> for LineNumbersCfg<U> {
 /// Writes the text of the line number to a given [`String`].
 fn push_text<U>(
     builder: &mut Builder,
-    line: usize,
-    main: usize,
+    line: u32,
+    main: u32,
     is_wrapped: bool,
     cfg: &LineNumbersCfg<U>,
 ) {
     if is_wrapped && !cfg.show_wraps {
         text!(*builder, "\n");
-    } else if main != usize::MAX {
+    } else if main != u32::MAX {
         let num = match cfg.numbers {
             Numbers::Absolute => line + 1,
             Numbers::Relative => line.abs_diff(main),

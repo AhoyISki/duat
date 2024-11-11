@@ -28,15 +28,15 @@ impl Item {
         }
     }
 
-    pub fn byte(&self) -> usize {
+    pub fn byte(&self) -> u32 {
         self.real.byte()
     }
 
-    pub fn char(&self) -> usize {
+    pub fn char(&self) -> u32 {
         self.real.char()
     }
 
-    pub fn line(&self) -> usize {
+    pub fn line(&self) -> u32 {
         self.real.line()
     }
 
@@ -44,7 +44,7 @@ impl Item {
         (self.real, self.ghost)
     }
 
-    pub fn lines(&self) -> (usize, Option<usize>) {
+    pub fn lines(&self) -> (u32, Option<u32>) {
         (self.real.line(), self.ghost.map(|g| g.line()))
     }
 
@@ -65,11 +65,11 @@ pub struct Iter<'a> {
     point: Point,
     chars: FwdChars<'a>,
     tags: tags::FwdTags<'a>,
-    conceals: usize,
+    conceals: u32,
 
     // Things to deal with ghost text.
     main_iter: Option<(Point, FwdChars<'a>, tags::FwdTags<'a>)>,
-    ghost: Option<(Point, usize)>,
+    ghost: Option<(Point, u32)>,
 
     // Configuration on how to iterate.
     print_ghosts: bool,
@@ -120,7 +120,7 @@ impl<'a> Iter<'a> {
     }
 
     #[inline]
-    fn handled_meta_tag(&mut self, tag: &RawTag, b: usize) -> bool {
+    fn handled_meta_tag(&mut self, tag: &RawTag, b: u32) -> bool {
         match tag {
             RawTag::GhostText(_, id) => {
                 if !self.print_ghosts || b < self.point.byte() || self.conceals > 0 {
@@ -158,7 +158,7 @@ impl<'a> Iter<'a> {
                 }
             }
             RawTag::ConcealUntil(b) => {
-                let point = self.text.point_at(*b as usize);
+                let point = self.text.point_at(*b);
                 *self = Iter::new_at(self.text, point);
                 return false;
             }
@@ -212,7 +212,9 @@ impl Iterator for Iter<'_> {
                 self.point = self.point.fwd(char);
 
                 self.ghost = match self.main_iter {
-                    Some(..) => self.ghost.map(|(g, d)| (g.fwd(char), d + char.len_utf8())),
+                    Some(..) => self
+                        .ghost
+                        .map(|(g, d)| (g.fwd(char), d + char.len_utf8() as u32)),
                     None => None,
                 };
 
@@ -236,10 +238,10 @@ pub struct RevIter<'a> {
     chars: RevChars<'a>,
     tags: tags::RevTags<'a>,
     point: Point,
-    conceals: usize,
+    conceals: u32,
 
     main_iter: Option<(Point, RevChars<'a>, tags::RevTags<'a>)>,
-    ghost: Option<(Point, usize)>,
+    ghost: Option<(Point, u32)>,
 
     // Iteration options:
     print_ghosts: bool,
@@ -284,7 +286,7 @@ impl<'a> RevIter<'a> {
     }
 
     #[inline]
-    fn handled_meta_tag(&mut self, tag: &RawTag, b: usize) -> bool {
+    fn handled_meta_tag(&mut self, tag: &RawTag, b: u32) -> bool {
         match tag {
             RawTag::GhostText(_, id) => {
                 if !self.print_ghosts || b > self.point.byte() || self.conceals > 0 {
@@ -325,7 +327,7 @@ impl<'a> RevIter<'a> {
             }
             RawTag::EndConceal(_) => self.conceals += 1,
             RawTag::ConcealUntil(b) => {
-                let point = self.text.point_at(*b as usize);
+                let point = self.text.point_at(*b);
                 *self = RevIter::new_at(self.text, point);
                 return false;
             }
@@ -368,7 +370,9 @@ impl Iterator for RevIter<'_> {
                 self.point = self.point.rev(char);
 
                 self.ghost = match self.main_iter {
-                    Some(..) => self.ghost.map(|(g, d)| (g.rev(char), d - char.len_utf8())),
+                    Some(..) => self
+                        .ghost
+                        .map(|(g, d)| (g.rev(char), d - char.len_utf8() as u32)),
                     None => None,
                 };
 
@@ -382,7 +386,8 @@ impl Iterator for RevIter<'_> {
     }
 }
 
-fn buf_chars(buf: &GapBuffer<u8>, b: usize) -> FwdChars {
+fn buf_chars(buf: &GapBuffer<u8>, b: u32) -> FwdChars {
+    let b = b as usize;
     unsafe {
         let (slice_0, slice_1) = buf.as_slices();
         let slice_0 = std::str::from_utf8_unchecked(slice_0);
@@ -395,7 +400,8 @@ fn buf_chars(buf: &GapBuffer<u8>, b: usize) -> FwdChars {
     }
 }
 
-fn buf_chars_rev(buf: &GapBuffer<u8>, b: usize) -> RevChars {
+fn buf_chars_rev(buf: &GapBuffer<u8>, b: u32) -> RevChars {
+    let b = b as usize;
     unsafe {
         let (slice_0, slice_1) = buf.as_slices();
         let s0 = std::str::from_utf8_unchecked(slice_0);

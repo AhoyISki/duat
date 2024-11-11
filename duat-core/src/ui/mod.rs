@@ -89,10 +89,10 @@ pub trait Area: Send + Sync + Sized {
     fn cache(&self) -> Option<Self::Cache>;
 
     /// Gets the width of the area
-    fn width(&self) -> usize;
+    fn width(&self) -> u32;
 
     /// Gets the height of the area
-    fn height(&self) -> usize;
+    fn height(&self) -> u32;
 
     /// Scrolls the [`Text`] (up or down) until the main cursor is
     /// within the [`ScrollOff`] range.
@@ -600,21 +600,21 @@ impl PushSpecs {
         Self { side: Side::Below, ..self }
     }
 
-    pub fn with_ver_len(self, len: f64) -> Self {
+    pub fn with_ver_len(self, len: f32) -> Self {
         Self {
             ver_con: Some(Constraint::Length(len)),
             ..self
         }
     }
 
-    pub fn with_ver_min(self, min: f64) -> Self {
+    pub fn with_ver_min(self, min: f32) -> Self {
         Self {
             ver_con: Some(Constraint::Min(min)),
             ..self
         }
     }
 
-    pub fn with_ver_max(self, max: f64) -> Self {
+    pub fn with_ver_max(self, max: f32) -> Self {
         Self {
             ver_con: Some(Constraint::Max(max)),
             ..self
@@ -628,21 +628,21 @@ impl PushSpecs {
         }
     }
 
-    pub fn with_hor_len(self, len: f64) -> Self {
+    pub fn with_hor_len(self, len: f32) -> Self {
         Self {
             hor_con: Some(Constraint::Length(len)),
             ..self
         }
     }
 
-    pub fn with_hor_min(self, min: f64) -> Self {
+    pub fn with_hor_min(self, min: f32) -> Self {
         Self {
             hor_con: Some(Constraint::Min(min)),
             ..self
         }
     }
 
-    pub fn with_hor_max(self, max: f64) -> Self {
+    pub fn with_hor_max(self, max: f32) -> Self {
         Self {
             hor_con: Some(Constraint::Max(max)),
             ..self
@@ -694,9 +694,9 @@ impl PushSpecs {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Constraint {
     Ratio(u16, u16),
-    Length(f64),
-    Min(f64),
-    Max(f64),
+    Length(f32),
+    Min(f32),
+    Max(f32),
 }
 
 /// A direction, where a [`Widget`] will be placed in relation to
@@ -711,14 +711,14 @@ pub enum Side {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Caret {
-    pub x: usize,
-    pub len: usize,
+    pub x: u32,
+    pub len: u32,
     pub wrap: bool,
 }
 
 impl Caret {
     #[inline(always)]
-    pub fn new(x: usize, len: usize, wrap: bool) -> Self {
+    pub fn new(x: u32, len: u32, wrap: bool) -> Self {
         Self { x, len, wrap }
     }
 }

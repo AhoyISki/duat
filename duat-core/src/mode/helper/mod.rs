@@ -292,11 +292,11 @@ where
                 let changes = widget.text_mut().changes_mut();
 
                 let (c_i, next_i) = if let Some(c_i) = cursor.change_i.map(|n| n as usize)
-                    && let Some(c) = changes.get(c_i as usize)
+                    && let Some(c) = changes.get(c_i)
                     && c.start().shift_by(sh(c_i)) <= start
                     && start <= c.added_end().shift_by(sh(c_i))
                 {
-                    (c_i as usize, c_i + 1)
+                    (c_i, c_i + 1)
                 } else {
                     let f = |i: usize, c: &Change| c.start().shift_by(sh(i));
                     match binary_search_by_key_and_index(changes, start, f) {
@@ -573,9 +573,9 @@ where
 ///     e.insert(" and my edit");
 /// });
 /// helper.move_main(|mut m| {
-///     m.move_hor(" and my edit".chars().count() as isize);
+///     m.move_hor(" and my edit".chars().count() as i32);
 ///     m.set_anchor();
-///     m.move_hor(-("my replacement and my edit".chars().count() as isize));
+///     m.move_hor(-("my replacement and my edit".chars().count() as i32));
 ///     let sel: String = m.selection().into_iter().collect();
 ///     assert_eq!(sel, "my replacement and my edit".to_string());
 /// });
@@ -594,7 +594,7 @@ where
     widget: &'b mut W,
     area: &'b A,
     cfg: &'a PrintCfg,
-    shift: &'a mut (isize, isize, isize),
+    shift: &'a mut (i32, i32, i32),
     is_main: bool,
     is_incl: bool,
     change_i: usize,
@@ -614,7 +614,7 @@ where
         widget: &'b mut W,
         area: &'b A,
         cfg: &'a PrintCfg,
-        shift: &'a mut (isize, isize, isize),
+        shift: &'a mut (i32, i32, i32),
         is_main: bool,
         is_incl: bool,
         change_i: usize,
@@ -699,9 +699,9 @@ where
     /// Edits the file with a [`Change`]
     fn edit(&mut self, change: Change) {
         let shift = *self.shift;
-        self.shift.0 += change.added_end().byte() as isize - change.taken_end().byte() as isize;
-        self.shift.1 += change.added_end().char() as isize - change.taken_end().char() as isize;
-        self.shift.2 += change.added_end().line() as isize - change.taken_end().line() as isize;
+        self.shift.0 += change.added_end().byte() as i32 - change.taken_end().byte() as i32;
+        self.shift.1 += change.added_end().char() as i32 - change.taken_end().char() as i32;
+        self.shift.2 += change.added_end().line() as i32 - change.taken_end().line() as i32;
         let (_, diff) = unsafe {
             self.widget
                 .text_mut()
@@ -762,19 +762,19 @@ where
     ////////// Movement functions
 
     /// Moves the cursor horizontally. May cause vertical movement
-    pub fn move_hor(&mut self, count: isize) {
+    pub fn move_hor(&mut self, count: i32) {
         let cursor = self.cursor.as_mut().unwrap();
         cursor.move_hor(count, self.text, self.area, &self.cfg);
     }
 
     /// Moves the cursor vertically. May cause horizontal movement
-    pub fn move_ver(&mut self, count: isize) {
+    pub fn move_ver(&mut self, count: i32) {
         let cursor = self.cursor.as_mut().unwrap();
         cursor.move_ver(count, self.text, self.area, &self.cfg);
     }
 
     /// Moves the cursor vertically. May cause horizontal movement
-    pub fn move_ver_wrapped(&mut self, count: isize) {
+    pub fn move_ver_wrapped(&mut self, count: i32) {
         let cursor = self.cursor.as_mut().unwrap();
         cursor.move_ver_wrapped(count, self.text, self.area, &self.cfg);
     }
@@ -792,7 +792,8 @@ where
     ///
     /// - If the coords isn't valid, it will move to the "maximum"
     ///   position allowed.
-    pub fn move_to_coords(&mut self, line: usize, col: usize) {
+    pub fn move_to_coords(&mut self, line: u32, col: u32) {
+        let col = col as usize;
         let at = self.text.point_at_line(line.min(self.text.len().line()));
         let (point, _) = self.text.chars_fwd(at).take(col + 1).last().unwrap();
         self.move_to(point);

@@ -11,10 +11,10 @@ use unicode_width::UnicodeWidthChar;
 #[inline(always)]
 fn indents<'a>(
     iter: impl Iterator<Item = Item> + Clone + 'a,
-    cap: usize,
-    initial: (usize, bool),
+    cap: u32,
+    initial: (u32, bool),
     cfg: IterCfg,
-) -> impl Iterator<Item = (usize, Item)> + Clone + 'a {
+) -> impl Iterator<Item = (u32, Item)> + Clone + 'a {
     iter.scan(initial, move |(indent, on_indent), item| {
         if cfg.indent_wrap() {
             let old_indent = if *indent < cap { *indent } else { 0 };
@@ -35,8 +35,8 @@ fn indents<'a>(
 
 #[inline(always)]
 fn parts<'a>(
-    iter: impl Iterator<Item = (usize, Item)> + Clone + 'a,
-    cap: usize,
+    iter: impl Iterator<Item = (u32, Item)> + Clone + 'a,
+    cap: u32,
     cfg: IterCfg,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     iter.scan(
@@ -50,8 +50,8 @@ fn parts<'a>(
 /// Returns an [`Iterator`] over the sequences of [`WordChars`].
 #[inline(always)]
 fn words<'a>(
-    iter: impl Iterator<Item = (usize, Item)> + Clone + 'a,
-    width: usize,
+    iter: impl Iterator<Item = (u32, Item)> + Clone + 'a,
+    width: u32,
     cfg: IterCfg,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     let mut iter = iter.peekable();
@@ -96,10 +96,10 @@ fn words<'a>(
 
 #[inline(always)]
 fn attach_caret(
-    (x, needs_to_wrap, prev_char): (&mut usize, &mut bool, &mut Option<char>),
-    indent: usize,
+    (x, needs_to_wrap, prev_char): (&mut u32, &mut bool, &mut Option<char>),
+    indent: u32,
     mut item: Item,
-    cap: usize,
+    cap: u32,
     cfg: &IterCfg,
 ) -> Option<(Caret, Item)> {
     let (len, processed_part) = process_part(item.part, cfg, prev_char, *x, cap);
@@ -131,9 +131,9 @@ fn process_part(
     part: Part,
     cfg: &IterCfg,
     prev_char: &mut Option<char>,
-    x: usize,
-    cap: usize,
-) -> (usize, Part) {
+    x: u32,
+    cap: u32,
+) -> (u32, Part) {
     match part {
         Part::Char(b) => {
             let ret = if b == '\n' {
@@ -186,7 +186,7 @@ where
 /// validated.
 pub fn print_iter(
     mut iter: TextIter<'_>,
-    cap: usize,
+    cap: u32,
     cfg: IterCfg,
     points: (Point, Option<Point>),
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
@@ -215,16 +215,16 @@ pub fn print_iter(
 /// validated.
 pub(super) fn print_iter_indented(
     iter: TextIter<'_>,
-    cap: usize,
+    cap: u32,
     cfg: IterCfg,
-    indent: usize,
+    indent: u32,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
     inner_iter(iter, cap, (indent, false), cfg)
 }
 
 pub fn rev_print_iter(
     mut iter: RevTextIter<'_>,
-    width: usize,
+    width: u32,
     cfg: IterCfg,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
     let mut returns = Vec::new();
@@ -258,8 +258,8 @@ pub fn rev_print_iter(
 
 fn inner_iter<'a>(
     iter: impl Iterator<Item = Item> + Clone + 'a,
-    cap: usize,
-    initial: (usize, bool),
+    cap: u32,
+    initial: (u32, bool),
     cfg: IterCfg,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     let indents = indents(iter, cap, initial, cfg);
@@ -273,13 +273,7 @@ fn inner_iter<'a>(
 }
 
 #[inline(always)]
-fn len_from(
-    char: char,
-    start: usize,
-    max_width: usize,
-    cfg: &IterCfg,
-    prev_char: Option<char>,
-) -> usize {
+fn len_from(char: char, start: u32, max_width: u32, cfg: &IterCfg, prev_char: Option<char>) -> u32 {
     let char = if char == '\n' {
         cfg.new_line().char(prev_char).unwrap_or('\n')
     } else {
@@ -290,6 +284,6 @@ fn len_from(
             .min(max_width.saturating_sub(start))
             .max(1),
         '\n' => 0,
-        _ => UnicodeWidthChar::width(char).unwrap_or(0),
+        _ => UnicodeWidthChar::width(char).unwrap_or(0) as u32,
     }
 }

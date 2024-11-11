@@ -4,9 +4,9 @@ use super::RawTag;
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum TagRange {
-    Bounded(RawTag, Range<usize>),
-    From(RawTag, usize),
-    Until(RawTag, usize),
+    Bounded(RawTag, Range<u32>),
+    From(RawTag, u32),
+    Until(RawTag, u32),
 }
 
 impl TagRange {
@@ -18,7 +18,7 @@ impl TagRange {
         }
     }
 
-    pub fn get_start(&self) -> Option<usize> {
+    pub fn get_start(&self) -> Option<u32> {
         match self {
             TagRange::Bounded(_, bounded) => Some(bounded.start),
             TagRange::From(_, from) => Some(*from),
@@ -26,7 +26,7 @@ impl TagRange {
         }
     }
 
-    pub fn get_end(&self) -> Option<usize> {
+    pub fn get_end(&self) -> Option<u32> {
         match self {
             TagRange::Bounded(_, bounded) => Some(bounded.end),
             TagRange::Until(_, until) => Some(*until),
@@ -34,15 +34,15 @@ impl TagRange {
         }
     }
 
-    pub fn start(&self) -> usize {
+    pub fn start(&self) -> u32 {
         self.get_start().unwrap_or(0)
     }
 
-    pub fn end(&self) -> usize {
-        self.get_end().unwrap_or(usize::MAX)
+    pub fn end(&self) -> u32 {
+        self.get_end().unwrap_or(u32::MAX)
     }
 
-    pub fn starts_with(&self, (b, s_tag): &(usize, RawTag)) -> bool {
+    pub fn starts_with(&self, (b, s_tag): &(u32, RawTag)) -> bool {
         match self {
             TagRange::Bounded(tag, bounded) => bounded.start == *b && *tag == *s_tag,
             TagRange::From(tag, from) => from == b && *tag == *s_tag,
@@ -50,7 +50,7 @@ impl TagRange {
         }
     }
 
-    pub fn ends_with(&self, (b, e_tag): &(usize, RawTag)) -> bool {
+    pub fn ends_with(&self, (b, e_tag): &(u32, RawTag)) -> bool {
         match self {
             TagRange::Bounded(s_tag, bounded) => bounded.end == *b && s_tag.ends_with(e_tag),
             TagRange::Until(s_tag, until) => until == b && *s_tag == *e_tag,
@@ -58,7 +58,7 @@ impl TagRange {
         }
     }
 
-    pub fn can_or_does_start_with(&self, (b, s_tag): &(usize, RawTag)) -> bool {
+    pub fn can_or_does_start_with(&self, (b, s_tag): &(u32, RawTag)) -> bool {
         match self {
             TagRange::Until(e_tag, until) => b <= until && s_tag.ends_with(e_tag),
             TagRange::Bounded(tag, bounded) => tag == s_tag && bounded.start == *b,
@@ -66,7 +66,7 @@ impl TagRange {
         }
     }
 
-    pub fn can_or_does_end_with(&self, (b, e_tag): &(usize, RawTag)) -> bool {
+    pub fn can_or_does_end_with(&self, (b, e_tag): &(u32, RawTag)) -> bool {
         match self {
             TagRange::From(s_tag, from) => from <= b && s_tag.ends_with(e_tag),
             TagRange::Bounded(tag, bounded) => {
@@ -76,14 +76,14 @@ impl TagRange {
         }
     }
 
-    pub fn count_ge(&self, other: usize) -> bool {
+    pub fn count_ge(&self, other: u32) -> bool {
         match self {
-            TagRange::Bounded(_, bounded) => bounded.clone().count() >= other,
+            TagRange::Bounded(_, bounded) => bounded.clone().count() as u32 >= other,
             TagRange::From(..) | TagRange::Until(..) => true,
         }
     }
 
-    pub fn entries(&self) -> [Option<(usize, RawTag)>; 2] {
+    pub fn entries(&self) -> [Option<(u32, RawTag)>; 2] {
         match self {
             TagRange::Bounded(tag, bounded) => [
                 Some((bounded.start, *tag)),

@@ -23,18 +23,18 @@ mod ids;
 mod ranges;
 mod types;
 
-const MIN_CHARS_TO_KEEP: usize = 50;
-const BUMP_AMOUNT: usize = 50;
+const MIN_CHARS_TO_KEEP: u32 = 50;
+const BUMP_AMOUNT: u32 = 50;
 const LIMIT_TO_BUMP: usize = 500;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TagOrSkip {
     Tag(RawTag),
-    Skip(usize),
+    Skip(u32),
 }
 
 impl TagOrSkip {
-    pub fn as_skip(&self) -> Option<usize> {
+    pub fn as_skip(&self) -> Option<u32> {
         match self {
             Self::Skip(v) => Some(*v),
             TagOrSkip::Tag(..) => None,
@@ -65,7 +65,7 @@ impl TagOrSkip {
     }
 
     #[inline]
-    fn len(&self) -> usize {
+    fn len(&self) -> u32 {
         match self {
             TagOrSkip::Tag(_) => 0,
             TagOrSkip::Skip(skip) => *skip,
@@ -87,9 +87,9 @@ pub struct Tags {
     buf: GapBuffer<TagOrSkip>,
     texts: HashMap<TextId, Text>,
     toggles: HashMap<ToggleId, Toggle>,
-    range_min: usize,
+    range_min: u32,
     ranges: Vec<TagRange>,
-    records: Records<(usize, usize)>,
+    records: Records<(u32, u32)>,
 }
 
 impl Tags {
@@ -104,7 +104,7 @@ impl Tags {
         }
     }
 
-    pub fn with_len(len: usize) -> Self {
+    pub fn with_len(len: u32) -> Self {
         Self {
             buf: gap_buffer![TagOrSkip::Skip(len)],
             ranges: Vec::new(),
@@ -122,12 +122,12 @@ impl Tags {
         self.records.clear();
     }
 
-    pub fn insert(&mut self, at: usize, tag: Tag, key: Key) -> Option<ToggleId> {
+    pub fn insert(&mut self, at: u32, tag: Tag, key: Key) -> Option<ToggleId> {
         let (tag, toggle_id) = tag.to_raw(key, &mut self.texts, &mut self.toggles);
 
-        let (n, b, skip) = self
-            .get_skip_at(at)
-            .unwrap_or((self.buf.len(), self.len_bytes(), 0));
+        let (n, b, skip) =
+            self.get_skip_at(at)
+                .unwrap_or((self.buf.len() as u32, self.len_bytes(), 0));
 
         // Don't add the tag, if it already exists in that position.
         if b == at
@@ -139,12 +139,12 @@ impl Tags {
         }
 
         let n = if at == b {
-            self.buf.insert(n, TagOrSkip::Tag(tag));
+            self.buf.insert(n as usize, TagOrSkip::Tag(tag));
             self.records.transform((n, at), (0, 0), (1, 0));
             self.records.insert((n + 1, at));
             n
         } else {
-            self.buf.splice(n..=n, [
+            self.buf.splice(n as usize..=n as usize, [
                 TagOrSkip::Skip(at - b),
                 TagOrSkip::Tag(tag),
                 TagOrSkip::Skip(b + skip - at),
@@ -195,13 +195,13 @@ impl Tags {
 
     /// Removes all [`Tag`]s associated with a given [`Key`] in the
     /// `pos`.
-    pub fn remove_at(&mut self, at: usize, keys: impl Keys) {
+    pub fn remove_at(&mut self, at: u32, keys: impl Keys) {
         self.remove_at_if(at, |t| keys.clone().contains(t.key()));
     }
 
     pub fn remove_of(&mut self, keys: impl Keys) {
         let keys = keys.range();
-        let b_to_remove: Vec<usize> = iter_range(&self.buf, ..)
+        let b_to_remove: Vec<u32> = iter_range(&self.buf, ..)
             .filter_map(raw_from(0))
             .filter_map(|(i, t)| keys.clone().contains(t.key()).then_some(i))
             .collect();
@@ -211,48 +211,49 @@ impl Tags {
         }
     }
 
-    pub fn remove_at_if(&mut self, at: usize, f: impl Fn(&RawTag) -> bool) {
+    pub fn remove_at_if(&mut self, at: u32, f: impl Fn(&RawTag) -> bool) {
         let (n, b, skip) = match self.get_skip_at(at) {
             Some((n, b, skip)) if b == at => (n, b, skip),
-            None => (self.buf.len(), self.len_bytes(), 0),
+            None => (self.buf.len() as u32, self.len_bytes(), 0),
             // If `b != n`, we're in the middle of a skip, and nothing
             // is done.
             _ => return,
         };
 
-        let (removed, total): (Vec<(usize, RawTag)>, usize) = {
+        let (removed, total): (Vec<(u32, RawTag)>, u32) = {
             let mut total = 0;
             let removed = iter_range_rev(&self.buf, ..n)
                 .enumerate()
-                .map_while(|(i, ts)| Some(n - (i + 1)).zip(ts.as_tag()))
+                .map_while(|(i, ts)| Some(n - (i as u32 + 1)).zip(ts.as_tag()))
                 .inspect(|_| total += 1)
                 .filter(|(_, t)| f(t))
                 .collect();
 
-            (removed, total)
+            (removed, total as u32)
         };
 
         for &(i, tag) in removed.iter() {
-            self.buf.remove(i);
+            self.buf.remove(i as usize);
             remove_from_ranges((b, tag), &mut self.ranges);
         }
 
         self.records
-            .transform((n, b), (total, 0), (total - removed.len(), 0));
+            .transform((n, b), (total, 0), (total - removed.len() as u32, 0));
 
-        if let Some(i) = n.checked_sub(removed.len() + 1)
+        if let Some(i) = n.checked_sub(removed.len() as u32 + 1)
             && skip > 0
-            && let Some(TagOrSkip::Skip(prev)) = self.buf.get(i)
+            && let Some(TagOrSkip::Skip(prev)) = self.buf.get(i as usize)
         {
-            self.buf.splice(i..=(i + 1), [TagOrSkip::Skip(prev + skip)]);
+            let range = i as usize..=i as usize + 1;
+            self.buf.splice(range, [TagOrSkip::Skip(prev + skip)]);
             self.records
-                .transform((n - removed.len(), b), (1, 0), (0, 0));
+                .transform((n - removed.len() as u32, b), (1, 0), (0, 0));
         }
 
         deintersect(&mut self.ranges, self.range_min);
     }
 
-    pub fn transform(&mut self, old: Range<usize>, new_end: usize) {
+    pub fn transform(&mut self, old: Range<u32>, new_end: u32) {
         let new = old.start..new_end;
 
         // In case we're appending to the rope, a shortcut can be made.
@@ -272,24 +273,25 @@ impl Tags {
         let (end_n, end_b) = self
             .get_skip_at(old.end)
             .map(|(end_n, end_b, skip)| (end_n, old.end.max(end_b + skip)))
-            .unwrap_or((self.buf.len() - 1, self.len_bytes()));
+            .unwrap_or((self.buf.len() as u32 - 1, self.len_bytes()));
 
-        let range_diff = new.end as isize - old.end as isize;
+        let range_diff = new.end as i32 - old.end as i32;
 
         let (removed, added) = {
             let skip = (end_b - start_b).saturating_add_signed(range_diff);
             let replacement = (skip > 0).then_some(TagOrSkip::Skip(skip));
 
+            let range = start_n as usize..=end_n as usize;
             let removed = self
                 .buf
-                .splice(start_n..=end_n, replacement)
+                .splice(range, replacement)
                 .scan(start_b, |p, ts| {
                     *p += ts.len();
                     Some((*p - ts.len(), ts))
                 })
                 .filter_map(|(p, ts)| ts.as_tag().map(|t| (p, t)));
 
-            (removed, replacement.is_some() as usize)
+            (removed, replacement.is_some() as u32)
         };
 
         for entry in removed {
@@ -298,8 +300,8 @@ impl Tags {
 
         self.records.transform(
             (start_n, old.start),
-            (1 + end_n - start_n, old.clone().count()),
-            (added, new.clone().count()),
+            (1 + end_n - start_n, old.clone().count() as u32),
+            (added, new.clone().count() as u32),
         );
 
         shift_ranges_after(&mut self.ranges, old.end, range_diff, self.range_min);
@@ -314,11 +316,11 @@ impl Tags {
         self.buf.len() == 0
     }
 
-    pub fn len_bytes(&self) -> usize {
+    pub fn len_bytes(&self) -> u32 {
         self.records.max().1
     }
 
-    pub fn fwd_at(&self, at: usize) -> FwdTags {
+    pub fn fwd_at(&self, at: u32) -> FwdTags {
         let at = at.min(self.len_bytes()).saturating_sub(self.range_min);
 
         let (n, b) = {
@@ -327,7 +329,7 @@ impl Tags {
 
             // If b == at, include the tags before the skip.
             if b == at {
-                (n - iter.take_while(|ts| ts.is_tag()).count(), b)
+                (n - iter.take_while(|ts| ts.is_tag()).count() as u32, b)
             } else {
                 (n, b)
             }
@@ -349,7 +351,7 @@ impl Tags {
                         .iter()
                         .find(|range| range.starts_with(&(b, StartConceal(key))))
                     {
-                        Some(t_range) => (b, ConcealUntil(t_range.end() as u32)),
+                        Some(t_range) => (b, ConcealUntil(t_range.end())),
                         None => (b, StartConceal(key)),
                     }
                 }
@@ -360,13 +362,13 @@ impl Tags {
         ranges.chain(tags).peekable()
     }
 
-    pub fn rev_at(&self, at: usize) -> RevTags {
+    pub fn rev_at(&self, at: u32) -> RevTags {
         let at = (at + self.range_min).min(self.len_bytes());
 
         let (n, b) = self
             .get_skip_at(at)
             .map(|(n, b, _)| (n, b))
-            .unwrap_or((self.buf.len(), self.len_bytes()));
+            .unwrap_or((self.buf.len() as u32, self.len_bytes()));
 
         let ranges = {
             let mut ranges: Vec<_> = self
@@ -390,7 +392,7 @@ impl Tags {
                         .iter()
                         .find(|range| range.ends_with(&(b, EndConceal(key))))
                     {
-                        (b, ConcealUntil(range.start() as u32))
+                        (b, ConcealUntil(range.start()))
                     } else {
                         (b, EndConceal(key))
                     }
@@ -402,11 +404,11 @@ impl Tags {
         ranges.into_iter().rev().chain(raw_tags).peekable()
     }
 
-    pub fn iter_only_at(&self, at: usize) -> impl Iterator<Item = RawTag> + '_ {
+    pub fn iter_only_at(&self, at: u32) -> impl Iterator<Item = RawTag> + '_ {
         let (n, b) = self
             .get_skip_at(at)
             .map(|(n, b, _)| (n, b))
-            .unwrap_or((self.buf.len(), self.len_bytes()));
+            .unwrap_or((self.buf.len() as u32, self.len_bytes()));
 
         (b == at)
             .then(|| iter_range_rev(&self.buf, ..n).map_while(TagOrSkip::as_tag))
@@ -414,7 +416,7 @@ impl Tags {
             .flatten()
     }
 
-    pub fn ghosts_total_at(&self, at: usize) -> Option<Point> {
+    pub fn ghosts_total_at(&self, at: u32) -> Option<Point> {
         self.iter_only_at(at).fold(None, |p, tag| match tag {
             RawTag::GhostText(_, id) => {
                 let max_point = self.texts.get(&id).unwrap().len();
@@ -424,12 +426,12 @@ impl Tags {
         })
     }
 
-    fn process_ranges_around(&mut self, range: Range<usize>) {
+    fn process_ranges_around(&mut self, range: Range<u32>) {
         let (b_range, a_range) = {
             let before_start = range.start.saturating_sub(self.range_min);
             // in case `range.start == range.end`, we would be double
             // checking that position, so we shift once to the right.
-            let cross_shift = (range.end == range.start) as usize;
+            let cross_shift = (range.end == range.start) as u32;
             let after_start = (range.end + cross_shift).min(self.len_bytes());
             let after_end = (range.end + self.range_min).min(self.len_bytes());
 
@@ -440,7 +442,7 @@ impl Tags {
             let (n, b) = self
                 .get_skip_at(*b_range.end())
                 .map(|(n, b, _)| (n, b))
-                .unwrap_or((self.buf.len(), self.len_bytes()));
+                .unwrap_or((self.buf.len() as u32, self.len_bytes()));
 
             iter_range_rev(&self.buf, ..n)
                 .filter_map(raw_from_rev(b))
@@ -451,12 +453,12 @@ impl Tags {
             let (mut n, b) = self
                 .get_skip_at(*a_range.start())
                 .map(|(n, b, _)| (n, b))
-                .unwrap_or((self.buf.len(), self.len_bytes()));
+                .unwrap_or((self.buf.len() as u32, self.len_bytes()));
 
             if b == *a_range.start() {
                 n -= iter_range_rev(&self.buf, ..n)
                     .take_while(|ts| ts.is_tag())
-                    .count();
+                    .count() as u32;
             }
 
             iter_range(&self.buf, n..)
@@ -495,7 +497,7 @@ impl Tags {
                 .ranges
                 .extract_if(|range| {
                     if let Bounded(_, bounded) = range {
-                        bounded.clone().count() < self.range_min
+                        (bounded.clone().count() as u32) < self.range_min
                     } else {
                         false
                     }
@@ -509,7 +511,7 @@ impl Tags {
     /// * The byte where it starts
     /// * The index in the [`GapBuffer`] where it starts
     /// * Its length
-    fn get_skip_at(&self, at: usize) -> Option<(usize, usize, usize)> {
+    fn get_skip_at(&self, at: u32) -> Option<(u32, u32, u32)> {
         assert!(
             at <= self.len_bytes(),
             "byte out of bounds: the len is {}, but the byte is {at}",
@@ -526,12 +528,12 @@ impl Tags {
 
         if at >= b {
             let iter = iter_range(&self.buf, n..).enumerate().filter_map(skips);
-            iter.map(|(i, this_b, skip)| (n + i, b + (this_b - skip), skip))
+            iter.map(|(i, this_b, skip)| (n + i as u32, b + (this_b - skip), skip))
                 .take_while(|(_, b, _)| at >= *b)
                 .last()
         } else {
             let iter = iter_range_rev(&self.buf, ..n).enumerate().filter_map(skips);
-            iter.map(|(i, this_b, skip)| (n - (i + 1), b - this_b, skip))
+            iter.map(|(i, this_b, skip)| (n - (i as u32 + 1), b - this_b, skip))
                 .take_while(|(_, b, skip)| *b + *skip > at)
                 .last()
         }
@@ -544,10 +546,11 @@ impl Tags {
 
 pub fn iter_range(
     buf: &GapBuffer<TagOrSkip>,
-    range: impl RangeBounds<usize>,
+    range: impl RangeBounds<u32>,
 ) -> impl Iterator<Item = &TagOrSkip> + Clone + '_ {
     let (s0, s1) = buf.as_slices();
-    let (start, end) = get_ends(range, buf.len());
+    let (start, end) = get_ends(range, buf.len() as u32);
+    let (start, end) = (start as usize, end as usize);
 
     let r0 = start.min(s0.len())..end.min(s0.len());
     let r1 = start.saturating_sub(s0.len())..end.saturating_sub(s0.len());
@@ -557,10 +560,11 @@ pub fn iter_range(
 
 pub fn iter_range_rev(
     buf: &GapBuffer<TagOrSkip>,
-    range: impl RangeBounds<usize> + std::fmt::Debug + Clone,
+    range: impl RangeBounds<u32> + std::fmt::Debug + Clone,
 ) -> impl Iterator<Item = &TagOrSkip> + Clone + '_ {
     let (s0, s1) = buf.as_slices();
-    let (start, end) = get_ends(range.clone(), buf.len());
+    let (start, end) = get_ends(range.clone(), buf.len() as u32);
+    let (start, end) = (start as usize, end as usize);
 
     let r0 = start.min(s0.len())..end.min(s0.len());
     let r1 = start.saturating_sub(s0.len())..end.saturating_sub(s0.len());
@@ -572,21 +576,21 @@ pub fn iter_range_rev(
     }
 }
 
-fn raw_from(mut b: usize) -> impl FnMut(&TagOrSkip) -> Option<(usize, RawTag)> + Clone {
+fn raw_from(mut b: u32) -> impl FnMut(&TagOrSkip) -> Option<(u32, RawTag)> + Clone {
     move |ts| {
         b += ts.len();
         Some(b).zip(ts.as_tag())
     }
 }
 
-fn raw_from_rev(mut b: usize) -> impl FnMut(&TagOrSkip) -> Option<(usize, RawTag)> + Clone {
+fn raw_from_rev(mut b: u32) -> impl FnMut(&TagOrSkip) -> Option<(u32, RawTag)> + Clone {
     move |ts| {
         b -= ts.len();
         Some(b).zip(ts.as_tag())
     }
 }
 
-fn add_to_ranges(entry: (usize, RawTag), ranges: &mut Vec<TagRange>, range_min: usize) {
+fn add_to_ranges(entry: (u32, RawTag), ranges: &mut Vec<TagRange>, range_min: u32) {
     let t_range = if entry.1.is_start() {
         let (start, s_tag) = entry;
         let n = ranges.iter().position(|r| r.can_or_does_start_with(&entry));
@@ -629,7 +633,7 @@ fn add_to_ranges(entry: (usize, RawTag), ranges: &mut Vec<TagRange>, range_min: 
 /// completely remove it.
 ///
 /// Will return the range as it was, before the removal.
-fn remove_from_ranges(entry: (usize, RawTag), ranges: &mut Vec<TagRange>) {
+fn remove_from_ranges(entry: (u32, RawTag), ranges: &mut Vec<TagRange>) {
     if entry.1.is_start() {
         let t_range = ranges.extract_if(|range| range.starts_with(&entry)).next();
         if let Some(Bounded(tag, bounded)) = t_range {
@@ -647,7 +651,7 @@ fn remove_from_ranges(entry: (usize, RawTag), ranges: &mut Vec<TagRange>) {
     }
 }
 
-fn shift_ranges_after(ranges: &mut Vec<TagRange>, after: usize, amount: isize, range_min: usize) {
+fn shift_ranges_after(ranges: &mut Vec<TagRange>, after: u32, amount: i32, range_min: u32) {
     ranges
         .extract_if(|t_range| {
             match t_range {
@@ -677,8 +681,8 @@ fn shift_ranges_after(ranges: &mut Vec<TagRange>, after: usize, amount: isize, r
         .for_each(drop);
 }
 
-fn deintersect(ranges: &mut Vec<TagRange>, range_min: usize) {
-    let mut entries: Vec<(usize, RawTag)> = Vec::new();
+fn deintersect(ranges: &mut Vec<TagRange>, range_min: u32) {
+    let mut entries: Vec<(u32, RawTag)> = Vec::new();
 
     for t_range in ranges.drain(..) {
         for (b, tag) in t_range.entries().into_iter().flatten() {
@@ -695,11 +699,11 @@ fn deintersect(ranges: &mut Vec<TagRange>, range_min: usize) {
 
 fn find_match_too_close(
     buf: &GapBuffer<TagOrSkip>,
-    (n, b, tag): (usize, usize, RawTag),
-    range_min: usize,
-) -> Option<(usize, RawTag)> {
+    (n, b, tag): (u32, u32, RawTag),
+    range_min: u32,
+) -> Option<(u32, RawTag)> {
     if tag.is_start() {
-        let n = n - iter_range_rev(buf, ..n).take_while(|t| t.is_tag()).count();
+        let n = n - iter_range_rev(buf, ..n).take_while(|t| t.is_tag()).count() as u32;
         iter_range(buf, n..)
             .filter_map(raw_from(b))
             .take_while(|(cmp, _)| *cmp < b + range_min)
@@ -741,5 +745,5 @@ impl Eq for Tags {}
 unsafe impl Send for Tags {}
 unsafe impl Sync for Tags {}
 
-pub type FwdTags<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)> + Clone + 'a>;
-pub type RevTags<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)> + Clone + 'a>;
+pub type FwdTags<'a> = std::iter::Peekable<impl Iterator<Item = (u32, RawTag)> + Clone + 'a>;
+pub type RevTags<'a> = std::iter::Peekable<impl Iterator<Item = (u32, RawTag)> + Clone + 'a>;

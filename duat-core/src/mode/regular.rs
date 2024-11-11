@@ -95,14 +95,14 @@ impl<U: Ui> super::Mode<U> for Regular {
     }
 }
 
-fn move_each<I>(mut helper: EditHelper<File, impl Area, I>, direction: Side, amount: usize) {
+fn move_each<I>(mut helper: EditHelper<File, impl Area, I>, direction: Side, amount: u32) {
     helper.move_each(|mut m| {
         m.unset_anchor();
         match direction {
-            Side::Top => m.move_ver(-(amount as isize)),
-            Side::Bottom => m.move_ver(amount as isize),
-            Side::Left => m.move_hor(-(amount as isize)),
-            Side::Right => m.move_hor(amount as isize),
+            Side::Top => m.move_ver(-(amount as i32)),
+            Side::Bottom => m.move_ver(amount as i32),
+            Side::Left => m.move_hor(-(amount as i32)),
+            Side::Right => m.move_hor(amount as i32),
         }
     });
 }
@@ -110,17 +110,17 @@ fn move_each<I>(mut helper: EditHelper<File, impl Area, I>, direction: Side, amo
 fn move_each_and_select<I>(
     mut helper: EditHelper<File, impl Area, I>,
     direction: Side,
-    amount: usize,
+    amount: u32,
 ) {
     helper.move_each(|mut m| {
         if m.anchor().is_none() {
             m.set_anchor();
         }
         match direction {
-            Side::Top => m.move_ver(-(amount as isize)),
-            Side::Bottom => m.move_ver(amount as isize),
-            Side::Left => m.move_hor(-(amount as isize)),
-            Side::Right => m.move_hor(amount as isize),
+            Side::Top => m.move_ver(-(amount as i32)),
+            Side::Bottom => m.move_ver(amount as i32),
+            Side::Left => m.move_hor(-(amount as i32)),
+            Side::Right => m.move_hor(amount as i32),
         }
     });
 }

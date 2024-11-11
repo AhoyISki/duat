@@ -108,7 +108,7 @@ use crate::{
 pub struct Text {
     buf: Box<GapBuffer<u8>>,
     tags: Box<Tags>,
-    records: Box<Records<(usize, usize, usize)>>,
+    records: Box<Records<(u32, u32, u32)>>,
     history: History,
 }
 
@@ -131,15 +131,15 @@ impl Text {
     pub fn from_file(path: impl AsRef<Path>) -> Self {
         let file = std::fs::read_to_string(path).expect("File failed to open");
         let buf = Box::new(GapBuffer::from_iter(file.bytes()));
-        let tags = Box::new(Tags::with_len(buf.len()));
+        let tags = Box::new(Tags::with_len(buf.len() as u32));
 
         Self {
             buf,
             tags,
             records: Box::new(Records::with_max((
-                file.len(),
-                file.chars().count(),
-                file.bytes().filter(|b| *b == b'\n').count(),
+                file.len() as u32,
+                file.chars().count() as u32,
+                file.bytes().filter(|b| *b == b'\n').count() as u32,
             ))),
             history: History::new(),
         }
@@ -181,10 +181,10 @@ impl Text {
     /// The `char` at the [`Point`]'s position
     pub fn char_at(&self, point: Point) -> Option<char> {
         let [s0, s1] = self.strs();
-        if point.byte() < s0.len() {
-            s0[point.byte()..].chars().next()
+        if point.byte() < s0.len() as u32 {
+            s0[point.byte() as usize..].chars().next()
         } else {
-            s1[(point.byte() - s0.len())..].chars().next()
+            s1[point.byte() as usize - s0.len()..].chars().next()
         }
     }
 
@@ -224,9 +224,10 @@ impl Text {
     }
 
     /// Returns the two `&str`s in the byte range.
-    fn strs_in_range_inner(&self, range: impl RangeBounds<usize>) -> [&str; 2] {
+    fn strs_in_range_inner(&self, range: impl RangeBounds<u32>) -> [&str; 2] {
         let (s0, s1) = self.buf.as_slices();
         let (start, end) = get_ends(range, self.len().byte());
+        let (start, end) = (start as usize, end as usize);
 
         unsafe {
             let r0 = start.min(s0.len())..end.min(s0.len());
@@ -250,7 +251,7 @@ impl Text {
     ///
     /// Will panic if `at` is greater than the lenght of the text
     #[inline(always)]
-    pub fn point_at(&self, at: usize) -> Point {
+    pub fn point_at(&self, at: u32) -> Point {
         assert!(
             at <= self.len().byte(),
             "byte out of bounds: the len is {}, but the byte is {at}",
@@ -265,8 +266,8 @@ impl Text {
                 .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
                 .enumerate()
                 .map(|(i, (this_b, char))| {
-                    l += (char == '\n') as usize;
-                    (b + this_b, c + i, l - (char == '\n') as usize)
+                    l += (char == '\n') as u32;
+                    (b + this_b as u32, c + i as u32, l - (char == '\n') as u32)
                 })
                 .take_while(|&(b, ..)| at >= b)
                 .last()
@@ -278,9 +279,9 @@ impl Text {
                 .rev()
                 .enumerate()
                 .map(|(i, char)| {
-                    l -= (char == '\n') as usize;
-                    c_len += char.len_utf8();
-                    (b - c_len, c - (i + 1), l)
+                    l -= (char == '\n') as u32;
+                    c_len += char.len_utf8() as u32;
+                    (b - c_len, c - (i as u32 + 1), l)
                 })
                 .take_while(|&(b, ..)| b >= at)
                 .last()
@@ -298,7 +299,7 @@ impl Text {
     /// Will panic if `at` is greater than the number of chars in the
     /// text.
     #[inline(always)]
-    pub fn point_at_char(&self, at: usize) -> Point {
+    pub fn point_at_char(&self, at: u32) -> Point {
         assert!(
             at <= self.len().char(),
             "byte out of bounds: the len is {}, but the char is {at}",
@@ -313,22 +314,22 @@ impl Text {
                 .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
                 .enumerate()
                 .map(|(i, (this_b, char))| {
-                    l += (char == '\n') as usize;
-                    (b + this_b, c + i, l - (char == '\n') as usize)
+                    l += (char == '\n') as u32;
+                    (b + this_b as u32, c + i as u32, l - (char == '\n') as u32)
                 })
                 .take_while(|&(_, c, _)| at >= c)
                 .last()
         } else {
             let mut c_len = 0;
-            self.strs_in_range_inner(..b)
+            self.strs_in_range_inner(..)
                 .into_iter()
                 .flat_map(str::chars)
                 .rev()
                 .enumerate()
                 .map(|(i, char)| {
-                    l -= (char == '\n') as usize;
-                    c_len += char.len_utf8();
-                    (b - c_len, c - (i + 1), l)
+                    l -= (char == '\n') as u32;
+                    c_len += char.len_utf8() as u32;
+                    (b - c_len, c - (i as u32 + 1), l)
                 })
                 .take_while(|&(_, c, _)| c >= at)
                 .last()
@@ -349,7 +350,7 @@ impl Text {
     /// Will panic if the number `at` is greater than the number of
     /// lines on the text
     #[inline(always)]
-    pub fn point_at_line(&self, at: usize) -> Point {
+    pub fn point_at_line(&self, at: u32) -> Point {
         assert!(
             at <= self.len().line(),
             "byte out of bounds: the len is {}, but the line is {at}",
@@ -363,7 +364,7 @@ impl Text {
                 .rev()
                 .take_while(|c| *c != '\n')
                 .for_each(|char| {
-                    b -= char.len_utf8();
+                    b -= char.len_utf8() as u32;
                     c -= 1;
                 });
             (b, c, l)
@@ -376,8 +377,8 @@ impl Text {
                 .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
                 .enumerate()
                 .map(|(i, (this_b, char))| {
-                    l += (char == '\n') as usize;
-                    (b + this_b, c + i, l - (char == '\n') as usize)
+                    l += (char == '\n') as u32;
+                    (b + this_b as u32, c + i as u32, l - (char == '\n') as u32)
                 })
                 .find(|&(.., l)| at == l)
         } else {
@@ -388,9 +389,9 @@ impl Text {
                 .rev()
                 .enumerate()
                 .map(|(i, char)| {
-                    l -= (char == '\n') as usize;
-                    c_len += char.len_utf8();
-                    (b - c_len, c - (i + 1), l)
+                    l -= (char == '\n') as u32;
+                    c_len += char.len_utf8() as u32;
+                    (b - c_len, c - (i as u32 + 1), l)
                 })
                 .take_while(|&(.., l)| l >= at)
                 .last()
@@ -440,7 +441,7 @@ impl Text {
     /// [points]: TwoPoints
     /// [point]: Self::point_at
     #[inline(always)]
-    pub fn ghost_max_points_at(&self, at: usize) -> (Point, Option<Point>) {
+    pub fn ghost_max_points_at(&self, at: u32) -> (Point, Option<Point>) {
         let point = self.point_at(at);
         (point, self.tags.ghosts_total_at(point.byte()))
     }
@@ -500,12 +501,13 @@ impl Text {
         &mut self,
         guess_i: usize,
         change: Change,
-        shift: (isize, isize, isize),
-        sh_from: usize
+        shift: (i32, i32, i32),
+        sh_from: usize,
     ) -> (usize, i32) {
         let range = (change.start(), change.taken_end());
         self.replace_range_inner(range, change.added_text());
-        self.history.add_desync_change(guess_i, change, shift, sh_from)
+        self.history
+            .add_desync_change(guess_i, change, shift, sh_from)
     }
 
     /// Merges `String`s with the body of text, given a range to
@@ -515,25 +517,26 @@ impl Text {
 
         let new_len = {
             let lines = edit.bytes().filter(|b| *b == b'\n').count();
-            (edit.len(), edit.chars().count(), lines)
+            (edit.len() as u32, edit.chars().count() as u32, lines as u32)
         };
 
         let old_len = unsafe {
+            let range = start.byte() as usize..end.byte() as usize;
             let str = String::from_utf8_unchecked(
                 self.buf
-                    .splice(start.byte()..end.byte(), edit.as_bytes().iter().cloned())
+                    .splice(range, edit.as_bytes().iter().cloned())
                     .collect(),
             );
 
             let lines = str.bytes().filter(|b| *b == b'\n').count();
-            (str.len(), str.chars().count(), lines)
+            (str.len() as u32, str.chars().count() as u32, lines as u32)
         };
 
         let start_rec = (start.byte(), start.char(), start.line());
         self.records.transform(start_rec, old_len, new_len);
         self.records.insert(start_rec);
 
-        let new_end = start.byte() + edit.len();
+        let new_end = start.byte() + edit.len() as u32;
         self.tags.transform(start.byte()..end.byte(), new_end);
     }
 
@@ -557,9 +560,9 @@ impl Text {
 
             cursors.insert_from_parts(i, start, change.taken_text().len(), self, area, cfg);
 
-            shift.0 += change.taken_end().byte() as isize - change.added_end().byte() as isize;
-            shift.1 += change.taken_end().char() as isize - change.added_end().char() as isize;
-            shift.2 += change.taken_end().line() as isize - change.added_end().line() as isize;
+            shift.0 += change.taken_end().byte() as i32 - change.added_end().byte() as i32;
+            shift.1 += change.taken_end().char() as i32 - change.added_end().char() as i32;
+            shift.2 += change.taken_end().line() as i32 - change.added_end().line() as i32;
         }
 
         self.history = history;
@@ -624,18 +627,18 @@ impl Text {
     ///
     /// The return value is the value of the gap, if the second `&str`
     /// is the contiguous one.
-    pub(crate) fn make_contiguous_in(&mut self, range: impl RangeBounds<usize>) {
+    pub(crate) fn make_contiguous_in(&mut self, range: impl RangeBounds<u32>) {
         let (start, end) = get_ends(range, self.len().byte());
-        let gap = self.buf.gap();
+        let gap = self.buf.gap() as u32;
 
         if end <= gap || start >= gap {
             return;
         }
 
         if gap.abs_diff(start) < gap.abs_diff(end) {
-            self.buf.set_gap(start);
+            self.buf.set_gap(start as usize);
         } else {
-            self.buf.set_gap(end);
+            self.buf.set_gap(end as usize);
         }
     }
 
@@ -646,15 +649,15 @@ impl Text {
     /// [`Text`] mutably borrowed.
     ///
     /// [`make_contiguous_in`]: Self::make_contiguous_in
-    pub(crate) unsafe fn continuous_in_unchecked(&self, range: impl RangeBounds<usize>) -> &str {
+    pub(crate) unsafe fn continuous_in_unchecked(&self, range: impl RangeBounds<u32>) -> &str {
         let (start, end) = get_ends(range, self.len().byte());
         let [s0, s1] = self.strs();
         unsafe {
-            if end <= self.buf.gap() {
-                s0.get_unchecked(start..end)
+            if end as usize <= self.buf.gap() {
+                s0.get_unchecked(start as usize..end as usize)
             } else {
                 let gap = self.buf.gap();
-                s1.get_unchecked((start - gap)..(end - gap))
+                s1.get_unchecked(start as usize - gap..end as usize - gap)
             }
         }
     }
@@ -662,14 +665,14 @@ impl Text {
     ////////// Tag addition/deletion functions
 
     /// Inserts a [`Tag`] at the given position
-    pub fn insert_tag(&mut self, at: usize, tag: Tag, key: Key) {
+    pub fn insert_tag(&mut self, at: u32, tag: Tag, key: Key) {
         self.tags.insert(at, tag, key);
     }
 
     /// Removes all the [`Tag`]s from a position related to a [key]
     ///
     /// [key]: Keys
-    pub fn remove_tags_on(&mut self, at: usize, keys: impl Keys) {
+    pub fn remove_tags_on(&mut self, at: u32, keys: impl Keys) {
         self.tags.remove_at(at, keys)
     }
 
@@ -696,7 +699,7 @@ impl Text {
     ///
     /// [`File`]: crate::widgets::File
     pub fn clear_tags(&mut self) {
-        self.tags = Box::new(Tags::with_len(self.buf.len()));
+        self.tags = Box::new(Tags::with_len(self.buf.len() as u32));
     }
 
     /// Removes the tags for all the cursors, used before they are
@@ -837,7 +840,7 @@ impl Text {
     ///
     /// Duat works fine with [`Tag`]s in the middle of a codepoint,
     /// but external utilizers may not, so keep that in mind.
-    pub fn tags_fwd(&self, at: usize) -> FwdTags {
+    pub fn tags_fwd(&self, at: u32) -> FwdTags {
         self.tags.fwd_at(at)
     }
 
@@ -847,7 +850,7 @@ impl Text {
     ///
     /// Duat works fine with [`Tag`]s in the middle of a codepoint,
     /// but external utilizers may not, so keep that in mind.
-    pub fn tags_rev(&self, at: usize) -> RevTags {
+    pub fn tags_rev(&self, at: u32) -> RevTags {
         self.tags.rev_at(at)
     }
 }
@@ -902,9 +905,9 @@ mod point {
         Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
     )]
     pub struct Point {
-        b: usize,
-        c: usize,
-        l: usize,
+        b: u32,
+        c: u32,
+        l: u32,
     }
 
     impl Point {
@@ -916,7 +919,7 @@ mod point {
         }
 
         /// Internal function to create [`Point`]s
-        pub(super) fn from_raw(b: usize, c: usize, l: usize) -> Self {
+        pub(super) fn from_raw(b: u32, c: u32, l: u32) -> Self {
             Self { b, c, l }
         }
 
@@ -933,26 +936,26 @@ mod point {
         pub fn len_of(str: impl AsRef<str>) -> Self {
             let str = str.as_ref();
             Self {
-                b: str.len(),
-                c: str.chars().count(),
-                l: str.bytes().filter(|c| *c == b'\n').count(),
+                b: str.len() as u32,
+                c: str.chars().count() as u32,
+                l: str.bytes().filter(|c| *c == b'\n').count() as u32,
             }
         }
 
         /// Returns the byte (relative to the beginning of the file)
         /// of self. Indexed at 0
-        pub fn byte(&self) -> usize {
+        pub fn byte(&self) -> u32 {
             self.b
         }
 
         /// Returns the char index (relative to the beginning of the
         /// file). Indexed at 0
-        pub fn char(&self) -> usize {
+        pub fn char(&self) -> u32 {
             self.c
         }
 
         /// Returns the line. Indexed at 0
-        pub fn line(&self) -> usize {
+        pub fn line(&self) -> u32 {
             self.l
         }
 
@@ -961,18 +964,18 @@ mod point {
         /// Moves a [`Point`] forward by one character
         pub(crate) fn fwd(self, char: char) -> Self {
             Self {
-                b: self.b + char.len_utf8(),
+                b: self.b + char.len_utf8() as u32,
                 c: self.c + 1,
-                l: self.l + (char == '\n') as usize,
+                l: self.l + (char == '\n') as u32,
             }
         }
 
         /// Moves a [`Point`] in reverse by one character
         pub(crate) fn rev(self, char: char) -> Self {
             Self {
-                b: self.b - char.len_utf8(),
+                b: self.b - char.len_utf8() as u32,
                 c: self.c - 1,
-                l: self.l - (char == '\n') as usize,
+                l: self.l - (char == '\n') as u32,
             }
         }
 
@@ -981,7 +984,7 @@ mod point {
             Self {
                 b: self.b + 1,
                 c: self.c + utf8_char_width(byte),
-                l: self.l + (byte == b'\n') as usize,
+                l: self.l + (byte == b'\n') as u32,
             }
         }
 
@@ -990,18 +993,18 @@ mod point {
             Self {
                 b: self.b - 1,
                 c: self.c - utf8_char_width(byte),
-                l: self.l - (byte == b'\n') as usize,
+                l: self.l - (byte == b'\n') as u32,
             }
         }
 
         /// Shifts the [`Point`] by a "signed point"
         ///
         /// This assumes that no overflow is going to happen
-        pub(crate) fn shift_by(self, (b, c, l): (isize, isize, isize)) -> Self {
+        pub(crate) fn shift_by(self, (b, c, l): (i32, i32, i32)) -> Self {
             Self {
-                b: (self.b as isize + b) as usize,
-                c: (self.c as isize + c) as usize,
-                l: (self.l as isize + l) as usize,
+                b: (self.b as i32 + b) as u32,
+                c: (self.c as i32 + c) as u32,
+                l: (self.l as i32 + l) as u32,
             }
         }
     }
@@ -1110,8 +1113,8 @@ mod point {
     /// Given a first byte, determines how many bytes are in this
     /// UTF-8 character
     #[inline]
-    pub const fn utf8_char_width(b: u8) -> usize {
-        UTF8_CHAR_WIDTH[b as usize] as usize
+    pub const fn utf8_char_width(b: u8) -> u32 {
+        UTF8_CHAR_WIDTH[b as usize] as u32
     }
 }
 
@@ -1129,7 +1132,7 @@ fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
 }
 
 /// Convenience function for the bounds of a range
-fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize, usize) {
+fn get_ends(range: impl std::ops::RangeBounds<u32>, max: u32) -> (u32, u32) {
     let start = match range.start_bound() {
         std::ops::Bound::Included(start) => *start,
         std::ops::Bound::Excluded(start) => *start + 1,
@@ -1171,15 +1174,15 @@ macro impl_from_to_string($t:ty) {
         fn from(value: $t) -> Self {
             let value = <$t as ToString>::to_string(&value);
             let buf = Box::new(GapBuffer::from_iter(value.bytes()));
-            let tags = Box::new(Tags::with_len(buf.len()));
+            let tags = Box::new(Tags::with_len(buf.len() as u32));
 
             Self {
                 buf,
                 tags,
                 records: Box::new(Records::with_max((
-                    value.len(),
-                    value.chars().count(),
-                    value.lines().count(),
+                    value.len() as u32,
+                    value.chars().count() as u32,
+                    value.lines().count() as u32,
                 ))),
                 history: History::new(),
             }

@@ -48,7 +48,7 @@ impl History {
         &mut self,
         guess_i: usize,
         change: Change,
-        shift: (isize, isize, isize),
+        shift: (i32, i32, i32),
         sh_from: usize,
     ) -> (usize, i32) {
         let is_last_moment = self.current_moment == self.moments.len();
@@ -141,9 +141,9 @@ impl Moment {
     /// - The number of changes that were added or subtracted during
     ///   its insertion.
     fn add_change(&mut self, guess_i: Option<usize>, change: Change) -> (usize, i32) {
-        let b = change.added_end().byte() as isize - change.taken_end().byte() as isize;
-        let c = change.added_end().char() as isize - change.taken_end().char() as isize;
-        let l = change.added_end().line() as isize - change.taken_end().line() as isize;
+        let b = change.added_end().byte() as i32 - change.taken_end().byte() as i32;
+        let c = change.added_end().char() as i32 - change.taken_end().char() as i32;
+        let l = change.added_end().line() as i32 - change.taken_end().line() as i32;
         unsafe { self.add_change_inner(guess_i, change, (b, c, l), None) }
     }
 
@@ -151,7 +151,7 @@ impl Moment {
         &mut self,
         guess_i: usize,
         change: Change,
-        shift: (isize, isize, isize),
+        shift: (i32, i32, i32),
         sh_from: usize,
     ) -> (usize, i32) {
         self.add_change_inner(Some(guess_i), change, shift, Some(sh_from))
@@ -161,7 +161,7 @@ impl Moment {
         &mut self,
         guess_i: Option<usize>,
         mut change: Change,
-        shift: (isize, isize, isize),
+        shift: (i32, i32, i32),
         sh_from: Option<usize>,
     ) -> (usize, i32) {
         // I assume here that if there is no sh_from, then this is not a
@@ -231,7 +231,7 @@ impl Moment {
         let prior_changes: Vec<Change> = self.0.drain(c_i..end_i).collect();
         let added_change = self.0.get_mut(c_i).unwrap();
         for (i, mut c) in prior_changes.into_iter().enumerate() {
-            c.shift_by(sh(c_i + 1));
+            c.shift_by(sh(c_i + i));
             let _ = added_change.try_merge(c);
         }
 
@@ -261,7 +261,7 @@ impl Change {
     }
 
     /// Shifts the [`Change`] by a "signed point"
-    pub(crate) fn shift_by(&mut self, shift: (isize, isize, isize)) {
+    pub(crate) fn shift_by(&mut self, shift: (i32, i32, i32)) {
         self.start = self.start.shift_by(shift);
     }
 
@@ -275,13 +275,11 @@ impl Change {
 
             let start = self.start - older.start;
             let end = fixed_end - older.start;
-            older
-                .added_text
-                .replace_range(start.byte()..end.byte(), &self.added_text);
+            let range = start.byte() as usize..end.byte() as usize;
+            older.added_text.replace_range(range, &self.added_text);
 
-            older
-                .taken_text
-                .push_str(&self.taken_text[(fixed_end.byte() - self.start.byte())..]);
+            let range = (fixed_end.byte() - self.start.byte()) as usize..;
+            older.taken_text.push_str(&self.taken_text[range]);
 
             *self = older;
 
@@ -291,11 +289,11 @@ impl Change {
 
             let start = older.start - self.start;
             let end = fixed_end - self.start;
-            self.taken_text
-                .replace_range(start.byte()..end.byte(), &older.taken_text);
+            let range = start.byte() as usize..end.byte() as usize;
+            self.taken_text.replace_range(range, &older.taken_text);
 
-            self.added_text
-                .push_str(&older.added_text[fixed_end.byte() - older.start.byte()..]);
+            let range = (fixed_end.byte() - older.start.byte()) as usize..;
+            self.added_text.push_str(&older.added_text[range]);
 
             None
         } else {
@@ -319,12 +317,12 @@ impl Change {
     }
 
     /// Returns the taken [`Range`]
-    pub fn taken_range(&self) -> Range<usize> {
+    pub fn taken_range(&self) -> Range<u32> {
         self.start.byte()..self.taken_end().byte()
     }
 
     /// Returns the added [`Range`]
-    pub fn added_range(&self) -> Range<usize> {
+    pub fn added_range(&self) -> Range<u32> {
         self.start.byte()..self.added_end().byte()
     }
 
@@ -339,12 +337,12 @@ impl Change {
     }
 
     /// The difference in chars of the added and taken texts
-    pub fn chars_diff(&self) -> isize {
-        self.added_text.chars().count() as isize - self.taken_text.chars().count() as isize
+    pub fn chars_diff(&self) -> i32 {
+        self.added_text.chars().count() as i32 - self.taken_text.chars().count() as i32
     }
 }
 
 /// If `lhs` contains the start of`rhs`
-fn has_start_of(lhs: Range<usize>, rhs: Range<usize>) -> bool {
+fn has_start_of(lhs: Range<u32>, rhs: Range<u32>) -> bool {
     lhs.start <= rhs.start && rhs.start <= lhs.end
 }

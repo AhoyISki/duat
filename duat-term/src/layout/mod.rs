@@ -196,12 +196,12 @@ impl Layout {
     }
 
     /// The current value for the width of [`self`].
-    pub fn width(&self) -> usize {
+    pub fn width(&self) -> u32 {
         self.rects.main.len_value(Axis::Horizontal)
     }
 
     /// The current value for the height of [`self`].
-    pub fn height(&self) -> usize {
+    pub fn height(&self) -> u32 {
         self.rects.main.len_value(Axis::Vertical)
     }
 

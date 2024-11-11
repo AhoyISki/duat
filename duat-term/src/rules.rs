@@ -51,7 +51,8 @@ impl Widget<Ui> for VertRule {
                 )
             })
         } else {
-            let full_line = format!("{}\n", self.sep_char.chars()[1]).repeat(area.height());
+            let full_line =
+                format!("{}\n", self.sep_char.chars()[1]).repeat(area.height() as usize);
 
             text!([VertRule] full_line)
         }

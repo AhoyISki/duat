@@ -1,5 +1,5 @@
 use std::sync::{
-    atomic::{AtomicBool, AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicU32, Ordering},
     Arc,
 };
 
@@ -80,7 +80,7 @@ impl std::fmt::Debug for VarPoint {
 #[derive(Clone)]
 pub struct VarValue {
     pub(super) var: Variable,
-    pub(super) value: Arc<AtomicUsize>,
+    pub(super) value: Arc<AtomicU32>,
     pub(super) has_changed: Arc<AtomicBool>,
 }
 
@@ -89,7 +89,7 @@ impl VarValue {
     pub(super) fn new() -> Self {
         Self {
             var: Variable::new(),
-            value: Arc::new(AtomicUsize::new(0)),
+            value: Arc::new(AtomicU32::new(0)),
             has_changed: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -98,7 +98,7 @@ impl VarValue {
         self.var
     }
 
-    pub fn value(&self) -> usize {
+    pub fn value(&self) -> u32 {
         self.value.load(Ordering::Acquire)
     }
 

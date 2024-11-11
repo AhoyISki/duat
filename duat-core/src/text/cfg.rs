@@ -34,8 +34,8 @@ pub struct TabStops(pub u8);
 
 impl TabStops {
     #[inline]
-    pub fn spaces_at(&self, x: usize) -> usize {
-        self.0 as usize - (x % self.0 as usize)
+    pub fn spaces_at(&self, x: u32) -> u32 {
+        self.0 as u32 - (x % self.0 as u32)
     }
 }
 
@@ -83,12 +83,12 @@ pub struct ScrollOff {
 }
 
 impl ScrollOff {
-    pub fn x(&self) -> usize {
-        self.x as usize
+    pub fn x(&self) -> u32 {
+        self.x as u32
     }
 
-    pub fn y(&self) -> usize {
-        self.y as usize
+    pub fn y(&self) -> u32 {
+        self.y as u32
     }
 }
 
@@ -349,11 +349,11 @@ impl IterCfg {
     }
 
     #[inline]
-    pub const fn wrap_width(&self, width: usize) -> usize {
+    pub const fn wrap_width(&self, width: u32) -> u32 {
         match self.wrap_method() {
             WrapMethod::Width | WrapMethod::Word => width,
-            WrapMethod::Capped(cap) => cap as usize,
-            WrapMethod::NoWrap => usize::MAX,
+            WrapMethod::Capped(cap) => cap as u32,
+            WrapMethod::NoWrap => u32::MAX,
         }
     }
 }

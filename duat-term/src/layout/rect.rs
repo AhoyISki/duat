@@ -231,7 +231,7 @@ impl Rect {
 
     /// The current value for the lenght of [`self`] on a given
     /// [`Axis`].
-    pub fn len_value(&self, axis: Axis) -> usize {
+    pub fn len_value(&self, axis: Axis) -> u32 {
         match axis {
             Horizontal => self.br.x().value() - self.tl.x().value(),
             Vertical => self.br.y().value() - self.tl.y().value(),

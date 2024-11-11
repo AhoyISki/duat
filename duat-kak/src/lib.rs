@@ -393,8 +393,8 @@ impl<U: Ui> Mode<U> for Insert {
                     anchors.push({
                         let c = m.caret();
                         m.unset_anchor().map(|a| match a > c {
-                            true => a.char() as isize - c.char() as isize,
-                            false => a.char() as isize - (c.char() as isize - 1),
+                            true => a.char() as i32 - c.char() as i32,
+                            false => a.char() as i32 - (c.char() as i32 - 1),
                         })
                     });
                     m.move_hor(-1);
@@ -488,7 +488,7 @@ impl OneKey {
                 let (_, p1) = m.search_rev("\n", None).next().unzip();
                 m.move_to(p1.unwrap_or_default());
             }),
-            key!(Char('j')) => helper.move_each(|mut m| m.move_ver(isize::MAX)),
+            key!(Char('j')) => helper.move_each(|mut m| m.move_ver(i32::MAX)),
             key!(Char('k')) => helper.move_each(|mut m| m.move_to_coords(0, 0)),
             key!(Char('l')) => helper.move_each(|mut m| {
                 *sel_type = SelType::UntilNL;
@@ -615,10 +615,10 @@ fn select_and_move_each<S>(
             m.set_anchor()
         }
         match direction {
-            Side::Top => m.move_ver(-(amount as isize)),
-            Side::Bottom => m.move_ver(amount as isize),
-            Side::Left => m.move_hor(-(amount as isize)),
-            Side::Right => m.move_hor(amount as isize),
+            Side::Top => m.move_ver(-(amount as i32)),
+            Side::Bottom => m.move_ver(amount as i32),
+            Side::Left => m.move_hor(-(amount as i32)),
+            Side::Right => m.move_hor(amount as i32),
         }
     });
 }
@@ -633,9 +633,9 @@ fn select_and_move_each_wrapped<S>(
             m.set_anchor();
         }
         if let Side::Top = direction {
-            m.move_ver_wrapped(-(amount as isize))
+            m.move_ver_wrapped(-(amount as i32))
         } else {
-            m.move_ver_wrapped(amount as isize)
+            m.move_ver_wrapped(amount as i32)
         }
     });
 }

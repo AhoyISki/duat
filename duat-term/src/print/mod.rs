@@ -3,7 +3,7 @@ use std::{
     io::{Write, stdout},
     sync::{
         Arc, LazyLock, Mutex,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU32, Ordering},
     },
 };
 
@@ -127,13 +127,13 @@ impl Printer {
         let (framed, mut frames, copies) = {
             let mut framed = Vec::new();
             let mut frames = Vec::new();
-            let mut copies: Vec<(&Arc<AtomicUsize>, _, _)> = Vec::new();
+            let mut copies: Vec<(&Arc<AtomicU32>, _, _)> = Vec::new();
 
             for (var, new) in self.solver.fetch_changes() {
                 let i = self.vars.binary_search_by_key(var, key).ok();
                 match i.and_then(|i| self.vars.get(i)) {
                     Some((_, SavedVar::Val { value, has_changed })) => {
-                        let new = new.round() as usize;
+                        let new = new.round() as u32;
                         let old = value.swap(new, Ordering::Release);
                         has_changed.store(old != new, Ordering::Release);
                     }
@@ -153,7 +153,7 @@ impl Printer {
 
         for (frame, rhs, value, has_changed) in framed {
             if let Some((_, new)) = frames.extract_if(|(var, _)| **var == frame.var).next() {
-                let new = new.round() as usize;
+                let new = new.round() as u32;
                 let old = frame.value.swap(new, Ordering::Release);
                 has_changed.store(old != new, Ordering::Release);
             }
@@ -344,9 +344,9 @@ pub struct Sender {
 }
 
 impl Sender {
-    pub fn lines(&self, shift: usize, cap: usize) -> Lines {
-        let area = self.coords().width() * self.coords().height();
-        let mut cutoffs = Vec::with_capacity(self.coords().height());
+    pub fn lines(&self, shift: u32, cap: u32) -> Lines {
+        let area = (self.coords().width() * self.coords().height()) as usize;
+        let mut cutoffs = Vec::with_capacity(self.coords().height() as usize);
         cutoffs.push(0);
 
         Lines {
@@ -381,15 +381,15 @@ pub struct Lines {
     real_cursor: Option<bool>,
 
     line: Vec<u8>,
-    len: usize,
-    positions: Vec<(usize, usize)>,
+    len: u32,
+    shift: u32,
+    cap: u32,
+    positions: Vec<(usize, u32)>,
     align: Alignment,
-    shift: usize,
-    cap: usize,
 }
 
 impl Lines {
-    pub fn push_char(&mut self, char: char, len: usize) {
+    pub fn push_char(&mut self, char: char, len: u32) {
         self.len += len;
         let mut bytes = [0; 4];
         char.encode_utf8(&mut bytes);
@@ -409,15 +409,15 @@ impl Lines {
         self.real_cursor = Some(false);
     }
 
-    fn on(&self, y: usize) -> Option<(&[u8], usize, usize)> {
+    fn on(&self, y: u32) -> Option<(&[u8], u32, u32)> {
         let (tl, br) = (self.coords.tl(), self.coords.br());
 
         if (tl.y..br.y).contains(&y) {
             let y = y - tl.y;
-            let start = self.cutoffs[y];
+            let start = self.cutoffs[y as usize];
 
             let (start_x, end_x) = (self.coords.tl().x, self.coords.br().x);
-            let bytes = match self.cutoffs.get(y + 1) {
+            let bytes = match self.cutoffs.get(y as usize + 1) {
                 Some(end) => &self.bytes[start..*end],
                 None => &self.bytes[start..],
             };
@@ -457,7 +457,8 @@ impl Write for Lines {
                 dist > self.shift
             }) else {
                 queue!(self.bytes, ResetColor, SetStyle(default_form.style));
-                self.bytes.extend_from_slice(&BLANK[..self.coords.width()]);
+                self.bytes
+                    .extend_from_slice(&BLANK[..self.coords.width() as usize]);
                 self.cutoffs.push(self.bytes.len());
 
                 self.line.clear();
@@ -484,7 +485,8 @@ impl Write for Lines {
                 dist < self.shift + self.coords.width()
             }) else {
                 queue!(self.bytes, ResetColor, SetStyle(default_form.style));
-                self.bytes.extend_from_slice(&BLANK[..self.coords.width()]);
+                self.bytes
+                    .extend_from_slice(&BLANK[..self.coords.width() as usize]);
                 self.cutoffs.push(self.bytes.len());
 
                 self.line.clear();
@@ -504,7 +506,7 @@ impl Write for Lines {
         };
 
         queue!(self.bytes, ResetColor, SetStyle(default_form.style));
-        self.bytes.extend_from_slice(&BLANK[..start_d]);
+        self.bytes.extend_from_slice(&BLANK[..start_d as usize]);
 
         let mut adding_ansi = false;
         for &b in &self.line[..start_i] {
@@ -522,7 +524,7 @@ impl Write for Lines {
         self.bytes.extend_from_slice(&self.line[start_i..end_i]);
         queue!(self.bytes, ResetColor, SetStyle(default_form.style));
         self.bytes
-            .extend_from_slice(&BLANK[..(self.coords.width() - end_d)]);
+            .extend_from_slice(&BLANK[..(self.coords.width() - end_d) as usize]);
         self.cutoffs.push(self.bytes.len());
 
         self.line.clear();
@@ -534,18 +536,18 @@ impl Write for Lines {
 
 pub enum SavedVar {
     Val {
-        value: Arc<AtomicUsize>,
+        value: Arc<AtomicU32>,
         has_changed: Arc<AtomicBool>,
     },
     Edge {
         width: VarValue,
-        rhs: Arc<AtomicUsize>,
-        value: Arc<AtomicUsize>,
+        rhs: Arc<AtomicU32>,
+        value: Arc<AtomicU32>,
         has_changed: Arc<AtomicBool>,
     },
     Copy {
-        copy: Arc<AtomicUsize>,
-        value: Arc<AtomicUsize>,
+        copy: Arc<AtomicU32>,
+        value: Arc<AtomicU32>,
         has_changed: Arc<AtomicBool>,
     },
 }
@@ -567,7 +569,7 @@ impl SavedVar {
         }
     }
 
-    fn copy(vv: &VarValue, copy: Arc<AtomicUsize>) -> Self {
+    fn copy(vv: &VarValue, copy: Arc<AtomicU32>) -> Self {
         Self::Copy {
             copy,
             value: vv.value.clone(),
@@ -592,7 +594,9 @@ fn print_edges(edges: &[Edge]) {
                 Some(line) => line::horizontal(line, line),
                 None => unreachable!(),
             };
-            let line = char.to_string().repeat(coords.br.x - coords.tl.x + 1);
+            let line = char
+                .to_string()
+                .repeat((coords.br.x - coords.tl.x + 1) as usize);
             queue!(
                 stdout,
                 cursor::MoveTo(coords.tl.x as u16, coords.tl.y as u16),

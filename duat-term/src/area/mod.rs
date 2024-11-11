@@ -25,8 +25,8 @@ macro_rules! queue {
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Coord {
-    pub y: usize,
-    pub x: usize,
+    pub y: u32,
+    pub x: u32,
 }
 
 impl std::fmt::Debug for Coord {
@@ -36,7 +36,7 @@ impl std::fmt::Debug for Coord {
 }
 
 impl Coord {
-    pub fn new(x: usize, y: usize) -> Coord {
+    pub fn new(x: u32, y: u32) -> Coord {
         Coord { x, y }
     }
 }
@@ -51,11 +51,11 @@ impl Coords {
         Coords { tl, br }
     }
 
-    pub fn width(&self) -> usize {
+    pub fn width(&self) -> u32 {
         self.br.x - self.tl.x
     }
 
-    pub fn height(&self) -> usize {
+    pub fn height(&self) -> u32 {
         self.br.y - self.tl.y
     }
 
@@ -235,14 +235,14 @@ impl ui::Area for Area {
             .map(|info| *info.read())
     }
 
-    fn width(&self) -> usize {
+    fn width(&self) -> u32 {
         self.layout.inspect(|layout| {
             let rect = layout.get(self.id).unwrap();
             rect.br().x - rect.tl().x
         })
     }
 
-    fn height(&self) -> usize {
+    fn height(&self) -> u32 {
         self.layout.inspect(|window| {
             let rect = window.get(self.id).unwrap();
             rect.br().y - rect.tl().y
@@ -526,7 +526,7 @@ pub struct PrintInfo {
     /// the screen.
     points: (Point, Option<Point>),
     /// How shifted the text is to the left.
-    x_shift: usize,
+    x_shift: u32,
     /// The last position of the main cursor.
     last_main: Point,
 }
@@ -543,8 +543,8 @@ impl PrintInfo {
 /// bottom of the widget is equal to `config.scrolloff.y_gap`.
 fn scroll_ver_around(
     mut info: PrintInfo,
-    width: usize,
-    height: usize,
+    width: u32,
+    height: u32,
     point: Point,
     text: &Text,
     cfg: IterCfg,
@@ -560,7 +560,7 @@ fn scroll_ver_around(
         true => cfg.scrolloff().y(),
         false => height.saturating_sub(cfg.scrolloff().y() + 1),
     };
-    let first = iter.nth(target).unwrap_or_default();
+    let first = iter.nth(target as usize).unwrap_or_default();
 
     if (info.last_main > point && first <= info.points)
         || (info.last_main < point && first >= info.points)
@@ -574,7 +574,7 @@ fn scroll_ver_around(
 /// being used.
 fn scroll_hor_around(
     mut info: PrintInfo,
-    width: usize,
+    width: u32,
     point: Point,
     text: &Text,
     cfg: IterCfg,

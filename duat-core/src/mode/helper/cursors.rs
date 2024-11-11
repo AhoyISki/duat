@@ -57,7 +57,7 @@ impl Cursors {
 
         if range > 0 {
             cursor.set_anchor();
-            cursor.move_hor(range as isize, text, area, &cfg);
+            cursor.move_hor(range as i32, text, area, &cfg);
         }
         let start = cursor.start().byte();
         // Do a check for a "guessed position", if it doesn't work, try
@@ -177,14 +177,14 @@ impl Cursors {
     pub(super) fn shift_by(
         &mut self,
         from: usize,
-        shift: (isize, isize, isize),
+        shift: (i32, i32, i32),
         text: &Text,
         area: &impl Area,
         cfg: &PrintCfg,
     ) {
-            for cursor in self.buf.iter_mut().skip(from) {
-                cursor.shift_by(shift, text, area, cfg);
-            }
+        for cursor in self.buf.iter_mut().skip(from) {
+            cursor.shift_by(shift, text, area, cfg);
+        }
     }
 
     pub(super) fn drain(&mut self) -> impl Iterator<Item = (Cursor, bool)> + '_ {
@@ -254,7 +254,7 @@ mod cursor {
         ui::{Area, Caret},
     };
 
-    /// A cursor in the text file. This is an editing cursor, not
+    /// A cursor in the text file. This is an editing cursor, -(not
     /// a printing cursor.
     #[derive(Default, Clone, Copy, Debug, Serialize, Deserialize)]
     pub struct Cursor {
@@ -288,7 +288,7 @@ mod cursor {
         }
 
         /// Internal horizontal movement function.
-        pub fn move_hor(&mut self, by: isize, text: &Text, area: &impl Area, cfg: &PrintCfg) {
+        pub fn move_hor(&mut self, by: i32, text: &Text, area: &impl Area, cfg: &PrintCfg) {
             let (Some(last), false) = (text.last_point(), by == 0) else {
                 return;
             };
@@ -309,7 +309,7 @@ mod cursor {
                 } else {
                     let (point, _) = text
                         .chars_rev(self.caret())
-                        .take(by.unsigned_abs())
+                        .take(by.unsigned_abs() as usize)
                         .last()
                         .unwrap();
                     point
@@ -322,7 +322,7 @@ mod cursor {
         }
 
         /// Internal vertical movement function.
-        pub fn move_ver(&mut self, by: isize, text: &Text, area: &impl Area, cfg: &PrintCfg) {
+        pub fn move_ver(&mut self, by: i32, text: &Text, area: &impl Area, cfg: &PrintCfg) {
             let (Some(last), false) = (text.last_point(), by == 0) else {
                 return;
             };
@@ -346,13 +346,7 @@ mod cursor {
         }
 
         /// Internal vertical movement function.
-        pub fn move_ver_wrapped(
-            &mut self,
-            by: isize,
-            text: &Text,
-            area: &impl Area,
-            cfg: &PrintCfg,
-        ) {
+        pub fn move_ver_wrapped(&mut self, by: i32, text: &Text, area: &impl Area, cfg: &PrintCfg) {
             if text.last_point().is_none() || by == 0 {
                 return;
             };
@@ -369,7 +363,7 @@ mod cursor {
                 area.print_iter(text.iter_fwd(line_start), cfg)
                     .skip_while(|(_, item)| item.byte() <= self.byte())
                     .filter_map(|(caret, item)| {
-                        wraps += caret.wrap as isize;
+                        wraps += caret.wrap as i32;
                         Some((caret, wraps)).zip(item.as_real_char())
                     })
                     .find_map(|((Caret { x, len, wrap }, wraps), (p, char))| {
@@ -390,7 +384,7 @@ mod cursor {
                 area.rev_print_iter(text.iter_rev(end), cfg)
                     .filter_map(|(Caret { x, wrap, .. }, item)| {
                         let old_wraps = wraps;
-                        wraps -= wrap as isize;
+                        wraps -= wrap as i32;
                         Some((x, old_wraps, wrap)).zip(item.as_real_char())
                     })
                     .find_map(|((x, wraps, wrap), (p, _))| {
@@ -412,7 +406,7 @@ mod cursor {
 
         pub fn shift_by(
             &mut self,
-            shift: (isize, isize, isize),
+            shift: (i32, i32, i32),
             text: &Text,
             area: &impl Area,
             cfg: &PrintCfg,
@@ -462,23 +456,23 @@ mod cursor {
 
         /// The byte (relative to the beginning of the file) of the
         /// caret. Indexed at 0.
-        pub fn byte(&self) -> usize {
+        pub fn byte(&self) -> u32 {
             self.caret.byte()
         }
 
         /// The char (relative to the beginning of the file) of the
         /// caret. Indexed at 0.
-        pub fn char(&self) -> usize {
+        pub fn char(&self) -> u32 {
             self.caret.char()
         }
 
         /// The column of the caret. Indexed at 0.
-        pub fn column(&self) -> usize {
+        pub fn col(&self) -> u32 {
             self.caret.vcol()
         }
 
         /// The line of the caret. Indexed at 0.
-        pub fn line(&self) -> usize {
+        pub fn line(&self) -> u32 {
             self.caret.line()
         }
 
@@ -491,7 +485,7 @@ mod cursor {
         /// This function will return the range that is supposed
         /// to be replaced, if `self.is_inclusive()`, this means that
         /// it will return one more byte at the end, i.e. start..=end.
-        pub fn range(&self, inclusive: bool) -> Range<usize> {
+        pub fn range(&self, inclusive: bool) -> Range<u32> {
             let anchor = self.anchor.unwrap_or(self.caret);
             let (start, end) = if anchor < self.caret {
                 (anchor.byte(), self.caret.byte())
@@ -567,9 +561,9 @@ mod cursor {
     #[derive(Default, Clone, Copy, Eq, Debug, Serialize, Deserialize)]
     pub struct VPoint {
         point: Point,
-        vcol: usize,
-        dcol: usize,
-        dwcol: usize,
+        vcol: u32,
+        dcol: u32,
+        dwcol: u32,
     }
 
     impl PartialOrd for VPoint {
@@ -591,32 +585,31 @@ mod cursor {
     }
 
     impl VPoint {
-        #[allow(unused)]
         fn new(point: Point, text: &Text, area: &impl Area, cfg: &PrintCfg) -> Self {
             let cfg = IterCfg::new(*cfg);
-            let dwcol = 0; // vcol(point, text, area, cfg);
-            let vcol = 0; //vcol(point, text, area, cfg.dont_wrap());
+            let dwcol = vcol(point, text, area, cfg);
+            let vcol = vcol(point, text, area, cfg.dont_wrap());
             Self { point, vcol, dcol: vcol, dwcol }
         }
 
-        fn byte(&self) -> usize {
+        fn byte(&self) -> u32 {
             self.point.byte()
         }
 
-        fn char(&self) -> usize {
+        fn char(&self) -> u32 {
             self.point.char()
         }
 
-        fn line(&self) -> usize {
+        fn line(&self) -> u32 {
             self.point.line()
         }
 
-        fn vcol(&self) -> usize {
+        fn vcol(&self) -> u32 {
             self.vcol
         }
     }
 
-    fn vcol(point: Point, text: &Text, area: &impl Area, cfg: IterCfg) -> usize {
+    fn vcol(point: Point, text: &Text, area: &impl Area, cfg: IterCfg) -> u32 {
         if let Some(after) = text.points_after(point) {
             area.rev_print_iter(text.iter_rev(after), cfg)
                 .find_map(|(caret, item)| item.part.is_char().then_some(caret.x))

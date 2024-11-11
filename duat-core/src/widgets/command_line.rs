@@ -235,11 +235,11 @@ impl<U: Ui> CmdLineMode<U> for RunCommands<U> {
             if commands::caller_exists(caller) {
                 let id = forms::id_of!("CallerExists");
                 text.insert_tag(0, Tag::PushForm(id), self.key);
-                text.insert_tag(caller.len(), Tag::PopForm(id), self.key);
+                text.insert_tag(caller.len() as u32, Tag::PopForm(id), self.key);
             } else {
                 let id = forms::id_of!("CallerNotFound");
                 text.insert_tag(0, Tag::PushForm(id), self.key);
-                text.insert_tag(caller.len(), Tag::PopForm(id), self.key);
+                text.insert_tag(caller.len() as u32, Tag::PopForm(id), self.key);
             }
         }
     }
@@ -354,8 +354,8 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
                 let span = err.span();
                 let id = crate::forms::id_of!("ParseCommandErr");
 
-                text.insert_tag(span.start.offset, Tag::PushForm(id), self.key);
-                text.insert_tag(span.end.offset, Tag::PopForm(id), self.key);
+                text.insert_tag(span.start.offset as u32, Tag::PushForm(id), self.key);
+                text.insert_tag(span.end.offset as u32, Tag::PopForm(id), self.key);
             }
         }
     }
