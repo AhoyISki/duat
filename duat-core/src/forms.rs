@@ -376,53 +376,59 @@ pub struct Form {
 
 #[rustfmt::skip]
 impl Form {
-    mimic_method_new!(with Color);
-    mimic_method_new!(on Color);
-    mimic_method_new!(underline Color );
-    mimic_method_new!(attribute Attribute );
-    mimic_method_new!(reset);
-    mimic_method_new!(bold);
-    mimic_method_new!(underlined);
-    mimic_method_new!(double_underlined);
-    mimic_method_new!(undercurled);
-    mimic_method_new!(underdashed);
-    mimic_method_new!(reverse);
-    mimic_method_new!(dim);
-    mimic_method_new!(italic);
-    mimic_method_new!(negative);
-    mimic_method_new!(slow_blink);
-    mimic_method_new!(rapid_blink);
-    mimic_method_new!(hidden);
-    mimic_method_new!(crossed_out);
-    mimic_method_new!(black on_black underline_black);
-    mimic_method_new!(dark_grey on_dark_grey underline_dark_grey);
-    mimic_method_new!(red on_red underline_red);
-    mimic_method_new!(dark_red on_dark_red underline_dark_red);
-    mimic_method_new!(green on_green underline_green);
-    mimic_method_new!(dark_green on_dark_green underline_dark_green);
-    mimic_method_new!(yellow on_yellow underline_yellow);
-    mimic_method_new!(dark_yellow on_dark_yellow underline_dark_yellow);
-    mimic_method_new!(blue on_blue underline_blue);
-    mimic_method_new!(dark_blue on_dark_blue underline_dark_blue);
-    mimic_method_new!(magenta on_magenta underline_magenta);
-    mimic_method_new!(dark_magenta on_dark_magenta underline_dark_magenta);
-    mimic_method_new!(cyan on_cyan underline_cyan);
-    mimic_method_new!(dark_cyan on_dark_cyan underline_dark_cyan);
-    mimic_method_new!(white on_white underline_white);
-    mimic_method_new!(grey on_grey underline_grey);
+    mimic_method_new!(/**a colored foreground*/ with Color);
+    mimic_method_new!(/**a colored background*/ on Color);
+    mimic_method_new!(/**a colored underlining*/ underline Color);
+    mimic_method_new!(/**an attribute*/ attribute Attribute);
+    mimic_method_new!(/**reset*/ reset);
+    mimic_method_new!(/**bold*/ bold);
+    mimic_method_new!(/**underlined*/ underlined);
+    mimic_method_new!(/**double_underlined*/ double_underlined);
+    mimic_method_new!(/**undercurled*/ undercurled);
+    mimic_method_new!(/**underdashed*/ underdashed);
+    mimic_method_new!(/**reverse*/ reverse);
+    mimic_method_new!(/**dim*/ dim);
+    mimic_method_new!(/**italic*/ italic);
+    mimic_method_new!(/**negative*/ negative);
+    mimic_method_new!(/**slow_blink*/ slow_blink);
+    mimic_method_new!(/**rapid_blink*/ rapid_blink);
+    mimic_method_new!(/**hidden*/ hidden);
+    mimic_method_new!(/**crossed_out*/ crossed_out);
+    mimic_method_new!(/**black*/ black on_black underline_black);
+    mimic_method_new!(/**dark_grey*/ dark_grey on_dark_grey underline_dark_grey);
+    mimic_method_new!(/**red*/ red on_red underline_red);
+    mimic_method_new!(/**dark_red*/ dark_red on_dark_red underline_dark_red);
+    mimic_method_new!(/**green*/ green on_green underline_green);
+    mimic_method_new!(/**dark_green*/ dark_green on_dark_green underline_dark_green);
+    mimic_method_new!(/**yellow*/ yellow on_yellow underline_yellow);
+    mimic_method_new!(/**dark_yellow*/ dark_yellow on_dark_yellow underline_dark_yellow);
+    mimic_method_new!(/**blue*/ blue on_blue underline_blue);
+    mimic_method_new!(/**dark_blue*/ dark_blue on_dark_blue underline_dark_blue);
+    mimic_method_new!(/**magenta*/ magenta on_magenta underline_magenta);
+    mimic_method_new!(/**dark_magenta*/ dark_magenta on_dark_magenta underline_dark_magenta);
+    mimic_method_new!(/**cyan*/ cyan on_cyan underline_cyan);
+    mimic_method_new!(/**dark_cyan*/ dark_cyan on_dark_cyan underline_dark_cyan);
+    mimic_method_new!(/**white*/ white on_white underline_white);
+    mimic_method_new!(/**grey*/ grey on_grey underline_grey);
 
-	/// Returns a new [`Form`]* with default style
+	/// Returns a new [`Form`] with a default style
 	///
-	/// * This method actually returns [`BuiltForm`]
+	/// This method actually returns [`BuiltForm`]
 	#[allow(clippy::new_ret_no_self)]
     pub fn new() -> BuiltForm {
         BuiltForm(Self { style: ContentStyle::new(), finished: false })
     }
 
+	/// Returns a new [`Form`] with a default _finished_ style
+	/// 
+    /// A finished style is one that cannot be superseeded. That is,
+    /// if this style sets a foreground, while it is active, new
+    /// styles may not modify the color of the foreground.
     pub fn finished() -> BuiltForm {
         BuiltForm(Self { style: ContentStyle::default(), finished: true })
     }
 
+	/// Makes `self` finished 
     fn as_finished(self) -> Self {
         Self { style: self.style, finished: true }
     }
@@ -440,42 +446,47 @@ pub struct BuiltForm(Form);
 
 #[rustfmt::skip]
 impl BuiltForm {
-    mimic_method_cycle!(with Color);
-    mimic_method_cycle!(on Color);
-    mimic_method_cycle!(underline Color );
-    mimic_method_cycle!(attribute Attribute );
-    mimic_method_cycle!(reset);
-    mimic_method_cycle!(bold);
-    mimic_method_cycle!(underlined);
-    mimic_method_cycle!(double_underlined);
-    mimic_method_cycle!(undercurled);
-    mimic_method_cycle!(underdashed);
-    mimic_method_cycle!(reverse);
-    mimic_method_cycle!(dim);
-    mimic_method_cycle!(italic);
-    mimic_method_cycle!(negative);
-    mimic_method_cycle!(slow_blink);
-    mimic_method_cycle!(rapid_blink);
-    mimic_method_cycle!(hidden);
-    mimic_method_cycle!(crossed_out);
-    mimic_method_cycle!(black on_black underline_black);
-    mimic_method_cycle!(dark_grey on_dark_grey underline_dark_grey);
-    mimic_method_cycle!(red on_red underline_red);
-    mimic_method_cycle!(dark_red on_dark_red underline_dark_red);
-    mimic_method_cycle!(green on_green underline_green);
-    mimic_method_cycle!(dark_green on_dark_green underline_dark_green);
-    mimic_method_cycle!(yellow on_yellow underline_yellow);
-    mimic_method_cycle!(dark_yellow on_dark_yellow underline_dark_yellow);
-    mimic_method_cycle!(blue on_blue underline_blue);
-    mimic_method_cycle!(dark_blue on_dark_blue underline_dark_blue);
-    mimic_method_cycle!(magenta on_magenta underline_magenta);
-    mimic_method_cycle!(dark_magenta on_dark_magenta underline_dark_magenta);
-    mimic_method_cycle!(cyan on_cyan underline_cyan);
-    mimic_method_cycle!(dark_cyan on_dark_cyan underline_dark_cyan);
-    mimic_method_cycle!(white on_white underline_white);
-    mimic_method_cycle!(grey on_grey underline_grey);
+    mimic_method_cycle!(/**Colors the foreground of this [`Form`]*/ with Color);
+    mimic_method_cycle!(/**Colors the background of this [`Form`]*/ on Color);
+    mimic_method_cycle!(/**Colors the underlining of this [`Form`]*/ underline Color );
+    mimic_method_cycle!(/**Applies an attribute to this [`Form`]*/ attribute Attribute );
+    mimic_method_cycle!(/**reset*/ reset);
+    mimic_method_cycle!(/**bold*/ bold);
+    mimic_method_cycle!(/**underlined*/ underlined);
+    mimic_method_cycle!(/**double_underlined*/ double_underlined);
+    mimic_method_cycle!(/**undercurled*/ undercurled);
+    mimic_method_cycle!(/**underdashed*/ underdashed);
+    mimic_method_cycle!(/**reverse*/ reverse);
+    mimic_method_cycle!(/**dim*/ dim);
+    mimic_method_cycle!(/**italic*/ italic);
+    mimic_method_cycle!(/**negative*/ negative);
+    mimic_method_cycle!(/**slow_blink*/ slow_blink);
+    mimic_method_cycle!(/**rapid_blink*/ rapid_blink);
+    mimic_method_cycle!(/**hidden*/ hidden);
+    mimic_method_cycle!(/**crossed_out*/ crossed_out);
+    mimic_method_cycle!(/**black*/ black on_black underline_black);
+    mimic_method_cycle!(/**dark_grey*/ dark_grey on_dark_grey underline_dark_grey);
+    mimic_method_cycle!(/**red*/ red on_red underline_red);
+    mimic_method_cycle!(/**dark_red*/ dark_red on_dark_red underline_dark_red);
+    mimic_method_cycle!(/**green*/ green on_green underline_green);
+    mimic_method_cycle!(/**dark_green*/ dark_green on_dark_green underline_dark_green);
+    mimic_method_cycle!(/**yellow*/ yellow on_yellow underline_yellow);
+    mimic_method_cycle!(/**dark_yellow*/ dark_yellow on_dark_yellow underline_dark_yellow);
+    mimic_method_cycle!(/**blue*/ blue on_blue underline_blue);
+    mimic_method_cycle!(/**dark_blue*/ dark_blue on_dark_blue underline_dark_blue);
+    mimic_method_cycle!(/**magenta*/ magenta on_magenta underline_magenta);
+    mimic_method_cycle!(/**dark_magenta*/ dark_magenta on_dark_magenta underline_dark_magenta);
+    mimic_method_cycle!(/**cyan*/ cyan on_cyan underline_cyan);
+    mimic_method_cycle!(/**dark_cyan*/ dark_cyan on_dark_cyan underline_dark_cyan);
+    mimic_method_cycle!(/**white*/ white on_white underline_white);
+    mimic_method_cycle!(/**grey*/ grey on_grey underline_grey);
 
-    pub fn as_final(self) -> Self {
+	/// Makes this [`Form`] finished
+	/// 
+    /// A finished style is one that cannot be superseeded. That is,
+    /// if this style sets a foreground, while it is active, new
+    /// styles may not modify the color of the foreground.
+    pub fn finished(self) -> Self {
         Self(Form { finished: true, ..self.0 })
     }
 }
@@ -897,37 +908,99 @@ fn would_be_circular(inner: &RwLockWriteGuard<InnerPalette>, referee: usize, ref
 
 /// Mimics [`ContentStyle`] methods for the [`Form`] type
 macro mimic_method_new {
-    ($method:ident $type:ty) => {
+    (#[$attr:meta] $method:ident $type:ty) => {
+        /// New [`Form`] with
+        #[$attr]
         pub fn $method(val: $type) -> BuiltForm {
-            let style = ContentStyle::new();
+            let style = ContentStyle::default();
             BuiltForm(Form { style: Stylize::$method(style, val), finished: false })
         }
     },
 
-    ($($method:ident)+) => {
-        $(
-            pub fn $method() -> BuiltForm {
-                let style = ContentStyle::new();
-                BuiltForm(Form { style: Stylize::$method(style), finished: false })
-            }
-        )*
+    (#[$attr:meta] $method:ident) => {
+        /// New [`Form`] with the
+        #[$attr]
+        /// atribute
+        pub fn $method() -> BuiltForm {
+            let style = ContentStyle::default();
+            BuiltForm(Form { style: Stylize::$method(style), finished: false })
+        }
+    },
+
+    (#[$attr:meta] $fg:ident $bg:ident $ul:ident) => {
+        /// New [`Form`] with a
+        #[$attr]
+        /// foreground
+        pub fn $fg() -> BuiltForm {
+            let style = ContentStyle::default();
+            BuiltForm(Form { style: Stylize::$fg(style), finished: false })
+        }
+
+        /// New [`Form`] with a
+        #[$attr]
+        /// background
+        pub fn $bg() -> BuiltForm {
+            let style = ContentStyle::default();
+            BuiltForm(Form { style: Stylize::$bg(style), finished: false })
+        }
+
+        /// New [`Form`] with a
+        #[$attr]
+        /// underlining
+        ///
+        /// Do note that this feature may not be supported in all [`Ui`]s.
+        ///
+        /// [`Ui`]: crate::ui::Ui
+        pub fn $ul() -> BuiltForm {
+            let style = ContentStyle::default();
+            BuiltForm(Form { style: Stylize::$ul(style), finished: false })
+        }
     }
 }
 
 macro mimic_method_cycle {
-    ($method:ident $type:ty) => {
+    (#[$attr:meta] $method:ident $type:ty) => {
+        #[$attr]
         pub fn $method(self, val: $type) -> BuiltForm {
             let Form { style, finished } = self.0;
             BuiltForm(Form { style: Stylize::$method(style, val), finished })
         }
     },
 
-    ($($method:ident)+) => {
-        $(
-            pub fn $method(self) -> BuiltForm {
-                let Form { style, finished } = self.0;
-                BuiltForm(Form { style: Stylize::$method(style), finished })
-            }
-        )*
+    (#[$attr:meta] $method:ident) => {
+        /// Applies the
+        #[$attr]
+        /// atribute to this [`Form`]
+        pub fn $method(self) -> BuiltForm {
+            let Form { style, finished } = self.0;
+            BuiltForm(Form { style: Stylize::$method(style), finished })
+        }
+    },
+
+    (#[$attr:meta] $fg:ident $bg:ident $ul:ident) => {
+        /// Turns the foreground of this [`Form`]
+        #[$attr]
+        pub fn $fg(self) -> BuiltForm {
+            let Form { style, finished } = self.0;
+            BuiltForm(Form { style: Stylize::$fg(style), finished })
+        }
+
+		/// Turns the background of this [`Form`]
+        #[$attr]
+        pub fn $bg(self) -> BuiltForm {
+            let Form { style, finished } = self.0;
+            BuiltForm(Form { style: Stylize::$bg(style), finished })
+        }
+
+		/// Turns the underlining of this [`Form`]
+        #[$attr]
+        ///
+        /// Do note that this feature may not be supported in all [`Ui`]s.
+        ///
+        /// [`Ui`]: crate::ui::Ui
+        pub fn $ul(self) -> BuiltForm {
+            let Form { style, finished } = self.0;
+            BuiltForm(Form { style: Stylize::$ul(style), finished })
+        }
     }
 }

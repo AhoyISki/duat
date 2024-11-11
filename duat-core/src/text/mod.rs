@@ -86,7 +86,7 @@ use history::History;
 use records::Records;
 use tags::{FwdTags, RevTags};
 
-use self::tags::{Keys, Tags};
+use self::tags::Tags;
 pub use self::{
     builder::{AlignCenter, AlignLeft, AlignRight, Builder, Ghost, err, hint, ok, text},
     cfg::*,
@@ -95,7 +95,7 @@ pub use self::{
     part::Part,
     point::{Point, TwoPoints, utf8_char_width},
     search::{RegexPattern, Searcher},
-    tags::{Key, Tag, ToggleId},
+    tags::{Key, Keys, Tag, ToggleId},
 };
 use crate::{
     DuatError,
