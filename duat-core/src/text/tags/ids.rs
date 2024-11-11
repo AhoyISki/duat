@@ -187,7 +187,7 @@ pub trait Keys: Clone + PartialEq + Eq {
     /// All [`Key`]s that should be searched
     fn range(self) -> Range<Key>;
 
-	/// Wether this range contains a given [`Key`]
+    /// Wether this range contains a given [`Key`]
     fn contains(self, key: Key) -> bool {
         let range = self.range();
         key >= range.start && range.end > key

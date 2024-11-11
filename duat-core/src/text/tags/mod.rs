@@ -392,6 +392,10 @@ impl Tags {
     pub fn ghosts_total_at(&self, at: u32) -> Option<Point> {
         self.iter_only_at(at).fold(None, |p, tag| match tag {
             RawTag::GhostText(_, id) => {
+                if at == 0 {
+                    crate::log_info!("{p:?},{tag:?}");
+                }
+
                 let max_point = self.texts.get(&id).unwrap().len();
                 Some(p.map_or(max_point, |p| p + max_point))
             }

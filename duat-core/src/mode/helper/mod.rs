@@ -10,7 +10,7 @@ use crate::{
     binary_search_by_key_and_index,
     cfg::PrintCfg,
     data::RwData,
-    text::{Change, Point, RegexPattern, Searcher, Text},
+    text::{Change, Key, Keys, Point, RegexPattern, Searcher, Tag, Text},
     ui::Area,
     widgets::{File, Widget},
 };
@@ -193,6 +193,8 @@ where
     W: Widget<A::Ui> + 'static,
     A: Area,
 {
+    ////////// Editing functions
+
     /// Edits on the `nth` [`Cursor`]'s selection
     ///
     /// Since the editing function takes [`Editor`] as an argument,
@@ -259,6 +261,22 @@ where
                 change.shift_by(shift);
             }
         }
+    }
+
+    /// Edits on the main [`Cursor`]'s selection
+    ///
+    /// Since the editing function takes [`Editor`] as an argument,
+    /// you cannot change the selection of the [`Cursor`].
+    ///
+    /// If you want to move the main cursor, see [`move_main`],
+    /// if you want to edit on the `nth` cursor, see [`edit_nth`],
+    /// if you want to edit each cursor, see [`edit_each`].
+    ///
+    /// [`move_main`]: Self::move_main
+    /// [`edit_nth`]: Self::edit_nth
+    /// [`edit_each`]: Self::edit_each
+    pub fn edit_main(&mut self, edit: impl FnOnce(&mut Editor<A, W>)) {
+        self.edit_nth(edit, self.cursors.main_index());
     }
 
     /// Edits on each of the [`Cursor`]'s selection
@@ -365,6 +383,8 @@ where
         }
     }
 
+    ////////// Moving functions
+
     /// Moves the nth [`Cursor`]'s selection
     ///
     /// Since the moving function takes [`Mover`] as an argument, this
@@ -400,6 +420,25 @@ where
         if let Some(cursor) = cursor {
             self.cursors.insert(n, is_main, cursor);
         }
+    }
+
+    /// Moves the main [`Cursor`]'s selection
+    ///
+    /// Since the moving function takes [`Mover`] as an argument, this
+    /// method cannot be used to change the [`Text`] in any way.
+    ///
+    /// At the end of the movement, if the cursor intersects any
+    /// other, they will be merged into one.
+    ///
+    /// If you want to move the main cursor, see [`edit_main`],
+    /// if you want to move the main cursor, see [`move_main`], if you
+    /// want to move each cursor, see [`move_each`].
+    ///
+    /// [`edit_main`]: Self::edit_main
+    /// [`move_main`]: Self::move_main
+    /// [`move_each`]: Self::move_each
+    pub fn move_main<_T>(&mut self, mov: impl FnOnce(Mover<A, S>) -> _T) {
+        self.move_nth(self.cursors.main_index(), mov);
     }
 
     /// Moves each [`Cursor`]'s selection
@@ -440,68 +479,33 @@ where
         }
     }
 
-    /// Edits on the main [`Cursor`]'s selection
-    ///
-    /// Since the editing function takes [`Editor`] as an argument,
-    /// you cannot change the selection of the [`Cursor`].
-    ///
-    /// If you want to move the main cursor, see [`move_main`],
-    /// if you want to edit on the `nth` cursor, see [`edit_nth`],
-    /// if you want to edit each cursor, see [`edit_each`].
-    ///
-    /// [`move_main`]: Self::move_main
-    /// [`edit_nth`]: Self::edit_nth
-    /// [`edit_each`]: Self::edit_each
-    pub fn edit_main(&mut self, edit: impl FnOnce(&mut Editor<A, W>)) {
-        self.edit_nth(edit, self.cursors.main_index());
+    ////////// Text functions
+
+    /// Inserts a [`Tag`] at the given position
+    pub fn insert_tag(&mut self, at: u32, tag: Tag, key: Key) {
+        self.widget.write().text_mut().insert_tag(at, tag, key);
     }
 
-    /// Moves the main [`Cursor`]'s selection
+    /// Removes all the [`Tag`]s from a position related to a [key]
     ///
-    /// Since the moving function takes [`Mover`] as an argument, this
-    /// method cannot be used to change the [`Text`] in any way.
+    /// [key]: Keys
+    pub fn remove_tags_on(&mut self, at: u32, keys: impl Keys) {
+        self.widget.write().text_mut().remove_tags_on(at, keys);
+    }
+
+    /// Removes the [`Tag`]s of a [key] from the whole [`Text`]
     ///
-    /// At the end of the movement, if the cursor intersects any
-    /// other, they will be merged into one.
+    /// # Caution
     ///
-    /// If you want to move the main cursor, see [`edit_main`],
-    /// if you want to move the main cursor, see [`move_main`], if you
-    /// want to move each cursor, see [`move_each`].
+    /// While it is fine to do this on your own widgets, you should
+    /// refrain from using this function in a [`File`]s [`Text`], as
+    /// it must iterate over all tags in the file, so if there are a
+    /// lot of other tags, this operation may be slow.
     ///
-    /// [`edit_main`]: Self::edit_main
-    /// [`move_main`]: Self::move_main
-    /// [`move_each`]: Self::move_each
-    pub fn move_main<_T>(&mut self, mov: impl FnOnce(Mover<A, S>) -> _T) {
-        self.move_nth(self.cursors.main_index(), mov);
-    }
-
-    /// Removes all but the main cursor from the list
-    pub fn remove_extra_cursors(&mut self) {
-        self.cursors.remove_extras();
-    }
-
-    pub fn rotate_main(&mut self, amount: i32) {
-        self.cursors.rotate_main(amount);
-    }
-
-    /// The [`Cursors`] in use
-    pub fn cursors(&self) -> &Cursors {
-        self.cursors
-    }
-
-    /// The [`PrintCfg`] in use
-    pub fn cfg(&self) -> PrintCfg {
-        self.cfg
-    }
-
-    /// Returns the lenght of the [`Text`], in [`Point`]
-    pub fn len(&self) -> Point {
-        self.widget.read().text().len()
-    }
-
-    /// Returns the position of the last [`char`] if there is one
-    pub fn last_point(&self) -> Option<Point> {
-        self.widget.read().text().last_point()
+    /// [key]: Keys
+    /// [`File`]: crate::widgets::File
+    pub fn remove_tags_of(&mut self, keys: impl Keys) {
+        self.widget.write().text_mut().remove_tags_of(keys);
     }
 
     /// Begins a new moment
@@ -529,6 +533,37 @@ where
         let cfg = widget.print_cfg();
         widget.text_mut().redo(self.area, self.cursors, cfg);
         widget.update(self.area);
+    }
+
+    /// Returns the lenght of the [`Text`], in [`Point`]
+    pub fn text_len(&self) -> Point {
+        self.widget.read().text().len()
+    }
+
+    /// Returns the position of the last [`char`] if there is one
+    pub fn last_point(&self) -> Option<Point> {
+        self.widget.read().text().last_point()
+    }
+
+    ////////// Cursors functions
+
+    /// Removes all but the main cursor from the list
+    pub fn remove_extra_cursors(&mut self) {
+        self.cursors.remove_extras();
+    }
+
+    pub fn rotate_main(&mut self, amount: i32) {
+        self.cursors.rotate_main(amount);
+    }
+
+    /// The [`Cursors`] in use
+    pub fn cursors(&self) -> &Cursors {
+        self.cursors
+    }
+
+    /// The [`PrintCfg`] in use
+    pub fn cfg(&self) -> PrintCfg {
+        self.cfg
     }
 }
 

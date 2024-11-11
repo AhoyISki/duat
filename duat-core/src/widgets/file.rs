@@ -235,9 +235,13 @@ impl File {
         &self.text
     }
 
-    /// The mutable [`Text`] of the [`File`]
     pub fn text_mut(&mut self) -> &mut Text {
         &mut self.text
+    }
+
+    /// The mutable [`Text`] of the [`File`]
+    pub fn print_cfg(&self) -> PrintCfg {
+        self.cfg
     }
 
     /// Wether o not the [`File`] exists or not

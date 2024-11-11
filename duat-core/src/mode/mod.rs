@@ -36,7 +36,7 @@ mod switch {
         hooks::{self, ModeSwitched},
         ui::{Ui, Window},
         widget_entry,
-        widgets::{CmdLineMode, CmdLine, File, Node},
+        widgets::{CmdLine, CmdLineMode, File, Node},
     };
 
     static PRINTING_IS_STOPPED: AtomicBool = AtomicBool::new(false);
@@ -203,6 +203,12 @@ mod switch {
                 }
             };
         }
+
+        let widget = context::cur_widget::<U>().unwrap();
+        widget.mutate_data_as::<M::Widget, ()>(|w, a, c| {
+            let mut c = c.write();
+            mode.on_switch(w, a, &mut c);
+        });
 
         crate::mode::set_send_key::<M, U>();
 
@@ -521,6 +527,7 @@ mod switch {
 pub trait Mode<U: Ui>: Sized + Clone + Send + Sync + 'static {
     type Widget: Widget<U>;
 
+    /// Sends a [`KeyEvent`] to this [`Mode`]
     fn send_key(
         &mut self,
         key: KeyEvent,
@@ -529,11 +536,16 @@ pub trait Mode<U: Ui>: Sized + Clone + Send + Sync + 'static {
         cursors: &mut Cursors,
     );
 
+    /// A function to trigger when switching to this [`Mode`]
+    ///
+    /// This can be some initial setup, like adding [`Tag`]s to the
+    /// [`Text`] in order to show some important visual help for that
+    /// specific [`Mode`].
+    ///
+    /// [`Tag`]: crate::text::Tag
+    /// [`Text`]: crate::text::Text
     #[allow(unused)]
-    fn on_focus(&mut self, area: &U::Area) {}
-
-    #[allow(unused)]
-    fn on_unfocus(&mut self, area: &U::Area) {}
+    fn on_switch(&mut self, widget: &RwData<Self::Widget>, area: &U::Area, cursors: &mut Cursors) {}
 }
 
 /// This is a macro for matching keys in patterns:
