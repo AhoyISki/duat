@@ -588,7 +588,7 @@ mod cursor {
         fn new(point: Point, text: &Text, area: &impl Area, cfg: &PrintCfg) -> Self {
             let cfg = IterCfg::new(*cfg);
             let dwcol = vcol(point, text, area, cfg);
-            let vcol = 0; //vcol(point, text, area, cfg.dont_wrap());
+            let vcol = vcol(point, text, area, cfg.dont_wrap());
             Self { point, vcol, dcol: vcol, dwcol }
         }
 

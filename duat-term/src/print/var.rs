@@ -1,6 +1,6 @@
 use std::sync::{
-    atomic::{AtomicBool, AtomicU32, Ordering},
     Arc,
+    atomic::{AtomicBool, AtomicU32, Ordering},
 };
 
 use cassowary::Variable;
@@ -214,7 +214,7 @@ impl std::ops::Sub<f64> for &VarValue {
 impl std::ops::Sub<&VarValue> for f64 {
     type Output = cassowary::Expression;
 
-	#[allow(clippy::suspicious_arithmetic_impl)]
+    #[allow(clippy::suspicious_arithmetic_impl)]
     fn sub(self, rhs: &VarValue) -> cassowary::Expression {
         self + rhs.var
     }

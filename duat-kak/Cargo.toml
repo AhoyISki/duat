@@ -11,4 +11,4 @@ categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2021"
 
 [dependencies]
-duat-core = { path = "../duat-core/", version = ">=0.1.0" }
+duat-core = { path = "../duat-core/", version = ">=0.2.0" }

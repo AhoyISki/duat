@@ -17,8 +17,8 @@ a very short delay.
 Duat provides a lot of features, trying to be as configurable as
 possible, here are some of the things that Duat is capable of:
 
-* Completely custom input methods, with full Vim style remapping
-* Completely custom widgets, with user created input methods
+* Completely custom modes, with full Vim style remapping
+* Completely custom widgets, with user created modes
 * Arbitrary concealment of text, and arbitrary ghost text
 * Custom hooks, whose activation is up to the creator
 * Multi UI adaptability, although for now, only a terminal UI has
@@ -67,7 +67,7 @@ use duat_kak::{Insert, Normal};
 
 fn setup() {
     mode::set_default(Normal);
-    map::<Insert>(keys!("jk"), keys!(Esc));
+    map::<Insert>("jk", "<Esc>");
 
     print::wrap_on_width();
 
@@ -100,15 +100,15 @@ fn setup() {
 This configuration does the following things:
 
 * Changes the [default mode][__link0] to a Kakoune inspired `Normal`;
-* [Maps][__link1] jk to [esc][__link2];
-* [Changes][__link3] the wrapping;
-* [Removes][__link4] the hook [group][__link5] “FileWidgets”;
-* [Pushes][__link6] a [vertical rule][__link7] and [line numbers][__link8] to every file;
+* [Maps][__link1] jk to esc;
+* [Changes][__link2] the wrapping;
+* [Removes][__link3] the hook [group][__link4] “FileWidgets”;
+* [Pushes][__link5] a [vertical rule][__link6] and [line numbers][__link7] to every file;
 * Removes the hook group “WindowWidgets”;
-* Pushes a [custom status line][__link9] and [command line][__link10] to the bottom
+* Pushes a [custom status line][__link8] and [command line][__link9] to the bottom
   of the screen;
-* [Adds][__link11] hooks for [mode changes][__link12] in Duat;
-* [Changes][__link13] the [style][__link14] of the mode printed on the
+* [Adds][__link10] hooks for [mode changes][__link11] in Duat;
+* [Changes][__link12] the [style][__link13] of the mode printed on the
   status line;
 
 These are some of the ways you can configure Duat. You might
@@ -136,7 +136,7 @@ let text = text!([MyForm] "Waow it's my form! " [] "not anymore 😢");
 
 In this example, I’m using the “MyForm” form in order to style the
 text, while `[]` reverts back to the “Default” form. The
-[`status!`][__link15] macro works similarly.
+[`status!`][__link14] macro works similarly.
 
 Duat also has a simple command system, that lets you add commands
 with arguments supported by Rust’s type system:
@@ -226,20 +226,19 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG4o1F1NeB2tPGywwk9sQ9szQGzU44AwsYOcnG29Aesm4EjJAYWSCgmRkdWF0ZTAuMS4zgmlkdWF0X2NvcmVlMC4xLjM
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG3jKs8Ry6S9HG-U1HOgXvPbCG5xPx_fVleseG-3BECEyC3EvYWSCgmRkdWF0ZTAuMS4zgmlkdWF0X2NvcmVlMC4yLjA
  [__link0]: https://docs.rs/duat/0.1.3/duat/?search=mode::set_default
  [__link1]: https://docs.rs/duat/0.1.3/duat/?search=prelude::map
- [__link10]: https://docs.rs/duat/0.1.3/duat/?search=prelude::CommandLine
- [__link11]: https://docs.rs/duat/0.1.3/duat/?search=hooks::add
- [__link12]: https://docs.rs/duat/0.1.3/duat/?search=hooks::ModeSwitched
- [__link13]: https://docs.rs/duat/0.1.3/duat/?search=forms::set
- [__link14]: https://docs.rs/duat/0.1.3/duat/?search=forms::Form
- [__link15]: https://docs.rs/duat/0.1.3/duat/?search=prelude::status
- [__link2]: https://docs.rs/duat/0.1.3/duat/?search=prelude::keys
- [__link3]: https://docs.rs/duat/0.1.3/duat/?search=prelude::print::wrap_on_width
- [__link4]: https://docs.rs/duat/0.1.3/duat/?search=hooks::remove
- [__link5]: https://docs.rs/duat/0.1.3/duat/?search=hooks::add_grouped
- [__link6]: https://docs.rs/duat_core/0.1.3/duat_core/?search=ui::FileBuilder
- [__link7]: https://docs.rs/duat/0.1.3/duat/?search=prelude::VertRule
- [__link8]: https://docs.rs/duat/0.1.3/duat/?search=prelude::LineNumbers
- [__link9]: https://docs.rs/duat/0.1.3/duat/?search=prelude::status
+ [__link10]: https://docs.rs/duat/0.1.3/duat/?search=hooks::add
+ [__link11]: https://docs.rs/duat/0.1.3/duat/?search=hooks::ModeSwitched
+ [__link12]: https://docs.rs/duat/0.1.3/duat/?search=forms::set
+ [__link13]: https://docs.rs/duat/0.1.3/duat/?search=forms::Form
+ [__link14]: https://docs.rs/duat/0.1.3/duat/?search=prelude::status
+ [__link2]: https://docs.rs/duat/0.1.3/duat/?search=prelude::print::wrap_on_width
+ [__link3]: https://docs.rs/duat/0.1.3/duat/?search=hooks::remove
+ [__link4]: https://docs.rs/duat/0.1.3/duat/?search=hooks::add_grouped
+ [__link5]: https://docs.rs/duat_core/0.2.0/duat_core/?search=ui::FileBuilder
+ [__link6]: https://docs.rs/duat/0.1.3/duat/?search=prelude::VertRule
+ [__link7]: https://docs.rs/duat/0.1.3/duat/?search=prelude::LineNumbers
+ [__link8]: https://docs.rs/duat/0.1.3/duat/?search=prelude::status
+ [__link9]: https://docs.rs/duat/0.1.3/duat/?search=prelude::CommandLine
