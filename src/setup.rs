@@ -11,11 +11,11 @@ use std::sync::{
 };
 
 use duat_core::{
+    cfg::PrintCfg,
     context::{CurFile, CurWidget},
     data::RwData,
     mode::Regular,
     session::SessionCfg,
-    text::PrintCfg,
     ui::{Event, Ui as TraitUi, Window},
     widgets::{File, ShowNotifications, Widget},
 };

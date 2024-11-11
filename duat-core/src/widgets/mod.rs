@@ -50,20 +50,19 @@ use std::sync::{
 };
 
 pub use self::{
-    command_line::{
-        CmdLineMode, CmdLine, CmdLineCfg, IncSearch, RunCommands, ShowNotifications,
-    },
+    command_line::{CmdLine, CmdLineCfg, CmdLineMode, IncSearch, RunCommands, ShowNotifications},
     file::{File, FileCfg},
     line_numbers::{LineNumbers, LineNumbersCfg},
     status_line::{State, StatusLine, StatusLineCfg, common, status},
 };
 use crate::{
+    cfg::PrintCfg,
     context::FileParts,
     data::{Data, RwData},
     forms,
     hooks::{self, FocusedOn, UnfocusedFrom},
     mode::Cursors,
-    text::{PrintCfg, Text},
+    text::Text,
     ui::{Area, PushSpecs, Ui},
 };
 

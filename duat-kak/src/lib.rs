@@ -3,13 +3,14 @@
 use std::{ops::RangeInclusive, sync::LazyLock};
 
 use duat_core::{
+    cfg::WordChars,
     cmd, context,
     data::{RwData, RwLock},
     mode::{
         self, Cursors, EditHelper, ExtendFwd, ExtendRev, Fwd, IncSearcher, KeyCode::*,
         KeyEvent as Event, KeyMod as Mod, Mode, Rev, key,
     },
-    text::{Point, WordChars, err},
+    text::{Point, err},
     ui::{Area, Ui},
     widgets::{File, IncSearch, RunCommands},
 };
@@ -375,9 +376,7 @@ impl<U: Ui> Mode<U> for Insert {
         match key {
             key!(Char(char)) => {
                 helper.edit_each(|e| e.insert(char));
-                helper.move_each(|mut m| {
-                    m.move_hor(1)
-                });
+                helper.move_each(|mut m| m.move_hor(1));
             }
             key!(Char(char), Mod::SHIFT) => {
                 helper.edit_each(|e| e.insert(char));

@@ -19,12 +19,13 @@ use parking_lot::RwLock;
 
 use super::File;
 use crate::{
+    cfg::PrintCfg,
     cmd,
     data::{RoData, RwData, context},
     forms::{self, Form},
     hooks,
     mode::{self, Command, Cursors, IncSearcher},
-    text::{Ghost, Key, PrintCfg, Searcher, Tag, Text, text},
+    text::{Ghost, Key, Searcher, Tag, Text, text},
     ui::{PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
 };
@@ -153,7 +154,7 @@ impl<U: Ui> Widget<U> for CmdLine<U> {
         &mut self.text
     }
 
-    fn print_cfg(&self) -> crate::text::PrintCfg {
+    fn print_cfg(&self) -> PrintCfg {
         PrintCfg::default_for_input().with_forced_scrolloff()
     }
 

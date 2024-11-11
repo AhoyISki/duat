@@ -14,8 +14,9 @@
 use std::{fs, io::ErrorKind, path::PathBuf};
 
 use crate::{
+    cfg::{IterCfg, PrintCfg},
     forms,
-    text::{IterCfg, PrintCfg, Text},
+    text::Text,
     ui::{Area, PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
 };

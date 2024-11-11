@@ -12,7 +12,7 @@ use super::{
 };
 use crate::mode::Cursor;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct Item {
     pub real: Point,
     pub ghost: Option<Point>,

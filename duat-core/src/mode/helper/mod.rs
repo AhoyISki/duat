@@ -8,8 +8,9 @@
 pub use self::cursors::{Cursor, Cursors};
 use crate::{
     binary_search_by_key_and_index,
+    cfg::PrintCfg,
     data::RwData,
-    text::{Change, Point, PrintCfg, RegexPattern, Searcher, Text},
+    text::{Change, Point, RegexPattern, Searcher, Text},
     ui::Area,
     widgets::{File, Widget},
 };

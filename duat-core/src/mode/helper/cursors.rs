@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize, de::Visitor, ser::SerializeSeq};
 
 pub use self::cursor::Cursor;
 use crate::{
-    text::{Point, PrintCfg, Text},
+    cfg::PrintCfg,
+    text::{Point, Text},
     ui::Area,
 };
 
@@ -250,7 +251,8 @@ mod cursor {
     use serde::{Deserialize, Serialize};
 
     use crate::{
-        text::{IterCfg, Point, PrintCfg, Text},
+        cfg::{IterCfg, PrintCfg},
+        text::{Point, Text},
         ui::{Area, Caret},
     };
 

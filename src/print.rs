@@ -2,7 +2,7 @@
 //!
 //! [`File`]: crate::widgets::File
 #[allow(unused_imports)]
-use duat_core::text::{word_chars as w_chars, PrintCfg, WordChars};
+use duat_core::cfg::{PrintCfg, WordChars, word_chars as w_chars};
 
 use crate::setup::PRINT_CFG;
 

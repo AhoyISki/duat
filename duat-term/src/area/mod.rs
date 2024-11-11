@@ -8,9 +8,10 @@ use crossterm::{
 };
 use duat_core::{
     cache::{Deserialize, Serialize},
+    cfg::{IterCfg, PrintCfg},
     data::RwData,
     forms::Painter,
-    text::{Item, Iter, IterCfg, Part, Point, PrintCfg, RevIter, Text},
+    text::{Item, Iter, Part, Point, RevIter, Text},
     ui::{self, Axis, Caret, Constraint, PushSpecs},
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};

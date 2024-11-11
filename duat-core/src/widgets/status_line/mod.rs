@@ -22,9 +22,10 @@ use common::{main_col, main_line, selections_fmt};
 
 pub use self::state::State;
 use crate::{
+    cfg::PrintCfg,
     context::{self, FileReader},
     forms::{self, Form},
-    text::{AlignCenter, AlignRight, Builder, PrintCfg, Tag, Text, text},
+    text::{AlignCenter, AlignRight, Builder, Tag, Text, text},
     ui::{PushSpecs, Ui},
     widgets::{File, Widget, WidgetCfg},
 };

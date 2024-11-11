@@ -155,6 +155,7 @@ pub mod session;
 pub mod text;
 pub mod ui;
 pub mod widgets;
+pub mod cfg;
 
 /// A plugin for Duat
 ///

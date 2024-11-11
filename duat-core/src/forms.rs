@@ -383,9 +383,6 @@ impl Form {
     mimic_method_new!(/**reset*/ reset);
     mimic_method_new!(/**bold*/ bold);
     mimic_method_new!(/**underlined*/ underlined);
-    mimic_method_new!(/**double_underlined*/ double_underlined);
-    mimic_method_new!(/**undercurled*/ undercurled);
-    mimic_method_new!(/**underdashed*/ underdashed);
     mimic_method_new!(/**reverse*/ reverse);
     mimic_method_new!(/**dim*/ dim);
     mimic_method_new!(/**italic*/ italic);
@@ -428,6 +425,33 @@ impl Form {
         BuiltForm(Self { style: ContentStyle::default(), finished: true })
     }
 
+    /// New [`Form`] with the double_underlined atribute
+    pub fn double_underlined() -> BuiltForm {
+        let style = ContentStyle::default();
+        BuiltForm(Form {
+            style: Stylize::attribute(style, Attribute::DoubleUnderlined),
+            finished: false
+        })
+    }
+
+    /// New [`Form`] with the undercurled atribute
+    pub fn undercurled() -> BuiltForm {
+        let style = ContentStyle::default();
+        BuiltForm(Form {
+            style: Stylize::attribute(style, Attribute::Undercurled),
+            finished: false
+        })
+    }
+
+    /// New [`Form`] with the underdashed atribute
+    pub fn underdashed() -> BuiltForm {
+        let style = ContentStyle::default();
+        BuiltForm(Form {
+            style: Stylize::attribute(style, Attribute::Underdashed),
+            finished: false
+        })
+    }
+
 	/// Makes `self` finished 
     fn as_finished(self) -> Self {
         Self { style: self.style, finished: true }
@@ -453,9 +477,6 @@ impl BuiltForm {
     mimic_method_cycle!(/**reset*/ reset);
     mimic_method_cycle!(/**bold*/ bold);
     mimic_method_cycle!(/**underlined*/ underlined);
-    mimic_method_cycle!(/**double_underlined*/ double_underlined);
-    mimic_method_cycle!(/**undercurled*/ undercurled);
-    mimic_method_cycle!(/**underdashed*/ underdashed);
     mimic_method_cycle!(/**reverse*/ reverse);
     mimic_method_cycle!(/**dim*/ dim);
     mimic_method_cycle!(/**italic*/ italic);
@@ -488,6 +509,30 @@ impl BuiltForm {
     /// styles may not modify the color of the foreground.
     pub fn finished(self) -> Self {
         Self(Form { finished: true, ..self.0 })
+    }
+
+    /// Applies the double_underlined attribute to this [`Form`]
+    pub fn double_underlined(self) -> Self {
+        Self(Form {
+            style: Stylize::attribute(self.style, Attribute::DoubleUnderlined),
+            finished: false
+        })
+    }
+
+    /// Applies the undercurled attribute to this [`Form`]
+    pub fn undercurled(self) -> Self {
+        Self(Form {
+            style: Stylize::attribute(self.style, Attribute::Undercurled),
+            finished: false
+        })
+    }
+
+    /// Applies the underdashed attribute to this [`Form`]
+    pub fn underdashed(self) -> Self {
+        Self(Form {
+            style: Stylize::attribute(self.style, Attribute::Underdashed),
+            finished: false
+        })
     }
 }
 
@@ -959,9 +1004,9 @@ macro mimic_method_new {
 macro mimic_method_cycle {
     (#[$attr:meta] $method:ident $type:ty) => {
         #[$attr]
-        pub fn $method(self, val: $type) -> BuiltForm {
+        pub fn $method(self, val: $type) -> Self {
             let Form { style, finished } = self.0;
-            BuiltForm(Form { style: Stylize::$method(style, val), finished })
+            Self(Form { style: Stylize::$method(style, val), finished })
         }
     },
 
@@ -969,25 +1014,25 @@ macro mimic_method_cycle {
         /// Applies the
         #[$attr]
         /// atribute to this [`Form`]
-        pub fn $method(self) -> BuiltForm {
+        pub fn $method(self) -> Self {
             let Form { style, finished } = self.0;
-            BuiltForm(Form { style: Stylize::$method(style), finished })
+            Self(Form { style: Stylize::$method(style), finished })
         }
     },
 
     (#[$attr:meta] $fg:ident $bg:ident $ul:ident) => {
         /// Turns the foreground of this [`Form`]
         #[$attr]
-        pub fn $fg(self) -> BuiltForm {
+        pub fn $fg(self) -> Self {
             let Form { style, finished } = self.0;
-            BuiltForm(Form { style: Stylize::$fg(style), finished })
+            Self(Form { style: Stylize::$fg(style), finished })
         }
 
 		/// Turns the background of this [`Form`]
         #[$attr]
-        pub fn $bg(self) -> BuiltForm {
+        pub fn $bg(self) -> Self {
             let Form { style, finished } = self.0;
-            BuiltForm(Form { style: Stylize::$bg(style), finished })
+            Self(Form { style: Stylize::$bg(style), finished })
         }
 
 		/// Turns the underlining of this [`Form`]
@@ -996,9 +1041,9 @@ macro mimic_method_cycle {
         /// Do note that this feature may not be supported in all [`Ui`]s.
         ///
         /// [`Ui`]: crate::ui::Ui
-        pub fn $ul(self) -> BuiltForm {
+        pub fn $ul(self) -> Self {
             let Form { style, finished } = self.0;
-            BuiltForm(Form { style: Stylize::$ul(style), finished })
+            Self(Form { style: Stylize::$ul(style), finished })
         }
     }
 }

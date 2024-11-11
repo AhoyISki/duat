@@ -19,9 +19,10 @@ pub use self::{
 use crate::{
     DuatError,
     cache::load_cache,
+    cfg::{IterCfg, PrintCfg},
     data::{RoData, RwData},
     forms::Painter,
-    text::{Item, Iter, IterCfg, Point, PrintCfg, RevIter, Text},
+    text::{Item, Iter, Point, RevIter, Text},
     widgets::{File, Node, Widget},
 };
 
@@ -97,7 +98,7 @@ pub trait Area: Send + Sync + Sized {
     /// Scrolls the [`Text`] (up or down) until the main cursor is
     /// within the [`ScrollOff`] range.
     ///
-    /// [`ScrollOff`]: crate::text::ScrollOff
+    /// [`ScrollOff`]: crate::cfg::ScrollOff
     fn scroll_around_point(&self, text: &Text, point: Point, cfg: PrintCfg);
 
     // Returns the [`Point`]s that would printed first.

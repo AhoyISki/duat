@@ -70,11 +70,8 @@
 //! [`Mode`]: crate::mode::Mode
 //! [`EditHelper`]: crate::mode::EditHelper
 mod builder;
-mod cfg;
 mod history;
 mod iter;
-mod part;
-pub mod reader;
 mod records;
 mod search;
 mod tags;
@@ -89,7 +86,6 @@ use tags::{FwdTags, RevTags};
 use self::tags::Tags;
 pub use self::{
     builder::{AlignCenter, AlignLeft, AlignRight, Builder, Ghost, err, hint, ok, text},
-    cfg::*,
     history::Change,
     iter::{Item, Iter, RevIter},
     part::Part,
@@ -99,6 +95,7 @@ pub use self::{
 };
 use crate::{
     DuatError,
+    cfg::PrintCfg,
     mode::{Cursor, Cursors},
     ui::Area,
 };
@@ -1060,7 +1057,7 @@ mod point {
     ///
     /// [`Text`]: super::Text
     /// [ghost text]: super::Tag::GhostText
-    pub trait TwoPoints: std::fmt::Debug + Clone + Copy {
+    pub trait TwoPoints: Clone + Copy {
         /// Returns two [`Point`]s, for `Text` and ghosts
         fn to_points(self) -> (Point, Option<Point>);
     }
@@ -1157,6 +1154,105 @@ mod point {
     #[inline]
     pub const fn utf8_char_width(b: u8) -> u32 {
         UTF8_CHAR_WIDTH[b as usize] as u32
+    }
+}
+
+mod part {
+    //! The [`Part`] struct, used in [`Text`] iteration
+    //!
+    //! The [`Part`] is combines the outputs of the `u8` and
+    //! [`RawTag`] buffers of the [`Text`]. It also gets rid of
+    //! meta tags, since those are not useful for the purposes of
+    //! printing text.
+    //!
+    //! [`Text`]: super::Text
+    use super::tags::{RawTag, ToggleId};
+    use crate::forms::FormId;
+
+    /// A part of the [`Text`], can be a [`char`] or a [`Tag`].
+    ///
+    /// This type is used in iteration by [`Ui`]s in order to
+    /// correctly print Duat's content. Additionally, you may be
+    /// able to tell that there is no ghost text or concealment
+    /// tags, and there is a [`ResetState`].
+    ///
+    /// That is because the [`Text`]'s iteration process automatically
+    /// gets rid of these tags, since, from the point of view of the
+    /// ui, ghost text is just regular text, while conceals are
+    /// simply the lack of text. And if the ui can handle printing
+    /// regular text, printing ghost text should be a breeze.
+    ///
+    /// [`Text`]: super::Text
+    /// [`Tag`]: super::Tag
+    /// [`Ui`]: crate::ui::Ui
+    /// [`ResetState`]: Part::ResetState
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub enum Part {
+        Char(char),
+        PushForm(FormId),
+        PopForm(FormId),
+        MainCursor,
+        ExtraCursor,
+        AlignLeft,
+        AlignCenter,
+        AlignRight,
+        ToggleStart(ToggleId),
+        ToggleEnd(ToggleId),
+        ResetState,
+    }
+
+    impl Part {
+        /// Returns a new [`Part`] from a [`RawTag`]
+        #[inline]
+        pub(super) fn from_raw(value: RawTag) -> Self {
+            match value {
+                RawTag::PushForm(_, id) => Part::PushForm(id),
+                RawTag::PopForm(_, id) => Part::PopForm(id),
+                RawTag::MainCursor(_) => Part::MainCursor,
+                RawTag::ExtraCursor(_) => Part::ExtraCursor,
+                RawTag::StartAlignLeft(_) => Part::AlignLeft,
+                RawTag::EndAlignLeft(_) => Part::AlignLeft,
+                RawTag::StartAlignCenter(_) => Part::AlignCenter,
+                RawTag::EndAlignCenter(_) => Part::AlignLeft,
+                RawTag::StartAlignRight(_) => Part::AlignRight,
+                RawTag::EndAlignRight(_) => Part::AlignLeft,
+                RawTag::ToggleStart(_, id) => Part::ToggleStart(id),
+                RawTag::ToggleEnd(_, id) => Part::ToggleEnd(id),
+                RawTag::ConcealUntil(_) => Part::ResetState,
+                RawTag::StartConceal(_) | RawTag::EndConceal(_) | RawTag::GhostText(..) => {
+                    unreachable!("These tags are automatically processed elsewhere.")
+                }
+            }
+        }
+
+        /// Returns `true` if the part is [`Char`]
+        ///
+        /// [`Char`]: Part::Char
+        #[must_use]
+        #[inline]
+        pub fn is_char(&self) -> bool {
+            matches!(self, Part::Char(_))
+        }
+
+        /// Returns [`Some`] if the part is [`Char`]
+        ///
+        /// [`Char`]: Part::Char
+        #[inline]
+        pub fn as_char(&self) -> Option<char> {
+            if let Self::Char(v) = self {
+                Some(*v)
+            } else {
+                None
+            }
+        }
+
+        /// Returns `true` if the part is not [`Char`]
+        ///
+        /// [`Char`]: Part::Char
+        #[inline]
+        pub fn is_tag(&self) -> bool {
+            !self.is_char()
+        }
     }
 }
 

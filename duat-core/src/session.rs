@@ -10,11 +10,11 @@ use std::{
 use crate::{
     Plugin,
     cache::{delete_cache, load_cache, store_cache},
+    cfg::PrintCfg,
     cmd, context,
     data::RwData,
     hooks::{self, OnFileOpen, OnWindowOpen, SessionStarted},
     mode,
-    text::PrintCfg,
     ui::{Area, Event, FileBuilder, Layout, MasterOnLeft, Sender, Ui, Window, WindowBuilder},
     widgets::{File, FileCfg, Node, Widget, WidgetCfg},
 };
