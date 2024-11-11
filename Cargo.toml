@@ -8,7 +8,7 @@ license = "AGPL-3.0-or-later"
 readme = "README.md"
 keywords = ["editor", "text", "application", "duat"]
 categories = ["command-line-utilities", "text-editors", "config"]
-include = ["/src/", "/config/", "/build.rs"]
+include = ["src/", "config/", "build.rs"]
 edition = "2021"
 
 [workspace]
@@ -17,7 +17,7 @@ members = [
   "duat-kak",
   "duat-term",
 ]
-exclude = [ "testing"]
+exclude = [ "testing" ]
 
 [dependencies]
 duat-core = { version = ">=0.2.0", path = "duat-core" }
