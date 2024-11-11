@@ -920,7 +920,7 @@ where
     ///     n: usize,
     /// ) {
     ///     helper.move_each(|mut m| {
-    ///         let mut nth = m.search('(', None).nth(n);
+    ///         let mut nth = m.search_fwd('(', None).nth(n);
     ///         if let Some((start, end)) = nth {
     ///             m.move_to(start);
     ///             m.set_anchor();

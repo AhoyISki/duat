@@ -45,7 +45,7 @@
 //!
 //!         helper.move_each(|mut m| {
 //!             let pat: String = [first, c].iter().collect();
-//!             let matched = m.search(pat, None).next();
+//!             let matched = m.search_fwd(pat, None).next();
 //!             if let Some((p0, p1)) = matched {
 //!                 m.move_to(p0);
 //!                 m.set_anchor();

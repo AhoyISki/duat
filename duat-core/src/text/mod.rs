@@ -195,13 +195,29 @@ impl Text {
     ///
     /// ```rust
     /// # use duat_core::text::Text;
-    /// 3 let text = Text::new();
+    /// let text = Text::new();
     /// text.strs().into_iter().flat_map(str::chars);
     /// ```
+    ///
+    /// Do note that you should avoid iterators like [`str::lines`],
+    /// as they will separate the line that is partially owned by each
+    /// [`&str`]:
+    ///
+    /// ```rust
+    /// let broken_up_line = [
+    ///     "This is line 1, business as usual This is line 2, but it",
+    ///     "is broken into two separate strings So 4 lines would be counted, \
+    ///      instead of 3",
+    /// ];
+    /// ```
+    ///
+    /// If you want the two [`&str`]s in a range, see
+    /// [`strs_in_range`]
     ///
     /// [`&str`]: str
     /// [buffer]: GapBuffer
     /// [`flat_map`]: Iterator::flat_map
+    /// [`strs_in_range`]: Self::strs_in_range
     pub fn strs(&self) -> [&'_ str; 2] {
         let (s0, s1) = self.buf.as_slices();
         unsafe { [from_utf8_unchecked(s0), from_utf8_unchecked(s1)] }
@@ -218,7 +234,33 @@ impl Text {
     /// contents of the text are stored in a [`GapBuffer`], which
     /// works with two strings.
     ///
+    /// If you want to iterate over them, you can do the following:
+    ///
+    /// ```rust
+    /// # use duat_core::text::{Point, Text};
+    /// # let (p1, p2) = (Point::default(), Point::default());
+    /// let text = Text::new();
+    /// text.strs_in_range((p1, p2))
+    ///     .into_iter()
+    ///     .flat_map(str::bytes);
+    /// ```
+    ///
+    /// Do note that you should avoid iterators like [`str::lines`],
+    /// as they will separate the line that is partially owned by each
+    /// [`&str`]:
+    ///
+    /// ```rust
+    /// let broken_up_line = [
+    ///     "This is line 1, business as usual.\nThis is line 2, but it",
+    ///     "is broken into two separate strings.\nSo 4 lines would be counted, \
+    ///      instead of 3",
+    /// ];
+    /// ```
+    ///
+    /// If you want the two full [`&str`]s, see [`strs`]
+    ///
     /// [`&str`]: str
+    /// [`strs`]: Self::strs
     pub fn strs_in_range(&self, (p1, p2): (Point, Point)) -> [&str; 2] {
         self.strs_in_range_inner(p1.byte()..p2.byte())
     }
