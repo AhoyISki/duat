@@ -14,13 +14,20 @@ use std::{
 
 static KEY_COUNT: AtomicU16 = AtomicU16::new(3);
 
+/// The id of a [ghost text]
+///
+/// [ghost text]: super::Tag::GhostText
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TextId(u16);
 
+/// The id of a [toggleable]
+///
+/// [toggleable]: super::Tag::ToggleStart
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ToggleId(u16);
 
 impl TextId {
+    /// Creates a new [`TextId`]
     pub fn new() -> Self {
         static TEXT_COUNT: AtomicU16 = AtomicU16::new(0);
 
@@ -35,6 +42,7 @@ impl Default for TextId {
 }
 
 impl ToggleId {
+    /// Creates a new [`ToggleId`]
     pub fn new() -> Self {
         static TOGGLE_COUNT: AtomicU16 = AtomicU16::new(0);
 
@@ -136,7 +144,7 @@ impl Key {
         Self(1)
     }
 
-	/// A [`Key`] specifically for remaps
+    /// A [`Key`] specifically for remaps
     pub(crate) const fn for_alias() -> Self {
         Self(2)
     }
@@ -168,9 +176,18 @@ impl std::iter::Step for Key {
     }
 }
 
+/// Trait used to distinguish [`Tag`]s
+///
+/// This can be either one [`Key`] or multiple, in which case many
+/// different [`Key`]s will be searched for and [removed]
+///
+/// [`Tag`]: super::Tag
+/// [removed]: crate::text::Text::remove_tags_on
 pub trait Keys: Clone + PartialEq + Eq {
+    /// All [`Key`]s that should be searched
     fn range(self) -> Range<Key>;
 
+	/// Wether this range contains a given [`Key`]
     fn contains(self, key: Key) -> bool {
         let range = self.range();
         key >= range.start && range.end > key
