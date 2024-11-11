@@ -19,7 +19,7 @@ mod global {
 
     use parking_lot::Mutex;
 
-    use super::{CursorShape, Form, FormId, Painter, Palette};
+    use super::{BuiltForm, CursorShape, Form, FormId, Painter, Palette};
 
     static PALETTE: Palette = Palette::new();
     static FORMS: LazyLock<Mutex<Vec<&str>>> = LazyLock::new(|| {
@@ -49,6 +49,7 @@ mod global {
     /// [`forms::set_weak`]: set_weak
     pub trait FormFmt: InnerFormFmt {}
     impl FormFmt for Form {}
+    impl FormFmt for BuiltForm {}
     impl FormFmt for &str {}
 
     /// Sets the [`Form`] by the name of `name`
@@ -148,7 +149,7 @@ mod global {
     ///
     /// [`forms::painter`]: painter
     pub fn from_id(id: FormId) -> Form {
-        PALETTE.form_from_id(id).unwrap_or_default()
+        PALETTE.form_from_id(id).unwrap_or(Form::new().0)
     }
 
     /// The name of a form, given a [`FormId`]
@@ -338,6 +339,12 @@ mod global {
         }
     }
 
+    impl InnerFormFmt for BuiltForm {
+        fn kind(self) -> Kind {
+            Kind::Form(self.0)
+        }
+    }
+
     impl InnerFormFmt for &str {
         fn kind(self) -> Kind {
             Kind::Ref(self.to_string().leak())
@@ -359,64 +366,125 @@ mod global {
 pub struct FormId(u16);
 
 /// A style for text.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Form {
     pub style: ContentStyle,
     /// Wether or not the `Form`s colors and attributes should
     /// override any that come after.
-    pub is_final: bool,
+    pub finished: bool,
 }
 
 #[rustfmt::skip]
 impl Form {
-    mimic_method!(on Color);
-    mimic_method!(underline Color );
-    mimic_method!(attribute Attribute );
-    mimic_method!(reset);
-    mimic_method!(bold);
-    mimic_method!(underlined);
-    mimic_method!(double_underlined);
-    mimic_method!(undercurled);
-    mimic_method!(underdashed);
-    mimic_method!(reverse);
-    mimic_method!(dim);
-    mimic_method!(italic);
-    mimic_method!(negative);
-    mimic_method!(slow_blink);
-    mimic_method!(rapid_blink);
-    mimic_method!(hidden);
-    mimic_method!(crossed_out);
-    mimic_method!(on_black underline_black, black);
-    mimic_method!(on_dark_grey underline_dark_grey, dark_grey);
-    mimic_method!(on_red underline_red, red);
-    mimic_method!(on_dark_red underline_dark_red, dark_red);
-    mimic_method!(on_green underline_green, green);
-    mimic_method!(on_dark_green underline_dark_green, dark_green);
-    mimic_method!(on_yellow underline_yellow, yellow);
-    mimic_method!(on_dark_yellow underline_dark_yellow, dark_yellow);
-    mimic_method!(on_blue underline_blue, blue);
-    mimic_method!(on_dark_blue underline_dark_blue, dark_blue);
-    mimic_method!(on_magenta underline_magenta, magenta);
-    mimic_method!(on_dark_magenta underline_dark_magenta, dark_magenta);
-    mimic_method!(on_cyan underline_cyan, cyan);
-    mimic_method!(on_dark_cyan underline_dark_cyan, dark_cyan);
-    mimic_method!(on_white underline_white, white);
-    mimic_method!(on_grey underline_grey, grey);
+    mimic_method_new!(with Color);
+    mimic_method_new!(on Color);
+    mimic_method_new!(underline Color );
+    mimic_method_new!(attribute Attribute );
+    mimic_method_new!(reset);
+    mimic_method_new!(bold);
+    mimic_method_new!(underlined);
+    mimic_method_new!(double_underlined);
+    mimic_method_new!(undercurled);
+    mimic_method_new!(underdashed);
+    mimic_method_new!(reverse);
+    mimic_method_new!(dim);
+    mimic_method_new!(italic);
+    mimic_method_new!(negative);
+    mimic_method_new!(slow_blink);
+    mimic_method_new!(rapid_blink);
+    mimic_method_new!(hidden);
+    mimic_method_new!(crossed_out);
+    mimic_method_new!(black on_black underline_black);
+    mimic_method_new!(dark_grey on_dark_grey underline_dark_grey);
+    mimic_method_new!(red on_red underline_red);
+    mimic_method_new!(dark_red on_dark_red underline_dark_red);
+    mimic_method_new!(green on_green underline_green);
+    mimic_method_new!(dark_green on_dark_green underline_dark_green);
+    mimic_method_new!(yellow on_yellow underline_yellow);
+    mimic_method_new!(dark_yellow on_dark_yellow underline_dark_yellow);
+    mimic_method_new!(blue on_blue underline_blue);
+    mimic_method_new!(dark_blue on_dark_blue underline_dark_blue);
+    mimic_method_new!(magenta on_magenta underline_magenta);
+    mimic_method_new!(dark_magenta on_dark_magenta underline_dark_magenta);
+    mimic_method_new!(cyan on_cyan underline_cyan);
+    mimic_method_new!(dark_cyan on_dark_cyan underline_dark_cyan);
+    mimic_method_new!(white on_white underline_white);
+    mimic_method_new!(grey on_grey underline_grey);
 
-    pub fn with(color: Color) -> Self {
-        Self { style: ContentStyle::new().with(color), is_final: false }
+	/// Returns a new [`Form`]* with default style
+	///
+	/// * This method actually returns [`BuiltForm`]
+	#[allow(clippy::new_ret_no_self)]
+    pub fn new() -> BuiltForm {
+        BuiltForm(Self { style: ContentStyle::new(), finished: false })
     }
 
-    pub fn new() -> Self {
-        Self { style: ContentStyle::new(), is_final: false }
+    pub fn finished() -> BuiltForm {
+        BuiltForm(Self { style: ContentStyle::default(), finished: true })
     }
 
-    pub fn new_final() -> Self {
-        Self { style: ContentStyle::default(), is_final: true }
+    fn as_finished(self) -> Self {
+        Self { style: self.style, finished: true }
     }
+}
+
+/// A convenience struct for [`Form`]s
+///
+/// This struct exists in order to have [`Form`] methods be
+/// initializers, while [`BuiltForm`] methods consume and return a
+/// [`BuiltForm`]s
+///
+/// This is their only difference, everywhere else, they are
+/// functionally identical.
+pub struct BuiltForm(Form);
+
+#[rustfmt::skip]
+impl BuiltForm {
+    mimic_method_cycle!(with Color);
+    mimic_method_cycle!(on Color);
+    mimic_method_cycle!(underline Color );
+    mimic_method_cycle!(attribute Attribute );
+    mimic_method_cycle!(reset);
+    mimic_method_cycle!(bold);
+    mimic_method_cycle!(underlined);
+    mimic_method_cycle!(double_underlined);
+    mimic_method_cycle!(undercurled);
+    mimic_method_cycle!(underdashed);
+    mimic_method_cycle!(reverse);
+    mimic_method_cycle!(dim);
+    mimic_method_cycle!(italic);
+    mimic_method_cycle!(negative);
+    mimic_method_cycle!(slow_blink);
+    mimic_method_cycle!(rapid_blink);
+    mimic_method_cycle!(hidden);
+    mimic_method_cycle!(crossed_out);
+    mimic_method_cycle!(black on_black underline_black);
+    mimic_method_cycle!(dark_grey on_dark_grey underline_dark_grey);
+    mimic_method_cycle!(red on_red underline_red);
+    mimic_method_cycle!(dark_red on_dark_red underline_dark_red);
+    mimic_method_cycle!(green on_green underline_green);
+    mimic_method_cycle!(dark_green on_dark_green underline_dark_green);
+    mimic_method_cycle!(yellow on_yellow underline_yellow);
+    mimic_method_cycle!(dark_yellow on_dark_yellow underline_dark_yellow);
+    mimic_method_cycle!(blue on_blue underline_blue);
+    mimic_method_cycle!(dark_blue on_dark_blue underline_dark_blue);
+    mimic_method_cycle!(magenta on_magenta underline_magenta);
+    mimic_method_cycle!(dark_magenta on_dark_magenta underline_dark_magenta);
+    mimic_method_cycle!(cyan on_cyan underline_cyan);
+    mimic_method_cycle!(dark_cyan on_dark_cyan underline_dark_cyan);
+    mimic_method_cycle!(white on_white underline_white);
+    mimic_method_cycle!(grey on_grey underline_grey);
 
     pub fn as_final(self) -> Self {
-        Self { is_final: true, ..self }
+        Self(Form { finished: true, ..self.0 })
+    }
+}
+
+impl std::ops::Deref for BuiltForm {
+    type Target = Form;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -451,19 +519,19 @@ impl Palette {
             let main_cursor = Some(CursorShape::DefaultUserShape);
 
             let forms = vec![
-                ("Default", Form::new(), Normal),
-                ("Accent", Form::new().bold(), Normal),
-                ("DefaultOk", Form::blue(), Normal),
-                ("AccentOk", Form::cyan(), Normal),
-                ("DefaultErr", Form::red(), Normal),
-                ("AccentErr", Form::red().bold(), Normal),
-                ("DefaultHint", Form::grey(), Normal),
-                ("AccentHint", Form::grey().bold(), Normal),
-                ("MainCursor", Form::new().reverse(), Normal),
-                ("ExtraCursor", Form::new().reverse(), Ref(M_CUR_ID)),
-                ("MainSelection", Form::new().on_dark_grey(), Normal),
-                ("ExtraSelection", Form::new().on_dark_grey(), Ref(M_SEL_ID)),
-                ("Inactive", Form::grey(), Normal),
+                ("Default", Form::new().0, Normal),
+                ("Accent", Form::bold().0, Normal),
+                ("DefaultOk", Form::blue().0, Normal),
+                ("AccentOk", Form::cyan().0, Normal),
+                ("DefaultErr", Form::red().0, Normal),
+                ("AccentErr", Form::red().bold().0, Normal),
+                ("DefaultHint", Form::grey().0, Normal),
+                ("AccentHint", Form::grey().bold().0, Normal),
+                ("MainCursor", Form::reverse().0, Normal),
+                ("ExtraCursor", Form::reverse().0, Ref(M_CUR_ID)),
+                ("MainSelection", Form::on_dark_grey().0, Normal),
+                ("ExtraSelection", Form::on_dark_grey().0, Ref(M_SEL_ID)),
+                ("Inactive", Form::grey().0, Normal),
             ];
 
             RwLock::new(InnerPalette {
@@ -477,7 +545,7 @@ impl Palette {
     /// Sets a [`Form`]
     fn set_form(&self, name: &'static str, form: Form) {
         let form = match name {
-            "MainCursor" | "ExtraCursor" => form.as_final(),
+            "MainCursor" | "ExtraCursor" => form.as_finished(),
             _ => form,
         };
 
@@ -501,7 +569,7 @@ impl Palette {
     /// Sets a [`Form`] "weakly"
     fn set_weak_form(&self, name: &'static str, form: Form) {
         let form = match name {
-            "MainCursor" | "ExtraCursor" => form.as_final(),
+            "MainCursor" | "ExtraCursor" => form.as_finished(),
             _ => form,
         };
 
@@ -593,7 +661,7 @@ impl Palette {
         if let Some(id) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
             FormId(id as u16)
         } else {
-            inner.forms.push((name, Form::new(), FormType::Weakest));
+            inner.forms.push((name, Form::new().0, FormType::Weakest));
             FormId((inner.forms.len() - 1) as u16)
         }
     }
@@ -685,7 +753,7 @@ impl Painter {
     pub fn apply(&mut self, id: FormId) -> ContentStyle {
         let i = id.0 as usize;
         let forms = &self.inner.forms;
-        let form = forms.get(i).map(|(_, f, _)| *f).unwrap_or_default();
+        let form = forms.get(i).map(|(_, f, _)| *f).unwrap_or(Form::new().0);
 
         // So the cursor is always the last form
         self.cur.push((form, id));
@@ -718,33 +786,33 @@ impl Painter {
     pub fn make_style(&self) -> ContentStyle {
         let mut form = Form {
             style: ContentStyle::default(),
-            is_final: false,
+            finished: false,
         };
 
         let (mut fg_done, mut bg_done, mut ul_done, mut attr_done) = (false, false, false, false);
 
-        for &(Form { style, is_final }, _) in &self.cur {
+        for &(Form { style, finished }, _) in &self.cur {
             if let Some(new_fg) = style.foreground_color
-                && (!fg_done || is_final)
+                && (!fg_done || finished)
             {
                 form.style.foreground_color = Some(new_fg);
-                fg_done |= is_final;
+                fg_done |= finished;
             }
             if let Some(new_bg) = style.background_color
-                && (!bg_done || is_final)
+                && (!bg_done || finished)
             {
                 form.style.background_color = Some(new_bg);
-                bg_done |= is_final;
+                bg_done |= finished;
             }
             if let Some(new_ul) = style.underline_color
-                && (!ul_done || is_final)
+                && (!ul_done || finished)
             {
                 form.style.underline_color = Some(new_ul);
-                ul_done |= is_final;
+                ul_done |= finished;
             }
-            if !attr_done || is_final {
+            if !attr_done || finished {
                 form.style.attributes.extend(style.attributes);
-                attr_done |= is_final;
+                attr_done |= finished;
             }
         }
 
@@ -828,25 +896,37 @@ fn would_be_circular(inner: &RwLockWriteGuard<InnerPalette>, referee: usize, ref
 }
 
 /// Mimics [`ContentStyle`] methods for the [`Form`] type
-macro mimic_method {
+macro mimic_method_new {
     ($method:ident $type:ty) => {
-        pub fn $method(self, val: $type) -> Self {
-            let Form { style, is_final } = self;
-            Form { style: Stylize::$method(style, val), is_final }
+        pub fn $method(val: $type) -> BuiltForm {
+            let style = ContentStyle::new();
+            BuiltForm(Form { style: Stylize::$method(style, val), finished: false })
         }
     },
 
-    ($($method:ident)+ $(, $fg:ident)?) => {
+    ($($method:ident)+) => {
         $(
-        	pub fn $fg() -> Self {
-        	    Form { style: ContentStyle::new().$fg(), is_final: false }
-        	}
-        )?
+            pub fn $method() -> BuiltForm {
+                let style = ContentStyle::new();
+                BuiltForm(Form { style: Stylize::$method(style), finished: false })
+            }
+        )*
+    }
+}
 
+macro mimic_method_cycle {
+    ($method:ident $type:ty) => {
+        pub fn $method(self, val: $type) -> BuiltForm {
+            let Form { style, finished } = self.0;
+            BuiltForm(Form { style: Stylize::$method(style, val), finished })
+        }
+    },
+
+    ($($method:ident)+) => {
         $(
-            pub fn $method(self) -> Self {
-                let Form { style, is_final } = self;
-                Form { style: Stylize::$method(style), is_final }
+            pub fn $method(self) -> BuiltForm {
+                let Form { style, finished } = self.0;
+                BuiltForm(Form { style: Stylize::$method(style), finished })
             }
         )*
     }

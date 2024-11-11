@@ -369,7 +369,7 @@ pub mod mode {
     /// "insert like" modes. You can also use any key in the input or
     /// output of this `alias`
     ///
-    /// [ghost text]: crate::text::Tag::GhostText
+    /// [ghost text]: duat_core::text::Tag::GhostText
     /// [form]: crate::forms::Form
     pub fn alias<M: Mode<Ui>>(take: &str, give: impl AsGives<Ui>) {
         mode::alias::<M, Ui>(take, give);
