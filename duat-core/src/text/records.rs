@@ -1,14 +1,31 @@
+//! Records are an internal struct used for O(log(n)) searching
+//!
+//! They work similarly to how a rope works, in that there are saved
+//! positions which keep track of the amount of bytes, characters, and
+//! lines (or bytes and tags) that show up between them and the next
+//! record.
+//!
+//! This struct is used by the [`Text`] and the [`Tags`] structs.
+//!
+//! [`Text`]: super::Text
+//! [`Tags`]: super::Tags
 use std::fmt::Debug;
 
+/// Minimum length to insert a new record
 const LEN_PER_RECORD: u32 = 150;
 
+/// A struct that keeps track of positions
 pub trait Record: Default + Debug + Clone + Copy + Eq + Ord + 'static {
+    /// The bytes at of this [`Record`]
     fn bytes(&self) -> u32;
 
+	/// Adds the values of two [`Record`]s
     fn add(self, other: Self) -> Self;
 
+	/// Subtracts the values of two [`Record`]s
     fn sub(self, other: Self) -> Self;
 
+	/// Wether or not this value has no bytes
     fn is_zero_len(&self) -> bool;
 }
 
@@ -48,6 +65,10 @@ impl Record for (u32, u32, u32) {
     }
 }
 
+/// The records of a [`Text`] or [`Tags`]
+///
+/// [`Text`]: super::Text
+/// [`Tags`]: super::Tags
 #[derive(Clone, PartialEq, Eq)]
 pub struct Records<R: Record> {
     last: (u32, R),
@@ -56,10 +77,12 @@ pub struct Records<R: Record> {
 }
 
 impl<R: Record> Records<R> {
+    /// Creates a new [`Records`]
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Creates a new [`Records`] with a given len
     pub fn with_max(max: R) -> Self {
         Self {
             max,
@@ -68,6 +91,7 @@ impl<R: Record> Records<R> {
         }
     }
 
+    /// Insert a new [`Record`], if it would fit
     pub fn insert(&mut self, new: R) {
         // For internal functions, I assume that I'm not
         // going over self.max.
@@ -90,6 +114,7 @@ impl<R: Record> Records<R> {
         }
     }
 
+    /// Transforms a range in the [`Records`]
     pub fn transform(&mut self, start: R, old_len: R, new_len: R) {
         let (s_i, s_rec) = self.search(start.bytes(), Record::bytes);
         let (e_i, e_rec) = self.search(start.bytes() + old_len.bytes(), Record::bytes);
@@ -131,10 +156,12 @@ impl<R: Record> Records<R> {
         self.max = self.max.add(new_len).sub(old_len);
     }
 
+    /// Transforms the end of the [`Records`]
     pub fn append(&mut self, r: R) {
         self.transform(self.max, R::default(), r)
     }
 
+    /// Extends this [`Records`] with another
     pub fn extend(&mut self, mut other: Records<R>) {
         let self_e_len = self.stored.last().unwrap();
         let other_s_len = other.stored.first_mut().unwrap();
@@ -149,16 +176,19 @@ impl<R: Record> Records<R> {
         self.max = self.max.add(other.max);
     }
 
+    /// Clears all [`Record`]s and makes the len 0
     pub fn clear(&mut self) {
         self.last = (0, R::default());
         self.max = R::default();
         self.stored = vec![R::default()];
     }
 
+    /// The maximum [`Record`]
     pub fn max(&self) -> R {
         self.max
     }
 
+    /// Returns the [`Record`] closest to the byte
     pub fn closest_to(&self, b: u32) -> R {
         let (i, rec) = self.search(b, Record::bytes);
         let len = self.stored.get(i as usize).cloned().unwrap_or(R::default());
@@ -170,25 +200,27 @@ impl<R: Record> Records<R> {
         }
     }
 
-    pub fn closest_to_by(&self, at: u32, by: impl Fn(&R) -> u32 + Copy) -> R {
-        let (i, rec) = self.search(at, by);
+    /// The [`Record`] closest to `at` by a key extracting function
+    pub fn closest_to_by_key(&self, at: u32, key_f: impl Fn(&R) -> u32 + Copy) -> R {
+        let (i, rec) = self.search(at, key_f);
         let len = self.stored.get(i as usize).cloned().unwrap_or(R::default());
 
-        if by(&rec).abs_diff(at) > by(&len.add(rec)).abs_diff(at) {
+        if key_f(&rec).abs_diff(at) > key_f(&len.add(rec)).abs_diff(at) {
             len.add(rec)
         } else {
             rec
         }
     }
 
-    fn search(&self, at: u32, by: impl Fn(&R) -> u32 + Copy) -> (u32, R) {
+    /// Search for `at` with a key extracting function
+    fn search(&self, at: u32, key_f: impl Fn(&R) -> u32 + Copy) -> (u32, R) {
         let (n, mut rec) = self.last;
         let n = n as usize;
 
-        if at >= by(&rec) {
+        if at >= key_f(&rec) {
             self.stored[n..].iter().enumerate().find_map(|(i, len)| {
                 rec = rec.add(*len);
-                (by(&rec) > at).then_some(((n + i) as u32, rec.sub(*len)))
+                (key_f(&rec) > at).then_some(((n + i) as u32, rec.sub(*len)))
             })
         } else {
             self.stored[..n]
@@ -197,7 +229,7 @@ impl<R: Record> Records<R> {
                 .rev()
                 .find_map(|(i, len)| {
                     rec = rec.sub(*len);
-                    (by(&rec) <= at).then_some((i as u32, rec))
+                    (key_f(&rec) <= at).then_some((i as u32, rec))
                 })
         }
         .unwrap_or((self.stored.len() as u32, self.max))

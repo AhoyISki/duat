@@ -344,7 +344,7 @@ impl Text {
             "byte out of bounds: the len is {}, but the char is {at}",
             self.len().char()
         );
-        let (b, c, mut l) = self.records.closest_to_by(at, |(_, c, _)| *c);
+        let (b, c, mut l) = self.records.closest_to_by_key(at, |(_, c, _)| *c);
 
         let found = if at >= c {
             let [s0, s1] = self.strs_in_range_inner(b..);
@@ -396,7 +396,7 @@ impl Text {
             self.len().line()
         );
         let (b, c, mut l) = {
-            let (mut b, mut c, l) = self.records.closest_to_by(at, |(.., l)| *l);
+            let (mut b, mut c, l) = self.records.closest_to_by_key(at, |(.., l)| *l);
             self.strs_in_range_inner(..b)
                 .into_iter()
                 .flat_map(str::chars)
