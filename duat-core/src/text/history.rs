@@ -1,3 +1,16 @@
+//! The history for a [`Text`]
+//!
+//! The [`History`] is composed of [`Moment`]s, each having a list of
+//! [`Change`]s. Whenever you [`undo`]/[`redo`], you are
+//! undoing/redoing a whole [`Moment`], with all of its [`Change`]s,
+//! all at once.
+//!
+//! This permits Vim style undoing (one [`Change`] per [`Moment`]) as
+//! well as Kakoune style undoing (multiple [`Change`]s per
+//! [`Moment`]).
+//!
+//! [`undo`]: Text::undo
+//! [`redo`]: Text::redo
 use std::ops::Range;
 
 use super::{Point, Text};
@@ -6,13 +19,12 @@ use crate::binary_search_by_key_and_index;
 /// The history of edits, contains all moments
 #[derive(Default, Debug, Clone)]
 pub struct History {
-    /// The list of moments in this file's editing history
     moments: Vec<Moment>,
-    /// The currently active moment
     current_moment: usize,
 }
 
 impl History {
+    /// Creates a new [`History`]
     pub fn new() -> Self {
         Self::default()
     }
@@ -147,6 +159,24 @@ impl Moment {
         unsafe { self.add_change_inner(guess_i, change, (b, c, l), None) }
     }
 
+    /// First try to merge this change with as many changes as
+    /// possible, then add it in
+    ///
+    /// # Safety
+    ///
+    /// This function, unlike [`add_change`], does not shift the
+    /// [`Change`]s ahead of the inserted position, this means that
+    /// one must be careful to do it themselves. This is done safely
+    /// in the [`EditHelper`].
+    ///
+    /// # Returns
+    ///
+    /// - The index where the change was inserted;
+    /// - The number of changes that were added or subtracted during
+    ///   its insertion.
+    ///
+    /// [`add_change`]: Moment::add_change
+    /// [`EditHelper`]: crate::mode::EditHelper
     unsafe fn add_desync_change(
         &mut self,
         guess_i: usize,
@@ -157,6 +187,7 @@ impl Moment {
         self.add_change_inner(Some(guess_i), change, shift, Some(sh_from))
     }
 
+    /// Inner insertion of a [`Change`]
     unsafe fn add_change_inner(
         &mut self,
         guess_i: Option<usize>,
@@ -239,15 +270,11 @@ impl Moment {
     }
 }
 
-/// A change in a file, empty [`String`]s indicate a pure insertion or
-/// deletion
+/// A change in a file, with a start, taken text, and added text
 #[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Change {
-    /// The starting `byte` of the [`Change`]
     start: Point,
-    /// The text that was added in this change
     added_text: String,
-    /// The text that was replaced in this change
     taken_text: String,
 }
 
