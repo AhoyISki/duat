@@ -155,7 +155,7 @@ impl<'a> Iter<'a> {
                 if self.conceals == 0 {
                     // If we have moved forward and were in a ghost, that ghost is no
                     // longer valid.
-                    self.ghost.take_if(|_| self.point.byte() > b);
+                    self.ghost.take_if(|_| self.point.byte() < b);
                     self.point = self.point.max(self.text.point_at(b));
                     self.chars = buf_chars(&self.text.buf, self.point.byte());
                 }
@@ -318,7 +318,6 @@ impl<'a> RevIter<'a> {
             RawTag::StartConceal(_) => {
                 self.conceals = self.conceals.saturating_sub(1);
                 if self.conceals == 0 {
-                    self.ghost.take_if(|_| self.point.byte() < b);
                     self.point = self.point.min(self.text.point_at(b));
                     self.chars = buf_chars_rev(&self.text.buf, self.point.byte());
                 }

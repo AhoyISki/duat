@@ -105,10 +105,141 @@
 //! configuration, you should probably just rely on [`map`] to
 //! accomplish the same thing.
 //!
+//! Okay, but that was a relatively simple example, here's a more
+//! advanced example, which makes use of more of Duat's features.
+//!
+//! This is a copy of [EasyMotion], a plugin for Vim/Neovim/Kakoune
+//! that lets you skip around the screen with at most 2 keypresses.
+//!
+//! In order to emulate it, we use [ghost text] and [concealment]:
+//!
+//! ```rust
+//! # use duat_core::{
+//! #     data::RwData, mode::{self, Cursors, EditHelper, KeyCode, KeyEvent, Mode, key},
+//! #     text::{Key, Point, Tag, text}, ui::{Area, Ui}, widgets::File,
+//! # };
+//! #[derive(Clone)]
+//! pub struct EasyMotion {
+//!     is_line: bool,
+//!     key: Key,
+//!     points: Vec<(Point, Point)>,
+//!     seq: String,
+//! }
+//!
+//! impl EasyMotion {
+//!     pub fn word() -> Self {
+//!         Self {
+//!             is_line: false,
+//!             key: Key::new(),
+//!             points: Vec::new(),
+//!             seq: String::new(),
+//!         }
+//!     }
+//!
+//!     pub fn line() -> Self {
+//!         Self {
+//!             is_line: true,
+//!             key: Key::new(),
+//!             points: Vec::new(),
+//!             seq: String::new(),
+//!         }
+//!     }
+//! }
+//!
+//! impl<U: Ui> Mode<U> for EasyMotion {
+//!     type Widget = File;
+//!
+//!     fn on_switch(
+//!         &mut self,
+//!         widget: &RwData<Self::Widget>,
+//!         area: &<U as Ui>::Area,
+//!         _cursors: &mut Cursors,
+//!     ) {
+//!         let mut widget = widget.write();
+//!         let cfg = widget.print_cfg();
+//!         let text = widget.text_mut();
+//!
+//!         let regex = match self.is_line {
+//!             true => "[^\n\\s][^\n]+",
+//!             false => "[^\n\\s]+",
+//!         };
+//!         let start = area.first_point(text, cfg);
+//!         let end = area.last_point(text, cfg);
+//!         self.points = text.search_fwd(regex, start, Some(end)).unwrap().collect();
+//!
+//!         let seqs = key_seqs(self.points.len());
+//!
+//!         for (seq, (p1, _)) in seqs.iter().zip(&self.points) {
+//!             let ghost = text!([EasyMotionWord] seq);
+//!
+//!             text.insert_tag(p1.byte(), Tag::GhostText(ghost), self.key);
+//!             text.insert_tag(p1.byte(), Tag::StartConceal, self.key);
+//!             let seq_end = p1.byte() + seq.chars().count() as u32;
+//!             text.insert_tag(seq_end, Tag::EndConceal, self.key);
+//!         }
+//!     }
+//!
+//!     fn send_key(
+//!         &mut self,
+//!         key: KeyEvent,
+//!         widget: &RwData<Self::Widget>,
+//!         area: &<U as Ui>::Area,
+//!         cursors: &mut Cursors,
+//!     ) {
+//!         let char = match key {
+//!             key!(KeyCode::Char(c)) => c,
+//!             // Return a char that will never match.
+//!             _ => '❌'
+//!         };
+//!         self.seq.push(char);
+//!
+//!         let mut helper = EditHelper::new(widget, area, cursors);
+//!         helper.remove_extra_cursors();
+//!
+//!         let seqs = key_seqs(self.points.len());
+//!         for (seq, &(p1, p2)) in seqs.iter().zip(&self.points) {
+//!             if *seq == self.seq {
+//!                 helper.move_main(|mut m| {
+//!                     m.move_to(p1);
+//!                     m.set_anchor();
+//!                     m.move_to(p2);
+//!                 });
+//!                 mode::reset();
+//!             } else if seq.starts_with(&self.seq) {
+//!                 continue;
+//!             }
+//!
+//!             helper.remove_tags_on(p1.byte(), self.key);
+//!             helper.remove_tags_on(p1.byte() + seq.len() as u32, self.key);
+//!         }
+//!
+//!         if self.seq.chars().count() == 2 || !LETTERS.contains(char) {
+//!             mode::reset();
+//!         }
+//!     }
+//! }
+//!
+//! fn key_seqs(len: usize) -> Vec<String> {
+//!     let double = len / LETTERS.len();
+//!
+//!     let mut seqs = Vec::new();
+//!     seqs.extend(LETTERS.chars().skip(double).map(char::into));
+//!
+//!     let chars = LETTERS.chars().take(double);
+//!     seqs.extend(chars.flat_map(|c1| LETTERS.chars().map(move |c2| format!("{c1}{c2}"))));
+//!
+//!     seqs
+//! }
+//!
+//! static LETTERS: &str = "abcdefghijklmnopqrstuvwxyz";
+//! ```
 //!
 //! [`Mode`]: crate::mode::Mode
 //! [`File`]: crate::widgets::File
-//! [`map`]: https://docs.rs/duat/0.1.3/duat/prelude/fn.map.html
+//! [`map`]: https://docs.rs/duat/0.2.0/duat/prelude/fn.map.html
+//! [EasyMotion]: https://github.com/easymotion/vim-easymotion
+//! [ghost text]: crate::text::Tag::GhostText
+//! [concealment]: crate::text::Tag::StartConceal
 #![feature(
     extract_if,
     iter_advance_by,
@@ -146,6 +277,7 @@ use self::{
 };
 
 pub mod cache;
+pub mod cfg;
 pub mod cmd;
 pub mod data;
 pub mod forms;
@@ -155,7 +287,6 @@ pub mod session;
 pub mod text;
 pub mod ui;
 pub mod widgets;
-pub mod cfg;
 
 /// A plugin for Duat
 ///
