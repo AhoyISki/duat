@@ -10,7 +10,7 @@ use std::{
 use crate::{
     Plugin,
     cache::{delete_cache, load_cache, store_cache},
-    commands, context,
+    cmd, context,
     data::RwData,
     hooks::{self, OnFileOpen, OnWindowOpen, SessionStarted},
     mode,
@@ -62,7 +62,7 @@ impl<U: Ui> SessionCfg<U> {
         };
 
         context::set_cur(node.as_file(), node.clone());
-        commands::add_session_commands::<U>(session.tx.clone()).unwrap();
+        cmd::add_session_commands::<U>(session.tx.clone()).unwrap();
 
         // Open and process files.
         let builder = FileBuilder::new(node, context::cur_window());
@@ -106,7 +106,7 @@ impl<U: Ui> SessionCfg<U> {
         };
 
         context::set_cur(node.as_file(), node.clone());
-        commands::add_session_commands::<U>(session.tx.clone()).unwrap();
+        cmd::add_session_commands::<U>(session.tx.clone()).unwrap();
 
         // Open and process files.
         let builder = FileBuilder::new(node, context::cur_window());
@@ -228,7 +228,7 @@ impl<U: Ui> Session<U> {
             match reason_to_break {
                 BreakTo::QuitDuat => {
                     crate::thread::quit_queue();
-                    commands::end_session();
+                    cmd::end_session();
                     self.save_cache(true);
                     self.ui.close();
 
@@ -236,7 +236,7 @@ impl<U: Ui> Session<U> {
                 }
                 BreakTo::ReloadConfig => {
                     crate::thread::quit_queue();
-                    commands::end_session();
+                    cmd::end_session();
                     self.save_cache(false);
                     self.ui.end();
 

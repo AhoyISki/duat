@@ -26,7 +26,7 @@
 //! `10.0`, and a height of `2.0`.
 //!
 //! The module also provides 4 native widgets, [`File`] and
-//! [`CommandLine`], which can receive user mode, and [`StatusLine`]
+//! [`CmdLine`], which can receive user mode, and [`StatusLine`]
 //! and [`LineNumbers`] which are not supposed to.
 //!
 //! These 4 widgets are supposed to be universal, not needing a
@@ -51,7 +51,7 @@ use std::sync::{
 
 pub use self::{
     command_line::{
-        CmdLineMode, CommandLine, CommandLineCfg, IncSearch, RunCommands, ShowNotifications,
+        CmdLineMode, CmdLine, CmdLineCfg, IncSearch, RunCommands, ShowNotifications,
     },
     file::{File, FileCfg},
     line_numbers::{LineNumbers, LineNumbersCfg},
@@ -399,7 +399,7 @@ where
     /// Examples of things that should go in here are [`forms`]
     /// functions, [hooks], [commands] you want executed only once
     ///
-    /// [commands]: crate::commands
+    /// [commands]: crate::cmd
     fn once()
     where
         Self: Sized;

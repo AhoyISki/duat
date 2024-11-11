@@ -25,7 +25,7 @@ use crate::{
     CfgFn, Ui,
     hooks::{self, OnFileOpen, OnWindowOpen, UnfocusedFrom},
     mode,
-    prelude::{CommandLine, LineNumbers, StatusLine},
+    prelude::{CmdLine, LineNumbers, StatusLine},
 };
 
 static CUR_FILE: CurFile<Ui> = CurFile::new();
@@ -57,10 +57,10 @@ pub fn pre_setup() {
 
     hooks::add_grouped::<OnWindowOpen>("WindowWidgets", |builder| {
         let (child, _) = builder.push(StatusLine::cfg());
-        builder.push_to(CommandLine::cfg().left_ratioed(4, 7), child);
+        builder.push_to(CmdLine::cfg().left_ratioed(4, 7), child);
     });
 
-    hooks::add_grouped::<UnfocusedFrom<CommandLine>>("CmdLineNotifications", |_cmd_line| {
+    hooks::add_grouped::<UnfocusedFrom<CmdLine>>("CmdLineNotifications", |_cmd_line| {
         mode::set_cmd(ShowNotifications::new());
     });
 }

@@ -49,7 +49,7 @@ Duat.
 
 For now, it has a barebones configuration, which is based on
 Kakoune, so if you are familiar with that text editor, many of the
-commands are going to be the same.
+cmd are going to be the same.
 
 ### Configuration
 
@@ -85,7 +85,7 @@ fn setup() {
         );
 
         let (child, _) = builder.push(status);
-        builder.push_to(CommandLine::cfg().left_ratioed(3, 7), child);
+        builder.push_to(CmdLine::cfg().left_ratioed(3, 7), child);
     });
 
     hooks::add::<ModeSwitched>(|&(_, new)| match new {
@@ -138,12 +138,12 @@ In this example, I’m using the “MyForm” form in order to style the
 text, while `[]` reverts back to the “Default” form. The
 [`status!`][__link14] macro works similarly.
 
-Duat also has a simple command system, that lets you add commands
+Duat also has a simple command system, that lets you add cmd
 with arguments supported by Rust’s type system:
 
 ```rust
 let callers = ["collapse-command-line", "collapse-cmd"];
-commands::add_for::<CommandLine>(
+cmd::add_for::<CmdLine>(
     callers,
     |_command_line, area, _cursors, _flags, _args| {
         area.constrain_ver(Constraint::Length(0.0))?;
@@ -226,7 +226,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG3jKs8Ry6S9HG-U1HOgXvPbCG5xPx_fVleseG-3BECEyC3EvYWSCgmRkdWF0ZTAuMS4zgmlkdWF0X2NvcmVlMC4yLjA
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEGyXpbbIeIWL8G-P_GXDmlo7eG_E7fmPFXQkFG8BLgFJrRKZDYWSCgmRkdWF0ZTAuMS4zgmlkdWF0X2NvcmVlMC4yLjA
  [__link0]: https://docs.rs/duat/0.1.3/duat/?search=mode::set_default
  [__link1]: https://docs.rs/duat/0.1.3/duat/?search=prelude::map
  [__link10]: https://docs.rs/duat/0.1.3/duat/?search=hooks::add
@@ -241,4 +241,4 @@ I don’t like it.
  [__link6]: https://docs.rs/duat/0.1.3/duat/?search=prelude::VertRule
  [__link7]: https://docs.rs/duat/0.1.3/duat/?search=prelude::LineNumbers
  [__link8]: https://docs.rs/duat/0.1.3/duat/?search=prelude::status
- [__link9]: https://docs.rs/duat/0.1.3/duat/?search=prelude::CommandLine
+ [__link9]: https://docs.rs/duat/0.1.3/duat/?search=prelude::CmdLine

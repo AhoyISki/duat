@@ -36,7 +36,7 @@ mod switch {
         hooks::{self, ModeSwitched},
         ui::{Ui, Window},
         widget_entry,
-        widgets::{CmdLineMode, CommandLine, File, Node},
+        widgets::{CmdLineMode, CmdLine, File, Node},
     };
 
     static PRINTING_IS_STOPPED: AtomicBool = AtomicBool::new(false);
@@ -96,8 +96,8 @@ mod switch {
             return;
         };
 
-        if let Some(node) = cur_file.get_related_widget::<CommandLine<U>>() {
-            node.try_downcast::<CommandLine<U>>()
+        if let Some(node) = cur_file.get_related_widget::<CmdLine<U>>() {
+            node.try_downcast::<CmdLine<U>>()
                 .unwrap()
                 .write()
                 .set_mode(mode);
@@ -113,8 +113,8 @@ mod switch {
             };
 
             if let Some(cmd_line) = widgets.find_map(|node| {
-                node.data_is::<CommandLine<U>>()
-                    .then(|| node.try_downcast::<CommandLine<U>>().unwrap())
+                node.data_is::<CmdLine<U>>()
+                    .then(|| node.try_downcast::<CmdLine<U>>().unwrap())
             }) {
                 cmd_line.write().set_mode(mode)
             }

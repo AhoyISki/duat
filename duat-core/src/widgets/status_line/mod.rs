@@ -141,7 +141,7 @@ impl<U: Ui> Default for StatusLineCfg<U> {
 /// ```rust
 /// # use duat_core::{
 /// #     hooks::{self, OnFileOpen, OnWindowOpen}, ui::Ui,
-/// #     widgets::{CommandLine, File, LineNumbers, Widget, StatusLine, status, common::*},
+/// #     widgets::{CmdLine, File, LineNumbers, Widget, StatusLine, status, common::*},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::remove("FileWidgets");
@@ -155,7 +155,7 @@ impl<U: Ui> Default for StatusLineCfg<U> {
 ///     let (status_area, _) = builder.push(status!(
 ///         [File] { File::name } " " selections_fmt " " main_fmt
 ///     ));
-///     builder.push_to(CommandLine::cfg().left_ratioed(2, 3), status_area);
+///     builder.push_to(CmdLine::cfg().left_ratioed(2, 3), status_area);
 /// });
 /// # }
 /// ```

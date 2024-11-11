@@ -1,4 +1,4 @@
-//! Creation and execution of commands.
+//! Creation and execution of cmd.
 //!
 //! Commands in Duat work through the use of functions that don't
 //! require references (unless they're `'static`) and return results
@@ -22,13 +22,13 @@
 //! Here's a simple example of how one would add a command:
 //!
 //! ```rust
-//! # use duat::prelude::commands::{self, Flags, Args};
+//! # use duat::prelude::cmd::{self, Flags, Args};
 //! # use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
 //! // Any of these callers will work for running the command.
 //! let callers = ["my-command", "mc"];
 //!
-//! // commands::add create a new globally avaliable command.
-//! let result = commands::add(callers, move |_flags, _args| {
+//! // cmd::add create a new globally avaliable command.
+//! let result = cmd::add(callers, move |_flags, _args| {
 //!     unimplemented!();
 //! });
 //!
@@ -40,20 +40,20 @@
 //! To run that command, simply do the following:
 //!
 //! ```rust
-//! # use duat::prelude::commands;
-//! commands::run("my-command");
+//! # use duat::prelude::cmd;
+//! cmd::run("my-command");
 //! ```
 //!
 //! Here's a simple command that makes use of [`Flags`]:
 //!
 //! ```rust
-//! # use duat::commands;
+//! # use duat::cmd;
 //! # use std::sync::{atomic::{AtomicU32, Ordering}, Arc};
 //! let expression = Arc::new(AtomicU32::default());
 //! let callers = ["my-command", "mc"];
 //! let my_command = {
 //!     let expression = expression.clone();
-//!     commands::add(callers, move |flags, _args| {
+//!     cmd::add(callers, move |flags, _args| {
 //!         // `Flags::long` checks for `--` flags
 //!         if flags.word("happy") {
 //!             expression.store('😁' as u32, Ordering::Relaxed)
@@ -71,7 +71,7 @@
 //! };
 //!
 //! // flags and args are included within the string.
-//! commands::run("mc --sad -🤯 unused-1 unused-2").unwrap();
+//! cmd::run("mc --sad -🤯 unused-1 unused-2").unwrap();
 //!
 //! let num = expression.load(Ordering::Relaxed);
 //! assert_eq!(char::from_u32(num), Some('🤯'))
@@ -82,8 +82,8 @@
 //!
 //! ```rust
 //! # use std::path::PathBuf;
-//! # use duat::prelude::{commands, err, ok};
-//! commands::add(["copy", "cp"], move |flags, mut args| {
+//! # use duat::prelude::{cmd, err, ok};
+//! cmd::add(["copy", "cp"], move |flags, mut args| {
 //!     // The `?` is very handy to get a specific number of args.
 //!     let source = args.next()?;
 //!     // You can also return custom error messages.
@@ -91,7 +91,7 @@
 //!     // And also parse the arguments.
 //!     let target_2: PathBuf = args.next_as()?;
 //!
-//!     // If you want to error out on too many commands.
+//!     // If you want to error out on too many cmd.
 //!     args.ended()?;
 //!
 //!     if flags.word("link") {
@@ -118,8 +118,8 @@
 //! results".
 //!
 //! ```rust
-//! # use duat::prelude::{commands, ok};
-//! commands::add(["write", "w"], move |_flags, mut args| {
+//! # use duat::prelude::{cmd, ok};
+//! cmd::add(["write", "w"], move |_flags, mut args| {
 //!     let mut count = 0;
 //!     while let Ok(arg) = args.next() {
 //!         count += 1;
@@ -132,9 +132,9 @@
 //!
 //! [`Form`]: crate::forms::Form
 
-pub use duat_core::commands::{Args, Flags};
+pub use duat_core::cmd::{Args, Flags};
 use duat_core::{
-    commands::{self, CmdResult},
+    cmd::{self, CmdResult},
     mode::Cursors,
     text::Text,
     widgets::Widget,
@@ -151,24 +151,24 @@ use crate::{Area, Ui};
 /// # Examples
 ///
 /// ```rust
-/// # use duat_core::{commands::{self, Result}, text::Text};
+/// # use duat_core::{cmd::{self, Result}, text::Text};
 /// # fn test() -> Result<Option<Text>> {
-/// commands::run("set-prompt new-prompt")
+/// cmd::run("set-prompt new-prompt")
 /// # }
 /// ```
 ///
 /// In this case we're running a command that will affect the most
-/// relevant [`CommandLine`]. See [`commands::add_for`] for
+/// relevant [`CmdLine`]. See [`cmd::add_for`] for
 /// more information.
 ///
-/// [`CommandLine`]: crate::widgets::CommandLine
-/// [`commands::add_for`]: add_for
+/// [`CmdLine`]: crate::widgets::CmdLine
+/// [`cmd::add_for`]: add_for
 #[inline(never)]
 pub fn run(call: impl std::fmt::Display) -> Result<Option<Text>> {
-    commands::run(call)
+    cmd::run(call)
 }
 
-/// Adds a command to the global list of commands.
+/// Adds a command to the global list of cmd.
 ///
 /// This command cannot take any arguments beyond the [`Flags`]
 /// and [`Args`], so any mutation of state must be done
@@ -178,12 +178,12 @@ pub fn run(call: impl std::fmt::Display) -> Result<Option<Text>> {
 /// # Examples
 ///
 /// ```rust
-/// # use duat::prelude::{commands, data::RwData, status, StatusLineCfg};
+/// # use duat::prelude::{cmd, data::RwData, status, StatusLineCfg};
 /// # fn test() -> StatusLineCfg {
 /// // Shared state, which will be displayed in a `StatusLine`.
 /// let var = RwData::new(35);
 ///
-/// commands::add(["set-var"], {
+/// cmd::add(["set-var"], {
 ///     // A clone is necessary, in order to have one copy of `var`
 ///     // in the closure, while the other is in the `StatusLine`.
 ///     let var = var.clone();
@@ -219,7 +219,7 @@ pub fn add(
     callers: impl IntoIterator<Item = impl ToString>,
     f: impl FnMut(Flags, Args) -> CmdResult + 'static,
 ) -> Result<()> {
-    commands::add(callers, f)
+    cmd::add(callers, f)
 }
 
 /// Adds a command that can mutate a widget of the given type,
@@ -236,8 +236,8 @@ pub fn add(
 /// first widget found.
 ///
 /// This search algorithm allows a more versatile configuration of
-/// widgets, for example, one may have a [`CommandLine`] per
-/// [`File`], or one singular [`CommandLine`] that acts upon
+/// widgets, for example, one may have a [`CmdLine`] per
+/// [`File`], or one singular [`CmdLine`] that acts upon
 /// all files in the window, and both would respond correctly
 /// to the `"set-prompt"` command.
 ///
@@ -252,7 +252,7 @@ pub fn add(
 /// #     time::{Duration, Instant}
 /// # };
 /// # use duat_core::{
-/// #     commands, forms::{self, Form}, text::{text, Text, AlignCenter},
+/// #     cmd, forms::{self, Form}, text::{text, Text, AlignCenter},
 /// #     ui::{Area, PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
 /// # };
 /// struct TimerCfg<U>(PhantomData<U>);
@@ -312,7 +312,7 @@ pub fn add(
 /// }
 /// ```
 ///
-/// Next, we'll add three commands for this widget, "`play`",
+/// Next, we'll add three cmd for this widget, "`play`",
 /// "`pause`" and "`reset`". The best place to add them is in the
 /// [`once`] function of [`Widget`]s
 ///
@@ -323,7 +323,7 @@ pub fn add(
 /// #     time::{Duration, Instant}
 /// # };
 /// # use duat_core::{
-/// #     commands, forms::{self, Form}, text::{text, Text, AlignCenter},
+/// #     cmd, forms::{self, Form}, text::{text, Text, AlignCenter},
 /// #     ui::{Area, PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
 /// # };
 /// # struct TimerCfg<U>(PhantomData<U>);
@@ -360,7 +360,7 @@ pub fn add(
 ///     fn once() {
 ///         forms::set_weak("Counter", Form::green());
 ///
-///         commands::add_for::<Timer, U>(
+///         cmd::add_for::<Timer, U>(
 ///             ["play"],
 ///             |timer, _area, _cursors, _flags, _args| {
 ///                 timer.running.store(true, Ordering::Relaxed);
@@ -369,7 +369,7 @@ pub fn add(
 ///             })
 ///             .unwrap();
 ///
-///         commands::add_for::<Timer, U>(
+///         cmd::add_for::<Timer, U>(
 ///             ["pause"],
 ///             |timer, _, _, _, _| {
 ///                 timer.running.store(false, Ordering::Relaxed);
@@ -378,7 +378,7 @@ pub fn add(
 ///             })
 ///             .unwrap();
 ///
-///         commands::add_for::<Timer, U>(
+///         cmd::add_for::<Timer, U>(
 ///             ["reset"],
 ///             |timer, _, _, _, _| {
 ///                 timer.instant = Instant::now();
@@ -397,7 +397,7 @@ pub fn add(
 /// [`dyn Area`]: duat_core::ui::Area
 /// [`File`]: crate::widgets::File
 /// [`Session`]: crate::session::Session
-/// [`CommandLine`]: crate::widgets::CommandLine
+/// [`CmdLine`]: crate::widgets::CmdLine
 /// [`once`]: Widget::once
 /// [`Form`]: crate::forms::Form
 /// [`forms::set`]: crate::forms::set
@@ -407,7 +407,7 @@ pub fn add_for<W: Widget<Ui>>(
     callers: impl IntoIterator<Item = impl ToString>,
     f: impl FnMut(&mut W, &Area, &mut Cursors, Flags, Args) -> CmdResult + 'static,
 ) -> Result<()> {
-    commands::add_for(callers, f)
+    cmd::add_for(callers, f)
 }
 
 type Result<T> = duat_core::Result<T, ()>;

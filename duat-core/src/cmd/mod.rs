@@ -26,7 +26,7 @@ mod control {
     };
 
     use crate::{
-        commands, context, iter_around, iter_around_rev, mode,
+        cmd, context, iter_around, iter_around_rev, mode,
         text::{Text, err, ok},
         ui::{Event, Ui, Window},
         widgets::File,
@@ -51,7 +51,7 @@ mod control {
     }
 
     pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<Event>) -> crate::Result<(), ()> {
-        commands::add(["quit", "q"], {
+        cmd::add(["quit", "q"], {
             let tx = tx.clone();
 
             move |_flags, _args| {
@@ -60,7 +60,7 @@ mod control {
             }
         })?;
 
-        commands::add(["write", "w"], move |_flags, mut args| {
+        cmd::add(["write", "w"], move |_flags, mut args| {
             let file = context::cur_file::<U>()?;
 
             let paths = {
@@ -109,7 +109,7 @@ mod control {
             }
         })?;
 
-        commands::add(["edit", "e"], {
+        cmd::add(["edit", "e"], {
             let windows = context::windows::<U>();
 
             move |_, mut args| {
@@ -138,7 +138,7 @@ mod control {
             }
         })?;
 
-        commands::add(["buffer", "b"], move |_, mut args| {
+        cmd::add(["buffer", "b"], move |_, mut args| {
             let path: PathBuf = args.next_as()?;
             let name = path
                 .file_name()
@@ -150,7 +150,7 @@ mod control {
             ok!("Switched to " [*a] name [] ".")
         })?;
 
-        commands::add(["next-file"], {
+        cmd::add(["next-file"], {
             let windows = context::windows();
 
             move |flags, _| {
@@ -179,7 +179,7 @@ mod control {
             }
         })?;
 
-        commands::add(["prev-file"], {
+        cmd::add(["prev-file"], {
             let windows = context::windows();
 
             move |flags, _| {
@@ -316,15 +316,15 @@ mod global {
     /// # Examples
     ///
     /// ```rust
-    /// # use duat_core::commands;
-    /// commands::run("set-prompt new-prompt");
+    /// # use duat_core::cmd;
+    /// cmd::run("set-prompt new-prompt");
     /// ```
     ///
     /// In this case we're running a command that will affect the most
-    /// relevant [`CommandLine`]. See [`add_for`] for
+    /// relevant [`CmdLine`]. See [`add_for`] for
     /// more information.
     ///
-    /// [`CommandLine`]: crate::widgets::CommandLine
+    /// [`CmdLine`]: crate::widgets::CmdLine
     pub fn run(call: impl std::fmt::Display) -> Result<Option<Text>> {
         COMMANDS.run(call)
     }
@@ -344,13 +344,11 @@ mod global {
     /// # Examples
     ///
     /// ```rust
-    /// # use duat_core::{
-    ///     commands, data::RwData, hooks::{self, OnWindowOpen}, ui::Ui, widgets::status
-    /// };
+    /// # use duat_core::{cmd, data::RwData, hooks::{self, OnWindowOpen}, ui::Ui, widgets::status};
     /// # fn test<U: Ui>() {
     /// let var = RwData::new(35);
     ///
-    /// commands::add(["set-var"], {
+    /// cmd::add(["set-var"], {
     ///     let var = var.clone();
     ///     move |_flags, mut args| {
     ///         let value: usize = args.next_as()?;
@@ -394,8 +392,8 @@ mod global {
     /// first widget found.
     ///
     /// This search algorithm allows a more versatile configuration of
-    /// widgets, for example, one may have a [`CommandLine`] per
-    /// [`File`], or one singular [`CommandLine`] that acts upon
+    /// widgets, for example, one may have a [`CmdLine`] per
+    /// [`File`], or one singular [`CmdLine`] that acts upon
     /// all files in the window, and both would respond correctly
     /// to the `"set-prompt"` command.
     ///
@@ -410,7 +408,7 @@ mod global {
     /// #     time::{Duration, Instant}
     /// # };
     /// # use duat_core::{
-    /// #     commands, forms::{self, Form}, text::{text, Text, AlignCenter},
+    /// #     cmd, forms::{self, Form}, text::{text, Text, AlignCenter},
     /// #     ui::{Area, PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
     /// # };
     /// struct TimerCfg<U>(PhantomData<U>);
@@ -481,7 +479,7 @@ mod global {
     /// #     time::{Duration, Instant}
     /// # };
     /// # use duat_core::{
-    /// #     commands, forms::{self, Form}, text::{text, Text, AlignCenter},
+    /// #     cmd, forms::{self, Form}, text::{text, Text, AlignCenter},
     /// #     ui::{Area, PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
     /// # };
     /// # struct TimerCfg<U>(PhantomData<U>);
@@ -518,7 +516,7 @@ mod global {
     ///     fn once() {
     ///         forms::set_weak("Counter", Form::green());
     ///
-    ///         commands::add_for::<Timer, U>(
+    ///         cmd::add_for::<Timer, U>(
     ///             ["play"],
     ///             |timer, _area, _cursors, _flags, _args| {
     ///                 timer.running.store(true, Ordering::Relaxed);
@@ -527,7 +525,7 @@ mod global {
     ///             })
     ///             .unwrap();
     ///
-    ///         commands::add_for::<Timer, U>(
+    ///         cmd::add_for::<Timer, U>(
     ///             ["pause"],
     ///             |timer, _, _, _, _| {
     ///                 timer.running.store(false, Ordering::Relaxed);
@@ -536,7 +534,7 @@ mod global {
     ///             })
     ///             .unwrap();
     ///
-    ///         commands::add_for::<Timer, U>(
+    ///         cmd::add_for::<Timer, U>(
     ///             ["reset"],
     ///             |timer, _, _, _, _| {
     ///                 timer.instant = Instant::now();
@@ -555,7 +553,7 @@ mod global {
     /// [`dyn Area`]: crate::ui::Area
     /// [`File`]: crate::widgets::File
     /// [`Session`]: crate::session::Session
-    /// [`CommandLine`]: crate::widgets::CommandLine
+    /// [`CmdLine`]: crate::widgets::CmdLine
     /// [`once`]: Widget::once
     /// [`Form`]: crate::forms::Form
     /// [`forms::set`]: crate::forms::set

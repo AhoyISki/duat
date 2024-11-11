@@ -3,7 +3,7 @@
 use std::{ops::RangeInclusive, sync::LazyLock};
 
 use duat_core::{
-    commands, context,
+    cmd, context,
     data::{RwData, RwLock},
     mode::{
         self, Cursors, EditHelper, ExtendFwd, ExtendRev, Fwd, IncSearcher, KeyCode::*,
@@ -515,7 +515,7 @@ impl OneKey {
             ////////// File change keys.
             key!(Char('a')) => {
                 if let Some(file) = last_file
-                    && commands::run_notify(format!("b {file}")).is_ok()
+                    && cmd::run_notify(format!("b {file}")).is_ok()
                 {
                     *LAST_FILE.write() = Some(cur_name);
                 } else {
@@ -523,12 +523,12 @@ impl OneKey {
                 }
             }
             key!(Char('n')) => {
-                if commands::run_notify("next-file").is_ok() {
+                if cmd::run_notify("next-file").is_ok() {
                     *LAST_FILE.write() = Some(cur_name);
                 }
             }
             key!(Char('N'), Mod::SHIFT) => {
-                if commands::run_notify("prev-file").is_ok() {
+                if cmd::run_notify("prev-file").is_ok() {
                     *LAST_FILE.write() = Some(cur_name);
                 }
             }

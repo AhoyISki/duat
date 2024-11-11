@@ -1,40 +1,42 @@
 setup_duat!(setup);
 use duat::prelude::*;
 // Since duat_kak is a plugin, it must be used explicitely.
-use duat_kak::{KeyMap, Mode, OnModeChange};
+use duat_kak::{Insert, Normal};
+
 fn setup() {
-    // The print module manages the printing of files.
+    // The print module configures file printing.
     print::wrap_on_width();
 
-    hooks::remove_group("FileWidgets");
+    hooks::remove("FileWidgets");
     // This hook lets you push widgets to the files.
     hooks::add::<OnFileOpen>(|builder| {
-        // By default, these go on the left.
-        builder.push::<VertRule>();
-        builder.push::<LineNumbers>();
+        // These widgets go on the left by default.
+        builder.push(VertRule::cfg());
+        builder.push(LineNumbers::cfg());
     });
-    hooks::remove_group("WindowWidgets");
+    hooks::remove("WindowWidgets");
     // Same, but on the edges of the window.
     hooks::add::<OnWindowOpen>(|builder| {
         // "[" "]" pairs change the style of text.
-        let status_line = status!(
+        let (child, _) = builder.push(status!(
             [File] { File::name } " "
-            { KeyMap::mode_fmt } " "
-            selections_fmt " " main_fmt
-        );
-        // As opposed to `builder.push`, this one
-        // takes a user defined configuration.
-        let (child, _) = builder.push_cfg(status_line);
-        let cmd_line = CommandLine::cfg().left_with_percent(30);
-        // `push_cfg_to` pushes a widget to another.
-        builder.push_cfg_to(cmd_line, child);
+            mode_fmt " " selections_fmt " " main_fmt
+        ));
+        let cmd_line = CmdLine::cfg().left_ratioed(3, 5);
+        // `push_to` pushes a widget to another.
+        builder.push_to(cmd_line, child);
     });
-    input::set(KeyMap::new());
-    // This is a hook provided by duat-kak.
-    hooks::add::<OnModeChange>(|(_, new)| match new {
-        Mode::Insert => cursor::set_main(CursorShape::SteadyBar),
+
+    mode::set_default(Normal::new());
+    // Alias show up on the screen as if they were text
+    alias::<Insert>("jk", "<Esc>");
+
+    hooks::add::<ModeSwitched>(|&(_, new)| match new {
+        "insert" => cursor::set_main(CursorShape::SteadyBar),
         _ => cursor::set_main(CursorShape::SteadyBlock),
     });
-    // This is a form also provided by duat-kak.
-    forms::set("Mode", Form::new().dark_magenta());
+
+    forms::set("File", Form::yellow().bold());
+    // This Form is used by `mode_fmt`.
+    forms::set("Mode", Form::dark_magenta());
 }

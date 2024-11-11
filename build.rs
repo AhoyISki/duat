@@ -1,3 +1,4 @@
+use core::str;
 use std::{
     fs::{self, File},
     io::Write,
@@ -36,6 +37,11 @@ fn main() {
 
     let mut toml = File::create(dest.join("Cargo.toml")).unwrap();
 
-    toml.write_all(TOML).unwrap();
+    let cut_toml: String = unsafe { str::from_utf8_unchecked(TOML) }
+        .split_inclusive('\n')
+        .filter(|l| !l.contains("path = \""))
+        .collect();
+
+    toml.write_all(cut_toml.as_bytes()).unwrap();
     toml.write_all(UI_TO_USE).unwrap();
 }

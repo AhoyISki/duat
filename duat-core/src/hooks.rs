@@ -57,7 +57,7 @@
 //! [dyn Widget]: Widget
 //! [key]: KeyEvent
 //! [deadlocks]: https://en.wikipedia.org/wiki/Deadlock_(computer_science)
-//! [commands]: crate::commands
+//! [commands]: crate::cmd
 use std::{any::TypeId, collections::HashMap, marker::PhantomData, sync::LazyLock};
 
 use parking_lot::{Mutex, RwLock};

@@ -1,11 +1,11 @@
 use super::{Cursors, EditHelper, KeyCode, KeyEvent, KeyMod, Mode, key};
-use crate::{data::RwData, text::Point, ui::Ui, widgets::CommandLine};
+use crate::{data::RwData, text::Point, ui::Ui, widgets::CmdLine};
 
 #[derive(Clone)]
 pub struct Command;
 
 impl<U: Ui> Mode<U> for Command {
-    type Widget = CommandLine<U>;
+    type Widget = CmdLine<U>;
 
     fn send_key(
         &mut self,

@@ -1,19 +1,14 @@
-//! An [`Widget`] capable of running [`Command`]s.
+//! A [`Widget`] that can have varying functionality
 //!
-//! This widget is capable of running [`Command`]s that are defined
-//! and stored in the [`Commands`] struct. It does so by treating the
-//! first word as the `caller` for the [`Command`], while the other
-//! words are treated as `arguments` for said [`Command`].
+//! Its primary purpose, as the name implies, is to run [commands],
+//! but it can also [show notifications], do [incremental search], and
+//! you can even [implement your own functionality] for the
+//! [`CmdLine`].
 //!
-//! There are plans on creating a simple interface for `flags` in the
-//! near future.
-//!
-//! There are also plans to permit overriding [`CommandLine`]'s
-//! behaviour, such as making it search for text in a [`Text`], in
-//! real time.
-//!
-//! Currently, you can also change the prompt of a [`CommandLine`],
-//! by running the `set-prompt` [`Command`].
+//! [commands]: cmd
+//! [show notifications]: ShowNotifications
+//! [incremental search]: IncSearch
+//! [implement your own functionality]: CmdLineMode
 use std::{
     any::TypeId,
     marker::PhantomData,
@@ -24,7 +19,7 @@ use parking_lot::RwLock;
 
 use super::File;
 use crate::{
-    commands,
+    cmd,
     data::{RoData, RwData, context},
     forms::{self, Form},
     hooks,
@@ -34,15 +29,15 @@ use crate::{
     widgets::{Widget, WidgetCfg},
 };
 
-pub struct CommandLineCfg<U> {
+pub struct CmdLineCfg<U> {
     prompt: String,
     specs: PushSpecs,
     ghost: PhantomData<U>,
 }
 
-impl<U> CommandLineCfg<U> {
+impl<U> CmdLineCfg<U> {
     pub fn new() -> Self {
-        CommandLineCfg {
+        CmdLineCfg {
             prompt: String::from(":"),
             specs: PushSpecs::below().with_ver_len(1.0),
             ghost: PhantomData,
@@ -50,13 +45,13 @@ impl<U> CommandLineCfg<U> {
     }
 }
 
-impl<U: Ui> Default for CommandLineCfg<U> {
+impl<U: Ui> Default for CmdLineCfg<U> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<U: Ui> CommandLineCfg<U> {
+impl<U: Ui> CmdLineCfg<U> {
     pub fn with_prompt(self, prompt: impl ToString) -> Self {
         Self { prompt: prompt.to_string(), ..self }
     }
@@ -76,8 +71,8 @@ impl<U: Ui> CommandLineCfg<U> {
     }
 }
 
-impl<U: Ui> WidgetCfg<U> for CommandLineCfg<U> {
-    type Widget = CommandLine<U>;
+impl<U: Ui> WidgetCfg<U> for CmdLineCfg<U> {
+    type Widget = CmdLine<U>;
 
     fn build(self, _: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
         let mode: RwData<dyn CmdLineMode<U>> = if hooks::group_exists("CmdLineNotifications") {
@@ -90,7 +85,7 @@ impl<U: Ui> WidgetCfg<U> for CommandLineCfg<U> {
             RwData::new_unsized::<RunCommands<U>>(Arc::new(RwLock::new(RunCommands::new())))
         };
 
-        let widget = CommandLine {
+        let widget = CmdLine {
             text: Text::new(),
             prompt: RwData::new(self.prompt.clone()),
             mode: RwData::new(mode),
@@ -118,7 +113,7 @@ impl<U: Ui> WidgetCfg<U> for CommandLineCfg<U> {
 ///   based on [`Inc`].
 ///
 /// By default, Duat will have the `"CmdLineNotifications"` [hook]
-/// active. This hook changes the mode of the [`CommandLine`] to
+/// active. This hook changes the mode of the [`CmdLine`] to
 /// [`ShowNotifications`] whenever it is unfocused. If you don't want
 /// this functionality, or want notifications somewhere else, you can
 /// use [`hooks::remove`].
@@ -126,24 +121,24 @@ impl<U: Ui> WidgetCfg<U> for CommandLineCfg<U> {
 /// [modes]: CmdLineMode
 /// [`Inc`]: IncSearcher
 /// [hook]: crate::hooks
-pub struct CommandLine<U: Ui> {
+pub struct CmdLine<U: Ui> {
     text: Text,
     prompt: RwData<String>,
     mode: RwData<RwData<dyn CmdLineMode<U>>>,
 }
 
-impl<U: Ui> CommandLine<U> {
+impl<U: Ui> CmdLine<U> {
     pub(crate) fn set_mode<M: CmdLineMode<U>>(&mut self, mode: M) {
         run_once::<M, U>();
         *self.mode.write() = RwData::new_unsized::<M>(Arc::new(RwLock::new(mode)));
     }
 }
 
-impl<U: Ui> Widget<U> for CommandLine<U> {
-    type Cfg = CommandLineCfg<U>;
+impl<U: Ui> Widget<U> for CmdLine<U> {
+    type Cfg = CmdLineCfg<U>;
 
     fn cfg() -> Self::Cfg {
-        CommandLineCfg::new()
+        CmdLineCfg::new()
     }
 
     fn update(&mut self, _area: &<U as Ui>::Area) {
@@ -166,14 +161,11 @@ impl<U: Ui> Widget<U> for CommandLine<U> {
         forms::set_weak("Prompt", Form::cyan());
         forms::set_weak("ParseCommandErr", "DefaultErr");
 
-        commands::add_for::<CommandLine<U>, U>(
-            ["set-prompt"],
-            move |command_line, _, _, _, mut args| {
-                let new_prompt: String = args.collect();
-                *command_line.prompt.write() = new_prompt;
-                Ok(None)
-            },
-        )
+        cmd::add_for::<CmdLine<U>, U>(["set-prompt"], move |command_line, _, _, _, mut args| {
+            let new_prompt: String = args.collect();
+            *command_line.prompt.write() = new_prompt;
+            Ok(None)
+        })
         .unwrap();
     }
 
@@ -232,7 +224,7 @@ impl<U: Ui> CmdLineMode<U> for RunCommands<U> {
         let command = text.to_string();
         let caller = command.split_whitespace().next();
         if let Some(caller) = caller {
-            if commands::caller_exists(caller) {
+            if cmd::caller_exists(caller) {
                 let id = forms::id_of!("CallerExists");
                 text.insert_tag(0, Tag::PushForm(id), self.key);
                 text.insert_tag(caller.len() as u32, Tag::PopForm(id), self.key);
@@ -249,7 +241,7 @@ impl<U: Ui> CmdLineMode<U> for RunCommands<U> {
 
         let cmd = text.to_string();
         if !cmd.is_empty() {
-            crate::thread::queue(move || commands::run_notify(cmd));
+            crate::thread::queue(move || cmd::run_notify(cmd));
         }
     }
 

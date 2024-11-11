@@ -47,7 +47,7 @@
 //!
 //! For now, it has a barebones configuration, which is based on
 //! Kakoune, so if you are familiar with that text editor, many of the
-//! commands are going to be the same.
+//! cmd are going to be the same.
 //!
 //! ## Configuration
 //!
@@ -102,7 +102,7 @@
 //!         );
 //!
 //!         let (child, _) = builder.push(status);
-//!         builder.push_to(CommandLine::cfg().left_ratioed(3, 7), child);
+//!         builder.push_to(CmdLine::cfg().left_ratioed(3, 7), child);
 //!     });
 //!
 //!     hooks::add::<ModeSwitched>(|&(_, new)| match new {
@@ -157,14 +157,14 @@
 //! text, while `[]` reverts back to the "Default" form. The
 //! [`status!`] macro works similarly.
 //!
-//! Duat also has a simple command system, that lets you add commands
+//! Duat also has a simple command system, that lets you add cmd
 //! with arguments supported by Rust's type system:
 //!
 //! ```rust
 //! # use duat::prelude::*;
 //! # fn test() -> Result<(), Error<()>> {
 //! let callers = ["collapse-command-line", "collapse-cmd"];
-//! commands::add_for::<CommandLine>(
+//! cmd::add_for::<CmdLine>(
 //!     callers,
 //!     |_command_line, area, _cursors, _flags, _args| {
 //!         area.constrain_ver(Constraint::Length(0.0))?;
@@ -256,7 +256,7 @@
 //! [vertical rule]: prelude::VertRule
 //! [line numbers]: prelude::LineNumbers
 //! [custom status line]: prelude::status
-//! [command line]: prelude::CommandLine
+//! [command line]: prelude::CmdLine
 //! [Adds]: hooks::add
 //! [mode changes]: hooks::ModeSwitched
 //! [style]: forms::Form
@@ -270,7 +270,7 @@ use duat_core::session::SessionCfg;
 pub use duat_core::thread;
 pub use setup::{pre_setup, run_duat};
 
-pub mod commands;
+pub mod cmd;
 pub mod print;
 mod setup;
 
@@ -473,8 +473,8 @@ pub mod widgets {
 
     use crate::Ui;
 
-    pub type CommandLine = duat_core::widgets::CommandLine<Ui>;
-    pub type CommandLineCfg = duat_core::widgets::CommandLineCfg<Ui>;
+    pub type CmdLine = duat_core::widgets::CmdLine<Ui>;
+    pub type CmdLineCfg = duat_core::widgets::CmdLineCfg<Ui>;
     pub type StatusLine = duat_core::widgets::StatusLine<Ui>;
     pub type StatusLineCfg = duat_core::widgets::StatusLineCfg<Ui>;
     pub type LineNumbers = duat_core::widgets::LineNumbers<Ui>;
@@ -490,16 +490,16 @@ pub mod state {
 pub mod control {
     //! Prebuilt general controls for Duat
     //!
-    //! This module contains the expected commands of a
+    //! This module contains the expected cmd of a
     //! text editor that don't involve particular widgets
     //! or other more specific concepts
     //!
     //! All of the functions listed in here also have a [command]
-    //! equivalent, that you can call from the [`CommandLine`].
+    //! equivalent, that you can call from the [`CmdLine`].
     //!
-    //! [command]: duat_core::commands
-    //! [`CommandLine`]: crate::prelude::CommandLine
-    pub use duat_core::commands::{
+    //! [command]: duat_core::cmd
+    //! [`CmdLine`]: crate::prelude::CmdLine
+    pub use duat_core::cmd::{
         alias, buffer, edit, next_file, next_global_file, prev_file, prev_global_file, quit,
     };
 }
@@ -517,7 +517,7 @@ pub mod prelude {
     pub use duat_term::{self as ui, VertRule};
 
     pub use crate::{
-        Ui, commands, control, cursor,
+        Ui, cmd, control, cursor,
         forms::{self, CursorShape, Form},
         hooks::{self, ModeSwitched, OnFileOpen, OnWindowOpen},
         mode::{self, Cursors, Mode, alias, map},

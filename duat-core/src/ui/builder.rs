@@ -69,7 +69,7 @@ use crate::{
 /// # use duat_core::{
 /// #     hooks::{self, OnFileOpen},
 /// #     ui::{FileBuilder, Ui},
-/// #     widgets::{CommandLine, LineNumbers, Widget, StatusLine},
+/// #     widgets::{CmdLine, LineNumbers, Widget, StatusLine},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::remove("FileWidgets");
@@ -78,8 +78,8 @@ use crate::{
 ///     builder.push(line_numbers_cfg);
 ///     // Push a StatusLine to the bottom.
 ///     builder.push(StatusLine::cfg());
-///     // Push a CommandLine to the bottom.
-///     builder.push(CommandLine::cfg());
+///     // Push a CmdLine to the bottom.
+///     builder.push(CmdLine::cfg());
 /// });
 /// # }
 /// ```
@@ -223,7 +223,7 @@ where
     /// #     text::Text,
     /// #     ui::{FileBuilder, Ui},
     /// #     widgets::{
-    /// #         CommandLine, File, LineNumbers, Widget,
+    /// #         CmdLine, File, LineNumbers, Widget,
     /// #         common::{selections_fmt, main_fmt}, status
     /// #     },
     /// # };
@@ -240,7 +240,7 @@ where
     ///     let left_status = status!(mode_fmt).push_left();
     ///     builder.push_to(left_status, right_status_area);
     ///
-    ///     builder.push(CommandLine::cfg());
+    ///     builder.push(CmdLine::cfg());
     /// });
     /// # }
     /// ```
@@ -287,14 +287,14 @@ impl<U: Ui> Drop for FileBuilder<U> {
 /// # use duat_core::{
 /// #     hooks::{self, OnWindowOpen},
 /// #     ui::{Ui, WindowBuilder},
-/// #     widgets::{CommandLine, Widget, StatusLine},
+/// #     widgets::{CmdLine, Widget, StatusLine},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::add::<OnWindowOpen<U>>(|builder: &WindowBuilder<U>| {
 ///     // Push a StatusLine to the bottom.
 ///     builder.push(StatusLine::cfg());
-///     // Push a CommandLine to the bottom.
-///     builder.push(CommandLine::cfg());
+///     // Push a CmdLine to the bottom.
+///     builder.push(CmdLine::cfg());
 /// });
 /// # }
 /// ```
@@ -312,7 +312,7 @@ impl<U: Ui> Drop for FileBuilder<U> {
 /// # use duat_core::{
 /// #     hooks::{self, OnFileOpen, OnWindowOpen},
 /// #     ui::{WindowBuilder, Ui},
-/// #     widgets::{CommandLine, LineNumbers, Widget, StatusLine},
+/// #     widgets::{CmdLine, LineNumbers, Widget, StatusLine},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::remove("FileWidgets");
@@ -323,13 +323,13 @@ impl<U: Ui> Drop for FileBuilder<U> {
 ///
 /// hooks::remove("WindowWidgets");
 /// hooks::add::<OnWindowOpen<U>>(|builder| {
-///     builder.push(CommandLine::cfg());
+///     builder.push(CmdLine::cfg());
 /// });
 /// # }
 /// ```
 ///
 /// In this case, each file gets a [`StatusLine`], and the window will
-/// get one [`CommandLine`], after all, what is the point of having
+/// get one [`CmdLine`], after all, what is the point of having
 /// more than one command line?
 ///
 /// You can go further with this idea, like a status line on each
@@ -340,7 +340,7 @@ impl<U: Ui> Drop for FileBuilder<U> {
 /// [`OnFileOpen`]: crate::hooks::OnFileOpen
 /// [`OnWindowOpen`]: crate::hooks::OnWindowOpen
 /// [`StatusLine`]: crate::widgets::StatusLine
-/// [`CommandLine`]: crate::widgets::CommandLine
+/// [`CmdLine`]: crate::widgets::CmdLine
 pub struct WindowBuilder<U: Ui> {
     window_i: usize,
     area: RefCell<U::Area>,
@@ -409,18 +409,18 @@ impl<U: Ui> WindowBuilder<U> {
     /// intricate layouts.
     ///
     /// For example, let's say I push a [`StatusLine`] below the main
-    /// area, and then I push a [`CommandLine`] on the left of the
+    /// area, and then I push a [`CmdLine`] on the left of the
     /// status's area:
     ///
     /// ```rust
     /// # use duat_core::{
     /// #     ui::{Ui, WindowBuilder},
-    /// #     widgets::{CommandLine, Widget, StatusLine},
+    /// #     widgets::{CmdLine, Widget, StatusLine},
     /// # };
     /// # fn test<U: Ui>(builder: &WindowBuilder<U>) {
     /// // StatusLine goes below by default
     /// let (status_area, _) = builder.push(StatusLine::cfg());
-    /// let cmd_line_cfg = CommandLine::cfg().left_ratioed(3, 5);
+    /// let cmd_line_cfg = CmdLine::cfg().left_ratioed(3, 5);
     /// builder.push_to(cmd_line_cfg, status_area);
     /// # }
     /// ```
@@ -433,7 +433,7 @@ impl<U: Ui> WindowBuilder<U> {
     /// │              main area             │
     /// │                                    │
     /// ├─────────────┬──────────────────────┤
-    /// │ CommandLine │      StatusLine      │
+    /// │ CmdLine │      StatusLine      │
     /// ╰─────────────┴──────────────────────╯
     /// ```
     ///
@@ -442,7 +442,7 @@ impl<U: Ui> WindowBuilder<U> {
     ///
     /// [`push`]: Self::push
     /// [`StatusLine`]: crate::widgets::StatusLine
-    /// [`CommandLine`]: crate::widgets::CommandLine
+    /// [`CmdLine`]: crate::widgets::CmdLine
     pub fn push_to<W: Widget<U>>(
         &self,
         cfg: impl WidgetCfg<U, Widget = W>,

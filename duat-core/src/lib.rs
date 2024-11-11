@@ -74,7 +74,7 @@
 //! ```rust
 //! # use std::any::Any;
 //! # use duat_core::{
-//! #     commands, data::RwData, mode::{Cursors, EditHelper, KeyCode, KeyEvent, Mode, key},
+//! #     cmd, data::RwData, mode::{Cursors, EditHelper, KeyCode, KeyEvent, Mode, key},
 //! #     ui::Ui, widgets::File,
 //! # };
 //! # struct Normal;
@@ -139,14 +139,14 @@ use serde::{Deserialize, Serialize};
 use ui::Window;
 use widgets::{File, Node, Widget};
 
-pub use self::{commands::has_ended, data::context};
+pub use self::{cmd::has_ended, data::context};
 use self::{
     text::{Text, err, hint},
     ui::Ui,
 };
 
 pub mod cache;
-pub mod commands;
+pub mod cmd;
 pub mod data;
 pub mod forms;
 pub mod hooks;
@@ -179,12 +179,7 @@ pub trait Plugin<U: Ui>: 'static {
     ///
     /// ```rust
     /// # use duat_core::{
-    /// #     commands,
-    /// #     hooks::{self, *},
-    /// #     mode::{key, KeyCode},
-    /// #     ui::Ui,
-    /// #     widgets::File,
-    /// #     Plugin,
+    /// #     cmd, hooks::{self, *}, mode::{key, KeyCode}, ui::Ui, widgets::File, Plugin,
     /// # };
     /// struct AutoSaver;
     /// impl<U: Ui> Plugin<U> for AutoSaver {
@@ -194,7 +189,7 @@ pub trait Plugin<U: Ui>: 'static {
     ///         hooks::add::<KeySentTo<File, U>>(move |&(key, _)| {
     ///             // Assuming that we are leaving an insert mode
     ///             if let key!(KeyCode::Esc) = key {
-    ///                 commands::run("write").unwrap();
+    ///                 cmd::run("write").unwrap();
     ///             }
     ///         });
     ///         AutoSaver
