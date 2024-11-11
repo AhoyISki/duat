@@ -155,6 +155,7 @@ impl<'a> Iter<'a> {
                 if self.conceals == 0 {
                     self.point = self.point.max(self.text.point_at(b));
                     self.chars = buf_chars(&self.text.buf, self.point.byte());
+                    self.ghost = None;
                 }
             }
             RawTag::ConcealUntil(b) => {
@@ -182,16 +183,6 @@ impl<'a> Iter<'a> {
 }
 
 impl Iterator for Iter<'_> {
-    /// In order:
-    ///
-    /// - The position of the [`Part`] in the [`Text`], it can be
-    ///   [`None`], when iterating over ghost text.
-    /// - The line the [`Part`] would be situated in, given a count of
-    ///   `'\n'`s before it, iterating over the unconcealed text
-    ///   without any ghost texts within.
-    /// - The [`Part`] itself, giving either a [`char`] or a text
-    ///   modifier, which should be used to change the way the
-    ///   [`Text`] is printed.
     type Item = Item;
 
     #[inline]
@@ -254,7 +245,11 @@ impl<'a> RevIter<'a> {
         let point = real.min(text.len());
 
         let ghost = ghost.map(|ghost| {
-            let dist = text.tags.ghosts_total_at(real.byte()).unwrap().byte();
+            let dist = text
+                .tags
+                .ghosts_total_at(real.byte())
+                .unwrap_or_else(|| panic!("{real:?}, {ghost:?}"))
+                .byte();
             (ghost, dist)
         });
 
@@ -323,6 +318,7 @@ impl<'a> RevIter<'a> {
                 if self.conceals == 0 {
                     self.point = self.point.min(self.text.point_at(b));
                     self.chars = buf_chars_rev(&self.text.buf, self.point.byte());
+                    self.ghost = None;
                 }
             }
             RawTag::EndConceal(_) => self.conceals += 1,
