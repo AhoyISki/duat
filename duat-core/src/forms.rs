@@ -319,7 +319,7 @@ mod global {
     }
 
     /// A kind of [`Form`]
-    #[derive(Debug, Clone, Copy)]
+    #[derive(Clone, Copy)]
     enum Kind {
         Form(Form),
         Ref(&'static str),
@@ -512,7 +512,6 @@ pub const E_SEL_ID: FormId = FormId(11);
 /// The [`FormId`] of the `"Inactive"` form
 pub const INACTIVE_ID: FormId = FormId(12);
 
-#[derive(Debug)]
 struct InnerPalette {
     main_cursor: Option<CursorShape>,
     extra_cursor: Option<CursorShape>,
@@ -750,7 +749,6 @@ impl Palette {
     }
 }
 
-#[derive(Debug)]
 pub struct Painter {
     inner: RwLockReadGuard<'static, InnerPalette>,
     cur: Vec<(Form, FormId)>,
