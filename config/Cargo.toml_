@@ -16,8 +16,8 @@ crate-type = ["dylib"]
 
 [dependencies.duat-kak]
 path = "../duat-kak/"
-version = ">=0.2.0"
+version = ">=0.2.1"
 
 [dependencies.duat]
 path = "../"
-version = ">=0.2.0"
+version = ">=0.2.1"

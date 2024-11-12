@@ -467,7 +467,7 @@ impl Write for Lines {
                 return Ok(());
             };
 
-            // If tre character is cut by the start, don't print it.
+            // If the character is cut by the start, don't print it.
             if dist - len < self.shift {
                 let str = unsafe { std::str::from_utf8_unchecked(&self.line[start..]) };
                 let char = str.chars().next().unwrap();
@@ -495,7 +495,7 @@ impl Write for Lines {
                 return Ok(());
             };
 
-            // If tre character is cut by the end, don't print it.
+            // If the character is cut by the end, don't print it.
             if dist + len > self.shift + self.coords.width() {
                 (end, dist - self.shift)
             } else {

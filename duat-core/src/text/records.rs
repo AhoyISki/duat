@@ -25,7 +25,7 @@ pub trait Record: Default + Debug + Clone + Copy + Eq + Ord + 'static {
 	/// Subtracts the values of two [`Record`]s
     fn sub(self, other: Self) -> Self;
 
-	/// Wether or not this value has no bytes
+	/// Whether or not this value has no bytes
     fn is_zero_len(&self) -> bool;
 }
 

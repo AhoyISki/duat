@@ -1,9 +1,9 @@
 [package]
 name = "duat-term"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["AhoyISki"]
 description = "A frontend for Duat for the terminal"
-repository = "https://github.com/AhoyISki/parsec/tree/master/parsec-term"
+repository = "https://github.com/AhoyISki/duat/tree/master/duat-term"
 license = "AGPL-3.0-or-later"
 readme = "README.md"
 keywords = ["editor", "terminal", "text", "duat"]
@@ -11,7 +11,7 @@ categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2021"
 
 [dependencies]
-duat-core = { path = "../duat-core/", version = ">=0.2.0" }
+duat-core = { path = "../duat-core/", version = ">=0.2.1" }
 
 unicode-width = ">=0.1.10"
 crossterm = ">=0.28.0"

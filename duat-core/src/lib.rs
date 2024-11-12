@@ -471,7 +471,7 @@ pub enum Error<E> {
     NoWidgetYet,
     /// The checked widget is not of the type given
     WidgetIsNot,
-    /// The [`Layout`] does not allow for anothe file to open
+    /// The [`Layout`] does not allow for another file to open
     ///
     /// [`Layout`]: ui::Layout
     LayoutDisallowsFile(PhantomData<E>),

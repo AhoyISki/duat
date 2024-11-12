@@ -164,7 +164,7 @@ impl Text {
         Point::from_raw(b, c, l)
     }
 
-    /// Wether or not there are any characters in the [`Text`]
+    /// Whether or not there are any characters in the [`Text`]
     ///
     /// # Note
     ///
@@ -288,7 +288,7 @@ impl Text {
     ///
     /// # Panics
     ///
-    /// Will panic if `at` is greater than the lenght of the text
+    /// Will panic if `at` is greater than the length of the text
     #[inline(always)]
     pub fn point_at(&self, at: u32) -> Point {
         assert!(
@@ -491,7 +491,7 @@ impl Text {
     /// next visible character as the first character, and returns
     /// the points of the next visible character.
     ///
-    /// This method is useful if you want to iterater reversibly
+    /// This method is useful if you want to iterator reversibly
     /// right after a certain point, thus including the character
     /// of said point.
     pub fn points_after(&self, tp: impl TwoPoints) -> Option<(Point, Option<Point>)> {
@@ -505,7 +505,7 @@ impl Text {
     ///
     /// This point is defined not by where the line actually begins,
     /// but by where the last '\n' was located. For example, if
-    /// [`Tag`]s create ghost text or ommit text from multiple
+    /// [`Tag`]s create ghost text or omit text from multiple
     /// different lines, this point may differ from where in the
     /// [`Text`] the physical line actually begins.
     pub fn visual_line_start(&self, p: impl TwoPoints) -> (Point, Option<Point>) {

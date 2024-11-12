@@ -1,6 +1,6 @@
 setup_duat!(setup);
 use duat::prelude::*;
-// Since duat_kak is a plugin, it must be used explicitely.
+// Since duat_kak is a plugin, it must be used explicitly.
 use duat_kak::{Insert, Normal};
 
 fn setup() {
@@ -32,7 +32,7 @@ fn setup() {
     alias::<Insert>("jk", "<Esc>");
 
     hooks::add::<ModeSwitched>(|&(_, new)| match new {
-        "insert" => cursor::set_main(CursorShape::SteadyBar),
+        "Insert" => cursor::set_main(CursorShape::SteadyBar),
         _ => cursor::set_main(CursorShape::SteadyBlock),
     });
 

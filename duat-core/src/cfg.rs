@@ -45,7 +45,7 @@ impl Default for TabStops {
     }
 }
 
-/// Wheter to show the new line or not.
+/// Whether to show the new line or not.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum NewLine {
     /// Show the given character on every new line.
@@ -127,20 +127,20 @@ impl WordChars {
 pub struct PrintCfg {
     /// How to wrap the file
     pub wrap_method: WrapMethod,
-    /// Wether to indent wrapped lines or not
+    /// Whether to indent wrapped lines or not
     pub indent_wrap: bool,
     /// Which places are considered a "tab stop"
     pub tab_stops: TabStops,
-    /// Wether (and how) to show new lines
+    /// Whether (and how) to show new lines
     pub new_line: NewLine,
     /// How much space to keep between the cursor and edges
     pub scrolloff: ScrollOff,
     // NOTE: This is relevant for printing with `WrapMethod::Word`
     /// Characters that are considered to be part of a word.
     pub word_chars: WordChars,
-    /// Wether or not to print an extra space for cursors
+    /// Whether or not to print an extra space for cursors
     pub ending_space: bool,
-    /// Wether or not to limit scrolloff on the end of lines
+    /// Whether or not to limit scrolloff on the end of lines
     pub force_scrolloff: bool,
 }
 

@@ -32,7 +32,7 @@ use super::{Point, Text, get_ends, records::Records};
 
 /// How many characters to keep a [`TagRange`]
 const MIN_CHARS_TO_KEEP: u32 = 50;
-/// How many [`TagRange`]s until their minimum size is incresed
+/// How many [`TagRange`]s until their minimum size is increased
 const LIMIT_TO_BUMP: usize = 500;
 /// How much to increase that amount when enough [`TagRange`]s exist
 const BUMP_AMOUNT: u32 = 50;

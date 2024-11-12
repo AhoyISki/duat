@@ -25,7 +25,7 @@ possible, here are some of the things that Duat is capable of:
   been made
 * And many others still being planned
 
-Additionaly, by choosing Rust as its configuration language, Duat
+Additionally, by choosing Rust as its configuration language, Duat
 also gains the following features:
 
 * Complete type safety
@@ -112,7 +112,7 @@ This configuration does the following things:
   status line;
 
 These are some of the ways you can configure Duat. You might
-notice some things that can be done with these simle options:
+notice some things that can be done with these simple options:
 
 ```rust
 hooks::add::<OnFileOpen>(|builder| {
@@ -157,7 +157,7 @@ The 2 arguments
 
 ### Roadmap
 
-These are the goals that have been acomplished or are on their
+These are the goals that have been accomplished or are on their
 way:
 
 * [x] Implement basic visual functionality (printing, scrolling,

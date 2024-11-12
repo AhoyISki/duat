@@ -301,7 +301,7 @@ where
 
         for (i, (mut cursor, was_main)) in removed.into_iter().enumerate() {
             // A function that shifts a Point forwards in order to compare
-            // correcly. This only happens if the point was not already shifted.
+            // correctly. This only happens if the point was not already shifted.
             let sh = |rhs: usize| if sh_from <= rhs { shift } else { (0, 0, 0) };
 
             let c_i = {
@@ -535,7 +535,7 @@ where
         widget.update(self.area);
     }
 
-    /// Returns the lenght of the [`Text`], in [`Point`]
+    /// Returns the length of the [`Text`], in [`Point`]
     pub fn text_len(&self) -> Point {
         self.widget.read().text().len()
     }
@@ -911,7 +911,7 @@ where
         self.text.strs_in_range(range)
     }
 
-    /// Returns the lenght of the [`Text`], in [`Point`]
+    /// Returns the length of the [`Text`], in [`Point`]
     pub fn len(&self) -> Point {
         self.text.len()
     }
@@ -1026,12 +1026,12 @@ where
         self.anchor().is_none_or(|anchor| anchor < self.caret())
     }
 
-    /// Wether or not this is the main [`Cursor`]
+    /// Whether or not this is the main [`Cursor`]
     pub fn is_main(&self) -> bool {
         self.is_main
     }
 
-    /// Wether or not this cursor's selections are inclusive
+    /// Whether or not this cursor's selections are inclusive
     pub fn is_incl(&self) -> bool {
         self.cursors.is_incl()
     }
@@ -1072,7 +1072,7 @@ where
         self.inc_searcher.search_rev(self.text, self.caret(), start)
     }
 
-    /// Wether the [`Cursor`]'s selection matches the [`IncSearch`]
+    /// Whether the [`Cursor`]'s selection matches the [`IncSearch`]
     /// request
     ///
     /// [`IncSearch`]: crate::widgets::IncSearch

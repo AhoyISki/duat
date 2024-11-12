@@ -528,7 +528,7 @@ impl<U: Ui> Node<U> {
 
     pub(crate) fn as_active(&self) -> (&RwData<dyn Widget<U>>, &U::Area, &RwData<Cursors>) {
         // Since this function is only ever used on widgets that became active
-        // via `command::set_mode`, tecnically speaking, every widget is
+        // via `command::set_mode`, technically speaking, every widget is
         // active, so no need to return an `Option`.
         (&self.widget, &self.area, &self.cursors)
     }

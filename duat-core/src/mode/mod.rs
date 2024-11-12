@@ -46,7 +46,7 @@ mod switch {
         LazyLock::new(|| Mutex::new(Arc::new(|| {})));
     static SET_MODE: Mutex<Option<Box<dyn FnOnce() + Send + Sync>>> = Mutex::new(None);
 
-    /// Wether or not the [`Mode`] has changed
+    /// Whether or not the [`Mode`] has changed
     pub fn was_set() -> Option<Box<dyn FnOnce() + Send + Sync>> {
         SET_MODE.lock().take()
     }
@@ -137,7 +137,7 @@ mod switch {
         }
     }
 
-    /// Wether or not printing has been stopped
+    /// Whether or not printing has been stopped
     ///
     /// This is done when sending multiple keys at the same time
     pub(crate) fn is_printing_stopped() -> bool {
@@ -592,7 +592,7 @@ pub macro key {
     }
 }
 
-/// Return the lenght of a strin in chars
+/// Return the length of a strin in chars
 #[allow(dead_code)]
 #[doc(hidden)]
 pub const fn len_chars(s: &str) -> usize {

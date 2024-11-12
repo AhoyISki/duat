@@ -139,7 +139,7 @@ impl History {
 /// contain selections
 ///
 /// It also contains information about how to print the file, so that
-/// going back in time is less jaring.
+/// going back in time is less jarring.
 #[derive(Default, Debug, Clone)]
 pub struct Moment(Vec<Change>);
 

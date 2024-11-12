@@ -90,7 +90,7 @@ impl Builder {
         }
     }
 
-    /// Wether or not the last added piece was empty
+    /// Whether or not the last added piece was empty
     ///
     /// This happens when an empty [`String`] or an empty [`Text`] is
     /// pushed.
@@ -178,7 +178,7 @@ impl Default for Builder {
 pub struct AlignCenter;
 /// Aligns the line on the left
 pub struct AlignLeft;
-/// Aligns the ine on the right, which is the default
+/// Aligns the line on the right, which is the default
 pub struct AlignRight;
 /// Places ghost text
 ///

@@ -142,7 +142,7 @@ pub enum RawTag {
     /// [`ConcealEnd`]: RawTag::ConcealEnd
     EndConceal(Key),
 
-    // TODO: Deal with the concequences of changing this from a usize.
+    // TODO: Deal with the consequences of changing this from a usize.
     /// More direct skipping method, allowing for full skips without
     /// the iteration, which could be slow.
     ConcealUntil(u32),

@@ -267,7 +267,7 @@ impl Searcher {
         })
     }
 
-    /// Wether or not the regex matches a specific pattern
+    /// Whether or not the regex matches a specific pattern
     pub fn matches(&mut self, query: impl AsRef<[u8]>) -> bool {
         let input = Input::new(&query).anchored(Anchored::Yes);
 
@@ -278,7 +278,7 @@ impl Searcher {
         half.offset() == query.as_ref().len()
     }
 
-    /// Wether or not there even is a pattern to search for
+    /// Whether or not there even is a pattern to search for
     pub fn is_empty(&self) -> bool {
         self.pat.is_empty()
     }

@@ -369,7 +369,7 @@ pub struct FormId(u16);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Form {
     pub style: ContentStyle,
-    /// Wether or not the `Form`s colors and attributes should
+    /// Whether or not the `Form`s colors and attributes should
     /// override any that come after.
     pub finished: bool,
 }
@@ -418,14 +418,14 @@ impl Form {
 
 	/// Returns a new [`Form`] with a default _finished_ style
 	/// 
-    /// A finished style is one that cannot be superseeded. That is,
+    /// A finished style is one that cannot be superseded. That is,
     /// if this style sets a foreground, while it is active, new
     /// styles may not modify the color of the foreground.
     pub fn finished() -> BuiltForm {
         BuiltForm(Self { style: ContentStyle::default(), finished: true })
     }
 
-    /// New [`Form`] with the double_underlined atribute
+    /// New [`Form`] with the double_underlined attribute
     pub fn double_underlined() -> BuiltForm {
         let style = ContentStyle::default();
         BuiltForm(Form {
@@ -434,7 +434,7 @@ impl Form {
         })
     }
 
-    /// New [`Form`] with the undercurled atribute
+    /// New [`Form`] with the undercurled attribute
     pub fn undercurled() -> BuiltForm {
         let style = ContentStyle::default();
         BuiltForm(Form {
@@ -443,7 +443,7 @@ impl Form {
         })
     }
 
-    /// New [`Form`] with the underdashed atribute
+    /// New [`Form`] with the underdashed attribute
     pub fn underdashed() -> BuiltForm {
         let style = ContentStyle::default();
         BuiltForm(Form {
@@ -504,7 +504,7 @@ impl BuiltForm {
 
 	/// Makes this [`Form`] finished
 	/// 
-    /// A finished style is one that cannot be superseeded. That is,
+    /// A finished style is one that cannot be superseded. That is,
     /// if this style sets a foreground, while it is active, new
     /// styles may not modify the color of the foreground.
     pub fn finished(self) -> Self {
@@ -963,7 +963,7 @@ macro mimic_method_new {
     (#[$attr:meta] $method:ident) => {
         /// New [`Form`] with the
         #[$attr]
-        /// atribute
+        /// attribute
         pub fn $method() -> BuiltForm {
             let style = ContentStyle::default();
             BuiltForm(Form { style: Stylize::$method(style), finished: false })
@@ -1013,7 +1013,7 @@ macro mimic_method_cycle {
     (#[$attr:meta] $method:ident) => {
         /// Applies the
         #[$attr]
-        /// atribute to this [`Form`]
+        /// attribute to this [`Form`]
         pub fn $method(self) -> Self {
             let Form { style, finished } = self.0;
             Self(Form { style: Stylize::$method(style), finished })

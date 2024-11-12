@@ -207,7 +207,7 @@ where
     /// Pushes a widget to a specific area around a [`File`]
     ///
     /// This method can be used to get some more advanced layouts,
-    /// where you have multiple widgets paralel to each other, yet on
+    /// where you have multiple widgets parallel to each other, yet on
     /// the same edge.
     ///
     /// One example of where you might want to do this is if you want
@@ -305,7 +305,7 @@ impl<U: Ui> Drop for FileBuilder<U> {
 /// file that is opened, while in this one, only one instance of these
 /// widgets will be created per window.
 ///
-/// The existance of these two hooks lets the user make some more
+/// The existence of these two hooks lets the user make some more
 /// advanced choices on the layout:
 ///
 /// ```rust

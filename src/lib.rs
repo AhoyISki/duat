@@ -23,7 +23,7 @@
 //!   been made
 //! - And many others still being planned
 //!
-//! Additionaly, by choosing Rust as its configuration language, Duat
+//! Additionally, by choosing Rust as its configuration language, Duat
 //! also gains the following features:
 //!
 //! - Complete type safety
@@ -47,7 +47,7 @@
 //!
 //! For now, it has a barebones configuration, which is based on
 //! Kakoune, so if you are familiar with that text editor, many of the
-//! cmd are going to be the same.
+//! commands are going to be the same.
 //!
 //! ## Configuration
 //!
@@ -129,7 +129,7 @@
 //!   status line;
 //!
 //! These are some of the ways you can configure Duat. You might
-//! notice some things that can be done with these simle options:
+//! notice some things that can be done with these simple options:
 //!
 //! ```rust
 //! # use duat::prelude::*;
@@ -157,13 +157,13 @@
 //! text, while `[]` reverts back to the "Default" form. The
 //! [`status!`] macro works similarly.
 //!
-//! Duat also has a simple command system, that lets you add cmd
+//! Duat also has a simple command system, that lets you add commands
 //! with arguments supported by Rust's type system:
 //!
 //! ```rust
 //! # use duat::prelude::*;
 //! # fn test() -> Result<(), Error<()>> {
-//! let callers = ["collapse-command-line", "collapse-cmd"];
+//! let callers = ["collapse-cmd-line", "ccmd"];
 //! cmd::add_for::<CmdLine>(
 //!     callers,
 //!     |_command_line, area, _cursors, _flags, _args| {
@@ -179,7 +179,7 @@
 //!
 //! ## Roadmap
 //!
-//! These are the goals that have been acomplished or are on their
+//! These are the goals that have been accomplished or are on their
 //! way:
 //!
 //! - [x] Implement basic visual functionality (printing, scrolling,
@@ -393,7 +393,7 @@ pub mod forms {
 }
 
 pub mod hooks {
-    //! Hook utilites
+    //! Hook utilities
     pub use duat_core::hooks::{ModeSwitched, add, add_grouped, group_exists, remove};
 
     use crate::Ui;
@@ -490,7 +490,7 @@ pub mod state {
 pub mod control {
     //! Prebuilt general controls for Duat
     //!
-    //! This module contains the expected cmd of a
+    //! This module contains the expected commands of a
     //! text editor that don't involve particular widgets
     //! or other more specific concepts
     //!

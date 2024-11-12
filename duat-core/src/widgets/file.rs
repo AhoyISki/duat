@@ -244,7 +244,7 @@ impl File {
         self.cfg
     }
 
-    /// Wether o not the [`File`] exists or not
+    /// Whether o not the [`File`] exists or not
     pub fn exists(&self) -> bool {
         self.path_set()
             .is_some_and(|p| std::fs::exists(PathBuf::from(&p)).is_ok_and(|e| e))

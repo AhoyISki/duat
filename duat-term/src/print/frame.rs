@@ -144,7 +144,7 @@ impl EdgeCoords {
 
 /// Where to apply a [`Brush`] around widgets
 ///
-/// This type serves to determine wether frames will be applied only
+/// This type serves to determine whether frames will be applied only
 /// between widgets, around the whole application, or not at all:
 ///
 /// - [`Empty`]: Do not frame at all.

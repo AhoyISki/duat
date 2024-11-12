@@ -1,6 +1,6 @@
 [package]
 name = "duat"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["AhoyISki"]
 description = "A Highly customizable text editor, configured through the use of a rust crate."
 homepage = "https://github.com/AhoyISki/duat"
@@ -20,10 +20,10 @@ members = [
 exclude = [ "testing" ]
 
 [dependencies]
-duat-core = { version = ">=0.2.0", path = "duat-core" }
+duat-core = { version = ">=0.2.1", path = "duat-core" }
 
 # List of UIs.
-duat-term = { version = ">=0.2.0", path = "duat-term", optional = true }
+duat-term = { version = ">=0.2.1", path = "duat-term", optional = true }
 
 atomic-wait = "1.1.0"
 dirs-next = "2.0.0"

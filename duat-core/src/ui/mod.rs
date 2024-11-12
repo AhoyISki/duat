@@ -155,7 +155,7 @@ pub trait Area: Send + Sync + Sized {
     fn set_print_info(&self, info: Self::PrintInfo);
 
     //////////////////// Queries
-    /// Wether or not [`self`] has changed
+    /// Whether or not [`self`] has changed
     ///
     /// This would mean anything relevant that wouldn't be determined
     /// by [`PrintInfo`], this is most likely going to be the bounding
@@ -164,7 +164,7 @@ pub trait Area: Send + Sync + Sized {
     /// [`PrintInfo`]: Area::PrintInfo
     fn has_changed(&self) -> bool;
 
-    /// Wether or not [`self`] is the "master" of `other`
+    /// Whether or not [`self`] is the "master" of `other`
     ///
     /// This can only happen if, by following [`self`]'s children, you
     /// would eventually reach `other`.

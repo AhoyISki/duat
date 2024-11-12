@@ -81,7 +81,7 @@ impl Constraints {
         }
     }
 
-    /// Wether or not [`self`] has flexibility in terms of its length.
+    /// Whether or not [`self`] has flexibility in terms of its length.
     fn is_resizable_on(&self, axis: Axis) -> bool {
         let con = self.on(axis);
         matches!(con, Some(Constraint::Min(_) | Constraint::Max(_)) | None)
@@ -129,7 +129,7 @@ impl Layout {
     ///
     /// This bisection will sometimes cause the creation of a new
     /// parent to hold the bisected [`Rect`] and its new sibling. In
-    /// these cases, an aditional index associated with the parent
+    /// these cases, an additional index associated with the parent
     /// will be returned.
     ///
     /// If `do_group`, and the bisected [`Rect`] was "not glued", a

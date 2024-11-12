@@ -1,9 +1,9 @@
 [package]
 name = "duat-kak"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["AhoyISki"]
 description = "A Kakoune inspired editing mode for Parsec"
-repository = "https://github.com/AhoyISki/parsec/tree/master/parsec-kak"
+repository = "https://github.com/AhoyISki/duat/tree/master/duat-kak"
 license = "AGPL-3.0-or-later"
 readme = "README.md"
 keywords = ["editor", "editing-mode", "text", "duat"]
@@ -11,4 +11,4 @@ categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2021"
 
 [dependencies]
-duat-core = { path = "../duat-core/", version = ">=0.2.0" }
+duat-core = { path = "../duat-core/", version = ">=0.2.1" }

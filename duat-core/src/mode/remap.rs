@@ -303,7 +303,7 @@ mod global {
     /// Null key sending function
     fn empty(_: KeyEvent) {}
 
-    /// List of special charactes available for remapping
+    /// List of special characters available for remapping
     const SPECIAL: &[(&str, KeyCode)] = &[
         ("Enter", KeyCode::Enter),
         ("Tab", KeyCode::Tab),

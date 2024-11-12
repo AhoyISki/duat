@@ -83,7 +83,7 @@ where
     ///         *read_write = "☺️";
     ///     });
     ///
-    ///     // Just making sure that the read happens slighly after the write.
+    ///     // Just making sure that the read happens slightly after the write.
     ///     thread::sleep(Duration::from_millis(10));
     ///
     ///     let read_only = read_only_data.read();
@@ -107,7 +107,7 @@ where
     ///         thread::sleep(Duration::from_millis(100));
     ///     });
     ///
-    ///     // Just making sure that this read happens slighly after the last one.
+    ///     // Just making sure that this read happens slightly after the last one.
     ///     thread::sleep(Duration::from_millis(1));
     ///
     ///     let read_only = read_only_data.read();
@@ -267,7 +267,7 @@ where
         })
     }
 
-    /// Wether or not it has changed since it was last read
+    /// Whether or not it has changed since it was last read
     ///
     /// A "change" is defined as any time the methods [`write`],
     /// [`mutate`], [`try_write`], or [`try_mutate`], are called on an

@@ -17,7 +17,7 @@ If you look at any part of the code in `duat-core`, you will notice a lot of `<U
 
 By providing an abstraction layer above `duat-core`, these `<U>`s can be completely removed in the config crate, making for a much more streamlined and friendly user experience. This separation also comes with the huge benefit of being able to choose the `Ui` at compile time of `duat` (through `cfg`s), thus allowing me to publish these crates to `crates.io`.
 
-The reason why `duat` has a `"lib.rs"` and a `"main.rs"` is so that they are forced to be syncronized with the same `Ui` crate, and objectively, less crates is better.
+The reason why `duat` has a `"lib.rs"` and a `"main.rs"` is so that they are forced to be synchronized with the same `Ui` crate, and objectively, less crates is better.
 
 # The `duat-core` crate
 

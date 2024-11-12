@@ -27,7 +27,7 @@
 //! // Any of these callers will work for running the command.
 //! let callers = ["my-command", "mc"];
 //!
-//! // cmd::add create a new globally avaliable command.
+//! // cmd::add create a new globally available command.
 //! let result = cmd::add(callers, move |_flags, _args| {
 //!     unimplemented!();
 //! });

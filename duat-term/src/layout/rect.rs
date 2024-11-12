@@ -220,7 +220,7 @@ impl Rect {
         }
     }
 
-    /// An [`Expression`] representing the lenght of [`self`] on a
+    /// An [`Expression`] representing the length of [`self`] on a
     /// given [`Axis`].
     pub fn len(&self, axis: Axis) -> Expression {
         match axis {
@@ -229,7 +229,7 @@ impl Rect {
         }
     }
 
-    /// The current value for the lenght of [`self`] on a given
+    /// The current value for the length of [`self`] on a given
     /// [`Axis`].
     pub fn len_value(&self, axis: Axis) -> u32 {
         match axis {

@@ -1,9 +1,9 @@
 [package]
 name = "duat-core"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["AhoyISki"]
 description = "The core of Duat, a highly customizable text editor."
-repository = "https://github.com/AhoyISki/parsec/tree/master/parsec-core"
+repository = "https://github.com/AhoyISki/duat/tree/master/duat-core"
 license = "AGPL-3.0-or-later"
 readme = "README.md"
 keywords = ["editor", "text", "application", "duat"]
