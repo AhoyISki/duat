@@ -1,7 +1,7 @@
 //! Utilities for stylizing the text of Duat
 use std::sync::{LazyLock, OnceLock};
 
-use crossterm::style::{Attribute, Attributes, ContentStyle, Stylize};
+use crossterm::style::{Attribute, Attributes, ContentStyle};
 pub use crossterm::{cursor::SetCursorStyle as CursorShape, style::Color};
 use parking_lot::{RwLock, RwLockWriteGuard};
 
@@ -12,22 +12,22 @@ pub use self::global::{
 use crate::{data::RwLockReadGuard, ui::Sender};
 
 static SENDER: OnceLock<Sender> = OnceLock::new();
-static BASE_FORMS: &[&str] = &[
-    "Default",
-    "Accent",
-    "DefaultOk",
-    "AccentOk",
-    "DefaultErr",
-    "AccentErr",
-    "DefaultHint",
-    "AccentHint",
-    "MainCursor",
-    "ExtraCursor",
-    "MainSelection",
-    "ExtraSelection",
-    "Inactive",
-    "function",
-    "keyword",
+static BASE_FORMS: &[(&str, Form, FTy)] = &[
+    ("Default", Form::new().0, FTy::Normal),
+    ("Accent", Form::bold().0, FTy::Normal),
+    ("DefaultOk", Form::blue().0, FTy::Normal),
+    ("AccentOk", Form::cyan().0, FTy::Normal),
+    ("DefaultErr", Form::red().0, FTy::Normal),
+    ("AccentErr", Form::red().bold().0, FTy::Normal),
+    ("DefaultHint", Form::grey().0, FTy::Normal),
+    ("AccentHint", Form::grey().bold().0, FTy::Normal),
+    ("MainCursor", Form::reverse().0, FTy::Normal),
+    ("ExtraCursor", Form::reverse().0, FTy::Ref(M_CUR_ID)),
+    ("MainSelection", Form::on_dark_grey().0, FTy::Normal),
+    ("ExtraSelection", Form::on_dark_grey().0, FTy::Ref(M_SEL_ID)),
+    ("Inactive", Form::grey().0, FTy::Normal),
+    ("function", Form::blue().0, FTy::Normal),
+    ("keyword", Form::magenta().0, FTy::Normal),
 ];
 
 /// The functions that will be exposed for public use.
@@ -39,7 +39,8 @@ mod global {
     use super::{BASE_FORMS, BuiltForm, CursorShape, Form, FormId, Painter, Palette};
 
     static PALETTE: Palette = Palette::new();
-    static FORMS: LazyLock<Mutex<Vec<&str>>> = LazyLock::new(|| Mutex::new(Vec::from(BASE_FORMS)));
+    static FORMS: LazyLock<Mutex<Vec<&str>>> =
+        LazyLock::new(|| Mutex::new(BASE_FORMS.iter().map(|(name, ..)| *name).collect()));
 
     /// Either a [`Form`] or a name of a form
     ///
@@ -587,7 +588,7 @@ pub const INACTIVE_ID: FormId = FormId(12);
 struct InnerPalette {
     main_cursor: Option<CursorShape>,
     extra_cursor: Option<CursorShape>,
-    forms: Vec<(&'static str, Form, FormType)>,
+    forms: Vec<(&'static str, Form, FTy)>,
 }
 
 /// The list of forms to be used when rendering.
@@ -597,31 +598,12 @@ impl Palette {
     /// Returns a new instance of [`FormPalette`]
     const fn new() -> Self {
         Self(LazyLock::new(|| {
-            use FormType::*;
             let main_cursor = Some(CursorShape::DefaultUserShape);
-
-            let forms = vec![
-                ("Default", Form::new().0, Normal),
-                ("Accent", Form::bold().0, Normal),
-                ("DefaultOk", Form::blue().0, Normal),
-                ("AccentOk", Form::cyan().0, Normal),
-                ("DefaultErr", Form::red().0, Normal),
-                ("AccentErr", Form::red().bold().0, Normal),
-                ("DefaultHint", Form::grey().0, Normal),
-                ("AccentHint", Form::grey().bold().0, Normal),
-                ("MainCursor", Form::reverse().0, Normal),
-                ("ExtraCursor", Form::reverse().0, Ref(M_CUR_ID)),
-                ("MainSelection", Form::on_dark_grey().0, Normal),
-                ("ExtraSelection", Form::on_dark_grey().0, Ref(M_SEL_ID)),
-                ("Inactive", Form::grey().0, Normal),
-                ("function", Form::blue().0, Normal),
-                ("keyword", Form::magenta().0, Normal),
-            ];
 
             RwLock::new(InnerPalette {
                 main_cursor,
                 extra_cursor: main_cursor,
-                forms,
+                forms: BASE_FORMS.to_vec(),
             })
         }))
     }
@@ -646,7 +628,7 @@ impl Palette {
                 sender.send_form_changed().unwrap()
             }
         } else {
-            inner.forms.push((name, form, FormType::Normal));
+            inner.forms.push((name, form, FTy::Normal));
         };
     }
 
@@ -661,16 +643,16 @@ impl Palette {
 
         if let Some(i) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
             let (_, f, ty) = &mut inner.forms[i];
-            if let FormType::Weakest = ty {
+            if let FTy::Weakest = ty {
                 *f = form;
-                *ty = FormType::Normal;
+                *ty = FTy::Normal;
 
                 if let Some(sender) = SENDER.get() {
                     sender.send_form_changed().unwrap()
                 }
             }
         } else {
-            inner.forms.push((name, form, FormType::Normal));
+            inner.forms.push((name, form, FTy::Normal));
             for refed in refs_of(&inner, inner.forms.len() - 1) {
                 inner.forms[refed].1 = form;
             }
@@ -690,9 +672,9 @@ impl Palette {
         if let Some(i) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
             // If it would be circular, we just don't reference anything.
             if would_be_circular(&inner, i, refed.0 as usize) {
-                inner.forms.push((name, form, FormType::Normal));
+                inner.forms.push((name, form, FTy::Normal));
             } else {
-                inner.forms.push((name, form, FormType::Ref(refed)))
+                inner.forms.push((name, form, FTy::Ref(refed)))
             }
 
             for refed in refs_of(&inner, i) {
@@ -705,7 +687,7 @@ impl Palette {
         } else {
             // If the form didn't previously exist, nothing was referencing it, so
             // no checks are done.
-            inner.forms.push((name, form, FormType::Ref(refed)));
+            inner.forms.push((name, form, FTy::Ref(refed)));
         }
     }
 
@@ -723,16 +705,16 @@ impl Palette {
         // doesn't exist, and for there to be refs to it, it must exist.
         if let Some(i) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
             let (_, f, ty) = &mut inner.forms[i];
-            if let FormType::Weakest = ty {
+            if let FTy::Weakest = ty {
                 *f = form;
-                *ty = FormType::Ref(refed);
+                *ty = FTy::Ref(refed);
 
                 if let Some(sender) = SENDER.get() {
                     sender.send_form_changed().unwrap()
                 }
             }
         } else {
-            inner.forms.push((name, form, FormType::Ref(refed)));
+            inner.forms.push((name, form, FTy::Ref(refed)));
         }
     }
 
@@ -745,7 +727,7 @@ impl Palette {
         if let Some(id) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
             FormId(id as u16)
         } else {
-            inner.forms.push((name, Form::new().0, FormType::Weakest));
+            inner.forms.push((name, Form::new().0, FTy::Weakest));
             FormId((inner.forms.len() - 1) as u16)
         }
     }
@@ -945,8 +927,8 @@ pub(crate) fn set_sender(sender: Sender) {
 }
 
 /// An enum that helps in the modification of forms
-#[derive(Debug)]
-enum FormType {
+#[derive(Debug, Clone)]
+enum FTy {
     Normal,
     Ref(FormId),
     Weakest,
@@ -956,7 +938,7 @@ enum FormType {
 fn refs_of(inner: &RwLockWriteGuard<InnerPalette>, n: usize) -> Vec<usize> {
     let mut refs = Vec::new();
     for (i, (.., f_ty)) in inner.forms.iter().enumerate() {
-        if let FormType::Ref(refed) = f_ty
+        if let FTy::Ref(refed) = f_ty
             && refed.0 as usize == n
         {
             refs.push(i);
@@ -968,7 +950,7 @@ fn refs_of(inner: &RwLockWriteGuard<InnerPalette>, n: usize) -> Vec<usize> {
 
 /// If form references would eventually lead to a loop
 fn would_be_circular(inner: &RwLockWriteGuard<InnerPalette>, referee: usize, refed: usize) -> bool {
-    if let (.., FormType::Ref(refed_ref)) = inner.forms[refed] {
+    if let (.., FTy::Ref(refed_ref)) = inner.forms[refed] {
         match refed_ref.0 as usize == referee {
             true => true,
             false => would_be_circular(inner, referee, refed_ref.0 as usize),
