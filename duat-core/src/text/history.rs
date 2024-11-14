@@ -31,7 +31,7 @@ impl History {
 
     /// Adds a [`Change`] to the current moment, or adds it to a new
     /// one, if no moment exists
-    pub fn add_change(&mut self, guess_i: Option<usize>, change: Change) -> (usize, i32) {
+    pub fn add_change(&mut self, guess_i: Option<usize>, change: Change<String>) -> (usize, i32) {
         let is_last_moment = self.current_moment == self.moments.len();
 
         // Check, in order to prevent modification of earlier moments.
@@ -59,7 +59,7 @@ impl History {
     pub unsafe fn add_desync_change(
         &mut self,
         guess_i: usize,
-        change: Change,
+        change: Change<String>,
         shift: (i32, i32, i32),
         sh_from: usize,
     ) -> (usize, i32) {
@@ -94,7 +94,7 @@ impl History {
     ///
     /// If The [History] is already at the end, returns [None]
     /// instead.
-    pub fn move_forward(&mut self) -> Option<&[Change]> {
+    pub fn move_forward(&mut self) -> Option<&[Change<String>]> {
         if self.current_moment == self.moments.len()
             || self.moments[self.current_moment].0.is_empty()
         {
@@ -109,7 +109,7 @@ impl History {
     ///
     /// If The [History] is already at the start, returns [None]
     /// instead.
-    pub fn move_backwards(&mut self) -> Option<&[Change]> {
+    pub fn move_backwards(&mut self) -> Option<&[Change<String>]> {
         if self.current_moment == 0 {
             None
         } else {
@@ -123,7 +123,7 @@ impl History {
         }
     }
 
-    pub fn changes_mut(&mut self) -> &mut [Change] {
+    pub fn changes_mut(&mut self) -> &mut [Change<String>] {
         let is_last_moment = self.current_moment == self.moments.len();
 
         // Check, in order to prevent modification of earlier moments.
@@ -141,7 +141,7 @@ impl History {
 /// It also contains information about how to print the file, so that
 /// going back in time is less jarring.
 #[derive(Default, Debug, Clone)]
-pub struct Moment(Vec<Change>);
+pub struct Moment(Vec<Change<String>>);
 
 impl Moment {
     /// First try to merge this change with as many changes as
@@ -152,7 +152,7 @@ impl Moment {
     /// - The index where the change was inserted;
     /// - The number of changes that were added or subtracted during
     ///   its insertion.
-    fn add_change(&mut self, guess_i: Option<usize>, change: Change) -> (usize, i32) {
+    fn add_change(&mut self, guess_i: Option<usize>, change: Change<String>) -> (usize, i32) {
         let b = change.added_end().byte() as i32 - change.taken_end().byte() as i32;
         let c = change.added_end().char() as i32 - change.taken_end().char() as i32;
         let l = change.added_end().line() as i32 - change.taken_end().line() as i32;
@@ -180,7 +180,7 @@ impl Moment {
     unsafe fn add_desync_change(
         &mut self,
         guess_i: usize,
-        change: Change,
+        change: Change<String>,
         shift: (i32, i32, i32),
         sh_from: usize,
     ) -> (usize, i32) {
@@ -191,7 +191,7 @@ impl Moment {
     unsafe fn add_change_inner(
         &mut self,
         guess_i: Option<usize>,
-        mut change: Change,
+        mut change: Change<String>,
         shift: (i32, i32, i32),
         sh_from: Option<usize>,
     ) -> (usize, i32) {
@@ -210,7 +210,7 @@ impl Moment {
         {
             guess_i
         } else {
-            let f = |i: usize, c: &Change| c.start.shift_by(sh(i));
+            let f = |i: usize, c: &Change<String>| c.start.shift_by(sh(i));
             match binary_search_by_key_and_index(&self.0, change.start, f) {
                 Err(i)
                     if let Some(prev_i) = i.checked_sub(1)
@@ -229,7 +229,7 @@ impl Moment {
         {
             c_i
         } else {
-            let f = |i: usize, c: &Change| c.start.shift_by(sh(c_i + 1 + i));
+            let f = |i: usize, c: &Change<String>| c.start.shift_by(sh(c_i + 1 + i));
             let (Ok(i) | Err(i)) =
                 binary_search_by_key_and_index(&self.0[c_i + 1..], change.taken_end(), f);
             c_i + 1 + i
@@ -259,7 +259,7 @@ impl Moment {
             self.0.insert(end_i, change);
         };
 
-        let prior_changes: Vec<Change> = self.0.drain(c_i..end_i).collect();
+        let prior_changes: Vec<Change<String>> = self.0.drain(c_i..end_i).collect();
         let added_change = self.0.get_mut(c_i).unwrap();
         for (i, mut c) in prior_changes.into_iter().enumerate() {
             c.shift_by(sh(c_i + i));
@@ -272,13 +272,13 @@ impl Moment {
 
 /// A change in a file, with a start, taken text, and added text
 #[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Change {
+pub struct Change<S: AsRef<str>> {
     start: Point,
-    added_text: String,
-    taken_text: String,
+    added_text: S,
+    taken_text: S,
 }
 
-impl Change {
+impl Change<String> {
     /// Returns a new [Change].
     pub fn new(edit: impl ToString, range: (Point, Point), text: &Text) -> Self {
         let added_text = edit.to_string();
@@ -287,16 +287,20 @@ impl Change {
         Change { start: range.0, added_text, taken_text }
     }
 
-    /// Shifts the [`Change`] by a "signed point"
-    pub(crate) fn shift_by(&mut self, shift: (i32, i32, i32)) {
-        self.start = self.start.shift_by(shift);
+    /// Returns a copyable [`Change`]
+    pub fn as_ref(&self) -> Change<&str> {
+        Change {
+            start: self.start,
+            added_text: &self.added_text,
+            taken_text: &self.taken_text,
+        }
     }
 
     /// In this function, it is assumed that `self` happened
     /// _after_ `newer`
     ///
     /// If the merger fails, the newer [`Change`] will be returned;
-    pub fn try_merge(&mut self, mut older: Change) -> Option<Change> {
+    pub fn try_merge(&mut self, mut older: Self) -> Option<Self> {
         if has_start_of(older.added_range(), self.taken_range()) {
             let fixed_end = older.added_end().min(self.taken_end());
 
@@ -327,10 +331,33 @@ impl Change {
             Some(older)
         }
     }
+}
+
+impl<'a> Change<&'a str> {
+    /// Returns a new copyable [`Change`] from an insertion.
+    pub fn str_insert(added_text: &'a str, start: Point) -> Self {
+        Self { start, added_text, taken_text: "" }
+    }
+}
+
+impl<S: AsRef<str>> Change<S> {
+    /// Returns a reversed version of this [`Change`]
+    pub fn reverse(&self) -> Change<&str> {
+        Change {
+            start: self.start,
+            added_text: self.taken_text(),
+            taken_text: self.added_text(),
+        }
+    }
 
     /// The [`Point`] at the start of the change
     pub fn start(&self) -> Point {
         self.start
+    }
+
+    /// Shifts the [`Change`] by a "signed point"
+    pub(crate) fn shift_by(&mut self, shift: (i32, i32, i32)) {
+        self.start = self.start.shift_by(shift);
     }
 
     /// Returns the end of the [`Change`], before it was applied
@@ -355,19 +382,22 @@ impl Change {
 
     /// The text that was taken on this [`Change`]
     pub fn added_text(&self) -> &str {
-        &self.added_text
+        self.added_text.as_ref()
     }
 
     /// The text that was added by this [`Change`]
     pub fn taken_text(&self) -> &str {
-        &self.taken_text
+        self.taken_text.as_ref()
     }
 
     /// The difference in chars of the added and taken texts
     pub fn chars_diff(&self) -> i32 {
-        self.added_text.chars().count() as i32 - self.taken_text.chars().count() as i32
+        self.added_text.as_ref().chars().count() as i32
+            - self.taken_text.as_ref().chars().count() as i32
     }
 }
+
+impl Copy for Change<&str> {}
 
 /// If `lhs` contains the start of`rhs`
 fn has_start_of(lhs: Range<u32>, rhs: Range<u32>) -> bool {

@@ -213,7 +213,7 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
         forms::set_weak("DefaultStatus", "Default");
         forms::set_weak("File", Form::yellow().italic());
         forms::set_weak("Selections", Form::dark_blue());
-        forms::set_weak("Coord", Form::dark_red());
+        forms::set_weak("Coord", Form::dark_yellow());
         forms::set_weak("Separator", Form::cyan());
         forms::set_weak("Mode", Form::green());
     }

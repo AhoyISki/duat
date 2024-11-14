@@ -317,7 +317,7 @@ where
                 {
                     (c_i, c_i + 1)
                 } else {
-                    let f = |i: usize, c: &Change| c.start().shift_by(sh(i));
+                    let f = |i: usize, c: &Change<String>| c.start().shift_by(sh(i));
                     match binary_search_by_key_and_index(changes, start, f) {
                         Ok(i) => (i, i + 1),
                         Err(i)
@@ -339,7 +339,7 @@ where
                 // If it is, find the last change that is also being
                 // intersected.
                 } else {
-                    let f = |i: usize, c: &Change| c.start().shift_by(sh(next_i + i));
+                    let f = |i: usize, c: &Change<String>| c.start().shift_by(sh(next_i + i));
                     let (Ok(end_i) | Err(end_i)) =
                         binary_search_by_key_and_index(&changes[next_i..], end, f);
                     next_i + end_i
@@ -733,7 +733,7 @@ where
     }
 
     /// Edits the file with a [`Change`]
-    fn edit(&mut self, change: Change) {
+    fn edit(&mut self, change: Change<String>) {
         let shift = *self.shift;
         self.shift.0 += change.added_end().byte() as i32 - change.taken_end().byte() as i32;
         self.shift.1 += change.added_end().char() as i32 - change.taken_end().char() as i32;

@@ -19,13 +19,13 @@ pub trait Record: Default + Debug + Clone + Copy + Eq + Ord + 'static {
     /// The bytes at of this [`Record`]
     fn bytes(&self) -> u32;
 
-	/// Adds the values of two [`Record`]s
+    /// Adds the values of two [`Record`]s
     fn add(self, other: Self) -> Self;
 
-	/// Subtracts the values of two [`Record`]s
-    fn sub(self, other: Self) -> Self;
+    /// Subtracts the values of two [`Record`]s
+    fn sub(self, other: Self) -> Option<Self>;
 
-	/// Whether or not this value has no bytes
+    /// Whether or not this value has no bytes
     fn is_zero_len(&self) -> bool;
 }
 
@@ -38,8 +38,8 @@ impl Record for (u32, u32) {
         (self.0 + other.0, self.1 + other.1)
     }
 
-    fn sub(self, other: Self) -> Self {
-        (self.0 - other.0, self.1 - other.1)
+    fn sub(self, other: Self) -> Option<Self> {
+        Some((self.0.checked_sub(other.0)?, self.1.checked_sub(other.1)?))
     }
 
     fn is_zero_len(&self) -> bool {
@@ -56,8 +56,12 @@ impl Record for (u32, u32, u32) {
         (self.0 + other.0, self.1 + other.1, self.2 + other.2)
     }
 
-    fn sub(self, other: Self) -> Self {
-        (self.0 - other.0, self.1 - other.1, self.2 - other.2)
+    fn sub(self, other: Self) -> Option<Self> {
+        Some((
+            self.0.checked_sub(other.0)?,
+            self.1.checked_sub(other.1)?,
+            self.2.checked_sub(other.2)?,
+        ))
     }
 
     fn is_zero_len(&self) -> bool {
@@ -108,8 +112,8 @@ impl<R: Record> Records<R> {
         }
 
         if let Some(rec) = self.stored.get_mut(i) {
-            *rec = new.sub(prev);
-            self.stored.insert(i + 1, len.sub(new.sub(prev)));
+            *rec = new.sub(prev).unwrap();
+            self.stored.insert(i + 1, len.sub(new.sub(prev).unwrap()).unwrap());
             self.last = (i as u32 + 1, new);
         }
     }
@@ -128,7 +132,7 @@ impl<R: Record> Records<R> {
 
         // Transformation of the beginning len.
         self.last = if let Some(len) = self.stored.get_mut(s_i as usize) {
-            *len = new_len.add(e_rec.add(e_len).sub(old_len)).sub(s_rec);
+            *len = new_len.add(e_rec.add(e_len).sub(old_len).unwrap()).sub(s_rec).unwrap();
             let len = *len;
 
             // Removing if new_len has size 0 (no tags or skips).
@@ -148,12 +152,12 @@ impl<R: Record> Records<R> {
             }
         } else {
             let last = self.stored.last_mut().unwrap();
-            *last = last.add(new_len).sub(old_len);
+            *last = last.add(new_len).sub(old_len).unwrap();
 
-            (s_i, s_rec.add(new_len).sub(old_len))
+            (s_i, s_rec.add(new_len).sub(old_len).unwrap())
         };
 
-        self.max = self.max.add(new_len).sub(old_len);
+        self.max = self.max.add(new_len).sub(old_len).unwrap();
     }
 
     /// Transforms the end of the [`Records`]
@@ -220,7 +224,7 @@ impl<R: Record> Records<R> {
         if at >= key_f(&rec) {
             self.stored[n..].iter().enumerate().find_map(|(i, len)| {
                 rec = rec.add(*len);
-                (key_f(&rec) > at).then_some(((n + i) as u32, rec.sub(*len)))
+                (key_f(&rec) > at).then_some(((n + i) as u32, rec.sub(*len).unwrap()))
             })
         } else {
             self.stored[..n]
@@ -228,7 +232,7 @@ impl<R: Record> Records<R> {
                 .enumerate()
                 .rev()
                 .find_map(|(i, len)| {
-                    rec = rec.sub(*len);
+                    rec = rec.sub(*len).unwrap();
                     (key_f(&rec) <= at).then_some((i as u32, rec))
                 })
         }

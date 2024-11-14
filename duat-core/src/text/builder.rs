@@ -6,7 +6,7 @@
 //! and `Accent` forms.
 use std::fmt::Write;
 
-use super::{Key, Tag, Text, ToggleId, tags::RawTag};
+use super::{Change, Key, Tag, Text, ToggleId, tags::RawTag};
 use crate::{
     data::{RoData, RwData},
     forms::FormId,
@@ -109,7 +109,8 @@ impl Builder {
         } else {
             self.last_was_empty = false;
             let end = self.text.len();
-            self.text.replace_range_inner((end, end), &self.buffer)
+            self.text
+                .replace_range_inner(Change::str_insert(&self.buffer, end))
         }
     }
 
@@ -155,7 +156,9 @@ impl Builder {
             }
         }
 
-        self.text.buf.splice(end.byte() as usize..end.byte() as usize, *text.buf);
+        self.text
+            .buf
+            .splice(end.byte() as usize..end.byte() as usize, *text.buf);
         let end = (end.byte(), end.char(), end.line());
         let new = (len_p.byte(), len_p.char(), len_p.line());
         self.text.records.transform(end, (0, 0, 0), new);

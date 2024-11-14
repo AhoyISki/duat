@@ -72,6 +72,7 @@
 mod builder;
 mod history;
 mod iter;
+mod reader;
 mod records;
 mod search;
 mod tags;
@@ -80,6 +81,7 @@ use std::{ops::RangeBounds, path::Path, rc::Rc, str::from_utf8_unchecked, sync::
 
 use gapbuf::GapBuffer;
 use history::History;
+use parking_lot::lock_api::RwLock;
 use records::Records;
 use tags::{FwdTags, RevTags};
 
@@ -90,12 +92,14 @@ pub use self::{
     iter::{Item, Iter, RevIter},
     part::Part,
     point::{Point, TwoPoints, utf8_char_width},
+    reader::{Reader, TreeSitter},
     search::{RegexPattern, Searcher},
     tags::{Key, Keys, Tag, ToggleId},
 };
 use crate::{
     DuatError,
     cfg::PrintCfg,
+    data::RwData,
     mode::{Cursor, Cursors},
     ui::Area,
 };
@@ -104,9 +108,10 @@ use crate::{
 #[derive(Default, Clone)]
 pub struct Text {
     buf: Box<GapBuffer<u8>>,
-    tags: Box<Tags>,
+    pub tags: Box<Tags>,
     records: Box<Records<(u32, u32, u32)>>,
     history: History,
+    readers: Vec<RwData<dyn Reader>>,
 }
 
 impl Text {
@@ -119,6 +124,7 @@ impl Text {
             tags: Box::new(Tags::new()),
             records: Box::new(Records::new()),
             history: History::new(),
+            readers: Vec::new(),
         }
     }
 
@@ -139,6 +145,7 @@ impl Text {
                 file.bytes().filter(|b| *b == b'\n').count() as u32,
             ))),
             history: History::new(),
+            readers: Vec::new(),
         }
     }
 
@@ -531,28 +538,29 @@ impl Text {
     ////////// String modification functions
 
     pub fn replace_range(&mut self, range: (Point, Point), edit: impl ToString) {
-        self.replace_range_inner(range, edit.to_string());
-        self.history
-            .add_change(None, Change::new(edit, range, self));
+        let change = Change::new(edit, range, self);
+        self.replace_range_inner(change.as_ref());
+        self.history.add_change(None, change);
     }
 
     pub(crate) unsafe fn apply_desync_change(
         &mut self,
         guess_i: usize,
-        change: Change,
+        change: Change<String>,
         shift: (i32, i32, i32),
         sh_from: usize,
     ) -> (usize, i32) {
-        let range = (change.start(), change.taken_end());
-        self.replace_range_inner(range, change.added_text());
+        self.replace_range_inner(change.as_ref());
         self.history
             .add_desync_change(guess_i, change, shift, sh_from)
     }
 
     /// Merges `String`s with the body of text, given a range to
     /// replace
-    fn replace_range_inner(&mut self, (start, end): (Point, Point), edit: impl ToString) {
-        let edit = edit.to_string();
+    fn replace_range_inner(&mut self, change: Change<&str>) {
+        let edit = change.added_text();
+        let start = change.start();
+        let taken_end = change.taken_end();
 
         let new_len = {
             let lines = edit.bytes().filter(|b| *b == b'\n').count();
@@ -560,7 +568,7 @@ impl Text {
         };
 
         let old_len = unsafe {
-            let range = start.byte() as usize..end.byte() as usize;
+            let range = start.byte() as usize..change.taken_end().byte() as usize;
             let str = String::from_utf8_unchecked(
                 self.buf
                     .splice(range, edit.as_bytes().iter().cloned())
@@ -575,8 +583,21 @@ impl Text {
         self.records.transform(start_rec, old_len, new_len);
         self.records.insert(start_rec);
 
-        let new_end = start.byte() + edit.len() as u32;
-        self.tags.transform(start.byte()..end.byte(), new_end);
+        self.tags
+            .transform(start.byte()..taken_end.byte(), change.added_end().byte());
+
+        let readers = std::mem::take(&mut self.readers);
+        for reader in readers.iter() {
+            reader.write().on_changes(self, &[change]);
+        }
+        self.readers = readers;
+    }
+
+	/// Adds a new [`Reader`] to this [`Text`]
+    pub fn add_reader<R: Reader>(&mut self) {
+        let reader = R::new(self);
+        self.readers
+            .push(RwData::new_unsized::<R>(Arc::new(RwLock::new(reader))));
     }
 
     ////////// History manipulation functions
@@ -593,10 +614,11 @@ impl Text {
         let mut shift = (0, 0, 0);
 
         for (i, change) in moment.iter().enumerate() {
-            let start = change.start().shift_by(shift);
-            let end = change.added_end().shift_by(shift);
-            self.replace_range_inner((start, end), change.taken_text());
+            let mut change = change.as_ref();
+            change.shift_by(shift);
+            self.replace_range_inner(change.reverse());
 
+            let start = change.start();
             cursors.insert_from_parts(i, start, change.taken_text().len(), self, area, cfg);
 
             shift.0 += change.taken_end().byte() as i32 - change.added_end().byte() as i32;
@@ -618,8 +640,7 @@ impl Text {
 
         for (i, change) in moment.iter().enumerate() {
             let start = change.start();
-            let end = change.taken_end();
-            self.replace_range_inner((start, end), change.added_text());
+            self.replace_range_inner(change.as_ref());
 
             cursors.insert_from_parts(i, start, change.added_text().len(), self, area, cfg);
         }
@@ -632,7 +653,7 @@ impl Text {
         self.history.new_moment();
     }
 
-    pub(crate) fn changes_mut(&mut self) -> &mut [Change] {
+    pub(crate) fn changes_mut(&mut self) -> &mut [Change<String>] {
         self.history.changes_mut()
     }
 
@@ -1323,6 +1344,7 @@ macro impl_from_to_string($t:ty) {
                     value.lines().count() as u32,
                 ))),
                 history: History::new(),
+                readers: Vec::new(),
             }
         }
     }

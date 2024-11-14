@@ -16,7 +16,7 @@ use std::{fs, io::ErrorKind, path::PathBuf};
 use crate::{
     cfg::{IterCfg, PrintCfg},
     forms,
-    text::Text,
+    text::{Text, TreeSitter},
     ui::{Area, PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
 };
@@ -61,7 +61,7 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
     type Widget = File;
 
     fn build(self, _: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
-        let (text, path) = match self.text_op {
+        let (mut text, path) = match self.text_op {
             TextOp::NewBuffer => (Text::new(), Path::new_unset()),
             TextOp::TakeText(text, path) => (text, path),
             // TODO: Add an option for automatic path creation.
@@ -80,23 +80,21 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
             },
         };
 
+        text.add_reader::<TreeSitter>();
+
         #[cfg(feature = "wack")]
         let text = {
             let mut text = text;
             use crate::{
                 forms::{self, Form},
-                text::{Key, Tag},
+                text::{Key, Tag, text},
             };
 
             let key = Key::new();
-            let form1 = forms::set("form1lmao", Form::red());
-            let form2 = forms::set("form2lmao", Form::new().undercurled().underline_blue());
-            for i in (10..text.len_bytes()).step_by(10) {
-                text.insert_tag(i - 8, Tag::PushForm(form1), key);
-                text.insert_tag(i - 5, Tag::PopForm(form1), key);
-                text.insert_tag(i - 6, Tag::PushForm(form2), key);
-                text.insert_tag(i - 2, Tag::PopForm(form2), key);
-            }
+            let form1 = forms::set("form1lmao", Form::red().bold());
+            let byte = text.len().byte();
+            text.insert_tag(byte, Tag::GhostText(text!([form1lmao] "not real")), key);
+            text.replace_range((text.len(), text.len()), "abc");
 
             text
         };

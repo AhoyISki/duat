@@ -43,7 +43,7 @@ const BUMP_AMOUNT: u32 = 50;
 /// functions of [`ToggleStart`]s
 #[derive(Clone)]
 pub struct Tags {
-    buf: GapBuffer<TagOrSkip>,
+    pub buf: GapBuffer<TagOrSkip>,
     texts: HashMap<TextId, Text>,
     toggles: HashMap<ToggleId, Toggle>,
     range_min: u32,
@@ -226,7 +226,7 @@ impl Tags {
         let new = old.start..new_end;
 
         // In case we're appending to the rope, a shortcut can be made.
-        let Some((start_n, start_b, _)) = self.get_skip_at(old.start) else {
+        let Some((start_n, start_b, skip)) = self.get_skip_at(old.start) else {
             let last = self.buf.len().saturating_sub(1);
             if let Some(TagOrSkip::Skip(skip)) = self.buf.get_mut(last) {
                 *skip += new.end - old.start;
@@ -239,10 +239,23 @@ impl Tags {
             return;
         };
 
-        let (end_n, end_b) = self
-            .get_skip_at(old.end)
-            .map(|(end_n, end_b, skip)| (end_n, old.end.max(end_b + skip)))
-            .unwrap_or((self.buf.len() as u32 - 1, self.len_bytes()));
+        let (start_n, start_b) = if start_b == old.start {
+            rev_range(&self.buf, ..start_n)
+                .enumerate()
+                .find_map(|(i, ts)| Some(i).zip(ts.as_skip()))
+                .map(|(i, skip)| (start_n - (i + 1) as u32, start_b - skip))
+                .unwrap_or((0, 0))
+        } else {
+            (start_n, start_b)
+        };
+
+        let (end_n, end_b) = if old.start == old.end {
+            (start_n, old.end.max(start_b + skip))
+        } else {
+            self.get_skip_at(old.end)
+                .map(|(end_n, end_b, skip)| (end_n, old.end.max(end_b + skip)))
+                .unwrap_or((self.buf.len() as u32 - 1, self.len_bytes()))
+        };
 
         let range_diff = new.end as i32 - old.end as i32;
 
