@@ -22,7 +22,7 @@ use crate::{
     cfg::PrintCfg,
     cmd,
     data::{RoData, RwData, context},
-    forms::{self, Form},
+    form::{self, Form},
     hooks,
     mode::{self, Command, Cursors, IncSearcher},
     text::{Ghost, Key, Searcher, Tag, Text, text},
@@ -159,8 +159,8 @@ impl<U: Ui> Widget<U> for CmdLine<U> {
     }
 
     fn once() {
-        forms::set_weak("Prompt", Form::cyan());
-        forms::set_weak("ParseCommandErr", "DefaultErr");
+        form::set_weak("Prompt", Form::cyan());
+        form::set_weak("ParseCommandErr", "DefaultErr");
 
         cmd::add_for::<CmdLine<U>, U>(["set-prompt"], move |command_line, _, _, _, mut args| {
             let new_prompt: String = args.collect();
@@ -226,11 +226,11 @@ impl<U: Ui> CmdLineMode<U> for RunCommands<U> {
         let caller = command.split_whitespace().next();
         if let Some(caller) = caller {
             if cmd::caller_exists(caller) {
-                let id = forms::id_of!("CallerExists");
+                let id = form::id_of!("CallerExists");
                 text.insert_tag(0, Tag::PushForm(id), self.key);
                 text.insert_tag(caller.len() as u32, Tag::PopForm(id), self.key);
             } else {
-                let id = forms::id_of!("CallerNotFound");
+                let id = form::id_of!("CallerNotFound");
                 text.insert_tag(0, Tag::PushForm(id), self.key);
                 text.insert_tag(caller.len() as u32, Tag::PopForm(id), self.key);
             }
@@ -247,8 +247,8 @@ impl<U: Ui> CmdLineMode<U> for RunCommands<U> {
     }
 
     fn once() {
-        forms::set_weak("CallerExists", "AccentOk");
-        forms::set_weak("CallerNotFound", "AccentErr");
+        form::set_weak("CallerExists", "AccentOk");
+        form::set_weak("CallerNotFound", "AccentErr");
     }
 }
 
@@ -345,7 +345,7 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
                 };
 
                 let span = err.span();
-                let id = crate::forms::id_of!("ParseCommandErr");
+                let id = crate::form::id_of!("ParseCommandErr");
 
                 text.insert_tag(span.start.offset as u32, Tag::PushForm(id), self.key);
                 text.insert_tag(span.end.offset as u32, Tag::PopForm(id), self.key);

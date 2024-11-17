@@ -202,7 +202,7 @@ impl<U: Ui> Session<U> {
 
         self.ui.flush_layout();
         self.ui.start(Sender::new(self.tx.clone()));
-        crate::forms::set_sender(Sender::new(self.tx.clone()));
+        crate::form::set_sender(Sender::new(self.tx.clone()));
 
         // The main loop.
         loop {

@@ -110,7 +110,7 @@
 //!         _ => cursor::set_main(CursorShape::SteadyBlock)
 //!     });
 //!
-//!     forms::set("Mode", Form::dark_magenta());
+//!     form::set("Mode", Form::dark_magenta());
 //! }
 //! ```
 //!
@@ -125,7 +125,7 @@
 //! - Pushes a [custom status line] and [command line] to the bottom
 //!   of the screen;
 //! - [Adds] hooks for [mode changes] in Duat;
-//! - [Changes](forms::set) the [style] of the mode printed on the
+//! - [Changes](form::set) the [style] of the mode printed on the
 //!   status line;
 //!
 //! These are some of the ways you can configure Duat. You might
@@ -259,7 +259,7 @@
 //! [command line]: prelude::CmdLine
 //! [Adds]: hooks::add
 //! [mode changes]: hooks::ModeSwitched
-//! [style]: forms::Form
+//! [style]: form::Form
 //! [`status!`]: prelude::status
 //! [tags]: duat_core::text::Tag
 #![feature(decl_macro)]
@@ -370,7 +370,7 @@ pub mod mode {
     /// output of this `alias`
     ///
     /// [ghost text]: duat_core::text::Tag::GhostText
-    /// [form]: crate::forms::Form
+    /// [form]: crate::form::Form
     pub fn alias<M: Mode<Ui>>(take: &str, give: impl AsGives<Ui>) {
         mode::alias::<M, Ui>(take, give);
     }
@@ -380,16 +380,16 @@ pub mod cursor {
     //! Functions to alter the [`Cursors`] of Duat
     //!
     //! [`Cursors`]: duat_core::mode::Cursors
-    pub use duat_core::forms::{
+    pub use duat_core::form::{
         extra_cursor as get_extra, main_cursor as get_main, set_extra_cursor as set_extra,
         set_main_cursor as set_main, unset_extra_cursor as unset_extra,
         unset_main_cursor as unset_main,
     };
 }
 
-pub mod forms {
+pub mod form {
     //! Functions to alter the [`Form`]s of Duat
-    pub use duat_core::forms::{CursorShape, Form, from_id, id_of, set};
+    pub use duat_core::form::{CursorShape, Form, from_id, id_of, set};
 }
 
 pub mod hooks {
@@ -518,7 +518,7 @@ pub mod prelude {
 
     pub use crate::{
         Ui, cmd, control, cursor,
-        forms::{self, CursorShape, Form},
+        form::{self, CursorShape, Form},
         hooks::{self, ModeSwitched, OnFileOpen, OnWindowOpen},
         mode::{self, Cursors, Mode, alias, map},
         print, setup_duat,

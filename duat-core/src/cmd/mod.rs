@@ -408,7 +408,7 @@ mod global {
     /// #     time::{Duration, Instant}
     /// # };
     /// # use duat_core::{
-    /// #     cmd, forms::{self, Form}, text::{text, Text, AlignCenter},
+    /// #     cmd, form::{self, Form}, text::{text, Text, AlignCenter},
     /// #     ui::{Area, PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
     /// # };
     /// struct TimerCfg<U>(PhantomData<U>);
@@ -479,7 +479,7 @@ mod global {
     /// #     time::{Duration, Instant}
     /// # };
     /// # use duat_core::{
-    /// #     cmd, forms::{self, Form}, text::{text, Text, AlignCenter},
+    /// #     cmd, form::{self, Form}, text::{text, Text, AlignCenter},
     /// #     ui::{Area, PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
     /// # };
     /// # struct TimerCfg<U>(PhantomData<U>);
@@ -514,7 +514,7 @@ mod global {
     /// #    }
     ///     // ...
     ///     fn once() {
-    ///         forms::set_weak("Counter", Form::green());
+    ///         form::set_weak("Counter", Form::green());
     ///
     ///         cmd::add_for::<Timer, U>(
     ///             ["play"],
@@ -547,7 +547,7 @@ mod global {
     /// ```
     ///
     /// I also added a [`Form`] in the [`once`] function. You should
-    /// use [`forms::set_weak`] instead of [`forms::set`], as to not
+    /// use [`form::set_weak`] instead of [`form::set`], as to not
     /// interfere with the user configuration.
     ///
     /// [`dyn Area`]: crate::ui::Area
@@ -555,9 +555,9 @@ mod global {
     /// [`Session`]: crate::session::Session
     /// [`CmdLine`]: crate::widgets::CmdLine
     /// [`once`]: Widget::once
-    /// [`Form`]: crate::forms::Form
-    /// [`forms::set`]: crate::forms::set
-    /// [`forms::set_weak`]: crate::forms::set_weak
+    /// [`Form`]: crate::form::Form
+    /// [`form::set`]: crate::form::set
+    /// [`form::set_weak`]: crate::form::set_weak
     pub fn add_for<W: Widget<U>, U: Ui>(
         callers: impl IntoIterator<Item = impl ToString>,
         f: impl FnMut(&mut W, &U::Area, &mut Cursors, Flags, Args) -> CmdResult + 'static,

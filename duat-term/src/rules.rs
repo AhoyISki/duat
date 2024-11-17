@@ -1,6 +1,6 @@
 use duat_core::{
     context::{self, FileReader},
-    forms::{self, Form},
+    form::{self, Form},
     text::{Text, text},
     ui::{Area as UiArea, PushSpecs},
     widgets::{Widget, WidgetCfg},
@@ -67,9 +67,9 @@ impl Widget<Ui> for VertRule {
     }
 
     fn once() {
-        forms::set_weak("VertRule", Form::dark_grey());
-        forms::set_weak("UpperVertRule", "VertRule");
-        forms::set_weak("LowerVertRule", "VertRule");
+        form::set_weak("VertRule", Form::dark_grey());
+        form::set_weak("UpperVertRule", "VertRule");
+        form::set_weak("LowerVertRule", "VertRule");
     }
 }
 

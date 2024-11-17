@@ -7,7 +7,7 @@
 //!
 //! There is also the [`status!`] macro, which is an extremely
 //! convenient way to modify the text of the status line, letting you
-//! place forms, in the same way that [`text!`] does, and
+//! place form, in the same way that [`text!`] does, and
 //! automatically recognizing a ton of different types of functions,
 //! that can read from the file, from other places, from [data] types,
 //! etc.
@@ -24,7 +24,7 @@ pub use self::state::State;
 use crate::{
     cfg::PrintCfg,
     context::{self, FileReader},
-    forms::{self, Form},
+    form::{self, Form},
     text::{AlignCenter, AlignRight, Builder, Tag, Text, text},
     ui::{PushSpecs, Ui},
     widgets::{File, Widget, WidgetCfg},
@@ -210,12 +210,12 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
     }
 
     fn once() {
-        forms::set_weak("DefaultStatus", "Default");
-        forms::set_weak("File", Form::yellow().italic());
-        forms::set_weak("Selections", Form::dark_blue());
-        forms::set_weak("Coord", Form::dark_yellow());
-        forms::set_weak("Separator", Form::cyan());
-        forms::set_weak("Mode", Form::green());
+        form::set_weak("DefaultStatus", "Default");
+        form::set_weak("File", Form::yellow().italic());
+        form::set_weak("Selections", Form::dark_blue());
+        form::set_weak("Coord", Form::dark_yellow());
+        form::set_weak("Separator", Form::cyan());
+        form::set_weak("Mode", Form::green());
     }
 
     fn print_cfg(&self) -> PrintCfg {
@@ -342,7 +342,7 @@ unsafe impl<U: Ui> Sync for StatusLine<U> {}
 /// [`(FnMut() -> Arg, FnMut() -> bool)`]: FnMut
 pub macro status {
     (@append $pre_fn:expr, $checker:expr, []) => {{
-        let form_id = forms::id_of!("DefaultStatus");
+        let form_id = form::id_of!("DefaultStatus");
 
         let pre_fn = move |builder: &mut Builder, reader: &FileReader<_>| {
             $pre_fn(builder, reader);
@@ -352,9 +352,9 @@ pub macro status {
         (pre_fn, $checker)
     }},
 
-    // Insertion of directly named forms.
+    // Insertion of directly named form.
     (@append $pre_fn:expr, $checker:expr, [$form:ident]) => {{
-        let id = forms::id_of!(stringify!($form));
+        let id = form::id_of!(stringify!($form));
 
         let pre_fn = move |builder: &mut Builder, reader: &FileReader<_>| {
             $pre_fn(builder, reader);

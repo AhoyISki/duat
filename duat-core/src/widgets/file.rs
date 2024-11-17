@@ -15,7 +15,7 @@ use std::{fs, io::ErrorKind, path::PathBuf};
 
 use crate::{
     cfg::{IterCfg, PrintCfg},
-    forms,
+    form,
     text::{Text, TreeSitter},
     ui::{Area, PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
@@ -86,12 +86,12 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
         let text = {
             let mut text = text;
             use crate::{
-                forms::{self, Form},
+                form::{self, Form},
                 text::{Key, Tag, text},
             };
 
             let key = Key::new();
-            let form1 = forms::set("form1lmao", Form::red().bold());
+            let form1 = form::set("form1lmao", Form::red().bold());
             let byte = text.len().byte();
             text.insert_tag(byte, Tag::GhostText(text!([form1lmao] "not real")), key);
             text.replace_range((text.len(), text.len()), "abc");
@@ -287,7 +287,7 @@ impl<U: Ui> Widget<U> for File {
         area.print_with(
             &self.text,
             self.cfg,
-            forms::painter(),
+            form::painter(),
             move |caret, item| {
                 has_wrapped |= caret.wrap;
                 if has_wrapped && item.part.is_char() {

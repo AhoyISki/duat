@@ -7,7 +7,7 @@ use super::{
     ids::{TextId, ToggleId},
 };
 use crate::{
-    forms::FormId,
+    form::FormId,
     text::{Point, Text},
 };
 

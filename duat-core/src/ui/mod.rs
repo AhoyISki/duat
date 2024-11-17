@@ -21,7 +21,7 @@ use crate::{
     cache::load_cache,
     cfg::{IterCfg, PrintCfg},
     data::{RoData, RwData},
-    forms::Painter,
+    form::Painter,
     text::{Item, Iter, Point, RevIter, Text},
     widgets::{File, Node, Widget},
 };

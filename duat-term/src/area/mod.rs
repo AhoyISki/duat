@@ -10,7 +10,7 @@ use duat_core::{
     cache::{Deserialize, Serialize},
     cfg::{IterCfg, PrintCfg},
     data::RwData,
-    forms::Painter,
+    form::Painter,
     text::{Item, Iter, Part, Point, RevIter, Text},
     ui::{self, Axis, Caret, Constraint, PushSpecs},
 };

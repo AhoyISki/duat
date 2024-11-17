@@ -106,7 +106,7 @@
 //! ```
 //!
 //! The returned result from a command should make use of 4 specific
-//! forms: `"CommandOk"`, `"AccentOk"`, `"CommandErr"` and
+//! form: `"CommandOk"`, `"AccentOk"`, `"CommandErr"` and
 //! `"AccentErr"`. When errors are displayed, the `"Default"` [`Form`]
 //! gets mapped to `"CommandOk"` if the result is [`Ok`], and to
 //! `"CommandErr"` if the result is [`Err`]. . This formatting of
@@ -130,7 +130,7 @@
 //! });
 //! ```
 //!
-//! [`Form`]: crate::forms::Form
+//! [`Form`]: crate::form::Form
 
 pub use duat_core::cmd::{Args, Flags};
 use duat_core::{
@@ -252,7 +252,7 @@ pub fn add(
 /// #     time::{Duration, Instant}
 /// # };
 /// # use duat_core::{
-/// #     cmd, forms::{self, Form}, text::{text, Text, AlignCenter},
+/// #     cmd, form::{self, Form}, text::{text, Text, AlignCenter},
 /// #     ui::{Area, PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
 /// # };
 /// struct TimerCfg<U>(PhantomData<U>);
@@ -323,7 +323,7 @@ pub fn add(
 /// #     time::{Duration, Instant}
 /// # };
 /// # use duat_core::{
-/// #     cmd, forms::{self, Form}, text::{text, Text, AlignCenter},
+/// #     cmd, form::{self, Form}, text::{text, Text, AlignCenter},
 /// #     ui::{Area, PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
 /// # };
 /// # struct TimerCfg<U>(PhantomData<U>);
@@ -358,7 +358,7 @@ pub fn add(
 /// #    }
 ///     // ...
 ///     fn once() {
-///         forms::set_weak("Counter", Form::green());
+///         form::set_weak("Counter", Form::green());
 ///
 ///         cmd::add_for::<Timer, U>(
 ///             ["play"],
@@ -391,7 +391,7 @@ pub fn add(
 /// ```
 ///
 /// I also added a [`Form`] in the [`once`] function. You should
-/// use [`forms::set_weak`] instead of [`forms::set`], as to not
+/// use [`form::set_weak`] instead of [`form::set`], as to not
 /// interfere with the user configuration.
 ///
 /// [`dyn Area`]: duat_core::ui::Area
@@ -399,9 +399,9 @@ pub fn add(
 /// [`Session`]: crate::session::Session
 /// [`CmdLine`]: crate::widgets::CmdLine
 /// [`once`]: Widget::once
-/// [`Form`]: crate::forms::Form
-/// [`forms::set`]: crate::forms::set
-/// [`forms::set_weak`]: duat_core::forms::set_weak
+/// [`Form`]: crate::form::Form
+/// [`form::set`]: crate::form::set
+/// [`form::set_weak`]: duat_core::form::set_weak
 #[inline(never)]
 pub fn add_for<W: Widget<Ui>>(
     callers: impl IntoIterator<Item = impl ToString>,

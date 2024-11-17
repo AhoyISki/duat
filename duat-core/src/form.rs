@@ -63,10 +63,10 @@ mod global {
     /// Either a [`Form`] or a name of a form
     ///
     /// Note that the referenced form does not need to exist for
-    /// [`forms::set`] or [`forms::set_weak`] to work properly.
+    /// [`form::set`] or [`form::set_weak`] to work properly.
     ///
-    /// [`forms::set`]: set
-    /// [`forms::set_weak`]: set_weak
+    /// [`form::set`]: set
+    /// [`form::set_weak`]: set_weak
     pub trait FormFmt: InnerFormFmt {}
     impl FormFmt for Form {}
     impl FormFmt for BuiltForm {}
@@ -80,20 +80,20 @@ mod global {
     /// reference another form by its name:
     ///
     /// ```rust
-    /// # use duat_core::forms::{self, Form};
+    /// # use duat_core::form::{self, Form};
     /// // Creates a regular form
-    /// forms::set("MyRegularForm", Form::red());
+    /// form::set("MyRegularForm", Form::red());
     /// // Creates a form that references the first
-    /// forms::set("MyRefForm", "MyRegularForm");
+    /// form::set("MyRefForm", "MyRegularForm");
     /// // Sets both "MyRegularForm" and "MyRefForm" to blue
-    /// forms::set("MyRegularForm", Form::blue());
+    /// form::set("MyRegularForm", Form::blue());
     /// ```
     ///
     /// If you are creating a plugin, or another kind of tool for
-    /// others using Duat, use [`forms::set_weak`] instead of this
+    /// others using Duat, use [`form::set_weak`] instead of this
     /// function.
     ///
-    /// [`forms::set_weak`]: set_weak
+    /// [`form::set_weak`]: set_weak
     pub fn set(name: impl ToString, form: impl FormFmt) -> FormId {
         let kind = form.kind();
         let name: &'static str = name.to_string().leak();
@@ -120,25 +120,25 @@ mod global {
 
     /// Sets a form, "weakly"
     ///
-    /// The difference between this function and [`forms::set`] is
+    /// The difference between this function and [`form::set`] is
     /// that this function will only trigger if the form didn't
     /// already exist.
     ///
     /// This is useful for plugins, since it prioritizes the user's
     /// preferences, no matter in what order this function and
-    /// [`forms::set`] are called:
+    /// [`form::set`] are called:
     ///
     /// ```rust
-    /// use duat_core::forms::{self, Form};
+    /// use duat_core::form::{self, Form};
     /// // Creates a form
-    /// forms::set_weak("WeakForm", Form::blue().on_white());
+    /// form::set_weak("WeakForm", Form::blue().on_white());
     /// // Creates a form "strongly"
-    /// forms::set("StrongForm", Form::new().bold());
+    /// form::set("StrongForm", Form::new().bold());
     /// // Does nothing
-    /// forms::set_weak("StrongForm", "Default");
+    /// form::set_weak("StrongForm", "Default");
     /// ```
     ///
-    /// [`forms::set`]: set
+    /// [`form::set`]: set
     pub fn set_weak(name: impl ToString, form: impl FormFmt) -> FormId {
         let kind = form.kind();
         let name: &'static str = name.to_string().leak();
@@ -166,9 +166,9 @@ mod global {
     /// Returns a [`Form`], given a [`FormId`].
     ///
     /// If you are thinking of using this for printing purposes,
-    /// consider using [`forms::painter`] instead.
+    /// consider using [`form::painter`] instead.
     ///
-    /// [`forms::painter`]: painter
+    /// [`form::painter`]: painter
     pub fn from_id(id: FormId) -> Form {
         PALETTE.form_from_id(id).unwrap_or(Form::new().0)
     }
@@ -200,8 +200,8 @@ mod global {
     /// If you want to set the cursor's color, do something like this:
     ///
     /// ```rust
-    /// # use duat_core::forms::{self, Form, Color};
-    /// forms::set(
+    /// # use duat_core::form::{self, Form, Color};
+    /// form::set(
     ///     "MainCursor",
     ///     Form::black().on(Color::Rgb { r: 240, g: 210, b: 200 }),
     /// );
@@ -209,10 +209,10 @@ mod global {
     ///
     /// However, if possible, Duat will still try to use the main
     /// cursor's [shape]. If you don't want that to happen, see
-    /// [`forms::unset_main_cursor`].
+    /// [`form::unset_main_cursor`].
     ///
     /// [shape]: CursorShape
-    /// [`forms::unset_main_cursor`]: unset_main_cursor
+    /// [`form::unset_main_cursor`]: unset_main_cursor
     pub fn set_main_cursor(shape: CursorShape) {
         crate::thread::queue(move || PALETTE.set_main_cursor(shape));
     }
@@ -229,16 +229,16 @@ mod global {
     /// If you want to set the cursor's color, do something like this:
     ///
     /// ```rust
-    /// # use duat_core::forms::{self, Form, Color};
-    /// forms::set("ExtraCursor", Form::black().on_cyan());
+    /// # use duat_core::form::{self, Form, Color};
+    /// form::set("ExtraCursor", Form::black().on_cyan());
     /// ```
     ///
     /// However, if possible, Duat will still try to use the main
     /// cursor's [shape]. If you don't want that to happen, see
-    /// [`forms::unset_extra_cursor`].
+    /// [`form::unset_extra_cursor`].
     ///
     /// [shape]: CursorShape
-    /// [`forms::unset_extra_cursor`]: unset_extra_cursor
+    /// [`form::unset_extra_cursor`]: unset_extra_cursor
     pub fn set_extra_cursor(shape: CursorShape) {
         crate::thread::queue(move || PALETTE.set_extra_cursor(shape));
     }
@@ -249,10 +249,10 @@ mod global {
     /// use of the `"MainCursor"` form.
     ///
     /// If you want to set the [shape] instead, see
-    /// [`forms::set_main_cursor`].
+    /// [`form::set_main_cursor`].
     ///
     /// [shape]: CursorShape
-    /// [`forms::set_main_cursor`]: set_main_cursor
+    /// [`form::set_main_cursor`]: set_main_cursor
     pub fn unset_main_cursor() {
         crate::thread::queue(move || PALETTE.unset_main_cursor());
     }
@@ -266,10 +266,10 @@ mod global {
     /// print one cursor at a time.
     ///
     /// If you want to set the [shape] instead, see
-    /// [`forms::set_extra_cursor`].
+    /// [`form::set_extra_cursor`].
     ///
     /// [shape]: CursorShape
-    /// [`forms::set_extra_cursor`]: set_extra_cursor
+    /// [`form::set_extra_cursor`]: set_extra_cursor
     pub fn unset_extra_cursor() {
         crate::thread::queue(move || PALETTE.unset_extra_cursor());
     }

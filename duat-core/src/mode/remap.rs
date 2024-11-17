@@ -92,7 +92,7 @@ mod global {
     /// output of this `alias`
     ///
     /// [ghost text]: crate::text::Tag::GhostText
-    /// [form]: crate::forms::Form
+    /// [form]: crate::form::Form
     pub fn alias<M: Mode<U>, U: Ui>(take: &str, give: impl AsGives<U>) {
         REMAPPER.remap::<M, U>(str_to_keys(take), give.into_gives(), true);
     }

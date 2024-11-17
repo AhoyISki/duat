@@ -3,13 +3,13 @@
 //! This module contains 4 macros for text building: [`text!`],
 //! [`err!`], [`ok!`] and [`hint!`]. These are supposed to be used in
 //! various contexts, and they have differences on what the `Default`
-//! and `Accent` forms.
+//! and `Accent` form.
 use std::fmt::Write;
 
 use super::{Change, Key, Tag, Text, ToggleId, tags::RawTag};
 use crate::{
     data::{RoData, RwData},
-    forms::FormId,
+    form::FormId,
 };
 
 /// Builds and modifies a [`Text`], based on replacements applied
@@ -36,7 +36,7 @@ use crate::{
 ///
 /// [`impl Display`]: std::fmt::Display
 /// [tag]: AlignCenter
-/// [`Form`]: crate::forms::Form
+/// [`Form`]: crate::form::Form
 pub struct Builder {
     text: Text,
     last_form: Option<FormId>,
@@ -58,7 +58,7 @@ impl Builder {
     /// Will also finish the last [`Form`] tag, pushing a [`PopForm`]
     /// at the very end.
     ///
-    /// [`Form`]: crate::forms::Form
+    /// [`Form`]: crate::form::Form
     /// [`PopForm`]: Tag::PopForm
     pub fn finish(mut self) -> Text {
         let len = self.text.len().byte();
@@ -119,7 +119,7 @@ impl Builder {
     pub(crate) fn push_tag(&mut self, tag: Tag) -> Option<ToggleId> {
         let len = self.text.len().byte();
         if let Tag::PushForm(id) = tag {
-            let last_form = match id == crate::forms::DEFAULT_ID {
+            let last_form = match id == crate::form::DEFAULT_ID {
                 true => self.last_form.take(),
                 false => self.last_form.replace(id),
             };
@@ -128,7 +128,7 @@ impl Builder {
                 self.text.tags.insert(len, Tag::PopForm(id), Key::basic());
             }
 
-            match id == crate::forms::DEFAULT_ID {
+            match id == crate::form::DEFAULT_ID {
                 true => None,
                 false => self.text.tags.insert(len, tag, Key::basic()),
             }
@@ -278,16 +278,16 @@ where
 pub macro text {
     // Forms
     (@push $builder:expr, []) => {
-        let id = crate::forms::id_of!("Default");
+        let id = crate::form::id_of!("Default");
         $builder.push(crate::text::Tag::PushForm(id))
     },
     (@push $builder:expr, [*a]) => {
-        let id = crate::forms::id_of!("Accent");
+        let id = crate::form::id_of!("Accent");
         $builder.push(crate::text::Tag::PushForm(id))
     },
 
     (@push $builder:expr, [$form:ident]) => {
-        let id = crate::forms::id_of!(stringify!($form));
+        let id = crate::form::id_of!(stringify!($form));
         $builder.push(crate::text::Tag::PushForm(id))
     },
 
@@ -319,16 +319,16 @@ pub macro text {
 pub macro ok {
     // Forms
     (@push $builder:expr, []) => {
-        let id = crate::forms::id_of!("DefaultOk");
+        let id = crate::form::id_of!("DefaultOk");
         $builder.push(crate::text::Tag::PushForm(id))
     },
     (@push $builder:expr, [*a]) => {
-        let id = crate::forms::id_of!("AccentOk");
+        let id = crate::form::id_of!("AccentOk");
         $builder.push(crate::text::Tag::PushForm(id))
     },
 
     (@push $builder:expr, [$form:ident]) => {
-        let id = crate::forms::id_of!(stringify!($form));
+        let id = crate::form::id_of!(stringify!($form));
         $builder.push(crate::text::Tag::PushForm(id))
     },
 
@@ -360,16 +360,16 @@ pub macro ok {
 pub macro err {
     // Forms
     (@push $builder:expr, []) => {
-        let id = crate::forms::id_of!("DefaultErr");
+        let id = crate::form::id_of!("DefaultErr");
         $builder.push(crate::text::Tag::PushForm(id))
     },
     (@push $builder:expr, [*a]) => {
-        let id = crate::forms::id_of!("AccentErr");
+        let id = crate::form::id_of!("AccentErr");
         $builder.push(crate::text::Tag::PushForm(id))
     },
 
     (@push $builder:expr, [$form:ident]) => {
-        let id = crate::forms::id_of!(stringify!($form));
+        let id = crate::form::id_of!(stringify!($form));
         $builder.push(crate::text::Tag::PushForm(id))
     },
 
@@ -401,16 +401,16 @@ pub macro err {
 pub macro hint {
     // Forms
     (@push $builder:expr, []) => {
-        let id = crate::forms::id_of!("DefaultHint");
+        let id = crate::form::id_of!("DefaultHint");
         $builder.push(crate::text::Tag::PushForm(id))
     },
     (@push $builder:expr, [*a]) => {
-        let id = crate::forms::id_of!("AccentHint");
+        let id = crate::form::id_of!("AccentHint");
         $builder.push(crate::text::Tag::PushForm(id))
     },
 
     (@push $builder:expr, [$form:ident]) => {
-        let id = crate::forms::id_of!(stringify!($form));
+        let id = crate::form::id_of!(stringify!($form));
         $builder.push(crate::text::Tag::PushForm(id))
     },
 

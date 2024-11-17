@@ -59,7 +59,7 @@ use crate::{
     cfg::PrintCfg,
     context::FileParts,
     data::{Data, RwData},
-    forms,
+    form,
     hooks::{self, FocusedOn, UnfocusedFrom},
     mode::Cursors,
     text::Text,
@@ -207,7 +207,7 @@ mod status_line;
 /// ```rust
 /// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
 /// # use duat_core::{
-/// #     forms::{self, Form}, hooks::{self, SessionStarted}, periodic_checker,
+/// #     form::{self, Form}, hooks::{self, SessionStarted}, periodic_checker,
 /// #     text::Text, ui::{PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
 /// # };
 /// # struct UpTime(Text);
@@ -236,14 +236,14 @@ mod status_line;
 ///         hooks::add::<SessionStarted<U>>(|_| {
 ///             START_TIME.set(Instant::now()).unwrap();
 ///         });
-///         forms::set_weak("UpTime", Form::cyan());
+///         form::set_weak("UpTime", Form::cyan());
 ///     }
 /// }
 /// ```
 ///
 /// I also added the `"UpTime"` [`Form`], which will be used by the
-/// widget when it is updated. When adding forms, you should use the
-/// [`forms::set_weak*`] functions, in order to not interfere with
+/// widget when it is updated. When adding form, you should use the
+/// [`form::set_weak*`] functions, in order to not interfere with
 /// the configuration crate.
 ///
 /// Next, I need to implement the [`update`] method, which will simply
@@ -299,8 +299,8 @@ mod status_line;
 /// [`Instant`]: std::time::Instant
 /// [`SessionStarted`]: crate::hooks::SessionStarted
 /// [`update`]: Widget::update
-/// [`Form`]: crate::forms::Form
-/// [`forms::set_weak*`]: crate::forms::set_weak
+/// [`Form`]: crate::form::Form
+/// [`form::set_weak*`]: crate::form::set_weak
 /// [`text!`]: crate::text::text
 pub trait Widget<U>: Send + Sync + 'static
 where
@@ -390,12 +390,12 @@ where
     /// to simultaneously update the list of lines numbers, for
     /// widgets like [`LineNumbers`] to read.
     fn print(&mut self, area: &U::Area) {
-        area.print(self.text(), self.print_cfg(), forms::painter())
+        area.print(self.text(), self.print_cfg(), form::painter())
     }
 
     /// Actions taken when this widget opens for the first time
     ///
-    /// Examples of things that should go in here are [`forms`]
+    /// Examples of things that should go in here are [`form`]
     /// functions, [hooks], [commands] you want executed only once
     ///
     /// [commands]: crate::cmd

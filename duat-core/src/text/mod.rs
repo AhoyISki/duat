@@ -61,7 +61,7 @@
 //! [`Mode`]s make use of [`EditHelper`]s.
 //!
 //! [gap buffers]: GapBuffer
-//! [colored]: crate::forms::Form
+//! [colored]: crate::form::Form
 //! [ghost text]: Tag::GhostText
 //! [`Ui`]: crate::ui::Ui
 //! [`File`]: crate::widgets::File
@@ -1188,7 +1188,7 @@ mod part {
     //!
     //! [`Text`]: super::Text
     use super::tags::{RawTag, ToggleId};
-    use crate::forms::FormId;
+    use crate::form::FormId;
 
     /// A part of the [`Text`], can be a [`char`] or a [`Tag`].
     ///
@@ -1281,7 +1281,7 @@ mod part {
 fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
     use tags::Tag::{ExtraCursor, MainCursor, PopForm, PushForm};
 
-    use crate::forms::{E_SEL_ID, M_SEL_ID};
+    use crate::form::{E_SEL_ID, M_SEL_ID};
 
     if is_main {
         (MainCursor, PushForm(M_SEL_ID), PopForm(M_SEL_ID))

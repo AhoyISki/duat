@@ -281,7 +281,7 @@ pub mod cache;
 pub mod cfg;
 pub mod cmd;
 pub mod data;
-pub mod forms;
+pub mod form;
 pub mod hooks;
 pub mod mode;
 pub mod session;

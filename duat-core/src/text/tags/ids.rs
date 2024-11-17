@@ -69,12 +69,12 @@ impl Default for ToggleId {
 /// interfere with eachother's work, keys were implemented:
 ///
 /// ```rust
-/// use duat_core::{forms, text::{text, Key, Tag}};
+/// use duat_core::{form, text::{text, Key, Tag}};
 /// let mut text = text!("This is text with no tags in it");
 /// // This key will be used to modify text.
 /// let key1 = Key::new();
 ///
-/// let id = forms::id_of!("Invisible");
+/// let id = form::id_of!("Invisible");
 ///
 /// text.insert_tag(18, Tag::PushForm(id), key1);
 /// text.insert_tag(21, Tag::PopForm(id), key1);

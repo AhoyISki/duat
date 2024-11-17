@@ -326,7 +326,7 @@ mod switch {
 /// ```rust
 /// # use std::marker::PhantomData;
 /// # use duat_core::{
-/// #     data::RwData, mode::{Mode, KeyEvent}, forms::{self, Form},
+/// #     data::RwData, mode::{Mode, KeyEvent}, form::{self, Form},
 /// #     text::{text, Text}, ui::{PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
 /// # };
 /// # #[derive(Default)]
@@ -373,10 +373,10 @@ mod switch {
 ///     }
 ///
 ///     fn once() {
-///         forms::set_weak("MenuInactive", "Inactive");
-///         forms::set_weak("MenuSelected", "Inactive");
-///         forms::set_weak("MenuActive", Form::blue());
-///         forms::set_weak("MenuSelActive", Form::blue());
+///         form::set_weak("MenuInactive", "Inactive");
+///         form::set_weak("MenuSelected", "Inactive");
+///         form::set_weak("MenuActive", Form::blue());
+///         form::set_weak("MenuSelActive", Form::blue());
 ///     }
 /// }
 /// ```
@@ -392,7 +392,7 @@ mod switch {
 /// ```rust
 /// # use std::marker::PhantomData;
 /// # use duat_core::{
-/// #     data::RwData, forms::{self, Form}, text::{text, Text}, ui::{PushSpecs, Ui},
+/// #     data::RwData, form::{self, Form}, text::{text, Text}, ui::{PushSpecs, Ui},
 /// #     widgets::{Widget, WidgetCfg},
 /// # };
 /// # #[derive(Default)]
@@ -422,15 +422,15 @@ mod switch {
 /// #     }
 ///     // ...
 ///     fn on_focus(&mut self, _area: &U::Area) {
-///         forms::set_weak("MenuInactive", "Default");
-///         forms::set_weak("MenuSelected", Form::new().on_grey());
-///         forms::set_weak("MenuSelActive", Form::blue().on_grey());
+///         form::set_weak("MenuInactive", "Default");
+///         form::set_weak("MenuSelected", Form::new().on_grey());
+///         form::set_weak("MenuSelActive", Form::blue().on_grey());
 ///     }
 ///
 ///     fn on_unfocus(&mut self, _area: &U::Area) {
-///         forms::set_weak("MenuInactive", "Inactive");
-///         forms::set_weak("MenuSelected", "Inactive");
-///         forms::set_weak("MenuSelActive", Form::blue());
+///         form::set_weak("MenuInactive", "Inactive");
+///         form::set_weak("MenuSelected", "Inactive");
+///         form::set_weak("MenuSelActive", Form::blue());
 ///     }
 /// }
 /// ```
@@ -450,7 +450,7 @@ mod switch {
 /// # #![feature(let_chains)]
 /// # use std::marker::PhantomData;
 /// # use duat_core::{
-/// #     data::RwData, mode::{key, Cursors, Mode, KeyCode, KeyEvent}, forms::{self, Form},
+/// #     data::RwData, mode::{key, Cursors, Mode, KeyCode, KeyEvent}, form::{self, Form},
 /// #     text::{text, Text}, ui::{PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
 /// # };
 /// # #[derive(Default)]
@@ -518,7 +518,7 @@ mod switch {
 /// [`on_focus`]: Widget::on_focus
 /// [`on_unfocus`]: Widget::on_unfocus
 /// [resizing]: Area::constrain_ver
-/// [`Form`]: crate::forms::Form
+/// [`Form`]: crate::form::Form
 /// [default]: default::KeyMap
 /// [`duat-kak`]: https://docs.rs/duat-kak/latest/duat_kak/index.html
 /// [Kakoune]: https://github.com/mawww/kakoune

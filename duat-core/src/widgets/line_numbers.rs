@@ -14,7 +14,7 @@ use std::{fmt::Alignment, marker::PhantomData};
 
 use crate::{
     context::{self, FileReader},
-    forms::{self, Form},
+    form::{self, Form},
     text::{Builder, Tag, Text, text},
     ui::{Area, Constraint, PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
@@ -94,10 +94,10 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
     }
 
     fn once() {
-        forms::set_weak("LineNum", Form::grey());
-        forms::set_weak("MainLineNum", Form::yellow());
-        forms::set_weak("WrappedLineNum", Form::cyan().italic());
-        forms::set_weak("WrappedMainLineNum", "WrappedLineNum");
+        form::set_weak("LineNum", Form::grey());
+        form::set_weak("MainLineNum", Form::yellow());
+        form::set_weak("WrappedLineNum", Form::cyan().italic());
+        form::set_weak("WrappedMainLineNum", "WrappedLineNum");
     }
 }
 
