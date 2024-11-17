@@ -239,15 +239,15 @@ impl Tags {
             return;
         };
 
-        let (start_n, start_b) = if start_b == old.start {
-            rev_range(&self.buf, ..start_n)
-                .enumerate()
-                .find_map(|(i, ts)| Some(i).zip(ts.as_skip()))
-                .map(|(i, skip)| (start_n - (i + 1) as u32, start_b - skip))
-                .unwrap_or((0, 0))
-        } else {
-            (start_n, start_b)
-        };
+        //let (start_n, start_b) = if start_b == old.start {
+        //    rev_range(&self.buf, ..start_n)
+        //        .enumerate()
+        //        .find_map(|(i, ts)| Some(i).zip(ts.as_skip()))
+        //        .map(|(i, skip)| (start_n - (i + 1) as u32, start_b - skip))
+        //        .unwrap_or((0, 0))
+        //} else {
+        //    (start_n, start_b)
+        //};
 
         let (end_n, end_b) = if old.start == old.end {
             (start_n, old.end.max(start_b + skip))

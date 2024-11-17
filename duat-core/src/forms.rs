@@ -29,10 +29,12 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
     ("Inactive", Form::grey().0, Normal),
     // Tree sitter Forms
     ("type", Form::yellow().0, Normal),
-    ("constant", Form::grey().0, Normal),
+    ("constant", Form::dark_grey().0, Normal),
     ("function", Form::blue().0, Normal),
-    ("comment", Form::grey().0, Normal),
-    ("comment.documentation", Form::grey().bold().0, Normal),
+    ("comment", Form::dark_grey().0, Normal),
+    ("comment.documentation", Form::dark_grey().bold().0, Normal),
+    ("punctuation.bracket", Form::red().0, Normal),
+    ("punctuation.delimiter", Form::cyan().0, Normal),
     ("variable.parameter", Form::italic().0, Normal),
     ("label", Form::green().0, Normal),
     ("keyword", Form::magenta().0, Normal),
@@ -42,6 +44,8 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
     ("escape", Form::dark_yellow().0, Normal),
     ("attribute", Form::magenta().0, Normal),
     ("operator", Form::cyan().0, Normal),
+    ("constructor", Form::dark_red().0, Normal),
+    ("module", Form::blue().italic().0, Normal),
 ];
 
 /// The functions that will be exposed for public use.

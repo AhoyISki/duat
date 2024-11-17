@@ -64,7 +64,6 @@ impl History {
         sh_from: usize,
     ) -> (usize, i32) {
         let is_last_moment = self.current_moment == self.moments.len();
-
         // Check, in order to prevent modification of earlier moments.
         let moment = if let Some(moment) = self.moments.last_mut()
             && is_last_moment
@@ -80,11 +79,10 @@ impl History {
     /// Declares that the current moment is complete and starts a
     /// new one
     pub fn new_moment(&mut self) {
+        let is_last_moment = self.current_moment == self.moments.len();
         // If the last moment in history is empty, we can keep using it.
-        if self.moments.last().is_none_or(|m| !m.0.is_empty()) {
-            unsafe {
-                self.moments.set_len(self.current_moment);
-            }
+        if !is_last_moment || self.moments.last().is_none_or(|m| !m.0.is_empty()) {
+            self.moments.truncate(self.current_moment);
             self.moments.push(Moment(Vec::new()));
             self.current_moment += 1;
         }

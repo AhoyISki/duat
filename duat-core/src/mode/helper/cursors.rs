@@ -521,7 +521,7 @@ mod cursor {
         pub fn point_range(&self, is_incl: bool, text: &Text) -> (Point, Point) {
             let anchor = self.anchor.unwrap_or(self.caret);
             let mut end = self.caret.point.max(anchor.point);
-            if is_incl && let Some(char) = text.char_at(end){
+            if is_incl && let Some(char) = text.char_at(end) {
                 end = end.fwd(char)
             }
             (self.caret.point.min(anchor.point), end)
