@@ -40,3 +40,6 @@ cc = "*"
 default = []
 wack = []
 deadlocks = ["parking_lot/deadlock_detection"]
+
+[dev-dependencies]
+compact-debug = "0.1.1"

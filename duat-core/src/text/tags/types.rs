@@ -7,7 +7,7 @@ use super::{
     ids::{TextId, ToggleId},
 };
 use crate::{
-    form::FormId,
+    form::{self, FormId},
     text::{Point, Text},
 };
 
@@ -145,6 +145,9 @@ pub enum RawTag {
     // TODO: Deal with the consequences of changing this from a usize.
     /// More direct skipping method, allowing for full skips without
     /// the iteration, which could be slow.
+    ///
+    /// This variant is not actually stored in the buffer, but is
+    /// created when iterating.
     ConcealUntil(u32),
 
     GhostText(Key, TextId),
@@ -177,11 +180,11 @@ impl RawTag {
 
     pub fn ends_with(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::PushForm(lhs_m, lhs_id), Self::PopForm(rhs_m, rhs_id)) => {
-                lhs_m == rhs_m && lhs_id == rhs_id
+            (Self::PushForm(lhs_k, lhs_id), Self::PopForm(rhs_k, rhs_id)) => {
+                lhs_k == rhs_k && lhs_id == rhs_id
             }
-            (Self::ToggleStart(lhs_m, lhs_id), Self::ToggleEnd(rhs_m, rhs_id)) => {
-                lhs_m == rhs_m && lhs_id == rhs_id
+            (Self::ToggleStart(lhs_k, lhs_id), Self::ToggleEnd(rhs_k, rhs_id)) => {
+                lhs_k == rhs_k && lhs_id == rhs_id
             }
             (Self::StartAlignLeft(lhs), Self::EndAlignLeft(rhs))
             | (Self::StartAlignCenter(lhs), Self::EndAlignCenter(rhs))
@@ -256,8 +259,8 @@ impl RawTag {
 impl std::fmt::Debug for RawTag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RawTag::PushForm(id, key) => write!(f, "PushForm({id:?}, {key:?})"),
-            RawTag::PopForm(id, key) => write!(f, "PopForm({id:?}, {key:?})"),
+            RawTag::PushForm(key, id) => write!(f, "PushForm({key:?}, {})", form::name_of(*id)),
+            RawTag::PopForm(key, id) => write!(f, "PopForm({key:?}, {})", form::name_of(*id)),
             RawTag::MainCursor(key) => write!(f, "MainCursor({key:?})"),
             RawTag::ExtraCursor(key) => write!(f, "ExtraCursor({key:?})"),
             RawTag::StartAlignLeft(key) => write!(f, "StartAlignLeft({key:?})"),
@@ -269,9 +272,9 @@ impl std::fmt::Debug for RawTag {
             RawTag::StartConceal(key) => write!(f, "StartConceal({key:?})"),
             RawTag::EndConceal(key) => write!(f, "EndConceal({key:?})"),
             RawTag::ConcealUntil(key) => write!(f, "ConcealUntil({key:?})"),
-            RawTag::GhostText(id, key) => write!(f, "GhostText({id:?}, {key:?})"),
-            RawTag::ToggleStart(id, key) => write!(f, "ToggleStart({id:?}, {key:?})"),
-            RawTag::ToggleEnd(id, key) => write!(f, "ToggleEnd({id:?}, {key:?})"),
+            RawTag::GhostText(key, id) => write!(f, "GhostText({key:?}, {id:?})"),
+            RawTag::ToggleStart(key, id) => write!(f, "ToggleStart({key:?}, {id:?})"),
+            RawTag::ToggleEnd(key, id) => write!(f, "ToggleEnd({key:?}, {id:?})"),
         }
     }
 }

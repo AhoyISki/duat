@@ -7,7 +7,7 @@ pub use crossterm::{cursor::SetCursorStyle as CursorShape, style::Color};
 use parking_lot::{RwLock, RwLockWriteGuard};
 
 pub use self::global::{
-    FormFmt, extra_cursor, from_id, id_of, inner_to_id, main_cursor, name_from_id, painter, set,
+    FormFmt, extra_cursor, from_id, id_of, inner_to_id, main_cursor, name_of, painter, set,
     set_extra_cursor, set_main_cursor, set_weak, unset_extra_cursor, unset_main_cursor,
 };
 use crate::{data::RwLockReadGuard, ui::Sender};
@@ -44,7 +44,7 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
     ("escape", Form::dark_yellow().0, Normal),
     ("attribute", Form::magenta().0, Normal),
     ("operator", Form::cyan().0, Normal),
-    ("constructor", Form::dark_red().0, Normal),
+    ("constructor", Form::yellow().0, Normal),
     ("module", Form::blue().italic().0, Normal),
 ];
 
@@ -174,7 +174,7 @@ mod global {
     }
 
     /// The name of a form, given a [`FormId`]
-    pub fn name_from_id(id: FormId) -> &'static str {
+    pub fn name_of(id: FormId) -> &'static str {
         PALETTE.name_from_id(id)
     }
 

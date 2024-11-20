@@ -91,10 +91,15 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
             };
 
             let key = Key::new();
+            let key2 = Key::new();
             let form1 = form::set("form1lmao", Form::red().bold());
-            let byte = text.len().byte();
-            text.insert_tag(byte, Tag::GhostText(text!([form1lmao] "not real")), key);
-            text.replace_range((text.len(), text.len()), "abc");
+            text.insert_tag(3, Tag::PushForm(form1), key);
+            text.insert_tag(2, Tag::PushForm(form1), key);
+            text.insert_tag(2, Tag::PushForm(form1), key2);
+
+            text.insert_tag(7, Tag::PopForm(form1), key);
+            text.insert_tag(8, Tag::PopForm(form1), key);
+            text.insert_tag(8, Tag::PopForm(form1), key2);
 
             text
         };
@@ -284,21 +289,16 @@ impl<U: Ui> Widget<U> for File {
 
         let mut has_wrapped = false;
 
-        area.print_with(
-            &self.text,
-            self.cfg,
-            form::painter(),
-            move |caret, item| {
-                has_wrapped |= caret.wrap;
-                if has_wrapped && item.part.is_char() {
-                    has_wrapped = false;
-                    let line = item.line();
-                    let wrapped = last_line.is_some_and(|ll| ll == line);
-                    last_line = Some(line);
-                    printed_lines.push((line, wrapped));
-                }
-            },
-        )
+        area.print_with(&self.text, self.cfg, form::painter(), move |caret, item| {
+            has_wrapped |= caret.wrap;
+            if has_wrapped && item.part.is_char() {
+                has_wrapped = false;
+                let line = item.line();
+                let wrapped = last_line.is_some_and(|ll| ll == line);
+                last_line = Some(line);
+                printed_lines.push((line, wrapped));
+            }
+        })
     }
 }
 

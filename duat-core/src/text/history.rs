@@ -116,7 +116,7 @@ impl History {
             if self.moments[self.current_moment].0.is_empty() {
                 self.move_backwards()
             } else {
-                Some(&self.moments[self.current_moment].0)
+                 Some(&self.moments[self.current_moment].0)
             }
         }
     }
