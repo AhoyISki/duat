@@ -6,7 +6,6 @@
 //! as well as [`TagRange`]s to keep track of tags occupying very long
 //! ranges of [`Text`].
 mod ids;
-mod ranges;
 mod types;
 
 use std::{
@@ -528,20 +527,20 @@ impl Tags {
 
     /// Remove all tag ranges that are too small
     fn cull_small_ranges(&mut self) {
-         let mut to_cull = Vec::new();
-         loop {
+        let mut to_cull = Vec::new();
+        loop {
             let iter = self.ranges.iter().enumerate();
-            for (n, (b, tag)) in iter.filter(|(_, (_, t))|
-         t.is_start()) {        let mut find_fn =
-         find_bound_fn(*tag);        if let Some(shift) =
-         self.ranges[(n + 1)..]            .iter()
+            for (n, (b, tag)) in iter.filter(|(_, (_, t))| t.is_start()) {
+                let mut find_fn = find_bound_fn(*tag);
+                if let Some(shift) = self.ranges[(n + 1)..]
+                    .iter()
                     .position(|entry| find_fn(entry).is_some())
-                    && self.ranges[n + 1 + shift].0 - b <=
-         self.range_min        {
+                    && self.ranges[n + 1 + shift].0 - b <= self.range_min
+                {
                     for i in [n, n + 1 + shift] {
-                        let (Ok(i) | Err(i)) =
-         to_cull.binary_search(&i);
-         to_cull.insert(i, i);            }
+                        let (Ok(i) | Err(i)) = to_cull.binary_search(&i);
+                        to_cull.insert(i, i);
+                    }
                 }
             }
             for n in to_cull.drain(..).rev() {
