@@ -113,8 +113,10 @@ impl Tags {
             n + 1
         };
 
-        self.add_to_ranges((n, at, tag));
-        self.cull_small_ranges();
+        if tag.is_start() || tag.is_end() {
+            self.add_to_ranges((n, at, tag));
+            self.cull_small_ranges();
+        }
 
         toggle_id
     }
@@ -229,12 +231,13 @@ impl Tags {
     /// This will destroy any [`RawTag`]s contained in the original
     /// range.
     pub fn transform(&mut self, old: Range<u32>, new_end: u32) {
-        crate::log_file!("before transform: {:#?}", self);
         let new = old.start..new_end;
 
         ////////// Removing the tags.
         // In case we're appending to the rope, a shortcut can be made.
-        let Some((start_n, start_b, skip)) = self.get_skip_at(old.start) else {
+        let Some((start_n, start_b, skip)) = self.get_skip_behind(old.start) else {
+            // Unlike inserting in the middle, appending should not move the tags
+            // ahead.
             let last = self.buf.len().saturating_sub(1);
             if let Some(TagOrSkip::Skip(skip)) = self.buf.get_mut(last) {
                 *skip += new.end - old.start;
@@ -247,20 +250,11 @@ impl Tags {
             return;
         };
 
-        let (start_n, start_b) = if start_b == old.start {
-            rev_range(&self.buf, ..start_n)
-                .find_map(|(n, ts)| Some(n as u32).zip(ts.as_skip()))
-                .map(|(n, skip)| (start_n - (n + 1), start_b - skip))
-                .unwrap_or((0, 0))
-        } else {
-            (start_n, start_b)
-        };
-
         let (end_n, end_b) = if old.start == old.end {
-            (start_n, old.end.max(start_b + skip))
+            (start_n, start_b + skip)
         } else {
-            self.get_skip_at(old.end)
-                .map(|(end_n, end_b, skip)| (end_n, old.end.max(end_b + skip)))
+            self.get_skip_behind(old.end)
+                .map(|(end_n, end_b, skip)| (end_n, end_b + skip))
                 .unwrap_or((self.buf.len() as u32 - 1, self.len_bytes()))
         };
 
@@ -301,11 +295,7 @@ impl Tags {
             }
         }
         self.process_ranges_around(new.clone(), range_diff);
-        // Cull after processing ranges, since before it, no new ranges
-        // could've been created.
         self.cull_small_ranges();
-
-        crate::log_file!("after transform: {:#?}", self);
     }
 
     /// Returns true if there are no [`RawTag`]s
@@ -486,7 +476,6 @@ impl Tags {
             if let Some((_, b1, t1)) = find_match_too_close(&self.buf, (n, b, tag), self.range_min)
                 && let Ok(i) = entries.binary_search(&(b1, t1))
             {
-                crate::log_file!("{:?} too close to {:?}", (b1, t1), (b, tag));
                 entries.remove(i);
             } else if tag.is_start() || tag.is_end() {
                 let (Ok(i) | Err(i)) = entries.binary_search(&(b, tag));
@@ -599,6 +588,25 @@ impl Tags {
                 .take_while(|(_, b, skip)| *b + *skip > at)
                 .last()
         }
+    }
+
+    /// Same as [`get_skip_at`], but takes the previous skip
+    ///
+    /// This will return the same skip if `b != at`, and the previous
+    /// skip otherwise.
+    ///
+    /// [`get_skip_at`]: Tags::get_skip_at
+    fn get_skip_behind(&mut self, at: u32) -> Option<(u32, u32, u32)> {
+        let (n, b, skip) = self.get_skip_at(at)?;
+
+        Some(if b == at {
+            rev_range(&self.buf, ..n)
+                .find_map(|(n, ts)| Some(n as u32).zip(ts.as_skip()))
+                .map(|(n, skip)| (n, b - skip, skip))
+                .unwrap_or((0, 0, 0))
+        } else {
+            (n, b, skip)
+        })
     }
 
     /// Return the [`Text`] of a given [`TextId`]

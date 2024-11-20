@@ -41,6 +41,7 @@ pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
 
 #[doc(hidden)]
 pub fn pre_setup() {
+    duat_core::log_file!("pre setup");
     mode::set_default(Regular);
 
     duat_core::context::setup(

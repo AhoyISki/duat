@@ -412,9 +412,6 @@ impl Remapper {
                             }
 
                             mode::send_key_to(*key);
-                            if let Some(set_mode) = mode::was_set() {
-                                set_mode()
-                            }
                         }
                     }
                     Gives::Mode(f) => f(),
@@ -427,15 +424,13 @@ impl Remapper {
                 remove_alias_and::<U>(|text, main| {
                     text.insert_tag(
                         main,
-                        Tag::ghost_text(text!([Alias] { keys_to_string(cur_seq) })),
+                        Tag::GhostText(text!([Alias] { keys_to_string(cur_seq) })),
                         Key::for_alias(),
                     );
                 })
             }
-        } else {
-            if *is_alias {
-                remove_alias_and::<U>(|_, _| {});
-            }
+        } else if *is_alias {
+            remove_alias_and::<U>(|_, _| {});
             *is_alias = false;
             let end = cur_seq.len() - 1;
             for (i, key) in cur_seq.drain(..).enumerate() {
@@ -448,10 +443,10 @@ impl Remapper {
                 }
 
                 mode::send_key_to(key);
-                if let Some(set_mode) = mode::was_set() {
-                    set_mode()
-                }
             }
+        } else {
+            cur_seq.clear();
+            mode::send_key_to(key);
         }
     }
 }

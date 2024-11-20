@@ -168,6 +168,9 @@ mod switch {
     /// Sends the [`KeyEvent`] to the active [`Mode`]
     pub(super) fn send_key_to(key: KeyEvent) {
         SEND_KEY.lock()(key);
+        if let Some(set_mode) = was_set() {
+            set_mode()
+        }
     }
 
     /// Inner function that sends [`KeyEvent`]s

@@ -389,8 +389,14 @@ mod global {
 /// directly, instead of using a macro like [`text!`]
 ///
 /// [`text!`]: crate::text::text
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FormId(u16);
+
+impl std::fmt::Debug for FormId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "FormId({})", name_of(*self))
+    }
+}
 
 /// A style for text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
