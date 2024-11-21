@@ -43,12 +43,9 @@ impl TreeSitter {
 
     fn range_of_node_containing(&mut self, range: tree_sitter::Range) -> (usize, usize) {
         let (start, end) = (range.start_byte, range.end_byte);
-        let desc = self
-            .tree
-            .root_node()
-            .descendant_for_byte_range(start, end)
-            .unwrap();
-        let parent = self.tree.root_node().child_with_descendant(desc).unwrap();
+        let root = self.tree.root_node();
+        let desc = root.descendant_for_byte_range(start, end).unwrap();
+        let parent = root.child_with_descendant(desc).unwrap_or(desc);
 
         (parent.start_byte(), parent.end_byte())
     }

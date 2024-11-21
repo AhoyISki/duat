@@ -100,7 +100,7 @@ impl Tags {
         let n = if at == b {
             self.buf.insert(n as usize, TagOrSkip::Tag(tag));
             self.records.transform((n, at), (0, 0), (1, 0));
-            self.records.insert((n + 1, at));
+            self.records.insert((n, at));
             n
         } else {
             self.buf.splice(n as usize..=n as usize, [
@@ -109,7 +109,7 @@ impl Tags {
                 TagOrSkip::Skip(b + skip - at),
             ]);
             self.records.transform((n, at), (0, 0), (2, 0));
-            self.records.insert((n + 2, at));
+            self.records.insert((n + 1, at));
             n + 1
         };
 
@@ -214,7 +214,9 @@ impl Tags {
 
         self.records
             .transform((n, b), (total, 0), (total - removed.len() as u32, 0));
+        crate::log_file!("remove at {at} {:#?}, {:#?}", self.buf, self.records);
 
+        // Try to merge this skip with the previous one.
         if let Some(i) = n.checked_sub(removed.len() as u32 + 1)
             && skip > 0
             && let Some(TagOrSkip::Skip(prev)) = self.buf.get(i as usize)
@@ -223,6 +225,7 @@ impl Tags {
             self.buf.splice(range, [TagOrSkip::Skip(prev + skip)]);
             self.records
                 .transform((n - removed.len() as u32, b), (1, 0), (0, 0));
+            crate::log_file!("merge skips at {b} {:#?}, {:#?}", self.buf, self.records);
         }
     }
 
@@ -251,10 +254,10 @@ impl Tags {
         };
 
         let (end_n, end_b) = if old.start == old.end {
-            (start_n, start_b + skip)
+            (start_n, old.end.max(start_b + skip))
         } else {
             self.get_skip_behind(old.end)
-                .map(|(end_n, end_b, skip)| (end_n, end_b + skip))
+                .map(|(end_n, end_b, skip)| (end_n, old.end.max(end_b + skip)))
                 .unwrap_or((self.buf.len() as u32 - 1, self.len_bytes()))
         };
 
@@ -281,6 +284,15 @@ impl Tags {
             (start_n, old.start),
             (1 + end_n - start_n, old.clone().count() as u32),
             (added, new.clone().count() as u32),
+        );
+        crate::log_file!(
+            "transform at {:?} by {:?}, {:#?}",
+            (start_n, old.start),
+            (
+                (1 + end_n - start_n) as i32 - added as i32,
+                old.clone().count() as i32 - new.clone().count() as i32
+            ),
+            self.records
         );
 
         ////////// Range management

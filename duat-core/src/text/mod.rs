@@ -767,6 +767,8 @@ impl Text {
     pub(crate) fn add_cursors(&mut self, cursors: &Cursors, area: &impl Area, cfg: PrintCfg) {
         if cursors.len() < 500 {
             for (cursor, is_main) in cursors.iter() {
+                crate::log_file!("bytes: {}", self.len().byte());
+                crate::log_file!("cursor at {}", cursor.byte());
                 self.add_cursor(cursor, is_main, cursors);
             }
         } else {
@@ -821,7 +823,7 @@ impl Text {
             (cursor.caret(), caret_tag),
         ];
 
-        for (p, tag) in tags.into_iter().skip(no_selection) {
+        for (p, tag) in tags.into_iter().skip(2) {
             let record = (p.byte(), p.char(), p.line());
             self.records.insert(record);
             self.tags.insert(p.byte(), tag, Key::for_cursors());
@@ -841,7 +843,7 @@ impl Text {
         };
         let skip = if start == end { 1 } else { 0 };
 
-        for p in [start, end].into_iter().skip(skip) {
+        for p in [start].into_iter().skip(skip) {
             self.tags.remove_at(p.byte(), Key::for_cursors());
         }
     }

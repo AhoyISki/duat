@@ -113,7 +113,8 @@ impl<R: Record> Records<R> {
 
         if let Some(rec) = self.stored.get_mut(i) {
             *rec = new.sub(prev).unwrap();
-            self.stored.insert(i + 1, len.sub(new.sub(prev).unwrap()).unwrap());
+            self.stored
+                .insert(i + 1, len.sub(new.sub(prev).unwrap()).unwrap());
             self.last = (i as u32 + 1, new);
         }
     }
@@ -123,6 +124,8 @@ impl<R: Record> Records<R> {
         let (s_i, s_rec) = self.search(start.bytes(), Record::bytes);
         let (e_i, e_rec) = self.search(start.bytes() + old_len.bytes(), Record::bytes);
         let e_len = self.stored.get(e_i as usize).cloned().unwrap_or_default();
+        crate::log_file!("s_i: {s_i}, e_i: {e_i}");
+        crate::log_file!("start: {start:?}, old: {old_len:?}, new: {new_len:?}");
 
         if s_i < e_i {
             let start = s_i as usize + 1;
@@ -132,7 +135,10 @@ impl<R: Record> Records<R> {
 
         // Transformation of the beginning len.
         self.last = if let Some(len) = self.stored.get_mut(s_i as usize) {
-            *len = new_len.add(e_rec.add(e_len).sub(old_len).unwrap()).sub(s_rec).unwrap();
+            *len = new_len
+                .add(e_rec.add(e_len).sub(old_len).unwrap())
+                .sub(s_rec)
+                .unwrap();
             let len = *len;
 
             // Removing if new_len has size 0 (no tags or skips).
