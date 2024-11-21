@@ -7,11 +7,11 @@ creation of plugins for Duat.
 
 ## Quick Start
 
-The capabilities of `duat-core` are largely the same as the
-capabilities of Duat, however, the main difference is the multi
-interface capabilities of this crate. In this crate, the
-interfaces are defined in terms of `U: Ui`,  which means that they
-can work on various different interfaces:
+The capabilities of `duat-core` are largely the same as the those
+of Duat, however, the main difference is the multi [`Ui`][__link0] APIs of
+this crate. In it, the public functions and types are defined in
+terms of `U: Ui`,  which means that they can work on various
+different interfaces:
 
 ```rust
 #[derive(Default, Clone)]
@@ -59,13 +59,13 @@ impl<U: Ui> Mode<U> for FindSeq {
 }
 ```
 
-In this example, I have created a [`Mode`][__link0] for [`File`][__link1]s. This
+In this example, I have created a [`Mode`][__link1] for [`File`][__link2]s. This
 mode is (I think) popular within Vim circles. It’s like the `f`
 key in Vim, but it lets you look for a sequence of 2 characters,
-inst ead of just one.
+instead of just one.
 
-What’s great about this mode is that it will work no matter what
-editing model the user is using. It could be Vim inspired, Kakoune
+What’s great about it is that it will work no matter what editing
+model the user is using. It could be Vim inspired, Kakoune
 inspired, Emacs inspired, doesn’t matter. All the user has to do
 to use this mode is this:
 
@@ -73,22 +73,23 @@ to use this mode is this:
 map::<Normal>("<C-s>", &FindSeq::default());
 ```
 
-And now, whenever the usert types Control S in `Normal` mode, the
-mode will switch to `FindSeq`. You could replace `Normal` with any
-other mode, from any other editing model, and this would still
+And now, whenever the usert types `Control S` in `Normal` mode,
+the mode will switch to `FindSeq`. You could replace `Normal` with
+any other mode, from any other editing model, and this would still
 work.
 
 Of course, this is most useful for plugins, for your own
-configuration, you should probably just rely on [`map`][__link2] to
+configuration, you should probably just rely on [`map`][__link3] to
 accomplish the same thing.
 
 Okay, but that was a relatively simple example, here’s a more
 advanced example, which makes use of more of Duat’s features.
 
-This is a copy of [EasyMotion][__link3], a plugin for Vim/Neovim/Kakoune
-that lets you skip around the screen with at most 2 keypresses.
+This is a copy of [EasyMotion][__link4], a plugin for
+Vim/Neovim/Kakoune/Emacs that lets you skip around the screen with
+at most 2 keypresses.
 
-In order to emulate it, we use [ghost text][__link4] and [concealment][__link5]:
+In order to emulate it, we use [ghost text][__link5] and [concealment][__link6]:
 
 ```rust
 #[derive(Clone)]
@@ -207,11 +208,34 @@ fn key_seqs(len: usize) -> Vec<String> {
 static LETTERS: &str = "abcdefghijklmnopqrstuvwxyz";
 ```
 
+All that this plugin is doing is:
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG6WtGrZaoU98GxOP7YwSWF3jG4_szzkj5qBsG97s12V32WG8YWSBg2lkdWF0LWNvcmVlMC4yLjFpZHVhdF9jb3Jl
- [__link0]: https://docs.rs/duat-core/0.2.1/duat_core/?search=mode::Mode
- [__link1]: https://docs.rs/duat-core/0.2.1/duat_core/?search=widgets::File
- [__link2]: https://docs.rs/duat/0.2.0/duat/prelude/fn.map.html
- [__link3]: https://github.com/easymotion/vim-easymotion
- [__link4]: https://docs.rs/duat-core/0.2.1/duat_core/?search=text::Tag::GhostText
- [__link5]: https://docs.rs/duat-core/0.2.1/duat_core/?search=text::Tag::StartConceal
+* Search on the screen for words/lines;
+* In the beginning of said words/lines, add a [`Tag::GhostText`][__link7];
+* Also add a [`Tag::StartConceal`][__link8] and a [`Tag::EndConceal`][__link9];
+* Then, just match the typed keys and [remove][__link10] tags accordingly;
+* [Move][__link11] to the matched sequence, if it exists;
+
+Now, in order to use this mode, it’s the exact same thing as
+`FindSeq`:
+
+```rust
+#[derive(Clone)]
+map::<Normal>("<CA-w>", &EasyMotion::word());
+map::<Normal>("<CA-l>", &EasyMotion::line());
+```
+
+
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG3xVjAl1Yqs7GybGqMN6dl1qG1wVWuqQm_x1GwZrGIiBooqeYWSBg2lkdWF0LWNvcmVlMC4yLjJpZHVhdF9jb3Jl
+ [__link0]: https://docs.rs/duat-core/0.2.2/duat_core/?search=ui::Ui
+ [__link1]: https://docs.rs/duat-core/0.2.2/duat_core/?search=mode::Mode
+ [__link10]: https://docs.rs/duat-core/0.2.2/duat_core/?search=text::Text::remove_tags_on
+ [__link11]: https://docs.rs/duat-core/0.2.2/duat_core/?search=mode::Mover::move_to
+ [__link2]: https://docs.rs/duat-core/0.2.2/duat_core/?search=widgets::File
+ [__link3]: https://docs.rs/duat/0.2.0/duat/prelude/fn.map.html
+ [__link4]: https://github.com/easymotion/vim-easymotion
+ [__link5]: https://docs.rs/duat-core/0.2.2/duat_core/?search=text::Tag::GhostText
+ [__link6]: https://docs.rs/duat-core/0.2.2/duat_core/?search=text::Tag::StartConceal
+ [__link7]: https://docs.rs/duat-core/0.2.2/duat_core/?search=text::Tag::GhostText
+ [__link8]: https://docs.rs/duat-core/0.2.2/duat_core/?search=text::Tag::StartConceal
+ [__link9]: https://docs.rs/duat-core/0.2.2/duat_core/?search=text::Tag::EndConceal

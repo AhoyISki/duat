@@ -5,11 +5,11 @@
 //!
 //! # Quick Start
 //!
-//! The capabilities of `duat-core` are largely the same as the
-//! capabilities of Duat, however, the main difference is the multi
-//! interface capabilities of this crate. In this crate, the
-//! interfaces are defined in terms of `U: Ui`,  which means that they
-//! can work on various different interfaces:
+//! The capabilities of `duat-core` are largely the same as the those
+//! of Duat, however, the main difference is the multi [`Ui`] APIs of
+//! this crate. In it, the public functions and types are defined in
+//! terms of `U: Ui`,  which means that they can work on various
+//! different interfaces:
 //!
 //! ```rust
 //! # use duat_core::{
@@ -64,41 +64,25 @@
 //! In this example, I have created a [`Mode`] for [`File`]s. This
 //! mode is (I think) popular within Vim circles. It's like the `f`
 //! key in Vim, but it lets you look for a sequence of 2 characters,
-//! inst ead of just one.
+//! instead of just one.
 //!
-//! What's great about this mode is that it will work no matter what
-//! editing model the user is using. It could be Vim inspired, Kakoune
+//! What's great about it is that it will work no matter what editing
+//! model the user is using. It could be Vim inspired, Kakoune
 //! inspired, Emacs inspired, doesn't matter. All the user has to do
 //! to use this mode is this:
 //!
 //! ```rust
-//! # use std::any::Any;
-//! # use duat_core::{
-//! #     cmd, data::RwData, mode::{Cursors, EditHelper, KeyCode, KeyEvent, Mode, key},
-//! #     ui::Ui, widgets::File,
-//! # };
 //! # struct Normal;
 //! # #[derive(Default, Clone)]
-//! # struct FindSeq(Option<char>);
-//! # impl<U: Ui> Mode<U> for FindSeq {
-//! #     type Widget = File;
-//! #     fn send_key(
-//! #         &mut self,
-//! #         key: KeyEvent,
-//! #         widget: &RwData<Self::Widget>,
-//! #         area: &<U as Ui>::Area,
-//! #         cursors: &mut Cursors,
-//! #     ) {
-//! #         todo!();
-//! #     }
-//! # }
-//! # fn map<M>(take: &str, give: &impl Any) {}
+//! # struct FindSeq;
+//! # fn map<M>(take: &str, give: &impl std::any::Any) {}
+//! # // I fake it here because this function is from duat, not duat-core
 //! map::<Normal>("<C-s>", &FindSeq::default());
 //! ```
 //!
-//! And now, whenever the usert types Control S in `Normal` mode, the
-//! mode will switch to `FindSeq`. You could replace `Normal` with any
-//! other mode, from any other editing model, and this would still
+//! And now, whenever the usert types `Control S` in `Normal` mode,
+//! the mode will switch to `FindSeq`. You could replace `Normal` with
+//! any other mode, from any other editing model, and this would still
 //! work.
 //!
 //! Of course, this is most useful for plugins, for your own
@@ -108,8 +92,9 @@
 //! Okay, but that was a relatively simple example, here's a more
 //! advanced example, which makes use of more of Duat's features.
 //!
-//! This is a copy of [EasyMotion], a plugin for Vim/Neovim/Kakoune
-//! that lets you skip around the screen with at most 2 keypresses.
+//! This is a copy of [EasyMotion], a plugin for
+//! Vim/Neovim/Kakoune/Emacs that lets you skip around the screen with
+//! at most 2 keypresses.
 //!
 //! In order to emulate it, we use [ghost text] and [concealment]:
 //!
@@ -233,6 +218,34 @@
 //!
 //! static LETTERS: &str = "abcdefghijklmnopqrstuvwxyz";
 //! ```
+//! All that this plugin is doing is:
+//!
+//! - Search on the screen for words/lines;
+//! - In the beginning of said words/lines, add a [`Tag::GhostText`];
+//! - Also add a [`Tag::StartConceal`] and a [`Tag::EndConceal`];
+//! - Then, just match the typed keys and [remove] tags accordingly;
+//! - [Move] to the matched sequence, if it exists;
+//!
+//! Now, in order to use this mode, it's the exact same thing as
+//! `FindSeq`:
+//!
+//! ```rust
+//! # struct Normal;
+//! #[derive(Clone)]
+//! # pub struct EasyMotion;
+//! # impl EasyMotion {
+//! #     pub fn word() -> Self {
+//! #         Self
+//! #     }
+//! #     pub fn line() -> Self {
+//! #         Self
+//! #     }
+//! # }
+//! # fn map<M>(take: &str, give: &impl std::any::Any) {}
+//! # // I fake it here because this function is from duat, not duat-core
+//! map::<Normal>("<CA-w>", &EasyMotion::word());
+//! map::<Normal>("<CA-l>", &EasyMotion::line());
+//! ```
 //!
 //! [`Mode`]: crate::mode::Mode
 //! [`File`]: crate::widgets::File
@@ -240,6 +253,11 @@
 //! [EasyMotion]: https://github.com/easymotion/vim-easymotion
 //! [ghost text]: crate::text::Tag::GhostText
 //! [concealment]: crate::text::Tag::StartConceal
+//! [`Tag::GhostText`]: crate::text::Tag::GhostText
+//! [`Tag::StartConceal`]: crate::text::Tag::StartConceal
+//! [`Tag::EndConceal`]: crate::text::Tag::EndConceal
+//! [remove]: crate::text::Text::remove_tags_on
+//! [Move]: crate::mode::Mover::move_to
 #![feature(
     extract_if,
     iter_advance_by,
