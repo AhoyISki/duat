@@ -13,7 +13,13 @@ pub use self::{
     parameters::{Args, Flags, split_flags_and_args},
 };
 use crate::{
-    context, data::{RwData, RwLock}, mode::Cursors, text::{err, ok, Text}, ui::Ui, widget_entry, widgets::Widget, Error
+    Error, context,
+    data::{RwData, RwLock},
+    mode::Cursors,
+    text::{Text, err, ok},
+    ui::Ui,
+    widget_entry,
+    widgets::Widget,
 };
 
 mod control {

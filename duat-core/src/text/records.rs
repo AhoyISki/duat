@@ -124,8 +124,6 @@ impl<R: Record> Records<R> {
         let (s_i, s_rec) = self.search(start.bytes(), Record::bytes);
         let (e_i, e_rec) = self.search(start.bytes() + old_len.bytes(), Record::bytes);
         let e_len = self.stored.get(e_i as usize).cloned().unwrap_or_default();
-        crate::log_file!("s_i: {s_i}, e_i: {e_i}");
-        crate::log_file!("start: {start:?}, old: {old_len:?}, new: {new_len:?}");
 
         if s_i < e_i {
             let start = s_i as usize + 1;

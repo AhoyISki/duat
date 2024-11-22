@@ -88,7 +88,7 @@ where
         base64.chars().step_by(5).collect()
     };
 
-    src.push("duat");
+    src.push("duat/structs");
     src.push(format!("{encoded}:{file_name}"));
 
     if !src.exists() {
@@ -125,7 +125,7 @@ pub(super) fn delete_cache(path: impl Into<PathBuf>) {
         base64.chars().step_by(5).collect()
     };
 
-    src.push("duat");
+    src.push("duat/structs");
     src.push(format!("{encoded}:{file_name}"));
 
     if src.exists() {

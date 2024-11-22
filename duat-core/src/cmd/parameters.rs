@@ -5,7 +5,7 @@ use std::{
     str::{FromStr, SplitWhitespace},
 };
 
-use crate::text::{err, Text};
+use crate::text::{Text, err};
 
 #[derive(Clone)]
 pub struct Args<'a> {

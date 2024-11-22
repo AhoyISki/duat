@@ -214,7 +214,6 @@ impl Tags {
 
         self.records
             .transform((n, b), (total, 0), (total - removed.len() as u32, 0));
-        crate::log_file!("remove at {at} {:#?}, {:#?}", self.buf, self.records);
 
         // Try to merge this skip with the previous one.
         if let Some(i) = n.checked_sub(removed.len() as u32 + 1)
@@ -225,7 +224,6 @@ impl Tags {
             self.buf.splice(range, [TagOrSkip::Skip(prev + skip)]);
             self.records
                 .transform((n - removed.len() as u32, b), (1, 0), (0, 0));
-            crate::log_file!("merge skips at {b} {:#?}, {:#?}", self.buf, self.records);
         }
     }
 
@@ -284,15 +282,6 @@ impl Tags {
             (start_n, old.start),
             (1 + end_n - start_n, old.clone().count() as u32),
             (added, new.clone().count() as u32),
-        );
-        crate::log_file!(
-            "transform at {:?} by {:?}, {:#?}",
-            (start_n, old.start),
-            (
-                (1 + end_n - start_n) as i32 - added as i32,
-                old.clone().count() as i32 - new.clone().count() as i32
-            ),
-            self.records
         );
 
         ////////// Range management

@@ -81,7 +81,6 @@ use std::{ops::RangeBounds, path::Path, rc::Rc, str::from_utf8_unchecked, sync::
 
 use gapbuf::GapBuffer;
 use history::History;
-use parking_lot::lock_api::RwLock;
 use records::Records;
 use tags::{FwdTags, RevTags};
 
@@ -99,19 +98,19 @@ pub use self::{
 use crate::{
     DuatError,
     cfg::PrintCfg,
-    data::RwData,
     mode::{Cursor, Cursors},
     ui::Area,
 };
 
 /// The text in a given [`Area`]
-#[derive(Default, Clone)]
+#[derive(Default)]
 pub struct Text {
     buf: Box<GapBuffer<u8>>,
-    pub tags: Box<Tags>,
+    tags: Box<Tags>,
     records: Box<Records<(u32, u32, u32)>>,
     history: History,
-    readers: Vec<RwData<dyn Reader>>,
+    readers: Vec<Box<dyn Reader>>,
+    tree_sitter: Option<Box<TreeSitter>>,
 }
 
 impl Text {
@@ -125,6 +124,7 @@ impl Text {
             records: Box::new(Records::new()),
             history: History::new(),
             readers: Vec::new(),
+            tree_sitter: None,
         }
     }
 
@@ -146,6 +146,7 @@ impl Text {
             ))),
             history: History::new(),
             readers: Vec::new(),
+            tree_sitter: None,
         }
     }
 
@@ -558,6 +559,15 @@ impl Text {
     /// Merges `String`s with the body of text, given a range to
     /// replace
     fn replace_range_inner(&mut self, change: Change<&str>) {
+        let mut readers = std::mem::take(&mut self.readers);
+        let mut ts = self.tree_sitter.take();
+        if let Some(ts) = &mut ts {
+            ts.before_change(self, change);
+        }
+        for reader in readers.iter_mut() {
+            reader.before_change(self, change);
+        }
+
         let edit = change.added_text();
         let start = change.start();
         let taken_end = change.taken_end();
@@ -586,18 +596,20 @@ impl Text {
         self.tags
             .transform(start.byte()..taken_end.byte(), change.added_end().byte());
 
-        let readers = std::mem::take(&mut self.readers);
-        for reader in readers.iter() {
-            reader.write().on_changes(self, &[change]);
+        if let Some(ts) = &mut ts {
+            ts.after_change(self, change);
+        }
+        for reader in readers.iter_mut() {
+            reader.after_change(self, change);
         }
         self.readers = readers;
+        self.tree_sitter = ts;
     }
 
-	/// Adds a new [`Reader`] to this [`Text`]
+    /// Adds a new [`Reader`] to this [`Text`]
     pub fn add_reader<R: Reader>(&mut self) {
         let reader = R::new(self);
-        self.readers
-            .push(RwData::new_unsized::<R>(Arc::new(RwLock::new(reader))));
+        self.readers.push(Box::new(reader))
     }
 
     ////////// History manipulation functions
@@ -767,8 +779,6 @@ impl Text {
     pub(crate) fn add_cursors(&mut self, cursors: &Cursors, area: &impl Area, cfg: PrintCfg) {
         if cursors.len() < 500 {
             for (cursor, is_main) in cursors.iter() {
-                crate::log_file!("bytes: {}", self.len().byte());
-                crate::log_file!("cursor at {}", cursor.byte());
                 self.add_cursor(cursor, is_main, cursors);
             }
         } else {
@@ -823,7 +833,7 @@ impl Text {
             (cursor.caret(), caret_tag),
         ];
 
-        for (p, tag) in tags.into_iter().skip(2) {
+        for (p, tag) in tags.into_iter().skip(no_selection) {
             let record = (p.byte(), p.char(), p.line());
             self.records.insert(record);
             self.tags.insert(p.byte(), tag, Key::for_cursors());
@@ -843,7 +853,7 @@ impl Text {
         };
         let skip = if start == end { 1 } else { 0 };
 
-        for p in [start].into_iter().skip(skip) {
+        for p in [start, end].into_iter().skip(skip) {
             self.tags.remove_at(p.byte(), Key::for_cursors());
         }
     }
@@ -927,6 +937,19 @@ impl std::fmt::Debug for Text {
             .field("tags", &self.tags)
             .field("records", &self.records)
             .finish()
+    }
+}
+
+impl Clone for Text {
+    fn clone(&self) -> Self {
+        Self {
+            buf: self.buf.clone(),
+            tags: self.tags.clone(),
+            records: self.records.clone(),
+            history: self.history.clone(),
+            readers: Vec::new(),
+            tree_sitter: None,
+        }
     }
 }
 
@@ -1347,6 +1370,7 @@ macro impl_from_to_string($t:ty) {
                 ))),
                 history: History::new(),
                 readers: Vec::new(),
+                tree_sitter: None,
             }
         }
     }

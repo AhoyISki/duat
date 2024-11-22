@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use gapbuf::GapBuffer;
 use parking_lot::Mutex;
 use streaming_iterator::StreamingIterator;
@@ -16,17 +18,22 @@ pub trait Reader: Send + Sync + 'static {
     where
         Self: Sized;
 
+    fn before_change(&mut self, text: &mut Text, change: Change<&str>);
+
     /// What should happen whenever a [`Change`] happens
-    fn on_changes(&mut self, text: &mut Text, changes: &[Change<&str>]);
+    fn after_change(&mut self, text: &mut Text, change: Change<&str>);
 }
 
 pub struct TreeSitter {
     parser: Parser,
     query: Query,
     tree: Tree,
+    forms: &'static [(FormId, Key, Key)],
+    new: Option<Tree>,
 }
 
 impl TreeSitter {
+    #[allow(unused)]
     fn log_tree(&mut self) {
         let mut cursor = self.tree.walk();
         let mut node = Some(cursor.node());
@@ -41,8 +48,8 @@ impl TreeSitter {
         }
     }
 
-    fn range_of_node_containing(&mut self, range: tree_sitter::Range) -> (usize, usize) {
-        let (start, end) = (range.start_byte, range.end_byte);
+    fn range_of_node_containing(&mut self, range: Range<u32>) -> (usize, usize) {
+        let (start, end) = (range.start as usize, range.end as usize);
         let root = self.tree.root_node();
         let desc = root.descendant_for_byte_range(start, end).unwrap();
         let parent = root.child_with_descendant(desc).unwrap_or(desc);
@@ -86,7 +93,7 @@ impl Reader for TreeSitter {
         let mut cursor = QueryCursor::new();
         let mut captures = cursor.captures(&query, tree.root_node(), buf);
 
-        let forms = forms_from_query("rust", &query);
+        let forms = forms_from_query("Rust", &query);
 
         while let Some((captures, _)) = captures.next() {
             for cap in captures.captures.iter() {
@@ -98,67 +105,69 @@ impl Reader for TreeSitter {
             }
         }
 
-        TreeSitter { parser, query, tree }
+        TreeSitter { parser, query, tree, forms, new: None }
     }
 
-    fn on_changes(&mut self, text: &mut Text, changes: &[Change<&str>]) {
-        let forms = forms_from_query("rust", &self.query);
+    fn before_change(&mut self, _text: &mut Text, _change: Change<&str>) {}
 
-        for change in changes {
-            let start = change.start();
-            let added = change.added_end();
-            let taken = change.taken_end();
+    fn after_change(&mut self, text: &mut Text, change: Change<&str>) {
+        let start = change.start();
+        let added = change.added_end();
+        let taken = change.taken_end();
 
-            let start_position = ts_point(start, text);
-            let prev = (start_position.column, start);
-            self.tree.edit(&InputEdit {
-                start_byte: start.byte() as usize,
-                old_end_byte: taken.byte() as usize,
-                new_end_byte: added.byte() as usize,
-                start_position,
-                old_end_position: ts_point_from_prev(taken, prev, text),
-                new_end_position: ts_point_from_prev(added, prev, text),
-            });
+        let start_position = ts_point(start, text);
+        let prev = (start_position.column, start);
+        self.tree.edit(&InputEdit {
+            start_byte: start.byte() as usize,
+            old_end_byte: taken.byte() as usize,
+            new_end_byte: added.byte() as usize,
+            start_position,
+            old_end_position: ts_point_from_prev(taken, prev, text),
+            new_end_position: ts_point_from_prev(added, prev, text),
+        });
 
-            let tree = self
-                .parser
-                .parse_with(&mut buf_parse(text), Some(&self.tree))
-                .unwrap();
+        let tree = self
+            .parser
+            .parse_with(&mut buf_parse(text), Some(&self.tree))
+            .unwrap();
 
-            let mut cursor = QueryCursor::new();
-            let buf = TsBuf(&text.buf);
+        let changes = self.tree.changed_ranges(&tree);
+        // If no change is reported, we will add tags on the added range.
+        let added = changes.is_empty().then_some(start.byte()..added.byte());
 
-            for range in self.tree.changed_ranges(&tree) {
-                let (start, end) = self.range_of_node_containing(range);
-                cursor.set_byte_range(start..end);
-                let mut captures = cursor.captures(&self.query, self.tree.root_node(), buf);
-                while let Some((captures, _)) = captures.next() {
-                    for cap in captures.captures.iter() {
-                        let range = cap.node.range();
-                        let (start, end) = (range.start_byte as u32, range.end_byte as u32);
-                        let (_, start_key, end_key) = forms[cap.index as usize];
-                        text.tags.remove_at(start, start_key);
-                        text.tags.remove_at(end, end_key);
-                    }
-                }
+        let mut cursor = QueryCursor::new();
+        let buf = TsBuf(&text.buf);
 
-                let (start, end) = self.range_of_node_containing(range);
-                cursor.set_byte_range(start..end);
-                let mut captures = cursor.captures(&self.query, tree.root_node(), buf);
-                while let Some((captures, _)) = captures.next() {
-                    for cap in captures.captures.iter() {
-                        let range = cap.node.range();
-                        let (start, end) = (range.start_byte as u32, range.end_byte as u32);
-                        let (form, start_key, end_key) = forms[cap.index as usize];
-                        text.tags.insert(start, Tag::PushForm(form), start_key);
-                        text.tags.insert(end, Tag::PopForm(form), end_key);
-                    }
+        let ranges = changes.map(|c| c.start_byte as u32..c.end_byte as u32);
+        for range in ranges.chain(added) {
+            let (start, end) = self.range_of_node_containing(range.clone());
+            cursor.set_byte_range(start..end);
+            let mut captures = cursor.captures(&self.query, self.tree.root_node(), buf);
+            while let Some((captures, _)) = captures.next() {
+                for cap in captures.captures.iter() {
+                    let range = cap.node.range();
+                    let (start, end) = (range.start_byte as u32, range.end_byte as u32);
+                    let (_, start_key, end_key) = self.forms[cap.index as usize];
+                    text.tags.remove_at(start, start_key);
+                    text.tags.remove_at(end, end_key);
                 }
             }
 
-            drop(cursor);
-            self.tree = tree;
+            let (start, end) = self.range_of_node_containing(range);
+            cursor.set_byte_range(start..end);
+            let mut captures = cursor.captures(&self.query, tree.root_node(), buf);
+            while let Some((captures, _)) = captures.next() {
+                for cap in captures.captures.iter() {
+                    let range = cap.node.range();
+                    let (start, end) = (range.start_byte as u32, range.end_byte as u32);
+                    let (form, start_key, end_key) = self.forms[cap.index as usize];
+                    text.tags.insert(start, Tag::PushForm(form), start_key);
+                    text.tags.insert(end, Tag::PopForm(form), end_key);
+                }
+            }
         }
+
+        self.tree = tree;
     }
 }
 
@@ -230,3 +239,64 @@ impl<'a> TextProvider<&'a [u8]> for TsBuf<'a> {
 
 #[derive(Clone, Copy)]
 struct TsBuf<'a>(&'a GapBuffer<u8>);
+
+static LANGUAGES: [(&str, &str, &str); 58] = [
+    ("bat", "Batch", "batch"),
+    ("c", "C", "c"),
+    ("cc", "C++", "cpp"),
+    ("cl", "Common Lisp", "common-lisp"),
+    ("clj", "Clojure", "clojure"),
+    ("comp", "GLSL", "glsl"),
+    ("cpp", "C++", "cpp"),
+    ("cs", "C#", "csharp"),
+    ("css", "CSS", "css"),
+    ("cxx", "C++", "cpp"),
+    ("dart", "Dart", "dart"),
+    ("frag", "GLSL", "glsl"),
+    ("geom", "GLSL", "glsl"),
+    ("glsl", "GLSL", "glsl"),
+    ("go", "Go", "go"),
+    ("h", "C", "c"),
+    ("haml", "Haml", "haml"),
+    ("handlebars", "Handlebars", "handlebars"),
+    ("hbs", "Handlebars", "handlebars"),
+    ("hlsl", "HLSL", "HLSL"),
+    ("hpp", "C++", "cpp"),
+    ("html", "HTML", "html"),
+    ("hxx", "C++", "cpp"),
+    ("ini", "INI", "ini"),
+    ("java", "Java", "java"),
+    ("jinja", "Jinja", "jinja"),
+    ("jinja2", "Jinja", "jinja"),
+    ("js", "JavaScript", "javascript"),
+    ("json", "JSON", "json"),
+    ("jsonc", "JSON with Comments", "jsonc"),
+    ("kt", "Kotlin", "kotlin"),
+    ("less", "Less", "less"),
+    ("lua", "Lua", "lua"),
+    ("md", "Markdown", "markdown"),
+    ("pl", "Perl", "perl"),
+    ("py", "Python", "python"),
+    ("pyc", "Python", "python"),
+    ("pyo", "Python", "python"),
+    ("rb", "Ruby", "ruby"),
+    ("rkt", "Racket", "racket"),
+    ("rs", "Rust", "rust"),
+    ("sass", "SASS", "sass"),
+    ("sc", "Scala", "scala"),
+    ("scala", "Scala", "scala"),
+    ("scss", "SCSS", "scss"),
+    ("sh", "Shell", "shell"),
+    ("sql", "SQL", "sql"),
+    ("swift", "Swift", "swift"),
+    ("tesc", "GLSL", "glsl"),
+    ("tese", "GLSL", "glsl"),
+    ("tex", "TeX", "tex"),
+    ("toml", "TOML", "toml"),
+    ("ts", "TypeScript", "typescript"),
+    ("vert", "GLSL", "glsl"),
+    ("xhtml", "XHTML", "xhtml"),
+    ("xml", "XML", "xml"),
+    ("yaml", "YAML", "yaml"),
+    ("yml", "YAML", "yaml"),
+];
