@@ -16,7 +16,7 @@ use std::{fs, io::ErrorKind, path::PathBuf};
 use crate::{
     cfg::{IterCfg, PrintCfg},
     form,
-    text::{Text, TreeSitter},
+    text::{Text},
     ui::{Area, PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
 };
@@ -61,7 +61,7 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
     type Widget = File;
 
     fn build(self, _: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
-        let (mut text, path) = match self.text_op {
+        let (text, path) = match self.text_op {
             TextOp::NewBuffer => (Text::new(), Path::new_unset()),
             TextOp::TakeText(text, path) => (text, path),
             // TODO: Add an option for automatic path creation.
@@ -79,8 +79,6 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
                 Err(_) => (Text::new(), Path::new_unset()),
             },
         };
-
-        text.add_reader::<TreeSitter>();
 
         #[cfg(feature = "wack")]
         let text = {

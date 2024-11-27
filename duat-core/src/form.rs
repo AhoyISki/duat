@@ -46,6 +46,7 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
     ("operator", Form::cyan().0, Normal),
     ("constructor", Form::yellow().0, Normal),
     ("module", Form::blue().italic().0, Normal),
+    ("interface", Form::bold().0, Normal),
 ];
 
 /// The functions that will be exposed for public use.

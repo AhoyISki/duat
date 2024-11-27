@@ -132,11 +132,11 @@ impl Text {
     ///
     /// [path]: Path
     pub fn from_file(path: impl AsRef<Path>) -> Self {
-        let file = std::fs::read_to_string(path).expect("File failed to open");
+        let file = std::fs::read_to_string(&path).expect("File failed to open");
         let buf = Box::new(GapBuffer::from_iter(file.bytes()));
         let tags = Box::new(Tags::with_len(buf.len() as u32));
 
-        Self {
+        let mut text = Self {
             buf,
             tags,
             records: Box::new(Records::with_max((
@@ -147,7 +147,12 @@ impl Text {
             history: History::new(),
             readers: Vec::new(),
             tree_sitter: None,
-        }
+        };
+
+        let tree_sitter = TreeSitter::new(&mut text, path);
+
+        text.tree_sitter = tree_sitter.map(Box::new);
+        text
     }
 
     /// Returns a [`Builder`] for [`Text`]
@@ -561,9 +566,6 @@ impl Text {
     fn replace_range_inner(&mut self, change: Change<&str>) {
         let mut readers = std::mem::take(&mut self.readers);
         let mut ts = self.tree_sitter.take();
-        if let Some(ts) = &mut ts {
-            ts.before_change(self, change);
-        }
         for reader in readers.iter_mut() {
             reader.before_change(self, change);
         }
@@ -833,7 +835,7 @@ impl Text {
             (cursor.caret(), caret_tag),
         ];
 
-        for (p, tag) in tags.into_iter().skip(no_selection) {
+        for (p, tag) in tags.into_iter().skip(2) {
             let record = (p.byte(), p.char(), p.line());
             self.records.insert(record);
             self.tags.insert(p.byte(), tag, Key::for_cursors());
@@ -853,7 +855,7 @@ impl Text {
         };
         let skip = if start == end { 1 } else { 0 };
 
-        for p in [start, end].into_iter().skip(skip) {
+        for p in [start, /* end */].into_iter().skip(skip) {
             self.tags.remove_at(p.byte(), Key::for_cursors());
         }
     }

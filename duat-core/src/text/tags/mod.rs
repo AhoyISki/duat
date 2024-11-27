@@ -279,7 +279,7 @@ impl Tags {
         };
 
         self.records.transform(
-            (start_n, old.start),
+            (start_n, start_b),
             (1 + end_n - start_n, old.clone().count() as u32),
             (added, new.clone().count() as u32),
         );
@@ -290,6 +290,7 @@ impl Tags {
                 self.ranges.remove(i);
             }
         }
+
         for (b, _) in self.ranges.iter_mut() {
             if *b > old.end || (range_diff < 0 && *b >= old.end) {
                 *b = b.saturating_add_signed(range_diff)

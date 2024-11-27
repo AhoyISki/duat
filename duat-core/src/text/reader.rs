@@ -1,9 +1,11 @@
-use std::ops::Range;
+use std::{ops::Range, path::Path, sync::LazyLock};
 
 use gapbuf::GapBuffer;
 use parking_lot::Mutex;
 use streaming_iterator::StreamingIterator;
-use tree_sitter::{InputEdit, Parser, Point as TSPoint, Query, QueryCursor, TextProvider, Tree};
+use tree_sitter::{
+    InputEdit, Language, Node, Parser, Point as TSPoint, Query, QueryCursor, TextProvider, Tree,
+};
 
 use super::{Key, Text};
 use crate::{
@@ -29,67 +31,22 @@ pub struct TreeSitter {
     query: Query,
     tree: Tree,
     forms: &'static [(FormId, Key, Key)],
-    new: Option<Tree>,
 }
 
 impl TreeSitter {
-    #[allow(unused)]
-    fn log_tree(&mut self) {
-        let mut cursor = self.tree.walk();
-        let mut node = Some(cursor.node());
-        while let Some(no) = node {
-            let indent = " ".repeat(cursor.depth() as usize);
-            crate::log_file!("{indent}{no:?}");
-            let mut next_exists = cursor.goto_first_child() || cursor.goto_next_sibling();
-            while !next_exists && cursor.goto_parent() {
-                next_exists = cursor.goto_next_sibling();
-            }
-            node = next_exists.then_some(cursor.node());
-        }
-    }
-
-    fn range_of_node_containing(&mut self, range: Range<u32>) -> (usize, usize) {
-        let (start, end) = (range.start as usize, range.end as usize);
-        let root = self.tree.root_node();
-        let desc = root.descendant_for_byte_range(start, end).unwrap();
-        let parent = root.child_with_descendant(desc).unwrap_or(desc);
-
-        (parent.start_byte(), parent.end_byte())
-    }
-}
-
-impl Reader for TreeSitter {
-    fn new(text: &mut Text) -> Self {
+    pub fn new(text: &mut Text, path: impl AsRef<Path>) -> Option<Self> {
         let language = tree_sitter_rust::LANGUAGE;
         let mut parser = Parser::new();
         parser.set_language(&language.into()).unwrap();
         let tree = parser.parse_with(&mut buf_parse(text), None).unwrap();
 
         let buf = TsBuf(&text.buf);
-        let mut hl = tree_sitter_rust::HIGHLIGHTS_QUERY.to_string();
-        hl.push_str(
-            "(mod_item \
-              name: (identifier) @module) \
-             \
-             (scoped_identifier \
-              (identifier) @module
-              (#match? @module \"^[a-z\\d_]+$\")) \
-             (scoped_identifier \
-              (identifier) @type
-              (#match? @type \"^[A-Z]\")) \
-             \
-             ((use_list \
-              (identifier) @module) \
-              (#match? @module \"^[a-z\\d_]+$\")) \
-             ((use_list \
-              (identifier) @type) \
-              (#match? @type \"^[A-Z]\")) \
-             \
-             (scoped_use_list \
-              path: (identifier) @module)",
-        );
 
-        let query = Query::new(&language.into(), hl.leak()).unwrap();
+        let query = Query::new(
+            &language.into(),
+            include_str!("../../../ts-queries/rust/highlights.scm"),
+        )
+        .unwrap();
         let mut cursor = QueryCursor::new();
         let mut captures = cursor.captures(&query, tree.root_node(), buf);
 
@@ -105,12 +62,10 @@ impl Reader for TreeSitter {
             }
         }
 
-        TreeSitter { parser, query, tree, forms, new: None }
+        Some(TreeSitter { parser, query, tree, forms })
     }
 
-    fn before_change(&mut self, _text: &mut Text, _change: Change<&str>) {}
-
-    fn after_change(&mut self, text: &mut Text, change: Change<&str>) {
+    pub(super) fn after_change(&mut self, text: &mut Text, change: Change<&str>) {
         let start = change.start();
         let added = change.added_end();
         let taken = change.taken_end();
@@ -138,10 +93,18 @@ impl Reader for TreeSitter {
         let mut cursor = QueryCursor::new();
         let buf = TsBuf(&text.buf);
 
+        crate::log_file!("");
         let ranges = changes.map(|c| c.start_byte as u32..c.end_byte as u32);
         for range in ranges.chain(added) {
             let (start, end) = self.range_of_node_containing(range.clone());
             cursor.set_byte_range(start..end);
+            crate::log_file!("old");
+            log_node(
+                self.tree
+                    .root_node()
+                    .descendant_for_byte_range(start, end)
+                    .unwrap(),
+            );
             let mut captures = cursor.captures(&self.query, self.tree.root_node(), buf);
             while let Some((captures, _)) = captures.next() {
                 for cap in captures.captures.iter() {
@@ -153,9 +116,13 @@ impl Reader for TreeSitter {
                 }
             }
 
-            let (start, end) = self.range_of_node_containing(range);
-            cursor.set_byte_range(start..end);
             let mut captures = cursor.captures(&self.query, tree.root_node(), buf);
+            crate::log_file!("new");
+            log_node(
+                tree.root_node()
+                    .descendant_for_byte_range(start, end)
+                    .unwrap(),
+            );
             while let Some((captures, _)) = captures.next() {
                 for cap in captures.captures.iter() {
                     let range = cap.node.range();
@@ -168,6 +135,17 @@ impl Reader for TreeSitter {
         }
 
         self.tree = tree;
+    }
+
+    fn range_of_node_containing(&mut self, range: Range<u32>) -> (usize, usize) {
+        let (start, end) = (range.start as usize, range.end as usize);
+        let root = self.tree.root_node();
+        let desc = root.descendant_for_byte_range(start, end).unwrap();
+        crate::log_file!("descendant is {desc:?}");
+        crate::log_file!("parent is {:?}", desc.parent());
+        let parent = root.child_with_descendant(desc).unwrap_or(desc);
+
+        (parent.start_byte(), parent.end_byte())
     }
 }
 
@@ -240,63 +218,81 @@ impl<'a> TextProvider<&'a [u8]> for TsBuf<'a> {
 #[derive(Clone, Copy)]
 struct TsBuf<'a>(&'a GapBuffer<u8>);
 
-static LANGUAGES: [(&str, &str, &str); 58] = [
-    ("bat", "Batch", "batch"),
-    ("c", "C", "c"),
-    ("cc", "C++", "cpp"),
-    ("cl", "Common Lisp", "common-lisp"),
-    ("clj", "Clojure", "clojure"),
-    ("comp", "GLSL", "glsl"),
-    ("cpp", "C++", "cpp"),
-    ("cs", "C#", "csharp"),
-    ("css", "CSS", "css"),
-    ("cxx", "C++", "cpp"),
-    ("dart", "Dart", "dart"),
-    ("frag", "GLSL", "glsl"),
-    ("geom", "GLSL", "glsl"),
-    ("glsl", "GLSL", "glsl"),
-    ("go", "Go", "go"),
-    ("h", "C", "c"),
-    ("haml", "Haml", "haml"),
-    ("handlebars", "Handlebars", "handlebars"),
-    ("hbs", "Handlebars", "handlebars"),
-    ("hlsl", "HLSL", "HLSL"),
-    ("hpp", "C++", "cpp"),
-    ("html", "HTML", "html"),
-    ("hxx", "C++", "cpp"),
-    ("ini", "INI", "ini"),
-    ("java", "Java", "java"),
-    ("jinja", "Jinja", "jinja"),
-    ("jinja2", "Jinja", "jinja"),
-    ("js", "JavaScript", "javascript"),
-    ("json", "JSON", "json"),
-    ("jsonc", "JSON with Comments", "jsonc"),
-    ("kt", "Kotlin", "kotlin"),
-    ("less", "Less", "less"),
-    ("lua", "Lua", "lua"),
-    ("md", "Markdown", "markdown"),
-    ("pl", "Perl", "perl"),
-    ("py", "Python", "python"),
-    ("pyc", "Python", "python"),
-    ("pyo", "Python", "python"),
-    ("rb", "Ruby", "ruby"),
-    ("rkt", "Racket", "racket"),
-    ("rs", "Rust", "rust"),
-    ("sass", "SASS", "sass"),
-    ("sc", "Scala", "scala"),
-    ("scala", "Scala", "scala"),
-    ("scss", "SCSS", "scss"),
-    ("sh", "Shell", "shell"),
-    ("sql", "SQL", "sql"),
-    ("swift", "Swift", "swift"),
-    ("tesc", "GLSL", "glsl"),
-    ("tese", "GLSL", "glsl"),
-    ("tex", "TeX", "tex"),
-    ("toml", "TOML", "toml"),
-    ("ts", "TypeScript", "typescript"),
-    ("vert", "GLSL", "glsl"),
-    ("xhtml", "XHTML", "xhtml"),
-    ("xml", "XML", "xml"),
-    ("yaml", "YAML", "yaml"),
-    ("yml", "YAML", "yaml"),
-];
+#[allow(unused)]
+#[cfg(debug_assertions)]
+fn log_node(node: Node) {
+    let mut cursor = node.walk();
+    let mut node = Some(cursor.node());
+    while let Some(no) = node {
+        let indent = " ".repeat(cursor.depth() as usize);
+        //crate::log_file!("{indent}{no:?}");
+        let mut next_exists = cursor.goto_first_child() || cursor.goto_next_sibling();
+        while !next_exists && cursor.goto_parent() {
+            next_exists = cursor.goto_next_sibling();
+        }
+        node = next_exists.then_some(cursor.node());
+    }
+}
+
+// static LANGUAGES: LazyLock<Mutex<Vec<(&str, &str, &str, Language,
+// &str)>>> = LazyLock::new(|| {    use tree_sitter_rust as rust;
+//    Mutex::new(vec![
+//        (".c", "C", "c", rust::LANGUAGE.into(), include_str!()),
+//        (".cc", "C++", "cpp"),
+//        (".cl", "Common Lisp", "common-lisp"),
+//        (".clj", "Clojure", "clojure"),
+//        (".comp", "GLSL", "glsl"),
+//        (".cpp", "C++", "cpp"),
+//        (".cs", "C#", "csharp"),
+//        (".css", "CSS", "css"),
+//        (".cxx", "C++", "cpp"),
+//        (".dart", "Dart", "dart"),
+//        (".frag", "GLSL", "glsl"),
+//        (".geom", "GLSL", "glsl"),
+//        (".glsl", "GLSL", "glsl"),
+//        (".go", "Go", "go"),
+//        (".h", "C", "c"),
+//        (".haml", "Haml", "haml"),
+//        (".handlebars", "Handlebars", "handlebars"),
+//        (".hbs", "Handlebars", "handlebars"),
+//        (".hlsl", "HLSL", "HLSL"),
+//        (".hpp", "C++", "cpp"),
+//        (".html", "HTML", "html"),
+//        (".hxx", "C++", "cpp"),
+//        (".ini", "INI", "ini"),
+//        (".java", "Java", "java"),
+//        (".jinja", "Jinja", "jinja"),
+//        (".jinja2", "Jinja", "jinja"),
+//        (".js", "JavaScript", "javascript"),
+//        (".json", "JSON", "json"),
+//        (".jsonc", "JSON with Comments", "jsonc"),
+//        (".kt", "Kotlin", "kotlin"),
+//        (".less", "Less", "less"),
+//        (".lua", "Lua", "lua"),
+//        (".md", "Markdown", "markdown"),
+//        (".pl", "Perl", "perl"),
+//        (".py", "Python", "python"),
+//        (".pyc", "Python", "python"),
+//        (".pyo", "Python", "python"),
+//        (".rb", "Ruby", "ruby"),
+//        (".rkt", "Racket", "racket"),
+//        (".rs", "Rust", "rust"),
+//        (".sass", "SASS", "sass"),
+//        (".sc", "Scala", "scala"),
+//        (".scala", "Scala", "scala"),
+//        (".scss", "SCSS", "scss"),
+//        (".sh", "Shell", "shell"),
+//        (".sql", "SQL", "sql"),
+//        (".swift", "Swift", "swift"),
+//        (".tesc", "GLSL", "glsl"),
+//        (".tese", "GLSL", "glsl"),
+//        (".tex", "TeX", "tex"),
+//        (".toml", "TOML", "toml"),
+//        (".ts", "TypeScript", "typescript"),
+//        (".vert", "GLSL", "glsl"),
+//        (".xhtml", "XHTML", "xhtml"),
+//        (".xml", "XML", "xml"),
+//        (".yaml", "YAML", "yaml"),
+//        (".yml", "YAML", "yaml"),
+//    ])
+//});
