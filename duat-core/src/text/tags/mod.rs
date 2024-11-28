@@ -82,25 +82,47 @@ impl Tags {
 
     /// Insert a new [`Tag`] at a given byte
     pub fn insert(&mut self, at: u32, tag: Tag, key: Key) -> Option<ToggleId> {
-        let (tag, toggle_id) = tag.to_raw(key, &mut self.texts, &mut self.toggles);
+        let (tag, toggle) = tag.to_raw(key, &mut self.texts, &mut self.toggles);
 
         let (n, b, skip) =
             self.get_skip_at(at)
                 .unwrap_or((self.buf.len() as u32, self.len_bytes(), 0));
+        self.insert_inner(at, tag, (n, b, skip));
 
+        toggle
+    }
+
+    pub fn insert_many(&mut self, tags: impl Iterator<Item = (u32, Tag, Key)>) {
+        let mut tags = tags;
+        let Some((mut old_at, tag, key)) = tags.next() else {
+            return;
+        };
+        let (mut n, mut b, mut skip) =
+            self.get_skip_at(old_at)
+                .unwrap_or((self.buf.len() as u32, self.len_bytes(), 0));
+
+        let (tag, _) = tag.to_raw(key, &mut self.texts, &mut self.toggles);
+        self.insert_inner(old_at, tag, (n, b, skip));
+
+        for (at, tag, key) in tags {
+            if at == old_at {}
+        }
+    }
+
+    fn insert_inner(&mut self, at: u32, tag: RawTag, (n, b, skip): (u32, u32, u32)) {
         // Don't add the tag, if it already exists in that position.
         if b == at
             && rev_range(&self.buf, ..n)
                 .map_while(|(_, ts)| ts.as_tag())
                 .any(|t| t == tag)
         {
-            return None;
+            return;
         }
 
         let n = if at == b {
             self.buf.insert(n as usize, TagOrSkip::Tag(tag));
             self.records.transform((n, at), (0, 0), (1, 0));
-            self.records.insert((n, at));
+            // self.records.insert((n, at));
             n
         } else {
             self.buf.splice(n as usize..=n as usize, [
@@ -109,7 +131,7 @@ impl Tags {
                 TagOrSkip::Skip(b + skip - at),
             ]);
             self.records.transform((n, at), (0, 0), (2, 0));
-            self.records.insert((n + 1, at));
+            // self.records.insert((n + 1, at));
             n + 1
         };
 
@@ -117,8 +139,6 @@ impl Tags {
             self.add_to_ranges((n, at, tag));
             self.cull_small_ranges();
         }
-
-        toggle_id
     }
 
     /// Extends this [`Tags`] with another one
@@ -203,13 +223,9 @@ impl Tags {
 
         for &(i, tag) in removed.iter() {
             self.buf.remove(i as usize);
-            {
-                let entry = (b, tag);
-                let ranges: &mut Vec<(u32, RawTag)> = &mut self.ranges;
-                if let Ok(i) = ranges.binary_search(&entry) {
-                    ranges.remove(i);
-                }
-            };
+            if let Ok(i) = self.ranges.binary_search(&(b, tag)) {
+                self.ranges.remove(i);
+            }
         }
 
         self.records
@@ -233,10 +249,8 @@ impl Tags {
     /// range.
     pub fn transform(&mut self, old: Range<u32>, new_end: u32) {
         let new = old.start..new_end;
-
-        ////////// Removing the tags.
-        // In case we're appending to the rope, a shortcut can be made.
-        let Some((start_n, start_b, skip)) = self.get_skip_behind(old.start) else {
+        // In case we're appending to the GapBuffer, a shortcut can be made.
+        let Some((n, b, skip)) = self.get_skip_at(old.start) else {
             // Unlike inserting in the middle, appending should not move the tags
             // ahead.
             let last = self.buf.len().saturating_sub(1);
@@ -251,25 +265,70 @@ impl Tags {
             return;
         };
 
-        let (end_n, end_b) = if old.start == old.end {
-            (start_n, old.end.max(start_b + skip))
+        if old.end > old.start {
+            self.remove_len(old.start, old.end - old.start, (n, b, skip));
+        }
+        if new_end > old.start {
+            let only_insert = old.start == old.end;
+            self.insert_len(old.start, new_end - old.start, (n, b, skip), only_insert);
+        }
+
+        ////////// Range management
+        let range_diff = new.end as i32 - old.end as i32;
+        for (b, _) in self.ranges.iter_mut() {
+            // MAYBE CHANGE TO *B >= OLD.END
+            if *b > old.end || (range_diff < 0 && *b >= old.end) {
+                *b = b.saturating_add_signed(range_diff)
+            }
+        }
+        self.process_ranges_around(new.clone(), range_diff);
+        self.cull_small_ranges();
+
+        if self.len_bytes() > 300 {
+            crate::log_file!("{self:#?}");
+        }
+    }
+
+    fn insert_len(&mut self, at: u32, len: u32, (n, b, skip): (u32, u32, u32), only_insert: bool) {
+        // If a == b, we change the length before the tags
+        // If I am inserting and removing, then only the skip of the modified
+        // range should be altered.
+        if only_insert && at == b && n != 0 {
+            let prev_entry =
+                rev_range(&self.buf, ..n).find_map(|(n, ts)| Some(n).zip(ts.as_skip()));
+            if let Some((prev_n, prev_skip)) = prev_entry {
+                self.buf[prev_n] = TagOrSkip::Skip(prev_skip + len);
+                let start = (prev_n as u32, b - prev_skip);
+                self.records.transform(start, (0, 0), (0, len))
+            } else {
+                self.buf.push_front(TagOrSkip::Skip(len));
+                self.records.transform((0, 0), (0, 0), (1, len))
+            }
+        // Otherwise, just resize
         } else {
-            self.get_skip_behind(old.end)
-                .map(|(end_n, end_b, skip)| (end_n, old.end.max(end_b + skip)))
-                .unwrap_or((self.buf.len() as u32 - 1, self.len_bytes()))
+            self.buf[n as usize] = TagOrSkip::Skip(skip + len);
+            self.records.transform((n, b), (0, 0), (0, len));
+        }
+    }
+
+    fn remove_len(&mut self, at: u32, len: u32, (s_n, s_b, skip): (u32, u32, u32)) {
+        let (e_n, e_b) = if at + len <= s_b + skip {
+            (s_n, s_b + skip)
+        } else {
+            self.get_skip_behind(at + len)
+                .map(|(n, b, skip)| (n, b + skip))
+                .unwrap()
         };
 
-        let range_diff = new.end as i32 - old.end as i32;
-
         let (removed, added) = {
-            let skip = (end_b - start_b).saturating_add_signed(range_diff);
+            let skip = e_b - s_b - len;
             let replacement = (skip > 0).then_some(TagOrSkip::Skip(skip));
 
-            let range = start_n as usize..=end_n as usize;
+            let range = s_n as usize..=e_n as usize;
             let removed = self
                 .buf
                 .splice(range, replacement)
-                .scan(start_b, |p, ts| {
+                .scan(s_b, |p, ts| {
                     *p += ts.len();
                     Some((*p - ts.len(), ts))
                 })
@@ -278,26 +337,14 @@ impl Tags {
             (removed, replacement.is_some() as u32)
         };
 
-        self.records.transform(
-            (start_n, start_b),
-            (1 + end_n - start_n, old.clone().count() as u32),
-            (added, new.clone().count() as u32),
-        );
+        self.records
+            .transform((s_n, s_b), (1 + e_n - s_n, len), (added, 0));
 
-        ////////// Range management
         for entry in removed {
             if let Ok(i) = self.ranges.binary_search(&entry) {
                 self.ranges.remove(i);
             }
         }
-
-        for (b, _) in self.ranges.iter_mut() {
-            if *b > old.end || (range_diff < 0 && *b >= old.end) {
-                *b = b.saturating_add_signed(range_diff)
-            }
-        }
-        self.process_ranges_around(new.clone(), range_diff);
-        self.cull_small_ranges();
     }
 
     /// Returns true if there are no [`RawTag`]s
@@ -549,10 +596,10 @@ impl Tags {
         // If the "too close entry" was not in the ranges, that must mean that
         // we have added a redundant tag, but it is easiest to add it
         // to the ranges anyway.
-        if let Some((_, b, tag)) = find_match_too_close(&self.buf, (n, at, tag), self.range_min)
-            && let Ok(i) = self.ranges.binary_search(&(b, tag))
-        {
-            self.ranges.remove(i);
+        if let Some((_, b, tag)) = find_match_too_close(&self.buf, (n, at, tag), self.range_min) {
+            if let Ok(i) = self.ranges.binary_search(&(b, tag)) {
+                self.ranges.remove(i);
+            }
         } else if tag.is_start() || tag.is_end() {
             let (Ok(i) | Err(i)) = self.ranges.binary_search(&(at, tag));
             self.ranges.insert(i, (at, tag));
@@ -781,9 +828,41 @@ impl Default for Tags {
 
 impl std::fmt::Debug for Tags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        struct TagsDbg<'a>(&'a GapBuffer<TagOrSkip>);
+        impl std::fmt::Debug for TagsDbg<'_> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                if f.alternate() {
+                    let mut b = 0;
+                    f.write_str("[\n")?;
+                    for (i, ts) in self.0.iter().enumerate() {
+                        write!(f, "    (n: {i}, b: {b}): {ts:?}\n")?;
+                        b += ts.len();
+                    }
+                    f.write_str("]")
+                } else {
+                    write!(f, "{:?}", self.0)
+                }
+            }
+        }
+
+        struct RangesDbg<'a>(&'a [(u32, RawTag)]);
+        impl std::fmt::Debug for RangesDbg<'_> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                if f.alternate() {
+                    f.write_str("[\n")?;
+                    for entry in self.0 {
+                        write!(f, "    {entry:?}\n")?;
+                    }
+                    f.write_str("]")
+                } else {
+                    write!(f, "{:?}", self.0)
+                }
+            }
+        }
+
         f.debug_struct("Tags")
-            .field("buf", &self.buf)
-            .field("ranges", &self.ranges)
+            .field("buf", &TagsDbg(&self.buf))
+            .field("ranges", &RangesDbg(&self.ranges))
             .field("range_min", &self.range_min)
             .field("records", &self.records)
             .finish_non_exhaustive()

@@ -555,7 +555,7 @@ impl Text {
         change: Change<String>,
         shift: (i32, i32, i32),
         sh_from: usize,
-    ) -> (usize, i32) {
+    ) -> (usize, i32, bool) {
         self.replace_range_inner(change.as_ref());
         self.history
             .add_desync_change(guess_i, change, shift, sh_from)
@@ -835,7 +835,7 @@ impl Text {
             (cursor.caret(), caret_tag),
         ];
 
-        for (p, tag) in tags.into_iter().skip(2) {
+        for (p, tag) in tags.into_iter().skip(no_selection) {
             let record = (p.byte(), p.char(), p.line());
             self.records.insert(record);
             self.tags.insert(p.byte(), tag, Key::for_cursors());
@@ -855,7 +855,7 @@ impl Text {
         };
         let skip = if start == end { 1 } else { 0 };
 
-        for p in [start, /* end */].into_iter().skip(skip) {
+        for p in [start ,end,].into_iter().skip(skip) {
             self.tags.remove_at(p.byte(), Key::for_cursors());
         }
     }
@@ -988,9 +988,7 @@ mod point {
     /// A position in [`Text`]
     ///
     /// [`Text`]: super::Text
-    #[derive(
-        Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
-    )]
+    #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
     pub struct Point {
         b: u32,
         c: u32,
@@ -1093,6 +1091,12 @@ mod point {
                 c: (self.c as i32 + c) as u32,
                 l: (self.l as i32 + l) as u32,
             }
+        }
+    }
+
+    impl std::fmt::Debug for Point {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "Point {{ b: {}, c: {}, l: {} }}", self.b, self.c, self.l)
         }
     }
 

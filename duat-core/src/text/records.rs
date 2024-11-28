@@ -134,7 +134,9 @@ impl<R: Record> Records<R> {
         // Transformation of the beginning len.
         self.last = if let Some(len) = self.stored.get_mut(s_i as usize) {
             *len = new_len
-                .add(e_rec.add(e_len).sub(old_len).unwrap())
+                .add(e_rec.add(e_len).sub(old_len).unwrap_or_else(|| {
+                    panic!("transforming from {start:?} from {old_len:?} to {new_len:?}")
+                }))
                 .sub(s_rec)
                 .unwrap();
             let len = *len;

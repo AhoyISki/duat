@@ -31,7 +31,11 @@ impl History {
 
     /// Adds a [`Change`] to the current moment, or adds it to a new
     /// one, if no moment exists
-    pub fn add_change(&mut self, guess_i: Option<usize>, change: Change<String>) -> (usize, i32) {
+    pub fn add_change(
+        &mut self,
+        guess_i: Option<usize>,
+        change: Change<String>,
+    ) -> (usize, i32, bool) {
         let is_last_moment = self.current_moment == self.moments.len();
 
         // Check, in order to prevent modification of earlier moments.
@@ -62,7 +66,7 @@ impl History {
         change: Change<String>,
         shift: (i32, i32, i32),
         sh_from: usize,
-    ) -> (usize, i32) {
+    ) -> (usize, i32, bool) {
         let is_last_moment = self.current_moment == self.moments.len();
         // Check, in order to prevent modification of earlier moments.
         let moment = if let Some(moment) = self.moments.last_mut()
@@ -150,7 +154,7 @@ impl Moment {
     /// - The index where the change was inserted;
     /// - The number of changes that were added or subtracted during
     ///   its insertion.
-    fn add_change(&mut self, guess_i: Option<usize>, change: Change<String>) -> (usize, i32) {
+    fn add_change(&mut self, guess_i: Option<usize>, change: Change<String>) -> (usize, i32, bool) {
         let b = change.added_end().byte() as i32 - change.taken_end().byte() as i32;
         let c = change.added_end().char() as i32 - change.taken_end().char() as i32;
         let l = change.added_end().line() as i32 - change.taken_end().line() as i32;
@@ -181,7 +185,7 @@ impl Moment {
         change: Change<String>,
         shift: (i32, i32, i32),
         sh_from: usize,
-    ) -> (usize, i32) {
+    ) -> (usize, i32, bool) {
         self.add_change_inner(Some(guess_i), change, shift, Some(sh_from))
     }
 
@@ -192,7 +196,7 @@ impl Moment {
         mut change: Change<String>,
         shift: (i32, i32, i32),
         sh_from: Option<usize>,
-    ) -> (usize, i32) {
+    ) -> (usize, i32, bool) {
         // I assume here that if there is no sh_from, then this is not a
         // desync change insertion, so the changes ahead will also be
         // correctly synced, so there is no need to correct them.
@@ -233,19 +237,19 @@ impl Moment {
             c_i + 1 + i
         };
 
-        if let Some(prev_change) = self.0.get_mut(end_i) {
+        let merged_ahead = if let Some(prev_change) = self.0.get_mut(end_i) {
             let mut older = std::mem::take(prev_change);
             let prev_start = older.start;
             older.shift_by(sh(end_i));
 
-            let changes_after = if let Some(mut older) = change.try_merge(older) {
+            let (changes_after, merged) = if let Some(mut older) = change.try_merge(older) {
                 older.start = prev_start;
                 *prev_change = older;
                 self.0.insert(end_i, change);
-                end_i + 2
+                (end_i + 2, false)
             } else {
                 *prev_change = change;
-                end_i + 1
+                (end_i + 1, true)
             };
 
             if shift != (0, 0, 0) && sh_from == usize::MAX {
@@ -253,8 +257,10 @@ impl Moment {
                     change.start = change.start.shift_by(shift)
                 }
             }
+            merged
         } else {
             self.0.insert(end_i, change);
+            false
         };
 
         let prior_changes: Vec<Change<String>> = self.0.drain(c_i..end_i).collect();
@@ -264,7 +270,7 @@ impl Moment {
             let _ = added_change.try_merge(c);
         }
 
-        (c_i, self.0.len() as i32 - initial_len as i32)
+        (c_i, self.0.len() as i32 - initial_len as i32, merged_ahead)
     }
 }
 
@@ -272,8 +278,8 @@ impl Moment {
 #[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Change<S: AsRef<str>> {
     start: Point,
-    added_text: S,
-    taken_text: S,
+    added: S,
+    taken: S,
 }
 
 impl Change<String> {
@@ -282,22 +288,26 @@ impl Change<String> {
         let added_text = edit.to_string();
         let taken_text: String = text.strs_in_range(range).into_iter().collect();
 
-        Change { start: range.0, added_text, taken_text }
+        Change {
+            start: range.0,
+            added: added_text,
+            taken: taken_text,
+        }
     }
 
     /// Returns a copyable [`Change`]
     pub fn as_ref(&self) -> Change<&str> {
         Change {
             start: self.start,
-            added_text: &self.added_text,
-            taken_text: &self.taken_text,
+            added: &self.added,
+            taken: &self.taken,
         }
     }
 
     /// In this function, it is assumed that `self` happened
     /// _after_ `newer`
     ///
-    /// If the merger fails, the newer [`Change`] will be returned;
+    /// If the merger fails, the older [`Change`] will be returned;
     pub fn try_merge(&mut self, mut older: Self) -> Option<Self> {
         if has_start_of(older.added_range(), self.taken_range()) {
             let fixed_end = older.added_end().min(self.taken_end());
@@ -305,10 +315,10 @@ impl Change<String> {
             let start = self.start - older.start;
             let end = fixed_end - older.start;
             let range = start.byte() as usize..end.byte() as usize;
-            older.added_text.replace_range(range, &self.added_text);
+            older.added.replace_range(range, &self.added);
 
             let range = (fixed_end.byte() - self.start.byte()) as usize..;
-            older.taken_text.push_str(&self.taken_text[range]);
+            older.taken.push_str(&self.taken[range]);
 
             *self = older;
 
@@ -319,10 +329,10 @@ impl Change<String> {
             let start = older.start - self.start;
             let end = fixed_end - self.start;
             let range = start.byte() as usize..end.byte() as usize;
-            self.taken_text.replace_range(range, &older.taken_text);
+            self.taken.replace_range(range, &older.taken);
 
             let range = (fixed_end.byte() - older.start.byte()) as usize..;
-            self.added_text.push_str(&older.added_text[range]);
+            self.added.push_str(&older.added[range]);
 
             None
         } else {
@@ -334,7 +344,7 @@ impl Change<String> {
 impl<'a> Change<&'a str> {
     /// Returns a new copyable [`Change`] from an insertion.
     pub fn str_insert(added_text: &'a str, start: Point) -> Self {
-        Self { start, added_text, taken_text: "" }
+        Self { start, added: added_text, taken: "" }
     }
 }
 
@@ -343,8 +353,8 @@ impl<S: AsRef<str>> Change<S> {
     pub fn reverse(&self) -> Change<&str> {
         Change {
             start: self.start,
-            added_text: self.taken_text(),
-            taken_text: self.added_text(),
+            added: self.taken_text(),
+            taken: self.added_text(),
         }
     }
 
@@ -360,12 +370,12 @@ impl<S: AsRef<str>> Change<S> {
 
     /// Returns the end of the [`Change`], before it was applied
     pub fn taken_end(&self) -> Point {
-        self.start + Point::len_of(&self.taken_text)
+        self.start + Point::len_of(&self.taken)
     }
 
     /// Returns the end of the [`Change`], after it was applied
     pub fn added_end(&self) -> Point {
-        self.start + Point::len_of(&self.added_text)
+        self.start + Point::len_of(&self.added)
     }
 
     /// Returns the taken [`Range`]
@@ -380,18 +390,17 @@ impl<S: AsRef<str>> Change<S> {
 
     /// The text that was taken on this [`Change`]
     pub fn added_text(&self) -> &str {
-        self.added_text.as_ref()
+        self.added.as_ref()
     }
 
     /// The text that was added by this [`Change`]
     pub fn taken_text(&self) -> &str {
-        self.taken_text.as_ref()
+        self.taken.as_ref()
     }
 
     /// The difference in chars of the added and taken texts
     pub fn chars_diff(&self) -> i32 {
-        self.added_text.as_ref().chars().count() as i32
-            - self.taken_text.as_ref().chars().count() as i32
+        self.added.as_ref().chars().count() as i32 - self.taken.as_ref().chars().count() as i32
     }
 }
 

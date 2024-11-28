@@ -800,7 +800,8 @@ pub macro log_panic($($text:tt)*) {{
         }));
     });
 
-    if let Some(start) = $crate::DEBUG_TIME_START.get() {
+    if let Some(start) = $crate::DEBUG_TIME_START.get()
+        && text != "" {
         if text.lines().count() > 1 {
             let chars = text.char_indices().filter_map(|(pos, char)| (char == '\n').then_some(pos));
             let nl_indices: Vec<usize> = chars.collect();
@@ -838,7 +839,8 @@ pub macro log_file($($text:tt)*) {{
 
     let mut text = format!($($text)*);
 
-    if let Some(start) = $crate::DEBUG_TIME_START.get() {
+    if let Some(start) = $crate::DEBUG_TIME_START.get()
+        && text != "" {
         if text.lines().count() > 1 {
             let chars = text.char_indices().filter_map(|(pos, char)| (char == '\n').then_some(pos));
             let nl_indices: Vec<usize> = chars.collect();

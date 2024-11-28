@@ -1,4 +1,4 @@
-use std::{ops::Range, path::Path, sync::LazyLock};
+use std::{any::Any, ops::Range, path::Path, sync::LazyLock};
 
 use gapbuf::GapBuffer;
 use parking_lot::Mutex;
@@ -57,10 +57,14 @@ impl TreeSitter {
                 let range = cap.node.range();
                 let (start, end) = (range.start_byte as u32, range.end_byte as u32);
                 let (form, start_key, end_key) = forms[cap.index as usize];
-                text.tags.insert(start, Tag::PushForm(form), start_key);
-                text.tags.insert(end, Tag::PopForm(form), end_key);
+                if start != end {
+                    text.tags.insert(start, Tag::PushForm(form), start_key);
+                    text.tags.insert(end, Tag::PopForm(form), end_key);
+                }
             }
         }
+
+        crate::log_file!("after tree sitter: {:#?}", text.tags);
 
         Some(TreeSitter { parser, query, tree, forms })
     }
@@ -93,60 +97,53 @@ impl TreeSitter {
         let mut cursor = QueryCursor::new();
         let buf = TsBuf(&text.buf);
 
-        crate::log_file!("");
         let ranges = changes.map(|c| c.start_byte as u32..c.end_byte as u32);
         for range in ranges.chain(added) {
-            let (start, end) = self.range_of_node_containing(range.clone());
+            let Some((start, end)) = range_to_change(range.clone(), &self.tree, &tree) else {
+                continue;
+            };
             cursor.set_byte_range(start..end);
-            crate::log_file!("old");
-            log_node(
-                self.tree
-                    .root_node()
-                    .descendant_for_byte_range(start, end)
-                    .unwrap(),
-            );
             let mut captures = cursor.captures(&self.query, self.tree.root_node(), buf);
             while let Some((captures, _)) = captures.next() {
                 for cap in captures.captures.iter() {
                     let range = cap.node.range();
                     let (start, end) = (range.start_byte as u32, range.end_byte as u32);
                     let (_, start_key, end_key) = self.forms[cap.index as usize];
-                    text.tags.remove_at(start, start_key);
-                    text.tags.remove_at(end, end_key);
+                        text.tags.remove_at(start, start_key);
+                        text.tags.remove_at(end, end_key);
                 }
             }
 
             let mut captures = cursor.captures(&self.query, tree.root_node(), buf);
-            crate::log_file!("new");
-            log_node(
-                tree.root_node()
-                    .descendant_for_byte_range(start, end)
-                    .unwrap(),
-            );
             while let Some((captures, _)) = captures.next() {
                 for cap in captures.captures.iter() {
                     let range = cap.node.range();
                     let (start, end) = (range.start_byte as u32, range.end_byte as u32);
                     let (form, start_key, end_key) = self.forms[cap.index as usize];
-                    text.tags.insert(start, Tag::PushForm(form), start_key);
-                    text.tags.insert(end, Tag::PopForm(form), end_key);
+                    if start != end {
+                        text.tags.insert(start, Tag::PushForm(form), start_key);
+                        text.tags.insert(end, Tag::PopForm(form), end_key);
+                    }
                 }
             }
         }
 
         self.tree = tree;
-    }
 
-    fn range_of_node_containing(&mut self, range: Range<u32>) -> (usize, usize) {
-        let (start, end) = (range.start as usize, range.end as usize);
-        let root = self.tree.root_node();
-        let desc = root.descendant_for_byte_range(start, end).unwrap();
-        crate::log_file!("descendant is {desc:?}");
-        crate::log_file!("parent is {:?}", desc.parent());
-        let parent = root.child_with_descendant(desc).unwrap_or(desc);
-
-        (parent.start_byte(), parent.end_byte())
+        crate::log_file!("after tree-sitter: {:#?}", text.tags);
     }
+}
+
+fn range_to_change(range: Range<u32>, old: &Tree, new: &Tree) -> Option<(usize, usize)> {
+    let (start, end) = (range.start as usize, range.end as usize);
+    let old = old.root_node();
+    let old_desc = old.descendant_for_byte_range(start, end).unwrap();
+
+    let new = new.root_node();
+    let new_desc = new.descendant_for_byte_range(start, end).unwrap();
+    let parent = new_desc.parent().unwrap_or(new_desc);
+
+    (!nodes_are_equal(old_desc, new_desc)).then_some((parent.start_byte(), parent.end_byte()))
 }
 
 fn buf_parse<'a>(text: &'a Text) -> impl FnMut(usize, TSPoint) -> &'a [u8] {
@@ -225,7 +222,7 @@ fn log_node(node: Node) {
     let mut node = Some(cursor.node());
     while let Some(no) = node {
         let indent = " ".repeat(cursor.depth() as usize);
-        //crate::log_file!("{indent}{no:?}");
+        crate::log_file!("{indent}{no:?}");
         let mut next_exists = cursor.goto_first_child() || cursor.goto_next_sibling();
         while !next_exists && cursor.goto_parent() {
             next_exists = cursor.goto_next_sibling();
@@ -296,3 +293,41 @@ fn log_node(node: Node) {
 //        (".yml", "YAML", "yaml"),
 //    ])
 //});
+
+fn nodes_are_equal(old: Node, new: Node) -> bool {
+    let (mut old_c, mut new_c) = (old.walk(), new.walk());
+
+    let mut old_node = Some(old_c.node());
+    let mut new_node = Some(new_c.node());
+    let mut old_depth = 0;
+    let mut new_depth = 0;
+    loop {
+        match (old_node, new_node) {
+            (Some(old), Some(new)) => {
+                if old.range() != new.range() || old.kind_id() != new.kind_id() {
+                    break false;
+                }
+            }
+            (None, None) => break true,
+            (Some(_), None) | (None, Some(_)) => break false,
+        }
+
+        let mut next_exists = old_c.goto_first_child();
+        old_depth += next_exists as usize;
+        next_exists = old_c.goto_next_sibling();
+        while !next_exists && old_depth > 0 && old_c.goto_parent() {
+            old_depth -= 1;
+            next_exists = old_c.goto_next_sibling();
+        }
+        old_node = next_exists.then_some(old_c.node());
+
+        let mut next_exists = new_c.goto_first_child();
+        new_depth += next_exists as usize;
+        next_exists = new_c.goto_next_sibling();
+        while !next_exists && new_depth > 0 && new_c.goto_parent() {
+            new_depth -= 1;
+            next_exists = new_c.goto_next_sibling();
+        }
+        new_node = next_exists.then_some(new_c.node());
+    }
+}

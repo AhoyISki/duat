@@ -738,13 +738,13 @@ where
         self.shift.0 += change.added_end().byte() as i32 - change.taken_end().byte() as i32;
         self.shift.1 += change.added_end().char() as i32 - change.taken_end().char() as i32;
         self.shift.2 += change.added_end().line() as i32 - change.taken_end().line() as i32;
-        let (_, diff) = unsafe {
+        let (_, diff, merged_ahead) = unsafe {
             self.widget
                 .text_mut()
                 .apply_desync_change(self.change_i, change, shift, self.sh_from)
         };
 
-        self.change_diff += diff;
+        self.change_diff += diff + merged_ahead as i32;
     }
 
     pub fn is_main(&self) -> bool {
