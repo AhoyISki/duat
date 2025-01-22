@@ -247,9 +247,9 @@ impl<U: Ui> Mode<U> for Normal {
                         m.swap_ends()
                     }
 
-                    let (p0, _) = m.search_rev("\n", None).next().unwrap_or_default();
+                    let (_, p0) = m.search_rev("\n", None).next().unzip();
                     m.swap_ends();
-                    m.move_to(p0);
+                    m.move_to(p0.unwrap_or_default());
 
                     let (p1, _) = m.search_fwd("\n", None).next().unzip();
                     if let Some(p1) = p1.or(m.last_point()) {

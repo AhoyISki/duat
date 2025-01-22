@@ -320,7 +320,7 @@ impl<H: Hookable> HookHolder for HooksOf<H> {
         while hooks.is_none() {
             hooks = self.0.try_lock();
         }
-        hooks.unwrap().extract_if(|(g, _)| *g == group).last();
+        hooks.unwrap().extract_if(.., |(g, _)| *g == group).last();
     }
 }
 
@@ -370,7 +370,7 @@ impl Hooks {
 
     /// Removes hooks with said group
     fn remove(&'static self, group: &'static str) {
-        self.groups.write().extract_if(|g| *g == group).next();
+        self.groups.write().extract_if(.., |g| *g == group).next();
         let mut map = self.types.write();
         for holder in map.iter_mut() {
             holder.1.remove(group)

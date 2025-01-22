@@ -146,7 +146,6 @@ impl<R: Record> Records<R> {
             // exactly on this record, making it invalid.
             if let Some(prev_i) = s_i.checked_sub(1)
                 && start.bytes() == s_rec.bytes()
-                && (new_len.is_zero_len() || len.is_zero_len())
             {
                 let prev_len = self.stored.get_mut(prev_i as usize).unwrap();
                 *prev_len = prev_len.add(len);

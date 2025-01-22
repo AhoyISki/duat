@@ -1,4 +1,4 @@
-use std::{any::Any, ops::Range, path::Path, sync::LazyLock};
+use std::{ops::Range, path::Path, sync::LazyLock};
 
 use gapbuf::GapBuffer;
 use parking_lot::Mutex;
@@ -31,23 +31,20 @@ pub struct TreeSitter {
     query: Query,
     tree: Tree,
     forms: &'static [(FormId, Key, Key)],
+    lang: &'static str,
 }
 
 impl TreeSitter {
     pub fn new(text: &mut Text, path: impl AsRef<Path>) -> Option<Self> {
-        let language = tree_sitter_rust::LANGUAGE;
+        let (name, lang, hl) = lang_from_path(path)?;
+
         let mut parser = Parser::new();
-        parser.set_language(&language.into()).unwrap();
+        parser.set_language(lang).unwrap();
+        let query = Query::new(lang, hl).unwrap();
+
         let tree = parser.parse_with(&mut buf_parse(text), None).unwrap();
-
-        let buf = TsBuf(&text.buf);
-
-        let query = Query::new(
-            &language.into(),
-            include_str!("../../../ts-queries/rust/highlights.scm"),
-        )
-        .unwrap();
         let mut cursor = QueryCursor::new();
+        let buf = TsBuf(&text.buf);
         let mut captures = cursor.captures(&query, tree.root_node(), buf);
 
         let forms = forms_from_query("Rust", &query);
@@ -64,9 +61,7 @@ impl TreeSitter {
             }
         }
 
-        crate::log_file!("after tree sitter: {:#?}", text.tags);
-
-        Some(TreeSitter { parser, query, tree, forms })
+        Some(TreeSitter { parser, query, tree, forms, lang: name })
     }
 
     pub(super) fn after_change(&mut self, text: &mut Text, change: Change<&str>) {
@@ -103,14 +98,15 @@ impl TreeSitter {
                 continue;
             };
             cursor.set_byte_range(start..end);
+
             let mut captures = cursor.captures(&self.query, self.tree.root_node(), buf);
             while let Some((captures, _)) = captures.next() {
                 for cap in captures.captures.iter() {
                     let range = cap.node.range();
                     let (start, end) = (range.start_byte as u32, range.end_byte as u32);
                     let (_, start_key, end_key) = self.forms[cap.index as usize];
-                        text.tags.remove_at(start, start_key);
-                        text.tags.remove_at(end, end_key);
+                    text.tags.remove_at(start, start_key);
+                    text.tags.remove_at(end, end_key);
                 }
             }
 
@@ -129,8 +125,10 @@ impl TreeSitter {
         }
 
         self.tree = tree;
+    }
 
-        crate::log_file!("after tree-sitter: {:#?}", text.tags);
+    pub fn lang(&self) -> &'static str {
+        self.lang
     }
 }
 
@@ -141,7 +139,7 @@ fn range_to_change(range: Range<u32>, old: &Tree, new: &Tree) -> Option<(usize, 
 
     let new = new.root_node();
     let new_desc = new.descendant_for_byte_range(start, end).unwrap();
-    let parent = new_desc.parent().unwrap_or(new_desc);
+    let parent = new.child_with_descendant(new_desc).unwrap_or(new);
 
     (!nodes_are_equal(old_desc, new_desc)).then_some((parent.start_byte(), parent.end_byte()))
 }
@@ -218,81 +216,112 @@ struct TsBuf<'a>(&'a GapBuffer<u8>);
 #[allow(unused)]
 #[cfg(debug_assertions)]
 fn log_node(node: Node) {
+    use std::fmt::Write;
+
     let mut cursor = node.walk();
     let mut node = Some(cursor.node());
+    let mut log = String::new();
     while let Some(no) = node {
         let indent = " ".repeat(cursor.depth() as usize);
-        crate::log_file!("{indent}{no:?}");
+        writeln!(log, "{indent}{no:?}").unwrap();
         let mut next_exists = cursor.goto_first_child() || cursor.goto_next_sibling();
         while !next_exists && cursor.goto_parent() {
             next_exists = cursor.goto_next_sibling();
         }
         node = next_exists.then_some(cursor.node());
     }
+
+    crate::log_file!("{log}");
 }
 
-// static LANGUAGES: LazyLock<Mutex<Vec<(&str, &str, &str, Language,
-// &str)>>> = LazyLock::new(|| {    use tree_sitter_rust as rust;
-//    Mutex::new(vec![
-//        (".c", "C", "c", rust::LANGUAGE.into(), include_str!()),
-//        (".cc", "C++", "cpp"),
-//        (".cl", "Common Lisp", "common-lisp"),
-//        (".clj", "Clojure", "clojure"),
-//        (".comp", "GLSL", "glsl"),
-//        (".cpp", "C++", "cpp"),
-//        (".cs", "C#", "csharp"),
-//        (".css", "CSS", "css"),
-//        (".cxx", "C++", "cpp"),
-//        (".dart", "Dart", "dart"),
-//        (".frag", "GLSL", "glsl"),
-//        (".geom", "GLSL", "glsl"),
-//        (".glsl", "GLSL", "glsl"),
-//        (".go", "Go", "go"),
-//        (".h", "C", "c"),
-//        (".haml", "Haml", "haml"),
-//        (".handlebars", "Handlebars", "handlebars"),
-//        (".hbs", "Handlebars", "handlebars"),
-//        (".hlsl", "HLSL", "HLSL"),
-//        (".hpp", "C++", "cpp"),
-//        (".html", "HTML", "html"),
-//        (".hxx", "C++", "cpp"),
-//        (".ini", "INI", "ini"),
-//        (".java", "Java", "java"),
-//        (".jinja", "Jinja", "jinja"),
-//        (".jinja2", "Jinja", "jinja"),
-//        (".js", "JavaScript", "javascript"),
-//        (".json", "JSON", "json"),
-//        (".jsonc", "JSON with Comments", "jsonc"),
-//        (".kt", "Kotlin", "kotlin"),
-//        (".less", "Less", "less"),
-//        (".lua", "Lua", "lua"),
-//        (".md", "Markdown", "markdown"),
-//        (".pl", "Perl", "perl"),
-//        (".py", "Python", "python"),
-//        (".pyc", "Python", "python"),
-//        (".pyo", "Python", "python"),
-//        (".rb", "Ruby", "ruby"),
-//        (".rkt", "Racket", "racket"),
-//        (".rs", "Rust", "rust"),
-//        (".sass", "SASS", "sass"),
-//        (".sc", "Scala", "scala"),
-//        (".scala", "Scala", "scala"),
-//        (".scss", "SCSS", "scss"),
-//        (".sh", "Shell", "shell"),
-//        (".sql", "SQL", "sql"),
-//        (".swift", "Swift", "swift"),
-//        (".tesc", "GLSL", "glsl"),
-//        (".tese", "GLSL", "glsl"),
-//        (".tex", "TeX", "tex"),
-//        (".toml", "TOML", "toml"),
-//        (".ts", "TypeScript", "typescript"),
-//        (".vert", "GLSL", "glsl"),
-//        (".xhtml", "XHTML", "xhtml"),
-//        (".xml", "XML", "xml"),
-//        (".yaml", "YAML", "yaml"),
-//        (".yml", "YAML", "yaml"),
-//    ])
-//});
+fn lang_from_path(
+    path: impl AsRef<Path>,
+) -> Option<(&'static str, &'static Language, &'static str)> {
+    static LANGUAGES: LazyLock<Mutex<Vec<((&str, &str, &str), &Language, &str)>>> =
+        LazyLock::new(|| {
+            macro lang($lang:ident) {
+            Box::leak(Box::new(${concat(tree_sitter_, $lang)}::LANGUAGE.into()))
+        }
+            macro high($lang:ident) {
+                include_str!(concat!(
+                    "../../../ts-queries/",
+                    stringify!($lang),
+                    "/highlights.scm"
+                ))
+            }
+
+            Mutex::new(vec![
+                (("rs", "Rust", "rust"), lang!(rust), high!(rust)),
+                //        ((".c", "C", "c"),
+                //        (".cc", "C++", "cpp"),
+                //        (".cl", "Common Lisp", "common-lisp"),
+                //        (".clj", "Clojure", "clojure"),
+                //        (".comp", "GLSL", "glsl"),
+                //        (".cpp", "C++", "cpp"),
+                //        (".cs", "C#", "csharp"),
+                //        (".css", "CSS", "css"),
+                //        (".cxx", "C++", "cpp"),
+                //        (".dart", "Dart", "dart"),
+                //        (".frag", "GLSL", "glsl"),
+                //        (".geom", "GLSL", "glsl"),
+                //        (".glsl", "GLSL", "glsl"),
+                //        (".go", "Go", "go"),
+                //        (".h", "C", "c"),
+                //        (".haml", "Haml", "haml"),
+                //        (".handlebars", "Handlebars", "handlebars"),
+                //        (".hbs", "Handlebars", "handlebars"),
+                //        (".hlsl", "HLSL", "HLSL"),
+                //        (".hpp", "C++", "cpp"),
+                //        (".html", "HTML", "html"),
+                //        (".hxx", "C++", "cpp"),
+                //        (".ini", "INI", "ini"),
+                //        (".java", "Java", "java"),
+                //        (".jinja", "Jinja", "jinja"),
+                //        (".jinja2", "Jinja", "jinja"),
+                //        (".js", "JavaScript", "javascript"),
+                //        (".json", "JSON", "json"),
+                //        (".jsonc", "JSON with Comments", "jsonc"),
+                //        (".kt", "Kotlin", "kotlin"),
+                //        (".less", "Less", "less"),
+                //        (".lua", "Lua", "lua"),
+                //        (".md", "Markdown", "markdown"),
+                //        (".pl", "Perl", "perl"),
+                //        (".py", "Python", "python"),
+                //        (".pyc", "Python", "python"),
+                //        (".pyo", "Python", "python"),
+                //        (".rb", "Ruby", "ruby"),
+                //        (".rkt", "Racket", "racket"),
+                //        (".rs", "Rust", "rust"),
+                //        (".sass", "SASS", "sass"),
+                //        (".sc", "Scala", "scala"),
+                //        (".scala", "Scala", "scala"),
+                //        (".scss", "SCSS", "scss"),
+                //        (".sh", "Shell", "shell"),
+                //        (".sql", "SQL", "sql"),
+                //        (".swift", "Swift", "swift"),
+                //        (".tesc", "GLSL", "glsl"),
+                //        (".tese", "GLSL", "glsl"),
+                //        (".tex", "TeX", "tex"),
+                //        (".toml", "TOML", "toml"),
+                //        (".ts", "TypeScript", "typescript"),
+                //        (".vert", "GLSL", "glsl"),
+                //        (".xhtml", "XHTML", "xhtml"),
+                //        (".xml", "XML", "xml"),
+                //        (".yaml", "YAML", "yaml"),
+                //        (".yml", "YAML", "yaml"),
+            ])
+        });
+
+    let ext = path.as_ref().extension()?.to_str()?;
+    let langs = LANGUAGES.lock();
+    langs
+        .binary_search_by_key(&ext, |((ext, ..), ..)| ext)
+        .ok()
+        .map(|i| {
+            let ((_, name, _), lang, hl) = langs.get(i).unwrap();
+            (*name, *lang, *hl)
+        })
+}
 
 fn nodes_are_equal(old: Node, new: Node) -> bool {
     let (mut old_c, mut new_c) = (old.walk(), new.walk());

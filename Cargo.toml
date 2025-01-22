@@ -48,9 +48,5 @@ path = "src/lib.rs"
 dirs-next = "2.0.0"
 
 [profile.profiling]
-inherits = "release"
+inherits = "dev"
 debug = true
-
-[profile.dev]
-debug = 0
-strip = "debuginfo"

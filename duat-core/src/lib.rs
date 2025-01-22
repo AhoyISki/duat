@@ -270,7 +270,8 @@
     if_let_guard,
     closure_lifetime_binder,
     trait_alias,
-    exact_size_is_empty
+    exact_size_is_empty,
+    macro_metavar_expr_concat
 )]
 
 use std::{

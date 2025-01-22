@@ -92,22 +92,22 @@ impl Tags {
         toggle
     }
 
-    pub fn insert_many(&mut self, tags: impl Iterator<Item = (u32, Tag, Key)>) {
-        let mut tags = tags;
-        let Some((mut old_at, tag, key)) = tags.next() else {
-            return;
-        };
-        let (mut n, mut b, mut skip) =
-            self.get_skip_at(old_at)
-                .unwrap_or((self.buf.len() as u32, self.len_bytes(), 0));
+    // pub fn insert_many(&mut self, tags: impl Iterator<Item = (u32, Tag, Key)>) {
+    //     let mut tags = tags;
+    //     let Some((mut old_at, tag, key)) = tags.next() else {
+    //         return;
+    //     };
+    //     let (mut n, mut b, mut skip) =
+    //         self.get_skip_at(old_at)
+    //             .unwrap_or((self.buf.len() as u32, self.len_bytes(), 0));
 
-        let (tag, _) = tag.to_raw(key, &mut self.texts, &mut self.toggles);
-        self.insert_inner(old_at, tag, (n, b, skip));
+    //     let (tag, _) = tag.to_raw(key, &mut self.texts, &mut self.toggles);
+    //     self.insert_inner(old_at, tag, (n, b, skip));
 
-        for (at, tag, key) in tags {
-            if at == old_at {}
-        }
-    }
+    //     for (at, tag, key) in tags {
+    //         if at == old_at {}
+    //     }
+    // }
 
     fn insert_inner(&mut self, at: u32, tag: RawTag, (n, b, skip): (u32, u32, u32)) {
         // Don't add the tag, if it already exists in that position.
@@ -122,7 +122,7 @@ impl Tags {
         let n = if at == b {
             self.buf.insert(n as usize, TagOrSkip::Tag(tag));
             self.records.transform((n, at), (0, 0), (1, 0));
-            // self.records.insert((n, at));
+            self.records.insert((n, at));
             n
         } else {
             self.buf.splice(n as usize..=n as usize, [
@@ -131,7 +131,7 @@ impl Tags {
                 TagOrSkip::Skip(b + skip - at),
             ]);
             self.records.transform((n, at), (0, 0), (2, 0));
-            // self.records.insert((n + 1, at));
+            self.records.insert((n + 1, at));
             n + 1
         };
 
@@ -283,10 +283,6 @@ impl Tags {
         }
         self.process_ranges_around(new.clone(), range_diff);
         self.cull_small_ranges();
-
-        if self.len_bytes() > 300 {
-            crate::log_file!("{self:#?}");
-        }
     }
 
     fn insert_len(&mut self, at: u32, len: u32, (n, b, skip): (u32, u32, u32), only_insert: bool) {
@@ -835,7 +831,7 @@ impl std::fmt::Debug for Tags {
                     let mut b = 0;
                     f.write_str("[\n")?;
                     for (i, ts) in self.0.iter().enumerate() {
-                        write!(f, "    (n: {i}, b: {b}): {ts:?}\n")?;
+                        writeln!(f, "    (n: {i}, b: {b}): {ts:?}")?;
                         b += ts.len();
                     }
                     f.write_str("]")
@@ -851,7 +847,7 @@ impl std::fmt::Debug for Tags {
                 if f.alternate() {
                     f.write_str("[\n")?;
                     for entry in self.0 {
-                        write!(f, "    {entry:?}\n")?;
+                        writeln!(f, "    {entry:?}")?;
                     }
                     f.write_str("]")
                 } else {

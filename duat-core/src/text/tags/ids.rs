@@ -163,8 +163,12 @@ impl Default for Key {
 }
 
 impl std::iter::Step for Key {
-    fn steps_between(start: &Self, end: &Self) -> Option<usize> {
-        (end.0 as usize).checked_sub(start.0 as usize)
+    fn steps_between(start: &Self, end: &Self) -> (usize, Option<usize>) {
+        if end.0 as usize >= start.0 as usize {
+            ((end.0 - start.0) as usize, Some((end.0 - start.0) as usize))
+        } else {
+            (0, None)
+        }
     }
 
     fn forward_checked(start: Self, count: usize) -> Option<Self> {

@@ -855,7 +855,7 @@ impl Text {
         };
         let skip = if start == end { 1 } else { 0 };
 
-        for p in [start ,end,].into_iter().skip(skip) {
+        for p in [start, end].into_iter().skip(skip) {
             self.tags.remove_at(p.byte(), Key::for_cursors());
         }
     }

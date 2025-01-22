@@ -152,7 +152,7 @@ impl Printer {
         };
 
         for (frame, rhs, value, has_changed) in framed {
-            if let Some((_, new)) = frames.extract_if(|(var, _)| **var == frame.var).next() {
+            if let Some((_, new)) = frames.extract_if(.., |(var, _)| **var == frame.var).next() {
                 let new = new.round() as u32;
                 let old = frame.value.swap(new, Ordering::Release);
                 has_changed.store(old != new, Ordering::Release);
@@ -282,7 +282,7 @@ impl Printer {
                 }
             }
         }
-        if self.eqs_to_add.extract_if(|e| *e == eq).count() == 0 {
+        if self.eqs_to_add.extract_if(.., |e| *e == eq).count() == 0 {
             self.eqs_to_remove.push(eq);
         }
     }
