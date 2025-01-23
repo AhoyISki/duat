@@ -30,23 +30,23 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
     // Tree sitter Forms
     ("type", Form::yellow().0, Normal),
     ("constant", Form::dark_grey().0, Normal),
-    ("function", Form::blue().0, Normal),
+    ("function", Form::blue().italic().0, Normal),
     ("comment", Form::dark_grey().0, Normal),
     ("comment.documentation", Form::dark_grey().bold().0, Normal),
     ("punctuation.bracket", Form::red().0, Normal),
     ("punctuation.delimiter", Form::cyan().0, Normal),
     ("variable.parameter", Form::italic().0, Normal),
+    ("variable.builtin", Form::dark_yellow().0, Normal),
     ("label", Form::green().0, Normal),
     ("keyword", Form::magenta().0, Normal),
-    ("variable.builtin", Form::dark_yellow().0, Normal),
     ("string", Form::green().0, Normal),
     ("constant.builtin", Form::dark_yellow().0, Normal),
     ("escape", Form::dark_yellow().0, Normal),
     ("attribute", Form::magenta().0, Normal),
     ("operator", Form::cyan().0, Normal),
     ("constructor", Form::yellow().0, Normal),
-    ("module", Form::blue().italic().0, Normal),
-    ("interface", Form::bold().0, Normal),
+    ("module", Form::blue().0, Normal),
+    ("interface", Form::white().bold().0, Normal),
 ];
 
 /// The functions that will be exposed for public use.
@@ -403,9 +403,15 @@ impl std::fmt::Debug for FormId {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Form {
     pub style: ContentStyle,
-    /// Whether or not the `Form`s colors and attributes should
-    /// override any that come after.
-    pub finished: bool,
+    /// Wether or not to reset [`Bold`], [`Italic`] and [`Dim`]
+    /// [`Attribute`]s. This can be used alongside these
+    /// [`Attribute`]s. So you can have, e.g. non italic bold text
+    /// within an italicized form.
+    ///
+    /// [`Bold`]: Attribute::Bold
+    /// [`Italic`]: Attribute::Italic
+    /// [`Dim`]: Attribute::Dim
+    pub normal: bool,
 }
 
 #[rustfmt::skip]
@@ -458,17 +464,22 @@ impl Form {
             underline_color: None,
             attributes: Attributes::none(),
         };
-        BuiltForm(Self { style, finished: false })
+        BuiltForm(Self { style, normal: false })
     }
 
-    /// Returns a new [`Form`] with a default _finished_ style
+    /// Returns a new [`Form`] with a default _normal_ style
     ///
-    /// A finished style is one that cannot be superseded. That is,
-    /// if this style sets a foreground, while it is active, new
-    /// styles may not modify the color of the foreground.
-    pub const fn finished() -> BuiltForm {
+    /// A normal [`Form`] is one that resets specifically the
+    /// [`Bold`], [`Italic`] and [`Dim`] [`Attribute`]s. This can
+    /// be used alongside these [`Attribute`]s. So you can have
+    /// e.g., non italic bold text within an italicized form.
+    ///
+    /// [`Bold`]: Attribute::Bold
+    /// [`Italic`]: Attribute::Italic
+    /// [`Dim`]: Attribute::Dim
+    pub const fn normal() -> BuiltForm {
         let mut built = Form::new();
-        built.0.finished = true;
+        built.0.normal = true;
         built
     }
 
@@ -500,9 +511,9 @@ impl Form {
         built
     }
 
-    /// Makes `self` finished
-    const fn as_finished(self) -> Self {
-        Self { style: self.style, finished: true }
+    /// Makes `self` exclusive
+    const fn as_normal(self) -> Self {
+        Self { style: self.style, normal: true }
     }
 }
 
@@ -518,50 +529,55 @@ pub struct BuiltForm(Form);
 
 #[rustfmt::skip]
 impl BuiltForm {
-    mimic_method_cycle!(/**reset*/ reset Attribute::Reset);
-    mimic_method_cycle!(/**bold*/ bold Attribute::Bold);
-    mimic_method_cycle!(/**underlined*/ underlined Attribute::Underlined);
-    mimic_method_cycle!(/**reverse*/ reverse Attribute::Reverse);
-    mimic_method_cycle!(/**dim*/ dim Attribute::Dim);
-    mimic_method_cycle!(/**italic*/ italic Attribute::Italic);
-    mimic_method_cycle!(/**negative*/ negative Attribute::Reverse);
-    mimic_method_cycle!(/**slow_blink*/ slow_blink Attribute::SlowBlink);
-    mimic_method_cycle!(/**rapid_blink*/ rapid_blink Attribute::RapidBlink);
-    mimic_method_cycle!(/**hidden*/ hidden Attribute::Hidden);
-    mimic_method_cycle!(/**crossed_out*/ crossed_out Attribute::CrossedOut);
-    mimic_method_cycle!(/**double_underlined*/ double_underlined Attribute::DoubleUnderlined);
-    mimic_method_cycle!(/**undercurled*/ undercurled Attribute::Undercurled);
-    mimic_method_cycle!(/**underdashed*/ underdashed Attribute::Underdashed);
-    mimic_method_cycle!(/**black*/ black on_black underline_black Color::Black);
-    mimic_method_cycle!(/**dark_grey*/ dark_grey on_dark_grey underline_dark_grey Color::DarkGrey);
-    mimic_method_cycle!(/**red*/ red on_red underline_red Color::Red);
-    mimic_method_cycle!(/**dark_red*/ dark_red on_dark_red underline_dark_red Color::DarkRed);
-    mimic_method_cycle!(/**green*/ green on_green underline_green Color::Green);
-    mimic_method_cycle!(
+    mimic_method_mod!(/**reset*/ reset Attribute::Reset);
+    mimic_method_mod!(/**bold*/ bold Attribute::Bold);
+    mimic_method_mod!(/**underlined*/ underlined Attribute::Underlined);
+    mimic_method_mod!(/**reverse*/ reverse Attribute::Reverse);
+    mimic_method_mod!(/**dim*/ dim Attribute::Dim);
+    mimic_method_mod!(/**italic*/ italic Attribute::Italic);
+    mimic_method_mod!(/**negative*/ negative Attribute::Reverse);
+    mimic_method_mod!(/**slow_blink*/ slow_blink Attribute::SlowBlink);
+    mimic_method_mod!(/**rapid_blink*/ rapid_blink Attribute::RapidBlink);
+    mimic_method_mod!(/**hidden*/ hidden Attribute::Hidden);
+    mimic_method_mod!(/**crossed_out*/ crossed_out Attribute::CrossedOut);
+    mimic_method_mod!(/**double_underlined*/ double_underlined Attribute::DoubleUnderlined);
+    mimic_method_mod!(/**undercurled*/ undercurled Attribute::Undercurled);
+    mimic_method_mod!(/**underdashed*/ underdashed Attribute::Underdashed);
+    mimic_method_mod!(/**black*/ black on_black underline_black Color::Black);
+    mimic_method_mod!(/**dark_grey*/ dark_grey on_dark_grey underline_dark_grey Color::DarkGrey);
+    mimic_method_mod!(/**red*/ red on_red underline_red Color::Red);
+    mimic_method_mod!(/**dark_red*/ dark_red on_dark_red underline_dark_red Color::DarkRed);
+    mimic_method_mod!(/**green*/ green on_green underline_green Color::Green);
+    mimic_method_mod!(
         /**dark_green*/ dark_green on_dark_green underline_dark_green Color::DarkGreen
     );
-    mimic_method_cycle!(/**yellow*/ yellow on_yellow underline_yellow Color::Yellow);
-    mimic_method_cycle!(
+    mimic_method_mod!(/**yellow*/ yellow on_yellow underline_yellow Color::Yellow);
+    mimic_method_mod!(
         /**dark_yellow*/ dark_yellow on_dark_yellow underline_dark_yellow Color::DarkYellow
     );
-    mimic_method_cycle!(/**blue*/ blue on_blue underline_blue Color::Blue);
-    mimic_method_cycle!(/**dark_blue*/ dark_blue on_dark_blue underline_dark_blue Color::DarkBlue);
-    mimic_method_cycle!(/**magenta*/ magenta on_magenta underline_magenta Color::Magenta);
-    mimic_method_cycle!(
+    mimic_method_mod!(/**blue*/ blue on_blue underline_blue Color::Blue);
+    mimic_method_mod!(/**dark_blue*/ dark_blue on_dark_blue underline_dark_blue Color::DarkBlue);
+    mimic_method_mod!(/**magenta*/ magenta on_magenta underline_magenta Color::Magenta);
+    mimic_method_mod!(
         /**dark_magenta*/ dark_magenta on_dark_magenta underline_dark_magenta Color::DarkMagenta
     );
-    mimic_method_cycle!(/**cyan*/ cyan on_cyan underline_cyan Color::Cyan);
-    mimic_method_cycle!(/**dark_cyan*/ dark_cyan on_dark_cyan underline_dark_cyan Color::DarkCyan);
-    mimic_method_cycle!(/**white*/ white on_white underline_white Color::White);
-    mimic_method_cycle!(/**grey*/ grey on_grey underline_grey Color::Grey);
+    mimic_method_mod!(/**cyan*/ cyan on_cyan underline_cyan Color::Cyan);
+    mimic_method_mod!(/**dark_cyan*/ dark_cyan on_dark_cyan underline_dark_cyan Color::DarkCyan);
+    mimic_method_mod!(/**white*/ white on_white underline_white Color::White);
+    mimic_method_mod!(/**grey*/ grey on_grey underline_grey Color::Grey);
 
-    /// Makes this [`Form`] finished
+    /// Makes this [`Form`] normal
     ///
-    /// A finished style is one that cannot be superseded. That is,
-    /// if this style sets a foreground, while it is active, new
-    /// styles may not modify the color of the foreground.
-    pub fn finished(self) -> Self {
-        Self(Form { finished: true, ..self.0 })
+    /// A normal [`Form`] is one that resets specifically the
+    /// [`Bold`], [`Italic`] and [`Dim`] [`Attribute`]s. This can
+    /// be used alongside these [`Attribute`]s. So you can have
+    /// e.g., non italic bold text within an italicized form.
+    ///
+    /// [`Bold`]: Attribute::Bold
+    /// [`Italic`]: Attribute::Italic
+    /// [`Dim`]: Attribute::Dim
+    pub const fn normal(self) -> Self {
+        Self(Form { normal: true, ..self.0 })
     }
 
     /// Colors the foreground of this [`Form`]
@@ -636,7 +652,7 @@ impl Palette {
     /// Sets a [`Form`]
     fn set_form(&self, name: &'static str, form: Form) {
         let form = match name {
-            "MainCursor" | "ExtraCursor" => form.as_finished(),
+            "MainCursor" | "ExtraCursor" => form.as_normal(),
             _ => form,
         };
 
@@ -660,7 +676,7 @@ impl Palette {
     /// Sets a [`Form`] "weakly"
     fn set_weak_form(&self, name: &'static str, form: Form) {
         let form = match name {
-            "MainCursor" | "ExtraCursor" => form.as_finished(),
+            "MainCursor" | "ExtraCursor" => form.as_normal(),
             _ => form,
         };
 
@@ -874,36 +890,19 @@ impl Painter {
     /// pushed forms in the `Form` stack.
     #[inline(always)]
     pub fn make_style(&self) -> ContentStyle {
-        let mut form = Form {
-            style: ContentStyle::default(),
-            finished: false,
-        };
+        let mut form = Form::new().0;
 
-        let (mut fg_done, mut bg_done, mut ul_done, mut attr_done) = (false, false, false, false);
+        for &(Form { style, normal }, _) in &self.cur {
+            if normal {
+                form.style.attributes.unset(Attribute::Bold);
+                form.style.attributes.unset(Attribute::Italic);
+                form.style.attributes.unset(Attribute::Dim);
+            }
 
-        for &(Form { style, finished }, _) in &self.cur {
-            if let Some(new_fg) = style.foreground_color
-                && (!fg_done || finished)
-            {
-                form.style.foreground_color = Some(new_fg);
-                fg_done |= finished;
-            }
-            if let Some(new_bg) = style.background_color
-                && (!bg_done || finished)
-            {
-                form.style.background_color = Some(new_bg);
-                bg_done |= finished;
-            }
-            if let Some(new_ul) = style.underline_color
-                && (!ul_done || finished)
-            {
-                form.style.underline_color = Some(new_ul);
-                ul_done |= finished;
-            }
-            if !attr_done || finished {
-                form.style.attributes.extend(style.attributes);
-                attr_done |= finished;
-            }
+            form.style.foreground_color = style.foreground_color.or(form.style.foreground_color);
+            form.style.background_color = style.background_color.or(form.style.background_color);
+            form.style.underline_color = style.underline_color.or(form.style.underline_color);
+            form.style.attributes.extend(style.attributes);
         }
 
         form.style
@@ -1032,7 +1031,7 @@ macro mimic_method_new {
     }
 }
 
-macro mimic_method_cycle {
+macro mimic_method_mod {
     (#[$attr:meta] $method:ident $attrib:expr) => {
         /// Applies the
         #[$attr]
