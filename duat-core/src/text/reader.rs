@@ -85,21 +85,21 @@ impl TreeSitter {
             .parse_with(&mut buf_parse(text), Some(&self.tree))
             .unwrap();
 
-        let changes = self.tree.changed_ranges(&tree);
-        // If no change is reported, we will add tags on the added range.
-        let added = changes.is_empty().then_some(start.byte()..added.byte());
-
         let mut cursor = QueryCursor::new();
         let buf = TsBuf(&text.buf);
 
-        let ranges = changes.map(|c| c.start_byte as u32..c.end_byte as u32);
-        for range in ranges.chain(added) {
-            let Some((start, end)) = range_to_change(range.clone(), &self.tree, &tree) else {
-                continue;
-            };
-            cursor.set_byte_range(start..end);
+        let mut already_checked = vec![start.line()];
+        let mut changed_lines = vec![start.line()];
 
+        while let Some(line) = changed_lines.pop() {
+            already_checked.push(line);
+
+            let start_b = text.point_at_line(line).byte() as usize;
+            let end_b = text.point_at_line(line + 1).byte() as usize;
+
+            cursor.set_byte_range(start_b..end_b);
             let mut captures = cursor.captures(&self.query, self.tree.root_node(), buf);
+
             while let Some((captures, _)) = captures.next() {
                 for cap in captures.captures.iter() {
                     let range = cap.node.range();
@@ -107,6 +107,11 @@ impl TreeSitter {
                     let (_, start_key, end_key) = self.forms[cap.index as usize];
                     text.tags.remove_at(start, start_key);
                     text.tags.remove_at(end, end_key);
+
+                    let end_line = range.end_point.row as u32;
+                    if !already_checked.contains(&end_line) {
+                        changed_lines.push(end_line);
+                    }
                 }
             }
 
@@ -119,6 +124,11 @@ impl TreeSitter {
                     if start != end {
                         text.tags.insert(start, Tag::PushForm(form), start_key);
                         text.tags.insert(end, Tag::PopForm(form), end_key);
+                    }
+
+                    let end_line = range.end_point.row as u32;
+                    if !already_checked.contains(&end_line) {
+                        changed_lines.push(end_line);
                     }
                 }
             }
