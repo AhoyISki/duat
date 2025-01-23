@@ -1,25 +1,3 @@
-; Identifiers
-
-(primitive_type) @type.builtin
-(field_identifier) @property
-
-; Identifier conventions
-
-; Assume all-caps names are constants
-((identifier) @constant
- (#match? @constant "^[A-Z][A-Z\\d_]+$"))
-
-; Assume uppercase names are enum constructors
-((identifier) @constructor
- (#match? @constructor "^[A-Z]"))
-
-; Assume all qualified names in struct patterns are enum constructors. (They're
-; either that, or struct names; highlighting both as constructors seems to be
-; the less glaring choice of error, visually.)
-(struct_pattern
-  type: (scoped_type_identifier
-    name: (type_identifier) @constructor))
-
 ; Modules
 
 (mod_item 
@@ -43,6 +21,67 @@
 (use_declaration
   argument: (identifier) @module)
  
+; Punctuation
+"!" @operator
+"!=" @operator
+"%" @operator
+"%=" @operator
+"&" @operator
+"&=" @operator
+"&&" @operator
+"*" @operator
+"*=" @operator
+"+" @operator
+"+=" @operator
+"-" @operator
+"-=" @operator
+"->" @operator
+".." @operator
+"..=" @operator
+"..." @operator
+"/" @operator
+"/=" @operator
+"<<" @operator
+"<<=" @operator
+"<" @operator
+"<=" @operator
+"=" @operator
+"==" @operator
+"=>" @operator
+">" @operator
+">=" @operator
+">>" @operator
+">>=" @operator
+"@" @operator
+"^" @operator
+"^=" @operator
+"|" @operator
+"|=" @operator
+"||" @operator
+"?" @operator
+
+"(" @punctuation.bracket
+")" @punctuation.bracket
+"[" @punctuation.bracket
+"]" @punctuation.bracket
+"{" @punctuation.bracket
+"}" @punctuation.bracket
+
+(type_arguments
+  "<" @punctuation.bracket
+  ">" @punctuation.bracket)
+(type_parameters
+  "<" @punctuation.bracket
+  ">" @punctuation.bracket)
+
+"\$" @punctuation.bracket
+
+"::" @punctuation.delimiter
+":" @punctuation.delimiter
+"." @punctuation.delimiter
+"," @punctuation.delimiter
+";" @punctuation.delimiter
+
 ; Functions
 
 (call_expression
@@ -85,32 +124,10 @@
 
 (line_comment (doc_comment)) @comment.documentation
 (block_comment (doc_comment)) @comment.documentation
+(inner_doc_comment_marker) @comment.documentation
+(outer_doc_comment_marker) @comment.documentation
 
-; Punctuation
-
-"(" @punctuation.bracket
-")" @punctuation.bracket
-"[" @punctuation.bracket
-"]" @punctuation.bracket
-"{" @punctuation.bracket
-"}" @punctuation.bracket
-
-(type_arguments
-  "<" @punctuation.bracket
-  ">" @punctuation.bracket)
-(type_parameters
-  "<" @punctuation.bracket
-  ">" @punctuation.bracket)
-
-"\$" @punctuation.bracket
-
-"::" @punctuation.delimiter
-":" @punctuation.delimiter
-"." @punctuation.delimiter
-"," @punctuation.delimiter
-";" @punctuation.delimiter
-
-(lifetime (identifier) @label)
+; Keywords
 
 "as" @keyword
 "async" @keyword
@@ -154,6 +171,8 @@
 (scoped_identifier (self) @keyword)
 (super) @keyword
 
+; Unique identifiers
+
 (self) @variable.builtin
 
 (char_literal) @string
@@ -169,24 +188,7 @@
 (attribute_item) @attribute
 (inner_attribute_item) @attribute
 
-"+" @operator
-"-" @operator
-"&" @operator
-"*" @operator
-"=" @operator
-"'" @operator
-"|" @operator
-"->" @operator
-"=>" @operator
-".." @operator
-"..=" @operator
-
-(binary_expression
-  operator: _ @operator)
-(compound_assignment_expr
-  operator: _ @operator)
-(unary_expression
-  "!" @operator)
+(lifetime (identifier) @label)
 
 ; Parameter redefinitions
 
@@ -261,3 +263,25 @@
           name: (type_identifier) @interface)
       ])
   ])
+
+; Identifiers
+
+(primitive_type) @type.builtin
+(field_identifier) @property
+
+; Identifier conventions
+
+; Assume all-caps names are constants
+((identifier) @constant
+ (#match? @constant "^[A-Z][A-Z\\d_]+$"))
+
+; Assume uppercase names are enum constructors
+((identifier) @constructor
+ (#match? @constructor "^[A-Z]"))
+
+; Assume all qualified names in struct patterns are enum constructors. (They're
+; either that, or struct names; highlighting both as constructors seems to be
+; the less glaring choice of error, visually.)
+(struct_pattern
+  type: (scoped_type_identifier
+    name: (type_identifier) @constructor))
