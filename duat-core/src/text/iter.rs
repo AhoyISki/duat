@@ -246,13 +246,9 @@ impl<'a> RevIter<'a> {
         let (real, ghost) = tp.to_points();
         let point = real.min(text.len());
 
-        let ghost = ghost.map(|ghost| {
-            let dist = text
-                .tags
-                .ghosts_total_at(real.byte())
-                .unwrap_or_else(|| panic!("{real:?}, {ghost:?}"))
-                .byte();
-            (ghost, dist)
+        let ghost = ghost.map(|offset| {
+            let dist = text.tags.ghosts_total_at(real.byte()).unwrap().byte();
+            (offset, dist)
         });
 
         Self {
@@ -291,14 +287,14 @@ impl<'a> RevIter<'a> {
                 }
                 let text = self.text.tags.get_text(id).unwrap();
 
-                let (this_ghost, total_ghost) = if let Some((total, dist)) = &mut self.ghost {
-                    if *dist - text.len().byte() >= total.byte() {
+                let (ghost_b, offset) = if let Some((offset, dist)) = &mut self.ghost {
+                    if *dist - text.len().byte() >= offset.byte() {
                         *dist -= text.len().byte();
                         return true;
                     }
                     (
-                        text.point_at(total.byte() + text.len().byte() - *dist),
-                        *total,
+                        text.point_at(offset.byte() + text.len().byte() - *dist),
+                        *offset,
                     )
                 } else {
                     let this = text.len();
@@ -306,18 +302,19 @@ impl<'a> RevIter<'a> {
                     (this, total.unwrap())
                 };
 
-                let iter = text.iter_rev(this_ghost);
-                let point = std::mem::replace(&mut self.point, total_ghost);
+                let iter = text.iter_rev(ghost_b);
+                let point = std::mem::replace(&mut self.point, offset);
                 let chars = std::mem::replace(&mut self.chars, iter.chars);
                 let tags = std::mem::replace(&mut self.tags, iter.tags);
 
-                self.ghost = Some((total_ghost, total_ghost.byte()));
+                self.ghost = Some((offset, offset.byte()));
                 self.main_iter = Some((point, chars, tags));
             }
 
             RawTag::StartConceal(_) => {
                 self.conceals = self.conceals.saturating_sub(1);
                 if self.conceals == 0 {
+                    self.ghost.take_if(|_| b < self.point.byte());
                     self.point = self.point.min(self.text.point_at(b));
                     self.chars = buf_chars_rev(&self.text.buf, self.point.byte());
                 }

@@ -509,7 +509,10 @@ impl Text {
     /// of said point.
     pub fn points_after(&self, tp: impl TwoPoints) -> Option<(Point, Option<Point>)> {
         self.iter_fwd(tp)
-            .filter_map(|item| item.part.as_char().map(|_| item.points()))
+            .filter_map(|item| {
+                crate::log_file!("point after: {:#?}", item.points());
+                item.part.as_char().map(|_| item.points())
+            })
             .chain([self.len_points()])
             .nth(1)
     }
