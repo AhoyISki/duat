@@ -163,7 +163,7 @@
 
 ; Meta
 
-"#include" @function.macro
-(preproc_directive) @function.macro
+"#include" @attribute
+(preproc_directive) @attribute
 
 (system_lib_string) @string.path
