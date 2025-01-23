@@ -92,17 +92,19 @@ impl Tags {
         toggle
     }
 
-    // pub fn insert_many(&mut self, tags: impl Iterator<Item = (u32, Tag, Key)>) {
-    //     let mut tags = tags;
+    // pub fn insert_many(&mut self, tags: impl Iterator<Item = (u32, Tag,
+    // Key)>) {     let mut tags = tags;
     //     let Some((mut old_at, tag, key)) = tags.next() else {
     //         return;
     //     };
     //     let (mut n, mut b, mut skip) =
     //         self.get_skip_at(old_at)
-    //             .unwrap_or((self.buf.len() as u32, self.len_bytes(), 0));
+    //             .unwrap_or((self.buf.len() as u32, self.len_bytes(),
+    // 0));
 
-    //     let (tag, _) = tag.to_raw(key, &mut self.texts, &mut self.toggles);
-    //     self.insert_inner(old_at, tag, (n, b, skip));
+    //     let (tag, _) = tag.to_raw(key, &mut self.texts, &mut
+    // self.toggles);     self.insert_inner(old_at, tag, (n, b,
+    // skip));
 
     //     for (at, tag, key) in tags {
     //         if at == old_at {}

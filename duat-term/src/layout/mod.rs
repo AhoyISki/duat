@@ -81,7 +81,8 @@ impl Constraints {
         }
     }
 
-    /// Whether or not [`self`] has flexibility in terms of its length.
+    /// Whether or not [`self`] has flexibility in terms of its
+    /// length.
     fn is_resizable_on(&self, axis: Axis) -> bool {
         let con = self.on(axis);
         matches!(con, Some(Constraint::Min(_) | Constraint::Max(_)) | None)

@@ -16,7 +16,7 @@ use std::{fs, io::ErrorKind, path::PathBuf};
 use crate::{
     cfg::{IterCfg, PrintCfg},
     form,
-    text::{Text},
+    text::Text,
     ui::{Area, PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
 };

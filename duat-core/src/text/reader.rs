@@ -240,8 +240,8 @@ fn lang_from_path(
     static LANGUAGES: LazyLock<Mutex<Vec<((&str, &str, &str), &Language, &str)>>> =
         LazyLock::new(|| {
             macro lang($lang:ident) {
-            Box::leak(Box::new(${concat(tree_sitter_, $lang)}::LANGUAGE.into()))
-        }
+                Box::leak(Box::new(${concat(tree_sitter_, $lang)}::LANGUAGE.into()))
+            }
             macro high($lang:ident) {
                 include_str!(concat!(
                     "../../../ts-queries/",
@@ -251,16 +251,15 @@ fn lang_from_path(
             }
 
             Mutex::new(vec![
-                (("rs", "Rust", "rust"), lang!(rust), high!(rust)),
-                //        ((".c", "C", "c"),
-                //        (".cc", "C++", "cpp"),
+                //(("c", "C", "c"), lang!(cpp)),
+                (("cc", "C++", "cpp"), lang!(cpp), high!(cpp)),
+                (("cpp", "C++", "cpp"), lang!(cpp), high!(cpp)),
                 //        (".cl", "Common Lisp", "common-lisp"),
                 //        (".clj", "Clojure", "clojure"),
                 //        (".comp", "GLSL", "glsl"),
-                //        (".cpp", "C++", "cpp"),
                 //        (".cs", "C#", "csharp"),
                 //        (".css", "CSS", "css"),
-                //        (".cxx", "C++", "cpp"),
+                (("cxx", "C++", "cpp"), lang!(cpp), high!(cpp)),
                 //        (".dart", "Dart", "dart"),
                 //        (".frag", "GLSL", "glsl"),
                 //        (".geom", "GLSL", "glsl"),
@@ -271,9 +270,9 @@ fn lang_from_path(
                 //        (".handlebars", "Handlebars", "handlebars"),
                 //        (".hbs", "Handlebars", "handlebars"),
                 //        (".hlsl", "HLSL", "HLSL"),
-                //        (".hpp", "C++", "cpp"),
+                (("hpp", "C++", "cpp"), lang!(cpp), high!(cpp)),
                 //        (".html", "HTML", "html"),
-                //        (".hxx", "C++", "cpp"),
+                (("hxx", "C++", "cpp"), lang!(cpp), high!(cpp)),
                 //        (".ini", "INI", "ini"),
                 //        (".java", "Java", "java"),
                 //        (".jinja", "Jinja", "jinja"),
@@ -291,7 +290,7 @@ fn lang_from_path(
                 //        (".pyo", "Python", "python"),
                 //        (".rb", "Ruby", "ruby"),
                 //        (".rkt", "Racket", "racket"),
-                //        (".rs", "Rust", "rust"),
+                (("rs", "Rust", "rust"), lang!(rust), high!(rust)),
                 //        (".sass", "SASS", "sass"),
                 //        (".sc", "Scala", "scala"),
                 //        (".scala", "Scala", "scala"),
