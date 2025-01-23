@@ -200,11 +200,11 @@
 
 (scoped_identifier
   (identifier) @type
-  (#match? @type "^[A-Z]"))
+  (#match? @type "^[A-Z][^_]*$"))
 
 (scoped_use_list 
   (identifier) @type
-  (#match? @type "^[A-Z]"))
+  (#match? @type "^[A-Z][^_]*$"))
 
 (type_identifier) @type
 (fragment_specifier 

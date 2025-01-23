@@ -549,6 +549,33 @@ pub trait Mode<U: Ui>: Sized + Clone + Send + Sync + 'static {
     /// [`Text`]: crate::text::Text
     #[allow(unused)]
     fn on_switch(&mut self, widget: &RwData<Self::Widget>, area: &U::Area, cursors: &mut Cursors) {}
+
+    /// DO NOT IMPLEMENT THIS FUNCTION, IT IS MEANT FOR `&str` ONLY
+    #[doc(hidden)]
+    fn just_keys(&self) -> Option<&str> {
+        None
+    }
+}
+
+// This implementation exists only to allow &strs to be passed to
+// remaps.
+impl<U: Ui> Mode<U> for &'static str {
+    // Doesn't matter
+    type Widget = crate::widgets::File;
+
+    fn send_key(
+        &mut self,
+        _: KeyEvent,
+        _: &RwData<Self::Widget>,
+        _: &<U as Ui>::Area,
+        _: &mut Cursors,
+    ) {
+        unreachable!("&strs are only meant to be sent as AsGives, turning into keys");
+    }
+
+    fn just_keys(&self) -> Option<&str> {
+        Some(self)
+    }
 }
 
 /// This is a macro for matching keys in patterns:

@@ -271,16 +271,13 @@ mod global {
         fn into_gives(self) -> Gives;
     }
 
-    impl<U: Ui> AsGives<U> for &str {
+    impl<M: Mode<U>, U: Ui> AsGives<U> for M {
         fn into_gives(self) -> Gives {
-            Gives::Keys(str_to_keys(self))
-        }
-    }
-
-    impl<M: Mode<U>, U: Ui> AsGives<U> for &M {
-        fn into_gives(self) -> Gives {
-            let mode = self.clone();
-            Gives::Mode(Box::new(move || crate::mode::set(mode.clone())))
+            if let Some(keys) = self.just_keys() {
+                Gives::Keys(str_to_keys(keys))
+            } else {
+                Gives::Mode(Box::new(move || crate::mode::set(self.clone())))
+            }
         }
     }
 
