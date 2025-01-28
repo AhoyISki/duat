@@ -524,8 +524,6 @@ impl Text {
     pub fn visual_line_start(&self, p: impl TwoPoints) -> (Point, Option<Point>) {
         let (real, ghost) = p.to_points();
 
-        // NOTE: 20000 is a magic number, being a guess for what a reasonable
-        // limit would be.
         let mut iter = self.iter_rev((real, ghost)).peekable();
         let mut points = (real, ghost);
         while let Some(peek) = iter.peek() {
@@ -543,9 +541,38 @@ impl Text {
 
     ////////// String modification functions
 
-    pub fn replace_range(&mut self, range: (Point, Point), edit: impl ToString) {
+    pub fn replace_range(
+        &mut self,
+        range: (Point, Point),
+        edit: impl ToString,
+        area: &impl Area,
+        cfg: PrintCfg,
+    ) {
         let change = Change::new(edit, range, self);
+
+        let within = {
+            let start = area.first_point(self, cfg).byte();
+            let end = area.last_point(self, cfg).byte();
+            start..end
+        };
+
+        let mut readers = std::mem::take(&mut self.readers);
+        let ts = self.tree_sitter.take();
+        for reader in readers.iter_mut() {
+            reader.before_change(self, change.as_ref());
+        }
+
         self.replace_range_inner(change.as_ref());
+
+        if let Some(mut ts) = ts {
+            ts.after_change(self, change.as_ref(), within.clone());
+            self.tree_sitter = Some(ts);
+        }
+        for reader in readers.iter_mut() {
+            reader.after_change(self, change.as_ref(), within.clone());
+        }
+        self.readers = readers;
+
         self.history.add_change(None, change);
     }
 
@@ -555,8 +582,32 @@ impl Text {
         change: Change<String>,
         shift: (i32, i32, i32),
         sh_from: usize,
+        area: &impl Area,
+        cfg: PrintCfg,
     ) -> (usize, i32, bool) {
+        let within = {
+            let start = area.first_point(self, cfg).byte();
+            let end = area.last_point(self, cfg).byte();
+            start..end
+        };
+
+        let mut readers = std::mem::take(&mut self.readers);
+        let ts = self.tree_sitter.take();
+        for reader in readers.iter_mut() {
+            reader.before_change(self, change.as_ref());
+        }
+
         self.replace_range_inner(change.as_ref());
+
+        if let Some(mut ts) = ts {
+            ts.after_change(self, change.as_ref(), within.clone());
+            self.tree_sitter = Some(ts);
+        }
+        for reader in readers.iter_mut() {
+            reader.after_change(self, change.as_ref(), within.clone());
+        }
+        self.readers = readers;
+
         self.history
             .add_desync_change(guess_i, change, shift, sh_from)
     }
@@ -564,12 +615,6 @@ impl Text {
     /// Merges `String`s with the body of text, given a range to
     /// replace
     fn replace_range_inner(&mut self, change: Change<&str>) {
-        let mut readers = std::mem::take(&mut self.readers);
-        let mut ts = self.tree_sitter.take();
-        for reader in readers.iter_mut() {
-            reader.before_change(self, change);
-        }
-
         let edit = change.added_text();
         let start = change.start();
         let taken_end = change.taken_end();
@@ -597,21 +642,6 @@ impl Text {
 
         self.tags
             .transform(start.byte()..taken_end.byte(), change.added_end().byte());
-
-        if let Some(ts) = &mut ts {
-            ts.after_change(self, change);
-        }
-        for reader in readers.iter_mut() {
-            reader.after_change(self, change);
-        }
-        self.readers = readers;
-        self.tree_sitter = ts;
-    }
-
-    /// Adds a new [`Reader`] to this [`Text`]
-    pub fn add_reader<R: Reader>(&mut self) {
-        let reader = R::new(self);
-        self.readers.push(Box::new(reader))
     }
 
     ////////// History manipulation functions
@@ -761,8 +791,8 @@ impl Text {
     ///
     /// [key]: Keys
     /// [`File`]: crate::widgets::File
-    pub fn remove_tags_of(&mut self, keys: impl Keys) {
-        self.tags.remove_of(keys)
+    pub fn remove_tags_of(&mut self, range: impl RangeBounds<u32>, keys: impl Keys) {
+        self.tags.remove_from(range, keys)
     }
 
     /// Removes all [`Tag`]s

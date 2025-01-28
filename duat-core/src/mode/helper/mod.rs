@@ -5,6 +5,8 @@
 //! cursors and dealing with editing the text directly.
 //!
 //! [`Mode`]: super::Mode
+use std::ops::RangeBounds;
+
 pub use self::cursors::{Cursor, Cursors};
 use crate::{
     binary_search_by_key_and_index,
@@ -504,8 +506,8 @@ where
     ///
     /// [key]: Keys
     /// [`File`]: crate::widgets::File
-    pub fn remove_tags_of(&mut self, keys: impl Keys) {
-        self.widget.write().text_mut().remove_tags_of(keys);
+    pub fn remove_tags_of(&mut self, range: impl RangeBounds<u32>, keys: impl Keys) {
+        self.widget.write().text_mut().remove_tags_of(range, keys);
     }
 
     /// Begins a new moment
@@ -739,9 +741,14 @@ where
         self.shift.1 += change.added_end().char() as i32 - change.taken_end().char() as i32;
         self.shift.2 += change.added_end().line() as i32 - change.taken_end().line() as i32;
         let (_, diff, merged_ahead) = unsafe {
-            self.widget
-                .text_mut()
-                .apply_desync_change(self.change_i, change, shift, self.sh_from)
+            self.widget.text_mut().apply_desync_change(
+                self.change_i,
+                change,
+                shift,
+                self.sh_from,
+                self.area,
+                *self.cfg,
+            )
         };
 
         self.change_diff += diff + merged_ahead as i32;

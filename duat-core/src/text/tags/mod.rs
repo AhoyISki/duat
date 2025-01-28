@@ -190,14 +190,19 @@ impl Tags {
     }
 
     /// Removes all [`RawTag`]s of a give [`Keys`]
-    pub fn remove_of(&mut self, keys: impl Keys) {
-        let keys = keys.range();
-        let b_to_remove: Vec<u32> = fwd_range(&self.buf, ..)
-            .filter_map(entries_fwd(0))
-            .filter_map(|(_, b, t)| keys.clone().contains(t.key()).then_some(b))
+    pub fn remove_from(&mut self, range: impl RangeBounds<u32>, keys: impl Keys) {
+        let (start, end) = get_ends(range, self.len_bytes());
+        let Some((n, b, _)) = self.get_skip_behind(start) else {
+            return;
+        };
+
+        let entries: Vec<_> = fwd_range(&self.buf, n..)
+            .filter_map(entries_fwd(b))
+            .take_while(|(_, b, _)| *b < end)
+            .inspect(|(_, b, t)| crate::log_file!("{b}, {t:?}"))
             .collect();
 
-        for b in b_to_remove {
+        for (_, b, _) in entries {
             self.remove_at(b, keys.clone());
         }
     }
@@ -222,6 +227,10 @@ impl Tags {
 
             (removed, total as u32)
         };
+
+        if removed.is_empty() {
+            return;
+        }
 
         for &(i, tag) in removed.iter() {
             self.buf.remove(i as usize);

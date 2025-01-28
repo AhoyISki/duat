@@ -15,15 +15,26 @@ use crate::{
 
 /// A [`Text`] reader, modifying it whenever a [`Change`] happens
 pub trait Reader: Send + Sync + 'static {
-    /// What should happen when this [`Text`] is first created
-    fn new(text: &mut Text) -> Self
-    where
-        Self: Sized;
-
     fn before_change(&mut self, text: &mut Text, change: Change<&str>);
 
     /// What should happen whenever a [`Change`] happens
-    fn after_change(&mut self, text: &mut Text, change: Change<&str>);
+    ///
+    /// Should return a list of [`Range`]s to check
+    fn after_change(
+        &mut self,
+        text: &mut Text,
+        change: Change<&str>,
+        within: Range<u32>,
+    ) -> Vec<Range<u32>>;
+
+    /// Updates a given [`Range`]
+    ///
+    /// This should take into account all changes that have taken
+    /// place before this point.
+    ///
+    /// Must return a [`Vec`] of ranges that have been checked, so
+    /// those can be removed from the checking list.
+    fn update_range(&mut self, text: &mut Text, within: Range<u32>) -> Vec<Range<u32>>;
 }
 
 pub struct TreeSitter {
@@ -31,7 +42,8 @@ pub struct TreeSitter {
     query: Query,
     tree: Tree,
     forms: &'static [(FormId, Key, Key)],
-    lang: &'static str,
+    name: &'static str,
+    keys: Range<Key>,
 }
 
 impl TreeSitter {
@@ -45,12 +57,17 @@ impl TreeSitter {
         let tree = parser.parse_with(&mut buf_parse(text), None).unwrap();
         let mut cursor = QueryCursor::new();
         let buf = TsBuf(&text.buf);
+
         let mut captures = cursor.captures(&query, tree.root_node(), buf);
 
-        let forms = forms_from_query("Rust", &query);
+        let (keys, forms) = forms_from_query(name, &query);
+
+        crate::log_file!("start");
+        crate::log_file!("");
 
         while let Some((captures, _)) = captures.next() {
             for cap in captures.captures.iter() {
+                crate::log_file!("{cap:?}");
                 let range = cap.node.range();
                 let (start, end) = (range.start_byte as u32, range.end_byte as u32);
                 let (form, start_key, end_key) = forms[cap.index as usize];
@@ -61,10 +78,26 @@ impl TreeSitter {
             }
         }
 
-        Some(TreeSitter { parser, query, tree, forms, lang: name })
+        crate::log_file!("");
+
+        Some(TreeSitter { parser, query, tree, forms, name, keys })
     }
 
-    pub(super) fn after_change(&mut self, text: &mut Text, change: Change<&str>) {
+    pub fn lang(&self) -> &'static str {
+        self.name
+    }
+}
+
+impl Reader for TreeSitter {
+    fn before_change(&mut self, _text: &mut Text, _change: Change<&str>) {}
+
+    fn after_change(
+        &mut self,
+        text: &mut Text,
+        change: Change<&str>,
+        within: Range<u32>,
+    ) -> Vec<Range<u32>> {
+        let within = within.start as usize..within.end as usize;
         let start = change.start();
         let added = change.added_end();
         let taken = change.taken_end();
@@ -88,70 +121,103 @@ impl TreeSitter {
         let mut cursor = QueryCursor::new();
         let buf = TsBuf(&text.buf);
 
-        let mut already_checked = vec![start.line()];
-        let mut changed_lines = vec![start.line()];
+        let start_b = text.point_at_line(start.line()).byte() as usize;
+        let end_b = text.point_at_line(added.line() + 1).byte() as usize;
 
-        while let Some(line) = changed_lines.pop() {
-            already_checked.push(line);
+        let range = start_b..end_b;
+        let mut ml_ranges = Vec::new();
+        cursor.set_byte_range(range.clone());
 
-            let start_b = text.point_at_line(line).byte() as usize;
-            let end_b = text.point_at_line(line + 1).byte() as usize;
-
-            cursor.set_byte_range(start_b..end_b);
-            let mut captures = cursor.captures(&self.query, self.tree.root_node(), buf);
-
-            while let Some((captures, _)) = captures.next() {
-                for cap in captures.captures.iter() {
-                    let range = cap.node.range();
-                    let (start, end) = (range.start_byte as u32, range.end_byte as u32);
-                    let (_, start_key, end_key) = self.forms[cap.index as usize];
-                    text.tags.remove_at(start, start_key);
-                    text.tags.remove_at(end, end_key);
-
-                    let end_line = range.end_point.row as u32;
-                    if !already_checked.contains(&end_line) {
-                        changed_lines.push(end_line);
-                    }
+        // The next two loops concern themselves with determining what regions
+        // of the file have been altered.
+        // Normally, this is assumed to be just the current line, but in the
+        // cases of primarily strings and ml comments, this will (probably)
+        // involve the entire rest of the file below.
+        let mut query_matches = cursor.captures(&self.query, self.tree.root_node(), buf);
+        while let Some((query_match, _)) = query_matches.next() {
+            for cap in query_match.captures.iter() {
+                let range = cap.node.range();
+                if range.start_point.row != range.end_point.row {
+                    ml_ranges.push((range, cap.index));
                 }
             }
+        }
 
-            let mut captures = cursor.captures(&self.query, tree.root_node(), buf);
-            while let Some((captures, _)) = captures.next() {
-                for cap in captures.captures.iter() {
-                    let range = cap.node.range();
-                    let (start, end) = (range.start_byte as u32, range.end_byte as u32);
-                    let (form, start_key, end_key) = self.forms[cap.index as usize];
-                    if start != end {
-                        text.tags.insert(start, Tag::PushForm(form), start_key);
-                        text.tags.insert(end, Tag::PopForm(form), end_key);
-                    }
+        let mut query_matches = cursor.captures(&self.query, tree.root_node(), buf);
+        'ml_range_edited: while let Some((query_match, _)) = query_matches.next() {
+            for cap in query_match.captures.iter() {
+                let range = cap.node.range();
+                let entry = (range, cap.index);
 
-                    let end_line = range.end_point.row as u32;
-                    if !already_checked.contains(&end_line) {
-                        changed_lines.push(end_line);
-                    }
+                // If a ml range existed before and after the change, then it can be
+                // assumed that it was not altered.
+                // If it exists in only one of those times, then the whole rest of the
+                // file ahead must be checked, as ml ranges like strings will always
+                // alter every subsequent line in the file.
+                if range.start_point.row != range.end_point.row
+                    && ml_ranges.extract_if(.., |r| *r == entry).next().is_none()
+                {
+                    ml_ranges.push(entry);
+                    break 'ml_range_edited;
+                }
+            }
+        }
+
+        if ml_ranges.is_empty() {
+            let range = range.start as u32..range.end as u32;
+            text.tags.remove_from(range, self.keys.clone());
+        } else {
+            cursor.set_byte_range(range.start..within.end);
+            let range = range.start as u32..within.end as u32;
+            text.tags.remove_from(range, self.keys.clone());
+        };
+
+        let mut query_matches = cursor.captures(&self.query, tree.root_node(), buf);
+        while let Some((query_match, _)) = query_matches.next() {
+            for cap in query_match.captures.iter() {
+                crate::log_file!("{cap:?}");
+                let bytes = cap.node.byte_range();
+                let (form, start_key, end_key) = self.forms[cap.index as usize];
+                if bytes.start != bytes.end {
+                    text.tags
+                        .insert(bytes.start as u32, Tag::PushForm(form), start_key);
+                    text.tags
+                        .insert(bytes.end as u32, Tag::PopForm(form), end_key);
                 }
             }
         }
 
         self.tree = tree;
+
+        if ml_ranges.is_empty() {
+            Vec::new()
+        } else {
+            vec![within.end as u32..text.len().byte()]
+        }
     }
 
-    pub fn lang(&self) -> &'static str {
-        self.lang
+    fn update_range(&mut self, text: &mut Text, range: Range<u32>) -> Vec<Range<u32>> {
+        let buf = TsBuf(&text.buf);
+
+        text.tags.remove_from(range.clone(), self.keys.clone());
+
+        let mut cursor = QueryCursor::new();
+        let mut query_matches = cursor.captures(&self.query, self.tree.root_node(), buf);
+        while let Some((query_match, _)) = query_matches.next() {
+            for cap in query_match.captures.iter() {
+                let bytes = cap.node.byte_range();
+                let (form, start_key, end_key) = self.forms[cap.index as usize];
+                if bytes.start != bytes.end {
+                    text.tags
+                        .insert(bytes.start as u32, Tag::PushForm(form), start_key);
+                    text.tags
+                        .insert(bytes.start as u32, Tag::PopForm(form), end_key);
+                }
+            }
+        }
+
+        vec![range]
     }
-}
-
-fn range_to_change(range: Range<u32>, old: &Tree, new: &Tree) -> Option<(usize, usize)> {
-    let (start, end) = (range.start as usize, range.end as usize);
-    let old = old.root_node();
-    let old_desc = old.descendant_for_byte_range(start, end).unwrap();
-
-    let new = new.root_node();
-    let new_desc = new.descendant_for_byte_range(start, end).unwrap();
-    let parent = new.child_with_descendant(new_desc).unwrap_or(new);
-
-    (!nodes_are_equal(old_desc, new_desc)).then_some((parent.start_byte(), parent.end_byte()))
 }
 
 fn buf_parse<'a>(text: &'a Text) -> impl FnMut(usize, TSPoint) -> &'a [u8] {
@@ -187,25 +253,36 @@ fn ts_point_from_prev(point: Point, prev: (usize, Point), text: &Text) -> TSPoin
     TSPoint::new(point.line() as usize, col)
 }
 
-fn forms_from_query(lang: &'static str, query: &Query) -> &'static [(FormId, Key, Key)] {
-    static LISTS: Mutex<Vec<(&'static str, &[(FormId, Key, Key)])>> = Mutex::new(Vec::new());
+fn forms_from_query(
+    lang: &'static str,
+    query: &Query,
+) -> (Range<Key>, &'static [(FormId, Key, Key)]) {
+    static LISTS: Mutex<Vec<(&'static str, (Range<Key>, &[(FormId, Key, Key)]))>> =
+        Mutex::new(Vec::new());
     let mut lists = LISTS.lock();
 
-    if let Some((_, forms)) = lists.iter().find(|(l, _)| *l == lang) {
-        forms
+    if let Some((_, (keys, forms))) = lists.iter().find(|(l, _)| *l == lang) {
+        (keys.clone(), forms)
     } else {
         let mut forms = Vec::new();
-        for name in query.capture_names() {
+        let capture_names = query.capture_names();
+        let keys = Key::new_many(capture_names.len() * 2);
+
+        let mut iter_keys = keys.clone();
+        for name in capture_names {
+            let start = iter_keys.next().unwrap();
+            let end = iter_keys.next().unwrap();
             forms.push(if name.contains('.') {
                 let refed = name.split('.').next().unwrap().to_string().leak();
-                (form::set_weak(name, refed), Key::new(), Key::new())
+                (form::set_weak(name, refed), start, end)
             } else {
-                (form::set_weak(name, "Default"), Key::new(), Key::new())
+                (form::set_weak(name, "Default"), start, end)
             });
         }
 
-        lists.push((lang, forms.leak()));
-        lists.last().unwrap().1
+        lists.push((lang, (keys, forms.leak())));
+        let (_, (keys, forms)) = lists.last().unwrap();
+        (keys.clone(), forms)
     }
 }
 
@@ -330,42 +407,4 @@ fn lang_from_path(
             let ((_, name, _), lang, hl) = langs.get(i).unwrap();
             (*name, *lang, *hl)
         })
-}
-
-fn nodes_are_equal(old: Node, new: Node) -> bool {
-    let (mut old_c, mut new_c) = (old.walk(), new.walk());
-
-    let mut old_node = Some(old_c.node());
-    let mut new_node = Some(new_c.node());
-    let mut old_depth = 0;
-    let mut new_depth = 0;
-    loop {
-        match (old_node, new_node) {
-            (Some(old), Some(new)) => {
-                if old.range() != new.range() || old.kind_id() != new.kind_id() {
-                    break false;
-                }
-            }
-            (None, None) => break true,
-            (Some(_), None) | (None, Some(_)) => break false,
-        }
-
-        let mut next_exists = old_c.goto_first_child();
-        old_depth += next_exists as usize;
-        next_exists = old_c.goto_next_sibling();
-        while !next_exists && old_depth > 0 && old_c.goto_parent() {
-            old_depth -= 1;
-            next_exists = old_c.goto_next_sibling();
-        }
-        old_node = next_exists.then_some(old_c.node());
-
-        let mut next_exists = new_c.goto_first_child();
-        new_depth += next_exists as usize;
-        next_exists = new_c.goto_next_sibling();
-        while !next_exists && new_depth > 0 && new_c.goto_parent() {
-            new_depth -= 1;
-            next_exists = new_c.goto_next_sibling();
-        }
-        new_node = next_exists.then_some(new_c.node());
-    }
 }

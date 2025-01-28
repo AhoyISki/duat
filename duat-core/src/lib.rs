@@ -273,6 +273,7 @@
     exact_size_is_empty,
     macro_metavar_expr_concat
 )]
+#![allow(clippy::single_range_in_vec_init)]
 
 use std::{
     any::{TypeId, type_name},
