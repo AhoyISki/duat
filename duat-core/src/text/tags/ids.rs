@@ -12,7 +12,7 @@ use std::{
     sync::atomic::{AtomicU16, Ordering},
 };
 
-static KEY_COUNT: AtomicU16 = AtomicU16::new(3);
+static KEY_COUNT: AtomicU16 = AtomicU16::new(4);
 
 /// The id of a [ghost text]
 ///
@@ -118,8 +118,8 @@ impl Key {
     ///
     /// [`Text`]: super::Text
     pub fn new_many(amount: usize) -> Range<Self> {
-        let start = Self(KEY_COUNT.fetch_add(1, Ordering::Relaxed));
-        let end = Self(KEY_COUNT.fetch_add(amount as u16, Ordering::Relaxed));
+        let start = Self(KEY_COUNT.fetch_add(amount as u16, Ordering::Relaxed));
+        let end = Self(KEY_COUNT.fetch_add(1, Ordering::Relaxed));
 
         start..end
     }
@@ -188,24 +188,31 @@ impl std::iter::Step for Key {
 /// [`Tag`]: super::Tag
 /// [removed]: crate::text::Text::remove_tags_on
 pub trait Keys: Clone + PartialEq + Eq {
-    /// All [`Key`]s that should be searched
-    fn range(self) -> Range<Key>;
-
     /// Whether this range contains a given [`Key`]
-    fn contains(self, key: Key) -> bool {
-        let range = self.range();
-        key >= range.start && range.end > key
-    }
+    fn contains(self, key: Key) -> bool;
 }
 
 impl Keys for Key {
-    fn range(self) -> Range<Key> {
-        Key(self.0)..Key(self.0 + 1)
+    fn contains(self, key: Key) -> bool {
+        self == key
     }
 }
 
 impl Keys for Range<Key> {
-    fn range(self) -> Range<Key> {
-        self
+    /// Whether this range contains a given [`Key`]
+    fn contains(self, key: Key) -> bool {
+        key >= self.start && self.end > key
+    }
+}
+
+impl Keys for &[Key] {
+    fn contains(self, key: Key) -> bool {
+        self.contains(&key)
+    }
+}
+
+impl Keys for &[Range<Key>] {
+    fn contains(self, key: Key) -> bool {
+        self.iter().any(|r| r.contains(&key))
     }
 }
