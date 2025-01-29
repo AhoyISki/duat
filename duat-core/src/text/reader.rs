@@ -15,17 +15,11 @@ use crate::{
 
 /// A [`Text`] reader, modifying it whenever a [`Change`] happens
 pub trait Reader: Send + Sync + 'static {
-    fn before_change(&mut self, text: &mut Text, change: Change<&str>);
+    #[allow(unused_variables)]
+    fn before_change(&mut self, text: &Text, change: Change<&str>) {}
 
-    /// What should happen whenever a [`Change`] happens
-    ///
-    /// Should return a list of [`Range`]s to check
-    fn after_change(
-        &mut self,
-        text: &mut Text,
-        change: Change<&str>,
-        within: Range<u32>,
-    ) -> Vec<Range<u32>>;
+    /// Returns ranges that must be updated after a [`Change`]
+    fn after_change(&mut self, text: &Text, change: Change<&str>) -> Vec<Range<u32>>;
 
     /// Updates a given [`Range`]
     ///
@@ -34,7 +28,7 @@ pub trait Reader: Send + Sync + 'static {
     ///
     /// Must return a [`Vec`] of ranges that have been checked, so
     /// those can be removed from the checking list.
-    fn update_range(&mut self, text: &mut Text, within: Range<u32>) -> Vec<Range<u32>>;
+    fn update_range(&mut self, text: &mut Text, within: Range<u32>);
 }
 
 pub struct TreeSitter {
@@ -62,12 +56,8 @@ impl TreeSitter {
 
         let (keys, forms) = forms_from_query(name, &query);
 
-        crate::log_file!("start");
-        crate::log_file!("");
-
         while let Some((captures, _)) = captures.next() {
             for cap in captures.captures.iter() {
-                crate::log_file!("{cap:?}");
                 let range = cap.node.range();
                 let (start, end) = (range.start_byte as u32, range.end_byte as u32);
                 let (form, start_key, end_key) = forms[cap.index as usize];
@@ -78,8 +68,6 @@ impl TreeSitter {
             }
         }
 
-        crate::log_file!("");
-
         Some(TreeSitter { parser, query, tree, forms, name, keys })
     }
 
@@ -89,28 +77,21 @@ impl TreeSitter {
 }
 
 impl Reader for TreeSitter {
-    fn before_change(&mut self, _text: &mut Text, _change: Change<&str>) {}
-
-    fn after_change(
-        &mut self,
-        text: &mut Text,
-        change: Change<&str>,
-        within: Range<u32>,
-    ) -> Vec<Range<u32>> {
-        let within = within.start as usize..within.end as usize;
+    fn after_change(&mut self, text: &Text, change: Change<&str>) -> Vec<Range<u32>> {
         let start = change.start();
         let added = change.added_end();
         let taken = change.taken_end();
 
-        let start_position = ts_point(start, text);
-        let prev = (start_position.column, start);
+        let ts_start = ts_point(start, text);
+        let ts_taken_end = ts_point_from(taken, (ts_start.column, start), text);
+        let ts_added_end = ts_point_from(added, (ts_start.column, start), text);
         self.tree.edit(&InputEdit {
             start_byte: start.byte() as usize,
             old_end_byte: taken.byte() as usize,
             new_end_byte: added.byte() as usize,
-            start_position,
-            old_end_position: ts_point_from_prev(taken, prev, text),
-            new_end_position: ts_point_from_prev(added, prev, text),
+            start_position: ts_start,
+            old_end_position: ts_taken_end,
+            new_end_position: ts_added_end,
         });
 
         let tree = self
@@ -121,12 +102,16 @@ impl Reader for TreeSitter {
         let mut cursor = QueryCursor::new();
         let buf = TsBuf(&text.buf);
 
-        let start_b = text.point_at_line(start.line()).byte() as usize;
-        let end_b = text.point_at_line(added.line() + 1).byte() as usize;
+        let start = text.point_at_line(start.line()).byte();
+        let end = text.point_at_line(added.line() + 1).byte();
 
-        let range = start_b..end_b;
+        // Add one to the start and end, in order to include comments, since
+        // those act a little weird in tree sitter.
+        let ts_start = start.saturating_sub(1) as usize;
+        let ts_end = (end + 1).min(text.len().byte()) as usize;
+        cursor.set_byte_range(ts_start..ts_end);
+
         let mut ml_ranges = Vec::new();
-        cursor.set_byte_range(range.clone());
 
         // The next two loops concern themselves with determining what regions
         // of the file have been altered.
@@ -163,19 +148,28 @@ impl Reader for TreeSitter {
             }
         }
 
-        if ml_ranges.is_empty() {
-            let range = range.start as u32..range.end as u32;
-            text.tags.remove_from(range, self.keys.clone());
-        } else {
-            cursor.set_byte_range(range.start..within.end);
-            let range = range.start as u32..within.end as u32;
-            text.tags.remove_from(range, self.keys.clone());
-        };
+        self.tree = tree;
 
-        let mut query_matches = cursor.captures(&self.query, tree.root_node(), buf);
+        vec![if ml_ranges.is_empty() {
+            start..end
+        } else {
+            start..text.len().byte()
+        }]
+    }
+
+    fn update_range(&mut self, text: &mut Text, range: Range<u32>) {
+        let buf = TsBuf(&text.buf);
+
+        text.tags.remove_from(range.clone(), self.keys.clone());
+
+        let start = range.start.saturating_sub(1) as usize;
+        let end = (range.end + 1).min(text.len().byte()) as usize;
+
+        let mut cursor = QueryCursor::new();
+        cursor.set_byte_range(start..end);
+        let mut query_matches = cursor.captures(&self.query, self.tree.root_node(), buf);
         while let Some((query_match, _)) = query_matches.next() {
             for cap in query_match.captures.iter() {
-                crate::log_file!("{cap:?}");
                 let bytes = cap.node.byte_range();
                 let (form, start_key, end_key) = self.forms[cap.index as usize];
                 if bytes.start != bytes.end {
@@ -186,37 +180,6 @@ impl Reader for TreeSitter {
                 }
             }
         }
-
-        self.tree = tree;
-
-        if ml_ranges.is_empty() {
-            Vec::new()
-        } else {
-            vec![within.end as u32..text.len().byte()]
-        }
-    }
-
-    fn update_range(&mut self, text: &mut Text, range: Range<u32>) -> Vec<Range<u32>> {
-        let buf = TsBuf(&text.buf);
-
-        text.tags.remove_from(range.clone(), self.keys.clone());
-
-        let mut cursor = QueryCursor::new();
-        let mut query_matches = cursor.captures(&self.query, self.tree.root_node(), buf);
-        while let Some((query_match, _)) = query_matches.next() {
-            for cap in query_match.captures.iter() {
-                let bytes = cap.node.byte_range();
-                let (form, start_key, end_key) = self.forms[cap.index as usize];
-                if bytes.start != bytes.end {
-                    text.tags
-                        .insert(bytes.start as u32, Tag::PushForm(form), start_key);
-                    text.tags
-                        .insert(bytes.start as u32, Tag::PopForm(form), end_key);
-                }
-            }
-        }
-
-        vec![range]
     }
 }
 
@@ -233,18 +196,18 @@ fn buf_parse<'a>(text: &'a Text) -> impl FnMut(usize, TSPoint) -> &'a [u8] {
 
 fn ts_point(point: Point, text: &Text) -> TSPoint {
     let strs = text.strs_in_range((Point::default(), point));
-    let iter = strs.into_iter().flat_map(str::bytes);
+    let iter = strs.into_iter().flat_map(str::bytes).rev();
     let col = iter.take_while(|&b| b != b'\n').count();
 
     TSPoint::new(point.line() as usize, col)
 }
 
-fn ts_point_from_prev(point: Point, prev: (usize, Point), text: &Text) -> TSPoint {
-    let (col, prev) = prev;
-    let strs = text.strs_in_range((prev, point));
-    let iter = strs.into_iter().flat_map(str::bytes);
+fn ts_point_from(point: Point, from: (usize, Point), text: &Text) -> TSPoint {
+    let (col, from) = from;
+    let strs = text.strs_in_range((from, point));
+    let iter = strs.into_iter().flat_map(str::bytes).rev();
 
-    let col = if point.line() == prev.line() {
+    let col = if point.line() == from.line() {
         col + iter.count()
     } else {
         iter.take_while(|&b| b != b'\n').count()

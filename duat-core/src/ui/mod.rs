@@ -117,11 +117,11 @@ pub trait Area: Send + Sync + Sized {
     fn is_active(&self) -> bool;
 
     /// Prints the [`Text`] via an [`Iterator`]
-    fn print(&self, text: &Text, cfg: PrintCfg, painter: Painter);
+    fn print(&self, text: &mut Text, cfg: PrintCfg, painter: Painter);
 
     fn print_with<'a>(
         &self,
-        text: &Text,
+        text: &mut Text,
         cfg: PrintCfg,
         painter: Painter,
         f: impl FnMut(&Caret, &Item) + 'a,

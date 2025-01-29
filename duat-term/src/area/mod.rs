@@ -12,7 +12,7 @@ use duat_core::{
     data::RwData,
     form::Painter,
     text::{Item, Iter, Part, Point, RevIter, Text},
-    ui::{self, Axis, Caret, Constraint, PushSpecs},
+    ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
 
@@ -88,11 +88,15 @@ impl Area {
 
     fn print<'a>(
         &self,
-        text: &Text,
+        text: &mut Text,
         cfg: PrintCfg,
         painter: Painter,
         f: impl FnMut(&Caret, &Item) + 'a,
     ) {
+        let first_point = self.first_point(text, cfg);
+        let last_point = self.last_point(text, cfg);
+        text.update_range((first_point, last_point));
+
         let layout = self.layout.read();
         let Some((sender, info)) = layout.rects.get(self.id).and_then(|rect| {
             let sender = rect.sender();
@@ -287,13 +291,13 @@ impl ui::Area for Area {
         self.layout.read().active_id == self.id
     }
 
-    fn print(&self, text: &Text, cfg: PrintCfg, painter: Painter) {
+    fn print(&self, text: &mut Text, cfg: PrintCfg, painter: Painter) {
         self.print(text, cfg, painter, |_, _| {})
     }
 
     fn print_with<'a>(
         &self,
-        text: &Text,
+        text: &mut Text,
         cfg: PrintCfg,
         painter: Painter,
         f: impl FnMut(&Caret, &Item) + 'a,

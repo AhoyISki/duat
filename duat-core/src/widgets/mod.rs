@@ -390,7 +390,8 @@ where
     /// to simultaneously update the list of lines numbers, for
     /// widgets like [`LineNumbers`] to read.
     fn print(&mut self, area: &U::Area) {
-        area.print(self.text(), self.print_cfg(), form::painter())
+        let cfg = self.print_cfg();
+        area.print(self.text_mut(), cfg, form::painter())
     }
 
     /// Actions taken when this widget opens for the first time

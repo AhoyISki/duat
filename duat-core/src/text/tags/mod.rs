@@ -199,7 +199,6 @@ impl Tags {
         let entries: Vec<_> = fwd_range(&self.buf, n..)
             .filter_map(entries_fwd(b))
             .take_while(|(_, b, _)| *b < end)
-            .inspect(|(_, b, t)| crate::log_file!("{b}, {t:?}"))
             .collect();
 
         for (_, b, _) in entries {

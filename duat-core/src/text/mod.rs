@@ -77,7 +77,13 @@ mod records;
 mod search;
 mod tags;
 
-use std::{ops::RangeBounds, path::Path, rc::Rc, str::from_utf8_unchecked, sync::Arc};
+use std::{
+    ops::{Range, RangeBounds},
+    path::Path,
+    rc::Rc,
+    str::from_utf8_unchecked,
+    sync::Arc,
+};
 
 use gapbuf::GapBuffer;
 use history::History;
@@ -109,8 +115,8 @@ pub struct Text {
     tags: Box<Tags>,
     records: Box<Records<(u32, u32, u32)>>,
     history: History,
-    readers: Vec<Box<dyn Reader>>,
-    tree_sitter: Option<Box<TreeSitter>>,
+    readers: Vec<(Box<dyn Reader>, Vec<Range<u32>>)>,
+    tree_sitter: Option<(Box<TreeSitter>, Vec<Range<u32>>)>,
 }
 
 impl Text {
@@ -151,7 +157,7 @@ impl Text {
 
         let tree_sitter = TreeSitter::new(&mut text, path);
 
-        text.tree_sitter = tree_sitter.map(Box::new);
+        text.tree_sitter = tree_sitter.map(|ts| (Box::new(ts), Vec::new()));
         text
     }
 
@@ -541,37 +547,10 @@ impl Text {
 
     ////////// String modification functions
 
-    pub fn replace_range(
-        &mut self,
-        range: (Point, Point),
-        edit: impl ToString,
-        area: &impl Area,
-        cfg: PrintCfg,
-    ) {
+    pub fn replace_range(&mut self, range: (Point, Point), edit: impl ToString) {
         let change = Change::new(edit, range, self);
 
-        let within = {
-            let start = area.first_point(self, cfg).byte();
-            let end = area.last_point(self, cfg).byte();
-            start..end
-        };
-
-        let mut readers = std::mem::take(&mut self.readers);
-        let ts = self.tree_sitter.take();
-        for reader in readers.iter_mut() {
-            reader.before_change(self, change.as_ref());
-        }
-
         self.replace_range_inner(change.as_ref());
-
-        if let Some(mut ts) = ts {
-            ts.after_change(self, change.as_ref(), within.clone());
-            self.tree_sitter = Some(ts);
-        }
-        for reader in readers.iter_mut() {
-            reader.after_change(self, change.as_ref(), within.clone());
-        }
-        self.readers = readers;
 
         self.history.add_change(None, change);
     }
@@ -582,32 +561,8 @@ impl Text {
         change: Change<String>,
         shift: (i32, i32, i32),
         sh_from: usize,
-        area: &impl Area,
-        cfg: PrintCfg,
     ) -> (usize, i32, bool) {
-        let within = {
-            let start = area.first_point(self, cfg).byte();
-            let end = area.last_point(self, cfg).byte();
-            start..end
-        };
-
-        let mut readers = std::mem::take(&mut self.readers);
-        let ts = self.tree_sitter.take();
-        for reader in readers.iter_mut() {
-            reader.before_change(self, change.as_ref());
-        }
-
         self.replace_range_inner(change.as_ref());
-
-        if let Some(mut ts) = ts {
-            ts.after_change(self, change.as_ref(), within.clone());
-            self.tree_sitter = Some(ts);
-        }
-        for reader in readers.iter_mut() {
-            reader.after_change(self, change.as_ref(), within.clone());
-        }
-        self.readers = readers;
-
         self.history
             .add_desync_change(guess_i, change, shift, sh_from)
     }
@@ -636,12 +591,79 @@ impl Text {
             (str.len() as u32, str.chars().count() as u32, lines as u32)
         };
 
+        let mut readers = std::mem::take(&mut self.readers);
+        let ts = self.tree_sitter.take();
+        for (reader, _) in readers.iter_mut() {
+            reader.before_change(self, change);
+        }
+
         let start_rec = (start.byte(), start.char(), start.line());
         self.records.transform(start_rec, old_len, new_len);
         self.records.insert(start_rec);
 
         self.tags
             .transform(start.byte()..taken_end.byte(), change.added_end().byte());
+
+        if let Some((mut ts, mut ranges)) = ts {
+            for range in ts.after_change(self, change) {
+                if !range.is_empty() {
+                    merge_range_in(&mut ranges, range);
+                }
+            }
+            self.tree_sitter = Some((ts, ranges));
+        }
+        for (reader, ranges) in readers.iter_mut() {
+            for range in reader.after_change(self, change) {
+                if !range.is_empty() {
+                    merge_range_in(ranges, range);
+                }
+            }
+        }
+        self.readers = readers;
+    }
+
+    /// This is used by [`Area`]s in order to update visible text
+    ///
+    /// In order to not update too much, an [`Area`] will request that
+    /// a region of the [`Text`] (usually roughly what is shown on
+    /// screen) to be updated, rather than the whole [`Text`].
+    ///
+    /// This should be done within the [`Area::print`] and
+    /// [`Area::print_with`] functions.
+    pub fn update_range(&mut self, range: (Point, Point)) {
+        let within = range.0.byte()..range.1.byte();
+        let mut readers = std::mem::take(&mut self.readers);
+        let ts = self.tree_sitter.take();
+
+        for (reader, ranges) in readers.iter_mut() {
+            let mut new_ranges = Vec::new();
+
+            for range in ranges.iter() {
+                let (to_check, split_off) = split_range_within(range.clone(), within.clone());
+                if let Some(range) = to_check {
+                    reader.update_range(self, range);
+                }
+                new_ranges.extend(split_off.into_iter().flatten());
+            }
+
+            *ranges = new_ranges;
+        }
+
+        self.readers = readers;
+
+        if let Some((mut ts, ranges)) = ts {
+            let mut new_ranges = Vec::new();
+
+            for range in ranges.iter() {
+                let (to_check, split_off) = split_range_within(range.clone(), within.clone());
+                if let Some(range) = to_check {
+                    ts.update_range(self, range);
+                }
+                new_ranges.extend(split_off.into_iter().flatten());
+            }
+
+            self.tree_sitter = Some((ts, new_ranges));
+        }
     }
 
     ////////// History manipulation functions
@@ -1365,6 +1387,55 @@ fn get_ends(range: impl std::ops::RangeBounds<u32>, max: u32) -> (u32, u32) {
     };
 
     (start, end)
+}
+
+/// Splits a range within a region
+///
+/// The first return is the part of `within` that must be updated.
+/// The second return is what is left of `range`.
+///
+/// If `range` is fully inside `within`, remove `range`;
+/// If `within` is fully inside `range`, split `range` in 2;
+/// If `within` intersects `range` in one side, chop it off;
+fn split_range_within(
+    range: Range<u32>,
+    within: Range<u32>,
+) -> (Option<Range<u32>>, [Option<Range<u32>>; 2]) {
+    if range.start >= within.end || within.start >= range.end {
+        (None, [Some(range), None])
+    } else {
+        let start_range = (within.start > range.start).then_some(range.start..within.start);
+        let end_range = (range.end > within.end).then_some(within.end..range.end);
+        let split_ranges = [start_range, end_range];
+        let range_to_check = range.start.max(within.start)..(range.end.min(within.end));
+        (Some(range_to_check), split_ranges)
+    }
+}
+
+/// Merges a new range in a sorted list of ranges
+///
+/// Since ranges are not allowed to intersect, they will be sorted
+/// both in their starting bound and in their ending bound.
+fn merge_range_in(ranges: &mut Vec<Range<u32>>, range: Range<u32>) {
+    let (Ok(i) | Err(i)) = ranges.binary_search_by_key(&range.start, |r| r.start);
+    if let Some(r) = ranges.get(i).cloned() {
+        if range.end < r.start {
+            ranges.insert(i, range);
+        } else if range.end <= r.end {
+            ranges.splice(i..=i, [range.start..r.end]);
+        } else {
+            let (Ok(j) | Err(j)) = ranges.binary_search_by_key(&range.end, |r| r.end);
+            if let Some(r) = ranges.get(j).cloned()
+                && r.start <= range.end
+            {
+                ranges.splice(i..=j, [range.start..r.end]);
+            } else {
+                ranges.splice(i..j, [range.start..range.end]);
+            }
+        }
+    } else {
+        ranges.insert(i, range);
+    }
 }
 
 impl_from_to_string!(u8);
