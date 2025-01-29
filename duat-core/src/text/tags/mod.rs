@@ -261,8 +261,6 @@ impl Tags {
         let new = old.start..new_end;
         // In case we're appending to the GapBuffer, a shortcut can be made.
         let Some((n, b, skip)) = self.get_skip_at(old.start) else {
-            // Unlike inserting in the middle, appending should not move the tags
-            // ahead.
             let last = self.buf.len().saturating_sub(1);
             if let Some(TagOrSkip::Skip(skip)) = self.buf.get_mut(last) {
                 *skip += new.end - old.start;
@@ -275,12 +273,55 @@ impl Tags {
             return;
         };
 
+        // Old length removal.
         if old.end > old.start {
-            self.remove_len(old.start, old.end - old.start, (n, b, skip));
+            let len = old.end - old.start;
+            // If the range to be removed is contained within one skip,
+            // there is no need to check for where it ends.
+            let (end_n, end_b) = if old.start + len <= b + skip {
+                (n, b + skip)
+            } else {
+                // The check for the final skip is a `get_skip_behind` because we
+                // don't want to remove one skip ahead of the end in the cases of
+                // `old.start + len == some_skip`, since that would remove the tags at
+                // the end of   the range.
+                self.get_skip_behind(old.start + len)
+                    .map(|(n, b, skip)| (n, b + skip))
+                    .unwrap()
+            };
+
+            let (removed, added) = {
+                let skip = end_b - b - len;
+                let replacement = (skip > 0).then_some(TagOrSkip::Skip(skip));
+
+                let range = n as usize..=end_n as usize;
+                let removed = self
+                    .buf
+                    .splice(range, replacement)
+                    .scan(b, |p, ts| {
+                        *p += ts.len();
+                        Some((*p - ts.len(), ts))
+                    })
+                    .filter_map(|(p, ts)| ts.as_tag().map(|t| (p, t)));
+
+                (removed, replacement.is_some() as u32)
+            };
+
+            let new_n = 1 + end_n - n;
+            self.records.transform((n, b), (new_n, len), (added, 0));
+
+            for entry in removed {
+                if let Ok(i) = self.ranges.binary_search(&entry) {
+                    self.ranges.remove(i);
+                }
+            }
         }
+
+        // New length insertion is straightforward, just add the len, dummy.
         if new_end > old.start {
-            let only_insert = old.start == old.end;
-            self.insert_len(old.start, new_end - old.start, (n, b, skip), only_insert);
+            let len = new_end - old.start;
+            self.buf[n as usize] = TagOrSkip::Skip(skip + len);
+            self.records.transform((n, b), (0, 0), (0, len));
         }
 
         ////////// Range management
@@ -293,64 +334,6 @@ impl Tags {
         }
         self.process_ranges_around(new.clone(), range_diff);
         self.cull_small_ranges();
-    }
-
-    fn insert_len(&mut self, at: u32, len: u32, (n, b, skip): (u32, u32, u32), only_insert: bool) {
-        // If a == b, we change the length before the tags
-        // If I am inserting and removing, then only the skip of the modified
-        // range should be altered.
-        if only_insert && at == b && n != 0 {
-            let prev_entry =
-                rev_range(&self.buf, ..n).find_map(|(n, ts)| Some(n).zip(ts.as_skip()));
-            if let Some((prev_n, prev_skip)) = prev_entry {
-                self.buf[prev_n] = TagOrSkip::Skip(prev_skip + len);
-                let start = (prev_n as u32, b - prev_skip);
-                self.records.transform(start, (0, 0), (0, len))
-            } else {
-                self.buf.push_front(TagOrSkip::Skip(len));
-                self.records.transform((0, 0), (0, 0), (1, len))
-            }
-        // Otherwise, just resize
-        } else {
-            self.buf[n as usize] = TagOrSkip::Skip(skip + len);
-            self.records.transform((n, b), (0, 0), (0, len));
-        }
-    }
-
-    fn remove_len(&mut self, at: u32, len: u32, (s_n, s_b, skip): (u32, u32, u32)) {
-        let (e_n, e_b) = if at + len <= s_b + skip {
-            (s_n, s_b + skip)
-        } else {
-            self.get_skip_behind(at + len)
-                .map(|(n, b, skip)| (n, b + skip))
-                .unwrap()
-        };
-
-        let (removed, added) = {
-            let skip = e_b - s_b - len;
-            let replacement = (skip > 0).then_some(TagOrSkip::Skip(skip));
-
-            let range = s_n as usize..=e_n as usize;
-            let removed = self
-                .buf
-                .splice(range, replacement)
-                .scan(s_b, |p, ts| {
-                    *p += ts.len();
-                    Some((*p - ts.len(), ts))
-                })
-                .filter_map(|(p, ts)| ts.as_tag().map(|t| (p, t)));
-
-            (removed, replacement.is_some() as u32)
-        };
-
-        self.records
-            .transform((s_n, s_b), (1 + e_n - s_n, len), (added, 0));
-
-        for entry in removed {
-            if let Ok(i) = self.ranges.binary_search(&entry) {
-                self.ranges.remove(i);
-            }
-        }
     }
 
     /// Returns true if there are no [`RawTag`]s

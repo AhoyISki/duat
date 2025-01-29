@@ -271,7 +271,8 @@
     closure_lifetime_binder,
     trait_alias,
     exact_size_is_empty,
-    macro_metavar_expr_concat
+    macro_metavar_expr_concat,
+    debug_closure_helpers
 )]
 #![allow(clippy::single_range_in_vec_init)]
 

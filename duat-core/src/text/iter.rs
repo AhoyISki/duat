@@ -81,6 +81,9 @@ impl<'a> Iter<'a> {
         let (real, ghost) = tp.to_points();
         let point = real.min(text.len());
 
+        let ghost =
+            ghost.and_then(|ghost| text.tags.ghosts_total_at(real.byte()).and(Some((ghost, 0))));
+
         Self {
             text,
             point,
@@ -89,7 +92,7 @@ impl<'a> Iter<'a> {
             conceals: 0,
 
             main_iter: None,
-            ghost: ghost.zip(Some(0)),
+            ghost,
 
             print_ghosts: true,
             _conceals: Conceal::All,
@@ -246,9 +249,10 @@ impl<'a> RevIter<'a> {
         let (real, ghost) = tp.to_points();
         let point = real.min(text.len());
 
-        let ghost = ghost.map(|offset| {
-            let dist = text.tags.ghosts_total_at(real.byte()).unwrap().byte();
-            (offset, dist)
+        let ghost = ghost.and_then(|offset| {
+            text.tags
+                .ghosts_total_at(real.byte())
+                .map(|ghost| (offset, ghost.byte()))
         });
 
         Self {

@@ -984,10 +984,9 @@ impl Text {
 impl std::fmt::Debug for Text {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Text")
-            .field(
-                "buf",
-                &format!("'{}', '{}'", self.strs()[0], self.strs()[1]),
-            )
+            .field_with("buf", |f| {
+                write!(f, "'{}', '{}'", self.strs()[0], self.strs()[1])
+            })
             .field("tags", &self.tags)
             .field("records", &self.records)
             .finish()
