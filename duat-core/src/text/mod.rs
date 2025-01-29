@@ -666,6 +666,13 @@ impl Text {
         }
     }
 
+    pub fn needs_update(&self) -> bool {
+        self.tree_sitter
+            .as_ref()
+            .is_some_and(|(_, ranges)| !ranges.is_empty())
+            || self.readers.iter().any(|(_, ranges)| !ranges.is_empty())
+    }
+
     ////////// History manipulation functions
 
     /// Undoes the last moment, if there was one

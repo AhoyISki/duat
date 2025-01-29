@@ -93,9 +93,11 @@ impl Area {
         painter: Painter,
         f: impl FnMut(&Caret, &Item) + 'a,
     ) {
-        let first_point = self.first_point(text, cfg);
-        let last_point = self.last_point(text, cfg);
-        text.update_range((first_point, last_point));
+        if text.needs_update() {
+            let first_point = self.first_point(text, cfg);
+            let last_point = self.last_point(text, cfg);
+            text.update_range((first_point, last_point));
+        }
 
         let layout = self.layout.read();
         let Some((sender, info)) = layout.rects.get(self.id).and_then(|rect| {
@@ -273,6 +275,7 @@ impl ui::Area for Area {
         let mut old_info = rect.print_info().unwrap().write();
         *old_info = info;
         old_info.last_main = point;
+        old_info.last_point = None;
     }
 
     fn top_left(&self) -> (Point, Option<Point>) {
@@ -485,13 +488,15 @@ impl ui::Area for Area {
     }
 
     fn last_point(&self, text: &Text, cfg: PrintCfg) -> Point {
-        let info = {
-            let layout = self.layout.read();
-            let rect = layout.get(self.id).unwrap();
-            let info = rect.print_info().unwrap();
-            let info = info.read();
-            *info
-        };
+        let layout = self.layout.read();
+        let rect = layout.get(self.id).unwrap();
+        let info = rect.print_info().unwrap();
+        let mut info = info.write();
+
+        if let Some(last) = info.last_point {
+            return last;
+        }
+
         let line_start = text.visual_line_start(info.points);
         let iter = text.iter_fwd(line_start);
         let cfg = IterCfg::new(cfg);
@@ -514,6 +519,8 @@ impl ui::Area for Area {
             }
         }
 
+        info.last_point = Some(point);
+
         point
     }
 }
@@ -534,6 +541,7 @@ pub struct PrintInfo {
     x_shift: u32,
     /// The last position of the main cursor.
     last_main: Point,
+    last_point: Option<Point>,
 }
 
 impl PrintInfo {
