@@ -288,7 +288,6 @@ use std::{
 };
 
 use parking_lot::RwLock;
-use serde::{Deserialize, Serialize};
 use ui::Window;
 use widgets::{File, Node, Widget};
 
@@ -309,55 +308,6 @@ pub mod session;
 pub mod text;
 pub mod ui;
 pub mod widgets;
-
-/// A plugin for Duat
-///
-/// A plugin is something that can be invoked in the configuration
-/// crate for Duat, and can apply a multitude of effects upon its
-/// creation.
-pub trait Plugin<U: Ui>: 'static {
-    /// A cacheable struct for your plugin
-    ///
-    /// If you want data to be stored between executions, you can
-    /// store it in this struct, and it will be returned to the
-    /// plugin when Duat is executed in the future. If you don't
-    /// need this feature, you can set `type Cache = ();`
-    type Cache: Default + Serialize + Deserialize<'static> + 'static
-    where
-        Self: Sized;
-
-    /// Returns a new instance from an old cache
-    ///
-    /// If this is the first time the plugin was loaded, it will
-    /// receive [`Cache::default()`] as the argument.
-    ///
-    /// ```rust
-    /// # use duat_core::{
-    /// #     cmd, hooks::{self, *}, mode::{key, KeyCode}, ui::Ui, widgets::File, Plugin,
-    /// # };
-    /// struct AutoSaver;
-    /// impl<U: Ui> Plugin<U> for AutoSaver {
-    ///     type Cache = ();
-    ///
-    ///     fn new(cache: Self::Cache) -> Self {
-    ///         hooks::add::<KeySentTo<File, U>>(move |&(key, _)| {
-    ///             // Assuming that we are leaving an insert mode
-    ///             if let key!(KeyCode::Esc) = key {
-    ///                 cmd::run("write").unwrap();
-    ///             }
-    ///         });
-    ///         AutoSaver
-    ///     }
-    /// }
-    /// ```
-    ///
-    /// [`Cache::default()`]: Default::default
-    /// [forms]: forms::Form
-    /// [`File`]: widgets::File
-    fn new(cache: Self::Cache) -> Self
-    where
-        Self: Sized;
-}
 
 pub mod thread {
     use std::{

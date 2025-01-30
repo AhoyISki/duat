@@ -437,33 +437,6 @@ pub mod hooks {
     pub type UnfocusedFrom<W> = duat_core::hooks::UnfocusedFrom<W, Ui>;
 }
 
-pub mod plugin {
-    //! Functions to load [`Plugin`]s
-    pub use duat_core::Plugin;
-
-    use crate::{Ui, setup::PLUGIN_FN};
-
-    /// Loads the [`Plugin`]
-    pub fn load<P: Plugin<Ui>>() {
-        let mut old = PLUGIN_FN.write().unwrap();
-        let old_f = std::mem::replace(&mut *old, Box::new(|_| {}));
-        *old = Box::new(|cfg| {
-            old_f(cfg);
-            cfg.load_plugin::<P>();
-        });
-    }
-
-    /// Loads the [`Plugin`], then mutates it
-    pub fn load_and<P: Plugin<Ui>>(f: impl FnOnce(&mut P) + Send + Sync + 'static) {
-        let mut old = PLUGIN_FN.write().unwrap();
-        let old_f = std::mem::replace(&mut *old, Box::new(|_| {}));
-        *old = Box::new(|cfg| {
-            old_f(cfg);
-            cfg.load_plugin_and(f);
-        });
-    }
-}
-
 pub mod widgets {
     //! Duat's builtin widgets
     pub use duat_core::{

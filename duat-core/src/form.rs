@@ -10,11 +10,7 @@ pub use self::global::{
     FormFmt, extra_cursor, from_id, id_of, inner_to_id, main_cursor, name_of, painter, set,
     set_extra_cursor, set_main_cursor, set_weak, unset_extra_cursor, unset_main_cursor,
 };
-use crate::{
-    data::RwLockReadGuard,
-    text::{Text, err},
-    ui::Sender,
-};
+use crate::{data::RwLockReadGuard, ui::Sender};
 
 pub trait ColorScheme: Send + Sync + 'static {
     fn apply(&self);

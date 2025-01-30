@@ -8,7 +8,6 @@ use std::{
 };
 
 use crate::{
-    Plugin,
     cache::{delete_cache, load_cache, store_cache},
     cfg::PrintCfg,
     cmd, context,
@@ -24,7 +23,6 @@ pub struct SessionCfg<U: Ui> {
     ui: U,
     file_cfg: FileCfg,
     layout: Box<dyn Fn() -> Box<dyn Layout<U> + 'static>>,
-    plugins: Vec<Box<dyn Plugin<U>>>,
 }
 
 impl<U: Ui> SessionCfg<U> {
@@ -35,7 +33,6 @@ impl<U: Ui> SessionCfg<U> {
             ui,
             file_cfg: FileCfg::new(),
             layout: Box::new(|| Box::new(MasterOnLeft)),
-            plugins: Vec::new(),
         }
     }
 
@@ -126,20 +123,6 @@ impl<U: Ui> SessionCfg<U> {
     #[doc(hidden)]
     pub fn set_print_cfg(&mut self, cfg: PrintCfg) {
         self.file_cfg.set_print_cfg(cfg);
-    }
-
-    #[doc(hidden)]
-    pub fn load_plugin<P: Plugin<U>>(&mut self) {
-        let cache = load_cache::<P::Cache>("").unwrap_or_default();
-        let plugin = P::new(cache);
-        self.plugins.push(Box::new(plugin));
-    }
-
-    pub fn load_plugin_and<P: Plugin<U>>(&mut self, f: impl FnOnce(&mut P)) {
-        let cache = load_cache::<P::Cache>("").unwrap_or_default();
-        let mut plugin = P::new(cache);
-        f(&mut plugin);
-        self.plugins.push(Box::new(plugin));
     }
 }
 
