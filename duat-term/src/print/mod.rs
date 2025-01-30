@@ -391,10 +391,15 @@ pub struct Lines {
 impl Lines {
     pub fn push_char(&mut self, char: char, len: u32) {
         self.len += len;
-        let mut bytes = [0; 4];
-        char.encode_utf8(&mut bytes);
-        self.positions.push((self.line.len(), len));
-        self.line.extend(&bytes[..char.len_utf8()]);
+        if char.is_ascii() {
+            self.positions.push((self.line.len(), len));
+            self.line.push(char as u8)
+        } else {
+            let mut bytes = [0; 4];
+            char.encode_utf8(&mut bytes);
+            self.positions.push((self.line.len(), len));
+            self.line.extend(&bytes[..char.len_utf8()]);
+        }
     }
 
     pub fn realign(&mut self, alignment: Alignment) {
@@ -416,13 +421,12 @@ impl Lines {
             let y = y - tl.y;
             let start = self.cutoffs[y as usize];
 
-            let (start_x, end_x) = (self.coords.tl().x, self.coords.br().x);
             let bytes = match self.cutoffs.get(y as usize + 1) {
                 Some(end) => &self.bytes[start..*end],
                 None => &self.bytes[start..],
             };
 
-            Some((bytes, start_x, end_x))
+            Some((bytes, tl.x, br.x))
         } else {
             None
         }

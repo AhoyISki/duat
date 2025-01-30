@@ -83,10 +83,12 @@ pub struct ScrollOff {
 }
 
 impl ScrollOff {
+    #[inline]
     pub fn x(&self) -> u32 {
         self.x as u32
     }
 
+    #[inline]
     pub fn y(&self) -> u32 {
         self.y as u32
     }

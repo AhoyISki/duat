@@ -7,56 +7,82 @@ use duat_core::{
 };
 use unicode_width::UnicodeWidthChar;
 
-/// Returns an [`Iterator`] that also shows the current level of
-/// indentation.
-#[inline(always)]
-fn indents<'a>(
-    iter: impl Iterator<Item = Item> + Clone + 'a,
-    cap: u32,
-    initial: (u32, bool),
-    cfg: IterCfg,
-) -> impl Iterator<Item = (u32, Item)> + Clone + 'a {
-    iter.scan(initial, move |(indent, on_indent), item| {
-        if cfg.indent_wrap() {
-            let old_indent = if *indent < cap { *indent } else { 0 };
-            (*indent, *on_indent) = match (item.part, *on_indent) {
-                (Part::Char('\t'), true) => (*indent + cfg.tab_stops().spaces_at(*indent), true),
-                (Part::Char(' '), true) => (*indent + 1, true),
-                (Part::Char('\n'), _) => (0, true),
-                (Part::Char(_), _) => (*indent, false),
-                (_, on_indent) => (*indent, on_indent),
-            };
-
-            Some((old_indent, item))
-        } else {
-            Some((0, item))
-        }
-    })
-}
-
 #[inline(always)]
 fn parts<'a>(
-    iter: impl Iterator<Item = (u32, Item)> + Clone + 'a,
+    iter: impl Iterator<Item = Item> + Clone + 'a,
     cap: u32,
     cfg: IterCfg,
+    initial: (u32, bool),
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-    iter.scan(
-        (0, true, None),
-        move |(x, needs_to_wrap, prev_char), (indent, unit)| {
-            attach_caret((x, needs_to_wrap, prev_char), indent, unit, cap, &cfg)
-        },
-    )
+    let (mut x, mut needs_to_wrap, mut prev_char) = (0, true, None);
+    let max_indent = if cfg.indent_wrap() { cap } else { 0 };
+    let (mut indent, mut on_indent) = initial;
+
+    iter.map(move |mut item| {
+        let old_indent = indent * (indent < max_indent) as u32;
+        let (len, processed_part) = {
+            match item.part {
+                Part::Char(char) => {
+                    let ret = if char == '\n' {
+                        indent = 0;
+                        on_indent = true;
+                        let char = cfg.new_line().char(prev_char);
+                        match char {
+                            Some(char) => (len_from(char, x, cap, &cfg), Part::Char(char)),
+                            None => (0, Part::Char('\n')),
+                        }
+                    } else {
+                        let len = len_from(char, x, cap, &cfg);
+                        if on_indent && (char == ' ' || char == '\t') {
+                            indent += len;
+                        } else {
+                            on_indent = false
+                        }
+                        (len, Part::Char(char))
+                    };
+
+                    prev_char = Some(char);
+                    ret
+                }
+                _ => (0, item.part),
+            }
+        };
+
+        let mut old_x = x;
+        x += len;
+
+        let width_wrap = x > cap || (x == cap && len == 0);
+        let nl_wrap = needs_to_wrap && prev_char.is_some();
+        if nl_wrap || width_wrap {
+            old_x = old_indent;
+            x = old_indent + len;
+            needs_to_wrap = false;
+        };
+
+        if let Some(char) = item.part.as_char() {
+            if char == '\n' {
+                needs_to_wrap = true;
+                x = 0;
+            }
+        }
+
+        item.part = processed_part;
+        (Caret::new(old_x, len, nl_wrap || width_wrap), item)
+    })
 }
 
 /// Returns an [`Iterator`] over the sequences of [`WordChars`].
 #[inline(always)]
 fn words<'a>(
-    iter: impl Iterator<Item = (u32, Item)> + Clone + 'a,
-    width: u32,
+    iter: impl Iterator<Item = Item> + Clone + 'a,
+    cap: u32,
     cfg: IterCfg,
+    initial: (u32, bool),
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
+    let max_indent = if cfg.indent_wrap() { cap } else { 0 };
+
     let mut iter = iter.peekable();
-    let mut indent = 0;
+    let (mut indent, mut on_indent) = initial;
     let mut word = Vec::new();
 
     let mut prev_char = None;
@@ -64,33 +90,39 @@ fn words<'a>(
     let mut x = 0;
     let mut needs_wrap = true;
     std::iter::from_fn(move || {
-        if let Some(unit) = finished_word.pop() {
+        let old_indent = indent * (indent < max_indent) as u32;
+        if let Some(item) = finished_word.pop() {
             let vars = (&mut x, &mut needs_wrap, &mut prev_char);
-            return attach_caret(vars, indent, unit, width, &cfg);
+            return attach_caret(vars, old_indent, item, cap, &cfg);
         }
 
         let mut word_len = 0;
-        while let Some((new_indent, item)) = iter.peek() {
-            if let Part::Char(c) = item.part {
-                indent = *new_indent;
+        while let Some(item) = iter.peek() {
+            if let Part::Char(char) = item.part {
+                match char {
+                    ' ' => indent += on_indent as u32,
+                    '\t' => indent += on_indent as u32 * cfg.tab_stops().spaces_at(indent),
+                    '\n' => (indent, on_indent) = (0, true),
+                    _ => on_indent = false,
+                }
 
-                if cfg.word_chars().contains(c) {
-                    word_len += len_from(c, x + word_len, width, &cfg, prev_char)
+                if cfg.word_chars().contains(char) {
+                    word_len += len_from(char, x + word_len, cap, &cfg)
                 } else {
-                    word.push(iter.next().map(|(_, unit)| unit).unwrap());
+                    word.push(iter.next().map(|item| item).unwrap());
                     break;
                 }
             }
-            word.push(iter.next().map(|(_, unit)| unit).unwrap());
+            word.push(iter.next().map(|item| item).unwrap());
         }
 
-        needs_wrap |= x + word_len > width;
+        needs_wrap |= x + word_len > cap;
 
         std::mem::swap(&mut word, &mut finished_word);
         finished_word.reverse();
-        finished_word.pop().and_then(|unit| {
+        finished_word.pop().and_then(|item| {
             let vars = (&mut x, &mut needs_wrap, &mut prev_char);
-            attach_caret(vars, indent, unit, width, &cfg)
+            attach_caret(vars, indent, item, cap, &cfg)
         })
     })
 }
@@ -116,8 +148,8 @@ fn attach_caret(
         *needs_to_wrap = false;
     };
 
-    if let Some(b) = item.part.as_char() {
-        if b == '\n' {
+    if let Some(char) = item.part.as_char() {
+        if char == '\n' {
             *needs_to_wrap = true;
             *x = 0;
         }
@@ -140,11 +172,11 @@ fn process_part(
             let ret = if b == '\n' {
                 let char = cfg.new_line().char(*prev_char);
                 match char {
-                    Some(char) => (len_from(char, x, cap, cfg, *prev_char), Part::Char(char)),
+                    Some(char) => (len_from(char, x, cap, cfg), Part::Char(char)),
                     None => (0, Part::Char('\n')),
                 }
             } else {
-                (len_from(b, x, cap, cfg, *prev_char), Part::Char(b))
+                (len_from(b, x, cap, cfg), Part::Char(b))
             };
 
             *prev_char = Some(b);
@@ -182,9 +214,8 @@ where
 
 /// An [`Iterator`] that returns both an [`Item`] and a [`Caret`].
 ///
-/// This function will function properly given that, elsewhere in
-/// the code, the passed [`PrintInfo`] and `width` have beend
-/// validated.
+/// This function expects that `cap` has been validated, and that the
+/// iterator starts in the visual start of the line.
 pub fn print_iter(
     mut iter: TextIter<'_>,
     cap: u32,
@@ -263,23 +294,16 @@ fn inner_iter<'a>(
     initial: (u32, bool),
     cfg: IterCfg,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-    let indents = indents(iter, cap, initial, cfg);
-
     match cfg.wrap_method() {
         WrapMethod::Width | WrapMethod::NoWrap | WrapMethod::Capped(_) => {
-            Iter::Parts(parts(indents, cap, cfg), PhantomData)
+            Iter::Parts(parts(iter, cap, cfg, initial), PhantomData)
         }
-        WrapMethod::Word => Iter::Words(words(indents, cap, cfg)),
+        WrapMethod::Word => Iter::Words(words(iter, cap, cfg, initial)),
     }
 }
 
 #[inline(always)]
-fn len_from(char: char, start: u32, max_width: u32, cfg: &IterCfg, prev_char: Option<char>) -> u32 {
-    let char = if char == '\n' {
-        cfg.new_line().char(prev_char).unwrap_or('\n')
-    } else {
-        char
-    };
+fn len_from(char: char, start: u32, max_width: u32, cfg: &IterCfg) -> u32 {
     match char {
         '\t' => (cfg.tab_stops().spaces_at(start))
             .min(max_width.saturating_sub(start))
