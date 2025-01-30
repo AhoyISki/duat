@@ -531,23 +531,47 @@ impl Form {
     }
 
     /// New [`Form`] with a colored foreground
-    pub const fn with(color: Color) -> BuiltForm {
+    ///
+    /// This function accepts three color formats:
+    /// 
+    /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
+    /// - Three rgb values, like `"rgb 123 456 789"`;
+    /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
+    ///   {hue}, {sat} and {lit} can either be a number from `0..255`,
+    ///   or a percentage, followed by `'%'`, e.g. `"hsl 234 50% 42"`.
+    pub const fn with(str: &str) -> BuiltForm {
         let mut built = Form::new();
-        built.0.style.foreground_color = Some(color);
+        built.0.style.foreground_color = Some(str_to_color(str));
         built
     }
 
     /// New [`Form`] with a colored background
-    pub const fn on(color: Color) -> BuiltForm {
+    ///
+    /// This function accepts three color formats:
+    /// 
+    /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
+    /// - Three rgb values, like `"rgb 123 456 789"`;
+    /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
+    ///   {hue}, {sat} and {lit} can either be a number from `0..255`,
+    ///   or a percentage, followed by `'%'`, e.g. `"hsl 234 50% 42"`.
+    pub const fn on(str: &str) -> BuiltForm {
         let mut built = Form::new();
-        built.0.style.background_color = Some(color);
+        built.0.style.background_color = Some(str_to_color(str));
         built
     }
 
     /// New [`Form`] with a colored underlining
-    pub const fn underline(color: Color) -> BuiltForm {
+    ///
+    /// This function accepts three color formats:
+    /// 
+    /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
+    /// - Three rgb values, like `"rgb 123 456 789"`;
+    /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
+    ///   {hue}, {sat} and {lit} can either be a number from `0..255`,
+    ///   or a percentage, followed by `'%'`, e.g. `"hsl 234 50% 42"`.
+    pub const fn underline(str: &str) -> BuiltForm {
         let mut built = Form::new();
-        built.0.style.underline_color = Some(color);
+        built.0.style.underline_color = Some(str_to_color(str));
         built
     }
 
@@ -561,101 +585,6 @@ impl Form {
     /// Makes `self` exclusive
     const fn as_normal(self) -> Self {
         Self { style: self.style, normal: true }
-    }
-}
-
-pub trait ToColor {
-    fn to_color(self) -> Result<Color, Text>;
-}
-
-impl ToColor for Color {
-    fn to_color(self) -> Result<Color, Text> {
-        Ok(self)
-    }
-}
-
-impl ToColor for &str {
-    fn to_color(self) -> Result<Color, Text> {
-        // Expects "#{red:x}{green:x}{blue:x}"
-        if let Some(hex) = self.strip_prefix("#") {
-            if self.len() != 6 && !self.bytes().all(|h| h.is_ascii_hexdigit()) {
-                return Err(err!("Hexcode does not contain 6 hexadecimal values."));
-            }
-            let total = u32::from_str_radix(hex, 16).unwrap();
-            let red = ((total % 0x1000000) >> 16) as u8;
-            let green = ((total % 0x10000) >> 8) as u8;
-            let blue = (total % 0x100) as u8;
-
-            Ok(Color::from((red, green, blue)))
-            // Expects "rgb {red} {green} {blue}"
-        } else if let Some(rgb) = self.strip_prefix("rgb ") {
-            let mut words = rgb.split_whitespace();
-
-            let colors = ["Red", "Green", "Blue"];
-            let mut values = [0, 0, 0];
-            for (value, color) in values.iter_mut().zip(colors) {
-                *value = words
-                    .next()
-                    .ok_or_else(|| err!([*a] color [] " not found in rgb format."))?
-                    .parse::<u8>()
-                    .map_err(|_| err!([*a] color [] " could not be parsed."))?;
-            }
-
-            Ok(Color::from((values[0], values[1], values[2])))
-            // Expects "hsl {hue%?} {saturation%?} {lightness%?}"
-        } else if let Some(hsl) = self.strip_prefix("hsl ") {
-            let mut words = hsl.split_whitespace();
-
-            let properties = ["Hue", "Saturation", "Lightness"];
-            let mut values = [0.0, 0.0, 0.0];
-            for (value, prop) in values.iter_mut().zip(properties) {
-                let word = words
-                    .next()
-                    .ok_or_else(|| err!([*a] prop [] " not found in hsl format."))?;
-
-                *value = if let Some(perc) = word.strip_suffix("%")
-                    && let Ok(u8) = perc.parse::<u8>()
-                {
-                    match u8 <= 100 {
-                        true => u8 as f32 / 100.0,
-                        false => return Err(err!([*a] prop [] " percentage greater than 100.")),
-                    }
-                } else if let Ok(u8) = word.parse::<u8>() {
-                    u8 as f32 / 255.0
-                } else {
-                    return Err(err!([*a] prop [] " could not be parsed."));
-                }
-            }
-            let [hue, sat, lit] = values;
-
-            let (r, g, b) = if sat == 0.0 {
-                (lit, lit, lit)
-            } else {
-                let q = if lit < 0.5 {
-                    lit * (1.0 + sat)
-                } else {
-                    lit + sat - lit * sat
-                };
-                let p = 2.0 * lit - q;
-                let r = hue_to_rgb(p, q, hue + 1.0 / 3.0);
-                let g = hue_to_rgb(p, q, hue);
-                let b = hue_to_rgb(p, q, hue - 1.0 / 3.0);
-                (r, g, b)
-            };
-
-            let red = (r * 255.0).round() as u8;
-            let green = (g * 255.0).round() as u8;
-            let blue = (b * 255.0).round() as u8;
-            Ok(Color::from((red, green, blue)))
-        } else {
-            Err(err!("Color format was not recognized."))
-        }
-    }
-}
-
-impl ToColor for (u8, u8, u8) {
-    fn to_color(self) -> Result<Color, Text> {
-        Ok(Color::from(self))
     }
 }
 
@@ -723,20 +652,44 @@ impl BuiltForm {
     }
 
     /// Colors the foreground of this [`Form`]
-    pub const fn with(mut self, color: Color) -> Self {
-        self.0.style.foreground_color = Some(color);
+    ///
+    /// This function accepts three color formats:
+    /// 
+    /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
+    /// - Three rgb values, like `"rgb 123 456 789"`;
+    /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
+    ///   {hue}, {sat} and {lit} can either be a number from `0..255`,
+    ///   or a percentage, followed by `'%'`, e.g. `"hsl 234 50% 42"`.
+    pub const fn with(mut self, str: &str) -> Self {
+        self.0.style.foreground_color = Some(str_to_color(str));
         self
     }
 
     /// Colors the background of this [`Form`]
-    pub const fn on(mut self, color: Color) -> Self {
-        self.0.style.background_color = Some(color);
+    ///
+    /// This function accepts three color formats:
+    /// 
+    /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
+    /// - Three rgb values, like `"rgb 123 456 789"`;
+    /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
+    ///   {hue}, {sat} and {lit} can either be a number from `0..255`,
+    ///   or a percentage, followed by `'%'`, e.g. `"hsl 234 50% 42"`.
+    pub const fn on(mut self, str: &str) -> Self {
+        self.0.style.background_color = Some(str_to_color(str));
         self
     }
 
     /// Colors the underlining of this [`Form`]
-    pub const fn underline(mut self, color: Color) -> Self {
-        self.0.style.underline_color = Some(color);
+    ///
+    /// This function accepts three color formats:
+    /// 
+    /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
+    /// - Three rgb values, like `"rgb 123 456 789"`;
+    /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
+    ///   {hue}, {sat} and {lit} can either be a number from `0..255`,
+    ///   or a percentage, followed by `'%'`, e.g. `"hsl 234 50% 42"`.
+    pub const fn underline(mut self, str: &str) -> Self {
+        self.0.style.underline_color = Some(str_to_color(str));
         self
     }
 
@@ -1126,17 +1079,146 @@ fn would_be_circular(inner: &RwLockWriteGuard<InnerPalette>, referee: usize, ref
     }
 }
 
-fn hue_to_rgb(p: f32, q: f32, mut t: f32) -> f32 {
-    t = if t < 0.0 { t + 1.0 } else { t };
-    t = if t > 1.0 { t - 1.0 } else { t };
-    if t < 1.0 / 6.0 {
-        p + (q - p) * 6.0 * t
-    } else if t < 1.0 / 2.0 {
-        q
-    } else if t < 2.0 / 3.0 {
-        p + (q - p) * (2.0 / 3.0 - t) * 6.0
+/// Converts a string to a color, supporst hex, RGB and HSL
+const fn str_to_color(str: &str) -> Color {
+    const fn strip_prefix<'a>(prefix: &str, str: &'a str) -> Option<&'a str> {
+        let prefix = prefix.as_bytes();
+        let str = str.as_bytes();
+
+        let mut i = 0;
+        while i < prefix.len() {
+            if str[i] != prefix[i] {
+                return None;
+            }
+            i += 1;
+        }
+
+        let (_, str) = str.split_at(prefix.len());
+        Some(unsafe { core::str::from_utf8_unchecked(str) })
+    }
+    const fn strip_suffix<'a>(suffix: &str, str: &'a str) -> Option<&'a str> {
+        let prefix = suffix.as_bytes();
+        let str = str.as_bytes();
+
+        let mut i = str.len() - 1;
+        while i >= str.len() - prefix.len() {
+            if str[i] != prefix[i - (str.len() - prefix.len())] {
+                return None;
+            }
+            i += 1;
+        }
+
+        let (str, _) = str.split_at(str.len() - suffix.len());
+        Some(unsafe { core::str::from_utf8_unchecked(str) })
+    }
+    const fn split_space(str: &str) -> Option<(&str, &str)> {
+        let str = str.as_bytes();
+
+        let mut i = 0;
+        while i < str.len() {
+            if str[i] == b' ' {
+                let (cut, rest) = str.split_at(i);
+                let (_, rest) = rest.split_at(1);
+                return Some(unsafe {
+                    (
+                        core::str::from_utf8_unchecked(cut),
+                        core::str::from_utf8_unchecked(rest),
+                    )
+                });
+            }
+            i += 1;
+        }
+
+        None
+    }
+    const fn hue_to_rgb(p: f32, q: f32, mut t: f32) -> f32 {
+        t = if t < 0.0 { t + 1.0 } else { t };
+        t = if t > 1.0 { t - 1.0 } else { t };
+        if t < 1.0 / 6.0 {
+            p + (q - p) * 6.0 * t
+        } else if t < 1.0 / 2.0 {
+            q
+        } else if t < 2.0 / 3.0 {
+            p + (q - p) * (2.0 / 3.0 - t) * 6.0
+        } else {
+            p
+        }
+    }
+
+    // Expects "#{red:x}{green:x}{blue:x}"
+    if let Some(hex) = strip_prefix("#", str) {
+        let total = match u32::from_str_radix(hex, 16) {
+            Ok(total) if hex.len() == 6 => total,
+            _ => panic!("Hexcode does not contain 6 hex values."),
+        };
+        let r = (total >> 16) as u8;
+        let g = (total >> 8) as u8;
+        let b = total as u8;
+
+        Color::Rgb { r, g, b }
+        // Expects "rgb {red} {green} {blue}"
+    } else if let Some(mut rgb) = strip_prefix("rgb ", str) {
+        let mut values = [0, 0, 0];
+        let mut i = 0;
+        while i < values.len() {
+            if let Some((cut, rest)) = split_space(rgb) {
+                rgb = rest;
+                values[i] = match u8::from_str_radix(cut, 10) {
+                    Ok(value) => value,
+                    Err(_) => panic!("Rgb format value could not be parsed."),
+                }
+            } else {
+                panic!("Missing value in rgb format.")
+            }
+            i += 1;
+        }
+
+        let [r, g, b] = values;
+        Color::Rgb { r, g, b }
+        // Expects "hsl {hue%?} {saturation%?} {lightness%?}"
+    } else if let Some(mut hsl) = strip_prefix("hsl ", str) {
+        let mut values = [0.0, 0.0, 0.0];
+        let mut i = 0;
+        while i < values.len() {
+            if let Some((cut, rest)) = split_space(hsl) {
+                hsl = rest;
+                let (num, div) = match strip_suffix("%", cut) {
+                    Some(perc) => (perc, 100),
+                    None => (cut, 255),
+                };
+                values[i] = match u8::from_str_radix(num, 10) {
+                    Ok(value) if value <= div => value as f32 / div as f32,
+                    _ => panic!("Hsl format property could not be parsed"),
+                }
+            } else {
+                panic!("Missing value in hsl format.")
+            }
+            i += 1;
+        }
+        let [hue, sat, lit] = values;
+
+        let (r, g, b) = if sat == 0.0 {
+            (lit, lit, lit)
+        } else {
+            let q = if lit < 0.5 {
+                lit * (1.0 + sat)
+            } else {
+                lit + sat - lit * sat
+            };
+            let p = 2.0 * lit - q;
+            let r = hue_to_rgb(p, q, hue + 1.0 / 3.0);
+            let g = hue_to_rgb(p, q, hue);
+            let b = hue_to_rgb(p, q, hue - 1.0 / 3.0);
+            (r, g, b)
+        };
+
+        // + 0.5 because `as` rounds floats down.
+        let r = (0.5 + r * 255.0) as u8;
+        let g = (0.5 + g * 255.0) as u8;
+        let b = (0.5 + b * 255.0) as u8;
+        Color::Rgb { r, g, b }
     } else {
-        p
+        panic!("Color format was not recognized.")
     }
 }
 
