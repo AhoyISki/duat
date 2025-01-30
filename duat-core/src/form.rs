@@ -10,7 +10,11 @@ pub use self::global::{
     FormFmt, extra_cursor, from_id, id_of, inner_to_id, main_cursor, name_of, painter, set,
     set_extra_cursor, set_main_cursor, set_weak, unset_extra_cursor, unset_main_cursor,
 };
-use crate::{data::RwLockReadGuard, ui::Sender};
+use crate::{
+    data::RwLockReadGuard,
+    text::{Text, err},
+    ui::Sender,
+};
 
 pub trait ColorScheme: Send + Sync + 'static {
     fn apply(&self);
@@ -560,6 +564,101 @@ impl Form {
     }
 }
 
+pub trait ToColor {
+    fn to_color(self) -> Result<Color, Text>;
+}
+
+impl ToColor for Color {
+    fn to_color(self) -> Result<Color, Text> {
+        Ok(self)
+    }
+}
+
+impl ToColor for &str {
+    fn to_color(self) -> Result<Color, Text> {
+        // Expects "#{red:x}{green:x}{blue:x}"
+        if let Some(hex) = self.strip_prefix("#") {
+            if self.len() != 6 && !self.bytes().all(|h| h.is_ascii_hexdigit()) {
+                return Err(err!("Hexcode does not contain 6 hexadecimal values."));
+            }
+            let total = u32::from_str_radix(hex, 16).unwrap();
+            let red = ((total % 0x1000000) >> 16) as u8;
+            let green = ((total % 0x10000) >> 8) as u8;
+            let blue = (total % 0x100) as u8;
+
+            Ok(Color::from((red, green, blue)))
+            // Expects "rgb {red} {green} {blue}"
+        } else if let Some(rgb) = self.strip_prefix("rgb ") {
+            let mut words = rgb.split_whitespace();
+
+            let colors = ["Red", "Green", "Blue"];
+            let mut values = [0, 0, 0];
+            for (value, color) in values.iter_mut().zip(colors) {
+                *value = words
+                    .next()
+                    .ok_or_else(|| err!([*a] color [] " not found in rgb format."))?
+                    .parse::<u8>()
+                    .map_err(|_| err!([*a] color [] " could not be parsed."))?;
+            }
+
+            Ok(Color::from((values[0], values[1], values[2])))
+            // Expects "hsl {hue%?} {saturation%?} {lightness%?}"
+        } else if let Some(hsl) = self.strip_prefix("hsl ") {
+            let mut words = hsl.split_whitespace();
+
+            let properties = ["Hue", "Saturation", "Lightness"];
+            let mut values = [0.0, 0.0, 0.0];
+            for (value, prop) in values.iter_mut().zip(properties) {
+                let word = words
+                    .next()
+                    .ok_or_else(|| err!([*a] prop [] " not found in hsl format."))?;
+
+                *value = if let Some(perc) = word.strip_suffix("%")
+                    && let Ok(u8) = perc.parse::<u8>()
+                {
+                    match u8 <= 100 {
+                        true => u8 as f32 / 100.0,
+                        false => return Err(err!([*a] prop [] " percentage greater than 100.")),
+                    }
+                } else if let Ok(u8) = word.parse::<u8>() {
+                    u8 as f32 / 255.0
+                } else {
+                    return Err(err!([*a] prop [] " could not be parsed."));
+                }
+            }
+            let [hue, sat, lit] = values;
+
+            let (r, g, b) = if sat == 0.0 {
+                (lit, lit, lit)
+            } else {
+                let q = if lit < 0.5 {
+                    lit * (1.0 + sat)
+                } else {
+                    lit + sat - lit * sat
+                };
+                let p = 2.0 * lit - q;
+                let r = hue_to_rgb(p, q, hue + 1.0 / 3.0);
+                let g = hue_to_rgb(p, q, hue);
+                let b = hue_to_rgb(p, q, hue - 1.0 / 3.0);
+                (r, g, b)
+            };
+
+            let red = (r * 255.0).round() as u8;
+            let green = (g * 255.0).round() as u8;
+            let blue = (b * 255.0).round() as u8;
+            Ok(Color::from((red, green, blue)))
+        } else {
+            Err(err!("Color format was not recognized."))
+        }
+    }
+}
+
+impl ToColor for (u8, u8, u8) {
+    fn to_color(self) -> Result<Color, Text> {
+        Ok(Color::from(self))
+    }
+}
+
 /// A convenience struct for [`Form`]s
 ///
 /// This struct exists in order to have [`Form`] methods be
@@ -1024,6 +1123,20 @@ fn would_be_circular(inner: &RwLockWriteGuard<InnerPalette>, referee: usize, ref
         }
     } else {
         false
+    }
+}
+
+fn hue_to_rgb(p: f32, q: f32, mut t: f32) -> f32 {
+    t = if t < 0.0 { t + 1.0 } else { t };
+    t = if t > 1.0 { t - 1.0 } else { t };
+    if t < 1.0 / 6.0 {
+        p + (q - p) * 6.0 * t
+    } else if t < 1.0 / 2.0 {
+        q
+    } else if t < 2.0 / 3.0 {
+        p + (q - p) * (2.0 / 3.0 - t) * 6.0
+    } else {
+        p
     }
 }
 
