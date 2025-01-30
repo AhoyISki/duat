@@ -12,6 +12,12 @@ pub use self::global::{
 };
 use crate::{data::RwLockReadGuard, ui::Sender};
 
+pub trait ColorScheme: Send + Sync + 'static {
+    fn apply(&self);
+
+    fn name(&self) -> &'static str;
+}
+
 static SENDER: OnceLock<Sender> = OnceLock::new();
 static BASE_FORMS: &[(&str, Form, FormType)] = &[
     ("Default", Form::new().0, Normal),
@@ -47,7 +53,6 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
     ("operator", Form::cyan().0, Normal),
     ("constructor", Form::yellow().0, Normal),
     ("module", Form::blue().italic().0, Normal),
-    ("interface", Form::white().normal().bold().0, Normal),
 ];
 
 /// The functions that will be exposed for public use.
@@ -56,11 +61,13 @@ mod global {
 
     use parking_lot::Mutex;
 
-    use super::{BASE_FORMS, BuiltForm, CursorShape, Form, FormId, Painter, Palette};
+    use super::{BASE_FORMS, BuiltForm, ColorScheme, CursorShape, Form, FormId, Painter, Palette};
+    use crate::text::err;
 
     static PALETTE: Palette = Palette::new();
     static FORMS: LazyLock<Mutex<Vec<&str>>> =
         LazyLock::new(|| Mutex::new(BASE_FORMS.iter().map(|(name, ..)| *name).collect()));
+    static COLORSCHEMES: LazyLock<Mutex<Vec<Box<dyn ColorScheme>>>> = LazyLock::new(Mutex::default);
 
     /// Either a [`Form`] or a name of a form
     ///
@@ -338,6 +345,41 @@ mod global {
         } else {
             forms.push(name);
             FormId(forms.len() as u16 - 1)
+        }
+    }
+
+    /// Adds a [`ColorScheme`] to the list of colorschemes
+    ///
+    /// This [`ColorScheme`] can then be added via
+    /// [`form::apply_colorscheme`] or through the command
+    /// `colorscheme`.
+    ///
+    /// If a [`ColorScheme`] of the same name was already added, it
+    /// will be overritten.
+    ///
+    /// [`form::apply_colorscheme`]: apply_colorscheme
+    pub fn add_colorscheme(cs: impl ColorScheme) {
+        let mut colorschemes = COLORSCHEMES.lock();
+        let name = cs.name();
+        if let Some(i) = colorschemes.iter().position(|cs| cs.name() == name) {
+            colorschemes[i] = Box::new(cs);
+        } else {
+            colorschemes.push(Box::new(cs));
+        }
+    }
+
+    /// Applies a [`ColorScheme`]
+    ///
+    /// This [`ColorScheme`] must've first been added via
+    /// [`form::add_colorscheme`].
+    ///
+    /// [`form::add_colorscheme`]: add_colorscheme
+    pub fn apply_colorscheme(name: &str) {
+        let colorschemes = COLORSCHEMES.lock();
+        if let Some(cs) = colorschemes.iter().find(|cs| cs.name() == name) {
+            cs.apply()
+        } else {
+            crate::context::notify(err!("The colorscheme " [*a] name [] " was not found"));
         }
     }
 
