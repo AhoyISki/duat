@@ -7,10 +7,15 @@ pub use crossterm::{cursor::SetCursorStyle as CursorShape, style::Color};
 use parking_lot::{RwLock, RwLockWriteGuard};
 
 pub use self::global::{
-    FormFmt, extra_cursor, from_id, id_of, inner_to_id, main_cursor, name_of, painter, set,
-    set_extra_cursor, set_main_cursor, set_weak, unset_extra_cursor, unset_main_cursor,
+    FormFmt, add_colorscheme, extra_cursor, from_id, id_of, inner_to_id, main_cursor, name_of,
+    painter, set, set_colorscheme, set_extra_cursor, set_main_cursor, set_many, set_weak,
+    unset_extra_cursor, unset_main_cursor,
 };
-use crate::{data::RwLockReadGuard, ui::Sender};
+use crate::{
+    data::RwLockReadGuard,
+    hooks::{self, FormSet},
+    ui::Sender,
+};
 
 pub trait ColorScheme: Send + Sync + 'static {
     fn apply(&self);
@@ -35,8 +40,8 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
     ("Inactive", Form::grey().0, Normal),
     // Tree sitter Forms
     ("type", Form::yellow().italic().0, Normal),
-    ("type.builtin", Form::yellow().normal().0, Normal),
-    ("function", Form::blue().normal().0, Normal),
+    ("type.builtin", Form::yellow().reset().0, Normal),
+    ("function", Form::blue().reset().0, Normal),
     ("comment", Form::grey().0, Normal),
     ("comment.documentation", Form::grey().bold().0, Normal),
     ("punctuation.bracket", Form::red().0, Normal),
@@ -210,10 +215,7 @@ mod global {
     ///
     /// ```rust
     /// # use duat_core::form::{self, Form, Color};
-    /// form::set(
-    ///     "MainCursor",
-    ///     Form::black().on(Color::Rgb { r: 240, g: 210, b: 200 }),
-    /// );
+    /// form::set("MainCursor", Form::black().on("rgb 240 210 200"));
     /// ```
     ///
     /// However, if possible, Duat will still try to use the main
@@ -351,13 +353,13 @@ mod global {
     /// Adds a [`ColorScheme`] to the list of colorschemes
     ///
     /// This [`ColorScheme`] can then be added via
-    /// [`form::apply_colorscheme`] or through the command
+    /// [`form::set_colorscheme`] or through the command
     /// `colorscheme`.
     ///
     /// If a [`ColorScheme`] of the same name was already added, it
     /// will be overritten.
     ///
-    /// [`form::apply_colorscheme`]: apply_colorscheme
+    /// [`form::set_colorscheme`]: set_colorscheme
     pub fn add_colorscheme(cs: impl ColorScheme) {
         let mut colorschemes = COLORSCHEMES.lock();
         let name = cs.name();
@@ -374,7 +376,7 @@ mod global {
     /// [`form::add_colorscheme`].
     ///
     /// [`form::add_colorscheme`]: add_colorscheme
-    pub fn apply_colorscheme(name: &str) {
+    pub fn set_colorscheme(name: &str) {
         let colorschemes = COLORSCHEMES.lock();
         if let Some(cs) = colorschemes.iter().find(|cs| cs.name() == name) {
             cs.apply()
@@ -382,6 +384,16 @@ mod global {
             crate::context::notify(err!("The colorscheme " [*a] name [] " was not found"));
         }
     }
+
+    /// Calls [`form::set`] on each tuple in the list
+    ///
+    /// [`form::set`]: set
+    pub macro set_many($($entry:expr),+ $(,)?) {{
+        $(
+            let (name, form) = $entry;
+            set(name, form);
+        )+
+    }}
 
     /// A kind of [`Form`]
     #[derive(Clone, Copy)]
@@ -436,6 +448,15 @@ mod global {
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FormId(u16);
 
+impl FormId {
+    /// The internal id of the [`FormId`]
+    ///
+    /// This may be useful in certain situations.
+    pub fn to_u16(self) -> u16 {
+        self.0
+    }
+}
+
 impl std::fmt::Debug for FormId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "FormId({})", name_of(*self))
@@ -446,33 +467,19 @@ impl std::fmt::Debug for FormId {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Form {
     pub style: ContentStyle,
-    /// Wether or not to reset [`Bold`], [`Italic`] and [`Dim`]
-    /// [`Attribute`]s. This can be used alongside these
-    /// [`Attribute`]s. So you can have, e.g. non italic bold text
-    /// within an italicized form.
-    ///
-    /// [`Bold`]: Attribute::Bold
-    /// [`Italic`]: Attribute::Italic
-    /// [`Dim`]: Attribute::Dim
-    pub normal: bool,
 }
 
 #[rustfmt::skip]
 impl Form {
-    mimic_method_new!(/**reset*/ reset Attribute::Reset);
     mimic_method_new!(/**bold*/ bold Attribute::Bold);
-    mimic_method_new!(/**underlined*/ underlined Attribute::Underlined);
-    mimic_method_new!(/**reverse*/ reverse Attribute::Reverse);
     mimic_method_new!(/**dim*/ dim Attribute::Dim);
     mimic_method_new!(/**italic*/ italic Attribute::Italic);
-    mimic_method_new!(/**negative*/ negative Attribute::Reverse);
-    mimic_method_new!(/**slow_blink*/ slow_blink Attribute::SlowBlink);
-    mimic_method_new!(/**rapid_blink*/ rapid_blink Attribute::RapidBlink);
-    mimic_method_new!(/**hidden*/ hidden Attribute::Hidden);
-    mimic_method_new!(/**crossed_out*/ crossed_out Attribute::CrossedOut);
+    mimic_method_new!(/**underlined*/ underlined Attribute::Underlined);
     mimic_method_new!(/**double_underlined*/ double_underlined Attribute::DoubleUnderlined);
     mimic_method_new!(/**undercurled*/ undercurled Attribute::Undercurled);
     mimic_method_new!(/**underdashed*/ underdashed Attribute::Underdashed);
+    mimic_method_new!(/**reverse*/ reverse Attribute::Reverse);
+    mimic_method_new!(/**crossed_out*/ crossed_out Attribute::CrossedOut);
     mimic_method_new!(/**black*/ black on_black underline_black Color::Black);
     mimic_method_new!(/**dark_grey*/ dark_grey on_dark_grey underline_dark_grey Color::DarkGrey);
     mimic_method_new!(/**red*/ red on_red underline_red Color::Red);
@@ -495,7 +502,9 @@ impl Form {
     mimic_method_new!(/**dark_cyan*/ dark_cyan on_dark_cyan underline_dark_cyan Color::DarkCyan);
     mimic_method_new!(/**white*/ white on_white underline_white Color::White);
     mimic_method_new!(/**grey*/ grey on_grey underline_grey Color::Grey);
+}
 
+impl Form {
     /// Returns a new [`Form`] with a default style
     ///
     /// This method actually returns [`BuiltForm`]
@@ -507,29 +516,25 @@ impl Form {
             underline_color: None,
             attributes: Attributes::none(),
         };
-        BuiltForm(Self { style, normal: false })
+        BuiltForm(Self { style })
     }
 
-    /// Returns a new [`Form`] with a default _normal_ style
+    /// Returns a new [`Form`] with the [`Reset`] attribute
     ///
-    /// A normal [`Form`] is one that resets specifically the
-    /// [`Bold`], [`Italic`] and [`Dim`] [`Attribute`]s. This can
-    /// be used alongside these [`Attribute`]s. So you can have
-    /// e.g., non italic bold text within an italicized form.
+    /// In Duat, the [`Reset`] attribute should remove only other
+    /// [`Attribute`]s, not any of the colors in use.
     ///
-    /// [`Bold`]: Attribute::Bold
-    /// [`Italic`]: Attribute::Italic
-    /// [`Dim`]: Attribute::Dim
-    pub const fn normal() -> BuiltForm {
+    /// [`Reset`]: Attribute::Reset
+    pub const fn reset() -> BuiltForm {
         let mut built = Form::new();
-        built.0.normal = true;
+        built.0.style.attributes = built.0.style.attributes.with(Attribute::Reset);
         built
     }
 
     /// New [`Form`] with a colored foreground
     ///
     /// This function accepts three color formats:
-    /// 
+    ///
     /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
     /// - Three rgb values, like `"rgb 123 456 789"`;
     /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
@@ -544,7 +549,7 @@ impl Form {
     /// New [`Form`] with a colored background
     ///
     /// This function accepts three color formats:
-    /// 
+    ///
     /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
     /// - Three rgb values, like `"rgb 123 456 789"`;
     /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
@@ -559,7 +564,7 @@ impl Form {
     /// New [`Form`] with a colored underlining
     ///
     /// This function accepts three color formats:
-    /// 
+    ///
     /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
     /// - Three rgb values, like `"rgb 123 456 789"`;
     /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
@@ -571,16 +576,24 @@ impl Form {
         built
     }
 
-    /// New [`Form`] with an attribute
-    pub const fn attribute(attr: Attribute) -> BuiltForm {
-        let mut built = Form::new();
-        built.0.style.attributes = built.0.style.attributes.with(attr);
-        built
+    /// The foreground color
+    pub const fn fg(&self) -> Option<Color> {
+        self.style.foreground_color
     }
 
-    /// Makes `self` exclusive
-    const fn as_normal(self) -> Self {
-        Self { style: self.style, normal: true }
+    /// The background color
+    pub const fn bg(&self) -> Option<Color> {
+        self.style.background_color
+    }
+
+    /// The foreground color
+    pub const fn ul(&self) -> Option<Color> {
+        self.style.underline_color
+    }
+
+    /// The attributes
+    pub const fn attr(&self) -> Attributes {
+        self.style.attributes
     }
 }
 
@@ -596,20 +609,16 @@ pub struct BuiltForm(Form);
 
 #[rustfmt::skip]
 impl BuiltForm {
-    mimic_method_mod!(/**reset*/ reset Attribute::Reset);
     mimic_method_mod!(/**bold*/ bold Attribute::Bold);
-    mimic_method_mod!(/**underlined*/ underlined Attribute::Underlined);
-    mimic_method_mod!(/**reverse*/ reverse Attribute::Reverse);
     mimic_method_mod!(/**dim*/ dim Attribute::Dim);
     mimic_method_mod!(/**italic*/ italic Attribute::Italic);
-    mimic_method_mod!(/**negative*/ negative Attribute::Reverse);
-    mimic_method_mod!(/**slow_blink*/ slow_blink Attribute::SlowBlink);
-    mimic_method_mod!(/**rapid_blink*/ rapid_blink Attribute::RapidBlink);
-    mimic_method_mod!(/**hidden*/ hidden Attribute::Hidden);
-    mimic_method_mod!(/**crossed_out*/ crossed_out Attribute::CrossedOut);
+    mimic_method_mod!(/**underlined*/ underlined Attribute::Underlined);
     mimic_method_mod!(/**double_underlined*/ double_underlined Attribute::DoubleUnderlined);
     mimic_method_mod!(/**undercurled*/ undercurled Attribute::Undercurled);
     mimic_method_mod!(/**underdashed*/ underdashed Attribute::Underdashed);
+    mimic_method_mod!(/**reverse*/ reverse Attribute::Reverse);
+    mimic_method_mod!(/**crossed_out*/ crossed_out Attribute::CrossedOut);
+    mimic_method_mod!(/**overlined*/ overlined Attribute::OverLined);
     mimic_method_mod!(/**black*/ black on_black underline_black Color::Black);
     mimic_method_mod!(/**dark_grey*/ dark_grey on_dark_grey underline_dark_grey Color::DarkGrey);
     mimic_method_mod!(/**red*/ red on_red underline_red Color::Red);
@@ -632,25 +641,24 @@ impl BuiltForm {
     mimic_method_mod!(/**dark_cyan*/ dark_cyan on_dark_cyan underline_dark_cyan Color::DarkCyan);
     mimic_method_mod!(/**white*/ white on_white underline_white Color::White);
     mimic_method_mod!(/**grey*/ grey on_grey underline_grey Color::Grey);
+}
 
-    /// Makes this [`Form`] normal
+impl BuiltForm {
+    /// Adds the [`Reset`] attribute to this [`Form`]
     ///
-    /// A normal [`Form`] is one that resets specifically the
-    /// [`Bold`], [`Italic`] and [`Dim`] [`Attribute`]s. This can
-    /// be used alongside these [`Attribute`]s. So you can have
-    /// e.g., non italic bold text within an italicized form.
+    /// In Duat, the [`Reset`] attribute should remove only other
+    /// [`Attribute`]s, not any of the colors in use.
     ///
-    /// [`Bold`]: Attribute::Bold
-    /// [`Italic`]: Attribute::Italic
-    /// [`Dim`]: Attribute::Dim
-    pub const fn normal(self) -> Self {
-        Self(Form { normal: true, ..self.0 })
+    /// [`Reset`]: Attribute::Reset
+    pub const fn reset(mut self) -> BuiltForm {
+        self.0.style.attributes = self.0.style.attributes.with(Attribute::Reset);
+        self
     }
 
     /// Colors the foreground of this [`Form`]
     ///
     /// This function accepts three color formats:
-    /// 
+    ///
     /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
     /// - Three rgb values, like `"rgb 123 456 789"`;
     /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
@@ -664,7 +672,7 @@ impl BuiltForm {
     /// Colors the background of this [`Form`]
     ///
     /// This function accepts three color formats:
-    /// 
+    ///
     /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
     /// - Three rgb values, like `"rgb 123 456 789"`;
     /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
@@ -678,7 +686,7 @@ impl BuiltForm {
     /// Colors the underlining of this [`Form`]
     ///
     /// This function accepts three color formats:
-    /// 
+    ///
     /// - A hexcode, like `"#abcdef"`, capitalization is ignored;
     /// - Three rgb values, like `"rgb 123 456 789"`;
     /// - Three hsl values, like `"hsl {hue} {sat} {lit}"`, where
@@ -687,12 +695,6 @@ impl BuiltForm {
     pub const fn underline(mut self, str: &str) -> Self {
         self.0.style.underline_color = Some(str_to_color(str));
         self
-    }
-
-    /// Applies an attribute to this [`Form`]
-    pub const fn attribute(mut self, attr: Attribute) -> Self {
-        self.0.style.attributes = self.0.style.attributes.with(attr);
-        Self(self.0)
     }
 }
 
@@ -742,14 +744,9 @@ impl Palette {
 
     /// Sets a [`Form`]
     fn set_form(&self, name: &'static str, form: Form) {
-        let form = match name {
-            "MainCursor" | "ExtraCursor" => form.as_normal(),
-            _ => form,
-        };
-
         let mut inner = self.0.write();
 
-        if let Some(i) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
+        let id = if let Some(i) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
             inner.forms[i].1 = form;
 
             for refed in refs_of(&inner, i) {
@@ -759,18 +756,17 @@ impl Palette {
             if let Some(sender) = SENDER.get() {
                 sender.send_form_changed().unwrap()
             }
+            FormId(i as u16)
         } else {
             inner.forms.push((name, form, FormType::Normal));
+            FormId(inner.forms.len() as u16 - 1)
         };
+
+        hooks::trigger::<FormSet>((name, id, form));
     }
 
     /// Sets a [`Form`] "weakly"
     fn set_weak_form(&self, name: &'static str, form: Form) {
-        let form = match name {
-            "MainCursor" | "ExtraCursor" => form.as_normal(),
-            _ => form,
-        };
-
         let mut inner = self.0.write();
 
         if let Some(i) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
@@ -931,92 +927,110 @@ impl Palette {
         let default = inner.forms[DEFAULT_ID.0 as usize].1;
         Painter {
             inner,
-            cur: vec![(default, DEFAULT_ID)],
-            cur_sty: default.style,
+            forms: vec![(default, DEFAULT_ID)],
+            reset_count: 0,
+            final_form_start: 1,
         }
     }
 }
 
 pub struct Painter {
     inner: RwLockReadGuard<'static, InnerPalette>,
-    cur: Vec<(Form, FormId)>,
-    cur_sty: ContentStyle,
+    forms: Vec<(Form, FormId)>,
+    reset_count: usize,
+    final_form_start: usize,
 }
 
 impl Painter {
     /// Applies the `Form` with the given `id` and returns the result,
     /// given previous triggers.
+    ///
+    /// Will return a [`Form`] _relative_ to what the previous
+    /// [`Form`] was, that is, if the new [`Form`] doesn't include a
+    /// background, its combination with the other [`Form`]s also
+    /// won't, since it wasn't changed.
     #[inline(always)]
     pub fn apply(&mut self, id: FormId) -> ContentStyle {
         let i = id.0 as usize;
         let forms = &self.inner.forms;
         let form = forms.get(i).map(|(_, f, _)| *f).unwrap_or(Form::new().0);
 
-        // So the cursor is always the last form
-        self.cur.push((form, id));
-        self.cur_sty = self.make_style();
-        self.cur_sty
+        self.reset_count += form.style.attributes.has(Attribute::Reset) as usize;
+
+        self.forms.insert(self.final_form_start, (form, id));
+        self.final_form_start += 1;
+
+        if self.reset_count > 0 {
+            absolute_style(&self.forms)
+        } else {
+            relative_style(&self.forms)
+        }
     }
 
     /// Removes the [`Form`] with the given `id` and returns the
     /// result, given previous triggers.
     #[inline(always)]
-    pub fn remove(&mut self, id: FormId) -> ContentStyle {
-        let mut applied_forms = self.cur.iter().enumerate();
-        if let Some((index, _)) = applied_forms.rfind(|(_, &(_, i))| i == id) {
-            self.cur.remove(index);
-            self.cur_sty = self.make_style();
+    pub fn remove(&mut self, form_id: FormId) -> ContentStyle {
+        let mut applied_forms = self.forms.iter().enumerate();
+        if let Some((i, &(form, _))) = applied_forms.rfind(|(_, &(_, id))| id == form_id) {
+            self.reset_count -= form.style.attributes.has(Attribute::Reset) as usize;
+            self.forms.remove(i);
+            self.final_form_start -= 1;
+            if self.reset_count > 0 || !form.style.attributes.is_empty() {
+                let mut style = absolute_style(&self.forms);
+                style.attributes.set(Attribute::Reset);
+                style
+            } else {
+                let mut style = relative_style(&self.forms);
+                style.foreground_color = form.fg().and(style.foreground_color);
+                style.background_color = form.bg().and(style.background_color);
+                style.underline_color = form.ul().and(style.underline_color);
+                style
+            }
+        } else {
+            relative_style(&self.forms)
         }
-        self.cur_sty
     }
 
     #[inline(always)]
     pub fn reset(&mut self) -> ContentStyle {
-        self.cur.splice(1.., []);
-        self.cur_sty = self.make_style();
-        self.cur_sty
+        self.forms.splice(1.., []);
+        self.make_style()
     }
 
     /// Generates the form to be printed, given all the previously
     /// pushed forms in the `Form` stack.
     #[inline(always)]
     pub fn make_style(&self) -> ContentStyle {
-        let mut form = Form::new().0;
-
-        for &(Form { style, normal }, _) in &self.cur {
-            if normal {
-                form.style.attributes.unset(Attribute::Bold);
-                form.style.attributes.unset(Attribute::Italic);
-                form.style.attributes.unset(Attribute::Dim);
-            }
-
-            form.style.foreground_color = style.foreground_color.or(form.style.foreground_color);
-            form.style.background_color = style.background_color.or(form.style.background_color);
-            form.style.underline_color = style.underline_color.or(form.style.underline_color);
-            form.style.attributes.extend(style.attributes);
-        }
-
-        form.style
+        absolute_style(&self.forms)
     }
 
     #[inline(always)]
     pub fn apply_main_cursor(&mut self) -> ContentStyle {
-        self.apply(M_CUR_ID)
+        let style = self.apply(M_CUR_ID);
+        self.final_form_start -= 1;
+        style
     }
 
     #[inline(always)]
     pub fn remove_main_cursor(&mut self) -> ContentStyle {
-        self.remove(M_CUR_ID)
+        let style = self.remove(M_CUR_ID);
+        self.final_form_start += 1;
+        style
     }
 
     #[inline(always)]
     pub fn apply_extra_cursor(&mut self) -> ContentStyle {
-        self.apply(E_CUR_ID)
+        let style = self.apply(E_CUR_ID);
+        self.final_form_start -= 1;
+        style
     }
 
     #[inline(always)]
     pub fn remove_extra_cursor(&mut self) -> ContentStyle {
-        self.remove(E_CUR_ID)
+        let style = self.remove(E_CUR_ID);
+        self.final_form_start += 1;
+        style
     }
 
     /// The [`Form`] "ExtraCursor", and its shape.
@@ -1031,7 +1045,7 @@ impl Painter {
 
     /// The `"Default"` form's [`Form`]
     pub fn get_default(&self) -> Form {
-        self.cur[0].0
+        self.forms[0].0
     }
 }
 
@@ -1075,8 +1089,44 @@ fn would_be_circular(inner: &RwLockWriteGuard<InnerPalette>, referee: usize, ref
     }
 }
 
+/// Returns a relative [`Form`]
+///
+/// Assumes that there are no [`Attribute::Reset`]s in any of the
+/// [`Form`]s.
+fn relative_style(list: &[(Form, FormId)]) -> ContentStyle {
+    let mut style = ContentStyle::new();
+
+    for &(form, _) in list {
+        style.foreground_color = form.fg();
+        style.background_color = form.bg();
+        style.underline_color = form.ul();
+        style.attributes.extend(form.attr());
+    }
+
+    style
+}
+
+/// Returns an absolute [`Form`]
+fn absolute_style(list: &[(Form, FormId)]) -> ContentStyle {
+    let mut style = ContentStyle::new();
+
+    for &(form, _) in list {
+        style.foreground_color = form.fg().or(style.foreground_color);
+        style.background_color = form.bg().or(style.background_color);
+        style.underline_color = form.ul().or(style.underline_color);
+        style.attributes = if form.attr().has(Attribute::Reset) {
+            form.attr()
+        } else {
+            form.attr() | style.attributes
+        }
+    }
+
+    style
+}
+
 /// Converts a string to a color, supporst hex, RGB and HSL
 const fn str_to_color(str: &str) -> Color {
+    use core::str::from_utf8_unchecked as utf8_str;
     const fn strip_prefix<'a>(prefix: &str, str: &'a str) -> Option<&'a str> {
         let prefix = prefix.as_bytes();
         let str = str.as_bytes();
@@ -1090,7 +1140,7 @@ const fn str_to_color(str: &str) -> Color {
         }
 
         let (_, str) = str.split_at(prefix.len());
-        Some(unsafe { core::str::from_utf8_unchecked(str) })
+        Some(unsafe { utf8_str(str) })
     }
     const fn strip_suffix<'a>(suffix: &str, str: &'a str) -> Option<&'a str> {
         let prefix = suffix.as_bytes();
@@ -1105,27 +1155,25 @@ const fn str_to_color(str: &str) -> Color {
         }
 
         let (str, _) = str.split_at(str.len() - suffix.len());
-        Some(unsafe { core::str::from_utf8_unchecked(str) })
+        Some(unsafe { utf8_str(str) })
     }
     const fn split_space(str: &str) -> Option<(&str, &str)> {
+        if str.is_empty() {
+            return None;
+        }
         let str = str.as_bytes();
 
         let mut i = 0;
         while i < str.len() {
             if str[i] == b' ' {
-                let (cut, rest) = str.split_at(i);
-                let (_, rest) = rest.split_at(1);
-                return Some(unsafe {
-                    (
-                        core::str::from_utf8_unchecked(cut),
-                        core::str::from_utf8_unchecked(rest),
-                    )
-                });
+                break;
             }
             i += 1;
         }
 
-        None
+        let (cut, rest) = str.split_at(i);
+        let (_, rest) = rest.split_at(if rest.is_empty() { 0 } else { 1 });
+        Some(unsafe { (utf8_str(cut), utf8_str(rest)) })
     }
     const fn hue_to_rgb(p: f32, q: f32, mut t: f32) -> f32 {
         t = if t < 0.0 { t + 1.0 } else { t };

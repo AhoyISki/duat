@@ -11,7 +11,7 @@ use cassowary::{AddConstraintError, Solver, Variable, strength::STRONG};
 use crossterm::{
     cursor::{self, MoveTo, MoveToColumn, MoveToNextLine},
     execute,
-    style::{Print, ResetColor, SetStyle},
+    style::{Attribute, Print, ResetColor, SetStyle},
     terminal,
 };
 use duat_core::{
@@ -20,7 +20,7 @@ use duat_core::{
 };
 
 use self::frame::Edge;
-use crate::{Coords, Equality, area::Coord};
+use crate::{Coords, Equality, area::Coord, queue, style};
 
 mod frame;
 mod line;
@@ -373,7 +373,6 @@ impl Sender {
     }
 }
 
-#[derive(Debug)]
 pub struct Lines {
     bytes: Vec<u8>,
     cutoffs: Vec<usize>,
@@ -388,18 +387,34 @@ pub struct Lines {
     align: Alignment,
 }
 
+impl std::fmt::Debug for Lines {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Lines")
+            .field("bytes", unsafe {
+                &core::str::from_utf8_unchecked(&self.bytes)
+            })
+            .field("cutoffs", &self.cutoffs)
+            .field("coords", &self.coords)
+            .field("real_cursor", &self.real_cursor)
+            .field("line", unsafe {
+                &core::str::from_utf8_unchecked(&self.line)
+            })
+            .field("len", &self.len)
+            .field("shift", &self.shift)
+            .field("cap", &self.cap)
+            .field("positions", &self.positions)
+            .field("align", &self.align)
+            .finish()
+    }
+}
+
 impl Lines {
     pub fn push_char(&mut self, char: char, len: u32) {
         self.len += len;
-        if char.is_ascii() {
-            self.positions.push((self.line.len(), len));
-            self.line.push(char as u8)
-        } else {
-            let mut bytes = [0; 4];
-            char.encode_utf8(&mut bytes);
-            self.positions.push((self.line.len(), len));
-            self.line.extend(&bytes[..char.len_utf8()]);
-        }
+        let mut bytes = [0; 4];
+        char.encode_utf8(&mut bytes);
+        self.positions.push((self.line.len(), len));
+        self.line.extend(&bytes[..char.len_utf8()]);
     }
 
     pub fn realign(&mut self, alignment: Alignment) {
@@ -446,7 +461,8 @@ impl Write for Lines {
 
     fn flush(&mut self) -> std::io::Result<()> {
         const BLANK: [u8; 1000] = [b' '; 1000];
-        let default_form = duat_core::form::from_id(DEFAULT_ID);
+        let mut default_form = duat_core::form::from_id(DEFAULT_ID);
+        default_form.style.attributes.set(Attribute::Reset);
 
         let align_start = match self.align {
             Alignment::Left => 0,
@@ -459,8 +475,10 @@ impl Write for Lines {
             let Some(&(start, len)) = self.positions.iter().find(|(_, len)| {
                 dist += len;
                 dist > self.shift
+                // Situation where the line is empty, from having no
+                // characters or from being shifted out of sight.
             }) else {
-                queue!(self.bytes, ResetColor, SetStyle(default_form.style));
+                style!(self.bytes, default_form.style);
                 self.bytes
                     .extend_from_slice(&BLANK[..self.coords.width() as usize]);
                 self.cutoffs.push(self.bytes.len());
@@ -488,7 +506,7 @@ impl Write for Lines {
                 dist -= len;
                 dist < self.shift + self.coords.width()
             }) else {
-                queue!(self.bytes, ResetColor, SetStyle(default_form.style));
+                style!(self.bytes, default_form.style);
                 self.bytes
                     .extend_from_slice(&BLANK[..self.coords.width() as usize]);
                 self.cutoffs.push(self.bytes.len());
@@ -509,7 +527,7 @@ impl Write for Lines {
             }
         };
 
-        queue!(self.bytes, ResetColor, SetStyle(default_form.style));
+        style!(self.bytes, default_form.style);
         self.bytes.extend_from_slice(&BLANK[..start_d as usize]);
 
         let mut adding_ansi = false;
@@ -526,9 +544,11 @@ impl Write for Lines {
         }
 
         self.bytes.extend_from_slice(&self.line[start_i..end_i]);
-        queue!(self.bytes, ResetColor, SetStyle(default_form.style));
-        self.bytes
-            .extend_from_slice(&BLANK[..(self.coords.width() - end_d) as usize]);
+        if self.coords.width() > end_d {
+            style!(self.bytes, default_form.style);
+            self.bytes
+                .extend_from_slice(&BLANK[..(self.coords.width() - end_d) as usize]);
+        }
         self.cutoffs.push(self.bytes.len());
 
         self.line.clear();
@@ -648,10 +668,6 @@ fn print_edges(edges: &[Edge]) {
             Print(line::crossing(right, up, left, down, true))
         )
     }
-}
-
-macro queue($writer:expr $(, $command:expr)* $(,)?) {
-    unsafe { crossterm::queue!($writer $(, $command)*).unwrap_unchecked() }
 }
 
 fn key(entry: &(Variable, SavedVar)) -> Variable {

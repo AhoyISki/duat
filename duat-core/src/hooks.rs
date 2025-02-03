@@ -30,6 +30,7 @@
 //!   [key] sent to it.
 //! - [`KeySentTo`], unlike [`KeySent`], lets you act on a specific
 //!   [widget], given a [key].
+//!   [`FormSet`] triggers whenever a [`Form`] is added/altered.
 //!
 //! # A note on execution
 //!
@@ -65,6 +66,7 @@ use parking_lot::{Mutex, RwLock};
 pub use self::global::*;
 use crate::{
     data::RwData,
+    form::{Form, FormId},
     mode::{Cursors, KeyEvent},
     ui::{Area, FileBuilder, Ui, WindowBuilder},
     widgets::Widget,
@@ -214,6 +216,23 @@ pub struct KeySentTo<W: Widget<U>, U: Ui>(PhantomData<(&'static W, U)>);
 
 impl<W: Widget<U>, U: Ui> Hookable for KeySentTo<W, U> {
     type Args = (KeyEvent, RwData<W>);
+}
+
+/// Triggers whenever a [`Form`] is set
+///
+/// This can be a creation or alteration of a [`Form`].
+/// If the [`Form`] is a reference to another, the reference's
+/// [`Form`] will be returned instead.
+///
+/// # Arguments
+///
+/// - The [`Form`]'s name.
+/// - Its [`FormId`].
+/// - Its new value.
+pub struct FormSet;
+
+impl Hookable for FormSet {
+    type Args = (&'static str, FormId, Form);
 }
 
 /// Hook functions

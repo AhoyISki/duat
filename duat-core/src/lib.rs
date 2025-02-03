@@ -735,7 +735,7 @@ pub static LOG: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::ne
 #[doc(hidden)]
 pub macro log_panic($($text:tt)*) {{
     #[cfg(not(debug_assertions))] {
-    	compile_error!("You are not supposed to use log_info on release profiles!");
+        compile_error!("You are not supposed to use log_panic on release profiles!");
     }
 
     use std::{fmt::Write, time::Instant};
@@ -777,7 +777,7 @@ pub macro log_panic($($text:tt)*) {{
 #[doc(hidden)]
 pub macro log_file($($text:tt)*) {{
     #[cfg(not(debug_assertions))] {
-    	compile_error!("You are not supposed to use log_info on release profiles!");
+        compile_error!("You are not supposed to use log_file on release profiles!");
     }
 
     let mut file = std::io::BufWriter::new(

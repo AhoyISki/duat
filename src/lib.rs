@@ -389,7 +389,9 @@ pub mod cursor {
 
 pub mod form {
     //! Functions to alter the [`Form`]s of Duat
-    pub use duat_core::form::{CursorShape, Form, from_id, id_of, set};
+    pub use duat_core::form::{
+        CursorShape, Form, add_colorscheme, from_id, id_of, set, set_colorscheme,
+    };
 }
 
 pub mod hooks {
@@ -436,6 +438,46 @@ pub mod hooks {
     /// [`widget`]: duat_core::widgets::Widget
     pub type UnfocusedFrom<W> = duat_core::hooks::UnfocusedFrom<W, Ui>;
 }
+
+/// Plugs a list of plugins
+///
+/// These plugins should use the builder construction pattern, i.e.,
+/// they should look like this:
+///
+/// ```rust
+/// pub struct MyPlugin {
+///     // ..options
+/// }
+///
+/// impl MyPlugin {
+///     pub fn new() -> Self {
+///         // ...
+///         # todo!();
+///     }
+///
+///     pub fn modify1(self, parameter: bool) -> Self {
+///         // ...
+///         # todo!();
+///     }
+///
+///     pub fn modify2(self, parameter: i32) -> Self {
+///         // ...
+///         # todo!();
+///     }
+///
+///     pub fn plug(self) {
+///         // Finally applies the plugin, after all alterations
+///     }
+/// }
+/// ```
+///
+/// As you can see above, they should also have a `plug` method, which
+/// consumes the plugin.
+pub macro plug($($plugin:expr),+) {{
+    $(
+        $plugin.plug();
+    )+
+}}
 
 pub mod widgets {
     //! Duat's builtin widgets
@@ -494,7 +536,7 @@ pub mod prelude {
         form::{self, CursorShape, Form},
         hooks::{self, ModeSwitched, OnFileOpen, OnWindowOpen},
         mode::{self, Cursors, Mode, alias, map},
-        print, setup_duat,
+        plug, print, setup_duat,
         state::*,
         widgets::*,
     };

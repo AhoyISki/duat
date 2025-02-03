@@ -109,11 +109,11 @@ fn words<'a>(
                 if cfg.word_chars().contains(char) {
                     word_len += len_from(char, x + word_len, cap, &cfg)
                 } else {
-                    word.push(iter.next().map(|item| item).unwrap());
+                    word.push(iter.next().unwrap());
                     break;
                 }
             }
-            word.push(iter.next().map(|item| item).unwrap());
+            word.push(iter.next().unwrap());
         }
 
         needs_wrap |= x + word_len > cap;

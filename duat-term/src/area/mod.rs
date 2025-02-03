@@ -2,10 +2,7 @@ mod iter;
 
 use std::{fmt::Alignment, io::Write};
 
-use crossterm::{
-    cursor,
-    style::{ResetColor, SetStyle},
-};
+use crossterm::{cursor, style::Attribute};
 use duat_core::{
     cache::{Deserialize, Serialize},
     cfg::{IterCfg, PrintCfg},
@@ -16,13 +13,7 @@ use duat_core::{
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
 
-use crate::{AreaId, ConstraintErr, layout::Layout};
-
-macro_rules! queue {
-    ($writer:expr $(, $command:expr)* $(,)?) => {
-        unsafe { crossterm::queue!($writer $(, $command)*).unwrap_unchecked() }
-    }
-}
+use crate::{AreaId, ConstraintErr, layout::Layout, queue, style};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Coord {
@@ -148,8 +139,8 @@ impl Area {
                         break;
                     }
                     (0..x).for_each(|_| lines.push_char(' ', 1));
-                    queue!(lines, SetStyle(painter.make_style()));
-                    if part.is_char() {
+                    style!(lines, painter.make_style());
+                    if part.is_char() || y > sender.coords().tl.y {
                         y += 1
                     }
                 }
@@ -162,18 +153,17 @@ impl Area {
                             char => lines.push_char(char, len),
                         }
                         if let Some(cursor) = cursor.take() {
-                            let style = match cursor {
+                            style!(lines, match cursor {
                                 Cursor::Main => painter.remove_main_cursor(),
                                 Cursor::Extra => painter.remove_extra_cursor(),
-                            };
-                            queue!(lines, ResetColor, SetStyle(style));
+                            })
                         }
                     }
                     Part::PushForm(id) => {
-                        queue!(lines, ResetColor, SetStyle(painter.apply(id)));
+                        style!(lines, painter.apply(id));
                     }
                     Part::PopForm(id) => {
-                        queue!(lines, ResetColor, SetStyle(painter.remove(id)))
+                        style!(lines, painter.remove(id));
                     }
                     Part::MainCursor => {
                         if let Some(shape) = painter.main_cursor()
@@ -184,12 +174,12 @@ impl Area {
                         } else {
                             cursor = Some(Cursor::Main);
                             lines.hide_real_cursor();
-                            queue!(lines, ResetColor, SetStyle(painter.apply_main_cursor()));
+                            style!(lines, painter.apply_main_cursor());
                         }
                     }
                     Part::ExtraCursor => {
-                        queue!(lines, SetStyle(painter.apply_extra_cursor()));
                         cursor = Some(Cursor::Extra);
+                        style!(lines, painter.apply_extra_cursor());
                     }
                     Part::AlignLeft if !cfg.wrap_method().is_no_wrap() => {
                         lines.realign(Alignment::Left)
@@ -201,7 +191,7 @@ impl Area {
                         lines.realign(Alignment::Right)
                     }
                     Part::ResetState => {
-                        queue!(lines, SetStyle(painter.reset()))
+                        style!(lines, painter.reset())
                     }
                     Part::ToggleStart(_) => todo!(),
                     Part::ToggleEnd(_) => todo!(),

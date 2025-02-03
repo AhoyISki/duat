@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{
-    cache::{delete_cache, load_cache, store_cache},
+    cache::{delete_cache, store_cache},
     cfg::PrintCfg,
     cmd, context,
     data::RwData,
@@ -244,7 +244,7 @@ impl<U: Ui> Session<U> {
                     set_mode();
                 }
 
-                if let Ok(event) = rx.recv_timeout(Duration::from_millis(10)) {
+                if let Ok(event) = rx.recv_timeout(Duration::from_millis(50)) {
                     match event {
                         Event::Key(key) => mode::send_key(key),
                         Event::Resize | Event::FormChange => {
