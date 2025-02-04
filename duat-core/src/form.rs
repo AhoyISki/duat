@@ -11,6 +11,7 @@ pub use self::global::{
     painter, set, set_colorscheme, set_extra_cursor, set_main_cursor, set_many, set_weak,
     unset_extra_cursor, unset_main_cursor,
 };
+pub(crate) use self::global::colorscheme_exists;
 use crate::{
     data::RwLockReadGuard,
     hooks::{self, FormSet},
@@ -394,6 +395,12 @@ mod global {
             set(name, form);
         )+
     }}
+
+    /// Wether or not a specific [`ColorScheme`] was added
+    pub(crate) fn colorscheme_exists(name: &str) -> bool {
+        let colorschemes = COLORSCHEMES.lock();
+        colorschemes.iter().any(|cs| cs.name() == name)
+    }
 
     /// A kind of [`Form`]
     #[derive(Clone, Copy)]

@@ -131,7 +131,6 @@
 //! ```
 //!
 //! [`Form`]: crate::form::Form
-
 pub use duat_core::cmd::{Args, Flags, add, run};
 
 /// Adds a command that can mutate a widget of the given type,
@@ -314,7 +313,6 @@ pub use duat_core::cmd::{Args, Flags, add, run};
 /// [`Form`]: crate::form::Form
 /// [`form::set`]: crate::form::set
 /// [`form::set_weak`]: duat_core::form::set_weak
-pub macro add_for($tokens:tt) {{
-    use $crate::Ui;
-    duat_core::cmd::add_for(Ui, callers, f)
+pub macro add_for($($tokens:tt)+) {{
+    $crate::prelude::duat_core::cmd::add_for!($crate::Ui, $($tokens)+)
 }}

@@ -228,7 +228,7 @@ impl<U: Ui> CmdLineMode<U> for RunCommands<U> {
         let command = text.to_string();
         let caller = command.split_whitespace().next();
         if let Some(caller) = caller {
-            if let Some((ok_ranges, err_range)) = cmd::check_params(caller) {
+            if let Some((ok_ranges, err_range)) = cmd::check_params(&command) {
                 let id = form::id_of!("CallerExists");
                 text.insert_tag(0, Tag::PushForm(id), self.key);
                 text.insert_tag(caller.len() as u32, Tag::PopForm(id), self.key);
@@ -263,6 +263,8 @@ impl<U: Ui> CmdLineMode<U> for RunCommands<U> {
     fn once() {
         form::set_weak("CallerExists", "AccentOk");
         form::set_weak("CallerNotFound", "AccentErr");
+        form::set_weak("ParameterOk", "AccentOk");
+        form::set_weak("ParameterErr", "AccentErr");
     }
 }
 

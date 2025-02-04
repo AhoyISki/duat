@@ -200,7 +200,8 @@ mod control {
             ok!("Switched to " [*a] name)
         })?;
 
-        cmd::add!("colorscheme", |_, scheme: &str| {
+        cmd::add!("colorscheme", |_, scheme: super::ColorScheme| {
+            crate::log_file!("{scheme}");
             crate::form::set_colorscheme(scheme);
             ok!("Set colorscheme to " [*a] scheme [])
         })?;
@@ -253,6 +254,40 @@ mod global {
     /// Since `var` is an [`RwData`], it will be updated
     /// automatically in the [`StatusLine`]
     ///
+    /// [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
+    /// [`RoData`]: crate::data::RoData
+    /// [`RwData`]: crate::data::RwData
+    pub macro add(
+        $callers:expr, $($mv:ident)? |$flags:pat_param $(, $arg:ident: $t:ty)*| $f:block
+    ) {{
+			#[allow(unused_variables, unused_mut)]
+            let cmd = $($mv)? |$flags: Flags, mut args: Args| {
+                $(
+                    let $arg: <$t as Parameter>::Returns = <$t as Parameter>::new(&mut args)?;
+                )*
+
+                $f
+            };
+
+			#[allow(unused_variables, unused_mut)]
+            fn param_checker(mut args: Args) -> (Vec<Range<u32>>, Option<Range<u32>>) {
+                let mut ok_ranges = Vec::new();
+
+                $(
+                    match args.next_as_with_range::<$t>() {
+                        Ok((_, range)) => if !range.is_empty() {
+                            ok_ranges.push(range);
+                        }
+                        Err((_, range)) => return (ok_ranges, Some(range))
+                    }
+                )*
+
+                (ok_ranges, None)
+            }
+
+            add_inner($callers, cmd, param_checker)
+    }}
+
     /// Adds a command that can mutate a widget of the given type,
     /// along with its associated [`dyn Area`].
     ///
@@ -425,9 +460,6 @@ mod global {
     /// use [`form::set_weak`] instead of [`form::set`], as to not
     /// interfere with the user configuration.
     ///
-    /// [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
-    /// [`RoData`]: crate::data::RoData
-    /// [`RwData`]: crate::data::RwData
     /// [`dyn Area`]: crate::ui::Area
     /// [`File`]: crate::widgets::File
     /// [`Session`]: crate::session::Session
@@ -436,37 +468,6 @@ mod global {
     /// [`Form`]: crate::form::Form
     /// [`form::set`]: crate::form::set
     /// [`form::set_weak`]: crate::form::set_weak
-    pub macro add(
-        $callers:expr, $($mv:ident)? |$flags:pat_param $(, $arg:ident: $t:ty)*| $f:block
-    ) {{
-			#[allow(unused_variables, unused_mut)]
-            let cmd = $($mv)? |$flags: Flags, mut args: Args| {
-                $(
-                    let $arg: <$t as Parameter>::Returns = <$t as Parameter>::new(&mut args)?;
-                )*
-
-                $f
-            };
-
-			#[allow(unused_variables, unused_mut)]
-            fn param_checker(mut args: Args) -> (Vec<Range<u32>>, Option<Range<u32>>) {
-                let mut ok_ranges = Vec::new();
-
-                $(
-                    match args.next_as_with_range::<$t>() {
-                        Ok((_, range)) => if !range.is_empty() {
-                            ok_ranges.push(range);
-                        }
-                        Err((_, range)) => return (ok_ranges, Some(range))
-                    }
-                )*
-
-                (ok_ranges, None)
-            }
-
-            add_inner($callers, cmd, param_checker)
-    }}
-
     pub macro add_for($ui:ty, $callers:expr, $($mv:ident)? |
         $widget:ident: $w_ty:ty, $area:pat_param, $cursors:pat_param,
         $flags:pat_param $(, $arg:ident: $t:ty)*
@@ -620,7 +621,11 @@ mod global {
         COMMANDS.run_notify(call)
     }
 
-    pub(crate) fn add_inner<'a>(
+    /// Don't call this function, use [`cmd::add`] instead
+    ///
+    /// [`cmd::add`]: add
+    #[doc(hidden)]
+    pub fn add_inner<'a>(
         callers: impl super::Caller<'a>,
         cmd: impl FnMut(Flags, Args) -> CmdResult + 'static,
         param_checker: fn(Args) -> (Vec<Range<u32>>, Option<Range<u32>>),
@@ -628,7 +633,11 @@ mod global {
         COMMANDS.add(callers.into_callers(), cmd, param_checker)
     }
 
-    pub(crate) fn add_for_inner<'a, W: Widget<U>, U: Ui>(
+    /// Don't call this function, use [`cmd::add_for`] instead
+    ///
+    /// [`cmd::add_for`]: add_for
+    #[doc(hidden)]
+    pub fn add_for_inner<'a, W: Widget<U>, U: Ui>(
         callers: impl super::Caller<'a>,
         cmd: impl FnMut(&mut W, &U::Area, &mut Cursors, Flags, Args) -> CmdResult + 'static,
         param_checker: fn(Args) -> (Vec<Range<u32>>, Option<Range<u32>>),
@@ -987,6 +996,21 @@ impl Parameter<'_> for Remainder {
     fn new(args: &mut Args) -> std::result::Result<Self::Returns, Text> {
         let args = std::iter::from_fn(|| args.next().ok());
         Ok(args.intersperse(" ").collect())
+    }
+}
+
+struct ColorScheme;
+
+impl<'a> Parameter<'a> for ColorScheme {
+    type Returns = &'a str;
+
+    fn new(args: &mut Args<'a>) -> std::result::Result<Self::Returns, Text> {
+        let scheme = args.next()?;
+        if crate::form::colorscheme_exists(scheme) {
+            Ok(scheme)
+        } else {
+            Err(err!("The colorscheme " [*a] scheme [] " was not found"))
+        }
     }
 }
 

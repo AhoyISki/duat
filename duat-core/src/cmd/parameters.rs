@@ -119,7 +119,10 @@ impl InnerFlags<'_> {
 }
 
 mod args_iter {
-    /// Takes the [`Flags`] from an [`Iterator`] of `args`.
+    /// Splits a command into [`Args`] and [`Flags`]
+    ///
+    /// [`Args`]: super::Args
+    /// [`Flags`]: super::Flags
     pub fn split_flags_and_args(command: &str) -> (super::InnerFlags<'_>, super::Args<'_>) {
         let mut blob = String::new();
         let mut word = Vec::new();
@@ -151,7 +154,9 @@ mod args_iter {
             })
         });
         let mut args = args.peekable();
+        args.next();
         let mut byte = 0;
+
         while let Some((arg, range)) = args.peek() {
             if let Some(word_arg) = arg.strip_prefix("--") {
                 if !word_arg.is_empty() {
