@@ -134,7 +134,7 @@
 
 pub use duat_core::cmd::{Args, Flags};
 use duat_core::{
-    cmd::{self, CmdResult},
+    cmd::{self, Caller, CmdResult},
     mode::Cursors,
     text::Text,
     widgets::Widget,
@@ -215,8 +215,8 @@ pub fn run(call: impl std::fmt::Display) -> Result<Option<Text>> {
 /// [`RwData`]: duat_core::data::RwData
 /// [`RoData`]: duat_core::data::RoData
 #[inline(never)]
-pub fn add(
-    callers: impl IntoIterator<Item = impl ToString>,
+pub fn add<'a>(
+    callers: impl Caller<'a>,
     f: impl FnMut(Flags, Args) -> CmdResult + 'static,
 ) -> Result<()> {
     cmd::add(callers, f)
@@ -403,8 +403,8 @@ pub fn add(
 /// [`form::set`]: crate::form::set
 /// [`form::set_weak`]: duat_core::form::set_weak
 #[inline(never)]
-pub fn add_for<W: Widget<Ui>>(
-    callers: impl IntoIterator<Item = impl ToString>,
+pub fn add_for<'a, W: Widget<Ui>>(
+    callers: impl Caller<'a>,
     f: impl FnMut(&mut W, &Area, &mut Cursors, Flags, Args) -> CmdResult + 'static,
 ) -> Result<()> {
     cmd::add_for(callers, f)

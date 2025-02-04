@@ -156,7 +156,7 @@ mod control {
             ok!("Switched to " [*a] name [] ".")
         })?;
 
-        cmd::add(["next-file"], {
+        cmd::add("next-file", {
             let windows = context::windows();
 
             move |flags, _| {
@@ -185,7 +185,7 @@ mod control {
             }
         })?;
 
-        cmd::add(["prev-file"], {
+        cmd::add("prev-file", {
             let windows = context::windows();
 
             move |flags, _| {
@@ -377,11 +377,11 @@ mod global {
     /// [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
     /// [`RoData`]: crate::data::RoData
     /// [`RwData`]: crate::data::RwData
-    pub fn add(
-        callers: impl IntoIterator<Item = impl ToString>,
+    pub fn add<'a>(
+        callers: impl super::Caller<'a>,
         f: impl FnMut(Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
-        COMMANDS.add(callers, f)
+        COMMANDS.add(callers.into_callers(), f)
     }
 
     /// Adds a command that can mutate a widget of the given type,
@@ -564,11 +564,11 @@ mod global {
     /// [`Form`]: crate::form::Form
     /// [`form::set`]: crate::form::set
     /// [`form::set_weak`]: crate::form::set_weak
-    pub fn add_for<W: Widget<U>, U: Ui>(
-        callers: impl IntoIterator<Item = impl ToString>,
+    pub fn add_for<'a, W: Widget<U>, U: Ui>(
+        callers: impl super::Caller<'a>,
         f: impl FnMut(&mut W, &U::Area, &mut Cursors, Flags, Args) -> CmdResult + 'static,
     ) -> Result<()> {
-        COMMANDS.add_for(callers, f)
+        COMMANDS.add_for(callers.into_callers(), f)
     }
 
     pub(crate) fn caller_exists(caller: &str) -> bool {
@@ -830,3 +830,25 @@ impl InnerCommands {
 }
 
 pub type Result<T> = crate::Result<T, ()>;
+
+pub trait Caller<'a>: Sized {
+    fn into_callers(self) -> impl Iterator<Item = &'a str>;
+}
+
+impl<'a> Caller<'a> for &'a str {
+    fn into_callers(self) -> impl Iterator<Item = &'a str> {
+        [self].into_iter()
+    }
+}
+
+impl<'a> Caller<'a> for &'a [&'a str] {
+    fn into_callers(self) -> impl Iterator<Item = &'a str> {
+        self.iter().cloned()
+    }
+}
+
+impl<'a, const N: usize> Caller<'a> for [&'a str; N] {
+    fn into_callers(self) -> impl Iterator<Item = &'a str> {
+        self.into_iter()
+    }
+}
