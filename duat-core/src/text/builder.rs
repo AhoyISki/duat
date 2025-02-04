@@ -4,7 +4,7 @@
 //! [`err!`], [`ok!`] and [`hint!`]. These are supposed to be used in
 //! various contexts, and they have differences on what the `Default`
 //! and `Accent` form.
-use std::fmt::Write;
+use std::{fmt::Write, path::PathBuf};
 
 use super::{Change, Key, Tag, Text, ToggleId, tags::RawTag};
 use crate::{
@@ -260,6 +260,30 @@ where
 {
     fn from(value: D) -> Self {
         BuilderPart::ToString(value)
+    }
+}
+
+impl From<PathBuf> for BuilderPart<String> {
+    fn from(value: PathBuf) -> Self {
+        BuilderPart::Text(Text::from(&value))
+    }
+}
+
+impl From<&PathBuf> for BuilderPart<String> {
+    fn from(value: &PathBuf) -> Self {
+        BuilderPart::Text(Text::from(value))
+    }
+}
+
+impl From<RwData<PathBuf>> for BuilderPart<String> {
+    fn from(value: RwData<PathBuf>) -> Self {
+        BuilderPart::Text(Text::from(&*value.read()))
+    }
+}
+
+impl From<RoData<PathBuf>> for BuilderPart<String> {
+    fn from(value: RoData<PathBuf>) -> Self {
+        BuilderPart::Text(Text::from(&*value.read()))
     }
 }
 

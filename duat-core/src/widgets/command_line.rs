@@ -162,11 +162,14 @@ impl<U: Ui> Widget<U> for CmdLine<U> {
         form::set_weak("Prompt", Form::cyan());
         form::set_weak("ParseCommandErr", "DefaultErr");
 
-        cmd::add_for::<CmdLine<U>, U>(["set-prompt"], move |command_line, _, _, _, mut args| {
-            let new_prompt: String = args.collect();
-            *command_line.prompt.write() = new_prompt;
-            Ok(None)
-        })
+        cmd::add_for!(
+            U,
+            "set-prompt",
+            move |cmd_line: CmdLine<U>, _, _, _, new_prompt: String| {
+                *cmd_line.prompt.write() = new_prompt;
+                Ok(None)
+            }
+        )
         .unwrap();
     }
 
@@ -225,10 +228,21 @@ impl<U: Ui> CmdLineMode<U> for RunCommands<U> {
         let command = text.to_string();
         let caller = command.split_whitespace().next();
         if let Some(caller) = caller {
-            if cmd::caller_exists(caller) {
+            if let Some((ok_ranges, err_range)) = cmd::check_params(caller) {
                 let id = form::id_of!("CallerExists");
                 text.insert_tag(0, Tag::PushForm(id), self.key);
                 text.insert_tag(caller.len() as u32, Tag::PopForm(id), self.key);
+
+                let id = form::id_of!("ParameterOk");
+                for range in ok_ranges {
+                    text.insert_tag(range.start, Tag::PushForm(id), self.key);
+                    text.insert_tag(range.end, Tag::PopForm(id), self.key);
+                }
+                if let Some(range) = err_range {
+                    let id = form::id_of!("ParameterErr");
+                    text.insert_tag(range.start, Tag::PushForm(id), self.key);
+                    text.insert_tag(range.end, Tag::PopForm(id), self.key);
+                }
             } else {
                 let id = form::id_of!("CallerNotFound");
                 text.insert_tag(0, Tag::PushForm(id), self.key);

@@ -132,95 +132,7 @@
 //!
 //! [`Form`]: crate::form::Form
 
-pub use duat_core::cmd::{Args, Flags};
-use duat_core::{
-    cmd::{self, Caller, CmdResult},
-    mode::Cursors,
-    text::Text,
-    widgets::Widget,
-};
-
-use crate::{Area, Ui};
-
-/// Runs a full command, with a caller, [`Flags`], and [`Args`].
-///
-/// When running the command, the ordering of flags does not
-/// matter, as long as they are placed before the arguments to the
-/// command.
-///
-/// # Examples
-///
-/// ```rust
-/// # use duat_core::{cmd::{self, Result}, text::Text};
-/// # fn test() -> Result<Option<Text>> {
-/// cmd::run("set-prompt new-prompt")
-/// # }
-/// ```
-///
-/// In this case we're running a command that will affect the most
-/// relevant [`CmdLine`]. See [`cmd::add_for`] for
-/// more information.
-///
-/// [`CmdLine`]: crate::widgets::CmdLine
-/// [`cmd::add_for`]: add_for
-#[inline(never)]
-pub fn run(call: impl std::fmt::Display) -> Result<Option<Text>> {
-    cmd::run(call)
-}
-
-/// Adds a command to the global list of cmd.
-///
-/// This command cannot take any arguments beyond the [`Flags`]
-/// and [`Args`], so any mutation of state must be done
-/// through captured variables, usually in the form of
-/// [`RwData`]s.
-///
-/// # Examples
-///
-/// ```rust
-/// # use duat::prelude::{cmd, data::RwData, status, StatusLineCfg};
-/// # fn test() -> StatusLineCfg {
-/// // Shared state, which will be displayed in a `StatusLine`.
-/// let var = RwData::new(35);
-///
-/// cmd::add(["set-var"], {
-///     // A clone is necessary, in order to have one copy of `var`
-///     // in the closure, while the other is in the `StatusLine`.
-///     let var = var.clone();
-///     move |_flags, mut args| {
-///         // You can easily parse arguments, and an appropriate
-///         // error will be returned if the parsing fails.
-///         let value: usize = args.next_as()?;
-///         *var.write() = value;
-///
-///         Ok(None)
-///     }
-/// });
-///
-/// // A `StatusLineCfg` that can be used to create a `StatusLine`.
-/// let status_cfg = status!("The value is currently " var);
-/// status_cfg
-/// # }
-/// ```
-///
-/// In the above example, we created a variable that can be
-/// modified by the command `"set-var"`, and then sent it to a
-/// [`StatusLineCfg`], so that it could be displayed in a
-/// [`StatusLine`]. Note that the use of an [`RwData`]/
-/// [`RoData`] means that the [`StatusLine`] will
-/// be updated automatically, whenever the command is ran.
-///
-/// [`StatusLineCfg`]: crate::widgets::StatusLineCfg
-/// [`StatusLine`]: crate::widgets::StatusLine
-/// [`RwData`]: duat_core::data::RwData
-/// [`RoData`]: duat_core::data::RoData
-#[inline(never)]
-pub fn add<'a>(
-    callers: impl Caller<'a>,
-    f: impl FnMut(Flags, Args) -> CmdResult + 'static,
-) -> Result<()> {
-    cmd::add(callers, f)
-}
+pub use duat_core::cmd::{Args, Flags, add, run};
 
 /// Adds a command that can mutate a widget of the given type,
 /// along with its associated [`dyn Area`].
@@ -402,12 +314,7 @@ pub fn add<'a>(
 /// [`Form`]: crate::form::Form
 /// [`form::set`]: crate::form::set
 /// [`form::set_weak`]: duat_core::form::set_weak
-#[inline(never)]
-pub fn add_for<'a, W: Widget<Ui>>(
-    callers: impl Caller<'a>,
-    f: impl FnMut(&mut W, &Area, &mut Cursors, Flags, Args) -> CmdResult + 'static,
-) -> Result<()> {
-    cmd::add_for(callers, f)
-}
-
-type Result<T> = duat_core::Result<T, ()>;
+pub macro add_for($tokens:tt) {{
+    use $crate::Ui;
+    duat_core::cmd::add_for(Ui, callers, f)
+}}

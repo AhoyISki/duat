@@ -2,7 +2,7 @@ mod iter;
 
 use std::{fmt::Alignment, io::Write};
 
-use crossterm::{cursor, style::Attribute};
+use crossterm::cursor;
 use duat_core::{
     cache::{Deserialize, Serialize},
     cfg::{IterCfg, PrintCfg},

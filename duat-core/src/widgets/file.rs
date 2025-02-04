@@ -145,9 +145,9 @@ impl File {
     /// Writes the file to the given [`Path`]
     ///
     /// [`Path`]: std::path::Path
-    pub fn write_to(&self, path: impl AsRef<str>) -> std::io::Result<usize> {
+    pub fn write_to(&self, path: impl AsRef<std::path::Path>) -> std::io::Result<usize> {
         self.text
-            .write_to(std::io::BufWriter::new(fs::File::create(path.as_ref())?))
+            .write_to(std::io::BufWriter::new(fs::File::create(path)?))
     }
 
     ////////// Path querying functions
@@ -287,16 +287,21 @@ impl<U: Ui> Widget<U> for File {
 
         let mut has_wrapped = false;
 
-        area.print_with(&mut self.text, self.cfg, form::painter(), move |caret, item| {
-            has_wrapped |= caret.wrap;
-            if has_wrapped && item.part.is_char() {
-                has_wrapped = false;
-                let line = item.line();
-                let wrapped = last_line.is_some_and(|ll| ll == line);
-                last_line = Some(line);
-                printed_lines.push((line, wrapped));
-            }
-        })
+        area.print_with(
+            &mut self.text,
+            self.cfg,
+            form::painter(),
+            move |caret, item| {
+                has_wrapped |= caret.wrap;
+                if has_wrapped && item.part.is_char() {
+                    has_wrapped = false;
+                    let line = item.line();
+                    let wrapped = last_line.is_some_and(|ll| ll == line);
+                    last_line = Some(line);
+                    printed_lines.push((line, wrapped));
+                }
+            },
+        )
     }
 }
 

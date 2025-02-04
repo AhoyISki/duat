@@ -140,7 +140,7 @@ mod switch {
     /// Whether or not printing has been stopped
     ///
     /// This is done when sending multiple keys at the same time
-    pub(crate) fn is_printing_stopped() -> bool {
+    pub(crate) fn has_printing_stopped() -> bool {
         PRINTING_IS_STOPPED.load(Ordering::Acquire)
     }
 

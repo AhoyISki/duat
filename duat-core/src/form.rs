@@ -968,7 +968,7 @@ impl Painter {
     }
 
     /// Removes the [`Form`] with the given `id` and returns the
-    /// result, given previous triggers.
+    /// result, given previous triggers
     #[inline(always)]
     pub fn remove(&mut self, form_id: FormId) -> ContentStyle {
         let mut applied_forms = self.forms.iter().enumerate();
@@ -976,12 +976,14 @@ impl Painter {
             self.reset_count -= form.style.attributes.has(Attribute::Reset) as usize;
             self.forms.remove(i);
             self.final_form_start -= 1;
+            // If there were attributes in the removed form, we need to reset
+            // them.
             if self.reset_count > 0 || !form.style.attributes.is_empty() {
                 let mut style = absolute_style(&self.forms);
                 style.attributes.set(Attribute::Reset);
                 style
             } else {
-                let mut style = relative_style(&self.forms);
+                let mut style = absolute_style(&self.forms);
                 style.foreground_color = form.fg().and(style.foreground_color);
                 style.background_color = form.bg().and(style.background_color);
                 style.underline_color = form.ul().and(style.underline_color);
@@ -992,6 +994,11 @@ impl Painter {
         }
     }
 
+    /// Removes all [`Form`]s except the default one
+    ///
+    /// Should be used when a [`ResetState`] part is printed
+    ///
+    /// [`ResetState`]: crate::text::Part::ResetState
     #[inline(always)]
     pub fn reset(&mut self) -> ContentStyle {
         self.forms.splice(1.., []);

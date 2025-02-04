@@ -1444,17 +1444,24 @@ fn merge_range_in(ranges: &mut Vec<Range<u32>>, range: Range<u32>) {
     }
 }
 
+impl From<&std::path::PathBuf> for Text {
+    fn from(value: &std::path::PathBuf) -> Self {
+        let value = value.to_str().unwrap_or("");
+        Self::from(value)
+    }
+}
+
 impl_from_to_string!(u8);
-impl_from_to_string!(i8);
 impl_from_to_string!(u16);
-impl_from_to_string!(i16);
 impl_from_to_string!(u32);
-impl_from_to_string!(i32);
 impl_from_to_string!(u64);
-impl_from_to_string!(i64);
 impl_from_to_string!(u128);
-impl_from_to_string!(i128);
 impl_from_to_string!(usize);
+impl_from_to_string!(i8);
+impl_from_to_string!(i16);
+impl_from_to_string!(i32);
+impl_from_to_string!(i64);
+impl_from_to_string!(i128);
 impl_from_to_string!(isize);
 impl_from_to_string!(f32);
 impl_from_to_string!(f64);

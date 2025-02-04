@@ -201,7 +201,7 @@ impl<U: Ui> CurFile<U> {
         file.text_mut().add_cursors(&cursors, area, cfg);
 
         <File as Widget<U>>::update(&mut file, area);
-        if !mode::is_printing_stopped() {
+        if !mode::has_printing_stopped() {
             <File as Widget<U>>::print(&mut file, area);
         }
 
@@ -225,7 +225,7 @@ impl<U: Ui> CurFile<U> {
             }
             w.text_mut().add_cursors(c, a, cfg);
             w.update(a);
-            if !mode::is_printing_stopped() {
+            if !mode::has_printing_stopped() {
                 w.print(a);
             }
 
@@ -431,7 +431,7 @@ impl<U: Ui> CurWidget<U> {
             widget.text_mut().add_cursors(c, area, cfg);
 
             widget.update(area);
-            if !mode::is_printing_stopped() {
+            if !mode::has_printing_stopped() {
                 widget.print(area);
             }
         });
@@ -466,7 +466,7 @@ impl<U: Ui> CurWidget<U> {
             widget.text_mut().add_cursors(c, area, cfg);
 
             widget.update(area);
-            if !mode::is_printing_stopped() {
+            if !mode::has_printing_stopped() {
                 widget.print(area);
             }
         });

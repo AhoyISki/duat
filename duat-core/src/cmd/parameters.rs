@@ -1,88 +1,52 @@
 // THE ENTIRE PARAMETER SYSTEM WILL BE REDONE
-use std::{
-    any::TypeId,
-    iter::Peekable,
-    str::{FromStr, SplitWhitespace},
-};
+use std::{any::TypeId, iter::Peekable, ops::Range};
 
+pub use args_iter::split_flags_and_args;
+
+use super::Parameter;
 use crate::text::{Text, err};
 
 #[derive(Clone)]
 pub struct Args<'a> {
-    count: usize,
-    expected: Option<usize>,
-    args: Peekable<SplitWhitespace<'a>>,
+    args: Peekable<args_iter::ArgsIter<'a>>,
+    range: Range<u32>,
+    param_range: Range<u32>,
+    started_recording_range: bool,
+    is_recording_range: bool,
 }
 
 impl<'a> Args<'a> {
     #[allow(clippy::should_implement_trait)]
-    pub fn next(&mut self) -> std::result::Result<&str, Text> {
+    pub fn next(&mut self) -> Result<&'a str, Text> {
         match self.args.next() {
-            Some(arg) => {
-                self.count += 1;
+            Some((arg, range)) => {
+                self.param_range = range.clone();
+                if self.started_recording_range {
+                    self.range = range;
+                    self.started_recording_range = false;
+                    self.is_recording_range = true;
+                } else {
+                    self.range.end = range.end
+                }
                 Ok(arg)
             }
-            None => Err({
-                let args = match self.expected.unwrap_or(self.count + 1) {
-                    1 => " argument",
-                    _ => " arguments",
-                };
-                let expected = match self.expected {
-                    Some(expected) => err!([*a] expected),
-                    None => err!("at least " [*a] { self.count + 1 }),
-                };
-                let received = match self.count {
-                    0 => err!([*a] "none"),
-                    1 => err!([*a] 1),
-                    count => err!([*a] count),
-                };
-
-                err!("Expected " expected args ", received " received ".")
-            }),
+            None => Err(err!("Wrong argument count")),
         }
     }
 
-    pub fn next_as<F: FromStr>(&mut self) -> std::result::Result<F, Text> {
-        let arg = self.next()?;
-        arg.parse().map_err(|_| {
-            err!(
-                "Couldn't convert " [*a] arg []
-                " to " [*a] { std::any::type_name::<F>() } [] "."
-            )
-        })
+    pub fn next_as<P: Parameter<'a>>(&mut self) -> Result<P::Returns, Text> {
+        P::new(self)
     }
 
-    pub fn next_else<T>(&mut self, to_text: T) -> std::result::Result<&str, Text>
-    where
-        T: Into<Text>,
-    {
+    pub fn next_else<T: Into<Text>>(&mut self, to_text: T) -> Result<&'a str, Text> {
         match self.args.next() {
-            Some(arg) => {
-                self.count += 1;
-                Ok(arg)
-            }
+            Some((arg, _)) => Ok(arg),
             None => Err(to_text.into()),
         }
     }
 
-    pub fn ended(&mut self) -> std::result::Result<(), Text> {
-        match self.args.clone().count() {
-            0 => Ok(()),
-            count => Err({
-                let args = match self.count == 1 {
-                    true => " argument",
-                    false => " arguments",
-                };
-                err!(
-                    "Expected " [*a] { self.count } [] args
-                    ", received " [*a] { self.count + count } [] " instead."
-                )
-            }),
-        }
-    }
-
-    pub fn collect<B: FromIterator<&'a str> + 'static>(&mut self) -> B {
-        let args: Vec<&str> = (&mut self.args).collect();
+    pub fn collect<B: FromIterator<&'a str> + 'static>(self) -> B {
+        let args: Vec<&str> = (self.args).map(|(str, _)| str).collect();
 
         if TypeId::of::<B>() == TypeId::of::<String>() {
             B::from_iter(args.into_iter().intersperse(" "))
@@ -91,8 +55,19 @@ impl<'a> Args<'a> {
         }
     }
 
-    pub fn set_expected(&mut self, expected: usize) {
-        self.expected = Some(expected);
+    pub(crate) fn next_as_with_range<P: Parameter<'a>>(
+        &mut self,
+    ) -> Result<(P::Returns, Range<u32>), (Text, Range<u32>)> {
+        self.started_recording_range = true;
+        let ret = P::new(self)
+            .map(|p| (p, self.range.clone()))
+            .map_err(|e| (e, self.param_range.clone()));
+        self.is_recording_range = false;
+        ret
+    }
+
+    pub(super) fn is_recording_range(&self) -> bool {
+        self.is_recording_range
     }
 }
 
@@ -143,41 +118,72 @@ impl InnerFlags<'_> {
     }
 }
 
-/// Takes the [`Flags`] from an [`Iterator`] of `args`.
-pub fn split_flags_and_args(command: &str) -> (InnerFlags<'_>, Args<'_>) {
-    let mut blob = String::new();
-    let mut word = Vec::new();
+mod args_iter {
+    /// Takes the [`Flags`] from an [`Iterator`] of `args`.
+    pub fn split_flags_and_args(command: &str) -> (super::InnerFlags<'_>, super::Args<'_>) {
+        let mut blob = String::new();
+        let mut word = Vec::new();
 
-    let mut args = command.split_whitespace().peekable();
+        let mut chars = command.char_indices();
+        let mut start = None;
+        let args: ArgsIter = std::iter::from_fn(move || {
+            while let Some((b, char)) = chars.next() {
+                if let Some(s) = start
+                    && char.is_whitespace()
+                {
+                    start = None;
+                    unsafe {
+                        return Some((
+                            core::str::from_utf8_unchecked(&command.as_bytes()[s..b]),
+                            s as u32..b as u32,
+                        ));
+                    }
+                } else if !char.is_whitespace() && start.is_none() {
+                    start = Some(b);
+                }
+            }
 
-    args.next();
-
-    while let Some(arg) = args.peek() {
-        if let Some(word_arg) = arg.strip_prefix("--") {
-            if !word_arg.is_empty() {
+            start.map(|s| unsafe {
+                (
+                    core::str::from_utf8_unchecked(&command.as_bytes()[s..]),
+                    s as u32..command.len() as u32,
+                )
+            })
+        });
+        let mut args = args.peekable();
+        let mut byte = 0;
+        while let Some((arg, range)) = args.peek() {
+            if let Some(word_arg) = arg.strip_prefix("--") {
+                if !word_arg.is_empty() {
+                    args.next();
+                    if !word.contains(&word_arg) {
+                        word.push(word_arg)
+                    }
+                } else {
+                    args.next();
+                    break;
+                }
+            } else if let Some(blob_arg) = arg.strip_prefix('-') {
                 args.next();
-                if !word.contains(&word_arg) {
-                    word.push(word_arg)
+                for char in blob_arg.chars() {
+                    if !blob.contains(char) {
+                        blob.push(char)
+                    }
                 }
             } else {
-                args.next();
+                byte = range.start;
                 break;
             }
-        } else if let Some(blob_arg) = arg.strip_prefix('-') {
-            args.next();
-            for char in blob_arg.chars() {
-                if !blob.contains(char) {
-                    blob.push(char)
-                }
-            }
-        } else {
-            break;
         }
+
+        (super::InnerFlags { blob, word }, super::Args {
+            args,
+            range: byte..byte,
+            param_range: byte..byte,
+            started_recording_range: false,
+            is_recording_range: false,
+        })
     }
 
-    (InnerFlags { blob, word }, Args {
-        count: 0,
-        expected: None,
-        args,
-    })
+    pub type ArgsIter<'a> = impl Iterator<Item = (&'a str, std::ops::Range<u32>)> + Clone;
 }
