@@ -54,7 +54,7 @@
 //! let callers = ["unset-form", "uf"];
 //! // A `Vec<T>` parameter will try to collect all
 //! // remaining arguments as `T` in a list.
-//! let result = cmd::add!(callers, move |_flags, forms: Vec<Form>| {
+//! let result = cmd::add!(callers, move |_flags, forms: Vec<FormName>| {
 //!     for form in forms.iter() {
 //!         form::set("form", Form::new());
 //!     }
@@ -77,10 +77,9 @@
 //! # use duat::cmd;
 //! # use std::sync::{atomic::{AtomicU32, Ordering}, Arc};
 //! let expression = Arc::new(AtomicU32::default());
-//! let callers = ["my-command", "mc"];
 //! let my_command = {
 //!     let expression = expression.clone();
-//!     cmd::add!(callers, move |flags| {
+//!     cmd::add!("make-expression", move |flags| {
 //!         // `Flags::long` checks for `--` flags
 //!         if flags.word("happy") {
 //!             expression.store('😁' as u32, Ordering::Relaxed)
@@ -97,9 +96,10 @@
 //!     })
 //! };
 //!
-//! assert!(cmd::run("mc --sad -🤯").is_ok());
-//! // Passing more arguments than needed results in an error
-//! assert!(cmd::run("mc --happy extra args not allowed").is_err());
+//! cmd::run("mc --sad -🤯");
+//! // Passing more arguments than needed results in
+//! // an error, so the command is never executed.
+//! cmd::run_notify("mc --happy extra args not allowed");
 //!
 //! let num = expression.load(Ordering::Relaxed);
 //! assert_eq!(char::from_u32(num), Some('🤯'))

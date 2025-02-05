@@ -430,6 +430,12 @@ pub enum Error<E> {
     CommandFailed(Text),
     /// There was no caller and no arguments
     Empty,
+    /// Arguments could not be parsed correctly
+    FailedParsing(Text),
+    /// The [`Layout`] does not allow for another file to open
+    ///
+    /// [`Layout`]: ui::Layout
+    LayoutDisallowsFile(PhantomData<E>),
     /// The [`Ui`] still hasn't created the first file
     ///
     /// [`Ui`]: ui::Ui
@@ -444,10 +450,6 @@ pub enum Error<E> {
     NoWidgetYet,
     /// The checked widget is not of the type given
     WidgetIsNot,
-    /// The [`Layout`] does not allow for another file to open
-    ///
-    /// [`Layout`]: ui::Layout
-    LayoutDisallowsFile(PhantomData<E>),
 }
 
 impl<E1> Error<E1> {
@@ -459,6 +461,7 @@ impl<E1> Error<E1> {
             Self::CallerNotFound(caller) => Error::CallerNotFound(caller),
             Self::CommandFailed(failure) => Error::CommandFailed(failure),
             Self::Empty => Error::Empty,
+            Self::FailedParsing(failure) => Error::FailedParsing(failure),
             Self::NoFileYet => Error::NoFileYet,
             Self::NoFileForRelated => Error::NoFileForRelated,
             Self::NoWidgetYet => Error::NoWidgetYet,
@@ -483,6 +486,7 @@ impl<E> DuatError for Error<E> {
             Self::CallerNotFound(caller) => err!("The caller " [*a] caller [] " was not found."),
             Self::CommandFailed(failure) => failure,
             Self::Empty => err!("The command is empty."),
+            Self::FailedParsing(failure) => failure,
             Self::NoFileYet => err!("There is no file yet. " early),
             Self::NoFileForRelated => err!(
                 "There is no file for a related " [*a] { type_name::<E>() } [] " to exist. " early
@@ -505,6 +509,7 @@ impl<E> std::fmt::Debug for Error<E> {
             Self::CallerNotFound(_) => "CallerNotFound",
             Self::CommandFailed(_) => "CommandFailed",
             Self::Empty => "Empty ",
+            Self::FailedParsing(_) => "FailedParsing",
             Self::NoFileYet => "NoFileYet ",
             Self::NoFileForRelated => "NoFileForRelated ",
             Self::NoWidgetYet => "NoWidgetYet ",
@@ -515,7 +520,8 @@ impl<E> std::fmt::Debug for Error<E> {
         match self {
             Self::CallerAlreadyExists(str)
             | Self::CallerNotFound(str) => debug.field(&str),
-            Self::CommandFailed(text) => debug.field(&text),
+            Self::CommandFailed(text)
+            | Self::FailedParsing(text) => debug.field(&text),
             Self::Empty
             | Self::NoFileYet
             | Self::NoFileForRelated

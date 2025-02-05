@@ -285,7 +285,7 @@ mod global {
         };
 
         #[allow(unused_variables, unused_mut)]
-        let param_checker = |mut args: Args| -> (Vec<Range<u32>>, Option<Range<u32>>) {
+        let checker = |mut args: Args| -> (Vec<Range<u32>>, Option<(Range<u32>, Text)>) {
             let mut ok_ranges = Vec::new();
 
             $(
@@ -296,19 +296,20 @@ mod global {
                     {
                         ok_ranges.push(start..args.param_range().end);
                     }
-                    Err(_) => return (ok_ranges, Some(args.param_range()))
+                    Err(err) => return (ok_ranges, Some((args.param_range(), err)))
                 }
             )*
 
             let start = args.next_start();
             if let (Ok(_), Some(start)) = (args.next_as::<super::Remainder>(), start) {
-                return (ok_ranges, Some(start..args.param_range().end))
+                let err = $crate::text::err!("Too many arguments");
+                return (ok_ranges, Some((start..args.param_range().end, err)))
             }
 
             (ok_ranges, None)
         };
 
-        add_inner($callers, cmd, param_checker)
+        add_inner($callers, cmd, checker)
     }}
 
     /// Adds a command that can mutate a widget of the given type,
@@ -517,7 +518,7 @@ mod global {
         };
 
         #[allow(unused_variables, unused_mut)]
-        let param_checker = |mut args: Args| -> (Vec<Range<u32>>, Option<Range<u32>>) {
+        let checker = |mut args: Args| -> (Vec<Range<u32>>, Option<(Range<u32>, Text)>) {
             let mut ok_ranges = Vec::new();
 
             $(
@@ -528,19 +529,20 @@ mod global {
                     {
                         ok_ranges.push(start..args.param_range().end);
                     }
-                    Err(_) => return (ok_ranges, Some(args.param_range()))
+                    Err(err) => return (ok_ranges, Some((args.param_range(), err)))
                 }
             )*
 
             let start = args.next_start();
             if let (Ok(_), Some(start)) = (args.next_as::<super::Remainder>(), start) {
-                return (ok_ranges, Some(start..args.param_range().end))
+                let err = $crate::text::err!("Too many arguments");
+                return (ok_ranges, Some((start..args.param_range().end, err)))
             }
 
             (ok_ranges, None)
         };
 
-        add_for_inner::<$w_ty, $ui>($callers, cmd, param_checker)
+        add_for_inner::<$w_ty, $ui>($callers, cmd, checker)
     }}
 
     /// Canonical way to quit Duat.
@@ -716,9 +718,9 @@ mod global {
     pub fn add_inner<'a>(
         callers: impl super::Caller<'a>,
         cmd: impl FnMut(Flags, Args) -> CmdResult + 'static,
-        param_checker: impl Fn(Args) -> (Vec<Range<u32>>, Option<Range<u32>>) + 'static,
+        checker: impl Fn(Args) -> (Vec<Range<u32>>, Option<(Range<u32>, Text)>) + 'static,
     ) -> Result<()> {
-        COMMANDS.add(callers.into_callers(), cmd, param_checker)
+        COMMANDS.add(callers.into_callers(), cmd, checker)
     }
 
     /// Don't call this function, use [`cmd::add_for`] instead
@@ -728,12 +730,14 @@ mod global {
     pub fn add_for_inner<'a, W: Widget<U>, U: Ui>(
         callers: impl super::Caller<'a>,
         cmd: impl FnMut(&mut W, &U::Area, &mut Cursors, Flags, Args) -> CmdResult + 'static,
-        param_checker: impl Fn(Args) -> (Vec<Range<u32>>, Option<Range<u32>>) + 'static,
+        checker: impl Fn(Args) -> (Vec<Range<u32>>, Option<(Range<u32>, Text)>) + 'static,
     ) -> Result<()> {
-        COMMANDS.add_for(callers.into_callers(), cmd, param_checker)
+        COMMANDS.add_for(callers.into_callers(), cmd, checker)
     }
 
-    pub(crate) fn check_params(caller: &str) -> Option<(Vec<Range<u32>>, Option<Range<u32>>)> {
+    pub(crate) fn check_params(
+        caller: &str,
+    ) -> Option<(Vec<Range<u32>>, Option<(Range<u32>, Text)>)> {
         COMMANDS.check_params(caller)
     }
 }
@@ -792,6 +796,10 @@ impl Commands {
 
         let (flags, args) = split_flags_and_args(&call);
 
+        if let (_, Some((_, err))) = (command.checker)(args.clone()) {
+            return Err(Error::FailedParsing(err))
+        }
+
         command.try_exec(Flags::new(&flags), args)
     }
 
@@ -811,9 +819,9 @@ impl Commands {
         &self,
         callers: impl IntoIterator<Item = impl ToString>,
         cmd: impl FnMut(Flags, Args) -> CmdResult + 'static,
-        param_checker: impl Fn(Args) -> (Vec<Range<u32>>, Option<Range<u32>>) + 'static,
+        checker: impl Fn(Args) -> (Vec<Range<u32>>, Option<(Range<u32>, Text)>) + 'static,
     ) -> Result<()> {
-        let command = Command::new(callers, cmd, param_checker);
+        let command = Command::new(callers, cmd, checker);
         self.0.write().try_add(command)
     }
 
@@ -822,7 +830,7 @@ impl Commands {
         &'static self,
         callers: impl IntoIterator<Item = impl ToString>,
         mut cmd: impl FnMut(&mut W, &U::Area, &mut Cursors, Flags, Args) -> CmdResult + 'static,
-        param_checker: impl Fn(Args) -> (Vec<Range<u32>>, Option<Range<u32>>) + 'static,
+        checker: impl Fn(Args) -> (Vec<Range<u32>>, Option<(Range<u32>, Text)>) + 'static,
     ) -> Result<()> {
         let cur_file = context::inner_cur_file::<U>();
         let windows = context::windows::<U>();
@@ -850,13 +858,13 @@ impl Commands {
                     w.mutate_as(|w| cmd(w, a, &mut c, flags, args)).unwrap()
                 })
         };
-        let command = Command::new(callers, cmd, param_checker);
+        let command = Command::new(callers, cmd, checker);
 
         self.0.write().try_add(command)
     }
 
     /// Gets the parameter checker for a command, if it exists
-    fn check_params(&self, call: &str) -> Option<(Vec<Range<u32>>, Option<Range<u32>>)> {
+    fn check_params(&self, call: &str) -> Option<(Vec<Range<u32>>, Option<(Range<u32>, Text)>)> {
         let mut args = call.split_whitespace();
         let caller = args.next()?.to_string();
 
@@ -864,14 +872,14 @@ impl Commands {
 
         self.0.inspect(|inner| {
             if let Some((command, _)) = inner.aliases.get(&caller) {
-                Some((command.param_checker)(args))
+                Some((command.checker)(args))
             } else {
                 let command = inner
                     .list
                     .iter()
                     .find(|cmd| cmd.callers().contains(&caller))?;
 
-                Some((command.param_checker)(args))
+                Some((command.checker)(args))
             }
         })
     }
@@ -889,7 +897,7 @@ pub type CmdResult = std::result::Result<Option<Text>, Text>;
 struct Command {
     callers: Arc<[String]>,
     cmd: RwData<dyn FnMut(Flags, Args) -> CmdResult>,
-    param_checker: Arc<dyn Fn(Args) -> (Vec<Range<u32>>, Option<Range<u32>>)>,
+    checker: Arc<dyn Fn(Args) -> (Vec<Range<u32>>, Option<(Range<u32>, Text)>)>,
 }
 
 impl Command {
@@ -897,7 +905,7 @@ impl Command {
     fn new<Cmd: FnMut(Flags, Args) -> CmdResult + 'static>(
         callers: impl IntoIterator<Item = impl ToString>,
         cmd: Cmd,
-        param_checker: impl Fn(Args) -> (Vec<Range<u32>>, Option<Range<u32>>) + 'static,
+        checker: impl Fn(Args) -> (Vec<Range<u32>>, Option<(Range<u32>, Text)>) + 'static,
     ) -> Self {
         let callers: Arc<[String]> = callers
             .into_iter()
@@ -912,7 +920,7 @@ impl Command {
         }
         Self {
             cmd: RwData::new_unsized::<Cmd>(Arc::new(RwLock::new(cmd))),
-            param_checker: Arc::new(param_checker),
+            checker: Arc::new(checker),
             callers,
         }
     }

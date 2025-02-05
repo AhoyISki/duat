@@ -238,7 +238,7 @@ impl<U: Ui> CmdLineMode<U> for RunCommands<U> {
                     text.insert_tag(range.start, Tag::PushForm(id), self.key);
                     text.insert_tag(range.end, Tag::PopForm(id), self.key);
                 }
-                if let Some(range) = err_range {
+                if let Some((range, _)) = err_range {
                     let id = form::id_of!("ParameterErr");
                     text.insert_tag(range.start, Tag::PushForm(id), self.key);
                     text.insert_tag(range.end, Tag::PopForm(id), self.key);
