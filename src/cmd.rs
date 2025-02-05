@@ -131,7 +131,14 @@
 //! ```
 //!
 //! [`Form`]: crate::form::Form
-pub use duat_core::cmd::{Args, Flags, add, run};
+pub use duat_core::cmd::{
+    Args, Between, ColorSchemeArg, F32PercentOfU8, Flags, FormName, Parameter, Remainder, add, run,
+};
+
+use crate::Ui;
+
+pub type FileBuffer = duat_core::cmd::FileBuffer<Ui>;
+pub type OtherFileBuffer = duat_core::cmd::OtherFileBuffer<Ui>;
 
 /// Adds a command that can mutate a widget of the given type,
 /// along with its associated [`dyn Area`].
@@ -314,5 +321,5 @@ pub use duat_core::cmd::{Args, Flags, add, run};
 /// [`form::set`]: crate::form::set
 /// [`form::set_weak`]: duat_core::form::set_weak
 pub macro add_for($($tokens:tt)+) {{
-    $crate::prelude::duat_core::cmd::add_for!($crate::Ui, $($tokens)+)
+    $crate::prelude::duat_core::cmd::add_for!(Ui, $($tokens)+)
 }}
