@@ -177,6 +177,48 @@ impl<'a> Parameter<'a> for ColorSchemeArg {
     }
 }
 
+/// Any open [`File`], by their file name
+///
+/// [`File`]: crate::widgets::File
+pub struct FileBuffer<U>(std::marker::PhantomData<U>);
+
+impl<'a, U: crate::ui::Ui> Parameter<'a> for FileBuffer<U> {
+    type Returns = &'a str;
+
+    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Text> {
+        let buffer = args.next()?;
+        let windows = crate::context::windows::<U>().read();
+        if windows
+            .iter()
+            .flat_map(|w| w.file_names())
+            .any(|(_, f)| f == buffer)
+        {
+            Ok(buffer)
+        } else {
+            Err(err!("No buffer called " [*a] buffer [] " open"))
+        }
+    }
+}
+
+/// Any other open [`File`], by their file name
+///
+/// [`File`]: crate::widgets::File
+pub struct OtherFileBuffer<U>(std::marker::PhantomData<U>);
+
+impl<'a, U: crate::ui::Ui> Parameter<'a> for OtherFileBuffer<U> {
+    type Returns = &'a str;
+
+    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Text> {
+        let buffer = args.next_as::<FileBuffer<U>>()?;
+        let cur_file = crate::context::cur_file::<U>().unwrap();
+        if buffer == cur_file.name() {
+            Err(err!("Argument can't be the current file"))
+        } else {
+            Ok(buffer)
+        }
+    }
+}
+
 /// An [`f32`], created from a percentage or from [`u8`]
 ///
 /// The percentage is of whole divisions of 100, 100 being equivalent

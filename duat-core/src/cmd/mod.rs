@@ -12,7 +12,8 @@ pub use self::{
     control::*,
     global::*,
     parameters::{
-        Args, Between, ColorSchemeArg, Flags, FormName, Parameter, Remainder, split_flags_and_args,
+        Args, Between, ColorSchemeArg, F32PercentOfU8, FileBuffer, Flags, FormName,
+        OtherFileBuffer, Parameter, Remainder, split_flags_and_args,
     },
 };
 use crate::{
@@ -39,7 +40,7 @@ mod control {
     use crossterm::style::Color;
 
     use crate::{
-        cmd::{self, Between, ColorSchemeArg, FormName, Remainder},
+        cmd::{self, Between, ColorSchemeArg, FormName, OtherFileBuffer, Remainder},
         context, iter_around, iter_around_rev, mode,
         text::{Text, err, ok},
         ui::{Event, Ui, Window},
@@ -142,13 +143,7 @@ mod control {
             ok!("Switched to " [*a] name)
         })?;
 
-        cmd::add!(["buffer", "b"], move |_, path: PathBuf| {
-            let name = path
-                .file_name()
-                .ok_or(err!("No file in path"))?
-                .to_string_lossy()
-                .to_string();
-
+        cmd::add!(["buffer", "b"], move |_, name: OtherFileBuffer<U>| {
             mode::reset_switch_to::<U>(&name);
             ok!("Switched to " [*a] name)
         })?;
@@ -207,7 +202,6 @@ mod control {
         })?;
 
         cmd::add!("colorscheme", |_, scheme: ColorSchemeArg| {
-            crate::log_file!("{scheme}");
             crate::form::set_colorscheme(scheme);
             ok!("Set colorscheme to " [*a] scheme [])
         })?;
@@ -291,7 +285,7 @@ mod global {
         };
 
         #[allow(unused_variables, unused_mut)]
-        fn param_checker(mut args: Args) -> (Vec<Range<u32>>, Option<Range<u32>>) {
+        let param_checker = |mut args: Args| -> (Vec<Range<u32>>, Option<Range<u32>>) {
             let mut ok_ranges = Vec::new();
 
             $(
@@ -312,7 +306,7 @@ mod global {
             }
 
             (ok_ranges, None)
-        }
+        };
 
         add_inner($callers, cmd, param_checker)
     }}
@@ -523,7 +517,7 @@ mod global {
         };
 
         #[allow(unused_variables, unused_mut)]
-        fn param_checker(mut args: Args) -> (Vec<Range<u32>>, Option<Range<u32>>) {
+        let param_checker = |mut args: Args| -> (Vec<Range<u32>>, Option<Range<u32>>) {
             let mut ok_ranges = Vec::new();
 
             $(
@@ -544,7 +538,7 @@ mod global {
             }
 
             (ok_ranges, None)
-        }
+        };
 
         add_for_inner::<$w_ty, $ui>($callers, cmd, param_checker)
     }}
@@ -669,7 +663,7 @@ mod global {
     pub fn add_inner<'a>(
         callers: impl super::Caller<'a>,
         cmd: impl FnMut(Flags, Args) -> CmdResult + 'static,
-        param_checker: fn(Args) -> (Vec<Range<u32>>, Option<Range<u32>>),
+        param_checker: impl Fn(Args) -> (Vec<Range<u32>>, Option<Range<u32>>) + 'static,
     ) -> Result<()> {
         COMMANDS.add(callers.into_callers(), cmd, param_checker)
     }
@@ -681,7 +675,7 @@ mod global {
     pub fn add_for_inner<'a, W: Widget<U>, U: Ui>(
         callers: impl super::Caller<'a>,
         cmd: impl FnMut(&mut W, &U::Area, &mut Cursors, Flags, Args) -> CmdResult + 'static,
-        param_checker: fn(Args) -> (Vec<Range<u32>>, Option<Range<u32>>),
+        param_checker: impl Fn(Args) -> (Vec<Range<u32>>, Option<Range<u32>>) + 'static,
     ) -> Result<()> {
         COMMANDS.add_for(callers.into_callers(), cmd, param_checker)
     }
@@ -764,7 +758,7 @@ impl Commands {
         &self,
         callers: impl IntoIterator<Item = impl ToString>,
         cmd: impl FnMut(Flags, Args) -> CmdResult + 'static,
-        param_checker: fn(Args) -> (Vec<Range<u32>>, Option<Range<u32>>),
+        param_checker: impl Fn(Args) -> (Vec<Range<u32>>, Option<Range<u32>>) + 'static,
     ) -> Result<()> {
         let command = Command::new(callers, cmd, param_checker);
         self.0.write().try_add(command)
@@ -775,7 +769,7 @@ impl Commands {
         &'static self,
         callers: impl IntoIterator<Item = impl ToString>,
         mut cmd: impl FnMut(&mut W, &U::Area, &mut Cursors, Flags, Args) -> CmdResult + 'static,
-        param_checker: fn(Args) -> (Vec<Range<u32>>, Option<Range<u32>>),
+        param_checker: impl Fn(Args) -> (Vec<Range<u32>>, Option<Range<u32>>) + 'static,
     ) -> Result<()> {
         let cur_file = context::inner_cur_file::<U>();
         let windows = context::windows::<U>();
@@ -842,7 +836,7 @@ pub type CmdResult = std::result::Result<Option<Text>, Text>;
 struct Command {
     callers: Arc<[String]>,
     cmd: RwData<dyn FnMut(Flags, Args) -> CmdResult>,
-    param_checker: fn(Args) -> (Vec<Range<u32>>, Option<Range<u32>>),
+    param_checker: Arc<dyn Fn(Args) -> (Vec<Range<u32>>, Option<Range<u32>>)>,
 }
 
 impl Command {
@@ -850,7 +844,7 @@ impl Command {
     fn new<Cmd: FnMut(Flags, Args) -> CmdResult + 'static>(
         callers: impl IntoIterator<Item = impl ToString>,
         cmd: Cmd,
-        param_checker: fn(Args) -> (Vec<Range<u32>>, Option<Range<u32>>),
+        param_checker: impl Fn(Args) -> (Vec<Range<u32>>, Option<Range<u32>>) + 'static,
     ) -> Self {
         let callers: Arc<[String]> = callers
             .into_iter()
@@ -865,7 +859,7 @@ impl Command {
         }
         Self {
             cmd: RwData::new_unsized::<Cmd>(Arc::new(RwLock::new(cmd))),
-            param_checker,
+            param_checker: Arc::new(param_checker),
             callers,
         }
     }
