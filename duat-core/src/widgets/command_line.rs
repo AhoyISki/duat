@@ -263,8 +263,8 @@ impl<U: Ui> CmdLineMode<U> for RunCommands<U> {
     fn once() {
         form::set_weak("CallerExists", "AccentOk");
         form::set_weak("CallerNotFound", "AccentErr");
-        form::set_weak("ParameterOk", "AccentOk");
-        form::set_weak("ParameterErr", "AccentErr");
+        form::set_weak("ParameterOk", "DefaultOk");
+        form::set_weak("ParameterErr", "DefaultErr");
     }
 }
 

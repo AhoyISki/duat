@@ -11,7 +11,7 @@ pub use self::global::{
     painter, set, set_colorscheme, set_extra_cursor, set_main_cursor, set_many, set_weak,
     unset_extra_cursor, unset_main_cursor,
 };
-pub(crate) use self::global::colorscheme_exists;
+pub(crate) use self::global::{colorscheme_exists, exists};
 use crate::{
     data::RwLockReadGuard,
     hooks::{self, FormSet},
@@ -396,10 +396,14 @@ mod global {
         )+
     }}
 
+    /// Wether or not a specific [`Form`] has been set
+    pub(crate) fn exists(name: &str) -> bool {
+        FORMS.lock().iter().any(|form| *form == name)
+    }
+
     /// Wether or not a specific [`ColorScheme`] was added
     pub(crate) fn colorscheme_exists(name: &str) -> bool {
-        let colorschemes = COLORSCHEMES.lock();
-        colorschemes.iter().any(|cs| cs.name() == name)
+        COLORSCHEMES.lock().iter().any(|cs| cs.name() == name)
     }
 
     /// A kind of [`Form`]
@@ -549,7 +553,10 @@ impl Form {
     ///   or a percentage, followed by `'%'`, e.g. `"hsl 234 50% 42"`.
     pub const fn with(str: &str) -> BuiltForm {
         let mut built = Form::new();
-        built.0.style.foreground_color = Some(str_to_color(str));
+        built.0.style.foreground_color = match str_to_color(str) {
+            Ok(color) => Some(color),
+            Err(err) => panic!("{}", err),
+        };
         built
     }
 
@@ -564,7 +571,10 @@ impl Form {
     ///   or a percentage, followed by `'%'`, e.g. `"hsl 234 50% 42"`.
     pub const fn on(str: &str) -> BuiltForm {
         let mut built = Form::new();
-        built.0.style.background_color = Some(str_to_color(str));
+        built.0.style.background_color = match str_to_color(str) {
+            Ok(color) => Some(color),
+            Err(err) => panic!("{}", err),
+        };
         built
     }
 
@@ -579,7 +589,10 @@ impl Form {
     ///   or a percentage, followed by `'%'`, e.g. `"hsl 234 50% 42"`.
     pub const fn underline(str: &str) -> BuiltForm {
         let mut built = Form::new();
-        built.0.style.underline_color = Some(str_to_color(str));
+        built.0.style.underline_color = match str_to_color(str) {
+            Ok(color) => Some(color),
+            Err(err) => panic!("{}", err),
+        };
         built
     }
 
@@ -672,7 +685,10 @@ impl BuiltForm {
     ///   {hue}, {sat} and {lit} can either be a number from `0..255`,
     ///   or a percentage, followed by `'%'`, e.g. `"hsl 234 50% 42"`.
     pub const fn with(mut self, str: &str) -> Self {
-        self.0.style.foreground_color = Some(str_to_color(str));
+        self.0.style.foreground_color = match str_to_color(str) {
+            Ok(color) => Some(color),
+            Err(err) => panic!("{}", err),
+        };
         self
     }
 
@@ -686,7 +702,10 @@ impl BuiltForm {
     ///   {hue}, {sat} and {lit} can either be a number from `0..255`,
     ///   or a percentage, followed by `'%'`, e.g. `"hsl 234 50% 42"`.
     pub const fn on(mut self, str: &str) -> Self {
-        self.0.style.background_color = Some(str_to_color(str));
+        self.0.style.background_color = match str_to_color(str) {
+            Ok(color) => Some(color),
+            Err(err) => panic!("{}", err),
+        };
         self
     }
 
@@ -700,7 +719,10 @@ impl BuiltForm {
     ///   {hue}, {sat} and {lit} can either be a number from `0..255`,
     ///   or a percentage, followed by `'%'`, e.g. `"hsl 234 50% 42"`.
     pub const fn underline(mut self, str: &str) -> Self {
-        self.0.style.underline_color = Some(str_to_color(str));
+        self.0.style.underline_color = match str_to_color(str) {
+            Ok(color) => Some(color),
+            Err(err) => panic!("{}", err),
+        };
         self
     }
 }
@@ -710,6 +732,12 @@ impl std::ops::Deref for BuiltForm {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl std::ops::DerefMut for BuiltForm {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
@@ -1139,7 +1167,7 @@ fn absolute_style(list: &[(Form, FormId)]) -> ContentStyle {
 }
 
 /// Converts a string to a color, supporst hex, RGB and HSL
-const fn str_to_color(str: &str) -> Color {
+const fn str_to_color(str: &str) -> std::result::Result<Color, &'static str> {
     use core::str::from_utf8_unchecked as utf8_str;
     const fn strip_prefix<'a>(prefix: &str, str: &'a str) -> Option<&'a str> {
         let prefix = prefix.as_bytes();
@@ -1207,13 +1235,13 @@ const fn str_to_color(str: &str) -> Color {
     if let Some(hex) = strip_prefix("#", str) {
         let total = match u32::from_str_radix(hex, 16) {
             Ok(total) if hex.len() == 6 => total,
-            _ => panic!("Hexcode does not contain 6 hex values."),
+            _ => return Err("Hexcode does not contain 6 hex values"),
         };
         let r = (total >> 16) as u8;
         let g = (total >> 8) as u8;
         let b = total as u8;
 
-        Color::Rgb { r, g, b }
+        Ok(Color::Rgb { r, g, b })
         // Expects "rgb {red} {green} {blue}"
     } else if let Some(mut rgb) = strip_prefix("rgb ", str) {
         let mut values = [0, 0, 0];
@@ -1223,16 +1251,16 @@ const fn str_to_color(str: &str) -> Color {
                 rgb = rest;
                 values[i] = match u8::from_str_radix(cut, 10) {
                     Ok(value) => value,
-                    Err(_) => panic!("Rgb format value could not be parsed."),
+                    Err(_) => return Err("Rgb format value could not be parsed"),
                 }
             } else {
-                panic!("Missing value in rgb format.")
+                return Err("Missing value in rgb format");
             }
             i += 1;
         }
 
         let [r, g, b] = values;
-        Color::Rgb { r, g, b }
+        Ok(Color::Rgb { r, g, b })
         // Expects "hsl {hue%?} {saturation%?} {lightness%?}"
     } else if let Some(mut hsl) = strip_prefix("hsl ", str) {
         let mut values = [0.0, 0.0, 0.0];
@@ -1246,10 +1274,10 @@ const fn str_to_color(str: &str) -> Color {
                 };
                 values[i] = match u8::from_str_radix(num, 10) {
                     Ok(value) if value <= div => value as f32 / div as f32,
-                    _ => panic!("Hsl format property could not be parsed"),
+                    _ => return Err("Hsl format property could not be parsed"),
                 }
             } else {
-                panic!("Missing value in hsl format.")
+                return Err("Missing value in hsl format");
             }
             i += 1;
         }
@@ -1274,9 +1302,9 @@ const fn str_to_color(str: &str) -> Color {
         let r = (0.5 + r * 255.0) as u8;
         let g = (0.5 + g * 255.0) as u8;
         let b = (0.5 + b * 255.0) as u8;
-        Color::Rgb { r, g, b }
+        Ok(Color::Rgb { r, g, b })
     } else {
-        panic!("Color format was not recognized.")
+        return Err("Color format was not recognized");
     }
 }
 

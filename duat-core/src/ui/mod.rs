@@ -4,7 +4,7 @@ mod layout;
 use std::{
     fmt::Debug,
     path::PathBuf,
-    sync::{Arc, mpsc},
+    sync::{Arc, atomic::Ordering, mpsc},
 };
 
 use crossterm::event::KeyEvent;
@@ -435,16 +435,24 @@ impl Sender {
         self.0.send(Event::Key(key))
     }
 
-    pub fn send_resize(&self) -> Result<(), mpsc::SendError<Event>> {
-        self.0.send(Event::Resize)
-    }
-
     pub fn send_reload_config(&self) -> Result<(), mpsc::SendError<Event>> {
         self.0.send(Event::ReloadConfig)
     }
 
+    pub fn send_resize(&self) -> Result<(), mpsc::SendError<Event>> {
+        if !crate::REPRINTING_SCREEN.load(Ordering::Acquire) {
+            self.0.send(Event::Resize)
+        } else {
+            Ok(())
+        }
+    }
+
     pub(crate) fn send_form_changed(&self) -> Result<(), mpsc::SendError<Event>> {
-        self.0.send(Event::FormChange)
+        if !crate::REPRINTING_SCREEN.load(Ordering::Acquire) {
+            self.0.send(Event::FormChange)
+        } else {
+            Ok(())
+        }
     }
 }
 

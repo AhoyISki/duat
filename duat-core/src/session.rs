@@ -251,6 +251,7 @@ impl<U: Ui> Session<U> {
                             for node in cur_window.nodes() {
                                 s.spawn(|| node.update_and_print());
                             }
+                            crate::REPRINTING_SCREEN.store(false, Ordering::Release);
                             continue;
                         }
                         Event::ReloadConfig => break BreakTo::ReloadConfig,

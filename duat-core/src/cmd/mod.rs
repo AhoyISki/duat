@@ -11,7 +11,9 @@ use std::{
 pub use self::{
     control::*,
     global::*,
-    parameters::{Args, Flags, split_flags_and_args},
+    parameters::{
+        Args, Between, ColorSchemeArg, Flags, FormName, Parameter, Remainder, split_flags_and_args,
+    },
 };
 use crate::{
     Error, context,
@@ -23,6 +25,8 @@ use crate::{
     widgets::Widget,
 };
 
+mod parameters;
+
 mod control {
     use std::{
         path::PathBuf,
@@ -32,8 +36,10 @@ mod control {
         },
     };
 
+    use crossterm::style::Color;
+
     use crate::{
-        cmd::{self, Remainder},
+        cmd::{self, Between, ColorSchemeArg, FormName, Remainder},
         context, iter_around, iter_around_rev, mode,
         text::{Text, err, ok},
         ui::{Event, Ui, Window},
@@ -200,17 +206,28 @@ mod control {
             ok!("Switched to " [*a] name)
         })?;
 
-        cmd::add!("colorscheme", |_, scheme: super::ColorScheme| {
+        cmd::add!("colorscheme", |_, scheme: ColorSchemeArg| {
             crate::log_file!("{scheme}");
             crate::form::set_colorscheme(scheme);
             ok!("Set colorscheme to " [*a] scheme [])
         })?;
 
+        cmd::add!(
+            "set-form",
+            |flags, name: FormName, colors: Between<0, 3, Color>| {
+                let mut form = crate::form::Form::new();
+                form.style.foreground_color = colors.first().cloned();
+                form.style.background_color = colors.get(1).cloned();
+                form.style.underline_color = colors.get(2).cloned();
+                crate::form::set(name, form);
+
+                ok!("Set " [*a] name [] " to a new Form")
+            }
+        )?;
+
         Ok(())
     }
 }
-
-mod parameters;
 
 mod global {
     use std::ops::Range;
@@ -260,32 +277,44 @@ mod global {
     pub macro add(
         $callers:expr, $($mv:ident)? |$flags:pat_param $(, $arg:ident: $t:ty)*| $f:block
     ) {{
-			#[allow(unused_variables, unused_mut)]
-            let cmd = $($mv)? |$flags: Flags, mut args: Args| {
-                $(
-                    let $arg: <$t as Parameter>::Returns = <$t as Parameter>::new(&mut args)?;
-                )*
+        #[allow(unused_variables, unused_mut)]
+        let cmd = $($mv)? |$flags: Flags, mut args: Args| -> CmdResult {
+            $(
+                let $arg: <$t as Parameter>::Returns = <$t as Parameter>::new(&mut args)?;
+            )*
 
-                $f
-            };
-
-			#[allow(unused_variables, unused_mut)]
-            fn param_checker(mut args: Args) -> (Vec<Range<u32>>, Option<Range<u32>>) {
-                let mut ok_ranges = Vec::new();
-
-                $(
-                    match args.next_as_with_range::<$t>() {
-                        Ok((_, range)) => if !range.is_empty() {
-                            ok_ranges.push(range);
-                        }
-                        Err((_, range)) => return (ok_ranges, Some(range))
-                    }
-                )*
-
-                (ok_ranges, None)
+            if let Ok(arg) = args.next() {
+                return Err($crate::text::err!("Too many arguments"));
             }
 
-            add_inner($callers, cmd, param_checker)
+            $f
+        };
+
+        #[allow(unused_variables, unused_mut)]
+        fn param_checker(mut args: Args) -> (Vec<Range<u32>>, Option<Range<u32>>) {
+            let mut ok_ranges = Vec::new();
+
+            $(
+                let start = args.next_start();
+                match args.next_as::<$t>() {
+                    Ok(_) => if let Some(start) = start
+                        .filter(|s| args.param_range().end > *s)
+                    {
+                        ok_ranges.push(start..args.param_range().end);
+                    }
+                    Err(_) => return (ok_ranges, Some(args.param_range()))
+                }
+            )*
+
+            let start = args.next_start();
+            if let (Ok(_), Some(start)) = (args.next_as::<super::Remainder>(), start) {
+                return (ok_ranges, Some(start..args.param_range().end))
+            }
+
+            (ok_ranges, None)
+        }
+
+        add_inner($callers, cmd, param_checker)
     }}
 
     /// Adds a command that can mutate a widget of the given type,
@@ -474,33 +503,45 @@ mod global {
     | $f:block) {{
         use crate::mode::Cursors;
 
-		#[allow(unused_variables, unused_mut)]
+        #[allow(unused_variables, unused_mut)]
         let cmd = $($mv)? |
             $widget: &mut $w_ty,
             $area: &<$ui as Ui>::Area,
             $cursors: &mut Cursors,
             $flags: Flags,
             mut args: Args
-        | {
+        | -> CmdResult {
             $(
                 let $arg: <$t as Parameter>::Returns = <$t as Parameter>::new(&mut args)?;
             )*
 
+            if let Ok(arg) = args.next() {
+                return Err($crate::text::err!("Too many arguments"));
+            }
+
             $f
         };
 
-		#[allow(unused_variables, unused_mut)]
+        #[allow(unused_variables, unused_mut)]
         fn param_checker(mut args: Args) -> (Vec<Range<u32>>, Option<Range<u32>>) {
             let mut ok_ranges = Vec::new();
 
             $(
-                match args.next_as_with_range::<$t>() {
-                    Ok((_, range)) => if !range.is_empty() {
-                        ok_ranges.push(range);
+                let start = args.next_start();
+                match args.next_as::<$t>() {
+                    Ok(_) => if let Some(start) = start
+                        .filter(|s| args.param_range().end > *s)
+                    {
+                        ok_ranges.push(start..args.param_range().end);
                     }
-                    Err((_, range)) => return (ok_ranges, Some(range))
+                    Err(_) => return (ok_ranges, Some(args.param_range()))
                 }
             )*
+
+            let start = args.next_start();
+            if let (Ok(_), Some(start)) = (args.next_as::<super::Remainder>(), start) {
+                return (ok_ranges, Some(start..args.param_range().end))
+            }
 
             (ok_ranges, None)
         }
@@ -919,130 +960,5 @@ impl<'a> Caller<'a> for &'a [&'a str] {
 impl<'a, const N: usize> Caller<'a> for [&'a str; N] {
     fn into_callers(self) -> impl Iterator<Item = &'a str> {
         self.into_iter()
-    }
-}
-
-pub trait Parameter<'a>: Sized {
-    type Returns;
-    /// Tries to consume arguments until forming a parameter
-    fn new(args: &mut Args<'a>) -> std::result::Result<Self::Returns, Text>;
-}
-
-impl<'a, P: Parameter<'a>> Parameter<'a> for Option<P> {
-    type Returns = Option<P::Returns>;
-
-    /// Will match either the argument given, or nothing
-    ///
-    /// This, like [`Vec`] _has_ to be the final argument in the
-    /// [`Parameter`] list, as it will either match something, match
-    /// nothing, or fail matching in order to give accurate feedback.
-    fn new(args: &mut Args<'a>) -> std::result::Result<Self::Returns, Text> {
-        match args.next_as::<P>() {
-            Ok(arg) => Ok(Some(arg)),
-            // This probably means an argument was trying to be matched, but failed.
-            Err(err) if args.is_recording_range() => Err(err),
-            Err(_) => Ok(None),
-        }
-    }
-}
-
-impl<'a, P: Parameter<'a>> Parameter<'a> for Vec<P> {
-    type Returns = Vec<P::Returns>;
-
-    /// Will match either the argument given, or nothing
-    ///
-    /// This, like [`Option`] _has_ to be the final argument in the
-    /// [`Parameter`] list, as it will either match correcly, finish
-    /// matching, or match incorrectly in order to give accurate
-    /// feedback.
-    fn new(args: &mut Args<'a>) -> std::result::Result<Self::Returns, Text> {
-        let mut returns = Vec::new();
-
-        loop {
-            match args.next_as::<P>() {
-                Ok(ret) => returns.push(ret),
-                // This probably means an argument was trying to be matched, but failed.
-                Err(err) if args.is_recording_range() => break Err(err),
-                Err(_) => break Ok(returns),
-            }
-        }
-    }
-}
-
-impl<'a> Parameter<'a> for &'a str {
-    type Returns = &'a str;
-
-    fn new(args: &mut Args<'a>) -> std::result::Result<Self::Returns, Text> {
-        args.next()
-    }
-}
-
-impl Parameter<'_> for String {
-    type Returns = String;
-
-    fn new(args: &mut Args) -> std::result::Result<Self::Returns, Text> {
-        Ok(args.next()?.to_string())
-    }
-}
-
-/// Returns the remaining arguments, separated by a space
-///
-/// May return an empty [`String`]
-struct Remainder;
-
-impl Parameter<'_> for Remainder {
-    type Returns = String;
-
-    fn new(args: &mut Args) -> std::result::Result<Self::Returns, Text> {
-        let args = std::iter::from_fn(|| args.next().ok());
-        Ok(args.intersperse(" ").collect())
-    }
-}
-
-struct ColorScheme;
-
-impl<'a> Parameter<'a> for ColorScheme {
-    type Returns = &'a str;
-
-    fn new(args: &mut Args<'a>) -> std::result::Result<Self::Returns, Text> {
-        let scheme = args.next()?;
-        if crate::form::colorscheme_exists(scheme) {
-            Ok(scheme)
-        } else {
-            Err(err!("The colorscheme " [*a] scheme [] " was not found"))
-        }
-    }
-}
-
-parse_impl!(bool);
-parse_impl!(u8);
-parse_impl!(u16);
-parse_impl!(u32);
-parse_impl!(u64);
-parse_impl!(u128);
-parse_impl!(usize);
-parse_impl!(i8);
-parse_impl!(i16);
-parse_impl!(i32);
-parse_impl!(i64);
-parse_impl!(i128);
-parse_impl!(isize);
-parse_impl!(f32);
-parse_impl!(f64);
-parse_impl!(std::path::PathBuf);
-
-macro parse_impl($t:ty) {
-    impl Parameter<'_> for $t {
-        type Returns = Self;
-
-        fn new(
-            args: &mut Args,
-        ) -> std::result::Result<Self::Returns, Text> {
-            let arg = args.next()?;
-            arg.parse().map_err(|_| err!(
-                [*a] arg [] "couldn't be parsed as "
-                [*a] { stringify!($t) } []
-            ))
-        }
     }
 }
