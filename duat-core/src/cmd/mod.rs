@@ -647,13 +647,15 @@ mod global {
     /// more information.
     ///
     /// [`CmdLine`]: crate::widgets::CmdLine
-    pub fn run(call: impl std::fmt::Display) -> Result<Option<Text>> {
-        COMMANDS.run(call)
+    pub fn run(call: impl std::fmt::Display) {
+        let call = call.to_string();
+        crate::thread::queue(|| COMMANDS.run(call))
     }
 
     /// Like [`run`], but notifies the result, not returning it
-    pub fn run_notify(call: impl std::fmt::Display) -> Result<Option<Text>> {
-        COMMANDS.run_notify(call)
+    pub fn run_notify(call: impl std::fmt::Display) {
+        let call = call.to_string();
+        crate::thread::queue(|| COMMANDS.run_notify(call))
     }
 
     /// Don't call this function, use [`cmd::add`] instead
@@ -743,14 +745,13 @@ impl Commands {
     }
 
     /// Runs a command and notifies its result
-    fn run_notify(&self, call: impl Display) -> Result<Option<Text>> {
+    fn run_notify(&self, call: impl Display) {
         let ret = self.run(call);
         match ret.as_ref() {
             Ok(Some(ok)) => context::notify(ok.clone()),
             Err(err) => context::notify(err.clone().into()),
             _ => {}
         }
-        ret
     }
 
     /// Adds a command to the list of commands

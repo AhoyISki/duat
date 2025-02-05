@@ -332,6 +332,13 @@ impl<'a> Parameter<'a> for FormName {
 ///
 /// This list excludes [`Flags`], and separates arguments either by
 /// whitespace, or by non escaped double quotes.
+///
+/// ```rust
+/// # use duat_core::cmd;
+/// //                  cmd │      flags      │         arguments
+/// //                 ┌   ┐│┌               ┐│┌  ┐ ┌        ┐ ┌   ┐ ┌   ┐
+/// cmd::run_notify(r#"mycmd --flags -moreflag arg1 "more arg" \"arg arg\""#);
+/// ```
 #[derive(Clone)]
 pub struct Args<'a> {
     args: Peekable<args_iter::ArgsIter<'a>>,

@@ -1,25 +1,13 @@
 //! Creation and execution of cmd.
 //!
-//! Commands in Duat work through the use of functions that don't
-//! require references (unless they're `'static`) and return results
-//! which may contain a [`Text`] to be displayed, if successful, and
-//! *must* contain an error [`Text`] to be displayed if they fail.
+//! Commands on Duat are bits of code that can be executed on the
+//! [`CmdLine`] widget. They can also be invoked from other parts of
+//! the code, but their use is mostly intended for runtime calls.
 //!
-//! Commands act on two parameters. which will be provided when ran:
-//! [`Flags`] and [`Args`].
-//!
-//! [`Flags`] will contain a list of all flags that were passed to the
-//! command. These flags follow the UNIX conventions, so `"-"` will
-//! pass blob flags, `"--"` starts a single, larger flag, and
-//! `"--"` followed by nothing means that the remaining arguments are
-//! not flags. Here's an example:
-//!
-//! `"my-command --flag1 --flag2 -short -- --not-flag more-args"`
-//!
-//! [`Args`] is merely an iterator over the remaining arguments, which
-//! are given as `&str`s to be consumed.
-//!
-//! Here's a simple example of how one would add a command:
+//! ```rust
+//! # use duat::cmd;
+//! cmd::run("set-colorscheme solarized");
+//! ```
 //!
 //! ```rust
 //! # use duat::prelude::cmd::{self, Flags, Args};
@@ -28,7 +16,7 @@
 //! let callers = ["my-command", "mc"];
 //!
 //! // cmd::add create a new globally available command.
-//! let result = cmd::add(callers, move |_flags, _args| {
+//! let result = cmd::add!(callers, move |_flags| {
 //!     unimplemented!();
 //! });
 //!
@@ -53,7 +41,7 @@
 //! let callers = ["my-command", "mc"];
 //! let my_command = {
 //!     let expression = expression.clone();
-//!     cmd::add(callers, move |flags, _args| {
+//!     cmd::add!(callers, move |flags| {
 //!         // `Flags::long` checks for `--` flags
 //!         if flags.word("happy") {
 //!             expression.store('😁' as u32, Ordering::Relaxed)
@@ -70,8 +58,9 @@
 //!     })
 //! };
 //!
-//! // flags and args are included within the string.
-//! cmd::run("mc --sad -🤯 unused-1 unused-2").unwrap();
+//! assert!(cmd::run("mc --sad -🤯").is_ok());
+//! // Passing more arguments than needed results in an error
+//! assert!(cmd::run("mc --happy extra args not allowed").is_err());
 //!
 //! let num = expression.load(Ordering::Relaxed);
 //! assert_eq!(char::from_u32(num), Some('🤯'))
@@ -130,6 +119,7 @@
 //! });
 //! ```
 //!
+//! [`CmdLine`]: crate::widgets::CmdLine
 //! [`Form`]: crate::form::Form
 pub use duat_core::cmd::{
     Args, Between, ColorSchemeArg, F32PercentOfU8, Flags, FormName, Parameter, Remainder, add, run,
