@@ -422,8 +422,6 @@ pub trait DuatError {
 /// Error for failures in Duat
 #[derive(Clone)]
 pub enum Error<E> {
-    /// An alias wasn't just a single word
-    AliasNotSingleWord(String),
     /// The caller for a command already pertains to another
     CallerAlreadyExists(String),
     /// No commands have the given caller as one of their own
@@ -457,7 +455,6 @@ impl<E1> Error<E1> {
     #[doc(hidden)]
     pub fn into_other_type<E2>(self) -> Error<E2> {
         match self {
-            Self::AliasNotSingleWord(caller) => Error::AliasNotSingleWord(caller),
             Self::CallerAlreadyExists(caller) => Error::CallerAlreadyExists(caller),
             Self::CallerNotFound(caller) => Error::CallerNotFound(caller),
             Self::CommandFailed(failure) => Error::CommandFailed(failure),
@@ -480,9 +477,6 @@ impl<E> DuatError for Error<E> {
         );
 
         match self {
-            Self::AliasNotSingleWord(caller) => err!(
-                "The caller " [*a] caller [] " is not a single word."
-            ),
             Self::CallerAlreadyExists(caller) => err!(
                 "The caller " [*a] caller [] " already exists."
             ),
@@ -507,7 +501,6 @@ impl<E> DuatError for Error<E> {
 impl<E> std::fmt::Debug for Error<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut debug = f.debug_tuple(match self {
-            Self::AliasNotSingleWord(_) => "AliasNotSingleWord",
             Self::CallerAlreadyExists(_) => "CallerAlreadyExists",
             Self::CallerNotFound(_) => "CallerNotFound",
             Self::CommandFailed(_) => "CommandFailed",
@@ -520,8 +513,7 @@ impl<E> std::fmt::Debug for Error<E> {
         });
 
         match self {
-            Self::AliasNotSingleWord(str)
-            | Self::CallerAlreadyExists(str)
+            Self::CallerAlreadyExists(str)
             | Self::CallerNotFound(str) => debug.field(&str),
             Self::CommandFailed(text) => debug.field(&text),
             Self::Empty

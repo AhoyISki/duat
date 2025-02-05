@@ -390,7 +390,8 @@ pub mod cursor {
 pub mod form {
     //! Functions to alter the [`Form`]s of Duat
     pub use duat_core::form::{
-        CursorShape, Form, add_colorscheme, from_id, id_of, set, set_colorscheme,
+        Color, ColorScheme, CursorShape, Form, add_colorscheme, from_id, id_of, set,
+        set_colorscheme,
     };
 }
 
@@ -483,7 +484,7 @@ pub mod widgets {
     //! Duat's builtin widgets
     pub use duat_core::{
         ui::Constraint,
-        widgets::{File, status},
+        widgets::{File, Widget, status},
     };
 
     use crate::Ui;

@@ -227,7 +227,7 @@ mod global {
     use std::ops::Range;
 
     use super::{Args, CmdResult, Commands, Flags, Parameter, Result};
-    use crate::{mode::Cursors, text::Text, ui::Ui, widgets::Widget};
+    use crate::{Error, mode::Cursors, text::Text, ui::Ui, widgets::Widget};
 
     static COMMANDS: Commands = Commands::new();
 
@@ -629,6 +629,49 @@ mod global {
         COMMANDS.alias(alias, command)
     }
 
+    /// A command executed via [`run`] or [`run_notify`]
+    ///
+    /// Since the command will only be executed once [`CmdRunner`] is
+    /// dropped, I would suggest that you shouldn't store it in a
+    /// variable.
+    pub struct CmdRunner {
+        cmd: Option<Box<dyn FnOnce() -> Result<Option<Text>> + Send + Sync + 'static>>,
+        map: Vec<Box<dyn FnOnce(&Option<Text>) + Send + Sync + 'static>>,
+        map_err: Vec<Box<dyn FnOnce(&Error<()>) + Send + Sync + 'static>>,
+    }
+
+    impl CmdRunner {
+        /// Maps the [`Ok`] result of this commmand.
+        ///
+        /// This is a convenient way of executing functions after a
+        /// command finished executing successfully.
+        pub fn map(mut self, f: impl FnOnce(&Option<Text>) + Send + Sync + 'static) -> Self {
+            self.map.push(Box::new(f));
+            self
+        }
+
+        /// Maps the [`Err`] result of this commmand.
+        ///
+        /// This is a convenient way to add fallbacks in case the
+        /// command fails for some reason or another.
+        pub fn map_err(mut self, f: impl FnOnce(&Error<()>) + Send + Sync + 'static) -> Self {
+            self.map_err.push(Box::new(f));
+            self
+        }
+    }
+
+    impl Drop for CmdRunner {
+        fn drop(&mut self) {
+            let cmd = self.cmd.take().unwrap();
+            let map = std::mem::take(&mut self.map);
+            let map_err = std::mem::take(&mut self.map_err);
+            crate::thread::queue(move || match cmd() {
+                Ok(ok) => map.into_iter().for_each(|f| f(&ok)),
+                Err(err) => map_err.into_iter().for_each(|f| f(&err)),
+            })
+        }
+    }
+
     /// Runs a full command, with a caller, [`Flags`], and [`Args`].
     ///
     /// When running the command, the ordering of flags does not
@@ -647,15 +690,23 @@ mod global {
     /// more information.
     ///
     /// [`CmdLine`]: crate::widgets::CmdLine
-    pub fn run(call: impl std::fmt::Display) {
+    pub fn run(call: impl std::fmt::Display) -> CmdRunner {
         let call = call.to_string();
-        crate::thread::queue(|| COMMANDS.run(call))
+        CmdRunner {
+            cmd: Some(Box::new(move || COMMANDS.run(call))),
+            map: Vec::new(),
+            map_err: Vec::new(),
+        }
     }
 
-    /// Like [`run`], but notifies the result, not returning it
-    pub fn run_notify(call: impl std::fmt::Display) {
+    /// Like [`run`], but notifies the result
+    pub fn run_notify(call: impl std::fmt::Display) -> CmdRunner {
         let call = call.to_string();
-        crate::thread::queue(|| COMMANDS.run_notify(call))
+        CmdRunner {
+            cmd: Some(Box::new(move || COMMANDS.run_notify(call))),
+            map: Vec::new(),
+            map_err: Vec::new(),
+        }
     }
 
     /// Don't call this function, use [`cmd::add`] instead
@@ -745,13 +796,14 @@ impl Commands {
     }
 
     /// Runs a command and notifies its result
-    fn run_notify(&self, call: impl Display) {
+    fn run_notify(&self, call: impl Display) -> Result<Option<Text>> {
         let ret = self.run(call);
         match ret.as_ref() {
             Ok(Some(ok)) => context::notify(ok.clone()),
             Err(err) => context::notify(err.clone().into()),
             _ => {}
         }
+        ret
     }
 
     /// Adds a command to the list of commands
@@ -906,7 +958,7 @@ impl InnerCommands {
     fn try_alias(&mut self, alias: impl ToString, call: impl ToString) -> Result<Option<Text>> {
         let alias = alias.to_string();
         if alias.split_whitespace().count() != 1 {
-            return Err(Error::AliasNotSingleWord(alias));
+            return Err(Error::CommandFailed(err!("Alias is not a single word")));
         }
 
         let call = call.to_string();

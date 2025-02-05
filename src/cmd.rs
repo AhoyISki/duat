@@ -4,32 +4,71 @@
 //! [`CmdLine`] widget. They can also be invoked from other parts of
 //! the code, but their use is mostly intended for runtime calls.
 //!
+//! They are executed asynchronously in order to prevent deadlocks in
+//! Duat's internal systems.
+//!
+//! # Running commands
+//!
 //! ```rust
 //! # use duat::cmd;
-//! cmd::run("set-colorscheme solarized");
+//! cmd::run("colorscheme solarized");
 //! ```
 //!
-//! ```rust
-//! # use duat::prelude::cmd::{self, Flags, Args};
-//! # use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
-//! // Any of these callers will work for running the command.
-//! let callers = ["my-command", "mc"];
+//! The code above runs the `colorscheme` command. In this case, if
+//! the command succeds or fails, no notification will be shown, if
+//! you want notifications, you should use [`cmd::run_notify`]:
 //!
-//! // cmd::add create a new globally available command.
-//! let result = cmd::add!(callers, move |_flags| {
-//!     unimplemented!();
+//! ```rust
+//! # use duat::cmd;
+//! cmd::run_notify("set-form --flag -abc rgb 255 0 0 hsl 1");
+//! ```
+//!
+//! The `set-form` command above will fail, since the hsl [`Color`]
+//! [`Parameter`] was not completely matched, missing the saturation
+//! and lightness arguments. It also shows two flag arguments, word
+//! flags (`"--flag"`) and blob flags (`"-abc"`).
+//!
+//! # Adding commands
+//!
+//! Commands are added through the [`add!`] and [`add_for!`] macros.
+//! The first one is used when you just want to interpret some
+//! [`Flags`] and [`Args`]. The second one lets you modify [`Widget`]s
+//! directly, modifying the most relevant one to the current [`File`].
+//!
+//! These macros will take two arguments, the first one is a list of
+//! callers for that command, e.g. `["quit", "q"]` for the `quit`
+//! command. Note that a regular [`&str`] argument is also accepted.
+//!
+//! The second argument is a _rust-like_ closure with a variable
+//! number of arguments. The first argument is always the [`Flags`] of
+//! the command. Subsequent arguments are of any type that implements
+//! [`Parameter`]. These [`Parameter`] arguments are not "a word
+//! each", for example, the [`Color`] parameter can take up to 4
+//! arguments to be processed:
+//!
+//! ```rust
+//! # use duat::prelude::{
+//! #     ok, form::{self, Form}, cmd::{self, Args, FormName, Flags}
+//! # };
+//! # use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
+//! let callers = ["unset-form", "uf"];
+//! // A `Vec<T>` parameter will try to collect all
+//! // remaining arguments as `T` in a list.
+//! let result = cmd::add!(callers, move |_flags, forms: Vec<Form>| {
+//!     for form in forms.iter() {
+//!         form::set("form", Form::new());
+//!     }
+//!     // You can return a success message, but must
+//!     // return an error message.
+//!     // For those, you should use the `ok!` and `err!`
+//!     // macros.
+//!     // For commands, you can also return `Ok(None)`.
+//!     ok!("Unset " [*a] { forms.len() } [] " forms")
 //! });
 //!
 //! // Adding a command can fail if a command with the same
 //! // name already exists.
 //! assert!(result.is_ok());
-//! ```
-//!
-//! To run that command, simply do the following:
-//!
-//! ```rust
-//! # use duat::prelude::cmd;
-//! cmd::run("my-command");
 //! ```
 //!
 //! Here's a simple command that makes use of [`Flags`]:
@@ -120,9 +159,15 @@
 //! ```
 //!
 //! [`CmdLine`]: crate::widgets::CmdLine
+//! [`cmd::run_notify`]: run_notify
+//! [`Color`]: crate::form::Color
+//! [`Widget`]: crate::widgets::Widget
+//! [`File`]: crate::widgets::File
+//! [`&str`]: str
 //! [`Form`]: crate::form::Form
 pub use duat_core::cmd::{
     Args, Between, ColorSchemeArg, F32PercentOfU8, Flags, FormName, Parameter, Remainder, add, run,
+    run_notify,
 };
 
 use crate::Ui;

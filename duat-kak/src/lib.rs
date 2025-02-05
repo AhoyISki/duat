@@ -513,23 +513,18 @@ impl OneKey {
 
             ////////// File change keys.
             key!(Char('a')) => {
-                if let Some(file) = last_file
-                    && cmd::run_notify(format!("b {file}")).is_ok()
-                {
-                    *LAST_FILE.write() = Some(cur_name);
-                } else {
-                    context::notify(err!("There is no previous file."))
+                if let Some(file) = last_file {
+                    cmd::run_notify(format!("b {file}"))
+                        .map(|_| *LAST_FILE.write() = Some(cur_name));
                 }
             }
             key!(Char('n')) => {
-                if cmd::run_notify("next-file").is_ok() {
-                    *LAST_FILE.write() = Some(cur_name);
-                }
+                cmd::run_notify("next-file").map(|_| *LAST_FILE.write() = Some(cur_name));
             }
             key!(Char('N'), Mod::SHIFT) => {
-                if cmd::run_notify("prev-file").is_ok() {
+                cmd::run_notify("prev-file").map(|_| {
                     *LAST_FILE.write() = Some(cur_name);
-                }
+                });
             }
             Event { code, .. } => {
                 let code = format!("{code:?}");
