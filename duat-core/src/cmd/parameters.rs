@@ -82,7 +82,7 @@ impl<'a, const N: usize, P: Parameter<'a>> Parameter<'a> for [P; N] {
     }
 }
 
-/// A list of between `MIN` and `MAX` [`Parameter`]s
+/// Command [`Parameter`]: A list of between `MIN` and `MAX` items
 ///
 /// This, like other lists, _has_ to be the final argument in the
 /// [`Parameter`] list, as it will either match correcly, finish
@@ -139,7 +139,7 @@ impl Parameter<'_> for String {
     }
 }
 
-/// Returns the remaining arguments, separated by a space
+/// Command [`Parameter`]: The remaining arguments, divided by a space
 ///
 /// Fails if the [`String`] would be empty.
 pub struct Remainder;
@@ -159,7 +159,7 @@ impl Parameter<'_> for Remainder {
     }
 }
 
-/// A type representing a [`ColorScheme`] that exists
+/// Command [`Parameter`]: An existing [`ColorScheme`]'s name
 ///
 /// [`ColorScheme`]: crate::form::ColorScheme
 pub struct ColorSchemeArg;
@@ -177,7 +177,7 @@ impl<'a> Parameter<'a> for ColorSchemeArg {
     }
 }
 
-/// Any open [`File`], by their file name
+/// Command [`Parameter`]: An open [`File`]'s name
 ///
 /// [`File`]: crate::widgets::File
 pub struct FileBuffer<U>(std::marker::PhantomData<U>);
@@ -200,7 +200,7 @@ impl<'a, U: crate::ui::Ui> Parameter<'a> for FileBuffer<U> {
     }
 }
 
-/// Any other open [`File`], by their file name
+/// Command [`Parameter`]: An open [`File`]'s name, except the current
 ///
 /// [`File`]: crate::widgets::File
 pub struct OtherFileBuffer<U>(std::marker::PhantomData<U>);
@@ -219,7 +219,7 @@ impl<'a, U: crate::ui::Ui> Parameter<'a> for OtherFileBuffer<U> {
     }
 }
 
-/// An [`f32`], created from a percentage or from [`u8`]
+/// Command [`Parameter`]: An [`f32`] from a [`u8`] or a percentage
 ///
 /// The percentage is of whole divisions of 100, 100 being equivalent
 /// to 255 in [`u8`].
@@ -309,7 +309,10 @@ impl<'a> Parameter<'a> for Color {
     }
 }
 
-/// An existing [`Form`]'s name
+/// Command [`Parameter`]: A [`set`] [`Form`]'s name
+///
+/// [`set`]: crate::form::set
+/// [`Form`]: crate::form::Form
 pub struct FormName;
 
 impl<'a> Parameter<'a> for FormName {
@@ -325,7 +328,10 @@ impl<'a> Parameter<'a> for FormName {
     }
 }
 
-/// Arguments to be used
+/// The list of arguments passed to a command
+///
+/// This list excludes [`Flags`], and separates arguments either by
+/// whitespace, or by non escaped double quotes.
 #[derive(Clone)]
 pub struct Args<'a> {
     args: Peekable<args_iter::ArgsIter<'a>>,
@@ -433,17 +439,24 @@ mod args_iter {
 
         let mut chars = command.char_indices();
         let mut start = None;
+        let mut end = None;
+        let mut is_quoting = false;
+        // Initial value doesn't matter, as long as it's not '\'
+        let mut last_char = 'a';
         let args: ArgsIter = std::iter::from_fn(move || {
             while let Some((b, char)) = chars.next() {
-                if let Some(s) = start
-                    && char.is_whitespace()
-                {
-                    start = None;
-                    unsafe {
-                        return Some((
-                            core::str::from_utf8_unchecked(&command.as_bytes()[s..b]),
-                            s as u32..b as u32,
-                        ));
+                let lc = last_char;
+                last_char = char;
+                if start.is_some() && char.is_whitespace() && !is_quoting {
+                    end = Some(b);
+                    break;
+                } else if char == '"' && lc != '\\' {
+                    is_quoting = !is_quoting;
+                    if !is_quoting {
+                        end = Some(b + 1);
+                        break;
+                    } else {
+                        start = Some(b);
                     }
                 } else if !char.is_whitespace() && start.is_none() {
                     start = Some(b);
@@ -451,9 +464,10 @@ mod args_iter {
             }
 
             start.take().map(|s| unsafe {
+                let e = end.take().unwrap_or(command.len());
                 (
-                    core::str::from_utf8_unchecked(&command.as_bytes()[s..]),
-                    s as u32..command.len() as u32,
+                    core::str::from_utf8_unchecked(&command.as_bytes()[s..e]),
+                    s as u32..e as u32,
                 )
             })
         });
