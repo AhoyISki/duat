@@ -311,6 +311,17 @@ pub mod text;
 pub mod ui;
 pub mod widgets;
 
+pub mod prelude {
+    //! The prelude of Duat
+    pub use crate::{
+        Error, cmd,
+        data::{self, RwData},
+        form,
+        text::{Builder, Text, err, hint, ok, text},
+        ui, widgets,
+    };
+}
+
 pub mod thread {
     use std::{
         sync::{
@@ -519,10 +530,8 @@ impl<E> std::fmt::Debug for Error<E> {
         });
 
         match self {
-            Self::CallerAlreadyExists(str)
-            | Self::CallerNotFound(str) => debug.field(&str),
-            Self::CommandFailed(text)
-            | Self::FailedParsing(text) => debug.field(&text),
+            Self::CallerAlreadyExists(str) | Self::CallerNotFound(str) => debug.field(&str),
+            Self::CommandFailed(text) | Self::FailedParsing(text) => debug.field(&text),
             Self::Empty
             | Self::NoFileYet
             | Self::NoFileForRelated

@@ -1,4 +1,4 @@
-//! Creation and execution of cmd.
+//! Creation and execution of commands.
 //!
 //! Commands on Duat are bits of code that can be executed on the
 //! [`CmdLine`] widget. They can also be invoked from other parts of
@@ -324,7 +324,7 @@ pub type OtherFileBuffer = duat_core::cmd::OtherFileBuffer<Ui>;
 ///             Ok(None)
 ///         })?;
 ///
-///         cmd::add_for!( "reset", |timer: Timer, _, _, _| {
+///         cmd::add_for!("reset", |timer: Timer, _, _, _| {
 ///             timer.instant = Instant::now();
 ///             Ok(None)
 ///         })
