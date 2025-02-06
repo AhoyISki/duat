@@ -158,19 +158,18 @@ impl<U: Ui> Widget<U> for CmdLine<U> {
         PrintCfg::default_for_input().with_forced_scrolloff()
     }
 
-    fn once() {
+    fn once() -> Result<(), crate::Error<()>> {
         form::set_weak("Prompt", Form::cyan());
         form::set_weak("ParseCommandErr", "DefaultErr");
 
         cmd::add_for!(
             U,
             "set-prompt",
-            move |cmd_line: CmdLine<U>, _, _, _, new_prompt: String| {
-                *cmd_line.prompt.write() = new_prompt;
+            |cmd_line: CmdLine<U>, _, _, _, new: String| {
+                *cmd_line.prompt.write() = new;
                 Ok(None)
             }
         )
-        .unwrap();
     }
 
     fn on_focus(&mut self, _area: &U::Area) {

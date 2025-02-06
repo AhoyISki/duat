@@ -54,7 +54,7 @@
 //! let callers = ["unset-form", "uf"];
 //! // A `Vec<T>` parameter will try to collect all
 //! // remaining arguments as `T` in a list.
-//! let result = cmd::add!(callers, move |_flags, forms: Vec<FormName>| {
+//! let result = cmd::add!(callers, |_flags, forms: Vec<FormName>| {
 //!     for form in forms.iter() {
 //!         form::set("form", Form::new());
 //!     }
@@ -71,6 +71,13 @@
 //! assert!(result.is_ok());
 //! ```
 //!
+//! In the command above, you'll notice that I used the [`ok!`] macro,
+//! which returns [`Ok(Some({Text}))`]. This macro is used when you
+//! want to return a notification saying that the command succeeded.
+//! Its counterpart is the [`err!`] macro, which just returns a
+//! [`Text`], like [`text!`]. This macro represents failure in the
+//! execution of the command, and must be used.
+//!
 //! Here's a simple command that makes use of [`Flags`]:
 //!
 //! ```rust
@@ -79,7 +86,7 @@
 //! let expression = Arc::new(AtomicU32::default());
 //! let my_command = {
 //!     let expression = expression.clone();
-//!     cmd::add!("make-expression", move |flags| {
+//!     cmd::add!("mood", move |flags| {
 //!         // `Flags::long` checks for `--` flags
 //!         if flags.word("happy") {
 //!             expression.store('😁' as u32, Ordering::Relaxed)
@@ -96,65 +103,51 @@
 //!     })
 //! };
 //!
-//! cmd::run("mc --sad -🤯");
+//! cmd::run("mood --sad -🤯");
 //! // Passing more arguments than needed results in
 //! // an error, so the command is never executed.
-//! cmd::run_notify("mc --happy extra args not allowed");
+//! cmd::run_notify("mood --happy extra args not allowed");
+//!
+//! // Enough time for no async shenanigans.
+//! std::thread::sleep(std::time::Duration::new(1, 0));
 //!
 //! let num = expression.load(Ordering::Relaxed);
 //! assert_eq!(char::from_u32(num), Some('🤯'))
 //! ```
 //!
-//! Here's an example that makes use of the arguments passed to the
-//! command.
+//! There are other [`Parameter`]s in [`cmd`] that can be used on a
+//! variety of things:
 //!
 //! ```rust
-//! # use std::path::PathBuf;
 //! # use duat::prelude::{cmd, err, ok};
-//! cmd::add(["copy", "cp"], move |flags, mut args| {
-//!     // The `?` is very handy to get a specific number of args.
-//!     let source = args.next()?;
-//!     // You can also return custom error messages.
-//!     let target_1 = args.next_else(err!([*a] "No target given."))?;
-//!     // And also parse the arguments.
-//!     let target_2: PathBuf = args.next_as()?;
-//!
-//!     // If you want to error out on too many cmd.
-//!     args.ended()?;
-//!
-//!     if flags.word("link") {
-//!         unimplemented!("Logic for linking files.");
-//!     } else {
-//!         unimplemented!("Logic for copying files.");
+//! cmd::add!("pip", |flags, args: cmd::Remainder| {
+//!     match std::process::Command::new("pip").spawn() {
+//!         Ok(child) => match child.wait_with_output() {
+//!             Ok(ok) => {
+//!                 ok!({ String::from_utf8_lossy(&ok.stdout).into_owned() })
+//!             }
+//!             Err(err) => Err(err!(err)),
+//!         },
+//!         Err(err) => Err(err!(err)),
 //!     }
-//!
-//!     // You can return a success message, but this is optional.
-//!     ok!("Copied from " [*a] source [] " to " [*a] target_1 [] ".")
 //! });
 //! ```
 //!
-//! The returned result from a command should make use of 4 specific
-//! form: `"CommandOk"`, `"AccentOk"`, `"CommandErr"` and
-//! `"AccentErr"`. When errors are displayed, the `"Default"` [`Form`]
-//! gets mapped to `"CommandOk"` if the result is [`Ok`], and to
-//! `"CommandErr"` if the result is [`Err`]. . This formatting of
-//! result messages allows for more expressive feedback while still
-//! letting the end user configure their appearance.
-//!
-//! In the previous command, we handled a static number of arguments.
-//! But we can also easily handle arguments as an "iterator of
-//! results".
+//! The other type of command that Duat supports is one that also acts
+//! on a [`Widget`]:
 //!
 //! ```rust
-//! # use duat::prelude::{cmd, ok};
-//! cmd::add(["write", "w"], move |_flags, mut args| {
-//!     let mut count = 0;
-//!     while let Ok(arg) = args.next() {
-//!         count += 1;
-//!         /* Logic for writing to files */
-//!     }
-//!
-//!     ok!("Wrote to " [*a] count [] " files successfully.")
+//! # use duat::{cmd, widgets::{LineNumbers, NumberRelation}};
+//! cmd::add_for!("toggle-relative", |ln: LineNumbers, _, _, _| {
+//!     let mut cfg = ln.get_cfg();
+//!     cfg.num_rel = match cfg.num_rel {
+//!         NumberRelation::Absolute => NumberRelation::RelAbs,
+//!         NumberRelation::Relative | NumberRelation::RelAbs => {
+//!             NumberRelation::Absolute
+//!         }
+//!     };
+//!     ln.reconfigure(cfg);
+//!     Ok(None)
 //! });
 //! ```
 //!
@@ -164,6 +157,12 @@
 //! [`Widget`]: crate::widgets::Widget
 //! [`File`]: crate::widgets::File
 //! [`&str`]: str
+//! [`cmd`]: self
+//! [`ok!`]: crate::prelude::ok
+//! [`Ok(Some({Text}))`]: Ok
+//! [`err!`]: crate::prelude::err
+//! [`Text`]: crate::prelude::Text
+//! [`text!`]: crate::prelude::text
 //! [`Form`]: crate::form::Form
 pub use duat_core::cmd::{
     Args, Between, ColorSchemeArg, F32PercentOfU8, Flags, FormName, Parameter, Remainder, add, run,
@@ -175,14 +174,13 @@ use crate::Ui;
 pub type FileBuffer = duat_core::cmd::FileBuffer<Ui>;
 pub type OtherFileBuffer = duat_core::cmd::OtherFileBuffer<Ui>;
 
-/// Adds a command that can mutate a widget of the given type,
-/// along with its associated [`dyn Area`].
+/// Adds a command for a specific [`Widget`]
 ///
 /// This command will look for the [`Widget`] in the
 /// following order:
 ///
 /// 1. Any widget directly attached to the current file.
-/// 2. One other instance in the active window.
+/// 2. The first instance in the active window.
 /// 3. Instances in other windows.
 ///
 /// Keep in mind that this command will always execute on the
@@ -192,7 +190,7 @@ pub type OtherFileBuffer = duat_core::cmd::OtherFileBuffer<Ui>;
 /// widgets, for example, one may have a [`CmdLine`] per
 /// [`File`], or one singular [`CmdLine`] that acts upon
 /// all files in the window, and both would respond correctly
-/// to the `"set-prompt"` command.
+/// to the `set-prompt` command.
 ///
 /// # Examples
 ///
@@ -261,11 +259,13 @@ pub type OtherFileBuffer = duat_core::cmd::OtherFileBuffer<Ui>;
 /// #    fn text_mut(&mut self) -> &mut Text {
 /// #        &mut self.text
 /// #    }
-/// #    fn once() {}
+/// #    fn once() -> Result<(), duat::Error<()>> {
+/// #        Ok(())
+/// #    }
 /// }
 /// ```
 ///
-/// Next, we'll add three cmd for this widget, "`play`",
+/// Next, we'll add three commands for this widget, "`play`",
 /// "`pause`" and "`reset`". The best place to add them is in the
 /// [`once`] function of [`Widget`]s
 ///
@@ -276,9 +276,10 @@ pub type OtherFileBuffer = duat_core::cmd::OtherFileBuffer<Ui>;
 /// #     time::{Duration, Instant}
 /// # };
 /// # use duat_core::{
-/// #     cmd, form::{self, Form}, text::{text, Text, AlignCenter},
+/// #     form::{self, Form}, text::{text, Text, AlignCenter},
 /// #     ui::{Area, PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
 /// # };
+/// # use duat::cmd;
 /// # struct TimerCfg<U>(PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for TimerCfg<U> {
 /// #     type Widget = Timer;
@@ -310,35 +311,23 @@ pub type OtherFileBuffer = duat_core::cmd::OtherFileBuffer<Ui>;
 /// #        &mut self.text
 /// #    }
 ///     // ...
-///     fn once() {
+///     fn once() -> Result<(), duat::Error<()>> {
 ///         form::set_weak("Counter", Form::green());
 ///
-///         cmd::add_for::<Timer, U>(
-///             ["play"],
-///             |timer, _area, _cursors, _flags, _args| {
-///                 timer.running.store(true, Ordering::Relaxed);
+///         cmd::add_for!("play", |timer: Timer, _area, _cursors, _flags| {
+///             timer.running.store(true, Ordering::Relaxed);
+///             Ok(None)
+///         })?;
 ///
-///                 Ok(None)
-///             })
-///             .unwrap();
+///         cmd::add_for!("pause", |timer: Timer, _, _, _| {
+///             timer.running.store(false, Ordering::Relaxed);
+///             Ok(None)
+///         })?;
 ///
-///         cmd::add_for::<Timer, U>(
-///             ["pause"],
-///             |timer, _, _, _, _| {
-///                 timer.running.store(false, Ordering::Relaxed);
-///
-///                 Ok(None)
-///             })
-///             .unwrap();
-///
-///         cmd::add_for::<Timer, U>(
-///             ["reset"],
-///             |timer, _, _, _, _| {
-///                 timer.instant = Instant::now();
-///
-///                 Ok(None)
-///             })
-///             .unwrap();
+///         cmd::add_for!( "reset", |timer: Timer, _, _, _| {
+///             timer.instant = Instant::now();
+///             Ok(None)
+///         })
 ///     }
 /// }
 /// ```
@@ -347,11 +336,11 @@ pub type OtherFileBuffer = duat_core::cmd::OtherFileBuffer<Ui>;
 /// use [`form::set_weak`] instead of [`form::set`], as to not
 /// interfere with the user configuration.
 ///
-/// [`dyn Area`]: duat_core::ui::Area
+/// [`Widget`]: crate::widgets::Widget
 /// [`File`]: crate::widgets::File
 /// [`Session`]: crate::session::Session
 /// [`CmdLine`]: crate::widgets::CmdLine
-/// [`once`]: Widget::once
+/// [`once`]: crate::widgets::Widget::once
 /// [`Form`]: crate::form::Form
 /// [`form::set`]: crate::form::set
 /// [`form::set_weak`]: duat_core::form::set_weak

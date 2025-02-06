@@ -375,11 +375,12 @@ mod switch {
 ///         &mut self.text
 ///     }
 ///
-///     fn once() {
+///     fn once() -> Result<(), duat_core::Error<()>> {
 ///         form::set_weak("MenuInactive", "Inactive");
 ///         form::set_weak("MenuSelected", "Inactive");
 ///         form::set_weak("MenuActive", Form::blue());
 ///         form::set_weak("MenuSelActive", Form::blue());
+///         Ok(())
 ///     }
 /// }
 /// ```
@@ -419,7 +420,9 @@ mod switch {
 /// #     fn text(&self) -> &Text {
 /// #         &self.text
 /// #     }
-/// #     fn once() {}
+/// #     fn once() -> Result<(), duat_core::Error<()>> {
+/// #         Ok(())
+/// #     }
 /// #     fn text_mut(&mut self) -> &mut Text {
 /// #         &mut self.text
 /// #     }
@@ -482,7 +485,9 @@ mod switch {
 /// #     fn text(&self) -> &Text {
 /// #         &self.text
 /// #     }
-/// #     fn once() {}
+/// #     fn once() -> Result<(), duat_core::Error<()>> {
+/// #         Ok(())
+/// #     }
 /// #     fn text_mut(&mut self) -> &mut Text {
 /// #         &mut self.text
 /// #     }

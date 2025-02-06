@@ -52,7 +52,7 @@ use std::sync::{
 pub use self::{
     command_line::{CmdLine, CmdLineCfg, CmdLineMode, IncSearch, RunCommands, ShowNotifications},
     file::{File, FileCfg},
-    line_numbers::{LineNumbers, LineNumbersCfg},
+    line_numbers::{LineNumbers, LineNumbersCfg, NumberRelation},
     status_line::{State, StatusLine, StatusLineCfg, common, status},
 };
 use crate::{
@@ -117,9 +117,11 @@ mod status_line;
 /// #         &self.0
 /// #     }
 /// #     fn text_mut(&mut self) -> &mut Text {
-/// #        &mut self.0
+/// #         &mut self.0
 /// #     }
-/// #     fn once() {}
+/// #     fn once() -> Result<(), duat_core::Error<()>> {
+/// #         Ok(())
+/// #     }
 /// }
 /// ```
 ///
@@ -159,7 +161,9 @@ mod status_line;
 /// #     fn text_mut(&mut self) -> &mut Text{
 /// #         &mut self.0
 /// #     }
-/// #     fn once() {}
+/// #     fn once() -> Result<(), duat_core::Error<()>> {
+/// #         Ok(())
+/// #     }
 /// # }
 /// ```
 ///
@@ -232,11 +236,12 @@ mod status_line;
 /// #         &mut self.0
 /// #     }
 ///     // ...
-///     fn once() {
+///     fn once() -> Result<(), duat_core::Error<()>> {
 ///         hooks::add::<SessionStarted<U>>(|_| {
 ///             START_TIME.set(Instant::now()).unwrap();
 ///         });
 ///         form::set_weak("UpTime", Form::cyan());
+///         Ok(())
 ///     }
 /// }
 /// ```
@@ -286,7 +291,9 @@ mod status_line;
 ///         self.0 = text!([UpTime] mins "m " secs "s");
 ///     }
 ///     // ...
-///     fn once() {}
+///     fn once() -> Result<(), duat_core::Error<()>> {
+///         Ok(())
+///     }
 /// }
 /// ```
 ///
@@ -400,7 +407,7 @@ where
     /// functions, [hooks], [commands] you want executed only once
     ///
     /// [commands]: crate::cmd
-    fn once()
+    fn once() -> Result<(), crate::Error<()>>
     where
         Self: Sized;
 }

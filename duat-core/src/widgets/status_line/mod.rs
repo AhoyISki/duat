@@ -209,13 +209,14 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
         &mut self.text
     }
 
-    fn once() {
+    fn once() -> crate::Result<(), ()> {
         form::set_weak("DefaultStatus", "Default");
         form::set_weak("File", Form::yellow().italic());
         form::set_weak("Selections", Form::dark_blue());
         form::set_weak("Coord", Form::dark_yellow());
         form::set_weak("Separator", Form::cyan());
         form::set_weak("Mode", Form::green());
+        Ok(())
     }
 
     fn print_cfg(&self) -> PrintCfg {

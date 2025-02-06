@@ -245,14 +245,10 @@ mod global {
     /// # fn test<U: Ui>() {
     /// let var = RwData::new(35);
     ///
-    /// cmd::add!(["set-var"], {
-    ///     let var = var.clone();
-    ///     move |_flags, mut args| {
-    ///         let value: usize = args.next_as()?;
-    ///         *var.write() = value;
-    ///
-    ///         Ok(None)
-    ///     }
+    /// let var_clone = var.clone();
+    /// cmd::add!("set-var", move |_flags, value: usize| {
+    ///     *var_clone.write() = value;
+    ///     Ok(None)
     /// });
     ///
     /// hooks::add::<OnWindowOpen<U>>(move |builder| {
@@ -398,7 +394,9 @@ mod global {
     /// #    fn text_mut(&mut self) -> &mut Text {
     /// #        &mut self.text
     /// #    }
-    /// #    fn once() {}
+    /// #     fn once() -> Result<(), duat_core::Error<()>> {
+    /// #         Ok(())
+    /// #     }
     /// }
     /// ```
     ///
@@ -447,35 +445,23 @@ mod global {
     /// #        &mut self.text
     /// #    }
     ///     // ...
-    ///     fn once() {
+    ///     fn once() -> Result<(), duat_core::Error<()>> {
     ///         form::set_weak("Counter", Form::green());
     ///
-    ///         cmd::add_for::<Timer, U>(
-    ///             ["play"],
-    ///             |timer, _area, _cursors, _flags, _args| {
-    ///                 timer.running.store(true, Ordering::Relaxed);
+    ///         cmd::add_for!(U, "play", |timer: Timer, _area, _cursors, _flags| {
+    ///             timer.running.store(true, Ordering::Relaxed);
+    ///             Ok(None)
+    ///         })?;
     ///
-    ///                 Ok(None)
-    ///             })
-    ///             .unwrap();
+    ///         cmd::add_for!(U, "pause", |timer: Timer, _, _, _| {
+    ///             timer.running.store(false, Ordering::Relaxed);
+    ///             Ok(None)
+    ///         })?;
     ///
-    ///         cmd::add_for::<Timer, U>(
-    ///             ["pause"],
-    ///             |timer, _, _, _, _| {
-    ///                 timer.running.store(false, Ordering::Relaxed);
-    ///
-    ///                 Ok(None)
-    ///             })
-    ///             .unwrap();
-    ///
-    ///         cmd::add_for::<Timer, U>(
-    ///             ["reset"],
-    ///             |timer, _, _, _, _| {
-    ///                 timer.instant = Instant::now();
-    ///
-    ///                 Ok(None)
-    ///             })
-    ///             .unwrap();
+    ///         cmd::add_for!(U, "reset", |timer: Timer, _, _, _| {
+    ///             timer.instant = Instant::now();
+    ///             Ok(None)
+    ///         })
     ///     }
     /// }
     /// ```
@@ -797,7 +783,7 @@ impl Commands {
         let (flags, args) = split_flags_and_args(&call);
 
         if let (_, Some((_, err))) = (command.checker)(args.clone()) {
-            return Err(Error::FailedParsing(err))
+            return Err(Error::FailedParsing(err));
         }
 
         command.try_exec(Flags::new(&flags), args)
@@ -832,17 +818,15 @@ impl Commands {
         mut cmd: impl FnMut(&mut W, &U::Area, &mut Cursors, Flags, Args) -> CmdResult + 'static,
         checker: impl Fn(Args) -> (Vec<Range<u32>>, Option<(Range<u32>, Text)>) + 'static,
     ) -> Result<()> {
-        let cur_file = context::inner_cur_file::<U>();
-        let windows = context::windows::<U>();
-        let w = context::cur_window();
-
         let cmd = move |flags: Flags, args: Args| {
+            let cur_file = context::inner_cur_file::<U>();
             cur_file
                 .mutate_related_widget::<W, CmdResult>(|widget, area, cursors| {
                     cmd(widget, area, cursors, flags, args.clone())
                 })
                 .unwrap_or_else(|| {
-                    let windows = windows.read();
+                    let windows = context::windows::<U>().read();
+                    let w = context::cur_window();
 
                     if windows.is_empty() {
                         return Err(err!(

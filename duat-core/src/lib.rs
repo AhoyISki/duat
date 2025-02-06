@@ -273,7 +273,8 @@
     exact_size_is_empty,
     macro_metavar_expr_concat,
     debug_closure_helpers,
-    maybe_uninit_uninit_array
+    maybe_uninit_uninit_array,
+    string_from_utf8_lossy_owned
 )]
 #![allow(clippy::single_range_in_vec_init)]
 

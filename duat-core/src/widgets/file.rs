@@ -273,8 +273,6 @@ impl<U: Ui> Widget<U> for File {
         self.cfg
     }
 
-    fn once() {}
-
     fn print(&mut self, area: &<U as Ui>::Area) {
         let (start, _) = area.top_left();
 
@@ -302,6 +300,10 @@ impl<U: Ui> Widget<U> for File {
                 }
             },
         )
+    }
+
+    fn once() -> crate::Result<(), ()> {
+        Ok(())
     }
 }
 

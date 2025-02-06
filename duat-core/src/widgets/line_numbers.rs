@@ -69,6 +69,14 @@ impl<U: Ui> LineNumbers<U> {
             builder.finish()
         });
     }
+
+    pub fn get_cfg(&self) -> LineNumbersCfg<U> {
+        self.cfg
+    }
+
+    pub fn reconfigure(&mut self, cfg: LineNumbersCfg<U>) {
+        self.cfg = cfg
+    }
 }
 
 impl<U: Ui> Widget<U> for LineNumbers<U> {
@@ -93,17 +101,18 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
         &mut self.text
     }
 
-    fn once() {
+    fn once() -> crate::Result<(), ()> {
         form::set_weak("LineNum", Form::grey());
         form::set_weak("MainLineNum", Form::yellow());
         form::set_weak("WrappedLineNum", Form::cyan().italic());
         form::set_weak("WrappedMainLineNum", "WrappedLineNum");
+        Ok(())
     }
 }
 
 /// How to show the line numbers on screen.
 #[derive(Default, Debug, Copy, Clone)]
-enum Numbers {
+pub enum NumberRelation {
     #[default]
     /// Line numbers relative to the beginning of the file.
     Absolute,
@@ -115,14 +124,21 @@ enum Numbers {
 }
 
 /// Configuration options for the [`LineNumbers<U>`] widget.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct LineNumbersCfg<U> {
-    numbers: Numbers,
-    align: Alignment,
-    main_align: Alignment,
-    show_wraps: bool,
-    specs: PushSpecs,
-    ghost: PhantomData<U>,
+    pub num_rel: NumberRelation,
+    pub align: Alignment,
+    pub main_align: Alignment,
+    pub show_wraps: bool,
+    pub specs: PushSpecs,
+    pub ghost: PhantomData<U>,
+}
+
+impl<U> Copy for LineNumbersCfg<U> {}
+impl<U> Clone for LineNumbersCfg<U> {
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 
 impl<U> Default for LineNumbersCfg<U> {
@@ -134,7 +150,7 @@ impl<U> Default for LineNumbersCfg<U> {
 impl<U> LineNumbersCfg<U> {
     pub fn new() -> Self {
         Self {
-            numbers: Numbers::Absolute,
+            num_rel: NumberRelation::Absolute,
             align: Alignment::Left,
             main_align: Alignment::Right,
             show_wraps: false,
@@ -144,15 +160,15 @@ impl<U> LineNumbersCfg<U> {
     }
 
     pub fn absolute(self) -> Self {
-        Self { numbers: Numbers::Absolute, ..self }
+        Self { num_rel: NumberRelation::Absolute, ..self }
     }
 
     pub fn relative(self) -> Self {
-        Self { numbers: Numbers::Relative, ..self }
+        Self { num_rel: NumberRelation::Relative, ..self }
     }
 
     pub fn rel_abs(self) -> Self {
-        Self { numbers: Numbers::RelAbs, ..self }
+        Self { num_rel: NumberRelation::RelAbs, ..self }
     }
 
     pub fn align_left(self) -> Self {
@@ -233,10 +249,10 @@ fn push_text<U>(
     if is_wrapped && !cfg.show_wraps {
         text!(*builder, "\n");
     } else if main != u32::MAX {
-        let num = match cfg.numbers {
-            Numbers::Absolute => line + 1,
-            Numbers::Relative => line.abs_diff(main),
-            Numbers::RelAbs => {
+        let num = match cfg.num_rel {
+            NumberRelation::Absolute => line + 1,
+            NumberRelation::Relative => line.abs_diff(main),
+            NumberRelation::RelAbs => {
                 if line != main {
                     line.abs_diff(main)
                 } else {

@@ -469,7 +469,7 @@ fn run_once<W: Widget<U>, U: Ui>() {
 
     let mut once_list = ONCE_LIST.write();
     if !once_list.contains(&duat_name::<W>()) {
-        W::once();
+        W::once().unwrap();
         once_list.push(duat_name::<W>());
     }
 }

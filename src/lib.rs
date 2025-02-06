@@ -164,14 +164,10 @@
 //! # use duat::prelude::*;
 //! # fn test() -> Result<(), Error<()>> {
 //! let callers = ["collapse-cmd-line", "ccmd"];
-//! cmd::add_for::<CmdLine>(
-//!     callers,
-//!     |_command_line, area, _cursors, _flags, _args| {
-//!         area.constrain_ver(Constraint::Length(0.0))?;
-//!
-//!         Ok(None)
-//!     },
-//! )
+//! cmd::add_for!(callers, |_cmd_line: CmdLine, area, _cursors, _flags| {
+//!     area.constrain_ver(Constraint::Length(0.0))?;
+//!     Ok(None)
+//! })
 //! # }
 //! ```
 //!
@@ -267,7 +263,7 @@
 use std::sync::RwLock;
 
 use duat_core::session::SessionCfg;
-pub use duat_core::thread;
+pub use duat_core::{Error, thread};
 pub use setup::{pre_setup, run_duat};
 
 pub mod cmd;
@@ -484,7 +480,7 @@ pub mod widgets {
     //! Duat's builtin widgets
     pub use duat_core::{
         ui::Constraint,
-        widgets::{File, Widget, status},
+        widgets::{File, NumberRelation, Widget, status},
     };
 
     use crate::Ui;
