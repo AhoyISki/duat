@@ -791,34 +791,38 @@ pub macro log_file($($text:tt)*) {{
         compile_error!("You are not supposed to use log_file on release profiles!");
     }
 
-    let mut file = std::io::BufWriter::new(
-        std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open("/home/mateus/log")
-            .unwrap(),
-    );
+    if let Some(cache) = dirs_next::cache_dir() {
+        let mut file = std::io::BufWriter::new(
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(cache.join("duat/log"))
+                .unwrap(),
+        );
 
-    use std::{io::Write, time::Instant};
+        use std::{io::Write, time::Instant};
 
-    let mut text = format!($($text)*);
+        let mut text = format!($($text)*);
 
-    if let Some(start) = $crate::DEBUG_TIME_START.get()
-        && text != "" {
-        if text.lines().count() > 1 {
-            let chars = text.char_indices().filter_map(|(pos, char)| (char == '\n').then_some(pos));
-            let nl_indices: Vec<usize> = chars.collect();
-            for index in nl_indices.iter().rev() {
-                text.insert_str(index + 1, "  ");
+        if let Some(start) = $crate::DEBUG_TIME_START.get()
+            && text != "" {
+            if text.lines().count() > 1 {
+                let chars = text
+                    .char_indices()
+                    .filter_map(|(pos, char)| (char == '\n').then_some(pos));
+                let nl_indices: Vec<usize> = chars.collect();
+                for index in nl_indices.iter().rev() {
+                    text.insert_str(index + 1, "  ");
+                }
+
+                let duration = Instant::now().duration_since(*start);
+                write!(file, "\nat {:.4?}:\n  {text}", duration).unwrap();
+            } else {
+                let duration = Instant::now().duration_since(*start);
+                write!(file, "\nat {:.4?}: {text}", duration).unwrap();
             }
-
-            let duration = Instant::now().duration_since(*start);
-            write!(file, "\nat {:.4?}:\n  {text}", duration).unwrap();
         } else {
-            let duration = Instant::now().duration_since(*start);
-            write!(file, "\nat {:.4?}: {text}", duration).unwrap();
+            write!(file, "\n{text}").unwrap();
         }
-    } else {
-        write!(file, "\n{text}").unwrap();
     }
 }}

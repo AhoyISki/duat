@@ -12,7 +12,7 @@ use crate::{
     cfg::PrintCfg,
     cmd, context,
     data::RwData,
-    hooks::{self, OnFileOpen, OnWindowOpen, SessionStarted},
+    hooks::{self, ConfigLoaded, ConfigUnloaded, ExitedDuat, OnFileOpen, OnWindowOpen},
     mode,
     ui::{Area, Event, FileBuilder, Layout, MasterOnLeft, Sender, Ui, Window, WindowBuilder},
     widgets::{File, FileCfg, Node, Widget, WidgetCfg},
@@ -154,7 +154,7 @@ impl<U: Ui> Session<U> {
 
     /// Start the application, initiating a read/response loop.
     pub fn start(mut self, rx: mpsc::Receiver<Event>) -> Vec<(RwData<File>, bool)> {
-        hooks::trigger::<SessionStarted<U>>(());
+        hooks::trigger::<ConfigLoaded>(());
 
         // This loop is very useful when trying to find deadlocks.
         #[cfg(feature = "deadlocks")]
@@ -208,8 +208,12 @@ impl<U: Ui> Session<U> {
 
             let reason_to_break = self.session_loop(&rx);
 
+            hooks::trigger::<ConfigUnloaded>(());
+
             match reason_to_break {
                 BreakTo::QuitDuat => {
+                    hooks::trigger::<ExitedDuat>(());
+
                     crate::thread::quit_queue();
                     cmd::end_session();
                     self.save_cache(true);

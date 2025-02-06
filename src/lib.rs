@@ -394,7 +394,8 @@ pub mod form {
 pub mod hooks {
     //! Hook utilities
     pub use duat_core::hooks::{
-        ColorSchemeSet, FormSet, Hookable, ModeSwitched, add, add_grouped, group_exists, remove,
+        ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FormSet, Hookable, ModeSwitched,
+        add, add_grouped, group_exists, remove,
     };
 
     use crate::Ui;

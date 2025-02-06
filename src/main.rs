@@ -88,10 +88,10 @@ fn main() {
 
         prev_files = handle.join().unwrap();
 
-        if let Ok((new_lib, new_run_fn)) = main_rx.try_recv() {
+        if let Ok(so_path) = main_rx.try_recv() {
             library.take().unwrap().close().unwrap();
-            library = Some(new_lib);
-            run_fn = Some(new_run_fn);
+            library = Some(unsafe { Library::new(&so_path).ok().unwrap() });
+            run_fn = find_run_fn(library.as_ref().unwrap());
         } else {
             break;
         }
@@ -100,7 +100,7 @@ fn main() {
 
 /// Returns [`true`] if it reloaded the library and run function
 fn reload_config(
-    main_tx: &Sender<(Library, Symbol<RunFn>)>,
+    main_tx: &Sender<PathBuf>,
     target_dir: &PathBuf,
     toml_path: &PathBuf,
     on_release: bool,
@@ -112,12 +112,16 @@ fn reload_config(
 
     if let Ok(out) = run_cargo(&toml_path, target_dir, on_release)
         && out.status.success()
-        && let Some(library) = unsafe { Library::new(so_path).ok() }
-        && let Some(run_fn) = find_run_fn(&library)
+        && {
+            duat_core::log_file!("{}", unsafe { std::str::from_utf8_unchecked(&out.stderr) });
+            true
+        }
+        && let Some(library) = unsafe { Library::new(&so_path).ok() }
+        && find_run_fn(&library).is_some()
     {
         let session_tx = SESSION_TX.lock().unwrap();
         let session_tx = session_tx.as_ref().unwrap();
-        main_tx.send((library, run_fn)).unwrap();
+        main_tx.send(so_path).unwrap();
         session_tx.send(ui::Event::ReloadConfig).unwrap();
         true
     } else {
@@ -133,11 +137,10 @@ fn run_cargo(
     let mut cargo = Command::new("cargo");
     cargo.args([
         "build",
-        "--quiet",
         "--manifest-path",
+        toml_path.to_str().unwrap(),
         "--target-dir",
         target_dir.to_str().unwrap(),
-        toml_path.to_str().unwrap(),
     ]);
 
     if !cfg!(debug_assertions) && on_release {

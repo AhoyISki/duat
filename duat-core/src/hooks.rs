@@ -21,15 +21,15 @@
 //!
 //! Currently, these are the existing hooks in `duat-core`:
 //!
-//! - [`SessionStarted`], happening after the initial setup is done.
+//! - [`ConfigLoaded`] triggers after loading the config crate.
+//! - [`ConfigUnloaded`] triggers after unloading the config crate.
+//! - [`ExitedDuat`] triggers after Duat has exited.
 //! - [`OnFileOpen`], which lets you push widgets around a [`File`].
 //! - [`OnWindowOpen`], which lets you push widgets around the window.
-//! - [`FocusedOn`] lets you act on a [widget] whenever it is focused.
+//! - [`FocusedOn`] lets you act on a [widget] when focused.
 //! - [`UnfocusedFrom`] lets you act on a [widget] when unfocused.
-//! - [`KeySent`] lets you act on a [dyn Widget], depending on the
-//!   [key] sent to it.
-//! - [`KeySentTo`], unlike [`KeySent`], lets you act on a specific
-//!   [widget], given a [key].
+//! - [`KeySent`] lets you act on a [dyn Widget], given a[key].
+//! - [`KeySentTo`] lets you act on a given [widget], given a [key].
 //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
 //!
 //! # A note on execution
@@ -72,9 +72,33 @@ use crate::{
     widgets::Widget,
 };
 
-pub struct SessionStarted<U: Ui>(PhantomData<U>);
+/// [`Hookable`]: Triggers when Duat opens or reloads
+///
+/// This trigger will also happen after a few other initial setups of
+/// Duat.
+///
+/// There are no arguments
+pub struct ConfigLoaded;
 
-impl<U: Ui> Hookable for SessionStarted<U> {
+impl Hookable for ConfigLoaded {
+    type Args = ();
+}
+
+/// [`Hookable`]: Triggers when Duat closes or has to reload
+///
+/// There are no arguments
+pub struct ConfigUnloaded;
+
+impl Hookable for ConfigUnloaded {
+    type Args = ();
+}
+
+/// [`Hookable`]: Triggers when Duat closes
+///
+/// There are no arguments
+pub struct ExitedDuat;
+
+impl Hookable for ExitedDuat {
     type Args = ();
 }
 
