@@ -56,7 +56,7 @@ where
         base64.chars().step_by(5).collect()
     };
 
-    src.push("duat");
+    src.push("duat/structs");
     src.push(format!("{encoded}:{file_name}"));
     src.push(format!("{}::{}", src_crate::<C>(), duat_name::<C>()));
 

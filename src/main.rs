@@ -5,10 +5,8 @@ use std::{
     process::Command,
     sync::{
         Mutex,
-        atomic::AtomicU32,
         mpsc::{self, Receiver, Sender},
     },
-    time::Duration,
 };
 
 use duat::{pre_setup, prelude::*, run_duat};
@@ -17,12 +15,6 @@ use libloading::os::unix::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 
 static SESSION_TX: Mutex<Option<Sender<ui::Event>>> = Mutex::new(None);
-
-static PROFILE: &str = if cfg!(debug_assertions) {
-    "debug"
-} else {
-    "release"
-};
 
 fn main() {
     let statics = Statics::default();
