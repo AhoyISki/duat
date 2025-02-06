@@ -1,13 +1,14 @@
-#![feature(decl_macro)]
+#![feature(decl_macro, let_chains)]
 
 use std::{
-    path::Path,
+    path::{Path, PathBuf},
     process::Command,
     sync::{
         Mutex,
         atomic::AtomicU32,
         mpsc::{self, Receiver, Sender},
     },
+    time::Duration,
 };
 
 use duat::{pre_setup, prelude::*, run_duat};
@@ -15,8 +16,7 @@ use duat_core::{data::RwData, ui, widgets::File};
 use libloading::os::unix::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 
-static BREAK: AtomicU32 = AtomicU32::new(0);
-static TX: Mutex<Option<Sender<ui::Event>>> = Mutex::new(None);
+static SESSION_TX: Mutex<Option<Sender<ui::Event>>> = Mutex::new(None);
 
 static PROFILE: &str = if cfg!(debug_assertions) {
     "debug"
@@ -26,30 +26,30 @@ static PROFILE: &str = if cfg!(debug_assertions) {
 
 fn main() {
     let statics = Statics::default();
+    let (main_tx, main_rx) = mpsc::channel();
 
     // Assert that the configuration crate actually exists.
     // The watcher is returned as to not be dropped.
     if let Some((_watcher, toml_path, so_path)) = dirs_next::config_dir().and_then(|config_dir| {
         let crate_dir = config_dir.join("duat");
 
-        let so_path = crate_dir.join(format!("target/{PROFILE}/libconfig.so"));
+        let dbg_path = crate_dir.join("target/debug/libconfig.so");
+        let rel_path = crate_dir.join("target/release/libconfig.so");
         let src_path = crate_dir.join("src");
         let toml_path = crate_dir.join("Cargo.toml");
 
         let mut watcher = notify::recommended_watcher({
-            let so_path = so_path.clone();
+            let dbg_path = dbg_path.clone();
+            let rel_path = rel_path.clone();
             let toml_path = toml_path.clone();
             move |res| {
                 if let Ok(Event { kind: EventKind::Modify(_), .. }) = res {
-                    if run_cargo(&toml_path).is_ok() {
-                        let cur_lib = unsafe { Library::new(&so_path).ok() };
-                        if cur_lib.as_ref().and_then(find_run_fn).is_some() {
-                            let tx = TX.lock().unwrap();
-                            if let Some(tx) = tx.as_ref() {
-                                tx.send(ui::Event::ReloadConfig).unwrap();
-                                atomic_wait::wake_one(&BREAK);
-                            }
-                        }
+                    // Reload only the debug build when running in debug mode.
+                    // Reload first the debug, then the release build otherwise.
+                    if cfg!(debug_assertions) {
+                        reload_config(&main_tx, &dbg_path, &toml_path, false);
+                    } else if reload_config(&main_tx, &dbg_path, &toml_path, false) {
+                        reload_config(&main_tx, &rel_path, &toml_path, true);
                     }
                 }
             }
@@ -61,47 +61,40 @@ fn main() {
             .watch(&toml_path, RecursiveMode::NonRecursive)
             .ok()?;
 
-        Some((watcher, toml_path, so_path))
+        Some((watcher, toml_path, match cfg!(debug_assertions) {
+            true => dbg_path,
+            false => rel_path,
+        }))
     }) {
-        run_cargo(&toml_path).unwrap();
+        run_cargo(&toml_path, !cfg!(debug_assertions)).unwrap();
 
-        let mut cur_lib = unsafe { Library::new(&so_path).ok() };
-        let mut run = cur_lib.as_ref().and_then(find_run_fn);
+        let mut library = unsafe { Library::new(&so_path).ok() };
+        let mut run_fn = library.as_ref().and_then(find_run_fn);
         let mut prev_files = Vec::new();
 
         loop {
-            let (tx, rx) = mpsc::channel();
-            *TX.lock().unwrap() = Some(tx.clone());
+            let (session_tx, session_rx) = mpsc::channel();
+            *SESSION_TX.lock().unwrap() = Some(session_tx.clone());
 
-            let handle = if let Some(run) = run.take() {
-                let tx = tx.clone();
-                std::thread::spawn(move || {
-                    let ret = run(prev_files, tx, rx, statics);
-                    atomic_wait::wake_all(&BREAK);
-                    ret
-                })
+            let handle = if let Some(run) = run_fn.take() {
+                let session_tx = session_tx.clone();
+                std::thread::spawn(move || run(prev_files, session_tx, session_rx, statics))
             } else {
-                let tx = tx.clone();
+                let session_tx = session_tx.clone();
                 std::thread::spawn(move || {
                     pre_setup();
-                    let ret = run_duat(prev_files, tx, rx, statics);
-                    atomic_wait::wake_all(&BREAK);
-                    ret
+                    run_duat(prev_files, session_tx, session_rx, statics)
                 })
             };
 
-            atomic_wait::wait(&BREAK, 0);
-
             prev_files = handle.join().unwrap();
 
-            if prev_files.is_empty() {
-                break;
+            if let Ok((new_lib, new_run_fn)) = main_rx.try_recv() {
+                library.take().unwrap().close().unwrap();
+                library = Some(new_lib);
+                run_fn = Some(new_run_fn);
             } else {
-                if let Some(cur_lib) = cur_lib.take() {
-                    cur_lib.close().unwrap()
-                }
-                cur_lib = unsafe { Library::new(&so_path).ok() };
-                run = cur_lib.as_ref().and_then(find_run_fn);
+                break;
             }
         }
     } else {
@@ -110,7 +103,27 @@ fn main() {
     }
 }
 
-fn run_cargo(toml_path: &Path) -> Result<std::process::Output, std::io::Error> {
+fn reload_config(
+    main_tx: &Sender<(Library, Symbol<RunFn>)>,
+    so_path: &PathBuf,
+    toml_path: &PathBuf,
+    on_release: bool,
+) -> bool {
+    if run_cargo(&toml_path, on_release).is_ok()
+        && let Some(library) = unsafe { Library::new(so_path).ok() }
+        && let Some(run_fn) = find_run_fn(&library)
+    {
+        let session_tx = SESSION_TX.lock().unwrap();
+        let session_tx = session_tx.as_ref().unwrap();
+        main_tx.send((library, run_fn)).unwrap();
+        session_tx.send(ui::Event::ReloadConfig).unwrap();
+        true
+    } else {
+        false
+    }
+}
+
+fn run_cargo(toml_path: &Path, on_release: bool) -> Result<std::process::Output, std::io::Error> {
     let mut cargo = Command::new("cargo");
     cargo.args([
         "build",
@@ -119,7 +132,7 @@ fn run_cargo(toml_path: &Path) -> Result<std::process::Output, std::io::Error> {
         toml_path.to_str().unwrap(),
     ]);
 
-    if !cfg!(debug_assertions) {
+    if !cfg!(debug_assertions) && on_release {
         cargo.args(["--release"]);
     }
 
