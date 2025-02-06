@@ -139,18 +139,18 @@
 //! ```rust
 //! # use duat_core::{cmd, widgets::{LineNumbers, NumberRelation}};
 //! # fn test<U: duat_core::ui::Ui>() {
-//!     cmd::add_for!(U, "toggle-relative", |ln: LineNumbers<U>, _, _, _| {
-//!         let mut cfg = ln.get_cfg();
-//!         cfg.num_rel = match cfg.num_rel {
-//!             NumberRelation::Absolute => NumberRelation::RelAbs,
-//!             NumberRelation::Relative | NumberRelation::RelAbs => {
-//!                 NumberRelation::Absolute
-//!             }
-//!         };
-//!         ln.reconfigure(cfg);
-//!         Ok(None)
-//!     });
-//! }
+//! cmd::add_for!(U, "toggle-relative", |ln: LineNumbers<U>, _, _, _| {
+//!     let mut cfg = ln.get_cfg();
+//!     cfg.num_rel = match cfg.num_rel {
+//!         NumberRelation::Absolute => NumberRelation::RelAbs,
+//!         NumberRelation::Relative | NumberRelation::RelAbs => {
+//!             NumberRelation::Absolute
+//!         }
+//!     };
+//!     ln.reconfigure(cfg);
+//!     Ok(None)
+//! });
+//! # }
 //! ```
 //!
 //! [`CmdLine`]: crate::widgets::CmdLine

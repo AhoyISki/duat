@@ -13,6 +13,8 @@
 //! [`Cursor`]: crate::mode::Cursor
 use std::{fs, io::ErrorKind, path::PathBuf};
 
+use gapbuf::GapBuffer;
+
 use crate::{
     cfg::{IterCfg, PrintCfg},
     form,
@@ -29,7 +31,7 @@ pub struct FileCfg {
 }
 
 impl FileCfg {
-    /// Returns a new instance of [`FileCfg`], opening anew buffer
+    /// Returns a new instance of [`FileCfg`], opening a new buffer
     pub(crate) fn new() -> Self {
         FileCfg {
             text_op: TextOp::NewBuffer,
@@ -44,9 +46,9 @@ impl FileCfg {
 
     /// Takes a previous [`File`]
     pub(crate) fn take_from_prev(self, prev: &mut File) -> Self {
-        let text = std::mem::take(&mut prev.text);
+        let buf = std::mem::take(&mut prev.text).take_buf();
         Self {
-            text_op: TextOp::TakeText(text, prev.path.clone()),
+            text_op: TextOp::TakeBuf(buf, prev.path.clone()),
             ..self
         }
     }
@@ -63,10 +65,16 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
     fn build(self, _: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
         let (text, path) = match self.text_op {
             TextOp::NewBuffer => (Text::new(), Path::new_unset()),
-            TextOp::TakeText(text, path) => (text, path),
-            // TODO: Add an option for automatic path creation.
+            TextOp::TakeBuf(buf, path) => match &path {
+                Path::SetExists(p) | Path::SetAbsent(p) => (Text::from_file(buf, p), path),
+                Path::UnSet(_) => (Text::from_buf(buf), path),
+            },
             TextOp::OpenPath(path) => match path.canonicalize() {
-                Ok(path) => (Text::from_file(&path), Path::SetExists(path)),
+                Ok(path) => {
+                    let file = std::fs::read_to_string(&path).expect("File failed to open");
+                    let buf = Box::new(GapBuffer::from_iter(file.bytes()));
+                    (Text::from_file(buf, &path), Path::SetExists(path))
+                }
                 Err(err) if matches!(err.kind(), ErrorKind::NotFound) => {
                     if path.parent().is_some_and(std::path::Path::exists) {
                         let parent = path.with_file_name("").canonicalize().unwrap();
@@ -330,6 +338,6 @@ impl Path {
 enum TextOp {
     #[default]
     NewBuffer,
-    TakeText(Text, Path),
+    TakeBuf(Box<GapBuffer<u8>>, Path),
     OpenPath(PathBuf),
 }

@@ -4,8 +4,6 @@
 ; Identifier conventions
 (shebang) @keyword.directive
 
-(identifier) @variable
-
 ((identifier) @type
   (#match? @type "^[A-Z]"))
 

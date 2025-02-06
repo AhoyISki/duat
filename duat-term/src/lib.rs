@@ -310,7 +310,7 @@ fn print_style(w: &mut impl Write, style: ContentStyle) {
         };
         true
     } else {
-        false
+        semicolon
     };
 
     let semicolon = if let Some(color) = style.background_color {

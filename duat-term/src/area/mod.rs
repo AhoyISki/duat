@@ -113,6 +113,7 @@ impl Area {
         let iter = print_iter(iter, cap, cfg, info.points);
 
         let mut lines = sender.lines(info.x_shift, cap);
+        let mut cur_style = None;
 
         enum Cursor {
             Main,
@@ -147,6 +148,10 @@ impl Area {
 
                 match part {
                     Part::Char(char) => {
+                        painter.confirm_printing();
+                        if let Some(style) = cur_style.take() {
+                            style!(lines, style);
+                        }
                         match char {
                             '\t' => (0..len).for_each(|_| lines.push_char(' ', 1)),
                             '\n' => {}
@@ -160,10 +165,10 @@ impl Area {
                         }
                     }
                     Part::PushForm(id) => {
-                        style!(lines, painter.apply(id));
+                        cur_style = Some(painter.apply(id));
                     }
                     Part::PopForm(id) => {
-                        style!(lines, painter.remove(id));
+                        cur_style = Some(painter.remove(id));
                     }
                     Part::MainCursor => {
                         if let Some(shape) = painter.main_cursor()
@@ -174,7 +179,7 @@ impl Area {
                         } else {
                             cursor = Some(Cursor::Main);
                             lines.hide_real_cursor();
-                            style!(lines, painter.apply_main_cursor());
+                            cur_style = Some(painter.apply_main_cursor());
                         }
                     }
                     Part::ExtraCursor => {

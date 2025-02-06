@@ -4,7 +4,7 @@ use gapbuf::GapBuffer;
 use parking_lot::Mutex;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{
-    InputEdit, Language, Node, Parser, Point as TSPoint, Query, QueryCursor, TextProvider, Tree,
+    InputEdit, Language, Parser, Point as TSPoint, Query, QueryCursor, TextProvider, Tree,
 };
 
 use super::{Key, Text};
@@ -265,7 +265,7 @@ struct TsBuf<'a>(&'a GapBuffer<u8>);
 
 #[allow(unused)]
 #[cfg(debug_assertions)]
-fn log_node(node: Node) {
+fn log_node(node: tree_sitter::Node) {
     use std::fmt::Write;
 
     let mut cursor = node.walk();

@@ -137,28 +137,32 @@ impl Text {
     /// Creates a [`Text`] from a file's [path]
     ///
     /// [path]: Path
-    pub fn from_file(path: impl AsRef<Path>) -> Self {
-        let file = std::fs::read_to_string(&path).expect("File failed to open");
-        let buf = Box::new(GapBuffer::from_iter(file.bytes()));
+    pub(crate) fn from_file(buf: Box<GapBuffer<u8>>, path: impl AsRef<Path>) -> Self {
+        let mut text = Self::from_buf(buf);
+        let tree_sitter = TreeSitter::new(&mut text, path);
+        text.tree_sitter = tree_sitter.map(|ts| (Box::new(ts), Vec::new()));
+        text
+    }
+
+    /// Creates a [`Text`] from a [`GapBuffer`]
+    pub(crate) fn from_buf(buf: Box<GapBuffer<u8>>) -> Self {
+        let len = buf.len() as u32;
+        let chars = unsafe {
+            let (s0, s1) = buf.as_slices();
+            std::str::from_utf8_unchecked(s0).chars().count() as u32
+                + std::str::from_utf8_unchecked(s1).chars().count() as u32
+        };
+        let lines = buf.iter().filter(|b| **b == b'\n').count() as u32;
         let tags = Box::new(Tags::with_len(buf.len() as u32));
 
-        let mut text = Self {
+        Self {
             buf,
             tags,
-            records: Box::new(Records::with_max((
-                file.len() as u32,
-                file.chars().count() as u32,
-                file.bytes().filter(|b| *b == b'\n').count() as u32,
-            ))),
+            records: Box::new(Records::with_max((len, chars, lines))),
             history: History::new(),
             readers: Vec::new(),
             tree_sitter: None,
-        };
-
-        let tree_sitter = TreeSitter::new(&mut text, path);
-
-        text.tree_sitter = tree_sitter.map(|ts| (Box::new(ts), Vec::new()));
-        text
+        }
     }
 
     /// Returns a [`Builder`] for [`Text`]
@@ -754,6 +758,10 @@ impl Text {
         Ok(writer.write(s0)? + writer.write(s1)?)
     }
 
+    pub(crate) fn take_buf(self) -> Box<GapBuffer<u8>> {
+        self.buf
+    }
+
     ////////// Single str acquisition functions
 
     /// Moves the [`GapBuffer`]'s gap, so that the `range` is whole
@@ -875,14 +883,16 @@ impl Text {
 
     /// Adds a [`Cursor`] to the [`Text`]
     fn add_cursor(&mut self, cursor: &Cursor, is_main: bool, cursors: &Cursors) {
-        let (start, end) = if let Some(anchor) = cursor.anchor()
-            && anchor < cursor.caret()
-        {
-            // If the caret is at the end, the selection should end before it,
-            // so a non inclusive selection it used.
-            cursor.point_range(false, self)
+        let (start, end) = if let Some(anchor) = cursor.anchor() {
+            if anchor <= cursor.caret() {
+                // If the caret is at the end, the selection should end before it,
+                // so a non inclusive selection it used.
+                cursor.point_range(false, self)
+            } else {
+                cursor.point_range(cursors.is_incl(), self)
+            }
         } else {
-            cursor.point_range(cursors.is_incl(), self)
+            cursor.point_range(false, self)
         };
         let (caret_tag, start_tag, end_tag) = cursor_tags(is_main);
 
@@ -967,7 +977,7 @@ impl Text {
             })
     }
 
-    /// An forward iterator over the [`Tag`]s of the [`Text`]
+    /// A forward iterator over the [`Tag`]s of the [`Text`]
     ///
     /// # Note
     ///

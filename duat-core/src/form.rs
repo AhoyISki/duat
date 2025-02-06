@@ -1,5 +1,5 @@
 //! Utilities for stylizing the text of Duat
-use std::sync::{LazyLock, OnceLock};
+use std::sync::{atomic::AtomicBool, LazyLock, OnceLock};
 
 use FormType::*;
 use crossterm::style::{Attribute, Attributes, ContentStyle};
@@ -965,6 +965,8 @@ impl Palette {
             forms: vec![(default, DEFAULT_ID)],
             reset_count: 0,
             final_form_start: 1,
+            still_on_same_byte: false,
+            reset_is_needed: false,
         }
     }
 }
@@ -974,6 +976,8 @@ pub struct Painter {
     forms: Vec<(Form, FormId)>,
     reset_count: usize,
     final_form_start: usize,
+    still_on_same_byte: bool,
+    reset_is_needed: bool,
 }
 
 impl Painter {
@@ -993,31 +997,50 @@ impl Painter {
         self.reset_count += form.style.attributes.has(Attribute::Reset) as usize;
 
         self.forms.insert(self.final_form_start, (form, id));
-        self.final_form_start += 1;
+        if id != M_SEL_ID && id != E_SEL_ID {
+            self.final_form_start += 1;
+        }
 
-        if self.reset_count > 0 {
+        if self.reset_is_needed || self.reset_count > 0 {
+            self.still_on_same_byte = true;
+            self.reset_is_needed = true;
+            let mut style = absolute_style(&self.forms);
+            style.attributes.set(Attribute::Reset);
+            style
+        } else if self.still_on_same_byte {
             absolute_style(&self.forms)
         } else {
-            relative_style(&self.forms)
+            self.still_on_same_byte = true;
+            let mut style = absolute_style(&self.forms);
+            style.foreground_color = form.fg().and(style.foreground_color);
+            style.background_color = form.bg().and(style.background_color);
+            style.underline_color = form.ul().and(style.underline_color);
+            style
         }
     }
 
     /// Removes the [`Form`] with the given `id` and returns the
     /// result, given previous triggers
     #[inline(always)]
-    pub fn remove(&mut self, form_id: FormId) -> ContentStyle {
+    pub fn remove(&mut self, id: FormId) -> ContentStyle {
         let mut applied_forms = self.forms.iter().enumerate();
-        if let Some((i, &(form, _))) = applied_forms.rfind(|(_, &(_, id))| id == form_id) {
+        if let Some((i, &(form, _))) = applied_forms.rfind(|(_, &(_, i))| i == id) {
             self.reset_count -= form.style.attributes.has(Attribute::Reset) as usize;
             self.forms.remove(i);
-            self.final_form_start -= 1;
-            // If there were attributes in the removed form, we need to reset
-            // them.
-            if self.reset_count > 0 || !form.style.attributes.is_empty() {
+            if id != M_SEL_ID && id != E_SEL_ID {
+                self.final_form_start -= 1;
+            }
+
+            if !form.style.attributes.is_empty() || self.reset_is_needed || self.reset_count > 0 {
+                self.still_on_same_byte = true;
+                self.reset_is_needed = true;
                 let mut style = absolute_style(&self.forms);
                 style.attributes.set(Attribute::Reset);
                 style
+            } else if self.still_on_same_byte {
+                absolute_style(&self.forms)
             } else {
+                self.still_on_same_byte = true;
                 let mut style = absolute_style(&self.forms);
                 style.foreground_color = form.fg().and(style.foreground_color);
                 style.background_color = form.bg().and(style.background_color);
@@ -1073,6 +1096,12 @@ impl Painter {
         let style = self.remove(E_CUR_ID);
         self.final_form_start += 1;
         style
+    }
+
+    /// Tells the [`Painter`] that it has printed a character
+    pub fn confirm_printing(&mut self) {
+        self.still_on_same_byte = false;
+        self.reset_is_needed = false;
     }
 
     /// The [`Form`] "ExtraCursor", and its shape.
