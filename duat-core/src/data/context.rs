@@ -84,6 +84,7 @@ mod global {
         cur_window: usize,
         windows: &'static RwData<Vec<Window<U>>>,
     ) {
+        crate::log_file!("ran context");
         CUR_FILE.set(cur_file).expect("setup ran twice");
         CUR_WIDGET.set(cur_widget).expect("setup ran twice");
         CUR_WINDOW.store(cur_window, Ordering::Relaxed);

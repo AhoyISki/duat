@@ -795,7 +795,7 @@ pub macro log_file($($text:tt)*) {{
         std::fs::OpenOptions::new()
             .create(true)
             .append(true)
-            .open("log")
+            .open("/home/mateus/log")
             .unwrap(),
     );
 
