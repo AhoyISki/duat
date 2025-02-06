@@ -1,5 +1,5 @@
 //! Utilities for stylizing the text of Duat
-use std::sync::{atomic::AtomicBool, LazyLock, OnceLock};
+use std::sync::{LazyLock, OnceLock, atomic::AtomicBool};
 
 use FormType::*;
 use crossterm::style::{Attribute, Attributes, ContentStyle};
@@ -1001,22 +1001,21 @@ impl Painter {
             self.final_form_start += 1;
         }
 
+        let mut style = self.make_style();
         if self.reset_is_needed || self.reset_count > 0 {
             self.still_on_same_byte = true;
             self.reset_is_needed = true;
-            let mut style = absolute_style(&self.forms);
             style.attributes.set(Attribute::Reset);
-            style
-        } else if self.still_on_same_byte {
-            absolute_style(&self.forms)
-        } else {
+        // Only when we are certain that all forms have been
+        // printed, can we cull unnecessary colors for efficiency
+        // (this happens most of the time).
+        } else if !self.still_on_same_byte {
             self.still_on_same_byte = true;
-            let mut style = absolute_style(&self.forms);
             style.foreground_color = form.fg().and(style.foreground_color);
             style.background_color = form.bg().and(style.background_color);
             style.underline_color = form.ul().and(style.underline_color);
-            style
-        }
+        };
+        style
     }
 
     /// Removes the [`Form`] with the given `id` and returns the
@@ -1031,24 +1030,23 @@ impl Painter {
                 self.final_form_start -= 1;
             }
 
+            let mut style = self.make_style();
             if !form.style.attributes.is_empty() || self.reset_is_needed || self.reset_count > 0 {
                 self.still_on_same_byte = true;
                 self.reset_is_needed = true;
-                let mut style = absolute_style(&self.forms);
                 style.attributes.set(Attribute::Reset);
-                style
-            } else if self.still_on_same_byte {
-                absolute_style(&self.forms)
-            } else {
+            // Only when we are certain that all forms have been
+            // printed, can we cull unnecessary colors for efficiency
+            // (this happens most of the time).
+            } else if !self.still_on_same_byte {
                 self.still_on_same_byte = true;
-                let mut style = absolute_style(&self.forms);
                 style.foreground_color = form.fg().and(style.foreground_color);
                 style.background_color = form.bg().and(style.background_color);
                 style.underline_color = form.ul().and(style.underline_color);
-                style
             }
+            style
         } else {
-            relative_style(&self.forms)
+            absolute_style(&self.forms)
         }
     }
 
@@ -1067,7 +1065,20 @@ impl Painter {
     /// pushed forms in the `Form` stack.
     #[inline(always)]
     pub fn make_style(&self) -> ContentStyle {
-        absolute_style(&self.forms)
+        let mut style = ContentStyle::new();
+
+        for &(form, _) in &self.forms {
+            style.foreground_color = form.fg().or(style.foreground_color);
+            style.background_color = form.bg().or(style.background_color);
+            style.underline_color = form.ul().or(style.underline_color);
+            style.attributes = if form.attr().has(Attribute::Reset) {
+                form.attr()
+            } else {
+                form.attr() | style.attributes
+            }
+        }
+
+        style
     }
 
     #[inline(always)]
@@ -1158,23 +1169,6 @@ fn would_be_circular(inner: &RwLockWriteGuard<InnerPalette>, referee: usize, ref
     } else {
         false
     }
-}
-
-/// Returns a relative [`Form`]
-///
-/// Assumes that there are no [`Attribute::Reset`]s in any of the
-/// [`Form`]s.
-fn relative_style(list: &[(Form, FormId)]) -> ContentStyle {
-    let mut style = ContentStyle::new();
-
-    for &(form, _) in list {
-        style.foreground_color = form.fg();
-        style.background_color = form.bg();
-        style.underline_color = form.ul();
-        style.attributes.extend(form.attr());
-    }
-
-    style
 }
 
 /// Returns an absolute [`Form`]
