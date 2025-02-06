@@ -758,6 +758,12 @@ impl Text {
         Ok(writer.write(s0)? + writer.write(s1)?)
     }
 
+    ////////// Reload related functions
+
+    pub(crate) fn drop_tree_sitter(&mut self) {
+        self.tree_sitter = None;
+    }
+
     pub(crate) fn take_buf(self) -> Box<GapBuffer<u8>> {
         self.buf
     }

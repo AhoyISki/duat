@@ -4,7 +4,8 @@ use std::{
     path::Path,
     process::Command,
     sync::{
-        atomic::{AtomicBool, AtomicU32, Ordering},
+        Mutex,
+        atomic::AtomicU32,
         mpsc::{self, Receiver, Sender},
     },
 };
@@ -14,8 +15,8 @@ use duat_core::{data::RwData, ui, widgets::File};
 use libloading::os::unix::{Library, Symbol};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 
-static FILES_CHANGED: AtomicBool = AtomicBool::new(false);
 static BREAK: AtomicU32 = AtomicU32::new(0);
+static TX: Mutex<Option<Sender<ui::Event>>> = Mutex::new(None);
 
 static PROFILE: &str = if cfg!(debug_assertions) {
     "debug"
@@ -31,22 +32,36 @@ fn main() {
     if let Some((_watcher, toml_path, so_path)) = dirs_next::config_dir().and_then(|config_dir| {
         let crate_dir = config_dir.join("duat");
 
-        let so = crate_dir.join(format!("target/{PROFILE}/libconfig.so"));
-        let src = crate_dir.join("src");
-        let toml = crate_dir.join("Cargo.toml");
+        let so_path = crate_dir.join(format!("target/{PROFILE}/libconfig.so"));
+        let src_path = crate_dir.join("src");
+        let toml_path = crate_dir.join("Cargo.toml");
 
-        let mut watcher = notify::recommended_watcher(|res| {
-            if let Ok(Event { kind: EventKind::Modify(_), .. }) = res {
-                FILES_CHANGED.store(true, Ordering::Relaxed);
-                atomic_wait::wake_one(&BREAK);
+        let mut watcher = notify::recommended_watcher({
+            let so_path = so_path.clone();
+            let toml_path = toml_path.clone();
+            move |res| {
+                if let Ok(Event { kind: EventKind::Modify(_), .. }) = res {
+                    if run_cargo(&toml_path).is_ok() {
+                        let cur_lib = unsafe { Library::new(&so_path).ok() };
+                        if cur_lib.as_ref().and_then(find_run_fn).is_some() {
+                            let tx = TX.lock().unwrap();
+                            if let Some(tx) = tx.as_ref() {
+                                tx.send(ui::Event::ReloadConfig).unwrap();
+                                atomic_wait::wake_one(&BREAK);
+                            }
+                        }
+                    }
+                }
             }
         })
         .unwrap();
 
-        watcher.watch(&src, RecursiveMode::Recursive).ok()?;
-        watcher.watch(&toml, RecursiveMode::NonRecursive).ok()?;
+        watcher.watch(&src_path, RecursiveMode::Recursive).ok()?;
+        watcher
+            .watch(&toml_path, RecursiveMode::NonRecursive)
+            .ok()?;
 
-        Some((watcher, toml, so))
+        Some((watcher, toml_path, so_path))
     }) {
         run_cargo(&toml_path).unwrap();
 
@@ -56,6 +71,7 @@ fn main() {
 
         loop {
             let (tx, rx) = mpsc::channel();
+            *TX.lock().unwrap() = Some(tx.clone());
 
             let handle = if let Some(run) = run.take() {
                 let tx = tx.clone();
@@ -74,22 +90,7 @@ fn main() {
                 })
             };
 
-            loop {
-                atomic_wait::wait(&BREAK, 0);
-
-                if !FILES_CHANGED.load(Ordering::Relaxed) {
-                    break;
-                }
-                FILES_CHANGED.store(false, Ordering::Relaxed);
-
-                if run_cargo(&toml_path).is_ok() {
-                    let cur_lib = unsafe { Library::new(&so_path).ok() };
-                    if cur_lib.as_ref().and_then(find_run_fn).is_some() {
-                        tx.send(ui::Event::ReloadConfig).unwrap();
-                        break;
-                    }
-                }
-            }
+            atomic_wait::wait(&BREAK, 0);
 
             prev_files = handle.join().unwrap();
 

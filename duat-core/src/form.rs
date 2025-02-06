@@ -1,5 +1,5 @@
 //! Utilities for stylizing the text of Duat
-use std::sync::{LazyLock, OnceLock, atomic::AtomicBool};
+use std::sync::{LazyLock, OnceLock};
 
 use FormType::*;
 use crossterm::style::{Attribute, Attributes, ContentStyle};
@@ -68,7 +68,10 @@ mod global {
     use parking_lot::Mutex;
 
     use super::{BASE_FORMS, BuiltForm, ColorScheme, CursorShape, Form, FormId, Painter, Palette};
-    use crate::text::err;
+    use crate::{
+        hooks::{self, ColorSchemeSet},
+        text::err,
+    };
 
     static PALETTE: Palette = Palette::new();
     static FORMS: LazyLock<Mutex<Vec<&str>>> =
@@ -380,7 +383,8 @@ mod global {
     pub fn set_colorscheme(name: &str) {
         let colorschemes = COLORSCHEMES.lock();
         if let Some(cs) = colorschemes.iter().find(|cs| cs.name() == name) {
-            cs.apply()
+            cs.apply();
+            hooks::trigger::<ColorSchemeSet>(cs.name());
         } else {
             crate::context::notify(err!("The colorscheme " [*a] name [] " was not found"));
         }
@@ -847,10 +851,12 @@ impl Palette {
             if let Some(sender) = SENDER.get() {
                 sender.send_form_changed().unwrap()
             }
+            hooks::trigger::<FormSet>((name, FormId(i as u16), form));
         } else {
             // If the form didn't previously exist, nothing was referencing it, so
             // no checks are done.
             inner.forms.push((name, form, FormType::Ref(refed)));
+            hooks::trigger::<FormSet>((name, FormId(inner.forms.len() as u16 - 1), form));
         }
     }
 

@@ -304,7 +304,11 @@ impl<U: Ui> Session<U> {
             .flat_map(Window::nodes)
             .filter_map(|node| {
                 node.try_downcast::<File>().map(|file| {
-                    Widget::<U>::text_mut(&mut *file.write()).clear_tags();
+                    let mut mut_file = file.write();
+                    let text = Widget::<U>::text_mut(&mut *mut_file);
+                    text.clear_tags();
+                    text.drop_tree_sitter();
+                    drop(mut_file);
                     (file, node.area().is_active())
                 })
             })

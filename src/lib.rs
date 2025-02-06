@@ -393,10 +393,12 @@ pub mod form {
 
 pub mod hooks {
     //! Hook utilities
-    pub use duat_core::hooks::{ModeSwitched, add, add_grouped, group_exists, remove};
+    pub use duat_core::hooks::{
+        ColorSchemeSet, FormSet, Hookable, ModeSwitched, add, add_grouped, group_exists, remove,
+    };
 
     use crate::Ui;
-    /// Triggers whenever a [`File`] is created
+    /// [`Hookable`]: Triggers when a [`File`] is created
     ///
     /// # Arguments
     ///
@@ -407,7 +409,7 @@ pub mod hooks {
     /// [builder]: duat_core::ui::FileBuilder
     pub type OnFileOpen = duat_core::hooks::OnFileOpen<Ui>;
 
-    /// Triggers whenever a new window is opened
+    /// [`Hookable`]: Triggers when a new window is opened
     ///
     /// # Arguments
     ///
@@ -417,23 +419,46 @@ pub mod hooks {
     /// [builder]: duat_core::ui::WindowBuilder
     pub type OnWindowOpen = duat_core::hooks::OnWindowOpen<Ui>;
 
-    /// Triggers whenever the given [`Widget`] is focused
+    /// [`Hookable`]: Triggers when the [`Widget`] is focused
     ///
     /// # Arguments
     ///
     /// - The widget itself.
     ///
-    /// [`widget`]: duat_core::widgets::Widget
+    /// [`Widget`]: duat_core::widgets::Widget
     pub type FocusedOn<W> = duat_core::hooks::FocusedOn<W, Ui>;
 
-    /// Triggers whenever the given [`Widget`] is unfocused
+    /// [`Hookable`]: Triggers when the [`Widget`] is unfocused
     ///
     /// # Arguments
     ///
     /// - The widget itself.
     ///
-    /// [`widget`]: duat_core::widgets::Widget
+    /// [`Widget`]: duat_core::widgets::Widget
     pub type UnfocusedFrom<W> = duat_core::hooks::UnfocusedFrom<W, Ui>;
+
+    /// [`Hookable`]: Triggers whenever a [key] is sent
+    ///
+    /// # Arguments
+    ///
+    /// - The [key] sent.
+    /// - An [`RwData<dyn Widget<U>>`] for the widget
+    ///
+    /// [key]: crate::mode::KeyEvent
+    /// [`RwData<dyn Widget<U>>`]: crate::prelude::RwData
+    pub type KeySent = duat_core::hooks::KeySent<Ui>;
+
+    /// [`Hookable`]: Triggers whenever a [key] is sent to the [`Widget`]
+    ///
+    /// # Arguments
+    ///
+    /// - The [key] sent.
+    /// - An [`RwData<W>`] for the widget.
+    ///
+    /// [key]: crate::mode::KeyEvent
+    /// [`Widget`]: crate::widgets::Widget
+    /// [`RwData<W>`]: crate::prelude::RwData
+    pub type KeySentTo<W> = duat_core::hooks::KeySentTo<W, Ui>;
 }
 
 /// Plugs a list of plugins
@@ -531,7 +556,7 @@ pub mod prelude {
     pub use crate::{
         Ui, cmd, control, cursor,
         form::{self, CursorShape, Form},
-        hooks::{self, ModeSwitched, OnFileOpen, OnWindowOpen},
+        hooks::{self, ColorSchemeSet, FormSet, ModeSwitched, OnFileOpen, OnWindowOpen},
         mode::{self, Cursors, Mode, alias, map},
         plug, print, setup_duat,
         state::*,

@@ -30,7 +30,7 @@
 //!   [key] sent to it.
 //! - [`KeySentTo`], unlike [`KeySent`], lets you act on a specific
 //!   [widget], given a [key].
-//!   [`FormSet`] triggers whenever a [`Form`] is added/altered.
+//! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
 //!
 //! # A note on execution
 //!
@@ -78,7 +78,7 @@ impl<U: Ui> Hookable for SessionStarted<U> {
     type Args = ();
 }
 
-/// Triggers whenever a [`File`] is opened
+/// [`Hookable`]: Triggers when a [`File`] is opened
 ///
 /// # Arguments
 ///
@@ -93,7 +93,7 @@ impl<U: Ui> Hookable for OnFileOpen<U> {
     type Args = FileBuilder<U>;
 }
 
-/// Triggers whenever a new window is opened
+/// [`Hookable`]: Triggers when a new window is opened
 ///
 /// # Arguments
 ///
@@ -107,7 +107,7 @@ impl<U: Ui> Hookable for OnWindowOpen<U> {
     type Args = WindowBuilder<U>;
 }
 
-/// Triggers whenever the given [`widget`] is focused
+/// [`Hookable`]: Triggers when the [`Widget`] is focused
 ///
 /// # Arguments
 ///
@@ -115,7 +115,7 @@ impl<U: Ui> Hookable for OnWindowOpen<U> {
 /// - Its [area].
 /// - Its [`Cursors`]
 ///
-/// [`widget`]: crate::widgets::Widget
+/// [`Widget`]: crate::widgets::Widget
 /// [area]: crate::ui::Area
 pub struct FocusedOn<W: Widget<U>, U: Ui>(PhantomData<(W, U)>);
 
@@ -138,7 +138,7 @@ impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
     }
 }
 
-/// Triggers whenever the given [`widget`] is focused
+/// [`Hookable`]: Triggers when the [`Widget`] is unfocused
 ///
 /// # Arguments
 ///
@@ -146,7 +146,7 @@ impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
 /// - Its [area].
 /// - Its [`Cursors`]
 ///
-/// [`widget`]: crate::widgets::Widget
+/// [`Widget`]: crate::widgets::Widget
 /// [area]: crate::ui::Area
 pub struct UnfocusedFrom<W: Widget<U>, U: Ui>(PhantomData<(W, U)>);
 
@@ -169,7 +169,7 @@ impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
     }
 }
 
-/// The [`Mode`] has changed
+/// [`Hookable`]: Triggers when the [`Mode`] is changed
 ///
 /// # Arguments
 ///
@@ -189,13 +189,12 @@ impl Hookable for ModeSwitched {
     type Args = (&'static str, &'static str);
 }
 
-/// Triggers whenever a [key] is sent
+/// [`Hookable`]: Triggers whenever a [key] is sent
 ///
 /// # Arguments
 ///
 /// - The [key] sent.
-/// - An [`RwData<dyn Widget<U>>`] for the widget active when the key
-///   was sent.
+/// - An [`RwData<dyn Widget<U>>`] for the widget.
 ///
 /// [key]: KeyEvent
 pub struct KeySent<U: Ui>(PhantomData<U>);
@@ -204,12 +203,12 @@ impl<U: Ui> Hookable for KeySent<U> {
     type Args = (KeyEvent, RwData<dyn Widget<U>>);
 }
 
-/// Triggers whenever a [key] is sent to `W`
+/// [`Hookable`]: Triggers whenever a [key] is sent to the [`Widget`]
 ///
 /// # Arguments
 ///
 /// - The [key] sent.
-/// - An [`RwData<W>`] for the widget active when the key was sent.
+/// - An [`RwData<W>`] for the widget.
 ///
 /// [key]: KeyEvent
 pub struct KeySentTo<W: Widget<U>, U: Ui>(PhantomData<(&'static W, U)>);
@@ -218,7 +217,7 @@ impl<W: Widget<U>, U: Ui> Hookable for KeySentTo<W, U> {
     type Args = (KeyEvent, RwData<W>);
 }
 
-/// Triggers whenever a [`Form`] is set
+/// [`Hookable`]: Triggers whenever a [`Form`] is set
 ///
 /// This can be a creation or alteration of a [`Form`].
 /// If the [`Form`] is a reference to another, the reference's
@@ -233,6 +232,22 @@ pub struct FormSet;
 
 impl Hookable for FormSet {
     type Args = (&'static str, FormId, Form);
+}
+
+/// [`Hookable`]: Triggers whenever a [`ColorScheme`] is set
+///
+/// Since [`Form`]s are set asynchronously, this may happen before the
+/// [`ColorScheme`] is done with its changes.
+///
+/// # Arguments
+///
+/// - The name of the [`ColorScheme`]
+///
+/// [`ColorScheme`]: crate::form::ColorScheme
+pub struct ColorSchemeSet;
+
+impl Hookable for ColorSchemeSet {
+    type Args = &'static str;
 }
 
 /// Hook functions
