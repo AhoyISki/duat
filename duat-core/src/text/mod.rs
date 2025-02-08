@@ -318,8 +318,12 @@ impl Text {
         let (s0, s1) = self.buf.as_slices();
         let (start, end) = get_ends(range, self.len().byte());
         let (start, end) = (start, end);
-        assert!(utf8_char_width(self.buf[start]) > 0, "Starts inside char");
-        assert!(utf8_char_width(self.buf[end]) > 0, "Ends inside char");
+        assert!(
+            [start, end]
+                .into_iter()
+                .filter_map(|b| self.buf.get(b))
+                .all(|b| utf8_char_width(*b) > 0),
+        );
 
         unsafe {
             let r0 = start.min(s0.len())..end.min(s0.len());
@@ -1444,9 +1448,9 @@ fn cursor_tags(is_main: bool) -> [Tag; 3] {
     use crate::form::{E_SEL_ID, M_SEL_ID};
 
     if is_main {
-        [MainCursor, PushForm(M_SEL_ID), PopForm(M_SEL_ID)]
+        [PopForm(M_SEL_ID), PushForm(M_SEL_ID), MainCursor]
     } else {
-        [ExtraCursor, PushForm(E_SEL_ID), PopForm(E_SEL_ID)]
+        [PopForm(E_SEL_ID), PushForm(E_SEL_ID), ExtraCursor]
     }
 }
 
