@@ -342,7 +342,7 @@ impl<'a> Parameter<'a> for FormName {
 #[derive(Clone)]
 pub struct Args<'a> {
     args: Peekable<args_iter::ArgsIter<'a>>,
-    param_range: Range<u32>,
+    param_range: Range<usize>,
     has_to_start_param: bool,
     is_forming_param: bool,
 }
@@ -379,11 +379,11 @@ impl<'a> Args<'a> {
         }
     }
 
-    pub fn next_start(&mut self) -> Option<u32> {
+    pub fn next_start(&mut self) -> Option<usize> {
         self.args.peek().map(|(_, r)| r.start)
     }
 
-    pub fn param_range(&self) -> Range<u32> {
+    pub fn param_range(&self) -> Range<usize> {
         self.param_range.clone()
     }
 }
@@ -474,7 +474,7 @@ mod args_iter {
                 let e = end.take().unwrap_or(command.len());
                 (
                     core::str::from_utf8_unchecked(&command.as_bytes()[s..e]),
-                    s as u32..e as u32,
+                    s..e,
                 )
             })
         });
@@ -514,7 +514,7 @@ mod args_iter {
         })
     }
 
-    pub type ArgsIter<'a> = impl Iterator<Item = (&'a str, std::ops::Range<u32>)> + Clone;
+    pub type ArgsIter<'a> = impl Iterator<Item = (&'a str, std::ops::Range<usize>)> + Clone;
 }
 
 parse_impl!(bool);

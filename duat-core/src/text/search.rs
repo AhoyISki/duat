@@ -13,7 +13,7 @@ impl Text {
     pub fn search_fwd<R: RegexPattern>(
         &mut self,
         pat: R,
-        range: impl RangeBounds<u32> + Clone,
+        range: impl RangeBounds<usize> + Clone,
     ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
         let dfas = dfas_from_pat(pat)?;
         let (start, end) = super::get_ends(range, self.len().byte());
@@ -51,8 +51,8 @@ impl Text {
             };
             let h_start = half.offset();
 
-            let p0 = ref_self.point_at(h_start as u32 + start);
-            let p1 = ref_self.point_at(h_end as u32 + start);
+            let p0 = ref_self.point_at(h_start + start);
+            let p1 = ref_self.point_at(h_end + start);
 
             Some(R::get_match((p0, p1), half.pattern()))
         }))
@@ -62,7 +62,7 @@ impl Text {
     pub fn search_rev<R: RegexPattern>(
         &mut self,
         pat: R,
-        range: impl RangeBounds<u32> + Clone,
+        range: impl RangeBounds<usize> + Clone,
     ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
         let dfas = dfas_from_pat(pat)?;
         let (start, end) = super::get_ends(range, self.len().byte());
@@ -101,8 +101,8 @@ impl Text {
             };
             let end = half.offset();
 
-            let p0 = ref_self.point_at(start as u32 + gap);
-            let p1 = ref_self.point_at(end as u32 + gap);
+            let p0 = ref_self.point_at(start + gap);
+            let p1 = ref_self.point_at(end + gap);
 
             Some(R::get_match((p0, p1), half.pattern()))
         }))
@@ -115,7 +115,7 @@ impl Text {
     pub fn matches(
         &mut self,
         pat: impl RegexPattern,
-        range: impl RangeBounds<u32> + Clone,
+        range: impl RangeBounds<usize> + Clone,
     ) -> Result<bool, Box<regex_syntax::Error>> {
         let dfas = dfas_from_pat(pat)?;
 
@@ -138,7 +138,7 @@ pub trait Matcheable: Sized {
     fn matches(
         &self,
         pat: impl RegexPattern,
-        range: impl RangeBounds<u32> + Clone,
+        range: impl RangeBounds<usize> + Clone,
     ) -> Result<bool, Box<regex_syntax::Error>>;
 }
 
@@ -146,14 +146,13 @@ impl<S: AsRef<str>> Matcheable for S {
     fn matches(
         &self,
         pat: impl RegexPattern,
-        range: impl RangeBounds<u32> + Clone,
+        range: impl RangeBounds<usize> + Clone,
     ) -> Result<bool, Box<regex_syntax::Error>> {
         let s = self.as_ref();
-        let (start, end) = super::get_ends(range, s.len() as u32);
+        let (start, end) = super::get_ends(range, s.len());
         let dfas = dfas_from_pat(pat)?;
-        let fwd_input = Input::new(unsafe {
-            std::str::from_utf8_unchecked(&s.as_bytes()[start as usize..end as usize])
-        });
+        let fwd_input =
+            Input::new(unsafe { std::str::from_utf8_unchecked(&s.as_bytes()[start..end]) });
 
         let mut fwd_cache = dfas.fwd.1.write();
         if let Ok(Some(_)) = dfas.fwd.0.try_search_fwd(&mut fwd_cache, &fwd_input) {

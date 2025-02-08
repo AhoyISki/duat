@@ -262,7 +262,7 @@ mod cursor {
     pub struct Cursor {
         caret: VPoint,
         anchor: Option<VPoint>,
-        pub(in crate::mode::helper) change_i: Option<u32>,
+        pub(in crate::mode::helper) change_i: Option<usize>,
     }
 
     impl Cursor {
@@ -291,6 +291,7 @@ mod cursor {
 
         /// Internal horizontal movement function.
         pub fn move_hor(&mut self, by: i32, text: &Text, area: &impl Area, cfg: &PrintCfg) {
+            let by = by as isize;
             let (Some(last), false) = (text.last_point(), by == 0) else {
                 return;
             };
@@ -325,6 +326,7 @@ mod cursor {
 
         /// Internal vertical movement function.
         pub fn move_ver(&mut self, by: i32, text: &Text, area: &impl Area, cfg: &PrintCfg) {
+            let by = by as isize;
             let (Some(last), false) = (text.last_point(), by == 0) else {
                 return;
             };
@@ -458,23 +460,23 @@ mod cursor {
 
         /// The byte (relative to the beginning of the file) of the
         /// caret. Indexed at 0.
-        pub fn byte(&self) -> u32 {
+        pub fn byte(&self) -> usize {
             self.caret.byte()
         }
 
         /// The char (relative to the beginning of the file) of the
         /// caret. Indexed at 0.
-        pub fn char(&self) -> u32 {
+        pub fn char(&self) -> usize {
             self.caret.char()
         }
 
         /// The column of the caret. Indexed at 0.
-        pub fn col(&self) -> u32 {
+        pub fn col(&self) -> usize {
             self.caret.vcol()
         }
 
         /// The line of the caret. Indexed at 0.
-        pub fn line(&self) -> u32 {
+        pub fn line(&self) -> usize {
             self.caret.line()
         }
 
@@ -487,7 +489,7 @@ mod cursor {
         /// This function will return the range that is supposed
         /// to be replaced, if `self.is_inclusive()`, this means that
         /// it will return one more byte at the end, i.e. start..=end.
-        pub fn range(&self, inclusive: bool) -> Range<u32> {
+        pub fn range(&self, inclusive: bool) -> Range<usize> {
             let anchor = self.anchor.unwrap_or(self.caret);
             let (start, end) = if anchor < self.caret {
                 (anchor.byte(), self.caret.byte())
@@ -496,8 +498,8 @@ mod cursor {
             };
 
             match inclusive {
-                true => start..(end + 1),
-                false => start..end,
+                true => start as usize..(end + 1) as usize,
+                false => start as usize..end as usize,
             }
         }
 
@@ -594,20 +596,20 @@ mod cursor {
             Self { point, vcol, dcol: vcol, dwcol }
         }
 
-        fn byte(&self) -> u32 {
+        fn byte(&self) -> usize {
             self.point.byte()
         }
 
-        fn char(&self) -> u32 {
+        fn char(&self) -> usize {
             self.point.char()
         }
 
-        fn line(&self) -> u32 {
+        fn line(&self) -> usize {
             self.point.line()
         }
 
-        fn vcol(&self) -> u32 {
-            self.vcol
+        fn vcol(&self) -> usize {
+            self.vcol as usize
         }
     }
 

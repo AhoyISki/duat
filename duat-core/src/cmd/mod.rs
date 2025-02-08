@@ -446,7 +446,7 @@ mod global {
         };
 
         #[allow(unused_variables, unused_mut)]
-        let checker = |mut args: Args| -> (Vec<Range<u32>>, Option<(Range<u32>, Text)>) {
+        let checker = |mut args: Args| -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) {
             let mut ok_ranges = Vec::new();
 
             $(
@@ -669,7 +669,7 @@ mod global {
         };
 
         #[allow(unused_variables, unused_mut)]
-        let checker = |mut args: Args| -> (Vec<Range<u32>>, Option<(Range<u32>, Text)>) {
+        let checker = |mut args: Args| -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) {
             let mut ok_ranges = Vec::new();
 
             $(
@@ -869,7 +869,7 @@ mod global {
     pub fn add_inner<'a>(
         callers: impl super::Caller<'a>,
         cmd: impl FnMut(Flags, Args) -> CmdResult + 'static,
-        checker: impl Fn(Args) -> (Vec<Range<u32>>, Option<(Range<u32>, Text)>) + 'static,
+        checker: impl Fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) + 'static,
     ) -> Result<()> {
         COMMANDS.add(callers.into_callers(), cmd, checker)
     }
@@ -881,14 +881,14 @@ mod global {
     pub fn add_for_inner<'a, W: Widget<U>, U: Ui>(
         callers: impl super::Caller<'a>,
         cmd: impl FnMut(&mut W, &U::Area, &mut Cursors, Flags, Args) -> CmdResult + 'static,
-        checker: impl Fn(Args) -> (Vec<Range<u32>>, Option<(Range<u32>, Text)>) + 'static,
+        checker: impl Fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) + 'static,
     ) -> Result<()> {
         COMMANDS.add_for(callers.into_callers(), cmd, checker)
     }
 
     pub(crate) fn check_params(
         caller: &str,
-    ) -> Option<(Vec<Range<u32>>, Option<(Range<u32>, Text)>)> {
+    ) -> Option<(Vec<Range<usize>>, Option<(Range<usize>, Text)>)> {
         COMMANDS.check_params(caller)
     }
 }
@@ -970,7 +970,7 @@ impl Commands {
         &self,
         callers: impl IntoIterator<Item = impl ToString>,
         cmd: impl FnMut(Flags, Args) -> CmdResult + 'static,
-        checker: impl Fn(Args) -> (Vec<Range<u32>>, Option<(Range<u32>, Text)>) + 'static,
+        checker: impl Fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) + 'static,
     ) -> Result<()> {
         let command = Command::new(callers, cmd, checker);
         self.0.write().try_add(command)
@@ -981,7 +981,7 @@ impl Commands {
         &'static self,
         callers: impl IntoIterator<Item = impl ToString>,
         mut cmd: impl FnMut(&mut W, &U::Area, &mut Cursors, Flags, Args) -> CmdResult + 'static,
-        checker: impl Fn(Args) -> (Vec<Range<u32>>, Option<(Range<u32>, Text)>) + 'static,
+        checker: impl Fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) + 'static,
     ) -> Result<()> {
         let cmd = move |flags: Flags, args: Args| {
             let cur_file = context::inner_cur_file::<U>();
@@ -1013,7 +1013,10 @@ impl Commands {
     }
 
     /// Gets the parameter checker for a command, if it exists
-    fn check_params(&self, call: &str) -> Option<(Vec<Range<u32>>, Option<(Range<u32>, Text)>)> {
+    fn check_params(
+        &self,
+        call: &str,
+    ) -> Option<(Vec<Range<usize>>, Option<(Range<usize>, Text)>)> {
         let mut args = call.split_whitespace();
         let caller = args.next()?.to_string();
 
@@ -1046,7 +1049,7 @@ pub type CmdResult = std::result::Result<Option<Text>, Text>;
 struct Command {
     callers: Arc<[String]>,
     cmd: RwData<dyn FnMut(Flags, Args) -> CmdResult>,
-    checker: Arc<dyn Fn(Args) -> (Vec<Range<u32>>, Option<(Range<u32>, Text)>)>,
+    checker: Arc<dyn Fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>)>,
 }
 
 impl Command {
@@ -1054,7 +1057,7 @@ impl Command {
     fn new<Cmd: FnMut(Flags, Args) -> CmdResult + 'static>(
         callers: impl IntoIterator<Item = impl ToString>,
         cmd: Cmd,
-        checker: impl Fn(Args) -> (Vec<Range<u32>>, Option<(Range<u32>, Text)>) + 'static,
+        checker: impl Fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) + 'static,
     ) -> Self {
         let callers: Arc<[String]> = callers
             .into_iter()

@@ -239,7 +239,7 @@ where
             }
         };
 
-        cursor.change_i = Some(c_i as u32);
+        cursor.change_i = Some(c_i);
 
         edit(&mut Editor::<A, W>::new(
             &mut cursor,
@@ -358,7 +358,7 @@ where
                 c_i
             };
 
-            cursor.change_i = Some(c_i as u32);
+            cursor.change_i = Some(c_i);
             let mut editor = Editor::new(
                 &mut cursor,
                 &mut *widget,
@@ -484,14 +484,14 @@ where
     ////////// Text functions
 
     /// Inserts a [`Tag`] at the given position
-    pub fn insert_tag(&mut self, at: u32, tag: Tag, key: Key) {
+    pub fn insert_tag(&mut self, at: usize, tag: Tag, key: Key) {
         self.widget.write().text_mut().insert_tag(at, tag, key);
     }
 
     /// Removes all the [`Tag`]s from a position related to a [key]
     ///
     /// [key]: Keys
-    pub fn remove_tags_on(&mut self, at: u32, keys: impl Keys) {
+    pub fn remove_tags_on(&mut self, at: usize, keys: impl Keys) {
         self.widget.write().text_mut().remove_tags_on(at, keys);
     }
 
@@ -506,7 +506,7 @@ where
     ///
     /// [key]: Keys
     /// [`File`]: crate::widgets::File
-    pub fn remove_tags_of(&mut self, range: impl RangeBounds<u32>, keys: impl Keys) {
+    pub fn remove_tags_of(&mut self, range: impl RangeBounds<usize>, keys: impl Keys) {
         self.widget.write().text_mut().remove_tags_of(range, keys);
     }
 
@@ -830,7 +830,7 @@ where
     ///
     /// - If the coords isn't valid, it will move to the "maximum"
     ///   position allowed.
-    pub fn move_to_coords(&mut self, line: u32, col: u32) {
+    pub fn move_to_coords(&mut self, line: usize, col: usize) {
         let col = col as usize;
         let at = self.text.point_at_line(line.min(self.text.len().line()));
         let (point, _) = self.text.chars_fwd(at).take(col + 1).last().unwrap();
@@ -905,12 +905,12 @@ where
     /// [`GapBuffer`]: gapbuf::GapBuffer
     pub fn selection(&self) -> IntoIter<&str, 2> {
         let anchor = self.anchor().unwrap_or(self.caret());
-        let range = if anchor < self.caret() {
+        let (start, end) = if anchor < self.caret() {
             (anchor, self.caret())
         } else {
             (self.caret(), anchor)
         };
-        self.text.strs_in(range)
+        self.text.strs_in(start.byte()..end.byte())
     }
 
     /// Returns the length of the [`Text`], in [`Point`]

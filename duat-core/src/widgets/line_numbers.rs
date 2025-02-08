@@ -37,10 +37,9 @@ impl<U: Ui> LineNumbers<U> {
     fn update_text(&mut self) {
         self.text = self.reader.inspect(|file, _, cursors| {
             let printed_lines = file.printed_lines();
-            let main_line = if cursors.is_empty() {
-                u32::MAX
-            } else {
-                cursors.main().line()
+            let main_line = match cursors.is_empty() {
+                true => usize::MAX,
+                false => cursors.main().line(),
             };
 
             let mut builder = Text::builder();
@@ -247,14 +246,14 @@ impl<U: Ui> WidgetCfg<U> for LineNumbersCfg<U> {
 /// Writes the text of the line number to a given [`String`].
 fn push_text<U>(
     builder: &mut Builder,
-    line: u32,
-    main: u32,
+    line: usize,
+    main: usize,
     is_wrapped: bool,
     cfg: &LineNumbersCfg<U>,
 ) {
     if is_wrapped && !cfg.show_wraps {
         text!(*builder, "\n");
-    } else if main != u32::MAX {
+    } else if main != usize::MAX {
         let num = match cfg.num_rel {
             NumberRelation::Absolute => line + 1,
             NumberRelation::Relative => line.abs_diff(main),

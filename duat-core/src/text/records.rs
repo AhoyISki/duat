@@ -12,12 +12,12 @@
 use std::fmt::Debug;
 
 /// Minimum length to insert a new record
-const LEN_PER_RECORD: u32 = 150;
+const LEN_PER_RECORD: usize = 150;
 
 /// A struct that keeps track of positions
 pub trait Record: Default + Debug + Clone + Copy + Eq + Ord + 'static {
     /// The bytes at of this [`Record`]
-    fn bytes(&self) -> u32;
+    fn bytes(&self) -> usize;
 
     /// Adds the values of two [`Record`]s
     fn add(self, other: Self) -> Self;
@@ -29,35 +29,35 @@ pub trait Record: Default + Debug + Clone + Copy + Eq + Ord + 'static {
     fn is_zero_len(&self) -> bool;
 }
 
-impl Record for (u32, u32) {
-    fn bytes(&self) -> u32 {
-        self.1
+impl Record for [usize; 2] {
+    fn bytes(&self) -> usize {
+        self[1]
     }
 
     fn add(self, other: Self) -> Self {
-        (self.0 + other.0, self.1 + other.1)
+        [self[0] + other[0], self[1] + other[1]]
     }
 
     fn sub(self, other: Self) -> Self {
-        (self.0 - other.0, self.1 - other.1)
+        [self[0] - other[0], self[1] - other[1]]
     }
 
     fn is_zero_len(&self) -> bool {
-        self.0 == 0
+        self[0] == 0
     }
 }
 
-impl Record for (u32, u32, u32) {
-    fn bytes(&self) -> u32 {
-        self.0
+impl Record for [usize; 3] {
+    fn bytes(&self) -> usize {
+        self[0]
     }
 
     fn add(self, other: Self) -> Self {
-        (self.0 + other.0, self.1 + other.1, self.2 + other.2)
+        [self[0] + other[0], self[1] + other[1], self[2] + other[2]]
     }
 
     fn sub(self, other: Self) -> Self {
-        (self.0 - other.0, self.1 - other.1, self.2 - other.2)
+        [self[0] - other[0], self[1] - other[1], self[2] - other[2]]
     }
 
     fn is_zero_len(&self) -> bool {
@@ -71,7 +71,7 @@ impl Record for (u32, u32, u32) {
 /// [`Tags`]: super::Tags
 #[derive(Clone, PartialEq, Eq)]
 pub struct Records<R: Record> {
-    last: (u32, R),
+    last: (usize, R),
     max: R,
     pub stored: Vec<R>,
 }
@@ -96,7 +96,6 @@ impl<R: Record> Records<R> {
         // For internal functions, I assume that I'm not
         // going over self.max.
         let (i, prev) = self.search(new.bytes(), Record::bytes);
-        let i = i as usize;
         let len = *self.stored.get(i.min(self.stored.len() - 1)).unwrap();
 
         // If the recrds would be too close, don't add any
@@ -110,7 +109,7 @@ impl<R: Record> Records<R> {
         if let Some(rec) = self.stored.get_mut(i) {
             *rec = new.sub(prev);
             self.stored.insert(i + 1, len.sub(new.sub(prev)));
-            self.last = (i as u32 + 1, new);
+            self.last = (i + 1, new);
         }
     }
 
@@ -118,16 +117,15 @@ impl<R: Record> Records<R> {
     pub fn transform(&mut self, start: R, old_len: R, new_len: R) {
         let (s_i, s_rec) = self.search(start.bytes(), Record::bytes);
         let (e_i, e_rec) = self.search(start.bytes() + old_len.bytes(), Record::bytes);
-        let e_len = self.stored.get(e_i as usize).cloned().unwrap_or_default();
+        let e_len = self.stored.get(e_i).cloned().unwrap_or_default();
 
         if s_i < e_i {
-            let start = s_i as usize + 1;
-            let end = (e_i as usize).min(self.stored.len() - 1);
-            self.stored.splice(start..=end, []);
+            let end = (e_i).min(self.stored.len() - 1);
+            self.stored.splice((s_i + 1)..=end, []);
         }
 
         // Transformation of the beginning len.
-        self.last = if let Some(len) = self.stored.get_mut(s_i as usize) {
+        self.last = if let Some(len) = self.stored.get_mut(s_i) {
             *len = new_len.add(e_rec.add(e_len).sub(old_len)).sub(s_rec);
             let len = *len;
 
@@ -137,9 +135,9 @@ impl<R: Record> Records<R> {
             if let Some(prev_i) = s_i.checked_sub(1)
                 && start.bytes() == s_rec.bytes()
             {
-                let prev_len = self.stored.get_mut(prev_i as usize).unwrap();
+                let prev_len = self.stored.get_mut(prev_i).unwrap();
                 *prev_len = prev_len.add(len);
-                self.stored.remove(prev_i as usize + 1);
+                self.stored.remove(prev_i + 1);
 
                 (s_i, s_rec.add(len))
             } else {
@@ -166,7 +164,7 @@ impl<R: Record> Records<R> {
         let other_s_len = other.stored.first_mut().unwrap();
 
         if self_e_len.bytes() + other_s_len.bytes() < LEN_PER_RECORD {
-            self.last = (self.stored.len() as u32, self.max.add(*other_s_len));
+            self.last = (self.stored.len(), self.max.add(*other_s_len));
             *other_s_len = self_e_len.add(*other_s_len);
             self.stored.pop();
         }
@@ -188,9 +186,9 @@ impl<R: Record> Records<R> {
     }
 
     /// Returns the [`Record`] closest to the byte
-    pub fn closest_to(&self, b: u32) -> R {
+    pub fn closest_to(&self, b: usize) -> R {
         let (i, rec) = self.search(b, Record::bytes);
-        let len = self.stored.get(i as usize).cloned().unwrap_or(R::default());
+        let len = self.stored.get(i).cloned().unwrap_or(R::default());
 
         if rec.bytes().abs_diff(b) > len.add(rec).bytes().abs_diff(b) {
             len.add(rec)
@@ -200,9 +198,9 @@ impl<R: Record> Records<R> {
     }
 
     /// The [`Record`] closest to `at` by a key extracting function
-    pub fn closest_to_by_key(&self, at: u32, key_f: impl Fn(&R) -> u32 + Copy) -> R {
+    pub fn closest_to_by_key(&self, at: usize, key_f: impl Fn(&R) -> usize + Copy) -> R {
         let (i, rec) = self.search(at, key_f);
-        let len = self.stored.get(i as usize).cloned().unwrap_or(R::default());
+        let len = self.stored.get(i).cloned().unwrap_or(R::default());
 
         if key_f(&rec).abs_diff(at) > key_f(&len.add(rec)).abs_diff(at) {
             len.add(rec)
@@ -212,14 +210,13 @@ impl<R: Record> Records<R> {
     }
 
     /// Search for `at` with a key extracting function
-    fn search(&self, at: u32, key_f: impl Fn(&R) -> u32 + Copy) -> (u32, R) {
+    fn search(&self, at: usize, key_f: impl Fn(&R) -> usize + Copy) -> (usize, R) {
         let (n, mut rec) = self.last;
-        let n = n as usize;
 
         if at >= key_f(&rec) {
             self.stored[n..].iter().enumerate().find_map(|(i, len)| {
                 rec = rec.add(*len);
-                (key_f(&rec) > at).then_some(((n + i) as u32, rec.sub(*len)))
+                (key_f(&rec) > at).then_some(((n + i), rec.sub(*len)))
             })
         } else {
             self.stored[..n]
@@ -228,10 +225,10 @@ impl<R: Record> Records<R> {
                 .rev()
                 .find_map(|(i, len)| {
                     rec = rec.sub(*len);
-                    (key_f(&rec) <= at).then_some((i as u32, rec))
+                    (key_f(&rec) <= at).then_some((i, rec))
                 })
         }
-        .unwrap_or((self.stored.len() as u32, self.max))
+        .unwrap_or((self.stored.len(), self.max))
     }
 }
 

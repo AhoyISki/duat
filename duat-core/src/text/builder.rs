@@ -176,12 +176,10 @@ impl Builder {
             }
         }
 
-        self.text
-            .buf
-            .splice(end.byte() as usize..end.byte() as usize, *text.buf);
-        let end = (end.byte(), end.char(), end.line());
-        let new = (len_p.byte(), len_p.char(), len_p.line());
-        self.text.records.transform(end, (0, 0, 0), new);
+        self.text.buf.splice(end.byte()..end.byte(), *text.buf);
+        let end = [end.byte(), end.char(), end.line()];
+        let new = [len_p.byte(), len_p.char(), len_p.line()];
+        self.text.records.transform(end, [0, 0, 0], new);
         self.text.tags.extend(*text.tags);
     }
 }

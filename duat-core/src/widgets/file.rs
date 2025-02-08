@@ -127,7 +127,7 @@ pub struct File {
     path: Path,
     text: Text,
     cfg: PrintCfg,
-    printed_lines: Vec<(u32, bool)>,
+    printed_lines: Vec<(usize, bool)>,
 }
 
 impl File {
@@ -218,24 +218,24 @@ impl File {
     /// These are returned as a `usize`, showing the index of the line
     /// in the file, and a `bool`, which is `true` when the line is
     /// wrapped.
-    pub fn printed_lines(&self) -> &[(u32, bool)] {
+    pub fn printed_lines(&self) -> &[(usize, bool)] {
         &self.printed_lines
     }
 
     ////////// General querying functions
 
     /// The number of bytes in the file.
-    pub fn len_bytes(&self) -> u32 {
+    pub fn len_bytes(&self) -> usize {
         self.text.len().byte()
     }
 
     /// The number of [`char`]s in the file.
-    pub fn len_chars(&self) -> u32 {
+    pub fn len_chars(&self) -> usize {
         self.text.len().char()
     }
 
     /// The number of lines in the file.
-    pub fn len_lines(&self) -> u32 {
+    pub fn len_lines(&self) -> usize {
         self.text.len().line()
     }
 

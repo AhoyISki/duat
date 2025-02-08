@@ -467,7 +467,7 @@ pub enum Gives {
     Mode(Box<dyn Fn() + Send>),
 }
 
-fn remove_alias_and<U: Ui>(f: impl FnOnce(&mut Text, u32)) {
+fn remove_alias_and<U: Ui>(f: impl FnOnce(&mut Text, usize)) {
     let widget = context::cur_widget::<U>().unwrap();
     widget.mutate_data(|widget, _, cursors| {
         let cursors = cursors.read();

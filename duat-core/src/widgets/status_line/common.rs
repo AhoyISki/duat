@@ -39,22 +39,22 @@ pub fn mode_fmt() -> DataMap<&'static str, Text> {
 }
 
 /// The byte of the main cursor in the file. Indexed at 1
-pub fn main_byte(cursors: &Cursors) -> u32 {
+pub fn main_byte(cursors: &Cursors) -> usize {
     cursors.get_main().unwrap_or_default().byte() + 1
 }
 
 /// The char of the main cursor in the file. Indexed at 1
-pub fn main_char(cursors: &Cursors) -> u32 {
+pub fn main_char(cursors: &Cursors) -> usize {
     cursors.get_main().unwrap_or_default().char() + 1
 }
 
 /// The col of the main cursor in the file. Indexed at 1
-pub fn main_col(cursors: &Cursors) -> u32 {
+pub fn main_col(cursors: &Cursors) -> usize {
     cursors.get_main().unwrap_or_default().col() + 1
 }
 
 /// The line of the main cursor in the file. Indexed at 1
-pub fn main_line(cursors: &Cursors) -> u32 {
+pub fn main_line(cursors: &Cursors) -> usize {
     cursors.get_main().unwrap_or_default().line() + 1
 }
 

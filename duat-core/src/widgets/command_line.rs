@@ -230,7 +230,7 @@ impl<U: Ui> CmdLineMode<U> for RunCommands<U> {
             if let Some((ok_ranges, err_range)) = cmd::check_params(&command) {
                 let id = form::id_of!("CallerExists");
                 text.insert_tag(0, Tag::PushForm(id), self.key);
-                text.insert_tag(caller.len() as u32, Tag::PopForm(id), self.key);
+                text.insert_tag(caller.len(), Tag::PopForm(id), self.key);
 
                 let id = form::id_of!("ParameterOk");
                 for range in ok_ranges {
@@ -245,7 +245,7 @@ impl<U: Ui> CmdLineMode<U> for RunCommands<U> {
             } else {
                 let id = form::id_of!("CallerNotFound");
                 text.insert_tag(0, Tag::PushForm(id), self.key);
-                text.insert_tag(caller.len() as u32, Tag::PopForm(id), self.key);
+                text.insert_tag(caller.len(), Tag::PopForm(id), self.key);
             }
         }
     }
@@ -362,8 +362,8 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
                 let span = err.span();
                 let id = crate::form::id_of!("ParseCommandErr");
 
-                text.insert_tag(span.start.offset as u32, Tag::PushForm(id), self.key);
-                text.insert_tag(span.end.offset as u32, Tag::PopForm(id), self.key);
+                text.insert_tag(span.start.offset, Tag::PushForm(id), self.key);
+                text.insert_tag(span.end.offset, Tag::PopForm(id), self.key);
             }
         }
     }

@@ -284,15 +284,10 @@ pub struct Change<S: AsRef<str>> {
 
 impl Change<String> {
     /// Returns a new [Change].
-    pub fn new(edit: impl ToString, range: (Point, Point), text: &Text) -> Self {
-        let added_text = edit.to_string();
-        let taken_text: String = text.strs_in(range).collect();
-
-        Change {
-            start: range.0,
-            added: added_text,
-            taken: taken_text,
-        }
+    pub fn new(edit: impl ToString, (start, end): (Point, Point), text: &Text) -> Self {
+        let added = edit.to_string();
+        let taken: String = text.strs_in(start.byte()..end.byte()).collect();
+        Change { start, added, taken }
     }
 
     /// Returns a copyable [`Change`]
@@ -379,12 +374,12 @@ impl<S: AsRef<str>> Change<S> {
     }
 
     /// Returns the taken [`Range`]
-    pub fn taken_range(&self) -> Range<u32> {
+    pub fn taken_range(&self) -> Range<usize> {
         self.start.byte()..self.taken_end().byte()
     }
 
     /// Returns the added [`Range`]
-    pub fn added_range(&self) -> Range<u32> {
+    pub fn added_range(&self) -> Range<usize> {
         self.start.byte()..self.added_end().byte()
     }
 
@@ -407,6 +402,6 @@ impl<S: AsRef<str>> Change<S> {
 impl Copy for Change<&str> {}
 
 /// If `lhs` contains the start of`rhs`
-fn has_start_of(lhs: Range<u32>, rhs: Range<u32>) -> bool {
+fn has_start_of(lhs: Range<usize>, rhs: Range<usize>) -> bool {
     lhs.start <= rhs.start && rhs.start <= lhs.end
 }

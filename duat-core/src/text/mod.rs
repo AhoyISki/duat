@@ -116,10 +116,10 @@ use crate::{
 pub struct Text {
     buf: Box<GapBuffer<u8>>,
     tags: Box<Tags>,
-    records: Box<Records<(u32, u32, u32)>>,
+    records: Box<Records<[usize; 3]>>,
     history: History,
-    readers: Vec<(Box<dyn Reader>, Vec<Range<u32>>)>,
-    tree_sitter: Option<(Box<TreeSitter>, Vec<Range<u32>>)>,
+    readers: Vec<(Box<dyn Reader>, Vec<Range<usize>>)>,
+    tree_sitter: Option<(Box<TreeSitter>, Vec<Range<usize>>)>,
 }
 
 impl Text {
@@ -149,19 +149,19 @@ impl Text {
 
     /// Creates a [`Text`] from a [`GapBuffer`]
     pub(crate) fn from_buf(buf: Box<GapBuffer<u8>>) -> Self {
-        let len = buf.len() as u32;
+        let len = buf.len();
         let chars = unsafe {
             let (s0, s1) = buf.as_slices();
-            std::str::from_utf8_unchecked(s0).chars().count() as u32
-                + std::str::from_utf8_unchecked(s1).chars().count() as u32
+            std::str::from_utf8_unchecked(s0).chars().count()
+                + std::str::from_utf8_unchecked(s1).chars().count()
         };
-        let lines = buf.iter().filter(|b| **b == b'\n').count() as u32;
-        let tags = Box::new(Tags::with_len(buf.len() as u32));
+        let lines = buf.iter().filter(|b| **b == b'\n').count();
+        let tags = Box::new(Tags::with_len(buf.len()));
 
         Self {
             buf,
             tags,
-            records: Box::new(Records::with_max((len, chars, lines))),
+            records: Box::new(Records::with_max([len, chars, lines])),
             history: History::new(),
             readers: Vec::new(),
             tree_sitter: None,
@@ -186,7 +186,7 @@ impl Text {
 
     /// The [`Point`] at the end of the text
     pub fn len(&self) -> Point {
-        let (b, c, l) = self.records.max();
+        let [b, c, l] = self.records.max();
         Point::from_raw(b, c, l)
     }
 
@@ -204,10 +204,10 @@ impl Text {
     /// The `char` at the [`Point`]'s position
     pub fn char_at(&self, point: Point) -> Option<char> {
         let [s0, s1] = self.strs();
-        if point.byte() < s0.len() as u32 {
-            s0[point.byte() as usize..].chars().next()
+        if point.byte() < s0.len() {
+            s0[point.byte()..].chars().next()
         } else {
-            s1[point.byte() as usize - s0.len()..].chars().next()
+            s1[point.byte() - s0.len()..].chars().next()
         }
     }
 
@@ -282,8 +282,8 @@ impl Text {
     ///
     /// [`&str`]: str
     /// [`strs`]: Self::strs
-    pub fn strs_in(&self, (p1, p2): (Point, Point)) -> IntoIter<&str, 2> {
-        self.strs_in_range_inner(p1.byte()..p2.byte()).into_iter()
+    pub fn strs_in(&self, range: impl RangeBounds<usize>) -> IntoIter<&str, 2> {
+        self.strs_in_range_inner(range).into_iter()
     }
 
     /// Returns an iterator over the lines in a given range
@@ -293,7 +293,7 @@ impl Text {
     pub fn lines_in(
         &mut self,
         (p1, p2): (Point, Point),
-    ) -> impl DoubleEndedIterator<Item = (u32, &str)> {
+    ) -> impl DoubleEndedIterator<Item = (usize, &str)> {
         let start = self.point_at_line(p1.line());
         let end = {
             let p3 = self.point_at_line(p2.line());
@@ -314,10 +314,12 @@ impl Text {
     }
 
     /// Returns the two `&str`s in the byte range.
-    fn strs_in_range_inner(&self, range: impl RangeBounds<u32>) -> [&str; 2] {
+    fn strs_in_range_inner(&self, range: impl RangeBounds<usize>) -> [&str; 2] {
         let (s0, s1) = self.buf.as_slices();
         let (start, end) = get_ends(range, self.len().byte());
         let (start, end) = (start as usize, end as usize);
+        assert!(utf8_char_width(self.buf[start]) > 0, "Starts inside char");
+        assert!(utf8_char_width(self.buf[end]) > 0, "Ends inside char");
 
         unsafe {
             let r0 = start.min(s0.len())..end.min(s0.len());
@@ -341,13 +343,13 @@ impl Text {
     ///
     /// Will panic if `at` is greater than the length of the text
     #[inline(always)]
-    pub fn point_at(&self, at: u32) -> Point {
+    pub fn point_at(&self, at: usize) -> Point {
         assert!(
             at <= self.len().byte(),
             "byte out of bounds: the len is {}, but the byte is {at}",
             self.len().byte()
         );
-        let (b, c, mut l) = self.records.closest_to(at);
+        let [b, c, mut l] = self.records.closest_to(at);
 
         let found = if at >= b {
             let [s0, s1] = self.strs_in_range_inner(b..);
@@ -356,8 +358,8 @@ impl Text {
                 .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
                 .enumerate()
                 .map(|(i, (this_b, char))| {
-                    l += (char == '\n') as u32;
-                    (b + this_b as u32, c + i as u32, l - (char == '\n') as u32)
+                    l += (char == '\n') as usize;
+                    (b + this_b, c + i, l - (char == '\n') as usize)
                 })
                 .take_while(|&(b, ..)| at >= b)
                 .last()
@@ -369,9 +371,9 @@ impl Text {
                 .rev()
                 .enumerate()
                 .map(|(i, char)| {
-                    l -= (char == '\n') as u32;
-                    c_len += char.len_utf8() as u32;
-                    (b - c_len, c - (i as u32 + 1), l)
+                    l -= (char == '\n') as usize;
+                    c_len += char.len_utf8();
+                    (b - c_len, c - (i + 1), l)
                 })
                 .take_while(|&(b, ..)| b >= at)
                 .last()
@@ -389,13 +391,13 @@ impl Text {
     /// Will panic if `at` is greater than the number of chars in the
     /// text.
     #[inline(always)]
-    pub fn point_at_char(&self, at: u32) -> Point {
+    pub fn point_at_char(&self, at: usize) -> Point {
         assert!(
             at <= self.len().char(),
             "byte out of bounds: the len is {}, but the char is {at}",
             self.len().char()
         );
-        let (b, c, mut l) = self.records.closest_to_by_key(at, |(_, c, _)| *c);
+        let [b, c, mut l] = self.records.closest_to_by_key(at, |[_, c, _]| *c);
 
         let found = if at >= c {
             let [s0, s1] = self.strs_in_range_inner(b..);
@@ -404,8 +406,8 @@ impl Text {
                 .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
                 .enumerate()
                 .map(|(i, (this_b, char))| {
-                    l += (char == '\n') as u32;
-                    (b + this_b as u32, c + i as u32, l - (char == '\n') as u32)
+                    l += (char == '\n') as usize;
+                    (b + this_b, c + i, l - (char == '\n') as usize)
                 })
                 .take_while(|&(_, c, _)| at >= c)
                 .last()
@@ -417,9 +419,9 @@ impl Text {
                 .rev()
                 .enumerate()
                 .map(|(i, char)| {
-                    l -= (char == '\n') as u32;
-                    c_len += char.len_utf8() as u32;
-                    (b - c_len, c - (i as u32 + 1), l)
+                    l -= (char == '\n') as usize;
+                    c_len += char.len_utf8();
+                    (b - c_len, c - (i + 1), l)
                 })
                 .take_while(|&(_, c, _)| c >= at)
                 .last()
@@ -440,21 +442,21 @@ impl Text {
     /// Will panic if the number `at` is greater than the number of
     /// lines on the text
     #[inline(always)]
-    pub fn point_at_line(&self, at: u32) -> Point {
+    pub fn point_at_line(&self, at: usize) -> Point {
         assert!(
             at <= self.len().line(),
             "byte out of bounds: the len is {}, but the line is {at}",
             self.len().line()
         );
         let (b, c, mut l) = {
-            let (mut b, mut c, l) = self.records.closest_to_by_key(at, |(.., l)| *l);
+            let [mut b, mut c, l] = self.records.closest_to_by_key(at, |[.., l]| *l);
             self.strs_in_range_inner(..b)
                 .into_iter()
                 .flat_map(str::chars)
                 .rev()
                 .take_while(|c| *c != '\n')
                 .for_each(|char| {
-                    b -= char.len_utf8() as u32;
+                    b -= char.len_utf8();
                     c -= 1;
                 });
             (b, c, l)
@@ -467,8 +469,8 @@ impl Text {
                 .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
                 .enumerate()
                 .map(|(i, (this_b, char))| {
-                    l += (char == '\n') as u32;
-                    (b + this_b as u32, c + i as u32, l - (char == '\n') as u32)
+                    l += (char == '\n') as usize;
+                    (b + this_b, c + i, l - (char == '\n') as usize)
                 })
                 .find(|&(.., l)| at == l)
         } else {
@@ -479,9 +481,9 @@ impl Text {
                 .rev()
                 .enumerate()
                 .map(|(i, char)| {
-                    l -= (char == '\n') as u32;
-                    c_len += char.len_utf8() as u32;
-                    (b - c_len, c - (i as u32 + 1), l)
+                    l -= (char == '\n') as usize;
+                    c_len += char.len_utf8();
+                    (b - c_len, c - (i + 1), l)
                 })
                 .take_while(|&(.., l)| l >= at)
                 .last()
@@ -501,7 +503,7 @@ impl Text {
     /// Will panic if the number `at` is greater than the number of
     /// lines on the text
     #[inline(always)]
-    pub fn points_of_line(&self, at: u32) -> (Point, Point) {
+    pub fn points_of_line(&self, at: usize) -> (Point, Point) {
         assert!(
             at <= self.len().line(),
             "byte out of bounds: the len is {}, but the line is {at}",
@@ -555,7 +557,7 @@ impl Text {
     /// [points]: TwoPoints
     /// [point]: Self::point_at
     #[inline(always)]
-    pub fn ghost_max_points_at(&self, at: u32) -> (Point, Option<Point>) {
+    pub fn ghost_max_points_at(&self, at: usize) -> (Point, Option<Point>) {
         let point = self.point_at(at);
         (point, self.tags.ghosts_total_at(point.byte()))
     }
@@ -632,11 +634,11 @@ impl Text {
 
         let new_len = {
             let lines = edit.bytes().filter(|b| *b == b'\n').count();
-            (edit.len() as u32, edit.chars().count() as u32, lines as u32)
+            [edit.len(), edit.chars().count(), lines]
         };
 
         let old_len = unsafe {
-            let range = start.byte() as usize..change.taken_end().byte() as usize;
+            let range = start.byte()..change.taken_end().byte();
             let str = String::from_utf8_unchecked(
                 self.buf
                     .splice(range, edit.as_bytes().iter().cloned())
@@ -644,7 +646,7 @@ impl Text {
             );
 
             let lines = str.bytes().filter(|b| *b == b'\n').count();
-            (str.len() as u32, str.chars().count() as u32, lines as u32)
+            [str.len(), str.chars().count(), lines]
         };
 
         let mut readers = std::mem::take(&mut self.readers);
@@ -653,7 +655,7 @@ impl Text {
             reader.before_change(self, change);
         }
 
-        let start_rec = (start.byte(), start.char(), start.line());
+        let start_rec = [start.byte(), start.char(), start.line()];
         self.records.transform(start_rec, old_len, new_len);
         self.records.insert(start_rec);
 
@@ -826,18 +828,18 @@ impl Text {
     ///
     /// The return value is the value of the gap, if the second `&str`
     /// is the contiguous one.
-    pub(crate) fn make_contiguous_in(&mut self, range: impl RangeBounds<u32>) {
+    pub(crate) fn make_contiguous_in(&mut self, range: impl RangeBounds<usize>) {
         let (start, end) = get_ends(range, self.len().byte());
-        let gap = self.buf.gap() as u32;
+        let gap = self.buf.gap();
 
         if end <= gap || start >= gap {
             return;
         }
 
         if gap.abs_diff(start) < gap.abs_diff(end) {
-            self.buf.set_gap(start as usize);
+            self.buf.set_gap(start);
         } else {
-            self.buf.set_gap(end as usize);
+            self.buf.set_gap(end);
         }
     }
 
@@ -848,30 +850,28 @@ impl Text {
     /// [`Text`] mutably borrowed.
     ///
     /// [`make_contiguous_in`]: Self::make_contiguous_in
-    pub(crate) unsafe fn continuous_in_unchecked(&self, range: impl RangeBounds<u32>) -> &str {
+    pub(crate) unsafe fn continuous_in_unchecked(&self, range: impl RangeBounds<usize>) -> &str {
         let (start, end) = get_ends(range, self.len().byte());
         let [s0, s1] = self.strs();
-        unsafe {
-            if end as usize <= self.buf.gap() {
-                s0.get_unchecked(start as usize..end as usize)
-            } else {
-                let gap = self.buf.gap();
-                s1.get_unchecked(start as usize - gap..end as usize - gap)
-            }
+        if end as usize <= self.buf.gap() {
+            s0.get_unchecked(start..end)
+        } else {
+            let gap = self.buf.gap();
+            s1.get_unchecked(start - gap..end - gap)
         }
     }
 
     ////////// Tag addition/deletion functions
 
     /// Inserts a [`Tag`] at the given position
-    pub fn insert_tag(&mut self, at: u32, tag: Tag, key: Key) {
+    pub fn insert_tag(&mut self, at: usize, tag: Tag, key: Key) {
         self.tags.insert(at, tag, key);
     }
 
     /// Removes all the [`Tag`]s from a position related to a [key]
     ///
     /// [key]: Keys
-    pub fn remove_tags_on(&mut self, at: u32, keys: impl Keys) {
+    pub fn remove_tags_on(&mut self, at: usize, keys: impl Keys) {
         self.tags.remove_at(at, keys)
     }
 
@@ -886,7 +886,7 @@ impl Text {
     ///
     /// [key]: Keys
     /// [`File`]: crate::widgets::File
-    pub fn remove_tags_of(&mut self, range: impl RangeBounds<u32>, keys: impl Keys) {
+    pub fn remove_tags_of(&mut self, range: impl RangeBounds<usize>, keys: impl Keys) {
         self.tags.remove_from(range, keys)
     }
 
@@ -898,7 +898,7 @@ impl Text {
     ///
     /// [`File`]: crate::widgets::File
     pub fn clear_tags(&mut self) {
-        self.tags = Box::new(Tags::with_len(self.buf.len() as u32));
+        self.tags = Box::new(Tags::with_len(self.buf.len()));
     }
 
     /// Removes the tags for all the cursors, used before they are
@@ -907,7 +907,7 @@ impl Text {
         if cursors.len() < 500 {
             for (cursor, is_main) in cursors.iter() {
                 if let Some((ts, ranges)) = self.tree_sitter.take() {
-                    ts.indent_diff(self, cursor.caret());
+                    ts.indent(self, cursor.caret());
                     self.tree_sitter = Some((ts, ranges));
                 }
                 self.add_cursor(cursor, is_main, cursors);
@@ -956,18 +956,13 @@ impl Text {
         } else {
             cursor.point_range(false, self)
         };
-        let (caret_tag, start_tag, end_tag) = cursor_tags(is_main);
-
         let no_selection = if start == end { 2 } else { 0 };
 
-        let tags = [
-            (start, start_tag),
-            (end, end_tag),
-            (cursor.caret(), caret_tag),
-        ];
-
-        for (p, tag) in tags.into_iter().skip(no_selection) {
-            let record = (p.byte(), p.char(), p.line());
+        let tags = cursor_tags(is_main)
+            .into_iter()
+            .zip([start, end, cursor.caret()]);
+        for (tag, p) in tags.skip(no_selection) {
+            let record = [p.byte(), p.char(), p.line()];
             self.records.insert(record);
             self.tags.insert(p.byte(), tag, Key::for_cursors());
         }
@@ -1045,7 +1040,7 @@ impl Text {
     ///
     /// Duat works fine with [`Tag`]s in the middle of a codepoint,
     /// but external utilizers may not, so keep that in mind.
-    pub fn tags_fwd(&self, at: u32) -> FwdTags {
+    pub fn tags_fwd(&self, at: usize) -> FwdTags {
         self.tags.fwd_at(at)
     }
 
@@ -1055,7 +1050,7 @@ impl Text {
     ///
     /// Duat works fine with [`Tag`]s in the middle of a codepoint,
     /// but external utilizers may not, so keep that in mind.
-    pub fn tags_rev(&self, at: u32) -> RevTags {
+    pub fn tags_rev(&self, at: usize) -> RevTags {
         self.tags.rev_at(at)
     }
 
@@ -1139,7 +1134,8 @@ mod point {
         }
 
         /// Internal function to create [`Point`]s
-        pub(super) fn from_raw(b: u32, c: u32, l: u32) -> Self {
+        pub(super) fn from_raw(b: usize, c: usize, l: usize) -> Self {
+            let (b, c, l) = (b as u32, c as u32, l as u32);
             Self { b, c, l }
         }
 
@@ -1164,19 +1160,19 @@ mod point {
 
         /// Returns the byte (relative to the beginning of the file)
         /// of self. Indexed at 0
-        pub fn byte(&self) -> u32 {
-            self.b
+        pub fn byte(&self) -> usize {
+            self.b as usize
         }
 
         /// Returns the char index (relative to the beginning of the
         /// file). Indexed at 0
-        pub fn char(&self) -> u32 {
-            self.c
+        pub fn char(&self) -> usize {
+            self.c as usize
         }
 
         /// Returns the line. Indexed at 0
-        pub fn line(&self) -> u32 {
-            self.l
+        pub fn line(&self) -> usize {
+            self.l as usize
         }
 
         ////////// Shifting functions
@@ -1442,20 +1438,20 @@ mod part {
 }
 
 /// A list of [`Tag`]s to be added with a [`Cursor`]
-fn cursor_tags(is_main: bool) -> (Tag, Tag, Tag) {
+fn cursor_tags(is_main: bool) -> [Tag; 3] {
     use tags::Tag::{ExtraCursor, MainCursor, PopForm, PushForm};
 
     use crate::form::{E_SEL_ID, M_SEL_ID};
 
     if is_main {
-        (MainCursor, PushForm(M_SEL_ID), PopForm(M_SEL_ID))
+        [MainCursor, PushForm(M_SEL_ID), PopForm(M_SEL_ID)]
     } else {
-        (ExtraCursor, PushForm(E_SEL_ID), PopForm(E_SEL_ID))
+        [ExtraCursor, PushForm(E_SEL_ID), PopForm(E_SEL_ID)]
     }
 }
 
 /// Convenience function for the bounds of a range
-fn get_ends(range: impl std::ops::RangeBounds<u32>, max: u32) -> (u32, u32) {
+fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize, usize) {
     let start = match range.start_bound() {
         std::ops::Bound::Included(start) => *start,
         std::ops::Bound::Excluded(start) => *start + 1,
@@ -1479,9 +1475,9 @@ fn get_ends(range: impl std::ops::RangeBounds<u32>, max: u32) -> (u32, u32) {
 /// If `within` is fully inside `range`, split `range` in 2;
 /// If `within` intersects `range` in one side, chop it off;
 fn split_range_within(
-    range: Range<u32>,
-    within: Range<u32>,
-) -> (Option<Range<u32>>, [Option<Range<u32>>; 2]) {
+    range: Range<usize>,
+    within: Range<usize>,
+) -> (Option<Range<usize>>, [Option<Range<usize>>; 2]) {
     if range.start >= within.end || within.start >= range.end {
         (None, [Some(range), None])
     } else {
@@ -1497,7 +1493,7 @@ fn split_range_within(
 ///
 /// Since ranges are not allowed to intersect, they will be sorted
 /// both in their starting bound and in their ending bound.
-fn merge_range_in(ranges: &mut Vec<Range<u32>>, range: Range<u32>) {
+fn merge_range_in(ranges: &mut Vec<Range<usize>>, range: Range<usize>) {
     let (Ok(i) | Err(i)) = ranges.binary_search_by_key(&range.start, |r| r.start);
     if let Some(r) = ranges.get(i).cloned() {
         if range.end < r.start {
@@ -1553,16 +1549,16 @@ macro impl_from_to_string($t:ty) {
         fn from(value: $t) -> Self {
             let value = <$t as ToString>::to_string(&value);
             let buf = Box::new(GapBuffer::from_iter(value.bytes()));
-            let tags = Box::new(Tags::with_len(buf.len() as u32));
+            let tags = Box::new(Tags::with_len(buf.len()));
 
             Self {
                 buf,
                 tags,
-                records: Box::new(Records::with_max((
-                    value.len() as u32,
-                    value.chars().count() as u32,
-                    value.lines().count() as u32,
-                ))),
+                records: Box::new(Records::with_max([
+                    value.len(),
+                    value.chars().count(),
+                    value.lines().count(),
+                ])),
                 history: History::new(),
                 readers: Vec::new(),
                 tree_sitter: None,
@@ -1573,12 +1569,12 @@ macro impl_from_to_string($t:ty) {
 
 pub struct TextLines<'a> {
     lines: std::str::Lines<'a>,
-    fwd_i: u32,
-    rev_i: u32,
+    fwd_i: usize,
+    rev_i: usize,
 }
 
 impl<'a> Iterator for TextLines<'a> {
-    type Item = (u32, &'a str);
+    type Item = (usize, &'a str);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.lines.next().map(|line| {
