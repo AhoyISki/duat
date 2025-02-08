@@ -309,10 +309,10 @@ impl Change<String> {
 
             let start = self.start - older.start;
             let end = fixed_end - older.start;
-            let range = start.byte() as usize..end.byte() as usize;
+            let range = start.byte()..end.byte();
             older.added.replace_range(range, &self.added);
 
-            let range = (fixed_end.byte() - self.start.byte()) as usize..;
+            let range = (fixed_end.byte() - self.start.byte())..;
             older.taken.push_str(&self.taken[range]);
 
             *self = older;
@@ -323,10 +323,10 @@ impl Change<String> {
 
             let start = older.start - self.start;
             let end = fixed_end - self.start;
-            let range = start.byte() as usize..end.byte() as usize;
+            let range = start.byte()..end.byte();
             self.taken.replace_range(range, &older.taken);
 
-            let range = (fixed_end.byte() - older.start.byte()) as usize..;
+            let range = (fixed_end.byte() - older.start.byte())..;
             self.added.push_str(&older.added[range]);
 
             None

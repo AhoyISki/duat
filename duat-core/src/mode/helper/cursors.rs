@@ -312,7 +312,7 @@ mod cursor {
                 } else {
                     let (point, _) = text
                         .chars_rev(self.caret())
-                        .take(by.unsigned_abs() as usize)
+                        .take(by.unsigned_abs())
                         .last()
                         .unwrap();
                     point
@@ -497,10 +497,7 @@ mod cursor {
                 (self.caret.byte(), anchor.byte())
             };
 
-            match inclusive {
-                true => start as usize..(end + 1) as usize,
-                false => start as usize..end as usize,
-            }
+            start..if inclusive { end + 1 } else { end }
         }
 
         /// The starting [`Point`] of this [`Cursor`]

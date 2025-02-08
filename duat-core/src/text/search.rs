@@ -234,10 +234,10 @@ impl Searcher {
             };
             let start = half.offset();
 
-            let start = haystack.as_bytes()[(last_point.byte() - gap) as usize..start]
+            let start = haystack.as_bytes()[last_point.byte() - gap..start]
                 .iter()
                 .fold(last_point, |p, b| p.fwd_byte(*b));
-            let end = haystack.as_bytes()[(start.byte() - gap) as usize..end]
+            let end = haystack.as_bytes()[start.byte() - gap..end]
                 .iter()
                 .fold(start, |p, b| p.fwd_byte(*b));
 
@@ -295,10 +295,10 @@ impl Searcher {
                 .unwrap()
                 .unwrap();
 
-            let end = haystack.as_bytes()[half.offset()..((last_point.byte() - gap) as usize)]
+            let end = haystack.as_bytes()[half.offset()..(last_point.byte() - gap)]
                 .iter()
                 .fold(last_point, |p, b| p.rev_byte(*b));
-            let start = haystack.as_bytes()[start..((end.byte() - gap) as usize)]
+            let start = haystack.as_bytes()[start..(end.byte() - gap)]
                 .iter()
                 .fold(end, |p, b| p.rev_byte(*b));
 

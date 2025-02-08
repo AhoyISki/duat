@@ -317,7 +317,7 @@ impl Text {
     fn strs_in_range_inner(&self, range: impl RangeBounds<usize>) -> [&str; 2] {
         let (s0, s1) = self.buf.as_slices();
         let (start, end) = get_ends(range, self.len().byte());
-        let (start, end) = (start as usize, end as usize);
+        let (start, end) = (start, end);
         assert!(utf8_char_width(self.buf[start]) > 0, "Starts inside char");
         assert!(utf8_char_width(self.buf[end]) > 0, "Ends inside char");
 

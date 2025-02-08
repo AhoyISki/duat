@@ -222,10 +222,10 @@ where
             let start = cursor.start();
 
             if let Some(c_i) = cursor.change_i
-                && let Some(c) = changes.get(c_i as usize)
+                && let Some(c) = changes.get(c_i)
                 && (c.start() <= start && c.added_end() <= start)
             {
-                c_i as usize
+                c_i
             } else {
                 match changes.binary_search_by_key(&start, |c| c.start()) {
                     Err(i)
@@ -312,7 +312,7 @@ where
                 let (start, end) = cursor.point_range(self.cursors.is_incl(), widget.text());
                 let changes = widget.text_mut().changes_mut();
 
-                let (c_i, next_i) = if let Some(c_i) = cursor.change_i.map(|n| n as usize)
+                let (c_i, next_i) = if let Some(c_i) = cursor.change_i
                     && let Some(c) = changes.get(c_i)
                     && c.start().shift_by(sh(c_i)) <= start
                     && start <= c.added_end().shift_by(sh(c_i))
@@ -831,7 +831,6 @@ where
     /// - If the coords isn't valid, it will move to the "maximum"
     ///   position allowed.
     pub fn move_to_coords(&mut self, line: usize, col: usize) {
-        let col = col as usize;
         let at = self.text.point_at_line(line.min(self.text.len().line()));
         let (point, _) = self.text.chars_fwd(at).take(col + 1).last().unwrap();
         self.move_to(point);
