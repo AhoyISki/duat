@@ -101,8 +101,8 @@ fn main() {
 /// Returns [`true`] if it reloaded the library and run function
 fn reload_config(
     main_tx: &Sender<PathBuf>,
-    target_dir: &PathBuf,
-    toml_path: &PathBuf,
+    target_dir: &Path,
+    toml_path: &Path,
     on_release: bool,
 ) -> bool {
     let so_path = target_dir.join(match on_release {
@@ -110,7 +110,7 @@ fn reload_config(
         false => "debug/libconfig.so",
     });
 
-    if let Ok(out) = run_cargo(&toml_path, target_dir, on_release)
+    if let Ok(out) = run_cargo(toml_path, target_dir, on_release)
         && out.status.success()
         && {
             duat_core::log_file!("{}", unsafe { std::str::from_utf8_unchecked(&out.stderr) });
@@ -131,7 +131,7 @@ fn reload_config(
 
 fn run_cargo(
     toml_path: &Path,
-    target_dir: &PathBuf,
+    target_dir: &Path,
     on_release: bool,
 ) -> Result<Output, std::io::Error> {
     let mut cargo = Command::new("cargo");

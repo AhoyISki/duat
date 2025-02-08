@@ -24,12 +24,6 @@ pub enum Tag {
     /// Places an extra cursor.
     ExtraCursor,
 
-    /// Starts aligning to the left, should happen at the beginning of
-    /// the next line, if in the middle of a line.
-    StartAlignLeft,
-    /// Ends alignment to the left, returning to the usual alignment
-    /// (by default, left).
-    EndAlignLeft,
     /// Starts aligning to the center, should happen at the beginning
     /// of the next line, if in the middle of a line.
     StartAlignCenter,
@@ -69,8 +63,6 @@ impl Tag {
             Self::PopForm(id) => (RawTag::PopForm(key, id), None),
             Self::MainCursor => (RawTag::MainCursor(key), None),
             Self::ExtraCursor => (RawTag::ExtraCursor(key), None),
-            Self::StartAlignLeft => (RawTag::StartAlignLeft(key), None),
-            Self::EndAlignLeft => (RawTag::EndAlignLeft(key), None),
             Self::StartAlignCenter => (RawTag::StartAlignCenter(key), None),
             Self::EndAlignCenter => (RawTag::EndAlignCenter(key), None),
             Self::StartAlignRight => (RawTag::StartAlignRight(key), None),
@@ -88,6 +80,17 @@ impl Tag {
                 (RawTag::ToggleStart(key, id), Some(id))
             }
             Self::ToggleEnd(id) => (RawTag::ToggleEnd(key, id), None),
+        }
+    }
+
+	/// Works only on tags that are not toggles.
+    pub fn ends_with(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::PushForm(lhs), Self::PopForm(rhs)) => lhs == rhs,
+            (Self::StartAlignCenter, Self::EndAlignCenter)
+            | (Self::StartAlignRight, Self::EndAlignRight)
+            | (Self::StartConceal, Self::EndConceal) => true,
+            _ => false,
         }
     }
 }
@@ -109,23 +112,19 @@ pub enum RawTag {
     /// Places an extra cursor.
     ExtraCursor(Key),
 
-    /// Starts aligning to the left, should happen at the beginning of
-    /// the next line, if in the middle of a line.
-    StartAlignLeft(Key),
-    /// Ends alignment to the left, returning to the usual alignment
-    /// (by default, left).
-    EndAlignLeft(Key),
-    /// Starts aligning to the center, should happen at the beginning
-    /// of the next line, if in the middle of a line.
+    /// Starts aligning to the center, should happen to the whole
+    /// line, even if it shows up in the middle of it.
     StartAlignCenter(Key),
-    /// Ends alignment to the center, returning to the usual alignment
-    /// (by default, left).
+    /// Ends aligning to the center, reverting to left alignment.
+    /// Should happen to the whole line, even if it shows up in the
+    /// middle of it.
     EndAlignCenter(Key),
-    /// Starts aligning to the right, should happen at the beginning
-    /// of the next line, if in the middle of a line.
+    /// Starts aligning to the right, should happen to the whole
+    /// line, even if it shows up in the middle of it.
     StartAlignRight(Key),
-    /// Ends alignment to the right, returning to the usual alignment
-    /// (by default, left).
+    /// Ends aligning to the right, reverting to left alignment.
+    /// Should happen to the whole line, even if it shows up in the
+    /// middle of it.
     EndAlignRight(Key),
 
     // In the process of implementing.
@@ -168,8 +167,6 @@ impl RawTag {
             Self::ToggleEnd(key, id) => Some(Self::ToggleStart(*key, *id)),
             Self::StartConceal(key) => Some(Self::EndConceal(*key)),
             Self::EndConceal(key) => Some(Self::StartConceal(*key)),
-            Self::StartAlignLeft(key) => Some(Self::EndAlignLeft(*key)),
-            Self::EndAlignLeft(key) => Some(Self::StartAlignLeft(*key)),
             Self::StartAlignCenter(key) => Some(Self::EndAlignCenter(*key)),
             Self::EndAlignCenter(key) => Some(Self::StartAlignCenter(*key)),
             Self::StartAlignRight(key) => Some(Self::EndAlignRight(*key)),
@@ -182,8 +179,7 @@ impl RawTag {
         match (self, other) {
             (Self::PushForm(_, lhs), Self::PopForm(_, rhs)) => lhs == rhs,
             (Self::ToggleStart(_, lhs), Self::ToggleEnd(_, rhs)) => lhs == rhs,
-            (Self::StartAlignLeft(_), Self::EndAlignLeft(_))
-            | (Self::StartAlignCenter(_), Self::EndAlignCenter(_))
+            (Self::StartAlignCenter(_), Self::EndAlignCenter(_))
             | (Self::StartAlignRight(_), Self::EndAlignRight(_))
             | (Self::StartConceal(_), Self::EndConceal(_)) => true,
             _ => false,
@@ -194,7 +190,6 @@ impl RawTag {
         matches!(
             self,
             Self::PushForm(..)
-                | Self::StartAlignLeft(_)
                 | Self::StartAlignCenter(_)
                 | Self::StartAlignRight(_)
                 | Self::ToggleStart(..)
@@ -206,7 +201,6 @@ impl RawTag {
         matches!(
             self,
             Self::PopForm(..)
-                | Self::EndAlignLeft(_)
                 | Self::EndAlignCenter(_)
                 | Self::EndAlignRight(_)
                 | Self::ToggleEnd(..)
@@ -215,17 +209,11 @@ impl RawTag {
     }
 
     pub fn is_start_align(&self) -> bool {
-        matches!(
-            self,
-            Self::StartAlignLeft(_) | Self::StartAlignCenter(_) | Self::StartAlignRight(_)
-        )
+        matches!(self, Self::StartAlignCenter(_) | Self::StartAlignRight(_))
     }
 
     pub fn is_end_align(&self) -> bool {
-        matches!(
-            self,
-            Self::EndAlignLeft(_) | Self::EndAlignCenter(_) | Self::EndAlignRight(_)
-        )
+        matches!(self, Self::EndAlignCenter(_) | Self::EndAlignRight(_))
     }
 
     pub(in crate::text) fn key(&self) -> Key {
@@ -234,8 +222,6 @@ impl RawTag {
             | Self::PopForm(key, _)
             | Self::MainCursor(key)
             | Self::ExtraCursor(key)
-            | Self::StartAlignLeft(key)
-            | Self::EndAlignLeft(key)
             | Self::StartAlignCenter(key)
             | Self::EndAlignCenter(key)
             | Self::StartAlignRight(key)
@@ -259,8 +245,6 @@ impl std::fmt::Debug for RawTag {
             RawTag::PopForm(key, id) => write!(f, "PopForm({key:?}, {})", form::name_of(*id)),
             RawTag::MainCursor(key) => write!(f, "MainCursor({key:?})"),
             RawTag::ExtraCursor(key) => write!(f, "ExtraCursor({key:?})"),
-            RawTag::StartAlignLeft(key) => write!(f, "StartAlignLeft({key:?})"),
-            RawTag::EndAlignLeft(key) => write!(f, "EndAlignLeft({key:?})"),
             RawTag::StartAlignCenter(key) => write!(f, "StartAlignCenter({key:?})"),
             RawTag::EndAlignCenter(key) => write!(f, "EndAlignCenter({key:?})"),
             RawTag::StartAlignRight(key) => write!(f, "StartAlignRight({key:?})"),
@@ -284,8 +268,6 @@ impl PartialEq for RawTag {
             (RawTag::PopForm(_, lhs), RawTag::PopForm(_, rhs)) => lhs == rhs,
             (RawTag::MainCursor(_), RawTag::MainCursor(_)) => true,
             (RawTag::ExtraCursor(_), RawTag::ExtraCursor(_)) => true,
-            (RawTag::StartAlignLeft(_), RawTag::StartAlignLeft(_)) => true,
-            (RawTag::EndAlignLeft(_), RawTag::EndAlignLeft(_)) => true,
             (RawTag::StartAlignCenter(_), RawTag::StartAlignCenter(_)) => true,
             (RawTag::EndAlignCenter(_), RawTag::EndAlignCenter(_)) => true,
             (RawTag::StartAlignRight(_), RawTag::StartAlignRight(_)) => true,

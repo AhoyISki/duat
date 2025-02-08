@@ -160,11 +160,17 @@ impl<U> LineNumbersCfg<U> {
     }
 
     pub fn absolute(self) -> Self {
-        Self { num_rel: NumberRelation::Absolute, ..self }
+        Self {
+            num_rel: NumberRelation::Absolute,
+            ..self
+        }
     }
 
     pub fn relative(self) -> Self {
-        Self { num_rel: NumberRelation::Relative, ..self }
+        Self {
+            num_rel: NumberRelation::Relative,
+            ..self
+        }
     }
 
     pub fn rel_abs(self) -> Self {
@@ -267,10 +273,10 @@ fn push_text<U>(
     }
 }
 
-fn tag_from_align(alignment: Alignment) -> Tag {
+fn tag_from_align(alignment: Alignment) -> Option<Tag> {
     match alignment {
-        Alignment::Left => Tag::StartAlignLeft,
-        Alignment::Right => Tag::StartAlignRight,
-        Alignment::Center => Tag::StartAlignCenter,
+        Alignment::Left => None,
+        Alignment::Right => Some(Tag::StartAlignRight),
+        Alignment::Center => Some(Tag::StartAlignCenter),
     }
 }

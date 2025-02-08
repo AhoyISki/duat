@@ -286,7 +286,7 @@ impl Change<String> {
     /// Returns a new [Change].
     pub fn new(edit: impl ToString, range: (Point, Point), text: &Text) -> Self {
         let added_text = edit.to_string();
-        let taken_text: String = text.strs_in_range(range).into_iter().collect();
+        let taken_text: String = text.strs_in(range).collect();
 
         Change {
             start: range.0,

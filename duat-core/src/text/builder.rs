@@ -40,6 +40,7 @@ use crate::{
 pub struct Builder {
     text: Text,
     last_form: Option<FormId>,
+    last_align: Option<Tag>,
     buffer: String,
     last_was_empty: bool,
 }
@@ -81,11 +82,12 @@ impl Builder {
     pub fn push<D: std::fmt::Display>(&mut self, part: impl Into<BuilderPart<D>>) {
         match part.into() {
             BuilderPart::Text(text) => self.push_text(text),
-            BuilderPart::Tag(tag) => {
+            BuilderPart::Tag(tag) | BuilderPart::OptToTag(Some(tag)) => {
                 self.push_tag(tag);
             }
             BuilderPart::ToString(display) => self.push_str(display),
             BuilderPart::OptToString(Some(display)) => self.push_str(display),
+            BuilderPart::EndLastAlign => todo!(),
             _ => {}
         }
     }
@@ -133,7 +135,25 @@ impl Builder {
                 false => self.text.tags.insert(len, tag, Key::basic()),
             }
         } else {
-            self.text.tags.insert(len, tag, Key::basic())
+            match tag {
+                Tag::StartAlignCenter => {
+                    self.last_align = Some(Tag::StartAlignCenter);
+                    self.text.tags.insert(len, tag, Key::basic())
+                }
+                Tag::StartAlignRight => {
+                    self.last_align = Some(Tag::StartAlignRight);
+                    self.text.tags.insert(len, tag, Key::basic())
+                }
+                Tag::EndAlignCenter | Tag::EndAlignRight => {
+                    if self.last_align.as_ref().is_some_and(|a| a.ends_with(&tag)) {
+                        self.last_align = None;
+                        self.text.tags.insert(len, tag, Key::basic())
+                    } else {
+                        None
+                    }
+                }
+                tag => self.text.tags.insert(len, tag, Key::basic()),
+            }
         }
     }
 
@@ -171,6 +191,7 @@ impl Default for Builder {
         Builder {
             text: Text::default(),
             last_form: None,
+            last_align: None,
             buffer: String::with_capacity(50),
             last_was_empty: false,
         }
@@ -198,6 +219,8 @@ where
     Tag(Tag),
     ToString(D),
     OptToString(Option<D>),
+    OptToTag(Option<Tag>),
+    EndLastAlign,
 }
 
 impl From<AlignCenter> for BuilderPart<String> {
@@ -208,7 +231,7 @@ impl From<AlignCenter> for BuilderPart<String> {
 
 impl From<AlignLeft> for BuilderPart<String> {
     fn from(_: AlignLeft) -> Self {
-        BuilderPart::Tag(Tag::StartAlignLeft)
+        BuilderPart::EndLastAlign
     }
 }
 
@@ -293,6 +316,12 @@ where
 {
     fn from(value: Option<D>) -> Self {
         BuilderPart::OptToString(value)
+    }
+}
+
+impl From<Option<Tag>> for BuilderPart<String> {
+    fn from(value: Option<Tag>) -> Self {
+        BuilderPart::OptToTag(value)
     }
 }
 

@@ -5,7 +5,7 @@
 //! cursors and dealing with editing the text directly.
 //!
 //! [`Mode`]: super::Mode
-use std::ops::RangeBounds;
+use std::{array::IntoIter, ops::RangeBounds};
 
 pub use self::cursors::{Cursor, Cursors};
 use crate::{
@@ -894,23 +894,23 @@ where
 
     /// Returns the [`Cursor`]'s selection
     ///
-    /// The reason why this return value is `[&str; 2]` is because the
-    /// [`Text`] utilizes an underlying [`GapBuffer`] to store the
-    /// characters. This means that the text is always separated into
-    /// two distinct chunks.
+    /// The reason why this return value is `IntoIter<&str, 2>` is
+    /// because the [`Text`] utilizes an underlying [`GapBuffer`]
+    /// to store the characters. This means that the text is
+    /// always separated into two distinct chunks.
     ///
     /// If this [`Cursor`]'s selection happens to be entirely within
     /// one of these chunks, the other `&str` will just be empty.
     ///
     /// [`GapBuffer`]: gapbuf::GapBuffer
-    pub fn selection(&self) -> [&str; 2] {
+    pub fn selection(&self) -> IntoIter<&str, 2> {
         let anchor = self.anchor().unwrap_or(self.caret());
         let range = if anchor < self.caret() {
             (anchor, self.caret())
         } else {
             (self.caret(), anchor)
         };
-        self.text.strs_in_range(range)
+        self.text.strs_in(range)
     }
 
     /// Returns the length of the [`Text`], in [`Point`]
@@ -972,8 +972,14 @@ where
         pat: R,
         end: Option<Point>,
     ) -> impl Iterator<Item = R::Match> + '_ {
-        let cursor = self.cursor.unwrap();
-        self.text.search_fwd(pat, cursor.caret(), end).unwrap()
+        let start = self.cursor.unwrap().caret().byte();
+        match end {
+            Some(end) => self.text.search_fwd(pat, start..end.byte()).unwrap(),
+            None => {
+                let end = self.text.len().byte();
+                self.text.search_fwd(pat, start..end).unwrap()
+            }
+        }
     }
 
     /// Searches the [`Text`] for a regex, in reverse
@@ -1008,7 +1014,9 @@ where
         pat: R,
         start: Option<Point>,
     ) -> impl Iterator<Item = R::Match> + '_ {
-        self.text.search_rev(pat, self.caret(), start).unwrap()
+        let end = self.cursor.unwrap().caret().byte();
+        let start = start.unwrap_or_default();
+        self.text.search_rev(pat, start.byte()..end).unwrap()
     }
 
     ////////// Cursor queries

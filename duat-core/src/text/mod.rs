@@ -76,8 +76,10 @@ mod reader;
 mod records;
 mod search;
 mod tags;
+mod treesitter;
 
 use std::{
+    array::IntoIter,
     ops::{Range, RangeBounds},
     path::Path,
     rc::Rc,
@@ -97,9 +99,10 @@ pub use self::{
     iter::{Item, Iter, RevIter},
     part::Part,
     point::{Point, TwoPoints, utf8_char_width},
-    reader::{Reader, TreeSitter},
-    search::{RegexPattern, Searcher},
+    reader::Reader,
+    search::{Matcheable, RegexPattern, Searcher},
     tags::{Key, Keys, Tag, ToggleId},
+    treesitter::TreeSitter,
 };
 use crate::{
     DuatError,
@@ -232,12 +235,12 @@ impl Text {
     /// ```
     ///
     /// If you want the two [`&str`]s in a range, see
-    /// [`strs_in_range`]
+    /// [`strs_in`]
     ///
     /// [`&str`]: str
     /// [buffer]: GapBuffer
     /// [`flat_map`]: Iterator::flat_map
-    /// [`strs_in_range`]: Self::strs_in_range
+    /// [`strs_in`]: Self::strs_in
     pub fn strs(&self) -> [&'_ str; 2] {
         let (s0, s1) = self.buf.as_slices();
         unsafe { [from_utf8_unchecked(s0), from_utf8_unchecked(s1)] }
@@ -260,9 +263,7 @@ impl Text {
     /// # use duat_core::text::{Point, Text};
     /// # let (p1, p2) = (Point::default(), Point::default());
     /// let text = Text::new();
-    /// text.strs_in_range((p1, p2))
-    ///     .into_iter()
-    ///     .flat_map(str::bytes);
+    /// text.strs_in((p1, p2)).flat_map(str::bytes);
     /// ```
     ///
     /// Do note that you should avoid iterators like [`str::lines`],
@@ -281,8 +282,35 @@ impl Text {
     ///
     /// [`&str`]: str
     /// [`strs`]: Self::strs
-    pub fn strs_in_range(&self, (p1, p2): (Point, Point)) -> [&str; 2] {
-        self.strs_in_range_inner(p1.byte()..p2.byte())
+    pub fn strs_in(&self, (p1, p2): (Point, Point)) -> IntoIter<&str, 2> {
+        self.strs_in_range_inner(p1.byte()..p2.byte()).into_iter()
+    }
+
+    /// Returns an iterator over the lines in a given range
+    ///
+    /// The lines are inclusive, that is, it will iterate over the
+    /// whole line, not just the parts within the range.
+    pub fn lines_in(
+        &mut self,
+        (p1, p2): (Point, Point),
+    ) -> impl DoubleEndedIterator<Item = (u32, &str)> {
+        let start = self.point_at_line(p1.line());
+        let end = {
+            let p3 = self.point_at_line(p2.line());
+            match p3 == p2 {
+                true => p3,
+                false => self.point_at_line((p2.line() + 1).min(self.len().line())),
+            }
+        };
+        self.make_contiguous_in(start.byte()..end.byte());
+        unsafe {
+            let lines = self
+                .continuous_in_unchecked(start.byte()..end.byte())
+                .lines();
+
+            let (fwd_i, rev_i) = (start.line(), end.line());
+            TextLines { lines, fwd_i, rev_i }
+        }
     }
 
     /// Returns the two `&str`s in the byte range.
@@ -462,6 +490,30 @@ impl Text {
         found
             .map(|(b, c, l)| Point::from_raw(b, c, l))
             .unwrap_or(self.len())
+    }
+
+    /// The start and end [`Point`]s for a given `at` line
+    ///
+    /// If `at == number_of_lines`, these points will be the same.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the number `at` is greater than the number of
+    /// lines on the text
+    #[inline(always)]
+    pub fn points_of_line(&self, at: u32) -> (Point, Point) {
+        assert!(
+            at <= self.len().line(),
+            "byte out of bounds: the len is {}, but the line is {at}",
+            self.len().line()
+        );
+
+        let start = self.point_at_line(at);
+        let end = self
+            .chars_fwd(start)
+            .find_map(|(p, _)| (p.line() > start.line()).then_some(p))
+            .unwrap_or(start);
+        (start, end)
     }
 
     /// The [points] at the end of the text
@@ -854,6 +906,10 @@ impl Text {
     pub(crate) fn add_cursors(&mut self, cursors: &Cursors, area: &impl Area, cfg: PrintCfg) {
         if cursors.len() < 500 {
             for (cursor, is_main) in cursors.iter() {
+                if let Some((ts, ranges)) = self.tree_sitter.take() {
+                    ts.indent_diff(self, cursor.caret());
+                    self.tree_sitter = Some((ts, ranges));
+                }
                 self.add_cursor(cursor, is_main, cursors);
             }
         } else {
@@ -1001,6 +1057,11 @@ impl Text {
     /// but external utilizers may not, so keep that in mind.
     pub fn tags_rev(&self, at: u32) -> RevTags {
         self.tags.rev_at(at)
+    }
+
+    /// Returns a reference to the
+    pub fn buf(&self) -> &GapBuffer<u8> {
+        &self.buf
     }
 }
 
@@ -1336,8 +1397,6 @@ mod part {
                 RawTag::PopForm(_, id) => Part::PopForm(id),
                 RawTag::MainCursor(_) => Part::MainCursor,
                 RawTag::ExtraCursor(_) => Part::ExtraCursor,
-                RawTag::StartAlignLeft(_) => Part::AlignLeft,
-                RawTag::EndAlignLeft(_) => Part::AlignLeft,
                 RawTag::StartAlignCenter(_) => Part::AlignCenter,
                 RawTag::EndAlignCenter(_) => Part::AlignLeft,
                 RawTag::StartAlignRight(_) => Part::AlignRight,
@@ -1509,5 +1568,31 @@ macro impl_from_to_string($t:ty) {
                 tree_sitter: None,
             }
         }
+    }
+}
+
+pub struct TextLines<'a> {
+    lines: std::str::Lines<'a>,
+    fwd_i: u32,
+    rev_i: u32,
+}
+
+impl<'a> Iterator for TextLines<'a> {
+    type Item = (u32, &'a str);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.lines.next().map(|line| {
+            self.fwd_i += 1;
+            (self.fwd_i - 1, line)
+        })
+    }
+}
+
+impl DoubleEndedIterator for TextLines<'_> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.lines.next_back().map(|line| {
+            self.rev_i -= 1;
+            (self.rev_i, line)
+        })
     }
 }

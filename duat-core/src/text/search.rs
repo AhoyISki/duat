@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::LazyLock};
+use std::{collections::HashMap, ops::RangeBounds, sync::LazyLock};
 
 use parking_lot::{RwLock, RwLockWriteGuard};
 use regex_automata::{
@@ -13,31 +13,24 @@ impl Text {
     pub fn search_fwd<R: RegexPattern>(
         &mut self,
         pat: R,
-        at: Point,
-        end: Option<Point>,
+        range: impl RangeBounds<u32> + Clone,
     ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
         let dfas = dfas_from_pat(pat)?;
-
-        let haystack = match end {
-            Some(end) => unsafe {
-                self.make_contiguous_in(at.byte()..end.byte());
-                self.continuous_in_unchecked(at.byte()..end.byte())
-            },
-            None => unsafe {
-                self.make_contiguous_in(at.byte()..);
-                self.continuous_in_unchecked(at.byte()..)
-            },
+        let (start, end) = super::get_ends(range, self.len().byte());
+        let haystack = unsafe {
+            self.make_contiguous_in(start..end);
+            self.continuous_in_unchecked(start..end)
         };
+
         let mut fwd_input = Input::new(haystack);
         let mut rev_input = Input::new(haystack).anchored(Anchored::Yes);
         let mut fwd_cache = dfas.fwd.1.write();
         let mut rev_cache = dfas.rev.1.write();
 
         let ref_self = self as &Text;
-        let gap = at.byte();
         Ok(std::iter::from_fn(move || {
             let init = fwd_input.start();
-            let end = loop {
+            let h_end = loop {
                 if let Ok(Some(half)) = dfas.fwd.0.try_search_fwd(&mut fwd_cache, &fwd_input) {
                     // Ignore empty matches at the start of the input.
                     if half.offset() == init {
@@ -50,16 +43,16 @@ impl Text {
                 }
             };
 
-            fwd_input.set_start(end);
-            rev_input.set_end(end);
+            fwd_input.set_start(h_end);
+            rev_input.set_end(h_end);
 
             let Ok(Some(half)) = dfas.rev.0.try_search_rev(&mut rev_cache, &rev_input) else {
                 return None;
             };
-            let start = half.offset();
+            let h_start = half.offset();
 
-            let p0 = ref_self.point_at(start as u32 + gap);
-            let p1 = ref_self.point_at(end as u32 + gap);
+            let p0 = ref_self.point_at(h_start as u32 + start);
+            let p1 = ref_self.point_at(h_end as u32 + start);
 
             Some(R::get_match((p0, p1), half.pattern()))
         }))
@@ -69,28 +62,22 @@ impl Text {
     pub fn search_rev<R: RegexPattern>(
         &mut self,
         pat: R,
-        at: Point,
-        start: Option<Point>,
+        range: impl RangeBounds<u32> + Clone,
     ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
         let dfas = dfas_from_pat(pat)?;
-
-        let haystack = match start {
-            Some(start) => unsafe {
-                self.make_contiguous_in(start.byte()..at.byte());
-                self.continuous_in_unchecked(start.byte()..at.byte())
-            },
-            None => unsafe {
-                self.make_contiguous_in(..at.byte());
-                self.continuous_in_unchecked(..at.byte())
-            },
+        let (start, end) = super::get_ends(range, self.len().byte());
+        let haystack = unsafe {
+            self.make_contiguous_in(start..end);
+            self.continuous_in_unchecked(start..end)
         };
+
         let mut fwd_input = Input::new(haystack).anchored(Anchored::Yes);
         let mut rev_input = Input::new(haystack);
         let mut fwd_cache = dfas.fwd.1.write();
         let mut rev_cache = dfas.rev.1.write();
 
         let ref_self = self as &Text;
-        let gap = start.map(|p| p.byte()).unwrap_or(0);
+        let gap = start;
         Ok(std::iter::from_fn(move || {
             let init = rev_input.end();
             let start = loop {
@@ -119,6 +106,61 @@ impl Text {
 
             Some(R::get_match((p0, p1), half.pattern()))
         }))
+    }
+
+    /// Returns true if the pattern is found in the given range
+    ///
+    /// This is unanchored by default, if you want an anchored search,
+    /// use the `"^$"` characters.
+    pub fn matches(
+        &mut self,
+        pat: impl RegexPattern,
+        range: impl RangeBounds<u32> + Clone,
+    ) -> Result<bool, Box<regex_syntax::Error>> {
+        let dfas = dfas_from_pat(pat)?;
+
+        let haystack = unsafe {
+            self.make_contiguous_in(range.clone());
+            self.continuous_in_unchecked(range)
+        };
+        let fwd_input = Input::new(haystack);
+
+        let mut fwd_cache = dfas.fwd.1.write();
+        if let Ok(Some(_)) = dfas.fwd.0.try_search_fwd(&mut fwd_cache, &fwd_input) {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+}
+
+pub trait Matcheable: Sized {
+    fn matches(
+        &self,
+        pat: impl RegexPattern,
+        range: impl RangeBounds<u32> + Clone,
+    ) -> Result<bool, Box<regex_syntax::Error>>;
+}
+
+impl<S: AsRef<str>> Matcheable for S {
+    fn matches(
+        &self,
+        pat: impl RegexPattern,
+        range: impl RangeBounds<u32> + Clone,
+    ) -> Result<bool, Box<regex_syntax::Error>> {
+        let s = self.as_ref();
+        let (start, end) = super::get_ends(range, s.len() as u32);
+        let dfas = dfas_from_pat(pat)?;
+        let fwd_input = Input::new(unsafe {
+            std::str::from_utf8_unchecked(&s.as_bytes()[start as usize..end as usize])
+        });
+
+        let mut fwd_cache = dfas.fwd.1.write();
+        if let Ok(Some(_)) = dfas.fwd.0.try_search_fwd(&mut fwd_cache, &fwd_input) {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 }
 

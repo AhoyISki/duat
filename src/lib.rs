@@ -557,7 +557,10 @@ pub mod prelude {
     pub use crate::{
         Ui, cmd, control, cursor,
         form::{self, CursorShape, Form},
-        hooks::{self, ColorSchemeSet, FormSet, ModeSwitched, OnFileOpen, OnWindowOpen},
+        hooks::{
+            self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FormSet, ModeSwitched,
+            OnFileOpen, OnWindowOpen,
+        },
         mode::{self, Cursors, Mode, alias, map},
         plug, print, setup_duat,
         state::*,
