@@ -119,7 +119,7 @@ pub struct Text {
     records: Box<Records<[usize; 3]>>,
     history: History,
     readers: Vec<(Box<dyn Reader>, Vec<Range<usize>>)>,
-    tree_sitter: Option<(Box<TsParser>, Vec<Range<usize>>)>,
+    ts_parser: Option<(Box<TsParser>, Vec<Range<usize>>)>,
 }
 
 impl Text {
@@ -142,7 +142,7 @@ impl Text {
     pub(crate) fn from_file(buf: Box<GapBuffer<u8>>, path: impl AsRef<Path>) -> Self {
         let mut text = Self::from_buf(buf);
         let tree_sitter = TsParser::new(&mut text, path);
-        text.tree_sitter = tree_sitter.map(|ts| (Box::new(ts), Vec::new()));
+        text.ts_parser = tree_sitter.map(|ts| (Box::new(ts), Vec::new()));
         text
     }
 
@@ -163,7 +163,7 @@ impl Text {
             records: Box::new(Records::with_max([len, chars, lines])),
             history: History::new(),
             readers: Vec::new(),
-            tree_sitter: None,
+            ts_parser: None,
         }
     }
 
@@ -330,6 +330,28 @@ impl Text {
 
             [from_utf8_unchecked(&s0[r0]), from_utf8_unchecked(&s1[r1])]
         }
+    }
+
+    /// Returns the [`TsParser`], if there is one
+    ///
+    /// This parser uses tree-sitter internally for things like syntax
+    /// highlighing and indentation, but it have all sorts of
+    /// utilities in user code as well.
+    pub fn ts_parser(&self) -> Option<&TsParser> {
+        self.ts_parser.as_ref().map(|(ts, _)| ts.as_ref())
+    }
+
+    /// Gets the indentation on a given [`Point`]
+    ///
+    /// Will either return the required indentation (in spaces) or
+    /// [`None`], in which case the caller will have to decide how to
+    /// proceed. This usually means "keep previous level of
+    /// indentation".
+    pub fn indent_on(&mut self, p: Point, cfg: PrintCfg) -> Option<usize> {
+        let ts = self.ts_parser.take();
+        let indent = ts.as_ref().and_then(|(ts, _)| ts.indent_on(self, p, cfg));
+        self.ts_parser = ts;
+        indent
     }
 
     ////////// Point querying functions
@@ -652,7 +674,7 @@ impl Text {
         };
 
         let mut readers = std::mem::take(&mut self.readers);
-        let ts = self.tree_sitter.take();
+        let ts = self.ts_parser.take();
         for (reader, _) in readers.iter_mut() {
             reader.before_change(self, change);
         }
@@ -670,7 +692,7 @@ impl Text {
                     merge_range_in(&mut ranges, range);
                 }
             }
-            self.tree_sitter = Some((ts, ranges));
+            self.ts_parser = Some((ts, ranges));
         }
         for (reader, ranges) in readers.iter_mut() {
             for range in reader.after_change(self, change) {
@@ -693,7 +715,7 @@ impl Text {
     pub fn update_range(&mut self, range: (Point, Point)) {
         let within = range.0.byte()..range.1.byte();
         let mut readers = std::mem::take(&mut self.readers);
-        let ts = self.tree_sitter.take();
+        let ts = self.ts_parser.take();
 
         for (reader, ranges) in readers.iter_mut() {
             let mut new_ranges = Vec::new();
@@ -722,12 +744,12 @@ impl Text {
                 new_ranges.extend(split_off.into_iter().flatten());
             }
 
-            self.tree_sitter = Some((ts, new_ranges));
+            self.ts_parser = Some((ts, new_ranges));
         }
     }
 
     pub fn needs_update(&self) -> bool {
-        self.tree_sitter
+        self.ts_parser
             .as_ref()
             .is_some_and(|(_, ranges)| !ranges.is_empty())
             || self.readers.iter().any(|(_, ranges)| !ranges.is_empty())
@@ -817,7 +839,7 @@ impl Text {
     ////////// Reload related functions
 
     pub(crate) fn drop_tree_sitter(&mut self) {
-        self.tree_sitter = None;
+        self.ts_parser = None;
     }
 
     pub(crate) fn take_buf(self) -> Box<GapBuffer<u8>> {
@@ -911,10 +933,6 @@ impl Text {
     pub(crate) fn add_cursors(&mut self, cursors: &Cursors, area: &impl Area, cfg: PrintCfg) {
         if cursors.len() < 500 {
             for (cursor, is_main) in cursors.iter() {
-                if let Some((ts, ranges)) = self.tree_sitter.take() {
-                    ts.indent(self, cursor.caret());
-                    self.tree_sitter = Some((ts, ranges));
-                }
                 self.add_cursor(cursor, is_main, cursors);
             }
         } else {
@@ -1085,7 +1103,7 @@ impl Clone for Text {
             records: self.records.clone(),
             history: self.history.clone(),
             readers: Vec::new(),
-            tree_sitter: None,
+            ts_parser: None,
         }
     }
 }
@@ -1240,7 +1258,7 @@ macro impl_from_to_string($t:ty) {
                 ])),
                 history: History::new(),
                 readers: Vec::new(),
-                tree_sitter: None,
+                ts_parser: None,
             }
         }
     }

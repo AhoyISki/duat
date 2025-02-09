@@ -16,6 +16,7 @@ use tree_sitter::{
 
 use super::{Change, Key, Point, Reader, Tag, Text};
 use crate::{
+    cfg::PrintCfg,
     form::{self, FormId},
     text::Matcheable,
 };
@@ -66,7 +67,8 @@ impl TsParser {
 
     /// Returns the indentation difference from the previous line
     // WARNING: long ass function
-    pub fn indent(&self, text: &mut Text, p: Point) -> Option<Indent> {
+    pub fn indent_on(&self, text: &mut Text, p: Point, cfg: PrintCfg) -> Option<usize> {
+        let tab = cfg.tab_stops.len() as i32;
         let (start, _) = text.points_of_line(p.line());
         let indented_start = text
             .chars_fwd(start)
@@ -125,7 +127,7 @@ impl TsParser {
                 .find(|(_, line)| !(line.matches(r"^\s*$", ..).unwrap()))
             else {
                 // If there is no previous line non empty, align to 0.
-                return Some(Indent::Absolute(0));
+                return Some(0);
             };
             let trail = line.chars().rev().take_while(|c| c.is_whitespace()).count();
             let (prev_start, prev_end) = text.points_of_line(prev_l);
@@ -148,7 +150,7 @@ impl TsParser {
         };
 
         if q(&caps, opt_node.unwrap(), &["zero"]) {
-            return Some(Indent::Absolute(0));
+            return Some(0);
         }
 
         let mut indent = 0;
@@ -163,7 +165,7 @@ impl TsParser {
                 if !q(&caps, node, &["align"]) && q(&caps, node, &["auto"]) {
                     return None;
                 } else if q(&caps, node, &["ignore"]) {
-                    return Some(Indent::Absolute(0));
+                    return Some(0);
                 }
             }
 
@@ -177,7 +179,7 @@ impl TsParser {
                 && ((s_line == p.line() && q(&caps, node, &["branch"]))
                     || (s_line != p.line() && q(&caps, node, &["dedent"])))
             {
-                indent -= 1;
+                indent -= tab;
                 is_processed = true;
             }
 
@@ -190,7 +192,7 @@ impl TsParser {
                 && (s_line != p.line() || q(&caps, node, &["begin", "start_at_same_line"]))
             {
                 is_processed = true;
-                indent += 1;
+                indent += tab;
             }
 
             if is_in_err && !q(&caps, node, &["align"]) {
@@ -242,7 +244,7 @@ impl TsParser {
                     // If the previous line was marked with an open_delimiter, treat it
                     // like an indent.
                     let indent_is_absolute = if o_is_last_in_line && should_process {
-                        indent += 1;
+                        indent += tab;
                         // If the aligned node ended before the current line, its @align
                         // shouldn't affect it.
                         if c_is_last_in_line && c_s_line.is_some_and(|l| l < p.line()) {
@@ -271,11 +273,11 @@ impl TsParser {
                         .is_some_and(|c_s_line| c_s_line != o_s_line && c_s_line == p.line())
                         && props.contains_key("avoid_last_matching_next");
                     if avoid_last_matching_next {
-                        indent += 1;
+                        indent += tab;
                     }
                     is_processed = true;
                     if indent_is_absolute {
-                        return Some(Indent::Absolute(indent as usize));
+                        return Some(indent as usize);
                     }
                 }
             }
@@ -286,7 +288,7 @@ impl TsParser {
             opt_node = node.parent();
         }
 
-        Some(Indent::Tabbed(indent as usize))
+        Some(indent as usize)
     }
 
     pub fn parse_with<T: AsRef<[u8]>, F: FnMut(usize, tree_sitter::Point) -> T>(
@@ -487,12 +489,6 @@ impl<'a> TextProvider<&'a [u8]> for TsBuf<'a> {
 
 #[derive(Clone, Copy)]
 struct TsBuf<'a>(&'a GapBuffer<u8>);
-
-#[derive(Debug)]
-pub enum Indent {
-    Tabbed(usize),
-    Absolute(usize),
-}
 
 #[allow(unused)]
 #[cfg(debug_assertions)]
