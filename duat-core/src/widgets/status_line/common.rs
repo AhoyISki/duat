@@ -67,7 +67,7 @@ pub fn main_line(cursors: &Cursors) -> usize {
 /// ```
 pub fn main_fmt(file: &File, cursors: &Cursors) -> Text {
     if cursors.is_empty() {
-        return Text::new();
+        return Text::default();
     }
     text!(
         [Coord] { main_col(cursors) } [Separator] ":"
@@ -110,7 +110,7 @@ pub fn cur_map_fmt() -> DataMap<(Vec<KeyEvent>, bool), Text> {
     let data = mode::cur_sequence();
     data.map(|(keys, is_alias)| {
         if *is_alias {
-            Text::new()
+            Text::default()
         } else {
             mode::keys_to_text(keys)
         }

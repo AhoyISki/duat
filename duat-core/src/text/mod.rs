@@ -125,16 +125,15 @@ pub struct Text {
 impl Text {
     ////////// Creation of Text
 
-    /// Returns a new, empty [`Text`]
-    pub fn new() -> Self {
-        Self {
-            buf: Box::new(GapBuffer::new()),
-            tags: Box::new(Tags::new()),
-            records: Box::new(Records::new()),
-            history: History::new(),
-            readers: Vec::new(),
-            tree_sitter: None,
-        }
+    /// Returns a new [`Text`] with some content
+    ///
+    /// If you are creating a [widget], it's probably better for you
+    /// to use [`Text::builder`] and the [`text!`] macro.
+    ///
+    /// [widget]: crate::widgets::Widget
+    pub fn new(text: impl std::fmt::Display) -> Self {
+        let buf = GapBuffer::from_iter(text.to_string().into_bytes());
+        Self::from_buf(Box::new(buf))
     }
 
     /// Creates a [`Text`] from a file's [path]

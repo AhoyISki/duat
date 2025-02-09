@@ -87,7 +87,7 @@ impl<U: Ui> WidgetCfg<U> for CmdLineCfg<U> {
         };
 
         let widget = CmdLine {
-            text: Text::new(),
+            text: Text::default(),
             prompt: RwData::new(self.prompt.clone()),
             mode: RwData::new(mode),
         };
@@ -304,7 +304,7 @@ impl<U: Ui> CmdLineMode<U> for ShowNotifications<U> {
             self.has_changed = false;
             *text = self.notifications.read().clone();
         } else {
-            *text = Text::new();
+            *text = Text::default();
         }
     }
 }
