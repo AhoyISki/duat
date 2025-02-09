@@ -150,8 +150,7 @@
 //!         };
 //!         let start = area.first_point(text, cfg);
 //!         let end = area.last_point(text, cfg);
-//!         let search_range = start.byte()..end.byte();
-//!         self.points = text.search_fwd(regex, start.byte()..end.byte()).unwrap().collect();
+//!         self.points = text.search_fwd(regex, (start, end)).unwrap().collect();
 //!
 //!         let seqs = key_seqs(self.points.len());
 //!
@@ -160,7 +159,7 @@
 //!
 //!             text.insert_tag(p1.byte(), Tag::GhostText(ghost), self.key);
 //!             text.insert_tag(p1.byte(), Tag::StartConceal, self.key);
-//!             let seq_end = p1.byte() + seq.chars().count() as u32;
+//!             let seq_end = p1.byte() + seq.chars().count() ;
 //!             text.insert_tag(seq_end, Tag::EndConceal, self.key);
 //!         }
 //!     }

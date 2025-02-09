@@ -186,17 +186,15 @@ mod status_line;
 /// time.
 ///
 /// The best time to do something like this is after Duat is done with
-/// initial setup. This happens when the [`SessionStarted`] hook is
+/// initial setup. This happens when the [`ConfigLoaded`] hook is
 /// triggered.
 ///
 /// ```rust
 /// # use std::{sync::OnceLock, time::Instant};
-/// # use duat_core::{hooks::{self, SessionStarted}, ui::Ui};
+/// # use duat_core::{hooks::{self, ConfigLoaded}, ui::Ui};
 /// # fn test<U: Ui>() {
 /// static START_TIME: OnceLock<Instant> = OnceLock::new();
-/// hooks::add::<SessionStarted<U>>(|_context| {
-///     START_TIME.set(Instant::now()).unwrap();
-/// });
+/// hooks::add::<ConfigLoaded>(|_| START_TIME.set(Instant::now()).unwrap());
 /// # }
 /// ```
 ///
@@ -211,7 +209,7 @@ mod status_line;
 /// ```rust
 /// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
 /// # use duat_core::{
-/// #     form::{self, Form}, hooks::{self, SessionStarted}, periodic_checker,
+/// #     form::{self, Form}, hooks::{self, ConfigLoaded}, periodic_checker,
 /// #     text::Text, ui::{PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
 /// # };
 /// # struct UpTime(Text);
@@ -237,8 +235,8 @@ mod status_line;
 /// #     }
 ///     // ...
 ///     fn once() -> Result<(), duat_core::Error<()>> {
-///         hooks::add::<SessionStarted<U>>(|_| {
-///             START_TIME.set(Instant::now()).unwrap();
+///         hooks::add::<ConfigLoaded>(|_| {
+///             START_TIME.set(Instant::now()).unwrap()
 ///         });
 ///         form::set_weak("UpTime", Form::cyan());
 ///         Ok(())
@@ -304,7 +302,7 @@ mod status_line;
 /// [`periodic_checker`]: crate::periodic_checker
 /// [`PhantomData<U>`]: std::marker::PhantomData
 /// [`Instant`]: std::time::Instant
-/// [`SessionStarted`]: crate::hooks::SessionStarted
+/// [`ConfigLoaded`]: crate::hooks::ConfigLoaded
 /// [`update`]: Widget::update
 /// [`Form`]: crate::form::Form
 /// [`form::set_weak*`]: crate::form::set_weak
