@@ -245,7 +245,7 @@ where
             &mut cursor,
             &mut widget,
             self.area,
-            &self.cfg,
+            self.cfg,
             &mut shift,
             was_main,
             self.cursors.is_incl(),
@@ -257,7 +257,7 @@ where
 
         if shift != (0, 0, 0) {
             self.cursors
-                .shift_by(n + 1, shift, widget.text(), self.area, &self.cfg);
+                .shift_by(n + 1, shift, widget.text(), self.area, self.cfg);
 
             for change in widget.text_mut().changes_mut().iter_mut().skip(c_i + 1) {
                 change.shift_by(shift);
@@ -307,7 +307,7 @@ where
             let sh = |rhs: usize| if sh_from <= rhs { shift } else { (0, 0, 0) };
 
             let c_i = {
-                cursor.shift_by(shift, widget.text(), self.area, &cfg);
+                cursor.shift_by(shift, widget.text(), self.area, cfg);
 
                 let (start, end) = cursor.point_range(self.cursors.is_incl(), widget.text());
                 let changes = widget.text_mut().changes_mut();
@@ -363,7 +363,7 @@ where
                 &mut cursor,
                 &mut *widget,
                 self.area,
-                &self.cfg,
+                self.cfg,
                 &mut shift,
                 was_main,
                 self.cursors.is_incl(),
@@ -628,7 +628,7 @@ where
     cursor: &'a mut Cursor,
     widget: &'b mut W,
     area: &'b A,
-    cfg: &'a PrintCfg,
+    cfg: PrintCfg,
     shift: &'a mut (i32, i32, i32),
     is_main: bool,
     is_incl: bool,
@@ -648,7 +648,7 @@ where
         cursor: &'a mut Cursor,
         widget: &'b mut W,
         area: &'b A,
-        cfg: &'a PrintCfg,
+        cfg: PrintCfg,
         shift: &'a mut (i32, i32, i32),
         is_main: bool,
         is_incl: bool,
@@ -674,7 +674,7 @@ where
     /// If the `caret` is behind the `anchor` (or in the same spot),
     /// after replacing the selection, the `caret` will be placed on
     /// the start of the selection, while the `anchor` will be placed
-    /// on the new end.
+    /// on the new end. If it is ahead, it will be placed ahead.
     ///
     /// If there is no selection, then this has the same effect as
     /// [`insert`].
@@ -717,16 +717,17 @@ where
     pub fn insert(&mut self, edit: impl ToString) {
         let range = (self.cursor.caret(), self.cursor.caret());
         let change = Change::new(edit.to_string(), range, self.widget.text());
-        let diff = change.chars_diff();
+        let (added, taken) = (change.added_end(), change.taken_end());
 
         self.edit(change);
 
         if let Some(anchor) = self.cursor.anchor()
             && anchor >= self.cursor.caret()
         {
+            let new_anchor = anchor + added - taken;
             self.cursor.swap_ends();
             self.cursor
-                .move_hor(diff, self.widget.text(), self.area, self.cfg);
+                .move_to(new_anchor, self.widget.text(), self.area, self.cfg);
             self.cursor.swap_ends();
         }
     }
@@ -746,12 +747,133 @@ where
         self.change_diff += diff + merged_ahead as i32;
     }
 
+    ////////// Iteration functions
+
+    /// Iterates over the [`char`]s
+    ///
+    /// This iteration will begin on the `caret`. It will also include
+    /// the [`Point`] of each `char`
+    pub fn iter(&self) -> impl Iterator<Item = (Point, char)> + '_ {
+        self.widget.text().chars_fwd(self.caret())
+    }
+
+    /// Iterates over the [`char`]s, in reverse
+    ///
+    /// This iteration will begin on the `caret`. It will also include
+    /// the [`Point`] of each `char`
+    pub fn iter_rev(&self) -> impl Iterator<Item = (Point, char)> + '_ {
+        self.widget.text().chars_rev(self.caret())
+    }
+
+    /// Searches the [`Text`] for a regex
+    ///
+    /// The search will begin on the `caret`, and returns the bounding
+    /// [`Point`]s, alongside the match. If an `end` is provided,
+    /// the search will stop at the given [`Point`].
+    ///
+    /// # Panics
+    ///
+    /// If the regex is not valid, this method will panic.
+    ///
+    /// ```rust
+    /// # use duat_core::{mode::EditHelper, ui::Area, widgets::File};
+    /// fn search_nth_paren<S>(
+    ///     helper: &mut EditHelper<File, impl Area, S>,
+    ///     n: usize,
+    /// ) {
+    ///     helper.move_each(|mut m| {
+    ///         let mut nth = m.search_fwd('(', None).nth(n);
+    ///         if let Some((start, end)) = nth {
+    ///             m.move_to(start);
+    ///             m.set_anchor();
+    ///             m.move_to(end);
+    ///         }
+    ///     })
+    /// }
+    /// ```
+    pub fn search_fwd<R: RegexPattern>(
+        &mut self,
+        pat: R,
+        end: Option<Point>,
+    ) -> impl Iterator<Item = R::Match> + '_ {
+        let start = self.cursor.caret().byte();
+        let text = self.widget.text_mut();
+        match end {
+            Some(end) => text.search_fwd(pat, start..end.byte()).unwrap(),
+            None => {
+                let end = text.len().byte();
+                text.search_fwd(pat, start..end).unwrap()
+            }
+        }
+    }
+
+    /// Searches the [`Text`] for a regex, in reverse
+    ///
+    /// The search will begin on the `caret`, and returns the bounding
+    /// [`Point`]s, alongside the match. If a `start` is provided,
+    /// the search will stop at the given [`Point`].
+    ///
+    /// # Panics
+    ///
+    /// If the regex is not valid, this method will panic.
+    ///
+    /// ```rust
+    /// # use duat_core::{mode::EditHelper, ui::Area, widgets::File};
+    /// fn search_nth_rev<S>(
+    ///     helper: &mut EditHelper<File, impl Area, S>,
+    ///     n: usize,
+    ///     s: &str,
+    /// ) {
+    ///     helper.move_each(|mut m| {
+    ///         let mut nth = m.search_rev(s, None).nth(n);
+    ///         if let Some((start, end)) = nth {
+    ///             m.move_to(start);
+    ///             m.set_anchor();
+    ///             m.move_to(end);
+    ///         }
+    ///     })
+    /// }
+    /// ```
+    pub fn search_rev<R: RegexPattern>(
+        &mut self,
+        pat: R,
+        start: Option<Point>,
+    ) -> impl Iterator<Item = R::Match> + '_ {
+        let end = self.cursor.caret().byte();
+        let start = start.unwrap_or_default();
+        let text = self.widget.text_mut();
+        text.search_rev(pat, start.byte()..end).unwrap()
+    }
+
+    ////////// Queries
+
+    /// Returns the `caret`
+    pub fn caret(&self) -> Point {
+        self.cursor.caret()
+    }
+
+    /// Returns the `anchor`
+    pub fn anchor(&self) -> Option<Point> {
+        self.cursor.anchor()
+    }
+
+    /// Returns `true` if the `anchor` exists before the `caret`
+    pub fn anchor_is_start(&self) -> bool {
+        self.anchor().is_none_or(|anchor| anchor < self.caret())
+    }
+
+    /// Whether or not this is the main [`Cursor`]
     pub fn is_main(&self) -> bool {
         self.is_main
     }
 
-    pub fn is_incl(&self) -> bool {
-        self.is_incl
+    pub fn indent_on(&mut self, point: Point) -> Option<usize> {
+        self.widget.text_mut().indent_on(point, self.cfg)
+    }
+
+    /// The [`PrintCfg`] in use
+    pub fn cfg(&self) -> PrintCfg {
+        self.cfg
     }
 }
 
@@ -799,19 +921,19 @@ where
     /// Moves the cursor horizontally. May cause vertical movement
     pub fn move_hor(&mut self, count: i32) {
         let cursor = self.cursor.as_mut().unwrap();
-        cursor.move_hor(count, self.text, self.area, &self.cfg);
+        cursor.move_hor(count, self.text, self.area, self.cfg);
     }
 
     /// Moves the cursor vertically. May cause horizontal movement
     pub fn move_ver(&mut self, count: i32) {
         let cursor = self.cursor.as_mut().unwrap();
-        cursor.move_ver(count, self.text, self.area, &self.cfg);
+        cursor.move_ver(count, self.text, self.area, self.cfg);
     }
 
     /// Moves the cursor vertically. May cause horizontal movement
     pub fn move_ver_wrapped(&mut self, count: i32) {
         let cursor = self.cursor.as_mut().unwrap();
-        cursor.move_ver_wrapped(count, self.text, self.area, &self.cfg);
+        cursor.move_ver_wrapped(count, self.text, self.area, self.cfg);
     }
 
     /// Moves the cursor to a [`Point`]
@@ -820,7 +942,7 @@ where
     ///   position allowed.
     pub fn move_to(&mut self, point: Point) {
         let cursor = self.cursor.as_mut().unwrap();
-        cursor.move_to(point, self.text, self.area, &self.cfg);
+        cursor.move_to(point, self.text, self.area, self.cfg);
     }
 
     /// Moves the cursor to a `line` and a `column`
@@ -1015,7 +1137,7 @@ where
         self.text.search_rev(pat, start.byte()..end).unwrap()
     }
 
-    ////////// Cursor queries
+    ////////// Queries
 
     /// Returns the `caret`
     pub fn caret(&self) -> Point {
@@ -1040,6 +1162,15 @@ where
     /// Whether or not this cursor's selections are inclusive
     pub fn is_incl(&self) -> bool {
         self.cursors.is_incl()
+    }
+
+    pub fn text(&self) -> &Text {
+        self.text
+    }
+
+    /// The [`PrintCfg`] in use
+    pub fn cfg(&self) -> PrintCfg {
+        self.cfg
     }
 }
 

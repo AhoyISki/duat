@@ -33,6 +33,10 @@ impl WrapMethod {
 pub struct TabStops(pub u8);
 
 impl TabStops {
+    pub fn size(&self) -> u32 {
+        self.0 as u32
+    }
+
     #[inline]
     pub fn spaces_at(&self, x: u32) -> u32 {
         self.0 as u32 - (x % self.0 as u32)

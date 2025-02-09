@@ -321,7 +321,8 @@ impl Tags {
         // New length insertion is straightforward, just add the len, dummy.
         if new_end > old.start {
             let len = new_end - old.start;
-            self.buf[n] = TagOrSkip::Skip((skip + len) as u32);
+            let new_skip = self.buf[n].len();
+            self.buf[n] = TagOrSkip::Skip((new_skip + len) as u32);
             self.records.transform([n, b], [0, 0], [0, len]);
         }
 
@@ -636,7 +637,7 @@ impl Tags {
     ///
     /// [`get_skip_at`]: Tags::get_skip_at
     fn get_skip_behind(&mut self, at: usize) -> Option<[usize; 3]> {
-        let [n, b, skip] = self.get_skip_at(at)?;
+        let [n, b, skip] = self.get_skip_at(at).unwrap();
         Some(if b == at {
             rev_range(&self.buf, ..n)
                 .find_map(|(n, ts)| Some(n).zip(ts.as_skip()))
@@ -708,7 +709,9 @@ fn entries_rev(
     mut b: usize,
 ) -> impl FnMut((usize, &TagOrSkip)) -> Option<(usize, usize, RawTag)> + Clone {
     move |(n, ts)| {
-        b -= ts.len();
+        b = b
+            .checked_sub(ts.len())
+            .unwrap_or_else(|| panic!("attempted to subtract {} from {}", ts.len(), b));
         ts.as_tag().map(|t| (n, b, t))
     }
 }

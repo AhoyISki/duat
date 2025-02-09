@@ -15,7 +15,7 @@ use super::Item;
 /// A position in [`Text`]
 ///
 /// [`Text`]: super::Text
-#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Point {
     b: u32,
     c: u32,

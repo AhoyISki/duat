@@ -68,7 +68,7 @@ impl TsParser {
     /// Returns the indentation difference from the previous line
     // WARNING: long ass function
     pub fn indent_on(&self, text: &mut Text, p: Point, cfg: PrintCfg) -> Option<usize> {
-        let tab = cfg.tab_stops.len() as i32;
+        let tab = cfg.tab_stops.size() as i32;
         let (start, _) = text.points_of_line(p.line());
         let indented_start = text
             .chars_fwd(start)

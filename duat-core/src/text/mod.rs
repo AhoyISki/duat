@@ -1031,12 +1031,15 @@ impl Text {
     /// position where said character starts, e.g.
     /// [`Point::default()`] for the first character
     pub fn chars_fwd(&self, p: Point) -> impl Iterator<Item = (Point, char)> + '_ {
+        crate::log_file!("{self:#?}");
+        crate::log_file!("chars_fwd in {p:?}");
         self.strs_in_range_inner(p.byte()..)
             .into_iter()
             .flat_map(str::chars)
             .scan(p, |p, char| {
                 let old_p = *p;
                 *p = p.fwd(char);
+                crate::log_file!("char {char:?} in {old_p:?}");
                 Some((old_p, char))
             })
     }
@@ -1141,9 +1144,9 @@ fn cursor_tags(is_main: bool) -> [Tag; 3] {
     use crate::form::{E_SEL_ID, M_SEL_ID};
 
     if is_main {
-        [PopForm(M_SEL_ID), PushForm(M_SEL_ID), MainCursor]
+        [PushForm(M_SEL_ID), PopForm(M_SEL_ID), MainCursor]
     } else {
-        [PopForm(E_SEL_ID), PushForm(E_SEL_ID), ExtraCursor]
+        [PushForm(E_SEL_ID), PopForm(E_SEL_ID), ExtraCursor]
     }
 }
 

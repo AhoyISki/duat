@@ -49,7 +49,7 @@ impl Cursors {
         area: &impl Area,
         cfg: PrintCfg,
     ) -> usize {
-        let mut cursor = Cursor::new(point, text, area, &cfg);
+        let mut cursor = Cursor::new(point, text, area, cfg);
 
         let range = match self.is_incl {
             true => range.saturating_sub(1),
@@ -58,7 +58,7 @@ impl Cursors {
 
         if range > 0 {
             cursor.set_anchor();
-            cursor.move_hor(range as i32, text, area, &cfg);
+            cursor.move_hor(range as i32, text, area, cfg);
         }
         let start = cursor.start().byte();
         // Do a check for a "guessed position", if it doesn't work, try
@@ -181,7 +181,7 @@ impl Cursors {
         shift: (i32, i32, i32),
         text: &Text,
         area: &impl Area,
-        cfg: &PrintCfg,
+        cfg: PrintCfg,
     ) {
         for cursor in self.buf.iter_mut().skip(from) {
             cursor.shift_by(shift, text, area, cfg);
@@ -267,7 +267,7 @@ mod cursor {
 
     impl Cursor {
         /// Returns a new instance of [`Cursor`].
-        pub(super) fn new(point: Point, text: &Text, area: &impl Area, cfg: &PrintCfg) -> Cursor {
+        pub(super) fn new(point: Point, text: &Text, area: &impl Area, cfg: PrintCfg) -> Cursor {
             Cursor {
                 caret: VPoint::new(point, text, area, cfg),
                 // This should be fine.
@@ -277,7 +277,7 @@ mod cursor {
         }
 
         /// Moves to specific, pre calculated [`Point`].
-        pub fn move_to(&mut self, point: Point, text: &Text, area: &impl Area, cfg: &PrintCfg) {
+        pub fn move_to(&mut self, point: Point, text: &Text, area: &impl Area, cfg: PrintCfg) {
             if point == self.caret() {
                 return;
             }
@@ -290,7 +290,7 @@ mod cursor {
         }
 
         /// Internal horizontal movement function.
-        pub fn move_hor(&mut self, by: i32, text: &Text, area: &impl Area, cfg: &PrintCfg) {
+        pub fn move_hor(&mut self, by: i32, text: &Text, area: &impl Area, cfg: PrintCfg) {
             let by = by as isize;
             let (Some(last), false) = (text.last_point(), by == 0) else {
                 return;
@@ -325,12 +325,12 @@ mod cursor {
         }
 
         /// Internal vertical movement function.
-        pub fn move_ver(&mut self, by: i32, text: &Text, area: &impl Area, cfg: &PrintCfg) {
+        pub fn move_ver(&mut self, by: i32, text: &Text, area: &impl Area, cfg: PrintCfg) {
             let by = by as isize;
             let (Some(last), false) = (text.last_point(), by == 0) else {
                 return;
             };
-            let cfg = IterCfg::new(*cfg).dont_wrap();
+            let cfg = IterCfg::new(cfg).dont_wrap();
             let dcol = self.caret.dcol;
 
             let point = {
@@ -350,11 +350,11 @@ mod cursor {
         }
 
         /// Internal vertical movement function.
-        pub fn move_ver_wrapped(&mut self, by: i32, text: &Text, area: &impl Area, cfg: &PrintCfg) {
+        pub fn move_ver_wrapped(&mut self, by: i32, text: &Text, area: &impl Area, cfg: PrintCfg) {
             if text.last_point().is_none() || by == 0 {
                 return;
             };
-            let cfg = IterCfg::new(*cfg);
+            let cfg = IterCfg::new(cfg);
             let dwcol = self.caret.dwcol;
 
             let mut wraps = 0;
@@ -413,7 +413,7 @@ mod cursor {
             shift: (i32, i32, i32),
             text: &Text,
             area: &impl Area,
-            cfg: &PrintCfg,
+            cfg: PrintCfg,
         ) {
             let shifted_caret = self.caret().shift_by(shift);
             self.move_to(shifted_caret, text, area, cfg);
@@ -445,7 +445,7 @@ mod cursor {
         /// Switches the position of the anchor and caret.
         pub fn swap_ends(&mut self) {
             if let Some(anchor) = self.anchor.as_mut() {
-                std::mem::swap(&mut self.caret, anchor)
+                std::mem::swap(&mut self.caret, anchor);
             }
         }
 
@@ -586,8 +586,8 @@ mod cursor {
     }
 
     impl VPoint {
-        fn new(point: Point, text: &Text, area: &impl Area, cfg: &PrintCfg) -> Self {
-            let cfg = IterCfg::new(*cfg);
+        fn new(point: Point, text: &Text, area: &impl Area, cfg: PrintCfg) -> Self {
+            let cfg = IterCfg::new(cfg);
             let dwcol = vcol(point, text, area, cfg);
             let vcol = vcol(point, text, area, cfg.dont_wrap());
             Self { point, vcol, dcol: vcol, dwcol }
@@ -611,6 +611,9 @@ mod cursor {
     }
 
     fn vcol(point: Point, text: &Text, area: &impl Area, cfg: IterCfg) -> u32 {
+        crate::log_file!("vcol calculation in: {point:?}");
+        crate::log_file!("{text:#?}");
+        crate::log_file!("");
         if let Some(after) = text.points_after(point) {
             area.rev_print_iter(text.iter_rev(after), cfg)
                 .find_map(|(caret, item)| item.part.is_char().then_some(caret.x))
