@@ -336,9 +336,6 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('?'), Mod::ALT) => mode::set_cmd::<U>(IncSearch::new(ExtendRev::new)),
             key!(Char('s')) => mode::set_cmd::<U>(IncSearch::new(Select::new)),
 
-            ////////// Temporary.
-            key!(Char('q')) => panic!("Panicked on purpose"),
-
             ////////// History manipulation.
             key!(Char('u')) => helper.undo(),
             key!(Char('U'), Mod::SHIFT) => helper.redo(),
@@ -385,6 +382,46 @@ impl<U: Ui> Mode<U> for Insert {
             key!(Enter) => {
                 helper.edit_each(|e| e.insert('\n'));
                 helper.move_each(|mut m| m.move_hor(1));
+                let mut anchor_diffs = Vec::new();
+                helper.move_each(|mut m| {
+                    let (_, p) = m.search_rev("\n", None).next().unwrap_or_default();
+                    anchor_diffs.push(
+                        m.anchor()
+                            .map(|a| a.byte() as i32 - m.caret().byte() as i32),
+                    );
+                    m.unset_anchor();
+                    m.move_to(p);
+                    if let Some((p, _)) = m
+                        .iter()
+                        .take_while(|(_, c)| c.is_whitespace() && *c != '\n')
+                        .last()
+                    {
+                        m.set_anchor();
+                        m.move_to(p);
+                    }
+                });
+                helper.edit_main(|e| {
+                    let indent = if let Some(indent) = e.indent_on(e.caret()) {
+                        indent
+                    } else {
+                        todo!();
+                    };
+
+                    if e.anchor().is_some() {
+                        e.replace(" ".repeat(indent));
+                    } else {
+                        e.insert(" ".repeat(indent));
+                    }
+                });
+                let mut anchor_diffs = anchor_diffs.into_iter();
+                helper.move_each(|mut m| {
+                    if let Some(Some(anchor_diff)) = anchor_diffs.next() {
+                        m.move_hor(anchor_diff);
+                        m.swap_ends();
+                    } else {
+                        m.unset_anchor();
+                    }
+                });
             }
             key!(Backspace) => {
                 let mut anchors = Vec::with_capacity(helper.cursors().len());

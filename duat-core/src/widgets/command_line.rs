@@ -173,7 +173,7 @@ impl<U: Ui> Widget<U> for CmdLine<U> {
     }
 
     fn on_focus(&mut self, _area: &U::Area) {
-        self.text = text!({ Ghost(text!({ &self.prompt })) } '\n');
+        self.text = text!({ Ghost(text!({ &self.prompt })) });
         self.mode.read().write().on_focus(&mut self.text);
     }
 

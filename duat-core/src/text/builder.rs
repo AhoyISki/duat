@@ -67,6 +67,10 @@ impl Builder {
         if let Some(tag) = self.last_form {
             self.text.tags.insert(len, Tag::PopForm(tag), Key::basic());
         }
+        if self.text.buf.is_empty() || self.text.buf[self.text.buf.len() - 1] != b'\n' {
+            self.push_str("\n");
+            self.text.forced_new_line = true;
+        }
 
         self.text
     }
@@ -159,6 +163,10 @@ impl Builder {
 
     /// Pushes [`Text`] directly
     pub(crate) fn push_text(&mut self, mut text: Text) {
+        if text.forced_new_line {
+            text.replace_range(text.len().byte() - 1.., "");
+            text.forced_new_line = false;
+        }
         self.last_was_empty = text.is_empty();
         let end = self.text.len();
         let len_p = text.len();

@@ -76,7 +76,11 @@ impl Tag {
             Self::EndAlignCenter => (RawTag::EndAlignCenter(key), None),
             Self::StartAlignRight => (RawTag::StartAlignRight(key), None),
             Self::EndAlignRight => (RawTag::EndAlignRight(key), None),
-            Self::GhostText(text) => {
+            Self::GhostText(mut text) => {
+                if text.forced_new_line {
+                    text.replace_range(text.len().byte() - 1.., "");
+                    text.forced_new_line = false;
+                }
                 let id = TextId::new();
                 texts.insert(id, text);
                 (RawTag::GhostText(key, id), None)

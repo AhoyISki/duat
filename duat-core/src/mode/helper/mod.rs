@@ -253,7 +253,7 @@ where
             usize::MAX,
         ));
 
-        self.cursors.insert(n, was_main, cursor);
+        self.cursors.insert(widget.text(), n, was_main, cursor);
 
         if shift != (0, 0, 0) {
             self.cursors
@@ -374,7 +374,7 @@ where
 
             sh_from = (sh_from as i32 + editor.change_diff) as usize;
 
-            self.cursors.insert(i, was_main, cursor);
+            self.cursors.insert(widget.text(), i, was_main, cursor);
         }
 
         let changes = widget.text_mut().changes_mut();
@@ -420,7 +420,7 @@ where
         ));
 
         if let Some(cursor) = cursor {
-            self.cursors.insert(n, is_main, cursor);
+            self.cursors.insert(widget.text(), n, is_main, cursor);
         }
     }
 
@@ -476,7 +476,7 @@ where
             ));
 
             if let Some(cursor) = cursor {
-                self.cursors.insert(i, is_main, cursor);
+                self.cursors.insert(widget.text(), i, is_main, cursor);
             }
         }
     }
@@ -968,7 +968,8 @@ where
     /// change throughout the movement function, as new cursors might
     /// be added before it, moving it ahead.
     pub fn copy(&mut self) -> usize {
-        self.cursors.insert(0, false, self.cursor.unwrap())
+        self.cursors
+            .insert(self.text, 0, false, self.cursor.unwrap())
     }
 
     /// Destroys the current [`Cursor`]
@@ -1215,7 +1216,8 @@ where
     ///
     /// [`IncSearch`]: crate::widgets::IncSearch
     pub fn matches_inc(&mut self) -> bool {
-        let range = self.cursor.unwrap().range(self.cursors.is_incl());
+        let is_inclusive = self.cursors.is_incl();
+        let range = self.cursor.unwrap().range(self.text, is_inclusive);
         self.text.make_contiguous_in(range.clone());
         let str = unsafe { self.text.continuous_in_unchecked(range) };
 

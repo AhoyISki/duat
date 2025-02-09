@@ -120,6 +120,7 @@ pub struct Text {
     history: History,
     readers: Vec<(Box<dyn Reader>, Vec<Range<usize>>)>,
     ts_parser: Option<(Box<TsParser>, Vec<Range<usize>>)>,
+    forced_new_line: bool,
 }
 
 impl Text {
@@ -147,7 +148,13 @@ impl Text {
     }
 
     /// Creates a [`Text`] from a [`GapBuffer`]
-    pub(crate) fn from_buf(buf: Box<GapBuffer<u8>>) -> Self {
+    pub(crate) fn from_buf(mut buf: Box<GapBuffer<u8>>) -> Self {
+        let forced_new_line = if buf.is_empty() || buf[buf.len() - 1] != b'\n' {
+            buf.push_back(b'\n');
+            true
+        } else {
+            false
+        };
         let len = buf.len();
         let chars = unsafe {
             let (s0, s1) = buf.as_slices();
@@ -164,6 +171,7 @@ impl Text {
             history: History::new(),
             readers: Vec::new(),
             ts_parser: None,
+            forced_new_line,
         }
     }
 
@@ -273,6 +281,11 @@ impl Text {
     ///      instead of 3",
     /// ];
     /// ```
+    ///
+    /// # [`TextRange`] behavior:
+    ///
+    /// If you give a single [`usize`]/[`Point`], it will be
+    /// interpreted as a range from.
     ///
     /// If you want the two full [`&str`]s, see [`strs`]
     ///
@@ -629,8 +642,18 @@ impl Text {
 
     ////////// String modification functions
 
-    pub fn replace_range(&mut self, range: (Point, Point), edit: impl ToString) {
-        let change = Change::new(edit, range, self);
+    /// Replaces a [range] in the [`Text`]
+    ///
+    /// # [`TextRange`] behavior:
+    ///
+    /// If you give a single [`usize`]/[`Point`], it will be
+    /// interpreted as a range from.
+    ///
+    /// [range]: TextRange
+    pub fn replace_range(&mut self, range: impl TextRange, edit: impl ToString) {
+        let range = range.to_range_at(self.len().byte());
+        let (start, end) = (self.point_at(range.start), self.point_at(range.end));
+        let change = Change::new(edit, (start, end), self);
 
         self.replace_range_inner(change.as_ref());
 
@@ -939,7 +962,7 @@ impl Text {
             let start = area.first_point(self, cfg);
             let end = area.last_point(self, cfg);
             for (cursor, is_main) in cursors.iter() {
-                let range = cursor.range(cursors.is_incl());
+                let range = cursor.range(self, cursors.is_incl());
                 if range.end > start.byte() && range.start < end.byte() {
                     self.add_cursor(cursor, is_main, cursors);
                 }
@@ -958,7 +981,7 @@ impl Text {
             let start = area.first_point(self, cfg);
             let end = area.last_point(self, cfg);
             for (cursor, _) in cursors.iter() {
-                let range = cursor.range(cursors.is_incl());
+                let range = cursor.range(self, cursors.is_incl());
                 if range.end > start.byte() && range.start < end.byte() {
                     self.remove_cursor(cursor, cursors);
                 }
@@ -1031,15 +1054,12 @@ impl Text {
     /// position where said character starts, e.g.
     /// [`Point::default()`] for the first character
     pub fn chars_fwd(&self, p: Point) -> impl Iterator<Item = (Point, char)> + '_ {
-        crate::log_file!("{self:#?}");
-        crate::log_file!("chars_fwd in {p:?}");
         self.strs_in_range_inner(p.byte()..)
             .into_iter()
             .flat_map(str::chars)
             .scan(p, |p, char| {
                 let old_p = *p;
                 *p = p.fwd(char);
-                crate::log_file!("char {char:?} in {old_p:?}");
                 Some((old_p, char))
             })
     }
@@ -1079,11 +1099,6 @@ impl Text {
     pub fn tags_rev(&self, at: usize) -> RevTags {
         self.tags.rev_at(at)
     }
-
-    /// Returns a reference to the
-    pub fn buf(&self) -> &GapBuffer<u8> {
-        &self.buf
-    }
 }
 
 impl std::fmt::Debug for Text {
@@ -1107,6 +1122,7 @@ impl Clone for Text {
             history: self.history.clone(),
             readers: Vec::new(),
             ts_parser: None,
+            forced_new_line: self.forced_new_line,
         }
     }
 }
@@ -1249,20 +1265,7 @@ macro impl_from_to_string($t:ty) {
         fn from(value: $t) -> Self {
             let value = <$t as ToString>::to_string(&value);
             let buf = Box::new(GapBuffer::from_iter(value.bytes()));
-            let tags = Box::new(Tags::with_len(buf.len()));
-
-            Self {
-                buf,
-                tags,
-                records: Box::new(Records::with_max([
-                    value.len(),
-                    value.chars().count(),
-                    value.lines().count(),
-                ])),
-                history: History::new(),
-                readers: Vec::new(),
-                ts_parser: None,
-            }
+            Self::from_buf(buf)
         }
     }
 }

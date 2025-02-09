@@ -73,7 +73,7 @@ impl Cursors {
             binary_search_by_key(&self.buf, start, |c| c.start().byte())
         };
 
-        if !self.try_merge_on(i, &mut cursor) {
+        if !self.try_merge_on(text, i, &mut cursor) {
             self.buf.insert(i, cursor);
         }
 
@@ -147,7 +147,13 @@ impl Cursors {
         })
     }
 
-    pub(super) fn insert(&mut self, guess_i: usize, was_main: bool, mut cursor: Cursor) -> usize {
+    pub(super) fn insert(
+        &mut self,
+        text: &Text,
+        guess_i: usize,
+        was_main: bool,
+        mut cursor: Cursor,
+    ) -> usize {
         let (Ok(i) | Err(i)) = if let Some(prev_i) = guess_i.checked_sub(1)
             && let Some(c) = self.get(prev_i)
             && c.start() <= cursor.start()
@@ -158,7 +164,7 @@ impl Cursors {
             binary_search_by_key(&self.buf, cursor.start().byte(), |c| c.start().byte())
         };
 
-        let final_i = if self.try_merge_on(i, &mut cursor) {
+        let final_i = if self.try_merge_on(text, i, &mut cursor) {
             i - 1
         } else {
             self.buf.insert(i, cursor);
@@ -211,9 +217,9 @@ impl Cursors {
     /// ahead
     ///
     /// Returns `true` if the cursor behind got merged.
-    fn try_merge_on(&mut self, i: usize, cursor: &mut Cursor) -> bool {
+    fn try_merge_on(&mut self, text: &Text, i: usize, cursor: &mut Cursor) -> bool {
         while let Some(ahead) = self.buf.get(i)
-            && cursor.range(self.is_incl).end > ahead.start().byte()
+            && cursor.range(text, self.is_incl).end > ahead.start().byte()
         {
             cursor.merge_ahead(self.buf.remove(i));
             if self.main > i {
@@ -222,7 +228,7 @@ impl Cursors {
         }
         if let Some(prev_i) = i.checked_sub(1)
             && let Some(prev) = self.buf.get_mut(prev_i)
-            && prev.range(self.is_incl).end > cursor.start().byte()
+            && prev.range(text, self.is_incl).end > cursor.start().byte()
         {
             prev.merge_ahead(*cursor);
             if self.main > prev_i {
@@ -484,12 +490,15 @@ mod cursor {
         ///
         /// If `anchor` isn't set, returns an empty range on `target`.
         ///
+        /// A [`Cursor`]'s range will also never include the last
+        /// character in a [`Text`], which must be a newline.
+        ///
         /// # Warning
         ///
         /// This function will return the range that is supposed
         /// to be replaced, if `self.is_inclusive()`, this means that
         /// it will return one more byte at the end, i.e. start..=end.
-        pub fn range(&self, inclusive: bool) -> Range<usize> {
+        pub fn range(&self, text: &Text, is_inclusive: bool) -> Range<usize> {
             let anchor = self.anchor.unwrap_or(self.caret);
             let (start, end) = if anchor < self.caret {
                 (anchor.byte(), self.caret.byte())
@@ -497,7 +506,13 @@ mod cursor {
                 (self.caret.byte(), anchor.byte())
             };
 
-            start..if inclusive { end + 1 } else { end }
+            let last = text.last_point();
+            if let Some(last) = last {
+                let go_further = is_inclusive && last.byte() > end;
+                start..if go_further { end + 1 } else { end }
+            } else {
+                0..0
+            }
         }
 
         /// The starting [`Point`] of this [`Cursor`]
@@ -511,16 +526,17 @@ mod cursor {
 
         /// Returns the range between `target` and `anchor`.
         ///
+        /// like [`Cursor::range`], this function will not include
+        /// beyond the last character's [`Point`].
+        ///
         /// If `anchor` isn't set, returns an empty range on `target`.
-        ///
-        /// # Warning
-        ///
-        /// Unlike [`Self::range()`], this function ignores the
-        /// "inclusiveness" of the range.
         pub fn point_range(&self, is_incl: bool, text: &Text) -> (Point, Point) {
             let anchor = self.anchor.unwrap_or(self.caret);
             let mut end = self.caret.point.max(anchor.point);
-            if is_incl && let Some(char) = text.char_at(end) {
+            if is_incl
+                && end.byte() + 1 != text.len().byte()
+                && let Some(char) = text.char_at(end)
+            {
                 end = end.fwd(char)
             }
             (self.caret.point.min(anchor.point), end)
@@ -611,9 +627,6 @@ mod cursor {
     }
 
     fn vcol(point: Point, text: &Text, area: &impl Area, cfg: IterCfg) -> u32 {
-        crate::log_file!("vcol calculation in: {point:?}");
-        crate::log_file!("{text:#?}");
-        crate::log_file!("");
         if let Some(after) = text.points_after(point) {
             area.rev_print_iter(text.iter_rev(after), cfg)
                 .find_map(|(caret, item)| item.part.is_char().then_some(caret.x))
