@@ -40,13 +40,34 @@ impl<U: Ui> Mode<U> for Normal {
         let mut helper = EditHelper::new(widget, area, cursors);
         let w_chars = helper.cfg().word_chars;
 
-        if let key!(Char('h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e') | Down | Up) = key {
+        if let key!(
+            Char('H' | 'J' | 'K' | 'L' | 'W' | 'B' | 'E') | Left | Down | Up | Right,
+            Mod::SHIFT
+        ) = key
+        {
+            helper.move_each(|mut m| {
+                if m.anchor().is_none() {
+                    m.set_anchor()
+                }
+            })
+        } else if let key!(
+            Char('h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e') | Left | Down | Up | Right
+        ) = key
+        {
             helper.move_each(|mut m| m.unset_anchor())
         }
 
         match key {
-            ////////// hjkl and arrow selection keys.
-            key!(Char('h')) => helper.move_each(|mut m| m.move_hor(-1)),
+            key!(Char('h' | 'H') | Left, Mod::NONE | Mod::SHIFT) => {
+                helper.move_each(|mut m| m.move_hor(-1))
+            }
+            key!(Down, Mod::NONE | Mod::SHIFT) => helper.move_each(|mut m| m.move_ver_wrapped(1)),
+            key!(Up, Mod::NONE | Mod::SHIFT) => helper.move_each(|mut m| m.move_ver_wrapped(-1)),
+            key!(Char('l' | 'L') | Right, Mod::NONE | Mod::SHIFT) => {
+                helper.move_each(|mut m| m.move_hor(1))
+            }
+
+            ////////// Basic movement keys
             key!(Char('j')) => match self.0 {
                 SelType::EndOfNl => helper.move_each(|mut m| {
                     m.move_ver(1);
@@ -89,9 +110,7 @@ impl<U: Ui> Mode<U> for Normal {
                 SelType::Normal => helper.move_each(|mut m| m.move_ver(-1)),
                 _ => unreachable!(),
             },
-            key!(Char('l')) => helper.move_each(|mut m| m.move_hor(1)),
 
-            key!(Char('H'), Mod::SHIFT) => select_and_move_each(&mut helper, Side::Left, 1),
             key!(Char('J'), Mod::SHIFT) => match self.0 {
                 SelType::EndOfNl => helper.move_each(|mut m| {
                     m.move_ver(1);
@@ -110,7 +129,7 @@ impl<U: Ui> Mode<U> for Normal {
                         m.move_to(p);
                     }
                 }),
-                SelType::Normal => select_and_move_each(&mut helper, Side::Bottom, 1),
+                SelType::Normal => helper.move_each(|mut m| m.move_ver(1)),
                 _ => unreachable!(),
             },
             key!(Char('K'), Mod::SHIFT) => match self.0 {
@@ -131,19 +150,9 @@ impl<U: Ui> Mode<U> for Normal {
                         m.move_to(p);
                     }
                 }),
-                SelType::Normal => select_and_move_each(&mut helper, Side::Top, 1),
+                SelType::Normal => helper.move_each(|mut m| m.move_ver(-1)),
                 _ => unreachable!(),
             },
-            key!(Char('L'), Mod::SHIFT) => select_and_move_each(&mut helper, Side::Right, 1),
-
-            key!(Left) => helper.move_each(|mut m| m.move_hor(-1)),
-            key!(Down) => helper.move_each(|mut m| m.move_ver_wrapped(1)),
-            key!(Up) => helper.move_each(|mut m| m.move_ver_wrapped(-1)),
-            key!(Right) => helper.move_each(|mut m| m.move_hor(1)),
-            key!(Left, Mod::SHIFT) => select_and_move_each_wrapped(&mut helper, Side::Left, 1),
-            key!(Down, Mod::SHIFT) => select_and_move_each_wrapped(&mut helper, Side::Bottom, 1),
-            key!(Up, Mod::SHIFT) => select_and_move_each_wrapped(&mut helper, Side::Top, 1),
-            key!(Right, Mod::SHIFT) => select_and_move_each_wrapped(&mut helper, Side::Right, 1),
 
             ////////// Word and WORD selection keys.
             key!(Char('w'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each(|mut m| {
@@ -207,10 +216,6 @@ impl<U: Ui> Mode<U> for Normal {
             }),
 
             key!(Char('W'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each(|mut m| {
-                if m.anchor().is_none() {
-                    m.set_anchor();
-                }
-
                 let points = m.search_fwd(word_and_space(mf, w_chars), None).next();
                 if let Some((_, p1)) = points {
                     m.move_to(p1);
@@ -218,10 +223,6 @@ impl<U: Ui> Mode<U> for Normal {
                 }
             }),
             key!(Char('E'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each(|mut m| {
-                if m.anchor().is_none() {
-                    m.set_anchor();
-                }
-
                 let points = m.search_fwd(space_and_word(mf, w_chars), None).next();
                 if let Some((_, p1)) = points {
                     m.move_to(p1);
@@ -229,10 +230,6 @@ impl<U: Ui> Mode<U> for Normal {
                 }
             }),
             key!(Char('B'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each(|mut m| {
-                if m.anchor().is_none() {
-                    m.set_anchor();
-                }
-
                 let points = m.search_rev(word_and_space(mf, w_chars), None).next();
                 if let Some((p0, _)) = points {
                     m.move_to(p0);
@@ -366,8 +363,16 @@ impl<U: Ui> Mode<U> for Insert {
         cursors.make_incl();
         let mut helper = EditHelper::new(widget, area, cursors);
 
-        if let key!(Left | Down | Up | Right) = key {
-            helper.move_each(|mut m| m.unset_anchor())
+        if let key!(Left | Down | Up | Right, modif) = key {
+            if modif.contains(Mod::SHIFT) {
+                helper.move_each(|mut m| {
+                    if m.anchor().is_none() {
+                        m.set_anchor()
+                    }
+                });
+            } else {
+                helper.move_each(|mut m| m.unset_anchor())
+            }
         }
 
         match key {
@@ -381,19 +386,9 @@ impl<U: Ui> Mode<U> for Insert {
             }
             key!(Enter) => {
                 let mut anchors = Vec::new();
-                helper.move_each(|mut m| {
-                    anchors.push(m.anchor());
-                    m.unset_anchor();
-                    let indent_start = m.iter_rev().find(|(_, c)| !is_non_nl_space(*c));
-                    let (s, char) = indent_start.unwrap_or((Point::default(), '\n'));
-                    if char == '\n' && m.char() == '\n' {
-                        m.move_hor(-1);
-                        m.set_anchor();
-                        m.move_to(s);
-                        m.move_hor(1);
-                    }
-                });
-                helper.edit_each(|e| e.insert_or_replace('\n'));
+                helper.move_each(|m| anchors.push(m.anchor()));
+                remove_empty_line(&mut helper);
+                helper.edit_each(|e| e.insert('\n'));
                 helper.move_each(|mut m| m.move_hor(1));
                 set_indent(&mut helper, anchors);
             }
@@ -439,15 +434,10 @@ impl<U: Ui> Mode<U> for Insert {
                     }
                 });
             }
-            key!(Left, Mod::SHIFT) => select_and_move_each(&mut helper, Side::Left, 1),
-            key!(Right, Mod::SHIFT) => select_and_move_each_wrapped(&mut helper, Side::Right, 1),
-            key!(Up, Mod::SHIFT) => select_and_move_each_wrapped(&mut helper, Side::Top, 1),
-            key!(Down, Mod::SHIFT) => select_and_move_each(&mut helper, Side::Bottom, 1),
-
-            key!(Left) => helper.move_each(|mut m| m.move_hor(-1)),
-            key!(Down) => helper.move_each(|mut m| m.move_ver_wrapped(1)),
-            key!(Up) => helper.move_each(|mut m| m.move_ver_wrapped(-1)),
-            key!(Right) => helper.move_each(|mut m| m.move_hor(1)),
+            key!(Left, Mod::NONE | Mod::SHIFT) => helper.move_each(|mut m| m.move_hor(-1)),
+            key!(Down, Mod::NONE | Mod::SHIFT) => helper.move_each(|mut m| m.move_ver_wrapped(1)),
+            key!(Up, Mod::NONE | Mod::SHIFT) => helper.move_each(|mut m| m.move_ver_wrapped(-1)),
+            key!(Right, Mod::NONE | Mod::SHIFT) => helper.move_each(|mut m| m.move_hor(1)),
 
             key!(Esc) => {
                 helper.new_moment();
@@ -456,43 +446,6 @@ impl<U: Ui> Mode<U> for Insert {
             _ => {}
         }
     }
-}
-
-fn set_indent<A: Area>(helper: &mut EditHelper<'_, File, A, ()>, anchors: Vec<Option<Point>>) {
-    helper.move_each(|mut m| {
-        let (_, p) = m.search_rev("\n", None).next().unwrap_or_default();
-        m.unset_anchor();
-        m.move_to(p);
-        if let Some((p, _)) = m.iter().take_while(|(_, c)| is_non_nl_space(*c)).last() {
-            m.set_anchor();
-            m.move_to(p);
-        }
-    });
-    helper.edit_main(|e| {
-        let indent = if let Some(indent) = e.indent_on(e.caret()) {
-            indent
-        } else {
-            todo!();
-        };
-        e.insert_or_replace(" ".repeat(indent));
-    });
-    let mut anchors = anchors.into_iter();
-    helper.move_each(|mut m| {
-        if let Some(Some(anchor)) = anchors.next() {
-            m.set_anchor();
-            match anchor < m.caret() {
-                true => m.move_to(anchor),
-                false => m.move_hor(anchor.byte() as i32 - m.caret().byte() as i32),
-            }
-            m.swap_ends();
-        } else {
-            m.unset_anchor();
-        }
-        let indent_end = m.iter().find(|(_, c)| !is_non_nl_space(*c));
-        if let Some((p, _)) = indent_end {
-            m.move_to(p);
-        }
-    });
 }
 
 #[derive(Clone)]
@@ -645,53 +598,11 @@ impl<U: Ui> Mode<U> for OneKey {
     }
 }
 
-fn select_and_move_each<S>(
-    helper: &mut EditHelper<File, impl Area, S>,
-    direction: Side,
-    amount: usize,
-) {
-    helper.move_each(|mut m| {
-        if m.anchor().is_none() {
-            m.set_anchor()
-        }
-        match direction {
-            Side::Top => m.move_ver(-(amount as i32)),
-            Side::Bottom => m.move_ver(amount as i32),
-            Side::Left => m.move_hor(-(amount as i32)),
-            Side::Right => m.move_hor(amount as i32),
-        }
-    });
-}
-
-fn select_and_move_each_wrapped<S>(
-    helper: &mut EditHelper<File, impl Area, S>,
-    direction: Side,
-    amount: usize,
-) {
-    helper.move_each(|mut m| {
-        if m.anchor().is_none() {
-            m.set_anchor();
-        }
-        if let Side::Top = direction {
-            m.move_ver_wrapped(-(amount as i32))
-        } else {
-            m.move_ver_wrapped(amount as i32)
-        }
-    });
-}
-
 fn no_nl_windows<'a>(
     iter: impl Iterator<Item = (Point, char)> + 'a,
 ) -> impl Iterator<Item = ((Point, char), (Point, char))> + 'a {
     iter.map_windows(|[first, second]| (*first, *second))
         .skip_while(|((_, c0), (_, c1))| *c0 == '\n' || *c1 == '\n')
-}
-
-enum Side {
-    Left,
-    Right,
-    Top,
-    Bottom,
 }
 
 #[derive(Clone, Copy)]
@@ -878,4 +789,62 @@ impl<U: Ui> IncSearcher<U> for Split<U> {
 
 fn is_non_nl_space(char: char) -> bool {
     char.is_whitespace() && char != '\n'
+}
+
+/// Sets the indentation for every cursor
+fn set_indent(helper: &mut EditHelper<'_, File, impl Area, ()>, anchors: Vec<Option<Point>>) {
+    helper.move_each(|mut m| {
+        let (_, p) = m.search_rev("\n", None).next().unwrap_or_default();
+        m.unset_anchor();
+        m.move_to(p);
+        if let Some((p, _)) = m.iter().take_while(|(_, c)| is_non_nl_space(*c)).last() {
+            m.set_anchor();
+            m.move_to(p);
+        }
+    });
+    helper.edit_main(|e| {
+        let indent = if let Some(indent) = e.indent_on(e.caret()) {
+            indent
+        } else {
+            todo!();
+        };
+        e.insert_or_replace(" ".repeat(indent));
+    });
+    let mut anchors = anchors.into_iter();
+    helper.move_each(|mut m| {
+        if let Some(Some(anchor)) = anchors.next() {
+            m.set_anchor();
+            match anchor < m.caret() {
+                true => m.move_to(anchor),
+                false => m.move_hor(anchor.byte() as i32 - m.caret().byte() as i32),
+            }
+            m.swap_ends();
+        } else {
+            m.unset_anchor();
+        }
+        let indent_end = m.iter().find(|(_, c)| !is_non_nl_space(*c));
+        if let Some((p, _)) = indent_end {
+            m.move_to(p);
+        }
+    });
+}
+
+/// removes
+fn remove_empty_line(helper: &mut EditHelper<'_, File, impl Area, ()>) {
+    helper.move_each(|mut m| {
+        m.unset_anchor();
+        let indent_start = m.iter_rev().find(|(_, c)| !is_non_nl_space(*c));
+        let (s, char) = indent_start.unwrap_or((Point::default(), '\n'));
+        if char == '\n' && m.char() == '\n' {
+            m.set_anchor();
+            m.move_to(s);
+            m.move_hor(1);
+        }
+    });
+    helper.edit_each(|e| {
+        if e.anchor().is_some() {
+            e.replace('\n')
+        }
+    });
+    helper.move_each(|mut m| m.unset_anchor());
 }
