@@ -5,14 +5,14 @@
 //! cursors and dealing with editing the text directly.
 //!
 //! [`Mode`]: super::Mode
-use std::{array::IntoIter, ops::RangeBounds};
+use std::array::IntoIter;
 
 pub use self::cursors::{Cursor, Cursors};
 use crate::{
     binary_search_by_key_and_index,
     cfg::PrintCfg,
     data::RwData,
-    text::{Change, Key, Keys, Point, RegexPattern, Searcher, Tag, Text},
+    text::{Change, Key, Keys, Point, RegexPattern, Searcher, Tag, Text, TextRange},
     ui::Area,
     widgets::{File, Widget},
 };
@@ -488,26 +488,23 @@ where
         self.widget.write().text_mut().insert_tag(at, tag, key);
     }
 
-    /// Removes all the [`Tag`]s from a position related to a [key]
-    ///
-    /// [key]: Keys
-    pub fn remove_tags_on(&mut self, at: usize, keys: impl Keys) {
-        self.widget.write().text_mut().remove_tags_on(at, keys);
-    }
-
     /// Removes the [`Tag`]s of a [key] from the whole [`Text`]
     ///
     /// # Caution
     ///
-    /// While it is fine to do this on your own widgets, you should
-    /// refrain from using this function in a [`File`]s [`Text`], as
-    /// it must iterate over all tags in the file, so if there are a
-    /// lot of other tags, this operation may be slow.
+    /// Avoid using this function on very large ranges, as it would
+    /// have to slog through a bunch of other [`Tag`]s from other
+    /// [key]s trying to find those that belong to this set of keys.
+    ///
+    /// # [`TextRange`] behavior
+    ///
+    /// If you give it a [`Point`] or [`usize`], it will be treated as
+    /// a one byte range.
     ///
     /// [key]: Keys
     /// [`File`]: crate::widgets::File
-    pub fn remove_tags_of(&mut self, range: impl RangeBounds<usize>, keys: impl Keys) {
-        self.widget.write().text_mut().remove_tags_of(range, keys);
+    pub fn remove_tags_on(&mut self, range: impl TextRange, keys: impl Keys) {
+        self.widget.write().text_mut().remove_tags_on(range, keys);
     }
 
     /// Begins a new moment
@@ -1064,7 +1061,7 @@ where
         &mut self,
         end: Option<Point>,
     ) -> impl Iterator<Item = (Point, Point)> + '_ {
-        self.inc_searcher.search_fwd(self.text, self.caret(), end)
+        self.inc_searcher.search_fwd(self.text, (self.caret(), end))
     }
 
     /// Search incrementally from an [`IncSearch`] request in reverse
@@ -1078,7 +1075,8 @@ where
         &mut self,
         start: Option<Point>,
     ) -> impl Iterator<Item = (Point, Point)> + '_ {
-        self.inc_searcher.search_rev(self.text, self.caret(), start)
+        self.inc_searcher
+            .search_rev(self.text, (start, self.caret()))
     }
 
     /// Whether the [`Cursor`]'s selection matches the [`IncSearch`]

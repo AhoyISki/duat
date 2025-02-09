@@ -6,8 +6,7 @@ use std::{
 use gapbuf::GapBuffer;
 
 use super::{
-    Part, Point, Text,
-    point::TwoPoints,
+    Point, Text, ToggleId, TwoPoints,
     tags::{self, RawTag},
 };
 use crate::mode::Cursor;
@@ -419,3 +418,89 @@ enum Conceal<'a> {
 
 type FwdChars<'a> = Chain<Chars<'a>, Chars<'a>>;
 type RevChars<'a> = Chain<Rev<Chars<'a>>, Rev<Chars<'a>>>;
+
+use crate::form::FormId;
+
+/// A part of the [`Text`], can be a [`char`] or a [`Tag`].
+///
+/// This type is used in iteration by [`Ui`]s in order to
+/// correctly print Duat's content. Additionally, you may be
+/// able to tell that there is no ghost text or concealment
+/// tags, and there is a [`ResetState`].
+///
+/// That is because the [`Text`]'s iteration process automatically
+/// gets rid of these tags, since, from the point of view of the
+/// ui, ghost text is just regular text, while conceals are
+/// simply the lack of text. And if the ui can handle printing
+/// regular text, printing ghost text should be a breeze.
+///
+/// [`Text`]: super::Text
+/// [`Tag`]: super::Tag
+/// [`Ui`]: crate::ui::Ui
+/// [`ResetState`]: Part::ResetState
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Part {
+    Char(char),
+    PushForm(FormId),
+    PopForm(FormId),
+    MainCursor,
+    ExtraCursor,
+    AlignLeft,
+    AlignCenter,
+    AlignRight,
+    ToggleStart(ToggleId),
+    ToggleEnd(ToggleId),
+    ResetState,
+}
+
+impl Part {
+    /// Returns a new [`Part`] from a [`RawTag`]
+    #[inline]
+    pub(super) fn from_raw(value: RawTag) -> Self {
+        match value {
+            RawTag::PushForm(_, id) => Part::PushForm(id),
+            RawTag::PopForm(_, id) => Part::PopForm(id),
+            RawTag::MainCursor(_) => Part::MainCursor,
+            RawTag::ExtraCursor(_) => Part::ExtraCursor,
+            RawTag::StartAlignCenter(_) => Part::AlignCenter,
+            RawTag::EndAlignCenter(_) => Part::AlignLeft,
+            RawTag::StartAlignRight(_) => Part::AlignRight,
+            RawTag::EndAlignRight(_) => Part::AlignLeft,
+            RawTag::ToggleStart(_, id) => Part::ToggleStart(id),
+            RawTag::ToggleEnd(_, id) => Part::ToggleEnd(id),
+            RawTag::ConcealUntil(_) => Part::ResetState,
+            RawTag::StartConceal(_) | RawTag::EndConceal(_) | RawTag::GhostText(..) => {
+                unreachable!("These tags are automatically processed elsewhere.")
+            }
+        }
+    }
+
+    /// Returns `true` if the part is [`Char`]
+    ///
+    /// [`Char`]: Part::Char
+    #[must_use]
+    #[inline]
+    pub fn is_char(&self) -> bool {
+        matches!(self, Part::Char(_))
+    }
+
+    /// Returns [`Some`] if the part is [`Char`]
+    ///
+    /// [`Char`]: Part::Char
+    #[inline]
+    pub fn as_char(&self) -> Option<char> {
+        if let Self::Char(v) = self {
+            Some(*v)
+        } else {
+            None
+        }
+    }
+
+    /// Returns `true` if the part is not [`Char`]
+    ///
+    /// [`Char`]: Part::Char
+    #[inline]
+    pub fn is_tag(&self) -> bool {
+        !self.is_char()
+    }
+}

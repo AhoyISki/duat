@@ -72,6 +72,7 @@
 mod builder;
 mod history;
 mod iter;
+mod ops;
 mod reader;
 mod records;
 mod search;
@@ -96,13 +97,12 @@ use self::tags::Tags;
 pub use self::{
     builder::{AlignCenter, AlignLeft, AlignRight, Builder, Ghost, err, hint, ok, text},
     history::Change,
-    iter::{Item, Iter, RevIter},
-    part::Part,
-    point::{Point, TwoPoints, utf8_char_width},
+    iter::{Item, Iter, Part, RevIter},
+    ops::{Point, TextRange, TwoPoints, utf8_char_width},
     reader::Reader,
     search::{Matcheable, RegexPattern, Searcher},
     tags::{Key, Keys, Tag, ToggleId},
-    treesitter::TreeSitter,
+    treesitter::TsParser,
 };
 use crate::{
     DuatError,
@@ -119,7 +119,7 @@ pub struct Text {
     records: Box<Records<[usize; 3]>>,
     history: History,
     readers: Vec<(Box<dyn Reader>, Vec<Range<usize>>)>,
-    tree_sitter: Option<(Box<TreeSitter>, Vec<Range<usize>>)>,
+    tree_sitter: Option<(Box<TsParser>, Vec<Range<usize>>)>,
 }
 
 impl Text {
@@ -142,7 +142,7 @@ impl Text {
     /// [path]: Path
     pub(crate) fn from_file(buf: Box<GapBuffer<u8>>, path: impl AsRef<Path>) -> Self {
         let mut text = Self::from_buf(buf);
-        let tree_sitter = TreeSitter::new(&mut text, path);
+        let tree_sitter = TsParser::new(&mut text, path);
         text.tree_sitter = tree_sitter.map(|ts| (Box::new(ts), Vec::new()));
         text
     }
@@ -246,10 +246,7 @@ impl Text {
         unsafe { [from_utf8_unchecked(s0), from_utf8_unchecked(s1)] }
     }
 
-    /// This method will return two [`&str`]s at the [`Point`] range
-    ///
-    /// This function treats any [`Point`]s outside the range as if
-    /// they where the last point in the text.
+    /// Returns 2 [`&str`]s in the given [range]
     ///
     /// # Note
     ///
@@ -281,8 +278,10 @@ impl Text {
     /// If you want the two full [`&str`]s, see [`strs`]
     ///
     /// [`&str`]: str
+    /// [range]: TextRange
     /// [`strs`]: Self::strs
-    pub fn strs_in(&self, range: impl RangeBounds<usize>) -> IntoIter<&str, 2> {
+    pub fn strs_in(&self, range: impl TextRange) -> IntoIter<&str, 2> {
+        let range = range.to_range_fwd(self.len().byte());
         self.strs_in_range_inner(range).into_iter()
     }
 
@@ -292,22 +291,21 @@ impl Text {
     /// whole line, not just the parts within the range.
     pub fn lines_in(
         &mut self,
-        (p1, p2): (Point, Point),
+        range: impl TextRange,
     ) -> impl DoubleEndedIterator<Item = (usize, &str)> {
-        let start = self.point_at_line(p1.line());
+        let range = range.to_range_fwd(self.len().byte());
+        let start = self.point_at_line(self.point_at(range.start).line());
         let end = {
-            let p3 = self.point_at_line(p2.line());
-            match p3 == p2 {
-                true => p3,
-                false => self.point_at_line((p2.line() + 1).min(self.len().line())),
+            let end = self.point_at(range.end);
+            let line_start = self.point_at_line(end.line());
+            match line_start == end {
+                true => end,
+                false => self.point_at_line((end.line() + 1).min(self.len().line())),
             }
         };
-        self.make_contiguous_in(start.byte()..end.byte());
+        self.make_contiguous_in((start, end));
         unsafe {
-            let lines = self
-                .continuous_in_unchecked(start.byte()..end.byte())
-                .lines();
-
+            let lines = self.continuous_in_unchecked((start, end)).lines();
             let (fwd_i, rev_i) = (start.line(), end.line());
             TextLines { lines, fwd_i, rev_i }
         }
@@ -318,6 +316,7 @@ impl Text {
         let (s0, s1) = self.buf.as_slices();
         let (start, end) = get_ends(range, self.len().byte());
         let (start, end) = (start, end);
+        // Make sure the start and end are in character bounds.
         assert!(
             [start, end]
                 .into_iter()
@@ -832,36 +831,36 @@ impl Text {
     ///
     /// The return value is the value of the gap, if the second `&str`
     /// is the contiguous one.
-    pub(crate) fn make_contiguous_in(&mut self, range: impl RangeBounds<usize>) {
-        let (start, end) = get_ends(range, self.len().byte());
+    pub(crate) fn make_contiguous_in(&mut self, range: impl TextRange) {
+        let range = range.to_range_fwd(self.len().byte());
         let gap = self.buf.gap();
 
-        if end <= gap || start >= gap {
+        if range.end <= gap || range.start >= gap {
             return;
         }
 
-        if gap.abs_diff(start) < gap.abs_diff(end) {
-            self.buf.set_gap(start);
+        if gap.abs_diff(range.start) < gap.abs_diff(range.end) {
+            self.buf.set_gap(range.start);
         } else {
-            self.buf.set_gap(end);
+            self.buf.set_gap(range.end);
         }
     }
 
     /// Assumes that the `range` given is continuous in `self`
     ///
     /// You *MUST* CALL [`make_contiguous_in`] before using this
-    /// function. The sole purpose of this function is not to keep the
+    /// function. The sole purpose of this function is to not keep the
     /// [`Text`] mutably borrowed.
     ///
     /// [`make_contiguous_in`]: Self::make_contiguous_in
-    pub(crate) unsafe fn continuous_in_unchecked(&self, range: impl RangeBounds<usize>) -> &str {
-        let (start, end) = get_ends(range, self.len().byte());
+    pub(crate) unsafe fn continuous_in_unchecked(&self, range: impl TextRange) -> &str {
+        let range = range.to_range_fwd(self.len().byte());
         let [s0, s1] = self.strs();
-        if end as usize <= self.buf.gap() {
-            s0.get_unchecked(start..end)
+        if range.end <= self.buf.gap() {
+            s0.get_unchecked(range)
         } else {
             let gap = self.buf.gap();
-            s1.get_unchecked(start - gap..end - gap)
+            s1.get_unchecked(range.start - gap..range.end - gap)
         }
     }
 
@@ -872,14 +871,7 @@ impl Text {
         self.tags.insert(at, tag, key);
     }
 
-    /// Removes all the [`Tag`]s from a position related to a [key]
-    ///
-    /// [key]: Keys
-    pub fn remove_tags_on(&mut self, at: usize, keys: impl Keys) {
-        self.tags.remove_at(at, keys)
-    }
-
-    /// Removes the [`Tag`]s of a [key] from the whole [`Text`]
+    /// Removes the [`Tag`]s of a [key] from a region
     ///
     /// # Caution
     ///
@@ -888,10 +880,20 @@ impl Text {
     /// it must iterate over all tags in the file, so if there are a
     /// lot of other tags, this operation may be slow.
     ///
+    /// # [`TextRange`] behavior
+    ///
+    /// If you give it a [`Point`] or [`usize`], it will be treated as
+    /// a one byte range.
+    ///
     /// [key]: Keys
     /// [`File`]: crate::widgets::File
-    pub fn remove_tags_of(&mut self, range: impl RangeBounds<usize>, keys: impl Keys) {
-        self.tags.remove_from(range, keys)
+    pub fn remove_tags_on(&mut self, range: impl TextRange, keys: impl Keys) {
+        let range = range.to_range_at(self.len().byte());
+        if range.end == range.start + 1 {
+            self.tags.remove_at(range.start, keys)
+        } else {
+            self.tags.remove_from(range, keys)
+        }
     }
 
     /// Removes all [`Tag`]s
@@ -1111,335 +1113,9 @@ impl PartialEq for Text {
 }
 impl Eq for Text {}
 
-mod point {
-    //! A [`Point`] is a position in [`Text`]
-    //!
-    //! [`Text`]: super::Text
-    use serde::{Deserialize, Serialize};
+mod point {}
 
-    use super::Item;
-
-    /// A position in [`Text`]
-    ///
-    /// [`Text`]: super::Text
-    #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-    pub struct Point {
-        b: u32,
-        c: u32,
-        l: u32,
-    }
-
-    impl Point {
-        ////////// Creation of a Point
-
-        /// Returns a new [`Point`], at the first byte
-        pub fn new() -> Self {
-            Self::default()
-        }
-
-        /// Internal function to create [`Point`]s
-        pub(super) fn from_raw(b: usize, c: usize, l: usize) -> Self {
-            let (b, c, l) = (b as u32, c as u32, l as u32);
-            Self { b, c, l }
-        }
-
-        ////////// Querying functions
-
-        /// The len [`Point`] of a [`&str`]
-        ///
-        /// This is the equivalent of [`Text::len`], but for types
-        /// other than [`Text`]
-        ///
-        /// [`&str`]: str
-        /// [`Text::len`]: super::Text::len
-        /// [`Text`]: super::Text
-        pub fn len_of(str: impl AsRef<str>) -> Self {
-            let str = str.as_ref();
-            Self {
-                b: str.len() as u32,
-                c: str.chars().count() as u32,
-                l: str.bytes().filter(|c| *c == b'\n').count() as u32,
-            }
-        }
-
-        /// Returns the byte (relative to the beginning of the file)
-        /// of self. Indexed at 0
-        pub fn byte(&self) -> usize {
-            self.b as usize
-        }
-
-        /// Returns the char index (relative to the beginning of the
-        /// file). Indexed at 0
-        pub fn char(&self) -> usize {
-            self.c as usize
-        }
-
-        /// Returns the line. Indexed at 0
-        pub fn line(&self) -> usize {
-            self.l as usize
-        }
-
-        ////////// Shifting functions
-
-        /// Moves a [`Point`] forward by one character
-        pub(crate) fn fwd(self, char: char) -> Self {
-            Self {
-                b: self.b + char.len_utf8() as u32,
-                c: self.c + 1,
-                l: self.l + (char == '\n') as u32,
-            }
-        }
-
-        /// Moves a [`Point`] in reverse by one character
-        pub(crate) fn rev(self, char: char) -> Self {
-            Self {
-                b: self.b - char.len_utf8() as u32,
-                c: self.c - 1,
-                l: self.l - (char == '\n') as u32,
-            }
-        }
-
-        /// Moves a [`Point`] forward by one byte
-        pub(super) fn fwd_byte(self, byte: u8) -> Self {
-            Self {
-                b: self.b + 1,
-                c: self.c + utf8_char_width(byte),
-                l: self.l + (byte == b'\n') as u32,
-            }
-        }
-
-        /// Moves a [`Point`] in reverse by one byte
-        pub(super) fn rev_byte(self, byte: u8) -> Self {
-            Self {
-                b: self.b - 1,
-                c: self.c - utf8_char_width(byte),
-                l: self.l - (byte == b'\n') as u32,
-            }
-        }
-
-        /// Shifts the [`Point`] by a "signed point"
-        ///
-        /// This assumes that no overflow is going to happen
-        pub(crate) fn shift_by(self, (b, c, l): (i32, i32, i32)) -> Self {
-            Self {
-                b: (self.b as i32 + b) as u32,
-                c: (self.c as i32 + c) as u32,
-                l: (self.l as i32 + l) as u32,
-            }
-        }
-    }
-
-    impl std::fmt::Debug for Point {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "Point {{ b: {}, c: {}, l: {} }}", self.b, self.c, self.l)
-        }
-    }
-
-    /// Two positions, one for the [`Text`], and one for [ghost text]
-    ///
-    /// This can either be a [`Point`] or `(Point, Option<Point>)` or
-    /// even `(Point, Point)`. If a second [`Point`] is excluded, it
-    /// is assumed to be [`Point::default()`], i.e., this
-    /// [`TwoPoints`] represents the beginning of a [ghost text].
-    ///
-    /// [`Text`]: super::Text
-    /// [ghost text]: super::Tag::GhostText
-    pub trait TwoPoints: Clone + Copy {
-        /// Returns two [`Point`]s, for `Text` and ghosts
-        fn to_points(self) -> (Point, Option<Point>);
-    }
-
-    impl TwoPoints for Point {
-        fn to_points(self) -> (Point, Option<Point>) {
-            (self, None)
-        }
-    }
-
-    impl TwoPoints for (Point, Point) {
-        fn to_points(self) -> (Point, Option<Point>) {
-            (self.0, Some(self.1))
-        }
-    }
-
-    impl TwoPoints for (Point, Option<Point>) {
-        fn to_points(self) -> (Point, Option<Point>) {
-            self
-        }
-    }
-
-    impl TwoPoints for Item {
-        fn to_points(self) -> (Point, Option<Point>) {
-            (self.real, self.ghost)
-        }
-    }
-
-    impl std::fmt::Display for Point {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "{}, {}, {}", self.b, self.c, self.l)
-        }
-    }
-
-    impl std::ops::Add for Point {
-        type Output = Self;
-
-        fn add(self, rhs: Self) -> Self::Output {
-            Self {
-                b: self.b + rhs.b,
-                c: self.c + rhs.c,
-                l: self.l + rhs.l,
-            }
-        }
-    }
-
-    impl std::ops::AddAssign for Point {
-        fn add_assign(&mut self, rhs: Self) {
-            *self = *self + rhs;
-        }
-    }
-
-    impl std::ops::Sub for Point {
-        type Output = Self;
-
-        fn sub(self, rhs: Self) -> Self::Output {
-            Self {
-                b: self.b - rhs.b,
-                c: self.c - rhs.c,
-                l: self.l - rhs.l,
-            }
-        }
-    }
-
-    impl std::ops::SubAssign for Point {
-        fn sub_assign(&mut self, rhs: Self) {
-            *self = *self - rhs;
-        }
-    }
-
-    // https://tools.ietf.org/html/rfc3629
-    const UTF8_CHAR_WIDTH: &[u8; 256] = &[
-        // 1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 0
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 1
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 2
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 3
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 4
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 5
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 6
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 7
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 8
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 9
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // A
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // B
-        0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // C
-        2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // D
-        3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, // E
-        4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // F
-    ];
-
-    /// Given a first byte, determines how many bytes are in this
-    /// UTF-8 character
-    #[inline]
-    pub const fn utf8_char_width(b: u8) -> u32 {
-        UTF8_CHAR_WIDTH[b as usize] as u32
-    }
-}
-
-mod part {
-    //! The [`Part`] struct, used in [`Text`] iteration
-    //!
-    //! The [`Part`] is combines the outputs of the `u8` and
-    //! [`RawTag`] buffers of the [`Text`]. It also gets rid of
-    //! meta tags, since those are not useful for the purposes of
-    //! printing text.
-    //!
-    //! [`Text`]: super::Text
-    use super::tags::{RawTag, ToggleId};
-    use crate::form::FormId;
-
-    /// A part of the [`Text`], can be a [`char`] or a [`Tag`].
-    ///
-    /// This type is used in iteration by [`Ui`]s in order to
-    /// correctly print Duat's content. Additionally, you may be
-    /// able to tell that there is no ghost text or concealment
-    /// tags, and there is a [`ResetState`].
-    ///
-    /// That is because the [`Text`]'s iteration process automatically
-    /// gets rid of these tags, since, from the point of view of the
-    /// ui, ghost text is just regular text, while conceals are
-    /// simply the lack of text. And if the ui can handle printing
-    /// regular text, printing ghost text should be a breeze.
-    ///
-    /// [`Text`]: super::Text
-    /// [`Tag`]: super::Tag
-    /// [`Ui`]: crate::ui::Ui
-    /// [`ResetState`]: Part::ResetState
-    #[derive(Clone, Copy, PartialEq, Eq)]
-    pub enum Part {
-        Char(char),
-        PushForm(FormId),
-        PopForm(FormId),
-        MainCursor,
-        ExtraCursor,
-        AlignLeft,
-        AlignCenter,
-        AlignRight,
-        ToggleStart(ToggleId),
-        ToggleEnd(ToggleId),
-        ResetState,
-    }
-
-    impl Part {
-        /// Returns a new [`Part`] from a [`RawTag`]
-        #[inline]
-        pub(super) fn from_raw(value: RawTag) -> Self {
-            match value {
-                RawTag::PushForm(_, id) => Part::PushForm(id),
-                RawTag::PopForm(_, id) => Part::PopForm(id),
-                RawTag::MainCursor(_) => Part::MainCursor,
-                RawTag::ExtraCursor(_) => Part::ExtraCursor,
-                RawTag::StartAlignCenter(_) => Part::AlignCenter,
-                RawTag::EndAlignCenter(_) => Part::AlignLeft,
-                RawTag::StartAlignRight(_) => Part::AlignRight,
-                RawTag::EndAlignRight(_) => Part::AlignLeft,
-                RawTag::ToggleStart(_, id) => Part::ToggleStart(id),
-                RawTag::ToggleEnd(_, id) => Part::ToggleEnd(id),
-                RawTag::ConcealUntil(_) => Part::ResetState,
-                RawTag::StartConceal(_) | RawTag::EndConceal(_) | RawTag::GhostText(..) => {
-                    unreachable!("These tags are automatically processed elsewhere.")
-                }
-            }
-        }
-
-        /// Returns `true` if the part is [`Char`]
-        ///
-        /// [`Char`]: Part::Char
-        #[must_use]
-        #[inline]
-        pub fn is_char(&self) -> bool {
-            matches!(self, Part::Char(_))
-        }
-
-        /// Returns [`Some`] if the part is [`Char`]
-        ///
-        /// [`Char`]: Part::Char
-        #[inline]
-        pub fn as_char(&self) -> Option<char> {
-            if let Self::Char(v) = self {
-                Some(*v)
-            } else {
-                None
-            }
-        }
-
-        /// Returns `true` if the part is not [`Char`]
-        ///
-        /// [`Char`]: Part::Char
-        #[inline]
-        pub fn is_tag(&self) -> bool {
-            !self.is_char()
-        }
-    }
-}
+mod part {}
 
 /// A list of [`Tag`]s to be added with a [`Cursor`]
 fn cursor_tags(is_main: bool) -> [Tag; 3] {

@@ -150,7 +150,8 @@
 //!         };
 //!         let start = area.first_point(text, cfg);
 //!         let end = area.last_point(text, cfg);
-//!         self.points = text.search_fwd(regex, start, Some(end)).unwrap().collect();
+//!         let search_range = start.byte()..end.byte();
+//!         self.points = text.search_fwd(regex, start.byte()..end.byte()).unwrap().collect();
 //!
 //!         let seqs = key_seqs(self.points.len());
 //!
@@ -195,7 +196,7 @@
 //!             }
 //!
 //!             helper.remove_tags_on(p1.byte(), self.key);
-//!             helper.remove_tags_on(p1.byte() + seq.len() as u32, self.key);
+//!             helper.remove_tags_on(p1.byte() + seq.len(), self.key);
 //!         }
 //!
 //!         if self.seq.chars().count() == 2 || !LETTERS.contains(char) {

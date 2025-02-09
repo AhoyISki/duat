@@ -122,7 +122,7 @@ impl Tags {
         }
 
         let n = if at == b {
-            self.buf.insert(n as usize, TagOrSkip::Tag(tag));
+            self.buf.insert(n, TagOrSkip::Tag(tag));
             self.records.transform([n, at], [0, 0], [1, 0]);
             self.records.insert([n, at]);
             n
@@ -321,7 +321,7 @@ impl Tags {
         // New length insertion is straightforward, just add the len, dummy.
         if new_end > old.start {
             let len = new_end - old.start;
-            self.buf[n as usize] = TagOrSkip::Skip((skip + len) as u32);
+            self.buf[n] = TagOrSkip::Skip((skip + len) as u32);
             self.records.transform([n, b], [0, 0], [0, len]);
         }
 

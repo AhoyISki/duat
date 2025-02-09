@@ -222,7 +222,7 @@ impl<U: Ui> CmdLineMode<U> for RunCommands<U> {
     }
 
     fn update(&mut self, text: &mut Text) {
-        text.remove_tags_of(.., self.key);
+        text.remove_tags_on(.., self.key);
 
         let command = text.to_string();
         let caller = command.split_whitespace().next();
@@ -343,7 +343,7 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
             unreachable!();
         };
 
-        text.remove_tags_of(.., self.key);
+        text.remove_tags_on(.., self.key);
 
         let cur_file = context::cur_file::<U>().unwrap();
 

@@ -112,10 +112,6 @@ fn reload_config(
 
     if let Ok(out) = run_cargo(toml_path, target_dir, on_release)
         && out.status.success()
-        && {
-            duat_core::log_file!("{}", unsafe { std::str::from_utf8_unchecked(&out.stderr) });
-            true
-        }
         && let Some(library) = unsafe { Library::new(&so_path).ok() }
         && find_run_fn(&library).is_some()
     {
