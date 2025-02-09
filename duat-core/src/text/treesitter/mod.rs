@@ -1,3 +1,10 @@
+//! Everything concerning the tree-sitter functionalities
+//!
+//! This is primarily two things: the syntax highlighing and
+//! indentation, which for all languages will be mostly done by
+//! tree-sitter. The syntax highlighing is done via a [`Reader`]
+//! struct, allowing similar functionality between tree-sitter and
+//! other readers, like a regex reader for example.
 use std::{collections::HashMap, ops::Range, path::Path, sync::LazyLock};
 
 use gapbuf::GapBuffer;

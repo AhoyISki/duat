@@ -1,3 +1,11 @@
+//! Convenience operations for the [`Text`]
+//!
+//! These include the [`Point`] struct and traits that are meant to
+//! take many kinds of inputs, like the [`TwoPoints`], which is meant
+//! to interpret up to 2 [`Point`]s as a real and ghost position in
+//! the [`Text`].
+//!
+//! [`Text`]: super::Text
 use std::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive};
 
 use serde::{Deserialize, Serialize};

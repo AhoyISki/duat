@@ -1,3 +1,12 @@
+//! Struct that can react to change in the [`Text`]
+//!
+//! These structs will be informed of every [`Change`] that happens in
+//! the [`Text`], and are allowed to act accordingly. This action will
+//! be done by telling the [`Text`] what parts need to be updated.
+//! They will then be updated when deemed relevant by the [`Ui`] in
+//! use (usually when these become visible).
+//!
+//! [`Ui`]: crate::ui::Ui
 use std::ops::Range;
 
 use super::Text;

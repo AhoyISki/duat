@@ -1,3 +1,14 @@
+//! Utilities for searching the [`Text`]
+//!
+//! This includes some methods for the [`Text`] itself, meant for
+//! general use when editing it. It also has the [`Searcher`] struct,
+//! which is used when doing [incremental search] in the [`CmdLine`].
+//! This iterator is then used in a [`IncSearcher`] that can decide
+//! what to do with the results.
+//!
+//! [incremental search]: crate::widgets::IncSearch
+//! [`CmdLine`]: crate::widgets::CmdLine
+//! [`IncSearcher`]: crate::mode::IncSearcher
 use std::{collections::HashMap, ops::RangeBounds, sync::LazyLock};
 
 use parking_lot::{RwLock, RwLockWriteGuard};

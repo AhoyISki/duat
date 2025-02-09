@@ -1,3 +1,12 @@
+//! Types for convenience and efficiency
+//!
+//! There are two "types" of tag: [`Tag`]s and [`RawTag`]s. [`Tag`]s
+//! are what is show to the end user, being convenient in the way they
+//! include extra information, like a whole function in the case of
+//! [`Tag::StartToggle`]. [`RawTag`]s, on the other hand, are meant to
+//! be as small as possible in order not to waste memory, as they will
+//! be stored in the [`Text`]. As such, they have as little
+//! information as possible, occupying only 8 bytes.
 use std::{collections::HashMap, rc::Rc};
 
 use crossterm::event::MouseEventKind;
@@ -43,8 +52,8 @@ pub enum Tag {
 
     // Not yet implemented:
     /// Begins a hoverable section in the file.
-    ToggleStart(Toggle),
-    ToggleEnd(ToggleId),
+    StartToggle(Toggle),
+    EndToggle(ToggleId),
 }
 
 impl Tag {
@@ -74,16 +83,16 @@ impl Tag {
             }
             Self::StartConceal => (RawTag::StartConceal(key), None),
             Self::EndConceal => (RawTag::EndConceal(key), None),
-            Self::ToggleStart(toggle) => {
+            Self::StartToggle(toggle) => {
                 let id = ToggleId::new();
                 toggles.insert(id, toggle);
                 (RawTag::ToggleStart(key, id), Some(id))
             }
-            Self::ToggleEnd(id) => (RawTag::ToggleEnd(key, id), None),
+            Self::EndToggle(id) => (RawTag::ToggleEnd(key, id), None),
         }
     }
 
-	/// Works only on tags that are not toggles.
+    /// Works only on tags that are not toggles.
     pub fn ends_with(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::PushForm(lhs), Self::PopForm(rhs)) => lhs == rhs,

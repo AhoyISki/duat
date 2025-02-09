@@ -1,3 +1,14 @@
+//! The functions for iteration of [`Text`]s
+//!
+//! These functions will iterate over the text, reverse or forwards,
+//! keeping track of characters and [`Tag`]s, sending them in order,
+//! while also hiding the existance of certain "meta" tags, namely the
+//! [ghost] and [concealment] tags. This allows for a seemless iteration which is especially useful for printing, as the printer only needs to care about [`char`]s and [`Tag`]s, most of which are just [`Form`] changing [`Tag`]s
+//!
+//! [`Tag`]: super::Tag
+//! [ghost]: super::Tag::GhostText
+//! [concealment]: super::Tag::StartConceal
+//! [`Form`]: crate::form::Form
 use std::{
     iter::{Chain, Rev},
     str::Chars,
