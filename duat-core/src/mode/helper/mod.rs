@@ -732,6 +732,24 @@ where
         }
     }
 
+    /// If there is a selection, acts like [`replace`], otherwise acts
+    /// like [`insert`]
+    ///
+    /// This only makes a difference if your selections are
+    /// [inclusive], since a [`replace`] when the anchor is [`None`]
+    /// would still include one character.
+    ///
+    /// [`replace`]: Editor::replace
+    /// [`insert`]: Editor::insert
+    /// [inclusive]: Cursors::is_incl
+    pub fn insert_or_replace(&mut self, edit: impl ToString) {
+        if self.anchor().is_some() {
+            self.replace(edit)
+        } else {
+            self.insert(edit)
+        }
+    }
+
     /// Edits the file with a [`Change`]
     fn edit(&mut self, change: Change<String>) {
         let shift = *self.shift;

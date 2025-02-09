@@ -380,48 +380,22 @@ impl<U: Ui> Mode<U> for Insert {
                 helper.move_each(|mut m| m.move_hor(1));
             }
             key!(Enter) => {
-                helper.edit_each(|e| e.insert('\n'));
-                helper.move_each(|mut m| m.move_hor(1));
-                let mut anchor_diffs = Vec::new();
+                let mut anchors = Vec::new();
                 helper.move_each(|mut m| {
-                    let (_, p) = m.search_rev("\n", None).next().unwrap_or_default();
-                    anchor_diffs.push(
-                        m.anchor()
-                            .map(|a| a.byte() as i32 - m.caret().byte() as i32),
-                    );
+                    anchors.push(m.anchor());
                     m.unset_anchor();
-                    m.move_to(p);
-                    if let Some((p, _)) = m
-                        .iter()
-                        .take_while(|(_, c)| c.is_whitespace() && *c != '\n')
-                        .last()
-                    {
+                    let indent_start = m.iter_rev().find(|(_, c)| !is_non_nl_space(*c));
+                    let (s, char) = indent_start.unwrap_or((Point::default(), '\n'));
+                    if char == '\n' && m.char() == '\n' {
+                        m.move_hor(-1);
                         m.set_anchor();
-                        m.move_to(p);
+                        m.move_to(s);
+                        m.move_hor(1);
                     }
                 });
-                helper.edit_main(|e| {
-                    let indent = if let Some(indent) = e.indent_on(e.caret()) {
-                        indent
-                    } else {
-                        todo!();
-                    };
-
-                    if e.anchor().is_some() {
-                        e.replace(" ".repeat(indent));
-                    } else {
-                        e.insert(" ".repeat(indent));
-                    }
-                });
-                let mut anchor_diffs = anchor_diffs.into_iter();
-                helper.move_each(|mut m| {
-                    if let Some(Some(anchor_diff)) = anchor_diffs.next() {
-                        m.move_hor(anchor_diff);
-                        m.swap_ends();
-                    } else {
-                        m.unset_anchor();
-                    }
-                });
+                helper.edit_each(|e| e.insert_or_replace('\n'));
+                helper.move_each(|mut m| m.move_hor(1));
+                set_indent(&mut helper, anchors);
             }
             key!(Backspace) => {
                 let mut anchors = Vec::with_capacity(helper.cursors().len());
@@ -454,9 +428,7 @@ impl<U: Ui> Mode<U> for Insert {
                     m.move_hor(1);
                 });
                 let mut anchors = anchors.into_iter().cycle();
-                helper.edit_each(|editor| {
-                    editor.replace("");
-                });
+                helper.edit_each(|editor| editor.replace(""));
                 helper.move_each(|mut m| {
                     if let Some(Some((anchor, _))) = anchors.next() {
                         m.set_anchor();
@@ -484,6 +456,43 @@ impl<U: Ui> Mode<U> for Insert {
             _ => {}
         }
     }
+}
+
+fn set_indent<A: Area>(helper: &mut EditHelper<'_, File, A, ()>, anchors: Vec<Option<Point>>) {
+    helper.move_each(|mut m| {
+        let (_, p) = m.search_rev("\n", None).next().unwrap_or_default();
+        m.unset_anchor();
+        m.move_to(p);
+        if let Some((p, _)) = m.iter().take_while(|(_, c)| is_non_nl_space(*c)).last() {
+            m.set_anchor();
+            m.move_to(p);
+        }
+    });
+    helper.edit_main(|e| {
+        let indent = if let Some(indent) = e.indent_on(e.caret()) {
+            indent
+        } else {
+            todo!();
+        };
+        e.insert_or_replace(" ".repeat(indent));
+    });
+    let mut anchors = anchors.into_iter();
+    helper.move_each(|mut m| {
+        if let Some(Some(anchor)) = anchors.next() {
+            m.set_anchor();
+            match anchor < m.caret() {
+                true => m.move_to(anchor),
+                false => m.move_hor(anchor.byte() as i32 - m.caret().byte() as i32),
+            }
+            m.swap_ends();
+        } else {
+            m.unset_anchor();
+        }
+        let indent_end = m.iter().find(|(_, c)| !is_non_nl_space(*c));
+        if let Some((p, _)) = indent_end {
+            m.move_to(p);
+        }
+    });
 }
 
 #[derive(Clone)]
@@ -865,4 +874,8 @@ impl<U: Ui> IncSearcher<U> for Split<U> {
             }
         })
     }
+}
+
+fn is_non_nl_space(char: char) -> bool {
+    char.is_whitespace() && char != '\n'
 }

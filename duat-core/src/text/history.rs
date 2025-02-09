@@ -270,6 +270,10 @@ impl Moment {
             let _ = added_change.try_merge(c);
         }
 
+        if added_change.added_text() == "" && added_change.taken_text() == "" {
+            self.0.remove(c_i);
+        }
+
         (c_i, self.0.len() as i32 - initial_len as i32, merged_ahead)
     }
 }
