@@ -465,7 +465,13 @@ impl<U: Ui> Node<U> {
     ) -> Self {
         let (cursors, related_widgets) = widget
             .inspect_as(|file: &File| {
-                let cursors = crate::cache::load_cache::<Cursors>(file.path());
+                let mut cursors = crate::cache::load_cache::<Cursors>(file.path());
+                if let Some(cursors) = &mut cursors
+                    && cursors.main().byte() >= file.len_bytes()
+                {
+                    cursors.reset();
+                }
+
                 let related = RwData::default();
                 (cursors.unwrap_or(Cursors::new_excl()), related)
             })

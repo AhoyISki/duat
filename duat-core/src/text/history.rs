@@ -197,6 +197,7 @@ impl Moment {
         shift: (i32, i32, i32),
         sh_from: Option<usize>,
     ) -> (usize, i32, bool) {
+        crate::log_file!("shift is {shift:?}");
         // I assume here that if there is no sh_from, then this is not a
         // desync change insertion, so the changes ahead will also be
         // correctly synced, so there is no need to correct them.
@@ -270,9 +271,9 @@ impl Moment {
             let _ = added_change.try_merge(c);
         }
 
-        if added_change.added_text() == "" && added_change.taken_text() == "" {
-            self.0.remove(c_i);
-        }
+        //if added_change.added_text() == "" && added_change.taken_text() == "" {
+        //    self.0.remove(c_i);
+        //}
 
         (c_i, self.0.len() as i32 - initial_len as i32, merged_ahead)
     }

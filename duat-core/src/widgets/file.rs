@@ -64,10 +64,10 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
 
     fn build(self, _: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
         let (text, path) = match self.text_op {
-            TextOp::NewBuffer => (Text::new("\n"), Path::new_unset()),
+            TextOp::NewBuffer => (Text::new_with_history(), Path::new_unset()),
             TextOp::TakeBuf(buf, path) => match &path {
                 Path::SetExists(p) | Path::SetAbsent(p) => (Text::from_file(buf, p), path),
-                Path::UnSet(_) => (Text::from_buf(buf), path),
+                Path::UnSet(_) => (Text::from_buf(buf, true), path),
             },
             TextOp::OpenPath(path) => match path.canonicalize() {
                 Ok(path) => {
@@ -79,12 +79,12 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
                     if path.parent().is_some_and(std::path::Path::exists) {
                         let parent = path.with_file_name("").canonicalize().unwrap();
                         let path = parent.with_file_name(path.file_name().unwrap());
-                        (Text::new("\n"), Path::SetAbsent(path))
+                        (Text::new_with_history(), Path::SetAbsent(path))
                     } else {
-                        (Text::new("\n"), Path::new_unset())
+                        (Text::new_with_history(), Path::new_unset())
                     }
                 }
-                Err(_) => (Text::new("\n"), Path::new_unset()),
+                Err(_) => (Text::new_with_history(), Path::new_unset()),
             },
         };
 

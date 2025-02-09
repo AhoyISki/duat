@@ -117,38 +117,39 @@ pub struct Text {
     buf: Box<GapBuffer<u8>>,
     tags: Box<Tags>,
     records: Box<Records<[usize; 3]>>,
-    history: History,
+    // Specific to Files
+    history: Option<History>,
     readers: Vec<(Box<dyn Reader>, Vec<Range<usize>>)>,
     ts_parser: Option<(Box<TsParser>, Vec<Range<usize>>)>,
+    // Used in Text building
     forced_new_line: bool,
 }
 
 impl Text {
     ////////// Creation of Text
 
-    /// Returns a new [`Text`] with some content
-    ///
-    /// If you are creating a [widget], it's probably better for you
-    /// to use [`Text::builder`] and the [`text!`] macro.
-    ///
-    /// [widget]: crate::widgets::Widget
-    pub fn new(text: impl std::fmt::Display) -> Self {
-        let buf = GapBuffer::from_iter(text.to_string().into_bytes());
-        Self::from_buf(Box::new(buf))
+    /// Returns a new empty [`Text`]
+    pub fn new() -> Self {
+        Self::from_buf(Box::default(), false)
+    }
+
+    /// Returns a new empty [`Text`] with history enabled
+    pub fn new_with_history() -> Self {
+        Self::from_buf(Box::default(), true)
     }
 
     /// Creates a [`Text`] from a file's [path]
     ///
     /// [path]: Path
     pub(crate) fn from_file(buf: Box<GapBuffer<u8>>, path: impl AsRef<Path>) -> Self {
-        let mut text = Self::from_buf(buf);
+        let mut text = Self::from_buf(buf, true);
         let tree_sitter = TsParser::new(&mut text, path);
         text.ts_parser = tree_sitter.map(|ts| (Box::new(ts), Vec::new()));
         text
     }
 
     /// Creates a [`Text`] from a [`GapBuffer`]
-    pub(crate) fn from_buf(mut buf: Box<GapBuffer<u8>>) -> Self {
+    pub(crate) fn from_buf(mut buf: Box<GapBuffer<u8>>, with_history: bool) -> Self {
         let forced_new_line = if buf.is_empty() || buf[buf.len() - 1] != b'\n' {
             buf.push_back(b'\n');
             true
@@ -168,7 +169,7 @@ impl Text {
             buf,
             tags,
             records: Box::new(Records::with_max([len, chars, lines])),
-            history: History::new(),
+            history: with_history.then(History::new),
             readers: Vec::new(),
             ts_parser: None,
             forced_new_line,
@@ -657,7 +658,7 @@ impl Text {
 
         self.replace_range_inner(change.as_ref());
 
-        self.history.add_change(None, change);
+        self.history.as_mut().map(|h| h.add_change(None, change));
     }
 
     pub(crate) unsafe fn apply_desync_change(
@@ -668,8 +669,8 @@ impl Text {
         sh_from: usize,
     ) -> (usize, i32, bool) {
         self.replace_range_inner(change.as_ref());
-        self.history
-            .add_desync_change(guess_i, change, shift, sh_from)
+        let history = self.history.as_mut().unwrap();
+        history.add_desync_change(guess_i, change, shift, sh_from)
     }
 
     /// Merges `String`s with the body of text, given a range to
@@ -782,7 +783,9 @@ impl Text {
 
     /// Undoes the last moment, if there was one
     pub fn undo(&mut self, area: &impl Area, cursors: &mut Cursors, cfg: PrintCfg) {
-        let mut history = std::mem::take(&mut self.history);
+        let Some(mut history) = self.history.take() else {
+            return;
+        };
         let Some(moment) = history.move_backwards() else {
             return;
         };
@@ -804,12 +807,14 @@ impl Text {
             shift.2 += change.taken_end().line() as i32 - change.added_end().line() as i32;
         }
 
-        self.history = history;
+        self.history = Some(history);
     }
 
     /// Redoes the last moment in the history, if there is one
     pub fn redo(&mut self, area: &impl Area, cursors: &mut Cursors, cfg: PrintCfg) {
-        let mut history = std::mem::take(&mut self.history);
+        let Some(mut history) = self.history.take() else {
+            return;
+        };
         let Some(moment) = history.move_forward() else {
             return;
         };
@@ -823,16 +828,16 @@ impl Text {
             cursors.insert_from_parts(i, start, change.added_text().len(), self, area, cfg);
         }
 
-        self.history = history;
+        self.history = Some(history);
     }
 
     /// Finishes the current moment and adds a new one to the history
     pub fn new_moment(&mut self) {
-        self.history.new_moment();
+        self.history.as_mut().map(|h| h.new_moment());
     }
 
     pub(crate) fn changes_mut(&mut self) -> &mut [Change<String>] {
-        self.history.changes_mut()
+        self.history.as_mut().unwrap().changes_mut()
     }
 
     ////////// Writing functions
@@ -1265,7 +1270,7 @@ macro impl_from_to_string($t:ty) {
         fn from(value: $t) -> Self {
             let value = <$t as ToString>::to_string(&value);
             let buf = Box::new(GapBuffer::from_iter(value.bytes()));
-            Self::from_buf(buf)
+            Self::from_buf(buf, false)
         }
     }
 }
