@@ -49,7 +49,7 @@ Duat.
 
 For now, it has a barebones configuration, which is based on
 Kakoune, so if you are familiar with that text editor, many of the
-cmd are going to be the same.
+commands are going to be the same.
 
 ### Configuration
 
@@ -93,7 +93,7 @@ fn setup() {
         _ => cursor::set_main(CursorShape::SteadyBlock)
     });
 
-    forms::set("Mode", Form::dark_magenta());
+    form::set("Mode", Form::dark_magenta());
 }
 ```
 
@@ -138,19 +138,15 @@ In this example, I’m using the “MyForm” form in order to style the
 text, while `[]` reverts back to the “Default” form. The
 [`status!`][__link14] macro works similarly.
 
-Duat also has a simple command system, that lets you add cmd
+Duat also has a simple command system, that lets you add commands
 with arguments supported by Rust’s type system:
 
 ```rust
-let callers = ["collapse-command-line", "collapse-cmd"];
-cmd::add_for::<CmdLine>(
-    callers,
-    |_command_line, area, _cursors, _flags, _args| {
-        area.constrain_ver(Constraint::Length(0.0))?;
-
-        Ok(None)
-    },
-)
+let callers = ["collapse-cmd-line", "ccmd"];
+cmd::add_for!(callers, |_cmd_line: CmdLine, area, _cursors, _flags| {
+    area.constrain_ver(Constraint::Length(0.0))?;
+    Ok(None)
+})
 ```
 
 The 2 arguments
@@ -226,19 +222,19 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEGyXpbbIeIWL8G-P_GXDmlo7eG_E7fmPFXQkFG8BLgFJrRKZDYWSCgmRkdWF0ZTAuMS4zgmlkdWF0X2NvcmVlMC4yLjA
- [__link0]: https://docs.rs/duat/0.1.3/duat/?search=mode::set_default
- [__link1]: https://docs.rs/duat/0.1.3/duat/?search=prelude::map
- [__link10]: https://docs.rs/duat/0.1.3/duat/?search=hooks::add
- [__link11]: https://docs.rs/duat/0.1.3/duat/?search=hooks::ModeSwitched
- [__link12]: https://docs.rs/duat/0.1.3/duat/?search=forms::set
- [__link13]: https://docs.rs/duat/0.1.3/duat/?search=forms::Form
- [__link14]: https://docs.rs/duat/0.1.3/duat/?search=prelude::status
- [__link2]: https://docs.rs/duat/0.1.3/duat/?search=prelude::print::wrap_on_width
- [__link3]: https://docs.rs/duat/0.1.3/duat/?search=hooks::remove
- [__link4]: https://docs.rs/duat/0.1.3/duat/?search=hooks::add_grouped
- [__link5]: https://docs.rs/duat_core/0.2.0/duat_core/?search=ui::FileBuilder
- [__link6]: https://docs.rs/duat/0.1.3/duat/?search=prelude::VertRule
- [__link7]: https://docs.rs/duat/0.1.3/duat/?search=prelude::LineNumbers
- [__link8]: https://docs.rs/duat/0.1.3/duat/?search=prelude::status
- [__link9]: https://docs.rs/duat/0.1.3/duat/?search=prelude::CmdLine
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG11wvO4XgwVAGyK7EOtzk6BPG9k86XbtJFu_G2-Dgla3rvh7YWSCgmRkdWF0ZTAuMi4xgmlkdWF0X2NvcmVlMC4yLjI
+ [__link0]: https://docs.rs/duat/0.2.1/duat/?search=mode::set_default
+ [__link1]: https://docs.rs/duat/0.2.1/duat/?search=prelude::map
+ [__link10]: https://docs.rs/duat/0.2.1/duat/?search=hooks::add
+ [__link11]: https://docs.rs/duat/0.2.1/duat/?search=hooks::ModeSwitched
+ [__link12]: https://docs.rs/duat/0.2.1/duat/?search=form::set
+ [__link13]: https://docs.rs/duat/0.2.1/duat/?search=form::Form
+ [__link14]: https://docs.rs/duat/0.2.1/duat/?search=prelude::status
+ [__link2]: https://docs.rs/duat/0.2.1/duat/?search=prelude::print::wrap_on_width
+ [__link3]: https://docs.rs/duat/0.2.1/duat/?search=hooks::remove
+ [__link4]: https://docs.rs/duat/0.2.1/duat/?search=hooks::add_grouped
+ [__link5]: https://docs.rs/duat_core/0.2.2/duat_core/?search=ui::FileBuilder
+ [__link6]: https://docs.rs/duat/0.2.1/duat/?search=prelude::VertRule
+ [__link7]: https://docs.rs/duat/0.2.1/duat/?search=prelude::LineNumbers
+ [__link8]: https://docs.rs/duat/0.2.1/duat/?search=prelude::status
+ [__link9]: https://docs.rs/duat/0.2.1/duat/?search=prelude::CmdLine
