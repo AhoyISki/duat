@@ -14,40 +14,20 @@
 use std::ops::Range;
 
 use super::{Point, Text};
-use crate::binary_search_by_key_and_index;
 
 /// The history of edits, contains all moments
 #[derive(Default, Debug, Clone)]
 pub struct History {
     moments: Vec<Moment>,
     current_moment: usize,
+    // Used only when doing desync changes
+    sync_state: Option<SyncState>,
 }
 
 impl History {
     /// Creates a new [`History`]
     pub fn new() -> Self {
         Self::default()
-    }
-
-    /// Adds a [`Change`] to the current moment, or adds it to a new
-    /// one, if no moment exists
-    pub fn add_change(
-        &mut self,
-        guess_i: Option<usize>,
-        change: Change<String>,
-    ) -> (usize, i32, bool) {
-        let is_last_moment = self.current_moment == self.moments.len();
-
-        // Check, in order to prevent modification of earlier moments.
-        let moment = if let Some(moment) = self.moments.last_mut()
-            && is_last_moment
-        {
-            moment
-        } else {
-            self.new_moment();
-            self.moments.last_mut().unwrap()
-        };
-        moment.add_change(guess_i, change)
     }
 
     /// Adds a [`Change`] without moving the ones ahead to comply
@@ -60,13 +40,7 @@ impl History {
     /// with the one being added.
     ///
     /// [`EditHelper`]: crate::mode::EditHelper
-    pub unsafe fn add_desync_change(
-        &mut self,
-        guess_i: usize,
-        change: Change<String>,
-        shift: (i32, i32, i32),
-        sh_from: usize,
-    ) -> (usize, i32, bool) {
+    pub fn add_change(&mut self, guess_i: Option<usize>, change: Change<String>) -> usize {
         let is_last_moment = self.current_moment == self.moments.len();
         // Check, in order to prevent modification of earlier moments.
         let moment = if let Some(moment) = self.moments.last_mut()
@@ -77,12 +51,27 @@ impl History {
             self.new_moment();
             self.moments.last_mut().unwrap()
         };
-        moment.add_desync_change(guess_i, change, shift, sh_from)
+
+        let ss = self.sync_state.get_or_insert_default();
+        match moment.add_change(guess_i, change, ss) {
+            Ok(change_i) => change_i,
+            // A failure can happen if we are inserting before the `sh_from`, which would violate
+            // the strict ordering of changes.
+            // In order to remedy that, we synchronize the remaining changes and do it again with a
+            // fresh DesyncState. This should never fail.
+            Err((guess_i, change)) => {
+                self.finish_synchronizing();
+                let moment = self.moments.last_mut().unwrap();
+                let ss = self.sync_state.get_or_insert_default();
+                moment.add_change(Some(guess_i), change, ss).unwrap()
+            }
+        }
     }
 
     /// Declares that the current moment is complete and starts a
     /// new one
     pub fn new_moment(&mut self) {
+        self.finish_synchronizing();
         let is_last_moment = self.current_moment == self.moments.len();
         // If the last moment in history is empty, we can keep using it.
         if !is_last_moment || self.moments.last().is_none_or(|m| !m.0.is_empty()) {
@@ -97,6 +86,7 @@ impl History {
     /// If The [History] is already at the end, returns [None]
     /// instead.
     pub fn move_forward(&mut self) -> Option<&[Change<String>]> {
+        self.finish_synchronizing();
         if self.current_moment == self.moments.len()
             || self.moments[self.current_moment].0.is_empty()
         {
@@ -112,6 +102,7 @@ impl History {
     /// If The [History] is already at the start, returns [None]
     /// instead.
     pub fn move_backwards(&mut self) -> Option<&[Change<String>]> {
+        self.finish_synchronizing();
         if self.current_moment == 0 {
             None
         } else {
@@ -125,15 +116,17 @@ impl History {
         }
     }
 
-    pub fn changes_mut(&mut self) -> &mut [Change<String>] {
-        let is_last_moment = self.current_moment == self.moments.len();
-
-        // Check, in order to prevent modification of earlier moments.
-        if self.moments.last().is_none() || !is_last_moment {
-            self.new_moment();
+    /// Finish synchronizing the unsynchronized changes
+    fn finish_synchronizing(&mut self) {
+        if let Some(ds) = self.sync_state.take()
+            && ds.shift != (0, 0, 0)
+        {
+            // You can't get to this point without having at least one moment.
+            let moment = self.moments.last_mut().unwrap();
+            for change in &mut moment.0[ds.sh_from..] {
+                change.shift_by(ds.shift);
+            }
         }
-
-        &mut self.moments.last_mut().unwrap().0
     }
 }
 
@@ -146,21 +139,6 @@ impl History {
 pub struct Moment(Vec<Change<String>>);
 
 impl Moment {
-    /// First try to merge this change with as many changes as
-    /// possible, then add it in
-    ///
-    /// # Returns
-    ///
-    /// - The index where the change was inserted;
-    /// - The number of changes that were added or subtracted during
-    ///   its insertion.
-    fn add_change(&mut self, guess_i: Option<usize>, change: Change<String>) -> (usize, i32, bool) {
-        let b = change.added_end().byte() as i32 - change.taken_end().byte() as i32;
-        let c = change.added_end().char() as i32 - change.taken_end().char() as i32;
-        let l = change.added_end().line() as i32 - change.taken_end().line() as i32;
-        unsafe { self.add_change_inner(guess_i, change, (b, c, l), None) }
-    }
-
     /// First try to merge this change with as many changes as
     /// possible, then add it in
     ///
@@ -179,103 +157,118 @@ impl Moment {
     ///
     /// [`add_change`]: Moment::add_change
     /// [`EditHelper`]: crate::mode::EditHelper
-    unsafe fn add_desync_change(
+    fn add_change(
         &mut self,
-        guess_i: usize,
+        guess_i: Option<usize>,
         change: Change<String>,
-        shift: (i32, i32, i32),
-        sh_from: usize,
-    ) -> (usize, i32, bool) {
-        self.add_change_inner(Some(guess_i), change, shift, Some(sh_from))
+        ds: &mut SyncState,
+    ) -> Result<usize, (usize, Change<String>)> {
+        let (shift, sh_from) = (ds.shift, ds.sh_from);
+        let b = change.added_end().byte() as i32 - change.taken_end().byte() as i32;
+        let c = change.added_end().char() as i32 - change.taken_end().char() as i32;
+        let l = change.added_end().line() as i32 - change.taken_end().line() as i32;
+
+        let change_i = self.add_change_inner(guess_i, change, shift, sh_from)?;
+        ds.sh_from = change_i + 1;
+        ds.shift.0 += b;
+        ds.shift.1 += c;
+        ds.shift.2 += l;
+
+        Ok(change_i)
     }
 
     /// Inner insertion of a [`Change`]
-    unsafe fn add_change_inner(
+    fn add_change_inner(
         &mut self,
         guess_i: Option<usize>,
         mut change: Change<String>,
         shift: (i32, i32, i32),
-        sh_from: Option<usize>,
-    ) -> (usize, i32, bool) {
-        crate::log_file!("shift is {shift:?}");
-        // I assume here that if there is no sh_from, then this is not a
-        // desync change insertion, so the changes ahead will also be
-        // correctly synced, so there is no need to correct them.
-        let sh_from = sh_from.unwrap_or(usize::MAX);
+        sh_from: usize,
+    ) -> Result<usize, (usize, Change<String>)> {
+        crate::log_file!("inserting {change:#?}");
         let sh = |n: usize| if sh_from <= n { shift } else { (0, 0, 0) };
 
-        let initial_len = self.0.len();
-
-        let c_i = if let Some(guess_i) = guess_i
+        // The range of changes that will be drained
+        let c_range = if let Some(guess_i) = guess_i
             && let Some(c) = self.0.get(guess_i)
+            && {
+                crate::log_file!("{c:#?}");
+                true
+            }
             && c.start.shift_by(sh(guess_i)) <= change.start
             && change.start <= c.added_end().shift_by(sh(guess_i))
         {
-            guess_i
+            // If we intersect the initial change, include it
+            guess_i..guess_i + 1
         } else {
             let f = |i: usize, c: &Change<String>| c.start.shift_by(sh(i));
             match binary_search_by_key_and_index(&self.0, change.start, f) {
-                Err(i)
+                // Same thing here
+                Ok(i) => i..i + 1,
+                Err(i) => {
+                    // This is if we intersect the added part
                     if let Some(prev_i) = i.checked_sub(1)
-                        && change.start <= self.0[prev_i].added_end().shift_by(sh(prev_i)) =>
-                {
-                    i - 1
-                }
-                Ok(i) | Err(i) => i,
-            }
-        };
-
-        let end_i = if self
-            .0
-            .get(c_i + 1)
-            .is_none_or(|c| change.taken_end() < c.start.shift_by(sh(c_i + 1)))
-        {
-            c_i
-        } else {
-            let f = |i: usize, c: &Change<String>| c.start.shift_by(sh(c_i + 1 + i));
-            let (Ok(i) | Err(i)) =
-                binary_search_by_key_and_index(&self.0[c_i + 1..], change.taken_end(), f);
-            c_i + 1 + i
-        };
-
-        let merged_ahead = if let Some(prev_change) = self.0.get_mut(end_i) {
-            let mut older = std::mem::take(prev_change);
-            let prev_start = older.start;
-            older.shift_by(sh(end_i));
-
-            let (changes_after, merged) = if let Some(mut older) = change.try_merge(older) {
-                older.start = prev_start;
-                *prev_change = older;
-                self.0.insert(end_i, change);
-                (end_i + 2, false)
-            } else {
-                *prev_change = change;
-                (end_i + 1, true)
-            };
-
-            if shift != (0, 0, 0) && sh_from == usize::MAX {
-                for change in &mut self.0[changes_after..] {
-                    change.start = change.start.shift_by(shift)
+                        && change.start <= self.0[prev_i].added_end().shift_by(sh(prev_i))
+                    {
+                        prev_i..i
+                    // And here is if we intersect nothing on the
+                    // start, no changes drained.
+                    } else {
+                        i..i
+                    }
                 }
             }
-            merged
-        } else {
-            self.0.insert(end_i, change);
-            false
         };
 
-        let prior_changes: Vec<Change<String>> = self.0.drain(c_i..end_i).collect();
-        let added_change = self.0.get_mut(c_i).unwrap();
-        for (i, mut c) in prior_changes.into_iter().enumerate() {
-            c.shift_by(sh(c_i + i));
-            let _ = added_change.try_merge(c);
+        if c_range.start < sh_from {
+            return Err((c_range.start, change));
         }
 
-        //if added_change.added_text() == "" && added_change.taken_text() == "" {
-        //    self.0.remove(c_i);
-        //}
+        // This block determines how far ahead this change will merge
+        let c_range = if self
+            .0
+            .get(c_range.end)
+            .is_none_or(|c| change.taken_end() < c.start.shift_by(sh(c_range.end)))
+        {
+            // If there is no change ahead, or it doesn't intersec, don't merge
+            c_range
+        } else {
+            let start = c_range.start + 1;
+            // Otherwise search ahead for another change to be merged
+            let f = |i: usize, c: &Change<String>| c.start.shift_by(sh(start + i));
+            match binary_search_by_key_and_index(&self.0[start..], change.taken_end(), f) {
+                Ok(i) => c_range.start..start + i + 1,
+                Err(i) => {
+                    if let Some(prev) = self.0.get(start + i)
+                        && prev.start.shift_by(sh(start + i)) <= change.taken_end()
+                    {
+                        c_range.start..start + i + 1
+                    } else {
+                        c_range.start..start + i
+                    }
+                }
+            }
+            // It will always be included
+        };
+        crate::log_file!("{c_range:?}");
 
-        (c_i, self.0.len() as i32 - initial_len as i32, merged_ahead)
+        // Shift all ranges that preceed the end of the range.
+        if shift != (0, 0, 0) && sh_from < c_range.end {
+            for change in &mut self.0[sh_from..c_range.end] {
+                change.shift_by(shift);
+            }
+        }
+
+        for c in self.0.drain(c_range.clone()).rev() {
+            change.try_merge(c);
+        }
+
+        if !(change.added_text() == "" && change.taken_text() == "") {
+            self.0.insert(c_range.start, change);
+        }
+        crate::log_file!("{self:#?}");
+
+        Ok(c_range.start)
     }
 }
 
@@ -308,7 +301,7 @@ impl Change<String> {
     /// _after_ `newer`
     ///
     /// If the merger fails, the older [`Change`] will be returned;
-    pub fn try_merge(&mut self, mut older: Self) -> Option<Self> {
+    pub fn try_merge(&mut self, mut older: Self) {
         if has_start_of(older.added_range(), self.taken_range()) {
             let fixed_end = older.added_end().min(self.taken_end());
 
@@ -321,8 +314,6 @@ impl Change<String> {
             older.taken.push_str(&self.taken[range]);
 
             *self = older;
-
-            None
         } else if has_start_of(self.taken_range(), older.added_range()) {
             let fixed_end = self.taken_end().min(older.added_end());
 
@@ -333,10 +324,8 @@ impl Change<String> {
 
             let range = (fixed_end.byte() - older.start.byte())..;
             self.added.push_str(&older.added[range]);
-
-            None
         } else {
-            Some(older)
+            unreachable!("Files chosen that don't interact");
         }
     }
 }
@@ -409,4 +398,40 @@ impl Copy for Change<&str> {}
 /// If `lhs` contains the start of`rhs`
 fn has_start_of(lhs: Range<usize>, rhs: Range<usize>) -> bool {
     lhs.start <= rhs.start && rhs.start <= lhs.end
+}
+
+#[derive(Default, Debug, Clone)]
+struct SyncState {
+    shift: (i32, i32, i32),
+    sh_from: usize,
+}
+
+/// Binary searching by key taking into account the index
+fn binary_search_by_key_and_index<T, K>(
+    vec: &[T],
+    key: K,
+    f: impl Fn(usize, &T) -> K,
+) -> std::result::Result<usize, usize>
+where
+    K: PartialEq + Eq + PartialOrd + Ord,
+{
+    let mut size = vec.len();
+    let mut left = 0;
+    let mut right = size;
+
+    while left < right {
+        let mid = left + size / 2;
+
+        let k = f(mid, &vec[mid]);
+
+        match k.cmp(&key) {
+            std::cmp::Ordering::Less => left = mid + 1,
+            std::cmp::Ordering::Equal => return Ok(mid),
+            std::cmp::Ordering::Greater => right = mid,
+        }
+
+        size = right - left;
+    }
+
+    Err(left)
 }

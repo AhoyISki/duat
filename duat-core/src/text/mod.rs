@@ -118,7 +118,7 @@ pub struct Text {
     tags: Box<Tags>,
     records: Box<Records<[usize; 3]>>,
     // Specific to Files
-    history: Option<History>,
+    history: Option<Box<History>>,
     readers: Vec<(Box<dyn Reader>, Vec<Range<usize>>)>,
     ts_parser: Option<(Box<TsParser>, Vec<Range<usize>>)>,
     // Used in Text building
@@ -169,7 +169,7 @@ impl Text {
             buf,
             tags,
             records: Box::new(Records::with_max([len, chars, lines])),
-            history: with_history.then(History::new),
+            history: with_history.then(Box::default),
             readers: Vec::new(),
             ts_parser: None,
             forced_new_line,
@@ -657,20 +657,16 @@ impl Text {
         let change = Change::new(edit, (start, end), self);
 
         self.replace_range_inner(change.as_ref());
-
         self.history.as_mut().map(|h| h.add_change(None, change));
     }
 
-    pub(crate) unsafe fn apply_desync_change(
+    pub fn apply_change(
         &mut self,
-        guess_i: usize,
+        guess_i: Option<usize>,
         change: Change<String>,
-        shift: (i32, i32, i32),
-        sh_from: usize,
-    ) -> (usize, i32, bool) {
+    ) -> Option<usize> {
         self.replace_range_inner(change.as_ref());
-        let history = self.history.as_mut().unwrap();
-        history.add_desync_change(guess_i, change, shift, sh_from)
+        self.history.as_mut().map(|h| h.add_change(guess_i, change))
     }
 
     /// Merges `String`s with the body of text, given a range to
@@ -833,11 +829,9 @@ impl Text {
 
     /// Finishes the current moment and adds a new one to the history
     pub fn new_moment(&mut self) {
-        self.history.as_mut().map(|h| h.new_moment());
-    }
-
-    pub(crate) fn changes_mut(&mut self) -> &mut [Change<String>] {
-        self.history.as_mut().unwrap().changes_mut()
+        if let Some(h) = self.history.as_mut() {
+            h.new_moment()
+        }
     }
 
     ////////// Writing functions

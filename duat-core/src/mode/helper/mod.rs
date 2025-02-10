@@ -9,7 +9,6 @@ use std::array::IntoIter;
 
 pub use self::cursors::{Cursor, Cursors};
 use crate::{
-    binary_search_by_key_and_index,
     cfg::PrintCfg,
     data::RwData,
     text::{Change, Key, Keys, Point, RegexPattern, Searcher, Tag, Text, TextRange},
@@ -217,30 +216,6 @@ where
         let mut widget = self.widget.raw_write();
         let mut shift = (0, 0, 0);
 
-        let c_i = {
-            let changes = widget.text_mut().changes_mut();
-            let start = cursor.start();
-
-            if let Some(c_i) = cursor.change_i
-                && let Some(c) = changes.get(c_i)
-                && (c.start() <= start && c.added_end() <= start)
-            {
-                c_i
-            } else {
-                match changes.binary_search_by_key(&start, |c| c.start()) {
-                    Err(i)
-                        if let Some(prev_i) = i.checked_sub(1)
-                            && start <= changes[prev_i].added_end() =>
-                    {
-                        prev_i
-                    }
-                    Ok(i) | Err(i) => i,
-                }
-            }
-        };
-
-        cursor.change_i = Some(c_i);
-
         edit(&mut Editor::<A, W>::new(
             &mut cursor,
             &mut widget,
@@ -249,8 +224,6 @@ where
             &mut shift,
             was_main,
             self.cursors.is_incl(),
-            c_i,
-            usize::MAX,
         ));
 
         self.cursors.insert(widget.text(), n, was_main, cursor);
@@ -258,10 +231,6 @@ where
         if shift != (0, 0, 0) {
             self.cursors
                 .shift_by(n + 1, shift, widget.text(), self.area, self.cfg);
-
-            for change in widget.text_mut().changes_mut().iter_mut().skip(c_i + 1) {
-                change.shift_by(shift);
-            }
         }
     }
 
@@ -299,66 +268,10 @@ where
         let mut widget = self.widget.raw_write();
         let cfg = widget.print_cfg();
         let mut shift = (0, 0, 0);
-        let mut sh_from = 0;
 
         for (i, (mut cursor, was_main)) in removed.into_iter().enumerate() {
-            // A function that shifts a Point forwards in order to compare
-            // correctly. This only happens if the point was not already shifted.
-            let sh = |rhs: usize| if sh_from <= rhs { shift } else { (0, 0, 0) };
+            cursor.shift_by(shift, widget.text(), self.area, cfg);
 
-            let c_i = {
-                cursor.shift_by(shift, widget.text(), self.area, cfg);
-
-                let (start, end) = cursor.point_range(self.cursors.is_incl(), widget.text());
-                let changes = widget.text_mut().changes_mut();
-
-                let (c_i, next_i) = if let Some(c_i) = cursor.change_i
-                    && let Some(c) = changes.get(c_i)
-                    && c.start().shift_by(sh(c_i)) <= start
-                    && start <= c.added_end().shift_by(sh(c_i))
-                {
-                    (c_i, c_i + 1)
-                } else {
-                    let f = |i: usize, c: &Change<String>| c.start().shift_by(sh(i));
-                    match binary_search_by_key_and_index(changes, start, f) {
-                        Ok(i) => (i, i + 1),
-                        Err(i)
-                            if let Some(prev_i) = i.checked_sub(1)
-                                && start <= changes[prev_i].added_end().shift_by(sh(prev_i)) =>
-                        {
-                            (prev_i, prev_i + 1)
-                        }
-                        Err(i) => (i, i),
-                    }
-                };
-
-                // Check if the next change is being intersected.
-                let end_i = if changes
-                    .get(next_i)
-                    .is_none_or(|c| end < c.start().shift_by(sh(c_i + 1)))
-                {
-                    next_i
-                // If it is, find the last change that is also being
-                // intersected.
-                } else {
-                    let f = |i: usize, c: &Change<String>| c.start().shift_by(sh(next_i + i));
-                    let (Ok(end_i) | Err(end_i)) =
-                        binary_search_by_key_and_index(&changes[next_i..], end, f);
-                    next_i + end_i
-                };
-
-                if shift != (0, 0, 0) {
-                    for change in changes.iter_mut().take(end_i).skip(sh_from) {
-                        change.shift_by(shift)
-                    }
-                }
-
-                sh_from = end_i;
-
-                c_i
-            };
-
-            cursor.change_i = Some(c_i);
             let mut editor = Editor::new(
                 &mut cursor,
                 &mut *widget,
@@ -367,21 +280,10 @@ where
                 &mut shift,
                 was_main,
                 self.cursors.is_incl(),
-                c_i,
-                sh_from,
             );
             f(&mut editor);
 
-            sh_from = (sh_from as i32 + editor.change_diff) as usize;
-
             self.cursors.insert(widget.text(), i, was_main, cursor);
-        }
-
-        let changes = widget.text_mut().changes_mut();
-        if shift != (0, 0, 0) {
-            for change in changes.iter_mut().skip(sh_from) {
-                change.shift_by(shift);
-            }
         }
     }
 
@@ -632,9 +534,6 @@ where
     shift: &'a mut (i32, i32, i32),
     is_main: bool,
     is_incl: bool,
-    change_i: usize,
-    sh_from: usize,
-    change_diff: i32,
 }
 
 impl<'a, 'b, A, W> Editor<'a, 'b, A, W>
@@ -652,8 +551,6 @@ where
         shift: &'a mut (i32, i32, i32),
         is_main: bool,
         is_incl: bool,
-        change_i: usize,
-        sh_from: usize,
     ) -> Self {
         Self {
             cursor,
@@ -663,9 +560,6 @@ where
             shift,
             is_main,
             is_incl,
-            change_i,
-            sh_from,
-            change_diff: 0,
         }
     }
 
@@ -752,17 +646,12 @@ where
 
     /// Edits the file with a [`Change`]
     fn edit(&mut self, change: Change<String>) {
-        let shift = *self.shift;
         self.shift.0 += change.added_end().byte() as i32 - change.taken_end().byte() as i32;
         self.shift.1 += change.added_end().char() as i32 - change.taken_end().char() as i32;
         self.shift.2 += change.added_end().line() as i32 - change.taken_end().line() as i32;
-        let (_, diff, merged_ahead) = unsafe {
-            self.widget
-                .text_mut()
-                .apply_desync_change(self.change_i, change, shift, self.sh_from)
-        };
 
-        self.change_diff += diff + merged_ahead as i32;
+        let text = self.widget.text_mut();
+        self.cursor.change_i = text.apply_change(self.cursor.change_i, change)
     }
 
     ////////// Iteration functions

@@ -137,6 +137,11 @@ impl Cursors {
         self.buf = CursorGapBuffer(GapBuffer::new())
     }
 
+    pub fn reset(&mut self) {
+        self.remove_extras();
+        self.buf[self.main] = Cursor::default();
+    }
+
     pub(super) fn remove(&mut self, i: usize) -> Option<(Cursor, bool)> {
         (i < self.buf.len()).then(|| {
             let was_main = self.main == i;
@@ -219,7 +224,7 @@ impl Cursors {
     /// Returns `true` if the cursor behind got merged.
     fn try_merge_on(&mut self, text: &Text, i: usize, cursor: &mut Cursor) -> bool {
         while let Some(ahead) = self.buf.get(i)
-            && cursor.range(text, self.is_incl).end > ahead.start().byte()
+            && cursor.range(text, false).end > ahead.start().byte()
         {
             cursor.merge_ahead(self.buf.remove(i));
             if self.main > i {
@@ -228,7 +233,7 @@ impl Cursors {
         }
         if let Some(prev_i) = i.checked_sub(1)
             && let Some(prev) = self.buf.get_mut(prev_i)
-            && prev.range(text, self.is_incl).end > cursor.start().byte()
+            && prev.range(text, false).end > cursor.start().byte()
         {
             prev.merge_ahead(*cursor);
             if self.main > prev_i {

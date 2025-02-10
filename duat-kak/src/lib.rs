@@ -371,7 +371,10 @@ impl<U: Ui> Mode<U> for Insert {
                     }
                 });
             } else {
-                helper.move_each(|mut m| m.unset_anchor())
+                let anchors = get_anchors(&mut helper);
+                helper.move_each(|mut m| m.unset_anchor());
+                remove_empty_line(&mut helper);
+                restore_anchors(&mut helper, anchors);
             }
         }
 
@@ -385,29 +388,36 @@ impl<U: Ui> Mode<U> for Insert {
                 helper.move_each(|mut m| m.move_hor(1));
             }
             key!(Enter) => {
-                let mut anchors = Vec::new();
-                helper.move_each(|m| anchors.push(m.anchor()));
+                let anchors = get_anchors(&mut helper);
                 remove_empty_line(&mut helper);
                 helper.edit_each(|e| e.insert('\n'));
                 helper.move_each(|mut m| m.move_hor(1));
-                set_indent(&mut helper, anchors);
+                set_indent(&mut helper);
+                restore_anchors(&mut helper, anchors);
             }
             key!(Backspace) => {
-                let mut anchors = Vec::with_capacity(helper.cursors().len());
+                let mut prev = Vec::with_capacity(helper.cursors().len());
                 helper.move_each(|mut m| {
-                    anchors.push({
+                    prev.push((m.caret(), {
                         let c = m.caret();
                         m.unset_anchor().map(|a| match a > c {
                             true => a.char() as i32 - c.char() as i32,
                             false => a.char() as i32 - (c.char() as i32 - 1),
                         })
-                    });
+                    }));
                     m.move_hor(-1);
                 });
-                let mut anchors = anchors.into_iter().cycle();
-                helper.edit_each(|editor| editor.replace(""));
+                let mut prev_iter = prev.iter();
+                helper.edit_each(|e| {
+                    if let Some((caret, _)) = prev_iter.next()
+                        && *caret != Point::default()
+                    {
+                        e.replace("")
+                    }
+                });
+                let mut anchors = prev.into_iter();
                 helper.move_each(|mut m| {
-                    if let Some(Some(diff)) = anchors.next() {
+                    if let Some((_, Some(diff))) = anchors.next() {
                         m.set_anchor();
                         m.move_hor(diff);
                         m.swap_ends()
@@ -440,7 +450,7 @@ impl<U: Ui> Mode<U> for Insert {
             key!(Right, Mod::NONE | Mod::SHIFT) => helper.move_each(|mut m| m.move_hor(1)),
 
             key!(Esc) => {
-                helper.new_moment();
+                //helper.new_moment();
                 mode::set::<U>(Normal::new());
             }
             _ => {}
@@ -787,12 +797,8 @@ impl<U: Ui> IncSearcher<U> for Split<U> {
     }
 }
 
-fn is_non_nl_space(char: char) -> bool {
-    char.is_whitespace() && char != '\n'
-}
-
 /// Sets the indentation for every cursor
-fn set_indent(helper: &mut EditHelper<'_, File, impl Area, ()>, anchors: Vec<Option<Point>>) {
+fn set_indent(helper: &mut EditHelper<'_, File, impl Area, ()>) {
     helper.move_each(|mut m| {
         let (_, p) = m.search_rev("\n", None).next().unwrap_or_default();
         m.unset_anchor();
@@ -802,7 +808,7 @@ fn set_indent(helper: &mut EditHelper<'_, File, impl Area, ()>, anchors: Vec<Opt
             m.move_to(p);
         }
     });
-    helper.edit_main(|e| {
+    helper.edit_each(|e| {
         let indent = if let Some(indent) = e.indent_on(e.caret()) {
             indent
         } else {
@@ -810,6 +816,43 @@ fn set_indent(helper: &mut EditHelper<'_, File, impl Area, ()>, anchors: Vec<Opt
         };
         e.insert_or_replace(" ".repeat(indent));
     });
+    helper.move_each(|mut m| {
+        m.unset_anchor();
+        let indent_end = m.iter().find(|(_, c)| !is_non_nl_space(*c));
+        if let Some((p, _)) = indent_end {
+            m.move_to(p);
+        }
+    });
+}
+
+/// removes an empty line
+fn remove_empty_line(helper: &mut EditHelper<'_, File, impl Area, ()>) {
+    helper.move_each(|mut m| {
+        m.unset_anchor();
+        let indent_start = m.iter_rev().find(|(_, c)| !is_non_nl_space(*c));
+        let (s, char) = indent_start.unwrap_or((Point::default(), '\n'));
+        if char == '\n' && m.char() == '\n' && s.byte() + 1 < m.caret().byte() {
+            m.move_hor(-1);
+            m.set_anchor();
+            m.move_to(s);
+            m.move_hor(1);
+        }
+    });
+    helper.edit_each(|e| {
+        if e.anchor().is_some() {
+            e.replace("")
+        }
+    });
+    helper.move_each(|mut m| m.unset_anchor());
+}
+
+fn get_anchors(helper: &mut EditHelper<'_, File, impl Area, ()>) -> Vec<Option<Point>> {
+    let mut anchors = Vec::new();
+    helper.move_each(|m| anchors.push(m.anchor()));
+    anchors
+}
+
+fn restore_anchors(helper: &mut EditHelper<'_, File, impl Area, ()>, anchors: Vec<Option<Point>>) {
     let mut anchors = anchors.into_iter();
     helper.move_each(|mut m| {
         if let Some(Some(anchor)) = anchors.next() {
@@ -822,29 +865,9 @@ fn set_indent(helper: &mut EditHelper<'_, File, impl Area, ()>, anchors: Vec<Opt
         } else {
             m.unset_anchor();
         }
-        let indent_end = m.iter().find(|(_, c)| !is_non_nl_space(*c));
-        if let Some((p, _)) = indent_end {
-            m.move_to(p);
-        }
     });
 }
 
-/// removes
-fn remove_empty_line(helper: &mut EditHelper<'_, File, impl Area, ()>) {
-    helper.move_each(|mut m| {
-        m.unset_anchor();
-        let indent_start = m.iter_rev().find(|(_, c)| !is_non_nl_space(*c));
-        let (s, char) = indent_start.unwrap_or((Point::default(), '\n'));
-        if char == '\n' && m.char() == '\n' {
-            m.set_anchor();
-            m.move_to(s);
-            m.move_hor(1);
-        }
-    });
-    helper.edit_each(|e| {
-        if e.anchor().is_some() {
-            e.replace('\n')
-        }
-    });
-    helper.move_each(|mut m| m.unset_anchor());
+fn is_non_nl_space(char: char) -> bool {
+    char.is_whitespace() && char != '\n'
 }
