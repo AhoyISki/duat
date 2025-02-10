@@ -5,7 +5,7 @@
 //! cursors and dealing with editing the text directly.
 //!
 //! [`Mode`]: super::Mode
-use std::array::IntoIter;
+use std::{array::IntoIter, ops::RangeBounds};
 
 pub use self::cursors::{Cursor, Cursors};
 use crate::{
@@ -118,11 +118,11 @@ mod cursors;
 ///         
 ///         match key {
 ///             key!(KeyCode::Char(c)) => {
-///                 helper.edit_each(|e| e.insert('c'));
-///                 helper.move_each(|mut m| m.move_hor(1));
+///                 helper.edit_many(.., |e| e.insert('c'));
+///                 helper.move_many(.., |mut m| m.move_hor(1));
 ///             },
 ///             key!(KeyCode::Right, KeyMod::SHIFT) => {
-///                 helper.move_each(|mut m| {
+///                 helper.move_many(.., |mut m| {
 ///                     if m.anchor().is_none() {
 ///                         m.set_anchor()
 ///                     }
@@ -130,7 +130,7 @@ mod cursors;
 ///                 })
 ///             }
 ///             key!(KeyCode::Right) => {
-///                 helper.move_each(|mut m| {
+///                 helper.move_many(.., |mut m| {
 ///                     m.unset_anchor();
 ///                     m.move_hor(1)
 ///                 })
@@ -203,14 +203,14 @@ where
     ///
     /// If you want to move the `nth` cursor, see [`move_nth`],
     /// if you want to edit on the main cursor, see [`edit_main`],
-    /// if you want to edit each cursor, see [`edit_each`].
+    /// if you want to edit each cursor, see [`edit_many`].
     ///
     /// [`move_nth`]: Self::move_nth
     /// [`edit_main`]: Self::edit_main
-    /// [`edit_each`]: Self::edit_each
-    pub fn edit_nth(&mut self, edit: impl FnOnce(&mut Editor<A, W>), n: usize) {
+    /// [`edit_many`]: Self::edit_many
+    pub fn edit_nth(&mut self, n: usize, edit: impl FnOnce(&mut Editor<A, W>)) {
         let Some((mut cursor, was_main)) = self.cursors.remove(n) else {
-            panic!("Cursor index {n} out of bounds.");
+            panic!("Cursor index {n} out of bounds");
         };
 
         let mut widget = self.widget.raw_write();
@@ -241,35 +241,43 @@ where
     ///
     /// If you want to move the main cursor, see [`move_main`],
     /// if you want to edit on the `nth` cursor, see [`edit_nth`],
-    /// if you want to edit each cursor, see [`edit_each`].
+    /// if you want to edit each cursor, see [`edit_many`].
     ///
     /// [`move_main`]: Self::move_main
     /// [`edit_nth`]: Self::edit_nth
-    /// [`edit_each`]: Self::edit_each
+    /// [`edit_many`]: Self::edit_many
     pub fn edit_main(&mut self, edit: impl FnOnce(&mut Editor<A, W>)) {
-        self.edit_nth(edit, self.cursors.main_index());
+        self.edit_nth(self.cursors.main_index(), edit);
     }
 
-    /// Edits on each of the [`Cursor`]'s selection
+    /// Edits on a range of [`Cursor`]s
     ///
     /// Since the editing function takes [`Editor`] as an argument,
     /// you cannot change the selection of the [`Cursor`].
     ///
-    /// If you want to move each cursor, see [`move_each`],
+    /// If you want to move many cursors, see [`move_many`],
     /// if you want to edit on a specific cursor, see [`edit_nth`]
     /// or [`edit_main`].
     ///
-    /// [`move_each`]: Self::move_each
+    /// [`move_many`]: Self::move_many
     /// [`edit_nth`]: Self::edit_nth
     /// [`edit_main`]: Self::edit_main
-    pub fn edit_each(&mut self, mut f: impl FnMut(&mut Editor<A, W>)) {
-        let removed: Vec<_> = self.cursors.drain().collect();
+    pub fn edit_many(
+        &mut self,
+        range: impl RangeBounds<usize> + Clone,
+        mut f: impl FnMut(&mut Editor<A, W>),
+    ) {
+        let cursors_len = self.cursors.len();
+        let (start, end) = crate::get_ends(range, cursors_len);
+        assert!(end <= cursors_len, "Cursor index {end} out of bounds");
+        let mut removed: Vec<(Cursor, bool)> = self.cursors.drain(start..).collect();
 
         let mut widget = self.widget.raw_write();
         let cfg = widget.print_cfg();
         let mut shift = (0, 0, 0);
 
-        for (i, (mut cursor, was_main)) in removed.into_iter().enumerate() {
+        for (i, (mut cursor, was_main)) in removed.splice(..(end - start), []).enumerate() {
+            let guess_i = i + start;
             cursor.shift_by(shift, widget.text(), self.area, cfg);
 
             let mut editor = Editor::new(
@@ -283,7 +291,13 @@ where
             );
             f(&mut editor);
 
-            self.cursors.insert(i, was_main, cursor);
+            self.cursors.insert(guess_i, was_main, cursor);
+        }
+
+        for (i, (mut cursor, was_main)) in removed.into_iter().enumerate() {
+            let guess_i = i + end;
+            cursor.shift_by(shift, widget.text(), self.area, cfg);
+            self.cursors.insert(guess_i, was_main, cursor);
         }
     }
 
@@ -299,14 +313,14 @@ where
     ///
     /// If you want to edit on the `nth` cursor, see [`edit_nth`],
     /// if you want to move the main cursor, see [`move_main`], if you
-    /// want to move each cursor, see [`move_each`].
+    /// want to move each cursor, see [`move_many`].
     ///
     /// [`edit_nth`]: Self::edit_nth
     /// [`move_main`]: Self::move_main
-    /// [`move_each`]: Self::move_each
+    /// [`move_many`]: Self::move_many
     pub fn move_nth<_T>(&mut self, n: usize, mov: impl FnOnce(Mover<A, S>) -> _T) {
         let Some((cursor, is_main)) = self.cursors.remove(n) else {
-            panic!("Cursor index {n} out of bounds.");
+            panic!("Cursor index {n} out of bounds");
         };
         let mut widget = self.widget.raw_write();
 
@@ -336,16 +350,16 @@ where
     ///
     /// If you want to move the main cursor, see [`edit_main`],
     /// if you want to move the main cursor, see [`move_main`], if you
-    /// want to move each cursor, see [`move_each`].
+    /// want to move each cursor, see [`move_many`].
     ///
     /// [`edit_main`]: Self::edit_main
     /// [`move_main`]: Self::move_main
-    /// [`move_each`]: Self::move_each
+    /// [`move_many`]: Self::move_many
     pub fn move_main<_T>(&mut self, mov: impl FnOnce(Mover<A, S>) -> _T) {
         self.move_nth(self.cursors.main_index(), mov);
     }
 
-    /// Moves each [`Cursor`]'s selection
+    /// Moves a range of [`Cursor`]'s selections
     ///
     /// Since the moving function takes [`Mover`] as an argument, this
     /// method cannot be used to change the [`Text`] in any way.
@@ -353,19 +367,27 @@ where
     /// At the end of the movement, if any of the cursors intersect
     /// with each other, they will be merged into one.
     ///
-    /// If you want to edit on each cursor, see [`edit_each`],
+    /// If you want to edit on many cursors, see [`edit_many`],
     /// if you want to move a specific cursor, see [`move_nth`]
     /// or [`move_main`].
     ///
-    /// [`edit_each`]: Self::edit_each
+    /// [`edit_many`]: Self::edit_many
     /// [`move_nth`]: Self::move_nth
     /// [`move_main`]: Self::move_main
-    pub fn move_each<_T>(&mut self, mut mov: impl FnMut(Mover<A, S>) -> _T) {
-        let removed_cursors: Vec<(Cursor, bool)> = self.cursors.drain().collect();
+    pub fn move_many<_T>(
+        &mut self,
+        range: impl RangeBounds<usize> + Clone,
+        mut mov: impl FnMut(Mover<A, S>) -> _T,
+    ) {
+        let cursors_len = self.cursors.len();
+        let (start, end) = crate::get_ends(range.clone(), cursors_len);
+        assert!(end <= cursors_len, "Cursor index {end} out of bounds");
+        let removed_cursors: Vec<(Cursor, bool)> = self.cursors.drain(range).collect();
 
         let mut widget = self.widget.raw_write();
 
         for (i, (cursor, is_main)) in removed_cursors.into_iter().enumerate() {
+            let guess_i = i + start;
             let mut cursor = Some(cursor);
             mov(Mover::new(
                 &mut cursor,
@@ -378,7 +400,7 @@ where
             ));
 
             if let Some(cursor) = cursor {
-                self.cursors.insert(i, is_main, cursor);
+                self.cursors.insert(guess_i, is_main, cursor);
             }
         }
     }
@@ -688,7 +710,7 @@ where
     ///     helper: &mut EditHelper<File, impl Area, S>,
     ///     n: usize,
     /// ) {
-    ///     helper.move_each(|mut m| {
+    ///     helper.move_many(.., |mut m| {
     ///         let mut nth = m.search_fwd('(', None).nth(n);
     ///         if let Some((start, end)) = nth {
     ///             m.move_to(start);
@@ -731,7 +753,7 @@ where
     ///     n: usize,
     ///     s: &str,
     /// ) {
-    ///     helper.move_each(|mut m| {
+    ///     helper.move_many(.., |mut m| {
     ///         let mut nth = m.search_rev(s, None).nth(n);
     ///         if let Some((start, end)) = nth {
     ///             m.move_to(start);
@@ -982,7 +1004,7 @@ where
     ///     helper: &mut EditHelper<File, impl Area, S>,
     ///     n: usize,
     /// ) {
-    ///     helper.move_each(|mut m| {
+    ///     helper.move_many(.., |mut m| {
     ///         let mut nth = m.search_fwd('(', None).nth(n);
     ///         if let Some((start, end)) = nth {
     ///             m.move_to(start);
@@ -997,14 +1019,8 @@ where
         pat: R,
         end: Option<Point>,
     ) -> impl Iterator<Item = R::Match> + '_ {
-        let start = self.cursor.unwrap().caret().byte();
-        match end {
-            Some(end) => self.text.search_fwd(pat, start..end.byte()).unwrap(),
-            None => {
-                let end = self.text.len().byte();
-                self.text.search_fwd(pat, start..end).unwrap()
-            }
-        }
+        let start = self.cursor.unwrap().caret();
+        self.text.search_fwd(pat, (start, end)).unwrap()
     }
 
     /// Searches the [`Text`] for a regex, in reverse
@@ -1024,7 +1040,7 @@ where
     ///     n: usize,
     ///     s: &str,
     /// ) {
-    ///     helper.move_each(|mut m| {
+    ///     helper.move_many(.., |mut m| {
     ///         let mut nth = m.search_rev(s, None).nth(n);
     ///         if let Some((start, end)) = nth {
     ///             m.move_to(start);
@@ -1039,9 +1055,28 @@ where
         pat: R,
         start: Option<Point>,
     ) -> impl Iterator<Item = R::Match> + '_ {
-        let end = self.cursor.unwrap().caret().byte();
-        let start = start.unwrap_or_default();
-        self.text.search_rev(pat, start.byte()..end).unwrap()
+        let end = self.cursor.unwrap().caret();
+        self.text.search_rev(pat, (start, end)).unwrap()
+    }
+
+    ////////// Behavior changes
+
+    /// Sets the "desired visual column"
+    ///
+    /// The desired visual column determines at what point in a line
+    /// the caret will be placed when moving [up and down] through
+    /// lines of varying lengths.
+    ///
+    /// Will also set the "desired wrapped visual column", which is
+    /// the same thing but used when moving vertically in a [wrapped]
+    /// fashion.
+    ///
+    /// [up and down]: Mover::move_ver
+    /// [wrapped]: Mover::move_ver_wrapped
+    pub fn set_desired_v_col(&mut self, x: usize) {
+        let cursor = self.cursor.as_mut().unwrap();
+        cursor.set_desired_v_col(x);
+        cursor.set_desired_wrapped_v_col(x);
     }
 
     ////////// Queries
@@ -1051,9 +1086,48 @@ where
         self.cursor.unwrap().caret()
     }
 
+    /// How many characterss the caret is from the start of the line
+    pub fn caret_col(&self) -> usize {
+        self.iter_rev().take_while(|(_, c)| *c != '\n').count()
+    }
+
+    /// The visual distance between the caret and the start of the
+    /// [`Area`]
+    pub fn caret_vcol(&self) -> usize {
+        self.cursor.unwrap().vcol()
+    }
+
+    /// The desired visual distance between the caret and the start of
+    /// the [`Area`]
+    pub fn desired_caret_vcol(&self) -> usize {
+        self.cursor.unwrap().desired_vcol()
+    }
+
     /// Returns the `anchor`
     pub fn anchor(&self) -> Option<Point> {
         self.cursor.unwrap().anchor()
+    }
+
+    /// How many characterss the anchor is from the start of the line
+    pub fn anchor_col(&self) -> Option<usize> {
+        self.anchor().map(|a| {
+            self.text
+                .chars_rev(a)
+                .take_while(|(_, c)| *c != '\n')
+                .count()
+        })
+    }
+
+    /// The visual distance between the anchor and the start of the
+    /// [`Area`]
+    pub fn anchor_vcol(&self) -> Option<usize> {
+        self.cursor.unwrap().anchor_vcol()
+    }
+
+    /// The desired visual distance between the anchor and the start
+    /// of the [`Area`]
+    pub fn desired_anchor_vcol(&self) -> Option<usize> {
+        self.cursor.unwrap().desired_anchor_vcol()
     }
 
     /// Returns `true` if the `anchor` exists before the `caret`

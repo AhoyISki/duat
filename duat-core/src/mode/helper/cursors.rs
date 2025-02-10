@@ -1,3 +1,5 @@
+use std::ops::RangeBounds;
+
 use gapbuf::{GapBuffer, gap_buffer};
 use serde::{Deserialize, Serialize, de::Visitor, ser::SerializeSeq};
 
@@ -144,9 +146,7 @@ impl Cursors {
         } else {
             let buf = self.buf.range(..);
             match binary_search_by_key(buf, cursor.start_v(), |c| c.start_v()) {
-                Ok(i) => {
-                    i..i + 1
-                }
+                Ok(i) => i..i + 1,
                 Err(i)
                     if let Some(prev_i) = i.checked_sub(1)
                         && let Some(prev) = self.buf.get(prev_i)
@@ -154,9 +154,7 @@ impl Cursors {
                 {
                     prev_i..i
                 }
-                Err(i) => {
-                    i..i
-                }
+                Err(i) => i..i,
             }
         };
 
@@ -191,10 +189,9 @@ impl Cursors {
             .unwrap_or(cursor.end_v());
 
         let (caret, anchor) = if let Some(anchor) = cursor.anchor() {
-            if anchor < cursor.caret() {
-                (start, Some(end))
-            } else {
-                (end, Some(start))
+            match cursor.caret() < anchor {
+                true => (start, Some(end)),
+                false => (end, Some(start)),
             }
         } else {
             (end, (start != end).then_some(start))
@@ -226,11 +223,14 @@ impl Cursors {
         }
     }
 
-    pub(super) fn drain(&mut self) -> impl Iterator<Item = (Cursor, bool)> + '_ {
+    pub(super) fn drain(
+        &mut self,
+        range: impl RangeBounds<usize>,
+    ) -> impl Iterator<Item = (Cursor, bool)> + '_ {
         let orig_main = self.main;
         self.main = 0;
         self.buf
-            .drain(..)
+            .drain(range)
             .enumerate()
             .map(move |(i, c)| match i == orig_main {
                 true => (c, true),
@@ -427,7 +427,7 @@ mod cursor {
             self.caret.vcol = vcol(self.caret.point, text, area, cfg.dont_wrap())
         }
 
-        pub fn shift_by(
+        pub(crate) fn shift_by(
             &mut self,
             shift: (i32, i32, i32),
             text: &Text,
@@ -445,7 +445,7 @@ mod cursor {
         }
 
         /// Sets the position of the anchor to be the same as the
-        /// current cursor position in the file.
+        /// current cursor position in the file
         ///
         /// The `anchor` and `current` act as a range of text on the
         /// file.
@@ -453,7 +453,7 @@ mod cursor {
             self.anchor = Some(self.caret)
         }
 
-        /// Unsets the anchor.
+        /// Unsets the anchor
         ///
         /// This is done so the cursor no longer has a valid
         /// selection.
@@ -461,14 +461,14 @@ mod cursor {
             self.anchor.take().map(|a| a.point)
         }
 
-        /// Switches the position of the anchor and caret.
+        /// Switches the position of the anchor and caret
         pub fn swap_ends(&mut self) {
             if let Some(anchor) = self.anchor.as_mut() {
                 std::mem::swap(&mut self.caret, anchor);
             }
         }
 
-        /// Returns the cursor's position on the screen.
+        /// Returns the cursor's position on the screen
         pub fn caret(&self) -> Point {
             self.caret.point
         }
@@ -478,25 +478,37 @@ mod cursor {
         }
 
         /// The byte (relative to the beginning of the file) of the
-        /// caret. Indexed at 0.
+        /// caret. Indexed at 0
         pub fn byte(&self) -> usize {
             self.caret.byte()
         }
 
         /// The char (relative to the beginning of the file) of the
-        /// caret. Indexed at 0.
+        /// caret. Indexed at 0
         pub fn char(&self) -> usize {
             self.caret.char()
-        }
-
-        /// The column of the caret. Indexed at 0.
-        pub fn col(&self) -> usize {
-            self.caret.vcol()
         }
 
         /// The line of the caret. Indexed at 0.
         pub fn line(&self) -> usize {
             self.caret.line()
+        }
+
+        /// The column of the caret. Indexed at 0
+        pub fn vcol(&self) -> usize {
+            self.caret.vcol()
+        }
+
+        pub fn anchor_vcol(&self) -> Option<usize> {
+            self.anchor.map(|a| a.vcol())
+        }
+
+        pub fn desired_vcol(&self) -> usize {
+            self.caret.dcol as usize
+        }
+
+        pub fn desired_anchor_vcol(&self) -> Option<usize> {
+            self.anchor.map(|a| a.dcol as usize)
         }
 
         /// Returns the range between `target` and `anchor`.
@@ -553,6 +565,24 @@ mod cursor {
                 end = end.fwd(char)
             }
             (self.caret.point.min(anchor.point), end)
+        }
+
+        /// Sets the desired visual column
+        ///
+        /// The desired visual column determines at what point in a
+        /// line the caret will be placed when moving up and
+        /// down through lines of varying lengths.
+        pub fn set_desired_v_col(&mut self, x: usize) {
+            self.caret.dcol = x as u32;
+        }
+
+        /// Sets the desired wrapped visual column
+        ///
+        /// The desired wrapped visual column determines at what point
+        /// in a line the caret will be placed when moving up
+        /// and down through wrapped lines of varying lengths.
+        pub fn set_desired_wrapped_v_col(&mut self, x: usize) {
+            self.caret.dwcol = x as u32;
         }
 
         pub(super) fn start_v(&self) -> VPoint {
@@ -616,19 +646,19 @@ mod cursor {
             Self { point, vcol, dcol: vcol, dwcol }
         }
 
-        fn byte(&self) -> usize {
+        pub fn byte(&self) -> usize {
             self.point.byte()
         }
 
-        fn char(&self) -> usize {
+        pub fn char(&self) -> usize {
             self.point.char()
         }
 
-        fn line(&self) -> usize {
+        pub fn line(&self) -> usize {
             self.point.line()
         }
 
-        fn vcol(&self) -> usize {
+        pub fn vcol(&self) -> usize {
             self.vcol as usize
         }
     }
