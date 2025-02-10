@@ -50,34 +50,15 @@ impl Cursors {
         cfg: PrintCfg,
     ) -> usize {
         let mut cursor = Cursor::new(point, text, area, cfg);
-
         let range = match self.is_incl {
             true => range.saturating_sub(1),
             false => range,
         };
-
         if range > 0 {
             cursor.set_anchor();
             cursor.move_hor(range as i32, text, area, cfg);
         }
-        let start = cursor.start().byte();
-        // Do a check for a "guessed position", if it doesn't work, try
-        // binary search.
-        let (Ok(i) | Err(i)) = if let Some(prev_i) = guess_i.checked_sub(1)
-            && let Some(c) = self.get(prev_i)
-            && c.start().byte() <= start
-            && self.get(guess_i).is_none_or(|c| start < c.start().byte())
-        {
-            Ok(guess_i)
-        } else {
-            binary_search_by_key(&self.buf, start, |c| c.start().byte())
-        };
-
-        if !self.try_merge_on(text, i, &mut cursor) {
-            self.buf.insert(i, cursor);
-        }
-
-        i
+        self.insert(guess_i, false, cursor)
     }
 
     pub fn rotate_main(&mut self, amount: i32) {
@@ -152,38 +133,84 @@ impl Cursors {
         })
     }
 
-    pub(super) fn insert(
-        &mut self,
-        text: &Text,
-        guess_i: usize,
-        was_main: bool,
-        mut cursor: Cursor,
-    ) -> usize {
-        let (Ok(i) | Err(i)) = if let Some(prev_i) = guess_i.checked_sub(1)
-            && let Some(c) = self.get(prev_i)
-            && c.start() <= cursor.start()
-            && self.get(guess_i).is_none_or(|c| cursor.start() < c.start())
+    pub(super) fn insert(&mut self, guess_i: usize, was_main: bool, cursor: Cursor) -> usize {
+        // The range of cursors that will be drained
+        let c_range = if let Some(prev_i) = guess_i.checked_sub(1)
+            && let Some(prev) = self.get(prev_i)
+            && prev.start() <= cursor.start()
+            && cursor.start_v() <= prev.end_v()
         {
-            Ok(guess_i)
+            prev_i..guess_i
         } else {
-            binary_search_by_key(&self.buf, cursor.start().byte(), |c| c.start().byte())
+            let buf = self.buf.range(..);
+            match binary_search_by_key(buf, cursor.start_v(), |c| c.start_v()) {
+                Ok(i) => {
+                    i..i + 1
+                }
+                Err(i)
+                    if let Some(prev_i) = i.checked_sub(1)
+                        && let Some(prev) = self.buf.get(prev_i)
+                        && cursor.start_v() <= prev.end_v() =>
+                {
+                    prev_i..i
+                }
+                Err(i) => {
+                    i..i
+                }
+            }
         };
 
-        let final_i = if self.try_merge_on(text, i, &mut cursor) {
-            i - 1
+        // This block determines how far ahead this cursor will merge
+        let c_range = if self
+            .get(c_range.end)
+            .is_none_or(|c| cursor.end_v() < c.start_v())
+        {
+            c_range
         } else {
-            self.buf.insert(i, cursor);
-            if self.main > i {
-                self.main += 1;
+            let buf = self.buf.range(..);
+            match binary_search_by_key(buf, cursor.end_v(), |c| c.start_v()) {
+                Ok(i) => c_range.start..i + 1,
+                Err(i)
+                    if let Some(prev) = self.buf.get(i)
+                        && prev.start_v() < cursor.end_v() =>
+                {
+                    c_range.start..i + 1
+                }
+                Err(i) => c_range.start..i,
             }
-            i
         };
+
+        let mut c_range_iter = c_range.clone();
+        let first = c_range_iter.next().and_then(|i| self.get(i));
+        let last = c_range_iter.last().and_then(|i| self.get(i));
+        let start = first
+            .map(|c| c.start_v().min(cursor.start_v()))
+            .unwrap_or(cursor.start_v());
+        let end = last
+            .map(|c| c.end_v().max(cursor.end_v()))
+            .unwrap_or(cursor.end_v());
+
+        let (caret, anchor) = if let Some(anchor) = cursor.anchor() {
+            if anchor < cursor.caret() {
+                (start, Some(end))
+            } else {
+                (end, Some(start))
+            }
+        } else {
+            (end, (start != end).then_some(start))
+        };
+
+        let cursor = Cursor::from_v(caret, anchor, cursor.change_i);
+        self.buf.drain(c_range.clone());
+        self.buf.insert(c_range.start, cursor);
 
         if was_main {
-            self.main = final_i;
+            self.main = c_range.start;
+        } else if self.main > c_range.start {
+            self.main = (self.main - c_range.clone().count()).max(c_range.start)
         }
 
-        final_i
+        c_range.start
     }
 
     pub(super) fn shift_by(
@@ -215,33 +242,6 @@ impl Cursors {
         if self.buf.0.is_empty() {
             self.main = 0;
             self.buf.0 = gap_buffer![Cursor::default()];
-        }
-    }
-
-    /// Tries to merge this cursor with a cursor behind and cursors
-    /// ahead
-    ///
-    /// Returns `true` if the cursor behind got merged.
-    fn try_merge_on(&mut self, text: &Text, i: usize, cursor: &mut Cursor) -> bool {
-        while let Some(ahead) = self.buf.get(i)
-            && cursor.range(text, false).end > ahead.start().byte()
-        {
-            cursor.merge_ahead(self.buf.remove(i));
-            if self.main > i {
-                self.main -= 1;
-            }
-        }
-        if let Some(prev_i) = i.checked_sub(1)
-            && let Some(prev) = self.buf.get_mut(prev_i)
-            && prev.range(text, false).end > cursor.start().byte()
-        {
-            prev.merge_ahead(*cursor);
-            if self.main > prev_i {
-                self.main -= 1;
-            }
-            true
-        } else {
-            false
         }
     }
 }
@@ -278,13 +278,21 @@ mod cursor {
 
     impl Cursor {
         /// Returns a new instance of [`Cursor`].
-        pub(super) fn new(point: Point, text: &Text, area: &impl Area, cfg: PrintCfg) -> Cursor {
-            Cursor {
+        pub(super) fn new(point: Point, text: &Text, area: &impl Area, cfg: PrintCfg) -> Self {
+            Self {
                 caret: VPoint::new(point, text, area, cfg),
                 // This should be fine.
                 anchor: None,
                 change_i: None,
             }
+        }
+
+        pub(super) fn from_v(
+            caret: VPoint,
+            anchor: Option<VPoint>,
+            change_i: Option<usize>,
+        ) -> Self {
+            Self { caret, anchor, change_i }
         }
 
         /// Moves to specific, pre calculated [`Point`].
@@ -503,7 +511,7 @@ mod cursor {
         /// This function will return the range that is supposed
         /// to be replaced, if `self.is_inclusive()`, this means that
         /// it will return one more byte at the end, i.e. start..=end.
-        pub fn range(&self, text: &Text, is_inclusive: bool) -> Range<usize> {
+        pub fn range(&self, is_inclusive: bool, text: &Text) -> Range<usize> {
             let anchor = self.anchor.unwrap_or(self.caret);
             let (start, end) = if anchor < self.caret {
                 (anchor.byte(), self.caret.byte())
@@ -547,23 +555,17 @@ mod cursor {
             (self.caret.point.min(anchor.point), end)
         }
 
-        pub(super) fn merge_ahead(&mut self, other: Cursor) {
-            let other_end = if let Some(anchor) = other.anchor
-                && anchor > other.caret
-            {
-                anchor
-            } else {
-                other.caret
-            };
+        pub(super) fn start_v(&self) -> VPoint {
+            match self.anchor {
+                Some(anchor) => self.caret.min(anchor),
+                None => self.caret,
+            }
+        }
 
-            if let Some(anchor) = self.anchor {
-                if anchor.point > self.caret() {
-                    self.anchor = Some(other_end.max(anchor));
-                } else {
-                    self.caret = other_end.max(self.caret)
-                }
-            } else {
-                self.anchor = Some(other_end);
+        pub(super) fn end_v(&self) -> VPoint {
+            match self.anchor {
+                Some(anchor) => self.caret.max(anchor),
+                None => self.caret,
             }
         }
     }
@@ -646,7 +648,7 @@ mod cursor {
 
 /// Binary searching by keys for [`GapBuffer`]s
 fn binary_search_by_key<K>(
-    buf: &GapBuffer<Cursor>,
+    buf: gapbuf::Range<Cursor>,
     key: K,
     f: impl Fn(&Cursor) -> K,
 ) -> Result<usize, usize>

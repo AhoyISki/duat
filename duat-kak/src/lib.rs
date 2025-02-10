@@ -450,7 +450,7 @@ impl<U: Ui> Mode<U> for Insert {
             key!(Right, Mod::NONE | Mod::SHIFT) => helper.move_each(|mut m| m.move_hor(1)),
 
             key!(Esc) => {
-                //helper.new_moment();
+                helper.new_moment();
                 mode::set::<U>(Normal::new());
             }
             _ => {}

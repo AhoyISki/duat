@@ -168,8 +168,8 @@ impl Moment {
         let c = change.added_end().char() as i32 - change.taken_end().char() as i32;
         let l = change.added_end().line() as i32 - change.taken_end().line() as i32;
 
-        let change_i = self.add_change_inner(guess_i, change, shift, sh_from)?;
-        ds.sh_from = change_i + 1;
+        let (change_i, sh_from) = self.add_change_inner(guess_i, change, shift, sh_from)?;
+        ds.sh_from = sh_from;
         ds.shift.0 += b;
         ds.shift.1 += c;
         ds.shift.2 += l;
@@ -184,17 +184,12 @@ impl Moment {
         mut change: Change<String>,
         shift: (i32, i32, i32),
         sh_from: usize,
-    ) -> Result<usize, (usize, Change<String>)> {
-        crate::log_file!("inserting {change:#?}");
+    ) -> Result<(usize, usize), (usize, Change<String>)> {
         let sh = |n: usize| if sh_from <= n { shift } else { (0, 0, 0) };
 
         // The range of changes that will be drained
         let c_range = if let Some(guess_i) = guess_i
             && let Some(c) = self.0.get(guess_i)
-            && {
-                crate::log_file!("{c:#?}");
-                true
-            }
             && c.start.shift_by(sh(guess_i)) <= change.start
             && change.start <= c.added_end().shift_by(sh(guess_i))
         {
@@ -250,7 +245,6 @@ impl Moment {
             }
             // It will always be included
         };
-        crate::log_file!("{c_range:?}");
 
         // Shift all ranges that preceed the end of the range.
         if shift != (0, 0, 0) && sh_from < c_range.end {
@@ -263,12 +257,14 @@ impl Moment {
             change.try_merge(c);
         }
 
-        if !(change.added_text() == "" && change.taken_text() == "") {
+        let sh_from = if !(change.added_text() == "" && change.taken_text() == "") {
             self.0.insert(c_range.start, change);
-        }
-        crate::log_file!("{self:#?}");
+            c_range.start + 1
+        } else {
+            c_range.start
+        };
 
-        Ok(c_range.start)
+        Ok((c_range.start, sh_from))
     }
 }
 
