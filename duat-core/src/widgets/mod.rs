@@ -466,10 +466,9 @@ impl<U: Ui> Node<U> {
         let (cursors, related_widgets) = widget
             .inspect_as(|file: &File| {
                 let mut cursors = crate::cache::load_cache::<Cursors>(file.path());
-                if let Some(cursors) = &mut cursors
-                    && cursors.main().byte() >= file.len_bytes()
-                {
-                    cursors.reset();
+                if let Some(cursors) = &mut cursors {
+                    let b = cursors.main().byte();
+                    cursors.reset_on_byte(b, file.text(), &area, file.print_cfg());
                 }
 
                 let related = RwData::default();

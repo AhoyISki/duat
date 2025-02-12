@@ -1,6 +1,9 @@
 #![feature(let_chains, iter_map_windows, type_alias_impl_trait, if_let_guard)]
 
-use std::{ops::RangeInclusive, sync::LazyLock};
+use std::{
+    ops::RangeInclusive,
+    sync::{LazyLock, Mutex},
+};
 
 use duat_core::{
     cfg::WordChars,
@@ -45,7 +48,7 @@ impl<U: Ui> Mode<U> for Normal {
             Mod::SHIFT
         ) = key
         {
-            helper.move_each(|mut m| {
+            helper.move_many(.., |mut m| {
                 if m.anchor().is_none() {
                     m.set_anchor()
                 }
@@ -54,207 +57,166 @@ impl<U: Ui> Mode<U> for Normal {
             Char('h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e') | Left | Down | Up | Right
         ) = key
         {
-            helper.move_each(|mut m| m.unset_anchor())
+            helper.move_many(.., |mut m| m.unset_anchor())
         }
+        self.0 = if let key!(Char('j' | 'k' | 'J' | 'K'), Mod::NONE | Mod::SHIFT) = key {
+            self.0
+        } else {
+            SelType::Normal
+        };
 
         match key {
-            key!(Char('h' | 'H') | Left, Mod::NONE | Mod::SHIFT) => {
-                helper.move_each(|mut m| m.move_hor(-1))
-            }
-            key!(Down, Mod::NONE | Mod::SHIFT) => helper.move_each(|mut m| m.move_ver_wrapped(1)),
-            key!(Up, Mod::NONE | Mod::SHIFT) => helper.move_each(|mut m| m.move_ver_wrapped(-1)),
-            key!(Char('l' | 'L') | Right, Mod::NONE | Mod::SHIFT) => {
-                helper.move_each(|mut m| m.move_hor(1))
-            }
-
             ////////// Basic movement keys
-            key!(Char('j')) => match self.0 {
-                SelType::EndOfNl => helper.move_each(|mut m| {
-                    m.move_ver(1);
-                    let (p0, _) = m.search_fwd("\n", None).next().unzip();
-                    if let Some(point) = p0.or(m.last_point()) {
-                        m.move_to(point);
-                    }
-                }),
-                SelType::UntilNL => helper.move_each(|mut m| {
-                    m.move_ver(1);
-                    let pre_nl = match m.char() {
-                        '\n' => m.iter_rev().take_while(|(_, char)| *char != '\n').next(),
-                        _ => m.iter().take_while(|(_, char)| *char != '\n').last(),
-                    };
-                    if let Some((p, _)) = pre_nl {
-                        m.move_to(p);
-                    }
-                }),
-                SelType::Normal => helper.move_each(|mut m| m.move_ver(1)),
-                _ => unreachable!(),
-            },
-            key!(Char('k')) => match self.0 {
-                SelType::EndOfNl => helper.move_each(|mut m| {
-                    m.move_ver(-1);
-                    let (p0, _) = m.search_fwd("\n", None).next().unzip();
-                    if let Some(point) = p0.or(m.last_point()) {
-                        m.move_to(point);
-                    }
-                }),
-                SelType::UntilNL => helper.move_each(|mut m| {
-                    m.move_ver(-1);
-                    let pre_nl = match m.char() {
-                        '\n' => m.iter_rev().take_while(|(_, char)| *char != '\n').next(),
-                        _ => m.iter().take_while(|(_, char)| *char != '\n').last(),
-                    };
-                    if let Some((p, _)) = pre_nl {
-                        m.move_to(p);
-                    }
-                }),
-                SelType::Normal => helper.move_each(|mut m| m.move_ver(-1)),
-                _ => unreachable!(),
-            },
-
-            key!(Char('J'), Mod::SHIFT) => match self.0 {
-                SelType::EndOfNl => helper.move_each(|mut m| {
-                    m.move_ver(1);
-                    let (p0, _) = m.search_fwd("\n", None).next().unzip();
-                    if let Some(point) = p0.or(m.last_point()) {
-                        m.move_to(point);
-                    }
-                }),
-                SelType::UntilNL => helper.move_each(|mut m| {
-                    m.move_ver(1);
-                    let pre_nl = match m.char() {
-                        '\n' => m.iter_rev().take_while(|(_, char)| *char != '\n').next(),
-                        _ => m.iter().take_while(|(_, char)| *char != '\n').last(),
-                    };
-                    if let Some((p, _)) = pre_nl {
-                        m.move_to(p);
-                    }
-                }),
-                SelType::Normal => helper.move_each(|mut m| m.move_ver(1)),
-                _ => unreachable!(),
-            },
-            key!(Char('K'), Mod::SHIFT) => match self.0 {
-                SelType::EndOfNl => helper.move_each(|mut m| {
-                    m.move_ver(-1);
-                    let (p0, _) = m.search_fwd("\n", None).next().unzip();
-                    if let Some(point) = p0.or(m.last_point()) {
-                        m.move_to(point);
-                    }
-                }),
-                SelType::UntilNL => helper.move_each(|mut m| {
-                    m.move_ver(-1);
-                    let pre_nl = match m.char() {
-                        '\n' => m.iter_rev().take_while(|(_, char)| *char != '\n').next(),
-                        _ => m.iter().take_while(|(_, char)| *char != '\n').last(),
-                    };
-                    if let Some((p, _)) = pre_nl {
-                        m.move_to(p);
-                    }
-                }),
-                SelType::Normal => helper.move_each(|mut m| m.move_ver(-1)),
-                _ => unreachable!(),
-            },
+            key!(Char('h' | 'H') | Left, Mod::NONE | Mod::SHIFT) => {
+                helper.move_many(.., |mut m| m.move_hor(-1))
+            }
+            key!(Down, Mod::NONE | Mod::SHIFT) => {
+                helper.move_many(.., |mut m| m.move_ver_wrapped(1))
+            }
+            key!(Up, Mod::NONE | Mod::SHIFT) => {
+                helper.move_many(.., |mut m| m.move_ver_wrapped(-1))
+            }
+            key!(Char('l' | 'L') | Right, Mod::NONE | Mod::SHIFT) => {
+                helper.move_many(.., |mut m| m.move_hor(1))
+            }
+            key!(Char('j' | 'J'), Mod::NONE | Mod::SHIFT) => helper.move_many(.., |mut m| {
+                m.move_ver(1);
+                if m.char() == '\n' && m.caret_col() > 0 && self.0 != SelType::ToEndOfLine {
+                    let vcol = m.desired_caret_vcol();
+                    m.move_hor(-1);
+                    m.set_desired_v_col(if self.0 == SelType::BeforeEndOfLine {
+                        usize::MAX
+                    } else {
+                        vcol
+                    });
+                }
+            }),
+            key!(Char('k' | 'K'), Mod::NONE | Mod::SHIFT) => helper.move_many(.., |mut m| {
+                m.move_ver(-1);
+                if m.char() == '\n' && m.caret_col() > 0 && self.0 != SelType::ToEndOfLine {
+                    let vcol = m.desired_caret_vcol();
+                    m.move_hor(-1);
+                    m.set_desired_v_col(if self.0 == SelType::BeforeEndOfLine {
+                        usize::MAX
+                    } else {
+                        vcol
+                    });
+                }
+            }),
 
             ////////// Word and WORD selection keys.
-            key!(Char('w'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each(|mut m| {
-                let init = no_nl_windows(m.iter()).next();
+            key!(Char('w'), mf) if let Mod::ALT | Mod::NONE = mf => {
+                helper.move_many(.., |mut m| {
+                    let init = no_nl_windows(m.iter()).next();
 
-                if let Some(((p0, c0), (p1, c1))) = init {
-                    if Category::of(c0, w_chars) == Category::of(c1, w_chars) {
-                        m.move_to(p0);
-                    } else {
-                        m.move_to(p1);
-                    }
+                    if let Some(((p0, c0), (p1, c1))) = init {
+                        if Category::of(c0, w_chars) == Category::of(c1, w_chars) {
+                            m.move_to(p0);
+                        } else {
+                            m.move_to(p1);
+                        }
 
-                    let (_, p1) = m
-                        .search_fwd(word_and_space(mf, w_chars), None)
-                        .next()
-                        .unzip();
-                    if let Some(p1) = p1 {
-                        m.set_anchor();
+                        let (_, p1) = m
+                            .search_fwd(word_and_space(mf, w_chars), None)
+                            .next()
+                            .unzip();
+                        if let Some(p1) = p1 {
+                            m.set_anchor();
+                            m.move_to(p1);
+                            m.move_hor(-1);
+                        }
+                    };
+                })
+            }
+            key!(Char('e'), mf) if let Mod::ALT | Mod::NONE = mf => {
+                helper.move_many(.., |mut m| {
+                    let init = no_nl_windows(m.iter()).next();
+
+                    if let Some(((p0, c0), (p1, c1))) = init {
+                        if Category::of(c0, w_chars) == Category::of(c1, w_chars) {
+                            m.move_to(p0);
+                        } else {
+                            m.move_to(p1);
+                        }
+
+                        let (_, p1) = m
+                            .search_fwd(space_and_word(mf, w_chars), None)
+                            .next()
+                            .unzip();
+                        if let Some(p1) = p1 {
+                            m.set_anchor();
+                            m.move_to(p1);
+                            m.move_hor(-1);
+                        }
+                    };
+                })
+            }
+            key!(Char('b'), mf) if let Mod::ALT | Mod::NONE = mf => {
+                helper.move_many(.., |mut m| {
+                    let init = {
+                        let iter = [(m.caret(), m.char())].into_iter().chain(m.iter_rev());
+                        no_nl_windows(iter).next()
+                    };
+
+                    if let Some(((_, c1), (_, c0))) = init {
+                        if Category::of(c0, w_chars) != Category::of(c1, w_chars) {
+                            m.move_hor(-1);
+                        }
+                        let points = m.search_rev(word_and_space(mf, w_chars), None).next();
+                        if let Some((p0, _)) = points {
+                            m.set_anchor();
+                            m.move_to(p0);
+                        }
+                    };
+                })
+            }
+
+            key!(Char('W'), mf) if let Mod::SHIFT | ALTSHIFT = mf => {
+                helper.move_many(.., |mut m| {
+                    let points = m.search_fwd(word_and_space(mf, w_chars), None).next();
+                    if let Some((_, p1)) = points {
                         m.move_to(p1);
                         m.move_hor(-1);
-                    }
-                };
-            }),
-            key!(Char('e'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each(|mut m| {
-                let init = no_nl_windows(m.iter()).next();
-
-                if let Some(((p0, c0), (p1, c1))) = init {
-                    if Category::of(c0, w_chars) == Category::of(c1, w_chars) {
-                        m.move_to(p0);
-                    } else {
-                        m.move_to(p1);
-                    }
-
-                    let (_, p1) = m
-                        .search_fwd(space_and_word(mf, w_chars), None)
-                        .next()
-                        .unzip();
-                    if let Some(p1) = p1 {
-                        m.set_anchor();
-                        m.move_to(p1);
-                        m.move_hor(-1);
-                    }
-                };
-            }),
-            key!(Char('b'), mf) if let Mod::ALT | Mod::NONE = mf => helper.move_each(|mut m| {
-                let init = {
-                    let iter = [(m.caret(), m.char())].into_iter().chain(m.iter_rev());
-                    no_nl_windows(iter).next()
-                };
-
-                if let Some(((_, c1), (_, c0))) = init {
-                    if Category::of(c0, w_chars) != Category::of(c1, w_chars) {
-                        m.move_hor(-1);
-                    }
-                    let points = m.search_rev(word_and_space(mf, w_chars), None).next();
-                    if let Some((p0, _)) = points {
-                        m.set_anchor();
-                        m.move_to(p0);
-                    }
-                };
-            }),
-
-            key!(Char('W'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each(|mut m| {
-                let points = m.search_fwd(word_and_space(mf, w_chars), None).next();
-                if let Some((_, p1)) = points {
-                    m.move_to(p1);
-                    m.move_hor(-1);
-                }
-            }),
-            key!(Char('E'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each(|mut m| {
-                let points = m.search_fwd(space_and_word(mf, w_chars), None).next();
-                if let Some((_, p1)) = points {
-                    m.move_to(p1);
-                    m.move_hor(-1);
-                }
-            }),
-            key!(Char('B'), mf) if let Mod::SHIFT | ALTSHIFT = mf => helper.move_each(|mut m| {
-                let points = m.search_rev(word_and_space(mf, w_chars), None).next();
-                if let Some((p0, _)) = points {
-                    m.move_to(p0);
-                }
-            }),
-
-            ////////// Other selection keys.
-            key!(Char('x')) => {
-                self.0 = SelType::EndOfNl;
-                helper.move_each(|mut m| {
-                    if m.anchor_is_start() {
-                        m.swap_ends()
-                    }
-
-                    let (_, p0) = m.search_rev("\n", None).next().unzip();
-                    m.swap_ends();
-                    m.move_to(p0.unwrap_or_default());
-
-                    let (p1, _) = m.search_fwd("\n", None).next().unzip();
-                    if let Some(p1) = p1.or(m.last_point()) {
-                        m.set_anchor();
-                        m.move_to(p1);
                     }
                 })
             }
+            key!(Char('E'), mf) if let Mod::SHIFT | ALTSHIFT = mf => {
+                helper.move_many(.., |mut m| {
+                    let points = m.search_fwd(space_and_word(mf, w_chars), None).next();
+                    if let Some((_, p1)) = points {
+                        m.move_to(p1);
+                        m.move_hor(-1);
+                    }
+                })
+            }
+            key!(Char('B'), mf) if let Mod::SHIFT | ALTSHIFT = mf => {
+                helper.move_many(.., |mut m| {
+                    let points = m.search_rev(word_and_space(mf, w_chars), None).next();
+                    if let Some((p0, _)) = points {
+                        m.move_to(p0);
+                    }
+                })
+            }
+
+            ////////// Other selection keys.
+            key!(Char('x')) => helper.move_many(.., |mut m| {
+                self.0 = SelType::ToEndOfLine;
+                if m.anchor().is_none() {
+                    m.set_anchor();
+                } else if m.anchor_is_start() {
+                    m.swap_ends()
+                }
+
+                let (_, p0) = m.search_rev("\n", None).next().unzip();
+                m.move_to(p0.unwrap_or_default());
+                m.swap_ends();
+
+                let (p1, _) = m.search_fwd("\n", None).next().unzip();
+                if let Some(p1) = p1.or(m.last_point()) {
+                    m.move_to(p1);
+                }
+                m.set_desired_v_col(usize::MAX);
+            }),
             key!(Char(char), mf)
                 if let 'f' | 'F' | 't' | 'T' = char
                     && (mf.intersects(ALTSHIFT) || mf == Mod::NONE) =>
@@ -277,14 +239,14 @@ impl<U: Ui> Mode<U> for Normal {
                 m.set_anchor();
                 m.move_to(m.last_point().unwrap())
             }),
-            key!(Char(';'), Mod::ALT) => helper.move_each(|mut m| m.swap_ends()),
-            key!(Char(';')) => helper.move_each(|mut m| m.unset_anchor()),
+            key!(Char(';'), Mod::ALT) => helper.move_many(.., |mut m| m.swap_ends()),
+            key!(Char(';')) => helper.move_many(.., |mut m| m.unset_anchor()),
             key!(Char(')')) => helper.rotate_main(1),
             key!(Char('(')) => helper.rotate_main(-1),
 
             ////////// Text modifying keys.
             key!(Char('i')) => {
-                helper.move_each(|mut m| {
+                helper.move_many(.., |mut m| {
                     if m.anchor_is_start() {
                         m.swap_ends();
                     }
@@ -292,7 +254,7 @@ impl<U: Ui> Mode<U> for Normal {
                 mode::set::<U>(Insert);
             }
             key!(Char('a')) => {
-                helper.move_each(|mut m| {
+                helper.move_many(.., |mut m| {
                     if !m.anchor_is_start() {
                         m.swap_ends();
                     }
@@ -300,14 +262,37 @@ impl<U: Ui> Mode<U> for Normal {
                 });
                 mode::set::<U>(Insert);
             }
-            key!(Char('c')) => {
-                helper.edit_each(|e| e.replace(""));
-                helper.move_each(|mut m| m.unset_anchor());
+            key!(Char('c'), mods) if let Mod::NONE | Mod::ALT = mods => {
+                if let Mod::NONE = mods {
+                    copy_selections(&mut helper);
+                }
+                helper.edit_many(.., |e| e.replace(""));
+                helper.move_many(.., |mut m| m.unset_anchor());
                 mode::set::<U>(Insert);
             }
-            key!(Char('d')) => {
-                helper.edit_each(|e| e.replace(""));
-                helper.move_each(|mut m| m.unset_anchor());
+            key!(Char('d'), mods) if let Mod::NONE | Mod::ALT = mods => {
+                if let Mod::NONE = mods {
+                    copy_selections(&mut helper);
+                }
+                helper.edit_many(.., |e| e.replace(""));
+                helper.move_many(.., |mut m| m.unset_anchor());
+            }
+            key!(Char('p')) => {
+                let pastes = paste_strings();
+                let len = pastes.len();
+                if !pastes.is_empty() {
+                    helper.move_many(..len, |mut m| {
+                        m.unset_anchor();
+                        m.move_hor(1)
+                    });
+                    let mut lens = pastes.iter().map(|str| str.chars().count());
+                    let mut pastes = pastes.iter();
+                    helper.edit_many(..len, |e| e.insert(pastes.next().unwrap()));
+                    helper.move_many(..len, |mut m| {
+                        m.set_anchor();
+                        m.move_hor(lens.next().unwrap().saturating_sub(1) as i32);
+                    });
+                }
             }
 
             ////////// Cursor creation and destruction.
@@ -363,16 +348,16 @@ impl<U: Ui> Mode<U> for Insert {
         cursors.make_incl();
         let mut helper = EditHelper::new(widget, area, cursors);
 
-        if let key!(Left | Down | Up | Right, modif) = key {
-            if modif.contains(Mod::SHIFT) {
-                helper.move_each(|mut m| {
+        if let key!(Left | Down | Up | Right, mods) = key {
+            if mods.contains(Mod::SHIFT) {
+                helper.move_many(.., |mut m| {
                     if m.anchor().is_none() {
                         m.set_anchor()
                     }
                 });
             } else {
                 let anchors = get_anchors(&mut helper);
-                helper.move_each(|mut m| m.unset_anchor());
+                helper.move_many(.., |mut m| m.unset_anchor());
                 remove_empty_line(&mut helper);
                 restore_anchors(&mut helper, anchors);
             }
@@ -380,24 +365,24 @@ impl<U: Ui> Mode<U> for Insert {
 
         match key {
             key!(Char(char)) => {
-                helper.edit_each(|e| e.insert(char));
-                helper.move_each(|mut m| m.move_hor(1));
+                helper.edit_many(.., |e| e.insert(char));
+                helper.move_many(.., |mut m| m.move_hor(1));
             }
             key!(Char(char), Mod::SHIFT) => {
-                helper.edit_each(|e| e.insert(char));
-                helper.move_each(|mut m| m.move_hor(1));
+                helper.edit_many(.., |e| e.insert(char));
+                helper.move_many(.., |mut m| m.move_hor(1));
             }
             key!(Enter) => {
                 let anchors = get_anchors(&mut helper);
                 remove_empty_line(&mut helper);
-                helper.edit_each(|e| e.insert('\n'));
-                helper.move_each(|mut m| m.move_hor(1));
+                helper.edit_many(.., |e| e.insert('\n'));
+                helper.move_many(.., |mut m| m.move_hor(1));
                 set_indent(&mut helper);
                 restore_anchors(&mut helper, anchors);
             }
             key!(Backspace) => {
                 let mut prev = Vec::with_capacity(helper.cursors().len());
-                helper.move_each(|mut m| {
+                helper.move_many(.., |mut m| {
                     prev.push((m.caret(), {
                         let c = m.caret();
                         m.unset_anchor().map(|a| match a > c {
@@ -408,7 +393,7 @@ impl<U: Ui> Mode<U> for Insert {
                     m.move_hor(-1);
                 });
                 let mut prev_iter = prev.iter();
-                helper.edit_each(|e| {
+                helper.edit_many(.., |e| {
                     if let Some((caret, _)) = prev_iter.next()
                         && *caret != Point::default()
                     {
@@ -416,7 +401,7 @@ impl<U: Ui> Mode<U> for Insert {
                     }
                 });
                 let mut anchors = prev.into_iter();
-                helper.move_each(|mut m| {
+                helper.move_many(.., |mut m| {
                     if let Some((_, Some(diff))) = anchors.next() {
                         m.set_anchor();
                         m.move_hor(diff);
@@ -426,15 +411,15 @@ impl<U: Ui> Mode<U> for Insert {
             }
             key!(Delete) => {
                 let mut anchors = Vec::with_capacity(helper.cursors().len());
-                helper.move_each(|mut m| {
+                helper.move_many(.., |mut m| {
                     let caret = m.caret();
                     anchors.push(m.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
                     m.set_anchor();
                     m.move_hor(1);
                 });
                 let mut anchors = anchors.into_iter().cycle();
-                helper.edit_each(|editor| editor.replace(""));
-                helper.move_each(|mut m| {
+                helper.edit_many(.., |editor| editor.replace(""));
+                helper.move_many(.., |mut m| {
                     if let Some(Some((anchor, _))) = anchors.next() {
                         m.set_anchor();
                         m.move_to(anchor);
@@ -444,10 +429,14 @@ impl<U: Ui> Mode<U> for Insert {
                     }
                 });
             }
-            key!(Left, Mod::NONE | Mod::SHIFT) => helper.move_each(|mut m| m.move_hor(-1)),
-            key!(Down, Mod::NONE | Mod::SHIFT) => helper.move_each(|mut m| m.move_ver_wrapped(1)),
-            key!(Up, Mod::NONE | Mod::SHIFT) => helper.move_each(|mut m| m.move_ver_wrapped(-1)),
-            key!(Right, Mod::NONE | Mod::SHIFT) => helper.move_each(|mut m| m.move_hor(1)),
+            key!(Left, Mod::NONE | Mod::SHIFT) => helper.move_many(.., |mut m| m.move_hor(-1)),
+            key!(Down, Mod::NONE | Mod::SHIFT) => {
+                helper.move_many(.., |mut m| m.move_ver_wrapped(1))
+            }
+            key!(Up, Mod::NONE | Mod::SHIFT) => {
+                helper.move_many(.., |mut m| m.move_ver_wrapped(-1))
+            }
+            key!(Right, Mod::NONE | Mod::SHIFT) => helper.move_many(.., |mut m| m.move_hor(1)),
 
             key!(Esc) => {
                 helper.new_moment();
@@ -482,9 +471,9 @@ impl OneKey {
         if let key!(Char('h' | 'j' | 'k' | 'l' | 'i' | 't' | 'b' | 'c' | '.')) = key
             && let SelType::Normal = sel_type
         {
-            helper.move_each(|mut m| m.unset_anchor())
+            helper.move_many(.., |mut m| m.unset_anchor())
         } else {
-            helper.move_each(|mut m| {
+            helper.move_many(.., |mut m| {
                 if m.anchor().is_none() {
                     m.set_anchor()
                 }
@@ -492,14 +481,15 @@ impl OneKey {
         }
 
         match key {
-            key!(Char('h')) => helper.move_each(|mut m| {
+            key!(Char('h')) => helper.move_many(.., |mut m| {
                 let (_, p1) = m.search_rev("\n", None).next().unzip();
                 m.move_to(p1.unwrap_or_default());
             }),
-            key!(Char('j')) => helper.move_each(|mut m| m.move_ver(i32::MAX)),
-            key!(Char('k')) => helper.move_each(|mut m| m.move_to_coords(0, 0)),
-            key!(Char('l')) => helper.move_each(|mut m| {
-                *sel_type = SelType::UntilNL;
+            key!(Char('j')) => helper.move_many(.., |mut m| m.move_ver(i32::MAX)),
+            key!(Char('k')) => helper.move_many(.., |mut m| m.move_to_coords(0, 0)),
+            key!(Char('l')) => helper.move_many(.., |mut m| {
+                *sel_type = SelType::BeforeEndOfLine;
+                m.set_desired_v_col(usize::MAX);
                 let pre_nl = match m.char() {
                     '\n' => m.iter_rev().take_while(|(_, char)| *char != '\n').next(),
                     _ => m.iter().take_while(|(_, char)| *char != '\n').last(),
@@ -508,7 +498,7 @@ impl OneKey {
                     m.move_to(p);
                 }
             }),
-            key!(Char('i')) => helper.move_each(|mut m| {
+            key!(Char('i')) => helper.move_many(.., |mut m| {
                 let (_, p1) = m.search_rev("(^|\n)[ \t]*", None).next().unzip();
                 if let Some(p1) = p1 {
                     m.move_to(p1);
@@ -573,7 +563,7 @@ impl<U: Ui> Mode<U> for OneKey {
                 if let key!(Char(char), Mod::SHIFT | Mod::NONE) = key =>
             {
                 use SelType::*;
-                helper.move_each(|mut m| {
+                helper.move_many(.., |mut m| {
                     let cur = m.caret();
                     let (points, back) = match sel_type {
                         Reverse | ExtendRev => {
@@ -615,10 +605,10 @@ fn no_nl_windows<'a>(
         .skip_while(|((_, c0), (_, c1))| *c0 == '\n' || *c1 == '\n')
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum SelType {
-    UntilNL,
-    EndOfNl,
+    BeforeEndOfLine,
+    ToEndOfLine,
     Reverse,
     Extend,
     ExtendRev,
@@ -719,7 +709,7 @@ impl<U: Ui> IncSearcher<U> for Select<U> {
 
         let mut helper = EditHelper::new_inc(file, area, cursors, searcher);
 
-        helper.move_each(|mut m| {
+        helper.move_many(.., |mut m| {
             if m.anchor_is_start() {
                 m.swap_ends();
             }
@@ -772,7 +762,7 @@ impl<U: Ui> IncSearcher<U> for Split<U> {
 
         let mut helper = EditHelper::new_inc(file, area, cursors, searcher);
 
-        helper.move_each(|mut m| {
+        helper.move_many(.., |mut m| {
             if m.anchor_is_start() {
                 m.swap_ends();
             }
@@ -799,7 +789,7 @@ impl<U: Ui> IncSearcher<U> for Split<U> {
 
 /// Sets the indentation for every cursor
 fn set_indent(helper: &mut EditHelper<'_, File, impl Area, ()>) {
-    helper.move_each(|mut m| {
+    helper.move_many(.., |mut m| {
         let (_, p) = m.search_rev("\n", None).next().unwrap_or_default();
         m.unset_anchor();
         m.move_to(p);
@@ -808,7 +798,7 @@ fn set_indent(helper: &mut EditHelper<'_, File, impl Area, ()>) {
             m.move_to(p);
         }
     });
-    helper.edit_each(|e| {
+    helper.edit_many(.., |e| {
         let indent = if let Some(indent) = e.indent_on(e.caret()) {
             indent
         } else {
@@ -816,7 +806,7 @@ fn set_indent(helper: &mut EditHelper<'_, File, impl Area, ()>) {
         };
         e.insert_or_replace(" ".repeat(indent));
     });
-    helper.move_each(|mut m| {
+    helper.move_many(.., |mut m| {
         m.unset_anchor();
         let indent_end = m.iter().find(|(_, c)| !is_non_nl_space(*c));
         if let Some((p, _)) = indent_end {
@@ -827,7 +817,7 @@ fn set_indent(helper: &mut EditHelper<'_, File, impl Area, ()>) {
 
 /// removes an empty line
 fn remove_empty_line(helper: &mut EditHelper<'_, File, impl Area, ()>) {
-    helper.move_each(|mut m| {
+    helper.move_many(.., |mut m| {
         m.unset_anchor();
         let indent_start = m.iter_rev().find(|(_, c)| !is_non_nl_space(*c));
         let (s, char) = indent_start.unwrap_or((Point::default(), '\n'));
@@ -838,23 +828,23 @@ fn remove_empty_line(helper: &mut EditHelper<'_, File, impl Area, ()>) {
             m.move_hor(1);
         }
     });
-    helper.edit_each(|e| {
+    helper.edit_many(.., |e| {
         if e.anchor().is_some() {
             e.replace("")
         }
     });
-    helper.move_each(|mut m| m.unset_anchor());
+    helper.move_many(.., |mut m| m.unset_anchor());
 }
 
 fn get_anchors(helper: &mut EditHelper<'_, File, impl Area, ()>) -> Vec<Option<Point>> {
     let mut anchors = Vec::new();
-    helper.move_each(|m| anchors.push(m.anchor()));
+    helper.move_many(.., |m| anchors.push(m.anchor()));
     anchors
 }
 
 fn restore_anchors(helper: &mut EditHelper<'_, File, impl Area, ()>, anchors: Vec<Option<Point>>) {
     let mut anchors = anchors.into_iter();
-    helper.move_each(|mut m| {
+    helper.move_many(.., |mut m| {
         if let Some(Some(anchor)) = anchors.next() {
             m.set_anchor();
             match anchor < m.caret() {
@@ -870,4 +860,37 @@ fn restore_anchors(helper: &mut EditHelper<'_, File, impl Area, ()>, anchors: Ve
 
 fn is_non_nl_space(char: char) -> bool {
     char.is_whitespace() && char != '\n'
+}
+
+static CLIPBOARD: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+fn copy_selections(helper: &mut EditHelper<'_, File, impl Area, ()>) {
+    let mut copies: Vec<String> = Vec::new();
+    helper.move_many(.., |m| copies.push(m.selection().collect()));
+    if !copies.iter().all(String::is_empty) {
+        if copies.len() == 1 {
+            duat_core::clipboard::set_text(copies.first().unwrap());
+        }
+        *CLIPBOARD.lock().unwrap() = copies
+    }
+}
+
+fn paste_strings() -> Vec<String> {
+    static SYSTEM_CLIPB: Mutex<Option<String>> = Mutex::new(None);
+
+    let paste = duat_core::clipboard::get_text();
+
+    let mut sys_clipb = SYSTEM_CLIPB.lock().unwrap();
+
+    // If there was no previous clipboard, or it has changed, copy the new
+    // pasted text
+    if let Some(paste) = paste
+        && sys_clipb.as_ref().is_none_or(|sc| *sc != paste)
+    {
+        *CLIPBOARD.lock().unwrap() = vec![paste.clone()];
+        *sys_clipb = Some(paste.clone());
+        vec![paste]
+    } else {
+        CLIPBOARD.lock().unwrap().clone()
+    }
 }

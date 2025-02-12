@@ -28,6 +28,7 @@ pub struct TsParser {
     forms: &'static [(FormId, Key, Key)],
     name: &'static str,
     keys: Range<Key>,
+    old_tree: Option<Tree>,
 }
 
 impl TsParser {
@@ -58,7 +59,15 @@ impl TsParser {
             }
         }
 
-        Some(TsParser { parser, queries, tree, forms, name, keys })
+        Some(TsParser {
+            parser,
+            queries,
+            tree,
+            forms,
+            name,
+            keys,
+            old_tree: None,
+        })
     }
 
     pub fn lang(&self) -> &'static str {
@@ -305,84 +314,102 @@ fn descendant_in(node: Node, byte: usize) -> Node {
 }
 
 impl Reader for TsParser {
-    fn after_change(&mut self, text: &Text, change: Change<&str>) -> Vec<Range<usize>> {
-        let start = change.start();
-        let added = change.added_end();
-        let taken = change.taken_end();
+    fn apply_changes(&mut self, text: &Text, changes: &[Change<&str>]) {
+        for change in changes {
+            let start = change.start();
+            let added = change.added_end();
+            let taken = change.taken_end();
 
-        let ts_start = ts_point(start, text);
-        let ts_taken_end = ts_point_from(taken, (ts_start.column, start), text);
-        let ts_added_end = ts_point_from(added, (ts_start.column, start), text);
-        self.tree.edit(&InputEdit {
-            start_byte: start.byte(),
-            old_end_byte: taken.byte(),
-            new_end_byte: added.byte(),
-            start_position: ts_start,
-            old_end_position: ts_taken_end,
-            new_end_position: ts_added_end,
-        });
+            let ts_start = ts_point(start, text);
+            let ts_taken_end = ts_point_from(taken, (ts_start.column, start), text);
+            let ts_added_end = ts_point_from(added, (ts_start.column, start), text);
+            self.tree.edit(&InputEdit {
+                start_byte: start.byte(),
+                old_end_byte: taken.byte(),
+                new_end_byte: added.byte(),
+                start_position: ts_start,
+                old_end_position: ts_taken_end,
+                new_end_position: ts_added_end,
+            });
+        }
 
         let tree = self
             .parser
             .parse_with(&mut buf_parse(text), Some(&self.tree))
             .unwrap();
+        self.old_tree = Some(std::mem::replace(&mut self.tree, tree));
+    }
 
+    fn ranges_to_update(&mut self, text: &Text, changes: &[Change<&str>]) -> Vec<Range<usize>> {
+        let old_tree = self.old_tree.as_ref().unwrap();
         let mut cursor = QueryCursor::new();
         let buf = TsBuf(&text.buf);
 
-        let start = text.point_at_line(start.line()).byte();
-        let end = text.point_at_line(added.line() + 1).byte();
+        let mut to_update = Vec::new();
 
-        // Add one to the start and end, in order to include comments, since
-        // those act a little weird in tree sitter.
-        let ts_start = start.saturating_sub(1);
-        let ts_end = (end + 1).min(text.len().byte());
-        cursor.set_byte_range(ts_start..ts_end);
+        for change in changes {
+            let start = change.start();
+            let added = change.added_end();
+            let start = text.point_at_line(start.line()).byte();
+            let end = text.point_at_line(added.line() + 1).byte();
 
-        let mut ml_ranges = Vec::new();
+            // Add one to the start and end, in order to include comments, since
+            // those act a little weird in tree sitter.
+            let ts_start = start.saturating_sub(1);
+            let ts_end = (end + 1).min(text.len().byte());
+            cursor.set_byte_range(ts_start..ts_end);
 
-        // The next two loops concern themselves with determining what regions
-        // of the file have been altered.
-        // Normally, this is assumed to be just the current line, but in the
-        // cases of primarily strings and ml comments, this will (probably)
-        // involve the entire rest of the file below.
-        let mut query_matches = cursor.captures(&self.queries[0], self.tree.root_node(), buf);
-        while let Some((query_match, _)) = query_matches.next() {
-            for cap in query_match.captures.iter() {
-                let range = cap.node.range();
-                if range.start_point.row != range.end_point.row {
-                    ml_ranges.push((range, cap.index));
+            let mut this_to_update = Vec::new();
+
+            // The next two loops concern themselves with determining what regions
+            // of the file have been altered.
+            // Normally, this is assumed to be just the current line, but in the
+            // cases of primarily strings and ml comments, this will (probably)
+            // involve the entire rest of the file below.
+            let mut query_matches = cursor.captures(&self.queries[0], old_tree.root_node(), buf);
+            while let Some((query_match, _)) = query_matches.next() {
+                for cap in query_match.captures.iter() {
+                    let range = cap.node.range();
+                    if range.start_point.row != range.end_point.row {
+                        this_to_update.push((range, cap.index));
+                    }
                 }
+            }
+
+            let mut query_matches = cursor.captures(&self.queries[0], self.tree.root_node(), buf);
+            'ml_range_edited: while let Some((query_match, _)) = query_matches.next() {
+                for cap in query_match.captures.iter() {
+                    let range = cap.node.range();
+                    let entry = (range, cap.index);
+
+                    // If a ml range existed before and after the change, then it can be
+                    // assumed that it was not altered.
+                    // If it exists in only one of those times, then the whole rest of the
+                    // file ahead must be checked, as ml ranges like strings will always
+                    // alter every subsequent line in the file.
+                    if range.start_point.row != range.end_point.row
+                        && this_to_update
+                            .extract_if(.., |r| *r == entry)
+                            .next()
+                            .is_none()
+                    {
+                        this_to_update.push(entry);
+                        break 'ml_range_edited;
+                    }
+                }
+            }
+            if this_to_update.is_empty() {
+                super::merge_range_in(&mut to_update, start..end)
+            } else {
+                // Considering that all ranges are coming in order, we can just
+                // disregard the updates from the other ranges, since they will belong
+                // to this one.
+                super::merge_range_in(&mut to_update, start..text.len().byte());
+                break;
             }
         }
 
-        let mut query_matches = cursor.captures(&self.queries[0], tree.root_node(), buf);
-        'ml_range_edited: while let Some((query_match, _)) = query_matches.next() {
-            for cap in query_match.captures.iter() {
-                let range = cap.node.range();
-                let entry = (range, cap.index);
-
-                // If a ml range existed before and after the change, then it can be
-                // assumed that it was not altered.
-                // If it exists in only one of those times, then the whole rest of the
-                // file ahead must be checked, as ml ranges like strings will always
-                // alter every subsequent line in the file.
-                if range.start_point.row != range.end_point.row
-                    && ml_ranges.extract_if(.., |r| *r == entry).next().is_none()
-                {
-                    ml_ranges.push(entry);
-                    break 'ml_range_edited;
-                }
-            }
-        }
-
-        self.tree = tree;
-
-        vec![if ml_ranges.is_empty() {
-            start..end
-        } else {
-            start..text.len().byte()
-        }]
+        to_update
     }
 
     fn update_range(&mut self, text: &mut Text, range: Range<usize>) {

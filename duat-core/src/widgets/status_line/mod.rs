@@ -262,7 +262,7 @@ unsafe impl<U: Ui> Sync for StatusLine<U> {}
 ///    let cursor = cursors.main();
 ///
 ///    text!(
-///        [Separator] "" [Coord] { cursor.col() }
+///        [Separator] "" [Coord] { cursor.vcol() }
 ///        [Separator] "" [Coord] { cursor.line() }
 ///        [Separator] "" [Coord] { file.len_lines() }
 ///    )

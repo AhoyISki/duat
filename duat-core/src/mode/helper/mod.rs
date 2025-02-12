@@ -5,7 +5,7 @@
 //! cursors and dealing with editing the text directly.
 //!
 //! [`Mode`]: super::Mode
-use std::{array::IntoIter, ops::RangeBounds};
+use std::{array::IntoIter, ops::RangeBounds, sync::LazyLock};
 
 pub use self::cursors::{Cursor, Cursors};
 use crate::{
@@ -558,11 +558,24 @@ where
     is_incl: bool,
 }
 
+static KEY: LazyLock<Key> = LazyLock::new(Key::new);
+
 impl<'a, 'b, A, W> Editor<'a, 'b, A, W>
 where
     A: Area,
     W: Widget<A::Ui>,
 {
+    /// TESTING
+    pub fn insert_tag(&mut self, tag: Tag) {
+        let caret = self.caret().byte();
+        self.widget.text_mut().insert_tag(caret, tag, *KEY);
+    }
+
+    pub fn remove_tags(&mut self) {
+        let caret = self.caret().byte();
+        self.widget.text_mut().remove_tags_on(caret, *KEY);
+    }
+
     /// Returns a new instance of [`Editor`]
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -957,7 +970,8 @@ where
         } else {
             (self.caret(), anchor)
         };
-        self.text.strs_in(start.byte()..end.byte())
+        self.text
+            .strs_in(start.byte()..end.byte() + self.is_incl() as usize)
     }
 
     /// Returns the length of the [`Text`], in [`Point`]

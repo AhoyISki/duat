@@ -161,7 +161,7 @@ impl<S: AsRef<str>> Matcheable for S {
         range: impl RangeBounds<usize> + Clone,
     ) -> Result<bool, Box<regex_syntax::Error>> {
         let s = self.as_ref();
-        let (start, end) = super::get_ends(range, s.len());
+        let (start, end) = crate::get_ends(range, s.len());
         let dfas = dfas_from_pat(pat)?;
         let fwd_input =
             Input::new(unsafe { std::str::from_utf8_unchecked(&s.as_bytes()[start..end]) });
@@ -240,12 +240,16 @@ impl Searcher {
             };
             let start = half.offset();
 
-            let start = haystack.as_bytes()[last_point.byte() - gap..start]
-                .iter()
-                .fold(last_point, |p, b| p.fwd_byte(*b));
-            let end = haystack.as_bytes()[start.byte() - gap..end]
-                .iter()
-                .fold(start, |p, b| p.fwd_byte(*b));
+            let start = unsafe {
+                std::str::from_utf8_unchecked(&haystack.as_bytes()[last_point.byte() - gap..start])
+            }
+            .chars()
+            .fold(last_point, |p, b| p.fwd(b));
+            let end = unsafe {
+                std::str::from_utf8_unchecked(&haystack.as_bytes()[start.byte() - gap..end])
+            }
+            .chars()
+            .fold(start, |p, b| p.fwd(b));
 
             last_point = end;
 
@@ -295,12 +299,18 @@ impl Searcher {
                 .unwrap()
                 .unwrap();
 
-            let end = haystack.as_bytes()[half.offset()..(last_point.byte() - gap)]
-                .iter()
-                .fold(last_point, |p, b| p.rev_byte(*b));
-            let start = haystack.as_bytes()[start..(end.byte() - gap)]
-                .iter()
-                .fold(end, |p, b| p.rev_byte(*b));
+            let end = unsafe {
+                std::str::from_utf8_unchecked(
+                    &haystack.as_bytes()[half.offset()..(last_point.byte() - gap)],
+                )
+            }
+            .chars()
+            .fold(last_point, |p, b| p.rev(b));
+            let start = unsafe {
+                std::str::from_utf8_unchecked(&haystack.as_bytes()[start..(end.byte() - gap)])
+            }
+            .chars()
+            .fold(end, |p, b| p.rev(b));
 
             last_point = start;
 

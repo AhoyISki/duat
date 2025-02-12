@@ -205,9 +205,6 @@ impl Area {
             }
 
             if !lines.is_empty() {
-                if cfg.ending_space() {
-                    lines.push_char(' ', 1)
-                }
                 lines.flush().unwrap();
             }
 

@@ -550,6 +550,7 @@ pub mod prelude {
         text::{Builder, Text, err, hint, ok, text},
         ui::Area,
         widgets::Widget,
+        clipboard, 
     };
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self as ui, VertRule};

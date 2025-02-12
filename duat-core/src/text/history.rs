@@ -20,8 +20,9 @@ use super::{Point, Text};
 pub struct History {
     moments: Vec<Moment>,
     current_moment: usize,
-    // Used only when doing desync changes
-    sync_state: Option<SyncState>,
+    new_moment: Option<(Moment, SyncState)>,
+    /// Used to update ranges on the File
+    unproc_moment: Option<(Moment, SyncState)>,
 }
 
 impl History {
@@ -41,92 +42,81 @@ impl History {
     ///
     /// [`EditHelper`]: crate::mode::EditHelper
     pub fn add_change(&mut self, guess_i: Option<usize>, change: Change<String>) -> usize {
-        let is_last_moment = self.current_moment == self.moments.len();
-        // Check, in order to prevent modification of earlier moments.
-        let moment = if let Some(moment) = self.moments.last_mut()
-            && is_last_moment
-        {
-            moment
-        } else {
-            self.new_moment();
-            self.moments.last_mut().unwrap()
-        };
+        let (unproc_moment, unproc_ss) = self.unproc_moment.get_or_insert_default();
+        unproc_moment.add_change(guess_i, change.clone(), unproc_ss);
 
-        let ss = self.sync_state.get_or_insert_default();
-        match moment.add_change(guess_i, change, ss) {
-            Ok(change_i) => change_i,
-            // A failure can happen if we are inserting before the `sh_from`, which would violate
-            // the strict ordering of changes.
-            // In order to remedy that, we synchronize the remaining changes and do it again with a
-            // fresh DesyncState. This should never fail.
-            Err((guess_i, change)) => {
-                self.finish_synchronizing();
-                let moment = self.moments.last_mut().unwrap();
-                let ss = self.sync_state.get_or_insert_default();
-                moment.add_change(Some(guess_i), change, ss).unwrap()
-            }
-        }
+        let (new_moment, new_ss) = self.new_moment.get_or_insert_default();
+        new_moment.add_change(guess_i, change, new_ss)
     }
 
     /// Declares that the current moment is complete and starts a
     /// new one
     pub fn new_moment(&mut self) {
-        self.finish_synchronizing();
-        let is_last_moment = self.current_moment == self.moments.len();
-        // If the last moment in history is empty, we can keep using it.
-        if !is_last_moment || self.moments.last().is_none_or(|m| !m.0.is_empty()) {
-            self.moments.truncate(self.current_moment);
-            self.moments.push(Moment(Vec::new()));
-            self.current_moment += 1;
-        }
+        let Some((mut new_moment, mut new_ss)) = self.new_moment.take() else {
+            return;
+        };
+        finish_synchronizing(&mut new_moment, &mut new_ss);
+
+        self.moments.truncate(self.current_moment);
+        self.moments.push(new_moment);
+        self.current_moment += 1;
     }
 
-    /// Moves backwards in the [History], returning the last moment.
+    /// Redoes the next [`Moment`], returning its [`Change`]s
     ///
-    /// If The [History] is already at the end, returns [None]
-    /// instead.
-    pub fn move_forward(&mut self) -> Option<&[Change<String>]> {
-        self.finish_synchronizing();
-        if self.current_moment == self.moments.len()
-            || self.moments[self.current_moment].0.is_empty()
-        {
+    /// Applying these [`Change`]s in the order that they're given
+    /// will result in a correct redoing.
+    pub fn move_forward(&mut self) -> Option<Vec<Change<&str>>> {
+        self.new_moment();
+        if self.current_moment == self.moments.len() {
             None
         } else {
             self.current_moment += 1;
-            Some(&self.moments[self.current_moment - 1].0)
+            Some(
+                self.moments[self.current_moment - 1]
+                    .0
+                    .iter()
+                    .map(|c| c.as_ref())
+                    .collect(),
+            )
         }
     }
 
-    /// Moves backwards in the [History], returning the last moment.
+    /// Undoes a [`Moment`], returning its reversed [`Change`]s
     ///
-    /// If The [History] is already at the start, returns [None]
-    /// instead.
-    pub fn move_backwards(&mut self) -> Option<&[Change<String>]> {
-        self.finish_synchronizing();
+    /// These [`Change`]s will already be shifted corectly, such that
+    /// applying them in sequential order, without further
+    /// modifications, will result in a correct undoing.
+    pub fn move_backwards(&mut self) -> Option<Vec<Change<&str>>> {
+        self.new_moment();
         if self.current_moment == 0 {
             None
         } else {
             self.current_moment -= 1;
 
-            if self.moments[self.current_moment].0.is_empty() {
-                self.move_backwards()
-            } else {
-                Some(&self.moments[self.current_moment].0)
-            }
+            let mut shift = (0, 0, 0);
+            let iter = self.moments[self.current_moment].0.iter().map(move |c| {
+                let mut change = c.as_ref();
+                change.shift_by(shift);
+
+                shift.0 += change.taken_end().byte() as i32 - change.added_end().byte() as i32;
+                shift.1 += change.taken_end().char() as i32 - change.added_end().char() as i32;
+                shift.2 += change.taken_end().line() as i32 - change.added_end().line() as i32;
+
+                change.reverse()
+            });
+            Some(iter.collect())
         }
     }
 
-    /// Finish synchronizing the unsynchronized changes
-    fn finish_synchronizing(&mut self) {
-        if let Some(ds) = self.sync_state.take()
-            && ds.shift != (0, 0, 0)
-        {
-            // You can't get to this point without having at least one moment.
-            let moment = self.moments.last_mut().unwrap();
-            for change in &mut moment.0[ds.sh_from..] {
-                change.shift_by(ds.shift);
-            }
-        }
+    pub fn unprocessed_changes(&mut self) -> Option<Vec<Change<String>>> {
+        self.unproc_moment
+            .take()
+            .map(|(c, _)| c.0.into_iter().collect())
+    }
+
+    pub fn has_unprocessed_changes(&self) -> bool {
+        self.unproc_moment.as_ref().is_some()
     }
 }
 
@@ -161,20 +151,32 @@ impl Moment {
         &mut self,
         guess_i: Option<usize>,
         change: Change<String>,
-        ds: &mut SyncState,
-    ) -> Result<usize, (usize, Change<String>)> {
-        let (shift, sh_from) = (ds.shift, ds.sh_from);
+        ss: &mut SyncState,
+    ) -> usize {
+        let (shift, sh_from) = (ss.shift, ss.sh_from);
         let b = change.added_end().byte() as i32 - change.taken_end().byte() as i32;
         let c = change.added_end().char() as i32 - change.taken_end().char() as i32;
         let l = change.added_end().line() as i32 - change.taken_end().line() as i32;
 
-        let (change_i, sh_from) = self.add_change_inner(guess_i, change, shift, sh_from)?;
-        ds.sh_from = sh_from;
-        ds.shift.0 += b;
-        ds.shift.1 += c;
-        ds.shift.2 += l;
+        let (change_i, sh_from) = match self.add_change_inner(guess_i, change, shift, sh_from) {
+            Ok((change_i, sh_from)) => (change_i, sh_from),
+            // A failure can happen if we are inserting before the `sh_from`, which would violate
+            // the strict ordering of changes.
+            // In order to remedy that, we synchronize the remaining changes and do it again with a
+            // fresh SyncState. This should never fail.
+            Err((guess_i, change)) => {
+                finish_synchronizing(self, ss);
+                *ss = SyncState::default();
+                self.add_change_inner(Some(guess_i), change, (0, 0, 0), 0)
+                    .unwrap()
+            }
+        };
+        ss.sh_from = sh_from;
+        ss.shift.0 += b;
+        ss.shift.1 += c;
+        ss.shift.2 += l;
 
-        Ok(change_i)
+        change_i
     }
 
     /// Inner insertion of a [`Change`]
@@ -202,10 +204,10 @@ impl Moment {
                 Ok(i) => i..i + 1,
                 Err(i) => {
                     // This is if we intersect the added part
-                    if let Some(prev_i) = i.checked_sub(1)
-                        && change.start <= self.0[prev_i].added_end().shift_by(sh(prev_i))
+                    if let Some(older_i) = i.checked_sub(1)
+                        && change.start <= self.0[older_i].added_end().shift_by(sh(older_i))
                     {
-                        prev_i..i
+                        older_i..i
                     // And here is if we intersect nothing on the
                     // start, no changes drained.
                     } else {
@@ -228,18 +230,18 @@ impl Moment {
             // If there is no change ahead, or it doesn't intersec, don't merge
             c_range
         } else {
-            let start = c_range.start + 1;
+            let start_i = c_range.start + 1;
             // Otherwise search ahead for another change to be merged
-            let f = |i: usize, c: &Change<String>| c.start.shift_by(sh(start + i));
-            match binary_search_by_key_and_index(&self.0[start..], change.taken_end(), f) {
-                Ok(i) => c_range.start..start + i + 1,
+            let f = |i: usize, c: &Change<String>| c.start.shift_by(sh(start_i + i));
+            match binary_search_by_key_and_index(&self.0[start_i..], change.taken_end(), f) {
+                Ok(i) => c_range.start..start_i + i + 1,
                 Err(i) => {
-                    if let Some(prev) = self.0.get(start + i)
-                        && prev.start.shift_by(sh(start + i)) <= change.taken_end()
+                    if let Some(older) = self.0.get(start_i + i)
+                        && older.start.shift_by(sh(start_i + i)) <= change.taken_end()
                     {
-                        c_range.start..start + i + 1
+                        c_range.start..start_i + i + 1
                     } else {
-                        c_range.start..start + i
+                        c_range.start..start_i + i
                     }
                 }
             }
@@ -265,6 +267,10 @@ impl Moment {
         };
 
         Ok((c_range.start, sh_from))
+    }
+
+    pub fn changes(&self) -> &[Change<String>] {
+        &self.0
     }
 }
 
@@ -301,8 +307,13 @@ impl Change<String> {
         if has_start_of(older.added_range(), self.taken_range()) {
             let fixed_end = older.added_end().min(self.taken_end());
 
-            let start = self.start - older.start;
-            let end = fixed_end - older.start;
+            let start = self
+                .start
+                .checked_sub(older.start)
+                .unwrap_or_else(|| panic!("first: {:?} - {:?}", self.start, older.start));
+            let end = fixed_end
+                .checked_sub(older.start)
+                .unwrap_or_else(|| panic!("second: {:?} - {:?}", fixed_end, older.start));
             let range = start.byte()..end.byte();
             older.added.replace_range(range, &self.added);
 
@@ -313,8 +324,13 @@ impl Change<String> {
         } else if has_start_of(self.taken_range(), older.added_range()) {
             let fixed_end = self.taken_end().min(older.added_end());
 
-            let start = older.start - self.start;
-            let end = fixed_end - self.start;
+            let start = older
+                .start
+                .checked_sub(self.start)
+                .unwrap_or_else(|| panic!("third: {:?} - {:?}", older.start, self.start));
+            let end = fixed_end
+                .checked_sub(self.start)
+                .unwrap_or_else(|| panic!("fourth: {:?} - {:?}", fixed_end, self.start));
             let range = start.byte()..end.byte();
             self.taken.replace_range(range, &older.taken);
 
@@ -335,11 +351,11 @@ impl<'a> Change<&'a str> {
 
 impl<S: AsRef<str>> Change<S> {
     /// Returns a reversed version of this [`Change`]
-    pub fn reverse(&self) -> Change<&str> {
+    pub fn reverse(self) -> Change<S> {
         Change {
             start: self.start,
-            added: self.taken_text(),
-            taken: self.added_text(),
+            added: self.taken,
+            taken: self.added,
         }
     }
 
@@ -430,4 +446,14 @@ where
     }
 
     Err(left)
+}
+
+/// Finish synchronizing the unsynchronized changes
+fn finish_synchronizing(moment: &mut Moment, ss: &mut SyncState) {
+    if ss.shift != (0, 0, 0) {
+        // You can't get to this point without having at least one moment.
+        for change in &mut moment.0[ss.sh_from..] {
+            change.shift_by(ss.shift);
+        }
+    }
 }

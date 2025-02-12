@@ -43,7 +43,7 @@
 //!             return;
 //!         };
 //!
-//!         helper.move_each(|mut m| {
+//!         helper.move_many(.., |mut m| {
 //!             let pat: String = [first, c].iter().collect();
 //!             let matched = m.search_fwd(pat, None).next();
 //!             if let Some((p0, p1)) = matched {
@@ -323,6 +323,17 @@ pub mod prelude {
 }
 
 pub mod thread {
+    //! Multithreading for Duat
+    //!
+    //! The main rationale behind multithreading in Duat is not so
+    //! much the performance gains, but more to allow for multi
+    //! tasking, as some plugins (like an LSP) may block for a while,
+    //! which would be frustrating for end users.
+    //!
+    //! The functions in this module differ from [`std::thread`] in
+    //! that they synchronize with Duat, telling the application when
+    //! there are no more threads running, so Duat can safely quit or
+    //! reload.
     use std::{
         sync::{
             LazyLock,
@@ -400,6 +411,34 @@ pub mod thread {
     enum SentHook {
         Fn(Box<dyn FnOnce() + Send>),
         Quit,
+    }
+}
+
+pub mod clipboard {
+    //! Clipboard interaction for Duat
+    //!
+    //! Just a regular clipboard, no image functionality.
+    use std::sync::LazyLock;
+
+    use arboard::Clipboard;
+    use parking_lot::Mutex;
+
+    static CLIPBOARD: LazyLock<Mutex<Clipboard>> =
+        LazyLock::new(|| Mutex::new(Clipboard::new().unwrap()));
+
+    /// Gets a [`String`] from the clipboard
+    ///
+    /// This can fail if the clipboard does not contain UTF-8 encoded
+    /// text.
+    ///
+    /// Or if there is no clipboard i guess
+    pub fn get_text() -> Option<String> {
+        CLIPBOARD.lock().get_text().ok()
+    }
+
+    /// Sets a [`String`] to the clipboard
+    pub fn set_text(text: impl std::fmt::Display) {
+        CLIPBOARD.lock().set_text(text.to_string()).unwrap();
     }
 }
 
@@ -603,6 +642,22 @@ where
         crates.insert(type_id, src_crate);
         crates.get(&type_id).unwrap()
     }
+}
+
+/// Convenience function for the bounds of a range
+fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize, usize) {
+    let start = match range.start_bound() {
+        std::ops::Bound::Included(start) => *start,
+        std::ops::Bound::Excluded(start) => *start + 1,
+        std::ops::Bound::Unbounded => 0,
+    };
+    let end = match range.end_bound() {
+        std::ops::Bound::Included(end) => (*end + 1).min(max),
+        std::ops::Bound::Excluded(end) => (*end).min(max),
+        std::ops::Bound::Unbounded => max,
+    };
+
+    (start, end)
 }
 
 /// An entry for a file with the given name

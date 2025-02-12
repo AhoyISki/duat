@@ -121,6 +121,7 @@ pub struct Text {
     history: Option<Box<History>>,
     readers: Vec<(Box<dyn Reader>, Vec<Range<usize>>)>,
     ts_parser: Option<(Box<TsParser>, Vec<Range<usize>>)>,
+    has_changed: bool,
     // Used in Text building
     forced_new_line: bool,
 }
@@ -173,6 +174,7 @@ impl Text {
             readers: Vec::new(),
             ts_parser: None,
             forced_new_line,
+            has_changed: false,
         }
     }
 
@@ -327,7 +329,7 @@ impl Text {
     /// Returns the two `&str`s in the byte range.
     fn strs_in_range_inner(&self, range: impl RangeBounds<usize>) -> [&str; 2] {
         let (s0, s1) = self.buf.as_slices();
-        let (start, end) = get_ends(range, self.len().byte());
+        let (start, end) = crate::get_ends(range, self.len().byte());
         let (start, end) = (start, end);
         // Make sure the start and end are in character bounds.
         assert!(
@@ -656,6 +658,7 @@ impl Text {
         let (start, end) = (self.point_at(range.start), self.point_at(range.end));
         let change = Change::new(edit, (start, end), self);
 
+        self.has_changed = true;
         self.replace_range_inner(change.as_ref());
         self.history.as_mut().map(|h| h.add_change(None, change));
     }
@@ -665,6 +668,7 @@ impl Text {
         guess_i: Option<usize>,
         change: Change<String>,
     ) -> Option<usize> {
+        self.has_changed = true;
         self.replace_range_inner(change.as_ref());
         self.history.as_mut().map(|h| h.add_change(guess_i, change))
     }
@@ -693,35 +697,12 @@ impl Text {
             [str.len(), str.chars().count(), lines]
         };
 
-        let mut readers = std::mem::take(&mut self.readers);
-        let ts = self.ts_parser.take();
-        for (reader, _) in readers.iter_mut() {
-            reader.before_change(self, change);
-        }
-
         let start_rec = [start.byte(), start.char(), start.line()];
         self.records.transform(start_rec, old_len, new_len);
         self.records.insert(start_rec);
 
         self.tags
             .transform(start.byte()..taken_end.byte(), change.added_end().byte());
-
-        if let Some((mut ts, mut ranges)) = ts {
-            for range in ts.after_change(self, change) {
-                if !range.is_empty() {
-                    merge_range_in(&mut ranges, range);
-                }
-            }
-            self.ts_parser = Some((ts, ranges));
-        }
-        for (reader, ranges) in readers.iter_mut() {
-            for range in reader.after_change(self, change) {
-                if !range.is_empty() {
-                    merge_range_in(ranges, range);
-                }
-            }
-        }
-        self.readers = readers;
     }
 
     /// This is used by [`Area`]s in order to update visible text
@@ -733,10 +714,27 @@ impl Text {
     /// This should be done within the [`Area::print`] and
     /// [`Area::print_with`] functions.
     pub fn update_range(&mut self, range: (Point, Point)) {
-        let within = range.0.byte()..range.1.byte();
+        let within = range.0.byte()..(range.1.byte() + 1);
         let mut readers = std::mem::take(&mut self.readers);
-        let ts = self.ts_parser.take();
+        let mut ts = self.ts_parser.take();
 
+        if let Some(changes) = self.history.as_mut().and_then(|h| h.unprocessed_changes()) {
+            let changes: Vec<Change<&str>> = changes.iter().map(|c| c.as_ref()).collect();
+            self.process_changes(&mut ts, &mut readers, &changes);
+        }
+
+        if let Some((ts, ranges)) = ts.as_mut() {
+            let mut new_ranges = Vec::new();
+
+            for range in ranges.iter() {
+                let (to_check, split_off) = split_range_within(range.clone(), within.clone());
+                if let Some(range) = to_check {
+                    ts.update_range(self, range);
+                }
+                new_ranges.extend(split_off.into_iter().flatten());
+            }
+            *ranges = new_ranges
+        }
         for (reader, ranges) in readers.iter_mut() {
             let mut new_ranges = Vec::new();
 
@@ -747,32 +745,58 @@ impl Text {
                 }
                 new_ranges.extend(split_off.into_iter().flatten());
             }
-
             *ranges = new_ranges;
         }
+        self.tags.update_range(within);
 
+        self.has_changed = false;
         self.readers = readers;
+        self.ts_parser = ts;
+    }
 
-        if let Some((mut ts, ranges)) = ts {
-            let mut new_ranges = Vec::new();
+    fn process_changes(
+        &mut self,
+        ts: &mut Option<(Box<TsParser>, Vec<Range<usize>>)>,
+        readers: &mut Vec<(Box<dyn Reader>, Vec<Range<usize>>)>,
+        changes: &[Change<&str>],
+    ) {
+        const MAX_RANGES_TO_CONSIDER: usize = 15;
+        if let Some((ts, _)) = ts.as_mut() {
+            ts.apply_changes(self, changes);
+        }
+        for (reader, _) in readers.iter_mut() {
+            reader.apply_changes(self, changes);
+        }
 
-            for range in ranges.iter() {
-                let (to_check, split_off) = split_range_within(range.clone(), within.clone());
-                if let Some(range) = to_check {
-                    ts.update_range(self, range);
+        if changes.len() <= MAX_RANGES_TO_CONSIDER {
+            if let Some((ts, ranges)) = ts.as_mut() {
+                for range in ts.ranges_to_update(self, changes) {
+                    if !range.is_empty() {
+                        merge_range_in(ranges, range);
+                    }
                 }
-                new_ranges.extend(split_off.into_iter().flatten());
             }
-
-            self.ts_parser = Some((ts, new_ranges));
+            for (reader, ranges) in readers.iter_mut() {
+                for range in reader.ranges_to_update(self, changes) {
+                    if !range.is_empty() {
+                        merge_range_in(ranges, range);
+                    }
+                }
+            }
+        // If there are too many changes, cut on processing and
+        // just assume that everything needs to be updated.
+        } else {
+            let ts_range_iter = ts.as_mut().map(|(_, r)| r).into_iter();
+            for range in ts_range_iter.chain(readers.iter_mut().map(|(_, r)| r)) {
+                *range = vec![0..self.len().byte()];
+            }
         }
     }
 
     pub fn needs_update(&self) -> bool {
-        self.ts_parser
-            .as_ref()
-            .is_some_and(|(_, ranges)| !ranges.is_empty())
-            || self.readers.iter().any(|(_, ranges)| !ranges.is_empty())
+        self.has_changed
+            || self.ts_parser.as_ref().is_some_and(|(_, r)| !r.is_empty())
+            || self.readers.iter().any(|(_, r)| !r.is_empty())
     }
 
     ////////// History manipulation functions
@@ -782,27 +806,13 @@ impl Text {
         let Some(mut history) = self.history.take() else {
             return;
         };
-        let Some(moment) = history.move_backwards() else {
+        let Some(changes) = history.move_backwards() else {
             return;
         };
 
-        cursors.clear();
+        self.apply_and_process_changes(&changes, Some((area, cursors, cfg)));
 
-        let mut shift = (0, 0, 0);
-
-        for (i, change) in moment.iter().enumerate() {
-            let mut change = change.as_ref();
-            change.shift_by(shift);
-            self.replace_range_inner(change.reverse());
-
-            let start = change.start();
-            cursors.insert_from_parts(i, start, change.taken_text().len(), self, area, cfg);
-
-            shift.0 += change.taken_end().byte() as i32 - change.added_end().byte() as i32;
-            shift.1 += change.taken_end().char() as i32 - change.added_end().char() as i32;
-            shift.2 += change.taken_end().line() as i32 - change.added_end().line() as i32;
-        }
-
+        self.has_changed = true;
         self.history = Some(history);
     }
 
@@ -811,20 +821,41 @@ impl Text {
         let Some(mut history) = self.history.take() else {
             return;
         };
-        let Some(moment) = history.move_forward() else {
+        let Some(changes) = history.move_forward() else {
             return;
         };
 
-        cursors.clear();
+        self.apply_and_process_changes(&changes, Some((area, cursors, cfg)));
 
-        for (i, change) in moment.iter().enumerate() {
-            let start = change.start();
-            self.replace_range_inner(change.as_ref());
+        self.has_changed = true;
+        self.history = Some(history);
+    }
 
-            cursors.insert_from_parts(i, start, change.added_text().len(), self, area, cfg);
+    pub fn apply_and_process_changes(
+        &mut self,
+        changes: &[Change<&str>],
+        mut cursors_to_remake: Option<(&impl Area, &mut Cursors, PrintCfg)>,
+    ) {
+        if let Some((_, cursors, _)) = cursors_to_remake.as_mut() {
+            cursors.clear();
         }
 
-        self.history = Some(history);
+        for (i, change) in changes.iter().enumerate() {
+            let start = change.start();
+            self.replace_range_inner(*change);
+
+            let Some((area, cursors, cfg)) = cursors_to_remake.as_mut() else {
+                continue;
+            };
+            cursors.insert_from_parts(i, start, change.added_text().len(), self, *area, *cfg);
+        }
+        let mut ts = self.ts_parser.take();
+        let mut readers = std::mem::take(&mut self.readers);
+
+        self.process_changes(&mut ts, &mut readers, changes);
+
+        self.ts_parser = ts;
+        self.readers = readers;
     }
 
     /// Finishes the current moment and adds a new one to the history
@@ -912,6 +943,7 @@ impl Text {
     /// Inserts a [`Tag`] at the given position
     pub fn insert_tag(&mut self, at: usize, tag: Tag, key: Key) {
         self.tags.insert(at, tag, key);
+        self.has_changed = true;
     }
 
     /// Removes the [`Tag`]s of a [key] from a region
@@ -937,6 +969,7 @@ impl Text {
         } else {
             self.tags.remove_from(range, keys)
         }
+        self.has_changed = true;
     }
 
     /// Removes all [`Tag`]s
@@ -967,6 +1000,7 @@ impl Text {
                 }
             }
         }
+        self.has_changed = true;
     }
 
     /// Adds the tags for all the cursors, used after they are
@@ -1122,6 +1156,7 @@ impl Clone for Text {
             readers: Vec::new(),
             ts_parser: None,
             forced_new_line: self.forced_new_line,
+            has_changed: self.has_changed,
         }
     }
 }
@@ -1165,22 +1200,6 @@ fn cursor_tags(is_main: bool) -> [Tag; 3] {
     }
 }
 
-/// Convenience function for the bounds of a range
-fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize, usize) {
-    let start = match range.start_bound() {
-        std::ops::Bound::Included(start) => *start,
-        std::ops::Bound::Excluded(start) => *start + 1,
-        std::ops::Bound::Unbounded => 0,
-    };
-    let end = match range.end_bound() {
-        std::ops::Bound::Included(end) => (*end + 1).min(max),
-        std::ops::Bound::Excluded(end) => (*end).min(max),
-        std::ops::Bound::Unbounded => max,
-    };
-
-    (start, end)
-}
-
 /// Splits a range within a region
 ///
 /// The first return is the part of `within` that must be updated.
@@ -1209,25 +1228,38 @@ fn split_range_within(
 /// Since ranges are not allowed to intersect, they will be sorted
 /// both in their starting bound and in their ending bound.
 fn merge_range_in(ranges: &mut Vec<Range<usize>>, range: Range<usize>) {
-    let (Ok(i) | Err(i)) = ranges.binary_search_by_key(&range.start, |r| r.start);
-    if let Some(r) = ranges.get(i).cloned() {
-        if range.end < r.start {
-            ranges.insert(i, range);
-        } else if range.end <= r.end {
-            ranges.splice(i..=i, [range.start..r.end]);
-        } else {
-            let (Ok(j) | Err(j)) = ranges.binary_search_by_key(&range.end, |r| r.end);
-            if let Some(r) = ranges.get(j).cloned()
-                && r.start <= range.end
+    let (r_range, start) = match ranges.binary_search_by_key(&range.start, |r| r.start) {
+        // Same thing here
+        Ok(i) => (i..i + 1, range.start),
+        Err(i) => {
+            // This is if we intersect the added part
+            if let Some(older_i) = i.checked_sub(1)
+                && range.start <= ranges[older_i].end
             {
-                ranges.splice(i..=j, [range.start..r.end]);
+                (older_i..i, ranges[older_i].start)
+            // And here is if we intersect nothing on the
+            // start, no changes drained.
             } else {
-                ranges.splice(i..j, [range.start..range.end]);
+                (i..i, range.start)
             }
         }
-    } else {
-        ranges.insert(i, range);
-    }
+    };
+    let start_i = r_range.end;
+    // Otherwise search ahead for another change to be merged
+    let (r_range, end) = match ranges[start_i..].binary_search_by_key(&range.end, |r| r.start) {
+        Ok(i) => (r_range.start..start_i + i + 1, ranges[start_i + i].end),
+        Err(i) => {
+            if let Some(older) = ranges.get(start_i + i)
+                && older.start <= range.end
+            {
+                (r_range.start..start_i + i + 1, range.end.max(older.end))
+            } else {
+                (r_range.start..start_i + i, range.end)
+            }
+        }
+    };
+
+    ranges.splice(r_range, [start..end]);
 }
 
 impl From<&std::path::PathBuf> for Text {

@@ -50,7 +50,7 @@ pub fn main_char(cursors: &Cursors) -> usize {
 
 /// The col of the main cursor in the file. Indexed at 1
 pub fn main_col(cursors: &Cursors) -> usize {
-    cursors.get_main().unwrap_or_default().col() + 1
+    cursors.get_main().unwrap_or_default().vcol() + 1
 }
 
 /// The line of the main cursor in the file. Indexed at 1

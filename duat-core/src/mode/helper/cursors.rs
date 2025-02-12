@@ -13,15 +13,16 @@ use crate::{
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Cursors {
     buf: CursorGapBuffer,
-    main: usize,
+    main_i: usize,
     is_incl: bool,
 }
 
 impl Cursors {
+    ////////// Definition functions
     pub fn new_excl() -> Self {
         Self {
             buf: CursorGapBuffer(gap_buffer![Cursor::default()]),
-            main: 0,
+            main_i: 0,
             is_incl: false,
         }
     }
@@ -29,9 +30,16 @@ impl Cursors {
     pub fn new_incl() -> Self {
         Self {
             buf: CursorGapBuffer(gap_buffer![Cursor::default()]),
-            main: 0,
+            main_i: 0,
             is_incl: true,
         }
+    }
+
+    pub fn reset_on_byte(&mut self, b: usize, text: &Text, area: &impl Area, cfg: PrintCfg) {
+        let point = text.point_at(b.min(text.len().byte()));
+        let cursor = Cursor::new(point, text, area, cfg);
+        self.buf = CursorGapBuffer(gap_buffer![cursor]);
+        self.main_i = 0;
     }
 
     pub fn make_excl(&mut self) {
@@ -42,6 +50,7 @@ impl Cursors {
         self.is_incl = true;
     }
 
+    ////////// Insertion functions
     pub fn insert_from_parts(
         &mut self,
         guess_i: usize,
@@ -61,78 +70,6 @@ impl Cursors {
             cursor.move_hor(range as i32, text, area, cfg);
         }
         self.insert(guess_i, false, cursor)
-    }
-
-    pub fn rotate_main(&mut self, amount: i32) {
-        self.main = (self.main as i32 + amount).rem_euclid(100) as usize
-    }
-
-    pub fn remove_extras(&mut self) {
-        if !self.is_empty() {
-            let cursor = self.buf[self.main];
-            self.buf = CursorGapBuffer(gap_buffer![cursor]);
-        }
-        self.main = 0;
-    }
-
-    /// The main [`Cursor`] in use
-    ///
-    /// # Panics
-    ///
-    /// Will panic if there are no [`Cursor`]s
-    pub fn main(&self) -> &Cursor {
-        &self.buf[self.main]
-    }
-
-    pub fn get_main(&self) -> Option<Cursor> {
-        self.get(self.main)
-    }
-
-    pub fn get(&self, i: usize) -> Option<Cursor> {
-        self.buf.get(i).cloned()
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = (&Cursor, bool)> {
-        self.buf
-            .iter()
-            .enumerate()
-            .map(move |(index, cursor)| (cursor, index == self.main))
-    }
-
-    pub fn main_index(&self) -> usize {
-        self.main
-    }
-
-    pub fn len(&self) -> usize {
-        self.buf.len()
-    }
-
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    pub fn is_incl(&self) -> bool {
-        self.is_incl
-    }
-
-    pub fn clear(&mut self) {
-        self.buf = CursorGapBuffer(GapBuffer::new())
-    }
-
-    pub fn reset(&mut self) {
-        self.remove_extras();
-        self.buf[self.main] = Cursor::default();
-    }
-
-    pub(super) fn remove(&mut self, i: usize) -> Option<(Cursor, bool)> {
-        (i < self.buf.len()).then(|| {
-            let was_main = self.main == i;
-            if self.main >= i {
-                self.main = self.main.saturating_sub(1);
-            }
-            (self.buf.remove(i), was_main)
-        })
     }
 
     pub(super) fn insert(&mut self, guess_i: usize, was_main: bool, cursor: Cursor) -> usize {
@@ -202,12 +139,84 @@ impl Cursors {
         self.buf.insert(c_range.start, cursor);
 
         if was_main {
-            self.main = c_range.start;
-        } else if self.main > c_range.start {
-            self.main = (self.main - c_range.clone().count()).max(c_range.start)
+            self.main_i = c_range.start;
+        } else if self.main_i > c_range.start {
+            self.main_i = (self.main_i - c_range.clone().count()).max(c_range.start)
         }
 
         c_range.start
+    }
+
+    pub fn rotate_main(&mut self, amount: i32) {
+        self.main_i = (self.main_i as i32 + amount).rem_euclid(100) as usize
+    }
+
+    pub fn remove_extras(&mut self) {
+        if !self.is_empty() {
+            let cursor = self.buf[self.main_i];
+            self.buf = CursorGapBuffer(gap_buffer![cursor]);
+        }
+        self.main_i = 0;
+    }
+
+    /// The main [`Cursor`] in use
+    ///
+    /// # Panics
+    ///
+    /// Will panic if there are no [`Cursor`]s
+    pub fn main(&self) -> &Cursor {
+        &self.buf[self.main_i]
+    }
+
+    pub fn get_main(&self) -> Option<Cursor> {
+        self.get(self.main_i)
+    }
+
+    pub fn get(&self, i: usize) -> Option<Cursor> {
+        self.buf.get(i).cloned()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&Cursor, bool)> {
+        self.buf
+            .iter()
+            .enumerate()
+            .map(move |(index, cursor)| (cursor, index == self.main_i))
+    }
+
+    pub fn main_index(&self) -> usize {
+        self.main_i
+    }
+
+    pub fn len(&self) -> usize {
+        self.buf.len()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn is_incl(&self) -> bool {
+        self.is_incl
+    }
+
+    pub fn clear(&mut self) {
+        self.buf = CursorGapBuffer(GapBuffer::new())
+    }
+
+    pub fn reset(&mut self) {
+        self.remove_extras();
+        self.buf[self.main_i] = Cursor::default();
+    }
+
+    pub(super) fn remove(&mut self, i: usize) -> Option<(Cursor, bool)> {
+        (i < self.buf.len()).then(|| {
+            let was_main = self.main_i == i;
+            if self.main_i >= i {
+                self.main_i = self.main_i.saturating_sub(1);
+            }
+            (self.buf.remove(i), was_main)
+        })
     }
 
     pub(super) fn shift_by(
@@ -227,8 +236,8 @@ impl Cursors {
         &mut self,
         range: impl RangeBounds<usize>,
     ) -> impl Iterator<Item = (Cursor, bool)> + '_ {
-        let orig_main = self.main;
-        self.main = 0;
+        let orig_main = self.main_i;
+        self.main_i = 0;
         self.buf
             .drain(range)
             .enumerate()
@@ -240,7 +249,7 @@ impl Cursors {
 
     pub(super) fn populate(&mut self) {
         if self.buf.0.is_empty() {
-            self.main = 0;
+            self.main_i = 0;
             self.buf.0 = gap_buffer![Cursor::default()];
         }
     }
@@ -250,7 +259,7 @@ impl Default for Cursors {
     fn default() -> Self {
         Self {
             buf: CursorGapBuffer(GapBuffer::new()),
-            main: 0,
+            main_i: 0,
             is_incl: false,
         }
     }

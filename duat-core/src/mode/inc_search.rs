@@ -49,7 +49,7 @@ impl<U: Ui> IncSearcher<U> for Fwd<U> {
 
         let mut helper = EditHelper::new_inc(file, area, cursors, searcher);
 
-        helper.move_each(|mut m| {
+        helper.move_many(.., |mut m| {
             let caret = m.caret();
             let next = m.search_inc_fwd(None).find(|(p, _)| *p != caret);
             if let Some((p0, p1)) = next {
@@ -94,7 +94,7 @@ impl<U: Ui> IncSearcher<U> for Rev<U> {
 
         let mut helper = EditHelper::new_inc(file, area, cursors, searcher);
 
-        helper.move_each(|mut m| {
+        helper.move_many(.., |mut m| {
             let caret = m.caret();
             let next = m.search_inc_rev(None).find(|(_, p)| *p != caret);
             if let Some((p0, p1)) = next {
@@ -139,7 +139,7 @@ impl<U: Ui> IncSearcher<U> for ExtendFwd<U> {
 
         let mut helper = EditHelper::new_inc(file, area, cursors, searcher);
 
-        helper.move_each(|mut m| {
+        helper.move_many(.., |mut m| {
             let caret = m.caret();
             let next = m.search_inc_fwd(None).find(|(p, _)| *p != caret);
             if let Some((_, p1)) = next {
@@ -185,7 +185,7 @@ impl<U: Ui> IncSearcher<U> for ExtendRev<U> {
 
         let mut helper = EditHelper::new_inc(file, area, cursors, searcher);
 
-        helper.move_each(|mut m| {
+        helper.move_many(.., |mut m| {
             let caret = m.caret();
             let next = m.search_inc_rev(None).find(|(_, p)| *p != caret);
             if let Some((p0, _)) = next {

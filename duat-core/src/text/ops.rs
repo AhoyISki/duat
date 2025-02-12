@@ -72,6 +72,14 @@ impl Point {
         self.l as usize
     }
 
+    pub fn checked_sub(self, rhs: Point) -> Option<Point> {
+        Some(Self {
+            b: self.b.checked_sub(rhs.b)?,
+            c: self.c.checked_sub(rhs.c)?,
+            l: self.l.checked_sub(rhs.l)?,
+        })
+    }
+
     ////////// Shifting functions
 
     /// Moves a [`Point`] forward by one character
@@ -89,24 +97,6 @@ impl Point {
             b: self.b - char.len_utf8() as u32,
             c: self.c - 1,
             l: self.l - (char == '\n') as u32,
-        }
-    }
-
-    /// Moves a [`Point`] forward by one byte
-    pub(super) fn fwd_byte(self, byte: u8) -> Self {
-        Self {
-            b: self.b + 1,
-            c: self.c + utf8_char_width(byte),
-            l: self.l + (byte == b'\n') as u32,
-        }
-    }
-
-    /// Moves a [`Point`] in reverse by one byte
-    pub(super) fn rev_byte(self, byte: u8) -> Self {
-        Self {
-            b: self.b - 1,
-            c: self.c - utf8_char_width(byte),
-            l: self.l - (byte == b'\n') as u32,
         }
     }
 

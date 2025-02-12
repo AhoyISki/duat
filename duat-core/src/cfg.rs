@@ -144,8 +144,6 @@ pub struct PrintCfg {
     // NOTE: This is relevant for printing with `WrapMethod::Word`
     /// Characters that are considered to be part of a word.
     pub word_chars: WordChars,
-    /// Whether or not to print an extra space for cursors
-    pub ending_space: bool,
     /// Whether or not to limit scrolloff on the end of lines
     pub force_scrolloff: bool,
 }
@@ -159,7 +157,6 @@ impl PrintCfg {
             new_line: NewLine::Hidden,
             scrolloff: ScrollOff { x: 3, y: 3 },
             word_chars: WordChars::default(),
-            ending_space: false,
             force_scrolloff: false,
         }
     }
@@ -227,10 +224,6 @@ impl PrintCfg {
         Self { word_chars, ..self }
     }
 
-    pub const fn with_ending_space(self) -> Self {
-        Self { ending_space: true, ..self }
-    }
-
     pub const fn with_forced_scrolloff(self) -> Self {
         Self { force_scrolloff: true, ..self }
     }
@@ -246,7 +239,6 @@ impl PrintCfg {
             new_line: NewLine::AlwaysAs(' '),
             scrolloff: ScrollOff { x: 3, y: 3 },
             word_chars: WordChars::default(),
-            ending_space: true,
             force_scrolloff: false,
         }
     }
@@ -342,11 +334,6 @@ impl IterCfg {
     #[inline]
     pub const fn word_chars(&self) -> &WordChars {
         &self.cfg.word_chars
-    }
-
-    #[inline]
-    pub const fn ending_space(&self) -> bool {
-        self.cfg.ending_space
     }
 
     #[inline]

@@ -24,7 +24,7 @@ pub use self::{
         Tag,
     },
 };
-use super::{Point, Text, get_ends, records::Records};
+use super::{Point, Text, records::Records};
 
 /// How many characters to keep a [`TagRange`]
 const MIN_CHARS_TO_KEEP: usize = 75;
@@ -45,6 +45,7 @@ pub struct Tags {
     range_min: usize,
     ranges: Vec<(usize, RawTag)>,
     records: Records<[usize; 2]>,
+    ranges_to_update: Vec<Range<usize>>,
 }
 
 impl Tags {
@@ -57,6 +58,7 @@ impl Tags {
             toggles: HashMap::new(),
             range_min: MIN_CHARS_TO_KEEP,
             records: Records::new(),
+            ranges_to_update: Vec::new(),
         }
     }
 
@@ -69,6 +71,7 @@ impl Tags {
             toggles: HashMap::new(),
             range_min: MIN_CHARS_TO_KEEP,
             records: Records::with_max([1, len]),
+            ranges_to_update: Vec::new(),
         }
     }
 
@@ -122,6 +125,13 @@ impl Tags {
         }
 
         let n = if at == b {
+            // let n = if !tag.is_end() {
+            //    n - rev_range(&self.buf, ..n)
+            //        .take_while(|(_, ts)| ts.is_tag())
+            //        .count()
+            //} else {
+            //    n
+            //};
             self.buf.insert(n, TagOrSkip::Tag(tag));
             self.records.transform([n, at], [0, 0], [1, 0]);
             self.records.insert([n, at]);
@@ -191,7 +201,7 @@ impl Tags {
 
     /// Removes all [`RawTag`]s of a give [`Keys`]
     pub fn remove_from(&mut self, range: impl RangeBounds<usize>, keys: impl Keys) {
-        let (start, end) = get_ends(range, self.len_bytes());
+        let (start, end) = crate::get_ends(range, self.len_bytes());
         let Some([n, b, _]) = self.get_skip_behind(start) else {
             return;
         };
@@ -216,16 +226,10 @@ impl Tags {
             _ => return,
         };
 
-        let (removed, total): (Vec<(usize, RawTag)>, usize) = {
-            let mut total = 0;
-            let removed = rev_range(&self.buf, ..n)
-                .map_while(|(n, ts)| Some(n).zip(ts.as_tag()))
-                .inspect(|_| total += 1)
-                .filter(|(_, t)| f(t))
-                .collect();
-
-            (removed, total)
-        };
+        let removed: Vec<(usize, RawTag)> = rev_range(&self.buf, ..n)
+            .map_while(|(n, ts)| Some(n).zip(ts.as_tag()))
+            .filter(|(_, t)| f(t))
+            .collect();
 
         if removed.is_empty() {
             return;
@@ -233,25 +237,45 @@ impl Tags {
 
         for &(i, tag) in removed.iter() {
             self.buf.remove(i);
-            if let Ok(i) = self.ranges.binary_search(&(b, tag)) {
-                self.ranges.remove(i);
+            if tag.is_start() || tag.is_end() {
+                if let Ok(i) = self.ranges.binary_search(&(b, tag)) {
+                    self.ranges.remove(i);
+                }
             }
         }
 
-        self.records
-            .transform([n, b], [total, 0], [total - removed.len(), 0]);
+        self.records.transform([n, b], [removed.len(), 0], [0, 0]);
+
+        // I wish this was not necessary, but I need to add potential matches
+        // to the ranges, because this removal may take place outside the
+        // screen, where it won't get updated, but I still want to show very
+        // long ranges accurately in this situation.
+        // This will not _necessarily_ be correct, since it won't look for
+        // matches of matches, but it will have the intended effect of adding
+        // at least one open range, which would look the same from any point
+        // in the text after it.
+        // This will later be remedied by updating the ranges.
+        let removed: Vec<(usize, RawTag)> = removed.into_iter().map(|(_, t)| (at, t)).collect();
+        let n = n - removed.len();
+        for entry in pairs_of_removed(&self.buf, &removed, (n, b), at..at, self.range_min) {
+            if let Err(i) = self.ranges.binary_search(&entry) {
+                self.ranges.insert(i, entry);
+            }
+        }
 
         // Try to merge this skip with the previous one.
-        if let Some(i) = n.checked_sub(removed.len() + 1)
+        if let Some(i) = n.checked_sub(1)
             && skip > 0
             && let Some(TagOrSkip::Skip(prev)) = self.buf.get(i)
         {
             let range = i..=i + 1;
             self.buf
                 .splice(range, [TagOrSkip::Skip(prev + skip as u32)]);
-            self.records
-                .transform([n - removed.len(), b], [1, 0], [0, 0]);
+            self.records.transform([n, b], [1, 0], [0, 0]);
         }
+        let s_update = at.saturating_sub(self.range_min);
+        let e_update = at + self.range_min;
+        super::merge_range_in(&mut self.ranges_to_update, s_update..e_update);
     }
 
     /// Transforms a byte range into another byte range
@@ -261,7 +285,7 @@ impl Tags {
     pub fn transform(&mut self, old: Range<usize>, new_end: usize) {
         let new = old.start..new_end;
         // In case we're appending to the GapBuffer, a shortcut can be made.
-        let Some([n, b, skip]) = self.get_skip_at(old.start) else {
+        let Some([s_n, s_b, s_skip]) = self.get_skip_at(old.start) else {
             let last = self.buf.len().saturating_sub(1);
             let new_len = (new.end - old.start) as u32;
             if let Some(TagOrSkip::Skip(skip)) = self.buf.get_mut(last) {
@@ -277,43 +301,110 @@ impl Tags {
 
         // Old length removal.
         if old.end > old.start {
-            let len = old.end - old.start;
+            let rm_b = old.end - old.start;
             // If the range to be removed is contained within one skip,
             // there is no need to check for where it ends.
-            let (end_n, end_b) = if old.start + len <= b + skip {
-                (n, b + skip)
+            let (e_n, e_b) = if old.start + rm_b <= s_b + s_skip {
+                (s_n, s_b + s_skip)
             } else {
                 // The check for the final skip is a `get_skip_behind` because we
                 // don't want to remove one skip ahead of the end in the cases of
                 // `old.start + len == some_skip`, since that would remove the tags at
                 // the end of   the range.
-                self.get_skip_behind(old.start + len)
+                self.get_skip_behind(old.start + rm_b)
                     .map(|[n, b, skip]| (n, b + skip))
                     .unwrap()
             };
 
-            let (removed, added) = {
-                let skip = (end_b - b - len) as u32;
+            let (rm, added_n, rm_before_n, rm_after_n) = {
+                let skip = (e_b - s_b - rm_b) as u32;
                 let replacement = (skip > 0).then_some(TagOrSkip::Skip(skip));
 
-                let removed = self
-                    .buf
-                    .splice(n..=end_n, replacement)
-                    .scan(b, |p, ts| {
-                        *p += ts.len();
-                        Some((*p - ts.len(), ts))
-                    })
-                    .filter_map(|(p, ts)| ts.as_tag().map(|t| (p, t)));
+                let mut rm_before = Vec::new();
+                let mut rm_after = Vec::new();
+                let mut rm_pairs_before_n = 0;
+                let mut rm_pairs_after_n = 0;
 
-                (removed, replacement.is_some() as usize)
+                // If the range collapses into a single byte, get rid of duplicates
+                // and pairs.
+                if replacement.is_none() && new_end == old.start {
+                    let mut dupes_and_pairs: Vec<(usize, usize, RawTag)> = Vec::new();
+                    let mut to_remove = Vec::new();
+                    for (i, b, t) in rev_range(&self.buf, ..s_n)
+                        .map_while(|(i, ts)| ts.as_tag().map(|t| (i, s_b, t)))
+                        .chain(
+                            fwd_range(&self.buf, (e_n + 1)..)
+                                .map_while(|(i, ts)| ts.as_tag().map(|t| (i, e_b, t))),
+                        )
+                    {
+                        if let Some(j) = dupes_and_pairs
+                            .iter()
+                            .position(|(.., p)| p.ends_with(&t) || t.ends_with(p))
+                        {
+                            if b == s_b {
+                                rm_pairs_before_n += 1;
+                                to_remove.insert(0, i);
+                            } else {
+                                rm_pairs_after_n += 1;
+                                to_remove.push(i);
+                            }
+                            let (i, b, _) = dupes_and_pairs.remove(j);
+                            let (Ok(k) | Err(k)) = to_remove.binary_search_by_key(&i, |i| *i);
+                            to_remove.insert(k, i);
+                            if b == s_b {
+                                rm_pairs_before_n += 1;
+                            } else {
+                                rm_pairs_after_n += 1;
+                            }
+                        } else if dupes_and_pairs.iter().any(|(.., d)| *d == t) {
+                            if b == s_b {
+                                rm_before.push((b, t));
+                                to_remove.insert(0, i);
+                            } else {
+                                rm_after.push((b, t));
+                                to_remove.push(i);
+                            }
+                        } else {
+                            dupes_and_pairs.push((i, b, t));
+                        };
+                    }
+
+                    for i in to_remove.into_iter().rev() {
+                        self.buf.remove(i);
+                    }
+                }
+
+                let rm_before_n = rm_before.len() + rm_pairs_before_n;
+                let rm_after_n = rm_after.len() + rm_pairs_after_n;
+                let range = s_n - rm_before_n..=e_n - rm_before_n;
+                let mut rm = rm_before;
+                rm.extend(
+                    self.buf
+                        .splice(range, replacement)
+                        .scan(s_b, |b, ts| {
+                            *b += ts.len();
+                            Some((*b - ts.len(), ts))
+                        })
+                        .filter_map(|(b, ts)| ts.as_tag().map(|t| (b, t))),
+                );
+                rm.extend(rm_after);
+
+                (rm, replacement.is_some() as usize, rm_before_n, rm_after_n)
             };
 
-            let new_n = 1 + end_n - n;
-            self.records.transform([n, b], [new_n, len], [added, 0]);
+            let rm_n = rm_before_n + rm_after_n + e_n + 1 - s_n;
+            let s_n = s_n - rm_before_n;
+            self.records
+                .transform([s_n, s_b], [rm_n, rm_b], [added_n, 0]);
 
-            for entry in removed {
-                if let Ok(i) = self.ranges.binary_search(&entry) {
+            for entry in &rm {
+                if let Ok(i) = self.ranges.binary_search(entry) {
                     self.ranges.remove(i);
+                }
+            }
+            for entry in pairs_of_removed(&self.buf, &rm, (s_n, s_b), new.clone(), self.range_min) {
+                if let Err(i) = self.ranges.binary_search(&entry) {
+                    self.ranges.insert(i, entry);
                 }
             }
         }
@@ -321,9 +412,11 @@ impl Tags {
         // New length insertion is straightforward, just add the len, dummy.
         if new_end > old.start {
             let len = new_end - old.start;
-            let new_skip = self.buf[n].len();
-            self.buf[n] = TagOrSkip::Skip((new_skip + len) as u32);
-            self.records.transform([n, b], [0, 0], [0, len]);
+            let new_skip = self.buf[s_n].len();
+            self.buf[s_n] = TagOrSkip::Skip((new_skip + len) as u32);
+            self.records.transform([s_n, s_b], [0, 0], [0, len]);
+            // If there is no new len, I'll remove pairs and
+            // duplicates from the starting position.
         }
 
         ////////// Range management
@@ -334,8 +427,43 @@ impl Tags {
                 *b = b.saturating_add_signed(range_diff)
             }
         }
-        self.process_ranges_around(new.clone(), range_diff as i32);
+        let start = new.start.saturating_sub(self.range_min);
+        let end = new.end + self.range_min;
+        super::merge_range_in(&mut self.ranges_to_update, start..end);
+    }
+
+    pub fn update_range(&mut self, within: Range<usize>) {
+        crate::log_file!("within: {within:?}");
+        let mut new_ranges = Vec::new();
+        let ranges = std::mem::take(&mut self.ranges_to_update);
+        let mut update = false;
+        for range in ranges.into_iter() {
+            update = true;
+            let (to_check, split_off) = super::split_range_within(range.clone(), within.clone());
+            if let Some(range) = to_check {
+                let (Ok(s_i) | Err(s_i)) =
+                    self.ranges.binary_search_by_key(&range.start, |(b, _)| *b);
+                let (Ok(e_i) | Err(e_i)) =
+                    self.ranges.binary_search_by_key(&range.end, |(b, _)| *b);
+                self.ranges.drain(s_i..e_i);
+
+                let [n, b, _] = self.get_skip_behind(range.start).unwrap_or([0, 0, 0]);
+
+                for entry in ranges_in(&self.buf, (n, b), range, self.range_min) {
+                    if let Err(i) = self.ranges.binary_search(&entry) {
+                        self.ranges.insert(i, entry);
+                    }
+                }
+            }
+            new_ranges.extend(split_off.into_iter().flatten());
+        }
+
+        self.ranges_to_update = new_ranges;
+
         self.cull_small_ranges();
+        if update {
+            crate::log_file!("{self:#?}");
+        }
     }
 
     /// Returns true if there are no [`RawTag`]s
@@ -467,93 +595,6 @@ impl Tags {
         })
     }
 
-    /// Given a range, add or remove [`TagRange`]s around it
-    fn process_ranges_around(&mut self, range: Range<usize>, range_diff: i32) {
-        let (b_range, a_range) = {
-            let before_start = range.start.saturating_sub(self.range_min);
-            // in case `range.start == range.end`, we would be double
-            // checking that position, so we shift once to the right.
-            let cross_shift = (range.end == range.start) as usize;
-            let after_start = (range.end + cross_shift).min(self.len_bytes());
-            let after_end = (range.end + self.range_min).min(self.len_bytes());
-
-            (before_start..=range.start, after_start..=after_end)
-        };
-
-        let b_tags = {
-            let (n, b) = self
-                .get_skip_at(*b_range.start())
-                .map(|[n, b, _]| (n, b))
-                .unwrap_or((self.buf.len(), self.len_bytes()));
-
-            fwd_range(&self.buf, n..)
-                .filter_map(entries_fwd(b))
-                .take_while(|(_, b, _)| *b <= *b_range.end())
-        };
-
-        let a_tags = {
-            let (mut n, b) = self
-                .get_skip_at(*a_range.start())
-                .map(|[n, b, _]| (n, b))
-                .unwrap_or((self.buf.len(), self.len_bytes()));
-
-            if b == *a_range.start() {
-                n -= rev_range(&self.buf, ..n)
-                    .take_while(|(_, ts)| ts.is_tag())
-                    .count();
-            }
-
-            fwd_range(&self.buf, n..)
-                .filter_map(entries_fwd(b))
-                .take_while(|&(_, b, _)| b <= *a_range.end())
-        };
-
-        // This creates a list of entries whose range >= self.range_min, by
-        // having only one bound or being bounded before and after the range,
-        // sufficiently apart.
-        let mut entries = Vec::new();
-        for (n, b, tag) in b_tags.chain(a_tags) {
-            if let Some((_, b1, t1)) = find_match_too_close(&self.buf, (n, b, tag), self.range_min)
-                && let Ok(i) = entries.binary_search(&(b1, t1))
-            {
-                entries.remove(i);
-            } else if tag.is_start() || tag.is_end() {
-                let (Ok(i) | Err(i)) = entries.binary_search(&(b, tag));
-                entries.insert(i, (b, tag));
-            }
-        }
-
-        // Then, I remove all entries that are not bounded, as well as entries
-        // whose ranges were already long enough before the transformation.
-        let mut to_remove = Vec::new();
-        for (i, (b0, tag)) in entries.iter().enumerate() {
-            let matched_bound = if tag.is_start() {
-                entries[(i + 1)..].iter().find_map(find_bound_fn(*tag))
-            } else {
-                entries[..i].iter().rev().find_map(find_bound_fn(*tag))
-            };
-            if let Some((b1, _)) = matched_bound {
-                // In this case, the range in question was already large before the
-                // transformation, so we need not add its entries.
-                if b0.abs_diff(b1) as i32 > self.range_min as i32 + range_diff {
-                    // The other bound will eventually be removed in the iteration.
-                    to_remove.push(i);
-                }
-            } else {
-                // In this case, no bound was added, so this range was already there.
-                to_remove.push(i)
-            }
-        }
-        for i in to_remove.into_iter().rev() {
-            entries.remove(i);
-        }
-
-        for (b, tag) in entries {
-            let (Ok(i) | Err(i)) = self.ranges.binary_search(&(b, tag));
-            self.ranges.insert(i, (b, tag));
-        }
-    }
-
     /// Remove all tag ranges that are too small
     fn cull_small_ranges(&mut self) {
         let mut to_cull = Vec::new();
@@ -564,7 +605,7 @@ impl Tags {
                 if let Some(shift) = self.ranges[(n + 1)..]
                     .iter()
                     .position(|entry| find_fn(entry).is_some())
-                    && self.ranges[n + 1 + shift].0 - b <= self.range_min
+                    && self.ranges[n + 1 + shift].0 - b < self.range_min
                 {
                     for i in [n, n + 1 + shift] {
                         let (Ok(i) | Err(i)) = to_cull.binary_search(&i);
@@ -576,7 +617,7 @@ impl Tags {
                 self.ranges.remove(n);
             }
 
-            if self.ranges.len() <= LIMIT_TO_BUMP {
+            if self.ranges.len() < LIMIT_TO_BUMP {
                 break;
             }
             self.range_min += BUMP_AMOUNT;
@@ -591,8 +632,9 @@ impl Tags {
             if let Ok(i) = self.ranges.binary_search(&(b, tag)) {
                 self.ranges.remove(i);
             }
-        } else if tag.is_start() || tag.is_end() {
-            let (Ok(i) | Err(i)) = self.ranges.binary_search(&(at, tag));
+        } else if (tag.is_start() || tag.is_end())
+            && let Err(i) = self.ranges.binary_search(&(at, tag))
+        {
             self.ranges.insert(i, (at, tag));
         }
     }
@@ -657,10 +699,10 @@ impl Tags {
 /// Forward iterator over a range in the [`GapBuffer`]
 fn fwd_range(
     buf: &GapBuffer<TagOrSkip>,
-    range: impl RangeBounds<usize>,
+    range: impl RangeBounds<usize> + std::fmt::Debug,
 ) -> impl Iterator<Item = (usize, &TagOrSkip)> + Clone + '_ {
     let (s0, s1) = buf.as_slices();
-    let (start, end) = get_ends(range, buf.len());
+    let (start, end) = crate::get_ends(range, buf.len());
 
     let r0 = start.min(s0.len())..end.min(s0.len());
     let r1 = start.saturating_sub(s0.len())..end.saturating_sub(s0.len());
@@ -678,7 +720,7 @@ fn rev_range(
     range: impl RangeBounds<usize> + std::fmt::Debug + Clone,
 ) -> impl Iterator<Item = (usize, &TagOrSkip)> + Clone + '_ {
     let (s0, s1) = buf.as_slices();
-    let (start, end) = get_ends(range.clone(), buf.len());
+    let (start, end) = crate::get_ends(range.clone(), buf.len());
 
     let r0 = start.min(s0.len())..end.min(s0.len());
     let r1 = start.saturating_sub(s0.len())..end.saturating_sub(s0.len());
@@ -695,6 +737,9 @@ fn rev_range(
 }
 
 /// Forward enumerating function for a [`TagOrSkip::Tag`] from a byte
+///
+/// This function will iterate over the positional index, byte index
+/// and [`RawTag`], respectively, assuming an initial byte.
 fn entries_fwd(
     mut b: usize,
 ) -> impl FnMut((usize, &TagOrSkip)) -> Option<(usize, usize, RawTag)> + Clone {
@@ -709,9 +754,7 @@ fn entries_rev(
     mut b: usize,
 ) -> impl FnMut((usize, &TagOrSkip)) -> Option<(usize, usize, RawTag)> + Clone {
     move |(n, ts)| {
-        b = b
-            .checked_sub(ts.len())
-            .unwrap_or_else(|| panic!("attempted to subtract {} from {}", ts.len(), b));
+        b -= ts.len();
         ts.as_tag().map(|t| (n, b, t))
     }
 }
@@ -851,7 +894,7 @@ impl std::fmt::Debug for Tags {
         }
 
         f.debug_struct("Tags")
-            .field("buf", &TagsDbg(&self.buf))
+            //.field("buf", &TagsDbg(&self.buf))
             .field("ranges", &RangesDbg(&self.ranges))
             .field("range_min", &self.range_min)
             .field("records", &self.records)
@@ -879,3 +922,178 @@ pub type FwdTags<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)>
 /// This iterator automatically takes into account [`TagRange`]s and
 /// iterates their bounds as if they were regular [`RawTag`]s
 pub type RevTags<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)> + Clone + 'a>;
+
+fn ranges_in(
+    buf: &GapBuffer<TagOrSkip>,
+    (skip_n, skip_b): (usize, usize),
+    range: Range<usize>,
+    min: usize,
+) -> Vec<(usize, RawTag)> {
+    crate::log_file!("{range:?}");
+    let mut entries = Vec::new();
+
+    // Add all tags in the range to the list, keeping only those whose
+    // ranges are too long.
+    for (_, b, tag) in fwd_range(buf, skip_n..)
+        .filter_map(entries_fwd(skip_b))
+        .skip_while(|(_, b, _)| *b < range.start)
+        .take_while(|(_, b, _)| *b < range.end)
+    {
+        if tag.is_start() {
+            entries.push((b, tag));
+        } else if !tag.is_end() {
+            continue;
+        } else if let Some(rev_i) = entries
+            .iter()
+            .rev()
+            .take_while(|(s_b, _)| b < s_b + min)
+            .position(|(_, s_t)| s_t.ends_with(&tag))
+        {
+            let match_i = entries.len() - rev_i - 1;
+            entries.remove(match_i);
+        } else {
+            entries.push((b, tag));
+        }
+    }
+
+    // From the previous loop, if an entry is still in the list, it will
+    // be for one of two reasons:
+    // - Its match is within the range, but still too far away.
+    // - Its match is either outside of the range, or nonexistant.
+    // We only need to care about the second scenario, and we will look
+    // behind or ahead of the range for any tags that could match it.
+    // Since the surrounding ranges will never be greater than `min`, I
+    // don't need to check if a range is big enough to be included in
+    // `entries_before`
+    if entries
+        .iter()
+        .take_while(|(b, _)| *b < range.start + min)
+        .any(|(_, t)| t.is_end())
+    {
+        let mut end_entries = Vec::new();
+        for (_, b, tag) in rev_range(buf, ..skip_n)
+            .filter_map(entries_rev(skip_b))
+            .skip_while(|(_, b, _)| *b >= range.start)
+            .take_while(|(_, b, _)| *b + min >= range.start)
+        {
+            if tag.is_end() {
+                end_entries.push((b, tag))
+            } else if !tag.is_start() {
+                continue;
+            } else if let Some(match_i) =
+                end_entries.iter().rposition(|(_, e_t)| tag.ends_with(e_t))
+            {
+                end_entries.remove(match_i);
+            } else if let Some(match_i) = entries
+                .iter()
+                .take_while(|(e_b, _)| *e_b <= b + min)
+                .position(|(_, e_t)| tag.ends_with(e_t))
+            {
+                entries.remove(match_i);
+            }
+        }
+    }
+    if entries
+        .iter()
+        .rev()
+        .take_while(|(b, _)| *b + min > range.end)
+        .any(|(_, t)| t.is_start())
+    {
+        let mut start_entries = Vec::new();
+        for (_, b, tag) in fwd_range(buf, skip_n..)
+            .filter_map(entries_fwd(skip_b))
+            .skip_while(|(_, b, _)| *b < range.end)
+            .take_while(|(_, b, _)| *b < range.end + min)
+        {
+            if tag.is_start() {
+                start_entries.push((b, tag))
+            } else if !tag.is_end() {
+                continue;
+            } else if let Some(match_i) = start_entries
+                .iter()
+                .rposition(|(_, s_t)| s_t.ends_with(&tag))
+            {
+                start_entries.remove(match_i);
+            } else if let Some(rev_i) = entries
+                .iter()
+                .rev()
+                .take_while(|(s_b, _)| b <= s_b + min)
+                .position(|(_, s_t)| s_t.ends_with(&tag))
+            {
+                let match_i = entries.len() - rev_i - 1;
+                entries.remove(match_i);
+            }
+        }
+    }
+
+    entries
+}
+
+fn pairs_of_removed(
+    buf: &GapBuffer<TagOrSkip>,
+    removed: &[(usize, RawTag)],
+    (skip_n, skip_b): (usize, usize),
+    range: Range<usize>,
+    min: usize,
+) -> Vec<(usize, RawTag)> {
+    let mut entries = Vec::new();
+    if removed
+        .iter()
+        .take_while(|(b, _)| *b < range.start + min)
+        .any(|(_, t)| t.is_end())
+    {
+        let mut end_entries = Vec::new();
+        for (_, b, tag) in rev_range(buf, ..skip_n)
+            .filter_map(entries_rev(skip_b))
+            .take_while(|(_, b, _)| *b + min >= range.start)
+        {
+            if tag.is_end() {
+                end_entries.push((b, tag))
+            } else if !tag.is_start() {
+                continue;
+            } else if let Some(match_i) =
+                end_entries.iter().rposition(|(_, e_t)| tag.ends_with(e_t))
+            {
+                end_entries.remove(match_i);
+            } else if removed
+                .iter()
+                .take_while(|(e_b, _)| *e_b <= b + min)
+                .any(|(_, e_t)| tag.ends_with(e_t))
+            {
+                entries.push((b, tag))
+            }
+        }
+    }
+    if removed
+        .iter()
+        .rev()
+        .take_while(|(b, _)| *b + min > range.end)
+        .any(|(_, t)| t.is_start())
+    {
+        let mut start_entries = Vec::new();
+        for (_, b, tag) in fwd_range(buf, skip_n..)
+            .filter_map(entries_fwd(skip_b))
+            .take_while(|(_, b, _)| *b < range.end + min)
+        {
+            if tag.is_start() {
+                start_entries.push((b, tag))
+            } else if !tag.is_end() {
+                continue;
+            } else if let Some(match_i) = start_entries
+                .iter()
+                .rposition(|(_, s_t)| s_t.ends_with(&tag))
+            {
+                start_entries.remove(match_i);
+            } else if removed
+                .iter()
+                .rev()
+                .take_while(|(s_b, _)| b <= s_b + min)
+                .any(|(_, s_t)| s_t.ends_with(&tag))
+            {
+                entries.push((b, tag));
+            }
+        }
+    }
+
+    entries
+}
