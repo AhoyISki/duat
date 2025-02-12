@@ -148,7 +148,7 @@ impl Cursors {
     }
 
     pub fn rotate_main(&mut self, amount: i32) {
-        self.main_i = (self.main_i as i32 + amount).rem_euclid(100) as usize
+        self.main_i = (self.main_i as i32 + amount).rem_euclid(self.buf.len() as i32) as usize
     }
 
     pub fn remove_extras(&mut self) {

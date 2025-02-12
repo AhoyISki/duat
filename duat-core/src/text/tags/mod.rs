@@ -435,9 +435,8 @@ impl Tags {
     pub fn update_range(&mut self, within: Range<usize>) {
         let mut new_ranges = Vec::new();
         let ranges = std::mem::take(&mut self.ranges_to_update);
-        let mut update = false;
+
         for range in ranges.into_iter() {
-            update = true;
             let (to_check, split_off) = super::split_range_within(range.clone(), within.clone());
             if let Some(range) = to_check {
                 let (Ok(s_i) | Err(s_i)) =

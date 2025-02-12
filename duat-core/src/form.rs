@@ -1008,10 +1008,11 @@ impl Painter {
         }
 
         let mut style = self.make_style();
-        if self.reset_is_needed || self.reset_count > 0 {
+        let path_taken = if self.reset_is_needed || self.reset_count > 0 {
             self.still_on_same_byte = true;
             self.reset_is_needed = true;
             style.attributes.set(Attribute::Reset);
+            "absolute"
         // Only when we are certain that all forms have been
         // printed, can we cull unnecessary colors for efficiency
         // (this happens most of the time).
@@ -1020,7 +1021,14 @@ impl Painter {
             style.foreground_color = form.fg().and(style.foreground_color);
             style.background_color = form.bg().and(style.background_color);
             style.underline_color = form.ul().and(style.underline_color);
+            "relative"
+        } else {
+            "absolute no reset"
         };
+        if self.forms.iter().any(|(_, id)| *id == E_CUR_ID) {
+            crate::log_file!("{:#?}, {path_taken}", self.forms);
+            crate::log_file!("{style:#?}");
+        }
         style
     }
 

@@ -123,14 +123,15 @@ impl Area {
         let lines_left = {
             let (mut painter, mut f) = (painter, f);
             // The y here represents the bottom of the current row of cells.
-            let mut y = sender.coords().tl.y;
+            let tl_y = sender.coords().tl.y;
+            let mut y = tl_y;
             let mut cursor = None;
 
             for (caret, item) in iter {
                 f(&caret, &item);
 
                 let Caret { x, len, wrap } = caret;
-                let Item { part, .. } = item;
+                let Item { part , ..} = item;
 
                 if wrap {
                     if y > sender.coords().tl.y {
@@ -141,9 +142,7 @@ impl Area {
                     }
                     (0..x).for_each(|_| lines.push_char(' ', 1));
                     style!(lines, painter.make_style());
-                    if part.is_char() || y > sender.coords().tl.y {
-                        y += 1
-                    }
+                    y += 1
                 }
 
                 match part {
@@ -184,7 +183,7 @@ impl Area {
                     }
                     Part::ExtraCursor => {
                         cursor = Some(Cursor::Extra);
-                        style!(lines, painter.apply_extra_cursor());
+                        cur_style = Some(painter.apply_extra_cursor());
                     }
                     Part::AlignLeft if !cfg.wrap_method().is_no_wrap() => {
                         lines.realign(Alignment::Left)

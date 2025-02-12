@@ -3,7 +3,10 @@
 //! These functions will iterate over the text, reverse or forwards,
 //! keeping track of characters and [`Tag`]s, sending them in order,
 //! while also hiding the existance of certain "meta" tags, namely the
-//! [ghost] and [concealment] tags. This allows for a seemless iteration which is especially useful for printing, as the printer only needs to care about [`char`]s and [`Tag`]s, most of which are just [`Form`] changing [`Tag`]s
+//! [ghost] and [concealment] tags. This allows for a seemless
+//! iteration which is especially useful for printing, as the printer
+//! only needs to care about [`char`]s and [`Tag`]s, most of which are
+//! just [`Form`] changing [`Tag`]s
 //!
 //! [`Tag`]: super::Tag
 //! [ghost]: super::Tag::GhostText
@@ -73,6 +76,7 @@ impl Item {
 pub struct Iter<'a> {
     text: &'a Text,
     point: Point,
+    init_point: Point,
     chars: FwdChars<'a>,
     tags: tags::FwdTags<'a>,
     conceals: u32,
@@ -88,15 +92,15 @@ pub struct Iter<'a> {
 
 impl<'a> Iter<'a> {
     pub(super) fn new_at(text: &'a Text, tp: impl TwoPoints) -> Self {
-        let (real, ghost) = tp.to_points();
-        let point = real.min(text.len());
+        let (r, g) = tp.to_points();
+        let point = r.min(text.len());
 
-        let ghost =
-            ghost.and_then(|ghost| text.tags.ghosts_total_at(real.byte()).and(Some((ghost, 0))));
+        let ghost = g.and_then(|ghost| text.tags.ghosts_total_at(r.byte()).and(Some((ghost, 0))));
 
         Self {
             text,
             point,
+            init_point: point,
             chars: buf_chars(&text.buf, point.byte()),
             tags: text.tags_fwd(point.byte()),
             conceals: 0,
@@ -133,7 +137,7 @@ impl<'a> Iter<'a> {
     }
 
     #[inline]
-    fn handled_meta_tag(&mut self, tag: &RawTag, b: usize) -> bool {
+    fn handle_special_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {
             RawTag::GhostText(_, id) => {
                 if !self.print_ghosts || b < self.point.byte() || self.conceals > 0 {
@@ -178,6 +182,7 @@ impl<'a> Iter<'a> {
                 *self = Iter::new_at(self.text, point);
                 return false;
             }
+            RawTag::MainCursor(_) | RawTag::ExtraCursor(_) if b < self.init_point.byte() => {}
             _ => return false,
         }
 
@@ -210,7 +215,7 @@ impl Iterator for Iter<'_> {
             {
                 self.tags.next();
 
-                if !self.handled_meta_tag(&tag, b) {
+                if !self.handle_special_tag(&tag, b) {
                     break Some(Item::new(self.points(), Part::from_raw(tag)));
                 }
             } else if let Some(char) = self.chars.next() {
@@ -239,9 +244,10 @@ impl Iterator for Iter<'_> {
 #[derive(Clone)]
 pub struct RevIter<'a> {
     text: &'a Text,
+    point: Point,
+    init_point: Point,
     chars: RevChars<'a>,
     tags: tags::RevTags<'a>,
-    point: Point,
     conceals: usize,
 
     main_iter: Option<(Point, RevChars<'a>, tags::RevTags<'a>)>,
@@ -254,20 +260,21 @@ pub struct RevIter<'a> {
 
 impl<'a> RevIter<'a> {
     pub(super) fn new_at(text: &'a Text, tp: impl TwoPoints) -> Self {
-        let (real, ghost) = tp.to_points();
-        let point = real.min(text.len());
+        let (r, g) = tp.to_points();
+        let point = r.min(text.len());
 
-        let ghost = ghost.and_then(|offset| {
+        let ghost = g.and_then(|offset| {
             text.tags
-                .ghosts_total_at(real.byte())
+                .ghosts_total_at(r.byte())
                 .map(|ghost| (offset, ghost.byte()))
         });
 
         Self {
             text,
+            point,
+            init_point: point,
             chars: buf_chars_rev(&text.buf, point.byte()),
             tags: text.tags_rev(point.byte()),
-            point,
             conceals: 0,
 
             main_iter: None,
@@ -337,6 +344,7 @@ impl<'a> RevIter<'a> {
                 *self = RevIter::new_at(self.text, point);
                 return false;
             }
+            RawTag::MainCursor(_) | RawTag::ExtraCursor(_) if b > self.init_point.byte() => {}
             _ => return false,
         }
 
