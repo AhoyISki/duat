@@ -7,6 +7,7 @@ use std::{
         Mutex,
         mpsc::{self, Receiver, Sender},
     },
+    time::Instant,
 };
 
 use dirs_next::{cache_dir, config_dir};
@@ -27,7 +28,7 @@ fn main() {
         let Some((config_dir, cache_dir)) = config_dir().zip(cache_dir()) else {
             let (tx, rx) = mpsc::channel();
             pre_setup();
-            run_duat(Vec::new(), tx, rx, statics);
+            run_duat(Vec::new(), tx, rx, statics, None);
             return;
         };
         let crate_dir = config_dir.join("duat");
@@ -70,6 +71,7 @@ fn main() {
     let mut library = unsafe { Library::new(&so_path).ok() };
     let mut run_fn = library.as_ref().and_then(find_run_fn);
     let mut prev_files = Vec::new();
+    let mut msg = None;
 
     loop {
         let (session_tx, session_rx) = mpsc::channel();
@@ -77,21 +79,24 @@ fn main() {
 
         let handle = if let Some(run) = run_fn.take() {
             let session_tx = session_tx.clone();
-            std::thread::spawn(move || run(prev_files, session_tx, session_rx, statics))
+            let msg = msg.take();
+            std::thread::spawn(move || run(prev_files, session_tx, session_rx, statics, msg))
         } else {
             let session_tx = session_tx.clone();
+            let msg = msg.take();
             std::thread::spawn(move || {
                 pre_setup();
-                run_duat(prev_files, session_tx, session_rx, statics)
+                run_duat(prev_files, session_tx, session_rx, statics, msg)
             })
         };
 
         prev_files = handle.join().unwrap();
 
-        if let Ok(so_path) = main_rx.try_recv() {
+        if let Ok((so_path, new_msg)) = main_rx.try_recv() {
             library.take().unwrap().close().unwrap();
             library = Some(unsafe { Library::new(&so_path).ok().unwrap() });
             run_fn = find_run_fn(library.as_ref().unwrap());
+            msg = Some(new_msg);
         } else {
             break;
         }
@@ -100,7 +105,7 @@ fn main() {
 
 /// Returns [`true`] if it reloaded the library and run function
 fn reload_config(
-    main_tx: &Sender<PathBuf>,
+    main_tx: &Sender<(PathBuf, Text)>,
     target_dir: &Path,
     toml_path: &Path,
     on_release: bool,
@@ -110,14 +115,20 @@ fn reload_config(
         false => "debug/libconfig.so",
     });
 
-    if let Ok(out) = run_cargo(toml_path, target_dir, on_release)
+    let start = Instant::now();
+    if let Ok((finish, out)) = run_cargo(toml_path, target_dir, on_release)
         && out.status.success()
         && let Some(library) = unsafe { Library::new(&so_path).ok() }
         && find_run_fn(&library).is_some()
     {
+        let profile = if on_release { "Release" } else { "Debug" };
+        let time = finish.checked_duration_since(start).unwrap();
+        let secs = format!("{:.2}", time.as_secs_f32());
+
+        let msg = ok!([*a] profile [] " reloaded in " [*a] secs [] "s");
         let session_tx = SESSION_TX.lock().unwrap();
         let session_tx = session_tx.as_ref().unwrap();
-        main_tx.send(so_path).unwrap();
+        main_tx.send((so_path, msg)).unwrap();
         session_tx.send(ui::Event::ReloadConfig).unwrap();
         true
     } else {
@@ -129,7 +140,7 @@ fn run_cargo(
     toml_path: &Path,
     target_dir: &Path,
     on_release: bool,
-) -> Result<Output, std::io::Error> {
+) -> Result<(Instant, Output), std::io::Error> {
     let mut cargo = Command::new("cargo");
     cargo.args([
         "build",
@@ -149,7 +160,7 @@ fn run_cargo(
     #[cfg(feature = "wack")]
     cargo.args(["--features", "wack"]);
 
-    cargo.output()
+    cargo.output().map(|out| (Instant::now(), out))
 }
 
 fn find_run_fn(lib: &Library) -> Option<Symbol<RunFn>> {
@@ -161,6 +172,7 @@ type RunFn = fn(
     Sender<ui::Event>,
     Receiver<ui::Event>,
     Statics,
+    Option<Text>,
 ) -> Vec<(RwData<File>, bool)>;
 
 type Statics = <duat::Ui as ui::Ui>::StaticFns;

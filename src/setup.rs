@@ -16,6 +16,7 @@ use duat_core::{
     data::RwData,
     mode::Regular,
     session::SessionCfg,
+    text::Text,
     ui::{Event, Ui as TraitUi, Window},
     widgets::{File, ShowNotifications, Widget},
 };
@@ -71,6 +72,7 @@ pub fn run_duat(
     tx: mpsc::Sender<Event>,
     rx: mpsc::Receiver<Event>,
     statics: <Ui as TraitUi>::StaticFns,
+    msg: Option<Text>,
 ) -> Vec<(RwData<File>, bool)> {
     let ui = Ui::new(statics);
 
@@ -92,7 +94,7 @@ pub fn run_duat(
     } else {
         cfg.session_from_prev(prev, tx)
     };
-    session.start(rx)
+    session.start(rx, msg)
 }
 
 type PluginFn = dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync + 'static;

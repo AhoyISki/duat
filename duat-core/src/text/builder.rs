@@ -409,7 +409,7 @@ pub macro ok {
     ($($parts:tt)+) => {{
         let mut builder = Builder::new();
         ok!(builder, [DefaultOk] $($parts)+);
-        Ok(Some(builder.finish()))
+        builder.finish()
     }},
 }
 

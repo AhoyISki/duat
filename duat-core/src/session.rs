@@ -14,6 +14,7 @@ use crate::{
     data::RwData,
     hooks::{self, ConfigLoaded, ConfigUnloaded, ExitedDuat, OnFileOpen, OnWindowOpen},
     mode,
+    text::Text,
     ui::{Area, Event, FileBuilder, Layout, MasterOnLeft, Sender, Ui, Window, WindowBuilder},
     widgets::{File, FileCfg, Node, Widget, WidgetCfg},
 };
@@ -153,7 +154,11 @@ impl<U: Ui> Session<U> {
     }
 
     /// Start the application, initiating a read/response loop.
-    pub fn start(mut self, rx: mpsc::Receiver<Event>) -> Vec<(RwData<File>, bool)> {
+    pub fn start(
+        mut self,
+        rx: mpsc::Receiver<Event>,
+        mut msg: Option<Text>,
+    ) -> Vec<(RwData<File>, bool)> {
         hooks::trigger::<ConfigLoaded>(());
 
         // This loop is very useful when trying to find deadlocks.
@@ -205,7 +210,9 @@ impl<U: Ui> Session<U> {
                     node.update_and_print();
                 }
             });
-
+			if let Some(msg) = msg.take() {
+    			crate::context::notify(msg);
+			}
             let reason_to_break = self.session_loop(&rx);
 
             hooks::trigger::<ConfigUnloaded>(());

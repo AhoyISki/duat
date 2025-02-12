@@ -252,7 +252,7 @@ mod control {
                 file.inspect(|file, _, _| {
                     if let Some(name) = file.path_set() {
                         let bytes = file.write()?;
-                        ok!("Wrote " [*a] bytes [] " bytes to " [*a] name)
+                        Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " [*a] name)))
                     } else {
                         Err(err!("Give the file a name, to write it with"))
                     }
@@ -279,7 +279,7 @@ mod control {
                         builder.finish()
                     };
 
-                    ok!("Wrote " [*a] bytes [] " bytes to " files_text)
+                    Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " files_text)))
                 })
             }
         })?;
@@ -301,16 +301,16 @@ mod control {
                 )
             }) {
                 tx.send(Event::OpenFile(path.clone())).unwrap();
-                return ok!("Opened " [*a] path);
+                return Ok(Some(ok!("Opened " [*a] path)));
             }
 
             mode::reset_switch_to::<U>(&name);
-            ok!("Switched to " [*a] name)
+            Ok(Some(ok!("Switched to " [*a] name)))
         })?;
 
         cmd::add!(["buffer", "b"], move |_, name: OtherFileBuffer<U>| {
             mode::reset_switch_to::<U>(&name);
-            ok!("Switched to " [*a] name)
+            Ok(Some(ok!("Switched to " [*a] name)))
         })?;
 
         let windows = context::windows();
@@ -336,7 +336,7 @@ mod control {
             };
 
             mode::reset_switch_to::<U>(&name);
-            ok!("Switched to " [*a] name)
+            Ok(Some(ok!("Switched to " [*a] name)))
         })?;
 
         let windows = context::windows();
@@ -363,12 +363,12 @@ mod control {
 
             mode::reset_switch_to::<U>(&name);
 
-            ok!("Switched to " [*a] name)
+            Ok(Some(ok!("Switched to " [*a] name)))
         })?;
 
         cmd::add!("colorscheme", |_, scheme: ColorSchemeArg| {
             crate::form::set_colorscheme(scheme);
-            ok!("Set colorscheme to " [*a] scheme [])
+            Ok(Some(ok!("Set colorscheme to " [*a] scheme [])))
         })?;
 
         cmd::add!(
@@ -380,7 +380,7 @@ mod control {
                 form.style.underline_color = colors.get(2).cloned();
                 crate::form::set(name, form);
 
-                ok!("Set " [*a] name [] " to a new Form")
+                Ok(Some(ok!("Set " [*a] name [] " to a new Form")))
             }
         )?;
 
@@ -1132,14 +1132,14 @@ impl InnerCommands {
 
         if let Some(command) = cmds.find(|cmd| cmd.callers().contains(&caller)) {
             let entry = (command.clone(), call.clone());
-            match self.aliases.insert(alias.clone(), entry) {
+            Ok(Some(match self.aliases.insert(alias.clone(), entry) {
                 Some((_, prev_call)) => ok!(
                     "Aliased " [*a] alias []
                     " from " [*a] prev_call []
                     " to " [*a] call
                 ),
                 None => ok!("Aliased " [*a] alias [] " to " [*a] call),
-            }
+            }))
         } else {
             Err(Error::CallerNotFound(caller))
         }

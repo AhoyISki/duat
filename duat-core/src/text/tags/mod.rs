@@ -889,7 +889,7 @@ impl std::fmt::Debug for Tags {
         }
 
         f.debug_struct("Tags")
-            //.field("buf", &TagsDbg(&self.buf))
+            .field("buf", &TagsDbg(&self.buf))
             .field("ranges", &RangesDbg(&self.ranges))
             .field("range_min", &self.range_min)
             .field("records", &self.records)
