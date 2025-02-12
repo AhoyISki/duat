@@ -433,7 +433,6 @@ impl Tags {
     }
 
     pub fn update_range(&mut self, within: Range<usize>) {
-        crate::log_file!("within: {within:?}");
         let mut new_ranges = Vec::new();
         let ranges = std::mem::take(&mut self.ranges_to_update);
         let mut update = false;
@@ -461,9 +460,6 @@ impl Tags {
         self.ranges_to_update = new_ranges;
 
         self.cull_small_ranges();
-        if update {
-            crate::log_file!("{self:#?}");
-        }
     }
 
     /// Returns true if there are no [`RawTag`]s
@@ -929,7 +925,6 @@ fn ranges_in(
     range: Range<usize>,
     min: usize,
 ) -> Vec<(usize, RawTag)> {
-    crate::log_file!("{range:?}");
     let mut entries = Vec::new();
 
     // Add all tags in the range to the list, keeping only those whose

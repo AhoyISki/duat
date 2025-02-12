@@ -451,8 +451,8 @@ fn buf_parse<'a>(text: &'a Text) -> impl FnMut(usize, TSPoint) -> &'a [u8] {
 
 fn ts_point(point: Point, text: &Text) -> TSPoint {
     let strs = text.strs_in(..point.byte());
-    let iter = strs.into_iter().flat_map(str::bytes).rev();
-    let col = iter.take_while(|&b| b != b'\n').count();
+    let iter = strs.into_iter().flat_map(str::chars).rev();
+    let col = iter.take_while(|&b| b != '\n').count();
 
     TSPoint::new(point.line(), col)
 }
@@ -460,12 +460,12 @@ fn ts_point(point: Point, text: &Text) -> TSPoint {
 fn ts_point_from(to: Point, from: (usize, Point), text: &Text) -> TSPoint {
     let (col, from) = from;
     let strs = text.strs_in((from, to));
-    let iter = strs.into_iter().flat_map(str::bytes).rev();
+    let iter = strs.into_iter().flat_map(str::chars).rev();
 
     let col = if to.line() == from.line() {
         col + iter.count()
     } else {
-        iter.take_while(|&b| b != b'\n').count()
+        iter.take_while(|&b| b != '\n').count()
     };
 
     TSPoint::new(to.line(), col)
