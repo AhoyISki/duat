@@ -1017,9 +1017,9 @@ impl Painter {
         // (this happens most of the time).
         } else if !self.still_on_same_byte {
             self.still_on_same_byte = true;
-            style.foreground_color = form.fg().and(style.foreground_color);
-            style.background_color = form.bg().and(style.background_color);
-            style.underline_color = form.ul().and(style.underline_color);
+            style.foreground_color = form.fg().and(style.foreground_color).or(Some(Color::Reset));
+            style.background_color = form.bg().and(style.background_color).or(Some(Color::Reset));
+            style.underline_color = form.ul().and(style.underline_color).or(Some(Color::Reset));
         }
         style
     }
@@ -1029,33 +1029,31 @@ impl Painter {
     #[inline(always)]
     pub fn remove(&mut self, id: FormId) -> ContentStyle {
         let mut applied_forms = self.forms.iter().enumerate();
-        if let Some((i, &(form, _))) = applied_forms.rfind(|(_, &(_, i))| i == id) {
-            self.reset_count -= form.style.attributes.has(Attribute::Reset) as usize;
-            self.forms.remove(i);
-            if id != M_SEL_ID && id != E_SEL_ID {
-                self.final_form_start -= 1;
-            }
+        let Some((i, &(form, _))) = applied_forms.rfind(|(_, &(_, i))| i == id) else {
+            return absolute_style(&self.forms);
+        };
 
-            let mut style = self.make_style();
-            if !form.style.attributes.is_empty() || self.reset_is_needed || self.reset_count > 0 {
-                self.still_on_same_byte = true;
-                self.reset_is_needed = true;
-                style.attributes.set(Attribute::Reset);
-            // Only when we are certain that all forms have been
-            // printed, can we cull unnecessary colors for efficiency
-            // (this happens most of the time).
-            } else if !self.still_on_same_byte {
-                self.still_on_same_byte = true;
-                style.foreground_color =
-                    form.fg().and(style.foreground_color).or(Some(Color::Reset));
-                style.background_color =
-                    form.bg().and(style.background_color).or(Some(Color::Reset));
-                style.underline_color = form.ul().and(style.underline_color).or(Some(Color::Reset));
-            }
-            style
-        } else {
-            absolute_style(&self.forms)
+        self.reset_count -= form.style.attributes.has(Attribute::Reset) as usize;
+        self.forms.remove(i);
+        if id != M_SEL_ID && id != E_SEL_ID {
+            self.final_form_start -= 1;
         }
+
+        let mut style = self.make_style();
+        if !form.style.attributes.is_empty() || self.reset_is_needed || self.reset_count > 0 {
+            self.still_on_same_byte = true;
+            self.reset_is_needed = true;
+            style.attributes.set(Attribute::Reset);
+        // Only when we are certain that all forms have been
+        // printed, can we cull unnecessary colors for efficiency
+        // (this happens most of the time).
+        } else if !self.still_on_same_byte {
+            self.still_on_same_byte = true;
+            style.foreground_color = form.fg().and(style.foreground_color).or(Some(Color::Reset));
+            style.background_color = form.bg().and(style.background_color).or(Some(Color::Reset));
+            style.underline_color = form.ul().and(style.underline_color).or(Some(Color::Reset));
+        }
+        style
     }
 
     /// Removes all [`Form`]s except the default one
