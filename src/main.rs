@@ -5,6 +5,7 @@ use std::{
     process::{Command, Output},
     sync::{
         Mutex,
+        atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver, Sender},
     },
     time::Instant,
@@ -39,6 +40,7 @@ fn main() {
             let target_dir = target_dir.clone();
             let toml_path = toml_path.clone();
             let lock_path = crate_dir.join("Cargo.lock");
+
             move |res| {
                 if let Ok(Event { kind: EventKind::Modify(_), paths, .. }) = res {
                     // If the only thing that changed was the lock file, ignore.
@@ -92,10 +94,15 @@ fn main() {
 
         prev_files = handle.join().unwrap();
 
-        if let Ok((so_path, new_msg)) = main_rx.try_recv() {
+        if let Ok((so_path, start, on_release)) = main_rx.try_recv() {
             library.take().unwrap().close().unwrap();
             library = Some(unsafe { Library::new(&so_path).ok().unwrap() });
             run_fn = find_run_fn(library.as_ref().unwrap());
+
+            let profile = if on_release { "Release" } else { "Debug" };
+            let secs = format!("{:.2}", start.elapsed().as_secs_f32());
+            let new_msg = ok!([*a] profile [] " reloaded in " [*a] secs [] "s");
+
             msg = Some(new_msg);
         } else {
             break;
@@ -105,33 +112,34 @@ fn main() {
 
 /// Returns [`true`] if it reloaded the library and run function
 fn reload_config(
-    main_tx: &Sender<(PathBuf, Text)>,
+    main_tx: &Sender<(PathBuf, Instant, bool)>,
     target_dir: &Path,
     toml_path: &Path,
     on_release: bool,
 ) -> bool {
-    let so_path = target_dir.join(match on_release {
-        true => "release/libconfig.so",
-        false => "debug/libconfig.so",
+    static ON_ALT_PATH: AtomicBool = AtomicBool::new(false);
+    let oap = ON_ALT_PATH.fetch_not(Ordering::Relaxed);
+    let target_dir = target_dir.join(if oap { "target1" } else { "target0" });
+    let start = Instant::now();
+
+    let so_path = target_dir.join(if on_release {
+        "release/libconfig.so"
+    } else {
+        "debug/libconfig.so"
     });
 
-    let start = Instant::now();
-    if let Ok((finish, out)) = run_cargo(toml_path, target_dir, on_release)
+    if let Ok(out) = run_cargo(toml_path, &target_dir, on_release)
         && out.status.success()
         && let Some(library) = unsafe { Library::new(&so_path).ok() }
         && find_run_fn(&library).is_some()
     {
-        let profile = if on_release { "Release" } else { "Debug" };
-        let time = finish.checked_duration_since(start).unwrap();
-        let secs = format!("{:.2}", time.as_secs_f32());
-
-        let msg = ok!([*a] profile [] " reloaded in " [*a] secs [] "s");
         let session_tx = SESSION_TX.lock().unwrap();
         let session_tx = session_tx.as_ref().unwrap();
-        main_tx.send((so_path, msg)).unwrap();
+        main_tx.send((so_path, start, on_release)).unwrap();
         session_tx.send(ui::Event::ReloadConfig).unwrap();
         true
     } else {
+        ON_ALT_PATH.fetch_not(Ordering::Relaxed);
         false
     }
 }
@@ -140,7 +148,7 @@ fn run_cargo(
     toml_path: &Path,
     target_dir: &Path,
     on_release: bool,
-) -> Result<(Instant, Output), std::io::Error> {
+) -> Result<Output, std::io::Error> {
     let mut cargo = Command::new("cargo");
     cargo.args([
         "build",
@@ -160,7 +168,7 @@ fn run_cargo(
     #[cfg(feature = "wack")]
     cargo.args(["--features", "wack"]);
 
-    cargo.output().map(|out| (Instant::now(), out))
+    cargo.output()
 }
 
 fn find_run_fn(lib: &Library) -> Option<Symbol<RunFn>> {
