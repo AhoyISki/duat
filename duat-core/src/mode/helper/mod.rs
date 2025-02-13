@@ -1149,6 +1149,24 @@ where
         self.anchor().is_none_or(|anchor| anchor < self.caret())
     }
 
+    /// Sets the caret of the [`Cursor`] on the start of the selection
+    pub fn set_caret_on_start(&mut self) {
+        if let Some(anchor) = self.anchor()
+            && anchor < self.caret()
+        {
+            self.swap_ends();
+        }
+    }
+
+    /// Sets the caret of the [`Cursor`] on the end of the selection
+    pub fn set_caret_on_end(&mut self) {
+        if let Some(anchor) = self.anchor()
+            && anchor > self.caret()
+        {
+            self.swap_ends();
+        }
+    }
+
     /// Whether or not this is the main [`Cursor`]
     pub fn is_main(&self) -> bool {
         self.is_main

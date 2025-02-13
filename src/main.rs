@@ -101,7 +101,7 @@ fn main() {
 
             let profile = if on_release { "Release" } else { "Debug" };
             let secs = format!("{:.2}", start.elapsed().as_secs_f32());
-            let new_msg = ok!([*a] profile [] " reloaded in " [*a] secs [] "s");
+            let new_msg = ok!([*a] profile [] " profile reloaded in " [*a] secs "s");
 
             msg = Some(new_msg);
         } else {

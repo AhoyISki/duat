@@ -244,7 +244,7 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char(')')) => helper.rotate_main(1),
             key!(Char('(')) => helper.rotate_main(-1),
 
-            ////////// Text modifying keys.
+            ////////// Insert mode keys.
             key!(Char('i')) => {
                 helper.move_many(.., |mut m| {
                     if m.anchor_is_start() {
@@ -262,6 +262,16 @@ impl<U: Ui> Mode<U> for Normal {
                 });
                 mode::set::<U>(Insert);
             }
+
+            ////////// Clipboard keys.
+            key!(Char('y')) => copy_selections(&mut helper),
+            key!(Char('d'), mods) if let Mod::NONE | Mod::ALT = mods => {
+                if let Mod::NONE = mods {
+                    copy_selections(&mut helper);
+                }
+                helper.edit_many(.., |e| e.replace(""));
+                helper.move_many(.., |mut m| m.unset_anchor());
+            }
             key!(Char('c'), mods) if let Mod::NONE | Mod::ALT = mods => {
                 if let Mod::NONE = mods {
                     copy_selections(&mut helper);
@@ -270,27 +280,46 @@ impl<U: Ui> Mode<U> for Normal {
                 helper.move_many(.., |mut m| m.unset_anchor());
                 mode::set::<U>(Insert);
             }
-            key!(Char('d'), mods) if let Mod::NONE | Mod::ALT = mods => {
-                if let Mod::NONE = mods {
-                    copy_selections(&mut helper);
-                }
-                helper.edit_many(.., |e| e.replace(""));
-                helper.move_many(.., |mut m| m.unset_anchor());
-            }
-            key!(Char('p')) => {
+            key!(Char('p' | 'P'), Mod::NONE | Mod::SHIFT) => {
                 let pastes = paste_strings();
                 let len = pastes.len();
                 if !pastes.is_empty() {
+                    let mut swap_ends = Vec::new();
+                    let mut p_iter = pastes.iter();
                     helper.move_many(..len, |mut m| {
-                        m.unset_anchor();
-                        m.move_hor(1)
+                        swap_ends.push(!m.anchor_is_start());
+                        // If it ends in a new line, we gotta move to the start of the line.
+                        if p_iter.next().unwrap().ends_with('\n') {
+                            if key.code == Char('p') {
+                                m.set_caret_on_end();
+                                let (p, _) = m.iter().find(|(_, c)| *c == '\n').unwrap_or_default();
+                                m.move_to(p);
+                                m.move_hor(1);
+                            } else {
+                                m.set_caret_on_start();
+                                let col = m.caret_col() as i32;
+                                m.move_hor(-col)
+                            }
+                        } else {
+                            if m.anchor_is_start() {
+                                m.swap_ends()
+                            }
+                            if key.code == Char('p') {
+                                m.swap_ends();
+                                m.move_hor(1)
+                            }
+                        }
                     });
                     let mut lens = pastes.iter().map(|str| str.chars().count());
-                    let mut pastes = pastes.iter();
-                    helper.edit_many(..len, |e| e.insert(pastes.next().unwrap()));
+                    let mut p_iter = pastes.iter();
+                    helper.edit_many(..len, |e| e.insert(p_iter.next().unwrap()));
+                    let mut swap_ends = swap_ends.into_iter();
                     helper.move_many(..len, |mut m| {
                         m.set_anchor();
                         m.move_hor(lens.next().unwrap().saturating_sub(1) as i32);
+                        if swap_ends.next().unwrap() {
+                            m.swap_ends();
+                        }
                     });
                 }
             }

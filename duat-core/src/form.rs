@@ -1003,7 +1003,7 @@ impl Painter {
         self.reset_count += form.style.attributes.has(Attribute::Reset) as usize;
 
         self.forms.insert(self.final_form_start, (form, id));
-        if id != M_SEL_ID && id != E_SEL_ID {
+        if !(id == M_SEL_ID || id == E_SEL_ID) {
             self.final_form_start += 1;
         }
 
@@ -1017,9 +1017,9 @@ impl Painter {
         // (this happens most of the time).
         } else if !self.still_on_same_byte {
             self.still_on_same_byte = true;
-            style.foreground_color = form.fg().and(style.foreground_color).or(Some(Color::Reset));
-            style.background_color = form.bg().and(style.background_color).or(Some(Color::Reset));
-            style.underline_color = form.ul().and(style.underline_color).or(Some(Color::Reset));
+            style.foreground_color = form.fg().and(style.foreground_color.or(Some(Color::Reset)));
+            style.background_color = form.bg().and(style.background_color.or(Some(Color::Reset)));
+            style.underline_color = form.ul().and(style.underline_color.or(Some(Color::Reset)));
         }
         style
     }
@@ -1049,9 +1049,9 @@ impl Painter {
         // (this happens most of the time).
         } else if !self.still_on_same_byte {
             self.still_on_same_byte = true;
-            style.foreground_color = form.fg().and(style.foreground_color).or(Some(Color::Reset));
-            style.background_color = form.bg().and(style.background_color).or(Some(Color::Reset));
-            style.underline_color = form.ul().and(style.underline_color).or(Some(Color::Reset));
+            style.foreground_color = form.fg().and(style.foreground_color.or(Some(Color::Reset)));
+            style.background_color = form.bg().and(style.background_color.or(Some(Color::Reset)));
+            style.underline_color = form.ul().and(style.underline_color.or(Some(Color::Reset)));
         }
         style
     }
