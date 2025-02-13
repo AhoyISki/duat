@@ -807,6 +807,7 @@ impl Text {
             return;
         };
         let Some(changes) = history.move_backwards() else {
+            self.history = Some(history);
             return;
         };
 
@@ -822,6 +823,7 @@ impl Text {
             return;
         };
         let Some(changes) = history.move_forward() else {
+            self.history = Some(history);
             return;
         };
 

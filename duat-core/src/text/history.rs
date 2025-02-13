@@ -19,7 +19,7 @@ use super::{Point, Text};
 #[derive(Default, Debug, Clone)]
 pub struct History {
     moments: Vec<Moment>,
-    current_moment: usize,
+    cur_moment: usize,
     new_moment: Option<(Moment, SyncState)>,
     /// Used to update ranges on the File
     unproc_moment: Option<(Moment, SyncState)>,
@@ -57,9 +57,9 @@ impl History {
         };
         finish_synchronizing(&mut new_moment, &mut new_ss);
 
-        self.moments.truncate(self.current_moment);
+        self.moments.truncate(self.cur_moment);
         self.moments.push(new_moment);
-        self.current_moment += 1;
+        self.cur_moment += 1;
     }
 
     /// Redoes the next [`Moment`], returning its [`Change`]s
@@ -68,12 +68,12 @@ impl History {
     /// will result in a correct redoing.
     pub fn move_forward(&mut self) -> Option<Vec<Change<&str>>> {
         self.new_moment();
-        if self.current_moment == self.moments.len() {
+        if self.cur_moment == self.moments.len() {
             None
         } else {
-            self.current_moment += 1;
+            self.cur_moment += 1;
             Some(
-                self.moments[self.current_moment - 1]
+                self.moments[self.cur_moment - 1]
                     .0
                     .iter()
                     .map(|c| c.as_ref())
@@ -89,13 +89,13 @@ impl History {
     /// modifications, will result in a correct undoing.
     pub fn move_backwards(&mut self) -> Option<Vec<Change<&str>>> {
         self.new_moment();
-        if self.current_moment == 0 {
+        if self.cur_moment == 0 {
             None
         } else {
-            self.current_moment -= 1;
+            self.cur_moment -= 1;
 
             let mut shift = (0, 0, 0);
-            let iter = self.moments[self.current_moment].0.iter().map(move |c| {
+            let iter = self.moments[self.cur_moment].0.iter().map(move |c| {
                 let mut change = c.as_ref();
                 change.shift_by(shift);
 
