@@ -170,11 +170,13 @@ use std::{
     collections::HashMap,
     fmt::Display,
     ops::Range,
-    sync::{Arc, LazyLock},
+    path::PathBuf,
+    sync::{Arc, LazyLock, mpsc},
 };
 
+use crossterm::style::Color;
+
 pub use self::{
-    control::*,
     global::*,
     parameters::{
         Args, Between, ColorSchemeArg, F32PercentOfU8, FileBuffer, Flags, FormName,
@@ -184,208 +186,171 @@ pub use self::{
 use crate::{
     Error, context,
     data::{RwData, RwLock},
-    mode::Cursors,
+    iter_around, iter_around_rev,
+    mode::{self, Cursors},
     text::{Text, err, ok},
-    ui::Ui,
+    ui::{DuatEvent, Ui, Window},
     widget_entry,
-    widgets::Widget,
+    widgets::{File, Widget},
 };
 
 mod parameters;
 
-mod control {
-    use std::{
-        path::PathBuf,
-        sync::{
-            atomic::{AtomicBool, Ordering},
-            mpsc,
-        },
-    };
-
-    use crossterm::style::Color;
-
-    use crate::{
-        cmd::{self, Between, ColorSchemeArg, FormName, OtherFileBuffer, Remainder},
-        context, iter_around, iter_around_rev, mode,
-        text::{Text, err, ok},
-        ui::{Event, Ui, Window},
-        widgets::File,
-    };
-
-    static HAS_ENDED: AtomicBool = AtomicBool::new(false);
-
-    /// Returns `true` if Duat must quit/reload
-    ///
-    /// You should use this function in order to check if loops inside
-    /// of threads should break.
-    pub fn has_ended() -> bool {
-        HAS_ENDED.load(Ordering::Relaxed)
-    }
-
-    /// Ends duat, either for reloading the config, or quitting
-    pub(crate) fn end_session() {
-        HAS_ENDED.store(true, Ordering::Relaxed);
-        while crate::thread::still_running() {
-            std::thread::sleep(std::time::Duration::from_micros(500));
+pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate::Result<(), ()> {
+    add!("alias", |flags, alias: &str, command: Remainder| {
+        if !flags.is_empty() {
+            Err(err!("An alias cannot take any flags"))
+        } else {
+            Ok(crate::cmd::alias(alias, command)?)
         }
-    }
+    })?;
 
-    pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<Event>) -> crate::Result<(), ()> {
-        cmd::add!("alias", |flags, alias: &str, command: Remainder| {
-            if !flags.is_empty() {
-                Err(err!("An alias cannot take any flags"))
-            } else {
-                Ok(crate::cmd::alias(alias, command)?)
-            }
-        })?;
+    let tx_clone = tx.clone();
+    add!(["quit", "q"], move |_| {
+        tx_clone.send(DuatEvent::Quit).unwrap();
+        Ok(None)
+    })?;
 
-        let tx_clone = tx.clone();
-        cmd::add!(["quit", "q"], move |_| {
-            tx_clone.send(Event::Quit).unwrap();
-            Ok(None)
-        })?;
+    add!(["write", "w"], move |_flags, paths: Vec<PathBuf>| {
+        let file = context::cur_file::<U>()?;
 
-        cmd::add!(["write", "w"], move |_flags, paths: Vec<PathBuf>| {
-            let file = context::cur_file::<U>()?;
+        if paths.is_empty() {
+            file.inspect(|file, _, _| {
+                if let Some(name) = file.path_set() {
+                    let bytes = file.write()?;
+                    Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " [*a] name)))
+                } else {
+                    Err(err!("Give the file a name, to write it with"))
+                }
+            })
+        } else {
+            file.inspect(|file, _, _| {
+                let mut bytes = 0;
+                for path in &paths {
+                    bytes = file.write_to(path)?;
+                }
 
-            if paths.is_empty() {
-                file.inspect(|file, _, _| {
-                    if let Some(name) = file.path_set() {
-                        let bytes = file.write()?;
-                        Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " [*a] name)))
-                    } else {
-                        Err(err!("Give the file a name, to write it with"))
+                let files_text = {
+                    let mut builder = Text::builder();
+                    ok!(builder, [*a] { &paths[0] });
+
+                    for path in paths.iter().skip(1).take(paths.len() - 1) {
+                        ok!(builder, [] ", " [*a] path)
                     }
-                })
-            } else {
-                file.inspect(|file, _, _| {
-                    let mut bytes = 0;
-                    for path in &paths {
-                        bytes = file.write_to(path)?;
+
+                    if paths.len() > 1 {
+                        ok!(builder, [] " and " [*a] { paths.last().unwrap() })
                     }
 
-                    let files_text = {
-                        let mut builder = Text::builder();
-                        ok!(builder, [*a] { &paths[0] });
+                    builder.finish()
+                };
 
-                        for path in paths.iter().skip(1).take(paths.len() - 1) {
-                            ok!(builder, [] ", " [*a] path)
-                        }
+                Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " files_text)))
+            })
+        }
+    })?;
 
-                        if paths.len() > 1 {
-                            ok!(builder, [] " and " [*a] { paths.last().unwrap() })
-                        }
+    let windows = context::windows::<U>();
+    add!(["edit", "e"], move |_, path: PathBuf| {
+        let windows = windows.read();
 
-                        builder.finish()
-                    };
+        let name = path
+            .file_name()
+            .ok_or(err!("No file in path"))?
+            .to_string_lossy()
+            .to_string();
 
-                    Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " files_text)))
-                })
-            }
-        })?;
+        if !windows.iter().flat_map(Window::nodes).any(|node| {
+            matches!(
+                node.inspect_as::<File, bool>(|f| f.name() == name),
+                Some(true)
+            )
+        }) {
+            tx.send(DuatEvent::OpenFile(path.clone())).unwrap();
+            return Ok(Some(ok!("Opened " [*a] path)));
+        }
 
-        let windows = context::windows::<U>();
-        cmd::add!(["edit", "e"], move |_, path: PathBuf| {
-            let windows = windows.read();
+        mode::reset_switch_to::<U>(&name);
+        Ok(Some(ok!("Switched to " [*a] name)))
+    })?;
 
-            let name = path
-                .file_name()
-                .ok_or(err!("No file in path"))?
-                .to_string_lossy()
-                .to_string();
+    add!(["buffer", "b"], move |_, name: OtherFileBuffer<U>| {
+        mode::reset_switch_to::<U>(&name);
+        Ok(Some(ok!("Switched to " [*a] name)))
+    })?;
 
-            if !windows.iter().flat_map(Window::nodes).any(|node| {
-                matches!(
-                    node.inspect_as::<File, bool>(|f| f.name() == name),
-                    Some(true)
-                )
-            }) {
-                tx.send(Event::OpenFile(path.clone())).unwrap();
-                return Ok(Some(ok!("Opened " [*a] path)));
-            }
+    let windows = context::windows();
+    add!("next-file", move |flags| {
+        let file = context::cur_file()?;
+        let read_windows = windows.read();
+        let w = context::cur_window();
 
-            mode::reset_switch_to::<U>(&name);
-            Ok(Some(ok!("Switched to " [*a] name)))
-        })?;
+        let widget_index = read_windows[w]
+            .nodes()
+            .position(|node| file.file_ptr_eq(node))
+            .unwrap();
 
-        cmd::add!(["buffer", "b"], move |_, name: OtherFileBuffer<U>| {
-            mode::reset_switch_to::<U>(&name);
-            Ok(Some(ok!("Switched to " [*a] name)))
-        })?;
+        let name = if flags.word("global") {
+            iter_around::<U>(&read_windows, w, widget_index)
+                .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
+                .ok_or_else(|| err!("There are no other open files"))?
+        } else {
+            let slice = &read_windows[w..=w];
+            iter_around(slice, 0, widget_index)
+                .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
+                .ok_or_else(|| err!("There are no other files open in this window"))?
+        };
 
-        let windows = context::windows();
-        cmd::add!("next-file", move |flags| {
-            let file = context::cur_file()?;
-            let read_windows = windows.read();
-            let w = context::cur_window();
+        mode::reset_switch_to::<U>(&name);
+        Ok(Some(ok!("Switched to " [*a] name)))
+    })?;
 
-            let widget_index = read_windows[w]
-                .nodes()
-                .position(|node| file.file_ptr_eq(node))
-                .unwrap();
+    let windows = context::windows();
+    add!("prev-file", move |flags| {
+        let file = context::cur_file()?;
+        let windows = windows.read();
+        let w = context::cur_window();
 
-            let name = if flags.word("global") {
-                iter_around::<U>(&read_windows, w, widget_index)
-                    .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
-                    .ok_or_else(|| err!("There are no other open files"))?
-            } else {
-                let slice = &read_windows[w..=w];
-                iter_around(slice, 0, widget_index)
-                    .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
-                    .ok_or_else(|| err!("There are no other files open in this window"))?
-            };
+        let widget_i = windows[w]
+            .nodes()
+            .position(|node| file.file_ptr_eq(node))
+            .unwrap();
 
-            mode::reset_switch_to::<U>(&name);
-            Ok(Some(ok!("Switched to " [*a] name)))
-        })?;
+        let name = if flags.word("global") {
+            iter_around_rev::<U>(&windows, w, widget_i)
+                .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
+                .ok_or_else(|| err!("There are no other open files"))?
+        } else {
+            let slice = &windows[w..=w];
+            iter_around_rev(slice, 0, widget_i)
+                .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
+                .ok_or_else(|| err!("There are no other files open in this window"))?
+        };
 
-        let windows = context::windows();
-        cmd::add!("prev-file", move |flags| {
-            let file = context::cur_file()?;
-            let windows = windows.read();
-            let w = context::cur_window();
+        mode::reset_switch_to::<U>(&name);
 
-            let widget_i = windows[w]
-                .nodes()
-                .position(|node| file.file_ptr_eq(node))
-                .unwrap();
+        Ok(Some(ok!("Switched to " [*a] name)))
+    })?;
 
-            let name = if flags.word("global") {
-                iter_around_rev::<U>(&windows, w, widget_i)
-                    .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
-                    .ok_or_else(|| err!("There are no other open files"))?
-            } else {
-                let slice = &windows[w..=w];
-                iter_around_rev(slice, 0, widget_i)
-                    .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
-                    .ok_or_else(|| err!("There are no other files open in this window"))?
-            };
+    add!("colorscheme", |_, scheme: ColorSchemeArg| {
+        crate::form::set_colorscheme(scheme);
+        Ok(Some(ok!("Set colorscheme to " [*a] scheme [])))
+    })?;
 
-            mode::reset_switch_to::<U>(&name);
+    add!(
+        "set-form",
+        |flags, name: FormName, colors: Between<0, 3, Color>| {
+            let mut form = crate::form::Form::new();
+            form.style.foreground_color = colors.first().cloned();
+            form.style.background_color = colors.get(1).cloned();
+            form.style.underline_color = colors.get(2).cloned();
+            crate::form::set(name, form);
 
-            Ok(Some(ok!("Switched to " [*a] name)))
-        })?;
+            Ok(Some(ok!("Set " [*a] name [] " to a new Form")))
+        }
+    )?;
 
-        cmd::add!("colorscheme", |_, scheme: ColorSchemeArg| {
-            crate::form::set_colorscheme(scheme);
-            Ok(Some(ok!("Set colorscheme to " [*a] scheme [])))
-        })?;
-
-        cmd::add!(
-            "set-form",
-            |flags, name: FormName, colors: Between<0, 3, Color>| {
-                let mut form = crate::form::Form::new();
-                form.style.foreground_color = colors.first().cloned();
-                form.style.background_color = colors.get(1).cloned();
-                form.style.underline_color = colors.get(2).cloned();
-                crate::form::set(name, form);
-
-                Ok(Some(ok!("Set " [*a] name [] " to a new Form")))
-            }
-        )?;
-
-        Ok(())
-    }
+    Ok(())
 }
 
 mod global {

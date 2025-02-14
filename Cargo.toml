@@ -29,6 +29,9 @@ atomic-wait = "1.1.0"
 dirs-next = "2.0.0"
 libloading = "0.8.1"
 notify = "6.1.1"
+dlopen-rs = "0.6.0"
+log = "0.4.25"
+ftail = "0.2.0"
 
 [features]
 default = ["term-ui"]

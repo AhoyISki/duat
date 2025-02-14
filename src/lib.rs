@@ -258,7 +258,7 @@
 //! [style]: form::Form
 //! [`status!`]: prelude::status
 //! [tags]: duat_core::text::Tag
-#![feature(decl_macro)]
+#![feature(decl_macro, let_chains)]
 
 use std::sync::RwLock;
 
@@ -545,12 +545,11 @@ pub mod control {
 pub mod prelude {
     //! The prelude of Duat
     pub use duat_core::{
-        self, DuatError, Error,
+        self, DuatError, Error, clipboard,
         data::{self, RwData},
         text::{Builder, Text, err, hint, ok, text},
         ui::Area,
         widgets::Widget,
-        clipboard, 
     };
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self as ui, VertRule};
@@ -577,23 +576,30 @@ pub macro setup_duat($setup:expr) {
     use std::sync::mpsc;
 
     use crate::prelude::{
+        Text,
         duat_core::{data::RwData, ui, widgets::File},
-        Text
     };
 
     #[no_mangle]
     fn run(
-        prev_files: Vec<(RwData<File>, bool)>,
-        tx: mpsc::Sender<ui::Event>,
-        rx: mpsc::Receiver<ui::Event>,
-        statics: <Ui as ui::Ui>::StaticFns,
-        msg: Option<Text>
-    ) -> Vec<(RwData<File>, bool)> {
+        //prev_files: Vec<(RwData<File>, bool)>,
+        //ui: Ui,
+        //tx: mpsc::Sender<ui::DuatEvent>,
+        //rx: mpsc::Receiver<ui::DuatEvent>,
+        ui_tx: mpsc::Sender<ui::UiEvent>,
+        //msg: Option<Text>,
+    ) -> (Vec<(RwData<File>, bool)>, mpsc::Receiver<ui::DuatEvent>, mpsc::Sender<ui::UiEvent>) {
         pre_setup();
 
         $setup();
 
-        run_duat(prev_files, tx, rx, statics, msg)
+        let prev_files = Vec::new();
+        let ui = <Ui as ui::Ui>::new(<Ui as ui::Ui>::MetaStatics::default());
+		let (tx, rx) = mpsc::channel();
+		let msg = None;
+
+        crate::prelude::duat_core::log_file!("config crate loaded");
+        run_duat(prev_files, ui, tx, rx, ui_tx, msg)
     }
 }
 

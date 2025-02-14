@@ -19,7 +19,7 @@ mod global {
         any::Any,
         sync::{
             LazyLock, OnceLock,
-            atomic::{AtomicUsize, Ordering},
+            atomic::{AtomicBool, AtomicUsize, Ordering},
         },
     };
 
@@ -41,6 +41,7 @@ mod global {
     static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
     static WINDOWS: OnceLock<&(dyn Any + Send + Sync)> = OnceLock::new();
     static NOTIFICATIONS: LazyLock<RwData<Text>> = LazyLock::new(RwData::default);
+    static WILL_RELOAD_OR_QUIT: AtomicBool = AtomicBool::new(false);
 
     pub fn mode_name() -> &'static RwData<&'static str> {
         &MODE_NAME
@@ -78,7 +79,7 @@ mod global {
         *NOTIFICATIONS.write() = msg
     }
 
-    pub fn setup<U: Ui>(
+    pub fn setup_non_statics<U: Ui>(
         cur_file: &'static CurFile<U>,
         cur_widget: &'static CurWidget<U>,
         cur_window: usize,
@@ -114,6 +115,19 @@ mod global {
 
     pub(crate) fn inner_cur_widget<U: Ui>() -> &'static CurWidget<U> {
         CUR_WIDGET.get().unwrap().downcast_ref().expect("1 Ui only")
+    }
+
+    /// Returns `true` if Duat is about to reload
+    pub fn will_reload_or_quit() -> bool {
+        WILL_RELOAD_OR_QUIT.load(Ordering::Relaxed)
+    }
+
+    /// Orders to quit Duat
+    pub(crate) fn order_reload_or_quit() {
+        WILL_RELOAD_OR_QUIT.store(false, Ordering::Relaxed);
+        while crate::thread::still_running() {
+            std::thread::sleep(std::time::Duration::from_micros(500));
+        }
     }
 }
 

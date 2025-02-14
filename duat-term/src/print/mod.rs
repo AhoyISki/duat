@@ -42,6 +42,7 @@ pub struct Printer {
     is_offline: bool,
     is_disabled: bool,
     max: VarPoint,
+    var_point_fn: fn(&mut Printer) -> VarPoint,
 }
 
 impl Printer {
@@ -74,7 +75,12 @@ impl Printer {
             is_offline: false,
             is_disabled: false,
             max,
+            var_point_fn: var_point,
         }
+    }
+
+    pub fn var_point(&mut self) -> VarPoint {
+        (self.var_point_fn)(self)
     }
 
     pub fn edge(&mut self, lhs: &VarPoint, rhs: &VarPoint, axis: Axis, fr: Frame) -> VarValue {
@@ -101,15 +107,6 @@ impl Printer {
 
         let i = self.vars.binary_search_by_key(&vv.var, key).unwrap();
         self.vars.get_mut(i).unwrap().1 = SavedVar::copy(vv, copy);
-    }
-
-    pub fn var_point(&mut self) -> VarPoint {
-        let x = VarValue::new();
-        let y = VarValue::new();
-        self.vars.push((x.var, SavedVar::val(&x)));
-        self.vars.push((y.var, SavedVar::val(&y)));
-
-        VarPoint::new(x, y)
     }
 
     /// Updates the value of all [`VarPoint`]s that have changed,
@@ -308,6 +305,15 @@ impl Printer {
         self.eqs_to_add.clear();
         Ok(())
     }
+}
+
+pub fn var_point(printer: &mut Printer) -> VarPoint {
+    let x = VarValue::new();
+    let y = VarValue::new();
+    printer.vars.push((x.var, SavedVar::val(&x)));
+    printer.vars.push((y.var, SavedVar::val(&y)));
+
+    VarPoint::new(x, y)
 }
 
 impl Default for Printer {

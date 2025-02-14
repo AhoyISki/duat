@@ -199,6 +199,7 @@ where
     /// ```
     /// [`has_changed`]: Self::has_changed
     pub fn inspect<U>(&self, f: impl FnOnce(&T) -> U) -> U {
+        
         let cur_state = self.cur_state().load(Ordering::Acquire);
         self.read_state().store(cur_state, Ordering::Release);
         f(&self.data())

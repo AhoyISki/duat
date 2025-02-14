@@ -289,11 +289,13 @@ use std::{
     time::Duration,
 };
 
+#[allow(clippy::single_component_path_imports)]
+use dirs_next;
 use parking_lot::RwLock;
 use ui::Window;
 use widgets::{File, Node, Widget};
 
-pub use self::{cmd::has_ended, data::context};
+pub use self::data::context;
 use self::{
     text::{Text, err, hint},
     ui::Ui,
@@ -388,7 +390,7 @@ pub mod thread {
             });
         });
 
-        if !crate::has_ended() {
+        if !crate::context::will_reload_or_quit() {
             sender
                 .send(SentHook::Fn(Box::new(move || {
                     f();
@@ -455,7 +457,7 @@ pub fn periodic_checker(duration: Duration) -> impl Fn() -> bool {
     crate::thread::spawn({
         let check = check.clone();
         move || {
-            while !crate::has_ended() {
+            while !crate::context::will_reload_or_quit() {
                 std::thread::sleep(duration);
                 check.store(true, Ordering::Release);
             }

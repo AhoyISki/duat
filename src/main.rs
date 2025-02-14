@@ -1,10 +1,9 @@
 #![feature(decl_macro, let_chains)]
 
 use std::{
-    path::{Path, PathBuf},
+    path::Path,
     process::{Command, Output},
     sync::{
-        Mutex,
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver, Sender},
     },
@@ -12,97 +11,120 @@ use std::{
 };
 
 use dirs_next::{cache_dir, config_dir};
+use dlopen_rs::{Dylib, ElfLibrary, OpenFlags, Symbol};
 use duat::{pre_setup, prelude::*, run_duat};
-use duat_core::{data::RwData, ui, widgets::File};
-use libloading::os::unix::{Library, Symbol};
+use duat_core::{
+    data::RwData,
+    ui::{self, Ui as UiTrait},
+    widgets::File,
+};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 
-static SESSION_TX: Mutex<Option<Sender<ui::Event>>> = Mutex::new(None);
-
 fn main() {
-    let statics = Statics::default();
-    let (main_tx, main_rx) = mpsc::channel();
+    use ftail::Ftail;
+    use log::LevelFilter;
+    Ftail::new()
+        .single_file("logs", true, LevelFilter::Off)
+        .init()
+        .unwrap();
+
+    dlopen_rs::init();
+    duat_core::hooks::address();
+    let (ui_tx, ui_rx) = mpsc::channel();
+    let (reload_tx, reload_rx) = mpsc::channel::<(Instant, bool)>();
+    let (duat_tx, duat_rx) = mpsc::channel();
+    let mut duat_rx = Some(duat_rx);
 
     // Assert that the configuration crate actually exists.
     // The watcher is returned as to not be dropped.
-    let (_watcher, toml_path, target_dir, so_path) = {
+    let (toml_path, target_dir, so_path) = {
         let Some((config_dir, cache_dir)) = config_dir().zip(cache_dir()) else {
             let (tx, rx) = mpsc::channel();
             pre_setup();
-            run_duat(Vec::new(), tx, rx, statics, None);
+            let meta_statics = <Ui as UiTrait>::MetaStatics::default();
+            let ui = Ui::new(meta_statics);
+            run_duat(Vec::new(), ui, tx, rx, ui_tx, None);
             return;
         };
         let crate_dir = config_dir.join("duat");
         let target_dir = cache_dir.join("duat/target");
         let toml_path = crate_dir.join("Cargo.toml");
 
-        let mut watcher = notify::recommended_watcher({
-            let target_dir = target_dir.clone();
-            let toml_path = toml_path.clone();
-            let lock_path = crate_dir.join("Cargo.lock");
+        //let mut watcher = notify::recommended_watcher({
+        //    let session_tx = duat_tx.clone();
+        //    let target_dir = target_dir.clone();
+        //    let toml_path = toml_path.clone();
+        //    let lock_path = crate_dir.join("Cargo.lock");
+        //    let ignored_target_path = crate_dir.join("target");
 
-            move |res| {
-                if let Ok(Event { kind: EventKind::Modify(_), paths, .. }) = res {
-                    // If the only thing that changed was the lock file, ignore.
-                    if paths.iter().eq([&lock_path].into_iter()) {
-                        return;
-                    }
-                    // Reload only the debug build when running in debug mode.
-                    // Reload first the debug, then the release build otherwise.
-                    if cfg!(debug_assertions) {
-                        reload_config(&main_tx, &target_dir, &toml_path, false);
-                    } else if reload_config(&main_tx, &target_dir, &toml_path, false) {
-                        reload_config(&main_tx, &target_dir, &toml_path, true);
-                    }
-                }
-            }
-        })
-        .unwrap();
+        //    move |res| {
+        //        static IS_RELOADING: AtomicBool = AtomicBool::new(false);
+        //        if let Ok(Event { kind: EventKind::Modify(_), paths, .. }) = res {
+        //            duat_core::log_file!("{paths:?}");
+        //            if paths
+        //                .iter()
+        //                .all(|p| p.starts_with(&ignored_target_path) || p == &lock_path)
+        //                || IS_RELOADING.load(Ordering::Acquire)
+        //            {
+        //                return;
+        //            }
+        //            IS_RELOADING.store(true, Ordering::Release);
+        //            // Reload only the debug build when running in debug mode.
+        //            // Reload first the debug, then the release build otherwise.
+        //            if cfg!(debug_assertions) {
+        //                reload_config(&reload_tx, &session_tx, &target_dir, &toml_path, false);
+        //            } else if reload_config(&reload_tx, &session_tx, &target_dir, &toml_path, false)
+        //            {
+        //                reload_config(&reload_tx, &session_tx, &target_dir, &toml_path, true);
+        //            }
+        //            IS_RELOADING.store(false, Ordering::Release);
+        //        }
+        //    }
+        //})
+        //.unwrap();
 
-        watcher.watch(&crate_dir, RecursiveMode::Recursive).unwrap();
+        //watcher.watch(&crate_dir, RecursiveMode::Recursive).unwrap();
 
         let so_path = match cfg!(debug_assertions) {
             true => target_dir.join("debug/libconfig.so"),
             false => target_dir.join("release/libconfig.so"),
         };
-        (watcher, toml_path, target_dir, so_path)
+        (toml_path, target_dir, so_path)
     };
 
     run_cargo(&toml_path, &target_dir, !cfg!(debug_assertions)).unwrap();
 
-    let mut library = unsafe { Library::new(&so_path).ok() };
-    let mut run_fn = library.as_ref().and_then(find_run_fn);
     let mut prev_files = Vec::new();
     let mut msg = None;
 
-    loop {
-        let (session_tx, session_rx) = mpsc::channel();
-        *SESSION_TX.lock().unwrap() = Some(session_tx.clone());
+    let meta_statics = <Ui as UiTrait>::MetaStatics::default();
+    //Ui::start_app(
+    //    meta_statics.clone(),
+    //    ui::Sender::new(duat_tx.clone()),
+    //    ui_rx,
+    //);
 
-        let handle = if let Some(run) = run_fn.take() {
-            let session_tx = session_tx.clone();
-            let msg = msg.take();
-            std::thread::spawn(move || run(prev_files, session_tx, session_rx, statics, msg))
+    loop {
+        let lib = ElfLibrary::dlopen(&so_path, OpenFlags::RTLD_LAZY | OpenFlags::RTLD_LOCAL).ok();
+        let mut run_fn = lib.as_ref().and_then(find_run_fn);
+
+        let ui = Ui::new(meta_statics.clone());
+        let (pf, srx, _) = if let Some(run_duat) = run_fn.take() {
+            let duat_rx = duat_rx.take().unwrap();
+            run_duat(ui_tx.clone())
         } else {
-            let session_tx = session_tx.clone();
-            let msg = msg.take();
-            std::thread::spawn(move || {
-                pre_setup();
-                run_duat(prev_files, session_tx, session_rx, statics, msg)
-            })
+            let duat_rx = duat_rx.take().unwrap();
+            pre_setup();
+            run_duat(prev_files, ui, duat_tx.clone(), duat_rx, ui_tx.clone(), msg)
         };
 
-        prev_files = handle.join().unwrap();
+        prev_files = pf;
+        duat_rx = Some(srx);
 
-        if let Ok((so_path, start, on_release)) = main_rx.try_recv() {
-            library.take().unwrap().close().unwrap();
-            library = Some(unsafe { Library::new(&so_path).ok().unwrap() });
-            run_fn = find_run_fn(library.as_ref().unwrap());
-
+        if let Ok((start, on_release)) = reload_rx.try_recv() {
             let profile = if on_release { "Release" } else { "Debug" };
             let secs = format!("{:.2}", start.elapsed().as_secs_f32());
             let new_msg = ok!([*a] profile [] " profile reloaded in " [*a] secs "s");
-
             msg = Some(new_msg);
         } else {
             break;
@@ -112,7 +134,8 @@ fn main() {
 
 /// Returns [`true`] if it reloaded the library and run function
 fn reload_config(
-    main_tx: &Sender<(PathBuf, Instant, bool)>,
+    reload_tx: &Sender<(Instant, bool)>,
+    duat_tx: &Sender<ui::DuatEvent>,
     target_dir: &Path,
     toml_path: &Path,
     on_release: bool,
@@ -130,13 +153,11 @@ fn reload_config(
 
     if let Ok(out) = run_cargo(toml_path, &target_dir, on_release)
         && out.status.success()
-        && let Some(library) = unsafe { Library::new(&so_path).ok() }
-        && find_run_fn(&library).is_some()
+        && let Ok(lib) = ElfLibrary::dlopen(&so_path, OpenFlags::RTLD_LAZY | OpenFlags::RTLD_LOCAL)
+        && find_run_fn(&lib).is_some()
     {
-        let session_tx = SESSION_TX.lock().unwrap();
-        let session_tx = session_tx.as_ref().unwrap();
-        main_tx.send((so_path, start, on_release)).unwrap();
-        session_tx.send(ui::Event::ReloadConfig).unwrap();
+        reload_tx.send((start, on_release)).unwrap();
+        duat_tx.send(ui::DuatEvent::ReloadConfig).unwrap();
         true
     } else {
         ON_ALT_PATH.fetch_not(Ordering::Relaxed);
@@ -171,16 +192,19 @@ fn run_cargo(
     cargo.output()
 }
 
-fn find_run_fn(lib: &Library) -> Option<Symbol<RunFn>> {
-    unsafe { lib.get::<RunFn>(b"run").ok() }
+fn find_run_fn<'a>(lib: &'a Dylib<'static>) -> Option<Symbol<'a, RunFn>> {
+    unsafe { lib.get::<RunFn>("run").ok() }
 }
 
 type RunFn = fn(
+    //Vec<(RwData<File>, bool)>,
+    //Ui,
+    //Sender<ui::DuatEvent>,
+    //Receiver<ui::DuatEvent>,
+    Sender<ui::UiEvent>,
+    //Option<Text>,
+) -> (
     Vec<(RwData<File>, bool)>,
-    Sender<ui::Event>,
-    Receiver<ui::Event>,
-    Statics,
-    Option<Text>,
-) -> Vec<(RwData<File>, bool)>;
-
-type Statics = <duat::Ui as ui::Ui>::StaticFns;
+    Receiver<ui::DuatEvent>,
+    Sender<ui::UiEvent>,
+);

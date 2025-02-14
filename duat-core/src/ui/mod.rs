@@ -29,11 +29,20 @@ use crate::{
 /// All the methods that a working gui/tui will need to implement, in
 /// order to use Parsec.
 pub trait Ui: Sized + Send + Sync + 'static {
-    /// This is the underlying type that will be handled dynamically
-    type StaticFns: Default + Clone + Copy + Send + Sync;
+    /// This type represents the things that must be kept between
+    /// configuration reloads.
+    type MetaStatics: Default + Clone + Send + Sync;
     type Area: Area<Ui = Self> + Clone + PartialEq + Send + Sync;
 
-    fn new(statics: Self::StaticFns) -> Self;
+    /// Functions to trigger when the program begins
+    fn start_app(
+        meta_statics: Self::MetaStatics,
+        event_tx: Sender,
+        event_rx: mpsc::Receiver<UiEvent>,
+    );
+
+    /// Returns a new instance of the [`Ui`]
+    fn new(meta_statics: Self::MetaStatics) -> Self;
 
     /// Initiates and returns a new "master" [`Area`]
     ///
@@ -43,14 +52,11 @@ pub trait Ui: Sized + Send + Sync + 'static {
     /// [`Area`]: Ui::Area
     fn new_root(&mut self, cache: <Self::Area as Area>::Cache) -> Self::Area;
 
-    /// Functions to trigger when the program begins
-    fn open(&mut self);
-
     /// Starts the Ui
     ///
-    /// This is different from [`Ui::open`], as this is going to run
-    /// on reloads as well.
-    fn start(&mut self, sender: Sender);
+    /// This is different from [`Ui::start_app`], as this is going to
+    /// run on reloads as well.
+    fn start(&mut self);
 
     /// Ends the Ui
     ///
@@ -265,21 +271,15 @@ pub trait Area: Send + Sync + Sized {
 }
 
 /// A container for a master [`Area`] in Parsec
-pub struct Window<U>
-where
-    U: Ui,
-{
+pub struct Window<U: Ui> {
     nodes: Vec<Node<U>>,
     files_area: U::Area,
     master_area: U::Area,
     layout: Box<dyn Layout<U>>,
 }
 
-impl<U> Window<U>
-where
-    U: Ui + 'static,
-{
-    /// Returns a new instance of [`Window<U>`]
+impl<U: Ui> Window<U> {
+    /// Returns a new instance of [`Window`]
     pub fn new<W: Widget<U>>(
         ui: &mut U,
         widget: W,
@@ -415,7 +415,8 @@ impl From<PushSpecs> for Axis {
     }
 }
 
-pub enum Event {
+#[derive(Debug)]
+pub enum DuatEvent {
     Key(KeyEvent),
     Resize,
     FormChange,
@@ -424,46 +425,47 @@ pub enum Event {
     Quit,
 }
 
-pub struct Sender(mpsc::Sender<Event>);
+pub struct Sender(mpsc::Sender<DuatEvent>);
 
 impl Sender {
-    pub fn new(sender: mpsc::Sender<Event>) -> Self {
+    pub fn new(sender: mpsc::Sender<DuatEvent>) -> Self {
         Self(sender)
     }
 
-    pub fn send_key(&self, key: KeyEvent) -> Result<(), mpsc::SendError<Event>> {
-        self.0.send(Event::Key(key))
+    pub fn send_key(&self, key: KeyEvent) -> Result<(), mpsc::SendError<DuatEvent>> {
+        self.0.send(DuatEvent::Key(key))
     }
 
-    pub fn send_reload_config(&self) -> Result<(), mpsc::SendError<Event>> {
-        self.0.send(Event::ReloadConfig)
+    pub fn send_reload_config(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
+        self.0.send(DuatEvent::ReloadConfig)
     }
 
-    pub fn send_resize(&self) -> Result<(), mpsc::SendError<Event>> {
+    pub fn send_resize(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
         if !crate::REPRINTING_SCREEN.load(Ordering::Acquire) {
-            self.0.send(Event::Resize)
+            self.0.send(DuatEvent::Resize)
         } else {
             Ok(())
         }
     }
 
-    pub(crate) fn send_form_changed(&self) -> Result<(), mpsc::SendError<Event>> {
+    pub(crate) fn send_form_changed(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
         if !crate::REPRINTING_SCREEN.load(Ordering::Acquire) {
-            self.0.send(Event::FormChange)
+            self.0.send(DuatEvent::FormChange)
         } else {
             Ok(())
         }
     }
 }
 
-pub struct RoWindow<'a, U>(&'a Window<U>)
-where
-    U: Ui;
+pub enum UiEvent {
+    Start,
+    Reload,
+    Quit,
+}
 
-impl<U> RoWindow<'_, U>
-where
-    U: Ui,
-{
+pub struct RoWindow<'a, U: Ui>(&'a Window<U>);
+
+impl<U: Ui> RoWindow<'_, U> {
     /// Similar to the [`Iterator::fold`] operation, folding each
     /// [`&File`][File`] by applying an operation,
     /// returning a final result.
@@ -500,14 +502,9 @@ where
     }
 }
 
-pub struct RoWindows<U>(RoData<Vec<Window<U>>>)
-where
-    U: Ui;
+pub struct RoWindows<U: Ui>(RoData<Vec<Window<U>>>);
 
-impl<U> RoWindows<U>
-where
-    U: Ui,
-{
+impl<U: Ui> RoWindows<U> {
     pub fn new(windows: RoData<Vec<Window<U>>>) -> Self {
         RoWindows(windows)
     }

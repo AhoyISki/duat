@@ -13,7 +13,7 @@ use duat_core::{
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
 
-use crate::{AreaId, ConstraintErr, layout::Layout, queue, style};
+use crate::{layout::Layout, queue, style, AreaId, ConstraintErr};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Coord {

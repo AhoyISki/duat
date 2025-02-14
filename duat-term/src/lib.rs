@@ -10,17 +10,25 @@
 use std::{
     fmt::Debug,
     io::{self, Write},
-    sync::{OnceLock, atomic::Ordering},
+    sync::{atomic::Ordering, mpsc},
     time::Duration,
 };
 
 pub use area::{Area, Coords};
 use crossterm::{
-    cursor, event, execute,
+    cursor,
+    event::{self, PopKeyboardEnhancementFlags},
+    execute,
     style::ContentStyle,
     terminal::{self, ClearType},
 };
-use duat_core::{DuatError, data::RwData, form::Color, text::err, ui};
+use duat_core::{
+    DuatError, context,
+    data::RwData,
+    form::Color,
+    text::err,
+    ui::{self, Sender, UiEvent},
+};
 
 use self::{layout::Layout, print::Printer};
 pub use self::{
@@ -33,8 +41,6 @@ mod layout;
 mod print;
 mod rules;
 
-static FUNCTIONS: OnceLock<StaticFns> = OnceLock::new();
-
 pub struct Ui {
     windows: Vec<Area>,
     printer: RwData<Printer>,
@@ -43,22 +49,23 @@ pub struct Ui {
 
 impl ui::Ui for Ui {
     type Area = Area;
-    type StaticFns = StaticFns;
+    type MetaStatics = RwData<Printer>;
 
-    fn new(statics: Self::StaticFns) -> Self {
-        FUNCTIONS.get_or_init(|| statics);
-
+    fn new(meta_statics: Self::MetaStatics) -> Self {
+        let printer = meta_statics;
+        use crossterm::event::PopKeyboardEnhancementFlags;
         std::panic::set_hook(Box::new(|info| {
             let trace = std::backtrace::Backtrace::capture();
+            terminal::disable_raw_mode().unwrap();
             execute!(
                 io::stdout(),
                 terminal::Clear(ClearType::All),
                 terminal::LeaveAlternateScreen,
                 terminal::EnableLineWrap,
-                cursor::Show
+                cursor::Show,
+                // PopKeyboardEnhancementFlags
             )
             .unwrap();
-            terminal::disable_raw_mode().unwrap();
             if let std::backtrace::BacktraceStatus::Captured = trace.status() {
                 println!("{trace}");
             }
@@ -67,42 +74,12 @@ impl ui::Ui for Ui {
 
         Ui {
             windows: Vec::new(),
-            printer: RwData::new(Printer::new()),
+            printer,
             fr: Frame::default(),
         }
     }
 
-    fn start(&mut self, sender: ui::Sender) {
-        let functions = FUNCTIONS.get().unwrap();
-        let printer = self.printer.clone();
-        duat_core::thread::spawn(move || {
-            loop {
-                if let Ok(true) = (functions.poll)() {
-                    let res = match (functions.read)().unwrap() {
-                        event::Event::Key(key) => sender.send_key(key),
-                        event::Event::Resize(..) => {
-                            printer.write().update(true);
-                            sender.send_resize()
-                        }
-                        event::Event::FocusGained
-                        | event::Event::FocusLost
-                        | event::Event::Mouse(_)
-                        | event::Event::Paste(_) => Ok(()),
-                    };
-
-                    if res.is_err() {
-                        break;
-                    }
-                }
-
-                printer.read().print();
-
-                if duat_core::has_ended() {
-                    break;
-                }
-            }
-        });
-    }
+    fn start(&mut self) {}
 
     fn new_root(&mut self, cache: <Self::Area as ui::Area>::Cache) -> Self::Area {
         self.printer.write().flush_equalities().unwrap();
@@ -116,29 +93,80 @@ impl ui::Ui for Ui {
         area
     }
 
-    fn open(&mut self) {
+    fn start_app(printer: Self::MetaStatics, tx: Sender, rx: mpsc::Receiver<UiEvent>) {
+        use crossterm::event::{KeyboardEnhancementFlags as KEF, PushKeyboardEnhancementFlags};
         execute!(
             io::stdout(),
             terminal::EnterAlternateScreen,
             terminal::DisableLineWrap
         )
         .unwrap();
+        // if terminal::supports_keyboard_enhancement().is_ok() {
+        //    execute!(
+        //        io::stdout(),
+        //        PushKeyboardEnhancementFlags(KEF::DISAMBIGUATE_ESCAPE_CODES)
+        //    )
+        //    .unwrap()
+        //}
         terminal::enable_raw_mode().unwrap();
+
+        std::thread::spawn(move || {
+            loop {
+                let Ok(UiEvent::Start) = rx.recv() else {
+                    break;
+                };
+
+                loop {
+                    if let Ok(true) = event::poll(Duration::from_millis(13)) {
+                        let res = match event::read().unwrap() {
+                            event::Event::Key(key) => tx.send_key(key),
+                            event::Event::Resize(..) => {
+                                printer.write().update(true);
+                                tx.send_resize()
+                            }
+                            event::Event::FocusGained
+                            | event::Event::FocusLost
+                            | event::Event::Mouse(_)
+                            | event::Event::Paste(_) => Ok(()),
+                        };
+                        if res.is_err() {
+                            break;
+                        }
+                    }
+
+                    printer.try_inspect(|p| p.print());
+
+                    if let Ok(event) = rx.try_recv() {
+                        match event {
+                            UiEvent::Start => {
+                                unreachable!("Wrong order")
+                            }
+                            UiEvent::Reload => {
+                                *printer.write() = Printer::new();
+                                break;
+                            }
+                            UiEvent::Quit => {
+                                terminal::disable_raw_mode().unwrap();
+                                execute!(
+                                    io::stdout(),
+                                    terminal::Clear(ClearType::All),
+                                    terminal::LeaveAlternateScreen,
+                                    terminal::EnableLineWrap,
+                                    cursor::Show,
+                                    // PopKeyboardEnhancementFlags
+                                )
+                                .unwrap();
+                            }
+                        }
+                    }
+                }
+            }
+        });
     }
 
     fn end(&mut self) {}
 
-    fn close(&mut self) {
-        execute!(
-            io::stdout(),
-            terminal::Clear(ClearType::All),
-            terminal::LeaveAlternateScreen,
-            terminal::EnableLineWrap,
-            cursor::Show
-        )
-        .unwrap();
-        terminal::disable_raw_mode().unwrap();
-    }
+    fn close(&mut self) {}
 
     fn stop_printing(&mut self) {
         self.printer.write().disable()
@@ -150,22 +178,6 @@ impl ui::Ui for Ui {
 
     fn flush_layout(&mut self) {
         self.printer.write().flush_equalities().unwrap();
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct StaticFns {
-    poll: fn() -> Result<bool, io::Error>,
-    read: fn() -> Result<event::Event, io::Error>,
-}
-
-impl Default for StaticFns {
-    fn default() -> Self {
-        fn poll() -> Result<bool, io::Error> {
-            crossterm::event::poll(Duration::from_millis(13))
-        }
-
-        Self { poll, read: crossterm::event::read }
     }
 }
 
@@ -261,9 +273,9 @@ fn print_style(w: &mut impl Write, style: ContentStyle) {
     color_values!(U8_UL_RGB, "58;2;", ";");
     color_values!(U8_UL_ANSI, "58;5;", ";");
 
-	if style == ContentStyle::default() {
-    	return;
-	}
+    if style == ContentStyle::default() {
+        return;
+    }
     let _ = w.write_all(b"\x1b[");
 
     let mut semicolon = false;

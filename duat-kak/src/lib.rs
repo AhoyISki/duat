@@ -203,8 +203,8 @@ impl<U: Ui> Mode<U> for Normal {
                 self.0 = SelType::ToEndOfLine;
                 if m.anchor().is_none() {
                     m.set_anchor();
-                } else if m.anchor_is_start() {
-                    m.swap_ends()
+                } else {
+                    m.set_caret_on_start()
                 }
 
                 let (_, p0) = m.search_rev("\n", None).next().unzip();
@@ -217,10 +217,11 @@ impl<U: Ui> Mode<U> for Normal {
                 }
                 m.set_desired_v_col(usize::MAX);
             }),
-            key!(Char(char), mf)
-                if let 'f' | 'F' | 't' | 'T' = char
-                    && (mf.intersects(ALTSHIFT) || mf == Mod::NONE) =>
-            {
+            key!(
+                Char('f' | 'F' | 't' | 'T'),
+                Mod::NONE | Mod::SHIFT | Mod::ALT | ALTSHIFT
+            ) => {
+                let mf = key.modifiers;
                 let sel_type = match (mf.contains(Mod::SHIFT), mf.contains(Mod::ALT)) {
                     (true, true) => SelType::ExtendRev,
                     (true, false) => SelType::Extend,
@@ -228,7 +229,7 @@ impl<U: Ui> Mode<U> for Normal {
                     (false, false) => SelType::Normal,
                 };
 
-                mode::set::<U>(if let 'f' | 'F' = char {
+                mode::set::<U>(if let Char('f' | 'F') = key.code {
                     OneKey::Find(sel_type)
                 } else {
                     OneKey::Until(sel_type)
@@ -246,21 +247,53 @@ impl<U: Ui> Mode<U> for Normal {
 
             ////////// Insert mode keys.
             key!(Char('i')) => {
-                helper.move_many(.., |mut m| {
-                    if m.anchor_is_start() {
-                        m.swap_ends();
-                    }
-                });
+                helper.move_many(.., |mut m| m.set_caret_on_start());
                 mode::set::<U>(Insert);
             }
             key!(Char('a')) => {
                 helper.move_many(.., |mut m| {
-                    if !m.anchor_is_start() {
-                        m.swap_ends();
-                    }
+                    m.set_caret_on_end();
                     m.move_hor(1);
                 });
                 mode::set::<U>(Insert);
+            }
+            key!(
+                Char('o' | 'O'),
+                Mod::NONE | Mod::ALT | Mod::SHIFT | ALTSHIFT
+            ) => {
+                let mut orig_points = Vec::new();
+                helper.move_many(.., |mut m| {
+                    orig_points.push((m.caret(), m.anchor()));
+                    m.unset_anchor();
+                    if key.modifiers.contains(Mod::SHIFT) {
+                        m.move_hor(-(m.caret_col() as i32));
+                    } else {
+                        let (p, _) = m.iter().find(|(_, c)| *c == '\n').unwrap();
+                        m.move_to(p);
+                        m.move_hor(1);
+                    }
+                });
+                helper.edit_many(.., |e| e.insert("\n"));
+                if key.modifiers == Mod::ALT {
+                    let mut orig_points = orig_points.into_iter();
+                    helper.move_many(.., |mut m| {
+                        let (caret, anchor) = orig_points.next().unwrap();
+                        if let Some(anchor) = anchor {
+                            m.move_to(anchor);
+                            m.set_anchor();
+                            if key.modifiers == ALTSHIFT {
+                                m.move_hor(1);
+                            }
+                        }
+                        m.move_to(caret);
+                        if key.modifiers == ALTSHIFT {
+                            m.move_hor(1);
+                        }
+                    });
+                } else {
+                    set_indent(&mut helper);
+                    mode::set::<U>(Insert);
+                }
             }
 
             ////////// Clipboard keys.
@@ -297,13 +330,10 @@ impl<U: Ui> Mode<U> for Normal {
                                 m.move_hor(1);
                             } else {
                                 m.set_caret_on_start();
-                                let col = m.caret_col() as i32;
-                                m.move_hor(-col)
+                                m.move_hor(-(m.caret_col() as i32))
                             }
                         } else {
-                            if m.anchor_is_start() {
-                                m.swap_ends()
-                            }
+                            m.set_caret_on_start();
                             if key.code == Char('p') {
                                 m.swap_ends();
                                 m.move_hor(1)
@@ -739,9 +769,7 @@ impl<U: Ui> IncSearcher<U> for Select<U> {
         let mut helper = EditHelper::new_inc(file, area, cursors, searcher);
 
         helper.move_many(.., |mut m| {
-            if m.anchor_is_start() {
-                m.swap_ends();
-            }
+            m.set_caret_on_start();
             if let Some(anchor) = m.anchor() {
                 let ranges: Vec<(Point, Point)> = m.search_inc_fwd(Some(anchor)).collect();
 
@@ -792,9 +820,7 @@ impl<U: Ui> IncSearcher<U> for Split<U> {
         let mut helper = EditHelper::new_inc(file, area, cursors, searcher);
 
         helper.move_many(.., |mut m| {
-            if m.anchor_is_start() {
-                m.swap_ends();
-            }
+            m.set_caret_on_start();
             if let Some(anchor) = m.anchor() {
                 let ranges: Vec<(Point, Point)> = m.search_inc_fwd(Some(anchor)).collect();
 
@@ -828,11 +854,7 @@ fn set_indent(helper: &mut EditHelper<'_, File, impl Area, ()>) {
         }
     });
     helper.edit_many(.., |e| {
-        let indent = if let Some(indent) = e.indent_on(e.caret()) {
-            indent
-        } else {
-            todo!();
-        };
+        let indent = e.indent_on(e.caret()).unwrap_or(0);
         e.insert_or_replace(" ".repeat(indent));
     });
     helper.move_many(.., |mut m| {

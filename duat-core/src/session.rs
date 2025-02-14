@@ -12,10 +12,11 @@ use crate::{
     cfg::PrintCfg,
     cmd, context,
     data::RwData,
+    form,
     hooks::{self, ConfigLoaded, ConfigUnloaded, ExitedDuat, OnFileOpen, OnWindowOpen},
     mode,
     text::Text,
-    ui::{Area, Event, FileBuilder, Layout, MasterOnLeft, Sender, Ui, Window, WindowBuilder},
+    ui::{Area, DuatEvent, FileBuilder, Layout, MasterOnLeft, Sender, Ui, UiEvent, Window, WindowBuilder},
     widgets::{File, FileCfg, Node, Widget, WidgetCfg},
 };
 
@@ -37,10 +38,8 @@ impl<U: Ui> SessionCfg<U> {
         }
     }
 
-    pub fn session_from_args(mut self, tx: mpsc::Sender<Event>) -> Session<U> {
-        self.ui.open();
-
-        let mut args = std::env::args();
+    pub fn session_from_args(mut self, tx: mpsc::Sender<DuatEvent>) -> Session<U> {
+        let mut args = std::iter::empty::<String>();
         let first = args.nth(1).map(PathBuf::from);
 
         let (widget, checker, _) = if let Some(path) = first {
@@ -78,7 +77,7 @@ impl<U: Ui> SessionCfg<U> {
     pub fn session_from_prev(
         mut self,
         prev: Vec<(RwData<File>, bool)>,
-        tx: mpsc::Sender<Event>,
+        tx: mpsc::Sender<DuatEvent>,
     ) -> Session<U> {
         let mut inherited_cfgs = Vec::new();
         for (file, is_active) in prev {
@@ -131,7 +130,7 @@ pub struct Session<U: Ui> {
     ui: U,
     cur_window: &'static AtomicUsize,
     file_cfg: FileCfg,
-    tx: mpsc::Sender<Event>,
+    tx: mpsc::Sender<DuatEvent>,
 }
 
 impl<U: Ui> Session<U> {
@@ -156,10 +155,12 @@ impl<U: Ui> Session<U> {
     /// Start the application, initiating a read/response loop.
     pub fn start(
         mut self,
-        rx: mpsc::Receiver<Event>,
+        duat_rx: mpsc::Receiver<DuatEvent>,
+        ui_tx: mpsc::Sender<UiEvent>,
         mut msg: Option<Text>,
-    ) -> Vec<(RwData<File>, bool)> {
+    ) -> (Vec<(RwData<File>, bool)>, mpsc::Receiver<DuatEvent>, mpsc::Sender<UiEvent>) {
         hooks::trigger::<ConfigLoaded>(());
+        form::set_sender(Sender::new(self.tx.clone()));
 
         // This loop is very useful when trying to find deadlocks.
         #[cfg(feature = "deadlocks")]
@@ -174,23 +175,28 @@ impl<U: Ui> Session<U> {
                     .unwrap(),
             );
 
+            crate::log_file!("deadlocks are active!");
+
             loop {
                 std::thread::sleep(std::time::Duration::new(2, 0));
                 let deadlocks = parking_lot::deadlock::check_deadlock();
-                writeln!(file, "{} deadlocks detected", deadlocks.len()).unwrap();
+                crate::log_file!("{} deadlocks detected", deadlocks.len());
                 for (i, threads) in deadlocks.iter().enumerate() {
-                    writeln!(file, "Deadlock #{}", i).unwrap();
+                    crate::log_file!("Deadlock #{}", i);
                     for t in threads {
-                        writeln!(file, "Thread Id {:#?}", t.thread_id()).unwrap();
-                        writeln!(file, "{:#?}", t.backtrace()).unwrap();
+                        crate::log_file!("Thread Id {:#?}", t.thread_id());
+                        crate::log_file!("{:#?}", t.backtrace());
                     }
+                }
+                if context::will_reload_or_quit() {
+                    break;
                 }
             }
         });
 
         self.ui.flush_layout();
-        self.ui.start(Sender::new(self.tx.clone()));
-        crate::form::set_sender(Sender::new(self.tx.clone()));
+        self.ui.start();
+        ui_tx.send(UiEvent::Start).unwrap();
 
         // The main loop.
         loop {
@@ -210,10 +216,10 @@ impl<U: Ui> Session<U> {
                     node.update_and_print();
                 }
             });
-			if let Some(msg) = msg.take() {
-    			crate::context::notify(msg);
-			}
-            let reason_to_break = self.session_loop(&rx);
+            if let Some(msg) = msg.take() {
+                crate::context::notify(msg);
+            }
+            let reason_to_break = self.session_loop(&duat_rx);
 
             hooks::trigger::<ConfigUnloaded>(());
 
@@ -222,19 +228,22 @@ impl<U: Ui> Session<U> {
                     hooks::trigger::<ExitedDuat>(());
 
                     crate::thread::quit_queue();
-                    cmd::end_session();
                     self.save_cache(true);
                     self.ui.close();
+                    context::order_reload_or_quit();
 
-                    break Vec::new();
+					ui_tx.send(UiEvent::Quit).unwrap();
+                    break (Vec::new(), duat_rx, ui_tx);
                 }
                 BreakTo::ReloadConfig => {
                     crate::thread::quit_queue();
-                    cmd::end_session();
                     self.save_cache(false);
                     self.ui.end();
+                    let files = self.take_files();
+                    context::order_reload_or_quit();
 
-                    break self.reload_config();
+					ui_tx.send(UiEvent::Reload).unwrap();
+                    break (files, duat_rx, ui_tx);
                 }
                 BreakTo::OpenFile(file) => self.open_file(file),
             }
@@ -243,7 +252,7 @@ impl<U: Ui> Session<U> {
 
     /// The primary application loop, executed while no breaking
     /// functions have been called
-    fn session_loop(&mut self, rx: &mpsc::Receiver<Event>) -> BreakTo {
+    fn session_loop(&mut self, rx: &mpsc::Receiver<DuatEvent>) -> BreakTo {
         let w = self.cur_window;
         let windows = context::windows::<U>().read();
 
@@ -257,17 +266,17 @@ impl<U: Ui> Session<U> {
 
                 if let Ok(event) = rx.recv_timeout(Duration::from_millis(50)) {
                     match event {
-                        Event::Key(key) => mode::send_key(key),
-                        Event::Resize | Event::FormChange => {
+                        DuatEvent::Key(key) => mode::send_key(key),
+                        DuatEvent::Resize | DuatEvent::FormChange => {
                             for node in cur_window.nodes() {
                                 s.spawn(|| node.update_and_print());
                             }
                             crate::REPRINTING_SCREEN.store(false, Ordering::Release);
                             continue;
                         }
-                        Event::ReloadConfig => break BreakTo::ReloadConfig,
-                        Event::Quit => break BreakTo::QuitDuat,
-                        Event::OpenFile(file) => break BreakTo::OpenFile(file),
+                        DuatEvent::ReloadConfig => break BreakTo::ReloadConfig,
+                        DuatEvent::Quit => break BreakTo::QuitDuat,
+                        DuatEvent::OpenFile(file) => break BreakTo::OpenFile(file),
                     }
                 }
 
@@ -307,7 +316,7 @@ impl<U: Ui> Session<U> {
         }
     }
 
-    fn reload_config(self) -> Vec<(RwData<File>, bool)> {
+    fn take_files(self) -> Vec<(RwData<File>, bool)> {
         let windows = context::windows::<U>().read();
 
         windows

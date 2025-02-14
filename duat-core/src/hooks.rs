@@ -280,6 +280,10 @@ mod global {
 
     static HOOKS: Hooks = Hooks::new();
 
+    pub fn address() {
+        //crate::log_file!("{:p}", &HOOKS);
+    }
+
     /// Adds a [hook]
     ///
     /// This hook is ungrouped, that is, it cannot be removed. If you
@@ -288,6 +292,7 @@ mod global {
     /// [hook]: Hookable
     /// [`hooks::add_grouped`]: add_grouped
     pub fn add<H: Hookable>(f: impl FnMut(&H::Args) + Send + 'static) {
+        //crate::log_file!("{:p}", &HOOKS);
         crate::thread::queue(move || HOOKS.add::<H>("", f))
     }
 
