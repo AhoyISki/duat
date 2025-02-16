@@ -13,7 +13,7 @@ use duat_core::{
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
 
-use crate::{layout::Layout, queue, style, AreaId, ConstraintErr};
+use crate::{AreaId, ConstraintErr, layout::Layout, queue, style};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Coord {
@@ -131,7 +131,7 @@ impl Area {
                 f(&caret, &item);
 
                 let Caret { x, len, wrap } = caret;
-                let Item { part , ..} = item;
+                let Item { part, .. } = item;
 
                 if wrap {
                     if y > sender.coords().tl.y {

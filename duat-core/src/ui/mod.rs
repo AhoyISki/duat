@@ -407,10 +407,9 @@ impl Axis {
 
 impl From<PushSpecs> for Axis {
     fn from(value: PushSpecs) -> Self {
-        if let Side::Above | Side::Below = value.side {
-            Axis::Vertical
-        } else {
-            Axis::Horizontal
+        match value.side {
+            Side::Above | Side::Below => Axis::Vertical,
+            _ => Axis::Horizontal,
         }
     }
 }

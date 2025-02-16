@@ -17,7 +17,7 @@ members = [
   "duat-kak",
   "duat-term",
 ]
-exclude = [ "testing" ]
+exclude = [ "testing", "config" ]
 
 [dependencies]
 duat-core = { version = ">=0.2.1", path = "duat-core" }
@@ -25,13 +25,9 @@ duat-core = { version = ">=0.2.1", path = "duat-core" }
 # List of UIs.
 duat-term = { version = ">=0.2.1", path = "duat-term", optional = true }
 
-atomic-wait = "1.1.0"
 dirs-next = "2.0.0"
-libloading = "0.8.1"
 notify = "6.1.1"
-dlopen-rs = "0.6.0"
-log = "0.4.25"
-ftail = "0.2.0"
+dlopen-rs = { git = "https://github.com/weizhiao/dlopen-rs", version = "0.6.0" }
 
 [features]
 default = ["term-ui"]

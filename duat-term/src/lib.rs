@@ -23,7 +23,7 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 use duat_core::{
-    DuatError, context,
+    DuatError,
     data::RwData,
     form::Color,
     text::err,
@@ -53,7 +53,6 @@ impl ui::Ui for Ui {
 
     fn new(meta_statics: Self::MetaStatics) -> Self {
         let printer = meta_statics;
-        use crossterm::event::PopKeyboardEnhancementFlags;
         std::panic::set_hook(Box::new(|info| {
             let trace = std::backtrace::Backtrace::capture();
             terminal::disable_raw_mode().unwrap();
@@ -63,7 +62,7 @@ impl ui::Ui for Ui {
                 terminal::LeaveAlternateScreen,
                 terminal::EnableLineWrap,
                 cursor::Show,
-                // PopKeyboardEnhancementFlags
+                PopKeyboardEnhancementFlags
             )
             .unwrap();
             if let std::backtrace::BacktraceStatus::Captured = trace.status() {
@@ -101,13 +100,13 @@ impl ui::Ui for Ui {
             terminal::DisableLineWrap
         )
         .unwrap();
-        // if terminal::supports_keyboard_enhancement().is_ok() {
-        //    execute!(
-        //        io::stdout(),
-        //        PushKeyboardEnhancementFlags(KEF::DISAMBIGUATE_ESCAPE_CODES)
-        //    )
-        //    .unwrap()
-        //}
+        if terminal::supports_keyboard_enhancement().is_ok() {
+            execute!(
+                io::stdout(),
+                PushKeyboardEnhancementFlags(KEF::DISAMBIGUATE_ESCAPE_CODES)
+            )
+            .unwrap()
+        }
         terminal::enable_raw_mode().unwrap();
 
         std::thread::spawn(move || {
@@ -117,7 +116,7 @@ impl ui::Ui for Ui {
                 };
 
                 loop {
-                    if let Ok(true) = event::poll(Duration::from_millis(13)) {
+                    if let Ok(true) = event::poll(Duration::from_millis(100)) {
                         let res = match event::read().unwrap() {
                             event::Event::Key(key) => tx.send_key(key),
                             event::Event::Resize(..) => {
@@ -136,7 +135,7 @@ impl ui::Ui for Ui {
 
                     printer.try_inspect(|p| p.print());
 
-                    if let Ok(event) = rx.try_recv() {
+                    if let Ok(event) = rx.recv_timeout(Duration::from_millis(6)) {
                         match event {
                             UiEvent::Start => {
                                 unreachable!("Wrong order")
@@ -153,7 +152,7 @@ impl ui::Ui for Ui {
                                     terminal::LeaveAlternateScreen,
                                     terminal::EnableLineWrap,
                                     cursor::Show,
-                                    // PopKeyboardEnhancementFlags
+                                    PopKeyboardEnhancementFlags
                                 )
                                 .unwrap();
                             }

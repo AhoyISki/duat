@@ -70,15 +70,11 @@ pub fn pre_setup() {
 pub fn run_duat(
     prev: Vec<(RwData<File>, bool)>,
     ui: Ui,
-    tx: Sender<DuatEvent>,
-    rx: Receiver<DuatEvent>,
+    duat_tx: Sender<DuatEvent>,
+    duat_rx: Receiver<DuatEvent>,
     ui_tx: Sender<UiEvent>,
     msg: Option<Text>,
-) -> (
-    Vec<(RwData<File>, bool)>,
-    Receiver<DuatEvent>,
-    Sender<UiEvent>,
-) {
+) -> (Vec<(RwData<File>, bool)>, Receiver<DuatEvent>) {
     let mut cfg = SessionCfg::new(ui);
 
     if let Some(cfg_fn) = CFG_FN.write().unwrap().take() {
@@ -93,11 +89,11 @@ pub fn run_duat(
     cfg.set_print_cfg(print_cfg);
 
     let session = if prev.is_empty() {
-        cfg.session_from_args(tx)
+        cfg.session_from_args(duat_tx)
     } else {
-        cfg.session_from_prev(prev, tx)
+        cfg.session_from_prev(prev, duat_tx)
     };
-    session.start(rx, ui_tx, msg)
+    session.start(duat_rx, ui_tx, msg)
 }
 
 type PluginFn = dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync + 'static;

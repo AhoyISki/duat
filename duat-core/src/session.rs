@@ -16,7 +16,10 @@ use crate::{
     hooks::{self, ConfigLoaded, ConfigUnloaded, ExitedDuat, OnFileOpen, OnWindowOpen},
     mode,
     text::Text,
-    ui::{Area, DuatEvent, FileBuilder, Layout, MasterOnLeft, Sender, Ui, UiEvent, Window, WindowBuilder},
+    ui::{
+        Area, DuatEvent, FileBuilder, Layout, MasterOnLeft, Sender, Ui, UiEvent, Window,
+        WindowBuilder,
+    },
     widgets::{File, FileCfg, Node, Widget, WidgetCfg},
 };
 
@@ -39,7 +42,7 @@ impl<U: Ui> SessionCfg<U> {
     }
 
     pub fn session_from_args(mut self, tx: mpsc::Sender<DuatEvent>) -> Session<U> {
-        let mut args = std::iter::empty::<String>();
+        let mut args = std::env::args();
         let first = args.nth(1).map(PathBuf::from);
 
         let (widget, checker, _) = if let Some(path) = first {
@@ -77,7 +80,7 @@ impl<U: Ui> SessionCfg<U> {
     pub fn session_from_prev(
         mut self,
         prev: Vec<(RwData<File>, bool)>,
-        tx: mpsc::Sender<DuatEvent>,
+        duat_tx: mpsc::Sender<DuatEvent>,
     ) -> Session<U> {
         let mut inherited_cfgs = Vec::new();
         for (file, is_active) in prev {
@@ -99,7 +102,7 @@ impl<U: Ui> SessionCfg<U> {
             ui: self.ui,
             cur_window,
             file_cfg: self.file_cfg,
-            tx,
+            tx: duat_tx,
         };
 
         context::set_cur(node.as_file(), node.clone());
@@ -158,7 +161,7 @@ impl<U: Ui> Session<U> {
         duat_rx: mpsc::Receiver<DuatEvent>,
         ui_tx: mpsc::Sender<UiEvent>,
         mut msg: Option<Text>,
-    ) -> (Vec<(RwData<File>, bool)>, mpsc::Receiver<DuatEvent>, mpsc::Sender<UiEvent>) {
+    ) -> (Vec<(RwData<File>, bool)>, mpsc::Receiver<DuatEvent>) {
         hooks::trigger::<ConfigLoaded>(());
         form::set_sender(Sender::new(self.tx.clone()));
 
@@ -232,8 +235,8 @@ impl<U: Ui> Session<U> {
                     self.ui.close();
                     context::order_reload_or_quit();
 
-					ui_tx.send(UiEvent::Quit).unwrap();
-                    break (Vec::new(), duat_rx, ui_tx);
+                    ui_tx.send(UiEvent::Quit).unwrap();
+                    break (Vec::new(), duat_rx);
                 }
                 BreakTo::ReloadConfig => {
                     crate::thread::quit_queue();
@@ -242,8 +245,8 @@ impl<U: Ui> Session<U> {
                     let files = self.take_files();
                     context::order_reload_or_quit();
 
-					ui_tx.send(UiEvent::Reload).unwrap();
-                    break (files, duat_rx, ui_tx);
+                    ui_tx.send(UiEvent::Reload).unwrap();
+                    break (files, duat_rx);
                 }
                 BreakTo::OpenFile(file) => self.open_file(file),
             }
@@ -252,10 +255,11 @@ impl<U: Ui> Session<U> {
 
     /// The primary application loop, executed while no breaking
     /// functions have been called
-    fn session_loop(&mut self, rx: &mpsc::Receiver<DuatEvent>) -> BreakTo {
+    fn session_loop(&mut self, duat_rx: &mpsc::Receiver<DuatEvent>) -> BreakTo {
         let w = self.cur_window;
         let windows = context::windows::<U>().read();
 
+        crate::log_file!("got to session loop");
         std::thread::scope(|s| {
             loop {
                 let cur_window = &windows[w.load(Ordering::Relaxed)];
@@ -264,7 +268,7 @@ impl<U: Ui> Session<U> {
                     set_mode();
                 }
 
-                if let Ok(event) = rx.recv_timeout(Duration::from_millis(50)) {
+                if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(50)) {
                     match event {
                         DuatEvent::Key(key) => mode::send_key(key),
                         DuatEvent::Resize | DuatEvent::FormChange => {
@@ -274,7 +278,9 @@ impl<U: Ui> Session<U> {
                             crate::REPRINTING_SCREEN.store(false, Ordering::Release);
                             continue;
                         }
-                        DuatEvent::ReloadConfig => break BreakTo::ReloadConfig,
+                        DuatEvent::ReloadConfig => {
+                            break BreakTo::ReloadConfig
+                        },
                         DuatEvent::Quit => break BreakTo::QuitDuat,
                         DuatEvent::OpenFile(file) => break BreakTo::OpenFile(file),
                     }
@@ -296,6 +302,7 @@ impl<U: Ui> Session<U> {
             .flat_map(Window::nodes)
             .filter_map(|node| node.as_file())
         {
+            let mut cursors = cursors.write();
             let file = file.read();
 
             if is_quitting_duat && !file.exists() {
@@ -306,7 +313,6 @@ impl<U: Ui> Session<U> {
                 store_cache(file.path(), cache);
             }
 
-            let mut cursors = cursors.write();
             if !cursors.is_empty() {
                 if is_quitting_duat {
                     cursors.remove_extras();
