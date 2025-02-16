@@ -1,4 +1,5 @@
 use std::{
+    marker::PhantomData,
     path::PathBuf,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -25,23 +26,21 @@ use crate::{
 
 #[doc(hidden)]
 pub struct SessionCfg<U: Ui> {
-    ui: U,
     file_cfg: FileCfg,
     layout: Box<dyn Fn() -> Box<dyn Layout<U> + 'static>>,
 }
 
 impl<U: Ui> SessionCfg<U> {
-    pub fn new(ui: U) -> Self {
+    pub fn new() -> Self {
         crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
 
         SessionCfg {
-            ui,
             file_cfg: FileCfg::new(),
             layout: Box::new(|| Box::new(MasterOnLeft)),
         }
     }
 
-    pub fn session_from_args(mut self, tx: mpsc::Sender<DuatEvent>) -> Session<U> {
+    pub fn session_from_args(self, tx: mpsc::Sender<DuatEvent>) -> Session<U> {
         let mut args = std::env::args();
         let first = args.nth(1).map(PathBuf::from);
 
@@ -51,14 +50,14 @@ impl<U: Ui> SessionCfg<U> {
             self.file_cfg.clone().build(false)
         };
 
-        let (window, node) = Window::new(&mut self.ui, widget, checker, (self.layout)());
+        let (window, node) = Window::new(widget, checker, (self.layout)());
         let cur_window = context::set_windows(vec![window]);
 
         let mut session = Session {
-            ui: self.ui,
             cur_window,
             file_cfg: self.file_cfg,
             tx,
+            _u: PhantomData,
         };
 
         context::set_cur(node.as_file(), node.clone());
@@ -78,7 +77,7 @@ impl<U: Ui> SessionCfg<U> {
     }
 
     pub fn session_from_prev(
-        mut self,
+        self,
         prev: Vec<(RwData<File>, bool)>,
         duat_tx: mpsc::Sender<DuatEvent>,
     ) -> Session<U> {
@@ -95,14 +94,14 @@ impl<U: Ui> SessionCfg<U> {
 
         let (widget, checker, _) = <FileCfg as WidgetCfg<U>>::build(file_cfg, false);
 
-        let (window, node) = Window::new(&mut self.ui, widget, checker, (self.layout)());
+        let (window, node) = Window::new(widget, checker, (self.layout)());
         let cur_window = context::set_windows(vec![window]);
 
         let mut session = Session {
-            ui: self.ui,
             cur_window,
             file_cfg: self.file_cfg,
             tx: duat_tx,
+            _u: PhantomData,
         };
 
         context::set_cur(node.as_file(), node.clone());
@@ -129,11 +128,17 @@ impl<U: Ui> SessionCfg<U> {
     }
 }
 
+impl<U: Ui> Default for SessionCfg<U> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct Session<U: Ui> {
-    ui: U,
     cur_window: &'static AtomicUsize,
     file_cfg: FileCfg,
     tx: mpsc::Sender<DuatEvent>,
+    _u: PhantomData<U>,
 }
 
 impl<U: Ui> Session<U> {
@@ -197,8 +202,7 @@ impl<U: Ui> Session<U> {
             }
         });
 
-        self.ui.flush_layout();
-        self.ui.start();
+        U::flush_layout();
         ui_tx.send(UiEvent::Start).unwrap();
 
         // The main loop.
@@ -229,22 +233,18 @@ impl<U: Ui> Session<U> {
             match reason_to_break {
                 BreakTo::QuitDuat => {
                     hooks::trigger::<ExitedDuat>(());
-
                     crate::thread::quit_queue();
                     self.save_cache(true);
-                    self.ui.close();
                     context::order_reload_or_quit();
-
                     ui_tx.send(UiEvent::Quit).unwrap();
                     break (Vec::new(), duat_rx);
                 }
                 BreakTo::ReloadConfig => {
+                    U::unload();
                     crate::thread::quit_queue();
                     self.save_cache(false);
-                    self.ui.end();
                     let files = self.take_files();
                     context::order_reload_or_quit();
-
                     ui_tx.send(UiEvent::Reload).unwrap();
                     break (files, duat_rx);
                 }
@@ -259,7 +259,6 @@ impl<U: Ui> Session<U> {
         let w = self.cur_window;
         let windows = context::windows::<U>().read();
 
-        crate::log_file!("got to session loop");
         std::thread::scope(|s| {
             loop {
                 let cur_window = &windows[w.load(Ordering::Relaxed)];
@@ -278,9 +277,7 @@ impl<U: Ui> Session<U> {
                             crate::REPRINTING_SCREEN.store(false, Ordering::Release);
                             continue;
                         }
-                        DuatEvent::ReloadConfig => {
-                            break BreakTo::ReloadConfig
-                        },
+                        DuatEvent::ReloadConfig => break BreakTo::ReloadConfig,
                         DuatEvent::Quit => break BreakTo::QuitDuat,
                         DuatEvent::OpenFile(file) => break BreakTo::OpenFile(file),
                     }
@@ -297,27 +294,28 @@ impl<U: Ui> Session<U> {
 
     fn save_cache(&self, is_quitting_duat: bool) {
         let windows = context::windows::<U>().read();
-        for (file, area, cursors, _) in windows
+        for (file, area, _) in windows
             .iter()
             .flat_map(Window::nodes)
             .filter_map(|node| node.as_file())
         {
-            let mut cursors = cursors.write();
-            let file = file.read();
+            let mut file = file.write();
+            let path = file.path();
 
             if is_quitting_duat && !file.exists() {
-                delete_cache(file.path());
+                delete_cache(path);
                 return;
             }
             if let Some(cache) = area.cache() {
                 store_cache(file.path(), cache);
             }
 
+            let cursors = file.cursors_mut().unwrap();
             if !cursors.is_empty() {
                 if is_quitting_duat {
                     cursors.remove_extras();
                 }
-                store_cache(file.path(), std::mem::take(&mut *cursors));
+                store_cache(path, std::mem::take(&mut *cursors));
             }
         }
     }

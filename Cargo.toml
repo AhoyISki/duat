@@ -27,7 +27,7 @@ duat-term = { version = ">=0.2.1", path = "duat-term", optional = true }
 
 dirs-next = "2.0.0"
 notify = "6.1.1"
-dlopen-rs = { git = "https://github.com/weizhiao/dlopen-rs", version = "0.6.0" }
+dlopen-rs = "0.7.0"
 
 [features]
 default = ["term-ui"]

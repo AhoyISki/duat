@@ -117,6 +117,7 @@ pub struct Text {
     buf: Box<GapBuffer<u8>>,
     tags: Box<Tags>,
     records: Box<Records<[usize; 3]>>,
+    cursors: Option<Box<Cursors>>,
     // Specific to Files
     history: Option<Box<History>>,
     readers: Vec<(Box<dyn Reader>, Vec<Range<usize>>)>,
@@ -131,26 +132,38 @@ impl Text {
 
     /// Returns a new empty [`Text`]
     pub fn new() -> Self {
-        Self::from_buf(Box::default(), false)
+        Self::from_buf(Box::default(), None, false)
+    }
+
+    pub fn new_with_cursors() -> Self {
+        Self::from_buf(Box::default(), Some(Cursors::default()), false)
     }
 
     /// Returns a new empty [`Text`] with history enabled
-    pub fn new_with_history() -> Self {
-        Self::from_buf(Box::default(), true)
+    pub(crate) fn new_with_history() -> Self {
+        Self::from_buf(Box::default(), Some(Cursors::default()), true)
     }
 
     /// Creates a [`Text`] from a file's [path]
     ///
     /// [path]: Path
-    pub(crate) fn from_file(buf: Box<GapBuffer<u8>>, path: impl AsRef<Path>) -> Self {
-        let mut text = Self::from_buf(buf, true);
+    pub(crate) fn from_file(
+        buf: Box<GapBuffer<u8>>,
+        cursors: Cursors,
+        path: impl AsRef<Path>,
+    ) -> Self {
+        let mut text = Self::from_buf(buf, Some(cursors), true);
         let tree_sitter = TsParser::new(&mut text, path);
         text.ts_parser = tree_sitter.map(|ts| (Box::new(ts), Vec::new()));
         text
     }
 
     /// Creates a [`Text`] from a [`GapBuffer`]
-    pub(crate) fn from_buf(mut buf: Box<GapBuffer<u8>>, with_history: bool) -> Self {
+    pub(crate) fn from_buf(
+        mut buf: Box<GapBuffer<u8>>,
+        cursors: Option<Cursors>,
+        with_history: bool,
+    ) -> Self {
         let forced_new_line = if buf.is_empty() || buf[buf.len() - 1] != b'\n' {
             buf.push_back(b'\n');
             true
@@ -169,6 +182,7 @@ impl Text {
         Self {
             buf,
             tags,
+            cursors: cursors.map(Box::new),
             records: Box::new(Records::with_max([len, chars, lines])),
             history: with_history.then(Box::default),
             readers: Vec::new(),
@@ -802,35 +816,39 @@ impl Text {
     ////////// History manipulation functions
 
     /// Undoes the last moment, if there was one
-    pub fn undo(&mut self, area: &impl Area, cursors: &mut Cursors, cfg: PrintCfg) {
+    pub fn undo(&mut self, area: &impl Area, cfg: PrintCfg) {
         let Some(mut history) = self.history.take() else {
             return;
         };
+        let mut cursors = self.cursors.take().unwrap();
         let Some(changes) = history.move_backwards() else {
             self.history = Some(history);
             return;
         };
 
-        self.apply_and_process_changes(&changes, Some((area, cursors, cfg)));
+        self.apply_and_process_changes(&changes, Some((area, &mut cursors, cfg)));
 
         self.has_changed = true;
         self.history = Some(history);
+        self.cursors = Some(cursors);
     }
 
     /// Redoes the last moment in the history, if there is one
-    pub fn redo(&mut self, area: &impl Area, cursors: &mut Cursors, cfg: PrintCfg) {
+    pub fn redo(&mut self, area: &impl Area, cfg: PrintCfg) {
         let Some(mut history) = self.history.take() else {
             return;
         };
+        let mut cursors = self.cursors.take().unwrap();
         let Some(changes) = history.move_forward() else {
             self.history = Some(history);
             return;
         };
 
-        self.apply_and_process_changes(&changes, Some((area, cursors, cfg)));
+        self.apply_and_process_changes(&changes, Some((area, &mut cursors, cfg)));
 
         self.has_changed = true;
         self.history = Some(history);
+        self.cursors = Some(cursors);
     }
 
     pub fn apply_and_process_changes(
@@ -985,12 +1003,18 @@ impl Text {
         self.tags = Box::new(Tags::with_len(self.buf.len()));
     }
 
+    /////////// Cursor functions
+
     /// Removes the tags for all the cursors, used before they are
     /// expected to move
-    pub(crate) fn add_cursors(&mut self, cursors: &Cursors, area: &impl Area, cfg: PrintCfg) {
+    pub(crate) fn add_cursors(&mut self, area: &impl Area, cfg: PrintCfg) {
+        let Some(cursors) = self.cursors.take() else {
+            return;
+        };
+
         if cursors.len() < 500 {
             for (cursor, is_main) in cursors.iter() {
-                self.add_cursor(cursor, is_main, cursors);
+                self.add_cursor(cursor, is_main, &cursors);
             }
         } else {
             let start = area.first_point(self, cfg);
@@ -998,19 +1022,25 @@ impl Text {
             for (cursor, is_main) in cursors.iter() {
                 let range = cursor.range(cursors.is_incl(), self);
                 if range.end > start.byte() && range.start < end.byte() {
-                    self.add_cursor(cursor, is_main, cursors);
+                    self.add_cursor(cursor, is_main, &cursors);
                 }
             }
         }
         self.has_changed = true;
+
+        self.cursors = Some(cursors);
     }
 
     /// Adds the tags for all the cursors, used after they are
     /// expected to have moved
-    pub(crate) fn remove_cursors(&mut self, cursors: &Cursors, area: &impl Area, cfg: PrintCfg) {
+    pub(crate) fn remove_cursors(&mut self, area: &impl Area, cfg: PrintCfg) {
+        let Some(cursors) = self.cursors.take() else {
+            return;
+        };
+
         if cursors.len() < 500 {
             for (cursor, _) in cursors.iter() {
-                self.remove_cursor(cursor, cursors);
+                self.remove_cursor(cursor, &cursors);
             }
         } else {
             let start = area.first_point(self, cfg);
@@ -1018,10 +1048,30 @@ impl Text {
             for (cursor, _) in cursors.iter() {
                 let range = cursor.range(cursors.is_incl(), self);
                 if range.end > start.byte() && range.start < end.byte() {
-                    self.remove_cursor(cursor, cursors);
+                    self.remove_cursor(cursor, &cursors);
                 }
             }
         }
+
+        self.cursors = Some(cursors)
+    }
+
+    pub(crate) fn shift_cursors(
+        &mut self,
+        from: usize,
+        by: (i32, i32, i32),
+        area: &impl Area,
+        cfg: PrintCfg,
+    ) {
+        let Some(mut cursors) = self.cursors.take() else {
+            return;
+        };
+
+        if by != (0, 0, 0) {
+            cursors.shift_by(from, by, self, area, cfg);
+        }
+
+        self.cursors = Some(cursors);
     }
 
     /// Adds a [`Cursor`] to the [`Text`]
@@ -1134,6 +1184,16 @@ impl Text {
     pub fn tags_rev(&self, at: usize) -> RevTags {
         self.tags.rev_at(at)
     }
+
+    /// The [`Cursors`] printed to this [`Text`], if they exist
+    pub fn cursors(&self) -> Option<&Cursors> {
+        self.cursors.as_ref().map(|b| b.as_ref())
+    }
+
+    /// A mut reference to this [`Text`]'s [`Cursors`] if they exist
+    pub fn cursors_mut(&mut self) -> Option<&mut Cursors> {
+        self.cursors.as_mut().map(|b| b.as_mut())
+    }
 }
 
 impl std::fmt::Debug for Text {
@@ -1153,6 +1213,7 @@ impl Clone for Text {
         Self {
             buf: self.buf.clone(),
             tags: self.tags.clone(),
+            cursors: self.cursors.clone(),
             records: self.records.clone(),
             history: self.history.clone(),
             readers: Vec::new(),
@@ -1298,7 +1359,7 @@ macro impl_from_to_string($t:ty) {
         fn from(value: $t) -> Self {
             let value = <$t as ToString>::to_string(&value);
             let buf = Box::new(GapBuffer::from_iter(value.bytes()));
-            Self::from_buf(buf, false)
+            Self::from_buf(buf, None, false)
         }
     }
 }

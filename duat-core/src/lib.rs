@@ -262,7 +262,6 @@
     extract_if,
     iter_advance_by,
     iter_intersperse,
-    trait_upcasting,
     let_chains,
     decl_macro,
     step_trait,
@@ -387,7 +386,6 @@ pub mod thread {
                 while let Ok(SentHook::Fn(f)) = receiver.recv() {
                     f();
                 }
-                crate::log_file!("quit queue!");
             });
         });
 

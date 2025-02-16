@@ -30,8 +30,9 @@ impl Widget<Ui> for VertRule {
         self.text = if let Some(reader) = self.reader.as_ref()
             && let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = self.sep_char
         {
-            reader.inspect(|file, _, cursors| {
+            reader.inspect(|file, _| {
                 let lines = file.printed_lines();
+                let cursors = file.cursors().unwrap();
                 let (upper, middle, lower) = if let Some(main) = cursors.get_main() {
                     let main = main.line();
                     let upper = lines.iter().filter(|&(line, _)| *line < main).count();

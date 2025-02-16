@@ -62,7 +62,7 @@ impl Coords {
 
 #[derive(Clone)]
 pub struct Area {
-    pub layout: RwData<Layout>,
+    layout: RwData<Layout>,
     pub id: AreaId,
 }
 

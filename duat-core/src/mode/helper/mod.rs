@@ -170,7 +170,6 @@ where
     A: Area,
 {
     widget: &'a RwData<W>,
-    cursors: &'a mut Cursors,
     area: &'a A,
     cfg: PrintCfg,
     searcher: S,
@@ -182,10 +181,12 @@ where
     A: Area,
 {
     /// Returns a new instance of [`EditHelper`]
-    pub fn new(widget: &'a RwData<W>, area: &'a A, cursors: &'a mut Cursors) -> Self {
-        cursors.populate();
+    pub fn new(widget: &'a RwData<W>, area: &'a A) -> Self {
+        if let Some(c) = widget.write().cursors_mut() {
+            c.populate()
+        }
         let cfg = widget.read().print_cfg();
-        EditHelper { widget, cursors, area, cfg, searcher: () }
+        EditHelper { widget, area, cfg, searcher: () }
     }
 }
 
@@ -209,11 +210,13 @@ where
     /// [`edit_main`]: Self::edit_main
     /// [`edit_many`]: Self::edit_many
     pub fn edit_nth(&mut self, n: usize, edit: impl FnOnce(&mut Editor<A, W>)) {
-        let Some((mut cursor, was_main)) = self.cursors.remove(n) else {
+        let mut widget = self.widget.raw_write();
+        let cursors = widget.cursors_mut().unwrap();
+        let is_incl = cursors.is_incl();
+        let Some((mut cursor, was_main)) = cursors.remove(n) else {
             panic!("Cursor index {n} out of bounds");
         };
 
-        let mut widget = self.widget.raw_write();
         let mut shift = (0, 0, 0);
 
         edit(&mut Editor::<A, W>::new(
@@ -223,15 +226,15 @@ where
             self.cfg,
             &mut shift,
             was_main,
-            self.cursors.is_incl(),
+            is_incl,
         ));
 
-        self.cursors.insert(n, was_main, cursor);
+        let cursors = widget.cursors_mut().unwrap();
+        cursors.insert(n, was_main, cursor);
 
-        if shift != (0, 0, 0) {
-            self.cursors
-                .shift_by(n + 1, shift, widget.text(), self.area, self.cfg);
-        }
+        widget
+            .text_mut()
+            .shift_cursors(n + 1, shift, self.area, self.cfg);
     }
 
     /// Edits on the main [`Cursor`]'s selection
@@ -247,7 +250,8 @@ where
     /// [`edit_nth`]: Self::edit_nth
     /// [`edit_many`]: Self::edit_many
     pub fn edit_main(&mut self, edit: impl FnOnce(&mut Editor<A, W>)) {
-        self.edit_nth(self.cursors.main_index(), edit);
+        let n = self.widget.read().cursors().unwrap().main_index();
+        self.edit_nth(n, edit);
     }
 
     /// Edits on a range of [`Cursor`]s
@@ -267,10 +271,12 @@ where
         range: impl RangeBounds<usize> + Clone,
         mut f: impl FnMut(&mut Editor<A, W>),
     ) {
-        let cursors_len = self.cursors.len();
-        let (start, end) = crate::get_ends(range, cursors_len);
-        assert!(end <= cursors_len, "Cursor index {end} out of bounds");
-        let mut removed: Vec<(Cursor, bool)> = self.cursors.drain(start..).collect();
+        let mut widget = self.widget.raw_write();
+        let cursors = widget.cursors_mut().unwrap();
+        let is_incl = cursors.is_incl();
+        let (start, end) = crate::get_ends(range, cursors.len());
+        assert!(end <= cursors.len(), "Cursor index {end} out of bounds");
+        let mut removed: Vec<(Cursor, bool)> = cursors.drain(start..).collect();
 
         let mut widget = self.widget.raw_write();
         let cfg = widget.print_cfg();
@@ -287,17 +293,20 @@ where
                 self.cfg,
                 &mut shift,
                 was_main,
-                self.cursors.is_incl(),
+                is_incl,
             );
             f(&mut editor);
 
-            self.cursors.insert(guess_i, was_main, cursor);
+            cursors.insert(guess_i, was_main, cursor);
         }
 
+        let text = widget.text_mut();
         for (i, (mut cursor, was_main)) in removed.into_iter().enumerate() {
             let guess_i = i + end;
-            cursor.shift_by(shift, widget.text(), self.area, cfg);
-            self.cursors.insert(guess_i, was_main, cursor);
+            cursor.shift_by(shift, text, self.area, cfg);
+            text.cursors_mut()
+                .unwrap()
+                .insert(guess_i, was_main, cursor);
         }
     }
 
@@ -319,24 +328,24 @@ where
     /// [`move_main`]: Self::move_main
     /// [`move_many`]: Self::move_many
     pub fn move_nth<_T>(&mut self, n: usize, mov: impl FnOnce(Mover<A, S>) -> _T) {
-        let Some((cursor, is_main)) = self.cursors.remove(n) else {
+        let mut widget = self.widget.raw_write();
+        let text = widget.text_mut();
+        let Some((cursor, is_main)) = text.cursors_mut().unwrap().remove(n) else {
             panic!("Cursor index {n} out of bounds");
         };
-        let mut widget = self.widget.raw_write();
 
         let mut cursor = Some(cursor);
         mov(Mover::new(
             &mut cursor,
             is_main,
-            widget.text_mut(),
+            text,
             self.area,
-            self.cursors,
             self.cfg,
             &mut self.searcher,
         ));
 
         if let Some(cursor) = cursor {
-            self.cursors.insert(n, is_main, cursor);
+            text.cursors_mut().unwrap().insert(n, is_main, cursor);
         }
     }
 
@@ -356,7 +365,8 @@ where
     /// [`move_main`]: Self::move_main
     /// [`move_many`]: Self::move_many
     pub fn move_main<_T>(&mut self, mov: impl FnOnce(Mover<A, S>) -> _T) {
-        self.move_nth(self.cursors.main_index(), mov);
+        let n = self.widget.read().cursors().unwrap().main_index();
+        self.move_nth(n, mov);
     }
 
     /// Moves a range of [`Cursor`]'s selections
@@ -379,12 +389,12 @@ where
         range: impl RangeBounds<usize> + Clone,
         mut mov: impl FnMut(Mover<A, S>) -> _T,
     ) {
-        let cursors_len = self.cursors.len();
-        let (start, end) = crate::get_ends(range.clone(), cursors_len);
-        assert!(end <= cursors_len, "Cursor index {end} out of bounds");
-        let removed_cursors: Vec<(Cursor, bool)> = self.cursors.drain(range).collect();
-
         let mut widget = self.widget.raw_write();
+        let text = widget.text_mut();
+        let cursors = text.cursors_mut().unwrap();
+        let (start, end) = crate::get_ends(range.clone(), cursors.len());
+        assert!(end <= cursors.len(), "Cursor index {end} out of bounds");
+        let removed_cursors: Vec<(Cursor, bool)> = cursors.drain(range).collect();
 
         for (i, (cursor, is_main)) in removed_cursors.into_iter().enumerate() {
             let guess_i = i + start;
@@ -392,15 +402,14 @@ where
             mov(Mover::new(
                 &mut cursor,
                 is_main,
-                widget.text_mut(),
+                text,
                 self.area,
-                self.cursors,
                 self.cfg,
                 &mut self.searcher,
             ));
 
             if let Some(cursor) = cursor {
-                self.cursors.insert(guess_i, is_main, cursor);
+                text.cursors_mut().unwrap().insert(guess_i, is_main, cursor);
             }
         }
     }
@@ -446,7 +455,7 @@ where
     pub fn undo(&mut self) {
         let mut widget = self.widget.raw_write();
         let cfg = widget.print_cfg();
-        widget.text_mut().undo(self.area, self.cursors, cfg);
+        widget.text_mut().undo(self.area, cfg);
         widget.update(self.area);
     }
 
@@ -454,7 +463,7 @@ where
     pub fn redo(&mut self) {
         let mut widget = self.widget.raw_write();
         let cfg = widget.print_cfg();
-        widget.text_mut().redo(self.area, self.cursors, cfg);
+        widget.text_mut().redo(self.area, cfg);
         widget.update(self.area);
     }
 
@@ -468,20 +477,37 @@ where
         self.widget.read().text().last_point()
     }
 
-    ////////// Cursors functions
+    ////////// Cursor functions
 
     /// Removes all but the main cursor from the list
     pub fn remove_extra_cursors(&mut self) {
-        self.cursors.remove_extras();
+        self.widget.write().cursors_mut().unwrap().remove_extras();
     }
 
+    /// Removes all [`Cursor`]s
+    pub fn clear_cursors(&mut self) {
+        self.widget.write().cursors_mut().unwrap().clear();
+    }
+
+    /// Rotates the main [`Cursor`]s index by the given amount
     pub fn rotate_main(&mut self, amount: i32) {
-        self.cursors.rotate_main(amount);
+        let mut widget = self.widget.write();
+        widget.cursors_mut().unwrap().rotate_main(amount);
     }
 
-    /// The [`Cursors`] in use
-    pub fn cursors(&self) -> &Cursors {
-        self.cursors
+    /// Makes the selections of the [`Cursor`]s exclusive
+    pub fn make_excl(&mut self) {
+        self.widget.write().cursors_mut().unwrap().make_excl();
+    }
+
+    /// Makes the selections of the [`Cursor`]s inclusive
+    pub fn make_incl(&mut self) {
+        self.widget.write().cursors_mut().unwrap().make_incl();
+    }
+
+    /// How many [`Cursor`]s currently exist
+    pub fn cursors_len(&self) -> usize {
+        self.widget.read().cursors().unwrap().len()
     }
 
     /// The [`PrintCfg`] in use
@@ -495,21 +521,18 @@ where
     A: Area,
 {
     /// Returns a new instance of [`EditHelper`]
-    pub fn new_inc(
-        widget: &'a RwData<File>,
-        area: &'a A,
-        cursors: &'a mut Cursors,
-        searcher: Searcher,
-    ) -> Self {
-        cursors.populate();
+    pub fn new_inc(widget: &'a RwData<File>, area: &'a A, searcher: Searcher) -> Self {
         let cfg = {
             let mut file = widget.raw_write();
-            let cfg = <File as Widget<A::Ui>>::print_cfg(&file);
-            <File as Widget<A::Ui>>::text_mut(&mut file).remove_cursors(cursors, area, cfg);
-            <File as Widget<A::Ui>>::print_cfg(&file)
+            if let Some(c) = file.cursors_mut() {
+                c.populate()
+            }
+            let cfg = file.print_cfg();
+            file.text_mut().remove_cursors(area, cfg);
+            file.print_cfg()
         };
 
-        EditHelper { widget, cursors, area, cfg, searcher }
+        EditHelper { widget, area, cfg, searcher }
     }
 }
 
@@ -809,6 +832,8 @@ where
         self.is_main
     }
 
+    /// Returns the needed level of indentation in the line of the
+    /// [`Point`]
     pub fn indent_on(&mut self, point: Point) -> Option<usize> {
         self.widget.text_mut().indent_on(point, self.cfg)
     }
@@ -828,7 +853,6 @@ where
     is_main: bool,
     text: &'a mut Text,
     area: &'a A,
-    cursors: &'a mut Cursors,
     cfg: PrintCfg,
     inc_searcher: &'a mut S,
 }
@@ -843,7 +867,6 @@ where
         is_main: bool,
         text: &'a mut Text,
         area: &'a A,
-        cursors: &'a mut Cursors,
         cfg: PrintCfg,
         inc_searcher: &'a mut S,
     ) -> Self {
@@ -852,7 +875,6 @@ where
             is_main,
             text,
             area,
-            cursors,
             cfg,
             inc_searcher,
         }
@@ -910,7 +932,8 @@ where
     /// change throughout the movement function, as new cursors might
     /// be added before it, moving it ahead.
     pub fn copy(&mut self) -> usize {
-        self.cursors.insert(0, false, self.cursor.unwrap())
+        let cursors = self.text.cursors_mut().unwrap();
+        cursors.insert(0, false, self.cursor.unwrap())
     }
 
     /// Destroys the current [`Cursor`]
@@ -920,7 +943,7 @@ where
     /// If this was the main cursor, the main cursor will now be the
     /// cursor immediately behind it.
     pub fn destroy(self) {
-        if self.cursors.len() > 1 {
+        if self.text.cursors().unwrap().len() > 1 {
             *self.cursor = None;
         }
     }
@@ -1174,7 +1197,7 @@ where
 
     /// Whether or not this cursor's selections are inclusive
     pub fn is_incl(&self) -> bool {
-        self.cursors.is_incl()
+        self.text.cursors().unwrap().is_incl()
     }
 
     pub fn text(&self) -> &Text {
@@ -1228,7 +1251,7 @@ where
     ///
     /// [`IncSearch`]: crate::widgets::IncSearch
     pub fn matches_inc(&mut self) -> bool {
-        let is_incl = self.cursors.is_incl();
+        let is_incl = self.text.cursors().unwrap().is_incl();
         let range = self.cursor.unwrap().range(is_incl, self.text);
         self.text.make_contiguous_in(range.clone());
         let str = unsafe { self.text.continuous_in_unchecked(range) };

@@ -7,47 +7,35 @@ use crate::{
 };
 
 pub trait IncSearcher<U: Ui>: Sized + Send + Sync + 'static {
-    fn new(file: &RwData<File>, area: &U::Area, cursors: &mut Cursors) -> Self;
+    fn new(file: &RwData<File>, area: &U::Area) -> Self;
 
-    fn search(
-        &mut self,
-        file: &RwData<File>,
-        area: &U::Area,
-        cursors: &mut Cursors,
-        searcher: Searcher,
-    );
+    fn search(&mut self, file: &RwData<File>, area: &U::Area, searcher: Searcher);
 
     #[allow(unused)]
-    fn finish(&mut self, file: &RwData<File>, area: &U::Area, cursors: &mut Cursors) {}
+    fn finish(&mut self, file: &RwData<File>, area: &U::Area) {}
 }
 
 pub struct Fwd<U: Ui> {
-    cursors: Cursors,
+    orig: Cursors,
     info: <U::Area as Area>::PrintInfo,
 }
 
 impl<U: Ui> IncSearcher<U> for Fwd<U> {
-    fn new(_file: &RwData<File>, area: &U::Area, cursors: &mut Cursors) -> Self {
+    fn new(file: &RwData<File>, area: &U::Area) -> Self {
         Self {
-            cursors: cursors.clone(),
+            orig: file.read().cursors().unwrap().clone(),
             info: area.print_info(),
         }
     }
 
-    fn search(
-        &mut self,
-        file: &RwData<File>,
-        area: &U::Area,
-        cursors: &mut Cursors,
-        searcher: Searcher,
-    ) {
-        *cursors = self.cursors.clone();
+    fn search(&mut self, file: &RwData<File>, area: &U::Area, searcher: Searcher) {
+        *file.write().cursors_mut().unwrap() = self.orig.clone();
         if searcher.is_empty() {
             area.set_print_info(self.info.clone());
             return;
         }
 
-        let mut helper = EditHelper::new_inc(file, area, cursors, searcher);
+        let mut helper = EditHelper::new_inc(file, area, searcher);
 
         helper.move_many(.., |mut m| {
             let caret = m.caret();
@@ -67,32 +55,26 @@ impl<U: Ui> IncSearcher<U> for Fwd<U> {
 }
 
 pub struct Rev<U: Ui> {
-    cursors: Cursors,
+    orig: Cursors,
     info: <U::Area as Area>::PrintInfo,
 }
 
 impl<U: Ui> IncSearcher<U> for Rev<U> {
-    fn new(_file: &RwData<File>, area: &U::Area, cursors: &mut Cursors) -> Self {
+    fn new(file: &RwData<File>, area: &U::Area) -> Self {
         Self {
-            cursors: cursors.clone(),
+            orig: file.read().cursors().unwrap().clone(),
             info: area.print_info(),
         }
     }
 
-    fn search(
-        &mut self,
-        file: &RwData<File>,
-        area: &U::Area,
-        cursors: &mut Cursors,
-        searcher: Searcher,
-    ) {
-        *cursors = self.cursors.clone();
+    fn search(&mut self, file: &RwData<File>, area: &U::Area, searcher: Searcher) {
+        *file.write().cursors_mut().unwrap() = self.orig.clone();
         if searcher.is_empty() {
             area.set_print_info(self.info.clone());
             return;
         }
 
-        let mut helper = EditHelper::new_inc(file, area, cursors, searcher);
+        let mut helper = EditHelper::new_inc(file, area, searcher);
 
         helper.move_many(.., |mut m| {
             let caret = m.caret();
@@ -112,32 +94,26 @@ impl<U: Ui> IncSearcher<U> for Rev<U> {
 }
 
 pub struct ExtendFwd<U: Ui> {
-    cursors: Cursors,
+    orig: Cursors,
     info: <U::Area as Area>::PrintInfo,
 }
 
 impl<U: Ui> IncSearcher<U> for ExtendFwd<U> {
-    fn new(_file: &RwData<File>, area: &U::Area, cursors: &mut Cursors) -> Self {
+    fn new(file: &RwData<File>, area: &U::Area) -> Self {
         Self {
-            cursors: cursors.clone(),
+            orig: file.read().cursors().unwrap().clone(),
             info: area.print_info(),
         }
     }
 
-    fn search(
-        &mut self,
-        file: &RwData<File>,
-        area: &U::Area,
-        cursors: &mut Cursors,
-        searcher: Searcher,
-    ) {
-        *cursors = self.cursors.clone();
+    fn search(&mut self, file: &RwData<File>, area: &U::Area, searcher: Searcher) {
+        *file.write().cursors_mut().unwrap() = self.orig.clone();
         if searcher.is_empty() {
             area.set_print_info(self.info.clone());
             return;
         }
 
-        let mut helper = EditHelper::new_inc(file, area, cursors, searcher);
+        let mut helper = EditHelper::new_inc(file, area, searcher);
 
         helper.move_many(.., |mut m| {
             let caret = m.caret();
@@ -158,32 +134,26 @@ impl<U: Ui> IncSearcher<U> for ExtendFwd<U> {
 }
 
 pub struct ExtendRev<U: Ui> {
-    cursors: Cursors,
+    orig: Cursors,
     info: <U::Area as Area>::PrintInfo,
 }
 
 impl<U: Ui> IncSearcher<U> for ExtendRev<U> {
-    fn new(_file: &RwData<File>, area: &U::Area, cursors: &mut Cursors) -> Self {
+    fn new(file: &RwData<File>, area: &U::Area) -> Self {
         Self {
-            cursors: cursors.clone(),
+            orig: file.read().cursors().unwrap().clone(),
             info: area.print_info(),
         }
     }
 
-    fn search(
-        &mut self,
-        file: &RwData<File>,
-        area: &U::Area,
-        cursors: &mut Cursors,
-        searcher: Searcher,
-    ) {
-        *cursors = self.cursors.clone();
+    fn search(&mut self, file: &RwData<File>, area: &U::Area, searcher: Searcher) {
+        *file.write().cursors_mut().unwrap() = self.orig.clone();
         if searcher.is_empty() {
             area.set_print_info(self.info.clone());
             return;
         }
 
-        let mut helper = EditHelper::new_inc(file, area, cursors, searcher);
+        let mut helper = EditHelper::new_inc(file, area, searcher);
 
         helper.move_many(.., |mut m| {
             let caret = m.caret();

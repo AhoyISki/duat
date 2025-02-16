@@ -184,7 +184,7 @@ use crate::{
     Error, context,
     data::{RwData, RwLock},
     iter_around, iter_around_rev,
-    mode::{self, Cursors},
+    mode::{self},
     text::{Text, err, ok},
     ui::{DuatEvent, Ui, Window},
     widget_entry,
@@ -212,7 +212,7 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         let file = context::cur_file::<U>()?;
 
         if paths.is_empty() {
-            file.inspect(|file, _, _| {
+            file.inspect(|file, _| {
                 if let Some(name) = file.path_set() {
                     let bytes = file.write()?;
                     Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " [*a] name)))
@@ -221,7 +221,7 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
                 }
             })
         } else {
-            file.inspect(|file, _, _| {
+            file.inspect(|file, _| {
                 let mut bytes = 0;
                 for path in &paths {
                     bytes = file.write_to(path)?;
@@ -354,7 +354,7 @@ mod global {
     use std::ops::Range;
 
     use super::{Args, CmdResult, Commands, Flags, Parameter, Result};
-    use crate::{Error, mode::Cursors, text::Text, ui::Ui, widgets::Widget};
+    use crate::{Error, text::Text, ui::Ui, widgets::Widget};
 
     static COMMANDS: Commands = Commands::new();
 
@@ -606,16 +606,12 @@ mod global {
     /// [`form::set`]: crate::form::set
     /// [`form::set_weak`]: crate::form::set_weak
     pub macro add_for($ui:ty, $callers:expr, $($mv:ident)? |
-        $widget:ident: $w_ty:ty, $area:pat_param, $cursors:pat_param,
-        $flags:pat_param $(, $arg:ident: $t:ty)*
+        $widget:ident: $w_ty:ty, $area:pat_param, $flags:pat_param $(, $arg:ident: $t:ty)*
     | $f:block) {{
-        use crate::mode::Cursors;
-
         #[allow(unused_variables, unused_mut)]
         let cmd = $($mv)? |
             $widget: &mut $w_ty,
             $area: &<$ui as Ui>::Area,
-            $cursors: &mut Cursors,
             $flags: Flags,
             mut args: Args
         | -> CmdResult {
@@ -842,7 +838,7 @@ mod global {
     #[doc(hidden)]
     pub fn add_for_inner<'a, W: Widget<U>, U: Ui>(
         callers: impl super::Caller<'a>,
-        cmd: impl FnMut(&mut W, &U::Area, &mut Cursors, Flags, Args) -> CmdResult + 'static,
+        cmd: impl FnMut(&mut W, &U::Area, Flags, Args) -> CmdResult + 'static,
         checker: impl Fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) + 'static,
     ) -> Result<()> {
         COMMANDS.add_for(callers.into_callers(), cmd, checker)
@@ -942,14 +938,14 @@ impl Commands {
     fn add_for<W: Widget<U>, U: Ui>(
         &'static self,
         callers: impl IntoIterator<Item = impl ToString>,
-        mut cmd: impl FnMut(&mut W, &U::Area, &mut Cursors, Flags, Args) -> CmdResult + 'static,
+        mut cmd: impl FnMut(&mut W, &U::Area, Flags, Args) -> CmdResult + 'static,
         checker: impl Fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) + 'static,
     ) -> Result<()> {
         let cmd = move |flags: Flags, args: Args| {
             let cur_file = context::inner_cur_file::<U>();
             cur_file
-                .mutate_related_widget::<W, CmdResult>(|widget, area, cursors| {
-                    cmd(widget, area, cursors, flags, args.clone())
+                .mutate_related_widget::<W, CmdResult>(|widget, area| {
+                    cmd(widget, area, flags, args.clone())
                 })
                 .unwrap_or_else(|| {
                     let windows = context::windows::<U>().read();
@@ -963,10 +959,9 @@ impl Commands {
                     }
 
                     let (_, node) = widget_entry::<W, U>(&windows, w)?;
-                    let (w, a, c) = node.as_active();
-                    let mut c = c.write();
+                    let (w, a) = node.as_active();
 
-                    w.mutate_as(|w| cmd(w, a, &mut c, flags, args)).unwrap()
+                    w.mutate_as(|w| cmd(w, a, flags, args)).unwrap()
                 })
         };
         let command = Command::new(callers, cmd, checker);

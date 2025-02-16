@@ -1,16 +1,12 @@
-#![feature(
-    iter_collect_into,
-    let_chains,
-    if_let_guard,
-    extract_if,
-    decl_macro,
-    map_many_mut
-)]
-
+#![feature(iter_collect_into, let_chains, if_let_guard, extract_if, decl_macro)]
 use std::{
     fmt::Debug,
     io::{self, Write},
-    sync::{atomic::Ordering, mpsc},
+    sync::{
+        LazyLock, Mutex,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
     time::Duration,
 };
 
@@ -41,18 +37,34 @@ mod layout;
 mod print;
 mod rules;
 
+#[derive(Default)]
 pub struct Ui {
     windows: Vec<Area>,
     printer: RwData<Printer>,
     fr: Frame,
 }
 
+static IS_RUNNING: AtomicBool = AtomicBool::new(true);
+static UI: LazyLock<Mutex<Ui>> = LazyLock::new(Mutex::default);
+
 impl ui::Ui for Ui {
     type Area = Area;
-    type MetaStatics = RwData<Printer>;
 
-    fn new(meta_statics: Self::MetaStatics) -> Self {
-        let printer = meta_statics;
+    fn new_root(cache: <Self::Area as ui::Area>::Cache) -> Self::Area {
+        let mut ui = UI.lock().unwrap();
+        ui.printer.write().flush_equalities().unwrap();
+
+        let layout = Layout::new(ui.fr, ui.printer.clone(), cache);
+        let root = Area::new(layout.main_index(), RwData::new(layout));
+        let area = root.clone();
+
+        ui.windows.push(root);
+
+        area
+    }
+
+    fn open(tx: Sender, rx: mpsc::Receiver<UiEvent>) {
+        // Hook for returning to regular terminal state
         std::panic::set_hook(Box::new(|info| {
             let trace = std::backtrace::Backtrace::capture();
             terminal::disable_raw_mode().unwrap();
@@ -71,28 +83,7 @@ impl ui::Ui for Ui {
             println!("{info}")
         }));
 
-        Ui {
-            windows: Vec::new(),
-            printer,
-            fr: Frame::default(),
-        }
-    }
-
-    fn start(&mut self) {}
-
-    fn new_root(&mut self, cache: <Self::Area as ui::Area>::Cache) -> Self::Area {
-        self.printer.write().flush_equalities().unwrap();
-
-        let layout = Layout::new(self.fr, self.printer.clone(), cache);
-        let root = Area::new(layout.main_index(), RwData::new(layout));
-        let area = root.clone();
-
-        self.windows.push(root);
-
-        area
-    }
-
-    fn start_app(printer: Self::MetaStatics, tx: Sender, rx: mpsc::Receiver<UiEvent>) {
+        // Initial terminal setup
         use crossterm::event::{KeyboardEnhancementFlags as KEF, PushKeyboardEnhancementFlags};
         execute!(
             io::stdout(),
@@ -100,6 +91,8 @@ impl ui::Ui for Ui {
             terminal::DisableLineWrap
         )
         .unwrap();
+        // Some key chords (like alt+shift+o for some reason) don't work
+        // without this.
         if terminal::supports_keyboard_enhancement().is_ok() {
             execute!(
                 io::stdout(),
@@ -109,6 +102,8 @@ impl ui::Ui for Ui {
         }
         terminal::enable_raw_mode().unwrap();
 
+        // The main application input loop
+        let printer = UI.lock().unwrap().printer.clone();
         std::thread::spawn(move || {
             loop {
                 let Ok(UiEvent::Start) = rx.recv() else {
@@ -161,22 +156,20 @@ impl ui::Ui for Ui {
                 }
             }
         });
+        // So this function finishes before quitting
+        IS_RUNNING.store(false, Ordering::Relaxed);
     }
 
-    fn end(&mut self) {}
+    fn unload() {}
 
-    fn close(&mut self) {}
-
-    fn stop_printing(&mut self) {
-        self.printer.write().disable()
+    fn close() {
+        while IS_RUNNING.load(Ordering::Relaxed) {
+            std::thread::sleep(Duration::from_micros(500))
+        }
     }
 
-    fn resume_printing(&mut self) {
-        self.printer.write().enable()
-    }
-
-    fn flush_layout(&mut self) {
-        self.printer.write().flush_equalities().unwrap();
+    fn flush_layout() {
+        UI.lock().unwrap().printer.write().flush_equalities().unwrap();
     }
 }
 

@@ -33,9 +33,7 @@ fn main() {
         let Some((config_dir, cache_dir)) = config_dir().zip(cache_dir()) else {
             let (tx, rx) = mpsc::channel();
             pre_setup();
-            let meta_statics = <Ui as UiTrait>::MetaStatics::default();
-            let ui = Ui::new(meta_statics);
-            run_duat(Vec::new(), ui, tx, rx, ui_tx, None);
+            run_duat(Vec::new(), tx, rx, ui_tx, None);
             return;
         };
 
@@ -68,7 +66,11 @@ fn main() {
                     } else if reload_config(&reload_tx, &duat_tx, &target_dir, &toml_path, false) {
                         reload_config(&reload_tx, &duat_tx, &target_dir, &toml_path, true);
                     }
-                    IS_RELOADING.store(false, Ordering::Release);
+                    // Sleep for one second to prevent too many activations.
+                    std::thread::spawn(|| {
+                        std::thread::sleep(Duration::new(1, 0));
+                        IS_RELOADING.store(false, Ordering::Release);
+                    });
                 }
             }
         })
@@ -82,12 +84,7 @@ fn main() {
     let mut prev_files = Vec::new();
     let mut msg = None;
 
-    let meta_statics = <Ui as UiTrait>::MetaStatics::default();
-    Ui::start_app(
-        meta_statics.clone(),
-        ui::Sender::new(duat_tx.clone()),
-        ui_rx,
-    );
+    Ui::open(ui::Sender::new(duat_tx.clone()), ui_rx);
 
     let mut on_release = !cfg!(debug_assertions);
 
@@ -101,17 +98,16 @@ fn main() {
         };
         let mut run_fn = lib.as_ref().and_then(find_run_fn);
 
-        let ui = Ui::new(meta_statics.clone());
         (prev_files, duat_rx) = if let Some(run_duat) = run_fn.take() {
             let msg = msg.take();
-            run_duat(prev_files, ui, duat_tx.clone(), duat_rx, ui_tx.clone(), msg)
+            run_duat(prev_files, duat_tx.clone(), duat_rx, ui_tx.clone(), msg)
         } else {
             let msg = msg.take();
             pre_setup();
-            run_duat(prev_files, ui, duat_tx.clone(), duat_rx, ui_tx.clone(), msg)
+            run_duat(prev_files, duat_tx.clone(), duat_rx, ui_tx.clone(), msg)
         };
 
-        std::thread::sleep(Duration::new(1, 0));
+        Ui::close();
 
         if let Ok((start, new_on_release)) = reload_rx.try_recv() {
             on_release = new_on_release;
@@ -143,7 +139,7 @@ fn reload_config(
 
     if let Ok(out) = run_cargo(toml_path, target_dir, on_release)
         && out.status.success()
-        && let Ok(lib) = ElfLibrary::dlopen(&so_path, OpenFlags::RTLD_LAZY | OpenFlags::RTLD_LOCAL)
+        && let Ok(lib) = ElfLibrary::dlopen(&so_path, OpenFlags::RTLD_NOW | OpenFlags::RTLD_LOCAL)
         && find_run_fn(&lib).is_some()
     {
         reload_tx.send((start, on_release)).unwrap();
@@ -181,13 +177,12 @@ fn run_cargo(
     cargo.output()
 }
 
-fn find_run_fn<'a>(lib: &'a Dylib<'static>) -> Option<Symbol<'a, RunFn>> {
+fn find_run_fn(lib: &Dylib) -> Option<Symbol<RunFn>> {
     unsafe { lib.get::<RunFn>("run").ok() }
 }
 
 type RunFn = extern "Rust" fn(
     Vec<(RwData<File>, bool)>,
-    Ui,
     Sender<ui::DuatEvent>,
     Receiver<ui::DuatEvent>,
     Sender<ui::UiEvent>,

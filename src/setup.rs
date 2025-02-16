@@ -69,13 +69,12 @@ pub fn pre_setup() {
 #[doc(hidden)]
 pub fn run_duat(
     prev: Vec<(RwData<File>, bool)>,
-    ui: Ui,
     duat_tx: Sender<DuatEvent>,
     duat_rx: Receiver<DuatEvent>,
     ui_tx: Sender<UiEvent>,
     msg: Option<Text>,
 ) -> (Vec<(RwData<File>, bool)>, Receiver<DuatEvent>) {
-    let mut cfg = SessionCfg::new(ui);
+    let mut cfg = SessionCfg::new();
 
     if let Some(cfg_fn) = CFG_FN.write().unwrap().take() {
         cfg_fn(&mut cfg)

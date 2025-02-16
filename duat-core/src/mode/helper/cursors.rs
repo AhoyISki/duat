@@ -219,7 +219,7 @@ impl Cursors {
         })
     }
 
-    pub(super) fn shift_by(
+    pub(crate) fn shift_by(
         &mut self,
         from: usize,
         shift: (i32, i32, i32),

@@ -469,11 +469,10 @@ pub enum Gives {
 
 fn remove_alias_and<U: Ui>(f: impl FnOnce(&mut Text, usize)) {
     let widget = context::cur_widget::<U>().unwrap();
-    widget.mutate_data(|widget, _, cursors| {
-        let cursors = cursors.read();
+    widget.mutate_data(|widget, _| {
         let mut file = widget.write();
 
-        if let Some(main) = cursors.get_main() {
+        if let Some(main) = file.cursors().unwrap().get_main() {
             let main = main.byte();
             file.text_mut().remove_tags_on(main, Key::for_alias());
             f(file.text_mut(), main)

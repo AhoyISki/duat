@@ -137,23 +137,21 @@ impl<U: Ui> Hookable for OnWindowOpen<U> {
 ///
 /// - The widget itself.
 /// - Its [area].
-/// - Its [`Cursors`]
 ///
 /// [`Widget`]: crate::widgets::Widget
 /// [area]: crate::ui::Area
 pub struct FocusedOn<W: Widget<U>, U: Ui>(PhantomData<(W, U)>);
 
 impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
-    type Args = (RwData<W>, U::Area, RwData<Cursors>);
+    type Args = (RwData<W>, U::Area);
 
     fn post_hook(args: &Self::Args) {
-        let (widget, area, cursors) = args;
-        let cursors = cursors.read();
+        let (widget, area) = args;
         let mut widget = widget.write();
         let cfg = widget.print_cfg();
 
-        widget.text_mut().add_cursors(&cursors, area, cfg);
-        if let Some(main) = cursors.get_main() {
+        widget.text_mut().add_cursors(area, cfg);
+        if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
             area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
         }
 
@@ -168,23 +166,21 @@ impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
 ///
 /// - The widget itself.
 /// - Its [area].
-/// - Its [`Cursors`]
 ///
 /// [`Widget`]: crate::widgets::Widget
 /// [area]: crate::ui::Area
 pub struct UnfocusedFrom<W: Widget<U>, U: Ui>(PhantomData<(W, U)>);
 
 impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
-    type Args = (RwData<W>, U::Area, RwData<Cursors>);
+    type Args = (RwData<W>, U::Area);
 
     fn post_hook(args: &Self::Args) {
-        let (widget, area, cursors) = args;
-        let cursors = cursors.read();
+        let (widget, area) = args;
         let mut widget = widget.write();
         let cfg = widget.print_cfg();
 
-        widget.text_mut().add_cursors(&cursors, area, cfg);
-        if let Some(main) = cursors.get_main() {
+        widget.text_mut().add_cursors(area, cfg);
+        if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
             area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
         }
 
@@ -280,10 +276,6 @@ mod global {
 
     static HOOKS: Hooks = Hooks::new();
 
-    pub fn address() {
-        //crate::log_file!("{:p}", &HOOKS);
-    }
-
     /// Adds a [hook]
     ///
     /// This hook is ungrouped, that is, it cannot be removed. If you
@@ -292,7 +284,6 @@ mod global {
     /// [hook]: Hookable
     /// [`hooks::add_grouped`]: add_grouped
     pub fn add<H: Hookable>(f: impl FnMut(&H::Args) + Send + 'static) {
-        //crate::log_file!("{:p}", &HOOKS);
         crate::thread::queue(move || HOOKS.add::<H>("", f))
     }
 

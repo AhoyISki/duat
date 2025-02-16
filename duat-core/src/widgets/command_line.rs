@@ -24,7 +24,7 @@ use crate::{
     data::{RoData, RwData, context},
     form::{self, Form},
     hooks,
-    mode::{self, Command, Cursors, IncSearcher},
+    mode::{self, Command, IncSearcher},
     text::{Ghost, Key, Searcher, Tag, Text, text},
     ui::{PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
@@ -165,7 +165,7 @@ impl<U: Ui> Widget<U> for CmdLine<U> {
         cmd::add_for!(
             U,
             "set-prompt",
-            |cmd_line: CmdLine<U>, _, _, _, new: String| {
+            |cmd_line: CmdLine<U>, _, _, new: String| {
                 *cmd_line.prompt.write() = new;
                 Ok(None)
             }
@@ -349,9 +349,8 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
 
         match Searcher::new(text.to_string()) {
             Ok(searcher) => {
-                cur_file.mutate_data(|file, area, cursors| {
-                    let mut c = cursors.write();
-                    inc.search(file, area, &mut c, searcher);
+                cur_file.mutate_data(|file, area| {
+                    inc.search(file, area, searcher);
                 });
             }
             Err(err) => {
@@ -369,12 +368,9 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
     }
 
     fn on_focus(&mut self, _text: &mut Text) {
-        context::cur_file::<U>()
-            .unwrap()
-            .mutate_data(|file, area, cursors| {
-                let mut c = cursors.write();
-                self.fn_or_inc.as_inc(file, area, &mut c);
-            })
+        context::cur_file::<U>().unwrap().mutate_data(|file, area| {
+            self.fn_or_inc.as_inc(file, area);
+        })
     }
 
     fn on_unfocus(&mut self, _text: &mut Text) {
@@ -384,10 +380,7 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
 
         context::cur_file::<U>()
             .unwrap()
-            .mutate_data(|file, area, cursors| {
-                let mut c = cursors.write();
-                inc.finish(file, area, &mut c)
-            });
+            .mutate_data(|file, area| inc.finish(file, area));
     }
 }
 
@@ -410,14 +403,14 @@ enum FnOrInc<I, U: Ui> {
 }
 
 impl<I, U: Ui> FnOrInc<I, U> {
-    fn as_inc(&mut self, file: &RwData<File>, area: &U::Area, cursors: &mut Cursors) {
+    fn as_inc(&mut self, file: &RwData<File>, area: &U::Area) {
         let FnOrInc::Fn(f) = self else {
             unreachable!();
         };
 
-        let inc = f.take().unwrap()(file, area, cursors);
+        let inc = f.take().unwrap()(file, area);
         *self = FnOrInc::Inc(inc, PhantomData);
     }
 }
 
-trait IncFn<I, U: Ui> = FnOnce(&RwData<File>, &U::Area, &mut Cursors) -> I;
+trait IncFn<I, U: Ui> = FnOnce(&RwData<File>, &U::Area) -> I;

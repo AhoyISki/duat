@@ -1,4 +1,4 @@
-use super::{Cursors, EditHelper, KeyCode, KeyEvent, KeyMod, Mode, key};
+use super::{EditHelper, KeyCode, KeyEvent, KeyMod, Mode, key};
 use crate::{data::RwData, text::Point, ui::Ui, widgets::CmdLine};
 
 #[derive(Clone)]
@@ -7,15 +7,9 @@ pub struct Command;
 impl<U: Ui> Mode<U> for Command {
     type Widget = CmdLine<U>;
 
-    fn send_key(
-        &mut self,
-        key: KeyEvent,
-        widget: &RwData<Self::Widget>,
-        area: &U::Area,
-        cursors: &mut Cursors,
-    ) {
-        cursors.make_excl();
-        let mut helper = EditHelper::new(widget, area, cursors);
+    fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area) {
+        let mut helper = EditHelper::new(widget, area);
+        helper.make_excl();
 
         match key {
             key!(KeyCode::Backspace) => {
@@ -71,11 +65,11 @@ impl<U: Ui> Mode<U> for Command {
                     m.move_to(p);
                 });
                 helper.edit_main(|e| e.replace(""));
-                cursors.clear();
+                helper.clear_cursors();
                 super::reset();
             }
             key!(KeyCode::Enter) => {
-                cursors.clear();
+                helper.clear_cursors();
                 super::reset();
             }
             _ => {}

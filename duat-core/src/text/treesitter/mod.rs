@@ -442,9 +442,9 @@ fn buf_parse<'a>(text: &'a Text) -> impl FnMut(usize, TSPoint) -> &'a [u8] {
     let [s0, s1] = text.strs();
     |byte, _point| {
         if byte < s0.len() {
-            s0[byte..].as_bytes()
+            &s0.as_bytes()[byte..]
         } else {
-            s1[byte - s0.len()..].as_bytes()
+            &s1.as_bytes()[byte - s0.len()..]
         }
     }
 }

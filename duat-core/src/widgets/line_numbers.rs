@@ -30,13 +30,14 @@ impl<U: Ui> LineNumbers<U> {
     /// The minimum width that would be needed to show the last line.
     fn calculate_width(&mut self) -> f32 {
         // "+ 1" because we index from 1, not from 0.
-        let len = self.reader.inspect(|file, _, _| file.text().len().line()) + 1;
+        let len = self.reader.inspect(|file, _| file.text().len().line()) + 1;
         len.ilog10() as f32
     }
 
     fn update_text(&mut self) {
-        self.text = self.reader.inspect(|file, _, cursors| {
+        self.text = self.reader.inspect(|file, _| {
             let printed_lines = file.printed_lines();
+            let cursors = file.cursors().unwrap();
             let main_line = match cursors.is_empty() {
                 true => usize::MAX,
                 false => cursors.main().line(),
@@ -159,17 +160,11 @@ impl<U> LineNumbersCfg<U> {
     }
 
     pub fn absolute(self) -> Self {
-        Self {
-            num_rel: LineNum::Abs,
-            ..self
-        }
+        Self { num_rel: LineNum::Abs, ..self }
     }
 
     pub fn relative(self) -> Self {
-        Self {
-            num_rel: LineNum::Rel,
-            ..self
-        }
+        Self { num_rel: LineNum::Rel, ..self }
     }
 
     pub fn rel_abs(self) -> Self {

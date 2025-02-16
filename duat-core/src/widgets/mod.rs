@@ -52,7 +52,7 @@ use std::sync::{
 pub use self::{
     command_line::{CmdLine, CmdLineCfg, CmdLineMode, IncSearch, RunCommands, ShowNotifications},
     file::{File, FileCfg},
-    line_numbers::{LineNumbers, LineNumbersCfg, LineNum},
+    line_numbers::{LineNum, LineNumbers, LineNumbersCfg},
     status_line::{State, StatusLine, StatusLineCfg, common, status},
 };
 use crate::{
@@ -364,10 +364,18 @@ where
     /// The text that this widget prints out
     fn text(&self) -> &Text;
 
-    /// Returns the [`&mut Text`] that is printed
-    ///
-    /// [`&mut Text`]: Text
+    /// A mutable reference to the [`Text`] that is printed
     fn text_mut(&mut self) -> &mut Text;
+
+    /// The [`Cursors`] that are used on the [`Text`], if they exist
+    fn cursors(&self) -> Option<&Cursors> {
+        self.text().cursors()
+    }
+
+    /// A mutable reference to the [`Cursors`], if they exist
+    fn cursors_mut(&mut self) -> Option<&mut Cursors> {
+        self.text_mut().cursors_mut()
+    }
 
     /// Actions to do whenever this [`Widget`] is focused.
     #[allow(unused)]
@@ -447,7 +455,6 @@ where
 pub struct Node<U: Ui> {
     widget: RwData<dyn Widget<U>>,
     area: U::Area,
-    cursors: RwData<Cursors>,
 
     checker: Arc<dyn Fn() -> bool>,
     busy_updating: Arc<AtomicBool>,
@@ -463,23 +470,11 @@ impl<U: Ui> Node<U> {
         area: U::Area,
         checker: impl Fn() -> bool + 'static,
     ) -> Self {
-        let (cursors, related_widgets) = widget
-            .inspect_as(|file: &File| {
-                let mut cursors = crate::cache::load_cache::<Cursors>(file.path());
-                if let Some(cursors) = &mut cursors {
-                    let b = cursors.main().byte();
-                    cursors.reset_on_byte(b, file.text(), &area, file.print_cfg());
-                }
-
-                let related = RwData::default();
-                (cursors.unwrap_or(Cursors::new_excl()), related)
-            })
-            .unzip();
+        let related_widgets = widget.data_is::<File>().then(RwData::default);
 
         Self {
             widget,
             area,
-            cursors: RwData::new(cursors.unwrap_or_default()),
 
             checker: Arc::new(checker),
             busy_updating: Arc::new(AtomicBool::new(false)),
@@ -537,11 +532,11 @@ impl<U: Ui> Node<U> {
         self.widget.raw_write().update(&self.area)
     }
 
-    pub(crate) fn as_active(&self) -> (&RwData<dyn Widget<U>>, &U::Area, &RwData<Cursors>) {
+    pub(crate) fn as_active(&self) -> (&RwData<dyn Widget<U>>, &U::Area) {
         // Since this function is only ever used on widgets that became active
         // via `command::set_mode`, technically speaking, every widget is
         // active, so no need to return an `Option`.
-        (&self.widget, &self.area, &self.cursors)
+        (&self.widget, &self.area)
     }
 
     pub(crate) fn as_file(&self) -> Option<FileParts<U>> {
@@ -549,7 +544,6 @@ impl<U: Ui> Node<U> {
             (
                 file,
                 self.area.clone(),
-                self.cursors.clone(),
                 self.related_widgets.clone().unwrap(),
             )
         })
@@ -578,30 +572,28 @@ impl<U: Ui> Node<U> {
     }
 
     fn on_focus_fn<W: Widget<U>>(&self) {
-        self.cursors.inspect(|c| {
-            let mut widget = self.widget.write();
+        self.widget.mutate(|widget| {
             let cfg = widget.print_cfg();
-            widget.text_mut().remove_cursors(c, &self.area, cfg);
+            widget.text_mut().remove_cursors(&self.area, cfg);
             widget.on_focus(&self.area);
         });
 
         self.area.set_as_active();
         let widget = self.widget.try_downcast().unwrap();
 
-        hooks::trigger::<FocusedOn<W, U>>((widget, self.area.clone(), self.cursors.clone()));
+        hooks::trigger::<FocusedOn<W, U>>((widget, self.area.clone()));
     }
 
     fn on_unfocus_fn<W: Widget<U>>(&self) {
-        self.cursors.inspect(|c| {
-            let mut widget = self.widget.write();
+        self.widget.mutate(|widget| {
             let cfg = widget.print_cfg();
-            widget.text_mut().remove_cursors(c, &self.area, cfg);
+            widget.text_mut().remove_cursors(&self.area, cfg);
             widget.on_unfocus(&self.area);
         });
 
         let widget = self.widget.try_downcast().unwrap();
 
-        hooks::trigger::<UnfocusedFrom<W, U>>((widget, self.area.clone(), self.cursors.clone()));
+        hooks::trigger::<UnfocusedFrom<W, U>>((widget, self.area.clone()));
     }
 }
 
@@ -610,7 +602,6 @@ impl<U: Ui> Clone for Node<U> {
         Self {
             widget: self.widget.clone(),
             area: self.area.clone(),
-            cursors: self.cursors.clone(),
             checker: self.checker.clone(),
             busy_updating: self.busy_updating.clone(),
             related_widgets: self.related_widgets.clone(),

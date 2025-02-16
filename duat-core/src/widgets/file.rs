@@ -16,8 +16,10 @@ use std::{fs, io::ErrorKind, path::PathBuf};
 use gapbuf::GapBuffer;
 
 use crate::{
+    cache::load_cache,
     cfg::{IterCfg, PrintCfg},
     form,
+    mode::Cursors,
     text::Text,
     ui::{Area, PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
@@ -66,17 +68,23 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
         let (text, path) = match self.text_op {
             TextOp::NewBuffer => (Text::new_with_history(), Path::new_unset()),
             TextOp::TakeBuf(buf, path) => match &path {
-                Path::SetExists(p) | Path::SetAbsent(p) => (Text::from_file(buf, p), path),
-                Path::UnSet(_) => (Text::from_buf(buf, true), path),
-            },
-            TextOp::OpenPath(path) => match path.canonicalize() {
-                Ok(path) => {
-                    let file = std::fs::read_to_string(&path).expect("File failed to open");
-                    let buf = Box::new(GapBuffer::from_iter(file.bytes()));
-                    (Text::from_file(buf, &path), Path::SetExists(path))
+                Path::SetExists(p) | Path::SetAbsent(p) => {
+                    let cursors = load_cache(p).unwrap_or_default();
+                    (Text::from_file(buf, cursors, p), path)
                 }
-                Err(err) if matches!(err.kind(), ErrorKind::NotFound) => {
-                    if path.parent().is_some_and(std::path::Path::exists) {
+                Path::NotSet(_) => (Text::from_buf(buf, Some(Cursors::default()), true), path),
+            },
+            TextOp::OpenPath(path) => match path.canonicalize().and_then(std::fs::read_to_string) {
+                Ok(p) => {
+                    let cursors = load_cache(&p).unwrap_or_default();
+                    let buf = Box::new(GapBuffer::from_iter(p.bytes()));
+                    (Text::from_file(buf, cursors, &path), Path::SetExists(path))
+                }
+                Err(err) => {
+                    if let ErrorKind::NotFound = err.kind()
+                        && let Some(parent) = path.parent()
+                        && parent.exists()
+                    {
                         let parent = path.with_file_name("").canonicalize().unwrap();
                         let path = parent.with_file_name(path.file_name().unwrap());
                         (Text::new_with_history(), Path::SetAbsent(path))
@@ -84,7 +92,6 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
                         (Text::new_with_history(), Path::new_unset())
                     }
                 }
-                Err(_) => (Text::new_with_history(), Path::new_unset()),
             },
         };
 
@@ -166,7 +173,7 @@ impl File {
     pub fn path(&self) -> String {
         match &self.path {
             Path::SetExists(path) | Path::SetAbsent(path) => path.to_string_lossy().to_string(),
-            Path::UnSet(id) => {
+            Path::NotSet(id) => {
                 let path = std::env::current_dir()
                     .unwrap()
                     .to_string_lossy()
@@ -185,7 +192,7 @@ impl File {
             Path::SetExists(path) | Path::SetAbsent(path) => {
                 Some(path.to_string_lossy().to_string())
             }
-            Path::UnSet(_) => None,
+            Path::NotSet(_) => None,
         }
     }
 
@@ -197,7 +204,7 @@ impl File {
             Path::SetExists(path) | Path::SetAbsent(path) => {
                 path.file_name().unwrap().to_string_lossy().to_string()
             }
-            Path::UnSet(id) => format!("*scratch file #{id}*"),
+            Path::NotSet(id) => format!("*scratch file #{id}*"),
         }
     }
 
@@ -209,7 +216,7 @@ impl File {
             Path::SetExists(path) | Path::SetAbsent(path) => {
                 Some(path.file_name().unwrap().to_string_lossy().to_string())
             }
-            Path::UnSet(_) => None,
+            Path::NotSet(_) => None,
         }
     }
 
@@ -251,6 +258,16 @@ impl File {
     /// The mutable [`Text`] of the [`File`]
     pub fn print_cfg(&self) -> PrintCfg {
         self.cfg
+    }
+
+    /// The [`Cursors`] that are used on the [`Text`], if they exist
+    pub fn cursors(&self) -> Option<&Cursors> {
+        self.text.cursors()
+    }
+
+    /// A mutable reference to the [`Cursors`], if they exist
+    pub fn cursors_mut(&mut self) -> Option<&mut Cursors> {
+        self.text.cursors_mut()
     }
 
     /// Whether o not the [`File`] exists or not
@@ -320,7 +337,7 @@ impl<U: Ui> Widget<U> for File {
 enum Path {
     SetExists(PathBuf),
     SetAbsent(PathBuf),
-    UnSet(usize),
+    NotSet(usize),
 }
 
 impl Path {
@@ -329,7 +346,7 @@ impl Path {
         use std::sync::atomic::{AtomicUsize, Ordering};
         static UNSET_COUNT: AtomicUsize = AtomicUsize::new(1);
 
-        Path::UnSet(UNSET_COUNT.fetch_add(1, Ordering::Relaxed))
+        Path::NotSet(UNSET_COUNT.fetch_add(1, Ordering::Relaxed))
     }
 }
 

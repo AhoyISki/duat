@@ -13,7 +13,7 @@ use duat_core::{
         self, Cursors, EditHelper, ExtendFwd, ExtendRev, Fwd, IncSearcher, KeyCode::*,
         KeyEvent as Event, KeyMod as Mod, Mode, Rev, key,
     },
-    text::{Point, err},
+    text::{Point, Searcher, err},
     ui::{Area, Ui},
     widgets::{File, IncSearch, RunCommands},
 };
@@ -32,15 +32,9 @@ impl Normal {
 impl<U: Ui> Mode<U> for Normal {
     type Widget = File;
 
-    fn send_key(
-        &mut self,
-        key: Event,
-        widget: &RwData<Self::Widget>,
-        area: &U::Area,
-        cursors: &mut Cursors,
-    ) {
-        cursors.make_incl();
-        let mut helper = EditHelper::new(widget, area, cursors);
+    fn send_key(&mut self, key: Event, widget: &RwData<Self::Widget>, area: &U::Area) {
+        let mut helper = EditHelper::new(widget, area);
+        helper.make_incl();
         let w_chars = helper.cfg().word_chars;
 
         if let key!(
@@ -356,7 +350,7 @@ impl<U: Ui> Mode<U> for Normal {
 
             ////////// Cursor creation and destruction.
             key!(Char(',')) => helper.remove_extra_cursors(),
-            key!(Char('C'), Mod::SHIFT) => helper.move_nth(helper.cursors().len() - 1, |mut m| {
+            key!(Char('C'), Mod::SHIFT) => helper.move_nth(helper.cursors_len() - 1, |mut m| {
                 m.copy();
                 m.move_ver(1);
             }),
@@ -397,15 +391,9 @@ pub struct Insert;
 impl<U: Ui> Mode<U> for Insert {
     type Widget = File;
 
-    fn send_key(
-        &mut self,
-        key: Event,
-        widget: &RwData<Self::Widget>,
-        area: &<U as Ui>::Area,
-        cursors: &mut Cursors,
-    ) {
-        cursors.make_incl();
-        let mut helper = EditHelper::new(widget, area, cursors);
+    fn send_key(&mut self, key: Event, widget: &RwData<Self::Widget>, area: &<U as Ui>::Area) {
+        let mut helper = EditHelper::new(widget, area);
+        helper.make_incl();
 
         if let key!(Left | Down | Up | Right, mods) = key {
             if mods.contains(Mod::SHIFT) {
@@ -440,7 +428,7 @@ impl<U: Ui> Mode<U> for Insert {
                 restore_anchors(&mut helper, anchors);
             }
             key!(Backspace) => {
-                let mut prev = Vec::with_capacity(helper.cursors().len());
+                let mut prev = Vec::with_capacity(helper.cursors_len());
                 helper.move_many(.., |mut m| {
                     prev.push((m.caret(), {
                         let c = m.caret();
@@ -469,7 +457,7 @@ impl<U: Ui> Mode<U> for Insert {
                 });
             }
             key!(Delete) => {
-                let mut anchors = Vec::with_capacity(helper.cursors().len());
+                let mut anchors = Vec::with_capacity(helper.cursors_len());
                 helper.move_many(.., |mut m| {
                     let caret = m.caret();
                     anchors.push(m.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
@@ -605,15 +593,9 @@ impl OneKey {
 impl<U: Ui> Mode<U> for OneKey {
     type Widget = File;
 
-    fn send_key(
-        &mut self,
-        key: Event,
-        widget: &RwData<Self::Widget>,
-        area: &<U as Ui>::Area,
-        cursors: &mut Cursors,
-    ) {
-        cursors.make_incl();
-        let mut helper = EditHelper::new(widget, area, cursors);
+    fn send_key(&mut self, key: Event, widget: &RwData<Self::Widget>, area: &<U as Ui>::Area) {
+        let mut helper = EditHelper::new(widget, area);
+        helper.make_incl();
         let mut sel_type = self.sel_type();
 
         sel_type = match self {
@@ -741,32 +723,26 @@ impl Category {
 }
 
 struct Select<U: Ui> {
-    cursors: Cursors,
+    orig: Cursors,
     info: <U::Area as Area>::PrintInfo,
 }
 
 impl<U: Ui> IncSearcher<U> for Select<U> {
-    fn new(_: &RwData<File>, area: &<U as Ui>::Area, cursors: &mut Cursors) -> Self {
+    fn new(file: &RwData<File>, area: &<U as Ui>::Area) -> Self {
         Self {
-            cursors: cursors.clone(),
+            orig: file.read().cursors().unwrap().clone(),
             info: area.print_info(),
         }
     }
 
-    fn search(
-        &mut self,
-        file: &RwData<File>,
-        area: &<U as Ui>::Area,
-        cursors: &mut Cursors,
-        searcher: duat_core::text::Searcher,
-    ) {
-        *cursors = self.cursors.clone();
+    fn search(&mut self, file: &RwData<File>, area: &<U as Ui>::Area, searcher: Searcher) {
+        *file.write().cursors_mut().unwrap() = self.orig.clone();
         if searcher.is_empty() {
             area.set_print_info(self.info.clone());
             return;
         }
 
-        let mut helper = EditHelper::new_inc(file, area, cursors, searcher);
+        let mut helper = EditHelper::new_inc(file, area, searcher);
 
         helper.move_many(.., |mut m| {
             m.set_caret_on_start();
@@ -792,32 +768,26 @@ impl<U: Ui> IncSearcher<U> for Select<U> {
 }
 
 struct Split<U: Ui> {
-    cursors: Cursors,
+    orig: Cursors,
     info: <U::Area as Area>::PrintInfo,
 }
 
 impl<U: Ui> IncSearcher<U> for Split<U> {
-    fn new(_: &RwData<File>, area: &<U as Ui>::Area, cursors: &mut Cursors) -> Self {
+    fn new(file: &RwData<File>, area: &<U as Ui>::Area) -> Self {
         Self {
-            cursors: cursors.clone(),
+            orig: file.read().cursors().unwrap().clone(),
             info: area.print_info(),
         }
     }
 
-    fn search(
-        &mut self,
-        file: &RwData<File>,
-        area: &<U as Ui>::Area,
-        cursors: &mut Cursors,
-        searcher: duat_core::text::Searcher,
-    ) {
-        *cursors = self.cursors.clone();
+    fn search(&mut self, file: &RwData<File>, area: &<U as Ui>::Area, searcher: Searcher) {
+        *file.write().cursors_mut().unwrap() = self.orig.clone();
         if searcher.is_empty() {
             area.set_print_info(self.info.clone());
             return;
         }
 
-        let mut helper = EditHelper::new_inc(file, area, cursors, searcher);
+        let mut helper = EditHelper::new_inc(file, area, searcher);
 
         helper.move_many(.., |mut m| {
             m.set_caret_on_start();

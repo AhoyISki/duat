@@ -179,10 +179,7 @@ mod switch {
             return;
         };
 
-        widget.mutate_data_as(|widget, area, cursors| {
-            let mut c = cursors.write();
-            mode.send_key(key, widget, area, &mut c)
-        });
+        widget.mutate_data_as(|widget, area| mode.send_key(key, widget, area));
     }
 
     /// Inner function that sets [`Mode`]s
@@ -208,9 +205,8 @@ mod switch {
         }
 
         let widget = context::cur_widget::<U>().unwrap();
-        widget.mutate_data_as::<M::Widget, ()>(|w, a, c| {
-            let mut c = c.write();
-            mode.on_switch(w, a, &mut c);
+        widget.mutate_data_as::<M::Widget, ()>(|w, a| {
+            mode.on_switch(w, a);
         });
 
         crate::mode::set_send_key::<M, U>();
@@ -536,13 +532,7 @@ pub trait Mode<U: Ui>: Sized + Clone + Send + Sync + 'static {
     type Widget: Widget<U>;
 
     /// Sends a [`KeyEvent`] to this [`Mode`]
-    fn send_key(
-        &mut self,
-        key: KeyEvent,
-        widget: &RwData<Self::Widget>,
-        area: &U::Area,
-        cursors: &mut Cursors,
-    );
+    fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area);
 
     /// A function to trigger when switching to this [`Mode`]
     ///
@@ -553,7 +543,7 @@ pub trait Mode<U: Ui>: Sized + Clone + Send + Sync + 'static {
     /// [`Tag`]: crate::text::Tag
     /// [`Text`]: crate::text::Text
     #[allow(unused)]
-    fn on_switch(&mut self, widget: &RwData<Self::Widget>, area: &U::Area, cursors: &mut Cursors) {}
+    fn on_switch(&mut self, widget: &RwData<Self::Widget>, area: &U::Area) {}
 
     /// DO NOT IMPLEMENT THIS FUNCTION, IT IS MEANT FOR `&str` ONLY
     #[doc(hidden)]
@@ -568,13 +558,7 @@ impl<U: Ui> Mode<U> for &'static str {
     // Doesn't matter
     type Widget = crate::widgets::File;
 
-    fn send_key(
-        &mut self,
-        _: KeyEvent,
-        _: &RwData<Self::Widget>,
-        _: &<U as Ui>::Area,
-        _: &mut Cursors,
-    ) {
+    fn send_key(&mut self, _: KeyEvent, _: &RwData<Self::Widget>, _: &<U as Ui>::Area) {
         unreachable!("&strs are only meant to be sent as AsGives, turning into keys");
     }
 
