@@ -506,7 +506,7 @@ pub mod widgets {
     //! Duat's builtin widgets
     pub use duat_core::{
         ui::Constraint,
-        widgets::{File, NumberRelation, Widget, status},
+        widgets::{File, LineNum, Widget, status},
     };
 
     use crate::Ui;
@@ -516,6 +516,7 @@ pub mod widgets {
     pub type StatusLine = duat_core::widgets::StatusLine<Ui>;
     pub type StatusLineCfg = duat_core::widgets::StatusLineCfg<Ui>;
     pub type LineNumbers = duat_core::widgets::LineNumbers<Ui>;
+    pub type LineNumbersCfg = duat_core::widgets::LineNumbersCfg<Ui>;
 }
 
 pub mod state {

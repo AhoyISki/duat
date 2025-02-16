@@ -62,8 +62,7 @@
 //!     // return an error message.
 //!     // For those, you should use the `ok!` and `err!`
 //!     // macros.
-//!     // For commands, you can also return `Ok(None)`.
-//!     ok!("Unset " [*a] { forms.len() } [] " forms")
+//!     Ok(Some(ok!("Unset " [*a] { forms.len() } [] " forms")))
 //! });
 //!
 //! // Adding a command can fail if a command with the same
@@ -123,9 +122,9 @@
 //! cmd::add!("pip", |flags, args: cmd::Remainder| {
 //!     match std::process::Command::new("pip").spawn() {
 //!         Ok(child) => match child.wait_with_output() {
-//!             Ok(ok) => {
-//!                 ok!({ String::from_utf8_lossy(&ok.stdout).into_owned() })
-//!             }
+//!             Ok(ok) => Ok(Some(ok!({
+//!                 String::from_utf8_lossy(&ok.stdout).into_owned()
+//!             }))),
 //!             Err(err) => Err(err!(err)),
 //!         },
 //!         Err(err) => Err(err!(err)),
@@ -137,15 +136,13 @@
 //! on a [`Widget`]:
 //!
 //! ```rust
-//! # use duat_core::{cmd, widgets::{LineNumbers, NumberRelation}};
+//! # use duat_core::{cmd, widgets::{LineNumbers, LineNum}};
 //! # fn test<U: duat_core::ui::Ui>() {
 //! cmd::add_for!(U, "toggle-relative", |ln: LineNumbers<U>, _, _, _| {
 //!     let mut cfg = ln.get_cfg();
 //!     cfg.num_rel = match cfg.num_rel {
-//!         NumberRelation::Absolute => NumberRelation::RelAbs,
-//!         NumberRelation::Relative | NumberRelation::RelAbs => {
-//!             NumberRelation::Absolute
-//!         }
+//!         LineNum::Abs => LineNum::RelAbs,
+//!         LineNum::Rel | LineNum::RelAbs => LineNum::Abs,
 //!     };
 //!     ln.reconfigure(cfg);
 //!     Ok(None)

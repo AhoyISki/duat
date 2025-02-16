@@ -116,7 +116,7 @@ impl ui::Ui for Ui {
                 };
 
                 loop {
-                    if let Ok(true) = event::poll(Duration::from_millis(100)) {
+                    if let Ok(true) = event::poll(Duration::from_millis(13)) {
                         let res = match event::read().unwrap() {
                             event::Event::Key(key) => tx.send_key(key),
                             event::Event::Resize(..) => {
@@ -135,7 +135,7 @@ impl ui::Ui for Ui {
 
                     printer.try_inspect(|p| p.print());
 
-                    if let Ok(event) = rx.recv_timeout(Duration::from_millis(6)) {
+                    if let Ok(event) = rx.try_recv() {
                         match event {
                             UiEvent::Start => {
                                 unreachable!("Wrong order")

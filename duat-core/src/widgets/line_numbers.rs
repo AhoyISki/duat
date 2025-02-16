@@ -111,13 +111,13 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
 
 /// How to show the line numbers on screen.
 #[derive(Default, Debug, Copy, Clone)]
-pub enum NumberRelation {
+pub enum LineNum {
     #[default]
     /// Line numbers relative to the beginning of the file.
-    Absolute,
+    Abs,
     /// Line numbers relative to the main cursor's line, including
     /// that line.
-    Relative,
+    Rel,
     /// Relative line numbers on every line, except the main cursor's.
     RelAbs,
 }
@@ -125,7 +125,7 @@ pub enum NumberRelation {
 /// Configuration options for the [`LineNumbers<U>`] widget.
 #[derive(Debug)]
 pub struct LineNumbersCfg<U> {
-    pub num_rel: NumberRelation,
+    pub num_rel: LineNum,
     pub align: Alignment,
     pub main_align: Alignment,
     pub show_wraps: bool,
@@ -149,7 +149,7 @@ impl<U> Default for LineNumbersCfg<U> {
 impl<U> LineNumbersCfg<U> {
     pub fn new() -> Self {
         Self {
-            num_rel: NumberRelation::Absolute,
+            num_rel: LineNum::Abs,
             align: Alignment::Left,
             main_align: Alignment::Right,
             show_wraps: false,
@@ -160,20 +160,20 @@ impl<U> LineNumbersCfg<U> {
 
     pub fn absolute(self) -> Self {
         Self {
-            num_rel: NumberRelation::Absolute,
+            num_rel: LineNum::Abs,
             ..self
         }
     }
 
     pub fn relative(self) -> Self {
         Self {
-            num_rel: NumberRelation::Relative,
+            num_rel: LineNum::Rel,
             ..self
         }
     }
 
     pub fn rel_abs(self) -> Self {
-        Self { num_rel: NumberRelation::RelAbs, ..self }
+        Self { num_rel: LineNum::RelAbs, ..self }
     }
 
     pub fn align_left(self) -> Self {
@@ -255,9 +255,9 @@ fn push_text<U>(
         text!(*builder, "\n");
     } else if main != usize::MAX {
         let num = match cfg.num_rel {
-            NumberRelation::Absolute => line + 1,
-            NumberRelation::Relative => line.abs_diff(main),
-            NumberRelation::RelAbs => {
+            LineNum::Abs => line + 1,
+            LineNum::Rel => line.abs_diff(main),
+            LineNum::RelAbs => {
                 if line != main {
                     line.abs_diff(main)
                 } else {

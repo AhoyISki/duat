@@ -29,7 +29,7 @@ fn main() {
 
     // Assert that the configuration crate actually exists.
     // The watcher is returned as to not be dropped.
-    let (_watcher, toml_path, target_dir, so_path) = {
+    let (_watcher, toml_path, target_dir) = {
         let Some((config_dir, cache_dir)) = config_dir().zip(cache_dir()) else {
             let (tx, rx) = mpsc::channel();
             pre_setup();
@@ -73,14 +73,8 @@ fn main() {
             }
         })
         .unwrap();
-
         watcher.watch(&crate_dir, RecursiveMode::Recursive).unwrap();
-
-        let so_path = match cfg!(debug_assertions) {
-            true => target_dir.join("debug/libconfig.so"),
-            false => target_dir.join("release/libconfig.so"),
-        };
-        (watcher, toml_path, target_dir, so_path)
+        (watcher, toml_path, target_dir)
     };
 
     run_cargo(&toml_path, &target_dir, !cfg!(debug_assertions)).unwrap();

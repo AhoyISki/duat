@@ -52,7 +52,7 @@ use std::sync::{
 pub use self::{
     command_line::{CmdLine, CmdLineCfg, CmdLineMode, IncSearch, RunCommands, ShowNotifications},
     file::{File, FileCfg},
-    line_numbers::{LineNumbers, LineNumbersCfg, NumberRelation},
+    line_numbers::{LineNumbers, LineNumbersCfg, LineNum},
     status_line::{State, StatusLine, StatusLineCfg, common, status},
 };
 use crate::{
