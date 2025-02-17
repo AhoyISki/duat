@@ -137,7 +137,7 @@
 //!
 //! ```rust
 //! # use duat::{cmd, widgets::{LineNumbers, LineNum}};
-//! cmd::add_for!("toggle-relative", |ln: LineNumbers, _, _, _| {
+//! cmd::add_for!("toggle-relative", |ln: LineNumbers, _, _| {
 //!     let mut cfg = ln.get_cfg();
 //!     cfg.num_rel = match cfg.num_rel {
 //!         LineNum::Abs => LineNum::RelAbs,
@@ -311,17 +311,17 @@ pub type OtherFileBuffer = duat_core::cmd::OtherFileBuffer<Ui>;
 ///     fn once() -> Result<(), duat::Error<()>> {
 ///         form::set_weak("Counter", Form::green());
 ///
-///         cmd::add_for!("play", |timer: Timer, _area, _cursors, _flags| {
+///         cmd::add_for!("play", |timer: Timer, _area, _flags| {
 ///             timer.running.store(true, Ordering::Relaxed);
 ///             Ok(None)
 ///         })?;
 ///
-///         cmd::add_for!("pause", |timer: Timer, _, _, _| {
+///         cmd::add_for!("pause", |timer: Timer, _, _| {
 ///             timer.running.store(false, Ordering::Relaxed);
 ///             Ok(None)
 ///         })?;
 ///
-///         cmd::add_for!("reset", |timer: Timer, _, _, _| {
+///         cmd::add_for!("reset", |timer: Timer, _, _| {
 ///             timer.instant = Instant::now();
 ///             Ok(None)
 ///         })

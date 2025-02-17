@@ -20,15 +20,9 @@ struct FindSeq(Option<char>);
 impl<U: Ui> Mode<U> for FindSeq {
     type Widget = File;
 
-    fn send_key(
-        &mut self,
-        key: KeyEvent,
-        widget: &RwData<Self::Widget>,
-        area: &<U as Ui>::Area,
-        cursors: &mut Cursors,
-    ) {
+    fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area) {
         use KeyCode::*;
-        let mut helper = EditHelper::new(widget, area, cursors);
+        let mut helper = EditHelper::new(widget, area);
 
         // Make sure that the typed key is a character.
         let key!(Char(c)) = key else {
@@ -41,7 +35,7 @@ impl<U: Ui> Mode<U> for FindSeq {
             return;
         };
 
-        helper.move_each(|mut m| {
+        helper.move_many(.., |mut m| {
             let pat: String = [first, c].iter().collect();
             let matched = m.search_fwd(pat, None).next();
             if let Some((p0, p1)) = matched {
@@ -123,12 +117,7 @@ impl EasyMotion {
 impl<U: Ui> Mode<U> for EasyMotion {
     type Widget = File;
 
-    fn on_switch(
-        &mut self,
-        widget: &RwData<Self::Widget>,
-        area: &<U as Ui>::Area,
-        _cursors: &mut Cursors,
-    ) {
+    fn on_switch(&mut self, widget: &RwData<Self::Widget>, area: &<U as Ui>::Area) {
         let mut widget = widget.write();
         let cfg = widget.print_cfg();
         let text = widget.text_mut();
@@ -139,7 +128,7 @@ impl<U: Ui> Mode<U> for EasyMotion {
         };
         let start = area.first_point(text, cfg);
         let end = area.last_point(text, cfg);
-        self.points = text.search_fwd(regex, start, Some(end)).unwrap().collect();
+        self.points = text.search_fwd(regex, (start, end)).unwrap().collect();
 
         let seqs = key_seqs(self.points.len());
 
@@ -148,18 +137,12 @@ impl<U: Ui> Mode<U> for EasyMotion {
 
             text.insert_tag(p1.byte(), Tag::GhostText(ghost), self.key);
             text.insert_tag(p1.byte(), Tag::StartConceal, self.key);
-            let seq_end = p1.byte() + seq.chars().count() as u32;
+            let seq_end = p1.byte() + seq.chars().count() ;
             text.insert_tag(seq_end, Tag::EndConceal, self.key);
         }
     }
 
-    fn send_key(
-        &mut self,
-        key: KeyEvent,
-        widget: &RwData<Self::Widget>,
-        area: &<U as Ui>::Area,
-        cursors: &mut Cursors,
-    ) {
+    fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area) {
         let char = match key {
             key!(KeyCode::Char(c)) => c,
             // Return a char that will never match.
@@ -167,7 +150,7 @@ impl<U: Ui> Mode<U> for EasyMotion {
         };
         self.seq.push(char);
 
-        let mut helper = EditHelper::new(widget, area, cursors);
+        let mut helper = EditHelper::new(widget, area);
         helper.remove_extra_cursors();
 
         let seqs = key_seqs(self.points.len());
@@ -184,7 +167,7 @@ impl<U: Ui> Mode<U> for EasyMotion {
             }
 
             helper.remove_tags_on(p1.byte(), self.key);
-            helper.remove_tags_on(p1.byte() + seq.len() as u32, self.key);
+            helper.remove_tags_on(p1.byte() + seq.len(), self.key);
         }
 
         if self.seq.chars().count() == 2 || !LETTERS.contains(char) {
@@ -226,7 +209,7 @@ map::<Normal>("<CA-l>", &EasyMotion::line());
 ```
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG3xVjAl1Yqs7GybGqMN6dl1qG1wVWuqQm_x1GwZrGIiBooqeYWSBg2lkdWF0LWNvcmVlMC4yLjJpZHVhdF9jb3Jl
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG7UD5brFf5WzG_h6C89JpPjLG3lnRJ6dVY9AG4fHw78vvrqPYWSBg2lkdWF0LWNvcmVlMC4yLjJpZHVhdF9jb3Jl
  [__link0]: https://docs.rs/duat-core/0.2.2/duat_core/?search=ui::Ui
  [__link1]: https://docs.rs/duat-core/0.2.2/duat_core/?search=mode::Mode
  [__link10]: https://docs.rs/duat-core/0.2.2/duat_core/?search=text::Text::remove_tags_on

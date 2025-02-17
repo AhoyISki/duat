@@ -68,6 +68,7 @@ pub fn pre_setup() {
 
 #[doc(hidden)]
 pub fn run_duat(
+    ms: &'static <duat_term::Ui as duat_core::ui::Ui>::MetaStatics,
     prev: Vec<(RwData<File>, bool)>,
     duat_tx: Sender<DuatEvent>,
     duat_rx: Receiver<DuatEvent>,
@@ -88,9 +89,9 @@ pub fn run_duat(
     cfg.set_print_cfg(print_cfg);
 
     let session = if prev.is_empty() {
-        cfg.session_from_args(duat_tx)
+        cfg.session_from_args(ms, duat_tx)
     } else {
-        cfg.session_from_prev(prev, duat_tx)
+        cfg.session_from_prev(ms, prev, duat_tx)
     };
     session.start(duat_rx, ui_tx, msg)
 }

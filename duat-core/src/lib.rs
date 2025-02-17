@@ -22,15 +22,9 @@
 //! impl<U: Ui> Mode<U> for FindSeq {
 //!     type Widget = File;
 //!
-//!     fn send_key(
-//!         &mut self,
-//!         key: KeyEvent,
-//!         widget: &RwData<Self::Widget>,
-//!         area: &<U as Ui>::Area,
-//!         cursors: &mut Cursors,
-//!     ) {
+//!     fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area) {
 //!         use KeyCode::*;
-//!         let mut helper = EditHelper::new(widget, area, cursors);
+//!         let mut helper = EditHelper::new(widget, area);
 //!
 //!         // Make sure that the typed key is a character.
 //!         let key!(Char(c)) = key else {
@@ -134,12 +128,7 @@
 //! impl<U: Ui> Mode<U> for EasyMotion {
 //!     type Widget = File;
 //!
-//!     fn on_switch(
-//!         &mut self,
-//!         widget: &RwData<Self::Widget>,
-//!         area: &<U as Ui>::Area,
-//!         _cursors: &mut Cursors,
-//!     ) {
+//!     fn on_switch(&mut self, widget: &RwData<Self::Widget>, area: &<U as Ui>::Area) {
 //!         let mut widget = widget.write();
 //!         let cfg = widget.print_cfg();
 //!         let text = widget.text_mut();
@@ -164,13 +153,7 @@
 //!         }
 //!     }
 //!
-//!     fn send_key(
-//!         &mut self,
-//!         key: KeyEvent,
-//!         widget: &RwData<Self::Widget>,
-//!         area: &<U as Ui>::Area,
-//!         cursors: &mut Cursors,
-//!     ) {
+//!     fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area) {
 //!         let char = match key {
 //!             key!(KeyCode::Char(c)) => c,
 //!             // Return a char that will never match.
@@ -178,7 +161,7 @@
 //!         };
 //!         self.seq.push(char);
 //!
-//!         let mut helper = EditHelper::new(widget, area, cursors);
+//!         let mut helper = EditHelper::new(widget, area);
 //!         helper.remove_extra_cursors();
 //!
 //!         let seqs = key_seqs(self.points.len());

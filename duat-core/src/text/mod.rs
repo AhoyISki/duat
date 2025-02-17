@@ -1005,6 +1005,18 @@ impl Text {
 
     /////////// Cursor functions
 
+    /// Enables the usage of [`Cursors`] in this [`Text`]
+    ///
+    /// This is automatically done whenever you use the [`EditHelper`]
+    /// struct.
+    ///
+    /// [`EditHelper`]: crate::mode::EditHelper
+    pub fn enable_cursors(&mut self) {
+        if self.cursors.is_none() {
+            self.cursors = Some(Box::default())
+        }
+    }
+
     /// Removes the tags for all the cursors, used before they are
     /// expected to move
     pub(crate) fn add_cursors(&mut self, area: &impl Area, cfg: PrintCfg) {

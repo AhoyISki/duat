@@ -258,7 +258,8 @@ unsafe impl<U: Ui> Sync for StatusLine<U> {}
 ///     name
 /// }
 ///
-/// fn powerline_main_fmt(file: &File, cursors: &Cursors) -> Text {
+/// fn powerline_main_fmt(file: &File) -> Text {
+///    let cursors = file.cursors().unwrap();
 ///    let cursor = cursors.main();
 ///
 ///    text!(

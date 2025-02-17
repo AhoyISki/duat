@@ -3,7 +3,7 @@ use std::{
     fmt::Debug,
     io::{self, Write},
     sync::{
-        LazyLock, Mutex,
+        Mutex,
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
@@ -45,25 +45,12 @@ pub struct Ui {
 }
 
 static IS_RUNNING: AtomicBool = AtomicBool::new(true);
-static UI: LazyLock<Mutex<Ui>> = LazyLock::new(Mutex::default);
 
 impl ui::Ui for Ui {
     type Area = Area;
+    type MetaStatics = Mutex<Ui>;
 
-    fn new_root(cache: <Self::Area as ui::Area>::Cache) -> Self::Area {
-        let mut ui = UI.lock().unwrap();
-        ui.printer.write().flush_equalities().unwrap();
-
-        let layout = Layout::new(ui.fr, ui.printer.clone(), cache);
-        let root = Area::new(layout.main_index(), RwData::new(layout));
-        let area = root.clone();
-
-        ui.windows.push(root);
-
-        area
-    }
-
-    fn open(tx: Sender, rx: mpsc::Receiver<UiEvent>) {
+    fn open(ms: &'static Self::MetaStatics, tx: Sender, rx: mpsc::Receiver<UiEvent>) {
         // Hook for returning to regular terminal state
         std::panic::set_hook(Box::new(|info| {
             let trace = std::backtrace::Backtrace::capture();
@@ -103,9 +90,9 @@ impl ui::Ui for Ui {
         terminal::enable_raw_mode().unwrap();
 
         // The main application input loop
-        let printer = UI.lock().unwrap().printer.clone();
+        let printer = ms.lock().unwrap().printer.clone();
         std::thread::spawn(move || {
-            loop {
+            'outer: loop {
                 let Ok(UiEvent::Start) = rx.recv() else {
                     break;
                 };
@@ -150,26 +137,44 @@ impl ui::Ui for Ui {
                                     PopKeyboardEnhancementFlags
                                 )
                                 .unwrap();
+                                break 'outer;
                             }
                         }
                     }
                 }
             }
+            // So this thread finishes before quitting
+            IS_RUNNING.store(false, Ordering::Relaxed);
         });
-        // So this function finishes before quitting
-        IS_RUNNING.store(false, Ordering::Relaxed);
     }
 
-    fn unload() {}
+    fn unload(_ms: &'static Self::MetaStatics) {}
 
-    fn close() {
+    fn close(_ms: &'static Self::MetaStatics) {
         while IS_RUNNING.load(Ordering::Relaxed) {
             std::thread::sleep(Duration::from_micros(500))
         }
     }
 
-    fn flush_layout() {
-        UI.lock().unwrap().printer.write().flush_equalities().unwrap();
+    fn new_root(
+        ms: &'static Self::MetaStatics,
+        cache: <Self::Area as ui::Area>::Cache,
+    ) -> Self::Area {
+        let mut ui = ms.lock().unwrap();
+        ui.printer.write().flush_equalities().unwrap();
+
+        let layout = Layout::new(ui.fr, ui.printer.clone(), cache);
+        let root = Area::new(layout.main_index(), RwData::new(layout));
+        let area = root.clone();
+
+        ui.windows.push(root);
+
+        area
+    }
+
+    fn flush_layout(ms: &'static Self::MetaStatics) {
+        let ui = ms.lock().unwrap();
+        ui.printer.write().flush_equalities().unwrap();
     }
 }
 

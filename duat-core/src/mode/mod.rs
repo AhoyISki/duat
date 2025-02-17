@@ -494,14 +494,7 @@ mod switch {
 /// impl<U: Ui> Mode<U> for MenuInput {
 ///     type Widget = Menu;
 ///
-///     fn send_key(
-///         &mut self,
-///         key: KeyEvent,
-///         widget: &RwData<Menu>,
-///         area: &U::Area,
-///         cursors: &mut Cursors,
-///     ) {
-///         cursors.clear();
+///     fn send_key(&mut self, key: KeyEvent, widget: &RwData<Menu>, area: &U::Area) {
 ///         use KeyCode::*;
 ///         let mut menu = widget.write();
 ///         

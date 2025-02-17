@@ -65,7 +65,7 @@
 //! #     pub struct Normal;
 //! #     impl Mode<Ui> for Normal {
 //! #         type Widget = File;
-//! #         fn send_key(&mut self, _: KeyEvent, _: &RwData<File>, _: &Area, _: &mut Cursors) {
+//! #         fn send_key(&mut self, _: KeyEvent, _: &RwData<File>, _: &Area) {
 //! #             todo!();
 //! #         }
 //! #     }
@@ -73,7 +73,7 @@
 //! #     pub struct Insert;
 //! #     impl Mode<Ui> for Insert {
 //! #         type Widget = File;
-//! #         fn send_key(&mut self, _: KeyEvent, _: &RwData<File>, _: &Area, _: &mut Cursors) {
+//! #         fn send_key(&mut self, _: KeyEvent, _: &RwData<File>, _: &Area) {
 //! #             todo!();
 //! #         }
 //! #     }
@@ -164,7 +164,7 @@
 //! # use duat::prelude::*;
 //! # fn test() -> Result<(), Error<()>> {
 //! let callers = ["collapse-cmd-line", "ccmd"];
-//! cmd::add_for!(callers, |_cmd_line: CmdLine, area, _cursors, _flags| {
+//! cmd::add_for!(callers, |_cmd_line: CmdLine, area, _flags| {
 //!     area.constrain_ver(Constraint::Length(0.0))?;
 //!     Ok(None)
 //! })
@@ -583,8 +583,8 @@ pub macro setup_duat($setup:expr) {
 
     #[no_mangle]
     fn run(
+        ms: &'static <crate::prelude::Ui as ui::Ui>::MetaStatics,
         prev_files: Vec<(RwData<File>, bool)>,
-        ui: Ui,
         tx: mpsc::Sender<ui::DuatEvent>,
         rx: mpsc::Receiver<ui::DuatEvent>,
         ui_tx: mpsc::Sender<ui::UiEvent>,
@@ -592,7 +592,7 @@ pub macro setup_duat($setup:expr) {
     ) -> (Vec<(RwData<File>, bool)>, mpsc::Receiver<ui::DuatEvent>) {
         pre_setup();
         $setup();
-        run_duat(prev_files, ui, tx, rx, ui_tx, msg)
+        run_duat(ms, prev_files, tx, rx, ui_tx, msg)
     }
 }
 

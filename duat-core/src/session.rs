@@ -1,5 +1,4 @@
 use std::{
-    marker::PhantomData,
     path::PathBuf,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -40,7 +39,11 @@ impl<U: Ui> SessionCfg<U> {
         }
     }
 
-    pub fn session_from_args(self, tx: mpsc::Sender<DuatEvent>) -> Session<U> {
+    pub fn session_from_args(
+        self,
+        ms: &'static U::MetaStatics,
+        tx: mpsc::Sender<DuatEvent>,
+    ) -> Session<U> {
         let mut args = std::env::args();
         let first = args.nth(1).map(PathBuf::from);
 
@@ -50,14 +53,14 @@ impl<U: Ui> SessionCfg<U> {
             self.file_cfg.clone().build(false)
         };
 
-        let (window, node) = Window::new(widget, checker, (self.layout)());
+        let (window, node) = Window::new(ms, widget, checker, (self.layout)());
         let cur_window = context::set_windows(vec![window]);
 
         let mut session = Session {
+            ms,
             cur_window,
             file_cfg: self.file_cfg,
             tx,
-            _u: PhantomData,
         };
 
         context::set_cur(node.as_file(), node.clone());
@@ -78,6 +81,7 @@ impl<U: Ui> SessionCfg<U> {
 
     pub fn session_from_prev(
         self,
+        ms: &'static U::MetaStatics,
         prev: Vec<(RwData<File>, bool)>,
         duat_tx: mpsc::Sender<DuatEvent>,
     ) -> Session<U> {
@@ -94,14 +98,14 @@ impl<U: Ui> SessionCfg<U> {
 
         let (widget, checker, _) = <FileCfg as WidgetCfg<U>>::build(file_cfg, false);
 
-        let (window, node) = Window::new(widget, checker, (self.layout)());
+        let (window, node) = Window::new(ms, widget, checker, (self.layout)());
         let cur_window = context::set_windows(vec![window]);
 
         let mut session = Session {
+            ms,
             cur_window,
             file_cfg: self.file_cfg,
             tx: duat_tx,
-            _u: PhantomData,
         };
 
         context::set_cur(node.as_file(), node.clone());
@@ -135,10 +139,10 @@ impl<U: Ui> Default for SessionCfg<U> {
 }
 
 pub struct Session<U: Ui> {
+    ms: &'static U::MetaStatics,
     cur_window: &'static AtomicUsize,
     file_cfg: FileCfg,
     tx: mpsc::Sender<DuatEvent>,
-    _u: PhantomData<U>,
 }
 
 impl<U: Ui> Session<U> {
@@ -202,7 +206,7 @@ impl<U: Ui> Session<U> {
             }
         });
 
-        U::flush_layout();
+        U::flush_layout(self.ms);
         ui_tx.send(UiEvent::Start).unwrap();
 
         // The main loop.
@@ -240,7 +244,7 @@ impl<U: Ui> Session<U> {
                     break (Vec::new(), duat_rx);
                 }
                 BreakTo::ReloadConfig => {
-                    U::unload();
+                    U::unload(self.ms);
                     crate::thread::quit_queue();
                     self.save_cache(false);
                     let files = self.take_files();

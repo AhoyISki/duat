@@ -65,7 +65,8 @@ pub fn main_line(cursors: &Cursors) -> usize {
 /// ```text
 /// [Coord] col [Separator] ":" [Coord] line [Separator] "/" [Coord] lines
 /// ```
-pub fn main_fmt(file: &File, cursors: &Cursors) -> Text {
+pub fn main_fmt(file: &File) -> Text {
+    let cursors = file.cursors().unwrap();
     if cursors.is_empty() {
         return Text::default();
     }

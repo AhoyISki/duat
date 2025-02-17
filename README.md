@@ -143,7 +143,7 @@ with arguments supported by Rust’s type system:
 
 ```rust
 let callers = ["collapse-cmd-line", "ccmd"];
-cmd::add_for!(callers, |_cmd_line: CmdLine, area, _cursors, _flags| {
+cmd::add_for!(callers, |_cmd_line: CmdLine, area, _flags| {
     area.constrain_ver(Constraint::Length(0.0))?;
     Ok(None)
 })
@@ -222,7 +222,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG11wvO4XgwVAGyK7EOtzk6BPG9k86XbtJFu_G2-Dgla3rvh7YWSCgmRkdWF0ZTAuMi4xgmlkdWF0X2NvcmVlMC4yLjI
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG0TmG2sU1339G5WzpRHu4l0dG8IJw1Vs_XFKG8-uIdY1En5cYWSCgmRkdWF0ZTAuMi4xgmlkdWF0X2NvcmVlMC4yLjI
  [__link0]: https://docs.rs/duat/0.2.1/duat/?search=mode::set_default
  [__link1]: https://docs.rs/duat/0.2.1/duat/?search=prelude::map
  [__link10]: https://docs.rs/duat/0.2.1/duat/?search=hooks::add

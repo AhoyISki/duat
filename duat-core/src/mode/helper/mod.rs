@@ -36,13 +36,7 @@ mod cursors;
 /// impl<U: Ui> Mode<U> for PlacesCharactersAndMoves {
 ///     type Widget = File;
 ///     /* ... */
-/// #   fn send_key(
-/// #       &mut self,
-/// #       key: KeyEvent,
-/// #       widget: &RwData<Self::Widget>,
-/// #       area: &U::Area,
-/// #       cursors: &mut Cursors
-/// #   ) {
+/// #   fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area) {
 /// #       todo!();
 /// #   }
 /// # }
@@ -70,13 +64,7 @@ mod cursors;
 /// impl<U: Ui> Mode<U> for PlacesCharactersAndMoves {
 /// #   type Widget = File;
 ///     /* ... */
-///     fn send_key(
-///         &mut self,
-///         key: KeyEvent,
-///         widget: &RwData<Self::Widget>,
-///         area: &U::Area,
-///         cursors: &mut Cursors
-///     ) {
+///     fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area) {
 ///         match key {
 ///             // actions based on the key pressed
 ///             key!(KeyCode::Char('c')) => {
@@ -106,15 +94,9 @@ mod cursors;
 /// impl<U: Ui> Mode<U> for PlacesCharactersAndMoves {
 /// #   type Widget = File;
 ///     /* ... */
-///     fn send_key(
-///         &mut self,
-///         key: KeyEvent,
-///         widget: &RwData<Self::Widget>,
-///         area: &U::Area,
-///         cursors: &mut Cursors
-///     ) {
-///         cursors.make_excl();
-///         let mut helper = EditHelper::new(widget, area, cursors);
+///     fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area) {
+///         let mut helper = EditHelper::new(widget, area);
+///         helper.make_excl();
 ///         
 ///         match key {
 ///             key!(KeyCode::Char(c)) => {
@@ -182,10 +164,10 @@ where
 {
     /// Returns a new instance of [`EditHelper`]
     pub fn new(widget: &'a RwData<W>, area: &'a A) -> Self {
-        if let Some(c) = widget.write().cursors_mut() {
-            c.populate()
-        }
-        let cfg = widget.read().print_cfg();
+        let mut w = widget.write();
+        w.text_mut().enable_cursors();
+        w.cursors_mut().unwrap().populate();
+        let cfg = w.print_cfg();
         EditHelper { widget, area, cfg, searcher: () }
     }
 }
@@ -272,14 +254,13 @@ where
         mut f: impl FnMut(&mut Editor<A, W>),
     ) {
         let mut widget = self.widget.raw_write();
+        let cfg = widget.print_cfg();
         let cursors = widget.cursors_mut().unwrap();
         let is_incl = cursors.is_incl();
         let (start, end) = crate::get_ends(range, cursors.len());
         assert!(end <= cursors.len(), "Cursor index {end} out of bounds");
         let mut removed: Vec<(Cursor, bool)> = cursors.drain(start..).collect();
 
-        let mut widget = self.widget.raw_write();
-        let cfg = widget.print_cfg();
         let mut shift = (0, 0, 0);
 
         for (i, (mut cursor, was_main)) in removed.splice(..(end - start), []).enumerate() {
@@ -297,7 +278,10 @@ where
             );
             f(&mut editor);
 
-            cursors.insert(guess_i, was_main, cursor);
+            widget
+                .cursors_mut()
+                .unwrap()
+                .insert(guess_i, was_main, cursor);
         }
 
         let text = widget.text_mut();

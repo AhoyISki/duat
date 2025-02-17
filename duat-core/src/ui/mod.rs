@@ -29,10 +29,24 @@ use crate::{
 /// All the methods that a working gui/tui will need to implement, in
 /// order to use Parsec.
 pub trait Ui: Sized + Send + Sync + 'static {
+    type MetaStatics: Default + Send + Sync;
     type Area: Area<Ui = Self> + Clone + PartialEq + Send + Sync;
 
+    ////////// Functions executed from the outer loop
+
     /// Functions to trigger when the program begins
-    fn open(duat_tx: Sender, ui_rx: mpsc::Receiver<UiEvent>);
+    fn open(ms: &'static Self::MetaStatics, duat_tx: Sender, ui_rx: mpsc::Receiver<UiEvent>);
+
+    /// Unloads the [`Ui`]
+    ///
+    /// Unlike [`Ui::close`], this will happen both when Duat reloads
+    /// the configuration and when it closes the app.
+    fn unload(ms: &'static Self::MetaStatics);
+
+    /// Functions to trigger when the program ends
+    fn close(ms: &'static Self::MetaStatics);
+
+    ////////// Functions executed from within the configuration loop
 
     /// Initiates and returns a new "master" [`Area`]
     ///
@@ -40,23 +54,14 @@ pub trait Ui: Sized + Send + Sync + 'static {
     /// a new window, that is, a plain region with nothing in it.
     ///
     /// [`Area`]: Ui::Area
-    fn new_root(cache: <Self::Area as Area>::Cache) -> Self::Area;
-
-    /// Unloads the [`Ui`]
-    ///
-    /// Unlike [`Ui::close`], this will happen both when Duat reloads
-    /// the configuration and when it closes the app.
-    fn unload();
-
-    /// Functions to trigger when the program ends
-    fn close();
+    fn new_root(ms: &'static Self::MetaStatics, cache: <Self::Area as Area>::Cache) -> Self::Area;
 
     /// Flush the layout
     ///
     /// When this function is called, it means that Duat has finished
     /// adding or removing widgets, so the ui should calculate the
     /// layout.
-    fn flush_layout();
+    fn flush_layout(ms: &'static Self::MetaStatics);
 }
 
 /// An [`Area`] that supports printing [`Text`]
@@ -259,6 +264,7 @@ pub struct Window<U: Ui> {
 impl<U: Ui> Window<U> {
     /// Returns a new instance of [`Window`]
     pub fn new<W: Widget<U>>(
+        ms: &'static U::MetaStatics,
         widget: W,
         checker: impl Fn() -> bool + Send + Sync + 'static,
         layout: Box<dyn Layout<U>>,
@@ -273,7 +279,7 @@ impl<U: Ui> Window<U> {
             <U::Area as Area>::Cache::default()
         };
 
-        let area = U::new_root(cache);
+        let area = U::new_root(ms, cache);
 
         let node = Node::new::<W>(widget, area.clone(), checker);
         node.update();
