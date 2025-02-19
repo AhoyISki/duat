@@ -12,7 +12,8 @@ include = ["src/", "config/", "build.rs"]
 edition = "2021"
 
 [workspace]
-include = ["duat-core", "duat-kak", "duat-term"]
+members = ["duat-core", "duat-kak", "duat-term"]
+exclude = ["testing", "config"]
 
 [dependencies]
 duat-core = { version = ">=0.3.0", path = "duat-core" }

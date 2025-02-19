@@ -6,7 +6,11 @@ use parking_lot::Mutex;
 pub use self::global::*;
 use super::Mode;
 use crate::{
-    context, data::RwData, mode, text::{text, Key, Tag, Text}, ui::Ui
+    context,
+    data::RwData,
+    mode,
+    text::{Key, Tag, Text, text},
+    ui::Ui,
 };
 
 mod global {
@@ -374,7 +378,7 @@ impl Remapper {
     fn send_key<M: Mode<U>, U: Ui>(&self, key: KeyEvent) {
         let remaps = self.remaps.lock();
         let Some((_, remaps)) = remaps.iter().find(|(m, _)| TypeId::of::<M>() == *m) else {
-            mode::send_key_to(key);
+            mode::send_keys_to(vec![key]);
             return;
         };
 
@@ -388,30 +392,15 @@ impl Remapper {
                 if remap.is_alias {
                     mode::stop_printing();
                     remove_alias_and::<U>(|_, _| {});
+                    mode::resume_printing();
                 }
 
                 *is_alias = false;
 
                 cur_seq.clear();
                 match &remap.gives {
-                    Gives::Keys(keys) => {
-                        for (i, key) in keys.iter().enumerate() {
-                            if keys.len() > 1 {
-                                if i < keys.len() - 1 {
-                                    mode::stop_printing()
-                                } else {
-                                    mode::resume_printing()
-                                }
-                            }
-
-                            mode::send_key_to(*key);
-                        }
-                    }
+                    Gives::Keys(keys) => mode::send_keys_to(keys.clone()),
                     Gives::Mode(f) => f(),
-                }
-
-                if remap.is_alias {
-                    mode::resume_printing();
                 }
             } else if *is_alias {
                 remove_alias_and::<U>(|text, main| {
@@ -425,21 +414,9 @@ impl Remapper {
         } else if *is_alias {
             remove_alias_and::<U>(|_, _| {});
             *is_alias = false;
-            let end = cur_seq.len() - 1;
-            for (i, key) in cur_seq.drain(..).enumerate() {
-                if end > 0 {
-                    if i < end {
-                        mode::stop_printing()
-                    } else {
-                        mode::resume_printing()
-                    }
-                }
-
-                mode::send_key_to(key);
-            }
+            mode::send_keys_to(std::mem::take(cur_seq));
         } else {
-            cur_seq.clear();
-            mode::send_key_to(key);
+            mode::send_keys_to(std::mem::take(cur_seq));
         }
     }
 }

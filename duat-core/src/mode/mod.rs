@@ -25,6 +25,7 @@ mod switch {
             Arc, LazyLock,
             atomic::{AtomicBool, Ordering},
         },
+        vec::IntoIter,
     };
 
     use crossterm::event::KeyEvent;
@@ -40,11 +41,13 @@ mod switch {
     };
 
     static PRINTING_IS_STOPPED: AtomicBool = AtomicBool::new(false);
-    static SEND_KEY: LazyLock<Mutex<Box<dyn FnMut(KeyEvent) + Send + Sync>>> =
-        LazyLock::new(|| Mutex::new(Box::new(|_| {})));
+    static SEND_KEY: LazyLock<Mutex<Box<KeyFn>>> = LazyLock::new(|| Mutex::new(Box::new(|_| None)));
     static RESET_MODE: LazyLock<Mutex<Arc<dyn Fn() + Send + Sync>>> =
         LazyLock::new(|| Mutex::new(Arc::new(|| {})));
     static SET_MODE: Mutex<Option<Box<dyn FnOnce() + Send + Sync>>> = Mutex::new(None);
+
+    type KeyFn =
+        dyn FnMut(&mut IntoIter<KeyEvent>) -> Option<Box<dyn FnOnce() + Send + Sync>> + Send + Sync;
 
     /// Whether or not the [`Mode`] has changed
     pub fn was_set() -> Option<Box<dyn FnOnce() + Send + Sync>> {
@@ -166,25 +169,39 @@ mod switch {
     }
 
     /// Sends the [`KeyEvent`] to the active [`Mode`]
-    pub(super) fn send_key_to(key: KeyEvent) {
-        SEND_KEY.lock()(key);
-        if let Some(set_mode) = was_set() {
-            set_mode()
+    pub(super) fn send_keys_to(keys: Vec<KeyEvent>) {
+        let mut keys = keys.into_iter();
+        let mut send_key = std::mem::replace(&mut *SEND_KEY.lock(), Box::new(|_| None));
+        while !keys.is_empty() {
+            if let Some(set_mode) = send_key(&mut keys) {
+                set_mode();
+                send_key = std::mem::replace(&mut *SEND_KEY.lock(), Box::new(|_| None));
+            }
         }
+        *SEND_KEY.lock() = send_key;
     }
 
     /// Inner function that sends [`KeyEvent`]s
-    fn send_key_fn<M: Mode<U>, U: Ui>(mode: &mut M, key: KeyEvent) {
+    fn send_keys_fn<M: Mode<U>, U: Ui>(
+        mode: &mut M,
+        keys: &mut IntoIter<KeyEvent>,
+    ) -> Option<Box<dyn FnOnce() + Send + Sync>> {
         let Ok(widget) = context::cur_widget::<U>() else {
-            return;
+            return None;
         };
 
-        widget.mutate_data(|widget, area| {
-            hooks::trigger::<KeySent<U>>((key, widget.clone()));
-            let widget = widget.try_downcast().unwrap();
-            hooks::trigger::<KeySentTo<M::Widget, U>>((key, widget.clone()));
-            mode.send_key(key, &widget, area)
-        });
+        widget.mutate_data(|dyn_widget, area| {
+            let widget = dyn_widget.try_downcast().unwrap();
+            for key in keys {
+                hooks::trigger::<KeySent<U>>((key, dyn_widget.clone()));
+                hooks::trigger::<KeySentTo<M::Widget, U>>((key, widget.clone()));
+                mode.send_key(key, &widget, area);
+                if let Some(mode) = was_set() {
+                    return Some(mode);
+                }
+            }
+            None
+        })
     }
 
     /// Inner function that sets [`Mode`]s
@@ -222,7 +239,7 @@ mod switch {
             *mode = new_mode;
         });
 
-        *SEND_KEY.lock() = Box::new(move |key| send_key_fn::<M, U>(&mut mode, key));
+        *SEND_KEY.lock() = Box::new(move |keys| send_keys_fn::<M, U>(&mut mode, keys));
     }
 }
 

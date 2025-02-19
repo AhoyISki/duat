@@ -10,14 +10,13 @@ setup_duat!(setup);
 use duat::prelude::*;
 // Since duat_kak is a plugin, it must be used explicitly.
 // Plugins are usually imported with their "duat_" prefix removed.
-use kak::Insert;
+use kak::{Insert, Normal};
 
 fn setup() {
-    // Adding some Plugins
     plug!(
-        // This one sets the Kakoune mode
+        // This plugin sets the Kakoune mode.
         kak::Kak::new(),
-        // This one adds the Catppuccin colorschemes
+        // This one adds the Catppuccin colorschemes.
         // The modify function gives you access to the
         // colors from Catppuccin, so you can change
         // Forms with them.
@@ -28,6 +27,12 @@ fn setup() {
             form::set("ExtraCursorInsert", Form::with(c.base).on(c.yellow));
         })
     );
+    form::set_colorscheme("catppuccin-mocha");
+
+    // You can also set Forms to reference other Forms.
+    form::set("MainCursorGoTo", "MainCursorNormal");
+    form::set("ExtraCursorGoTo", "ExtraCursorNormal");
+
     // The print module configures file printing.
     print::wrap_on_width();
 
@@ -50,9 +55,12 @@ fn setup() {
         // `push_to` pushes a widget to another.
         builder.push_to(cmd_line, child);
     });
-    // Aliases show up on the screen as if they were text
+    // Maps don't send any key if the sequence fails.
+    map::<Normal>("gg", "gk");
+    map::<Normal>("G", "gj");
+    // Aliases show up on the screen as if they were text.
     alias::<Insert>("jk", "<Esc>");
-	// Adds a command for the LineNumbers widget.
+    // Adds a command for the LineNumbers widget.
     cmd::add_for!("toggle-relative", |ln: LineNumbers, _, _| {
         let mut cfg = ln.get_cfg();
         cfg.num_rel = match cfg.num_rel {
