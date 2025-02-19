@@ -90,6 +90,7 @@ mod global {
     impl FormFmt for BuiltForm {}
     impl FormFmt for &str {}
     impl FormFmt for &mut str {}
+    impl FormFmt for String {}
 
     /// Sets the [`Form`] by the name of `name`
     ///
@@ -448,6 +449,12 @@ mod global {
             Kind::Ref(self.to_string().leak())
         }
     }
+
+    impl InnerFormFmt for String {
+        fn kind(self) -> Kind {
+            Kind::Ref(self.leak())
+        }
+    }
 }
 
 /// An identifier of a [`Form`]
@@ -786,9 +793,9 @@ impl Palette {
         let mut inner = self.0.write();
 
         let id = if let Some(i) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
-            inner.forms[i].1 = form;
+            inner.forms[i] = (name, form, FormType::Normal);
 
-            for refed in refs_of(&inner, i) {
+            for refed in refs_of(&inner, i, i) {
                 inner.forms[refed].1 = form;
             }
 
@@ -820,7 +827,8 @@ impl Palette {
             }
         } else {
             inner.forms.push((name, form, FormType::Normal));
-            for refed in refs_of(&inner, inner.forms.len() - 1) {
+            let i = inner.forms.len() - 1;
+            for refed in refs_of(&inner, i, i) {
                 inner.forms[refed].1 = form;
             }
         }
@@ -837,15 +845,15 @@ impl Palette {
         let (_, form, _) = inner.forms[refed.0 as usize];
 
         if let Some(i) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
-            // If it would be circular, we just don't reference anything.
-            if would_be_circular(&inner, i, refed.0 as usize) {
-                inner.forms.push((name, form, FormType::Normal));
-            } else {
-                inner.forms.push((name, form, FormType::Ref(refed)))
+            for refed in refs_of(&inner, i, i) {
+                inner.forms[refed].1 = form;
             }
 
-            for refed in refs_of(&inner, i) {
-                inner.forms[refed].1 = form;
+            // If it would be circular, we just don't reference anything.
+            if would_be_circular(&inner, i, refed.0 as usize) {
+                inner.forms[i] = (name, form, FormType::Normal);
+            } else {
+                inner.forms[i] = (name, form, FormType::Ref(refed));
             }
 
             if let Some(sender) = SENDER.get() {
@@ -1152,14 +1160,15 @@ enum FormType {
 }
 
 /// The position of each form that eventually references the `n`th
-fn refs_of(inner: &RwLockWriteGuard<InnerPalette>, n: usize) -> Vec<usize> {
+fn refs_of(inner: &RwLockWriteGuard<InnerPalette>, refed: usize, top_ref: usize) -> Vec<usize> {
     let mut refs = Vec::new();
     for (i, (.., f_ty)) in inner.forms.iter().enumerate() {
-        if let FormType::Ref(refed) = f_ty
-            && refed.0 as usize == n
+        if let FormType::Ref(ref_id) = f_ty
+            && ref_id.0 as usize == refed
+            && ref_id.0 as usize != top_ref
         {
             refs.push(i);
-            refs.extend(refs_of(inner, i));
+            refs.extend(refs_of(inner, i, top_ref));
         }
     }
     refs

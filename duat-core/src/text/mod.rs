@@ -819,6 +819,7 @@ impl Text {
         let mut cursors = self.cursors.take().unwrap();
         let Some(changes) = history.move_backwards() else {
             self.history = Some(history);
+            self.cursors = Some(cursors);
             return;
         };
 
@@ -837,6 +838,7 @@ impl Text {
         let mut cursors = self.cursors.take().unwrap();
         let Some(changes) = history.move_forward() else {
             self.history = Some(history);
+            self.cursors = Some(cursors);
             return;
         };
 
@@ -1091,12 +1093,12 @@ impl Text {
         } else {
             cursor.point_range(false, self)
         };
-        let no_selection = if start == end { 2 } else { 0 };
+        let no_selection = if start == end { 1 } else { 3 };
 
         let tags = cursor_tags(is_main)
             .into_iter()
-            .zip([start, end, cursor.caret()]);
-        for (tag, p) in tags.skip(no_selection) {
+            .zip([cursor.caret(), end, start]);
+        for (tag, p) in tags.take(no_selection) {
             let record = [p.byte(), p.char(), p.line()];
             self.records.insert(record);
             self.tags.insert(p.byte(), tag, Key::for_cursors());
@@ -1261,9 +1263,9 @@ fn cursor_tags(is_main: bool) -> [Tag; 3] {
     use crate::form::{E_SEL_ID, M_SEL_ID};
 
     if is_main {
-        [PushForm(M_SEL_ID), PopForm(M_SEL_ID), MainCursor]
+        [MainCursor, PopForm(M_SEL_ID), PushForm(M_SEL_ID)]
     } else {
-        [PushForm(E_SEL_ID), PopForm(E_SEL_ID), ExtraCursor]
+        [ExtraCursor, PopForm(E_SEL_ID), PushForm(E_SEL_ID)]
     }
 }
 

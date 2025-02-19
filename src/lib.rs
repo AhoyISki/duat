@@ -262,7 +262,7 @@
 
 use std::sync::RwLock;
 
-use duat_core::session::SessionCfg;
+use duat_core::{session::SessionCfg, Plugin};
 pub use duat_core::{Error, thread};
 pub use setup::{Messengers, MetaStatics, pre_setup, run_duat};
 
@@ -498,9 +498,14 @@ pub mod hooks {
 /// consumes the plugin.
 pub macro plug($($plugin:expr),+) {{
     $(
-        $plugin.plug();
+        plug_inner($plugin);
     )+
 }}
+
+#[doc(hidden)]
+pub fn plug_inner(plugin: impl Plugin<Ui>) {
+    plugin.plug()
+}
 
 pub mod widgets {
     //! Duat's builtin widgets
@@ -545,10 +550,12 @@ pub mod control {
 
 pub mod prelude {
     //! The prelude of Duat
+    #[doc(hidden)]
+    pub use duat_core;
     pub use duat_core::{
-        self, DuatError, Error, clipboard,
+        DuatError, Error, Plugin, clipboard,
         data::{self, RwData},
-        text::{Builder, Text, err, hint, ok, text},
+        text::{self, Builder, Text, err, hint, ok, text},
         ui::Area,
         widgets::Widget,
     };
@@ -578,7 +585,7 @@ pub macro setup_duat($setup:expr) {
 
     use crate::prelude::{
         Text,
-        duat_core::{data::RwData, session::FileRet, ui, widgets::File},
+        duat_core::{session::FileRet, ui, widgets::File},
     };
 
     #[no_mangle]

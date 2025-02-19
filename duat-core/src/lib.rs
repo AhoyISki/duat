@@ -306,6 +306,117 @@ pub mod prelude {
     };
 }
 
+/// A plugin for Duat
+///
+/// Plugins must follow the builder pattern, and can be specific to
+/// certain [`Ui`]s. Generally, plugins should do all the setup
+/// necessary for their function when [`Plugin::plug`] is called.
+///
+/// [`Plugin`] will usually be [plugged] by a `macro` in the Duat
+/// config crate. This macro requires that the [`Plugin`] be
+/// compatible with the [`Ui`]. And this can cause some inconvenience
+/// for the end user. For example, say we have a plugin like this:
+///
+/// ```rust
+/// # use duat_core::{Plugin, ui::Ui};
+/// struct MyPlugin;
+///
+/// impl<U: Ui> Plugin<U> for MyPlugin {
+///     fn new() -> Self {
+///         MyPlugin
+///     }
+///
+///     fn plug(self) {
+///         //..
+///     }
+/// }
+///
+/// impl MyPlugin {
+///     pub fn modify(self) -> Self {
+///         //..
+/// #       self
+///     }
+/// }
+/// ```
+///
+/// In the config crate, the user would have to add the plugin in a
+/// really awkward way:
+///
+/// ```rust
+/// # use duat_core::Plugin;
+/// # macro_rules! plug {
+/// #     ($($plug:expr),+) => {};
+/// # }
+/// # struct MyPlugin;
+/// # impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for MyPlugin {
+/// #     fn new() -> Self {
+/// #         MyPlugin
+/// #     }
+/// #     fn plug(self) {}
+/// # }
+/// # fn test<Ui: duat_core::ui::Ui>() {
+/// plug!(<MyPlugin as Plugin<Ui>>::new().modify());
+/// # }
+/// ```
+///
+/// To prevent that, just add a [`Ui`] [`PhantomData`] parameter:
+///
+/// ```rust
+/// # use std::marker::PhantomData;
+/// # use duat_core::{Plugin, ui::Ui};
+/// struct MyPlugin<U>(PhantomData<U>);
+///
+/// impl<U: Ui> Plugin<U> for MyPlugin<U> {
+///     fn new() -> Self {
+///         MyPlugin(PhantomData)
+///     }
+///
+///     fn plug(self) {
+///         //..
+///     }
+/// }
+///
+/// impl<U> MyPlugin<U> {
+///     pub fn modify(self) -> Self {
+///         //..
+/// #       self
+///     }
+/// }
+/// ```
+/// And now the plugin can be plugged much more normally:
+///
+///
+/// ```rust
+/// # use std::marker::PhantomData;
+/// # use duat_core::Plugin;
+/// # macro_rules! plug {
+/// #     ($($plug:expr),+) => {};
+/// # }
+/// # struct MyPlugin<U>(PhantomData<U>);
+/// # impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for MyPlugin<U> {
+/// #     fn new() -> Self {
+/// #         MyPlugin(PhantomData)
+/// #     }
+/// #     fn plug(self) {}
+/// # }
+/// # impl<U> MyPlugin<U> {
+/// #     pub fn modify(self) -> Self {
+/// #         self
+/// #     }
+/// # }
+/// # fn test<Ui: duat_core::ui::Ui>() {
+/// plug!(MyPlugin::new().modify());
+/// # }
+/// ```
+/// [plugged]: Plugin::plug
+pub trait Plugin<U: Ui>: Sized {
+    /// Returns a builder pattern instance of this [`Plugin`]
+    fn new() -> Self;
+
+    /// Sets up the [`Plugin`]
+    fn plug(self);
+}
+
 pub mod thread {
     //! Multithreading for Duat
     //!

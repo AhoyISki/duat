@@ -73,28 +73,29 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
                 }
                 PathKind::NotSet(_) => (Text::from_buf(buf, Some(Cursors::default()), true), path),
             },
-            TextOp::OpenPath(path) => match path.canonicalize().and_then(std::fs::read_to_string) {
-                Ok(p) => {
-                    let cursors = load_cache(&p).unwrap_or_default();
-                    let buf = GapBuffer::from_iter(p.bytes());
+            TextOp::OpenPath(path) => {
+                let canon_path = path.canonicalize();
+                if let Ok(path) = &canon_path
+                    && let Ok(file) = std::fs::read_to_string(path)
+                {
+                    let cursors = load_cache(path).unwrap_or_default();
+                    let buf = GapBuffer::from_iter(file.bytes());
                     (
-                        Text::from_file(buf, cursors, &path),
-                        PathKind::SetExists(path),
+                        Text::from_file(buf, cursors, path),
+                        PathKind::SetExists(path.clone()),
                     )
+                } else if let Err(err) = canon_path
+                    && let ErrorKind::NotFound = err.kind()
+                    && let Some(parent) = path.parent()
+                    && parent.exists()
+                {
+                    let parent = path.with_file_name("").canonicalize().unwrap();
+                    let path = parent.with_file_name(path.file_name().unwrap());
+                    (Text::new_with_history(), PathKind::SetAbsent(path))
+                } else {
+                    (Text::new_with_history(), PathKind::new_unset())
                 }
-                Err(err) => {
-                    if let ErrorKind::NotFound = err.kind()
-                        && let Some(parent) = path.parent()
-                        && parent.exists()
-                    {
-                        let parent = path.with_file_name("").canonicalize().unwrap();
-                        let path = parent.with_file_name(path.file_name().unwrap());
-                        (Text::new_with_history(), PathKind::SetAbsent(path))
-                    } else {
-                        (Text::new_with_history(), PathKind::new_unset())
-                    }
-                }
-            },
+            }
         };
 
         #[cfg(feature = "wack")]

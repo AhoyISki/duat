@@ -1,14 +1,17 @@
 #![feature(let_chains, iter_map_windows, type_alias_impl_trait, if_let_guard)]
-
 use std::{
+    marker::PhantomData,
     ops::RangeInclusive,
     sync::{LazyLock, Mutex},
 };
 
 use duat_core::{
+    Plugin,
     cfg::WordChars,
     cmd, context,
     data::{RwData, RwLock},
+    form,
+    hooks::{self, ModeSwitched},
     mode::{
         self, Cursors, EditHelper, ExtendFwd, ExtendRev, Fwd, IncSearcher, KeyCode::*,
         KeyEvent as Event, KeyMod as Mod, Mode, Rev, key,
@@ -17,6 +20,64 @@ use duat_core::{
     ui::{Area, Ui},
     widgets::{File, IncSearch, RunCommands},
 };
+
+/// The [`Plugin`] for the kakoune [`Mode`]s
+///
+/// This [`Plugin`] will change the default mode to a facimily of
+/// Kakoune's [`Normal`].
+///
+/// It also adds a hook to automatically change the forms of the
+/// cursors when the mode changes. This is the pattern that the forms
+/// take:
+///
+/// - On [`Insert`] mode: `"MainCursorInsert"`, `"ExtraCursorInsert"`
+/// - On [`Normal`] mode: `"MainCursorNormal"`, `"ExtraCursorNormal"`
+///
+/// And so on and so forth.
+///
+/// If you don't want the [`Form`]s to change, see
+/// [`Kak::dont_set_cursor_forms`].
+pub struct Kak<U> {
+    set_cursor_forms: bool,
+    _u: PhantomData<U>,
+}
+
+impl<U: Ui> Plugin<U> for Kak<U> {
+    fn new() -> Self {
+        Self { set_cursor_forms: true, _u: PhantomData }
+    }
+
+    fn plug(self) {
+        duat_core::mode::set_default::<Normal, U>(Normal::new());
+        if self.set_cursor_forms {
+            static FORMS: &[&str] = &["Insert", "Normal", "GoTo"];
+            for mode in ["Insert", "Normal", "GoTo"] {
+                form::set_weak(format!("MainCursor{mode}"), "MainCursor");
+                form::set_weak(format!("ExtraCursor{mode}"), "ExtraCursor");
+                form::set_weak(format!("MainSelection{mode}"), "MainSelection");
+                form::set_weak(format!("ExtraSelection{mode}"), "ExtraSelection");
+            }
+
+            hooks::add::<ModeSwitched>(|&(_, new)| {
+                if !FORMS.contains(&new) {
+                    form::set("MainCursor", "MainCursor");
+                    form::set("ExtraCursor", "ExtraCursor");
+                    return;
+                }
+                form::set("MainCursor", format!("MainCursor{new}"));
+                form::set("ExtraCursor", format!("ExtraCursor{new}"));
+                form::set("MainSelection", format!("MainSelection{new}"));
+                form::set("ExtraSelection", format!("ExtraSelection{new}"));
+            });
+        }
+    }
+}
+
+impl<U> Kak<U> {
+    pub fn dont_set_cursor_forms(self) -> Self {
+        Self { set_cursor_forms: false, ..self }
+    }
+}
 
 const ALTSHIFT: Mod = Mod::ALT.union(Mod::SHIFT);
 
@@ -38,13 +99,13 @@ impl<U: Ui> Mode<U> for Normal {
         let w_chars = helper.cfg().word_chars;
 
         if let key!(
-            Char('H' | 'J' | 'K' | 'L' | 'W' | 'B' | 'E') | Left | Down | Up | Right,
-            Mod::SHIFT
+            Char('H' | 'J' | 'K' | 'L' | 'B') | Left | Down | Up | Right,
+            Mod::SHIFT | ALTSHIFT
         ) = key
         {
             helper.move_many(.., |mut m| {
                 if m.anchor().is_none() {
-                    m.set_anchor()
+                    m.set_anchor();
                 }
             })
         } else if let key!(
@@ -61,7 +122,6 @@ impl<U: Ui> Mode<U> for Normal {
 
         match key {
             ////////// TEST
-
             key!(Char('v')) => {
                 std::thread::sleep(std::time::Duration::from_micros(100));
             }
@@ -170,8 +230,13 @@ impl<U: Ui> Mode<U> for Normal {
                 })
             }
 
-            key!(Char('W'), mf) if let Mod::SHIFT | ALTSHIFT = mf => {
+            key!(Char('w' | 'W'), mf) if let Mod::SHIFT | ALTSHIFT = mf => {
                 helper.move_many(.., |mut m| {
+                    if m.anchor().is_none() {
+                        m.set_anchor();
+                    } else {
+                        m.move_hor(1);
+                    }
                     let points = m.search_fwd(word_and_space(mf, w_chars), None).next();
                     if let Some((_, p1)) = points {
                         m.move_to(p1);
@@ -179,8 +244,13 @@ impl<U: Ui> Mode<U> for Normal {
                     }
                 })
             }
-            key!(Char('E'), mf) if let Mod::SHIFT | ALTSHIFT = mf => {
+            key!(Char('e' | 'E'), mf) if let Mod::SHIFT | ALTSHIFT = mf => {
                 helper.move_many(.., |mut m| {
+                    if m.anchor().is_none() {
+                        m.set_anchor();
+                    } else {
+                        m.move_hor(1);
+                    }
                     let points = m.search_fwd(space_and_word(mf, w_chars), None).next();
                     if let Some((_, p1)) = points {
                         m.move_to(p1);
@@ -188,7 +258,7 @@ impl<U: Ui> Mode<U> for Normal {
                     }
                 })
             }
-            key!(Char('B'), mf) if let Mod::SHIFT | ALTSHIFT = mf => {
+            key!(Char('b' | 'B'), mf) if let Mod::SHIFT | ALTSHIFT = mf => {
                 helper.move_many(.., |mut m| {
                     let points = m.search_rev(word_and_space(mf, w_chars), None).next();
                     if let Some((p0, _)) = points {

@@ -14,9 +14,10 @@ crate-type = ["dylib"]
 [dependencies]
 # You can get rid of this one, if you don't want the duat-kak editor.
 
-[dependencies.duat-kak]
+[dependencies.kak]
 path = "../duat-kak/"
 version = ">=0.2.1"
+package = "duat-kak"
 
 [dependencies.duat]
 path = "../"
