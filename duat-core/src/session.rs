@@ -273,7 +273,9 @@ impl<U: Ui> Session<U> {
                             crate::REPRINTING_SCREEN.store(false, Ordering::Release);
                             continue;
                         }
-                        DuatEvent::MetaMsg(msg) => context::notify(msg),
+                        DuatEvent::MetaMsg(msg) => {
+                            context::notify(msg)
+                        },
                         DuatEvent::ReloadConfig => break BreakTo::ReloadConfig,
                         DuatEvent::OpenFile(file) => break BreakTo::OpenFile(file),
                         DuatEvent::Quit => break BreakTo::QuitDuat,

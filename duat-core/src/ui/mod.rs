@@ -425,6 +425,7 @@ impl Sender {
 
     pub fn send_resize(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
         if !crate::REPRINTING_SCREEN.load(Ordering::Acquire) {
+            crate::REPRINTING_SCREEN.store(true, Ordering::Release);
             self.0.send(DuatEvent::Resize)
         } else {
             Ok(())
@@ -433,6 +434,7 @@ impl Sender {
 
     pub(crate) fn send_form_changed(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
         if !crate::REPRINTING_SCREEN.load(Ordering::Acquire) {
+            crate::REPRINTING_SCREEN.store(true, Ordering::Release);
             self.0.send(DuatEvent::FormChange)
         } else {
             Ok(())

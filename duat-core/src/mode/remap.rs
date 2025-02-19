@@ -6,11 +6,7 @@ use parking_lot::Mutex;
 pub use self::global::*;
 use super::Mode;
 use crate::{
-    context,
-    data::RwData,
-    mode,
-    text::{Key, Tag, Text, text},
-    ui::Ui,
+    context, data::RwData, mode, text::{text, Key, Tag, Text}, ui::Ui
 };
 
 mod global {

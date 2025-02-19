@@ -12,7 +12,10 @@
 use std::{
     any::TypeId,
     marker::PhantomData,
-    sync::{Arc, LazyLock},
+    sync::{
+        Arc, LazyLock,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use parking_lot::RwLock;
@@ -23,7 +26,7 @@ use crate::{
     cmd,
     data::{RoData, RwData, context},
     form::{self, Form},
-    hooks,
+    hooks::{self, KeySent},
     mode::{self, Command, IncSearcher},
     text::{Ghost, Key, Searcher, Tag, Text, text},
     ui::{PushSpecs, Ui},
@@ -275,7 +278,7 @@ impl<U: Ui> Default for RunCommands<U> {
 
 pub struct ShowNotifications<U> {
     notifications: &'static RwData<Text>,
-    has_changed: bool,
+    text: Text,
     ghost: PhantomData<U>,
 }
 
@@ -283,11 +286,13 @@ impl<U: Ui> ShowNotifications<U> {
     pub fn new() -> Self {
         Self {
             notifications: context::notifications(),
-            has_changed: false,
+            text: Text::default(),
             ghost: PhantomData,
         }
     }
 }
+
+static REMOVE_NOTIFS: AtomicBool = AtomicBool::new(false);
 
 impl<U: Ui> CmdLineMode<U> for ShowNotifications<U> {
     fn clone(&self) -> Self {
@@ -295,17 +300,29 @@ impl<U: Ui> CmdLineMode<U> for ShowNotifications<U> {
     }
 
     fn has_changed(&mut self) -> bool {
-        self.has_changed = self.notifications.has_changed();
-        self.has_changed
+        if self.notifications.has_changed() {
+            self.text = self.notifications.read().clone();
+            true
+        } else {
+            !self.text.is_empty() && REMOVE_NOTIFS.load(Ordering::Acquire)
+        }
     }
 
     fn update(&mut self, text: &mut Text) {
-        if self.has_changed {
-            self.has_changed = false;
-            *text = self.notifications.read().clone();
-        } else {
-            *text = Text::default();
+        if REMOVE_NOTIFS.load(Ordering::Acquire) {
+            self.text = Text::default();
+            REMOVE_NOTIFS.store(false, Ordering::Release);
         }
+        *text = self.text.clone();
+    }
+
+    fn once()
+    where
+        Self: Sized,
+    {
+        hooks::add::<KeySent<U>>(|_| {
+            REMOVE_NOTIFS.store(true, Ordering::Release);
+        });
     }
 }
 

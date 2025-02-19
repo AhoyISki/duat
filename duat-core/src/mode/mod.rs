@@ -33,7 +33,7 @@ mod switch {
     use super::Mode;
     use crate::{
         context, duat_name, file_entry,
-        hooks::{self, ModeSwitched},
+        hooks::{self, KeySent, KeySentTo, ModeSwitched},
         ui::{Ui, Window},
         widget_entry,
         widgets::{CmdLine, CmdLineMode, File, Node},
@@ -174,12 +174,17 @@ mod switch {
     }
 
     /// Inner function that sends [`KeyEvent`]s
-    fn send_key_fn<U: Ui>(mode: &mut impl Mode<U>, key: KeyEvent) {
+    fn send_key_fn<M: Mode<U>, U: Ui>(mode: &mut M, key: KeyEvent) {
         let Ok(widget) = context::cur_widget::<U>() else {
             return;
         };
 
-        widget.mutate_data_as(|widget, area| mode.send_key(key, widget, area));
+        widget.mutate_data(|widget, area| {
+            hooks::trigger::<KeySent<U>>((key, widget.clone()));
+            let widget = widget.try_downcast().unwrap();
+            hooks::trigger::<KeySentTo<M::Widget, U>>((key, widget.clone()));
+            mode.send_key(key, &widget, area)
+        });
     }
 
     /// Inner function that sets [`Mode`]s
@@ -217,7 +222,7 @@ mod switch {
             *mode = new_mode;
         });
 
-        *SEND_KEY.lock() = Box::new(move |key| send_key_fn::<U>(&mut mode, key));
+        *SEND_KEY.lock() = Box::new(move |key| send_key_fn::<M, U>(&mut mode, key));
     }
 }
 

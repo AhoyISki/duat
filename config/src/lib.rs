@@ -10,9 +10,24 @@ setup_duat!(setup);
 use duat::prelude::*;
 // Since duat_kak is a plugin, it must be used explicitly.
 // Plugins are usually imported with their "duat_" prefix removed.
-use kak::{Insert, Normal};
+use kak::Insert;
 
 fn setup() {
+    // Adding some Plugins
+    plug!(
+        // This one sets the Kakoune mode
+        kak::Kak::new(),
+        // This one adds the Catppuccin colorschemes
+        // The modify function gives you access to the
+        // colors from Catppuccin, so you can change
+        // Forms with them.
+        catppuccin::Catppuccin::new().modify(|c| {
+            form::set("MainCursorNormal", Form::with(c.base).on(c.text));
+            form::set("ExtraCursorNormal", Form::with(c.base).on(c.sapphire));
+            form::set("MainCursorInsert", Form::with(c.base).on(c.mauve));
+            form::set("ExtraCursorInsert", Form::with(c.base).on(c.yellow));
+        })
+    );
     // The print module configures file printing.
     print::wrap_on_width();
 
@@ -35,17 +50,17 @@ fn setup() {
         // `push_to` pushes a widget to another.
         builder.push_to(cmd_line, child);
     });
-
-    mode::set_default(Normal::new());
-    // Alias show up on the screen as if they were text
+    // Aliases show up on the screen as if they were text
     alias::<Insert>("jk", "<Esc>");
-
-    hooks::add::<ModeSwitched>(|&(_, new)| match new {
-        "Insert" => cursor::set_main(CursorShape::SteadyBar),
-        _ => cursor::set_main(CursorShape::SteadyBlock),
-    });
-
-    forms::set("File", Form::yellow().bold());
-    // This Form is used by `mode_fmt`.
-    forms::set("Mode", Form::dark_magenta());
+	// Adds a command for the LineNumbers widget.
+    cmd::add_for!("toggle-relative", |ln: LineNumbers, _, _| {
+        let mut cfg = ln.get_cfg();
+        cfg.num_rel = match cfg.num_rel {
+            LineNum::Abs => LineNum::RelAbs,
+            LineNum::Rel | LineNum::RelAbs => LineNum::Abs,
+        };
+        ln.reconfigure(cfg);
+        Ok(None)
+    })
+    .unwrap();
 }
