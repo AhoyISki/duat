@@ -50,7 +50,7 @@ pub struct State<T: 'static, Dummy, U> {
 }
 
 impl<T: 'static, Dummy, U: Ui> State<T, Dummy, U> {
-    pub fn fns(self) -> (ReaderFn<U>, Box<dyn Fn() -> bool>) {
+    pub fn fns(self) -> (ReaderFn<U>, Box<dyn Fn() -> bool + Send + Sync>) {
         (
             match self.appender {
                 Appender::NoArgs(mut f) => Box::new(move |builder, _| f().push_to(builder)),

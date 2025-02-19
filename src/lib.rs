@@ -264,7 +264,7 @@ use std::sync::RwLock;
 
 use duat_core::session::SessionCfg;
 pub use duat_core::{Error, thread};
-pub use setup::{pre_setup, run_duat};
+pub use setup::{Messengers, MetaStatics, pre_setup, run_duat};
 
 pub mod cmd;
 pub mod print;
@@ -578,21 +578,18 @@ pub macro setup_duat($setup:expr) {
 
     use crate::prelude::{
         Text,
-        duat_core::{data::RwData, ui, widgets::File},
+        duat_core::{data::RwData, session::FileRet, ui, widgets::File},
     };
 
     #[no_mangle]
     fn run(
-        ms: &'static <crate::prelude::Ui as ui::Ui>::MetaStatics,
-        prev_files: Vec<(RwData<File>, bool)>,
-        tx: mpsc::Sender<ui::DuatEvent>,
-        rx: mpsc::Receiver<ui::DuatEvent>,
-        ui_tx: mpsc::Sender<ui::UiEvent>,
-        msg: Option<Text>,
-    ) -> (Vec<(RwData<File>, bool)>, mpsc::Receiver<ui::DuatEvent>) {
+        ms: MetaStatics,
+        prev_files: Vec<FileRet>,
+        messengers: Messengers,
+    ) -> (Vec<FileRet>, mpsc::Receiver<ui::DuatEvent>) {
         pre_setup();
         $setup();
-        run_duat(ms, prev_files, tx, rx, ui_tx, msg)
+        run_duat(ms, prev_files, messengers)
     }
 }
 

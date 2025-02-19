@@ -7,7 +7,7 @@
 //! be as small as possible in order not to waste memory, as they will
 //! be stored in the [`Text`]. As such, they have as little
 //! information as possible, occupying only 8 bytes.
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, sync::Arc};
 
 use crossterm::event::MouseEventKind;
 
@@ -107,9 +107,6 @@ impl Tag {
         }
     }
 }
-
-unsafe impl Send for Tag {}
-unsafe impl Sync for Tag {}
 
 #[derive(Clone, Copy, PartialOrd, Ord)]
 pub enum RawTag {
@@ -296,4 +293,4 @@ impl PartialEq for RawTag {
     }
 }
 
-pub type Toggle = Rc<dyn Fn(Point, MouseEventKind)>;
+pub type Toggle = Arc<dyn Fn(Point, MouseEventKind) + 'static + Send + Sync>;

@@ -133,12 +133,12 @@
 //! ```
 //!
 //! The other type of command that Duat supports is one that also acts
-//! on a [`Widget`]:
+//! on a [`Widget`] and its [`Area`]:
 //!
 //! ```rust
 //! # use duat_core::{cmd, widgets::{LineNumbers, LineNum}};
 //! # fn test<U: duat_core::ui::Ui>() {
-//! cmd::add_for!(U, "toggle-relative", |ln: LineNumbers<U>, _, _| {
+//! cmd::add_for!(U, "toggle-relative", |ln: LineNumbers<U>, _area, _| {
 //!     let mut cfg = ln.get_cfg();
 //!     cfg.num_rel = match cfg.num_rel {
 //!         LineNum::Abs => LineNum::RelAbs,
@@ -163,6 +163,7 @@
 //! [`Text`]: crate::prelude::Text
 //! [`text!`]: crate::prelude::text
 //! [`Form`]: crate::form::Form
+//! [`Area`]: crate::ui::Ui::Area
 use std::{
     collections::HashMap,
     fmt::Display,
@@ -826,8 +827,8 @@ mod global {
     #[doc(hidden)]
     pub fn add_inner<'a>(
         callers: impl super::Caller<'a>,
-        cmd: impl FnMut(Flags, Args) -> CmdResult + 'static,
-        checker: impl Fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) + 'static,
+        cmd: impl super::CmdFn,
+        checker: impl super::CheckerFn,
     ) -> Result<()> {
         COMMANDS.add(callers.into_callers(), cmd, checker)
     }
@@ -838,8 +839,8 @@ mod global {
     #[doc(hidden)]
     pub fn add_for_inner<'a, W: Widget<U>, U: Ui>(
         callers: impl super::Caller<'a>,
-        cmd: impl FnMut(&mut W, &U::Area, Flags, Args) -> CmdResult + 'static,
-        checker: impl Fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) + 'static,
+        cmd: impl super::ArgCmdFn<W, U>,
+        checker: impl super::CheckerFn,
     ) -> Result<()> {
         COMMANDS.add_for(callers.into_callers(), cmd, checker)
     }
@@ -906,7 +907,7 @@ impl Commands {
         let (flags, args) = split_flags_and_args(&call);
 
         if let (_, Some((_, err))) = (command.checker)(args.clone()) {
-            return Err(Error::FailedParsing(err));
+            return Err(Error::FailedParsing(Box::new(err)));
         }
 
         command.try_exec(Flags::new(&flags), args)
@@ -927,9 +928,10 @@ impl Commands {
     fn add(
         &self,
         callers: impl IntoIterator<Item = impl ToString>,
-        cmd: impl FnMut(Flags, Args) -> CmdResult + 'static,
-        checker: impl Fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) + 'static,
+        cmd: impl CmdFn,
+        checker: impl CheckerFn,
     ) -> Result<()> {
+        let callers = callers.into_iter().map(|c| c.to_string()).collect();
         let command = Command::new(callers, cmd, checker);
         self.0.write().try_add(command)
     }
@@ -938,8 +940,8 @@ impl Commands {
     fn add_for<W: Widget<U>, U: Ui>(
         &'static self,
         callers: impl IntoIterator<Item = impl ToString>,
-        mut cmd: impl FnMut(&mut W, &U::Area, Flags, Args) -> CmdResult + 'static,
-        checker: impl Fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) + 'static,
+        mut cmd: impl ArgCmdFn<W, U>,
+        checker: impl CheckerFn,
     ) -> Result<()> {
         let cmd = move |flags: Flags, args: Args| {
             let cur_file = context::inner_cur_file::<U>();
@@ -964,6 +966,7 @@ impl Commands {
                     w.mutate_as(|w| cmd(w, a, flags, args)).unwrap()
                 })
         };
+        let callers = callers.into_iter().map(|c| c.to_string()).collect();
         let command = Command::new(callers, cmd, checker);
 
         self.0.write().try_add(command)
@@ -1005,22 +1008,13 @@ pub type CmdResult = std::result::Result<Option<Text>, Text>;
 #[derive(Clone)]
 struct Command {
     callers: Arc<[String]>,
-    cmd: RwData<dyn FnMut(Flags, Args) -> CmdResult>,
-    checker: Arc<dyn Fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>)>,
+    cmd: RwData<dyn FnMut(Flags, Args) -> CmdResult + Send + Sync>,
+    checker: Arc<dyn Fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) + Send + Sync>,
 }
 
 impl Command {
     /// Returns a new instance of command.
-    fn new<Cmd: FnMut(Flags, Args) -> CmdResult + 'static>(
-        callers: impl IntoIterator<Item = impl ToString>,
-        cmd: Cmd,
-        checker: impl Fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) + 'static,
-    ) -> Self {
-        let callers: Arc<[String]> = callers
-            .into_iter()
-            .map(|caller| caller.to_string())
-            .collect();
-
+    fn new<Cmd: CmdFn>(callers: Vec<String>, cmd: Cmd, checker: impl CheckerFn) -> Self {
         if let Some(caller) = callers
             .iter()
             .find(|caller| caller.split_whitespace().count() != 1)
@@ -1030,14 +1024,14 @@ impl Command {
         Self {
             cmd: RwData::new_unsized::<Cmd>(Arc::new(RwLock::new(cmd))),
             checker: Arc::new(checker),
-            callers,
+            callers: callers.into(),
         }
     }
 
     /// Executes the inner function if the `caller` matches any of
     /// the callers in [`self`].
     fn try_exec(&self, flags: Flags, args: Args<'_>) -> Result<Option<Text>> {
-        (self.cmd.write())(flags, args).map_err(Error::CommandFailed)
+        (self.cmd.write())(flags, args).map_err(|err| Error::CommandFailed(Box::new(err)))
     }
 
     /// The list of callers that will trigger this command.
@@ -1046,8 +1040,6 @@ impl Command {
     }
 }
 
-unsafe impl Send for Command {}
-unsafe impl Sync for Command {}
 struct InnerCommands {
     list: Vec<Command>,
     aliases: HashMap<String, (Command, String)>,
@@ -1075,7 +1067,9 @@ impl InnerCommands {
     fn try_alias(&mut self, alias: impl ToString, call: impl ToString) -> Result<Option<Text>> {
         let alias = alias.to_string();
         if alias.split_whitespace().count() != 1 {
-            return Err(Error::CommandFailed(err!("Alias is not a single word")));
+            return Err(Error::CommandFailed(Box::new(err!(
+                "Alias is not a single word"
+            ))));
         }
 
         let call = call.to_string();
@@ -1126,3 +1120,9 @@ impl<'a, const N: usize> Caller<'a> for [&'a str; N] {
         self.into_iter()
     }
 }
+
+trait CmdFn = FnMut(Flags, Args) -> CmdResult + 'static + Send + Sync;
+trait ArgCmdFn<W, U: Ui> =
+    FnMut(&mut W, &U::Area, Flags, Args) -> CmdResult + 'static + Send + Sync;
+trait CheckerFn =
+    Fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) + 'static + Send + Sync;

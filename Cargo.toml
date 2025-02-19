@@ -27,7 +27,7 @@ duat-term = { version = ">=0.2.1", path = "duat-term", optional = true }
 
 dirs-next = "2.0.0"
 notify = "6.1.1"
-dlopen-rs = "0.7.0"
+dlopen-rs = { version = "0.7.0", git = "https://github.com/weizhiao/dlopen-rs" }
 
 [features]
 default = ["term-ui"]
@@ -45,6 +45,12 @@ path = "src/lib.rs"
 
 [build-dependencies]
 dirs-next = "2.0.0"
+
+[profile.dev]
+panic = 'abort'
+
+[profile.release]
+panic = 'abort'
 
 [profile.profiling]
 inherits = "dev"

@@ -31,8 +31,8 @@ use crate::{
 };
 
 pub struct StatusLineCfg<U: Ui> {
-    pre_fn: Box<dyn FnMut(crate::text::Builder, &FileReader<U>) -> Text>,
-    checker: Box<dyn Fn() -> bool>,
+    pre_fn: Box<dyn FnMut(crate::text::Builder, &FileReader<U>) -> Text + Send + Sync>,
+    checker: Box<dyn Fn() -> bool + Send + Sync>,
     specs: PushSpecs,
     alignment: Alignment,
 }
@@ -48,8 +48,8 @@ impl<U: Ui> StatusLineCfg<U> {
 
     pub fn new_with(
         (pre_fn, checker): (
-            Box<dyn FnMut(Builder, &FileReader<U>) -> Text + 'static>,
-            Box<dyn Fn() -> bool + 'static>,
+            Box<dyn FnMut(Builder, &FileReader<U>) -> Text + 'static + Send + Sync>,
+            Box<dyn Fn() -> bool + 'static + Send + Sync>,
         ),
         specs: PushSpecs,
     ) -> Self {
@@ -102,7 +102,10 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
                 let reader = reader.clone();
                 move || reader.has_changed() || (self.checker)()
             };
-            (reader, Box::new(checker) as Box<dyn Fn() -> bool>)
+            (
+                reader,
+                Box::new(checker) as Box<dyn Fn() -> bool + Send + Sync>,
+            )
         };
 
         let text_fn: TextFn<U> = match self.alignment {
@@ -223,9 +226,6 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
         PrintCfg::new().width_wrapped()
     }
 }
-
-unsafe impl<U: Ui> Send for StatusLine<U> {}
-unsafe impl<U: Ui> Sync for StatusLine<U> {}
 
 /// The macro that creates a [`StatusLine`]
 ///
@@ -410,4 +410,4 @@ pub macro status {
     }}
 }
 
-type TextFn<U> = Box<dyn FnMut(&FileReader<U>) -> Text>;
+type TextFn<U> = Box<dyn FnMut(&FileReader<U>) -> Text + Send + Sync>;

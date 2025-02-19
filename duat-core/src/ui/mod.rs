@@ -299,7 +299,7 @@ impl<U: Ui> Window<U> {
         &mut self,
         widget: W,
         area: &U::Area,
-        checker: impl Fn() -> bool + 'static,
+        checker: impl Fn() -> bool + 'static + Send + Sync,
         specs: PushSpecs,
         cluster: bool,
     ) -> (Node<U>, Option<U::Area>) {
@@ -335,7 +335,7 @@ impl<U: Ui> Window<U> {
     pub fn push_file(
         &mut self,
         file: File,
-        checker: impl Fn() -> bool + 'static,
+        checker: impl Fn() -> bool + 'static + Send + Sync,
     ) -> crate::Result<(Node<U>, Option<U::Area>), ()> {
         let (id, specs) = self
             .layout
@@ -402,6 +402,7 @@ pub enum DuatEvent {
     Key(KeyEvent),
     Resize,
     FormChange,
+    MetaMsg(Text),
     ReloadConfig,
     OpenFile(PathBuf),
     Quit,

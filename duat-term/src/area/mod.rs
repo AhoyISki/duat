@@ -516,9 +516,6 @@ impl ui::Area for Area {
     }
 }
 
-unsafe impl Send for Area {}
-unsafe impl Sync for Area {}
-
 // NOTE: The defaultness in here, when it comes to `last_main`, may
 // cause issues in the future.
 /// Information about how to print the file on the `Label`.

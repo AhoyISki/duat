@@ -47,10 +47,9 @@ impl FileCfg {
     }
 
     /// Takes a previous [`File`]
-    pub(crate) fn take_from_prev(self, prev: &mut File) -> Self {
-        let buf = std::mem::take(&mut prev.text).take_buf();
+    pub(crate) fn take_from_prev(self, buf: GapBuffer<u8>, path_kind: PathKind) -> Self {
         Self {
-            text_op: TextOp::TakeBuf(buf, prev.path.clone()),
+            text_op: TextOp::TakeBuf(buf, path_kind),
             ..self
         }
     }
@@ -66,19 +65,22 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
 
     fn build(self, _: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
         let (text, path) = match self.text_op {
-            TextOp::NewBuffer => (Text::new_with_history(), Path::new_unset()),
+            TextOp::NewBuffer => (Text::new_with_history(), PathKind::new_unset()),
             TextOp::TakeBuf(buf, path) => match &path {
-                Path::SetExists(p) | Path::SetAbsent(p) => {
+                PathKind::SetExists(p) | PathKind::SetAbsent(p) => {
                     let cursors = load_cache(p).unwrap_or_default();
                     (Text::from_file(buf, cursors, p), path)
                 }
-                Path::NotSet(_) => (Text::from_buf(buf, Some(Cursors::default()), true), path),
+                PathKind::NotSet(_) => (Text::from_buf(buf, Some(Cursors::default()), true), path),
             },
             TextOp::OpenPath(path) => match path.canonicalize().and_then(std::fs::read_to_string) {
                 Ok(p) => {
                     let cursors = load_cache(&p).unwrap_or_default();
-                    let buf = Box::new(GapBuffer::from_iter(p.bytes()));
-                    (Text::from_file(buf, cursors, &path), Path::SetExists(path))
+                    let buf = GapBuffer::from_iter(p.bytes());
+                    (
+                        Text::from_file(buf, cursors, &path),
+                        PathKind::SetExists(path),
+                    )
                 }
                 Err(err) => {
                     if let ErrorKind::NotFound = err.kind()
@@ -87,9 +89,9 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
                     {
                         let parent = path.with_file_name("").canonicalize().unwrap();
                         let path = parent.with_file_name(path.file_name().unwrap());
-                        (Text::new_with_history(), Path::SetAbsent(path))
+                        (Text::new_with_history(), PathKind::SetAbsent(path))
                     } else {
-                        (Text::new_with_history(), Path::new_unset())
+                        (Text::new_with_history(), PathKind::new_unset())
                     }
                 }
             },
@@ -131,7 +133,7 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
 
 /// The widget that is used to print and edit files
 pub struct File {
-    path: Path,
+    path: PathKind,
     text: Text,
     cfg: PrintCfg,
     printed_lines: Vec<(usize, bool)>,
@@ -144,7 +146,7 @@ impl File {
     ///
     /// [`Path`]: std::path::Path
     pub fn write(&self) -> Result<usize, String> {
-        if let Path::SetExists(path) = &self.path {
+        if let PathKind::SetExists(path) = &self.path {
             self.text
                 .write_to(std::io::BufWriter::new(
                     fs::File::create(path).map_err(|err| err.to_string())?,
@@ -172,8 +174,10 @@ impl File {
     /// If there is no set path, returns `"*scratch file*#{id}"`.
     pub fn path(&self) -> String {
         match &self.path {
-            Path::SetExists(path) | Path::SetAbsent(path) => path.to_string_lossy().to_string(),
-            Path::NotSet(id) => {
+            PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
+                path.to_string_lossy().to_string()
+            }
+            PathKind::NotSet(id) => {
                 let path = std::env::current_dir()
                     .unwrap()
                     .to_string_lossy()
@@ -189,10 +193,10 @@ impl File {
     /// Returns [`None`] if the path has not been set yet.
     pub fn path_set(&self) -> Option<String> {
         match &self.path {
-            Path::SetExists(path) | Path::SetAbsent(path) => {
+            PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
                 Some(path.to_string_lossy().to_string())
             }
-            Path::NotSet(_) => None,
+            PathKind::NotSet(_) => None,
         }
     }
 
@@ -201,10 +205,10 @@ impl File {
     /// If there is no set path, returns `"*scratch file #{id}*"`.
     pub fn name(&self) -> String {
         match &self.path {
-            Path::SetExists(path) | Path::SetAbsent(path) => {
+            PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
                 path.file_name().unwrap().to_string_lossy().to_string()
             }
-            Path::NotSet(id) => format!("*scratch file #{id}*"),
+            PathKind::NotSet(id) => format!("*scratch file #{id}*"),
         }
     }
 
@@ -213,11 +217,15 @@ impl File {
     /// Returns [`None`] if the path has not been set yet.
     pub fn name_set(&self) -> Option<String> {
         match &self.path {
-            Path::SetExists(path) | Path::SetAbsent(path) => {
+            PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
                 Some(path.file_name().unwrap().to_string_lossy().to_string())
             }
-            Path::NotSet(_) => None,
+            PathKind::NotSet(_) => None,
         }
+    }
+
+    pub fn path_kind(&self) -> PathKind {
+        self.path.clone()
     }
 
     /// Returns the currently printed set of lines.
@@ -334,19 +342,19 @@ impl<U: Ui> Widget<U> for File {
 
 /// Represents the presence or absence of a path
 #[derive(Clone)]
-enum Path {
+pub enum PathKind {
     SetExists(PathBuf),
     SetAbsent(PathBuf),
     NotSet(usize),
 }
 
-impl Path {
+impl PathKind {
     /// Returns a new unset [`Path`]
-    fn new_unset() -> Path {
+    fn new_unset() -> PathKind {
         use std::sync::atomic::{AtomicUsize, Ordering};
         static UNSET_COUNT: AtomicUsize = AtomicUsize::new(1);
 
-        Path::NotSet(UNSET_COUNT.fetch_add(1, Ordering::Relaxed))
+        PathKind::NotSet(UNSET_COUNT.fetch_add(1, Ordering::Relaxed))
     }
 }
 
@@ -355,6 +363,6 @@ impl Path {
 enum TextOp {
     #[default]
     NewBuffer,
-    TakeBuf(Box<GapBuffer<u8>>, Path),
+    TakeBuf(GapBuffer<u8>, PathKind),
     OpenPath(PathBuf),
 }

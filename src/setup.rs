@@ -12,13 +12,13 @@ use std::sync::{
 
 use duat_core::{
     cfg::PrintCfg,
+    clipboard::Clipboard,
     context::{CurFile, CurWidget},
     data::RwData,
     mode::Regular,
-    session::SessionCfg,
-    text::Text,
-    ui::{DuatEvent, UiEvent, Window},
-    widgets::{File, ShowNotifications, Widget},
+    session::{FileRet, SessionCfg},
+    ui::{self, DuatEvent, UiEvent, Window},
+    widgets::{ShowNotifications, Widget}, Mutex,
 };
 use duat_term::VertRule;
 
@@ -68,14 +68,11 @@ pub fn pre_setup() {
 
 #[doc(hidden)]
 pub fn run_duat(
-    ms: &'static <duat_term::Ui as duat_core::ui::Ui>::MetaStatics,
-    prev: Vec<(RwData<File>, bool)>,
-    duat_tx: Sender<DuatEvent>,
-    duat_rx: Receiver<DuatEvent>,
-    ui_tx: Sender<UiEvent>,
-    msg: Option<Text>,
-) -> (Vec<(RwData<File>, bool)>, Receiver<DuatEvent>) {
-    let mut cfg = SessionCfg::new();
+    (ui_ms, clipb): MetaStatics,
+    prev: Vec<FileRet>,
+    (duat_tx, duat_rx, ui_tx): Messengers,
+) -> (Vec<FileRet>, Receiver<DuatEvent>) {
+    let mut cfg = SessionCfg::new(clipb);
 
     if let Some(cfg_fn) = CFG_FN.write().unwrap().take() {
         cfg_fn(&mut cfg)
@@ -89,11 +86,15 @@ pub fn run_duat(
     cfg.set_print_cfg(print_cfg);
 
     let session = if prev.is_empty() {
-        cfg.session_from_args(ms, duat_tx)
+        cfg.session_from_args(ui_ms, duat_tx)
     } else {
-        cfg.session_from_prev(ms, prev, duat_tx)
+        cfg.session_from_prev(ui_ms, prev, duat_tx)
     };
-    session.start(duat_rx, ui_tx, msg)
+    session.start(duat_rx, ui_tx)
 }
 
 type PluginFn = dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync + 'static;
+#[doc(hidden)]
+pub type Messengers = (Sender<DuatEvent>, Receiver<DuatEvent>, Sender<UiEvent>);
+#[doc(hidden)]
+pub type MetaStatics = (&'static <Ui as ui::Ui>::MetaStatics, &'static Mutex<Clipboard>);

@@ -168,7 +168,7 @@ impl Default for VertRuleCfg {
 impl WidgetCfg<Ui> for VertRuleCfg {
     type Widget = VertRule;
 
-    fn build(self, on_file: bool) -> (Self::Widget, impl Fn() -> bool + 'static, PushSpecs) {
+    fn build(self, on_file: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
         let reader = on_file.then_some(context::fixed_reader().unwrap());
 
         let widget = VertRule {
@@ -178,7 +178,7 @@ impl WidgetCfg<Ui> for VertRuleCfg {
         };
 
         let checker = if let Some(reader) = reader {
-            Box::new(move || reader.has_changed()) as Box<dyn Fn() -> bool>
+            Box::new(move || reader.has_changed()) as Box<dyn Fn() -> bool + Send + Sync>
         } else {
             Box::new(move || false)
         };

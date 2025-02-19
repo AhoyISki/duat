@@ -91,14 +91,15 @@ impl ui::Ui for Ui {
 
         // The main application input loop
         let printer = ms.lock().unwrap().printer.clone();
-        std::thread::spawn(move || {
+        let thread = std::thread::Builder::new().name("print loop".to_string());
+        let _ = thread.spawn(move || {
             'outer: loop {
                 let Ok(UiEvent::Start) = rx.recv() else {
                     break;
                 };
 
                 loop {
-                    if let Ok(true) = event::poll(Duration::from_millis(13)) {
+                    if let Ok(true) = event::poll(Duration::from_millis(50)) {
                         let res = match event::read().unwrap() {
                             event::Event::Key(key) => tx.send_key(key),
                             event::Event::Resize(..) => {
@@ -204,15 +205,15 @@ impl std::fmt::Debug for ConstraintErr {
 }
 
 impl DuatError for ConstraintErr {
-    fn into_text(self) -> duat_core::text::Text {
-        match self {
+    fn into_text(self) -> Box<duat_core::text::Text> {
+        Box::new(match self {
             ConstraintErr::NoParent => {
                 err!("The constraints of the master node " [*a] "can't" [] " change.")
             }
             ConstraintErr::Impossible => {
                 err!("The requested constraint change is impossible.")
             }
-        }
+        })
     }
 }
 
@@ -391,7 +392,7 @@ fn print_style(w: &mut impl Write, style: ContentStyle) {
 }
 
 macro queue($writer:expr $(, $command:expr)* $(,)?) {
-    unsafe { crossterm::queue!($writer $(, $command)*).unwrap_unchecked() }
+    crossterm::queue!($writer $(, $command)*).unwrap()
 }
 
 macro style($lines:expr, $style:expr) {{

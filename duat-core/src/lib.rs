@@ -265,7 +265,7 @@ use std::{
     collections::HashMap,
     marker::PhantomData,
     sync::{
-        Arc, LazyLock, Mutex, Once,
+        Arc, LazyLock, Once,
         atomic::{AtomicBool, Ordering},
     },
     time::Duration,
@@ -273,7 +273,7 @@ use std::{
 
 #[allow(clippy::single_component_path_imports)]
 use dirs_next;
-use parking_lot::RwLock;
+pub use parking_lot::{Mutex, RwLock};
 use ui::Window;
 use widgets::{File, Node, Widget};
 
@@ -330,7 +330,7 @@ pub mod thread {
     use parking_lot::{Mutex, Once};
 
     /// Duat's [`JoinHandle`]s
-    static HANDLES: AtomicUsize = AtomicUsize::new(0);
+    pub static HANDLES: AtomicUsize = AtomicUsize::new(0);
     static ACTIONS: LazyLock<(mpsc::Sender<SentHook>, Mutex<mpsc::Receiver<SentHook>>)> =
         LazyLock::new(|| {
             let (sender, receiver) = mpsc::channel();
@@ -402,13 +402,12 @@ pub mod clipboard {
     //! Clipboard interaction for Duat
     //!
     //! Just a regular clipboard, no image functionality.
-    use std::sync::LazyLock;
+    use std::sync::OnceLock;
 
-    use arboard::Clipboard;
+    pub use arboard::Clipboard;
     use parking_lot::Mutex;
 
-    static CLIPBOARD: LazyLock<Mutex<Clipboard>> =
-        LazyLock::new(|| Mutex::new(Clipboard::new().unwrap()));
+    static CLIPB: OnceLock<&'static Mutex<Clipboard>> = OnceLock::new();
 
     /// Gets a [`String`] from the clipboard
     ///
@@ -417,12 +416,17 @@ pub mod clipboard {
     ///
     /// Or if there is no clipboard i guess
     pub fn get_text() -> Option<String> {
-        CLIPBOARD.lock().get_text().ok()
+        CLIPB.get().unwrap().lock().get_text().ok()
     }
 
     /// Sets a [`String`] to the clipboard
     pub fn set_text(text: impl std::fmt::Display) {
-        CLIPBOARD.lock().set_text(text.to_string()).unwrap();
+        let clipb = CLIPB.get().unwrap();
+        clipb.lock().set_text(text.to_string()).unwrap();
+    }
+
+    pub(crate) fn set_clipboard(clipb: &'static Mutex<Clipboard>) {
+        CLIPB.set(clipb).map_err(|_| {}).expect("Setup ran twice");
     }
 }
 
@@ -451,7 +455,7 @@ pub fn periodic_checker(duration: Duration) -> impl Fn() -> bool {
 
 /// An error that can be displayed as [`Text`] in Duat
 pub trait DuatError {
-    fn into_text(self) -> Text;
+    fn into_text(self) -> Box<Text>;
 }
 
 /// Error for failures in Duat
@@ -462,11 +466,11 @@ pub enum Error<E> {
     /// No commands have the given caller as one of their own
     CallerNotFound(String),
     /// The command failed internally
-    CommandFailed(Text),
+    CommandFailed(Box<Text>),
     /// There was no caller and no arguments
     Empty,
     /// Arguments could not be parsed correctly
-    FailedParsing(Text),
+    FailedParsing(Box<Text>),
     /// The [`Layout`] does not allow for another file to open
     ///
     /// [`Layout`]: ui::Layout
@@ -508,31 +512,33 @@ impl<E1> Error<E1> {
 
 impl<E> DuatError for Error<E> {
     /// Turns the [`Error`] into formatted [`Text`]
-    fn into_text(self) -> Text {
+    fn into_text(self) -> Box<Text> {
         let early = hint!(
             "Try this after " [*a] "OnUiStart" []
             ", maybe by using hooks::add::<OnUiStart>"
         );
 
         match self {
-            Self::CallerAlreadyExists(caller) => err!(
+            Self::CallerAlreadyExists(caller) => Box::new(err!(
                 "The caller " [*a] caller [] " already exists."
-            ),
-            Self::CallerNotFound(caller) => err!("The caller " [*a] caller [] " was not found."),
+            )),
+            Self::CallerNotFound(caller) => {
+                Box::new(err!("The caller " [*a] caller [] " was not found."))
+            }
             Self::CommandFailed(failure) => failure,
-            Self::Empty => err!("The command is empty."),
+            Self::Empty => Box::new(err!("The command is empty.")),
             Self::FailedParsing(failure) => failure,
-            Self::NoFileYet => err!("There is no file yet. " early),
-            Self::NoFileForRelated => err!(
+            Self::NoFileYet => Box::new(err!("There is no file yet. " early)),
+            Self::NoFileForRelated => Box::new(err!(
                 "There is no file for a related " [*a] { type_name::<E>() } [] " to exist. " early
-            ),
-            Self::NoWidgetYet => err!("There can be no widget yet. " early),
-            Self::WidgetIsNot => err!(
+            )),
+            Self::NoWidgetYet => Box::new(err!("There can be no widget yet. " early)),
+            Self::WidgetIsNot => Box::new(err!(
                 "The widget is not " [*a] { type_name::<E>() } [] ". " early
-            ),
-            Self::LayoutDisallowsFile(_) => err!(
+            )),
+            Self::LayoutDisallowsFile(_) => Box::new(err!(
                 "The " [*a] "Layout" [] " disallows the addition of more files."
-            ),
+            )),
         }
     }
 }
@@ -645,6 +651,7 @@ fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize, usi
 }
 
 /// An entry for a file with the given name
+#[allow(clippy::result_large_err)]
 fn file_entry<'a, U: Ui>(
     windows: &'a [Window<U>],
     name: &str,
@@ -663,6 +670,7 @@ fn file_entry<'a, U: Ui>(
 }
 
 /// An entry for a widget of a specific type
+#[allow(clippy::result_large_err)]
 fn widget_entry<W: Widget<U>, U: Ui>(
     windows: &[Window<U>],
     w: usize,

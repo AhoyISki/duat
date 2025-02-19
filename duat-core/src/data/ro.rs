@@ -495,6 +495,3 @@ impl<T: ?Sized> Data<T> for RoData<T> {
         self.has_changed()
     }
 }
-
-unsafe impl<T: ?Sized + Send> Send for RoData<T> {}
-unsafe impl<T: ?Sized + Sync> Sync for RoData<T> {}

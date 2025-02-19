@@ -60,6 +60,11 @@ impl<U: Ui> Mode<U> for Normal {
         };
 
         match key {
+            ////////// TEST
+
+            key!(Char('v')) => {
+                std::thread::sleep(std::time::Duration::from_micros(100));
+            }
             ////////// Basic movement keys
             key!(Char('h' | 'H') | Left, Mod::NONE | Mod::SHIFT) => {
                 helper.move_many(.., |mut m| m.move_hor(-1))

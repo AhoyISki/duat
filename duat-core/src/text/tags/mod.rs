@@ -904,9 +904,6 @@ impl PartialEq for Tags {
 }
 impl Eq for Tags {}
 
-unsafe impl Send for Tags {}
-unsafe impl Sync for Tags {}
-
 /// A forward [`Iterator`] of [`RawTag`]s
 ///
 /// This iterator automatically takes into account [`TagRange`]s and

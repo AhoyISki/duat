@@ -7,20 +7,21 @@ use std::{
     time::Duration,
 };
 
+use arboard::Clipboard;
+use gapbuf::GapBuffer;
+use parking_lot::Mutex;
+
 use crate::{
     cache::{delete_cache, store_cache},
     cfg::PrintCfg,
-    cmd, context,
-    data::RwData,
-    form,
+    cmd, context, form,
     hooks::{self, ConfigLoaded, ConfigUnloaded, ExitedDuat, OnFileOpen, OnWindowOpen},
     mode,
-    text::Text,
     ui::{
         Area, DuatEvent, FileBuilder, Layout, MasterOnLeft, Sender, Ui, UiEvent, Window,
         WindowBuilder,
     },
-    widgets::{File, FileCfg, Node, Widget, WidgetCfg},
+    widgets::{File, FileCfg, Node, PathKind, WidgetCfg},
 };
 
 #[doc(hidden)]
@@ -30,7 +31,8 @@ pub struct SessionCfg<U: Ui> {
 }
 
 impl<U: Ui> SessionCfg<U> {
-    pub fn new() -> Self {
+    pub fn new(clipb: &'static Mutex<Clipboard>) -> Self {
+        crate::clipboard::set_clipboard(clipb);
         crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
 
         SessionCfg {
@@ -82,13 +84,12 @@ impl<U: Ui> SessionCfg<U> {
     pub fn session_from_prev(
         self,
         ms: &'static U::MetaStatics,
-        prev: Vec<(RwData<File>, bool)>,
+        prev: Vec<FileRet>,
         duat_tx: mpsc::Sender<DuatEvent>,
     ) -> Session<U> {
         let mut inherited_cfgs = Vec::new();
-        for (file, is_active) in prev {
-            let mut file = file.write();
-            let file_cfg = self.file_cfg.clone().take_from_prev(&mut file);
+        for (buf, path_kind, is_active) in prev {
+            let file_cfg = self.file_cfg.clone().take_from_prev(buf, path_kind);
             inherited_cfgs.push((file_cfg, is_active))
         }
 
@@ -132,12 +133,6 @@ impl<U: Ui> SessionCfg<U> {
     }
 }
 
-impl<U: Ui> Default for SessionCfg<U> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 pub struct Session<U: Ui> {
     ms: &'static U::MetaStatics,
     cur_window: &'static AtomicUsize,
@@ -169,8 +164,7 @@ impl<U: Ui> Session<U> {
         mut self,
         duat_rx: mpsc::Receiver<DuatEvent>,
         ui_tx: mpsc::Sender<UiEvent>,
-        mut msg: Option<Text>,
-    ) -> (Vec<(RwData<File>, bool)>, mpsc::Receiver<DuatEvent>) {
+    ) -> (Vec<FileRet>, mpsc::Receiver<DuatEvent>) {
         hooks::trigger::<ConfigLoaded>(());
         form::set_sender(Sender::new(self.tx.clone()));
 
@@ -227,9 +221,7 @@ impl<U: Ui> Session<U> {
                     node.update_and_print();
                 }
             });
-            if let Some(msg) = msg.take() {
-                crate::context::notify(msg);
-            }
+
             let reason_to_break = self.session_loop(&duat_rx);
 
             hooks::trigger::<ConfigUnloaded>(());
@@ -281,9 +273,10 @@ impl<U: Ui> Session<U> {
                             crate::REPRINTING_SCREEN.store(false, Ordering::Release);
                             continue;
                         }
+                        DuatEvent::MetaMsg(msg) => context::notify(msg),
                         DuatEvent::ReloadConfig => break BreakTo::ReloadConfig,
-                        DuatEvent::Quit => break BreakTo::QuitDuat,
                         DuatEvent::OpenFile(file) => break BreakTo::OpenFile(file),
+                        DuatEvent::Quit => break BreakTo::QuitDuat,
                     }
                 }
 
@@ -307,11 +300,11 @@ impl<U: Ui> Session<U> {
             let path = file.path();
 
             if is_quitting_duat && !file.exists() {
-                delete_cache(path);
+                delete_cache(&path);
                 return;
             }
             if let Some(cache) = area.cache() {
-                store_cache(file.path(), cache);
+                store_cache(&path, cache);
             }
 
             let cursors = file.cursors_mut().unwrap();
@@ -324,7 +317,7 @@ impl<U: Ui> Session<U> {
         }
     }
 
-    fn take_files(self) -> Vec<(RwData<File>, bool)> {
+    fn take_files(self) -> Vec<FileRet> {
         let windows = context::windows::<U>().read();
 
         windows
@@ -332,12 +325,11 @@ impl<U: Ui> Session<U> {
             .flat_map(Window::nodes)
             .filter_map(|node| {
                 node.try_downcast::<File>().map(|file| {
-                    let mut mut_file = file.write();
-                    let text = Widget::<U>::text_mut(&mut *mut_file);
-                    text.clear_tags();
-                    text.drop_tree_sitter();
-                    drop(mut_file);
-                    (file, node.area().is_active())
+                    let mut file = file.write();
+                    let text = std::mem::take(file.text_mut());
+                    let buf = text.take_buf();
+                    let kind = file.path_kind();
+                    (buf, kind, node.area().is_active())
                 })
             })
             .collect()
@@ -376,8 +368,4 @@ enum BreakTo {
     QuitDuat,
 }
 
-unsafe impl<U: Ui> Send for SessionCfg<U> {}
-unsafe impl<U: Ui> Sync for SessionCfg<U> {}
-
-unsafe impl<U: Ui> Send for Session<U> {}
-unsafe impl<U: Ui> Sync for Session<U> {}
+pub type FileRet = (GapBuffer<u8>, PathKind, bool);

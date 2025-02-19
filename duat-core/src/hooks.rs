@@ -31,6 +31,7 @@
 //! - [`KeySent`] lets you act on a [dyn Widget], given a[key].
 //! - [`KeySentTo`] lets you act on a given [widget], given a [key].
 //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
+//! - [`ModeSwitched`] triggers when you change [`Mode`].
 //!
 //! # A note on execution
 //!
@@ -59,6 +60,7 @@
 //! [key]: KeyEvent
 //! [deadlocks]: https://en.wikipedia.org/wiki/Deadlock_(computer_science)
 //! [commands]: crate::cmd
+//! [`Mode`]: crate::mode::Mode
 use std::{any::TypeId, collections::HashMap, marker::PhantomData, sync::LazyLock};
 
 use parking_lot::{Mutex, RwLock};

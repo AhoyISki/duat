@@ -51,7 +51,7 @@ use std::sync::{
 
 pub use self::{
     command_line::{CmdLine, CmdLineCfg, CmdLineMode, IncSearch, RunCommands, ShowNotifications},
-    file::{File, FileCfg},
+    file::{File, FileCfg, PathKind},
     line_numbers::{LineNum, LineNumbers, LineNumbersCfg},
     status_line::{State, StatusLine, StatusLineCfg, common, status},
 };
@@ -448,7 +448,7 @@ where
 {
     type Widget: Widget<U>;
 
-    fn build(self, on_file: bool) -> (Self::Widget, impl Fn() -> bool + 'static, PushSpecs);
+    fn build(self, on_file: bool) -> (Self::Widget, impl CheckerFn, PushSpecs);
 }
 
 // Elements related to the [`Widget`]s
@@ -456,7 +456,7 @@ pub struct Node<U: Ui> {
     widget: RwData<dyn Widget<U>>,
     area: U::Area,
 
-    checker: Arc<dyn Fn() -> bool>,
+    checker: Arc<dyn Fn() -> bool + Send + Sync>,
     busy_updating: Arc<AtomicBool>,
 
     related_widgets: Option<RwData<Vec<Node<U>>>>,
@@ -468,7 +468,7 @@ impl<U: Ui> Node<U> {
     pub fn new<W: Widget<U>>(
         widget: RwData<dyn Widget<U>>,
         area: U::Area,
-        checker: impl Fn() -> bool + 'static,
+        checker: impl CheckerFn,
     ) -> Self {
         let related_widgets = widget.data_is::<File>().then(RwData::default);
 
@@ -611,5 +611,4 @@ impl<U: Ui> Clone for Node<U> {
     }
 }
 
-unsafe impl<U: Ui> Send for Node<U> {}
-unsafe impl<U: Ui> Sync for Node<U> {}
+pub trait CheckerFn = Fn() -> bool + 'static + Send + Sync;

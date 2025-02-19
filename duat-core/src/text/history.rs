@@ -307,13 +307,8 @@ impl Change<String> {
         if has_start_of(older.added_range(), self.taken_range()) {
             let fixed_end = older.added_end().min(self.taken_end());
 
-            let start = self
-                .start
-                .checked_sub(older.start)
-                .unwrap_or_else(|| panic!("first: {:?} - {:?}", self.start, older.start));
-            let end = fixed_end
-                .checked_sub(older.start)
-                .unwrap_or_else(|| panic!("second: {:?} - {:?}", fixed_end, older.start));
+            let start = self.start - older.start;
+            let end = fixed_end - older.start;
             let range = start.byte()..end.byte();
             older.added.replace_range(range, &self.added);
 
@@ -324,13 +319,8 @@ impl Change<String> {
         } else if has_start_of(self.taken_range(), older.added_range()) {
             let fixed_end = self.taken_end().min(older.added_end());
 
-            let start = older
-                .start
-                .checked_sub(self.start)
-                .unwrap_or_else(|| panic!("third: {:?} - {:?}", older.start, self.start));
-            let end = fixed_end
-                .checked_sub(self.start)
-                .unwrap_or_else(|| panic!("fourth: {:?} - {:?}", fixed_end, self.start));
+            let start = older.start - self.start;
+            let end = fixed_end - self.start;
             let range = start.byte()..end.byte();
             self.taken.replace_range(range, &older.taken);
 

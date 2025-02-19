@@ -88,7 +88,7 @@ use std::{
     sync::Arc,
 };
 
-use gapbuf::GapBuffer;
+pub use gapbuf::GapBuffer;
 use history::History;
 use records::Records;
 use tags::{FwdTags, RevTags};
@@ -114,7 +114,7 @@ use crate::{
 /// The text in a given [`Area`]
 #[derive(Default)]
 pub struct Text {
-    buf: Box<GapBuffer<u8>>,
+    buf: GapBuffer<u8>,
     tags: Box<Tags>,
     records: Box<Records<[usize; 3]>>,
     cursors: Option<Box<Cursors>>,
@@ -132,26 +132,22 @@ impl Text {
 
     /// Returns a new empty [`Text`]
     pub fn new() -> Self {
-        Self::from_buf(Box::default(), None, false)
+        Self::from_buf(GapBuffer::default(), None, false)
     }
 
     pub fn new_with_cursors() -> Self {
-        Self::from_buf(Box::default(), Some(Cursors::default()), false)
+        Self::from_buf(GapBuffer::default(), Some(Cursors::default()), false)
     }
 
     /// Returns a new empty [`Text`] with history enabled
     pub(crate) fn new_with_history() -> Self {
-        Self::from_buf(Box::default(), Some(Cursors::default()), true)
+        Self::from_buf(GapBuffer::default(), Some(Cursors::default()), true)
     }
 
     /// Creates a [`Text`] from a file's [path]
     ///
     /// [path]: Path
-    pub(crate) fn from_file(
-        buf: Box<GapBuffer<u8>>,
-        cursors: Cursors,
-        path: impl AsRef<Path>,
-    ) -> Self {
+    pub(crate) fn from_file(buf: GapBuffer<u8>, cursors: Cursors, path: impl AsRef<Path>) -> Self {
         let mut text = Self::from_buf(buf, Some(cursors), true);
         let tree_sitter = TsParser::new(&mut text, path);
         text.ts_parser = tree_sitter.map(|ts| (Box::new(ts), Vec::new()));
@@ -160,7 +156,7 @@ impl Text {
 
     /// Creates a [`Text`] from a [`GapBuffer`]
     pub(crate) fn from_buf(
-        mut buf: Box<GapBuffer<u8>>,
+        mut buf: GapBuffer<u8>,
         cursors: Option<Cursors>,
         with_history: bool,
     ) -> Self {
@@ -911,11 +907,7 @@ impl Text {
 
     ////////// Reload related functions
 
-    pub(crate) fn drop_tree_sitter(&mut self) {
-        self.ts_parser = None;
-    }
-
-    pub(crate) fn take_buf(self) -> Box<GapBuffer<u8>> {
+    pub(crate) fn take_buf(self) -> GapBuffer<u8> {
         self.buf
     }
 
@@ -1241,7 +1233,7 @@ where
     E: DuatError,
 {
     fn from(value: E) -> Self {
-        value.into_text()
+        *value.into_text()
     }
 }
 
@@ -1370,7 +1362,7 @@ macro impl_from_to_string($t:ty) {
     impl From<$t> for Text {
         fn from(value: $t) -> Self {
             let value = <$t as ToString>::to_string(&value);
-            let buf = Box::new(GapBuffer::from_iter(value.bytes()));
+            let buf = GapBuffer::from_iter(value.bytes());
             Self::from_buf(buf, None, false)
         }
     }

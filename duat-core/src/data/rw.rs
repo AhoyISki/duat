@@ -1,5 +1,5 @@
 use std::{
-    any::{Any, TypeId},
+    any::TypeId,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -199,7 +199,6 @@ where
     /// ```
     /// [`has_changed`]: Self::has_changed
     pub fn inspect<U>(&self, f: impl FnOnce(&T) -> U) -> U {
-        
         let cur_state = self.cur_state().load(Ordering::Acquire);
         self.read_state().store(cur_state, Ordering::Release);
         f(&self.data())
@@ -533,7 +532,7 @@ where
     where
         U: ?Sized + 'static,
     {
-        self.data.type_id() == TypeId::of::<Arc<RwLock<U>>>() || self.type_id == TypeId::of::<U>()
+        self.type_id == TypeId::of::<U>()
     }
 
     /// Tries to downcast to a concrete type

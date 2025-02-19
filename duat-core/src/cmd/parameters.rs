@@ -16,6 +16,7 @@ use crate::text::{Text, err};
 pub trait Parameter<'a>: Sized {
     type Returns;
     /// Tries to consume arguments until forming a parameter
+    #[allow(clippy::result_large_err)]
     fn new(args: &mut Args<'a>) -> std::result::Result<Self::Returns, Text>;
 }
 
@@ -349,6 +350,7 @@ pub struct Args<'a> {
 
 impl<'a> Args<'a> {
     #[allow(clippy::should_implement_trait)]
+    #[allow(clippy::result_large_err)]
     pub fn next(&mut self) -> Result<&'a str, Text> {
         match self.args.next() {
             Some((arg, range)) => {
@@ -363,6 +365,7 @@ impl<'a> Args<'a> {
         }
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn next_as<P: Parameter<'a>>(&mut self) -> Result<P::Returns, Text> {
         self.has_to_start_param = true;
         let ret = P::new(self);
@@ -372,6 +375,7 @@ impl<'a> Args<'a> {
         ret
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn next_else<T: Into<Text>>(&mut self, to_text: T) -> Result<&'a str, Text> {
         match self.args.next() {
             Some((arg, _)) => Ok(arg),
