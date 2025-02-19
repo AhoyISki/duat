@@ -150,6 +150,8 @@ fn reload_config(
         duat_tx.send(DuatEvent::ReloadConfig).unwrap();
         true
     } else {
+        let msg = err!("Failed to compile " [*a] "config" [] " crate");
+        duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
         false
     }
 }
