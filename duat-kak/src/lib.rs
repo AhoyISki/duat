@@ -121,10 +121,6 @@ impl<U: Ui> Mode<U> for Normal {
         };
 
         match key {
-            ////////// TEST
-            key!(Char('v')) => {
-                std::thread::sleep(std::time::Duration::from_micros(100));
-            }
             ////////// Basic movement keys
             key!(Char('h' | 'H') | Left, Mod::NONE | Mod::SHIFT) => {
                 helper.move_many(.., |mut m| m.move_hor(-1))
@@ -426,12 +422,60 @@ impl<U: Ui> Mode<U> for Normal {
             ////////// Cursor creation and destruction.
             key!(Char(',')) => helper.remove_extra_cursors(),
             key!(Char('C'), Mod::SHIFT) => helper.move_nth(helper.cursors_len() - 1, |mut m| {
+                let c_col = m.caret_col();
                 m.copy();
-                m.move_ver(1);
+                if let Some(anchor) = m.anchor() {
+                    let a_col = m.anchor_col().unwrap_or(m.caret_col());
+                    let lines_diff = anchor.line() as i32 - m.caret().line() as i32;
+                    let len_lines = lines_diff.unsigned_abs() as usize;
+                    while m.caret().line() + len_lines < m.len().line() {
+                        m.move_ver(len_lines as i32 + 1);
+                        m.set_anchor();
+                        m.set_desired_v_col(a_col);
+                        m.move_ver(lines_diff);
+                        m.swap_ends();
+                        if m.caret_col() == c_col && m.anchor_col().unwrap() == a_col {
+                            return;
+                        }
+                        m.swap_ends();
+                    }
+                } else {
+                    while m.caret().line() < m.len().line() {
+                        m.move_ver(1);
+                        if m.caret_col() == c_col {
+                            return;
+                        }
+                    }
+                }
+                m.destroy();
             }),
-            key!(Char('C'), ALTSHIFT) => helper.move_nth(0, |mut m| {
+            key!(Char('c'), ALTSHIFT) => helper.move_nth(0, |mut m| {
+                let c_col = m.caret_col();
                 m.copy();
-                m.move_ver(-1);
+                if let Some(anchor) = m.anchor() {
+                    let a_col = m.anchor_col().unwrap_or(m.caret_col());
+                    let lines_diff = anchor.line() as i32 - m.caret().line() as i32;
+                    let len_lines = lines_diff.unsigned_abs() as usize;
+                    while m.caret().line().checked_sub(len_lines + 1).is_some() {
+                        m.move_ver(-1 - len_lines as i32);
+                        m.set_anchor();
+                        m.set_desired_v_col(a_col);
+                        m.move_ver(lines_diff);
+                        m.swap_ends();
+                        if m.caret_col() == c_col && m.anchor_col().unwrap() == a_col {
+                            return;
+                        }
+                        m.swap_ends();
+                    }
+                } else {
+                    while m.caret().line() > 0 {
+                        m.move_ver(-1);
+                        if m.caret_col() == c_col {
+                            return;
+                        }
+                    }
+                }
+                m.destroy();
             }),
 
             ////////// Other mode changing keys.
