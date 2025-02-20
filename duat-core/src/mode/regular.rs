@@ -73,10 +73,10 @@ impl<U: Ui> super::Mode<U> for Regular {
             key!(KeyCode::Right, KeyMod::SHIFT) => move_each_and_select(helper, Side::Right, 1),
             key!(KeyCode::Up, KeyMod::SHIFT) => move_each_and_select(helper, Side::Top, 1),
             key!(KeyCode::Down, KeyMod::SHIFT) => move_each_and_select(helper, Side::Bottom, 1),
-            key!(KeyCode::Left) => move_each(helper, Side::Left, 1),
-            key!(KeyCode::Right) => move_each(helper, Side::Right, 1),
-            key!(KeyCode::Up) => move_each(helper, Side::Top, 1),
-            key!(KeyCode::Down) => move_each(helper, Side::Bottom, 1),
+            key!(KeyCode::Left, KeyMod::NONE) => move_each(helper, Side::Left, 1),
+            key!(KeyCode::Right, KeyMod::NONE) => move_each(helper, Side::Right, 1),
+            key!(KeyCode::Up, KeyMod::NONE) => move_each(helper, Side::Top, 1),
+            key!(KeyCode::Down, KeyMod::NONE) => move_each(helper, Side::Bottom, 1),
 
             // Control
             key!(KeyCode::Char('p'), KeyMod::CONTROL) => super::set_cmd::<U>(RunCommands::new()),

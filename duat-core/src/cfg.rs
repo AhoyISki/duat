@@ -142,7 +142,7 @@ pub struct PrintCfg {
     /// How much space to keep between the cursor and edges
     pub scrolloff: ScrollOff,
     // NOTE: This is relevant for printing with `WrapMethod::Word`
-    /// Characters that are considered to be part of a word.
+    /// Characters that are considered to be part of a word
     pub word_chars: WordChars,
     /// Whether or not to limit scrolloff on the end of lines
     pub force_scrolloff: bool,

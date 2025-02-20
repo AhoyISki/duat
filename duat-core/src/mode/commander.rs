@@ -1,4 +1,4 @@
-use super::{EditHelper, KeyCode, KeyEvent, KeyMod, Mode, key};
+use super::{EditHelper, KeyCode, KeyEvent, Mode, key};
 use crate::{data::RwData, text::Point, ui::Ui, widgets::CmdLine};
 
 #[derive(Clone)]
@@ -39,11 +39,6 @@ impl<U: Ui> Mode<U> for Command {
                 helper.edit_main(|e| e.insert(char));
                 helper.move_main(|mut m| m.move_hor(1));
             }
-            key!(KeyCode::Char(char), KeyMod::SHIFT) => {
-                helper.edit_main(|e| e.insert(char));
-                helper.move_main(|mut m| m.move_hor(1));
-            }
-
             key!(KeyCode::Left) => {
                 helper.move_main(|mut m| {
                     m.unset_anchor();

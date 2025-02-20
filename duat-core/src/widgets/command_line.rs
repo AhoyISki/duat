@@ -301,6 +301,7 @@ impl<U: Ui> CmdLineMode<U> for ShowNotifications<U> {
 
     fn has_changed(&mut self) -> bool {
         if self.notifications.has_changed() {
+            REMOVE_NOTIFS.store(false, Ordering::Release);
             self.text = self.notifications.read().clone();
             true
         } else {

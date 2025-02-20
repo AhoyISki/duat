@@ -5,7 +5,7 @@
 //! cursors and dealing with editing the text directly.
 //!
 //! [`Mode`]: super::Mode
-use std::{array::IntoIter, ops::RangeBounds, sync::LazyLock};
+use std::{array::IntoIter, ops::RangeBounds};
 
 pub use self::cursors::{Cursor, Cursors};
 use crate::{
@@ -565,24 +565,11 @@ where
     is_incl: bool,
 }
 
-static KEY: LazyLock<Key> = LazyLock::new(Key::new);
-
 impl<'a, 'b, A, W> Editor<'a, 'b, A, W>
 where
     A: Area,
     W: Widget<A::Ui>,
 {
-    /// TESTING
-    pub fn insert_tag(&mut self, tag: Tag) {
-        let caret = self.caret().byte();
-        self.widget.text_mut().insert_tag(caret, tag, *KEY);
-    }
-
-    pub fn remove_tags(&mut self) {
-        let caret = self.caret().byte();
-        self.widget.text_mut().remove_tags_on(caret, *KEY);
-    }
-
     /// Returns a new instance of [`Editor`]
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -617,11 +604,8 @@ where
     ///
     /// [`insert`]: Self::insert
     pub fn replace(&mut self, edit: impl ToString) {
-        let change = Change::new(
-            edit.to_string(),
-            self.cursor.point_range(self.is_incl, self.widget.text()),
-            self.widget.text(),
-        );
+        let (p0, p1) = self.cursor.point_range(self.is_incl, self.widget.text());
+        let change = Change::new(edit.to_string(), (p0, p1), self.widget.text());
         let edit_len = change.added_text().len();
         let end = change.added_end();
 
@@ -794,30 +778,71 @@ where
         text.search_rev(pat, start.byte()..end).unwrap()
     }
 
+    ////////// Anchor modification
+
+    /// Returns and takes the anchor of the [`Cursor`].
+    pub fn unset_anchor(&mut self) -> Option<Point> {
+        self.cursor.unset_anchor()
+    }
+
+    /// Sets the `anchor` to the current `caret`
+    pub fn set_anchor(&mut self) {
+        self.cursor.set_anchor()
+    }
+
+    /// Swaps the position of the `caret` and `anchor`
+    pub fn swap_ends(&mut self) {
+        self.cursor.swap_ends();
+    }
+
+    /// Sets the caret of the [`Cursor`] on the start of the selection
+    pub fn set_caret_on_start(&mut self) {
+        if let Some(anchor) = self.anchor()
+            && anchor < self.caret()
+        {
+            self.swap_ends();
+        }
+    }
+
+    /// Sets the caret of the [`Cursor`] on the end of the selection
+    pub fn set_caret_on_end(&mut self) {
+        if let Some(anchor) = self.anchor()
+            && anchor > self.caret()
+        {
+            self.swap_ends();
+        }
+    }
+
     ////////// Queries
 
-    /// Returns the `caret`
-    pub fn caret(&self) -> Point {
-        self.cursor.caret()
-    }
-
-    /// Returns the `anchor`
-    pub fn anchor(&self) -> Option<Point> {
-        self.cursor.anchor()
-    }
-
-    /// Returns `true` if the `anchor` exists before the `caret`
-    pub fn anchor_is_start(&self) -> bool {
-        self.anchor().is_none_or(|anchor| anchor < self.caret())
-    }
-
-    /// Whether or not this is the main [`Cursor`]
-    pub fn is_main(&self) -> bool {
-        self.is_main
+    /// Returns the [`Cursor`]'s selection
+    ///
+    /// The reason why this return value is `IntoIter<&str, 2>` is
+    /// because the [`Text`] utilizes an underlying [`GapBuffer`]
+    /// to store the characters. This means that the text is
+    /// always separated into two distinct chunks.
+    ///
+    /// If this [`Cursor`]'s selection happens to be entirely within
+    /// one of these chunks, the other `&str` will just be empty.
+    ///
+    /// [`GapBuffer`]: gapbuf::GapBuffer
+    pub fn selection(&self) -> IntoIter<&str, 2> {
+        let anchor = self.anchor().unwrap_or(self.caret());
+        let (start, end) = if anchor < self.caret() {
+            (anchor, self.caret())
+        } else {
+            (self.caret(), anchor)
+        };
+        self.text()
+            .strs_in(start.byte()..end.byte() + self.is_incl() as usize)
     }
 
     /// Returns the needed level of indentation in the line of the
     /// [`Point`]
+    ///
+    /// If the tree-sitter can figure out the indentation level, it
+    /// will return that. Otherwise, it will copy the level of
+    /// indentation of the last non empty line.
     pub fn indent_on(&mut self, point: Point) -> usize {
         let text = self.widget.text_mut();
         if let Some(indent) = text.ts_indent_on(point, self.cfg) {
@@ -839,6 +864,74 @@ where
                 indent * item.part.as_char().is_none_or(char::is_whitespace) as usize
             })
         }
+    }
+
+    /// Returns the `caret`
+    pub fn caret(&self) -> Point {
+        self.cursor.caret()
+    }
+
+    /// How many characterss the caret is from the start of the line
+    pub fn caret_col(&self) -> usize {
+        self.iter_rev().take_while(|(_, c)| *c != '\n').count()
+    }
+
+    /// The visual distance between the caret and the start of the
+    /// [`Area`]
+    pub fn caret_vcol(&self) -> usize {
+        self.cursor.vcol()
+    }
+
+    /// The desired visual distance between the caret and the start of
+    /// the [`Area`]
+    pub fn desired_caret_vcol(&self) -> usize {
+        self.cursor.desired_vcol()
+    }
+
+    /// Returns the `anchor`
+    pub fn anchor(&self) -> Option<Point> {
+        self.cursor.anchor()
+    }
+
+    /// How many characterss the anchor is from the start of the line
+    pub fn anchor_col(&self) -> Option<usize> {
+        self.anchor().map(|a| {
+            self.text()
+                .chars_rev(a)
+                .take_while(|(_, c)| *c != '\n')
+                .count()
+        })
+    }
+
+    /// The visual distance between the anchor and the start of the
+    /// [`Area`]
+    pub fn anchor_vcol(&self) -> Option<usize> {
+        self.cursor.anchor_vcol()
+    }
+
+    /// The desired visual distance between the anchor and the start
+    /// of the [`Area`]
+    pub fn desired_anchor_vcol(&self) -> Option<usize> {
+        self.cursor.desired_anchor_vcol()
+    }
+
+    /// Returns `true` if the `anchor` exists before the `caret`
+    pub fn anchor_is_start(&self) -> bool {
+        self.anchor().is_none_or(|anchor| anchor < self.caret())
+    }
+
+    /// Whether or not this is the main [`Cursor`]
+    pub fn is_main(&self) -> bool {
+        self.is_main
+    }
+
+    /// Whether or not this cursor's selections are inclusive
+    pub fn is_incl(&self) -> bool {
+        self.text().cursors().unwrap().is_incl()
+    }
+
+    pub fn text(&self) -> &Text {
+        self.widget.text()
     }
 
     /// The [`PrintCfg`] in use
@@ -971,6 +1064,24 @@ where
         cursor.swap_ends();
     }
 
+    /// Sets the caret of the [`Cursor`] on the start of the selection
+    pub fn set_caret_on_start(&mut self) {
+        if let Some(anchor) = self.anchor()
+            && anchor < self.caret()
+        {
+            self.swap_ends();
+        }
+    }
+
+    /// Sets the caret of the [`Cursor`] on the end of the selection
+    pub fn set_caret_on_end(&mut self) {
+        if let Some(anchor) = self.anchor()
+            && anchor > self.caret()
+        {
+            self.swap_ends();
+        }
+    }
+
     ////////// Text queries
 
     /// Returns the [`char`] in the `caret`
@@ -1016,7 +1127,7 @@ where
     ///
     /// This iteration will begin on the `caret`. It will also include
     /// the [`Point`] of each `char`
-    pub fn iter(&self) -> impl Iterator<Item = (Point, char)> + '_ {
+    pub fn fwd(&self) -> impl Iterator<Item = (Point, char)> + '_ {
         self.text.chars_fwd(self.caret())
     }
 
@@ -1024,7 +1135,7 @@ where
     ///
     /// This iteration will begin on the `caret`. It will also include
     /// the [`Point`] of each `char`
-    pub fn iter_rev(&self) -> impl Iterator<Item = (Point, char)> + '_ {
+    pub fn rev(&self) -> impl Iterator<Item = (Point, char)> + '_ {
         self.text.chars_rev(self.caret())
     }
 
@@ -1128,7 +1239,7 @@ where
 
     /// How many characterss the caret is from the start of the line
     pub fn caret_col(&self) -> usize {
-        self.iter_rev().take_while(|(_, c)| *c != '\n').count()
+        self.rev().take_while(|(_, c)| *c != '\n').count()
     }
 
     /// The visual distance between the caret and the start of the
@@ -1173,24 +1284,6 @@ where
     /// Returns `true` if the `anchor` exists before the `caret`
     pub fn anchor_is_start(&self) -> bool {
         self.anchor().is_none_or(|anchor| anchor < self.caret())
-    }
-
-    /// Sets the caret of the [`Cursor`] on the start of the selection
-    pub fn set_caret_on_start(&mut self) {
-        if let Some(anchor) = self.anchor()
-            && anchor < self.caret()
-        {
-            self.swap_ends();
-        }
-    }
-
-    /// Sets the caret of the [`Cursor`] on the end of the selection
-    pub fn set_caret_on_end(&mut self) {
-        if let Some(anchor) = self.anchor()
-            && anchor > self.caret()
-        {
-            self.swap_ends();
-        }
     }
 
     /// Whether or not this is the main [`Cursor`]
