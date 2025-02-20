@@ -373,7 +373,7 @@ impl Text {
     /// [`None`], in which case the caller will have to decide how to
     /// proceed. This usually means "keep previous level of
     /// indentation".
-    pub fn indent_on(&mut self, p: Point, cfg: PrintCfg) -> Option<usize> {
+    pub fn ts_indent_on(&mut self, p: Point, cfg: PrintCfg) -> Option<usize> {
         let ts = self.ts_parser.take();
         let indent = ts.as_ref().and_then(|(ts, _)| ts.indent_on(self, p, cfg));
         self.ts_parser = ts;

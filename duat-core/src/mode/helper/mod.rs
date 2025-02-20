@@ -9,7 +9,7 @@ use std::{array::IntoIter, ops::RangeBounds, sync::LazyLock};
 
 pub use self::cursors::{Cursor, Cursors};
 use crate::{
-    cfg::PrintCfg,
+    cfg::{IterCfg, PrintCfg},
     data::RwData,
     text::{Change, Key, Keys, Point, RegexPattern, Searcher, Tag, Text, TextRange},
     ui::Area,
@@ -818,8 +818,27 @@ where
 
     /// Returns the needed level of indentation in the line of the
     /// [`Point`]
-    pub fn indent_on(&mut self, point: Point) -> Option<usize> {
-        self.widget.text_mut().indent_on(point, self.cfg)
+    pub fn indent_on(&mut self, point: Point) -> usize {
+        let text = self.widget.text_mut();
+        if let Some(indent) = text.ts_indent_on(point, self.cfg) {
+            indent
+        } else {
+            let t_iter = text.iter_rev(point).no_ghosts().no_conceals();
+            let iter = self
+                .area
+                .rev_print_iter(t_iter, IterCfg::new(self.cfg))
+                // This should skip the current line and all empty lines before.
+                .skip_while(|(_, item)| {
+                    item.part.as_char().is_none_or(char::is_whitespace)
+                        || item.real.line() == point.line()
+                })
+                // And this should make sure we only capture one line.
+                .take_while(|(_, item)| item.part.as_char().is_none_or(|c| c != '\n'));
+            iter.fold(0, |mut indent, (caret, item)| {
+                indent = indent.max((caret.x + caret.len) as usize);
+                indent * item.part.as_char().is_none_or(char::is_whitespace) as usize
+            })
+        }
     }
 
     /// The [`PrintCfg`] in use
