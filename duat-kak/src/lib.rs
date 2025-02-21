@@ -598,6 +598,12 @@ impl Insert {
     }
 }
 
+impl Default for Insert {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<U: Ui> Mode<U> for Insert {
     type Widget = File;
 

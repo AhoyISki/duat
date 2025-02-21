@@ -1,35 +1,37 @@
 //! # Duat
 //!
-//! Duat is a text editor with Rust as its configuration language. It
-//! makes use of a configuration crate in the user's `~/.config`
-//! directory. This configuration crate works just like a regular Rust
-//! crate, but it is dynamically loaded by Duat and executed on
-//! startup.
+//! Duat is a text editor meant to have as much modularity as
+//! possible, while keeping a sensible default configuration. It is
+//! written _and configured_ in Rust, through the use of a
+//! configuration Rust crate, placed in `~/.config/duat/` (or wherever
+//! `$XDG_CONFIG_HOME` is set to).
 //!
-//! When installed, Duat will be able to automatically detect changes
-//! in the user's configuration, adapting to them automatically, with
-//! a very short delay.
+//! When installing Duat, this crate will be automatically placed in
+//! that spot, and it will have a default example configuration.
 //!
-//! ## Features
+//! When you first run Duat, and whenever you update the
+//! configuration, it will be compiled and reloaded automatically, so
+//! you can see the changes in _almost_ real time.
 //!
-//! Duat provides a lot of features, trying to be as configurable as
-//! possible, here are some of the things that Duat is capable of:
+//! Note that this is an alpha project, so there may be some quirks
+//! and bugs, but feel free to ask questions or raise an issue, that
+//! would be very welcome 🥰.
 //!
-//! - Completely custom modes, with full Vim style remapping
-//! - Completely custom widgets, with user created modes
-//! - Arbitrary concealment of text, and arbitrary ghost text
-//! - Custom hooks, whose activation is up to the creator
-//! - Multi UI adaptability, although for now, only a terminal UI has
-//!   been made
-//! - And many others still being planned
+//! ## Getting started
 //!
-//! Additionally, by choosing Rust as its configuration language, Duat
-//! also gains the following features:
+//! To install Duat, do the following:
 //!
-//! - Complete type safety
-//! - A very functional programming language, with lots of native
-//!   features
-//! - Cargo is the plugin manager
+//! ```text
+//! cargo install duat
+//! ```
+//!
+//! Although, since this is an alpha, I would recommend the git
+//! version, since that is kept much  more up to date:
+//!
+//! ```text
+//! git clone https://github.com/AhoyISki/duat
+//! cargo install --path duat
+//! ```
 //!
 //! ## How to use
 //!
@@ -51,15 +53,19 @@
 //!
 //! ## Configuration
 //!
-//! In the configuration file, there should be a `setup_duat!` macro.
-//! This macro takes in a function pointer and executes it as setup
-//! for Duat.
+//! In the configuration file, there should be a `setup_duat!` macro,
+//! which takes in a function with no parameters.
 //!
-//! Here's an example configuration file, which makes use of
-//! `duat-kak`
+//! This function is the setup for duat, and it can be empty, which is
+//! the equivalent of the default configuration for Duat.
+//!
+//! Here's an example configuration file, which makes use of the
+//! `duat-kak` crate, which is a plugin for Duat. This plugin, like
+//! all others, is included without the `duat_` prefix, so in the
+//! config it is just `kak`.
 //!
 //! ```rust
-//! # mod duat_kak {
+//! # mod kak {
 //! #     use duat::{prelude::{mode::*, data::RwData}, Area, Ui, widgets::File};
 //! #     #[derive(Clone)]
 //! #     pub struct Normal;
@@ -77,13 +83,20 @@
 //! #             todo!();
 //! #         }
 //! #     }
+//! #     pub struct Kak;
+//! #     impl duat_core::Plugin<Ui> for Kak {
+//! #         fn new() -> Self {
+//! #             Self
+//! #         }
+//! #         fn plug(self) {}
+//! #     }
 //! # }
 //! setup_duat!(setup);
 //! use duat::prelude::*;
-//! use duat_kak::{Insert, Normal};
+//! use kak::{Insert, Normal};
 //!
 //! fn setup() {
-//!     mode::set_default(Normal);
+//!     plug!(kak::Kak);
 //!     map::<Insert>("jk", "<Esc>");
 //!
 //!     print::wrap_on_width();
@@ -116,8 +129,8 @@
 //!
 //! This configuration does the following things:
 //!
-//! - Changes the [default mode] to a Kakoune inspired `Normal`;
-//! - [Maps] jk to esc;
+//! - [plugs] the `Kak` plugin, which changes the [default mode];
+//! - [Maps] jk to esc in the `Insert` mode;
 //! - [Changes] the wrapping;
 //! - [Removes] the hook [group] "FileWidgets";
 //! - [Pushes] a [vertical rule] and [line numbers] to every file;
@@ -173,6 +186,29 @@
 //!
 //! The 2 arguments
 //!
+//! ## Features
+//!
+//! Duat provides a lot of features, trying to be as configurable as
+//! possible, here are some of the things that Duat is capable of:
+//!
+//! - Completely custom modes, with full Vim style remapping
+//! - Completely custom widgets, with user created modes
+//! - Arbitrary concealment of text, and arbitrary ghost text
+//! - Custom hooks, whose activation is up to the creator
+//! - Custom commands, with customizable parameters supported by
+//!   Rust's robust type system
+//! - Multi UI adaptability, although for now, only a terminal UI has
+//!   been made
+//! - And many others still being planned
+//!
+//! Additionally, by choosing Rust as its configuration language, Duat
+//! also gains the following features:
+//!
+//! - Complete type safety
+//! - A very functional programming language, with lots of native
+//!   features
+//! - Cargo is the plugin manager
+//!
 //! ## Roadmap
 //!
 //! These are the goals that have been accomplished or are on their
@@ -199,9 +235,9 @@
 //! - [x] Add the ability to create hooks;
 //! - [x] Create a more generalized plugin system;
 //! - [x] Implement incremental Regex searching;
+//! - [x] Implement tree-sitter;
 //! - [ ] Add floating widgets, not tied to the session layout;
 //! - [ ] Implement autocompletion lists;
-//! - [ ] Implement tree-sitter;
 //! - [ ] Create an LSP plugin;
 //! - [ ] Create a vim mode;
 //!
@@ -216,25 +252,21 @@
 //!
 //! I don't know what your personal reasoning would be, but in my
 //! case, I really like Kakoune's editing model, but was frustrated
-//! with the lack of some
-//! features, like folding, multiple file editing, the general
-//! barebonesness of the configuration, etc.
+//! with the lack of some features, like folding, multiple file
+//! editing, the general barebonesness of the configuration, etc.
 //!
 //! I know that Neovim has all of these features, and Helix supposedly
-//! tries to
-//! solve some of these issues. But I don't really like either of
-//! their editing
-//! styles to be honest.
+//! tries to solve some of these issues. But I don't really like
+//! either of their editing styles to be honest.
 //!
 //! And so I thought, why not make my own text editor?
 //!
 //! I thought, why not make a text editor that is as modular as
-//! possible, while
-//! still having a sensible default configuration? That I could modify
-//! however I
-//! wanted, and with a language that I love?
+//! possible, while still having a sensible default configuration?
+//! That I could modify however I wanted, and with a language that I
+//! love?
 //!
-//! That is why I decided to embark on this journey.
+//! That's why I decided to create Duat.
 //!
 //! ## Why the name
 //!
@@ -243,6 +275,7 @@
 //! Also, just wanted to say that no AI was used in this project, cuz
 //! I don't like it.
 //!
+//! [plugs]: plug
 //! [default mode]: mode::set_default
 //! [Maps]: prelude::map
 //! [Changes]: prelude::print::wrap_on_width
@@ -262,8 +295,8 @@
 
 use std::sync::RwLock;
 
-use duat_core::{session::SessionCfg, Plugin};
 pub use duat_core::{Error, thread};
+use duat_core::{Plugin, session::SessionCfg};
 pub use setup::{Messengers, MetaStatics, pre_setup, run_duat};
 
 pub mod cmd;

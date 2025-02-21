@@ -39,7 +39,9 @@ impl TsParser {
         parser.set_language(lang).unwrap();
         let queries = queries.map(|q| Query::new(lang, q).unwrap());
 
-        let tree = parser.parse_with(&mut buf_parse(text), None).unwrap();
+        let tree = parser
+            .parse_with_options(&mut buf_parse(text), None, None)
+            .unwrap();
         let mut cursor = QueryCursor::new();
         let buf = TsBuf(&text.buf);
 
@@ -305,7 +307,7 @@ impl TsParser {
         callback: &mut F,
         old_tree: Option<&Tree>,
     ) -> Option<Tree> {
-        self.parser.parse_with(callback, old_tree)
+        self.parser.parse_with_options(callback, old_tree, None)
     }
 }
 
@@ -335,7 +337,7 @@ impl Reader for TsParser {
 
         let tree = self
             .parser
-            .parse_with(&mut buf_parse(text), Some(&self.tree))
+            .parse_with_options(&mut buf_parse(text), Some(&self.tree), None)
             .unwrap();
         self.old_tree = Some(std::mem::replace(&mut self.tree, tree));
     }

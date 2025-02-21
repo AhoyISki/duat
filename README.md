@@ -2,36 +2,38 @@
 
 ## Duat
 
-Duat is a text editor with Rust as its configuration language. It
-makes use of a configuration crate in the user’s `~/.config`
-directory. This configuration crate works just like a regular Rust
-crate, but it is dynamically loaded by Duat and executed on
-startup.
+Duat is a text editor meant to have as much modularity as
+possible, while keeping a sensible default configuration. It is
+written *and configured* in Rust, through the use of a
+configuration Rust crate, placed in `~/.config/duat/` (or wherever
+`$XDG_CONFIG_HOME` is set to).
 
-When installed, Duat will be able to automatically detect changes
-in the user’s configuration, adapting to them automatically, with
-a very short delay.
+When installing Duat, this crate will be automatically placed in
+that spot, and it will have a default example configuration.
 
-### Features
+When you first run Duat, and whenever you update the
+configuration, it will be compiled and reloaded automatically, so
+you can see the changes in *almost* real time.
 
-Duat provides a lot of features, trying to be as configurable as
-possible, here are some of the things that Duat is capable of:
+Note that this is an alpha project, so there may be some quirks
+and bugs, but feel free to ask questions or raise an issue, that
+would be very welcome 🥰.
 
-* Completely custom modes, with full Vim style remapping
-* Completely custom widgets, with user created modes
-* Arbitrary concealment of text, and arbitrary ghost text
-* Custom hooks, whose activation is up to the creator
-* Multi UI adaptability, although for now, only a terminal UI has
-  been made
-* And many others still being planned
+### Getting started
 
-Additionally, by choosing Rust as its configuration language, Duat
-also gains the following features:
+To install Duat, do the following:
 
-* Complete type safety
-* A very functional programming language, with lots of native
-  features
-* Cargo is the plugin manager
+```text
+cargo install duat
+```
+
+Although, since this is an alpha, I would recommend the git
+version, since that is kept much  more up to date:
+
+```text
+git clone https://github.com/AhoyISki/duat
+cargo install --path duat
+```
 
 ### How to use
 
@@ -53,20 +55,24 @@ commands are going to be the same.
 
 ### Configuration
 
-In the configuration file, there should be a `setup_duat!` macro.
-This macro takes in a function pointer and executes it as setup
-for Duat.
+In the configuration file, there should be a `setup_duat!` macro,
+which takes in a function with no parameters.
 
-Here’s an example configuration file, which makes use of
-`duat-kak`
+This function is the setup for duat, and it can be empty, which is
+the equivalent of the default configuration for Duat.
+
+Here’s an example configuration file, which makes use of the
+`duat-kak` crate, which is a plugin for Duat. This plugin, like
+all others, is included without the `duat_` prefix, so in the
+config it is just `kak`.
 
 ```rust
 setup_duat!(setup);
 use duat::prelude::*;
-use duat_kak::{Insert, Normal};
+use kak::{Insert, Normal};
 
 fn setup() {
-    mode::set_default(Normal);
+    plug!(kak::Kak);
     map::<Insert>("jk", "<Esc>");
 
     print::wrap_on_width();
@@ -99,16 +105,16 @@ fn setup() {
 
 This configuration does the following things:
 
-* Changes the [default mode][__link0] to a Kakoune inspired `Normal`;
-* [Maps][__link1] jk to esc;
-* [Changes][__link2] the wrapping;
-* [Removes][__link3] the hook [group][__link4] “FileWidgets”;
-* [Pushes][__link5] a [vertical rule][__link6] and [line numbers][__link7] to every file;
+* [plugs][__link0] the `Kak` plugin, which changes the [default mode][__link1];
+* [Maps][__link2] jk to esc in the `Insert` mode;
+* [Changes][__link3] the wrapping;
+* [Removes][__link4] the hook [group][__link5] “FileWidgets”;
+* [Pushes][__link6] a [vertical rule][__link7] and [line numbers][__link8] to every file;
 * Removes the hook group “WindowWidgets”;
-* Pushes a [custom status line][__link8] and [command line][__link9] to the bottom
+* Pushes a [custom status line][__link9] and [command line][__link10] to the bottom
   of the screen;
-* [Adds][__link10] hooks for [mode changes][__link11] in Duat;
-* [Changes][__link12] the [style][__link13] of the mode printed on the
+* [Adds][__link11] hooks for [mode changes][__link12] in Duat;
+* [Changes][__link13] the [style][__link14] of the mode printed on the
   status line;
 
 These are some of the ways you can configure Duat. You might
@@ -136,7 +142,7 @@ let text = text!([MyForm] "Waow it's my form! " [] "not anymore 😢");
 
 In this example, I’m using the “MyForm” form in order to style the
 text, while `[]` reverts back to the “Default” form. The
-[`status!`][__link14] macro works similarly.
+[`status!`][__link15] macro works similarly.
 
 Duat also has a simple command system, that lets you add commands
 with arguments supported by Rust’s type system:
@@ -150,6 +156,29 @@ cmd::add_for!(callers, |_cmd_line: CmdLine, area, _flags| {
 ```
 
 The 2 arguments
+
+### Features
+
+Duat provides a lot of features, trying to be as configurable as
+possible, here are some of the things that Duat is capable of:
+
+* Completely custom modes, with full Vim style remapping
+* Completely custom widgets, with user created modes
+* Arbitrary concealment of text, and arbitrary ghost text
+* Custom hooks, whose activation is up to the creator
+* Custom commands, with customizable parameters supported by
+  Rust’s robust type system
+* Multi UI adaptability, although for now, only a terminal UI has
+  been made
+* And many others still being planned
+
+Additionally, by choosing Rust as its configuration language, Duat
+also gains the following features:
+
+* Complete type safety
+* A very functional programming language, with lots of native
+  features
+* Cargo is the plugin manager
 
 ### Roadmap
 
@@ -177,9 +206,9 @@ way:
 * [x] Add the ability to create hooks;
 * [x] Create a more generalized plugin system;
 * [x] Implement incremental Regex searching;
+* [x] Implement tree-sitter;
 * [ ] Add floating widgets, not tied to the session layout;
 * [ ] Implement autocompletion lists;
-* [ ] Implement tree-sitter;
 * [ ] Create an LSP plugin;
 * [ ] Create a vim mode;
 
@@ -194,25 +223,21 @@ order.
 
 I don’t know what your personal reasoning would be, but in my
 case, I really like Kakoune’s editing model, but was frustrated
-with the lack of some
-features, like folding, multiple file editing, the general
-barebonesness of the configuration, etc.
+with the lack of some features, like folding, multiple file
+editing, the general barebonesness of the configuration, etc.
 
 I know that Neovim has all of these features, and Helix supposedly
-tries to
-solve some of these issues. But I don’t really like either of
-their editing
-styles to be honest.
+tries to solve some of these issues. But I don’t really like
+either of their editing styles to be honest.
 
 And so I thought, why not make my own text editor?
 
 I thought, why not make a text editor that is as modular as
-possible, while
-still having a sensible default configuration? That I could modify
-however I
-wanted, and with a language that I love?
+possible, while still having a sensible default configuration?
+That I could modify however I wanted, and with a language that I
+love?
 
-That is why I decided to embark on this journey.
+That’s why I decided to create Duat.
 
 ### Why the name
 
@@ -222,19 +247,20 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG0TmG2sU1339G5WzpRHu4l0dG8IJw1Vs_XFKG8-uIdY1En5cYWSCgmRkdWF0ZTAuMi4xgmlkdWF0X2NvcmVlMC4yLjI
- [__link0]: https://docs.rs/duat/0.2.1/duat/?search=mode::set_default
- [__link1]: https://docs.rs/duat/0.2.1/duat/?search=prelude::map
- [__link10]: https://docs.rs/duat/0.2.1/duat/?search=hooks::add
- [__link11]: https://docs.rs/duat/0.2.1/duat/?search=hooks::ModeSwitched
- [__link12]: https://docs.rs/duat/0.2.1/duat/?search=form::set
- [__link13]: https://docs.rs/duat/0.2.1/duat/?search=form::Form
- [__link14]: https://docs.rs/duat/0.2.1/duat/?search=prelude::status
- [__link2]: https://docs.rs/duat/0.2.1/duat/?search=prelude::print::wrap_on_width
- [__link3]: https://docs.rs/duat/0.2.1/duat/?search=hooks::remove
- [__link4]: https://docs.rs/duat/0.2.1/duat/?search=hooks::add_grouped
- [__link5]: https://docs.rs/duat_core/0.2.2/duat_core/?search=ui::FileBuilder
- [__link6]: https://docs.rs/duat/0.2.1/duat/?search=prelude::VertRule
- [__link7]: https://docs.rs/duat/0.2.1/duat/?search=prelude::LineNumbers
- [__link8]: https://docs.rs/duat/0.2.1/duat/?search=prelude::status
- [__link9]: https://docs.rs/duat/0.2.1/duat/?search=prelude::CmdLine
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG8QuvcFZml4XG2tWB1oi07tBG1lz9M_MkxSBGxjuXzNK0rCkYWSDgmRkdWF0ZTAuMy4wgmlkdWF0X2NvcmVlMC4zLjCCZHBsdWf2
+ [__link0]: https://crates.io/crates/plug
+ [__link1]: https://docs.rs/duat/0.3.0/duat/?search=mode::set_default
+ [__link10]: https://docs.rs/duat/0.3.0/duat/?search=prelude::CmdLine
+ [__link11]: https://docs.rs/duat/0.3.0/duat/?search=hooks::add
+ [__link12]: https://docs.rs/duat/0.3.0/duat/?search=hooks::ModeSwitched
+ [__link13]: https://docs.rs/duat/0.3.0/duat/?search=form::set
+ [__link14]: https://docs.rs/duat/0.3.0/duat/?search=form::Form
+ [__link15]: https://docs.rs/duat/0.3.0/duat/?search=prelude::status
+ [__link2]: https://docs.rs/duat/0.3.0/duat/?search=prelude::map
+ [__link3]: https://docs.rs/duat/0.3.0/duat/?search=prelude::print::wrap_on_width
+ [__link4]: https://docs.rs/duat/0.3.0/duat/?search=hooks::remove
+ [__link5]: https://docs.rs/duat/0.3.0/duat/?search=hooks::add_grouped
+ [__link6]: https://docs.rs/duat_core/0.3.0/duat_core/?search=ui::FileBuilder
+ [__link7]: https://docs.rs/duat/0.3.0/duat/?search=prelude::VertRule
+ [__link8]: https://docs.rs/duat/0.3.0/duat/?search=prelude::LineNumbers
+ [__link9]: https://docs.rs/duat/0.3.0/duat/?search=prelude::status

@@ -209,16 +209,16 @@ map::<Normal>("<CA-l>", &EasyMotion::line());
 ```
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG7UD5brFf5WzG_h6C89JpPjLG3lnRJ6dVY9AG4fHw78vvrqPYWSBg2lkdWF0LWNvcmVlMC4yLjJpZHVhdF9jb3Jl
- [__link0]: https://docs.rs/duat-core/0.2.2/duat_core/?search=ui::Ui
- [__link1]: https://docs.rs/duat-core/0.2.2/duat_core/?search=mode::Mode
- [__link10]: https://docs.rs/duat-core/0.2.2/duat_core/?search=text::Text::remove_tags_on
- [__link11]: https://docs.rs/duat-core/0.2.2/duat_core/?search=mode::Mover::move_to
- [__link2]: https://docs.rs/duat-core/0.2.2/duat_core/?search=widgets::File
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG7UD5brFf5WzG_h6C89JpPjLG3lnRJ6dVY9AG4fHw78vvrqPYWSBg2lkdWF0LWNvcmVlMC4zLjBpZHVhdF9jb3Jl
+ [__link0]: https://docs.rs/duat-core/0.3.0/duat_core/?search=ui::Ui
+ [__link1]: https://docs.rs/duat-core/0.3.0/duat_core/?search=mode::Mode
+ [__link10]: https://docs.rs/duat-core/0.3.0/duat_core/?search=text::Text::remove_tags_on
+ [__link11]: https://docs.rs/duat-core/0.3.0/duat_core/?search=mode::Mover::move_to
+ [__link2]: https://docs.rs/duat-core/0.3.0/duat_core/?search=widgets::File
  [__link3]: https://docs.rs/duat/0.2.0/duat/prelude/fn.map.html
  [__link4]: https://github.com/easymotion/vim-easymotion
- [__link5]: https://docs.rs/duat-core/0.2.2/duat_core/?search=text::Tag::GhostText
- [__link6]: https://docs.rs/duat-core/0.2.2/duat_core/?search=text::Tag::StartConceal
- [__link7]: https://docs.rs/duat-core/0.2.2/duat_core/?search=text::Tag::GhostText
- [__link8]: https://docs.rs/duat-core/0.2.2/duat_core/?search=text::Tag::StartConceal
- [__link9]: https://docs.rs/duat-core/0.2.2/duat_core/?search=text::Tag::EndConceal
+ [__link5]: https://docs.rs/duat-core/0.3.0/duat_core/?search=text::Tag::GhostText
+ [__link6]: https://docs.rs/duat-core/0.3.0/duat_core/?search=text::Tag::StartConceal
+ [__link7]: https://docs.rs/duat-core/0.3.0/duat_core/?search=text::Tag::GhostText
+ [__link8]: https://docs.rs/duat-core/0.3.0/duat_core/?search=text::Tag::StartConceal
+ [__link9]: https://docs.rs/duat-core/0.3.0/duat_core/?search=text::Tag::EndConceal

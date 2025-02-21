@@ -22,7 +22,7 @@ duat-core = { version = ">=0.3.0", path = "duat-core" }
 duat-term = { version = ">=0.3.0", path = "duat-term", optional = true }
 
 dirs-next = "2.0.0"
-notify = "6.1.1"
+notify = "8.0.0"
 dlopen-rs = "0.7.0"
 
 [features]
