@@ -32,25 +32,7 @@
 //! git clone https://github.com/AhoyISki/duat
 //! cargo install --path duat
 //! ```
-//!
-//! ## How to use
-//!
-//! In order to use it, you must have `cargo` installed. If you do,
-//! run
-//!
-//! `cargo install duat`
-//!
-//! This will install the default version of Duat, which uses a
-//! terminal user interface. It will also create a configuration
-//! directory in `$XDG_CONFIG_HOME/duat/` or `~/.config/duat/`. This
-//! config will have some default changes, but you can modify it as
-//! you wish. It also has some documentation explaining the basics of
-//! Duat.
-//!
-//! For now, it has a barebones configuration, which is based on
-//! Kakoune, so if you are familiar with that text editor, many of the
-//! commands are going to be the same.
-//!
+//! 
 //! ## Configuration
 //!
 //! In the configuration file, there should be a `setup_duat!` macro,

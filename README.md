@@ -35,24 +35,6 @@ git clone https://github.com/AhoyISki/duat
 cargo install --path duat
 ```
 
-### How to use
-
-In order to use it, you must have `cargo` installed. If you do,
-run
-
-`cargo install duat`
-
-This will install the default version of Duat, which uses a
-terminal user interface. It will also create a configuration
-directory in `$XDG_CONFIG_HOME/duat/` or `~/.config/duat/`. This
-config will have some default changes, but you can modify it as
-you wish. It also has some documentation explaining the basics of
-Duat.
-
-For now, it has a barebones configuration, which is based on
-Kakoune, so if you are familiar with that text editor, many of the
-commands are going to be the same.
-
 ### Configuration
 
 In the configuration file, there should be a `setup_duat!` macro,
@@ -247,7 +229,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG8QuvcFZml4XG2tWB1oi07tBG1lz9M_MkxSBGxjuXzNK0rCkYWSDgmRkdWF0ZTAuMy4wgmlkdWF0X2NvcmVlMC4zLjCCZHBsdWf2
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG2ds7whO6-YnG99fvAXNxtM9G2EGOuZcP2_sGwkD73k7aWU4YWSDgmRkdWF0ZTAuMy4wgmlkdWF0X2NvcmVlMC4zLjCCZHBsdWf2
  [__link0]: https://crates.io/crates/plug
  [__link1]: https://docs.rs/duat/0.3.0/duat/?search=mode::set_default
  [__link10]: https://docs.rs/duat/0.3.0/duat/?search=prelude::CmdLine
