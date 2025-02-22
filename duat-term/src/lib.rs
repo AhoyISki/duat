@@ -1,4 +1,11 @@
-#![feature(iter_collect_into, let_chains, if_let_guard, extract_if, decl_macro)]
+#![feature(
+    iter_collect_into,
+    let_chains,
+    if_let_guard,
+    extract_if,
+    decl_macro,
+    debug_closure_helpers
+)]
 use std::{
     fmt::Debug,
     io::{self, Write},

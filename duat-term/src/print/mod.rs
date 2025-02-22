@@ -42,7 +42,7 @@ pub struct Printer {
     is_offline: bool,
     is_disabled: bool,
     max: VarPoint,
-    var_point_fn: fn(&mut Printer) -> VarPoint,
+    var_value_fn: fn() -> VarValue,
 }
 
 impl Printer {
@@ -75,16 +75,20 @@ impl Printer {
             is_offline: false,
             is_disabled: false,
             max,
-            var_point_fn: var_point,
+            var_value_fn: VarValue::new,
         }
     }
 
     pub fn var_point(&mut self) -> VarPoint {
-        (self.var_point_fn)(self)
+        let x = (self.var_value_fn)();
+        let y = (self.var_value_fn)();
+        self.vars.push((x.var, SavedVar::val(&x)));
+        self.vars.push((y.var, SavedVar::val(&y)));
+        VarPoint::new(x, y)
     }
 
     pub fn edge(&mut self, lhs: &VarPoint, rhs: &VarPoint, axis: Axis, fr: Frame) -> VarValue {
-        let width = VarValue::new();
+        let width = (self.var_value_fn)();
         let var = &lhs.on_axis(axis).var;
         let i = self.vars.binary_search_by_key(var, key).unwrap();
         let saved = self.vars.get_mut(i).unwrap();
@@ -305,15 +309,6 @@ impl Printer {
         self.eqs_to_add.clear();
         Ok(())
     }
-}
-
-pub fn var_point(printer: &mut Printer) -> VarPoint {
-    let x = VarValue::new();
-    let y = VarValue::new();
-    printer.vars.push((x.var, SavedVar::val(&x)));
-    printer.vars.push((y.var, SavedVar::val(&y)));
-
-    VarPoint::new(x, y)
 }
 
 impl Default for Printer {

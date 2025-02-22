@@ -85,7 +85,10 @@ use std::{
     path::Path,
     rc::Rc,
     str::from_utf8_unchecked,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 pub use gapbuf::GapBuffer;
@@ -123,6 +126,7 @@ pub struct Text {
     readers: Vec<(Box<dyn Reader>, Vec<Range<usize>>)>,
     ts_parser: Option<(Box<TsParser>, Vec<Range<usize>>)>,
     has_changed: bool,
+    has_unsaved_changes: AtomicBool,
     // Used in Text building
     forced_new_line: bool,
 }
@@ -185,6 +189,7 @@ impl Text {
             ts_parser: None,
             forced_new_line,
             has_changed: false,
+            has_unsaved_changes: AtomicBool::new(false),
         }
     }
 
@@ -713,6 +718,8 @@ impl Text {
 
         self.tags
             .transform(start.byte()..taken_end.byte(), change.added_end().byte());
+
+        *self.has_unsaved_changes.get_mut() = true;
     }
 
     /// This is used by [`Area`]s in order to update visible text
@@ -903,8 +910,20 @@ impl Text {
     ///
     /// [writer]: std::io::Write
     pub fn write_to(&self, mut writer: impl std::io::Write) -> std::io::Result<usize> {
+        self.has_unsaved_changes.store(false, Ordering::Relaxed);
         let (s0, s1) = self.buf.as_slices();
         Ok(writer.write(s0)? + writer.write(s1)?)
+    }
+
+    /// Wether or not the content has changed since the last [write]
+    ///
+    /// Returns `true` only if the actual bytes of the [`Text`] have
+    /// been changed, ignoring [`Tag`]s and all the other things,
+    /// since those are not written to the filesystem.
+    ///
+    /// [write]: Text::write_to
+    pub fn has_unsaved_changes(&self) -> bool {
+        self.has_unsaved_changes.load(Ordering::Relaxed)
     }
 
     ////////// Reload related functions
@@ -1226,6 +1245,7 @@ impl Clone for Text {
             ts_parser: None,
             forced_new_line: self.forced_new_line,
             has_changed: self.has_changed,
+            has_unsaved_changes: AtomicBool::new(false),
         }
     }
 }

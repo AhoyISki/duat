@@ -374,6 +374,9 @@ impl ui::Area for Area {
     }
 
     fn is_master_of(&self, other: &Self) -> bool {
+        if other.id == self.id {
+            return true;
+        }
         self.layout.inspect(|layout| {
             let mut parent_id = other.id;
             while let Some((_, parent)) = layout.get_parent(parent_id) {

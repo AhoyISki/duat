@@ -200,11 +200,12 @@ impl<U: Ui> Session<U> {
             }
         });
 
-        U::flush_layout(self.ms);
         ui_tx.send(UiEvent::Start).unwrap();
 
         // The main loop.
         loop {
+            U::flush_layout(self.ms);
+
             let cur_window = self.cur_window.load(Ordering::Relaxed);
             context::windows::<U>().inspect(|windows| {
                 while windows
@@ -224,10 +225,9 @@ impl<U: Ui> Session<U> {
 
             let reason_to_break = self.session_loop(&duat_rx);
 
-            hooks::trigger::<ConfigUnloaded>(());
-
             match reason_to_break {
                 BreakTo::QuitDuat => {
+                    hooks::trigger::<ConfigUnloaded>(());
                     hooks::trigger::<ExitedDuat>(());
                     crate::thread::quit_queue();
                     self.save_cache(true);
@@ -236,6 +236,7 @@ impl<U: Ui> Session<U> {
                     break (Vec::new(), duat_rx);
                 }
                 BreakTo::ReloadConfig => {
+                    hooks::trigger::<ConfigUnloaded>(());
                     U::unload(self.ms);
                     crate::thread::quit_queue();
                     self.save_cache(false);
@@ -273,9 +274,7 @@ impl<U: Ui> Session<U> {
                             crate::REPRINTING_SCREEN.store(false, Ordering::Release);
                             continue;
                         }
-                        DuatEvent::MetaMsg(msg) => {
-                            context::notify(msg)
-                        },
+                        DuatEvent::MetaMsg(msg) => context::notify(msg),
                         DuatEvent::ReloadConfig => break BreakTo::ReloadConfig,
                         DuatEvent::OpenFile(file) => break BreakTo::OpenFile(file),
                         DuatEvent::Quit => break BreakTo::QuitDuat,
@@ -301,7 +300,7 @@ impl<U: Ui> Session<U> {
             let mut file = file.write();
             let path = file.path();
 
-            if is_quitting_duat && !file.exists() {
+            if is_quitting_duat && (!file.exists() || file.text().has_unsaved_changes()) {
                 delete_cache(&path);
                 return;
             }

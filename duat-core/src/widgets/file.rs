@@ -300,7 +300,7 @@ impl<U: Ui> Widget<U> for File {
     }
 
     fn text_mut(&mut self) -> &mut Text {
-        &mut self.text
+        self.text_mut()
     }
 
     fn print_cfg(&self) -> PrintCfg {

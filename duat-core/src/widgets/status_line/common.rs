@@ -22,6 +22,45 @@ use crate::{
     widgets::File,
 };
 
+/// A formatting of the file's name
+///
+/// Includes wether or not the file is written and wether or not it
+/// exists.
+///
+/// # Formatting
+///
+/// If the file's `name` was set:
+///
+/// ```text
+/// [File] name
+/// ```
+///
+/// If it has unwritten changes, a `[UnsavedChanges] "[+]"` will be
+/// appended. If it doesn't exist, a `[NewFile] "[new file]" will be
+/// appended.
+///
+/// If the file's `name` was not set:
+///
+/// ```text
+/// [ScratchFile] `name`
+/// ```
+pub fn file_fmt(file: &File) -> Text {
+    let mut b = Text::builder();
+
+    if let Some(name) = file.name_set() {
+        text!(b, [File] name);
+        if !file.exists() {
+            text!(b, [NewFile] "[new file]");
+        } else if file.text().has_unsaved_changes() {
+            text!(b, [UnsavedChanges] "[+]");
+        }
+    } else {
+        text!(b, [ScratchFile] { file.name() });
+    }
+
+    b.finish()
+}
+
 /// The active mode of Duat, in lowercase
 pub fn mode() -> DataMap<&'static str, String> {
     context::mode_name().map(|mode| mode.to_lowercase())
@@ -107,6 +146,22 @@ pub fn selections_fmt(cursors: &Cursors) -> Text {
     }
 }
 
+/// The unprocessed mapped [keys] sent to Duat
+///
+/// # Formatting
+///
+/// For every key, if they are a normal `char`:
+///
+/// ```text
+/// [SeqCharKey]char
+/// ```
+///
+/// Otherwise if they are a `special` key:
+///
+/// ```text
+/// [SeqSpecialKey]special
+/// ```
+/// [keys]: KeyEvent
 pub fn cur_map_fmt() -> DataMap<(Vec<KeyEvent>, bool), Text> {
     let data = mode::cur_sequence();
     data.map(|(keys, is_alias)| {
