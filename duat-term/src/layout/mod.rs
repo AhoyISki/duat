@@ -169,7 +169,6 @@ impl Layout {
             && let Some((_, parent)) = self.rects.get_parent_mut(id)
             && parent.aligns_with(axis)
         {
-            duat_core::log_file!("same axis parent");
             (id, None)
         // Check if the target has the same `Axis`.
         } else if can_be_child
@@ -182,7 +181,6 @@ impl Layout {
                 false => children.last().unwrap().0.id(),
             };
 
-            duat_core::log_file!("same axis target");
             (target, None)
         // If all else fails, create a new parent to hold both `self`
         // and the new area.
@@ -191,7 +189,6 @@ impl Layout {
                 .new_parent_of(id, axis, &mut p, cluster, on_files);
             let (_, parent) = self.rects.get_parent(id).unwrap();
 
-            duat_core::log_file!("{parent:#?}");
             (id, Some(parent.id()))
         };
 

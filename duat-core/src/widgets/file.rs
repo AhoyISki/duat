@@ -84,13 +84,10 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
                         Text::from_file(buf, cursors, path),
                         PathKind::SetExists(path.clone()),
                     )
-                } else if let Err(err) = canon_path
-                    && let ErrorKind::NotFound = err.kind()
-                    && let Some(parent) = path.parent()
-                    && parent.exists()
+                } else if canon_path.is_err()
+                    && let Ok(mut canon_path) = path.with_file_name(".").canonicalize()
                 {
-                    let parent = path.with_file_name("").canonicalize().unwrap();
-                    let path = parent.with_file_name(path.file_name().unwrap());
+                    canon_path.push(path.file_name().unwrap());
                     (Text::new_with_history(), PathKind::SetAbsent(path))
                 } else {
                     (Text::new_with_history(), PathKind::new_unset())
