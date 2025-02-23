@@ -281,7 +281,6 @@ pub use duat_core::{Error, thread};
 use duat_core::{Plugin, session::SessionCfg};
 pub use setup::{Messengers, MetaStatics, pre_setup, run_duat};
 
-pub mod cmd;
 pub mod print;
 mod setup;
 
@@ -572,13 +571,13 @@ pub mod prelude {
         data::{self, RwData},
         text::{self, Builder, Text, err, hint, ok, text},
         ui::Area as AreaTrait,
-        widgets::Widget,
+        widgets::Widget, cmd
     };
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self as ui, VertRule};
 
     pub use crate::{
-        Area, Ui, cmd, control, cursor,
+        Area, Ui, control, cursor,
         form::{self, CursorShape, Form},
         hooks::{
             self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FormSet, ModeSwitched,

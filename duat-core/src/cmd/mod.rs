@@ -31,20 +31,26 @@
 //! # Adding commands
 //!
 //! Commands are added through the [`add!`] and [`add_for!`] macros.
-//! The first one is used when you just want to interpret some
-//! [`Flags`] and [`Args`]. The second one lets you modify [`Widget`]s
-//! directly, modifying the most relevant one to the current [`File`].
+//! The first one is used if you only wish to interpret some [`Args`].
+//! The second one lets you modify a specific [`Widget`] and its
+//! [`Area`], allongside said [`Args`].
 //!
 //! These macros will take two arguments, the first one is a list of
 //! callers for that command, e.g. `["quit", "q"]` for the `quit`
 //! command. Note that a regular [`&str`] argument is also accepted.
 //!
 //! The second argument is a _rust-like_ closure with a variable
-//! number of arguments. The first argument is always the [`Flags`] of
-//! the command. Subsequent arguments are of any type that implements
-//! [`Parameter`]. These [`Parameter`] arguments are not "a word
-//! each", for example, the [`Color`] parameter can take up to 4
-//! arguments to be processed:
+//! number of arguments. Each argument must implement the
+//! [`Parameter`] trait, and its type must be explicit, in order for
+//! Duat to automatically interpret user input as a specific type.
+//!
+//! Most Rust [`std`] types (that would make sense) are implemented as
+//! [`Parameter`]s, so you can place [`String`]s, [`f32`]s, [`bool`]s,
+//! and all sorts of other types as [`Parameter`]s for your command.
+//!
+//! Types like [`Vec`] and [`Option`] are also implemented as
+//! [`Parameter`]s, so you can have a list of [`Parameter`]s or an
+//! optional [`Parameter`].
 //!
 //! ```rust
 //! # use duat_core::prelude::{
@@ -70,22 +76,23 @@
 //! assert!(result.is_ok());
 //! ```
 //!
-//! In the command above, you'll notice that I used the [`ok!`] macro,
-//! which returns [`Ok(Some({Text}))`]. This macro is used when you
-//! want to return a notification saying that the command succeeded.
-//! Its counterpart is the [`err!`] macro, which just returns a
-//! [`Text`], like [`text!`]. This macro represents failure in the
-//! execution of the command, and must be used.
+//! In the command above, you'll notice that I used the [`ok!`] macro.
+//! This macro is used when you want to return a notification saying
+//! that the command succeeded. Its counterpart is the [`err!`] macro.
+//! It represents failure in the execution of the command, and must be
+//! used.
 //!
-//! Here's a simple command that makes use of [`Flags`]:
+//! Duat commands also offer flags in the form of the [`Flags`]
+//! [`Parameter`]. These can make use of word flags (`--full-words`)
+//! and blob flags (`-singlechar`):
 //!
 //! ```rust
-//! # use duat_core::cmd::{self, Flags};
+//! # use duat_core::cmd;
 //! # use std::sync::{atomic::{AtomicU32, Ordering}, Arc};
 //! let expression = Arc::new(AtomicU32::default());
 //! let my_command = {
 //!     let expression = expression.clone();
-//!     cmd::add!("mood", move |flags: Flags| {
+//!     cmd::add!("mood", move |flags: cmd::Flags| {
 //!         // `Flags::long` checks for `--` flags
 //!         if flags.word("happy") {
 //!             expression.store('😁' as u32, Ordering::Relaxed)
@@ -114,8 +121,10 @@
 //! assert_eq!(char::from_u32(num), Some('🤯'))
 //! ```
 //!
-//! There are other [`Parameter`]s in [`cmd`] that can be used on a
-//! variety of things:
+//! There are other builtin types of [`Parameter`]s in [`cmd`] that
+//! can be used on a variety of things. For example, the [`Remainder`]
+//! [`Parameter`] is one that just takes the remaining arguments and
+//! collects them into a single [`String`].
 //!
 //! ```rust
 //! # use duat_core::prelude::{cmd, err, ok};
@@ -131,6 +140,10 @@
 //!     }
 //! });
 //! ```
+//!
+//! One thing to note is that commands _must_ take at least one
+//! argument. If you don't need any arguments, just place a `_: Flags`
+//! as your argument.
 //!
 //! The other type of command that Duat supports is one that also acts
 //! on a [`Widget`] and its [`Area`]:
