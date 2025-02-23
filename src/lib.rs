@@ -159,7 +159,7 @@
 //! # use duat::prelude::*;
 //! # fn test() -> Result<(), Error<()>> {
 //! let callers = ["collapse-cmd-line", "ccmd"];
-//! cmd::add_for!(callers, |_cmd_line: CmdLine, area: Area| {
+//! cmd::add_for!(callers, |_: CmdLine, area: Area| {
 //!     area.constrain_ver(Constraint::Length(0.0))?;
 //!     Ok(None)
 //! })
@@ -567,11 +567,11 @@ pub mod prelude {
     #[doc(hidden)]
     pub use duat_core;
     pub use duat_core::{
-        DuatError, Error, Plugin, clipboard,
+        DuatError, Error, Plugin, clipboard, cmd,
         data::{self, RwData},
         text::{self, Builder, Text, err, hint, ok, text},
         ui::Area as AreaTrait,
-        widgets::Widget, cmd
+        widgets::Widget,
     };
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self as ui, VertRule};

@@ -141,12 +141,9 @@
 //! });
 //! ```
 //!
-//! One thing to note is that commands _must_ take at least one
-//! argument. If you don't need any arguments, just place a `_: Flags`
-//! as your argument.
-//!
 //! The other type of command that Duat supports is one that also acts
-//! on a [`Widget`] and its [`Area`]:
+//! on a [`Widget`] and its [`Area`]. Both of these [`Parameter`]s
+//! need to be included and type anotated:
 //!
 //! ```rust
 //! # use duat_core::{cmd, widgets::{LineNumbers, LineNum}};
@@ -217,7 +214,7 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
     })?;
 
     let tx_clone = tx.clone();
-    add!(["quit", "q"], move |_: Flags| {
+    add!(["quit", "q"], move || {
         let file = context::cur_file::<U>()?;
         if file.inspect(|file, _| file.text().has_unsaved_changes()) {
             Err(err!("The file has unsaved changes"))
@@ -410,47 +407,73 @@ mod global {
     /// [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
     /// [`RoData`]: crate::data::RoData
     /// [`RwData`]: crate::data::RwData
-    pub macro add($callers:expr, $($mv:ident)? |$($arg:tt: $t:ty),*| $f:block) {{
-        #[allow(unused_variables, unused_mut)]
-        let cmd = $($mv)? |mut args: Args| -> CmdResult {
-            $(
-                let $arg: <$t as Parameter>::Returns = <$t as Parameter>::new(&mut args)?;
-            )*
+    pub macro add {
+        ($callers:expr, $($mv:ident)? |$($arg:tt: $t:ty),+| $f:block) => {{
+            #[allow(unused_variables, unused_mut)]
+            let cmd = $($mv)? |mut args: Args| -> CmdResult {
+                $(
+                    let $arg: <$t as Parameter>::Returns = <$t as Parameter>::new(&mut args)?;
+                )*
 
-            if let Ok(arg) = args.next() {
-                return Err($crate::text::err!("Too many arguments"));
-            }
-
-            $f
-        };
-
-        #[allow(unused_variables, unused_mut)]
-        let checker = |mut args: Args| -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) {
-            let mut ok_ranges = Vec::new();
-
-            $(
-                let start = args.next_start();
-                match args.next_as::<$t>() {
-                    Ok(_) => if let Some(start) = start
-                        .filter(|s| args.param_range().end > *s)
-                    {
-                        ok_ranges.push(start..args.param_range().end);
-                    }
-                    Err(err) => return (ok_ranges, Some((args.param_range(), err)))
+                if let Ok(arg) = args.next() {
+                    return Err($crate::text::err!("Too many arguments"));
                 }
-            )*
 
-            let start = args.next_start();
-            if let (Ok(_), Some(start)) = (args.next_as::<super::Remainder>(), start) {
-                let err = $crate::text::err!("Too many arguments");
-                return (ok_ranges, Some((start..args.param_range().end, err)))
-            }
+                $f
+            };
 
-            (ok_ranges, None)
-        };
+            #[allow(unused_variables, unused_mut)]
+            let checker = |mut args: Args| -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) {
+                let mut ok_ranges = Vec::new();
 
-        add_inner($callers, cmd, checker)
-    }}
+                $(
+                    let start = args.next_start();
+                    match args.next_as::<$t>() {
+                        Ok(_) => if let Some(start) = start
+                            .filter(|s| args.param_range().end > *s)
+                        {
+                            ok_ranges.push(start..args.param_range().end);
+                        }
+                        Err(err) => return (ok_ranges, Some((args.param_range(), err)))
+                    }
+                )*
+
+                let start = args.next_start();
+                if let (Ok(_), Some(start)) = (args.next_as::<super::Remainder>(), start) {
+                    let err = $crate::text::err!("Too many arguments");
+                    return (ok_ranges, Some((start..args.param_range().end, err)))
+                }
+
+                (ok_ranges, None)
+            };
+
+            add_inner($callers, cmd, checker)
+    	}},
+
+        ($callers:expr, $($mv:ident)? || $f:block) => {{
+            #[allow(unused_variables, unused_mut)]
+            let cmd = $($mv)? |mut args: Args| -> CmdResult {
+                if let Ok(arg) = args.next() {
+                    return Err($crate::text::err!("Too many arguments"));
+                }
+
+                $f
+            };
+
+            #[allow(unused_variables, unused_mut)]
+            let checker = |mut args: Args| -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) {
+                let start = args.next_start();
+                if let (Ok(_), Some(start)) = (args.next_as::<super::Remainder>(), start) {
+                    let err = $crate::text::err!("Too many arguments");
+                    return (Vec::new(), Some((start..args.param_range().end, err)))
+                }
+
+                (Vec::new(), None)
+            };
+
+            add_inner($callers, cmd, checker)
+    	}}
+    }
 
     /// Adds a command that can mutate a widget of the given type,
     /// along with its associated [`dyn Area`].
@@ -623,7 +646,7 @@ mod global {
     /// [`form::set`]: crate::form::set
     /// [`form::set_weak`]: crate::form::set_weak
     pub macro add_for($callers:expr, $($mv:ident)? |
-        $widget:ident: $w_ty:ty, $area:tt: $a_ty:ty $(, $arg:tt: $t:ty)*
+        $widget:tt: $w_ty:ty, $area:tt: $a_ty:ty $(, $arg:tt: $t:ty)* $(,)?
     | $f:block) {{
         #[allow(unused_variables, unused_mut)]
         let cmd = $($mv)? |
