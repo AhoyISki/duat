@@ -159,7 +159,7 @@
 //! # use duat::prelude::*;
 //! # fn test() -> Result<(), Error<()>> {
 //! let callers = ["collapse-cmd-line", "ccmd"];
-//! cmd::add_for!(callers, |_cmd_line: CmdLine, area, _flags| {
+//! cmd::add_for!(callers, |_cmd_line: CmdLine, area: Area| {
 //!     area.constrain_ver(Constraint::Length(0.0))?;
 //!     Ok(None)
 //! })

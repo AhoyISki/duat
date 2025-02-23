@@ -54,7 +54,7 @@
 //! let callers = ["unset-form", "uf"];
 //! // A `Vec<T>` parameter will try to collect all
 //! // remaining arguments as `T` in a list.
-//! let result = cmd::add!(callers, |_flags, forms: Vec<FormName>| {
+//! let result = cmd::add!(callers, |forms: Vec<FormName>| {
 //!     for form in forms.iter() {
 //!         form::set("form", Form::new());
 //!     }
@@ -80,12 +80,12 @@
 //! Here's a simple command that makes use of [`Flags`]:
 //!
 //! ```rust
-//! # use duat_core::cmd;
+//! # use duat_core::cmd::{self, Flags};
 //! # use std::sync::{atomic::{AtomicU32, Ordering}, Arc};
 //! let expression = Arc::new(AtomicU32::default());
 //! let my_command = {
 //!     let expression = expression.clone();
-//!     cmd::add!("mood", move |flags| {
+//!     cmd::add!("mood", move |flags: Flags| {
 //!         // `Flags::long` checks for `--` flags
 //!         if flags.word("happy") {
 //!             expression.store('😁' as u32, Ordering::Relaxed)
@@ -119,7 +119,7 @@
 //!
 //! ```rust
 //! # use duat_core::prelude::{cmd, err, ok};
-//! cmd::add!("pip", |flags, args: cmd::Remainder| {
+//! cmd::add!("pip", |args: cmd::Remainder| {
 //!     match std::process::Command::new("pip").spawn() {
 //!         Ok(child) => match child.wait_with_output() {
 //!             Ok(ok) => Ok(Some(ok!({
@@ -138,7 +138,7 @@
 //! ```rust
 //! # use duat_core::{cmd, widgets::{LineNumbers, LineNum}};
 //! # fn test<U: duat_core::ui::Ui>() {
-//! cmd::add_for!(U, "toggle-relative", |ln: LineNumbers<U>, _area, _| {
+//! cmd::add_for!("toggle-relative", |ln: LineNumbers<U>, _: U::Area| {
 //!     let mut cfg = ln.get_cfg();
 //!     cfg.num_rel = match cfg.num_rel {
 //!         LineNum::Abs => LineNum::RelAbs,
@@ -379,7 +379,7 @@ mod global {
     /// let var = RwData::new(35);
     ///
     /// let var_clone = var.clone();
-    /// cmd::add!("set-var", move |_flags, value: usize| {
+    /// cmd::add!("set-var", move |value: usize| {
     ///     *var_clone.write() = value;
     ///     Ok(None)
     /// });
@@ -579,17 +579,17 @@ mod global {
     ///     fn once() -> Result<(), duat_core::Error<()>> {
     ///         form::set_weak("Counter", Form::green());
     ///
-    ///         cmd::add_for!(U, "play", |timer: Timer, _area, _flags| {
+    ///         cmd::add_for!("play", |timer: Timer, _: U::Area| {
     ///             timer.running.store(true, Ordering::Relaxed);
     ///             Ok(None)
     ///         })?;
     ///
-    ///         cmd::add_for!(U, "pause", |timer: Timer, _, _| {
+    ///         cmd::add_for!("pause", |timer: Timer, _: U::Area| {
     ///             timer.running.store(false, Ordering::Relaxed);
     ///             Ok(None)
     ///         })?;
     ///
-    ///         cmd::add_for!(U, "reset", |timer: Timer, _, _| {
+    ///         cmd::add_for!("reset", |timer: Timer, _: U::Area| {
     ///             timer.instant = Instant::now();
     ///             Ok(None)
     ///         })

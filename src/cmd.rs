@@ -54,7 +54,7 @@
 //! let callers = ["unset-form", "uf"];
 //! // A `Vec<T>` parameter will try to collect all
 //! // remaining arguments as `T` in a list.
-//! let result = cmd::add!(callers, |_flags, forms: Vec<FormName>| {
+//! let result = cmd::add!(callers, |forms: Vec<FormName>| {
 //!     for form in forms.iter() {
 //!         form::set("form", Form::new());
 //!     }
@@ -80,12 +80,12 @@
 //! Here's a simple command that makes use of [`Flags`]:
 //!
 //! ```rust
-//! # use duat::cmd;
+//! # use duat::cmd::{self, Flags};
 //! # use std::sync::{atomic::{AtomicU32, Ordering}, Arc};
 //! let expression = Arc::new(AtomicU32::default());
 //! let my_command = {
 //!     let expression = expression.clone();
-//!     cmd::add!("mood", move |flags| {
+//!     cmd::add!("mood", move |flags: Flags| {
 //!         // `Flags::long` checks for `--` flags
 //!         if flags.word("happy") {
 //!             expression.store('😁' as u32, Ordering::Relaxed)
@@ -119,7 +119,7 @@
 //!
 //! ```rust
 //! # use duat::prelude::{cmd, err, ok};
-//! cmd::add!("pip", |flags, args: cmd::Remainder| {
+//! cmd::add!("pip", |args: cmd::Remainder| {
 //!     match std::process::Command::new("pip").spawn() {
 //!         Ok(child) => match child.wait_with_output() {
 //!             Ok(ok) => Ok(Some(ok!({
@@ -136,8 +136,8 @@
 //! on a [`Widget`]:
 //!
 //! ```rust
-//! # use duat::{cmd, widgets::{LineNumbers, LineNum}};
-//! cmd::add_for!("toggle-relative", |ln: LineNumbers, _, _| {
+//! # use duat::{cmd, widgets::{LineNumbers, LineNum}, Area};
+//! cmd::add_for!("toggle-relative", |ln: LineNumbers, _: Area| {
 //!     let mut cfg = ln.get_cfg();
 //!     cfg.num_rel = match cfg.num_rel {
 //!         LineNum::Abs => LineNum::RelAbs,
