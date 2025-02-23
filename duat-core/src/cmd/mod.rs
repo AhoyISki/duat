@@ -178,7 +178,7 @@ pub use self::{
     global::*,
     parameters::{
         Args, Between, ColorSchemeArg, F32PercentOfU8, FileBuffer, Flags, FormName,
-        OtherFileBuffer, Parameter, Remainder, split_flags_and_args,
+        OtherFileBuffer, Parameter, Remainder, get_args,
     },
 };
 use crate::{
@@ -195,7 +195,7 @@ use crate::{
 mod parameters;
 
 pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate::Result<(), ()> {
-    add!("alias", |flags, alias: &str, command: Remainder| {
+    add!("alias", |flags: Flags, alias: &str, command: Remainder| {
         if !flags.is_empty() {
             Err(err!("An alias cannot take any flags"))
         } else {
@@ -204,12 +204,17 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
     })?;
 
     let tx_clone = tx.clone();
-    add!(["quit", "q"], move |_| {
-        tx_clone.send(DuatEvent::Quit).unwrap();
-        Ok(None)
+    add!(["quit", "q"], move |_: Flags| {
+        let file = context::cur_file::<U>()?;
+        if file.inspect(|file, _| file.text().has_unsaved_changes()) {
+            Err(err!("The file has unsaved changes"))
+        } else {
+            tx_clone.send(DuatEvent::Quit).unwrap();
+            Ok(None)
+        }
     })?;
 
-    add!(["write", "w"], move |_flags, paths: Vec<PathBuf>| {
+    add!(["write", "w"], move |paths: Vec<PathBuf>| {
         let file = context::cur_file::<U>()?;
 
         if paths.is_empty() {
@@ -249,7 +254,7 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
     })?;
 
     let windows = context::windows::<U>();
-    add!(["edit", "e"], move |_, path: PathBuf| {
+    add!(["edit", "e"], move |path: PathBuf| {
         let windows = windows.read();
 
         let name = path
@@ -272,13 +277,13 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         Ok(Some(ok!("Switched to " [*a] name)))
     })?;
 
-    add!(["buffer", "b"], move |_, name: OtherFileBuffer<U>| {
+    add!(["buffer", "b"], move |name: OtherFileBuffer<U>| {
         mode::reset_switch_to::<U>(&name);
         Ok(Some(ok!("Switched to " [*a] name)))
     })?;
 
     let windows = context::windows();
-    add!("next-file", move |flags| {
+    add!("next-file", move |flags: Flags| {
         let file = context::cur_file()?;
         let read_windows = windows.read();
         let w = context::cur_window();
@@ -304,7 +309,7 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
     })?;
 
     let windows = context::windows();
-    add!("prev-file", move |flags| {
+    add!("prev-file", move |flags: Flags| {
         let file = context::cur_file()?;
         let windows = windows.read();
         let w = context::cur_window();
@@ -330,14 +335,14 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         Ok(Some(ok!("Switched to " [*a] name)))
     })?;
 
-    add!("colorscheme", |_, scheme: ColorSchemeArg| {
+    add!("colorscheme", |scheme: ColorSchemeArg| {
         crate::form::set_colorscheme(scheme);
         Ok(Some(ok!("Set colorscheme to " [*a] scheme [])))
     })?;
 
     add!(
         "set-form",
-        |flags, name: FormName, colors: Between<0, 3, Color>| {
+        |name: FormName, colors: Between<0, 3, Color>| {
             let mut form = crate::form::Form::new();
             form.style.foreground_color = colors.first().cloned();
             form.style.background_color = colors.get(1).cloned();
@@ -354,7 +359,7 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
 mod global {
     use std::ops::Range;
 
-    use super::{Args, CmdResult, Commands, Flags, Parameter, Result};
+    use super::{Args, CmdResult, Commands, Parameter, Result};
     use crate::{Error, text::Text, ui::Ui, widgets::Widget};
 
     static COMMANDS: Commands = Commands::new();
@@ -392,11 +397,9 @@ mod global {
     /// [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
     /// [`RoData`]: crate::data::RoData
     /// [`RwData`]: crate::data::RwData
-    pub macro add(
-        $callers:expr, $($mv:ident)? |$flags:pat_param $(, $arg:ident: $t:ty)*| $f:block
-    ) {{
+    pub macro add($callers:expr, $($mv:ident)? |$($arg:tt: $t:ty),*| $f:block) {{
         #[allow(unused_variables, unused_mut)]
-        let cmd = $($mv)? |$flags: Flags, mut args: Args| -> CmdResult {
+        let cmd = $($mv)? |mut args: Args| -> CmdResult {
             $(
                 let $arg: <$t as Parameter>::Returns = <$t as Parameter>::new(&mut args)?;
             )*
@@ -606,14 +609,13 @@ mod global {
     /// [`Form`]: crate::form::Form
     /// [`form::set`]: crate::form::set
     /// [`form::set_weak`]: crate::form::set_weak
-    pub macro add_for($ui:ty, $callers:expr, $($mv:ident)? |
-        $widget:ident: $w_ty:ty, $area:pat_param, $flags:pat_param $(, $arg:ident: $t:ty)*
+    pub macro add_for($callers:expr, $($mv:ident)? |
+        $widget:ident: $w_ty:ty, $area:tt: $a_ty:ty, $($arg:tt: $t:ty),*
     | $f:block) {{
         #[allow(unused_variables, unused_mut)]
         let cmd = $($mv)? |
             $widget: &mut $w_ty,
-            $area: &<$ui as Ui>::Area,
-            $flags: Flags,
+            $area: &$a_ty,
             mut args: Args
         | -> CmdResult {
             $(
@@ -652,7 +654,7 @@ mod global {
             (ok_ranges, None)
         };
 
-        add_for_inner::<$w_ty, $ui>($callers, cmd, checker)
+        add_for_inner::<$w_ty, <$a_ty as $crate::ui::Area>::Ui>($callers, cmd, checker)
     }}
 
     /// Canonical way to quit Duat.
@@ -904,13 +906,13 @@ impl Commands {
             }
         })?;
 
-        let (flags, args) = split_flags_and_args(&call);
+        let args = get_args(&call);
 
         if let (_, Some((_, err))) = (command.checker)(args.clone()) {
             return Err(Error::FailedParsing(Box::new(err)));
         }
 
-        command.try_exec(Flags::new(&flags), args)
+        command.try_exec(args)
     }
 
     /// Runs a command and notifies its result
@@ -943,11 +945,11 @@ impl Commands {
         mut cmd: impl ArgCmdFn<W, U>,
         checker: impl CheckerFn,
     ) -> Result<()> {
-        let cmd = move |flags: Flags, args: Args| {
+        let cmd = move |args: Args| {
             let cur_file = context::inner_cur_file::<U>();
             cur_file
                 .mutate_related_widget::<W, CmdResult>(|widget, area| {
-                    cmd(widget, area, flags, args.clone())
+                    cmd(widget, area, args.clone())
                 })
                 .unwrap_or_else(|| {
                     let windows = context::windows::<U>().read();
@@ -961,9 +963,8 @@ impl Commands {
                     }
 
                     let (_, node) = widget_entry::<W, U>(&windows, w)?;
-                    let (w, a) = node.as_active();
-
-                    w.mutate_as(|w| cmd(w, a, flags, args)).unwrap()
+                    let (w, a) = node.parts();
+                    w.mutate_as(|w| cmd(w, a, args)).unwrap()
                 })
         };
         let callers = callers.into_iter().map(|c| c.to_string()).collect();
@@ -980,18 +981,16 @@ impl Commands {
         let mut args = call.split_whitespace();
         let caller = args.next()?.to_string();
 
-        let (_, args) = split_flags_and_args(call);
-
         self.0.inspect(|inner| {
             if let Some((command, _)) = inner.aliases.get(&caller) {
-                Some((command.checker)(args))
+                Some((command.checker)(get_args(call)))
             } else {
                 let command = inner
                     .list
                     .iter()
                     .find(|cmd| cmd.callers().contains(&caller))?;
 
-                Some((command.checker)(args))
+                Some((command.checker)(get_args(call)))
             }
         })
     }
@@ -1008,7 +1007,7 @@ pub type CmdResult = std::result::Result<Option<Text>, Text>;
 #[derive(Clone)]
 struct Command {
     callers: Arc<[String]>,
-    cmd: RwData<dyn FnMut(Flags, Args) -> CmdResult + Send + Sync>,
+    cmd: RwData<dyn FnMut(Args) -> CmdResult + Send + Sync>,
     checker: Arc<dyn Fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) + Send + Sync>,
 }
 
@@ -1030,8 +1029,8 @@ impl Command {
 
     /// Executes the inner function if the `caller` matches any of
     /// the callers in [`self`].
-    fn try_exec(&self, flags: Flags, args: Args<'_>) -> Result<Option<Text>> {
-        (self.cmd.write())(flags, args).map_err(|err| Error::CommandFailed(Box::new(err)))
+    fn try_exec(&self, args: Args<'_>) -> Result<Option<Text>> {
+        (self.cmd.write())(args).map_err(|err| Error::CommandFailed(Box::new(err)))
     }
 
     /// The list of callers that will trigger this command.
@@ -1121,8 +1120,7 @@ impl<'a, const N: usize> Caller<'a> for [&'a str; N] {
     }
 }
 
-trait CmdFn = FnMut(Flags, Args) -> CmdResult + 'static + Send + Sync;
-trait ArgCmdFn<W, U: Ui> =
-    FnMut(&mut W, &U::Area, Flags, Args) -> CmdResult + 'static + Send + Sync;
+trait CmdFn = FnMut(Args) -> CmdResult + 'static + Send + Sync;
+trait ArgCmdFn<W, U: Ui> = FnMut(&mut W, &U::Area, Args) -> CmdResult + 'static + Send + Sync;
 trait CheckerFn =
     Fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) + 'static + Send + Sync;

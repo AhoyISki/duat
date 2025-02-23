@@ -257,11 +257,7 @@ impl Cursors {
 
 impl Default for Cursors {
     fn default() -> Self {
-        Self {
-            buf: CursorGapBuffer(GapBuffer::new()),
-            main_i: 0,
-            is_incl: false,
-        }
+        Self::new_excl()
     }
 }
 

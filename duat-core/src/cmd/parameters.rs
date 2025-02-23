@@ -8,7 +8,7 @@
 //! the same command.
 use std::{iter::Peekable, ops::Range};
 
-pub use args_iter::split_flags_and_args;
+pub use args_iter::get_args;
 use crossterm::style::Color;
 
 use crate::text::{Text, err};
@@ -329,6 +329,14 @@ impl<'a> Parameter<'a> for FormName {
     }
 }
 
+impl<'a> Parameter<'a> for Flags<'a> {
+    type Returns = Flags<'a>;
+
+    fn new(args: &mut Args<'a>) -> std::result::Result<Self::Returns, Text> {
+        Ok(args.flags.clone())
+    }
+}
+
 /// The list of arguments passed to a command
 ///
 /// This list excludes [`Flags`], and separates arguments either by
@@ -346,6 +354,7 @@ pub struct Args<'a> {
     param_range: Range<usize>,
     has_to_start_param: bool,
     is_forming_param: bool,
+    flags: Flags<'a>,
 }
 
 impl<'a> Args<'a> {
@@ -392,33 +401,13 @@ impl<'a> Args<'a> {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct Flags<'a, 'b>(&'a InnerFlags<'b>);
-
-impl<'a, 'b> Flags<'a, 'b> {
-    pub fn new(inner: &'a InnerFlags<'b>) -> Self {
-        Self(inner)
-    }
-
-    pub fn blob(&self, blob: impl AsRef<str>) -> bool {
-        self.0.blob(blob)
-    }
-
-    pub fn word(&self, flag: impl AsRef<str>) -> bool {
-        self.0.word(flag)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-}
-
-pub struct InnerFlags<'a> {
+#[derive(Clone)]
+pub struct Flags<'a> {
     blob: String,
     word: Vec<&'a str>,
 }
 
-impl InnerFlags<'_> {
+impl Flags<'_> {
     /// Checks if all of the [`char`]s in the `blob` passed.
     pub fn blob(&self, blob: impl AsRef<str>) -> bool {
         let mut all_chars = true;
@@ -444,7 +433,7 @@ mod args_iter {
     ///
     /// [`Args`]: super::Args
     /// [`Flags`]: super::Flags
-    pub fn split_flags_and_args(command: &str) -> (super::InnerFlags<'_>, super::Args<'_>) {
+    pub fn get_args(command: &str) -> super::Args<'_> {
         let mut blob = String::new();
         let mut word = Vec::new();
 
@@ -510,12 +499,13 @@ mod args_iter {
             }
         }
 
-        (super::InnerFlags { blob, word }, super::Args {
+        super::Args {
             args,
             param_range: byte..byte,
             has_to_start_param: false,
             is_forming_param: false,
-        })
+            flags: super::Flags { blob, word },
+        }
     }
 
     pub type ArgsIter<'a> = impl Iterator<Item = (&'a str, std::ops::Range<usize>)> + Clone;

@@ -11,7 +11,7 @@
 //!
 //! [`LineNumbers`]: crate::widgets::LineNumbers
 //! [`Cursor`]: crate::mode::Cursor
-use std::{fs, io::ErrorKind, path::PathBuf};
+use std::{fs, path::PathBuf};
 
 use gapbuf::GapBuffer;
 

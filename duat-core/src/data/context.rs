@@ -243,7 +243,7 @@ impl<U: Ui> CurFile<U> {
             rel.iter()
                 .find(|node| node.data_is::<W>())
                 .and_then(|node| {
-                    let (widget, area) = node.as_active();
+                    let (widget, area) = node.parts();
                     widget.mutate_as(|w| f(w, area))
                 })
         }
@@ -355,7 +355,7 @@ impl<U: Ui> CurWidget<U> {
 
     pub fn inspect<R>(&self, f: impl FnOnce(&dyn Widget<U>, &U::Area) -> R) -> R {
         let data = self.0.raw_read();
-        let (widget, area) = data.as_ref().unwrap().as_active();
+        let (widget, area) = data.as_ref().unwrap().parts();
         let widget = widget.read();
 
         f(&*widget, area)
@@ -366,14 +366,14 @@ impl<U: Ui> CurWidget<U> {
         W: Widget<U>,
     {
         let data = self.0.raw_read();
-        let (widget, area) = data.as_ref().unwrap().as_active();
+        let (widget, area) = data.as_ref().unwrap().parts();
 
         widget.inspect_as::<W, R>(|widget| f(widget, area))
     }
 
     pub fn inspect_as<W: Widget<U>, R>(&self, f: impl FnOnce(&W, &U::Area) -> R) -> Option<R> {
         let data = self.0.raw_read();
-        let (widget, area) = data.as_ref().unwrap().as_active();
+        let (widget, area) = data.as_ref().unwrap().parts();
 
         widget.inspect_as(|widget| f(widget, area))
     }
@@ -383,7 +383,7 @@ impl<U: Ui> CurWidget<U> {
         f: impl FnOnce(&RwData<dyn Widget<U>>, &U::Area) -> R,
     ) -> R {
         let data = self.0.read();
-        let (widget, area) = data.as_ref().unwrap().as_active();
+        let (widget, area) = data.as_ref().unwrap().parts();
 
         widget.mutate(|widget| {
             let cfg = widget.print_cfg();
@@ -413,7 +413,7 @@ impl<U: Ui> CurWidget<U> {
         f: impl FnOnce(&RwData<W>, &U::Area) -> R,
     ) -> Option<R> {
         let data = self.0.read();
-        let (widget, area) = data.as_ref().unwrap().as_active();
+        let (widget, area) = data.as_ref().unwrap().parts();
 
         let widget = widget.try_downcast::<W>()?;
 

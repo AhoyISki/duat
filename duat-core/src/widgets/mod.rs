@@ -532,10 +532,7 @@ impl<U: Ui> Node<U> {
         self.widget.raw_write().update(&self.area)
     }
 
-    pub(crate) fn as_active(&self) -> (&RwData<dyn Widget<U>>, &U::Area) {
-        // Since this function is only ever used on widgets that became active
-        // via `command::set_mode`, technically speaking, every widget is
-        // active, so no need to return an `Option`.
+    pub(crate) fn parts(&self) -> (&RwData<dyn Widget<U>>, &U::Area) {
         (&self.widget, &self.area)
     }
 

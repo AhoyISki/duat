@@ -166,9 +166,8 @@ impl<U: Ui> Widget<U> for CmdLine<U> {
         form::set_weak("ParseCommandErr", "DefaultErr");
 
         cmd::add_for!(
-            U,
             "set-prompt",
-            |cmd_line: CmdLine<U>, _, _, new: String| {
+            |cmd_line: CmdLine<U>, _: U::Area, new: String| {
                 *cmd_line.prompt.write() = new;
                 Ok(None)
             }
