@@ -32,7 +32,7 @@
 //! git clone https://github.com/AhoyISki/duat
 //! cargo install --path duat
 //! ```
-//! 
+//!
 //! ## Configuration
 //!
 //! In the configuration file, there should be a `setup_duat!` macro,
@@ -571,14 +571,14 @@ pub mod prelude {
         DuatError, Error, Plugin, clipboard,
         data::{self, RwData},
         text::{self, Builder, Text, err, hint, ok, text},
-        ui::Area,
+        ui::Area as AreaTrait,
         widgets::Widget,
     };
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self as ui, VertRule};
 
     pub use crate::{
-        Ui, cmd, control, cursor,
+        Area, Ui, cmd, control, cursor,
         form::{self, CursorShape, Form},
         hooks::{
             self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FormSet, ModeSwitched,

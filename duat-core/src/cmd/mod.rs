@@ -610,7 +610,7 @@ mod global {
     /// [`form::set`]: crate::form::set
     /// [`form::set_weak`]: crate::form::set_weak
     pub macro add_for($callers:expr, $($mv:ident)? |
-        $widget:ident: $w_ty:ty, $area:tt: $a_ty:ty, $($arg:tt: $t:ty),*
+        $widget:ident: $w_ty:ty, $area:tt: $a_ty:ty $(, $arg:tt: $t:ty)*
     | $f:block) {{
         #[allow(unused_variables, unused_mut)]
         let cmd = $($mv)? |
