@@ -83,6 +83,7 @@ pub struct Rect {
     eqs: Vec<Equality>,
     kind: Kind,
     on_files: bool,
+    edge: Option<VarValue>,
 }
 
 impl Rect {
@@ -96,6 +97,7 @@ impl Rect {
             eqs: Vec::new(),
             kind,
             on_files,
+            edge: None,
         }
     }
 
@@ -155,17 +157,18 @@ impl Rect {
             };
 
             if edge == 1.0 && !*clustered {
-                let frame = p.edge(&self.br, &next.tl, axis, fr);
+                let edge = p.edge(&self.br, &next.tl, axis, fr);
                 self.eqs.extend([
-                    &frame | EQ(STRONG) | 1.0,
-                    (self.end(axis) + &frame) | EQ(REQUIRED) | next.start(axis),
+                    &edge | EQ(STRONG) | 1.0,
+                    (self.end(axis) + &edge) | EQ(REQUIRED) | next.start(axis),
                     // Makes the frame have len = 0 when either of its
                     // side widgets have len == 0.
-                    &frame | GE(REQUIRED) | 0.0,
-                    &frame | LE(REQUIRED) | 1.0,
-                    self.len(axis) | GE(REQUIRED) | &frame,
-                    next.len(axis) | GE(REQUIRED) | &frame,
+                    &edge | GE(REQUIRED) | 0.0,
+                    &edge | LE(REQUIRED) | 1.0,
+                    self.len(axis) | GE(REQUIRED) | &edge,
+                    next.len(axis) | GE(REQUIRED) | &edge,
                 ]);
+                self.edge = Some(edge);
             } else {
                 self.eqs
                     .push(self.end(axis) | EQ(REQUIRED) | next.start(axis));
@@ -200,6 +203,12 @@ impl Rect {
         for eq in self.eqs.drain(..) {
             printer.remove_equality(eq);
         }
+    }
+
+	/// Sets the coordinates of this [`Rect`] to `(0, 0)`
+    pub fn set_to_zero(&self) {
+        self.tl.set_to_zero();
+        self.br.set_to_zero();
     }
 
     /// A [`Variable`], representing the "start" of [`self`], given an
@@ -376,9 +385,10 @@ impl Rects {
             let parent = self.get_mut(parent.id()).unwrap();
             let axis = parent.kind.axis().unwrap();
 
-            match ps.comes_earlier() {
-                true => (i, parent, cons, axis),
-                false => (i + 1, parent, cons, axis),
+            if ps.comes_earlier() {
+                (i, parent, cons, axis)
+            } else {
+                (i + 1, parent, cons, axis)
             }
         };
 
@@ -386,9 +396,10 @@ impl Rects {
 
         parent.kind.children_mut().unwrap().insert(i, (rect, cons));
 
-        let (i, (mut rect_to_fix, cons)) = match i == 0 {
-            true => (1, parent.kind.children_mut().unwrap().remove(1)),
-            false => (i - 1, parent.kind.children_mut().unwrap().remove(i - 1)),
+        let (i, (mut rect_to_fix, cons)) = if i == 0 {
+            (1, parent.kind.children_mut().unwrap().remove(1))
+        } else {
+            (i - 1, parent.kind.children_mut().unwrap().remove(i - 1))
         };
         let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
         rect_to_fix.set_base_eqs(i, parent, p, fr, is_resizable);
@@ -396,6 +407,31 @@ impl Rects {
         parent.kind.children_mut().unwrap().insert(i, entry);
 
         new_id
+    }
+
+    pub fn delete(&mut self, p: &mut Printer, id: AreaId) -> Option<(Rect, Constraints)> {
+        let fr = self.fr;
+
+        let id = self.get_cluster_master(id).unwrap_or(id);
+        let (i, parent) = self.get_parent_mut(id)?;
+
+        let axis = parent.kind.axis().unwrap();
+        let (mut rm_rect, rm_cons) = parent.kind.children_mut().unwrap().remove(i);
+        rm_rect.clear_eqs(p);
+        if let Some(edge) = rm_rect.edge.take() {
+            p.remove_edge(edge);
+        }
+        let (i, (mut rect_to_fix, cons)) = if i == 0 {
+            (0, parent.kind.children_mut().unwrap().remove(0))
+        } else {
+            (i - 1, parent.kind.children_mut().unwrap().remove(i - 1))
+        };
+        let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
+        rect_to_fix.set_base_eqs(i, parent, p, fr, is_resizable);
+        let entry = (rect_to_fix, cons);
+        parent.kind.children_mut().unwrap().insert(i, entry);
+
+        Some((rm_rect, rm_cons))
     }
 
     pub fn new_parent_of(
@@ -550,6 +586,20 @@ impl Rects {
     /// Gets the siblings of the `id`'s [`Rect`]
     pub fn get_siblings(&self, id: AreaId) -> Option<&[(Rect, Constraints)]> {
         self.get_parent(id).and_then(|(_, p)| p.kind.children())
+    }
+
+    pub fn get_cluster_master(&self, id: AreaId) -> Option<AreaId> {
+        let (_, mut area) = self.get_parent(id).filter(|(_, p)| p.is_clustered())?;
+
+        loop {
+            if let Some((_, parent)) = self.get_parent(area.id())
+                && parent.is_clustered()
+            {
+                area = parent
+            } else {
+                break Some(area.id());
+            }
+        }
     }
 
     pub fn get_constraints_mut(&mut self, id: AreaId) -> Option<&mut Constraints> {

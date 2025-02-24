@@ -4,7 +4,7 @@ use duat_core::{
     ui::{Axis, Constraint, PushSpecs},
 };
 
-use self::rect::{Rect, Rects};
+pub use self::rect::{Rect, Rects};
 use crate::{AreaId, Equality, Frame, area::PrintInfo, print::Printer};
 
 mod rect;
@@ -106,6 +106,7 @@ pub struct Layout {
     pub rects: Rects,
     pub active_id: AreaId,
     pub printer: RwData<Printer>,
+    pub deleted_ids: Vec<AreaId>,
 }
 
 impl Layout {
@@ -116,7 +117,12 @@ impl Layout {
         let rects = Rects::new(&mut printer.write(), fr, info);
         let main_id = rects.main.id();
 
-        Layout { rects, active_id: main_id, printer }
+        Layout {
+            rects,
+            active_id: main_id,
+            printer,
+            deleted_ids: Vec::new(),
+        }
     }
 
     /// The index of the main [`Rect`], which holds all (non floating)
@@ -196,6 +202,15 @@ impl Layout {
         (new_id, new_parent_id)
     }
 
+    pub fn delete(&mut self, id: AreaId) {
+        let Some((rect, _)) = self.rects.delete(&mut self.printer.write(), id) else {
+            return;
+        };
+        self.deleted_ids.push(rect.id());
+        rect.set_to_zero();
+        remove_children(&rect, &mut self.deleted_ids);
+    }
+
     /// The current value for the width of [`self`].
     pub fn width(&self) -> u32 {
         self.rects.main.len_value(Axis::Horizontal)
@@ -212,6 +227,10 @@ impl Layout {
 
     pub fn get_parent(&self, id: AreaId) -> Option<(usize, &Rect)> {
         self.rects.get_parent(id)
+    }
+
+    pub fn active_id(&self) -> AreaId {
+        self.active_id
     }
 }
 
@@ -233,4 +252,12 @@ fn get_eqs(
             Constraint::Max(max) => new.len(axis) | LE(STRONG * 2.0) | max,
         })
     })
+}
+
+fn remove_children(rect: &Rect, deleted_ids: &mut Vec<AreaId>) {
+    for (child, _) in rect.children().iter().flat_map(|c| c.iter()) {
+        child.set_to_zero();
+        deleted_ids.push(child.id());
+        remove_children(child, deleted_ids);
+    }
 }

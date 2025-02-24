@@ -1,6 +1,6 @@
 mod iter;
 
-use std::{fmt::Alignment, io::Write};
+use std::{self, fmt::Alignment, io::Write};
 
 use crossterm::cursor;
 use duat_core::{
@@ -9,7 +9,7 @@ use duat_core::{
     data::RwData,
     form::Painter,
     text::{Item, Iter, Part, Point, RevIter, Text},
-    ui::{self, Area as UiArea, Axis, Caret, Constraint, PushSpecs},
+    ui::{self, Area as UiArea, Axis, Caret, Constraint, DuatPermission, PushSpecs},
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
 
@@ -85,13 +85,13 @@ impl Area {
         f: impl FnMut(&Caret, &Item) + 'a,
     ) {
         if text.needs_update() {
-            let first_point = self.first_point(text, cfg);
-            let last_point = self.last_point(text, cfg);
+            let (first_point, _) = self.first_points(text, cfg);
+            let (last_point, _) = self.last_points(text, cfg);
             text.update_range((first_point, last_point));
         }
 
         let layout = self.layout.read();
-        let Some((sender, info)) = layout.rects.get(self.id).and_then(|rect| {
+        let Some((sender, info)) = layout.get(self.id).and_then(|rect| {
             let sender = rect.sender();
             let info = rect.print_info();
             sender.zip(info).map(|(sender, info)| {
@@ -109,7 +109,7 @@ impl Area {
         };
 
         let cap = cfg.wrap_width(sender.coords().width());
-        let active = layout.active_id == self.id;
+        let active = layout.active_id() == self.id;
         let iter = print_iter(iter, cap, cfg, info.points);
 
         let mut lines = sender.lines(info.x_shift, cap);
@@ -224,27 +224,96 @@ impl ui::Area for Area {
     type PrintInfo = PrintInfo;
     type Ui = crate::Ui;
 
-    fn cache(&self) -> Option<Self::Cache> {
-        self.layout
-            .read()
-            .get(self.id)
-            .unwrap()
-            .print_info()
-            .map(|info| *info.read())
+    /////////// Modification
+
+    fn bisect(
+        &self,
+        specs: PushSpecs,
+        cluster: bool,
+        on_files: bool,
+        cache: PrintInfo,
+        _: DuatPermission,
+    ) -> (Area, Option<Area>) {
+        let mut layout = self.layout.write();
+        let layout = &mut *layout;
+
+        let (child, parent) = layout.bisect(self.id, specs, cluster, on_files, cache);
+
+        (
+            Area::new(child, self.layout.clone()),
+            parent.map(|parent| Area::new(parent, self.layout.clone())),
+        )
     }
 
-    fn width(&self) -> u32 {
-        self.layout.inspect(|layout| {
+    fn delete(&self, _: DuatPermission) {
+        let mut layout = self.layout.write();
+        layout.delete(self.id);
+    }
+
+    fn constrain_ver(&self, con: Constraint) -> Result<(), ConstraintErr> {
+        let mut layout = self.layout.write();
+        let cons = layout
+            .rects
+            .get_constraints_mut(self.id)
+            .ok_or(ConstraintErr::NoParent)?
+            .clone();
+
+        if let Some(ver) = cons.on(Axis::Vertical)
+            && ver == con
+        {
+            return Ok(());
+        };
+
+        *layout.rects.get_constraints_mut(self.id).unwrap() = {
+            let mut p = layout.printer.write();
+            let cons = cons.replace(con, Axis::Vertical, &mut p);
+
+            let (_, parent) = layout.get_parent(self.id).unwrap();
             let rect = layout.get(self.id).unwrap();
-            rect.br().x - rect.tl().x
-        })
+
+            let cons = cons.apply(rect, parent.id(), &layout.rects, &mut p);
+            p.flush_equalities().unwrap();
+            cons
+        };
+
+        Ok(())
     }
 
-    fn height(&self) -> u32 {
-        self.layout.inspect(|window| {
-            let rect = window.get(self.id).unwrap();
-            rect.br().y - rect.tl().y
-        })
+    fn constrain_hor(&self, con: Constraint) -> Result<(), ConstraintErr> {
+        let mut layout = self.layout.write();
+        let cons = layout
+            .rects
+            .get_constraints_mut(self.id)
+            .ok_or(ConstraintErr::NoParent)?
+            .clone();
+
+        if let Some(hor) = cons.on(Axis::Horizontal)
+            && hor == con
+        {
+            return Ok(());
+        };
+
+        *layout.rects.get_constraints_mut(self.id).unwrap() = {
+            let mut p = layout.printer.write();
+            let cons = cons.replace(con, Axis::Horizontal, &mut p);
+
+            let (_, parent) = layout.get_parent(self.id).unwrap();
+            let rect = layout.get(self.id).unwrap();
+
+            let cons = cons.apply(rect, parent.id(), &layout.rects, &mut p);
+            p.flush_equalities().unwrap();
+            cons
+        };
+
+        Ok(())
+    }
+
+    fn restore_constraints(&self) -> Result<(), Self::ConstraintChangeErr> {
+        todo!();
+    }
+
+    fn request_width_to_fit(&self, _text: &str) -> Result<(), Self::ConstraintChangeErr> {
+        todo!();
     }
 
     fn scroll_around_point(&self, text: &Text, point: Point, cfg: PrintCfg) {
@@ -265,25 +334,15 @@ impl ui::Area for Area {
         let rect = layout.get(self.id).unwrap();
         let mut old_info = rect.print_info().unwrap().write();
         *old_info = info;
-        old_info.last_main = point;
-        old_info.last_point = None;
-    }
-
-    fn top_left(&self) -> (Point, Option<Point>) {
-        let layout = self.layout.read();
-        let rect = layout.get(self.id).unwrap();
-        let info = rect.print_info().unwrap();
-        let info = info.read();
-        info.points
+        old_info.prev_main = point;
+        old_info.last_points = None;
     }
 
     fn set_as_active(&self) {
         self.layout.write().active_id = self.id;
     }
 
-    fn is_active(&self) -> bool {
-        self.layout.read().active_id == self.id
-    }
+    ////////// Printing
 
     fn print(&self, text: &mut Text, cfg: PrintCfg, painter: Painter) {
         self.print(text, cfg, painter, |_, _| {})
@@ -299,132 +358,9 @@ impl ui::Area for Area {
         self.print(text, cfg, painter, f)
     }
 
-    fn constrain_ver(&self, con: Constraint) -> Result<(), ConstraintErr> {
-        let mut layout = self.layout.write();
-        let cons = layout
-            .rects
-            .get_constraints_mut(self.id)
-            .ok_or(ConstraintErr::NoParent)?
-            .clone();
-
-        if let Some(ver) = cons.on(Axis::Vertical)
-            && ver == con
-        {
-            return Ok(());
-        };
-
-        let cons = {
-            let mut p = layout.printer.write();
-            let cons = cons.replace(con, Axis::Vertical, &mut p);
-
-            let (_, parent) = layout.get_parent(self.id).unwrap();
-            let rect = layout.get(self.id).unwrap();
-
-            let cons = cons.apply(rect, parent.id(), &layout.rects, &mut p);
-            p.flush_equalities().unwrap();
-            cons
-        };
-
-        *layout.rects.get_constraints_mut(self.id).unwrap() = cons;
-
-        Ok(())
-    }
-
-    fn constrain_hor(&self, con: Constraint) -> Result<(), ConstraintErr> {
-        let mut layout = self.layout.write();
-        let cons = layout
-            .rects
-            .get_constraints_mut(self.id)
-            .ok_or(ConstraintErr::NoParent)?
-            .clone();
-
-        if let Some(hor) = cons.on(Axis::Horizontal)
-            && hor == con
-        {
-            return Ok(());
-        };
-
-        let cons = {
-            let mut p = layout.printer.write();
-            let cons = cons.replace(con, Axis::Horizontal, &mut p);
-
-            let (_, parent) = layout.get_parent(self.id).unwrap();
-            let rect = layout.get(self.id).unwrap();
-
-            let cons = cons.apply(rect, parent.id(), &layout.rects, &mut p);
-            p.flush_equalities().unwrap();
-            cons
-        };
-
-        *layout.rects.get_constraints_mut(self.id).unwrap() = cons;
-
-        Ok(())
-    }
-
-    fn restore_constraints(&self) -> Result<(), Self::ConstraintChangeErr> {
-        todo!();
-    }
-
-    fn request_width_to_fit(&self, _text: &str) -> Result<(), Self::ConstraintChangeErr> {
-        todo!();
-    }
-
-    fn has_changed(&self) -> bool {
-        self.layout.read().get(self.id).unwrap().has_changed()
-    }
-
-    fn is_master_of(&self, other: &Self) -> bool {
-        if other.id == self.id {
-            return true;
-        }
-        self.layout.inspect(|layout| {
-            let mut parent_id = other.id;
-            while let Some((_, parent)) = layout.get_parent(parent_id) {
-                parent_id = parent.id();
-                if parent.id() == self.id {
-                    return true;
-                }
-            }
-
-            parent_id == self.id
-        })
-    }
-
-    fn get_cluster_master(&self) -> Option<Self> {
-        let clone = self.layout.clone();
-        self.layout.inspect(|layout| {
-            let (_, mut parent) = layout
-                .get_parent(self.id)
-                .filter(|(_, p)| p.is_clustered())?;
-
-            loop {
-                if let Some((_, gp)) = layout.get_parent(parent.id())
-                    && gp.is_clustered()
-                {
-                    parent = gp
-                } else {
-                    break Some(Area::new(parent.id(), clone));
-                }
-            }
-        })
-    }
-
-    fn bisect(
-        &self,
-        specs: PushSpecs,
-        cluster: bool,
-        on_files: bool,
-        cache: PrintInfo,
-    ) -> (Area, Option<Area>) {
-        let mut layout = self.layout.write();
-        let layout = &mut *layout;
-
-        let (child, parent) = layout.bisect(self.id, specs, cluster, on_files, cache);
-
-        (
-            Area::new(child, self.layout.clone()),
-            parent.map(|parent| Area::new(parent, self.layout.clone())),
-        )
+    fn set_print_info(&self, info: Self::PrintInfo) {
+        let layout = self.layout.read();
+        *layout.get(self.id).unwrap().print_info().unwrap().write() = info;
     }
 
     fn print_iter<'a>(
@@ -468,26 +404,75 @@ impl ui::Area for Area {
         *info
     }
 
-    fn set_print_info(&self, info: Self::PrintInfo) {
-        let layout = self.layout.read();
-        *layout.get(self.id).unwrap().print_info().unwrap().write() = info;
+    ////////// Queries
+
+    fn has_changed(&self) -> bool {
+        self.layout.read().get(self.id).unwrap().has_changed()
     }
 
-    fn first_point(&self, _text: &Text, _cfg: PrintCfg) -> Point {
+    fn is_master_of(&self, other: &Self) -> bool {
+        if other.id == self.id {
+            return true;
+        }
+        self.layout.inspect(|layout| {
+            let mut parent_id = other.id;
+            while let Some((_, parent)) = layout.get_parent(parent_id) {
+                parent_id = parent.id();
+                if parent.id() == self.id {
+                    return true;
+                }
+            }
+
+            parent_id == self.id
+        })
+    }
+
+    fn get_cluster_master(&self) -> Option<Self> {
+        self.layout
+            .read()
+            .rects
+            .get_cluster_master(self.id)
+            .map(|id| Area::new(id, self.layout.clone()))
+    }
+
+    fn cache(&self) -> Option<Self::Cache> {
+        self.layout
+            .read()
+            .get(self.id)
+            .unwrap()
+            .print_info()
+            .map(|info| *info.read())
+    }
+
+    fn width(&self) -> u32 {
+        self.layout.inspect(|layout| {
+            let rect = layout.get(self.id).unwrap();
+            rect.br().x - rect.tl().x
+        })
+    }
+
+    fn height(&self) -> u32 {
+        self.layout.inspect(|window| {
+            let rect = window.get(self.id).unwrap();
+            rect.br().y - rect.tl().y
+        })
+    }
+
+    fn first_points(&self, _text: &Text, _cfg: PrintCfg) -> (Point, Option<Point>) {
         let layout = self.layout.read();
         let rect = layout.get(self.id).unwrap();
         let info = rect.print_info().unwrap();
         let info = info.read();
-        info.points.0
+        info.points
     }
 
-    fn last_point(&self, text: &Text, cfg: PrintCfg) -> Point {
+    fn last_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>) {
         let layout = self.layout.read();
         let rect = layout.get(self.id).unwrap();
         let info = rect.print_info().unwrap();
         let mut info = info.write();
 
-        if let Some(last) = info.last_point {
+        if let Some(last) = info.last_points {
             return last;
         }
 
@@ -496,11 +481,11 @@ impl ui::Area for Area {
         let cfg = IterCfg::new(cfg);
 
         let iter = print_iter(iter, cfg.wrap_width(self.width()), cfg, info.points);
-        let mut point = info.points.0;
+        let mut points = info.points;
         let mut y = 0;
         let height = self.height();
 
-        for (Caret { wrap, .. }, Item { part, real, .. }) in iter {
+        for (Caret { wrap, .. }, Item { part, real, ghost }) in iter {
             if wrap {
                 if y == height {
                     break;
@@ -509,13 +494,21 @@ impl ui::Area for Area {
                     y += 1
                 }
             } else {
-                point = real;
+                points = (real, ghost);
             }
         }
 
-        info.last_point = Some(point);
+        info.last_points = Some(points);
 
-        point
+        points
+    }
+
+    fn is_active(&self) -> bool {
+        self.layout.read().active_id() == self.id
+    }
+
+    fn was_deleted(&self) -> bool {
+        self.layout.read().deleted_ids.contains(&self.id)
     }
 }
 
@@ -531,8 +524,8 @@ pub struct PrintInfo {
     /// How shifted the text is to the left.
     x_shift: u32,
     /// The last position of the main cursor.
-    last_main: Point,
-    last_point: Option<Point>,
+    prev_main: Point,
+    last_points: Option<(Point, Option<Point>)>,
 }
 
 impl PrintInfo {
@@ -560,14 +553,14 @@ fn scroll_ver_around(
     let mut iter = rev_print_iter(text.iter_rev(after), cap, cfg)
         .filter_map(|(caret, item)| caret.wrap.then_some(item.points()));
 
-    let target = match info.last_main > point {
+    let target = match info.prev_main > point {
         true => cfg.scrolloff().y(),
         false => height.saturating_sub(cfg.scrolloff().y() + 1),
     };
     let first = iter.nth(target as usize).unwrap_or_default();
 
-    if (info.last_main > point && first <= info.points)
-        || (info.last_main < point && first >= info.points)
+    if (info.prev_main > point && first <= info.points)
+        || (info.prev_main < point && first >= info.points)
     {
         info.points = first;
     }

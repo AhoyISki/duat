@@ -35,7 +35,7 @@ mod switch {
     use crate::{
         context, duat_name, file_entry,
         hooks::{self, KeySent, KeySentTo, ModeSwitched},
-        ui::{Ui, Window},
+        ui::{Area, Ui, Window},
         widget_entry,
         widgets::{CmdLine, CmdLineMode, File, Node},
     };
@@ -160,12 +160,16 @@ mod switch {
     /// Switches to a certain widget
     pub(super) fn switch_widget<U: Ui>(node: Node<U>) {
         if let Ok(widget) = context::cur_widget::<U>() {
-            widget.node().on_unfocus();
+            if !widget.node().area().was_deleted() {
+                widget.node().on_unfocus();
+            }
         }
 
         context::set_cur(node.as_file(), node.clone());
 
-        node.on_focus();
+        if !node.area().was_deleted() {
+            node.on_focus();
+        }
     }
 
     /// Sends the [`KeyEvent`] to the active [`Mode`]

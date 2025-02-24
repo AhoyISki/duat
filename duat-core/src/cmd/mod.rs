@@ -216,12 +216,32 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
     let tx_clone = tx.clone();
     add!(["quit", "q"], move || {
         let file = context::cur_file::<U>()?;
-        if file.inspect(|file, _| file.text().has_unsaved_changes()) {
-            Err(err!("The file has unsaved changes"))
-        } else {
-            tx_clone.send(DuatEvent::Quit).unwrap();
-            Ok(None)
-        }
+        let path_kind = file.inspect(|file, _| file.path_kind());
+
+        // Should wait here until I'm out of `session_loop`
+        context::windows::<U>().inspect(|windows| {
+            let w = context::cur_window();
+
+            let widget_index = windows[w]
+                .nodes()
+                .position(|node| file.file_ptr_eq(node))
+                .unwrap();
+
+            let name = iter_around::<U>(windows, w, widget_index)
+                .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
+                .unwrap();
+
+            mode::reset_switch_to::<U>(&name);
+        });
+
+        tx_clone.send(DuatEvent::CloseFile(path_kind)).unwrap();
+        Ok(None)
+    })?;
+
+    let tx_clone = tx.clone();
+    add!(["quit!", "q!"], move || {
+        tx_clone.send(DuatEvent::Quit).unwrap();
+        Ok(None)
     })?;
 
     add!(["write", "w"], move |paths: Vec<PathBuf>| {
@@ -287,28 +307,27 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         Ok(Some(ok!("Switched to " [*a] name)))
     })?;
 
-    add!(["buffer", "b"], move |name: OtherFileBuffer<U>| {
+    add!(["buffer", "b"], |name: OtherFileBuffer<U>| {
         mode::reset_switch_to::<U>(&name);
         Ok(Some(ok!("Switched to " [*a] name)))
     })?;
 
-    let windows = context::windows();
-    add!("next-file", move |flags: Flags| {
+    add!("next-file", |flags: Flags| {
+        let windows = context::windows().read();
         let file = context::cur_file()?;
-        let read_windows = windows.read();
         let w = context::cur_window();
 
-        let widget_index = read_windows[w]
+        let widget_index = windows[w]
             .nodes()
             .position(|node| file.file_ptr_eq(node))
             .unwrap();
 
         let name = if flags.word("global") {
-            iter_around::<U>(&read_windows, w, widget_index)
+            iter_around::<U>(&windows, w, widget_index)
                 .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
                 .ok_or_else(|| err!("There are no other open files"))?
         } else {
-            let slice = &read_windows[w..=w];
+            let slice = &windows[w..=w];
             iter_around(slice, 0, widget_index)
                 .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
                 .ok_or_else(|| err!("There are no other files open in this window"))?

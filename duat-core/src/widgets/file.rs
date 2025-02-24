@@ -305,7 +305,7 @@ impl<U: Ui> Widget<U> for File {
     }
 
     fn print(&mut self, area: &<U as Ui>::Area) {
-        let (start, _) = area.top_left();
+        let (start, _) = area.first_points(&self.text, self.cfg);
 
         let mut last_line = area
             .rev_print_iter(self.text.iter_rev(start), IterCfg::new(self.cfg))
@@ -339,7 +339,7 @@ impl<U: Ui> Widget<U> for File {
 }
 
 /// Represents the presence or absence of a path
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PathKind {
     SetExists(PathBuf),
     SetAbsent(PathBuf),

@@ -11,6 +11,7 @@ use std::sync::{
 };
 
 use duat_core::{
+    Mutex,
     cfg::PrintCfg,
     clipboard::Clipboard,
     context::{CurFile, CurWidget},
@@ -18,7 +19,7 @@ use duat_core::{
     mode::Regular,
     session::{FileRet, SessionCfg},
     ui::{self, DuatEvent, UiEvent, Window},
-    widgets::{ShowNotifications, Widget}, Mutex,
+    widgets::{ShowNotifications, Widget},
 };
 use duat_term::VertRule;
 
@@ -72,6 +73,7 @@ pub fn run_duat(
     prev: Vec<FileRet>,
     (duat_tx, duat_rx, ui_tx): Messengers,
 ) -> (Vec<FileRet>, Receiver<DuatEvent>) {
+    <Ui as ui::Ui>::load(ui_ms);
     let mut cfg = SessionCfg::new(clipb);
 
     if let Some(cfg_fn) = CFG_FN.write().unwrap().take() {
@@ -97,4 +99,7 @@ type PluginFn = dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync + 'static;
 #[doc(hidden)]
 pub type Messengers = (Sender<DuatEvent>, Receiver<DuatEvent>, Sender<UiEvent>);
 #[doc(hidden)]
-pub type MetaStatics = (&'static <Ui as ui::Ui>::MetaStatics, &'static Mutex<Clipboard>);
+pub type MetaStatics = (
+    &'static <Ui as ui::Ui>::MetaStatics,
+    &'static Mutex<Clipboard>,
+);

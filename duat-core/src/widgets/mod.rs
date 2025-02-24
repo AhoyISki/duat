@@ -504,6 +504,15 @@ impl<U: Ui> Node<U> {
         let mut widget = self.widget.raw_write();
         widget.update(&self.area);
         widget.print(&self.area);
+        drop(widget);
+
+        if let Some(nodes) = &self.related_widgets {
+            for node in &*nodes.read() {
+                if node.needs_update() {
+                    node.update_and_print();
+                }
+            }
+        }
 
         self.busy_updating.store(false, Ordering::Release);
     }
@@ -522,7 +531,10 @@ impl<U: Ui> Node<U> {
 
     pub fn needs_update(&self) -> bool {
         if !self.busy_updating.load(Ordering::Acquire) {
-            (self.checker)() || self.area.has_changed()
+            if self.area.was_deleted() {
+                crate::log_file!("was deleted");
+            }
+            !self.area.was_deleted() && ((self.checker)() || self.area.has_changed())
         } else {
             false
         }
@@ -607,5 +619,13 @@ impl<U: Ui> Clone for Node<U> {
         }
     }
 }
+
+impl<U: Ui> PartialEq for Node<U> {
+    fn eq(&self, other: &Self) -> bool {
+        self.widget.ptr_eq(&other.widget)
+    }
+}
+
+impl<U: Ui> Eq for Node<U> {}
 
 pub trait CheckerFn = Fn() -> bool + 'static + Send + Sync;

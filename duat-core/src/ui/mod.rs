@@ -3,6 +3,7 @@ mod layout;
 
 use std::{
     fmt::Debug,
+    marker::PhantomData,
     path::PathBuf,
     sync::{Arc, atomic::Ordering, mpsc},
 };
@@ -23,7 +24,7 @@ use crate::{
     data::{RoData, RwData},
     form::Painter,
     text::{Item, Iter, Point, RevIter, Text},
-    widgets::{File, Node, Widget},
+    widgets::{File, Node, PathKind, Widget},
 };
 
 /// All the methods that a working gui/tui will need to implement, in
@@ -35,15 +36,28 @@ pub trait Ui: Sized + Send + Sync + 'static {
     ////////// Functions executed from the outer loop
 
     /// Functions to trigger when the program begins
+    ///
+    /// These will happen in the main `duat` runner
     fn open(ms: &'static Self::MetaStatics, duat_tx: Sender, ui_rx: mpsc::Receiver<UiEvent>);
+
+    /// Functions to trigger when the program reloads
+    ///
+    /// These will happen inside of the dynamically loaded config
+    /// crate.
+    fn load(ms: &'static Self::MetaStatics);
 
     /// Unloads the [`Ui`]
     ///
     /// Unlike [`Ui::close`], this will happen both when Duat reloads
     /// the configuration and when it closes the app.
+    ///
+    /// These will happen inside of the dynamically loaded config
+    /// crate.
     fn unload(ms: &'static Self::MetaStatics);
 
     /// Functions to trigger when the program ends
+    ///
+    /// These will happen in the main `duat` runner
     fn close(ms: &'static Self::MetaStatics);
 
     ////////// Functions executed from within the configuration loop
@@ -75,138 +89,7 @@ pub trait Area: Send + Sync + Sized {
     type Cache: Default + Serialize + Deserialize<'static> + 'static;
     type PrintInfo: Default + Clone + Send + Sync;
 
-    /// Returns the statics from `self`
-    fn cache(&self) -> Option<Self::Cache>;
-
-    /// Gets the width of the area
-    fn width(&self) -> u32;
-
-    /// Gets the height of the area
-    fn height(&self) -> u32;
-
-    /// Scrolls the [`Text`] (up or down) until the main cursor is
-    /// within the [`ScrollOff`] range.
-    ///
-    /// [`ScrollOff`]: crate::cfg::ScrollOff
-    fn scroll_around_point(&self, text: &Text, point: Point, cfg: PrintCfg);
-
-    // Returns the [`Point`]s that would printed first.
-    fn top_left(&self) -> (Point, Option<Point>);
-
-    /// Tells the [`Ui`] that this [`Area`] is the one that is
-    /// currently focused.
-    ///
-    /// Should make [`self`] the active [`Area`] while deactivating
-    /// any other active [`Area`].
-    fn set_as_active(&self);
-
-    /// Returns `true` if this is the currently active [`Area`]
-    ///
-    /// Only one [`Area`] should be active at any given moment.
-    fn is_active(&self) -> bool;
-
-    /// Prints the [`Text`] via an [`Iterator`]
-    fn print(&self, text: &mut Text, cfg: PrintCfg, painter: Painter);
-
-    fn print_with<'a>(
-        &self,
-        text: &mut Text,
-        cfg: PrintCfg,
-        painter: Painter,
-        f: impl FnMut(&Caret, &Item) + 'a,
-    );
-
-    /// Changes the horizontal constraint of the area
-    fn constrain_hor(&self, constraint: Constraint) -> Result<(), Self::ConstraintChangeErr>;
-
-    /// Changes the vertical constraint of the area
-    fn constrain_ver(&self, constraint: Constraint) -> Result<(), Self::ConstraintChangeErr>;
-
-    /// Restores the original constraints of the widget
-    fn restore_constraints(&self) -> Result<(), Self::ConstraintChangeErr>;
-
-    /// Requests that the width be enough to fit a certain piece of
-    /// text.
-    fn request_width_to_fit(&self, text: &str) -> Result<(), Self::ConstraintChangeErr>;
-
-    /// The current printing information of the area
-    fn print_info(&self) -> Self::PrintInfo;
-
-    /// The first point that should be printed
-    fn first_point(&self, text: &Text, cfg: PrintCfg) -> Point;
-
-    /// The last point that should be printed
-    fn last_point(&self, text: &Text, cfg: PrintCfg) -> Point;
-
-    /// Sets a previously acquired [`PrintInfo`] to the area
-    ///
-    /// [`PrintInfo`]: Area::PrintInfo
-    fn set_print_info(&self, info: Self::PrintInfo);
-
-    //////////////////// Queries
-    /// Whether or not [`self`] has changed
-    ///
-    /// This would mean anything relevant that wouldn't be determined
-    /// by [`PrintInfo`], this is most likely going to be the bounding
-    /// box, but it may be something else.
-    ///
-    /// [`PrintInfo`]: Area::PrintInfo
-    fn has_changed(&self) -> bool;
-
-    /// Whether or not [`self`] is the "master" of `other`
-    ///
-    /// This can only happen if, by following [`self`]'s children, you
-    /// would eventually reach `other`.
-    fn is_master_of(&self, other: &Self) -> bool;
-
-    /// Returns the clustered master of [`self`], if there is one
-    ///
-    /// If [`self`] belongs to a clustered group, return the most
-    /// senior member of said cluster, which must hold all other
-    /// members of the cluster.
-    fn get_cluster_master(&self) -> Option<Self>;
-
-    /// Returns a printing iterator
-    ///
-    /// Given an iterator of [`text::Item`]s, returns an iterator
-    /// which assigns to each of them a [`Caret`]. This struct
-    /// essentially represents where horizontally would this character
-    /// be printed.
-    ///
-    /// If you want a reverse iterator, see [`Area::rev_print_iter`].
-    ///
-    /// [`text::Item`]: Item
-    fn print_iter<'a>(
-        &self,
-        iter: Iter<'a>,
-        cfg: IterCfg,
-    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a
-    where
-        Self: Sized;
-
-    fn print_iter_from_top<'a>(
-        &self,
-        text: &'a Text,
-        cfg: IterCfg,
-    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a
-    where
-        Self: Sized;
-
-    /// Returns a reversed printing iterator
-    ///
-    /// Given an iterator of [`text::Item`]s, returns a reversed
-    /// iterator which assigns to each of them a [`Caret`]. This
-    /// struct essentially represents where horizontally each
-    /// character would be printed.
-    ///
-    /// If you want a forwards iterator, see [`Area::print_iter`].
-    ///
-    /// [`text::Item`]: Item
-    fn rev_print_iter<'a>(
-        &self,
-        iter: RevIter<'a>,
-        cfg: IterCfg,
-    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
+    ////////// Area modification
 
     /// Bisects the [`Area`][Ui::Area] with the given index into
     /// two.
@@ -250,7 +133,147 @@ pub trait Area: Send + Sync + Sized {
         cluster: bool,
         on_files: bool,
         cache: Self::Cache,
+        _: DuatPermission,
     ) -> (Self, Option<Self>);
+
+    /// Deletes this [`Area`], signaling the closing of a [`Widget`]
+    fn delete(&self, _: DuatPermission);
+
+    /// Changes the horizontal constraint of the area
+    fn constrain_hor(&self, constraint: Constraint) -> Result<(), Self::ConstraintChangeErr>;
+
+    /// Changes the vertical constraint of the area
+    fn constrain_ver(&self, constraint: Constraint) -> Result<(), Self::ConstraintChangeErr>;
+
+    /// Restores the original constraints of the widget
+    fn restore_constraints(&self) -> Result<(), Self::ConstraintChangeErr>;
+
+    /// Requests that the width be enough to fit a certain piece of
+    /// text.
+    fn request_width_to_fit(&self, text: &str) -> Result<(), Self::ConstraintChangeErr>;
+
+    /// Scrolls the [`Text`] (up or down) until the main cursor is
+    /// within the [`ScrollOff`] range.
+    ///
+    /// [`ScrollOff`]: crate::cfg::ScrollOff
+    fn scroll_around_point(&self, text: &Text, point: Point, cfg: PrintCfg);
+
+    /// Tells the [`Ui`] that this [`Area`] is the one that is
+    /// currently focused.
+    ///
+    /// Should make [`self`] the active [`Area`] while deactivating
+    /// any other active [`Area`].
+    fn set_as_active(&self);
+
+    ////////// Printing
+
+    /// Prints the [`Text`] via an [`Iterator`]
+    fn print(&self, text: &mut Text, cfg: PrintCfg, painter: Painter);
+
+    fn print_with<'a>(
+        &self,
+        text: &mut Text,
+        cfg: PrintCfg,
+        painter: Painter,
+        f: impl FnMut(&Caret, &Item) + 'a,
+    );
+
+    /// Sets a previously acquired [`PrintInfo`] to the area
+    ///
+    /// [`PrintInfo`]: Area::PrintInfo
+    fn set_print_info(&self, info: Self::PrintInfo);
+
+    /// Returns a printing iterator
+    ///
+    /// Given an iterator of [`text::Item`]s, returns an iterator
+    /// which assigns to each of them a [`Caret`]. This struct
+    /// essentially represents where horizontally would this character
+    /// be printed.
+    ///
+    /// If you want a reverse iterator, see [`Area::rev_print_iter`].
+    ///
+    /// [`text::Item`]: Item
+    fn print_iter<'a>(
+        &self,
+        iter: Iter<'a>,
+        cfg: IterCfg,
+    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a
+    where
+        Self: Sized;
+
+    fn print_iter_from_top<'a>(
+        &self,
+        text: &'a Text,
+        cfg: IterCfg,
+    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a
+    where
+        Self: Sized;
+
+    /// Returns a reversed printing iterator
+    ///
+    /// Given an iterator of [`text::Item`]s, returns a reversed
+    /// iterator which assigns to each of them a [`Caret`]. This
+    /// struct essentially represents where horizontally each
+    /// character would be printed.
+    ///
+    /// If you want a forwards iterator, see [`Area::print_iter`].
+    ///
+    /// [`text::Item`]: Item
+    fn rev_print_iter<'a>(
+        &self,
+        iter: RevIter<'a>,
+        cfg: IterCfg,
+    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
+
+    ////////// Queries
+
+    /// Whether or not [`self`] has changed
+    ///
+    /// This would mean anything relevant that wouldn't be determined
+    /// by [`PrintInfo`], this is most likely going to be the bounding
+    /// box, but it may be something else.
+    ///
+    /// [`PrintInfo`]: Area::PrintInfo
+    fn has_changed(&self) -> bool;
+
+    /// Whether or not [`self`] is the "master" of `other`
+    ///
+    /// This can only happen if, by following [`self`]'s children, you
+    /// would eventually reach `other`.
+    fn is_master_of(&self, other: &Self) -> bool;
+
+    /// Returns the clustered master of [`self`], if there is one
+    ///
+    /// If [`self`] belongs to a clustered group, return the most
+    /// senior member of said cluster, which must hold all other
+    /// members of the cluster.
+    fn get_cluster_master(&self) -> Option<Self>;
+
+    /// Returns the statics from `self`
+    fn cache(&self) -> Option<Self::Cache>;
+
+    /// Gets the width of the area
+    fn width(&self) -> u32;
+
+    /// Gets the height of the area
+    fn height(&self) -> u32;
+
+    /// The first point that should be printed
+    fn first_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>);
+
+    /// The last point that should be printed
+    fn last_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>);
+
+    /// The current printing information of the area
+    fn print_info(&self) -> Self::PrintInfo;
+
+    /// Returns `true` if this is the currently active [`Area`]
+    ///
+    /// Only one [`Area`] should be active at any given moment.
+    fn is_active(&self) -> bool;
+
+    /// Wether or not the [`Area`] has been deleted
+    fn was_deleted(&self) -> bool;
 }
 
 /// A container for a master [`Area`] in Parsec
@@ -314,7 +337,7 @@ impl<U: Ui> Window<U> {
         };
 
         let on_files = self.files_area.is_master_of(area);
-        let (child, parent) = area.bisect(specs, cluster, on_files, cache);
+        let (child, parent) = area.bisect(specs, cluster, on_files, cache, DuatPermission::new());
 
         if *area == self.master_area
             && let Some(new_master_area) = parent.clone()
@@ -352,12 +375,34 @@ impl<U: Ui> Window<U> {
         Ok((child, parent))
     }
 
+    /// Removes all [`Node`]s whose [`Area`]s where deleted
+    pub fn remove_file(&mut self, pk: PathKind) {
+        let Some(node) = self
+            .nodes
+            .extract_if(.., |node| {
+                node.as_file()
+                    .is_some_and(|(f, ..)| f.read().path_kind() == pk)
+            })
+            .next()
+        else {
+            return;
+        };
+        node.area().delete(DuatPermission::new());
+
+        if let Some(related) = node.related_widgets() {
+            let nodes = related.read();
+            for node in self.nodes.extract_if(.., |node| nodes.contains(node)) {
+                node.area().delete(DuatPermission::new());
+            }
+        }
+    }
+
     pub fn nodes(&self) -> impl DoubleEndedIterator<Item = &Node<U>> {
         self.nodes.iter()
     }
 
     /// Returns an [`Iterator`] over the names of [`File`]s
-    /// and their respective [`Widget`] indices.
+    /// and their respective [`Widget`] indices
     ///
     /// [`Widget`]: crate::widgets::Widget
     pub fn file_names(&self) -> impl Iterator<Item = (usize, String)> + Clone + '_ {
@@ -405,6 +450,7 @@ pub enum DuatEvent {
     MetaMsg(Text),
     ReloadConfig,
     OpenFile(PathBuf),
+    CloseFile(PathKind),
     Quit,
 }
 
@@ -424,12 +470,7 @@ impl Sender {
     }
 
     pub fn send_resize(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
-        if !crate::REPRINTING_SCREEN.load(Ordering::Acquire) {
-            crate::REPRINTING_SCREEN.store(true, Ordering::Release);
-            self.0.send(DuatEvent::Resize)
-        } else {
-            Ok(())
-        }
+        self.0.send(DuatEvent::Resize)
     }
 
     pub(crate) fn send_form_changed(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
@@ -711,5 +752,15 @@ impl Caret {
     #[inline(always)]
     pub fn new(x: u32, len: u32, wrap: bool) -> Self {
         Self { x, len, wrap }
+    }
+}
+
+/// Only Duat is allowed to alter the layout of [`Widget`]s, so this
+/// struct is used to forbid the end user from doing the same.
+pub struct DuatPermission(PhantomData<()>);
+
+impl DuatPermission {
+    pub(crate) fn new() -> Self {
+        Self(PhantomData)
     }
 }

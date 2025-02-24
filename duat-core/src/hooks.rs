@@ -158,6 +158,9 @@ impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
         }
 
         widget.update(area);
+        if area.was_deleted() {
+            return;
+        }
         widget.print(area);
     }
 }
@@ -178,6 +181,9 @@ impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
 
     fn post_hook(args: &Self::Args) {
         let (widget, area) = args;
+        if area.was_deleted() {
+            return;
+        }
         let mut widget = widget.write();
         let cfg = widget.print_cfg();
 
@@ -376,7 +382,7 @@ impl<H: Hookable> HookHolder for HooksOf<H> {
         while hooks.is_none() {
             hooks = self.0.try_lock();
         }
-        hooks.unwrap().extract_if(.., |(g, _)| *g == group).last();
+        hooks.unwrap().retain(|(g, _)| *g != group);
     }
 }
 
@@ -426,7 +432,7 @@ impl Hooks {
 
     /// Removes hooks with said group
     fn remove(&'static self, group: &'static str) {
-        self.groups.write().extract_if(.., |g| *g == group).next();
+        self.groups.write().retain(|g| *g != group);
         let mut map = self.types.write();
         for holder in map.iter_mut() {
             holder.1.remove(group)

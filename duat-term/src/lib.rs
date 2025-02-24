@@ -58,25 +58,6 @@ impl ui::Ui for Ui {
     type MetaStatics = Mutex<Ui>;
 
     fn open(ms: &'static Self::MetaStatics, tx: Sender, rx: mpsc::Receiver<UiEvent>) {
-        // Hook for returning to regular terminal state
-        std::panic::set_hook(Box::new(|info| {
-            let trace = std::backtrace::Backtrace::capture();
-            terminal::disable_raw_mode().unwrap();
-            execute!(
-                io::stdout(),
-                terminal::Clear(ClearType::All),
-                terminal::LeaveAlternateScreen,
-                terminal::EnableLineWrap,
-                cursor::Show,
-                PopKeyboardEnhancementFlags
-            )
-            .unwrap();
-            if let std::backtrace::BacktraceStatus::Captured = trace.status() {
-                println!("{trace}");
-            }
-            println!("{info}")
-        }));
-
         // Initial terminal setup
         use crossterm::event::{KeyboardEnhancementFlags as KEF, PushKeyboardEnhancementFlags};
         execute!(
@@ -156,6 +137,34 @@ impl ui::Ui for Ui {
         });
     }
 
+    fn load(_ms: &'static Self::MetaStatics) {
+        // Hook for returning to regular terminal state
+        std::panic::set_hook(Box::new(|info| {
+            let trace = std::backtrace::Backtrace::capture();
+            terminal::disable_raw_mode().unwrap();
+            queue!(
+                io::stdout(),
+                terminal::Clear(ClearType::All),
+                terminal::LeaveAlternateScreen,
+                cursor::MoveToColumn(0),
+                terminal::Clear(ClearType::FromCursorDown),
+                terminal::EnableLineWrap,
+                cursor::Show,
+                PopKeyboardEnhancementFlags
+            );
+            if let std::backtrace::BacktraceStatus::Captured = trace.status() {
+                for line in trace.to_string().lines() {
+                    println!("{line}");
+                    queue!(io::stdout(), cursor::MoveToColumn(0));
+                }
+            }
+            for line in info.to_string().lines() {
+                println!("{line}");
+                queue!(io::stdout(), cursor::MoveToColumn(0));
+            }
+        }));
+    }
+
     fn unload(_ms: &'static Self::MetaStatics) {}
 
     fn close(_ms: &'static Self::MetaStatics) {
@@ -169,7 +178,6 @@ impl ui::Ui for Ui {
         cache: <Self::Area as ui::Area>::Cache,
     ) -> Self::Area {
         let mut ui = ms.lock().unwrap();
-        ui.printer.write().flush_equalities().unwrap();
 
         let layout = Layout::new(ui.fr, ui.printer.clone(), cache);
         let root = Area::new(layout.main_index(), RwData::new(layout));

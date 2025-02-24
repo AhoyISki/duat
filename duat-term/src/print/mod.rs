@@ -43,6 +43,7 @@ pub struct Printer {
     is_disabled: bool,
     max: VarPoint,
     var_value_fn: fn() -> VarValue,
+    has_to_print_edges: AtomicBool,
 }
 
 impl Printer {
@@ -76,6 +77,7 @@ impl Printer {
             is_disabled: false,
             max,
             var_value_fn: VarValue::new,
+            has_to_print_edges: AtomicBool::new(false),
         }
     }
 
@@ -169,8 +171,6 @@ impl Printer {
             let old = value.swap(new, Ordering::Release);
             has_changed.store(old != new, Ordering::Release);
         }
-
-        print_edges(&self.edges);
     }
 
     pub fn sender(&mut self, tl: &VarPoint, br: &VarPoint) -> Sender {
@@ -252,6 +252,10 @@ impl Printer {
             queue!(stdout, cursor::RestorePosition, cursor::Show);
         }
 
+        if self.has_to_print_edges.swap(false, Ordering::Relaxed) {
+            print_edges(&self.edges);
+        }
+
         execute!(stdout, terminal::EndSynchronizedUpdate).unwrap();
     }
 
@@ -288,6 +292,10 @@ impl Printer {
         }
     }
 
+    pub fn remove_edge(&mut self, edge: VarValue) {
+        self.edges.retain(|e| !Arc::ptr_eq(&e.width, &edge.value))
+    }
+
     pub fn disable(&mut self) {
         self.is_disabled = true;
     }
@@ -307,6 +315,7 @@ impl Printer {
         self.solver.add_constraints(&self.eqs_to_add)?;
         self.update(false);
         self.eqs_to_add.clear();
+        self.has_to_print_edges.store(true, Ordering::Relaxed);
         Ok(())
     }
 }

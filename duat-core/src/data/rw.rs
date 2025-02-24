@@ -9,10 +9,7 @@ use std::{
 use super::{Data, RoData, RwLock, RwLockReadGuard, RwLockWriteGuard, private::InnerData};
 
 /// A read write shared reference to data
-pub struct RwData<T>
-where
-    T: ?Sized + 'static,
-{
+pub struct RwData<T: ?Sized + 'static> {
     // The `Box` is to allow for downcasting.
     pub(super) data: Arc<RwLock<T>>,
     pub(super) cur_state: Arc<AtomicUsize>,
@@ -39,10 +36,7 @@ impl<T> RwData<T> {
     }
 }
 
-impl<T> RwData<T>
-where
-    T: ?Sized + 'static,
-{
+impl<T: ?Sized> RwData<T> {
     /// Returns a new instance of [`RwData`], assuming that it is
     /// unsized.
     ///
@@ -318,10 +312,7 @@ where
     /// assert!(data_1.ptr_eq(&data_1_clone));
     /// assert!(!data_1.ptr_eq(&data_2));
     /// ```
-    pub fn ptr_eq<U>(&self, other: &(impl Data<U> + ?Sized)) -> bool
-    where
-        U: ?Sized,
-    {
+    pub fn ptr_eq<U: ?Sized>(&self, other: &(impl Data<U> + ?Sized)) -> bool {
         Arc::as_ptr(self.cur_state()) == Arc::as_ptr(other.cur_state())
     }
 
@@ -528,10 +519,7 @@ where
     /// ```
     ///
     /// [`RwData<dyn Trait>`]: RwData
-    pub fn data_is<U>(&self) -> bool
-    where
-        U: ?Sized + 'static,
-    {
+    pub fn data_is<U: ?Sized + 'static>(&self) -> bool {
         self.type_id == TypeId::of::<U>()
     }
 
@@ -567,10 +555,7 @@ where
     /// matches, consider using [`RwData::data_is`].
     ///
     /// [`RwData<dyn Trait>`]: RwData
-    pub fn try_downcast<U>(&self) -> Option<RwData<U>>
-    where
-        U: 'static,
-    {
+    pub fn try_downcast<U: 'static>(&self) -> Option<RwData<U>> {
         if self.data_is::<U>() {
             let Self { data, cur_state, read_state, .. } = self.clone();
             let ptr = Arc::into_raw(data);
@@ -647,19 +632,13 @@ where
     }
 }
 
-impl<T> std::fmt::Debug for RwData<T>
-where
-    T: ?Sized + std::fmt::Debug,
-{
+impl<T: ?Sized + std::fmt::Debug> std::fmt::Debug for RwData<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Debug::fmt(&*self.data.read(), f)
     }
 }
 
-impl<T> Clone for RwData<T>
-where
-    T: ?Sized,
-{
+impl<T: ?Sized> Clone for RwData<T> {
     fn clone(&self) -> Self {
         Self {
             data: self.data.clone(),
@@ -670,10 +649,7 @@ where
     }
 }
 
-impl<T> Default for RwData<T>
-where
-    T: Default,
-{
+impl<T: Default> Default for RwData<T> {
     fn default() -> Self {
         Self {
             data: Arc::new(RwLock::new(T::default())),
@@ -684,10 +660,7 @@ where
     }
 }
 
-impl<T> InnerData<T> for RwData<T>
-where
-    T: ?Sized,
-{
+impl<T: ?Sized> InnerData<T> for RwData<T> {
     fn data(&self) -> RwLockReadGuard<'_, T> {
         self.data.read()
     }
@@ -715,18 +688,12 @@ impl<T: ?Sized> Data<T> for RwData<T> {
     }
 }
 
-pub struct ReadWriteGuard<'a, T>
-where
-    T: ?Sized,
-{
+pub struct ReadWriteGuard<'a, T: ?Sized> {
     guard: RwLockWriteGuard<'a, T>,
     cur_state: &'a Arc<AtomicUsize>,
 }
 
-impl<T> std::ops::Deref for ReadWriteGuard<'_, T>
-where
-    T: ?Sized,
-{
+impl<T: ?Sized> std::ops::Deref for ReadWriteGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -734,19 +701,13 @@ where
     }
 }
 
-impl<T> std::ops::DerefMut for ReadWriteGuard<'_, T>
-where
-    T: ?Sized,
-{
+impl<T: ?Sized> std::ops::DerefMut for ReadWriteGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.guard
     }
 }
 
-impl<T> Drop for ReadWriteGuard<'_, T>
-where
-    T: ?Sized,
-{
+impl<T: ?Sized> Drop for ReadWriteGuard<'_, T> {
     fn drop(&mut self) {
         self.cur_state.fetch_add(1, Ordering::Release);
     }

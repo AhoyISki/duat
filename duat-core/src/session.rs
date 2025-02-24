@@ -208,16 +208,6 @@ impl<U: Ui> Session<U> {
 
             let cur_window = self.cur_window.load(Ordering::Relaxed);
             context::windows::<U>().inspect(|windows| {
-                while windows
-                    .iter()
-                    .flat_map(Window::nodes)
-                    .any(Node::needs_update)
-                {
-                    for node in windows.iter().flat_map(Window::nodes) {
-                        node.update();
-                    }
-                }
-
                 for node in windows[cur_window].nodes() {
                     node.update_and_print();
                 }
@@ -246,6 +236,13 @@ impl<U: Ui> Session<U> {
                     break (files, duat_rx);
                 }
                 BreakTo::OpenFile(file) => self.open_file(file),
+                BreakTo::CloseWidgets(path_kind) => {
+                    context::windows::<U>().mutate(|windows| {
+                        for window in windows.iter_mut() {
+                            window.remove_file(path_kind.clone());
+                        }
+                    });
+                }
             }
         }
     }
@@ -264,19 +261,22 @@ impl<U: Ui> Session<U> {
                     set_mode();
                 }
 
-                if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(50)) {
+                if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(500)) {
                     match event {
                         DuatEvent::Key(key) => mode::send_key(key),
                         DuatEvent::Resize | DuatEvent::FormChange => {
                             for node in cur_window.nodes() {
-                                s.spawn(|| node.update_and_print());
+                                s.spawn(||
+                                node.update_and_print());
                             }
-                            crate::REPRINTING_SCREEN.store(false, Ordering::Release);
                             continue;
                         }
                         DuatEvent::MetaMsg(msg) => context::notify(msg),
                         DuatEvent::ReloadConfig => break BreakTo::ReloadConfig,
                         DuatEvent::OpenFile(file) => break BreakTo::OpenFile(file),
+                        DuatEvent::CloseFile(path_kind) => {
+                            break BreakTo::CloseWidgets(path_kind);
+                        }
                         DuatEvent::Quit => break BreakTo::QuitDuat,
                     }
                 }
@@ -366,6 +366,7 @@ impl<U: Ui> Session<U> {
 enum BreakTo {
     ReloadConfig,
     OpenFile(PathBuf),
+    CloseWidgets(PathKind),
     QuitDuat,
 }
 

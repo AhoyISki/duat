@@ -32,6 +32,14 @@ impl VarPoint {
         vp
     }
 
+	/// Sets the values to `(0, 0)`
+	///
+	/// This is done when a widget is removed.
+    pub fn set_to_zero(&self) {
+        self.y.value.store(0, Ordering::Release);
+        self.x.value.store(0, Ordering::Release);
+    }
+
     pub fn coord(&self) -> Coord {
         let x = self.x.value.load(Ordering::Relaxed);
         let y = self.y.value.load(Ordering::Relaxed);

@@ -1042,8 +1042,8 @@ impl Text {
                 self.add_cursor(cursor, is_main, &cursors);
             }
         } else {
-            let start = area.first_point(self, cfg);
-            let end = area.last_point(self, cfg);
+            let (start, _) = area.first_points(self, cfg);
+            let (end, _) = area.last_points(self, cfg);
             for (cursor, is_main) in cursors.iter() {
                 let range = cursor.range(cursors.is_incl(), self);
                 if range.end > start.byte() && range.start < end.byte() {
@@ -1068,8 +1068,8 @@ impl Text {
                 self.remove_cursor(cursor, &cursors);
             }
         } else {
-            let start = area.first_point(self, cfg);
-            let end = area.last_point(self, cfg);
+            let (start, _) = area.first_points(self, cfg);
+            let (end, _) = area.last_points(self, cfg);
             for (cursor, _) in cursors.iter() {
                 let range = cursor.range(cursors.is_incl(), self);
                 if range.end > start.byte() && range.start < end.byte() {
