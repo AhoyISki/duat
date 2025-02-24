@@ -9,13 +9,13 @@ use std::{
 };
 
 use crossterm::event::KeyEvent;
-use layout::iter_files_for_layout;
+use layout::window_files;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
 pub use self::{
     builder::{FileBuilder, WindowBuilder},
-    layout::{FileId, Layout, MasterOnLeft},
+    layout::{FileId, Layout, MasterOnLeft, WindowFiles},
 };
 use crate::{
     DuatError,
@@ -24,7 +24,7 @@ use crate::{
     data::{RoData, RwData},
     form::Painter,
     text::{Item, Iter, Point, RevIter, Text},
-    widgets::{File, Node, PathKind, Widget},
+    widgets::{File, Node, Widget},
 };
 
 /// All the methods that a working gui/tui will need to implement, in
@@ -364,12 +364,12 @@ impl<U: Ui> Window<U> {
     /// with others being at the perifery of this area.
     pub(crate) fn push_file(
         &mut self,
-        file: File,
+        mut file: File,
         checker: impl Fn() -> bool + 'static + Send + Sync,
     ) -> crate::Result<(Node<U>, Option<U::Area>), ()> {
-        let (id, specs) = self
-            .layout
-            .new_file(&file, iter_files_for_layout(&self.nodes))?;
+        let window_files = window_files(&self.nodes);
+        file.layout_ordering = window_files.len();
+        let (id, specs) = self.layout.new_file(&file, window_files)?;
 
         let (child, parent) = self.push(file, &id.0, checker, specs, false);
 
@@ -383,12 +383,12 @@ impl<U: Ui> Window<U> {
     }
 
     /// Removes all [`Node`]s whose [`Area`]s where deleted
-    pub(crate) fn remove_file(&mut self, pk: PathKind) {
+    pub(crate) fn remove_file(&mut self, path: &str) {
         let Some(node) = self
             .nodes
             .extract_if(.., |node| {
                 node.as_file()
-                    .is_some_and(|(f, ..)| f.read().path_kind() == pk)
+                    .is_some_and(|(f, ..)| f.read().path() == path)
             })
             .next()
         else {
@@ -428,11 +428,15 @@ impl<U: Ui> Window<U> {
     /// and their respective [`Widget`] indices
     ///
     /// [`Widget`]: crate::widgets::Widget
-    pub fn file_names(&self) -> impl Iterator<Item = (usize, String)> + Clone + '_ {
-        self.nodes.iter().enumerate().filter_map(|(pos, node)| {
-            node.try_downcast::<File>()
-                .map(|file| (pos, file.read().name()))
-        })
+    pub fn file_names(&self) -> Vec<String> {
+        window_files(&self.nodes)
+            .into_iter()
+            .map(|f| f.0.widget().inspect_as(|f: &File| f.name()).unwrap())
+            .collect()
+    }
+
+    pub fn file_nodes(&self) -> WindowFiles<U> {
+        window_files(&self.nodes)
     }
 
     pub fn len_widgets(&self) -> usize {
@@ -473,7 +477,7 @@ pub enum DuatEvent {
     MetaMsg(Text),
     ReloadConfig,
     OpenFile(PathBuf),
-    CloseFile(PathKind),
+    CloseFile(String),
     SwapFiles(String, String),
     Quit,
 }

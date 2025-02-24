@@ -1,5 +1,4 @@
-pub use internals::{FileId, Layout};
-pub(super) use internals::{LayoutFiles, iter_files_for_layout};
+pub use internals::{FileId, Layout, WindowFiles, window_files};
 
 use super::{PushSpecs, Ui};
 use crate::{Result, widgets::File};
@@ -7,9 +6,8 @@ use crate::{Result, widgets::File};
 mod internals {
     use crate::{
         Result,
-        data::RwData,
         ui::{Area, Node, PushSpecs, Ui},
-        widgets::{File, Widget},
+        widgets::File,
     };
 
     pub trait Layout<U>: Send + Sync
@@ -19,19 +17,14 @@ mod internals {
         fn new_file(
             &mut self,
             file: &File,
-            prev: LayoutFiles<'_, U>,
+            prev: WindowFiles<'_, U>,
         ) -> Result<(FileId<U>, PushSpecs), ()>;
     }
 
-    pub struct FileId<U>(pub(in crate::ui) U::Area)
-    where
-        U: Ui;
+    pub struct FileId<U: Ui>(pub(in crate::ui) U::Area);
 
-    pub fn iter_files_for_layout<U>(nodes: &[Node<U>]) -> LayoutFiles<'_, U>
-    where
-        U: Ui,
-    {
-        nodes
+    pub fn window_files<U: Ui>(nodes: &[Node<U>]) -> WindowFiles<'_, U> {
+        let mut files: Vec<(&Node<U>, FileId<U>)> = nodes
             .iter()
             .filter(|&node| node.widget().data_is::<File>())
             .map(|node| {
@@ -39,12 +32,19 @@ mod internals {
                     .area()
                     .get_cluster_master()
                     .unwrap_or_else(|| node.area().clone());
-                (node.widget(), FileId::<U>(area))
+                (node, FileId::<U>(area))
             })
+            .collect();
+
+        files.sort_unstable_by_key(|(node, _)| {
+            node.inspect_as::<File, usize>(|f| f.layout_ordering)
+                .unwrap()
+        });
+
+        files
     }
 
-    pub type LayoutFiles<'a, U: Ui> =
-        impl Iterator<Item = (&'a RwData<dyn Widget<U>>, FileId<U>)> + 'a + Clone;
+    pub type WindowFiles<'a, U> = Vec<(&'a Node<U>, FileId<U>)>;
 }
 
 pub struct MasterOnLeft;
@@ -56,12 +56,13 @@ where
     fn new_file(
         &mut self,
         _file: &File,
-        prev: LayoutFiles<'_, U>,
+        mut prev: WindowFiles<'_, U>,
     ) -> Result<(FileId<U>, PushSpecs), ()> {
-        let (i, (_, last)) = prev.enumerate().last().unwrap();
-        Ok(match i == 0 {
-            true => (last, PushSpecs::right()),
-            false => (last, PushSpecs::below()),
+        let (_, last) = prev.pop().unwrap();
+        Ok(if prev.is_empty() {
+            (last, PushSpecs::right())
+        } else {
+            (last, PushSpecs::below())
         })
     }
 }

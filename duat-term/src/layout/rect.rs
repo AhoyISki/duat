@@ -431,7 +431,7 @@ impl Rects {
 
             let axis = grandparent.kind.axis().unwrap();
             let is_resizable = rect.is_resizable_on(axis, &cons);
-            rect.set_base_eqs(i, &grandparent, p, fr, is_resizable);
+            rect.set_base_eqs(i, grandparent, p, fr, is_resizable);
             grandparent.children_mut().unwrap().insert(i, (rect, cons));
 
             (i, grandparent)

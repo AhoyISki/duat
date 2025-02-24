@@ -21,7 +21,7 @@ use crate::{
         Area, DuatEvent, DuatPermission, FileBuilder, Layout, MasterOnLeft, Sender, Ui, UiEvent,
         Window, WindowBuilder,
     },
-    widgets::{File, FileCfg, PathKind, WidgetCfg},
+    widgets::{File, FileCfg, Node, PathKind, WidgetCfg},
 };
 
 #[doc(hidden)]
@@ -236,11 +236,24 @@ impl<U: Ui> Session<U> {
                     break (files, duat_rx);
                 }
                 BreakTo::OpenFile(file) => self.open_file(file),
-                BreakTo::CloseFile(path_kind) => {
+                BreakTo::CloseFile(path) => {
                     let mut windows = context::windows::<U>().write();
-                    for window in windows.iter_mut() {
-                        window.remove_file(path_kind.clone());
+
+                    let (w, lhs) = file_entry(&windows, &path).unwrap();
+                    let lhs = lhs.clone();
+
+                    let ordering = lhs.inspect_as(|f: &File| f.layout_ordering).unwrap();
+
+                    let nodes: Vec<Node<U>> = windows[w].file_nodes()[(ordering + 1)..]
+                        .iter()
+                        .map(|(n, _)| (*n).clone())
+                        .collect();
+
+                    for rhs in nodes {
+                        swap(&mut windows, [w, w], [&lhs, &rhs]);
                     }
+
+                    windows[w].remove_file(&path);
                 }
                 BreakTo::SwapFiles(lhs, rhs) => {
                     let mut windows = context::windows::<U>().write();
@@ -250,13 +263,7 @@ impl<U: Ui> Session<U> {
                     let lhs = lhs.clone();
                     let rhs = rhs.clone();
 
-                    let lhs_nodes = windows[lhs_w].take_related_nodes(&lhs);
-                    let rhs_nodes = windows[rhs_w].take_related_nodes(&rhs);
-
-                    windows[lhs_w].insert_nodes(rhs_nodes);
-                    windows[rhs_w].insert_nodes(lhs_nodes);
-
-                    lhs.area().swap(&rhs.area(), DuatPermission::new());
+                    swap(&mut windows, [lhs_w, rhs_w], [&lhs, &rhs]);
                 }
             }
         }
@@ -288,7 +295,7 @@ impl<U: Ui> Session<U> {
                         DuatEvent::MetaMsg(msg) => context::notify(msg),
                         DuatEvent::ReloadConfig => break BreakTo::ReloadConfig,
                         DuatEvent::OpenFile(file) => break BreakTo::OpenFile(file),
-                        DuatEvent::CloseFile(path_kind) => break BreakTo::CloseFile(path_kind),
+                        DuatEvent::CloseFile(path) => break BreakTo::CloseFile(path),
                         DuatEvent::SwapFiles(lhs, rhs) => break BreakTo::SwapFiles(lhs, rhs),
                         DuatEvent::Quit => break BreakTo::QuitDuat,
                     }
@@ -376,10 +383,33 @@ impl<U: Ui> Session<U> {
     }
 }
 
+fn swap<U: Ui>(windows: &mut [Window<U>], [lhs_w, rhs_w]: [usize; 2], [lhs, rhs]: [&Node<U>; 2]) {
+    let rhs_ordering = rhs
+        .widget()
+        .inspect_as::<File, usize>(|f| f.layout_ordering)
+        .unwrap();
+    let lhs_ordering = lhs
+        .widget()
+        .mutate_as::<File, usize>(|f| std::mem::replace(&mut f.layout_ordering, rhs_ordering))
+        .unwrap();
+    rhs.widget()
+        .mutate_as::<File, ()>(|f| f.layout_ordering = lhs_ordering);
+
+    if lhs_w != rhs_w {
+        let lhs_nodes = windows[lhs_w].take_related_nodes(lhs);
+        let rhs_nodes = windows[rhs_w].take_related_nodes(rhs);
+
+        windows[lhs_w].insert_nodes(rhs_nodes);
+        windows[rhs_w].insert_nodes(lhs_nodes);
+    }
+
+    lhs.area().swap(rhs.area(), DuatPermission::new());
+}
+
 enum BreakTo {
     ReloadConfig,
     OpenFile(PathBuf),
-    CloseFile(PathKind),
+    CloseFile(String),
     SwapFiles(String, String),
     QuitDuat,
 }

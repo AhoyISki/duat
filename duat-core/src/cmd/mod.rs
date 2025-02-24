@@ -216,7 +216,7 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
     let tx_clone = tx.clone();
     add!(["quit", "q"], move || {
         let file = context::cur_file::<U>()?;
-        let path_kind = file.inspect(|file, _| file.path_kind());
+        let path = file.inspect(|file, _| file.path());
 
         // Should wait here until I'm out of `session_loop`
         context::windows::<U>().inspect(|windows| {
@@ -228,14 +228,14 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
                 .unwrap();
 
             let name = iter_around::<U>(windows, w, widget_index)
-                .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
+                .find_map(|(_, node)| node.inspect_as(|f: &File| f.name()))
                 .unwrap();
 
             mode::reset_switch_to::<U>(&name);
         });
 
-        tx_clone.send(DuatEvent::CloseFile(path_kind)).unwrap();
-        Ok(None)
+        tx_clone.send(DuatEvent::CloseFile(path.clone())).unwrap();
+        Ok(Some(ok!("Closed " [*a] path)))
     })?;
 
     let tx_clone = tx.clone();
@@ -294,12 +294,11 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
             .to_string_lossy()
             .to_string();
 
-        if !windows.iter().flat_map(Window::nodes).any(|node| {
-            matches!(
-                node.inspect_as::<File, bool>(|f| f.name() == name),
-                Some(true)
-            )
-        }) {
+        if !windows
+            .iter()
+            .flat_map(Window::nodes)
+            .any(|node| matches!(node.inspect_as(|f: &File| f.name() == name), Some(true)))
+        {
             tx_clone.send(DuatEvent::OpenFile(path.clone())).unwrap();
             return Ok(Some(ok!("Opened " [*a] path)));
         }
@@ -325,12 +324,12 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
 
         let name = if flags.word("global") {
             iter_around::<U>(&windows, w, widget_index)
-                .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
+                .find_map(|(_, node)| node.inspect_as(|f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other open files"))?
         } else {
             let slice = &windows[w..=w];
             iter_around(slice, 0, widget_index)
-                .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
+                .find_map(|(_, node)| node.inspect_as(|f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other files open in this window"))?
         };
 
@@ -351,12 +350,12 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
 
         let name = if flags.word("global") {
             iter_around_rev::<U>(&windows, w, widget_i)
-                .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
+                .find_map(|(_, node)| node.inspect_as(|f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other open files"))?
         } else {
             let slice = &windows[w..=w];
             iter_around_rev(slice, 0, widget_i)
-                .find_map(|(_, node)| node.inspect_as::<File, String>(|file| file.name()))
+                .find_map(|(_, node)| node.inspect_as(|f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other files open in this window"))?
         };
 

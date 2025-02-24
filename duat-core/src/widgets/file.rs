@@ -122,6 +122,7 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
             text,
             cfg: self.cfg,
             printed_lines: Vec::new(),
+            layout_ordering: 0,
         };
 
         // The PushSpecs don't matter
@@ -135,6 +136,7 @@ pub struct File {
     text: Text,
     cfg: PrintCfg,
     printed_lines: Vec<(usize, bool)>,
+    pub(crate) layout_ordering: usize,
 }
 
 impl File {

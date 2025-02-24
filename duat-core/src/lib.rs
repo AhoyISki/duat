@@ -771,12 +771,7 @@ fn file_entry<'a, U: Ui>(
         .iter()
         .enumerate()
         .flat_map(window_index_widget)
-        .find(|(_, node)| {
-            matches!(
-                node.inspect_as::<File, bool>(|file| file.name() == name),
-                Some(true)
-            )
-        })
+        .find(|(_, node)| matches!(node.inspect_as(|f: &File| f.name() == name), Some(true)))
         .ok_or_else(|| err!("File with name " [*a] name [] " not found."))
 }
 

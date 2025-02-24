@@ -192,7 +192,7 @@ impl<'a, U: crate::ui::Ui> Parameter<'a> for FileBuffer<U> {
         if windows
             .iter()
             .flat_map(|w| w.file_names())
-            .any(|(_, f)| f == buffer)
+            .any(|f| f == buffer)
         {
             Ok(buffer)
         } else {
