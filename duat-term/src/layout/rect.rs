@@ -420,14 +420,31 @@ impl Rects {
         let id = self.get_cluster_master(id).unwrap_or(id);
         let (i, parent) = self.get_parent_mut(id)?;
 
-        let axis = parent.kind.axis().unwrap();
         let (mut rm_rect, rm_cons) = parent.children_mut().unwrap().remove(i);
         rm_rect.clear_eqs(p);
+
+        let (i, parent) = if parent.children().unwrap().len() == 1 {
+            let id = parent.id();
+            let (mut rect, cons) = parent.children_mut().unwrap().remove(0);
+            let (i, grandparent) = self.get_parent_mut(id)?;
+            grandparent.children_mut().unwrap().remove(i);
+
+            let axis = grandparent.kind.axis().unwrap();
+            let is_resizable = rect.is_resizable_on(axis, &cons);
+            rect.set_base_eqs(i, &grandparent, p, fr, is_resizable);
+            grandparent.children_mut().unwrap().insert(i, (rect, cons));
+
+            (i, grandparent)
+        } else {
+            (i, parent)
+        };
+
         let (i, (mut rect_to_fix, cons)) = if i == 0 {
             (0, parent.children_mut().unwrap().remove(0))
         } else {
             (i - 1, parent.children_mut().unwrap().remove(i - 1))
         };
+        let axis = parent.kind.axis().unwrap();
         let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
         rect_to_fix.set_base_eqs(i, parent, p, fr, is_resizable);
         let entry = (rect_to_fix, cons);
@@ -446,18 +463,22 @@ impl Rects {
         let id_p0 = parent0.id();
         let (mut rect0, cons0) = parent0.children_mut().unwrap().remove(i0);
 
-        let mut rect1 = {
+        let (mut rect1, _) = {
             let (i1, parent1) = self.get_parent_mut(id1).unwrap();
-            let (rect1, cons1) = parent1.children_mut().unwrap().remove(i1);
+            let (_, cons1) = &parent1.children().unwrap()[i1];
+            let cons1 = cons1.clone();
 
             let axis = parent1.kind.axis().unwrap();
             let is_resizable = rect0.is_resizable_on(axis, &cons1);
             rect0.set_base_eqs(i1, parent1, p, fr, is_resizable);
 
-            parent1.children_mut().unwrap().insert(i1, (rect0, cons1));
+            parent1
+                .children_mut()
+                .unwrap()
+                .insert(i1, (rect0, cons1.clone()));
 
             let (i, (mut rect_to_fix, cons)) = if i1 == 0 {
-                (0, parent1.children_mut().unwrap().remove(0))
+                (1, parent1.children_mut().unwrap().remove(1))
             } else {
                 (i1 - 1, parent1.children_mut().unwrap().remove(i1 - 1))
             };
@@ -466,7 +487,7 @@ impl Rects {
             let entry = (rect_to_fix, cons);
             parent1.children_mut().unwrap().insert(i, entry);
 
-            rect1
+            parent1.children_mut().unwrap().remove(i1 + 1)
         };
 
         let parent0 = self.get_mut(id_p0).unwrap();
@@ -478,7 +499,7 @@ impl Rects {
         parent0.children_mut().unwrap().insert(i0, (rect1, cons0));
 
         let (i, (mut rect_to_fix, cons)) = if i0 == 0 {
-            (0, parent0.children_mut().unwrap().remove(0))
+            (1, parent0.children_mut().unwrap().remove(1))
         } else {
             (i0 - 1, parent0.children_mut().unwrap().remove(i0 - 1))
         };
