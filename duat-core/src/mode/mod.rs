@@ -127,11 +127,9 @@ mod switch {
     /// Switches to the file with the given name
     pub fn reset_switch_to<U: Ui>(name: impl std::fmt::Display) {
         let windows = context::windows::<U>().read();
-        crate::log_file!("got windows");
         let name = name.to_string();
         match file_entry(&windows, &name) {
             Ok((.., node)) => {
-                crate::log_file!("found file");
                 let node = node.clone();
                 *SET_MODE.lock() = Some(Box::new(move || {
                     switch_widget(node);

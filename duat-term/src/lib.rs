@@ -87,7 +87,7 @@ impl ui::Ui for Ui {
                 };
 
                 loop {
-                    if let Ok(true) = event::poll(Duration::from_millis(50)) {
+                    if let Ok(true) = event::poll(Duration::from_millis(13)) {
                         let res = match event::read().unwrap() {
                             event::Event::Key(key) => tx.send_key(key),
                             event::Event::Resize(..) => {
