@@ -135,7 +135,7 @@ mod global {
 
     /// Orders to quit Duat
     pub(crate) fn order_reload_or_quit() {
-        WILL_RELOAD_OR_QUIT.store(false, Ordering::Relaxed);
+        WILL_RELOAD_OR_QUIT.store(true, Ordering::Relaxed);
         while crate::thread::still_running() {
             std::thread::sleep(std::time::Duration::from_micros(500));
         }

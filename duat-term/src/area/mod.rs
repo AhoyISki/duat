@@ -91,6 +91,7 @@ impl Area {
         }
 
         let layout = self.layout.read();
+        let is_active = layout.active_id() == self.id;
         let Some((sender, info)) = layout.get(self.id).and_then(|rect| {
             let sender = rect.sender();
             let info = rect.print_info();
@@ -109,7 +110,6 @@ impl Area {
         };
 
         let cap = cfg.wrap_width(sender.coords().width());
-        let active = layout.active_id() == self.id;
         let iter = print_iter(iter, cap, cfg, info.points);
 
         let mut lines = sender.lines(info.x_shift, cap);
@@ -171,7 +171,7 @@ impl Area {
                     }
                     Part::MainCursor => {
                         if let Some(shape) = painter.main_cursor()
-                            && active
+                            && is_active
                         {
                             lines.show_real_cursor();
                             queue!(lines, shape, cursor::SavePosition);
@@ -387,17 +387,17 @@ impl ui::Area for Area {
         text: &'a Text,
         cfg: IterCfg,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-        let info = {
+        let (info, width) = {
             let layout = self.layout.read();
             let rect = layout.get(self.id).unwrap();
             let info = rect.print_info().unwrap();
             let info = info.read();
-            *info
+            (*info, rect.width())
         };
         let line_start = text.visual_line_start(info.points);
         let iter = text.iter_fwd(line_start);
 
-        print_iter(iter, cfg.wrap_width(self.width()), cfg, info.points)
+        print_iter(iter, cfg.wrap_width(width), cfg, info.points)
     }
 
     fn rev_print_iter<'a>(
@@ -457,14 +457,14 @@ impl ui::Area for Area {
     fn width(&self) -> u32 {
         self.layout.inspect(|layout| {
             let rect = layout.get(self.id).unwrap();
-            rect.br().x - rect.tl().x
+            rect.width()
         })
     }
 
     fn height(&self) -> u32 {
         self.layout.inspect(|window| {
             let rect = window.get(self.id).unwrap();
-            rect.br().y - rect.tl().y
+            rect.height()
         })
     }
 
@@ -479,6 +479,7 @@ impl ui::Area for Area {
     fn last_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>) {
         let layout = self.layout.read();
         let rect = layout.get(self.id).unwrap();
+        let (height, width) = (rect.height(), rect.width());
         let info = rect.print_info().unwrap();
         let mut info = info.write();
 
@@ -490,10 +491,9 @@ impl ui::Area for Area {
         let iter = text.iter_fwd(line_start);
         let cfg = IterCfg::new(cfg);
 
-        let iter = print_iter(iter, cfg.wrap_width(self.width()), cfg, info.points);
+        let iter = print_iter(iter, cfg.wrap_width(width), cfg, info.points);
         let mut points = info.points;
         let mut y = 0;
-        let height = self.height();
 
         for (Caret { wrap, .. }, Item { part, real, ghost }) in iter {
             if wrap {
@@ -515,10 +515,6 @@ impl ui::Area for Area {
 
     fn is_active(&self) -> bool {
         self.layout.read().active_id() == self.id
-    }
-
-    fn was_deleted(&self) -> bool {
-        self.layout.read().deleted_ids.contains(&self.id)
     }
 }
 

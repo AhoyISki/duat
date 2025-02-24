@@ -336,20 +336,20 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
     add!("next-file", |flags: Flags| {
         let windows = context::windows().read();
         let file = context::cur_file()?;
-        let w = context::cur_window();
+        let win = context::cur_window();
 
-        let widget_index = windows[w]
+        let wid = windows[win]
             .nodes()
             .position(|node| file.file_ptr_eq(node))
             .unwrap();
 
         let name = if flags.word("global") {
-            iter_around::<U>(&windows, w, widget_index)
+            iter_around::<U>(&windows, win, wid)
                 .find_map(|(.., node)| node.inspect_as(|f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other open files"))?
         } else {
-            let slice = &windows[w..=w];
-            iter_around(slice, 0, widget_index)
+            let slice = &windows[win..=win];
+            iter_around(slice, 0, wid)
                 .find_map(|(.., node)| node.inspect_as(|f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other files open in this window"))?
         };

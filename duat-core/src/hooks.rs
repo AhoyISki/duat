@@ -158,9 +158,6 @@ impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
         }
 
         widget.update(area);
-        if area.was_deleted() {
-            return;
-        }
         widget.print(area);
     }
 }
@@ -181,9 +178,6 @@ impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
 
     fn post_hook(args: &Self::Args) {
         let (widget, area) = args;
-        if area.was_deleted() {
-            return;
-        }
         let mut widget = widget.write();
         let cfg = widget.print_cfg();
 

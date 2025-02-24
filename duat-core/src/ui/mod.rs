@@ -278,9 +278,6 @@ pub trait Area: Send + Sync + Sized {
     ///
     /// Only one [`Area`] should be active at any given moment.
     fn is_active(&self) -> bool;
-
-    /// Wether or not the [`Area`] has been deleted
-    fn was_deleted(&self) -> bool;
 }
 
 /// A container for a master [`Area`] in Parsec
@@ -416,8 +413,16 @@ impl<U: Ui> Window<U> {
         }
     }
 
-    pub(crate) fn insert_nodes(&mut self, nodes: Vec<Node<U>>) {
-        self.nodes.extend(nodes);
+    pub(crate) fn insert_file_nodes(&mut self, layout_ordering: usize, nodes: Vec<Node<U>>) {
+        if let Some(i) = self.nodes.iter().position(|node| {
+            node.widget()
+                .inspect_as(|f: &File| f.layout_ordering)
+                .is_some_and(|lo| lo >= layout_ordering)
+        }) {
+            self.nodes.splice(i..i, nodes);
+        } else {
+            self.nodes.extend(nodes);
+        }
     }
 
     pub fn nodes(&self) -> impl ExactSizeIterator<Item = &Node<U>> + DoubleEndedIterator {

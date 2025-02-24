@@ -215,6 +215,14 @@ impl Rect {
         self.br.set_to_zero();
     }
 
+    pub fn height(&self) -> u32 {
+        self.br().y - self.tl().y
+    }
+
+    pub fn width(&self) -> u32 {
+        self.br().x - self.tl().x
+    }
+
     /// A [`Variable`], representing the "start" of [`self`], given an
     /// [`Axis`]. It will be the left or upper side of a [`Rect`].
     pub fn start(&self, axis: Axis) -> &VarValue {

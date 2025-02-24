@@ -106,7 +106,6 @@ pub struct Layout {
     pub rects: Rects,
     pub active_id: AreaId,
     pub printer: RwData<Printer>,
-    pub deleted_ids: Vec<AreaId>,
 }
 
 impl Layout {
@@ -117,12 +116,7 @@ impl Layout {
         let rects = Rects::new(&mut printer.write(), fr, info);
         let main_id = rects.main.id();
 
-        Layout {
-            rects,
-            active_id: main_id,
-            printer,
-            deleted_ids: Vec::new(),
-        }
+        Layout { rects, active_id: main_id, printer }
     }
 
     /// The index of the main [`Rect`], which holds all (non floating)
@@ -206,9 +200,8 @@ impl Layout {
         let Some((rect, _)) = self.rects.delete(&mut self.printer.write(), id) else {
             return;
         };
-        self.deleted_ids.push(rect.id());
         rect.set_to_zero();
-        remove_children(&rect, &mut self.deleted_ids);
+        remove_children(&rect);
     }
 
     pub fn swap(&mut self, id0: AreaId, id1: AreaId) {
@@ -258,10 +251,9 @@ fn get_eqs(
     })
 }
 
-fn remove_children(rect: &Rect, deleted_ids: &mut Vec<AreaId>) {
+fn remove_children(rect: &Rect) {
     for (child, _) in rect.children().iter().flat_map(|c| c.iter()) {
         child.set_to_zero();
-        deleted_ids.push(child.id());
-        remove_children(child, deleted_ids);
+        remove_children(child);
     }
 }

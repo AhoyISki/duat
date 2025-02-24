@@ -95,7 +95,7 @@ impl Text {
                 if let Ok(Some(half)) = dfas.rev.0.try_search_rev(&mut rev_cache, &rev_input) {
                     // Ignore empty matches at the end of the input.
                     if half.offset() == init {
-                        rev_input.set_end(init - 1);
+                        rev_input.set_end(init.checked_sub(1)?);
                     } else {
                         break half.offset();
                     }

@@ -535,10 +535,7 @@ impl<U: Ui> Node<U> {
 
     pub fn needs_update(&self) -> bool {
         if !self.busy_updating.load(Ordering::Acquire) {
-            if self.area.was_deleted() {
-                crate::log_file!("was deleted");
-            }
-            !self.area.was_deleted() && ((self.checker)() || self.area.has_changed())
+            (self.checker)() || self.area.has_changed()
         } else {
             false
         }

@@ -35,7 +35,7 @@ mod switch {
     use crate::{
         context, duat_name, file_entry,
         hooks::{self, KeySent, KeySentTo, ModeSwitched},
-        ui::{Area, Ui, Window},
+        ui::{Ui, Window},
         widget_entry,
         widgets::{CmdLine, CmdLineMode, File, Node},
     };
@@ -127,9 +127,11 @@ mod switch {
     /// Switches to the file with the given name
     pub fn reset_switch_to<U: Ui>(name: impl std::fmt::Display) {
         let windows = context::windows::<U>().read();
+        crate::log_file!("got windows");
         let name = name.to_string();
         match file_entry(&windows, &name) {
             Ok((.., node)) => {
+                crate::log_file!("found file");
                 let node = node.clone();
                 *SET_MODE.lock() = Some(Box::new(move || {
                     switch_widget(node);
@@ -160,16 +162,12 @@ mod switch {
     /// Switches to a certain widget
     pub(super) fn switch_widget<U: Ui>(node: Node<U>) {
         if let Ok(widget) = context::cur_widget::<U>() {
-            if !widget.node().area().was_deleted() {
-                widget.node().on_unfocus();
-            }
+            widget.node().on_unfocus();
         }
 
         context::set_cur(node.as_file(), node.clone());
 
-        if !node.area().was_deleted() {
-            node.on_focus();
-        }
+        node.on_focus();
     }
 
     /// Sends the [`KeyEvent`] to the active [`Mode`]

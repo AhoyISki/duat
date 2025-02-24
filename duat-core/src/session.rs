@@ -220,8 +220,8 @@ impl<U: Ui> Session<U> {
                     hooks::trigger::<ConfigUnloaded>(());
                     hooks::trigger::<ExitedDuat>(());
                     crate::thread::quit_queue();
-                    self.save_cache(true);
                     context::order_reload_or_quit();
+                    self.save_cache(true);
                     ui_tx.send(UiEvent::Quit).unwrap();
                     break (Vec::new(), duat_rx);
                 }
@@ -229,41 +229,44 @@ impl<U: Ui> Session<U> {
                     hooks::trigger::<ConfigUnloaded>(());
                     U::unload(self.ms);
                     crate::thread::quit_queue();
+                    context::order_reload_or_quit();
                     self.save_cache(false);
                     let files = self.take_files();
-                    context::order_reload_or_quit();
                     ui_tx.send(UiEvent::Reload).unwrap();
                     break (files, duat_rx);
                 }
                 BreakTo::OpenFile(file) => self.open_file(file),
                 BreakTo::CloseFile(name) => {
-                    let mut windows = context::windows::<U>().write();
+                    let (win, lhs, nodes) = context::windows::<U>().inspect(|windows| {
+                        let (lhs_win, _, lhs) = file_entry(windows, &name).unwrap();
+                        let lhs = lhs.clone();
 
-                    let (lhs_win, _, lhs) = file_entry(&windows, &name).unwrap();
-                    let lhs = lhs.clone();
+                        let ordering = lhs.inspect_as(|f: &File| f.layout_ordering).unwrap();
 
-                    let ordering = lhs.inspect_as(|f: &File| f.layout_ordering).unwrap();
+                        let nodes: Vec<Node<U>> = windows[lhs_win].file_nodes()[(ordering + 1)..]
+                            .iter()
+                            .map(|(n, _)| (*n).clone())
+                            .collect();
 
-                    let nodes: Vec<Node<U>> = windows[lhs_win].file_nodes()[(ordering + 1)..]
-                        .iter()
-                        .map(|(n, _)| (*n).clone())
-                        .collect();
+                        (lhs_win, lhs, nodes)
+                    });
 
                     for rhs in nodes {
-                        swap(&mut windows, [lhs_win, lhs_win], [&lhs, &rhs]);
+                        swap([win, win], [&lhs, &rhs]);
                     }
 
-                    windows[lhs_win].remove_file(&name);
+                    context::windows::<U>().write()[win].remove_file(&name);
                 }
-                BreakTo::SwapFiles(lhs, rhs) => {
-                    let mut windows = context::windows::<U>().write();
+                BreakTo::SwapFiles(lhs_name, rhs_name) => {
+                    let (wins, [lhs_node, rhs_node]) = context::windows::<U>().inspect(|windows| {
+                        let (lhs_win, _, lhs_node) = file_entry(windows, &lhs_name).unwrap();
+                        let (rhs_win, _, rhs_node) = file_entry(windows, &rhs_name).unwrap();
+                        let lhs_node = lhs_node.clone();
+                        let rhs_node = rhs_node.clone();
+                        ([lhs_win, rhs_win], [lhs_node, rhs_node])
+                    });
 
-                    let (lhs_win, _, lhs) = file_entry(&windows, &lhs).unwrap();
-                    let (rhs_win, _, rhs) = file_entry(&windows, &rhs).unwrap();
-                    let lhs = lhs.clone();
-                    let rhs = rhs.clone();
-
-                    swap(&mut windows, [lhs_win, rhs_win], [&lhs, &rhs]);
+                    swap(wins, [&lhs_node, &rhs_node]);
                 }
             }
         }
@@ -383,7 +386,7 @@ impl<U: Ui> Session<U> {
     }
 }
 
-fn swap<U: Ui>(windows: &mut [Window<U>], [lhs_w, rhs_w]: [usize; 2], [lhs, rhs]: [&Node<U>; 2]) {
+fn swap<U: Ui>([lhs_w, rhs_w]: [usize; 2], [lhs, rhs]: [&Node<U>; 2]) {
     let rhs_ordering = rhs
         .widget()
         .inspect_as::<File, usize>(|f| f.layout_ordering)
@@ -395,13 +398,13 @@ fn swap<U: Ui>(windows: &mut [Window<U>], [lhs_w, rhs_w]: [usize; 2], [lhs, rhs]
     rhs.widget()
         .mutate_as::<File, ()>(|f| f.layout_ordering = lhs_ordering);
 
-    if lhs_w != rhs_w {
-        let lhs_nodes = windows[lhs_w].take_related_nodes(lhs);
-        let rhs_nodes = windows[rhs_w].take_related_nodes(rhs);
+    let mut windows = context::windows::<U>().write();
 
-        windows[lhs_w].insert_nodes(rhs_nodes);
-        windows[rhs_w].insert_nodes(lhs_nodes);
-    }
+    let lhs_nodes = windows[lhs_w].take_related_nodes(lhs);
+    windows[rhs_w].insert_file_nodes(rhs_ordering, lhs_nodes);
+
+    let rhs_nodes = windows[rhs_w].take_related_nodes(rhs);
+    windows[lhs_w].insert_file_nodes(lhs_ordering, rhs_nodes);
 
     lhs.area().swap(rhs.area(), DuatPermission::new());
 }
