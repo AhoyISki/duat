@@ -211,6 +211,10 @@ impl Layout {
         remove_children(&rect, &mut self.deleted_ids);
     }
 
+    pub fn swap(&mut self, id0: AreaId, id1: AreaId) {
+        self.rects.swap(&mut self.printer.write(), id0, id1);
+    }
+
     /// The current value for the width of [`self`].
     pub fn width(&self) -> u32 {
         self.rects.main.len_value(Axis::Horizontal)

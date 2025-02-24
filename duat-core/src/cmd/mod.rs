@@ -284,6 +284,7 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
     })?;
 
     let windows = context::windows::<U>();
+    let tx_clone = tx.clone();
     add!(["edit", "e"], move |path: PathBuf| {
         let windows = windows.read();
 
@@ -299,7 +300,7 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
                 Some(true)
             )
         }) {
-            tx.send(DuatEvent::OpenFile(path.clone())).unwrap();
+            tx_clone.send(DuatEvent::OpenFile(path.clone())).unwrap();
             return Ok(Some(ok!("Opened " [*a] path)));
         }
 
@@ -362,6 +363,15 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         mode::reset_switch_to::<U>(&name);
 
         Ok(Some(ok!("Switched to " [*a] name)))
+    })?;
+
+    let tx_clone = tx.clone();
+    add!("swap", move |lhs: FileBuffer<U>, rhs: FileBuffer<U>| {
+        tx_clone
+            .send(DuatEvent::SwapFiles(lhs.to_string(), rhs.to_string()))
+            .unwrap();
+
+        Ok(Some(ok!("Swapped " [*a] lhs [] " and " [*a] rhs)))
     })?;
 
     add!("colorscheme", |scheme: ColorSchemeArg| {

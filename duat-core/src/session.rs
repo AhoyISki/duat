@@ -14,14 +14,14 @@ use parking_lot::Mutex;
 use crate::{
     cache::{delete_cache, store_cache},
     cfg::PrintCfg,
-    cmd, context, form,
+    cmd, context, file_entry, form,
     hooks::{self, ConfigLoaded, ConfigUnloaded, ExitedDuat, OnFileOpen, OnWindowOpen},
     mode,
     ui::{
-        Area, DuatEvent, FileBuilder, Layout, MasterOnLeft, Sender, Ui, UiEvent, Window,
-        WindowBuilder,
+        Area, DuatEvent, DuatPermission, FileBuilder, Layout, MasterOnLeft, Sender, Ui, UiEvent,
+        Window, WindowBuilder,
     },
-    widgets::{File, FileCfg, Node, PathKind, WidgetCfg},
+    widgets::{File, FileCfg, PathKind, WidgetCfg},
 };
 
 #[doc(hidden)]
@@ -236,12 +236,27 @@ impl<U: Ui> Session<U> {
                     break (files, duat_rx);
                 }
                 BreakTo::OpenFile(file) => self.open_file(file),
-                BreakTo::CloseWidgets(path_kind) => {
-                    context::windows::<U>().mutate(|windows| {
-                        for window in windows.iter_mut() {
-                            window.remove_file(path_kind.clone());
-                        }
-                    });
+                BreakTo::CloseFile(path_kind) => {
+                    let mut windows = context::windows::<U>().write();
+                    for window in windows.iter_mut() {
+                        window.remove_file(path_kind.clone());
+                    }
+                }
+                BreakTo::SwapFiles(lhs, rhs) => {
+                    let mut windows = context::windows::<U>().write();
+
+                    let (lhs_w, lhs) = file_entry(&windows, &lhs).unwrap();
+                    let (rhs_w, rhs) = file_entry(&windows, &rhs).unwrap();
+                    let lhs = lhs.clone();
+                    let rhs = rhs.clone();
+
+                    let lhs_nodes = windows[lhs_w].take_related_nodes(&lhs);
+                    let rhs_nodes = windows[rhs_w].take_related_nodes(&rhs);
+
+                    windows[lhs_w].insert_nodes(rhs_nodes);
+                    windows[rhs_w].insert_nodes(lhs_nodes);
+
+                    lhs.area().swap(&rhs.area(), DuatPermission::new());
                 }
             }
         }
@@ -266,17 +281,15 @@ impl<U: Ui> Session<U> {
                         DuatEvent::Key(key) => mode::send_key(key),
                         DuatEvent::Resize | DuatEvent::FormChange => {
                             for node in cur_window.nodes() {
-                                s.spawn(||
-                                node.update_and_print());
+                                s.spawn(|| node.update_and_print());
                             }
                             continue;
                         }
                         DuatEvent::MetaMsg(msg) => context::notify(msg),
                         DuatEvent::ReloadConfig => break BreakTo::ReloadConfig,
                         DuatEvent::OpenFile(file) => break BreakTo::OpenFile(file),
-                        DuatEvent::CloseFile(path_kind) => {
-                            break BreakTo::CloseWidgets(path_kind);
-                        }
+                        DuatEvent::CloseFile(path_kind) => break BreakTo::CloseFile(path_kind),
+                        DuatEvent::SwapFiles(lhs, rhs) => break BreakTo::SwapFiles(lhs, rhs),
                         DuatEvent::Quit => break BreakTo::QuitDuat,
                     }
                 }
@@ -366,7 +379,8 @@ impl<U: Ui> Session<U> {
 enum BreakTo {
     ReloadConfig,
     OpenFile(PathBuf),
-    CloseWidgets(PathKind),
+    CloseFile(PathKind),
+    SwapFiles(String, String),
     QuitDuat,
 }
 

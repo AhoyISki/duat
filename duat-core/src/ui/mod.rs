@@ -139,6 +139,13 @@ pub trait Area: Send + Sync + Sized {
     /// Deletes this [`Area`], signaling the closing of a [`Widget`]
     fn delete(&self, _: DuatPermission);
 
+    /// Swaps this [`Area`] with another one
+    ///
+    /// The swapped [`Area`]s will be cluster masters of the
+    /// respective [`Area`]s. As such, if they belong to the same
+    /// master, nothing happens.
+    fn swap(&self, other: &Self, _: DuatPermission);
+
     /// Changes the horizontal constraint of the area
     fn constrain_hor(&self, constraint: Constraint) -> Result<(), Self::ConstraintChangeErr>;
 
@@ -286,7 +293,7 @@ pub struct Window<U: Ui> {
 
 impl<U: Ui> Window<U> {
     /// Returns a new instance of [`Window`]
-    pub fn new<W: Widget<U>>(
+    pub(crate) fn new<W: Widget<U>>(
         ms: &'static U::MetaStatics,
         widget: W,
         checker: impl Fn() -> bool + Send + Sync + 'static,
@@ -318,7 +325,7 @@ impl<U: Ui> Window<U> {
     }
 
     /// Pushes a [`Widget`] onto an existing one
-    pub fn push<W: Widget<U>>(
+    pub(crate) fn push<W: Widget<U>>(
         &mut self,
         widget: W,
         area: &U::Area,
@@ -355,7 +362,7 @@ impl<U: Ui> Window<U> {
     /// This is an area, usually in the center, that contains all
     /// [`File`]s, and their associated [`Widget`]s,
     /// with others being at the perifery of this area.
-    pub fn push_file(
+    pub(crate) fn push_file(
         &mut self,
         file: File,
         checker: impl Fn() -> bool + 'static + Send + Sync,
@@ -376,7 +383,7 @@ impl<U: Ui> Window<U> {
     }
 
     /// Removes all [`Node`]s whose [`Area`]s where deleted
-    pub fn remove_file(&mut self, pk: PathKind) {
+    pub(crate) fn remove_file(&mut self, pk: PathKind) {
         let Some(node) = self
             .nodes
             .extract_if(.., |node| {
@@ -395,6 +402,22 @@ impl<U: Ui> Window<U> {
                 node.area().delete(DuatPermission::new());
             }
         }
+    }
+
+    /// Takes all [`Node`]s related to a given [`Node`]
+    pub(crate) fn take_related_nodes(&mut self, node: &Node<U>) -> Vec<Node<U>> {
+        if let Some(related) = node.related_widgets() {
+            let nodes = related.read();
+            self.nodes
+                .extract_if(.., |n| nodes.contains(n) || n == node)
+                .collect()
+        } else {
+            Vec::new()
+        }
+    }
+
+    pub(crate) fn insert_nodes(&mut self, nodes: Vec<Node<U>>) {
+        self.nodes.extend(nodes);
     }
 
     pub fn nodes(&self) -> impl DoubleEndedIterator<Item = &Node<U>> {
@@ -451,6 +474,7 @@ pub enum DuatEvent {
     ReloadConfig,
     OpenFile(PathBuf),
     CloseFile(PathKind),
+    SwapFiles(String, String),
     Quit,
 }
 

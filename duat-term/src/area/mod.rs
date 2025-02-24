@@ -250,6 +250,16 @@ impl ui::Area for Area {
         layout.delete(self.id);
     }
 
+    fn swap(&self, rhs: &Self, _: DuatPermission) {
+        let mut layout = self.layout.write();
+        let id0 = layout.rects.get_cluster_master(self.id).unwrap_or(self.id);
+        let id1 = layout.rects.get_cluster_master(rhs.id).unwrap_or(rhs.id);
+        if id0 == id1 {
+            return;
+        }
+        layout.swap(id0, id1);
+    }
+
     fn constrain_ver(&self, con: Constraint) -> Result<(), ConstraintErr> {
         let mut layout = self.layout.write();
         let cons = layout
