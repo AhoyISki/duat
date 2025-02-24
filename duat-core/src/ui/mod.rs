@@ -383,12 +383,12 @@ impl<U: Ui> Window<U> {
     }
 
     /// Removes all [`Node`]s whose [`Area`]s where deleted
-    pub(crate) fn remove_file(&mut self, path: &str) {
+    pub(crate) fn remove_file(&mut self, name: &str) {
         let Some(node) = self
             .nodes
             .extract_if(.., |node| {
                 node.as_file()
-                    .is_some_and(|(f, ..)| f.read().path() == path)
+                    .is_some_and(|(f, ..)| f.read().name() == name)
             })
             .next()
         else {
@@ -420,7 +420,7 @@ impl<U: Ui> Window<U> {
         self.nodes.extend(nodes);
     }
 
-    pub fn nodes(&self) -> impl DoubleEndedIterator<Item = &Node<U>> {
+    pub fn nodes(&self) -> impl ExactSizeIterator<Item = &Node<U>> + DoubleEndedIterator {
         self.nodes.iter()
     }
 
@@ -432,6 +432,13 @@ impl<U: Ui> Window<U> {
         window_files(&self.nodes)
             .into_iter()
             .map(|f| f.0.widget().inspect_as(|f: &File| f.name()).unwrap())
+            .collect()
+    }
+
+    pub fn file_paths(&self) -> Vec<String> {
+        window_files(&self.nodes)
+            .into_iter()
+            .map(|f| f.0.widget().inspect_as(|f: &File| f.path()).unwrap())
             .collect()
     }
 

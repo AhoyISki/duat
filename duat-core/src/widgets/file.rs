@@ -18,7 +18,7 @@ use gapbuf::GapBuffer;
 use crate::{
     cache::load_cache,
     cfg::{IterCfg, PrintCfg},
-    form,
+    context, form,
     mode::Cursors,
     text::Text,
     ui::{Area, PushSpecs, Ui},
@@ -145,17 +145,17 @@ impl File {
     /// Writes the file to the current [`Path`], if one was set
     ///
     /// [`Path`]: std::path::Path
-    pub fn write(&self) -> Result<usize, String> {
-        if let PathKind::SetExists(path) = &self.path {
+    pub fn write(&mut self) -> Result<usize, String> {
+        if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &self.path {
+            let path = path.clone();
             self.text
                 .write_to(std::io::BufWriter::new(
-                    fs::File::create(path).map_err(|err| err.to_string())?,
+                    fs::File::create(&path).map_err(|err| err.to_string())?,
                 ))
+                .inspect(|_| self.path = PathKind::SetExists(path))
                 .map_err(|err| err.to_string())
         } else {
-            Err(String::from(
-                "The file has no associated path, and no path was given to write to",
-            ))
+            Err(String::from("The File has no path to write to"))
         }
     }
 
@@ -173,55 +173,28 @@ impl File {
     ///
     /// If there is no set path, returns `"*scratch file*#{id}"`.
     pub fn path(&self) -> String {
-        match &self.path {
-            PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
-                path.to_string_lossy().to_string()
-            }
-            PathKind::NotSet(id) => {
-                let path = std::env::current_dir()
-                    .unwrap()
-                    .to_string_lossy()
-                    .to_string();
-
-                format!("{path}/*scratch file*#{id}")
-            }
-        }
+        self.path.path()
     }
 
     /// The full path of the file.
     ///
     /// Returns [`None`] if the path has not been set yet.
     pub fn path_set(&self) -> Option<String> {
-        match &self.path {
-            PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
-                Some(path.to_string_lossy().to_string())
-            }
-            PathKind::NotSet(_) => None,
-        }
+        self.path.path_set()
     }
 
     /// The file's name.
     ///
     /// If there is no set path, returns `"*scratch file #{id}*"`.
     pub fn name(&self) -> String {
-        match &self.path {
-            PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
-                path.file_name().unwrap().to_string_lossy().to_string()
-            }
-            PathKind::NotSet(id) => format!("*scratch file #{id}*"),
-        }
+        self.path.name()
     }
 
     /// The file's name.
     ///
     /// Returns [`None`] if the path has not been set yet.
     pub fn name_set(&self) -> Option<String> {
-        match &self.path {
-            PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
-                Some(path.file_name().unwrap().to_string_lossy().to_string())
-            }
-            PathKind::NotSet(_) => None,
-        }
+        self.path.name_set()
     }
 
     pub fn path_kind(&self) -> PathKind {
@@ -355,6 +328,59 @@ impl PathKind {
         static UNSET_COUNT: AtomicUsize = AtomicUsize::new(1);
 
         PathKind::NotSet(UNSET_COUNT.fetch_add(1, Ordering::Relaxed))
+    }
+
+    pub fn path(&self) -> String {
+        match self {
+            PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
+                path.to_string_lossy().to_string()
+            }
+            PathKind::NotSet(id) => {
+                let path = std::env::current_dir()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string();
+
+                format!("{path}/*scratch file*#{id}")
+            }
+        }
+    }
+
+    pub fn path_set(&self) -> Option<String> {
+        match self {
+            PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
+                Some(path.to_string_lossy().to_string())
+            }
+            PathKind::NotSet(_) => None,
+        }
+    }
+
+    pub fn name(&self) -> String {
+        match self {
+            PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
+                let cur_dir = context::cur_dir();
+                if let Ok(path) = path.strip_prefix(cur_dir) {
+                    path.to_string_lossy().to_string()
+                } else {
+                    path.to_string_lossy().to_string()
+                }
+            }
+            PathKind::NotSet(id) => format!("*scratch file #{id}*"),
+        }
+    }
+
+    pub fn name_set(&self) -> Option<String> {
+        match self {
+            PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
+                let cur_dir = context::cur_dir();
+                Some(if let Ok(path) = path.strip_prefix(cur_dir) {
+                    path.to_string_lossy().to_string()
+                } else {
+                    path.to_string_lossy().to_string()
+                })
+            }
+            PathKind::NotSet(_) => None,
+        }
     }
 }
 

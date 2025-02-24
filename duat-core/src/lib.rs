@@ -766,12 +766,12 @@ fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize, usi
 fn file_entry<'a, U: Ui>(
     windows: &'a [Window<U>],
     name: &str,
-) -> std::result::Result<(usize, &'a Node<U>), Text> {
+) -> std::result::Result<(usize, usize, &'a Node<U>), Text> {
     windows
         .iter()
         .enumerate()
         .flat_map(window_index_widget)
-        .find(|(_, node)| matches!(node.inspect_as(|f: &File| f.name() == name), Some(true)))
+        .find(|(.., node)| matches!(node.inspect_as(|f: &File| f.name() == name), Some(true)))
         .ok_or_else(|| err!("File with name " [*a] name [] " not found."))
 }
 
@@ -780,7 +780,7 @@ fn file_entry<'a, U: Ui>(
 fn widget_entry<W: Widget<U>, U: Ui>(
     windows: &[Window<U>],
     w: usize,
-) -> std::result::Result<(usize, &Node<U>), Text> {
+) -> std::result::Result<(usize, usize, &Node<U>), Text> {
     let cur_file = context::cur_file::<U>().unwrap();
 
     if let Some(node) = cur_file.get_related_widget::<W>() {
@@ -788,9 +788,9 @@ fn widget_entry<W: Widget<U>, U: Ui>(
             .iter()
             .enumerate()
             .flat_map(window_index_widget)
-            .find(|(_, n)| n.ptr_eq(node.widget()))
+            .find(|(.., n)| n.ptr_eq(node.widget()))
     } else {
-        iter_around(windows, w, 0).find(|(_, node)| node.data_is::<W>())
+        iter_around(windows, w, 0).find(|(.., node)| node.data_is::<W>())
     }
     .ok_or(err!("No widget of type " [*a] { type_name::<W>() } [] " found."))
 }
@@ -798,8 +798,11 @@ fn widget_entry<W: Widget<U>, U: Ui>(
 /// Iterator over a group of windows, that returns the window's index
 fn window_index_widget<U: Ui>(
     (index, window): (usize, &Window<U>),
-) -> impl DoubleEndedIterator<Item = (usize, &Node<U>)> {
-    window.nodes().map(move |entry| (index, entry))
+) -> impl ExactSizeIterator<Item = (usize, usize, &Node<U>)> + DoubleEndedIterator {
+    window
+        .nodes()
+        .enumerate()
+        .map(move |(i, entry)| (index, i, entry))
 }
 
 /// Iterates around a specific widget, going forwards
@@ -807,7 +810,7 @@ fn iter_around<U: Ui>(
     windows: &[Window<U>],
     window: usize,
     widget: usize,
-) -> impl Iterator<Item = (usize, &Node<U>)> + '_ {
+) -> impl Iterator<Item = (usize, usize, &Node<U>)> + '_ {
     let prev_len: usize = windows.iter().take(window).map(Window::len_widgets).sum();
 
     windows
@@ -831,7 +834,7 @@ fn iter_around_rev<U: Ui>(
     windows: &[Window<U>],
     window: usize,
     widget: usize,
-) -> impl Iterator<Item = (usize, &Node<U>)> {
+) -> impl Iterator<Item = (usize, usize, &Node<U>)> {
     let next_len: usize = windows.iter().skip(window).map(Window::len_widgets).sum();
 
     windows

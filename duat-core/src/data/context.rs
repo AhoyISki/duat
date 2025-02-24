@@ -17,11 +17,14 @@ use crate::{
 mod global {
     use std::{
         any::Any,
+        path::PathBuf,
         sync::{
             LazyLock, OnceLock,
             atomic::{AtomicBool, AtomicUsize, Ordering},
         },
     };
+
+    use parking_lot::Mutex;
 
     use super::{CurFile, CurWidget, FileParts, FileReader};
     use crate::{
@@ -42,6 +45,7 @@ mod global {
     static WINDOWS: OnceLock<&(dyn Any + Send + Sync)> = OnceLock::new();
     static NOTIFICATIONS: LazyLock<RwData<Text>> = LazyLock::new(RwData::default);
     static WILL_RELOAD_OR_QUIT: AtomicBool = AtomicBool::new(false);
+    static CUR_DIR: OnceLock<Mutex<PathBuf>> = OnceLock::new();
 
     pub fn mode_name() -> &'static RwData<&'static str> {
         &MODE_NAME
@@ -69,6 +73,13 @@ mod global {
 
     pub fn cur_window() -> usize {
         CUR_WINDOW.load(Ordering::Relaxed)
+    }
+
+    pub fn cur_dir() -> PathBuf {
+        CUR_DIR
+            .get_or_init(|| Mutex::new(std::env::current_dir().unwrap()))
+            .lock()
+            .clone()
     }
 
     pub fn notifications() -> &'static RwData<Text> {

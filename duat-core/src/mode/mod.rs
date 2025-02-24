@@ -129,7 +129,7 @@ mod switch {
         let windows = context::windows::<U>().read();
         let name = name.to_string();
         match file_entry(&windows, &name) {
-            Ok((_, node)) => {
+            Ok((.., node)) => {
                 let node = node.clone();
                 *SET_MODE.lock() = Some(Box::new(move || {
                     switch_widget(node);
@@ -215,14 +215,14 @@ mod switch {
             let windows = context::windows().read();
             let w = context::cur_window();
             let entry = if TypeId::of::<M::Widget>() == TypeId::of::<File>() {
-                let name = context::cur_file::<U>().unwrap().name();
-                file_entry(&windows, &name)
+                let path = context::cur_file::<U>().unwrap().path();
+                file_entry(&windows, &path)
             } else {
                 widget_entry::<M::Widget, U>(&windows, w)
             };
 
             match entry {
-                Ok((_, node)) => switch_widget(node.clone()),
+                Ok((.., node)) => switch_widget(node.clone()),
                 Err(err) => {
                     context::notify(err);
                     return;

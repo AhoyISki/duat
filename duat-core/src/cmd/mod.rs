@@ -194,7 +194,7 @@ pub use self::{
 use crate::{
     Error, context,
     data::{RwData, RwLock},
-    iter_around, iter_around_rev,
+    file_entry, iter_around, iter_around_rev,
     mode::{self},
     text::{Text, err, ok},
     ui::{DuatEvent, Ui, Window},
@@ -216,26 +216,28 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
     let tx_clone = tx.clone();
     add!(["quit", "q"], move || {
         let file = context::cur_file::<U>()?;
-        let path = file.inspect(|file, _| file.path());
+        let name = file.inspect(|file, _| file.name());
+        if file.inspect(|f, _| f.text().has_unsaved_changes()) {
+            return Err(err!([*a] name [] " has unsaved changes"));
+        }
 
         // Should wait here until I'm out of `session_loop`
-        context::windows::<U>().inspect(|windows| {
-            let w = context::cur_window();
+        let windows = context::windows::<U>().read();
+        let w = context::cur_window();
 
-            let widget_index = windows[w]
-                .nodes()
-                .position(|node| file.file_ptr_eq(node))
-                .unwrap();
+        let (win, wid, file) = file_entry(&windows, &name).unwrap();
 
-            let name = iter_around::<U>(windows, w, widget_index)
-                .find_map(|(_, node)| node.inspect_as(|f: &File| f.name()))
-                .unwrap();
+        let Some(next_name) = iter_around::<U>(&windows, win, wid)
+            .find_map(|(.., node)| node.inspect_as(|f: &File| f.name()))
+        else {
+            tx_clone.send(DuatEvent::Quit).unwrap();
+            return Ok(None);
+        };
 
-            mode::reset_switch_to::<U>(&name);
-        });
+        mode::reset_switch_to::<U>(&next_name);
 
-        tx_clone.send(DuatEvent::CloseFile(path.clone())).unwrap();
-        Ok(Some(ok!("Closed " [*a] path)))
+        tx_clone.send(DuatEvent::CloseFile(name.clone())).unwrap();
+        Ok(Some(ok!("Closed " [*a] name)))
     })?;
 
     let tx_clone = tx.clone();
@@ -248,7 +250,8 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         let file = context::cur_file::<U>()?;
 
         if paths.is_empty() {
-            file.inspect(|file, _| {
+            file.mutate_data(|file, _| {
+                let mut file = file.write();
                 if let Some(name) = file.path_set() {
                     let bytes = file.write()?;
                     Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " [*a] name)))
@@ -303,7 +306,7 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
             return Ok(Some(ok!("Opened " [*a] path)));
         }
 
-        mode::reset_switch_to::<U>(&name);
+        mode::reset_switch_to::<U>(path.to_str().unwrap());
         Ok(Some(ok!("Switched to " [*a] name)))
     })?;
 
@@ -324,12 +327,12 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
 
         let name = if flags.word("global") {
             iter_around::<U>(&windows, w, widget_index)
-                .find_map(|(_, node)| node.inspect_as(|f: &File| f.name()))
+                .find_map(|(.., node)| node.inspect_as(|f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other open files"))?
         } else {
             let slice = &windows[w..=w];
             iter_around(slice, 0, widget_index)
-                .find_map(|(_, node)| node.inspect_as(|f: &File| f.name()))
+                .find_map(|(.., node)| node.inspect_as(|f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other files open in this window"))?
         };
 
@@ -350,12 +353,12 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
 
         let name = if flags.word("global") {
             iter_around_rev::<U>(&windows, w, widget_i)
-                .find_map(|(_, node)| node.inspect_as(|f: &File| f.name()))
+                .find_map(|(.., node)| node.inspect_as(|f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other open files"))?
         } else {
             let slice = &windows[w..=w];
             iter_around_rev(slice, 0, widget_i)
-                .find_map(|(_, node)| node.inspect_as(|f: &File| f.name()))
+                .find_map(|(.., node)| node.inspect_as(|f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other files open in this window"))?
         };
 
@@ -1026,7 +1029,7 @@ impl Commands {
                         ));
                     }
 
-                    let (_, node) = widget_entry::<W, U>(&windows, w)?;
+                    let (.., node) = widget_entry::<W, U>(&windows, w)?;
                     let (w, a) = node.parts();
                     w.mutate_as(|w| cmd(w, a, args)).unwrap()
                 })

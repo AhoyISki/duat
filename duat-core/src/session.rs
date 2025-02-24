@@ -236,34 +236,34 @@ impl<U: Ui> Session<U> {
                     break (files, duat_rx);
                 }
                 BreakTo::OpenFile(file) => self.open_file(file),
-                BreakTo::CloseFile(path) => {
+                BreakTo::CloseFile(name) => {
                     let mut windows = context::windows::<U>().write();
 
-                    let (w, lhs) = file_entry(&windows, &path).unwrap();
+                    let (lhs_win, _, lhs) = file_entry(&windows, &name).unwrap();
                     let lhs = lhs.clone();
 
                     let ordering = lhs.inspect_as(|f: &File| f.layout_ordering).unwrap();
 
-                    let nodes: Vec<Node<U>> = windows[w].file_nodes()[(ordering + 1)..]
+                    let nodes: Vec<Node<U>> = windows[lhs_win].file_nodes()[(ordering + 1)..]
                         .iter()
                         .map(|(n, _)| (*n).clone())
                         .collect();
 
                     for rhs in nodes {
-                        swap(&mut windows, [w, w], [&lhs, &rhs]);
+                        swap(&mut windows, [lhs_win, lhs_win], [&lhs, &rhs]);
                     }
 
-                    windows[w].remove_file(&path);
+                    windows[lhs_win].remove_file(&name);
                 }
                 BreakTo::SwapFiles(lhs, rhs) => {
                     let mut windows = context::windows::<U>().write();
 
-                    let (lhs_w, lhs) = file_entry(&windows, &lhs).unwrap();
-                    let (rhs_w, rhs) = file_entry(&windows, &rhs).unwrap();
+                    let (lhs_win, _, lhs) = file_entry(&windows, &lhs).unwrap();
+                    let (rhs_win, _, rhs) = file_entry(&windows, &rhs).unwrap();
                     let lhs = lhs.clone();
                     let rhs = rhs.clone();
 
-                    swap(&mut windows, [lhs_w, rhs_w], [&lhs, &rhs]);
+                    swap(&mut windows, [lhs_win, rhs_win], [&lhs, &rhs]);
                 }
             }
         }
@@ -295,7 +295,7 @@ impl<U: Ui> Session<U> {
                         DuatEvent::MetaMsg(msg) => context::notify(msg),
                         DuatEvent::ReloadConfig => break BreakTo::ReloadConfig,
                         DuatEvent::OpenFile(file) => break BreakTo::OpenFile(file),
-                        DuatEvent::CloseFile(path) => break BreakTo::CloseFile(path),
+                        DuatEvent::CloseFile(name) => break BreakTo::CloseFile(name),
                         DuatEvent::SwapFiles(lhs, rhs) => break BreakTo::SwapFiles(lhs, rhs),
                         DuatEvent::Quit => break BreakTo::QuitDuat,
                     }
