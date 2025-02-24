@@ -291,22 +291,40 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
     add!(["edit", "e"], move |path: PathBuf| {
         let windows = windows.read();
 
-        let name = path
-            .file_name()
-            .ok_or(err!("No file in path"))?
-            .to_string_lossy()
-            .to_string();
+        let canon_path = path.canonicalize();
+
+        let path = if let Ok(path) = &canon_path {
+            if !path.is_file() {
+                return Err(err!("Path is not a file"));
+            }
+            path.clone()
+        } else if canon_path.is_err()
+            && let Ok(canon_path) = path.with_file_name(".").canonicalize()
+        {
+            canon_path.join(
+                path.file_name()
+                    .ok_or_else(|| err!("Path has no file name"))?,
+            )
+        } else {
+            return Err(err!("Path was not found"));
+        };
+
+        let name = if let Ok(path) = path.strip_prefix(context::cur_dir()) {
+            path.to_string_lossy().to_string()
+        } else {
+            path.to_string_lossy().to_string()
+        };
 
         if !windows
             .iter()
             .flat_map(Window::nodes)
             .any(|node| matches!(node.inspect_as(|f: &File| f.name() == name), Some(true)))
         {
-            tx_clone.send(DuatEvent::OpenFile(path.clone())).unwrap();
-            return Ok(Some(ok!("Opened " [*a] path)));
+            tx_clone.send(DuatEvent::OpenFile(path)).unwrap();
+            return Ok(Some(ok!("Opened " [*a] name)));
         }
 
-        mode::reset_switch_to::<U>(path.to_str().unwrap());
+        mode::reset_switch_to::<U>(name.clone());
         Ok(Some(ok!("Switched to " [*a] name)))
     })?;
 

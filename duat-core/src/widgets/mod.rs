@@ -470,7 +470,11 @@ impl<U: Ui> Node<U> {
         area: U::Area,
         checker: impl CheckerFn,
     ) -> Self {
-        let related_widgets = widget.data_is::<File>().then(RwData::default);
+        let related_widgets = widget.mutate_as(|f: &mut File| {
+            let cfg = f.print_cfg();
+            f.text_mut().add_cursors(&area, cfg);
+            RwData::default()
+        });
 
         Self {
             widget,

@@ -88,7 +88,7 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
                     && let Ok(mut canon_path) = path.with_file_name(".").canonicalize()
                 {
                     canon_path.push(path.file_name().unwrap());
-                    (Text::new_with_history(), PathKind::SetAbsent(path))
+                    (Text::new_with_history(), PathKind::SetAbsent(canon_path))
                 } else {
                     (Text::new_with_history(), PathKind::new_unset())
                 }
