@@ -14,8 +14,9 @@
 //! you can see the changes in _almost_ real time.
 //!
 //! Note that this is an alpha project, so there may be some quirks
-//! and bugs, but feel free to ask questions or raise an issue, that
-//! would be very welcome 🥰.
+//! and bugs. So if you have a problem, or something seems confusing,
+//! feel free to ask questions or raise an issue, that would be very
+//! welcome 🥰.
 //!
 //! ## Getting started
 //!

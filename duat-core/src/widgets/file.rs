@@ -20,7 +20,7 @@ use crate::{
     cfg::{IterCfg, PrintCfg},
     context, form,
     mode::Cursors,
-    text::Text,
+    text::{Text, err},
     ui::{Area, PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
 };
@@ -145,17 +145,16 @@ impl File {
     /// Writes the file to the current [`Path`], if one was set
     ///
     /// [`Path`]: std::path::Path
-    pub fn write(&mut self) -> Result<usize, String> {
+    #[allow(clippy::result_large_err)]
+    pub fn write(&mut self) -> Result<usize, Text> {
         if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &self.path {
             let path = path.clone();
             self.text
-                .write_to(std::io::BufWriter::new(
-                    fs::File::create(&path).map_err(|err| err.to_string())?,
-                ))
+                .write_to(std::io::BufWriter::new(fs::File::create(&path)?))
                 .inspect(|_| self.path = PathKind::SetExists(path))
-                .map_err(|err| err.to_string())
+                .map_err(Text::from)
         } else {
-            Err(String::from("The File has no path to write to"))
+            Err(err!("No file was set"))
         }
     }
 

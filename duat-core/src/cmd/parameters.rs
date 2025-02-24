@@ -6,7 +6,7 @@
 //! take multiple words, which makes this structure very flexible for
 //! multiple branching paths on how to read the arguments, all from
 //! the same command.
-use std::{iter::Peekable, ops::Range};
+use std::{iter::Peekable, ops::Range, path::PathBuf};
 
 pub use args_iter::get_args;
 use crossterm::style::Color;
@@ -216,6 +216,36 @@ impl<'a, U: crate::ui::Ui> Parameter<'a> for OtherFileBuffer<U> {
             Err(err!("Argument can't be the current file"))
         } else {
             Ok(buffer)
+        }
+    }
+}
+
+/// Command [`Parameter`]: A [`File`] whose parent is real
+///
+/// [`File`]: crate::widgets::File
+pub struct PossibleFile;
+
+impl Parameter<'_> for PossibleFile {
+    type Returns = PathBuf;
+
+    fn new(args: &mut Args<'_>) -> std::result::Result<Self::Returns, Text> {
+        let path = args.next_as::<PathBuf>()?;
+
+        let canon_path = path.canonicalize();
+        if let Ok(path) = &canon_path {
+            if !path.is_file() {
+                return Err(err!("Path is not a file"));
+            }
+            Ok(path.clone())
+        } else if canon_path.is_err()
+            && let Ok(canon_path) = path.with_file_name(".").canonicalize()
+        {
+            Ok(canon_path.join(
+                path.file_name()
+                    .ok_or_else(|| err!("Path has no file name"))?,
+            ))
+        } else {
+            Err(err!("Path was not found"))
         }
     }
 }

@@ -178,7 +178,6 @@ use std::{
     collections::HashMap,
     fmt::Display,
     ops::Range,
-    path::PathBuf,
     sync::{Arc, LazyLock, mpsc},
 };
 
@@ -188,7 +187,7 @@ pub use self::{
     global::*,
     parameters::{
         Args, Between, ColorSchemeArg, F32PercentOfU8, FileBuffer, Flags, FormName,
-        OtherFileBuffer, Parameter, Remainder, get_args,
+        OtherFileBuffer, Parameter, PossibleFile, Remainder, get_args,
     },
 };
 use crate::{
@@ -227,8 +226,8 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
 
         let (win, wid, file) = file_entry(&windows, &name).unwrap();
 
-        let Some(next_name) = iter_around::<U>(&windows, win, wid)
-            .find_map(|(.., node)| node.inspect_as(|f: &File| f.name()))
+        let Some(next_name) =
+            iter_around::<U>(&windows, win, wid).find_map(|(.., node)| node.inspect_as(File::name))
         else {
             tx_clone.send(DuatEvent::Quit).unwrap();
             return Ok(None);
@@ -242,14 +241,64 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
 
     let tx_clone = tx.clone();
     add!(["quit!", "q!"], move || {
+        let file = context::cur_file::<U>()?;
+        let name = file.inspect(|file, _| file.name());
+
+        // Should wait here until I'm out of `session_loop`
+        let windows = context::windows::<U>().read();
+        let w = context::cur_window();
+
+        let (win, wid, file) = file_entry(&windows, &name).unwrap();
+
+        let Some(next_name) =
+            iter_around::<U>(&windows, win, wid).find_map(|(.., node)| node.inspect_as(File::name))
+        else {
+            tx_clone.send(DuatEvent::Quit).unwrap();
+            return Ok(None);
+        };
+
+        mode::reset_switch_to::<U>(&next_name);
+
+        tx_clone.send(DuatEvent::CloseFile(name.clone())).unwrap();
+        Ok(Some(ok!("Closed " [*a] name)))
+    })?;
+
+    let tx_clone = tx.clone();
+    add!(["quit-all", "qa"], move || {
+        let windows = context::windows::<U>().read();
+        let unwritten = windows
+            .iter()
+            .flat_map(Window::file_nodes)
+            .filter(|(node, _)| node.widget().inspect_as(File::path_set).flatten().is_some())
+            .filter(|(node, _)| node.widget().read().text().has_unsaved_changes())
+            .count();
+
+        if unwritten == 0 {
+            tx_clone.send(DuatEvent::Quit).unwrap();
+            Ok(None)
+        } else if unwritten == 1 {
+            Err(err!("There is " [*a] 1 [] " unsaved file"))
+        } else {
+            Err(err!("There are " [*a] unwritten [] " unsaved files"))
+        }
+    })?;
+
+    let tx_clone = tx.clone();
+    add!(["quit-all!", "qa!"], move || {
         tx_clone.send(DuatEvent::Quit).unwrap();
         Ok(None)
     })?;
 
-    add!(["write", "w"], move |paths: Vec<PathBuf>| {
+    add!(["write", "w"], move |path: Option<PossibleFile>| {
         let file = context::cur_file::<U>()?;
 
-        if paths.is_empty() {
+        if let Some(path) = path {
+            file.inspect(|file, _| {
+                let bytes = file.write_to(&path)?;
+
+                Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " path)))
+            })
+        } else {
             file.mutate_data(|file, _| {
                 let mut file = file.write();
                 if let Some(name) = file.path_set() {
@@ -259,55 +308,96 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
                     Err(err!("Give the file a name, to write it with"))
                 }
             })
-        } else {
-            file.inspect(|file, _| {
-                let mut bytes = 0;
-                for path in &paths {
-                    bytes = file.write_to(path)?;
+        }
+    })?;
+
+    let tx_clone = tx.clone();
+    add!(["write-quit", "wq"], move |path: Option<PossibleFile>| {
+        let file = context::cur_file::<U>()?;
+        let (bytes, name) = file.mutate_data(|file, _| {
+            let mut file = file.write();
+            if let Some(path) = path {
+                let bytes = file.write_to(&path)?;
+                Ok((bytes, file.name()))
+            } else {
+                match file.write() {
+                    Ok(bytes) => Ok((bytes, file.name())),
+                    Err(err) => Err(err),
                 }
+            }
+        })?;
 
-                let files_text = {
-                    let mut builder = Text::builder();
-                    ok!(builder, [*a] { &paths[0] });
+        // Should wait here until I'm out of `session_loop`
+        let windows = context::windows::<U>().read();
+        let w = context::cur_window();
 
-                    for path in paths.iter().skip(1).take(paths.len() - 1) {
-                        ok!(builder, [] ", " [*a] path)
-                    }
+        let (win, wid, file) = file_entry(&windows, &name).unwrap();
 
-                    if paths.len() > 1 {
-                        ok!(builder, [] " and " [*a] { paths.last().unwrap() })
-                    }
+        let Some(next_name) =
+            iter_around::<U>(&windows, win, wid).find_map(|(.., node)| node.inspect_as(File::name))
+        else {
+            tx_clone.send(DuatEvent::Quit).unwrap();
+            return Ok(None);
+        };
 
-                    builder.finish()
-                };
+        mode::reset_switch_to::<U>(&next_name);
 
-                Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " files_text)))
+        tx_clone.send(DuatEvent::CloseFile(name.clone())).unwrap();
+        Ok(Some(ok!("Closed " [*a] name [] ", saving " [*a] bytes [] " bytes")))
+    })?;
+
+    add!(["write-all", "wa"], || {
+        let windows = context::windows::<U>().read();
+
+        let mut written = 0;
+        let file_count = windows
+            .iter()
+            .flat_map(Window::file_nodes)
+            .filter(|(node, _)| node.widget().inspect_as(File::path_set).flatten().is_some())
+            .inspect(|(node, _)| {
+                node.widget()
+                    .mutate_as(|f: &mut File| written += f.write().is_ok() as usize);
             })
+            .count();
+
+        if written == file_count {
+            Ok(Some(ok!("Wrote to " [*a] written [] " files")))
+        } else {
+            let unwritten = file_count - written;
+            let plural = if unwritten == 1 { "" } else { "s" };
+            Err(err!("Failed to write to " [*a] unwritten [] " file" plural))
+        }
+    })?;
+
+    let tx_clone = tx.clone();
+    add!(["write-all-quit", "waq"], move || {
+        let windows = context::windows::<U>().read();
+
+        let mut written = 0;
+        let file_count = windows
+            .iter()
+            .flat_map(Window::file_nodes)
+            .filter(|(node, _)| node.widget().inspect_as(File::path_set).flatten().is_some())
+            .inspect(|(node, _)| {
+                node.widget()
+                    .mutate_as(|f: &mut File| written += f.write().is_ok() as usize);
+            })
+            .count();
+
+        if written == file_count {
+            tx_clone.send(DuatEvent::Quit).unwrap();
+            Ok(None)
+        } else {
+            let unwritten = file_count - written;
+            let plural = if unwritten == 1 { "" } else { "s" };
+            Err(err!("Failed to write to " [*a] unwritten [] " file" plural))
         }
     })?;
 
     let windows = context::windows::<U>();
     let tx_clone = tx.clone();
-    add!(["edit", "e"], move |path: PathBuf| {
+    add!(["edit", "e"], move |path: PossibleFile| {
         let windows = windows.read();
-
-        let canon_path = path.canonicalize();
-
-        let path = if let Ok(path) = &canon_path {
-            if !path.is_file() {
-                return Err(err!("Path is not a file"));
-            }
-            path.clone()
-        } else if canon_path.is_err()
-            && let Ok(canon_path) = path.with_file_name(".").canonicalize()
-        {
-            canon_path.join(
-                path.file_name()
-                    .ok_or_else(|| err!("Path has no file name"))?,
-            )
-        } else {
-            return Err(err!("Path was not found"));
-        };
 
         let name = if let Ok(path) = path.strip_prefix(context::cur_dir()) {
             path.to_string_lossy().to_string()
@@ -345,12 +435,12 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
 
         let name = if flags.word("global") {
             iter_around::<U>(&windows, win, wid)
-                .find_map(|(.., node)| node.inspect_as(|f: &File| f.name()))
+                .find_map(|(.., node)| node.inspect_as(File::name))
                 .ok_or_else(|| err!("There are no other open files"))?
         } else {
             let slice = &windows[win..=win];
             iter_around(slice, 0, wid)
-                .find_map(|(.., node)| node.inspect_as(|f: &File| f.name()))
+                .find_map(|(.., node)| node.inspect_as(File::name))
                 .ok_or_else(|| err!("There are no other files open in this window"))?
         };
 
@@ -371,12 +461,12 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
 
         let name = if flags.word("global") {
             iter_around_rev::<U>(&windows, w, widget_i)
-                .find_map(|(.., node)| node.inspect_as(|f: &File| f.name()))
+                .find_map(|(.., node)| node.inspect_as(File::name))
                 .ok_or_else(|| err!("There are no other open files"))?
         } else {
             let slice = &windows[w..=w];
             iter_around_rev(slice, 0, widget_i)
-                .find_map(|(.., node)| node.inspect_as(|f: &File| f.name()))
+                .find_map(|(.., node)| node.inspect_as(File::name))
                 .ok_or_else(|| err!("There are no other files open in this window"))?
         };
 

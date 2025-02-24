@@ -16,8 +16,9 @@ configuration, it will be compiled and reloaded automatically, so
 you can see the changes in *almost* real time.
 
 Note that this is an alpha project, so there may be some quirks
-and bugs, but feel free to ask questions or raise an issue, that
-would be very welcome 🥰.
+and bugs. So if you have a problem, or something seems confusing,
+feel free to ask questions or raise an issue, that would be very
+welcome 🥰.
 
 ### Getting started
 
@@ -131,7 +132,7 @@ with arguments supported by Rust’s type system:
 
 ```rust
 let callers = ["collapse-cmd-line", "ccmd"];
-cmd::add_for!(callers, |_cmd_line: CmdLine, area, _flags| {
+cmd::add_for!(callers, |_: CmdLine, area: Area| {
     area.constrain_ver(Constraint::Length(0.0))?;
     Ok(None)
 })
@@ -229,7 +230,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG2ds7whO6-YnG99fvAXNxtM9G2EGOuZcP2_sGwkD73k7aWU4YWSDgmRkdWF0ZTAuMy4wgmlkdWF0X2NvcmVlMC4zLjCCZHBsdWf2
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG9YTUqR_E2MBG_tjfLGItgh0G1gPMU8zBzUWG3qV75giMDw3YWSDgmRkdWF0ZTAuMy4wgmlkdWF0X2NvcmVlMC4zLjCCZHBsdWf2
  [__link0]: https://crates.io/crates/plug
  [__link1]: https://docs.rs/duat/0.3.0/duat/?search=mode::set_default
  [__link10]: https://docs.rs/duat/0.3.0/duat/?search=prelude::CmdLine
