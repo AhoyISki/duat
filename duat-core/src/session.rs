@@ -87,13 +87,13 @@ impl<U: Ui> SessionCfg<U> {
         prev: Vec<FileRet>,
         duat_tx: mpsc::Sender<DuatEvent>,
     ) -> Session<U> {
-        let mut inherited_cfgs = Vec::new();
-        for (buf, path_kind, is_active) in prev {
-            let file_cfg = self.file_cfg.clone().take_from_prev(buf, path_kind);
-            inherited_cfgs.push((file_cfg, is_active))
-        }
+        let file_cfg = self.file_cfg.clone();
+        let mut inherited_cfgs = prev.into_iter().map(|(buf, path_kind, is_active)| {
+            let file_cfg = file_cfg.clone().take_from_prev(buf, path_kind);
+            (file_cfg, is_active)
+        });
 
-        let Some((file_cfg, _)) = inherited_cfgs.pop() else {
+        let Some((file_cfg, _)) = inherited_cfgs.next() else {
             unreachable!("There should've been at least one file.")
         };
 
@@ -350,6 +350,7 @@ impl<U: Ui> Session<U> {
             .filter_map(|node| {
                 node.try_downcast::<File>().map(|file| {
                     let mut file = file.write();
+                    crate::log_file!("{}", file.name());
                     let text = std::mem::take(file.text_mut());
                     let buf = text.take_buf();
                     let kind = file.path_kind();

@@ -343,7 +343,9 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         mode::reset_switch_to::<U>(&next_name);
 
         tx_clone.send(DuatEvent::CloseFile(name.clone())).unwrap();
-        Ok(Some(ok!("Closed " [*a] name [] ", saving " [*a] bytes [] " bytes")))
+        Ok(Some(
+            ok!("Closed " [*a] name [] ", saving " [*a] bytes [] " bytes"),
+        ))
     })?;
 
     add!(["write-all", "wa"], || {
@@ -394,10 +396,25 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         }
     })?;
 
-    let windows = context::windows::<U>();
+    let tx_clone = tx.clone();
+    add!(["write-all-quit!", "waq!"], move || {
+        let windows = context::windows::<U>().read();
+
+        windows
+            .iter()
+            .flat_map(Window::file_nodes)
+            .filter(|(node, _)| node.widget().inspect_as(File::path_set).flatten().is_some())
+            .for_each(|(node, _)| {
+                node.widget().mutate_as(File::write);
+            });
+
+        tx_clone.send(DuatEvent::Quit).unwrap();
+        Ok(None)
+    })?;
+
     let tx_clone = tx.clone();
     add!(["edit", "e"], move |path: PossibleFile| {
-        let windows = windows.read();
+        let windows = context::windows::<U>().read();
 
         let name = if let Ok(path) = path.strip_prefix(context::cur_dir()) {
             path.to_string_lossy().to_string()
@@ -405,11 +422,7 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
             path.to_string_lossy().to_string()
         };
 
-        if !windows
-            .iter()
-            .flat_map(Window::nodes)
-            .any(|node| matches!(node.inspect_as(|f: &File| f.name() == name), Some(true)))
-        {
+        if file_entry(&windows, &name).is_err() {
             tx_clone.send(DuatEvent::OpenFile(path)).unwrap();
             return Ok(Some(ok!("Opened " [*a] name)));
         }
@@ -417,6 +430,29 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         mode::reset_switch_to::<U>(name.clone());
         Ok(Some(ok!("Switched to " [*a] name)))
     })?;
+
+    let tx_clone = tx.clone();
+    add!(["open", "o"], move |path: PossibleFile| {
+        let windows = context::windows::<U>().read();
+
+        let name = if let Ok(path) = path.strip_prefix(context::cur_dir()) {
+            path.to_string_lossy().to_string()
+        } else {
+            path.to_string_lossy().to_string()
+        };
+
+        let Ok((win, wid, node)) = file_entry(&windows, &name) else {
+            tx_clone.send(DuatEvent::OpenFile(path)).unwrap();
+            return Ok(Some(ok!("Opened " [*a] name [] " on new window")));
+        };
+
+        if windows[win].file_nodes().len() == 1 {
+            mode::reset_switch_to::<U>(name.clone());
+            Ok(Some(ok!("Switched to " [*a] name)))
+        } else {
+            Ok(None)
+        }
+    });
 
     add!(["buffer", "b"], |name: OtherFileBuffer<U>| {
         mode::reset_switch_to::<U>(&name);
