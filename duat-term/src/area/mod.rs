@@ -16,6 +16,7 @@ use iter::{print_iter, print_iter_indented, rev_print_iter};
 use crate::{
     AreaId, ConstraintErr,
     layout::{Layout, Rect},
+    print::Printer,
     queue, style,
 };
 
@@ -266,22 +267,30 @@ impl ui::Area for Area {
 
         if lhs_i == rhs_i {
             let layout = get_layout_mut(&mut layouts, self.id).unwrap();
-            let id0 = layout.rects.get_cluster_master(self.id).unwrap_or(self.id);
-            let id1 = layout.rects.get_cluster_master(rhs.id).unwrap_or(rhs.id);
-            if id0 == id1 {
+            let lhs_id = layout.rects.get_cluster_master(self.id).unwrap_or(self.id);
+            let rhs_id = layout.rects.get_cluster_master(rhs.id).unwrap_or(rhs.id);
+            if lhs_id == rhs_id {
                 return;
             }
-            layout.swap(id0, id1);
+            layout.swap(lhs_id, rhs_id);
         } else {
-            let [lhs_layout, rhs_layout] = layouts.get_disjoint_mut([lhs_i, rhs_i]).unwrap();
+            let [lhs_lay, rhs_lay] = layouts.get_disjoint_mut([lhs_i, rhs_i]).unwrap();
+            let lhs_id = lhs_lay.rects.get_cluster_master(self.id).unwrap_or(self.id);
+            let rhs_id = rhs_lay.rects.get_cluster_master(rhs.id).unwrap_or(rhs.id);
 
-            let lhs_rect = lhs_layout.rects.get_mut(self.id).unwrap();
-            let rhs_rect = rhs_layout.rects.get_mut(rhs.id).unwrap();
+            let lhs_rect = lhs_lay.rects.get_mut(lhs_id).unwrap();
+            let rhs_rect = rhs_lay.rects.get_mut(rhs_id).unwrap();
+
+            let mut lhs_p = lhs_lay.printer.write();
+            let mut rhs_p = rhs_lay.printer.write();
+            transfer_vars_and_recvs(&mut lhs_p, &mut rhs_p, lhs_rect);
+            transfer_vars_and_recvs(&mut rhs_p, &mut lhs_p, rhs_rect);
+            drop((lhs_p, rhs_p));
 
             std::mem::swap(lhs_rect, rhs_rect);
 
-            lhs_layout.reset_eqs(rhs.id);
-            rhs_layout.reset_eqs(self.id);
+            lhs_lay.reset_eqs(rhs_id);
+            rhs_lay.reset_eqs(lhs_id);
         }
     }
 
@@ -684,4 +693,13 @@ fn get_layout_mut(layouts: &mut [Layout], id: AreaId) -> Option<&mut Layout> {
 
 fn get_layout_pos(layouts: &[Layout], id: AreaId) -> Option<usize> {
     layouts.iter().position(|l| l.get(id).is_some())
+}
+
+fn transfer_vars_and_recvs(from_p: &mut Printer, to_p: &mut Printer, rect: &Rect) {
+    let (vars, recv) = from_p.take_rect_parts(rect);
+    to_p.insert_rect_parts(vars, recv);
+
+    for (child, _) in rect.children().into_iter().flatten() {
+        transfer_vars_and_recvs(from_p, to_p, child)
+    }
 }

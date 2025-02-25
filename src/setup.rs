@@ -97,7 +97,11 @@ pub fn run_duat(
 
 type PluginFn = dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync + 'static;
 #[doc(hidden)]
-pub type Messengers = (Sender<DuatEvent>, Receiver<DuatEvent>, Sender<UiEvent>);
+pub type Messengers = (
+    &'static Sender<DuatEvent>,
+    Receiver<DuatEvent>,
+    Sender<UiEvent>,
+);
 #[doc(hidden)]
 pub type MetaStatics = (
     &'static <Ui as ui::Ui>::MetaStatics,

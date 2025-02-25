@@ -32,6 +32,7 @@ fn main() {
     let (ui_tx, ui_rx) = mpsc::channel();
     let (reload_tx, reload_rx) = mpsc::channel();
     let (duat_tx, mut duat_rx) = mpsc::channel();
+    let duat_tx = Box::leak(Box::new(duat_tx));
 
     // Assert that the configuration crate actually exists.
     // The watcher is returned as to not be dropped.
@@ -89,7 +90,7 @@ fn main() {
 
     let mut prev = Vec::new();
 
-    Ui::open(&MS, ui::Sender::new(duat_tx.clone()), ui_rx);
+    Ui::open(&MS, ui::Sender::new(duat_tx), ui_rx);
 
     let mut lib = {
         let so_path = target_dir.join(if !cfg!(debug_assertions) {
@@ -104,12 +105,11 @@ fn main() {
         let run_lib = lib.take();
         let mut run_fn = run_lib.as_ref().and_then(find_run_duat);
 
-        let d_tx = duat_tx.clone();
         (prev, duat_rx) = if let Some(run_duat) = run_fn.take() {
-            run_duat((&MS, &CLIPB), prev, (d_tx, duat_rx, ui_tx.clone()))
+            run_duat((&MS, &CLIPB), prev, (duat_tx, duat_rx, ui_tx.clone()))
         } else {
             pre_setup();
-            run_duat((&MS, &CLIPB), prev, (d_tx, duat_rx, ui_tx.clone()))
+            run_duat((&MS, &CLIPB), prev, (duat_tx, duat_rx, ui_tx.clone()))
         };
         drop(run_lib);
 

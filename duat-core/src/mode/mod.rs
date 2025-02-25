@@ -35,7 +35,8 @@ mod switch {
     use crate::{
         context, duat_name, file_entry,
         hooks::{self, KeySent, KeySentTo, ModeSwitched},
-        ui::{Ui, Window},
+        session::sender,
+        ui::{DuatEvent, Ui, Window},
         widget_entry,
         widgets::{CmdLine, CmdLineMode, File, Node},
     };
@@ -125,11 +126,14 @@ mod switch {
     }
 
     /// Switches to the file with the given name
-    pub fn reset_switch_to<U: Ui>(name: impl std::fmt::Display) {
+    pub(crate) fn reset_switch_to<U: Ui>(name: impl std::fmt::Display) {
         let windows = context::windows::<U>().read();
         let name = name.to_string();
         match file_entry(&windows, &name) {
-            Ok((.., node)) => {
+            Ok((win, _, node)) => {
+                if win != context::cur_window() {
+                    sender().send(DuatEvent::SwitchWindow(win)).unwrap();
+                }
                 let node = node.clone();
                 *SET_MODE.lock() = Some(Box::new(move || {
                     switch_widget(node);

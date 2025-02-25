@@ -408,12 +408,28 @@ impl<U: Ui> Window<U> {
     }
 
     /// Takes all [`Node`]s related to a given [`Node`]
-    pub(crate) fn take_related_nodes(&mut self, node: &Node<U>) -> Vec<Node<U>> {
+    pub(crate) fn take_file_and_related_nodes(&mut self, node: &Node<U>) -> Vec<Node<U>> {
         if let Some(related) = node.related_widgets() {
+            let layout_ordering = node
+                .widget()
+                .inspect_as(|f: &File| f.layout_ordering)
+                .unwrap();
+
             let nodes = related.read();
-            self.nodes
+            let nodes = self
+                .nodes
                 .extract_if(.., |n| nodes.contains(n) || n == node)
-                .collect()
+                .collect();
+
+            for node in &self.nodes {
+                node.widget().mutate_as(|f: &mut File| {
+                    if f.layout_ordering > layout_ordering {
+                        f.layout_ordering -= 1;
+                    }
+                });
+            }
+
+            nodes
         } else {
             Vec::new()
         }
@@ -425,6 +441,10 @@ impl<U: Ui> Window<U> {
                 .inspect_as(|f: &File| f.layout_ordering)
                 .is_some_and(|lo| lo >= layout_ordering)
         }) {
+            for node in self.nodes[i..].iter() {
+                node.widget()
+                    .mutate_as(|f: &mut File| f.layout_ordering += 1);
+            }
             self.nodes.splice(i..i, nodes);
         } else {
             self.nodes.extend(nodes);
@@ -502,10 +522,10 @@ pub enum DuatEvent {
     Quit,
 }
 
-pub struct Sender(mpsc::Sender<DuatEvent>);
+pub struct Sender(&'static mpsc::Sender<DuatEvent>);
 
 impl Sender {
-    pub fn new(sender: mpsc::Sender<DuatEvent>) -> Self {
+    pub fn new(sender: &'static mpsc::Sender<DuatEvent>) -> Self {
         Self(sender)
     }
 

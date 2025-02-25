@@ -819,12 +819,10 @@ fn match_goto<S, U: Ui>(
             }
         }
         key!(Char('n')) => {
-            cmd::run_notify("next-file").map(|_| *LAST_FILE.write() = Some(cur_name));
+            cmd::run_notify("next-file --global").map(|_| *LAST_FILE.write() = Some(cur_name));
         }
         key!(Char('N')) => {
-            cmd::run_notify("prev-file").map(|_| {
-                *LAST_FILE.write() = Some(cur_name);
-            });
+            cmd::run_notify("prev-file --global").map(|_| *LAST_FILE.write() = Some(cur_name));
         }
         Event { code, .. } => {
             let code = format!("{code:?}");

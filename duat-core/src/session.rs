@@ -1,6 +1,7 @@
 use std::{
     path::PathBuf,
     sync::{
+        OnceLock,
         atomic::{AtomicUsize, Ordering},
         mpsc,
     },
@@ -24,6 +25,12 @@ use crate::{
     widgets::{File, FileCfg, Node, PathKind, WidgetCfg},
 };
 
+static DUAT_SENDER: OnceLock<&mpsc::Sender<DuatEvent>> = OnceLock::new();
+
+pub(crate) fn sender() -> &'static mpsc::Sender<DuatEvent> {
+    DUAT_SENDER.get().unwrap()
+}
+
 #[doc(hidden)]
 pub struct SessionCfg<U: Ui> {
     file_cfg: FileCfg,
@@ -44,8 +51,10 @@ impl<U: Ui> SessionCfg<U> {
     pub fn session_from_args(
         self,
         ms: &'static U::MetaStatics,
-        tx: mpsc::Sender<DuatEvent>,
+        duat_tx: &'static mpsc::Sender<DuatEvent>,
     ) -> Session<U> {
+        DUAT_SENDER.set(duat_tx).unwrap();
+
         let mut args = std::env::args();
         let first = args.nth(1).map(PathBuf::from);
 
@@ -62,12 +71,11 @@ impl<U: Ui> SessionCfg<U> {
             ms,
             cur_window,
             file_cfg: self.file_cfg,
-            tx,
             layout_fn: self.layout_fn,
         };
 
         context::set_cur(node.as_file(), node.clone());
-        cmd::add_session_commands::<U>(session.tx.clone()).unwrap();
+        cmd::add_session_commands::<U>().unwrap();
 
         // Open and process files.
         let builder = FileBuilder::new(node, context::cur_window());
@@ -86,8 +94,10 @@ impl<U: Ui> SessionCfg<U> {
         self,
         ms: &'static U::MetaStatics,
         prev: Vec<FileRet>,
-        duat_tx: mpsc::Sender<DuatEvent>,
+        duat_tx: &'static mpsc::Sender<DuatEvent>,
     ) -> Session<U> {
+        DUAT_SENDER.set(duat_tx).unwrap();
+
         let file_cfg = self.file_cfg.clone();
         let mut inherited_cfgs = prev.into_iter().map(|(buf, path_kind, is_active)| {
             let file_cfg = file_cfg.clone().take_from_prev(buf, path_kind);
@@ -107,12 +117,11 @@ impl<U: Ui> SessionCfg<U> {
             ms,
             cur_window,
             file_cfg: self.file_cfg,
-            tx: duat_tx,
             layout_fn: self.layout_fn,
         };
 
         context::set_cur(node.as_file(), node.clone());
-        cmd::add_session_commands::<U>(session.tx.clone()).unwrap();
+        cmd::add_session_commands::<U>().unwrap();
 
         // Open and process files.
         let builder = FileBuilder::new(node, context::cur_window());
@@ -139,7 +148,6 @@ pub struct Session<U: Ui> {
     ms: &'static U::MetaStatics,
     cur_window: &'static AtomicUsize,
     file_cfg: FileCfg,
-    tx: mpsc::Sender<DuatEvent>,
     layout_fn: Box<dyn Fn() -> Box<dyn Layout<U> + 'static>>,
 }
 
@@ -169,7 +177,7 @@ impl<U: Ui> Session<U> {
         ui_tx: mpsc::Sender<UiEvent>,
     ) -> (Vec<FileRet>, mpsc::Receiver<DuatEvent>) {
         hooks::trigger::<ConfigLoaded>(());
-        form::set_sender(Sender::new(self.tx.clone()));
+        form::set_sender(Sender::new(sender()));
 
         // This loop is very useful when trying to find deadlocks.
         #[cfg(feature = "deadlocks")]
@@ -207,9 +215,9 @@ impl<U: Ui> Session<U> {
         loop {
             U::flush_layout(self.ms);
 
-            let cur_window = self.cur_window.load(Ordering::Relaxed);
+            let win = self.cur_window.load(Ordering::Relaxed);
             context::windows::<U>().inspect(|windows| {
-                for node in windows[cur_window].nodes() {
+                for node in windows[win].nodes() {
                     node.update_and_print();
                 }
             });
@@ -276,14 +284,31 @@ impl<U: Ui> Session<U> {
                     let mut windows = context::windows::<U>().write();
 
                     if let Ok((win, .., node)) = file_entry(&windows, &name) {
+                        // Take the nodes in the original Window
                         let node = node.clone();
-
-                        let files_area = node.area().clone();
-                        let nodes = windows[win].take_related_nodes(&node);
+                        let nodes = windows[win].take_file_and_related_nodes(&node);
                         let layout = (self.layout_fn)();
 
-                        let window = Window::<U>::from_raw(files_area, nodes, layout);
+                        // Create a new Window Swapping the new root with files_area
+                        let new_root = U::new_root(self.ms, <U::Area as Area>::Cache::default());
+                        node.area().swap(&new_root, DuatPermission::new());
+                        let window = Window::<U>::from_raw(node.area().clone(), nodes, layout);
                         windows.push(window);
+
+                        // Swap the Files ahead of the swapped new_root
+                        let ordering = node.inspect_as(|f: &File| f.layout_ordering).unwrap();
+                        let nodes: Vec<Node<U>> = windows[win].file_nodes()[(ordering + 1)..]
+                            .iter()
+                            .map(|(n, _)| (*n).clone())
+                            .collect();
+
+                        for node in nodes {
+                            new_root.swap(node.area(), DuatPermission::new());
+                        }
+
+                        // Delete the new_root, which should be the last "File" in the
+                        // list of the original Window.
+                        new_root.delete(DuatPermission::new());
                     }
 
                     self.cur_window.store(windows.len() - 1, Ordering::Relaxed);
@@ -427,10 +452,10 @@ fn swap<U: Ui>([lhs_w, rhs_w]: [usize; 2], [lhs, rhs]: [&Node<U>; 2]) {
 
     let mut windows = context::windows::<U>().write();
 
-    let lhs_nodes = windows[lhs_w].take_related_nodes(lhs);
+    let lhs_nodes = windows[lhs_w].take_file_and_related_nodes(lhs);
     windows[rhs_w].insert_file_nodes(rhs_ordering, lhs_nodes);
 
-    let rhs_nodes = windows[rhs_w].take_related_nodes(rhs);
+    let rhs_nodes = windows[rhs_w].take_file_and_related_nodes(rhs);
     windows[lhs_w].insert_file_nodes(lhs_ordering, rhs_nodes);
 
     lhs.area().swap(rhs.area(), DuatPermission::new());

@@ -178,7 +178,7 @@ use std::{
     collections::HashMap,
     fmt::Display,
     ops::Range,
-    sync::{Arc, LazyLock, mpsc},
+    sync::{Arc, LazyLock},
 };
 
 use crossterm::style::Color;
@@ -195,6 +195,7 @@ use crate::{
     data::{RwData, RwLock},
     file_entry, iter_around, iter_around_rev,
     mode::{self},
+    session::sender,
     text::{Text, err, ok},
     ui::{DuatEvent, Ui, Window},
     widget_entry,
@@ -203,7 +204,7 @@ use crate::{
 
 mod parameters;
 
-pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate::Result<(), ()> {
+pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
     add!("alias", |flags: Flags, alias: &str, command: Remainder| {
         if !flags.is_empty() {
             Err(err!("An alias cannot take any flags"))
@@ -212,7 +213,6 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         }
     })?;
 
-    let tx_clone = tx.clone();
     add!(["quit", "q"], move || {
         let file = context::cur_file::<U>()?;
         let name = file.inspect(|file, _| file.name());
@@ -229,17 +229,16 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         let Some(next_name) =
             iter_around::<U>(&windows, win, wid).find_map(|(.., node)| node.inspect_as(File::name))
         else {
-            tx_clone.send(DuatEvent::Quit).unwrap();
+            sender().send(DuatEvent::Quit).unwrap();
             return Ok(None);
         };
 
         mode::reset_switch_to::<U>(&next_name);
 
-        tx_clone.send(DuatEvent::CloseFile(name.clone())).unwrap();
+        sender().send(DuatEvent::CloseFile(name.clone())).unwrap();
         Ok(Some(ok!("Closed " [*a] name)))
     })?;
 
-    let tx_clone = tx.clone();
     add!(["quit!", "q!"], move || {
         let file = context::cur_file::<U>()?;
         let name = file.inspect(|file, _| file.name());
@@ -253,17 +252,16 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         let Some(next_name) =
             iter_around::<U>(&windows, win, wid).find_map(|(.., node)| node.inspect_as(File::name))
         else {
-            tx_clone.send(DuatEvent::Quit).unwrap();
+            sender().send(DuatEvent::Quit).unwrap();
             return Ok(None);
         };
 
         mode::reset_switch_to::<U>(&next_name);
 
-        tx_clone.send(DuatEvent::CloseFile(name.clone())).unwrap();
+        sender().send(DuatEvent::CloseFile(name.clone())).unwrap();
         Ok(Some(ok!("Closed " [*a] name)))
     })?;
 
-    let tx_clone = tx.clone();
     add!(["quit-all", "qa"], move || {
         let windows = context::windows::<U>().read();
         let unwritten = windows
@@ -274,7 +272,7 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
             .count();
 
         if unwritten == 0 {
-            tx_clone.send(DuatEvent::Quit).unwrap();
+            sender().send(DuatEvent::Quit).unwrap();
             Ok(None)
         } else if unwritten == 1 {
             Err(err!("There is " [*a] 1 [] " unsaved file"))
@@ -283,9 +281,8 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         }
     })?;
 
-    let tx_clone = tx.clone();
     add!(["quit-all!", "qa!"], move || {
-        tx_clone.send(DuatEvent::Quit).unwrap();
+        sender().send(DuatEvent::Quit).unwrap();
         Ok(None)
     })?;
 
@@ -311,7 +308,6 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         }
     })?;
 
-    let tx_clone = tx.clone();
     add!(["write-quit", "wq"], move |path: Option<PossibleFile>| {
         let file = context::cur_file::<U>()?;
         let (bytes, name) = file.mutate_data(|file, _| {
@@ -336,13 +332,13 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         let Some(next_name) =
             iter_around::<U>(&windows, win, wid).find_map(|(.., node)| node.inspect_as(File::name))
         else {
-            tx_clone.send(DuatEvent::Quit).unwrap();
+            sender().send(DuatEvent::Quit).unwrap();
             return Ok(None);
         };
 
         mode::reset_switch_to::<U>(&next_name);
 
-        tx_clone.send(DuatEvent::CloseFile(name.clone())).unwrap();
+        sender().send(DuatEvent::CloseFile(name.clone())).unwrap();
         Ok(Some(
             ok!("Closed " [*a] name [] ", saving " [*a] bytes [] " bytes"),
         ))
@@ -371,7 +367,6 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         }
     })?;
 
-    let tx_clone = tx.clone();
     add!(["write-all-quit", "waq"], move || {
         let windows = context::windows::<U>().read();
 
@@ -387,7 +382,7 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
             .count();
 
         if written == file_count {
-            tx_clone.send(DuatEvent::Quit).unwrap();
+            sender().send(DuatEvent::Quit).unwrap();
             Ok(None)
         } else {
             let unwritten = file_count - written;
@@ -396,7 +391,6 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         }
     })?;
 
-    let tx_clone = tx.clone();
     add!(["write-all-quit!", "waq!"], move || {
         let windows = context::windows::<U>().read();
 
@@ -408,11 +402,10 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
                 node.widget().mutate_as(File::write);
             });
 
-        tx_clone.send(DuatEvent::Quit).unwrap();
+        sender().send(DuatEvent::Quit).unwrap();
         Ok(None)
     })?;
 
-    let tx_clone = tx.clone();
     add!(["edit", "e"], move |path: PossibleFile| {
         let windows = context::windows::<U>().read();
 
@@ -423,7 +416,7 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         };
 
         if file_entry(&windows, &name).is_err() {
-            tx_clone.send(DuatEvent::OpenFile(name.clone())).unwrap();
+            sender().send(DuatEvent::OpenFile(name.clone())).unwrap();
             return Ok(Some(ok!("Opened " [*a] name)));
         }
 
@@ -431,7 +424,6 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         Ok(Some(ok!("Switched to " [*a] name)))
     })?;
 
-    let tx_clone = tx.clone();
     add!(["open", "o"], move |path: PossibleFile| {
         let windows = context::windows::<U>().read();
 
@@ -442,7 +434,7 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         };
 
         let Ok((win, wid, node)) = file_entry(&windows, &name) else {
-            tx_clone.send(DuatEvent::OpenWindow(name.clone())).unwrap();
+            sender().send(DuatEvent::OpenWindow(name.clone())).unwrap();
             return Ok(Some(ok!("Opened " [*a] name [] " on new window")));
         };
 
@@ -450,8 +442,8 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
             mode::reset_switch_to::<U>(name.clone());
             Ok(Some(ok!("Switched to " [*a] name)))
         } else {
-            tx_clone.send(DuatEvent::OpenWindow(name)).unwrap();
-            Ok(None)
+            sender().send(DuatEvent::OpenWindow(name.clone())).unwrap();
+            Ok(Some(ok!("Moved " [*a] name [] " to a new window")))
         }
     })?;
 
@@ -485,10 +477,9 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         Ok(Some(ok!("Switched to " [*a] name)))
     })?;
 
-    let windows = context::windows();
     add!("prev-file", move |flags: Flags| {
+        let windows = context::windows().read();
         let file = context::cur_file()?;
-        let windows = windows.read();
         let w = context::cur_window();
 
         let widget_i = windows[w]
@@ -512,9 +503,8 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         Ok(Some(ok!("Switched to " [*a] name)))
     })?;
 
-    let tx_clone = tx.clone();
     add!("swap", move |lhs: FileBuffer<U>, rhs: FileBuffer<U>| {
-        tx_clone
+        sender()
             .send(DuatEvent::SwapFiles(lhs.to_string(), rhs.to_string()))
             .unwrap();
 

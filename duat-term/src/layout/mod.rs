@@ -74,6 +74,15 @@ impl Constraints {
         Self { ver_eq, hor_eq, ..self }
     }
 
+    pub fn remove(&mut self, p: &mut Printer) {
+        for eq in [self.ver_eq.take(), self.hor_eq.take()]
+            .into_iter()
+            .flatten()
+        {
+            p.remove_equality(eq);
+        }
+    }
+
     pub fn on(&self, axis: Axis) -> Option<Constraint> {
         match axis {
             Axis::Vertical => self.ver_con,

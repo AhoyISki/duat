@@ -112,7 +112,11 @@ impl Rect {
         p: &mut Printer,
         fr: Frame,
         is_resizable: bool,
-    ) {
+        mut to_constrain: Option<Vec<AreaId>>,
+    ) -> Option<Vec<AreaId>> {
+        if let Some(ids) = to_constrain.as_mut() {
+            ids.push(self.id);
+        }
         let axis = parent.kind.axis().unwrap();
 
         self.clear_eqs(p);
@@ -188,13 +192,15 @@ impl Rect {
                 let (mut child, cons) = self.children_mut().unwrap().remove(i);
 
                 let is_resizable = child.is_resizable_on(axis, &cons);
-                child.set_base_eqs(i, self, p, fr, is_resizable);
+                to_constrain = child.set_base_eqs(i, self, p, fr, is_resizable, to_constrain);
 
                 self.children_mut().unwrap().insert(i, (child, cons));
             }
         }
 
         p.add_equalities(&self.eqs);
+
+        to_constrain
     }
 
     /// Removes all [`Equality`]s which define the edges of
@@ -273,6 +279,14 @@ impl Rect {
             x: self.br.x().value(),
             y: self.br.y().value(),
         }
+    }
+
+    pub fn var_points(&self) -> (&VarPoint, &VarPoint) {
+        (&self.tl, &self.br)
+    }
+
+    pub fn edge(&self) -> Option<&VarValue> {
+        self.edge.as_ref()
     }
 
     pub fn has_changed(&self) -> bool {
@@ -405,7 +419,7 @@ impl Rects {
             }
         };
 
-        rect.set_base_eqs(i, parent, p, fr, cons.is_resizable_on(axis));
+        rect.set_base_eqs(i, parent, p, fr, cons.is_resizable_on(axis), None);
 
         parent.children_mut().unwrap().insert(i, (rect, cons));
 
@@ -415,7 +429,7 @@ impl Rects {
             (i - 1, parent.children_mut().unwrap().remove(i - 1))
         };
         let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
-        rect_to_fix.set_base_eqs(i, parent, p, fr, is_resizable);
+        rect_to_fix.set_base_eqs(i, parent, p, fr, is_resizable, None);
         let entry = (rect_to_fix, cons);
         parent.children_mut().unwrap().insert(i, entry);
 
@@ -428,8 +442,9 @@ impl Rects {
         let id = self.get_cluster_master(id).unwrap_or(id);
         let (i, parent) = self.get_parent_mut(id)?;
 
-        let (mut rm_rect, rm_cons) = parent.children_mut().unwrap().remove(i);
+        let (mut rm_rect, mut rm_cons) = parent.children_mut().unwrap().remove(i);
         rm_rect.clear_eqs(p);
+        rm_cons.remove(p);
 
         let (i, parent) = if parent.children().unwrap().len() == 1 {
             let id = parent.id();
@@ -439,7 +454,7 @@ impl Rects {
 
             let axis = grandparent.kind.axis().unwrap();
             let is_resizable = rect.is_resizable_on(axis, &cons);
-            rect.set_base_eqs(i, grandparent, p, fr, is_resizable);
+            rect.set_base_eqs(i, grandparent, p, fr, is_resizable, None);
             grandparent.children_mut().unwrap().insert(i, (rect, cons));
 
             (i, grandparent)
@@ -454,7 +469,7 @@ impl Rects {
         };
         let axis = parent.kind.axis().unwrap();
         let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
-        rect_to_fix.set_base_eqs(i, parent, p, fr, is_resizable);
+        rect_to_fix.set_base_eqs(i, parent, p, fr, is_resizable, None);
         let entry = (rect_to_fix, cons);
         parent.children_mut().unwrap().insert(i, entry);
 
@@ -463,22 +478,25 @@ impl Rects {
 
     pub fn swap(&mut self, p: &mut Printer, id0: AreaId, id1: AreaId) {
         let fr = self.fr;
+        let mut to_constrain = Some(Vec::new());
 
         if id0 == self.main.id || id1 == self.main.id {
             return;
         }
         let (i0, parent0) = self.get_parent_mut(id0).unwrap();
-        let id_p0 = parent0.id();
-        let (mut rect0, cons0) = parent0.children_mut().unwrap().remove(i0);
+        let p0_id = parent0.id();
+        let (mut rect0, mut cons0) = parent0.children_mut().unwrap().remove(i0);
+        cons0.remove(p);
 
         let (mut rect1, _) = {
             let (i1, parent1) = self.get_parent_mut(id1).unwrap();
             let (_, cons1) = &parent1.children().unwrap()[i1];
-            let cons1 = cons1.clone();
+            let mut cons1 = cons1.clone();
+            cons1.remove(p);
 
             let axis = parent1.kind.axis().unwrap();
             let is_resizable = rect0.is_resizable_on(axis, &cons1);
-            rect0.set_base_eqs(i1, parent1, p, fr, is_resizable);
+            to_constrain = rect0.set_base_eqs(i1, parent1, p, fr, is_resizable, to_constrain);
 
             parent1
                 .children_mut()
@@ -491,18 +509,17 @@ impl Rects {
                 (i1 - 1, parent1.children_mut().unwrap().remove(i1 - 1))
             };
             let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
-            rect_to_fix.set_base_eqs(i, parent1, p, fr, is_resizable);
+            to_constrain = rect_to_fix.set_base_eqs(i, parent1, p, fr, is_resizable, to_constrain);
             let entry = (rect_to_fix, cons);
             parent1.children_mut().unwrap().insert(i, entry);
 
             parent1.children_mut().unwrap().remove(i1 + 1)
         };
 
-        let parent0 = self.get_mut(id_p0).unwrap();
-
+        let parent0 = self.get_mut(p0_id).unwrap();
         let axis = parent0.kind.axis().unwrap();
         let is_resizable = rect1.is_resizable_on(axis, &cons0);
-        rect1.set_base_eqs(i0, parent0, p, fr, is_resizable);
+        to_constrain = rect1.set_base_eqs(i0, parent0, p, fr, is_resizable, to_constrain);
 
         parent0.children_mut().unwrap().insert(i0, (rect1, cons0));
 
@@ -512,20 +529,23 @@ impl Rects {
             (i0 - 1, parent0.children_mut().unwrap().remove(i0 - 1))
         };
         let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
-        rect_to_fix.set_base_eqs(i, parent0, p, fr, is_resizable);
+        to_constrain = rect_to_fix.set_base_eqs(i, parent0, p, fr, is_resizable, to_constrain);
         let entry = (rect_to_fix, cons);
         parent0.children_mut().unwrap().insert(i, entry);
+
+        constrain_areas(to_constrain.unwrap(), self, p);
     }
 
     pub fn reset_eqs(&mut self, p: &mut Printer, target: AreaId) {
         let fr = self.fr;
+        let mut to_constrain = Some(Vec::new());
 
         if let Some((i, parent)) = self.get_parent_mut(target) {
             let (mut rect, cons) = parent.children_mut().unwrap().remove(i);
 
             let axis = parent.kind.axis().unwrap();
             let is_resizable = rect.is_resizable_on(axis, &cons);
-            rect.set_base_eqs(i, parent, p, fr, is_resizable);
+            to_constrain = rect.set_base_eqs(i, parent, p, fr, is_resizable, to_constrain);
 
             parent.children_mut().unwrap().insert(i, (rect, cons));
 
@@ -535,7 +555,7 @@ impl Rects {
                 (i - 1, parent.children_mut().unwrap().remove(i - 1))
             };
             let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
-            rect_to_fix.set_base_eqs(i, parent, p, fr, is_resizable);
+            to_constrain = rect_to_fix.set_base_eqs(i, parent, p, fr, is_resizable, to_constrain);
             let entry = (rect_to_fix, cons);
             parent.children_mut().unwrap().insert(i, entry);
         } else if let Some(main) = self.get_mut(target) {
@@ -553,11 +573,13 @@ impl Rects {
                 for i in 0..children.len() {
                     let (mut child, cons) = main.children_mut().unwrap().remove(i);
                     let is_resizable = child.is_resizable_on(axis, &cons);
-                    child.set_base_eqs(i, main, p, fr, is_resizable);
+                    to_constrain = child.set_base_eqs(i, main, p, fr, is_resizable, to_constrain);
                     main.children_mut().unwrap().insert(i, (child, cons));
                 }
             }
         }
+
+        constrain_areas(to_constrain.unwrap(), self, p);
     }
 
     pub fn new_parent_of(
@@ -581,7 +603,7 @@ impl Rects {
                 let (target, cons) = orig.children_mut().unwrap().remove(i);
 
                 let is_resizable = target.is_resizable_on(axis, &cons);
-                parent.set_base_eqs(i, orig, p, fr, is_resizable);
+                parent.set_base_eqs(i, orig, p, fr, is_resizable, None);
 
                 let entry = (parent, Constraints::default());
                 orig.children_mut().unwrap().insert(i, entry);
@@ -589,7 +611,7 @@ impl Rects {
                 if i > 0 {
                     let (mut rect, cons) = orig.children_mut().unwrap().remove(i - 1);
                     let is_resizable = rect.is_resizable_on(axis, &cons);
-                    rect.set_base_eqs(i - 1, orig, p, fr, is_resizable);
+                    rect.set_base_eqs(i - 1, orig, p, fr, is_resizable, None);
                     let entry = (rect, cons);
                     orig.children_mut().unwrap().insert(i - 1, entry);
                 }
@@ -616,7 +638,7 @@ impl Rects {
         let parent = self.get_mut(parent_id).unwrap();
 
         let is_resizable = child.is_resizable_on(axis, &cons);
-        child.set_base_eqs(0, parent, p, fr, is_resizable);
+        child.set_base_eqs(0, parent, p, fr, is_resizable, None);
 
         parent.children_mut().unwrap().push((child, cons));
     }
@@ -655,7 +677,7 @@ impl Rects {
         let cons = cons.replace(con, axis, p);
 
         let is_resizable = target.is_resizable_on(p_axis, &cons);
-        target.set_base_eqs(i, parent, p, fr, is_resizable);
+        target.set_base_eqs(i, parent, p, fr, is_resizable, None);
 
         let entry = (target, cons);
         parent.children_mut().unwrap().insert(i, entry);
@@ -881,5 +903,19 @@ fn print_opt_eq(f: &mut std::fmt::Formatter, eq: &Option<Equality>) -> std::fmt:
             f.write_str(")")
         }
         None => f.write_str("None"),
+    }
+}
+
+fn constrain_areas(to_constrain: Vec<AreaId>, rects: &mut Rects, p: &mut Printer) {
+    for id in to_constrain {
+        let Some((i, parent)) = rects.get_parent_mut(id) else {
+            continue;
+        };
+        let (rect, mut cons) = parent.children_mut().unwrap().remove(i);
+        let parent_id = parent.id;
+        cons.remove(p);
+        let cons = cons.apply(&rect, parent_id, rects, p);
+        let parent = rects.get_mut(parent_id).unwrap();
+        parent.children_mut().unwrap().insert(i, (rect, cons));
     }
 }
