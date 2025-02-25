@@ -9,7 +9,7 @@ readme = "README.md"
 keywords = ["editor", "text", "application", "duat"]
 categories = ["command-line-utilities", "text-editors", "config"]
 include = ["src/", "config/", "build.rs"]
-edition = "2021"
+edition = "2024"
 
 [workspace]
 members = ["duat-core", "duat-kak", "duat-term"]

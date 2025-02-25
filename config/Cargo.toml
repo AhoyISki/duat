@@ -2,7 +2,7 @@
 # Don't change the package's name. Duat depends on it.
 name = "config"
 version = "1.0.0"
-edition = "2021"
+edition = "2024"
 # Please don't post your configuration crate to crates.io.
 # If you want to keep it somewhere, try a repository website,
 # like github or gitlab

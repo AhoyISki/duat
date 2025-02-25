@@ -8,7 +8,7 @@ license = "AGPL-3.0-or-later"
 readme = "README.md"
 keywords = ["editor", "text", "application", "duat"]
 categories = ["command-line-utilities", "text-editors", "config"]
-edition = "2021"
+edition = "2024"
 
 [lints.rust]
 private_bounds = "allow"
