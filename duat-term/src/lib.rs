@@ -9,11 +9,7 @@
 use std::{
     fmt::Debug,
     io::{self, Write},
-    sync::{
-        Mutex,
-        atomic::{AtomicBool, Ordering},
-        mpsc,
-    },
+    sync::{Mutex, mpsc},
     time::Duration,
 };
 
@@ -44,14 +40,35 @@ mod layout;
 mod print;
 mod rules;
 
-#[derive(Default)]
 pub struct Ui {
-    windows: Vec<Area>,
-    printer: RwData<Printer>,
+    windows: Vec<(Area, RwData<Printer>)>,
+    layouts: RwData<Vec<Layout>>,
+    cur_window: usize,
     fr: Frame,
+    printer_fn: fn() -> RwData<Printer>,
 }
 
-static IS_RUNNING: AtomicBool = AtomicBool::new(true);
+impl Ui {
+    fn cur_printer(&self) -> &RwData<Printer> {
+        if let Some((_, printer)) = self.windows.get(self.cur_window) {
+            printer
+        } else {
+            unreachable!("Started printing before a window was created");
+        }
+    }
+}
+
+impl Default for Ui {
+    fn default() -> Self {
+        Self {
+            windows: Vec::new(),
+            layouts: RwData::default(),
+            cur_window: 0,
+            fr: Frame::default(),
+            printer_fn: RwData::default,
+        }
+    }
+}
 
 impl ui::Ui for Ui {
     type Area = Area;
@@ -78,13 +95,14 @@ impl ui::Ui for Ui {
         terminal::enable_raw_mode().unwrap();
 
         // The main application input loop
-        let printer = ms.lock().unwrap().printer.clone();
         let thread = std::thread::Builder::new().name("print loop".to_string());
         let _ = thread.spawn(move || {
             'outer: loop {
-                let Ok(UiEvent::Start) = rx.recv() else {
+                let Ok(UiEvent::ResumePrinting) = rx.recv() else {
                     break;
                 };
+
+                let printer = ms.lock().unwrap().cur_printer().clone();
 
                 loop {
                     if let Ok(true) = event::poll(Duration::from_millis(13)) {
@@ -108,33 +126,29 @@ impl ui::Ui for Ui {
 
                     if let Ok(event) = rx.try_recv() {
                         match event {
-                            UiEvent::Start => {
+                            UiEvent::ResumePrinting => {
                                 unreachable!("Wrong order")
                             }
-                            UiEvent::Reload => {
-                                *printer.write() = Printer::new();
-                                break;
-                            }
-                            UiEvent::Quit => {
-                                terminal::disable_raw_mode().unwrap();
-                                execute!(
-                                    io::stdout(),
-                                    terminal::Clear(ClearType::All),
-                                    terminal::LeaveAlternateScreen,
-                                    terminal::EnableLineWrap,
-                                    cursor::Show,
-                                    PopKeyboardEnhancementFlags
-                                )
-                                .unwrap();
-                                break 'outer;
-                            }
+                            UiEvent::PausePrinting => break,
+                            UiEvent::Quit => break 'outer,
                         }
                     }
                 }
             }
-            // So this thread finishes before quitting
-            IS_RUNNING.store(false, Ordering::Relaxed);
         });
+    }
+
+    fn close(_ms: &'static Self::MetaStatics) {
+        terminal::disable_raw_mode().unwrap();
+        execute!(
+            io::stdout(),
+            terminal::Clear(ClearType::All),
+            terminal::LeaveAlternateScreen,
+            terminal::EnableLineWrap,
+            cursor::Show,
+            PopKeyboardEnhancementFlags
+        )
+        .unwrap();
     }
 
     fn load(_ms: &'static Self::MetaStatics) {
@@ -165,32 +179,39 @@ impl ui::Ui for Ui {
         }));
     }
 
-    fn unload(_ms: &'static Self::MetaStatics) {}
-
-    fn close(_ms: &'static Self::MetaStatics) {
-        while IS_RUNNING.load(Ordering::Relaxed) {
-            std::thread::sleep(Duration::from_micros(500))
-        }
-    }
-
     fn new_root(
         ms: &'static Self::MetaStatics,
         cache: <Self::Area as ui::Area>::Cache,
     ) -> Self::Area {
         let mut ui = ms.lock().unwrap();
+        let printer = (ui.printer_fn)();
 
-        let layout = Layout::new(ui.fr, ui.printer.clone(), cache);
-        let root = Area::new(layout.main_index(), RwData::new(layout));
+        let root = ui.layouts.mutate(|layouts| {
+            let layout = Layout::new(ui.fr, printer.clone(), cache);
+            let main_id = layout.main_id();
+            layouts.push(layout);
+
+            Area::new(main_id, ui.layouts.clone())
+        });
         let area = root.clone();
 
-        ui.windows.push(root);
+        ui.windows.push((root, printer));
 
         area
     }
 
+    fn switch_window(ms: &'static Self::MetaStatics, window: usize) {
+        ms.lock().unwrap().cur_window = window;
+    }
+
     fn flush_layout(ms: &'static Self::MetaStatics) {
         let ui = ms.lock().unwrap();
-        ui.printer.write().flush_equalities().unwrap();
+        ui.cur_printer().write().flush_equalities().unwrap();
+    }
+
+    fn unload(ms: &'static Self::MetaStatics) {
+        let mut ui = ms.lock().unwrap();
+        ui.windows = Vec::new();
     }
 }
 
@@ -248,7 +269,7 @@ pub struct AreaId(usize);
 impl AreaId {
     /// Generates a unique index for [`Rect`]s.
     fn new() -> Self {
-        use std::sync::atomic::AtomicUsize;
+        use std::sync::atomic::{AtomicUsize, Ordering};
         static INDEX_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
         AreaId(INDEX_COUNTER.fetch_add(1, Ordering::Relaxed))

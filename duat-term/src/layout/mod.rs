@@ -121,7 +121,7 @@ impl Layout {
 
     /// The index of the main [`Rect`], which holds all (non floating)
     /// others.
-    pub fn main_index(&self) -> AreaId {
+    pub fn main_id(&self) -> AreaId {
         self.rects.main.id()
     }
 
@@ -206,6 +206,10 @@ impl Layout {
 
     pub fn swap(&mut self, id0: AreaId, id1: AreaId) {
         self.rects.swap(&mut self.printer.write(), id0, id1);
+    }
+
+    pub fn reset_eqs(&mut self, target: AreaId) {
+        self.rects.reset_eqs(&mut self.printer.write(), target)
     }
 
     /// The current value for the width of [`self`].

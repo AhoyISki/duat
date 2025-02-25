@@ -603,7 +603,7 @@ pub macro setup_duat($setup:expr) {
         duat_core::{session::FileRet, ui, widgets::File},
     };
 
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     fn run(
         ms: MetaStatics,
         prev_files: Vec<FileRet>,

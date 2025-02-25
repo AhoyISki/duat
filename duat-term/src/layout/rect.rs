@@ -517,6 +517,49 @@ impl Rects {
         parent0.children_mut().unwrap().insert(i, entry);
     }
 
+    pub fn reset_eqs(&mut self, p: &mut Printer, target: AreaId) {
+        let fr = self.fr;
+
+        if let Some((i, parent)) = self.get_parent_mut(target) {
+            let (mut rect, cons) = parent.children_mut().unwrap().remove(i);
+
+            let axis = parent.kind.axis().unwrap();
+            let is_resizable = rect.is_resizable_on(axis, &cons);
+            rect.set_base_eqs(i, parent, p, fr, is_resizable);
+
+            parent.children_mut().unwrap().insert(i, (rect, cons));
+
+            let (i, (mut rect_to_fix, cons)) = if i == 0 {
+                (1, parent.children_mut().unwrap().remove(1))
+            } else {
+                (i - 1, parent.children_mut().unwrap().remove(i - 1))
+            };
+            let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
+            rect_to_fix.set_base_eqs(i, parent, p, fr, is_resizable);
+            let entry = (rect_to_fix, cons);
+            parent.children_mut().unwrap().insert(i, entry);
+        } else if let Some(main) = self.get_mut(target) {
+            main.clear_eqs(p);
+            main.eqs.extend([
+                main.tl.x() | EQ(REQUIRED) | 0.0,
+                main.tl.y() | EQ(REQUIRED) | 0.0,
+                main.br.x() | EQ(REQUIRED) | p.max().x(),
+                main.br.y() | EQ(REQUIRED) | p.max().y(),
+            ]);
+            p.add_equalities(&main.eqs);
+
+            if let Kind::Middle { children, axis, .. } = &mut main.kind {
+                let axis = *axis;
+                for i in 0..children.len() {
+                    let (mut child, cons) = main.children_mut().unwrap().remove(i);
+                    let is_resizable = child.is_resizable_on(axis, &cons);
+                    child.set_base_eqs(i, main, p, fr, is_resizable);
+                    main.children_mut().unwrap().insert(i, (child, cons));
+                }
+            }
+        }
+    }
+
     pub fn new_parent_of(
         &mut self,
         id: AreaId,

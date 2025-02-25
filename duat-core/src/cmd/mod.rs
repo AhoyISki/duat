@@ -423,7 +423,7 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         };
 
         if file_entry(&windows, &name).is_err() {
-            tx_clone.send(DuatEvent::OpenFile(path)).unwrap();
+            tx_clone.send(DuatEvent::OpenFile(name.clone())).unwrap();
             return Ok(Some(ok!("Opened " [*a] name)));
         }
 
@@ -442,7 +442,7 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
         };
 
         let Ok((win, wid, node)) = file_entry(&windows, &name) else {
-            tx_clone.send(DuatEvent::OpenFile(path)).unwrap();
+            tx_clone.send(DuatEvent::OpenWindow(name.clone())).unwrap();
             return Ok(Some(ok!("Opened " [*a] name [] " on new window")));
         };
 
@@ -450,9 +450,10 @@ pub(crate) fn add_session_commands<U: Ui>(tx: mpsc::Sender<DuatEvent>) -> crate:
             mode::reset_switch_to::<U>(name.clone());
             Ok(Some(ok!("Switched to " [*a] name)))
         } else {
+            tx_clone.send(DuatEvent::OpenWindow(name)).unwrap();
             Ok(None)
         }
-    });
+    })?;
 
     add!(["buffer", "b"], |name: OtherFileBuffer<U>| {
         mode::reset_switch_to::<U>(&name);

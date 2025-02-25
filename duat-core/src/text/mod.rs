@@ -964,10 +964,10 @@ impl Text {
         let range = range.to_range_fwd(self.len().byte());
         let [s0, s1] = self.strs();
         if range.end <= self.buf.gap() {
-            s0.get_unchecked(range)
+            unsafe { s0.get_unchecked(range) }
         } else {
             let gap = self.buf.gap();
-            s1.get_unchecked(range.start - gap..range.end - gap)
+            unsafe { s1.get_unchecked(range.start - gap..range.end - gap) }
         }
     }
 

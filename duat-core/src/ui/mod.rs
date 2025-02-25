@@ -4,7 +4,6 @@ mod layout;
 use std::{
     fmt::Debug,
     marker::PhantomData,
-    path::PathBuf,
     sync::{Arc, atomic::Ordering, mpsc},
 };
 
@@ -40,25 +39,16 @@ pub trait Ui: Sized + Send + Sync + 'static {
     /// These will happen in the main `duat` runner
     fn open(ms: &'static Self::MetaStatics, duat_tx: Sender, ui_rx: mpsc::Receiver<UiEvent>);
 
+    /// Functions to trigger when the program ends
+    ///
+    /// These will happen in the main `duat` runner
+    fn close(ms: &'static Self::MetaStatics);
+
     /// Functions to trigger when the program reloads
     ///
     /// These will happen inside of the dynamically loaded config
     /// crate.
     fn load(ms: &'static Self::MetaStatics);
-
-    /// Unloads the [`Ui`]
-    ///
-    /// Unlike [`Ui::close`], this will happen both when Duat reloads
-    /// the configuration and when it closes the app.
-    ///
-    /// These will happen inside of the dynamically loaded config
-    /// crate.
-    fn unload(ms: &'static Self::MetaStatics);
-
-    /// Functions to trigger when the program ends
-    ///
-    /// These will happen in the main `duat` runner
-    fn close(ms: &'static Self::MetaStatics);
 
     ////////// Functions executed from within the configuration loop
 
@@ -70,12 +60,28 @@ pub trait Ui: Sized + Send + Sync + 'static {
     /// [`Area`]: Ui::Area
     fn new_root(ms: &'static Self::MetaStatics, cache: <Self::Area as Area>::Cache) -> Self::Area;
 
+    /// Switches the currently active window
+    ///
+    /// This will only happen to with window indices that are actual
+    /// windows. If at some point, a window index comes up that is not
+    /// actually a window, that's a bug.
+    fn switch_window(ms: &'static Self::MetaStatics, win: usize);
+
     /// Flush the layout
     ///
     /// When this function is called, it means that Duat has finished
     /// adding or removing widgets, so the ui should calculate the
     /// layout.
     fn flush_layout(ms: &'static Self::MetaStatics);
+
+    /// Unloads the [`Ui`]
+    ///
+    /// Unlike [`Ui::close`], this will happen both when Duat reloads
+    /// the configuration and when it closes the app.
+    ///
+    /// These will happen inside of the dynamically loaded config
+    /// crate.
+    fn unload(ms: &'static Self::MetaStatics);
 }
 
 /// An [`Area`] that supports printing [`Text`]
@@ -284,7 +290,6 @@ pub trait Area: Send + Sync + Sized {
 pub struct Window<U: Ui> {
     nodes: Vec<Node<U>>,
     files_area: U::Area,
-    master_area: U::Area,
     layout: Box<dyn Layout<U>>,
 }
 
@@ -314,11 +319,18 @@ impl<U: Ui> Window<U> {
         let window = Self {
             nodes: vec![node.clone()],
             files_area: area.clone(),
-            master_area: area.clone(),
             layout,
         };
 
         (window, node)
+    }
+
+    pub(crate) fn from_raw(
+        files_area: U::Area,
+        nodes: Vec<Node<U>>,
+        layout: Box<dyn Layout<U>>,
+    ) -> Self {
+        Self { nodes, files_area, layout }
     }
 
     /// Pushes a [`Widget`] onto an existing one
@@ -342,12 +354,6 @@ impl<U: Ui> Window<U> {
 
         let on_files = self.files_area.is_master_of(area);
         let (child, parent) = area.bisect(specs, cluster, on_files, cache, DuatPermission::new());
-
-        if *area == self.master_area
-            && let Some(new_master_area) = parent.clone()
-        {
-            self.master_area = new_master_area;
-        }
 
         self.nodes.push(Node::new::<W>(widget, child, checker));
         (self.nodes.last().unwrap().clone(), parent)
@@ -488,9 +494,11 @@ pub enum DuatEvent {
     FormChange,
     MetaMsg(Text),
     ReloadConfig,
-    OpenFile(PathBuf),
+    OpenFile(String),
     CloseFile(String),
     SwapFiles(String, String),
+    OpenWindow(String),
+    SwitchWindow(usize),
     Quit,
 }
 
@@ -524,8 +532,8 @@ impl Sender {
 }
 
 pub enum UiEvent {
-    Start,
-    Reload,
+    ResumePrinting,
+    PausePrinting,
     Quit,
 }
 

@@ -1037,7 +1037,7 @@ impl Painter {
     #[inline(always)]
     pub fn remove(&mut self, id: FormId) -> ContentStyle {
         let mut applied_forms = self.forms.iter().enumerate();
-        let Some((i, &(form, _))) = applied_forms.rfind(|(_, &(_, i))| i == id) else {
+        let Some((i, &(form, _))) = applied_forms.rfind(|(_, (_, i))| *i == id) else {
             return absolute_style(&self.forms);
         };
 

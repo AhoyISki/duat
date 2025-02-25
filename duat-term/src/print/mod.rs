@@ -39,8 +39,6 @@ pub struct Printer {
     edges: Vec<Edge>,
 
     recvs: Vec<Receiver>,
-    is_offline: bool,
-    is_disabled: bool,
     max: VarPoint,
     var_value_fn: fn() -> VarValue,
     has_to_print_edges: AtomicBool,
@@ -73,8 +71,6 @@ impl Printer {
             edges: Vec::new(),
 
             recvs: Vec::new(),
-            is_offline: false,
-            is_disabled: false,
             max,
             var_value_fn: VarValue::new,
             has_to_print_edges: AtomicBool::new(false),
@@ -199,17 +195,9 @@ impl Printer {
             .retain(|recv| !Arc::ptr_eq(&recv.lines, &sender.lines));
     }
 
-    pub fn shutdown(&mut self) {
-        self.is_offline = true;
-    }
-
-    pub fn is_offline(&self) -> bool {
-        self.is_offline
-    }
-
     pub fn print(&self) {
         static CURSOR_IS_REAL: AtomicBool = AtomicBool::new(false);
-        let list: Vec<_> = self.recvs.iter().flat_map(Receiver::take).collect();
+        let list: Vec<Lines> = self.recvs.iter().flat_map(Receiver::take).collect();
 
         if list.is_empty() {
             return;
@@ -294,14 +282,6 @@ impl Printer {
 
     pub fn remove_edge(&mut self, edge: VarValue) {
         self.edges.retain(|e| !Arc::ptr_eq(&e.width, &edge.value))
-    }
-
-    pub fn disable(&mut self) {
-        self.is_disabled = true;
-    }
-
-    pub fn enable(&mut self) {
-        self.is_disabled = false;
     }
 
     pub fn max(&self) -> &VarPoint {
@@ -399,16 +379,14 @@ pub struct Lines {
 
 impl std::fmt::Debug for Lines {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let bytes = unsafe { core::str::from_utf8_unchecked(&self.bytes) };
+        let line = unsafe { core::str::from_utf8_unchecked(&self.line) };
         f.debug_struct("Lines")
-            .field("bytes", unsafe {
-                &core::str::from_utf8_unchecked(&self.bytes)
-            })
+            .field("bytes", &bytes)
             .field("cutoffs", &self.cutoffs)
             .field("coords", &self.coords)
             .field("real_cursor", &self.real_cursor)
-            .field("line", unsafe {
-                &core::str::from_utf8_unchecked(&self.line)
-            })
+            .field("line", &line)
             .field("len", &self.len)
             .field("shift", &self.shift)
             .field("cap", &self.cap)
