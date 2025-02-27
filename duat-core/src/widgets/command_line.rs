@@ -276,7 +276,7 @@ impl<U: Ui> Default for RunCommands<U> {
 }
 
 pub struct ShowNotifications<U> {
-    notifications: &'static RwData<Text>,
+    notifications: RwData<Text>,
     text: Text,
     ghost: PhantomData<U>,
 }
@@ -284,7 +284,7 @@ pub struct ShowNotifications<U> {
 impl<U: Ui> ShowNotifications<U> {
     pub fn new() -> Self {
         Self {
-            notifications: context::notifications(),
+            notifications: context::notifications().clone(),
             text: Text::default(),
             ghost: PhantomData,
         }
@@ -312,6 +312,9 @@ impl<U: Ui> CmdLineMode<U> for ShowNotifications<U> {
         if REMOVE_NOTIFS.load(Ordering::Acquire) {
             self.text = Text::default();
             REMOVE_NOTIFS.store(false, Ordering::Release);
+        }
+        if self.notifications.has_changed() {
+            self.text = self.notifications.read().clone();
         }
         *text = self.text.clone();
     }
