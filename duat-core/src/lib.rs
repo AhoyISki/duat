@@ -462,25 +462,27 @@ pub mod thread {
     /// All queued actions will be done in the sequence that they came
     /// in, sequentially in a single thread.
     pub(crate) fn queue<R>(f: impl FnOnce() -> R + Send + 'static) {
-        static LOOP: Once = Once::new();
-        let (sender, receiver) = &*ACTIONS;
+        fn queue_inner(f: Box<dyn FnOnce() + Send + 'static>) {
+            static LOOP: Once = Once::new();
+            let (sender, receiver) = &*ACTIONS;
 
-        LOOP.call_once(|| {
-            spawn(|| {
-                let receiver = receiver.lock();
-                while let Ok(SentHook::Fn(f)) = receiver.recv() {
-                    f();
-                }
+            LOOP.call_once(|| {
+                spawn(|| {
+                    let receiver = receiver.lock();
+                    while let Ok(SentHook::Fn(f)) = receiver.recv() {
+                        f();
+                    }
+                });
             });
-        });
 
-        if !crate::context::will_reload_or_quit() {
-            sender
-                .send(SentHook::Fn(Box::new(move || {
-                    f();
-                })))
-                .unwrap();
+            if !crate::context::will_reload_or_quit() {
+                sender.send(SentHook::Fn(f)).unwrap();
+            }
         }
+
+        queue_inner(Box::new(|| {
+            f();
+        }));
     }
 
     /// Returns true if there are any threads still running
@@ -681,59 +683,56 @@ pub type Result<T, E> = std::result::Result<T, Error<E>>;
 /// Use this function if you need a name of a type to be
 /// referrable by string, such as by commands or by the
 /// user.
-pub fn duat_name<T>() -> &'static str
-where
-    T: ?Sized + 'static,
-{
-    static NAMES: LazyLock<RwLock<HashMap<TypeId, &'static str>>> = LazyLock::new(RwLock::default);
-    let mut names = NAMES.write();
-    let type_id = TypeId::of::<T>();
+pub fn duat_name<T: ?Sized + 'static>() -> &'static str {
+    fn duat_name_inner(type_id: TypeId, type_name: &str) -> &'static str {
+        static NAMES: LazyLock<RwLock<HashMap<TypeId, &'static str>>> =
+            LazyLock::new(RwLock::default);
+        let mut names = NAMES.write();
 
-    if let Some(name) = names.get(&type_id) {
-        name
-    } else {
-        let verbose = std::any::type_name::<T>();
-        let mut name = String::new();
+        if let Some(name) = names.get(&type_id) {
+            name
+        } else {
+            let mut name = String::new();
 
-        for path in verbose.split_inclusive(['<', '>', ',', ' ']) {
-            for segment in path.split("::") {
-                let is_type = segment.chars().any(|c| c.is_uppercase());
-                let is_punct = segment.chars().all(|c| !c.is_alphanumeric());
-                let is_dyn = segment.starts_with("dyn");
-                if is_type || is_punct || is_dyn {
-                    name.push_str(segment);
+            for path in type_name.split_inclusive(['<', '>', ',', ' ']) {
+                for segment in path.split("::") {
+                    let is_type = segment.chars().any(|c| c.is_uppercase());
+                    let is_punct = segment.chars().all(|c| !c.is_alphanumeric());
+                    let is_dyn = segment.starts_with("dyn");
+                    if is_type || is_punct || is_dyn {
+                        name.push_str(segment);
+                    }
                 }
             }
-        }
 
-        names.insert(type_id, name.leak());
-        names.get(&type_id).unwrap()
+            names.insert(type_id, name.leak());
+            names.get(&type_id).unwrap()
+        }
     }
+
+    duat_name_inner(TypeId::of::<T>(), std::any::type_name::<T>())
 }
 
 /// Returns the source crate of a given type
 ///
 /// This is primarily used on the [`cache`] module.
-pub fn src_crate<T>() -> &'static str
-where
-    T: ?Sized + 'static,
-{
-    static CRATES: LazyLock<RwLock<HashMap<TypeId, &'static str>>> =
-        LazyLock::new(|| RwLock::new(HashMap::new()));
-    let mut crates = CRATES.write();
-    let type_id = TypeId::of::<T>();
+pub fn src_crate<T: ?Sized + 'static>() -> &'static str {
+    fn src_crate_inner(type_id: TypeId, type_name: &'static str) -> &'static str {
+        static CRATES: LazyLock<RwLock<HashMap<TypeId, &'static str>>> =
+            LazyLock::new(|| RwLock::new(HashMap::new()));
+        let mut crates = CRATES.write();
 
-    if let Some(src_crate) = crates.get(&type_id) {
-        src_crate
-    } else {
-        let src_crate = std::any::type_name::<T>()
-            .split([' ', ':'])
-            .find(|w| *w != "dyn")
-            .unwrap();
+        if let Some(src_crate) = crates.get(&type_id) {
+            src_crate
+        } else {
+            let src_crate = type_name.split([' ', ':']).find(|w| *w != "dyn").unwrap();
 
-        crates.insert(type_id, src_crate);
-        crates.get(&type_id).unwrap()
+            crates.insert(type_id, src_crate);
+            crates.get(&type_id).unwrap()
+        }
     }
+
+    src_crate_inner(TypeId::of::<T>(), std::any::type_name::<T>())
 }
 
 /// Convenience function for the bounds of a range

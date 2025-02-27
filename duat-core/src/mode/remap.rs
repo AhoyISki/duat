@@ -357,67 +357,79 @@ impl Remapper {
 
     /// Maps a sequence of characters to another
     fn remap<M: Mode<U>, U: Ui>(&self, take: Vec<KeyEvent>, give: Gives, is_alias: bool) {
-        let ty = TypeId::of::<M>();
-        let remap = Remap::new(take, give, is_alias);
+        fn remap_inner(
+            remapper: &Remapper,
+            type_id: TypeId,
+            take: Vec<KeyEvent>,
+            give: Gives,
+            is_alias: bool,
+        ) {
+            let remap = Remap::new(take, give, is_alias);
 
-        let mut remaps = self.remaps.lock();
+            let mut remaps = remapper.remaps.lock();
 
-        if let Some((_, remaps)) = remaps.iter_mut().find(|(m, _)| ty == *m) {
-            if remaps
-                .iter()
-                .all(|r| !(r.takes.starts_with(&remap.takes) || remap.takes.starts_with(&r.takes)))
-            {
-                remaps.push(remap);
+            if let Some((_, remaps)) = remaps.iter_mut().find(|(m, _)| type_id == *m) {
+                if remaps.iter().all(|r| {
+                    !(r.takes.starts_with(&remap.takes) || remap.takes.starts_with(&r.takes))
+                }) {
+                    remaps.push(remap);
+                }
+            } else {
+                remaps.push((type_id, vec![remap]));
             }
-        } else {
-            remaps.push((ty, vec![remap]));
         }
+
+        remap_inner(self, TypeId::of::<M>(), take, give, is_alias);
     }
 
     /// Sends a key to be remapped or not
     fn send_key<M: Mode<U>, U: Ui>(&self, key: KeyEvent) {
-        let remaps = self.remaps.lock();
-        let Some((_, remaps)) = remaps.iter().find(|(m, _)| TypeId::of::<M>() == *m) else {
-            mode::send_keys_to(vec![key]);
-            return;
-        };
+        fn send_key_inner<U: Ui>(remapper: &Remapper, type_id: TypeId, key: KeyEvent) {
+            let remaps = remapper.remaps.lock();
+            let Some((_, remaps)) = remaps.iter().find(|(m, _)| type_id == *m) else {
+                mode::send_keys_to(vec![key]);
+                return;
+            };
 
-        let mut cur_seq = self.cur_seq.write();
-        let (cur_seq, is_alias) = &mut *cur_seq;
-        cur_seq.push(key);
+            let mut cur_seq = remapper.cur_seq.write();
+            let (cur_seq, is_alias) = &mut *cur_seq;
+            cur_seq.push(key);
 
-        if let Some(remap) = remaps.iter().find(|r| r.takes.starts_with(cur_seq)) {
-            *is_alias = remap.is_alias;
-            if remap.takes.len() == cur_seq.len() {
-                if remap.is_alias {
-                    mode::stop_printing();
-                    remove_alias_and::<U>(|_, _| {});
-                    mode::resume_printing();
-                }
+            if let Some(remap) = remaps.iter().find(|r| r.takes.starts_with(cur_seq)) {
+                *is_alias = remap.is_alias;
+                if remap.takes.len() == cur_seq.len() {
+                    if remap.is_alias {
+                        mode::stop_printing();
+                        remove_alias_and::<U>(|_, _| {});
+                        mode::resume_printing();
+                    }
 
-                *is_alias = false;
+                    *is_alias = false;
 
-                cur_seq.clear();
-                match &remap.gives {
-                    Gives::Keys(keys) => mode::send_keys_to(keys.clone()),
-                    Gives::Mode(f) => f(),
+                    cur_seq.clear();
+                    match &remap.gives {
+                        Gives::Keys(keys) => mode::send_keys_to(keys.clone()),
+                        Gives::Mode(f) => f(),
+                    }
+                } else if *is_alias {
+                    remove_alias_and::<U>(|text, main| {
+                        text.insert_tag(
+                            main,
+                            Tag::GhostText(text!([Alias] { keys_to_string(cur_seq) })),
+                            Key::for_alias(),
+                        );
+                    })
                 }
             } else if *is_alias {
-                remove_alias_and::<U>(|text, main| {
-                    text.insert_tag(
-                        main,
-                        Tag::GhostText(text!([Alias] { keys_to_string(cur_seq) })),
-                        Key::for_alias(),
-                    );
-                })
+                remove_alias_and::<U>(|_, _| {});
+                *is_alias = false;
+                mode::send_keys_to(std::mem::take(cur_seq));
+            } else {
+                mode::send_keys_to(std::mem::take(cur_seq));
             }
-        } else if *is_alias {
-            remove_alias_and::<U>(|_, _| {});
-            *is_alias = false;
-            mode::send_keys_to(std::mem::take(cur_seq));
-        } else {
-            mode::send_keys_to(std::mem::take(cur_seq));
         }
+
+        send_key_inner::<U>(self, TypeId::of::<M>(), key);
     }
 }
 

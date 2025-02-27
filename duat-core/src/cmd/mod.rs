@@ -192,7 +192,7 @@ pub use self::{
 };
 use crate::{
     Error, context,
-    data::{RwData, RwLock},
+    data::RwData,
     file_entry, iter_around, iter_around_rev,
     mode::{self},
     session::sender,
@@ -544,7 +544,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
 }
 
 mod global {
-    use std::ops::Range;
+    use std::{ops::Range, sync::Arc};
 
     use super::{Args, CmdResult, Commands, Parameter, Result};
     use crate::{Error, text::Text, ui::Ui, widgets::Widget};
@@ -1045,7 +1045,8 @@ mod global {
         cmd: impl super::CmdFn,
         checker: impl super::CheckerFn,
     ) -> Result<()> {
-        COMMANDS.add(callers.into_callers(), cmd, checker)
+        let callers: Vec<String> = callers.into_callers().map(str::to_string).collect();
+        COMMANDS.add(callers, Box::new(cmd), Arc::new(checker))
     }
 
     /// Don't call this function, use [`cmd::add_for`] instead
@@ -1057,7 +1058,8 @@ mod global {
         cmd: impl super::ArgCmdFn<W, U>,
         checker: impl super::CheckerFn,
     ) -> Result<()> {
-        COMMANDS.add_for(callers.into_callers(), cmd, checker)
+        let callers: Vec<String> = callers.into_callers().map(str::to_string).collect();
+        COMMANDS.add_for(callers, cmd, Arc::new(checker))
     }
 
     pub(crate) fn check_params(
@@ -1092,7 +1094,9 @@ impl Commands {
 
     /// Aliases a command to a specific word
     fn alias(&self, alias: impl ToString, command: impl ToString) -> Result<Option<Text>> {
-        self.0.write().try_alias(alias, command)
+        self.0
+            .write()
+            .try_alias(alias.to_string(), command.to_string())
     }
 
     /// Runs a command from a call
@@ -1142,11 +1146,10 @@ impl Commands {
     /// Adds a command to the list of commands
     fn add(
         &self,
-        callers: impl IntoIterator<Item = impl ToString>,
-        cmd: impl CmdFn,
-        checker: impl CheckerFn,
+        callers: Vec<String>,
+        cmd: Box<dyn CmdFn>,
+        checker: Arc<dyn CheckerFn>,
     ) -> Result<()> {
-        let callers = callers.into_iter().map(|c| c.to_string()).collect();
         let command = Command::new(callers, cmd, checker);
         self.0.write().try_add(command)
     }
@@ -1154,11 +1157,11 @@ impl Commands {
     /// Adds a command for a widget of type `W`
     fn add_for<W: Widget<U>, U: Ui>(
         &'static self,
-        callers: impl IntoIterator<Item = impl ToString>,
+        callers: Vec<String>,
         mut cmd: impl ArgCmdFn<W, U>,
-        checker: impl CheckerFn,
+        checker: Arc<dyn CheckerFn>,
     ) -> Result<()> {
-        let cmd = move |args: Args| {
+        let cmd = Box::new(move |args: Args| {
             let cur_file = context::inner_cur_file::<U>();
             cur_file
                 .mutate_related_widget::<W, CmdResult>(|widget, area| {
@@ -1179,10 +1182,9 @@ impl Commands {
                     let (w, a) = node.parts();
                     w.mutate_as(|w| cmd(w, a, args)).unwrap()
                 })
-        };
-        let callers = callers.into_iter().map(|c| c.to_string()).collect();
-        let command = Command::new(callers, cmd, checker);
+        });
 
+        let command = Command::new(callers, cmd, checker);
         self.0.write().try_add(command)
     }
 
@@ -1220,13 +1222,13 @@ pub type CmdResult = std::result::Result<Option<Text>, Text>;
 #[derive(Clone)]
 struct Command {
     callers: Arc<[String]>,
-    cmd: RwData<dyn FnMut(Args) -> CmdResult + Send + Sync>,
-    checker: Arc<dyn Fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) + Send + Sync>,
+    cmd: RwData<Box<dyn CmdFn>>,
+    checker: Arc<dyn CheckerFn>,
 }
 
 impl Command {
     /// Returns a new instance of command.
-    fn new<Cmd: CmdFn>(callers: Vec<String>, cmd: Cmd, checker: impl CheckerFn) -> Self {
+    fn new(callers: Vec<String>, cmd: Box<dyn CmdFn>, checker: Arc<dyn CheckerFn>) -> Self {
         if let Some(caller) = callers
             .iter()
             .find(|caller| caller.split_whitespace().count() != 1)
@@ -1234,8 +1236,8 @@ impl Command {
             panic!("Command caller \"{caller}\" contains more than one word");
         }
         Self {
-            cmd: RwData::new_unsized::<Cmd>(Arc::new(RwLock::new(cmd))),
-            checker: Arc::new(checker),
+            cmd: RwData::new(cmd),
+            checker,
             callers: callers.into(),
         }
     }
@@ -1276,15 +1278,13 @@ impl InnerCommands {
 
     /// Tries to alias a full command (caller, flags, and
     /// arguments) to an alias.
-    fn try_alias(&mut self, alias: impl ToString, call: impl ToString) -> Result<Option<Text>> {
-        let alias = alias.to_string();
+    fn try_alias(&mut self, alias: String, call: String) -> Result<Option<Text>> {
         if alias.split_whitespace().count() != 1 {
             return Err(Error::CommandFailed(Box::new(err!(
                 "Alias is not a single word"
             ))));
         }
 
-        let call = call.to_string();
         let caller = call
             .split_whitespace()
             .next()

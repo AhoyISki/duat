@@ -71,7 +71,7 @@ impl<T: 'static, Dummy, U: Ui> State<T, Dummy, U> {
                 }),
                 Appender::Str(str) => Box::new(move |builder, _| {
                     if !(str == " " && builder.last_was_empty()) {
-                        builder.push_str(str.clone())
+                        builder.push_str(&str)
                     }
                 }),
                 Appender::Text(text) => Box::new(move |builder, _| builder.push_text(text.clone())),
@@ -387,7 +387,7 @@ enum Append {
 impl Append {
     fn push_to(self, builder: &mut Builder) {
         match self {
-            Append::String(string) => builder.push_str(string),
+            Append::String(string) => builder.push_str(&string),
             Append::Text(text) => builder.push_text(text),
         }
     }

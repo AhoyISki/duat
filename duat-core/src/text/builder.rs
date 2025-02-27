@@ -83,17 +83,21 @@ impl Builder {
     /// [`impl Display`]: std::fmt::Display
     /// [`Data`]: crate::data::Data
     /// [tag surrogate]: Ghost
-    pub fn push<D: std::fmt::Display>(&mut self, part: impl Into<BuilderPart<D>>) {
-        match part.into() {
-            BuilderPart::Text(text) => self.push_text(text),
-            BuilderPart::Tag(tag) | BuilderPart::OptToTag(Some(tag)) => {
-                self.push_tag(tag);
+    pub fn push<S: ToString>(&mut self, part: impl Into<BuilderPart<S>>) {
+        fn push_inner(builder: &mut Builder, part: BuilderPart<impl ToString>) {
+            match part {
+                BuilderPart::Text(text) => builder.push_text(text),
+                BuilderPart::Tag(tag) | BuilderPart::OptToTag(Some(tag)) => {
+                    builder.push_tag(tag);
+                }
+                BuilderPart::ToString(display) => builder.push_str(&display.to_string()),
+                BuilderPart::OptToString(Some(display)) => builder.push_str(&display.to_string()),
+                BuilderPart::EndLastAlign => todo!(),
+                _ => {}
             }
-            BuilderPart::ToString(display) => self.push_str(display),
-            BuilderPart::OptToString(Some(display)) => self.push_str(display),
-            BuilderPart::EndLastAlign => todo!(),
-            _ => {}
         }
+
+        push_inner(self, part.into())
     }
 
     /// Whether or not the last added piece was empty
@@ -107,7 +111,7 @@ impl Builder {
     /// Pushes an [`impl Display`] to the [`Text`]
     ///
     /// [`impl Display`]: std::fmt::Display
-    pub(crate) fn push_str(&mut self, display: impl std::fmt::Display) {
+    pub(crate) fn push_str(&mut self, display: &str) {
         self.buffer.clear();
         write!(self.buffer, "{display}").unwrap();
         if self.buffer.is_empty() {
@@ -217,14 +221,11 @@ pub struct AlignRight;
 pub struct Ghost(pub Text);
 
 /// A part to be pushed to a [`Builder`] by a macro
-pub enum BuilderPart<D>
-where
-    D: std::fmt::Display,
-{
+pub enum BuilderPart<S: ToString> {
     Text(Text),
     Tag(Tag),
-    ToString(D),
-    OptToString(Option<D>),
+    ToString(S),
+    OptToString(Option<S>),
     OptToTag(Option<Tag>),
     EndLastAlign,
 }
@@ -265,29 +266,20 @@ impl From<Text> for BuilderPart<String> {
     }
 }
 
-impl<D> From<&RwData<D>> for BuilderPart<String>
-where
-    D: std::fmt::Display,
-{
-    fn from(value: &RwData<D>) -> Self {
+impl<S: ToString> From<&RwData<S>> for BuilderPart<String> {
+    fn from(value: &RwData<S>) -> Self {
         BuilderPart::ToString(value.read().to_string())
     }
 }
 
-impl<D> From<&RoData<D>> for BuilderPart<String>
-where
-    D: std::fmt::Display,
-{
-    fn from(value: &RoData<D>) -> Self {
+impl<S: ToString> From<&RoData<S>> for BuilderPart<String> {
+    fn from(value: &RoData<S>) -> Self {
         BuilderPart::ToString(value.read().to_string())
     }
 }
 
-impl<D> From<D> for BuilderPart<D>
-where
-    D: std::fmt::Display,
-{
-    fn from(value: D) -> Self {
+impl<S: ToString> From<S> for BuilderPart<S> {
+    fn from(value: S) -> Self {
         BuilderPart::ToString(value)
     }
 }
@@ -316,11 +308,8 @@ impl From<RoData<PathBuf>> for BuilderPart<String> {
     }
 }
 
-impl<D> From<Option<D>> for BuilderPart<D>
-where
-    D: std::fmt::Display,
-{
-    fn from(value: Option<D>) -> Self {
+impl<S: ToString> From<Option<S>> for BuilderPart<S> {
+    fn from(value: Option<S>) -> Self {
         BuilderPart::OptToString(value)
     }
 }
