@@ -92,10 +92,10 @@ use std::{
 };
 
 pub use gapbuf::GapBuffer;
-use history::History;
 use records::Records;
 use tags::{FwdTags, RevTags};
 
+pub(crate) use self::history::History;
 use self::tags::Tags;
 pub use self::{
     builder::{AlignCenter, AlignLeft, AlignRight, Builder, Ghost, err, hint, ok, text},
@@ -108,7 +108,7 @@ pub use self::{
     treesitter::TsParser,
 };
 use crate::{
-    DuatError,
+    DuatError, cache,
     cfg::PrintCfg,
     mode::{Cursor, Cursors},
     ui::Area,
@@ -153,6 +153,11 @@ impl Text {
     /// [path]: Path
     pub(crate) fn from_file(buf: GapBuffer<u8>, cursors: Cursors, path: impl AsRef<Path>) -> Self {
         let mut text = Self::from_buf(buf, Some(cursors), true);
+
+        if let Some(history) = cache::load_cache(path.as_ref()) {
+            text.history = Some(Box::new(history));
+        }
+
         let tree_sitter = TsParser::new(&mut text, path);
         text.ts_parser = tree_sitter.map(|ts| (Box::new(ts), Vec::new()));
         text
@@ -1218,6 +1223,10 @@ impl Text {
     /// A mut reference to this [`Text`]'s [`Cursors`] if they exist
     pub fn cursors_mut(&mut self) -> Option<&mut Cursors> {
         self.cursors.as_mut().map(|b| b.as_mut())
+    }
+
+    pub(crate) fn history(&self) -> Option<&History> {
+        self.history.as_deref()
     }
 }
 

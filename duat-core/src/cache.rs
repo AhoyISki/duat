@@ -137,3 +137,28 @@ pub(super) fn delete_cache(path: impl Into<PathBuf>) {
 
     delete_cache_inner(path.into());
 }
+
+pub(super) fn delete_cache_for<C: 'static>(path: impl Into<PathBuf>) {
+    fn delete_cache_for_inner(path: PathBuf, type_name: String) {
+        let file_name = path.file_name().unwrap().to_str().unwrap();
+        let Some(mut src) = dirs_next::cache_dir() else {
+            return;
+        };
+
+        let encoded: String = {
+            let base64 = base64::prelude::BASE64_URL_SAFE.encode(path.to_str().unwrap());
+            base64.chars().step_by(5).collect()
+        };
+
+        src.push("duat/structs");
+        src.push(format!("{encoded}:{file_name}"));
+        src.push(type_name);
+
+        if src.exists() {
+            std::fs::remove_file(src).unwrap();
+        }
+    }
+
+    let type_name = format!("{}::{}", src_crate::<C>(), duat_name::<C>());
+    delete_cache_for_inner(path.into(), type_name);
+}

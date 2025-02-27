@@ -13,7 +13,7 @@ use gapbuf::GapBuffer;
 use parking_lot::Mutex;
 
 use crate::{
-    cache::{delete_cache, store_cache},
+    cache::{delete_cache, delete_cache_for, store_cache},
     cfg::PrintCfg,
     cmd, context, file_entry, form,
     hooks::{self, ConfigLoaded, ConfigUnloaded, ExitedDuat, OnFileOpen, OnWindowOpen},
@@ -332,10 +332,16 @@ impl<U: Ui> Session<U> {
             let mut file = file.write();
             let path = file.path();
 
-            if is_quitting_duat && (!file.exists() || file.text().has_unsaved_changes()) {
-                delete_cache(&path);
-                return;
+            if is_quitting_duat {
+                delete_cache_for::<crate::text::History>(&path);
+                if !file.exists() || file.text().has_unsaved_changes() {
+                    delete_cache(&path);
+                    return;
+                }
+            } else if let Some(history) = file.text().history() {
+                store_cache(&path, history.clone());
             }
+
             if let Some(cache) = area.cache() {
                 store_cache(&path, cache);
             }
