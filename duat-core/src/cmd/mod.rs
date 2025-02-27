@@ -240,7 +240,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
             // If I send the switch signal first, and the Window is deleted, I
             // will have the synchronously change the current window number
             // without affecting anything else.
-            mode::reset_switch_to::<U>(&next_name);
+            mode::reset_switch_to::<U>(&next_name, true);
         }
 
         sender()
@@ -264,7 +264,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
                 sender().send(DuatEvent::Quit).unwrap();
                 return Ok(None);
             };
-            mode::reset_switch_to::<U>(&next_name);
+            mode::reset_switch_to::<U>(&next_name, true);
         }
 
         sender()
@@ -347,7 +347,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
             return Ok(None);
         };
 
-        mode::reset_switch_to::<U>(&next_name);
+        mode::reset_switch_to::<U>(&next_name, true);
 
         sender().send(DuatEvent::CloseFile(name.clone())).unwrap();
         Ok(Some(
@@ -431,7 +431,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
             return Ok(Some(ok!("Opened " [*a] name)));
         }
 
-        mode::reset_switch_to::<U>(name.clone());
+        mode::reset_switch_to::<U>(name.clone(), true);
         Ok(Some(ok!("Switched to " [*a] name)))
     })?;
 
@@ -450,7 +450,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
         };
 
         if windows[win].file_nodes().len() == 1 {
-            mode::reset_switch_to::<U>(name.clone());
+            mode::reset_switch_to::<U>(name.clone(), true);
             Ok(Some(ok!("Switched to " [*a] name)))
         } else {
             sender().send(DuatEvent::OpenWindow(name.clone())).unwrap();
@@ -459,7 +459,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
     })?;
 
     add!(["buffer", "b"], |name: OtherFileBuffer<U>| {
-        mode::reset_switch_to::<U>(&name);
+        mode::reset_switch_to::<U>(&name, true);
         Ok(Some(ok!("Switched to " [*a] name)))
     })?;
 
@@ -484,7 +484,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
                 .ok_or_else(|| err!("There are no other files open in this window"))?
         };
 
-        mode::reset_switch_to::<U>(&name);
+        mode::reset_switch_to::<U>(&name, true);
         Ok(Some(ok!("Switched to " [*a] name)))
     })?;
 
@@ -509,7 +509,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
                 .ok_or_else(|| err!("There are no other files open in this window"))?
         };
 
-        mode::reset_switch_to::<U>(&name);
+        mode::reset_switch_to::<U>(&name, true);
 
         Ok(Some(ok!("Switched to " [*a] name)))
     })?;

@@ -469,14 +469,11 @@ impl<U: Ui> Session<U> {
 
             // Swap the Files ahead of the swapped new_root
             let ordering = node.inspect_as(|f: &File| f.layout_ordering).unwrap();
-            let nodes: Vec<Node<U>> = windows[win].file_nodes()[(ordering + 1)..]
-                .iter()
-                .map(|(n, _)| (*n).clone())
-                .collect();
 
-            for node in nodes {
+            for (node, _) in &windows[win].file_nodes()[ordering..] {
                 new_root.swap(node.area(), DuatPermission::new());
             }
+            drop(windows);
 
             // Delete the new_root, which should be the last "File" in the
             // list of the original Window.
@@ -499,13 +496,12 @@ impl<U: Ui> Session<U> {
         let builder = WindowBuilder::new(new_win);
         hooks::trigger_now::<OnWindowOpen<U>>(builder);
 
+        if context::cur_file::<U>().unwrap().name() != name {
+            mode::reset_switch_to::<U>(name, false);
+        }
+
         self.cur_window.store(new_win, Ordering::Relaxed);
         U::switch_window(self.ms, new_win);
-
-        let cur_name = context::cur_file::<U>().unwrap().name();
-        if cur_name != name {
-            mode::reset_switch_to::<U>(name);
-        }
     }
 }
 

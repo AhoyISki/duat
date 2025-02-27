@@ -41,7 +41,7 @@ impl Constraints {
     fn new(ps: PushSpecs, new: &Rect, parent: AreaId, rects: &Rects, p: &mut Printer) -> Self {
         let cons = [ps.ver_constraint(), ps.hor_constraint()];
         let [ver_eq, hor_eq] = get_eqs(cons, new, parent, rects);
-        p.add_equalities([&ver_eq, &hor_eq].into_iter().flatten());
+        p.add_eqs([&ver_eq, &hor_eq].into_iter().flatten());
 
         Self {
             ver_eq,
@@ -69,7 +69,7 @@ impl Constraints {
     pub fn apply(self, new: &Rect, parent: AreaId, rects: &Rects, p: &mut Printer) -> Self {
         let cons = [self.ver_con, self.hor_con];
         let [ver_eq, hor_eq] = get_eqs(cons, new, parent, rects);
-        p.add_equalities([&ver_eq, &hor_eq].into_iter().flatten());
+        p.add_eqs([&ver_eq, &hor_eq].into_iter().flatten());
 
         Self { ver_eq, hor_eq, ..self }
     }

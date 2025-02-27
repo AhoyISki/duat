@@ -126,12 +126,12 @@ mod switch {
     }
 
     /// Switches to the file with the given name
-    pub(crate) fn reset_switch_to<U: Ui>(name: impl std::fmt::Display) {
+    pub(crate) fn reset_switch_to<U: Ui>(name: impl std::fmt::Display, switch_window: bool) {
         let windows = context::windows::<U>().read();
         let name = name.to_string();
         match file_entry(&windows, &name) {
             Ok((win, _, node)) => {
-                if win != context::cur_window() {
+                if win != context::cur_window() && switch_window {
                     sender().send(DuatEvent::SwitchWindow(win)).unwrap();
                 }
                 let node = node.clone();

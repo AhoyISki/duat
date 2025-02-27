@@ -190,15 +190,13 @@ impl Rect {
                 // We have to do this, since set_base_eqs assumes that the child in
                 // question wasn't in yet.
                 let (mut child, cons) = self.children_mut().unwrap().remove(i);
-
                 let is_resizable = child.is_resizable_on(axis, &cons);
                 to_constrain = child.set_base_eqs(i, self, p, fr, is_resizable, to_constrain);
-
                 self.children_mut().unwrap().insert(i, (child, cons));
             }
         }
 
-        p.add_equalities(&self.eqs);
+        p.add_eqs(&self.eqs);
 
         to_constrain
     }
@@ -384,7 +382,7 @@ impl Rects {
             main.br.x() | EQ(REQUIRED) | p.max().x(),
             main.br.y() | EQ(REQUIRED) | p.max().y(),
         ]);
-        p.add_equalities(&main.eqs);
+        p.add_eqs(&main.eqs);
 
         Self { main, floating: Vec::new(), fr }
     }
@@ -533,19 +531,19 @@ impl Rects {
         let entry = (rect_to_fix, cons);
         parent0.children_mut().unwrap().insert(i, entry);
 
-        constrain_areas(to_constrain.unwrap(), self, p);
+        reset_and_constrain_areas(to_constrain.unwrap(), self, p);
     }
 
     pub fn reset_eqs(&mut self, p: &mut Printer, target: AreaId) {
         let fr = self.fr;
-        let mut to_constrain = Some(Vec::new());
+        let mut to_cons = Some(Vec::new());
 
         if let Some((i, parent)) = self.get_parent_mut(target) {
             let (mut rect, cons) = parent.children_mut().unwrap().remove(i);
 
             let axis = parent.kind.axis().unwrap();
             let is_resizable = rect.is_resizable_on(axis, &cons);
-            to_constrain = rect.set_base_eqs(i, parent, p, fr, is_resizable, to_constrain);
+            to_cons = rect.set_base_eqs(i, parent, p, fr, is_resizable, to_cons);
 
             parent.children_mut().unwrap().insert(i, (rect, cons));
 
@@ -555,7 +553,7 @@ impl Rects {
                 (i - 1, parent.children_mut().unwrap().remove(i - 1))
             };
             let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
-            to_constrain = rect_to_fix.set_base_eqs(i, parent, p, fr, is_resizable, to_constrain);
+            to_cons = rect_to_fix.set_base_eqs(i, parent, p, fr, is_resizable, to_cons);
             let entry = (rect_to_fix, cons);
             parent.children_mut().unwrap().insert(i, entry);
         } else if let Some(main) = self.get_mut(target) {
@@ -566,20 +564,21 @@ impl Rects {
                 main.br.x() | EQ(REQUIRED) | p.max().x(),
                 main.br.y() | EQ(REQUIRED) | p.max().y(),
             ]);
-            p.add_equalities(&main.eqs);
+            main.tl.set_to_zero();
+            p.add_eqs(&main.eqs);
 
             if let Kind::Middle { children, axis, .. } = &mut main.kind {
                 let axis = *axis;
                 for i in 0..children.len() {
                     let (mut child, cons) = main.children_mut().unwrap().remove(i);
                     let is_resizable = child.is_resizable_on(axis, &cons);
-                    to_constrain = child.set_base_eqs(i, main, p, fr, is_resizable, to_constrain);
+                    to_cons = child.set_base_eqs(i, main, p, fr, is_resizable, to_cons);
                     main.children_mut().unwrap().insert(i, (child, cons));
                 }
             }
         }
 
-        constrain_areas(to_constrain.unwrap(), self, p);
+        reset_and_constrain_areas(to_cons.unwrap(), self, p);
     }
 
     pub fn new_parent_of(
@@ -624,7 +623,7 @@ impl Rects {
                     parent.br.x() | EQ(REQUIRED) | p.max().x(),
                     parent.br.y() | EQ(REQUIRED) | p.max().y(),
                 ]);
-                p.add_equalities(&parent.eqs);
+                p.add_eqs(&parent.eqs);
                 (std::mem::replace(&mut self.main, parent), None)
             };
 
@@ -906,12 +905,14 @@ fn print_opt_eq(f: &mut std::fmt::Formatter, eq: &Option<Equality>) -> std::fmt:
     }
 }
 
-fn constrain_areas(to_constrain: Vec<AreaId>, rects: &mut Rects, p: &mut Printer) {
+fn reset_and_constrain_areas(to_constrain: Vec<AreaId>, rects: &mut Rects, p: &mut Printer) {
     for id in to_constrain {
         let Some((i, parent)) = rects.get_parent_mut(id) else {
             continue;
         };
         let (rect, mut cons) = parent.children_mut().unwrap().remove(i);
+        rect.tl.set_to_zero();
+        rect.br.set_to_zero();
         let parent_id = parent.id;
         cons.remove(p);
         let cons = cons.apply(&rect, parent_id, rects, p);

@@ -42,14 +42,14 @@ mod rules;
 pub struct Ui {
     windows: Vec<(Area, RwData<Printer>)>,
     layouts: RwData<Vec<Layout>>,
-    cur_window: usize,
+    win: usize,
     fr: Frame,
     printer_fn: fn() -> RwData<Printer>,
 }
 
 impl Ui {
     fn cur_printer(&self) -> &RwData<Printer> {
-        if let Some((_, printer)) = self.windows.get(self.cur_window) {
+        if let Some((_, printer)) = self.windows.get(self.win) {
             printer
         } else {
             unreachable!("Started printing before a window was created");
@@ -62,7 +62,7 @@ impl Default for Ui {
         Self {
             windows: Vec::new(),
             layouts: RwData::default(),
-            cur_window: 0,
+            win: 0,
             fr: Frame::default(),
             printer_fn: RwData::default,
         }
@@ -199,8 +199,8 @@ impl ui::Ui for Ui {
         area
     }
 
-    fn switch_window(ms: &'static Self::MetaStatics, window: usize) {
-        ms.lock().unwrap().cur_window = window;
+    fn switch_window(ms: &'static Self::MetaStatics, win: usize) {
+        ms.lock().unwrap().win = win;
     }
 
     fn flush_layout(ms: &'static Self::MetaStatics) {
@@ -212,15 +212,15 @@ impl ui::Ui for Ui {
         let mut ui = ms.lock().unwrap();
         ui.windows = Vec::new();
         *ui.layouts.write() = Vec::new();
-        ui.cur_window = 0;
+        ui.win = 0;
     }
 
     fn remove_window(ms: &'static Self::MetaStatics, win: usize) {
         let mut ui = ms.lock().unwrap();
         ui.windows.remove(win);
         ui.layouts.write().remove(win);
-        if ui.cur_window > win {
-            ui.cur_window -= 1;
+        if ui.win > win {
+            ui.win -= 1;
         }
     }
 }

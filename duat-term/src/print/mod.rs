@@ -199,7 +199,7 @@ impl Printer {
         self.eqs_to_add.push(eq);
     }
 
-    pub fn add_equalities<'a>(&mut self, eqs: impl IntoIterator<Item = &'a Equality>) {
+    pub fn add_eqs<'a>(&mut self, eqs: impl IntoIterator<Item = &'a Equality>) {
         self.eqs_to_add.extend(eqs.into_iter().cloned())
     }
 

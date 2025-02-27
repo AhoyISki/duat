@@ -262,10 +262,10 @@ impl ui::Area for Area {
 
     fn swap(&self, rhs: &Self, _: DuatPermission) {
         let mut layouts = self.layouts.write();
-        let lhs_i = get_layout_pos(&layouts, self.id).unwrap();
-        let rhs_i = get_layout_pos(&layouts, rhs.id).unwrap();
+        let lhs_win = get_layout_pos(&layouts, self.id).unwrap();
+        let rhs_win = get_layout_pos(&layouts, rhs.id).unwrap();
 
-        if lhs_i == rhs_i {
+        if lhs_win == rhs_win {
             let layout = get_layout_mut(&mut layouts, self.id).unwrap();
             let lhs_id = layout.rects.get_cluster_master(self.id).unwrap_or(self.id);
             let rhs_id = layout.rects.get_cluster_master(rhs.id).unwrap_or(rhs.id);
@@ -274,7 +274,7 @@ impl ui::Area for Area {
             }
             layout.swap(lhs_id, rhs_id);
         } else {
-            let [lhs_lay, rhs_lay] = layouts.get_disjoint_mut([lhs_i, rhs_i]).unwrap();
+            let [lhs_lay, rhs_lay] = layouts.get_disjoint_mut([lhs_win, rhs_win]).unwrap();
             let lhs_id = lhs_lay.rects.get_cluster_master(self.id).unwrap_or(self.id);
             let rhs_id = rhs_lay.rects.get_cluster_master(rhs.id).unwrap_or(rhs.id);
 
