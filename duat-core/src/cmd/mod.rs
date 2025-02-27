@@ -213,7 +213,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
         }
     })?;
 
-    add!(["quit", "q"], move |name: Option<FileBuffer<U>>| {
+    add!(["quit", "q"], |name: Option<FileBuffer<U>>| {
         let cur_name = context::cur_file::<U>()?.name();
         let name = name.unwrap_or(&cur_name);
 
@@ -249,7 +249,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
         Ok(Some(ok!("Closed " [*a] name)))
     })?;
 
-    add!(["quit!", "q!"], move |name: Option<FileBuffer<U>>| {
+    add!(["quit!", "q!"], |name: Option<FileBuffer<U>>| {
         let cur_name = context::cur_file::<U>()?.name();
         let name = name.unwrap_or(&cur_name);
 
@@ -273,7 +273,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
         Ok(Some(ok!("Closed " [*a] name)))
     })?;
 
-    add!(["quit-all", "qa"], move || {
+    add!(["quit-all", "qa"], || {
         let windows = context::windows::<U>().read();
         let unwritten = windows
             .iter()
@@ -292,7 +292,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
         }
     })?;
 
-    add!(["quit-all!", "qa!"], move || {
+    add!(["quit-all!", "qa!"], || {
         sender().send(DuatEvent::Quit).unwrap();
         Ok(None)
     })?;
@@ -319,7 +319,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
         }
     })?;
 
-    add!(["write-quit", "wq"], move |path: Option<PossibleFile>| {
+    add!(["write-quit", "wq"], |path: Option<PossibleFile>| {
         let file = context::cur_file::<U>()?;
         let (bytes, name) = file.mutate_data(|file, _| {
             let mut file = file.write();
@@ -378,7 +378,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
         }
     })?;
 
-    add!(["write-all-quit", "waq"], move || {
+    add!(["write-all-quit", "waq"], || {
         let windows = context::windows::<U>().read();
 
         let mut written = 0;
@@ -402,7 +402,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
         }
     })?;
 
-    add!(["write-all-quit!", "waq!"], move || {
+    add!(["write-all-quit!", "waq!"], || {
         let windows = context::windows::<U>().read();
 
         windows
@@ -417,7 +417,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
         Ok(None)
     })?;
 
-    add!(["edit", "e"], move |path: PossibleFile| {
+    add!(["edit", "e"], |path: PossibleFile| {
         let windows = context::windows::<U>().read();
 
         let name = if let Ok(path) = path.strip_prefix(context::cur_dir()) {
@@ -435,7 +435,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
         Ok(Some(ok!("Switched to " [*a] name)))
     })?;
 
-    add!(["open", "o"], move |path: PossibleFile| {
+    add!(["open", "o"], |path: PossibleFile| {
         let windows = context::windows::<U>().read();
 
         let name = if let Ok(path) = path.strip_prefix(context::cur_dir()) {
@@ -488,7 +488,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
         Ok(Some(ok!("Switched to " [*a] name)))
     })?;
 
-    add!("prev-file", move |flags: Flags| {
+    add!("prev-file", |flags: Flags| {
         let windows = context::windows().read();
         let file = context::cur_file()?;
         let w = context::cur_window();
@@ -514,7 +514,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
         Ok(Some(ok!("Switched to " [*a] name)))
     })?;
 
-    add!("swap", move |lhs: FileBuffer<U>, rhs: FileBuffer<U>| {
+    add!("swap", |lhs: FileBuffer<U>, rhs: FileBuffer<U>| {
         sender()
             .send(DuatEvent::SwapFiles(lhs.to_string(), rhs.to_string()))
             .unwrap();
