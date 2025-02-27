@@ -242,21 +242,12 @@
 //! [remove]: crate::text::Text::remove_tags_on
 //! [Move]: crate::mode::Mover::move_to
 #![feature(
-    extract_if,
-    iter_advance_by,
-    iter_intersperse,
     let_chains,
     decl_macro,
     step_trait,
     type_alias_impl_trait,
-    if_let_guard,
-    closure_lifetime_binder,
     trait_alias,
-    exact_size_is_empty,
-    macro_metavar_expr_concat,
-    debug_closure_helpers,
-    maybe_uninit_uninit_array,
-    string_from_utf8_lossy_owned
+    debug_closure_helpers
 )]
 #![allow(clippy::single_range_in_vec_init)]
 
@@ -271,8 +262,8 @@ use std::{
     time::Duration,
 };
 
-#[allow(clippy::single_component_path_imports)]
-use dirs_next;
+#[allow(unused_imports)]
+use dirs_next::cache_dir;
 pub use parking_lot::{Mutex, RwLock};
 use ui::Window;
 use widgets::{File, Node, Widget};
@@ -911,11 +902,11 @@ pub macro log_panic($($text:tt)*) {{
 /// Log information to a log file
 #[doc(hidden)]
 pub macro log_file($($text:tt)*) {{
-    //#[cfg(not(debug_assertions))] {
-    //    compile_error!("You are not supposed to use log_file on release profiles!");
-    //}
+    #[cfg(not(debug_assertions))] {
+        compile_error!("You are not supposed to use log_file on release profiles!");
+    }
 
-    if let Some(cache) = dirs_next::cache_dir() {
+    if let Some(cache) = cache_dir() {
         let mut file = std::io::BufWriter::new(
             std::fs::OpenOptions::new()
                 .create(true)

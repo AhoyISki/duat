@@ -217,7 +217,7 @@ impl TsParser {
             }
 
             type FoundDelim<'a> = (Option<Node<'a>>, bool);
-            let mut find_delim = for<'a, 'b> |node: Node<'a>, delim: &'b str| -> FoundDelim<'a> {
+            fn find_delim<'a>(text: &mut Text, node: Node<'a>, delim: &str) -> FoundDelim<'a> {
                 let mut c = node.walk();
                 let child = node.children(&mut c).find(|child| child.kind() == delim);
                 let ret = child.map(|child| {
@@ -230,7 +230,7 @@ impl TsParser {
                 });
                 let (child, is_last_in_line) = ret.unzip();
                 (child, is_last_in_line.unwrap_or(false))
-            };
+            }
 
             if should_process
                 && q(&caps, node, &["align"])
@@ -240,11 +240,11 @@ impl TsParser {
                 let props = &caps["align"][&node.id()];
                 let (o_delim_node, o_is_last_in_line) = props
                     .get(&"open_delimiter")
-                    .and_then(|delim| delim.map(|d| find_delim(node, d)))
+                    .and_then(|delim| delim.map(|d| find_delim(text, node, d)))
                     .unwrap_or((Some(node), false));
                 let (c_delim_node, c_is_last_in_line) = props
                     .get(&"close_delimiter")
-                    .and_then(|delim| delim.map(|d| find_delim(node, d)))
+                    .and_then(|delim| delim.map(|d| find_delim(text, node, d)))
                     .unwrap_or((Some(node), false));
 
                 if let Some(o_delim_node) = o_delim_node {
@@ -545,10 +545,10 @@ fn lang_from_path(
 ) -> Option<(&'static str, &'static Language, [&'static str; 2])> {
     type Lang<'a> = ((&'a str, &'a str, &'a str), &'a Language, [&'a str; 2]);
     static LANGUAGES: LazyLock<Mutex<Vec<Lang>>> = LazyLock::new(|| {
-        macro lang($lang:ident) {
-                Box::leak(Box::new(${concat(tree_sitter_, $lang)}::LANGUAGE.into()))
-            }
-        macro queries($lang:ident) {
+        macro l($lang:ident) {
+            Box::leak(Box::new($lang::LANGUAGE.into()))
+        }
+        macro q($lang:ident) {
             [
                 include_str!(concat!(
                     "../../../../ts-queries/",
@@ -565,14 +565,14 @@ fn lang_from_path(
 
         Mutex::new(vec![
             //(("c", "C", "c"), lang!(cpp)),
-            (("cc", "C++", "cpp"), lang!(cpp), queries!(cpp)),
-            (("cpp", "C++", "cpp"), lang!(cpp), queries!(cpp)),
+            (("cc", "C++", "cpp"), l!(tree_sitter_cpp), q!(cpp)),
+            (("cpp", "C++", "cpp"), l!(tree_sitter_cpp), q!(cpp)),
             //        (".cl", "Common Lisp", "common-lisp"),
             //        (".clj", "Clojure", "clojure"),
             //        (".comp", "GLSL", "glsl"),
             //        (".cs", "C#", "csharp"),
             //        (".css", "CSS", "css"),
-            (("cxx", "C++", "cpp"), lang!(cpp), queries!(cpp)),
+            (("cxx", "C++", "cpp"), l!(tree_sitter_cpp), q!(cpp)),
             //        (".dart", "Dart", "dart"),
             //        (".frag", "GLSL", "glsl"),
             //        (".geom", "GLSL", "glsl"),
@@ -583,9 +583,9 @@ fn lang_from_path(
             //        (".handlebars", "Handlebars", "handlebars"),
             //        (".hbs", "Handlebars", "handlebars"),
             //        (".hlsl", "HLSL", "HLSL"),
-            (("hpp", "C++", "cpp"), lang!(cpp), queries!(cpp)),
+            (("hpp", "C++", "cpp"), l!(tree_sitter_cpp), q!(cpp)),
             //        (".html", "HTML", "html"),
-            (("hxx", "C++", "cpp"), lang!(cpp), queries!(cpp)),
+            (("hxx", "C++", "cpp"), l!(tree_sitter_cpp), q!(cpp)),
             //        (".ini", "INI", "ini"),
             //        (".java", "Java", "java"),
             //        (".jinja", "Jinja", "jinja"),
@@ -603,7 +603,7 @@ fn lang_from_path(
             //        (".pyo", "Python", "python"),
             //        (".rb", "Ruby", "ruby"),
             //        (".rkt", "Racket", "racket"),
-            (("rs", "Rust", "rust"), lang!(rust), queries!(rust)),
+            (("rs", "Rust", "rust"), l!(tree_sitter_rust), q!(rust)),
             //        (".sass", "SASS", "sass"),
             //        (".sc", "Scala", "scala"),
             //        (".scala", "Scala", "scala"),

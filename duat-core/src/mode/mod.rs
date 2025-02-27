@@ -176,7 +176,7 @@ mod switch {
     pub(super) fn send_keys_to(keys: Vec<KeyEvent>) {
         let mut keys = keys.into_iter();
         let mut send_key = std::mem::replace(&mut *SEND_KEY.lock(), Box::new(|_| None));
-        while !keys.is_empty() {
+        while keys.len() > 0 {
             if let Some(set_mode) = send_key(&mut keys) {
                 set_mode();
                 send_key = std::mem::replace(&mut *SEND_KEY.lock(), Box::new(|_| None));

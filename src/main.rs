@@ -164,6 +164,7 @@ fn run_cargo(
     let mut cargo = Command::new("cargo");
     cargo.args([
         "build",
+        "--quiet",
         "--manifest-path",
         toml_path.to_str().unwrap(),
         "--target-dir",

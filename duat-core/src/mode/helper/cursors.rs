@@ -84,14 +84,16 @@ impl Cursors {
             let buf = self.buf.range(..);
             match binary_search_by_key(buf, cursor.start_v(), |c| c.start_v()) {
                 Ok(i) => i..i + 1,
-                Err(i)
+                Err(i) => {
                     if let Some(prev_i) = i.checked_sub(1)
                         && let Some(prev) = self.buf.get(prev_i)
-                        && cursor.start_v() <= prev.end_v() =>
-                {
-                    prev_i..i
+                        && cursor.start_v() <= prev.end_v()
+                    {
+                        prev_i..i
+                    } else {
+                        i..i
+                    }
                 }
-                Err(i) => i..i,
             }
         };
 
@@ -105,13 +107,15 @@ impl Cursors {
             let buf = self.buf.range(..);
             match binary_search_by_key(buf, cursor.end_v(), |c| c.start_v()) {
                 Ok(i) => c_range.start..i + 1,
-                Err(i)
+                Err(i) => {
                     if let Some(prev) = self.buf.get(i)
-                        && prev.start_v() < cursor.end_v() =>
-                {
-                    c_range.start..i + 1
+                        && prev.start_v() < cursor.end_v()
+                    {
+                        c_range.start..i + 1
+                    } else {
+                        c_range.start..i
+                    }
                 }
-                Err(i) => c_range.start..i,
             }
         };
 

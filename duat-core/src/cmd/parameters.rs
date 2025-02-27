@@ -71,7 +71,7 @@ impl<'a, const N: usize, P: Parameter<'a>> Parameter<'a> for [P; N] {
     /// feedback.
     fn new(args: &mut Args<'a>) -> std::result::Result<Self::Returns, Text> {
         use std::mem::MaybeUninit;
-        let mut returns = MaybeUninit::uninit_array::<N>();
+        let mut returns = [const { MaybeUninit::uninit() }; N];
 
         for r in returns.iter_mut() {
             match args.next_as::<P>() {
@@ -151,8 +151,8 @@ impl Parameter<'_> for Remainder {
 
     fn new(args: &mut Args) -> std::result::Result<Self::Returns, Text> {
         let remainder: String = std::iter::from_fn(|| args.next().ok())
-            .intersperse(" ")
-            .collect();
+            .collect::<Vec<&str>>()
+            .join(" ");
         if remainder.is_empty() {
             Err(err!("There are no more arguments"))
         } else {
