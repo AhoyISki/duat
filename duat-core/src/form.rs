@@ -323,7 +323,6 @@ mod global {
     ///
     /// [`HashMap`]: std::collections::HashMap
     pub macro id_of {
-        // Since this variable will only ever be accessed by one thread, it is perfectly reasonable to use a `static mut`, even if unsafe.
         ($form:expr) => {{
             static ID: LazyLock<FormId> = LazyLock::new(|| inner_to_id($form));
             *ID
