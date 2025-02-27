@@ -214,11 +214,11 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
     })?;
 
     add!(["quit", "q"], move |name: Option<FileBuffer<U>>| {
-        let file = context::cur_file::<U>()?;
-        let name = name.map(str::to_string).unwrap_or_else(|| file.name());
+        let cur_name = context::cur_file::<U>()?.name();
+        let name = name.unwrap_or(&cur_name);
 
         let windows = context::windows::<U>().read();
-        let (win, wid, file) = file_entry(&windows, &name).unwrap();
+        let (win, wid, file) = file_entry(&windows, name).unwrap();
 
         if file
             .widget()
@@ -228,40 +228,48 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
             return Err(err!([*a] name [] " has unsaved changes"));
         }
 
-        let Some(next_name) =
-            iter_around::<U>(&windows, win, wid).find_map(|(.., node)| node.inspect_as(File::name))
-        else {
-            sender().send(DuatEvent::Quit).unwrap();
-            return Ok(None);
-        };
+        // If we are on the current File, switch to the next one.
+        if name == cur_name {
+            let Some(next_name) = iter_around::<U>(&windows, win, wid)
+                .find_map(|(.., node)| node.inspect_as(File::name))
+            else {
+                sender().send(DuatEvent::Quit).unwrap();
+                return Ok(None);
+            };
 
-        // If I send the switch signal first, and the Window is deleted, I
-        // will have the synchronously change the current window number
-        // without affecting anything else.
-        mode::reset_switch_to::<U>(&next_name);
+            // If I send the switch signal first, and the Window is deleted, I
+            // will have the synchronously change the current window number
+            // without affecting anything else.
+            mode::reset_switch_to::<U>(&next_name);
+        }
 
-        sender().send(DuatEvent::CloseFile(name.clone())).unwrap();
+        sender()
+            .send(DuatEvent::CloseFile(name.to_string()))
+            .unwrap();
         Ok(Some(ok!("Closed " [*a] name)))
     })?;
 
     add!(["quit!", "q!"], move |name: Option<FileBuffer<U>>| {
-        let file = context::cur_file::<U>()?;
-        let name = name.map(str::to_string).unwrap_or_else(|| file.name());
+        let cur_name = context::cur_file::<U>()?.name();
+        let name = name.unwrap_or(&cur_name);
 
         // Should wait here until I'm out of `session_loop`
         let windows = context::windows::<U>().read();
-        let (win, wid, file) = file_entry(&windows, &name).unwrap();
+        let (win, wid, file) = file_entry(&windows, name).unwrap();
 
-        let Some(next_name) =
-            iter_around::<U>(&windows, win, wid).find_map(|(.., node)| node.inspect_as(File::name))
-        else {
-            sender().send(DuatEvent::Quit).unwrap();
-            return Ok(None);
-        };
+        if name == cur_name {
+            let Some(next_name) = iter_around::<U>(&windows, win, wid)
+                .find_map(|(.., node)| node.inspect_as(File::name))
+            else {
+                sender().send(DuatEvent::Quit).unwrap();
+                return Ok(None);
+            };
+            mode::reset_switch_to::<U>(&next_name);
+        }
 
-        mode::reset_switch_to::<U>(&next_name);
-
-        sender().send(DuatEvent::CloseFile(name.clone())).unwrap();
+        sender()
+            .send(DuatEvent::CloseFile(name.to_string()))
+            .unwrap();
         Ok(Some(ok!("Closed " [*a] name)))
     })?;
 
