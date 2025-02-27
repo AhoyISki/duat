@@ -151,8 +151,14 @@ impl Text {
     /// Creates a [`Text`] from a file's [path]
     ///
     /// [path]: Path
-    pub(crate) fn from_file(buf: GapBuffer<u8>, cursors: Cursors, path: impl AsRef<Path>) -> Self {
+    pub(crate) fn from_file(
+        buf: GapBuffer<u8>,
+        cursors: Cursors,
+        path: impl AsRef<Path>,
+        has_unsaved_changes: bool,
+    ) -> Self {
         let mut text = Self::from_buf(buf, Some(cursors), true);
+        text.has_unsaved_changes.store(has_unsaved_changes, Ordering::Relaxed);
 
         if let Some(history) = cache::load_cache(path.as_ref()) {
             text.history = Some(Box::new(history));

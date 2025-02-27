@@ -47,9 +47,14 @@ impl FileCfg {
     }
 
     /// Takes a previous [`File`]
-    pub(crate) fn take_from_prev(self, buf: GapBuffer<u8>, path_kind: PathKind) -> Self {
+    pub(crate) fn take_from_prev(
+        self,
+        buf: GapBuffer<u8>,
+        path_kind: PathKind,
+        has_unsaved_changes: bool,
+    ) -> Self {
         Self {
-            text_op: TextOp::TakeBuf(buf, path_kind),
+            text_op: TextOp::TakeBuf(buf, path_kind, has_unsaved_changes),
             ..self
         }
     }
@@ -66,10 +71,10 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
     fn build(self, _: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
         let (text, path) = match self.text_op {
             TextOp::NewBuffer => (Text::new_with_history(), PathKind::new_unset()),
-            TextOp::TakeBuf(buf, path) => match &path {
+            TextOp::TakeBuf(buf, path, has_unsaved_changes) => match &path {
                 PathKind::SetExists(p) | PathKind::SetAbsent(p) => {
                     let cursors = load_cache(p).unwrap_or_default();
-                    (Text::from_file(buf, cursors, p), path)
+                    (Text::from_file(buf, cursors, p, has_unsaved_changes), path)
                 }
                 PathKind::NotSet(_) => (Text::from_buf(buf, Some(Cursors::default()), true), path),
             },
@@ -81,7 +86,7 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
                     let cursors = load_cache(path).unwrap_or_default();
                     let buf = GapBuffer::from_iter(file.bytes());
                     (
-                        Text::from_file(buf, cursors, path),
+                        Text::from_file(buf, cursors, path, false),
                         PathKind::SetExists(path.clone()),
                     )
                 } else if canon_path.is_err()
@@ -388,6 +393,6 @@ impl PathKind {
 enum TextOp {
     #[default]
     NewBuffer,
-    TakeBuf(GapBuffer<u8>, PathKind),
+    TakeBuf(GapBuffer<u8>, PathKind, bool),
     OpenPath(PathBuf),
 }

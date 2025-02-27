@@ -103,9 +103,12 @@ impl<U: Ui> SessionCfg<U> {
 
         let file_cfg = self.file_cfg.clone();
         let inherited_cfgs = prev.into_iter().enumerate().map(|(i, cfgs)| {
-            let cfgs = cfgs.into_iter().map(|(buf, path_kind, is_active)| {
-                let file_cfg = file_cfg.clone().take_from_prev(buf, path_kind);
-                (file_cfg, is_active)
+            let cfgs = cfgs.into_iter().map(|file_ret| {
+                let buf = file_ret.buf;
+                let pk = file_ret.path_kind;
+                let unsaved = file_ret.has_unsaved_changes;
+                let file_cfg = file_cfg.clone().take_from_prev(buf, pk, unsaved);
+                (file_cfg, file_ret.is_active)
             });
             (i, cfgs)
         });
@@ -331,6 +334,7 @@ impl<U: Ui> Session<U> {
         {
             let mut file = file.write();
             let path = file.path();
+            file.text_mut().new_moment();
 
             if is_quitting_duat {
                 delete_cache_for::<crate::text::History>(&path);
@@ -365,9 +369,12 @@ impl<U: Ui> Session<U> {
                     node.try_downcast::<File>().map(|file| {
                         let mut file = file.write();
                         let text = std::mem::take(file.text_mut());
+                        let has_unsaved_changes = text.has_unsaved_changes();
                         let buf = text.take_buf();
-                        let kind = file.path_kind();
-                        (buf, kind, node.area().is_active())
+                        let pk = file.path_kind();
+                        let is_active = node.area().is_active();
+                        crate::log_file!("{has_unsaved_changes}");
+                        FileRet::new(buf, pk, is_active, has_unsaved_changes)
                     })
                 });
                 files.collect()
@@ -549,4 +556,25 @@ enum BreakTo {
     QuitDuat,
 }
 
-pub type FileRet = (GapBuffer<u8>, PathKind, bool);
+pub struct FileRet {
+    buf: GapBuffer<u8>,
+    path_kind: PathKind,
+    is_active: bool,
+    has_unsaved_changes: bool,
+}
+
+impl FileRet {
+    fn new(
+        buf: GapBuffer<u8>,
+        path_kind: PathKind,
+        is_active: bool,
+        has_unsaved_changes: bool,
+    ) -> Self {
+        Self {
+            buf,
+            path_kind,
+            is_active,
+            has_unsaved_changes,
+        }
+    }
+}
