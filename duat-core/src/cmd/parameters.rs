@@ -32,6 +32,7 @@ impl<'a, P: Parameter<'a>> Parameter<'a> for Option<P> {
     fn new(args: &mut Args<'a>) -> std::result::Result<Self::Returns, Text> {
         match args.next_as::<P>() {
             Ok(arg) => Ok(Some(arg)),
+            Err(err) if args.is_forming_param => Err(err),
             Err(_) => Ok(None),
         }
     }
