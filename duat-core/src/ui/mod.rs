@@ -151,7 +151,9 @@ pub trait Area: Send + Sync + Sized {
     ) -> (Self, Option<Self>);
 
     /// Deletes this [`Area`], signaling the closing of a [`Widget`]
-    fn delete(&self, _: DuatPermission);
+    ///
+    /// If the [`Area`]'s parent was also deleted, return it.
+    fn delete(&self, _: DuatPermission) -> Option<Self>;
 
     /// Swaps this [`Area`] with another one
     ///
@@ -338,6 +340,7 @@ impl<U: Ui> Window<U> {
         nodes: Vec<Node<U>>,
         layout: Box<dyn Layout<U>>,
     ) -> Self {
+        let files_area = files_area.get_cluster_master().unwrap_or(files_area);
         Self { nodes, files_area, layout }
     }
 
@@ -405,7 +408,20 @@ impl<U: Ui> Window<U> {
         else {
             return;
         };
-        node.area().delete(DuatPermission::new());
+
+        // If this is the case, this means there is only one File left in this
+        // Window, so the files_area should be the cluster master of that
+        // File.
+        if let Some(parent) = node.area().delete(DuatPermission::new())
+            && parent == self.files_area
+        {
+            let files = self.file_nodes();
+            let (only_file, _) = files.first().unwrap();
+            self.files_area = only_file
+                .area()
+                .get_cluster_master()
+                .unwrap_or(only_file.area().clone())
+        }
 
         if let Some(related) = node.related_widgets() {
             let nodes = related.read();

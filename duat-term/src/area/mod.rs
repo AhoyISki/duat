@@ -251,13 +251,13 @@ impl ui::Area for Area {
         )
     }
 
-    fn delete(&self, _: DuatPermission) {
+    fn delete(&self, _: DuatPermission) -> Option<Self> {
         let mut layouts = self.layouts.write();
         // This Area may have already been deleted, so a Layout may not be
         // found.
-        if let Some(layout) = get_layout_mut(&mut layouts, self.id) {
-            layout.delete(self.id);
-        };
+        get_layout_mut(&mut layouts, self.id)?
+            .delete(self.id)
+            .map(|id| Area::new(id, self.layouts.clone()))
     }
 
     fn swap(&self, rhs: &Self, _: DuatPermission) {

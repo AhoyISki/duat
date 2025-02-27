@@ -205,12 +205,11 @@ impl Layout {
         (new_id, new_parent_id)
     }
 
-    pub fn delete(&mut self, id: AreaId) {
-        let Some((rect, _)) = self.rects.delete(&mut self.printer.write(), id) else {
-            return;
-        };
+    pub fn delete(&mut self, id: AreaId) -> Option<AreaId> {
+        let (rect, _, parent_id) = self.rects.delete(&mut self.printer.write(), id)?;
         rect.set_to_zero();
         remove_children(&rect);
+        parent_id
     }
 
     pub fn swap(&mut self, id0: AreaId, id1: AreaId) {

@@ -434,7 +434,11 @@ impl Rects {
         new_id
     }
 
-    pub fn delete(&mut self, p: &mut Printer, id: AreaId) -> Option<(Rect, Constraints)> {
+    pub fn delete(
+        &mut self,
+        p: &mut Printer,
+        id: AreaId,
+    ) -> Option<(Rect, Constraints, Option<AreaId>)> {
         let fr = self.fr;
 
         let id = self.get_cluster_master(id).unwrap_or(id);
@@ -444,10 +448,10 @@ impl Rects {
         rm_rect.clear_eqs(p);
         rm_cons.remove(p);
 
-        let (i, parent) = if parent.children().unwrap().len() == 1 {
-            let id = parent.id();
+        let (i, parent, rm_parent_id) = if parent.children().unwrap().len() == 1 {
+            let parent_id = parent.id();
             let (mut rect, cons) = parent.children_mut().unwrap().remove(0);
-            let (i, grandparent) = self.get_parent_mut(id)?;
+            let (i, grandparent) = self.get_parent_mut(parent_id)?;
             grandparent.children_mut().unwrap().remove(i);
 
             let axis = grandparent.kind.axis().unwrap();
@@ -455,9 +459,9 @@ impl Rects {
             rect.set_base_eqs(i, grandparent, p, fr, is_resizable, None);
             grandparent.children_mut().unwrap().insert(i, (rect, cons));
 
-            (i, grandparent)
+            (i, grandparent, Some(parent_id))
         } else {
-            (i, parent)
+            (i, parent, None)
         };
 
         let (i, (mut rect_to_fix, cons)) = if i == 0 {
@@ -471,7 +475,7 @@ impl Rects {
         let entry = (rect_to_fix, cons);
         parent.children_mut().unwrap().insert(i, entry);
 
-        Some((rm_rect, rm_cons))
+        Some((rm_rect, rm_cons, rm_parent_id))
     }
 
     pub fn swap(&mut self, p: &mut Printer, id0: AreaId, id1: AreaId) {

@@ -458,6 +458,7 @@ impl<U: Ui> Session<U> {
         if let Ok((win, .., node)) = file_entry(&windows, &name) {
             // Take the nodes in the original Window
             let node = node.clone();
+            node.widget().mutate_as(|f: &mut File| f.layout_ordering = 0);
             let nodes = windows[win].take_file_and_related_nodes(&node);
             let layout = (self.layout_fn)();
 
