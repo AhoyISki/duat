@@ -258,7 +258,10 @@ impl<U: Ui> Session<U> {
                         U::unload(ms);
                         return (files, duat_rx);
                     }
-                    BreakTo::OpenFile(name) => self.open_file(PathBuf::from(name)),
+                    BreakTo::OpenFile(name) => {
+                        self.open_file(PathBuf::from(&name));
+                        mode::reset_switch_to::<U>(name, false);
+                    }
                     BreakTo::CloseFile(name) => self.close_file(name),
                     BreakTo::SwapFiles(lhs_name, rhs_name) => self.swap_files(lhs_name, rhs_name),
                     BreakTo::OpenWindow(name) => self.open_window_with(name),
@@ -458,7 +461,8 @@ impl<U: Ui> Session<U> {
         if let Ok((win, .., node)) = file_entry(&windows, &name) {
             // Take the nodes in the original Window
             let node = node.clone();
-            node.widget().mutate_as(|f: &mut File| f.layout_ordering = 0);
+            node.widget()
+                .mutate_as(|f: &mut File| f.layout_ordering = 0);
             let nodes = windows[win].take_file_and_related_nodes(&node);
             let layout = (self.layout_fn)();
 

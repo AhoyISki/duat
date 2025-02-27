@@ -470,11 +470,17 @@ impl<U: Ui> Node<U> {
         area: U::Area,
         checker: impl CheckerFn,
     ) -> Self {
-        let related_widgets = widget.mutate_as(|f: &mut File| {
-            let cfg = f.print_cfg();
-            f.text_mut().add_cursors(&area, cfg);
-            RwData::default()
-        });
+        fn related_widgets<U: Ui>(
+            widget: &RwData<dyn Widget<U>>,
+            area: &U::Area,
+        ) -> Option<RwData<Vec<Node<U>>>> {
+            widget.mutate_as(|f: &mut File| {
+                let cfg = f.print_cfg();
+                f.text_mut().add_cursors(area, cfg);
+                RwData::default()
+            })
+        }
+        let related_widgets = related_widgets::<U>(&widget, &area);
 
         Self {
             widget,
