@@ -606,9 +606,9 @@ pub macro setup_duat($setup:expr) {
     #[unsafe(no_mangle)]
     fn run(
         ms: MetaStatics,
-        prev_files: Vec<FileRet>,
+        prev_files: Vec<Vec<FileRet>>,
         messengers: Messengers,
-    ) -> (Vec<FileRet>, mpsc::Receiver<ui::DuatEvent>) {
+    ) -> (Vec<Vec<FileRet>>, mpsc::Receiver<ui::DuatEvent>) {
         pre_setup();
         $setup();
         run_duat(ms, prev_files, messengers)

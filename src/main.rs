@@ -187,4 +187,5 @@ fn find_run_duat(lib: &Dylib) -> Option<Symbol<RunFn>> {
     unsafe { lib.get::<RunFn>("run").ok() }
 }
 
-type RunFn = fn(MetaStatics, Vec<FileRet>, Messengers) -> (Vec<FileRet>, Receiver<DuatEvent>);
+type RunFn =
+    fn(MetaStatics, Vec<Vec<FileRet>>, Messengers) -> (Vec<Vec<FileRet>>, Receiver<DuatEvent>);

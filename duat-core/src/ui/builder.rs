@@ -349,8 +349,8 @@ pub struct WindowBuilder<U: Ui> {
 impl<U: Ui> WindowBuilder<U> {
     /// Creates a new [`WindowBuilder`].
     pub(crate) fn new(window_i: usize) -> Self {
-        let windows = context::windows::<U>();
-        let mod_area = windows.read()[window_i].files_area.clone();
+        let windows = context::windows::<U>().read();
+        let mod_area = windows[window_i].files_area.clone();
         Self { window_i, area: RefCell::new(mod_area) }
     }
 

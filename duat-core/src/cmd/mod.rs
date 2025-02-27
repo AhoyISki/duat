@@ -213,18 +213,20 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
         }
     })?;
 
-    add!(["quit", "q"], move || {
+    add!(["quit", "q"], move |name: Option<FileBuffer<U>>| {
         let file = context::cur_file::<U>()?;
-        let name = file.inspect(|file, _| file.name());
-        if file.inspect(|f, _| f.text().has_unsaved_changes()) {
+        let name = name.map(str::to_string).unwrap_or_else(|| file.name());
+
+        let windows = context::windows::<U>().read();
+        let (win, wid, file) = file_entry(&windows, &name).unwrap();
+
+        if file
+            .widget()
+            .inspect_as(|f: &File| f.text().has_unsaved_changes())
+            .unwrap()
+        {
             return Err(err!([*a] name [] " has unsaved changes"));
         }
-
-        // Should wait here until I'm out of `session_loop`
-        let windows = context::windows::<U>().read();
-        let w = context::cur_window();
-
-        let (win, wid, file) = file_entry(&windows, &name).unwrap();
 
         let Some(next_name) =
             iter_around::<U>(&windows, win, wid).find_map(|(.., node)| node.inspect_as(File::name))
@@ -233,20 +235,21 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
             return Ok(None);
         };
 
+        // If I send the switch signal first, and the Window is deleted, I
+        // will have the synchronously change the current window number
+        // without affecting anything else.
         mode::reset_switch_to::<U>(&next_name);
 
         sender().send(DuatEvent::CloseFile(name.clone())).unwrap();
         Ok(Some(ok!("Closed " [*a] name)))
     })?;
 
-    add!(["quit!", "q!"], move || {
+    add!(["quit!", "q!"], move |name: Option<FileBuffer<U>>| {
         let file = context::cur_file::<U>()?;
-        let name = file.inspect(|file, _| file.name());
+        let name = name.map(str::to_string).unwrap_or_else(|| file.name());
 
         // Should wait here until I'm out of `session_loop`
         let windows = context::windows::<U>().read();
-        let w = context::cur_window();
-
         let (win, wid, file) = file_entry(&windows, &name).unwrap();
 
         let Some(next_name) =

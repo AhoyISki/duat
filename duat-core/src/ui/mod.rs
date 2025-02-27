@@ -82,6 +82,14 @@ pub trait Ui: Sized + Send + Sync + 'static {
     /// These will happen inside of the dynamically loaded config
     /// crate.
     fn unload(ms: &'static Self::MetaStatics);
+
+    /// Removes a window from the [`Ui`]
+    ///
+    /// This should keep the current active window consistent. That
+    /// is, if the current window was ahead of the deleted one, it
+    /// should be shifted back, so that the same window is still
+    /// displayed.
+    fn remove_window(ms: &'static Self::MetaStatics, win: usize);
 }
 
 /// An [`Area`] that supports printing [`Text`]

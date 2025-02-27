@@ -212,6 +212,17 @@ impl ui::Ui for Ui {
     fn unload(ms: &'static Self::MetaStatics) {
         let mut ui = ms.lock().unwrap();
         ui.windows = Vec::new();
+        *ui.layouts.write() = Vec::new();
+        ui.cur_window = 0;
+    }
+
+    fn remove_window(ms: &'static Self::MetaStatics, win: usize) {
+        let mut ui = ms.lock().unwrap();
+        ui.windows.remove(win);
+        ui.layouts.write().remove(win);
+        if ui.cur_window > win {
+            ui.cur_window -= 1;
+        }
     }
 }
 

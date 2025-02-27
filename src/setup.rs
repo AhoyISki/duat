@@ -70,9 +70,9 @@ pub fn pre_setup() {
 #[doc(hidden)]
 pub fn run_duat(
     (ui_ms, clipb): MetaStatics,
-    prev: Vec<FileRet>,
+    prev: Vec<Vec<FileRet>>,
     (duat_tx, duat_rx, ui_tx): Messengers,
-) -> (Vec<FileRet>, Receiver<DuatEvent>) {
+) -> (Vec<Vec<FileRet>>, Receiver<DuatEvent>) {
     <Ui as ui::Ui>::load(ui_ms);
     let mut cfg = SessionCfg::new(clipb);
 
