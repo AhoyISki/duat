@@ -1,6 +1,5 @@
 use super::{EditHelper, ExtendFwd, IncSearcher, KeyCode, KeyEvent, KeyMod, key};
 use crate::{
-    data::RwData,
     ui::{Area, Ui},
     widgets::{File, IncSearch, RunCommands},
 };
@@ -11,9 +10,9 @@ pub struct Regular;
 impl<U: Ui> super::Mode<U> for Regular {
     type Widget = File;
 
-    fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area) {
+    fn send_key(&mut self, key: KeyEvent, widget: &mut Self::Widget, area: &U::Area) {
         let mut helper = EditHelper::new(widget, area);
-        helper.make_excl();
+        helper.cursors_mut().make_excl();
 
         match key {
             // Characters
@@ -28,7 +27,7 @@ impl<U: Ui> super::Mode<U> for Regular {
 
             // Text Removal
             key!(KeyCode::Backspace) => {
-                let mut anchors = Vec::with_capacity(helper.cursors_len());
+                let mut anchors = Vec::with_capacity(helper.cursors().len());
                 helper.move_many(.., |mut m| {
                     let caret = m.caret();
                     anchors.push(m.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
@@ -48,7 +47,7 @@ impl<U: Ui> super::Mode<U> for Regular {
                 });
             }
             key!(KeyCode::Delete) => {
-                let mut anchors = Vec::with_capacity(helper.cursors_len());
+                let mut anchors = Vec::with_capacity(helper.cursors().len());
                 helper.move_many(.., |mut m| {
                     let caret = m.caret();
                     anchors.push(m.unset_anchor().map(|anchor| (anchor, anchor >= caret)));

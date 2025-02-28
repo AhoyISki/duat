@@ -988,7 +988,6 @@ impl Text {
     /// Inserts a [`Tag`] at the given position
     pub fn insert_tag(&mut self, at: usize, tag: Tag, key: Key) {
         self.tags.insert(at, tag, key);
-        self.has_changed = true;
     }
 
     /// Removes the [`Tag`]s of a [key] from a region
@@ -1014,7 +1013,6 @@ impl Text {
         } else {
             self.tags.remove_from(range, keys)
         }
-        self.has_changed = true;
     }
 
     /// Removes all [`Tag`]s
@@ -1063,7 +1061,6 @@ impl Text {
                 }
             }
         }
-        self.has_changed = true;
 
         self.cursors = Some(cursors);
     }

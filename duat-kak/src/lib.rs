@@ -108,9 +108,9 @@ impl Normal {
 impl<U: Ui> Mode<U> for Normal {
     type Widget = File;
 
-    fn send_key(&mut self, key: Event, widget: &RwData<Self::Widget>, area: &U::Area) {
+    fn send_key(&mut self, key: Event, widget: &mut Self::Widget, area: &U::Area) {
         let mut helper = EditHelper::new(widget, area);
-        helper.make_incl();
+        helper.cursors_mut().make_incl();
         let w_chars = helper.cfg().word_chars;
 
         match key {
@@ -391,8 +391,8 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char(';'), Mod::ALT) => helper.move_many(.., |mut m| m.swap_ends()),
             key!(Char(';')) => helper.move_many(.., |mut m| m.unset_anchor()),
             key!(Char(':'), ALTSHIFT) => helper.move_many(.., |mut m| m.set_caret_on_end()),
-            key!(Char(')')) => helper.rotate_main(1),
-            key!(Char('(')) => helper.rotate_main(-1),
+            key!(Char(')')) => helper.cursors_mut().rotate_main(1),
+            key!(Char('(')) => helper.cursors_mut().rotate_main(-1),
             key!(Char(')'), ALTSHIFT) => {
                 let mut last_sel = None;
                 helper.move_many(.., |mut m| m.set_anchor());
@@ -494,8 +494,8 @@ impl<U: Ui> Mode<U> for Normal {
             }
 
             ////////// Cursor creation and destruction.
-            key!(Char(',')) => helper.remove_extra_cursors(),
-            key!(Char('C')) => helper.move_nth(helper.cursors_len() - 1, |mut m| {
+            key!(Char(',')) => helper.cursors_mut().remove_extras(),
+            key!(Char('C')) => helper.move_nth(helper.cursors().len() - 1, |mut m| {
                 let c_col = m.caret_col();
                 m.copy();
                 if let Some(anchor) = m.anchor() {
@@ -607,9 +607,9 @@ impl Default for Insert {
 impl<U: Ui> Mode<U> for Insert {
     type Widget = File;
 
-    fn send_key(&mut self, key: Event, widget: &RwData<Self::Widget>, area: &<U as Ui>::Area) {
+    fn send_key(&mut self, key: Event, widget: &mut Self::Widget, area: &U::Area) {
         let mut helper = EditHelper::new(widget, area);
-        helper.make_incl();
+        helper.cursors_mut().make_incl();
 
         if let key!(Left | Down | Up | Right, mods) = key {
             if mods.contains(Mod::SHIFT) {
@@ -655,7 +655,7 @@ impl<U: Ui> Mode<U> for Insert {
                 restore_anchors(&mut helper, anchors);
             }
             key!(Backspace, Mod::NONE) => {
-                let mut prev = Vec::with_capacity(helper.cursors_len());
+                let mut prev = Vec::with_capacity(helper.cursors().len());
                 helper.move_many(.., |mut m| {
                     prev.push((m.caret(), {
                         let c = m.caret();
@@ -684,7 +684,7 @@ impl<U: Ui> Mode<U> for Insert {
                 });
             }
             key!(Delete, Mod::NONE) => {
-                let mut anchors = Vec::with_capacity(helper.cursors_len());
+                let mut anchors = Vec::with_capacity(helper.cursors().len());
                 helper.move_many(.., |mut m| {
                     let caret = m.caret();
                     anchors.push(m.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
@@ -730,9 +730,9 @@ enum OneKey {
 impl<U: Ui> Mode<U> for OneKey {
     type Widget = File;
 
-    fn send_key(&mut self, key: Event, widget: &RwData<Self::Widget>, area: &<U as Ui>::Area) {
+    fn send_key(&mut self, key: Event, widget: &mut Self::Widget, area: &U::Area) {
         let mut helper = EditHelper::new(widget, area);
-        helper.make_incl();
+        helper.cursors_mut().make_incl();
 
         let sel_type = match *self {
             OneKey::GoTo(st) => match_goto::<(), U>(&mut helper, key, st),
@@ -765,7 +765,7 @@ fn match_goto<S, U: Ui>(
 ) -> SelType {
     static LAST_FILE: LazyLock<RwData<Option<String>>> = LazyLock::new(RwData::default);
     let last_file = LAST_FILE.read().clone();
-    let cur_name = context::cur_file::<U>().unwrap().name();
+    let cur_name = helper.widget().name();
 
     let g_mf = if sel_type == SelType::Extend {
         Mod::SHIFT
@@ -870,7 +870,7 @@ fn match_inside_around(
     key: Event,
     is_inside: bool,
 ) {
-    let initial_cursors_len = helper.cursors_len();
+    let initial_cursors_len = helper.cursors().len();
     let mut failed_at_least_once = false;
     match key {
         key!(Char(
@@ -1016,15 +1016,15 @@ struct Select<U: Ui> {
 }
 
 impl<U: Ui> IncSearcher<U> for Select<U> {
-    fn new(file: &RwData<File>, area: &<U as Ui>::Area) -> Self {
+    fn new(file: &mut File, area: &U::Area) -> Self {
         Self {
-            orig: file.read().cursors().unwrap().clone(),
+            orig: file.cursors().unwrap().clone(),
             info: area.print_info(),
         }
     }
 
-    fn search(&mut self, file: &RwData<File>, area: &<U as Ui>::Area, searcher: Searcher) {
-        *file.write().cursors_mut().unwrap() = self.orig.clone();
+    fn search(&mut self, file: &mut File, area: &U::Area, searcher: Searcher) {
+        *file.cursors_mut().unwrap() = self.orig.clone();
         if searcher.is_empty() {
             area.set_print_info(self.info.clone());
             return;
@@ -1061,15 +1061,15 @@ struct Split<U: Ui> {
 }
 
 impl<U: Ui> IncSearcher<U> for Split<U> {
-    fn new(file: &RwData<File>, area: &<U as Ui>::Area) -> Self {
+    fn new(file: &mut File, area: &<U as Ui>::Area) -> Self {
         Self {
-            orig: file.read().cursors().unwrap().clone(),
+            orig: file.cursors().unwrap().clone(),
             info: area.print_info(),
         }
     }
 
-    fn search(&mut self, file: &RwData<File>, area: &<U as Ui>::Area, searcher: Searcher) {
-        *file.write().cursors_mut().unwrap() = self.orig.clone();
+    fn search(&mut self, file: &mut File, area: &U::Area, searcher: Searcher) {
+        *file.cursors_mut().unwrap() = self.orig.clone();
         if searcher.is_empty() {
             area.set_print_info(self.info.clone());
             return;

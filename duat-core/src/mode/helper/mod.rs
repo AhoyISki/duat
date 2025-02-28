@@ -10,8 +10,7 @@ use std::{array::IntoIter, ops::RangeBounds};
 pub use self::cursors::{Cursor, Cursors};
 use crate::{
     cfg::{IterCfg, PrintCfg},
-    data::RwData,
-    text::{Change, Key, Keys, Point, RegexPattern, Searcher, Tag, Text, TextRange},
+    text::{Change, Point, RegexPattern, Searcher, Text},
     ui::Area,
     widgets::{File, Widget},
 };
@@ -151,9 +150,8 @@ where
     W: Widget<A::Ui> + 'static,
     A: Area,
 {
-    widget: &'a RwData<W>,
+    widget: &'a mut W,
     area: &'a A,
-    cfg: PrintCfg,
     searcher: S,
 }
 
@@ -163,12 +161,10 @@ where
     A: Area,
 {
     /// Returns a new instance of [`EditHelper`]
-    pub fn new(widget: &'a RwData<W>, area: &'a A) -> Self {
-        let mut w = widget.write();
-        w.text_mut().enable_cursors();
-        w.cursors_mut().unwrap().populate();
-        let cfg = w.print_cfg();
-        EditHelper { widget, area, cfg, searcher: () }
+    pub fn new(widget: &'a mut W, area: &'a A) -> Self {
+        widget.text_mut().enable_cursors();
+        widget.cursors_mut().unwrap().populate();
+        EditHelper { widget, area, searcher: () }
     }
 }
 
@@ -192,8 +188,7 @@ where
     /// [`edit_main`]: Self::edit_main
     /// [`edit_many`]: Self::edit_many
     pub fn edit_nth(&mut self, n: usize, edit: impl FnOnce(&mut Editor<A, W>)) {
-        let mut widget = self.widget.raw_write();
-        let cursors = widget.cursors_mut().unwrap();
+        let cursors = self.widget.cursors_mut().unwrap();
         let is_incl = cursors.is_incl();
         let Some((mut cursor, was_main)) = cursors.remove(n) else {
             panic!("Cursor index {n} out of bounds");
@@ -203,20 +198,20 @@ where
 
         edit(&mut Editor::<A, W>::new(
             &mut cursor,
-            &mut widget,
+            self.widget,
             self.area,
-            self.cfg,
             &mut shift,
             was_main,
             is_incl,
         ));
 
-        let cursors = widget.cursors_mut().unwrap();
+        let cursors = self.widget.cursors_mut().unwrap();
         cursors.insert(n, was_main, cursor);
 
-        widget
+        let cfg = self.cfg();
+        self.widget
             .text_mut()
-            .shift_cursors(n + 1, shift, self.area, self.cfg);
+            .shift_cursors(n + 1, shift, self.area, cfg);
     }
 
     /// Edits on the main [`Cursor`]'s selection
@@ -232,7 +227,7 @@ where
     /// [`edit_nth`]: Self::edit_nth
     /// [`edit_many`]: Self::edit_many
     pub fn edit_main(&mut self, edit: impl FnOnce(&mut Editor<A, W>)) {
-        let n = self.widget.read().cursors().unwrap().main_index();
+        let n = self.widget.cursors().unwrap().main_index();
         self.edit_nth(n, edit);
     }
 
@@ -253,9 +248,8 @@ where
         range: impl RangeBounds<usize> + Clone,
         mut f: impl FnMut(&mut Editor<A, W>),
     ) {
-        let mut widget = self.widget.raw_write();
-        let cfg = widget.print_cfg();
-        let cursors = widget.cursors_mut().unwrap();
+        let cfg = self.widget.print_cfg();
+        let cursors = self.widget.cursors_mut().unwrap();
         let is_incl = cursors.is_incl();
         let (start, end) = crate::get_ends(range, cursors.len());
         assert!(end <= cursors.len(), "Cursor index {end} out of bounds");
@@ -265,30 +259,29 @@ where
 
         for (i, (mut cursor, was_main)) in removed.splice(..(end - start), []).enumerate() {
             let guess_i = i + start;
-            cursor.shift_by(shift, widget.text(), self.area, cfg);
+            cursor.shift_by(shift, self.widget.text(), self.area, cfg);
 
             let mut editor = Editor::new(
                 &mut cursor,
-                &mut *widget,
+                self.widget,
                 self.area,
-                self.cfg,
                 &mut shift,
                 was_main,
                 is_incl,
             );
             f(&mut editor);
 
-            widget
+            self.widget
                 .cursors_mut()
                 .unwrap()
                 .insert(guess_i, was_main, cursor);
         }
 
-        let text = widget.text_mut();
         for (i, (mut cursor, was_main)) in removed.into_iter().enumerate() {
             let guess_i = i + end;
-            cursor.shift_by(shift, text, self.area, cfg);
-            text.cursors_mut()
+            cursor.shift_by(shift, self.widget.text_mut(), self.area, cfg);
+            self.widget
+                .cursors_mut()
                 .unwrap()
                 .insert(guess_i, was_main, cursor);
         }
@@ -312,8 +305,8 @@ where
     /// [`move_main`]: Self::move_main
     /// [`move_many`]: Self::move_many
     pub fn move_nth<_T>(&mut self, n: usize, mov: impl FnOnce(Mover<A, S>) -> _T) {
-        let mut widget = self.widget.raw_write();
-        let text = widget.text_mut();
+        let cfg = self.cfg();
+        let text = self.widget.text_mut();
         let Some((cursor, is_main)) = text.cursors_mut().unwrap().remove(n) else {
             panic!("Cursor index {n} out of bounds");
         };
@@ -324,7 +317,7 @@ where
             is_main,
             text,
             self.area,
-            self.cfg,
+            cfg,
             &mut self.searcher,
         ));
 
@@ -349,7 +342,7 @@ where
     /// [`move_main`]: Self::move_main
     /// [`move_many`]: Self::move_many
     pub fn move_main<_T>(&mut self, mov: impl FnOnce(Mover<A, S>) -> _T) {
-        let n = self.widget.read().cursors().unwrap().main_index();
+        let n = self.widget.cursors().unwrap().main_index();
         self.move_nth(n, mov);
     }
 
@@ -373,8 +366,8 @@ where
         range: impl RangeBounds<usize> + Clone,
         mut mov: impl FnMut(Mover<A, S>) -> _T,
     ) {
-        let mut widget = self.widget.raw_write();
-        let text = widget.text_mut();
+        let cfg = self.cfg();
+        let text = self.widget.text_mut();
         let cursors = text.cursors_mut().unwrap();
         let (start, end) = crate::get_ends(range.clone(), cursors.len());
         assert!(end <= cursors.len(), "Cursor index {end} out of bounds");
@@ -388,7 +381,7 @@ where
                 is_main,
                 text,
                 self.area,
-                self.cfg,
+                cfg,
                 &mut self.searcher,
             ));
 
@@ -398,105 +391,58 @@ where
         }
     }
 
-    ////////// Text functions
+    ////////// Getter functions
 
-    /// Inserts a [`Tag`] at the given position
-    pub fn insert_tag(&mut self, at: usize, tag: Tag, key: Key) {
-        self.widget.write().text_mut().insert_tag(at, tag, key);
+    /// A shared reference to the [`Widget`]
+    pub fn widget(&self) -> &W {
+        self.widget
     }
 
-    /// Removes the [`Tag`]s of a [key] from the whole [`Text`]
-    ///
-    /// # Caution
-    ///
-    /// Avoid using this function on very large ranges, as it would
-    /// have to slog through a bunch of other [`Tag`]s from other
-    /// [key]s trying to find those that belong to this set of keys.
-    ///
-    /// # [`TextRange`] behavior
-    ///
-    /// If you give it a [`Point`] or [`usize`], it will be treated as
-    /// a one byte range.
-    ///
-    /// [key]: Keys
-    /// [`File`]: crate::widgets::File
-    pub fn remove_tags_on(&mut self, range: impl TextRange, keys: impl Keys) {
-        self.widget.write().text_mut().remove_tags_on(range, keys);
+    /// A mutable reference to the [`Widget`]
+    pub fn widget_mut(&mut self) -> &mut W {
+        self.widget
     }
 
-    /// Begins a new moment
-    ///
-    /// A new moment indicates a break in the history of the [`Text`],
-    /// that is, if you [`undo`], the changes prior to the
-    /// creation of this moment will be kept.
-    ///
-    /// [`undo`]: EditHelper::undo
-    pub fn new_moment(&mut self) {
-        self.widget.raw_write().text_mut().new_moment();
+    /// A shared reference to the [`Widget`]
+    pub fn text(&self) -> &Text {
+        self.widget.text()
     }
 
-    /// Undoes the last moment
+    /// A mutable reference to the [`Widget`]
+    pub fn text_mut(&mut self) -> &mut Text {
+        self.widget.text_mut()
+    }
+
+    /// A shared reference to the [`Widget`]
+    pub fn cursors(&self) -> &Cursors {
+        self.widget.text().cursors().unwrap()
+    }
+
+    /// A mutable reference to the [`Widget`]
+    pub fn cursors_mut(&mut self) -> &mut Cursors {
+        self.widget.text_mut().cursors_mut().unwrap()
+    }
+
+    /// Undoes the last moment in the history, if there is one
     pub fn undo(&mut self) {
-        let mut widget = self.widget.raw_write();
-        let cfg = widget.print_cfg();
-        widget.text_mut().undo(self.area, cfg);
-        widget.update(self.area);
+        let cfg = self.widget.print_cfg();
+        self.widget.text_mut().undo(self.area, cfg);
     }
 
-    /// Redoes the next moment
+    /// Redoes the last moment in the history, if there is one
     pub fn redo(&mut self) {
-        let mut widget = self.widget.raw_write();
-        let cfg = widget.print_cfg();
-        widget.text_mut().redo(self.area, cfg);
-        widget.update(self.area);
+        let cfg = self.widget.print_cfg();
+        self.widget.text_mut().redo(self.area, cfg);
     }
 
-    /// Returns the length of the [`Text`], in [`Point`]
-    pub fn text_len(&self) -> Point {
-        self.widget.read().text().len()
-    }
-
-    /// Returns the position of the last [`char`] if there is one
-    pub fn last_point(&self) -> Option<Point> {
-        self.widget.read().text().last_point()
-    }
-
-    ////////// Cursor functions
-
-    /// Removes all but the main cursor from the list
-    pub fn remove_extra_cursors(&mut self) {
-        self.widget.write().cursors_mut().unwrap().remove_extras();
-    }
-
-    /// Removes all [`Cursor`]s
-    pub fn clear_cursors(&mut self) {
-        self.widget.write().cursors_mut().unwrap().clear();
-    }
-
-    /// Rotates the main [`Cursor`]s index by the given amount
-    pub fn rotate_main(&mut self, amount: i32) {
-        let mut widget = self.widget.write();
-        widget.cursors_mut().unwrap().rotate_main(amount);
-    }
-
-    /// Makes the selections of the [`Cursor`]s exclusive
-    pub fn make_excl(&mut self) {
-        self.widget.write().cursors_mut().unwrap().make_excl();
-    }
-
-    /// Makes the selections of the [`Cursor`]s inclusive
-    pub fn make_incl(&mut self) {
-        self.widget.write().cursors_mut().unwrap().make_incl();
-    }
-
-    /// How many [`Cursor`]s currently exist
-    pub fn cursors_len(&self) -> usize {
-        self.widget.read().cursors().unwrap().len()
+    /// Finishes the current moment and adds a new one to the history
+    pub fn new_moment(&mut self) {
+        self.widget.text_mut().new_moment();
     }
 
     /// The [`PrintCfg`] in use
     pub fn cfg(&self) -> PrintCfg {
-        self.cfg
+        self.widget.print_cfg()
     }
 }
 
@@ -505,18 +451,14 @@ where
     A: Area,
 {
     /// Returns a new instance of [`EditHelper`]
-    pub fn new_inc(widget: &'a RwData<File>, area: &'a A, searcher: Searcher) -> Self {
-        let cfg = {
-            let mut file = widget.raw_write();
-            if let Some(c) = file.cursors_mut() {
-                c.populate()
-            }
-            let cfg = file.print_cfg();
-            file.text_mut().remove_cursors(area, cfg);
-            file.print_cfg()
-        };
+    pub fn new_inc(widget: &'a mut File, area: &'a A, searcher: Searcher) -> Self {
+        let cfg = widget.print_cfg();
+        if let Some(c) = widget.cursors_mut() {
+            c.populate()
+        }
+        widget.text_mut().remove_cursors(area, cfg);
 
-        EditHelper { widget, area, cfg, searcher }
+        EditHelper { widget, area, searcher }
     }
 }
 
@@ -559,7 +501,6 @@ where
     cursor: &'a mut Cursor,
     widget: &'b mut W,
     area: &'b A,
-    cfg: PrintCfg,
     shift: &'a mut (i32, i32, i32),
     is_main: bool,
     is_incl: bool,
@@ -576,7 +517,6 @@ where
         cursor: &'a mut Cursor,
         widget: &'b mut W,
         area: &'b A,
-        cfg: PrintCfg,
         shift: &'a mut (i32, i32, i32),
         is_main: bool,
         is_incl: bool,
@@ -585,7 +525,6 @@ where
             cursor,
             widget,
             area,
-            cfg,
             shift,
             is_main,
             is_incl,
@@ -613,16 +552,17 @@ where
 
         let text = self.widget.text();
 
+        let cfg = self.cfg();
         if let Some(anchor) = self.cursor.anchor()
             && anchor >= self.cursor.caret()
             && edit_len > 0
         {
             self.cursor.swap_ends();
-            self.cursor.move_to(end, text, self.area, self.cfg);
+            self.cursor.move_to(end, text, self.area, cfg);
             self.cursor.swap_ends();
         } else {
             self.cursor.unset_anchor();
-            self.cursor.move_to(end, text, self.area, self.cfg);
+            self.cursor.move_to(end, text, self.area, cfg);
         }
     }
 
@@ -647,7 +587,7 @@ where
             let new_anchor = anchor + added - taken;
             self.cursor.swap_ends();
             self.cursor
-                .move_to(new_anchor, self.widget.text(), self.area, self.cfg);
+                .move_to(new_anchor, self.widget.text(), self.area, self.cfg());
             self.cursor.swap_ends();
         }
     }
@@ -844,14 +784,15 @@ where
     /// will return that. Otherwise, it will copy the level of
     /// indentation of the last non empty line.
     pub fn indent_on(&mut self, point: Point) -> usize {
+        let cfg = self.cfg();
         let text = self.widget.text_mut();
-        if let Some(indent) = text.ts_indent_on(point, self.cfg) {
+        if let Some(indent) = text.ts_indent_on(point, cfg) {
             indent
         } else {
             let t_iter = text.iter_rev(point).no_ghosts().no_conceals();
             let iter = self
                 .area
-                .rev_print_iter(t_iter, IterCfg::new(self.cfg))
+                .rev_print_iter(t_iter, IterCfg::new(cfg))
                 // This should skip the current line and all empty lines before.
                 .skip_while(|(_, item)| {
                     item.part.as_char().is_none_or(char::is_whitespace)
@@ -936,7 +877,7 @@ where
 
     /// The [`PrintCfg`] in use
     pub fn cfg(&self) -> PrintCfg {
-        self.cfg
+        self.widget.print_cfg()
     }
 }
 

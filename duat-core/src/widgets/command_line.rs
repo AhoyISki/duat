@@ -370,7 +370,7 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
         match Searcher::new(text.to_string()) {
             Ok(searcher) => {
                 cur_file.mutate_data(|file, area| {
-                    inc.search(file, area, searcher);
+                    inc.search(&mut file.raw_write(), area, searcher);
                 });
             }
             Err(err) => {
@@ -389,7 +389,7 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
 
     fn on_focus(&mut self, _text: &mut Text) {
         context::cur_file::<U>().unwrap().mutate_data(|file, area| {
-            self.fn_or_inc.as_inc(file, area);
+            self.fn_or_inc.as_inc(&mut file.raw_write(), area);
         })
     }
 
@@ -400,7 +400,7 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
 
         context::cur_file::<U>()
             .unwrap()
-            .mutate_data(|file, area| inc.finish(file, area));
+            .mutate_data(|file, area| inc.finish(&mut file.raw_write(), area));
     }
 }
 
@@ -423,7 +423,7 @@ enum FnOrInc<I, U: Ui> {
 }
 
 impl<I, U: Ui> FnOrInc<I, U> {
-    fn as_inc(&mut self, file: &RwData<File>, area: &U::Area) {
+    fn as_inc(&mut self, file: &mut File, area: &U::Area) {
         let FnOrInc::Fn(f) = self else {
             unreachable!();
         };
@@ -433,4 +433,4 @@ impl<I, U: Ui> FnOrInc<I, U> {
     }
 }
 
-trait IncFn<I, U: Ui> = FnOnce(&RwData<File>, &U::Area) -> I;
+trait IncFn<I, U: Ui> = FnOnce(&mut File, &U::Area) -> I;

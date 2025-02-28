@@ -10,7 +10,7 @@ pub use self::{
     remap::*,
     switch::*,
 };
-use crate::{data::RwData, ui::Ui, widgets::Widget};
+use crate::{ui::Ui, widgets::Widget};
 
 mod commander;
 mod helper;
@@ -42,7 +42,8 @@ mod switch {
     };
 
     static PRINTING_IS_STOPPED: AtomicBool = AtomicBool::new(false);
-    static SEND_KEY: LazyLock<Mutex<Box<KeyFn>>> = LazyLock::new(|| Mutex::new(Box::new(|_| None)));
+    static SEND_KEYS: LazyLock<Mutex<Box<KeyFn>>> =
+        LazyLock::new(|| Mutex::new(Box::new(|_| None)));
     static RESET_MODE: LazyLock<Mutex<Arc<dyn Fn() + Send + Sync>>> =
         LazyLock::new(|| Mutex::new(Arc::new(|| {})));
     static SET_MODE: Mutex<Option<Box<dyn FnOnce() + Send + Sync>>> = Mutex::new(None);
@@ -175,14 +176,14 @@ mod switch {
     /// Sends the [`KeyEvent`] to the active [`Mode`]
     pub(super) fn send_keys_to(keys: Vec<KeyEvent>) {
         let mut keys = keys.into_iter();
-        let mut send_key = std::mem::replace(&mut *SEND_KEY.lock(), Box::new(|_| None));
+        let mut send_keys = std::mem::replace(&mut *SEND_KEYS.lock(), Box::new(|_| None));
         while keys.len() > 0 {
-            if let Some(set_mode) = send_key(&mut keys) {
+            if let Some(set_mode) = send_keys(&mut keys) {
                 set_mode();
-                send_key = std::mem::replace(&mut *SEND_KEY.lock(), Box::new(|_| None));
+                send_keys = std::mem::replace(&mut *SEND_KEYS.lock(), Box::new(|_| None));
             }
         }
-        *SEND_KEY.lock() = send_key;
+        *SEND_KEYS.lock() = send_keys;
     }
 
     /// Inner function that sends [`KeyEvent`]s
@@ -195,16 +196,26 @@ mod switch {
         };
 
         widget.mutate_data(|dyn_widget, area| {
-            let widget = dyn_widget.try_downcast().unwrap();
-            for key in keys {
+            let widget = dyn_widget.try_downcast::<M::Widget>().unwrap();
+
+            let mut sent_keys = Vec::new();
+            let mut w = widget.raw_write();
+            let mode = loop {
+                let Some(key) = keys.next() else { break None };
+                sent_keys.push(key);
+                mode.send_key(key, &mut w, area);
+                if let Some(mode) = was_set() {
+                    break Some(mode);
+                }
+            };
+            drop(w);
+
+            for key in sent_keys {
                 hooks::trigger::<KeySent<U>>((key, dyn_widget.clone()));
                 hooks::trigger::<KeySentTo<M::Widget, U>>((key, widget.clone()));
-                mode.send_key(key, &widget, area);
-                if let Some(mode) = was_set() {
-                    return Some(mode);
-                }
             }
-            None
+
+            mode
         })
     }
 
@@ -232,7 +243,7 @@ mod switch {
 
         let widget = context::cur_widget::<U>().unwrap();
         widget.mutate_data_as::<M::Widget, ()>(|w, a| {
-            mode.on_switch(w, a);
+            mode.on_switch(&mut w.write(), a);
         });
 
         crate::mode::set_send_key::<M, U>();
@@ -243,7 +254,7 @@ mod switch {
             *mode = new_mode;
         });
 
-        *SEND_KEY.lock() = Box::new(move |keys| send_keys_fn::<M, U>(&mut mode, keys));
+        *SEND_KEYS.lock() = Box::new(move |keys| send_keys_fn::<M, U>(&mut mode, keys));
     }
 }
 
@@ -551,7 +562,7 @@ pub trait Mode<U: Ui>: Sized + Clone + Send + Sync + 'static {
     type Widget: Widget<U>;
 
     /// Sends a [`KeyEvent`] to this [`Mode`]
-    fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area);
+    fn send_key(&mut self, key: KeyEvent, widget: &mut Self::Widget, area: &U::Area);
 
     /// A function to trigger when switching to this [`Mode`]
     ///
@@ -562,7 +573,7 @@ pub trait Mode<U: Ui>: Sized + Clone + Send + Sync + 'static {
     /// [`Tag`]: crate::text::Tag
     /// [`Text`]: crate::text::Text
     #[allow(unused)]
-    fn on_switch(&mut self, widget: &RwData<Self::Widget>, area: &U::Area) {}
+    fn on_switch(&mut self, widget: &mut Self::Widget, area: &U::Area) {}
 
     /// DO NOT IMPLEMENT THIS FUNCTION, IT IS MEANT FOR `&str` ONLY
     #[doc(hidden)]
@@ -577,7 +588,7 @@ impl<U: Ui> Mode<U> for &'static str {
     // Doesn't matter
     type Widget = crate::widgets::File;
 
-    fn send_key(&mut self, _: KeyEvent, _: &RwData<Self::Widget>, _: &<U as Ui>::Area) {
+    fn send_key(&mut self, _: KeyEvent, _: &mut Self::Widget, _: &<U as Ui>::Area) {
         unreachable!("&strs are only meant to be sent as AsGives, turning into keys");
     }
 
