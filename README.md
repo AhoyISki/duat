@@ -15,9 +15,9 @@ When you first run Duat, and whenever you update the
 configuration, it will be compiled and reloaded automatically, so
 you can see the changes in *almost* real time. Initially, building
 Duat and its configuration crate might take a few minutes. And the
-first reload might also take a similar amount of time. But the next
-reloads should take only about a second (for debug profile) and ~5
-seconds (for release profile).
+first reload might also take a similar amount of time. But whenever
+you make new changes, the next reloads should take only about a
+second (for debug profile) and ~3 seconds (for release profile).
 
 Note that this is an alpha project, so there may be some quirks
 and bugs. So if you have a problem, or something seems confusing,

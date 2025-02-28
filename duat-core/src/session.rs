@@ -373,7 +373,6 @@ impl<U: Ui> Session<U> {
                         let buf = text.take_buf();
                         let pk = file.path_kind();
                         let is_active = node.area().is_active();
-                        crate::log_file!("{has_unsaved_changes}");
                         FileRet::new(buf, pk, is_active, has_unsaved_changes)
                     })
                 });

@@ -158,13 +158,15 @@ impl Text {
         has_unsaved_changes: bool,
     ) -> Self {
         let mut text = Self::from_buf(buf, Some(cursors), true);
-        text.has_unsaved_changes.store(has_unsaved_changes, Ordering::Relaxed);
+        text.has_unsaved_changes
+            .store(has_unsaved_changes, Ordering::Relaxed);
 
         if let Some(history) = cache::load_cache(path.as_ref()) {
             text.history = Some(Box::new(history));
         }
 
         let tree_sitter = TsParser::new(&mut text, path);
+        crate::log_file!("{}", tree_sitter.as_ref().is_some());
         text.ts_parser = tree_sitter.map(|ts| (Box::new(ts), Vec::new()));
         text
     }

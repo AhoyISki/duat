@@ -59,6 +59,24 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
     ("operator", Form::cyan().0, Normal),
     ("constructor", Form::yellow().0, Normal),
     ("module", Form::blue().italic().0, Normal),
+    // Markup Forms
+    ("markup", Form::new().0, Ref(DEFAULT_ID)),
+    ("markup.strong", Form::cyan().bold().0, Normal),
+    ("markup.italic", Form::cyan().italic().0, Normal),
+    ("markup.strikethrough", Form::cyan().crossed_out().0, Normal),
+    (
+        "markup.underline",
+        Form::underline_cyan().underlined().0,
+        Normal,
+    ),
+    ("markup.heading", Form::blue().bold().0, Normal),
+    ("markup.math", Form::yellow().0, Normal),
+    ("markup.quote", Form::grey().italic().0, Normal),
+    ("markup.link", Form::blue().underlined().0, Normal),
+    ("markup.raw", Form::cyan().0, Normal),
+    ("markup.list", Form::yellow().0, Normal),
+    ("markup.list.checked", Form::green().0, Normal),
+    ("markup.list.unchecked", Form::grey().0, Normal),
 ];
 
 /// The functions that will be exposed for public use.
@@ -1384,7 +1402,7 @@ macro mimic_method_new {
         /// Do note that this feature may not be supported in all [`Ui`]s.
         ///
         /// [`Ui`]: crate::ui::Ui
-        pub fn $ul() -> BuiltForm {
+        pub const fn $ul() -> BuiltForm {
             let mut built = Form::new();
             built.0.style.underline_color = Some($color);
             built

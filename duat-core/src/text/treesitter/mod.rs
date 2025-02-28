@@ -495,7 +495,7 @@ fn forms_from_query(
             let start = iter_keys.next().unwrap();
             let end = iter_keys.next().unwrap();
             forms.push(if name.contains('.') {
-                let refed = name.split('.').next().unwrap().to_string().leak();
+                let (refed, _) = name.rsplit_once('.').unwrap();
                 (form::set_weak(name, refed), start, end)
             } else {
                 (form::set_weak(name, "Default"), start, end)
@@ -579,12 +579,32 @@ fn lang_from_path(
         let lang_xml = Box::leak(Box::new(ts_xml::LANGUAGE_XML.into()));
 
         Mutex::new(vec![
-            (("asm", "Assembly", "assembly"), l!(ts_asm), h!(asm)),
-            (("cc", "C++", "cpp"), l!(ts_cpp), h_i!(cpp)),
-            (("c", "C", "c"), l!(ts_c), h_i!(c)),
             //        (".cl", "Common Lisp", "common-lisp"),
             //        (".clj", "Clojure", "clojure"),
             //        (".comp", "GLSL", "glsl"),
+            //        (".frag", "GLSL", "glsl"),
+            //        (".geom", "GLSL", "glsl"),
+            //        (".glsl", "GLSL", "glsl"),
+            //        (".haml", "Haml", "haml"),
+            //        (".handlebars", "Handlebars", "handlebars"),
+            //        (".hbs", "Handlebars", "handlebars"),
+            //        (".hlsl", "HLSL", "HLSL"),
+            //        (".ini", "INI", "ini"),
+            //        (".jinja2", "Jinja", "jinja"),
+            //        (".jinja", "Jinja", "jinja"),
+            //        (".kt", "Kotlin", "kotlin"),
+            //        (".less", "Less", "less"),
+            //        (".pl", "Perl", "perl"),
+            //        (".rkt", "Racket", "racket"),
+            //        (".sass", "SASS", "sass"),
+            //        (".tesc", "GLSL", "glsl"),
+            //        (".tese", "GLSL", "glsl"),
+            //        (".tex", "TeX", "tex"),
+            //        (".vert", "GLSL", "glsl"),
+            //        (".xhtml", "XHTML", "xhtml"),
+            (("asm", "Assembly", "assembly"), l!(ts_asm), h!(asm)),
+            (("c", "C", "c"), l!(ts_c), h_i!(c)),
+            (("cc", "C++", "cpp"), l!(ts_cpp), h_i!(cpp)),
             (("cpp", "C++", "cpp"), l!(ts_cpp), h_i!(cpp)),
             (("cs", "C#", "csharp"), l!(ts_c_sharp), h!(c_sharp)),
             (("css", "CSS", "css"), l!(ts_css), h_i!(css)),
@@ -595,63 +615,43 @@ fn lang_from_path(
             (("exs", "Elixir", "elixir"), l!(ts_elixir), h_i!(elixir)),
             (("for", "Fortran", "fortran"), l!(ts_fortran), h_i!(fortran)),
             (("fpp", "Fortran", "fortran"), l!(ts_fortran), h_i!(fortran)),
-            //        (".frag", "GLSL", "glsl"),
-            //        (".geom", "GLSL", "glsl"),
             (("gleam", "Gleam", "gleam"), l!(ts_gleam), h_i!(gleam)),
-            //        (".glsl", "GLSL", "glsl"),
             (("go", "Go", "go"), l!(ts_go), h_i!(go)),
             (("groovy", "Groovy", "groovy"), l!(ts_groovy), h_i!(groovy)),
             (("gvy", "Groovy", "groovy"), l!(ts_groovy), h_i!(groovy)),
-            //        (".haml", "Haml", "haml"),
-            //        (".handlebars", "Handlebars", "handlebars"),
-            //        (".hbs", "Handlebars", "handlebars"),
             (("h", "C", "c"), l!(ts_c), h_i!(c)),
-            //        (".hlsl", "HLSL", "HLSL"),
             (("hpp", "C++", "cpp"), l!(ts_cpp), h_i!(cpp)),
             (("hrl", "Erlang", "erlang"), l!(ts_erlang), h!(erlang)),
-            (("hsc", "Haskell", "haskell"), l!(ts_haskell), h!(haskell)),
             (("hs", "Haskell", "haskell"), l!(ts_haskell), h!(haskell)),
+            (("hsc", "Haskell", "haskell"), l!(ts_haskell), h!(haskell)),
             (("htm", "HTML", "html"), l!(ts_html), h_i!(html)),
             (("html", "HTML", "html"), l!(ts_html), h_i!(html)),
             (("hxx", "C++", "cpp"), l!(ts_cpp), h_i!(cpp)),
-            //        (".ini", "INI", "ini"),
             (("java", "Java", "java"), l!(ts_java), h_i!(java)),
-            //        (".jinja2", "Jinja", "jinja"),
-            //        (".jinja", "Jinja", "jinja"),
             (("jl", "Julia", "julia"), l!(ts_julia), h_i!(julia)),
             (("js", "JavaScript", "javascript"), l!(ts_js), h_i!(js)),
-            (("jsonc", "JSON", "jsonc"), l!(ts_json), h_i!(json)),
             (("json", "JSON", "json"), l!(ts_json), h_i!(json)),
-            //        (".kt", "Kotlin", "kotlin"),
-            //        (".less", "Less", "less"),
+            (("jsonc", "JSON", "jsonc"), l!(ts_json), h_i!(json)),
             (("lua", "Lua", "lua"), l!(ts_lua), h_i!(lua)),
+            (("m", "Objective-C", "objc"), l!(ts_objc), h_i!(objc)),
             (("md", "Markdown", "markdown"), l!(ts_md), h_i!(markdown)),
             (("ml", "OCaml", "ocaml"), lang_ocaml, h_i!(ocaml)),
-            (("m", "Objective-C", "objc"), l!(ts_objc), h_i!(objc)),
             (("nix", "Nix", "nix"), l!(ts_nix), h_i!(nix)),
             (("php", "PHP", "php"), lang_php, h_i!(php)),
-            //        (".pl", "Perl", "perl"),
+            (("py", "Python", "python"), l!(ts_python), h_i!(python)),
             (("pyc", "Python", "python"), l!(ts_python), h_i!(python)),
             (("pyo", "Python", "python"), l!(ts_python), h_i!(python)),
-            (("py", "Python", "python"), l!(ts_python), h_i!(python)),
-            (("rb", "Ruby", "ruby"), l!(ts_ruby), h_i!(ruby)),
-            //        (".rkt", "Racket", "racket"),
             (("r", "R", "r"), l!(ts_r), h_i!(r)),
+            (("rb", "Ruby", "ruby"), l!(ts_ruby), h_i!(ruby)),
             (("rs", "Rust", "rust"), l!(ts_rust), h_i!(rust)),
-            //        (".sass", "SASS", "sass"),
-            (("scala", "Scala", "scala"), l!(ts_scala), h!(scala)),
             (("sc", "Scala", "scala"), l!(ts_scala), h!(scala)),
+            (("scala", "Scala", "scala"), l!(ts_scala), h!(scala)),
             (("scss", "SCSS", "scss"), lf!(ts_scss), h_i!(scss)),
             (("sh", "Shell", "shell"), l!(ts_bash), h!(bash)),
             (("sql", "SQL", "sql"), l!(ts_sequel), h_i!(sql)),
             (("swift", "Swift", "swift"), l!(ts_swift), h_i!(swift)),
-            //        (".tesc", "GLSL", "glsl"),
-            //        (".tese", "GLSL", "glsl"),
-            //        (".tex", "TeX", "tex"),
             (("ts", "TypeScript", "typescript"), lang_ts, h!(ts)),
-            //        (".vert", "GLSL", "glsl"),
             (("vim", "Viml", "viml"), lf!(ts_vim), h!(vim)),
-            //        (".xhtml", "XHTML", "xhtml"),
             (("xml", "XML", "xml"), lang_xml, h_i!(xml)),
             (("xrl", "Erlang", "erlang"), l!(ts_erlang), h!(erlang)),
             (("yaml", "YAML", "yaml"), l!(ts_yaml), h_i!(yaml)),
@@ -662,11 +662,16 @@ fn lang_from_path(
     });
 
     let ext = path.as_ref().extension()?.to_str()?;
+    crate::log_file!("checking for the {ext} extension");
     let langs = LANGUAGES.lock();
     langs
-        .binary_search_by_key(&ext, |((ext, ..), ..)| ext)
+        .binary_search_by(|((rhs, ..), ..)| {
+            crate::log_file!("{rhs}, {:?}", rhs.cmp(&ext));
+            rhs.cmp(&ext)
+        })
         .ok()
         .map(|i| {
+            crate::log_file!("twas ok");
             let ((_, name, _), lang, hl) = langs.get(i).unwrap();
             (*name, *lang, *hl)
         })
