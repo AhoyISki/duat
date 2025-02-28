@@ -234,7 +234,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG9YTUqR_E2MBG_tjfLGItgh0G1gPMU8zBzUWG3qV75giMDw3YWSDgmRkdWF0ZTAuMy4wgmlkdWF0X2NvcmVlMC4zLjCCZHBsdWf2
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG2hBwVjytLZcG-2vdntP4VIWG29UTmJSMGv5G7EmMBJMobtuYWSDgmRkdWF0ZTAuMy4wgmlkdWF0X2NvcmVlMC4zLjCCZHBsdWf2
  [__link0]: https://crates.io/crates/plug
  [__link1]: https://docs.rs/duat/0.3.0/duat/?search=mode::set_default
  [__link10]: https://docs.rs/duat/0.3.0/duat/?search=prelude::CmdLine
