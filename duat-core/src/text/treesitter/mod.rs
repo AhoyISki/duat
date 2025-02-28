@@ -662,16 +662,13 @@ fn lang_from_path(
     });
 
     let ext = path.as_ref().extension()?.to_str()?;
-    crate::log_file!("checking for the {ext} extension");
     let langs = LANGUAGES.lock();
     langs
         .binary_search_by(|((rhs, ..), ..)| {
-            crate::log_file!("{rhs}, {:?}", rhs.cmp(&ext));
             rhs.cmp(&ext)
         })
         .ok()
         .map(|i| {
-            crate::log_file!("twas ok");
             let ((_, name, _), lang, hl) = langs.get(i).unwrap();
             (*name, *lang, *hl)
         })

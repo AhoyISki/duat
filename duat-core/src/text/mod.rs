@@ -166,7 +166,6 @@ impl Text {
         }
 
         let tree_sitter = TsParser::new(&mut text, path);
-        crate::log_file!("{}", tree_sitter.as_ref().is_some());
         text.ts_parser = tree_sitter.map(|ts| (Box::new(ts), Vec::new()));
         text
     }
