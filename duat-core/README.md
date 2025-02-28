@@ -126,8 +126,8 @@ impl<U: Ui> Mode<U> for EasyMotion {
             true => "[^\n\\s][^\n]+",
             false => "[^\n\\s]+",
         };
-        let start = area.first_point(text, cfg);
-        let end = area.last_point(text, cfg);
+        let (start, _) = area.first_points(text, cfg);
+        let (end, _) = area.last_points(text, cfg);
         self.points = text.search_fwd(regex, (start, end)).unwrap().collect();
 
         let seqs = key_seqs(self.points.len());
@@ -209,7 +209,7 @@ map::<Normal>("<CA-l>", &EasyMotion::line());
 ```
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG7UD5brFf5WzG_h6C89JpPjLG3lnRJ6dVY9AG4fHw78vvrqPYWSBg2lkdWF0LWNvcmVlMC4zLjBpZHVhdF9jb3Jl
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG_3UhAQvYgQEG7EDBdkAFbC6G7dtXR5Pvz92GyJG8JDW6xPLYWSBg2lkdWF0LWNvcmVlMC4zLjBpZHVhdF9jb3Jl
  [__link0]: https://docs.rs/duat-core/0.3.0/duat_core/?search=ui::Ui
  [__link1]: https://docs.rs/duat-core/0.3.0/duat_core/?search=mode::Mode
  [__link10]: https://docs.rs/duat-core/0.3.0/duat_core/?search=text::Text::remove_tags_on

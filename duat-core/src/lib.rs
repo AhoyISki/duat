@@ -137,8 +137,8 @@
 //!             true => "[^\n\\s][^\n]+",
 //!             false => "[^\n\\s]+",
 //!         };
-//!         let start = area.first_point(text, cfg);
-//!         let end = area.last_point(text, cfg);
+//!         let (start, _) = area.first_points(text, cfg);
+//!         let (end, _) = area.last_points(text, cfg);
 //!         self.points = text.search_fwd(regex, (start, end)).unwrap().collect();
 //!
 //!         let seqs = key_seqs(self.points.len());
