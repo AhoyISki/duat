@@ -79,6 +79,10 @@ impl TsParser {
     /// Returns the indentation difference from the previous line
     // WARNING: long ass function
     pub fn indent_on(&self, text: &mut Text, p: Point, cfg: PrintCfg) -> Option<usize> {
+        let query = &self.queries[1];
+        if query.pattern_count() == 0 {
+            return None;
+        }
         let tab = cfg.tab_stops.size() as i32;
         let (start, _) = text.points_of_line(p.line());
         let indented_start = text
@@ -87,7 +91,6 @@ impl TsParser {
             .find_map(|(p, c)| (!c.is_whitespace()).then_some(p));
         // TODO: Get injected trees
         let root = self.tree.root_node();
-        let query = &self.queries[1];
 
         type Captures<'a> = HashMap<&'a str, HashMap<usize, HashMap<&'a str, Option<&'a str>>>>;
         let mut caps: Captures = HashMap::new();
@@ -548,79 +551,113 @@ fn lang_from_path(
         macro l($lang:ident) {
             Box::leak(Box::new($lang::LANGUAGE.into()))
         }
-        macro q($lang:ident) {
-            [
-                include_str!(concat!(
-                    "../../../../ts-queries/",
-                    stringify!($lang),
-                    "/highlights.scm"
-                )),
-                include_str!(concat!(
-                    "../../../../ts-queries/",
-                    stringify!($lang),
-                    "/indents.scm"
-                )),
-            ]
+        macro lf($lang:ident) {
+            Box::leak(Box::new($lang::language()))
+        }
+        macro h($lang:ident) {{
+            let hi = include_str!(concat!(
+                "../../../../ts-queries/",
+                stringify!($lang),
+                "/highlights.scm"
+            ));
+            [hi, ""]
+        }}
+        macro i($lang:ident) {
+            include_str!(concat!(
+                "../../../../ts-queries/",
+                stringify!($lang),
+                "/indents.scm"
+            ))
+        }
+        macro h_i($lang:ident) {
+            [h!($lang)[0], i!($lang)]
         }
 
+        let lang_ocaml = Box::leak(Box::new(ts_ocaml::LANGUAGE_OCAML.into()));
+        let lang_php = Box::leak(Box::new(ts_php::LANGUAGE_PHP_ONLY.into()));
+        let lang_ts = Box::leak(Box::new(ts_ts::LANGUAGE_TYPESCRIPT.into()));
+        let lang_xml = Box::leak(Box::new(ts_xml::LANGUAGE_XML.into()));
+
         Mutex::new(vec![
-            //(("c", "C", "c"), lang!(cpp)),
-            (("cc", "C++", "cpp"), l!(tree_sitter_cpp), q!(cpp)),
-            (("cpp", "C++", "cpp"), l!(tree_sitter_cpp), q!(cpp)),
+            (("asm", "Assembly", "assembly"), l!(ts_asm), h!(asm)),
+            (("cc", "C++", "cpp"), l!(ts_cpp), h_i!(cpp)),
+            (("c", "C", "c"), l!(ts_c), h_i!(c)),
             //        (".cl", "Common Lisp", "common-lisp"),
             //        (".clj", "Clojure", "clojure"),
             //        (".comp", "GLSL", "glsl"),
-            //        (".cs", "C#", "csharp"),
-            //        (".css", "CSS", "css"),
-            (("cxx", "C++", "cpp"), l!(tree_sitter_cpp), q!(cpp)),
-            //        (".dart", "Dart", "dart"),
+            (("cpp", "C++", "cpp"), l!(ts_cpp), h_i!(cpp)),
+            (("cs", "C#", "csharp"), l!(ts_c_sharp), h!(c_sharp)),
+            (("css", "CSS", "css"), l!(ts_css), h_i!(css)),
+            (("cxx", "C++", "cpp"), l!(ts_cpp), h_i!(cpp)),
+            (("dart", "Dart", "dart"), lf!(ts_dart), h_i!(dart)),
+            (("erl", "Erlang", "erlang"), l!(ts_erlang), h!(erlang)),
+            (("ex", "Elixir", "elixir"), l!(ts_elixir), h_i!(elixir)),
+            (("exs", "Elixir", "elixir"), l!(ts_elixir), h_i!(elixir)),
+            (("for", "Fortran", "fortran"), l!(ts_fortran), h_i!(fortran)),
+            (("fpp", "Fortran", "fortran"), l!(ts_fortran), h_i!(fortran)),
             //        (".frag", "GLSL", "glsl"),
             //        (".geom", "GLSL", "glsl"),
+            (("gleam", "Gleam", "gleam"), l!(ts_gleam), h_i!(gleam)),
             //        (".glsl", "GLSL", "glsl"),
-            //        (".go", "Go", "go"),
-            //        (".h", "C", "c"),
+            (("go", "Go", "go"), l!(ts_go), h_i!(go)),
+            (("groovy", "Groovy", "groovy"), l!(ts_groovy), h_i!(groovy)),
+            (("gvy", "Groovy", "groovy"), l!(ts_groovy), h_i!(groovy)),
             //        (".haml", "Haml", "haml"),
             //        (".handlebars", "Handlebars", "handlebars"),
             //        (".hbs", "Handlebars", "handlebars"),
+            (("h", "C", "c"), l!(ts_c), h_i!(c)),
             //        (".hlsl", "HLSL", "HLSL"),
-            (("hpp", "C++", "cpp"), l!(tree_sitter_cpp), q!(cpp)),
-            //        (".html", "HTML", "html"),
-            (("hxx", "C++", "cpp"), l!(tree_sitter_cpp), q!(cpp)),
+            (("hpp", "C++", "cpp"), l!(ts_cpp), h_i!(cpp)),
+            (("hrl", "Erlang", "erlang"), l!(ts_erlang), h!(erlang)),
+            (("hsc", "Haskell", "haskell"), l!(ts_haskell), h!(haskell)),
+            (("hs", "Haskell", "haskell"), l!(ts_haskell), h!(haskell)),
+            (("htm", "HTML", "html"), l!(ts_html), h_i!(html)),
+            (("html", "HTML", "html"), l!(ts_html), h_i!(html)),
+            (("hxx", "C++", "cpp"), l!(ts_cpp), h_i!(cpp)),
             //        (".ini", "INI", "ini"),
-            //        (".java", "Java", "java"),
-            //        (".jinja", "Jinja", "jinja"),
+            (("java", "Java", "java"), l!(ts_java), h_i!(java)),
             //        (".jinja2", "Jinja", "jinja"),
-            //        (".js", "JavaScript", "javascript"),
-            //        (".json", "JSON", "json"),
-            //        (".jsonc", "JSON with Comments", "jsonc"),
+            //        (".jinja", "Jinja", "jinja"),
+            (("jl", "Julia", "julia"), l!(ts_julia), h_i!(julia)),
+            (("js", "JavaScript", "javascript"), l!(ts_js), h_i!(js)),
+            (("jsonc", "JSON", "jsonc"), l!(ts_json), h_i!(json)),
+            (("json", "JSON", "json"), l!(ts_json), h_i!(json)),
             //        (".kt", "Kotlin", "kotlin"),
             //        (".less", "Less", "less"),
-            //        (".lua", "Lua", "lua"),
-            //        (".md", "Markdown", "markdown"),
+            (("lua", "Lua", "lua"), l!(ts_lua), h_i!(lua)),
+            (("md", "Markdown", "markdown"), l!(ts_md), h_i!(markdown)),
+            (("ml", "OCaml", "ocaml"), lang_ocaml, h_i!(ocaml)),
+            (("m", "Objective-C", "objc"), l!(ts_objc), h_i!(objc)),
+            (("nix", "Nix", "nix"), l!(ts_nix), h_i!(nix)),
+            (("php", "PHP", "php"), lang_php, h_i!(php)),
             //        (".pl", "Perl", "perl"),
-            //        (".py", "Python", "python"),
-            //        (".pyc", "Python", "python"),
-            //        (".pyo", "Python", "python"),
-            //        (".rb", "Ruby", "ruby"),
+            (("pyc", "Python", "python"), l!(ts_python), h_i!(python)),
+            (("pyo", "Python", "python"), l!(ts_python), h_i!(python)),
+            (("py", "Python", "python"), l!(ts_python), h_i!(python)),
+            (("rb", "Ruby", "ruby"), l!(ts_ruby), h_i!(ruby)),
             //        (".rkt", "Racket", "racket"),
-            (("rs", "Rust", "rust"), l!(tree_sitter_rust), q!(rust)),
+            (("r", "R", "r"), l!(ts_r), h_i!(r)),
+            (("rs", "Rust", "rust"), l!(ts_rust), h_i!(rust)),
             //        (".sass", "SASS", "sass"),
-            //        (".sc", "Scala", "scala"),
-            //        (".scala", "Scala", "scala"),
-            //        (".scss", "SCSS", "scss"),
-            //        (".sh", "Shell", "shell"),
-            //        (".sql", "SQL", "sql"),
-            //        (".swift", "Swift", "swift"),
+            (("scala", "Scala", "scala"), l!(ts_scala), h!(scala)),
+            (("sc", "Scala", "scala"), l!(ts_scala), h!(scala)),
+            (("scss", "SCSS", "scss"), lf!(ts_scss), h_i!(scss)),
+            (("sh", "Shell", "shell"), l!(ts_bash), h!(bash)),
+            (("sql", "SQL", "sql"), l!(ts_sequel), h_i!(sql)),
+            (("swift", "Swift", "swift"), l!(ts_swift), h_i!(swift)),
             //        (".tesc", "GLSL", "glsl"),
             //        (".tese", "GLSL", "glsl"),
             //        (".tex", "TeX", "tex"),
-            //        (".toml", "TOML", "toml"),
-            //        (".ts", "TypeScript", "typescript"),
+            (("ts", "TypeScript", "typescript"), lang_ts, h!(ts)),
             //        (".vert", "GLSL", "glsl"),
+            (("vim", "Viml", "viml"), lf!(ts_vim), h!(vim)),
             //        (".xhtml", "XHTML", "xhtml"),
-            //        (".xml", "XML", "xml"),
-            //        (".yaml", "YAML", "yaml"),
-            //        (".yml", "YAML", "yaml"),
+            (("xml", "XML", "xml"), lang_xml, h_i!(xml)),
+            (("xrl", "Erlang", "erlang"), l!(ts_erlang), h!(erlang)),
+            (("yaml", "YAML", "yaml"), l!(ts_yaml), h_i!(yaml)),
+            (("yml", "YAML", "yaml"), l!(ts_yaml), h_i!(yaml)),
+            (("yrl", "Erlang", "erlang"), l!(ts_erlang), h!(erlang)),
+            (("zig", "Zig", "zig"), l!(ts_zig), h_i!(zig)),
         ])
     });
 
