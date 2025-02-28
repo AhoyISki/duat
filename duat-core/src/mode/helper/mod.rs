@@ -25,9 +25,7 @@ mod cursors;
 /// mode for the [`File`] widget:
 ///
 /// ```rust
-/// # use duat_core::{
-/// #     data::RwData, mode::{EditHelper, Mode, KeyEvent, Cursors}, ui::Ui, widgets::File,
-/// # };
+/// # use duat_core::{mode::{EditHelper, Mode, KeyEvent, Cursors}, ui::Ui, widgets::File};
 /// /// A very basic example Mode.
 /// #[derive(Clone)]
 /// struct PlacesCharactersAndMoves;
@@ -35,7 +33,7 @@ mod cursors;
 /// impl<U: Ui> Mode<U> for PlacesCharactersAndMoves {
 ///     type Widget = File;
 ///     /* ... */
-/// #   fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area) {
+/// #   fn send_key(&mut self, key: KeyEvent, widget: &mut File, area: &U::Area) {
 /// #       todo!();
 /// #   }
 /// # }
@@ -45,7 +43,7 @@ mod cursors;
 /// [`Mode::send_key`] method. In it, you receive the following:
 ///
 /// - The [key].
-/// - An [`RwData`] of [`Self::Widget`].
+/// - A [`&mut Self::Widget`].
 /// - An [`Area`], which you can resize and modify it in other ways.
 /// - The current [`Cursors`] of the widget, these should be modified
 ///   by the [`EditHelper`].
@@ -55,15 +53,14 @@ mod cursors;
 ///
 /// ```rust
 /// # use duat_core::{
-/// #     data::RwData, mode::{key, Cursors, EditHelper, Mode, KeyCode, KeyEvent},
-/// #     ui::Ui, widgets::File,
+/// #     mode::{key, Cursors, EditHelper, Mode, KeyCode, KeyEvent}, ui::Ui, widgets::File,
 /// # };
 /// # #[derive(Clone)]
 /// # struct PlacesCharactersAndMoves;
 /// impl<U: Ui> Mode<U> for PlacesCharactersAndMoves {
 /// #   type Widget = File;
 ///     /* ... */
-///     fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area) {
+///     fn send_key(&mut self, key: KeyEvent, widget: &mut File, area: &U::Area) {
 ///         match key {
 ///             // actions based on the key pressed
 ///             key!(KeyCode::Char('c')) => {
@@ -85,17 +82,16 @@ mod cursors;
 ///
 /// ```rust
 /// # use duat_core::{
-/// #     data::RwData, mode::{ key, Cursors, EditHelper, Mode, KeyCode, KeyEvent, KeyMod},
-/// #     ui::Ui, widgets::File,
+/// #     mode::{ key, Cursors, EditHelper, Mode, KeyCode, KeyEvent, KeyMod}, ui::Ui, widgets::File,
 /// # };
 /// # #[derive(Clone)]
 /// # struct PlacesCharactersAndMoves;
 /// impl<U: Ui> Mode<U> for PlacesCharactersAndMoves {
 /// #   type Widget = File;
 ///     /* ... */
-///     fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area) {
-///         let mut helper = EditHelper::new(widget, area);
-///         helper.make_excl();
+///     fn send_key(&mut self, key: KeyEvent, file: &mut File, area: &U::Area) {
+///         let mut helper = EditHelper::new(file, area);
+///         helper.cursors_mut().make_excl();
 ///         
 ///         match key {
 ///             key!(KeyCode::Char(c)) => {
@@ -125,22 +121,20 @@ mod cursors;
 ///
 /// Notice the [`Cursors::make_excl`]. In Duat, there are two types of
 /// [`Cursors`], inclusive and exclusive. The only difference between
-/// them is that in inclusive cursors, the selection includes the
-/// character that the cursor is on, while that is not the case in
-/// exclusive [`Cursors`].
+/// them is that in inclusive cursors, the selection acts like a Rust
+/// inclusive selection (`..=`), while in exclusive cursors, it acts
+/// like an exclusive selection (`..`).
 ///
 /// [`Mode`]: super::Mode
 /// [`Text`]: crate::text::Text
-/// [`CommandLine`]: crate::widgets::CommandLine
-/// [`RwData<Self::Widget>`]: RwData
-/// [`mutate`]: RwData::mutate
-/// [`inspect`]: RwData::inspect
+/// [`CmdLine`]: crate::widgets::CmdLine
+/// [`&mut Self::Widget`]: super::Mode::Widget
 /// [`Mode::send_key`]: super::Mode::send_key
 /// [key]: super::KeyEvent
 /// [`Self::Widget`]: super::Mode::Widget
 /// [`Some(cursors)`]: Some
 /// [`Ui::Area`]: crate::ui::Ui::Area
-/// [commands]: crate::commands
+/// [commands]: crate::cmd
 /// [`key!`]: super::key
 /// [`KeyEvent`]: super::KeyEvent
 /// [editing]: Editor

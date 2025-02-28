@@ -459,7 +459,7 @@ fn remove_alias_and<U: Ui>(f: impl FnOnce(&mut Text, usize)) {
 
         if let Some(main) = file.cursors().unwrap().get_main() {
             let main = main.byte();
-            file.text_mut().remove_tags_on(main, Key::for_alias());
+            file.text_mut().remove_tags(main, Key::for_alias());
             f(file.text_mut(), main)
         }
     })

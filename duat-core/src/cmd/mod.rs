@@ -551,12 +551,13 @@ mod global {
 
     static COMMANDS: Commands = Commands::new();
 
-    /// Adds a command to the global list of commands.
+    /// Adds a command to Duat
     ///
-    /// This command cannot take any arguments beyond the [`Flags`]
-    /// and [`Args`], so any mutation of state must be done
-    /// through captured variables, usually in the form of
-    /// [`RwData`]s.
+    /// Anyone will be able to execute this command, and it can take
+    /// any number of [`Parameter`] arguments. These arguments will be
+    /// automatically matched and checked before the command starts
+    /// execution, providing feedback to the user as he is typing the
+    /// commands.
     ///
     /// # Examples
     ///
@@ -999,9 +1000,9 @@ mod global {
         }
     }
 
-    /// Runs a full command, with a caller, [`Flags`], and [`Args`].
+    /// Runs a full command, with a caller and [`Args`].
     ///
-    /// When running the command, the ordering of flags does not
+    /// When running the command, the ordering of [`Flags`] does not
     /// matter, as long as they are placed before the arguments to the
     /// command.
     ///
@@ -1017,6 +1018,7 @@ mod global {
     /// more information.
     ///
     /// [`CmdLine`]: crate::widgets::CmdLine
+    /// [`Flags`]: super::Flags
     pub fn run(call: impl std::fmt::Display) -> CmdRunner {
         let call = call.to_string();
         CmdRunner {

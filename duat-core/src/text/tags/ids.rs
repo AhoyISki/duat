@@ -22,7 +22,7 @@ pub struct TextId(u16);
 
 /// The id of a [toggleable]
 ///
-/// [toggleable]: super::Tag::ToggleStart
+/// [toggleable]: super::Tag::StartToggle
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ToggleId(u16);
 
@@ -58,15 +58,14 @@ impl Default for ToggleId {
 
 /// A key letting one add and remove [`Tag`]s to a [`Text`]
 ///
-/// With keys, you can use the methods [`Text::insert_tag`],
-/// [`Text::remove_tags_on`], and [`Text::remove_tags_of`] to add and
-/// remove tags to a text.
+/// With keys, you can use the methods [`Text::insert_tag`] and,
+/// [`Text::remove_tags`] to add and remove [`Tag`]s on the [`Text`].
 ///
 /// The reason why keys exist is mainly for the sake of [`File`]
 /// widgets. In files, it is very expected that there will be many
 /// different sources of modifiers, which can add and remove tags on
-/// their own accord. In order to not have these different actors
-/// interfere with eachother's work, keys were implemented:
+/// their own accord. Keys exist so that these actors don't interfere
+/// with eachother's work:
 ///
 /// ```rust
 /// use duat_core::{form, text::{text, Key, Tag}};
@@ -87,7 +86,7 @@ impl Default for ToggleId {
 /// // key2 != key, so it shouldn't be able to change what key1 has done.
 /// let key2 = Key::new();
 ///
-/// text.remove_tags_on(17, key2);
+/// text.remove_tags(17, key2);
 ///
 /// assert_eq!(
 ///     text,
@@ -99,8 +98,7 @@ impl Default for ToggleId {
 /// [`Text`]: super::Text
 /// [`File`]: crate::widgets::File
 /// [`Text::insert_tag`]: super::Text::insert_tag
-/// [`Text::remove_tags_on`]: super::Text::remove_tags_on
-/// [`Text::remove_tags_of`]: super::Text::remove_tags_of
+/// [`Text::remove_tags`]: super::Text::remove_tags
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Key(u16);
 
@@ -186,7 +184,7 @@ impl std::iter::Step for Key {
 /// different [`Key`]s will be searched for and [removed]
 ///
 /// [`Tag`]: super::Tag
-/// [removed]: crate::text::Text::remove_tags_on
+/// [removed]: crate::text::Text::remove_tags
 pub trait Keys: Clone + PartialEq + Eq {
     /// Whether this range contains a given [`Key`]
     fn contains(self, key: Key) -> bool;

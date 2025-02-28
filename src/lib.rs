@@ -54,12 +54,12 @@
 //!
 //! ```rust
 //! # mod kak {
-//! #     use duat::{prelude::{mode::*, data::RwData}, Area, Ui, widgets::File};
+//! #     use duat::{prelude::mode::*, Area, Ui, widgets::File};
 //! #     #[derive(Clone)]
 //! #     pub struct Normal;
 //! #     impl Mode<Ui> for Normal {
 //! #         type Widget = File;
-//! #         fn send_key(&mut self, _: KeyEvent, _: &RwData<File>, _: &Area) {
+//! #         fn send_key(&mut self, _: KeyEvent, _: &mut File, _: &Area) {
 //! #             todo!();
 //! #         }
 //! #     }
@@ -67,7 +67,7 @@
 //! #     pub struct Insert;
 //! #     impl Mode<Ui> for Insert {
 //! #         type Widget = File;
-//! #         fn send_key(&mut self, _: KeyEvent, _: &RwData<File>, _: &Area) {
+//! #         fn send_key(&mut self, _: KeyEvent, _: &mut File, _: &Area) {
 //! #             todo!();
 //! #         }
 //! #     }

@@ -209,7 +209,9 @@ pub const fn utf8_char_width(b: u8) -> u32 {
 /// The purpose of this trait is to minimize the number of functions
 /// needed to perform tasks.
 ///
+/// [`Text`]: super::Text
 /// [`Tag`]: super::Tag
+/// [`RangeBounds<usize>`]: std::ops::RangeBounds
 pub trait TextRange {
     /// A "forward facing range"
     ///

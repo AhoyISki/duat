@@ -36,7 +36,7 @@ use crate::{
 /// ```
 ///
 /// If it has unwritten changes, a `[UnsavedChanges] "[+]"` will be
-/// appended. If it doesn't exist, a `[NewFile] "[new file]" will be
+/// appended. If it doesn't exist, a `[NewFile] "[new file]"` will be
 /// appended.
 ///
 /// If the file's `name` was not set:

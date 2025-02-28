@@ -362,7 +362,7 @@ mod switch {
 /// ```rust
 /// # use std::marker::PhantomData;
 /// # use duat_core::{
-/// #     data::RwData, mode::{Mode, KeyEvent}, form::{self, Form},
+/// #     mode::{Mode, KeyEvent}, form::{self, Form},
 /// #     text::{text, Text}, ui::{PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
 /// # };
 /// # #[derive(Default)]
@@ -489,7 +489,7 @@ mod switch {
 /// # #![feature(let_chains)]
 /// # use std::marker::PhantomData;
 /// # use duat_core::{
-/// #     data::RwData, mode::{key, Cursors, Mode, KeyCode, KeyEvent}, form::{self, Form},
+/// #     mode::{key, Cursors, Mode, KeyCode, KeyEvent}, form::{self, Form},
 /// #     text::{text, Text}, ui::{PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
 /// # };
 /// # #[derive(Default)]
@@ -531,9 +531,8 @@ mod switch {
 /// impl<U: Ui> Mode<U> for MenuInput {
 ///     type Widget = Menu;
 ///
-///     fn send_key(&mut self, key: KeyEvent, widget: &RwData<Menu>, area: &U::Area) {
+///     fn send_key(&mut self, key: KeyEvent, menu: &mut Menu, area: &U::Area) {
 ///         use KeyCode::*;
-///         let mut menu = widget.write();
 ///         
 ///         match key {
 ///             key!(Down) => menu.shift_selection(1),
@@ -551,9 +550,9 @@ mod switch {
 /// [`print`]: Widget::print
 /// [`on_focus`]: Widget::on_focus
 /// [`on_unfocus`]: Widget::on_unfocus
-/// [resizing]: Area::constrain_ver
+/// [resizing]: crate::ui::Area::constrain_ver
 /// [`Form`]: crate::form::Form
-/// [default]: default::KeyMap
+/// [default]: self::regular::Regular
 /// [`duat-kak`]: https://docs.rs/duat-kak/latest/duat_kak/index.html
 /// [Kakoune]: https://github.com/mawww/kakoune
 /// [`Text`]: crate::Text

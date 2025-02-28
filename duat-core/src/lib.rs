@@ -13,8 +13,7 @@
 //!
 //! ```rust
 //! # use duat_core::{
-//! #     data::RwData, mode::{self, Cursors, EditHelper, KeyCode, KeyEvent, Mode, key},
-//! #     ui::Ui, widgets::File,
+//! #     mode::{self, Cursors, EditHelper, KeyCode, KeyEvent, Mode, key}, ui::Ui, widgets::File,
 //! # };
 //! #[derive(Default, Clone)]
 //! struct FindSeq(Option<char>);
@@ -22,9 +21,9 @@
 //! impl<U: Ui> Mode<U> for FindSeq {
 //!     type Widget = File;
 //!
-//!     fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area) {
+//!     fn send_key(&mut self, key: KeyEvent, file: &mut File, area: &U::Area) {
 //!         use KeyCode::*;
-//!         let mut helper = EditHelper::new(widget, area);
+//!         let mut helper = EditHelper::new(file, area);
 //!
 //!         // Make sure that the typed key is a character.
 //!         let key!(Char(c)) = key else {
@@ -94,7 +93,7 @@
 //!
 //! ```rust
 //! # use duat_core::{
-//! #     data::RwData, mode::{self, Cursors, EditHelper, KeyCode, KeyEvent, Mode, key},
+//! #     mode::{self, Cursors, EditHelper, KeyCode, KeyEvent, Mode, key},
 //! #     text::{Key, Point, Tag, text}, ui::{Area, Ui}, widgets::File,
 //! # };
 //! #[derive(Clone)]
@@ -128,10 +127,9 @@
 //! impl<U: Ui> Mode<U> for EasyMotion {
 //!     type Widget = File;
 //!
-//!     fn on_switch(&mut self, widget: &RwData<Self::Widget>, area: &<U as Ui>::Area) {
-//!         let mut widget = widget.write();
-//!         let cfg = widget.print_cfg();
-//!         let text = widget.text_mut();
+//!     fn on_switch(&mut self, file: &mut File, area: &<U as Ui>::Area) {
+//!         let cfg = file.print_cfg();
+//!         let text = file.text_mut();
 //!
 //!         let regex = match self.is_line {
 //!             true => "[^\n\\s][^\n]+",
@@ -153,7 +151,7 @@
 //!         }
 //!     }
 //!
-//!     fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area) {
+//!     fn send_key(&mut self, key: KeyEvent, file: &mut File, area: &U::Area) {
 //!         let char = match key {
 //!             key!(KeyCode::Char(c)) => c,
 //!             // Return a char that will never match.
@@ -161,8 +159,8 @@
 //!         };
 //!         self.seq.push(char);
 //!
-//!         let mut helper = EditHelper::new(widget, area);
-//!         helper.remove_extra_cursors();
+//!         let mut helper = EditHelper::new(file, area);
+//!         helper.cursors_mut().remove_extras();
 //!
 //!         let seqs = key_seqs(self.points.len());
 //!         for (seq, &(p1, p2)) in seqs.iter().zip(&self.points) {
@@ -177,8 +175,8 @@
 //!                 continue;
 //!             }
 //!
-//!             helper.remove_tags_on(p1.byte(), self.key);
-//!             helper.remove_tags_on(p1.byte() + seq.len(), self.key);
+//!             helper.text_mut().remove_tags(p1.byte(), self.key);
+//!             helper.text_mut().remove_tags(p1.byte() + seq.len(), self.key);
 //!         }
 //!
 //!         if self.seq.chars().count() == 2 || !LETTERS.contains(char) {
@@ -239,7 +237,7 @@
 //! [`Tag::GhostText`]: crate::text::Tag::GhostText
 //! [`Tag::StartConceal`]: crate::text::Tag::StartConceal
 //! [`Tag::EndConceal`]: crate::text::Tag::EndConceal
-//! [remove]: crate::text::Text::remove_tags_on
+//! [remove]: crate::text::Text::remove_tags
 //! [Move]: crate::mode::Mover::move_to
 #![feature(
     let_chains,

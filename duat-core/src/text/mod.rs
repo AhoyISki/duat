@@ -1006,7 +1006,7 @@ impl Text {
     ///
     /// [key]: Keys
     /// [`File`]: crate::widgets::File
-    pub fn remove_tags_on(&mut self, range: impl TextRange, keys: impl Keys) {
+    pub fn remove_tags(&mut self, range: impl TextRange, keys: impl Keys) {
         let range = range.to_range_at(self.len().byte());
         if range.end == range.start + 1 {
             self.tags.remove_at(range.start, keys)
