@@ -187,7 +187,7 @@ pub use self::{
     global::*,
     parameters::{
         Args, Between, ColorSchemeArg, F32PercentOfU8, FileBuffer, Flags, FormName,
-        OtherFileBuffer, Parameter, PossibleFile, Remainder, get_args,
+        OtherFileBuffer, Parameter, PossibleFile, Remainder, get_args, args_iter
     },
 };
 use crate::{

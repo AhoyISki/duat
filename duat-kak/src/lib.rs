@@ -21,7 +21,7 @@ use duat_core::{
     },
     text::{Point, Searcher, err},
     ui::{Area, Ui},
-    widgets::{File, IncSearch, RunCommands},
+    widgets::{File, IncSearch, PipeSelections, RunCommands},
 };
 
 /// The [`Plugin`] for the kakoune [`Mode`]s
@@ -554,6 +554,7 @@ impl<U: Ui> Mode<U> for Normal {
 
             ////////// Other mode changing keys.
             key!(Char(':')) => mode::set_cmd::<U>(RunCommands::new()),
+            key!(Char('|')) => mode::set_cmd::<U>(PipeSelections::new()),
             key!(Char('G')) => mode::set::<U>(OneKey::GoTo(SelType::Extend)),
             key!(Char('g')) => mode::set::<U>(OneKey::GoTo(SelType::Normal)),
 
@@ -567,7 +568,7 @@ impl<U: Ui> Mode<U> for Normal {
             ////////// History manipulation.
             key!(Char('u')) => helper.undo(),
             key!(Char('U')) => helper.redo(),
-            _ => {}
+            _ => { }
         }
     }
 }

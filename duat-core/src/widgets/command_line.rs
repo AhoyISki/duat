@@ -11,6 +11,7 @@
 //! [implement your own functionality]: CmdLineMode
 use std::{
     any::TypeId,
+    io::Write,
     marker::PhantomData,
     sync::{
         Arc, LazyLock,
@@ -23,11 +24,11 @@ use parking_lot::RwLock;
 use super::File;
 use crate::{
     cfg::PrintCfg,
-    cmd,
+    cmd::{self, args_iter},
     data::{RoData, RwData, context},
     form::{self, Form},
     hooks::{self, KeySent},
-    mode::{self, Command, IncSearcher},
+    mode::{self, Command, EditHelper, IncSearcher},
     text::{Ghost, Key, Searcher, Tag, Text, text},
     ui::{PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
@@ -134,6 +135,9 @@ pub struct CmdLine<U: Ui> {
 impl<U: Ui> CmdLine<U> {
     pub(crate) fn set_mode<M: CmdLineMode<U>>(&mut self, mode: M) {
         run_once::<M, U>();
+        if mode.do_focus() {
+            mode::set::<U>(Command);
+        }
         *self.mode.write() = RwData::new_unsized::<M>(Arc::new(RwLock::new(mode)));
     }
 }
@@ -184,18 +188,19 @@ impl<U: Ui> Widget<U> for CmdLine<U> {
     }
 }
 
+#[allow(unused_variables)]
 pub trait CmdLineMode<U: Ui>: Send + Sync + 'static {
-    fn clone(&self) -> Self
-    where
-        Self: Sized;
+    fn on_focus(&mut self, text: &mut Text) {}
 
-    fn on_focus(&mut self, _text: &mut Text) {}
+    fn on_unfocus(&mut self, text: &mut Text) {}
 
-    fn on_unfocus(&mut self, _text: &mut Text) {}
-
-    fn update(&mut self, _text: &mut Text) {}
+    fn update(&mut self, text: &mut Text) {}
 
     fn has_changed(&mut self) -> bool {
+        false
+    }
+
+    fn do_focus(&self) -> bool {
         false
     }
 
@@ -213,16 +218,11 @@ pub struct RunCommands<U> {
 
 impl<U: Ui> RunCommands<U> {
     pub fn new() -> Self {
-        mode::set::<U>(Command);
         Self { key: Key::new(), ghost: PhantomData }
     }
 }
 
 impl<U: Ui> CmdLineMode<U> for RunCommands<U> {
-    fn clone(&self) -> Self {
-        Self::new()
-    }
-
     fn update(&mut self, text: &mut Text) {
         text.remove_tags(.., self.key);
 
@@ -255,10 +255,14 @@ impl<U: Ui> CmdLineMode<U> for RunCommands<U> {
     fn on_unfocus(&mut self, text: &mut Text) {
         let text = std::mem::take(text);
 
-        let cmd = text.to_string();
-        if !cmd.is_empty() {
-            crate::thread::queue(move || cmd::run_notify(cmd));
+        let command = text.to_string();
+        if !command.is_empty() {
+            crate::thread::queue(move || cmd::run_notify(command));
         }
+    }
+
+    fn do_focus(&self) -> bool {
+        true
     }
 
     fn once() {
@@ -271,6 +275,12 @@ impl<U: Ui> CmdLineMode<U> for RunCommands<U> {
 
 impl<U: Ui> Default for RunCommands<U> {
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<U: Ui> Clone for RunCommands<U> {
+    fn clone(&self) -> Self {
         Self::new()
     }
 }
@@ -294,10 +304,6 @@ impl<U: Ui> ShowNotifications<U> {
 static REMOVE_NOTIFS: AtomicBool = AtomicBool::new(false);
 
 impl<U: Ui> CmdLineMode<U> for ShowNotifications<U> {
-    fn clone(&self) -> Self {
-        Self::new()
-    }
-
     fn has_changed(&mut self) -> bool {
         if self.notifications.has_changed() {
             REMOVE_NOTIFS.store(false, Ordering::Release);
@@ -335,6 +341,12 @@ impl<U: Ui> Default for ShowNotifications<U> {
     }
 }
 
+impl<U: Ui> Clone for ShowNotifications<U> {
+    fn clone(&self) -> Self {
+        Self::new()
+    }
+}
+
 pub struct IncSearch<I: IncSearcher<U>, U: Ui> {
     fn_or_inc: FnOrInc<I, U>,
     key: Key,
@@ -343,8 +355,6 @@ pub struct IncSearch<I: IncSearcher<U>, U: Ui> {
 
 impl<I: IncSearcher<U>, U: Ui> IncSearch<I, U> {
     pub fn new(f: impl IncFn<I, U> + Send + Sync + 'static) -> Self {
-        mode::set::<U>(Command);
-
         Self {
             fn_or_inc: FnOrInc::Fn(Some(Box::new(f))),
             key: Key::new(),
@@ -354,10 +364,6 @@ impl<I: IncSearcher<U>, U: Ui> IncSearch<I, U> {
 }
 
 impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
-    fn clone(&self) -> Self {
-        Self::new(I::new)
-    }
-
     fn update(&mut self, text: &mut Text) {
         let FnOrInc::Inc(inc, _) = &mut self.fn_or_inc else {
             unreachable!();
@@ -375,7 +381,7 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
             }
             Err(err) => {
                 let regex_syntax::Error::Parse(err) = *err else {
-                    unreachable!("As far as I can tell, this would be a bug with regex_syntax");
+                    unreachable!("As far as I can tell, regex_syntax has goofed up");
                 };
 
                 let span = err.span();
@@ -401,6 +407,119 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
         context::cur_file::<U>()
             .unwrap()
             .mutate_data(|file, area| inc.finish(&mut file.raw_write(), area));
+    }
+
+    fn do_focus(&self) -> bool {
+        true
+    }
+}
+
+impl<I: IncSearcher<U>, U: Ui> Clone for IncSearch<I, U> {
+    fn clone(&self) -> Self {
+        Self::new(I::new)
+    }
+}
+
+pub struct PipeSelections<U> {
+    key: Key,
+    _ghost: PhantomData<U>,
+}
+
+impl<U: Ui> PipeSelections<U> {
+    pub fn new() -> Self {
+        Self { key: Key::new(), _ghost: PhantomData }
+    }
+}
+
+impl<U: Ui> CmdLineMode<U> for PipeSelections<U> {
+    fn update(&mut self, text: &mut Text) {
+        fn is_in_path(program: &str) -> bool {
+            if let Ok(path) = std::env::var("PATH") {
+                for p in path.split(":") {
+                    let p_str = format!("{}/{}", p, program);
+                    if let Ok(true) = std::fs::exists(p_str) {
+                        return true;
+                    }
+                }
+            }
+            false
+        }
+
+        text.remove_tags(.., self.key);
+
+        let command = text.to_string();
+        let Some(caller) = command.split_whitespace().next() else {
+            return;
+        };
+
+        let args = args_iter(&command);
+
+        let (caller_id, args_id) = if is_in_path(caller) {
+            (form::id_of!("CallerExists"), form::id_of!("ParameterOk"))
+        } else {
+            (form::id_of!("CallerNotFound"), form::id_of!("ParameterErr"))
+        };
+
+        text.insert_tag(0, Tag::PushForm(caller_id), self.key);
+        text.insert_tag(caller.len(), Tag::PushForm(caller_id), self.key);
+
+        for (_, range) in args {
+            text.insert_tag(range.start, Tag::PushForm(args_id), self.key);
+            text.insert_tag(range.end, Tag::PopForm(args_id), self.key);
+        }
+    }
+
+    fn on_unfocus(&mut self, text: &mut Text) {
+        use std::process::{Command, Stdio};
+        let text = std::mem::take(text);
+
+        let command = text.to_string();
+        let Some(caller) = command.split_whitespace().next() else {
+            return;
+        };
+
+        context::cur_file::<U>().unwrap().mutate_data(|file, area| {
+            let mut file = file.write();
+            let mut helper = EditHelper::new(&mut *file, area);
+
+            helper.edit_many(.., |e| {
+                let Ok(mut child) = Command::new(caller)
+                    .args(args_iter(&command).map(|(a, _)| a))
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .spawn()
+                else {
+                    return;
+                };
+
+                let input: String = e.selection().collect();
+                if let Some(mut stdin) = child.stdin.take() {
+                    crate::thread::spawn(move || {
+                        stdin.write_all(input.as_bytes()).unwrap();
+                    });
+                }
+                if let Ok(out) = child.wait_with_output() {
+                    let out = String::from_utf8_lossy(&out.stdout);
+                    e.replace(out);
+                }
+            });
+        });
+    }
+
+    fn do_focus(&self) -> bool {
+        true
+    }
+}
+
+impl<U: Ui> Default for PipeSelections<U> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<U: Ui> Clone for PipeSelections<U> {
+    fn clone(&self) -> Self {
+        Self::new()
     }
 }
 

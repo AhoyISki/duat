@@ -8,9 +8,9 @@
 //! the same command.
 use std::{iter::Peekable, ops::Range, path::PathBuf};
 
-pub use args_iter::get_args;
 use crossterm::style::Color;
 
+pub use self::args_iter::args_iter;
 use crate::text::{Text, err};
 
 pub trait Parameter<'a>: Sized {
@@ -459,22 +459,60 @@ impl Flags<'_> {
     }
 }
 
-mod args_iter {
-    /// Splits a command into [`Args`] and [`Flags`]
-    ///
-    /// [`Args`]: super::Args
-    /// [`Flags`]: super::Flags
-    pub fn get_args(command: &str) -> super::Args<'_> {
-        let mut blob = String::new();
-        let mut word = Vec::new();
+/// Splits a command into [`Args`] and [`Flags`]
+///
+/// [`Args`]: super::Args
+/// [`Flags`]: super::Flags
+pub fn get_args(command: &str) -> super::Args<'_> {
+    let mut blob = String::new();
+    let mut word = Vec::new();
 
+    let args = args_iter(command);
+    let mut args = args.peekable();
+    let mut byte = 0;
+
+    while let Some((arg, range)) = args.peek() {
+        if let Some(word_arg) = arg.strip_prefix("--") {
+            if !word_arg.is_empty() {
+                args.next();
+                if !word.contains(&word_arg) {
+                    word.push(word_arg)
+                }
+            } else {
+                args.next();
+                break;
+            }
+        } else if let Some(blob_arg) = arg.strip_prefix('-') {
+            args.next();
+            for char in blob_arg.chars() {
+                if !blob.contains(char) {
+                    blob.push(char)
+                }
+            }
+        } else {
+            byte = range.start;
+            break;
+        }
+    }
+
+    super::Args {
+        args,
+        param_range: byte..byte,
+        has_to_start_param: false,
+        is_forming_param: false,
+        flags: super::Flags { blob, word },
+    }
+}
+
+mod args_iter {
+    pub fn args_iter(command: &str) -> ArgsIter {
         let mut chars = command.char_indices();
         let mut start = None;
         let mut end = None;
         let mut is_quoting = false;
         // Initial value doesn't matter, as long as it's not '\'
         let mut last_char = 'a';
-        let args: ArgsIter = std::iter::from_fn(move || {
+        let mut args: ArgsIter = std::iter::from_fn(move || {
             while let Some((b, char)) = chars.next() {
                 let lc = last_char;
                 last_char = char;
@@ -502,41 +540,8 @@ mod args_iter {
                 )
             })
         });
-        let mut args = args.peekable();
         args.next();
-        let mut byte = 0;
-
-        while let Some((arg, range)) = args.peek() {
-            if let Some(word_arg) = arg.strip_prefix("--") {
-                if !word_arg.is_empty() {
-                    args.next();
-                    if !word.contains(&word_arg) {
-                        word.push(word_arg)
-                    }
-                } else {
-                    args.next();
-                    break;
-                }
-            } else if let Some(blob_arg) = arg.strip_prefix('-') {
-                args.next();
-                for char in blob_arg.chars() {
-                    if !blob.contains(char) {
-                        blob.push(char)
-                    }
-                }
-            } else {
-                byte = range.start;
-                break;
-            }
-        }
-
-        super::Args {
-            args,
-            param_range: byte..byte,
-            has_to_start_param: false,
-            is_forming_param: false,
-            flags: super::Flags { blob, word },
-        }
+        args
     }
 
     pub type ArgsIter<'a> = impl Iterator<Item = (&'a str, std::ops::Range<usize>)> + Clone;

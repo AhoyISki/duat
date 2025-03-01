@@ -20,9 +20,9 @@ struct FindSeq(Option<char>);
 impl<U: Ui> Mode<U> for FindSeq {
     type Widget = File;
 
-    fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area) {
+    fn send_key(&mut self, key: KeyEvent, file: &mut File, area: &U::Area) {
         use KeyCode::*;
-        let mut helper = EditHelper::new(widget, area);
+        let mut helper = EditHelper::new(file, area);
 
         // Make sure that the typed key is a character.
         let key!(Char(c)) = key else {
@@ -117,10 +117,9 @@ impl EasyMotion {
 impl<U: Ui> Mode<U> for EasyMotion {
     type Widget = File;
 
-    fn on_switch(&mut self, widget: &RwData<Self::Widget>, area: &<U as Ui>::Area) {
-        let mut widget = widget.write();
-        let cfg = widget.print_cfg();
-        let text = widget.text_mut();
+    fn on_switch(&mut self, file: &mut File, area: &<U as Ui>::Area) {
+        let cfg = file.print_cfg();
+        let text = file.text_mut();
 
         let regex = match self.is_line {
             true => "[^\n\\s][^\n]+",
@@ -142,7 +141,7 @@ impl<U: Ui> Mode<U> for EasyMotion {
         }
     }
 
-    fn send_key(&mut self, key: KeyEvent, widget: &RwData<Self::Widget>, area: &U::Area) {
+    fn send_key(&mut self, key: KeyEvent, file: &mut File, area: &U::Area) {
         let char = match key {
             key!(KeyCode::Char(c)) => c,
             // Return a char that will never match.
@@ -150,8 +149,8 @@ impl<U: Ui> Mode<U> for EasyMotion {
         };
         self.seq.push(char);
 
-        let mut helper = EditHelper::new(widget, area);
-        helper.remove_extra_cursors();
+        let mut helper = EditHelper::new(file, area);
+        helper.cursors_mut().remove_extras();
 
         let seqs = key_seqs(self.points.len());
         for (seq, &(p1, p2)) in seqs.iter().zip(&self.points) {
@@ -166,8 +165,8 @@ impl<U: Ui> Mode<U> for EasyMotion {
                 continue;
             }
 
-            helper.remove_tags_on(p1.byte(), self.key);
-            helper.remove_tags_on(p1.byte() + seq.len(), self.key);
+            helper.text_mut().remove_tags(p1.byte(), self.key);
+            helper.text_mut().remove_tags(p1.byte() + seq.len(), self.key);
         }
 
         if self.seq.chars().count() == 2 || !LETTERS.contains(char) {
@@ -209,10 +208,10 @@ map::<Normal>("<CA-l>", &EasyMotion::line());
 ```
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG_3UhAQvYgQEG7EDBdkAFbC6G7dtXR5Pvz92GyJG8JDW6xPLYWSBg2lkdWF0LWNvcmVlMC4zLjBpZHVhdF9jb3Jl
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEGx8dxGZ7ZzWLG7dly3cxEVwHG0DvNU9ylO-CG98BdgFygOJvYWSBg2lkdWF0LWNvcmVlMC4zLjBpZHVhdF9jb3Jl
  [__link0]: https://docs.rs/duat-core/0.3.0/duat_core/?search=ui::Ui
  [__link1]: https://docs.rs/duat-core/0.3.0/duat_core/?search=mode::Mode
- [__link10]: https://docs.rs/duat-core/0.3.0/duat_core/?search=text::Text::remove_tags_on
+ [__link10]: https://docs.rs/duat-core/0.3.0/duat_core/?search=text::Text::remove_tags
  [__link11]: https://docs.rs/duat-core/0.3.0/duat_core/?search=mode::Mover::move_to
  [__link2]: https://docs.rs/duat-core/0.3.0/duat_core/?search=widgets::File
  [__link3]: https://docs.rs/duat/0.2.0/duat/prelude/fn.map.html

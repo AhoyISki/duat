@@ -411,10 +411,9 @@ mod global {
     /// Calls [`form::set`] on each tuple in the list
     ///
     /// [`form::set`]: set
-    pub macro set_many($($entry:expr),+ $(,)?) {{
+    pub macro set_many($(($name:literal, $form:expr)),+ $(,)?) {{
         $(
-            let (name, form) = $entry;
-            set(name, form);
+            set($name, $form);
         )+
     }}
 

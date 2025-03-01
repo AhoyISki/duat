@@ -50,7 +50,9 @@ use std::sync::{
 };
 
 pub use self::{
-    command_line::{CmdLine, CmdLineCfg, CmdLineMode, IncSearch, RunCommands, ShowNotifications},
+    command_line::{
+        CmdLine, CmdLineCfg, CmdLineMode, IncSearch, PipeSelections, RunCommands, ShowNotifications,
+    },
     file::{File, FileCfg, PathKind},
     line_numbers::{LineNum, LineNumbers, LineNumbersCfg},
     status_line::{State, StatusLine, StatusLineCfg, common, status},

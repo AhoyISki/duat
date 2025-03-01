@@ -15,9 +15,10 @@ When you first run Duat, and whenever you update the
 configuration, it will be compiled and reloaded automatically, so
 you can see the changes in *almost* real time. Initially, building
 Duat and its configuration crate might take a few minutes. And the
-first reload might also take a similar amount of time. But whenever
-you make new changes, the next reloads should take only about a
-second (for debug profile) and ~3 seconds (for release profile).
+first reload might also take a similar amount of time. But
+whenever you make new changes, the next reloads should take only
+about a second (for debug profile) and ~3 seconds (for release
+profile).
 
 Note that this is an alpha project, so there may be some quirks
 and bugs. So if you have a problem, or something seems confusing,
@@ -234,7 +235,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG2hBwVjytLZcG-2vdntP4VIWG29UTmJSMGv5G7EmMBJMobtuYWSDgmRkdWF0ZTAuMy4wgmlkdWF0X2NvcmVlMC4zLjCCZHBsdWf2
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG4w8IAXLD_ZOG5r2CjENpc-GG-SqkQ2CY0rOG-UAUO85HAaJYWSDgmRkdWF0ZTAuMy4wgmlkdWF0X2NvcmVlMC4zLjCCZHBsdWf2
  [__link0]: https://crates.io/crates/plug
  [__link1]: https://docs.rs/duat/0.3.0/duat/?search=mode::set_default
  [__link10]: https://docs.rs/duat/0.3.0/duat/?search=prelude::CmdLine

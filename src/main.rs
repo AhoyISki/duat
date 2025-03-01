@@ -36,22 +36,19 @@ fn main() {
 
     // Assert that the configuration crate actually exists.
     // The watcher is returned as to not be dropped.
-    let (_watcher, toml_path, target_dir) = {
-        let Some((config_dir, cache_dir)) = config_dir().zip(cache_dir()) else {
+    let (_watcher, crate_dir) = {
+        let Some(config_dir) = config_dir() else {
             pre_setup();
             run_duat((&MS, &CLIPB), Vec::new(), (duat_tx, duat_rx, ui_tx));
             return;
         };
 
         let crate_dir = config_dir.join("duat");
-        let target_dir = cache_dir.join("duat/target");
-        let toml_path = crate_dir.join("Cargo.toml");
 
         let mut watcher = notify::recommended_watcher({
             let reload_tx = reload_tx.clone();
             let duat_tx = duat_tx.clone();
-            let target_dir = target_dir.clone();
-            let toml_path = toml_path.clone();
+            let crate_dir = crate_dir.clone();
             let lock_path = crate_dir.join("Cargo.lock");
             let ignored_target_path = crate_dir.join("target");
 
@@ -69,9 +66,9 @@ fn main() {
                     // Reload only the debug build when running in debug mode.
                     // Reload first the debug, then the release build otherwise.
                     if cfg!(debug_assertions) {
-                        reload_config(&reload_tx, &duat_tx, &target_dir, &toml_path, false);
-                    } else if reload_config(&reload_tx, &duat_tx, &target_dir, &toml_path, false) {
-                        reload_config(&reload_tx, &duat_tx, &target_dir, &toml_path, true);
+                        reload_config(&reload_tx, &duat_tx, &crate_dir, false);
+                    } else if reload_config(&reload_tx, &duat_tx, &crate_dir, false) {
+                        reload_config(&reload_tx, &duat_tx, &crate_dir, true);
                     }
                     // Sleep for one second to prevent too many activations.
                     std::thread::spawn(|| {
@@ -83,20 +80,21 @@ fn main() {
         })
         .unwrap();
         watcher.watch(&crate_dir, RecursiveMode::Recursive).unwrap();
-        (watcher, toml_path, target_dir)
+        (watcher, crate_dir)
     };
 
-    run_cargo(&toml_path, &target_dir, !cfg!(debug_assertions)).unwrap();
+    let toml_path = crate_dir.join("Cargo.toml");
+    run_cargo(toml_path, !cfg!(debug_assertions)).unwrap();
 
     let mut prev = Vec::new();
 
     Ui::open(&MS, ui::Sender::new(duat_tx), ui_rx);
 
     let mut lib = {
-        let so_path = target_dir.join(if !cfg!(debug_assertions) {
-            "release/libconfig.so"
+        let so_path = crate_dir.join(if cfg!(debug_assertions) {
+            "target/debug/libconfig.so"
         } else {
-            "debug/libconfig.so"
+            "target/release/libconfig.so"
         });
         ElfLibrary::dlopen(so_path, OpenFlags::RTLD_NOW | OpenFlags::RTLD_LOCAL).ok()
     };
@@ -131,19 +129,19 @@ fn main() {
 fn reload_config(
     reload_tx: &Sender<(PathBuf, Instant, bool)>,
     duat_tx: &Sender<DuatEvent>,
-    target_dir: &Path,
-    toml_path: &Path,
+    crate_dir: &Path,
     on_release: bool,
 ) -> bool {
     let start = Instant::now();
 
-    let so_path = target_dir.join(if on_release {
-        "release/libconfig.so"
+    let so_path = crate_dir.join(if on_release {
+        "target/release/libconfig.so"
     } else {
-        "debug/libconfig.so"
+        "target/debug/libconfig.so"
     });
 
-    if let Ok(out) = run_cargo(toml_path, target_dir, on_release)
+    let toml_path = crate_dir.join("Cargo.toml");
+    if let Ok(out) = run_cargo(toml_path, on_release)
         && out.status.success()
     {
         reload_tx.send((so_path, start, on_release)).unwrap();
@@ -156,19 +154,13 @@ fn reload_config(
     }
 }
 
-fn run_cargo(
-    toml_path: &Path,
-    target_dir: &Path,
-    on_release: bool,
-) -> Result<Output, std::io::Error> {
+fn run_cargo(toml_path: PathBuf, on_release: bool) -> Result<Output, std::io::Error> {
     let mut cargo = Command::new("cargo");
     cargo.args([
         "build",
         "--quiet",
         "--manifest-path",
         toml_path.to_str().unwrap(),
-        "--target-dir",
-        target_dir.to_str().unwrap(),
     ]);
 
     if !cfg!(debug_assertions) && on_release {

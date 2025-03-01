@@ -96,7 +96,7 @@ mod switch {
     }
 
     /// Sets the [`CmdLineMode`]
-    pub fn set_cmd<U: Ui>(mode: impl CmdLineMode<U>) {
+    pub fn set_cmd<U: Ui>(mode: impl CmdLineMode<U> + Clone) {
         let Ok(cur_file) = context::cur_file::<U>() else {
             return;
         };

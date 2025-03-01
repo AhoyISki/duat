@@ -322,7 +322,7 @@ pub mod mode {
     }
 
     /// Sets the [`CmdLineMode`]
-    pub fn set_cmd(mode: impl CmdLineMode<Ui>) {
+    pub fn set_cmd(mode: impl CmdLineMode<Ui> + Clone) {
         mode::set_cmd(mode);
     }
 
@@ -407,7 +407,7 @@ pub mod form {
     //! Functions to alter the [`Form`]s of Duat
     pub use duat_core::form::{
         Color, ColorScheme, CursorShape, Form, add_colorscheme, from_id, id_of, set,
-        set_colorscheme,
+        set_colorscheme, set_many,
     };
 }
 
@@ -570,6 +570,8 @@ pub mod control {
 
 pub mod prelude {
     //! The prelude of Duat
+    use std::process::Output;
+
     #[doc(hidden)]
     pub use duat_core;
     pub use duat_core::{
@@ -594,6 +596,48 @@ pub mod prelude {
         state::*,
         widgets::*,
     };
+
+    /// Executes a shell command, returning its [`Output`] if
+    /// successful
+    pub fn exec(command: impl ToString) -> Option<Output> {
+        let command = command.to_string();
+        let mut chars = command.char_indices();
+        let mut start = None;
+        let mut end = None;
+        let mut is_quoting = false;
+        let mut last_char = 'a';
+
+        let mut args = std::iter::from_fn(|| {
+            for (b, char) in chars.by_ref() {
+                let lc = last_char;
+                last_char = char;
+                if start.is_some() && char.is_whitespace() && !is_quoting {
+                    end = Some(b);
+                    break;
+                } else if char == '"' && lc != '\\' {
+                    is_quoting = !is_quoting;
+                    if !is_quoting {
+                        end = Some(b + 1);
+                        break;
+                    } else {
+                        start = Some(b);
+                    }
+                } else if !char.is_whitespace() && start.is_none() {
+                    start = Some(b);
+                }
+            }
+
+            start.take().map(|s| unsafe {
+                let e = end.take().unwrap_or(command.len());
+                core::str::from_utf8_unchecked(&command.as_bytes()[s..e])
+            })
+        });
+
+        let mut cmd = std::process::Command::new(args.next()?);
+        cmd.args(args);
+
+        cmd.output().ok()
+    }
 }
 
 /// Pre and post setup for Duat
