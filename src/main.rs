@@ -11,7 +11,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use dirs_next::{cache_dir, config_dir};
 use dlopen_rs::{Dylib, ElfLibrary, OpenFlags, Symbol};
 use duat::{Messengers, MetaStatics, pre_setup, prelude::*, run_duat};
 use duat_core::{
@@ -37,7 +36,7 @@ fn main() {
     // Assert that the configuration crate actually exists.
     // The watcher is returned as to not be dropped.
     let (_watcher, crate_dir) = {
-        let Some(config_dir) = config_dir() else {
+        let Some(config_dir) = dirs_next::config_dir() else {
             pre_setup();
             run_duat((&MS, &CLIPB), Vec::new(), (duat_tx, duat_rx, ui_tx));
             return;

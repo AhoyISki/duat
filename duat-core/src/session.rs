@@ -283,6 +283,7 @@ impl<U: Ui> Session<U> {
         let win = self.cur_window.load(Ordering::Relaxed);
         let windows = context::windows::<U>().read();
         let mut reasons = Vec::new();
+        let mut reprint_screen = false;
 
         std::thread::scope(|s| {
             loop {
@@ -296,9 +297,7 @@ impl<U: Ui> Session<U> {
                     match event {
                         DuatEvent::Key(key) => mode::send_key(key),
                         DuatEvent::Resize | DuatEvent::FormChange => {
-                            for node in cur_window.nodes() {
-                                s.spawn(|| node.update_and_print());
-                            }
+                            reprint_screen = true;
                             continue;
                         }
                         DuatEvent::MetaMsg(msg) => context::notify(msg),
@@ -314,6 +313,12 @@ impl<U: Ui> Session<U> {
                     }
                 } else if !reasons.is_empty() {
                     break reasons;
+                } else if reprint_screen {
+                    reprint_screen = false;
+                    for node in cur_window.nodes() {
+                        s.spawn(|| node.update_and_print());
+                    }
+                    continue;
                 }
 
                 for node in cur_window.nodes() {

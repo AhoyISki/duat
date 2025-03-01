@@ -532,8 +532,6 @@ pub mod clipboard {
     }
 }
 
-static REPRINTING_SCREEN: AtomicBool = AtomicBool::new(false);
-
 /// A checker that returns `true` every `duration`
 ///
 /// This is primarily used within [`WidgetCfg::build`], where a

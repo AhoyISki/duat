@@ -4,7 +4,7 @@ mod layout;
 use std::{
     fmt::Debug,
     marker::PhantomData,
-    sync::{Arc, atomic::Ordering, mpsc},
+    sync::{Arc, mpsc},
 };
 
 use crossterm::event::KeyEvent;
@@ -566,12 +566,7 @@ impl Sender {
     }
 
     pub(crate) fn send_form_changed(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
-        if !crate::REPRINTING_SCREEN.load(Ordering::Acquire) {
-            crate::REPRINTING_SCREEN.store(true, Ordering::Release);
-            self.0.send(DuatEvent::FormChange)
-        } else {
-            Ok(())
-        }
+        self.0.send(DuatEvent::FormChange)
     }
 }
 
