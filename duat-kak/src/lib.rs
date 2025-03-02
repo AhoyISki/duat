@@ -69,8 +69,6 @@ impl<U: Ui> Plugin<U> for Kak<U> {
 
             hooks::add::<ModeSwitched>(|&(_, new)| {
                 if !FORMS.contains(&new) {
-                    form::set("MainCursor", "MainCursor");
-                    form::set("ExtraCursor", "ExtraCursor");
                     return;
                 }
                 form::set("MainCursor", format!("MainCursor{new}"));

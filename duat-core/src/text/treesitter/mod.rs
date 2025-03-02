@@ -664,9 +664,7 @@ fn lang_from_path(
     let ext = path.as_ref().extension()?.to_str()?;
     let langs = LANGUAGES.lock();
     langs
-        .binary_search_by(|((rhs, ..), ..)| {
-            rhs.cmp(&ext)
-        })
+        .binary_search_by(|((rhs, ..), ..)| rhs.cmp(&ext))
         .ok()
         .map(|i| {
             let ((_, name, _), lang, hl) = langs.get(i).unwrap();

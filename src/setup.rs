@@ -88,11 +88,11 @@ pub fn run_duat(
     cfg.set_print_cfg(print_cfg);
 
     let session = if prev.is_empty() {
-        cfg.session_from_args(ui_ms, duat_tx)
+        cfg.session_from_args(ui_ms, duat_tx, ui_tx)
     } else {
-        cfg.session_from_prev(ui_ms, prev, duat_tx)
+        cfg.session_from_prev(ui_ms, prev, duat_tx, ui_tx)
     };
-    session.start(duat_rx, ui_tx)
+    session.start(duat_rx)
 }
 
 type PluginFn = dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync + 'static;

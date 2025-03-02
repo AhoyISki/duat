@@ -52,8 +52,10 @@ impl<U: Ui> SessionCfg<U> {
         self,
         ms: &'static U::MetaStatics,
         duat_tx: &'static mpsc::Sender<DuatEvent>,
+        ui_tx: mpsc::Sender<UiEvent>,
     ) -> Session<U> {
         DUAT_SENDER.set(duat_tx).unwrap();
+        cmd::add_session_commands::<U>(ui_tx.clone()).unwrap();
 
         let mut args = std::env::args();
         let first = args.nth(1).map(PathBuf::from);
@@ -72,10 +74,10 @@ impl<U: Ui> SessionCfg<U> {
             cur_window,
             file_cfg: self.file_cfg,
             layout_fn: self.layout_fn,
+            ui_tx
         };
 
         context::set_cur(node.as_file(), node.clone());
-        cmd::add_session_commands::<U>().unwrap();
 
         // Open and process files.
         let builder = FileBuilder::new(node, context::cur_window());
@@ -95,11 +97,11 @@ impl<U: Ui> SessionCfg<U> {
         ms: &'static U::MetaStatics,
         prev: Vec<Vec<FileRet>>,
         duat_tx: &'static mpsc::Sender<DuatEvent>,
+        ui_tx: mpsc::Sender<UiEvent>,
     ) -> Session<U> {
         DUAT_SENDER.set(duat_tx).unwrap();
+        cmd::add_session_commands::<U>(ui_tx.clone()).unwrap();
         let cur_window = context::set_windows::<U>(Vec::new());
-
-        cmd::add_session_commands::<U>().unwrap();
 
         let file_cfg = self.file_cfg.clone();
         let inherited_cfgs = prev.into_iter().enumerate().map(|(i, cfgs)| {
@@ -118,6 +120,7 @@ impl<U: Ui> SessionCfg<U> {
             cur_window,
             file_cfg: self.file_cfg,
             layout_fn: self.layout_fn,
+            ui_tx
         };
 
         for (win, mut cfgs) in inherited_cfgs {
@@ -161,6 +164,7 @@ pub struct Session<U: Ui> {
     cur_window: &'static AtomicUsize,
     file_cfg: FileCfg,
     layout_fn: Box<dyn Fn() -> Box<dyn Layout<U> + 'static>>,
+    ui_tx: mpsc::Sender<UiEvent>,
 }
 
 impl<U: Ui> Session<U> {
@@ -186,7 +190,6 @@ impl<U: Ui> Session<U> {
     pub fn start(
         mut self,
         duat_rx: mpsc::Receiver<DuatEvent>,
-        ui_tx: mpsc::Sender<UiEvent>,
     ) -> (Vec<Vec<FileRet>>, mpsc::Receiver<DuatEvent>) {
         hooks::trigger::<ConfigLoaded>(());
         form::set_sender(Sender::new(sender()));
@@ -234,11 +237,11 @@ impl<U: Ui> Session<U> {
                 }
             });
 
-            ui_tx.send(UiEvent::ResumePrinting).unwrap();
+            self.ui_tx.send(UiEvent::ResumePrinting).unwrap();
 
             let break_to = self.session_loop(&duat_rx);
 
-            ui_tx.send(UiEvent::PausePrinting).unwrap();
+            let _ = self.ui_tx.send(UiEvent::PausePrinting);
 
             for break_to in break_to {
                 match break_to {
@@ -248,7 +251,6 @@ impl<U: Ui> Session<U> {
                         crate::thread::quit_queue();
                         context::order_reload_or_quit();
                         self.save_cache(true);
-                        ui_tx.send(UiEvent::Quit).unwrap();
                         return (Vec::new(), duat_rx);
                     }
                     BreakTo::ReloadConfig => {

@@ -461,7 +461,7 @@ impl<U: Ui> CmdLineMode<U> for PipeSelections<U> {
         };
 
         text.insert_tag(0, Tag::PushForm(caller_id), self.key);
-        text.insert_tag(caller.len(), Tag::PushForm(caller_id), self.key);
+        text.insert_tag(caller.len(), Tag::PopForm(caller_id), self.key);
 
         for (_, range) in args {
             text.insert_tag(range.start, Tag::PushForm(args_id), self.key);
