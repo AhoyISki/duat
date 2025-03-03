@@ -211,8 +211,8 @@ mod switch {
             drop(w);
 
             for key in sent_keys {
-                hooks::trigger::<KeySent<U>>((key, dyn_widget.clone()));
-                hooks::trigger::<KeySentTo<M::Widget, U>>((key, widget.clone()));
+                hooks::trigger::<KeySent<U>>((key, dyn_widget.clone(), area.clone()));
+                hooks::trigger::<KeySentTo<M::Widget, U>>((key, widget.clone(), area.clone()));
             }
 
             mode

@@ -590,27 +590,13 @@ impl<U: Ui> Node<U> {
     }
 
     fn on_focus_fn<W: Widget<U>>(&self) {
-        self.widget.mutate(|widget| {
-            let cfg = widget.print_cfg();
-            widget.text_mut().remove_cursors(&self.area, cfg);
-            widget.on_focus(&self.area);
-        });
-
         self.area.set_as_active();
         let widget = self.widget.try_downcast().unwrap();
-
         hooks::trigger::<FocusedOn<W, U>>((widget, self.area.clone()));
     }
 
     fn on_unfocus_fn<W: Widget<U>>(&self) {
-        self.widget.mutate(|widget| {
-            let cfg = widget.print_cfg();
-            widget.text_mut().remove_cursors(&self.area, cfg);
-            widget.on_unfocus(&self.area);
-        });
-
         let widget = self.widget.try_downcast().unwrap();
-
         hooks::trigger::<UnfocusedFrom<W, U>>((widget, self.area.clone()));
     }
 }

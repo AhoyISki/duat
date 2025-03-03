@@ -106,7 +106,7 @@
 //!         builder.push_to(CmdLine::cfg().left_ratioed(3, 7), child);
 //!     });
 //!
-//!     hooks::add::<ModeSwitched>(|&(_, new)| match new {
+//!     hooks::add::<ModeSwitched>(|(_, new)| match new {
 //!         "Insert" => cursor::set_main(CursorShape::SteadyBar),
 //!         _ => cursor::set_main(CursorShape::SteadyBlock)
 //!     });

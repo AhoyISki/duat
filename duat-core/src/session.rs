@@ -74,7 +74,7 @@ impl<U: Ui> SessionCfg<U> {
             cur_window,
             file_cfg: self.file_cfg,
             layout_fn: self.layout_fn,
-            ui_tx
+            ui_tx,
         };
 
         context::set_cur(node.as_file(), node.clone());
@@ -120,7 +120,7 @@ impl<U: Ui> SessionCfg<U> {
             cur_window,
             file_cfg: self.file_cfg,
             layout_fn: self.layout_fn,
-            ui_tx
+            ui_tx,
         };
 
         for (win, mut cfgs) in inherited_cfgs {
@@ -241,6 +241,8 @@ impl<U: Ui> Session<U> {
 
             let break_to = self.session_loop(&duat_rx);
 
+            // UiEvent::Quit may have been sent at this point, making this not
+            // necessarily succeed.
             let _ = self.ui_tx.send(UiEvent::PausePrinting);
 
             for break_to in break_to {

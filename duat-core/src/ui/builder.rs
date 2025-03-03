@@ -10,7 +10,7 @@
 //! layout modification fairly minimal, with minimal boilerplate.
 //!
 //! [`File`]: crate::widgets::File
-use std::{cell::RefCell, sync::LazyLock};
+use std::sync::LazyLock;
 
 use super::{Area, Ui};
 use crate::{
@@ -32,7 +32,7 @@ use crate::{
 /// #     widgets::{LineNumbers, Widget},
 /// # };
 /// # fn test<U: Ui>() {
-/// hooks::add::<OnFileOpen<U>>(|builder: &FileBuilder<U>| {
+/// hooks::add::<OnFileOpen<U>>(|builder: &mut FileBuilder<U>| {
 ///     builder.push(LineNumbers::cfg());
 /// });
 /// # }
@@ -49,7 +49,7 @@ use crate::{
 /// #     widgets::{LineNumbers, Widget},
 /// # };
 /// # fn test<U: Ui>() {
-/// hooks::add::<OnFileOpen<U>>(|builder: &FileBuilder<U>| {
+/// hooks::add::<OnFileOpen<U>>(|builder: &mut FileBuilder<U>| {
 ///     let line_numbers_cfg = LineNumbers::cfg().relative().on_the_right();
 ///     builder.push(line_numbers_cfg);
 /// });
@@ -73,7 +73,7 @@ use crate::{
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::remove("FileWidgets");
-/// hooks::add::<OnFileOpen<U>>(|builder: &FileBuilder<U>| {
+/// hooks::add::<OnFileOpen<U>>(|builder: &mut FileBuilder<U>| {
 ///     let line_numbers_cfg = LineNumbers::cfg().relative().on_the_right();
 ///     builder.push(line_numbers_cfg);
 ///     // Push a StatusLine to the bottom.
@@ -97,7 +97,7 @@ where
 {
     window_i: usize,
     node: Node<U>,
-    area: RefCell<U::Area>,
+    area: U::Area,
     prev: Option<Node<U>>,
 }
 
@@ -110,12 +110,7 @@ where
         let (_, prev) = context::set_cur(node.as_file(), node.clone()).unzip();
         let area = node.area().clone();
 
-        Self {
-            window_i,
-            node,
-            area: RefCell::new(area),
-            prev,
-        }
+        Self { window_i, node, area, prev }
     }
 
     /// Pushes a widget to the main area of this [`File`]
@@ -152,7 +147,7 @@ where
     /// # };
     /// # fn test<U: Ui>() {
     /// hooks::remove("FileWidgets");
-    /// hooks::add::<OnFileOpen<U>>(|builder: &FileBuilder<U>| {
+    /// hooks::add::<OnFileOpen<U>>(|builder: &mut FileBuilder<U>| {
     ///     let line_numbers_cfg = LineNumbers::cfg().rel_abs();
     ///     builder.push(line_numbers_cfg);
     ///
@@ -171,18 +166,17 @@ where
     /// [`relative/absolute`]: crate::widgets::LineNumbersCfg::rel_abs
     /// [`StatusLine`]: crate::widgets::StatusLine
     pub fn push<W: Widget<U>>(
-        &self,
+        &mut self,
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
         let (widget, checker, specs) = cfg.build(true);
 
         let mut windows = context::windows().write();
-        let mut area = self.area.borrow_mut();
         let window = &mut windows[self.window_i];
 
         let (child, parent) = {
-            let (node, parent) = window.push(widget, &*area, checker, specs, true);
+            let (node, parent) = window.push(widget, &self.area, checker, specs, true);
 
             if let Some(related) = self.node.related_widgets() {
                 related.write().push(node.clone())
@@ -198,7 +192,7 @@ where
         };
 
         if let Some(parent) = &parent {
-            *area = parent.clone();
+            self.area = parent.clone();
         }
 
         (child, parent)
@@ -229,7 +223,7 @@ where
     /// # };
     /// # fn test<U: Ui>() {
     /// hooks::remove("FileWidgets");
-    /// hooks::add::<OnFileOpen<U>>(|builder: &FileBuilder<U>| {
+    /// hooks::add::<OnFileOpen<U>>(|builder: &mut FileBuilder<U>| {
     ///     builder.push(LineNumbers::cfg());
     ///     
     ///     let right_status = status!(
@@ -290,7 +284,7 @@ impl<U: Ui> Drop for FileBuilder<U> {
 /// #     widgets::{CmdLine, Widget, StatusLine},
 /// # };
 /// # fn test<U: Ui>() {
-/// hooks::add::<OnWindowOpen<U>>(|builder: &WindowBuilder<U>| {
+/// hooks::add::<OnWindowOpen<U>>(|builder: &mut WindowBuilder<U>| {
 ///     // Push a StatusLine to the bottom.
 ///     builder.push(StatusLine::cfg());
 ///     // Push a CmdLine to the bottom.
@@ -343,15 +337,15 @@ impl<U: Ui> Drop for FileBuilder<U> {
 /// [`CmdLine`]: crate::widgets::CmdLine
 pub struct WindowBuilder<U: Ui> {
     window_i: usize,
-    area: RefCell<U::Area>,
+    area: U::Area,
 }
 
 impl<U: Ui> WindowBuilder<U> {
     /// Creates a new [`WindowBuilder`].
     pub(crate) fn new(window_i: usize) -> Self {
         let windows = context::windows::<U>().read();
-        let mod_area = windows[window_i].files_area.clone();
-        Self { window_i, area: RefCell::new(mod_area) }
+        let area = windows[window_i].files_area.clone();
+        Self { window_i, area }
     }
 
     /// Pushes a [widget] to an edge of the window, given a [cfg]
@@ -383,20 +377,19 @@ impl<U: Ui> WindowBuilder<U> {
     /// [widget]: Widget
     /// [cfg]: WidgetCfg
     pub fn push<W: Widget<U>>(
-        &self,
+        &mut self,
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
         let (widget, checker, specs) = cfg.build(false);
 
         let mut windows = context::windows().write();
-        let mut area = self.area.borrow_mut();
         let window = &mut windows[self.window_i];
 
-        let (child, parent) = window.push(widget, &*area, checker, specs, false);
+        let (child, parent) = window.push(widget, &self.area, checker, specs, false);
 
         if let Some(parent) = &parent {
-            *area = parent.clone();
+            self.area = parent.clone();
         }
 
         (child.area().clone(), parent)
@@ -417,7 +410,7 @@ impl<U: Ui> WindowBuilder<U> {
     /// #     ui::{Ui, WindowBuilder},
     /// #     widgets::{CmdLine, Widget, StatusLine},
     /// # };
-    /// # fn test<U: Ui>(builder: &WindowBuilder<U>) {
+    /// # fn test<U: Ui>(builder: &mut WindowBuilder<U>) {
     /// // StatusLine goes below by default
     /// let (status_area, _) = builder.push(StatusLine::cfg());
     /// let cmd_line_cfg = CmdLine::cfg().left_ratioed(3, 5);

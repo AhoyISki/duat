@@ -67,7 +67,7 @@ impl<U: Ui> Plugin<U> for Kak<U> {
                 form::set_weak(format!("ExtraSelection{mode}"), "ExtraSelection");
             }
 
-            hooks::add::<ModeSwitched>(|&(_, new)| {
+            hooks::add::<ModeSwitched>(|(_, new)| {
                 if !FORMS.contains(&new) {
                     return;
                 }
