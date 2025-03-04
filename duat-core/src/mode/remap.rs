@@ -9,8 +9,9 @@ use crate::{
     context,
     data::RwData,
     mode,
-    text::{Key, Tag, Text, text},
+    text::{Key, Tag, text},
     ui::Ui,
+    widgets::Widget,
 };
 
 mod global {
@@ -399,7 +400,7 @@ impl Remapper {
                 *is_alias = remap.is_alias;
                 if remap.takes.len() == cur_seq.len() {
                     if remap.is_alias {
-                        remove_alias_and::<U>(|_, _| {});
+                        remove_alias_and::<U>(|_, _, _| {});
                     }
 
                     *is_alias = false;
@@ -410,16 +411,21 @@ impl Remapper {
                         Gives::Mode(f) => f(),
                     }
                 } else if *is_alias {
-                    remove_alias_and::<U>(|text, main| {
-                        text.insert_tag(
+                    remove_alias_and::<U>(|widget, area, main| {
+                        widget.text_mut().insert_tag(
                             main,
                             Tag::GhostText(text!([Alias] { keys_to_string(cur_seq) })),
                             Key::for_alias(),
                         );
+
+                        let cfg = widget.print_cfg();
+                        widget.text_mut().add_cursors(area, cfg);
+                        widget.update(area);
+                        widget.print(area);
                     })
                 }
             } else if *is_alias {
-                remove_alias_and::<U>(|_, _| {});
+                remove_alias_and::<U>(|_, _, _| {});
                 *is_alias = false;
                 mode::send_keys_to(std::mem::take(cur_seq));
             } else {
@@ -450,15 +456,17 @@ pub enum Gives {
     Mode(Box<dyn Fn() + Send>),
 }
 
-fn remove_alias_and<U: Ui>(f: impl FnOnce(&mut Text, usize)) {
+fn remove_alias_and<U: Ui>(f: impl FnOnce(&mut dyn Widget<U>, &U::Area, usize)) {
     let widget = context::cur_widget::<U>().unwrap();
-    widget.mutate_data(|widget, _| {
-        let mut file = widget.write();
+    widget.mutate_data(|widget, area| {
+        let mut widget = widget.write();
+        let cfg = widget.print_cfg();
+        widget.text_mut().remove_cursors(area, cfg);
 
-        if let Some(main) = file.cursors().unwrap().get_main() {
+        if let Some(main) = widget.cursors().unwrap().get_main() {
             let main = main.byte();
-            file.text_mut().remove_tags(main, Key::for_alias());
-            f(file.text_mut(), main)
+            widget.text_mut().remove_tags(main, Key::for_alias());
+            f(&mut *widget, area, main)
         }
     })
 }

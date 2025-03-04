@@ -419,7 +419,7 @@ mod global {
 
     /// Wether or not a specific [`Form`] has been set
     pub(crate) fn exists(name: &str) -> bool {
-        FORMS.lock().iter().any(|form| *form == name)
+        FORMS.lock().contains(&name)
     }
 
     /// Wether or not a specific [`ColorScheme`] was added
