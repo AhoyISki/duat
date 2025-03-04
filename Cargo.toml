@@ -8,7 +8,7 @@ license = "AGPL-3.0-or-later"
 readme = "README.md"
 keywords = ["editor", "text", "application", "duat"]
 categories = ["command-line-utilities", "text-editors", "config"]
-include = ["src/", "config/src/", "config/Cargo_.toml", "build.rs", "ts-queries/"]
+include = ["src/", "config/src/", "config/Cargo_.toml", "build.rs"]
 edition = "2024"
 
 [workspace]
