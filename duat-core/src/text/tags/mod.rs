@@ -674,7 +674,7 @@ impl Tags {
     ///
     /// [`get_skip_at`]: Tags::get_skip_at
     fn get_skip_behind(&mut self, at: usize) -> Option<[usize; 3]> {
-        let [n, b, skip] = self.get_skip_at(at).unwrap();
+        let [n, b, skip] = self.get_skip_at(at)?;
         Some(if b == at {
             rev_range(&self.buf, ..n)
                 .find_map(|(n, ts)| Some(n).zip(ts.as_skip()))

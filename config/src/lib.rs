@@ -46,6 +46,7 @@ fn setup() {
         builder.push(VertRule::cfg());
         builder.push(LineNumbers::cfg());
     });
+
     hooks::remove("WindowWidgets");
     // Same, but on the edges of the window.
     hooks::add::<OnWindowOpen>(|builder| {
@@ -59,10 +60,10 @@ fn setup() {
         builder.push_to(cmd_line, child);
     });
 
-	// This hook will change the color of the Kitty as
-	// the ColorScheme is altered.
+    // This hook will change the color of the Kitty as
+    // the ColorScheme is altered.
     hooks::add::<ColorSchemeSet>(|scheme| {
-        let scheme = match *scheme {
+        let scheme = match scheme {
             "catppuccin-latte" => "Catppuccin-Latte",
             "catppuccin-frappe" => "Catppuccin-Frappe",
             "catppuccin-macchiato" => "Catppuccin-Macchiato",
@@ -74,6 +75,7 @@ fn setup() {
 
     //// Remapping
 
+    // A command from Vim, derived from one from Kakoune.
     map::<Normal>("gg", "gk");
     map::<Normal>("G", "gj");
     // Aliases show up on the screen as if they were text.
@@ -100,7 +102,7 @@ fn setup() {
 /// here as a demonstration
 fn file_fmt(file: &File) -> Text {
     if let Some(name) = file.name_set() {
-        // A TextBuilder lets you build Text incrementally
+        // A TextBuilder lets you build Text incrementally.
         let mut b = Text::builder();
         // [] pairs change the Form of the text
         text!(b, [File] name);
@@ -112,6 +114,7 @@ fn file_fmt(file: &File) -> Text {
         b.finish()
     } else {
         // But you can also create Text directly
-        text!([ScratchFile] { file.name() });
+        // The second thing is a non identifier expression.
+        text!([ScratchFile] { file.name() })
     }
 }

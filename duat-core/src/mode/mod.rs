@@ -31,14 +31,14 @@ mod switch {
     use crossterm::event::KeyEvent;
     use parking_lot::Mutex;
 
-    use super::Mode;
+    use super::{Cursors, Mode};
     use crate::{
         context, duat_name, file_entry,
         hooks::{self, KeySent, KeySentTo, ModeSwitched},
         session::sender,
-        ui::{DuatEvent, Ui, Window},
+        ui::{Area, DuatEvent, Ui, Window},
         widget_entry,
-        widgets::{CmdLine, CmdLineMode, File, Node},
+        widgets::{CmdLine, CmdLineMode, File, Node, Widget},
     };
 
     static PRINTING_IS_STOPPED: AtomicBool = AtomicBool::new(false);
@@ -97,33 +97,35 @@ mod switch {
 
     /// Sets the [`CmdLineMode`]
     pub fn set_cmd<U: Ui>(mode: impl CmdLineMode<U> + Clone) {
-        let Ok(cur_file) = context::cur_file::<U>() else {
-            return;
-        };
-
-        if let Some(node) = cur_file.get_related_widget::<CmdLine<U>>() {
-            node.try_downcast::<CmdLine<U>>()
-                .unwrap()
-                .write()
-                .set_mode(mode);
-        } else {
-            let windows = context::windows::<U>().read();
-            let w = context::cur_window();
-            let cur_window = &windows[w];
-
-            let mut widgets = {
-                let previous = windows[..w].iter().flat_map(Window::nodes);
-                let following = windows[(w + 1)..].iter().flat_map(Window::nodes);
-                cur_window.nodes().chain(previous).chain(following)
+        crate::thread::queue(move || {
+            let Ok(cur_file) = context::cur_file::<U>() else {
+                return;
             };
 
-            if let Some(cmd_line) = widgets.find_map(|node| {
-                node.data_is::<CmdLine<U>>()
-                    .then(|| node.try_downcast::<CmdLine<U>>().unwrap())
-            }) {
-                cmd_line.write().set_mode(mode)
+            if let Some(node) = cur_file.get_related_widget::<CmdLine<U>>() {
+                node.try_downcast::<CmdLine<U>>()
+                    .unwrap()
+                    .write()
+                    .set_mode(mode);
+            } else {
+                let windows = context::windows::<U>().read();
+                let w = context::cur_window();
+                let cur_window = &windows[w];
+
+                let mut widgets = {
+                    let previous = windows[..w].iter().flat_map(Window::nodes);
+                    let following = windows[(w + 1)..].iter().flat_map(Window::nodes);
+                    cur_window.nodes().chain(previous).chain(following)
+                };
+
+                if let Some(cmd_line) = widgets.find_map(|node| {
+                    node.data_is::<CmdLine<U>>()
+                        .then(|| node.try_downcast::<CmdLine<U>>().unwrap())
+                }) {
+                    cmd_line.write().set_mode(mode)
+                }
             }
-        }
+        });
     }
 
     /// Switches to the file with the given name
@@ -150,16 +152,6 @@ mod switch {
     /// This is done when sending multiple keys at the same time
     pub(crate) fn has_printing_stopped() -> bool {
         PRINTING_IS_STOPPED.load(Ordering::Acquire)
-    }
-
-    /// Stop printing
-    pub(super) fn stop_printing() {
-        PRINTING_IS_STOPPED.store(true, Ordering::Release);
-    }
-
-    /// Resume printing
-    pub(super) fn resume_printing() {
-        PRINTING_IS_STOPPED.store(false, Ordering::Release);
     }
 
     /// Switches to a certain widget
@@ -195,28 +187,39 @@ mod switch {
             return None;
         };
 
-        widget.mutate_data(|dyn_widget, area| {
-            let widget = dyn_widget.try_downcast::<M::Widget>().unwrap();
-
+        widget.mutate_data_as(|widget, area| {
             let mut sent_keys = Vec::new();
-            let mut w = widget.raw_write();
-            let mode = loop {
-                let Some(key) = keys.next() else { break None };
-                sent_keys.push(key);
-                mode.send_key(key, &mut w, area);
-                if let Some(mode) = was_set() {
-                    break Some(mode);
+            let mode_fn = widget.mutate(|widget: &mut M::Widget| {
+                let cfg = widget.print_cfg();
+                widget.text_mut().remove_cursors(area, cfg);
+
+                loop {
+                    let Some(key) = keys.next() else { break None };
+                    sent_keys.push(key);
+                    mode.send_key(key, widget, area);
+                    if let Some(mode_fn) = was_set() {
+                        break Some(mode_fn);
+                    }
                 }
-            };
-            drop(w);
+            });
 
             for key in sent_keys {
-                hooks::trigger::<KeySent<U>>((key, dyn_widget.clone(), area.clone()));
-                hooks::trigger::<KeySentTo<M::Widget, U>>((key, widget.clone(), area.clone()));
+                hooks::trigger_now::<KeySentTo<M::Widget, U>>((key, widget.clone(), area.clone()));
+                hooks::trigger::<KeySent<U>>(key);
             }
 
-            mode
-        })
+            let mut widget = widget.write();
+            let cfg = widget.print_cfg();
+            widget.text_mut().add_cursors(area, cfg);
+            if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
+                area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
+            }
+
+            widget.update(area);
+            widget.print(area);
+
+            mode_fn
+        })?
     }
 
     /// Inner function that sets [`Mode`]s
@@ -242,8 +245,23 @@ mod switch {
         }
 
         let widget = context::cur_widget::<U>().unwrap();
-        widget.mutate_data_as::<M::Widget, ()>(|w, a| {
-            mode.on_switch(&mut w.write(), a);
+        widget.mutate_data_as::<M::Widget, ()>(|widget, area| {
+            let mut widget = widget.write();
+            let cfg = widget.print_cfg();
+            widget.text_mut().remove_cursors(area, cfg);
+
+            mode.on_switch(&mut widget, area);
+
+            let cfg = widget.print_cfg();
+            if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
+                area.scroll_around_point(widget.text(), main.caret(), cfg);
+            }
+            widget.text_mut().add_cursors(area, cfg);
+
+            widget.update(area);
+            if !has_printing_stopped() {
+                widget.print(area);
+            }
         });
 
         crate::mode::set_send_key::<M, U>();

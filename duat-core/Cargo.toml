@@ -41,7 +41,7 @@ ts-css        = { version = "0.23.2",  package = "tree-sitter-css" }
 ts-dart       = { version = "0.0.4",   package = "tree-sitter-dart" }
 ts-elixir     = { version = "0.3.4",   package = "tree-sitter-elixir" }
 ts-erlang     = { version = "0.12.0",  package = "tree-sitter-erlang" }
-ts-fortran    = { version = "0.4.0",   package = "tree-sitter-fortran" }
+ts-fortran    = { version = "0.5.0",   package = "tree-sitter-fortran" }
 ts-go         = { version = "0.23.4",  package = "tree-sitter-go" }
 ts-groovy     = { version = "0.1.2",   package = "tree-sitter-groovy" }
 ts-haskell    = { version = "0.23.1",  package = "tree-sitter-haskell" }

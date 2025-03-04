@@ -292,7 +292,7 @@ impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
         let mut widget = widget.write();
         let cfg = widget.print_cfg();
         widget.text_mut().remove_cursors(&area, cfg);
-        widget.on_focus(&area);
+        widget.on_unfocus(&area);
 
         for hook in hooks {
             hook((&mut *widget, &area));
@@ -349,29 +349,16 @@ impl Hookable for ModeSwitched {
 pub struct KeySent<U: Ui>(PhantomData<U>);
 
 impl<U: Ui> Hookable for KeySent<U> {
-    type Args<'a> = (KeyEvent, &'a mut dyn Widget<U>, &'a U::Area);
-    type PreArgs = (KeyEvent, RwData<dyn Widget<U>>, U::Area);
+    type Args<'a> = KeyEvent;
+    type PreArgs = KeyEvent;
 
     fn trigger_hooks<'b>(
-        (key, widget, area): Self::PreArgs,
+        pre_args: Self::PreArgs,
         hooks: impl Iterator<Item = &'b mut Box<dyn for<'a> FnMut(Self::Args<'a>) + Send>>,
     ) {
-        let mut widget = widget.write();
-        let cfg = widget.print_cfg();
-        widget.text_mut().remove_cursors(&area, cfg);
-        widget.on_focus(&area);
-
         for hook in hooks {
-            hook((key, &mut *widget, &area));
+            hook(pre_args);
         }
-
-        widget.text_mut().add_cursors(&area, cfg);
-        if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
-            area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
-        }
-
-        widget.update(&area);
-        widget.print(&area);
     }
 }
 
@@ -394,21 +381,9 @@ impl<W: Widget<U>, U: Ui> Hookable for KeySentTo<W, U> {
         hooks: impl Iterator<Item = &'b mut Box<dyn for<'a> FnMut(Self::Args<'a>) + Send>>,
     ) {
         let mut widget = widget.write();
-        let cfg = widget.print_cfg();
-        widget.text_mut().remove_cursors(&area, cfg);
-        widget.on_focus(&area);
-
         for hook in hooks {
             hook((key, &mut *widget, &area));
         }
-
-        widget.text_mut().add_cursors(&area, cfg);
-        if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
-            area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
-        }
-
-        widget.update(&area);
-        widget.print(&area);
     }
 }
 
@@ -643,6 +618,8 @@ impl Hooks {
 
             let mut hooks = hooks_of.0.lock();
             H::trigger_hooks(pre_args, hooks.iter_mut().map(|(_, f)| f));
+        } else {
+            H::trigger_hooks(pre_args, std::iter::empty())
         }
     }
 

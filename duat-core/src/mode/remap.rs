@@ -399,9 +399,7 @@ impl Remapper {
                 *is_alias = remap.is_alias;
                 if remap.takes.len() == cur_seq.len() {
                     if remap.is_alias {
-                        mode::stop_printing();
                         remove_alias_and::<U>(|_, _| {});
-                        mode::resume_printing();
                     }
 
                     *is_alias = false;

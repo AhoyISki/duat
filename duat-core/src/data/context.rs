@@ -396,27 +396,7 @@ impl<U: Ui> CurWidget<U> {
         let data = self.0.read();
         let (widget, area) = data.as_ref().unwrap().parts();
 
-        widget.mutate(|widget| {
-            let cfg = widget.print_cfg();
-            widget.text_mut().remove_cursors(area, cfg);
-        });
-
-        let ret = f(widget, area);
-
-        widget.mutate(|widget| {
-            let cfg = widget.print_cfg();
-            if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
-                area.scroll_around_point(widget.text(), main.caret(), cfg);
-            }
-            widget.text_mut().add_cursors(area, cfg);
-
-            widget.update(area);
-            if !mode::has_printing_stopped() {
-                widget.print(area);
-            }
-        });
-
-        ret
+        f(widget, area)
     }
 
     pub(crate) fn mutate_data_as<W: Widget<U>, R>(
@@ -426,29 +406,7 @@ impl<U: Ui> CurWidget<U> {
         let data = self.0.read();
         let (widget, area) = data.as_ref().unwrap().parts();
 
-        let widget = widget.try_downcast::<W>()?;
-
-        widget.mutate(|widget| {
-            let cfg = widget.print_cfg();
-            widget.text_mut().remove_cursors(area, cfg);
-        });
-
-        let ret = Some(f(&widget, area));
-
-        widget.mutate(|widget| {
-            let cfg = widget.print_cfg();
-            if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
-                area.scroll_around_point(widget.text(), main.caret(), cfg);
-            }
-            widget.text_mut().add_cursors(area, cfg);
-
-            widget.update(area);
-            if !mode::has_printing_stopped() {
-                widget.print(area);
-            }
-        });
-
-        ret
+        Some(f(&widget.try_downcast::<W>()?, area))
     }
 
     pub(crate) fn node(&self) -> Node<U> {
