@@ -7,7 +7,7 @@ use std::{
 const UI_TO_USE: &[u8] = b"features = [\"term-ui\"]";
 
 const LIB: &[u8] = include_bytes!("config/src/lib.rs");
-const TOML: &[u8] = include_bytes!("config/Cargo.toml");
+const TOML: &[u8] = include_bytes!("config/Cargo_.toml");
 
 fn main() {
     let Some(config_path) = dirs_next::config_dir() else {

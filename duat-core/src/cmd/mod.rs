@@ -223,7 +223,7 @@ pub(crate) fn add_session_commands<U: Ui>(ui_tx: mpsc::Sender<UiEvent>) -> crate
 
         if file
             .widget()
-            .inspect_as(|f: &File| f.text().has_unsaved_changes())
+            .inspect_as(|f: &File| f.text().has_unsaved_changes() && f.exists())
             .unwrap()
         {
             return Err(err!([*a] name [] " has unsaved changes"));
@@ -283,7 +283,7 @@ pub(crate) fn add_session_commands<U: Ui>(ui_tx: mpsc::Sender<UiEvent>) -> crate
         let unwritten = windows
             .iter()
             .flat_map(Window::file_nodes)
-            .filter(|(node, _)| node.widget().inspect_as(File::path_set).flatten().is_some())
+            .filter(|(node, _)| node.widget().inspect_as(File::exists).unwrap())
             .filter(|(node, _)| node.widget().read().text().has_unsaved_changes())
             .count();
 
