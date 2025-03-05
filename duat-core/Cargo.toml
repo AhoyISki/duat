@@ -74,7 +74,7 @@ ts-zig        = { version = "1.1.2",   package = "tree-sitter-zig" }
 ts-scss       = { version = "1.0.0",   package = "tree-sitter-scss" } 
 
 [build-dependencies]
-cc = "*"
+cc = "1.1.16"
 
 [features]
 # NOTE: Features meant for testing only by myself.
