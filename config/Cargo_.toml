@@ -27,3 +27,10 @@ package = "duat-catppuccin"
 [dependencies.duat]
 path = ".."
 version = ">=0.3.0"
+
+[profile.dev]
+panic = 'abort'
+
+[profile.release]
+panic = 'abort'
+incremental = true

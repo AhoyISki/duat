@@ -1,6 +1,6 @@
 [package]
 name = "duat"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["AhoyISki"]
 description = "A Highly customizable text editor, configured through the use of a rust crate."
 homepage = "https://github.com/AhoyISki/duat"

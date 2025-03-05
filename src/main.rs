@@ -82,9 +82,6 @@ fn main() {
         (watcher, crate_dir)
     };
 
-    let toml_path = crate_dir.join("Cargo.toml");
-    run_cargo(toml_path, !cfg!(debug_assertions)).unwrap();
-
     let mut prev = Vec::new();
 
     Ui::open(&MS, ui::Sender::new(duat_tx), ui_rx);
