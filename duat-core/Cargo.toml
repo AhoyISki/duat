@@ -8,7 +8,7 @@ license = "AGPL-3.0-or-later"
 readme = "README.md"
 keywords = ["editor", "text", "application", "duat"]
 categories = ["command-line-utilities", "text-editors", "config"]
-include = ["../ts-queries/"]
+include = ["src/", "ts-queries/"]
 edition = "2024"
 
 [lints.rust]
