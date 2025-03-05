@@ -556,7 +556,7 @@ fn lang_from_path(
         }
         macro h($lang:ident) {{
             let hi = include_str!(concat!(
-                "../../../../ts-queries/",
+                "../../../ts-queries/",
                 stringify!($lang),
                 "/highlights.scm"
             ));
@@ -564,7 +564,7 @@ fn lang_from_path(
         }}
         macro i($lang:ident) {
             include_str!(concat!(
-                "../../../../ts-queries/",
+                "../../../ts-queries/",
                 stringify!($lang),
                 "/indents.scm"
             ))
