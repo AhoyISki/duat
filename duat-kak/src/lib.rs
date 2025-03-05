@@ -1,3 +1,16 @@
+//! # Duat Kak
+//!
+//! Duat kak is the implementation of the
+//! [kakoune](https://github.com/mawww/kakoune) editing model for Duat.
+//! It's still a work in progress, but it already implements most of
+//! the common commands from Kakoune.
+//!
+//! The plugin currently has 2 options: `insert_tabs` and
+//! `set_cursor_forms`. `insert_tabs` will make the `Tab` key insert a
+//! `\t` character, instead of an appropriate amount of spaces.
+//! `set_cursor_forms` will create a hook to set the `MainCursor`,
+//! `ExtraCursor`, `MainSelection` and `ExtraSelection` forms to mode
+//! specific varieties, e.g. `MainCursorInsert`.
 #![feature(let_chains, iter_map_windows, type_alias_impl_trait, if_let_guard)]
 use std::{
     marker::PhantomData,
@@ -566,7 +579,7 @@ impl<U: Ui> Mode<U> for Normal {
             ////////// History manipulation.
             key!(Char('u')) => helper.undo(),
             key!(Char('U')) => helper.redo(),
-            _ => { }
+            _ => {}
         }
     }
 }
