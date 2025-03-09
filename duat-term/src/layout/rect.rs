@@ -6,10 +6,13 @@ use cassowary::{
     strength::{REQUIRED, STRONG, WEAK},
 };
 use duat_core::{
+    cfg::PrintCfg,
     data::RwData,
+    prelude::Text,
+    text::TwoPoints,
     ui::{
         Axis::{self, *},
-        Constraint, PushSpecs,
+        Constraint, PushSpecs, Side,
     },
 };
 
@@ -646,6 +649,28 @@ impl Rects {
         parent.children_mut().unwrap().push((child, cons));
     }
 
+    pub fn new_floating(
+        &self,
+        at: impl TwoPoints,
+        specs: PushSpecs,
+        text: &Text,
+        cfg: PrintCfg,
+        p: &mut Printer,
+    ) -> AreaId {
+        //let (tl, br) = (p.var_point(), p.var_point());
+        //let kind = Kind::end(p.sender(&tl,& br), PrintInfo::default());
+        //let mut rect = Rect::new(tl, br, false, kind);
+        //let main_eq = match specs.side() {
+        //    Side::Above => rect.start,
+        //    Side::Right => rect.start,
+        //    Side::Below => rect.start,
+        //    Side::Left => rect.start,
+        //}
+        //rect.eqs.extend([
+        //]);
+        todo!();
+    }
+
     /// Gets a mut reference to the parent of the `id`'s [`Rect`]
     pub fn get_mut(&mut self, id: AreaId) -> Option<&mut Rect> {
         std::iter::once(&mut self.main)
@@ -653,7 +678,7 @@ impl Rects {
             .find_map(|rect| fetch_mut(rect, id))
     }
 
-    /// Fetches the [`RwData<Rect>`] which holds the [`RwData<Rect>`]
+    /// Fetches the [`Rect`] which holds the [`Rect`]
     /// of the given index.
     ///
     /// Also returns the child's "position", going top to bottom or

@@ -1,7 +1,6 @@
 use cassowary::{WeightedRelation::*, strength::STRONG};
 use duat_core::{
-    data::RwData,
-    ui::{Axis, Constraint, PushSpecs},
+    cfg::PrintCfg, data::RwData, prelude::Text, text::TwoPoints, ui::{Axis, Constraint, PushSpecs}
 };
 
 pub use self::rect::{Rect, Rects};
@@ -240,6 +239,16 @@ impl Layout {
 
     pub fn active_id(&self) -> AreaId {
         self.active_id
+    }
+
+    pub(crate) fn new_floating(
+        &self,
+        at: impl TwoPoints,
+        specs: PushSpecs,
+        text: &Text,
+        cfg: PrintCfg,
+    ) -> AreaId {
+        self.rects.new_floating(at, specs, text, cfg, &mut self.printer.write())
     }
 }
 

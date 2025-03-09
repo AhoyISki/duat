@@ -22,7 +22,7 @@ use crate::{
     cfg::{IterCfg, PrintCfg},
     data::{RoData, RwData},
     form::Painter,
-    text::{Item, Iter, Point, RevIter, Text},
+    text::{Item, Iter, Point, RevIter, Text, TwoPoints},
     widgets::{File, Node, Widget},
 };
 
@@ -161,6 +161,23 @@ pub trait Area: Send + Sync + Sized {
     /// respective [`Area`]s. As such, if they belong to the same
     /// master, nothing happens.
     fn swap(&self, other: &Self, _: DuatPermission);
+
+    /// Spawns a floating area from a [`TwoPoints`]
+    ///
+    /// This [`Area`] will be placed in some position "pushed" onto
+    /// where those [`TwoPoints`] are on screen, and the [`PushSpecs`]
+    /// are mostlya a "suggestion", that is, if it can't be placed in
+    /// that specific direction, another one will be found, and if
+    /// none of them fit, then the maximum allowed space on screen
+    /// will be allocated to meet at least some of the demands.
+    fn spawn_floating(
+        &self,
+        at: impl TwoPoints,
+        specs: PushSpecs,
+        text: &Text,
+        cfg: PrintCfg,
+        _: DuatPermission,
+    ) -> Self;
 
     /// Changes the horizontal constraint of the area
     fn constrain_hor(&self, constraint: Constraint) -> Result<(), Self::ConstraintChangeErr>;
@@ -536,7 +553,7 @@ pub enum DuatEvent {
     Key(KeyEvent),
     Resize,
     FormChange,
-    MetaMsg(Text),
+    MetaMsg(Box<Text>),
     ReloadConfig,
     OpenFile(String),
     CloseFile(String),
@@ -780,6 +797,10 @@ impl PushSpecs {
             Side::Above | Side::Below => Axis::Vertical,
             Side::Right | Side::Left => Axis::Horizontal,
         }
+    }
+
+    pub fn side(&self) -> Side {
+        self.side
     }
 
     pub fn comes_earlier(&self) -> bool {

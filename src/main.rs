@@ -82,6 +82,14 @@ fn main() {
         (watcher, crate_dir)
     };
 
+    if cfg!(debug_assertions) {
+        let toml_path = crate_dir.join("Cargo.toml");
+        if run_cargo(toml_path, false).is_err() {
+            let msg = err!("Failed to compile " [*a] "config" [] " crate");
+            duat_tx.send(DuatEvent::MetaMsg(Box::new(msg))).unwrap();
+        }
+    }
+
     let mut prev = Vec::new();
 
     Ui::open(&MS, ui::Sender::new(duat_tx), ui_rx);
@@ -111,7 +119,7 @@ fn main() {
             let profile = if on_release { "Release" } else { "Debug" };
             let secs = format!("{:.2}", start.elapsed().as_secs_f32());
             let msg = ok!([*a] profile [] " profile reloaded in " [*a] secs "s");
-            duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
+            duat_tx.send(DuatEvent::MetaMsg(Box::new(msg))).unwrap();
             lib = ElfLibrary::dlopen(so_path, OpenFlags::RTLD_NOW | OpenFlags::RTLD_LOCAL).ok();
         } else {
             break;
@@ -136,6 +144,8 @@ fn reload_config(
         "target/debug/libconfig.so"
     });
 
+    let msg = hint!("Began " [*a] "config" [] " compilation");
+    duat_tx.send(DuatEvent::MetaMsg(Box::new(msg))).unwrap();
     let toml_path = crate_dir.join("Cargo.toml");
     if let Ok(out) = run_cargo(toml_path, on_release)
         && out.status.success()
@@ -145,7 +155,7 @@ fn reload_config(
         true
     } else {
         let msg = err!("Failed to compile " [*a] "config" [] " crate");
-        duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
+        duat_tx.send(DuatEvent::MetaMsg(Box::new(msg))).unwrap();
         false
     }
 }

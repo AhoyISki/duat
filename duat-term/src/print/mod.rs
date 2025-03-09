@@ -476,21 +476,9 @@ impl Lines {
         }
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
-        self.line.is_empty()
-    }
-}
-
-impl Write for Lines {
-    /// For writing *ONLY* crossterm commands
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.line.extend(buf);
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
+    pub fn end_line(&mut self, painter: &duat_core::form::Painter) {
         const BLANK: [u8; 1000] = [b' '; 1000];
-        let mut default_form = duat_core::form::from_id(DEFAULT_ID);
+        let mut default_form = painter.get_default();
         default_form.style.attributes.set(Attribute::Reset);
 
         let align_start = match self.align {
@@ -515,7 +503,7 @@ impl Write for Lines {
                 self.line.clear();
                 self.positions.clear();
                 self.len = 0;
-                return Ok(());
+                return;
             };
 
             // If the character is cut by the start, don't print it.
@@ -543,7 +531,7 @@ impl Write for Lines {
                 self.line.clear();
                 self.positions.clear();
                 self.len = 0;
-                return Ok(());
+                return;
             };
 
             // If the character is cut by the end, don't print it.
@@ -583,6 +571,21 @@ impl Write for Lines {
         self.line.clear();
         self.positions.clear();
         self.len = 0;
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.line.is_empty()
+    }
+}
+
+impl Write for Lines {
+    /// For writing *ONLY* crossterm commands
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.line.extend(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
     }
 }

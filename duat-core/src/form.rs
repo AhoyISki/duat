@@ -334,15 +334,18 @@ mod global {
     /// ids.
     ///
     /// If there is no [`Form`] with the given name, a new one is
-    /// created, which will reference another [`Form`] with the
-    /// following priority:
+    /// created, which will behave according to the following
+    /// priority:
     ///
     /// - If the name contains a `'.'` character, it will reference
     ///   the [`Form`] whose name is a suffix up to the last `'.'`.
     ///   For example, `"Prefix.Middle.Suffix"` will reference
     ///   `"Prefix.Middle"`;
-    /// - If the name does not contain a `'.'`, it will reference the
-    ///   `"Default"` [`Form`];
+    /// - If the name does not contain a `'.'`, it will not reference
+    ///   anything, having the [default `Form`];
+    ///
+    /// If a referenced [`Form`] does not exist, it will be added,
+    /// following the same rules.
     ///
     /// # Note
     ///
@@ -353,6 +356,7 @@ mod global {
     /// faster than with a [`HashMap`] (how this is usually done).
     ///
     /// [`HashMap`]: std::collections::HashMap
+    /// [default `Form`]: Form::new
     pub macro id_of {
         ($form:expr) => {{
             static ID: std::sync::OnceLock<FormId> = std::sync::OnceLock::new();

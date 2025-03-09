@@ -1,6 +1,6 @@
 mod iter;
 
-use std::{fmt::Alignment, io::Write};
+use std::fmt::Alignment;
 
 use crossterm::cursor;
 use duat_core::{
@@ -86,8 +86,8 @@ impl Area {
         &self,
         text: &mut Text,
         cfg: PrintCfg,
-        painter: Painter,
-        f: impl FnMut(&Caret, &Item) + 'a,
+        mut painter: Painter,
+        mut f: impl FnMut(&Caret, &Item) + 'a,
     ) {
         if text.needs_update() {
             let (first_point, _) = self.first_points(text, cfg);
@@ -127,7 +127,6 @@ impl Area {
         }
 
         let lines_left = {
-            let (mut painter, mut f) = (painter, f);
             // The y here represents the bottom of the current row of cells.
             let tl_y = sender.coords().tl.y;
             let mut y = tl_y;
@@ -141,7 +140,7 @@ impl Area {
 
                 if wrap {
                     if y > sender.coords().tl.y {
-                        lines.flush().unwrap();
+                        lines.end_line(&painter);
                     }
                     if y == sender.coords().br.y {
                         break;
@@ -210,14 +209,14 @@ impl Area {
             }
 
             if !lines.is_empty() {
-                lines.flush().unwrap();
+                lines.end_line(&painter);
             }
 
             sender.coords().br.y - y
         };
 
         for _ in 0..lines_left {
-            lines.flush().unwrap();
+            lines.end_line(&painter);
         }
 
         sender.send(lines);
@@ -294,34 +293,34 @@ impl ui::Area for Area {
         }
     }
 
-    fn constrain_ver(&self, con: Constraint) -> Result<(), ConstraintErr> {
+    fn spawn_floating(
+        &self,
+        at: impl duat_core::text::TwoPoints,
+        specs: PushSpecs,
+        text: &Text,
+        cfg: PrintCfg,
+        _: DuatPermission,
+    ) -> Self {
+        let points = at.to_points();
+        let mut coord = {
+            let layouts = self.layouts.read();
+            let rect = get_rect(&layouts, self.id).unwrap();
+            rect.tl()
+        };
+        let mut iter = self.print_iter_from_top(text, IterCfg::new(cfg));
+        while let Some((caret, item)) = iter.next()
+            && item.points() <= points
+        {
+            coord.x = caret.x;
+            coord.y += caret.wrap as u32;
+        }
+
         let mut layouts = self.layouts.write();
         let layout = get_layout_mut(&mut layouts, self.id).unwrap();
-        let cons = layout
-            .rects
-            .get_constraints_mut(self.id)
-            .ok_or(ConstraintErr::NoParent)?
-            .clone();
 
-        if let Some(ver) = cons.on(Axis::Vertical)
-            && ver == con
-        {
-            return Ok(());
-        };
+        let floating = layout.new_floating(at, specs, text, cfg);
 
-        *layout.rects.get_constraints_mut(self.id).unwrap() = {
-            let mut p = layout.printer.write();
-            let cons = cons.replace(con, Axis::Vertical, &mut p);
-
-            let (_, parent) = layout.get_parent(self.id).unwrap();
-            let rect = layout.get(self.id).unwrap();
-
-            let cons = cons.apply(rect, parent.id(), &layout.rects, &mut p);
-            p.flush_equalities().unwrap();
-            cons
-        };
-
-        Ok(())
+        todo!();
     }
 
     fn constrain_hor(&self, con: Constraint) -> Result<(), ConstraintErr> {
@@ -342,6 +341,36 @@ impl ui::Area for Area {
         *layout.rects.get_constraints_mut(self.id).unwrap() = {
             let mut p = layout.printer.write();
             let cons = cons.replace(con, Axis::Horizontal, &mut p);
+
+            let (_, parent) = layout.get_parent(self.id).unwrap();
+            let rect = layout.get(self.id).unwrap();
+
+            let cons = cons.apply(rect, parent.id(), &layout.rects, &mut p);
+            p.flush_equalities().unwrap();
+            cons
+        };
+
+        Ok(())
+    }
+
+    fn constrain_ver(&self, con: Constraint) -> Result<(), ConstraintErr> {
+        let mut layouts = self.layouts.write();
+        let layout = get_layout_mut(&mut layouts, self.id).unwrap();
+        let cons = layout
+            .rects
+            .get_constraints_mut(self.id)
+            .ok_or(ConstraintErr::NoParent)?
+            .clone();
+
+        if let Some(ver) = cons.on(Axis::Vertical)
+            && ver == con
+        {
+            return Ok(());
+        };
+
+        *layout.rects.get_constraints_mut(self.id).unwrap() = {
+            let mut p = layout.printer.write();
+            let cons = cons.replace(con, Axis::Vertical, &mut p);
 
             let (_, parent) = layout.get_parent(self.id).unwrap();
             let rect = layout.get(self.id).unwrap();
@@ -446,21 +475,12 @@ impl ui::Area for Area {
         rev_print_iter(iter, cfg.wrap_width(self.width()), cfg)
     }
 
-    fn print_info(&self) -> Self::PrintInfo {
-        let layouts = self.layouts.read();
-        *get_rect(&layouts, self.id)
-            .unwrap()
-            .print_info()
-            .unwrap()
-            .read()
-    }
-
-    ////////// Queries
-
     fn has_changed(&self) -> bool {
         let layouts = self.layouts.read();
         get_rect(&layouts, self.id).unwrap().has_changed()
     }
+
+    ////////// Queries
 
     fn is_master_of(&self, other: &Self) -> bool {
         if other.id == self.id {
@@ -547,6 +567,15 @@ impl ui::Area for Area {
         info.last_points = Some(points);
 
         points
+    }
+
+    fn print_info(&self) -> Self::PrintInfo {
+        let layouts = self.layouts.read();
+        *get_rect(&layouts, self.id)
+            .unwrap()
+            .print_info()
+            .unwrap()
+            .read()
     }
 
     fn is_active(&self) -> bool {
