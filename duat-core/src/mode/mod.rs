@@ -3,7 +3,7 @@ use core::str;
 pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
 
 pub use self::{
-    command::{IncSearch, PipeSelections, Prompt, PromptMode, RunCommands},
+    prompt::{IncSearch, PipeSelections, Prompt, PromptMode, RunCommands},
     helper::{Cursor, Cursors, EditHelper, Editor, Mover},
     inc_search::{ExtendFwd, ExtendRev, SearchFwd, IncSearcher, SearchRev, Orig},
     regular::Regular,
@@ -12,7 +12,7 @@ pub use self::{
 };
 use crate::{ui::Ui, widgets::Widget};
 
-mod command;
+mod prompt;
 mod helper;
 mod inc_search;
 mod regular;
