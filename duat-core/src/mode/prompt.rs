@@ -280,8 +280,9 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
             (form::id_of!("CallerNotFound"), form::id_of!("ParameterErr"))
         };
 
-        text.insert_tag(0, Tag::PushForm(caller_id), *KEY);
-        text.insert_tag(caller.len(), Tag::PopForm(caller_id), *KEY);
+        let c_s = command.len() - command.trim_start().len();
+        text.insert_tag(c_s, Tag::PushForm(caller_id), *KEY);
+        text.insert_tag(c_s + caller.len(), Tag::PopForm(caller_id), *KEY);
 
         for (_, range) in args {
             text.insert_tag(range.start, Tag::PushForm(args_id), *KEY);
