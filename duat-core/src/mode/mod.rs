@@ -3,16 +3,16 @@ use core::str;
 pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
 
 pub use self::{
-    commander::Command,
+    command::{IncSearch, PipeSelections, Prompt, PromptMode, RunCommands},
     helper::{Cursor, Cursors, EditHelper, Editor, Mover},
-    inc_search::{ExtendFwd, ExtendRev, Fwd, IncSearcher, Rev},
+    inc_search::{ExtendFwd, ExtendRev, SearchFwd, IncSearcher, SearchRev, Orig},
     regular::Regular,
     remap::*,
     switch::*,
 };
 use crate::{ui::Ui, widgets::Widget};
 
-mod commander;
+mod command;
 mod helper;
 mod inc_search;
 mod regular;
@@ -36,9 +36,9 @@ mod switch {
         context, duat_name, file_entry,
         hooks::{self, KeySent, KeySentTo, ModeSwitched},
         session::sender,
-        ui::{Area, DuatEvent, Ui, Window},
+        ui::{Area, DuatEvent, Ui},
         widget_entry,
-        widgets::{CmdLine, CmdLineMode, File, Node, Widget},
+        widgets::{File, Node, Widget},
     };
 
     static PRINTING_IS_STOPPED: AtomicBool = AtomicBool::new(false);
@@ -93,39 +93,6 @@ mod switch {
     /// [default]: set_default
     pub fn reset() {
         *SET_MODE.lock() = Some(Box::new(|| RESET_MODE.lock()()))
-    }
-
-    /// Sets the [`CmdLineMode`]
-    pub fn set_cmd<U: Ui>(mode: impl CmdLineMode<U> + Clone) {
-        crate::thread::queue(move || {
-            let Ok(cur_file) = context::cur_file::<U>() else {
-                return;
-            };
-
-            if let Some(node) = cur_file.get_related_widget::<CmdLine<U>>() {
-                node.try_downcast::<CmdLine<U>>()
-                    .unwrap()
-                    .write()
-                    .set_mode(mode);
-            } else {
-                let windows = context::windows::<U>().read();
-                let w = context::cur_window();
-                let cur_window = &windows[w];
-
-                let mut widgets = {
-                    let previous = windows[..w].iter().flat_map(Window::nodes);
-                    let following = windows[(w + 1)..].iter().flat_map(Window::nodes);
-                    cur_window.nodes().chain(previous).chain(following)
-                };
-
-                if let Some(cmd_line) = widgets.find_map(|node| {
-                    node.data_is::<CmdLine<U>>()
-                        .then(|| node.try_downcast::<CmdLine<U>>().unwrap())
-                }) {
-                    cmd_line.write().set_mode(mode)
-                }
-            }
-        });
     }
 
     /// Switches to the file with the given name

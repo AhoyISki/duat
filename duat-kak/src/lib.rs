@@ -29,12 +29,13 @@ use duat_core::{
     form,
     hooks::{self, ModeSwitched},
     mode::{
-        self, Cursors, EditHelper, ExtendFwd, ExtendRev, Fwd, IncSearcher, KeyCode::*,
-        KeyEvent as Event, KeyMod as Mod, Mode, Mover, Rev, key,
+        self, EditHelper, ExtendFwd, ExtendRev, IncSearch, IncSearcher, KeyCode::*,
+        KeyEvent as Event, KeyMod as Mod, Mode, Mover, Orig, PipeSelections, RunCommands,
+        SearchFwd, SearchRev, key,
     },
-    text::{Point, Searcher, err},
+    text::{Point, Searcher, err, text},
     ui::{Area, Ui},
-    widgets::{File, IncSearch, PipeSelections, RunCommands},
+    widgets::File,
 };
 
 /// The [`Plugin`] for the kakoune [`Mode`]s
@@ -598,20 +599,21 @@ impl<U: Ui> Mode<U> for Normal {
             }
 
             ////////// Other mode changing keys.
-            key!(Char(':')) => mode::set_cmd::<U>(RunCommands::new()),
+            key!(Char(':')) => mode::set::<U>(RunCommands::new()),
             key!(Char('|')) => {
                 helper.new_moment();
-                mode::set_cmd::<U>(PipeSelections::new())
+                mode::set::<U>(PipeSelections::new())
             }
             key!(Char('G')) => mode::set::<U>(OneKey::GoTo(SelType::Extend)),
             key!(Char('g')) => mode::set::<U>(OneKey::GoTo(SelType::Normal)),
 
             ////////// Incremental search methods.
-            key!(Char('/')) => mode::set_cmd::<U>(IncSearch::new(Fwd::new)),
-            key!(Char('/'), Mod::ALT) => mode::set_cmd::<U>(IncSearch::new(Rev::new)),
-            key!(Char('?')) => mode::set_cmd::<U>(IncSearch::new(ExtendFwd::new)),
-            key!(Char('?'), Mod::ALT) => mode::set_cmd::<U>(IncSearch::new(ExtendRev::new)),
-            key!(Char('s')) => mode::set_cmd::<U>(IncSearch::new(Select::new)),
+            key!(Char('/')) => mode::set::<U>(IncSearch::new(SearchFwd)),
+            key!(Char('/'), Mod::ALT) => mode::set::<U>(IncSearch::new(SearchRev)),
+            key!(Char('?')) => mode::set::<U>(IncSearch::new(ExtendFwd)),
+            key!(Char('?'), Mod::ALT) => mode::set::<U>(IncSearch::new(ExtendRev)),
+            key!(Char('s')) => mode::set::<U>(IncSearch::new(Select)),
+            key!(Char('S')) => mode::set::<U>(IncSearch::new(Split)),
 
             ////////// History manipulation.
             key!(Char('u')) => helper.undo(),
@@ -1059,23 +1061,15 @@ impl Category {
     }
 }
 
-struct Select<U: Ui> {
-    orig: Cursors,
-    info: <U::Area as Area>::PrintInfo,
-}
+#[derive(Clone, Copy)]
+struct Select;
 
-impl<U: Ui> IncSearcher<U> for Select<U> {
-    fn new(file: &mut File, area: &U::Area) -> Self {
-        Self {
-            orig: file.cursors().unwrap().clone(),
-            info: area.print_info(),
-        }
-    }
-
-    fn search(&mut self, file: &mut File, area: &U::Area, searcher: Searcher) {
-        *file.cursors_mut().unwrap() = self.orig.clone();
+impl<U: Ui> IncSearcher<U> for Select {
+    fn search(&mut self, orig: &Orig<U>, file: &mut File, area: &U::Area, searcher: Searcher) {
+        let (cursors, info) = orig;
+        *file.cursors_mut().unwrap() = cursors.clone();
         if searcher.is_empty() {
-            area.set_print_info(self.info.clone());
+            area.set_print_info(info.clone());
             return;
         }
 
@@ -1102,25 +1096,21 @@ impl<U: Ui> IncSearcher<U> for Select<U> {
             }
         });
     }
-}
 
-struct Split<U: Ui> {
-    orig: Cursors,
-    info: <U::Area as Area>::PrintInfo,
-}
-
-impl<U: Ui> IncSearcher<U> for Split<U> {
-    fn new(file: &mut File, area: &<U as Ui>::Area) -> Self {
-        Self {
-            orig: file.cursors().unwrap().clone(),
-            info: area.print_info(),
-        }
+    fn prompt(&self) -> duat_core::prelude::Text {
+        text!([Prompt] "select" [Prompt.colon] ":")
     }
+}
 
-    fn search(&mut self, file: &mut File, area: &U::Area, searcher: Searcher) {
-        *file.cursors_mut().unwrap() = self.orig.clone();
+#[derive(Clone, Copy)]
+struct Split;
+
+impl<U: Ui> IncSearcher<U> for Split {
+    fn search(&mut self, orig: &Orig<U>, file: &mut File, area: &U::Area, searcher: Searcher) {
+        let (cursors, info) = orig;
+        *file.cursors_mut().unwrap() = cursors.clone();
         if searcher.is_empty() {
-            area.set_print_info(self.info.clone());
+            area.set_print_info(info.clone());
             return;
         }
 
@@ -1146,6 +1136,10 @@ impl<U: Ui> IncSearcher<U> for Split<U> {
                 }
             }
         })
+    }
+
+    fn prompt(&self) -> duat_core::prelude::Text {
+        text!([Prompt] "split" [Prompt.colon] ":")
     }
 }
 

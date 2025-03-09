@@ -1,36 +1,28 @@
 use super::{Cursors, EditHelper};
 use crate::{
-    text::Searcher,
+    text::{Searcher, Text, text},
     ui::{Area, Ui},
     widgets::File,
 };
 
-pub trait IncSearcher<U: Ui>: Sized + Send + Sync + 'static {
-    fn new(file: &mut File, area: &U::Area) -> Self;
-
-    fn search(&mut self, file: &mut File, area: &U::Area, searcher: Searcher);
+pub trait IncSearcher<U: Ui>: Clone + Send + Sync + 'static {
+    fn search(&mut self, orig: &Orig<U>, file: &mut File, area: &U::Area, searcher: Searcher);
 
     #[allow(unused)]
-    fn finish(&mut self, file: &mut File, area: &U::Area) {}
+    fn finish(&mut self, orig: &Orig<U>, file: &mut File, area: &U::Area) {}
+
+    fn prompt(&self) -> Text;
 }
 
-pub struct Fwd<U: Ui> {
-    orig: Cursors,
-    info: <U::Area as Area>::PrintInfo,
-}
+#[derive(Clone, Copy)]
+pub struct SearchFwd;
 
-impl<U: Ui> IncSearcher<U> for Fwd<U> {
-    fn new(file: &mut File, area: &U::Area) -> Self {
-        Self {
-            orig: file.cursors().unwrap().clone(),
-            info: area.print_info(),
-        }
-    }
-
-    fn search(&mut self, file: &mut File, area: &U::Area, searcher: Searcher) {
-        *file.cursors_mut().unwrap() = self.orig.clone();
+impl<U: Ui> IncSearcher<U> for SearchFwd {
+    fn search(&mut self, orig: &Orig<U>, file: &mut File, area: &U::Area, searcher: Searcher) {
+        let (cursors, info) = orig;
+        *file.cursors_mut().unwrap() = cursors.clone();
         if searcher.is_empty() {
-            area.set_print_info(self.info.clone());
+            area.set_print_info(info.clone());
             return;
         }
 
@@ -47,29 +39,25 @@ impl<U: Ui> IncSearcher<U> for Fwd<U> {
                     m.move_hor(-1);
                 }
             } else if m.is_main() {
-                area.set_print_info(self.info.clone());
+                area.set_print_info(info.clone());
             }
         });
     }
-}
 
-pub struct Rev<U: Ui> {
-    orig: Cursors,
-    info: <U::Area as Area>::PrintInfo,
-}
-
-impl<U: Ui> IncSearcher<U> for Rev<U> {
-    fn new(file: &mut File, area: &U::Area) -> Self {
-        Self {
-            orig: file.cursors().unwrap().clone(),
-            info: area.print_info(),
-        }
+    fn prompt(&self) -> Text {
+        text!([Prompt] "search" [Prompt.colon] ":")
     }
+}
 
-    fn search(&mut self, file: &mut File, area: &U::Area, searcher: Searcher) {
-        *file.cursors_mut().unwrap() = self.orig.clone();
+#[derive(Clone, Copy)]
+pub struct SearchRev;
+
+impl<U: Ui> IncSearcher<U> for SearchRev {
+    fn search(&mut self, orig: &Orig<U>, file: &mut File, area: &U::Area, searcher: Searcher) {
+        let (cursors, info) = orig;
+        *file.cursors_mut().unwrap() = cursors.clone();
         if searcher.is_empty() {
-            area.set_print_info(self.info.clone());
+            area.set_print_info(info.clone());
             return;
         }
 
@@ -86,29 +74,25 @@ impl<U: Ui> IncSearcher<U> for Rev<U> {
                     m.move_hor(-1);
                 }
             } else if m.is_main() {
-                area.set_print_info(self.info.clone());
+                area.set_print_info(info.clone());
             }
         });
     }
-}
 
-pub struct ExtendFwd<U: Ui> {
-    orig: Cursors,
-    info: <U::Area as Area>::PrintInfo,
-}
-
-impl<U: Ui> IncSearcher<U> for ExtendFwd<U> {
-    fn new(file: &mut File, area: &U::Area) -> Self {
-        Self {
-            orig: file.cursors().unwrap().clone(),
-            info: area.print_info(),
-        }
+    fn prompt(&self) -> Text {
+        text!([Prompt] "rev search" [Prompt.colon] ":")
     }
+}
 
-    fn search(&mut self, file: &mut File, area: &U::Area, searcher: Searcher) {
-        *file.cursors_mut().unwrap() = self.orig.clone();
+#[derive(Clone, Copy)]
+pub struct ExtendFwd;
+
+impl<U: Ui> IncSearcher<U> for ExtendFwd {
+    fn search(&mut self, orig: &Orig<U>, file: &mut File, area: &U::Area, searcher: Searcher) {
+        let (cursors, info) = orig;
+        *file.cursors_mut().unwrap() = cursors.clone();
         if searcher.is_empty() {
-            area.set_print_info(self.info.clone());
+            area.set_print_info(info.clone());
             return;
         }
 
@@ -126,29 +110,25 @@ impl<U: Ui> IncSearcher<U> for ExtendFwd<U> {
                     m.move_hor(-1);
                 }
             } else if m.is_main() {
-                area.set_print_info(self.info.clone());
+                area.set_print_info(info.clone());
             }
         });
     }
-}
 
-pub struct ExtendRev<U: Ui> {
-    orig: Cursors,
-    info: <U::Area as Area>::PrintInfo,
-}
-
-impl<U: Ui> IncSearcher<U> for ExtendRev<U> {
-    fn new(file: &mut File, area: &U::Area) -> Self {
-        Self {
-            orig: file.cursors().unwrap().clone(),
-            info: area.print_info(),
-        }
+    fn prompt(&self) -> Text {
+        text!([Prompt] "search (extend)" [Prompt.colon] ":")
     }
+}
 
-    fn search(&mut self, file: &mut File, area: &U::Area, searcher: Searcher) {
-        *file.cursors_mut().unwrap() = self.orig.clone();
+#[derive(Clone, Copy)]
+pub struct ExtendRev;
+
+impl<U: Ui> IncSearcher<U> for ExtendRev {
+    fn search(&mut self, orig: &Orig<U>, file: &mut File, area: &U::Area, searcher: Searcher) {
+        let (cursors, info) = orig;
+        *file.cursors_mut().unwrap() = cursors.clone();
         if searcher.is_empty() {
-            area.set_print_info(self.info.clone());
+            area.set_print_info(info.clone());
             return;
         }
 
@@ -163,8 +143,15 @@ impl<U: Ui> IncSearcher<U> for ExtendRev<U> {
                 }
                 m.move_to(p0);
             } else if m.is_main() {
-                area.set_print_info(self.info.clone());
+                area.set_print_info(info.clone());
             }
         });
     }
+
+    fn prompt(&self) -> Text {
+        text!([Prompt] "rev search (extend)" [Prompt.colon] ":")
+    }
 }
+
+#[allow(type_alias_bounds)]
+pub type Orig<U: Ui> = (Cursors, <U::Area as Area>::PrintInfo);

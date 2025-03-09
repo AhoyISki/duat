@@ -57,18 +57,6 @@ impl Ui {
     }
 }
 
-impl Default for Ui {
-    fn default() -> Self {
-        Self {
-            windows: Vec::new(),
-            layouts: RwData::default(),
-            win: 0,
-            fr: Frame::default(),
-            printer_fn: RwData::default,
-        }
-    }
-}
-
 impl ui::Ui for Ui {
     type Area = Area;
     type MetaStatics = Mutex<Ui>;
@@ -222,6 +210,24 @@ impl ui::Ui for Ui {
         if ui.win > win {
             ui.win -= 1;
         }
+    }
+}
+
+impl Default for Ui {
+    fn default() -> Self {
+        Self {
+            windows: Vec::new(),
+            layouts: RwData::default(),
+            win: 0,
+            fr: Frame::default(),
+            printer_fn: RwData::default,
+        }
+    }
+}
+
+impl Clone for Ui {
+    fn clone(&self) -> Self {
+        panic!("You are not supposed to clone the Ui");
     }
 }
 

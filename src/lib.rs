@@ -292,8 +292,8 @@ mod setup;
 
 pub mod mode {
     //! Commands for the manipulation of [`Mode`]s
+    use duat_core::mode;
     pub use duat_core::mode::*;
-    use duat_core::{mode, widgets::CmdLineMode};
 
     use crate::Ui;
 
@@ -319,11 +319,6 @@ pub mod mode {
     /// [default]: set_default
     pub fn reset() {
         mode::reset();
-    }
-
-    /// Sets the [`CmdLineMode`]
-    pub fn set_cmd(mode: impl CmdLineMode<Ui> + Clone) {
-        mode::set_cmd(mode);
     }
 
     /// Maps a sequence of keys to another

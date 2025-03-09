@@ -334,8 +334,8 @@ pub macro text {
         $builder.push(crate::text::Tag::PushForm(id))
     },
 
-    (@push $builder:expr, [$form:ident]) => {
-        let id = crate::form::id_of!(stringify!($form));
+    (@push $builder:expr, [$($form:tt)+]) => {
+        let id = crate::form::id_of!(stringify!($($form)+));
         $builder.push(crate::text::Tag::PushForm(id))
     },
 
@@ -375,8 +375,8 @@ pub macro ok {
         $builder.push(crate::text::Tag::PushForm(id))
     },
 
-    (@push $builder:expr, [$form:ident]) => {
-        let id = crate::form::id_of!(stringify!($form));
+    (@push $builder:expr, [$($form:tt)+]) => {
+        let id = crate::form::id_of!(stringify!($($form)+));
         $builder.push(crate::text::Tag::PushForm(id))
     },
 
@@ -416,8 +416,8 @@ pub macro err {
         $builder.push(crate::text::Tag::PushForm(id))
     },
 
-    (@push $builder:expr, [$form:ident]) => {
-        let id = crate::form::id_of!(stringify!($form));
+    (@push $builder:expr, [$($form:tt)+]) => {
+        let id = crate::form::id_of!(stringify!($($form)+));
         $builder.push(crate::text::Tag::PushForm(id))
     },
 
@@ -457,8 +457,8 @@ pub macro hint {
         $builder.push(crate::text::Tag::PushForm(id))
     },
 
-    (@push $builder:expr, [$form:ident]) => {
-        let id = crate::form::id_of!(stringify!($form));
+    (@push $builder:expr, [$($form:tt)+]) => {
+        let id = crate::form::id_of!(stringify!($($form)+));
         $builder.push(crate::text::Tag::PushForm(id))
     },
 

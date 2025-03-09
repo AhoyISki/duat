@@ -51,7 +51,7 @@ use std::sync::{
 
 pub use self::{
     command_line::{
-        CmdLine, CmdLineCfg, CmdLineMode, IncSearch, PipeSelections, RunCommands, ShowNotifications,
+        CmdLine, CmdLineCfg,
     },
     file::{File, FileCfg, PathKind},
     line_numbers::{LineNum, LineNumbers, LineNumbersCfg},
@@ -72,6 +72,7 @@ mod command_line;
 mod file;
 mod line_numbers;
 mod status_line;
+mod notifications;
 
 /// An area where [`Text`] will be printed to the screen
 ///

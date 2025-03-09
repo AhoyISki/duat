@@ -28,7 +28,28 @@ use crate::{
 
 /// All the methods that a working gui/tui will need to implement, in
 /// order to use Parsec.
-pub trait Ui: Sized + Send + Sync + 'static {
+///
+/// # NOTE
+///
+/// The dependency on [`Clone`] is only here for convenience. Many
+/// types require a [`Ui`] as a generic parameter, and if [`Ui`] does
+/// not implement [`Clone`], deriving [`Clone`] for said types would
+/// be a very manual task.
+///
+/// Below is the recommended implementation of clone for all types
+/// that implement [`Ui`]:
+///
+/// ```rust
+/// # mod duat_smart_fridge {
+/// #     struct Ui;
+/// # }
+/// impl Clone for duat_smart_fridge::Ui {
+///     fn clone(&self) -> Self {
+///         panic!("You are not supposed to clone the Ui");
+///     }
+/// }
+/// ```
+pub trait Ui: Clone + Send + Sync + 'static {
     type MetaStatics: Default + Send + Sync;
     type Area: Area<Ui = Self> + Clone + PartialEq + Send + Sync;
 

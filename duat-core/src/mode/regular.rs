@@ -1,7 +1,9 @@
-use super::{EditHelper, ExtendFwd, IncSearcher, KeyCode, KeyEvent, KeyMod, key};
+use super::{
+    EditHelper, IncSearch, KeyCode, KeyEvent, KeyMod, RunCommands, SearchFwd, SearchRev, key,
+};
 use crate::{
     ui::{Area, Ui},
-    widgets::{File, IncSearch, RunCommands},
+    widgets::File,
 };
 
 #[derive(Clone)]
@@ -78,10 +80,9 @@ impl<U: Ui> super::Mode<U> for Regular {
             key!(KeyCode::Down, KeyMod::NONE) => move_each(helper, Side::Bottom, 1),
 
             // Control
-            key!(KeyCode::Char('p'), KeyMod::CONTROL) => super::set_cmd::<U>(RunCommands::new()),
-            key!(KeyCode::Char('f'), KeyMod::CONTROL) => {
-                super::set_cmd::<U>(IncSearch::new(ExtendFwd::new))
-            }
+            key!(KeyCode::Char('p'), KeyMod::CONTROL) => super::set::<U>(RunCommands::new()),
+            key!(KeyCode::Char('f'), KeyMod::CONTROL) => super::set::<U>(IncSearch::new(SearchFwd)),
+            key!(KeyCode::Char('F'), KeyMod::CONTROL) => super::set::<U>(IncSearch::new(SearchRev)),
 
             _ => {}
         }

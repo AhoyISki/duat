@@ -298,6 +298,20 @@ impl<T: ?Sized> RwData<T> {
         cur_state > read_state
     }
 
+    /// A function that returns true if the data has changed
+    ///
+    /// This funnction is specifically very useful when creating
+    /// [`Widget`]s, as those require a `checker_fn`, and this can
+    /// give you one of those with relatively minimal effort.
+    pub fn checker(&self) -> impl Fn() -> bool + Send + Sync + 'static + use<T> {
+        let RwData { cur_state, read_state, .. } = self.clone();
+        move || {
+            let cur_state = cur_state.load(Ordering::Relaxed);
+            let read_state = read_state.swap(cur_state, Ordering::Relaxed);
+            cur_state > read_state
+        }
+    }
+
     /// Returns `true` if both [`Data`]s point to the same
     /// data.
     ///

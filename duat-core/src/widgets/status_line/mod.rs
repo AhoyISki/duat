@@ -214,9 +214,6 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
 
     fn once() -> crate::Result<(), ()> {
         form::set_weak("File", Form::yellow().italic());
-        form::set_weak("NewFile", "File");
-        form::set_weak("ScratchFile", "NewFile");
-        form::set_weak("UnsavedChanges", "File");
         form::set_weak("Selections", Form::dark_blue());
         form::set_weak("Coord", Form::dark_yellow());
         form::set_weak("Separator", Form::cyan());
@@ -355,8 +352,8 @@ pub macro status {
     }},
 
     // Insertion of directly named form.
-    (@append $pre_fn:expr, $checker:expr, [$form:ident]) => {{
-        let id = form::id_of!(stringify!($form));
+    (@append $pre_fn:expr, $checker:expr, [$($form:tt)+]) => {{
+        let id = form::id_of!(stringify!($($form)+));
 
         let pre_fn = move |builder: &mut Builder, reader: &FileReader<_>| {
             $pre_fn(builder, reader);

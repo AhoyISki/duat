@@ -1199,7 +1199,7 @@ enum FormType {
 /// The position of each form that eventually references the `n`th
 fn refs_of(inner: &RwLockWriteGuard<InnerPalette>, refed: usize) -> Vec<usize> {
     let mut refs = Vec::new();
-    for (i, (name, .., f_ty)) in inner.forms.iter().enumerate() {
+    for (i, (.., f_ty)) in inner.forms.iter().enumerate() {
         if let FormType::Ref(ref_id) | FormType::WeakestRef(ref_id) = f_ty
             && *ref_id == refed
         {

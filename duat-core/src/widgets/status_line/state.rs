@@ -118,7 +118,7 @@ impl<D: Display + Send + Sync, U: Ui> From<RwData<D>> for State<(), DataArg<Stri
                 let value = RoData::from(&value);
                 Box::new(move || Append::String(value.read().to_string()))
             }),
-            checker: Some(Box::new(move || value.has_changed())),
+            checker: Some(Box::new(value.checker())),
             ghost: PhantomData,
         }
     }
@@ -131,7 +131,7 @@ impl<U: Ui> From<RwData<Text>> for State<(), DataArg<Text>, U> {
                 let value = RoData::from(&value);
                 Box::new(move || Append::Text(value.read().clone()))
             }),
-            checker: Some(Box::new(move || value.has_changed())),
+            checker: Some(Box::new(value.checker())),
             ghost: PhantomData,
         }
     }

@@ -15,7 +15,7 @@ use crossterm::{
     terminal,
 };
 use duat_core::{
-    form::{self, DEFAULT_ID, FormId},
+    form::{self, FormId},
     ui::Axis,
 };
 

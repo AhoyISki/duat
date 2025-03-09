@@ -16,7 +16,7 @@ use crossterm::event::KeyEvent;
 
 use crate::{
     context,
-    data::DataMap,
+    data::{DataMap, RwData},
     mode::{self, Cursors},
     text::{Text, text},
     widgets::File,
@@ -35,14 +35,14 @@ use crate::{
 /// [File] name
 /// ```
 ///
-/// If it has unwritten changes, a `[UnsavedChanges] "[+]"` will be
-/// appended. If it doesn't exist, a `[NewFile] "[new file]"` will be
+/// If it has unwritten changes, a `[File.unsaved] "[+]"` will be
+/// appended. If it doesn't exist, a `[File.new] "[new file]"` will be
 /// appended.
 ///
 /// If the file's `name` was not set:
 ///
 /// ```text
-/// [ScratchFile] `name`
+/// [File.new.scratch] `name`
 /// ```
 pub fn file_fmt(file: &File) -> Text {
     let mut b = Text::builder();
@@ -50,20 +50,20 @@ pub fn file_fmt(file: &File) -> Text {
     if let Some(name) = file.name_set() {
         text!(b, [File] name);
         if !file.exists() {
-            text!(b, [NewFile] "[new file]");
+            text!(b, [File.new] "[new file]");
         } else if file.text().has_unsaved_changes() {
-            text!(b, [UnsavedChanges] "[+]");
+            text!(b, [File.unsaved] "[+]");
         }
     } else {
-        text!(b, [ScratchFile] { file.name() });
+        text!(b, [File.new.scratch] { file.name() });
     }
 
     b.finish()
 }
 
 /// The active mode of Duat, in lowercase
-pub fn mode() -> DataMap<&'static str, String> {
-    context::mode_name().map(|mode| mode.to_lowercase())
+pub fn mode() -> RwData<&'static str> {
+    context::mode_name().clone()
 }
 
 /// The active mode of Duat, formatted
@@ -74,7 +74,13 @@ pub fn mode() -> DataMap<&'static str, String> {
 /// [Mode] mode
 /// ```
 pub fn mode_fmt() -> DataMap<&'static str, Text> {
-    context::mode_name().map(|mode| text!([Mode] { mode.to_lowercase() }))
+    context::mode_name().map(|mode| text!([Mode] {
+        let mut mode = mode.to_lowercase();
+        if let Some(i) = mode.find('<') {
+            let _ = mode.split_off(i);
+        }
+        mode
+    }))
 }
 
 /// The byte of the main cursor in the file. Indexed at 1

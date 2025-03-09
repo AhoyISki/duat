@@ -18,14 +18,14 @@ use duat_core::{
     data::RwData,
     mode::Regular,
     session::{FileRet, SessionCfg},
-    ui::{self, DuatEvent, UiEvent, Window},
-    widgets::{ShowNotifications, Widget},
+    ui::{self, Area, Constraint, DuatEvent, UiEvent, Window},
+    widgets::Widget,
 };
 use duat_term::VertRule;
 
 use crate::{
     CfgFn, Ui,
-    hooks::{self, OnFileOpen, OnWindowOpen, UnfocusedFrom},
+    hooks::{self, FocusedOn, OnFileOpen, OnWindowOpen, UnfocusedFrom},
     mode,
     prelude::{CmdLine, LineNumbers, StatusLine},
 };
@@ -62,8 +62,12 @@ pub fn pre_setup() {
         builder.push_to(CmdLine::cfg().left_ratioed(4, 7), child);
     });
 
-    hooks::add_grouped::<UnfocusedFrom<CmdLine>>("CmdLineNotifications", |_cmd_line| {
-        mode::set_cmd(ShowNotifications::new());
+    hooks::add_grouped::<UnfocusedFrom<CmdLine>>("HideCmdLine", |(_, area)| {
+        area.constrain_ver(Constraint::Length(0.0)).unwrap();
+    });
+    hooks::add_grouped::<FocusedOn<CmdLine>>("HideCmdLine", |(_, area)| {
+        // Constraint::Min(0.0) == "Constraint::Free"
+        area.constrain_ver(Constraint::Min(0.0)).unwrap();
     });
 }
 
