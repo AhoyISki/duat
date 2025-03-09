@@ -72,22 +72,24 @@ impl<U: Ui> Plugin<U> for Kak<U> {
         duat_core::mode::set_default::<Normal, U>(Normal::new());
         INSERT_TABS.store(self.insert_tabs, Ordering::Relaxed);
         if self.set_cursor_forms {
-            static FORMS: &[&str] = &["Insert", "Normal", "GoTo"];
-            for mode in ["Insert", "Normal", "GoTo"] {
-                form::set_weak(format!("MainCursor{mode}"), "MainCursor");
-                form::set_weak(format!("ExtraCursor{mode}"), "ExtraCursor");
-                form::set_weak(format!("MainSelection{mode}"), "MainSelection");
-                form::set_weak(format!("ExtraSelection{mode}"), "ExtraSelection");
-            }
+            static MODES: &[&str] = &["Insert", "Normal", "GoTo"];
+            form::ids_of_non_static(MODES.iter().flat_map(|mode| {
+                [
+                    format!("MainCursor.{mode}"),
+                    format!("ExtraCursor.{mode}"),
+                    format!("MainSelection.{mode}"),
+                    format!("ExtraSelection.{mode}"),
+                ]
+            }));
 
             hooks::add::<ModeSwitched>(|(_, new)| {
-                if !FORMS.contains(&new) {
+                if !MODES.contains(&new) {
                     return;
                 }
-                form::set("MainCursor", format!("MainCursor{new}"));
-                form::set("ExtraCursor", format!("ExtraCursor{new}"));
-                form::set("MainSelection", format!("MainSelection{new}"));
-                form::set("ExtraSelection", format!("ExtraSelection{new}"));
+                form::set("MainCursor", format!("MainCursor.{new}"));
+                form::set("ExtraCursor", format!("ExtraCursor.{new}"));
+                form::set("MainSelection", format!("MainSelection.{new}"));
+                form::set("ExtraSelection", format!("ExtraSelection.{new}"));
             });
         }
     }
@@ -307,10 +309,12 @@ impl<U: Ui> Mode<U> for Normal {
 
             ////////// Insertion mode keys
             key!(Char('i')) => {
+                helper.new_moment();
                 helper.move_many(.., |mut m| m.set_caret_on_start());
                 mode::set::<U>(Insert::new());
             }
             key!(Char('I'), Mod::SHIFT) => {
+                helper.new_moment();
                 helper.move_many(.., |mut m| {
                     m.unset_anchor();
                     m.move_hor(-(m.caret_col() as i32))
@@ -318,6 +322,7 @@ impl<U: Ui> Mode<U> for Normal {
                 mode::set::<U>(Insert::new());
             }
             key!(Char('a')) => {
+                helper.new_moment();
                 helper.move_many(.., |mut m| {
                     m.set_caret_on_end();
                     m.move_hor(1);
@@ -325,6 +330,7 @@ impl<U: Ui> Mode<U> for Normal {
                 mode::set::<U>(Insert::new());
             }
             key!(Char('A'), Mod::SHIFT) => {
+                helper.new_moment();
                 helper.move_many(.., |mut m| {
                     m.unset_anchor();
                     let (p, _) = m.fwd().find(|(_, c)| *c == '\n').unwrap();
@@ -336,6 +342,7 @@ impl<U: Ui> Mode<U> for Normal {
                 Char('o' | 'O'),
                 Mod::NONE | Mod::ALT | Mod::SHIFT | ALTSHIFT
             ) => {
+                helper.new_moment();
                 let mut orig_points = Vec::new();
                 helper.move_many(.., |mut m| {
                     orig_points.push((m.caret(), m.anchor()));
@@ -372,31 +379,43 @@ impl<U: Ui> Mode<U> for Normal {
             }
 
             ////////// Selection alteration keys.
-            key!(Char('r')) => mode::set::<U>(OneKey::Replace),
-            key!(Char('`'), Mod::ALT) => helper.edit_many(.., |e| {
-                let inverted = e.selection().flat_map(str::chars).map(|c| {
-                    if c.is_uppercase() {
-                        c.to_lowercase().collect::<String>()
-                    } else {
-                        c.to_uppercase().collect()
-                    }
-                });
-                e.replace(inverted.collect::<String>());
-            }),
-            key!(Char('`')) => helper.edit_many(.., |e| {
-                let lower = e
-                    .selection()
-                    .flat_map(str::chars)
-                    .flat_map(char::to_lowercase);
-                e.replace(lower.collect::<String>());
-            }),
-            key!(Char('~')) => helper.edit_many(.., |e| {
-                let upper = e
-                    .selection()
-                    .flat_map(str::chars)
-                    .flat_map(char::to_uppercase);
-                e.replace(upper.collect::<String>());
-            }),
+            key!(Char('r')) => {
+                helper.new_moment();
+                mode::set::<U>(OneKey::Replace)
+            }
+            key!(Char('`'), Mod::ALT) => {
+                helper.new_moment();
+                helper.edit_many(.., |e| {
+                    let inverted = e.selection().flat_map(str::chars).map(|c| {
+                        if c.is_uppercase() {
+                            c.to_lowercase().collect::<String>()
+                        } else {
+                            c.to_uppercase().collect()
+                        }
+                    });
+                    e.replace(inverted.collect::<String>());
+                })
+            }
+            key!(Char('`')) => {
+                helper.new_moment();
+                helper.edit_many(.., |e| {
+                    let lower = e
+                        .selection()
+                        .flat_map(str::chars)
+                        .flat_map(char::to_lowercase);
+                    e.replace(lower.collect::<String>());
+                })
+            }
+            key!(Char('~')) => {
+                helper.new_moment();
+                helper.edit_many(.., |e| {
+                    let upper = e
+                        .selection()
+                        .flat_map(str::chars)
+                        .flat_map(char::to_uppercase);
+                    e.replace(upper.collect::<String>());
+                })
+            }
 
             ////////// Selection manipulation
             key!(Char(';'), Mod::ALT) => helper.move_many(.., |mut m| m.swap_ends()),
@@ -405,6 +424,7 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char(')')) => helper.cursors_mut().rotate_main(1),
             key!(Char('(')) => helper.cursors_mut().rotate_main(-1),
             key!(Char(')'), ALTSHIFT) => {
+                helper.new_moment();
                 let mut last_sel = None;
                 helper.move_many(.., |mut m| m.set_anchor());
                 helper.edit_many(.., |e| {
@@ -419,6 +439,7 @@ impl<U: Ui> Mode<U> for Normal {
                 });
             }
             key!(Char('('), ALTSHIFT) => {
+                helper.new_moment();
                 let mut selections = Vec::<String>::new();
                 helper.move_many(.., |mut m| {
                     m.set_anchor();
@@ -441,8 +462,12 @@ impl<U: Ui> Mode<U> for Normal {
             }
 
             ////////// Clipboard keys.
-            key!(Char('y')) => copy_selections(&mut helper),
+            key!(Char('y')) => {
+                helper.new_moment();
+                copy_selections(&mut helper)
+            }
             key!(Char('d'), Mod::NONE | Mod::ALT) => {
+                helper.new_moment();
                 if let Mod::NONE = key.modifiers {
                     copy_selections(&mut helper);
                 }
@@ -450,6 +475,7 @@ impl<U: Ui> Mode<U> for Normal {
                 helper.move_many(.., |mut m| m.unset_anchor());
             }
             key!(Char('c'), Mod::NONE | Mod::ALT) => {
+                helper.new_moment();
                 if let Mod::NONE = key.modifiers {
                     copy_selections(&mut helper);
                 }
@@ -460,6 +486,7 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('p' | 'P')) => {
                 let pastes = paste_strings();
                 if !pastes.is_empty() {
+                    helper.new_moment();
                     let mut swap_ends = Vec::new();
                     let mut p_iter = pastes.iter().cycle();
                     helper.move_many(.., |mut m| {
@@ -499,6 +526,7 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('R')) => {
                 let pastes = paste_strings();
                 if !pastes.is_empty() {
+                    helper.new_moment();
                     let mut p_iter = pastes.iter().cycle();
                     helper.edit_many(.., |e| e.insert_or_replace(p_iter.next().unwrap()));
                 }
@@ -506,66 +534,75 @@ impl<U: Ui> Mode<U> for Normal {
 
             ////////// Cursor creation and destruction.
             key!(Char(',')) => helper.cursors_mut().remove_extras(),
-            key!(Char('C')) => helper.move_nth(helper.cursors().len() - 1, |mut m| {
-                let c_col = m.caret_col();
-                m.copy();
-                if let Some(anchor) = m.anchor() {
-                    let a_col = m.anchor_col().unwrap_or(m.caret_col());
-                    let lines_diff = anchor.line() as i32 - m.caret().line() as i32;
-                    let len_lines = lines_diff.unsigned_abs() as usize;
-                    while m.caret().line() + len_lines < m.len().line() {
-                        m.move_ver(len_lines as i32 + 1);
-                        m.set_anchor();
-                        m.set_desired_v_col(a_col);
-                        m.move_ver(lines_diff);
-                        m.swap_ends();
-                        if m.caret_col() == c_col && m.anchor_col().unwrap() == a_col {
-                            return;
+            key!(Char('C')) => {
+                helper.new_moment();
+                helper.move_nth(helper.cursors().len() - 1, |mut m| {
+                    let c_col = m.caret_col();
+                    m.copy();
+                    if let Some(anchor) = m.anchor() {
+                        let a_col = m.anchor_col().unwrap_or(m.caret_col());
+                        let lines_diff = anchor.line() as i32 - m.caret().line() as i32;
+                        let len_lines = lines_diff.unsigned_abs() as usize;
+                        while m.caret().line() + len_lines < m.len().line() {
+                            m.move_ver(len_lines as i32 + 1);
+                            m.set_anchor();
+                            m.set_desired_v_col(a_col);
+                            m.move_ver(lines_diff);
+                            m.swap_ends();
+                            if m.caret_col() == c_col && m.anchor_col().unwrap() == a_col {
+                                return;
+                            }
+                            m.swap_ends();
                         }
-                        m.swap_ends();
-                    }
-                } else {
-                    while m.caret().line() < m.len().line() {
-                        m.move_ver(1);
-                        if m.caret_col() == c_col {
-                            return;
-                        }
-                    }
-                }
-                m.destroy();
-            }),
-            key!(Char('c'), ALTSHIFT) => helper.move_nth(0, |mut m| {
-                let c_col = m.caret_col();
-                m.copy();
-                if let Some(anchor) = m.anchor() {
-                    let a_col = m.anchor_col().unwrap_or(m.caret_col());
-                    let lines_diff = anchor.line() as i32 - m.caret().line() as i32;
-                    let len_lines = lines_diff.unsigned_abs() as usize;
-                    while m.caret().line().checked_sub(len_lines + 1).is_some() {
-                        m.move_ver(-1 - len_lines as i32);
-                        m.set_anchor();
-                        m.set_desired_v_col(a_col);
-                        m.move_ver(lines_diff);
-                        m.swap_ends();
-                        if m.caret_col() == c_col && m.anchor_col().unwrap() == a_col {
-                            return;
-                        }
-                        m.swap_ends();
-                    }
-                } else {
-                    while m.caret().line() > 0 {
-                        m.move_ver(-1);
-                        if m.caret_col() == c_col {
-                            return;
+                    } else {
+                        while m.caret().line() < m.len().line() {
+                            m.move_ver(1);
+                            if m.caret_col() == c_col {
+                                return;
+                            }
                         }
                     }
-                }
-                m.destroy();
-            }),
+                    m.destroy();
+                })
+            }
+            key!(Char('c'), ALTSHIFT) => {
+                helper.new_moment();
+                helper.move_nth(0, |mut m| {
+                    let c_col = m.caret_col();
+                    m.copy();
+                    if let Some(anchor) = m.anchor() {
+                        let a_col = m.anchor_col().unwrap_or(m.caret_col());
+                        let lines_diff = anchor.line() as i32 - m.caret().line() as i32;
+                        let len_lines = lines_diff.unsigned_abs() as usize;
+                        while m.caret().line().checked_sub(len_lines + 1).is_some() {
+                            m.move_ver(-1 - len_lines as i32);
+                            m.set_anchor();
+                            m.set_desired_v_col(a_col);
+                            m.move_ver(lines_diff);
+                            m.swap_ends();
+                            if m.caret_col() == c_col && m.anchor_col().unwrap() == a_col {
+                                return;
+                            }
+                            m.swap_ends();
+                        }
+                    } else {
+                        while m.caret().line() > 0 {
+                            m.move_ver(-1);
+                            if m.caret_col() == c_col {
+                                return;
+                            }
+                        }
+                    }
+                    m.destroy();
+                })
+            }
 
             ////////// Other mode changing keys.
             key!(Char(':')) => mode::set_cmd::<U>(RunCommands::new()),
-            key!(Char('|')) => mode::set_cmd::<U>(PipeSelections::new()),
+            key!(Char('|')) => {
+                helper.new_moment();
+                mode::set_cmd::<U>(PipeSelections::new())
+            }
             key!(Char('G')) => mode::set::<U>(OneKey::GoTo(SelType::Extend)),
             key!(Char('g')) => mode::set::<U>(OneKey::GoTo(SelType::Normal)),
 
