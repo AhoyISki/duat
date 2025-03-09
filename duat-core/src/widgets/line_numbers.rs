@@ -29,8 +29,7 @@ pub struct LineNumbers<U: Ui> {
 impl<U: Ui> LineNumbers<U> {
     /// The minimum width that would be needed to show the last line.
     fn calculate_width(&mut self) -> f32 {
-        // "+ 1" because we index from 1, not from 0.
-        let len = self.reader.inspect(|file, _| file.text().len().line()) + 1;
+        let len = self.reader.inspect(|file, _| file.text().len().line());
         len.ilog10() as f32
     }
 
