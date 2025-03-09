@@ -213,7 +213,6 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
     }
 
     fn once() -> crate::Result<(), ()> {
-        form::set_weak("DefaultStatus", "Default");
         form::set_weak("File", Form::yellow().italic());
         form::set_weak("NewFile", "File");
         form::set_weak("ScratchFile", "NewFile");
@@ -347,11 +346,9 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
 /// [`(FnMut() -> Arg, FnMut() -> bool)`]: FnMut
 pub macro status {
     (@append $pre_fn:expr, $checker:expr, []) => {{
-        let form_id = form::id_of!("DefaultStatus");
-
         let pre_fn = move |builder: &mut Builder, reader: &FileReader<_>| {
             $pre_fn(builder, reader);
-            builder.push(Tag::PushForm(form_id));
+            builder.push(Tag::PushForm(form::DEFAULT_ID));
         };
 
         (pre_fn, $checker)

@@ -298,7 +298,7 @@ impl<U: Ui> Widget<U> for File {
         area.print_with(
             &mut self.text,
             self.cfg,
-            form::painter(),
+            form::painter::<Self>(),
             move |caret, item| {
                 has_wrapped |= caret.wrap;
                 if has_wrapped && item.part.is_char() {

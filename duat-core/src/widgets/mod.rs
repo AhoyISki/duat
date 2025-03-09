@@ -406,7 +406,7 @@ where
     /// widgets like [`LineNumbers`] to read.
     fn print(&mut self, area: &U::Area) {
         let cfg = self.print_cfg();
-        area.print(self.text_mut(), cfg, form::painter())
+        area.print(self.text_mut(), cfg, form::painter::<Self>())
     }
 
     /// Actions taken when this widget opens for the first time

@@ -6,11 +6,7 @@ use crossterm::style::{Attribute, Attributes, ContentStyle};
 pub use crossterm::{cursor::SetCursorStyle as CursorShape, style::Color};
 use parking_lot::{RwLock, RwLockWriteGuard};
 
-pub use self::global::{
-    FormFmt, add_colorscheme, extra_cursor, from_id, id_of, inner_to_id, main_cursor, name_of,
-    painter, set, set_colorscheme, set_extra_cursor, set_main_cursor, set_many, set_weak,
-    unset_extra_cursor, unset_main_cursor,
-};
+pub use self::global::*;
 pub(crate) use self::global::{colorscheme_exists, exists};
 use crate::{
     data::RwLockReadGuard,
@@ -35,9 +31,13 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
     ("DefaultHint", Form::grey().0, Normal),
     ("AccentHint", Form::grey().bold().0, Normal),
     ("MainCursor", Form::reverse().0, Normal),
-    ("ExtraCursor", Form::reverse().0, Ref(M_CUR_ID)),
-    ("MainSelection", Form::on_dark_grey().0, Normal),
-    ("ExtraSelection", Form::on_dark_grey().0, Ref(M_SEL_ID)),
+    ("ExtraCursor", Form::reverse().0, Ref(M_CUR_ID.0 as usize)),
+    ("MainSelection", Form::white().on_dark_grey().0, Normal),
+    (
+        "ExtraSelection",
+        Form::white().on_dark_grey().0,
+        Ref(M_SEL_ID.0 as usize),
+    ),
     ("Inactive", Form::grey().0, Normal),
     // Tree sitter Forms
     ("type", Form::yellow().italic().0, Normal),
@@ -60,7 +60,7 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
     ("constructor", Form::yellow().0, Normal),
     ("module", Form::blue().italic().0, Normal),
     // Markup Forms
-    ("markup", Form::new().0, Ref(DEFAULT_ID)),
+    ("markup", Form::new().0, Normal),
     ("markup.strong", Form::cyan().bold().0, Normal),
     ("markup.italic", Form::cyan().italic().0, Normal),
     ("markup.strikethrough", Form::cyan().crossed_out().0, Normal),
@@ -81,9 +81,9 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
 
 /// The functions that will be exposed for public use.
 mod global {
-    use std::sync::LazyLock;
+    use std::{any::TypeId, collections::HashMap, sync::LazyLock};
 
-    use parking_lot::Mutex;
+    use parking_lot::{Mutex, RwLock};
 
     use super::{BASE_FORMS, BuiltForm, ColorScheme, CursorShape, Form, FormId, Painter, Palette};
     use crate::{
@@ -141,18 +141,10 @@ mod global {
         }
 
         let mut forms = FORMS.lock();
-        if let Kind::Ref(refed) = kind
-            && !forms.contains(&refed)
-        {
-            forms.push(refed);
+        if let Kind::Ref(refed) = kind {
+            position_of_name(&mut forms, refed);
         }
-
-        if let Some(id) = forms.iter().position(|form| *form == name) {
-            FormId(id as u16)
-        } else {
-            forms.push(name);
-            FormId(forms.len() as u16 - 1)
-        }
+        FormId(position_of_name(&mut forms, name) as u16)
     }
 
     /// Sets a form, "weakly"
@@ -186,18 +178,10 @@ mod global {
         }
 
         let mut forms = FORMS.lock();
-        if let Kind::Ref(refed) = kind
-            && !forms.contains(&refed)
-        {
-            forms.push(refed);
+        if let Kind::Ref(refed) = kind {
+            position_of_name(&mut forms, refed);
         }
-
-        if let Some(id) = forms.iter().position(|form| *form == name) {
-            FormId(id as u16)
-        } else {
-            forms.push(name);
-            FormId(forms.len() as u16 - 1)
-        }
+        FormId(position_of_name(&mut forms, name) as u16)
     }
 
     /// Returns a [`Form`], given a [`FormId`].
@@ -212,7 +196,7 @@ mod global {
 
     /// The name of a form, given a [`FormId`]
     pub fn name_of(id: FormId) -> &'static str {
-        PALETTE.name_from_id(id)
+        FORMS.lock()[id.0 as usize]
     }
 
     /// The current main cursor, with the `"MainCursor"` [`Form`]
@@ -310,6 +294,10 @@ mod global {
 
     /// A [`Painter`] for coloring text efficiently
     ///
+    /// The type argument is used to distinguish which `"Default"`
+    /// [`Form`] is supposed to be used (e.g. `"Default.File"`,
+    /// `"Default.StatusLine"`, etc).
+    ///
     /// This function will be used primarily when printing widgets to
     /// the screen, which is something that only [`Ui`]s should be
     /// doing.
@@ -322,14 +310,39 @@ mod global {
     /// effect.
     ///
     /// [`Ui`]: crate::ui::Ui
-    pub fn painter() -> Painter {
-        PALETTE.painter()
+    pub fn painter<W: ?Sized + 'static>() -> Painter {
+        fn default_id(type_id: TypeId, type_name: &'static str) -> FormId {
+            static IDS: LazyLock<RwLock<HashMap<TypeId, FormId>>> = LazyLock::new(RwLock::default);
+            let mut ids = IDS.write();
+
+            if let Some(id) = ids.get(&type_id) {
+                *id
+            } else {
+                let name: &'static str = format!("Default.{type_name}").leak();
+                let id = id_from_name(name);
+                crate::thread::queue(move || add_forms(&[name]));
+                ids.insert(type_id, id);
+                id
+            }
+        }
+        PALETTE.painter(default_id(TypeId::of::<W>(), crate::duat_name::<W>()))
     }
 
     /// Returns the [`FormId`] from the name of a [`Form`]
     ///
     /// You can also pass multiple names, in order to get a list of
     /// ids.
+    ///
+    /// If there is no [`Form`] with the given name, a new one is
+    /// created, which will reference another [`Form`] with the
+    /// following priority:
+    ///
+    /// - If the name contains a `'.'` character, it will reference
+    ///   the [`Form`] whose name is a suffix up to the last `'.'`.
+    ///   For example, `"Prefix.Middle.Suffix"` will reference
+    ///   `"Prefix.Middle"`;
+    /// - If the name does not contain a `'.'`, it will reference the
+    ///   `"Default"` [`Form`];
     ///
     /// # Note
     ///
@@ -342,34 +355,62 @@ mod global {
     /// [`HashMap`]: std::collections::HashMap
     pub macro id_of {
         ($form:expr) => {{
-            static ID: LazyLock<FormId> = LazyLock::new(|| inner_to_id($form));
-            *ID
+            static ID: std::sync::OnceLock<FormId> = std::sync::OnceLock::new();
+            *ID.get_or_init(|| {
+                let name: &'static str = $form.to_string().leak();
+                let id = id_from_name(name);
+                crate::thread::queue(move || add_forms(&[name]));
+                id
+            })
         }},
         ($($form:expr),+) => {{
-            static IDS: LazyLock<&[FormId]> = LazyLock::new(|| {
+            static IDS: std::sync::OnceLock<&[FormId]> = std::sync::OnceLock::new();
+            *IDS.get_or_init(|| {
     			let mut ids = Vec::new();
-    			$(
-        			ids.push(inner_to_id($form));
-    			)+
+    			let names = vec![$( $form.to_string().leak() ),+];
+    			for name in names.iter() {
+        			ids.push(id_from_name(name));
+    			}
+    			crate::thread::queue(move || add_forms(names.as_ref()));
     			ids.leak()
-			});
-			*ID
+    		})
         }}
     }
 
-    /// Returns the [`FormId`] of the form's name
-    pub fn inner_to_id(name: impl ToString) -> FormId {
-        let name: &'static str = name.to_string().leak();
+    /// Non static version of [`id_of!`]
+    ///
+    /// You should only use this if the names of the [`Form`]s in
+    /// question are not known at compile time. And if that is the
+    /// case, you should try to find a way to memoize around this
+    /// issue (usually with something like a [`HashMap`]).
+    pub fn ids_of_non_static(names: impl IntoIterator<Item = impl ToString>) -> Vec<FormId> {
+        let names: Vec<&str> = names
+            .into_iter()
+            .map(|n| {
+                let str: &'static str = n.to_string().leak();
+                str
+            })
+            .collect();
 
-        crate::thread::queue(move || PALETTE.id_from_name(name));
-
+        let mut ids = Vec::new();
         let mut forms = FORMS.lock();
-        if let Some(id) = forms.iter().position(|form| *form == name) {
-            FormId(id as u16)
-        } else {
-            forms.push(name);
-            FormId(forms.len() as u16 - 1)
+        for name in names.iter() {
+            ids.push(FormId(position_of_name(&mut forms, name) as u16));
         }
+        crate::thread::queue(move || add_forms(names.as_ref()));
+        ids
+    }
+
+    /// Returns the [`FormId`] of the form's name
+    #[doc(hidden)]
+    pub fn id_from_name(name: &'static str) -> FormId {
+        let mut forms = FORMS.lock();
+        FormId(position_of_name(&mut forms, name) as u16)
+    }
+
+    #[doc(hidden)]
+    pub fn add_forms(names: &[&'static str]) {
+        PALETTE.set_many(names);
     }
 
     /// Adds a [`ColorScheme`] to the list of colorschemes
@@ -425,6 +466,19 @@ mod global {
     /// Wether or not a specific [`ColorScheme`] was added
     pub(crate) fn colorscheme_exists(name: &str) -> bool {
         COLORSCHEMES.lock().iter().any(|cs| cs.name() == name)
+    }
+
+    fn position_of_name(names: &mut Vec<&'static str>, name: &'static str) -> usize {
+        if let Some((i, _)) = names.iter().enumerate().find(|(_, rhs)| **rhs == name) {
+            i
+        } else if let Some((refed, _)) = name.rsplit_once('.') {
+            position_of_name(names, refed);
+            names.push(name);
+            names.len() - 1
+        } else {
+            names.push(name);
+            names.len() - 1
+        }
     }
 
     /// A kind of [`Form`]
@@ -490,7 +544,7 @@ impl FormId {
     /// The internal id of the [`FormId`]
     ///
     /// This may be useful in certain situations.
-    pub fn to_u16(self) -> u16 {
+    pub const fn to_u16(self) -> u16 {
         self.0
     }
 }
@@ -807,121 +861,90 @@ impl Palette {
     /// Sets a [`Form`]
     fn set_form(&self, name: &'static str, form: Form) {
         let mut inner = self.0.write();
+        let (i, _) = position_and_form(&mut inner.forms, name);
 
-        let id = if let Some(i) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
-            inner.forms[i] = (name, form, FormType::Normal);
+        inner.forms[i] = (name, form, FormType::Normal);
 
-            for refed in refs_of(&inner, i, i) {
-                inner.forms[refed].1 = form;
-            }
+        for refed in refs_of(&inner, i) {
+            inner.forms[refed].1 = form;
+        }
 
-            if let Some(sender) = SENDER.get() {
-                sender.send_form_changed().unwrap()
-            }
-            FormId(i as u16)
-        } else {
-            inner.forms.push((name, form, FormType::Normal));
-            FormId(inner.forms.len() as u16 - 1)
-        };
+        if let Some(sender) = SENDER.get() {
+            sender.send_form_changed().unwrap()
+        }
 
-        hooks::trigger::<FormSet>((name, id, form));
+        hooks::trigger::<FormSet>((name, FormId(i as u16), form));
     }
 
     /// Sets a [`Form`] "weakly"
     fn set_weak_form(&self, name: &'static str, form: Form) {
         let mut inner = self.0.write();
+        let (i, _) = position_and_form(&mut inner.forms, name);
 
-        if let Some(i) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
-            let (_, f, ty) = &mut inner.forms[i];
-            if let FormType::Weakest = ty {
-                *f = form;
-                *ty = FormType::Normal;
+        let (_, f, f_ty) = &mut inner.forms[i];
+        if let FormType::Weakest | FormType::WeakestRef(_) = f_ty {
+            *f = form;
+            *f_ty = FormType::Normal;
 
-                if let Some(sender) = SENDER.get() {
-                    sender.send_form_changed().unwrap()
-                }
+            if let Some(sender) = SENDER.get() {
+                sender.send_form_changed().unwrap()
             }
-        } else {
-            inner.forms.push((name, form, FormType::Normal));
-            let i = inner.forms.len() - 1;
-            for refed in refs_of(&inner, i, i) {
+            for refed in refs_of(&inner, i) {
                 inner.forms[refed].1 = form;
             }
         }
     }
 
     /// Makes a [`Form`] reference another
-    fn set_ref(&self, name: &'static str, refed: impl AsRef<str>) {
-        let refed = {
-            let refed: &'static str = refed.as_ref().to_string().leak();
-            self.id_from_name(refed)
-        };
-
+    fn set_ref(&self, name: &'static str, refed: &'static str) {
         let mut inner = self.0.write();
-        let (_, form, _) = inner.forms[refed.0 as usize];
+        let (refed, form) = position_and_form(&mut inner.forms, refed);
+        let (i, _) = position_and_form(&mut inner.forms, name);
 
-        if let Some(i) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
-            for refed in refs_of(&inner, i, i) {
-                inner.forms[refed].1 = form;
-            }
+        for refed in refs_of(&inner, i) {
+            inner.forms[refed].1 = form;
+        }
 
-            // If it would be circular, we just don't reference anything.
-            if would_be_circular(&inner, i, refed.0 as usize) {
-                inner.forms[i] = (name, form, FormType::Normal);
-            } else {
-                inner.forms[i] = (name, form, FormType::Ref(refed));
-            }
+        // If it would be circular, we just don't reference anything.
+        if would_be_circular(&inner, i, refed) {
+            inner.forms[i] = (name, form, FormType::Normal);
+        } else {
+            inner.forms[i] = (name, form, FormType::Ref(refed));
+        }
+
+        if let Some(sender) = SENDER.get() {
+            sender.send_form_changed().unwrap()
+        }
+        hooks::trigger::<FormSet>((name, FormId(i as u16), form));
+    }
+
+    /// Makes a [`Form`] reference another "weakly"
+    fn set_weak_ref(&self, name: &'static str, refed: &'static str) {
+        let mut inner = self.0.write();
+        let (refed, form) = position_and_form(&mut inner.forms, refed);
+        let (i, _) = position_and_form(&mut inner.forms, name);
+
+        // For weak refs, no checks are done, since a form is only set if it
+        // doesn't exist, and for there to be refs to it, it must exist.
+        let (_, f, f_ty) = &mut inner.forms[i];
+        if let FormType::Weakest | FormType::WeakestRef(_) = f_ty {
+            *f = form;
+            *f_ty = FormType::WeakestRef(refed);
 
             if let Some(sender) = SENDER.get() {
                 sender.send_form_changed().unwrap()
             }
-            hooks::trigger::<FormSet>((name, FormId(i as u16), form));
-        } else {
-            // If the form didn't previously exist, nothing was referencing it, so
-            // no checks are done.
-            inner.forms.push((name, form, FormType::Ref(refed)));
-            hooks::trigger::<FormSet>((name, FormId(inner.forms.len() as u16 - 1), form));
-        }
-    }
-
-    /// Makes a [`Form`] reference another "weakly"
-    fn set_weak_ref(&self, name: &'static str, refed: impl AsRef<str>) {
-        let refed = {
-            let refed: &'static str = refed.as_ref().to_string().leak();
-            self.id_from_name(refed)
-        };
-
-        let mut inner = self.0.write();
-        let (_, form, _) = inner.forms[refed.0 as usize];
-
-        // For weak refs, no checks are done, since a form is only set if it
-        // doesn't exist, and for there to be refs to it, it must exist.
-        if let Some(i) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
-            let (_, f, ty) = &mut inner.forms[i];
-            if let FormType::Weakest = ty {
-                *f = form;
-                *ty = FormType::Ref(refed);
-
-                if let Some(sender) = SENDER.get() {
-                    sender.send_form_changed().unwrap()
-                }
+            for refed in refs_of(&inner, i) {
+                inner.forms[refed].1 = form;
             }
-        } else {
-            inner.forms.push((name, form, FormType::Ref(refed)));
         }
     }
 
-    /// Returns the [`FormId`] from a given `name`
-    ///
-    /// If the named form doesn't exist, create it.
-    fn id_from_name(&self, name: &'static str) -> FormId {
+    /// Sets many [`Form`]s
+    fn set_many(&self, names: &[&'static str]) {
         let mut inner = self.0.write();
-
-        if let Some(id) = inner.forms.iter().position(|(cmp, ..)| *cmp == name) {
-            FormId(id as u16)
-        } else {
-            inner.forms.push((name, Form::new().0, FormType::Weakest));
-            FormId((inner.forms.len() - 1) as u16)
+        for name in names {
+            position_and_form(&mut inner.forms, name);
         }
     }
 
@@ -929,17 +952,6 @@ impl Palette {
     fn form_from_id(&self, id: FormId) -> Option<Form> {
         let inner = self.0.read_recursive();
         inner.forms.get(id.0 as usize).map(|(_, form, _)| *form)
-    }
-
-    /// Returns the name of the [`FormId`]
-    fn name_from_id(&self, id: FormId) -> &'static str {
-        let inner = self.0.read_recursive();
-        let nth = inner.forms.get(id.0 as usize).map(|(name, ..)| name);
-
-        let Some(ret) = nth else {
-            unreachable!("Form with id {} not found, this should never happen", id.0);
-        };
-        ret
     }
 
     /// The [`Form`] and [`CursorShape`] of the main cursor
@@ -987,12 +999,16 @@ impl Palette {
     }
 
     /// Returns a [`Painter`]
-    fn painter(&'static self) -> Painter {
+    fn painter(&'static self, id: FormId) -> Painter {
         let inner = self.0.read();
-        let default = inner.forms[DEFAULT_ID.0 as usize].1;
+        let default = inner
+            .forms
+            .get(id.0 as usize)
+            .map(|(_, f, _)| *f)
+            .unwrap_or(Form::new().0);
         Painter {
             inner,
-            forms: vec![(default, DEFAULT_ID)],
+            forms: vec![(default, id)],
             reset_count: 0,
             final_form_start: 1,
             still_on_same_byte: false,
@@ -1171,20 +1187,20 @@ pub(crate) fn set_sender(sender: Sender) {
 #[derive(Debug, Clone)]
 enum FormType {
     Normal,
-    Ref(FormId),
+    Ref(usize),
     Weakest,
+    WeakestRef(usize),
 }
 
 /// The position of each form that eventually references the `n`th
-fn refs_of(inner: &RwLockWriteGuard<InnerPalette>, refed: usize, top_ref: usize) -> Vec<usize> {
+fn refs_of(inner: &RwLockWriteGuard<InnerPalette>, refed: usize) -> Vec<usize> {
     let mut refs = Vec::new();
-    for (i, (.., f_ty)) in inner.forms.iter().enumerate() {
-        if let FormType::Ref(ref_id) = f_ty
-            && ref_id.0 as usize == refed
-            && ref_id.0 as usize != top_ref
+    for (i, (name, .., f_ty)) in inner.forms.iter().enumerate() {
+        if let FormType::Ref(ref_id) | FormType::WeakestRef(ref_id) = f_ty
+            && *ref_id == refed
         {
             refs.push(i);
-            refs.extend(refs_of(inner, i, top_ref));
+            refs.extend(refs_of(inner, i));
         }
     }
     refs
@@ -1192,10 +1208,10 @@ fn refs_of(inner: &RwLockWriteGuard<InnerPalette>, refed: usize, top_ref: usize)
 
 /// If form references would eventually lead to a loop
 fn would_be_circular(inner: &RwLockWriteGuard<InnerPalette>, referee: usize, refed: usize) -> bool {
-    if let (.., FormType::Ref(refed_ref)) = inner.forms[refed] {
-        match refed_ref.0 as usize == referee {
+    if let (.., FormType::Ref(refed_ref) | FormType::WeakestRef(refed_ref)) = inner.forms[refed] {
+        match refed_ref == referee {
             true => true,
-            false => would_be_circular(inner, referee, refed_ref.0 as usize),
+            false => would_be_circular(inner, referee, refed_ref),
         }
     } else {
         false
@@ -1218,6 +1234,19 @@ fn absolute_style(list: &[(Form, FormId)]) -> ContentStyle {
     }
 
     style
+}
+
+fn position_and_form(forms: &mut Vec<(&str, Form, FormType)>, name: &'static str) -> (usize, Form) {
+    if let Some((i, (_, form, _))) = forms.iter().enumerate().find(|(_, (lhs, ..))| *lhs == name) {
+        (i, *form)
+    } else if let Some((refed, _)) = name.rsplit_once('.') {
+        let (i, form) = position_and_form(forms, refed);
+        forms.push((name, form, FormType::WeakestRef(i)));
+        (forms.len() - 1, form)
+    } else {
+        forms.push((name, Form::new().0, FormType::Weakest));
+        (forms.len() - 1, Form::new().0)
+    }
 }
 
 /// Converts a string to a color, supporst hex, RGB and HSL

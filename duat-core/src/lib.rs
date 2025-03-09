@@ -459,7 +459,7 @@ pub mod thread {
     ///
     /// All queued actions will be done in the sequence that they came
     /// in, sequentially in a single thread.
-    pub(crate) fn queue<R>(f: impl FnOnce() -> R + Send + 'static) {
+    pub fn queue<R>(f: impl FnOnce() -> R + Send + 'static) {
         fn queue_inner(f: Box<dyn FnOnce() + Send + 'static>) {
             static LOOP: Once = Once::new();
             let (sender, receiver) = &*ACTIONS;
@@ -679,6 +679,11 @@ pub type Result<T, E> = std::result::Result<T, Error<E>>;
 /// Use this function if you need a name of a type to be
 /// referrable by string, such as by commands or by the
 /// user.
+///
+/// # NOTE
+///
+/// Any `<Ui>` or `Ui, ` type arguments will be removed from the final
+/// result, since Duat is supposed to have only one [`Ui`] in use.
 pub fn duat_name<T: ?Sized + 'static>() -> &'static str {
     fn duat_name_inner(type_id: TypeId, type_name: &str) -> &'static str {
         static NAMES: LazyLock<RwLock<HashMap<TypeId, &'static str>>> =
@@ -698,6 +703,16 @@ pub fn duat_name<T: ?Sized + 'static>() -> &'static str {
                     if is_type || is_punct || is_dyn {
                         name.push_str(segment);
                     }
+                }
+            }
+
+            while let Some((i, len)) = None
+                .or_else(|| name.find("<Ui>").map(|i| (i, "<Ui>".len())))
+                .or_else(|| name.find("Ui, ").map(|i| (i, "Ui, ".len())))
+                .or_else(|| name.find("::<Ui>").map(|i| (i, "::<Ui>".len())))
+            {
+                unsafe {
+                    name.as_mut_vec().splice(i..(i + len), []);
                 }
             }
 

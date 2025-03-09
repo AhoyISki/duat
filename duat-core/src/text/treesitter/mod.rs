@@ -486,21 +486,15 @@ fn forms_from_query(
     if let Some((_, (keys, forms))) = lists.iter().find(|(l, _)| *l == lang) {
         (keys.clone(), forms)
     } else {
-        let mut forms = Vec::new();
         let capture_names = query.capture_names();
         let keys = Key::new_many(capture_names.len() * 2);
 
         let mut iter_keys = keys.clone();
-        for name in capture_names {
-            let start = iter_keys.next().unwrap();
-            let end = iter_keys.next().unwrap();
-            forms.push(if name.contains('.') {
-                let (refed, _) = name.rsplit_once('.').unwrap();
-                (form::set_weak(name, refed), start, end)
-            } else {
-                (form::set_weak(name, "Default"), start, end)
-            });
-        }
+        let ids = form::ids_of_non_static(capture_names);
+        let forms: Vec<(FormId, Key, Key)> = ids
+            .into_iter()
+            .map(|id| (id, iter_keys.next().unwrap(), iter_keys.next().unwrap()))
+            .collect();
 
         lists.push((lang, (keys, forms.leak())));
         let (_, (keys, forms)) = lists.last().unwrap();

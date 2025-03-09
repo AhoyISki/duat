@@ -366,7 +366,7 @@ impl<I: IncSearcher<U>, U: Ui> IncSearch<I, U> {
 impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
     fn update(&mut self, text: &mut Text) {
         let FnOrInc::Inc(inc, _) = &mut self.fn_or_inc else {
-            unreachable!();
+            return;
         };
 
         text.remove_tags(.., self.key);
@@ -401,7 +401,7 @@ impl<I: IncSearcher<U>, U: Ui> CmdLineMode<U> for IncSearch<I, U> {
 
     fn on_unfocus(&mut self, _text: &mut Text) {
         let FnOrInc::Inc(inc, _) = &mut self.fn_or_inc else {
-            unreachable!();
+            unreachable!()
         };
 
         context::cur_file::<U>()

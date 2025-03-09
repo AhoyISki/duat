@@ -304,7 +304,7 @@ impl<U: Ui> Session<U> {
                             reprint_screen = true;
                             continue;
                         }
-                        DuatEvent::MetaMsg(msg) => context::notify(msg),
+                        DuatEvent::MetaMsg(msg) => context::notify(*msg),
                         DuatEvent::ReloadConfig => reasons.push(BreakTo::ReloadConfig),
                         DuatEvent::OpenFile(name) => reasons.push(BreakTo::OpenFile(name)),
                         DuatEvent::CloseFile(name) => reasons.push(BreakTo::CloseFile(name)),
