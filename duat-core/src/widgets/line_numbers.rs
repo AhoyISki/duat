@@ -71,7 +71,7 @@ impl<U: Ui> LineNumbers<U> {
     }
 
     pub fn get_cfg(&self) -> LineNumbersCfg<U> {
-        self.cfg
+        self.cfg.clone()
     }
 
     pub fn reconfigure(&mut self, cfg: LineNumbersCfg<U>) {
@@ -83,7 +83,14 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
     type Cfg = LineNumbersCfg<U>;
 
     fn cfg() -> Self::Cfg {
-        LineNumbersCfg::new()
+        Self::Cfg {
+            num_rel: LineNum::Abs,
+            align: Alignment::Left,
+            main_align: Alignment::Right,
+            show_wraps: false,
+            specs: PushSpecs::left(),
+            _ghost: PhantomData,
+        }
     }
 
     fn update(&mut self, area: &U::Area) {
@@ -111,7 +118,7 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
 }
 
 /// How to show the line numbers on screen.
-#[derive(Default, Debug, Copy, Clone)]
+#[derive(Default, Debug, Clone, Copy)]
 pub enum LineNum {
     #[default]
     /// Line numbers relative to the beginning of the file.
@@ -124,41 +131,18 @@ pub enum LineNum {
 }
 
 /// Configuration options for the [`LineNumbers<U>`] widget.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
+#[doc(hidden)]
 pub struct LineNumbersCfg<U> {
     pub num_rel: LineNum,
     pub align: Alignment,
     pub main_align: Alignment,
     pub show_wraps: bool,
-    pub specs: PushSpecs,
-    pub ghost: PhantomData<U>,
-}
-
-impl<U> Copy for LineNumbersCfg<U> {}
-impl<U> Clone for LineNumbersCfg<U> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<U> Default for LineNumbersCfg<U> {
-    fn default() -> Self {
-        Self::new()
-    }
+    specs: PushSpecs,
+    _ghost: PhantomData<U>,
 }
 
 impl<U> LineNumbersCfg<U> {
-    pub fn new() -> Self {
-        Self {
-            num_rel: LineNum::Abs,
-            align: Alignment::Left,
-            main_align: Alignment::Right,
-            show_wraps: false,
-            specs: PushSpecs::left(),
-            ghost: PhantomData,
-        }
-    }
-
     pub fn absolute(self) -> Self {
         Self { num_rel: LineNum::Abs, ..self }
     }

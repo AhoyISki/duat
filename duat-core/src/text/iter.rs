@@ -73,7 +73,7 @@ impl Item {
 /// This is useful for both printing and measurement of [`Text`], and
 /// can incorporate string replacements as part of its design.
 #[derive(Clone)]
-pub struct Iter<'a> {
+pub struct FwdIter<'a> {
     text: &'a Text,
     point: Point,
     init_point: Point,
@@ -90,7 +90,7 @@ pub struct Iter<'a> {
     _conceals: Conceal<'a>,
 }
 
-impl<'a> Iter<'a> {
+impl<'a> FwdIter<'a> {
     pub(super) fn new_at(text: &'a Text, tp: impl TwoPoints) -> Self {
         let (r, g) = tp.to_points();
         let point = r.min(text.len());
@@ -163,7 +163,6 @@ impl<'a> Iter<'a> {
                 self.ghost = Some((total_ghost, total_ghost.byte()));
                 self.main_iter = Some((point, chars, tags));
             }
-
             RawTag::StartConceal(_) => {
                 self.conceals += 1;
             }
@@ -179,7 +178,7 @@ impl<'a> Iter<'a> {
             }
             RawTag::ConcealUntil(b) => {
                 let point = self.text.point_at(*b as usize);
-                *self = Iter::new_at(self.text, point);
+                *self = FwdIter::new_at(self.text, point);
                 return false;
             }
             RawTag::MainCursor(_) | RawTag::ExtraCursor(_) if b < self.init_point.byte() => {}
@@ -202,37 +201,38 @@ impl<'a> Iter<'a> {
     }
 }
 
-impl Iterator for Iter<'_> {
+impl Iterator for FwdIter<'_> {
     type Item = Item;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let tag = self.tags.peek();
+        let tag = self.tags.peek();
 
-            if let Some(&(b, tag)) = tag
-                && (b <= self.point.byte() || self.conceals > 0)
-            {
-                self.tags.next();
+        if let Some(&(b, tag)) = tag
+            && (b <= self.point.byte() || self.conceals > 0)
+        {
+            self.tags.next();
 
-                if !self.handle_special_tag(&tag, b) {
-                    break Some(Item::new(self.points(), Part::from_raw(tag)));
-                }
-            } else if let Some(char) = self.chars.next() {
-                let points = self.points();
-                self.point = self.point.fwd(char);
-
-                self.ghost = match self.main_iter {
-                    Some(..) => self.ghost.map(|(g, d)| (g.fwd(char), d + char.len_utf8())),
-                    None => None,
-                };
-
-                break Some(Item::new(points, Part::Char(char)));
-            } else if let Some(backup) = self.main_iter.take() {
-                (self.point, self.chars, self.tags) = backup;
+            if self.handle_special_tag(&tag, b) {
+                self.next()
             } else {
-                break None;
+                Some(Item::new(self.points(), Part::from_raw(tag)))
             }
+        } else if let Some(char) = self.chars.next() {
+            let points = self.points();
+            self.point = self.point.fwd(char);
+
+            self.ghost = match self.main_iter {
+                Some(..) => self.ghost.map(|(g, d)| (g.fwd(char), d + char.len_utf8())),
+                None => None,
+            };
+
+            Some(Item::new(points, Part::Char(char)))
+        } else if let Some(backup) = self.main_iter.take() {
+            (self.point, self.chars, self.tags) = backup;
+            self.next()
+        } else {
+            None
         }
     }
 }
@@ -369,31 +369,32 @@ impl Iterator for RevIter<'_> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let tag = self.tags.peek();
+        let tag = self.tags.peek();
 
-            if let Some(&(b, tag)) = tag
-                && (b >= self.point.byte() || self.conceals > 0)
-            {
-                self.tags.next();
+        if let Some(&(b, tag)) = tag
+            && (b >= self.point.byte() || self.conceals > 0)
+        {
+            self.tags.next();
 
-                if !self.handled_meta_tag(&tag, b) {
-                    break Some(Item::new(self.points(), Part::from_raw(tag)));
-                }
-            } else if let Some(char) = self.chars.next() {
-                self.point = self.point.rev(char);
-
-                self.ghost = match self.main_iter {
-                    Some(..) => self.ghost.map(|(g, d)| (g.rev(char), d - char.len_utf8())),
-                    None => None,
-                };
-
-                break Some(Item::new(self.points(), Part::Char(char)));
-            } else if let Some(last_iter) = self.main_iter.take() {
-                (self.point, self.chars, self.tags) = last_iter;
+            if self.handled_meta_tag(&tag, b) {
+                self.next()
             } else {
-                break None;
+                Some(Item::new(self.points(), Part::from_raw(tag)))
             }
+        } else if let Some(char) = self.chars.next() {
+            self.point = self.point.rev(char);
+
+            self.ghost = match self.main_iter {
+                Some(..) => self.ghost.map(|(g, d)| (g.rev(char), d - char.len_utf8())),
+                None => None,
+            };
+
+            Some(Item::new(self.points(), Part::Char(char)))
+        } else if let Some(last_iter) = self.main_iter.take() {
+            (self.point, self.chars, self.tags) = last_iter;
+            self.next()
+        } else {
+            None
         }
     }
 }

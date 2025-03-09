@@ -13,23 +13,22 @@
 //! etc.
 //!
 //! [data]: crate::data
-pub mod common;
 mod state;
 
 use std::fmt::Alignment;
-
-use common::{main_col, main_line, selections_fmt};
 
 pub use self::state::State;
 use crate::{
     cfg::PrintCfg,
     context::{self, FileReader},
     form::{self, Form},
-    text::{AlignCenter, AlignRight, Builder, Tag, Text, text},
+    status::{file_fmt, main_fmt, mode_fmt, selections_fmt},
+    text::{AlignCenter, AlignRight, Builder, Text, text},
     ui::{PushSpecs, Ui},
-    widgets::{File, Widget, WidgetCfg},
+    widgets::{Widget, WidgetCfg},
 };
 
+#[doc(hidden)]
 pub struct StatusLineCfg<U: Ui> {
     pre_fn: Box<dyn FnMut(crate::text::Builder, &FileReader<U>) -> Text + Send + Sync>,
     checker: Box<dyn Fn() -> bool + Send + Sync>,
@@ -38,14 +37,7 @@ pub struct StatusLineCfg<U: Ui> {
 }
 
 impl<U: Ui> StatusLineCfg<U> {
-    pub fn new() -> Self {
-        status!(
-            [File] { File::name } " " [Selections] selections_fmt " "
-            [Coords] main_col [Separator] ":" [Coords] main_line
-            [Separator] "/" [Coords] { File::len_lines }
-        )
-    }
-
+    #[doc(hidden)]
     pub fn new_with(
         (pre_fn, checker): (
             Box<dyn FnMut(Builder, &FileReader<U>) -> Text + 'static + Send + Sync>,
@@ -127,12 +119,6 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
     }
 }
 
-impl<U: Ui> Default for StatusLineCfg<U> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// A widget to show information, usually about a [`File`]
 ///
 /// This widget is updated whenever any of its parts needs to be
@@ -185,6 +171,7 @@ impl<U: Ui> Default for StatusLineCfg<U> {
 /// # }
 /// ```
 ///
+/// [`File`]: super::File
 /// [`OnFileOpen`]: crate::hooks::OnFileOpen
 /// [`OnWindowOpen`]: crate::hooks::OnWindowOpen
 pub struct StatusLine<U: Ui> {
@@ -197,7 +184,7 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
     type Cfg = StatusLineCfg<U>;
 
     fn cfg() -> Self::Cfg {
-        StatusLineCfg::new()
+        status!(file_fmt " " mode_fmt " " selections_fmt " " main_fmt)
     }
 
     fn update(&mut self, _area: &U::Area) {
@@ -275,13 +262,6 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
 /// # }
 /// ```
 ///
-/// As you can see, you can also pass multiple of these arguments,
-/// here's the pairings you can make:
-///
-/// * A [`File`] and the [`&dyn Mode`];
-/// * A [`File`] and a [`&impl Mode`];
-/// * A [`File`] and a [`&impl Widget`];
-///
 /// Now, there are other types of arguments that you can also pass.
 /// They update differently from the previous ones. The previous
 /// arguments update when the [`File`] updates. The following types of
@@ -289,11 +269,11 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
 ///
 /// * A [`Text`] argument can include [`Form`]s and buttons;
 /// * Any [`impl Display`], such as numbers, strings, chars, etc;
-/// * [`RwData`] and [`RoData`]s of the previous two types. These will
-///   update whenever the data inside is changed;
-/// * An [`(FnMut() -> Arg, FnMut() -> bool)`] tuple, where `Arg ==
-///   Text || impl Display`. The first function returns what will be
-///   shown, while the second function tells it to update;
+/// * [`RwData`], [`RoData`] and [`DataMap`]s of the previous two
+///   types. These will update whenever the data inside is changed;
+/// * An [`(FnMut() -> Text | impl Display, FnMut() -> bool)`] tuple.
+///   The first function returns what will be shown, while the second
+///   function tells it to update;
 ///
 /// Here's some examples:
 ///
@@ -328,19 +308,21 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
 /// });
 ///
 /// // When I do this, the StatusLine will instantly update
-/// // Both the `changing_text` and `counter` will change.
+/// // both the `changing_text` and `counter`.
 /// *changing_text.write() = text!( "New text 😎");
 /// # }
 /// ```
 ///
-/// [`&File`]: File
+/// [`File`]: super::File
+/// [`&File`]: super::File
 /// [`&Cursors`]: crate::mode::Cursors
 /// [`&impl Widget`]: Widget
 /// [`impl Display`]: std::fmt::Display
 /// [`RwData`]: crate::data::RwData
 /// [`RoData`]: crate::data::RoData
+/// [`DataMap`]: crate::data::DataMap
 /// [`FnMut() -> Arg`]: FnMut
-/// [`(FnMut() -> Arg, FnMut() -> bool)`]: FnMut
+/// [`(FnMut() -> Text | impl Display, FnMut() -> bool)`]: FnMut
 pub macro status {
     (@append $pre_fn:expr, $checker:expr, []) => {{
         let pre_fn = move |builder: &mut Builder, reader: &FileReader<_>| {

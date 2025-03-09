@@ -524,26 +524,14 @@ pub fn plug_inner(plugin: impl Plugin<Ui>) {
 
 pub mod widgets {
     //! Duat's builtin widgets
-    pub use duat_core::{
-        ui::Constraint,
-        widgets::{File, LineNum, Widget, status},
-    };
-
-    use crate::Ui;
-
-    pub type CmdLine = duat_core::widgets::CmdLine<Ui>;
-    pub type CmdLineCfg = duat_core::widgets::CmdLineCfg<Ui>;
-    pub type StatusLine = duat_core::widgets::StatusLine<Ui>;
-    pub type StatusLineCfg = duat_core::widgets::StatusLineCfg<Ui>;
-    pub type LineNumbers = duat_core::widgets::LineNumbers<Ui>;
-    pub type LineNumbersCfg = duat_core::widgets::LineNumbersCfg<Ui>;
+    pub use duat_core::{ui::Constraint, widgets::*};
 }
 
 pub mod state {
     //! Common [`StatusLine`] fields
     //!
     //! [`StatusLine`]: crate::widgets::StatusLine
-    pub use duat_core::widgets::common::*;
+    pub use duat_core::status::*;
 }
 
 pub mod control {
@@ -567,8 +555,6 @@ pub mod prelude {
     //! The prelude of Duat
     use std::process::Output;
 
-    #[doc(hidden)]
-    pub use duat_core;
     pub use duat_core::{
         DuatError, Error, Plugin, clipboard, cmd,
         data::{self, RwData},
@@ -583,8 +569,8 @@ pub mod prelude {
         Area, Ui, control, cursor,
         form::{self, CursorShape, Form},
         hooks::{
-            self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FormSet, ModeSwitched,
-            OnFileOpen, OnWindowOpen,
+            self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FocusedOn, FormSet,
+            ModeSwitched, OnFileOpen, OnWindowOpen, UnfocusedFrom,
         },
         mode::{self, Cursors, Mode, alias, map},
         plug, print, setup_duat,
@@ -635,6 +621,9 @@ pub mod prelude {
     }
 }
 
+#[allow(unused_imports)]
+use duat_core::{session::FileRet, ui::DuatEvent};
+
 /// Pre and post setup for Duat
 ///
 /// This macro *MUST* be used in order for the program to run,
@@ -642,17 +631,14 @@ pub mod prelude {
 pub macro setup_duat($setup:expr) {
     use std::sync::mpsc;
 
-    use crate::prelude::{
-        Text,
-        duat_core::{session::FileRet, ui, widgets::File},
-    };
+    use crate::prelude::{File, Text};
 
     #[unsafe(no_mangle)]
     fn run(
         ms: MetaStatics,
         prev_files: Vec<Vec<FileRet>>,
         messengers: Messengers,
-    ) -> (Vec<Vec<FileRet>>, mpsc::Receiver<ui::DuatEvent>) {
+    ) -> (Vec<Vec<FileRet>>, mpsc::Receiver<DuatEvent>) {
         pre_setup();
         $setup();
         run_duat(ms, prev_files, messengers)

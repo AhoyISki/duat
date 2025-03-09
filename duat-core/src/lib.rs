@@ -283,6 +283,7 @@ pub mod session;
 pub mod text;
 pub mod ui;
 pub mod widgets;
+pub mod status;
 
 pub mod prelude {
     //! The prelude of Duat

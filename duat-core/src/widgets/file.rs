@@ -27,6 +27,7 @@ use crate::{
 
 /// The configuration for a new [`File`]
 #[derive(Default, Clone)]
+#[doc(hidden)]
 pub struct FileCfg {
     text_op: TextOp,
     cfg: PrintCfg,

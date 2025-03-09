@@ -100,7 +100,7 @@ use self::tags::Tags;
 pub use self::{
     builder::{AlignCenter, AlignLeft, AlignRight, Builder, Ghost, err, hint, ok, text},
     history::Change,
-    iter::{Item, Iter, Part, RevIter},
+    iter::{Item, FwdIter, Part, RevIter},
     ops::{Point, TextRange, TwoPoints, utf8_char_width},
     reader::Reader,
     search::{Matcheable, RegexPattern, Searcher},
@@ -1156,8 +1156,8 @@ impl Text {
     /// A forward iterator of the [chars and tags] of the [`Text`]
     ///
     /// [chars and tags]: Part
-    pub fn iter_fwd(&self, at: impl TwoPoints) -> Iter<'_> {
-        Iter::new_at(self, at)
+    pub fn iter_fwd(&self, at: impl TwoPoints) -> FwdIter<'_> {
+        FwdIter::new_at(self, at)
     }
 
     /// A reverse iterator of the [chars and tags] of the [`Text`]

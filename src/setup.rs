@@ -27,7 +27,7 @@ use crate::{
     CfgFn, Ui,
     hooks::{self, FocusedOn, OnFileOpen, OnWindowOpen, UnfocusedFrom},
     mode,
-    prelude::{CmdLine, LineNumbers, StatusLine},
+    prelude::{CmdLine, LineNumbers, Notifications, StatusLine},
 };
 
 // State statics.
@@ -59,15 +59,15 @@ pub fn pre_setup() {
 
     hooks::add_grouped::<OnWindowOpen>("WindowWidgets", |builder| {
         let (child, _) = builder.push(StatusLine::cfg());
-        builder.push_to(CmdLine::cfg().left_ratioed(4, 7), child);
+        let (child, _) = builder.push_to(CmdLine::cfg().left_ratioed(4, 7), child);
+        builder.push_to(Notifications::cfg(), child);
     });
 
-    hooks::add_grouped::<UnfocusedFrom<CmdLine>>("HideCmdLine", |(_, area)| {
+    hooks::add_grouped::<UnfocusedFrom<CmdLine<Ui>>>("HideCmdLine", |(_, area)| {
         area.constrain_ver(Constraint::Length(0.0)).unwrap();
     });
-    hooks::add_grouped::<FocusedOn<CmdLine>>("HideCmdLine", |(_, area)| {
-        // Constraint::Min(0.0) == "Constraint::Free"
-        area.constrain_ver(Constraint::Min(0.0)).unwrap();
+    hooks::add_grouped::<FocusedOn<CmdLine<Ui>>>("HideCmdLine", |(_, area)| {
+        area.constrain_ver(Constraint::Length(1.0)).unwrap();
     });
 }
 

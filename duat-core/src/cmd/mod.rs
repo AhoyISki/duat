@@ -20,7 +20,19 @@
 //!
 //! ```rust
 //! # use duat_core::cmd;
-//! cmd::run_notify("set-form --flag -abc rgb 255 0 0 hsl 1");
+//! cmd::run_notify(
+//!     "set-form --flag -abc punctuation.delimiter rgb 255 0 0 hsl 1",
+//! );
+//! ```
+//!
+//! [`cmd::run_notify`] is what is used by Duat when running commands
+//! in the [`CmdLine`], but you can silence notifications by including
+//! leading whitespace:
+//!
+//! ```rust
+//! # use duat_core::{cmd, context::data};
+//! cmd::run_notify(" set-form Default.StatusLine #000000 #ffffff");
+//! assert!(*data::notifications().read() == Text::new());
 //! ```
 //!
 //! The `set-form` command above will fail, since the hsl [`Color`]
@@ -310,9 +322,12 @@ pub(crate) fn add_session_commands<U: Ui>(ui_tx: mpsc::Sender<UiEvent>) -> crate
 
         if let Some(path) = path {
             file.inspect(|file, _| {
-                let bytes = file.write_to(&path)?;
-
-                Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " path)))
+                if file.text().has_unsaved_changes() {
+                    let bytes = file.write_to(&path)?;
+                    Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " path)))
+                } else {
+                    Ok(Some(ok!("Nothing to be written")))
+                }
             })
         } else {
             file.mutate_data(|file, _| {
@@ -1145,7 +1160,8 @@ impl Commands {
             return Err(Error::FailedParsing(Box::new(err)));
         }
 
-        command.try_exec(args)
+        let silent = call.len() > call.trim_start().len();
+        command.try_exec(args).map(|ok| ok.filter(|_| silent))
     }
 
     /// Runs a command and notifies its result

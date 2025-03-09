@@ -50,12 +50,11 @@ use std::sync::{
 };
 
 pub use self::{
-    command_line::{
-        CmdLine, CmdLineCfg,
-    },
+    command_line::{CmdLine, CmdLineCfg},
     file::{File, FileCfg, PathKind},
     line_numbers::{LineNum, LineNumbers, LineNumbersCfg},
-    status_line::{State, StatusLine, StatusLineCfg, common, status},
+    notifications::{Notifications, NotificationsCfg},
+    status_line::{State, StatusLine, StatusLineCfg, status},
 };
 use crate::{
     cfg::PrintCfg,
@@ -71,8 +70,8 @@ use crate::{
 mod command_line;
 mod file;
 mod line_numbers;
-mod status_line;
 mod notifications;
+mod status_line;
 
 /// An area where [`Text`] will be printed to the screen
 ///

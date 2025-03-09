@@ -22,7 +22,7 @@ use crate::{
     cfg::{IterCfg, PrintCfg},
     data::{RoData, RwData},
     form::Painter,
-    text::{Item, Iter, Point, RevIter, Text, TwoPoints},
+    text::{FwdIter, Item, Point, RevIter, Text, TwoPoints},
     widgets::{File, Node, Widget},
 };
 
@@ -256,7 +256,7 @@ pub trait Area: Send + Sync + Sized {
     /// [`text::Item`]: Item
     fn print_iter<'a>(
         &self,
-        iter: Iter<'a>,
+        iter: FwdIter<'a>,
         cfg: IterCfg,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a
     where

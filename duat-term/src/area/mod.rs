@@ -8,7 +8,7 @@ use duat_core::{
     cfg::{IterCfg, PrintCfg},
     data::RwData,
     form::Painter,
-    text::{Item, Iter, Part, Point, RevIter, Text},
+    text::{Item, FwdIter, Part, Point, RevIter, Text},
     ui::{self, Area as UiArea, Axis, Caret, Constraint, DuatPermission, PushSpecs},
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
@@ -442,7 +442,7 @@ impl ui::Area for Area {
 
     fn print_iter<'a>(
         &self,
-        iter: Iter<'a>,
+        iter: FwdIter<'a>,
         cfg: IterCfg,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         let points = iter.points();
