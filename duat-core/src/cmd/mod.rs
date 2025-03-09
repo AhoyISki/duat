@@ -322,19 +322,19 @@ pub(crate) fn add_session_commands<U: Ui>(ui_tx: mpsc::Sender<UiEvent>) -> crate
 
         if let Some(path) = path {
             file.inspect(|file, _| {
-                if file.text().has_unsaved_changes() {
-                    let bytes = file.write_to(&path)?;
-                    Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " path)))
-                } else {
-                    Ok(Some(ok!("Nothing to be written")))
-                }
+                let bytes = file.write_to(&path)?;
+                Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " path)))
             })
         } else {
             file.mutate_data(|file, _| {
                 let mut file = file.write();
                 if let Some(name) = file.path_set() {
-                    let bytes = file.write()?;
-                    Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " [*a] name)))
+                    if file.text().has_unsaved_changes() {
+                        let bytes = file.write()?;
+                        Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " [*a] name)))
+                    } else {
+                        Ok(Some(ok!("Nothing to be written")))
+                    }
                 } else {
                     Err(err!("Give the file a name, to write it with"))
                 }
@@ -1161,7 +1161,7 @@ impl Commands {
         }
 
         let silent = call.len() > call.trim_start().len();
-        command.try_exec(args).map(|ok| ok.filter(|_| silent))
+        command.try_exec(args).map(|ok| ok.filter(|_| !silent))
     }
 
     /// Runs a command and notifies its result
