@@ -1,6 +1,10 @@
 use cassowary::{WeightedRelation::*, strength::STRONG};
 use duat_core::{
-    cfg::PrintCfg, data::RwData, prelude::Text, text::TwoPoints, ui::{Axis, Constraint, PushSpecs}
+    cfg::PrintCfg,
+    data::RwData,
+    prelude::Text,
+    text::TwoPoints,
+    ui::{Axis, Constraint, PushSpecs},
 };
 
 pub use self::rect::{Rect, Rects};
@@ -28,8 +32,8 @@ mod rect;
 pub struct Constraints {
     ver_eq: Option<Equality>,
     hor_eq: Option<Equality>,
-    ver_con: Option<Constraint>,
-    hor_con: Option<Constraint>,
+    ver_con: Option<(Constraint, bool)>,
+    hor_con: Option<(Constraint, bool)>,
 }
 
 impl Constraints {
@@ -38,19 +42,20 @@ impl Constraints {
     /// Will also add all equalities needed to make this constraint
     /// work.
     fn new(ps: PushSpecs, new: &Rect, parent: AreaId, rects: &Rects, p: &mut Printer) -> Self {
-        let cons = [ps.ver_constraint(), ps.hor_constraint()];
+        let cons = [ps.ver_constraint(), ps.hor_constraint()].map(|con| con.zip(Some(false)));
         let [ver_eq, hor_eq] = get_eqs(cons, new, parent, rects);
         p.add_eqs([&ver_eq, &hor_eq].into_iter().flatten());
 
         Self {
             ver_eq,
             hor_eq,
-            ver_con: ps.ver_constraint(),
-            hor_con: ps.hor_constraint(),
+            ver_con: cons[0],
+            hor_con: cons[1],
         }
     }
 
     pub fn replace(mut self, con: Constraint, axis: Axis, p: &mut Printer) -> Self {
+        // A replacement means manual constraining, which is prioritized.
         for eq in [self.ver_eq.take(), self.hor_eq.take()]
             .into_iter()
             .flatten()
@@ -58,8 +63,8 @@ impl Constraints {
             p.remove_equality(eq);
         }
         match axis {
-            Axis::Vertical => self.ver_con.replace(con),
-            Axis::Horizontal => self.hor_con.replace(con),
+            Axis::Vertical => self.ver_con.replace((con, true)),
+            Axis::Horizontal => self.hor_con.replace((con, true)),
         };
         self
     }
@@ -84,8 +89,8 @@ impl Constraints {
 
     pub fn on(&self, axis: Axis) -> Option<Constraint> {
         match axis {
-            Axis::Vertical => self.ver_con,
-            Axis::Horizontal => self.hor_con,
+            Axis::Vertical => self.ver_con.unzip().0,
+            Axis::Horizontal => self.hor_con.unzip().0,
         }
     }
 
@@ -248,26 +253,30 @@ impl Layout {
         text: &Text,
         cfg: PrintCfg,
     ) -> AreaId {
-        self.rects.new_floating(at, specs, text, cfg, &mut self.printer.write())
+        self.rects
+            .new_floating(at, specs, text, cfg, &mut self.printer.write())
     }
 }
 
 fn get_eqs(
-    cons: [Option<Constraint>; 2],
+    cons: [Option<(Constraint, bool)>; 2],
     new: &Rect,
     parent: AreaId,
     rects: &Rects,
 ) -> [Option<Equality>; 2] {
     let cons = [(cons[0], Axis::Vertical), (cons[1], Axis::Horizontal)];
     cons.map(|(cons, axis)| {
-        cons.map(|c| match c {
-            Constraint::Ratio(num, den) => {
-                let (_, ancestor) = rects.get_ancestor_on(axis, parent).unwrap();
-                (new.len(axis) * den as f64) | EQ(STRONG * 2.0) | (ancestor.len(axis) * num as f64)
+        cons.map(|(c, is_manual)| {
+            let strength = STRONG + if is_manual { 2.0 } else { 1.0 };
+            match c {
+                Constraint::Ratio(num, den) => {
+                    let (_, ancestor) = rects.get_ancestor_on(axis, parent).unwrap();
+                    (new.len(axis) * den as f64) | EQ(strength) | (ancestor.len(axis) * num as f64)
+                }
+                Constraint::Length(len) => new.len(axis) | EQ(strength) | len,
+                Constraint::Min(min) => new.len(axis) | GE(strength) | min,
+                Constraint::Max(max) => new.len(axis) | LE(strength) | max,
             }
-            Constraint::Length(len) => new.len(axis) | EQ(STRONG * 2.0) | len,
-            Constraint::Min(min) => new.len(axis) | GE(STRONG * 2.0) | min,
-            Constraint::Max(max) => new.len(axis) | LE(STRONG * 2.0) | max,
         })
     })
 }

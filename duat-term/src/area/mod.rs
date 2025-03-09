@@ -8,7 +8,7 @@ use duat_core::{
     cfg::{IterCfg, PrintCfg},
     data::RwData,
     form::Painter,
-    text::{Item, FwdIter, Part, Point, RevIter, Text},
+    text::{FwdIter, Item, Part, Point, RevIter, Text},
     ui::{self, Area as UiArea, Axis, Caret, Constraint, DuatPermission, PushSpecs},
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
@@ -365,8 +365,10 @@ impl ui::Area for Area {
         if let Some(ver) = cons.on(Axis::Vertical)
             && ver == con
         {
+            duat_core::log_file!("no change");
             return Ok(());
         };
+        duat_core::log_file!("change");
 
         *layout.rects.get_constraints_mut(self.id).unwrap() = {
             let mut p = layout.printer.write();
