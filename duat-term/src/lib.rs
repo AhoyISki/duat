@@ -8,7 +8,7 @@
 use std::{
     fmt::Debug,
     io::{self, Write},
-    sync::{Mutex, mpsc},
+    sync::{Arc, Mutex, mpsc},
     time::Duration,
 };
 
@@ -40,15 +40,15 @@ mod print;
 mod rules;
 
 pub struct Ui {
-    windows: Vec<(Area, RwData<Printer>)>,
+    windows: Vec<(Area, Arc<Printer>)>,
     layouts: RwData<Vec<Layout>>,
     win: usize,
     fr: Frame,
-    printer_fn: fn() -> RwData<Printer>,
+    printer_fn: fn() -> Arc<Printer>,
 }
 
 impl Ui {
-    fn cur_printer(&self) -> &RwData<Printer> {
+    fn cur_printer(&self) -> &Arc<Printer> {
         if let Some((_, printer)) = self.windows.get(self.win) {
             printer
         } else {
@@ -98,7 +98,7 @@ impl ui::Ui for Ui {
                         let res = match event::read().unwrap() {
                             event::Event::Key(key) => tx.send_key(key),
                             event::Event::Resize(..) => {
-                                printer.write().update(true);
+                                printer.update(true);
                                 tx.send_resize()
                             }
                             event::Event::FocusGained
@@ -111,7 +111,7 @@ impl ui::Ui for Ui {
                         }
                     }
 
-                    printer.try_inspect(|p| p.print());
+                    printer.print();
 
                     if let Ok(event) = rx.try_recv() {
                         match event {
@@ -193,7 +193,7 @@ impl ui::Ui for Ui {
 
     fn flush_layout(ms: &'static Self::MetaStatics) {
         let ui = ms.lock().unwrap();
-        ui.cur_printer().write().flush_equalities().unwrap();
+        ui.cur_printer().update(false);
     }
 
     fn unload(ms: &'static Self::MetaStatics) {
@@ -220,7 +220,7 @@ impl Default for Ui {
             layouts: RwData::default(),
             win: 0,
             fr: Frame::default(),
-            printer_fn: RwData::default,
+            printer_fn: Arc::default
         }
     }
 }

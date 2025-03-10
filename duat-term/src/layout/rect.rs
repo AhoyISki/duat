@@ -12,7 +12,7 @@ use duat_core::{
     text::TwoPoints,
     ui::{
         Axis::{self, *},
-        Constraint, PushSpecs, Side,
+        Constraint, PushSpecs,
     },
 };
 
@@ -112,7 +112,7 @@ impl Rect {
         &mut self,
         i: usize,
         parent: &Rect,
-        p: &mut Printer,
+        p: &Printer,
         fr: Frame,
         is_resizable: bool,
         mut to_constrain: Option<Vec<AreaId>>,
@@ -164,7 +164,7 @@ impl Rect {
             };
 
             if edge == 1.0 && !*clustered {
-                let edge = p.edge(&self.br, &next.tl, axis, fr);
+                let edge = p.set_edge(&self.br, &next.tl, axis, fr);
                 self.eqs.extend([
                     &edge | EQ(STRONG) | 1.0,
                     (self.end(axis) + &edge) | EQ(REQUIRED) | next.start(axis),
@@ -206,9 +206,9 @@ impl Rect {
 
     /// Removes all [`Equality`]s which define the edges of
     /// [`self`].
-    pub fn clear_eqs(&mut self, p: &mut Printer) {
+    pub fn clear_eqs(&mut self, p: &Printer) {
         for eq in self.eqs.drain(..) {
-            p.remove_equality(eq);
+            p.remove_eq(eq);
         }
 
         if let Some(edge) = self.edge.take() {
@@ -299,13 +299,13 @@ impl Rect {
         br_x_changed || br_y_changed || tl_x_changed || tl_y_changed
     }
 
-    pub fn declare_updates(&self, layout: &super::Layout) -> bool {
-        let update_count = self.br.x().declare_update() as usize
-            + self.br.y().declare_update() as usize
-            + self.tl.x().declare_update() as usize
-            + self.tl.y().declare_update() as usize;
+    pub fn notice_updates(&self, p: &Printer) -> bool {
+        let noticed_updates = self.br.x().notice_updates() as usize
+            + self.br.y().notice_updates() as usize
+            + self.tl.x().notice_updates() as usize
+            + self.tl.y().notice_updates() as usize;
 
-        let updates_left = unsafe { layout.printer.read().declare_updates(update_count) };
+        let updates_left = unsafe { p.notice_updates(noticed_updates) };
         updates_left == 0
     }
 
@@ -356,11 +356,11 @@ impl Rect {
         }
     }
 
-    pub(crate) fn children(&self) -> Option<&[(Rect, Constraints)]> {
+    pub fn children(&self) -> Option<&[(Rect, Constraints)]> {
         self.kind.children()
     }
 
-    fn children_mut(&mut self) -> Option<&mut Vec<(Rect, Constraints)>> {
+    pub fn children_mut(&mut self) -> Option<&mut Vec<(Rect, Constraints)>> {
         self.kind.children_mut()
     }
 }
@@ -385,7 +385,7 @@ pub struct Rects {
 }
 
 impl Rects {
-    pub fn new(p: &mut Printer, fr: Frame, info: PrintInfo) -> Self {
+    pub fn new(p: &Printer, fr: Frame, info: PrintInfo) -> Self {
         let (tl, br) = (p.var_point(), p.var_point());
         let kind = Kind::end(p.sender(&tl, &br), info);
         let mut main = Rect::new(tl, br, true, kind);
@@ -404,7 +404,7 @@ impl Rects {
         &mut self,
         ps: PushSpecs,
         id: AreaId,
-        p: &mut Printer,
+        p: &Printer,
         on_files: bool,
         info: PrintInfo,
     ) -> AreaId {
@@ -449,7 +449,7 @@ impl Rects {
 
     pub fn delete(
         &mut self,
-        p: &mut Printer,
+        p: &Printer,
         id: AreaId,
     ) -> Option<(Rect, Constraints, Option<AreaId>)> {
         let fr = self.fr;
@@ -493,7 +493,7 @@ impl Rects {
         Some((rm_rect, rm_cons, rm_parent_id))
     }
 
-    pub fn swap(&mut self, p: &mut Printer, id0: AreaId, id1: AreaId) {
+    pub fn swap(&mut self, p: &Printer, id0: AreaId, id1: AreaId) {
         let fr = self.fr;
         let mut to_constrain = Some(Vec::new());
 
@@ -553,7 +553,7 @@ impl Rects {
         reset_and_constrain_areas(to_constrain.unwrap(), self, p);
     }
 
-    pub fn reset_eqs(&mut self, p: &mut Printer, target: AreaId) {
+    pub fn reset_eqs(&mut self, p: &Printer, target: AreaId) {
         let fr = self.fr;
         let mut to_cons = Some(Vec::new());
 
@@ -604,7 +604,7 @@ impl Rects {
         &mut self,
         id: AreaId,
         axis: Axis,
-        p: &mut Printer,
+        p: &Printer,
         cluster: bool,
         on_files: bool,
     ) {
@@ -663,11 +663,11 @@ impl Rects {
 
     pub fn new_floating(
         &self,
-        at: impl TwoPoints,
-        specs: PushSpecs,
-        text: &Text,
-        cfg: PrintCfg,
-        p: &mut Printer,
+        _at: impl TwoPoints,
+        _specs: PushSpecs,
+        _text: &Text,
+        _cfg: PrintCfg,
+        _p: &Printer,
     ) -> AreaId {
         // let (tl, br) = (p.var_point(), p.var_point());
         // let kind = Kind::end(p.sender(&tl,& br), PrintInfo::default());
@@ -708,7 +708,7 @@ impl Rects {
         parent.children_mut().unwrap().insert(pos, entry);
     }
 
-    pub fn replace_constraint(&mut self, id: AreaId, con: Constraint, axis: Axis, p: &mut Printer) {
+    pub fn replace_constraint(&mut self, id: AreaId, con: Constraint, axis: Axis, p: &Printer) {
         let fr = self.fr;
         let (i, parent) = self.get_parent_mut(id).unwrap();
         let p_axis = parent.kind.axis().unwrap();
@@ -946,7 +946,7 @@ fn print_opt_eq(f: &mut std::fmt::Formatter, eq: &Option<Equality>) -> std::fmt:
     }
 }
 
-fn reset_and_constrain_areas(to_constrain: Vec<AreaId>, rects: &mut Rects, p: &mut Printer) {
+fn reset_and_constrain_areas(to_constrain: Vec<AreaId>, rects: &mut Rects, p: &Printer) {
     for id in to_constrain {
         let Some((i, parent)) = rects.get_parent_mut(id) else {
             continue;
@@ -959,5 +959,14 @@ fn reset_and_constrain_areas(to_constrain: Vec<AreaId>, rects: &mut Rects, p: &m
         let cons = cons.apply(&rect, parent_id, rects, p);
         let parent = rects.get_mut(parent_id).unwrap();
         parent.children_mut().unwrap().insert(i, (rect, cons));
+    }
+}
+
+pub fn transfer_vars_and_recvs(from_p: &Printer, to_p: &Printer, rect: &Rect) {
+    let (vars, recv) = from_p.take_rect_parts(rect);
+    to_p.insert_rect_parts(vars, recv);
+
+    for (child, _) in rect.children().into_iter().flatten() {
+        transfer_vars_and_recvs(from_p, to_p, child)
     }
 }

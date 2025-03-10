@@ -16,8 +16,7 @@ use iter::{print_iter, print_iter_indented, rev_print_iter};
 
 use crate::{
     AreaId, ConstraintErr,
-    layout::{Layout, Rect},
-    print::Printer,
+    layout::{Layout, Rect, transfer_vars_and_recvs},
     queue, style,
 };
 
@@ -100,7 +99,7 @@ impl Area {
         let layout = get_layout(&layouts, self.id).unwrap();
         let is_active = layout.active_id() == self.id;
         let Some((sender, info, resume_printing)) = layout.get(self.id).and_then(|rect| {
-            let resume_printing = rect.declare_updates(layout);
+            let resume_printing = rect.notice_updates(&layout.printer);
             let sender = rect.sender();
             let info = rect.print_info();
             sender.zip(info).map(|(sender, info)| {
@@ -259,7 +258,8 @@ impl ui::Area for Area {
         let mut layouts = self.layouts.write();
         // This Area may have already been deleted, so a Layout may not be
         // found.
-        get_layout_mut(&mut layouts, self.id)?
+        let layout = get_layout_mut(&mut layouts, self.id)?;
+        layout
             .delete(self.id)
             .map(|id| Area::new(id, self.layouts.clone()))
     }
@@ -285,11 +285,10 @@ impl ui::Area for Area {
             let lhs_rect = lhs_lay.rects.get_mut(lhs_id).unwrap();
             let rhs_rect = rhs_lay.rects.get_mut(rhs_id).unwrap();
 
-            let mut lhs_p = lhs_lay.printer.write();
-            let mut rhs_p = rhs_lay.printer.write();
-            transfer_vars_and_recvs(&mut lhs_p, &mut rhs_p, lhs_rect);
-            transfer_vars_and_recvs(&mut rhs_p, &mut lhs_p, rhs_rect);
-            drop((lhs_p, rhs_p));
+            let lhs_p = &lhs_lay.printer;
+            let rhs_p = &rhs_lay.printer;
+            transfer_vars_and_recvs(lhs_p, rhs_p, lhs_rect);
+            transfer_vars_and_recvs(rhs_p, lhs_p, rhs_rect);
 
             std::mem::swap(lhs_rect, rhs_rect);
 
@@ -323,7 +322,7 @@ impl ui::Area for Area {
         let mut layouts = self.layouts.write();
         let layout = get_layout_mut(&mut layouts, self.id).unwrap();
 
-        let floating = layout.new_floating(at, specs, text, cfg);
+        let _floating = layout.new_floating(at, specs, text, cfg);
 
         todo!();
     }
@@ -344,14 +343,13 @@ impl ui::Area for Area {
         };
 
         *layout.rects.get_constraints_mut(self.id).unwrap() = {
-            let mut p = layout.printer.write();
-            let cons = cons.replace(con, Axis::Horizontal, &mut p);
+            let cons = cons.replace(con, Axis::Horizontal, &layout.printer);
 
             let (_, parent) = layout.get_parent(self.id).unwrap();
             let rect = layout.get(self.id).unwrap();
 
-            let cons = cons.apply(rect, parent.id(), &layout.rects, &mut p);
-            p.flush_equalities().unwrap();
+            let cons = cons.apply(rect, parent.id(), &layout.rects, &layout.printer);
+            layout.printer.update(false);
             cons
         };
 
@@ -374,14 +372,13 @@ impl ui::Area for Area {
         };
 
         *layout.rects.get_constraints_mut(self.id).unwrap() = {
-            let mut p = layout.printer.write();
-            let cons = cons.replace(con, Axis::Vertical, &mut p);
+            let cons = cons.replace(con, Axis::Vertical, &layout.printer);
 
             let (_, parent) = layout.get_parent(self.id).unwrap();
             let rect = layout.get(self.id).unwrap();
 
-            let cons = cons.apply(rect, parent.id(), &layout.rects, &mut p);
-            p.flush_equalities().unwrap();
+            let cons = cons.apply(rect, parent.id(), &layout.rects, &layout.printer);
+            layout.printer.update(false);
             cons
         };
 
@@ -724,13 +721,4 @@ fn get_layout_mut(layouts: &mut [Layout], id: AreaId) -> Option<&mut Layout> {
 
 fn get_layout_pos(layouts: &[Layout], id: AreaId) -> Option<usize> {
     layouts.iter().position(|l| l.get(id).is_some())
-}
-
-fn transfer_vars_and_recvs(from_p: &mut Printer, to_p: &mut Printer, rect: &Rect) {
-    let (vars, recv) = from_p.take_rect_parts(rect);
-    to_p.insert_rect_parts(vars, recv);
-
-    for (child, _) in rect.children().into_iter().flatten() {
-        transfer_vars_and_recvs(from_p, to_p, child)
-    }
 }

@@ -1,13 +1,14 @@
+use std::sync::Arc;
+
 use cassowary::{WeightedRelation::*, strength::STRONG};
 use duat_core::{
     cfg::PrintCfg,
-    data::RwData,
     prelude::Text,
     text::TwoPoints,
     ui::{Axis, Constraint, PushSpecs},
 };
 
-pub use self::rect::{Rect, Rects};
+pub use self::rect::{Rect, Rects, transfer_vars_and_recvs};
 use crate::{AreaId, Equality, Frame, area::PrintInfo, print::Printer};
 
 mod rect;
@@ -28,15 +29,14 @@ mod rect;
 pub struct Layout {
     pub rects: Rects,
     pub active_id: AreaId,
-    pub printer: RwData<Printer>,
+    pub printer: Arc<Printer>,
 }
 
 impl Layout {
     /// Returns a new instance of [`Layout`], applying a given
     /// [`Frame`] to all inner [`Rect`]s.
-    pub fn new(fr: Frame, printer: RwData<Printer>, info: PrintInfo) -> Self {
-        printer.write().flush_equalities().unwrap();
-        let rects = Rects::new(&mut printer.write(), fr, info);
+    pub fn new(fr: Frame, printer: Arc<Printer>, info: PrintInfo) -> Self {
+        let rects = Rects::new(&printer, fr, info);
         let main_id = rects.main.id();
 
         Layout { rects, active_id: main_id, printer }
@@ -72,7 +72,6 @@ impl Layout {
         on_files: bool,
         info: PrintInfo,
     ) -> (AreaId, Option<AreaId>) {
-        let mut p = self.printer.write();
         let axis = ps.axis();
 
         let (can_be_sibling, can_be_child) = {
@@ -109,30 +108,29 @@ impl Layout {
         // and the new area.
         } else {
             self.rects
-                .new_parent_of(id, axis, &mut p, cluster, on_files);
+                .new_parent_of(id, axis, &self.printer, cluster, on_files);
             let (_, parent) = self.rects.get_parent(id).unwrap();
 
             (id, Some(parent.id()))
         };
 
-        let new_id = self.rects.push(ps, target, &mut p, on_files, info);
+        let new_id = self.rects.push(ps, target, &self.printer, on_files, info);
         (new_id, new_parent_id)
     }
 
     pub fn delete(&mut self, id: AreaId) -> Option<AreaId> {
-        let mut p = self.printer.write();
-        let (rect, _, parent_id) = self.rects.delete(&mut p, id)?;
+        let (rect, _, parent_id) = self.rects.delete(&self.printer, id)?;
         rect.set_to_zero();
-        remove_children(&rect, &mut p);
+        remove_children(&rect, &self.printer);
         parent_id
     }
 
     pub fn swap(&mut self, id0: AreaId, id1: AreaId) {
-        self.rects.swap(&mut self.printer.write(), id0, id1);
+        self.rects.swap(&self.printer, id0, id1);
     }
 
     pub fn reset_eqs(&mut self, target: AreaId) {
-        self.rects.reset_eqs(&mut self.printer.write(), target)
+        self.rects.reset_eqs(&self.printer, target)
     }
 
     /// The current value for the width of [`self`].
@@ -164,8 +162,7 @@ impl Layout {
         text: &Text,
         cfg: PrintCfg,
     ) -> AreaId {
-        self.rects
-            .new_floating(at, specs, text, cfg, &mut self.printer.write())
+        self.rects.new_floating(at, specs, text, cfg, &self.printer)
     }
 }
 
@@ -198,7 +195,7 @@ impl Constraints {
     ///
     /// Will also add all equalities needed to make this constraint
     /// work.
-    fn new(ps: PushSpecs, new: &Rect, parent: AreaId, rects: &Rects, p: &mut Printer) -> Self {
+    fn new(ps: PushSpecs, new: &Rect, parent: AreaId, rects: &Rects, p: &Printer) -> Self {
         let cons = [ps.ver_constraint(), ps.hor_constraint()].map(|con| con.zip(Some(false)));
         let [ver_eq, hor_eq] = get_eqs(cons, new, parent, rects);
         p.add_eqs([&ver_eq, &hor_eq].into_iter().flatten());
@@ -211,13 +208,13 @@ impl Constraints {
         }
     }
 
-    pub fn replace(mut self, con: Constraint, axis: Axis, p: &mut Printer) -> Self {
+    pub fn replace(mut self, con: Constraint, axis: Axis, p: &Printer) -> Self {
         // A replacement means manual constraining, which is prioritized.
         for eq in [self.ver_eq.take(), self.hor_eq.take()]
             .into_iter()
             .flatten()
         {
-            p.remove_equality(eq);
+            p.remove_eq(eq);
         }
         match axis {
             Axis::Vertical => self.ver_con.replace((con, true)),
@@ -227,7 +224,7 @@ impl Constraints {
     }
 
     /// Reuses [`self`] in order to constrain a new child
-    pub fn apply(self, new: &Rect, parent: AreaId, rects: &Rects, p: &mut Printer) -> Self {
+    pub fn apply(self, new: &Rect, parent: AreaId, rects: &Rects, p: &Printer) -> Self {
         let cons = [self.ver_con, self.hor_con];
         let [ver_eq, hor_eq] = get_eqs(cons, new, parent, rects);
         p.add_eqs([&ver_eq, &hor_eq].into_iter().flatten());
@@ -235,12 +232,12 @@ impl Constraints {
         Self { ver_eq, hor_eq, ..self }
     }
 
-    pub fn remove(&mut self, p: &mut Printer) {
+    pub fn remove(&mut self, p: &Printer) {
         for eq in [self.ver_eq.take(), self.hor_eq.take()]
             .into_iter()
             .flatten()
         {
-            p.remove_equality(eq);
+            p.remove_eq(eq);
         }
     }
 
@@ -282,7 +279,7 @@ fn get_eqs(
     })
 }
 
-fn remove_children(rect: &Rect, p: &mut Printer) {
+fn remove_children(rect: &Rect, p: &Printer) {
     for (child, _) in rect.children().iter().flat_map(|c| c.iter()) {
         child.set_to_zero();
         p.take_rect_parts(child);

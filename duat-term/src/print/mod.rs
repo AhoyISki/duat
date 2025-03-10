@@ -2,26 +2,23 @@ use std::{
     fmt::Alignment,
     io::{Write, stdout},
     sync::{
-        Arc, LazyLock, Mutex,
+        Arc,
         atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering},
     },
 };
 
-use cassowary::{AddConstraintError, RemoveConstraintError, Solver, Variable, strength::STRONG};
+use cassowary::Variable;
 use crossterm::{
     cursor::{self, MoveTo, MoveToColumn, MoveToNextLine},
     execute,
-    style::{Attribute, Print, ResetColor, SetStyle},
+    style::Attribute,
     terminal,
 };
-use duat_core::{
-    form::{self, FormId},
-    session,
-    ui::Axis,
-};
+use duat_core::{Mutex, session, ui::Axis};
+use sync_solver::SyncSolver;
+use variables::Variables;
 
-use self::frame::Edge;
-use crate::{Coords, Equality, area::Coord, queue, style};
+use crate::{Coords, Equality, queue, style};
 
 mod frame;
 mod line;
@@ -33,149 +30,58 @@ pub use self::{
 };
 
 pub struct Printer {
-    eqs_to_add: Vec<Equality>,
-    eqs_to_remove: Vec<Equality>,
-    solver: Solver,
-    vars: Vec<(Variable, SavedVar)>,
-    edges: Vec<Edge>,
-
-    recvs: Vec<Receiver>,
+    sync_solver: Mutex<SyncSolver>,
+    vars: Mutex<Variables>,
+    recvs: Mutex<Vec<Receiver>>,
     max: VarPoint,
-    var_value_fn: fn() -> VarValue,
     has_to_print_edges: AtomicBool,
-
     updates: AtomicUsize,
 }
 
 impl Printer {
     pub fn new() -> Self {
-        let (vars, solver, max) = {
+        let (vars, sync_solver, max) = {
+            let mut vars = Variables::new();
             let (width, height) = crossterm::terminal::size().unwrap();
             let (width, height) = (width as f64, height as f64);
 
-            let mut vars = Vec::new();
-            let mut solver = Solver::new();
-            let max = VarPoint::new_from_map(&mut vars);
-            let strong = STRONG + 3.0;
-            solver.add_edit_variable(max.x_var(), strong).unwrap();
-            solver.suggest_value(max.x_var(), width).unwrap();
+            let max = vars.new_point();
+            let sync_solver = SyncSolver::new(&max, width, height);
 
-            solver.add_edit_variable(max.y_var(), strong).unwrap();
-            solver.suggest_value(max.y_var(), height).unwrap();
-
-            (vars, solver, max)
+            (vars, sync_solver, max)
         };
 
         Self {
-            eqs_to_add: Vec::new(),
-            eqs_to_remove: Vec::new(),
-            solver,
-            vars,
-            edges: Vec::new(),
-
-            recvs: Vec::new(),
+            sync_solver: Mutex::new(sync_solver),
+            vars: Mutex::new(vars),
+            recvs: Mutex::new(Vec::new()),
             max,
-            var_value_fn: VarValue::new,
             has_to_print_edges: AtomicBool::new(false),
             updates: AtomicUsize::new(0),
         }
     }
 
-    pub fn var_point(&mut self) -> VarPoint {
-        let x = (self.var_value_fn)();
-        let y = (self.var_value_fn)();
-        self.vars.push((x.var, SavedVar::val(&x)));
-        self.vars.push((y.var, SavedVar::val(&y)));
-        VarPoint::new(x, y)
+    pub fn var_point(&self) -> VarPoint {
+        self.vars.lock().new_point()
     }
 
-    pub fn edge(&mut self, lhs: &VarPoint, rhs: &VarPoint, axis: Axis, fr: Frame) -> VarValue {
-        let width = (self.var_value_fn)();
-        let var = &lhs.on_axis(axis).var;
-        let i = self.vars.binary_search_by_key(var, key_fn).unwrap();
-        let saved = self.vars.get_mut(i).unwrap();
-        saved.1 = SavedVar::frame(lhs.on_axis(axis), rhs.on_axis(axis), &width);
-
-        let edge = Edge::new(&width.value, lhs, rhs, axis.perp(), fr);
-        self.edges.push(edge);
-
-        width
+    pub fn set_edge(&self, lhs: &VarPoint, rhs: &VarPoint, axis: Axis, fr: Frame) -> VarValue {
+        self.vars.lock().set_edge([lhs, rhs], axis, fr)
     }
 
-    pub fn set_copy(&mut self, vv: &VarValue, above: &VarValue) {
-        let copy = {
-            let i = self.vars.binary_search_by_key(&above.var, key_fn).unwrap();
-            match self.vars.get(i).unwrap() {
-                (_, SavedVar::Val { .. } | SavedVar::Edge { .. }) => above.clone(),
-                (_, SavedVar::Copy { copy, .. }) => copy.clone(),
-            }
-        };
-
-        let i = self.vars.binary_search_by_key(&vv.var, key_fn).unwrap();
-        self.vars.get_mut(i).unwrap().1 = SavedVar::copy(vv, copy, above.clone());
+    pub fn set_copy(&self, vv: &VarValue, above: &VarValue) {
+        self.vars.lock().set_copy(vv, above);
     }
 
     /// Updates the value of all [`VarPoint`]s that have changed,
     /// returning true if any of them have.
-    pub fn update(&mut self, change_max: bool) {
-        if change_max {
-            let (width, height) = crossterm::terminal::size().unwrap();
-            let (width, height) = (width as f64, height as f64);
+    pub fn update(&self, change_max: bool) {
+        let mut sync_solver = self.sync_solver.lock();
+        sync_solver.update(change_max, &self.max).unwrap();
 
-            let max = &self.max;
-            self.solver.suggest_value(max.x_var(), width).unwrap();
-            self.solver.suggest_value(max.y_var(), height).unwrap();
-        }
-
-        let mut has_changeds = Vec::new();
-        let (framed, mut frames, copies) = {
-            let mut framed = Vec::new();
-            let mut frames = Vec::new();
-            let mut copies = Vec::new();
-
-            for (var, new) in self.solver.fetch_changes() {
-                let i = self.vars.binary_search_by_key(var, key_fn).ok();
-                match i.and_then(|i| self.vars.get(i)) {
-                    Some((_, SavedVar::Val { value, has_changed })) => {
-                        let new = new.round() as u32;
-                        let old = value.swap(new, Ordering::Release);
-                        if old != new {
-                            has_changeds.push((has_changed, None));
-                        }
-                    }
-                    Some((_, SavedVar::Edge { width: frame, rhs, value, .. })) => {
-                        framed.push((frame, rhs, value));
-                    }
-                    Some((_, SavedVar::Copy { copy, above, value, has_changed })) => {
-                        // Here, I'm passing the above value, so that it (a
-                        // parent value) won't be said to have been changed.
-                        copies.push((&copy.value, value, has_changed, Some(above)))
-                    }
-                    // In this case, the variable is a frame.
-                    None => frames.push((var, new)),
-                }
-            }
-
-            (framed, frames, copies)
-        };
-
-        for (frame, rhs, value) in framed {
-            if let Some((_, new)) = frames.extract_if(.., |(var, _)| **var == frame.var).next() {
-                let new = new.round() as u32;
-                frame.value.store(new, Ordering::Release);
-            }
-
-            let new = rhs.load(Ordering::Acquire) - frame.value();
-            value.store(new, Ordering::Release);
-        }
-
-        for (copy, value, has_changed, above) in copies {
-            let new = copy.load(Ordering::Acquire);
-            let old = value.swap(new, Ordering::Release);
-            if old != new {
-                has_changeds.push((has_changed, above));
-            }
-        }
+        let vars = self.vars.lock();
+        let mut has_changeds = vars.update_variables(sync_solver.fetch_changes());
+        drop(sync_solver);
 
         if !has_changeds.is_empty() {
             let mut to_remove = Vec::new();
@@ -198,6 +104,7 @@ impl Printer {
                 has_changeds.remove(i);
             }
 
+            let mut new_up = 0;
             for (has_changed, _) in has_changeds {
                 let prev = has_changed.swap(true, Ordering::Release);
 
@@ -206,16 +113,19 @@ impl Printer {
                     && !Arc::ptr_eq(has_changed, &self.max.y().has_changed)
                     && !Arc::ptr_eq(has_changed, &self.max.x().has_changed)
                 {
-                    *self.updates.get_mut() += 1;
+                    new_up += 1;
                 }
             }
-            if *self.updates.get_mut() > 0 {
+            let prev_up = self.updates.fetch_add(new_up, Ordering::Release);
+            duat_core::log_file!("updates at {}", prev_up + new_up);
+            if prev_up + new_up > 0 {
                 let _ = session::pause_printing();
+                self.has_to_print_edges.store(true, Ordering::Relaxed);
             }
         }
     }
 
-    pub fn sender(&mut self, tl: &VarPoint, br: &VarPoint) -> Sender {
+    pub fn sender(&self, tl: &VarPoint, br: &VarPoint) -> Sender {
         let recv = Receiver {
             lines: Arc::new(Mutex::new(None)),
             tl: tl.clone(),
@@ -228,91 +138,63 @@ impl Printer {
             br: br.clone(),
         };
 
-        let (Ok(i) | Err(i)) = self
-            .recvs
-            .binary_search_by(|other| other.coords().cmp(&recv.coords()));
-        self.recvs.insert(i, recv);
+        let mut recvs = self.recvs.lock();
+        let (Ok(i) | Err(i)) = recvs.binary_search_by_key(&recv.coords(), Receiver::coords);
+        recvs.insert(i, recv);
 
         sender
     }
 
-    pub fn remove_sender(&mut self, sender: Sender) {
+    pub fn remove_sender(&self, sender: Sender) {
         self.recvs
+            .lock()
             .retain(|recv| !Arc::ptr_eq(&recv.lines, &sender.lines));
     }
 
-    pub fn add_equality(&mut self, eq: Equality) {
-        self.eqs_to_add.push(eq);
+    pub fn add_eqs<'a>(&self, eqs: impl IntoIterator<Item = &'a Equality>) {
+        self.sync_solver.lock().add_eqs(eqs.into_iter().cloned());
     }
 
-    pub fn add_eqs<'a>(&mut self, eqs: impl IntoIterator<Item = &'a Equality>) {
-        self.eqs_to_add.extend(eqs.into_iter().cloned())
-    }
-
-    pub fn remove_equality(&mut self, eq: Equality) {
+    pub fn remove_eq(&self, eq: Equality) {
         // If there is no SavedVar, then the first term is a frame.
-        let var = eq.expr().terms[0].variable;
-        if let Ok(i) = self.vars.binary_search_by_key(&var, key_fn)
-            && let Some((_, saved)) = self.vars.get_mut(i)
-        {
-            match saved {
-                SavedVar::Val { .. } => {}
-                SavedVar::Edge { value, has_changed, width, .. } => {
-                    self.edges.retain(|e| !Arc::ptr_eq(&e.width, &width.value));
-
-                    let (value, has_changed) = (value.clone(), has_changed.clone());
-                    *saved = SavedVar::Val { value, has_changed };
-                }
-                SavedVar::Copy { value, has_changed, .. } => {
-                    let (value, has_changed) = (value.clone(), has_changed.clone());
-                    *saved = SavedVar::Val { value, has_changed };
-                }
-            }
-        }
-        if self.eqs_to_add.extract_if(.., |e| *e == eq).count() == 0 {
-            self.eqs_to_remove.push(eq);
-        }
+        self.sync_solver.lock().remove_eqs([eq.clone()]);
+        self.vars.lock().remove_eq(eq);
     }
 
-    pub fn remove_edge(&mut self, edge: VarValue) {
-        self.edges.retain(|e| !Arc::ptr_eq(&e.width, &edge.value))
+    pub fn remove_edge(&self, edge: VarValue) {
+        self.vars.lock().remove_edge(&edge);
     }
 
     pub fn take_rect_parts(
-        &mut self,
+        &self,
         rect: &crate::layout::Rect,
     ) -> (Vec<(Variable, SavedVar)>, Option<Receiver>) {
+        let mut vars = self.vars.lock();
         let (tl, br) = rect.var_points();
         if let Some(edge) = rect.edge() {
-            self.edges.retain(|e| !Arc::ptr_eq(&e.width, &edge.value));
+            vars.remove_edge(edge);
         }
+        let vars = vars.take_from(rect);
 
         let receiver = self
             .recvs
+            .lock()
             .extract_if(.., |recv| recv.tl == *tl && recv.br == *br)
             .next();
-
-        let vars = self
-            .vars
-            .extract_if(.., |(var, _)| {
-                [tl.x_var(), tl.y_var(), br.x_var(), br.y_var()].contains(var)
-            })
-            .collect();
 
         (vars, receiver)
     }
 
-    pub fn insert_rect_parts(&mut self, vars: Vec<(Variable, SavedVar)>, recv: Option<Receiver>) {
-        for (var, saved) in vars {
-            let (Ok(i) | Err(i)) = self.vars.binary_search_by_key(&var, key_fn);
-            self.vars.insert(i, (var, saved));
+    pub fn insert_rect_parts(&self, saved: Vec<(Variable, SavedVar)>, recv: Option<Receiver>) {
+        let mut vars = self.vars.lock();
+        for (var, saved) in saved {
+            vars.insert((var, saved));
         }
 
         if let Some(recv) = recv {
-            let (Ok(i) | Err(i)) = self
-                .recvs
-                .binary_search_by(|other| other.coords().cmp(&recv.coords()));
-            self.recvs.insert(i, recv);
+            let mut recvs = self.recvs.lock();
+            let (Ok(i) | Err(i)) = recvs.binary_search_by_key(&recv.coords(), Receiver::coords);
+            recvs.insert(i, recv);
         }
     }
 
@@ -320,23 +202,9 @@ impl Printer {
         &self.max
     }
 
-    pub fn flush_equalities(&mut self) -> Result<(), AddConstraintError> {
-        for eq in self.eqs_to_remove.drain(..) {
-            match self.solver.remove_constraint(&eq) {
-                Ok(_) | Err(RemoveConstraintError::UnknownConstraint) => {}
-                Err(err) => panic!("{err:?}"),
-            }
-        }
-        self.solver.add_constraints(&self.eqs_to_add)?;
-        self.update(false);
-        self.eqs_to_add.clear();
-        self.has_to_print_edges.store(true, Ordering::Relaxed);
-        Ok(())
-    }
-
     pub fn print(&self) {
         static CURSOR_IS_REAL: AtomicBool = AtomicBool::new(false);
-        let list: Vec<Lines> = self.recvs.iter().flat_map(Receiver::take).collect();
+        let list: Vec<Lines> = self.recvs.lock().iter().flat_map(Receiver::take).collect();
 
         if list.is_empty() {
             return;
@@ -380,14 +248,15 @@ impl Printer {
         }
 
         if self.has_to_print_edges.swap(false, Ordering::Relaxed) {
-            print_edges(&self.edges);
+            self.vars.lock().print_edges();
         }
 
         execute!(stdout, terminal::EndSynchronizedUpdate).unwrap();
     }
 
-    pub unsafe fn declare_updates(&self, n: usize) -> usize {
+    pub unsafe fn notice_updates(&self, n: usize) -> usize {
         let prev = self.updates.fetch_sub(n, Ordering::Relaxed);
+        duat_core::log_file!("updates at {}", prev - n);
         prev - n
     }
 }
@@ -401,6 +270,312 @@ impl Default for Printer {
 unsafe impl Send for Printer {}
 unsafe impl Sync for Printer {}
 
+mod variables {
+    use std::sync::{
+        Arc, LazyLock,
+        atomic::{AtomicBool, Ordering},
+    };
+
+    use cassowary::Variable;
+    use crossterm::{
+        cursor,
+        style::{Print, ResetColor, SetStyle},
+    };
+    use duat_core::{
+        form::{self, FormId},
+        ui::Axis,
+    };
+
+    use super::{Frame, SavedVar, VarPoint, VarValue, frame::Edge};
+    use crate::{Brush, area::Coord, layout::Rect, queue};
+
+    pub struct Variables {
+        saved: Vec<(Variable, SavedVar)>,
+        edges: Vec<Edge>,
+        var_value_fn: fn() -> VarValue,
+    }
+
+    impl Variables {
+        pub fn new() -> Self {
+            Self {
+                saved: Vec::new(),
+                edges: Vec::new(),
+                var_value_fn: VarValue::new,
+            }
+        }
+
+        pub fn new_var(&mut self) -> VarValue {
+            let vv = (self.var_value_fn)();
+            self.saved.push((vv.var, SavedVar::val(&vv)));
+            vv
+        }
+
+        pub fn new_point(&mut self) -> VarPoint {
+            VarPoint::new(self.new_var(), self.new_var())
+        }
+
+        pub fn set_edge(&mut self, [lhs, rhs]: [&VarPoint; 2], axis: Axis, fr: Frame) -> VarValue {
+            let width = (self.var_value_fn)();
+            let var = &lhs.on_axis(axis).var;
+
+            let i = self.saved.binary_search_by_key(var, key_fn).unwrap();
+            let saved = self.saved.get_mut(i).unwrap();
+            saved.1 = SavedVar::frame(lhs.on_axis(axis), rhs.on_axis(axis), &width);
+
+            let edge = Edge::new(&width.value, lhs, rhs, axis.perp(), fr);
+            self.edges.push(edge);
+
+            width
+        }
+
+        pub fn set_copy(&mut self, vv: &VarValue, above: &VarValue) {
+            let copy = {
+                let i = self.saved.binary_search_by_key(&above.var, key_fn).unwrap();
+                match self.saved.get(i).unwrap() {
+                    (_, SavedVar::Val { .. } | SavedVar::Edge { .. }) => above.clone(),
+                    (_, SavedVar::Copy { copy, .. }) => copy.clone(),
+                }
+            };
+
+            let i = self.saved.binary_search_by_key(&vv.var, key_fn).unwrap();
+            self.saved.get_mut(i).unwrap().1 = SavedVar::copy(vv, copy, above.clone());
+        }
+
+        pub fn insert(&mut self, (var, saved): (Variable, SavedVar)) {
+            let (Ok(i) | Err(i)) = self.saved.binary_search_by_key(&var, key_fn);
+            self.saved.insert(i, (var, saved));
+        }
+
+        pub(crate) fn take_from(&mut self, rect: &Rect) -> Vec<(Variable, SavedVar)> {
+            let (tl, br) = rect.var_points();
+            self.saved
+                .extract_if(.., |(var, _)| {
+                    [tl.x_var(), tl.y_var(), br.x_var(), br.y_var()].contains(var)
+                })
+                .collect()
+        }
+
+        pub fn remove_eq(&mut self, eq: cassowary::Constraint) {
+            let var = eq.expr().terms[0].variable;
+            if let Ok(i) = self.saved.binary_search_by_key(&var, key_fn)
+                && let Some((_, saved)) = self.saved.get_mut(i)
+            {
+                match saved {
+                    SavedVar::Val { .. } => {}
+                    SavedVar::Edge { value, has_changed, width, .. } => {
+                        self.edges.retain(|e| !Arc::ptr_eq(&e.width, &width.value));
+
+                        let (value, has_changed) = (value.clone(), has_changed.clone());
+                        *saved = SavedVar::Val { value, has_changed };
+                    }
+                    SavedVar::Copy { value, has_changed, .. } => {
+                        let (value, has_changed) = (value.clone(), has_changed.clone());
+                        *saved = SavedVar::Val { value, has_changed };
+                    }
+                }
+            }
+        }
+
+        pub fn remove_edge(&mut self, edge: &VarValue) {
+            self.edges.retain(|e| !Arc::ptr_eq(&e.width, &edge.value));
+        }
+
+        pub fn update_variables(
+            &self,
+            changes: &[(Variable, f64)],
+        ) -> Vec<(&Arc<AtomicBool>, Option<&VarValue>)> {
+            let mut has_changeds = Vec::new();
+            let mut copies = Vec::new();
+
+            for (var, new) in changes {
+                let i = self.saved.binary_search_by_key(var, key_fn).ok();
+                match i.and_then(|i| self.saved.get(i)) {
+                    Some((_, SavedVar::Val { value, has_changed })) => {
+                        let new = new.round() as u32;
+                        let old = value.swap(new, Ordering::Release);
+                        if old != new {
+                            has_changeds.push((has_changed, None));
+                        }
+                    }
+                    Some((_, SavedVar::Edge { width, rhs, value, .. })) => {
+                        let new = rhs.load(Ordering::Acquire) - width.value();
+                        value.store(new, Ordering::Release);
+                    }
+                    Some((_, SavedVar::Copy { copy, above, value, has_changed })) => {
+                        // Here, I'm passing the above value, so that it (a
+                        // parent value) won't be said to have been changed.
+                        copies.push((&copy.value, value, has_changed, Some(above)))
+                    }
+                    // In this case, the variable has been removed.
+                    None => {}
+                }
+            }
+
+            // Copies are updated after, so that the real values are updated
+            // first.
+            for (copy, value, has_changed, above) in copies {
+                let new = copy.load(Ordering::Acquire);
+                let old = value.swap(new, Ordering::Release);
+                if old != new {
+                    has_changeds.push((has_changed, above));
+                }
+            }
+
+            has_changeds
+        }
+
+        pub fn print_edges(&self) {
+            static FRAME_FORM: LazyLock<FormId> =
+                LazyLock::new(|| form::set_weak("Frame", "Default"));
+            let frame_form = form::from_id(*FRAME_FORM);
+
+            let mut stdout = std::io::stdout().lock();
+
+            let edges: Vec<_> = self
+                .edges
+                .iter()
+                .filter_map(|edge| edge.edge_coords())
+                .collect();
+
+            let mut crossings = Vec::<(Coord, [Option<Brush>; 4])>::new();
+
+            for (i, &coords) in edges.iter().enumerate() {
+                if let Axis::Horizontal = coords.axis {
+                    let char = match coords.line {
+                        Some(line) => super::line::horizontal(line, line),
+                        None => unreachable!(),
+                    };
+                    let line = char
+                        .to_string()
+                        .repeat((coords.br.x - coords.tl.x + 1) as usize);
+                    queue!(
+                        stdout,
+                        cursor::MoveTo(coords.tl.x as u16, coords.tl.y as u16),
+                        ResetColor,
+                        SetStyle(frame_form.style),
+                        Print(line)
+                    )
+                } else {
+                    let char = match coords.line {
+                        Some(line) => super::line::vertical(line, line),
+                        None => unreachable!(),
+                    };
+
+                    for y in (coords.tl.y)..=coords.br.y {
+                        queue!(
+                            stdout,
+                            cursor::MoveTo(coords.tl.x as u16, y as u16),
+                            ResetColor,
+                            SetStyle(frame_form.style),
+                            Print(char)
+                        )
+                    }
+                }
+
+                for &other_coords in edges[(i + 1)..].iter() {
+                    if let Some((coord, sides)) = coords.crossing(other_coords) {
+                        let prev_crossing = crossings.iter_mut().find(|(c, ..)| *c == coord);
+                        if let Some((_, [right, up, left, down])) = prev_crossing {
+                            *right = right.or(sides[0]);
+                            *up = up.or(sides[1]);
+                            *left = left.or(sides[2]);
+                            *down = down.or(sides[3]);
+                        } else {
+                            crossings.push((coord, sides));
+                        }
+                    }
+                }
+            }
+
+            for (coord, [right, up, left, down]) in crossings {
+                queue!(
+                    stdout,
+                    cursor::MoveTo(coord.x as u16, coord.y as u16),
+                    SetStyle(frame_form.style),
+                    Print(super::line::crossing(right, up, left, down, true))
+                )
+            }
+        }
+    }
+
+    fn key_fn(entry: &(Variable, SavedVar)) -> Variable {
+        entry.0
+    }
+}
+
+mod sync_solver {
+    use cassowary::{
+        AddConstraintError, RemoveConstraintError, Solver, Variable, strength::STRONG,
+    };
+
+    use super::VarPoint;
+    use crate::Equality;
+
+    pub struct SyncSolver {
+        solver: Solver,
+        eqs_to_add: Vec<Equality>,
+        eqs_to_remove: Vec<Equality>,
+    }
+
+    impl SyncSolver {
+        pub fn new(max: &VarPoint, width: f64, height: f64) -> Self {
+            let mut solver = Solver::new();
+            let strong = STRONG + 3.0;
+            solver.add_edit_variable(max.x_var(), strong).unwrap();
+            solver.suggest_value(max.x_var(), width).unwrap();
+
+            solver.add_edit_variable(max.y_var(), strong).unwrap();
+            solver.suggest_value(max.y_var(), height).unwrap();
+
+            SyncSolver {
+                solver,
+                eqs_to_add: Vec::new(),
+                eqs_to_remove: Vec::new(),
+            }
+        }
+
+        pub fn update(
+            &mut self,
+            change_max: bool,
+            max: &VarPoint,
+        ) -> Result<(), AddConstraintError> {
+            for eq in self.eqs_to_remove.drain(..) {
+                match self.solver.remove_constraint(&eq) {
+                    Ok(_) | Err(RemoveConstraintError::UnknownConstraint) => {}
+                    Err(err) => panic!("{err:?}"),
+                }
+            }
+            self.solver.add_constraints(&self.eqs_to_add)?;
+            self.eqs_to_add.clear();
+
+            if change_max {
+                let (width, height) = crossterm::terminal::size().unwrap();
+                let (width, height) = (width as f64, height as f64);
+
+                self.solver.suggest_value(max.x_var(), width).unwrap();
+                self.solver.suggest_value(max.y_var(), height).unwrap();
+            }
+
+            Ok(())
+        }
+
+        pub fn add_eqs(&mut self, eqs: impl IntoIterator<Item = Equality>) {
+            self.eqs_to_add.extend(eqs);
+        }
+
+        pub fn remove_eqs(&mut self, eqs: impl IntoIterator<Item = Equality>) {
+            let eqs: Vec<Equality> = eqs.into_iter().collect();
+            if self.eqs_to_add.extract_if(.., |e| eqs.contains(e)).count() == 0 {
+                self.eqs_to_remove.extend(eqs);
+            }
+        }
+
+        pub fn fetch_changes(&mut self) -> &[(Variable, f64)] {
+            self.solver.fetch_changes()
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Receiver {
     lines: Arc<Mutex<Option<Lines>>>,
@@ -410,7 +585,7 @@ pub struct Receiver {
 
 impl Receiver {
     fn take(&self) -> Option<Lines> {
-        self.lines.lock().unwrap().take()
+        self.lines.lock().take()
     }
 
     fn coords(&self) -> Coords {
@@ -447,7 +622,7 @@ impl Sender {
     }
 
     pub fn send(&self, lines: Lines) {
-        *self.lines.lock().unwrap() = Some(lines);
+        *self.lines.lock() = Some(lines);
     }
 
     pub fn coords(&self) -> Coords {
@@ -685,76 +860,4 @@ impl SavedVar {
             has_changed: vv.has_changed.clone(),
         }
     }
-}
-
-fn print_edges(edges: &[Edge]) {
-    static FRAME_FORM: LazyLock<FormId> = LazyLock::new(|| form::set_weak("Frame", "Default"));
-    let frame_form = form::from_id(*FRAME_FORM);
-
-    let mut stdout = std::io::stdout().lock();
-
-    let edges: Vec<_> = edges.iter().filter_map(|edge| edge.edge_coords()).collect();
-
-    let mut crossings = Vec::<(Coord, [Option<Brush>; 4])>::new();
-
-    for (i, &coords) in edges.iter().enumerate() {
-        if let Axis::Horizontal = coords.axis {
-            let char = match coords.line {
-                Some(line) => line::horizontal(line, line),
-                None => unreachable!(),
-            };
-            let line = char
-                .to_string()
-                .repeat((coords.br.x - coords.tl.x + 1) as usize);
-            queue!(
-                stdout,
-                cursor::MoveTo(coords.tl.x as u16, coords.tl.y as u16),
-                ResetColor,
-                SetStyle(frame_form.style),
-                Print(line)
-            )
-        } else {
-            let char = match coords.line {
-                Some(line) => line::vertical(line, line),
-                None => unreachable!(),
-            };
-
-            for y in (coords.tl.y)..=coords.br.y {
-                queue!(
-                    stdout,
-                    cursor::MoveTo(coords.tl.x as u16, y as u16),
-                    ResetColor,
-                    SetStyle(frame_form.style),
-                    Print(char)
-                )
-            }
-        }
-
-        for &other_coords in edges[(i + 1)..].iter() {
-            if let Some((coord, sides)) = coords.crossing(other_coords) {
-                let prev_crossing = crossings.iter_mut().find(|(c, ..)| *c == coord);
-                if let Some((_, [right, up, left, down])) = prev_crossing {
-                    *right = right.or(sides[0]);
-                    *up = up.or(sides[1]);
-                    *left = left.or(sides[2]);
-                    *down = down.or(sides[3]);
-                } else {
-                    crossings.push((coord, sides));
-                }
-            }
-        }
-    }
-
-    for (coord, [right, up, left, down]) in crossings {
-        queue!(
-            stdout,
-            cursor::MoveTo(coord.x as u16, coord.y as u16),
-            SetStyle(frame_form.style),
-            Print(line::crossing(right, up, left, down, true))
-        )
-    }
-}
-
-fn key_fn(entry: &(Variable, SavedVar)) -> Variable {
-    entry.0
 }

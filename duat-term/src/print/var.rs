@@ -6,7 +6,6 @@ use std::sync::{
 use cassowary::Variable;
 use duat_core::ui::Axis;
 
-use super::SavedVar;
 use crate::area::Coord;
 
 /// A point on the screen, which can be calculated by [`cassowary`]
@@ -20,16 +19,6 @@ pub struct VarPoint {
 impl VarPoint {
     pub(super) fn new(x: VarValue, y: VarValue) -> Self {
         Self { y, x }
-    }
-
-    /// Returns a new instance of [`VarPoint`]
-    pub fn new_from_map(vars: &mut Vec<(Variable, SavedVar)>) -> Self {
-        let vp = VarPoint { x: VarValue::new(), y: VarValue::new() };
-
-        vars.push((vp.x.var, SavedVar::val(&vp.x)));
-        vars.push((vp.y.var, SavedVar::val(&vp.y)));
-
-        vp
     }
 
     /// Sets the values to `(0, 0)`
@@ -114,7 +103,7 @@ impl VarValue {
         self.has_changed.load(Ordering::Acquire)
     }
 
-    pub fn declare_update(&self) -> bool {
+    pub fn notice_updates(&self) -> bool {
         self.has_changed.swap(false, Ordering::Relaxed)
     }
 }
