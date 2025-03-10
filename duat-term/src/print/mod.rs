@@ -210,7 +210,7 @@ impl Printer {
                 }
             }
             if *self.updates.get_mut() > 0 {
-                //let _ = session::pause_printing();
+                let _ = session::pause_printing();
             }
         }
     }
