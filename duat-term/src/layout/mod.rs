@@ -120,9 +120,10 @@ impl Layout {
     }
 
     pub fn delete(&mut self, id: AreaId) -> Option<AreaId> {
-        let (rect, _, parent_id) = self.rects.delete(&mut self.printer.write(), id)?;
+        let mut p = self.printer.write();
+        let (rect, _, parent_id) = self.rects.delete(&mut p, id)?;
         rect.set_to_zero();
-        remove_children(&rect);
+        remove_children(&rect, &mut p);
         parent_id
     }
 
@@ -281,9 +282,10 @@ fn get_eqs(
     })
 }
 
-fn remove_children(rect: &Rect) {
+fn remove_children(rect: &Rect, p: &mut Printer) {
     for (child, _) in rect.children().iter().flat_map(|c| c.iter()) {
         child.set_to_zero();
-        remove_children(child);
+        p.take_rect_parts(child);
+        remove_children(child, p);
     }
 }

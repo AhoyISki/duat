@@ -522,7 +522,18 @@ impl<U: Ui> Node<U> {
         }
 
         let mut widget = self.widget.raw_write();
+
+        let cfg = widget.print_cfg();
+        widget.text_mut().remove_cursors(&self.area, cfg);
+
         widget.update(&self.area);
+
+        widget.text_mut().add_cursors(&self.area, cfg);
+        if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
+            self.area
+                .scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
+        }
+
         widget.print(&self.area);
         drop(widget);
 

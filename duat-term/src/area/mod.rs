@@ -1,6 +1,6 @@
 mod iter;
 
-use std::{fmt::Alignment, sync::atomic::Ordering};
+use std::fmt::Alignment;
 
 use crossterm::cursor;
 use duat_core::{
@@ -401,10 +401,10 @@ impl ui::Area for Area {
             let layouts = self.layouts.read();
             let rect = get_rect(&layouts, self.id).unwrap();
             let info = rect.print_info().unwrap();
-            let info = info.read();
+            let info = *info.read();
             let width = rect.br().x - rect.tl().x;
             let height = rect.br().y - rect.tl().y;
-            (*info, width, height)
+            (info, width, height)
         };
 
         let info = scroll_ver_around(info, w, h, point, text, IterCfg::new(cfg).outsource_lfs());
@@ -594,12 +594,8 @@ impl ui::Area for Area {
 #[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(crate = "duat_core::cache::serde")]
 pub struct PrintInfo {
-    /// The index of the first [`char`] that should be printed on
-    /// the screen.
     points: (Point, Option<Point>),
-    /// How shifted the text is to the left.
     x_shift: u32,
-    /// The last position of the main cursor.
     prev_main: Point,
     last_points: Option<(Point, Option<Point>)>,
 }
@@ -629,9 +625,10 @@ fn scroll_ver_around(
     let mut iter = rev_print_iter(text.iter_rev(after), cap, cfg)
         .filter_map(|(caret, item)| caret.wrap.then_some(item.points()));
 
-    let target = match info.prev_main > point {
-        true => cfg.scrolloff().y(),
-        false => height.saturating_sub(cfg.scrolloff().y() + 1),
+    let target = if info.prev_main > point {
+        cfg.scrolloff().y()
+    } else {
+        height.saturating_sub(cfg.scrolloff().y() + 1)
     };
     let first = iter.nth(target as usize).unwrap_or_default();
 

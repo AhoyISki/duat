@@ -262,16 +262,7 @@ impl<U: Ui> Session<U> {
                 }
             });
 
-            match control::resume_printing() {
-                Ok(_) => {}
-                Err(err) => panic!("{err}"),
-            }
-
             let break_to = self.session_loop(&duat_rx);
-
-            // UiEvent::Quit may have been sent at this point, making this not
-            // necessarily succeed.
-            let _ = control::pause_printing();
 
             for break_to in break_to {
                 match break_to {

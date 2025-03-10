@@ -460,12 +460,14 @@ impl Rects {
         let (mut rm_rect, mut rm_cons) = parent.children_mut().unwrap().remove(i);
         rm_rect.clear_eqs(p);
         rm_cons.remove(p);
+        p.take_rect_parts(&rm_rect);
 
         let (i, parent, rm_parent_id) = if parent.children().unwrap().len() == 1 {
             let parent_id = parent.id();
             let (mut rect, cons) = parent.children_mut().unwrap().remove(0);
             let (i, grandparent) = self.get_parent_mut(parent_id)?;
-            grandparent.children_mut().unwrap().remove(i);
+            let (rm_parent, _) = grandparent.children_mut().unwrap().remove(i);
+            p.take_rect_parts(&rm_parent);
 
             let axis = grandparent.kind.axis().unwrap();
             let is_resizable = rect.is_resizable_on(axis, &cons);
