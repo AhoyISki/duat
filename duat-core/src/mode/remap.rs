@@ -458,7 +458,7 @@ pub enum Gives {
 
 fn remove_alias_and<U: Ui>(f: impl FnOnce(&mut dyn Widget<U>, &U::Area, usize)) {
     let widget = context::cur_widget::<U>().unwrap();
-    widget.mutate_data(|widget, area| {
+    widget.mutate_data(|widget, area, _| {
         let mut widget = widget.write();
         let cfg = widget.print_cfg();
         widget.text_mut().remove_cursors(area, cfg);

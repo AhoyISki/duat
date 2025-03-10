@@ -299,6 +299,16 @@ impl Rect {
         br_x_changed || br_y_changed || tl_x_changed || tl_y_changed
     }
 
+    pub fn declare_updates(&self, layout: &super::Layout) -> bool {
+        let update_count = self.br.x().declare_update() as usize
+            + self.br.y().declare_update() as usize
+            + self.tl.x().declare_update() as usize
+            + self.tl.y().declare_update() as usize;
+
+        let updates_left = unsafe { layout.printer.read().declare_updates(update_count) };
+        updates_left == 0
+    }
+
     pub fn id(&self) -> AreaId {
         self.id
     }
@@ -657,16 +667,16 @@ impl Rects {
         cfg: PrintCfg,
         p: &mut Printer,
     ) -> AreaId {
-        //let (tl, br) = (p.var_point(), p.var_point());
-        //let kind = Kind::end(p.sender(&tl,& br), PrintInfo::default());
-        //let mut rect = Rect::new(tl, br, false, kind);
-        //let main_eq = match specs.side() {
+        // let (tl, br) = (p.var_point(), p.var_point());
+        // let kind = Kind::end(p.sender(&tl,& br), PrintInfo::default());
+        // let mut rect = Rect::new(tl, br, false, kind);
+        // let main_eq = match specs.side() {
         //    Side::Above => rect.start,
         //    Side::Right => rect.start,
         //    Side::Below => rect.start,
         //    Side::Left => rect.start,
         //}
-        //rect.eqs.extend([
+        // rect.eqs.extend([
         //]);
         todo!();
     }

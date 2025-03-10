@@ -12,96 +12,6 @@ use crate::{AreaId, Equality, Frame, area::PrintInfo, print::Printer};
 
 mod rect;
 
-/// A list of [`Constraint`] for [`Rect`]s to follow.
-///
-/// These [`Constraint`]s are specifically not related to a [`Rect`]s
-/// location, in relation to other [`Rect`]s. They instead deal with
-/// two things, affecting a [`Rect`]s length in its parent's [`Axis`]:
-///
-/// - `defined`: A [`Constraint`], provided by the user, which details
-///   specific requests for the length of a [`Rect`].
-/// - `ratio`: A [`Constraint`] which details the ratio between the
-///   length of this [`Rect`] and the length of the [`Rect`] that
-///   follows it, if there is any.
-///
-/// Both of these constraints are optional, and are meant to be
-/// replaceable at runtime.
-///
-/// [`Constraint`]: Equality
-#[derive(Default, Debug, Clone)]
-pub struct Constraints {
-    ver_eq: Option<Equality>,
-    hor_eq: Option<Equality>,
-    ver_con: Option<(Constraint, bool)>,
-    hor_con: Option<(Constraint, bool)>,
-}
-
-impl Constraints {
-    /// Returns a new instance of [`Constraints`]
-    ///
-    /// Will also add all equalities needed to make this constraint
-    /// work.
-    fn new(ps: PushSpecs, new: &Rect, parent: AreaId, rects: &Rects, p: &mut Printer) -> Self {
-        let cons = [ps.ver_constraint(), ps.hor_constraint()].map(|con| con.zip(Some(false)));
-        let [ver_eq, hor_eq] = get_eqs(cons, new, parent, rects);
-        p.add_eqs([&ver_eq, &hor_eq].into_iter().flatten());
-
-        Self {
-            ver_eq,
-            hor_eq,
-            ver_con: cons[0],
-            hor_con: cons[1],
-        }
-    }
-
-    pub fn replace(mut self, con: Constraint, axis: Axis, p: &mut Printer) -> Self {
-        // A replacement means manual constraining, which is prioritized.
-        for eq in [self.ver_eq.take(), self.hor_eq.take()]
-            .into_iter()
-            .flatten()
-        {
-            p.remove_equality(eq);
-        }
-        match axis {
-            Axis::Vertical => self.ver_con.replace((con, true)),
-            Axis::Horizontal => self.hor_con.replace((con, true)),
-        };
-        self
-    }
-
-    /// Reuses [`self`] in order to constrain a new child
-    pub fn apply(self, new: &Rect, parent: AreaId, rects: &Rects, p: &mut Printer) -> Self {
-        let cons = [self.ver_con, self.hor_con];
-        let [ver_eq, hor_eq] = get_eqs(cons, new, parent, rects);
-        p.add_eqs([&ver_eq, &hor_eq].into_iter().flatten());
-
-        Self { ver_eq, hor_eq, ..self }
-    }
-
-    pub fn remove(&mut self, p: &mut Printer) {
-        for eq in [self.ver_eq.take(), self.hor_eq.take()]
-            .into_iter()
-            .flatten()
-        {
-            p.remove_equality(eq);
-        }
-    }
-
-    pub fn on(&self, axis: Axis) -> Option<Constraint> {
-        match axis {
-            Axis::Vertical => self.ver_con.unzip().0,
-            Axis::Horizontal => self.hor_con.unzip().0,
-        }
-    }
-
-    /// Whether or not [`self`] has flexibility in terms of its
-    /// length.
-    fn is_resizable_on(&self, axis: Axis) -> bool {
-        let con = self.on(axis);
-        matches!(con, Some(Constraint::Min(_) | Constraint::Max(_)) | None)
-    }
-}
-
 /// The overrall structure of a window on `duat_term`.
 ///
 /// The [`Layout`] handles all of the [`Rect`]s inside of it,
@@ -255,6 +165,96 @@ impl Layout {
     ) -> AreaId {
         self.rects
             .new_floating(at, specs, text, cfg, &mut self.printer.write())
+    }
+}
+
+/// A list of [`Constraint`] for [`Rect`]s to follow.
+///
+/// These [`Constraint`]s are specifically not related to a [`Rect`]s
+/// location, in relation to other [`Rect`]s. They instead deal with
+/// two things, affecting a [`Rect`]s length in its parent's [`Axis`]:
+///
+/// - `defined`: A [`Constraint`], provided by the user, which details
+///   specific requests for the length of a [`Rect`].
+/// - `ratio`: A [`Constraint`] which details the ratio between the
+///   length of this [`Rect`] and the length of the [`Rect`] that
+///   follows it, if there is any.
+///
+/// Both of these constraints are optional, and are meant to be
+/// replaceable at runtime.
+///
+/// [`Constraint`]: Equality
+#[derive(Default, Debug, Clone)]
+pub struct Constraints {
+    ver_eq: Option<Equality>,
+    hor_eq: Option<Equality>,
+    ver_con: Option<(Constraint, bool)>,
+    hor_con: Option<(Constraint, bool)>,
+}
+
+impl Constraints {
+    /// Returns a new instance of [`Constraints`]
+    ///
+    /// Will also add all equalities needed to make this constraint
+    /// work.
+    fn new(ps: PushSpecs, new: &Rect, parent: AreaId, rects: &Rects, p: &mut Printer) -> Self {
+        let cons = [ps.ver_constraint(), ps.hor_constraint()].map(|con| con.zip(Some(false)));
+        let [ver_eq, hor_eq] = get_eqs(cons, new, parent, rects);
+        p.add_eqs([&ver_eq, &hor_eq].into_iter().flatten());
+
+        Self {
+            ver_eq,
+            hor_eq,
+            ver_con: cons[0],
+            hor_con: cons[1],
+        }
+    }
+
+    pub fn replace(mut self, con: Constraint, axis: Axis, p: &mut Printer) -> Self {
+        // A replacement means manual constraining, which is prioritized.
+        for eq in [self.ver_eq.take(), self.hor_eq.take()]
+            .into_iter()
+            .flatten()
+        {
+            p.remove_equality(eq);
+        }
+        match axis {
+            Axis::Vertical => self.ver_con.replace((con, true)),
+            Axis::Horizontal => self.hor_con.replace((con, true)),
+        };
+        self
+    }
+
+    /// Reuses [`self`] in order to constrain a new child
+    pub fn apply(self, new: &Rect, parent: AreaId, rects: &Rects, p: &mut Printer) -> Self {
+        let cons = [self.ver_con, self.hor_con];
+        let [ver_eq, hor_eq] = get_eqs(cons, new, parent, rects);
+        p.add_eqs([&ver_eq, &hor_eq].into_iter().flatten());
+
+        Self { ver_eq, hor_eq, ..self }
+    }
+
+    pub fn remove(&mut self, p: &mut Printer) {
+        for eq in [self.ver_eq.take(), self.hor_eq.take()]
+            .into_iter()
+            .flatten()
+        {
+            p.remove_equality(eq);
+        }
+    }
+
+    pub fn on(&self, axis: Axis) -> Option<Constraint> {
+        match axis {
+            Axis::Vertical => self.ver_con.unzip().0,
+            Axis::Horizontal => self.hor_con.unzip().0,
+        }
+    }
+
+    /// Whether or not [`self`] has flexibility in terms of its
+    /// length.
+    fn is_resizable_on(&self, axis: Axis) -> bool {
+        let con = self.on(axis);
+        matches!(con, Some(Constraint::Min(_) | Constraint::Max(_)) | None)
     }
 }
 

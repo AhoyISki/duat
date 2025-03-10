@@ -913,9 +913,9 @@ pub macro log_panic($($text:tt)*) {{
 /// Log information to a log file
 #[doc(hidden)]
 pub macro log_file($($text:tt)*) {{
-    //#[cfg(not(debug_assertions))] {
-    //    compile_error!("You are not supposed to use log_file on release profiles!");
-    //}
+    #[cfg(not(debug_assertions))] {
+        compile_error!("You are not supposed to use log_file on release profiles!");
+    }
 
     if let Some(cache) = cache_dir() {
         let mut file = std::io::BufWriter::new(

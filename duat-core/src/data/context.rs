@@ -9,9 +9,9 @@ use std::{
 pub use self::global::*;
 use super::{RoData, RwData, private::InnerData};
 use crate::{
-    mode::{self, Cursors},
+    mode::Cursors,
     ui::{Area, Ui},
-    widgets::{File, Node, Widget},
+    widgets::{File, Node, Related, Widget},
 };
 
 mod global {
@@ -213,9 +213,7 @@ impl<U: Ui> CurFile<U> {
         file.text_mut().add_cursors(area, cfg);
 
         <File as Widget<U>>::update(&mut file, area);
-        if !mode::has_printing_stopped() {
-            <File as Widget<U>>::print(&mut file, area);
-        }
+        <File as Widget<U>>::print(&mut file, area);
 
         ret
     }
@@ -237,9 +235,7 @@ impl<U: Ui> CurFile<U> {
             }
             widget.text_mut().add_cursors(area, cfg);
             widget.update(area);
-            if !mode::has_printing_stopped() {
-                widget.print(area);
-            }
+            widget.print(area);
 
             ret
         };
@@ -254,7 +250,7 @@ impl<U: Ui> CurFile<U> {
             rel.iter()
                 .find(|node| node.data_is::<W>())
                 .and_then(|node| {
-                    let (widget, area) = node.parts();
+                    let (widget, area, _) = node.parts();
                     widget.mutate_as(|w| f(w, area))
                 })
         }
@@ -366,47 +362,37 @@ impl<U: Ui> CurWidget<U> {
 
     pub fn inspect<R>(&self, f: impl FnOnce(&dyn Widget<U>, &U::Area) -> R) -> R {
         let data = self.0.raw_read();
-        let (widget, area) = data.as_ref().unwrap().parts();
+        let (widget, area, _) = data.as_ref().unwrap().parts();
         let widget = widget.read();
 
         f(&*widget, area)
     }
 
-    pub fn inspect_widget_as<W, R>(&self, f: impl FnOnce(&W, &U::Area) -> R) -> Option<R>
-    where
-        W: Widget<U>,
-    {
-        let data = self.0.raw_read();
-        let (widget, area) = data.as_ref().unwrap().parts();
-
-        widget.inspect_as::<W, R>(|widget| f(widget, area))
-    }
-
     pub fn inspect_as<W: Widget<U>, R>(&self, f: impl FnOnce(&W, &U::Area) -> R) -> Option<R> {
         let data = self.0.raw_read();
-        let (widget, area) = data.as_ref().unwrap().parts();
+        let (widget, area, _) = data.as_ref().unwrap().parts();
 
         widget.inspect_as(|widget| f(widget, area))
     }
 
     pub(crate) fn mutate_data<R>(
         &self,
-        f: impl FnOnce(&RwData<dyn Widget<U>>, &U::Area) -> R,
+        f: impl FnOnce(&RwData<dyn Widget<U>>, &U::Area, &Related<U>) -> R,
     ) -> R {
         let data = self.0.read();
-        let (widget, area) = data.as_ref().unwrap().parts();
+        let (widget, area, related) = data.as_ref().unwrap().parts();
 
-        f(widget, area)
+        f(widget, area, related)
     }
 
     pub(crate) fn mutate_data_as<W: Widget<U>, R>(
         &self,
-        f: impl FnOnce(&RwData<W>, &U::Area) -> R,
+        f: impl FnOnce(&RwData<W>, &U::Area, &Related<U>) -> R,
     ) -> Option<R> {
         let data = self.0.read();
-        let (widget, area) = data.as_ref().unwrap().parts();
+        let (widget, area, related) = data.as_ref().unwrap().parts();
 
-        Some(f(&widget.try_downcast::<W>()?, area))
+        Some(f(&widget.try_downcast::<W>()?, area, related))
     }
 
     pub(crate) fn node(&self) -> Node<U> {

@@ -1,6 +1,6 @@
 mod iter;
 
-use std::fmt::Alignment;
+use std::{fmt::Alignment, sync::atomic::Ordering};
 
 use crossterm::cursor;
 use duat_core::{
@@ -8,6 +8,7 @@ use duat_core::{
     cfg::{IterCfg, PrintCfg},
     data::RwData,
     form::Painter,
+    session,
     text::{FwdIter, Item, Part, Point, RevIter, Text},
     ui::{self, Area as UiArea, Axis, Caret, Constraint, DuatPermission, PushSpecs},
 };
@@ -98,13 +99,14 @@ impl Area {
         let layouts = self.layouts.read();
         let layout = get_layout(&layouts, self.id).unwrap();
         let is_active = layout.active_id() == self.id;
-        let Some((sender, info)) = layout.get(self.id).and_then(|rect| {
+        let Some((sender, info, resume_printing)) = layout.get(self.id).and_then(|rect| {
+            let resume_printing = rect.declare_updates(layout);
             let sender = rect.sender();
             let info = rect.print_info();
             sender.zip(info).map(|(sender, info)| {
                 let mut info = info.write();
                 info.fix(text);
-                (sender, *info)
+                (sender, *info, resume_printing)
             })
         }) else {
             return;
@@ -220,6 +222,9 @@ impl Area {
         }
 
         sender.send(lines);
+        if resume_printing {
+            session::resume_printing().unwrap();
+        }
     }
 }
 
@@ -365,10 +370,8 @@ impl ui::Area for Area {
         if let Some(ver) = cons.on(Axis::Vertical)
             && ver == con
         {
-            duat_core::log_file!("no change");
             return Ok(());
         };
-        duat_core::log_file!("change");
 
         *layout.rects.get_constraints_mut(self.id).unwrap() = {
             let mut p = layout.printer.write();

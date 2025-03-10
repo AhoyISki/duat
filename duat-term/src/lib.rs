@@ -84,10 +84,12 @@ impl ui::Ui for Ui {
         // The main application input loop
         let thread = std::thread::Builder::new().name("print loop".to_string());
         let _ = thread.spawn(move || {
-            'outer: loop {
-                let Ok(UiEvent::ResumePrinting) = rx.recv() else {
-                    break;
-                };
+            loop {
+                match rx.recv().unwrap() {
+                    UiEvent::PausePrinting => continue,
+                    UiEvent::Quit => return,
+                    UiEvent::ResumePrinting => {}
+                }
 
                 let printer = ms.lock().unwrap().cur_printer().clone();
 
@@ -113,11 +115,9 @@ impl ui::Ui for Ui {
 
                     if let Ok(event) = rx.try_recv() {
                         match event {
-                            UiEvent::ResumePrinting => {
-                                unreachable!("Wrong order")
-                            }
+                            UiEvent::ResumePrinting => {}
                             UiEvent::PausePrinting => break,
-                            UiEvent::Quit => break 'outer,
+                            UiEvent::Quit => return,
                         }
                     }
                 }

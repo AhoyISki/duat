@@ -3,28 +3,25 @@ use core::str;
 pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
 
 pub use self::{
-    prompt::{IncSearch, PipeSelections, Prompt, PromptMode, RunCommands},
     helper::{Cursor, Cursors, EditHelper, Editor, Mover},
-    inc_search::{ExtendFwd, ExtendRev, SearchFwd, IncSearcher, SearchRev, Orig},
+    inc_search::{ExtendFwd, ExtendRev, IncSearcher, Orig, SearchFwd, SearchRev},
+    prompt::{IncSearch, PipeSelections, Prompt, PromptMode, RunCommands},
     regular::Regular,
     remap::*,
     switch::*,
 };
 use crate::{ui::Ui, widgets::Widget};
 
-mod prompt;
 mod helper;
 mod inc_search;
+mod prompt;
 mod regular;
 mod remap;
 
 mod switch {
     use std::{
         any::TypeId,
-        sync::{
-            Arc, LazyLock,
-            atomic::{AtomicBool, Ordering},
-        },
+        sync::{Arc, LazyLock},
         vec::IntoIter,
     };
 
@@ -41,7 +38,6 @@ mod switch {
         widgets::{File, Node, Widget},
     };
 
-    static PRINTING_IS_STOPPED: AtomicBool = AtomicBool::new(false);
     static SEND_KEYS: LazyLock<Mutex<Box<KeyFn>>> =
         LazyLock::new(|| Mutex::new(Box::new(|_| None)));
     static RESET_MODE: LazyLock<Mutex<Arc<dyn Fn() + Send + Sync>>> =
@@ -114,13 +110,6 @@ mod switch {
         }
     }
 
-    /// Whether or not printing has been stopped
-    ///
-    /// This is done when sending multiple keys at the same time
-    pub(crate) fn has_printing_stopped() -> bool {
-        PRINTING_IS_STOPPED.load(Ordering::Acquire)
-    }
-
     /// Switches to a certain widget
     pub(super) fn switch_widget<U: Ui>(node: Node<U>) {
         if let Ok(widget) = context::cur_widget::<U>() {
@@ -154,9 +143,9 @@ mod switch {
             return None;
         };
 
-        widget.mutate_data_as(|widget, area| {
+        widget.mutate_data_as(|w, area, related| {
             let mut sent_keys = Vec::new();
-            let mode_fn = widget.mutate(|widget: &mut M::Widget| {
+            let mode_fn = w.mutate(|widget: &mut M::Widget| {
                 let cfg = widget.print_cfg();
                 widget.text_mut().remove_cursors(area, cfg);
 
@@ -171,17 +160,28 @@ mod switch {
             });
 
             for key in sent_keys {
-                hooks::trigger_now::<KeySentTo<M::Widget, U>>((key, widget.clone(), area.clone()));
+                hooks::trigger_now::<KeySentTo<M::Widget, U>>((key, w.clone(), area.clone()));
                 hooks::trigger::<KeySent<U>>(key);
             }
 
-            let mut widget = widget.write();
+            let mut widget = w.write();
             let cfg = widget.print_cfg();
             widget.text_mut().add_cursors(area, cfg);
             if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
                 area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
             }
+            drop(widget);
 
+            if let Some(related) = related {
+                let related = related.read();
+                for node in related.iter() {
+                    if node.needs_update() {
+                        node.update_and_print();
+                    }
+                }
+            }
+
+            let mut widget = w.write();
             widget.update(area);
             widget.print(area);
 
@@ -212,8 +212,8 @@ mod switch {
         }
 
         let widget = context::cur_widget::<U>().unwrap();
-        widget.mutate_data_as::<M::Widget, ()>(|widget, area| {
-            let mut widget = widget.write();
+        widget.mutate_data_as::<M::Widget, ()>(|w, area, related| {
+            let mut widget = w.write();
             let cfg = widget.print_cfg();
             widget.text_mut().remove_cursors(area, cfg);
 
@@ -224,11 +224,20 @@ mod switch {
                 area.scroll_around_point(widget.text(), main.caret(), cfg);
             }
             widget.text_mut().add_cursors(area, cfg);
+            drop(widget);
 
-            widget.update(area);
-            if !has_printing_stopped() {
-                widget.print(area);
+            if let Some(related) = related {
+                let related = related.read();
+                for node in related.iter() {
+                    if node.needs_update() {
+                        node.update_and_print();
+                    }
+                }
             }
+
+			let mut widget = w.write();
+            widget.update(area);
+            widget.print(area);
         });
 
         crate::mode::set_send_key::<M, U>();

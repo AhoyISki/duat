@@ -9,6 +9,7 @@ use std::{
 };
 
 use arboard::Clipboard;
+pub use control::*;
 use gapbuf::GapBuffer;
 use parking_lot::Mutex;
 
@@ -29,6 +30,30 @@ static DUAT_SENDER: OnceLock<&mpsc::Sender<DuatEvent>> = OnceLock::new();
 
 pub(crate) fn sender() -> &'static mpsc::Sender<DuatEvent> {
     DUAT_SENDER.get().unwrap()
+}
+
+mod control {
+    use std::sync::{OnceLock, mpsc};
+
+    use crate::ui::UiEvent;
+
+    static UI_TX: OnceLock<mpsc::Sender<UiEvent>> = OnceLock::new();
+
+    pub fn pause_printing() -> Result<(), mpsc::SendError<UiEvent>> {
+        UI_TX.get().unwrap().send(UiEvent::PausePrinting)
+    }
+
+    pub fn resume_printing() -> Result<(), mpsc::SendError<UiEvent>> {
+        UI_TX.get().unwrap().send(UiEvent::ResumePrinting)
+    }
+
+    pub(crate) fn quit() -> Result<(), mpsc::SendError<UiEvent>> {
+        UI_TX.get().unwrap().send(UiEvent::Quit)
+    }
+
+    pub(crate) fn setup(ui_tx: mpsc::Sender<UiEvent>) {
+        UI_TX.set(ui_tx).unwrap();
+    }
 }
 
 #[doc(hidden)]
@@ -55,7 +80,8 @@ impl<U: Ui> SessionCfg<U> {
         ui_tx: mpsc::Sender<UiEvent>,
     ) -> Session<U> {
         DUAT_SENDER.set(duat_tx).unwrap();
-        cmd::add_session_commands::<U>(ui_tx.clone()).unwrap();
+        cmd::add_session_commands::<U>().unwrap();
+        control::setup(ui_tx);
 
         let mut args = std::env::args();
         let first = args.nth(1).map(PathBuf::from);
@@ -74,7 +100,6 @@ impl<U: Ui> SessionCfg<U> {
             cur_window,
             file_cfg: self.file_cfg,
             layout_fn: self.layout_fn,
-            ui_tx,
         };
 
         context::set_cur(node.as_file(), node.clone());
@@ -100,7 +125,9 @@ impl<U: Ui> SessionCfg<U> {
         ui_tx: mpsc::Sender<UiEvent>,
     ) -> Session<U> {
         DUAT_SENDER.set(duat_tx).unwrap();
-        cmd::add_session_commands::<U>(ui_tx.clone()).unwrap();
+        cmd::add_session_commands::<U>().unwrap();
+        control::setup(ui_tx);
+
         let cur_window = context::set_windows::<U>(Vec::new());
 
         let file_cfg = self.file_cfg.clone();
@@ -120,7 +147,6 @@ impl<U: Ui> SessionCfg<U> {
             cur_window,
             file_cfg: self.file_cfg,
             layout_fn: self.layout_fn,
-            ui_tx,
         };
 
         for (win, mut cfgs) in inherited_cfgs {
@@ -164,7 +190,6 @@ pub struct Session<U: Ui> {
     cur_window: &'static AtomicUsize,
     file_cfg: FileCfg,
     layout_fn: Box<dyn Fn() -> Box<dyn Layout<U> + 'static>>,
-    ui_tx: mpsc::Sender<UiEvent>,
 }
 
 impl<U: Ui> Session<U> {
@@ -237,13 +262,16 @@ impl<U: Ui> Session<U> {
                 }
             });
 
-            self.ui_tx.send(UiEvent::ResumePrinting).unwrap();
+            match control::resume_printing() {
+                Ok(_) => {}
+                Err(err) => panic!("{err}"),
+            }
 
             let break_to = self.session_loop(&duat_rx);
 
             // UiEvent::Quit may have been sent at this point, making this not
             // necessarily succeed.
-            let _ = self.ui_tx.send(UiEvent::PausePrinting);
+            let _ = control::pause_printing();
 
             for break_to in break_to {
                 match break_to {

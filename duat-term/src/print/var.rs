@@ -32,9 +32,9 @@ impl VarPoint {
         vp
     }
 
-	/// Sets the values to `(0, 0)`
-	///
-	/// This is done when a widget is removed.
+    /// Sets the values to `(0, 0)`
+    ///
+    /// This is done when a widget is removed.
     pub fn set_to_zero(&self) {
         self.y.value.store(0, Ordering::Release);
         self.x.value.store(0, Ordering::Release);
@@ -111,7 +111,11 @@ impl VarValue {
     }
 
     pub fn has_changed(&self) -> bool {
-        self.has_changed.swap(false, Ordering::Release)
+        self.has_changed.load(Ordering::Acquire)
+    }
+
+    pub fn declare_update(&self) -> bool {
+        self.has_changed.swap(false, Ordering::Relaxed)
     }
 }
 

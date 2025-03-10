@@ -461,7 +461,7 @@ pub struct Node<U: Ui> {
     checker: Arc<dyn Fn() -> bool + Send + Sync>,
     busy_updating: Arc<AtomicBool>,
 
-    related_widgets: Option<RwData<Vec<Node<U>>>>,
+    related_widgets: Related<U>,
     on_focus: fn(&Node<U>),
     on_unfocus: fn(&Node<U>),
 }
@@ -513,11 +513,6 @@ impl<U: Ui> Node<U> {
     pub fn update_and_print(&self) {
         self.busy_updating.store(true, Ordering::Release);
 
-        let mut widget = self.widget.raw_write();
-        widget.update(&self.area);
-        widget.print(&self.area);
-        drop(widget);
-
         if let Some(nodes) = &self.related_widgets {
             for node in &*nodes.read() {
                 if node.needs_update() {
@@ -525,6 +520,11 @@ impl<U: Ui> Node<U> {
                 }
             }
         }
+
+        let mut widget = self.widget.raw_write();
+        widget.update(&self.area);
+        widget.print(&self.area);
+        drop(widget);
 
         self.busy_updating.store(false, Ordering::Release);
     }
@@ -543,7 +543,7 @@ impl<U: Ui> Node<U> {
 
     pub fn needs_update(&self) -> bool {
         if !self.busy_updating.load(Ordering::Acquire) {
-            (self.checker)() || self.area.has_changed()
+            self.area.has_changed() || (self.checker)()
         } else {
             false
         }
@@ -553,8 +553,8 @@ impl<U: Ui> Node<U> {
         self.widget.raw_write().update(&self.area)
     }
 
-    pub(crate) fn parts(&self) -> (&RwData<dyn Widget<U>>, &U::Area) {
-        (&self.widget, &self.area)
+    pub(crate) fn parts(&self) -> (&RwData<dyn Widget<U>>, &<U as Ui>::Area, &Related<U>) {
+        (&self.widget, &self.area, &self.related_widgets)
     }
 
     pub(crate) fn as_file(&self) -> Option<FileParts<U>> {
@@ -624,3 +624,5 @@ impl<U: Ui> PartialEq for Node<U> {
 impl<U: Ui> Eq for Node<U> {}
 
 pub trait CheckerFn = Fn() -> bool + 'static + Send + Sync;
+
+pub type Related<U> = Option<RwData<Vec<Node<U>>>>;

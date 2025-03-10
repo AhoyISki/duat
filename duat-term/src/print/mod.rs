@@ -3,7 +3,7 @@ use std::{
     io::{Write, stdout},
     sync::{
         Arc, LazyLock, Mutex,
-        atomic::{AtomicBool, AtomicU32, Ordering},
+        atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering},
     },
 };
 
@@ -16,6 +16,7 @@ use crossterm::{
 };
 use duat_core::{
     form::{self, FormId},
+    session,
     ui::Axis,
 };
 
@@ -42,6 +43,8 @@ pub struct Printer {
     max: VarPoint,
     var_value_fn: fn() -> VarValue,
     has_to_print_edges: AtomicBool,
+
+    updates: AtomicUsize,
 }
 
 impl Printer {
@@ -53,7 +56,7 @@ impl Printer {
             let mut vars = Vec::new();
             let mut solver = Solver::new();
             let max = VarPoint::new_from_map(&mut vars);
-            let strong = STRONG * 3.0;
+            let strong = STRONG + 3.0;
             solver.add_edit_variable(max.x_var(), strong).unwrap();
             solver.suggest_value(max.x_var(), width).unwrap();
 
@@ -74,6 +77,7 @@ impl Printer {
             max,
             var_value_fn: VarValue::new,
             has_to_print_edges: AtomicBool::new(false),
+            updates: AtomicUsize::new(0),
         }
     }
 
@@ -98,17 +102,17 @@ impl Printer {
         width
     }
 
-    pub fn set_copy(&mut self, vv: &VarValue, copy: &VarValue) {
+    pub fn set_copy(&mut self, vv: &VarValue, above: &VarValue) {
         let copy = {
-            let i = self.vars.binary_search_by_key(&copy.var, key_fn).unwrap();
+            let i = self.vars.binary_search_by_key(&above.var, key_fn).unwrap();
             match self.vars.get(i).unwrap() {
-                (_, SavedVar::Val { .. } | SavedVar::Edge { .. }) => copy.value.clone(),
+                (_, SavedVar::Val { .. } | SavedVar::Edge { .. }) => above.clone(),
                 (_, SavedVar::Copy { copy, .. }) => copy.clone(),
             }
         };
 
         let i = self.vars.binary_search_by_key(&vv.var, key_fn).unwrap();
-        self.vars.get_mut(i).unwrap().1 = SavedVar::copy(vv, copy);
+        self.vars.get_mut(i).unwrap().1 = SavedVar::copy(vv, copy, above.clone());
     }
 
     /// Updates the value of all [`VarPoint`]s that have changed,
@@ -123,10 +127,11 @@ impl Printer {
             self.solver.suggest_value(max.y_var(), height).unwrap();
         }
 
+        let mut has_changeds = Vec::new();
         let (framed, mut frames, copies) = {
             let mut framed = Vec::new();
             let mut frames = Vec::new();
-            let mut copies: Vec<(&Arc<AtomicU32>, _, _)> = Vec::new();
+            let mut copies = Vec::new();
 
             for (var, new) in self.solver.fetch_changes() {
                 let i = self.vars.binary_search_by_key(var, key_fn).ok();
@@ -134,13 +139,17 @@ impl Printer {
                     Some((_, SavedVar::Val { value, has_changed })) => {
                         let new = new.round() as u32;
                         let old = value.swap(new, Ordering::Release);
-                        has_changed.store(old != new, Ordering::Release);
+                        if old != new {
+                            has_changeds.push((has_changed, None));
+                        }
                     }
-                    Some((_, SavedVar::Edge { width: frame, rhs, value, has_changed })) => {
-                        framed.push((frame, rhs, value, has_changed));
+                    Some((_, SavedVar::Edge { width: frame, rhs, value, .. })) => {
+                        framed.push((frame, rhs, value));
                     }
-                    Some((_, SavedVar::Copy { copy, value, has_changed })) => {
-                        copies.push((copy, value, has_changed))
+                    Some((_, SavedVar::Copy { copy, above, value, has_changed })) => {
+                        // Here, I'm passing the above value, so that it (a
+                        // parent value) won't be said to have been changed.
+                        copies.push((&copy.value, value, has_changed, Some(above)))
                     }
                     // In this case, the variable is a frame.
                     None => frames.push((var, new)),
@@ -150,22 +159,59 @@ impl Printer {
             (framed, frames, copies)
         };
 
-        for (frame, rhs, value, has_changed) in framed {
+        for (frame, rhs, value) in framed {
             if let Some((_, new)) = frames.extract_if(.., |(var, _)| **var == frame.var).next() {
                 let new = new.round() as u32;
-                let old = frame.value.swap(new, Ordering::Release);
-                has_changed.store(old != new, Ordering::Release);
+                frame.value.store(new, Ordering::Release);
             }
 
             let new = rhs.load(Ordering::Acquire) - frame.value();
-            let old = value.swap(new, Ordering::Release);
-            has_changed.fetch_or(old != new, Ordering::Acquire);
+            value.store(new, Ordering::Release);
         }
 
-        for (copy, value, has_changed) in copies {
+        for (copy, value, has_changed, above) in copies {
             let new = copy.load(Ordering::Acquire);
             let old = value.swap(new, Ordering::Release);
-            has_changed.store(old != new, Ordering::Release);
+            if old != new {
+                has_changeds.push((has_changed, above));
+            }
+        }
+
+        if !has_changeds.is_empty() {
+            let mut to_remove = Vec::new();
+            for (_, above) in has_changeds.iter() {
+                // Parents should never show that they've been changed, since that
+                // property will never actually be checked.
+                // If that were to be set, printing would be paused forever.
+                if let Some(above) = above
+                    && let Some(i) = has_changeds
+                        .iter()
+                        .position(|(hc, _)| Arc::ptr_eq(hc, &above.has_changed))
+                {
+                    if let Err(j) = to_remove.binary_search(&i) {
+                        to_remove.insert(j, i)
+                    }
+                }
+            }
+
+            for i in to_remove.into_iter().rev() {
+                has_changeds.remove(i);
+            }
+
+            for (has_changed, _) in has_changeds {
+                let prev = has_changed.swap(true, Ordering::Release);
+
+                // Only add to the updates if those have been checked.
+                if !prev
+                    && !Arc::ptr_eq(has_changed, &self.max.y().has_changed)
+                    && !Arc::ptr_eq(has_changed, &self.max.x().has_changed)
+                {
+                    *self.updates.get_mut() += 1;
+                }
+            }
+            if *self.updates.get_mut() > 0 {
+                //let _ = session::pause_printing();
+            }
         }
     }
 
@@ -338,6 +384,11 @@ impl Printer {
         }
 
         execute!(stdout, terminal::EndSynchronizedUpdate).unwrap();
+    }
+
+    pub unsafe fn declare_updates(&self, n: usize) -> usize {
+        let prev = self.updates.fetch_sub(n, Ordering::Relaxed);
+        prev - n
     }
 }
 
@@ -602,7 +653,8 @@ pub enum SavedVar {
         has_changed: Arc<AtomicBool>,
     },
     Copy {
-        copy: Arc<AtomicU32>,
+        copy: VarValue,
+        above: VarValue,
         value: Arc<AtomicU32>,
         has_changed: Arc<AtomicBool>,
     },
@@ -625,9 +677,10 @@ impl SavedVar {
         }
     }
 
-    fn copy(vv: &VarValue, copy: Arc<AtomicU32>) -> Self {
+    fn copy(vv: &VarValue, copy: VarValue, above: VarValue) -> Self {
         Self::Copy {
             copy,
+            above,
             value: vv.value.clone(),
             has_changed: vv.has_changed.clone(),
         }

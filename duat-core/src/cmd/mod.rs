@@ -190,7 +190,7 @@ use std::{
     collections::HashMap,
     fmt::Display,
     ops::Range,
-    sync::{Arc, LazyLock, mpsc},
+    sync::{Arc, LazyLock},
 };
 
 use crossterm::style::Color;
@@ -207,16 +207,16 @@ use crate::{
     data::RwData,
     file_entry, iter_around, iter_around_rev,
     mode::{self},
-    session::sender,
+    session::{self, sender},
     text::{Text, err, ok},
-    ui::{DuatEvent, Ui, UiEvent, Window},
+    ui::{DuatEvent, Ui, Window},
     widget_entry,
     widgets::{File, Widget},
 };
 
 mod parameters;
 
-pub(crate) fn add_session_commands<U: Ui>(ui_tx: mpsc::Sender<UiEvent>) -> crate::Result<(), ()> {
+pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
     add!("alias", |flags: Flags, alias: &str, command: Remainder| {
         if !flags.is_empty() {
             Err(err!("An alias cannot take any flags"))
@@ -225,8 +225,7 @@ pub(crate) fn add_session_commands<U: Ui>(ui_tx: mpsc::Sender<UiEvent>) -> crate
         }
     })?;
 
-    let tx = ui_tx.clone();
-    add!(["quit", "q"], move |name: Option<FileBuffer<U>>| {
+    add!(["quit", "q"], |name: Option<FileBuffer<U>>| {
         let cur_name = context::cur_file::<U>()?.name();
         let name = name.unwrap_or(&cur_name);
 
@@ -246,7 +245,7 @@ pub(crate) fn add_session_commands<U: Ui>(ui_tx: mpsc::Sender<UiEvent>) -> crate
             let Some(next_name) = iter_around::<U>(&windows, win, wid)
                 .find_map(|(.., node)| node.inspect_as(File::name))
             else {
-                tx.send(UiEvent::Quit).unwrap();
+                session::quit().unwrap();
                 sender().send(DuatEvent::Quit).unwrap();
                 return Ok(None);
             };
@@ -263,8 +262,7 @@ pub(crate) fn add_session_commands<U: Ui>(ui_tx: mpsc::Sender<UiEvent>) -> crate
         Ok(Some(ok!("Closed " [*a] name)))
     })?;
 
-    let tx = ui_tx.clone();
-    add!(["quit!", "q!"], move |name: Option<FileBuffer<U>>| {
+    add!(["quit!", "q!"], |name: Option<FileBuffer<U>>| {
         let cur_name = context::cur_file::<U>()?.name();
         let name = name.unwrap_or(&cur_name);
 
@@ -276,7 +274,7 @@ pub(crate) fn add_session_commands<U: Ui>(ui_tx: mpsc::Sender<UiEvent>) -> crate
             let Some(next_name) = iter_around::<U>(&windows, win, wid)
                 .find_map(|(.., node)| node.inspect_as(File::name))
             else {
-                tx.send(UiEvent::Quit).unwrap();
+                session::quit().unwrap();
                 sender().send(DuatEvent::Quit).unwrap();
                 return Ok(None);
             };
@@ -289,8 +287,7 @@ pub(crate) fn add_session_commands<U: Ui>(ui_tx: mpsc::Sender<UiEvent>) -> crate
         Ok(Some(ok!("Closed " [*a] name)))
     })?;
 
-    let tx = ui_tx.clone();
-    add!(["quit-all", "qa"], move || {
+    add!(["quit-all", "qa"], || {
         let windows = context::windows::<U>().read();
         let unwritten = windows
             .iter()
@@ -300,7 +297,7 @@ pub(crate) fn add_session_commands<U: Ui>(ui_tx: mpsc::Sender<UiEvent>) -> crate
             .count();
 
         if unwritten == 0 {
-            tx.send(UiEvent::Quit).unwrap();
+            session::quit().unwrap();
             sender().send(DuatEvent::Quit).unwrap();
             Ok(None)
         } else if unwritten == 1 {
@@ -310,14 +307,13 @@ pub(crate) fn add_session_commands<U: Ui>(ui_tx: mpsc::Sender<UiEvent>) -> crate
         }
     })?;
 
-    let tx = ui_tx.clone();
-    add!(["quit-all!", "qa!"], move || {
-        tx.send(UiEvent::Quit).unwrap();
+    add!(["quit-all!", "qa!"], || {
+        session::quit().unwrap();
         sender().send(DuatEvent::Quit).unwrap();
         Ok(None)
     })?;
 
-    add!(["write", "w"], move |path: Option<PossibleFile>| {
+    add!(["write", "w"], |path: Option<PossibleFile>| {
         let file = context::cur_file::<U>()?;
 
         if let Some(path) = path {
@@ -342,8 +338,7 @@ pub(crate) fn add_session_commands<U: Ui>(ui_tx: mpsc::Sender<UiEvent>) -> crate
         }
     })?;
 
-    let tx = ui_tx.clone();
-    add!(["write-quit", "wq"], move |path: Option<PossibleFile>| {
+    add!(["write-quit", "wq"], |path: Option<PossibleFile>| {
         let file = context::cur_file::<U>()?;
         let (bytes, name) = file.mutate_data(|file, _| {
             let mut file = file.write();
@@ -367,7 +362,7 @@ pub(crate) fn add_session_commands<U: Ui>(ui_tx: mpsc::Sender<UiEvent>) -> crate
         let Some(next_name) =
             iter_around::<U>(&windows, win, wid).find_map(|(.., node)| node.inspect_as(File::name))
         else {
-            tx.send(UiEvent::Quit).unwrap();
+            session::quit().unwrap();
             sender().send(DuatEvent::Quit).unwrap();
             return Ok(None);
         };
@@ -403,8 +398,7 @@ pub(crate) fn add_session_commands<U: Ui>(ui_tx: mpsc::Sender<UiEvent>) -> crate
         }
     })?;
 
-    let tx = ui_tx.clone();
-    add!(["write-all-quit", "waq"], move || {
+    add!(["write-all-quit", "waq"], || {
         let windows = context::windows::<U>().read();
 
         let mut written = 0;
@@ -419,7 +413,7 @@ pub(crate) fn add_session_commands<U: Ui>(ui_tx: mpsc::Sender<UiEvent>) -> crate
             .count();
 
         if written == file_count {
-            tx.send(UiEvent::Quit).unwrap();
+            session::quit().unwrap();
             sender().send(DuatEvent::Quit).unwrap();
             Ok(None)
         } else {
@@ -429,8 +423,7 @@ pub(crate) fn add_session_commands<U: Ui>(ui_tx: mpsc::Sender<UiEvent>) -> crate
         }
     })?;
 
-    let tx = ui_tx.clone();
-    add!(["write-all-quit!", "waq!"], move || {
+    add!(["write-all-quit!", "waq!"], || {
         let windows = context::windows::<U>().read();
 
         windows
@@ -441,7 +434,7 @@ pub(crate) fn add_session_commands<U: Ui>(ui_tx: mpsc::Sender<UiEvent>) -> crate
                 node.widget().mutate_as(File::write);
             });
 
-        tx.send(UiEvent::Quit).unwrap();
+        session::quit().unwrap();
         sender().send(DuatEvent::Quit).unwrap();
         Ok(None)
     })?;
@@ -1211,7 +1204,7 @@ impl Commands {
                     }
 
                     let (.., node) = widget_entry::<W, U>(&windows, w)?;
-                    let (w, a) = node.parts();
+                    let (w, a, _) = node.parts();
                     w.mutate_as(|w| cmd(w, a, args)).unwrap()
                 })
         });
