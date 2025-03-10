@@ -212,7 +212,6 @@ impl Printer {
             if *self.updates.get_mut() > 0 {
                 let _ = session::pause_printing();
             }
-            duat_core::log_file!("set updates to {}", self.updates.get_mut());
         }
     }
 
@@ -389,7 +388,6 @@ impl Printer {
 
     pub unsafe fn declare_updates(&self, n: usize) -> usize {
         let prev = self.updates.fetch_sub(n, Ordering::Relaxed);
-        duat_core::log_file!("updates at {}", prev - n);
         prev - n
     }
 }
