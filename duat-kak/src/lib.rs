@@ -129,29 +129,30 @@ impl<U: Ui> Mode<U> for Normal {
 
         match key {
             ////////// Basic movement keys
-            key!(Char('h' | 'H') | Left, Mod::NONE | Mod::SHIFT) => {
+            key!(Char('h' | 'H') | Left) => {
                 helper.move_many(.., |mut m| {
                     set_anchor_if_needed(&mut m, key.modifiers);
                     m.move_hor(-1);
                 });
                 self.0 = SelType::Normal;
             }
-            key!(Down, Mod::NONE | Mod::SHIFT) => helper.move_many(.., |mut m| {
+            key!(Down) => helper.move_many(.., |mut m| {
                 set_anchor_if_needed(&mut m, key.modifiers);
                 m.move_ver_wrapped(1);
             }),
-            key!(Up, Mod::NONE | Mod::SHIFT) => helper.move_many(.., |mut m| {
+            key!(Up) => helper.move_many(.., |mut m| {
                 set_anchor_if_needed(&mut m, key.modifiers);
                 m.move_ver_wrapped(-1);
             }),
-            key!(Char('l' | 'L') | Right, Mod::NONE | Mod::SHIFT) => {
+            key!(Char('l' | 'L') | Right) => {
                 helper.move_many(.., |mut m| {
                     set_anchor_if_needed(&mut m, key.modifiers);
                     m.move_hor(1);
                 });
                 self.0 = SelType::Normal;
             }
-            key!(Char('j' | 'J'), Mod::NONE | Mod::SHIFT) => helper.move_many(.., |mut m| {
+            key!(Char('j' | 'J')) => helper.move_many(.., |mut m| {
+                context::notify(text!("moved down"));
                 set_anchor_if_needed(&mut m, key.modifiers);
                 m.move_ver(1);
                 if m.char() == '\n' && m.caret_col() > 0 && self.0 != SelType::ToEndOfLine {
@@ -164,7 +165,7 @@ impl<U: Ui> Mode<U> for Normal {
                     });
                 }
             }),
-            key!(Char('k' | 'K'), Mod::NONE | Mod::SHIFT) => helper.move_many(.., |mut m| {
+            key!(Char('k' | 'K')) => helper.move_many(.., |mut m| {
                 set_anchor_if_needed(&mut m, key.modifiers);
                 m.move_ver(-1);
                 if m.char() == '\n' && m.caret_col() > 0 && self.0 != SelType::ToEndOfLine {
@@ -284,7 +285,7 @@ impl<U: Ui> Mode<U> for Normal {
             }),
             key!(
                 Char('f' | 'F' | 't' | 'T'),
-                Mod::NONE | Mod::SHIFT | Mod::ALT | ALTSHIFT
+                Mod::NONE | Mod::ALT | Mod::SHIFT | ALTSHIFT
             ) => {
                 let mf = key.modifiers;
                 let sel_type = match (mf.contains(Mod::SHIFT), mf.contains(Mod::ALT)) {
@@ -1258,7 +1259,7 @@ fn set_anchor_if_needed<S>(m: &mut Mover<impl Area, S>, mf: Mod) {
 }
 
 fn just_char(key: Event) -> Option<char> {
-    if let key!(Char(char), Mod::NONE | Mod::SHIFT) = key {
+    if let key!(Char(char)) = key {
         Some(char)
     } else {
         None

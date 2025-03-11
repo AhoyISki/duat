@@ -4,6 +4,7 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering},
+        mpsc,
     },
 };
 
@@ -14,11 +15,11 @@ use crossterm::{
     style::Attribute,
     terminal,
 };
-use duat_core::{Mutex, session, ui::Axis};
+use duat_core::{Mutex, ui::Axis};
 use sync_solver::SyncSolver;
 use variables::Variables;
 
-use crate::{Coords, Equality, queue, style};
+use crate::{Coords, Equality, Event, queue, style};
 
 mod frame;
 mod line;
@@ -36,10 +37,11 @@ pub struct Printer {
     max: VarPoint,
     has_to_print_edges: AtomicBool,
     updates: AtomicUsize,
+    tx: mpsc::Sender<Event>,
 }
 
 impl Printer {
-    pub fn new() -> Self {
+    pub(crate) fn new(tx: mpsc::Sender<Event>) -> Self {
         let (vars, sync_solver, max) = {
             let mut vars = Variables::new();
             let (width, height) = crossterm::terminal::size().unwrap();
@@ -58,6 +60,7 @@ impl Printer {
             max,
             has_to_print_edges: AtomicBool::new(false),
             updates: AtomicUsize::new(0),
+            tx,
         }
     }
 
@@ -80,17 +83,17 @@ impl Printer {
         sync_solver.update(change_max, &self.max).unwrap();
 
         let vars = self.vars.lock();
-        let mut has_changeds = vars.update_variables(sync_solver.fetch_changes());
+        let mut have_changed = vars.update_variables(sync_solver.fetch_changes());
         drop(sync_solver);
 
-        if !has_changeds.is_empty() {
+        if !have_changed.is_empty() {
             let mut to_remove = Vec::new();
-            for (_, above) in has_changeds.iter() {
+            for (_, above) in have_changed.iter() {
                 // Parents should never show that they've been changed, since that
                 // property will never actually be checked.
                 // If that were to be set, printing would be paused forever.
                 if let Some(above) = above
-                    && let Some(i) = has_changeds
+                    && let Some(i) = have_changed
                         .iter()
                         .position(|(hc, _)| Arc::ptr_eq(hc, &above.has_changed))
                 {
@@ -101,11 +104,11 @@ impl Printer {
             }
 
             for i in to_remove.into_iter().rev() {
-                has_changeds.remove(i);
+                have_changed.remove(i);
             }
 
             let mut new_up = 0;
-            for (has_changed, _) in has_changeds {
+            for (has_changed, _) in have_changed {
                 let prev = has_changed.swap(true, Ordering::Release);
 
                 // Only add to the updates if those have been checked.
@@ -117,10 +120,9 @@ impl Printer {
                 }
             }
             let prev_up = self.updates.fetch_add(new_up, Ordering::Release);
-            duat_core::log_file!("updates at {}", prev_up + new_up);
             if prev_up + new_up > 0 {
-                let _ = session::pause_printing();
                 self.has_to_print_edges.store(true, Ordering::Relaxed);
+                self.tx.send(Event::PausePrinting).unwrap()
             }
         }
     }
@@ -254,16 +256,22 @@ impl Printer {
         execute!(stdout, terminal::EndSynchronizedUpdate).unwrap();
     }
 
+    /// Tells the [`Printer`] that `n` updates have been noticed
+    ///
+    /// Also returns how many updates are left. When there is nothing
+    /// left to update, [`Area::print`] is supposed to resume
+    /// printing.
+    ///
+    /// # Safety
+    ///
+    /// This is unsafe as it may overflow if used incorrectly.
     pub unsafe fn notice_updates(&self, n: usize) -> usize {
         let prev = self.updates.fetch_sub(n, Ordering::Relaxed);
-        duat_core::log_file!("updates at {}", prev - n);
         prev - n
     }
-}
 
-impl Default for Printer {
-    fn default() -> Self {
-        Self::new()
+    pub fn resume_printing(&self) {
+        self.tx.send(Event::ResumePrinting).unwrap();
     }
 }
 
@@ -320,7 +328,7 @@ mod variables {
 
             let i = self.saved.binary_search_by_key(var, key_fn).unwrap();
             let saved = self.saved.get_mut(i).unwrap();
-            saved.1 = SavedVar::frame(lhs.on_axis(axis), rhs.on_axis(axis), &width);
+            saved.1 = SavedVar::edge(lhs.on_axis(axis), rhs.on_axis(axis), &width);
 
             let edge = Edge::new(&width.value, lhs, rhs, axis.perp(), fr);
             self.edges.push(edge);
@@ -362,7 +370,7 @@ mod variables {
             {
                 match saved {
                     SavedVar::Val { .. } => {}
-                    SavedVar::Edge { value, has_changed, width, .. } => {
+                    SavedVar::Edge { lhs: value, has_changed, width, .. } => {
                         self.edges.retain(|e| !Arc::ptr_eq(&e.width, &width.value));
 
                         let (value, has_changed) = (value.clone(), has_changed.clone());
@@ -386,6 +394,8 @@ mod variables {
         ) -> Vec<(&Arc<AtomicBool>, Option<&VarValue>)> {
             let mut has_changeds = Vec::new();
             let mut copies = Vec::new();
+            let mut edges = Vec::new();
+            let mut widths = Vec::new();
 
             for (var, new) in changes {
                 let i = self.saved.binary_search_by_key(var, key_fn).ok();
@@ -397,18 +407,28 @@ mod variables {
                             has_changeds.push((has_changed, None));
                         }
                     }
-                    Some((_, SavedVar::Edge { width, rhs, value, .. })) => {
-                        let new = rhs.load(Ordering::Acquire) - width.value();
-                        value.store(new, Ordering::Release);
+                    Some((_, SavedVar::Edge { width, lhs, rhs, .. })) => {
+                        edges.push((width, lhs, rhs));
                     }
                     Some((_, SavedVar::Copy { copy, above, value, has_changed })) => {
                         // Here, I'm passing the above value, so that it (a
                         // parent value) won't be said to have been changed.
                         copies.push((&copy.value, value, has_changed, Some(above)))
                     }
-                    // In this case, the variable has been removed.
-                    None => {}
+                    // The width of edges is not saved in self.saved, so if a variable has changed,
+                    // but it is not is here, it is either the width of an edge, or a variable that
+                    // has been removed from self.saved, in which case it will just be ignored.
+                    None => widths.push((var, new)),
                 }
+            }
+
+            for (width, lhs, rhs) in edges {
+                if let Some((_, new)) = widths.extract_if(.., |(v, _)| **v == width.var).next() {
+                    width.value.store(new.round() as u32, Ordering::Release);
+                }
+
+                let new = rhs.load(Ordering::Acquire) - width.value();
+                lhs.store(new, Ordering::Release);
             }
 
             // Copies are updated after, so that the real values are updated
@@ -823,8 +843,8 @@ pub enum SavedVar {
     },
     Edge {
         width: VarValue,
+        lhs: Arc<AtomicU32>,
         rhs: Arc<AtomicU32>,
-        value: Arc<AtomicU32>,
         has_changed: Arc<AtomicBool>,
     },
     Copy {
@@ -843,11 +863,11 @@ impl SavedVar {
         }
     }
 
-    fn frame(lhs: &VarValue, rhs: &VarValue, frame: &VarValue) -> Self {
+    fn edge(lhs: &VarValue, rhs: &VarValue, width: &VarValue) -> Self {
         Self::Edge {
-            width: frame.clone(),
+            width: width.clone(),
             rhs: rhs.value.clone(),
-            value: lhs.value.clone(),
+            lhs: lhs.value.clone(),
             has_changed: lhs.has_changed.clone(),
         }
     }

@@ -1,31 +1,25 @@
-#![feature(
-    iter_collect_into,
-    let_chains,
-    if_let_guard,
-    decl_macro,
-    debug_closure_helpers
-)]
+#![feature(let_chains, decl_macro, debug_closure_helpers)]
 use std::{
     fmt::Debug,
     io::{self, Write},
-    sync::{Arc, Mutex, mpsc},
+    sync::{Arc, mpsc},
     time::Duration,
 };
 
 pub use area::{Area, Coords};
 use crossterm::{
     cursor,
-    event::{self, PopKeyboardEnhancementFlags},
+    event::{Event as CtEvent, PopKeyboardEnhancementFlags, poll as ct_poll, read as ct_read},
     execute,
-    style::ContentStyle,
+    style::{ContentStyle, Print},
     terminal::{self, ClearType},
 };
 use duat_core::{
-    DuatError,
+    DuatError, Mutex,
     data::RwData,
     form::Color,
     text::err,
-    ui::{self, Sender, UiEvent},
+    ui::{self, Sender},
 };
 
 use self::{layout::Layout, print::Printer};
@@ -39,93 +33,97 @@ mod layout;
 mod print;
 mod rules;
 
-pub struct Ui {
-    windows: Vec<(Area, Arc<Printer>)>,
-    layouts: RwData<Vec<Layout>>,
-    win: usize,
-    fr: Frame,
-    printer_fn: fn() -> Arc<Printer>,
-}
-
-impl Ui {
-    fn cur_printer(&self) -> &Arc<Printer> {
-        if let Some((_, printer)) = self.windows.get(self.win) {
-            printer
-        } else {
-            unreachable!("Started printing before a window was created");
-        }
-    }
-}
+pub struct Ui;
 
 impl ui::Ui for Ui {
     type Area = Area;
-    type MetaStatics = Mutex<Ui>;
+    type MetaStatics = Mutex<MetaStatics>;
 
-    fn open(ms: &'static Self::MetaStatics, tx: Sender, rx: mpsc::Receiver<UiEvent>) {
-        // Initial terminal setup
-        use crossterm::event::{KeyboardEnhancementFlags as KEF, PushKeyboardEnhancementFlags};
-        execute!(
-            io::stdout(),
-            terminal::EnterAlternateScreen,
-            terminal::DisableLineWrap
-        )
-        .unwrap();
-        // Some key chords (like alt+shift+o for some reason) don't work
-        // without this.
-        if terminal::supports_keyboard_enhancement().is_ok() {
-            execute!(
-                io::stdout(),
-                PushKeyboardEnhancementFlags(KEF::DISAMBIGUATE_ESCAPE_CODES)
-            )
-            .unwrap()
-        }
-        terminal::enable_raw_mode().unwrap();
-
-        // The main application input loop
+    fn open(ms: &'static Self::MetaStatics, tx: Sender) {
         let thread = std::thread::Builder::new().name("print loop".to_string());
         let _ = thread.spawn(move || {
-            loop {
-                match rx.recv().unwrap() {
-                    UiEvent::PausePrinting => continue,
-                    UiEvent::Quit => return,
-                    UiEvent::ResumePrinting => {}
-                }
+            let rx = ms.lock().rx.take().unwrap();
 
-                let printer = ms.lock().unwrap().cur_printer().clone();
+            // Wait for everything to be setup before doing anything to the
+            // terminal, for a less jarring effect.
+            while rx.recv().unwrap() != Event::ResumePrinting {}
+
+            // Initial terminal setup
+            use crossterm::event::{KeyboardEnhancementFlags as KEF, PushKeyboardEnhancementFlags};
+            execute!(
+                io::stdout(),
+                terminal::EnterAlternateScreen,
+                terminal::Clear(ClearType::All),
+                terminal::DisableLineWrap
+            )
+            .unwrap();
+            // Some key chords (like alt+shift+o for some reason) don't work
+            // without this.
+            if terminal::supports_keyboard_enhancement().is_ok() {
+                execute!(
+                    io::stdout(),
+                    PushKeyboardEnhancementFlags(KEF::DISAMBIGUATE_ESCAPE_CODES)
+                )
+                .unwrap()
+            }
+            terminal::enable_raw_mode().unwrap();
+
+            let mut do_print = true;
+
+            loop {
+                let mut printer = ms.lock().cur_printer();
 
                 loop {
-                    if let Ok(true) = event::poll(Duration::from_millis(13)) {
-                        let res = match event::read().unwrap() {
-                            event::Event::Key(key) => tx.send_key(key),
-                            event::Event::Resize(..) => {
+                    if let Ok(true) = ct_poll(Duration::from_millis(10)) {
+                        duat_core::log_file!("event");
+                        let res = match ct_read().unwrap() {
+                            CtEvent::Key(key) => tx.send_key(key),
+                            CtEvent::Resize(..) => {
                                 printer.update(true);
                                 tx.send_resize()
                             }
-                            event::Event::FocusGained
-                            | event::Event::FocusLost
-                            | event::Event::Mouse(_)
-                            | event::Event::Paste(_) => Ok(()),
+                            CtEvent::FocusGained
+                            | CtEvent::FocusLost
+                            | CtEvent::Mouse(_)
+                            | CtEvent::Paste(_) => Ok(()),
                         };
                         if res.is_err() {
                             break;
                         }
                     }
 
-                    printer.print();
+                    if do_print {
+                        printer.print();
+                    }
 
-                    if let Ok(event) = rx.try_recv() {
-                        match event {
-                            UiEvent::ResumePrinting => {}
-                            UiEvent::PausePrinting => break,
-                            UiEvent::Quit => return,
+                    match rx.try_recv() {
+                        Ok(Event::ResumePrinting) => {
+                            duat_core::log_file!("resumed in loop");
+                            do_print = true
                         }
+                        Ok(Event::PausePrinting) => {
+                            duat_core::log_file!("paused in loop");
+                            do_print = false
+                        }
+                        Ok(Event::SwitchWindow(new_printer)) => {
+                            duat_core::log_file!("switched in loop");
+                            printer = new_printer;
+                        }
+                        Ok(Event::WillReload) => break,
+                        Ok(Event::Quit) => return,
+                        Err(_) => {}
                     }
                 }
+
+                // This signal will only be sent once the reloading has been finished,
+                // just like on the first loading of the config.
+                while rx.recv().unwrap() != Event::ResumePrinting {}
             }
         });
     }
 
-    fn close(_ms: &'static Self::MetaStatics) {
+    fn close(ms: &'static Self::MetaStatics) {
+        ms.lock().tx.send(Event::Quit).unwrap();
         terminal::disable_raw_mode().unwrap();
         execute!(
             io::stdout(),
@@ -136,6 +134,38 @@ impl ui::Ui for Ui {
             PopKeyboardEnhancementFlags
         )
         .unwrap();
+    }
+
+    fn new_root(
+        ms: &'static Self::MetaStatics,
+        cache: <Self::Area as ui::Area>::Cache,
+    ) -> Self::Area {
+        let (layouts, fr, printer) = {
+            let ms = ms.lock();
+            let printer = (ms.printer_fn)(ms.tx.clone());
+            (ms.layouts.clone(), ms.fr, printer)
+        };
+
+        let main_id = layouts.mutate(|layouts| {
+            let layout = Layout::new(fr, printer.clone(), cache);
+            let main_id = layout.main_id();
+            layouts.push(layout);
+            main_id
+        });
+
+        let root = Area::new(main_id, layouts);
+        ms.lock().windows.push((root.clone(), printer));
+        root
+    }
+
+    fn switch_window(ms: &'static Self::MetaStatics, win: usize) {
+        let mut ms = ms.lock();
+        ms.win = win;
+        ms.tx.send(Event::SwitchWindow(ms.cur_printer())).unwrap()
+    }
+
+    fn flush_layout(ms: &'static Self::MetaStatics) {
+        ms.lock().cur_printer().update(false);
     }
 
     fn load(_ms: &'static Self::MetaStatics) {
@@ -151,7 +181,8 @@ impl ui::Ui for Ui {
                 terminal::Clear(ClearType::FromCursorDown),
                 terminal::EnableLineWrap,
                 cursor::Show,
-                PopKeyboardEnhancementFlags
+                PopKeyboardEnhancementFlags,
+                Print(info)
             );
             if let std::backtrace::BacktraceStatus::Captured = trace.status() {
                 for line in trace.to_string().lines() {
@@ -166,61 +197,56 @@ impl ui::Ui for Ui {
         }));
     }
 
-    fn new_root(
-        ms: &'static Self::MetaStatics,
-        cache: <Self::Area as ui::Area>::Cache,
-    ) -> Self::Area {
-        let mut ui = ms.lock().unwrap();
-        let printer = (ui.printer_fn)();
-
-        let root = ui.layouts.mutate(|layouts| {
-            let layout = Layout::new(ui.fr, printer.clone(), cache);
-            let main_id = layout.main_id();
-            layouts.push(layout);
-
-            Area::new(main_id, ui.layouts.clone())
-        });
-        let area = root.clone();
-
-        ui.windows.push((root, printer));
-
-        area
-    }
-
-    fn switch_window(ms: &'static Self::MetaStatics, win: usize) {
-        ms.lock().unwrap().win = win;
-    }
-
-    fn flush_layout(ms: &'static Self::MetaStatics) {
-        let ui = ms.lock().unwrap();
-        ui.cur_printer().update(false);
-    }
-
     fn unload(ms: &'static Self::MetaStatics) {
-        let mut ui = ms.lock().unwrap();
-        ui.windows = Vec::new();
-        *ui.layouts.write() = Vec::new();
-        ui.win = 0;
+        let mut ms = ms.lock();
+        ms.tx.send(Event::WillReload).unwrap();
+        ms.windows = Vec::new();
+        *ms.layouts.write() = Vec::new();
+        ms.win = 0;
     }
 
     fn remove_window(ms: &'static Self::MetaStatics, win: usize) {
-        let mut ui = ms.lock().unwrap();
-        ui.windows.remove(win);
-        ui.layouts.write().remove(win);
-        if ui.win > win {
-            ui.win -= 1;
+        let mut ms = ms.lock();
+        ms.windows.remove(win);
+        ms.layouts.write().remove(win);
+        if ms.win > win {
+            ms.win -= 1;
         }
     }
 }
 
-impl Default for Ui {
+#[doc(hidden)]
+pub struct MetaStatics {
+    windows: Vec<(Area, Arc<Printer>)>,
+    layouts: RwData<Vec<Layout>>,
+    win: usize,
+    fr: Frame,
+    printer_fn: fn(tx: mpsc::Sender<Event>) -> Arc<Printer>,
+    rx: Option<mpsc::Receiver<Event>>,
+    tx: mpsc::Sender<Event>,
+}
+
+impl MetaStatics {
+    fn cur_printer(&self) -> Arc<Printer> {
+        if let Some((_, printer)) = self.windows.get(self.win) {
+            printer.clone()
+        } else {
+            unreachable!("Started printing before a window was created");
+        }
+    }
+}
+
+impl Default for MetaStatics {
     fn default() -> Self {
+        let (tx, rx) = mpsc::channel();
         Self {
             windows: Vec::new(),
             layouts: RwData::default(),
             win: 0,
             fr: Frame::default(),
-            printer_fn: Arc::default
+            printer_fn: |tx| Arc::new(Printer::new(tx)),
+            rx: Some(rx),
+            tx,
         }
     }
 }
@@ -228,6 +254,22 @@ impl Default for Ui {
 impl Clone for Ui {
     fn clone(&self) -> Self {
         panic!("You are not supposed to clone the Ui");
+    }
+}
+
+enum Event {
+    ResumePrinting,
+    PausePrinting,
+    SwitchWindow(Arc<Printer>),
+    WillReload,
+    Quit,
+}
+
+impl Eq for Event {}
+
+impl PartialEq for Event {
+    fn eq(&self, other: &Self) -> bool {
+        core::mem::discriminant(self) == core::mem::discriminant(other)
     }
 }
 

@@ -235,7 +235,7 @@ mod switch {
                 }
             }
 
-			let mut widget = w.write();
+            let mut widget = w.write();
             widget.update(area);
             widget.print(area);
         });

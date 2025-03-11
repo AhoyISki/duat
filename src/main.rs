@@ -28,7 +28,6 @@ static CLIPB: LazyLock<Mutex<Clipboard>> = LazyLock::new(|| Mutex::new(Clipboard
 fn main() {
     dlopen_rs::init();
 
-    let (ui_tx, ui_rx) = mpsc::channel();
     let (reload_tx, reload_rx) = mpsc::channel();
     let (duat_tx, mut duat_rx) = mpsc::channel();
     let duat_tx = Box::leak(Box::new(duat_tx));
@@ -38,7 +37,7 @@ fn main() {
     let (_watcher, crate_dir) = {
         let Some(config_dir) = dirs_next::config_dir() else {
             pre_setup();
-            run_duat((&MS, &CLIPB), Vec::new(), (duat_tx, duat_rx, ui_tx));
+            run_duat((&MS, &CLIPB), Vec::new(), (duat_tx, duat_rx));
             return;
         };
 
@@ -92,7 +91,7 @@ fn main() {
 
     let mut prev = Vec::new();
 
-    Ui::open(&MS, ui::Sender::new(duat_tx), ui_rx);
+    Ui::open(&MS, ui::Sender::new(duat_tx));
 
     let mut lib = {
         let so_path = crate_dir.join(if cfg!(debug_assertions) {
@@ -108,10 +107,10 @@ fn main() {
         let mut run_fn = run_lib.as_ref().and_then(find_run_duat);
 
         (prev, duat_rx) = if let Some(run_duat) = run_fn.take() {
-            run_duat((&MS, &CLIPB), prev, (duat_tx, duat_rx, ui_tx.clone()))
+            run_duat((&MS, &CLIPB), prev, (duat_tx, duat_rx))
         } else {
             pre_setup();
-            run_duat((&MS, &CLIPB), prev, (duat_tx, duat_rx, ui_tx.clone()))
+            run_duat((&MS, &CLIPB), prev, (duat_tx, duat_rx))
         };
         drop(run_lib);
 

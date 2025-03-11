@@ -8,7 +8,6 @@ use duat_core::{
     cfg::{IterCfg, PrintCfg},
     data::RwData,
     form::Painter,
-    session,
     text::{FwdIter, Item, Part, Point, RevIter, Text},
     ui::{self, Area as UiArea, Axis, Caret, Constraint, DuatPermission, PushSpecs},
 };
@@ -222,7 +221,7 @@ impl Area {
 
         sender.send(lines);
         if resume_printing {
-            session::resume_printing().unwrap();
+            layout.printer.resume_printing();
         }
     }
 }

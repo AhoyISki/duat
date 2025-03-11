@@ -306,7 +306,7 @@ impl Rect {
             + self.tl.y().notice_updates() as usize;
 
         let updates_left = unsafe { p.notice_updates(noticed_updates) };
-        updates_left == 0
+        updates_left == 0 && noticed_updates > 0
     }
 
     pub fn id(&self) -> AreaId {

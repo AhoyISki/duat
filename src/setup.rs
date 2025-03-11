@@ -18,7 +18,7 @@ use duat_core::{
     data::RwData,
     mode::Regular,
     session::{FileRet, SessionCfg},
-    ui::{self, Area, Constraint, DuatEvent, UiEvent, Window},
+    ui::{self, Area, Constraint, DuatEvent, Window},
     widgets::Widget,
 };
 use duat_term::VertRule;
@@ -75,7 +75,7 @@ pub fn pre_setup() {
 pub fn run_duat(
     (ui_ms, clipb): MetaStatics,
     prev: Vec<Vec<FileRet>>,
-    (duat_tx, duat_rx, ui_tx): Messengers,
+    (duat_tx, duat_rx): Messengers,
 ) -> (Vec<Vec<FileRet>>, Receiver<DuatEvent>) {
     <Ui as ui::Ui>::load(ui_ms);
     let mut cfg = SessionCfg::new(clipb);
@@ -92,20 +92,16 @@ pub fn run_duat(
     cfg.set_print_cfg(print_cfg);
 
     let session = if prev.is_empty() {
-        cfg.session_from_args(ui_ms, duat_tx, ui_tx)
+        cfg.session_from_args(ui_ms, duat_tx)
     } else {
-        cfg.session_from_prev(ui_ms, prev, duat_tx, ui_tx)
+        cfg.session_from_prev(ui_ms, prev, duat_tx)
     };
     session.start(duat_rx)
 }
 
 type PluginFn = dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync + 'static;
 #[doc(hidden)]
-pub type Messengers = (
-    &'static Sender<DuatEvent>,
-    Receiver<DuatEvent>,
-    Sender<UiEvent>,
-);
+pub type Messengers = (&'static Sender<DuatEvent>, Receiver<DuatEvent>);
 #[doc(hidden)]
 pub type MetaStatics = (
     &'static <Ui as ui::Ui>::MetaStatics,

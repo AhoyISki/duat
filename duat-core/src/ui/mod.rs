@@ -50,26 +50,20 @@ use crate::{
 /// }
 /// ```
 pub trait Ui: Clone + Send + Sync + 'static {
-    type MetaStatics: Default + Send + Sync;
     type Area: Area<Ui = Self> + Clone + PartialEq + Send + Sync;
+    type MetaStatics: Default;
 
     ////////// Functions executed from the outer loop
 
     /// Functions to trigger when the program begins
     ///
     /// These will happen in the main `duat` runner
-    fn open(ms: &'static Self::MetaStatics, duat_tx: Sender, ui_rx: mpsc::Receiver<UiEvent>);
+    fn open(ms: &'static Self::MetaStatics, duat_tx: Sender);
 
     /// Functions to trigger when the program ends
     ///
     /// These will happen in the main `duat` runner
     fn close(ms: &'static Self::MetaStatics);
-
-    /// Functions to trigger when the program reloads
-    ///
-    /// These will happen inside of the dynamically loaded config
-    /// crate.
-    fn load(ms: &'static Self::MetaStatics);
 
     ////////// Functions executed from within the configuration loop
 
@@ -94,6 +88,12 @@ pub trait Ui: Clone + Send + Sync + 'static {
     /// adding or removing widgets, so the ui should calculate the
     /// layout.
     fn flush_layout(ms: &'static Self::MetaStatics);
+
+    /// Functions to trigger when the program reloads
+    ///
+    /// These will happen inside of the dynamically loaded config
+    /// crate.
+    fn load(ms: &'static Self::MetaStatics);
 
     /// Unloads the [`Ui`]
     ///
@@ -606,12 +606,6 @@ impl Sender {
     pub(crate) fn send_form_changed(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
         self.0.send(DuatEvent::FormChange)
     }
-}
-
-pub enum UiEvent {
-    ResumePrinting,
-    PausePrinting,
-    Quit,
 }
 
 pub struct RoWindow<'a, U: Ui>(&'a Window<U>);

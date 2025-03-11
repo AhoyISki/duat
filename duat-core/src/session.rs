@@ -9,7 +9,6 @@ use std::{
 };
 
 use arboard::Clipboard;
-pub use control::*;
 use gapbuf::GapBuffer;
 use parking_lot::Mutex;
 
@@ -20,8 +19,8 @@ use crate::{
     hooks::{self, ConfigLoaded, ConfigUnloaded, ExitedDuat, OnFileOpen, OnWindowOpen},
     mode,
     ui::{
-        Area, DuatEvent, DuatPermission, FileBuilder, Layout, MasterOnLeft, Sender, Ui, UiEvent,
-        Window, WindowBuilder,
+        Area, DuatEvent, DuatPermission, FileBuilder, Layout, MasterOnLeft, Sender, Ui, Window,
+        WindowBuilder,
     },
     widgets::{File, FileCfg, Node, PathKind, WidgetCfg},
 };
@@ -30,30 +29,6 @@ static DUAT_SENDER: OnceLock<&mpsc::Sender<DuatEvent>> = OnceLock::new();
 
 pub(crate) fn sender() -> &'static mpsc::Sender<DuatEvent> {
     DUAT_SENDER.get().unwrap()
-}
-
-mod control {
-    use std::sync::{OnceLock, mpsc};
-
-    use crate::ui::UiEvent;
-
-    static UI_TX: OnceLock<mpsc::Sender<UiEvent>> = OnceLock::new();
-
-    pub fn pause_printing() -> Result<(), mpsc::SendError<UiEvent>> {
-        UI_TX.get().unwrap().send(UiEvent::PausePrinting)
-    }
-
-    pub fn resume_printing() -> Result<(), mpsc::SendError<UiEvent>> {
-        UI_TX.get().unwrap().send(UiEvent::ResumePrinting)
-    }
-
-    pub(crate) fn quit() -> Result<(), mpsc::SendError<UiEvent>> {
-        UI_TX.get().unwrap().send(UiEvent::Quit)
-    }
-
-    pub(crate) fn setup(ui_tx: mpsc::Sender<UiEvent>) {
-        UI_TX.set(ui_tx).unwrap();
-    }
 }
 
 #[doc(hidden)]
@@ -77,11 +52,9 @@ impl<U: Ui> SessionCfg<U> {
         self,
         ms: &'static U::MetaStatics,
         duat_tx: &'static mpsc::Sender<DuatEvent>,
-        ui_tx: mpsc::Sender<UiEvent>,
     ) -> Session<U> {
         DUAT_SENDER.set(duat_tx).unwrap();
         cmd::add_session_commands::<U>().unwrap();
-        control::setup(ui_tx);
 
         let mut args = std::env::args();
         let first = args.nth(1).map(PathBuf::from);
@@ -122,11 +95,9 @@ impl<U: Ui> SessionCfg<U> {
         ms: &'static U::MetaStatics,
         prev: Vec<Vec<FileRet>>,
         duat_tx: &'static mpsc::Sender<DuatEvent>,
-        ui_tx: mpsc::Sender<UiEvent>,
     ) -> Session<U> {
         DUAT_SENDER.set(duat_tx).unwrap();
         cmd::add_session_commands::<U>().unwrap();
-        control::setup(ui_tx);
 
         let cur_window = context::set_windows::<U>(Vec::new());
 
@@ -484,12 +455,9 @@ impl<U: Ui> Session<U> {
 
         let name = context::cur_file::<U>().unwrap().name();
         if wins[0] != wins[1] {
-            if name == lhs_name {
-                self.cur_window.store(wins[1], Ordering::Relaxed);
-                U::switch_window(self.ms, wins[1]);
-            } else if name == rhs_name {
-                self.cur_window.store(wins[0], Ordering::Relaxed);
-                U::switch_window(self.ms, wins[0]);
+            if let Some(win) = [lhs_name, rhs_name].into_iter().position(|n| n == name) {
+                self.cur_window.store(win, Ordering::Relaxed);
+                U::switch_window(self.ms, win);
             }
         }
     }
