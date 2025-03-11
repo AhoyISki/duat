@@ -20,11 +20,11 @@ use super::{Constraints, Layout};
 use crate::{
     Area, AreaId, Equality, Frame,
     area::PrintInfo,
-    print::{Printer, Sender, VarPoint},
+    print::{Printer, VarPoint},
 };
 
 enum Kind {
-    End(Sender, RwData<PrintInfo>),
+    End(RwData<PrintInfo>),
     Middle {
         children: Vec<(Rect, Constraints)>,
         axis: Axis,
@@ -33,8 +33,8 @@ enum Kind {
 }
 
 impl Kind {
-    fn end(sender: Sender, info: PrintInfo) -> Self {
-        Self::End(sender, RwData::new(info))
+    fn end(info: PrintInfo) -> Self {
+        Self::End(RwData::new(info))
     }
 
     fn middle(axis: Axis, clustered: bool) -> Self {
@@ -246,12 +246,7 @@ impl Rect {
     }
 
     pub fn has_changed(&self, layout: &Layout) -> bool {
-        for var in [self.tl.x(), self.tl.y(), self.br.x(), self.br.y()] {
-            if layout.printer.has_changed(var) {
-                return true;
-            }
-        }
-        false
+        layout.printer.coords_have_changed(self.var_points())
     }
 
     pub fn id(&self) -> AreaId {
@@ -272,16 +267,9 @@ impl Rect {
         }
     }
 
-    pub fn sender(&self) -> Option<&Sender> {
-        match &self.kind {
-            Kind::End(sender, ..) => Some(sender),
-            Kind::Middle { .. } => None,
-        }
-    }
-
     pub fn print_info(&self) -> Option<&RwData<PrintInfo>> {
         match &self.kind {
-            Kind::End(_, info) => Some(info),
+            Kind::End(info) => Some(info),
             Kind::Middle { .. } => None,
         }
     }
@@ -331,8 +319,8 @@ pub struct Rects {
 
 impl Rects {
     pub fn new(p: &Printer, fr: Frame, info: PrintInfo) -> Self {
-        let (tl, br) = (p.var_point(), p.var_point());
-        let kind = Kind::end(p.sender(&tl, &br), info);
+        let (tl, br) = (p.printed_point(), p.printed_point());
+        let kind = Kind::end(info);
         let mut main = Rect::new(tl, br, true, kind);
         main.eqs.extend([
             main.tl.x() | EQ(REQUIRED) | 0.0,
@@ -356,8 +344,8 @@ impl Rects {
         let fr = self.fr;
 
         let mut rect = {
-            let (tl, br) = (p.var_point(), p.var_point());
-            let kind = Kind::end(p.sender(&tl, &br), info);
+            let (tl, br) = (p.printed_point(), p.printed_point());
+            let kind = Kind::end(info);
             Rect::new(tl, br, on_files, kind)
         };
         let new_id = rect.id();
@@ -555,7 +543,7 @@ impl Rects {
         let fr = self.fr;
 
         let (mut child, cons, parent_id) = {
-            let (tl, br) = (p.var_point(), p.var_point());
+            let (tl, br) = (p.non_printed_point(), p.non_printed_point());
             let kind = Kind::middle(axis, cluster);
             let mut parent = Rect::new(tl, br, on_files, kind);
             let parent_id = parent.id();
@@ -906,9 +894,13 @@ fn reset_and_constrain_areas(to_constrain: Vec<AreaId>, rects: &mut Rects, p: &P
 
 pub fn transfer_vars(from_p: &Printer, to_p: &Printer, rect: &Rect) {
     let vars = from_p.take_rect_vars(rect);
-    to_p.insert_rect_vars(vars);
+    if let Some(children) = rect.children() {
+        to_p.insert_non_printed_rect_vars(vars);
 
-    for (child, _) in rect.children().into_iter().flatten() {
-        transfer_vars(from_p, to_p, child)
+        for (child, _) in children.iter() {
+            transfer_vars(from_p, to_p, child)
+        }
+    } else {
+        to_p.insert_printed_rect_vars(vars);
     }
 }

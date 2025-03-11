@@ -88,29 +88,31 @@ impl Area {
 
         let layouts = self.layouts.read();
         let layout = get_layout(&layouts, self.id).unwrap();
+
+        let cfg = IterCfg::new(cfg).outsource_lfs();
         let is_active = layout.active_id() == self.id;
-        let Some((sender, info)) = layout.get(self.id).and_then(|rect| {
-            let sender = rect.sender();
-            let info = rect.print_info();
-            sender.zip(info).map(|(sender, info)| {
-                let mut info = info.write();
+
+        let (mut lines, iter) = {
+            let rect = layout.get(self.id).unwrap();
+
+            let info = {
+                let mut info = rect.print_info().unwrap().write();
                 info.fix(text);
-                (sender, *info)
-            })
-        }) else {
-            return;
-        };
+                *info
+            };
 
-        let (iter, cfg) = {
-            let line_start = text.visual_line_start(info.points);
-            (text.iter_fwd(line_start), IterCfg::new(cfg).outsource_lfs())
-        };
+            let lines = layout.printer.lines(rect.var_points(), info.x_shift, cfg);
 
-        let mut lines = sender.lines(info.x_shift, cfg, layout);
-        let iter = print_iter(iter, lines.cap(), cfg, info.points);
+            let iter = {
+                let line_start = text.visual_line_start(info.points);
+                let iter = text.iter_fwd(line_start);
+                print_iter(iter, lines.cap(), cfg, info.points)
+            };
+
+            (lines, iter)
+        };
 
         let mut cur_style = None;
-
         enum Cursor {
             Main,
             Extra,
@@ -209,7 +211,7 @@ impl Area {
             lines.end_line(&painter);
         }
 
-        sender.send(lines);
+        layout.printer.send(self.id, lines);
     }
 }
 

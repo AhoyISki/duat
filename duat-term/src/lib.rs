@@ -71,7 +71,7 @@ impl ui::Ui for Ui {
             terminal::enable_raw_mode().unwrap();
 
             loop {
-                if let Ok(true) = ct_poll(Duration::from_millis(10)) {
+                if let Ok(true) = ct_poll(Duration::from_millis(13)) {
                     let res = match ct_read().unwrap() {
                         CtEvent::Key(key) => tx.send_key(key),
                         CtEvent::Resize(..) => {

@@ -170,6 +170,8 @@ mod switch {
             if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
                 area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
             }
+            widget.update(area);
+            widget.print(area);
             drop(widget);
 
             if let Some(related) = related {
@@ -180,10 +182,6 @@ mod switch {
                     }
                 }
             }
-
-            let mut widget = w.raw_write();
-            widget.update(area);
-            widget.print(area);
 
             mode_fn
         })?
@@ -224,6 +222,8 @@ mod switch {
                 area.scroll_around_point(widget.text(), main.caret(), cfg);
             }
             widget.text_mut().add_cursors(area, cfg);
+            widget.update(area);
+            widget.print(area);
             drop(widget);
 
             if let Some(related) = related {
@@ -234,10 +234,6 @@ mod switch {
                     }
                 }
             }
-
-            let mut widget = w.raw_write();
-            widget.update(area);
-            widget.print(area);
         });
 
         crate::mode::set_send_key::<M, U>();
