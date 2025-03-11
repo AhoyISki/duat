@@ -19,11 +19,9 @@ use crate::{AreaId, Coords, Equality, area::Coord, layout::Rect, queue, style};
 
 mod frame;
 mod line;
-mod var;
 
 pub use self::{
     frame::{Brush, Frame},
-    var::VarPoint,
 };
 
 pub struct Printer {
@@ -789,5 +787,34 @@ impl Write for Lines {
 
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
+    }
+}
+
+/// A point on the screen, which can be calculated by [`cassowary`]
+/// and interpreted by `duat_term`.
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub struct VarPoint {
+    y: Variable,
+    x: Variable,
+}
+
+impl VarPoint {
+    pub(super) fn new(x: Variable, y: Variable) -> Self {
+        Self { y, x }
+    }
+
+    pub fn x(&self) -> Variable {
+        self.x
+    }
+
+    pub fn y(&self) -> Variable {
+        self.y
+    }
+
+    pub fn on_axis(&self, axis: Axis) -> Variable {
+        match axis {
+            Axis::Horizontal => self.x,
+            Axis::Vertical => self.y,
+        }
     }
 }
