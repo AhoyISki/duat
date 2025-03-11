@@ -207,7 +207,7 @@ use crate::{
     data::RwData,
     file_entry, iter_around, iter_around_rev,
     mode::{self},
-    session::{self, sender},
+    session::sender,
     text::{Text, err, ok},
     ui::{DuatEvent, Ui, Window},
     widget_entry,
@@ -245,7 +245,6 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
             let Some(next_name) = iter_around::<U>(&windows, win, wid)
                 .find_map(|(.., node)| node.inspect_as(File::name))
             else {
-                session::quit().unwrap();
                 sender().send(DuatEvent::Quit).unwrap();
                 return Ok(None);
             };
@@ -274,7 +273,6 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
             let Some(next_name) = iter_around::<U>(&windows, win, wid)
                 .find_map(|(.., node)| node.inspect_as(File::name))
             else {
-                session::quit().unwrap();
                 sender().send(DuatEvent::Quit).unwrap();
                 return Ok(None);
             };
@@ -297,7 +295,6 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
             .count();
 
         if unwritten == 0 {
-            session::quit().unwrap();
             sender().send(DuatEvent::Quit).unwrap();
             Ok(None)
         } else if unwritten == 1 {
@@ -308,7 +305,6 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
     })?;
 
     add!(["quit-all!", "qa!"], || {
-        session::quit().unwrap();
         sender().send(DuatEvent::Quit).unwrap();
         Ok(None)
     })?;
@@ -362,7 +358,6 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
         let Some(next_name) =
             iter_around::<U>(&windows, win, wid).find_map(|(.., node)| node.inspect_as(File::name))
         else {
-            session::quit().unwrap();
             sender().send(DuatEvent::Quit).unwrap();
             return Ok(None);
         };
@@ -413,7 +408,6 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
             .count();
 
         if written == file_count {
-            session::quit().unwrap();
             sender().send(DuatEvent::Quit).unwrap();
             Ok(None)
         } else {
@@ -434,7 +428,6 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
                 node.widget().mutate_as(File::write);
             });
 
-        session::quit().unwrap();
         sender().send(DuatEvent::Quit).unwrap();
         Ok(None)
     })?;
@@ -536,9 +529,14 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
         Ok(Some(ok!("Switched to " [*a] name)))
     })?;
 
-    add!("swap", |lhs: FileBuffer<U>, rhs: FileBuffer<U>| {
+    add!("swap", |lhs: FileBuffer<U>, rhs: Option<FileBuffer<U>>| {
+        let rhs = if let Some(rhs) = rhs {
+            rhs.to_string()
+        } else {
+            context::cur_file::<U>().unwrap().name()
+        };
         sender()
-            .send(DuatEvent::SwapFiles(lhs.to_string(), rhs.to_string()))
+            .send(DuatEvent::SwapFiles(lhs.to_string(), rhs.clone()))
             .unwrap();
 
         Ok(Some(ok!("Swapped " [*a] lhs [] " and " [*a] rhs)))
