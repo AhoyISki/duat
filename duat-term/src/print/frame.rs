@@ -1,10 +1,6 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicU32, Ordering},
-};
-
 use duat_core::ui::Axis;
 
+use super::variables::Variables;
 use crate::{area::Coord, print::VarPoint};
 
 /// What type of line should separate widgets
@@ -32,7 +28,6 @@ pub enum Brush {
 /// Details of the right/bottom edge of a widget
 #[derive(Debug)]
 pub struct Edge {
-    pub width: Arc<AtomicU32>,
     lhs: VarPoint,
     rhs: VarPoint,
     axis: Axis,
@@ -41,35 +36,25 @@ pub struct Edge {
 
 impl Edge {
     /// Returns a new instance of [`Edge`].
-    pub fn new(
-        width: &Arc<AtomicU32>,
-        lhs: &VarPoint,
-        rhs: &VarPoint,
-        axis: Axis,
-        fr: Frame,
-    ) -> Self {
-        Self {
-            width: width.clone(),
-            lhs: lhs.clone(),
-            rhs: rhs.clone(),
-            axis,
-            fr,
-        }
+    pub fn new(lhs: VarPoint, rhs: VarPoint, axis: Axis, fr: Frame) -> Self {
+        Self { lhs, rhs, axis, fr }
     }
 
     /// The [`Coords`] that will be used to draw the line.
-    pub fn edge_coords(&self) -> Option<EdgeCoords> {
-        if self.width.load(Ordering::Acquire) == 0 {
+    pub fn coords(&self, vars: &mut Variables) -> Option<EdgeCoords> {
+        let lhs = vars.coord(self.lhs, true);
+        let rhs = vars.coord(self.rhs, true);
+        if lhs.x == rhs.x || lhs.y == rhs.y {
             return None;
         }
 
         let start = match self.axis {
-            Axis::Horizontal => Coord::new(self.rhs.x().value(), self.lhs.y().value()),
-            Axis::Vertical => Coord::new(self.lhs.x().value(), self.rhs.y().value()),
+            Axis::Horizontal => Coord::new(rhs.x, lhs.y),
+            Axis::Vertical => Coord::new(lhs.x, rhs.y),
         };
         let end = match self.axis {
-            Axis::Horizontal => Coord::new(self.lhs.x().value(), self.rhs.y().value()),
-            Axis::Vertical => Coord::new(self.rhs.x().value(), self.lhs.y().value()),
+            Axis::Horizontal => Coord::new(lhs.x, rhs.y),
+            Axis::Vertical => Coord::new(rhs.x, lhs.y),
         };
 
         Some(EdgeCoords::new(start, end, self.axis, self.fr.brush()))

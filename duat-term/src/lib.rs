@@ -46,7 +46,9 @@ impl ui::Ui for Ui {
 
             // Wait for everything to be setup before doing anything to the
             // terminal, for a less jarring effect.
-            while rx.recv().unwrap() != Event::ResumePrinting {}
+            let Ok(Event::NewPrinter(mut printer)) = rx.recv() else {
+                unreachable!("Failed to load the Ui");
+            };
 
             // Initial terminal setup
             use crossterm::event::{KeyboardEnhancementFlags as KEF, PushKeyboardEnhancementFlags};
@@ -68,56 +70,31 @@ impl ui::Ui for Ui {
             }
             terminal::enable_raw_mode().unwrap();
 
-            let mut do_print = true;
-
             loop {
-                let mut printer = ms.lock().cur_printer();
-
-                loop {
-                    if let Ok(true) = ct_poll(Duration::from_millis(10)) {
-                        duat_core::log_file!("event");
-                        let res = match ct_read().unwrap() {
-                            CtEvent::Key(key) => tx.send_key(key),
-                            CtEvent::Resize(..) => {
-                                printer.update(true);
-                                tx.send_resize()
-                            }
-                            CtEvent::FocusGained
-                            | CtEvent::FocusLost
-                            | CtEvent::Mouse(_)
-                            | CtEvent::Paste(_) => Ok(()),
-                        };
-                        if res.is_err() {
-                            break;
+                if let Ok(true) = ct_poll(Duration::from_millis(10)) {
+                    let res = match ct_read().unwrap() {
+                        CtEvent::Key(key) => tx.send_key(key),
+                        CtEvent::Resize(..) => {
+                            printer.update(true);
+                            tx.send_resize()
                         }
-                    }
-
-                    if do_print {
-                        printer.print();
-                    }
-
-                    match rx.try_recv() {
-                        Ok(Event::ResumePrinting) => {
-                            duat_core::log_file!("resumed in loop");
-                            do_print = true
-                        }
-                        Ok(Event::PausePrinting) => {
-                            duat_core::log_file!("paused in loop");
-                            do_print = false
-                        }
-                        Ok(Event::SwitchWindow(new_printer)) => {
-                            duat_core::log_file!("switched in loop");
-                            printer = new_printer;
-                        }
-                        Ok(Event::WillReload) => break,
-                        Ok(Event::Quit) => return,
-                        Err(_) => {}
+                        CtEvent::FocusGained
+                        | CtEvent::FocusLost
+                        | CtEvent::Mouse(_)
+                        | CtEvent::Paste(_) => Ok(()),
+                    };
+                    if res.is_err() {
+                        break;
                     }
                 }
 
-                // This signal will only be sent once the reloading has been finished,
-                // just like on the first loading of the config.
-                while rx.recv().unwrap() != Event::ResumePrinting {}
+                printer.print();
+
+                match rx.try_recv() {
+                    Ok(Event::NewPrinter(new_printer)) => printer = new_printer,
+                    Ok(Event::Quit) => break,
+                    Err(_) => {}
+                }
             }
         });
     }
@@ -140,28 +117,29 @@ impl ui::Ui for Ui {
         ms: &'static Self::MetaStatics,
         cache: <Self::Area as ui::Area>::Cache,
     ) -> Self::Area {
-        let (layouts, fr, printer) = {
-            let ms = ms.lock();
-            let printer = (ms.printer_fn)(ms.tx.clone());
-            (ms.layouts.clone(), ms.fr, printer)
-        };
+        let mut ms = ms.lock();
+        let printer = (ms.printer_fn)();
 
-        let main_id = layouts.mutate(|layouts| {
-            let layout = Layout::new(fr, printer.clone(), cache);
+        let main_id = ms.layouts.mutate(|layouts| {
+            let layout = Layout::new(ms.fr, printer.clone(), cache);
             let main_id = layout.main_id();
             layouts.push(layout);
             main_id
         });
 
-        let root = Area::new(main_id, layouts);
-        ms.lock().windows.push((root.clone(), printer));
+        let root = Area::new(main_id, ms.layouts.clone());
+        ms.windows.push((root.clone(), printer.clone()));
+        if ms.windows.len() == 1 {
+            ms.tx.send(Event::NewPrinter(printer)).unwrap();
+        }
+
         root
     }
 
     fn switch_window(ms: &'static Self::MetaStatics, win: usize) {
         let mut ms = ms.lock();
         ms.win = win;
-        ms.tx.send(Event::SwitchWindow(ms.cur_printer())).unwrap()
+        ms.tx.send(Event::NewPrinter(ms.cur_printer())).unwrap()
     }
 
     fn flush_layout(ms: &'static Self::MetaStatics) {
@@ -199,7 +177,6 @@ impl ui::Ui for Ui {
 
     fn unload(ms: &'static Self::MetaStatics) {
         let mut ms = ms.lock();
-        ms.tx.send(Event::WillReload).unwrap();
         ms.windows = Vec::new();
         *ms.layouts.write() = Vec::new();
         ms.win = 0;
@@ -221,7 +198,7 @@ pub struct MetaStatics {
     layouts: RwData<Vec<Layout>>,
     win: usize,
     fr: Frame,
-    printer_fn: fn(tx: mpsc::Sender<Event>) -> Arc<Printer>,
+    printer_fn: fn() -> Arc<Printer>,
     rx: Option<mpsc::Receiver<Event>>,
     tx: mpsc::Sender<Event>,
 }
@@ -244,7 +221,7 @@ impl Default for MetaStatics {
             layouts: RwData::default(),
             win: 0,
             fr: Frame::default(),
-            printer_fn: |tx| Arc::new(Printer::new(tx)),
+            printer_fn: || Arc::new(Printer::new()),
             rx: Some(rx),
             tx,
         }
@@ -258,10 +235,7 @@ impl Clone for Ui {
 }
 
 enum Event {
-    ResumePrinting,
-    PausePrinting,
-    SwitchWindow(Arc<Printer>),
-    WillReload,
+    NewPrinter(Arc<Printer>),
     Quit,
 }
 

@@ -8,7 +8,7 @@ use duat_core::{
     ui::{Axis, Constraint, PushSpecs},
 };
 
-pub use self::rect::{Rect, Rects, transfer_vars_and_recvs};
+pub use self::rect::{Rect, Rects, transfer_vars};
 use crate::{AreaId, Equality, Frame, area::PrintInfo, print::Printer};
 
 mod rect;
@@ -120,7 +120,6 @@ impl Layout {
 
     pub fn delete(&mut self, id: AreaId) -> Option<AreaId> {
         let (rect, _, parent_id) = self.rects.delete(&self.printer, id)?;
-        rect.set_to_zero();
         remove_children(&rect, &self.printer);
         parent_id
     }
@@ -131,16 +130,6 @@ impl Layout {
 
     pub fn reset_eqs(&mut self, target: AreaId) {
         self.rects.reset_eqs(&self.printer, target)
-    }
-
-    /// The current value for the width of [`self`].
-    pub fn width(&self) -> u32 {
-        self.rects.main.len_value(Axis::Horizontal)
-    }
-
-    /// The current value for the height of [`self`].
-    pub fn height(&self) -> u32 {
-        self.rects.main.len_value(Axis::Vertical)
     }
 
     pub fn get(&self, id: AreaId) -> Option<&Rect> {
@@ -210,12 +199,12 @@ impl Constraints {
 
     pub fn replace(mut self, con: Constraint, axis: Axis, p: &Printer) -> Self {
         // A replacement means manual constraining, which is prioritized.
-        for eq in [self.ver_eq.take(), self.hor_eq.take()]
-            .into_iter()
-            .flatten()
-        {
-            p.remove_eq(eq);
-        }
+        p.remove_eqs(
+            [self.ver_eq.take(), self.hor_eq.take()]
+                .into_iter()
+                .flatten(),
+        );
+
         match axis {
             Axis::Vertical => self.ver_con.replace((con, true)),
             Axis::Horizontal => self.hor_con.replace((con, true)),
@@ -233,12 +222,11 @@ impl Constraints {
     }
 
     pub fn remove(&mut self, p: &Printer) {
-        for eq in [self.ver_eq.take(), self.hor_eq.take()]
-            .into_iter()
-            .flatten()
-        {
-            p.remove_eq(eq);
-        }
+        p.remove_eqs(
+            [self.ver_eq.take(), self.hor_eq.take()]
+                .into_iter()
+                .flatten(),
+        );
     }
 
     pub fn on(&self, axis: Axis) -> Option<Constraint> {
@@ -281,8 +269,7 @@ fn get_eqs(
 
 fn remove_children(rect: &Rect, p: &Printer) {
     for (child, _) in rect.children().iter().flat_map(|c| c.iter()) {
-        child.set_to_zero();
-        p.take_rect_parts(child);
+        p.take_rect_vars(child);
         remove_children(child, p);
     }
 }

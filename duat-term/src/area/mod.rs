@@ -15,7 +15,7 @@ use iter::{print_iter, print_iter_indented, rev_print_iter};
 
 use crate::{
     AreaId, ConstraintErr,
-    layout::{Layout, Rect, transfer_vars_and_recvs},
+    layout::{Layout, Rect, transfer_vars},
     queue, style,
 };
 
@@ -39,8 +39,8 @@ impl Coord {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Coords {
-    tl: Coord,
-    br: Coord,
+    pub tl: Coord,
+    pub br: Coord,
 }
 impl Coords {
     pub fn new(tl: Coord, br: Coord) -> Self {
@@ -53,14 +53,6 @@ impl Coords {
 
     pub fn height(&self) -> u32 {
         self.br.y - self.tl.y
-    }
-
-    pub fn tl(&self) -> Coord {
-        self.tl
-    }
-
-    pub fn br(&self) -> Coord {
-        self.br
     }
 }
 
@@ -97,14 +89,13 @@ impl Area {
         let layouts = self.layouts.read();
         let layout = get_layout(&layouts, self.id).unwrap();
         let is_active = layout.active_id() == self.id;
-        let Some((sender, info, resume_printing)) = layout.get(self.id).and_then(|rect| {
-            let resume_printing = rect.notice_updates(&layout.printer);
+        let Some((sender, info)) = layout.get(self.id).and_then(|rect| {
             let sender = rect.sender();
             let info = rect.print_info();
             sender.zip(info).map(|(sender, info)| {
                 let mut info = info.write();
                 info.fix(text);
-                (sender, *info, resume_printing)
+                (sender, *info)
             })
         }) else {
             return;
@@ -115,10 +106,9 @@ impl Area {
             (text.iter_fwd(line_start), IterCfg::new(cfg).outsource_lfs())
         };
 
-        let cap = cfg.wrap_width(sender.coords().width());
-        let iter = print_iter(iter, cap, cfg, info.points);
+        let mut lines = sender.lines(info.x_shift, cfg, layout);
+        let iter = print_iter(iter, lines.cap(), cfg, info.points);
 
-        let mut lines = sender.lines(info.x_shift, cap);
         let mut cur_style = None;
 
         enum Cursor {
@@ -128,7 +118,7 @@ impl Area {
 
         let lines_left = {
             // The y here represents the bottom of the current row of cells.
-            let tl_y = sender.coords().tl.y;
+            let tl_y = lines.coords().tl.y;
             let mut y = tl_y;
             let mut cursor = None;
 
@@ -139,10 +129,10 @@ impl Area {
                 let Item { part, .. } = item;
 
                 if wrap {
-                    if y > sender.coords().tl.y {
+                    if y > lines.coords().tl.y {
                         lines.end_line(&painter);
                     }
-                    if y == sender.coords().br.y {
+                    if y == lines.coords().br.y {
                         break;
                     }
                     (0..x).for_each(|_| lines.push_char(' ', 1));
@@ -212,7 +202,7 @@ impl Area {
                 lines.end_line(&painter);
             }
 
-            sender.coords().br.y - y
+            lines.coords().br.y - y
         };
 
         for _ in 0..lines_left {
@@ -220,9 +210,6 @@ impl Area {
         }
 
         sender.send(lines);
-        if resume_printing {
-            layout.printer.resume_printing();
-        }
     }
 }
 
@@ -286,8 +273,8 @@ impl ui::Area for Area {
 
             let lhs_p = &lhs_lay.printer;
             let rhs_p = &rhs_lay.printer;
-            transfer_vars_and_recvs(lhs_p, rhs_p, lhs_rect);
-            transfer_vars_and_recvs(rhs_p, lhs_p, rhs_rect);
+            transfer_vars(lhs_p, rhs_p, lhs_rect);
+            transfer_vars(rhs_p, lhs_p, rhs_rect);
 
             std::mem::swap(lhs_rect, rhs_rect);
 
@@ -307,8 +294,9 @@ impl ui::Area for Area {
         let points = at.to_points();
         let mut coord = {
             let layouts = self.layouts.read();
-            let rect = get_rect(&layouts, self.id).unwrap();
-            rect.tl()
+            let layout = get_layout(&layouts, self.id).unwrap();
+            let rect = layout.get(self.id).unwrap();
+            layout.printer.coords(rect.var_points(), false).tl
         };
         let mut iter = self.print_iter_from_top(text, IterCfg::new(cfg));
         while let Some((caret, item)) = iter.next()
@@ -395,12 +383,13 @@ impl ui::Area for Area {
     fn scroll_around_point(&self, text: &Text, point: Point, cfg: PrintCfg) {
         let (info, w, h) = {
             let layouts = self.layouts.read();
-            let rect = get_rect(&layouts, self.id).unwrap();
+            let layout = get_layout(&layouts, self.id).unwrap();
+            let rect = layout.get(self.id).unwrap();
+            let coords = layout.printer.coords(rect.var_points(), false);
+
             let info = rect.print_info().unwrap();
             let info = *info.read();
-            let width = rect.br().x - rect.tl().x;
-            let height = rect.br().y - rect.tl().y;
-            (info, width, height)
+            (info, coords.width(), coords.height())
         };
 
         let info = scroll_ver_around(info, w, h, point, text, IterCfg::new(cfg).outsource_lfs());
@@ -457,10 +446,13 @@ impl ui::Area for Area {
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         let (info, width) = {
             let layouts = self.layouts.read();
+            let layout = get_layout(&layouts, self.id).unwrap();
             let rect = get_rect(&layouts, self.id).unwrap();
+            let coords = layout.printer.coords(rect.var_points(), false);
+
             let info = rect.print_info().unwrap();
             let info = info.read();
-            (*info, rect.width())
+            (*info, coords.width())
         };
         let line_start = text.visual_line_start(info.points);
         let iter = text.iter_fwd(line_start);
@@ -478,7 +470,9 @@ impl ui::Area for Area {
 
     fn has_changed(&self) -> bool {
         let layouts = self.layouts.read();
-        get_rect(&layouts, self.id).unwrap().has_changed()
+        let layout = get_layout(&layouts, self.id).unwrap();
+        let rect = layout.get(self.id).unwrap();
+        rect.has_changed(layout)
     }
 
     ////////// Queries
@@ -518,11 +512,19 @@ impl ui::Area for Area {
     }
 
     fn width(&self) -> u32 {
-        get_rect(&self.layouts.read(), self.id).unwrap().width()
+        let layouts = self.layouts.read();
+        let layout = get_layout(&layouts, self.id).unwrap();
+        let rect = layout.get(self.id).unwrap();
+        let coords = layout.printer.coords(rect.var_points(), false);
+        coords.width()
     }
 
     fn height(&self) -> u32 {
-        get_rect(&self.layouts.read(), self.id).unwrap().height()
+        let layouts = self.layouts.read();
+        let layout = get_layout(&layouts, self.id).unwrap();
+        let rect = layout.get(self.id).unwrap();
+        let coords = layout.printer.coords(rect.var_points(), false);
+        coords.height()
     }
 
     fn first_points(&self, _text: &Text, _cfg: PrintCfg) -> (Point, Option<Point>) {
@@ -535,9 +537,12 @@ impl ui::Area for Area {
 
     fn last_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>) {
         let layouts = self.layouts.read();
-        let rect = get_rect(&layouts, self.id).unwrap();
-        let (height, width) = (rect.height(), rect.width());
-        let info = rect.print_info().unwrap();
+        let (info, coords) = {
+            let layout = get_layout(&layouts, self.id).unwrap();
+            let rect = layout.get(self.id).unwrap();
+            let info = rect.print_info().unwrap();
+            (info, layout.printer.coords(rect.var_points(), false))
+        };
         let mut info = info.write();
 
         if let Some(last) = info.last_points {
@@ -548,13 +553,13 @@ impl ui::Area for Area {
         let iter = text.iter_fwd(line_start);
         let cfg = IterCfg::new(cfg);
 
-        let iter = print_iter(iter, cfg.wrap_width(width), cfg, info.points);
+        let iter = print_iter(iter, cfg.wrap_width(coords.width()), cfg, info.points);
         let mut points = info.points;
         let mut y = 0;
 
         for (Caret { wrap, .. }, Item { part, real, ghost }) in iter {
             if wrap {
-                if y == height {
+                if y == coords.height() {
                     break;
                 }
                 if part.is_char() {

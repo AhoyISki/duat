@@ -2,8 +2,7 @@ use std::{
     fmt::Alignment,
     io::{Write, stdout},
     sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering},
+        atomic::{AtomicBool, Ordering},
         mpsc,
     },
 };
@@ -15,11 +14,16 @@ use crossterm::{
     style::Attribute,
     terminal,
 };
-use duat_core::{Mutex, ui::Axis};
+use duat_core::{Mutex, cfg::IterCfg, ui::Axis};
 use sync_solver::SyncSolver;
 use variables::Variables;
 
-use crate::{Coords, Equality, Event, queue, style};
+use crate::{
+    Coords, Equality,
+    area::Coord,
+    layout::{Layout, Rect},
+    queue, style,
+};
 
 mod frame;
 mod line;
@@ -27,21 +31,21 @@ mod var;
 
 pub use self::{
     frame::{Brush, Frame},
-    var::{VarPoint, VarValue},
+    var::VarPoint,
 };
 
 pub struct Printer {
     sync_solver: Mutex<SyncSolver>,
     vars: Mutex<Variables>,
-    recvs: Mutex<Vec<Receiver>>,
+    lines_tx: mpsc::Sender<Lines>,
+    lines_rx: mpsc::Receiver<Lines>,
     max: VarPoint,
     has_to_print_edges: AtomicBool,
-    updates: AtomicUsize,
-    tx: mpsc::Sender<Event>,
 }
 
 impl Printer {
-    pub(crate) fn new(tx: mpsc::Sender<Event>) -> Self {
+    /// Returns a new instance of [`Printer`]
+    pub(crate) fn new() -> Self {
         let (vars, sync_solver, max) = {
             let mut vars = Variables::new();
             let (width, height) = crossterm::terminal::size().unwrap();
@@ -53,28 +57,95 @@ impl Printer {
             (vars, sync_solver, max)
         };
 
+        let (lines_tx, lines_rx) = mpsc::channel();
+
         Self {
             sync_solver: Mutex::new(sync_solver),
             vars: Mutex::new(vars),
-            recvs: Mutex::new(Vec::new()),
+            lines_tx,
+            lines_rx,
             max,
             has_to_print_edges: AtomicBool::new(false),
-            updates: AtomicUsize::new(0),
-            tx,
         }
     }
 
+    ////////// Area setup functions
+
+    /// Adds and returns a new [`VarPoint`]
+    ///
+    /// A [`VarPoint`] is just two [`Variable`]s, representing a
+    /// coordinate on screen.
     pub fn var_point(&self) -> VarPoint {
         self.vars.lock().new_point()
     }
 
-    pub fn set_edge(&self, lhs: &VarPoint, rhs: &VarPoint, axis: Axis, fr: Frame) -> VarValue {
+    /// Creates a new edge from the two [`VarPoint`]s
+    ///
+    /// This function will return the [`Variable`] representing the
+    /// `width` of that edge. It can only have a value of `1` or `0`.
+    pub fn set_edge(&self, lhs: VarPoint, rhs: VarPoint, axis: Axis, fr: Frame) -> Variable {
         self.vars.lock().set_edge([lhs, rhs], axis, fr)
     }
 
-    pub fn set_copy(&self, vv: &VarValue, above: &VarValue) {
-        self.vars.lock().set_copy(vv, above);
+    /// Returns a [`Sender`] for the given [`VarPoint`]s
+    ///
+    /// A [`Sender`] will send formatted [`Lines`] of text to be
+    /// printed on the screen.
+    pub fn sender(&self, tl: &VarPoint, br: &VarPoint) -> Sender {
+        Sender {
+            lines_tx: self.lines_tx.clone(),
+            tl: tl.clone(),
+            br: br.clone(),
+        }
     }
+
+    /// Adds [`Equality`]s to the solver
+    pub fn add_eqs<'a>(&self, eqs: impl IntoIterator<Item = &'a Equality>) {
+        self.sync_solver.lock().add_eqs(eqs.into_iter().cloned());
+    }
+
+    ////////// Layout modification functions
+
+    /// Removes [`Equality`]s from the solver
+    pub fn remove_eqs(&self, eqs: impl IntoIterator<Item = Equality>) {
+        // If there is no SavedVar, then the first term is a frame.
+        self.sync_solver.lock().remove_eqs(eqs);
+    }
+
+    /// Removes an edge from the list of edges
+    pub fn remove_edge(&self, edge: Variable) {
+        self.vars.lock().remove_edge(edge);
+    }
+
+    /// Takes the [`Variables`] of a [`Rect`]
+    ///
+    /// This is done when swapping two [`Rect`]s from different
+    /// windows.
+    pub fn take_rect_vars(&self, rect: &Rect) -> [Variable; 4] {
+        let mut vars = self.vars.lock();
+        let [tl, br] = rect.var_points();
+        if let Some(edge) = rect.edge() {
+            vars.remove_edge(edge);
+        }
+        for var in [tl.x(), tl.y(), br.x(), br.y()] {
+            vars.remove(var);
+        }
+
+        [tl.x(), tl.y(), br.x(), br.y()]
+    }
+
+    /// Inserts the [`Variables`] taken from a [`Rect`]
+    ///
+    /// This is done when swapping two [`Rect`]s from different
+    /// windows.
+    pub fn insert_rect_vars(&self, new_vars: [Variable; 4]) {
+        let mut vars = self.vars.lock();
+        for var in new_vars {
+            vars.insert(var);
+        }
+    }
+
+    ////////// Updating functions
 
     /// Updates the value of all [`VarPoint`]s that have changed,
     /// returning true if any of them have.
@@ -82,141 +153,30 @@ impl Printer {
         let mut sync_solver = self.sync_solver.lock();
         sync_solver.update(change_max, &self.max).unwrap();
 
-        let vars = self.vars.lock();
-        let mut have_changed = vars.update_variables(sync_solver.fetch_changes());
-        drop(sync_solver);
-
-        if !have_changed.is_empty() {
-            let mut to_remove = Vec::new();
-            for (_, above) in have_changed.iter() {
-                // Parents should never show that they've been changed, since that
-                // property will never actually be checked.
-                // If that were to be set, printing would be paused forever.
-                if let Some(above) = above
-                    && let Some(i) = have_changed
-                        .iter()
-                        .position(|(hc, _)| Arc::ptr_eq(hc, &above.has_changed))
-                {
-                    if let Err(j) = to_remove.binary_search(&i) {
-                        to_remove.insert(j, i)
-                    }
-                }
-            }
-
-            for i in to_remove.into_iter().rev() {
-                have_changed.remove(i);
-            }
-
-            let mut new_up = 0;
-            for (has_changed, _) in have_changed {
-                let prev = has_changed.swap(true, Ordering::Release);
-
-                // Only add to the updates if those have been checked.
-                if !prev
-                    && !Arc::ptr_eq(has_changed, &self.max.y().has_changed)
-                    && !Arc::ptr_eq(has_changed, &self.max.x().has_changed)
-                {
-                    new_up += 1;
-                }
-            }
-            let prev_up = self.updates.fetch_add(new_up, Ordering::Release);
-            if prev_up + new_up > 0 {
-                self.has_to_print_edges.store(true, Ordering::Relaxed);
-                self.tx.send(Event::PausePrinting).unwrap()
-            }
-        }
-    }
-
-    pub fn sender(&self, tl: &VarPoint, br: &VarPoint) -> Sender {
-        let recv = Receiver {
-            lines: Arc::new(Mutex::new(None)),
-            tl: tl.clone(),
-            br: br.clone(),
-        };
-
-        let sender = Sender {
-            lines: recv.lines.clone(),
-            tl: tl.clone(),
-            br: br.clone(),
-        };
-
-        let mut recvs = self.recvs.lock();
-        let (Ok(i) | Err(i)) = recvs.binary_search_by_key(&recv.coords(), Receiver::coords);
-        recvs.insert(i, recv);
-
-        sender
-    }
-
-    pub fn remove_sender(&self, sender: Sender) {
-        self.recvs
+        self.vars
             .lock()
-            .retain(|recv| !Arc::ptr_eq(&recv.lines, &sender.lines));
-    }
-
-    pub fn add_eqs<'a>(&self, eqs: impl IntoIterator<Item = &'a Equality>) {
-        self.sync_solver.lock().add_eqs(eqs.into_iter().cloned());
-    }
-
-    pub fn remove_eq(&self, eq: Equality) {
-        // If there is no SavedVar, then the first term is a frame.
-        self.sync_solver.lock().remove_eqs([eq.clone()]);
-        self.vars.lock().remove_eq(eq);
-    }
-
-    pub fn remove_edge(&self, edge: VarValue) {
-        self.vars.lock().remove_edge(&edge);
-    }
-
-    pub fn take_rect_parts(
-        &self,
-        rect: &crate::layout::Rect,
-    ) -> (Vec<(Variable, SavedVar)>, Option<Receiver>) {
-        let mut vars = self.vars.lock();
-        let (tl, br) = rect.var_points();
-        if let Some(edge) = rect.edge() {
-            vars.remove_edge(edge);
-        }
-        let vars = vars.take_from(rect);
-
-        let receiver = self
-            .recvs
-            .lock()
-            .extract_if(.., |recv| recv.tl == *tl && recv.br == *br)
-            .next();
-
-        (vars, receiver)
-    }
-
-    pub fn insert_rect_parts(&self, saved: Vec<(Variable, SavedVar)>, recv: Option<Receiver>) {
-        let mut vars = self.vars.lock();
-        for (var, saved) in saved {
-            vars.insert((var, saved));
-        }
-
-        if let Some(recv) = recv {
-            let mut recvs = self.recvs.lock();
-            let (Ok(i) | Err(i)) = recvs.binary_search_by_key(&recv.coords(), Receiver::coords);
-            recvs.insert(i, recv);
-        }
-    }
-
-    pub fn max(&self) -> &VarPoint {
-        &self.max
+            .update_variables(sync_solver.fetch_changes());
     }
 
     pub fn print(&self) {
         static CURSOR_IS_REAL: AtomicBool = AtomicBool::new(false);
-        let list: Vec<Lines> = self.recvs.lock().iter().flat_map(Receiver::take).collect();
+        let list = {
+            let mut list: Vec<Lines> =
+                std::iter::from_fn(|| self.lines_rx.try_recv().ok()).collect();
+            if list.is_empty() {
+                return;
+            }
+            list.sort_unstable();
+            list
+        };
 
-        if list.is_empty() {
-            return;
-        }
+        let max = list.last().unwrap().coords().br;
 
         let mut stdout = stdout().lock();
         execute!(stdout, terminal::BeginSynchronizedUpdate).unwrap();
         queue!(stdout, cursor::Hide, MoveTo(0, 0));
 
-        for y in 0..self.max.coord().y {
+        for y in 0..max.y {
             let mut x = 0;
 
             let iter = list.iter().flat_map(|lines| lines.on(y));
@@ -256,22 +216,43 @@ impl Printer {
         execute!(stdout, terminal::EndSynchronizedUpdate).unwrap();
     }
 
-    /// Tells the [`Printer`] that `n` updates have been noticed
-    ///
-    /// Also returns how many updates are left. When there is nothing
-    /// left to update, [`Area::print`] is supposed to resume
-    /// printing.
-    ///
-    /// # Safety
-    ///
-    /// This is unsafe as it may overflow if used incorrectly.
-    pub unsafe fn notice_updates(&self, n: usize) -> usize {
-        let prev = self.updates.fetch_sub(n, Ordering::Relaxed);
-        prev - n
+    ////////// Querying functions
+
+    /// The maximum [`VarPoint`], i.e. the bottom right of the screen
+    pub fn max(&self) -> &VarPoint {
+        &self.max
     }
 
-    pub fn resume_printing(&self) {
-        self.tx.send(Event::ResumePrinting).unwrap();
+    /// Gets the current value of the [`Variable`]
+    ///
+    /// If `is_printing` [`Printer::has_changed`] will now return
+    /// `false`
+    pub fn value(&self, var: Variable, is_printing: bool) -> u32 {
+        self.vars.lock().value(var, is_printing)
+    }
+
+    /// Gets the current [`Coord`] of a [`VarPoint`]
+    ///
+    /// If `is_printing` [`Printer::has_changed`] will now return
+    /// `false`
+    pub fn coord(&self, var_point: VarPoint, is_printing: bool) -> Coord {
+        let mut vars = self.vars.lock();
+        let x = vars.value(var_point.x(), is_printing);
+        let y = vars.value(var_point.y(), is_printing);
+        Coord::new(x, y)
+    }
+
+    /// Gets [`Coords`] from two [`VarPoint`]s
+    pub fn coords(&self, var_points: [VarPoint; 2], is_printing: bool) -> Coords {
+        let mut vars = self.vars.lock();
+        let tl = vars.coord(var_points[0], is_printing);
+        let br = vars.coord(var_points[1], is_printing);
+        Coords::new(tl, br)
+    }
+
+    /// Wether a [`Variable`] has changed
+    pub fn has_changed(&self, var: Variable) -> bool {
+        self.vars.lock().has_changed(var)
     }
 }
 
@@ -279,10 +260,7 @@ unsafe impl Send for Printer {}
 unsafe impl Sync for Printer {}
 
 mod variables {
-    use std::sync::{
-        Arc, LazyLock,
-        atomic::{AtomicBool, Ordering},
-    };
+    use std::{collections::HashMap, sync::LazyLock};
 
     use cassowary::Variable;
     use crossterm::{
@@ -294,168 +272,96 @@ mod variables {
         ui::Axis,
     };
 
-    use super::{Frame, SavedVar, VarPoint, VarValue, frame::Edge};
-    use crate::{Brush, area::Coord, layout::Rect, queue};
+    use super::{Frame, VarPoint, frame::Edge};
+    use crate::{Brush, area::Coord, print::frame::EdgeCoords, queue};
 
     pub struct Variables {
-        saved: Vec<(Variable, SavedVar)>,
-        edges: Vec<Edge>,
-        var_value_fn: fn() -> VarValue,
+        list: HashMap<Variable, (u32, bool)>,
+        edges: Option<HashMap<Variable, Edge>>,
+        variable_fn: fn() -> Variable,
     }
 
     impl Variables {
+        /// Returns a new instance of [`Variables`]
         pub fn new() -> Self {
             Self {
-                saved: Vec::new(),
-                edges: Vec::new(),
-                var_value_fn: VarValue::new,
+                list: HashMap::new(),
+                edges: Some(HashMap::new()),
+                variable_fn: Variable::new,
             }
         }
 
-        pub fn new_var(&mut self) -> VarValue {
-            let vv = (self.var_value_fn)();
-            self.saved.push((vv.var, SavedVar::val(&vv)));
-            vv
+        ////////// Area setup functions
+
+        /// Returns a new [`Variable`]
+        pub fn new_var(&mut self) -> Variable {
+            let var = (self.variable_fn)();
+            self.list.insert(var, (0, false));
+            var
         }
 
+        /// Returns a new [`VarPoint`]
         pub fn new_point(&mut self) -> VarPoint {
             VarPoint::new(self.new_var(), self.new_var())
         }
 
-        pub fn set_edge(&mut self, [lhs, rhs]: [&VarPoint; 2], axis: Axis, fr: Frame) -> VarValue {
-            let width = (self.var_value_fn)();
-            let var = &lhs.on_axis(axis).var;
+        /// Returns a new [`Variable`] for an [`Edge`]
+        pub fn set_edge(&mut self, [lhs, rhs]: [VarPoint; 2], axis: Axis, fr: Frame) -> Variable {
+            let width = (self.variable_fn)();
+            self.list.insert(width, (0, false));
 
-            let i = self.saved.binary_search_by_key(var, key_fn).unwrap();
-            let saved = self.saved.get_mut(i).unwrap();
-            saved.1 = SavedVar::edge(lhs.on_axis(axis), rhs.on_axis(axis), &width);
-
-            let edge = Edge::new(&width.value, lhs, rhs, axis.perp(), fr);
-            self.edges.push(edge);
+            let edge = Edge::new(lhs, rhs, axis.perp(), fr);
+            self.edges.as_mut().unwrap().insert(width, edge);
 
             width
         }
 
-        pub fn set_copy(&mut self, vv: &VarValue, above: &VarValue) {
-            let copy = {
-                let i = self.saved.binary_search_by_key(&above.var, key_fn).unwrap();
-                match self.saved.get(i).unwrap() {
-                    (_, SavedVar::Val { .. } | SavedVar::Edge { .. }) => above.clone(),
-                    (_, SavedVar::Copy { copy, .. }) => copy.clone(),
-                }
-            };
+        ////////// Layout modification functions
 
-            let i = self.saved.binary_search_by_key(&vv.var, key_fn).unwrap();
-            self.saved.get_mut(i).unwrap().1 = SavedVar::copy(vv, copy, above.clone());
+        /// Removes a [`Variable`] to put in another window
+        pub fn remove(&mut self, var: Variable) {
+            self.list.remove(&var);
         }
 
-        pub fn insert(&mut self, (var, saved): (Variable, SavedVar)) {
-            let (Ok(i) | Err(i)) = self.saved.binary_search_by_key(&var, key_fn);
-            self.saved.insert(i, (var, saved));
+        /// Inserts a [`Variable`] which came from another window
+        pub fn insert(&mut self, var: Variable) {
+            self.list.insert(var, (0, false));
         }
 
-        pub(crate) fn take_from(&mut self, rect: &Rect) -> Vec<(Variable, SavedVar)> {
-            let (tl, br) = rect.var_points();
-            self.saved
-                .extract_if(.., |(var, _)| {
-                    [tl.x_var(), tl.y_var(), br.x_var(), br.y_var()].contains(var)
-                })
-                .collect()
+        /// Removes an [`Edge`]
+        pub fn remove_edge(&mut self, var: Variable) {
+            self.edges.as_mut().unwrap().remove(&var);
         }
 
-        pub fn remove_eq(&mut self, eq: cassowary::Constraint) {
-            let var = eq.expr().terms[0].variable;
-            if let Ok(i) = self.saved.binary_search_by_key(&var, key_fn)
-                && let Some((_, saved)) = self.saved.get_mut(i)
-            {
-                match saved {
-                    SavedVar::Val { .. } => {}
-                    SavedVar::Edge { lhs: value, has_changed, width, .. } => {
-                        self.edges.retain(|e| !Arc::ptr_eq(&e.width, &width.value));
+        ////////// Updating functions
 
-                        let (value, has_changed) = (value.clone(), has_changed.clone());
-                        *saved = SavedVar::Val { value, has_changed };
-                    }
-                    SavedVar::Copy { value, has_changed, .. } => {
-                        let (value, has_changed) = (value.clone(), has_changed.clone());
-                        *saved = SavedVar::Val { value, has_changed };
-                    }
-                }
-            }
-        }
-
-        pub fn remove_edge(&mut self, edge: &VarValue) {
-            self.edges.retain(|e| !Arc::ptr_eq(&e.width, &edge.value));
-        }
-
-        pub fn update_variables(
-            &self,
-            changes: &[(Variable, f64)],
-        ) -> Vec<(&Arc<AtomicBool>, Option<&VarValue>)> {
-            let mut has_changeds = Vec::new();
-            let mut copies = Vec::new();
-            let mut edges = Vec::new();
-            let mut widths = Vec::new();
-
+        /// Updates the [`Variable`]'s values, according to changes
+        pub fn update_variables(&mut self, changes: &[(Variable, f64)]) {
             for (var, new) in changes {
-                let i = self.saved.binary_search_by_key(var, key_fn).ok();
-                match i.and_then(|i| self.saved.get(i)) {
-                    Some((_, SavedVar::Val { value, has_changed })) => {
-                        let new = new.round() as u32;
-                        let old = value.swap(new, Ordering::Release);
-                        if old != new {
-                            has_changeds.push((has_changed, None));
-                        }
-                    }
-                    Some((_, SavedVar::Edge { width, lhs, rhs, .. })) => {
-                        edges.push((width, lhs, rhs));
-                    }
-                    Some((_, SavedVar::Copy { copy, above, value, has_changed })) => {
-                        // Here, I'm passing the above value, so that it (a
-                        // parent value) won't be said to have been changed.
-                        copies.push((&copy.value, value, has_changed, Some(above)))
-                    }
-                    // The width of edges is not saved in self.saved, so if a variable has changed,
-                    // but it is not is here, it is either the width of an edge, or a variable that
-                    // has been removed from self.saved, in which case it will just be ignored.
-                    None => widths.push((var, new)),
-                }
+                let (value, has_changed) = self.list.get_mut(var).unwrap();
+                let new = new.round() as u32;
+                *has_changed = *value != new;
+                *value = new;
             }
-
-            for (width, lhs, rhs) in edges {
-                if let Some((_, new)) = widths.extract_if(.., |(v, _)| **v == width.var).next() {
-                    width.value.store(new.round() as u32, Ordering::Release);
-                }
-
-                let new = rhs.load(Ordering::Acquire) - width.value();
-                lhs.store(new, Ordering::Release);
-            }
-
-            // Copies are updated after, so that the real values are updated
-            // first.
-            for (copy, value, has_changed, above) in copies {
-                let new = copy.load(Ordering::Acquire);
-                let old = value.swap(new, Ordering::Release);
-                if old != new {
-                    has_changeds.push((has_changed, above));
-                }
-            }
-
-            has_changeds
         }
 
-        pub fn print_edges(&self) {
+        /// Prints the [`Edge`]s
+        pub fn print_edges(&mut self) {
             static FRAME_FORM: LazyLock<FormId> =
                 LazyLock::new(|| form::set_weak("Frame", "Default"));
             let frame_form = form::from_id(*FRAME_FORM);
 
             let mut stdout = std::io::stdout().lock();
 
-            let edges: Vec<_> = self
-                .edges
-                .iter()
-                .filter_map(|edge| edge.edge_coords())
-                .collect();
+            let edges: Vec<EdgeCoords> = {
+                let edges = self.edges.take().unwrap();
+                let coords = edges
+                    .iter()
+                    .filter_map(|(_, edge)| edge.coords(self))
+                    .collect();
+                self.edges = Some(edges);
+                coords
+            };
 
             let mut crossings = Vec::<(Coord, [Option<Brush>; 4])>::new();
 
@@ -516,10 +422,39 @@ mod variables {
                 )
             }
         }
-    }
 
-    fn key_fn(entry: &(Variable, SavedVar)) -> Variable {
-        entry.0
+        ////////// Querying functions
+
+        /// Returns the value of a given [`Variable`]
+        ///
+        /// If `is_printing`, [`Printer::has_changed`] will now return
+        /// `false`
+        ///
+        /// [`Printer::has_changed`]: super::Printer::has_changed
+        pub fn value(&mut self, var: Variable, is_printing: bool) -> u32 {
+            let (value, has_changed) = self.list.get_mut(&var).unwrap();
+            if is_printing {
+                *has_changed = false;
+            }
+            *value
+        }
+
+        /// Returns the value of a given [`VarPoint`]
+        ///
+        /// If `is_printing`, [`Printer::has_changed`] will now return
+        /// `false`
+        ///
+        /// [`Printer::has_changed`]: super::Printer::has_changed
+        pub fn coord(&mut self, var_point: VarPoint, is_printing: bool) -> Coord {
+            let x = self.value(var_point.x(), is_printing);
+            let y = self.value(var_point.y(), is_printing);
+            Coord::new(x, y)
+        }
+
+        /// Wether a [`Variable`] has been changed
+        pub fn has_changed(&self, var: Variable) -> bool {
+            self.list.get(&var).unwrap().1
+        }
     }
 }
 
@@ -541,11 +476,11 @@ mod sync_solver {
         pub fn new(max: &VarPoint, width: f64, height: f64) -> Self {
             let mut solver = Solver::new();
             let strong = STRONG + 3.0;
-            solver.add_edit_variable(max.x_var(), strong).unwrap();
-            solver.suggest_value(max.x_var(), width).unwrap();
+            solver.add_edit_variable(max.x(), strong).unwrap();
+            solver.suggest_value(max.x(), width).unwrap();
 
-            solver.add_edit_variable(max.y_var(), strong).unwrap();
-            solver.suggest_value(max.y_var(), height).unwrap();
+            solver.add_edit_variable(max.y(), strong).unwrap();
+            solver.suggest_value(max.y(), height).unwrap();
 
             SyncSolver {
                 solver,
@@ -572,8 +507,8 @@ mod sync_solver {
                 let (width, height) = crossterm::terminal::size().unwrap();
                 let (width, height) = (width as f64, height as f64);
 
-                self.solver.suggest_value(max.x_var(), width).unwrap();
-                self.solver.suggest_value(max.y_var(), height).unwrap();
+                self.solver.suggest_value(max.x(), width).unwrap();
+                self.solver.suggest_value(max.y(), height).unwrap();
             }
 
             Ok(())
@@ -597,39 +532,24 @@ mod sync_solver {
 }
 
 #[derive(Debug)]
-pub struct Receiver {
-    lines: Arc<Mutex<Option<Lines>>>,
-    tl: VarPoint,
-    br: VarPoint,
-}
-
-impl Receiver {
-    fn take(&self) -> Option<Lines> {
-        self.lines.lock().take()
-    }
-
-    fn coords(&self) -> Coords {
-        Coords::new(self.tl.coord(), self.br.coord())
-    }
-}
-
-#[derive(Debug)]
 pub struct Sender {
-    lines: Arc<Mutex<Option<Lines>>>,
+    lines_tx: mpsc::Sender<Lines>,
     tl: VarPoint,
     br: VarPoint,
 }
 
 impl Sender {
-    pub fn lines(&self, shift: u32, cap: u32) -> Lines {
-        let area = (self.coords().width() * self.coords().height()) as usize;
-        let mut cutoffs = Vec::with_capacity(self.coords().height() as usize);
+    pub fn lines(&self, shift: u32, cfg: IterCfg, layout: &Layout) -> Lines {
+        let coords = layout.printer.coords([self.tl, self.br], true);
+        let cap = cfg.wrap_width(coords.width());
+        let area = (coords.width() * coords.height()) as usize;
+        let mut cutoffs = Vec::with_capacity(coords.height() as usize);
         cutoffs.push(0);
 
         Lines {
             bytes: Vec::with_capacity(area * 2),
             cutoffs,
-            coords: self.coords(),
+            coords,
             real_cursor: None,
 
             line: Vec::new(),
@@ -642,11 +562,7 @@ impl Sender {
     }
 
     pub fn send(&self, lines: Lines) {
-        *self.lines.lock() = Some(lines);
-    }
-
-    pub fn coords(&self) -> Coords {
-        Coords::new(self.tl.coord(), self.br.coord())
+        self.lines_tx.send(lines).unwrap();
     }
 }
 
@@ -662,25 +578,6 @@ pub struct Lines {
     cap: u32,
     positions: Vec<(usize, u32)>,
     align: Alignment,
-}
-
-impl std::fmt::Debug for Lines {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let bytes = unsafe { core::str::from_utf8_unchecked(&self.bytes) };
-        let line = unsafe { core::str::from_utf8_unchecked(&self.line) };
-        f.debug_struct("Lines")
-            .field("bytes", &bytes)
-            .field("cutoffs", &self.cutoffs)
-            .field("coords", &self.coords)
-            .field("real_cursor", &self.real_cursor)
-            .field("line", &line)
-            .field("len", &self.len)
-            .field("shift", &self.shift)
-            .field("cap", &self.cap)
-            .field("positions", &self.positions)
-            .field("align", &self.align)
-            .finish()
-    }
 }
 
 impl Lines {
@@ -705,7 +602,7 @@ impl Lines {
     }
 
     fn on(&self, y: u32) -> Option<(&[u8], u32, u32)> {
-        let (tl, br) = (self.coords.tl(), self.coords.br());
+        let (tl, br) = (self.coords.tl, self.coords.br);
 
         if (tl.y..br.y).contains(&y) {
             let y = y - tl.y;
@@ -822,6 +719,33 @@ impl Lines {
     pub(crate) fn is_empty(&self) -> bool {
         self.line.is_empty()
     }
+
+    pub fn coords(&self) -> Coords {
+        self.coords
+    }
+
+    pub fn cap(&self) -> u32 {
+        self.cap
+    }
+}
+
+impl std::fmt::Debug for Lines {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let bytes = unsafe { core::str::from_utf8_unchecked(&self.bytes) };
+        let line = unsafe { core::str::from_utf8_unchecked(&self.line) };
+        f.debug_struct("Lines")
+            .field("bytes", &bytes)
+            .field("cutoffs", &self.cutoffs)
+            .field("coords", &self.coords)
+            .field("real_cursor", &self.real_cursor)
+            .field("line", &line)
+            .field("len", &self.len)
+            .field("shift", &self.shift)
+            .field("cap", &self.cap)
+            .field("positions", &self.positions)
+            .field("align", &self.align)
+            .finish()
+    }
 }
 
 impl Write for Lines {
@@ -836,48 +760,22 @@ impl Write for Lines {
     }
 }
 
-pub enum SavedVar {
-    Val {
-        value: Arc<AtomicU32>,
-        has_changed: Arc<AtomicBool>,
-    },
-    Edge {
-        width: VarValue,
-        lhs: Arc<AtomicU32>,
-        rhs: Arc<AtomicU32>,
-        has_changed: Arc<AtomicBool>,
-    },
-    Copy {
-        copy: VarValue,
-        above: VarValue,
-        value: Arc<AtomicU32>,
-        has_changed: Arc<AtomicBool>,
-    },
+impl PartialEq for Lines {
+    fn eq(&self, other: &Self) -> bool {
+        self.coords.eq(&other.coords)
+    }
 }
 
-impl SavedVar {
-    fn val(vv: &VarValue) -> Self {
-        Self::Val {
-            value: vv.value.clone(),
-            has_changed: vv.has_changed.clone(),
-        }
-    }
+impl Eq for Lines {}
 
-    fn edge(lhs: &VarValue, rhs: &VarValue, width: &VarValue) -> Self {
-        Self::Edge {
-            width: width.clone(),
-            rhs: rhs.value.clone(),
-            lhs: lhs.value.clone(),
-            has_changed: lhs.has_changed.clone(),
-        }
+impl PartialOrd for Lines {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.coords.partial_cmp(&other.coords)
     }
+}
 
-    fn copy(vv: &VarValue, copy: VarValue, above: VarValue) -> Self {
-        Self::Copy {
-            copy,
-            above,
-            value: vv.value.clone(),
-            has_changed: vv.has_changed.clone(),
-        }
+impl Ord for Lines {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
     }
 }

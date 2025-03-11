@@ -115,9 +115,7 @@ pub trait PromptMode<U: Ui>: Clone + Send + Sync + 'static {
 
     fn once() {}
 
-    fn prompt(&self) -> Text {
-        text!([Prompt.colon] ":")
-    }
+    fn prompt(&self) -> Text; 
 }
 
 #[derive(Default, Clone)]
@@ -173,6 +171,10 @@ impl<U: Ui> PromptMode<U> for RunCommands {
         form::set_weak("CallerNotFound", "AccentErr");
         form::set_weak("ParameterOk", "DefaultOk");
         form::set_weak("ParameterErr", "DefaultErr");
+    }
+
+    fn prompt(&self) -> Text {
+        text!([Prompt.colon] ":")
     }
 }
 

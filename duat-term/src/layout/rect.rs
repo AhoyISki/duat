@@ -1,7 +1,7 @@
 use std::fmt::Write;
 
 use cassowary::{
-    Expression,
+    Expression, Variable,
     WeightedRelation::{EQ, GE, LE},
     strength::{REQUIRED, STRONG, WEAK},
 };
@@ -16,11 +16,11 @@ use duat_core::{
     },
 };
 
-use super::Constraints;
+use super::{Constraints, Layout};
 use crate::{
     Area, AreaId, Equality, Frame,
-    area::{Coord, PrintInfo},
-    print::{Printer, Sender, VarPoint, VarValue},
+    area::PrintInfo,
+    print::{Printer, Sender, VarPoint},
 };
 
 enum Kind {
@@ -86,7 +86,7 @@ pub struct Rect {
     eqs: Vec<Equality>,
     kind: Kind,
     on_files: bool,
-    edge: Option<VarValue>,
+    edge: Option<Variable>,
 }
 
 impl Rect {
@@ -130,13 +130,10 @@ impl Rect {
         ]);
 
         if i == 0 {
-            p.set_copy(self.start(axis), parent.start(axis));
             self.eqs
                 .push(self.start(axis) | EQ(REQUIRED) | parent.start(axis));
         }
 
-        p.set_copy(self.start(axis.perp()), parent.start(axis.perp()));
-        p.set_copy(self.end(axis.perp()), parent.end(axis.perp()));
         self.eqs.extend([
             self.start(axis.perp()) | EQ(REQUIRED) | parent.start(axis.perp()),
             self.end(axis.perp()) | EQ(REQUIRED) | parent.end(axis.perp()),
@@ -164,24 +161,23 @@ impl Rect {
             };
 
             if edge == 1.0 && !*clustered {
-                let edge = p.set_edge(&self.br, &next.tl, axis, fr);
+                let width = p.set_edge(self.br, next.tl, axis, fr);
                 self.eqs.extend([
-                    &edge | EQ(STRONG) | 1.0,
-                    (self.end(axis) + &edge) | EQ(REQUIRED) | next.start(axis),
+                    width | EQ(STRONG) | 1.0,
+                    (self.end(axis) + width) | EQ(REQUIRED) | next.start(axis),
                     // Makes the frame have len = 0 when either of its
                     // side widgets have len == 0.
-                    &edge | GE(REQUIRED) | 0.0,
-                    &edge | LE(REQUIRED) | 1.0,
-                    self.len(axis) | GE(REQUIRED) | &edge,
-                    next.len(axis) | GE(REQUIRED) | &edge,
+                    width | GE(REQUIRED) | 0.0,
+                    width | LE(REQUIRED) | 1.0,
+                    self.len(axis) | GE(REQUIRED) | width,
+                    next.len(axis) | GE(REQUIRED) | width,
                 ]);
-                self.edge = Some(edge);
+                self.edge = Some(width);
             } else {
                 self.eqs
                     .push(self.end(axis) | EQ(REQUIRED) | next.start(axis));
             }
         } else {
-            p.set_copy(self.end(axis), parent.end(axis));
             self.eqs
                 .push(self.end(axis) | EQ(REQUIRED) | parent.end(axis));
         }
@@ -207,32 +203,16 @@ impl Rect {
     /// Removes all [`Equality`]s which define the edges of
     /// [`self`].
     pub fn clear_eqs(&mut self, p: &Printer) {
-        for eq in self.eqs.drain(..) {
-            p.remove_eq(eq);
-        }
+        p.remove_eqs(self.eqs.drain(..));
 
         if let Some(edge) = self.edge.take() {
             p.remove_edge(edge);
         }
     }
 
-    /// Sets the coordinates of this [`Rect`] to `(0, 0)`
-    pub fn set_to_zero(&self) {
-        self.tl.set_to_zero();
-        self.br.set_to_zero();
-    }
-
-    pub fn height(&self) -> u32 {
-        self.br().y - self.tl().y
-    }
-
-    pub fn width(&self) -> u32 {
-        self.br().x - self.tl().x
-    }
-
     /// A [`Variable`], representing the "start" of [`self`], given an
     /// [`Axis`]. It will be the left or upper side of a [`Rect`].
-    pub fn start(&self, axis: Axis) -> &VarValue {
+    pub fn start(&self, axis: Axis) -> Variable {
         match axis {
             Horizontal => self.tl.x(),
             Vertical => self.tl.y(),
@@ -241,7 +221,7 @@ impl Rect {
 
     /// A [`Variable`], representing the "start" of [`self`], given an
     /// [`Axis`]. It will be the right or lower side of a [`Rect`].
-    pub fn end(&self, axis: Axis) -> &VarValue {
+    pub fn end(&self, axis: Axis) -> Variable {
         match axis {
             Horizontal => self.br.x(),
             Vertical => self.br.y(),
@@ -257,56 +237,21 @@ impl Rect {
         }
     }
 
-    /// The current value for the length of [`self`] on a given
-    /// [`Axis`].
-    pub fn len_value(&self, axis: Axis) -> u32 {
-        match axis {
-            Horizontal => self.br.x().value() - self.tl.x().value(),
-            Vertical => self.br.y().value() - self.tl.y().value(),
+    pub fn var_points(&self) -> [VarPoint; 2] {
+        [self.tl, self.br]
+    }
+
+    pub fn edge(&self) -> Option<Variable> {
+        self.edge
+    }
+
+    pub fn has_changed(&self, layout: &Layout) -> bool {
+        for var in [self.tl.x(), self.tl.y(), self.br.x(), self.br.y()] {
+            if layout.printer.has_changed(var) {
+                return true;
+            }
         }
-    }
-
-    /// The top left corner of [`self`].
-    pub fn tl(&self) -> Coord {
-        Coord {
-            x: self.tl.x().value(),
-            y: self.tl.y().value(),
-        }
-    }
-
-    /// The bottom right corner of [`self`].
-    pub fn br(&self) -> Coord {
-        Coord {
-            x: self.br.x().value(),
-            y: self.br.y().value(),
-        }
-    }
-
-    pub fn var_points(&self) -> (&VarPoint, &VarPoint) {
-        (&self.tl, &self.br)
-    }
-
-    pub fn edge(&self) -> Option<&VarValue> {
-        self.edge.as_ref()
-    }
-
-    pub fn has_changed(&self) -> bool {
-        let br_x_changed = self.br.x().has_changed();
-        let br_y_changed = self.br.y().has_changed();
-        let tl_x_changed = self.tl.x().has_changed();
-        let tl_y_changed = self.tl.y().has_changed();
-
-        br_x_changed || br_y_changed || tl_x_changed || tl_y_changed
-    }
-
-    pub fn notice_updates(&self, p: &Printer) -> bool {
-        let noticed_updates = self.br.x().notice_updates() as usize
-            + self.br.y().notice_updates() as usize
-            + self.tl.x().notice_updates() as usize
-            + self.tl.y().notice_updates() as usize;
-
-        let updates_left = unsafe { p.notice_updates(noticed_updates) };
-        updates_left == 0 && noticed_updates > 0
+        false
     }
 
     pub fn id(&self) -> AreaId {
@@ -460,14 +405,14 @@ impl Rects {
         let (mut rm_rect, mut rm_cons) = parent.children_mut().unwrap().remove(i);
         rm_rect.clear_eqs(p);
         rm_cons.remove(p);
-        p.take_rect_parts(&rm_rect);
+        p.take_rect_vars(&rm_rect);
 
         let (i, parent, rm_parent_id) = if parent.children().unwrap().len() == 1 {
             let parent_id = parent.id();
             let (mut rect, cons) = parent.children_mut().unwrap().remove(0);
             let (i, grandparent) = self.get_parent_mut(parent_id)?;
             let (rm_parent, _) = grandparent.children_mut().unwrap().remove(i);
-            p.take_rect_parts(&rm_parent);
+            p.take_rect_vars(&rm_parent);
 
             let axis = grandparent.kind.axis().unwrap();
             let is_resizable = rect.is_resizable_on(axis, &cons);
@@ -583,7 +528,6 @@ impl Rects {
                 main.br.x() | EQ(REQUIRED) | p.max().x(),
                 main.br.y() | EQ(REQUIRED) | p.max().y(),
             ]);
-            main.tl.set_to_zero();
             p.add_eqs(&main.eqs);
 
             if let Kind::Middle { children, axis, .. } = &mut main.kind {
@@ -952,8 +896,6 @@ fn reset_and_constrain_areas(to_constrain: Vec<AreaId>, rects: &mut Rects, p: &P
             continue;
         };
         let (rect, mut cons) = parent.children_mut().unwrap().remove(i);
-        rect.tl.set_to_zero();
-        rect.br.set_to_zero();
         let parent_id = parent.id;
         cons.remove(p);
         let cons = cons.apply(&rect, parent_id, rects, p);
@@ -962,11 +904,11 @@ fn reset_and_constrain_areas(to_constrain: Vec<AreaId>, rects: &mut Rects, p: &P
     }
 }
 
-pub fn transfer_vars_and_recvs(from_p: &Printer, to_p: &Printer, rect: &Rect) {
-    let (vars, recv) = from_p.take_rect_parts(rect);
-    to_p.insert_rect_parts(vars, recv);
+pub fn transfer_vars(from_p: &Printer, to_p: &Printer, rect: &Rect) {
+    let vars = from_p.take_rect_vars(rect);
+    to_p.insert_rect_vars(vars);
 
     for (child, _) in rect.children().into_iter().flatten() {
-        transfer_vars_and_recvs(from_p, to_p, child)
+        transfer_vars(from_p, to_p, child)
     }
 }
