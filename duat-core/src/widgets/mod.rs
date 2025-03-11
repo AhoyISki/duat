@@ -403,6 +403,7 @@ pub trait Widget<U: Ui>: Send + Sync + 'static {
     /// widgets like [`LineNumbers`] to read.
     fn print(&mut self, area: &U::Area) {
         let cfg = self.print_cfg();
+        crate::log_file!("printing {}", crate::duat_name::<Self>());
         area.print(self.text_mut(), cfg, form::painter::<Self>())
     }
 
