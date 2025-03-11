@@ -34,39 +34,39 @@ impl<U: Ui> LineNumbers<U> {
     }
 
     fn update_text(&mut self) {
-        self.text = self.reader.inspect(|file, _| {
-            let printed_lines = file.printed_lines();
-            let cursors = file.cursors().unwrap();
-            let main_line = match cursors.is_empty() {
+        let (main_line, printed_lines) = self.reader.inspect(|file, _| {
+            let printed_lines = file.printed_lines().to_vec();
+            let main_line = match file.cursors().is_empty() {
                 true => usize::MAX,
-                false => cursors.main().line(),
+                false => file.cursors().main().line(),
             };
+            (main_line, printed_lines)
+        });
 
-            let mut builder = Text::builder();
-            text!(builder, { tag_from_align(self.cfg.align) });
+        let mut builder = Text::builder();
+        text!(builder, { tag_from_align(self.cfg.align) });
 
-            for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
-                if main_line == *line {
-                    text!(builder, { tag_from_align(self.cfg.main_align) });
-                }
-
-                match (main_line == *line, is_wrapped) {
-                    (false, false) => text!(builder, [LineNum]),
-                    (true, false) => text!(builder, [MainLineNum]),
-                    (false, true) => text!(builder, [WrappedLineNum]),
-                    (true, true) => text!(builder, [WrappedMainLineNum]),
-                }
-
-                let is_wrapped = *is_wrapped && index > 0;
-                push_text(&mut builder, *line, main_line, is_wrapped, &self.cfg);
-
-                if main_line == *line {
-                    text!(builder, { tag_from_align(self.cfg.align) });
-                }
+        for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
+            if main_line == *line {
+                text!(builder, { tag_from_align(self.cfg.main_align) });
             }
 
-            builder.finish()
-        });
+            match (main_line == *line, is_wrapped) {
+                (false, false) => text!(builder, [LineNum]),
+                (true, false) => text!(builder, [MainLineNum]),
+                (false, true) => text!(builder, [WrappedLineNum]),
+                (true, true) => text!(builder, [WrappedMainLineNum]),
+            }
+
+            let is_wrapped = *is_wrapped && index > 0;
+            push_text(&mut builder, *line, main_line, is_wrapped, &self.cfg);
+
+            if main_line == *line {
+                text!(builder, { tag_from_align(self.cfg.align) });
+            }
+        }
+
+        self.text = builder.finish()
     }
 
     pub fn get_cfg(&self) -> LineNumbersCfg<U> {
