@@ -361,7 +361,7 @@ mod global {
         ($form:expr) => {{
             static ID: std::sync::OnceLock<FormId> = std::sync::OnceLock::new();
             *ID.get_or_init(|| {
-                let name: &'static str = $form.to_string().leak();
+                let name: &'static str = $form;
                 let id = id_from_name(name);
                 crate::thread::queue(move || add_forms(&[name]));
                 id
@@ -369,15 +369,16 @@ mod global {
         }},
         ($($form:expr),+) => {{
             static IDS: std::sync::OnceLock<&[FormId]> = std::sync::OnceLock::new();
-            *IDS.get_or_init(|| {
+            let ids = *IDS.get_or_init(|| {
     			let mut ids = Vec::new();
-    			let names = vec![$( $form.to_string().leak() ),+];
+    			let names = vec![$( $form ),+];
     			for name in names.iter() {
         			ids.push(id_from_name(name));
     			}
     			crate::thread::queue(move || add_forms(names.as_ref()));
     			ids.leak()
-    		})
+    		});
+    		ids
         }}
     }
 

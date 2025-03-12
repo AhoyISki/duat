@@ -32,8 +32,7 @@ impl Widget<Ui> for VertRule {
         {
             reader.inspect(|file, _| {
                 let lines = file.printed_lines();
-                let cursors = file.cursors().unwrap();
-                let (upper, middle, lower) = if let Some(main) = cursors.get_main() {
+                let (upper, middle, lower) = if let Some(main) = file.cursors().get_main() {
                     let main = main.line();
                     let upper = lines.iter().filter(|&(line, _)| *line < main).count();
                     let middle = lines.iter().filter(|&(line, _)| *line == main).count();
@@ -46,9 +45,9 @@ impl Widget<Ui> for VertRule {
                 let chars = self.sep_char.chars();
 
                 text!(
-                    [UpperVertRule] { form_string(chars[0], upper) }
+                    [VertRule.upper] { form_string(chars[0], upper) }
                     [VertRule] { form_string(chars[1], middle) }
-                    [LowerVertRule] { form_string(chars[2], lower) }
+                    [VertRule.lower] { form_string(chars[2], lower) }
                 )
             })
         } else {
@@ -69,8 +68,7 @@ impl Widget<Ui> for VertRule {
 
     fn once() -> Result<(), duat_core::Error<()>> {
         form::set_weak("VertRule", Form::dark_grey());
-        form::set_weak("UpperVertRule", "VertRule");
-        form::set_weak("LowerVertRule", "VertRule");
+        form::id_of!("VertRule.upper", "VertRule.lower");
         Ok(())
     }
 }

@@ -233,8 +233,8 @@ impl Printer {
             line: Vec::new(),
             len: 0,
             positions: Vec::new(),
-            partitioning: Partitioning::Left,
-            default_partitioning: Partitioning::Left,
+            gaps: Gaps::Left,
+            default_gaps: Gaps::Left,
 
             shift,
             cap,
@@ -607,8 +607,8 @@ pub struct Lines {
     line: Vec<u8>,
     len: u32,
     positions: Vec<(usize, u32)>,
-    partitioning: Partitioning,
-    default_partitioning: Partitioning,
+    gaps: Gaps,
+    default_gaps: Gaps,
 
     // Outside information
     shift: u32,
@@ -625,20 +625,20 @@ impl Lines {
     }
 
     pub fn realign(&mut self, alignment: Alignment) {
-        self.partitioning = match alignment {
-            Alignment::Left => Partitioning::Left,
-            Alignment::Right => Partitioning::Right,
-            Alignment::Center => Partitioning::Center,
+        self.gaps = match alignment {
+            Alignment::Left => Gaps::Left,
+            Alignment::Right => Gaps::Right,
+            Alignment::Center => Gaps::Center,
         };
-        self.default_partitioning = self.partitioning.clone();
+        self.default_gaps = self.gaps.clone();
     }
 
     pub fn add_divider(&mut self) {
-        match &mut self.partitioning {
-            Partitioning::Left | Partitioning::Right | Partitioning::Center => {
-                self.partitioning = Partitioning::Dividers(vec![self.line.len()])
+        match &mut self.gaps {
+            Gaps::Left | Gaps::Right | Gaps::Center => {
+                self.gaps = Gaps::Spacers(vec![self.line.len()])
             }
-            Partitioning::Dividers(items) => items.push(self.line.len()),
+            Gaps::Spacers(items) => items.push(self.line.len()),
         };
     }
 
@@ -673,32 +673,25 @@ impl Lines {
         let mut default_form = painter.get_default();
         default_form.style.attributes.set(Attribute::Reset);
 
-        let divs = if let Partitioning::Dividers(divs) = &self.partitioning {
-            let mut gaps_len = self.cap - self.len;
-            while !gaps_len.is_multiple_of(divs.len() as u32) {
-                gaps_len += 1;
+        let spacers = if let Gaps::Spacers(bytes) = &self.gaps {
+            let mut sps_len = self.cap - self.len;
+            while sps_len % bytes.len() as u32 > 0 {
+                sps_len += 1;
             }
-            let mut divs = vec![gaps_len / divs.len() as u32; divs.len()];
-            for i in 0..(self.cap - self.len) - gaps_len {
-                divs[i as usize] -= 1;
-            }
-            divs
+            let diff = sps_len - (self.cap - self.len);
+            (0..bytes.len() as u32)
+                .map(|i| (sps_len / bytes.len() as u32) - (i < diff) as u32)
+                .collect()
         } else {
             Vec::new()
         };
 
         let (start_i, start_d) = {
-            let mut dist = match &self.partitioning {
-                Partitioning::Left => 0,
-                Partitioning::Right => self.cap - self.len,
-                Partitioning::Center => (self.cap - self.len) / 2,
-                Partitioning::Dividers(div_bytes) => {
-                    if div_bytes[0] == 0 {
-                        divs[0]
-                    } else {
-                        0
-                    }
-                }
+            let mut dist = match &self.gaps {
+                Gaps::Left => 0,
+                Gaps::Right => self.cap - self.len,
+                Gaps::Center => (self.cap - self.len) / 2,
+                Gaps::Spacers(bytes) => spacers[0] * (bytes[0] == 0) as u32,
             };
 
             let Some(&(start, len)) = self.positions.iter().find(|(_, len)| {
@@ -729,16 +722,13 @@ impl Lines {
         };
 
         let (end_i, end_d) = {
-            let mut dist = match &self.partitioning {
-                Partitioning::Left => self.len,
-                Partitioning::Right => self.cap,
-                Partitioning::Center => self.len + (self.cap - self.len) / 2,
-                Partitioning::Dividers(div_bytes) => {
-                    if *div_bytes.last().unwrap() == self.line.len() {
-                        *divs.last().unwrap()
-                    } else {
-                        self.cap
-                    }
+            let mut dist = match &self.gaps {
+                Gaps::Left => self.len,
+                Gaps::Right => self.cap,
+                Gaps::Center => self.len + (self.cap - self.len) / 2,
+                Gaps::Spacers(bytes) => {
+                    let last = *spacers.last().unwrap();
+                    self.cap - last * (*bytes.last().unwrap() == self.line.len()) as u32
                 }
             };
 
@@ -772,16 +762,16 @@ impl Lines {
 
         self.add_ansi(start_i);
 
-        if let Partitioning::Dividers(div_bytes) = &mut self.partitioning {
-            let divs = div_bytes
+        if let Gaps::Spacers(bytes) = &mut self.gaps {
+            let spacers = bytes
                 .iter()
-                .zip(divs)
+                .zip(spacers)
                 .skip_while(|(b, _)| **b <= start_i)
                 .take_while(|(b, _)| **b < end_i);
 
             let mut start = start_i;
 
-            for (&end, len) in divs {
+            for (&end, len) in spacers {
                 self.bytes.extend_from_slice(&self.line[start..end]);
                 self.bytes.extend_from_slice(&BLANK[..len as usize]);
                 start = end;
@@ -801,7 +791,7 @@ impl Lines {
 
         self.line.clear();
         self.positions.clear();
-        self.partitioning = self.default_partitioning.clone();
+        self.gaps = self.default_gaps.clone();
         self.len = 0;
     }
 
@@ -847,7 +837,7 @@ impl std::fmt::Debug for Lines {
             .field("shift", &self.shift)
             .field("cap", &self.cap)
             .field("positions", &self.positions)
-            .field("align", &self.partitioning)
+            .field("align", &self.gaps)
             .finish()
     }
 }
@@ -865,11 +855,11 @@ impl Write for Lines {
 }
 
 #[derive(Debug, Clone)]
-enum Partitioning {
+enum Gaps {
     Left,
     Right,
     Center,
-    Dividers(Vec<usize>),
+    Spacers(Vec<usize>),
 }
 
 /// A point on the screen, which can be calculated by [`cassowary`]

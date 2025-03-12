@@ -207,7 +207,7 @@ impl<U: Ui> CurFile<U> {
         let mut file = file.write();
         let cfg = file.print_cfg();
 
-        if let Some(main) = file.cursors().and_then(Cursors::get_main) {
+        if let Some(main) = file.cursors().get_main() {
             area.scroll_around_point(file.text(), main.caret(), cfg);
         }
         file.text_mut().add_cursors(area, cfg);

@@ -35,12 +35,11 @@ impl<U: Ui> LineNumbers<U> {
 
     fn update_text(&mut self) {
         let (main_line, printed_lines) = self.reader.inspect(|file, _| {
-            let printed_lines = file.printed_lines().to_vec();
             let main_line = match file.cursors().is_empty() {
                 true => usize::MAX,
                 false => file.cursors().main().line(),
             };
-            (main_line, printed_lines)
+            (main_line, file.printed_lines().to_vec())
         });
 
         let mut builder = Text::builder();

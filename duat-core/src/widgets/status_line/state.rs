@@ -65,9 +65,7 @@ impl<T: 'static, Dummy, U: Ui> State<T, Dummy, U> {
                     }
                 }),
                 Appender::FromCursors(mut f) => Box::new(move |builder, reader| {
-                    reader
-                        .inspect(|file, _| f(file.cursors().unwrap()))
-                        .push_to(builder);
+                    reader.inspect(|file, _| f(file.cursors())).push_to(builder);
                 }),
                 Appender::Str(str) => Box::new(move |builder, _| {
                     if !(str == " " && builder.last_was_empty()) {

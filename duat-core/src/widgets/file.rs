@@ -127,7 +127,7 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
             path,
             text,
             cfg: self.cfg,
-            printed_lines: Vec::new(),
+            printed_lines: (0..40).map(|i| (i, i == 1)).collect(),
             layout_ordering: 0,
         };
 
@@ -247,8 +247,8 @@ impl File {
     }
 
     /// The [`Cursors`] that are used on the [`Text`], if they exist
-    pub fn cursors(&self) -> Option<&Cursors> {
-        self.text.cursors()
+    pub fn cursors(&self) -> &Cursors {
+        self.text.cursors().unwrap()
     }
 
     /// A mutable reference to the [`Cursors`], if they exist

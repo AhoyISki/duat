@@ -54,6 +54,17 @@ impl Coords {
     pub fn height(&self) -> u32 {
         self.br.y - self.tl.y
     }
+
+    pub fn intersects(&self, other: Self) -> bool {
+        let and_tl = self.tl.max(other.tl);
+        let and_br = self.br.min(other.br);
+        if and_tl.x > and_br.x || and_tl.y > and_br.y {
+            return false;
+        }
+
+        let and_coords = Coords::new(and_tl, and_br);
+        and_coords.width() > 0 && and_coords.height() > 0
+    }
 }
 
 #[derive(Clone)]
@@ -102,6 +113,9 @@ impl Area {
             };
 
             let lines = layout.printer.lines(rect.var_points(), info.x_shift, cfg);
+            if lines.coords().width() == 0 || lines.coords().height() == 0 {
+                return;
+            }
 
             let iter = {
                 let line_start = text.visual_line_start(info.points);
@@ -383,26 +397,22 @@ impl ui::Area for Area {
     }
 
     fn scroll_around_point(&self, text: &Text, point: Point, cfg: PrintCfg) {
-        let (info, w, h) = {
-            let layouts = self.layouts.read();
-            let layout = get_layout(&layouts, self.id).unwrap();
-            let rect = layout.get(self.id).unwrap();
-            let coords = layout.printer.coords(rect.var_points(), false);
+        let layouts = self.layouts.read();
+        let layout = get_layout(&layouts, self.id).unwrap();
+        let rect = layout.get(self.id).unwrap();
 
+        let (mut info, w, h) = {
+            let coords = layout.printer.coords(rect.var_points(), false);
             let info = rect.print_info().unwrap();
-            let info = *info.read();
-            (info, coords.width(), coords.height())
+            (info.write(), coords.width(), coords.height())
         };
 
-        let info = scroll_ver_around(info, w, h, point, text, IterCfg::new(cfg).outsource_lfs());
-        let info = scroll_hor_around(info, w, point, text, IterCfg::new(cfg).outsource_lfs());
+        let cfg = IterCfg::new(cfg).outsource_lfs();
+        scroll_ver_around(&mut info, w, h, point, text, cfg);
+        scroll_hor_around(&mut info, w, point, text, cfg);
 
-        let layouts = self.layouts.read();
-        let rect = get_rect(&layouts, self.id).unwrap();
-        let mut old_info = rect.print_info().unwrap().write();
-        *old_info = info;
-        old_info.prev_main = point;
-        old_info.last_points = None;
+        info.prev_main = point;
+        info.last_points = None;
     }
 
     fn set_as_active(&self) {
@@ -614,13 +624,17 @@ impl PrintInfo {
 /// Scrolls down until the gap between the main cursor and the
 /// bottom of the widget is equal to `config.scrolloff.y_gap`.
 fn scroll_ver_around(
-    mut info: PrintInfo,
+    info: &mut PrintInfo,
     width: u32,
     height: u32,
     point: Point,
     text: &Text,
     cfg: IterCfg,
-) -> PrintInfo {
+) {
+    if info.prev_main == point {
+        return;
+    }
+
     let points = text.ghost_max_points_at(point.byte());
     let after = text.points_after(points).unwrap_or(text.len_points());
 
@@ -640,18 +654,11 @@ fn scroll_ver_around(
     {
         info.points = first;
     }
-    info
 }
 
 /// Scrolls the file horizontally, usually when no wrapping is
 /// being used.
-fn scroll_hor_around(
-    mut info: PrintInfo,
-    width: u32,
-    point: Point,
-    text: &Text,
-    cfg: IterCfg,
-) -> PrintInfo {
+fn scroll_hor_around(info: &mut PrintInfo, width: u32, point: Point, text: &Text, cfg: IterCfg) {
     let cap = cfg.wrap_width(width);
 
     let (max_shift, start, end) = {
@@ -710,7 +717,6 @@ fn scroll_hor_around(
                 .min(max_shift)
                 .saturating_sub(width)
         });
-    info
 }
 
 fn get_rect(layouts: &[Layout], id: AreaId) -> Option<&Rect> {

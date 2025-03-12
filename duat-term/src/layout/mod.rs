@@ -253,7 +253,7 @@ fn get_eqs(
     let cons = [(cons[0], Axis::Vertical), (cons[1], Axis::Horizontal)];
     cons.map(|(cons, axis)| {
         cons.map(|(c, is_manual)| {
-            let strength = STRONG + if is_manual { 2.0 } else { 1.0 };
+            let strength = STRONG + if is_manual { 10.0 } else { 1.0 };
             match c {
                 Constraint::Ratio(num, den) => {
                     let (_, ancestor) = rects.get_ancestor_on(axis, parent).unwrap();

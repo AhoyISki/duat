@@ -115,7 +115,7 @@ pub trait PromptMode<U: Ui>: Clone + Send + Sync + 'static {
 
     fn once() {}
 
-    fn prompt(&self) -> Text; 
+    fn prompt(&self) -> Text;
 }
 
 #[derive(Default, Clone)]
@@ -222,8 +222,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
 
     fn on_switch(&mut self, _text: &mut Text, _area: &U::Area) {
         let file = context::cur_file::<U>().unwrap();
-        self.orig =
-            Some(file.inspect(|file, area| (file.cursors().unwrap().clone(), area.print_info())));
+        self.orig = Some(file.inspect(|file, area| (file.cursors().clone(), area.print_info())));
     }
 
     fn before_exit(&mut self, _text: &mut Text, _area: &U::Area) {

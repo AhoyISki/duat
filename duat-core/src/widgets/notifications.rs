@@ -102,7 +102,7 @@ impl<U: Ui> WidgetCfg<U> for NotificationsCfg<U> {
         let specs = if let Some((den, div)) = self.0 {
             PushSpecs::left().with_hor_ratio(den, div)
         } else {
-            PushSpecs::below()
+            PushSpecs::below().with_ver_len(1.0)
         };
 
         (widget, checker, specs)
