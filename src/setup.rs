@@ -11,7 +11,15 @@ use std::sync::{
 };
 
 use duat_core::{
-    cfg::PrintCfg, clipboard::Clipboard, context::{self, CurFile, CurWidget}, data::RwData, mode::Regular, session::{FileRet, SessionCfg}, ui::{self, Area, Constraint, DuatEvent, Window}, widgets::Widget, Mutex
+    Mutex,
+    cfg::PrintCfg,
+    clipboard::Clipboard,
+    context::{CurFile, CurWidget},
+    data::RwData,
+    mode::Regular,
+    session::{FileRet, SessionCfg},
+    ui::{self, Area, Constraint, DuatEvent, Window},
+    widgets::Widget,
 };
 use duat_term::VertRule;
 
@@ -56,10 +64,11 @@ pub fn pre_setup() {
     });
 
     hooks::add_grouped::<UnfocusedFrom<CmdLine<Ui>>>("HideCmdLine", |(_, area)| {
-        area.constrain_ver(Constraint::Ratio(0, 1)).unwrap();
+        area.constrain_ver([Constraint::Len(0.0)]).unwrap();
     });
     hooks::add_grouped::<FocusedOn<CmdLine<Ui>>>("HideCmdLine", |(_, area)| {
-        area.constrain_ver(Constraint::Ratio(1, 1)).unwrap();
+        area.constrain_ver([Constraint::Ratio(1, 1), Constraint::Len(1.0)])
+            .unwrap();
     });
 }
 

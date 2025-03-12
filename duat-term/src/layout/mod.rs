@@ -173,10 +173,10 @@ impl Layout {
 /// [`Constraint`]: Equality
 #[derive(Default, Debug, Clone)]
 pub struct Constraints {
-    ver_eq: Option<Equality>,
-    hor_eq: Option<Equality>,
-    ver_con: Option<(Constraint, bool)>,
-    hor_con: Option<(Constraint, bool)>,
+    ver_eqs: Vec<Equality>,
+    hor_eqs: Vec<Equality>,
+    ver_cons: (Vec<Constraint>, bool),
+    hor_cons: (Vec<Constraint>, bool),
 }
 
 impl Constraints {
@@ -185,86 +185,110 @@ impl Constraints {
     /// Will also add all equalities needed to make this constraint
     /// work.
     fn new(ps: PushSpecs, new: &Rect, parent: AreaId, rects: &Rects, p: &Printer) -> Self {
-        let cons = [ps.ver_constraint(), ps.hor_constraint()].map(|con| con.zip(Some(false)));
-        let [ver_eq, hor_eq] = get_eqs(cons, new, parent, rects);
-        p.add_eqs([&ver_eq, &hor_eq].into_iter().flatten());
+        let ver_cons = {
+            let mut ver_cons: Vec<Constraint> = ps.ver_cons().collect();
+            ver_cons.sort_unstable();
+            ver_cons
+        };
+        let hor_cons = {
+            let mut hor_cons: Vec<Constraint> = ps.hor_cons().collect();
+            hor_cons.sort_unstable();
+            hor_cons
+        };
+        let cons = ver_cons
+            .into_iter()
+            .map(|c| (c, Axis::Vertical))
+            .chain(hor_cons.into_iter().map(|c| (c, Axis::Horizontal)))
+            .map(|c| (c, false));
+
+        let [ver_eqs, hor_eqs] = get_eqs(cons, new, parent, rects);
+        p.add_eqs(ver_eqs.iter().chain(&hor_eqs));
 
         Self {
-            ver_eq,
-            hor_eq,
-            ver_con: cons[0],
-            hor_con: cons[1],
+            ver_eqs,
+            hor_eqs,
+            ver_cons: (ps.ver_cons().collect(), false),
+            hor_cons: (ps.hor_cons().collect(), false),
         }
     }
 
-    pub fn replace(mut self, con: Constraint, axis: Axis, p: &Printer) -> Self {
+    pub fn replace(
+        mut self,
+        cons: impl Iterator<Item = Constraint>,
+        axis: Axis,
+        p: &Printer,
+    ) -> Self {
         // A replacement means manual constraining, which is prioritized.
-        p.remove_eqs(
-            [self.ver_eq.take(), self.hor_eq.take()]
-                .into_iter()
-                .flatten(),
-        );
+        p.remove_eqs(self.hor_eqs.drain(..).chain(self.ver_eqs.drain(..)));
 
         match axis {
-            Axis::Vertical => self.ver_con.replace((con, true)),
-            Axis::Horizontal => self.hor_con.replace((con, true)),
+            Axis::Horizontal => self.hor_cons = (cons.collect(), true),
+            Axis::Vertical => self.ver_cons = (cons.collect(), true),
         };
         self
     }
 
     /// Reuses [`self`] in order to constrain a new child
     pub fn apply(self, new: &Rect, parent: AreaId, rects: &Rects, p: &Printer) -> Self {
-        let cons = [self.ver_con, self.hor_con];
-        let [ver_eq, hor_eq] = get_eqs(cons, new, parent, rects);
-        p.add_eqs([&ver_eq, &hor_eq].into_iter().flatten());
+        let (ver_cons, ver_m) = &self.ver_cons;
+        let (hor_cons, hor_m) = &self.hor_cons;
+        let cons = ver_cons
+            .iter()
+            .map(|c| ((*c, Axis::Vertical), *ver_m))
+            .chain(hor_cons.iter().map(|c| ((*c, Axis::Horizontal), *hor_m)));
 
-        Self { ver_eq, hor_eq, ..self }
+        let [ver_eqs, hor_eqs] = get_eqs(cons, new, parent, rects);
+        p.add_eqs(ver_eqs.iter().chain(&hor_eqs));
+
+        Self { ver_eqs, hor_eqs, ..self }
     }
 
     pub fn remove(&mut self, p: &Printer) {
-        p.remove_eqs(
-            [self.ver_eq.take(), self.hor_eq.take()]
-                .into_iter()
-                .flatten(),
-        );
+        p.remove_eqs(self.ver_eqs.drain(..).chain(self.hor_eqs.drain(..)));
     }
 
-    pub fn on(&self, axis: Axis) -> Option<Constraint> {
+    pub fn on(&self, axis: Axis) -> impl Iterator<Item = Constraint> {
         match axis {
-            Axis::Vertical => self.ver_con.unzip().0,
-            Axis::Horizontal => self.hor_con.unzip().0,
+            Axis::Horizontal => self.hor_cons.0.iter().cloned(),
+            Axis::Vertical => self.ver_cons.0.iter().cloned(),
         }
     }
 
     /// Whether or not [`self`] has flexibility in terms of its
     /// length.
     fn is_resizable_on(&self, axis: Axis) -> bool {
-        let con = self.on(axis);
-        matches!(con, Some(Constraint::Min(_) | Constraint::Max(_)) | None)
+        self.on(axis)
+            .all(|con| matches!(con, Constraint::Min(_) | Constraint::Max(_)))
     }
 }
 
 fn get_eqs(
-    cons: [Option<(Constraint, bool)>; 2],
+    cons: impl Iterator<Item = ((Constraint, Axis), bool)>,
     new: &Rect,
     parent: AreaId,
     rects: &Rects,
-) -> [Option<Equality>; 2] {
-    let cons = [(cons[0], Axis::Vertical), (cons[1], Axis::Horizontal)];
-    cons.map(|(cons, axis)| {
-        cons.map(|(c, is_manual)| {
-            let strength = STRONG + if is_manual { 10.0 } else { 1.0 };
-            match c {
-                Constraint::Ratio(num, den) => {
-                    let (_, ancestor) = rects.get_ancestor_on(axis, parent).unwrap();
-                    (new.len(axis) * den as f64) | EQ(strength) | (ancestor.len(axis) * num as f64)
-                }
-                Constraint::Length(len) => new.len(axis) | EQ(strength) | len,
-                Constraint::Min(min) => new.len(axis) | GE(strength) | min,
-                Constraint::Max(max) => new.len(axis) | LE(strength) | max,
+) -> [Vec<Equality>; 2] {
+    let mut ver_eqs = Vec::new();
+    let mut hor_eqs = Vec::new();
+
+    for ((con, axis), is_manual) in cons {
+        let strength = STRONG + if is_manual { 10.0 } else { 1.0 };
+        let eq = match con {
+            Constraint::Ratio(num, den) => {
+                let (_, ancestor) = rects.get_ancestor_on(axis, parent).unwrap();
+                (new.len(axis) * den as f64) | EQ(strength) | (ancestor.len(axis) * num as f64)
             }
-        })
-    })
+            Constraint::Len(len) => new.len(axis) | EQ(strength) | len,
+            Constraint::Min(min) => new.len(axis) | GE(strength) | min,
+            Constraint::Max(max) => new.len(axis) | LE(strength) | max,
+        };
+        match axis {
+            Axis::Horizontal => hor_eqs.push(eq),
+            Axis::Vertical => ver_eqs.push(eq),
+        }
+    }
+
+    [hor_eqs, ver_eqs]
 }
 
 fn remove_children(rect: &Rect, p: &Printer) {

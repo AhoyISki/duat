@@ -330,23 +330,30 @@ impl ui::Area for Area {
         todo!();
     }
 
-    fn constrain_hor(&self, con: Constraint) -> Result<(), ConstraintErr> {
+    fn constrain_hor(
+        &self,
+        cons: impl IntoIterator<Item = Constraint>,
+    ) -> Result<(), ConstraintErr> {
+        let cons = {
+            let mut cons: Vec<Constraint> = cons.into_iter().collect();
+            cons.sort_unstable();
+            cons
+        };
+
         let mut layouts = self.layouts.write();
         let layout = get_layout_mut(&mut layouts, self.id).unwrap();
-        let cons = layout
+        let old_cons = layout
             .rects
             .get_constraints_mut(self.id)
             .ok_or(ConstraintErr::NoParent)?
             .clone();
 
-        if let Some(hor) = cons.on(Axis::Horizontal)
-            && hor == con
-        {
+        if old_cons.on(Axis::Vertical).eq(cons.iter().cloned()) {
             return Ok(());
         };
 
         *layout.rects.get_constraints_mut(self.id).unwrap() = {
-            let cons = cons.replace(con, Axis::Horizontal, &layout.printer);
+            let cons = old_cons.replace(cons.into_iter(), Axis::Horizontal, &layout.printer);
 
             let (_, parent) = layout.get_parent(self.id).unwrap();
             let rect = layout.get(self.id).unwrap();
@@ -359,23 +366,30 @@ impl ui::Area for Area {
         Ok(())
     }
 
-    fn constrain_ver(&self, con: Constraint) -> Result<(), ConstraintErr> {
+    fn constrain_ver(
+        &self,
+        cons: impl IntoIterator<Item = Constraint>,
+    ) -> Result<(), ConstraintErr> {
+        let cons = {
+            let mut cons: Vec<Constraint> = cons.into_iter().collect();
+            cons.sort_unstable();
+            cons
+        };
+
         let mut layouts = self.layouts.write();
         let layout = get_layout_mut(&mut layouts, self.id).unwrap();
-        let cons = layout
+        let old_cons = layout
             .rects
             .get_constraints_mut(self.id)
             .ok_or(ConstraintErr::NoParent)?
             .clone();
 
-        if let Some(ver) = cons.on(Axis::Vertical)
-            && ver == con
-        {
+        if old_cons.on(Axis::Vertical).eq(cons.iter().cloned()) {
             return Ok(());
         };
 
         *layout.rects.get_constraints_mut(self.id).unwrap() = {
-            let cons = cons.replace(con, Axis::Vertical, &layout.printer);
+            let cons = old_cons.replace(cons.into_iter(), Axis::Vertical, &layout.printer);
 
             let (_, parent) = layout.get_parent(self.id).unwrap();
             let rect = layout.get(self.id).unwrap();

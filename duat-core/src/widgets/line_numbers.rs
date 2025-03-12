@@ -93,7 +93,7 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
 
     fn update(&mut self, area: &U::Area) {
         let width = self.calculate_width();
-        area.constrain_hor(Constraint::Length(width + 1.0)).unwrap();
+        area.constrain_hor([Constraint::Len(width + 1.0)]).unwrap();
 
         self.update_text();
     }

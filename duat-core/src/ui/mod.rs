@@ -201,10 +201,16 @@ pub trait Area: Send + Sync + Sized {
     ) -> Self;
 
     /// Changes the horizontal constraint of the area
-    fn constrain_hor(&self, constraint: Constraint) -> Result<(), Self::ConstraintChangeErr>;
+    fn constrain_hor(
+        &self,
+        cons: impl IntoIterator<Item = Constraint>,
+    ) -> Result<(), Self::ConstraintChangeErr>;
 
     /// Changes the vertical constraint of the area
-    fn constrain_ver(&self, constraint: Constraint) -> Result<(), Self::ConstraintChangeErr>;
+    fn constrain_ver(
+        &self,
+        cons: impl IntoIterator<Item = Constraint>,
+    ) -> Result<(), Self::ConstraintChangeErr>;
 
     /// Restores the original constraints of the widget
     fn restore_constraints(&self) -> Result<(), Self::ConstraintChangeErr>;
@@ -558,6 +564,22 @@ impl Axis {
             Axis::Vertical => Axis::Horizontal,
         }
     }
+
+    /// Returns `true` if the axis is [`Horizontal`].
+    ///
+    /// [`Horizontal`]: Axis::Horizontal
+    #[must_use]
+    pub fn is_hor(&self) -> bool {
+        matches!(self, Self::Horizontal)
+    }
+
+    /// Returns `true` if the axis is [`Vertical`].
+    ///
+    /// [`Vertical`]: Axis::Vertical
+    #[must_use]
+    pub fn is_ver(&self) -> bool {
+        matches!(self, Self::Vertical)
+    }
 }
 
 impl From<PushSpecs> for Axis {
@@ -690,8 +712,8 @@ impl<U: Ui> RoWindows<U> {
 #[derive(Debug, Clone, Copy)]
 pub struct PushSpecs {
     side: Side,
-    ver_con: Option<Constraint>,
-    hor_con: Option<Constraint>,
+    ver_cons: [Option<Constraint>; 4],
+    hor_cons: [Option<Constraint>; 4],
 }
 
 impl PushSpecs {
@@ -699,8 +721,8 @@ impl PushSpecs {
     pub fn left() -> Self {
         Self {
             side: Side::Left,
-            ver_con: None,
-            hor_con: None,
+            ver_cons: [None; 4],
+            hor_cons: [None; 4],
         }
     }
 
@@ -708,8 +730,8 @@ impl PushSpecs {
     pub fn right() -> Self {
         Self {
             side: Side::Right,
-            ver_con: None,
-            hor_con: None,
+            ver_cons: [None; 4],
+            hor_cons: [None; 4],
         }
     }
 
@@ -717,8 +739,8 @@ impl PushSpecs {
     pub fn above() -> Self {
         Self {
             side: Side::Above,
-            ver_con: None,
-            hor_con: None,
+            ver_cons: [None; 4],
+            hor_cons: [None; 4],
         }
     }
 
@@ -726,8 +748,8 @@ impl PushSpecs {
     pub fn below() -> Self {
         Self {
             side: Side::Below,
-            ver_con: None,
-            hor_con: None,
+            ver_cons: [None; 4],
+            hor_cons: [None; 4],
         }
     }
 
@@ -751,60 +773,108 @@ impl PushSpecs {
         Self { side: Side::Below, ..self }
     }
 
-    pub fn with_ver_len(self, len: f32) -> Self {
-        Self {
-            ver_con: Some(Constraint::Length(len)),
-            ..self
+    pub fn with_ver_len(mut self, len: f32) -> Self {
+        for con in self.ver_cons.iter_mut() {
+            match con {
+                Some(Constraint::Len(_)) | None => {
+                    *con = Some(Constraint::Len(len));
+                    break;
+                }
+                _ => {}
+            }
         }
+        self
     }
 
-    pub fn with_ver_min(self, min: f32) -> Self {
-        Self {
-            ver_con: Some(Constraint::Min(min)),
-            ..self
+    pub fn with_ver_min(mut self, min: f32) -> Self {
+        for con in self.ver_cons.iter_mut() {
+            match con {
+                Some(Constraint::Min(_)) | None => {
+                    *con = Some(Constraint::Min(min));
+                    break;
+                }
+                _ => {}
+            }
         }
+        self
     }
 
-    pub fn with_ver_max(self, max: f32) -> Self {
-        Self {
-            ver_con: Some(Constraint::Max(max)),
-            ..self
+    pub fn with_ver_max(mut self, max: f32) -> Self {
+        for con in self.ver_cons.iter_mut() {
+            match con {
+                Some(Constraint::Max(_)) | None => {
+                    *con = Some(Constraint::Max(max));
+                    break;
+                }
+                _ => {}
+            }
         }
+        self
     }
 
-    pub fn with_ver_ratio(self, den: u16, div: u16) -> Self {
-        Self {
-            ver_con: Some(Constraint::Ratio(den, div)),
-            ..self
+    pub fn with_ver_ratio(mut self, den: u16, div: u16) -> Self {
+        for con in self.ver_cons.iter_mut() {
+            match con {
+                Some(Constraint::Ratio(..)) | None => {
+                    *con = Some(Constraint::Ratio(den, div));
+                    break;
+                }
+                _ => {}
+            }
         }
+        self
     }
 
-    pub fn with_hor_len(self, len: f32) -> Self {
-        Self {
-            hor_con: Some(Constraint::Length(len)),
-            ..self
+    pub fn with_hor_len(mut self, len: f32) -> Self {
+        for con in self.hor_cons.iter_mut() {
+            match con {
+                Some(Constraint::Len(_)) | None => {
+                    *con = Some(Constraint::Len(len));
+                    break;
+                }
+                _ => {}
+            }
         }
+        self
     }
 
-    pub fn with_hor_min(self, min: f32) -> Self {
-        Self {
-            hor_con: Some(Constraint::Min(min)),
-            ..self
+    pub fn with_hor_min(mut self, min: f32) -> Self {
+        for con in self.hor_cons.iter_mut() {
+            match con {
+                Some(Constraint::Min(_)) | None => {
+                    *con = Some(Constraint::Min(min));
+                    break;
+                }
+                _ => {}
+            }
         }
+        self
     }
 
-    pub fn with_hor_max(self, max: f32) -> Self {
-        Self {
-            hor_con: Some(Constraint::Max(max)),
-            ..self
+    pub fn with_hor_max(mut self, max: f32) -> Self {
+        for con in self.hor_cons.iter_mut() {
+            match con {
+                Some(Constraint::Max(_)) | None => {
+                    *con = Some(Constraint::Max(max));
+                    break;
+                }
+                _ => {}
+            }
         }
+        self
     }
 
-    pub fn with_hor_ratio(self, den: u16, div: u16) -> Self {
-        Self {
-            hor_con: Some(Constraint::Ratio(den, div)),
-            ..self
+    pub fn with_hor_ratio(mut self, den: u16, div: u16) -> Self {
+        for con in self.hor_cons.iter_mut() {
+            match con {
+                Some(Constraint::Ratio(..)) | None => {
+                    *con = Some(Constraint::Ratio(den, div));
+                    break;
+                }
+                _ => {}
+            }
         }
+        self
     }
 
     pub fn axis(&self) -> Axis {
@@ -822,36 +892,103 @@ impl PushSpecs {
         matches!(self.side, Side::Left | Side::Above)
     }
 
-    pub fn ver_constraint(&self) -> Option<Constraint> {
-        self.ver_con
+    pub fn ver_cons(&self) -> impl Iterator<Item = Constraint> {
+        self.ver_cons.into_iter().flatten()
     }
 
-    pub fn hor_constraint(&self) -> Option<Constraint> {
-        self.hor_con
+    pub fn hor_cons(&self) -> impl Iterator<Item = Constraint> {
+        self.hor_cons.into_iter().flatten()
     }
 
-    pub fn constraint_on(&self, axis: Axis) -> Option<Constraint> {
+    pub fn cons_on(&self, axis: Axis) -> impl Iterator<Item = Constraint> {
         match axis {
-            Axis::Horizontal => self.hor_con,
-            Axis::Vertical => self.ver_con,
+            Axis::Horizontal => self.hor_cons.into_iter().flatten(),
+            Axis::Vertical => self.ver_cons.into_iter().flatten(),
         }
     }
 
     pub fn is_resizable_on(&self, axis: Axis) -> bool {
-        let con = match axis {
-            Axis::Horizontal => self.hor_con,
-            Axis::Vertical => self.ver_con,
+        let cons = match axis {
+            Axis::Horizontal => &self.hor_cons,
+            Axis::Vertical => &self.ver_cons,
         };
-        matches!(con, Some(Constraint::Min(..) | Constraint::Max(..)) | None)
+        cons.iter()
+            .flatten()
+            .all(|con| matches!(con, Constraint::Min(..) | Constraint::Max(..)))
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Constraint {
-    Ratio(u16, u16),
-    Length(f32),
+    Len(f32),
     Min(f32),
     Max(f32),
+    Ratio(u16, u16),
+}
+
+impl Eq for Constraint {}
+
+#[allow(clippy::non_canonical_partial_ord_impl)]
+impl PartialOrd for Constraint {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        fn discriminant(con: &Constraint) -> usize {
+            match con {
+                Constraint::Len(_) => 0,
+                Constraint::Min(_) => 1,
+                Constraint::Max(_) => 2,
+                Constraint::Ratio(..) => 3,
+            }
+        }
+        match (self, other) {
+            (Constraint::Len(lhs), Constraint::Len(rhs)) => lhs.partial_cmp(rhs),
+            (Constraint::Min(lhs), Constraint::Min(rhs)) => lhs.partial_cmp(rhs),
+            (Constraint::Max(lhs), Constraint::Max(rhs)) => lhs.partial_cmp(rhs),
+            (Constraint::Ratio(lhs_den, lhs_div), Constraint::Ratio(rhs_den, rhs_div)) => {
+                (lhs_den, lhs_div).partial_cmp(&(rhs_den, rhs_div))
+            }
+            (lhs, rhs) => discriminant(lhs).partial_cmp(&discriminant(rhs)),
+        }
+    }
+}
+
+impl Ord for Constraint {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+impl Constraint {
+    /// Returns `true` if the constraint is [`Len`].
+    ///
+    /// [`Len`]: Constraint::Len
+    #[must_use]
+    pub fn is_len(&self) -> bool {
+        matches!(self, Self::Len(..))
+    }
+
+    /// Returns `true` if the constraint is [`Min`].
+    ///
+    /// [`Min`]: Constraint::Min
+    #[must_use]
+    pub fn is_min(&self) -> bool {
+        matches!(self, Self::Min(..))
+    }
+
+    /// Returns `true` if the constraint is [`Max`].
+    ///
+    /// [`Max`]: Constraint::Max
+    #[must_use]
+    pub fn is_max(&self) -> bool {
+        matches!(self, Self::Max(..))
+    }
+
+    /// Returns `true` if the constraint is [`Ratio`].
+    ///
+    /// [`Ratio`]: Constraint::Ratio
+    #[must_use]
+    pub fn is_ratio(&self) -> bool {
+        matches!(self, Self::Ratio(..))
+    }
 }
 
 /// A direction, where a [`Widget`] will be placed in relation to

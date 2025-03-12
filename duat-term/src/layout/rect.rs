@@ -1,5 +1,3 @@
-use std::fmt::Write;
-
 use cassowary::{
     Expression, Variable,
     WeightedRelation::{EQ, GE, LE},
@@ -12,7 +10,7 @@ use duat_core::{
     text::TwoPoints,
     ui::{
         Axis::{self, *},
-        Constraint, PushSpecs,
+        PushSpecs,
     },
 };
 
@@ -310,7 +308,6 @@ impl PartialEq<Area> for Rect {
     }
 }
 
-#[derive(Debug)]
 pub struct Rects {
     pub main: Rect,
     floating: Vec<Rect>,
@@ -640,21 +637,6 @@ impl Rects {
         parent.children_mut().unwrap().insert(pos, entry);
     }
 
-    pub fn replace_constraint(&mut self, id: AreaId, con: Constraint, axis: Axis, p: &Printer) {
-        let fr = self.fr;
-        let (i, parent) = self.get_parent_mut(id).unwrap();
-        let p_axis = parent.kind.axis().unwrap();
-
-        let (mut target, cons) = parent.children_mut().unwrap().remove(i);
-        let cons = cons.replace(con, axis, p);
-
-        let is_resizable = target.is_resizable_on(p_axis, &cons);
-        target.set_base_eqs(i, parent, p, fr, is_resizable, None);
-
-        let entry = (target, cons);
-        parent.children_mut().unwrap().insert(i, entry);
-    }
-
     /// Fetches the parent of the [`RwData<Rect>`] with the given
     /// index, including its positional index and the [`Axis`] of
     /// its children. Fetches the [`RwData<Rect>`] of the given
@@ -754,127 +736,6 @@ fn fetch_mut(rect: &mut Rect, id: AreaId) -> Option<&mut Rect> {
             .find_map(|(child, _)| fetch_mut(child, id))
     } else {
         None
-    }
-}
-
-impl std::fmt::Debug for Rect {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Rect")
-            .field("tl", &self.tl)
-            .field("br", &self.br)
-            .field("kind", &self.kind)
-            .field("on_files", &self.on_files)
-            .field_with("eqs", |f| {
-                let mut list = f.debug_list();
-                for eq in &self.eqs {
-                    list.entry_with(|f| print_eq(f, eq));
-                }
-                list.finish()
-            })
-            .finish_non_exhaustive()
-    }
-}
-
-impl std::fmt::Debug for Kind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Kind::End(..) => f.debug_tuple("End").finish(),
-            Kind::Middle { children, axis, clustered } => f
-                .debug_struct("Middle")
-                .field_with("children", |f| {
-                    let mut list = f.debug_list();
-                    for child in children {
-                        list.entry_with(|f| {
-                            f.debug_tuple("")
-                                .field(&child.0)
-                                .field_with(|f| {
-                                    let c = &child.1;
-                                    f.debug_struct("Constraints")
-                                        .field_with("ver_eq", |f| print_opt_eq(f, &c.ver_eq))
-                                        .field_with("hor_eq", |f| print_opt_eq(f, &c.hor_eq))
-                                        .finish()
-                                })
-                                .finish()
-                        });
-                    }
-                    list.finish()
-                })
-                .field("axis", axis)
-                .field("clustered", clustered)
-                .finish(),
-        }
-    }
-}
-
-fn print_eq(f: &mut std::fmt::Formatter, eq: &Equality) -> std::fmt::Result {
-    let mut expr = match eq.op() {
-        cassowary::RelationalOperator::LessOrEqual => " <= ".to_string(),
-        cassowary::RelationalOperator::Equal => " == ".to_string(),
-        cassowary::RelationalOperator::GreaterOrEqual => " >= ".to_string(),
-    };
-
-    let mut positives = 0;
-    let mut negatives = 0;
-    for term in &eq.expr().terms {
-        let var = format!("{:?}", term.variable).split_off(8);
-        if term.coefficient == 1.0 {
-            if positives == 0 {
-                expr.insert_str(0, &var.to_string());
-            } else {
-                expr.insert_str(0, &format!("{var} + "));
-            }
-            positives += 1;
-        } else if term.coefficient >= 0.0 {
-            if positives == 0 {
-                expr.insert_str(0, &format!("{}{var}", term.coefficient));
-            } else {
-                expr.insert_str(0, &format!("{}{var} + ", term.coefficient));
-            }
-            positives += 1;
-        } else if term.coefficient == -1.0 {
-            if negatives == 0 {
-                write!(expr, "{var}").unwrap();
-            } else {
-                write!(expr, " + {var}").unwrap();
-            }
-            negatives += 1;
-        } else if negatives == 0 {
-            write!(expr, "{}{var}", term.coefficient.abs()).unwrap();
-            negatives += 1;
-        } else {
-            write!(expr, " + {}{var}", term.coefficient.abs()).unwrap();
-            negatives += 1;
-        }
-    }
-
-    if eq.expr().constant != 0.0 || negatives == 0 {
-        if negatives == 0 {
-            write!(expr, "{}", eq.expr().constant).unwrap();
-        } else if eq.expr().constant >= 0.0 {
-            write!(expr, " + {}", eq.expr().constant).unwrap();
-        } else {
-            write!(expr, " - {}", eq.expr().constant.abs()).unwrap();
-        }
-    }
-
-    match eq.strength() {
-        1001001000.0 => write!(expr, " (REQUIRED)").unwrap(),
-        1000000.0 => write!(expr, " (STRONG)").unwrap(),
-        1.0 => write!(expr, " (WEAK)").unwrap(),
-        other => write!(expr, " ({other})").unwrap(),
-    }
-
-    f.write_str(&expr)
-}
-
-fn print_opt_eq(f: &mut std::fmt::Formatter, eq: &Option<Equality>) -> std::fmt::Result {
-    match eq {
-        Some(eq) => {
-            f.write_str("Some(")?;
-            print_eq(f, eq)?;
-            f.write_str(")")
-        }
-        None => f.write_str("None"),
     }
 }
 
