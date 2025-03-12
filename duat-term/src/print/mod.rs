@@ -20,9 +20,7 @@ use crate::{AreaId, Coords, Equality, area::Coord, layout::Rect, queue, style};
 mod frame;
 mod line;
 
-pub use self::{
-    frame::{Brush, Frame},
-};
+pub use self::frame::{Brush, Frame};
 
 pub struct Printer {
     sync_solver: Mutex<SyncSolver>,
@@ -152,8 +150,8 @@ impl Printer {
 
         let mut vars = self.vars.lock();
         let updates = vars.update_variables(sync_solver.fetch_changes());
-        let prev = self.updates.fetch_add(updates, Ordering::Release);
-        duat_core::log_file!("update {}", prev + updates);
+        self.updates.fetch_add(updates, Ordering::Relaxed);
+        self.has_to_print_edges.store(true, Ordering::Relaxed);
         // Drop here, so self.updates and self.vars update "at the same time"
         drop(vars)
     }
@@ -163,9 +161,9 @@ impl Printer {
 
         // If there are still changes, not all areas have been properly
         // processed, so refrain from printing.
-        if self.updates.load(Ordering::Acquire) > 0 {
-            return;
-        }
+        // if self.updates.load(Ordering::Relaxed) > 0 {
+        //    return;
+        //}
 
         let list: Vec<(AreaId, Box<Lines>)> = std::mem::take(&mut self.lines.lock());
         if list.is_empty() {
@@ -235,7 +233,9 @@ impl Printer {
             line: Vec::new(),
             len: 0,
             positions: Vec::new(),
-            align: Alignment::Left,
+            partitioning: Partitioning::Left,
+            default_partitioning: Partitioning::Left,
+
             shift,
             cap,
         }
@@ -244,9 +244,14 @@ impl Printer {
     /// Sends the finished [`Lines`], off to be printed
     pub fn send(&self, id: AreaId, lines: Lines) {
         let mut list = self.lines.lock();
-        list.retain(|(other, _)| *other != id);
+        // This area may have been sent without being printed, in that case,
+        // we just remove it.
+        // Also, areas that intersect with this one came from a previous
+        // organization of areas, so they should also be removed.
+        list.retain(|(i, l)| *i != id && !l.coords().intersects(lines.coords()));
+
         let Err(i) = list.binary_search_by_key(&lines.coords(), |(_, lines)| lines.coords()) else {
-            unreachable!("Two coliding Rects should not be possible");
+            unreachable!("Colliding Lines should have been removed already");
         };
         list.insert(i, (id, Box::new(lines)))
     }
@@ -265,8 +270,7 @@ impl Printer {
     pub fn value(&self, var: Variable, is_printing: bool) -> u32 {
         let (value, changes) = self.vars.lock().value(var, is_printing);
         if changes > 0 {
-            let prev = self.updates.fetch_sub(changes, Ordering::Release);
-            duat_core::log_file!("value {}", prev - changes);
+            self.updates.fetch_sub(changes, Ordering::Relaxed);
         }
         value
     }
@@ -280,10 +284,8 @@ impl Printer {
         let (x, x_changes) = vars.value(var_point.x(), is_printing);
         let (y, y_changes) = vars.value(var_point.y(), is_printing);
         if x_changes + y_changes > 0 {
-            let prev = self
-                .updates
-                .fetch_sub(x_changes + y_changes, Ordering::Release);
-            duat_core::log_file!("coord {}", prev - (x_changes + y_changes));
+            self.updates
+                .fetch_sub(x_changes + y_changes, Ordering::Relaxed);
         }
         Coord::new(x, y)
     }
@@ -294,10 +296,8 @@ impl Printer {
         let (tl, tl_changes) = vars.coord(var_points[0], is_printing);
         let (br, br_changes) = vars.coord(var_points[1], is_printing);
         if tl_changes + br_changes > 0 {
-            let prev = self
-                .updates
-                .fetch_sub(tl_changes + br_changes, Ordering::Release);
-            duat_core::log_file!("coords {}", prev - (tl_changes + br_changes));
+            self.updates
+                .fetch_sub(tl_changes + br_changes, Ordering::Relaxed);
         }
         Coords::new(tl, br)
     }
@@ -597,17 +597,22 @@ mod sync_solver {
 }
 
 pub struct Lines {
+    // Values that will be sent
     bytes: Vec<u8>,
     cutoffs: Vec<usize>,
     coords: Coords,
     real_cursor: Option<bool>,
 
+    // Temporary things
     line: Vec<u8>,
     len: u32,
+    positions: Vec<(usize, u32)>,
+    partitioning: Partitioning,
+    default_partitioning: Partitioning,
+
+    // Outside information
     shift: u32,
     cap: u32,
-    positions: Vec<(usize, u32)>,
-    align: Alignment,
 }
 
 impl Lines {
@@ -620,7 +625,21 @@ impl Lines {
     }
 
     pub fn realign(&mut self, alignment: Alignment) {
-        self.align = alignment;
+        self.partitioning = match alignment {
+            Alignment::Left => Partitioning::Left,
+            Alignment::Right => Partitioning::Right,
+            Alignment::Center => Partitioning::Center,
+        };
+        self.default_partitioning = self.partitioning.clone();
+    }
+
+    pub fn add_divider(&mut self) {
+        match &mut self.partitioning {
+            Partitioning::Left | Partitioning::Right | Partitioning::Center => {
+                self.partitioning = Partitioning::Dividers(vec![self.line.len()])
+            }
+            Partitioning::Dividers(items) => items.push(self.line.len()),
+        };
     }
 
     pub fn show_real_cursor(&mut self) {
@@ -654,14 +673,34 @@ impl Lines {
         let mut default_form = painter.get_default();
         default_form.style.attributes.set(Attribute::Reset);
 
-        let align_start = match self.align {
-            Alignment::Left => 0,
-            Alignment::Right => self.cap - self.len,
-            Alignment::Center => (self.cap - self.len) / 2,
+        let divs = if let Partitioning::Dividers(divs) = &self.partitioning {
+            let mut gaps_len = self.cap - self.len;
+            while !gaps_len.is_multiple_of(divs.len() as u32) {
+                gaps_len += 1;
+            }
+            let mut divs = vec![gaps_len / divs.len() as u32; divs.len()];
+            for i in 0..(self.cap - self.len) - gaps_len {
+                divs[i as usize] -= 1;
+            }
+            divs
+        } else {
+            Vec::new()
         };
 
         let (start_i, start_d) = {
-            let mut dist = align_start;
+            let mut dist = match &self.partitioning {
+                Partitioning::Left => 0,
+                Partitioning::Right => self.cap - self.len,
+                Partitioning::Center => (self.cap - self.len) / 2,
+                Partitioning::Dividers(div_bytes) => {
+                    if div_bytes[0] == 0 {
+                        divs[0]
+                    } else {
+                        0
+                    }
+                }
+            };
+
             let Some(&(start, len)) = self.positions.iter().find(|(_, len)| {
                 dist += len;
                 dist > self.shift
@@ -690,7 +729,18 @@ impl Lines {
         };
 
         let (end_i, end_d) = {
-            let mut dist = align_start + self.len;
+            let mut dist = match &self.partitioning {
+                Partitioning::Left => self.len,
+                Partitioning::Right => self.cap,
+                Partitioning::Center => self.len + (self.cap - self.len) / 2,
+                Partitioning::Dividers(div_bytes) => {
+                    if *div_bytes.last().unwrap() == self.line.len() {
+                        *divs.last().unwrap()
+                    } else {
+                        self.cap
+                    }
+                }
+            };
 
             let Some(&(end, len)) = self.positions.iter().rev().find(|(_, len)| {
                 dist -= len;
@@ -720,6 +770,42 @@ impl Lines {
         style!(self.bytes, default_form.style);
         self.bytes.extend_from_slice(&BLANK[..start_d as usize]);
 
+        self.add_ansi(start_i);
+
+        if let Partitioning::Dividers(div_bytes) = &mut self.partitioning {
+            let divs = div_bytes
+                .iter()
+                .zip(divs)
+                .skip_while(|(b, _)| **b <= start_i)
+                .take_while(|(b, _)| **b < end_i);
+
+            let mut start = start_i;
+
+            for (&end, len) in divs {
+                self.bytes.extend_from_slice(&self.line[start..end]);
+                self.bytes.extend_from_slice(&BLANK[..len as usize]);
+                start = end;
+            }
+
+            self.bytes.extend_from_slice(&self.line[start..end_i]);
+        } else {
+            self.bytes.extend_from_slice(&self.line[start_i..end_i]);
+        }
+
+        if self.coords.width() > end_d {
+            style!(self.bytes, default_form.style);
+            self.bytes
+                .extend_from_slice(&BLANK[..(self.coords.width() - end_d) as usize]);
+        }
+        self.cutoffs.push(self.bytes.len());
+
+        self.line.clear();
+        self.positions.clear();
+        self.partitioning = self.default_partitioning.clone();
+        self.len = 0;
+    }
+
+    fn add_ansi(&mut self, start_i: usize) {
         let mut adding_ansi = false;
         for &b in &self.line[..start_i] {
             if b == 0x1b {
@@ -732,18 +818,6 @@ impl Lines {
                 self.bytes.push(b)
             }
         }
-
-        self.bytes.extend_from_slice(&self.line[start_i..end_i]);
-        if self.coords.width() > end_d {
-            style!(self.bytes, default_form.style);
-            self.bytes
-                .extend_from_slice(&BLANK[..(self.coords.width() - end_d) as usize]);
-        }
-        self.cutoffs.push(self.bytes.len());
-
-        self.line.clear();
-        self.positions.clear();
-        self.len = 0;
     }
 
     pub(crate) fn is_empty(&self) -> bool {
@@ -773,7 +847,7 @@ impl std::fmt::Debug for Lines {
             .field("shift", &self.shift)
             .field("cap", &self.cap)
             .field("positions", &self.positions)
-            .field("align", &self.align)
+            .field("align", &self.partitioning)
             .finish()
     }
 }
@@ -788,6 +862,14 @@ impl Write for Lines {
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
     }
+}
+
+#[derive(Debug, Clone)]
+enum Partitioning {
+    Left,
+    Right,
+    Center,
+    Dividers(Vec<usize>),
 }
 
 /// A point on the screen, which can be calculated by [`cassowary`]
