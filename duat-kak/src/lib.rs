@@ -801,6 +801,7 @@ impl<U: Ui> Mode<U> for OneKey {
                     let len = e.selection().flat_map(str::chars).count();
                     e.replace(char.to_string().repeat(len));
                 });
+                helper.move_many(.., |mut m| m.move_hor(-1));
                 SelType::Normal
             }
             _ => SelType::Normal,
