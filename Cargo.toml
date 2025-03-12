@@ -47,6 +47,7 @@ panic = 'abort'
 
 [profile.release]
 panic = 'abort'
+incremental = true
 
 [profile.profiling]
 inherits = "dev"
