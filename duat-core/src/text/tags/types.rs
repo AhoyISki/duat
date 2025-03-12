@@ -20,6 +20,24 @@ use crate::{
     text::{Point, Text},
 };
 
+/// A [`Text`] modifier
+///
+/// [`Tag`]s are one of the most powerful tools of Duat, they abstract
+/// a ton of things that would usually be done through various APIs
+/// and simplify them to just a single one.
+///
+/// They can do many things, such as:
+///
+/// * Change the style when printing;
+/// * Add cursors on screen;
+/// * Change alignment of text;
+/// * Insert spacers for text formatting;
+/// * Place "ghost [`Text`]" which can be easily ignored by readers of
+///   the [`Text`];
+/// * Conceal [`Text`] arbitrarily;
+/// * Add toggles for mouse events (Not yet implemented);
+/// * ...Possibly more to come!
+#[derive(Clone)]
 pub enum Tag {
     // Implemented:
     /// Appends a form to the stack.
@@ -45,13 +63,45 @@ pub enum Tag {
     /// Ends alignment to the right, returning to the usual alignment
     /// (by default, left).
     EndAlignRight,
+    /// A spacer for a single screen line
+    ///
+    /// When printing this screen line (one row on screen, i.e. until
+    /// it wraps), Instead of following the current alignment, will
+    /// put spacing between this character and the previous one. The
+    /// length of the space will be roughly equal to the available
+    /// space on this line divided by the number of spacers on it.
+    ///
+    /// # Example
+    ///
+    /// Let's say that this is the line being printed:
+    ///
+    /// ```text
+    /// This is my line,please,pretend it has tags
+    /// ```
+    ///
+    /// If we were to print it with `{Divider}`s like this:
+    ///
+    /// ```text
+    /// This is my line,{Divider}please,{Divider}pretend it has tags
+    /// ```
+    ///
+    /// In a screen with a width of 48, it would come out like:
+    ///
+    /// ```text
+    /// This is my line,   please,   pretend it has tags
+    /// ```
+    Spacer,
 
+	/// Text that shows up on screen, but "doesn't exist"
     GhostText(Text),
+    /// Start concealing the [`Text`] from this point
     StartConceal,
+    /// Finish [`Text`] concealment
     EndConceal,
 
     // Not yet implemented:
-    /// Begins a hoverable section in the file.
+    // TODO: Make this take a Widget and Area arguments
+    /// Begins a toggleable section in the file.
     StartToggle(Toggle),
     EndToggle(ToggleId),
 }
@@ -76,6 +126,7 @@ impl Tag {
             Self::EndAlignCenter => (RawTag::EndAlignCenter(key), None),
             Self::StartAlignRight => (RawTag::StartAlignRight(key), None),
             Self::EndAlignRight => (RawTag::EndAlignRight(key), None),
+            Self::Spacer => (RawTag::Spacer(key), None),
             Self::GhostText(mut text) => {
                 if text.forced_new_line {
                     text.replace_range(text.len().byte() - 1.., "");
@@ -136,6 +187,8 @@ pub enum RawTag {
     /// Should happen to the whole line, even if it shows up in the
     /// middle of it.
     EndAlignRight(Key),
+    /// A spacer for the current screen line, replaces alignment.
+    Spacer(Key),
 
     // In the process of implementing.
     /// Starts concealing the [`Text`], skipping all [`Tag`]s and
@@ -159,6 +212,7 @@ pub enum RawTag {
     /// created when iterating.
     ConcealUntil(u32),
 
+    /// Text that shows up on screen, but is ignored otherwise.
     GhostText(Key, TextId),
 
     // Not Implemented:
@@ -236,6 +290,7 @@ impl RawTag {
             | Self::EndAlignCenter(key)
             | Self::StartAlignRight(key)
             | Self::EndAlignRight(key)
+            | Self::Spacer(key)
             | Self::StartConceal(key)
             | Self::EndConceal(key)
             | Self::GhostText(key, _)
@@ -259,6 +314,7 @@ impl std::fmt::Debug for RawTag {
             RawTag::EndAlignCenter(key) => write!(f, "EndAlignCenter({key:?})"),
             RawTag::StartAlignRight(key) => write!(f, "StartAlignRight({key:?})"),
             RawTag::EndAlignRight(key) => write!(f, "EndAlignRight({key:?})"),
+            RawTag::Spacer(key) => write!(f, "Spacer({key:?})"),
             RawTag::StartConceal(key) => write!(f, "StartConceal({key:?})"),
             RawTag::EndConceal(key) => write!(f, "EndConceal({key:?})"),
             RawTag::ConcealUntil(key) => write!(f, "ConcealUntil({key:?})"),
@@ -276,19 +332,10 @@ impl PartialEq for RawTag {
         match (self, other) {
             (RawTag::PushForm(_, lhs), RawTag::PushForm(_, rhs)) => lhs == rhs,
             (RawTag::PopForm(_, lhs), RawTag::PopForm(_, rhs)) => lhs == rhs,
-            (RawTag::MainCursor(_), RawTag::MainCursor(_)) => true,
-            (RawTag::ExtraCursor(_), RawTag::ExtraCursor(_)) => true,
-            (RawTag::StartAlignCenter(_), RawTag::StartAlignCenter(_)) => true,
-            (RawTag::EndAlignCenter(_), RawTag::EndAlignCenter(_)) => true,
-            (RawTag::StartAlignRight(_), RawTag::StartAlignRight(_)) => true,
-            (RawTag::EndAlignRight(_), RawTag::EndAlignRight(_)) => true,
-            (RawTag::StartConceal(_), RawTag::StartConceal(_)) => true,
-            (RawTag::EndConceal(_), RawTag::EndConceal(_)) => true,
-            (RawTag::ConcealUntil(_), RawTag::ConcealUntil(_)) => true,
             (RawTag::GhostText(_, lhs), RawTag::GhostText(_, rhs)) => lhs == rhs,
             (RawTag::ToggleStart(_, lhs), RawTag::ToggleStart(_, rhs)) => lhs == rhs,
             (RawTag::ToggleEnd(_, lhs), RawTag::ToggleEnd(_, rhs)) => lhs == rhs,
-            (..) => false,
+            (lhs, rhs) => std::mem::discriminant(lhs) == std::mem::discriminant(rhs),
         }
     }
 }

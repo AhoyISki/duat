@@ -205,11 +205,13 @@ impl Area {
                     Part::AlignRight if !cfg.wrap_method().is_no_wrap() => {
                         lines.realign(Alignment::Right)
                     }
+                    Part::Spacer if !cfg.wrap_method().is_no_wrap() => {
+                        lines.add_spacer();
+                    }
                     Part::ResetState => {
                         style!(lines, painter.reset())
                     }
-                    Part::ToggleStart(_) => todo!(),
-                    Part::ToggleEnd(_) => todo!(),
+                    Part::ToggleStart(_) | Part::ToggleEnd(_) => todo!(),
                     _ => {}
                 }
             }
@@ -348,7 +350,7 @@ impl ui::Area for Area {
             .ok_or(ConstraintErr::NoParent)?
             .clone();
 
-        if old_cons.on(Axis::Vertical).eq(cons.iter().cloned()) {
+        if old_cons.on(Axis::Horizontal).eq(cons.iter().cloned()) {
             return Ok(());
         };
 

@@ -558,7 +558,10 @@ pub mod prelude {
     pub use duat_core::{
         DuatError, Error, Plugin, clipboard, cmd,
         data::{self, RwData},
-        text::{self, Builder, Text, err, hint, ok, text},
+        text::{
+            self, AlignCenter, AlignLeft, AlignRight, Builder, Ghost, Spacer, Text, err, hint, ok,
+            text,
+        },
         ui::Area as AreaTrait,
         widgets::Widget,
     };

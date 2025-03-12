@@ -98,9 +98,9 @@ use tags::{FwdTags, RevTags};
 pub(crate) use self::history::History;
 use self::tags::Tags;
 pub use self::{
-    builder::{AlignCenter, AlignLeft, AlignRight, Builder, Ghost, err, hint, ok, text},
+    builder::{AlignCenter, AlignLeft, AlignRight, Builder, Ghost, Spacer, err, hint, ok, text},
     history::Change,
-    iter::{Item, FwdIter, Part, RevIter},
+    iter::{FwdIter, Item, Part, RevIter},
     ops::{Point, TextRange, TwoPoints, utf8_char_width},
     reader::Reader,
     search::{Matcheable, RegexPattern, Searcher},

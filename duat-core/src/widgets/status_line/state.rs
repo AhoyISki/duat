@@ -20,7 +20,7 @@ use crate::{
     context::FileReader,
     data::{DataMap, RoData, RwData},
     mode::Cursors,
-    text::{Builder, Tag, Text, text},
+    text::{Builder, Tag, Text},
     ui::Ui,
     widgets::{File, Widget},
 };
@@ -33,6 +33,7 @@ enum Appender<T> {
     FromCursors(RelatedFn<Cursors>),
     Str(String),
     Text(Text),
+    Tag(Tag),
 }
 
 /// A part of the [`StatusLine`]
@@ -53,26 +54,29 @@ impl<T: 'static, Dummy, U: Ui> State<T, Dummy, U> {
     pub fn fns(self) -> (ReaderFn<U>, Box<dyn Fn() -> bool + Send + Sync>) {
         (
             match self.appender {
-                Appender::NoArgs(mut f) => Box::new(move |builder, _| f().push_to(builder)),
-                Appender::FromWidget(mut f) => Box::new(move |builder, reader| {
+                Appender::NoArgs(mut f) => Box::new(move |b, _| f().push_to(b)),
+                Appender::FromWidget(mut f) => Box::new(move |b, reader| {
                     if let Some(append) = reader.inspect_related(&mut f) {
-                        append.push_to(builder)
+                        append.push_to(b)
                     }
                 }),
-                Appender::FromFileAndWidget(mut f) => Box::new(move |builder, reader| {
+                Appender::FromFileAndWidget(mut f) => Box::new(move |b, reader| {
                     if let Some(append) = reader.inspect_file_and(|file, widget| f(file, widget)) {
-                        append.push_to(builder)
+                        append.push_to(b)
                     }
                 }),
-                Appender::FromCursors(mut f) => Box::new(move |builder, reader| {
-                    reader.inspect(|file, _| f(file.cursors())).push_to(builder);
+                Appender::FromCursors(mut f) => Box::new(move |b, reader| {
+                    reader.inspect(|file, _| f(file.cursors())).push_to(b);
                 }),
-                Appender::Str(str) => Box::new(move |builder, _| {
-                    if !(str == " " && builder.last_was_empty()) {
-                        builder.push_str(&str)
+                Appender::Str(str) => Box::new(move |b, _| {
+                    if !(str == " " && b.last_was_empty()) {
+                        b.push_str(&str)
                     }
                 }),
-                Appender::Text(text) => Box::new(move |builder, _| builder.push_text(text.clone())),
+                Appender::Text(text) => Box::new(move |b, _| b.push_text(text.clone())),
+                Appender::Tag(tag) => Box::new(move |b, _| {
+                    b.push_tag(tag.clone());
+                }),
             },
             Box::new(move || self.checker.as_ref().is_some_and(|check| check())),
         )
@@ -93,16 +97,6 @@ impl<U: Ui> From<Text> for State<(), Text, U> {
     fn from(value: Text) -> Self {
         Self {
             appender: Appender::Text::<()>(value),
-            checker: None,
-            ghost: PhantomData,
-        }
-    }
-}
-
-impl<U: Ui> From<Tag> for State<(), Tag, U> {
-    fn from(value: Tag) -> Self {
-        Self {
-            appender: Appender::Text::<()>(text!(value)),
             checker: None,
             ghost: PhantomData,
         }
@@ -351,6 +345,16 @@ where
         let reader = move |arg: &Cursors| Append::Text(reader(arg));
         State {
             appender: Appender::FromCursors(Box::new(reader)),
+            checker: None,
+            ghost: PhantomData,
+        }
+    }
+}
+
+impl<T: Into<Tag>, U: Ui> From<T> for State<(), Tag, U> {
+    fn from(value: T) -> Self {
+        Self {
+            appender: Appender::Tag::<()>(value.into()),
             checker: None,
             ghost: PhantomData,
         }

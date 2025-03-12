@@ -633,7 +633,7 @@ impl Lines {
         self.default_gaps = self.gaps.clone();
     }
 
-    pub fn add_divider(&mut self) {
+    pub fn add_spacer(&mut self) {
         match &mut self.gaps {
             Gaps::Left | Gaps::Right | Gaps::Center => {
                 self.gaps = Gaps::Spacers(vec![self.line.len()])
@@ -767,7 +767,7 @@ impl Lines {
                 .iter()
                 .zip(spacers)
                 .skip_while(|(b, _)| **b <= start_i)
-                .take_while(|(b, _)| **b < end_i);
+                .take_while(|(b, _)| **b <= end_i);
 
             let mut start = start_i;
 
@@ -780,13 +780,14 @@ impl Lines {
             self.bytes.extend_from_slice(&self.line[start..end_i]);
         } else {
             self.bytes.extend_from_slice(&self.line[start_i..end_i]);
+
+            if self.coords.width() > end_d {
+                style!(self.bytes, default_form.style);
+                self.bytes
+                    .extend_from_slice(&BLANK[..(self.coords.width() - end_d) as usize]);
+            }
         }
 
-        if self.coords.width() > end_d {
-            style!(self.bytes, default_form.style);
-            self.bytes
-                .extend_from_slice(&BLANK[..(self.coords.width() - end_d) as usize]);
-        }
         self.cutoffs.push(self.bytes.len());
 
         self.line.clear();

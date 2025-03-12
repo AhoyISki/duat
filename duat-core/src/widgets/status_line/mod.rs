@@ -23,7 +23,7 @@ use crate::{
     context::{self, FileReader},
     form::{self, Form},
     status::{file_fmt, main_fmt, mode_fmt, selections_fmt},
-    text::{AlignCenter, AlignRight, Builder, Text, text},
+    text::{AlignCenter, AlignLeft, Builder, Text, text},
     ui::{PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
 };
@@ -104,7 +104,7 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
             Alignment::Left => Box::new(move |file| (self.pre_fn)(Text::builder(), file)),
             Alignment::Right => Box::new(move |file| {
                 let mut builder = Text::builder();
-                text!(builder, AlignRight);
+                text!(builder, AlignLeft);
                 (self.pre_fn)(builder, file)
             }),
             Alignment::Center => Box::new(move |file| {

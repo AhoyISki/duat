@@ -4,7 +4,7 @@
 //! [`err!`], [`ok!`] and [`hint!`]. These are supposed to be used in
 //! various contexts, and they have differences on what the `Default`
 //! and `Accent` form.
-use std::{fmt::Write, path::PathBuf};
+use std::{fmt::Write, marker::PhantomData, path::PathBuf};
 
 use super::{Change, Key, Tag, Text, ToggleId, tags::RawTag};
 use crate::{
@@ -83,21 +83,26 @@ impl Builder {
     /// [`impl Display`]: std::fmt::Display
     /// [`Data`]: crate::data::Data
     /// [tag surrogate]: Ghost
-    pub fn push<S: ToString>(&mut self, part: impl Into<BuilderPart<S>>) {
-        fn push_inner(builder: &mut Builder, part: BuilderPart<impl ToString>) {
-            match part {
-                BuilderPart::Text(text) => builder.push_text(text),
-                BuilderPart::Tag(tag) | BuilderPart::OptToTag(Some(tag)) => {
-                    builder.push_tag(tag);
-                }
-                BuilderPart::ToString(display) => builder.push_str(&display.to_string()),
-                BuilderPart::OptToString(Some(display)) => builder.push_str(&display.to_string()),
-                BuilderPart::EndLastAlign => todo!(),
-                _ => {}
+    pub fn push<S: ToString, _T>(&mut self, part: impl Into<BuilderPart<S, _T>>) {
+        let part = part.into();
+        match part {
+            BuilderPart::Text(text) => self.push_text(text),
+            BuilderPart::Tag(tag) | BuilderPart::OptToTag(Some(tag)) => {
+                self.push_tag(tag);
             }
+            BuilderPart::ToString(display) => self.push_str(&display.to_string()),
+            BuilderPart::OptToString(Some(display)) => self.push_str(&display.to_string()),
+            BuilderPart::EndLastAlign(_) => match self.last_align {
+                Some(Tag::StartAlignCenter) => {
+                    self.push_tag(Tag::EndAlignCenter);
+                }
+                Some(Tag::StartAlignRight) => {
+                    self.push_tag(Tag::EndAlignRight);
+                }
+                _ => {}
+            },
+            _ => {}
         }
-
-        push_inner(self, part.into())
     }
 
     /// Whether or not the last added piece was empty
@@ -208,115 +213,150 @@ impl Default for Builder {
     }
 }
 
-/// Aligns the line centrally
+/// [`Builder`] part: Aligns the line centrally
 pub struct AlignCenter;
-/// Aligns the line on the left
+/// [`Builder`] part: Aligns the line on the left
 pub struct AlignLeft;
-/// Aligns the line on the right, which is the default
+/// [`Builder`] part: Aligns the line on the right, which is the
+/// default
 pub struct AlignRight;
-/// Places ghost text
+/// [`Builder`] part: A spacer for more advanced alignment
 ///
-/// This is useful for, for example, creating command line prompts,
+/// When printing this screen line (one row on screen, i.e. until
+/// it wraps), Instead of following the current alignment, will
+/// put spacing between this character and the previous one. The
+/// length of the space will be roughly equal to the available
+/// space on this line divided by the number of spacers on it.
+///
+/// # Example
+///
+/// Let's say that this is the line being printed:
+///
+/// ```text
+/// This is my line,please,pretend it has tags
+/// ```
+///
+/// If we were to print it with `{Divider}`s like this:
+///
+/// ```text
+/// This is my line,{Divider}please,{Divider}pretend it has tags
+/// ```
+///
+/// In a screen with a width of 50, it would come out like:
+///
+/// ```text
+/// This is my line,    please,    pretend it has tags
+/// ```
+pub struct Spacer;
+/// [`Builder`] part: Places ghost text
+///
+/// This is useful when, for example, creating command line prompts,
 /// since the text is non interactable.
 pub struct Ghost(pub Text);
 
+impl From<AlignCenter> for Tag {
+    fn from(_: AlignCenter) -> Self {
+        Tag::StartAlignCenter
+    }
+}
+
+impl From<AlignRight> for Tag {
+    fn from(_: AlignRight) -> Self {
+        Tag::StartAlignRight
+    }
+}
+
+impl From<Spacer> for Tag {
+    fn from(_: Spacer) -> Self {
+        Tag::Spacer
+    }
+}
+
+impl From<Ghost> for Tag {
+    fn from(value: Ghost) -> Self {
+        Tag::GhostText(value.0)
+    }
+}
+
 /// A part to be pushed to a [`Builder`] by a macro
-pub enum BuilderPart<S: ToString> {
+pub enum BuilderPart<S: ToString, _T> {
     Text(Text),
     Tag(Tag),
     ToString(S),
     OptToString(Option<S>),
     OptToTag(Option<Tag>),
-    EndLastAlign,
+    EndLastAlign(PhantomData<_T>),
 }
 
-impl From<AlignCenter> for BuilderPart<String> {
-    fn from(_: AlignCenter) -> Self {
-        BuilderPart::Tag(Tag::StartAlignCenter)
+impl<T: Into<Tag>> From<T> for BuilderPart<String, Tag> {
+    fn from(value: T) -> Self {
+        BuilderPart::Tag(value.into())
     }
 }
 
-impl From<AlignLeft> for BuilderPart<String> {
+impl From<AlignLeft> for BuilderPart<String, AlignLeft> {
     fn from(_: AlignLeft) -> Self {
-        BuilderPart::EndLastAlign
+        BuilderPart::EndLastAlign(PhantomData)
     }
 }
 
-impl From<AlignRight> for BuilderPart<String> {
-    fn from(_: AlignRight) -> Self {
-        BuilderPart::Tag(Tag::StartAlignRight)
-    }
-}
-
-impl From<Ghost> for BuilderPart<String> {
-    fn from(value: Ghost) -> Self {
-        BuilderPart::Tag(Tag::GhostText(value.0))
-    }
-}
-
-impl From<Tag> for BuilderPart<String> {
-    fn from(value: Tag) -> Self {
-        BuilderPart::Tag(value)
-    }
-}
-
-impl From<Text> for BuilderPart<String> {
+impl From<Text> for BuilderPart<String, Text> {
     fn from(value: Text) -> Self {
         BuilderPart::Text(value)
     }
 }
 
-impl<S: ToString> From<&RwData<S>> for BuilderPart<String> {
+impl<S: ToString> From<&RwData<S>> for BuilderPart<String, S> {
     fn from(value: &RwData<S>) -> Self {
         BuilderPart::ToString(value.read().to_string())
     }
 }
 
-impl<S: ToString> From<&RoData<S>> for BuilderPart<String> {
+impl<S: ToString> From<&RoData<S>> for BuilderPart<String, S> {
     fn from(value: &RoData<S>) -> Self {
         BuilderPart::ToString(value.read().to_string())
     }
 }
 
-impl<S: ToString> From<S> for BuilderPart<S> {
+impl<S: ToString> From<S> for BuilderPart<S, S> {
     fn from(value: S) -> Self {
         BuilderPart::ToString(value)
     }
 }
 
-impl From<PathBuf> for BuilderPart<String> {
+impl From<PathBuf> for BuilderPart<String, PathBuf> {
     fn from(value: PathBuf) -> Self {
         BuilderPart::Text(Text::from(&value))
     }
 }
 
-impl From<&PathBuf> for BuilderPart<String> {
+impl From<&PathBuf> for BuilderPart<String, PathBuf> {
     fn from(value: &PathBuf) -> Self {
         BuilderPart::Text(Text::from(value))
     }
 }
 
-impl From<RwData<PathBuf>> for BuilderPart<String> {
+impl From<RwData<PathBuf>> for BuilderPart<String, PathBuf> {
     fn from(value: RwData<PathBuf>) -> Self {
         BuilderPart::Text(Text::from(&*value.read()))
     }
 }
 
-impl From<RoData<PathBuf>> for BuilderPart<String> {
+impl From<RoData<PathBuf>> for BuilderPart<String, PathBuf> {
     fn from(value: RoData<PathBuf>) -> Self {
         BuilderPart::Text(Text::from(&*value.read()))
     }
 }
 
-impl<S: ToString> From<Option<S>> for BuilderPart<S> {
+impl<S: ToString> From<Option<S>> for BuilderPart<S, Option<S>> {
     fn from(value: Option<S>) -> Self {
         BuilderPart::OptToString(value)
     }
 }
 
-impl From<Option<Tag>> for BuilderPart<String> {
-    fn from(value: Option<Tag>) -> Self {
-        BuilderPart::OptToTag(value)
+impl<T: Into<Tag>> From<Option<T>> for BuilderPart<String, Option<Tag>> {
+    fn from(value: Option<T>) -> Self {
+        BuilderPart::OptToTag(value.map(|t| t.into()))
     }
 }
 
