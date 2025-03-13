@@ -18,7 +18,7 @@ use std::{fmt::Display, marker::PhantomData};
 
 use crate::{
     context::FileReader,
-    data::{DataMap, RoData, RwData},
+    data::{DataMap, RwData},
     mode::Cursors,
     text::{Builder, Tag, Text},
     ui::Ui,
@@ -107,7 +107,7 @@ impl<D: Display + Send + Sync, U: Ui> From<RwData<D>> for State<(), DataArg<Stri
     fn from(value: RwData<D>) -> Self {
         Self {
             appender: Appender::NoArgs::<()>({
-                let value = RoData::from(&value);
+                let value = value.clone();
                 Box::new(move || Append::String(value.read().to_string()))
             }),
             checker: Some(Box::new(value.checker())),
@@ -120,36 +120,10 @@ impl<U: Ui> From<RwData<Text>> for State<(), DataArg<Text>, U> {
     fn from(value: RwData<Text>) -> Self {
         Self {
             appender: Appender::NoArgs::<()>({
-                let value = RoData::from(&value);
+                let value = value.clone();
                 Box::new(move || Append::Text(value.read().clone()))
             }),
             checker: Some(Box::new(value.checker())),
-            ghost: PhantomData,
-        }
-    }
-}
-
-impl<D: Display + Send + Sync, U: Ui> From<RoData<D>> for State<(), DataArg<String>, U> {
-    fn from(value: RoData<D>) -> Self {
-        Self {
-            appender: Appender::NoArgs::<()>({
-                let value = value.clone();
-                Box::new(move || Append::String(value.read().to_string()))
-            }),
-            checker: Some(Box::new(move || value.has_changed())),
-            ghost: PhantomData,
-        }
-    }
-}
-
-impl<U: Ui> From<RoData<Text>> for State<(), DataArg<Text>, U> {
-    fn from(value: RoData<Text>) -> Self {
-        Self {
-            appender: Appender::NoArgs::<()>({
-                let value = value.clone();
-                Box::new(move || Append::Text(value.read().clone()))
-            }),
-            checker: Some(Box::new(move || value.has_changed())),
             ghost: PhantomData,
         }
     }

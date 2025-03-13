@@ -16,7 +16,6 @@ use crossterm::{
 };
 use duat_core::{
     DuatError, Mutex,
-    data::RwData,
     form::Color,
     text::err,
     ui::{self, Sender},
@@ -120,12 +119,13 @@ impl ui::Ui for Ui {
         let mut ms = ms.lock();
         let printer = (ms.printer_fn)();
 
-        let main_id = ms.layouts.mutate(|layouts| {
+        let main_id = {
+            let mut layouts = ms.layouts.lock();
             let layout = Layout::new(ms.fr, printer.clone(), cache);
             let main_id = layout.main_id();
             layouts.push(layout);
             main_id
-        });
+        };
 
         let root = Area::new(main_id, ms.layouts.clone());
         ms.windows.push((root.clone(), printer.clone()));
@@ -178,14 +178,14 @@ impl ui::Ui for Ui {
     fn unload(ms: &'static Self::MetaStatics) {
         let mut ms = ms.lock();
         ms.windows = Vec::new();
-        *ms.layouts.write() = Vec::new();
+        *ms.layouts.lock() = Vec::new();
         ms.win = 0;
     }
 
     fn remove_window(ms: &'static Self::MetaStatics, win: usize) {
         let mut ms = ms.lock();
         ms.windows.remove(win);
-        ms.layouts.write().remove(win);
+        ms.layouts.lock().remove(win);
         if ms.win > win {
             ms.win -= 1;
         }
@@ -195,7 +195,7 @@ impl ui::Ui for Ui {
 #[doc(hidden)]
 pub struct MetaStatics {
     windows: Vec<(Area, Arc<Printer>)>,
-    layouts: RwData<Vec<Layout>>,
+    layouts: Arc<Mutex<Vec<Layout>>>,
     win: usize,
     fr: Frame,
     printer_fn: fn() -> Arc<Printer>,
@@ -218,7 +218,7 @@ impl Default for MetaStatics {
         let (tx, rx) = mpsc::channel();
         Self {
             windows: Vec::new(),
-            layouts: RwData::default(),
+            layouts: Arc::new(Mutex::new(Vec::new())),
             win: 0,
             fr: Frame::default(),
             printer_fn: || Arc::new(Printer::new()),

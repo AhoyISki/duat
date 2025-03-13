@@ -74,13 +74,15 @@ pub fn mode() -> RwData<&'static str> {
 /// [Mode] mode
 /// ```
 pub fn mode_fmt() -> DataMap<&'static str, Text> {
-    context::mode_name().map(|mode| text!([Mode] {
-        let mut mode = mode.to_lowercase();
-        if let Some(i) = mode.find('<') {
-            let _ = mode.split_off(i);
-        }
-        mode
-    }))
+    context::mode_name().map(|mode| {
+        text!([Mode] {
+            let mut mode = mode.to_lowercase();
+            if let Some(i) = mode.find('<') {
+                let _ = mode.split_off(i);
+            }
+            mode
+        })
+    })
 }
 
 /// The byte of the main cursor in the file. Indexed at 1
@@ -169,12 +171,11 @@ pub fn selections_fmt(cursors: &Cursors) -> Text {
 /// ```
 /// [keys]: KeyEvent
 pub fn cur_map_fmt() -> DataMap<(Vec<KeyEvent>, bool), Text> {
-    let data = mode::cur_sequence();
-    data.map(|(keys, is_alias)| {
-        if *is_alias {
+    mode::cur_sequence().map(|(keys, is_alias)| {
+        if is_alias {
             Text::default()
         } else {
-            mode::keys_to_text(keys)
+            mode::keys_to_text(&keys)
         }
     })
 }

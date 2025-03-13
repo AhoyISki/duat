@@ -59,7 +59,7 @@ pub use self::{
 use crate::{
     cfg::PrintCfg,
     context::FileParts,
-    data::{Data, RwData},
+    data::RwData,
     form,
     hooks::{self, FocusedOn, UnfocusedFrom},
     mode::Cursors,
@@ -541,11 +541,7 @@ impl<U: Ui> Node<U> {
         self.widget.inspect_as(f)
     }
 
-    pub fn ptr_eq<W, D>(&self, other: &D) -> bool
-    where
-        W: ?Sized,
-        D: Data<W> + ?Sized,
-    {
+    pub fn ptr_eq<W: ?Sized>(&self, other: &RwData<W>) -> bool {
         self.widget.ptr_eq(other)
     }
 

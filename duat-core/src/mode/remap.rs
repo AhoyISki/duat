@@ -22,10 +22,7 @@ mod global {
 
     use super::{Gives, Remapper};
     use crate::{
-        data::RoData,
-        mode::Mode,
-        text::{Text, text},
-        ui::Ui,
+        data::DataMap, mode::Mode, text::{text, Text}, ui::Ui
     };
 
     static REMAPPER: Remapper = Remapper::new();
@@ -98,8 +95,8 @@ mod global {
         REMAPPER.remap::<M, U>(str_to_keys(take), give.into_gives(), true);
     }
 
-    pub fn cur_sequence() -> RoData<(Vec<KeyEvent>, bool)> {
-        RoData::from(&*REMAPPER.cur_seq)
+    pub fn cur_sequence() -> DataMap<(Vec<KeyEvent>, bool), (Vec<KeyEvent>, bool)> {
+        REMAPPER.cur_seq.map(|seq| seq.clone())
     }
 
     /// Turns a sequence of [`KeyEvent`]s into a [`Text`]

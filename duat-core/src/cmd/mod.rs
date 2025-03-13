@@ -1127,13 +1127,14 @@ impl Commands {
         let mut args = call.split_whitespace();
         let caller = args.next().ok_or(Error::Empty)?.to_string();
 
-        let (command, call) = self.0.inspect(|inner| {
+        let (command, call) = {
+            let inner = self.0.read();
             if let Some(command) = inner.aliases.get(&caller) {
                 let (command, call) = command;
                 let mut call = call.clone() + " ";
                 call.extend(args);
 
-                Ok((command.clone(), call))
+                (command.clone(), call)
             } else {
                 let command = inner
                     .list
@@ -1141,9 +1142,9 @@ impl Commands {
                     .find(|cmd| cmd.callers().contains(&caller))
                     .ok_or(Error::CallerNotFound(caller))?;
 
-                Ok((command.clone(), call.clone()))
+                (command.clone(), call.clone())
             }
-        })?;
+        };
 
         let args = get_args(&call);
 
@@ -1219,18 +1220,17 @@ impl Commands {
         let mut args = call.split_whitespace();
         let caller = args.next()?.to_string();
 
-        self.0.inspect(|inner| {
-            if let Some((command, _)) = inner.aliases.get(&caller) {
-                Some((command.checker)(get_args(call)))
-            } else {
-                let command = inner
-                    .list
-                    .iter()
-                    .find(|cmd| cmd.callers().contains(&caller))?;
+        let inner = self.0.read();
+        if let Some((command, _)) = inner.aliases.get(&caller) {
+            Some((command.checker)(get_args(call)))
+        } else {
+            let command = inner
+                .list
+                .iter()
+                .find(|cmd| cmd.callers().contains(&caller))?;
 
-                Some((command.checker)(get_args(call)))
-            }
-        })
+            Some((command.checker)(get_args(call)))
+        }
     }
 }
 

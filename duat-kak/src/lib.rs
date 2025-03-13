@@ -16,17 +16,15 @@ use std::{
     marker::PhantomData,
     ops::RangeInclusive,
     sync::{
-        LazyLock, Mutex,
+        LazyLock,
         atomic::{AtomicBool, Ordering},
     },
 };
 
 use duat_core::{
-    Plugin,
+    Mutex, Plugin,
     cfg::WordChars,
-    cmd, context,
-    data::{RwData, RwLock},
-    form,
+    cmd, context, form,
     hooks::{self, ModeSwitched},
     mode::{
         self, EditHelper, ExtendFwd, ExtendRev, IncSearch, IncSearcher, KeyCode::*,
@@ -816,8 +814,7 @@ fn match_goto<S, U: Ui>(
     key: Event,
     mut sel_type: SelType,
 ) -> SelType {
-    static LAST_FILE: LazyLock<RwData<Option<String>>> = LazyLock::new(RwData::default);
-    let last_file = LAST_FILE.read().clone();
+    static LAST_FILE: LazyLock<Mutex<Option<String>>> = LazyLock::new(Mutex::default);
     let cur_name = helper.widget().name();
 
     let g_mf = if sel_type == SelType::Extend {
@@ -867,15 +864,16 @@ fn match_goto<S, U: Ui>(
 
         ////////// File change keys.
         key!(Char('a')) => {
-            if let Some(file) = last_file {
-                cmd::run_notify(format!("b {file}")).map(|_| *LAST_FILE.write() = Some(cur_name));
+            let last_file = LAST_FILE.lock();
+            if let Some(file) = last_file.as_ref() {
+                cmd::run_notify(format!("b {file}")).map(|_| *LAST_FILE.lock() = Some(cur_name));
             }
         }
         key!(Char('n')) => {
-            cmd::run_notify("next-file --global").map(|_| *LAST_FILE.write() = Some(cur_name));
+            cmd::run_notify("next-file --global").map(|_| *LAST_FILE.lock() = Some(cur_name));
         }
         key!(Char('N')) => {
-            cmd::run_notify("prev-file --global").map(|_| *LAST_FILE.write() = Some(cur_name));
+            cmd::run_notify("prev-file --global").map(|_| *LAST_FILE.lock() = Some(cur_name));
         }
         Event { code, .. } => {
             let code = format!("{code:?}");
@@ -999,9 +997,9 @@ enum SelType {
 
 fn word_and_space(mf: Mod, w_chars: WordChars) -> &'static str {
     const WORD: &str = "[^ \t\n]*[ \t]*";
-    static UNWS: RegexStrs = LazyLock::new(RwLock::default);
+    static UNWS: RegexStrs = LazyLock::new(Mutex::default);
 
-    let mut unws = UNWS.write();
+    let mut unws = UNWS.lock();
     if let Some((_, word)) = unws.iter().find(|(r, _)| *r == w_chars.ranges()) {
         if mf.contains(Mod::ALT) { WORD } else { word }
     } else {
@@ -1015,9 +1013,9 @@ fn word_and_space(mf: Mod, w_chars: WordChars) -> &'static str {
 
 fn space_and_word(mf: Mod, w_chars: WordChars) -> &'static str {
     const WORD: &str = "[ \t]*[^ \t\n]*";
-    static EOWS: RegexStrs = LazyLock::new(RwLock::default);
+    static EOWS: RegexStrs = LazyLock::new(Mutex::default);
 
-    let mut eows = EOWS.write();
+    let mut eows = EOWS.lock();
     if let Some((_, word)) = eows.iter().find(|(r, _)| *r == w_chars.ranges()) {
         if mf.contains(Mod::ALT) { WORD } else { word }
     } else {
@@ -1042,7 +1040,7 @@ fn w_char_cat(ranges: &'static [RangeInclusive<char>]) -> String {
         .collect()
 }
 
-type RegexStrs = LazyLock<RwLock<Vec<(&'static [RangeInclusive<char>], &'static str)>>>;
+type RegexStrs = LazyLock<Mutex<Vec<(&'static [RangeInclusive<char>], &'static str)>>>;
 
 #[derive(PartialEq, Eq)]
 enum Category {
@@ -1225,7 +1223,7 @@ fn copy_selections(helper: &mut EditHelper<'_, File, impl Area, ()>) {
         if copies.len() == 1 {
             duat_core::clipboard::set_text(copies.first().unwrap());
         }
-        *CLIPBOARD.lock().unwrap() = copies
+        *CLIPBOARD.lock() = copies
     }
 }
 
@@ -1234,18 +1232,18 @@ fn paste_strings() -> Vec<String> {
 
     let paste = duat_core::clipboard::get_text();
 
-    let mut sys_clipb = SYSTEM_CLIPB.lock().unwrap();
+    let mut sys_clipb = SYSTEM_CLIPB.lock();
 
     // If there was no previous clipboard, or it has changed, copy the new
     // pasted text
     if let Some(paste) = paste
         && sys_clipb.as_ref().is_none_or(|sc| *sc != paste)
     {
-        *CLIPBOARD.lock().unwrap() = vec![paste.clone()];
+        *CLIPBOARD.lock() = vec![paste.clone()];
         *sys_clipb = Some(paste.clone());
         vec![paste]
     } else {
-        CLIPBOARD.lock().unwrap().clone()
+        CLIPBOARD.lock().clone()
     }
 }
 

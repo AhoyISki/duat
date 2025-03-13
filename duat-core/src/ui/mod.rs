@@ -9,7 +9,7 @@ use std::{
 
 use crossterm::event::KeyEvent;
 use layout::window_files;
-use parking_lot::RwLock;
+use parking_lot::lock_api::Mutex;
 use serde::{Deserialize, Serialize};
 
 pub use self::{
@@ -20,7 +20,7 @@ use crate::{
     DuatError,
     cache::load_cache,
     cfg::{IterCfg, PrintCfg},
-    data::{RoData, RwData},
+    data::RwData,
     form::Painter,
     text::{FwdIter, Item, Point, RevIter, Text, TwoPoints},
     widgets::{File, Node, Widget},
@@ -355,7 +355,7 @@ impl<U: Ui> Window<U> {
         checker: impl Fn() -> bool + Send + Sync + 'static,
         layout: Box<dyn Layout<U>>,
     ) -> (Self, Node<U>) {
-        let widget = RwData::<dyn Widget<U>>::new_unsized::<W>(Arc::new(RwLock::new(widget)));
+        let widget = RwData::<dyn Widget<U>>::new_unsized::<W>(Arc::new(Mutex::new(widget)));
 
         let cache = if let Some(path) = widget.inspect_as(|file: &File| file.path())
             && let Some(cache) = load_cache::<<U::Area as Area>::Cache>(path)
@@ -397,7 +397,7 @@ impl<U: Ui> Window<U> {
         specs: PushSpecs,
         cluster: bool,
     ) -> (Node<U>, Option<U::Area>) {
-        let widget = RwData::<dyn Widget<U>>::new_unsized::<W>(Arc::new(RwLock::new(widget)));
+        let widget = RwData::<dyn Widget<U>>::new_unsized::<W>(Arc::new(Mutex::new(widget)));
 
         let cache = if let Some(path) = widget.inspect_as::<File, String>(|file| file.path())
             && let Some(cache) = load_cache::<<U::Area as Area>::Cache>(path)
@@ -666,25 +666,6 @@ impl<U: Ui> RoWindow<'_, U> {
             let f = &mut f;
             node.raw_inspect(|widget| f(accum, widget))
         })
-    }
-}
-
-pub struct RoWindows<U: Ui>(RoData<Vec<Window<U>>>);
-
-impl<U: Ui> RoWindows<U> {
-    pub fn new(windows: RoData<Vec<Window<U>>>) -> Self {
-        RoWindows(windows)
-    }
-
-    pub fn inspect_nth<B>(&self, index: usize, f: impl FnOnce(RoWindow<U>) -> B) -> Option<B> {
-        let windows = self.0.read();
-        windows.get(index).map(|window| f(RoWindow(window)))
-    }
-
-    pub fn try_inspect_nth<B>(&self, index: usize, f: impl FnOnce(RoWindow<U>) -> B) -> Option<B> {
-        self.0
-            .try_read()
-            .and_then(|windows| windows.get(index).map(|window| f(RoWindow(window))))
     }
 }
 

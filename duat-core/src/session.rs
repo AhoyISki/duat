@@ -10,7 +10,7 @@ use std::{
 
 use arboard::Clipboard;
 use gapbuf::GapBuffer;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLockReadGuard};
 
 use crate::{
     cache::{delete_cache, delete_cache_for, store_cache},
@@ -166,12 +166,13 @@ pub struct Session<U: Ui> {
 impl<U: Ui> Session<U> {
     pub fn open_file(&mut self, path: PathBuf) {
         let windows = context::windows::<U>();
-        let pushed = windows.mutate(|windows| {
+        let pushed = {
+            let mut windows = windows.write();
             let cur_window = self.cur_window.load(Ordering::Relaxed);
             let (file, checker, _) =
                 <FileCfg as WidgetCfg<U>>::build(self.file_cfg.clone().open_path(path), false);
             windows[cur_window].push_file(file, checker)
-        });
+        };
 
         match pushed {
             Ok((node, _)) => {
@@ -227,13 +228,12 @@ impl<U: Ui> Session<U> {
             U::flush_layout(self.ms);
 
             let win = self.cur_window.load(Ordering::Relaxed);
-            context::windows::<U>().inspect(|windows| {
-                for node in windows[win].nodes() {
-                    node.update_and_print();
-                }
-            });
+            let windows = context::windows::<U>().read();
+            for node in windows[win].nodes() {
+                node.update_and_print();
+            }
 
-            let break_to = self.session_loop(&duat_rx);
+            let break_to = self.session_loop(windows, &duat_rx);
 
             for break_to in break_to {
                 match break_to {
@@ -273,10 +273,13 @@ impl<U: Ui> Session<U> {
 
     /// The primary application loop, executed while no breaking
     /// functions have been called
-    fn session_loop(&mut self, duat_rx: &mpsc::Receiver<DuatEvent>) -> Vec<BreakTo> {
+    fn session_loop(
+        &mut self,
+        windows: RwLockReadGuard<Vec<Window<U>>>,
+        duat_rx: &mpsc::Receiver<DuatEvent>,
+    ) -> Vec<BreakTo> {
         let win = self.cur_window.load(Ordering::Relaxed);
-        let windows = context::windows::<U>().read();
-        let mut reasons = Vec::new();
+        let mut breaks = Vec::new();
         let mut reprint_screen = false;
 
         std::thread::scope(|s| {
@@ -295,18 +298,16 @@ impl<U: Ui> Session<U> {
                             continue;
                         }
                         DuatEvent::MetaMsg(msg) => context::notify(*msg),
-                        DuatEvent::ReloadConfig => reasons.push(BreakTo::ReloadConfig),
-                        DuatEvent::OpenFile(name) => reasons.push(BreakTo::OpenFile(name)),
-                        DuatEvent::CloseFile(name) => reasons.push(BreakTo::CloseFile(name)),
-                        DuatEvent::SwapFiles(lhs, rhs) => {
-                            reasons.push(BreakTo::SwapFiles(lhs, rhs))
-                        }
-                        DuatEvent::OpenWindow(name) => reasons.push(BreakTo::OpenWindow(name)),
-                        DuatEvent::SwitchWindow(win) => reasons.push(BreakTo::SwitchWindow(win)),
-                        DuatEvent::Quit => reasons.push(BreakTo::QuitDuat),
+                        DuatEvent::ReloadConfig => breaks.push(BreakTo::ReloadConfig),
+                        DuatEvent::OpenFile(name) => breaks.push(BreakTo::OpenFile(name)),
+                        DuatEvent::CloseFile(name) => breaks.push(BreakTo::CloseFile(name)),
+                        DuatEvent::SwapFiles(lhs, rhs) => breaks.push(BreakTo::SwapFiles(lhs, rhs)),
+                        DuatEvent::OpenWindow(name) => breaks.push(BreakTo::OpenWindow(name)),
+                        DuatEvent::SwitchWindow(win) => breaks.push(BreakTo::SwitchWindow(win)),
+                        DuatEvent::Quit => breaks.push(BreakTo::QuitDuat),
                     }
-                } else if !reasons.is_empty() {
-                    break reasons;
+                } else if !breaks.is_empty() {
+                    break breaks;
                 } else if reprint_screen {
                     reprint_screen = false;
                     for node in cur_window.nodes() {
@@ -325,7 +326,7 @@ impl<U: Ui> Session<U> {
     }
 
     fn save_cache(&self, is_quitting_duat: bool) {
-        let windows = context::windows::<U>().read();
+        let windows = context::windows::<U>().write();
         for (file, area, _) in windows
             .iter()
             .flat_map(Window::nodes)
@@ -381,7 +382,8 @@ impl<U: Ui> Session<U> {
     }
 
     fn open_file_from_cfg(&mut self, file_cfg: FileCfg, is_active: bool, win: usize) {
-        let pushed = context::windows().mutate(|windows| {
+        let pushed = {
+            let mut windows = context::windows::<U>().write();
             let (widget, checker, _) = <FileCfg as WidgetCfg<U>>::build(file_cfg, false);
 
             let result = windows[win].push_file(widget, checker);
@@ -397,7 +399,7 @@ impl<U: Ui> Session<U> {
             }
 
             result
-        });
+        };
 
         match pushed {
             Ok((node, _)) => {
@@ -412,8 +414,9 @@ impl<U: Ui> Session<U> {
 // BreakTo functions.
 impl<U: Ui> Session<U> {
     fn close_file(&self, name: String) {
-        let (win, lhs, nodes) = context::windows::<U>().inspect(|windows| {
-            let (lhs_win, _, lhs) = file_entry(windows, &name).unwrap();
+        let mut windows = context::windows::<U>().write();
+        let (win, lhs, nodes) = {
+            let (lhs_win, _, lhs) = file_entry(&windows, &name).unwrap();
             let lhs = lhs.clone();
 
             let ordering = lhs.inspect_as(|f: &File| f.layout_ordering).unwrap();
@@ -424,13 +427,12 @@ impl<U: Ui> Session<U> {
                 .collect();
 
             (lhs_win, lhs, nodes)
-        });
+        };
 
         for rhs in nodes {
-            swap([win, win], [&lhs, &rhs]);
+            swap(&mut windows, [win, win], [&lhs, &rhs]);
         }
 
-        let mut windows = context::windows::<U>().write();
         windows[win].remove_file(&name);
         if windows[win].file_names().is_empty() {
             windows.remove(win);
@@ -443,15 +445,17 @@ impl<U: Ui> Session<U> {
     }
 
     fn swap_files(&self, lhs_name: String, rhs_name: String) {
-        let (wins, [lhs_node, rhs_node]) = context::windows::<U>().inspect(|windows| {
-            let (lhs_win, _, lhs_node) = file_entry(windows, &lhs_name).unwrap();
-            let (rhs_win, _, rhs_node) = file_entry(windows, &rhs_name).unwrap();
+        let mut windows = context::windows::<U>().write();
+        let (wins, [lhs_node, rhs_node]) = {
+            let (lhs_win, _, lhs_node) = file_entry(&windows, &lhs_name).unwrap();
+            let (rhs_win, _, rhs_node) = file_entry(&windows, &rhs_name).unwrap();
             let lhs_node = lhs_node.clone();
             let rhs_node = rhs_node.clone();
             ([lhs_win, rhs_win], [lhs_node, rhs_node])
-        });
+        };
 
-        swap(wins, [&lhs_node, &rhs_node]);
+        swap(&mut windows, wins, [&lhs_node, &rhs_node]);
+        drop(windows);
 
         let name = context::cur_file::<U>().unwrap().name();
         if wins[0] != wins[1] {
@@ -518,7 +522,7 @@ impl<U: Ui> Session<U> {
     }
 }
 
-fn swap<U: Ui>([lhs_w, rhs_w]: [usize; 2], [lhs, rhs]: [&Node<U>; 2]) {
+fn swap<U: Ui>(windows: &mut [Window<U>], [lhs_w, rhs_w]: [usize; 2], [lhs, rhs]: [&Node<U>; 2]) {
     let rhs_ordering = rhs
         .widget()
         .inspect_as::<File, usize>(|f| f.layout_ordering)
@@ -529,8 +533,6 @@ fn swap<U: Ui>([lhs_w, rhs_w]: [usize; 2], [lhs, rhs]: [&Node<U>; 2]) {
         .unwrap();
     rhs.widget()
         .mutate_as::<File, ()>(|f| f.layout_ordering = lhs_ordering);
-
-    let mut windows = context::windows::<U>().write();
 
     let lhs_nodes = windows[lhs_w].take_file_and_related_nodes(lhs);
     windows[rhs_w].insert_file_nodes(rhs_ordering, lhs_nodes);

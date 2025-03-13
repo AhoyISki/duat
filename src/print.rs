@@ -8,7 +8,7 @@ use crate::setup::PRINT_CFG;
 
 #[inline(never)]
 pub fn no_wrapping() {
-    let mut print_cfg = PRINT_CFG.write().unwrap();
+    let mut print_cfg = PRINT_CFG.write();
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
@@ -19,7 +19,7 @@ pub fn no_wrapping() {
 
 #[inline(never)]
 pub fn wrap_on_width() {
-    let mut print_cfg = PRINT_CFG.write().unwrap();
+    let mut print_cfg = PRINT_CFG.write();
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
@@ -30,7 +30,7 @@ pub fn wrap_on_width() {
 
 #[inline(never)]
 pub fn wrap_on_words() {
-    let mut print_cfg = PRINT_CFG.write().unwrap();
+    let mut print_cfg = PRINT_CFG.write();
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
@@ -41,7 +41,7 @@ pub fn wrap_on_words() {
 
 #[inline(never)]
 pub fn wrap_on_cap(cap: u8) {
-    let mut print_cfg = PRINT_CFG.write().unwrap();
+    let mut print_cfg = PRINT_CFG.write();
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
@@ -52,7 +52,7 @@ pub fn wrap_on_cap(cap: u8) {
 
 #[inline(never)]
 pub fn indent_on_wrap() {
-    let mut print_cfg = PRINT_CFG.write().unwrap();
+    let mut print_cfg = PRINT_CFG.write();
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
@@ -63,7 +63,7 @@ pub fn indent_on_wrap() {
 
 #[inline(never)]
 pub fn tab_size(tab_size: u8) {
-    let mut print_cfg = PRINT_CFG.write().unwrap();
+    let mut print_cfg = PRINT_CFG.write();
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
@@ -74,7 +74,7 @@ pub fn tab_size(tab_size: u8) {
 
 #[inline(never)]
 pub fn new_line(char: char) {
-    let mut print_cfg = PRINT_CFG.write().unwrap();
+    let mut print_cfg = PRINT_CFG.write();
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
@@ -85,7 +85,7 @@ pub fn new_line(char: char) {
 
 #[inline(never)]
 pub fn trailing_new_line(char: char) {
-    let mut print_cfg = PRINT_CFG.write().unwrap();
+    let mut print_cfg = PRINT_CFG.write();
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
@@ -96,7 +96,7 @@ pub fn trailing_new_line(char: char) {
 
 #[inline(never)]
 pub fn scrolloff(x: u8, y: u8) {
-    let mut print_cfg = PRINT_CFG.write().unwrap();
+    let mut print_cfg = PRINT_CFG.write();
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
@@ -112,7 +112,7 @@ pub macro word_chars($($w_chars:tt)+) {
 #[allow(dead_code)]
 #[inline(never)]
 pub(crate) fn word_chars(word_chars: WordChars) {
-    let mut print_cfg = PRINT_CFG.write().unwrap();
+    let mut print_cfg = PRINT_CFG.write();
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {

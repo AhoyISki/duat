@@ -120,7 +120,10 @@ impl Rect {
         }
         let axis = parent.kind.axis().unwrap();
 
-        self.clear_eqs(p);
+        p.remove_eqs(self.drain_eqs());
+        if let Some(width) = self.edge.take() {
+            p.remove_edge(width);
+        }
 
         self.eqs.extend([
             self.br.x() | GE(REQUIRED) | self.tl.x(),
@@ -193,19 +196,15 @@ impl Rect {
             }
         }
 
-        p.add_eqs(&self.eqs);
+        p.add_eqs(self.eqs.clone());
 
         to_constrain
     }
 
     /// Removes all [`Equality`]s which define the edges of
     /// [`self`].
-    pub fn clear_eqs(&mut self, p: &Printer) {
-        p.remove_eqs(self.eqs.drain(..));
-
-        if let Some(edge) = self.edge.take() {
-            p.remove_edge(edge);
-        }
+    pub fn drain_eqs(&mut self) -> impl Iterator<Item = Equality> {
+        self.eqs.drain(..)
     }
 
     /// A [`Variable`], representing the "start" of [`self`], given an
@@ -316,7 +315,7 @@ pub struct Rects {
 
 impl Rects {
     pub fn new(p: &Printer, fr: Frame, info: PrintInfo) -> Self {
-        let (tl, br) = (p.printed_point(), p.printed_point());
+        let (tl, br) = (p.new_point(), p.new_point());
         let kind = Kind::end(info);
         let mut main = Rect::new(tl, br, true, kind);
         main.eqs.extend([
@@ -325,7 +324,7 @@ impl Rects {
             main.br.x() | EQ(REQUIRED) | p.max().x(),
             main.br.y() | EQ(REQUIRED) | p.max().y(),
         ]);
-        p.add_eqs(&main.eqs);
+        p.add_eqs(main.eqs.clone());
 
         Self { main, floating: Vec::new(), fr }
     }
@@ -341,7 +340,7 @@ impl Rects {
         let fr = self.fr;
 
         let mut rect = {
-            let (tl, br) = (p.printed_point(), p.printed_point());
+            let (tl, br) = (p.new_point(), p.new_point());
             let kind = Kind::end(info);
             Rect::new(tl, br, on_files, kind)
         };
@@ -387,17 +386,15 @@ impl Rects {
         let id = self.get_cluster_master(id).unwrap_or(id);
         let (i, parent) = self.get_parent_mut(id)?;
 
-        let (mut rm_rect, mut rm_cons) = parent.children_mut().unwrap().remove(i);
-        rm_rect.clear_eqs(p);
-        rm_cons.remove(p);
-        p.take_rect_vars(&rm_rect);
+        let (mut rm_rect, rm_cons) = parent.children_mut().unwrap().remove(i);
+        p.remove_rect(&mut rm_rect);
 
         let (i, parent, rm_parent_id) = if parent.children().unwrap().len() == 1 {
             let parent_id = parent.id();
             let (mut rect, cons) = parent.children_mut().unwrap().remove(0);
             let (i, grandparent) = self.get_parent_mut(parent_id)?;
-            let (rm_parent, _) = grandparent.children_mut().unwrap().remove(i);
-            p.take_rect_vars(&rm_parent);
+            let (mut rm_parent, _) = grandparent.children_mut().unwrap().remove(i);
+            p.remove_rect(&mut rm_parent);
 
             let axis = grandparent.kind.axis().unwrap();
             let is_resizable = rect.is_resizable_on(axis, &cons);
@@ -426,6 +423,7 @@ impl Rects {
     pub fn swap(&mut self, p: &Printer, id0: AreaId, id1: AreaId) {
         let fr = self.fr;
         let mut to_constrain = Some(Vec::new());
+        let mut old_eqs = Vec::new();
 
         if id0 == self.main.id || id1 == self.main.id {
             return;
@@ -433,13 +431,13 @@ impl Rects {
         let (i0, parent0) = self.get_parent_mut(id0).unwrap();
         let p0_id = parent0.id();
         let (mut rect0, mut cons0) = parent0.children_mut().unwrap().remove(i0);
-        cons0.remove(p);
+        old_eqs.extend(cons0.drain_eqs());
 
         let (mut rect1, _) = {
             let (i1, parent1) = self.get_parent_mut(id1).unwrap();
             let (_, cons1) = &parent1.children().unwrap()[i1];
             let mut cons1 = cons1.clone();
-            cons1.remove(p);
+            old_eqs.extend(cons1.drain_eqs());
 
             let axis = parent1.kind.axis().unwrap();
             let is_resizable = rect0.is_resizable_on(axis, &cons1);
@@ -480,7 +478,8 @@ impl Rects {
         let entry = (rect_to_fix, cons);
         parent0.children_mut().unwrap().insert(i, entry);
 
-        reset_and_constrain_areas(to_constrain.unwrap(), self, p);
+		p.remove_eqs(old_eqs);
+        constrain_areas(to_constrain.unwrap(), self, p);
     }
 
     pub fn reset_eqs(&mut self, p: &Printer, target: AreaId) {
@@ -506,14 +505,14 @@ impl Rects {
             let entry = (rect_to_fix, cons);
             parent.children_mut().unwrap().insert(i, entry);
         } else if let Some(main) = self.get_mut(target) {
-            main.clear_eqs(p);
+            let old_eqs: Vec<Equality> = main.drain_eqs().collect();
             main.eqs.extend([
                 main.tl.x() | EQ(REQUIRED) | 0.0,
                 main.tl.y() | EQ(REQUIRED) | 0.0,
                 main.br.x() | EQ(REQUIRED) | p.max().x(),
                 main.br.y() | EQ(REQUIRED) | p.max().y(),
             ]);
-            p.add_eqs(&main.eqs);
+            p.replace(old_eqs, main.eqs.clone());
 
             if let Kind::Middle { children, axis, .. } = &mut main.kind {
                 let axis = *axis;
@@ -526,7 +525,7 @@ impl Rects {
             }
         }
 
-        reset_and_constrain_areas(to_cons.unwrap(), self, p);
+        constrain_areas(to_cons.unwrap(), self, p);
     }
 
     pub fn new_parent_of(
@@ -540,7 +539,7 @@ impl Rects {
         let fr = self.fr;
 
         let (mut child, cons, parent_id) = {
-            let (tl, br) = (p.non_printed_point(), p.non_printed_point());
+            let (tl, br) = (p.new_point(), p.new_point());
             let kind = Kind::middle(axis, cluster);
             let mut parent = Rect::new(tl, br, on_files, kind);
             let parent_id = parent.id();
@@ -571,16 +570,20 @@ impl Rects {
                     parent.br.x() | EQ(REQUIRED) | p.max().x(),
                     parent.br.y() | EQ(REQUIRED) | p.max().y(),
                 ]);
-                p.add_eqs(&parent.eqs);
+                p.add_eqs(parent.eqs.clone());
                 (std::mem::replace(&mut self.main, parent), None)
             };
 
             (target, cons, parent_id)
         };
 
-        let cons = cons
-            .map(|cons| cons.apply(&child, parent_id, self, p))
-            .unwrap_or_default();
+        let cons = match cons.map(|cons| cons.apply(&child, parent_id, self)) {
+            Some((cons, eqs)) => {
+                p.add_eqs(eqs);
+                cons
+            }
+            None => Constraints::default(),
+        };
 
         let parent = self.get_mut(parent_id).unwrap();
 
@@ -739,29 +742,36 @@ fn fetch_mut(rect: &mut Rect, id: AreaId) -> Option<&mut Rect> {
     }
 }
 
-fn reset_and_constrain_areas(to_constrain: Vec<AreaId>, rects: &mut Rects, p: &Printer) {
+fn constrain_areas(to_constrain: Vec<AreaId>, rects: &mut Rects, p: &Printer) {
+    let mut old_eqs = Vec::new();
+    let mut new_eqs = Vec::new();
+
     for id in to_constrain {
         let Some((i, parent)) = rects.get_parent_mut(id) else {
             continue;
         };
         let (rect, mut cons) = parent.children_mut().unwrap().remove(i);
+        old_eqs.extend(cons.drain_eqs());
         let parent_id = parent.id;
-        cons.remove(p);
-        let cons = cons.apply(&rect, parent_id, rects, p);
+
+        let (cons, eqs) = cons.apply(&rect, parent_id, rects);
+        new_eqs.extend(eqs);
+
         let parent = rects.get_mut(parent_id).unwrap();
         parent.children_mut().unwrap().insert(i, (rect, cons));
     }
+    p.replace(old_eqs, new_eqs)
 }
 
-pub fn transfer_vars(from_p: &Printer, to_p: &Printer, rect: &Rect) {
-    let vars = from_p.take_rect_vars(rect);
-    if let Some(children) = rect.children() {
-        to_p.insert_non_printed_rect_vars(vars);
+pub fn transfer_vars(from_p: &Printer, to_p: &Printer, rect: &mut Rect) {
+    let vars = from_p.remove_rect(rect);
+    if let Some(children) = rect.children_mut() {
+        to_p.insert_rect_vars(vars);
 
-        for (child, _) in children.iter() {
+        for (child, _) in children.iter_mut() {
             transfer_vars(from_p, to_p, child)
         }
     } else {
-        to_p.insert_printed_rect_vars(vars);
+        to_p.insert_rect_vars(vars);
     }
 }

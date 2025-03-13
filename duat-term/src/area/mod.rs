@@ -1,15 +1,14 @@
 mod iter;
 
-use std::fmt::Alignment;
+use std::{fmt::Alignment, sync::Arc};
 
 use crossterm::cursor;
 use duat_core::{
     cache::{Deserialize, Serialize},
     cfg::{IterCfg, PrintCfg},
-    data::RwData,
     form::Painter,
     text::{FwdIter, Item, Part, Point, RevIter, Text},
-    ui::{self, Area as UiArea, Axis, Caret, Constraint, DuatPermission, PushSpecs},
+    ui::{self, Area as UiArea, Axis, Caret, Constraint, DuatPermission, PushSpecs}, Mutex,
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
 
@@ -69,7 +68,7 @@ impl Coords {
 
 #[derive(Clone)]
 pub struct Area {
-    layouts: RwData<Vec<Layout>>,
+    layouts: Arc<Mutex<Vec<Layout>>>,
     pub id: AreaId,
 }
 
@@ -80,7 +79,7 @@ impl PartialEq for Area {
 }
 
 impl Area {
-    pub fn new(id: AreaId, layouts: RwData<Vec<Layout>>) -> Self {
+    pub fn new(id: AreaId, layouts: Arc<Mutex<Vec<Layout>>>) -> Self {
         Self { layouts, id }
     }
 
@@ -97,7 +96,7 @@ impl Area {
             text.update_range((first_point, last_point));
         }
 
-        let layouts = self.layouts.read();
+        let layouts = self.layouts.lock();
         let layout = get_layout(&layouts, self.id).unwrap();
 
         let cfg = IterCfg::new(cfg).outsource_lfs();
@@ -247,7 +246,7 @@ impl ui::Area for Area {
         cache: PrintInfo,
         _: DuatPermission,
     ) -> (Area, Option<Area>) {
-        let mut layouts = self.layouts.write();
+        let mut layouts = self.layouts.lock();
         let layout = get_layout_mut(&mut layouts, self.id).unwrap();
 
         let (child, parent) = layout.bisect(self.id, specs, cluster, on_files, cache);
@@ -259,7 +258,7 @@ impl ui::Area for Area {
     }
 
     fn delete(&self, _: DuatPermission) -> Option<Self> {
-        let mut layouts = self.layouts.write();
+        let mut layouts = self.layouts.lock();
         // This Area may have already been deleted, so a Layout may not be
         // found.
         let layout = get_layout_mut(&mut layouts, self.id)?;
@@ -269,7 +268,7 @@ impl ui::Area for Area {
     }
 
     fn swap(&self, rhs: &Self, _: DuatPermission) {
-        let mut layouts = self.layouts.write();
+        let mut layouts = self.layouts.lock();
         let lhs_win = get_layout_pos(&layouts, self.id).unwrap();
         let rhs_win = get_layout_pos(&layouts, rhs.id).unwrap();
 
@@ -311,7 +310,7 @@ impl ui::Area for Area {
     ) -> Self {
         let points = at.to_points();
         let mut coord = {
-            let layouts = self.layouts.read();
+            let layouts = self.layouts.lock();
             let layout = get_layout(&layouts, self.id).unwrap();
             let rect = layout.get(self.id).unwrap();
             layout.printer.coords(rect.var_points(), false).tl
@@ -324,7 +323,7 @@ impl ui::Area for Area {
             coord.y += caret.wrap as u32;
         }
 
-        let mut layouts = self.layouts.write();
+        let mut layouts = self.layouts.lock();
         let layout = get_layout_mut(&mut layouts, self.id).unwrap();
 
         let _floating = layout.new_floating(at, specs, text, cfg);
@@ -342,7 +341,7 @@ impl ui::Area for Area {
             cons
         };
 
-        let mut layouts = self.layouts.write();
+        let mut layouts = self.layouts.lock();
         let layout = get_layout_mut(&mut layouts, self.id).unwrap();
         let old_cons = layout
             .rects
@@ -355,13 +354,13 @@ impl ui::Area for Area {
         };
 
         *layout.rects.get_constraints_mut(self.id).unwrap() = {
-            let cons = old_cons.replace(cons.into_iter(), Axis::Horizontal, &layout.printer);
+            let (cons, old_eqs) = old_cons.replace(cons.into_iter(), Axis::Horizontal);
 
             let (_, parent) = layout.get_parent(self.id).unwrap();
             let rect = layout.get(self.id).unwrap();
 
-            let cons = cons.apply(rect, parent.id(), &layout.rects, &layout.printer);
-            layout.printer.update(false);
+            let (cons, new_eqs) = cons.apply(rect, parent.id(), &layout.rects);
+            layout.printer.replace_and_update(old_eqs, new_eqs, false);
             cons
         };
 
@@ -378,7 +377,7 @@ impl ui::Area for Area {
             cons
         };
 
-        let mut layouts = self.layouts.write();
+        let mut layouts = self.layouts.lock();
         let layout = get_layout_mut(&mut layouts, self.id).unwrap();
         let old_cons = layout
             .rects
@@ -391,13 +390,13 @@ impl ui::Area for Area {
         };
 
         *layout.rects.get_constraints_mut(self.id).unwrap() = {
-            let cons = old_cons.replace(cons.into_iter(), Axis::Vertical, &layout.printer);
+            let (cons, old_eqs) = old_cons.replace(cons.into_iter(), Axis::Vertical);
 
             let (_, parent) = layout.get_parent(self.id).unwrap();
             let rect = layout.get(self.id).unwrap();
 
-            let cons = cons.apply(rect, parent.id(), &layout.rects, &layout.printer);
-            layout.printer.update(false);
+            let (cons, new_eqs) = cons.apply(rect, parent.id(), &layout.rects);
+            layout.printer.replace_and_update(old_eqs, new_eqs, false);
             cons
         };
 
@@ -413,7 +412,7 @@ impl ui::Area for Area {
     }
 
     fn scroll_around_point(&self, text: &Text, point: Point, cfg: PrintCfg) {
-        let layouts = self.layouts.read();
+        let layouts = self.layouts.lock();
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
 
@@ -432,7 +431,7 @@ impl ui::Area for Area {
     }
 
     fn set_as_active(&self) {
-        let mut layouts = self.layouts.write();
+        let mut layouts = self.layouts.lock();
         get_layout_mut(&mut layouts, self.id).unwrap().active_id = self.id;
     }
 
@@ -453,7 +452,7 @@ impl ui::Area for Area {
     }
 
     fn set_print_info(&self, info: Self::PrintInfo) {
-        let layouts = self.layouts.read();
+        let layouts = self.layouts.lock();
         let layout = get_layout(&layouts, self.id).unwrap();
         *layout.get(self.id).unwrap().print_info().unwrap().write() = info;
     }
@@ -473,7 +472,7 @@ impl ui::Area for Area {
         cfg: IterCfg,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         let (info, width) = {
-            let layouts = self.layouts.read();
+            let layouts = self.layouts.lock();
             let layout = get_layout(&layouts, self.id).unwrap();
             let rect = get_rect(&layouts, self.id).unwrap();
             let coords = layout.printer.coords(rect.var_points(), false);
@@ -497,7 +496,7 @@ impl ui::Area for Area {
     }
 
     fn has_changed(&self) -> bool {
-        let layouts = self.layouts.read();
+        let layouts = self.layouts.lock();
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
         rect.has_changed(layout)
@@ -509,7 +508,7 @@ impl ui::Area for Area {
         if other.id == self.id {
             return true;
         }
-        let layouts = self.layouts.read();
+        let layouts = self.layouts.lock();
         let layout = get_layout(&layouts, self.id).unwrap();
         let mut parent_id = other.id;
         while let Some((_, parent)) = layout.get_parent(parent_id) {
@@ -523,7 +522,7 @@ impl ui::Area for Area {
     }
 
     fn get_cluster_master(&self) -> Option<Self> {
-        let layouts = self.layouts.read();
+        let layouts = self.layouts.lock();
         get_layout(&layouts, self.id)
             .unwrap()
             .rects
@@ -532,7 +531,7 @@ impl ui::Area for Area {
     }
 
     fn cache(&self) -> Option<Self::Cache> {
-        let layouts = self.layouts.read();
+        let layouts = self.layouts.lock();
         get_rect(&layouts, self.id)
             .unwrap()
             .print_info()
@@ -540,7 +539,7 @@ impl ui::Area for Area {
     }
 
     fn width(&self) -> u32 {
-        let layouts = self.layouts.read();
+        let layouts = self.layouts.lock();
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
         let coords = layout.printer.coords(rect.var_points(), false);
@@ -548,7 +547,7 @@ impl ui::Area for Area {
     }
 
     fn height(&self) -> u32 {
-        let layouts = self.layouts.read();
+        let layouts = self.layouts.lock();
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
         let coords = layout.printer.coords(rect.var_points(), false);
@@ -556,7 +555,7 @@ impl ui::Area for Area {
     }
 
     fn first_points(&self, _text: &Text, _cfg: PrintCfg) -> (Point, Option<Point>) {
-        let layouts = self.layouts.read();
+        let layouts = self.layouts.lock();
         let rect = get_rect(&layouts, self.id).unwrap();
         let info = rect.print_info().unwrap();
         let info = info.read();
@@ -564,7 +563,7 @@ impl ui::Area for Area {
     }
 
     fn last_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>) {
-        let layouts = self.layouts.read();
+        let layouts = self.layouts.lock();
         let (info, coords) = {
             let layout = get_layout(&layouts, self.id).unwrap();
             let rect = layout.get(self.id).unwrap();
@@ -604,7 +603,7 @@ impl ui::Area for Area {
     }
 
     fn print_info(&self) -> Self::PrintInfo {
-        let layouts = self.layouts.read();
+        let layouts = self.layouts.lock();
         *get_rect(&layouts, self.id)
             .unwrap()
             .print_info()
@@ -613,7 +612,7 @@ impl ui::Area for Area {
     }
 
     fn is_active(&self) -> bool {
-        get_layout(&self.layouts.read(), self.id).unwrap().active_id == self.id
+        get_layout(&self.layouts.lock(), self.id).unwrap().active_id == self.id
     }
 }
 

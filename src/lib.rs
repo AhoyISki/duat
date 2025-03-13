@@ -281,9 +281,7 @@
 //! [tags]: duat_core::text::Tag
 #![feature(decl_macro, let_chains)]
 
-use std::sync::RwLock;
-
-pub use duat_core::{Error, thread};
+pub use duat_core::{Error, thread, RwLock};
 use duat_core::{Plugin, session::SessionCfg};
 pub use setup::{Messengers, MetaStatics, pre_setup, run_duat};
 

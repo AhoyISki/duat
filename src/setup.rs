@@ -5,17 +5,16 @@
 //! variables are not set in the start of the program, since they
 //! require a [`Ui`], which cannot be defined in static time.
 use std::sync::{
-    LazyLock, RwLock,
+    LazyLock,
     atomic::{AtomicUsize, Ordering},
     mpsc::{Receiver, Sender},
 };
 
 use duat_core::{
-    Mutex,
+    Mutex, RwLock,
     cfg::PrintCfg,
     clipboard::Clipboard,
     context::{CurFile, CurWidget},
-    data::RwData,
     mode::Regular,
     session::{FileRet, SessionCfg},
     ui::{self, Area, Constraint, DuatEvent, Window},
@@ -34,7 +33,7 @@ use crate::{
 static CUR_FILE: CurFile<Ui> = CurFile::new();
 static CUR_WIDGET: CurWidget<Ui> = CurWidget::new();
 static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
-static WINDOWS: LazyLock<RwData<Vec<Window<Ui>>>> = LazyLock::new(RwData::default);
+static WINDOWS: LazyLock<RwLock<Vec<Window<Ui>>>> = LazyLock::new(RwLock::default);
 // Setup statics.
 pub static CFG_FN: CfgFn = RwLock::new(None);
 pub static PRINT_CFG: RwLock<Option<PrintCfg>> = RwLock::new(None);
@@ -81,11 +80,11 @@ pub fn run_duat(
     <Ui as ui::Ui>::load(ui_ms);
     let mut cfg = SessionCfg::new(clipb);
 
-    if let Some(cfg_fn) = CFG_FN.write().unwrap().take() {
+    if let Some(cfg_fn) = CFG_FN.write().take() {
         cfg_fn(&mut cfg)
     }
 
-    let print_cfg = match PRINT_CFG.write().unwrap().take() {
+    let print_cfg = match PRINT_CFG.write().take() {
         Some(cfg) => cfg,
         None => PrintCfg::default_for_input(),
     };

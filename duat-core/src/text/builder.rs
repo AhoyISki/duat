@@ -7,10 +7,7 @@
 use std::{fmt::Write, marker::PhantomData, path::PathBuf};
 
 use super::{Change, Key, Tag, Text, ToggleId, tags::RawTag};
-use crate::{
-    data::{RoData, RwData},
-    form::FormId,
-};
+use crate::{data::RwData, form::FormId};
 
 /// Builds and modifies a [`Text`], based on replacements applied
 /// to it.
@@ -312,12 +309,6 @@ impl<S: ToString> From<&RwData<S>> for BuilderPart<String, S> {
     }
 }
 
-impl<S: ToString> From<&RoData<S>> for BuilderPart<String, S> {
-    fn from(value: &RoData<S>) -> Self {
-        BuilderPart::ToString(value.read().to_string())
-    }
-}
-
 impl<S: ToString> From<S> for BuilderPart<S, S> {
     fn from(value: S) -> Self {
         BuilderPart::ToString(value)
@@ -339,18 +330,6 @@ impl From<&PathBuf> for BuilderPart<String, PathBuf> {
 impl From<RwData<PathBuf>> for BuilderPart<String, PathBuf> {
     fn from(value: RwData<PathBuf>) -> Self {
         BuilderPart::Text(Text::from(&*value.read()))
-    }
-}
-
-impl From<RoData<PathBuf>> for BuilderPart<String, PathBuf> {
-    fn from(value: RoData<PathBuf>) -> Self {
-        BuilderPart::Text(Text::from(&*value.read()))
-    }
-}
-
-impl<S: ToString> From<Option<S>> for BuilderPart<S, Option<S>> {
-    fn from(value: Option<S>) -> Self {
-        BuilderPart::OptToString(value)
     }
 }
 

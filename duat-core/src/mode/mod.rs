@@ -30,7 +30,9 @@ mod switch {
 
     use super::{Cursors, Mode};
     use crate::{
-        context, duat_name, file_entry,
+        context,
+        data::RwData,
+        duat_name, file_entry,
         hooks::{self, KeySent, KeySentTo, ModeSwitched},
         session::sender,
         ui::{Area, DuatEvent, Ui},
@@ -143,21 +145,22 @@ mod switch {
             return None;
         };
 
-        widget.mutate_data_as(|w, area, related| {
+        widget.mutate_data_as(|w: &RwData<M::Widget>, area, related| {
             let mut sent_keys = Vec::new();
-            let mode_fn = w.mutate(|widget: &mut M::Widget| {
+            let mode_fn = {
+                let mut widget = w.write();
                 let cfg = widget.print_cfg();
                 widget.text_mut().remove_cursors(area, cfg);
 
                 loop {
                     let Some(key) = keys.next() else { break None };
                     sent_keys.push(key);
-                    mode.send_key(key, widget, area);
+                    mode.send_key(key, &mut widget, area);
                     if let Some(mode_fn) = was_set() {
                         break Some(mode_fn);
                     }
                 }
-            });
+            };
 
             for key in sent_keys {
                 hooks::trigger_now::<KeySentTo<M::Widget, U>>((key, w.clone(), area.clone()));
@@ -238,11 +241,10 @@ mod switch {
 
         crate::mode::set_send_key::<M, U>();
 
-        context::mode_name().mutate(|mode| {
-            let new_mode = duat_name::<M>();
-            hooks::trigger::<ModeSwitched>((mode, new_mode));
-            *mode = new_mode;
-        });
+        let mut old_mode = context::mode_name().write();
+        let new_mode = duat_name::<M>();
+        hooks::trigger::<ModeSwitched>((&old_mode, new_mode));
+        *old_mode = new_mode;
 
         *SEND_KEYS.lock() = Box::new(move |keys| send_keys_fn::<M, U>(&mut mode, keys));
     }

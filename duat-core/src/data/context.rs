@@ -7,7 +7,7 @@ use std::{
 };
 
 pub use self::global::*;
-use super::{RoData, RwData, private::InnerData};
+use super::RwData;
 use crate::{
     mode::Cursors,
     ui::{Area, Ui},
@@ -24,7 +24,7 @@ mod global {
         },
     };
 
-    use parking_lot::Mutex;
+    use parking_lot::{Mutex, RwLock};
 
     use super::{CurFile, CurWidget, FileParts, FileReader};
     use crate::{
@@ -94,7 +94,7 @@ mod global {
         cur_file: &'static CurFile<U>,
         cur_widget: &'static CurWidget<U>,
         cur_window: usize,
-        windows: &'static RwData<Vec<Window<U>>>,
+        windows: &'static RwLock<Vec<Window<U>>>,
     ) {
         CUR_FILE.set(cur_file).expect("setup ran twice");
         CUR_WIDGET.set(cur_widget).expect("setup ran twice");
@@ -116,7 +116,7 @@ mod global {
         &CUR_WINDOW
     }
 
-    pub(crate) fn windows<U: Ui>() -> &'static RwData<Vec<Window<U>>> {
+    pub(crate) fn windows<U: Ui>() -> &'static RwLock<Vec<Window<U>>> {
         WINDOWS.get().unwrap().downcast_ref().expect("1 Ui only")
     }
 
@@ -152,10 +152,10 @@ impl<U: Ui> CurFile<U> {
     pub fn fixed_reader(&self) -> FileReader<U> {
         let data = self.0.raw_read();
         let (file, area, related) = data.clone().unwrap();
-        let file_state = AtomicUsize::new(file.cur_state().load(Ordering::Relaxed));
+        let file_state = AtomicUsize::new(file.cur_state.load(Ordering::Relaxed));
 
         FileReader {
-            data: RoData::new(Some((file, area, related))),
+            data: RwData::new(Some((file, area, related))),
             state: file_state,
         }
     }
@@ -165,7 +165,7 @@ impl<U: Ui> CurFile<U> {
         let (file, ..) = data.clone().unwrap();
 
         FileReader {
-            data: RoData::from(&*self.0),
+            data: self.0.clone(),
             state: AtomicUsize::new(file.cur_state.load(Ordering::Relaxed)),
         }
     }
@@ -197,10 +197,11 @@ impl<U: Ui> CurFile<U> {
         let data = self.0.raw_read();
         let (file, area, _) = data.as_ref().unwrap();
 
-        file.mutate(|file| {
+        {
+            let mut file = file.write();
             let cfg = file.print_cfg();
             file.text_mut().remove_cursors(area, cfg);
-        });
+        }
 
         let ret = f(file, area);
 
@@ -257,7 +258,7 @@ impl<U: Ui> CurFile<U> {
     }
 
     pub(crate) fn get_related_widget<W: Widget<U>>(&self) -> Option<Node<U>> {
-        let data = self.0.write();
+        let data = self.0.read();
         let (.., related) = data.as_ref().unwrap();
         let related = related.read();
 
@@ -272,7 +273,7 @@ impl<U: Ui> Default for CurFile<U> {
 }
 
 pub struct FileReader<U: Ui> {
-    data: RoData<Option<FileParts<U>>>,
+    data: RwData<Option<FileParts<U>>>,
     state: AtomicUsize,
 }
 
@@ -282,7 +283,7 @@ impl<U: Ui> FileReader<U> {
         let (file, area, _) = data.as_ref().unwrap();
 
         self.state
-            .store(file.cur_state().load(Ordering::Acquire), Ordering::Release);
+            .store(file.cur_state.load(Ordering::Acquire), Ordering::Release);
 
         let file = file.read();
         f(&file, area)
@@ -332,7 +333,7 @@ impl<U: Ui> FileReader<U> {
         let (file, ..) = data.as_ref().unwrap();
 
         has_changed || {
-            let state = file.cur_state().load(Ordering::Acquire);
+            let state = file.cur_state.load(Ordering::Acquire);
             state > self.state.swap(state, Ordering::Acquire)
         }
     }
@@ -344,7 +345,7 @@ impl<U: Ui> Clone for FileReader<U> {
 
         Self {
             data: self.data.clone(),
-            state: AtomicUsize::new(file.cur_state().load(Ordering::Relaxed)),
+            state: AtomicUsize::new(file.cur_state.load(Ordering::Relaxed)),
         }
     }
 }

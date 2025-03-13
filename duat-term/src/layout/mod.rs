@@ -119,8 +119,8 @@ impl Layout {
     }
 
     pub fn delete(&mut self, id: AreaId) -> Option<AreaId> {
-        let (rect, _, parent_id) = self.rects.delete(&self.printer, id)?;
-        remove_children(&rect, &self.printer);
+        let (mut rect, _, parent_id) = self.rects.delete(&self.printer, id)?;
+        remove_children(&mut rect, &self.printer);
         parent_id
     }
 
@@ -202,7 +202,7 @@ impl Constraints {
             .map(|c| (c, false));
 
         let [ver_eqs, hor_eqs] = get_eqs(cons, new, parent, rects);
-        p.add_eqs(ver_eqs.iter().chain(&hor_eqs));
+        p.add_eqs(ver_eqs.clone().into_iter().chain(hor_eqs.clone()));
 
         Self {
             ver_eqs,
@@ -216,20 +216,25 @@ impl Constraints {
         mut self,
         cons: impl Iterator<Item = Constraint>,
         axis: Axis,
-        p: &Printer,
-    ) -> Self {
+    ) -> (Self, impl Iterator<Item = Equality>) {
+        let hor_eqs = std::mem::take(&mut self.hor_eqs);
+        let ver_eqs = std::mem::take(&mut self.ver_eqs);
         // A replacement means manual constraining, which is prioritized.
-        p.remove_eqs(self.hor_eqs.drain(..).chain(self.ver_eqs.drain(..)));
 
         match axis {
             Axis::Horizontal => self.hor_cons = (cons.collect(), true),
             Axis::Vertical => self.ver_cons = (cons.collect(), true),
         };
-        self
+        (self, hor_eqs.into_iter().chain(ver_eqs))
     }
 
     /// Reuses [`self`] in order to constrain a new child
-    pub fn apply(self, new: &Rect, parent: AreaId, rects: &Rects, p: &Printer) -> Self {
+    pub fn apply(
+        self,
+        new: &Rect,
+        parent: AreaId,
+        rects: &Rects,
+    ) -> (Self, impl Iterator<Item = Equality>) {
         let (ver_cons, ver_m) = &self.ver_cons;
         let (hor_cons, hor_m) = &self.hor_cons;
         let cons = ver_cons
@@ -238,13 +243,13 @@ impl Constraints {
             .chain(hor_cons.iter().map(|c| ((*c, Axis::Horizontal), *hor_m)));
 
         let [ver_eqs, hor_eqs] = get_eqs(cons, new, parent, rects);
-        p.add_eqs(ver_eqs.iter().chain(&hor_eqs));
+        let new_eqs = ver_eqs.clone().into_iter().chain(hor_eqs.clone());
 
-        Self { ver_eqs, hor_eqs, ..self }
+        (Self { ver_eqs, hor_eqs, ..self }, new_eqs)
     }
 
-    pub fn remove(&mut self, p: &Printer) {
-        p.remove_eqs(self.ver_eqs.drain(..).chain(self.hor_eqs.drain(..)));
+    pub fn drain_eqs(&mut self) -> impl Iterator<Item = Equality> {
+        self.ver_eqs.drain(..).chain(self.hor_eqs.drain(..))
     }
 
     pub fn on(&self, axis: Axis) -> impl Iterator<Item = Constraint> {
@@ -291,9 +296,9 @@ fn get_eqs(
     [hor_eqs, ver_eqs]
 }
 
-fn remove_children(rect: &Rect, p: &Printer) {
-    for (child, _) in rect.children().iter().flat_map(|c| c.iter()) {
-        p.take_rect_vars(child);
+fn remove_children(rect: &mut Rect, p: &Printer) {
+    for (child, _) in rect.children_mut().into_iter().flat_map(|c| c.iter_mut()) {
+        p.remove_rect(child);
         remove_children(child, p);
     }
 }

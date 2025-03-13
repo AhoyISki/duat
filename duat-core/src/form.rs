@@ -4,12 +4,11 @@ use std::sync::{LazyLock, OnceLock};
 use FormType::*;
 use crossterm::style::{Attribute, Attributes, ContentStyle};
 pub use crossterm::{cursor::SetCursorStyle as CursorShape, style::Color};
-use parking_lot::{RwLock, RwLockWriteGuard};
+use parking_lot::{Mutex, MutexGuard};
 
 pub use self::global::*;
 pub(crate) use self::global::{colorscheme_exists, exists};
 use crate::{
-    data::RwLockReadGuard,
     hooks::{self, FormSet},
     ui::Sender,
 };
@@ -83,7 +82,7 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
 mod global {
     use std::{any::TypeId, collections::HashMap, sync::LazyLock};
 
-    use parking_lot::{Mutex, RwLock};
+    use parking_lot::Mutex;
 
     use super::{BASE_FORMS, BuiltForm, ColorScheme, CursorShape, Form, FormId, Painter, Palette};
     use crate::{
@@ -312,8 +311,8 @@ mod global {
     /// [`Ui`]: crate::ui::Ui
     pub fn painter<W: ?Sized + 'static>() -> Painter {
         fn default_id(type_id: TypeId, type_name: &'static str) -> FormId {
-            static IDS: LazyLock<RwLock<HashMap<TypeId, FormId>>> = LazyLock::new(RwLock::default);
-            let mut ids = IDS.write();
+            static IDS: LazyLock<Mutex<HashMap<TypeId, FormId>>> = LazyLock::new(Mutex::default);
+            let mut ids = IDS.lock();
 
             if let Some(id) = ids.get(&type_id) {
                 *id
@@ -847,7 +846,7 @@ struct InnerPalette {
 }
 
 /// The list of forms to be used when rendering.
-struct Palette(LazyLock<RwLock<InnerPalette>>);
+struct Palette(LazyLock<Mutex<InnerPalette>>);
 
 impl Palette {
     /// Returns a new instance of [`FormPalette`]
@@ -855,7 +854,7 @@ impl Palette {
         Self(LazyLock::new(|| {
             let main_cursor = Some(CursorShape::DefaultUserShape);
 
-            RwLock::new(InnerPalette {
+            Mutex::new(InnerPalette {
                 main_cursor,
                 extra_cursor: main_cursor,
                 forms: BASE_FORMS.to_vec(),
@@ -865,7 +864,7 @@ impl Palette {
 
     /// Sets a [`Form`]
     fn set_form(&self, name: &'static str, form: Form) {
-        let mut inner = self.0.write();
+        let mut inner = self.0.lock();
         let (i, _) = position_and_form(&mut inner.forms, name);
 
         inner.forms[i] = (name, form, FormType::Normal);
@@ -883,7 +882,7 @@ impl Palette {
 
     /// Sets a [`Form`] "weakly"
     fn set_weak_form(&self, name: &'static str, form: Form) {
-        let mut inner = self.0.write();
+        let mut inner = self.0.lock();
         let (i, _) = position_and_form(&mut inner.forms, name);
 
         let (_, f, f_ty) = &mut inner.forms[i];
@@ -902,7 +901,7 @@ impl Palette {
 
     /// Makes a [`Form`] reference another
     fn set_ref(&self, name: &'static str, refed: &'static str) {
-        let mut inner = self.0.write();
+        let mut inner = self.0.lock();
         let (refed, form) = position_and_form(&mut inner.forms, refed);
         let (i, _) = position_and_form(&mut inner.forms, name);
 
@@ -925,7 +924,7 @@ impl Palette {
 
     /// Makes a [`Form`] reference another "weakly"
     fn set_weak_ref(&self, name: &'static str, refed: &'static str) {
-        let mut inner = self.0.write();
+        let mut inner = self.0.lock();
         let (refed, form) = position_and_form(&mut inner.forms, refed);
         let (i, _) = position_and_form(&mut inner.forms, name);
 
@@ -947,7 +946,7 @@ impl Palette {
 
     /// Sets many [`Form`]s
     fn set_many(&self, names: &[&'static str]) {
-        let mut inner = self.0.write();
+        let mut inner = self.0.lock();
         for name in names {
             position_and_form(&mut inner.forms, name);
         }
@@ -955,25 +954,25 @@ impl Palette {
 
     /// Returns a form, given a [`FormId`].
     fn form_from_id(&self, id: FormId) -> Option<Form> {
-        let inner = self.0.read_recursive();
+        let inner = self.0.lock();
         inner.forms.get(id.0 as usize).map(|(_, form, _)| *form)
     }
 
     /// The [`Form`] and [`CursorShape`] of the main cursor
     fn main_cursor(&self) -> (Form, Option<CursorShape>) {
         let form = self.form_from_id(M_CUR_ID).unwrap();
-        (form, self.0.read_recursive().main_cursor)
+        (form, self.0.lock().main_cursor)
     }
 
     /// The [`Form`] and [`CursorShape`] of extra cursors
     fn extra_cursor(&self) -> (Form, Option<CursorShape>) {
         let form = self.form_from_id(E_CUR_ID).unwrap();
-        (form, self.0.read_recursive().extra_cursor)
+        (form, self.0.lock().extra_cursor)
     }
 
     /// Sets the [`CursorShape`] of the main cursor
     fn set_main_cursor(&self, shape: CursorShape) {
-        self.0.write().main_cursor = Some(shape);
+        self.0.lock().main_cursor = Some(shape);
         if let Some(sender) = SENDER.get() {
             sender.send_form_changed().unwrap()
         }
@@ -981,7 +980,7 @@ impl Palette {
 
     /// Sets the [`CursorShape`] of extra cursors
     fn set_extra_cursor(&self, shape: CursorShape) {
-        self.0.write().extra_cursor = Some(shape);
+        self.0.lock().extra_cursor = Some(shape);
         if let Some(sender) = SENDER.get() {
             sender.send_form_changed().unwrap()
         }
@@ -989,7 +988,7 @@ impl Palette {
 
     /// Unsets the [`CursorShape`] of the main cursor
     fn unset_main_cursor(&self) {
-        self.0.write().main_cursor = None;
+        self.0.lock().main_cursor = None;
         if let Some(sender) = SENDER.get() {
             sender.send_form_changed().unwrap()
         }
@@ -997,7 +996,7 @@ impl Palette {
 
     /// Unsets the [`CursorShape`] of the extra cursors
     fn unset_extra_cursor(&self) {
-        self.0.write().extra_cursor = None;
+        self.0.lock().extra_cursor = None;
         if let Some(sender) = SENDER.get() {
             sender.send_form_changed().unwrap()
         }
@@ -1005,7 +1004,7 @@ impl Palette {
 
     /// Returns a [`Painter`]
     fn painter(&'static self, id: FormId) -> Painter {
-        let inner = self.0.read();
+        let inner = self.0.lock();
         let default = inner
             .forms
             .get(id.0 as usize)
@@ -1023,7 +1022,7 @@ impl Palette {
 }
 
 pub struct Painter {
-    inner: RwLockReadGuard<'static, InnerPalette>,
+    inner: MutexGuard<'static, InnerPalette>,
     forms: Vec<(Form, FormId)>,
     reset_count: usize,
     final_form_start: usize,
@@ -1198,7 +1197,7 @@ enum FormType {
 }
 
 /// The position of each form that eventually references the `n`th
-fn refs_of(inner: &RwLockWriteGuard<InnerPalette>, refed: usize) -> Vec<usize> {
+fn refs_of(inner: &InnerPalette, refed: usize) -> Vec<usize> {
     let mut refs = Vec::new();
     for (i, (.., f_ty)) in inner.forms.iter().enumerate() {
         if let FormType::Ref(ref_id) | FormType::WeakestRef(ref_id) = f_ty
@@ -1212,7 +1211,7 @@ fn refs_of(inner: &RwLockWriteGuard<InnerPalette>, refed: usize) -> Vec<usize> {
 }
 
 /// If form references would eventually lead to a loop
-fn would_be_circular(inner: &RwLockWriteGuard<InnerPalette>, referee: usize, refed: usize) -> bool {
+fn would_be_circular(inner: &InnerPalette, referee: usize, refed: usize) -> bool {
     if let (.., FormType::Ref(refed_ref) | FormType::WeakestRef(refed_ref)) = inner.forms[refed] {
         match refed_ref == referee {
             true => true,
