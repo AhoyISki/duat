@@ -1013,10 +1013,10 @@ mod global {
             let cmd = self.cmd.take().unwrap();
             let map = std::mem::take(&mut self.map);
             let map_err = std::mem::take(&mut self.map_err);
-            crate::thread::queue(move || match cmd() {
+            crate::thread::spawn(move || match cmd() {
                 Ok(ok) => map.into_iter().for_each(|f| f(&ok)),
                 Err(err) => map_err.into_iter().for_each(|f| f(&err)),
-            })
+            });
         }
     }
 

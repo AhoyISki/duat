@@ -135,9 +135,9 @@ mod global {
         let name: &'static str = name.to_string().leak();
 
         match kind {
-            Kind::Form(form) => crate::thread::queue(move || PALETTE.set_form(name, form)),
-            Kind::Ref(refed) => crate::thread::queue(move || PALETTE.set_ref(name, refed)),
-        }
+            Kind::Form(form) => crate::thread::spawn(move || PALETTE.set_form(name, form)),
+            Kind::Ref(refed) => crate::thread::spawn(move || PALETTE.set_ref(name, refed)),
+        };
 
         let mut forms = FORMS.lock();
         if let Kind::Ref(refed) = kind {
@@ -172,9 +172,9 @@ mod global {
         let name: &'static str = name.to_string().leak();
 
         match kind {
-            Kind::Form(form) => crate::thread::queue(move || PALETTE.set_weak_form(name, form)),
-            Kind::Ref(refed) => crate::thread::queue(move || PALETTE.set_weak_ref(name, refed)),
-        }
+            Kind::Form(form) => crate::thread::spawn(move || PALETTE.set_weak_form(name, form)),
+            Kind::Ref(refed) => crate::thread::spawn(move || PALETTE.set_weak_ref(name, refed)),
+        };
 
         let mut forms = FORMS.lock();
         if let Kind::Ref(refed) = kind {
@@ -231,7 +231,7 @@ mod global {
     /// [shape]: CursorShape
     /// [`form::unset_main_cursor`]: unset_main_cursor
     pub fn set_main_cursor(shape: CursorShape) {
-        crate::thread::queue(move || PALETTE.set_main_cursor(shape));
+        crate::thread::spawn(move || PALETTE.set_main_cursor(shape));
     }
 
     /// Sets extra cursors's [shape]s
@@ -257,7 +257,7 @@ mod global {
     /// [shape]: CursorShape
     /// [`form::unset_extra_cursor`]: unset_extra_cursor
     pub fn set_extra_cursor(shape: CursorShape) {
-        crate::thread::queue(move || PALETTE.set_extra_cursor(shape));
+        crate::thread::spawn(move || PALETTE.set_extra_cursor(shape));
     }
 
     /// Removes the main cursor's [shape]
@@ -271,7 +271,7 @@ mod global {
     /// [shape]: CursorShape
     /// [`form::set_main_cursor`]: set_main_cursor
     pub fn unset_main_cursor() {
-        crate::thread::queue(move || PALETTE.unset_main_cursor());
+        crate::thread::spawn(move || PALETTE.unset_main_cursor());
     }
 
     /// Removes extra cursors's [shape]s
@@ -288,7 +288,7 @@ mod global {
     /// [shape]: CursorShape
     /// [`form::set_extra_cursor`]: set_extra_cursor
     pub fn unset_extra_cursor() {
-        crate::thread::queue(move || PALETTE.unset_extra_cursor());
+        crate::thread::spawn(move || PALETTE.unset_extra_cursor());
     }
 
     /// A [`Painter`] for coloring text efficiently
@@ -319,7 +319,7 @@ mod global {
             } else {
                 let name: &'static str = format!("Default.{type_name}").leak();
                 let id = id_from_name(name);
-                crate::thread::queue(move || add_forms(&[name]));
+                crate::thread::spawn(move || add_forms(&[name]));
                 ids.insert(type_id, id);
                 id
             }
@@ -362,7 +362,7 @@ mod global {
             *ID.get_or_init(|| {
                 let name: &'static str = $form;
                 let id = id_from_name(name);
-                crate::thread::queue(move || add_forms(&[name]));
+                crate::thread::spawn(move || add_forms(&[name]));
                 id
             })
         }},
@@ -374,7 +374,7 @@ mod global {
     			for name in names.iter() {
         			ids.push(id_from_name(name));
     			}
-    			crate::thread::queue(move || add_forms(names.as_ref()));
+    			crate::thread::spawn(move || add_forms(names.as_ref()));
     			ids.leak()
     		});
     		ids
@@ -401,7 +401,7 @@ mod global {
         for name in names.iter() {
             ids.push(FormId(position_of_name(&mut forms, name) as u16));
         }
-        crate::thread::queue(move || add_forms(names.as_ref()));
+        crate::thread::spawn(move || add_forms(names.as_ref()));
         ids
     }
 

@@ -1,24 +1,32 @@
-//! Data types that are meant to be shared and read across Duat.
+//! Duat's way of sharing and updating state
 //!
-//! The data types revolve around the [`RwLock`] struct from
-//! [`parking_lot`], and are adapters that may block the mutation of
-//! the inner data, for the purpose of making it available for reading
-//! to any extension on Duat.
+//! This module consists primarily of the [`RwData`] struct, which
+//! holds state that can be [read] or [written to]. When it is
+//! modified, other holders of a clone of [`RwData`] will know that
+//! the data within has been modified.
 //!
-//! The first data type is [`RwData`], which is a read and write
-//! wrapper over information. It should mostly not be shared, being
-//! used instead to write information while making sure that no other
-//! part of the code is still reading it. The second data type is
-//! [`RoData`], or read only data. It is derived from the first
-//! one, and cannot mutate the inner data.
+//! This is used in many places, for example, [`Widget`]s can read
+//! from [`File`]s, and Duat can know when a [`File`] has been
+//! altered, so these [`Widget`]s may be [updated] automatically.
 //!
-//! This type is used internally in order to keep track of state, like
-//! widgets, input methods, etc.
+//! Another struct from this module is [`DataMap`]. This is
+//! essentially a mapping for a [`RwData`]. It is created via
+//! [`RwData::map`], and both it and [`RwData`] can be very useful in,
+//! for example, a [`StatusLine`], since it will be updated
+//! automatically whenever the [`RwData`] is altered.
 //!
-//! One of the main external uses for this macro is in creating
-//! automatically update [`StatusLine`] fields.
+//! One thing to note however is that [`RwData`] is a type mostly used
+//! by Duat itself, inside APIs like those of [`context`], so if you
+//! want information to be shared across threads and you don't need
+//! others to be able to reach it, you should prefer using more
+//! conventional locking mechanisms, like those of [`parking_lot`],
+//! which are exported by Duat.
 //!
+//! [read]: RwData::read
+//! [written to]: RwData::write
+//! [`Widget`]: crate::widgets::Widget
 //! [`File`]: crate::widgets::File
+//! [updated]: crate::widgets::Widget::update
 //! [`Text`]: crate::text::Text
 //! [`StatusLine`]: crate::widgets::StatusLine
 use std::{
@@ -73,9 +81,6 @@ impl<T: ?Sized> RwData<T> {
     /// may not be [`Sized`] (`dyn Trait`, `[Type]`, etc). If the type
     /// in question is sized, use [`RwData::new`] instead.
     pub fn new_unsized<SizedT: 'static>(data: Arc<Mutex<T>>) -> Self {
-        // It's 1 here so that any `RoState`s created from this will have
-        // `has_changed()` return `true` at least once, by copying the
-        // second value - 1.
         Self {
             data,
             cur_state: Arc::new(AtomicUsize::new(1)),

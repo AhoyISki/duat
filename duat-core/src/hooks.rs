@@ -454,7 +454,7 @@ mod global {
     /// [hook]: Hookable
     /// [`hooks::add_grouped`]: add_grouped
     pub fn add<H: Hookable>(f: impl for<'a> FnMut(H::Args<'a>) + Send + 'static) {
-        crate::thread::queue(move || HOOKS.add::<H>("", f))
+        crate::thread::spawn(move || HOOKS.add::<H>("", f));
     }
 
     /// Adds a grouped [hook]
@@ -470,7 +470,7 @@ mod global {
         group: &'static str,
         f: impl for<'a> FnMut(H::Args<'a>) + Send + 'static,
     ) {
-        crate::thread::queue(move || HOOKS.add::<H>(group, f))
+        crate::thread::spawn(move || HOOKS.add::<H>(group, f));
     }
 
     /// Removes a [hook] group
@@ -481,7 +481,7 @@ mod global {
     /// [hook]: Hookable
     /// [`hooks::add_grouped`]: add_grouped
     pub fn remove(group: &'static str) {
-        crate::thread::queue(move || HOOKS.remove(group));
+        crate::thread::spawn(move || HOOKS.remove(group));
     }
 
     /// Triggers a hooks for a [`Hookable`] struct
@@ -494,7 +494,7 @@ mod global {
     /// [`hooks::add`]: add
     /// [`hooks::add_grouped`]: add_grouped
     pub fn trigger<H: Hookable>(args: H::PreArgs) {
-        crate::thread::queue(move || HOOKS.trigger::<H>(args));
+        crate::thread::spawn(move || HOOKS.trigger::<H>(args));
     }
 
     pub(crate) fn trigger_now<H: Hookable>(args: H::PreArgs) {

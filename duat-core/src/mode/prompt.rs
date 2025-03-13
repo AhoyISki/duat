@@ -162,7 +162,7 @@ impl<U: Ui> PromptMode<U> for RunCommands {
 
         let command = text.to_string();
         if !command.is_empty() {
-            crate::thread::queue(move || cmd::run_notify(command));
+            crate::thread::spawn(move || cmd::run_notify(command));
         }
     }
 

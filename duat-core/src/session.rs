@@ -240,14 +240,12 @@ impl<U: Ui> Session<U> {
                     BreakTo::QuitDuat => {
                         hooks::trigger::<ConfigUnloaded>(());
                         hooks::trigger::<ExitedDuat>(());
-                        crate::thread::quit_queue();
                         context::order_reload_or_quit();
                         self.save_cache(true);
                         return (Vec::new(), duat_rx);
                     }
                     BreakTo::ReloadConfig => {
                         hooks::trigger::<ConfigUnloaded>(());
-                        crate::thread::quit_queue();
                         context::order_reload_or_quit();
                         self.save_cache(false);
                         let ms = self.ms;
