@@ -266,7 +266,6 @@ pub use parking_lot::{Mutex, RwLock};
 use ui::Window;
 use widgets::{File, Node, Widget};
 
-pub use self::data::context;
 use self::{
     text::{Text, err, hint},
     ui::Ui,
@@ -275,10 +274,11 @@ use self::{
 pub mod cache;
 pub mod cfg;
 pub mod cmd;
-pub mod data;
+pub mod context;
 pub mod form;
 pub mod hooks;
 pub mod mode;
+pub mod data;
 pub mod session;
 pub mod status;
 pub mod text;
@@ -288,9 +288,8 @@ pub mod widgets;
 pub mod prelude {
     //! The prelude of Duat
     pub use crate::{
-        Error, cmd,
+        Error, cmd, form,
         data::{self, RwData},
-        form,
         text::{Builder, Text, err, hint, ok, text},
         ui, widgets,
     };
@@ -732,14 +731,14 @@ fn widget_entry<W: Widget<U>, U: Ui>(
     windows: &[Window<U>],
     w: usize,
 ) -> std::result::Result<(usize, usize, &Node<U>), Text> {
-    let cur_file = context::cur_file::<U>().unwrap();
+    let mut ff = context::fixed_file::<U>().unwrap();
 
-    if let Some(node) = cur_file.get_related_widget::<W>() {
+    if let Some((widget, _)) = ff.get_related_widget::<W>() {
         windows
             .iter()
             .enumerate()
             .flat_map(window_index_widget)
-            .find(|(.., n)| n.ptr_eq(node.widget()))
+            .find(|(.., n)| n.ptr_eq(&widget))
     } else {
         iter_around(windows, w, 0).find(|(.., node)| node.data_is::<W>())
     }

@@ -39,12 +39,6 @@ use std::{
 
 use parking_lot::{Mutex, MutexGuard};
 
-// This module is here mostly because context structs like CurFile and
-// CurWidget need access to RwData internals in order to function
-// properly.
-/// Data about the state of Duat
-pub mod context;
-
 /// A read write shared reference to data
 pub struct RwData<T: ?Sized + 'static> {
     // The `Box` is to allow for downcasting.
@@ -183,16 +177,17 @@ impl<T: ?Sized> RwData<T> {
 
     /// Whether or not it has changed since it was last read
     ///
-    /// A "change" is defined as any time the methods [`write`],
-    /// [`mutate`], [`try_write`], or [`try_mutate`], are called on an
-    /// [`RwData`]. Once `has_changed` is called, the data will be
-    /// considered unchanged since the last `has_changed` call, for
-    /// that specific instance of a [`Data`].
+    /// A "change" is defined as any time the methods [`write`]
+    /// or [`try_write`] are called on an [`RwData`]. Once
+    /// `has_changed` is called, the data will be considered
+    /// unchanged since the last `has_changed` call, for
+    /// that specific instance of a [`RwData`].
     ///
-    /// When first creating a [`Data`] type, `has_changed`
-    /// will return `false`;
+    /// When first creating a [`RwData`] `has_changed` will return
+    /// `false`;
     ///
-    /// # Examples
+    /// # Example
+    ///
     /// ```rust
     /// use duat_core::data::{RoData, RwData};
     /// let new_data = RwData::new("Initial text");
@@ -209,31 +204,38 @@ impl<T: ?Sized> RwData<T> {
     /// ```
     ///
     /// [`write`]: RwData::write
-    /// [`mutate`]: RwData::mutate
     /// [`try_write`]: RwData::try_write
-    /// [`try_mutate`]: RwData::try_mutate
     pub fn has_changed(&self) -> bool {
-        let cur_state = self.cur_state.load(Ordering::Relaxed);
-        let read_state = self.read_state.swap(cur_state, Ordering::Relaxed);
+        let cur_state = self.cur_state.load(Ordering::Acquire);
+        let read_state = self.read_state.swap(cur_state, Ordering::Acquire);
         cur_state > read_state
     }
 
     /// A function that returns true if the data has changed
     ///
-    /// This funnction is specifically very useful when creating
-    /// [`Widget`]s, as those require a `checker_fn`, and this can
-    /// give you one of those with relatively minimal effort.
+    /// This is essentially a faster way of writing
+    ///
+    /// ```rust
+    /// # use duat_core::data::RwData;
+    /// let my_data = RwData::new(42);
+    /// let checker = {
+    ///     let my_data = my_data.clone();
+    ///     move || my_data.has_changed()
+    /// };
+    /// ```
+    ///
+    /// [`Widget`]: crate::widgets::Widget
     pub fn checker(&self) -> impl Fn() -> bool + Send + Sync + 'static + use<T> {
-        let RwData { cur_state, read_state, .. } = self.clone();
+        let cur_state = self.cur_state.clone();
+        let read_state = AtomicUsize::new(self.read_state.load(Ordering::Relaxed));
         move || {
-            let cur_state = cur_state.load(Ordering::Relaxed);
-            let read_state = read_state.swap(cur_state, Ordering::Relaxed);
+            let cur_state = cur_state.load(Ordering::Acquire);
+            let read_state = read_state.swap(cur_state, Ordering::Acquire);
             cur_state > read_state
         }
     }
 
-    /// Returns `true` if both [`Data`]s point to the same
-    /// data.
+    /// Returns `true` if both [`RwData`]s point to the same data
     ///
     /// # Examples
     /// ```rust
@@ -250,7 +252,7 @@ impl<T: ?Sized> RwData<T> {
         Arc::as_ptr(&self.cur_state) == Arc::as_ptr(&other.cur_state)
     }
 
-    /// Blocking mutable reference to the information
+    /// Blocking exclusive reference to the information
     ///
     /// Also makes it so that [`has_changed`] returns true for
     /// `self` or any of its clones, be they [`RoData`] or
@@ -295,7 +297,11 @@ impl<T: ?Sized> RwData<T> {
     /// [`has_changed`]: Data::has_changed
     pub fn write(&self) -> WriteDataGuard<T> {
         let guard = self.data.lock();
-        WriteDataGuard { guard, cur_state: &self.cur_state }
+        WriteDataGuard {
+            guard,
+            cur_state: &self.cur_state,
+            read_state: &self.read_state,
+        }
     }
 
     /// Non Blocking mutable reference to the information
@@ -343,9 +349,11 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// [`has_changed`]: Data::has_changed
     pub fn try_write(&self) -> Option<WriteDataGuard<'_, T>> {
-        self.data
-            .try_lock()
-            .map(|guard| WriteDataGuard { guard, cur_state: &self.cur_state })
+        self.data.try_lock().map(|guard| WriteDataGuard {
+            guard,
+            cur_state: &self.cur_state,
+            read_state: &self.read_state,
+        })
     }
 
     /// Blocking reference to the information
@@ -545,6 +553,7 @@ impl<T: ?Sized> std::ops::Deref for ReadDataGuard<'_, T> {
 pub struct WriteDataGuard<'a, T: ?Sized> {
     guard: MutexGuard<'a, T>,
     cur_state: &'a Arc<AtomicUsize>,
+    read_state: &'a AtomicUsize,
 }
 
 impl<T: ?Sized> std::ops::Deref for WriteDataGuard<'_, T> {
@@ -563,7 +572,8 @@ impl<T: ?Sized> std::ops::DerefMut for WriteDataGuard<'_, T> {
 
 impl<T: ?Sized> Drop for WriteDataGuard<'_, T> {
     fn drop(&mut self) {
-        self.cur_state.fetch_add(1, Ordering::Release);
+        let prev = self.cur_state.fetch_add(1, Ordering::Acquire);
+        self.read_state.store(prev + 1, Ordering::Release)
     }
 }
 
@@ -579,8 +589,7 @@ impl<I: ?Sized + Send + Sync + 'static, O> DataMap<I, O> {
         Box<dyn FnMut() -> O + Send + Sync>,
         Box<dyn Fn() -> bool + Send + Sync>,
     ) {
-        let checker = Box::new(move || self.data.has_changed());
-        (self.f, checker)
+        (self.f, Box::new(self.data.checker()))
     }
 }
 

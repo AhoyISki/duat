@@ -18,106 +18,17 @@ mod state;
 use std::fmt::Alignment;
 
 pub use self::state::State;
+use super::File;
 use crate::{
     cfg::PrintCfg,
-    context::{self, FileReader},
+    context::{self, DynamicFile, FixedFile},
+    data::ReadDataGuard,
     form::{self, Form},
     status::{file_fmt, main_fmt, mode_fmt, selections_fmt},
     text::{AlignCenter, AlignLeft, Builder, Text, text},
     ui::{PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
 };
-
-#[doc(hidden)]
-pub struct StatusLineCfg<U: Ui> {
-    pre_fn: Box<dyn FnMut(crate::text::Builder, &FileReader<U>) -> Text + Send + Sync>,
-    checker: Box<dyn Fn() -> bool + Send + Sync>,
-    specs: PushSpecs,
-    alignment: Alignment,
-}
-
-impl<U: Ui> StatusLineCfg<U> {
-    #[doc(hidden)]
-    pub fn new_with(
-        (pre_fn, checker): (
-            Box<dyn FnMut(Builder, &FileReader<U>) -> Text + 'static + Send + Sync>,
-            Box<dyn Fn() -> bool + 'static + Send + Sync>,
-        ),
-        specs: PushSpecs,
-    ) -> Self {
-        Self {
-            pre_fn,
-            checker,
-            specs,
-            alignment: Alignment::Right,
-        }
-    }
-
-    pub fn above(self) -> Self {
-        Self {
-            specs: PushSpecs::above().with_ver_len(1.0),
-            ..self
-        }
-    }
-
-    pub fn align_left(self) -> Self {
-        Self { alignment: Alignment::Left, ..self }
-    }
-
-    pub fn push_left(self) -> Self {
-        Self {
-            alignment: Alignment::Left,
-            specs: self.specs.to_left(),
-            ..self
-        }
-    }
-
-    pub fn push_left_centered(self) -> Self {
-        Self {
-            alignment: Alignment::Center,
-            specs: self.specs.to_left(),
-            ..self
-        }
-    }
-}
-
-impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
-    type Widget = StatusLine<U>;
-
-    fn build(mut self, on_file: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
-        let (reader, checker) = {
-            let reader = match on_file {
-                true => context::fixed_reader().unwrap(),
-                false => context::dyn_reader().unwrap(),
-            };
-            let checker = {
-                let reader = reader.clone();
-                move || reader.has_changed() || (self.checker)()
-            };
-            (
-                reader,
-                Box::new(checker) as Box<dyn Fn() -> bool + Send + Sync>,
-            )
-        };
-
-        let text_fn: TextFn<U> = match self.alignment {
-            Alignment::Left => Box::new(move |file| (self.pre_fn)(Text::builder(), file)),
-            Alignment::Right => Box::new(move |file| {
-                let mut builder = Text::builder();
-                text!(builder, AlignLeft);
-                (self.pre_fn)(builder, file)
-            }),
-            Alignment::Center => Box::new(move |file| {
-                let mut builder = Text::builder();
-                text!(builder, AlignCenter);
-                (self.pre_fn)(builder, file)
-            }),
-        };
-
-        let widget = StatusLine { reader, text_fn, text: Text::default() };
-        (widget, checker, self.specs)
-    }
-}
 
 /// A widget to show information, usually about a [`File`]
 ///
@@ -175,7 +86,7 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
 /// [`OnFileOpen`]: crate::hooks::OnFileOpen
 /// [`OnWindowOpen`]: crate::hooks::OnWindowOpen
 pub struct StatusLine<U: Ui> {
-    reader: FileReader<U>,
+    reader: Reader<U>,
     text_fn: TextFn<U>,
     text: Text,
 }
@@ -188,7 +99,7 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
     }
 
     fn update(&mut self, _area: &U::Area) {
-        self.text = (self.text_fn)(&self.reader);
+        self.text = (self.text_fn)(&mut self.reader);
     }
 
     fn text(&self) -> &Text {
@@ -210,6 +121,119 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
 
     fn print_cfg(&self) -> PrintCfg {
         PrintCfg::new().width_wrapped()
+    }
+}
+
+#[doc(hidden)]
+pub struct StatusLineCfg<U: Ui> {
+    pre_fn: Box<dyn FnMut(crate::text::Builder, &mut Reader<U>) -> Text + Send + Sync>,
+    checker: Box<dyn Fn() -> bool + Send + Sync>,
+    specs: PushSpecs,
+    alignment: Alignment,
+}
+
+impl<U: Ui> StatusLineCfg<U> {
+    #[doc(hidden)]
+    pub fn new_with(
+        (pre_fn, checker): (
+            Box<dyn FnMut(Builder, &mut Reader<U>) -> Text + 'static + Send + Sync>,
+            Box<dyn Fn() -> bool + 'static + Send + Sync>,
+        ),
+        specs: PushSpecs,
+    ) -> Self {
+        Self {
+            pre_fn,
+            checker,
+            specs,
+            alignment: Alignment::Right,
+        }
+    }
+
+    pub fn above(self) -> Self {
+        Self {
+            specs: PushSpecs::above().with_ver_len(1.0),
+            ..self
+        }
+    }
+
+    pub fn align_left(self) -> Self {
+        Self { alignment: Alignment::Left, ..self }
+    }
+
+    pub fn push_left(self) -> Self {
+        Self {
+            alignment: Alignment::Left,
+            specs: self.specs.to_left(),
+            ..self
+        }
+    }
+
+    pub fn push_left_centered(self) -> Self {
+        Self {
+            alignment: Alignment::Center,
+            specs: self.specs.to_left(),
+            ..self
+        }
+    }
+}
+
+impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
+    type Widget = StatusLine<U>;
+
+    fn build(mut self, on_file: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
+        let (reader, checker) = {
+            let reader = match on_file {
+                true => Reader::Fixed(context::fixed_file().unwrap()),
+                false => Reader::Dynamic(context::dyn_file().unwrap()),
+            };
+            let checker = reader.checker();
+            (reader, move || checker() || (self.checker)())
+        };
+
+        let text_fn: TextFn<U> = match self.alignment {
+            Alignment::Left => Box::new(move |reader| (self.pre_fn)(Text::builder(), reader)),
+            Alignment::Right => Box::new(move |file| {
+                let mut builder = Text::builder();
+                text!(builder, AlignLeft);
+                (self.pre_fn)(builder, file)
+            }),
+            Alignment::Center => Box::new(move |file| {
+                let mut builder = Text::builder();
+                text!(builder, AlignCenter);
+                (self.pre_fn)(builder, file)
+            }),
+        };
+
+        let widget = StatusLine { reader, text_fn, text: Text::default() };
+        (widget, checker, self.specs)
+    }
+}
+
+pub enum Reader<U: Ui> {
+    Fixed(FixedFile<U>),
+    Dynamic(DynamicFile<U>),
+}
+
+impl<U: Ui> Reader<U> {
+    fn read(&mut self) -> (ReadDataGuard<File>, &U::Area) {
+        match self {
+            Reader::Fixed(ff) => ff.read(),
+            Reader::Dynamic(df) => df.read(),
+        }
+    }
+
+    fn checker(&self) -> Box<dyn Fn() -> bool + Send + Sync + 'static> {
+        match self {
+            Reader::Fixed(ff) => Box::new(ff.checker()),
+            Reader::Dynamic(df) => Box::new(df.checker()),
+        }
+    }
+
+    fn inspect_related<W: 'static, R>(&mut self, f: impl FnOnce(&W) -> R) -> Option<R> {
+        match self {
+            Reader::Fixed(ff) => ff.inspect_related(f),
+            Reader::Dynamic(df) => df.inspect_related(f),
+        }
     }
 }
 
@@ -325,7 +349,7 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
 /// [`(FnMut() -> Text | impl Display, FnMut() -> bool)`]: FnMut
 pub macro status {
     (@append $pre_fn:expr, $checker:expr, []) => {{
-        let pre_fn = move |builder: &mut Builder, reader: &FileReader<_>| {
+        let pre_fn = move |builder: &mut Builder, reader: &mut Reader<_>| {
             $pre_fn(builder, reader);
             builder.push(Tag::PushForm(form::DEFAULT_ID));
         };
@@ -337,7 +361,7 @@ pub macro status {
     (@append $pre_fn:expr, $checker:expr, [$($form:tt)+]) => {{
         let id = form::id_of!(stringify!($($form)+));
 
-        let pre_fn = move |builder: &mut Builder, reader: &FileReader<_>| {
+        let pre_fn = move |builder: &mut Builder, reader: &mut Reader<_>| {
             $pre_fn(builder, reader);
             builder.push(Tag::PushForm(id));
         };
@@ -351,7 +375,7 @@ pub macro status {
 
         let checker = move || { $checker() || checker() };
 
-        let pre_fn = move |builder: &mut Builder, reader: &FileReader<_>| {
+        let pre_fn = move |builder: &mut Builder, reader: &mut Reader<_>| {
             $pre_fn(builder, reader);
             appender(builder, reader);
         };
@@ -361,7 +385,7 @@ pub macro status {
 
     (@parse $pre_fn:expr, $checker:expr,) => {{
         (
-            Box::new(move |mut builder: Builder, reader: &FileReader<_>| {
+            Box::new(move |mut builder: Builder, reader: &mut Reader<_>| {
                 $pre_fn(&mut builder, reader);
                 builder.finish()
             }),
@@ -376,7 +400,7 @@ pub macro status {
     }},
 
     (@parse $($parts:tt)*) => {{
-        let pre_fn = |_: &mut Builder, _: &FileReader<_>| {};
+        let pre_fn = |_: &mut Builder, _: &mut Reader<_>| {};
         let checker = || { false };
         status!(@parse pre_fn, checker, $($parts)*)
     }},
@@ -389,4 +413,4 @@ pub macro status {
     }}
 }
 
-type TextFn<U> = Box<dyn FnMut(&FileReader<U>) -> Text + Send + Sync>;
+type TextFn<U> = Box<dyn FnMut(&mut Reader<U>) -> Text + Send + Sync>;

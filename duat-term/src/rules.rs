@@ -1,5 +1,5 @@
 use duat_core::{
-    context::{self, FileReader},
+    context::{self, FixedFile},
     form::{self, Form},
     text::{Text, text},
     ui::{Area as UiArea, PushSpecs},
@@ -14,7 +14,7 @@ use crate::{Area, Ui};
 /// [`File`]: duat_core::widgets::File
 /// [`LineNumbers`]: duat_core::widgets::LineNumbers
 pub struct VertRule {
-    reader: Option<FileReader<Ui>>,
+    ff: Option<FixedFile<Ui>>,
     text: Text,
     sep_char: SepChar,
 }
@@ -27,29 +27,28 @@ impl Widget<Ui> for VertRule {
     }
 
     fn update(&mut self, area: &Area) {
-        self.text = if let Some(reader) = self.reader.as_ref()
+        self.text = if let Some(ff) = self.ff.as_mut()
             && let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = self.sep_char
         {
-            reader.inspect(|file, _| {
-                let lines = file.printed_lines();
-                let (upper, middle, lower) = if let Some(main) = file.cursors().get_main() {
-                    let main = main.line();
-                    let upper = lines.iter().filter(|&(line, _)| *line < main).count();
-                    let middle = lines.iter().filter(|&(line, _)| *line == main).count();
-                    let lower = lines.iter().filter(|&(line, _)| *line > main).count();
-                    (upper, middle, lower)
-                } else {
-                    (0, lines.len(), 0)
-                };
+            let (file, _) = ff.read();
+            let lines = file.printed_lines();
+            let (upper, middle, lower) = if let Some(main) = file.cursors().get_main() {
+                let main = main.line();
+                let upper = lines.iter().filter(|&(line, _)| *line < main).count();
+                let middle = lines.iter().filter(|&(line, _)| *line == main).count();
+                let lower = lines.iter().filter(|&(line, _)| *line > main).count();
+                (upper, middle, lower)
+            } else {
+                (0, lines.len(), 0)
+            };
 
-                let chars = self.sep_char.chars();
+            let chars = self.sep_char.chars();
 
-                text!(
-                    [VertRule.upper] { form_string(chars[0], upper) }
-                    [VertRule] { form_string(chars[1], middle) }
-                    [VertRule.lower] { form_string(chars[2], lower) }
-                )
-            })
+            text!(
+                [VertRule.upper] { form_string(chars[0], upper) }
+                [VertRule] { form_string(chars[1], middle) }
+                [VertRule.lower] { form_string(chars[2], lower) }
+            )
         } else {
             let full_line =
                 format!("{}\n", self.sep_char.chars()[1]).repeat(area.height() as usize);
@@ -167,18 +166,21 @@ impl WidgetCfg<Ui> for VertRuleCfg {
     type Widget = VertRule;
 
     fn build(self, on_file: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
-        let reader = on_file.then_some(context::fixed_reader().unwrap());
+        let ff = on_file.then_some(context::fixed_file().unwrap());
 
-        let widget = VertRule {
-            reader: reader.clone(),
-            text: Text::default(),
-            sep_char: self.sep_char,
-        };
-
-        let checker = if let Some(reader) = reader {
-            Box::new(move || reader.has_changed()) as Box<dyn Fn() -> bool + Send + Sync>
+        let checker = if let Some(ff) = ff.as_ref()
+            && let SepChar::TwoWay(..) | SepChar::ThreeWay(..) = self.sep_char
+        {
+            let checker = ff.checker();
+            Box::new(checker) as Box<dyn Fn() -> bool + Send + Sync>
         } else {
             Box::new(move || false)
+        };
+
+        let widget = VertRule {
+            ff,
+            text: Text::default(),
+            sep_char: self.sep_char,
         };
 
         (widget, checker, self.specs)

@@ -13,15 +13,15 @@
 use std::{fmt::Alignment, marker::PhantomData};
 
 use crate::{
-    context::{self, FileReader},
+    context::{self, FixedFile},
     form::{self, Form},
-    text::{Builder, Tag, Text, text},
+    text::{text, Builder, Tag, Text},
     ui::{Area, Constraint, PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
 };
 
 pub struct LineNumbers<U: Ui> {
-    reader: FileReader<U>,
+    ff: FixedFile<U>,
     text: Text,
     cfg: LineNumbersCfg<U>,
 }
@@ -29,18 +29,19 @@ pub struct LineNumbers<U: Ui> {
 impl<U: Ui> LineNumbers<U> {
     /// The minimum width that would be needed to show the last line.
     fn calculate_width(&mut self) -> f32 {
-        let len = self.reader.inspect(|file, _| file.text().len().line());
+        let len = self.ff.read().0.text().len().line();
         len.ilog10() as f32
     }
 
     fn update_text(&mut self) {
-        let (main_line, printed_lines) = self.reader.inspect(|file, _| {
+        let (main_line, printed_lines) = {
+            let (file, _) = self.ff.read();
             let main_line = match file.cursors().is_empty() {
                 true => usize::MAX,
                 false => file.cursors().main().line(),
             };
             (main_line, file.printed_lines().to_vec())
-        });
+        };
 
         let mut builder = Text::builder();
         text!(builder, { tag_from_align(self.cfg.align) });
@@ -206,17 +207,18 @@ impl<U: Ui> WidgetCfg<U> for LineNumbersCfg<U> {
     type Widget = LineNumbers<U>;
 
     fn build(self, _: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
-        let reader = context::cur_file().unwrap().fixed_reader();
+        let ff = context::fixed_file().unwrap();
         let specs = self.specs;
 
+		let checker = ff.checker();
         let mut widget = LineNumbers {
-            reader: reader.clone(),
+            ff,
             text: Text::default(),
             cfg: self,
         };
         widget.update_text();
 
-        (widget, move || reader.has_changed(), specs)
+        (widget, checker, specs)
     }
 }
 

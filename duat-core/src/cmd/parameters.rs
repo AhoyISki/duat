@@ -212,8 +212,8 @@ impl<'a, U: crate::ui::Ui> Parameter<'a> for OtherFileBuffer<U> {
 
     fn new(args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         let buffer = args.next_as::<FileBuffer<U>>()?;
-        let cur_file = crate::context::cur_file::<U>().unwrap();
-        if buffer == cur_file.name() {
+        let mut ff = crate::context::fixed_file::<U>().unwrap();
+        if buffer == ff.read().0.name() {
             Err(err!("Argument can't be the current file"))
         } else {
             Ok(buffer)

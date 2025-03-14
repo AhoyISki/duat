@@ -29,11 +29,6 @@ use crate::{
     prelude::{CmdLine, LineNumbers, Notifications, StatusLine},
 };
 
-// State statics.
-static CUR_FILE: CurFile<Ui> = CurFile::new();
-static CUR_WIDGET: CurWidget<Ui> = CurWidget::new();
-static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
-static WINDOWS: LazyLock<RwLock<Vec<Window<Ui>>>> = LazyLock::new(RwLock::default);
 // Setup statics.
 pub static CFG_FN: CfgFn = RwLock::new(None);
 pub static PRINT_CFG: RwLock<Option<PrintCfg>> = RwLock::new(None);
@@ -44,11 +39,17 @@ pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
 pub fn pre_setup() {
     mode::set_default(Regular);
 
-    duat_core::context::setup_non_statics(
-        &CUR_FILE,
-        &CUR_WIDGET,
+    // State statics.
+    let cur_file: &'static CurFile<Ui> = Box::leak(Box::new(CurFile::new()));
+    let cur_widget: &'static CurWidget<Ui> = Box::leak(Box::new(CurWidget::new()));
+    let windows: &'static RwLock<Vec<Window<Ui>>> = Box::leak(Box::new(RwLock::new(Vec::new())));
+    static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
+
+    duat_core::context::setup_non_statics::<Ui>(
+        cur_file,
+        cur_widget,
         CUR_WINDOW.load(Ordering::Relaxed),
-        &WINDOWS,
+        windows,
     );
 
     hooks::add_grouped::<OnFileOpen>("FileWidgets", |builder| {

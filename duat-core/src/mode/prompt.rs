@@ -198,13 +198,12 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
         };
         text.remove_tags(.., *KEY);
 
-        let cur_file = context::cur_file::<U>().unwrap();
+        let mut ff = context::fixed_file::<U>().unwrap();
 
         match Searcher::new(text.to_string()) {
             Ok(searcher) => {
-                cur_file.mutate_data(|file, area| {
-                    self.inc.search(orig, &mut file.raw_write(), area, searcher);
-                });
+                let (mut file, area) = ff.write();
+                self.inc.search(orig, &mut file, area, searcher);
             }
             Err(err) => {
                 let regex_syntax::Error::Parse(err) = *err else {
@@ -221,17 +220,18 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
     }
 
     fn on_switch(&mut self, _text: &mut Text, _area: &U::Area) {
-        let file = context::cur_file::<U>().unwrap();
-        self.orig = Some(file.inspect(|file, area| (file.cursors().clone(), area.print_info())));
+        let mut ff = context::fixed_file::<U>().unwrap();
+        let (file, area) = ff.read();
+        self.orig = Some((file.cursors().clone(), area.print_info()));
     }
 
     fn before_exit(&mut self, _text: &mut Text, _area: &U::Area) {
         let Some(orig) = self.orig.as_ref() else {
             unreachable!();
         };
-        context::cur_file::<U>()
-            .unwrap()
-            .mutate_data(|file, area| self.inc.finish(orig, &mut file.raw_write(), area));
+        let mut ff = context::fixed_file::<U>().unwrap();
+        let (mut file, area) = ff.write();
+        self.inc.finish(orig, &mut file, area);
     }
 
     fn once() {
@@ -300,31 +300,30 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
             return;
         };
 
-        context::cur_file::<U>().unwrap().mutate_data(|file, area| {
-            let mut file = file.write();
-            let mut helper = EditHelper::new(&mut *file, area);
+        let mut ff = context::fixed_file::<U>().unwrap();
+        let (mut file, area) = ff.write();
+        let mut helper = EditHelper::new(&mut *file, area);
 
-            helper.edit_many(.., |e| {
-                let Ok(mut child) = Command::new(caller)
-                    .args(cmd::args_iter(&command).map(|(a, _)| a))
-                    .stdin(Stdio::piped())
-                    .stdout(Stdio::piped())
-                    .spawn()
-                else {
-                    return;
-                };
+        helper.edit_many(.., |e| {
+            let Ok(mut child) = Command::new(caller)
+                .args(cmd::args_iter(&command).map(|(a, _)| a))
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()
+            else {
+                return;
+            };
 
-                let input: String = e.selection().collect();
-                if let Some(mut stdin) = child.stdin.take() {
-                    crate::thread::spawn(move || {
-                        stdin.write_all(input.as_bytes()).unwrap();
-                    });
-                }
-                if let Ok(out) = child.wait_with_output() {
-                    let out = String::from_utf8_lossy(&out.stdout);
-                    e.replace(out);
-                }
-            });
+            let input: String = e.selection().collect();
+            if let Some(mut stdin) = child.stdin.take() {
+                crate::thread::spawn(move || {
+                    stdin.write_all(input.as_bytes()).unwrap();
+                });
+            }
+            if let Ok(out) = child.wait_with_output() {
+                let out = String::from_utf8_lossy(&out.stdout);
+                e.replace(out);
+            }
         });
     }
 

@@ -455,7 +455,7 @@ impl<U: Ui> Session<U> {
         swap(&mut windows, wins, [&lhs_node, &rhs_node]);
         drop(windows);
 
-        let name = context::cur_file::<U>().unwrap().name();
+        let name = context::fixed_file::<U>().unwrap().read().0.name();
         if wins[0] != wins[1] {
             if let Some(win) = [lhs_name, rhs_name].into_iter().position(|n| n == name) {
                 self.cur_window.store(win, Ordering::Relaxed);
@@ -511,7 +511,7 @@ impl<U: Ui> Session<U> {
         let builder = WindowBuilder::new(new_win);
         hooks::trigger_now::<OnWindowOpen<U>>(builder);
 
-        if context::cur_file::<U>().unwrap().name() != name {
+        if context::fixed_file::<U>().unwrap().read().0.name() != name {
             mode::reset_switch_to::<U>(name, false);
         }
 

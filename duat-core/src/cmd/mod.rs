@@ -226,7 +226,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
     })?;
 
     add!(["quit", "q"], |name: Option<FileBuffer<U>>| {
-        let cur_name = context::cur_file::<U>()?.name();
+        let cur_name = context::fixed_file::<U>()?.read().0.name();
         let name = name.unwrap_or(&cur_name);
 
         let windows = context::windows::<U>().read();
@@ -262,7 +262,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
     })?;
 
     add!(["quit!", "q!"], |name: Option<FileBuffer<U>>| {
-        let cur_name = context::cur_file::<U>()?.name();
+        let cur_name = context::fixed_file::<U>()?.read().0.name();
         let name = name.unwrap_or(&cur_name);
 
         // Should wait here until I'm out of `session_loop`
@@ -310,44 +310,35 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
     })?;
 
     add!(["write", "w"], |path: Option<PossibleFile>| {
-        let file = context::cur_file::<U>()?;
+        let mut ff = context::fixed_file::<U>()?;
+        let (mut file, _) = ff.write();
 
         if let Some(path) = path {
-            file.inspect(|file, _| {
-                let bytes = file.write_to(&path)?;
-                Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " path)))
-            })
+            let bytes = file.write_to(&path)?;
+            Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " path)))
+        } else if let Some(name) = file.path_set() {
+            if file.text().has_unsaved_changes() {
+                let bytes = file.write()?;
+                Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " [*a] name)))
+            } else {
+                Ok(Some(ok!("Nothing to be written")))
+            }
         } else {
-            file.mutate_data(|file, _| {
-                let mut file = file.write();
-                if let Some(name) = file.path_set() {
-                    if file.text().has_unsaved_changes() {
-                        let bytes = file.write()?;
-                        Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " [*a] name)))
-                    } else {
-                        Ok(Some(ok!("Nothing to be written")))
-                    }
-                } else {
-                    Err(err!("Give the file a name, to write it with"))
-                }
-            })
+            Err(err!("Give the file a name, to write it with"))
         }
     })?;
 
     add!(["write-quit", "wq"], |path: Option<PossibleFile>| {
-        let file = context::cur_file::<U>()?;
-        let (bytes, name) = file.mutate_data(|file, _| {
-            let mut file = file.write();
-            if let Some(path) = path {
-                let bytes = file.write_to(&path)?;
-                Ok((bytes, file.name()))
+        let mut ff = context::fixed_file::<U>()?;
+        let (bytes, name) = {
+            let (mut file, area) = ff.write();
+            let bytes = if let Some(path) = path {
+                file.write_to(&path)?
             } else {
-                match file.write() {
-                    Ok(bytes) => Ok((bytes, file.name())),
-                    Err(err) => Err(err),
-                }
-            }
-        })?;
+                file.write()?
+            };
+            (bytes, file.name())
+        };
 
         // Should wait here until I'm out of `session_loop`
         let windows = context::windows::<U>().read();
@@ -480,12 +471,12 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
 
     add!("next-file", |flags: Flags| {
         let windows = context::windows().read();
-        let file = context::cur_file()?;
+        let ff = context::fixed_file()?;
         let win = context::cur_window();
 
         let wid = windows[win]
             .nodes()
-            .position(|node| file.file_ptr_eq(node))
+            .position(|node| ff.file_ptr_eq(node))
             .unwrap();
 
         let name = if flags.word("global") {
@@ -505,7 +496,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
 
     add!("prev-file", |flags: Flags| {
         let windows = context::windows().read();
-        let file = context::cur_file()?;
+        let file = context::fixed_file()?;
         let w = context::cur_window();
 
         let widget_i = windows[w]
@@ -533,7 +524,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
         let rhs = if let Some(rhs) = rhs {
             rhs.to_string()
         } else {
-            context::cur_file::<U>().unwrap().name()
+            context::fixed_file::<U>()?.read().0.name()
         };
         sender()
             .send(DuatEvent::SwapFiles(lhs.to_string(), rhs.clone()))

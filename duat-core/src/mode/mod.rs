@@ -197,7 +197,7 @@ mod switch {
             let windows = context::windows().read();
             let w = context::cur_window();
             let entry = if TypeId::of::<M::Widget>() == TypeId::of::<File>() {
-                let name = context::cur_file::<U>().unwrap().name();
+                let name = context::fixed_file::<U>().unwrap().read().0.name();
                 file_entry(&windows, &name)
             } else {
                 widget_entry::<M::Widget, U>(&windows, w)

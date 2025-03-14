@@ -16,20 +16,19 @@
 //! [data]: crate::data
 use std::{fmt::Display, marker::PhantomData};
 
+use super::Reader;
 use crate::{
-    context::FileReader,
     data::{DataMap, RwData},
     mode::Cursors,
     text::{Builder, Tag, Text},
     ui::Ui,
-    widgets::{File, Widget},
+    widgets::Widget,
 };
 
 /// A struct that reads state in order to return [`Text`].
 enum Appender<T> {
     NoArgs(Box<dyn FnMut() -> Append + Send + Sync + 'static>),
     FromWidget(RelatedFn<T>),
-    FromFileAndWidget(FileAndRelatedFn<T>),
     FromCursors(RelatedFn<Cursors>),
     Str(String),
     Text(Text),
@@ -60,13 +59,8 @@ impl<T: 'static, Dummy, U: Ui> State<T, Dummy, U> {
                         append.push_to(b)
                     }
                 }),
-                Appender::FromFileAndWidget(mut f) => Box::new(move |b, reader| {
-                    if let Some(append) = reader.inspect_file_and(|file, widget| f(file, widget)) {
-                        append.push_to(b)
-                    }
-                }),
                 Appender::FromCursors(mut f) => Box::new(move |b, reader| {
-                    reader.inspect(|file, _| f(file.cursors())).push_to(b);
+                    f(reader.read().0.cursors()).push_to(b);
                 }),
                 Appender::Str(str) => Box::new(move |b, _| {
                     if !(str == " " && b.last_was_empty()) {
@@ -261,39 +255,6 @@ where
     }
 }
 
-impl<D, W, ReadFn, U> From<ReadFn> for State<W, FileAndWidgetArg<String>, U>
-where
-    D: Display + Send + Sync,
-    W: Widget<U>,
-    ReadFn: Fn(&File, &W) -> D + Send + Sync + 'static,
-    U: Ui,
-{
-    fn from(reader: ReadFn) -> Self {
-        let reader = move |file: &File, arg: &W| Append::String(reader(file, arg).to_string());
-        State {
-            appender: Appender::FromFileAndWidget(Box::new(reader)),
-            checker: None,
-            ghost: PhantomData,
-        }
-    }
-}
-
-impl<W, ReadFn, U> From<ReadFn> for State<W, FileAndWidgetArg<Text>, U>
-where
-    W: Widget<U>,
-    ReadFn: Fn(&File, &W) -> Text + Send + Sync + 'static,
-    U: Ui,
-{
-    fn from(reader: ReadFn) -> Self {
-        let reader = move |file: &File, w: &W| Append::Text(reader(file, w));
-        State {
-            appender: Appender::FromFileAndWidget(Box::new(reader)),
-            checker: None,
-            ghost: PhantomData,
-        }
-    }
-}
-
 impl<D, ReadFn, U> From<ReadFn> for State<Cursors, CursorsArg<String>, U>
 where
     D: Display + Send + Sync,
@@ -351,9 +312,7 @@ pub struct CursorsArg<T>(PhantomData<T>);
 
 // The various types of function aliases
 type RelatedFn<T> = Box<dyn FnMut(&T) -> Append + Send + Sync + 'static>;
-type FileAndRelatedFn<T> = Box<dyn FnMut(&File, &T) -> Append + Send + Sync + 'static>;
-
-type ReaderFn<U> = Box<dyn FnMut(&mut Builder, &FileReader<U>) + Send + Sync>;
+type ReaderFn<U> = Box<dyn FnMut(&mut Builder, &mut Reader<U>) + Send + Sync>;
 
 enum Append {
     String(String),

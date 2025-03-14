@@ -402,6 +402,7 @@ pub trait Widget<U: Ui>: Send + Sync + 'static {
     /// to simultaneously update the list of lines numbers, for
     /// widgets like [`LineNumbers`] to read.
     fn print(&mut self, area: &U::Area) {
+        //crate::log_file!("printing {}", crate::duat_name::<Self>());
         let cfg = self.print_cfg();
         area.print(self.text_mut(), cfg, form::painter::<Self>())
     }
@@ -627,6 +628,6 @@ impl<U: Ui> PartialEq for Node<U> {
 
 impl<U: Ui> Eq for Node<U> {}
 
-pub trait CheckerFn = Fn() -> bool + 'static + Send + Sync;
+pub trait CheckerFn = Fn() -> bool + Send + Sync + 'static;
 
 pub type Related<U> = Option<RwData<Vec<Node<U>>>>;
