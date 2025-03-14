@@ -1036,14 +1036,8 @@ where
     ///
     /// [`GapBuffer`]: gapbuf::GapBuffer
     pub fn selection(&self) -> IntoIter<&str, 2> {
-        let anchor = self.anchor().unwrap_or(self.caret());
-        let (start, end) = if anchor < self.caret() {
-            (anchor, self.caret())
-        } else {
-            (self.caret(), anchor)
-        };
-        self.text
-            .strs_in(start.byte()..end.byte() + self.is_incl() as usize)
+        let range = self.cursor.unwrap().range(self.is_incl(), self.text);
+        self.text.strs_in(range)
     }
 
     /// Returns the length of the [`Text`], in [`Point`]

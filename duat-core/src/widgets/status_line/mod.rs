@@ -363,7 +363,7 @@ pub macro status {
 
         let pre_fn = move |builder: &mut Builder, reader: &mut Reader<_>| {
             $pre_fn(builder, reader);
-            builder.push(Tag::PushForm(id));
+            builder.push($crate::text::Tag::PushForm(id));
         };
 
         (pre_fn, $checker)

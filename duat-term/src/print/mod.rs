@@ -1,6 +1,6 @@
 use std::{
     fmt::Alignment,
-    io::{Write, stdout},
+    io::Write,
     sync::atomic::{AtomicBool, Ordering},
 };
 
@@ -11,11 +11,11 @@ use crossterm::{
     style::Attribute,
     terminal,
 };
-use duat_core::{Mutex, cfg::IterCfg, ui::Axis};
+use duat_core::{cfg::IterCfg, form, ui::Axis};
 use sync_solver::SyncSolver;
 use variables::Variables;
 
-use crate::{AreaId, Coords, Equality, area::Coord, layout::Rect, queue, style};
+use crate::{AreaId, Coords, Equality, Mutex, area::Coord, layout::Rect, queue, style};
 
 mod frame;
 mod line;
@@ -166,20 +166,24 @@ impl Printer {
     pub fn print(&self) {
         static CURSOR_IS_REAL: AtomicBool = AtomicBool::new(false);
 
-        // If there are still changes, not all areas have been properly
-        // processed, so refrain from printing.
-        // if self.updates.load(Ordering::Relaxed) > 0 {
-        //    return;
-        //}
+        let stdout = if self.has_to_print_edges.swap(false, Ordering::Relaxed) {
+            let mut stdout = std::io::stdout().lock();
+            let id = form::id_of!("Frame");
+            let edge_form = form::from_id(id);
+            self.vars.lock().print_edges(&mut stdout, edge_form);
+            Some(stdout)
+        } else {
+            None
+        };
 
         let list: Vec<(AreaId, Box<Lines>)> = std::mem::take(&mut self.lines.lock());
         if list.is_empty() {
             return;
         }
 
+        let mut stdout = stdout.unwrap_or_else(|| std::io::stdout().lock());
         let max = list.last().unwrap().1.coords().br;
 
-        let mut stdout = stdout().lock();
         execute!(stdout, terminal::BeginSynchronizedUpdate).unwrap();
         queue!(stdout, cursor::Hide, MoveTo(0, 0));
 
@@ -214,10 +218,6 @@ impl Printer {
 
         if cursor_was_real {
             queue!(stdout, cursor::RestorePosition, cursor::Show);
-        }
-
-        if self.has_to_print_edges.swap(false, Ordering::Relaxed) {
-            self.vars.lock().print_edges();
         }
 
         execute!(stdout, terminal::EndSynchronizedUpdate).unwrap();
@@ -314,17 +314,14 @@ unsafe impl Send for Printer {}
 unsafe impl Sync for Printer {}
 
 mod variables {
-    use std::{collections::HashMap, sync::LazyLock};
+    use std::collections::HashMap;
 
     use cassowary::Variable;
     use crossterm::{
         cursor,
         style::{Print, ResetColor, SetStyle},
     };
-    use duat_core::{
-        form::{self, FormId},
-        ui::Axis,
-    };
+    use duat_core::{form::Form, ui::Axis};
 
     use super::{Frame, VarPoint, frame::Edge};
     use crate::{Brush, area::Coord, print::frame::EdgeCoords, queue};
@@ -401,13 +398,7 @@ mod variables {
         }
 
         /// Prints the [`Edge`]s
-        pub fn print_edges(&mut self) {
-            static FRAME_FORM: LazyLock<FormId> =
-                LazyLock::new(|| form::set_weak("Frame", "Default"));
-            let frame_form = form::from_id(*FRAME_FORM);
-
-            let mut stdout = std::io::stdout().lock();
-
+        pub fn print_edges(&mut self, stdout: &mut std::io::StdoutLock, edge_form: Form) {
             let edges: Vec<EdgeCoords> = {
                 let edges = std::mem::take(&mut self.edges);
                 let coords = edges.iter().filter_map(|(_, e)| e.coords(self)).collect();
@@ -430,7 +421,7 @@ mod variables {
                         stdout,
                         cursor::MoveTo(coords.tl.x as u16, coords.tl.y as u16),
                         ResetColor,
-                        SetStyle(frame_form.style),
+                        SetStyle(edge_form.style),
                         Print(line)
                     )
                 } else {
@@ -444,7 +435,7 @@ mod variables {
                             stdout,
                             cursor::MoveTo(coords.tl.x as u16, y as u16),
                             ResetColor,
-                            SetStyle(frame_form.style),
+                            SetStyle(edge_form.style),
                             Print(char)
                         )
                     }
@@ -469,7 +460,7 @@ mod variables {
                 queue!(
                     stdout,
                     cursor::MoveTo(coord.x as u16, coord.y as u16),
-                    SetStyle(frame_form.style),
+                    SetStyle(edge_form.style),
                     Print(super::line::crossing(right, up, left, down, true))
                 )
             }

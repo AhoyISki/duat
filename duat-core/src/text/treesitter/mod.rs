@@ -326,8 +326,8 @@ impl Reader for TsParser {
             let taken = change.taken_end();
 
             let ts_start = ts_point(start, text);
-            let ts_taken_end = ts_point_from(taken, (ts_start.column, start), text);
-            let ts_added_end = ts_point_from(added, (ts_start.column, start), text);
+            let ts_taken_end = ts_point_from(taken, (ts_start.column, start), change.taken_text());
+            let ts_added_end = ts_point_from(added, (ts_start.column, start), change.added_text());
             self.tree.edit(&InputEdit {
                 start_byte: start.byte(),
                 old_end_byte: taken.byte(),
@@ -462,15 +462,11 @@ fn ts_point(point: Point, text: &Text) -> TSPoint {
     TSPoint::new(point.line(), col)
 }
 
-fn ts_point_from(to: Point, from: (usize, Point), text: &Text) -> TSPoint {
-    let (col, from) = from;
-    let strs = text.strs_in((from, to));
-    let iter = strs.into_iter().flat_map(str::chars).rev();
-
+fn ts_point_from(to: Point, (col, from): (usize, Point), str: &str) -> TSPoint {
     let col = if to.line() == from.line() {
-        col + iter.count()
+        col + str.chars().count()
     } else {
-        iter.take_while(|&b| b != '\n').count()
+        str.chars().rev().take_while(|&b| b != '\n').count()
     };
 
     TSPoint::new(to.line(), col)

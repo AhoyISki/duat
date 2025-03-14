@@ -262,7 +262,7 @@ use std::{
 
 #[allow(unused_imports)]
 use dirs_next::cache_dir;
-pub use parking_lot::{Mutex, RwLock};
+pub use parking_lot::{Mutex, RwLock, MutexGuard, RwLockReadGuard, RwLockWriteGuard};
 use ui::Window;
 use widgets::{File, Node, Widget};
 

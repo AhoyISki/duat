@@ -4,19 +4,16 @@ use std::{fmt::Alignment, sync::Arc};
 
 use crossterm::cursor;
 use duat_core::{
-    Mutex,
     cache::{Deserialize, Serialize},
     cfg::{IterCfg, PrintCfg},
     form::Painter,
     text::{FwdIter, Item, Part, Point, RevIter, Text},
-    ui::{self, Area as UiArea, Axis, Caret, Constraint, DuatPermission, PushSpecs},
+    ui::{self, Axis, Caret, Constraint, DuatPermission, PushSpecs},
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
 
 use crate::{
-    AreaId, ConstraintErr,
-    layout::{Layout, Rect, transfer_vars},
-    queue, style,
+    layout::{transfer_vars, Layout, Rect}, queue, style, AreaId, ConstraintErr, Mutex
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -710,7 +707,7 @@ mod layouted {
     use crate::layout::Layout;
 
     pub fn first_points(area: &Area, layouts: &[Layout]) -> (Point, Option<Point>) {
-        let rect = get_rect(&layouts, area.id).unwrap();
+        let rect = get_rect(layouts, area.id).unwrap();
         let info = rect.print_info().unwrap();
         let info = info.read();
         info.points
@@ -723,7 +720,7 @@ mod layouted {
         cfg: PrintCfg,
     ) -> (Point, Option<Point>) {
         let (mut info, coords) = {
-            let layout = get_layout(&layouts, area.id).unwrap();
+            let layout = get_layout(layouts, area.id).unwrap();
             let rect = layout.get(area.id).unwrap();
             let info = rect.print_info().unwrap();
             (

@@ -15,7 +15,7 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 use duat_core::{
-    DuatError, Mutex,
+    DuatError,
     form::Color,
     text::err,
     ui::{self, Sender},
@@ -31,6 +31,50 @@ mod area;
 mod layout;
 mod print;
 mod rules;
+
+#[derive(Default)]
+pub struct Mutex<T: 'static>(duat_core::Mutex<T>);
+
+impl<T: 'static> Mutex<T> {
+    fn new(t: T) -> Self {
+        Mutex(duat_core::Mutex::new(t))
+    }
+
+    fn lock(&self) -> MutexGuard<T> {
+        //duat_core::log_file!(
+        //    "acquired lock on {} on thread {:?}",
+        //    duat_core::duat_name::<T>(),
+        //    std::thread::current().id()
+        //);
+        MutexGuard(self.0.lock())
+    }
+}
+
+struct MutexGuard<'a, T: 'static>(duat_core::MutexGuard<'a, T>);
+
+impl<T> std::ops::Deref for MutexGuard<'_, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> std::ops::DerefMut for MutexGuard<'_, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<T: 'static> Drop for MutexGuard<'_, T> {
+    fn drop(&mut self) {
+        //duat_core::log_file!(
+        //    "dropped lock on {} on thread {:?}",
+        //    duat_core::duat_name::<T>(),
+        //    std::thread::current().id()
+        //);
+    }
+}
 
 pub struct Ui;
 
@@ -192,6 +236,12 @@ impl ui::Ui for Ui {
     }
 }
 
+impl Clone for Ui {
+    fn clone(&self) -> Self {
+        panic!("You are not supposed to clone the Ui");
+    }
+}
+
 #[doc(hidden)]
 pub struct MetaStatics {
     windows: Vec<(Area, Arc<Printer>)>,
@@ -228,10 +278,12 @@ impl Default for MetaStatics {
     }
 }
 
-impl Clone for Ui {
-    fn clone(&self) -> Self {
-        panic!("You are not supposed to clone the Ui");
-    }
+#[derive(Debug)]
+pub enum Anchor {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
 }
 
 enum Event {
@@ -283,14 +335,6 @@ impl DuatError for ConstraintErr {
             }
         })
     }
-}
-
-#[derive(Debug)]
-pub enum Anchor {
-    TopLeft,
-    TopRight,
-    BottomLeft,
-    BottomRight,
 }
 
 impl std::error::Error for ConstraintErr {}

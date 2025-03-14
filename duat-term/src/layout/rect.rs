@@ -156,9 +156,10 @@ impl Rect {
         }
 
         if let Some((next, _)) = children.get(i) {
-            let edge = match self.on_files == next.on_files {
-                true => fr.border_edge_on(axis),
-                false => fr.files_edge_on(axis),
+            let edge = match (self.on_files, next.on_files) {
+                (true, true) => fr.border_edge_on(axis),
+                (true, false) | (false, true) => fr.files_edge_on(axis),
+                (false, false) => 0.0,
             };
 
             if edge == 1.0 && !*clustered {
@@ -252,7 +253,7 @@ impl Rect {
 
     pub fn is_clustered(&self) -> bool {
         match &self.kind {
-            Kind::Middle { clustered: grouped, .. } => *grouped,
+            Kind::Middle { clustered, .. } => *clustered,
             Kind::End(..) => false,
         }
     }
@@ -360,17 +361,16 @@ impl Rects {
         };
 
         rect.set_base_eqs(i, parent, p, fr, cons.is_resizable_on(axis), None);
-
         parent.children_mut().unwrap().insert(i, (rect, cons));
 
-        let (i, (mut rect_to_fix, cons)) = if i == 0 {
+        let (i, (mut rect_to_fix, cons_to_fix)) = if i == 0 {
             (1, parent.children_mut().unwrap().remove(1))
         } else {
             (i - 1, parent.children_mut().unwrap().remove(i - 1))
         };
-        let is_resizable = rect_to_fix.is_resizable_on(axis, &cons);
+        let is_resizable = rect_to_fix.is_resizable_on(axis, &cons_to_fix);
         rect_to_fix.set_base_eqs(i, parent, p, fr, is_resizable, None);
-        let entry = (rect_to_fix, cons);
+        let entry = (rect_to_fix, cons_to_fix);
         parent.children_mut().unwrap().insert(i, entry);
 
         new_id
@@ -478,7 +478,7 @@ impl Rects {
         let entry = (rect_to_fix, cons);
         parent0.children_mut().unwrap().insert(i, entry);
 
-		p.remove_eqs(old_eqs);
+        p.remove_eqs(old_eqs);
         constrain_areas(to_constrain.unwrap(), self, p);
     }
 
@@ -528,19 +528,19 @@ impl Rects {
         constrain_areas(to_cons.unwrap(), self, p);
     }
 
-    pub fn new_parent_of(
+    pub fn new_parent_for(
         &mut self,
         id: AreaId,
         axis: Axis,
         p: &Printer,
-        cluster: bool,
+        do_cluster: bool,
         on_files: bool,
     ) {
         let fr = self.fr;
 
         let (mut child, cons, parent_id) = {
             let (tl, br) = (p.new_point(), p.new_point());
-            let kind = Kind::middle(axis, cluster);
+            let kind = Kind::middle(axis, do_cluster);
             let mut parent = Rect::new(tl, br, on_files, kind);
             let parent_id = parent.id();
 

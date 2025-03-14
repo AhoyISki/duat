@@ -535,15 +535,18 @@ mod cursor {
         pub fn range(&self, is_inclusive: bool, text: &Text) -> Range<usize> {
             let anchor = self.anchor.unwrap_or(self.caret);
             let (start, end) = if anchor < self.caret {
-                (anchor.byte(), self.caret.byte())
+                (anchor.point, self.caret.point)
             } else {
-                (self.caret.byte(), anchor.byte())
+                (self.caret.point, anchor.point)
             };
 
             let last = text.last_point();
             if let Some(last) = last {
-                let go_further = is_inclusive && last.byte() > end;
-                start..if go_further { end + 1 } else { end }
+                let len = text.char_at(end).unwrap().len_utf8();
+                // This is so the last byte (a '\n') is never included in any
+                // selection.
+                let include = is_inclusive && last.byte() > end.byte();
+                start.byte()..end.byte() + len * include as usize
             } else {
                 0..0
             }

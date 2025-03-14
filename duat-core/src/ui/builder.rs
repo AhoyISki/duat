@@ -176,7 +176,7 @@ where
         let window = &mut windows[self.window_i];
 
         let (child, parent) = {
-            let (node, parent) = window.push(widget, &self.area, checker, specs, true);
+            let (node, parent) = window.push(widget, &self.area, checker, specs, true, true);
 
             if let Some(related) = self.node.related_widgets() {
                 related.write().push(node.clone())
@@ -252,7 +252,7 @@ where
         let mut windows = context::windows().write();
         let window = &mut windows[self.window_i];
 
-        let (node, parent) = window.push(widget, &area, checker, specs, true);
+        let (node, parent) = window.push(widget, &area, checker, specs, true, true);
         if let Some(related) = self.node.related_widgets() {
             related.write().push(node.clone())
         }
@@ -386,7 +386,7 @@ impl<U: Ui> WindowBuilder<U> {
         let mut windows = context::windows().write();
         let window = &mut windows[self.window_i];
 
-        let (child, parent) = window.push(widget, &self.area, checker, specs, false);
+        let (child, parent) = window.push(widget, &self.area, checker, specs, false, false);
 
         if let Some(parent) = &parent {
             self.area = parent.clone();
@@ -447,7 +447,7 @@ impl<U: Ui> WindowBuilder<U> {
         let mut windows = context::windows().write();
         let window = &mut windows[self.window_i];
 
-        let (node, parent) = window.push(widget, &area, checker, specs, true);
+        let (node, parent) = window.push(widget, &area, checker, specs, true, false);
 
         (node.area().clone(), parent)
     }

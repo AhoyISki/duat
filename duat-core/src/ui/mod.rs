@@ -395,7 +395,8 @@ impl<U: Ui> Window<U> {
         area: &U::Area,
         checker: impl Fn() -> bool + 'static + Send + Sync,
         specs: PushSpecs,
-        cluster: bool,
+        do_cluster: bool,
+        on_files: bool,
     ) -> (Node<U>, Option<U::Area>) {
         let widget = RwData::<dyn Widget<U>>::new_unsized::<W>(Arc::new(Mutex::new(widget)));
 
@@ -407,8 +408,8 @@ impl<U: Ui> Window<U> {
             <U::Area as Area>::Cache::default()
         };
 
-        let on_files = self.files_area.is_master_of(area);
-        let (child, parent) = area.bisect(specs, cluster, on_files, cache, DuatPermission::new());
+        let (child, parent) =
+            area.bisect(specs, do_cluster, on_files, cache, DuatPermission::new());
 
         self.nodes.push(Node::new::<W>(widget, child, checker));
         (self.nodes.last().unwrap().clone(), parent)
@@ -429,7 +430,7 @@ impl<U: Ui> Window<U> {
         file.layout_ordering = window_files.len();
         let (id, specs) = self.layout.new_file(&file, window_files)?;
 
-        let (child, parent) = self.push(file, &id.0, checker, specs, false);
+        let (child, parent) = self.push(file, &id.0, checker, specs, false, true);
 
         if let Some(parent) = &parent
             && id.0 == self.files_area
