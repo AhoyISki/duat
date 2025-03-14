@@ -4,11 +4,12 @@ use std::{fmt::Alignment, sync::Arc};
 
 use crossterm::cursor;
 use duat_core::{
+    Mutex,
     cache::{Deserialize, Serialize},
     cfg::{IterCfg, PrintCfg},
     form::Painter,
     text::{FwdIter, Item, Part, Point, RevIter, Text},
-    ui::{self, Area as UiArea, Axis, Caret, Constraint, DuatPermission, PushSpecs}, Mutex,
+    ui::{self, Area as UiArea, Axis, Caret, Constraint, DuatPermission, PushSpecs},
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
 
@@ -90,13 +91,13 @@ impl Area {
         mut painter: Painter,
         mut f: impl FnMut(&Caret, &Item) + 'a,
     ) {
+        let layouts = self.layouts.lock();
         if text.needs_update() {
-            let (first_point, _) = self.first_points(text, cfg);
-            let (last_point, _) = self.last_points(text, cfg);
+            let (first_point, _) = layouted::first_points(self, &layouts);
+            let (last_point, _) = layouted::last_points(self, &layouts, text, cfg);
             text.update_range((first_point, last_point));
         }
 
-        let layouts = self.layouts.lock();
         let layout = get_layout(&layouts, self.id).unwrap();
 
         let cfg = IterCfg::new(cfg).outsource_lfs();
@@ -475,10 +476,12 @@ impl ui::Area for Area {
             let layouts = self.layouts.lock();
             let layout = get_layout(&layouts, self.id).unwrap();
             let rect = get_rect(&layouts, self.id).unwrap();
-            let coords = layout.printer.coords(rect.var_points(), false);
 
             let info = rect.print_info().unwrap();
             let info = info.read();
+
+            let coords = layout.printer.coords(rect.var_points(), false);
+
             (*info, coords.width())
         };
         let line_start = text.visual_line_start(info.points);
@@ -556,50 +559,12 @@ impl ui::Area for Area {
 
     fn first_points(&self, _text: &Text, _cfg: PrintCfg) -> (Point, Option<Point>) {
         let layouts = self.layouts.lock();
-        let rect = get_rect(&layouts, self.id).unwrap();
-        let info = rect.print_info().unwrap();
-        let info = info.read();
-        info.points
+        layouted::first_points(self, &layouts)
     }
 
     fn last_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>) {
         let layouts = self.layouts.lock();
-        let (info, coords) = {
-            let layout = get_layout(&layouts, self.id).unwrap();
-            let rect = layout.get(self.id).unwrap();
-            let info = rect.print_info().unwrap();
-            (info, layout.printer.coords(rect.var_points(), false))
-        };
-        let mut info = info.write();
-
-        if let Some(last) = info.last_points {
-            return last;
-        }
-
-        let line_start = text.visual_line_start(info.points);
-        let iter = text.iter_fwd(line_start);
-        let cfg = IterCfg::new(cfg);
-
-        let iter = print_iter(iter, cfg.wrap_width(coords.width()), cfg, info.points);
-        let mut points = info.points;
-        let mut y = 0;
-
-        for (Caret { wrap, .. }, Item { part, real, ghost }) in iter {
-            if wrap {
-                if y == coords.height() {
-                    break;
-                }
-                if part.is_char() {
-                    y += 1
-                }
-            } else {
-                points = (real, ghost);
-            }
-        }
-
-        info.last_points = Some(points);
-
-        points
+        layouted::last_points(self, &layouts, text, cfg)
     }
 
     fn print_info(&self) -> Self::PrintInfo {
@@ -732,6 +697,70 @@ fn scroll_hor_around(info: &mut PrintInfo, width: u32, point: Point, text: &Text
                 .min(max_shift)
                 .saturating_sub(width)
         });
+}
+
+mod layouted {
+    use duat_core::{
+        cfg::{IterCfg, PrintCfg},
+        text::{Item, Point, Text},
+        ui::Caret,
+    };
+
+    use super::{Area, get_layout, get_rect, iter::print_iter};
+    use crate::layout::Layout;
+
+    pub fn first_points(area: &Area, layouts: &[Layout]) -> (Point, Option<Point>) {
+        let rect = get_rect(&layouts, area.id).unwrap();
+        let info = rect.print_info().unwrap();
+        let info = info.read();
+        info.points
+    }
+
+    pub fn last_points(
+        area: &Area,
+        layouts: &[Layout],
+        text: &Text,
+        cfg: PrintCfg,
+    ) -> (Point, Option<Point>) {
+        let (mut info, coords) = {
+            let layout = get_layout(&layouts, area.id).unwrap();
+            let rect = layout.get(area.id).unwrap();
+            let info = rect.print_info().unwrap();
+            (
+                info.write(),
+                layout.printer.coords(rect.var_points(), false),
+            )
+        };
+
+        if let Some(last) = info.last_points {
+            return last;
+        }
+
+        let line_start = text.visual_line_start(info.points);
+        let iter = text.iter_fwd(line_start);
+        let cfg = IterCfg::new(cfg);
+
+        let iter = print_iter(iter, cfg.wrap_width(coords.width()), cfg, info.points);
+        let mut points = info.points;
+        let mut y = 0;
+
+        for (Caret { wrap, .. }, Item { part, real, ghost }) in iter {
+            if wrap {
+                if y == coords.height() {
+                    break;
+                }
+                if part.is_char() {
+                    y += 1
+                }
+            } else {
+                points = (real, ghost);
+            }
+        }
+
+        info.last_points = Some(points);
+
+        points
+    }
 }
 
 fn get_rect(layouts: &[Layout], id: AreaId) -> Option<&Rect> {

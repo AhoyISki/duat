@@ -288,7 +288,7 @@ impl<U: Ui> Session<U> {
                     set_mode();
                 }
 
-                if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(15)) {
+                if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(20)) {
                     match event {
                         DuatEvent::Key(key) => mode::send_key(key),
                         DuatEvent::Resize | DuatEvent::FormChange => {

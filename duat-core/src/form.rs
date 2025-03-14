@@ -80,14 +80,18 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
 
 /// The functions that will be exposed for public use.
 mod global {
-    use std::{any::TypeId, collections::HashMap, sync::LazyLock};
+    use std::{
+        any::TypeId,
+        collections::HashMap,
+        sync::{LazyLock, mpsc},
+        time::Duration,
+    };
 
     use parking_lot::Mutex;
 
     use super::{BASE_FORMS, BuiltForm, ColorScheme, CursorShape, Form, FormId, Painter, Palette};
     use crate::{
-        hooks::{self, ColorSchemeSet},
-        text::err,
+        context, hooks::{self, ColorSchemeSet}, text::err
     };
 
     static PALETTE: Palette = Palette::new();
@@ -135,8 +139,8 @@ mod global {
         let name: &'static str = name.to_string().leak();
 
         match kind {
-            Kind::Form(form) => crate::thread::spawn(move || PALETTE.set_form(name, form)),
-            Kind::Ref(refed) => crate::thread::spawn(move || PALETTE.set_ref(name, refed)),
+            Kind::Form(form) => queue(move || PALETTE.set_form(name, form)),
+            Kind::Ref(refed) => queue(move || PALETTE.set_ref(name, refed)),
         };
 
         let mut forms = FORMS.lock();
@@ -172,8 +176,8 @@ mod global {
         let name: &'static str = name.to_string().leak();
 
         match kind {
-            Kind::Form(form) => crate::thread::spawn(move || PALETTE.set_weak_form(name, form)),
-            Kind::Ref(refed) => crate::thread::spawn(move || PALETTE.set_weak_ref(name, refed)),
+            Kind::Form(form) => queue(move || PALETTE.set_weak_form(name, form)),
+            Kind::Ref(refed) => queue(move || PALETTE.set_weak_ref(name, refed)),
         };
 
         let mut forms = FORMS.lock();
@@ -231,7 +235,7 @@ mod global {
     /// [shape]: CursorShape
     /// [`form::unset_main_cursor`]: unset_main_cursor
     pub fn set_main_cursor(shape: CursorShape) {
-        crate::thread::spawn(move || PALETTE.set_main_cursor(shape));
+        queue(move || PALETTE.set_main_cursor(shape));
     }
 
     /// Sets extra cursors's [shape]s
@@ -257,7 +261,7 @@ mod global {
     /// [shape]: CursorShape
     /// [`form::unset_extra_cursor`]: unset_extra_cursor
     pub fn set_extra_cursor(shape: CursorShape) {
-        crate::thread::spawn(move || PALETTE.set_extra_cursor(shape));
+        queue(move || PALETTE.set_extra_cursor(shape));
     }
 
     /// Removes the main cursor's [shape]
@@ -271,7 +275,7 @@ mod global {
     /// [shape]: CursorShape
     /// [`form::set_main_cursor`]: set_main_cursor
     pub fn unset_main_cursor() {
-        crate::thread::spawn(move || PALETTE.unset_main_cursor());
+        queue(move || PALETTE.unset_main_cursor());
     }
 
     /// Removes extra cursors's [shape]s
@@ -288,7 +292,7 @@ mod global {
     /// [shape]: CursorShape
     /// [`form::set_extra_cursor`]: set_extra_cursor
     pub fn unset_extra_cursor() {
-        crate::thread::spawn(move || PALETTE.unset_extra_cursor());
+        queue(move || PALETTE.unset_extra_cursor());
     }
 
     /// A [`Painter`] for coloring text efficiently
@@ -319,7 +323,7 @@ mod global {
             } else {
                 let name: &'static str = format!("Default.{type_name}").leak();
                 let id = id_from_name(name);
-                crate::thread::spawn(move || add_forms(&[name]));
+                queue(move || add_forms(&[name]));
                 ids.insert(type_id, id);
                 id
             }
@@ -401,7 +405,7 @@ mod global {
         for name in names.iter() {
             ids.push(FormId(position_of_name(&mut forms, name) as u16));
         }
-        crate::thread::spawn(move || add_forms(names.as_ref()));
+        queue(move || add_forms(names.as_ref()));
         ids
     }
 
@@ -449,7 +453,7 @@ mod global {
             cs.apply();
             hooks::trigger::<ColorSchemeSet>(cs.name());
         } else {
-            crate::context::notify(err!("The colorscheme " [*a] name [] " was not found"));
+            context::notify(err!("The colorscheme " [*a] name [] " was not found"));
         }
     }
 
@@ -483,6 +487,38 @@ mod global {
             names.push(name);
             names.len() - 1
         }
+    }
+
+    fn queue<R>(f: impl FnOnce() -> R + Send + Sync + 'static) {
+        static SENDER: Mutex<Option<mpsc::Sender<Box<dyn FnOnce() + Send + Sync>>>> =
+            Mutex::new(None);
+
+        if context::will_reload_or_quit() {
+            return;
+        }
+
+        let f = Box::new(move || {
+            f();
+        });
+
+        let mut sender = SENDER.lock();
+        let f = if let Some(tx) = sender.as_ref() {
+            let Err(err) = tx.send(f) else {
+                return;
+            };
+            err.0
+        } else {
+            f
+        };
+        let (tx, rx) = mpsc::channel();
+        tx.send(f).unwrap();
+        *sender = Some(tx);
+
+        std::thread::spawn(move || {
+            while let Ok(f) = rx.recv_timeout(Duration::from_micros(500)) {
+                f();
+            }
+        });
     }
 
     /// A kind of [`Form`]
