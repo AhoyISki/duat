@@ -292,7 +292,7 @@ impl Change<String> {
     /// Returns a new [Change].
     pub fn new(edit: impl ToString, (start, end): (Point, Point), text: &Text) -> Self {
         let added = edit.to_string();
-        let taken: String = text.strs_in(start.byte()..end.byte()).collect();
+        let taken: String = text.strs(start.byte()..end.byte()).collect();
         Change { start, added, taken }
     }
 

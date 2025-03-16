@@ -70,6 +70,7 @@
 //! [`Mode`]: crate::mode::Mode
 //! [`EditHelper`]: crate::mode::EditHelper
 mod builder;
+mod bytes;
 mod history;
 mod iter;
 mod ops;
@@ -80,11 +81,9 @@ mod tags;
 mod treesitter;
 
 use std::{
-    array::IntoIter,
-    ops::{Range, RangeBounds},
+    ops::Range,
     path::Path,
     rc::Rc,
-    str::from_utf8_unchecked,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -92,20 +91,22 @@ use std::{
 };
 
 pub use gapbuf::GapBuffer;
-use records::Records;
-use tags::{FwdTags, RevTags};
 
 pub(crate) use self::history::History;
-use self::tags::Tags;
 pub use self::{
     builder::{AlignCenter, AlignLeft, AlignRight, Builder, Ghost, Spacer, err, hint, ok, text},
+    bytes::{Buffers, Bytes, Strs},
     history::Change,
     iter::{FwdIter, Item, Part, RevIter},
     ops::{Point, TextRange, TwoPoints, utf8_char_width},
-    reader::Reader,
+    reader::{Reader, ReaderCfg},
     search::{Matcheable, RegexPattern, Searcher},
     tags::{Key, Keys, Tag, ToggleId},
     treesitter::TsParser,
+};
+use self::{
+    reader::Readers,
+    tags::{FwdTags, GhostId, RevTags, Tags},
 };
 use crate::{
     DuatError, cache,
@@ -116,15 +117,16 @@ use crate::{
 
 /// The text in a given [`Area`]
 #[derive(Default)]
-pub struct Text {
-    buf: GapBuffer<u8>,
-    tags: Box<Tags>,
-    records: Box<Records<[usize; 3]>>,
-    cursors: Option<Box<Cursors>>,
+pub struct Text(Box<InnerText>);
+
+#[derive(Default)]
+struct InnerText {
+    bytes: Bytes,
+    tags: Tags,
+    cursors: Option<Cursors>,
     // Specific to Files
-    history: Option<Box<History>>,
-    readers: Vec<(Box<dyn Reader>, Vec<Range<usize>>)>,
-    ts_parser: Option<(Box<TsParser>, Vec<Range<usize>>)>,
+    history: Option<History>,
+    readers: Readers,
     has_changed: bool,
     has_unsaved_changes: AtomicBool,
     // Used in Text building
@@ -136,73 +138,64 @@ impl Text {
 
     /// Returns a new empty [`Text`]
     pub fn new() -> Self {
-        Self::from_buf(GapBuffer::default(), None, false)
+        Self::from_bytes(Bytes::default(), None, false)
     }
 
     pub fn new_with_cursors() -> Self {
-        Self::from_buf(GapBuffer::default(), Some(Cursors::default()), false)
+        Self::from_bytes(Bytes::default(), Some(Cursors::default()), false)
     }
 
     /// Returns a new empty [`Text`] with history enabled
     pub(crate) fn new_with_history() -> Self {
-        Self::from_buf(GapBuffer::default(), Some(Cursors::default()), true)
+        Self::from_bytes(Bytes::default(), Some(Cursors::default()), true)
     }
 
     /// Creates a [`Text`] from a file's [path]
     ///
     /// [path]: Path
     pub(crate) fn from_file(
-        buf: GapBuffer<u8>,
+        buf: Bytes,
         cursors: Cursors,
         path: impl AsRef<Path>,
         has_unsaved_changes: bool,
     ) -> Self {
-        let mut text = Self::from_buf(buf, Some(cursors), true);
-        text.has_unsaved_changes
+        let mut text = Self::from_bytes(buf, Some(cursors), true);
+        text.0
+            .has_unsaved_changes
             .store(has_unsaved_changes, Ordering::Relaxed);
 
         if let Some(history) = cache::load_cache(path.as_ref()) {
-            text.history = Some(Box::new(history));
+            text.0.history = Some(history);
         }
 
-        let tree_sitter = TsParser::new(&mut text, path);
-        text.ts_parser = tree_sitter.map(|ts| (Box::new(ts), Vec::new()));
         text
     }
 
     /// Creates a [`Text`] from a [`GapBuffer`]
-    pub(crate) fn from_buf(
-        mut buf: GapBuffer<u8>,
+    pub(crate) fn from_bytes(
+        mut bytes: Bytes,
         cursors: Option<Cursors>,
         with_history: bool,
     ) -> Self {
-        let forced_new_line = if buf.is_empty() || buf[buf.len() - 1] != b'\n' {
-            buf.push_back(b'\n');
+        let forced_new_line = if bytes.buffers(..).next_back().is_none_or(|b| b != b'\n') {
+            let end = bytes.len();
+            bytes.apply_change(Change::str_insert("\n", end));
             true
         } else {
             false
         };
-        let len = buf.len();
-        let chars = unsafe {
-            let (s0, s1) = buf.as_slices();
-            std::str::from_utf8_unchecked(s0).chars().count()
-                + std::str::from_utf8_unchecked(s1).chars().count()
-        };
-        let lines = buf.iter().filter(|b| **b == b'\n').count();
-        let tags = Box::new(Tags::with_len(buf.len()));
+        let tags = Tags::new(bytes.len().byte());
 
-        Self {
-            buf,
+        Self(Box::new(InnerText {
+            bytes,
             tags,
-            cursors: cursors.map(Box::new),
-            records: Box::new(Records::with_max([len, chars, lines])),
-            history: with_history.then(Box::default),
-            readers: Vec::new(),
-            ts_parser: None,
+            cursors,
+            history: with_history.then(History::new),
+            readers: Readers::default(),
             forced_new_line,
             has_changed: false,
             has_unsaved_changes: AtomicBool::new(false),
-        }
+        }))
     }
 
     /// Returns a [`Builder`] for [`Text`]
@@ -223,8 +216,7 @@ impl Text {
 
     /// The [`Point`] at the end of the text
     pub fn len(&self) -> Point {
-        let [b, c, l] = self.records.max();
-        Point::from_raw(b, c, l)
+        self.0.bytes.len()
     }
 
     /// Whether or not there are any characters in the [`Text`]
@@ -235,55 +227,20 @@ impl Text {
     /// there could actually be a "string" of characters on the
     /// [`Text`], it just wouldn't be considered real "text".
     pub fn is_empty(&self) -> bool {
-        self.buf.is_empty()
+        self.0.bytes.is_empty()
     }
 
     /// The `char` at the [`Point`]'s position
     pub fn char_at(&self, point: Point) -> Option<char> {
-        let [s0, s1] = self.strs();
-        if point.byte() < s0.len() {
-            s0[point.byte()..].chars().next()
-        } else {
-            s1[point.byte() - s0.len()..].chars().next()
-        }
+        self.0.bytes.char_at(point)
     }
 
-    /// The two [`&str`]s that compose the [buffer]
-    ///
-    /// In order to iterate over them, I recommend using the
-    /// [`flat_map`] method:
-    ///
-    /// ```rust
-    /// # use duat_core::text::Text;
-    /// let text = Text::new();
-    /// text.strs().into_iter().flat_map(str::chars);
-    /// ```
-    ///
-    /// Do note that you should avoid iterators like [`str::lines`],
-    /// as they will separate the line that is partially owned by each
-    /// [`&str`]:
-    ///
-    /// ```rust
-    /// let broken_up_line = [
-    ///     "This is line 1, business as usual This is line 2, but it",
-    ///     "is broken into two separate strings So 4 lines would be counted, \
-    ///      instead of 3",
-    /// ];
-    /// ```
-    ///
-    /// If you want the two [`&str`]s in a range, see
-    /// [`strs_in`]
-    ///
-    /// [`&str`]: str
-    /// [buffer]: GapBuffer
-    /// [`flat_map`]: Iterator::flat_map
-    /// [`strs_in`]: Self::strs_in
-    pub fn strs(&self) -> [&'_ str; 2] {
-        let (s0, s1) = self.buf.as_slices();
-        unsafe { [from_utf8_unchecked(s0), from_utf8_unchecked(s1)] }
+    /// An [`Iterator`] over the bytes of the [`Text`]
+    pub fn buffers(&self, range: impl TextRange) -> Buffers {
+        self.0.bytes.buffers(range)
     }
 
-    /// Returns 2 [`&str`]s in the given [range]
+    /// An [`Iterator`] over the [`&str`]s of the [`Text`]
     ///
     /// # Note
     ///
@@ -322,9 +279,8 @@ impl Text {
     /// [`&str`]: str
     /// [range]: TextRange
     /// [`strs`]: Self::strs
-    pub fn strs_in(&self, range: impl TextRange) -> IntoIter<&str, 2> {
-        let range = range.to_range_fwd(self.len().byte());
-        self.strs_in_range_inner(range).into_iter()
+    pub fn strs(&self, range: impl TextRange) -> Strs {
+        self.0.bytes.strs(range)
     }
 
     /// Returns an iterator over the lines in a given range
@@ -335,66 +291,33 @@ impl Text {
         &mut self,
         range: impl TextRange,
     ) -> impl DoubleEndedIterator<Item = (usize, &str)> {
-        let range = range.to_range_fwd(self.len().byte());
-        let start = self.point_at_line(self.point_at(range.start).line());
-        let end = {
-            let end = self.point_at(range.end);
-            let line_start = self.point_at_line(end.line());
-            match line_start == end {
-                true => end,
-                false => self.point_at_line((end.line() + 1).min(self.len().line())),
-            }
-        };
-        self.make_contiguous_in((start, end));
-        unsafe {
-            let lines = self.continuous_in_unchecked((start, end)).lines();
-            let (fwd_i, rev_i) = (start.line(), end.line());
-            TextLines { lines, fwd_i, rev_i }
-        }
+        self.0.bytes.lines_in(range)
     }
 
-    /// Returns the two `&str`s in the byte range.
-    fn strs_in_range_inner(&self, range: impl RangeBounds<usize>) -> [&str; 2] {
-        let (s0, s1) = self.buf.as_slices();
-        let (start, end) = crate::get_ends(range, self.len().byte());
-        let (start, end) = (start, end);
-        // Make sure the start and end are in character bounds.
-        assert!(
-            [start, end]
-                .into_iter()
-                .filter_map(|b| self.buf.get(b))
-                .all(|b| utf8_char_width(*b) > 0),
-        );
-
-        unsafe {
-            let r0 = start.min(s0.len())..end.min(s0.len());
-            let r1 = start.saturating_sub(s0.len()).min(s1.len())
-                ..end.saturating_sub(s0.len()).min(s1.len());
-
-            [from_utf8_unchecked(&s0[r0]), from_utf8_unchecked(&s1[r1])]
-        }
+    pub fn bytes(&self) -> &Bytes {
+        &self.0.bytes
     }
 
-    /// Returns the [`TsParser`], if there is one
+    pub fn bytes_mut(&mut self) -> &mut Bytes {
+        &mut self.0.bytes
+    }
+
+    /////////// Reader functions
+
+    /// Adds a [`Reader`] to this [`Text`]
     ///
-    /// This parser uses tree-sitter internally for things like syntax
-    /// highlighing and indentation, but it have all sorts of
-    /// utilities in user code as well.
-    pub fn ts_parser(&self) -> Option<&TsParser> {
-        self.ts_parser.as_ref().map(|(ts, _)| ts.as_ref())
-    }
-
-    /// Gets the indentation on a given [`Point`]
+    /// A [`Reader`] will be informed of every change done to this
+    /// [`Text`], and can add or remove [`Tag`]s accordingly. Examples
+    /// of [`Reader`]s are the [tree-sitter] parser, and regex
+    /// parsers. Those can be used for, among other things, syntax
+    /// hightlighting.
     ///
-    /// Will either return the required indentation (in spaces) or
-    /// [`None`], in which case the caller will have to decide how to
-    /// proceed. This usually means "keep previous level of
-    /// indentation".
-    pub fn ts_indent_on(&mut self, p: Point, cfg: PrintCfg) -> Option<usize> {
-        let ts = self.ts_parser.take();
-        let indent = ts.as_ref().and_then(|(ts, _)| ts.indent_on(self, p, cfg));
-        self.ts_parser = ts;
-        indent
+    /// This is private mostly because it is meant to be used only by
+    /// the [`File`]
+    pub fn add_reader(&mut self, reader_cfg: impl ReaderCfg) -> Result<(), Text> {
+        self.0
+            .readers
+            .add(&mut self.0.bytes, &mut self.0.tags, reader_cfg)
     }
 
     ////////// Point querying functions
@@ -408,181 +331,48 @@ impl Text {
     ///
     /// # Panics
     ///
-    /// Will panic if `at` is greater than the length of the text
+    /// Will panic if `b` is greater than the length of the text
     #[inline(always)]
-    pub fn point_at(&self, at: usize) -> Point {
-        assert!(
-            at <= self.len().byte(),
-            "byte out of bounds: the len is {}, but the byte is {at}",
-            self.len().byte()
-        );
-        let [b, c, mut l] = self.records.closest_to(at);
-
-        let found = if at >= b {
-            let [s0, s1] = self.strs_in_range_inner(b..);
-
-            s0.char_indices()
-                .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
-                .enumerate()
-                .map(|(i, (this_b, char))| {
-                    l += (char == '\n') as usize;
-                    (b + this_b, c + i, l - (char == '\n') as usize)
-                })
-                .take_while(|&(b, ..)| at >= b)
-                .last()
-        } else {
-            let mut c_len = 0;
-            self.strs_in_range_inner(..b)
-                .into_iter()
-                .flat_map(str::chars)
-                .rev()
-                .enumerate()
-                .map(|(i, char)| {
-                    l -= (char == '\n') as usize;
-                    c_len += char.len_utf8();
-                    (b - c_len, c - (i + 1), l)
-                })
-                .take_while(|&(b, ..)| b >= at)
-                .last()
-        };
-
-        found
-            .map(|(b, c, l)| Point::from_raw(b, c, l))
-            .unwrap_or(self.len())
+    pub fn point_at(&self, b: usize) -> Point {
+        self.0.bytes.point_at(b)
     }
 
     /// The [`Point`] associated with a char position, 0 indexed
     ///
     /// # Panics
     ///
-    /// Will panic if `at` is greater than the number of chars in the
+    /// Will panic if `c` is greater than the number of chars in the
     /// text.
     #[inline(always)]
-    pub fn point_at_char(&self, at: usize) -> Point {
-        assert!(
-            at <= self.len().char(),
-            "byte out of bounds: the len is {}, but the char is {at}",
-            self.len().char()
-        );
-        let [b, c, mut l] = self.records.closest_to_by_key(at, |[_, c, _]| *c);
-
-        let found = if at >= c {
-            let [s0, s1] = self.strs_in_range_inner(b..);
-
-            s0.char_indices()
-                .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
-                .enumerate()
-                .map(|(i, (this_b, char))| {
-                    l += (char == '\n') as usize;
-                    (b + this_b, c + i, l - (char == '\n') as usize)
-                })
-                .take_while(|&(_, c, _)| at >= c)
-                .last()
-        } else {
-            let mut c_len = 0;
-            self.strs_in_range_inner(..)
-                .into_iter()
-                .flat_map(str::chars)
-                .rev()
-                .enumerate()
-                .map(|(i, char)| {
-                    l -= (char == '\n') as usize;
-                    c_len += char.len_utf8();
-                    (b - c_len, c - (i + 1), l)
-                })
-                .take_while(|&(_, c, _)| c >= at)
-                .last()
-        };
-
-        found
-            .map(|(b, c, l)| Point::from_raw(b, c, l))
-            .unwrap_or(self.len())
+    pub fn point_at_char(&self, c: usize) -> Point {
+        self.0.bytes.point_at_char(c)
     }
 
-    /// The [`Point`] where the `at`th line starts, 0 indexed
+    /// The [`Point`] where the `l`th line starts, 0 indexed
     ///
-    /// If `at == number_of_lines`, returns the last point of the
+    /// If `l == number_of_lines`, returns the last point of the
     /// text.
     ///
     /// # Panics
     ///
-    /// Will panic if the number `at` is greater than the number of
-    /// lines on the text
+    /// Will panic if `l` is greater than the number of lines on the
+    /// text
     #[inline(always)]
-    pub fn point_at_line(&self, at: usize) -> Point {
-        assert!(
-            at <= self.len().line(),
-            "byte out of bounds: the len is {}, but the line is {at}",
-            self.len().line()
-        );
-        let (b, c, mut l) = {
-            let [mut b, mut c, l] = self.records.closest_to_by_key(at, |[.., l]| *l);
-            self.strs_in_range_inner(..b)
-                .into_iter()
-                .flat_map(str::chars)
-                .rev()
-                .take_while(|c| *c != '\n')
-                .for_each(|char| {
-                    b -= char.len_utf8();
-                    c -= 1;
-                });
-            (b, c, l)
-        };
-
-        let found = if at >= l {
-            let [s0, s1] = self.strs_in_range_inner(b..);
-
-            s0.char_indices()
-                .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
-                .enumerate()
-                .map(|(i, (this_b, char))| {
-                    l += (char == '\n') as usize;
-                    (b + this_b, c + i, l - (char == '\n') as usize)
-                })
-                .find(|&(.., l)| at == l)
-        } else {
-            let mut c_len = 0;
-            self.strs_in_range_inner(..b)
-                .into_iter()
-                .flat_map(str::chars)
-                .rev()
-                .enumerate()
-                .map(|(i, char)| {
-                    l -= (char == '\n') as usize;
-                    c_len += char.len_utf8();
-                    (b - c_len, c - (i + 1), l)
-                })
-                .take_while(|&(.., l)| l >= at)
-                .last()
-        };
-
-        found
-            .map(|(b, c, l)| Point::from_raw(b, c, l))
-            .unwrap_or(self.len())
+    pub fn point_at_line(&self, l: usize) -> Point {
+        self.0.bytes.point_at_line(l)
     }
 
-    /// The start and end [`Point`]s for a given `at` line
+    /// The start and end [`Point`]s for a given `l` line
     ///
-    /// If `at == number_of_lines`, these points will be the same.
+    /// If `l == number_of_lines`, these points will be the same.
     ///
     /// # Panics
     ///
-    /// Will panic if the number `at` is greater than the number of
+    /// Will panic if the number `l` is greater than the number of
     /// lines on the text
     #[inline(always)]
-    pub fn points_of_line(&self, at: usize) -> (Point, Point) {
-        assert!(
-            at <= self.len().line(),
-            "byte out of bounds: the len is {}, but the line is {at}",
-            self.len().line()
-        );
-
-        let start = self.point_at_line(at);
-        let end = self
-            .chars_fwd(start)
-            .find_map(|(p, _)| (p.line() > start.line()).then_some(p))
-            .unwrap_or(start);
-        (start, end)
+    pub fn points_of_line(&self, l: usize) -> (Point, Point) {
+        self.0.bytes.points_of_line(l)
     }
 
     /// The [points] at the end of the text
@@ -606,14 +396,10 @@ impl Text {
     ///
     /// [`len`]: Self::len
     pub fn last_point(&self) -> Option<Point> {
-        self.strs_in_range_inner(..)
-            .into_iter()
-            .flat_map(str::chars)
-            .next_back()
-            .map(|char| self.len().rev(char))
+        self.0.bytes.last_point()
     }
 
-    ////////// Points queying functions.
+    ////////// Tag related query functions
 
     /// The maximum [points] in the `at`th byte
     ///
@@ -626,7 +412,7 @@ impl Text {
     #[inline(always)]
     pub fn ghost_max_points_at(&self, at: usize) -> (Point, Option<Point>) {
         let point = self.point_at(at);
-        (point, self.tags.ghosts_total_at(point.byte()))
+        (point, self.0.tags.ghosts_total_at(point.byte()))
     }
 
     /// Points visually after the [`TwoPoints`]
@@ -670,6 +456,10 @@ impl Text {
         points
     }
 
+    pub fn get_ghost(&self, id: GhostId) -> Option<&Text> {
+        self.0.tags.get_ghost(id)
+    }
+
     ////////// String modification functions
 
     /// Replaces a [range] in the [`Text`]
@@ -685,9 +475,9 @@ impl Text {
         let (start, end) = (self.point_at(range.start), self.point_at(range.end));
         let change = Change::new(edit, (start, end), self);
 
-        self.has_changed = true;
+        self.0.has_changed = true;
         self.replace_range_inner(change.as_ref());
-        self.history.as_mut().map(|h| h.add_change(None, change));
+        self.0.history.as_mut().map(|h| h.add_change(None, change));
     }
 
     pub fn apply_change(
@@ -695,43 +485,24 @@ impl Text {
         guess_i: Option<usize>,
         change: Change<String>,
     ) -> Option<usize> {
-        self.has_changed = true;
+        self.0.has_changed = true;
         self.replace_range_inner(change.as_ref());
-        self.history.as_mut().map(|h| h.add_change(guess_i, change))
+        self.0
+            .history
+            .as_mut()
+            .map(|h| h.add_change(guess_i, change))
     }
 
     /// Merges `String`s with the body of text, given a range to
     /// replace
     fn replace_range_inner(&mut self, change: Change<&str>) {
-        let edit = change.added_text();
-        let start = change.start();
-        let taken_end = change.taken_end();
+        self.0.bytes.apply_change(change);
+        self.0.tags.transform(
+            change.start().byte()..change.taken_end().byte(),
+            change.added_end().byte(),
+        );
 
-        let new_len = {
-            let lines = edit.bytes().filter(|b| *b == b'\n').count();
-            [edit.len(), edit.chars().count(), lines]
-        };
-
-        let old_len = unsafe {
-            let range = start.byte()..change.taken_end().byte();
-            let str = String::from_utf8_unchecked(
-                self.buf
-                    .splice(range, edit.as_bytes().iter().cloned())
-                    .collect(),
-            );
-
-            let lines = str.bytes().filter(|b| *b == b'\n').count();
-            [str.len(), str.chars().count(), lines]
-        };
-
-        let start_rec = [start.byte(), start.char(), start.line()];
-        self.records.transform(start_rec, old_len, new_len);
-        self.records.insert(start_rec);
-
-        self.tags
-            .transform(start.byte()..taken_end.byte(), change.added_end().byte());
-
-        *self.has_unsaved_changes.get_mut() = true;
+        *self.0.has_unsaved_changes.get_mut() = true;
     }
 
     /// This is used by [`Area`]s in order to update visible text
@@ -744,128 +515,66 @@ impl Text {
     /// [`Area::print_with`] functions.
     pub fn update_range(&mut self, range: (Point, Point)) {
         let within = range.0.byte()..(range.1.byte() + 1);
-        let mut readers = std::mem::take(&mut self.readers);
-        let mut ts = self.ts_parser.take();
 
-        if let Some(changes) = self.history.as_mut().and_then(|h| h.unprocessed_changes()) {
+        if let Some(changes) = self
+            .0
+            .history
+            .as_mut()
+            .and_then(|h| h.unprocessed_changes())
+        {
             let changes: Vec<Change<&str>> = changes.iter().map(|c| c.as_ref()).collect();
-            self.process_changes(&mut ts, &mut readers, &changes);
+            self.0.readers.process_changes(&mut self.0.bytes, &changes);
         }
+        self.0
+            .readers
+            .update_range(&mut self.0.bytes, &mut self.0.tags, within.clone());
+        self.0.tags.update_range(within);
 
-        if let Some((ts, ranges)) = ts.as_mut() {
-            let mut new_ranges = Vec::new();
-
-            for range in ranges.iter() {
-                let (to_check, split_off) = split_range_within(range.clone(), within.clone());
-                if let Some(range) = to_check {
-                    ts.update_range(self, range);
-                }
-                new_ranges.extend(split_off.into_iter().flatten());
-            }
-            *ranges = new_ranges
-        }
-        for (reader, ranges) in readers.iter_mut() {
-            let mut new_ranges = Vec::new();
-
-            for range in ranges.iter() {
-                let (to_check, split_off) = split_range_within(range.clone(), within.clone());
-                if let Some(range) = to_check {
-                    reader.update_range(self, range);
-                }
-                new_ranges.extend(split_off.into_iter().flatten());
-            }
-            *ranges = new_ranges;
-        }
-        self.tags.update_range(within);
-
-        self.has_changed = false;
-        self.readers = readers;
-        self.ts_parser = ts;
-    }
-
-    fn process_changes(
-        &mut self,
-        ts: &mut Option<(Box<TsParser>, Vec<Range<usize>>)>,
-        readers: &mut Vec<(Box<dyn Reader>, Vec<Range<usize>>)>,
-        changes: &[Change<&str>],
-    ) {
-        const MAX_RANGES_TO_CONSIDER: usize = 15;
-        if let Some((ts, _)) = ts.as_mut() {
-            ts.apply_changes(self, changes);
-        }
-        for (reader, _) in readers.iter_mut() {
-            reader.apply_changes(self, changes);
-        }
-
-        if changes.len() <= MAX_RANGES_TO_CONSIDER {
-            if let Some((ts, ranges)) = ts.as_mut() {
-                for range in ts.ranges_to_update(self, changes) {
-                    if !range.is_empty() {
-                        merge_range_in(ranges, range);
-                    }
-                }
-            }
-            for (reader, ranges) in readers.iter_mut() {
-                for range in reader.ranges_to_update(self, changes) {
-                    if !range.is_empty() {
-                        merge_range_in(ranges, range);
-                    }
-                }
-            }
-        // If there are too many changes, cut on processing and
-        // just assume that everything needs to be updated.
-        } else {
-            let ts_range_iter = ts.as_mut().map(|(_, r)| r).into_iter();
-            for range in ts_range_iter.chain(readers.iter_mut().map(|(_, r)| r)) {
-                *range = vec![0..self.len().byte()];
-            }
-        }
+        self.0.has_changed = false;
     }
 
     pub fn needs_update(&self) -> bool {
-        self.has_changed
-            || self.ts_parser.as_ref().is_some_and(|(_, r)| !r.is_empty())
-            || self.readers.iter().any(|(_, r)| !r.is_empty())
+        self.0.has_changed || self.0.readers.needs_update()
     }
 
     ////////// History manipulation functions
 
     /// Undoes the last moment, if there was one
     pub fn undo(&mut self, area: &impl Area, cfg: PrintCfg) {
-        let Some(mut history) = self.history.take() else {
+        let Some(mut history) = self.0.history.take() else {
             return;
         };
-        let mut cursors = self.cursors.take().unwrap();
+        let mut cursors = self.0.cursors.take().unwrap();
         let Some(changes) = history.move_backwards() else {
-            self.history = Some(history);
-            self.cursors = Some(cursors);
+            self.0.history = Some(history);
+            self.0.cursors = Some(cursors);
             return;
         };
 
         self.apply_and_process_changes(&changes, Some((area, &mut cursors, cfg)));
 
-        self.has_changed = true;
-        self.history = Some(history);
-        self.cursors = Some(cursors);
+        self.0.has_changed = true;
+        self.0.history = Some(history);
+        self.0.cursors = Some(cursors);
     }
 
     /// Redoes the last moment in the history, if there is one
     pub fn redo(&mut self, area: &impl Area, cfg: PrintCfg) {
-        let Some(mut history) = self.history.take() else {
+        let Some(mut history) = self.0.history.take() else {
             return;
         };
-        let mut cursors = self.cursors.take().unwrap();
+        let mut cursors = self.0.cursors.take().unwrap();
         let Some(changes) = history.move_forward() else {
-            self.history = Some(history);
-            self.cursors = Some(cursors);
+            self.0.history = Some(history);
+            self.0.cursors = Some(cursors);
             return;
         };
 
         self.apply_and_process_changes(&changes, Some((area, &mut cursors, cfg)));
 
-        self.has_changed = true;
-        self.history = Some(history);
-        self.cursors = Some(cursors);
+        self.0.has_changed = true;
+        self.0.history = Some(history);
+        self.0.cursors = Some(cursors);
     }
 
     pub fn apply_and_process_changes(
@@ -886,18 +595,13 @@ impl Text {
             };
             cursors.insert_from_parts(i, start, change.added_text().len(), self, *area, *cfg);
         }
-        let mut ts = self.ts_parser.take();
-        let mut readers = std::mem::take(&mut self.readers);
 
-        self.process_changes(&mut ts, &mut readers, changes);
-
-        self.ts_parser = ts;
-        self.readers = readers;
+        self.0.readers.process_changes(&mut self.0.bytes, changes);
     }
 
     /// Finishes the current moment and adds a new one to the history
     pub fn new_moment(&mut self) {
-        if let Some(h) = self.history.as_mut() {
+        if let Some(h) = self.0.history.as_mut() {
             h.new_moment()
         }
     }
@@ -910,7 +614,7 @@ impl Text {
     // NOTE: Inherent because I don't want this to implement Display
     #[allow(clippy::inherent_to_string)]
     pub fn to_string(&self) -> String {
-        let [s0, s1] = self.strs_in_range_inner(..);
+        let [s0, s1] = self.strs(..).to_array();
         if !s1.is_empty() {
             s0.to_string() + s1.strip_suffix('\n').unwrap_or(s1)
         } else {
@@ -922,8 +626,8 @@ impl Text {
     ///
     /// [writer]: std::io::Write
     pub fn write_to(&self, mut writer: impl std::io::Write) -> std::io::Result<usize> {
-        self.has_unsaved_changes.store(false, Ordering::Relaxed);
-        let (s0, s1) = self.buf.as_slices();
+        self.0.has_unsaved_changes.store(false, Ordering::Relaxed);
+        let [s0, s1] = self.0.bytes.buffers(..).to_array();
         Ok(writer.write(s0)? + writer.write(s1)?)
     }
 
@@ -935,59 +639,21 @@ impl Text {
     ///
     /// [write]: Text::write_to
     pub fn has_unsaved_changes(&self) -> bool {
-        self.has_unsaved_changes.load(Ordering::Relaxed)
+        self.0.has_unsaved_changes.load(Ordering::Relaxed)
     }
 
     ////////// Reload related functions
 
-    pub(crate) fn take_buf(self) -> GapBuffer<u8> {
-        self.buf
-    }
-
-    ////////// Single str acquisition functions
-
-    /// Moves the [`GapBuffer`]'s gap, so that the `range` is whole
-    ///
-    /// The return value is the value of the gap, if the second `&str`
-    /// is the contiguous one.
-    pub(crate) fn make_contiguous_in(&mut self, range: impl TextRange) {
-        let range = range.to_range_fwd(self.len().byte());
-        let gap = self.buf.gap();
-
-        if range.end <= gap || range.start >= gap {
-            return;
-        }
-
-        if gap.abs_diff(range.start) < gap.abs_diff(range.end) {
-            self.buf.set_gap(range.start);
-        } else {
-            self.buf.set_gap(range.end);
-        }
-    }
-
-    /// Assumes that the `range` given is continuous in `self`
-    ///
-    /// You *MUST* CALL [`make_contiguous_in`] before using this
-    /// function. The sole purpose of this function is to not keep the
-    /// [`Text`] mutably borrowed.
-    ///
-    /// [`make_contiguous_in`]: Self::make_contiguous_in
-    pub(crate) unsafe fn continuous_in_unchecked(&self, range: impl TextRange) -> &str {
-        let range = range.to_range_fwd(self.len().byte());
-        let [s0, s1] = self.strs();
-        if range.end <= self.buf.gap() {
-            unsafe { s0.get_unchecked(range) }
-        } else {
-            let gap = self.buf.gap();
-            unsafe { s1.get_unchecked(range.start - gap..range.end - gap) }
-        }
+    /// Takes the [`Bytes`] from this [`Text`], consuming it
+    pub(crate) fn take_bytes(self) -> Bytes {
+        self.0.bytes
     }
 
     ////////// Tag addition/deletion functions
 
     /// Inserts a [`Tag`] at the given position
     pub fn insert_tag(&mut self, at: usize, tag: Tag, key: Key) {
-        self.tags.insert(at, tag, key);
+        self.0.tags.insert(at, tag, key);
     }
 
     /// Removes the [`Tag`]s of a [key] from a region
@@ -1009,9 +675,9 @@ impl Text {
     pub fn remove_tags(&mut self, range: impl TextRange, keys: impl Keys) {
         let range = range.to_range_at(self.len().byte());
         if range.end == range.start + 1 {
-            self.tags.remove_at(range.start, keys)
+            self.0.tags.remove_at(range.start, keys)
         } else {
-            self.tags.remove_from(range, keys)
+            self.0.tags.remove_from(range, keys)
         }
     }
 
@@ -1023,7 +689,7 @@ impl Text {
     ///
     /// [`File`]: crate::widgets::File
     pub fn clear_tags(&mut self) {
-        self.tags = Box::new(Tags::with_len(self.buf.len()));
+        self.0.tags = Tags::new(self.0.bytes.len().byte());
     }
 
     /////////// Cursor functions
@@ -1035,15 +701,15 @@ impl Text {
     ///
     /// [`EditHelper`]: crate::mode::EditHelper
     pub fn enable_cursors(&mut self) {
-        if self.cursors.is_none() {
-            self.cursors = Some(Box::default())
+        if self.0.cursors.is_none() {
+            self.0.cursors = Some(Cursors::default())
         }
     }
 
     /// Removes the tags for all the cursors, used before they are
     /// expected to move
     pub(crate) fn add_cursors(&mut self, area: &impl Area, cfg: PrintCfg) {
-        let Some(cursors) = self.cursors.take() else {
+        let Some(cursors) = self.0.cursors.take() else {
             return;
         };
 
@@ -1062,13 +728,13 @@ impl Text {
             }
         }
 
-        self.cursors = Some(cursors);
+        self.0.cursors = Some(cursors);
     }
 
     /// Adds the tags for all the cursors, used after they are
     /// expected to have moved
     pub(crate) fn remove_cursors(&mut self, area: &impl Area, cfg: PrintCfg) {
-        let Some(cursors) = self.cursors.take() else {
+        let Some(cursors) = self.0.cursors.take() else {
             return;
         };
 
@@ -1087,7 +753,7 @@ impl Text {
             }
         }
 
-        self.cursors = Some(cursors)
+        self.0.cursors = Some(cursors)
     }
 
     pub(crate) fn shift_cursors(
@@ -1097,7 +763,7 @@ impl Text {
         area: &impl Area,
         cfg: PrintCfg,
     ) {
-        let Some(mut cursors) = self.cursors.take() else {
+        let Some(mut cursors) = self.0.cursors.take() else {
             return;
         };
 
@@ -1105,7 +771,7 @@ impl Text {
             cursors.shift_by(from, by, self, area, cfg);
         }
 
-        self.cursors = Some(cursors);
+        self.0.cursors = Some(cursors);
     }
 
     /// Adds a [`Cursor`] to the [`Text`]
@@ -1127,9 +793,8 @@ impl Text {
             .into_iter()
             .zip([cursor.caret(), end, start]);
         for (tag, p) in tags.take(no_selection) {
-            let record = [p.byte(), p.char(), p.line()];
-            self.records.insert(record);
-            self.tags.insert(p.byte(), tag, Key::for_cursors());
+            self.0.bytes.add_record([p.byte(), p.char(), p.line()]);
+            self.0.tags.insert(p.byte(), tag, Key::for_cursors());
         }
     }
 
@@ -1147,7 +812,7 @@ impl Text {
         let skip = if start == end { 1 } else { 0 };
 
         for p in [start, end].into_iter().skip(skip) {
-            self.tags.remove_at(p.byte(), Key::for_cursors());
+            self.0.tags.remove_at(p.byte(), Key::for_cursors());
         }
     }
 
@@ -1173,14 +838,7 @@ impl Text {
     /// position where said character starts, e.g.
     /// [`Point::default()`] for the first character
     pub fn chars_fwd(&self, p: Point) -> impl Iterator<Item = (Point, char)> + '_ {
-        self.strs_in_range_inner(p.byte()..)
-            .into_iter()
-            .flat_map(str::chars)
-            .scan(p, |p, char| {
-                let old_p = *p;
-                *p = p.fwd(char);
-                Some((old_p, char))
-            })
+        self.0.bytes.chars_fwd(p)
     }
 
     /// A reverse iterator of the [`char`]s of the [`Text`]
@@ -1189,14 +847,7 @@ impl Text {
     /// position where said character starts, e.g.
     /// [`Point::default()`] for the first character
     pub fn chars_rev(&self, p: Point) -> impl Iterator<Item = (Point, char)> + '_ {
-        self.strs_in_range_inner(..p.byte())
-            .into_iter()
-            .flat_map(str::chars)
-            .rev()
-            .scan(p, |p, char| {
-                *p = p.rev(char);
-                Some((*p, char))
-            })
+        self.0.bytes.chars_rev(p)
     }
 
     /// A forward iterator over the [`Tag`]s of the [`Text`]
@@ -1206,7 +857,7 @@ impl Text {
     /// Duat works fine with [`Tag`]s in the middle of a codepoint,
     /// but external utilizers may not, so keep that in mind.
     pub fn tags_fwd(&self, at: usize) -> FwdTags {
-        self.tags.fwd_at(at)
+        self.0.tags.fwd_at(at)
     }
 
     /// An reverse iterator over the [`Tag`]s of the [`Text`]
@@ -1216,50 +867,82 @@ impl Text {
     /// Duat works fine with [`Tag`]s in the middle of a codepoint,
     /// but external utilizers may not, so keep that in mind.
     pub fn tags_rev(&self, at: usize) -> RevTags {
-        self.tags.rev_at(at)
+        self.0.tags.rev_at(at)
     }
 
     /// The [`Cursors`] printed to this [`Text`], if they exist
     pub fn cursors(&self) -> Option<&Cursors> {
-        self.cursors.as_ref().map(|b| b.as_ref())
+        self.0.cursors.as_ref()
     }
 
     /// A mut reference to this [`Text`]'s [`Cursors`] if they exist
     pub fn cursors_mut(&mut self) -> Option<&mut Cursors> {
-        self.cursors.as_mut().map(|b| b.as_mut())
+        self.0.cursors.as_mut()
     }
 
     pub(crate) fn history(&self) -> Option<&History> {
-        self.history.as_deref()
+        self.0.history.as_ref()
+    }
+
+    ////////// One str functions
+
+    /// Gets a single [`&str`] from a given [range]
+    ///
+    /// This is the equivalent of calling
+    /// [`Bytes::make_contiguous_in`] and [`Bytes::get_contiguous`].
+    /// While this takes less space in code, calling the other two
+    /// functions means that you won't be mutably borrowing the
+    /// [`Bytes`] anymore, so if that matters to you, you should do
+    /// that.
+    ///
+    /// [`&str`]: str
+    /// [range]: TextRange
+    pub fn contiguous(&mut self, range: impl TextRange) -> &str {
+        self.make_contiguous(range.clone());
+        self.get_contiguous(range).unwrap()
+    }
+
+    /// Moves the [`GapBuffer`]'s gap, so that the `range` is whole
+    ///
+    /// The return value is the value of the gap, if the second `&str`
+    /// is the contiguous one.
+    pub fn make_contiguous(&mut self, range: impl TextRange) {
+        self.0.bytes.make_contiguous(range);
+    }
+
+    /// Assumes that the `range` given is contiguous in `self`
+    ///
+    /// You *MUST* call [`make_contiguous_in`] before using this
+    /// function. The sole purpose of this function is to not keep the
+    /// [`Bytes`] mutably borrowed.
+    ///
+    /// [`make_contiguous_in`]: Self::make_contiguous_in
+    pub fn get_contiguous(&self, range: impl TextRange) -> Option<&str> {
+        self.0.bytes.get_contiguous(range)
     }
 }
 
 impl std::fmt::Debug for Text {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Text")
-            .field_with("buf", |f| {
-                write!(f, "'{}', '{}'", self.strs()[0], self.strs()[1])
-            })
-            .field("tags", &self.tags)
-            .field("records", &self.records)
-            .finish()
+            .field("bytes", &self.0.bytes)
+            .field("tags", &self.0.tags)
+            .finish_non_exhaustive()
     }
 }
 
 impl Clone for Text {
     fn clone(&self) -> Self {
-        Self {
-            buf: self.buf.clone(),
-            tags: self.tags.clone(),
-            cursors: self.cursors.clone(),
-            records: self.records.clone(),
-            history: self.history.clone(),
-            readers: Vec::new(),
-            ts_parser: None,
-            forced_new_line: self.forced_new_line,
-            has_changed: self.has_changed,
+        Self(Box::new(InnerText {
+            bytes: self.0.bytes.clone(),
+            tags: self.0.tags.clone(),
+            cursors: self.0.cursors.clone(),
+            history: self.0.history.clone(),
+            readers: Readers::default(),
+            forced_new_line: self.0.forced_new_line,
+            has_changed: self.0.has_changed,
             has_unsaved_changes: AtomicBool::new(false),
-        }
+        }))
     }
 }
 
@@ -1275,30 +958,6 @@ where
 impl From<std::io::Error> for Text {
     fn from(value: std::io::Error) -> Self {
         err!({ value.kind().to_string() })
-    }
-}
-
-impl PartialEq for Text {
-    fn eq(&self, other: &Self) -> bool {
-        self.buf == other.buf && self.tags == other.tags
-    }
-}
-impl Eq for Text {}
-
-mod point {}
-
-mod part {}
-
-/// A list of [`Tag`]s to be added with a [`Cursor`]
-fn cursor_tags(is_main: bool) -> [Tag; 3] {
-    use tags::Tag::{ExtraCursor, MainCursor, PopForm, PushForm};
-
-    use crate::form::{E_SEL_ID, M_SEL_ID};
-
-    if is_main {
-        [MainCursor, PopForm(M_SEL_ID), PushForm(M_SEL_ID)]
-    } else {
-        [ExtraCursor, PopForm(E_SEL_ID), PushForm(E_SEL_ID)]
     }
 }
 
@@ -1364,6 +1023,19 @@ fn merge_range_in(ranges: &mut Vec<Range<usize>>, range: Range<usize>) {
     ranges.splice(r_range, [start..end]);
 }
 
+/// A list of [`Tag`]s to be added with a [`Cursor`]
+fn cursor_tags(is_main: bool) -> [Tag; 3] {
+    use tags::Tag::{ExtraCursor, MainCursor, PopForm, PushForm};
+
+    use crate::form::{E_SEL_ID, M_SEL_ID};
+
+    if is_main {
+        [MainCursor, PopForm(M_SEL_ID), PushForm(M_SEL_ID)]
+    } else {
+        [ExtraCursor, PopForm(E_SEL_ID), PushForm(E_SEL_ID)]
+    }
+}
+
 impl From<&std::path::PathBuf> for Text {
     fn from(value: &std::path::PathBuf) -> Self {
         let value = value.to_str().unwrap_or("");
@@ -1396,35 +1068,9 @@ impl_from_to_string!(Arc<str>);
 macro impl_from_to_string($t:ty) {
     impl From<$t> for Text {
         fn from(value: $t) -> Self {
-            let value = <$t as ToString>::to_string(&value);
-            let buf = GapBuffer::from_iter(value.bytes());
-            Self::from_buf(buf, None, false)
+            let string = <$t as ToString>::to_string(&value);
+            let bytes = Bytes::new(&string);
+            Self::from_bytes(bytes, None, false)
         }
-    }
-}
-
-pub struct TextLines<'a> {
-    lines: std::str::Lines<'a>,
-    fwd_i: usize,
-    rev_i: usize,
-}
-
-impl<'a> Iterator for TextLines<'a> {
-    type Item = (usize, &'a str);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.lines.next().map(|line| {
-            self.fwd_i += 1;
-            (self.fwd_i - 1, line)
-        })
-    }
-}
-
-impl DoubleEndedIterator for TextLines<'_> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        self.lines.next_back().map(|line| {
-            self.rev_i -= 1;
-            (self.rev_i, line)
-        })
     }
 }

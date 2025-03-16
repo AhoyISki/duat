@@ -18,7 +18,7 @@ static KEY_COUNT: AtomicU16 = AtomicU16::new(4);
 ///
 /// [ghost text]: super::Tag::GhostText
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct TextId(u16);
+pub struct GhostId(u16);
 
 /// The id of a [toggleable]
 ///
@@ -26,7 +26,7 @@ pub struct TextId(u16);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ToggleId(u16);
 
-impl TextId {
+impl GhostId {
     /// Creates a new [`TextId`]
     pub fn new() -> Self {
         static TEXT_COUNT: AtomicU16 = AtomicU16::new(0);
@@ -35,7 +35,7 @@ impl TextId {
     }
 }
 
-impl Default for TextId {
+impl Default for GhostId {
     fn default() -> Self {
         Self::new()
     }

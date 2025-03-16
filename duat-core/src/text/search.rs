@@ -26,11 +26,12 @@ impl Text {
         pat: R,
         range: impl TextRange,
     ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
-        let range = range.to_range_fwd(self.len().byte());
+        let bytes = self.bytes_mut();
+        let range = range.to_range_fwd(bytes.len().byte());
         let dfas = dfas_from_pat(pat)?;
-        let haystack = unsafe {
-            self.make_contiguous_in(range.clone());
-            self.continuous_in_unchecked(range.clone())
+        let haystack = {
+            bytes.make_contiguous(range.clone());
+            bytes.get_contiguous(range.clone()).unwrap()
         };
 
         let mut fwd_input = Input::new(haystack);
@@ -38,7 +39,7 @@ impl Text {
         let mut fwd_cache = dfas.fwd.1.write();
         let mut rev_cache = dfas.rev.1.write();
 
-        let ref_self = self as &Text;
+        let bytes = bytes as &super::Bytes;
         Ok(std::iter::from_fn(move || {
             let init = fwd_input.start();
             let h_end = loop {
@@ -62,8 +63,8 @@ impl Text {
             };
             let h_start = half.offset();
 
-            let p0 = ref_self.point_at(h_start + range.start);
-            let p1 = ref_self.point_at(h_end + range.start);
+            let p0 = bytes.point_at(h_start + range.start);
+            let p1 = bytes.point_at(h_end + range.start);
 
             Some(R::get_match((p0, p1), half.pattern()))
         }))
@@ -75,11 +76,12 @@ impl Text {
         pat: R,
         range: impl TextRange,
     ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
-        let range = range.to_range_rev(self.len().byte());
+        let bytes = self.bytes_mut();
+        let range = range.to_range_rev(bytes.len().byte());
         let dfas = dfas_from_pat(pat)?;
-        let haystack = unsafe {
-            self.make_contiguous_in(range.clone());
-            self.continuous_in_unchecked(range.clone())
+        let haystack = {
+            bytes.make_contiguous(range.clone());
+            bytes.get_contiguous(range.clone()).unwrap()
         };
 
         let mut fwd_input = Input::new(haystack).anchored(Anchored::Yes);
@@ -87,7 +89,7 @@ impl Text {
         let mut fwd_cache = dfas.fwd.1.write();
         let mut rev_cache = dfas.rev.1.write();
 
-        let ref_self = self as &Text;
+        let bytes = bytes as &super::Bytes;
         let gap = range.start;
         Ok(std::iter::from_fn(move || {
             let init = rev_input.end();
@@ -112,8 +114,8 @@ impl Text {
             };
             let end = half.offset();
 
-            let p0 = ref_self.point_at(start + gap);
-            let p1 = ref_self.point_at(end + gap);
+            let p0 = bytes.point_at(start + gap);
+            let p1 = bytes.point_at(end + gap);
 
             Some(R::get_match((p0, p1), half.pattern()))
         }))
@@ -131,10 +133,7 @@ impl Text {
         let range = range.to_range_fwd(self.len().byte());
         let dfas = dfas_from_pat(pat)?;
 
-        let haystack = unsafe {
-            self.make_contiguous_in(range.clone());
-            self.continuous_in_unchecked(range)
-        };
+        let haystack = self.contiguous(range);
         let fwd_input = Input::new(haystack);
 
         let mut fwd_cache = dfas.fwd.1.write();
@@ -154,17 +153,37 @@ pub trait Matcheable: Sized {
     ) -> Result<bool, Box<regex_syntax::Error>>;
 }
 
-impl<S: AsRef<str>> Matcheable for S {
+impl<const N: usize> Matcheable for std::array::IntoIter<&str, N> {
     fn matches(
         &self,
         pat: impl RegexPattern,
         range: impl RangeBounds<usize> + Clone,
     ) -> Result<bool, Box<regex_syntax::Error>> {
-        let s = self.as_ref();
-        let (start, end) = crate::get_ends(range, s.len());
+        let str: String = self.as_slice().iter().copied().collect();
+        let (start, end) = crate::get_ends(range, str.len());
         let dfas = dfas_from_pat(pat)?;
         let fwd_input =
-            Input::new(unsafe { std::str::from_utf8_unchecked(&s.as_bytes()[start..end]) });
+            Input::new(unsafe { std::str::from_utf8_unchecked(&str.as_bytes()[start..end]) });
+
+        let mut fwd_cache = dfas.fwd.1.write();
+        if let Ok(Some(_)) = dfas.fwd.0.try_search_fwd(&mut fwd_cache, &fwd_input) {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+}
+
+impl Matcheable for &'_ str {
+    fn matches(
+        &self,
+        pat: impl RegexPattern,
+        range: impl RangeBounds<usize> + Clone,
+    ) -> Result<bool, Box<regex_syntax::Error>> {
+        let (start, end) = crate::get_ends(range, self.len());
+        let dfas = dfas_from_pat(pat)?;
+        let fwd_input =
+            Input::new(unsafe { std::str::from_utf8_unchecked(&self.as_bytes()[start..end]) });
 
         let mut fwd_cache = dfas.fwd.1.write();
         if let Ok(Some(_)) = dfas.fwd.0.try_search_fwd(&mut fwd_cache, &fwd_input) {
@@ -201,13 +220,11 @@ impl Searcher {
         range: impl TextRange,
     ) -> impl Iterator<Item = (Point, Point)> + 'b {
         let range = range.to_range_fwd(text.len().byte());
-        let haystack = unsafe {
-            text.make_contiguous_in(range.clone());
-            text.continuous_in_unchecked(range.clone())
-        };
+        let mut last_point = text.point_at(range.start);
+
+        let haystack = text.contiguous(range.clone());
         let mut fwd_input = Input::new(haystack).anchored(Anchored::No);
         let mut rev_input = Input::new(haystack).anchored(Anchored::Yes);
-        let mut last_point = text.point_at(range.start);
 
         let fwd_dfa = &self.fwd_dfa;
         let rev_dfa = &self.rev_dfa;
@@ -263,13 +280,11 @@ impl Searcher {
         range: impl TextRange,
     ) -> impl Iterator<Item = (Point, Point)> + 'b {
         let range = range.to_range_rev(text.len().byte());
-        let haystack = unsafe {
-            text.make_contiguous_in(range.clone());
-            text.continuous_in_unchecked(range.clone())
-        };
+        let mut last_point = text.point_at(range.end);
+
+        let haystack = text.contiguous(range.clone());
         let mut fwd_input = Input::new(haystack).anchored(Anchored::Yes);
         let mut rev_input = Input::new(haystack).anchored(Anchored::Yes);
-        let mut last_point = text.point_at(range.end);
 
         let fwd_dfa = &self.fwd_dfa;
         let rev_dfa = &self.rev_dfa;

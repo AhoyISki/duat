@@ -9,7 +9,6 @@ use std::{
 };
 
 use arboard::Clipboard;
-use gapbuf::GapBuffer;
 use parking_lot::{Mutex, RwLockReadGuard};
 
 use crate::{
@@ -18,6 +17,7 @@ use crate::{
     cmd, context, file_entry, form,
     hooks::{self, ConfigLoaded, ConfigUnloaded, ExitedDuat, OnFileOpen, OnWindowOpen},
     mode,
+    text::Bytes,
     ui::{
         Area, DuatEvent, DuatPermission, FileBuilder, Layout, MasterOnLeft, Sender, Ui, Window,
         WindowBuilder,
@@ -104,10 +104,10 @@ impl<U: Ui> SessionCfg<U> {
         let file_cfg = self.file_cfg.clone();
         let inherited_cfgs = prev.into_iter().enumerate().map(|(i, cfgs)| {
             let cfgs = cfgs.into_iter().map(|file_ret| {
-                let buf = file_ret.buf;
+                let bytes = file_ret.bytes;
                 let pk = file_ret.path_kind;
                 let unsaved = file_ret.has_unsaved_changes;
-                let file_cfg = file_cfg.clone().take_from_prev(buf, pk, unsaved);
+                let file_cfg = file_cfg.clone().take_from_prev(bytes, pk, unsaved);
                 (file_cfg, file_ret.is_active)
             });
             (i, cfgs)
@@ -368,10 +368,10 @@ impl<U: Ui> Session<U> {
                         let mut file = file.write();
                         let text = std::mem::take(file.text_mut());
                         let has_unsaved_changes = text.has_unsaved_changes();
-                        let buf = text.take_buf();
+                        let bytes = text.take_bytes();
                         let pk = file.path_kind();
                         let is_active = node.area().is_active();
-                        FileRet::new(buf, pk, is_active, has_unsaved_changes)
+                        FileRet::new(bytes, pk, is_active, has_unsaved_changes)
                     })
                 });
                 files.collect()
@@ -552,21 +552,16 @@ enum BreakTo {
 }
 
 pub struct FileRet {
-    buf: GapBuffer<u8>,
+    bytes: Bytes,
     path_kind: PathKind,
     is_active: bool,
     has_unsaved_changes: bool,
 }
 
 impl FileRet {
-    fn new(
-        buf: GapBuffer<u8>,
-        path_kind: PathKind,
-        is_active: bool,
-        has_unsaved_changes: bool,
-    ) -> Self {
+    fn new(bytes: Bytes, path_kind: PathKind, is_active: bool, has_unsaved_changes: bool) -> Self {
         Self {
-            buf,
+            bytes,
             path_kind,
             is_active,
             has_unsaved_changes,

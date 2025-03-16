@@ -13,7 +13,7 @@ use crossterm::event::MouseEventKind;
 
 use super::{
     Key,
-    ids::{TextId, ToggleId},
+    ids::{GhostId, ToggleId},
 };
 use crate::{
     form::{self, FormId},
@@ -114,7 +114,7 @@ impl Tag {
     pub fn to_raw(
         self,
         key: Key,
-        texts: &mut HashMap<TextId, Text>,
+        texts: &mut HashMap<GhostId, Text>,
         toggles: &mut HashMap<ToggleId, Toggle>,
     ) -> (RawTag, Option<ToggleId>) {
         match self {
@@ -128,11 +128,11 @@ impl Tag {
             Self::EndAlignRight => (RawTag::EndAlignRight(key), None),
             Self::Spacer => (RawTag::Spacer(key), None),
             Self::GhostText(mut text) => {
-                if text.forced_new_line {
+                if text.0.forced_new_line {
                     text.replace_range(text.len().byte() - 1.., "");
-                    text.forced_new_line = false;
+                    text.0.forced_new_line = false;
                 }
-                let id = TextId::new();
+                let id = GhostId::new();
                 texts.insert(id, text);
                 (RawTag::GhostText(key, id), None)
             }
@@ -213,7 +213,7 @@ pub enum RawTag {
     ConcealUntil(u32),
 
     /// Text that shows up on screen, but is ignored otherwise.
-    GhostText(Key, TextId),
+    GhostText(Key, GhostId),
 
     // Not Implemented:
     /// Begins a toggleable section in the text.

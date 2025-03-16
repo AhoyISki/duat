@@ -5,12 +5,12 @@
 //! cursors and dealing with editing the text directly.
 //!
 //! [`Mode`]: super::Mode
-use std::{array::IntoIter, ops::RangeBounds};
+use std::ops::RangeBounds;
 
 pub use self::cursors::{Cursor, Cursors};
 use crate::{
     cfg::{IterCfg, PrintCfg},
-    text::{Change, Point, RegexPattern, Searcher, Text},
+    text::{Change, Point, RegexPattern, Searcher, Strs, Text},
     ui::Area,
     widgets::{File, Widget},
 };
@@ -760,7 +760,7 @@ where
     /// one of these chunks, the other `&str` will just be empty.
     ///
     /// [`GapBuffer`]: gapbuf::GapBuffer
-    pub fn selection(&self) -> IntoIter<&str, 2> {
+    pub fn selection(&self) -> Strs {
         let anchor = self.anchor().unwrap_or(self.caret());
         let (start, end) = if anchor < self.caret() {
             (anchor, self.caret())
@@ -768,37 +768,35 @@ where
             (self.caret(), anchor)
         };
         self.text()
-            .strs_in(start.byte()..end.byte() + self.is_incl() as usize)
+            .strs(start.byte()..end.byte() + self.is_incl() as usize)
     }
 
-    /// Returns the needed level of indentation in the line of the
-    /// [`Point`]
+    /// This will return the level of indentation on this line
     ///
-    /// If the tree-sitter can figure out the indentation level, it
-    /// will return that. Otherwise, it will copy the level of
-    /// indentation of the last non empty line.
+    /// It will simply be equivalent to the same level of indentation
+    /// of the last non empty line.
+    ///
+    /// If you want something more advanced, you could use something
+    /// like tree-sitter to get a better estimation for how to indent
+    /// the text.
     pub fn indent_on(&mut self, point: Point) -> usize {
         let cfg = self.cfg();
         let text = self.widget.text_mut();
-        if let Some(indent) = text.ts_indent_on(point, cfg) {
-            indent
-        } else {
-            let t_iter = text.iter_rev(point).no_ghosts().no_conceals();
-            let iter = self
-                .area
-                .rev_print_iter(t_iter, IterCfg::new(cfg))
-                // This should skip the current line and all empty lines before.
-                .skip_while(|(_, item)| {
-                    item.part.as_char().is_none_or(char::is_whitespace)
-                        || item.real.line() == point.line()
-                })
-                // And this should make sure we only capture one line.
-                .take_while(|(_, item)| item.part.as_char().is_none_or(|c| c != '\n'));
-            iter.fold(0, |mut indent, (caret, item)| {
-                indent = indent.max((caret.x + caret.len) as usize);
-                indent * item.part.as_char().is_none_or(char::is_whitespace) as usize
+        let t_iter = text.iter_rev(point).no_ghosts().no_conceals();
+        let iter = self
+            .area
+            .rev_print_iter(t_iter, IterCfg::new(cfg))
+            // This should skip the current line and all empty lines before.
+            .skip_while(|(_, item)| {
+                item.part.as_char().is_none_or(char::is_whitespace)
+                    || item.real.line() == point.line()
             })
-        }
+            // And this should make sure we only capture one line.
+            .take_while(|(_, item)| item.part.as_char().is_none_or(|c| c != '\n'));
+        iter.fold(0, |mut indent, (caret, item)| {
+            indent = indent.max((caret.x + caret.len) as usize);
+            indent * item.part.as_char().is_none_or(char::is_whitespace) as usize
+        })
     }
 
     /// Returns the `caret`
@@ -1035,9 +1033,9 @@ where
     /// one of these chunks, the other `&str` will just be empty.
     ///
     /// [`GapBuffer`]: gapbuf::GapBuffer
-    pub fn selection(&self) -> IntoIter<&str, 2> {
+    pub fn selection(&self) -> Strs {
         let range = self.cursor.unwrap().range(self.is_incl(), self.text);
-        self.text.strs_in(range)
+        self.text.strs(range)
     }
 
     /// Returns the length of the [`Text`], in [`Point`]
@@ -1278,9 +1276,6 @@ where
     pub fn matches_inc(&mut self) -> bool {
         let is_incl = self.text.cursors().unwrap().is_incl();
         let range = self.cursor.unwrap().range(is_incl, self.text);
-        self.text.make_contiguous_in(range.clone());
-        let str = unsafe { self.text.continuous_in_unchecked(range) };
-
-        self.inc_searcher.matches(str)
+        self.inc_searcher.matches(self.text.contiguous(range))
     }
 }

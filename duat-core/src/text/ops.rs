@@ -212,7 +212,7 @@ pub const fn utf8_char_width(b: u8) -> u32 {
 /// [`Text`]: super::Text
 /// [`Tag`]: super::Tag
 /// [`RangeBounds<usize>`]: std::ops::RangeBounds
-pub trait TextRange {
+pub trait TextRange: Clone {
     /// A "forward facing range"
     ///
     /// If given a single [`usize`]/[`Point`], acts like [`RangeFrom`]

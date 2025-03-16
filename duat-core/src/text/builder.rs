@@ -62,11 +62,11 @@ impl Builder {
         let len = self.text.len().byte();
 
         if let Some(tag) = self.last_form {
-            self.text.tags.insert(len, Tag::PopForm(tag), Key::basic());
+            self.text.0.tags.insert(len, Tag::PopForm(tag), Key::basic());
         }
-        if self.text.buf.is_empty() || self.text.buf[self.text.buf.len() - 1] != b'\n' {
+        if (self.text.buffers(..).next_back()).is_none_or(|b| b != b'\n') {
             self.push_str("\n");
-            self.text.forced_new_line = true;
+            self.text.0.forced_new_line = true;
         }
 
         self.text
@@ -137,64 +137,60 @@ impl Builder {
             };
 
             if let Some(id) = last_form {
-                self.text.tags.insert(len, Tag::PopForm(id), Key::basic());
+                self.text.0.tags.insert(len, Tag::PopForm(id), Key::basic());
             }
 
             match id == crate::form::DEFAULT_ID {
                 true => None,
-                false => self.text.tags.insert(len, tag, Key::basic()),
+                false => self.text.0.tags.insert(len, tag, Key::basic()),
             }
         } else {
             match tag {
                 Tag::StartAlignCenter => {
                     self.last_align = Some(Tag::StartAlignCenter);
-                    self.text.tags.insert(len, tag, Key::basic())
+                    self.text.0.tags.insert(len, tag, Key::basic())
                 }
                 Tag::StartAlignRight => {
                     self.last_align = Some(Tag::StartAlignRight);
-                    self.text.tags.insert(len, tag, Key::basic())
+                    self.text.0.tags.insert(len, tag, Key::basic())
                 }
                 Tag::EndAlignCenter | Tag::EndAlignRight => {
                     if self.last_align.as_ref().is_some_and(|a| a.ends_with(&tag)) {
                         self.last_align = None;
-                        self.text.tags.insert(len, tag, Key::basic())
+                        self.text.0.tags.insert(len, tag, Key::basic())
                     } else {
                         None
                     }
                 }
-                tag => self.text.tags.insert(len, tag, Key::basic()),
+                tag => self.text.0.tags.insert(len, tag, Key::basic()),
             }
         }
     }
 
     /// Pushes [`Text`] directly
     pub(crate) fn push_text(&mut self, mut text: Text) {
-        if text.forced_new_line {
+        if text.0.forced_new_line {
             text.replace_range(text.len().byte() - 1.., "");
-            text.forced_new_line = false;
+            text.0.forced_new_line = false;
         }
         self.last_was_empty = text.is_empty();
         let end = self.text.len();
-        let len_p = text.len();
 
         if let Some(last_id) = self.last_form.take() {
             let initial = text.tags_fwd(0).next();
             if let Some((0, RawTag::PushForm(_, id))) = initial
                 && id == last_id
             {
-                text.tags.remove_at_if(0, |t| t.key() == Key::basic());
+                text.0.tags.remove_at_if(0, |t| t.key() == Key::basic());
             } else {
-                self.text
+                self.text.0
                     .tags
                     .insert(end.byte(), Tag::PopForm(last_id), Key::basic());
             }
         }
 
-        self.text.buf.extend(text.buf);
-        let end = [end.byte(), end.char(), end.line()];
-        let new = [len_p.byte(), len_p.char(), len_p.line()];
-        self.text.records.transform(end, [0, 0, 0], new);
-        self.text.tags.extend(*text.tags);
+        self.text.0.bytes.extend(text.0.bytes);
+        self.text.0.tags.extend(text.0.tags);
     }
 }
 

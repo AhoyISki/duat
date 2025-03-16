@@ -245,7 +245,8 @@
     step_trait,
     type_alias_impl_trait,
     trait_alias,
-    debug_closure_helpers
+    debug_closure_helpers,
+    box_as_ptr
 )]
 #![allow(clippy::single_range_in_vec_init)]
 
@@ -262,7 +263,7 @@ use std::{
 
 #[allow(unused_imports)]
 use dirs_next::cache_dir;
-pub use parking_lot::{Mutex, RwLock, MutexGuard, RwLockReadGuard, RwLockWriteGuard};
+pub use parking_lot::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use ui::Window;
 use widgets::{File, Node, Widget};
 
@@ -275,10 +276,10 @@ pub mod cache;
 pub mod cfg;
 pub mod cmd;
 pub mod context;
+pub mod data;
 pub mod form;
 pub mod hooks;
 pub mod mode;
-pub mod data;
 pub mod session;
 pub mod status;
 pub mod text;
@@ -288,8 +289,9 @@ pub mod widgets;
 pub mod prelude {
     //! The prelude of Duat
     pub use crate::{
-        Error, cmd, form,
+        Error, cmd,
         data::{self, RwData},
+        form,
         text::{Builder, Text, err, hint, ok, text},
         ui, widgets,
     };
@@ -528,6 +530,8 @@ pub enum Error<E> {
     ///
     /// [`Ui`]: ui::Ui
     NoFileYet,
+    /// The [`File`] was not found
+    FileNotFound(String),
     /// Since the [`Ui`] has no file, widgets can't relate to it
     ///
     /// [`Ui`]: ui::Ui
@@ -551,6 +555,7 @@ impl<E1> Error<E1> {
             Self::Empty => Error::Empty,
             Self::FailedParsing(failure) => Error::FailedParsing(failure),
             Self::NoFileYet => Error::NoFileYet,
+            Self::FileNotFound(name) => Error::FileNotFound(name),
             Self::NoFileForRelated => Error::NoFileForRelated,
             Self::NoWidgetYet => Error::NoWidgetYet,
             Self::WidgetIsNot => Error::WidgetIsNot,
@@ -578,6 +583,7 @@ impl<E> DuatError for Error<E> {
             Self::Empty => Box::new(err!("The command is empty.")),
             Self::FailedParsing(failure) => failure,
             Self::NoFileYet => Box::new(err!("There is no file yet. " early)),
+            Self::FileNotFound(name) => Box::new(err!("No file named " [*a] name [] " open")),
             Self::NoFileForRelated => Box::new(err!(
                 "There is no file for a related " [*a] { type_name::<E>() } [] " to exist. " early
             )),
@@ -601,6 +607,7 @@ impl<E> std::fmt::Debug for Error<E> {
             Self::Empty => "Empty ",
             Self::FailedParsing(_) => "FailedParsing",
             Self::NoFileYet => "NoFileYet ",
+            Self::FileNotFound(_) => "FileNotFound ",
             Self::NoFileForRelated => "NoFileForRelated ",
             Self::NoWidgetYet => "NoWidgetYet ",
             Self::WidgetIsNot => "WidgetIsNot ",
@@ -610,6 +617,7 @@ impl<E> std::fmt::Debug for Error<E> {
         match self {
             Self::CallerAlreadyExists(str) | Self::CallerNotFound(str) => debug.field(&str),
             Self::CommandFailed(text) | Self::FailedParsing(text) => debug.field(&text),
+            Self::FileNotFound(name) => debug.field(&name),
             Self::Empty
             | Self::NoFileYet
             | Self::NoFileForRelated

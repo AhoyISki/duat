@@ -1,11 +1,16 @@
+//! Access to widgets and other other parts of the state of Duat
+//!
+//! This module lets you access and mutate some things:
+//!
+//! # Files
 use std::{any::TypeId, sync::Arc};
 
 use parking_lot::Mutex;
 
 pub use self::global::*;
 use crate::{
-    mode::Cursors,
     data::{ReadDataGuard, RwData, WriteDataGuard},
+    mode::Cursors,
     ui::{Area, Ui},
     widgets::{File, Node, Related, Widget},
 };
@@ -45,6 +50,22 @@ mod global {
 
     pub fn mode_name() -> &'static RwData<&'static str> {
         &MODE_NAME
+    }
+
+    pub fn file_named<U: Ui>(name: impl ToString) -> Result<FixedFile<U>, File> {
+        let windows = windows::<U>().read();
+        let name = name.to_string();
+        let (.., node) =
+            crate::file_entry(&windows, &name).map_err(|_| Error::FileNotFound(name))?;
+
+        let (widget, area, related) = node.parts();
+        let file = widget.try_downcast().unwrap();
+
+        Ok(FixedFile((
+            file,
+            area.clone(),
+            related.as_ref().unwrap().clone(),
+        )))
     }
 
     pub fn fixed_file<U: Ui>() -> Result<FixedFile<U>, File> {
@@ -94,8 +115,8 @@ mod global {
         Ok(cur_widget)
     }
 
-    pub(crate) fn set_windows<U: Ui>(win: Vec<Window<U>>) -> &'static AtomicUsize {
-        *windows().write() = win;
+    pub(crate) fn set_windows<U: Ui>(wins: Vec<Window<U>>) -> &'static AtomicUsize {
+        *windows().write() = wins;
         &CUR_WINDOW
     }
 

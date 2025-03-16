@@ -18,7 +18,7 @@ use gapbuf::{GapBuffer, gap_buffer};
 
 use self::types::Toggle;
 pub use self::{
-    ids::{Key, Keys, TextId, ToggleId},
+    ids::{Key, Keys, GhostId, ToggleId},
     types::{
         RawTag::{self, *},
         Tag,
@@ -40,7 +40,7 @@ const BUMP_AMOUNT: usize = 75;
 #[derive(Clone)]
 pub struct Tags {
     buf: GapBuffer<TagOrSkip>,
-    texts: HashMap<TextId, Text>,
+    texts: HashMap<GhostId, Text>,
     toggles: HashMap<ToggleId, Toggle>,
     range_min: usize,
     ranges: Vec<(usize, RawTag)>,
@@ -49,21 +49,8 @@ pub struct Tags {
 }
 
 impl Tags {
-    /// Creates a new [`Tags`]
-    pub fn new() -> Self {
-        Self {
-            buf: GapBuffer::new(),
-            ranges: Vec::new(),
-            texts: HashMap::new(),
-            toggles: HashMap::new(),
-            range_min: MIN_CHARS_TO_KEEP,
-            records: Records::new(),
-            ranges_to_update: Vec::new(),
-        }
-    }
-
     /// Creates a new [`Tags`] with a given len
-    pub fn with_len(len: usize) -> Self {
+    pub fn new(len: usize) -> Self {
         Self {
             buf: gap_buffer![TagOrSkip::Skip(len as u32)],
             ranges: Vec::new(),
@@ -686,8 +673,8 @@ impl Tags {
     }
 
     /// Return the [`Text`] of a given [`TextId`]
-    pub fn get_text(&self, k: &TextId) -> Option<&Text> {
-        self.texts.get(k)
+    pub fn get_ghost(&self, k: GhostId) -> Option<&Text> {
+        self.texts.get(&k)
     }
 }
 
@@ -850,7 +837,7 @@ impl std::fmt::Debug for TagOrSkip {
 
 impl Default for Tags {
     fn default() -> Self {
-        Self::new()
+        Self::new(0)
     }
 }
 

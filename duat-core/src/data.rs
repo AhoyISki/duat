@@ -55,7 +55,8 @@ impl<T> RwData<T> {
     /// This has to be sized because of some Rust limitations, as you
     /// can`t really pass an unsized argument to a function (for now).
     /// If you're looking to store unsized types (`dyn Trait`,
-    /// `\[Type\]`, etc) on an [`RwData`], see [`RwData::new_unsized`].
+    /// `\[Type\]`, etc) on an [`RwData`], see
+    /// [`RwData::new_unsized`].
     pub fn new(data: T) -> Self {
         Self {
             data: Arc::new(Mutex::new(data)),
@@ -438,7 +439,7 @@ impl<T: ?Sized> RwData<T> {
         if self.data_is::<U>() {
             let Self { data, cur_state, read_state, .. } = self.clone();
             let ptr = Arc::into_raw(data);
-            let data = unsafe { Arc::from_raw(ptr.cast()) };
+            let data = unsafe { Arc::from_raw(ptr as *const Mutex<U>) };
             Some(RwData {
                 data,
                 cur_state,

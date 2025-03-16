@@ -13,14 +13,12 @@
 //! [`Cursor`]: crate::mode::Cursor
 use std::{fs, path::PathBuf};
 
-use gapbuf::GapBuffer;
-
 use crate::{
     cache::load_cache,
     cfg::{IterCfg, PrintCfg},
     context, form,
     mode::Cursors,
-    text::{Text, err},
+    text::{Bytes, Text, err},
     ui::{Area, PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
 };
@@ -50,12 +48,12 @@ impl FileCfg {
     /// Takes a previous [`File`]
     pub(crate) fn take_from_prev(
         self,
-        buf: GapBuffer<u8>,
-        path_kind: PathKind,
+        bytes: Bytes,
+        pk: PathKind,
         has_unsaved_changes: bool,
     ) -> Self {
         Self {
-            text_op: TextOp::TakeBuf(buf, path_kind, has_unsaved_changes),
+            text_op: TextOp::TakeBuf(bytes, pk, has_unsaved_changes),
             ..self
         }
     }
@@ -72,12 +70,16 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
     fn build(self, _: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
         let (text, path) = match self.text_op {
             TextOp::NewBuffer => (Text::new_with_history(), PathKind::new_unset()),
-            TextOp::TakeBuf(buf, path, has_unsaved_changes) => match &path {
+            TextOp::TakeBuf(bytes, path, has_unsaved_changes) => match &path {
                 PathKind::SetExists(p) | PathKind::SetAbsent(p) => {
                     let cursors = load_cache(p).unwrap_or_default();
-                    (Text::from_file(buf, cursors, p, has_unsaved_changes), path)
+                    let text = Text::from_file(bytes, cursors, p, has_unsaved_changes);
+                    (text, path)
                 }
-                PathKind::NotSet(_) => (Text::from_buf(buf, Some(Cursors::default()), true), path),
+                PathKind::NotSet(_) => (
+                    Text::from_bytes(bytes, Some(Cursors::default()), true),
+                    path,
+                ),
             },
             TextOp::OpenPath(path) => {
                 let canon_path = path.canonicalize();
@@ -85,11 +87,8 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
                     && let Ok(file) = std::fs::read_to_string(path)
                 {
                     let cursors = load_cache(path).unwrap_or_default();
-                    let buf = GapBuffer::from_iter(file.bytes());
-                    (
-                        Text::from_file(buf, cursors, path, false),
-                        PathKind::SetExists(path.clone()),
-                    )
+                    let text = Text::from_file(Bytes::new(&file), cursors, path, false);
+                    (text, PathKind::SetExists(path.clone()))
                 } else if canon_path.is_err()
                     && let Ok(mut canon_path) = path.with_file_name(".").canonicalize()
                 {
@@ -99,28 +98,6 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
                     (Text::new_with_history(), PathKind::new_unset())
                 }
             }
-        };
-
-        #[cfg(feature = "wack")]
-        let text = {
-            let mut text = text;
-            use crate::{
-                form::{self, Form},
-                text::{Key, Tag, text},
-            };
-
-            let key = Key::new();
-            let key2 = Key::new();
-            let form1 = form::set("form1lmao", Form::red().bold());
-            text.insert_tag(3, Tag::PushForm(form1), key);
-            text.insert_tag(2, Tag::PushForm(form1), key);
-            text.insert_tag(2, Tag::PushForm(form1), key2);
-
-            text.insert_tag(7, Tag::PopForm(form1), key);
-            text.insert_tag(8, Tag::PopForm(form1), key);
-            text.insert_tag(8, Tag::PopForm(form1), key2);
-
-            text
         };
 
         let file = File {
@@ -285,7 +262,7 @@ impl<U: Ui> Widget<U> for File {
     }
 
     fn print(&mut self, area: &<U as Ui>::Area) {
-        //crate::log_file!("printing File");
+        // crate::log_file!("printing File");
         let (start, _) = area.first_points(&self.text, self.cfg);
 
         let mut last_line = area
@@ -395,6 +372,6 @@ impl PathKind {
 enum TextOp {
     #[default]
     NewBuffer,
-    TakeBuf(GapBuffer<u8>, PathKind, bool),
+    TakeBuf(Bytes, PathKind, bool),
     OpenPath(PathBuf),
 }

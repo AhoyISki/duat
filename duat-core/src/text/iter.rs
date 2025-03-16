@@ -17,8 +17,6 @@ use std::{
     str::Chars,
 };
 
-use gapbuf::GapBuffer;
-
 use super::{
     Point, Text, ToggleId, TwoPoints,
     tags::{self, RawTag},
@@ -95,13 +93,16 @@ impl<'a> FwdIter<'a> {
         let (r, g) = tp.to_points();
         let point = r.min(text.len());
 
-        let ghost = g.and_then(|ghost| text.tags.ghosts_total_at(r.byte()).and(Some((ghost, 0))));
+        let ghost = g.and_then(|offset| {
+            let (_, max) = text.ghost_max_points_at(r.byte());
+            max.map(|max| (max.min(offset), 0))
+        });
 
         Self {
             text,
             point,
             init_point: point,
-            chars: buf_chars(&text.buf, point.byte()),
+            chars: buf_chars_fwd(text, point.byte()),
             tags: text.tags_fwd(point.byte()),
             conceals: 0,
 
@@ -143,7 +144,7 @@ impl<'a> FwdIter<'a> {
                 if !self.print_ghosts || b < self.point.byte() || self.conceals > 0 {
                     return true;
                 }
-                let text = self.text.tags.get_text(id).unwrap();
+                let text = self.text.get_ghost(*id).unwrap();
 
                 let (this_ghost, total_ghost) = if let Some((ghost, dist)) = &mut self.ghost {
                     if ghost.byte() >= *dist + text.len().byte() {
@@ -173,7 +174,7 @@ impl<'a> FwdIter<'a> {
                     // longer valid.
                     self.ghost.take_if(|_| self.point.byte() < b);
                     self.point = self.point.max(self.text.point_at(b));
-                    self.chars = buf_chars(&self.text.buf, self.point.byte());
+                    self.chars = buf_chars_fwd(self.text, self.point.byte());
                 }
             }
             RawTag::ConcealUntil(b) => {
@@ -264,16 +265,15 @@ impl<'a> RevIter<'a> {
         let point = r.min(text.len());
 
         let ghost = g.and_then(|offset| {
-            text.tags
-                .ghosts_total_at(r.byte())
-                .map(|ghost| (offset, ghost.byte()))
+            let (_, max) = text.ghost_max_points_at(r.byte());
+            max.map(|max| (max.min(offset), max.byte()))
         });
 
         Self {
             text,
             point,
             init_point: point,
-            chars: buf_chars_rev(&text.buf, point.byte()),
+            chars: buf_chars_rev(text, point.byte()),
             tags: text.tags_rev(point.byte()),
             conceals: 0,
 
@@ -304,7 +304,7 @@ impl<'a> RevIter<'a> {
                 if !self.print_ghosts || b > self.point.byte() || self.conceals > 0 {
                     return true;
                 }
-                let text = self.text.tags.get_text(id).unwrap();
+                let text = self.text.get_ghost(*id).unwrap();
 
                 let (ghost_b, offset) = if let Some((offset, dist)) = &mut self.ghost {
                     if *dist - text.len().byte() >= offset.byte() {
@@ -317,8 +317,8 @@ impl<'a> RevIter<'a> {
                     )
                 } else {
                     let this = text.len();
-                    let total = self.text.tags.ghosts_total_at(b);
-                    (this, total.unwrap())
+                    let (_, max) = self.text.ghost_max_points_at(b); 
+                    (this, max.unwrap())
                 };
 
                 let iter = text.iter_rev(ghost_b);
@@ -335,7 +335,7 @@ impl<'a> RevIter<'a> {
                 if self.conceals == 0 {
                     self.ghost.take_if(|_| b < self.point.byte());
                     self.point = self.point.min(self.text.point_at(b));
-                    self.chars = buf_chars_rev(&self.text.buf, self.point.byte());
+                    self.chars = buf_chars_rev(self.text, self.point.byte());
                 }
             }
             RawTag::EndConceal(_) => self.conceals += 1,
@@ -399,30 +399,14 @@ impl Iterator for RevIter<'_> {
     }
 }
 
-fn buf_chars(buf: &GapBuffer<u8>, b: usize) -> FwdChars {
-    unsafe {
-        let (slice_0, slice_1) = buf.as_slices();
-        let slice_0 = std::str::from_utf8_unchecked(slice_0);
-        let slice_1 = std::str::from_utf8_unchecked(slice_1);
-
-        let skip_0 = b.min(slice_0.len());
-        let skip_1 = b - skip_0;
-
-        slice_0[skip_0..].chars().chain(slice_1[skip_1..].chars())
-    }
+fn buf_chars_fwd(text: &Text, b: usize) -> FwdChars {
+    let [s0, s1] = text.strs(b..).to_array();
+    s0.chars().chain(s1.chars())
 }
 
-fn buf_chars_rev(buf: &GapBuffer<u8>, b: usize) -> RevChars {
-    unsafe {
-        let (slice_0, slice_1) = buf.as_slices();
-        let s0 = std::str::from_utf8_unchecked(slice_0);
-        let s1 = std::str::from_utf8_unchecked(slice_1);
-
-        let skip_0 = b.min(s0.len());
-        let skip_1 = b - skip_0;
-
-        s1[..skip_1].chars().rev().chain(s0[..skip_0].chars().rev())
-    }
+fn buf_chars_rev(text: &Text, b: usize) -> RevChars {
+    let [s0, s1] = text.strs(..b).to_array();
+    s1.chars().rev().chain(s0.chars().rev())
 }
 
 // To be rethought
