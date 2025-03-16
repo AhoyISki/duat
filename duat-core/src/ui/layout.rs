@@ -37,8 +37,7 @@ mod internals {
             .collect();
 
         files.sort_unstable_by_key(|(node, _)| {
-            node.inspect_as::<File, usize>(|f| f.layout_ordering)
-                .unwrap()
+            node.read_as::<File>().unwrap().layout_ordering
         });
 
         files

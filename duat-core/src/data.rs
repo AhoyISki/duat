@@ -482,28 +482,31 @@ impl<T: ?Sized> RwData<T> {
     /// ```
     ///
     /// [`RwData<dyn Trait>`]: RwData
-    pub fn inspect_as<U: 'static, R>(&self, f: impl FnOnce(&U) -> R) -> Option<R> {
-        (self.data_is::<U>()).then(|| {
-            let ptr = Arc::as_ptr(&self.data);
-            let cast = unsafe { ptr.cast::<Mutex<U>>().as_ref().unwrap() };
+    pub fn read_as<U: 'static>(&self) -> Option<ReadDataGuard<'_, U>> {
+        if !self.data_is::<U>() {
+            return None;
+        }
 
-            self.read_state
-                .store(self.cur_state.load(Ordering::Acquire), Ordering::Release);
-
-            f(&cast.lock())
-        })
+        self.read_state
+            .store(self.cur_state.load(Ordering::Acquire), Ordering::Release);
+        let ptr = Arc::as_ptr(&self.data) as *const Mutex<U>;
+        // SAFETY: Since this borrows this RwData, the Arc shouldn't be
+        // dropped while this guard exists
+        Some(ReadDataGuard(unsafe { ptr.as_ref().unwrap().lock() }))
     }
 
-    pub fn mutate_as<U: 'static, R>(&self, f: impl FnOnce(&mut U) -> R) -> Option<R> {
-        (self.data_is::<U>()).then(|| {
-            let ptr = Arc::as_ptr(&self.data);
-            let cast = unsafe { ptr.cast::<Mutex<U>>().as_ref().unwrap() };
+    pub fn write_as<U: 'static>(&self) -> Option<WriteDataGuard<'_, U>> {
+        if !self.data_is::<U>() {
+            return None;
+        }
 
-            self.read_state
-                .store(self.cur_state.load(Ordering::Acquire), Ordering::Release);
-
-            let mut guard = cast.lock();
-            f(&mut guard)
+        let ptr = Arc::as_ptr(&self.data) as *const Mutex<U>;
+        Some(WriteDataGuard {
+            // SAFETY: Since this borrows this RwData, the Arc shouldn't
+            // be dropped while this guard exists
+            guard: unsafe { ptr.as_ref().unwrap().lock() },
+            cur_state: &self.cur_state,
+            read_state: &self.read_state,
         })
     }
 

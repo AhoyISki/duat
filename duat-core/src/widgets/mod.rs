@@ -59,7 +59,7 @@ pub use self::{
 use crate::{
     cfg::PrintCfg,
     context::FileParts,
-    data::RwData,
+    data::{ReadDataGuard, RwData},
     form,
     hooks::{self, FocusedOn, UnfocusedFrom},
     mode::Cursors,
@@ -402,7 +402,7 @@ pub trait Widget<U: Ui>: Send + Sync + 'static {
     /// to simultaneously update the list of lines numbers, for
     /// widgets like [`LineNumbers`] to read.
     fn print(&mut self, area: &U::Area) {
-        //crate::log_file!("printing {}", crate::duat_name::<Self>());
+        // crate::log_file!("printing {}", crate::duat_name::<Self>());
         let cfg = self.print_cfg();
         area.print(self.text_mut(), cfg, form::painter::<Self>())
     }
@@ -452,6 +452,7 @@ where
 }
 
 // Elements related to the [`Widget`]s
+#[derive(Clone)]
 pub struct Node<U: Ui> {
     widget: RwData<dyn Widget<U>>,
     area: U::Area,
@@ -474,9 +475,9 @@ impl<U: Ui> Node<U> {
             widget: &RwData<dyn Widget<U>>,
             area: &U::Area,
         ) -> Option<RwData<Vec<Node<U>>>> {
-            widget.mutate_as(|f: &mut File| {
-                let cfg = f.print_cfg();
-                f.text_mut().add_cursors(area, cfg);
+            widget.write_as::<File>().map(|mut file| {
+                let cfg = file.print_cfg();
+                file.text_mut().add_cursors(area, cfg);
                 RwData::default()
             })
         }
@@ -538,8 +539,8 @@ impl<U: Ui> Node<U> {
         self.busy_updating.store(false, Ordering::Release);
     }
 
-    pub fn inspect_as<W: 'static, B>(&self, f: impl FnOnce(&W) -> B) -> Option<B> {
-        self.widget.inspect_as(f)
+    pub fn read_as<W: 'static>(&self) -> Option<ReadDataGuard<'_, W>> {
+        self.widget.read_as()
     }
 
     pub fn ptr_eq<W: ?Sized>(&self, other: &RwData<W>) -> bool {
@@ -603,20 +604,6 @@ impl<U: Ui> Node<U> {
     fn on_unfocus_fn<W: Widget<U>>(&self) {
         let widget = self.widget.try_downcast().unwrap();
         hooks::trigger::<UnfocusedFrom<W, U>>((widget, self.area.clone()));
-    }
-}
-
-impl<U: Ui> Clone for Node<U> {
-    fn clone(&self) -> Self {
-        Self {
-            widget: self.widget.clone(),
-            area: self.area.clone(),
-            checker: self.checker.clone(),
-            busy_updating: self.busy_updating.clone(),
-            related_widgets: self.related_widgets.clone(),
-            on_focus: self.on_focus,
-            on_unfocus: self.on_unfocus,
-        }
     }
 }
 

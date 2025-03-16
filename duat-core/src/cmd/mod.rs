@@ -232,18 +232,18 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
         let windows = context::windows::<U>().read();
         let (win, wid, file) = file_entry(&windows, name).unwrap();
 
-        if file
-            .widget()
-            .inspect_as(|f: &File| f.text().has_unsaved_changes() && f.exists())
-            .unwrap()
-        {
+        let has_unsaved_changes = {
+            let file = file.read_as::<File>().unwrap();
+            file.text().has_unsaved_changes() && file.exists()
+        };
+        if has_unsaved_changes {
             return Err(err!([*a] name [] " has unsaved changes"));
         }
 
         // If we are on the current File, switch to the next one.
         if name == cur_name {
             let Some(next_name) = iter_around::<U>(&windows, win, wid)
-                .find_map(|(.., node)| node.inspect_as(File::name))
+                .find_map(|(.., node)| node.read_as::<File>().map(|f| f.name()))
             else {
                 sender().send(DuatEvent::Quit).unwrap();
                 return Ok(None);
@@ -271,7 +271,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
 
         if name == cur_name {
             let Some(next_name) = iter_around::<U>(&windows, win, wid)
-                .find_map(|(.., node)| node.inspect_as(File::name))
+                .find_map(|(.., node)| node.read_as::<File>().map(|f| f.name()))
             else {
                 sender().send(DuatEvent::Quit).unwrap();
                 return Ok(None);
@@ -290,8 +290,10 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
         let unwritten = windows
             .iter()
             .flat_map(Window::file_nodes)
-            .filter(|(node, _)| node.widget().inspect_as(File::exists).unwrap())
-            .filter(|(node, _)| node.widget().read().text().has_unsaved_changes())
+            .filter(|(node, _)| {
+                let file = node.read_as::<File>().unwrap();
+                file.exists() && file.text().has_unsaved_changes()
+            })
             .count();
 
         if unwritten == 0 {
@@ -346,8 +348,8 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
 
         let (win, wid, file) = file_entry(&windows, &name).unwrap();
 
-        let Some(next_name) =
-            iter_around::<U>(&windows, win, wid).find_map(|(.., node)| node.inspect_as(File::name))
+        let Some(next_name) = iter_around::<U>(&windows, win, wid)
+            .find_map(|(.., node)| node.read_as::<File>().map(|f| f.name()))
         else {
             sender().send(DuatEvent::Quit).unwrap();
             return Ok(None);
@@ -368,10 +370,13 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
         let file_count = windows
             .iter()
             .flat_map(Window::file_nodes)
-            .filter(|(node, _)| node.widget().inspect_as(File::path_set).flatten().is_some())
-            .inspect(|(node, _)| {
+            .filter(|(node, _)| {
                 node.widget()
-                    .mutate_as(|f: &mut File| written += f.write().is_ok() as usize);
+                    .read_as::<File>()
+                    .is_some_and(|f| f.path_set().is_some())
+            })
+            .inspect(|(node, _)| {
+                written += node.widget().write_as::<File>().unwrap().write().is_ok() as usize;
             })
             .count();
 
@@ -391,10 +396,13 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
         let file_count = windows
             .iter()
             .flat_map(Window::file_nodes)
-            .filter(|(node, _)| node.widget().inspect_as(File::path_set).flatten().is_some())
-            .inspect(|(node, _)| {
+            .filter(|(node, _)| {
                 node.widget()
-                    .mutate_as(|f: &mut File| written += f.write().is_ok() as usize);
+                    .read_as::<File>()
+                    .is_some_and(|f| f.path_set().is_some())
+            })
+            .inspect(|(node, _)| {
+                written += node.widget().write_as::<File>().unwrap().write().is_ok() as usize;
             })
             .count();
 
@@ -414,9 +422,9 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
         windows
             .iter()
             .flat_map(Window::file_nodes)
-            .filter(|(node, _)| node.widget().inspect_as(File::path_set).flatten().is_some())
-            .for_each(|(node, _)| {
-                node.widget().mutate_as(File::write);
+            .filter_map(|(node, _)| node.widget().write_as::<File>())
+            .for_each(|mut file| {
+                let _ = file.write();
             });
 
         sender().send(DuatEvent::Quit).unwrap();
@@ -481,12 +489,12 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
 
         let name = if flags.word("global") {
             iter_around::<U>(&windows, win, wid)
-                .find_map(|(.., node)| node.inspect_as(File::name))
+                .find_map(|(.., node)| node.read_as::<File>().map(|f| f.name()))
                 .ok_or_else(|| err!("There are no other open files"))?
         } else {
             let slice = &windows[win..=win];
             iter_around(slice, 0, wid)
-                .find_map(|(.., node)| node.inspect_as(File::name))
+                .find_map(|(.., node)| node.read_as::<File>().map(|f| f.name()))
                 .ok_or_else(|| err!("There are no other files open in this window"))?
         };
 
@@ -506,12 +514,12 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
 
         let name = if flags.word("global") {
             iter_around_rev::<U>(&windows, w, widget_i)
-                .find_map(|(.., node)| node.inspect_as(File::name))
+                .find_map(|(.., node)| node.read_as::<File>().map(|f| f.name()))
                 .ok_or_else(|| err!("There are no other open files"))?
         } else {
             let slice = &windows[w..=w];
             iter_around_rev(slice, 0, widget_i)
-                .find_map(|(.., node)| node.inspect_as(File::name))
+                .find_map(|(.., node)| node.read_as::<File>().map(|f| f.name()))
                 .ok_or_else(|| err!("There are no other files open in this window"))?
         };
 
@@ -1195,7 +1203,7 @@ impl Commands {
 
                     let (.., node) = widget_entry::<W, U>(&windows, w)?;
                     let (w, a, _) = node.parts();
-                    w.mutate_as(|w| cmd(w, a, args)).unwrap()
+                    cmd(&mut w.write_as().unwrap(), a, args)
                 })
         });
 

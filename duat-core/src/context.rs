@@ -218,13 +218,13 @@ impl<U: Ui> CurFile<U> {
 
         let rel = rel.read();
         if file.data_is::<W>() {
-            file.mutate_as(|w| f(w, area))
+            file.write_as().map(|mut w| f(&mut w, area))
         } else {
             rel.iter()
                 .find(|node| node.data_is::<W>())
                 .and_then(|node| {
                     let (widget, area, _) = node.parts();
-                    widget.mutate_as(|w| f(w, area))
+                    widget.write_as().map(|mut w| f(&mut w, area))
                 })
         }
     }
@@ -282,13 +282,13 @@ impl<U: Ui> FixedFile<U> {
         let (file, _, related) = &self.0;
 
         if file.data_is::<W>() {
-            file.inspect_as(f)
+            file.read_as().map(|w| f(&w))
         } else {
             let related = related.read();
             related
                 .iter()
                 .find(|node| node.data_is::<W>())
-                .and_then(|w| w.inspect_as(f))
+                .and_then(|w| w.read_as().map(|w| f(&w)))
         }
     }
 }
@@ -362,13 +362,13 @@ impl<U: Ui> DynamicFile<U> {
         let (file, _, related) = &self.parts;
 
         if file.data_is::<T>() {
-            file.inspect_as(f)
+            file.read_as().map(|w| f(&w))
         } else {
             let related = related.read();
             related
                 .iter()
                 .find(|node| node.data_is::<T>())
-                .and_then(|w| w.inspect_as(f))
+                .and_then(|w| w.read_as().map(|w| f(&w)))
         }
     }
 }
@@ -443,7 +443,7 @@ impl<U: Ui> CurWidget<U> {
         let data = self.0.raw_read();
         let (widget, area, _) = data.as_ref().unwrap().parts();
 
-        widget.inspect_as(|widget| f(widget, area))
+        widget.read_as().map(|widget| f(&widget, area))
     }
 
     pub(crate) fn mutate_data<R>(

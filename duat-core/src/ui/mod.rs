@@ -357,8 +357,8 @@ impl<U: Ui> Window<U> {
     ) -> (Self, Node<U>) {
         let widget = RwData::<dyn Widget<U>>::new_unsized::<W>(Arc::new(Mutex::new(widget)));
 
-        let cache = if let Some(path) = widget.inspect_as(|file: &File| file.path())
-            && let Some(cache) = load_cache::<<U::Area as Area>::Cache>(path)
+        let cache = if let Some(file) = widget.read_as::<File>()
+            && let Some(cache) = load_cache::<<U::Area as Area>::Cache>(file.path())
         {
             cache
         } else {
@@ -400,8 +400,8 @@ impl<U: Ui> Window<U> {
     ) -> (Node<U>, Option<U::Area>) {
         let widget = RwData::<dyn Widget<U>>::new_unsized::<W>(Arc::new(Mutex::new(widget)));
 
-        let cache = if let Some(path) = widget.inspect_as::<File, String>(|file| file.path())
-            && let Some(cache) = load_cache::<<U::Area as Area>::Cache>(path)
+        let cache = if let Some(file) = widget.read_as::<File>()
+            && let Some(cache) = load_cache::<<U::Area as Area>::Cache>(file.path())
         {
             cache
         } else {
@@ -479,10 +479,7 @@ impl<U: Ui> Window<U> {
     /// Takes all [`Node`]s related to a given [`Node`]
     pub(crate) fn take_file_and_related_nodes(&mut self, node: &Node<U>) -> Vec<Node<U>> {
         if let Some(related) = node.related_widgets() {
-            let layout_ordering = node
-                .widget()
-                .inspect_as(|f: &File| f.layout_ordering)
-                .unwrap();
+            let layout_ordering = node.widget().read_as::<File>().unwrap().layout_ordering;
 
             let nodes = related.read();
             let nodes = self
@@ -491,11 +488,11 @@ impl<U: Ui> Window<U> {
                 .collect();
 
             for node in &self.nodes {
-                node.widget().mutate_as(|f: &mut File| {
-                    if f.layout_ordering > layout_ordering {
-                        f.layout_ordering -= 1;
+                if let Some(mut file) = node.widget().write_as::<File>() {
+                    if file.layout_ordering > layout_ordering {
+                        file.layout_ordering -= 1;
                     }
-                });
+                }
             }
 
             nodes
@@ -507,12 +504,11 @@ impl<U: Ui> Window<U> {
     pub(crate) fn insert_file_nodes(&mut self, layout_ordering: usize, nodes: Vec<Node<U>>) {
         if let Some(i) = self.nodes.iter().position(|node| {
             node.widget()
-                .inspect_as(|f: &File| f.layout_ordering)
-                .is_some_and(|lo| lo >= layout_ordering)
+                .read_as::<File>()
+                .is_some_and(|file| file.layout_ordering >= layout_ordering)
         }) {
             for node in self.nodes[i..].iter() {
-                node.widget()
-                    .mutate_as(|f: &mut File| f.layout_ordering += 1);
+                node.widget().write_as::<File>().unwrap().layout_ordering += 1;
             }
             self.nodes.splice(i..i, nodes);
         } else {
@@ -531,14 +527,14 @@ impl<U: Ui> Window<U> {
     pub fn file_names(&self) -> Vec<String> {
         window_files(&self.nodes)
             .into_iter()
-            .map(|f| f.0.widget().inspect_as(|f: &File| f.name()).unwrap())
+            .map(|f| f.0.widget().read_as::<File>().unwrap().name())
             .collect()
     }
 
     pub fn file_paths(&self) -> Vec<String> {
         window_files(&self.nodes)
             .into_iter()
-            .map(|f| f.0.widget().inspect_as(|f: &File| f.path()).unwrap())
+            .map(|f| f.0.widget().read_as::<File>().unwrap().name())
             .collect()
     }
 

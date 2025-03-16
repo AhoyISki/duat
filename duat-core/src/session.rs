@@ -417,7 +417,7 @@ impl<U: Ui> Session<U> {
             let (lhs_win, _, lhs) = file_entry(&windows, &name).unwrap();
             let lhs = lhs.clone();
 
-            let ordering = lhs.inspect_as(|f: &File| f.layout_ordering).unwrap();
+            let ordering = lhs.read_as::<File>().unwrap().layout_ordering;
 
             let nodes: Vec<Node<U>> = windows[lhs_win].file_nodes()[(ordering + 1)..]
                 .iter()
@@ -471,8 +471,7 @@ impl<U: Ui> Session<U> {
         if let Ok((win, .., node)) = file_entry(&windows, &name) {
             // Take the nodes in the original Window
             let node = node.clone();
-            node.widget()
-                .mutate_as(|f: &mut File| f.layout_ordering = 0);
+            node.widget().write_as::<File>().unwrap().layout_ordering = 0;
             let nodes = windows[win].take_file_and_related_nodes(&node);
             let layout = (self.layout_fn)();
 
@@ -483,9 +482,9 @@ impl<U: Ui> Session<U> {
             windows.push(window);
 
             // Swap the Files ahead of the swapped new_root
-            let ordering = node.inspect_as(|f: &File| f.layout_ordering).unwrap();
+            let lo = node.read_as::<File>().unwrap().layout_ordering;
 
-            for (node, _) in &windows[win].file_nodes()[ordering..] {
+            for (node, _) in &windows[win].file_nodes()[lo..] {
                 new_root.swap(node.area(), DuatPermission::new());
             }
             drop(windows);
@@ -521,16 +520,12 @@ impl<U: Ui> Session<U> {
 }
 
 fn swap<U: Ui>(windows: &mut [Window<U>], [lhs_w, rhs_w]: [usize; 2], [lhs, rhs]: [&Node<U>; 2]) {
-    let rhs_ordering = rhs
-        .widget()
-        .inspect_as::<File, usize>(|f| f.layout_ordering)
-        .unwrap();
-    let lhs_ordering = lhs
-        .widget()
-        .mutate_as::<File, usize>(|f| std::mem::replace(&mut f.layout_ordering, rhs_ordering))
-        .unwrap();
-    rhs.widget()
-        .mutate_as::<File, ()>(|f| f.layout_ordering = lhs_ordering);
+    let rhs_ordering = rhs.widget().read_as::<File>().unwrap().layout_ordering;
+    let lhs_ordering = std::mem::replace(
+        &mut lhs.widget().write_as::<File>().unwrap().layout_ordering,
+        rhs_ordering,
+    );
+    rhs.widget().write_as::<File>().unwrap().layout_ordering = lhs_ordering;
 
     let lhs_nodes = windows[lhs_w].take_file_and_related_nodes(lhs);
     windows[rhs_w].insert_file_nodes(rhs_ordering, lhs_nodes);

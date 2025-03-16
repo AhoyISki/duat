@@ -78,7 +78,6 @@ mod reader;
 mod records;
 mod search;
 mod tags;
-mod treesitter;
 
 use std::{
     ops::Range,
@@ -90,8 +89,6 @@ use std::{
     },
 };
 
-pub use gapbuf::GapBuffer;
-
 pub(crate) use self::history::History;
 pub use self::{
     builder::{AlignCenter, AlignLeft, AlignRight, Builder, Ghost, Spacer, err, hint, ok, text},
@@ -99,10 +96,9 @@ pub use self::{
     history::Change,
     iter::{FwdIter, Item, Part, RevIter},
     ops::{Point, TextRange, TwoPoints, utf8_char_width},
-    reader::{Reader, ReaderCfg},
+    reader::{MutTags, Reader, ReaderCfg},
     search::{Matcheable, RegexPattern, Searcher},
     tags::{Key, Keys, Tag, ToggleId},
-    treesitter::TsParser,
 };
 use self::{
     reader::Readers,
@@ -961,34 +957,11 @@ impl From<std::io::Error> for Text {
     }
 }
 
-/// Splits a range within a region
-///
-/// The first return is the part of `within` that must be updated.
-/// The second return is what is left of `range`.
-///
-/// If `range` is fully inside `within`, remove `range`;
-/// If `within` is fully inside `range`, split `range` in 2;
-/// If `within` intersects `range` in one side, chop it off;
-fn split_range_within(
-    range: Range<usize>,
-    within: Range<usize>,
-) -> (Option<Range<usize>>, [Option<Range<usize>>; 2]) {
-    if range.start >= within.end || within.start >= range.end {
-        (None, [Some(range), None])
-    } else {
-        let start_range = (within.start > range.start).then_some(range.start..within.start);
-        let end_range = (range.end > within.end).then_some(within.end..range.end);
-        let split_ranges = [start_range, end_range];
-        let range_to_check = range.start.max(within.start)..(range.end.min(within.end));
-        (Some(range_to_check), split_ranges)
-    }
-}
-
-/// Merges a new range in a sorted list of ranges
+/// Merges a range in a sorted list of ranges, useful in [`Reader`]s
 ///
 /// Since ranges are not allowed to intersect, they will be sorted
 /// both in their starting bound and in their ending bound.
-fn merge_range_in(ranges: &mut Vec<Range<usize>>, range: Range<usize>) {
+pub fn merge_range_in(ranges: &mut Vec<Range<usize>>, range: Range<usize>) {
     let (r_range, start) = match ranges.binary_search_by_key(&range.start, |r| r.start) {
         // Same thing here
         Ok(i) => (i..i + 1, range.start),
@@ -1021,6 +994,29 @@ fn merge_range_in(ranges: &mut Vec<Range<usize>>, range: Range<usize>) {
     };
 
     ranges.splice(r_range, [start..end]);
+}
+
+/// Splits a range within a region
+///
+/// The first return is the part of `within` that must be updated.
+/// The second return is what is left of `range`.
+///
+/// If `range` is fully inside `within`, remove `range`;
+/// If `within` is fully inside `range`, split `range` in 2;
+/// If `within` intersects `range` in one side, chop it off;
+fn split_range_within(
+    range: Range<usize>,
+    within: Range<usize>,
+) -> (Option<Range<usize>>, [Option<Range<usize>>; 2]) {
+    if range.start >= within.end || within.start >= range.end {
+        (None, [Some(range), None])
+    } else {
+        let start_range = (within.start > range.start).then_some(range.start..within.start);
+        let end_range = (range.end > within.end).then_some(within.end..range.end);
+        let split_ranges = [start_range, end_range];
+        let range_to_check = range.start.max(within.start)..(range.end.min(within.end));
+        (Some(range_to_check), split_ranges)
+    }
 }
 
 /// A list of [`Tag`]s to be added with a [`Cursor`]

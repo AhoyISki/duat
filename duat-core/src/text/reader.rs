@@ -10,8 +10,8 @@
 use std::{any::TypeId, ops::Range};
 
 use super::{
-    Bytes, Change, Key, Keys, Tag, Text, TextRange, TsParser, err, merge_range_in,
-    split_range_within, tags::Tags,
+    Bytes, Change, Key, Keys, Tag, Text, TextRange, err, merge_range_in, split_range_within,
+    tags::Tags,
 };
 
 /// A [`Text`] reader, modifying it whenever a [`Change`] happens
@@ -157,12 +157,8 @@ impl Readers {
             );
         }
 
-        let reader = reader_cfg.init(bytes, MutTags(tags))?;
-
-        if TypeId::of::<R::Reader>() == TypeId::of::<TsParser>() {
-            self.0
-                .push((Box::new(reader), Vec::new(), TypeId::of::<R::Reader>()));
-        }
+        let reader = Box::new(reader_cfg.init(bytes, MutTags(tags))?);
+        self.0.push((reader, Vec::new(), TypeId::of::<R::Reader>()));
         Ok(())
     }
 
