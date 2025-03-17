@@ -1,12 +1,14 @@
-//! A tree-sitter implementation for Duat
+//! A [tree-sitter] implementation for Duat
 //!
 //! `duat-treesitter` currently does two things:
 //!
-//! * Syntax hightlighting
+//! * Syntax highlighting
 //! * Indentation calculation
 //!
 //! Both of those things are done through the [`TsParser`] reader,
 //! with the [`PubTsParser`] public API.
+//!
+//! [tree-sitter]: https://tree-sitter.github.io/tree-sitter
 #![feature(decl_macro, let_chains)]
 use std::{collections::HashMap, marker::PhantomData, ops::Range, path::Path, sync::LazyLock};
 
@@ -25,6 +27,23 @@ use tree_sitter::{
     InputEdit, Language, Node, Parser, Point as TSPoint, Query, QueryCursor, TextProvider, Tree,
 };
 
+/// The [tree-sitter] pluging for Duat
+///
+/// For now, it adds syntax highlighting and indentation, but more
+/// features will be coming in the future.
+///
+/// These things are done through the [`TsParser`] [`Reader`], which
+/// reads updates the inner syntax tree when the [`Text`] reports any
+/// changes.
+///
+/// # NOTE
+///
+/// If you are looking to create a [`Reader`] which can do similar
+/// things, you should look at the code for the implementation of
+/// [`Reader`] for [`TsParser`], it's relatively short and with good
+/// explanations for what is happening.
+///
+/// [tree-sitter]: https://tree-sitter.github.io/tree-sitter
 pub struct TreeSitter<U>(PhantomData<U>);
 
 impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter<U> {
@@ -60,6 +79,8 @@ impl TsParser {
 impl Reader for TsParser {
     type PublicReader<'a> = PubTsParser<'a>;
 
+    // `apply_changes` is not meant to modify the `Text`, it is only meant
+    // to update the internal state of the `Reader`.
     fn apply_changes(&mut self, bytes: &mut Bytes, changes: &[Change<&str>]) {
         for change in changes {
             let start = change.start();
@@ -69,6 +90,7 @@ impl Reader for TsParser {
             let ts_start = ts_point(start, bytes);
             let ts_taken_end = ts_point_from(taken, (ts_start.column, start), change.taken_text());
             let ts_added_end = ts_point_from(added, (ts_start.column, start), change.added_text());
+            // Tree::edit will update the inner tree to reflect changes.
             self.tree.edit(&InputEdit {
                 start_byte: start.byte(),
                 old_end_byte: taken.byte(),
@@ -83,9 +105,17 @@ impl Reader for TsParser {
             .parser
             .parse_with_options(&mut buf_parse(bytes), Some(&self.tree), None)
             .unwrap();
+        // I keep an old tree around, in order to compare it for tagging
+        // purposes.
         self.old_tree = Some(std::mem::replace(&mut self.tree, tree));
     }
 
+    // `ranges_to_update` takes the information stored in `apply_changes`
+    // and returns a `Range<usize>` of byte indexes that need to be
+    // updated.
+    // This is done for efficiency reasons, but you don't _have_ to
+    // implement this function. If you don't, it will be assumed that the
+    // whole `Text` needs updates.
     fn ranges_to_update(
         &mut self,
         bytes: &mut Bytes,
@@ -96,7 +126,8 @@ impl Reader for TsParser {
         let mut cursor = QueryCursor::new();
         let buf = TsBuf(bytes);
 
-        let mut to_update = Vec::new();
+        let mut ranges = Vec::new();
+        let mut checked_points = Vec::new();
 
         for change in changes {
             let start = change.start();
@@ -104,13 +135,18 @@ impl Reader for TsParser {
             let start = bytes.point_at_line(start.line()).byte();
             let end = bytes.point_at_line(added.line() + 1).byte();
 
+            // Don't check the same region twice.
+            if checked_points.contains(&(start, end)) {
+                continue;
+            }
+
             // Add one to the start and end, in order to include comments, since
             // those act a little weird in tree sitter.
             let ts_start = start.saturating_sub(1);
             let ts_end = (end + 1).min(bytes.len().byte());
             cursor.set_byte_range(ts_start..ts_end);
 
-            let mut this_to_update = Vec::new();
+            let mut ml_ranges = Vec::new();
 
             // The next two loops concern themselves with determining what regions
             // of the file have been altered.
@@ -122,7 +158,7 @@ impl Reader for TsParser {
                 for cap in query_match.captures.iter() {
                     let range = cap.node.range();
                     if range.start_point.row != range.end_point.row {
-                        this_to_update.push((range, cap.index));
+                        ml_ranges.push((range, cap.index));
                     }
                 }
             }
@@ -139,28 +175,31 @@ impl Reader for TsParser {
                     // file ahead must be checked, as ml ranges like strings will always
                     // alter every subsequent line in the file.
                     if range.start_point.row != range.end_point.row
-                        && this_to_update
-                            .extract_if(.., |r| *r == entry)
-                            .next()
-                            .is_none()
+                        && ml_ranges.extract_if(.., |r| *r == entry).next().is_none()
                     {
-                        this_to_update.push(entry);
+                        ml_ranges.push(entry);
                         break 'ml_range_edited;
                     }
                 }
             }
-            if this_to_update.is_empty() {
-                merge_range_in(&mut to_update, start..end)
+
+            if ml_ranges.is_empty() {
+                // `merge_range_in` is a useful function for the
+                // `Reader::ranges_to_update`, it just merges a range into a list of
+                // sorted ranges, returning in the exact format that Duat needs
+                merge_range_in(&mut ranges, start..end)
             } else {
                 // Considering that all ranges are coming in order, we can just
                 // disregard the updates from the other ranges, since they will belong
                 // to this one.
-                merge_range_in(&mut to_update, start..bytes.len().byte());
+                merge_range_in(&mut ranges, start..bytes.len().byte());
                 break;
             }
+
+            checked_points.push((start, end));
         }
 
-        to_update
+        ranges
     }
 
     fn update_range(&mut self, bytes: &mut Bytes, mut tags: MutTags, range: Range<usize>) {
@@ -567,11 +606,7 @@ fn lang_parts(path: impl AsRef<Path>) -> Option<LangParts<'static>> {
             Box::leak(Box::new($lang::language()))
         }
         macro h($lang:ident) {{
-            let hi = include_str!(concat!(
-                "../queries/",
-                stringify!($lang),
-                "/highlights.scm"
-            ));
+            let hi = include_str!(concat!("../queries/", stringify!($lang), "/highlights.scm"));
             [hi, ""]
         }}
         macro i($lang:ident) {

@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-duat-core = { version = ">=0.3.0", path = "../duat/duat-core" }
 streaming-iterator = "0.1.9"
 tree-sitter = "0.25.3"
 
@@ -46,6 +45,11 @@ ts-gleam      = { version = "1.0.0",   package = "tree-sitter-gleam" }
 ts-yaml       = { version = "0.7.0",   package = "tree-sitter-yaml" } 
 ts-zig        = { version = "1.1.2",   package = "tree-sitter-zig" } 
 ts-scss       = { version = "1.0.0",   package = "tree-sitter-scss" } 
+
+[duat-core]
+path = "../duat/duat-core"
+git = "https://github.com/AhoyISki/duat"
+version = "0.3.0"
 
 [build-dependencies]
 cc = "1.1.16"
