@@ -72,11 +72,11 @@ fn setup() {
         // Pushes a StatusLine to the bottom
         builder.push(status!([Mode] mode_upper Spacer file_fmt " " selections_fmt " " main_fmt));
         // Pushes a CmdLine to the bottom
-        builder.push(CmdLine::cfg());
+        let (child, _) = builder.push(CmdLine::cfg());
         // Pushes a Notifications to the bottom
         // The CmdLine widget has a hook that "hides" the Notifications widget
         // when CmdLine is in focus, this makes them "occupy the same space"
-        builder.push(Notifications::cfg());
+        builder.push_to(Notifications::cfg(), child);
     });
     // // See what happens when you uncomment this hook removal:
     // hooks::remove("HideCmdLine");

@@ -19,7 +19,7 @@ fn main() -> std::io::Result<()> {
 
     let dest = config_path.join("duat");
 
-    if dest.exists() {
+    if dest.try_exists()? {
         return Ok(());
     }
 
@@ -31,7 +31,7 @@ fn main() -> std::io::Result<()> {
         unsafe { str::from_utf8_unchecked(TOML) }.to_string()
     } else {
         unsafe { str::from_utf8_unchecked(TOML) }
-            .lines()
+            .split_inclusive('\n')
             .filter(|l| !l.contains("git = \""))
             .collect()
     };
@@ -39,19 +39,6 @@ fn main() -> std::io::Result<()> {
     let mut toml = File::create(dest.join("Cargo.toml"))?;
     toml.write_all(cut_toml.as_bytes()).unwrap();
     toml.write_all(UI_TO_USE).unwrap();
-
-    let toml_path = dest.join("src/Cargo.toml");
-    println!("\nCompiling config crate:\n");
-
-    let mut cmd = std::process::Command::new("cargo");
-    cmd.args([
-        "build",
-        "--release",
-        "--manifest-path",
-        toml_path.to_str().unwrap(),
-    ])
-    .spawn()?
-    .wait()?;
 
     Ok(())
 }

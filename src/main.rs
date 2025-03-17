@@ -1,6 +1,7 @@
 #![feature(decl_macro, let_chains)]
 
 use std::{
+    io::{Read, Write},
     path::{Path, PathBuf},
     process::{Command, Output},
     sync::{
@@ -83,7 +84,7 @@ fn main() {
 
     if cfg!(debug_assertions) {
         let toml_path = crate_dir.join("Cargo.toml");
-        if run_cargo(toml_path, false).is_err() {
+        if run_cargo(toml_path, false, true).is_err() {
             let msg = err!("Failed to compile " [*a] "config" [] " crate");
             duat_tx.send(DuatEvent::MetaMsg(Box::new(msg))).unwrap();
         }
@@ -91,16 +92,21 @@ fn main() {
 
     let mut prev = Vec::new();
 
-    Ui::open(&MS, ui::Sender::new(duat_tx));
-
     let mut lib = {
         let so_path = crate_dir.join(if cfg!(debug_assertions) {
             "target/debug/libconfig.so"
         } else {
             "target/release/libconfig.so"
         });
+        if let Ok(false) | Err(_) = so_path.try_exists() {
+            print!("Compiling config crate in release mode");
+            let toml_path = crate_dir.join("Cargo.toml");
+            run_cargo(toml_path, true, true).expect("Failed to compile config crate");
+        }
         ElfLibrary::dlopen(so_path, OpenFlags::RTLD_NOW | OpenFlags::RTLD_LOCAL).ok()
     };
+
+    Ui::open(&MS, ui::Sender::new(duat_tx));
 
     loop {
         let run_lib = lib.take();
@@ -146,7 +152,7 @@ fn reload_config(
     let msg = hint!("Began " [*a] "config" [] " compilation");
     duat_tx.send(DuatEvent::MetaMsg(Box::new(msg))).unwrap();
     let toml_path = crate_dir.join("Cargo.toml");
-    if let Ok(out) = run_cargo(toml_path, on_release)
+    if let Ok(out) = run_cargo(toml_path, on_release, false)
         && out.status.success()
     {
         reload_tx.send((so_path, start, on_release)).unwrap();
@@ -159,7 +165,7 @@ fn reload_config(
     }
 }
 
-fn run_cargo(toml_path: PathBuf, on_release: bool) -> Result<Output, std::io::Error> {
+fn run_cargo(toml_path: PathBuf, on_release: bool, print: bool) -> Result<Output, std::io::Error> {
     let mut cargo = Command::new("cargo");
     cargo.args([
         "build",
@@ -175,7 +181,29 @@ fn run_cargo(toml_path: PathBuf, on_release: bool) -> Result<Output, std::io::Er
     #[cfg(feature = "deadlocks")]
     cargo.args(["--features", "deadlocks"]);
 
-    cargo.output()
+    if print {
+        let mut child = cargo.stdout(std::process::Stdio::piped()).spawn()?;
+
+        let mut buf = [0u8; 100];
+        let mut stdout = child.stdout.take().unwrap();
+        let mut print_stdout = || -> Result<usize, std::io::Error> {
+            let read = stdout.read(&mut buf)?;
+
+            println!("{}", std::str::from_utf8(&buf[0..read]).unwrap());
+            Ok(read)
+        };
+        print_stdout()?;
+
+        while child.try_wait()?.is_none() {
+            print_stdout()?;
+        }
+
+        let out = child.wait_with_output()?;
+        print_stdout()?;
+        Ok(out)
+    } else {
+        cargo.output()
+    }
 }
 
 fn find_run_duat(lib: &Dylib) -> Option<Symbol<RunFn>> {

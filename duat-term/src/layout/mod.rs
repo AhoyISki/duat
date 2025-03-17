@@ -283,7 +283,7 @@ fn get_eqs(
     let mut hor_eqs = Vec::new();
 
     for ((con, axis), is_manual) in cons {
-        let strength = STRONG + if is_manual { 10.0 } else { 1.0 };
+        let strength = STRONG + if is_manual { 2.0 } else { 1.0 };
         let eq = match con {
             Constraint::Ratio(num, den) => {
                 let (_, ancestor) = rects.get_ancestor_on(axis, parent).unwrap();
