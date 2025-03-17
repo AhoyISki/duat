@@ -36,7 +36,7 @@
 //!
 //! ```text
 //! git clone https://github.com/AhoyISki/duat
-//! cargo install --path duat
+//! cargo install --path duat --features git-deps
 //! ```
 //!
 //! ## Configuration

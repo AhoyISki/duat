@@ -593,7 +593,7 @@ pub enum DuatEvent {
     Key(KeyEvent),
     Resize,
     FormChange,
-    MetaMsg(Box<Text>),
+    MetaMsg(Text),
     ReloadConfig,
     OpenFile(String),
     CloseFile(String),

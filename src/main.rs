@@ -1,7 +1,7 @@
 #![feature(decl_macro, let_chains)]
 
 use std::{
-    io::{Read, Write},
+    io::Read,
     path::{Path, PathBuf},
     process::{Command, Output},
     sync::{
@@ -86,7 +86,7 @@ fn main() {
         let toml_path = crate_dir.join("Cargo.toml");
         if run_cargo(toml_path, false, true).is_err() {
             let msg = err!("Failed to compile " [*a] "config" [] " crate");
-            duat_tx.send(DuatEvent::MetaMsg(Box::new(msg))).unwrap();
+            duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
         }
     }
 
@@ -99,9 +99,19 @@ fn main() {
             "target/release/libconfig.so"
         });
         if let Ok(false) | Err(_) = so_path.try_exists() {
-            print!("Compiling config crate in release mode");
+            println!("Compiling config crate for the first time, this might take a while...");
             let toml_path = crate_dir.join("Cargo.toml");
-            run_cargo(toml_path, true, true).expect("Failed to compile config crate");
+            run_cargo(toml_path.clone(), true, true).expect("Failed to compile config crate");
+            let duat_tx = duat_tx.clone();
+            std::thread::spawn(move || {
+                // Also compile it in debug mode, to speed up recompilation.
+                run_cargo(toml_path, false, false).unwrap();
+                duat_tx
+                    .send(DuatEvent::MetaMsg(
+                        hint!("Compiled " [*a] "debug" [] " profile"),
+                    ))
+                    .unwrap();
+            });
         }
         ElfLibrary::dlopen(so_path, OpenFlags::RTLD_NOW | OpenFlags::RTLD_LOCAL).ok()
     };
@@ -124,7 +134,7 @@ fn main() {
             let profile = if on_release { "Release" } else { "Debug" };
             let secs = format!("{:.2}", start.elapsed().as_secs_f32());
             let msg = ok!([*a] profile [] " profile reloaded in " [*a] secs "s");
-            duat_tx.send(DuatEvent::MetaMsg(Box::new(msg))).unwrap();
+            duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
             lib = ElfLibrary::dlopen(so_path, OpenFlags::RTLD_NOW | OpenFlags::RTLD_LOCAL).ok();
         } else {
             break;
@@ -150,7 +160,7 @@ fn reload_config(
     });
 
     let msg = hint!("Began " [*a] "config" [] " compilation");
-    duat_tx.send(DuatEvent::MetaMsg(Box::new(msg))).unwrap();
+    duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
     let toml_path = crate_dir.join("Cargo.toml");
     if let Ok(out) = run_cargo(toml_path, on_release, false)
         && out.status.success()
@@ -160,7 +170,7 @@ fn reload_config(
         true
     } else {
         let msg = err!("Failed to compile " [*a] "config" [] " crate");
-        duat_tx.send(DuatEvent::MetaMsg(Box::new(msg))).unwrap();
+        duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
         false
     }
 }

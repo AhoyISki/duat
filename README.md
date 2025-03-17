@@ -38,7 +38,7 @@ version, since that is kept much  more up to date:
 
 ```text
 git clone https://github.com/AhoyISki/duat
-cargo install --path duat
+cargo install --path duat --features git-deps
 ```
 
 ### Configuration
@@ -82,7 +82,7 @@ fn setup() {
         builder.push_to(CmdLine::cfg().left_ratioed(3, 7), child);
     });
 
-    hooks::add::<ModeSwitched>(|&(_, new)| match new {
+    hooks::add::<ModeSwitched>(|(_, new)| match new {
         "Insert" => cursor::set_main(CursorShape::SteadyBar),
         _ => cursor::set_main(CursorShape::SteadyBlock)
     });
@@ -235,20 +235,20 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG4w8IAXLD_ZOG5r2CjENpc-GG-SqkQ2CY0rOG-UAUO85HAaJYWSDgmRkdWF0ZTAuMy4wgmlkdWF0X2NvcmVlMC4zLjCCZHBsdWf2
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG_T2k4Qb2V_3Gw4f4dpnHr3_Gx3IJUrY7uBeGwIbRN0vL_yrYWSDgmRkdWF0ZTAuMy4xgmlkdWF0X2NvcmVlMC4zLjCCZHBsdWf2
  [__link0]: https://crates.io/crates/plug
- [__link1]: https://docs.rs/duat/0.3.0/duat/?search=mode::set_default
- [__link10]: https://docs.rs/duat/0.3.0/duat/?search=prelude::CmdLine
- [__link11]: https://docs.rs/duat/0.3.0/duat/?search=hooks::add
- [__link12]: https://docs.rs/duat/0.3.0/duat/?search=hooks::ModeSwitched
- [__link13]: https://docs.rs/duat/0.3.0/duat/?search=form::set
- [__link14]: https://docs.rs/duat/0.3.0/duat/?search=form::Form
- [__link15]: https://docs.rs/duat/0.3.0/duat/?search=prelude::status
- [__link2]: https://docs.rs/duat/0.3.0/duat/?search=prelude::map
- [__link3]: https://docs.rs/duat/0.3.0/duat/?search=prelude::print::wrap_on_width
- [__link4]: https://docs.rs/duat/0.3.0/duat/?search=hooks::remove
- [__link5]: https://docs.rs/duat/0.3.0/duat/?search=hooks::add_grouped
+ [__link1]: https://docs.rs/duat/0.3.1/duat/?search=mode::set_default
+ [__link10]: https://docs.rs/duat/0.3.1/duat/?search=prelude::CmdLine
+ [__link11]: https://docs.rs/duat/0.3.1/duat/?search=hooks::add
+ [__link12]: https://docs.rs/duat/0.3.1/duat/?search=hooks::ModeSwitched
+ [__link13]: https://docs.rs/duat/0.3.1/duat/?search=form::set
+ [__link14]: https://docs.rs/duat/0.3.1/duat/?search=form::Form
+ [__link15]: https://docs.rs/duat/0.3.1/duat/?search=prelude::status
+ [__link2]: https://docs.rs/duat/0.3.1/duat/?search=prelude::map
+ [__link3]: https://docs.rs/duat/0.3.1/duat/?search=prelude::print::wrap_on_width
+ [__link4]: https://docs.rs/duat/0.3.1/duat/?search=hooks::remove
+ [__link5]: https://docs.rs/duat/0.3.1/duat/?search=hooks::add_grouped
  [__link6]: https://docs.rs/duat_core/0.3.0/duat_core/?search=ui::FileBuilder
- [__link7]: https://docs.rs/duat/0.3.0/duat/?search=prelude::VertRule
- [__link8]: https://docs.rs/duat/0.3.0/duat/?search=prelude::LineNumbers
- [__link9]: https://docs.rs/duat/0.3.0/duat/?search=prelude::status
+ [__link7]: https://docs.rs/duat/0.3.1/duat/?search=prelude::VertRule
+ [__link8]: https://docs.rs/duat/0.3.1/duat/?search=prelude::LineNumbers
+ [__link9]: https://docs.rs/duat/0.3.1/duat/?search=prelude::status

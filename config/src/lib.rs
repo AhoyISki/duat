@@ -73,9 +73,10 @@ fn setup() {
         builder.push(status!([Mode] mode_upper Spacer file_fmt " " selections_fmt " " main_fmt));
         // Pushes a CmdLine to the bottom
         let (child, _) = builder.push(CmdLine::cfg());
-        // Pushes a Notifications to the bottom
-        // The CmdLine widget has a hook that "hides" the Notifications widget
-        // when CmdLine is in focus, this makes them "occupy the same space"
+        // By pushing this Notifications to the `child`, Duat will create a
+        // parent that owns only the CmdLine and Notifications widgets.
+        // With that, you can tell an Area to occupy the whole parent, "hiding
+        // other sibling Areas. That's done in, e.g., the "HideCmdLine" hook.
         builder.push_to(Notifications::cfg(), child);
     });
     // // See what happens when you uncomment this hook removal:
