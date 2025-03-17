@@ -11,26 +11,31 @@ publish = false
 [lib]
 crate-type = ["dylib"]
 
-[dependencies]
-# You can get rid of this one, if you don't want the duat-kak editor.
-
-[dependencies.kak]
-path = "../duat-kak"
-version = ">=0.3.0"
-package = "duat-kak"
-
-[dependencies.catppuccin]
-path = "../../duat-catppuccin"
-version = ">=0.1.0"
-package = "duat-catppuccin"
-
-[dependencies.duat]
-path = ".."
-version = ">=0.3.0"
-
 [profile.dev]
 panic = 'abort'
 
 [profile.release]
 panic = 'abort'
 incremental = true
+
+[dependencies]
+
+# You can get rid of this one, if you don't want the duat-kak editor.
+[dependencies.kak]
+git = "https://github.com/AhoyISki/duat"
+version = "0.3.0"
+package = "duat-kak"
+
+[dependencies.treesitter]
+git = "https://github.com/AhoyISki/duat-treesitter"
+version = "0.1.0"
+package = "duat-treesitter"
+
+[dependencies.catppuccin]
+git = "https://github.com/AhoyISki/duat-catppuccin"
+version = "0.1.0"
+package = "duat-catppuccin"
+
+[dependencies.duat]
+git = "https://github.com/AhoyISki/duat"
+version = ">=0.3.0"

@@ -62,7 +62,10 @@ impl Builder {
         let len = self.text.len().byte();
 
         if let Some(tag) = self.last_form {
-            self.text.0.tags.insert(len, Tag::PopForm(tag), Key::basic());
+            self.text
+                .0
+                .tags
+                .insert(len, Tag::PopForm(tag), Key::basic());
         }
         if (self.text.buffers(..).next_back()).is_none_or(|b| b != b'\n') {
             self.push_str("\n");
@@ -183,7 +186,8 @@ impl Builder {
             {
                 text.0.tags.remove_at_if(0, |t| t.key() == Key::basic());
             } else {
-                self.text.0
+                self.text
+                    .0
                     .tags
                     .insert(end.byte(), Tag::PopForm(last_id), Key::basic());
             }
@@ -217,9 +221,9 @@ pub struct AlignRight;
 ///
 /// When printing this screen line (one row on screen, i.e. until
 /// it wraps), Instead of following the current alignment, will
-/// put spacing between this character and the previous one. The
+/// put spacing between the next and previous characters. The
 /// length of the space will be roughly equal to the available
-/// space on this line divided by the number of spacers on it.
+/// space on this line divided by the number of [`Spacer`]s on it.
 ///
 /// # Example
 ///
@@ -229,10 +233,10 @@ pub struct AlignRight;
 /// This is my line,please,pretend it has tags
 /// ```
 ///
-/// If we were to print it with `{Divider}`s like this:
+/// If we were to print it with `{Spacer}`s like this:
 ///
 /// ```text
-/// This is my line,{Divider}please,{Divider}pretend it has tags
+/// This is my line,{Spacer}please,{Spacer}pretend it has tags
 /// ```
 ///
 /// In a screen with a width of 50, it would come out like:

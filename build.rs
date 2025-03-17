@@ -9,39 +9,49 @@ const UI_TO_USE: &[u8] = b"features = [\"term-ui\"]";
 const LIB: &[u8] = include_bytes!("config/src/lib.rs");
 const TOML: &[u8] = include_bytes!("config/Cargo_.toml");
 
-fn main() {
-    let Some(config_path) = dirs_next::config_dir() else {
-        return;
+fn main() -> std::io::Result<()> {
+    let Some(config_path) = dirs_next::config_dir().filter(|p| p.exists()) else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "Config path not found",
+        ));
     };
-
-    if !config_path.exists() {
-        return;
-    }
 
     let dest = config_path.join("duat");
 
     if dest.exists() {
-        return;
+        return Ok(());
     }
 
-    if fs::create_dir_all(&dest).is_err() {
-        return;
+    fs::create_dir_all(dest.join("src"))?;
+
+    File::create(dest.join("src/lib.rs"))?.write_all(LIB)?;
+
+    let cut_toml: String = if cfg!(feature = "git-deps") {
+        unsafe { str::from_utf8_unchecked(TOML) }.to_string()
+    } else {
+        unsafe { str::from_utf8_unchecked(TOML) }
+            .lines()
+            .filter(|l| !l.contains("git = \""))
+            .collect()
     };
 
-    if fs::create_dir_all(dest.join("src")).is_err() {
-        return;
-    };
-
-    let mut src = File::create(dest.join("src/lib.rs")).unwrap();
-    src.write_all(LIB).unwrap();
-
-    let mut toml = File::create(dest.join("Cargo.toml")).unwrap();
-
-    let cut_toml: String = unsafe { str::from_utf8_unchecked(TOML) }
-        .split_inclusive('\n')
-        .filter(|l| !l.contains("path = \""))
-        .collect();
-
+    let mut toml = File::create(dest.join("Cargo.toml"))?;
     toml.write_all(cut_toml.as_bytes()).unwrap();
     toml.write_all(UI_TO_USE).unwrap();
+
+    let toml_path = dest.join("src/Cargo.toml");
+    println!("\nCompiling config crate:\n");
+
+    let mut cmd = std::process::Command::new("cargo");
+    cmd.args([
+        "build",
+        "--release",
+        "--manifest-path",
+        toml_path.to_str().unwrap(),
+    ])
+    .spawn()?
+    .wait()?;
+
+    Ok(())
 }

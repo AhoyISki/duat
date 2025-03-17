@@ -175,9 +175,6 @@ fn run_cargo(toml_path: PathBuf, on_release: bool) -> Result<Output, std::io::Er
     #[cfg(feature = "deadlocks")]
     cargo.args(["--features", "deadlocks"]);
 
-    #[cfg(feature = "wack")]
-    cargo.args(["--features", "wack"]);
-
     cargo.output()
 }
 

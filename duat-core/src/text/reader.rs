@@ -47,17 +47,6 @@ pub trait Reader: Send + Sync + 'static {
     /// ranges to only that function, not this one.
     fn apply_changes(&mut self, bytes: &mut Bytes, changes: &[Change<&str>]);
 
-    /// Returns ranges that must be updated after a [`Change`]
-    ///
-    /// Critically, this may not necessarily be called, so the state
-    /// must have been finished being updated by this point, via
-    /// [`Reader::apply_changes`].
-    fn ranges_to_update(
-        &mut self,
-        bytes: &mut Bytes,
-        changes: &[Change<&str>],
-    ) -> Vec<Range<usize>>;
-
     /// Updates a given [`Range`]
     ///
     /// This should take into account all changes that have taken
@@ -75,6 +64,19 @@ pub trait Reader: Send + Sync + 'static {
     /// convenient to go slightly over that range, just keep in
     /// mind that that overhang might be updated later.
     fn update_range(&mut self, bytes: &mut Bytes, tags: MutTags, within: Range<usize>);
+
+    /// Returns ranges that must be updated after a [`Change`]
+    ///
+    /// Critically, this may not necessarily be called, so the state
+    /// must have been finished being updated by this point, via
+    /// [`Reader::apply_changes`].
+    fn ranges_to_update(
+        &mut self,
+        bytes: &mut Bytes,
+        changes: &[Change<&str>],
+    ) -> Vec<Range<usize>> {
+        vec![0..bytes.len().byte()]
+    }
 
     /// The public facing portion of this [`Reader`]
     ///

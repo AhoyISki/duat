@@ -28,8 +28,8 @@ dlopen-rs = "0.7.3"
 [features]
 default = ["term-ui"]
 term-ui = ["dep:duat-term"]
-wack = ["duat-core/wack"]
 deadlocks = ["duat-core/deadlocks"]
+git-deps = []
 
 [[bin]]
 name = "duat"

@@ -14,7 +14,8 @@ use kak::{Insert, Normal};
 
 fn setup() {
     plug!(
-        // This plugin sets the Kakoune mode.
+        treesitter::TreeSitter::new(),
+        // This plugin sets the mode to Kakoune's Normal.
         kak::Kak::new(),
         // This one adds the Catppuccin colorschemes.
         // The modify function gives you access to the
@@ -26,6 +27,7 @@ fn setup() {
                 ("ExtraCursorNormal", Form::with(c.base).on(c.sapphire)),
                 ("MainCursorInsert", Form::with(c.base).on(c.mauve)),
                 ("ExtraCursorInsert", Form::with(c.base).on(c.yellow)),
+                ("Default.StatusLine", Form::on(c.surface0))
             );
         })
     );
@@ -50,15 +52,34 @@ fn setup() {
     hooks::remove("WindowWidgets");
     // Same, but on the edges of the window.
     hooks::add::<OnWindowOpen>(|builder| {
-        // Square bracket pairs change the Form of text.
-        // The StatusLine goes on the bottom by default.
-        let (child, _) = builder.push(status!(
-            [File] file_fmt " " mode_fmt " " selections_fmt " " main_fmt
-        ));
-        let cmd_line = CmdLine::cfg().left_ratioed(3, 5);
-        // `push_to` pushes a widget to another.
-        builder.push_to(cmd_line, child);
+        // // Uncomment this and comment the rest for a StatusLine on the side
+        // // Square bracket pairs change the Form of text.
+        // // The StatusLine goes on the bottom by default.
+        // let (child, _) = builder.push(status!(
+        //     file_fmt " " mode_fmt " " selections_fmt " " main_fmt
+        // ));
+        // let cmd_line = CmdLine::cfg().left_ratioed(3, 5);
+        // // `push_to` pushes a widget to another.
+        // builder.push_to(cmd_line, child);
+
+        // This function takes the mode and uppercases it.
+        // The splitting is done to remove generic arguments.
+        let mode_upper = mode_name().map(|mode| match mode.split_once('<') {
+            Some((mode, _)) => mode.to_uppercase(),
+            None => mode.to_uppercase(),
+        });
+
+        // Pushes a StatusLine to the bottom
+        builder.push(status!([Mode] mode_upper Spacer file_fmt " " selections_fmt " " main_fmt));
+        // Pushes a CmdLine to the bottom
+        builder.push(CmdLine::cfg());
+        // Pushes a Notifications to the bottom
+        // The CmdLine widget has a hook that "hides" the Notifications widget
+        // when CmdLine is in focus, this makes them "occupy the same space"
+        builder.push(Notifications::cfg());
     });
+    // // See what happens when you uncomment this hook removal:
+    // hooks::remove("HideCmdLine");
 
     // This hook will change the color of the Kitty as
     // the ColorScheme is altered.
@@ -84,7 +105,7 @@ fn setup() {
     //// Commands
 
     // Adds a command for the LineNumbers widget.
-    cmd::add_for!("toggle-relative", |ln: LineNumbers, _: Area| {
+    cmd::add_for!("toggle-relative", |ln: LineNumbers<Ui>, _: Area| {
         let mut cfg = ln.get_cfg();
         cfg.num_rel = match cfg.num_rel {
             LineNum::Abs => LineNum::RelAbs,
