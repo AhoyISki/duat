@@ -10,6 +10,20 @@
 //!
 //! [tree-sitter]: https://tree-sitter.github.io/tree-sitter
 #![feature(decl_macro, let_chains)]
+
+// Internal module for a dependency on duat-core from git or path.
+mod duat_core {
+    #[cfg(all(feature = "normal-deps", not(feature = "__local-deps")))]
+    pub use duat_core::*;
+    #[cfg(all(feature = "__local-deps", not(feature = "normal-deps")))]
+    pub use local_duat_core::*;
+    #[cfg(all(feature = "__local-deps", feature = "normal-deps"))]
+    compile_error!("Use only one source for duat-core");
+    #[cfg(all(not(feature = "__local-deps"), not(feature = "normal-deps")))]
+    compile_error!("Must have only one source for duat-core");
+}
+
+
 use std::{collections::HashMap, marker::PhantomData, ops::Range, path::Path, sync::LazyLock};
 
 use duat_core::{
