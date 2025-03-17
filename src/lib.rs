@@ -568,14 +568,14 @@ fn lang_parts(path: impl AsRef<Path>) -> Option<LangParts<'static>> {
         }
         macro h($lang:ident) {{
             let hi = include_str!(concat!(
-                "../ts-queries/",
+                "../queries/",
                 stringify!($lang),
                 "/highlights.scm"
             ));
             [hi, ""]
         }}
         macro i($lang:ident) {
-            include_str!(concat!("../ts-queries/", stringify!($lang), "/indents.scm"))
+            include_str!(concat!("../queries/", stringify!($lang), "/indents.scm"))
         }
         macro h_i($lang:ident) {
             [h!($lang)[0], i!($lang)]
