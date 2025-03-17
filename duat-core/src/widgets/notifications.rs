@@ -54,8 +54,8 @@ impl<U: Ui> Widget<U> for Notifications<U> {
         &mut self.text
     }
 
-    fn once() -> Result<(), crate::Error<()>> {
-        hooks::add_grouped::<KeySent<U>>("RemoveNotifsOnInput", |_| {
+    fn once() -> Result<(), Text> {
+        hooks::add_grouped::<KeySent>("RemoveNotificationsOnInput", |_| {
             *context::notifications().write() = Text::new();
         });
         Ok(())

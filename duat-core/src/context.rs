@@ -29,13 +29,12 @@ mod global {
 
     use super::{CurFile, CurWidget, DynamicFile, FileParts, FixedFile};
     use crate::{
-        Error, Result,
         data::RwData,
         duat_name,
         mode::Regular,
-        text::Text,
+        text::{Text, err},
         ui::{Ui, Window},
-        widgets::{File, Node},
+        widgets::Node,
     };
 
     static MODE_NAME: LazyLock<RwData<&str>> =
@@ -52,11 +51,10 @@ mod global {
         &MODE_NAME
     }
 
-    pub fn file_named<U: Ui>(name: impl ToString) -> Result<FixedFile<U>, File> {
+    pub fn file_named<U: Ui>(name: impl ToString) -> Result<FixedFile<U>, Text> {
         let windows = windows::<U>().read();
         let name = name.to_string();
-        let (.., node) =
-            crate::file_entry(&windows, &name).map_err(|_| Error::FileNotFound(name))?;
+        let (.., node) = crate::file_entry(&windows, &name)?;
 
         let (widget, area, related) = node.parts();
         let file = widget.try_downcast().unwrap();
@@ -68,11 +66,11 @@ mod global {
         )))
     }
 
-    pub fn fixed_file<U: Ui>() -> Result<FixedFile<U>, File> {
+    pub fn fixed_file<U: Ui>() -> Result<FixedFile<U>, Text> {
         Ok(cur_file()?.fixed_file())
     }
 
-    pub fn dyn_file<U: Ui>() -> Result<DynamicFile<U>, File> {
+    pub fn dyn_file<U: Ui>() -> Result<DynamicFile<U>, Text> {
         Ok(cur_file()?.dyn_file())
     }
 
@@ -109,9 +107,9 @@ mod global {
         prev.zip(inner_cur_widget().0.write().replace(node))
     }
 
-    pub(crate) fn cur_widget<U: Ui>() -> Result<&'static CurWidget<U>, File> {
+    pub(crate) fn cur_widget<U: Ui>() -> Result<&'static CurWidget<U>, Text> {
         let cur_widget = inner_cur_widget();
-        cur_widget.0.read().as_ref().ok_or(Error::NoWidgetYet)?;
+        cur_widget.0.read().as_ref().ok_or(err!("No widget yet"))?;
         Ok(cur_widget)
     }
 
@@ -136,9 +134,9 @@ mod global {
         }
     }
 
-    fn cur_file<U: Ui>() -> Result<&'static CurFile<U>, File> {
+    fn cur_file<U: Ui>() -> Result<&'static CurFile<U>, Text> {
         let cur_file = inner_cur_file();
-        cur_file.0.read().as_ref().ok_or(Error::NoFileYet)?;
+        cur_file.0.read().as_ref().ok_or(err!("No file yet"))?;
         Ok(cur_file)
     }
 

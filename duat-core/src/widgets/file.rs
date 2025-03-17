@@ -291,7 +291,7 @@ impl<U: Ui> Widget<U> for File {
         )
     }
 
-    fn once() -> crate::Result<(), ()> {
+    fn once() -> Result<(), Text> {
         Ok(())
     }
 }

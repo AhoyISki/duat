@@ -105,7 +105,7 @@ use self::{
     tags::{FwdTags, GhostId, RevTags, Tags},
 };
 use crate::{
-    DuatError, cache,
+    cache,
     cfg::PrintCfg,
     mode::{Cursor, Cursors},
     ui::Area,
@@ -942,18 +942,15 @@ impl Clone for Text {
     }
 }
 
-impl<E> From<E> for Text
-where
-    E: DuatError,
-{
-    fn from(value: E) -> Self {
-        *value.into_text()
-    }
-}
-
 impl From<std::io::Error> for Text {
     fn from(value: std::io::Error) -> Self {
         err!({ value.kind().to_string() })
+    }
+}
+
+impl From<Box<dyn std::error::Error>> for Text {
+    fn from(value: Box<dyn std::error::Error>) -> Self {
+        err!({ value.to_string() })
     }
 }
 

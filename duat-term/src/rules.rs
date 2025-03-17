@@ -65,7 +65,7 @@ impl Widget<Ui> for VertRule {
         &mut self.text
     }
 
-    fn once() -> Result<(), duat_core::Error<()>> {
+    fn once() -> Result<(), Text> {
         form::set_weak("VertRule", Form::dark_grey());
         form::id_of!("VertRule.upper", "VertRule.lower");
         Ok(())

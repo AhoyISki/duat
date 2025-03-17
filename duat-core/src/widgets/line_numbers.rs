@@ -15,7 +15,7 @@ use std::{fmt::Alignment, marker::PhantomData};
 use crate::{
     context::{self, FixedFile},
     form::{self, Form},
-    text::{text, Builder, Tag, Text},
+    text::{Builder, Tag, Text, text},
     ui::{Area, Constraint, PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
 };
@@ -107,7 +107,7 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
         &mut self.text
     }
 
-    fn once() -> crate::Result<(), ()> {
+    fn once() -> Result<(), Text> {
         form::set_weak("LineNum", Form::grey());
         form::set_weak("MainLineNum", Form::yellow());
         form::set_weak("WrappedLineNum", Form::cyan().italic());
@@ -210,12 +210,8 @@ impl<U: Ui> WidgetCfg<U> for LineNumbersCfg<U> {
         let ff = context::fixed_file().unwrap();
         let specs = self.specs;
 
-		let checker = ff.checker();
-        let mut widget = LineNumbers {
-            ff,
-            text: Text::default(),
-            cfg: self,
-        };
+        let checker = ff.checker();
+        let mut widget = LineNumbers { ff, text: Text::default(), cfg: self };
         widget.update_text();
 
         (widget, checker, specs)

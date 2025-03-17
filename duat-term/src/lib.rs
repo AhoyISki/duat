@@ -15,9 +15,7 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 use duat_core::{
-    DuatError,
     form::Color,
-    text::err,
     ui::{self, Sender},
 };
 
@@ -41,7 +39,7 @@ impl<T: 'static> Mutex<T> {
     }
 
     fn lock(&self) -> MutexGuard<T> {
-        //duat_core::log_file!(
+        // duat_core::log_file!(
         //    "acquired lock on {} on thread {:?}",
         //    duat_core::duat_name::<T>(),
         //    std::thread::current().id()
@@ -68,7 +66,7 @@ impl<T> std::ops::DerefMut for MutexGuard<'_, T> {
 
 impl<T: 'static> Drop for MutexGuard<'_, T> {
     fn drop(&mut self) {
-        //duat_core::log_file!(
+        // duat_core::log_file!(
         //    "dropped lock on {} on thread {:?}",
         //    duat_core::duat_name::<T>(),
         //    std::thread::current().id()
@@ -321,19 +319,6 @@ impl std::fmt::Debug for ConstraintErr {
                 write!(f, "The constraint change is impossible.")
             }
         }
-    }
-}
-
-impl DuatError for ConstraintErr {
-    fn into_text(self) -> Box<duat_core::text::Text> {
-        Box::new(match self {
-            ConstraintErr::NoParent => {
-                err!("The constraints of the master node " [*a] "can't" [] " change.")
-            }
-            ConstraintErr::Impossible => {
-                err!("The requested constraint change is impossible.")
-            }
-        })
     }
 }
 

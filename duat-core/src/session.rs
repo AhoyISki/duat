@@ -179,7 +179,7 @@ impl<U: Ui> Session<U> {
                 let builder = FileBuilder::new(node, context::cur_window());
                 hooks::trigger_now::<OnFileOpen<U>>(builder);
             }
-            Err(err) => context::notify(err.into()),
+            Err(err) => context::notify(err),
         }
     }
 
@@ -405,7 +405,7 @@ impl<U: Ui> Session<U> {
                 let builder = FileBuilder::new(node, context::cur_window());
                 hooks::trigger_now::<OnFileOpen<U>>(builder);
             }
-            Err(err) => context::notify(err.into()),
+            Err(err) => context::notify(err),
         }
     }
 }

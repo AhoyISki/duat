@@ -164,7 +164,7 @@ mod switch {
 
             for key in sent_keys {
                 hooks::trigger_now::<KeySentTo<M::Widget, U>>((key, w.clone(), area.clone()));
-                hooks::trigger::<KeySent<U>>(key);
+                hooks::trigger::<KeySent>(key);
             }
 
             let mut widget = w.write();

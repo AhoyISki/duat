@@ -343,12 +343,11 @@ impl Hookable for ModeSwitched {
 /// # Arguments
 ///
 /// - The [key] sent.
-/// - An [`RwData<dyn Widget<U>>`] for the widget.
 ///
 /// [key]: KeyEvent
-pub struct KeySent<U: Ui>(PhantomData<U>);
+pub struct KeySent;
 
-impl<U: Ui> Hookable for KeySent<U> {
+impl Hookable for KeySent {
     type Args<'a> = KeyEvent;
     type PreArgs = KeyEvent;
 

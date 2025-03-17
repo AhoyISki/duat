@@ -17,7 +17,6 @@ pub use self::{
     layout::{FileId, Layout, MasterOnLeft, WindowFiles},
 };
 use crate::{
-    DuatError,
     cache::load_cache,
     cfg::{IterCfg, PrintCfg},
     data::RwData,
@@ -120,7 +119,7 @@ pub trait Ui: Clone + Send + Sync + 'static {
 pub trait Area: Send + Sync + Sized {
     // This exists solely for automatic type recognition.
     type Ui: Ui<Area = Self>;
-    type ConstraintChangeErr: std::error::Error + DuatError;
+    type ConstraintChangeErr: std::error::Error;
     type Cache: Default + Serialize + Deserialize<'static> + 'static;
     type PrintInfo: Default + Clone + Send + Sync;
 
@@ -425,7 +424,7 @@ impl<U: Ui> Window<U> {
         &mut self,
         mut file: File,
         checker: impl Fn() -> bool + 'static + Send + Sync,
-    ) -> crate::Result<(Node<U>, Option<U::Area>), ()> {
+    ) -> Result<(Node<U>, Option<U::Area>), Text> {
         let window_files = window_files(&self.nodes);
         file.layout_ordering = window_files.len();
         let (id, specs) = self.layout.new_file(&file, window_files)?;

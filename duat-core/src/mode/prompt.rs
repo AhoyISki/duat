@@ -134,7 +134,7 @@ impl<U: Ui> PromptMode<U> for RunCommands {
         let command = text.to_string();
         let caller = command.split_whitespace().next();
         if let Some(caller) = caller {
-            if let Some((ok_ranges, err_range)) = cmd::check_params(&command) {
+            if let Some((ok_ranges, err_range)) = cmd::check_args(&command) {
                 let id = form::id_of!("CallerExists");
                 text.insert_tag(0, Tag::PushForm(id), *KEY);
                 text.insert_tag(caller.len(), Tag::PopForm(id), *KEY);

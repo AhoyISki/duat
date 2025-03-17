@@ -110,7 +110,7 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
         &mut self.text
     }
 
-    fn once() -> crate::Result<(), ()> {
+    fn once() -> Result<(), Text> {
         form::set_weak("File", Form::yellow().italic());
         form::set_weak("Selections", Form::dark_blue());
         form::set_weak("Coord", Form::dark_yellow());

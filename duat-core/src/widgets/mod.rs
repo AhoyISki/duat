@@ -413,7 +413,7 @@ pub trait Widget<U: Ui>: Send + Sync + 'static {
     /// functions, [hooks], [commands] you want executed only once
     ///
     /// [commands]: crate::cmd
-    fn once() -> Result<(), crate::Error<()>>
+    fn once() -> Result<(), Text>
     where
         Self: Sized;
 }

@@ -253,7 +253,6 @@
 use std::{
     any::{TypeId, type_name},
     collections::HashMap,
-    marker::PhantomData,
     sync::{
         Arc, LazyLock, Once,
         atomic::{AtomicBool, Ordering},
@@ -268,7 +267,7 @@ use ui::Window;
 use widgets::{File, Node, Widget};
 
 use self::{
-    text::{Text, err, hint},
+    text::{Text, err},
     ui::Ui,
 };
 
@@ -289,7 +288,7 @@ pub mod widgets;
 pub mod prelude {
     //! The prelude of Duat
     pub use crate::{
-        Error, cmd,
+        cmd,
         data::{self, RwData},
         form,
         text::{Builder, Text, err, hint, ok, text},
@@ -504,132 +503,33 @@ pub fn periodic_checker(duration: Duration) -> impl Fn() -> bool {
     move || check.fetch_and(false, Ordering::Acquire)
 }
 
-/// An error that can be displayed as [`Text`] in Duat
-pub trait DuatError {
-    fn into_text(self) -> Box<Text>;
-}
-
-/// Error for failures in Duat
-#[derive(Clone)]
-pub enum Error<E> {
-    /// The caller for a command already pertains to another
-    CallerAlreadyExists(String),
-    /// No commands have the given caller as one of their own
-    CallerNotFound(String),
-    /// The command failed internally
-    CommandFailed(Box<Text>),
-    /// There was no caller and no arguments
-    Empty,
-    /// Arguments could not be parsed correctly
-    FailedParsing(Box<Text>),
-    /// The [`Layout`] does not allow for another file to open
-    ///
-    /// [`Layout`]: ui::Layout
-    LayoutDisallowsFile(PhantomData<E>),
-    /// The [`Ui`] still hasn't created the first file
-    ///
-    /// [`Ui`]: ui::Ui
-    NoFileYet,
-    /// The [`File`] was not found
-    FileNotFound(String),
-    /// Since the [`Ui`] has no file, widgets can't relate to it
-    ///
-    /// [`Ui`]: ui::Ui
-    NoFileForRelated,
-    /// The [`Ui`] still hasn't created the first widget (a file)
-    ///
-    /// [`Ui`]: ui::Ui
-    NoWidgetYet,
-    /// The checked widget is not of the type given
-    WidgetIsNot,
-}
-
-impl<E1> Error<E1> {
-    /// Converts [`Error<E1>`] to [`Error<E2>`]
-    #[doc(hidden)]
-    pub fn into_other_type<E2>(self) -> Error<E2> {
-        match self {
-            Self::CallerAlreadyExists(caller) => Error::CallerAlreadyExists(caller),
-            Self::CallerNotFound(caller) => Error::CallerNotFound(caller),
-            Self::CommandFailed(failure) => Error::CommandFailed(failure),
-            Self::Empty => Error::Empty,
-            Self::FailedParsing(failure) => Error::FailedParsing(failure),
-            Self::NoFileYet => Error::NoFileYet,
-            Self::FileNotFound(name) => Error::FileNotFound(name),
-            Self::NoFileForRelated => Error::NoFileForRelated,
-            Self::NoWidgetYet => Error::NoWidgetYet,
-            Self::WidgetIsNot => Error::WidgetIsNot,
-            Self::LayoutDisallowsFile(_) => Error::LayoutDisallowsFile(PhantomData),
-        }
-    }
-}
-
-impl<E> DuatError for Error<E> {
-    /// Turns the [`Error`] into formatted [`Text`]
-    fn into_text(self) -> Box<Text> {
-        let early = hint!(
-            "Try this after " [*a] "OnUiStart" []
-            ", maybe by using hooks::add::<OnUiStart>"
-        );
-
-        match self {
-            Self::CallerAlreadyExists(caller) => Box::new(err!(
-                "The caller " [*a] caller [] " already exists."
-            )),
-            Self::CallerNotFound(caller) => {
-                Box::new(err!("The caller " [*a] caller [] " was not found."))
-            }
-            Self::CommandFailed(failure) => failure,
-            Self::Empty => Box::new(err!("The command is empty.")),
-            Self::FailedParsing(failure) => failure,
-            Self::NoFileYet => Box::new(err!("There is no file yet. " early)),
-            Self::FileNotFound(name) => Box::new(err!("No file named " [*a] name [] " open")),
-            Self::NoFileForRelated => Box::new(err!(
-                "There is no file for a related " [*a] { type_name::<E>() } [] " to exist. " early
-            )),
-            Self::NoWidgetYet => Box::new(err!("There can be no widget yet. " early)),
-            Self::WidgetIsNot => Box::new(err!(
-                "The widget is not " [*a] { type_name::<E>() } [] ". " early
-            )),
-            Self::LayoutDisallowsFile(_) => Box::new(err!(
-                "The " [*a] "Layout" [] " disallows the addition of more files."
-            )),
-        }
-    }
-}
-
-impl<E> std::fmt::Debug for Error<E> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut debug = f.debug_tuple(match self {
-            Self::CallerAlreadyExists(_) => "CallerAlreadyExists",
-            Self::CallerNotFound(_) => "CallerNotFound",
-            Self::CommandFailed(_) => "CommandFailed",
-            Self::Empty => "Empty ",
-            Self::FailedParsing(_) => "FailedParsing",
-            Self::NoFileYet => "NoFileYet ",
-            Self::FileNotFound(_) => "FileNotFound ",
-            Self::NoFileForRelated => "NoFileForRelated ",
-            Self::NoWidgetYet => "NoWidgetYet ",
-            Self::WidgetIsNot => "WidgetIsNot ",
-            Self::LayoutDisallowsFile(_) => "LayoutDisallowsFile",
-        });
-
-        match self {
-            Self::CallerAlreadyExists(str) | Self::CallerNotFound(str) => debug.field(&str),
-            Self::CommandFailed(text) | Self::FailedParsing(text) => debug.field(&text),
-            Self::FileNotFound(name) => debug.field(&name),
-            Self::Empty
-            | Self::NoFileYet
-            | Self::NoFileForRelated
-            | Self::NoWidgetYet
-            | Self::WidgetIsNot
-            | Self::LayoutDisallowsFile(_) => &mut debug,
-        }
-        .finish()
-    }
-}
-
-pub type Result<T, E> = std::result::Result<T, Error<E>>;
+// Turns the [`Error`] into formatted [`Text`]
+// fn into_text(self) -> Text {
+//    let early = hint!(
+//        "Try this after " [*a] "OnUiStart" []
+//        ", maybe by using hooks::add::<OnUiStart>"
+//    );
+//
+//    match self {
+//        Self::CallerNotFound(caller) => {
+//            Box::new()        }
+//        Self::CommandFailed(failure) => failure,
+//        Self::Empty => Box::new(err!("The command is empty.")),
+//        Self::FailedParsing(failure) => failure,
+//        Self::NoFileYet => Box::new(err!("There is no file yet. "
+// early)),        Self::FileNotFound(name) => Box::new(err!("No file
+// named " [*a] name [] " open")),        Self::NoFileForRelated =>
+// Box::new(err!(            "There is no file for a related " [*a] {
+// type_name::<E>() } [] " to exist. " early        )),
+//        Self::NoWidgetYet => Box::new(err!("There can be no widget
+// yet. " early)),        Self::WidgetIsNot => Box::new(err!(
+//            "The widget is not " [*a] { type_name::<E>() } [] ". "
+// early        )),
+//        Self::LayoutDisallowsFile(_) => Box::new(err!(
+//            "The " [*a] "Layout" [] " disallows the addition of more
+// files."        )),
+//    }
+//}
 
 /// Takes a type and generates an appropriate name for it
 ///

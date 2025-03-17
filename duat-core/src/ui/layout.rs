@@ -1,11 +1,11 @@
 pub use internals::{FileId, Layout, WindowFiles, window_files};
 
 use super::{PushSpecs, Ui};
-use crate::{Result, widgets::File};
+use crate::{text::Text, widgets::File};
 
 mod internals {
     use crate::{
-        Result,
+        text::Text,
         ui::{Area, Node, PushSpecs, Ui},
         widgets::File,
     };
@@ -18,7 +18,7 @@ mod internals {
             &mut self,
             file: &File,
             prev: WindowFiles<'_, U>,
-        ) -> Result<(FileId<U>, PushSpecs), ()>;
+        ) -> Result<(FileId<U>, PushSpecs), Text>;
     }
 
     pub struct FileId<U: Ui>(pub(in crate::ui) U::Area);
@@ -36,9 +36,7 @@ mod internals {
             })
             .collect();
 
-        files.sort_unstable_by_key(|(node, _)| {
-            node.read_as::<File>().unwrap().layout_ordering
-        });
+        files.sort_unstable_by_key(|(node, _)| node.read_as::<File>().unwrap().layout_ordering);
 
         files
     }
@@ -56,7 +54,7 @@ where
         &mut self,
         _file: &File,
         mut prev: WindowFiles<'_, U>,
-    ) -> Result<(FileId<U>, PushSpecs), ()> {
+    ) -> Result<(FileId<U>, PushSpecs), Text> {
         let (_, last) = prev.pop().unwrap();
         Ok(if prev.is_empty() {
             (last, PushSpecs::right())

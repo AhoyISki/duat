@@ -203,7 +203,7 @@ pub use self::{
     },
 };
 use crate::{
-    Error, context,
+    context,
     data::RwData,
     file_entry, iter_around, iter_around_rev,
     mode::{self},
@@ -216,7 +216,7 @@ use crate::{
 
 mod parameters;
 
-pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
+pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
     add!("alias", |flags: Flags, alias: &str, command: Remainder| {
         if !flags.is_empty() {
             Err(err!("An alias cannot take any flags"))
@@ -565,8 +565,8 @@ pub(crate) fn add_session_commands<U: Ui>() -> crate::Result<(), ()> {
 mod global {
     use std::{ops::Range, sync::Arc};
 
-    use super::{Args, CmdResult, Commands, Parameter, Result};
-    use crate::{Error, text::Text, ui::Ui, widgets::Widget};
+    use super::{Args, CmdResult, Commands, Parameter};
+    use crate::{text::Text, ui::Ui, widgets::Widget};
 
     static COMMANDS: Commands = Commands::new();
 
@@ -620,7 +620,7 @@ mod global {
             };
 
             #[allow(unused_variables, unused_mut)]
-            let checker = |mut args: Args| -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) {
+            let check_args = |mut args: Args| -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) {
                 let mut ok_ranges = Vec::new();
 
                 $(
@@ -644,7 +644,7 @@ mod global {
                 (ok_ranges, None)
             };
 
-            add_inner($callers, cmd, checker)
+            add_inner($callers, cmd, check_args)
     	}},
 
         ($callers:expr, $($mv:ident)? || $f:block) => {{
@@ -658,7 +658,7 @@ mod global {
             };
 
             #[allow(unused_variables, unused_mut)]
-            let checker = |mut args: Args| -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) {
+            let check_args = |mut args: Args| -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) {
                 let start = args.next_start();
                 if let (Ok(_), Some(start)) = (args.next_as::<super::Remainder>(), start) {
                     let err = $crate::text::err!("Too many arguments");
@@ -668,7 +668,7 @@ mod global {
                 (Vec::new(), None)
             };
 
-            add_inner($callers, cmd, checker)
+            add_inner($callers, cmd, check_args)
     	}}
     }
 
@@ -863,7 +863,7 @@ mod global {
         };
 
         #[allow(unused_variables, unused_mut)]
-        let checker = |mut args: Args| -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) {
+        let check_args = |mut args: Args| -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) {
             let mut ok_ranges = Vec::new();
 
             $(
@@ -887,7 +887,7 @@ mod global {
             (ok_ranges, None)
         };
 
-        add_for_inner::<$w_ty, <$a_ty as $crate::ui::Area>::Ui>($callers, cmd, checker)
+        add_for_inner::<$w_ty, <$a_ty as $crate::ui::Area>::Ui>($callers, cmd, check_args)
     }}
 
     /// Canonical way to quit Duat.
@@ -907,7 +907,7 @@ mod global {
     /// If there are more arguments, they will be ignored.
     ///
     /// [`File`]: crate::widgets::File
-    pub fn edit(file: impl std::fmt::Display) -> Result<Option<Text>> {
+    pub fn edit(file: impl std::fmt::Display) -> Result<Option<Text>, Text> {
         COMMANDS.run(format!("edit {file}"))
     }
 
@@ -919,7 +919,7 @@ mod global {
     /// If there are more arguments, they will be ignored.
     ///
     /// [`File`]: crate::widgets::File
-    pub fn buffer(file: impl std::fmt::Display) -> Result<Option<Text>> {
+    pub fn buffer(file: impl std::fmt::Display) -> Result<Option<Text>, Text> {
         COMMANDS.run(format!("buffer {file}"))
     }
 
@@ -930,7 +930,7 @@ mod global {
     /// search, use [`next_global_file`].
     ///
     /// [`File`]: crate::widgets::File
-    pub fn next_file() -> Result<Option<Text>> {
+    pub fn next_file() -> Result<Option<Text>, Text> {
         COMMANDS.run("next-file")
     }
 
@@ -941,7 +941,7 @@ mod global {
     /// search, use [`prev_global_file`].
     ///
     /// [`File`]: crate::widgets::File
-    pub fn prev_file() -> Result<Option<Text>> {
+    pub fn prev_file() -> Result<Option<Text>, Text> {
         COMMANDS.run("prev-file")
     }
 
@@ -952,7 +952,7 @@ mod global {
     /// [`next_file`].
     ///
     /// [`File`]: crate::widgets::File
-    pub fn next_global_file() -> Result<Option<Text>> {
+    pub fn next_global_file() -> Result<Option<Text>, Text> {
         COMMANDS.run("next-file --global")
     }
 
@@ -963,7 +963,7 @@ mod global {
     /// [`prev_file`].
     ///
     /// [`File`]: crate::widgets::File
-    pub fn prev_global_file() -> Result<Option<Text>> {
+    pub fn prev_global_file() -> Result<Option<Text>, Text> {
         COMMANDS.run("prev-file --global")
     }
 
@@ -972,7 +972,7 @@ mod global {
     /// Returns an [`Err`] if the `caller` is already a caller for
     /// another command, or if `command` is not a real caller to an
     /// existing command.
-    pub fn alias(alias: impl ToString, command: impl ToString) -> Result<Option<Text>> {
+    pub fn alias(alias: impl ToString, command: impl ToString) -> Result<Option<Text>, Text> {
         COMMANDS.alias(alias, command)
     }
 
@@ -982,9 +982,9 @@ mod global {
     /// dropped, I would suggest that you shouldn't store it in a
     /// variable.
     pub struct CmdRunner {
-        cmd: Option<Box<dyn FnOnce() -> Result<Option<Text>> + Send + Sync + 'static>>,
+        cmd: Option<Box<dyn FnOnce() -> Result<Option<Text>, Text> + Send + Sync + 'static>>,
         map: Vec<Box<dyn FnOnce(&Option<Text>) + Send + Sync + 'static>>,
-        map_err: Vec<Box<dyn FnOnce(&Error<()>) + Send + Sync + 'static>>,
+        map_err: Vec<Box<dyn FnOnce(&Text) + Send + Sync + 'static>>,
     }
 
     impl CmdRunner {
@@ -1001,7 +1001,7 @@ mod global {
         ///
         /// This is a convenient way to add fallbacks in case the
         /// command fails for some reason or another.
-        pub fn map_err(mut self, f: impl FnOnce(&Error<()>) + Send + Sync + 'static) -> Self {
+        pub fn map_err(mut self, f: impl FnOnce(&Text) + Send + Sync + 'static) -> Self {
             self.map_err.push(Box::new(f));
             self
         }
@@ -1064,10 +1064,10 @@ mod global {
     pub fn add_inner<'a>(
         callers: impl super::Caller<'a>,
         cmd: impl super::CmdFn,
-        checker: impl super::CheckerFn,
-    ) -> Result<()> {
+        check_args: impl super::CheckerFn,
+    ) -> Result<(), Text> {
         let callers: Vec<String> = callers.into_callers().map(str::to_string).collect();
-        COMMANDS.add(callers, Box::new(cmd), Arc::new(checker))
+        COMMANDS.add(callers, Box::new(cmd), Arc::new(check_args))
     }
 
     /// Don't call this function, use [`cmd::add_for`] instead
@@ -1077,16 +1077,16 @@ mod global {
     pub fn add_for_inner<'a, W: Widget<U>, U: Ui>(
         callers: impl super::Caller<'a>,
         cmd: impl super::ArgCmdFn<W, U>,
-        checker: impl super::CheckerFn,
-    ) -> Result<()> {
+        check_args: impl super::CheckerFn,
+    ) -> Result<(), Text> {
         let callers: Vec<String> = callers.into_callers().map(str::to_string).collect();
-        COMMANDS.add_for(callers, cmd, Arc::new(checker))
+        COMMANDS.add_for(callers, cmd, Arc::new(check_args))
     }
 
-    pub(crate) fn check_params(
+    pub(crate) fn check_args(
         caller: &str,
     ) -> Option<(Vec<Range<usize>>, Option<(Range<usize>, Text)>)> {
-        COMMANDS.check_params(caller)
+        COMMANDS.check_args(caller)
     }
 }
 
@@ -1114,17 +1114,17 @@ impl Commands {
     }
 
     /// Aliases a command to a specific word
-    fn alias(&self, alias: impl ToString, command: impl ToString) -> Result<Option<Text>> {
+    fn alias(&self, alias: impl ToString, command: impl ToString) -> Result<Option<Text>, Text> {
         self.0
             .write()
             .try_alias(alias.to_string(), command.to_string())
     }
 
     /// Runs a command from a call
-    fn run(&self, call: impl Display) -> Result<Option<Text>> {
+    fn run(&self, call: impl Display) -> Result<Option<Text>, Text> {
         let call = call.to_string();
         let mut args = call.split_whitespace();
-        let caller = args.next().ok_or(Error::Empty)?.to_string();
+        let caller = args.next().ok_or(err!("The command is empty"))?.to_string();
 
         let (command, call) = {
             let inner = self.0.read();
@@ -1139,7 +1139,7 @@ impl Commands {
                     .list
                     .iter()
                     .find(|cmd| cmd.callers().contains(&caller))
-                    .ok_or(Error::CallerNotFound(caller))?;
+                    .ok_or(err!("The caller " [*a] caller [] " was not found"))?;
 
                 (command.clone(), call.clone())
             }
@@ -1147,8 +1147,8 @@ impl Commands {
 
         let args = get_args(&call);
 
-        if let (_, Some((_, err))) = (command.checker)(args.clone()) {
-            return Err(Error::FailedParsing(Box::new(err)));
+        if let (_, Some((_, err))) = (command.check_args)(args.clone()) {
+            return Err(err);
         }
 
         let silent = call.len() > call.trim_start().len();
@@ -1156,11 +1156,11 @@ impl Commands {
     }
 
     /// Runs a command and notifies its result
-    fn run_notify(&self, call: impl Display) -> Result<Option<Text>> {
+    fn run_notify(&self, call: impl Display) -> Result<Option<Text>, Text> {
         let ret = self.run(call);
         match ret.as_ref() {
             Ok(Some(ok)) => context::notify(ok.clone()),
-            Err(err) => context::notify(err.clone().into()),
+            Err(err) => context::notify(err.clone()),
             _ => {}
         }
         ret
@@ -1171,9 +1171,9 @@ impl Commands {
         &self,
         callers: Vec<String>,
         cmd: Box<dyn CmdFn>,
-        checker: Arc<dyn CheckerFn>,
-    ) -> Result<()> {
-        let command = Command::new(callers, cmd, checker);
+        check_args: Arc<dyn CheckerFn>,
+    ) -> Result<(), Text> {
+        let command = Command::new(callers, cmd, check_args);
         self.0.write().try_add(command)
     }
 
@@ -1182,8 +1182,8 @@ impl Commands {
         &'static self,
         callers: Vec<String>,
         mut cmd: impl ArgCmdFn<W, U>,
-        checker: Arc<dyn CheckerFn>,
-    ) -> Result<()> {
+        check_args: Arc<dyn CheckerFn>,
+    ) -> Result<(), Text> {
         let cmd = Box::new(move |args: Args| {
             let cur_file = context::inner_cur_file::<U>();
             cur_file
@@ -1207,28 +1207,25 @@ impl Commands {
                 })
         });
 
-        let command = Command::new(callers, cmd, checker);
+        let command = Command::new(callers, cmd, check_args);
         self.0.write().try_add(command)
     }
 
     /// Gets the parameter checker for a command, if it exists
-    fn check_params(
-        &self,
-        call: &str,
-    ) -> Option<(Vec<Range<usize>>, Option<(Range<usize>, Text)>)> {
+    fn check_args(&self, call: &str) -> Option<(Vec<Range<usize>>, Option<(Range<usize>, Text)>)> {
         let mut args = call.split_whitespace();
         let caller = args.next()?.to_string();
 
         let inner = self.0.read();
         if let Some((command, _)) = inner.aliases.get(&caller) {
-            Some((command.checker)(get_args(call)))
+            Some((command.check_args)(get_args(call)))
         } else {
             let command = inner
                 .list
                 .iter()
                 .find(|cmd| cmd.callers().contains(&caller))?;
 
-            Some((command.checker)(get_args(call)))
+            Some((command.check_args)(get_args(call)))
         }
     }
 }
@@ -1245,12 +1242,12 @@ pub type CmdResult = std::result::Result<Option<Text>, Text>;
 struct Command {
     callers: Arc<[String]>,
     cmd: RwData<Box<dyn CmdFn>>,
-    checker: Arc<dyn CheckerFn>,
+    check_args: Arc<dyn CheckerFn>,
 }
 
 impl Command {
     /// Returns a new instance of command.
-    fn new(callers: Vec<String>, cmd: Box<dyn CmdFn>, checker: Arc<dyn CheckerFn>) -> Self {
+    fn new(callers: Vec<String>, cmd: Box<dyn CmdFn>, check_args: Arc<dyn CheckerFn>) -> Self {
         if let Some(caller) = callers
             .iter()
             .find(|caller| caller.split_whitespace().count() != 1)
@@ -1259,15 +1256,15 @@ impl Command {
         }
         Self {
             cmd: RwData::new(cmd),
-            checker,
+            check_args,
             callers: callers.into(),
         }
     }
 
     /// Executes the inner function if the `caller` matches any of
     /// the callers in [`self`].
-    fn try_exec(&self, args: Args<'_>) -> Result<Option<Text>> {
-        (self.cmd.write())(args).map_err(|err| Error::CommandFailed(Box::new(err)))
+    fn try_exec(&self, args: Args<'_>) -> Result<Option<Text>, Text> {
+        (self.cmd.write())(args)
     }
 
     /// The list of callers that will trigger this command.
@@ -1283,13 +1280,13 @@ struct InnerCommands {
 
 impl InnerCommands {
     /// Tries to add the given command to the list.
-    fn try_add(&mut self, command: Command) -> Result<()> {
+    fn try_add(&mut self, command: Command) -> Result<(), Text> {
         let mut new_callers = command.callers().iter();
 
         let commands = self.list.iter();
         for caller in commands.flat_map(|cmd| cmd.callers().iter()) {
             if new_callers.any(|new_caller| new_caller == caller) {
-                return Err(Error::CallerAlreadyExists(caller.clone()));
+                return Err(err!("The caller " [*a] caller [] " already exists."));
             }
         }
 
@@ -1300,17 +1297,15 @@ impl InnerCommands {
 
     /// Tries to alias a full command (caller, flags, and
     /// arguments) to an alias.
-    fn try_alias(&mut self, alias: String, call: String) -> Result<Option<Text>> {
+    fn try_alias(&mut self, alias: String, call: String) -> Result<Option<Text>, Text> {
         if alias.split_whitespace().count() != 1 {
-            return Err(Error::CommandFailed(Box::new(err!(
-                "Alias is not a single word"
-            ))));
+            return Err(err!("Alias " [*a] alias [] " is not a single word"));
         }
 
         let caller = call
             .split_whitespace()
             .next()
-            .ok_or(Error::Empty)?
+            .ok_or(err!("The command is empty"))?
             .to_string();
 
         let mut cmds = self.list.iter();
@@ -1326,12 +1321,10 @@ impl InnerCommands {
                 None => ok!("Aliased " [*a] alias [] " to " [*a] call),
             }))
         } else {
-            Err(Error::CallerNotFound(caller))
+            Err(err!("The caller " [*a] caller [] " was not found"))
         }
     }
 }
-
-pub type Result<T> = crate::Result<T, ()>;
 
 pub trait Caller<'a>: Sized {
     fn into_callers(self) -> impl Iterator<Item = &'a str>;

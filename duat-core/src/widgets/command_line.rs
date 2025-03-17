@@ -105,7 +105,7 @@ impl<U: Ui> Widget<U> for CmdLine<U> {
         PrintCfg::default_for_input().with_forced_scrolloff()
     }
 
-    fn once() -> Result<(), crate::Error<()>> {
+    fn once() -> Result<(), Text> {
         form::set_weak("Prompt", "DefaultOk");
         form::set_weak("Prompt.colon", "AccentOk");
         Ok(())

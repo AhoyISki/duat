@@ -281,9 +281,10 @@
 //! [tags]: duat_core::text::Tag
 #![feature(decl_macro, let_chains)]
 
-pub use duat_core::{Error, thread, RwLock};
 use duat_core::{Plugin, session::SessionCfg};
-pub use setup::{Messengers, MetaStatics, pre_setup, run_duat};
+pub use duat_core::{RwLock, thread};
+
+pub use self::setup::{Messengers, MetaStatics, pre_setup, run_duat};
 
 pub mod print;
 mod setup;
@@ -407,8 +408,8 @@ pub mod form {
 pub mod hooks {
     //! Hook utilities
     pub use duat_core::hooks::{
-        ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FormSet, Hookable, ModeSwitched,
-        add, add_grouped, group_exists, remove,
+        ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FormSet, Hookable, KeySent,
+        ModeSwitched, add, add_grouped, group_exists, remove,
     };
 
     use crate::Ui;
@@ -450,17 +451,6 @@ pub mod hooks {
     ///
     /// [`Widget`]: duat_core::widgets::Widget
     pub type UnfocusedFrom<W> = duat_core::hooks::UnfocusedFrom<W, Ui>;
-
-    /// [`Hookable`]: Triggers whenever a [key] is sent
-    ///
-    /// # Arguments
-    ///
-    /// - The [key] sent.
-    /// - An [`RwData<dyn Widget<U>>`] for the widget
-    ///
-    /// [key]: crate::mode::KeyEvent
-    /// [`RwData<dyn Widget<U>>`]: crate::prelude::RwData
-    pub type KeySent = duat_core::hooks::KeySent<Ui>;
 
     /// [`Hookable`]: Triggers whenever a [key] is sent to the [`Widget`]
     ///
@@ -554,7 +544,7 @@ pub mod prelude {
     use std::process::Output;
 
     pub use duat_core::{
-        DuatError, Error, Plugin, clipboard, cmd,
+        Plugin, clipboard, cmd,
         data::{self, RwData},
         text::{
             self, AlignCenter, AlignLeft, AlignRight, Builder, Ghost, Spacer, Text, err, hint, ok,
