@@ -291,6 +291,10 @@ impl<U: Ui> FixedFile<U> {
                 .and_then(|w| w.read_as().map(|w| f(&w)))
         }
     }
+
+    pub(crate) fn related_widgets(&self) -> &RwData<Vec<Node<U>>> {
+        &self.0.2
+    }
 }
 
 pub struct DynamicFile<U: Ui> {
@@ -404,6 +408,7 @@ impl<U: Ui> std::ops::DerefMut for WriteFileGuard<'_, U> {
     }
 }
 
+// TODO: Make this not update the RwData if the File hasn't changed
 impl<U: Ui> Drop for WriteFileGuard<'_, U> {
     fn drop(&mut self) {
         let cfg = self.file.print_cfg();

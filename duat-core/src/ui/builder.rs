@@ -14,10 +14,12 @@ use std::sync::LazyLock;
 
 use super::{Area, Ui};
 use crate::{
-    context::{self},
-    data::RwData,
+    context::{self, FixedFile, WriteFileGuard},
+    data::{ReadDataGuard, RwData},
     duat_name,
-    widgets::{Node, Widget, WidgetCfg},
+    prelude::Text,
+    text::ReaderCfg,
+    widgets::{File, Node, Widget, WidgetCfg},
 };
 
 /// A constructor helper for [`File`] initiations
@@ -96,7 +98,7 @@ where
     U: Ui,
 {
     window_i: usize,
-    node: Node<U>,
+    ff: FixedFile<U>,
     area: U::Area,
     prev: Option<Node<U>>,
 }
@@ -108,9 +110,10 @@ where
     /// Creates a new [`FileBuilder`].
     pub(crate) fn new(node: Node<U>, window_i: usize) -> Self {
         let (_, prev) = context::set_cur(node.as_file(), node.clone()).unzip();
+        let ff = context::fixed_file().unwrap();
         let area = node.area().clone();
 
-        Self { window_i, node, area, prev }
+        Self { window_i, ff, area, prev }
     }
 
     /// Pushes a widget to the main area of this [`File`]
@@ -178,9 +181,7 @@ where
         let (child, parent) = {
             let (node, parent) = window.push(widget, &self.area, checker, specs, true, true);
 
-            if let Some(related) = self.node.related_widgets() {
-                related.write().push(node.clone())
-            }
+            self.ff.related_widgets().write().push(node.clone());
 
             if let Some(parent) = &parent {
                 if parent.is_master_of(&window.files_area) {
@@ -253,10 +254,35 @@ where
         let window = &mut windows[self.window_i];
 
         let (node, parent) = window.push(widget, &area, checker, specs, true, true);
-        if let Some(related) = self.node.related_widgets() {
-            related.write().push(node.clone())
-        }
+        self.ff.related_widgets().write().push(node.clone());
         (node.area().clone(), parent)
+    }
+
+    /// Adds a [`Reader`] to this [`File`]
+    ///
+    /// [`Reader`]s read changes to [`Text`] and can act accordingly
+    /// by adding or removing [`Tag`]s from it. They can also be
+    /// accessed via a public API, in order to be used for other
+    /// things, like the treesitter [`Reader`], which, internally,
+    /// creates the syntax tree and does syntax highlighting, but
+    /// externally it can also be used for indentation of [`Text`] by
+    /// [`Mode`]s
+    ///
+    /// [`Reader`]: crate::text::Reader
+    /// [`Mode`]: crate::mode::Mode
+    pub fn add_reader(&mut self, reader_cfg: impl ReaderCfg) -> Result<(), Text> {
+        let (mut file, _) = self.ff.write();
+        file.text_mut().add_reader(reader_cfg)
+    }
+
+    /// The [`File`] that this hook is being applied to
+    pub fn read(&mut self) -> (ReadDataGuard<File>, &U::Area) {
+        self.ff.read()
+    }
+
+    /// Mutable reference to the [`File`] that this hooks is being applied to
+    pub fn write(&mut self) -> (WriteFileGuard<U>, &U::Area) {
+        self.ff.write()
     }
 }
 
