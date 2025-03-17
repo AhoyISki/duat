@@ -102,7 +102,9 @@ fn main() {
         if let Ok(false) | Err(_) = so_path.try_exists() {
             println!("Compiling config crate for the first time, this might take a while...");
             let toml_path = crate_dir.join("Cargo.toml");
-            if run_cargo(toml_path.clone(), true, true).is_ok() {
+            if let Ok(out) = run_cargo(toml_path.clone(), true, true)
+                && out.status.success()
+            {
                 let duat_tx = duat_tx.clone();
                 std::thread::spawn(move || {
                     // Also compile it in debug mode, to speed up recompilation.
