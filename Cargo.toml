@@ -15,7 +15,7 @@ ts-c-sharp    = { version = "0.23.1",  package = "tree-sitter-c-sharp" }
 ts-css        = { version = "0.23.2",  package = "tree-sitter-css" }
 ts-dart       = { version = "0.0.4",   package = "tree-sitter-dart" }
 ts-elixir     = { version = "0.3.4",   package = "tree-sitter-elixir" }
-ts-erlang     = { version = "0.12.0",  package = "tree-sitter-erlang" }
+ts-erlang     = { version = "0.13.0",  package = "tree-sitter-erlang" }
 ts-fortran    = { version = "0.5.0",   package = "tree-sitter-fortran" }
 ts-go         = { version = "0.23.4",  package = "tree-sitter-go" }
 ts-groovy     = { version = "0.1.2",   package = "tree-sitter-groovy" }
@@ -48,4 +48,4 @@ ts-zig        = { version = "1.1.2",   package = "tree-sitter-zig" }
 ts-scss       = { version = "1.0.0",   package = "tree-sitter-scss" } 
 
 [build-dependencies]
-cc = "1.1.16"
+cc = "1.2.16"
