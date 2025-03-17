@@ -224,6 +224,7 @@ impl<U: Ui> Session<U> {
         });
 
         // The main loop.
+        #[allow(clippy::never_loop)]
         loop {
             U::flush_layout(self.ms);
 

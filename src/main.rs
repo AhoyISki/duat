@@ -98,20 +98,22 @@ fn main() {
         } else {
             "target/release/libconfig.so"
         });
+
         if let Ok(false) | Err(_) = so_path.try_exists() {
             println!("Compiling config crate for the first time, this might take a while...");
             let toml_path = crate_dir.join("Cargo.toml");
-            run_cargo(toml_path.clone(), true, true).expect("Failed to compile config crate");
-            let duat_tx = duat_tx.clone();
-            std::thread::spawn(move || {
-                // Also compile it in debug mode, to speed up recompilation.
-                run_cargo(toml_path, false, false).unwrap();
-                duat_tx
-                    .send(DuatEvent::MetaMsg(
-                        hint!("Compiled " [*a] "debug" [] " profile"),
-                    ))
-                    .unwrap();
-            });
+            if run_cargo(toml_path.clone(), true, true).is_ok() {
+                let duat_tx = duat_tx.clone();
+                std::thread::spawn(move || {
+                    // Also compile it in debug mode, to speed up recompilation.
+                    run_cargo(toml_path, false, false).unwrap();
+                    let msg = hint!("Compiled " [*a] "debug" [] " profile");
+                    duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
+                });
+            } else {
+                let msg = err!("Failed to compile " [*a] "release" [] " profile");
+                duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
+            }
         }
         ElfLibrary::dlopen(so_path, OpenFlags::RTLD_NOW | OpenFlags::RTLD_LOCAL).ok()
     };
