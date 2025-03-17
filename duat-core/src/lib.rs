@@ -503,34 +503,6 @@ pub fn periodic_checker(duration: Duration) -> impl Fn() -> bool {
     move || check.fetch_and(false, Ordering::Acquire)
 }
 
-// Turns the [`Error`] into formatted [`Text`]
-// fn into_text(self) -> Text {
-//    let early = hint!(
-//        "Try this after " [*a] "OnUiStart" []
-//        ", maybe by using hooks::add::<OnUiStart>"
-//    );
-//
-//    match self {
-//        Self::CallerNotFound(caller) => {
-//            Box::new()        }
-//        Self::CommandFailed(failure) => failure,
-//        Self::Empty => Box::new(err!("The command is empty.")),
-//        Self::FailedParsing(failure) => failure,
-//        Self::NoFileYet => Box::new(err!("There is no file yet. "
-// early)),        Self::FileNotFound(name) => Box::new(err!("No file
-// named " [*a] name [] " open")),        Self::NoFileForRelated =>
-// Box::new(err!(            "There is no file for a related " [*a] {
-// type_name::<E>() } [] " to exist. " early        )),
-//        Self::NoWidgetYet => Box::new(err!("There can be no widget
-// yet. " early)),        Self::WidgetIsNot => Box::new(err!(
-//            "The widget is not " [*a] { type_name::<E>() } [] ". "
-// early        )),
-//        Self::LayoutDisallowsFile(_) => Box::new(err!(
-//            "The " [*a] "Layout" [] " disallows the addition of more
-// files."        )),
-//    }
-//}
-
 /// Takes a type and generates an appropriate name for it
 ///
 /// Use this function if you need a name of a type to be
