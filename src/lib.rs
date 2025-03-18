@@ -13,28 +13,6 @@
 //! specific varieties, e.g. `MainCursorInsert`.
 #![feature(let_chains, iter_map_windows, if_let_guard, iter_array_chunks)]
 
-// Internal modules for a dependency on duat-core from git or path.
-mod duat_core {
-    #[cfg(all(feature = "normal-deps", not(feature = "__local-deps")))]
-    pub use duat_core::*;
-    #[cfg(all(feature = "__local-deps", not(feature = "normal-deps")))]
-    pub use local_duat_core::*;
-    #[cfg(all(feature = "__local-deps", feature = "normal-deps"))]
-    compile_error!("Use only one source for duat-core");
-    #[cfg(all(not(feature = "__local-deps"), not(feature = "normal-deps")))]
-    compile_error!("Must have only one source for duat-core");
-}
-mod treesitter {
-    #[cfg(all(feature = "normal-deps", not(feature = "__local-deps")))]
-    pub use treesitter::*;
-    #[cfg(all(feature = "__local-deps", not(feature = "normal-deps")))]
-    pub use local_treesitter::*;
-    #[cfg(all(feature = "__local-deps", feature = "normal-deps"))]
-    compile_error!("Use only one source for treesitter");
-    #[cfg(all(not(feature = "__local-deps"), not(feature = "normal-deps")))]
-    compile_error!("Must have only one source for treesitter");
-}
-
 use std::{
     marker::PhantomData,
     ops::RangeInclusive,
@@ -123,12 +101,18 @@ impl<U> Kak<U> {
     ///
     /// [`Form`]: duat_core::form::Form
     pub fn dont_set_cursor_forms(self) -> Self {
-        Self { set_cursor_forms: false, ..self }
+        Self {
+            set_cursor_forms: false,
+            ..self
+        }
     }
 
     /// Makes the tab key insert `\t` instead of spaces
     pub fn insert_tabs(self) -> Self {
-        Self { insert_tabs: true, ..self }
+        Self {
+            insert_tabs: true,
+            ..self
+        }
     }
 }
 
@@ -1086,9 +1070,9 @@ fn match_inside_around(
                 m.destroy();
             }
         }),
-        key!(Char('i')) => helper.move_many(.., |mut m| {
-            let indent = m.
-        }),
+        //key!(Char('i')) => helper.move_many(.., |mut m| {
+        //    let indent = m.
+        //}),
         Event { code, .. } => {
             let code = format!("{code:?}");
             context::notify(err!("Key " [*a] code [] " not mapped on this mode"))
@@ -1288,9 +1272,14 @@ fn set_indent(helper: &mut EditHelper<'_, File, impl Area, ()>) {
         }
     });
     helper.edit_many(.., |e| {
-        let indent = if let Some(ts) = e.get_reader::<TsParser>() && let Some(indent) = ts.get_indent_on(e.caret()){
+        let cfg = e.cfg();
+        let caret = e.caret();
+        let indent = if let Some(mut ts) = e.get_reader::<TsParser>()
+            && let Some(indent) = ts.indent_on(caret, cfg)
+        {
+            indent
         } else {
-            e.indent_on(e.caret());
+            e.indent_on(e.caret())
         };
         e.insert_or_replace(" ".repeat(indent));
     });
