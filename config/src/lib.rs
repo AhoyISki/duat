@@ -77,7 +77,7 @@ fn setup() {
         // parent that owns only the CmdLine and Notifications widgets.
         // With that, you can tell an Area to occupy the whole parent, "hiding
         // other sibling Areas. That's done in, e.g., the "HideCmdLine" hook.
-        builder.push_to(Notifications::cfg(), child);
+        builder.push_to(Notifier::cfg(), child);
     });
     // // See what happens when you uncomment this hook removal:
     // hooks::remove("HideCmdLine");

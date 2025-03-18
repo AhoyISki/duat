@@ -547,8 +547,8 @@ pub mod prelude {
         Plugin, clipboard, cmd,
         data::{self, RwData},
         text::{
-            self, AlignCenter, AlignLeft, AlignRight, Builder, Ghost, Spacer, Text, err, hint, ok,
-            text,
+            self, AlignCenter, AlignLeft, AlignRight, Builder, Ghost, Spacer, Tag, Text, err, hint,
+            ok, text,
         },
         ui::Area as AreaTrait,
         widgets::Widget,
