@@ -1,4 +1,4 @@
 [submodule "duat"]
 	path = duat
-	url = ../duat/
+	url = ../duat
 	branch = master
