@@ -89,6 +89,8 @@ use std::{
     },
 };
 
+use tags::RawTag;
+
 pub(crate) use self::history::History;
 pub use self::{
     builder::{AlignCenter, AlignLeft, AlignRight, Builder, Ghost, Spacer, err, hint, ok, text},
@@ -296,6 +298,10 @@ impl Text {
 
     pub fn bytes_mut(&mut self) -> &mut Bytes {
         &mut self.0.bytes
+    }
+
+    pub fn tags(&self) -> &Tags {
+        &self.0.tags
     }
 
     /////////// Reader functions
@@ -852,22 +858,36 @@ impl Text {
 
     /// A forward iterator over the [`Tag`]s of the [`Text`]
     ///
+    /// This iterator will consider some [`Tag`]s before `b`, since
+    /// their ranges may overlap with `b`
+    ///
     /// # Note
     ///
     /// Duat works fine with [`Tag`]s in the middle of a codepoint,
     /// but external utilizers may not, so keep that in mind.
-    pub fn tags_fwd(&self, at: usize) -> FwdTags {
-        self.0.tags.fwd_at(at)
+    pub fn tags_fwd(&self, b: usize) -> FwdTags {
+        self.0.tags.fwd_at(b)
     }
 
     /// An reverse iterator over the [`Tag`]s of the [`Text`]
     ///
+    /// This iterator will consider some [`Tag`]s ahead of `b`, since
+    /// their ranges may overlap with `b`
+    ///
     /// # Note
     ///
     /// Duat works fine with [`Tag`]s in the middle of a codepoint,
     /// but external utilizers may not, so keep that in mind.
-    pub fn tags_rev(&self, at: usize) -> RevTags {
-        self.0.tags.rev_at(at)
+    pub fn tags_rev(&self, b: usize) -> RevTags {
+        self.0.tags.rev_at(b)
+    }
+
+    pub fn raw_tags_fwd(&self, b: usize) -> impl Iterator<Item = (usize, RawTag)> {
+        self.0.tags.raw_fwd_at(b)
+    }
+
+    pub fn raw_tags_rev(&self, b: usize) -> impl Iterator<Item = (usize, RawTag)> {
+        self.0.tags.raw_rev_at(b)
     }
 
     /// The [`Cursors`] printed to this [`Text`], if they exist

@@ -18,7 +18,7 @@ use gapbuf::{GapBuffer, gap_buffer};
 
 use self::types::Toggle;
 pub use self::{
-    ids::{Key, Keys, GhostId, ToggleId},
+    ids::{GhostId, Key, Keys, ToggleId},
     types::{
         RawTag::{self, *},
         Tag,
@@ -460,23 +460,13 @@ impl Tags {
 
     /// Returns a forward iterator at a given byte
     pub fn fwd_at(&self, at: usize) -> FwdTags {
-        let at = at.min(self.len_bytes()).saturating_sub(self.range_min);
+        let b = at.min(self.len_bytes()).saturating_sub(self.range_min);
 
-        let (n, b) = {
-            let [n, b, _] = self.get_skip_at(at).unwrap_or_default();
-            let iter = rev_range(&self.buf, ..n);
-
-            // If b == at, include the tags before the skip.
-            if b == at {
-                (n - iter.take_while(|(_, ts)| ts.is_tag()).count(), b)
-            } else {
-                (n, b)
-            }
-        };
+        let [sn, sb, _] = self.get_skip_behind(b).unwrap_or_default();
 
         let prev_fwd = {
             let mut prev_fwd = Vec::new();
-            for (b, tag) in self.ranges.iter().take_while(|(b, _)| *b < at) {
+            for (b, tag) in self.ranges.iter().take_while(|(rhs, _)| b > *rhs) {
                 if tag.is_start() {
                     prev_fwd.push((*b, *tag))
                 } else if tag.is_end()
@@ -489,7 +479,7 @@ impl Tags {
         };
 
         let tags = {
-            let iter = fwd_range(&self.buf, n..).filter_map(entries_fwd(b));
+            let iter = fwd_range(&self.buf, sn..).filter_map(entries_fwd(sb));
             iter.map(|(_, b, tag)| match tag {
                 StartConceal(key) => {
                     if let Ok(i) = self.ranges.binary_search(&(b, StartConceal(key)))
@@ -551,6 +541,28 @@ impl Tags {
         };
 
         post_rev.into_iter().rev().chain(tags).peekable()
+    }
+
+    pub fn raw_fwd_at(&self, b: usize) -> impl Iterator<Item = (usize, RawTag)> + '_ {
+        let (n, b) = self
+            .get_skip_behind(b)
+            .map(|[n, b, _]| (n, b))
+            .unwrap_or((self.buf.len(), self.len_bytes()));
+
+        fwd_range(&self.buf, n..)
+            .filter_map(entries_fwd(b))
+            .map(|(n, _, t)| (n, t))
+    }
+
+    pub fn raw_rev_at(&self, b: usize) -> impl Iterator<Item = (usize, RawTag)> + '_ {
+        let (n, b) = self
+            .get_skip_at(b)
+            .map(|[n, b, _]| (n, b))
+            .unwrap_or((self.buf.len(), self.len_bytes()));
+
+        rev_range(&self.buf, ..n)
+            .filter_map(entries_rev(b))
+            .map(|(n, _, t)| (n, t))
     }
 
     /// Returns an iterator over a single byte
@@ -660,7 +672,7 @@ impl Tags {
     /// skip otherwise.
     ///
     /// [`get_skip_at`]: Tags::get_skip_at
-    fn get_skip_behind(&mut self, at: usize) -> Option<[usize; 3]> {
+    fn get_skip_behind(&self, at: usize) -> Option<[usize; 3]> {
         let [n, b, skip] = self.get_skip_at(at)?;
         Some(if b == at {
             rev_range(&self.buf, ..n)

@@ -412,10 +412,8 @@ impl Patterns<'_> {
                 Ok((fwd, rev))
             }
             Patterns::Many(pats) => {
-                let pats: Vec<String> = pats
-                    .into_iter()
-                    .map(|p| p.replace("\\b", "(?-u:\\b)"))
-                    .collect();
+                let pats: Vec<String> =
+                    pats.iter().map(|p| p.replace("\\b", "(?-u:\\b)")).collect();
                 for pat in pats.iter() {
                     regex_syntax::Parser::new().parse(pat)?;
                 }
