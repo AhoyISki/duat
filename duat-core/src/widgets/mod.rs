@@ -53,7 +53,7 @@ pub use self::{
     command_line::{CmdLine, CmdLineCfg},
     file::{File, FileCfg, PathKind},
     line_numbers::{LineNum, LineNumbers, LineNumbersCfg},
-    notifications::{Notifications, NotificationsCfg},
+    notifications::{Notifier, NotificationsCfg},
     status_line::{State, StatusLine, StatusLineCfg, status},
 };
 use crate::{

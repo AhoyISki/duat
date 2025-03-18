@@ -7,12 +7,14 @@
 //!
 //! [`CmdLine`]: super::CmdLine
 //! [hook]: hooks
-use std::marker::PhantomData;
+use std::{
+    marker::PhantomData,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use super::{CheckerFn, Widget, WidgetCfg};
 use crate::{
-    context,
-    data::RwData,
+    context::{self, Notifications},
     hooks::{self, KeySent},
     text::Text,
     ui::{PushSpecs, Ui},
@@ -29,13 +31,15 @@ use crate::{
 /// [`CmdLine`]: super::CmdLine
 /// [hook]: hooks
 /// [`left_with_ratio`]: NotificationsCfg::left_with_ratio
-pub struct Notifications<U> {
-    notifications: RwData<Text>,
+pub struct Notifier<U> {
+    notifications: Notifications,
     text: Text,
     _ghost: PhantomData<U>,
 }
 
-impl<U: Ui> Widget<U> for Notifications<U> {
+static CLEAR_NOTIFS: AtomicBool = AtomicBool::new(false);
+
+impl<U: Ui> Widget<U> for Notifier<U> {
     type Cfg = NotificationsCfg<U>;
 
     fn cfg() -> Self::Cfg {
@@ -43,7 +47,13 @@ impl<U: Ui> Widget<U> for Notifications<U> {
     }
 
     fn update(&mut self, _area: &<U as Ui>::Area) {
-        self.text = self.notifications.read().clone();
+        let clear_notifs = CLEAR_NOTIFS.swap(false, Ordering::Relaxed);
+        if self.notifications.has_changed() {
+            let notifications = self.notifications.read();
+            self.text = notifications.last().cloned().unwrap_or_default()
+        } else if clear_notifs {
+            self.text = Text::new()
+        }
     }
 
     fn text(&self) -> &Text {
@@ -56,7 +66,7 @@ impl<U: Ui> Widget<U> for Notifications<U> {
 
     fn once() -> Result<(), Text> {
         hooks::add_grouped::<KeySent>("RemoveNotificationsOnInput", |_| {
-            *context::notifications().write() = Text::new();
+            CLEAR_NOTIFS.store(true, Ordering::Relaxed);
         });
         Ok(())
     }
@@ -89,16 +99,20 @@ impl<U> NotificationsCfg<U> {
 }
 
 impl<U: Ui> WidgetCfg<U> for NotificationsCfg<U> {
-    type Widget = Notifications<U>;
+    type Widget = Notifier<U>;
 
     fn build(self, _: bool) -> (Self::Widget, impl CheckerFn, PushSpecs) {
-        let widget = Notifications {
-            notifications: crate::context::notifications().clone(),
+        let widget = Notifier {
+            notifications: context::notifications(),
             text: Text::new(),
             _ghost: PhantomData,
         };
 
-        let checker = widget.notifications.checker();
+        let checker = {
+            let checker = widget.notifications.checker();
+            move || checker() || CLEAR_NOTIFS.load(Ordering::Relaxed)
+        };
+
         let specs = if let Some((den, div)) = self.0 {
             PushSpecs::left().with_hor_ratio(den, div)
         } else {

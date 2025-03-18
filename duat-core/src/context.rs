@@ -11,6 +11,7 @@ pub use self::global::*;
 use crate::{
     data::{ReadDataGuard, RwData, WriteDataGuard},
     mode::Cursors,
+    text::Text,
     ui::{Area, Ui},
     widgets::{File, Node, Related, Widget},
 };
@@ -27,7 +28,7 @@ mod global {
 
     use parking_lot::{Mutex, RwLock};
 
-    use super::{CurFile, CurWidget, DynamicFile, FileParts, FixedFile};
+    use super::{CurFile, CurWidget, DynamicFile, FileParts, FixedFile, Notifications};
     use crate::{
         data::RwData,
         duat_name,
@@ -43,7 +44,7 @@ mod global {
     static CUR_WIDGET: OnceLock<&(dyn Any + Send + Sync)> = OnceLock::new();
     static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
     static WINDOWS: OnceLock<&(dyn Any + Send + Sync)> = OnceLock::new();
-    static NOTIFICATIONS: LazyLock<RwData<Text>> = LazyLock::new(RwData::default);
+    static NOTIFICATIONS: LazyLock<RwData<Vec<Text>>> = LazyLock::new(RwData::default);
     static WILL_RELOAD_OR_QUIT: AtomicBool = AtomicBool::new(false);
     static CUR_DIR: OnceLock<Mutex<PathBuf>> = OnceLock::new();
 
@@ -85,12 +86,12 @@ mod global {
             .clone()
     }
 
-    pub fn notifications() -> &'static RwData<Text> {
-        &NOTIFICATIONS
+    pub fn notifications() -> Notifications {
+        Notifications(NOTIFICATIONS.clone())
     }
 
     pub fn notify(msg: Text) {
-        *NOTIFICATIONS.write() = msg
+        NOTIFICATIONS.write().push(msg)
     }
 
     /// Returns `true` if Duat is about to reload
@@ -419,6 +420,40 @@ impl<U: Ui> Drop for WriteFileGuard<'_, U> {
 
         <File as Widget<U>>::update(&mut self.file, self.area);
         <File as Widget<U>>::print(&mut self.file, self.area);
+    }
+}
+
+/// The notifications sent to Duat.
+///
+/// This can include command results, failed mappings, recompilation
+/// messages, and any other thing that you want to [push] to be
+/// notified.
+///
+/// [push]: ::push
+#[derive(Clone)]
+pub struct Notifications(RwData<Vec<Text>>);
+
+impl Notifications {
+    /// Reads the notifications that were sent to Duat
+    pub fn read(&mut self) -> ReadDataGuard<Vec<Text>> {
+        self.0.read()
+    }
+
+	/// Wether there are new notifications or not
+    pub fn has_changed(&self) -> bool {
+        self.0.has_changed()
+    }
+
+    /// Checker for new notifications
+    pub fn checker(&self) -> impl Fn() -> bool + Send + Sync + use<> {
+        self.0.checker()
+    }
+
+    /// Pushes a new [notification] to Duat
+    ///
+    /// [notification]: Text
+    pub fn push(&mut self, text: Text) {
+        self.0.write().push(text)
     }
 }
 
