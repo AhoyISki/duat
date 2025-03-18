@@ -972,9 +972,33 @@ fn match_inside_around(
                 }
             });
         }
+        key!(Char('q' | '\'' | 'Q' | '"' | 'g' | '`' | '|')) => {
+            let char = match key.code {
+                Char('q' | '\'') => '\'',
+                Char('Q' | '"') => '"',
+                Char('g' | '`') => '`',
+                _ => unreachable!(),
+            };
+            helper.move_many(.., |mut m| {
+                m.move_hor(1);
+                let start = m.fwd().find(|(_, c)| *c == char);
+                let end = m.rev().find(|(_, c)| *c == char);
+                if let Some((p0, _)) = start
+                    && let Some((p1, _)) = end
+                {
+                    m.move_to(p0);
+                    m.set_anchor();
+                    m.move_to(p1);
+                } else {
+                    failed_at_least_once = true;
+                    m.reset();
+                    m.destroy();
+                }
+            })
+        }
         Event { code, .. } => {
             let code = format!("{code:?}");
-            context::notify(err!("Key " [*a] code [] " not mapped on " [*a] "go to"))
+            context::notify(err!("Key " [*a] code [] " not mapped on this mode"))
         }
     }
 
