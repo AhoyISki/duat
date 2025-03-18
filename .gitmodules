@@ -4,3 +4,7 @@
 [submodule "plugins/duat-catppuccin"]
 	path = plugins/duat-catppuccin
 	url = ../duat-catppuccin/
+[submodule "plugins/duat-kak"]
+	path = plugins/duat-kak
+	url = ../duat-kak
+	branch = master

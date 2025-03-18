@@ -27,12 +27,12 @@ version = "0.3.0"
 package = "duat-kak"
 
 [dependencies.treesitter]
-git = "https://github.com/AhoyISki/duat-treesitter"
+git = "https://github.com/AhoyISki/duat"
 version = "0.1.0"
 package = "duat-treesitter"
 
 [dependencies.catppuccin]
-git = "https://github.com/AhoyISki/duat-catppuccin"
+git = "https://github.com/AhoyISki/duat"
 version = "0.1.0"
 package = "duat-catppuccin"
 
