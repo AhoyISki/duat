@@ -17,7 +17,7 @@ categories = ["command-line-utilities", "text-editors", "config"]
 # on a git path would not work supper well, as i'd constantly have
 # to update the dependencies.
 # For your own plugins, you can stick with a git source.
-duat-core = { version = "0.3.0", path = "duat/duat-core/" }
+duat-core = { version = "0.3.0", path = "../../duat/duat-core/" }
 
 streaming-iterator = "0.1.9"
 tree-sitter = "0.25.2"
