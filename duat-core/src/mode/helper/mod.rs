@@ -10,7 +10,7 @@ use std::ops::RangeBounds;
 pub use self::cursors::{Cursor, Cursors};
 use crate::{
     cfg::{IterCfg, PrintCfg},
-    text::{Change, Point, RegexPattern, Searcher, Strs, Text},
+    text::{Change, Point, Reader, RegexPattern, Searcher, Strs, Text},
     ui::Area,
     widgets::{File, Widget},
 };
@@ -747,7 +747,17 @@ where
         }
     }
 
-    ////////// Queries
+    ////////// Text queries
+
+    /// Returns the [`char`] in the `caret`
+    pub fn char(&self) -> char {
+        self.text().char_at(self.cursor.caret()).unwrap()
+    }
+
+    /// Returns the [`char`] at a given [`Point`]
+    pub fn char_at(&self, p: Point) -> Option<char> {
+        self.text().char_at(p)
+    }
 
     /// Returns the [`Cursor`]'s selection
     ///
@@ -771,6 +781,16 @@ where
             .strs(start.byte()..end.byte() + self.is_incl() as usize)
     }
 
+    /// Returns the length of the [`Text`], in [`Point`]
+    pub fn len(&self) -> Point {
+        self.text().len()
+    }
+
+    /// Returns the position of the last [`char`] if there is one
+    pub fn last_point(&self) -> Option<Point> {
+        self.text().last_point()
+    }
+
     /// This will return the level of indentation on this line
     ///
     /// It will simply be equivalent to the same level of indentation
@@ -781,16 +801,13 @@ where
     /// the text.
     pub fn indent_on(&mut self, point: Point) -> usize {
         let cfg = self.cfg();
-        let text = self.widget.text_mut();
-        let t_iter = text.iter_rev(point).no_ghosts().no_conceals();
+        let [_, end] = self.text().points_of_line(point.line());
+        let t_iter = self.text().iter_rev(end).no_ghosts().no_conceals();
         let iter = self
             .area
             .rev_print_iter(t_iter, IterCfg::new(cfg))
-            // This should skip the current line and all empty lines before.
-            .skip_while(|(_, item)| {
-                item.part.as_char().is_none_or(char::is_whitespace)
-                    || item.real.line() == point.line()
-            })
+            // This should skip until finding a non empty line.
+            .skip_while(|(_, item)| item.part.as_char().is_none_or(char::is_whitespace))
             // And this should make sure we only capture one line.
             .take_while(|(_, item)| item.part.as_char().is_none_or(|c| c != '\n'));
         iter.fold(0, |mut indent, (caret, item)| {
@@ -798,6 +815,15 @@ where
             indent * item.part.as_char().is_none_or(char::is_whitespace) as usize
         })
     }
+
+	/// Gets a [`Reader`]'s [public facing API], if it exists
+	///
+	/// [public facing API]: Reader::PublicReader
+    pub fn get_reader<R: Reader>(&mut self) -> Option<R::PublicReader<'_>> {
+        self.widget.text_mut().get_reader::<R>()
+    }
+
+    ////////// Cursor queries
 
     /// Returns the `caret`
     pub fn caret(&self) -> Point {
@@ -908,7 +934,7 @@ where
             area,
             cfg,
             inc_searcher,
-            initial
+            initial,
         }
     }
 
@@ -1018,7 +1044,7 @@ where
         }
     }
 
-	/// Resets the [`Cursor`] to how it was before being modified
+    /// Resets the [`Cursor`] to how it was before being modified
     pub fn reset(&mut self) {
         *self.cursor = Some(self.initial)
     }
@@ -1030,7 +1056,7 @@ where
         self.text.char_at(self.cursor.unwrap().caret()).unwrap()
     }
 
-	/// Returns the [`char`] at a given [`Point`]
+    /// Returns the [`char`] at a given [`Point`]
     pub fn char_at(&self, p: Point) -> Option<char> {
         self.text.char_at(p)
     }
@@ -1059,6 +1085,38 @@ where
     /// Returns the position of the last [`char`] if there is one
     pub fn last_point(&self) -> Option<Point> {
         self.text.last_point()
+    }
+
+    /// This will return the level of indentation on this line
+    ///
+    /// It will simply be equivalent to the same level of indentation
+    /// of the last non empty line.
+    ///
+    /// If you want something more advanced, you could use something
+    /// like tree-sitter to get a better estimation for how to indent
+    /// the text.
+    pub fn indent_on(&mut self, point: Point) -> usize {
+        let cfg = self.cfg();
+        let [_, end] = self.text().points_of_line(point.line());
+        let t_iter = self.text().iter_rev(end).no_ghosts().no_conceals();
+        let iter = self
+            .area
+            .rev_print_iter(t_iter, IterCfg::new(cfg))
+            // This should skip until finding a non empty line.
+            .skip_while(|(_, item)| item.part.as_char().is_none_or(char::is_whitespace))
+            // And this should make sure we only capture one line.
+            .take_while(|(_, item)| item.part.as_char().is_none_or(|c| c != '\n'));
+        iter.fold(0, |mut indent, (caret, item)| {
+            indent = indent.max((caret.x + caret.len) as usize);
+            indent * item.part.as_char().is_none_or(char::is_whitespace) as usize
+        })
+    }
+
+	/// Gets a [`Reader`]'s [public facing API], if it exists
+	///
+	/// [public facing API]: Reader::PublicReader
+    pub fn get_reader<R: Reader>(&mut self) -> Option<R::PublicReader<'_>> {
+        self.text.get_reader::<R>()
     }
 
     ////////// Iteration functions

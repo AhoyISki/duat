@@ -338,7 +338,7 @@ impl Bytes {
     /// Will panic if the number `l` is greater than the number of
     /// lines on the text
     #[inline(always)]
-    pub fn points_of_line(&self, l: usize) -> (Point, Point) {
+    pub fn points_of_line(&self, l: usize) -> [Point; 2] {
         assert!(
             l <= self.len().line(),
             "byte out of bounds: the len is {}, but the line is {l}",
@@ -350,7 +350,7 @@ impl Bytes {
             .chars_fwd(start)
             .find_map(|(p, _)| (p.line() > start.line()).then_some(p))
             .unwrap_or(start);
-        (start, end)
+        [start, end]
     }
 
     /// The last [`Point`] associated with a `char`

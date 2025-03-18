@@ -316,6 +316,10 @@ impl Text {
             .add(&mut self.0.bytes, &mut self.0.tags, reader_cfg)
     }
 
+    pub fn get_reader<R: Reader>(&mut self) -> Option<R::PublicReader<'_>> {
+        self.0.readers.get_mut::<R>(&mut self.0.bytes)
+    }
+
     ////////// Point querying functions
 
     /// The [`Point`] corresponding to the byte position, 0 indexed
@@ -367,7 +371,7 @@ impl Text {
     /// Will panic if the number `l` is greater than the number of
     /// lines on the text
     #[inline(always)]
-    pub fn points_of_line(&self, l: usize) -> (Point, Point) {
+    pub fn points_of_line(&self, l: usize) -> [Point; 2] {
         self.0.bytes.points_of_line(l)
     }
 
