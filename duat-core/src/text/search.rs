@@ -66,7 +66,7 @@ impl Text {
             let p0 = bytes.point_at(h_start + range.start);
             let p1 = bytes.point_at(h_end + range.start);
 
-            Some(R::get_match((p0, p1), half.pattern()))
+            Some(R::get_match([p0, p1], half.pattern()))
         }))
     }
 
@@ -117,7 +117,7 @@ impl Text {
             let p0 = bytes.point_at(start + gap);
             let p1 = bytes.point_at(end + gap);
 
-            Some(R::get_match((p0, p1), half.pattern()))
+            Some(R::get_match([p0, p1], half.pattern()))
         }))
     }
 
@@ -422,37 +422,37 @@ impl Patterns<'_> {
 pub trait RegexPattern: InnerRegexPattern {
     type Match: 'static;
 
-    fn get_match(points: (Point, Point), pattern: PatternID) -> Self::Match;
+    fn get_match(points: [Point; 2], pattern: PatternID) -> Self::Match;
 }
 
 impl RegexPattern for &str {
-    type Match = (Point, Point);
+    type Match = [Point; 2];
 
-    fn get_match(points: (Point, Point), _pattern: PatternID) -> Self::Match {
+    fn get_match(points: [Point; 2], _pattern: PatternID) -> Self::Match {
         points
     }
 }
 
 impl RegexPattern for String {
-    type Match = (Point, Point);
+    type Match = [Point; 2];
 
-    fn get_match(points: (Point, Point), _pattern: PatternID) -> Self::Match {
+    fn get_match(points: [Point; 2], _pattern: PatternID) -> Self::Match {
         points
     }
 }
 
 impl RegexPattern for &String {
-    type Match = (Point, Point);
+    type Match = [Point; 2];
 
-    fn get_match(points: (Point, Point), _pattern: PatternID) -> Self::Match {
+    fn get_match(points: [Point; 2], _pattern: PatternID) -> Self::Match {
         points
     }
 }
 
 impl RegexPattern for char {
-    type Match = (Point, Point);
+    type Match = [Point; 2];
 
-    fn get_match(points: (Point, Point), _pattern: PatternID) -> Self::Match {
+    fn get_match(points: [Point; 2], _pattern: PatternID) -> Self::Match {
         points
     }
 }
@@ -460,16 +460,16 @@ impl RegexPattern for char {
 impl<const N: usize> RegexPattern for [&'static str; N] {
     type Match = (Point, Point, usize);
 
-    fn get_match(points: (Point, Point), pattern: PatternID) -> Self::Match {
-        (points.0, points.1, pattern.as_usize())
+    fn get_match(points: [Point; 2], pattern: PatternID) -> Self::Match {
+        (points[0], points[1], pattern.as_usize())
     }
 }
 
 impl RegexPattern for &[&'static str] {
     type Match = (Point, Point, usize);
 
-    fn get_match(points: (Point, Point), pattern: PatternID) -> Self::Match {
-        (points.0, points.1, pattern.as_usize())
+    fn get_match(points: [Point; 2], pattern: PatternID) -> Self::Match {
+        (points[0], points[1], pattern.as_usize())
     }
 }
 

@@ -1015,6 +1015,21 @@ where
         }
     }
 
+    /// Clears the `anchor` if this range is "empty"
+    ///
+    /// A range is empty if it is exclusive and has no characters, or
+    /// if it is inclusive and has just one.
+    pub fn unset_empty_range(&mut self) -> Option<Point> {
+        if let Some(anchor) = self.anchor()
+            && ((self.is_incl() && anchor.char().abs_diff(self.caret().char()) == 1)
+                || !self.is_incl() && anchor.char() == self.caret().char())
+        {
+            self.unset_anchor()
+        } else {
+            None
+        }
+    }
+
     ////////// Text queries
 
     /// Returns the [`char`] in the `caret`

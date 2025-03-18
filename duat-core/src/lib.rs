@@ -696,55 +696,9 @@ pub static HOOK: Once = Once::new();
 #[doc(hidden)]
 pub static LOG: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::new()));
 
-/// Log information to be shown when panicking
-#[doc(hidden)]
-pub macro log_panic($($text:tt)*) {{
-    #[cfg(not(debug_assertions))] {
-        compile_error!("You are not supposed to use log_panic on release profiles!");
-    }
-
-    use std::{fmt::Write, time::Instant};
-
-    use crate::{HOOK, LOG};
-
-    let mut text = format!($($text)*);
-
-    HOOK.call_once(|| {
-        let old_hook = std::panic::take_hook();
-        std::panic::set_hook(Box::new(move |info| {
-            old_hook(info);
-            println!("Logs:");
-            println!("{}\n", LOG.lock().unwrap());
-        }));
-    });
-
-    if let Some(start) = $crate::DEBUG_TIME_START.get()
-        && text != "" {
-        if text.lines().count() > 1 {
-            let chars = text.char_indices().filter_map(|(pos, char)| (char == '\n').then_some(pos));
-            let nl_indices: Vec<usize> = chars.collect();
-            for index in nl_indices.iter().rev() {
-                text.insert_str(index + 1, "  ");
-            }
-
-            let duration = Instant::now().duration_since(*start);
-            write!(LOG.lock().unwrap(), "\nat {:.4?}:\n  {text}", duration).unwrap();
-        } else {
-            let duration = Instant::now().duration_since(*start);
-            write!(LOG.lock().unwrap(), "\nat {:.4?}: {text}", duration).unwrap();
-        }
-    } else {
-        write!(LOG.lock().unwrap(), "\n{text}").unwrap();
-    }
-}}
-
 /// Log information to a log file
 #[doc(hidden)]
 pub macro log_file($($text:tt)*) {{
-    #[cfg(not(debug_assertions))] {
-        compile_error!("You are not supposed to use log_file on release profiles!");
-    }
-
     if let Some(cache) = cache_dir() {
         let mut file = std::io::BufWriter::new(
             std::fs::OpenOptions::new()

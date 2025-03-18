@@ -611,12 +611,19 @@ impl<'a> Iterator for Strs<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for Strs<'a> {}
+impl ExactSizeIterator for Strs<'_> {}
 
-impl<'a> DoubleEndedIterator for Strs<'a> {
+impl DoubleEndedIterator for Strs<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.0.next_back()
     }
 }
 
-impl<'a> FusedIterator for Strs<'a> {}
+impl FusedIterator for Strs<'_> {}
+
+impl std::fmt::Display for Strs<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let [s0, s1] = self.to_array();
+        write!(f, "{s0}{s1}")
+    }
+}
