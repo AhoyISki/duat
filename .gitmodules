@@ -1,0 +1,6 @@
+[submodule "plugins/duat-treesitter"]
+	path = plugins/duat-treesitter
+	url = ../duat-treesitter/
+[submodule "plugins/duat-catppuccin"]
+	path = plugins/duat-catppuccin
+	url = ../duat-catppuccin/
