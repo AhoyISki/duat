@@ -8,9 +8,6 @@ use crate::{
 pub trait IncSearcher<U: Ui>: Clone + Send + Sync + 'static {
     fn search(&mut self, orig: &Orig<U>, file: &mut File, area: &U::Area, searcher: Searcher);
 
-    #[allow(unused)]
-    fn finish(&mut self, orig: &Orig<U>, file: &mut File, area: &U::Area) {}
-
     fn prompt(&self) -> Text;
 }
 

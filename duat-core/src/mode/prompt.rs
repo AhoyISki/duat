@@ -78,11 +78,13 @@ impl<M: PromptMode<U>, U: Ui> Mode<U> for Prompt<M, U> {
                 });
                 helper.edit_main(|e| e.replace(""));
                 helper.cursors_mut().clear();
+                self.0.update(helper.text_mut(), area);
                 self.0.before_exit(helper.text_mut(), area);
                 super::reset();
             }
             key!(KeyCode::Enter) => {
                 helper.cursors_mut().clear();
+                self.0.update(helper.text_mut(), area);
                 self.0.before_exit(helper.text_mut(), area);
                 super::reset();
             }
@@ -193,9 +195,7 @@ impl<I: IncSearcher<U>, U: Ui> IncSearch<I, U> {
 
 impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
     fn update(&mut self, text: &mut Text, _area: &U::Area) {
-        let Some(orig) = self.orig.as_ref() else {
-            unreachable!();
-        };
+        let orig = self.orig.as_ref().unwrap();
         text.remove_tags(.., *KEY);
 
         let mut ff = context::fixed_file::<U>().unwrap();
@@ -223,15 +223,6 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
         let mut ff = context::fixed_file::<U>().unwrap();
         let (file, area) = ff.read();
         self.orig = Some((file.cursors().clone(), area.print_info()));
-    }
-
-    fn before_exit(&mut self, _text: &mut Text, _area: &U::Area) {
-        let Some(orig) = self.orig.as_ref() else {
-            unreachable!();
-        };
-        let mut ff = context::fixed_file::<U>().unwrap();
-        let (mut file, area) = ff.write();
-        self.inc.finish(orig, &mut file, area);
     }
 
     fn once() {
