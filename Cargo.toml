@@ -2,6 +2,13 @@
 name = "duat-treesitter"
 version = "0.1.0"
 edition = "2024"
+authors = ["AhoyISki"]
+description = "Plugin for tree-sitter bindings for Duat"
+homepage = "https://github.com/AhoyISki/duat-treesitter"
+license = "AGPL-3.0-or-later"
+readme = "README.md"
+keywords = ["tree-sitter", "duat", "plugin"]
+categories = ["command-line-utilities", "text-editors", "config"]
 
 [dependencies]
 # Just a heads up, this dependency, along with the duat
