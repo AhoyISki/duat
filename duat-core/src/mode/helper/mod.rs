@@ -1030,6 +1030,11 @@ where
         self.text.char_at(self.cursor.unwrap().caret()).unwrap()
     }
 
+	/// Returns the [`char`] at a given [`Point`]
+    pub fn char_at(&self, p: Point) -> Option<char> {
+        self.text.char_at(p)
+    }
+
     /// Returns the [`Cursor`]'s selection
     ///
     /// The reason why this return value is `IntoIter<&str, 2>` is

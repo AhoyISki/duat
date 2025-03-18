@@ -927,6 +927,15 @@ fn match_inside_around(
     key: Event,
     is_inside: bool,
 ) {
+    fn move_inside<S>(is_inside: bool, mut m: Mover<impl Area, S>) {
+        if is_inside {
+            m.move_hor(-1);
+            m.swap_ends();
+            m.move_hor(1);
+            m.swap_ends();
+        }
+    }
+
     let initial_cursors_len = helper.cursors().len();
     let mut failed_at_least_once = false;
     match key {
@@ -956,19 +965,14 @@ fn match_inside_around(
                     s_count += (*c == s_char) as i32 - (*c == e_char) as i32;
                     s_count < 0
                 });
-                let Some((p1, _)) = found_e else {
+                if let Some((p1, _)) = found_e {
+                    m.move_to(p0);
+                    m.set_anchor();
+                    m.move_to(p1);
+                    move_inside(is_inside, m);
+                } else {
                     failed_at_least_once = true;
                     m.destroy();
-                    return;
-                };
-                m.move_to(p0);
-                m.set_anchor();
-                m.move_to(p1);
-                if is_inside {
-                    m.move_hor(-1);
-                    m.swap_ends();
-                    m.move_hor(1);
-                    m.swap_ends();
                 }
             });
         }
@@ -977,18 +981,20 @@ fn match_inside_around(
                 Char('q' | '\'') => '\'',
                 Char('Q' | '"') => '"',
                 Char('g' | '`') => '`',
+                Char('|') => '|',
                 _ => unreachable!(),
             };
             helper.move_many(.., |mut m| {
                 m.move_hor(1);
-                let start = m.fwd().find(|(_, c)| *c == char);
-                let end = m.rev().find(|(_, c)| *c == char);
+                let start = m.rev().find(|(_, c)| *c == char);
+                let end = m.fwd().find(|(_, c)| *c == char);
                 if let Some((p0, _)) = start
                     && let Some((p1, _)) = end
                 {
                     m.move_to(p0);
                     m.set_anchor();
                     m.move_to(p1);
+                    move_inside(is_inside, m);
                 } else {
                     failed_at_least_once = true;
                     m.reset();
@@ -996,6 +1002,35 @@ fn match_inside_around(
                 }
             })
         }
+        key!(Char('w' | 'W')) => helper.move_many(.., |mut m| {
+            let mf = key.modifiers;
+            let w_chars = m.cfg().word_chars;
+            let start = m.search_rev(e_anchor_word(mf, w_chars), None).next();
+            let end = m.search_fwd(s_anchor_word(mf, w_chars), None).next();
+            let (p0, p1) = match (start, end) {
+                (None, None) => {
+                    failed_at_least_once = true;
+                    m.destroy();
+                    return;
+                }
+                (None, Some([_, p1])) => (m.caret(), p1),
+                (Some([p0, _]), None) => (p0, m.caret()),
+                (Some([p0, _]), Some([_, p1])) => {
+                    if mf.contains(Mod::ALT)
+                        || Category::of(m.char_at(p0).unwrap(), w_chars)
+                            == Category::of(m.char_at(m.caret()).unwrap(), w_chars)
+                    {
+                        (p0, p1)
+                    } else {
+                        (m.caret(), p1)
+                    }
+                }
+            };
+            m.move_to(p0);
+            m.set_anchor();
+            m.move_to(p1);
+            m.move_hor(-1);
+        }),
         Event { code, .. } => {
             let code = format!("{code:?}");
             context::notify(err!("Key " [*a] code [] " not mapped on this mode"))
@@ -1025,35 +1060,39 @@ enum SelType {
     Normal,
 }
 
-fn word_and_space(mf: Mod, w_chars: WordChars) -> &'static str {
-    const WORD: &str = "[^ \t\n]*[ \t]*";
-    static UNWS: RegexStrs = LazyLock::new(Mutex::default);
-
-    let mut unws = UNWS.lock();
-    if let Some((_, word)) = unws.iter().find(|(r, _)| *r == w_chars.ranges()) {
-        if mf.contains(Mod::ALT) { WORD } else { word }
+fn word_and_space(mf: Mod, w_chars: WordChars) -> String {
+    if mf.contains(Mod::ALT) {
+        "[^ \t\n]*[ \t]*".to_string()
     } else {
         let cat = w_char_cat(w_chars.ranges());
-        let word = format!("([{cat}]+|[^{cat} \t\n]+)[ \t]*|[ \t]+").leak();
-
-        unws.push((w_chars.ranges(), word));
-        if mf.contains(Mod::ALT) { WORD } else { word }
+        format!("([{cat}]+|[^{cat} \t\n]+)[ \t]*|[ \t]+")
     }
 }
 
-fn space_and_word(mf: Mod, w_chars: WordChars) -> &'static str {
-    const WORD: &str = "[ \t]*[^ \t\n]*";
-    static EOWS: RegexStrs = LazyLock::new(Mutex::default);
-
-    let mut eows = EOWS.lock();
-    if let Some((_, word)) = eows.iter().find(|(r, _)| *r == w_chars.ranges()) {
-        if mf.contains(Mod::ALT) { WORD } else { word }
+fn space_and_word(mf: Mod, w_chars: WordChars) -> String {
+    if mf.contains(Mod::ALT) {
+        "[ \t]*[^ \t\n]*".to_string()
     } else {
         let cat = w_char_cat(w_chars.ranges());
-        let word = format!("[ \t]*([{cat}]+|[^{cat} \t\n]+)|[ \t]+").leak();
+        format!("[ \t]*([{cat}]+|[^{cat} \t\n]+)|[ \t]+")
+    }
+}
 
-        eows.push((w_chars.ranges(), word));
-        if mf.contains(Mod::ALT) { WORD } else { word }
+fn s_anchor_word(mf: Mod, w_chars: WordChars) -> String {
+    if mf.contains(Mod::ALT) {
+        "\\A[^ \t\n]+]".to_string()
+    } else {
+        let cat = w_char_cat(w_chars.ranges());
+        format!("\\A([{cat}]+|[^{cat} \t\n]+)")
+    }
+}
+
+fn e_anchor_word(mf: Mod, w_chars: WordChars) -> String {
+    if mf.contains(Mod::ALT) {
+        "[^ \t\n]+]\\z".to_string()
+    } else {
+        let cat = w_char_cat(w_chars.ranges());
+        format!("([{cat}]+|[^{cat} \t\n]+)\\z")
     }
 }
 
@@ -1069,8 +1108,6 @@ fn w_char_cat(ranges: &'static [RangeInclusive<char>]) -> String {
         })
         .collect()
 }
-
-type RegexStrs = LazyLock<Mutex<Vec<(&'static [RangeInclusive<char>], &'static str)>>>;
 
 #[derive(PartialEq, Eq)]
 enum Category {
