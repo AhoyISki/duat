@@ -15,7 +15,8 @@ use parking_lot::{RwLock, RwLockWriteGuard};
 use regex_automata::{
     Anchored, Input, PatternID,
     hybrid::dfa::{Cache, DFA},
-    nfa::thompson::Config,
+    nfa::thompson,
+    util::syntax,
 };
 
 use super::{Point, Text, TextRange};
@@ -396,23 +397,30 @@ impl Patterns<'_> {
 
     fn dfas(&self) -> Result<(DFA, DFA), Box<regex_syntax::Error>> {
         let mut fwd_builder = DFA::builder();
-        fwd_builder.thompson(Config::new().utf8(false));
+        fwd_builder.syntax(syntax::Config::new().multi_line(true));
         let mut rev_builder = DFA::builder();
-        rev_builder.thompson(Config::new().reverse(true).utf8(false));
+        rev_builder
+            .syntax(syntax::Config::new().multi_line(true))
+            .thompson(thompson::Config::new().reverse(true));
 
         match self {
             Patterns::One(pat) => {
-                regex_syntax::Parser::new().parse(pat)?;
-                let fwd = fwd_builder.build(pat).unwrap();
-                let rev = rev_builder.build(pat).unwrap();
+                let pat = pat.replace("\\b", "(?-u:\\b)");
+                regex_syntax::Parser::new().parse(&pat)?;
+                let fwd = fwd_builder.build(&pat).unwrap();
+                let rev = rev_builder.build(&pat).unwrap();
                 Ok((fwd, rev))
             }
             Patterns::Many(pats) => {
-                for pat in *pats {
+                let pats: Vec<String> = pats
+                    .into_iter()
+                    .map(|p| p.replace("\\b", "(?-u:\\b)"))
+                    .collect();
+                for pat in pats.iter() {
                     regex_syntax::Parser::new().parse(pat)?;
                 }
-                let fwd = fwd_builder.build_many(pats).unwrap();
-                let rev = rev_builder.build_many(pats).unwrap();
+                let fwd = fwd_builder.build_many(&pats).unwrap();
+                let rev = rev_builder.build_many(&pats).unwrap();
                 Ok((fwd, rev))
             }
         }
