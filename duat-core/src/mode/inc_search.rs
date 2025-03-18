@@ -30,8 +30,8 @@ impl<U: Ui> IncSearcher<U> for SearchFwd {
 
         helper.move_many(.., |mut m| {
             let caret = m.caret();
-            let next = m.search_inc_fwd(None).find(|(p, _)| *p != caret);
-            if let Some((p0, p1)) = next {
+            let next = m.search_inc_fwd(None).find(|[p, _]| *p != caret);
+            if let Some([p0, p1]) = next {
                 m.move_to(p0);
                 if p1 > p0 {
                     m.set_anchor();
@@ -65,8 +65,8 @@ impl<U: Ui> IncSearcher<U> for SearchRev {
 
         helper.move_many(.., |mut m| {
             let caret = m.caret();
-            let next = m.search_inc_rev(None).find(|(_, p)| *p != caret);
-            if let Some((p0, p1)) = next {
+            let next = m.search_inc_rev(None).find(|[_, p]| *p != caret);
+            if let Some([p0, p1]) = next {
                 m.move_to(p0);
                 if p1 > p0 {
                     m.set_anchor();
@@ -100,8 +100,8 @@ impl<U: Ui> IncSearcher<U> for ExtendFwd {
 
         helper.move_many(.., |mut m| {
             let caret = m.caret();
-            let next = m.search_inc_fwd(None).find(|(p, _)| *p != caret);
-            if let Some((_, p1)) = next {
+            let next = m.search_inc_fwd(None).find(|[p, _]| *p != caret);
+            if let Some([_, p1]) = next {
                 if m.anchor().is_none() {
                     m.set_anchor();
                 }
@@ -136,8 +136,8 @@ impl<U: Ui> IncSearcher<U> for ExtendRev {
 
         helper.move_many(.., |mut m| {
             let caret = m.caret();
-            let next = m.search_inc_rev(None).find(|(_, p)| *p != caret);
-            if let Some((p0, _)) = next {
+            let next = m.search_inc_rev(None).find(|[_, p]| *p != caret);
+            if let Some([p0, _]) = next {
                 if m.anchor().is_none() {
                     m.set_anchor();
                 }

@@ -218,7 +218,7 @@ impl Searcher {
         &'b mut self,
         text: &'b mut Text,
         range: impl TextRange,
-    ) -> impl Iterator<Item = (Point, Point)> + 'b {
+    ) -> impl Iterator<Item = [Point; 2]> + 'b {
         let range = range.to_range_fwd(text.len().byte());
         let mut last_point = text.point_at(range.start);
 
@@ -270,7 +270,7 @@ impl Searcher {
 
             last_point = end;
 
-            Some((start, end))
+            Some([start, end])
         })
     }
 
@@ -278,7 +278,7 @@ impl Searcher {
         &'b mut self,
         text: &'b mut Text,
         range: impl TextRange,
-    ) -> impl Iterator<Item = (Point, Point)> + 'b {
+    ) -> impl Iterator<Item = [Point; 2]> + 'b {
         let range = range.to_range_rev(text.len().byte());
         let mut last_point = text.point_at(range.end);
 
@@ -329,7 +329,7 @@ impl Searcher {
 
             last_point = start;
 
-            Some((start, end))
+            Some([start, end])
         })
     }
 

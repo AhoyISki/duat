@@ -11,7 +11,7 @@
 //! `set_cursor_forms` will create a hook to set the `MainCursor`,
 //! `ExtraCursor`, `MainSelection` and `ExtraSelection` forms to mode
 //! specific varieties, e.g. `MainCursorInsert`.
-#![feature(let_chains, iter_map_windows, type_alias_impl_trait, if_let_guard)]
+#![feature(let_chains, iter_map_windows, if_let_guard, iter_array_chunks)]
 use std::{
     marker::PhantomData,
     ops::RangeInclusive,
@@ -150,7 +150,6 @@ impl<U: Ui> Mode<U> for Normal {
                 self.0 = SelType::Normal;
             }
             key!(Char('j' | 'J')) => helper.move_many(.., |mut m| {
-                context::notify(text!("moved down"));
                 set_anchor_if_needed(&mut m, key.modifiers);
                 m.move_ver(1);
                 if m.char() == '\n' && m.caret_col() > 0 && self.0 != SelType::ToEndOfLine {
@@ -1078,9 +1077,9 @@ impl<U: Ui> IncSearcher<U> for Select {
         helper.move_many(.., |mut m| {
             m.set_caret_on_start();
             if let Some(anchor) = m.anchor() {
-                let ranges: Vec<(Point, Point)> = m.search_inc_fwd(Some(anchor)).collect();
+                let ranges: Vec<[Point; 2]> = m.search_inc_fwd(Some(anchor)).collect();
 
-                for (i, &(p0, p1)) in ranges.iter().enumerate() {
+                for (i, &[p0, p1]) in ranges.iter().enumerate() {
                     m.move_to(p0);
                     if p1.char() > p0.char() + 1 {
                         m.set_anchor();
@@ -1119,18 +1118,26 @@ impl<U: Ui> IncSearcher<U> for Split {
         helper.move_many(.., |mut m| {
             m.set_caret_on_start();
             if let Some(anchor) = m.anchor() {
-                let ranges: Vec<(Point, Point)> = m.search_inc_fwd(Some(anchor)).collect();
+                let ranges: Vec<Point> = m.search_inc_fwd(Some(anchor)).flatten().collect();
+                let cursors_to_add = ranges.len() / 2 + 1;
+                let iter = [m.caret()]
+                    .into_iter()
+                    .chain(ranges)
+                    .chain([anchor])
+                    .array_chunks();
 
-                for (i, &(p0, p1)) in ranges.iter().enumerate() {
+                for (i, [p0, p1]) in iter.enumerate() {
                     m.move_to(p0);
-                    if p1 > p0 {
+                    if p1.char() > p0.char() + 1 {
                         m.set_anchor();
                         m.move_to(p1);
                         m.move_hor(-1);
-                    } else {
+                    } else if p1 > p0 {
                         m.unset_anchor();
+                    } else {
+                        continue;
                     }
-                    if i < ranges.len() - 1 {
+                    if i < cursors_to_add {
                         m.copy();
                     }
                 }

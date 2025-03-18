@@ -1247,10 +1247,7 @@ where
     /// requested [`Point`].
     ///
     /// [`IncSearch`]: crate::widgets::IncSearch
-    pub fn search_inc_fwd(
-        &mut self,
-        end: Option<Point>,
-    ) -> impl Iterator<Item = (Point, Point)> + '_ {
+    pub fn search_inc_fwd(&mut self, end: Option<Point>) -> impl Iterator<Item = [Point; 2]> + '_ {
         self.inc_searcher.search_fwd(self.text, (self.caret(), end))
     }
 
@@ -1264,7 +1261,7 @@ where
     pub fn search_inc_rev(
         &mut self,
         start: Option<Point>,
-    ) -> impl Iterator<Item = (Point, Point)> + '_ {
+    ) -> impl Iterator<Item = [Point; 2]> + '_ {
         self.inc_searcher
             .search_rev(self.text, (start, self.caret()))
     }
