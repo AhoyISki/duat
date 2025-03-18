@@ -900,10 +900,11 @@ fn match_find_until(
 ) {
     use SelType::*;
     helper.move_many(.., |mut m| {
+        let search = format!("\\x{{{:X}}}", char as u32);
         let cur = m.caret();
         let (points, back) = match st {
-            Reverse | ExtendRev => (m.search_rev(char, None).find(|[p1, _]| *p1 != cur), 1),
-            Normal | Extend => (m.search_fwd(char, None).find(|[p0, _]| *p0 != cur), -1),
+            Reverse | ExtendRev => (m.search_rev(search, None).find(|[p1, _]| *p1 != cur), 1),
+            Normal | Extend => (m.search_fwd(search, None).find(|[p0, _]| *p0 != cur), -1),
             _ => unreachable!(),
         };
 
