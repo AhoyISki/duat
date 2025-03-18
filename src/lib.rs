@@ -11,19 +11,6 @@
 //! [tree-sitter]: https://tree-sitter.github.io/tree-sitter
 #![feature(decl_macro, let_chains)]
 
-// Internal module for a dependency on duat-core from git or path.
-mod duat_core {
-    #[cfg(all(feature = "normal-deps", not(feature = "__local-deps")))]
-    pub use duat_core::*;
-    #[cfg(all(feature = "__local-deps", not(feature = "normal-deps")))]
-    pub use local_duat_core::*;
-    #[cfg(all(feature = "__local-deps", feature = "normal-deps"))]
-    compile_error!("Use only one source for duat-core");
-    #[cfg(all(not(feature = "__local-deps"), not(feature = "normal-deps")))]
-    compile_error!("Must have only one source for duat-core");
-}
-
-
 use std::{collections::HashMap, marker::PhantomData, ops::Range, path::Path, sync::LazyLock};
 
 use duat_core::{
@@ -316,7 +303,7 @@ impl<'a> PubTsParser<'a> {
             return None;
         }
         let tab = cfg.tab_stops.size() as i32;
-        let (start, _) = self.1.points_of_line(p.line());
+        let [start, _] = self.1.points_of_line(p.line());
         let indented_start = self
             .1
             .chars_fwd(start)
@@ -379,7 +366,7 @@ impl<'a> PubTsParser<'a> {
             };
             let trail = line.chars().rev().take_while(|c| c.is_whitespace()).count();
 
-            let (prev_start, prev_end) = self.1.points_of_line(prev_l);
+            let [prev_start, prev_end] = self.1.points_of_line(prev_l);
             let mut node = descendant_in(root, prev_end.byte() - (trail + 1));
             if node.kind().contains("comment") {
                 // Unless the whole line is a comment, try to find the last node
@@ -459,7 +446,7 @@ impl<'a> PubTsParser<'a> {
                 let mut c = node.walk();
                 let child = node.children(&mut c).find(|child| child.kind() == delim);
                 let ret = child.map(|child| {
-                    let (_, end) = bytes.points_of_line(child.range().start_point.row);
+                    let [_, end] = bytes.points_of_line(child.range().start_point.row);
                     let range = child.range().start_byte..end.byte();
                     let line = bytes.contiguous(range);
                     let is_last_in_line = line.split_whitespace().any(|w| w != delim);
