@@ -1,0 +1,41 @@
+[package]
+name = "duat-kak"
+version = "0.3.0"
+authors = ["AhoyISki"]
+description = "A Kakoune inspired editing mode for Parsec"
+repository = "https://github.com/AhoyISki/duat/tree/master/duat-kak"
+license = "AGPL-3.0-or-later"
+readme = "README.md"
+keywords = ["editor", "editing-mode", "text", "duat"]
+categories = ["command-line-utilities", "text-editors", "config"]
+edition = "2024"
+
+[features]
+default = ["normal-deps"]
+__local-deps = ["dep:local-treesitter", "dep:local-duat-core"]
+normal-deps = ["dep:treesitter", "dep:duat-core"]
+
+[dependencies]
+
+[dependencies.local-duat-core]
+version = "0.3.0"
+path = "../duat-core/"
+package = "duat-core"
+optional = true
+
+[dependencies.duat-core]
+version = "0.3.0"
+git = "https://github.com/AhoyISki/duat"
+optional = true
+
+[dependencies.treesitter]
+git = "https://github.com/AhoyISki/duat-treesitter"
+version = "0.1.0"
+package = "duat-treesitter"
+optional = true
+
+[dependencies.local-treesitter]
+path = "../../duat-treesitter/"
+version = "0.1.0"
+package = "duat-treesitter"
+optional = true
