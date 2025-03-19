@@ -123,7 +123,7 @@
 //!             None => m.to_uppercase(),
 //!         });
 //!         let status_line = status!(
-//!             upper_mode Spacer file_fmt " " selections_fmt " " main_fmt
+//!             [Mode] upper_mode Spacer file_fmt " " selections_fmt " " main_fmt
 //!         );
 //!
 //!         builder.push(status_line);
@@ -150,8 +150,9 @@
 //! - [Removes] the hook [group] "FileWidgets";
 //! - [Pushes] a [vertical rule] and [line numbers] to every file;
 //! - Removes the hook group "WindowWidgets";
-//! - Pushes a [custom status line] and [command line] to the bottom
-//!   of the screen;
+//! - Pushes a [custom status line] (with a [Spacer] for 2 separate
+//!   sides, and a reformatted [`mode_name`]), a [command line], and a
+//!   [notifications widget] to the bottom of the screen;
 //! - [Adds] hooks for [mode changes] in Duat;
 //! - [Changes](form::set) the [style] of the mode printed on the
 //!   status line;
@@ -173,12 +174,12 @@
 //! side. Would you ever want to do this? ...No, not really, but it
 //! shows how configurable Duat can be.
 //!
-//! Duat also comes with a fully fledged text styling system, which
+//! Duat also comes with a fully fledged [text creation system], which
 //! significantly eases the creation of widgets:
 //!
 //! ```rust
 //! # use duat::prelude::*;
-//! let text = text!([MyForm] "Waow it's my form! " [] "not anymore 😢");
+//! let text = text!([MyForm] "Waow it's my form!" [] " not anymore 😢");
 //! ```
 //!
 //! In this example, I'm using the "MyForm" form in order to style the
@@ -186,20 +187,25 @@
 //! [`status!`] macro works similarly.
 //!
 //! Duat also has a simple command system, that lets you add commands
-//! with arguments supported by Rust's type system:
+//! with arguments supported by Rust's type system. As an example,
+//! this command will change the [numbering] of a [`LineNumbers`]
+//! widget, switching between absolute and relative numbering.
 //!
 //! ```rust
 //! # use duat::prelude::*;
 //! # fn test() -> Result<(), Text> {
-//! let callers = ["collapse-cmd-line", "ccmd"];
-//! cmd::add_for!(callers, |_: CmdLine<Ui>, area: Area| {
-//!     area.constrain_ver(Constraint::Length(0.0))?;
+//! let callers = ["toggle-relative", "tr"];
+//! cmd::add_for!(callers, |line_numbers: LineNumbers<Ui>, _: Area| {
+//!     let mut cfg = line_numbers.get_cfg();
+//!     cfg.num_rel = match cfg.num_rel {
+//!         LineNum::Abs => LineNum::RelAbs,
+//!         LineNum::Rel | LineNum::RelAbs => LineNum::Abs,
+//!     };
+//!     line_numbers.reconfigure(cfg);
 //!     Ok(None)
 //! })
 //! # }
 //! ```
-//!
-//! The 2 arguments
 //!
 //! ## Features
 //!
@@ -290,21 +296,26 @@
 //! Also, just wanted to say that no AI was used in this project, cuz
 //! I don't like it.
 //!
-//! [plugs]: plug
-//! [default mode]: mode::set_default
+//! [plugs]: prelude::plug
+//! [default mode]: prelude::mode::set_default
 //! [Maps]: prelude::map
 //! [Changes]: prelude::print::wrap_on_width
-//! [Removes]: hooks::remove
-//! [group]: hooks::add_grouped
-//! [Pushes]: duat_core::ui::FileBuilder
+//! [Removes]: prelude::hooks::remove
+//! [group]: prelude::hooks::add_grouped
+//! [Pushes]: prelude::duat_core::ui::FileBuilder
 //! [vertical rule]: prelude::VertRule
 //! [line numbers]: prelude::LineNumbers
 //! [custom status line]: prelude::status
+//! [Spacer]: prelude::Spacer
+//! [`mode_name`]: prelude::mode_name
 //! [command line]: prelude::CmdLine
-//! [Adds]: hooks::add
-//! [mode changes]: hooks::ModeSwitched
-//! [style]: form::Form
+//! [Adds]: prelude::hooks::add
+//! [mode changes]: prelude::hooks::ModeSwitched
+//! [style]: prelude::form::Form
+//! [text creation system]: prelude::text!
 //! [`status!`]: prelude::status
+//! [numbering]: prelude::LineNum
+//! [`LineNumbers`]: prelude::LineNumbers
 //! [tags]: duat_core::text::Tag
 #![feature(decl_macro, let_chains)]
 

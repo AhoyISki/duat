@@ -41,22 +41,23 @@ use crate::{
 ///
 /// ```rust
 /// # use duat_core::{
-/// #     hooks::{self, OnFileOpen, OnWindowOpen}, ui::Ui,
-/// #     widgets::{CmdLine, File, LineNumbers, Widget, StatusLine, status, common::*},
+/// #     hooks::{self, OnFileOpen, OnWindowOpen}, ui::Ui, status::*,
+/// #     widgets::{CmdLine, File, LineNumbers, Widget, StatusLine, Notifier, status},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::remove("FileWidgets");
 /// hooks::add::<OnFileOpen<U>>(|builder| {
 ///     builder.push(LineNumbers::cfg());
-///     builder.push(status!([File] { File::name }));
+///     builder.push(status!(file_fmt));
 /// });
 ///
 /// hooks::remove("WindowWidgets");
 /// hooks::add::<OnWindowOpen<U>>(|builder| {
-///     let (status_area, _) = builder.push(status!(
-///         [File] { File::name } " " selections_fmt " " main_fmt
+///     let (child, _) = builder.push(status!(
+///         mode_fmt " " selections_fmt " " main_fmt
 ///     ));
-///     builder.push_to(CmdLine::cfg().left_ratioed(2, 3), status_area);
+///     let (child, _) = builder.push_to(CmdLine::cfg().left_ratioed(2, 3), child);
+///     builder.push_to(Notifier::cfg(), child);
 /// });
 /// # }
 /// ```
@@ -269,7 +270,7 @@ impl<U: Ui> Reader<U> {
 /// }
 ///
 /// fn powerline_main_fmt(file: &File) -> Text {
-///    let cursors = file.cursors().unwrap();
+///    let cursors = file.cursors();
 ///    let cursor = cursors.main();
 ///
 ///    text!(
@@ -351,7 +352,7 @@ pub macro status {
     (@append $pre_fn:expr, $checker:expr, []) => {{
         let pre_fn = move |builder: &mut Builder, reader: &mut Reader<_>| {
             $pre_fn(builder, reader);
-            builder.push(Tag::PushForm(form::DEFAULT_ID));
+            builder.push($crate::text::Tag::PushForm(form::DEFAULT_ID));
         };
 
         (pre_fn, $checker)

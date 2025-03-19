@@ -144,9 +144,8 @@ where
     ///
     /// ```rust
     /// # use duat_core::{
-    /// #     hooks::{self, OnFileOpen},
-    /// #     ui::{FileBuilder, Ui},
-    /// #     widgets::{File, LineNumbers, Widget, common::selections_fmt, status},
+    /// #     hooks::{self, OnFileOpen}, status::*,
+    /// #     ui::{FileBuilder, Ui}, widgets::{File, LineNumbers, Widget, status},
     /// # };
     /// # fn test<U: Ui>() {
     /// hooks::remove("FileWidgets");
@@ -154,7 +153,7 @@ where
     ///     let line_numbers_cfg = LineNumbers::cfg().rel_abs();
     ///     builder.push(line_numbers_cfg);
     ///
-    ///     let status_line_cfg = status!({ File::name } " " selections_fmt);
+    ///     let status_line_cfg = status!(file_fmt " " selections_fmt " " main_fmt);
     ///     builder.push(status_line_cfg);
     /// });
     /// # }
@@ -205,43 +204,53 @@ where
     /// where you have multiple widgets parallel to each other, yet on
     /// the same edge.
     ///
-    /// One example of where you might want to do this is if you want
-    /// to have multiple [`StatusLine`]s in a single [`File`], each
-    /// showing their own distinct information:
+    /// One of the main ways in which this is used is when using a
+    /// hidden [`Notifier`] widget alongside the [`CmdLine`] widget.
     ///
     /// ```rust
     /// # fn mode_fmt(file: &File) -> Text {
     /// #     todo!();
     /// # }
     /// # use duat_core::{
-    /// #     hooks::{self, OnFileOpen},
-    /// #     text::Text,
-    /// #     ui::{FileBuilder, Ui},
-    /// #     widgets::{
-    /// #         CmdLine, File, LineNumbers, Widget,
-    /// #         common::{selections_fmt, main_fmt}, status
-    /// #     },
+    /// #     hooks::{self, OnFileOpen}, text::Text, ui::{FileBuilder, Ui}, status::*,
+    /// #     widgets::{CmdLine, File, LineNumbers, Notifier, Widget, status},
     /// # };
     /// # fn test<U: Ui>() {
     /// hooks::remove("FileWidgets");
     /// hooks::add::<OnFileOpen<U>>(|builder: &mut FileBuilder<U>| {
     ///     builder.push(LineNumbers::cfg());
     ///     
-    ///     let right_status = status!(
-    ///         { File::name } " " selections_fmt " " main_fmt
+    ///     let (child, _) = builder.push(
+    ///         status!(file_fmt " " selections_fmt " " main_fmt)
     ///     );
-    ///     let (right_status_area, _) = builder.push(right_status);
+    ///     let (child, _) = builder.push_to(CmdLine::cfg().left_ratioed(3, 5), child);
+    ///     builder.push_to(Notifier::cfg(), child);
+    /// });
+    /// # }
+    /// ```
     ///
-    ///     let left_status = status!(mode_fmt).push_left();
-    ///     builder.push_to(left_status, right_status_area);
+    /// Pushing directly to the [`CmdLine`]'s [`Area`] means that
+    /// they'll share a parent that holds only them. This can then be
+    /// exploited by the `"HideCmdLine"` [hook group], which is
+    /// defined as:
     ///
-    ///     builder.push(CmdLine::cfg());
+    /// ```rust
+    /// # use duat_core::{hooks::{self, *}, widgets::CmdLine, ui::{Area, Constraint}};
+    /// # fn test<Ui: duat_core::ui::Ui>() {
+    /// hooks::add_grouped::<UnfocusedFrom<CmdLine<Ui>, Ui>>("HideCmdLine", |(_, area)| {
+    ///     area.constrain_ver([Constraint::Len(0.0)]).unwrap();
+    /// });
+    /// hooks::add_grouped::<FocusedOn<CmdLine<Ui>, Ui>>("HideCmdLine", |(_, area)| {
+    ///     area.constrain_ver([Constraint::Ratio(1, 1), Constraint::Len(1.0)])
+    ///         .unwrap();
     /// });
     /// # }
     /// ```
     ///
     /// [`File`]: crate::widgets::File
-    /// [`StatusLine`]: crate::widgets::StatusLine
+    /// [`Notifier`]: crate::widgets::Notifier
+    /// [`CmdLine`]: crate::widgets::CmdLine
+    /// [hook group]: crate::hooks::add_grouped
     pub fn push_to<W: Widget<U>>(
         &self,
         cfg: impl WidgetCfg<U, Widget = W>,
@@ -280,7 +289,8 @@ where
         self.ff.read()
     }
 
-    /// Mutable reference to the [`File`] that this hooks is being applied to
+    /// Mutable reference to the [`File`] that this hooks is being
+    /// applied to
     pub fn write(&mut self) -> (WriteFileGuard<U>, &U::Area) {
         self.ff.write()
     }

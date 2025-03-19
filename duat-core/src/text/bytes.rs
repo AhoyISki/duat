@@ -126,10 +126,10 @@ impl Bytes {
     /// [range] contiguous for proper iteration.
     ///
     /// [range]: TextRange
-    pub fn lines_in(
+    pub fn lines(
         &mut self,
         range: impl TextRange,
-    ) -> impl DoubleEndedIterator<Item = (usize, &str)> {
+    ) -> impl DoubleEndedIterator<Item = (usize, &str)> + '_ {
         let range = range.to_range_fwd(self.len().byte());
         let start = self.point_at_line(self.point_at(range.start).line());
         let end = {
@@ -506,6 +506,12 @@ impl std::fmt::Debug for Bytes {
             .field("buf", &self.strs(..).to_array())
             .field("records", &self.records)
             .finish()
+    }
+}
+
+impl PartialEq for Bytes {
+    fn eq(&self, other: &Self) -> bool {
+        self.buf == other.buf
     }
 }
 

@@ -252,7 +252,7 @@ impl Text {
     /// # use duat_core::text::{Point, Text};
     /// # let (p1, p2) = (Point::default(), Point::default());
     /// let text = Text::new();
-    /// text.strs_in((p1, p2)).flat_map(str::bytes);
+    /// text.strs((p1, p2)).flat_map(str::chars);
     /// ```
     ///
     /// Do note that you should avoid iterators like [`str::lines`],
@@ -275,8 +275,7 @@ impl Text {
     /// If you want the two full [`&str`]s, see [`strs`]
     ///
     /// [`&str`]: str
-    /// [range]: TextRange
-    /// [`strs`]: Self::strs
+    /// [`GapBuffer`]: gapbuf::GapBuffer
     pub fn strs(&self, range: impl TextRange) -> Strs {
         self.0.bytes.strs(range)
     }
@@ -285,11 +284,11 @@ impl Text {
     ///
     /// The lines are inclusive, that is, it will iterate over the
     /// whole line, not just the parts within the range.
-    pub fn lines_in(
+    pub fn lines(
         &mut self,
         range: impl TextRange,
-    ) -> impl DoubleEndedIterator<Item = (usize, &str)> {
-        self.0.bytes.lines_in(range)
+    ) -> impl DoubleEndedIterator<Item = (usize, &str)> + '_ {
+        self.0.bytes.lines(range)
     }
 
     /// The inner bytes of the [`Text`]
@@ -301,26 +300,28 @@ impl Text {
     ///
     /// Do note that this mutability isn't actually for modifying the
     /// [`Bytes`] themselves, but instead it is used by some methods
-    /// to read said bytes, like [`make_contiguous`] or [`lines_in`]
+    /// to read said bytes, like [`make_contiguous`] or [`lines`]
     ///
     /// [`make_contiguous`]: Bytes::make_contiguous
-    /// [`lines_in`]: Bytes::lines_in
+    /// [`lines`]: Bytes::lines
     pub fn bytes_mut(&mut self) -> &mut Bytes {
         &mut self.0.bytes
     }
 
-    pub fn indent_on(&self, p: Point, area: &impl Area, cfg: PrintCfg) -> usize {
+    /// Gets the indentation level on the current line
+    pub fn indent(&self, p: Point, area: &impl Area, cfg: PrintCfg) -> usize {
         let [_, end] = self.points_of_line(p.line());
         let t_iter = self.iter_rev(end).no_ghosts().no_conceals();
         let iter = area
             .rev_print_iter(t_iter, crate::cfg::IterCfg::new(cfg))
-            // This should skip until finding a non empty line.
-            .skip_while(|(_, item)| item.part.as_char().is_none_or(char::is_whitespace))
+            .filter_map(|(caret, item)| Some(caret).zip(item.part.as_char()))
+            // Skip the first '\n'
+            .skip(1)
             // And this should make sure we only capture one line.
-            .take_while(|(_, item)| item.part.as_char().is_none_or(|c| c != '\n'));
-        iter.fold(0, |mut indent, (caret, item)| {
+            .take_while(|(_, char)| *char != '\n');
+        iter.fold(0, |mut indent, (caret, char)| {
             indent = indent.max((caret.x + caret.len) as usize);
-            indent * item.part.as_char().is_none_or(char::is_whitespace) as usize
+            indent * char.is_whitespace() as usize
         })
     }
 
@@ -995,6 +996,12 @@ impl From<std::io::Error> for Text {
 impl From<Box<dyn std::error::Error>> for Text {
     fn from(value: Box<dyn std::error::Error>) -> Self {
         err!({ value.to_string() })
+    }
+}
+
+impl PartialEq for Text {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.bytes == other.0.bytes && self.0.tags == other.0.tags
     }
 }
 

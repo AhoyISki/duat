@@ -121,7 +121,7 @@ mod status_line;
 /// #     fn text_mut(&mut self) -> &mut Text {
 /// #         &mut self.0
 /// #     }
-/// #     fn once() -> Result<(), duat_core::Error<()>> {
+/// #     fn once() -> Result<(), Text> {
 /// #         Ok(())
 /// #     }
 /// }
@@ -163,7 +163,7 @@ mod status_line;
 /// #     fn text_mut(&mut self) -> &mut Text{
 /// #         &mut self.0
 /// #     }
-/// #     fn once() -> Result<(), duat_core::Error<()>> {
+/// #     fn once() -> Result<(), Text> {
 /// #         Ok(())
 /// #     }
 /// # }
@@ -236,7 +236,7 @@ mod status_line;
 /// #         &mut self.0
 /// #     }
 ///     // ...
-///     fn once() -> Result<(), duat_core::Error<()>> {
+///     fn once() -> Result<(), Text> {
 ///         hooks::add::<ConfigLoaded>(|_| {
 ///             START_TIME.set(Instant::now()).unwrap()
 ///         });
@@ -291,7 +291,7 @@ mod status_line;
 ///         self.0 = text!([UpTime] mins "m " secs "s");
 ///     }
 ///     // ...
-///     fn once() -> Result<(), duat_core::Error<()>> {
+///     fn once() -> Result<(), Text> {
 ///         Ok(())
 ///     }
 /// }
@@ -323,9 +323,8 @@ pub trait Widget<U: Ui>: Send + Sync + 'static {
     ///
     /// ```rust
     /// # use duat_core::{
-    /// #     hooks::{self, OnFileOpen},
-    /// #     ui::{FileBuilder, Ui},
-    /// #     widgets::{File, LineNumbers, Widget, common::selections_fmt, status},
+    /// #     hooks::{self, OnFileOpen}, ui::{FileBuilder, Ui},
+    /// #     widgets::{File, LineNumbers, Widget},
     /// # };
     /// # fn test<U: Ui>() {
     /// hooks::remove("FileWidgets");

@@ -35,12 +35,12 @@ use crate::{
 /// not implement [`Clone`], deriving [`Clone`] for said types would
 /// be a very manual task.
 ///
-/// Below is the recommended implementation of clone for all types
+/// Below is the recommended implementation of [`Clone`] for all types
 /// that implement [`Ui`]:
 ///
 /// ```rust
 /// # mod duat_smart_fridge {
-/// #     struct Ui;
+/// #     pub struct Ui;
 /// # }
 /// impl Clone for duat_smart_fridge::Ui {
 ///     fn clone(&self) -> Self {

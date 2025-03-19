@@ -10,7 +10,7 @@ use std::ops::RangeBounds;
 pub use self::cursors::{Cursor, Cursors};
 use crate::{
     cfg::{IterCfg, PrintCfg},
-    text::{Change, Point, Reader, RegexPattern, Searcher, Strs, Text},
+    text::{Change, Point, Reader, RegexPattern, Searcher, Strs, Text, TextRange},
     ui::Area,
     widgets::{File, Widget},
 };
@@ -791,21 +791,31 @@ where
         self.text().last_point()
     }
 
-    /// This will return the level of indentation on this line
+    /// An [`Iterator`] over the lines in a given [range]
     ///
-    /// It will simply be equivalent to the same level of indentation
-    /// of the last non empty line.
-    ///
-    /// If you want something more advanced, you could use something
-    /// like tree-sitter to get a better estimation for how to indent
-    /// the text.
-    pub fn indent_on(&self, p: Point) -> usize {
-        self.widget.text().indent_on(p, self.area, self.cfg())
+    /// [range]: TextRange
+    pub fn lines_on(
+        &mut self,
+        range: impl TextRange,
+    ) -> impl DoubleEndedIterator<Item = (usize, &'_ str)> + '_ {
+        self.widget.text_mut().lines(range)
     }
 
-	/// Gets a [`Reader`]'s [public facing API], if it exists
-	///
-	/// [public facing API]: Reader::PublicReader
+    /// Gets the current level of indentation
+    pub fn indent(&mut self) -> usize {
+        self.widget
+            .text()
+            .indent(self.caret(), self.area, self.cfg())
+    }
+
+    /// Gets the indentation level on the given [`Point`]
+    pub fn indent_on(&self, p: Point) -> usize {
+        self.widget.text().indent(p, self.area, self.cfg())
+    }
+
+    /// Gets a [`Reader`]'s [public facing API], if it exists
+    ///
+    /// [public facing API]: Reader::PublicReader
     pub fn get_reader<R: Reader>(&mut self) -> Option<R::PublicReader<'_>> {
         self.widget.text_mut().get_reader::<R>()
     }
@@ -1038,16 +1048,6 @@ where
 
     ////////// Text queries
 
-    /// Returns the [`char`] in the `caret`
-    pub fn char(&self) -> char {
-        self.text.char_at(self.cursor.unwrap().caret()).unwrap()
-    }
-
-    /// Returns the [`char`] at a given [`Point`]
-    pub fn char_at(&self, p: Point) -> Option<char> {
-        self.text.char_at(p)
-    }
-
     /// Returns the [`Cursor`]'s selection
     ///
     /// The reason why this return value is `IntoIter<&str, 2>` is
@@ -1074,34 +1074,39 @@ where
         self.text.last_point()
     }
 
-    /// This will return the level of indentation on this line
-    ///
-    /// It will simply be equivalent to the same level of indentation
-    /// of the last non empty line.
-    ///
-    /// If you want something more advanced, you could use something
-    /// like tree-sitter to get a better estimation for how to indent
-    /// the text.
-    pub fn indent_on(&mut self, point: Point) -> usize {
-        let cfg = self.cfg();
-        let [_, end] = self.text().points_of_line(point.line());
-        let t_iter = self.text().iter_rev(end).no_ghosts().no_conceals();
-        let iter = self
-            .area
-            .rev_print_iter(t_iter, IterCfg::new(cfg))
-            // This should skip until finding a non empty line.
-            .skip_while(|(_, item)| item.part.as_char().is_none_or(char::is_whitespace))
-            // And this should make sure we only capture one line.
-            .take_while(|(_, item)| item.part.as_char().is_none_or(|c| c != '\n'));
-        iter.fold(0, |mut indent, (caret, item)| {
-            indent = indent.max((caret.x + caret.len) as usize);
-            indent * item.part.as_char().is_none_or(char::is_whitespace) as usize
-        })
+    /// Returns the [`char`] in the `caret`
+    pub fn char(&self) -> char {
+        self.text.char_at(self.cursor.unwrap().caret()).unwrap()
     }
 
-	/// Gets a [`Reader`]'s [public facing API], if it exists
-	///
-	/// [public facing API]: Reader::PublicReader
+    /// Returns the [`char`] at a given [`Point`]
+    pub fn char_at(&self, p: Point) -> Option<char> {
+        self.text.char_at(p)
+    }
+
+    /// An [`Iterator`] over the lines in a given [range]
+    ///
+    /// [range]: TextRange
+    pub fn lines_on(
+        &mut self,
+        range: impl TextRange,
+    ) -> impl DoubleEndedIterator<Item = (usize, &'_ str)> + '_ {
+        self.text.lines(range)
+    }
+
+    /// Gets the current level of indentation
+    pub fn indent(&mut self) -> usize {
+        self.text.indent(self.caret(), self.area, self.cfg)
+    }
+
+    /// Gets the indentation level on the given [`Point`]
+    pub fn indent_on(&mut self, p: Point) -> usize {
+        self.text.indent(p, self.area, self.cfg)
+    }
+
+    /// Gets a [`Reader`]'s [public facing API], if it exists
+    ///
+    /// [public facing API]: Reader::PublicReader
     pub fn get_reader<R: Reader>(&mut self) -> Option<R::PublicReader<'_>> {
         self.text.get_reader::<R>()
     }

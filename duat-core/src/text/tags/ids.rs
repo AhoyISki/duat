@@ -76,21 +76,20 @@ impl Default for ToggleId {
 /// let id = form::id_of!("Invisible");
 ///
 /// text.insert_tag(18, Tag::PushForm(id), key1);
-/// text.insert_tag(21, Tag::PopForm(id), key1);
+/// text.insert_tag(20, Tag::PopForm(id), key1);
 ///
 /// assert_eq!(
 ///     text,
-///     text!("This is text with " [Invisible] "no " [] "tags in it")
+///     text!("This is text with " [Invisible] "no" [] " tags in it")
 /// );
 ///
-/// // key2 != key, so it shouldn't be able to change what key1 has done.
+/// // key2 != key1, so it shouldn't be able to change what was done with key1.
 /// let key2 = Key::new();
-///
-/// text.remove_tags(17, key2);
+/// text.remove_tags(18, key2);
 ///
 /// assert_eq!(
 ///     text,
-///     text!("This is text with " [Invisible] "no " [] "tags in it")
+///     text!("This is text with " [Invisible] "no" [] " tags in it")
 /// );
 /// ```
 ///
