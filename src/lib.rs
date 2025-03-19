@@ -357,7 +357,7 @@ impl<'a> PubTsParser<'a> {
             // Find last previous empty line.
             let Some((prev_l, line)) = self
                 .1
-                .lines_in((Point::default(), start))
+                .lines((Point::default(), start))
                 .rev()
                 .find(|(_, line)| !(line.matches(r"^\s*$", ..).unwrap()))
             else {
