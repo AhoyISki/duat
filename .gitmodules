@@ -1,3 +1,6 @@
 [submodule "duat"]
 	path = duat
 	url = ../duat
+[submodule "duat-treesitter"]
+	path = duat-treesitter
+	url = ../duat-treesitter
