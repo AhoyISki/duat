@@ -292,16 +292,36 @@ impl Text {
         self.0.bytes.lines_in(range)
     }
 
+    /// The inner bytes of the [`Text`]
     pub fn bytes(&self) -> &Bytes {
         &self.0.bytes
     }
 
+    /// The inner bytes of the [`Text`], mutably
+    ///
+    /// Do note that this mutability isn't actually for modifying the
+    /// [`Bytes`] themselves, but instead it is used by some methods
+    /// to read said bytes, like [`make_contiguous`] or [`lines_in`]
+    ///
+    /// [`make_contiguous`]: Bytes::make_contiguous
+    /// [`lines_in`]: Bytes::lines_in
     pub fn bytes_mut(&mut self) -> &mut Bytes {
         &mut self.0.bytes
     }
 
-    pub fn tags(&self) -> &Tags {
-        &self.0.tags
+    pub fn indent_on(&self, p: Point, area: &impl Area, cfg: PrintCfg) -> usize {
+        let [_, end] = self.points_of_line(p.line());
+        let t_iter = self.iter_rev(end).no_ghosts().no_conceals();
+        let iter = area
+            .rev_print_iter(t_iter, crate::cfg::IterCfg::new(cfg))
+            // This should skip until finding a non empty line.
+            .skip_while(|(_, item)| item.part.as_char().is_none_or(char::is_whitespace))
+            // And this should make sure we only capture one line.
+            .take_while(|(_, item)| item.part.as_char().is_none_or(|c| c != '\n'));
+        iter.fold(0, |mut indent, (caret, item)| {
+            indent = indent.max((caret.x + caret.len) as usize);
+            indent * item.part.as_char().is_none_or(char::is_whitespace) as usize
+        })
     }
 
     /////////// Reader functions

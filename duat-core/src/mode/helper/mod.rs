@@ -799,21 +799,8 @@ where
     /// If you want something more advanced, you could use something
     /// like tree-sitter to get a better estimation for how to indent
     /// the text.
-    pub fn indent_on(&mut self, point: Point) -> usize {
-        let cfg = self.cfg();
-        let [_, end] = self.text().points_of_line(point.line());
-        let t_iter = self.text().iter_rev(end).no_ghosts().no_conceals();
-        let iter = self
-            .area
-            .rev_print_iter(t_iter, IterCfg::new(cfg))
-            // This should skip until finding a non empty line.
-            .skip_while(|(_, item)| item.part.as_char().is_none_or(char::is_whitespace))
-            // And this should make sure we only capture one line.
-            .take_while(|(_, item)| item.part.as_char().is_none_or(|c| c != '\n'));
-        iter.fold(0, |mut indent, (caret, item)| {
-            indent = indent.max((caret.x + caret.len) as usize);
-            indent * item.part.as_char().is_none_or(char::is_whitespace) as usize
-        })
+    pub fn indent_on(&self, p: Point) -> usize {
+        self.widget.text().indent_on(p, self.area, self.cfg())
     }
 
 	/// Gets a [`Reader`]'s [public facing API], if it exists
