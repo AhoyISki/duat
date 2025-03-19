@@ -7,13 +7,15 @@ use duat_core::{
     cache::{Deserialize, Serialize},
     cfg::{IterCfg, PrintCfg},
     form::Painter,
-    text::{FwdIter, Item, Part, Point, RevIter, Text},
+    text::{FwdIter, Item, Part, Point, RevIter, Text, err},
     ui::{self, Axis, Caret, Constraint, DuatPermission, PushSpecs},
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
 
 use crate::{
-    layout::{transfer_vars, Layout, Rect}, queue, style, AreaId, ConstraintErr, Mutex
+    AreaId, Mutex,
+    layout::{Layout, Rect, transfer_vars},
+    queue, style,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -230,7 +232,6 @@ impl Area {
 
 impl ui::Area for Area {
     type Cache = PrintInfo;
-    type ConstraintChangeErr = ConstraintErr;
     type PrintInfo = PrintInfo;
     type Ui = crate::Ui;
 
@@ -329,10 +330,7 @@ impl ui::Area for Area {
         todo!();
     }
 
-    fn constrain_hor(
-        &self,
-        cons: impl IntoIterator<Item = Constraint>,
-    ) -> Result<(), ConstraintErr> {
+    fn constrain_hor(&self, cons: impl IntoIterator<Item = Constraint>) -> Result<(), Text> {
         let cons = {
             let mut cons: Vec<Constraint> = cons.into_iter().collect();
             cons.sort_unstable();
@@ -344,7 +342,7 @@ impl ui::Area for Area {
         let old_cons = layout
             .rects
             .get_constraints_mut(self.id)
-            .ok_or(ConstraintErr::NoParent)?
+            .ok_or_else(|| err!("Area has no parents, so it can't be constrained"))?
             .clone();
 
         if old_cons.on(Axis::Horizontal).eq(cons.iter().cloned()) {
@@ -365,10 +363,7 @@ impl ui::Area for Area {
         Ok(())
     }
 
-    fn constrain_ver(
-        &self,
-        cons: impl IntoIterator<Item = Constraint>,
-    ) -> Result<(), ConstraintErr> {
+    fn constrain_ver(&self, cons: impl IntoIterator<Item = Constraint>) -> Result<(), Text> {
         let cons = {
             let mut cons: Vec<Constraint> = cons.into_iter().collect();
             cons.sort_unstable();
@@ -380,7 +375,7 @@ impl ui::Area for Area {
         let old_cons = layout
             .rects
             .get_constraints_mut(self.id)
-            .ok_or(ConstraintErr::NoParent)?
+            .ok_or_else(|| err!("Area has no parents, so it can't be constrained"))?
             .clone();
 
         if old_cons.on(Axis::Vertical).eq(cons.iter().cloned()) {
@@ -401,11 +396,11 @@ impl ui::Area for Area {
         Ok(())
     }
 
-    fn restore_constraints(&self) -> Result<(), Self::ConstraintChangeErr> {
+    fn restore_constraints(&self) -> Result<(), Text> {
         todo!();
     }
 
-    fn request_width_to_fit(&self, _text: &str) -> Result<(), Self::ConstraintChangeErr> {
+    fn request_width_to_fit(&self, _text: &str) -> Result<(), Text> {
         todo!();
     }
 

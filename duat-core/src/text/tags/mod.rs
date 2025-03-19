@@ -459,6 +459,7 @@ impl Tags {
     }
 
     /// Returns a forward iterator at a given byte
+    #[define_opaque(FwdTags)]
     pub fn fwd_at(&self, at: usize) -> FwdTags {
         let b = at.min(self.len_bytes()).saturating_sub(self.range_min);
 
@@ -500,6 +501,7 @@ impl Tags {
     }
 
     /// Returns a reverse iterator at a given byte
+    #[define_opaque(RevTags)]
     pub fn rev_at(&self, at: usize) -> RevTags {
         let at = (at + self.range_min).min(self.len_bytes());
 

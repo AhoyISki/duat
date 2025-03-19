@@ -1,6 +1,6 @@
 /target
 */target
-testing
-Cargo.lock
+/testing
+/Cargo.lock
 */Cargo.lock
-/.typos.toml
+/.cargo

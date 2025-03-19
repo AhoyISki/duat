@@ -297,33 +297,6 @@ impl PartialEq for Event {
     }
 }
 
-pub enum ConstraintErr {
-    NoParent,
-    Impossible,
-}
-
-impl std::fmt::Display for ConstraintErr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        <Self as std::fmt::Debug>::fmt(self, f)
-    }
-}
-
-impl std::fmt::Debug for ConstraintErr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            // NOTE: Might not be true in the future.
-            ConstraintErr::NoParent => {
-                write!(f, "No parents, so its constraint can't be changed.")
-            }
-            ConstraintErr::Impossible => {
-                write!(f, "The constraint change is impossible.")
-            }
-        }
-    }
-}
-
-impl std::error::Error for ConstraintErr {}
-
 #[derive(Clone, Copy, PartialEq)]
 pub struct AreaId(usize);
 

@@ -62,6 +62,15 @@
 //! config it is just `kak`.
 //!
 //! ```rust
+//! # mod treesitter {
+//! #     pub struct TreeSitter;
+//! #     impl duat_core::Plugin<duat::Ui> for TreeSitter {
+//! #         fn new() -> Self {
+//! #             Self
+//! #         }
+//! #         fn plug(self) {}
+//! #     }
+//! # }
 //! # mod kak {
 //! #     use duat::{prelude::mode::*, Area, Ui, widgets::File};
 //! #     #[derive(Clone)]
@@ -93,7 +102,10 @@
 //! use kak::{Insert, Normal};
 //!
 //! fn setup() {
-//!     plug!(kak::Kak);
+//!     plug!(
+//!         treesitter::TreeSitter::new(),
+//!         kak::Kak::new()
+//!     );
 //!     map::<Insert>("jk", "<Esc>");
 //!
 //!     print::wrap_on_width();
@@ -106,13 +118,17 @@
 //!
 //!     hooks::remove("WindowWidgets");
 //!     hooks::add::<OnWindowOpen>(|builder| {
-//!         let status = status!(
-//!             [File] { File::name } " "
-//!             mode " " selections_fmt " " main_fmt
+//!         let upper_mode = mode_name().map(|m| match m.split_once('<') {
+//!             Some((no_generics, _)) => no_generics.to_uppercase(),
+//!             None => m.to_uppercase(),
+//!         });
+//!         let status_line = status!(
+//!             upper_mode Spacer file_fmt " " selections_fmt " " main_fmt
 //!         );
 //!
-//!         let (child, _) = builder.push(status);
-//!         builder.push_to(CmdLine::cfg().left_ratioed(3, 7), child);
+//!         builder.push(status_line);
+//!         let (child, _) = builder.push(CmdLine::cfg());
+//!         builder.push_to(Notifier::cfg(), child);
 //!     });
 //!
 //!     hooks::add::<ModeSwitched>(|(_, new)| match new {
@@ -126,7 +142,9 @@
 //!
 //! This configuration does the following things:
 //!
-//! - [plugs] the `Kak` plugin, which changes the [default mode];
+//! - [plugs] the `Kak` plugin, which changes the [default mode], and
+//!   the `TreeSitter` plugin, which adds syntax highlighting and is
+//!   also used by the `Kak` plugin;
 //! - [Maps] jk to esc in the `Insert` mode;
 //! - [Changes] the wrapping;
 //! - [Removes] the hook [group] "FileWidgets";
@@ -172,9 +190,9 @@
 //!
 //! ```rust
 //! # use duat::prelude::*;
-//! # fn test() -> Result<(), Error<()>> {
+//! # fn test() -> Result<(), Text> {
 //! let callers = ["collapse-cmd-line", "ccmd"];
-//! cmd::add_for!(callers, |_: CmdLine, area: Area| {
+//! cmd::add_for!(callers, |_: CmdLine<Ui>, area: Area| {
 //!     area.constrain_ver(Constraint::Length(0.0))?;
 //!     Ok(None)
 //! })

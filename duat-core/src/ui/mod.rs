@@ -119,7 +119,6 @@ pub trait Ui: Clone + Send + Sync + 'static {
 pub trait Area: Send + Sync + Sized {
     // This exists solely for automatic type recognition.
     type Ui: Ui<Area = Self>;
-    type ConstraintChangeErr: std::error::Error;
     type Cache: Default + Serialize + Deserialize<'static> + 'static;
     type PrintInfo: Default + Clone + Send + Sync;
 
@@ -200,23 +199,17 @@ pub trait Area: Send + Sync + Sized {
     ) -> Self;
 
     /// Changes the horizontal constraint of the area
-    fn constrain_hor(
-        &self,
-        cons: impl IntoIterator<Item = Constraint>,
-    ) -> Result<(), Self::ConstraintChangeErr>;
+    fn constrain_hor(&self, cons: impl IntoIterator<Item = Constraint>) -> Result<(), Text>;
 
     /// Changes the vertical constraint of the area
-    fn constrain_ver(
-        &self,
-        cons: impl IntoIterator<Item = Constraint>,
-    ) -> Result<(), Self::ConstraintChangeErr>;
+    fn constrain_ver(&self, cons: impl IntoIterator<Item = Constraint>) -> Result<(), Text>;
 
     /// Restores the original constraints of the widget
-    fn restore_constraints(&self) -> Result<(), Self::ConstraintChangeErr>;
+    fn restore_constraints(&self) -> Result<(), Text>;
 
     /// Requests that the width be enough to fit a certain piece of
     /// text.
-    fn request_width_to_fit(&self, text: &str) -> Result<(), Self::ConstraintChangeErr>;
+    fn request_width_to_fit(&self, text: &str) -> Result<(), Text>;
 
     /// Scrolls the [`Text`] (up or down) until the main cursor is
     /// within the [`ScrollOff`] range.

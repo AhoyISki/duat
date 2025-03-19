@@ -10,14 +10,12 @@ use std::{iter::Peekable, ops::Range, path::PathBuf};
 
 use crossterm::style::Color;
 
-pub use self::args_iter::args_iter;
 use crate::text::{Text, err};
 
 pub trait Parameter<'a>: Sized {
     type Returns;
     /// Tries to consume arguments until forming a parameter
-    #[allow(clippy::result_large_err)]
-    fn new(args: &mut Args<'a>) -> std::result::Result<Self::Returns, Text>;
+    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Text>;
 }
 
 impl<'a, P: Parameter<'a>> Parameter<'a> for Option<P> {
@@ -29,7 +27,7 @@ impl<'a, P: Parameter<'a>> Parameter<'a> for Option<P> {
     /// [`Parameter`] list, as it will either match correcly, finish
     /// matching, or match incorrectly in order to give accurate
     /// feedback.
-    fn new(args: &mut Args<'a>) -> std::result::Result<Self::Returns, Text> {
+    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         match args.next_as::<P>() {
             Ok(arg) => Ok(Some(arg)),
             Err(err) if args.is_forming_param => Err(err),
@@ -47,7 +45,7 @@ impl<'a, P: Parameter<'a>> Parameter<'a> for Vec<P> {
     /// [`Parameter`] list, as it will either match correcly, finish
     /// matching, or match incorrectly in order to give accurate
     /// feedback.
-    fn new(args: &mut Args<'a>) -> std::result::Result<Self::Returns, Text> {
+    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         let mut returns = Vec::new();
 
         loop {
@@ -69,7 +67,7 @@ impl<'a, const N: usize, P: Parameter<'a>> Parameter<'a> for [P; N] {
     /// [`Parameter`] list, as it will either match correcly, finish
     /// matching, or match incorrectly in order to give accurate
     /// feedback.
-    fn new(args: &mut Args<'a>) -> std::result::Result<Self::Returns, Text> {
+    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         use std::mem::MaybeUninit;
         let mut returns = [const { MaybeUninit::uninit() }; N];
 
@@ -103,7 +101,7 @@ impl<'a, const MIN: usize, const MAX: usize, P: Parameter<'a>> Parameter<'a>
     /// [`Parameter`] list, as it will either match correcly, finish
     /// matching, or match incorrectly in order to give accurate
     /// feedback.
-    fn new(args: &mut Args<'a>) -> std::result::Result<Self::Returns, Text> {
+    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         let mut returns = Vec::new();
 
         for _ in 0..MAX {
@@ -128,7 +126,7 @@ impl<'a, const MIN: usize, const MAX: usize, P: Parameter<'a>> Parameter<'a>
 impl<'a> Parameter<'a> for &'a str {
     type Returns = &'a str;
 
-    fn new(args: &mut Args<'a>) -> std::result::Result<Self::Returns, Text> {
+    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         args.next()
     }
 }
@@ -136,7 +134,7 @@ impl<'a> Parameter<'a> for &'a str {
 impl Parameter<'_> for String {
     type Returns = String;
 
-    fn new(args: &mut Args) -> std::result::Result<Self::Returns, Text> {
+    fn new(args: &mut Args) -> Result<Self::Returns, Text> {
         Ok(args.next()?.to_string())
     }
 }
@@ -149,7 +147,7 @@ pub struct Remainder;
 impl Parameter<'_> for Remainder {
     type Returns = String;
 
-    fn new(args: &mut Args) -> std::result::Result<Self::Returns, Text> {
+    fn new(args: &mut Args) -> Result<Self::Returns, Text> {
         let remainder: String = std::iter::from_fn(|| args.next().ok())
             .collect::<Vec<&str>>()
             .join(" ");
@@ -169,7 +167,7 @@ pub struct ColorSchemeArg;
 impl<'a> Parameter<'a> for ColorSchemeArg {
     type Returns = &'a str;
 
-    fn new(args: &mut Args<'a>) -> std::result::Result<Self::Returns, Text> {
+    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         let scheme = args.next()?;
         if crate::form::colorscheme_exists(scheme) {
             Ok(scheme)
@@ -229,7 +227,7 @@ pub struct PossibleFile;
 impl Parameter<'_> for PossibleFile {
     type Returns = PathBuf;
 
-    fn new(args: &mut Args<'_>) -> std::result::Result<Self::Returns, Text> {
+    fn new(args: &mut Args<'_>) -> Result<Self::Returns, Text> {
         let path = args.next_as::<PathBuf>()?;
 
         let canon_path = path.canonicalize();
@@ -260,7 +258,7 @@ pub struct F32PercentOfU8;
 impl Parameter<'_> for F32PercentOfU8 {
     type Returns = f32;
 
-    fn new(args: &mut Args) -> std::result::Result<Self::Returns, Text> {
+    fn new(args: &mut Args) -> Result<Self::Returns, Text> {
         let arg = args.next()?;
         if let Some(percentage) = arg.strip_suffix("%") {
             let percentage: u8 = percentage
@@ -283,7 +281,7 @@ impl Parameter<'_> for F32PercentOfU8 {
 impl<'a> Parameter<'a> for Color {
     type Returns = Color;
 
-    fn new(args: &mut Args<'a>) -> std::result::Result<Self::Returns, Text> {
+    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         const fn hue_to_rgb(p: f32, q: f32, mut t: f32) -> f32 {
             t = if t < 0.0 { t + 1.0 } else { t };
             t = if t > 1.0 { t - 1.0 } else { t };
@@ -350,7 +348,7 @@ pub struct FormName;
 impl<'a> Parameter<'a> for FormName {
     type Returns = &'a str;
 
-    fn new(args: &mut Args<'a>) -> std::result::Result<Self::Returns, Text> {
+    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         let arg = args.next()?;
         if crate::form::exists(arg) {
             Ok(arg)
@@ -363,7 +361,7 @@ impl<'a> Parameter<'a> for FormName {
 impl<'a> Parameter<'a> for Flags<'a> {
     type Returns = Flags<'a>;
 
-    fn new(args: &mut Args<'a>) -> std::result::Result<Self::Returns, Text> {
+    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         Ok(args.flags.clone())
     }
 }
@@ -381,7 +379,7 @@ impl<'a> Parameter<'a> for Flags<'a> {
 /// ```
 #[derive(Clone)]
 pub struct Args<'a> {
-    args: Peekable<args_iter::ArgsIter<'a>>,
+    args: Peekable<ArgsIter<'a>>,
     param_range: Range<usize>,
     has_to_start_param: bool,
     is_forming_param: bool,
@@ -390,7 +388,6 @@ pub struct Args<'a> {
 
 impl<'a> Args<'a> {
     #[allow(clippy::should_implement_trait)]
-    #[allow(clippy::result_large_err)]
     pub fn next(&mut self) -> Result<&'a str, Text> {
         match self.args.next() {
             Some((arg, range)) => {
@@ -405,7 +402,6 @@ impl<'a> Args<'a> {
         }
     }
 
-    #[allow(clippy::result_large_err)]
     pub fn next_as<P: Parameter<'a>>(&mut self) -> Result<P::Returns, Text> {
         self.has_to_start_param = true;
         let ret = P::new(self);
@@ -415,7 +411,6 @@ impl<'a> Args<'a> {
         ret
     }
 
-    #[allow(clippy::result_large_err)]
     pub fn next_else<T: Into<Text>>(&mut self, to_text: T) -> Result<&'a str, Text> {
         match self.args.next() {
             Some((arg, _)) => Ok(arg),
@@ -504,48 +499,47 @@ pub fn get_args(command: &str) -> super::Args<'_> {
     }
 }
 
-mod args_iter {
-    pub fn args_iter(command: &str) -> ArgsIter {
-        let mut chars = command.char_indices();
-        let mut start = None;
-        let mut end = None;
-        let mut is_quoting = false;
-        // Initial value doesn't matter, as long as it's not '\'
-        let mut last_char = 'a';
-        let mut args: ArgsIter = std::iter::from_fn(move || {
-            while let Some((b, char)) = chars.next() {
-                let lc = last_char;
-                last_char = char;
-                if start.is_some() && char.is_whitespace() && !is_quoting {
-                    end = Some(b);
+#[define_opaque(ArgsIter)]
+pub fn args_iter(command: &str) -> ArgsIter {
+    let mut chars = command.char_indices();
+    let mut start = None;
+    let mut end = None;
+    let mut is_quoting = false;
+    // Initial value doesn't matter, as long as it's not '\'
+    let mut last_char = 'a';
+    let mut args: ArgsIter = std::iter::from_fn(move || {
+        while let Some((b, char)) = chars.next() {
+            let lc = last_char;
+            last_char = char;
+            if start.is_some() && char.is_whitespace() && !is_quoting {
+                end = Some(b);
+                break;
+            } else if char == '"' && lc != '\\' {
+                is_quoting = !is_quoting;
+                if !is_quoting {
+                    end = Some(b + 1);
                     break;
-                } else if char == '"' && lc != '\\' {
-                    is_quoting = !is_quoting;
-                    if !is_quoting {
-                        end = Some(b + 1);
-                        break;
-                    } else {
-                        start = Some(b);
-                    }
-                } else if !char.is_whitespace() && start.is_none() {
+                } else {
                     start = Some(b);
                 }
+            } else if !char.is_whitespace() && start.is_none() {
+                start = Some(b);
             }
+        }
 
-            start.take().map(|s| unsafe {
-                let e = end.take().unwrap_or(command.len());
-                (
-                    core::str::from_utf8_unchecked(&command.as_bytes()[s..e]),
-                    s..e,
-                )
-            })
-        });
-        args.next();
-        args
-    }
-
-    pub type ArgsIter<'a> = impl Iterator<Item = (&'a str, std::ops::Range<usize>)> + Clone;
+        start.take().map(|s| unsafe {
+            let e = end.take().unwrap_or(command.len());
+            (
+                core::str::from_utf8_unchecked(&command.as_bytes()[s..e]),
+                s..e,
+            )
+        })
+    });
+    args.next();
+    args
 }
+
+pub type ArgsIter<'a> = impl Iterator<Item = (&'a str, std::ops::Range<usize>)> + Clone;
 
 parse_impl!(bool);
 parse_impl!(u8);
@@ -568,10 +562,7 @@ macro parse_impl($t:ty) {
     impl Parameter<'_> for $t {
         type Returns = Self;
 
-        fn new(
-            args: &mut Args,
-        ) -> std::result::Result<Self::Returns, Text> {
-            let arg = args.next()?;
+        fn new(args: &mut Args) -> Result<Self::Returns, Text> { let arg = args.next()?;
             arg.parse().map_err(|_| err!(
                 [*a] arg [] "couldn't be parsed as "
                 [*a] { stringify!($t) } []
