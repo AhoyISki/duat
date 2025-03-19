@@ -1,6 +1,6 @@
 [submodule "duat"]
 	path = duat
-	url = ../duat
+	url = https://github.com/AhoyISki/duat
 	branch = master
 [submodule "duat-treesitter"]
 	path = duat-treesitter
