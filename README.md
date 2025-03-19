@@ -257,18 +257,18 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG_nrtWb8hrSqGzxDNBm-dIScG_DsQ09i4v04GzdBOGaYuJCWYWSBgmRkdWF0ZTAuMy4x
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG1GO-eDkLJYCGy7pTKZrfoSEG7JD0JBilAjnG9m9rA6-QE_OYWSBgmRkdWF0ZTAuMy4x
  [__link0]: https://docs.rs/duat/0.3.1/duat/?search=prelude::plug
  [__link1]: https://docs.rs/duat/0.3.1/duat/?search=prelude::mode::set_default
  [__link10]: https://docs.rs/duat/0.3.1/duat/?search=prelude::Spacer
  [__link11]: https://docs.rs/duat/0.3.1/duat/?search=prelude::mode_name
  [__link12]: https://docs.rs/duat/0.3.1/duat/?search=prelude::CmdLine
- [__link13]: notifications widget
+ [__link13]: https://docs.rs/duat/0.3.1/duat/?search=prelude::Notifier
  [__link14]: https://docs.rs/duat/0.3.1/duat/?search=prelude::hooks::add
  [__link15]: https://docs.rs/duat/0.3.1/duat/?search=prelude::hooks::ModeSwitched
  [__link16]: https://docs.rs/duat/0.3.1/duat/?search=form::set
  [__link17]: https://docs.rs/duat/0.3.1/duat/?search=prelude::form::Form
- [__link18]: prelude::text!
+ [__link18]: https://docs.rs/duat/0.3.1/duat/?search=prelude::text::text
  [__link19]: https://docs.rs/duat/0.3.1/duat/?search=prelude::status
  [__link2]: https://docs.rs/duat/0.3.1/duat/?search=prelude::map
  [__link20]: https://docs.rs/duat/0.3.1/duat/?search=prelude::LineNum
