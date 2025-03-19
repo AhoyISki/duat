@@ -7,6 +7,8 @@
 //! When installing Duat, this crate will be automatically placed in
 //! that spot, and it will have a default example configuration.
 //!
+//! <script async id="asciicast-569727" src="https://asciinema.org/a/569727.js"></script>
+//!
 //! When you first run Duat, and whenever you update the
 //! configuration, it will be compiled and reloaded automatically, so
 //! you can see the changes in *almost* real time. Initially, building
