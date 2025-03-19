@@ -11,13 +11,7 @@ keywords = ["tree-sitter", "duat", "plugin"]
 categories = ["command-line-utilities", "text-editors", "config"]
 
 [dependencies]
-# This dependency is taken as a submodule in order to allow
-# me (AhoyISki) to edit duat and duat-core while also editing
-# plugins at the same time, while still allowing for git
-# dependencies when installing duat with the git-deps feature.
-# If you are creating a plugin, you don't need to do this, just
-# source duat-core from the repository if you want.
-duat-core = { version = "0.3.0", path = "duat/duat-core/" }
+duat-core = { version = "0.3.0", git = "https://github.com/AhoyISki/duat" }
 
 streaming-iterator = "0.1.9"
 tree-sitter = "0.25.2"
