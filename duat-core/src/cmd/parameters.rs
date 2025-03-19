@@ -187,7 +187,7 @@ impl<'a, U: crate::ui::Ui> Parameter<'a> for FileBuffer<U> {
 
     fn new(args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         let buffer = args.next()?;
-        let windows = crate::context::windows::<U>().write();
+        let windows = crate::context::windows::<U>().read();
         if windows
             .iter()
             .flat_map(|w| w.file_names())
