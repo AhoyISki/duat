@@ -28,7 +28,7 @@ use duat_core::{
     cmd, context, form,
     hooks::{self, ModeSwitched},
     mode::{
-        self, EditHelper, ExtendFwd, ExtendRev, IncSearch, IncSearcher, KeyCode::*,
+        self, EditHelper, Editor, ExtendFwd, ExtendRev, IncSearch, IncSearcher, KeyCode::*,
         KeyEvent as Event, KeyMod as Mod, Mode, Mover, Orig, PipeSelections, RunCommands,
         SearchFwd, SearchRev, key,
     },
@@ -101,18 +101,12 @@ impl<U> Kak<U> {
     ///
     /// [`Form`]: duat_core::form::Form
     pub fn dont_set_cursor_forms(self) -> Self {
-        Self {
-            set_cursor_forms: false,
-            ..self
-        }
+        Self { set_cursor_forms: false, ..self }
     }
 
     /// Makes the tab key insert `\t` instead of spaces
     pub fn insert_tabs(self) -> Self {
-        Self {
-            insert_tabs: true,
-            ..self
-        }
+        Self { insert_tabs: true, ..self }
     }
 }
 
@@ -1072,25 +1066,21 @@ fn match_inside_around(
             }
         }),
         key!(Char('i')) => helper.move_many(.., |mut m| {
-            let indent = m.indent_on(m.caret());
+            let indent = m.indent();
             if indent == 0 {
                 let end = m.len();
                 move_to_points(&mut m, [Point::default(), end]);
             } else {
                 m.set_anchor();
                 m.move_hor(-(m.caret_col() as i32));
-                m.move_ver(-1);
 
-                while m.indent_on(m.caret()) >= indent && m.caret().line() > 0 {
+                while m.indent() >= indent && m.caret().line() > 0 {
                     m.move_ver(-1);
                 }
                 m.move_ver(1);
                 m.swap_ends();
-                m.move_ver(1);
 
-                while m.indent_on(m.caret()) >= indent
-                    && m.caret().line() + 1 < m.text().len().line()
-                {
+                while m.indent() >= indent && m.caret().line() + 1 < m.text().len().line() {
                     m.move_ver(1);
                 }
                 m.move_ver(-1);
@@ -1098,10 +1088,10 @@ fn match_inside_around(
                 if is_inside {
                     let [_, p1] = m.text().points_of_line(m.caret().line());
                     m.move_to(p1);
+                    m.move_hor(-1);
                 } else {
                     let p1 = m.search_fwd("\n+", None).next().map(|[_, p1]| p1).unwrap();
                     m.move_to(p1);
-                    m.move_hor(-1);
                 }
             }
         }),
@@ -1311,7 +1301,8 @@ fn set_indent(helper: &mut EditHelper<'_, File, impl Area, ()>) {
         {
             indent
         } else {
-            e.indent_on(e.caret())
+            let prev_non_empty = prev_non_empty_line_points(e);
+            prev_non_empty.map(|[p0, _]| e.indent_on(p0)).unwrap_or(0)
         };
         e.insert_or_replace(" ".repeat(indent));
     });
@@ -1420,6 +1411,18 @@ fn just_char(key: Event) -> Option<char> {
     } else {
         None
     }
+}
+
+fn prev_non_empty_line_points(e: &mut Editor<impl Area, File>) -> Option<[Point; 2]> {
+    let byte_col = e
+        .text()
+        .buffers(..e.caret().byte())
+        .take_while(|b| *b != b'\n')
+        .count();
+    let prev = e
+        .lines_on(..e.caret().byte() - byte_col)
+        .find_map(|(n, l)| l.chars().any(|c| !c.is_whitespace()).then_some(n));
+    prev.map(|n| e.text().points_of_line(n))
 }
 
 const ALTSHIFT: Mod = Mod::ALT.union(Mod::SHIFT);
