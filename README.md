@@ -1,7 +1,5 @@
 # duat ![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) [![duat on crates.io](https://img.shields.io/crates/v/duat)](https://crates.io/crates/duat) [![duat on docs.rs](https://docs.rs/duat/badge.svg)](https://docs.rs/duat)
 
-## Duat
-
 Duat is a text editor meant to have as much modularity as
 possible, while keeping a sensible default configuration. It is
 written *and configured* in Rust, through the use of a
@@ -41,6 +39,15 @@ git clone https://github.com/AhoyISki/duat
 cargo install --path duat --features git-deps
 ```
 
+And if you want to nuke your config in order to get the newest
+default config crate, you can do the following:
+
+```text
+rm -rf ~/.config/duat
+git clone https://github.com/AhoyISki/duat
+cargo install --path duat --features git-deps
+```
+
 ### Configuration
 
 In the configuration file, there should be a `setup_duat!` macro,
@@ -60,7 +67,10 @@ use duat::prelude::*;
 use kak::{Insert, Normal};
 
 fn setup() {
-    plug!(kak::Kak);
+    plug!(
+        treesitter::TreeSitter::new(),
+        kak::Kak::new()
+    );
     map::<Insert>("jk", "<Esc>");
 
     print::wrap_on_width();
@@ -73,13 +83,17 @@ fn setup() {
 
     hooks::remove("WindowWidgets");
     hooks::add::<OnWindowOpen>(|builder| {
-        let status = status!(
-            [File] { File::name } " "
-            mode " " selections_fmt " " main_fmt
+        let upper_mode = mode_name().map(|m| match m.split_once('<') {
+            Some((no_generics, _)) => no_generics.to_uppercase(),
+            None => m.to_uppercase(),
+        });
+        let status_line = status!(
+            [Mode] upper_mode Spacer file_fmt " " selections_fmt " " main_fmt
         );
 
-        let (child, _) = builder.push(status);
-        builder.push_to(CmdLine::cfg().left_ratioed(3, 7), child);
+        builder.push(status_line);
+        let (child, _) = builder.push(CmdLine::cfg());
+        builder.push_to(Notifier::cfg(), child);
     });
 
     hooks::add::<ModeSwitched>(|(_, new)| match new {
@@ -93,16 +107,19 @@ fn setup() {
 
 This configuration does the following things:
 
-* [plugs][__link0] the `Kak` plugin, which changes the [default mode][__link1];
+* [plugs][__link0] the `Kak` plugin, which changes the [default mode][__link1], and
+  the `TreeSitter` plugin, which adds syntax highlighting and is
+  also used by the `Kak` plugin;
 * [Maps][__link2] jk to esc in the `Insert` mode;
 * [Changes][__link3] the wrapping;
 * [Removes][__link4] the hook [group][__link5] “FileWidgets”;
 * [Pushes][__link6] a [vertical rule][__link7] and [line numbers][__link8] to every file;
 * Removes the hook group “WindowWidgets”;
-* Pushes a [custom status line][__link9] and [command line][__link10] to the bottom
-  of the screen;
-* [Adds][__link11] hooks for [mode changes][__link12] in Duat;
-* [Changes][__link13] the [style][__link14] of the mode printed on the
+* Pushes a [custom status line][__link9] (with a [Spacer][__link10] for 2 separate
+  sides, and a reformatted [`mode_name`][__link11]), a [command line][__link12], and a
+  [notifications widget][__link13] to the bottom of the screen;
+* [Adds][__link14] hooks for [mode changes][__link15] in Duat;
+* [Changes][__link16] the [style][__link17] of the mode printed on the
   status line;
 
 These are some of the ways you can configure Duat. You might
@@ -121,29 +138,34 @@ Now, every file will open with two lines of numbers, one on each
 side. Would you ever want to do this? …No, not really, but it
 shows how configurable Duat can be.
 
-Duat also comes with a fully fledged text styling system, which
+Duat also comes with a fully fledged [text creation system][__link18], which
 significantly eases the creation of widgets:
 
 ```rust
-let text = text!([MyForm] "Waow it's my form! " [] "not anymore 😢");
+let text = text!([MyForm] "Waow it's my form!" [] " not anymore 😢");
 ```
 
 In this example, I’m using the “MyForm” form in order to style the
 text, while `[]` reverts back to the “Default” form. The
-[`status!`][__link15] macro works similarly.
+[`status!`][__link19] macro works similarly.
 
 Duat also has a simple command system, that lets you add commands
-with arguments supported by Rust’s type system:
+with arguments supported by Rust’s type system. As an example,
+this command will change the [numbering][__link20] of a [`LineNumbers`][__link21]
+widget, switching between absolute and relative numbering.
 
 ```rust
-let callers = ["collapse-cmd-line", "ccmd"];
-cmd::add_for!(callers, |_: CmdLine, area: Area| {
-    area.constrain_ver(Constraint::Length(0.0))?;
+let callers = ["toggle-relative", "tr"];
+cmd::add_for!(callers, |line_numbers: LineNumbers<Ui>, _: Area| {
+    let mut cfg = line_numbers.get_cfg();
+    cfg.num_rel = match cfg.num_rel {
+        LineNum::Abs => LineNum::RelAbs,
+        LineNum::Rel | LineNum::RelAbs => LineNum::Abs,
+    };
+    line_numbers.reconfigure(cfg);
     Ok(None)
 })
 ```
-
-The 2 arguments
 
 ### Features
 
@@ -235,20 +257,26 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG_T2k4Qb2V_3Gw4f4dpnHr3_Gx3IJUrY7uBeGwIbRN0vL_yrYWSDgmRkdWF0ZTAuMy4xgmlkdWF0X2NvcmVlMC4zLjCCZHBsdWf2
- [__link0]: https://crates.io/crates/plug
- [__link1]: https://docs.rs/duat/0.3.1/duat/?search=mode::set_default
- [__link10]: https://docs.rs/duat/0.3.1/duat/?search=prelude::CmdLine
- [__link11]: https://docs.rs/duat/0.3.1/duat/?search=hooks::add
- [__link12]: https://docs.rs/duat/0.3.1/duat/?search=hooks::ModeSwitched
- [__link13]: https://docs.rs/duat/0.3.1/duat/?search=form::set
- [__link14]: https://docs.rs/duat/0.3.1/duat/?search=form::Form
- [__link15]: https://docs.rs/duat/0.3.1/duat/?search=prelude::status
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG_nrtWb8hrSqGzxDNBm-dIScG_DsQ09i4v04GzdBOGaYuJCWYWSBgmRkdWF0ZTAuMy4x
+ [__link0]: https://docs.rs/duat/0.3.1/duat/?search=prelude::plug
+ [__link1]: https://docs.rs/duat/0.3.1/duat/?search=prelude::mode::set_default
+ [__link10]: https://docs.rs/duat/0.3.1/duat/?search=prelude::Spacer
+ [__link11]: https://docs.rs/duat/0.3.1/duat/?search=prelude::mode_name
+ [__link12]: https://docs.rs/duat/0.3.1/duat/?search=prelude::CmdLine
+ [__link13]: notifications widget
+ [__link14]: https://docs.rs/duat/0.3.1/duat/?search=prelude::hooks::add
+ [__link15]: https://docs.rs/duat/0.3.1/duat/?search=prelude::hooks::ModeSwitched
+ [__link16]: https://docs.rs/duat/0.3.1/duat/?search=form::set
+ [__link17]: https://docs.rs/duat/0.3.1/duat/?search=prelude::form::Form
+ [__link18]: prelude::text!
+ [__link19]: https://docs.rs/duat/0.3.1/duat/?search=prelude::status
  [__link2]: https://docs.rs/duat/0.3.1/duat/?search=prelude::map
+ [__link20]: https://docs.rs/duat/0.3.1/duat/?search=prelude::LineNum
+ [__link21]: https://docs.rs/duat/0.3.1/duat/?search=prelude::LineNumbers
  [__link3]: https://docs.rs/duat/0.3.1/duat/?search=prelude::print::wrap_on_width
- [__link4]: https://docs.rs/duat/0.3.1/duat/?search=hooks::remove
- [__link5]: https://docs.rs/duat/0.3.1/duat/?search=hooks::add_grouped
- [__link6]: https://docs.rs/duat_core/0.3.0/duat_core/?search=ui::FileBuilder
+ [__link4]: https://docs.rs/duat/0.3.1/duat/?search=prelude::hooks::remove
+ [__link5]: https://docs.rs/duat/0.3.1/duat/?search=prelude::hooks::add_grouped
+ [__link6]: https://docs.rs/duat/0.3.1/duat/?search=prelude::duat_core::ui::FileBuilder
  [__link7]: https://docs.rs/duat/0.3.1/duat/?search=prelude::VertRule
  [__link8]: https://docs.rs/duat/0.3.1/duat/?search=prelude::LineNumbers
  [__link9]: https://docs.rs/duat/0.3.1/duat/?search=prelude::status
