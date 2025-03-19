@@ -9,10 +9,6 @@ configuration Rust crate, placed in `~/.config/duat/` (or wherever
 When installing Duat, this crate will be automatically placed in
 that spot, and it will have a default example configuration.
 
-<br>
-<script async id="asciicast-569727" src="https://asciinema.org/a/569727.js"></script>
-<br>
-
 When you first run Duat, and whenever you update the
 configuration, it will be compiled and reloaded automatically, so
 you can see the changes in *almost* real time. Initially, building
@@ -283,7 +279,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEGxFqoGdMDyHZGwygPtW11CEtGy1Rpt7QSbGcG5A6rcnBh187YWSDgmRGb3Jt9oJnX19saW5rM_aCZGR1YXRlMC4zLjE
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEGznpu3ffeuBMGyWttQ_rjVcpG4e6xz3J0RsBG7kYtZtiZ9oBYWSDgmRGb3Jt9oJnX19saW5rM_aCZGR1YXRlMC4zLjE
  [__link0]: https://docs.rs/duat/0.3.1/duat/?search=prelude::plug
  [__link1]: https://docs.rs/duat/0.3.1/duat/?search=prelude::mode::set_default
  [__link10]: https://docs.rs/duat/0.3.1/duat/?search=prelude::Spacer
