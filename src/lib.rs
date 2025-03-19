@@ -39,6 +39,15 @@
 //! cargo install --path duat --features git-deps
 //! ```
 //!
+//! And if you want to nuke your config in order to get the newest
+//! default config crate, you can do the following:
+//!
+//! ```text
+//! rm -rf ~/.config/duat
+//! git clone https://github.com/AhoyISki/duat
+//! cargo install --path duat --features git-deps
+//! ```
+//!
 //! ## Configuration
 //!
 //! In the configuration file, there should be a `setup_duat!` macro,
