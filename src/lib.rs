@@ -270,7 +270,7 @@ impl<U: Ui> Mode<U> for Normal {
             }),
             key!(Char('b' | 'B'), Mod::SHIFT | ALTSHIFT) => helper.move_many(.., |mut m| {
                 let alt_word = key.modifiers.contains(Mod::ALT);
-                set_anchor_if_needed(&mut m, alt_word);
+                set_anchor_if_needed(&mut m, key.modifiers.contains(Mod::SHIFT));
                 let points = m.search_rev(word_and_space(alt_word, w_chars), None).next();
                 if let Some([p0, _]) = points {
                     m.move_to(p0);
@@ -1071,9 +1071,40 @@ fn match_inside_around(
                 m.destroy();
             }
         }),
-        //key!(Char('i')) => helper.move_many(.., |mut m| {
-        //    let indent = m.
-        //}),
+        key!(Char('i')) => helper.move_many(.., |mut m| {
+            let indent = m.indent_on(m.caret());
+            if indent == 0 {
+                let end = m.len();
+                move_to_points(&mut m, [Point::default(), end]);
+            } else {
+                m.set_anchor();
+                m.move_hor(-(m.caret_col() as i32));
+                m.move_ver(-1);
+
+                while m.indent_on(m.caret()) >= indent && m.caret().line() > 0 {
+                    m.move_ver(-1);
+                }
+                m.move_ver(1);
+                m.swap_ends();
+                m.move_ver(1);
+
+                while m.indent_on(m.caret()) >= indent
+                    && m.caret().line() + 1 < m.text().len().line()
+                {
+                    m.move_ver(1);
+                }
+                m.move_ver(-1);
+
+                if is_inside {
+                    let [_, p1] = m.text().points_of_line(m.caret().line());
+                    m.move_to(p1);
+                } else {
+                    let p1 = m.search_fwd("\n+", None).next().map(|[_, p1]| p1).unwrap();
+                    m.move_to(p1);
+                    m.move_hor(-1);
+                }
+            }
+        }),
         Event { code, .. } => {
             let code = format!("{code:?}");
             context::notify(err!("Key " [*a] code [] " not mapped on this mode"))
