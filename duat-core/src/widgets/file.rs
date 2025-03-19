@@ -262,7 +262,6 @@ impl<U: Ui> Widget<U> for File {
     }
 
     fn print(&mut self, area: &<U as Ui>::Area) {
-        // crate::log_file!("printing File");
         let (start, _) = area.first_points(&self.text, self.cfg);
 
         let mut last_line = area

@@ -325,7 +325,7 @@ mod global {
             } else {
                 let name: &'static str = format!("Default.{type_name}").leak();
                 let id = id_from_name(name);
-                queue(move || add_forms(&[name]));
+                add_forms(vec![name]);
                 ids.insert(type_id, id);
                 id
             }
@@ -368,7 +368,7 @@ mod global {
             *ID.get_or_init(|| {
                 let name: &'static str = $form;
                 let id = id_from_name(name);
-                crate::thread::spawn(move || add_forms(&[name]));
+                add_forms(vec![name]);
                 id
             })
         }},
@@ -380,7 +380,7 @@ mod global {
     			for name in names.iter() {
         			ids.push(id_from_name(name));
     			}
-    			crate::thread::spawn(move || add_forms(names.as_ref()));
+    			add_forms(names);
     			ids.leak()
     		});
     		ids
@@ -407,7 +407,7 @@ mod global {
         for name in names.iter() {
             ids.push(FormId(position_of_name(&mut forms, name) as u16));
         }
-        queue(move || add_forms(names.as_ref()));
+        add_forms(names);
         ids
     }
 
@@ -419,8 +419,8 @@ mod global {
     }
 
     #[doc(hidden)]
-    pub fn add_forms(names: &[&'static str]) {
-        PALETTE.set_many(names);
+    pub fn add_forms(names: Vec<&'static str>) {
+        queue(move || PALETTE.set_many(names.as_ref()));
     }
 
     /// Adds a [`ColorScheme`] to the list of colorschemes
