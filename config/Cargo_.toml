@@ -22,17 +22,17 @@ incremental = true
 
 # You can get rid of this one, if you don't want the duat-kak editor.
 [dependencies.kak]
-git = "https://github.com/AhoyISki/duat"
+git = "https://github.com/AhoyISki/duat-kak"
 version = "0.3.0"
 package = "duat-kak"
 
 [dependencies.treesitter]
-git = "https://github.com/AhoyISki/duat"
+git = "https://github.com/AhoyISki/duat-treesitter"
 version = "0.1.0"
 package = "duat-treesitter"
 
 [dependencies.catppuccin]
-git = "https://github.com/AhoyISki/duat"
+git = "https://github.com/AhoyISki/duat-catppuccin"
 version = "0.1.0"
 package = "duat-catppuccin"
 
