@@ -823,7 +823,6 @@ fn match_goto<S, U: Ui>(
     mut sel_type: SelType,
 ) -> SelType {
     static LAST_FILE: LazyLock<Mutex<Option<String>>> = LazyLock::new(Mutex::default);
-    let cur_name = helper.widget().name();
 
     match key {
         key!(Char('h')) => helper.move_many(.., |mut m| {
@@ -866,16 +865,20 @@ fn match_goto<S, U: Ui>(
 
         ////////// File change keys.
         key!(Char('a')) => {
-            let last_file = LAST_FILE.lock();
-            if let Some(file) = last_file.as_ref() {
-                cmd::run_notify(format!("b {file}")).map(|_| *LAST_FILE.lock() = Some(cur_name));
+            let cur_name = helper.widget().name();
+            let last_file = LAST_FILE.lock().clone();
+            if let Some(last_file) = last_file {
+                cmd::run_notify(format!("b {last_file}"))
+                    .map(|_| *LAST_FILE.lock() = Some(cur_name));
             }
         }
         key!(Char('n')) => {
-            cmd::run_notify("next-file --global").map(|_| *LAST_FILE.lock() = Some(cur_name));
+            let cur_file = helper.widget().name();
+            cmd::run_notify("next-file --global").map(|_| *LAST_FILE.lock() = Some(cur_file));
         }
         key!(Char('N')) => {
-            cmd::run_notify("prev-file --global").map(|_| *LAST_FILE.lock() = Some(cur_name));
+            let cur_file = helper.widget().name();
+            cmd::run_notify("prev-file --global").map(|_| *LAST_FILE.lock() = Some(cur_file));
         }
         Event { code, .. } => {
             let code = format!("{code:?}");
