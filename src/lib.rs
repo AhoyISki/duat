@@ -1,5 +1,3 @@
-//! # Duat
-//!
 //! Duat is a text editor meant to have as much modularity as
 //! possible, while keeping a sensible default configuration. It is
 //! written _and configured_ in Rust, through the use of a
@@ -206,6 +204,27 @@
 //! })
 //! # }
 //! ```
+//! # Default plugins
+//!
+//! When you install duat, the default config crate will come with
+//! some preinstalled plugins:
+//!
+//! - [`duat-kak`] is a plugin that changes the default mode of Duat
+//!   to one inspired by [Kakoune]'s "Normal", also bringing with it
+//!   various other modes from Kakoune.
+//! - [`duat-catppuccin`] is a just a simple colorscheme plugin, it
+//!   adds the four flavors from the [catppuccin][__link3]
+//!   colorscheme. You can pick between the four of them, you can
+//!   apply its colors to other [`Form`]s and you can allow or
+//!   disallow the colorscheme to set the background color.
+//! - [`duat-treesitter`] brinks [tree-sitter] to Duat in the form of
+//!   syntax highlighting and indentation calculation, which can be
+//!   used by Modes (such as those from `duat-kak`) in order to give
+//!   better feedback when editing files.
+//!
+//! You can, of course, unplug these by not calling [`plug!`], or you
+//! could remove them entirely by taking them out of the
+//! `Cargo.toml`'s [dependencies section].
 //!
 //! ## Features
 //!
@@ -309,14 +328,22 @@
 //! [Spacer]: prelude::Spacer
 //! [`mode_name`]: prelude::mode_name
 //! [command line]: prelude::CmdLine
+//! [notifications widget]: prelude::Notifier
 //! [Adds]: prelude::hooks::add
 //! [mode changes]: prelude::hooks::ModeSwitched
 //! [style]: prelude::form::Form
-//! [text creation system]: prelude::text!
+//! [text creation system]: prelude::text::text
 //! [`status!`]: prelude::status
 //! [numbering]: prelude::LineNum
 //! [`LineNumbers`]: prelude::LineNumbers
 //! [tags]: duat_core::text::Tag
+//! [`duat-kak`]: [https://github.com/AhoyISki/duat-kak]
+//! [Kakoune]: [https://github.com/mawww/kakoune]
+//! [`duat-catppuccin`]: [https://github.com/AhoyISki/duat-catppuccin]
+//! [catppuccin]: [https://catppuccin.com]
+//! [`duat-treesitter`]: [https://github.com/AhoyISki/duat-treesitter]
+//! [tree-sitter]: [https://tree-sitter.github.io/tree-sitter]
+//! [dependencies section]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
 #![feature(decl_macro, let_chains)]
 
 use duat_core::{Plugin, session::SessionCfg};

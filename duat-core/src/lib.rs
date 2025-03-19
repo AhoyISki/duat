@@ -1,5 +1,3 @@
-//! # duat-core
-//!
 //! The core of Duat, this crate is meant to be used only for the
 //! creation of plugins for Duat.
 //!

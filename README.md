@@ -167,6 +167,28 @@ cmd::add_for!(callers, |line_numbers: LineNumbers<Ui>, _: Area| {
 })
 ```
 
+## Default plugins
+
+When you install duat, the default config crate will come with
+some preinstalled plugins:
+
+* [`duat-kak`][__link22] is a plugin that changes the default mode of Duat
+  to one inspired by [Kakoune][__link23]’s “Normal”, also bringing with it
+  various other modes from Kakoune.
+* [`duat-catppuccin`][__link24] is a just a simple colorscheme plugin, it
+  adds the four flavors from the [catppuccin][__link25]
+  colorscheme. You can pick between the four of them, you can
+  apply its colors to other [`Form`][__link26]s and you can allow or
+  disallow the colorscheme to set the background color.
+* [`duat-treesitter`][__link27] brinks [tree-sitter][__link28] to Duat in the form of
+  syntax highlighting and indentation calculation, which can be
+  used by Modes (such as those from `duat-kak`) in order to give
+  better feedback when editing files.
+
+You can, of course, unplug these by not calling [`plug!`][__link29], or you
+could remove them entirely by taking them out of the
+`Cargo.toml`’s [dependencies section][__link30].
+
 ### Features
 
 Duat provides a lot of features, trying to be as configurable as
@@ -257,7 +279,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG1GO-eDkLJYCGy7pTKZrfoSEG7JD0JBilAjnG9m9rA6-QE_OYWSBgmRkdWF0ZTAuMy4x
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEGznpu3ffeuBMGyWttQ_rjVcpG4e6xz3J0RsBG7kYtZtiZ9oBYWSDgmRGb3Jt9oJnX19saW5rM_aCZGR1YXRlMC4zLjE
  [__link0]: https://docs.rs/duat/0.3.1/duat/?search=prelude::plug
  [__link1]: https://docs.rs/duat/0.3.1/duat/?search=prelude::mode::set_default
  [__link10]: https://docs.rs/duat/0.3.1/duat/?search=prelude::Spacer
@@ -273,7 +295,16 @@ I don’t like it.
  [__link2]: https://docs.rs/duat/0.3.1/duat/?search=prelude::map
  [__link20]: https://docs.rs/duat/0.3.1/duat/?search=prelude::LineNum
  [__link21]: https://docs.rs/duat/0.3.1/duat/?search=prelude::LineNumbers
+ [__link22]: [https://github.com/AhoyISki/duat-kak]
+ [__link23]: [https://github.com/mawww/kakoune]
+ [__link24]: [https://github.com/AhoyISki/duat-catppuccin]
+ [__link25]: https://crates.io/crates/__link3
+ [__link26]: https://crates.io/crates/Form
+ [__link27]: [https://github.com/AhoyISki/duat-treesitter]
+ [__link28]: [https://tree-sitter.github.io/tree-sitter]
+ [__link29]: `plug!`
  [__link3]: https://docs.rs/duat/0.3.1/duat/?search=prelude::print::wrap_on_width
+ [__link30]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
  [__link4]: https://docs.rs/duat/0.3.1/duat/?search=prelude::hooks::remove
  [__link5]: https://docs.rs/duat/0.3.1/duat/?search=prelude::hooks::add_grouped
  [__link6]: https://docs.rs/duat/0.3.1/duat/?search=prelude::duat_core::ui::FileBuilder
