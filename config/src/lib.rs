@@ -14,6 +14,7 @@ use kak::{Insert, Normal};
 
 fn setup() {
     plug!(
+        // Adds a TsParser Reader, which enables syntax highlighting.
         treesitter::TreeSitter::new(),
         // This plugin sets the mode to Kakoune's Normal.
         kak::Kak::new(),
