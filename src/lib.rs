@@ -161,9 +161,9 @@
 //! ```rust
 //! # use duat::prelude::*;
 //! hooks::add::<OnFileOpen>(|builder| {
+//!     builder.push(VertRule::cfg());
 //!     builder.push(LineNumbers::cfg());
-//!     builder.push(LineNumbers::cfg());
-//!     builder.push(LineNumbers::cfg().on_the_right());
+//!     builder.push(VertRule::cfg().on_the_right());
 //!     builder.push(LineNumbers::cfg().on_the_right());
 //! });
 //! ```

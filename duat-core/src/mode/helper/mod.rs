@@ -306,6 +306,7 @@ where
         };
 
         let mut cursor = Some(cursor);
+
         mov(Mover::new(
             &mut cursor,
             is_main,
@@ -897,20 +898,20 @@ where
 }
 
 /// A cursor that can alter the selection, but can't edit
-pub struct Mover<'a, A, S>
+pub struct Mover<'a, 'b, A, S>
 where
     A: Area,
 {
     cursor: &'a mut Option<Cursor>,
     is_main: bool,
-    text: &'a mut Text,
-    area: &'a A,
+    text: &'b mut Text,
+    area: &'b A,
     cfg: PrintCfg,
-    inc_searcher: &'a mut S,
+    inc_searcher: &'b mut S,
     initial: Cursor,
 }
 
-impl<'a, A, S> Mover<'a, A, S>
+impl<'a, 'b, A, S> Mover<'a, 'b, A, S>
 where
     A: Area,
 {
@@ -918,10 +919,10 @@ where
     fn new(
         cursor: &'a mut Option<Cursor>,
         is_main: bool,
-        text: &'a mut Text,
-        area: &'a A,
+        text: &'b mut Text,
+        area: &'b A,
         cfg: PrintCfg,
-        inc_searcher: &'a mut S,
+        inc_searcher: &'b mut S,
     ) -> Self {
         let initial = *cursor.as_ref().unwrap();
         Self {
@@ -979,16 +980,34 @@ where
     /// Copies the current [`Cursor`] in place
     ///
     /// This will leave an additional [`Cursor`] with the current
-    /// selection. Do note that normal intersection rules apply, so,
-    /// if at the end of the movement, this cursor intersects with any
-    /// other, one of them will be deleted.
-    ///
-    /// Returns the index of the new [`Cursor`], note that this might
-    /// change throughout the movement function, as new cursors might
-    /// be added before it, moving it ahead.
-    pub fn copy(&mut self) -> usize {
+    /// selection. Do note that normal intersection rules apply, so if
+    /// at the end of the movement, this cursor intersects with any
+    /// other, they will be merged into one.
+    pub fn copy(&mut self) {
         let cursors = self.text.cursors_mut().unwrap();
-        cursors.insert(0, false, self.cursor.unwrap())
+        cursors.insert(0, false, self.cursor.unwrap());
+    }
+
+    /// Copies the current [`Cursor`] and applies a function to it
+    ///
+    /// This will let you modify a new selection taken from the
+    /// current [`Cursor`], and then will insert this new copy in the
+    /// [`Cursors`] list. Do note that normal intersection rules
+    /// apply, so if at the end of the movement, this cursor
+    /// intersects with any other, they will be merged into one.
+    pub fn copy_and(&mut self, mov: impl for<'c, 'd> FnOnce(Mover<'c, 'd, A, S>)) {
+        let mut copy = Some(self.cursor.unwrap());
+        mov(Mover::new(
+            &mut copy,
+            false,
+            self.text,
+            self.area,
+            self.cfg,
+            self.inc_searcher,
+        ));
+        if let Some(copy) = copy {
+            self.text.cursors_mut().unwrap().insert(0, false, copy);
+        }
     }
 
     /// Destroys the current [`Cursor`]
