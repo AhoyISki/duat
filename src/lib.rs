@@ -217,7 +217,7 @@
 //!   pick between the four of them, you can apply its colors to other
 //!   [`Form`]s and you can allow or disallow the colorscheme to set
 //!   the background color.
-//! - [`duat-treesitter`] brinks [tree-sitter] to Duat in the form of
+//! - [`duat-treesitter`] brings [tree-sitter] to Duat in the form of
 //!   syntax highlighting and indentation calculation, which can be
 //!   used by Modes (such as those from `duat-kak`) in order to give
 //!   better feedback when editing files.
