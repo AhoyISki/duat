@@ -16,7 +16,7 @@ specific varieties, e.g. `MainCursorInsert`.
 
 ### Normal mode
 
-* `h`, `<Left>`
+* `h`, `<Left>`  
   Moves the selection to the left, reducing it to just the cursor
 
 <table>
