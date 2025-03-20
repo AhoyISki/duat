@@ -16,10 +16,8 @@ specific varieties, e.g. `MainCursorInsert`.
 
 ### Normal mode
 
-`h`, `<Left>`
-
- > 
- > Moves the selection to the left, reducing it to just the cursor
+\| ———–– | ————————————————————— |
+\| `h`, `<Left>` | Moves the selection to the left, reducing it to just the cursor |
 
 `j`
 

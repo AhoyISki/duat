@@ -14,8 +14,8 @@
 //!
 //! ## Normal mode
 //!
-//! `h`, `<Left>`
-//! > Moves the selection to the left, reducing it to just the cursor
+//! | ------------- | --------------------------------------------------------------- |
+//! | `h`, `<Left>` | Moves the selection to the left, reducing it to just the cursor |
 //!
 //! `j`
 //! > Moves the selection down to the next line, reducing it to just
