@@ -81,9 +81,10 @@ impl Bytes {
     ///
     /// ```rust
     /// # use duat_core::text::{Point, Text};
-    /// # let (p1, p2) = (Point::default(), Point::default());
+    /// # let (p0, p1) = (Point::default(), Point::default());
     /// # let text = Text::new();
-    /// buffer.strs_in((p1, p2)).flat_map(str::bytes);
+    /// let bytes = text.bytes();
+    /// bytes.strs((p0, p1)).flat_map(str::chars);
     /// ```
     ///
     /// Do note that you should avoid iterators like [`str::lines`],

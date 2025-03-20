@@ -81,7 +81,7 @@ pub fn file_fmt(file: &File) -> Text {
 ///     let mode = match mode.split_once('<') {
 ///         Some((mode, _)) => mode,
 ///         None => mode,
-///     }
+///     };
 ///     // Further processing...
 /// });
 /// ```

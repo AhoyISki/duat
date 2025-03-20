@@ -30,9 +30,9 @@
 //! leading whitespace:
 //!
 //! ```rust
-//! # use duat_core::{cmd, context::data};
+//! # use duat_core::{cmd, context};
 //! cmd::run_notify(" set-form Default.StatusLine #000000 #ffffff");
-//! assert!(*data::notifications().read() == Text::new());
+//! assert!(*context::notifications().read() == Vec::new());
 //! ```
 //!
 //! The `set-form` command above will fail, since the hsl [`Color`]
@@ -758,7 +758,7 @@ mod global {
     /// #    fn text_mut(&mut self) -> &mut Text {
     /// #        &mut self.text
     /// #    }
-    /// #     fn once() -> Result<(), duat_core::Error<()>> {
+    /// #     fn once() -> Result<(), Text> {
     /// #         Ok(())
     /// #     }
     /// }
@@ -809,7 +809,7 @@ mod global {
     /// #        &mut self.text
     /// #    }
     ///     // ...
-    ///     fn once() -> Result<(), duat_core::Error<()>> {
+    ///     fn once() -> Result<(), Text> {
     ///         form::set_weak("Counter", Form::green());
     ///
     ///         cmd::add_for!("play", |timer: Timer, _: U::Area| {

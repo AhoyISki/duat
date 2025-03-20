@@ -650,10 +650,10 @@ where
     /// ) {
     ///     helper.move_many(.., |mut m| {
     ///         let mut nth = m.search_fwd('(', None).nth(n);
-    ///         if let Some((start, end)) = nth {
-    ///             m.move_to(start);
+    ///         if let Some([p0, p1]) = nth {
+    ///             m.move_to(p0);
     ///             m.set_anchor();
-    ///             m.move_to(end);
+    ///             m.move_to(p1);
     ///         }
     ///     })
     /// }
@@ -693,10 +693,10 @@ where
     /// ) {
     ///     helper.move_many(.., |mut m| {
     ///         let mut nth = m.search_rev(s, None).nth(n);
-    ///         if let Some((start, end)) = nth {
-    ///             m.move_to(start);
+    ///         if let Some([p0, p1]) = nth {
+    ///             m.move_to(p0);
     ///             m.set_anchor();
-    ///             m.move_to(end);
+    ///             m.move_to(p1);
     ///         }
     ///     })
     /// }
@@ -1147,10 +1147,10 @@ where
     /// ) {
     ///     helper.move_many(.., |mut m| {
     ///         let mut nth = m.search_fwd('(', None).nth(n);
-    ///         if let Some((start, end)) = nth {
-    ///             m.move_to(start);
+    ///         if let Some([p0, p1]) = nth {
+    ///             m.move_to(p0);
     ///             m.set_anchor();
-    ///             m.move_to(end);
+    ///             m.move_to(p1);
     ///         }
     ///     })
     /// }
@@ -1183,10 +1183,10 @@ where
     /// ) {
     ///     helper.move_many(.., |mut m| {
     ///         let mut nth = m.search_rev(s, None).nth(n);
-    ///         if let Some((start, end)) = nth {
-    ///             m.move_to(start);
+    ///         if let Some([p0, p1]) = nth {
+    ///             m.move_to(p0);
     ///             m.set_anchor();
-    ///             m.move_to(end);
+    ///             m.move_to(p1);
     ///         }
     ///     })
     /// }

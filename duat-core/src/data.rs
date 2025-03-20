@@ -91,15 +91,16 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// Since this is a blocking read, the thread will hault while the
     /// data is being written to:
+    ///
     /// ```rust
     /// # use std::{thread, time::{Duration, Instant}};
-    /// # use duat_core::data::{RoData, RwData};
-    /// let read_write_data = RwData::new("☹️");
-    /// let read_only_data = RoData::from(&read_write_data);
+    /// # use duat_core::data::RwData;
+    /// let data = RwData::new("☹️");
+    /// let data_clone = data.clone();
     /// let instant = Instant::now();
     /// thread::scope(|scope| {
     ///     scope.spawn(|| {
-    ///         let mut read_write = read_write_data.write();
+    ///         let mut read_write = data.write();
     ///         // Supposedly long computations.
     ///         thread::sleep(Duration::from_millis(150));
     ///         *read_write = "☺️";
@@ -108,35 +109,13 @@ impl<T: ?Sized> RwData<T> {
     ///     // Just making sure that the read happens slightly after the write.
     ///     thread::sleep(Duration::from_millis(10));
     ///
-    ///     let read_only = read_only_data.read();
+    ///     let read_only = data_clone.read();
     ///     let time_elapsed = Instant::now().duration_since(instant);
     ///     assert!(time_elapsed >= Duration::from_millis(100));
     ///     assert!(*read_only == "☺️");
     /// });
     /// ```
-    /// Note that other reads will **NOT** block reading in this way,
-    /// only writes:
-    /// ```rust
-    /// # use std::{thread, time::{Duration, Instant}};
-    /// # use duat_core::data::{RoData, RwData};
-    /// let read_write_data = RwData::new("☹️");
-    /// let read_only_data = RoData::from(&read_write_data);
-    /// let instant = Instant::now();
-    /// thread::scope(|scope| {
-    ///     scope.spawn(|| {
-    ///         let read_only = read_write_data.read();
-    ///         // The thread hangs, but reading is still possible.
-    ///         thread::sleep(Duration::from_millis(100));
-    ///     });
     ///
-    ///     // Just making sure that this read happens slightly after the last one.
-    ///     thread::sleep(Duration::from_millis(1));
-    ///
-    ///     let read_only = read_only_data.read();
-    ///     let time_elapsed = Instant::now().duration_since(instant);
-    ///     assert!(time_elapsed < Duration::from_millis(100));
-    /// });
-    /// ```
     /// [`has_changed`]: Self::has_changed
     pub fn read(&self) -> ReadDataGuard<'_, T> {
         let cur_state = self.cur_state.load(Ordering::Acquire);
@@ -153,6 +132,7 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// Unlike [`read`], can fail to return a reference to the
     /// underlying data:
+    ///
     /// ```rust
     /// # use std::{sync::TryLockError};
     /// # use duat_core::data::RwData;
@@ -184,23 +164,26 @@ impl<T: ?Sized> RwData<T> {
     /// that specific instance of a [`RwData`].
     ///
     /// When first creating a [`RwData`] `has_changed` will return
-    /// `false`;
+    /// `false`, but clones of that [`RwData`] will have `has_changed`
+    /// initially return `true`.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```rust
-    /// use duat_core::data::{RoData, RwData};
-    /// let new_data = RwData::new("Initial text");
-    /// assert!(!new_data.has_changed());
+    /// use duat_core::data::RwData;
+    /// let data = RwData::new("Initial text");
+    /// assert!(!data.has_changed());
     ///
-    /// let first_reader = RoData::from(&new_data);
+    /// *data.write() = "Almost final text";
     ///
-    /// *new_data.write() = "Final text";
+    /// let data_clone1 = data.clone();
     ///
-    /// let second_reader = RoData::from(&new_data);
+    /// assert!(data_clone1.has_changed());
     ///
-    /// assert!(first_reader.has_changed());
-    /// assert!(!second_reader.has_changed());
+    /// *data.write() = "Final text";
+    ///
+    /// assert!(data_clone1.has_changed());
+    /// assert!(!data_clone1.has_changed());
     /// ```
     ///
     /// [`write`]: RwData::write
@@ -382,15 +365,15 @@ impl<T: ?Sized> RwData<T> {
     /// each element is:
     /// ```rust
     /// # use std::{any::Any, fmt::Display, sync::Arc};
-    /// # use duat_core::data::{RwData, RwLock};
+    /// # use duat_core::{Mutex, data::RwData};
     /// let list: [RwData<dyn Display>; 3] = [
-    ///     RwData::new_unsized::<String>(Arc::new(RwLock::new(String::from(
+    ///     RwData::new_unsized::<String>(Arc::new(Mutex::new(String::from(
     ///         "I can show you the world",
     ///     )))),
-    ///     RwData::new_unsized::<String>(Arc::new(RwLock::new(String::from(
+    ///     RwData::new_unsized::<String>(Arc::new(Mutex::new(String::from(
     ///         "Shining, shimmering, splendid",
     ///     )))),
-    ///     RwData::new_unsized::<char>(Arc::new(RwLock::new('🧞'))),
+    ///     RwData::new_unsized::<char>(Arc::new(Mutex::new('🧞'))),
     /// ];
     ///
     /// assert!(list[0].data_is::<String>());
@@ -412,15 +395,15 @@ impl<T: ?Sized> RwData<T> {
     /// each element is:
     /// ```rust
     /// # use std::{fmt::Display, sync::Arc};
-    /// # use duat_core::data::{RwData, RwLock};
+    /// # use duat_core::{Mutex, data::RwData};
     /// let list: [RwData<dyn Display>; 3] = [
-    ///     RwData::new_unsized::<String>(Arc::new(RwLock::new(String::from(
+    ///     RwData::new_unsized::<String>(Arc::new(Mutex::new(String::from(
     ///         "I can show you the world",
     ///     )))),
-    ///     RwData::new_unsized::<String>(Arc::new(RwLock::new(String::from(
+    ///     RwData::new_unsized::<String>(Arc::new(Mutex::new(String::from(
     ///         "Shining, shimmering, splendid",
     ///     )))),
-    ///     RwData::new_unsized::<char>(Arc::new(RwLock::new('🧞'))),
+    ///     RwData::new_unsized::<char>(Arc::new(Mutex::new('🧞'))),
     /// ];
     ///
     /// let maybe_char = list[2].clone().try_downcast::<char>();
@@ -460,23 +443,23 @@ impl<T: ?Sized> RwData<T> {
     /// each element is:
     /// ```rust
     /// # use std::{any::Any, fmt::Display, sync::Arc};
-    /// # use duat_core::data::{RwData, RwLock};
+    /// # use duat_core::{Mutex, data::RwData};
     /// let list: [RwData<dyn Display>; 3] = [
-    ///     RwData::new_unsized::<String>(Arc::new(RwLock::new(String::from(
+    ///     RwData::new_unsized::<String>(Arc::new(Mutex::new(String::from(
     ///         "I can show you the world",
     ///     )))),
-    ///     RwData::new_unsized::<String>(Arc::new(RwLock::new(String::from(
+    ///     RwData::new_unsized::<String>(Arc::new(Mutex::new(String::from(
     ///         "Shining, shimmering, splendid",
     ///     )))),
-    ///     RwData::new_unsized::<char>(Arc::new(RwLock::new('🧞'))),
+    ///     RwData::new_unsized::<char>(Arc::new(Mutex::new('🧞'))),
     /// ];
     ///
     /// assert!(matches!(
-    ///     list[2].inspect_as::<char, usize>(|char| char.len_utf8()),
+    ///     list[2].read_as::<char>().map(|c| c.len_utf8()),
     ///     Some(4)
     /// ));
     /// assert!(matches!(
-    ///     list[1].inspect_as::<char, char>(|char| char.to_ascii_uppercase()),
+    ///     list[1].read_as::<char>().map(|c| c.to_ascii_uppercase()),
     ///     None
     /// ));
     /// ```

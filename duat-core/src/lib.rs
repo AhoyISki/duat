@@ -37,7 +37,7 @@
 //!         helper.move_many(.., |mut m| {
 //!             let pat: String = [first, c].iter().collect();
 //!             let matched = m.search_fwd(pat, None).next();
-//!             if let Some((p0, p1)) = matched {
+//!             if let Some([p0, p1]) = matched {
 //!                 m.move_to(p0);
 //!                 m.set_anchor();
 //!                 m.move_to(p1);
@@ -98,7 +98,7 @@
 //! pub struct EasyMotion {
 //!     is_line: bool,
 //!     key: Key,
-//!     points: Vec<(Point, Point)>,
+//!     points: Vec<[Point; 2]>,
 //!     seq: String,
 //! }
 //!
@@ -139,12 +139,12 @@
 //!
 //!         let seqs = key_seqs(self.points.len());
 //!
-//!         for (seq, (p1, _)) in seqs.iter().zip(&self.points) {
+//!         for (seq, [p0, _]) in seqs.iter().zip(&self.points) {
 //!             let ghost = text!([EasyMotionWord] seq);
 //!
-//!             text.insert_tag(p1.byte(), Tag::GhostText(ghost), self.key);
-//!             text.insert_tag(p1.byte(), Tag::StartConceal, self.key);
-//!             let seq_end = p1.byte() + seq.chars().count() ;
+//!             text.insert_tag(p0.byte(), Tag::GhostText(ghost), self.key);
+//!             text.insert_tag(p0.byte(), Tag::StartConceal, self.key);
+//!             let seq_end = p0.byte() + seq.chars().count() ;
 //!             text.insert_tag(seq_end, Tag::EndConceal, self.key);
 //!         }
 //!     }
@@ -161,12 +161,12 @@
 //!         helper.cursors_mut().remove_extras();
 //!
 //!         let seqs = key_seqs(self.points.len());
-//!         for (seq, &(p1, p2)) in seqs.iter().zip(&self.points) {
+//!         for (seq, &[p0, p1]) in seqs.iter().zip(&self.points) {
 //!             if *seq == self.seq {
 //!                 helper.move_main(|mut m| {
-//!                     m.move_to(p1);
+//!                     m.move_to(p0);
 //!                     m.set_anchor();
-//!                     m.move_to(p2);
+//!                     m.move_to(p1);
 //!                 });
 //!                 mode::reset();
 //!             } else if seq.starts_with(&self.seq) {
