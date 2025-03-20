@@ -1,9 +1,7 @@
-//! # Duat Kak
-//!
-//! Duat kak is the implementation of the
-//! [kakoune](https://github.com/mawww/kakoune) editing model for Duat.
-//! It's still a work in progress, but it already implements most of
-//! the common commands from Kakoune.
+//! `duat-kak` is the implementation of the [kakoune] editing model
+//! for Duat. It's still a work in progress, but it already implements
+//! most of the common commands from Kakoune, with some modifications
+//! that I thought made sense.
 //!
 //! The plugin currently has 2 options: `insert_tabs` and
 //! `set_cursor_forms`. `insert_tabs` will make the `Tab` key insert a
@@ -11,6 +9,37 @@
 //! `set_cursor_forms` will create a hook to set the `MainCursor`,
 //! `ExtraCursor`, `MainSelection` and `ExtraSelection` forms to mode
 //! specific varieties, e.g. `MainCursorInsert`.
+//!
+//! # Keymaps
+//!
+//! ## Normal mode
+//!
+//! `h`, `<Left>`
+//! > Moves the selection to the left, reducing it to just the cursor
+//! <table>
+//!   <td style="text-align: center">
+//!   
+//!    `j`
+//!   </td>
+//!   <td>Moves the selection down to the next line, reducing it to
+//! just the cursor</td>  </tr>
+//!  <tr>
+//!   <td style="text-align: center">
+//!   
+//!    `k`
+//!   </td>
+//!   <td>Moves the selection up to the previous line, reducing it to
+//! just the cursor</td>  </tr>
+//!  <tr>
+//!   <td style="text-align: center">
+//!   
+//!    `h`<br>`<Left>`
+//!   </td>
+//!   <td>Moves the selection to the left, reducing it to just the
+//! cursor</td>  </tr>
+//! </table
+//!
+//! [kakoune]: https://github.com/mawww/kakoune
 #![feature(let_chains, iter_map_windows, if_let_guard, iter_array_chunks)]
 
 use std::{
@@ -322,8 +351,8 @@ impl<U: Ui> Mode<U> for Normal {
                 helper.move_many(.., |mut m| {
                     m.unset_anchor();
                     m.move_hor(-(m.caret_col() as i32));
-                    let [_, p1] = m.search_fwd("[ \t]*", None).next().unwrap();
-                    m.move_to(p1);
+                    let [p0, _] = m.search_fwd("[ \t]*.", None).next().unwrap();
+                    m.move_to(p0);
                 });
                 mode::set::<U>(Insert::new());
             }
