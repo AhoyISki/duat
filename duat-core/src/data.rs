@@ -29,6 +29,7 @@
 //! [updated]: crate::widgets::Widget::update
 //! [`Text`]: crate::text::Text
 //! [`StatusLine`]: crate::widgets::StatusLine
+//! [`context`]: crate::context
 use std::{
     any::TypeId,
     sync::{
@@ -237,9 +238,8 @@ impl<T: ?Sized> RwData<T> {
 
     /// Blocking exclusive reference to the information
     ///
-    /// Also makes it so that [`has_changed`] returns true for
-    /// `self` or any of its clones, be they [`RoData`] or
-    /// [`RwData`].
+    /// Also makes it so that [`has_changed`] returns true for any of
+    /// the clones made from `self`, but **NOT** `self`.
     ///
     /// # Safety
     ///
@@ -270,14 +270,8 @@ impl<T: ?Sized> RwData<T> {
     ///     });
     /// });
     /// ```
-    /// In general, try not to juggle multiple `&mut` handles to
-    /// [`RwData`]s. A good way of doing that is the
-    /// [`RwData::mutate`] method, which makes it very explicit when a
-    /// specific handle will be dropped, mitigating the possibility of
-    /// deadlocks.
     ///
-    ///
-    /// [`has_changed`]: Data::has_changed
+    /// [`has_changed`]: RwData::has_changed
     pub fn write(&self) -> WriteDataGuard<T> {
         let guard = self.data.lock();
         WriteDataGuard {
@@ -289,9 +283,8 @@ impl<T: ?Sized> RwData<T> {
 
     /// Non Blocking mutable reference to the information
     ///
-    /// Also makes it so that [`has_changed`] returns true for
-    /// `self` or any of its clones, be they [`RoData`] or
-    /// [`RwData`].
+    /// Also makes it so that [`has_changed`] returns true for any of
+    /// the clones made from `self`, but **NOT** `self`.
     ///
     /// # Safety
     ///
@@ -330,7 +323,7 @@ impl<T: ?Sized> RwData<T> {
     /// The downside is that you may not want it to fail ever, in
     /// which case, you should probably use [`RwData::write`].
     ///
-    /// [`has_changed`]: Data::has_changed
+    /// [`has_changed`]: RwData::has_changed
     pub fn try_write(&self) -> Option<WriteDataGuard<'_, T>> {
         self.data.try_lock().map(|guard| WriteDataGuard {
             guard,
@@ -413,8 +406,8 @@ impl<T: ?Sized> RwData<T> {
     /// let maybe_string = list[0].clone().try_downcast::<char>();
     /// assert!(maybe_string.is_none());
     /// ```
-    /// If you don't need to write to the data, consider using
-    /// [`RwData::inspect_as`]. If you only need to know if the type
+    /// If you don't need to keep a [`RwData<U>`], consider just using
+    /// [`RwData::read_as`]. If you only need to know if the type
     /// matches, consider using [`RwData::data_is`].
     ///
     /// [`RwData<dyn Trait>`]: RwData

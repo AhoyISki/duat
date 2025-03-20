@@ -331,8 +331,6 @@ impl<U: Ui> DynamicFile<U> {
     }
 
     /// Wether the [`File`] within was switched to another
-    ///
-    /// [`context::fixed_reader`]: fixed_reader
     pub fn has_swapped(&self) -> bool {
         self.dyn_parts.has_changed()
     }
@@ -429,7 +427,7 @@ impl<U: Ui> Drop for WriteFileGuard<'_, U> {
 /// messages, and any other thing that you want to [push] to be
 /// notified.
 ///
-/// [push]: ::push
+/// [push]: Notifications::push
 #[derive(Clone)]
 pub struct Notifications(RwData<Vec<Text>>);
 

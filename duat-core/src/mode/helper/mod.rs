@@ -127,7 +127,7 @@ mod cursors;
 ///
 /// [`Mode`]: super::Mode
 /// [`Text`]: crate::text::Text
-/// [`CmdLine`]: crate::widgets::CmdLine
+/// [`PromptLine`]: crate::widgets::PromptLine
 /// [`&mut Self::Widget`]: super::Mode::Widget
 /// [`Mode::send_key`]: super::Mode::send_key
 /// [key]: super::KeyEvent
@@ -1309,7 +1309,7 @@ where
     /// the caret. if `end` is [`Some`], the search will end at the
     /// requested [`Point`].
     ///
-    /// [`IncSearch`]: crate::widgets::IncSearch
+    /// [`IncSearch`]: crate::mode::IncSearch
     pub fn search_inc_fwd(&mut self, end: Option<Point>) -> impl Iterator<Item = [Point; 2]> + '_ {
         self.inc_searcher.search_fwd(self.text, (self.caret(), end))
     }
@@ -1320,7 +1320,7 @@ where
     /// the caret in reverse. if `start` is [`Some`], the search will
     /// end at the requested [`Point`].
     ///
-    /// [`IncSearch`]: crate::widgets::IncSearch
+    /// [`IncSearch`]: crate::mode::IncSearch
     pub fn search_inc_rev(
         &mut self,
         start: Option<Point>,
@@ -1332,7 +1332,7 @@ where
     /// Whether the [`Cursor`]'s selection matches the [`IncSearch`]
     /// request
     ///
-    /// [`IncSearch`]: crate::widgets::IncSearch
+    /// [`IncSearch`]: crate::mode::IncSearch
     pub fn matches_inc(&mut self) -> bool {
         let is_incl = self.text.cursors().unwrap().is_incl();
         let range = self.cursor.unwrap().range(is_incl, self.text);

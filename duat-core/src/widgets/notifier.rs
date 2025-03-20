@@ -1,11 +1,11 @@
 //! A [`Widget`] that shows notifications
 //!
 //! This is a very simple [`Widget`], and will usually be placed right
-//! under a [`CmdLine`], which, when the `"HideCmdLine"` [hook] group
-//! exists, will be hidden when the [`CmdLine`] is not in focus,
+//! under a [`PromptLine`], which, when the `"HidePromptLine"` [hook] group
+//! exists, will be hidden when the [`PromptLine`] is not in focus,
 //! allowing for the [`Notifications`] widget to pop up.
 //!
-//! [`CmdLine`]: super::CmdLine
+//! [`PromptLine`]: super::PromptLine
 //! [hook]: hooks
 use std::{
     marker::PhantomData,
@@ -22,13 +22,13 @@ use crate::{
 
 /// A [`Widget`] to show notifications
 ///
-/// By default, it is expected to be placed "under" a [`CmdLine`], and
-/// with the `"HideCmdLine"` [hook] group, take its place when the
-/// [`CmdLine`] is not in focus.
+/// By default, it is expected to be placed "under" a [`PromptLine`], and
+/// with the `"HidePromptLine"` [hook] group, take its place when the
+/// [`PromptLine`] is not in focus.
 ///
 /// If you don't want this behaviour, see [`left_with_ratio`]
 ///
-/// [`CmdLine`]: super::CmdLine
+/// [`PromptLine`]: super::PromptLine
 /// [hook]: hooks
 /// [`left_with_ratio`]: NotificationsCfg::left_with_ratio
 pub struct Notifier<U> {
@@ -74,13 +74,13 @@ impl<U: Ui> Widget<U> for Notifier<U> {
 
 /// A [`Widget`] to show notifications
 ///
-/// By default, it is expected to be placed "under" a [`CmdLine`], and
-/// with the `"HideCmdLine"` [hook] group, take its place when the
-/// [`CmdLine`] is not in focus.
+/// By default, it is expected to be placed "under" a [`PromptLine`], and
+/// with the `"HidePromptLine"` [hook] group, take its place when the
+/// [`PromptLine`] is not in focus.
 ///
 /// If you don't want this behaviour, see [`left_with_ratio`]
 ///
-/// [`CmdLine`]: super::CmdLine
+/// [`PromptLine`]: super::PromptLine
 /// [hook]: hooks
 /// [`left_with_ratio`]: NotificationsCfg::left_with_ratio
 #[doc(hidden)]
@@ -90,9 +90,9 @@ impl<U> NotificationsCfg<U> {
     /// Pushes to the left and sets a height
     ///
     /// Use this if you want notifications that don't occupy the same
-    /// space as a [`CmdLine`].
+    /// space as a [`PromptLine`].
     ///
-    /// [`CmdLine`]: super::CmdLine
+    /// [`PromptLine`]: super::PromptLine
     pub fn left_with_ratio(self, den: u16, div: u16) -> Self {
         Self(Some((den, div)), PhantomData)
     }

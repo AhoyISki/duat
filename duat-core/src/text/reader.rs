@@ -20,8 +20,8 @@ pub trait Reader: Send + Sync + 'static {
     /// A convenience type for public facing APIs
     ///
     /// For many public facing APIs, it would be convenient for the
-    /// [`Reader`] to have access to the [`Buffer`] of the [`Text`],
-    /// this type is essentially a way to attach a [`Buffer`] to this
+    /// [`Reader`] to have access to the [`Bytes`] of the [`Text`],
+    /// this type is essentially a way to attach a [`Bytes`] to this
     /// [`Reader`], simplifying the public API.
     ///
     /// If you don't need a public reader API, just set this to `()`.
@@ -81,7 +81,7 @@ pub trait Reader: Send + Sync + 'static {
     /// The public facing portion of this [`Reader`]
     ///
     /// The [`PublicReader`] is essentially just the [`Reader`], but
-    /// with a [`Buffer`] attached to it for convenience.
+    /// with [`Bytes`] attached to it for convenience.
     ///
     /// [`PublicReader`]: Reader::PublicReader
     fn public_reader<'a>(&'a mut self, bytes: &'a mut Bytes) -> Self::PublicReader<'a>
@@ -122,6 +122,7 @@ impl MutTags<'_> {
     ///
     /// [key]: Keys
     /// [`File`]: crate::widgets::File
+    /// [`Point`]: super::Point
     pub fn remove(&mut self, range: impl TextRange, keys: impl Keys) {
         let range = range.to_range_at(self.0.len_bytes());
         if range.end == range.start + 1 {

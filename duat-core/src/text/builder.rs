@@ -77,11 +77,10 @@ impl Builder {
 
     /// Pushes a part of the text
     ///
-    /// This can be an [`impl Display`] type, a [`Data`] type holding
+    /// This can be an [`impl Display`] type, a [`RwData`] holding
     /// an [`impl Display`] or a [tag surrogate].
     ///
     /// [`impl Display`]: std::fmt::Display
-    /// [`Data`]: crate::data::Data
     /// [tag surrogate]: Ghost
     pub fn push<S: ToString, _T>(&mut self, part: impl Into<BuilderPart<S, _T>>) {
         let part = part.into();

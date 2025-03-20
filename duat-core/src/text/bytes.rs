@@ -36,13 +36,16 @@ impl Bytes {
         Point::from_raw(b, c, l)
     }
 
-    /// Whether or not there are any characters in the [`Text`]
+    /// Whether or not there are any characters in [`Bytes`]
     ///
     /// # Note
     ///
     /// This does not check for tags, so with a [`Tag::GhostText`],
     /// there could actually be a "string" of characters on the
     /// [`Text`], it just wouldn't be considered real "text".
+    ///
+    /// [`Tag::GhostText`]: super::Tag::GhostText
+    /// [`Text`]: super::Text
     pub fn is_empty(&self) -> bool {
         self.buf.is_empty()
     }
@@ -369,7 +372,7 @@ impl Bytes {
             .map(|char| self.len().rev(char))
     }
 
-    /// A forward iterator of the [`char`]s of the [`Text`]
+    /// A forward iterator of the [`char`]s of [`Bytes`]
     ///
     /// Each [`char`] will be accompanied by a [`Point`], which is the
     /// position where said character starts, e.g.
@@ -385,7 +388,7 @@ impl Bytes {
             })
     }
 
-    /// A reverse iterator of the [`char`]s of the [`Text`]
+    /// A reverse iterator of the [`char`]s in [`Bytes`]
     ///
     /// Each [`char`] will be accompanied by a [`Point`], which is the
     /// position where said character starts, e.g.
@@ -449,7 +452,7 @@ impl Bytes {
     /// Gets a single [`&str`] from a given [range]
     ///
     /// This is the equivalent of calling
-    /// [`Bytes::make_contiguous_in`] and [`Bytes::get_contiguous`].
+    /// [`Bytes::make_contiguous`] and [`Bytes::get_contiguous`].
     /// While this takes less space in code, calling the other two
     /// functions means that you won't be mutably borrowing the
     /// [`Bytes`] anymore, so if that matters to you, you should do
@@ -483,11 +486,11 @@ impl Bytes {
 
     /// Assumes that the `range` given is contiguous in `self`
     ///
-    /// You *MUST* call [`make_contiguous_in`] before using this
+    /// You *MUST* call [`make_contiguous`] before using this
     /// function. The sole purpose of this function is to not keep the
     /// [`Bytes`] mutably borrowed.
     ///
-    /// [`make_contiguous_in`]: Self::make_contiguous_in
+    /// [`make_contiguous`]: Self::make_contiguous
     pub fn get_contiguous(&self, range: impl TextRange) -> Option<&str> {
         let range = range.to_range_fwd(self.len().byte());
         let [s0, s1] = self.strs(..).to_array();

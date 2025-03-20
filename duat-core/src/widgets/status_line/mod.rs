@@ -42,7 +42,7 @@ use crate::{
 /// ```rust
 /// # use duat_core::{
 /// #     hooks::{self, OnFileOpen, OnWindowOpen}, ui::Ui, status::*,
-/// #     widgets::{CmdLine, File, LineNumbers, Widget, StatusLine, Notifier, status},
+/// #     widgets::{PromptLine, File, LineNumbers, Widget, StatusLine, Notifier, status},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::remove("FileWidgets");
@@ -56,7 +56,7 @@ use crate::{
 ///     let (child, _) = builder.push(status!(
 ///         mode_fmt " " selections_fmt " " main_fmt
 ///     ));
-///     let (child, _) = builder.push_to(CmdLine::cfg().left_ratioed(2, 3), child);
+///     let (child, _) = builder.push_to(PromptLine::cfg().left_ratioed(2, 3), child);
 ///     builder.push_to(Notifier::cfg(), child);
 /// });
 /// # }
@@ -292,11 +292,11 @@ impl<U: Ui> Reader<U> {
 /// arguments update when the [`File`] updates. The following types of
 /// arguments update independently or not at all:
 ///
-/// * A [`Text`] argument can include [`Form`]s and buttons;
-/// * Any [`impl Display`], such as numbers, strings, chars, etc;
-/// * [`RwData`], [`RoData`] and [`DataMap`]s of the previous two
-///   types. These will update whenever the data inside is changed;
-/// * An [`(FnMut() -> Text | impl Display, FnMut() -> bool)`] tuple.
+/// - A [`Text`] argument can include [`Form`]s and buttons;
+/// - Any [`impl Display`], such as numbers, strings, chars, etc;
+/// - [`RwData`] or [`DataMap`]s of the previous two types. These will
+///   update whenever the data inside is changed;
+/// - An [`(FnMut() -> Text | impl Display, FnMut() -> bool)`] tuple.
 ///   The first function returns what will be shown, while the second
 ///   function tells it to update;
 ///
@@ -344,7 +344,6 @@ impl<U: Ui> Reader<U> {
 /// [`&impl Widget`]: Widget
 /// [`impl Display`]: std::fmt::Display
 /// [`RwData`]: crate::data::RwData
-/// [`RoData`]: crate::data::RoData
 /// [`DataMap`]: crate::data::DataMap
 /// [`FnMut() -> Arg`]: FnMut
 /// [`(FnMut() -> Text | impl Display, FnMut() -> bool)`]: FnMut

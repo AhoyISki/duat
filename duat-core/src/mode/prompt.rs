@@ -5,7 +5,7 @@ use crate::{
     cmd, context, form,
     text::{Key, Point, Searcher, Tag, Text, text},
     ui::{Area, Ui},
-    widgets::{CmdLine, Widget},
+    widgets::{PromptLine, Widget},
 };
 
 static PROMPT_KEY: LazyLock<Key> = LazyLock::new(Key::new);
@@ -21,7 +21,7 @@ impl<M: PromptMode<U>, U: Ui> Prompt<M, U> {
 }
 
 impl<M: PromptMode<U>, U: Ui> Mode<U> for Prompt<M, U> {
-    type Widget = CmdLine<U>;
+    type Widget = PromptLine<U>;
 
     fn send_key(&mut self, key: KeyEvent, widget: &mut Self::Widget, area: &U::Area) {
         let mut helper = EditHelper::new(widget, area);

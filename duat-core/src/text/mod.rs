@@ -60,7 +60,7 @@
 //! These would be used mostly on the [`File`] widget and other whose
 //! [`Mode`]s make use of [`EditHelper`]s.
 //!
-//! [gap buffers]: GapBuffer
+//! [gap buffers]: gapbuf::GapBuffer
 //! [colored]: crate::form::Form
 //! [ghost text]: Tag::GhostText
 //! [`Ui`]: crate::ui::Ui
@@ -169,7 +169,7 @@ impl Text {
         text
     }
 
-    /// Creates a [`Text`] from a [`GapBuffer`]
+    /// Creates a [`Text`] from [`Bytes`]
     pub(crate) fn from_bytes(
         mut bytes: Bytes,
         cursors: Option<Cursors>,
@@ -272,8 +272,6 @@ impl Text {
     /// If you give a single [`usize`]/[`Point`], it will be
     /// interpreted as a range from.
     ///
-    /// If you want the two full [`&str`]s, see [`strs`]
-    ///
     /// [`&str`]: str
     /// [`GapBuffer`]: gapbuf::GapBuffer
     pub fn strs(&self, range: impl TextRange) -> Strs {
@@ -334,9 +332,6 @@ impl Text {
     /// of [`Reader`]s are the [tree-sitter] parser, and regex
     /// parsers. Those can be used for, among other things, syntax
     /// hightlighting.
-    ///
-    /// This is private mostly because it is meant to be used only by
-    /// the [`File`]
     pub fn add_reader(&mut self, reader_cfg: impl ReaderCfg) -> Result<(), Text> {
         self.0
             .readers
@@ -635,7 +630,7 @@ impl Text {
 
     ////////// Writing functions
 
-    /// Clones the inner [`GapBuffer`] as a [`String`]
+    /// Clones the inner [`Bytes`] as a [`String`]
     ///
     /// This function will also cut out a final '\n' from the string.
     // NOTE: Inherent because I don't want this to implement Display
@@ -930,7 +925,7 @@ impl Text {
     /// Gets a single [`&str`] from a given [range]
     ///
     /// This is the equivalent of calling
-    /// [`Bytes::make_contiguous_in`] and [`Bytes::get_contiguous`].
+    /// [`Bytes::make_contiguous`] and [`Bytes::get_contiguous`].
     /// While this takes less space in code, calling the other two
     /// functions means that you won't be mutably borrowing the
     /// [`Bytes`] anymore, so if that matters to you, you should do
@@ -947,17 +942,19 @@ impl Text {
     ///
     /// The return value is the value of the gap, if the second `&str`
     /// is the contiguous one.
+    ///
+    /// [`GapBuffer`]: gapbuf::GapBuffer
     pub fn make_contiguous(&mut self, range: impl TextRange) {
         self.0.bytes.make_contiguous(range);
     }
 
     /// Assumes that the `range` given is contiguous in `self`
     ///
-    /// You *MUST* call [`make_contiguous_in`] before using this
+    /// You *MUST* call [`make_contiguous`] before using this
     /// function. The sole purpose of this function is to not keep the
     /// [`Bytes`] mutably borrowed.
     ///
-    /// [`make_contiguous_in`]: Self::make_contiguous_in
+    /// [`make_contiguous`]: Self::make_contiguous
     pub fn get_contiguous(&self, range: impl TextRange) -> Option<&str> {
         self.0.bytes.get_contiguous(range)
     }

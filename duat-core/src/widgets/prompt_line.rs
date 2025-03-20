@@ -1,14 +1,19 @@
-//! A [`Widget`] that can have varying functionality
+//! A multi-purpose widget
 //!
-//! Its primary purpose, as the name implies, is to run [commands],
-//! but it can also [show notifications], do [incremental search], and
-//! you can even [implement your own functionality] for the
-//! [`CmdLine`].
+//! This widget serves many purposes, of note is [running commands],
+//! but it can also be used for [incremental search],
+//! [piping selections], and even [user made functionalities].
 //!
-//! [commands]: cmd
-//! [show notifications]: ShowNotifications
-//! [incremental search]: IncSearch
-//! [implement your own functionality]: CmdLineMode
+//! These functionalities are all controled by a [`Mode`] that has
+//! control over the [`Text`] in the [`PromptLine`]. By default, that
+//! is the [`Prompt`] mode, which can take in a [`PromptMode`] in
+//! order to determine how the [`Text`] will be interpreted.
+//!
+//! [running commands]: crate::mode::RunCommands
+//! [incremental search]: crate::mode::IncSearch
+//! [piping selections]: crate::mode::PipeSelections
+//! [user made functionalities]: PromptMode
+//! [`Mode`]: crate::mode::Mode
 use std::{any::TypeId, collections::HashMap, marker::PhantomData};
 
 use crate::{
@@ -20,17 +25,17 @@ use crate::{
     widgets::{Widget, WidgetCfg},
 };
 
-impl<U: Ui> WidgetCfg<U> for CmdLineCfg<U> {
-    type Widget = CmdLine<U>;
+impl<U: Ui> WidgetCfg<U> for PromptLineCfg<U> {
+    type Widget = PromptLine<U>;
 
     fn build(self, _: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
-        let specs = if hooks::group_exists("HideCmdLine") {
+        let specs = if hooks::group_exists("HidePromptLine") {
             self.specs.with_ver_len(0.0)
         } else {
             self.specs
         };
 
-        let widget = CmdLine {
+        let widget = PromptLine {
             text: Text::default(),
             prompts: HashMap::new(),
             _ghost: PhantomData,
@@ -51,35 +56,36 @@ impl<U: Ui> WidgetCfg<U> for CmdLineCfg<U> {
 ///   be executed.
 /// - [`IncSearch`]: Will read the prompt as a regex, and modify the
 ///   active [`File`] according to a given [`IncSearcher`].
-/// - [`PipeSelections`]: Will pass each selection to a shell
-///   command, replacing the selections with the `stdout`.
+/// - [`PipeSelections`]: Will pass each selection to a shell command,
+///   replacing the selections with the `stdout`.
 ///
 /// [`Prompt`]: crate::mode::Prompt
 /// [`Mode`]: crate::mode::Mode
 /// [`RunCommands`]: crate::mode::RunCommands
 /// [`IncSearch`]: crate::mode::IncSearch
+/// [`File`]: super::File
 /// [`IncSearcher`]: crate::mode::IncSearcher
 /// [`PipeSelections`]: crate::mode::PipeSelections
-pub struct CmdLine<U> {
+pub struct PromptLine<U> {
     text: Text,
     prompts: HashMap<TypeId, Text>,
     _ghost: PhantomData<U>,
 }
 
-impl<U: Ui> CmdLine<U> {
-    /// Returns the prompt for a [`CmdLineMode`] if there is any
+impl<U: Ui> PromptLine<U> {
+    /// Returns the prompt for a [`PromptMode`] if there is any
     pub fn prompt_of<M: PromptMode<U>>(&self) -> Option<Text> {
         self.prompts.get(&TypeId::of::<M>()).cloned()
     }
 
-    /// Sets the prompt for the given [`CmdLineMode`]
+    /// Sets the prompt for the given [`PromptMode`]
     pub fn set_prompt<M: PromptMode<U>>(&mut self, text: Text) {
         self.prompts.entry(TypeId::of::<M>()).or_insert(text);
     }
 }
 
-impl<U: Ui> Widget<U> for CmdLine<U> {
-    type Cfg = CmdLineCfg<U>;
+impl<U: Ui> Widget<U> for PromptLine<U> {
+    type Cfg = PromptLineCfg<U>;
 
     fn cfg() -> Self::Cfg {
         Self::Cfg {
@@ -113,13 +119,13 @@ impl<U: Ui> Widget<U> for CmdLine<U> {
 }
 
 #[doc(hidden)]
-pub struct CmdLineCfg<U> {
+pub struct PromptLineCfg<U> {
     prompts: HashMap<TypeId, Text>,
     specs: PushSpecs,
     _ghost: PhantomData<U>,
 }
 
-impl<U: Ui> CmdLineCfg<U> {
+impl<U: Ui> PromptLineCfg<U> {
     /// Changes the default [prompt] for a given [mode]
     ///
     /// [prompt]: Text

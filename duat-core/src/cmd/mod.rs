@@ -1,7 +1,7 @@
 //! Creation and execution of commands.
 //!
 //! Commands on Duat are bits of code that can be executed on the
-//! [`CmdLine`] widget. They can also be invoked from other parts of
+//! [`PromptLine`] widget. They can also be invoked from other parts of
 //! the code, but their use is mostly intended for runtime calls.
 //!
 //! They are executed asynchronously in order to prevent deadlocks in
@@ -26,7 +26,7 @@
 //! ```
 //!
 //! [`cmd::run_notify`] is what is used by Duat when running commands
-//! in the [`CmdLine`], but you can silence notifications by including
+//! in the [`PromptLine`], but you can silence notifications by including
 //! leading whitespace:
 //!
 //! ```rust
@@ -172,7 +172,7 @@
 //! # }
 //! ```
 //!
-//! [`CmdLine`]: crate::widgets::CmdLine
+//! [`PromptLine`]: crate::widgets::PromptLine
 //! [`cmd::run_notify`]: run_notify
 //! [`Color`]: crate::form::Color
 //! [`Widget`]: crate::widgets::Widget
@@ -601,8 +601,7 @@ mod global {
     /// Since `var` is an [`RwData`], it will be updated
     /// automatically in the [`StatusLine`]
     ///
-    /// [`StatusLine`]: https://docs.rs/duat/latest/duat/widgets/struct.StatusLine.html
-    /// [`RoData`]: crate::data::RoData
+    /// [`StatusLine`]: crate::widgets::StatusLine
     /// [`RwData`]: crate::data::RwData
     pub macro add {
         ($callers:expr, $($mv:ident)? |$($arg:tt: $t:ty),+| $f:block) => {{
@@ -686,8 +685,8 @@ mod global {
     /// first widget found.
     ///
     /// This search algorithm allows a more versatile configuration of
-    /// widgets, for example, one may have a [`CmdLine`] per
-    /// [`File`], or one singular [`CmdLine`] that acts upon
+    /// widgets, for example, one may have a [`PromptLine`] per
+    /// [`File`], or one singular [`PromptLine`] that acts upon
     /// all files in the window, and both would respond correctly
     /// to the `"set-prompt"` command.
     ///
@@ -837,7 +836,7 @@ mod global {
     /// [`dyn Area`]: crate::ui::Area
     /// [`File`]: crate::widgets::File
     /// [`Session`]: crate::session::Session
-    /// [`CmdLine`]: crate::widgets::CmdLine
+    /// [`PromptLine`]: crate::widgets::PromptLine
     /// [`once`]: Widget::once
     /// [`Form`]: crate::form::Form
     /// [`form::set`]: crate::form::set
@@ -1033,10 +1032,10 @@ mod global {
     /// ```
     ///
     /// In this case we're running a command that will affect the most
-    /// relevant [`CmdLine`]. See [`add_for`] for
+    /// relevant [`PromptLine`]. See [`add_for`] for
     /// more information.
     ///
-    /// [`CmdLine`]: crate::widgets::CmdLine
+    /// [`PromptLine`]: crate::widgets::PromptLine
     /// [`Flags`]: super::Flags
     pub fn run(call: impl std::fmt::Display) -> CmdRunner {
         let call = call.to_string();

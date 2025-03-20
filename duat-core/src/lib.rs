@@ -397,6 +397,7 @@ pub mod prelude {
 /// # }
 /// ```
 /// [plugged]: Plugin::plug
+/// [`PhantomData`]: std::marker::PhantomData
 pub trait Plugin<U: Ui>: Sized {
     /// Returns a builder pattern instance of this [`Plugin`]
     fn new() -> Self;

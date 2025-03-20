@@ -71,7 +71,7 @@ use crate::{
 /// # use duat_core::{
 /// #     hooks::{self, OnFileOpen},
 /// #     ui::{FileBuilder, Ui},
-/// #     widgets::{CmdLine, LineNumbers, Widget, StatusLine},
+/// #     widgets::{PromptLine, LineNumbers, Widget, StatusLine},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::remove("FileWidgets");
@@ -80,8 +80,8 @@ use crate::{
 ///     builder.push(line_numbers_cfg);
 ///     // Push a StatusLine to the bottom.
 ///     builder.push(StatusLine::cfg());
-///     // Push a CmdLine to the bottom.
-///     builder.push(CmdLine::cfg());
+///     // Push a PromptLine to the bottom.
+///     builder.push(PromptLine::cfg());
 /// });
 /// # }
 /// ```
@@ -199,7 +199,7 @@ impl<U: Ui> FileBuilder<U> {
     /// the same edge.
     ///
     /// One of the main ways in which this is used is when using a
-    /// hidden [`Notifier`] widget alongside the [`CmdLine`] widget.
+    /// hidden [`Notifier`] widget alongside the [`PromptLine`] widget.
     ///
     /// ```rust
     /// # fn mode_fmt(file: &File) -> Text {
@@ -207,7 +207,7 @@ impl<U: Ui> FileBuilder<U> {
     /// # }
     /// # use duat_core::{
     /// #     hooks::{self, OnFileOpen}, text::Text, ui::{FileBuilder, Ui}, status::*,
-    /// #     widgets::{CmdLine, File, LineNumbers, Notifier, Widget, status},
+    /// #     widgets::{PromptLine, File, LineNumbers, Notifier, Widget, status},
     /// # };
     /// # fn test<U: Ui>() {
     /// hooks::remove("FileWidgets");
@@ -217,24 +217,24 @@ impl<U: Ui> FileBuilder<U> {
     ///     let (child, _) = builder.push(
     ///         status!(file_fmt " " selections_fmt " " main_fmt)
     ///     );
-    ///     let (child, _) = builder.push_to(CmdLine::cfg().left_ratioed(3, 5), child);
+    ///     let (child, _) = builder.push_to(PromptLine::cfg().left_ratioed(3, 5), child);
     ///     builder.push_to(Notifier::cfg(), child);
     /// });
     /// # }
     /// ```
     ///
-    /// Pushing directly to the [`CmdLine`]'s [`Area`] means that
+    /// Pushing directly to the [`PromptLine`]'s [`Area`] means that
     /// they'll share a parent that holds only them. This can then be
-    /// exploited by the `"HideCmdLine"` [hook group], which is
+    /// exploited by the `"HidePromptLine"` [hook group], which is
     /// defined as:
     ///
     /// ```rust
-    /// # use duat_core::{hooks::{self, *}, widgets::CmdLine, ui::{Area, Constraint}};
+    /// # use duat_core::{hooks::{self, *}, widgets::PromptLine, ui::{Area, Constraint}};
     /// # fn test<Ui: duat_core::ui::Ui>() {
-    /// hooks::add_grouped::<UnfocusedFrom<CmdLine<Ui>, Ui>>("HideCmdLine", |(_, area)| {
+    /// hooks::add_grouped::<UnfocusedFrom<PromptLine<Ui>, Ui>>("HidePromptLine", |(_, area)| {
     ///     area.constrain_ver([Constraint::Len(0.0)]).unwrap();
     /// });
-    /// hooks::add_grouped::<FocusedOn<CmdLine<Ui>, Ui>>("HideCmdLine", |(_, area)| {
+    /// hooks::add_grouped::<FocusedOn<PromptLine<Ui>, Ui>>("HidePromptLine", |(_, area)| {
     ///     area.constrain_ver([Constraint::Ratio(1, 1), Constraint::Len(1.0)])
     ///         .unwrap();
     /// });
@@ -243,7 +243,7 @@ impl<U: Ui> FileBuilder<U> {
     ///
     /// [`File`]: crate::widgets::File
     /// [`Notifier`]: crate::widgets::Notifier
-    /// [`CmdLine`]: crate::widgets::CmdLine
+    /// [`PromptLine`]: crate::widgets::PromptLine
     /// [hook group]: crate::hooks::add_grouped
     pub fn push_to<W: Widget<U>>(
         &self,
@@ -271,6 +271,7 @@ impl<U: Ui> FileBuilder<U> {
     /// externally it can also be used for indentation of [`Text`] by
     /// [`Mode`]s
     ///
+    /// [`Tag`]: crate::text::Tag
     /// [`Reader`]: crate::text::Reader
     /// [`Mode`]: crate::mode::Mode
     pub fn add_reader(&mut self, reader_cfg: impl ReaderCfg) -> Result<(), Text> {
@@ -311,14 +312,14 @@ impl<U: Ui> Drop for FileBuilder<U> {
 /// # use duat_core::{
 /// #     hooks::{self, OnWindowOpen},
 /// #     ui::{Ui, WindowBuilder},
-/// #     widgets::{CmdLine, Widget, StatusLine},
+/// #     widgets::{PromptLine, Widget, StatusLine},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::add::<OnWindowOpen<U>>(|builder: &mut WindowBuilder<U>| {
 ///     // Push a StatusLine to the bottom.
 ///     builder.push(StatusLine::cfg());
-///     // Push a CmdLine to the bottom.
-///     builder.push(CmdLine::cfg());
+///     // Push a PromptLine to the bottom.
+///     builder.push(PromptLine::cfg());
 /// });
 /// # }
 /// ```
@@ -336,7 +337,7 @@ impl<U: Ui> Drop for FileBuilder<U> {
 /// # use duat_core::{
 /// #     hooks::{self, OnFileOpen, OnWindowOpen},
 /// #     ui::{WindowBuilder, Ui},
-/// #     widgets::{CmdLine, LineNumbers, Widget, StatusLine},
+/// #     widgets::{PromptLine, LineNumbers, Widget, StatusLine},
 /// # };
 /// # fn test<U: Ui>() {
 /// hooks::remove("FileWidgets");
@@ -347,13 +348,13 @@ impl<U: Ui> Drop for FileBuilder<U> {
 ///
 /// hooks::remove("WindowWidgets");
 /// hooks::add::<OnWindowOpen<U>>(|builder| {
-///     builder.push(CmdLine::cfg());
+///     builder.push(PromptLine::cfg());
 /// });
 /// # }
 /// ```
 ///
 /// In this case, each file gets a [`StatusLine`], and the window will
-/// get one [`CmdLine`], after all, what is the point of having
+/// get one [`PromptLine`], after all, what is the point of having
 /// more than one command line?
 ///
 /// You can go further with this idea, like a status line on each
@@ -364,7 +365,7 @@ impl<U: Ui> Drop for FileBuilder<U> {
 /// [`OnFileOpen`]: crate::hooks::OnFileOpen
 /// [`OnWindowOpen`]: crate::hooks::OnWindowOpen
 /// [`StatusLine`]: crate::widgets::StatusLine
-/// [`CmdLine`]: crate::widgets::CmdLine
+/// [`PromptLine`]: crate::widgets::PromptLine
 pub struct WindowBuilder<U: Ui> {
     window_i: usize,
     area: U::Area,
@@ -432,18 +433,18 @@ impl<U: Ui> WindowBuilder<U> {
     /// intricate layouts.
     ///
     /// For example, let's say I push a [`StatusLine`] below the main
-    /// area, and then I push a [`CmdLine`] on the left of the
+    /// area, and then I push a [`PromptLine`] on the left of the
     /// status's area:
     ///
     /// ```rust
     /// # use duat_core::{
     /// #     ui::{Ui, WindowBuilder},
-    /// #     widgets::{CmdLine, Widget, StatusLine},
+    /// #     widgets::{PromptLine, Widget, StatusLine},
     /// # };
     /// # fn test<U: Ui>(builder: &mut WindowBuilder<U>) {
     /// // StatusLine goes below by default
     /// let (status_area, _) = builder.push(StatusLine::cfg());
-    /// let cmd_line_cfg = CmdLine::cfg().left_ratioed(3, 5);
+    /// let cmd_line_cfg = PromptLine::cfg().left_ratioed(3, 5);
     /// builder.push_to(cmd_line_cfg, status_area);
     /// # }
     /// ```
@@ -456,7 +457,7 @@ impl<U: Ui> WindowBuilder<U> {
     /// │              main area             │
     /// │                                    │
     /// ├─────────────┬──────────────────────┤
-    /// │ CmdLine │      StatusLine      │
+    /// │ PromptLine  │      StatusLine      │
     /// ╰─────────────┴──────────────────────╯
     /// ```
     ///
@@ -465,7 +466,7 @@ impl<U: Ui> WindowBuilder<U> {
     ///
     /// [`push`]: Self::push
     /// [`StatusLine`]: crate::widgets::StatusLine
-    /// [`CmdLine`]: crate::widgets::CmdLine
+    /// [`PromptLine`]: crate::widgets::PromptLine
     pub fn push_to<W: Widget<U>>(
         &self,
         cfg: impl WidgetCfg<U, Widget = W>,

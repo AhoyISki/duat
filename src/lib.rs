@@ -125,7 +125,7 @@
 //!         );
 //!
 //!         builder.push(status_line);
-//!         let (child, _) = builder.push(CmdLine::cfg());
+//!         let (child, _) = builder.push(PromptLine::cfg());
 //!         builder.push_to(Notifier::cfg(), child);
 //!     });
 //!
@@ -327,7 +327,7 @@
 //! [custom status line]: prelude::status
 //! [Spacer]: prelude::Spacer
 //! [`mode_name`]: prelude::mode_name
-//! [command line]: prelude::CmdLine
+//! [command line]: prelude::PromptLine
 //! [notifications widget]: prelude::Notifier
 //! [Adds]: prelude::hooks::add
 //! [mode changes]: prelude::hooks::ModeSwitched
@@ -552,10 +552,10 @@ pub mod control {
     //! or other more specific concepts
     //!
     //! All of the functions listed in here also have a [command]
-    //! equivalent, that you can call from the [`CmdLine`].
+    //! equivalent, that you can call from the [`PromptLine`].
     //!
     //! [command]: duat_core::cmd
-    //! [`CmdLine`]: crate::prelude::CmdLine
+    //! [`PromptLine`]: crate::prelude::PromptLine
     pub use duat_core::cmd::{
         alias, buffer, edit, next_file, next_global_file, prev_file, prev_global_file, quit,
     };

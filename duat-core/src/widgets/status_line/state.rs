@@ -13,6 +13,7 @@
 //!
 //! [`StatusLine`]: super::StatusLine
 //! [`status!`]: super::status
+//! [`File`]: super::File
 //! [data]: crate::data
 use std::{fmt::Display, marker::PhantomData};
 
@@ -43,6 +44,7 @@ enum Appender<T> {
 ///
 /// [`StatusLine`]: super::StatusLine
 /// [`impl Display`]: std::fmt::Display
+/// [`File`]: super::File
 pub struct State<T: 'static, Dummy, U> {
     appender: Appender<T>,
     checker: Option<Box<dyn Fn() -> bool + Send + Sync>>,

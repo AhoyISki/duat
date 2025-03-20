@@ -26,7 +26,7 @@
 //! `10.0`, and a height of `2.0`.
 //!
 //! The module also provides 4 native widgets, [`File`] and
-//! [`CmdLine`], which can receive user mode, and [`StatusLine`]
+//! [`PromptLine`], which can receive user mode, and [`StatusLine`]
 //! and [`LineNumbers`] which are not supposed to.
 //!
 //! These 4 widgets are supposed to be universal, not needing a
@@ -50,10 +50,10 @@ use std::sync::{
 };
 
 pub use self::{
-    command_line::{CmdLine, CmdLineCfg},
+    prompt_line::{PromptLine, PromptLineCfg},
     file::{File, FileCfg, PathKind},
     line_numbers::{LineNum, LineNumbers, LineNumbersCfg},
-    notifications::{Notifier, NotificationsCfg},
+    notifier::{Notifier, NotificationsCfg},
     status_line::{State, StatusLine, StatusLineCfg, status},
 };
 use crate::{
@@ -67,10 +67,10 @@ use crate::{
     ui::{Area, PushSpecs, Ui},
 };
 
-mod command_line;
+mod prompt_line;
 mod file;
 mod line_numbers;
-mod notifications;
+mod notifier;
 mod status_line;
 
 /// An area where [`Text`] will be printed to the screen
@@ -357,6 +357,7 @@ pub trait Widget<U: Ui>: Send + Sync + 'static {
     ///
     /// [`Session`]: crate::session::Session
     /// [more or less width]: Area::constrain_hor
+    /// [`IncSearch`]: crate::mode::IncSearch
     fn update(&mut self, _area: &U::Area) {}
 
     /// The text that this widget prints out

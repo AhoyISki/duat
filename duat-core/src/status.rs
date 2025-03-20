@@ -8,8 +8,8 @@
 //! formatted version of the main [`Cursor`], and [`mode_fmt`] which
 //! will show a formatted version of the current [`Mode`] of Duat.
 //!
-//! [`StatusLine`]: super::StatusLine
-//! [`status!`]: super::status
+//! [`StatusLine`]: crate::widgets::StatusLine
+//! [`status!`]: crate::widgets::status
 //! [`Cursor`]: crate::mode::Cursor
 //! [`Mode`]: crate::mode::Mode
 use crossterm::event::KeyEvent;
