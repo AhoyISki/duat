@@ -16,13 +16,11 @@
 //!
 //! `h`, `<Left>`
 //! > Moves the selection to the left, reducing it to just the cursor
+//!
+//! `j`
+//! > Moves the selection down to the next line, reducing it to just
+//! > the cursor
 //! <table>
-//!   <td style="text-align: center">
-//!   
-//!    `j`
-//!   </td>
-//!   <td>Moves the selection down to the next line, reducing it to
-//! just the cursor</td>  </tr>
 //!  <tr>
 //!   <td style="text-align: center">
 //!   
