@@ -93,20 +93,14 @@ use crate::{
 /// [absolute]: crate::widgets::LineNumbersCfg::absolute
 /// [hook group]: crate::hooks::add_grouped
 /// [`hooks::remove`]: crate::hooks::remove
-pub struct FileBuilder<U>
-where
-    U: Ui,
-{
+pub struct FileBuilder<U: Ui> {
     window_i: usize,
     ff: FixedFile<U>,
     area: U::Area,
     prev: Option<Node<U>>,
 }
 
-impl<U> FileBuilder<U>
-where
-    U: Ui,
-{
+impl<U: Ui> FileBuilder<U> {
     /// Creates a new [`FileBuilder`].
     pub(crate) fn new(node: Node<U>, window_i: usize) -> Self {
         let (_, prev) = context::set_cur(node.as_file(), node.clone()).unzip();

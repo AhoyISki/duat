@@ -9,7 +9,7 @@ use std::ops::RangeBounds;
 
 pub use self::cursors::{Cursor, Cursors};
 use crate::{
-    cfg::{IterCfg, PrintCfg},
+    cfg::PrintCfg,
     text::{Change, Point, Reader, RegexPattern, Searcher, Strs, Text, TextRange},
     ui::Area,
     widgets::{File, Widget},

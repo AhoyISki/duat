@@ -147,7 +147,7 @@
 //! - [Changes] the wrapping;
 //! - [Removes] the hook [group] "FileWidgets";
 //! - [Pushes] a [vertical rule] and [line numbers] to every file;
-//! - Removes the hook group "WindowWidgets";
+//! - [Removes] the hook group "WindowWidgets";
 //! - Pushes a [custom status line] (with a [Spacer] for 2 separate
 //!   sides, and a reformatted [`mode_name`]), a [command line], and a
 //!   [notifications widget] to the bottom of the screen;
@@ -213,10 +213,10 @@
 //!   to one inspired by [Kakoune]'s "Normal", also bringing with it
 //!   various other modes from Kakoune.
 //! - [`duat-catppuccin`] is a just a simple colorscheme plugin, it
-//!   adds the four flavors from the [catppuccin][__link3]
-//!   colorscheme. You can pick between the four of them, you can
-//!   apply its colors to other [`Form`]s and you can allow or
-//!   disallow the colorscheme to set the background color.
+//!   adds the four flavors from the [catppuccin] colorscheme. You can
+//!   pick between the four of them, you can apply its colors to other
+//!   [`Form`]s and you can allow or disallow the colorscheme to set
+//!   the background color.
 //! - [`duat-treesitter`] brinks [tree-sitter] to Duat in the form of
 //!   syntax highlighting and indentation calculation, which can be
 //!   used by Modes (such as those from `duat-kak`) in order to give
@@ -321,7 +321,7 @@
 //! [Changes]: prelude::print::wrap_on_width
 //! [Removes]: prelude::hooks::remove
 //! [group]: prelude::hooks::add_grouped
-//! [Pushes]: prelude::duat_core::ui::FileBuilder
+//! [Pushes]: prelude::FileBuilder::push
 //! [vertical rule]: prelude::VertRule
 //! [line numbers]: prelude::LineNumbers
 //! [custom status line]: prelude::status
@@ -337,16 +337,18 @@
 //! [numbering]: prelude::LineNum
 //! [`LineNumbers`]: prelude::LineNumbers
 //! [tags]: duat_core::text::Tag
-//! [`duat-kak`]: [https://github.com/AhoyISki/duat-kak]
-//! [Kakoune]: [https://github.com/mawww/kakoune]
-//! [`duat-catppuccin`]: [https://github.com/AhoyISki/duat-catppuccin]
-//! [catppuccin]: [https://catppuccin.com]
-//! [`duat-treesitter`]: [https://github.com/AhoyISki/duat-treesitter]
-//! [tree-sitter]: [https://tree-sitter.github.io/tree-sitter]
+//! [`duat-kak`]: https://github.com/AhoyISki/duat-kak
+//! [Kakoune]: https://github.com/mawww/kakoune
+//! [`duat-catppuccin`]: https://github.com/AhoyISki/duat-catppuccin
+//! [catppuccin]: https://catppuccin.com
+//! [`Form`]: prelude::Form
+//! [`duat-treesitter`]: https://github.com/AhoyISki/duat-treesitter
+//! [tree-sitter]: https://tree-sitter.github.io/tree-sitter
+//! [`plug!`]: prelude::plug
 //! [dependencies section]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
 #![feature(decl_macro, let_chains)]
 
-use duat_core::{Plugin, session::SessionCfg};
+use duat_core::session::SessionCfg;
 pub use duat_core::{RwLock, thread};
 
 pub use self::setup::{Messengers, MetaStatics, pre_setup, run_duat};
@@ -530,54 +532,9 @@ pub mod hooks {
     pub type KeySentTo<W> = duat_core::hooks::KeySentTo<W, Ui>;
 }
 
-/// Plugs a list of plugins
-///
-/// These plugins should use the builder construction pattern, i.e.,
-/// they should look like this:
-///
-/// ```rust
-/// pub struct MyPlugin {
-///     // ..options
-/// }
-///
-/// impl MyPlugin {
-///     pub fn new() -> Self {
-///         // ...
-///         # todo!();
-///     }
-///
-///     pub fn modify1(self, parameter: bool) -> Self {
-///         // ...
-///         # todo!();
-///     }
-///
-///     pub fn modify2(self, parameter: i32) -> Self {
-///         // ...
-///         # todo!();
-///     }
-///
-///     pub fn plug(self) {
-///         // Finally applies the plugin, after all alterations
-///     }
-/// }
-/// ```
-///
-/// As you can see above, they should also have a `plug` method, which
-/// consumes the plugin.
-pub macro plug($($plugin:expr),+) {{
-    $(
-        plug_inner($plugin);
-    )+
-}}
-
-#[doc(hidden)]
-pub fn plug_inner(plugin: impl Plugin<Ui>) {
-    plugin.plug()
-}
-
 pub mod widgets {
     //! Duat's builtin widgets
-    pub use duat_core::{ui::Constraint, widgets::*};
+    pub use duat_core::widgets::*;
 }
 
 pub mod state {
@@ -615,11 +572,11 @@ pub mod prelude {
             self, AlignCenter, AlignLeft, AlignRight, Builder, Ghost, Spacer, Tag, Text, err, hint,
             ok, text,
         },
-        ui::Area as AreaTrait,
+        ui::{Area as AreaTrait, FileBuilder, WindowBuilder},
         widgets::Widget,
     };
     #[cfg(feature = "term-ui")]
-    pub use duat_term::{self as ui, VertRule};
+    pub use duat_term::{self as term, VertRule};
 
     pub use crate::{
         Area, Ui, control, cursor,
@@ -629,10 +586,55 @@ pub mod prelude {
             ModeSwitched, OnFileOpen, OnWindowOpen, UnfocusedFrom,
         },
         mode::{self, Cursors, Mode, alias, map},
-        plug, print, setup_duat,
+        print, setup_duat,
         state::*,
         widgets::*,
     };
+
+    /// Plugs a list of plugins
+    ///
+    /// These plugins should use the builder construction pattern,
+    /// i.e., they should look like this:
+    ///
+    /// ```rust
+    /// pub struct MyPlugin {
+    ///     // ..options
+    /// }
+    ///
+    /// impl MyPlugin {
+    ///     pub fn new() -> Self {
+    ///         // ...
+    ///         # todo!();
+    ///     }
+    ///
+    ///     pub fn modify1(self, parameter: bool) -> Self {
+    ///         // ...
+    ///         # todo!();
+    ///     }
+    ///
+    ///     pub fn modify2(self, parameter: i32) -> Self {
+    ///         // ...
+    ///         # todo!();
+    ///     }
+    ///
+    ///     pub fn plug(self) {
+    ///         // Finally applies the plugin, after all alterations
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// As you can see above, they should also have a `plug` method,
+    /// which consumes the plugin.
+    pub macro plug($($plugin:expr),+) {{
+        $(
+            plug_inner($plugin);
+        )+
+    }}
+
+    #[doc(hidden)]
+    pub fn plug_inner(plugin: impl Plugin<Ui>) {
+        plugin.plug()
+    }
 
     /// Executes a shell command, returning its [`Output`] if
     /// successful
