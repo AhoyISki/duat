@@ -1072,7 +1072,6 @@ impl<U: Ui> Mode<U> for OneKey {
 
     fn send_key(&mut self, key: Event, widget: &mut Self::Widget, area: &U::Area) {
         let mut helper = EditHelper::new(widget, area);
-        helper.cursors_mut().make_incl();
 
         let sel_type = match *self {
             OneKey::GoTo(st) => match_goto::<(), U>(&mut helper, key, st),
@@ -1715,5 +1714,4 @@ fn prev_non_empty_line_points(e: &mut Editor<impl Area, File>) -> Option<[Point;
 }
 
 const ALTSHIFT: Mod = Mod::ALT.union(Mod::SHIFT);
-
 static INSERT_TABS: AtomicBool = AtomicBool::new(false);
