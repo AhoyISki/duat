@@ -371,7 +371,6 @@ impl<U: Ui> Mode<U> for Normal {
 
     fn send_key(&mut self, key: Event, widget: &mut Self::Widget, area: &U::Area) {
         let mut helper = EditHelper::new(widget, area);
-        helper.cursors_mut().make_incl();
         let w_chars = helper.cfg().word_chars;
 
         duat_core::log_file!("{key:#?}");
@@ -1347,7 +1346,7 @@ fn match_inside_around(
                 move_to_points(&mut m, [Point::default(), end]);
             } else {
                 m.set_anchor();
-                m.move_hor(-(m.caret_col() as i32));
+                m.move_hor(-(m.v_caret().char_col() as i32));
 
                 while m.indent() >= indent && m.caret().line() > 0 {
                     m.move_ver(-1);
@@ -1450,7 +1449,7 @@ fn w_char_cat(ranges: &'static [RangeInclusive<char>]) -> String {
 
 fn select_to_end_of_line<S>(sel_type: SelType, mut m: Mover<'_, impl Area, S>) -> SelType {
     set_anchor_if_needed(&mut m, sel_type == SelType::Extend);
-    m.set_desired_v_col(usize::MAX);
+    m.set_desired_vcol(usize::MAX);
     let pre_nl = match m.char() {
         '\n' => m.rev().take_while(|(_, char)| *char != '\n').next(),
         _ => m.fwd().take_while(|(_, char)| *char != '\n').last(),
