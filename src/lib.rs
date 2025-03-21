@@ -12,32 +12,252 @@
 //!
 //! # Keymaps
 //!
-//! ## Normal mode
+//! This is a list of _currently_ mapped keys, not the ones that
+//! appear in Kakoune.
 //!
-//! | ------------- | --------------------------------------------------------------- |
-//! | `h`, `<Left>` | Moves the selection to the left, reducing it to just the cursor |
+//! When reading keys, they follow Duat's [mapping] rules, that is:
 //!
-//! `j`
-//! > Moves the selection down to the next line, reducing it to just
-//! > the cursor
-//! <table>
-//!  <tr>
-//!   <td style="text-align: center">
-//!   
-//!    `k`
-//!   </td>
-//!   <td>Moves the selection up to the previous line, reducing it to
-//! just the cursor</td>  </tr>
-//!  <tr>
-//!   <td style="text-align: center">
-//!   
-//!    `h`<br>`<Left>`
-//!   </td>
-//!   <td>Moves the selection to the left, reducing it to just the
-//! cursor</td>  </tr>
-//! </table
+//! - `<A-{key}>` is a chord of `Alt + {key}`, same with `<C-{key}>`
+//!   and `Control` and `<S-{key}>` with `Shift` (although that one is
+//!   not usually needed).
+//! - Special keys are enclosed in `<` `>` pairs (e.g. `<Home>`).
+//! - Multiple keys in a row represent a sequence.
+//!
+//! In any mode, the `<Esc>` key will take you back to `normal` mode.
+//!
+//! In this plugin, a `moment` contains all of the changes performed
+//! by each [`Cursor`], so if you press `u`, multiple changes may be
+//! undone.
+//!
+//! ## `Normal` mode
+//!
+//! The keys in `normal` mode follow the following patterns:
+//!
+//! - All actions will be done to all selections.
+//! - `word` characters follow Duat's [word chars], which are normally
+//!   used to define where lines wrap.
+//! - `WORD` characters are just any non-whitespace character.
+//! - All keys that say "select", when typed with `<Shift>` will
+//!   extend the selection instead (not necessarily growing it).
+//! - Yanked selections are always pasted in the order they were
+//!   yanked, looping around if there are less yanks than [`Cursor`]s.
+//!
+//! ### Object selection
+//!
+//! `h`, `<Left>`\
+//! Selects the character to the left. Wraps around lines.
+//!
+//! `j`\
+//! Selects the character below on the next line.
+//!
+//! `<Down>`\
+//! Selects the character below on the next wrapped line (i.e vim's
+//! `gj`).
+//!
+//! `k`\
+//! Selects the character above on the previous line.
+//!
+//! `<Up>`\
+//! Selects the character above on the previous wrapped line (i.e.
+//! vim's `gk`).
+//!
+//! `l`, `<Right>`\
+//! Selects the character to the right. Wraps around lines.
+//!
+//! `w`\
+//! Selects the `word` and following space to the right of the
+//! selection.
+//!
+//! `b`\
+//! Selects the `word` followed by spaces to the left of the
+//! selection.
+//!
+//! `e`\
+//! Selects to the end of the next `word` to the right of the
+//! selection.
+//!
+//! `<A-(w|b|e)>`\
+//! The same as `(w|b|e)`, but over a `WORD`.
+//!
+//! `f{key}`\
+//! Selects to the next occurrence of the `{key}` character.
+//!
+//! `t{key}`\
+//! Selects until the next occurrence of the `{key}` character.
+//!
+//! `<A-(f|t)>{key}`\
+//! Same as `(f|t)`, but in the opposite direction.
+//!
+//! `x`\
+//! Extends selection to encompass full lines.
+//!
+//! `%`\
+//! Selects the whole buffer.
+//!
+//! `<A-h>`, `<Home>`\
+//! Selects to the start of the line.
+//!
+//! `<A-l>`, `<End>`\
+//! Selects until the end of the line.
+//!
+//! ### Changing text
+//!
+//! `i`\
+//! Enter `insert` mode before selections, keys inserted (except for
+//! `<Delete>`) will only move the selection.
+//!
+//! `a`\
+//! Enter `insert` mode after selection, keys inserted will extend the
+//! selection.
+//!
+//! `I`\
+//! Moves to the beginning of the line (after indent) and enters
+//! `insert` mode.
+//!
+//! `A`\
+//! Moves to the end of the line and enters `insert` mode.
+//!
+//! `y`\
+//! Yanks selections.
+//!
+//! `d`\
+//! Deletes and yanks the selections.
+//!
+//! `c`\
+//! Deletes, yanks, and enter `insert` mode.
+//!
+//! `p`\
+//! Pastes after end of each selection (multi line selections are
+//! placed on the next line).
+//!
+//! `P`\
+//! Pastes at the start of each selection (multi line pastes are
+//! placed on the previous line).
+//!
+//! `R`\
+//! Replaces with the pasted text, without yanking.
+//!
+//! `<A-d>`\
+//! Deletes selections without yanking.
+//!
+//! `<A-c>`\
+//! Deletes selections without yanking, then enters `insert` mode.
+//!
+//! `o`\
+//! Creates a new line below and enters `insert` mode in it.
+//!
+//! `O`\
+//! Creates a new line above and enters `insert` mode in it.
+//!
+//! `<A-(o|O)>`\
+//! Same as `(o|O)`, but just adds the new line.
+//!
+//! `r{key}`\
+//! Replaces each character with `{key}`
+//!
+//! `u`\
+//! [Undoes] the last `moment`
+//!
+//! `U`\
+//! [Redoes] the next `moment`
+//!
+//! `` ` ``\
+//! Changes to lowercase.
+//!
+//! `~`\
+//! Changes to uppercase.
+//!
+//! `<A->`\
+//! Swaps the case of each character.
+//!
+//! `<A-)>`\
+//! Rotates each selection's content forwards.
+//!
+//! `<A-(>`\
+//! Rptates each selection's content backwards.
+//!
+//! `|`\
+//! Changes mode to [`PipeSelections`], letting you pipe each
+//! selection to an external program.
+//!
+//! ### Incremental Search
+//!
+//! The searching in this plugin is done through the [`IncSearch`]
+//! [`Mode`] from Duat, with some [`IncSearcher`]s defined in this
+//! crate. This means that search will be done incrementally over a
+//! Regex pattern.
+//!
+//! `/`\
+//! Searches forward for the next pattern, on each [`Cursor`].
+//!
+//! `<A-/>`\
+//! Searches backwards for the previous pattern, on each [`Cursor`].
+//!
+//! `(?|<A-?>)`\
+//! Follows the `Shift` pattern described above, so its the same as
+//! `(/|<A-/>)`, but extending the selection instead.
+//!
+//! `s`\
+//! Selects the pattern from within current selections.
+//!
+//! `S`\
+//! Splits current selections by the pattern.
+//!
+//! ### Selection manipulation
+//!
+//! `;`\
+//! Reduces selections to just the [caret].
+//!
+//! `<A-;>`\
+//! Flips the [caret] and [anchor] of [`Cursor`]s around.
+//!
+//! `<A-:>`\
+//! Places the [caret] ahead of the [anchor] in all selections.
+//!
+//! `<A-s>`\
+//! Divides selection into multiple selections, one per line.
+//!
+//! `<A-S>`\
+//! Splits into two [`Cursor`]s, one at each end of the selection.
+//!
+//!
+//!
+//! ## `goto` mode
+//!
+//! `goto` mode is entered with the `g` or `G` keys in `normal` mode.
+//! The `G` follows the same `Shift` pattern described above.
+//!
+//! `h`\
+//! Go to the beginning of the line (before indents, column 0).
+//!
+//! `l`\
+//! Go to the end of the line.
+//!
+//! `i`\
+//! Go to the beginning of the line, after indents.
+//!
+//! `g`,`k`\
+//! Go to the first line.
+//!
+//! `j`\
+//! Go to the last line.
+//!
+//! `a`\
+//! Go to the previous [`File`].
+//!
+//! `n`\
+//! Go to the next [`File`] (includes other windows).
+//!
+//! `N`\
+//! Go to the previous [`File`] (includes other windows).
 //!
 //! [kakoune]: https://github.com/mawww/kakoune
+//! [word chars]: duat_core::cfg::word_chars
+//! [caret]: duat_core::mode::Cursor::caret
+//! [anchor]: duat_core::mode::Cursor::anchor
+//! [`Cursor`]: duat_core::mode::Cursor
+//! [Undoes]: duat_core::text::Text::undo
+//! [Redoes]: duat_core::text::Text::redo
 #![feature(let_chains, iter_map_windows, if_let_guard, iter_array_chunks)]
 
 use std::{
@@ -154,6 +374,8 @@ impl<U: Ui> Mode<U> for Normal {
         helper.cursors_mut().make_incl();
         let w_chars = helper.cfg().word_chars;
 
+        duat_core::log_file!("{key:#?}");
+
         match key {
             ////////// Basic movement keys
             key!(Char('h' | 'H') | Left) => {
@@ -181,27 +403,23 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('j' | 'J')) => helper.move_many(.., |mut m| {
                 set_anchor_if_needed(&mut m, key.modifiers.contains(Mod::SHIFT));
                 m.move_ver(1);
-                if m.char() == '\n' && m.caret_col() > 0 && self.0 != SelType::ToEndOfLine {
-                    let vcol = m.desired_caret_vcol();
+                let v_caret = m.v_caret();
+                if m.char() == '\n' && v_caret.char_col() > 0 && self.0 != SelType::ToEndOfLine {
                     m.move_hor(-1);
-                    m.set_desired_v_col(if self.0 == SelType::BeforeEndOfLine {
-                        usize::MAX
-                    } else {
-                        vcol
-                    });
+                    if self.0 == SelType::BeforeEndOfLine {
+                        m.set_desired_vcol(usize::MAX);
+                    }
                 }
             }),
             key!(Char('k' | 'K')) => helper.move_many(.., |mut m| {
                 set_anchor_if_needed(&mut m, key.modifiers.contains(Mod::SHIFT));
                 m.move_ver(-1);
-                if m.char() == '\n' && m.caret_col() > 0 && self.0 != SelType::ToEndOfLine {
-                    let vcol = m.desired_caret_vcol();
+                let v_caret = m.v_caret();
+                if m.char() == '\n' && v_caret.char_col() > 0 && self.0 != SelType::ToEndOfLine {
                     m.move_hor(-1);
-                    m.set_desired_v_col(if self.0 == SelType::BeforeEndOfLine {
-                        usize::MAX
-                    } else {
-                        vcol
-                    });
+                    if self.0 == SelType::BeforeEndOfLine {
+                        m.set_desired_vcol(usize::MAX);
+                    }
                 }
             }),
 
@@ -310,7 +528,7 @@ impl<U: Ui> Mode<U> for Normal {
                 if let Some(p1) = p1.or(m.last_point()) {
                     m.move_to(p1);
                 }
-                m.set_desired_v_col(usize::MAX);
+                m.set_desired_vcol(usize::MAX);
             }),
             key!(
                 Char('f' | 'F' | 't' | 'T'),
@@ -330,6 +548,14 @@ impl<U: Ui> Mode<U> for Normal {
                     OneKey::Until(sel_type)
                 });
             }
+            key!(Char('l'), Mod::ALT) | key!(End) => {
+                helper.move_many(.., |m| self.0 = select_to_end_of_line(self.0, m))
+            }
+            key!(Char('h'), Mod::ALT) | key!(Home) => helper.move_many(.., |mut m| {
+                set_anchor_if_needed(&mut m, self.0 == SelType::Extend);
+                let p1 = m.search_rev("\n", None).next().map(|[_, p1]| p1);
+                m.move_to(p1.unwrap_or_default());
+            }),
             key!(Char('a'), Mod::ALT) => mode::set::<U>(OneKey::Around),
             key!(Char('i'), Mod::ALT) => mode::set::<U>(OneKey::Inside),
             key!(Char('%')) => helper.move_main(|mut m| {
@@ -348,7 +574,7 @@ impl<U: Ui> Mode<U> for Normal {
                 helper.new_moment();
                 helper.move_many(.., |mut m| {
                     m.unset_anchor();
-                    m.move_hor(-(m.caret_col() as i32));
+                    m.move_hor(-(m.v_caret().char_col() as i32));
                     let [p0, _] = m.search_fwd("[ \t]*.", None).next().unwrap();
                     m.move_to(p0);
                 });
@@ -381,7 +607,7 @@ impl<U: Ui> Mode<U> for Normal {
                     orig_points.push((m.caret(), m.anchor()));
                     m.unset_anchor();
                     if key.modifiers.contains(Mod::SHIFT) {
-                        m.move_hor(-(m.caret_col() as i32));
+                        m.move_hor(-(m.v_caret().char_col() as i32));
                     } else {
                         let (p, _) = m.fwd().find(|(_, c)| *c == '\n').unwrap();
                         m.move_to(p);
@@ -416,19 +642,6 @@ impl<U: Ui> Mode<U> for Normal {
                 helper.new_moment();
                 mode::set::<U>(OneKey::Replace)
             }
-            key!(Char('`'), Mod::ALT) => {
-                helper.new_moment();
-                helper.edit_many(.., |e| {
-                    let inverted = e.selection().flat_map(str::chars).map(|c| {
-                        if c.is_uppercase() {
-                            c.to_lowercase().collect::<String>()
-                        } else {
-                            c.to_uppercase().collect()
-                        }
-                    });
-                    e.replace(inverted.collect::<String>());
-                })
-            }
             key!(Char('`')) => {
                 helper.new_moment();
                 helper.edit_many(.., |e| {
@@ -449,8 +662,21 @@ impl<U: Ui> Mode<U> for Normal {
                     e.replace(upper.collect::<String>());
                 })
             }
+            key!(Char('`'), Mod::ALT) => {
+                helper.new_moment();
+                helper.edit_many(.., |e| {
+                    let inverted = e.selection().flat_map(str::chars).map(|c| {
+                        if c.is_uppercase() {
+                            c.to_lowercase().collect::<String>()
+                        } else {
+                            c.to_uppercase().collect()
+                        }
+                    });
+                    e.replace(inverted.collect::<String>());
+                })
+            }
 
-            ////////// Selection manipulation
+            ////////// Advanced selection manipulation
             key!(Char(';'), Mod::ALT) => helper.move_many(.., |mut m| m.swap_ends()),
             key!(Char(';')) => helper.move_many(.., |mut m| m.unset_anchor()),
             key!(Char(':'), ALTSHIFT) => helper.move_many(.., |mut m| m.set_caret_on_end()),
@@ -493,6 +719,34 @@ impl<U: Ui> Mode<U> for Normal {
                 });
                 helper.move_many(.., |mut m| m.move_hor(-1));
             }
+            key!(Char('s'), Mod::ALT) => helper.move_many(.., |mut m| {
+                m.set_caret_on_start();
+                let Some(end) = m.anchor() else {
+                    return;
+                };
+                let lines: Vec<[Point; 2]> = m.search_fwd("[^\n]*\n", Some(end)).collect();
+                let mut last_p1 = m.caret();
+                for [p0, p1] in lines {
+                    m.copy_and(|mut m| {
+                        m.move_to(p0);
+                        m.set_anchor();
+                        m.move_to(p1);
+                        m.move_hor(-1);
+                    });
+                    last_p1 = p1;
+                }
+                m.move_to(last_p1);
+                m.swap_ends();
+            }),
+            key!(Char('s'), ALTSHIFT) => helper.move_many(.., |mut m| {
+                if m.anchor().is_some() {
+                    m.copy_and(|mut m| {
+                        m.swap_ends();
+                        m.unset_anchor();
+                    });
+                    m.unset_anchor();
+                }
+            }),
 
             ////////// Clipboard keys.
             key!(Char('y')) => {
@@ -533,7 +787,7 @@ impl<U: Ui> Mode<U> for Normal {
                                 m.move_hor(1);
                             } else {
                                 m.set_caret_on_start();
-                                m.move_hor(-(m.caret_col() as i32))
+                                m.move_hor(-(m.v_caret().char_col() as i32))
                             }
                         } else {
                             m.set_caret_on_start();
@@ -570,19 +824,20 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('C')) => {
                 helper.new_moment();
                 helper.move_nth(helper.cursors().len() - 1, |mut m| {
-                    let c_col = m.caret_col();
+                    let v_caret = m.v_caret();
                     m.copy();
-                    if let Some(anchor) = m.anchor() {
-                        let a_col = m.anchor_col().unwrap_or(m.caret_col());
-                        let lines_diff = anchor.line() as i32 - m.caret().line() as i32;
+                    if let Some(v_anchor) = m.v_anchor() {
+                        let lines_diff = v_anchor.line() as i32 - m.caret().line() as i32;
                         let len_lines = lines_diff.unsigned_abs() as usize;
                         while m.caret().line() + len_lines < m.len().line() {
                             m.move_ver(len_lines as i32 + 1);
                             m.set_anchor();
-                            m.set_desired_v_col(a_col);
+                            m.set_desired_vcol(v_anchor.visual_col());
                             m.move_ver(lines_diff);
                             m.swap_ends();
-                            if m.caret_col() == c_col && m.anchor_col().unwrap() == a_col {
+                            if m.v_caret().visual_col() == v_caret.visual_col()
+                                && m.v_anchor().unwrap().visual_col() == v_anchor.visual_col()
+                            {
                                 return;
                             }
                             m.swap_ends();
@@ -590,7 +845,7 @@ impl<U: Ui> Mode<U> for Normal {
                     } else {
                         while m.caret().line() < m.len().line() {
                             m.move_ver(1);
-                            if m.caret_col() == c_col {
+                            if m.v_caret().visual_col() == v_caret.visual_col() {
                                 return;
                             }
                         }
@@ -601,19 +856,20 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('c'), ALTSHIFT) => {
                 helper.new_moment();
                 helper.move_nth(0, |mut m| {
-                    let c_col = m.caret_col();
+                    let v_caret = m.v_caret();
                     m.copy();
-                    if let Some(anchor) = m.anchor() {
-                        let a_col = m.anchor_col().unwrap_or(m.caret_col());
-                        let lines_diff = anchor.line() as i32 - m.caret().line() as i32;
+                    if let Some(v_anchor) = m.v_anchor() {
+                        let lines_diff = v_anchor.line() as i32 - m.caret().line() as i32;
                         let len_lines = lines_diff.unsigned_abs() as usize;
                         while m.caret().line().checked_sub(len_lines + 1).is_some() {
                             m.move_ver(-1 - len_lines as i32);
                             m.set_anchor();
-                            m.set_desired_v_col(a_col);
+                            m.set_desired_vcol(v_anchor.visual_col());
                             m.move_ver(lines_diff);
                             m.swap_ends();
-                            if m.caret_col() == c_col && m.anchor_col().unwrap() == a_col {
+                            if m.v_caret().visual_col() == v_caret.visual_col()
+                                && m.v_anchor().unwrap().visual_col() == v_anchor.visual_col()
+                            {
                                 return;
                             }
                             m.swap_ends();
@@ -621,7 +877,7 @@ impl<U: Ui> Mode<U> for Normal {
                     } else {
                         while m.caret().line() > 0 {
                             m.move_ver(-1);
-                            if m.caret_col() == c_col {
+                            if m.v_caret().visual_col() == v_caret.visual_col() {
                                 return;
                             }
                         }
@@ -694,7 +950,6 @@ impl<U: Ui> Mode<U> for Insert {
 
     fn send_key(&mut self, key: Event, widget: &mut Self::Widget, area: &U::Area) {
         let mut helper = EditHelper::new(widget, area);
-        helper.cursors_mut().make_incl();
 
         if let key!(Left | Down | Up | Right, mods) = key {
             if mods.contains(Mod::SHIFT) {
@@ -719,7 +974,7 @@ impl<U: Ui> Mode<U> for Insert {
                 } else {
                     let mut tabs = Vec::new();
                     helper.edit_many(.., |e| {
-                        let tab_len = e.cfg().tab_stops.spaces_at(e.caret_vcol() as u32);
+                        let tab_len = e.cfg().tab_stops.spaces_at(e.v_caret().visual_col() as u32);
                         tabs.push(tab_len);
                         e.insert(" ".repeat(tab_len as usize))
                     });
@@ -865,17 +1120,8 @@ fn match_goto<S, U: Ui>(
             set_anchor_if_needed(&mut m, sel_type == SelType::Extend);
             m.move_to_coords(0, 0)
         }),
-        key!(Char('l')) => helper.move_many(.., |mut m| {
-            set_anchor_if_needed(&mut m, sel_type == SelType::Extend);
-            sel_type = SelType::BeforeEndOfLine;
-            m.set_desired_v_col(usize::MAX);
-            let pre_nl = match m.char() {
-                '\n' => m.rev().take_while(|(_, char)| *char != '\n').next(),
-                _ => m.fwd().take_while(|(_, char)| *char != '\n').last(),
-            };
-            if let Some((p, _)) = pre_nl {
-                m.move_to(p);
-            }
+        key!(Char('l')) => helper.move_many(.., |m| {
+            sel_type = select_to_end_of_line(sel_type, m);
         }),
         key!(Char('i')) => helper.move_many(.., |mut m| {
             set_anchor_if_needed(&mut m, sel_type == SelType::Extend);
@@ -1201,6 +1447,19 @@ fn w_char_cat(ranges: &'static [RangeInclusive<char>]) -> String {
             }
         })
         .collect()
+}
+
+fn select_to_end_of_line<S>(sel_type: SelType, mut m: Mover<'_, impl Area, S>) -> SelType {
+    set_anchor_if_needed(&mut m, sel_type == SelType::Extend);
+    m.set_desired_v_col(usize::MAX);
+    let pre_nl = match m.char() {
+        '\n' => m.rev().take_while(|(_, char)| *char != '\n').next(),
+        _ => m.fwd().take_while(|(_, char)| *char != '\n').last(),
+    };
+    if let Some((p, _)) = pre_nl {
+        m.move_to(p);
+    }
+    SelType::BeforeEndOfLine
 }
 
 #[derive(PartialEq, Eq)]
