@@ -13,9 +13,7 @@ edition = "2024"
 
 [workspace]
 members = ["duat-core", "duat-term"]
-
-[workspace.dependencies]
-duat-core = { version = "0.3.0", path = "duat-core" }
+exclude = ["config"]
 
 [dependencies]
 duat-core = { version = ">=0.3.0", path = "duat-core" }
@@ -26,6 +24,7 @@ duat-term = { version = ">=0.3.0", path = "duat-term", optional = true }
 dirs-next = "2.0.0"
 notify = "8.0.0"
 dlopen-rs = "0.7.3"
+env_logger = "0.11.7"
 
 [features]
 default = ["term-ui"]
