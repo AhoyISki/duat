@@ -14,7 +14,6 @@ impl<U: Ui> super::Mode<U> for Regular {
 
     fn send_key(&mut self, key: KeyEvent, widget: &mut Self::Widget, area: &U::Area) {
         let mut helper = EditHelper::new(widget, area);
-        helper.cursors_mut().make_excl();
 
         match key {
             // Characters

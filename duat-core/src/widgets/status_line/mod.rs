@@ -18,11 +18,9 @@ mod state;
 use std::fmt::Alignment;
 
 pub use self::state::State;
-use super::File;
 use crate::{
     cfg::PrintCfg,
     context::{self, DynamicFile, FixedFile},
-    data::ReadDataGuard,
     form::{self, Form},
     status::{file_fmt, main_fmt, mode_fmt, selections_fmt},
     text::{AlignCenter, AlignLeft, Builder, Text, text},
@@ -127,7 +125,7 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
 
 #[doc(hidden)]
 pub struct StatusLineCfg<U: Ui> {
-    pre_fn: Box<dyn FnMut(crate::text::Builder, &mut Reader<U>) -> Text + Send + Sync>,
+    pre_fn: Box<dyn FnMut(crate::text::Builder, &mut Reader<U>) -> Text + Send>,
     checker: Box<dyn Fn() -> bool + Send + Sync>,
     specs: PushSpecs,
     alignment: Alignment,
@@ -137,7 +135,7 @@ impl<U: Ui> StatusLineCfg<U> {
     #[doc(hidden)]
     pub fn new_with(
         (pre_fn, checker): (
-            Box<dyn FnMut(Builder, &mut Reader<U>) -> Text + 'static + Send + Sync>,
+            Box<dyn FnMut(Builder, &mut Reader<U>) -> Text + 'static + Send>,
             Box<dyn Fn() -> bool + 'static + Send + Sync>,
         ),
         specs: PushSpecs,
@@ -216,13 +214,6 @@ pub enum Reader<U: Ui> {
 }
 
 impl<U: Ui> Reader<U> {
-    fn read(&mut self) -> (ReadDataGuard<File>, &U::Area) {
-        match self {
-            Reader::Fixed(ff) => ff.read(),
-            Reader::Dynamic(df) => df.read(),
-        }
-    }
-
     fn checker(&self) -> Box<dyn Fn() -> bool + Send + Sync + 'static> {
         match self {
             Reader::Fixed(ff) => Box::new(ff.checker()),
@@ -230,7 +221,10 @@ impl<U: Ui> Reader<U> {
         }
     }
 
-    fn inspect_related<W: 'static, R>(&mut self, f: impl FnOnce(&W) -> R) -> Option<R> {
+    fn inspect_related<W: 'static, R: 'static>(
+        &mut self,
+        f: impl FnOnce(&W, &U::Area) -> R,
+    ) -> Option<R> {
         match self {
             Reader::Fixed(ff) => ff.inspect_related(f),
             Reader::Dynamic(df) => df.inspect_related(f),
@@ -413,4 +407,4 @@ pub macro status {
     }}
 }
 
-type TextFn<U> = Box<dyn FnMut(&mut Reader<U>) -> Text + Send + Sync>;
+type TextFn<U> = Box<dyn FnMut(&mut Reader<U>) -> Text + Send>;

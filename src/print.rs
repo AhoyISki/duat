@@ -12,8 +12,8 @@ pub fn no_wrapping() {
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.with_no_wrapping(),
-        None => PrintCfg::default_for_input().with_no_wrapping(),
+        Some(prev) => prev.unwrapped(),
+        None => PrintCfg::default_for_input().unwrapped(),
     })
 }
 
@@ -45,8 +45,8 @@ pub fn wrap_on_cap(cap: u8) {
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.wrapped_on_cap(cap),
-        None => PrintCfg::default_for_input().wrapped_on_cap(cap),
+        Some(prev) => prev.cap_wrapped(cap),
+        None => PrintCfg::default_for_input().cap_wrapped(cap),
     })
 }
 
@@ -56,8 +56,8 @@ pub fn indent_on_wrap() {
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.indenting_wrap(),
-        None => PrintCfg::default_for_input().indenting_wrap(),
+        Some(prev) => prev.indent_wrapped(),
+        None => PrintCfg::default_for_input().indent_wrapped(),
     })
 }
 
@@ -67,8 +67,8 @@ pub fn tab_size(tab_size: u8) {
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.with_tabs_size(tab_size),
-        None => PrintCfg::default_for_input().with_tabs_size(tab_size),
+        Some(prev) => prev.tab_sized(tab_size),
+        None => PrintCfg::default_for_input().tab_sized(tab_size),
     })
 }
 
@@ -78,8 +78,8 @@ pub fn new_line(char: char) {
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.with_new_line_as(char),
-        None => PrintCfg::default_for_input().with_new_line_as(char),
+        Some(prev) => prev.new_line_as(char),
+        None => PrintCfg::default_for_input().new_line_as(char),
     })
 }
 
@@ -89,8 +89,8 @@ pub fn trailing_new_line(char: char) {
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.with_trailing_new_line_as(char),
-        None => PrintCfg::default_for_input().with_trailing_new_line_as(char),
+        Some(prev) => prev.trailing_new_line_as(char),
+        None => PrintCfg::default_for_input().trailing_new_line_as(char),
     })
 }
 
@@ -116,7 +116,7 @@ pub(crate) fn word_chars(word_chars: WordChars) {
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.with_words_as(word_chars),
-        None => PrintCfg::default_for_input().with_words_as(word_chars),
+        Some(prev) => prev.with_word_chars(word_chars),
+        None => PrintCfg::default_for_input().with_word_chars(word_chars),
     })
 }

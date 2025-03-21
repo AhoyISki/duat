@@ -562,63 +562,38 @@ impl Text {
     ////////// History manipulation functions
 
     /// Undoes the last moment, if there was one
-    pub fn undo(&mut self, area: &impl Area, cfg: PrintCfg) {
-        let Some(mut history) = self.0.history.take() else {
-            return;
-        };
-        let mut cursors = self.0.cursors.take().unwrap();
-        let Some(changes) = history.move_backwards() else {
+    pub fn undo(&mut self) {
+        if let Some(mut history) = self.0.history.take()
+            && let Some(changes) = history.move_backwards()
+        {
+            self.apply_and_process_changes(changes);
+            self.0.has_changed = true;
             self.0.history = Some(history);
-            self.0.cursors = Some(cursors);
-            return;
-        };
-
-        self.apply_and_process_changes(&changes, Some((area, &mut cursors, cfg)));
-
-        self.0.has_changed = true;
-        self.0.history = Some(history);
-        self.0.cursors = Some(cursors);
+        }
     }
 
     /// Redoes the last moment in the history, if there is one
-    pub fn redo(&mut self, area: &impl Area, cfg: PrintCfg) {
-        let Some(mut history) = self.0.history.take() else {
-            return;
-        };
-        let mut cursors = self.0.cursors.take().unwrap();
-        let Some(changes) = history.move_forward() else {
+    pub fn redo(&mut self) {
+        if let Some(mut history) = self.0.history.take()
+            && let Some(changes) = history.move_forward()
+        {
+            self.apply_and_process_changes(changes);
+            self.0.has_changed = true;
             self.0.history = Some(history);
-            self.0.cursors = Some(cursors);
-            return;
-        };
-
-        self.apply_and_process_changes(&changes, Some((area, &mut cursors, cfg)));
-
-        self.0.has_changed = true;
-        self.0.history = Some(history);
-        self.0.cursors = Some(cursors);
+        }
     }
 
-    pub fn apply_and_process_changes(
-        &mut self,
-        changes: &[Change<&str>],
-        mut cursors_to_remake: Option<(&impl Area, &mut Cursors, PrintCfg)>,
-    ) {
-        if let Some((_, cursors, _)) = cursors_to_remake.as_mut() {
-            cursors.clear();
-        }
-
+    pub fn apply_and_process_changes(&mut self, changes: Vec<Change<&str>>) {
         for (i, change) in changes.iter().enumerate() {
             let start = change.start();
             self.replace_range_inner(*change);
 
-            let Some((area, cursors, cfg)) = cursors_to_remake.as_mut() else {
-                continue;
-            };
-            cursors.insert_from_parts(i, start, change.added_text().len(), self, *area, *cfg);
+            if let Some(cursors) = self.0.cursors.as_mut() {
+                cursors.insert_from_parts(i, start, change.added_end());
+            }
         }
 
-        self.0.readers.process_changes(&mut self.0.bytes, changes);
+        self.0.readers.process_changes(&mut self.0.bytes, &changes);
     }
 
     /// Finishes the current moment and adds a new one to the history
@@ -737,15 +712,15 @@ impl Text {
 
         if cursors.len() < 500 {
             for (cursor, is_main) in cursors.iter() {
-                self.add_cursor(cursor, is_main, &cursors);
+                self.add_cursor(cursor, is_main);
             }
         } else {
             let (start, _) = area.first_points(self, cfg);
             let (end, _) = area.last_points(self, cfg);
             for (cursor, is_main) in cursors.iter() {
-                let range = cursor.range(cursors.is_incl(), self);
+                let range = cursor.range();
                 if range.end > start.byte() && range.start < end.byte() {
-                    self.add_cursor(cursor, is_main, &cursors);
+                    self.add_cursor(cursor, is_main);
                 }
             }
         }
@@ -762,15 +737,15 @@ impl Text {
 
         if cursors.len() < 500 {
             for (cursor, _) in cursors.iter() {
-                self.remove_cursor(cursor, &cursors);
+                self.remove_cursor(cursor);
             }
         } else {
             let (start, _) = area.first_points(self, cfg);
             let (end, _) = area.last_points(self, cfg);
             for (cursor, _) in cursors.iter() {
-                let range = cursor.range(cursors.is_incl(), self);
+                let range = cursor.range();
                 if range.end > start.byte() && range.start < end.byte() {
-                    self.remove_cursor(cursor, &cursors);
+                    self.remove_cursor(cursor);
                 }
             }
         }
@@ -778,37 +753,15 @@ impl Text {
         self.0.cursors = Some(cursors)
     }
 
-    pub(crate) fn shift_cursors(
-        &mut self,
-        from: usize,
-        by: (i32, i32, i32),
-        area: &impl Area,
-        cfg: PrintCfg,
-    ) {
-        let Some(mut cursors) = self.0.cursors.take() else {
-            return;
-        };
-
-        if by != (0, 0, 0) {
-            cursors.shift_by(from, by, self, area, cfg);
+    pub(crate) fn shift_cursors(&mut self, from: usize, by: (i32, i32, i32)) {
+        if let Some(cursors) = self.cursors_mut() {
+            cursors.shift_by(from, by);
         }
-
-        self.0.cursors = Some(cursors);
     }
 
     /// Adds a [`Cursor`] to the [`Text`]
-    fn add_cursor(&mut self, cursor: &Cursor, is_main: bool, cursors: &Cursors) {
-        let (start, end) = if let Some(anchor) = cursor.anchor() {
-            if anchor <= cursor.caret() {
-                // If the caret is at the end, the selection should end before it,
-                // so a non inclusive selection it used.
-                cursor.point_range(false, self)
-            } else {
-                cursor.point_range(cursors.is_incl(), self)
-            }
-        } else {
-            cursor.point_range(false, self)
-        };
+    fn add_cursor(&mut self, cursor: &Cursor, is_main: bool) {
+        let (start, end) = cursor.point_range();
         let no_selection = if start == end { 1 } else { 3 };
 
         let tags = cursor_tags(is_main)
@@ -821,16 +774,8 @@ impl Text {
     }
 
     /// Removes a [`Cursor`] from the [`Text`]
-    fn remove_cursor(&mut self, cursor: &Cursor, cursors: &Cursors) {
-        let (start, end) = if let Some(anchor) = cursor.anchor()
-            && anchor < cursor.caret()
-        {
-            // If the caret is at the end, the selection should end before it,
-            // so a non inclusive selection it used.
-            cursor.point_range(false, self)
-        } else {
-            cursor.point_range(cursors.is_incl(), self)
-        };
+    fn remove_cursor(&mut self, cursor: &Cursor) {
+        let (start, end) = cursor.point_range();
         let skip = if start == end { 1 } else { 0 };
 
         for p in [start, end].into_iter().skip(skip) {

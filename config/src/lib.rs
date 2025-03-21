@@ -59,7 +59,7 @@ fn setup() {
         // let (child, _) = builder.push(status!(
         //     file_fmt " " mode_fmt " " selections_fmt " " main_fmt
         // ));
-        // let cmd_line = CmdLine::cfg().left_ratioed(3, 5);
+        // let cmd_line = PromptLine::cfg().left_ratioed(3, 5);
         // // `push_to` pushes a widget to another.
         // builder.push_to(cmd_line, child);
 
@@ -72,16 +72,16 @@ fn setup() {
 
         // Pushes a StatusLine to the bottom
         builder.push(status!([Mode] mode_upper Spacer file_fmt " " selections_fmt " " main_fmt));
-        // Pushes a CmdLine to the bottom
-        let (child, _) = builder.push(CmdLine::cfg());
+        // Pushes a PromptLine to the bottom
+        let (child, _) = builder.push(PromptLine::cfg());
         // By pushing this Notifications to the `child`, Duat will create a
-        // parent that owns only the CmdLine and Notifications widgets.
+        // parent that owns only the PromptLine and Notifications widgets.
         // With that, you can tell an Area to occupy the whole parent, "hiding
-        // other sibling Areas. That's done in, e.g., the "HideCmdLine" hook.
+        // other sibling Areas. That's done in, e.g., the "HidePromptLine" hook.
         builder.push_to(Notifier::cfg(), child);
     });
     // // See what happens when you uncomment this hook removal:
-    // hooks::remove("HideCmdLine");
+    // hooks::remove("HidePromptLine");
 
     // This hook will change the color of the Kitty as
     // the ColorScheme is altered.

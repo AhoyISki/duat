@@ -144,8 +144,10 @@ pub struct PrintCfg {
     // NOTE: This is relevant for printing with `WrapMethod::Word`
     /// Characters that are considered to be part of a word
     pub word_chars: WordChars,
-    /// Whether or not to limit scrolloff on the end of lines
+    /// Whether to limit scrolloff on the end of lines
     pub force_scrolloff: bool,
+    /// Wheter to show ghosts
+    pub show_ghosts: bool,
 }
 
 impl PrintCfg {
@@ -158,10 +160,11 @@ impl PrintCfg {
             scrolloff: ScrollOff { x: 3, y: 3 },
             word_chars: WordChars::default(),
             force_scrolloff: false,
+            show_ghosts: true,
         }
     }
 
-    pub const fn with_no_wrapping(self) -> Self {
+    pub const fn unwrapped(self) -> Self {
         Self { wrap_method: WrapMethod::NoWrap, ..self }
     }
 
@@ -173,29 +176,33 @@ impl PrintCfg {
         Self { wrap_method: WrapMethod::Word, ..self }
     }
 
-    pub const fn wrapped_on_cap(self, cap: u8) -> Self {
+    pub const fn cap_wrapped(self, cap: u8) -> Self {
         Self {
             wrap_method: WrapMethod::Capped(cap),
             ..self
         }
     }
 
-    pub const fn indenting_wrap(self) -> Self {
+    pub const fn indent_wrapped(self) -> Self {
         Self { indent_wrap: true, ..self }
     }
 
-    pub const fn with_tabs_size(self, tab_size: u8) -> Self {
+    pub const fn tab_sized(self, tab_size: u8) -> Self {
         Self { tab_stops: TabStops(tab_size), ..self }
     }
 
-    pub const fn with_new_line_as(self, char: char) -> Self {
+    pub const fn with_no_new_line(self) -> Self {
+        Self { new_line: NewLine::Hidden, ..self }
+    }
+
+    pub const fn new_line_as(self, char: char) -> Self {
         Self {
             new_line: NewLine::AlwaysAs(char),
             ..self
         }
     }
 
-    pub const fn with_trailing_new_line_as(self, char: char) -> Self {
+    pub const fn trailing_new_line_as(self, char: char) -> Self {
         Self {
             new_line: NewLine::AfterSpaceAs(char),
             ..self
@@ -220,7 +227,7 @@ impl PrintCfg {
         }
     }
 
-    pub const fn with_words_as(self, word_chars: WordChars) -> Self {
+    pub const fn with_word_chars(self, word_chars: WordChars) -> Self {
         Self { word_chars, ..self }
     }
 
@@ -240,6 +247,7 @@ impl PrintCfg {
             scrolloff: ScrollOff { x: 3, y: 3 },
             word_chars: WordChars::default(),
             force_scrolloff: false,
+            show_ghosts: true,
         }
     }
 }

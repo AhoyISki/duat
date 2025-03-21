@@ -22,7 +22,10 @@ mod global {
 
     use super::{Gives, Remapper};
     use crate::{
-        data::DataMap, mode::Mode, text::{text, Text}, ui::Ui
+        data::DataMap,
+        mode::Mode,
+        text::{Text, text},
+        ui::Ui,
     };
 
     static REMAPPER: Remapper = Remapper::new();
@@ -186,6 +189,42 @@ mod global {
     /// The conversion follows the same rules as remaps in Vim, that
     /// is:
     pub fn str_to_keys(str: &str) -> Vec<KeyEvent> {
+        const SPECIAL: &[(&str, KeyCode)] = &[
+            ("Enter", KeyCode::Enter),
+            ("Tab", KeyCode::Tab),
+            ("Bspc", KeyCode::Backspace),
+            ("Del", KeyCode::Delete),
+            ("Esc", KeyCode::Esc),
+            ("Up", KeyCode::Up),
+            ("Down", KeyCode::Down),
+            ("Left", KeyCode::Left),
+            ("Right", KeyCode::Right),
+            ("PageU", KeyCode::PageUp),
+            ("PageD", KeyCode::PageDown),
+            ("Home", KeyCode::Home),
+            ("End", KeyCode::End),
+            ("Ins", KeyCode::Insert),
+            ("F1", KeyCode::F(1)),
+            ("F2", KeyCode::F(2)),
+            ("F3", KeyCode::F(3)),
+            ("F4", KeyCode::F(4)),
+            ("F5", KeyCode::F(5)),
+            ("F6", KeyCode::F(6)),
+            ("F7", KeyCode::F(7)),
+            ("F8", KeyCode::F(8)),
+            ("F9", KeyCode::F(9)),
+            ("F10", KeyCode::F(10)),
+            ("F11", KeyCode::F(11)),
+            ("F12", KeyCode::F(12)),
+        ];
+        const MODS: &[(&str, KeyMod)] = &[
+            ("C", KeyMod::CONTROL),
+            ("A", KeyMod::ALT),
+            ("S", KeyMod::SHIFT),
+            ("M", KeyMod::META),
+            ("super", KeyMod::SUPER),
+            ("hyper", KeyMod::HYPER),
+        ];
         fn match_key(chars: Chars) -> Option<(KeyEvent, Chars)> {
             let matched_mods = {
                 let mut chars = chars.clone();
@@ -195,9 +234,10 @@ mod global {
                 loop {
                     let char = chars.next()?;
                     if char == '-' {
-                        match mods.is_empty() {
-                            true => break None,
-                            false => break Some((mods, chars)),
+                        if mods.is_empty() {
+                            break None;
+                        } else {
+                            break Some((mods, chars));
                         }
                     }
 
@@ -297,45 +337,6 @@ mod global {
 
     /// Null key sending function
     fn empty(_: KeyEvent) {}
-
-    /// List of special characters available for remapping
-    const SPECIAL: &[(&str, KeyCode)] = &[
-        ("Enter", KeyCode::Enter),
-        ("Tab", KeyCode::Tab),
-        ("Bspc", KeyCode::Backspace),
-        ("Del", KeyCode::Delete),
-        ("Esc", KeyCode::Esc),
-        ("Up", KeyCode::Up),
-        ("Down", KeyCode::Down),
-        ("Left", KeyCode::Left),
-        ("Right", KeyCode::Right),
-        ("PageU", KeyCode::PageUp),
-        ("PageD", KeyCode::PageDown),
-        ("Home", KeyCode::Home),
-        ("End", KeyCode::End),
-        ("Ins", KeyCode::Insert),
-        ("F1", KeyCode::F(1)),
-        ("F2", KeyCode::F(2)),
-        ("F3", KeyCode::F(3)),
-        ("F4", KeyCode::F(4)),
-        ("F5", KeyCode::F(5)),
-        ("F6", KeyCode::F(6)),
-        ("F7", KeyCode::F(7)),
-        ("F8", KeyCode::F(8)),
-        ("F9", KeyCode::F(9)),
-        ("F10", KeyCode::F(10)),
-        ("F11", KeyCode::F(11)),
-        ("F12", KeyCode::F(12)),
-    ];
-    /// List of modifiers available for remapping
-    const MODS: &[(&str, KeyMod)] = &[
-        ("C", KeyMod::CONTROL),
-        ("A", KeyMod::ALT),
-        ("S", KeyMod::SHIFT),
-        ("M", KeyMod::META),
-        ("super", KeyMod::SUPER),
-        ("hyper", KeyMod::HYPER),
-    ];
 }
 
 /// The structure responsible for remapping sequences of characters

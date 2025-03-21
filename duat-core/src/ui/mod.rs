@@ -49,7 +49,7 @@ use crate::{
 /// }
 /// ```
 pub trait Ui: Clone + Send + Sync + 'static {
-    type Area: Area<Ui = Self> + Clone + PartialEq + Send + Sync;
+    type Area: Area<Ui = Self> + Clone + PartialEq + Send + 'static;
     type MetaStatics: Default;
 
     ////////// Functions executed from the outer loop

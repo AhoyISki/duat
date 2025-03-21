@@ -17,8 +17,9 @@ use crossterm::event::KeyEvent;
 use crate::{
     context,
     data::{DataMap, RwData},
-    mode::{self, Cursors},
+    mode::{self},
     text::{Text, text},
+    ui::Area,
     widgets::File,
 };
 
@@ -74,7 +75,7 @@ pub fn file_fmt(file: &File) -> Text {
 ///
 /// Which is rather undesirable. If you don't want that to happen, one
 /// simple trick is this:
-/// 
+///
 /// ```rust
 /// # use duat_core::status;
 /// let mode = status::mode_name().map(|mode| {
@@ -85,7 +86,7 @@ pub fn file_fmt(file: &File) -> Text {
 ///     // Further processing...
 /// });
 /// ```
-/// 
+///
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [mode]: mode::Mode
 /// [`IncSearch`]: mode::IncSearch
@@ -116,29 +117,30 @@ pub fn mode_fmt() -> DataMap<&'static str, Text> {
 /// [`StatusLine`] part: Byte of main cursor in file, indexed at 1
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_byte(cursors: &Cursors) -> usize {
-    cursors.get_main().unwrap_or_default().byte() + 1
+pub fn main_byte(file: &File) -> usize {
+    file.cursors().get_main().unwrap().byte() + 1
 }
 
 /// [`StatusLine`] part: Char of main cursor in file, indexed at 1
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_char(cursors: &Cursors) -> usize {
-    cursors.get_main().unwrap_or_default().char() + 1
+pub fn main_char(file: &File) -> usize {
+    file.cursors().get_main().unwrap().char() + 1
 }
 
 /// [`StatusLine`] part: Column of main cursor in file, indexed at 1
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_col(cursors: &Cursors) -> usize {
-    cursors.get_main().unwrap_or_default().vcol() + 1
+pub fn main_col(file: &File, area: &impl Area) -> usize {
+    let main = file.cursors().get_main().unwrap();
+    main.v_caret(file.text(), area, file.print_cfg()).char_col()
 }
 
 /// [`StatusLine`] part: Line of main cursor in file, indexed at 1
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_line(cursors: &Cursors) -> usize {
-    cursors.get_main().unwrap_or_default().line() + 1
+pub fn main_line(file: &File) -> usize {
+    file.cursors().get_main().unwrap().line() + 1
 }
 
 /// [`StatusLine`] part: The main cursor, formatted
@@ -150,14 +152,10 @@ pub fn main_line(cursors: &Cursors) -> usize {
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_fmt(file: &File) -> Text {
-    let cursors = file.cursors();
-    if cursors.is_empty() {
-        return Text::default();
-    }
+pub fn main_fmt(file: &File, area: &impl Area) -> Text {
     text!(
-        [Coord] { main_col(cursors) } [Separator] ":"
-        [Coord] { main_line(cursors) } [Separator] "/"
+        [Coord] { main_col(file, area) } [Separator] ":"
+        [Coord] { main_line(file) } [Separator] "/"
         [Coord] { file.len_lines() }
     )
 }
@@ -165,8 +163,8 @@ pub fn main_fmt(file: &File) -> Text {
 /// [`StatusLine`] part: The number of cursors
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn selections(cursors: &Cursors) -> usize {
-    cursors.len()
+pub fn selections(file: &File) -> usize {
+    file.cursors().len()
 }
 
 /// [`StatusLine`] part: The number of cursors, formatted
@@ -187,11 +185,11 @@ pub fn selections(cursors: &Cursors) -> usize {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [`Cursor`]: crate::mode::Cursor
-pub fn selections_fmt(cursors: &Cursors) -> Text {
-    if cursors.len() == 1 {
+pub fn selections_fmt(file: &File) -> Text {
+    if file.cursors().len() == 1 {
         text!([Selections] "1 sel")
     } else {
-        text!([Selections] { cursors.len() } "sels")
+        text!([Selections] { file.cursors().len() } "sels")
     }
 }
 

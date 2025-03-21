@@ -19,11 +19,7 @@ mod regular;
 mod remap;
 
 mod switch {
-    use std::{
-        any::TypeId,
-        sync::{Arc, LazyLock},
-        vec::IntoIter,
-    };
+    use std::{any::TypeId, sync::LazyLock, vec::IntoIter};
 
     use crossterm::event::KeyEvent;
     use parking_lot::Mutex;
@@ -42,15 +38,14 @@ mod switch {
 
     static SEND_KEYS: LazyLock<Mutex<Box<KeyFn>>> =
         LazyLock::new(|| Mutex::new(Box::new(|_| None)));
-    static RESET_MODE: LazyLock<Mutex<Arc<dyn Fn() + Send + Sync>>> =
-        LazyLock::new(|| Mutex::new(Arc::new(|| {})));
-    static SET_MODE: Mutex<Option<Box<dyn FnOnce() + Send + Sync>>> = Mutex::new(None);
+    static RESET_MODE: LazyLock<Mutex<Box<dyn Fn() + Send>>> =
+        LazyLock::new(|| Mutex::new(Box::new(|| {})));
+    static SET_MODE: Mutex<Option<Box<dyn FnOnce() + Send>>> = Mutex::new(None);
 
-    type KeyFn =
-        dyn FnMut(&mut IntoIter<KeyEvent>) -> Option<Box<dyn FnOnce() + Send + Sync>> + Send + Sync;
+    type KeyFn = dyn FnMut(&mut IntoIter<KeyEvent>) -> Option<Box<dyn FnOnce() + Send>> + Send;
 
     /// Whether or not the [`Mode`] has changed
-    pub fn was_set() -> Option<Box<dyn FnOnce() + Send + Sync>> {
+    pub fn was_set() -> Option<Box<dyn FnOnce() + Send>> {
         SET_MODE.lock().take()
     }
 
@@ -61,7 +56,7 @@ mod switch {
     ///
     /// [`mode::reset`]: reset
     pub fn set_default<M: Mode<U>, U: Ui>(mode: M) {
-        *RESET_MODE.lock() = Arc::new(move || set_mode_fn::<M, U>(mode.clone()));
+        *RESET_MODE.lock() = Box::new(move || set_mode_fn::<M, U>(mode.clone()));
         let mut set_mode = SET_MODE.lock();
         let prev = set_mode.take();
         *set_mode = Some(Box::new(move || {
@@ -105,7 +100,7 @@ mod switch {
                 let node = node.clone();
                 *SET_MODE.lock() = Some(Box::new(move || {
                     switch_widget(node);
-                    RESET_MODE.lock().clone()()
+                    RESET_MODE.lock()()
                 }));
             }
             Err(err) => context::notify(err),
@@ -140,7 +135,7 @@ mod switch {
     fn send_keys_fn<M: Mode<U>, U: Ui>(
         mode: &mut M,
         keys: &mut IntoIter<KeyEvent>,
-    ) -> Option<Box<dyn FnOnce() + Send + Sync>> {
+    ) -> Option<Box<dyn FnOnce() + Send>> {
         let Ok(widget) = context::cur_widget::<U>() else {
             return None;
         };
@@ -549,7 +544,7 @@ mod switch {
 /// [Kakoune]: https://github.com/mawww/kakoune
 /// [`Text`]: crate::Text
 /// [`&mut Cursors`]: Cursors
-pub trait Mode<U: Ui>: Sized + Clone + Send + Sync + 'static {
+pub trait Mode<U: Ui>: Sized + Clone + Send + 'static {
     type Widget: Widget<U>;
 
     /// Sends a [`KeyEvent`] to this [`Mode`]

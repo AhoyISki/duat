@@ -31,6 +31,10 @@ pub struct Item {
 }
 
 impl Item {
+    pub fn is_real(&self) -> bool {
+        self.ghost.is_none()
+    }
+
     pub fn as_real_char(self) -> Option<(Point, char)> {
         if self.ghost.is_none() {
             Some(self.real).zip(self.part.as_char())
@@ -317,7 +321,7 @@ impl<'a> RevIter<'a> {
                     )
                 } else {
                     let this = text.len();
-                    let (_, max) = self.text.ghost_max_points_at(b); 
+                    let (_, max) = self.text.ghost_max_points_at(b);
                     (this, max.unwrap())
                 };
 

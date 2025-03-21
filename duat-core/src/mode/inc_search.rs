@@ -103,9 +103,6 @@ impl<U: Ui> IncSearcher<U> for ExtendFwd {
                     m.set_anchor();
                 }
                 m.move_to(p1);
-                if m.is_incl() {
-                    m.move_hor(-1);
-                }
             } else if m.is_main() {
                 area.set_print_info(info.clone());
             }

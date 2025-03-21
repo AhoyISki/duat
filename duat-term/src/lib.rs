@@ -15,6 +15,7 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 use duat_core::{
+    Mutex,
     form::Color,
     ui::{self, Sender},
 };
@@ -29,50 +30,6 @@ mod area;
 mod layout;
 mod print;
 mod rules;
-
-#[derive(Default)]
-pub struct Mutex<T: 'static>(duat_core::Mutex<T>);
-
-impl<T: 'static> Mutex<T> {
-    fn new(t: T) -> Self {
-        Mutex(duat_core::Mutex::new(t))
-    }
-
-    fn lock(&self) -> MutexGuard<T> {
-        // duat_core::log_file!(
-        //    "acquired lock on {} on thread {:?}",
-        //    duat_core::duat_name::<T>(),
-        //    std::thread::current().id()
-        //);
-        MutexGuard(self.0.lock())
-    }
-}
-
-struct MutexGuard<'a, T: 'static>(duat_core::MutexGuard<'a, T>);
-
-impl<T> std::ops::Deref for MutexGuard<'_, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T> std::ops::DerefMut for MutexGuard<'_, T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl<T: 'static> Drop for MutexGuard<'_, T> {
-    fn drop(&mut self) {
-        // duat_core::log_file!(
-        //    "dropped lock on {} on thread {:?}",
-        //    duat_core::duat_name::<T>(),
-        //    std::thread::current().id()
-        //);
-    }
-}
 
 pub struct Ui;
 
@@ -105,7 +62,9 @@ impl ui::Ui for Ui {
             if terminal::supports_keyboard_enhancement().is_ok() {
                 execute!(
                     io::stdout(),
-                    PushKeyboardEnhancementFlags(KEF::DISAMBIGUATE_ESCAPE_CODES)
+                    PushKeyboardEnhancementFlags(
+                        KEF::DISAMBIGUATE_ESCAPE_CODES | KEF::REPORT_ALTERNATE_KEYS
+                    )
                 )
                 .unwrap()
             }

@@ -356,8 +356,10 @@ pub use self::setup::{Messengers, MetaStatics, pre_setup, run_duat};
 pub mod print;
 mod setup;
 
+/// Commands for the manipulation of [`Mode`]s
+///
+/// [`Mode`]: crate::mode::Mode
 pub mod mode {
-    //! Commands for the manipulation of [`Mode`]s
     use duat_core::mode;
     pub use duat_core::mode::*;
 
@@ -453,10 +455,10 @@ pub mod mode {
     }
 }
 
+/// Functions to alter the [`Cursors`] of Duat
+///
+/// [`Cursors`]: duat_core::mode::Cursors
 pub mod cursor {
-    //! Functions to alter the [`Cursors`] of Duat
-    //!
-    //! [`Cursors`]: duat_core::mode::Cursors
     pub use duat_core::form::{
         extra_cursor as get_extra, main_cursor as get_main, set_extra_cursor as set_extra,
         set_main_cursor as set_main, unset_extra_cursor as unset_extra,
@@ -464,16 +466,18 @@ pub mod cursor {
     };
 }
 
+/// Functions to alter the [`Form`]s of Duat
+///
+/// [`Form`]: crate::form::Form
 pub mod form {
-    //! Functions to alter the [`Form`]s of Duat
     pub use duat_core::form::{
         Color, ColorScheme, CursorShape, Form, add_colorscheme, from_id, id_of, set,
         set_colorscheme, set_many,
     };
 }
 
+/// Hook utilities
 pub mod hooks {
-    //! Hook utilities
     pub use duat_core::hooks::{
         ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FormSet, Hookable, KeySent,
         ModeSwitched, add, add_grouped, group_exists, remove,
@@ -532,37 +536,61 @@ pub mod hooks {
     pub type KeySentTo<W> = duat_core::hooks::KeySentTo<W, Ui>;
 }
 
+/// Duat's builtin widgets
 pub mod widgets {
-    //! Duat's builtin widgets
     pub use duat_core::widgets::*;
 }
 
+/// Common [`StatusLine`] fields
+///
+/// [`StatusLine`]: crate::widgets::StatusLine
 pub mod state {
-    //! Common [`StatusLine`] fields
-    //!
-    //! [`StatusLine`]: crate::widgets::StatusLine
     pub use duat_core::status::*;
 }
 
+/// Prebuilt general controls for Duat
+///
+/// This module contains the expected commands of a
+/// text editor that don't involve particular widgets
+/// or other more specific concepts
+///
+/// All of the functions listed in here also have a [command]
+/// equivalent, that you can call from the [`PromptLine`].
+///
+/// [command]: duat_core::cmd
+/// [`PromptLine`]: crate::prelude::PromptLine
 pub mod control {
-    //! Prebuilt general controls for Duat
-    //!
-    //! This module contains the expected commands of a
-    //! text editor that don't involve particular widgets
-    //! or other more specific concepts
-    //!
-    //! All of the functions listed in here also have a [command]
-    //! equivalent, that you can call from the [`PromptLine`].
-    //!
-    //! [command]: duat_core::cmd
-    //! [`PromptLine`]: crate::prelude::PromptLine
     pub use duat_core::cmd::{
         alias, buffer, edit, next_file, next_global_file, prev_file, prev_global_file, quit,
     };
 }
 
+#[allow(unused_imports)]
+use duat_core::{session::FileRet, ui::DuatEvent};
+
+/// Pre and post setup for Duat
+///
+/// This macro *MUST* be used in order for the program to run,
+/// it will generate the function that actually runs Duat.
+pub macro setup_duat($setup:expr) {
+    use std::sync::mpsc;
+
+    use crate::prelude::{File, Text};
+
+    #[unsafe(no_mangle)]
+    fn run(
+        ms: MetaStatics,
+        prev_files: Vec<Vec<FileRet>>,
+        messengers: Messengers,
+    ) -> (Vec<Vec<FileRet>>, mpsc::Receiver<DuatEvent>) {
+        pre_setup();
+        $setup();
+        run_duat(ms, prev_files, messengers)
+    }
+}
+
+/// The prelude of Duat
 pub mod prelude {
-    //! The prelude of Duat
     use std::process::Output;
 
     pub use duat_core::{
@@ -631,11 +659,6 @@ pub mod prelude {
         )+
     }}
 
-    #[doc(hidden)]
-    pub fn plug_inner(plugin: impl Plugin<Ui>) {
-        plugin.plug()
-    }
-
     /// Executes a shell command, returning its [`Output`] if
     /// successful
     pub fn exec(command: impl ToString) -> Option<Output> {
@@ -677,29 +700,10 @@ pub mod prelude {
 
         cmd.output().ok()
     }
-}
 
-#[allow(unused_imports)]
-use duat_core::{session::FileRet, ui::DuatEvent};
-
-/// Pre and post setup for Duat
-///
-/// This macro *MUST* be used in order for the program to run,
-/// it will generate the function that actually runs Duat.
-pub macro setup_duat($setup:expr) {
-    use std::sync::mpsc;
-
-    use crate::prelude::{File, Text};
-
-    #[unsafe(no_mangle)]
-    fn run(
-        ms: MetaStatics,
-        prev_files: Vec<Vec<FileRet>>,
-        messengers: Messengers,
-    ) -> (Vec<Vec<FileRet>>, mpsc::Receiver<DuatEvent>) {
-        pre_setup();
-        $setup();
-        run_duat(ms, prev_files, messengers)
+    #[doc(hidden)]
+    pub fn plug_inner(plugin: impl Plugin<Ui>) {
+        plugin.plug()
     }
 }
 

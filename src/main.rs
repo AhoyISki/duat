@@ -27,6 +27,7 @@ static MS: LazyLock<<Ui as ui::Ui>::MetaStatics> =
 static CLIPB: LazyLock<Mutex<Clipboard>> = LazyLock::new(|| Mutex::new(Clipboard::new().unwrap()));
 
 fn main() {
+    env_logger::init();
     dlopen_rs::init();
 
     let (reload_tx, reload_rx) = mpsc::channel();
@@ -36,13 +37,14 @@ fn main() {
     // Assert that the configuration crate actually exists.
     // The watcher is returned as to not be dropped.
     let (_watcher, crate_dir) = {
-        let Some(config_dir) = dirs_next::config_dir() else {
+        let Some(crate_dir) = dirs_next::config_dir()
+            .map(|cd| cd.join("duat"))
+            .filter(|cd| cd.exists())
+        else {
             pre_setup();
             run_duat((&MS, &CLIPB), Vec::new(), (duat_tx, duat_rx));
             return;
         };
-
-        let crate_dir = config_dir.join("duat");
 
         let mut watcher = notify::recommended_watcher({
             let reload_tx = reload_tx.clone();
@@ -129,6 +131,8 @@ fn main() {
         (prev, duat_rx) = if let Some(run_duat) = run_fn.take() {
             run_duat((&MS, &CLIPB), prev, (duat_tx, duat_rx))
         } else {
+            let msg = err!("Failed to open load crate");
+            duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
             pre_setup();
             run_duat((&MS, &CLIPB), prev, (duat_tx, duat_rx))
         };

@@ -7,7 +7,7 @@
 //! [`Mode`]: super::Mode
 use std::ops::RangeBounds;
 
-pub use self::cursors::{Cursor, Cursors};
+pub use self::cursors::{Cursor, Cursors, VPoint};
 use crate::{
     cfg::PrintCfg,
     text::{Change, Point, Reader, RegexPattern, Searcher, Strs, Text, TextRange},
@@ -183,7 +183,6 @@ where
     /// [`edit_many`]: Self::edit_many
     pub fn edit_nth(&mut self, n: usize, edit: impl FnOnce(&mut Editor<A, W>)) {
         let cursors = self.widget.cursors_mut().unwrap();
-        let is_incl = cursors.is_incl();
         let Some((mut cursor, was_main)) = cursors.remove(n) else {
             panic!("Cursor index {n} out of bounds");
         };
@@ -196,16 +195,12 @@ where
             self.area,
             &mut shift,
             was_main,
-            is_incl,
         ));
 
         let cursors = self.widget.cursors_mut().unwrap();
         cursors.insert(n, was_main, cursor);
 
-        let cfg = self.cfg();
-        self.widget
-            .text_mut()
-            .shift_cursors(n + 1, shift, self.area, cfg);
+        self.widget.text_mut().shift_cursors(n + 1, shift);
     }
 
     /// Edits on the main [`Cursor`]'s selection
@@ -242,9 +237,7 @@ where
         range: impl RangeBounds<usize> + Clone,
         mut f: impl FnMut(&mut Editor<A, W>),
     ) {
-        let cfg = self.widget.print_cfg();
         let cursors = self.widget.cursors_mut().unwrap();
-        let is_incl = cursors.is_incl();
         let (start, end) = crate::get_ends(range, cursors.len());
         assert!(end <= cursors.len(), "Cursor index {end} out of bounds");
         let mut removed: Vec<(Cursor, bool)> = cursors.drain(start..).collect();
@@ -253,16 +246,9 @@ where
 
         for (i, (mut cursor, was_main)) in removed.splice(..(end - start), []).enumerate() {
             let guess_i = i + start;
-            cursor.shift_by(shift, self.widget.text(), self.area, cfg);
+            cursor.shift_by(shift);
 
-            let mut editor = Editor::new(
-                &mut cursor,
-                self.widget,
-                self.area,
-                &mut shift,
-                was_main,
-                is_incl,
-            );
+            let mut editor = Editor::new(&mut cursor, self.widget, self.area, &mut shift, was_main);
             f(&mut editor);
 
             self.widget
@@ -273,7 +259,7 @@ where
 
         for (i, (mut cursor, was_main)) in removed.into_iter().enumerate() {
             let guess_i = i + end;
-            cursor.shift_by(shift, self.widget.text_mut(), self.area, cfg);
+            cursor.shift_by(shift);
             self.widget
                 .cursors_mut()
                 .unwrap()
@@ -420,14 +406,12 @@ where
 
     /// Undoes the last moment in the history, if there is one
     pub fn undo(&mut self) {
-        let cfg = self.widget.print_cfg();
-        self.widget.text_mut().undo(self.area, cfg);
+        self.widget.text_mut().undo();
     }
 
     /// Redoes the last moment in the history, if there is one
     pub fn redo(&mut self) {
-        let cfg = self.widget.print_cfg();
-        self.widget.text_mut().redo(self.area, cfg);
+        self.widget.text_mut().redo();
     }
 
     /// Finishes the current moment and adds a new one to the history
@@ -498,7 +482,6 @@ where
     area: &'b A,
     shift: &'a mut (i32, i32, i32),
     is_main: bool,
-    is_incl: bool,
 }
 
 impl<'a, 'b, A, W> Editor<'a, 'b, A, W>
@@ -514,16 +497,8 @@ where
         area: &'b A,
         shift: &'a mut (i32, i32, i32),
         is_main: bool,
-        is_incl: bool,
     ) -> Self {
-        Self {
-            cursor,
-            widget,
-            area,
-            shift,
-            is_main,
-            is_incl,
-        }
+        Self { cursor, widget, area, shift, is_main }
     }
 
     /// Replaces the entire selection with new text
@@ -538,7 +513,7 @@ where
     ///
     /// [`insert`]: Self::insert
     pub fn replace(&mut self, edit: impl ToString) {
-        let (p0, p1) = self.cursor.point_range(self.is_incl, self.widget.text());
+        let (p0, p1) = self.cursor.point_range();
         let change = Change::new(edit.to_string(), (p0, p1), self.widget.text());
         let edit_len = change.added_text().len();
         let end = change.added_end();
@@ -547,17 +522,16 @@ where
 
         let text = self.widget.text();
 
-        let cfg = self.cfg();
         if let Some(anchor) = self.cursor.anchor()
             && anchor >= self.cursor.caret()
             && edit_len > 0
         {
             self.cursor.swap_ends();
-            self.cursor.move_to(end, text, self.area, cfg);
+            self.cursor.move_to(end, text);
             self.cursor.swap_ends();
         } else {
             self.cursor.unset_anchor();
-            self.cursor.move_to(end, text, self.area, cfg);
+            self.cursor.move_to(end, text);
         }
     }
 
@@ -581,8 +555,7 @@ where
         {
             let new_anchor = anchor + added - taken;
             self.cursor.swap_ends();
-            self.cursor
-                .move_to(new_anchor, self.widget.text(), self.area, self.cfg());
+            self.cursor.move_to(new_anchor, self.widget.text());
             self.cursor.swap_ends();
         }
     }
@@ -612,7 +585,8 @@ where
         self.shift.2 += change.added_end().line() as i32 - change.taken_end().line() as i32;
 
         let text = self.widget.text_mut();
-        self.cursor.change_i = text.apply_change(self.cursor.change_i, change)
+        let change_i = text.apply_change(self.cursor.change_i.map(|i| i as usize), change);
+        self.cursor.change_i = change_i.map(|i| i as u32)
     }
 
     ////////// Iteration functions
@@ -730,7 +704,8 @@ where
         self.cursor.swap_ends();
     }
 
-    /// Sets the caret of the [`Cursor`] on the start of the selection
+    /// Sets the caret of the [`Cursor`] on the start of the
+    /// selection
     pub fn set_caret_on_start(&mut self) {
         if let Some(anchor) = self.anchor()
             && anchor < self.caret()
@@ -739,7 +714,8 @@ where
         }
     }
 
-    /// Sets the caret of the [`Cursor`] on the end of the selection
+    /// Sets the caret of the [`Cursor`] on the end of the
+    /// selection
     pub fn set_caret_on_end(&mut self) {
         if let Some(anchor) = self.anchor()
             && anchor > self.caret()
@@ -767,8 +743,9 @@ where
     /// to store the characters. This means that the text is
     /// always separated into two distinct chunks.
     ///
-    /// If this [`Cursor`]'s selection happens to be entirely within
-    /// one of these chunks, the other `&str` will just be empty.
+    /// If this [`Cursor`]'s selection happens to be entirely
+    /// within one of these chunks, the other `&str` will just be
+    /// empty.
     ///
     /// [`GapBuffer`]: gapbuf::GapBuffer
     pub fn selection(&self) -> Strs {
@@ -778,8 +755,7 @@ where
         } else {
             (self.caret(), anchor)
         };
-        self.text()
-            .strs(start.byte()..end.byte() + self.is_incl() as usize)
+        self.text().strs(start.byte()..end.byte())
     }
 
     /// Returns the length of the [`Text`], in [`Point`]
@@ -828,48 +804,19 @@ where
         self.cursor.caret()
     }
 
-    /// How many characterss the caret is from the start of the line
-    pub fn caret_col(&self) -> usize {
-        self.iter_rev().take_while(|(_, c)| *c != '\n').count()
-    }
-
-    /// The visual distance between the caret and the start of the
-    /// [`Area`]
-    pub fn caret_vcol(&self) -> usize {
-        self.cursor.vcol()
-    }
-
-    /// The desired visual distance between the caret and the start of
-    /// the [`Area`]
-    pub fn desired_caret_vcol(&self) -> usize {
-        self.cursor.desired_vcol()
-    }
-
     /// Returns the `anchor`
     pub fn anchor(&self) -> Option<Point> {
         self.cursor.anchor()
     }
 
-    /// How many characterss the anchor is from the start of the line
-    pub fn anchor_col(&self) -> Option<usize> {
-        self.anchor().map(|a| {
-            self.text()
-                .chars_rev(a)
-                .take_while(|(_, c)| *c != '\n')
-                .count()
-        })
+    pub fn v_caret(&mut self) -> VPoint {
+        self.cursor
+            .v_caret(self.widget.text(), self.area, self.widget.print_cfg())
     }
 
-    /// The visual distance between the anchor and the start of the
-    /// [`Area`]
-    pub fn anchor_vcol(&self) -> Option<usize> {
-        self.cursor.anchor_vcol()
-    }
-
-    /// The desired visual distance between the anchor and the start
-    /// of the [`Area`]
-    pub fn desired_anchor_vcol(&self) -> Option<usize> {
-        self.cursor.desired_anchor_vcol()
+    pub fn v_anchor(&mut self) -> Option<VPoint> {
+        self.cursor
+            .v_anchor(self.widget.text(), self.area, self.widget.print_cfg())
     }
 
     /// Returns `true` if the `anchor` exists before the `caret`
@@ -880,11 +827,6 @@ where
     /// Whether or not this is the main [`Cursor`]
     pub fn is_main(&self) -> bool {
         self.is_main
-    }
-
-    /// Whether or not this cursor's selections are inclusive
-    pub fn is_incl(&self) -> bool {
-        self.text().cursors().unwrap().is_incl()
     }
 
     pub fn text(&self) -> &Text {
@@ -898,20 +840,20 @@ where
 }
 
 /// A cursor that can alter the selection, but can't edit
-pub struct Mover<'a, 'b, A, S>
+pub struct Mover<'a, A, S>
 where
     A: Area,
 {
     cursor: &'a mut Option<Cursor>,
     is_main: bool,
-    text: &'b mut Text,
-    area: &'b A,
+    text: &'a mut Text,
+    area: &'a A,
     cfg: PrintCfg,
-    inc_searcher: &'b mut S,
+    inc_searcher: &'a mut S,
     initial: Cursor,
 }
 
-impl<'a, 'b, A, S> Mover<'a, 'b, A, S>
+impl<'a, A, S> Mover<'a, A, S>
 where
     A: Area,
 {
@@ -919,12 +861,12 @@ where
     fn new(
         cursor: &'a mut Option<Cursor>,
         is_main: bool,
-        text: &'b mut Text,
-        area: &'b A,
+        text: &'a mut Text,
+        area: &'a A,
         cfg: PrintCfg,
-        inc_searcher: &'b mut S,
+        inc_searcher: &'a mut S,
     ) -> Self {
-        let initial = *cursor.as_ref().unwrap();
+        let initial = cursor.clone().unwrap();
         Self {
             cursor,
             is_main,
@@ -941,7 +883,7 @@ where
     /// Moves the cursor horizontally. May cause vertical movement
     pub fn move_hor(&mut self, count: i32) {
         let cursor = self.cursor.as_mut().unwrap();
-        cursor.move_hor(count, self.text, self.area, self.cfg);
+        cursor.move_hor(count, self.text);
     }
 
     /// Moves the cursor vertically. May cause horizontal movement
@@ -962,7 +904,7 @@ where
     ///   position allowed.
     pub fn move_to(&mut self, point: Point) {
         let cursor = self.cursor.as_mut().unwrap();
-        cursor.move_to(point, self.text, self.area, self.cfg);
+        cursor.move_to(point, self.text);
     }
 
     /// Moves the cursor to a `line` and a `column`
@@ -985,18 +927,18 @@ where
     /// other, they will be merged into one.
     pub fn copy(&mut self) {
         let cursors = self.text.cursors_mut().unwrap();
-        cursors.insert(0, false, self.cursor.unwrap());
+        cursors.insert(0, false, self.cursor.clone().unwrap());
     }
 
     /// Copies the current [`Cursor`] and applies a function to it
     ///
     /// This will let you modify a new selection taken from the
-    /// current [`Cursor`], and then will insert this new copy in the
-    /// [`Cursors`] list. Do note that normal intersection rules
-    /// apply, so if at the end of the movement, this cursor
+    /// current [`Cursor`], and then will insert this new copy in
+    /// the [`Cursors`] list. Do note that normal intersection
+    /// rules apply, so if at the end of the movement, this cursor
     /// intersects with any other, they will be merged into one.
-    pub fn copy_and(&mut self, mov: impl for<'c, 'd> FnOnce(Mover<'c, 'd, A, S>)) {
-        let mut copy = Some(self.cursor.unwrap());
+    pub fn copy_and(&mut self, mov: impl for<'b> FnOnce(Mover<'b, A, S>)) {
+        let mut copy = Some(self.cursor.clone().unwrap());
         mov(Mover::new(
             &mut copy,
             false,
@@ -1042,7 +984,8 @@ where
         cursor.swap_ends();
     }
 
-    /// Sets the caret of the [`Cursor`] on the start of the selection
+    /// Sets the caret of the [`Cursor`] on the start of the
+    /// selection
     pub fn set_caret_on_start(&mut self) {
         if let Some(anchor) = self.anchor()
             && anchor < self.caret()
@@ -1051,7 +994,8 @@ where
         }
     }
 
-    /// Sets the caret of the [`Cursor`] on the end of the selection
+    /// Sets the caret of the [`Cursor`] on the end of the
+    /// selection
     pub fn set_caret_on_end(&mut self) {
         if let Some(anchor) = self.anchor()
             && anchor > self.caret()
@@ -1062,7 +1006,7 @@ where
 
     /// Resets the [`Cursor`] to how it was before being modified
     pub fn reset(&mut self) {
-        *self.cursor = Some(self.initial)
+        *self.cursor = Some(self.initial.clone())
     }
 
     ////////// Text queries
@@ -1074,12 +1018,13 @@ where
     /// to store the characters. This means that the text is
     /// always separated into two distinct chunks.
     ///
-    /// If this [`Cursor`]'s selection happens to be entirely within
-    /// one of these chunks, the other `&str` will just be empty.
+    /// If this [`Cursor`]'s selection happens to be entirely
+    /// within one of these chunks, the other `&str` will just be
+    /// empty.
     ///
     /// [`GapBuffer`]: gapbuf::GapBuffer
     pub fn selection(&self) -> Strs {
-        let range = self.cursor.unwrap().range(self.is_incl(), self.text);
+        let range = self.cursor.as_ref().unwrap().range();
         self.text.strs(range)
     }
 
@@ -1095,7 +1040,9 @@ where
 
     /// Returns the [`char`] in the `caret`
     pub fn char(&self) -> char {
-        self.text.char_at(self.cursor.unwrap().caret()).unwrap()
+        self.text
+            .char_at(self.cursor.as_ref().unwrap().caret())
+            .unwrap()
     }
 
     /// Returns the [`char`] at a given [`Point`]
@@ -1179,7 +1126,7 @@ where
         pat: R,
         end: Option<Point>,
     ) -> impl Iterator<Item = R::Match> + '_ {
-        let start = self.cursor.unwrap().caret();
+        let start = self.cursor.as_ref().unwrap().caret();
         self.text.search_fwd(pat, (start, end)).unwrap()
     }
 
@@ -1215,7 +1162,7 @@ where
         pat: R,
         start: Option<Point>,
     ) -> impl Iterator<Item = R::Match> + '_ {
-        let end = self.cursor.unwrap().caret();
+        let end = self.cursor.as_ref().unwrap().caret();
         self.text.search_rev(pat, (start, end)).unwrap()
     }
 
@@ -1233,61 +1180,34 @@ where
     ///
     /// [up and down]: Mover::move_ver
     /// [wrapped]: Mover::move_ver_wrapped
-    pub fn set_desired_v_col(&mut self, x: usize) {
+    pub fn set_desired_vcol(&mut self, x: usize) {
         let cursor = self.cursor.as_mut().unwrap();
-        cursor.set_desired_v_col(x);
-        cursor.set_desired_wrapped_v_col(x);
+        cursor.set_desired_cols(x, x);
     }
 
     ////////// Queries
 
     /// Returns the `caret`
     pub fn caret(&self) -> Point {
-        self.cursor.unwrap().caret()
-    }
-
-    /// How many characterss the caret is from the start of the line
-    pub fn caret_col(&self) -> usize {
-        self.rev().take_while(|(_, c)| *c != '\n').count()
-    }
-
-    /// The visual distance between the caret and the start of the
-    /// [`Area`]
-    pub fn caret_vcol(&self) -> usize {
-        self.cursor.unwrap().vcol()
-    }
-
-    /// The desired visual distance between the caret and the start of
-    /// the [`Area`]
-    pub fn desired_caret_vcol(&self) -> usize {
-        self.cursor.unwrap().desired_vcol()
+        self.cursor.as_ref().unwrap().caret()
     }
 
     /// Returns the `anchor`
     pub fn anchor(&self) -> Option<Point> {
-        self.cursor.unwrap().anchor()
+        self.cursor.as_ref().unwrap().anchor()
     }
 
-    /// How many characterss the anchor is from the start of the line
-    pub fn anchor_col(&self) -> Option<usize> {
-        self.anchor().map(|a| {
-            self.text
-                .chars_rev(a)
-                .take_while(|(_, c)| *c != '\n')
-                .count()
-        })
+    pub fn v_caret(&self) -> VPoint {
+        self.cursor
+            .as_ref()
+            .unwrap()
+            .v_caret(self.text, self.area, self.cfg)
     }
 
-    /// The visual distance between the anchor and the start of the
-    /// [`Area`]
-    pub fn anchor_vcol(&self) -> Option<usize> {
-        self.cursor.unwrap().anchor_vcol()
-    }
-
-    /// The desired visual distance between the anchor and the start
-    /// of the [`Area`]
-    pub fn desired_anchor_vcol(&self) -> Option<usize> {
-        self.cursor.unwrap().desired_anchor_vcol()
+    pub fn v_anchor(&self) -> Option<VPoint> {
+        self.cursor
+            .as_ref()
+            .and_then(|c| c.v_anchor(self.text, self.area, self.cfg))
     }
 
     /// Returns `true` if the `anchor` exists before the `caret`
@@ -1298,11 +1218,6 @@ where
     /// Whether or not this is the main [`Cursor`]
     pub fn is_main(&self) -> bool {
         self.is_main
-    }
-
-    /// Whether or not this cursor's selections are inclusive
-    pub fn is_incl(&self) -> bool {
-        self.text.cursors().unwrap().is_incl()
     }
 
     pub fn text(&self) -> &Text {
@@ -1353,8 +1268,7 @@ where
     ///
     /// [`IncSearch`]: crate::mode::IncSearch
     pub fn matches_inc(&mut self) -> bool {
-        let is_incl = self.text.cursors().unwrap().is_incl();
-        let range = self.cursor.unwrap().range(is_incl, self.text);
+        let range = self.cursor.as_ref().unwrap().range();
         self.inc_searcher.matches(self.text.contiguous(range))
     }
 }

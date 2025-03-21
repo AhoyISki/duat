@@ -38,7 +38,7 @@ impl<U: Ui> LineNumbers<U> {
             let (file, _) = self.ff.read();
             let main_line = match file.cursors().is_empty() {
                 true => usize::MAX,
-                false => file.cursors().main().line(),
+                false => file.cursors().get_main().unwrap().line(),
             };
             (main_line, file.printed_lines().to_vec())
         };

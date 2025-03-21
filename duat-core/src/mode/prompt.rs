@@ -25,7 +25,6 @@ impl<M: PromptMode<U>, U: Ui> Mode<U> for Prompt<M, U> {
 
     fn send_key(&mut self, key: KeyEvent, widget: &mut Self::Widget, area: &U::Area) {
         let mut helper = EditHelper::new(widget, area);
-        helper.cursors_mut().make_excl();
 
         match key {
             key!(KeyCode::Backspace) => {
@@ -108,7 +107,7 @@ impl<M: PromptMode<U>, U: Ui> Mode<U> for Prompt<M, U> {
 }
 
 #[allow(unused_variables)]
-pub trait PromptMode<U: Ui>: Clone + Send + Sync + 'static {
+pub trait PromptMode<U: Ui>: Clone + Send + 'static {
     fn update(&mut self, text: &mut Text, area: &U::Area) {}
 
     fn on_switch(&mut self, text: &mut Text, area: &U::Area) {}

@@ -277,17 +277,20 @@ impl<U: Ui> FixedFile<U> {
         })
     }
 
-    pub(crate) fn inspect_related<W: 'static, R>(&mut self, f: impl FnOnce(&W) -> R) -> Option<R> {
-        let (file, _, related) = &self.0;
+    pub(crate) fn inspect_related<W: 'static, R>(
+        &mut self,
+        f: impl FnOnce(&W, &U::Area) -> R,
+    ) -> Option<R> {
+        let (file, area, related) = &self.0;
 
         if file.data_is::<W>() {
-            file.read_as().map(|w| f(&w))
+            file.read_as().map(|w| f(&w, area))
         } else {
             let related = related.read();
             related
                 .iter()
                 .find(|node| node.data_is::<W>())
-                .and_then(|w| w.read_as().map(|w| f(&w)))
+                .and_then(|node| node.widget().read_as().map(|w| f(&w, node.area())))
         }
     }
 
@@ -354,22 +357,25 @@ impl<U: Ui> DynamicFile<U> {
         other.ptr_eq(&self.dyn_parts.raw_read().as_ref().unwrap().0)
     }
 
-    pub(crate) fn inspect_related<T: 'static, R>(&mut self, f: impl FnOnce(&T) -> R) -> Option<R> {
+    pub(crate) fn inspect_related<W: 'static, R>(
+        &mut self,
+        f: impl FnOnce(&W, &U::Area) -> R,
+    ) -> Option<R> {
         if self.dyn_parts.has_changed() {
             let (file, area, related) = self.dyn_parts.read().clone().unwrap();
             *self.checker.lock() = Box::new(file.checker());
             self.parts = (file, area, related);
         }
-        let (file, _, related) = &self.parts;
+        let (file, area, related) = &self.parts;
 
-        if file.data_is::<T>() {
-            file.read_as().map(|w| f(&w))
+        if file.data_is::<W>() {
+            file.read_as().map(|w| f(&w, area))
         } else {
             let related = related.read();
             related
                 .iter()
-                .find(|node| node.data_is::<T>())
-                .and_then(|w| w.read_as().map(|w| f(&w)))
+                .find(|node| node.data_is::<W>())
+                .and_then(|node| node.widget().read_as().map(|w| f(&w, node.area())))
         }
     }
 }
@@ -437,7 +443,7 @@ impl Notifications {
         self.0.read()
     }
 
-	/// Wether there are new notifications or not
+    /// Wether there are new notifications or not
     pub fn has_changed(&self) -> bool {
         self.0.has_changed()
     }

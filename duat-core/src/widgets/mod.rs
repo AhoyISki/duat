@@ -309,7 +309,7 @@ mod status_line;
 /// [`Form`]: crate::form::Form
 /// [`form::set_weak*`]: crate::form::set_weak
 /// [`text!`]: crate::text::text
-pub trait Widget<U: Ui>: Send + Sync + 'static {
+pub trait Widget<U: Ui>: Send + 'static {
     /// The configuration type
     type Cfg: WidgetCfg<U, Widget = Self>
     where
