@@ -15,7 +15,7 @@ use std::{fs, path::PathBuf};
 
 use crate::{
     cache::load_cache,
-    cfg::{IterCfg, PrintCfg},
+    cfg::PrintCfg,
     context, form,
     mode::Cursors,
     text::{Bytes, Text, err},
@@ -265,7 +265,7 @@ impl<U: Ui> Widget<U> for File {
         let (start, _) = area.first_points(&self.text, self.cfg);
 
         let mut last_line = area
-            .rev_print_iter(self.text.iter_rev(start), IterCfg::new(self.cfg))
+            .rev_print_iter(self.text.iter_rev(start), self.cfg)
             .find_map(|(caret, item)| caret.wrap.then_some(item.line()));
 
         self.printed_lines.clear();

@@ -18,7 +18,7 @@ pub use self::{
 };
 use crate::{
     cache::load_cache,
-    cfg::{IterCfg, PrintCfg},
+    cfg::PrintCfg,
     data::RwData,
     form::Painter,
     text::{FwdIter, Item, Point, RevIter, Text, TwoPoints},
@@ -255,7 +255,7 @@ pub trait Area: Send + Sync + Sized {
     fn print_iter<'a>(
         &self,
         iter: FwdIter<'a>,
-        cfg: IterCfg,
+        cfg: PrintCfg,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a
     where
         Self: Sized;
@@ -263,7 +263,7 @@ pub trait Area: Send + Sync + Sized {
     fn print_iter_from_top<'a>(
         &self,
         text: &'a Text,
-        cfg: IterCfg,
+        cfg: PrintCfg,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a
     where
         Self: Sized;
@@ -281,7 +281,7 @@ pub trait Area: Send + Sync + Sized {
     fn rev_print_iter<'a>(
         &self,
         iter: RevIter<'a>,
-        cfg: IterCfg,
+        cfg: PrintCfg,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
 
     ////////// Queries

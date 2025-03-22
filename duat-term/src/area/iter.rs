@@ -1,8 +1,8 @@
 use std::{marker::PhantomData, ops::ControlFlow::*};
 
 use duat_core::{
-    cfg::{IterCfg, WrapMethod},
-    text::{Item, FwdIter as TextIter, Part, Point, RevIter as RevTextIter},
+    cfg::{PrintCfg, WrapMethod},
+    text::{FwdIter as TextIter, Item, Part, Point, RevIter as RevTextIter},
     ui::Caret,
 };
 use unicode_width::UnicodeWidthChar;
@@ -11,11 +11,11 @@ use unicode_width::UnicodeWidthChar;
 fn parts<'a>(
     iter: impl Iterator<Item = Item> + Clone + 'a,
     cap: u32,
-    cfg: IterCfg,
+    cfg: PrintCfg,
     initial: (u32, bool),
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     let (mut x, mut needs_to_wrap, mut prev_char) = (0, true, None);
-    let max_indent = if cfg.indent_wrap() { cap } else { 0 };
+    let max_indent = if cfg.indent_wrap { cap } else { 0 };
     let (mut indent, mut on_indent) = initial;
 
     iter.map(move |mut item| {
@@ -26,7 +26,7 @@ fn parts<'a>(
                     let ret = if char == '\n' {
                         indent = 0;
                         on_indent = true;
-                        let char = cfg.new_line().char(prev_char);
+                        let char = cfg.new_line.char(prev_char);
                         match char {
                             Some(char) => (len_from(char, x, cap, &cfg), Part::Char(char)),
                             None => (0, Part::Char('\n')),
@@ -76,10 +76,10 @@ fn parts<'a>(
 fn words<'a>(
     iter: impl Iterator<Item = Item> + Clone + 'a,
     cap: u32,
-    cfg: IterCfg,
+    cfg: PrintCfg,
     initial: (u32, bool),
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-    let max_indent = if cfg.indent_wrap() { cap } else { 0 };
+    let max_indent = if cfg.indent_wrap { cap } else { 0 };
 
     let mut iter = iter.peekable();
     let (mut indent, mut on_indent) = initial;
@@ -101,12 +101,12 @@ fn words<'a>(
             if let Part::Char(char) = item.part {
                 match char {
                     ' ' => indent += on_indent as u32,
-                    '\t' => indent += on_indent as u32 * cfg.tab_stops().spaces_at(indent),
+                    '\t' => indent += on_indent as u32 * cfg.tab_stops.spaces_at(indent),
                     '\n' => (indent, on_indent) = (0, true),
                     _ => on_indent = false,
                 }
 
-                if cfg.word_chars().contains(char) {
+                if cfg.word_chars.contains(char) {
                     word_len += len_from(char, x + word_len, cap, &cfg)
                 } else {
                     word.push(iter.next().unwrap());
@@ -133,7 +133,7 @@ fn attach_caret(
     indent: u32,
     mut item: Item,
     cap: u32,
-    cfg: &IterCfg,
+    cfg: &PrintCfg,
 ) -> Option<(Caret, Item)> {
     let (len, processed_part) = process_part(item.part, cfg, prev_char, *x, cap);
 
@@ -162,7 +162,7 @@ fn attach_caret(
 #[inline(always)]
 fn process_part(
     part: Part,
-    cfg: &IterCfg,
+    cfg: &PrintCfg,
     prev_char: &mut Option<char>,
     x: u32,
     cap: u32,
@@ -170,7 +170,7 @@ fn process_part(
     match part {
         Part::Char(b) => {
             let ret = if b == '\n' {
-                let char = cfg.new_line().char(*prev_char);
+                let char = cfg.new_line.char(*prev_char);
                 match char {
                     Some(char) => (len_from(char, x, cap, cfg), Part::Char(char)),
                     None => (0, Part::Char('\n')),
@@ -219,7 +219,7 @@ where
 pub fn print_iter(
     mut iter: TextIter<'_>,
     cap: u32,
-    cfg: IterCfg,
+    cfg: PrintCfg,
     points: (Point, Option<Point>),
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
     let (Continue(indent) | Break(indent)) = iter
@@ -227,7 +227,7 @@ pub fn print_iter(
         .take_while(|&Item { real, ghost, .. }| (real, ghost) < points)
         .try_fold(0, |indent, item| match item.part {
             Part::Char(_) if indent >= cap => Break(0),
-            Part::Char('\t') => Continue(indent + cfg.tab_stops().spaces_at(indent)),
+            Part::Char('\t') => Continue(indent + cfg.tab_stops.spaces_at(indent)),
             Part::Char(' ') => Continue(indent + 1),
             Part::Char(_) => Break(indent),
             _ => Continue(indent),
@@ -248,7 +248,7 @@ pub fn print_iter(
 pub(super) fn print_iter_indented(
     iter: TextIter<'_>,
     cap: u32,
-    cfg: IterCfg,
+    cfg: PrintCfg,
     indent: u32,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
     inner_iter(iter, cap, (indent, false), cfg)
@@ -257,7 +257,7 @@ pub(super) fn print_iter_indented(
 pub fn rev_print_iter(
     mut iter: RevTextIter<'_>,
     width: u32,
-    cfg: IterCfg,
+    cfg: PrintCfg,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
     let mut returns = Vec::new();
     let mut prev_line_nl = None;
@@ -292,9 +292,9 @@ fn inner_iter<'a>(
     iter: impl Iterator<Item = Item> + Clone + 'a,
     cap: u32,
     initial: (u32, bool),
-    cfg: IterCfg,
+    cfg: PrintCfg,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-    match cfg.wrap_method() {
+    match cfg.wrap_method {
         WrapMethod::Width | WrapMethod::NoWrap | WrapMethod::Capped(_) => {
             Iter::Parts(parts(iter, cap, cfg, initial), PhantomData)
         }
@@ -303,9 +303,9 @@ fn inner_iter<'a>(
 }
 
 #[inline(always)]
-fn len_from(char: char, start: u32, max_width: u32, cfg: &IterCfg) -> u32 {
+fn len_from(char: char, start: u32, max_width: u32, cfg: &PrintCfg) -> u32 {
     match char {
-        '\t' => (cfg.tab_stops().spaces_at(start))
+        '\t' => (cfg.tab_stops.spaces_at(start))
             .min(max_width.saturating_sub(start))
             .max(1),
         '\n' => 0,

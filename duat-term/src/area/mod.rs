@@ -5,7 +5,7 @@ use std::{fmt::Alignment, sync::Arc};
 use crossterm::cursor;
 use duat_core::{
     cache::{Deserialize, Serialize},
-    cfg::{IterCfg, PrintCfg},
+    cfg::PrintCfg,
     form::Painter,
     text::{FwdIter, Item, Part, Point, RevIter, Text, err},
     ui::{self, Axis, Caret, Constraint, DuatPermission, PushSpecs},
@@ -98,8 +98,6 @@ impl Area {
         }
 
         let layout = get_layout(&layouts, self.id).unwrap();
-
-        let cfg = IterCfg::new(cfg).outsource_lfs();
         let is_active = layout.active_id() == self.id;
 
         let (mut lines, iter) = {
@@ -195,16 +193,16 @@ impl Area {
                         cursor = Some(Cursor::Extra);
                         cur_style = Some(painter.apply_extra_cursor());
                     }
-                    Part::AlignLeft if !cfg.wrap_method().is_no_wrap() => {
+                    Part::AlignLeft if !cfg.wrap_method.is_no_wrap() => {
                         lines.realign(Alignment::Left)
                     }
-                    Part::AlignCenter if !cfg.wrap_method().is_no_wrap() => {
+                    Part::AlignCenter if !cfg.wrap_method.is_no_wrap() => {
                         lines.realign(Alignment::Center)
                     }
-                    Part::AlignRight if !cfg.wrap_method().is_no_wrap() => {
+                    Part::AlignRight if !cfg.wrap_method.is_no_wrap() => {
                         lines.realign(Alignment::Right)
                     }
-                    Part::Spacer if !cfg.wrap_method().is_no_wrap() => {
+                    Part::Spacer if !cfg.wrap_method.is_no_wrap() => {
                         lines.add_spacer();
                     }
                     Part::ResetState => {
@@ -314,7 +312,7 @@ impl ui::Area for Area {
             let rect = layout.get(self.id).unwrap();
             layout.printer.coords(rect.var_points(), false).tl
         };
-        let mut iter = self.print_iter_from_top(text, IterCfg::new(cfg));
+        let mut iter = self.print_iter_from_top(text, cfg);
         while let Some((caret, item)) = iter.next()
             && item.points() <= points
         {
@@ -415,7 +413,6 @@ impl ui::Area for Area {
             (info.write(), coords.width(), coords.height())
         };
 
-        let cfg = IterCfg::new(cfg).outsource_lfs();
         scroll_ver_around(&mut info, w, h, point, text, cfg);
         scroll_hor_around(&mut info, w, point, text, cfg);
 
@@ -453,7 +450,7 @@ impl ui::Area for Area {
     fn print_iter<'a>(
         &self,
         iter: FwdIter<'a>,
-        cfg: IterCfg,
+        cfg: PrintCfg,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         let points = iter.points();
         print_iter(iter, cfg.wrap_width(self.width()), cfg, points)
@@ -462,7 +459,7 @@ impl ui::Area for Area {
     fn print_iter_from_top<'a>(
         &self,
         text: &'a Text,
-        cfg: IterCfg,
+        cfg: PrintCfg,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         let (info, width) = {
             let layouts = self.layouts.lock();
@@ -485,7 +482,7 @@ impl ui::Area for Area {
     fn rev_print_iter<'a>(
         &self,
         iter: RevIter<'a>,
-        cfg: IterCfg,
+        cfg: PrintCfg,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         rev_print_iter(iter, cfg.wrap_width(self.width()), cfg)
     }
@@ -601,7 +598,7 @@ fn scroll_ver_around(
     height: u32,
     point: Point,
     text: &Text,
-    cfg: IterCfg,
+    cfg: PrintCfg,
 ) {
     if info.prev_main == point {
         return;
@@ -615,9 +612,9 @@ fn scroll_ver_around(
         .filter_map(|(caret, item)| caret.wrap.then_some(item.points()));
 
     let target = if info.prev_main > point {
-        cfg.scrolloff().y()
+        cfg.scrolloff.y()
     } else {
-        height.saturating_sub(cfg.scrolloff().y() + 1)
+        height.saturating_sub(cfg.scrolloff.y() + 1)
     };
     let first = iter.nth(target as usize).unwrap_or_default();
 
@@ -630,7 +627,7 @@ fn scroll_ver_around(
 
 /// Scrolls the file horizontally, usually when no wrapping is
 /// being used.
-fn scroll_hor_around(info: &mut PrintInfo, width: u32, point: Point, text: &Text, cfg: IterCfg) {
+fn scroll_hor_around(info: &mut PrintInfo, width: u32, point: Point, text: &Text, cfg: PrintCfg) {
     let cap = cfg.wrap_width(width);
 
     let (max_shift, start, end) = {
@@ -681,11 +678,11 @@ fn scroll_hor_around(info: &mut PrintInfo, width: u32, point: Point, text: &Text
 
     info.x_shift = info
         .x_shift
-        .min(start.saturating_sub(cfg.scrolloff().x()))
-        .max(if cfg.forced_scrollof() {
-            (end + cfg.scrolloff().x()).saturating_sub(width)
+        .min(start.saturating_sub(cfg.scrolloff.x()))
+        .max(if cfg.force_scrolloff {
+            (end + cfg.scrolloff.x()).saturating_sub(width)
         } else {
-            (end + cfg.scrolloff().x())
+            (end + cfg.scrolloff.x())
                 .min(max_shift)
                 .saturating_sub(width)
         });
@@ -693,7 +690,7 @@ fn scroll_hor_around(info: &mut PrintInfo, width: u32, point: Point, text: &Text
 
 mod layouted {
     use duat_core::{
-        cfg::{IterCfg, PrintCfg},
+        cfg::PrintCfg,
         text::{Item, Point, Text},
         ui::Caret,
     };
@@ -730,7 +727,6 @@ mod layouted {
 
         let line_start = text.visual_line_start(info.points);
         let iter = text.iter_fwd(line_start);
-        let cfg = IterCfg::new(cfg);
 
         let iter = print_iter(iter, cfg.wrap_width(coords.width()), cfg, info.points);
         let mut points = info.points;

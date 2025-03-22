@@ -164,6 +164,8 @@ impl PrintCfg {
         }
     }
 
+    ////////// Modification functions
+
     pub const fn unwrapped(self) -> Self {
         Self { wrap_method: WrapMethod::NoWrap, ..self }
     }
@@ -235,9 +237,18 @@ impl PrintCfg {
         Self { force_scrolloff: true, ..self }
     }
 
+    ////////// Queries
+
+    #[inline]
+    pub const fn wrap_width(&self, width: u32) -> u32 {
+        match self.wrap_method {
+            WrapMethod::Width | WrapMethod::Word => width,
+            WrapMethod::Capped(cap) => cap as u32,
+            WrapMethod::NoWrap => u32::MAX,
+        }
+    }
+
     /// The default used in files and other such inputs
-    ///
-    /// [`default`]: PrintCfg::default
     pub const fn default_for_input() -> Self {
         Self {
             wrap_method: WrapMethod::NoWrap,
@@ -255,107 +266,6 @@ impl PrintCfg {
 impl Default for PrintCfg {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct IterCfg {
-    cfg: PrintCfg,
-    iter_lfs: bool,
-    force_wrap: Option<WrapMethod>,
-    no_indent_wrap: bool,
-}
-
-impl IterCfg {
-    pub const fn new(cfg: PrintCfg) -> Self {
-        Self {
-            cfg,
-            iter_lfs: true,
-            force_wrap: None,
-            no_indent_wrap: false,
-        }
-    }
-
-    pub const fn outsource_lfs(self) -> Self {
-        Self { iter_lfs: false, ..self }
-    }
-
-    pub const fn dont_wrap(self) -> Self {
-        Self {
-            force_wrap: Some(WrapMethod::NoWrap),
-            ..self
-        }
-    }
-
-    pub const fn no_word_wrap(self) -> Self {
-        match self.cfg.wrap_method {
-            WrapMethod::Word if matches!(self.force_wrap, Some(WrapMethod::NoWrap)) => self,
-            WrapMethod::Word => Self {
-                force_wrap: Some(WrapMethod::Width),
-                ..self
-            },
-            WrapMethod::Width | WrapMethod::Capped(_) | WrapMethod::NoWrap => self,
-        }
-    }
-
-    pub const fn no_indent_wrap(self) -> Self {
-        Self { no_indent_wrap: true, ..self }
-    }
-
-    #[inline]
-    pub const fn shows_lf(&self) -> bool {
-        self.iter_lfs
-    }
-
-    #[inline]
-    pub const fn wrap_method(&self) -> WrapMethod {
-        match self.force_wrap {
-            Some(force) => force,
-            None => self.cfg.wrap_method,
-        }
-    }
-
-    #[inline]
-    pub const fn indent_wrap(&self) -> bool {
-        !self.no_indent_wrap && self.cfg.indent_wrap
-    }
-
-    #[inline]
-    pub const fn tab_stops(&self) -> TabStops {
-        self.cfg.tab_stops
-    }
-
-    #[inline]
-    pub const fn new_line(&self) -> NewLine {
-        if self.iter_lfs {
-            NewLine::Hidden
-        } else {
-            self.cfg.new_line
-        }
-    }
-
-    #[inline]
-    pub const fn scrolloff(&self) -> ScrollOff {
-        self.cfg.scrolloff
-    }
-
-    #[inline]
-    pub const fn word_chars(&self) -> &WordChars {
-        &self.cfg.word_chars
-    }
-
-    #[inline]
-    pub const fn forced_scrollof(&self) -> bool {
-        self.cfg.force_scrolloff
-    }
-
-    #[inline]
-    pub const fn wrap_width(&self, width: u32) -> u32 {
-        match self.wrap_method() {
-            WrapMethod::Width | WrapMethod::Word => width,
-            WrapMethod::Capped(cap) => cap as u32,
-            WrapMethod::NoWrap => u32::MAX,
-        }
     }
 }
 

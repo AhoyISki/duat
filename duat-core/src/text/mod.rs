@@ -311,7 +311,7 @@ impl Text {
         let [_, end] = self.points_of_line(p.line());
         let t_iter = self.iter_rev(end).no_ghosts().no_conceals();
         let iter = area
-            .rev_print_iter(t_iter, crate::cfg::IterCfg::new(cfg))
+            .rev_print_iter(t_iter, cfg)
             .filter_map(|(caret, item)| Some(caret).zip(item.part.as_char()))
             // Skip the first '\n'
             .skip(1)

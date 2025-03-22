@@ -114,21 +114,28 @@ pub fn mode_fmt() -> DataMap<&'static str, Text> {
     })
 }
 
-/// [`StatusLine`] part: Byte of main cursor in file, indexed at 1
+/// [`StatusLine`] part: Byte of the main cursor
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_byte(file: &File) -> usize {
     file.cursors().get_main().unwrap().byte() + 1
 }
 
-/// [`StatusLine`] part: Char of main cursor in file, indexed at 1
+/// [`StatusLine`] part: Char of the main cursor
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_char(file: &File) -> usize {
     file.cursors().get_main().unwrap().char() + 1
 }
 
-/// [`StatusLine`] part: Column of main cursor in file, indexed at 1
+/// [`StatusLine`] part: Line of the main cursor
+///
+/// [`StatusLine`]: crate::widgets::StatusLine
+pub fn main_line(file: &File) -> usize {
+    file.cursors().get_main().unwrap().line() + 1
+}
+
+/// [`StatusLine`] part: Column of the main cursor
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_col(file: &File, area: &impl Area) -> usize {
@@ -136,11 +143,13 @@ pub fn main_col(file: &File, area: &impl Area) -> usize {
     main.v_caret(file.text(), area, file.print_cfg()).char_col()
 }
 
-/// [`StatusLine`] part: Line of main cursor in file, indexed at 1
+/// [`StatusLine`] part: Desired wrapped column of the main cursor
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_line(file: &File) -> usize {
-    file.cursors().get_main().unwrap().line() + 1
+pub fn main_dwcol(file: &File, area: &impl Area) -> usize {
+    let main = file.cursors().get_main().unwrap();
+    main.v_caret(file.text(), area, file.print_cfg())
+        .desired_wrapped_col()
 }
 
 /// [`StatusLine`] part: The main cursor, formatted
@@ -220,3 +229,4 @@ pub fn cur_map_fmt() -> DataMap<(Vec<KeyEvent>, bool), Text> {
         }
     })
 }
+

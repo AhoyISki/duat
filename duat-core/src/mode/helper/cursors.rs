@@ -222,7 +222,7 @@ mod cursor {
     use serde::{Deserialize, Serialize};
 
     use crate::{
-        cfg::{IterCfg, PrintCfg},
+        cfg::PrintCfg,
         text::{Point, Text},
         ui::{Area, Caret},
     };
@@ -321,7 +321,7 @@ mod cursor {
                 let mut vcol = 0;
 
                 let (wcol, p) = area
-                    .print_iter(text.iter_fwd(line_start), IterCfg::new(cfg))
+                    .print_iter(text.iter_fwd(line_start), cfg)
                     .find_map(|(Caret { len, x, wrap }, item)| {
                         wraps += wrap as usize;
                         if let Some((p, char)) = item.as_real_char() {
@@ -345,7 +345,6 @@ mod cursor {
                 return;
             };
             let vp = self.caret.get().calculate(text, area, cfg);
-            let cfg = IterCfg::new(cfg);
 
             let mut wraps = 0;
 
@@ -383,7 +382,10 @@ mod cursor {
 
                 let mut iter = area.rev_print_iter(text.iter_rev(end_points), cfg);
                 let wcol_and_p = iter.find_map(|(Caret { x, len, wrap }, item)| {
-                    if let Some((p, _)) = item.as_real_char() {
+                    if let Some((p, char)) = item.as_real_char() {
+                        if char == '\n' {
+                            crate::log_file!("{x}, {len}");
+                        }
                         if (x..x + len).contains(&(vp.dwcol as u32))
                             || (just_wrapped && x + len < vp.dwcol as u32)
                         {
@@ -645,10 +647,7 @@ mod cursor {
             let mut vcol = 0;
 
             let wcol = area
-                .print_iter(
-                    text.iter_fwd(text.visual_line_start(start)),
-                    IterCfg::new(cfg),
-                )
+                .print_iter(text.iter_fwd(text.visual_line_start(start)), cfg)
                 .find_map(|(caret, item)| {
                     if let Some((lhs, _)) = item.as_real_char()
                         && lhs == p

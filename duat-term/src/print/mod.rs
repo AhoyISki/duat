@@ -11,7 +11,7 @@ use crossterm::{
     style::Attribute,
     terminal,
 };
-use duat_core::{cfg::IterCfg, form, ui::Axis};
+use duat_core::{cfg::PrintCfg, form, ui::Axis};
 use sync_solver::SyncSolver;
 use variables::Variables;
 
@@ -224,7 +224,7 @@ impl Printer {
     }
 
     /// Returns a new [`Lines`], a struct used to print to the screen
-    pub fn lines(&self, [tl, br]: [VarPoint; 2], shift: u32, cfg: IterCfg) -> Lines {
+    pub fn lines(&self, [tl, br]: [VarPoint; 2], shift: u32, cfg: PrintCfg) -> Lines {
         let coords = self.coords([tl, br], true);
         let cap = cfg.wrap_width(coords.width());
         let area = (coords.width() * coords.height()) as usize;
