@@ -73,10 +73,8 @@ impl Tags {
     /// Insert a new [`Tag`] at a given byte
     pub fn insert(&mut self, at: usize, tag: Tag, key: Key) -> Option<ToggleId> {
         let (tag, toggle) = tag.to_raw(key, &mut self.texts, &mut self.toggles);
+        let [n, b, skip] = self.get_skip_at(at);
 
-        let [n, b, skip] = self
-            .get_skip_at(at)
-            .unwrap_or([self.buf.len(), self.len_bytes(), 0]);
         self.insert_inner(at, tag, [n, b, skip]);
 
         toggle
@@ -189,9 +187,7 @@ impl Tags {
     /// Removes all [`RawTag`]s of a give [`Keys`]
     pub fn remove_from(&mut self, range: impl RangeBounds<usize>, keys: impl Keys) {
         let (start, end) = crate::get_ends(range, self.len_bytes());
-        let Some([n, b, _]) = self.get_skip_behind(start) else {
-            return;
-        };
+        let [n, b, _] = self.get_skip_behind(start);
 
         let entries: Vec<_> = fwd_range(&self.buf, n..)
             .filter_map(entries_fwd(b))
@@ -205,13 +201,10 @@ impl Tags {
 
     /// Removes [`RawTag`]s given a predicate
     pub fn remove_at_if(&mut self, at: usize, f: impl Fn(&RawTag) -> bool) {
-        let [n, b, skip] = match self.get_skip_at(at) {
-            Some([n, b, skip]) if b == at => [n, b, skip],
-            None => [self.buf.len(), self.len_bytes(), 0],
-            // If `b != n`, we're in the middle of a skip, and nothing
-            // is done.
-            _ => return,
-        };
+        let [n, b, skip] = self.get_skip_at(at);
+        if b != at {
+            return;
+        }
 
         let removed: Vec<(usize, RawTag)> = rev_range(&self.buf, ..n)
             .map_while(|(n, ts)| Some(n).zip(ts.as_tag()))
@@ -271,8 +264,9 @@ impl Tags {
     /// range.
     pub fn transform(&mut self, old: Range<usize>, new_end: usize) {
         let new = old.start..new_end;
+        let [s_n, s_b, s_skip] = self.get_skip_at(old.start);
         // In case we're appending to the GapBuffer, a shortcut can be made.
-        let Some([s_n, s_b, s_skip]) = self.get_skip_at(old.start) else {
+        if [s_n, s_b] == self.records.max() {
             let last = self.buf.len().saturating_sub(1);
             let new_len = (new.end - old.start) as u32;
             if let Some(TagOrSkip::Skip(skip)) = self.buf.get_mut(last) {
@@ -291,16 +285,15 @@ impl Tags {
             let rm_b = old.end - old.start;
             // If the range to be removed is contained within one skip,
             // there is no need to check for where it ends.
-            let (e_n, e_b) = if old.start + rm_b <= s_b + s_skip {
-                (s_n, s_b + s_skip)
+            let [e_n, e_b] = if old.end <= s_b + s_skip {
+                [s_n, s_b + s_skip]
             } else {
                 // The check for the final skip is a `get_skip_behind` because we
                 // don't want to remove one skip ahead of the end in the cases of
                 // `old.start + len == some_skip`, since that would remove the tags at
-                // the end of   the range.
-                self.get_skip_behind(old.start + rm_b)
-                    .map(|[n, b, skip]| (n, b + skip))
-                    .unwrap()
+                // the end of the range.
+                let [n, b, skip] = self.get_skip_behind(old.end);
+                [n, b + skip]
             };
 
             let (rm, added_n, rm_before_n, rm_after_n) = {
@@ -432,7 +425,7 @@ impl Tags {
                     self.ranges.binary_search_by_key(&range.end, |(b, _)| *b);
                 self.ranges.drain(s_i..e_i);
 
-                let [n, b, _] = self.get_skip_behind(range.start).unwrap_or([0, 0, 0]);
+                let [n, b, _] = self.get_skip_behind(range.start);
 
                 for entry in ranges_in(&self.buf, (n, b), range, self.range_min) {
                     if let Err(i) = self.ranges.binary_search(&entry) {
@@ -462,8 +455,7 @@ impl Tags {
     #[define_opaque(FwdTags)]
     pub fn fwd_at(&self, at: usize) -> FwdTags {
         let b = at.min(self.len_bytes()).saturating_sub(self.range_min);
-
-        let [sn, sb, _] = self.get_skip_behind(b).unwrap_or_default();
+        let [sn, sb, _] = self.get_skip_behind(b);
 
         let prev_fwd = {
             let mut prev_fwd = Vec::new();
@@ -504,11 +496,7 @@ impl Tags {
     #[define_opaque(RevTags)]
     pub fn rev_at(&self, at: usize) -> RevTags {
         let at = (at + self.range_min).min(self.len_bytes());
-
-        let (n, b) = self
-            .get_skip_at(at)
-            .map(|[n, b, _]| (n, b))
-            .unwrap_or((self.buf.len(), self.len_bytes()));
+        let [n, b, _] = self.get_skip_at(at);
 
         let post_rev = {
             let mut post_rev = Vec::new();
@@ -546,22 +534,14 @@ impl Tags {
     }
 
     pub fn raw_fwd_at(&self, b: usize) -> impl Iterator<Item = (usize, RawTag)> + '_ {
-        let (n, b) = self
-            .get_skip_behind(b)
-            .map(|[n, b, _]| (n, b))
-            .unwrap_or((self.buf.len(), self.len_bytes()));
-
+        let [n, b, _] = self.get_skip_behind(b);
         fwd_range(&self.buf, n..)
             .filter_map(entries_fwd(b))
             .map(|(n, _, t)| (n, t))
     }
 
     pub fn raw_rev_at(&self, b: usize) -> impl Iterator<Item = (usize, RawTag)> + '_ {
-        let (n, b) = self
-            .get_skip_at(b)
-            .map(|[n, b, _]| (n, b))
-            .unwrap_or((self.buf.len(), self.len_bytes()));
-
+        let [n, b, _] = self.get_skip_at(b);
         rev_range(&self.buf, ..n)
             .filter_map(entries_rev(b))
             .map(|(n, _, t)| (n, t))
@@ -569,11 +549,7 @@ impl Tags {
 
     /// Returns an iterator over a single byte
     pub fn iter_only_at(&self, at: usize) -> impl Iterator<Item = RawTag> + '_ {
-        let (n, b) = self
-            .get_skip_at(at)
-            .map(|[n, b, _]| (n, b))
-            .unwrap_or((self.buf.len(), self.len_bytes()));
-
+        let [n, b, _] = self.get_skip_at(at);
         (b == at)
             .then(|| rev_range(&self.buf, ..n).map_while(|(_, ts)| ts.as_tag()))
             .into_iter()
@@ -637,10 +613,10 @@ impl Tags {
 
     /// Returns information about the skip in the byte `at`
     ///
-    /// * The byte where it starts
     /// * The index in the [`GapBuffer`] where it starts
+    /// * The byte where it starts
     /// * Its length
-    fn get_skip_at(&self, at: usize) -> Option<[usize; 3]> {
+    fn get_skip_at(&self, at: usize) -> [usize; 3] {
         assert!(
             at <= self.len_bytes(),
             "byte out of bounds: the len is {}, but the byte is {at}",
@@ -666,6 +642,10 @@ impl Tags {
                 .take_while(|[_, b, skip]| *b + *skip > at)
                 .last()
         }
+        .unwrap_or({
+            let [n, b] = self.records.max();
+            [n, b, 0]
+        })
     }
 
     /// Same as [`get_skip_at`], but takes the previous skip
@@ -674,16 +654,16 @@ impl Tags {
     /// skip otherwise.
     ///
     /// [`get_skip_at`]: Tags::get_skip_at
-    fn get_skip_behind(&self, at: usize) -> Option<[usize; 3]> {
-        let [n, b, skip] = self.get_skip_at(at)?;
-        Some(if b == at {
+    fn get_skip_behind(&self, at: usize) -> [usize; 3] {
+        let [n, b, skip] = self.get_skip_at(at);
+        if b == at {
             rev_range(&self.buf, ..n)
                 .find_map(|(n, ts)| Some(n).zip(ts.as_skip()))
                 .map(|(n, skip)| [n, b - skip, skip])
                 .unwrap_or([0, 0, 0])
         } else {
             [n, b, skip]
-        })
+        }
     }
 
     /// Return the [`Text`] of a given [`TextId`]
