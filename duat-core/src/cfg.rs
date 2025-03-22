@@ -103,15 +103,7 @@ pub struct WordChars(&'static LazyLock<(Regex, &'static [RangeInclusive<char>])>
 
 impl WordChars {
     pub const fn default() -> Self {
-        static REGEX: LazyLock<(Regex, &'static [RangeInclusive<char>])> = LazyLock::new(|| {
-            (Regex::new("[A-Za-z0-9_]").unwrap(), &[
-                'A'..='Z',
-                'a'..='z',
-                '0'..='9',
-                '_'..='_',
-            ])
-        });
-        WordChars(&REGEX)
+        word_chars!('A'-'Z''a'-'z''0'-'9''_'-'_')
     }
 
     /// Checks if a `char` is a word char
@@ -270,12 +262,15 @@ impl Default for PrintCfg {
 }
 
 pub macro word_chars {
-    (@range $ranges:expr, ) => {{
-        static REGEX: LazyLock<Regex> =
-            LazyLock::new(|| Regex::new(concat!($ranges , "]")).unwrap());
-        WordChars(&REGEX)
+    (@range $regex:expr, [$($slice:tt)*],) => {{
+        static MATCHERS: LazyLock<(Regex, &'static [RangeInclusive<char>])> =
+            LazyLock::new(|| (
+                Regex::new(concat!($regex , "]")).unwrap(),
+                &[$($slice)*]
+            ));
+        WordChars(&MATCHERS)
     }},
-    (@range $ranges:expr, $start:literal - $end:literal $($rest:tt)*) => {{
+    (@range $regex:expr, [$($slice:tt)*], $start:literal - $end:literal $($rest:tt)*) => {{
         const {
             assert!($start <= $end, concat!("\"", $start, "-", $end, "\" is not a valid range."));
             assert!(
@@ -291,12 +286,15 @@ pub macro word_chars {
                 concat!("\"", $start, "-", $end, "\" contains '\\t '.")
             );
         }
-        word_chars!(@range concat!($ranges, $start, "-", $end), $($rest)*)
+        word_chars!(@range
+            concat!($regex, $start, "-", $end),
+            [$start..=$end, $($slice)*], $($rest)*
+        )
     }},
-    (@range $ranges:expr, $($rest:tt)*) => {
+    (@range $regex:expr, $($rest:tt)*) => {
         compile_error!("The syntax must be a sequence of \"{char}-{char}\"s")
     },
-    ($($ranges:tt)+) => {
-        word_chars!(@range "[", $($ranges)+)
+    ($($start:literal-$end:literal)+) => {
+        word_chars!(@range "[", [], $($start-$end)+)
     }
 }
