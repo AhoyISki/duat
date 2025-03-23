@@ -318,7 +318,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         if let Some(path) = path {
             let bytes = file.write_to(&path)?;
             Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " path)))
-        } else if let Some(name) = file.path_set() {
+        } else if let Some(name) = file.name_set() {
             if file.text().has_unsaved_changes() {
                 let bytes = file.write()?;
                 Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " [*a] name)))
@@ -326,7 +326,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
                 Ok(Some(ok!("Nothing to be written")))
             }
         } else {
-            Err(err!("Give the file a name, to write it with"))
+            Err(err!("File has no name path to write to"))
         }
     })?;
 
