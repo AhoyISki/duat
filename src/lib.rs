@@ -373,8 +373,6 @@ impl<U: Ui> Mode<U> for Normal {
         let mut helper = EditHelper::new(widget, area);
         let w_chars = helper.cfg().word_chars;
 
-        duat_core::log_file!("{key:#?}");
-
         match key {
             ////////// Basic movement keys
             key!(Char('h' | 'H') | Left) => {
@@ -405,9 +403,11 @@ impl<U: Ui> Mode<U> for Normal {
                 let v_caret = m.v_caret();
                 if m.char() == '\n' && v_caret.char_col() > 0 && self.0 != SelType::ToEndOfLine {
                     m.move_hor(-1);
-                    if self.0 == SelType::BeforeEndOfLine {
-                        m.set_desired_vcol(usize::MAX);
-                    }
+                    m.set_desired_vcol(if self.0 == SelType::BeforeEndOfLine {
+                        usize::MAX
+                    } else {
+                        v_caret.desired_visual_col()
+                    });
                 }
             }),
             key!(Char('k' | 'K')) => helper.move_many(.., |mut m| {
@@ -416,9 +416,11 @@ impl<U: Ui> Mode<U> for Normal {
                 let v_caret = m.v_caret();
                 if m.char() == '\n' && v_caret.char_col() > 0 && self.0 != SelType::ToEndOfLine {
                     m.move_hor(-1);
-                    if self.0 == SelType::BeforeEndOfLine {
-                        m.set_desired_vcol(usize::MAX);
-                    }
+                    m.set_desired_vcol(if self.0 == SelType::BeforeEndOfLine {
+                        usize::MAX
+                    } else {
+                        v_caret.desired_visual_col()
+                    });
                 }
             }),
 
@@ -783,7 +785,6 @@ impl<U: Ui> Mode<U> for Normal {
                                 m.set_caret_on_end();
                                 let (p, _) = m.fwd().find(|(_, c)| *c == '\n').unwrap_or_default();
                                 m.move_to(p);
-                                m.move_hor(1);
                             } else {
                                 m.set_caret_on_start();
                                 m.move_hor(-(m.v_caret().char_col() as i32))
@@ -792,13 +793,15 @@ impl<U: Ui> Mode<U> for Normal {
                             m.set_caret_on_start();
                             if key.code == Char('p') {
                                 m.swap_ends();
-                                m.move_hor(1)
                             }
                         }
                     });
                     let mut lens = pastes.iter().map(|str| str.chars().count()).cycle();
                     let mut p_iter = pastes.iter().cycle();
-                    helper.edit_many(.., |e| e.insert(p_iter.next().unwrap()));
+                    helper.edit_many(.., |e| match key.code {
+                        Char('p') => e.append(p_iter.next().unwrap()),
+                        _ => e.insert(p_iter.next().unwrap()),
+                    });
                     let mut swap_ends = swap_ends.into_iter();
                     helper.move_many(.., |mut m| {
                         m.set_anchor();
@@ -814,7 +817,7 @@ impl<U: Ui> Mode<U> for Normal {
                 if !pastes.is_empty() {
                     helper.new_moment();
                     let mut p_iter = pastes.iter().cycle();
-                    helper.edit_many(.., |e| e.insert_or_replace(p_iter.next().unwrap()));
+                    helper.edit_many(.., |e| e.replace(p_iter.next().unwrap()));
                 }
             }
 
@@ -1572,9 +1575,7 @@ impl<U: Ui> IncSearcher<U> for Split {
 /// Sets the indentation for every cursor
 fn set_indent(helper: &mut EditHelper<'_, File, impl Area, ()>) {
     helper.move_many(.., |mut m| {
-        let [_, p0] = m.search_rev("\n", None).next().unwrap_or_default();
-        m.unset_anchor();
-        m.move_to(p0);
+        m.move_hor(-(m.v_caret().char_col() as i32));
         if let Some((p1, _)) = m.fwd().take_while(|(_, c)| is_non_nl_space(*c)).last() {
             m.set_anchor();
             m.move_to(p1);
@@ -1591,7 +1592,12 @@ fn set_indent(helper: &mut EditHelper<'_, File, impl Area, ()>) {
             let prev_non_empty = prev_non_empty_line_points(e);
             prev_non_empty.map(|[p0, _]| e.indent_on(p0)).unwrap_or(0)
         };
-        e.insert_or_replace(" ".repeat(indent));
+        duat_core::log_file!("{indent}");
+        if e.anchor().is_some() {
+            e.replace(" ".repeat(indent));
+        } else {
+            e.insert(" ".repeat(indent));
+        }
     });
     helper.move_many(.., |mut m| {
         m.unset_anchor();
