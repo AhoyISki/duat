@@ -290,10 +290,19 @@ pub struct Change<S: AsRef<str>> {
 
 impl Change<String> {
     /// Returns a new [Change].
-    pub fn new(edit: impl ToString, (start, end): (Point, Point), text: &Text) -> Self {
-        let added = edit.to_string();
-        let taken: String = text.strs(start.byte()..end.byte()).collect();
-        Change { start, added, taken }
+    pub fn new(edit: impl ToString, [p0, p1]: [Point; 2], text: &Text) -> Self {
+        let added = {
+            let edit = edit.to_string();
+            // A '\n' must be kept at the end, no matter what.
+            if p1 == text.len() && !edit.ends_with('\n') {
+                edit + "\n"
+            } else {
+                edit
+            }
+        };
+
+        let taken = text.strs(p0.byte()..p1.byte()).collect();
+        Change { start: p0, added, taken }
     }
 
     /// Returns a copyable [`Change`]
@@ -342,6 +351,11 @@ impl<'a> Change<&'a str> {
     /// Returns a new copyable [`Change`] from an insertion.
     pub fn str_insert(added_text: &'a str, start: Point) -> Self {
         Self { start, added: added_text, taken: "" }
+    }
+
+    /// This function should only be used with ghost text and builders
+    pub(super) fn remove_nl(p0: Point) -> Self {
+        Change { start: p0, added: "", taken: "\n" }
     }
 }
 

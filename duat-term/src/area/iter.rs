@@ -15,7 +15,7 @@ fn parts<'a>(
     initial: (u32, bool),
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     let (mut x, mut needs_to_wrap, mut prev_char) = (0, true, None);
-    let max_indent = if cfg.indent_wrap { cap } else { 0 };
+    let max_indent = if cfg.indent_wrapped { cap } else { 0 };
     let (mut indent, mut on_indent) = initial;
 
     iter.map(move |mut item| {
@@ -27,10 +27,7 @@ fn parts<'a>(
                         indent = 0;
                         on_indent = true;
                         let char = cfg.new_line.char(prev_char);
-                        match char {
-                            Some(char) => (len_from(char, x, cap, &cfg), Part::Char(char)),
-                            None => (0, Part::Char('\n')),
-                        }
+                        (len_from(char, x, cap, &cfg), Part::Char(char))
                     } else {
                         let len = len_from(char, x, cap, &cfg);
                         if on_indent && (char == ' ' || char == '\t') {
@@ -79,7 +76,7 @@ fn words<'a>(
     cfg: PrintCfg,
     initial: (u32, bool),
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-    let max_indent = if cfg.indent_wrap { cap } else { 0 };
+    let max_indent = if cfg.indent_wrapped { cap } else { 0 };
 
     let mut iter = iter.peekable();
     let (mut indent, mut on_indent) = initial;
@@ -168,18 +165,14 @@ fn process_part(
     cap: u32,
 ) -> (u32, Part) {
     match part {
-        Part::Char(b) => {
-            let ret = if b == '\n' {
+        Part::Char(char) => {
+            let ret = if char == '\n' {
                 let char = cfg.new_line.char(*prev_char);
-                match char {
-                    Some(char) => (len_from(char, x, cap, cfg), Part::Char(char)),
-                    None => (0, Part::Char('\n')),
-                }
+                (len_from(char, x, cap, cfg), Part::Char(char))
             } else {
-                (len_from(b, x, cap, cfg), Part::Char(b))
+                (len_from(char, x, cap, cfg), Part::Char(char))
             };
-
-            *prev_char = Some(b);
+            *prev_char = Some(char);
             ret
         }
         _ => (0, part),
@@ -308,7 +301,6 @@ fn len_from(char: char, start: u32, max_width: u32, cfg: &PrintCfg) -> u32 {
         '\t' => (cfg.tab_stops.spaces_at(start))
             .min(max_width.saturating_sub(start))
             .max(1),
-        '\n' => 0,
         _ => UnicodeWidthChar::width(char).unwrap_or(0) as u32,
     }
 }

@@ -17,7 +17,7 @@ use super::{
 };
 use crate::{
     form::{self, FormId},
-    text::{Point, Text},
+    text::{Change, Point, Text},
 };
 
 /// A [`Text`] modifier
@@ -92,7 +92,7 @@ pub enum Tag {
     /// ```
     Spacer,
 
-	/// Text that shows up on screen, but "doesn't exist"
+    /// Text that shows up on screen, but "doesn't exist"
     GhostText(Text),
     /// Start concealing the [`Text`] from this point
     StartConceal,
@@ -129,7 +129,8 @@ impl Tag {
             Self::Spacer => (RawTag::Spacer(key), None),
             Self::GhostText(mut text) => {
                 if text.0.forced_new_line {
-                    text.replace_range(text.len().byte() - 1.., "");
+                    let change = Change::remove_nl(text.last_point().unwrap());
+                    text.apply_change_inner(change);
                     text.0.forced_new_line = false;
                 }
                 let id = GhostId::new();

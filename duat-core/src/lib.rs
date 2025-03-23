@@ -244,8 +244,7 @@
     type_alias_impl_trait,
     trait_alias,
     debug_closure_helpers,
-    box_as_ptr,
-    closure_lifetime_binder
+    box_as_ptr
 )]
 #![allow(clippy::single_range_in_vec_init)]
 

@@ -23,7 +23,7 @@ use super::{
 };
 use crate::mode::Cursor;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Item {
     pub real: Point,
     pub ghost: Option<Point>,
@@ -446,7 +446,7 @@ use crate::form::FormId;
 /// [`Tag`]: super::Tag
 /// [`Ui`]: crate::ui::Ui
 /// [`ResetState`]: Part::ResetState
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Part {
     Char(char),
     PushForm(FormId),

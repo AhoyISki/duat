@@ -509,12 +509,18 @@ where
     /// on the new end. If it is ahead, it will be placed ahead.
     ///
     /// If there is no selection, then this has the same effect as
-    /// [`insert`].
+    /// [`insert`]. If you wish to append to the `caret` instead, see
+    /// [`append`].
     ///
     /// [`insert`]: Self::insert
+    /// [`append`]: Self::append
     pub fn replace(&mut self, edit: impl ToString) {
-        let (p0, p1) = self.cursor.point_range();
-        let change = Change::new(edit.to_string(), (p0, p1), self.widget.text());
+        let change = {
+            let edit = edit.to_string();
+            let [p0, p1] = self.cursor.point_range(self.widget.text());
+            Change::new(edit, [p0, p1], self.widget.text())
+        };
+
         let edit_len = change.added_text().len();
         let end = change.added_end();
 
@@ -537,21 +543,23 @@ where
 
     /// Inserts new text directly behind the `caret`
     ///
-    /// The selection remains unaltered, if the `anchor` is ahead of
-    /// the `caret`, it will move forwards by `edit.chars().count()`.
+    /// If the `anchor` is ahead of the `caret`, it will move forwards
+    /// by the number of chars in the new text.
     ///
-    /// If you wish to replace the selected text, see [`replace`]
+    /// If you wish to replace the selected text, see [`replace`], if
+    /// you want to append after the `caret` instead, see [`append`]
     ///
     /// [`replace`]: Self::replace
+    /// [`append`]: Self::append
     pub fn insert(&mut self, edit: impl ToString) {
-        let range = (self.cursor.caret(), self.cursor.caret());
+        let range = [self.cursor.caret(), self.cursor.caret()];
         let change = Change::new(edit.to_string(), range, self.widget.text());
         let (added, taken) = (change.added_end(), change.taken_end());
 
         self.edit(change);
 
         if let Some(anchor) = self.cursor.anchor()
-            && anchor >= self.cursor.caret()
+            && anchor > self.cursor.caret()
         {
             let new_anchor = anchor + added - taken;
             self.cursor.swap_ends();
@@ -560,21 +568,31 @@ where
         }
     }
 
-    /// If there is a selection, acts like [`replace`], otherwise acts
-    /// like [`insert`]
+    /// Appends new text directly after the `caret`
     ///
-    /// This only makes a difference if your selections are
-    /// [inclusive], since a [`replace`] when the anchor is [`None`]
-    /// would still include one character.
+    /// If the `anchor` is ahead of the `caret`, it will move forwards
+    /// by the number of chars in the new text.
     ///
-    /// [`replace`]: Editor::replace
-    /// [`insert`]: Editor::insert
-    /// [inclusive]: Cursors::is_incl
-    pub fn insert_or_replace(&mut self, edit: impl ToString) {
-        if self.anchor().is_some() {
-            self.replace(edit)
-        } else {
-            self.insert(edit)
+    /// If you wish to replace the selected text, see [`replace`], if
+    /// you want to insert before the `caret` instead, see [`insert`]
+    ///
+    /// [`replace`]: Self::replace
+    /// [`insert`]: Self::insert
+    pub fn append(&mut self, edit: impl ToString) {
+        let caret = self.cursor.caret();
+        let p = caret.fwd(self.widget.text().char_at(caret).unwrap());
+        let change = Change::new(edit.to_string(), [p, p], self.widget.text());
+        let (added, taken) = (change.added_end(), change.taken_end());
+
+        self.edit(change);
+
+        if let Some(anchor) = self.cursor.anchor()
+            && anchor > p
+        {
+            let new_anchor = anchor + added - taken;
+            self.cursor.swap_ends();
+            self.cursor.move_to(new_anchor, self.widget.text());
+            self.cursor.swap_ends();
         }
     }
 
@@ -1024,7 +1042,7 @@ where
     ///
     /// [`GapBuffer`]: gapbuf::GapBuffer
     pub fn selection(&self) -> Strs {
-        let range = self.cursor.as_ref().unwrap().range();
+        let range = self.cursor.as_ref().unwrap().range(self.text);
         self.text.strs(range)
     }
 
@@ -1268,7 +1286,7 @@ where
     ///
     /// [`IncSearch`]: crate::mode::IncSearch
     pub fn matches_inc(&mut self) -> bool {
-        let range = self.cursor.as_ref().unwrap().range();
+        let range = self.cursor.as_ref().unwrap().range(self.text);
         self.inc_searcher.matches(self.text.contiguous(range))
     }
 }

@@ -4,7 +4,7 @@ use gapbuf::{GapBuffer, gap_buffer};
 use serde::{Deserialize, Serialize, de::Visitor, ser::SerializeSeq};
 
 pub use self::cursor::{Cursor, VPoint};
-use crate::text::{Point, Text};
+use crate::text::Text;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Cursors {
@@ -29,24 +29,17 @@ impl Cursors {
     }
 
     pub fn reset_on_byte(&mut self, b: usize, text: &Text) {
-        let point = text.point_at(b.min(text.len().byte()));
-        let cursor = Cursor::new(point, None);
+        let cursor = Cursor::new(text.point_at(b), None, text);
         self.buf = CursorGapBuffer(gap_buffer![cursor]);
         self.main_i = 0;
     }
 
-    ////////// Insertion functions
-    pub fn insert_from_parts(&mut self, guess_i: usize, start: Point, end: Point) -> usize {
-        let cursor = Cursor::new(end, (start != end).then_some(start));
-        self.insert(guess_i, false, cursor)
-    }
-
-    pub(super) fn insert(&mut self, guess_i: usize, was_main: bool, cursor: Cursor) -> usize {
+    pub fn insert(&mut self, guess_i: usize, was_main: bool, cursor: Cursor) -> usize {
         // The range of cursors that will be drained
         let c_range = if let Some(prev_i) = guess_i.checked_sub(1)
             && let Some(prev) = self.get(prev_i)
             && prev.start() <= cursor.start()
-            && cursor.start() <= prev.end()
+            && cursor.start() <= prev.end_excl()
         {
             prev_i..guess_i
         } else {
@@ -56,7 +49,7 @@ impl Cursors {
                 Err(i) => {
                     if let Some(prev_i) = i.checked_sub(1)
                         && let Some(prev) = self.buf.get(prev_i)
-                        && cursor.start() <= prev.end()
+                        && cursor.start() <= prev.end_excl()
                     {
                         prev_i..i
                     } else {
@@ -69,16 +62,16 @@ impl Cursors {
         // This block determines how far ahead this cursor will merge
         let c_range = if self
             .get(c_range.end)
-            .is_none_or(|c| cursor.end() < c.start())
+            .is_none_or(|c| cursor.end_excl() < c.start())
         {
             c_range
         } else {
             let buf = self.buf.range(..);
-            match binary_search_by_key(buf, cursor.end(), |c| c.start()) {
+            match binary_search_by_key(buf, cursor.end_excl(), |c| c.start()) {
                 Ok(i) => c_range.start..i + 1,
                 Err(i) => {
                     if let Some(prev) = self.buf.get(i)
-                        && prev.start() < cursor.end()
+                        && prev.start() <= cursor.end_excl()
                     {
                         c_range.start..i + 1
                     } else {
@@ -238,7 +231,10 @@ mod cursor {
 
     impl Cursor {
         /// Returns a new instance of [`Cursor`].
-        pub(super) fn new(caret: Point, anchor: Option<Point>) -> Self {
+        pub fn new(caret: Point, anchor: Option<Point>, text: &Text) -> Self {
+            let last = text.last_point().unwrap();
+            let caret = caret.min(last);
+            let anchor = anchor.map(|a| a.min(last));
             Self {
                 caret: Cell::new(LazyVPoint::Unknown(caret)),
                 anchor: Cell::new(anchor.map(LazyVPoint::Unknown)),
@@ -263,7 +259,7 @@ mod cursor {
             if p == self.caret() {
                 return;
             }
-            *self.caret.get_mut() = LazyVPoint::Unknown(p.min(text.len()));
+            *self.caret.get_mut() = LazyVPoint::Unknown(p.min(text.last_point().unwrap()));
         }
 
         /// Internal horizontal movement function.
@@ -312,30 +308,27 @@ mod cursor {
                 let vp = self.caret.get().calculate(text, area, cfg);
                 let line_start = {
                     let target = self.caret.get().point().line().saturating_add_signed(by);
-                    let point = text.point_at_line(target.min(last.line()));
-                    text.visual_line_start(point)
+                    text.point_at_line(target.min(last.line()))
                 };
 
                 let mut wraps = 0;
-                let mut ccol = 0;
                 let mut vcol = 0;
 
                 let (wcol, p) = area
-                    .print_iter(text.iter_fwd(line_start), cfg)
+                    .print_iter(text.iter_fwd(line_start), cfg.new_line_as('\n'))
                     .find_map(|(Caret { len, x, wrap }, item)| {
                         wraps += wrap as usize;
                         if let Some((p, char)) = item.as_real_char() {
                             if vcol + len as u16 > vp.dvcol || char == '\n' {
                                 return Some((x as u16, p));
                             }
-                            ccol += 1;
                         }
                         vcol += len as u16;
                         None
                     })
                     .unwrap_or((0, last));
 
-                vp.known(p, ccol, vcol, wcol)
+                vp.known(p, (p.char() - line_start.char()) as u16, vcol, wcol)
             });
         }
 
@@ -355,7 +348,7 @@ mod cursor {
                 let mut last_valid = (vp.vcol, vp.wcol, vp.p);
 
                 let (vcol, wcol, p) = area
-                    .print_iter(text.iter_fwd(line_start), cfg)
+                    .print_iter(text.iter_fwd(line_start), cfg.new_line_as('\n'))
                     .skip_while(|(_, item)| item.byte() <= self.byte())
                     .find_map(|(Caret { x, len, wrap }, item)| {
                         wraps += wrap as i32;
@@ -380,12 +373,10 @@ mod cursor {
                 let mut just_wrapped = false;
                 let mut last_valid = (vp.wcol, vp.p);
 
-                let mut iter = area.rev_print_iter(text.iter_rev(end_points), cfg);
+                let mut iter =
+                    area.rev_print_iter(text.iter_rev(end_points), cfg.new_line_as('\n'));
                 let wcol_and_p = iter.find_map(|(Caret { x, len, wrap }, item)| {
-                    if let Some((p, char)) = item.as_real_char() {
-                        if char == '\n' {
-                            crate::log_file!("{x}, {len}");
-                        }
+                    if let Some((p, _)) = item.as_real_char() {
                         if (x..x + len).contains(&(vp.dwcol as u32))
                             || (just_wrapped && x + len < vp.dwcol as u32)
                         {
@@ -411,7 +402,7 @@ mod cursor {
                 } else {
                     let (wcol, p) = last_valid;
                     let (ccol, vcol) = area
-                        .rev_print_iter(text.iter_rev(p), cfg)
+                        .rev_print_iter(text.iter_rev(p), cfg.new_line_as('\n'))
                         .take_while(|(_, item)| item.as_real_char().is_none_or(|(_, c)| c != '\n'))
                         .fold((0, 0), |(ccol, vcol), (caret, item)| {
                             (ccol + item.is_real() as u16, vcol + caret.len as u16)
@@ -492,8 +483,8 @@ mod cursor {
         /// This function will return the range that is supposed
         /// to be replaced, if `self.is_inclusive()`, this means that
         /// it will return one more byte at the end, i.e. start..=end.
-        pub fn range(&self) -> Range<usize> {
-            let (start, end) = self.point_range();
+        pub fn range(&self, text: &Text) -> Range<usize> {
+            let [start, end] = self.point_range(text);
             start.byte()..end.byte()
         }
 
@@ -507,11 +498,32 @@ mod cursor {
         }
 
         /// The ending [`Point`] of this [`Cursor`]
-        pub fn end(&self) -> Point {
+        pub fn end(&self, text: &Text) -> Point {
+            let raw = self.end_excl();
+            raw.fwd(text.char_at(raw).unwrap())
+        }
+
+        pub(crate) fn end_excl(&self) -> Point {
             if let Some(anchor) = self.anchor.get() {
                 anchor.point().max(self.caret.get().point())
             } else {
                 self.caret.get().point()
+            }
+        }
+
+        pub(crate) fn tag_points(&self, text: &Text) -> (Point, Option<[Point; 2]>) {
+            let caret = self.caret();
+            if let Some(anchor) = self.anchor() {
+                if anchor < caret {
+                    (caret, Some([anchor, caret]))
+                } else if anchor == caret {
+                    (caret, None)
+                } else {
+                    let end = anchor.fwd(text.char_at(anchor).unwrap());
+                    (caret, Some([caret, end]))
+                }
+            } else {
+                (caret, None)
             }
         }
 
@@ -521,8 +533,8 @@ mod cursor {
         /// beyond the last character's [`Point`].
         ///
         /// If `anchor` isn't set, returns an empty range on `target`.
-        pub fn point_range(&self) -> (Point, Point) {
-            (self.start(), self.end())
+        pub fn point_range(&self, text: &Text) -> [Point; 2] {
+            [self.start(), self.end(text)]
         }
 
         /// Sets both the desired visual column, as well as the

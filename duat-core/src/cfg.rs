@@ -57,23 +57,20 @@ pub enum NewLine {
     /// Show the given character only when there is whitespace at end
     /// of the line.
     AfterSpaceAs(char),
-    /// Don't print anything for a new line character.
-    Hidden,
 }
 
 impl NewLine {
     #[inline]
-    pub fn char(&self, last_char: Option<char>) -> Option<char> {
-        match self {
-            NewLine::AlwaysAs(char) => Some(*char),
+    pub fn char(&self, last_char: Option<char>) -> char {
+        match *self {
+            NewLine::AlwaysAs(char) => char,
             NewLine::AfterSpaceAs(char) => {
-                if last_char.is_some_and(|char| char.is_whitespace() && char != '\n') {
-                    Some(*char)
+                if last_char.is_some_and(|lc| lc.is_whitespace() && lc != '\n') {
+                    char
                 } else {
-                    Some(' ')
+                    ' '
                 }
             }
-            NewLine::Hidden => None,
         }
     }
 }
@@ -126,19 +123,18 @@ pub struct PrintCfg {
     /// How to wrap the file
     pub wrap_method: WrapMethod,
     /// Whether to indent wrapped lines or not
-    pub indent_wrap: bool,
+    pub indent_wrapped: bool,
     /// Which places are considered a "tab stop"
     pub tab_stops: TabStops,
     /// Whether (and how) to show new lines
     pub new_line: NewLine,
     /// How much space to keep between the cursor and edges
     pub scrolloff: ScrollOff,
-    // NOTE: This is relevant for printing with `WrapMethod::Word`
-    /// Characters that are considered to be part of a word
-    pub word_chars: WordChars,
     /// Whether to limit scrolloff on the end of lines
     pub force_scrolloff: bool,
-    /// Wheter to show ghosts
+    /// Characters that are considered to be part of a word
+    pub word_chars: WordChars,
+    /// Whether to show ghosts
     pub show_ghosts: bool,
 }
 
@@ -146,9 +142,9 @@ impl PrintCfg {
     pub const fn new() -> Self {
         Self {
             wrap_method: WrapMethod::NoWrap,
-            indent_wrap: true,
+            indent_wrapped: true,
             tab_stops: TabStops(4),
-            new_line: NewLine::Hidden,
+            new_line: NewLine::AlwaysAs('\n'),
             scrolloff: ScrollOff { x: 3, y: 3 },
             word_chars: WordChars::default(),
             force_scrolloff: false,
@@ -156,7 +152,7 @@ impl PrintCfg {
         }
     }
 
-    ////////// Modification functions
+    ////////// Configuration
 
     pub const fn unwrapped(self) -> Self {
         Self { wrap_method: WrapMethod::NoWrap, ..self }
@@ -178,15 +174,11 @@ impl PrintCfg {
     }
 
     pub const fn indent_wrapped(self) -> Self {
-        Self { indent_wrap: true, ..self }
+        Self { indent_wrapped: true, ..self }
     }
 
     pub const fn tab_sized(self, tab_size: u8) -> Self {
         Self { tab_stops: TabStops(tab_size), ..self }
-    }
-
-    pub const fn with_no_new_line(self) -> Self {
-        Self { new_line: NewLine::Hidden, ..self }
     }
 
     pub const fn new_line_as(self, char: char) -> Self {
@@ -244,7 +236,7 @@ impl PrintCfg {
     pub const fn default_for_input() -> Self {
         Self {
             wrap_method: WrapMethod::NoWrap,
-            indent_wrap: true,
+            indent_wrapped: true,
             tab_stops: TabStops(4),
             new_line: NewLine::AlwaysAs(' '),
             scrolloff: ScrollOff { x: 3, y: 3 },

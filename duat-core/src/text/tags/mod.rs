@@ -52,12 +52,16 @@ impl Tags {
     /// Creates a new [`Tags`] with a given len
     pub fn new(len: usize) -> Self {
         Self {
-            buf: gap_buffer![TagOrSkip::Skip(len as u32)],
+            buf: if len == 0 {
+                GapBuffer::new()
+            } else {
+                gap_buffer![TagOrSkip::Skip(len as u32)]
+            },
             ranges: Vec::new(),
             texts: HashMap::new(),
             toggles: HashMap::new(),
             range_min: MIN_CHARS_TO_KEEP,
-            records: Records::with_max([1, len]),
+            records: Records::with_max([1 * (len != 0) as usize, len]),
             ranges_to_update: Vec::new(),
         }
     }
@@ -110,13 +114,6 @@ impl Tags {
         }
 
         let n = if at == b {
-            // let n = if !tag.is_end() {
-            //    n - rev_range(&self.buf, ..n)
-            //        .take_while(|(_, ts)| ts.is_tag())
-            //        .count()
-            //} else {
-            //    n
-            //};
             self.buf.insert(n, TagOrSkip::Tag(tag));
             self.records.transform([n, at], [0, 0], [1, 0]);
             self.records.insert([n, at]);
@@ -279,6 +276,9 @@ impl Tags {
 
             return;
         };
+        // You might wonder: Why not return if old == new?
+        // It is assumed that a removal must get rid of all tags within, so
+        // returning would prevent that.
 
         // Old length removal.
         if old.end > old.start {
@@ -389,14 +389,16 @@ impl Tags {
             }
         }
 
-        // New length insertion is straightforward, just add the len, dummy.
-        if new_end > old.start {
-            let len = new_end - old.start;
-            let new_skip = self.buf[s_n].len();
-            self.buf[s_n] = TagOrSkip::Skip((new_skip + len) as u32);
-            self.records.transform([s_n, s_b], [0, 0], [0, len]);
-            // If there is no new len, I'll remove pairs and
-            // duplicates from the starting position.
+        if new.end > old.start {
+            let added_b = new.clone().count();
+            if let Some(TagOrSkip::Skip(skip)) = self.buf.get_mut(s_n) {
+                *skip += added_b as u32;
+                self.records.transform([s_n, s_b], [0, 0], [0, added_b]);
+            // The skip may have deleted by now, so we add it back.
+            } else {
+                self.buf.insert(s_n, TagOrSkip::Skip(added_b as u32));
+                self.records.transform([s_n, s_b], [0, 0], [1, added_b]);
+            }
         }
 
         ////////// Range management
@@ -826,12 +828,6 @@ impl std::fmt::Debug for TagOrSkip {
             TagOrSkip::Tag(tag) => write!(f, "Tag({:?})", tag),
             TagOrSkip::Skip(amount) => write!(f, "Skip({amount})"),
         }
-    }
-}
-
-impl Default for Tags {
-    fn default() -> Self {
-        Self::new(0)
     }
 }
 

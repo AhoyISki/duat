@@ -124,7 +124,7 @@ impl Builder {
             self.last_was_empty = false;
             let end = self.text.len();
             self.text
-                .replace_range_inner(Change::str_insert(&self.buffer, end))
+                .apply_change_inner(Change::str_insert(&self.buffer, end))
         }
     }
 
@@ -172,7 +172,8 @@ impl Builder {
     /// Pushes [`Text`] directly
     pub(crate) fn push_text(&mut self, mut text: Text) {
         if text.0.forced_new_line {
-            text.replace_range(text.len().byte() - 1.., "");
+            let change = Change::remove_nl(text.last_point().unwrap());
+            text.apply_change_inner(change);
             text.0.forced_new_line = false;
         }
         self.last_was_empty = text.is_empty();
@@ -200,7 +201,7 @@ impl Builder {
 impl Default for Builder {
     fn default() -> Self {
         Builder {
-            text: Text::default(),
+            text: Text::empty(),
             last_form: None,
             last_align: None,
             buffer: String::with_capacity(50),

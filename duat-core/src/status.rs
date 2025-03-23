@@ -229,4 +229,3 @@ pub fn cur_map_fmt() -> DataMap<(Vec<KeyEvent>, bool), Text> {
         }
     })
 }
-

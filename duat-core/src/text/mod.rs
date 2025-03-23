@@ -114,10 +114,8 @@ use crate::{
 };
 
 /// The text in a given [`Area`]
-#[derive(Default)]
 pub struct Text(Box<InnerText>);
 
-#[derive(Default)]
 struct InnerText {
     bytes: Bytes,
     tags: Tags,
@@ -193,6 +191,20 @@ impl Text {
             forced_new_line,
             has_changed: false,
             has_unsaved_changes: AtomicBool::new(false),
+        }))
+    }
+
+    /// Returns an empty [`Text`], only for [`Builder`]s
+    fn empty() -> Self {
+        Self(Box::new(InnerText {
+            bytes: Bytes::default(),
+            tags: Tags::new(0),
+            cursors: None,
+            history: None,
+            readers: Readers::default(),
+            has_changed: false,
+            has_unsaved_changes: AtomicBool::new(false),
+            forced_new_line: false,
         }))
     }
 
@@ -495,10 +507,10 @@ impl Text {
     pub fn replace_range(&mut self, range: impl TextRange, edit: impl ToString) {
         let range = range.to_range_at(self.len().byte());
         let (start, end) = (self.point_at(range.start), self.point_at(range.end));
-        let change = Change::new(edit, (start, end), self);
+        let change = Change::new(edit, [start, end], self);
 
         self.0.has_changed = true;
-        self.replace_range_inner(change.as_ref());
+        self.apply_change_inner(change.as_ref());
         self.0.history.as_mut().map(|h| h.add_change(None, change));
     }
 
@@ -508,7 +520,7 @@ impl Text {
         change: Change<String>,
     ) -> Option<usize> {
         self.0.has_changed = true;
-        self.replace_range_inner(change.as_ref());
+        self.apply_change_inner(change.as_ref());
         self.0
             .history
             .as_mut()
@@ -517,7 +529,7 @@ impl Text {
 
     /// Merges `String`s with the body of text, given a range to
     /// replace
-    fn replace_range_inner(&mut self, change: Change<&str>) {
+    fn apply_change_inner(&mut self, change: Change<&str>) {
         self.0.bytes.apply_change(change);
         self.0.tags.transform(
             change.start().byte()..change.taken_end().byte(),
@@ -584,15 +596,28 @@ impl Text {
     }
 
     pub fn apply_and_process_changes(&mut self, changes: Vec<Change<&str>>) {
-        for (i, change) in changes.iter().enumerate() {
-            let start = change.start();
-            self.replace_range_inner(*change);
+        let mut cursors = self.0.cursors.take();
+        if let Some(cursors) = cursors.as_mut() {
+            cursors.clear();
+        }
 
-            if let Some(cursors) = self.0.cursors.as_mut() {
-                cursors.insert_from_parts(i, start, change.added_end());
+        for (i, change) in changes.iter().enumerate() {
+            self.apply_change_inner(*change);
+
+            if let Some(cursors) = cursors.as_mut() {
+                let start = change.start();
+                let added_end = match change.added_text().chars().next_back() {
+                    Some(last) => change.added_end().rev(last),
+                    None => change.start(),
+                };
+
+                let anchor = (start != added_end).then_some(start);
+                let cursor = Cursor::new(added_end, anchor, self);
+                cursors.insert(i, i == changes.len() - 1, cursor);
             }
         }
 
+        self.0.cursors = cursors;
         self.0.readers.process_changes(&mut self.0.bytes, &changes);
     }
 
@@ -718,7 +743,7 @@ impl Text {
             let (start, _) = area.first_points(self, cfg);
             let (end, _) = area.last_points(self, cfg);
             for (cursor, is_main) in cursors.iter() {
-                let range = cursor.range();
+                let range = cursor.range(self);
                 if range.end > start.byte() && range.start < end.byte() {
                     self.add_cursor(cursor, is_main);
                 }
@@ -743,7 +768,7 @@ impl Text {
             let (start, _) = area.first_points(self, cfg);
             let (end, _) = area.last_points(self, cfg);
             for (cursor, _) in cursors.iter() {
-                let range = cursor.range();
+                let range = cursor.range(self);
                 if range.end > start.byte() && range.start < end.byte() {
                     self.remove_cursor(cursor);
                 }
@@ -761,13 +786,11 @@ impl Text {
 
     /// Adds a [`Cursor`] to the [`Text`]
     fn add_cursor(&mut self, cursor: &Cursor, is_main: bool) {
-        let (start, end) = cursor.point_range();
-        let no_selection = if start == end { 1 } else { 3 };
-
-        let tags = cursor_tags(is_main)
+        let (caret, selection) = cursor.tag_points(self);
+        let tags_and_points = cursor_tags(is_main)
             .into_iter()
-            .zip([cursor.caret(), end, start]);
-        for (tag, p) in tags.take(no_selection) {
+            .zip([caret].into_iter().chain(selection.into_iter().flatten()));
+        for (tag, p) in tags_and_points {
             self.0.bytes.add_record([p.byte(), p.char(), p.line()]);
             self.0.tags.insert(p.byte(), tag, Key::for_cursors());
         }
@@ -775,10 +798,11 @@ impl Text {
 
     /// Removes a [`Cursor`] from the [`Text`]
     fn remove_cursor(&mut self, cursor: &Cursor) {
-        let (start, end) = cursor.point_range();
-        let skip = if start == end { 1 } else { 0 };
-
-        for p in [start, end].into_iter().skip(skip) {
+        let (caret, selection) = cursor.tag_points(self);
+        let points = [caret]
+            .into_iter()
+            .chain(selection.into_iter().flatten().filter(|p| *p != caret));
+        for p in points {
             self.0.tags.remove_at(p.byte(), Key::for_cursors());
         }
     }
@@ -905,6 +929,12 @@ impl Text {
     }
 }
 
+impl Default for Text {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl std::fmt::Debug for Text {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Text")
@@ -1016,9 +1046,9 @@ fn cursor_tags(is_main: bool) -> [Tag; 3] {
     use crate::form::{E_SEL_ID, M_SEL_ID};
 
     if is_main {
-        [MainCursor, PopForm(M_SEL_ID), PushForm(M_SEL_ID)]
+        [MainCursor, PushForm(M_SEL_ID), PopForm(M_SEL_ID)]
     } else {
-        [ExtraCursor, PopForm(E_SEL_ID), PushForm(E_SEL_ID)]
+        [ExtraCursor, PushForm(E_SEL_ID), PopForm(E_SEL_ID)]
     }
 }
 
