@@ -255,7 +255,7 @@ impl Reader for TsParser {
 
         cursor.set_byte_range(start..end);
         let query_captures = cursor.captures(hi_query, self.tree.root_node(), buf);
-        highlight_captures(tags, query_captures, &self.forms);
+        highlight_captures(tags, query_captures, self.forms);
     }
 
     fn public_reader<'a>(&'a mut self, bytes: &'a mut Bytes) -> Self::PublicReader<'a> {
@@ -582,8 +582,8 @@ fn ts_point_from(to: Point, (col, from): (usize, Point), str: &str) -> TSPoint {
 fn forms_from_query(([lang, ..], _, [query, ..]): &LangParts<'static>) -> FormParts<'static> {
     #[rustfmt::skip]
     const PRECEDENCES: &[&str] = &[
-        "variable", "constant", "module", "label", "string", "character", "boolean", "number",
-        "type", "attribute", "property", "constructor", "operator", "keyword", "punctuation",
+        "variable", "module", "label", "string", "character", "boolean", "number", "type",
+        "constant", "attribute", "property", "constructor", "operator", "keyword", "punctuation",
         "comment", "markup"
     ];
     static LISTS: LazyLock<Mutex<HashMap<&str, FormParts<'static>>>> =
