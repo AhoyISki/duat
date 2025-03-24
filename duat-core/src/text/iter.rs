@@ -186,7 +186,8 @@ impl<'a> FwdIter<'a> {
                 *self = FwdIter::new_at(self.text, point);
                 return false;
             }
-            RawTag::MainCursor(_) | RawTag::ExtraCursor(_) if b < self.init_point.byte() => {}
+            RawTag::MainCursor(_) | RawTag::ExtraCursor(_) | RawTag::Spacer(_)
+                if b < self.init_point.byte() => {}
             _ => return false,
         }
 
@@ -348,7 +349,8 @@ impl<'a> RevIter<'a> {
                 *self = RevIter::new_at(self.text, point);
                 return false;
             }
-            RawTag::MainCursor(_) | RawTag::ExtraCursor(_) if b > self.init_point.byte() => {}
+            RawTag::MainCursor(_) | RawTag::ExtraCursor(_) | RawTag::Spacer(_)
+                if b > self.init_point.byte() => {}
             _ => return false,
         }
 

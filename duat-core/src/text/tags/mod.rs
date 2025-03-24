@@ -61,7 +61,7 @@ impl Tags {
             texts: HashMap::new(),
             toggles: HashMap::new(),
             range_min: MIN_CHARS_TO_KEEP,
-            records: Records::with_max([1 * (len != 0) as usize, len]),
+            records: Records::with_max([(len != 0) as usize, len]),
             ranges_to_update: Vec::new(),
         }
     }

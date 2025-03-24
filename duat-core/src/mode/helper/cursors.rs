@@ -210,7 +210,7 @@ impl Default for Cursors {
 }
 
 mod cursor {
-    use std::{cell::Cell, ops::Range};
+    use std::{cell::Cell, cmp::Ordering, ops::Range};
 
     use serde::{Deserialize, Serialize};
 
@@ -514,13 +514,13 @@ mod cursor {
         pub(crate) fn tag_points(&self, text: &Text) -> (Point, Option<[Point; 2]>) {
             let caret = self.caret();
             if let Some(anchor) = self.anchor() {
-                if anchor < caret {
-                    (caret, Some([anchor, caret]))
-                } else if anchor == caret {
-                    (caret, None)
-                } else {
-                    let end = anchor.fwd(text.char_at(anchor).unwrap());
-                    (caret, Some([caret, end]))
+                match anchor.cmp(&caret) {
+                    Ordering::Less => (caret, Some([anchor, caret])),
+                    Ordering::Equal => (caret, None),
+                    Ordering::Greater => {
+                        let end = anchor.fwd(text.char_at(anchor).unwrap());
+                        (caret, Some([caret, end]))
+                    }
                 }
             } else {
                 (caret, None)
@@ -625,13 +625,13 @@ mod cursor {
     }
 
     impl PartialOrd for LazyVPoint {
-        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
             Some(self.point().cmp(&other.point()))
         }
     }
 
     impl Ord for LazyVPoint {
-        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        fn cmp(&self, other: &Self) -> Ordering {
             self.partial_cmp(other).unwrap()
         }
     }
@@ -727,13 +727,13 @@ mod cursor {
     }
 
     impl PartialOrd for VPoint {
-        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
             Some(self.p.cmp(&other.p))
         }
     }
 
     impl Ord for VPoint {
-        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        fn cmp(&self, other: &Self) -> Ordering {
             self.partial_cmp(other).unwrap()
         }
     }

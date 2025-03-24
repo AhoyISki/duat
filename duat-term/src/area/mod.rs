@@ -15,6 +15,7 @@ use iter::{print_iter, print_iter_indented, rev_print_iter};
 use crate::{
     AreaId, Mutex,
     layout::{Layout, Rect, transfer_vars},
+    print::Gaps,
     queue, style,
 };
 
@@ -627,11 +628,11 @@ fn scroll_ver_around(
 
 /// Scrolls the file horizontally, usually when no wrapping is
 /// being used.
-fn scroll_hor_around(info: &mut PrintInfo, width: u32, point: Point, text: &Text, cfg: PrintCfg) {
+fn scroll_hor_around(info: &mut PrintInfo, width: u32, p: Point, text: &Text, cfg: PrintCfg) {
     let cap = cfg.wrap_width(width);
 
     let (max_shift, start, end) = {
-        let points = text.ghost_max_points_at(point.byte());
+        let points = text.ghost_max_points_at(p.byte());
         let after = text.points_after(points).unwrap_or(text.len_points());
 
         let mut iter = rev_print_iter(text.iter_rev(after), cap, cfg);
@@ -643,8 +644,8 @@ fn scroll_hor_around(info: &mut PrintInfo, width: u32, point: Point, text: &Text
             })
             .unwrap_or(((Point::default(), None), 0, 0, true));
 
-        let (line_len, align) = {
-            let mut align = Alignment::Left;
+        let (line_len, gaps) = {
+            let mut gaps = Gaps::OnRight;
             let (indent, points) = if wrap {
                 (start, points)
             } else {
@@ -653,10 +654,11 @@ fn scroll_hor_around(info: &mut PrintInfo, width: u32, point: Point, text: &Text
             };
 
             let len = print_iter_indented(text.iter_fwd(points), cap, cfg, indent)
-                .inspect(|(_, Item { part, .. })| match part {
-                    Part::AlignLeft => align = Alignment::Left,
-                    Part::AlignCenter => align = Alignment::Center,
-                    Part::AlignRight => align = Alignment::Right,
+                .inspect(|(_, Item { part, real, .. })| match part {
+                    Part::AlignLeft => gaps = Gaps::OnRight,
+                    Part::AlignCenter => gaps = Gaps::OnSides,
+                    Part::AlignRight => gaps = Gaps::OnLeft,
+                    Part::Spacer => gaps.add_spacer(real.byte()),
                     _ => {}
                 })
                 .take_while(|(caret, item)| !caret.wrap || item.points() == points)
@@ -664,13 +666,21 @@ fn scroll_hor_around(info: &mut PrintInfo, width: u32, point: Point, text: &Text
                 .map(|(Caret { x, len, .. }, _)| x + len)
                 .unwrap_or(0);
 
-            (len, align)
+            (len, gaps)
         };
 
-        let diff = match align {
-            Alignment::Left => 0,
-            Alignment::Right => cap - line_len,
-            Alignment::Center => (cap - line_len) / 2,
+        let diff = match &gaps {
+            Gaps::OnRight => 0,
+            Gaps::OnLeft => cap - line_len,
+            Gaps::OnSides => (cap - line_len) / 2,
+            Gaps::Spacers(bytes) => {
+                let spaces = gaps.get_spaces(cap - line_len);
+                bytes
+                    .iter()
+                    .take_while(|b| **b <= p.byte())
+                    .zip(spaces)
+                    .fold(0, |prev_len, (_, len)| prev_len + len)
+            }
         };
 
         (line_len + diff, start + diff, end + diff)

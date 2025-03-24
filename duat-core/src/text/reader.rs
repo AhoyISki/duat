@@ -144,6 +144,12 @@ impl MutTags<'_> {
     }
 }
 
+impl<'a> std::fmt::Debug for MutTags<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 #[derive(Default)]
 pub struct Readers(Vec<(Box<dyn Reader>, Vec<Range<usize>>, TypeId)>);
 

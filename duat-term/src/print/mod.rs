@@ -240,8 +240,8 @@ impl Printer {
             line: Vec::new(),
             len: 0,
             positions: Vec::new(),
-            gaps: Gaps::Left,
-            default_gaps: Gaps::Left,
+            gaps: Gaps::OnRight,
+            default_gaps: Gaps::OnRight,
 
             shift,
             cap,
@@ -583,7 +583,7 @@ pub struct Lines {
     real_cursor: Option<bool>,
 
     // Temporary things
-    line: Vec<u8>,
+    pub line: Vec<u8>,
     len: u32,
     positions: Vec<(usize, u32)>,
     gaps: Gaps,
@@ -604,21 +604,18 @@ impl Lines {
     }
 
     pub fn realign(&mut self, alignment: Alignment) {
-        self.gaps = match alignment {
-            Alignment::Left => Gaps::Left,
-            Alignment::Right => Gaps::Right,
-            Alignment::Center => Gaps::Center,
+        self.default_gaps = match alignment {
+            Alignment::Left => Gaps::OnRight,
+            Alignment::Right => Gaps::OnLeft,
+            Alignment::Center => Gaps::OnSides,
         };
-        self.default_gaps = self.gaps.clone();
+        if let Gaps::OnRight | Gaps::OnLeft | Gaps::OnSides = self.gaps {
+            self.gaps = self.default_gaps.clone();
+        }
     }
 
     pub fn add_spacer(&mut self) {
-        match &mut self.gaps {
-            Gaps::Left | Gaps::Right | Gaps::Center => {
-                self.gaps = Gaps::Spacers(vec![self.line.len()])
-            }
-            Gaps::Spacers(items) => items.push(self.line.len()),
-        };
+        self.gaps.add_spacer(self.line.len());
     }
 
     pub fn show_real_cursor(&mut self) {
@@ -652,46 +649,47 @@ impl Lines {
         let mut default_form = painter.get_default();
         default_form.style.attributes.set(Attribute::Reset);
 
-        let spacers = if let Gaps::Spacers(bytes) = &self.gaps {
-            let mut sps_len = self.cap - self.len;
-            while sps_len % bytes.len() as u32 > 0 {
-                sps_len += 1;
-            }
-            let diff = sps_len - (self.cap - self.len);
-            (0..bytes.len() as u32)
-                .map(|i| (sps_len / bytes.len() as u32) - (i < diff) as u32)
-                .collect()
-        } else {
-            Vec::new()
-        };
+        let spaces = self.gaps.get_spaces(self.cap - self.len);
 
         let (start_i, start_d) = {
             let mut dist = match &self.gaps {
-                Gaps::Left => 0,
-                Gaps::Right => self.cap - self.len,
-                Gaps::Center => (self.cap - self.len) / 2,
-                Gaps::Spacers(bytes) => spacers[0] * (bytes[0] == 0) as u32,
+                Gaps::OnRight | Gaps::Spacers(_) => 0,
+                Gaps::OnLeft => self.cap - self.len,
+                Gaps::OnSides => (self.cap - self.len) / 2,
             };
 
-            let Some(&(start, len)) = self.positions.iter().find(|(_, len)| {
-                dist += len;
-                dist > self.shift
-                // Situation where the line is empty, from having no
-                // characters or from being shifted out of sight.
-            }) else {
+            // Using a different loop when there are no spacers in order to
+            // improve efficiency.
+            let found_start = if let Gaps::Spacers(bytes) = &self.gaps {
+                let mut sb = spaces.iter().zip(bytes).peekable();
+                self.positions.iter().find(|(b, len)| {
+                    dist += len;
+                    if let Some((space, _)) = sb.next_if(|(_, lhs)| *lhs <= b) {
+                        dist += space;
+                    }
+                    dist > self.shift
+                })
+            } else {
+                self.positions.iter().find(|(_, len)| {
+                    dist += len;
+                    dist > self.shift
+                })
+            };
+
+            // Situation where the line is empty, from having no characters or
+            // from being shifted out of sight.
+            let Some(&(start, len)) = found_start else {
                 style!(self.bytes, default_form.style);
                 self.bytes
                     .extend_from_slice(&BLANK[..self.coords.width() as usize]);
                 self.cutoffs.push(self.bytes.len());
 
-                self.line.clear();
-                self.positions.clear();
-                self.len = 0;
+                self.reset_line();
                 return;
             };
 
             // If the character is cut by the start, don't print it.
-            if dist - len < self.shift {
+            if dist - len < self.shift && len <= 2 {
                 let str = unsafe { std::str::from_utf8_unchecked(&self.line[start..]) };
                 let char = str.chars().next().unwrap();
                 (start + char.len_utf8(), dist - self.shift)
@@ -702,30 +700,37 @@ impl Lines {
 
         let (end_i, end_d) = {
             let mut dist = match &self.gaps {
-                Gaps::Left => self.len,
-                Gaps::Right => self.cap,
-                Gaps::Center => self.len + (self.cap - self.len) / 2,
-                Gaps::Spacers(bytes) => {
-                    let last = *spacers.last().unwrap();
-                    self.cap - last * (*bytes.last().unwrap() == self.line.len()) as u32
-                }
+                Gaps::OnRight => self.len,
+                Gaps::OnLeft | Gaps::Spacers(_) => self.cap,
+                Gaps::OnSides => self.len + (self.cap - self.len) / 2,
+            };
+            let found_end = if let Gaps::Spacers(bytes) = &self.gaps {
+                let mut sb = spaces.iter().zip(bytes).rev().peekable();
+                self.positions.iter().rev().find(|(b, len)| {
+                    dist -= len;
+                    if let Some((space, _)) = sb.next_if(|(_, lhs)| *lhs > b) {
+                        dist -= space;
+                    }
+                    dist < self.shift + self.coords.width()
+                })
+            } else {
+                self.positions.iter().rev().find(|(_, len)| {
+                    dist -= len;
+                    dist < self.shift + self.coords.width()
+                })
             };
 
-            let Some(&(end, len)) = self.positions.iter().rev().find(|(_, len)| {
-                dist -= len;
-                dist < self.shift + self.coords.width()
-            }) else {
+            // Due to spacers in the middle of the line, end_i might actually be
+            // smaller than start_i.
+            let Some(&(end, len)) = found_end.filter(|(end_i, _)| *end_i >= start_i) else {
                 style!(self.bytes, default_form.style);
                 self.bytes
                     .extend_from_slice(&BLANK[..self.coords.width() as usize]);
                 self.cutoffs.push(self.bytes.len());
 
-                self.line.clear();
-                self.positions.clear();
-                self.len = 0;
+                self.reset_line();
                 return;
             };
-
             // If the character is cut by the end, don't print it.
             if dist + len > self.shift + self.coords.width() {
                 (end, dist - self.shift)
@@ -744,9 +749,9 @@ impl Lines {
         if let Gaps::Spacers(bytes) = &mut self.gaps {
             let spacers = bytes
                 .iter()
-                .zip(spacers)
+                .zip(spaces)
                 .skip_while(|(b, _)| **b <= start_i)
-                .take_while(|(b, _)| **b <= end_i);
+                .take_while(|(b, _)| **b < end_i);
 
             let mut start = start_i;
 
@@ -759,16 +764,32 @@ impl Lines {
             self.bytes.extend_from_slice(&self.line[start..end_i]);
         } else {
             self.bytes.extend_from_slice(&self.line[start_i..end_i]);
-
-            if self.coords.width() > end_d {
-                style!(self.bytes, default_form.style);
-                self.bytes
-                    .extend_from_slice(&BLANK[..(self.coords.width() - end_d) as usize]);
-            }
         }
 
-        self.cutoffs.push(self.bytes.len());
+        if self.coords.width() > end_d {
+            style!(self.bytes, default_form.style);
+        }
 
+        self.bytes
+            .extend_from_slice(&BLANK[..(self.coords.width() - end_d) as usize]);
+
+        self.cutoffs.push(self.bytes.len());
+        self.reset_line();
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.line.is_empty()
+    }
+
+    pub fn coords(&self) -> Coords {
+        self.coords
+    }
+
+    pub fn cap(&self) -> u32 {
+        self.cap
+    }
+
+    fn reset_line(&mut self) {
         self.line.clear();
         self.positions.clear();
         self.gaps = self.default_gaps.clone();
@@ -788,18 +809,6 @@ impl Lines {
                 self.bytes.push(b)
             }
         }
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.line.is_empty()
-    }
-
-    pub fn coords(&self) -> Coords {
-        self.coords
-    }
-
-    pub fn cap(&self) -> u32 {
-        self.cap
     }
 }
 
@@ -835,11 +844,37 @@ impl Write for Lines {
 }
 
 #[derive(Debug, Clone)]
-enum Gaps {
-    Left,
-    Right,
-    Center,
+pub enum Gaps {
+    OnRight,
+    OnLeft,
+    OnSides,
     Spacers(Vec<usize>),
+}
+
+impl Gaps {
+    /// Adds a [`Spacer`] to this [`Gaps`]
+    ///
+    /// [`Spacer`]: duat_core::text::Tag::Spacer
+    pub fn add_spacer(&mut self, byte: usize) {
+        match self {
+            Gaps::OnRight | Gaps::OnLeft | Gaps::OnSides => *self = Gaps::Spacers(vec![byte]),
+            Gaps::Spacers(items) => items.push(byte),
+        };
+    }
+
+    pub fn get_spaces(&self, space: u32) -> Vec<u32> {
+        let Self::Spacers(bytes) = self else {
+            return Vec::new();
+        };
+        let mut enough_space = space;
+        while enough_space % bytes.len() as u32 > 0 {
+            enough_space += 1;
+        }
+        let diff = enough_space - space;
+        (0..bytes.len() as u32)
+            .map(|i| (enough_space / bytes.len() as u32) - (i < diff) as u32)
+            .collect()
+    }
 }
 
 /// A point on the screen, which can be calculated by [`cassowary`]
