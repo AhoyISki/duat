@@ -51,12 +51,16 @@ impl Bytes {
     }
 
     /// The `char` at the [`Point`]'s position
-    pub fn char_at(&self, point: Point) -> Option<char> {
+    pub fn char_at(&self, p: Point) -> Option<char> {
+        if p.byte() >= self.len().byte() {
+            return None;
+        }
+
         let [s0, s1] = self.strs(..).to_array();
-        if point.byte() < s0.len() {
-            s0[point.byte()..].chars().next()
+        if p.byte() < s0.len() {
+            s0[p.byte()..].chars().next()
         } else {
-            s1[point.byte() - s0.len()..].chars().next()
+            s1[p.byte() - s0.len()..].chars().next()
         }
     }
 

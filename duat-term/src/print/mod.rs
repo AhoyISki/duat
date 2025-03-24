@@ -671,20 +671,20 @@ impl Lines {
                     }
                     self.bytes.extend(&self.line[start..self.line.len()]);
 
-                    self.to_next_line();
+                    self.go_to_next_line();
                     return;
                 }
             };
 
             self.bytes.extend_from_slice(&BLANK[..start_d as usize]);
             self.bytes.extend_from_slice(&self.line);
-            let end_d = start_d - self.len;
+            let end_d = start_d + self.len;
             if self.coords.width() > end_d {
                 style!(self.bytes, default_form.style);
                 self.bytes
                     .extend_from_slice(&BLANK[..(self.coords.width() - end_d) as usize])
             }
-            self.to_next_line();
+            self.go_to_next_line();
             return;
         }
 
@@ -720,7 +720,7 @@ impl Lines {
                 self.bytes
                     .extend_from_slice(&BLANK[..self.coords.width() as usize]);
 
-                self.to_next_line();
+                self.go_to_next_line();
                 return;
             };
 
@@ -763,7 +763,7 @@ impl Lines {
                 self.bytes
                     .extend_from_slice(&BLANK[..self.coords.width() as usize]);
 
-                self.to_next_line();
+                self.go_to_next_line();
                 return;
             };
             // If the character is cut by the end, don't print it.
@@ -807,7 +807,7 @@ impl Lines {
                 .extend_from_slice(&BLANK[..(self.coords.width() - end_d) as usize]);
         }
 
-        self.to_next_line();
+        self.go_to_next_line();
     }
 
     pub(crate) fn is_empty(&self) -> bool {
@@ -822,7 +822,7 @@ impl Lines {
         self.cap
     }
 
-    fn to_next_line(&mut self) {
+    fn go_to_next_line(&mut self) {
         self.cutoffs.push(self.bytes.len());
         self.line.clear();
         self.positions.clear();

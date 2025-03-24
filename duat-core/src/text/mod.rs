@@ -150,12 +150,20 @@ impl Text {
     ///
     /// [path]: Path
     pub(crate) fn from_file(
-        buf: Bytes,
+        bytes: Bytes,
         cursors: Cursors,
         path: impl AsRef<Path>,
         has_unsaved_changes: bool,
     ) -> Self {
-        let mut text = Self::from_bytes(buf, Some(cursors), true);
+        let cursors = if let Some(cursor) = cursors.get_main()
+            && let Some(_) = bytes.char_at(cursor.caret())
+        {
+            cursors
+        } else {
+            Cursors::default()
+        };
+
+        let mut text = Self::from_bytes(bytes, Some(cursors), true);
         text.0
             .has_unsaved_changes
             .store(has_unsaved_changes, Ordering::Relaxed);

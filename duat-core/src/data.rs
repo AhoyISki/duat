@@ -556,35 +556,49 @@ impl<T: ?Sized> Drop for WriteDataGuard<'_, T> {
     }
 }
 
-pub struct DataMap<I: ?Sized + Send + Sync + 'static, O> {
+pub struct DataMap<I: ?Sized + Send + 'static, O> {
     data: RwData<I>,
-    f: Box<dyn FnMut() -> O + Send + Sync>,
+    f: Box<dyn FnMut() -> O + Send>,
 }
 
-impl<I: ?Sized + Send + Sync + 'static, O> DataMap<I, O> {
+impl<I: ?Sized + Send + 'static, O> DataMap<I, O> {
     pub fn fns(
         self,
     ) -> (
-        Box<dyn FnMut() -> O + Send + Sync>,
+        Box<dyn FnMut() -> O + Send>,
         Box<dyn Fn() -> bool + Send + Sync>,
     ) {
         (self.f, Box::new(self.data.checker()))
     }
 }
 
-impl<I: ?Sized + Send + Sync + 'static, O: 'static> DataMap<I, O> {
-    pub fn map<O2>(mut self, mut f: impl FnMut(O) -> O2 + Send + Sync + 'static) -> DataMap<I, O2> {
+impl<I: ?Sized + Send + 'static, O> FnOnce<()> for DataMap<I, O> {
+    type Output = O;
+
+    extern "rust-call" fn call_once(mut self, _: ()) -> Self::Output {
+        (self.f)()
+    }
+}
+
+impl<I: ?Sized + Send + 'static, O> FnMut<()> for DataMap<I, O> {
+    extern "rust-call" fn call_mut(&mut self, _: ()) -> Self::Output {
+        (self.f)()
+    }
+}
+
+impl<I: ?Sized + Send + 'static> RwData<I> {
+    pub fn map<O>(&self, mut f: impl FnMut(&I) -> O + Send + 'static) -> DataMap<I, O> {
+        let data = self.clone();
+        let f = move || f(&*data.read());
+        DataMap { data: self.clone(), f: Box::new(f) }
+    }
+}
+
+impl<I: ?Sized + Send + 'static, O: 'static> DataMap<I, O> {
+    pub fn map<O2>(mut self, mut f: impl FnMut(O) -> O2 + Send + 'static) -> DataMap<I, O2> {
         DataMap {
             data: self.data,
             f: Box::new(move || f((self.f)())),
         }
-    }
-}
-
-impl<I: ?Sized + Send + Sync + 'static> RwData<I> {
-    pub fn map<O>(&self, mut f: impl FnMut(&I) -> O + Send + Sync + 'static) -> DataMap<I, O> {
-        let data = self.clone();
-        let f = move || f(&*data.read());
-        DataMap { data: self.clone(), f: Box::new(f) }
     }
 }

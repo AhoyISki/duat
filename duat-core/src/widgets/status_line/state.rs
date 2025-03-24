@@ -27,7 +27,7 @@ use crate::{
 
 /// A struct that reads state in order to return [`Text`].
 enum Appender<W, U: Ui> {
-    NoArgs(Box<dyn FnMut() -> Append + Send + Sync + 'static>),
+    NoArgs(Box<dyn FnMut() -> Append + Send + 'static>),
     FromWidget(WidgetAreaFn<W, U>),
     Str(String),
     Text(Text),
@@ -74,7 +74,7 @@ impl<W: 'static, Dummy, U: Ui> State<W, Dummy, U> {
     }
 }
 
-impl<D: Display + Send + Sync, U: Ui> From<D> for State<(), String, U> {
+impl<D: Display + Send , U: Ui> From<D> for State<(), String, U> {
     fn from(value: D) -> Self {
         Self {
             appender: Appender::Str::<(), U>(value.to_string()),
@@ -94,7 +94,7 @@ impl<U: Ui> From<Text> for State<(), Text, U> {
     }
 }
 
-impl<D: Display + Send + Sync, U: Ui> From<RwData<D>> for State<(), DataArg<String>, U> {
+impl<D: Display + Send, U: Ui> From<RwData<D>> for State<(), DataArg<String>, U> {
     fn from(value: RwData<D>) -> Self {
         Self {
             appender: Appender::NoArgs::<(), U>({
@@ -123,7 +123,7 @@ impl<U: Ui> From<RwData<Text>> for State<(), DataArg<Text>, U> {
 impl<U, I, O> From<DataMap<I, O>> for State<(), DataArg<String>, U>
 where
     U: Ui,
-    I: ?Sized + Send + Sync,
+    I: ?Sized + Send,
     O: Display + 'static,
 {
     fn from(value: DataMap<I, O>) -> Self {
@@ -136,11 +136,7 @@ where
     }
 }
 
-impl<U, I> From<DataMap<I, Text>> for State<(), DataArg<Text>, U>
-where
-    U: Ui,
-    I: ?Sized + Send + Sync,
-{
+impl<U: Ui, I: ?Sized + Send> From<DataMap<I, Text>> for State<(), DataArg<Text>, U> {
     fn from(value: DataMap<I, Text>) -> Self {
         let (mut reader, checker) = value.fns();
         let reader = move || Append::Text(reader());
@@ -156,7 +152,7 @@ impl<U, F, I, O> From<F> for State<(), IntoDataArg<String>, U>
 where
     U: Ui,
     F: FnOnce() -> DataMap<I, O>,
-    I: ?Sized + Send + Sync + 'static,
+    I: ?Sized + Send + 'static,
     O: Display + 'static,
 {
     fn from(value: F) -> Self {
@@ -173,7 +169,7 @@ impl<U, F, I> From<F> for State<(), IntoDataArg<Text>, U>
 where
     U: Ui,
     F: FnOnce() -> DataMap<I, Text>,
-    I: ?Sized + Send + Sync + 'static,
+    I: ?Sized + Send + 'static,
 {
     fn from(value: F) -> Self {
         let (mut reader, checker) = value().fns();
@@ -189,7 +185,7 @@ where
 impl<D, Reader, Checker, U> From<(Reader, Checker)> for State<(), NoArg<String>, U>
 where
     D: Display,
-    Reader: Fn() -> D + Send + Sync + 'static,
+    Reader: Fn() -> D + Send + 'static,
     Checker: Fn() -> bool + Send + Sync + 'static,
     U: Ui,
 {
@@ -205,7 +201,7 @@ where
 
 impl<Reader, Checker, U> From<(Reader, Checker)> for State<(), NoArg<Text>, U>
 where
-    Reader: Fn() -> Text + Send + Sync + 'static,
+    Reader: Fn() -> Text + Send + 'static,
     Checker: Fn() -> bool + Send + Sync + 'static,
     U: Ui,
 {
@@ -241,7 +237,7 @@ where
 impl<W, ReadFn, U> From<ReadFn> for State<W, WidgetArg<Text>, U>
 where
     W: Widget<U> + Sized,
-    ReadFn: Fn(&W) -> Text + Send + Sync + 'static,
+    ReadFn: Fn(&W) -> Text + Send + 'static,
     U: Ui,
 {
     fn from(reader: ReadFn) -> Self {
@@ -276,7 +272,7 @@ where
 impl<W, ReadFn, U> From<ReadFn> for State<W, WidgetAreaArg<Text>, U>
 where
     W: Widget<U> + Sized,
-    ReadFn: Fn(&W, &U::Area) -> Text + Send + Sync + 'static,
+    ReadFn: Fn(&W, &U::Area) -> Text + Send + 'static,
     U: Ui,
 {
     fn from(reader: ReadFn) -> Self {

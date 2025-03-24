@@ -15,16 +15,14 @@
 //! [data]: crate::data
 mod state;
 
-use std::fmt::Alignment;
-
 pub use self::state::State;
 use crate::{
     cfg::PrintCfg,
     context::{self, DynamicFile, FixedFile},
     form::{self, Form},
-    status::{file_fmt, main_fmt, mode_fmt, selections_fmt},
-    text::{AlignCenter, AlignLeft, Builder, Text, text},
-    ui::{PushSpecs, Ui},
+    status::{file_fmt, main_fmt, mode_fmt, mode_name, selections_fmt},
+    text::{AlignRight, Builder, Spacer, Text, text},
+    ui::{PushSpecs, Side, Ui},
     widgets::{Widget, WidgetCfg},
 };
 
@@ -125,10 +123,9 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
 
 #[doc(hidden)]
 pub struct StatusLineCfg<U: Ui> {
-    pre_fn: Box<dyn FnMut(crate::text::Builder, &mut Reader<U>) -> Text + Send>,
-    checker: Box<dyn Fn() -> bool + Send + Sync>,
+    pre_fn: Option<Box<dyn FnMut(crate::text::Builder, &mut Reader<U>) -> Text + Send>>,
+    checker: Option<Box<dyn Fn() -> bool + Send + Sync>>,
     specs: PushSpecs,
-    alignment: Alignment,
 }
 
 impl<U: Ui> StatusLineCfg<U> {
@@ -141,10 +138,9 @@ impl<U: Ui> StatusLineCfg<U> {
         specs: PushSpecs,
     ) -> Self {
         Self {
-            pre_fn,
-            checker,
+            pre_fn: Some(pre_fn),
+            checker: Some(checker),
             specs,
-            alignment: Alignment::Right,
         }
     }
 
@@ -155,52 +151,52 @@ impl<U: Ui> StatusLineCfg<U> {
         }
     }
 
-    pub fn align_left(self) -> Self {
-        Self { alignment: Alignment::Left, ..self }
-    }
-
-    pub fn push_left(self) -> Self {
-        Self {
-            alignment: Alignment::Left,
-            specs: self.specs.to_left(),
-            ..self
-        }
-    }
-
-    pub fn push_left_centered(self) -> Self {
-        Self {
-            alignment: Alignment::Center,
-            specs: self.specs.to_left(),
-            ..self
-        }
+    pub fn on_the_right(self) -> Self {
+        Self { specs: self.specs.to_right(), ..self }
     }
 }
 
 impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
     type Widget = StatusLine<U>;
 
-    fn build(mut self, on_file: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
+    fn build(self, on_file: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
         let (reader, checker) = {
             let reader = match on_file {
                 true => Reader::Fixed(context::fixed_file().unwrap()),
                 false => Reader::Dynamic(context::dyn_file().unwrap()),
             };
-            let checker = reader.checker();
-            (reader, move || checker() || (self.checker)())
+            let file_checker = reader.checker();
+            let checker = match self.checker {
+                Some(checker) => checker,
+                // mode checker because mode_name is used in the default
+                None => Box::new(crate::status::mode_name().checker()),
+            };
+            (reader, move || file_checker() || checker())
         };
 
-        let text_fn: TextFn<U> = match self.alignment {
-            Alignment::Left => Box::new(move |reader| (self.pre_fn)(Text::builder(), reader)),
-            Alignment::Right => Box::new(move |file| {
-                let mut builder = Text::builder();
-                text!(builder, AlignLeft);
-                (self.pre_fn)(builder, file)
-            }),
-            Alignment::Center => Box::new(move |file| {
-                let mut builder = Text::builder();
-                text!(builder, AlignCenter);
-                (self.pre_fn)(builder, file)
-            }),
+        let text_fn: TextFn<U> = match self.pre_fn {
+            Some(mut pre_fn) => Box::new(move |reader| pre_fn(Text::builder(), reader)),
+            None => {
+                let cfg = match self.specs.side() {
+                    Side::Above | Side::Below => {
+                        let mode_upper_fmt = mode_name().map(|mode| {
+                            let mode = match mode.split_once('<') {
+                                Some((mode, _)) => mode,
+                                None => mode,
+                            };
+                            text!([Mode] { mode.to_uppercase() })
+                        });
+                        status!(mode_upper_fmt Spacer file_fmt " " selections_fmt " " main_fmt)
+                    }
+                    Side::Right => {
+                        status!(AlignRight file_fmt " " mode_fmt " " selections_fmt " " main_fmt)
+                    }
+                    Side::Left => unreachable!(),
+                };
+
+                let mut pre_fn = cfg.pre_fn.unwrap();
+                Box::new(move |reader| pre_fn(Text::builder(), reader))
+            }
         };
 
         let widget = StatusLine { reader, text_fn, text: Text::default() };

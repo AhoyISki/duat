@@ -48,7 +48,8 @@ mod global {
     static WILL_RELOAD_OR_QUIT: AtomicBool = AtomicBool::new(false);
     static CUR_DIR: OnceLock<Mutex<PathBuf>> = OnceLock::new();
 
-    pub fn mode_name() -> &'static RwData<&'static str> {
+    // pub(crate) in order to keep just the status one public
+    pub(crate) fn mode_name() -> &'static RwData<&'static str> {
         &MODE_NAME
     }
 
