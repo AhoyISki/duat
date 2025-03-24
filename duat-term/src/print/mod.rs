@@ -669,7 +669,7 @@ impl Lines {
                         self.bytes.extend(&BLANK[..len as usize]);
                         start = end
                     }
-                    self.bytes.extend(&BLANK[start..self.line.len()]);
+                    self.bytes.extend(&self.line[start..self.line.len()]);
 
                     self.to_next_line();
                     return;
