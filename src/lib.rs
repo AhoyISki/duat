@@ -255,7 +255,7 @@ impl Reader for TsParser {
 
         cursor.set_byte_range(start..end);
         let query_captures = cursor.captures(hi_query, self.tree.root_node(), buf);
-        highlight_captures(&mut tags, query_captures, &self.forms);
+        highlight_captures(tags, query_captures, &self.forms);
     }
 
     fn public_reader<'a>(&'a mut self, bytes: &'a mut Bytes) -> Self::PublicReader<'a> {
@@ -281,7 +281,7 @@ impl TsParserCfg {
 impl ReaderCfg for TsParserCfg {
     type Reader = TsParser;
 
-    fn init(self, bytes: &mut Bytes, mut tags: MutTags) -> Result<Self::Reader, Text> {
+    fn init(self, bytes: &mut Bytes, tags: MutTags) -> Result<Self::Reader, Text> {
         let (_, lang, [hi_query, _]) = &self.lang_parts;
 
         let mut parser = Parser::new();
@@ -294,9 +294,7 @@ impl ReaderCfg for TsParserCfg {
         let buf = TsBuf(bytes);
 
         let query_captures = cursor.captures(hi_query, tree.root_node(), buf);
-        highlight_captures(&mut tags, query_captures, &self.forms);
-
-        duat_core::log_file!("{tags:#?}");
+        highlight_captures(tags, query_captures, self.forms);
 
         Ok(TsParser {
             parser,
@@ -619,7 +617,7 @@ fn forms_from_query(([lang, ..], _, [query, ..]): &LangParts<'static>) -> FormPa
 }
 
 fn highlight_captures<'a>(
-    tags: &mut MutTags,
+    mut tags: MutTags,
     mut query_captures: QueryCaptures<TsBuf<'a>, &'a [u8]>,
     forms: &[(FormId, Key, Key, usize)],
 ) {
