@@ -579,7 +579,7 @@ fn ts_point_from(to: Point, (col, from): (usize, Point), str: &str) -> TSPoint {
     TSPoint::new(to.line(), col)
 }
 
-fn forms_from_query(([lang, ..], _, [query, ..]): &LangParts<'static>) -> FormParts<'static> {
+fn forms_from_query(([_, lang, _], _, [query, ..]): &LangParts<'static>) -> FormParts<'static> {
     #[rustfmt::skip]
     const PRECEDENCES: &[&str] = &[
         "variable", "module", "label", "string", "character", "boolean", "number", "type",
@@ -604,7 +604,11 @@ fn forms_from_query(([lang, ..], _, [query, ..]): &LangParts<'static>) -> FormPa
         let keys = Key::new_many(capture_names.len() * 2);
 
         let mut iter_keys = keys.clone();
-        let ids = form::ids_of_non_static(capture_names);
+        let ids = form::ids_of_non_static(
+            capture_names
+                .iter()
+                .map(|name| name.to_string() + "." + lang),
+        );
         let forms: Vec<(FormId, Key, Key, usize)> = ids
             .into_iter()
             .zip(precedences)
@@ -666,7 +670,7 @@ impl<'a> TextProvider<&'a [u8]> for TsBuf<'a> {
 struct TsBuf<'a>(&'a Bytes);
 
 fn lang_parts(path: impl AsRef<Path>) -> Option<LangParts<'static>> {
-    type InnerLangParts<'a> = ([&'a str; 2], &'a Language, [&'a str; 2]);
+    type InnerLangParts<'a> = ([&'a str; 3], &'a Language, [&'a str; 2]);
     static LANGUAGES: LazyLock<HashMap<&'static str, InnerLangParts>> = LazyLock::new(|| {
         macro l($lang:ident) {{
             let lang: &'static Language = Box::leak(Box::new($lang::LANGUAGE.into()));
@@ -692,62 +696,62 @@ fn lang_parts(path: impl AsRef<Path>) -> Option<LangParts<'static>> {
         let lang_xml = Box::leak(Box::new(ts_xml::LANGUAGE_XML.into()));
 
         let list = [
-            (["asm", "Assembly"], l!(ts_asm), h!(asm)),
-            (["c", "C"], l!(ts_c), h_i!(c)),
-            (["cc", "C++"], l!(ts_cpp), h_i!(cpp)),
-            (["cpp", "C++"], l!(ts_cpp), h_i!(cpp)),
-            (["cs", "C#"], l!(ts_c_sharp), h!(c_sharp)),
-            (["css", "CSS"], l!(ts_css), h_i!(css)),
-            (["cxx", "C++"], l!(ts_cpp), h_i!(cpp)),
-            (["dart", "Dart"], lf!(ts_dart), h_i!(dart)),
-            (["erl", "Erlang"], l!(ts_erlang), h!(erlang)),
-            (["ex", "Elixir"], l!(ts_elixir), h_i!(elixir)),
-            (["exs", "Elixir"], l!(ts_elixir), h_i!(elixir)),
-            (["for", "Fortran"], l!(ts_fortran), h_i!(fortran)),
-            (["fpp", "Fortran"], l!(ts_fortran), h_i!(fortran)),
-            (["gleam", "Gleam"], l!(ts_gleam), h_i!(gleam)),
-            (["go", "Go"], l!(ts_go), h_i!(go)),
-            (["groovy", "Groovy"], l!(ts_groovy), h_i!(groovy)),
-            (["gvy", "Groovy"], l!(ts_groovy), h_i!(groovy)),
-            (["h", "C"], l!(ts_c), h_i!(c)),
-            (["hpp", "C++"], l!(ts_cpp), h_i!(cpp)),
-            (["hrl", "Erlang"], l!(ts_erlang), h!(erlang)),
-            (["hs", "Haskell"], l!(ts_haskell), h!(haskell)),
-            (["hsc", "Haskell"], l!(ts_haskell), h!(haskell)),
-            (["htm", "HTML"], l!(ts_html), h_i!(html)),
-            (["html", "HTML"], l!(ts_html), h_i!(html)),
-            (["hxx", "C++"], l!(ts_cpp), h_i!(cpp)),
-            (["java", "Java"], l!(ts_java), h_i!(java)),
-            (["jl", "Julia"], l!(ts_julia), h_i!(julia)),
-            (["js", "JavaScript"], l!(ts_js), h_i!(js)),
-            (["json", "JSON"], l!(ts_json), h_i!(json)),
-            (["jsonc", "JSON"], l!(ts_json), h_i!(json)),
-            (["lua", "Lua"], l!(ts_lua), h_i!(lua)),
-            (["m", "Objective-C"], l!(ts_objc), h_i!(objc)),
-            (["md", "Markdown"], l!(ts_md), h_i!(markdown)),
-            (["ml", "OCaml"], lang_ocaml, h_i!(ocaml)),
-            (["nix", "Nix"], l!(ts_nix), h_i!(nix)),
-            (["php", "PHP"], lang_php, h_i!(php)),
-            (["py", "Python"], l!(ts_python), h_i!(python)),
-            (["pyc", "Python"], l!(ts_python), h_i!(python)),
-            (["pyo", "Python"], l!(ts_python), h_i!(python)),
-            (["r", "R"], l!(ts_r), h_i!(r)),
-            (["rb", "Ruby"], l!(ts_ruby), h_i!(ruby)),
-            (["rs", "Rust"], l!(ts_rust), h_i!(rust)),
-            (["sc", "Scala"], l!(ts_scala), h!(scala)),
-            (["scala", "Scala"], l!(ts_scala), h!(scala)),
-            (["scss", "SCSS"], lf!(ts_scss), h_i!(scss)),
-            (["sh", "Shell"], l!(ts_bash), h!(bash)),
-            (["sql", "SQL"], l!(ts_sequel), h_i!(sql)),
-            (["swift", "Swift"], l!(ts_swift), h_i!(swift)),
-            (["ts", "TypeScript"], lang_ts, h!(ts)),
-            (["vim", "Viml"], lf!(ts_vim), h!(vim)),
-            (["xml", "XML"], lang_xml, h_i!(xml)),
-            (["xrl", "Erlang"], l!(ts_erlang), h!(erlang)),
-            (["yaml", "YAML"], l!(ts_yaml), h_i!(yaml)),
-            (["yml", "YAML"], l!(ts_yaml), h_i!(yaml)),
-            (["yrl", "Erlang"], l!(ts_erlang), h!(erlang)),
-            (["zig", "Zig"], l!(ts_zig), h_i!(zig)),
+            (["asm", "asm", "Assembly"], l!(ts_asm), h!(asm)),
+            (["c", "c", "C"], l!(ts_c), h_i!(c)),
+            (["h", "c", "C"], l!(ts_c), h_i!(c)),
+            (["cc", "cpp", "C++"], l!(ts_cpp), h_i!(cpp)),
+            (["cpp", "cpp", "C++"], l!(ts_cpp), h_i!(cpp)),
+            (["cxx", "cpp", "C++"], l!(ts_cpp), h_i!(cpp)),
+            (["hpp", "cpp", "C++"], l!(ts_cpp), h_i!(cpp)),
+            (["hxx", "cpp", "C++"], l!(ts_cpp), h_i!(cpp)),
+            (["cs", "csharp", "C#"], l!(ts_c_sharp), h!(c_sharp)),
+            (["css", "css", "CSS"], l!(ts_css), h_i!(css)),
+            (["dart", "dart", "Dart"], lf!(ts_dart), h_i!(dart)),
+            (["ex", "elixir", "Elixir"], l!(ts_elixir), h_i!(elixir)),
+            (["exs", "elixir", "Elixir"], l!(ts_elixir), h_i!(elixir)),
+            (["erl", "erlang", "Erlang"], l!(ts_erlang), h!(erlang)),
+            (["hrl", "erlang", "Erlang"], l!(ts_erlang), h!(erlang)),
+            (["xrl", "erlang", "Erlang"], l!(ts_erlang), h!(erlang)),
+            (["yrl", "erlang", "Erlang"], l!(ts_erlang), h!(erlang)),
+            (["for", "fortran", "Fortran"], l!(ts_fortran), h_i!(fortran)),
+            (["fpp", "fortran", "Fortran"], l!(ts_fortran), h_i!(fortran)),
+            (["gleam", "gleam", "Gleam"], l!(ts_gleam), h_i!(gleam)),
+            (["go", "go", "Go"], l!(ts_go), h_i!(go)),
+            (["groovy", "groovy", "Groovy"], l!(ts_groovy), h_i!(groovy)),
+            (["gvy", "groovy", "Groovy"], l!(ts_groovy), h_i!(groovy)),
+            (["hsc", "haskell", "Haskell"], l!(ts_haskell), h!(haskell)),
+            (["hs", "haskell", "Haskell"], l!(ts_haskell), h!(haskell)),
+            (["htm", "html", "HTML"], l!(ts_html), h_i!(html)),
+            (["html", "html", "HTML"], l!(ts_html), h_i!(html)),
+            (["java", "java", "Java"], l!(ts_java), h_i!(java)),
+            (["js", "js", "JavaScript"], l!(ts_js), h_i!(js)),
+            (["jsonc", "json", "JSON"], l!(ts_json), h_i!(json)),
+            (["json", "json", "JSON"], l!(ts_json), h_i!(json)),
+            (["jl", "julia", "Julia"], l!(ts_julia), h_i!(julia)),
+            (["lua", "lua", "Lua"], l!(ts_lua), h_i!(lua)),
+            (["md", "markdown", "Markdown"], l!(ts_md), h_i!(markdown)),
+            (["nix", "nix", "Nix"], l!(ts_nix), h_i!(nix)),
+            (["m", "objc", "Objective-C"], l!(ts_objc), h_i!(objc)),
+            (["ml", "ocaml", "OCaml"], lang_ocaml, h_i!(ocaml)),
+            (["php", "php", "PHP"], lang_php, h_i!(php)),
+            (["pyc", "python", "Python"], l!(ts_python), h_i!(python)),
+            (["pyo", "python", "Python"], l!(ts_python), h_i!(python)),
+            (["py", "python", "Python"], l!(ts_python), h_i!(python)),
+            (["r", "r", "R"], l!(ts_r), h_i!(r)),
+            (["rb", "ruby", "Ruby"], l!(ts_ruby), h_i!(ruby)),
+            (["rs", "rust", "Rust"], l!(ts_rust), h_i!(rust)),
+            (["scala", "scala", "Scala"], l!(ts_scala), h!(scala)),
+            (["sc", "scala", "Scala"], l!(ts_scala), h!(scala)),
+            (["scss", "scss", "SCSS"], lf!(ts_scss), h_i!(scss)),
+            (["sh", "shell", "Shell"], l!(ts_bash), h!(bash)),
+            (["sql", "sql", "SQL"], l!(ts_sequel), h_i!(sql)),
+            (["swift", "swift", "Swift"], l!(ts_swift), h_i!(swift)),
+            (["ts", "ts", "TypeScript"], lang_ts, h!(ts)),
+            (["vim", "viml", "Viml"], lf!(ts_vim), h!(vim)),
+            (["xml", "xml", "XML"], lang_xml, h_i!(xml)),
+            (["yaml", "yaml", "YAML"], l!(ts_yaml), h_i!(yaml)),
+            (["yml", "yaml", "YAML"], l!(ts_yaml), h_i!(yaml)),
+            (["zig", "zig", "Zig"], l!(ts_zig), h_i!(zig)),
         ];
 
         HashMap::from_iter(list.into_iter().map(|lp| (lp.0[0], lp)))
@@ -760,5 +764,5 @@ fn lang_parts(path: impl AsRef<Path>) -> Option<LangParts<'static>> {
     })
 }
 
-type LangParts<'a> = ([&'a str; 2], &'a Language, [Query; 2]);
+type LangParts<'a> = ([&'a str; 3], &'a Language, [Query; 2]);
 type FormParts<'a> = (Range<Key>, &'a [(FormId, Key, Key, usize)]);
