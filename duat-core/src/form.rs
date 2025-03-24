@@ -329,6 +329,10 @@ mod global {
             static ID: std::sync::OnceLock<FormId> = std::sync::OnceLock::new();
             *ID.get_or_init(|| {
                 let name: &'static str = $form;
+                let name = match name.strip_prefix("r#") {
+                    Some(non_raw) => non_raw,
+                    None => name
+                };
                 let id = id_from_name(name);
                 add_forms(vec![name]);
                 id
@@ -340,6 +344,10 @@ mod global {
     			let mut ids = Vec::new();
     			let names = vec![$( $form ),+];
     			for name in names.iter() {
+                    let name = match name.strip_prefix("r#") {
+                        Some(non_raw) => non_raw,
+                        None => name
+                    };
         			ids.push(id_from_name(name));
     			}
     			add_forms(names);
