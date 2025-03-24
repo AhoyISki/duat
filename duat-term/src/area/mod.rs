@@ -630,6 +630,11 @@ fn scroll_ver_around(
 /// being used.
 fn scroll_hor_around(info: &mut PrintInfo, width: u32, p: Point, text: &Text, cfg: PrintCfg) {
     let cap = cfg.wrap_width(width);
+    // Quick shortcut to avoid iteration.
+    if cap <= width || width < cfg.scrolloff.x() {
+        info.x_shift = 0;
+        return;
+    }
 
     let (max_shift, start, end) = {
         let points = text.ghost_max_points_at(p.byte());
