@@ -414,8 +414,10 @@ impl ui::Area for Area {
             (info.write(), coords.width(), coords.height())
         };
 
-        scroll_ver_around(&mut info, w, h, point, text, cfg);
-        scroll_hor_around(&mut info, w, point, text, cfg);
+        if w > 0 && h > 0 {
+            scroll_ver_around(&mut info, w, h, point, text, cfg);
+            scroll_hor_around(&mut info, w, point, text, cfg);
+        }
 
         info.prev_main = point;
         info.last_points = None;
@@ -631,7 +633,7 @@ fn scroll_ver_around(
 fn scroll_hor_around(info: &mut PrintInfo, width: u32, p: Point, text: &Text, cfg: PrintCfg) {
     let cap = cfg.wrap_width(width);
     // Quick shortcut to avoid iteration.
-    if cap <= width || width < cfg.scrolloff.x() {
+    if cap <= width {
         info.x_shift = 0;
         return;
     }

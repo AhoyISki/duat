@@ -599,7 +599,9 @@ impl Lines {
         self.len += len;
         let mut bytes = [0; 4];
         char.encode_utf8(&mut bytes);
-        self.positions.push((self.line.len(), len));
+        if self.coords.width() < self.cap {
+            self.positions.push((self.line.len(), len));
+        }
         self.line.extend(&bytes[..char.len_utf8()]);
     }
 
@@ -650,6 +652,41 @@ impl Lines {
         default_form.style.attributes.set(Attribute::Reset);
 
         let spaces = self.gaps.get_spaces(self.cap - self.len);
+        // Shortcut
+        if self.coords.width() >= self.cap {
+            style!(self.bytes, default_form.style);
+
+            let start_d = match &self.gaps {
+                Gaps::OnRight => 0,
+                Gaps::OnLeft => self.cap - self.len,
+                Gaps::OnSides => (self.cap - self.len) / 2,
+                Gaps::Spacers(bytes) => {
+                    let spacers = bytes.iter().zip(spaces);
+                    let mut start = 0;
+
+                    for (&end, len) in spacers {
+                        self.bytes.extend_from_slice(&self.line[start..end]);
+                        self.bytes.extend(&BLANK[..len as usize]);
+                        start = end
+                    }
+                    self.bytes.extend(&BLANK[start..self.line.len()]);
+
+                    self.to_next_line();
+                    return;
+                }
+            };
+
+            self.bytes.extend_from_slice(&BLANK[..start_d as usize]);
+            self.bytes.extend_from_slice(&self.line);
+            let end_d = start_d - self.len;
+            if self.coords.width() > end_d {
+                style!(self.bytes, default_form.style);
+                self.bytes
+                    .extend_from_slice(&BLANK[..(self.coords.width() - end_d) as usize])
+            }
+            self.to_next_line();
+            return;
+        }
 
         let (start_i, start_d) = {
             let mut dist = match &self.gaps {
@@ -682,9 +719,8 @@ impl Lines {
                 style!(self.bytes, default_form.style);
                 self.bytes
                     .extend_from_slice(&BLANK[..self.coords.width() as usize]);
-                self.cutoffs.push(self.bytes.len());
 
-                self.reset_line();
+                self.to_next_line();
                 return;
             };
 
@@ -726,9 +762,8 @@ impl Lines {
                 style!(self.bytes, default_form.style);
                 self.bytes
                     .extend_from_slice(&BLANK[..self.coords.width() as usize]);
-                self.cutoffs.push(self.bytes.len());
 
-                self.reset_line();
+                self.to_next_line();
                 return;
             };
             // If the character is cut by the end, don't print it.
@@ -768,13 +803,11 @@ impl Lines {
 
         if self.coords.width() > end_d {
             style!(self.bytes, default_form.style);
+            self.bytes
+                .extend_from_slice(&BLANK[..(self.coords.width() - end_d) as usize]);
         }
 
-        self.bytes
-            .extend_from_slice(&BLANK[..(self.coords.width() - end_d) as usize]);
-
-        self.cutoffs.push(self.bytes.len());
-        self.reset_line();
+        self.to_next_line();
     }
 
     pub(crate) fn is_empty(&self) -> bool {
@@ -789,7 +822,8 @@ impl Lines {
         self.cap
     }
 
-    fn reset_line(&mut self) {
+    fn to_next_line(&mut self) {
+        self.cutoffs.push(self.bytes.len());
         self.line.clear();
         self.positions.clear();
         self.gaps = self.default_gaps.clone();
