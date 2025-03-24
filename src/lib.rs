@@ -16,7 +16,7 @@ use std::{collections::HashMap, marker::PhantomData, ops::Range, path::Path, syn
 use duat_core::{
     Mutex,
     cfg::PrintCfg,
-    form::{self, FormId},
+    form::{self, Form, FormId},
     hooks::{self, OnFileOpen},
     text::{
         Bytes, Change, Key, Matcheable, MutTags, Point, Reader, ReaderCfg, Tag, Text,
@@ -25,7 +25,8 @@ use duat_core::{
 };
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{
-    InputEdit, Language, Node, Parser, Point as TSPoint, Query, QueryCursor, TextProvider, Tree,
+    InputEdit, Language, Node, Parser, Point as TSPoint, Query, QueryCaptures, QueryCursor,
+    TextProvider, Tree,
 };
 
 /// The [tree-sitter] pluging for Duat
@@ -53,6 +54,42 @@ impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter<U> {
     }
 
     fn plug(self) {
+        form::set_many!(
+            ("variable.parameter", Form::italic()),
+            ("variable.builtin", Form::dark_yellow()),
+            ("constant", Form::grey()),
+            ("constant.builtin", Form::dark_yellow()),
+            ("module", Form::blue().italic()),
+            ("label", Form::green()),
+            ("string", Form::green()),
+            ("character", Form::dark_yellow()),
+            ("boolean", Form::dark_yellow()),
+            ("number", Form::dark_yellow()),
+            ("type", Form::yellow().italic()),
+            ("type.builtin", Form::yellow().reset()),
+            ("attribute", Form::green()),
+            ("property", Form::green()),
+            ("function", Form::blue().reset()),
+            ("constructor", Form::dark_yellow().reset()),
+            ("operator", Form::cyan()),
+            ("keyword", Form::magenta()),
+            ("punctuation.bracket", Form::red()),
+            ("punctuation.delimiter", Form::cyan()),
+            ("comment", Form::grey()),
+            ("comment.documentation", Form::grey().bold()),
+            ("markup.strong", Form::bold()),
+            ("markup.italic", Form::italic()),
+            ("markup.strikethrough", Form::crossed_out()),
+            ("markup.underline", Form::underlined()),
+            ("markup.heading", Form::blue().bold()),
+            ("markup.math", Form::yellow()),
+            ("markup.quote", Form::grey().italic()),
+            ("markup.link", Form::blue().underlined()),
+            ("markup.raw", Form::cyan()),
+            ("markup.list", Form::yellow()),
+            ("markup.list.checked", Form::green()),
+            ("markup.list.unchecked", Form::grey()),
+        );
         hooks::add_grouped::<OnFileOpen<U>>("TreeSitter", |builder| {
             let name = builder.read().0.name();
             if let Some(ts_parser_cfg) = TsParser::cfg(&name) {
@@ -65,7 +102,7 @@ impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter<U> {
 pub struct TsParser {
     parser: Parser,
     lang_parts: LangParts<'static>,
-    forms: &'static [(FormId, Key, Key)],
+    forms: &'static [(FormId, Key, Key, usize)],
     keys: Range<Key>,
     tree: Tree,
     old_tree: Option<Tree>,
@@ -134,7 +171,9 @@ impl Reader for TsParser {
             let start = change.start();
             let added = change.added_end();
             let start = bytes.point_at_line(start.line()).byte();
-            let end = bytes.point_at_line(added.line() + 1).byte();
+            let end = bytes
+                .point_at_line((added.line() + 1).min(bytes.len().line()))
+                .byte();
 
             // Don't check the same region twice.
             if checked_points.contains(&(start, end)) {
@@ -215,17 +254,8 @@ impl Reader for TsParser {
         let mut cursor = QueryCursor::new();
 
         cursor.set_byte_range(start..end);
-        let mut query_matches = cursor.captures(hi_query, self.tree.root_node(), buf);
-        while let Some((query_match, _)) = query_matches.next() {
-            for cap in query_match.captures.iter() {
-                let bytes = cap.node.byte_range();
-                let (form, start_key, end_key) = self.forms[cap.index as usize];
-                if bytes.start != bytes.end {
-                    tags.insert(bytes.start, Tag::PushForm(form), start_key);
-                    tags.insert(bytes.end, Tag::PopForm(form), end_key);
-                }
-            }
-        }
+        let query_captures = cursor.captures(hi_query, self.tree.root_node(), buf);
+        highlight_captures(&mut tags, query_captures, &self.forms);
     }
 
     fn public_reader<'a>(&'a mut self, bytes: &'a mut Bytes) -> Self::PublicReader<'a> {
@@ -235,7 +265,7 @@ impl Reader for TsParser {
 
 pub struct TsParserCfg {
     lang_parts: LangParts<'static>,
-    forms: &'static [(FormId, Key, Key)],
+    forms: &'static [(FormId, Key, Key, usize)],
     keys: Range<Key>,
 }
 
@@ -263,19 +293,10 @@ impl ReaderCfg for TsParserCfg {
         let mut cursor = QueryCursor::new();
         let buf = TsBuf(bytes);
 
-        let mut captures = cursor.captures(hi_query, tree.root_node(), buf);
+        let query_captures = cursor.captures(hi_query, tree.root_node(), buf);
+        highlight_captures(&mut tags, query_captures, &self.forms);
 
-        while let Some((captures, _)) = captures.next() {
-            for cap in captures.captures.iter() {
-                let range = cap.node.range();
-                let (start, end) = (range.start_byte, range.end_byte);
-                let (form, start_key, end_key) = self.forms[cap.index as usize];
-                if start != end {
-                    tags.insert(start, Tag::PushForm(form), start_key);
-                    tags.insert(end, Tag::PopForm(form), end_key);
-                }
-            }
-        }
+        duat_core::log_file!("{tags:#?}");
 
         Ok(TsParser {
             parser,
@@ -561,6 +582,12 @@ fn ts_point_from(to: Point, (col, from): (usize, Point), str: &str) -> TSPoint {
 }
 
 fn forms_from_query(([lang, ..], _, [query, ..]): &LangParts<'static>) -> FormParts<'static> {
+    #[rustfmt::skip]
+    const PRECEDENCES: &[&str] = &[
+        "variable", "constant", "module", "label", "string", "character", "boolean", "number",
+        "type", "attribute", "property", "constructor", "operator", "keyword", "punctuation",
+        "comment", "markup"
+    ];
     static LISTS: LazyLock<Mutex<HashMap<&str, FormParts<'static>>>> =
         LazyLock::new(Mutex::default);
     let mut lists = LISTS.lock();
@@ -569,17 +596,61 @@ fn forms_from_query(([lang, ..], _, [query, ..]): &LangParts<'static>) -> FormPa
         (keys.clone(), forms)
     } else {
         let capture_names = query.capture_names();
+        let precedences = capture_names.iter().map(|name| {
+            PRECEDENCES
+                .iter()
+                .position(|p| name.starts_with(p))
+                .unwrap_or(usize::MAX)
+        });
+
         let keys = Key::new_many(capture_names.len() * 2);
 
         let mut iter_keys = keys.clone();
         let ids = form::ids_of_non_static(capture_names);
-        let forms: Vec<(FormId, Key, Key)> = ids
+        let forms: Vec<(FormId, Key, Key, usize)> = ids
             .into_iter()
-            .map(|id| (id, iter_keys.next().unwrap(), iter_keys.next().unwrap()))
+            .zip(precedences)
+            .map(|(id, p)| (id, iter_keys.next().unwrap(), iter_keys.next().unwrap(), p))
             .collect();
 
         lists.insert(lang, (keys, forms.leak()));
         lists.get(lang).unwrap().clone()
+    }
+}
+
+fn highlight_captures<'a>(
+    tags: &mut MutTags,
+    mut query_captures: QueryCaptures<TsBuf<'a>, &'a [u8]>,
+    forms: &[(FormId, Key, Key, usize)],
+) {
+    let mut cur_start = 0;
+    let mut cur_caps: Vec<(FormId, Key, Key, usize, usize)> = Vec::new();
+
+    while let Some((query_matches, _)) = query_captures.next() {
+        for cap in query_matches.captures.iter() {
+            let range = cap.node.range();
+            let (start, end) = (range.start_byte, range.end_byte);
+            let (form, start_key, end_key, precedence) = forms[cap.index as usize];
+            if start != cur_start {
+                for (form, start_key, end_key, end, _) in cur_caps.drain(..) {
+                    tags.insert(cur_start, Tag::PushForm(form), start_key);
+                    tags.insert(end, Tag::PopForm(form), end_key);
+                }
+                cur_start = start;
+            }
+            if start != end {
+                let i = cur_caps
+                    .iter()
+                    .take_while(|(.., p)| *p <= precedence)
+                    .count();
+                cur_caps.insert(i, (form, start_key, end_key, end, precedence));
+            }
+        }
+    }
+
+    for (form, start_key, end_key, end, _) in cur_caps.drain(..) {
+        tags.insert(cur_start, Tag::PushForm(form), start_key);
+        tags.insert(end, Tag::PopForm(form), end_key);
     }
 }
 
@@ -692,4 +763,4 @@ fn lang_parts(path: impl AsRef<Path>) -> Option<LangParts<'static>> {
 }
 
 type LangParts<'a> = ([&'a str; 2], &'a Language, [Query; 2]);
-type FormParts<'a> = (Range<Key>, &'a [(FormId, Key, Key)]);
+type FormParts<'a> = (Range<Key>, &'a [(FormId, Key, Key, usize)]);

@@ -12,7 +12,7 @@
 
 ; Assume all-caps names are constants
 ((identifier) @constant
-  (#match? @constant "^[A-Z][A-Z%d_]*$"))
+  (#match? @constant "^[A-Z][A-Z0-9]*$"))
 
 ; Other identifiers
 (type_identifier) @type
@@ -122,7 +122,7 @@
 
 ((scoped_identifier
   name: (identifier) @constant)
-  (#match? @constant "^[A-Z][A-Z%d_]*$"))
+  (#match? @constant "^[A-Z][A-Z0-9]*$"))
 
 ((scoped_identifier
   path: (identifier) @type
