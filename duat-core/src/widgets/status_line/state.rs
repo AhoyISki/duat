@@ -42,7 +42,7 @@ enum Appender<W, U: Ui> {
 ///
 /// [`StatusLine`]: super::StatusLine
 /// [`impl Display`]: std::fmt::Display
-/// [`File`]: super::File
+/// [`File`]: crate::widgets::File
 pub struct State<W: 'static, Dummy, U: Ui> {
     appender: Appender<W, U>,
     checker: Option<Box<dyn Fn() -> bool + Send + Sync>>,

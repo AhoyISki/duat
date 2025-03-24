@@ -58,9 +58,9 @@ pub fn pre_setup() {
     });
 
     hooks::add_grouped::<OnWindowOpen>("WindowWidgets", |builder| {
-        let (child, _) = builder.push(StatusLine::cfg());
-        let (child, _) = builder.push_to(PromptLine::cfg().left_ratioed(4, 7), child);
-        builder.push_to(Notifier::cfg(), child);
+        builder.push(StatusLine::cfg());
+        let (child, _) = builder.push(PromptLine::cfg());
+        builder.push_to(child, Notifier::cfg());
     });
 
     hooks::add_grouped::<UnfocusedFrom<PromptLine<Ui>>>("HidePromptLine", |(_, area)| {

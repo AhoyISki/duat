@@ -91,7 +91,6 @@ mod cursors;
 ///     /* ... */
 ///     fn send_key(&mut self, key: KeyEvent, file: &mut File, area: &U::Area) {
 ///         let mut helper = EditHelper::new(file, area);
-///         helper.cursors_mut().make_excl();
 ///         
 ///         match key {
 ///             key!(KeyCode::Char(c)) => {
@@ -118,12 +117,6 @@ mod cursors;
 ///     }
 /// # }
 /// ```
-///
-/// Notice the [`Cursors::make_excl`]. In Duat, there are two types of
-/// [`Cursors`], inclusive and exclusive. The only difference between
-/// them is that in inclusive cursors, the selection acts like a Rust
-/// inclusive selection (`..=`), while in exclusive cursors, it acts
-/// like an exclusive selection (`..`).
 ///
 /// [`Mode`]: super::Mode
 /// [`Text`]: crate::text::Text

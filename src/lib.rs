@@ -126,7 +126,7 @@
 //!
 //!         builder.push(status_line);
 //!         let (child, _) = builder.push(PromptLine::cfg());
-//!         builder.push_to(Notifier::cfg(), child);
+//!         builder.push_to(child, Notifier::cfg());
 //!     });
 //!
 //!     hooks::add::<ModeSwitched>(|(_, new)| match new {

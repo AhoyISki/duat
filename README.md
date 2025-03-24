@@ -92,8 +92,8 @@ fn setup() {
         );
 
         builder.push(status_line);
-        let (child, _) = builder.push(CmdLine::cfg());
-        builder.push_to(Notifier::cfg(), child);
+        let (child, _) = builder.push(PromptLine::cfg());
+        builder.push_to(child, Notifier::cfg());
     });
 
     hooks::add::<ModeSwitched>(|(_, new)| match new {
@@ -127,9 +127,9 @@ notice some things that can be done with these simple options:
 
 ```rust
 hooks::add::<OnFileOpen>(|builder| {
+    builder.push(VertRule::cfg());
     builder.push(LineNumbers::cfg());
-    builder.push(LineNumbers::cfg());
-    builder.push(LineNumbers::cfg().on_the_right());
+    builder.push(VertRule::cfg().on_the_right());
     builder.push(LineNumbers::cfg().on_the_right());
 });
 ```
@@ -180,7 +180,7 @@ some preinstalled plugins:
   pick between the four of them, you can apply its colors to other
   [`Form`][__link27]s and you can allow or disallow the colorscheme to set
   the background color.
-* [`duat-treesitter`][__link28] brinks [tree-sitter][__link29] to Duat in the form of
+* [`duat-treesitter`][__link28] brings [tree-sitter][__link29] to Duat in the form of
   syntax highlighting and indentation calculation, which can be
   used by Modes (such as those from `duat-kak`) in order to give
   better feedback when editing files.
@@ -279,13 +279,13 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG8FScbNnOTWnG21IrFTgVCSCG6etI90x-EeLG58bJ_xhDjhiYWSBgmRkdWF0ZTAuMy4x
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG4ysAf6L-P22G-wkJ6ftft6UG9oI6bTlZhiMGwH1lSsIIYOvYWSBgmRkdWF0ZTAuMy4x
  [__link0]: https://docs.rs/duat/0.3.1/duat/?search=prelude::plug
  [__link1]: https://docs.rs/duat/0.3.1/duat/?search=prelude::mode::set_default
  [__link10]: https://docs.rs/duat/0.3.1/duat/?search=prelude::status
  [__link11]: https://docs.rs/duat/0.3.1/duat/?search=prelude::Spacer
  [__link12]: https://docs.rs/duat/0.3.1/duat/?search=prelude::mode_name
- [__link13]: https://docs.rs/duat/0.3.1/duat/?search=prelude::CmdLine
+ [__link13]: https://docs.rs/duat/0.3.1/duat/?search=prelude::PromptLine
  [__link14]: https://docs.rs/duat/0.3.1/duat/?search=prelude::Notifier
  [__link15]: https://docs.rs/duat/0.3.1/duat/?search=prelude::hooks::add
  [__link16]: https://docs.rs/duat/0.3.1/duat/?search=prelude::hooks::ModeSwitched

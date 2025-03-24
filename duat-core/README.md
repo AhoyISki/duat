@@ -1,7 +1,5 @@
 # duat-core ![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) [![duat-core on crates.io](https://img.shields.io/crates/v/duat-core)](https://crates.io/crates/duat-core) [![duat-core on docs.rs](https://docs.rs/duat-core/badge.svg)](https://docs.rs/duat-core) [![Source Code Repository](https://img.shields.io/badge/Code-On%20GitHub-blue?logo=GitHub)](https://github.com/AhoyISki/duat/tree/master/duat-core)
 
-## duat-core
-
 The core of Duat, this crate is meant to be used only for the
 creation of plugins for Duat.
 
@@ -38,13 +36,11 @@ impl<U: Ui> Mode<U> for FindSeq {
         helper.move_many(.., |mut m| {
             let pat: String = [first, c].iter().collect();
             let matched = m.search_fwd(pat, None).next();
-            if let Some((p0, p1)) = matched {
+            if let Some([p0, p1]) = matched {
                 m.move_to(p0);
                 m.set_anchor();
                 m.move_to(p1);
-                if m.is_incl() {
-                    m.move_hor(-1)
-                }
+                m.move_hor(-1)
             }
         });
 
@@ -90,7 +86,7 @@ In order to emulate it, we use [ghost text][__link5] and [concealment][__link6]:
 pub struct EasyMotion {
     is_line: bool,
     key: Key,
-    points: Vec<(Point, Point)>,
+    points: Vec<[Point; 2]>,
     seq: String,
 }
 
@@ -131,12 +127,12 @@ impl<U: Ui> Mode<U> for EasyMotion {
 
         let seqs = key_seqs(self.points.len());
 
-        for (seq, (p1, _)) in seqs.iter().zip(&self.points) {
+        for (seq, [p0, _]) in seqs.iter().zip(&self.points) {
             let ghost = text!([EasyMotionWord] seq);
 
-            text.insert_tag(p1.byte(), Tag::GhostText(ghost), self.key);
-            text.insert_tag(p1.byte(), Tag::StartConceal, self.key);
-            let seq_end = p1.byte() + seq.chars().count() ;
+            text.insert_tag(p0.byte(), Tag::GhostText(ghost), self.key);
+            text.insert_tag(p0.byte(), Tag::StartConceal, self.key);
+            let seq_end = p0.byte() + seq.chars().count() ;
             text.insert_tag(seq_end, Tag::EndConceal, self.key);
         }
     }
@@ -153,12 +149,12 @@ impl<U: Ui> Mode<U> for EasyMotion {
         helper.cursors_mut().remove_extras();
 
         let seqs = key_seqs(self.points.len());
-        for (seq, &(p1, p2)) in seqs.iter().zip(&self.points) {
+        for (seq, &[p0, p1]) in seqs.iter().zip(&self.points) {
             if *seq == self.seq {
                 helper.move_main(|mut m| {
-                    m.move_to(p1);
+                    m.move_to(p0);
                     m.set_anchor();
-                    m.move_to(p2);
+                    m.move_to(p1);
                 });
                 mode::reset();
             } else if seq.starts_with(&self.seq) {
@@ -208,7 +204,7 @@ map::<Normal>("<CA-l>", &EasyMotion::line());
 ```
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEGx8dxGZ7ZzWLG7dly3cxEVwHG0DvNU9ylO-CG98BdgFygOJvYWSBg2lkdWF0LWNvcmVlMC4zLjBpZHVhdF9jb3Jl
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG1YRB2cP5F-pG348Aoz8F7N-GzQ8rwkCVhAtG-B3mqmRZ_M6YWSBg2lkdWF0LWNvcmVlMC4zLjBpZHVhdF9jb3Jl
  [__link0]: https://docs.rs/duat-core/0.3.0/duat_core/?search=ui::Ui
  [__link1]: https://docs.rs/duat-core/0.3.0/duat_core/?search=mode::Mode
  [__link10]: https://docs.rs/duat-core/0.3.0/duat_core/?search=text::Text::remove_tags

@@ -53,15 +53,11 @@ fn setup() {
     hooks::remove("WindowWidgets");
     // Same, but on the edges of the window.
     hooks::add::<OnWindowOpen>(|builder| {
-        // // Uncomment this and comment the rest for a StatusLine on the side
-        // // Square bracket pairs change the Form of text.
-        // // The StatusLine goes on the bottom by default.
-        // let (child, _) = builder.push(status!(
-        //     file_fmt " " mode_fmt " " selections_fmt " " main_fmt
-        // ));
-        // let cmd_line = PromptLine::cfg().left_ratioed(3, 5);
-        // // `push_to` pushes a widget to another.
-        // builder.push_to(cmd_line, child);
+        // // Uncomment this and comment the rest for a StatusLine on the right
+        // let (child, _) = buider.push(PromptLine::cfg());
+        // let status = status!(file_fmt " " mode_fmt " " selections_fmt " " main_fmt);
+        // builder.push_to(child, status.right_ratioed(4, 7));
+        // builder.push_to(child, Notifier::cfg());
 
         // This function takes the mode and uppercases it.
         // The splitting is done to remove generic arguments.
@@ -71,6 +67,7 @@ fn setup() {
         });
 
         // Pushes a StatusLine to the bottom
+        // // Square bracket pairs change the Form of text.
         builder.push(status!([Mode] mode_upper Spacer file_fmt " " selections_fmt " " main_fmt));
         // Pushes a PromptLine to the bottom
         let (child, _) = builder.push(PromptLine::cfg());
@@ -78,7 +75,7 @@ fn setup() {
         // parent that owns only the PromptLine and Notifications widgets.
         // With that, you can tell an Area to occupy the whole parent, "hiding
         // other sibling Areas. That's done in, e.g., the "HidePromptLine" hook.
-        builder.push_to(Notifier::cfg(), child);
+        builder.push_to(child, Notifier::cfg());
     });
     // // See what happens when you uncomment this hook removal:
     // hooks::remove("HidePromptLine");

@@ -199,7 +199,8 @@ impl<U: Ui> FileBuilder<U> {
     /// the same edge.
     ///
     /// One of the main ways in which this is used is when using a
-    /// hidden [`Notifier`] widget alongside the [`PromptLine`] widget.
+    /// hidden [`Notifier`] widget alongside the [`PromptLine`]
+    /// widget.
     ///
     /// ```rust
     /// # fn mode_fmt(file: &File) -> Text {
@@ -217,8 +218,8 @@ impl<U: Ui> FileBuilder<U> {
     ///     let (child, _) = builder.push(
     ///         status!(file_fmt " " selections_fmt " " main_fmt)
     ///     );
-    ///     let (child, _) = builder.push_to(PromptLine::cfg().left_ratioed(3, 5), child);
-    ///     builder.push_to(Notifier::cfg(), child);
+    ///     let (child, _) = builder.push_to(child, PromptLine::cfg().left_ratioed(3, 5));
+    ///     builder.push_to(child, Notifier::cfg());
     /// });
     /// # }
     /// ```
@@ -247,8 +248,8 @@ impl<U: Ui> FileBuilder<U> {
     /// [hook group]: crate::hooks::add_grouped
     pub fn push_to<W: Widget<U>>(
         &self,
-        cfg: impl WidgetCfg<U, Widget = W>,
         area: U::Area,
+        cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
         let (widget, checker, specs) = cfg.build(true);
@@ -445,7 +446,7 @@ impl<U: Ui> WindowBuilder<U> {
     /// // StatusLine goes below by default
     /// let (status_area, _) = builder.push(StatusLine::cfg());
     /// let cmd_line_cfg = PromptLine::cfg().left_ratioed(3, 5);
-    /// builder.push_to(cmd_line_cfg, status_area);
+    /// builder.push_to(status_area, cmd_line_cfg);
     /// # }
     /// ```
     ///
@@ -469,8 +470,8 @@ impl<U: Ui> WindowBuilder<U> {
     /// [`PromptLine`]: crate::widgets::PromptLine
     pub fn push_to<W: Widget<U>>(
         &self,
-        cfg: impl WidgetCfg<U, Widget = W>,
         area: U::Area,
+        cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
         let (widget, checker, specs) = cfg.build(false);

@@ -49,11 +49,10 @@ use crate::{
 ///
 /// hooks::remove("WindowWidgets");
 /// hooks::add::<OnWindowOpen<U>>(|builder| {
-///     let (child, _) = builder.push(status!(
-///         mode_fmt " " selections_fmt " " main_fmt
-///     ));
-///     let (child, _) = builder.push_to(PromptLine::cfg().left_ratioed(2, 3), child);
-///     builder.push_to(Notifier::cfg(), child);
+///     let (child, _) = builder.push(PromptLine::cfg());
+///     let status = status!(mode_fmt " " selections_fmt " " main_fmt);
+///     builder.push_to(child.clone(), status.right_ratioed(2, 3));
+///     builder.push_to(child, Notifier::cfg());
 /// });
 /// # }
 /// ```
@@ -151,8 +150,11 @@ impl<U: Ui> StatusLineCfg<U> {
         }
     }
 
-    pub fn on_the_right(self) -> Self {
-        Self { specs: self.specs.to_right(), ..self }
+    pub fn right_ratioed(self, den: u16, div: u16) -> Self {
+        Self {
+            specs: self.specs.to_right().with_hor_ratio(den, div),
+            ..self
+        }
     }
 }
 
@@ -246,7 +248,7 @@ impl<U: Ui> Reader<U> {
 ///
 /// ```rust
 /// # use duat_core::{
-/// #     mode::Cursors, text::{Text, text}, ui::Ui, widgets::{File, status},
+/// #     mode::Cursors, text::{Text, text}, ui::Area, widgets::{File, status},
 /// #     hooks::{self, OnWindowOpen}
 /// # };
 /// fn name_but_funky(file: &File) -> String {
@@ -259,19 +261,20 @@ impl<U: Ui> Reader<U> {
 ///     name
 /// }
 ///
-/// fn powerline_main_fmt(file: &File) -> Text {
+/// fn powerline_main_fmt(file: &File, area: &impl Area) -> Text {
 ///    let cursors = file.cursors();
-///    let cursor = cursors.main();
+///    let cfg = file.print_cfg();
+///    let v_caret= cursors.get_main().unwrap().v_caret(file.text(), area, cfg);
 ///
 ///    text!(
-///        [Separator] "" [Coord] { cursor.vcol() }
-///        [Separator] "" [Coord] { cursor.line() }
+///        [Separator] "" [Coord] { v_caret.visual_col() }
+///        [Separator] "" [Coord] { v_caret.line() }
 ///        [Separator] "" [Coord] { file.len_lines() }
 ///    )
 /// }
 ///
-/// # fn test<U: Ui>() {
-/// hooks::add::<OnWindowOpen<U>>(|builder| {
+/// # fn test<Ui: duat_core::ui::Ui>() {
+/// hooks::add::<OnWindowOpen<Ui>>(|builder| {
 ///     builder.push(status!([File] name_but_funky [] " " powerline_main_fmt));
 /// });
 /// # }

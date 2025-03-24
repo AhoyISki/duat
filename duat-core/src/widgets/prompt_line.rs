@@ -142,6 +142,7 @@ impl<U: Ui> PromptLineCfg<U> {
         }
     }
 
+    /// Pushes this [`PromptLine`] to the left
     pub fn left_ratioed(self, den: u16, div: u16) -> Self {
         Self {
             specs: PushSpecs::left().with_hor_ratio(den, div),

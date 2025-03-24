@@ -41,9 +41,7 @@
 //!                 m.move_to(p0);
 //!                 m.set_anchor();
 //!                 m.move_to(p1);
-//!                 if m.is_incl() {
-//!                     m.move_hor(-1)
-//!                 }
+//!                 m.move_hor(-1)
 //!             }
 //!         });
 //!
