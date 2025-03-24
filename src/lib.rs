@@ -20,7 +20,7 @@ use duat_core::{
     hooks::{self, OnFileOpen},
     text::{
         Bytes, Change, Key, Matcheable, MutTags, Point, Reader, ReaderCfg, Tag, Text,
-        merge_range_in,
+        merge_range_in, text,
     },
 };
 use streaming_iterator::StreamingIterator;
@@ -323,11 +323,7 @@ impl<'a> PubTsParser<'a> {
         }
         let tab = cfg.tab_stops.size() as i32;
         let [start, _] = self.1.points_of_line(p.line());
-        let indented_start = self
-            .1
-            .chars_fwd(start)
-            .take_while(|(p, _)| p.line() == start.line())
-            .find_map(|(p, c)| (!c.is_whitespace()).then_some(p));
+
         // TODO: Get injected trees
         let root = self.0.tree.root_node();
 
@@ -369,6 +365,13 @@ impl<'a> PubTsParser<'a> {
             }
         };
 
+        // The first non indent character of this line.
+        let indented_start = self
+            .1
+            .chars_fwd(start)
+            .take_while(|(p, _)| p.line() == start.line())
+            .find_map(|(p, c)| (!c.is_whitespace()).then_some(p));
+
         let mut opt_node = if let Some(indented_start) = indented_start {
             Some(descendant_in(root, indented_start.byte()))
         // If the line is empty, look behind for another.
@@ -380,7 +383,7 @@ impl<'a> PubTsParser<'a> {
                 .rev()
                 .find(|(_, line)| !(line.matches(r"^\s*$", ..).unwrap()))
             else {
-                // If there is no previous line non empty, align to 0.
+                // If there is no previous non empty line, align to 0.
                 return Some(0);
             };
             let trail = line.chars().rev().take_while(|c| c.is_whitespace()).count();
@@ -583,8 +586,8 @@ fn forms_from_query(([_, lang, _], _, [query, ..]): &LangParts<'static>) -> Form
     #[rustfmt::skip]
     const PRECEDENCES: &[&str] = &[
         "variable", "module", "label", "string", "character", "boolean", "number", "type",
-        "constant", "attribute", "property", "constructor", "operator", "keyword", "punctuation",
-        "comment", "markup"
+        "attribute", "property", "function", "constant", "constructor", "operator", "keyword",
+        "punctuation", "comment", "markup"
     ];
     static LISTS: LazyLock<Mutex<HashMap<&str, FormParts<'static>>>> =
         LazyLock::new(Mutex::default);
@@ -643,7 +646,7 @@ fn highlight_captures<'a>(
             if start != end {
                 let i = cur_caps
                     .iter()
-                    .take_while(|(.., p)| *p <= precedence)
+                    .take_while(|(.., lhs)| *lhs <= precedence)
                     .count();
                 cur_caps.insert(i, (form, start_key, end_key, end, precedence));
             }
