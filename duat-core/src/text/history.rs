@@ -241,17 +241,8 @@ impl Moment {
             let f = |i: usize, c: &Change<String>| c.start.shift_by(sh(start_i + i));
             match binary_search_by_key_and_index(&self.0[start_i..], change.taken_end(), f) {
                 Ok(i) => c_range.start..start_i + i + 1,
-                Err(i) => {
-                    if let Some(older) = self.0.get(start_i + i)
-                        && older.start.shift_by(sh(start_i + i)) <= change.taken_end()
-                    {
-                        c_range.start..start_i + i + 1
-                    } else {
-                        c_range.start..start_i + i
-                    }
-                }
+                Err(i) => c_range.start..start_i + i,
             }
-            // It will always be included
         };
 
         // Shift all ranges that preceed the end of the range.

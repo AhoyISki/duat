@@ -12,19 +12,35 @@ use std::{
     sync::atomic::{AtomicU16, Ordering},
 };
 
+use crossterm::style::Stylize;
+
 static KEY_COUNT: AtomicU16 = AtomicU16::new(4);
 
 /// The id of a [ghost text]
 ///
 /// [ghost text]: super::Tag::GhostText
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GhostId(u16);
+
+impl std::fmt::Debug for GhostId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let ghost = "GhostId".yellow();
+        write!(f, "{ghost}{}{}{}", "(".cyan(), self.0, ")".cyan())
+    }
+}
 
 /// The id of a [toggleable]
 ///
 /// [toggleable]: super::Tag::StartToggle
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ToggleId(u16);
+
+impl std::fmt::Debug for ToggleId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let toggle = "ToggleId".yellow();
+        write!(f, "{toggle}{}{}{}", "(".cyan(), self.0, ")".cyan())
+    }
+}
 
 impl GhostId {
     /// Creates a new [`TextId`]
@@ -149,7 +165,8 @@ impl Key {
 
 impl std::fmt::Debug for Key {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Key({})", self.0)
+        let key = "Key".yellow();
+        write!(f, "{key}{}{}{}", "(".cyan(), self.0, ")".cyan())
     }
 }
 

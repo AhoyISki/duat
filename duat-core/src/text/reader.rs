@@ -179,27 +179,23 @@ impl Readers {
             return None;
         }
 
-        let (reader, ranges, _) = self.0.iter_mut().find(|(.., t)| *t == TypeId::of::<R>())?;
-        // Since it's a mutable reference, it's possible that more ranges will
-        // need to be changed, so do this just to be sure.
-        *ranges = vec![0..bytes.len().byte()];
-        let ptr = Box::as_mut_ptr(reader);
-
+        let (reader, ..) = self.0.iter_mut().find(|(.., t)| *t == TypeId::of::<R>())?;
         // Since I am forcibly borrowing self for 'a, this should be safe, as
         // a mutable reference will prevent the removal of this Box's entry in
         // the list.
+        let ptr = Box::as_mut_ptr(reader);
         let reader = unsafe { (ptr as *mut R).as_mut() }.unwrap();
 
         Some(reader.public_reader(bytes))
     }
 
     pub fn process_changes(&mut self, bytes: &mut Bytes, changes: &[Change<&str>]) {
-        const MAX_RANGES_TO_CONSIDER: usize = 15;
+        const MAX_CHANGES_TO_CONSIDER: usize = 15;
         for (reader, ..) in self.0.iter_mut() {
             reader.apply_changes(bytes, changes);
         }
 
-        if changes.len() <= MAX_RANGES_TO_CONSIDER {
+        if changes.len() <= MAX_CHANGES_TO_CONSIDER {
             for (reader, ranges, _) in self.0.iter_mut() {
                 for range in reader.ranges_to_update(bytes, changes) {
                     if !range.is_empty() {

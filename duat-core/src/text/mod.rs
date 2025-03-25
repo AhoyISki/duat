@@ -585,6 +585,7 @@ impl Text {
     pub fn undo(&mut self) {
         if let Some(mut history) = self.0.history.take()
             && let Some(changes) = history.move_backwards()
+            && !changes.is_empty()
         {
             self.apply_and_process_changes(changes);
             self.0.has_changed = true;
@@ -596,6 +597,7 @@ impl Text {
     pub fn redo(&mut self) {
         if let Some(mut history) = self.0.history.take()
             && let Some(changes) = history.move_forward()
+            && !changes.is_empty()
         {
             self.apply_and_process_changes(changes);
             self.0.has_changed = true;
@@ -1006,19 +1008,14 @@ pub fn merge_range_in(ranges: &mut Vec<Range<usize>>, range: Range<usize>) {
             }
         }
     };
-    let start_i = r_range.end;
+    let start_i = r_range.start;
     // Otherwise search ahead for another change to be merged
     let (r_range, end) = match ranges[start_i..].binary_search_by_key(&range.end, |r| r.start) {
         Ok(i) => (r_range.start..start_i + i + 1, ranges[start_i + i].end),
-        Err(i) => {
-            if let Some(older) = ranges.get(start_i + i)
-                && older.start <= range.end
-            {
-                (r_range.start..start_i + i + 1, range.end.max(older.end))
-            } else {
-                (r_range.start..start_i + i, range.end)
-            }
-        }
+        Err(i) => match (start_i + i).checked_sub(1).and_then(|i| ranges.get(i)) {
+            Some(older) => (r_range.start..start_i + i, range.end.max(older.end)),
+            None => (r_range.start..start_i + i, range.end),
+        },
     };
 
     ranges.splice(r_range, [start..end]);
@@ -1031,7 +1028,7 @@ pub fn merge_range_in(ranges: &mut Vec<Range<usize>>, range: Range<usize>) {
 ///
 /// If `range` is fully inside `within`, remove `range`;
 /// If `within` is fully inside `range`, split `range` in 2;
-/// If `within` intersects `range` in one side, chop it off;
+/// If `within` intersects `range` in one side, cut it out;
 fn split_range_within(
     range: Range<usize>,
     within: Range<usize>,
@@ -1044,6 +1041,24 @@ fn split_range_within(
         let split_ranges = [start_range, end_range];
         let range_to_check = range.start.max(within.start)..(range.end.min(within.end));
         (Some(range_to_check), split_ranges)
+    }
+}
+
+fn transform_ranges(ranges: &mut [Range<usize>], changes: &[Change<&str>]) {
+    let mut range_bounds = ranges
+        .iter_mut()
+        .flat_map(|r| [&mut r.start, &mut r.end])
+        .peekable();
+    let mut shift = 0;
+
+    for change in changes.iter() {
+        while let Some(bound) = range_bounds.next_if(|b| **b < change.start().byte()) {
+            *bound = (*bound as i32 + shift) as usize;
+        }
+        shift += change.added_end().byte() as i32 - change.taken_end().byte() as i32;
+    }
+    for bound in range_bounds {
+        *bound = (*bound as i32 + shift) as usize
     }
 }
 

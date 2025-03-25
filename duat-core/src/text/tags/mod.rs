@@ -14,6 +14,7 @@ use std::{
     ops::{Range, RangeBounds},
 };
 
+use crossterm::style::Stylize;
 use gapbuf::{GapBuffer, gap_buffer};
 
 use self::types::Toggle;
@@ -825,22 +826,34 @@ impl TagOrSkip {
 impl std::fmt::Debug for TagOrSkip {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TagOrSkip::Tag(tag) => write!(f, "Tag({:?})", tag),
-            TagOrSkip::Skip(amount) => write!(f, "Skip({amount})"),
+            TagOrSkip::Tag(tag) => write!(f, "{:?}", tag),
+            TagOrSkip::Skip(amount) => {
+                write!(f, "{}{}{amount}{}", "Skip".blue(), "(".cyan(), ")".cyan())
+            }
         }
     }
 }
 
 impl std::fmt::Debug for Tags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        struct TagsDbg<'a>(&'a GapBuffer<TagOrSkip>);
+        struct TagsDbg<'a>(&'a GapBuffer<TagOrSkip>, usize);
         impl std::fmt::Debug for TagsDbg<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 if f.alternate() {
+                    let n_spc = self.0.len().ilog10() as usize + 4;
+                    let b_spc = self.1.ilog10() as usize + 4;
+
                     let mut b = 0;
+                    let mut nesting = 0;
                     f.write_str("[\n")?;
-                    for (i, ts) in self.0.iter().enumerate() {
-                        writeln!(f, "    (n: {i}, b: {b}): {ts:?}")?;
+                    for (n, ts) in self.0.iter().enumerate() {
+                        nesting -= ts.as_tag().is_some_and(|t| t.is_end()) as usize;
+                        let space = " ".repeat(nesting);
+
+                        let n_fmt = format!("n: {n}");
+                        let b_fmt = format!("b: {b}");
+                        writeln!(f, "    ({n_fmt:<n_spc$}, {b_fmt:<b_spc$}): {space}{ts:?}")?;
+                        nesting += ts.as_tag().is_some_and(|t| t.is_start()) as usize;
                         b += ts.len();
                     }
                     f.write_str("]")
@@ -866,7 +879,7 @@ impl std::fmt::Debug for Tags {
         }
 
         f.debug_struct("Tags")
-            .field("buf", &TagsDbg(&self.buf))
+            .field("buf", &TagsDbg(&self.buf, self.len_bytes()))
             .field("ranges", &RangesDbg(&self.ranges))
             .field("range_min", &self.range_min)
             .field("records", &self.records)

@@ -9,7 +9,10 @@
 //! information as possible, occupying only 8 bytes.
 use std::{collections::HashMap, sync::Arc};
 
-use crossterm::event::MouseEventKind;
+use crossterm::{
+    event::MouseEventKind,
+    style::{ContentStyle, StyledContent, Stylize},
+};
 
 use super::{
     Key,
@@ -282,6 +285,15 @@ impl RawTag {
     }
 
     pub(in crate::text) fn key(&self) -> Key {
+        match self.get_key() {
+            Some(key) => key,
+            None => unreachable!(
+                "This method should only be used on stored tags, this not being one of them."
+            ),
+        }
+    }
+
+    fn get_key(&self) -> Option<Key> {
         match self {
             Self::PushForm(key, _)
             | Self::PopForm(key, _)
@@ -296,32 +308,50 @@ impl RawTag {
             | Self::EndConceal(key)
             | Self::GhostText(key, _)
             | Self::ToggleStart(key, _)
-            | Self::ToggleEnd(key, _) => *key,
-            Self::ConcealUntil(_) => unreachable!(
-                "This method should only be used on stored tags, this not being one of them."
-            ),
+            | Self::ToggleEnd(key, _) => Some(*key),
+            Self::ConcealUntil(_) => None,
         }
     }
 }
 
 impl std::fmt::Debug for RawTag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let ty = match self {
+            RawTag::PushForm(..) => "PushForm".green(),
+            RawTag::PopForm(..) => "PopForm".red(),
+            RawTag::MainCursor(..) => "MainCursor".magenta(),
+            RawTag::ExtraCursor(..) => "ExtraCursor".magenta(),
+            RawTag::StartAlignCenter(..) => "StartAlignCenter".green(),
+            RawTag::EndAlignCenter(..) => "EndAlignRight".red(),
+            RawTag::StartAlignRight(..) => "StartAlignRight".green(),
+            RawTag::EndAlignRight(..) => "EndAlignRight".red(),
+            RawTag::Spacer(..) => "Spacer".magenta(),
+            RawTag::StartConceal(..) => "StartConceal".green(),
+            RawTag::EndConceal(..) => "EndConceal".red(),
+            RawTag::ConcealUntil(..) => "ConcealUntil".yellow(),
+            RawTag::GhostText(..) => "GhostText".magenta(),
+            RawTag::ToggleStart(..) => "ToggleStart".green(),
+            RawTag::ToggleEnd(..) => "ToggleEnd".red(),
+        };
+        let lp = "(".cyan();
+        let rp = ")".cyan();
+
         match self {
-            RawTag::PushForm(key, id) => write!(f, "PushForm({key:?}, {})", form::name_of(*id)),
-            RawTag::PopForm(key, id) => write!(f, "PopForm({key:?}, {})", form::name_of(*id)),
-            RawTag::MainCursor(key) => write!(f, "MainCursor({key:?})"),
-            RawTag::ExtraCursor(key) => write!(f, "ExtraCursor({key:?})"),
-            RawTag::StartAlignCenter(key) => write!(f, "StartAlignCenter({key:?})"),
-            RawTag::EndAlignCenter(key) => write!(f, "EndAlignCenter({key:?})"),
-            RawTag::StartAlignRight(key) => write!(f, "StartAlignRight({key:?})"),
-            RawTag::EndAlignRight(key) => write!(f, "EndAlignRight({key:?})"),
-            RawTag::Spacer(key) => write!(f, "Spacer({key:?})"),
-            RawTag::StartConceal(key) => write!(f, "StartConceal({key:?})"),
-            RawTag::EndConceal(key) => write!(f, "EndConceal({key:?})"),
-            RawTag::ConcealUntil(key) => write!(f, "ConcealUntil({key:?})"),
-            RawTag::GhostText(key, id) => write!(f, "GhostText({key:?}, {id:?})"),
-            RawTag::ToggleStart(key, id) => write!(f, "ToggleStart({key:?}, {id:?})"),
-            RawTag::ToggleEnd(key, id) => write!(f, "ToggleEnd({key:?}, {id:?})"),
+            RawTag::PushForm(key, id) => write!(f, "{ty}{lp}{key:?}, {}{rp}", form::name_of(*id)),
+            RawTag::PopForm(key, id) => write!(f, "{ty}{lp}{key:?}, {}{rp}", form::name_of(*id)),
+            RawTag::MainCursor(key) => write!(f, "{ty}{lp}{key:?}{rp}"),
+            RawTag::ExtraCursor(key) => write!(f, "{ty}{lp}{key:?}{rp}"),
+            RawTag::StartAlignCenter(key) => write!(f, "{ty}{lp}{key:?}{rp}"),
+            RawTag::EndAlignCenter(key) => write!(f, "{ty}{lp}{key:?}{rp}"),
+            RawTag::StartAlignRight(key) => write!(f, "{ty}{lp}{key:?}{rp}"),
+            RawTag::EndAlignRight(key) => write!(f, "{ty}{lp}{key:?}{rp}"),
+            RawTag::Spacer(key) => write!(f, "{ty}{lp}{key:?}{rp}"),
+            RawTag::StartConceal(key) => write!(f, "{ty}{lp}{key:?}{rp}"),
+            RawTag::EndConceal(key) => write!(f, "{ty}{lp}{key:?}{rp}"),
+            RawTag::ConcealUntil(key) => write!(f, "{ty}{lp}{key:?}{rp}"),
+            RawTag::GhostText(key, id) => write!(f, "{ty}{lp}{key:?}, {id:?}{rp}"),
+            RawTag::ToggleStart(key, id) => write!(f, "{ty}{lp}{key:?}, {id:?}{rp}"),
+            RawTag::ToggleEnd(key, id) => write!(f, "{ty}{lp}{key:?}, {id:?}{rp}"),
         }
     }
 }

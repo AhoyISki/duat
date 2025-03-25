@@ -69,15 +69,7 @@ impl Cursors {
             let buf = self.buf.range(..);
             match binary_search_by_key(buf, cursor.end_excl(), |c| c.start()) {
                 Ok(i) => c_range.start..i + 1,
-                Err(i) => {
-                    if let Some(prev) = self.buf.get(i)
-                        && prev.start() <= cursor.end_excl()
-                    {
-                        c_range.start..i + 1
-                    } else {
-                        c_range.start..i
-                    }
-                }
+                Err(i) => c_range.start..i,
             }
         };
 
