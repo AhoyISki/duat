@@ -377,28 +377,28 @@ impl<U: Ui> Mode<U> for Normal {
             ////////// Basic movement keys
             key!(Char('h' | 'H') | Left) => {
                 helper.move_many(.., |mut m| {
-                    set_anchor_if_needed(&mut m, key.modifiers.contains(Mod::SHIFT));
+                    set_anchor_if_needed(key.modifiers.contains(Mod::SHIFT), &mut m);
                     m.move_hor(-1);
                 });
                 self.0 = SelType::Normal;
             }
             key!(Down) => helper.move_many(.., |mut m| {
-                set_anchor_if_needed(&mut m, key.modifiers.contains(Mod::SHIFT));
+                set_anchor_if_needed(key.modifiers.contains(Mod::SHIFT), &mut m);
                 m.move_ver_wrapped(1);
             }),
             key!(Up) => helper.move_many(.., |mut m| {
-                set_anchor_if_needed(&mut m, key.modifiers.contains(Mod::SHIFT));
+                set_anchor_if_needed(key.modifiers.contains(Mod::SHIFT), &mut m);
                 m.move_ver_wrapped(-1);
             }),
             key!(Char('l' | 'L') | Right) => {
                 helper.move_many(.., |mut m| {
-                    set_anchor_if_needed(&mut m, key.modifiers.contains(Mod::SHIFT));
+                    set_anchor_if_needed(key.modifiers.contains(Mod::SHIFT), &mut m);
                     m.move_hor(1);
                 });
                 self.0 = SelType::Normal;
             }
             key!(Char('j' | 'J')) => helper.move_many(.., |mut m| {
-                set_anchor_if_needed(&mut m, key.modifiers.contains(Mod::SHIFT));
+                set_anchor_if_needed(key.modifiers.contains(Mod::SHIFT), &mut m);
                 m.move_ver(1);
                 let v_caret = m.v_caret();
                 if m.char() == '\n' && v_caret.char_col() > 0 && self.0 != SelType::ToEndOfLine {
@@ -411,7 +411,7 @@ impl<U: Ui> Mode<U> for Normal {
                 }
             }),
             key!(Char('k' | 'K')) => helper.move_many(.., |mut m| {
-                set_anchor_if_needed(&mut m, key.modifiers.contains(Mod::SHIFT));
+                set_anchor_if_needed(key.modifiers.contains(Mod::SHIFT), &mut m);
                 m.move_ver(-1);
                 let v_caret = m.v_caret();
                 if m.char() == '\n' && v_caret.char_col() > 0 && self.0 != SelType::ToEndOfLine {
@@ -510,7 +510,7 @@ impl<U: Ui> Mode<U> for Normal {
             }),
             key!(Char('b' | 'B'), Mod::SHIFT | ALTSHIFT) => helper.move_many(.., |mut m| {
                 let alt_word = key.modifiers.contains(Mod::ALT);
-                set_anchor_if_needed(&mut m, key.modifiers.contains(Mod::SHIFT));
+                set_anchor_if_needed(key.modifiers.contains(Mod::SHIFT), &mut m);
                 let points = m.search_rev(word_and_space(alt_word, w_chars), None).next();
                 if let Some([p0, _]) = points {
                     m.move_to(p0);
@@ -519,7 +519,7 @@ impl<U: Ui> Mode<U> for Normal {
 
             key!(Char('x')) => helper.move_many(.., |mut m| {
                 self.0 = SelType::ToEndOfLine;
-                set_anchor_if_needed(&mut m, true);
+                set_anchor_if_needed(true, &mut m);
                 m.set_caret_on_start();
                 let p0 = m.search_rev("\n", None).next().map(|[_, p0]| p0);
                 m.move_to(p0.unwrap_or_default());
@@ -549,13 +549,19 @@ impl<U: Ui> Mode<U> for Normal {
                     OneKey::Until(sel_type)
                 });
             }
-            key!(Char('l'), Mod::ALT) | key!(End) => {
-                helper.move_many(.., |m| self.0 = select_to_end_of_line(self.0, m))
-            }
-            key!(Char('h'), Mod::ALT) | key!(Home) => helper.move_many(.., |mut m| {
-                set_anchor_if_needed(&mut m, self.0 == SelType::Extend);
-                let p1 = m.search_rev("\n", None).next().map(|[_, p1]| p1);
-                m.move_to(p1.unwrap_or_default());
+            key!(Char('l'), Mod::ALT | ALTSHIFT) | key!(End) => helper.move_many(.., |mut m| {
+                if !key.modifiers.contains(Mod::SHIFT) {
+                    m.unset_anchor();
+                }
+                select_to_end_of_line(true, m);
+                self.0 = SelType::BeforeEndOfLine;
+            }),
+            key!(Char('h'), Mod::ALT | ALTSHIFT) | key!(Home) => helper.move_many(.., |mut m| {
+                if !key.modifiers.contains(Mod::SHIFT) {
+                    m.unset_anchor();
+                }
+                set_anchor_if_needed(true, &mut m);
+                m.move_hor(-(m.v_caret().char_col() as i32));
             }),
             key!(Char('a'), Mod::ALT) => mode::set::<U>(OneKey::Around),
             key!(Char('i'), Mod::ALT) => mode::set::<U>(OneKey::Inside),
@@ -804,6 +810,9 @@ impl<U: Ui> Mode<U> for Normal {
                     });
                     let mut swap_ends = swap_ends.into_iter();
                     helper.move_many(.., |mut m| {
+                        if key.code == Char('p') {
+                            m.move_hor(1);
+                        }
                         m.set_anchor();
                         m.move_hor(lens.next().unwrap().saturating_sub(1) as i32);
                         if swap_ends.next().unwrap() {
@@ -1109,23 +1118,24 @@ fn match_goto<S, U: Ui>(
 
     match key {
         key!(Char('h')) => helper.move_many(.., |mut m| {
-            set_anchor_if_needed(&mut m, sel_type == SelType::Extend);
+            set_anchor_if_needed(sel_type == SelType::Extend, &mut m);
             let p1 = m.search_rev("\n", None).next().map(|[_, p1]| p1);
             m.move_to(p1.unwrap_or_default());
         }),
         key!(Char('j')) => helper.move_many(.., |mut m| {
-            set_anchor_if_needed(&mut m, sel_type == SelType::Extend);
+            set_anchor_if_needed(sel_type == SelType::Extend, &mut m);
             m.move_ver(i32::MAX)
         }),
         key!(Char('k')) => helper.move_many(.., |mut m| {
-            set_anchor_if_needed(&mut m, sel_type == SelType::Extend);
+            set_anchor_if_needed(sel_type == SelType::Extend, &mut m);
             m.move_to_coords(0, 0)
         }),
         key!(Char('l')) => helper.move_many(.., |m| {
-            sel_type = select_to_end_of_line(sel_type, m);
+            select_to_end_of_line(sel_type == SelType::Extend, m);
+            sel_type = SelType::BeforeEndOfLine;
         }),
         key!(Char('i')) => helper.move_many(.., |mut m| {
-            set_anchor_if_needed(&mut m, sel_type == SelType::Extend);
+            set_anchor_if_needed(sel_type == SelType::Extend, &mut m);
             let p1 = m.search_rev("(^|\n)[ \t]*", None).next().map(|[_, p1]| p1);
             if let Some(p1) = p1 {
                 m.move_to(p1);
@@ -1450,8 +1460,8 @@ fn w_char_cat(ranges: &'static [RangeInclusive<char>]) -> String {
         .collect()
 }
 
-fn select_to_end_of_line<S>(sel_type: SelType, mut m: Mover<'_, impl Area, S>) -> SelType {
-    set_anchor_if_needed(&mut m, sel_type == SelType::Extend);
+fn select_to_end_of_line<S>(set_anchor: bool, mut m: Mover<'_, impl Area, S>) {
+    set_anchor_if_needed(set_anchor, &mut m);
     m.set_desired_vcol(usize::MAX);
     let pre_nl = match m.char() {
         '\n' => m.rev().take_while(|(_, char)| *char != '\n').next(),
@@ -1460,7 +1470,6 @@ fn select_to_end_of_line<S>(sel_type: SelType, mut m: Mover<'_, impl Area, S>) -
     if let Some((p, _)) = pre_nl {
         m.move_to(p);
     }
-    SelType::BeforeEndOfLine
 }
 
 #[derive(PartialEq, Eq)]
@@ -1592,7 +1601,6 @@ fn set_indent(helper: &mut EditHelper<'_, File, impl Area, ()>) {
             let prev_non_empty = prev_non_empty_line_points(e);
             prev_non_empty.map(|[p0, _]| e.indent_on(p0)).unwrap_or(0)
         };
-        duat_core::log_file!("{indent}");
         if e.anchor().is_some() {
             e.replace(" ".repeat(indent));
         } else {
@@ -1688,8 +1696,8 @@ fn paste_strings() -> Vec<String> {
     }
 }
 
-fn set_anchor_if_needed<S>(m: &mut Mover<impl Area, S>, is_shift: bool) {
-    if is_shift {
+fn set_anchor_if_needed<S>(set_anchor: bool, m: &mut Mover<impl Area, S>) {
+    if set_anchor {
         if m.anchor().is_none() {
             m.set_anchor();
         }
