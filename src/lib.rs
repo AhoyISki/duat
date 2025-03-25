@@ -143,6 +143,7 @@ impl Reader for TsParser {
             .parser
             .parse_with_options(&mut buf_parse(bytes), Some(&self.tree), None)
             .unwrap();
+
         // I keep an old tree around, in order to compare it for tagging
         // purposes.
         self.old_tree = Some(std::mem::replace(&mut self.tree, tree));
@@ -159,84 +160,31 @@ impl Reader for TsParser {
         bytes: &mut Bytes,
         changes: &[Change<&str>],
     ) -> Vec<Range<usize>> {
-        let (.., [hi_query, _]) = &self.lang_parts;
-        let old_tree = self.old_tree.as_ref().unwrap();
-        let mut cursor = QueryCursor::new();
-        let buf = TsBuf(bytes);
-
         let mut ranges = Vec::new();
-        let mut checked_points = Vec::new();
+        // let mut checked_points = Vec::new();
 
+        // This initial check might find larger, somewhat self contained nodes
+        // that have changed, e.g. an identifier that is now recognized as a
+        // function, things of that sort.
+        if let Some(old_tree) = self.old_tree.as_ref() {
+            for range in self.tree.changed_ranges(old_tree) {
+                let range = range.start_byte..range.end_byte;
+                if range.clone().count() > 300 {
+                    duat_core::log_file!("range {range:?} is long");
+                }
+                merge_range_in(&mut ranges, range);
+            }
+        }
+
+        // However, `changed_ranges` doesn't catch everything, so another
+        // check is done. At a minimum, at least the lines where the changes
+        // took place should be updated.
         for change in changes {
             let start = change.start();
             let added = change.added_end();
-            let start = bytes.point_at_line(start.line()).byte();
-            let end = bytes
-                .point_at_line((added.line() + 1).min(bytes.len().line()))
-                .byte();
-
-            // Don't check the same region twice.
-            if checked_points.contains(&(start, end)) {
-                continue;
-            }
-
-            // Add one to the start and end, in order to include comments, since
-            // those act a little weird in tree sitter.
-            let ts_start = start.saturating_sub(1);
-            let ts_end = (end + 1).min(bytes.len().byte());
-            cursor.set_byte_range(ts_start..ts_end);
-
-            let mut ml_ranges = Vec::new();
-
-            // The next two loops concern themselves with determining what regions
-            // of the file have been altered.
-            // Normally, this is assumed to be just the current line, but in the
-            // cases of primarily strings and ml comments, this will (probably)
-            // involve the entire rest of the file below.
-            let mut query_matches = cursor.captures(hi_query, old_tree.root_node(), buf);
-            while let Some((query_match, _)) = query_matches.next() {
-                for cap in query_match.captures.iter() {
-                    let range = cap.node.range();
-                    if range.start_point.row != range.end_point.row {
-                        ml_ranges.push((range, cap.index));
-                    }
-                }
-            }
-
-            let mut query_matches = cursor.captures(hi_query, self.tree.root_node(), buf);
-            'ml_range_edited: while let Some((query_match, _)) = query_matches.next() {
-                for cap in query_match.captures.iter() {
-                    let range = cap.node.range();
-                    let entry = (range, cap.index);
-
-                    // If a ml range existed before and after the change, then it can be
-                    // assumed that it was not altered.
-                    // If it exists in only one of those times, then the whole rest of the
-                    // file ahead must be checked, as ml ranges like strings will always
-                    // alter every subsequent line in the file.
-                    if range.start_point.row != range.end_point.row
-                        && ml_ranges.extract_if(.., |r| *r == entry).next().is_none()
-                    {
-                        ml_ranges.push(entry);
-                        break 'ml_range_edited;
-                    }
-                }
-            }
-
-            if ml_ranges.is_empty() {
-                // `merge_range_in` is a useful function for the
-                // `Reader::ranges_to_update`, it just merges a range into a list of
-                // sorted ranges, returning in the exact format that Duat needs
-                merge_range_in(&mut ranges, start..end)
-            } else {
-                // Considering that all ranges are coming in order, we can just
-                // disregard the updates from the other ranges, since they will belong
-                // to this one.
-                merge_range_in(&mut ranges, start..bytes.len().byte());
-                break;
-            }
-
-            checked_points.push((start, end));
+            let start = bytes.point_at_line(start.line());
+            let end = bytes.point_at_line((added.line() + 1).min(bytes.len().line()));
+            merge_range_in(&mut ranges, start.byte()..end.byte());
         }
 
         ranges
@@ -765,6 +713,25 @@ fn lang_parts(path: impl AsRef<Path>) -> Option<LangParts<'static>> {
         let queries = queries.map(|q| Query::new(lang, q).unwrap());
         (idents, lang, queries)
     })
+}
+
+fn log_node(node: tree_sitter::Node) {
+    use std::fmt::Write;
+
+    let mut cursor = node.walk();
+    let mut node = Some(cursor.node());
+    let mut log = String::new();
+    while let Some(no) = node {
+        let indent = " ".repeat(cursor.depth() as usize);
+        writeln!(log, "{indent}{no:?}").unwrap();
+        let mut next_exists = cursor.goto_first_child() || cursor.goto_next_sibling();
+        while !next_exists && cursor.goto_parent() {
+            next_exists = cursor.goto_next_sibling();
+        }
+        node = next_exists.then_some(cursor.node());
+    }
+
+    duat_core::log_file!("{log}");
 }
 
 type LangParts<'a> = ([&'a str; 3], &'a Language, [Query; 2]);
