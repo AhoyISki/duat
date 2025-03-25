@@ -760,13 +760,8 @@ where
     ///
     /// [`GapBuffer`]: gapbuf::GapBuffer
     pub fn selection(&self) -> Strs {
-        let anchor = self.anchor().unwrap_or(self.caret());
-        let (start, end) = if anchor < self.caret() {
-            (anchor, self.caret())
-        } else {
-            (self.caret(), anchor)
-        };
-        self.text().strs(start.byte()..end.byte())
+        let range = self.cursor.range(self.text());
+        self.text().strs(range)
     }
 
     /// Returns the length of the [`Text`], in [`Point`]
