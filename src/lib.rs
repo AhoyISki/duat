@@ -375,9 +375,10 @@ impl<U: Ui> Mode<U> for Normal {
 
         match key {
             ////////// Basic movement keys
-            key!(Char('h' | 'H') | Left) => {
+            key!(Char('h' | 'H') | Left, Mod::NONE | Mod::SHIFT) => {
                 helper.move_many(.., |mut m| {
-                    set_anchor_if_needed(key.modifiers.contains(Mod::SHIFT), &mut m);
+                    let set_anchor = key.code == Char('H') || key.modifiers == Mod::SHIFT;
+                    set_anchor_if_needed(set_anchor, &mut m);
                     m.move_hor(-1);
                 });
                 self.0 = SelType::Normal;
@@ -390,15 +391,16 @@ impl<U: Ui> Mode<U> for Normal {
                 set_anchor_if_needed(key.modifiers.contains(Mod::SHIFT), &mut m);
                 m.move_ver_wrapped(-1);
             }),
-            key!(Char('l' | 'L') | Right) => {
+            key!(Char('l' | 'L') | Right, Mod::NONE | Mod::SHIFT) => {
                 helper.move_many(.., |mut m| {
-                    set_anchor_if_needed(key.modifiers.contains(Mod::SHIFT), &mut m);
+                    let set_anchor = key.code == Char('L') || key.modifiers == Mod::SHIFT;
+                    set_anchor_if_needed(set_anchor, &mut m);
                     m.move_hor(1);
                 });
                 self.0 = SelType::Normal;
             }
             key!(Char('j' | 'J')) => helper.move_many(.., |mut m| {
-                set_anchor_if_needed(key.modifiers.contains(Mod::SHIFT), &mut m);
+                set_anchor_if_needed(key.code == Char('J'), &mut m);
                 m.move_ver(1);
                 let v_caret = m.v_caret();
                 if m.char() == '\n' && v_caret.char_col() > 0 && self.0 != SelType::ToEndOfLine {
@@ -411,7 +413,7 @@ impl<U: Ui> Mode<U> for Normal {
                 }
             }),
             key!(Char('k' | 'K')) => helper.move_many(.., |mut m| {
-                set_anchor_if_needed(key.modifiers.contains(Mod::SHIFT), &mut m);
+                set_anchor_if_needed(key.code == Char('K'), &mut m);
                 m.move_ver(-1);
                 let v_caret = m.v_caret();
                 if m.char() == '\n' && v_caret.char_col() > 0 && self.0 != SelType::ToEndOfLine {
@@ -483,7 +485,7 @@ impl<U: Ui> Mode<U> for Normal {
                 };
             }),
 
-            key!(Char('w' | 'W'), Mod::SHIFT | ALTSHIFT) => helper.move_many(.., |mut m| {
+            key!(Char('W'), Mod::ALT | Mod::NONE) => helper.move_many(.., |mut m| {
                 let alt_word = key.modifiers.contains(Mod::ALT);
                 if m.anchor().is_none() {
                     m.set_anchor();
@@ -496,7 +498,7 @@ impl<U: Ui> Mode<U> for Normal {
                     m.move_hor(-1);
                 }
             }),
-            key!(Char('e' | 'E'), Mod::SHIFT | ALTSHIFT) => helper.move_many(.., |mut m| {
+            key!(Char('E'), Mod::NONE | Mod::ALT) => helper.move_many(.., |mut m| {
                 let alt_word = key.modifiers.contains(Mod::ALT);
                 if m.anchor().is_none() {
                     m.set_anchor();
@@ -508,7 +510,7 @@ impl<U: Ui> Mode<U> for Normal {
                     m.move_hor(-1);
                 }
             }),
-            key!(Char('b' | 'B'), Mod::SHIFT | ALTSHIFT) => helper.move_many(.., |mut m| {
+            key!(Char('B'), Mod::NONE | Mod::ALT) => helper.move_many(.., |mut m| {
                 let alt_word = key.modifiers.contains(Mod::ALT);
                 set_anchor_if_needed(key.modifiers.contains(Mod::SHIFT), &mut m);
                 let points = m.search_rev(word_and_space(alt_word, w_chars), None).next();
@@ -531,10 +533,7 @@ impl<U: Ui> Mode<U> for Normal {
                 }
                 m.set_desired_vcol(usize::MAX);
             }),
-            key!(
-                Char('f' | 'F' | 't' | 'T'),
-                Mod::NONE | Mod::ALT | Mod::SHIFT | ALTSHIFT
-            ) => {
+            key!(Char('f' | 'F' | 't' | 'T'), Mod::NONE | Mod::ALT) => {
                 let mf = key.modifiers;
                 let sel_type = match (mf.contains(Mod::SHIFT), mf.contains(Mod::ALT)) {
                     (true, true) => SelType::ExtendRev,
@@ -549,15 +548,15 @@ impl<U: Ui> Mode<U> for Normal {
                     OneKey::Until(sel_type)
                 });
             }
-            key!(Char('l'), Mod::ALT | ALTSHIFT) | key!(End) => helper.move_many(.., |mut m| {
-                if !key.modifiers.contains(Mod::SHIFT) {
+            key!(Char('l' | 'L'), Mod::ALT) | key!(End) => helper.move_many(.., |mut m| {
+                if key.code == Char('l') {
                     m.unset_anchor();
                 }
                 select_to_end_of_line(true, m);
                 self.0 = SelType::BeforeEndOfLine;
             }),
-            key!(Char('h'), Mod::ALT | ALTSHIFT) | key!(Home) => helper.move_many(.., |mut m| {
-                if !key.modifiers.contains(Mod::SHIFT) {
+            key!(Char('h' | 'H'), Mod::ALT) | key!(Home) => helper.move_many(.., |mut m| {
+                if key.code == Char('h') {
                     m.unset_anchor();
                 }
                 set_anchor_if_needed(true, &mut m);
@@ -577,13 +576,16 @@ impl<U: Ui> Mode<U> for Normal {
                 helper.move_many(.., |mut m| m.set_caret_on_start());
                 mode::set::<U>(Insert::new());
             }
-            key!(Char('I'), Mod::SHIFT) => {
+            key!(Char('I')) => {
                 helper.new_moment();
                 helper.move_many(.., |mut m| {
                     m.unset_anchor();
                     m.move_hor(-(m.v_caret().char_col() as i32));
-                    let [p0, _] = m.search_fwd("[ \t]*.", None).next().unwrap();
-                    m.move_to(p0);
+                    let points = m.search_fwd("[ \t]*[^\n]", None).next();
+                    if let Some([_, p1]) = points {
+                        m.move_to(p1);
+                        m.move_hor(-1);
+                    }
                 });
                 mode::set::<U>(Insert::new());
             }
@@ -595,7 +597,7 @@ impl<U: Ui> Mode<U> for Normal {
                 });
                 mode::set::<U>(Insert::new());
             }
-            key!(Char('A'), Mod::SHIFT) => {
+            key!(Char('A')) => {
                 helper.new_moment();
                 helper.move_many(.., |mut m| {
                     m.unset_anchor();
@@ -604,16 +606,13 @@ impl<U: Ui> Mode<U> for Normal {
                 });
                 mode::set::<U>(Insert::new());
             }
-            key!(
-                Char('o' | 'O'),
-                Mod::NONE | Mod::ALT | Mod::SHIFT | ALTSHIFT
-            ) => {
+            key!(Char('o' | 'O'), Mod::NONE | Mod::ALT) => {
                 helper.new_moment();
                 let mut orig_points = Vec::new();
                 helper.move_many(.., |mut m| {
                     orig_points.push((m.caret(), m.anchor()));
                     m.unset_anchor();
-                    if key.modifiers.contains(Mod::SHIFT) {
+                    if key.code == Char('O') {
                         m.move_hor(-(m.v_caret().char_col() as i32));
                     } else {
                         let (p, _) = m.fwd().find(|(_, c)| *c == '\n').unwrap();
@@ -629,12 +628,12 @@ impl<U: Ui> Mode<U> for Normal {
                         if let Some(anchor) = anchor {
                             m.move_to(anchor);
                             m.set_anchor();
-                            if key.modifiers == ALTSHIFT {
+                            if key.code == Char('O') {
                                 m.move_hor(1);
                             }
                         }
                         m.move_to(caret);
-                        if key.modifiers == ALTSHIFT {
+                        if key.code == Char('O') {
                             m.move_hor(1);
                         }
                     });
@@ -686,10 +685,10 @@ impl<U: Ui> Mode<U> for Normal {
             ////////// Advanced selection manipulation
             key!(Char(';'), Mod::ALT) => helper.move_many(.., |mut m| m.swap_ends()),
             key!(Char(';')) => helper.move_many(.., |mut m| m.unset_anchor()),
-            key!(Char(':'), ALTSHIFT) => helper.move_many(.., |mut m| m.set_caret_on_end()),
+            key!(Char(':'), Mod::ALT) => helper.move_many(.., |mut m| m.set_caret_on_end()),
             key!(Char(')')) => helper.cursors_mut().rotate_main(1),
             key!(Char('(')) => helper.cursors_mut().rotate_main(-1),
-            key!(Char(')'), ALTSHIFT) => {
+            key!(Char(')'), Mod::ALT) => {
                 helper.new_moment();
                 let mut last_sel = None;
                 helper.move_many(.., |mut m| m.set_anchor());
@@ -704,7 +703,7 @@ impl<U: Ui> Mode<U> for Normal {
                     }
                 });
             }
-            key!(Char('('), ALTSHIFT) => {
+            key!(Char('('), Mod::ALT) => {
                 helper.new_moment();
                 let mut selections = Vec::<String>::new();
                 helper.move_many(.., |mut m| {
@@ -719,7 +718,7 @@ impl<U: Ui> Mode<U> for Normal {
                     }
                 });
             }
-            key!(Char('_'), ALTSHIFT) => {
+            key!(Char('_'), Mod::ALT) => {
                 helper.move_many(.., |mut m| {
                     m.set_caret_on_end();
                     m.move_hor(1)
@@ -745,7 +744,7 @@ impl<U: Ui> Mode<U> for Normal {
                 m.move_to(last_p1);
                 m.swap_ends();
             }),
-            key!(Char('s'), ALTSHIFT) => helper.move_many(.., |mut m| {
+            key!(Char('s'), Mod::ALT) => helper.move_many(.., |mut m| {
                 if m.anchor().is_some() {
                     m.copy_and(|mut m| {
                         m.swap_ends();
@@ -762,7 +761,7 @@ impl<U: Ui> Mode<U> for Normal {
             }
             key!(Char('d'), Mod::NONE | Mod::ALT) => {
                 helper.new_moment();
-                if let Mod::NONE = key.modifiers {
+                if key.modifiers == Mod::NONE {
                     copy_selections(&mut helper);
                 }
                 helper.edit_many(.., |e| e.replace(""));
@@ -770,7 +769,7 @@ impl<U: Ui> Mode<U> for Normal {
             }
             key!(Char('c'), Mod::NONE | Mod::ALT) => {
                 helper.new_moment();
-                if let Mod::NONE = key.modifiers {
+                if key.modifiers == Mod::NONE {
                     copy_selections(&mut helper);
                 }
                 helper.edit_many(.., |e| e.replace(""));
@@ -864,7 +863,7 @@ impl<U: Ui> Mode<U> for Normal {
                     m.destroy();
                 })
             }
-            key!(Char('c'), ALTSHIFT) => {
+            key!(Char('C'), Mod::ALT) => {
                 helper.new_moment();
                 helper.move_nth(0, |mut m| {
                     let v_caret = m.v_caret();
@@ -1288,7 +1287,7 @@ fn match_inside_around(
             })
         }
         key!(Char('w' | 'W')) => helper.move_many(.., |mut m| {
-            let alt_word = key.modifiers.contains(Mod::SHIFT);
+            let alt_word = key.code == Char('w');
             let w_chars = m.cfg().word_chars;
             let start = m.search_rev(e_anchor_word(alt_word, w_chars), None).next();
             let end = m.search_fwd(s_anchor_word(alt_word, w_chars), None).next();
@@ -1726,5 +1725,4 @@ fn prev_non_empty_line_points(e: &mut Editor<impl Area, File>) -> Option<[Point;
     prev.map(|n| e.text().points_of_line(n))
 }
 
-const ALTSHIFT: Mod = Mod::ALT.union(Mod::SHIFT);
 static INSERT_TABS: AtomicBool = AtomicBool::new(false);
