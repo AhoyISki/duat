@@ -619,7 +619,7 @@ impl<U: Ui> Mode<U> for &'static str {
 /// ```
 pub macro key {
     ($code:pat) => {
-        KeyEvent { code: $code, modifiers: KeyMod::NONE | KeyMod::SHIFT, .. }
+        KeyEvent { code: $code, modifiers: KeyMod::NONE, .. }
     },
 
     ($code:pat, $modifiers:pat) => {

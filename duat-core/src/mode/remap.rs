@@ -254,7 +254,7 @@ mod global {
                 }
             };
 
-            let (mods, mut chars) = match matched_mods {
+            let (mut mods, mut chars) = match matched_mods {
                 Some((mods, chars)) => (mods, chars),
                 None => (KeyMod::empty(), chars),
             };
@@ -266,6 +266,10 @@ mod global {
                 if let Some(c) = code.take() {
                     match chars.next()? {
                         '>' if seq.len() > 1 || !mods.is_empty() => {
+                            // Characters are sent as-is, no shifting required.
+                            if let KeyCode::Char(_) = c {
+                                mods.remove(KeyMod::SHIFT);
+                            }
                             break Some((KeyEvent::new(c, mods), chars));
                         }
                         _ if seq.len() > 1 => break None,
@@ -320,7 +324,11 @@ mod global {
     }
 
     /// Sends a key to be remapped
-    pub(crate) fn send_key(key: KeyEvent) {
+    pub(crate) fn send_key(mut key: KeyEvent) {
+        // No need to send shift to, for example, Char('L').
+        if let KeyCode::Char(_) = key.code {
+            key.modifiers.remove(KeyMod::SHIFT);
+        }
         let f = { *SEND_KEY.lock() };
         f(key)
     }
