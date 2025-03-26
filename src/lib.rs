@@ -261,8 +261,8 @@
 #![feature(let_chains, iter_map_windows, if_let_guard, iter_array_chunks)]
 
 use std::{
+    collections::HashMap,
     marker::PhantomData,
-    ops::RangeInclusive,
     sync::{
         LazyLock,
         atomic::{AtomicBool, Ordering},
@@ -371,7 +371,7 @@ impl<U: Ui> Mode<U> for Normal {
 
     fn send_key(&mut self, key: Event, widget: &mut Self::Widget, area: &U::Area) {
         let mut helper = EditHelper::new(widget, area);
-        let w_chars = helper.cfg().word_chars;
+        let wc = helper.cfg().word_chars;
 
         match key {
             ////////// Basic movement keys
@@ -431,13 +431,13 @@ impl<U: Ui> Mode<U> for Normal {
                 let alt_word = key.modifiers.contains(Mod::ALT);
                 let init = no_nl_windows(m.fwd()).next();
                 if let Some(((p0, c0), (p1, c1))) = init {
-                    if Category::of(c0, w_chars) == Category::of(c1, w_chars) {
+                    if Category::of(c0, wc) == Category::of(c1, wc) {
                         m.move_to(p0);
                     } else {
                         m.move_to(p1);
                     }
 
-                    let points = m.search_fwd(word_and_space(alt_word, w_chars), None).next();
+                    let points = m.search_fwd(word_and_space(alt_word, wc), None).next();
                     if let Some([_, p1]) = points {
                         m.set_anchor();
                         m.move_to(p1);
@@ -449,13 +449,13 @@ impl<U: Ui> Mode<U> for Normal {
                 let alt_word = key.modifiers.contains(Mod::ALT);
                 let init = no_nl_windows(m.fwd()).next();
                 if let Some(((p0, c0), (p1, c1))) = init {
-                    if Category::of(c0, w_chars) == Category::of(c1, w_chars) {
+                    if Category::of(c0, wc) == Category::of(c1, wc) {
                         m.move_to(p0);
                     } else {
                         m.move_to(p1);
                     }
 
-                    let points = m.search_fwd(space_and_word(alt_word, w_chars), None).next();
+                    let points = m.search_fwd(space_and_word(alt_word, wc), None).next();
                     if let Some([_, p1]) = points {
                         m.set_anchor();
                         m.move_to(p1);
@@ -471,10 +471,10 @@ impl<U: Ui> Mode<U> for Normal {
                 };
                 if let Some(((p1, c1), (_, c0))) = init {
                     m.move_to(p1);
-                    if Category::of(c0, w_chars) == Category::of(c1, w_chars) {
+                    if Category::of(c0, wc) == Category::of(c1, wc) {
                         m.move_hor(1);
                     }
-                    let points = m.search_rev(word_and_space(alt_word, w_chars), None).next();
+                    let points = m.search_rev(word_and_space(alt_word, wc), None).next();
                     if let Some([p0, p1]) = points {
                         m.move_to(p0);
                         m.set_anchor();
@@ -487,12 +487,9 @@ impl<U: Ui> Mode<U> for Normal {
 
             key!(Char('W'), Mod::ALT | Mod::NONE) => helper.move_many(.., |mut m| {
                 let alt_word = key.modifiers.contains(Mod::ALT);
-                if m.anchor().is_none() {
-                    m.set_anchor();
-                } else {
-                    m.move_hor(1);
-                }
-                let points = m.search_fwd(word_and_space(alt_word, w_chars), None).next();
+                set_anchor_if_needed(true, &mut m);
+                m.move_hor(1);
+                let points = m.search_fwd(word_and_space(alt_word, wc), None).next();
                 if let Some([_, p1]) = points {
                     m.move_to(p1);
                     m.move_hor(-1);
@@ -500,11 +497,9 @@ impl<U: Ui> Mode<U> for Normal {
             }),
             key!(Char('E'), Mod::NONE | Mod::ALT) => helper.move_many(.., |mut m| {
                 let alt_word = key.modifiers.contains(Mod::ALT);
-                if m.anchor().is_none() {
-                    m.set_anchor();
-                }
+                set_anchor_if_needed(true, &mut m);
                 m.move_hor(1);
-                let points = m.search_fwd(space_and_word(alt_word, w_chars), None).next();
+                let points = m.search_fwd(space_and_word(alt_word, wc), None).next();
                 if let Some([_, p1]) = points {
                     m.move_to(p1);
                     m.move_hor(-1);
@@ -512,8 +507,8 @@ impl<U: Ui> Mode<U> for Normal {
             }),
             key!(Char('B'), Mod::NONE | Mod::ALT) => helper.move_many(.., |mut m| {
                 let alt_word = key.modifiers.contains(Mod::ALT);
-                set_anchor_if_needed(key.modifiers.contains(Mod::SHIFT), &mut m);
-                let points = m.search_rev(word_and_space(alt_word, w_chars), None).next();
+                set_anchor_if_needed(true, &mut m);
+                let points = m.search_rev(word_and_space(alt_word, wc), None).next();
                 if let Some([p0, _]) = points {
                     m.move_to(p0);
                 }
@@ -578,16 +573,19 @@ impl<U: Ui> Mode<U> for Normal {
             }
             key!(Char('I')) => {
                 helper.new_moment();
-                helper.move_many(.., |mut m| {
-                    m.unset_anchor();
-                    m.move_hor(-(m.v_caret().char_col() as i32));
-                    let points = m.search_fwd("\\A[ \t]*[^ \t\n]", None).next();
-                    if let Some([_, p1]) = points {
-                        m.move_to(p1);
-                        m.move_hor(-1);
-                    }
-                });
+                set_indent(&mut helper);
                 mode::set::<U>(Insert::new());
+                // helper.move_many(.., |mut m| {
+                //    m.unset_anchor();
+                //    m.move_hor(-(m.v_caret().char_col() as i32));
+                //    m.set_anchor();
+                //    let points = m.search_fwd("\\A[ \t]*[^ \t\n]",
+                // None).next();    if let Some([_,
+                // p1]) = points {
+                //        m.move_to(p1);
+                //        m.move_hor(-1);
+                //    }
+                //});
             }
             key!(Char('a')) => {
                 helper.new_moment();
@@ -744,7 +742,7 @@ impl<U: Ui> Mode<U> for Normal {
                 m.move_to(last_p1);
                 m.swap_ends();
             }),
-            key!(Char('s'), Mod::ALT) => helper.move_many(.., |mut m| {
+            key!(Char('S'), Mod::ALT) => helper.move_many(.., |mut m| {
                 if m.anchor().is_some() {
                     m.copy_and(|mut m| {
                         m.swap_ends();
@@ -1287,14 +1285,14 @@ fn match_inside_around(
         }
         key!(Char('w' | 'W')) => helper.move_many(.., |mut m| {
             let alt_word = key.code == Char('w');
-            let w_chars = m.cfg().word_chars;
-            let start = m.search_rev(e_anchor_word(alt_word, w_chars), None).next();
-            let end = m.search_fwd(s_anchor_word(alt_word, w_chars), None).next();
+            let wc = m.cfg().word_chars;
+            let start = m.search_rev(anchored_word(alt_word, wc), None).next();
+            let end = m.search_fwd(s_anchor_word(alt_word, wc), None).next();
             if let Some([_, p1]) = end {
                 let p0 = {
                     let p0 = start.map(|[p0, _]| p0).unwrap_or(m.caret());
-                    let p0_cat = Category::of(m.char_at(p0).unwrap(), w_chars);
-                    let p1_cat = Category::of(m.char_at(p1).unwrap(), w_chars);
+                    let p0_cat = Category::of(m.char_at(p0).unwrap(), wc);
+                    let p1_cat = Category::of(m.char_at(p1).unwrap(), wc);
                     let p0_is_same = alt_word || p0_cat == p1_cat;
                     if p0_is_same { p0 } else { m.caret() }
                 };
@@ -1409,44 +1407,26 @@ enum SelType {
     Normal,
 }
 
-fn word_and_space(alt_word: bool, w_chars: WordChars) -> String {
+fn word_and_space(alt_word: bool, wc: WordChars) -> String {
     if alt_word {
         "[^ \t\n]*[ \t]*".to_string()
     } else {
-        let cat = w_char_cat(w_chars.ranges());
+        let cat = w_char_cat(wc);
         format!("([{cat}]+|[^{cat} \t\n]+)[ \t]*|[ \t]+")
     }
 }
 
-fn space_and_word(alt_word: bool, w_chars: WordChars) -> String {
+fn space_and_word(alt_word: bool, wc: WordChars) -> String {
     if alt_word {
         "[ \t]*[^ \t\n]*".to_string()
     } else {
-        let cat = w_char_cat(w_chars.ranges());
+        let cat = w_char_cat(wc);
         format!("[ \t]*([{cat}]+|[^{cat} \t\n]+)|[ \t]+")
     }
 }
 
-fn s_anchor_word(alt_word: bool, w_chars: WordChars) -> String {
-    if alt_word {
-        "\\A[^ \t\n]+]".to_string()
-    } else {
-        let cat = w_char_cat(w_chars.ranges());
-        format!("\\A([{cat}]+|[^{cat} \t\n]+)")
-    }
-}
-
-fn e_anchor_word(is_alt_word: bool, w_chars: WordChars) -> String {
-    if is_alt_word {
-        "[^ \t\n]+]\\z".to_string()
-    } else {
-        let cat = w_char_cat(w_chars.ranges());
-        format!("([{cat}]+|[^{cat} \t\n]+)\\z")
-    }
-}
-
-fn w_char_cat(ranges: &'static [RangeInclusive<char>]) -> String {
-    ranges
+fn w_char_cat(wc: WordChars) -> String {
+    wc.ranges()
         .iter()
         .map(|r| {
             if r.start() == r.end() {
@@ -1478,8 +1458,8 @@ enum Category {
 }
 
 impl Category {
-    fn of(char: char, w_chars: WordChars) -> Self {
-        if w_chars.contains(char) {
+    fn of(char: char, wc: WordChars) -> Self {
+        if wc.contains(char) {
             Category::Word
         } else if [' ', '\t', '\n'].contains(&char) {
             Category::Space
@@ -1715,7 +1695,7 @@ fn just_char(key: Event) -> Option<char> {
 fn prev_non_empty_line_points(e: &mut Editor<impl Area, File>) -> Option<[Point; 2]> {
     let byte_col = e
         .text()
-        .buffers(..e.caret().byte())
+        .buffers(..e.caret().byte(), thi is angowem, )
         .take_while(|b| *b != b'\n')
         .count();
     let prev = e
@@ -1725,3 +1705,95 @@ fn prev_non_empty_line_points(e: &mut Editor<impl Area, File>) -> Option<[Point;
 }
 
 static INSERT_TABS: AtomicBool = AtomicBool::new(false);
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Object<'a> {
+    Anchored(&'a str),
+    Bounds(&'a str, &'a str, usize),
+    Bound(&'a str),
+}
+
+impl<'a> Object<'a> {
+    fn from_char(char: char, count: usize, wc: WordChars, bc: BracketPatterns) -> Option<Self> {
+        match char {
+            'b' | '(' | ')' => Some(Self::Bounds(r"\(", r"\{", count)),
+            'B' | '{' | '}' => Some(Self::Bounds(r"\{", r"\}", count)),
+            'r' | '[' | ']' => Some(Self::Bounds(r"\[", r"\]", count)),
+            'a' | '<' | '>' => Some(Self::Bounds("<", ">", count)),
+            'u' => Some(Self::Bounds({
+                static PATTERNS: LazyLock<Mutex<HashMap<BracketPatterns, &str>>> = LazyLock::new(Mutex::default);
+            }),
+            'Q' | '"' => Some(Self::Bound("\"")),
+            'q' | '\'' => Some(Self::Bound("'")),
+            'g' | '`' => Some(Self::Bound("`")),
+            's' => Some(Self::Bound(r"[\.;!\?]")),
+            'p' => Some(Self::Bound("^\n")),
+            'w' => Some(Self::Anchored({
+                static PATTERNS: LazyLock<Mutex<HashMap<WordChars, &str>>> =
+                    LazyLock::new(Mutex::default);
+
+                let cat = w_char_cat(wc);
+                PATTERNS
+                    .lock()
+                    .entry(wc)
+                    .or_insert_with(|| format!("\\A([{cat}]+|[^{cat} \t\n]+)\\z").leak())
+            })),
+            'W' => Some(Self::Anchored("\\A[^ \t\n]+]\\z")),
+            ' ' => Some(Self::Anchored(r"\A\s*\z"))
+        }
+    }
+
+    fn find_ahead<S>(
+        self,
+        m: &mut Mover<impl Area, S>,
+        until: Option<Point>,
+    ) -> Option<[Point; 2]> {
+        match self {
+            Object::Anchored(pat) => {
+                let s_pat = pat.strip_suffix(r"\z").unwrap();
+                m.search_fwd(s_pat, until).next()
+            }
+            Object::Bounds(s_b, e_b, mut s_count) => {
+                let mut iter = m.search_fwd([s_b, e_b], until);
+                loop {
+                    let found = iter.next();
+                    let (id, points) = found?;
+                    s_count += (id == 0) as usize;
+                    s_count = s_count.saturating_sub((id == 1) as usize);
+                    if s_count == 0 {
+                        break Some(points);
+                    }
+                }
+            }
+            Object::Bound(b) => m.search_fwd(b, until).next(),
+        }
+    }
+
+    fn find_behind<S>(
+        self,
+        m: &mut Mover<impl Area, S>,
+        until: Option<Point>,
+    ) -> Option<[Point; 2]> {
+        match self {
+            Object::Anchored(pat) => {
+                let s_pat = pat.strip_prefix(r"\A").unwrap();
+                m.search_fwd(s_pat, until).next()
+            }
+            Object::Bounds(s_b, e_b, mut e_count) => {
+                let mut iter = m.search_rev([s_b, e_b], until);
+                loop {
+                    let found = iter.next();
+                    let (id, points) = found?;
+                    e_count += (id == 1) as usize;
+                    e_count = e_count.saturating_sub((id == 0) as usize);
+                    if e_count == 0 {
+                        break Some(points);
+                    }
+                }
+            }
+            Object::Bound(b) => m.search_fwd(b, until).next(),
+        }
+    }
+}
+
+type BracketPatterns = &[[&'static str; 2]];
