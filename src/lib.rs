@@ -581,7 +581,7 @@ impl<U: Ui> Mode<U> for Normal {
                 helper.move_many(.., |mut m| {
                     m.unset_anchor();
                     m.move_hor(-(m.v_caret().char_col() as i32));
-                    let points = m.search_fwd("[ \t]*[^\n]", None).next();
+                    let points = m.search_fwd("[ \t]*[^ \t\n]", None).next();
                     if let Some([_, p1]) = points {
                         m.move_to(p1);
                         m.move_hor(-1);
