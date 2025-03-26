@@ -598,7 +598,7 @@ pub mod prelude {
         data::{self, RwData},
         text::{
             self, AlignCenter, AlignLeft, AlignRight, Builder, Ghost, Spacer, Tag, Text, err, hint,
-            ok, text,
+            ok, text, RawTag
         },
         ui::{Area as AreaTrait, FileBuilder, WindowBuilder},
         widgets::Widget,

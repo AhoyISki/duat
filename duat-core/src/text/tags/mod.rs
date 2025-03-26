@@ -14,7 +14,6 @@ use std::{
     ops::{Range, RangeBounds},
 };
 
-use crossterm::style::Stylize;
 use gapbuf::{GapBuffer, gap_buffer};
 
 use self::types::Toggle;
@@ -115,6 +114,10 @@ impl Tags {
         }
 
         let n = if at == b {
+            let n = n - rev_range(&self.buf, ..n)
+                .take_while(|(_, ts)| ts.as_tag().is_some_and(|t| t.priority() > tag.priority()))
+                .count();
+
             self.buf.insert(n, TagOrSkip::Tag(tag));
             self.records.transform([n, at], [0, 0], [1, 0]);
             self.records.insert([n, at]);
@@ -540,14 +543,14 @@ impl Tags {
         let [n, b, _] = self.get_skip_behind(b);
         fwd_range(&self.buf, n..)
             .filter_map(entries_fwd(b))
-            .map(|(n, _, t)| (n, t))
+            .map(|(_, b, t)| (b, t))
     }
 
     pub fn raw_rev_at(&self, b: usize) -> impl Iterator<Item = (usize, RawTag)> + '_ {
         let [n, b, _] = self.get_skip_at(b);
         rev_range(&self.buf, ..n)
             .filter_map(entries_rev(b))
-            .map(|(n, _, t)| (n, t))
+            .map(|(_, b, t)| (b, t))
     }
 
     /// Returns an iterator over a single byte
@@ -827,9 +830,7 @@ impl std::fmt::Debug for TagOrSkip {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TagOrSkip::Tag(tag) => write!(f, "{:?}", tag),
-            TagOrSkip::Skip(amount) => {
-                write!(f, "{}{}{amount}{}", "Skip".blue(), "(".cyan(), ")".cyan())
-            }
+            TagOrSkip::Skip(amount) => write!(f, "Skip({amount})"),
         }
     }
 }

@@ -132,7 +132,7 @@ impl Builder {
     /// as its inverse at the end of the [`Text`]
     pub(crate) fn push_tag(&mut self, tag: Tag) -> Option<ToggleId> {
         let len = self.text.len().byte();
-        if let Tag::PushForm(id) = tag {
+        if let Tag::PushForm(id, _) = tag {
             let last_form = match id == crate::form::DEFAULT_ID {
                 true => self.last_form.take(),
                 false => self.last_form.replace(id),
@@ -181,7 +181,7 @@ impl Builder {
 
         if let Some(last_id) = self.last_form.take() {
             let initial = text.tags_fwd(0).next();
-            if let Some((0, RawTag::PushForm(_, id))) = initial
+            if let Some((0, RawTag::PushForm(_, id, _))) = initial
                 && id == last_id
             {
                 text.0.tags.remove_at_if(0, |t| t.key() == Key::basic());
@@ -346,20 +346,18 @@ pub macro text {
     // Forms
     (@push $builder:expr, []) => {
         let id = crate::form::id_of!("Default");
-        $builder.push(crate::text::Tag::PushForm(id))
+        $builder.push(crate::text::Tag::PushForm(id, 0))
     },
     (@push $builder:expr, [*a]) => {
         let id = crate::form::id_of!("Accent");
-        $builder.push(crate::text::Tag::PushForm(id))
+        $builder.push(crate::text::Tag::PushForm(id, 0))
     },
-
     (@push $builder:expr, [$form:ident $(.$suffix:ident)*]) => {
         let id = crate::form::id_of!(concat!(
             stringify!($form) $(, stringify!(.), stringify!($suffix))*
         ));
-        $builder.push(crate::text::Tag::PushForm(id))
+        $builder.push(crate::text::Tag::PushForm(id, 0))
     },
-
     (@push $builder:expr, [$($other:tt)+]) => {
         compile_error!(concat!(
             "Forms should be a list of identifiers separated by '.'s, received \"",
@@ -397,20 +395,18 @@ pub macro ok {
     // Forms
     (@push $builder:expr, []) => {
         let id = crate::form::id_of!("DefaultOk");
-        $builder.push(crate::text::Tag::PushForm(id))
+        $builder.push(crate::text::Tag::PushForm(id, 0))
     },
     (@push $builder:expr, [*a]) => {
         let id = crate::form::id_of!("AccentOk");
-        $builder.push(crate::text::Tag::PushForm(id))
+        $builder.push(crate::text::Tag::PushForm(id, 0))
     },
-
     (@push $builder:expr, [$form:ident $(.$suffix:ident)*]) => {
         let id = crate::form::id_of!(concat!(
             stringify!($form) $(, stringify!(.), stringify!($suffix))*
         ));
-        $builder.push(crate::text::Tag::PushForm(id))
+        $builder.push(crate::text::Tag::PushForm(id, 0))
     },
-
     (@push $builder:expr, [$($other:tt)+]) => {
         compile_error!(concat!(
             "Forms should be a list of identifiers separated by '.'s, received \"",
@@ -448,20 +444,18 @@ pub macro err {
     // Forms
     (@push $builder:expr, []) => {
         let id = crate::form::id_of!("DefaultErr");
-        $builder.push(crate::text::Tag::PushForm(id))
+        $builder.push(crate::text::Tag::PushForm(id, 0))
     },
     (@push $builder:expr, [*a]) => {
         let id = crate::form::id_of!("AccentErr");
-        $builder.push(crate::text::Tag::PushForm(id))
+        $builder.push(crate::text::Tag::PushForm(id, 0))
     },
-
     (@push $builder:expr, [$form:ident $(.$suffix:ident)*]) => {
         let id = crate::form::id_of!(concat!(
             stringify!($form) $(, stringify!(.), stringify!($suffix))*
         ));
-        $builder.push(crate::text::Tag::PushForm(id))
+        $builder.push(crate::text::Tag::PushForm(id, 0))
     },
-
     (@push $builder:expr, [$($other:tt)+]) => {
         compile_error!(concat!(
             "Forms should be a list of identifiers separated by '.'s, received \"",
@@ -499,20 +493,18 @@ pub macro hint {
     // Forms
     (@push $builder:expr, []) => {
         let id = crate::form::id_of!("DefaultHint");
-        $builder.push(crate::text::Tag::PushForm(id))
+        $builder.push(crate::text::Tag::PushForm(id, 0))
     },
     (@push $builder:expr, [*a]) => {
         let id = crate::form::id_of!("AccentHint");
-        $builder.push(crate::text::Tag::PushForm(id))
+        $builder.push(crate::text::Tag::PushForm(id, 0))
     },
-
     (@push $builder:expr, [$form:ident $(.$suffix:ident)*]) => {
         let id = crate::form::id_of!(concat!(
             stringify!($form) $(, stringify!(.), stringify!($suffix))*
         ));
-        $builder.push(crate::text::Tag::PushForm(id))
+        $builder.push(crate::text::Tag::PushForm(id, 0))
     },
-
     (@push $builder:expr, [$($other:tt)+]) => {
         compile_error!(concat!(
             "Forms should be a list of identifiers separated by '.'s, received \"",

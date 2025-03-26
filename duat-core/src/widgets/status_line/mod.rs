@@ -351,8 +351,10 @@ pub macro status {
     }},
 
     // Insertion of directly named form.
-    (@append $pre_fn:expr, $checker:expr, [$($form:tt)+]) => {{
-        let id = form::id_of!(stringify!($($form)+));
+    (@append $pre_fn:expr, $checker:expr, [$form:ident $(.$suffix:ident)*]) => {{
+        let id = crate::form::id_of!(concat!(
+            stringify!($form) $(, stringify!(.), stringify!($suffix))*
+        ));
 
         let pre_fn = move |builder: &mut Builder, reader: &mut Reader<_>| {
             $pre_fn(builder, reader);
@@ -361,6 +363,13 @@ pub macro status {
 
         (pre_fn, $checker)
     }},
+    (@push $builder:expr, [$($other:tt)+]) => {
+        compile_error!(concat!(
+            "Forms should be a list of identifiers separated by '.'s, received \"",
+             stringify!($($other)+),
+             "\" instead"
+        ))
+    },
 
     // Insertion of text, reading functions, or tags.
     (@append $pre_fn:expr, $checker:expr, $text:expr) => {{

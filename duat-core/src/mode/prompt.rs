@@ -137,22 +137,22 @@ impl<U: Ui> PromptMode<U> for RunCommands {
         if let Some(caller) = caller {
             if let Some((ok_ranges, err_range)) = cmd::check_args(&command) {
                 let id = form::id_of!("CallerExists");
-                text.insert_tag(0, Tag::PushForm(id), *KEY);
+                text.insert_tag(0, Tag::PushForm(id, 0), *KEY);
                 text.insert_tag(caller.len(), Tag::PopForm(id), *KEY);
 
                 let id = form::id_of!("ParameterOk");
                 for range in ok_ranges {
-                    text.insert_tag(range.start, Tag::PushForm(id), *KEY);
+                    text.insert_tag(range.start, Tag::PushForm(id, 0), *KEY);
                     text.insert_tag(range.end, Tag::PopForm(id), *KEY);
                 }
                 if let Some((range, _)) = err_range {
                     let id = form::id_of!("ParameterErr");
-                    text.insert_tag(range.start, Tag::PushForm(id), *KEY);
+                    text.insert_tag(range.start, Tag::PushForm(id, 0), *KEY);
                     text.insert_tag(range.end, Tag::PopForm(id), *KEY);
                 }
             } else {
                 let id = form::id_of!("CallerNotFound");
-                text.insert_tag(0, Tag::PushForm(id), *KEY);
+                text.insert_tag(0, Tag::PushForm(id, 0), *KEY);
                 text.insert_tag(caller.len(), Tag::PopForm(id), *KEY);
             }
         }
@@ -212,7 +212,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
                 let span = err.span();
                 let id = form::id_of!("ParseCommandErr");
 
-                text.insert_tag(span.start.offset, Tag::PushForm(id), *KEY);
+                text.insert_tag(span.start.offset, Tag::PushForm(id, 0), *KEY);
                 text.insert_tag(span.end.offset, Tag::PopForm(id), *KEY);
             }
         }
@@ -272,11 +272,11 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
         };
 
         let c_s = command.len() - command.trim_start().len();
-        text.insert_tag(c_s, Tag::PushForm(caller_id), *KEY);
+        text.insert_tag(c_s, Tag::PushForm(caller_id, 0), *KEY);
         text.insert_tag(c_s + caller.len(), Tag::PopForm(caller_id), *KEY);
 
         for (_, range) in args {
-            text.insert_tag(range.start, Tag::PushForm(args_id), *KEY);
+            text.insert_tag(range.start, Tag::PushForm(args_id, 0), *KEY);
             text.insert_tag(range.end, Tag::PopForm(args_id), *KEY);
         }
     }

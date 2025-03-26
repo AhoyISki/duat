@@ -9,17 +9,14 @@
 //! information as possible, occupying only 8 bytes.
 use std::{collections::HashMap, sync::Arc};
 
-use crossterm::{
-    event::MouseEventKind,
-    style::{ContentStyle, StyledContent, Stylize},
-};
+use crossterm::event::MouseEventKind;
 
 use super::{
     Key,
     ids::{GhostId, ToggleId},
 };
 use crate::{
-    form::{self, FormId},
+    form::FormId,
     text::{Change, Point, Text},
 };
 
@@ -44,7 +41,15 @@ use crate::{
 pub enum Tag {
     // Implemented:
     /// Appends a form to the stack.
-    PushForm(FormId),
+    ///
+    /// The [`PushForm`] tag is the only one with a user defined
+    /// priority, that is, it lets you set which tags should go first
+    /// on the same byte. If a tag has a higher priority, it goes
+    /// later.
+    ///
+    /// In the vast majority of cases, this does not matter, and you
+    /// should just set it to 0.
+    PushForm(FormId, u8),
     /// Removes a form from the stack. It won't always be the last
     /// one.
     PopForm(FormId),
@@ -121,7 +126,10 @@ impl Tag {
         toggles: &mut HashMap<ToggleId, Toggle>,
     ) -> (RawTag, Option<ToggleId>) {
         match self {
-            Self::PushForm(id) => (RawTag::PushForm(key, id), None),
+            Self::PushForm(id, priority) => {
+                debug_assert!(priority <= 250, "PushForm priority greater than 250");
+                (RawTag::PushForm(key, id, priority), None)
+            }
             Self::PopForm(id) => (RawTag::PopForm(key, id), None),
             Self::MainCursor => (RawTag::MainCursor(key), None),
             Self::ExtraCursor => (RawTag::ExtraCursor(key), None),
@@ -154,7 +162,7 @@ impl Tag {
     /// Works only on tags that are not toggles.
     pub fn ends_with(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::PushForm(lhs), Self::PopForm(rhs)) => lhs == rhs,
+            (Self::PushForm(lhs, _), Self::PopForm(rhs)) => lhs == rhs,
             (Self::StartAlignCenter, Self::EndAlignCenter)
             | (Self::StartAlignRight, Self::EndAlignRight)
             | (Self::StartConceal, Self::EndConceal) => true,
@@ -167,7 +175,7 @@ impl Tag {
 pub enum RawTag {
     // Implemented:
     /// Appends a form to the stack.
-    PushForm(Key, FormId),
+    PushForm(Key, FormId, u8),
     /// Removes a form from the stack. It won't always be the last
     /// one.
     PopForm(Key, FormId),
@@ -229,8 +237,8 @@ pub enum RawTag {
 impl RawTag {
     pub fn inverse(&self) -> Option<Self> {
         match self {
-            Self::PushForm(key, id) => Some(Self::PopForm(*key, *id)),
-            Self::PopForm(key, id) => Some(Self::PushForm(*key, *id)),
+            Self::PushForm(key, id, _) => Some(Self::PopForm(*key, *id)),
+            Self::PopForm(key, id) => Some(Self::PushForm(*key, *id, 0)),
             Self::ToggleStart(key, id) => Some(Self::ToggleEnd(*key, *id)),
             Self::ToggleEnd(key, id) => Some(Self::ToggleStart(*key, *id)),
             Self::StartConceal(key) => Some(Self::EndConceal(*key)),
@@ -245,7 +253,7 @@ impl RawTag {
 
     pub fn ends_with(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::PushForm(_, lhs), Self::PopForm(_, rhs)) => lhs == rhs,
+            (Self::PushForm(_, lhs, _), Self::PopForm(_, rhs)) => lhs == rhs,
             (Self::ToggleStart(_, lhs), Self::ToggleEnd(_, rhs)) => lhs == rhs,
             (Self::StartAlignCenter(_), Self::EndAlignCenter(_))
             | (Self::StartAlignRight(_), Self::EndAlignRight(_))
@@ -295,7 +303,7 @@ impl RawTag {
 
     fn get_key(&self) -> Option<Key> {
         match self {
-            Self::PushForm(key, _)
+            Self::PushForm(key, ..)
             | Self::PopForm(key, _)
             | Self::MainCursor(key)
             | Self::ExtraCursor(key)
@@ -312,46 +320,46 @@ impl RawTag {
             Self::ConcealUntil(_) => None,
         }
     }
+
+    pub(super) fn priority(&self) -> u8 {
+        match self {
+            RawTag::PushForm(.., priority) => *priority + 5,
+            RawTag::PopForm(..) => 0,
+            RawTag::MainCursor(..) => 4,
+            RawTag::ExtraCursor(..) => 4,
+            RawTag::StartAlignCenter(..) => 1,
+            RawTag::EndAlignCenter(..) => 2,
+            RawTag::StartAlignRight(..) => 1,
+            RawTag::EndAlignRight(..) => 2,
+            RawTag::Spacer(..) => 2,
+            RawTag::StartConceal(..) => 1,
+            RawTag::EndConceal(..) => 2,
+            RawTag::GhostText(..) => 3,
+            RawTag::ToggleStart(..) => 1,
+            RawTag::ToggleEnd(..) => 2,
+            RawTag::ConcealUntil(_) => unreachable!("This shouldn't be queried"),
+        }
+    }
 }
 
 impl std::fmt::Debug for RawTag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let ty = match self {
-            RawTag::PushForm(..) => "PushForm".green(),
-            RawTag::PopForm(..) => "PopForm".red(),
-            RawTag::MainCursor(..) => "MainCursor".magenta(),
-            RawTag::ExtraCursor(..) => "ExtraCursor".magenta(),
-            RawTag::StartAlignCenter(..) => "StartAlignCenter".green(),
-            RawTag::EndAlignCenter(..) => "EndAlignRight".red(),
-            RawTag::StartAlignRight(..) => "StartAlignRight".green(),
-            RawTag::EndAlignRight(..) => "EndAlignRight".red(),
-            RawTag::Spacer(..) => "Spacer".magenta(),
-            RawTag::StartConceal(..) => "StartConceal".green(),
-            RawTag::EndConceal(..) => "EndConceal".red(),
-            RawTag::ConcealUntil(..) => "ConcealUntil".yellow(),
-            RawTag::GhostText(..) => "GhostText".magenta(),
-            RawTag::ToggleStart(..) => "ToggleStart".green(),
-            RawTag::ToggleEnd(..) => "ToggleEnd".red(),
-        };
-        let lp = "(".cyan();
-        let rp = ")".cyan();
-
         match self {
-            RawTag::PushForm(key, id) => write!(f, "{ty}{lp}{key:?}, {}{rp}", form::name_of(*id)),
-            RawTag::PopForm(key, id) => write!(f, "{ty}{lp}{key:?}, {}{rp}", form::name_of(*id)),
-            RawTag::MainCursor(key) => write!(f, "{ty}{lp}{key:?}{rp}"),
-            RawTag::ExtraCursor(key) => write!(f, "{ty}{lp}{key:?}{rp}"),
-            RawTag::StartAlignCenter(key) => write!(f, "{ty}{lp}{key:?}{rp}"),
-            RawTag::EndAlignCenter(key) => write!(f, "{ty}{lp}{key:?}{rp}"),
-            RawTag::StartAlignRight(key) => write!(f, "{ty}{lp}{key:?}{rp}"),
-            RawTag::EndAlignRight(key) => write!(f, "{ty}{lp}{key:?}{rp}"),
-            RawTag::Spacer(key) => write!(f, "{ty}{lp}{key:?}{rp}"),
-            RawTag::StartConceal(key) => write!(f, "{ty}{lp}{key:?}{rp}"),
-            RawTag::EndConceal(key) => write!(f, "{ty}{lp}{key:?}{rp}"),
-            RawTag::ConcealUntil(key) => write!(f, "{ty}{lp}{key:?}{rp}"),
-            RawTag::GhostText(key, id) => write!(f, "{ty}{lp}{key:?}, {id:?}{rp}"),
-            RawTag::ToggleStart(key, id) => write!(f, "{ty}{lp}{key:?}, {id:?}{rp}"),
-            RawTag::ToggleEnd(key, id) => write!(f, "{ty}{lp}{key:?}, {id:?}{rp}"),
+            RawTag::PushForm(key, id, _) => write!(f, "PushForm({key:?}, {})", id.name()),
+            RawTag::PopForm(key, id) => write!(f, "PopForm({key:?}, {})", id.name()),
+            RawTag::MainCursor(key) => write!(f, "MainCursor({key:?})"),
+            RawTag::ExtraCursor(key) => write!(f, "ExtraCursor({key:?})"),
+            RawTag::StartAlignCenter(key) => write!(f, "StartAlignCenter({key:?})"),
+            RawTag::EndAlignCenter(key) => write!(f, "EndAlignCenter({key:?})"),
+            RawTag::StartAlignRight(key) => write!(f, "StartAlignRight({key:?})"),
+            RawTag::EndAlignRight(key) => write!(f, "EndAlignRight({key:?})"),
+            RawTag::Spacer(key) => write!(f, "Spacer({key:?})"),
+            RawTag::StartConceal(key) => write!(f, "StartConceal({key:?})"),
+            RawTag::EndConceal(key) => write!(f, "EndConceal({key:?})"),
+            RawTag::ConcealUntil(key) => write!(f, "ConcealUntil({key:?})"),
+            RawTag::GhostText(key, id) => write!(f, "GhostText({key:?}, {id:?})"),
+            RawTag::ToggleStart(key, id) => write!(f, "ToggleStart({key:?}), {id:?})"),
+            RawTag::ToggleEnd(key, id) => write!(f, "ToggleEnd({key:?}, {id:?})"),
         }
     }
 }
@@ -361,7 +369,7 @@ impl Eq for RawTag {}
 impl PartialEq for RawTag {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (RawTag::PushForm(_, lhs), RawTag::PushForm(_, rhs)) => lhs == rhs,
+            (RawTag::PushForm(_, lhs, _), RawTag::PushForm(_, rhs, _)) => lhs == rhs,
             (RawTag::PopForm(_, lhs), RawTag::PopForm(_, rhs)) => lhs == rhs,
             (RawTag::GhostText(_, lhs), RawTag::GhostText(_, rhs)) => lhs == rhs,
             (RawTag::ToggleStart(_, lhs), RawTag::ToggleStart(_, rhs)) => lhs == rhs,

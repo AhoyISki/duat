@@ -89,8 +89,6 @@ use std::{
     },
 };
 
-use tags::RawTag;
-
 pub(crate) use self::history::History;
 pub use self::{
     builder::{AlignCenter, AlignLeft, AlignRight, Builder, Ghost, Spacer, err, hint, ok, text},
@@ -100,7 +98,7 @@ pub use self::{
     ops::{Point, TextRange, TwoPoints, utf8_char_width},
     reader::{MutTags, Reader, ReaderCfg},
     search::{Matcheable, RegexPattern, Searcher},
-    tags::{Key, Keys, Tag, ToggleId},
+    tags::{Key, Keys, RawTag, Tag, ToggleId},
 };
 use self::{
     reader::Readers,
@@ -1069,9 +1067,9 @@ fn cursor_tags(is_main: bool) -> [Tag; 3] {
     use crate::form::{E_SEL_ID, M_SEL_ID};
 
     if is_main {
-        [MainCursor, PushForm(M_SEL_ID), PopForm(M_SEL_ID)]
+        [MainCursor, PushForm(M_SEL_ID, 250), PopForm(M_SEL_ID)]
     } else {
-        [ExtraCursor, PushForm(E_SEL_ID), PopForm(E_SEL_ID)]
+        [ExtraCursor, PushForm(E_SEL_ID, 250), PopForm(E_SEL_ID)]
     }
 }
 

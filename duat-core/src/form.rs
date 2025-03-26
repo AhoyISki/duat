@@ -161,11 +161,6 @@ mod global {
         PALETTE.form_from_id(id).unwrap_or(Form::new().0)
     }
 
-    /// The name of a form, given a [`FormId`]
-    pub fn name_of(id: FormId) -> &'static str {
-        FORMS.lock()[id.0 as usize]
-    }
-
     /// The current main cursor, with the `"MainCursor"` [`Form`]
     pub fn main_cursor() -> (Form, Option<CursorShape>) {
         PALETTE.main_cursor()
@@ -440,6 +435,11 @@ mod global {
         COLORSCHEMES.lock().iter().any(|cs| cs.name() == name)
     }
 
+    /// The name of a form, given a [`FormId`]
+    pub(super) fn name_of(id: FormId) -> &'static str {
+        FORMS.lock()[id.0 as usize]
+    }
+
     fn position_of_name(names: &mut Vec<&'static str>, name: &'static str) -> usize {
         if let Some((i, _)) = names.iter().enumerate().find(|(_, rhs)| **rhs == name) {
             i
@@ -550,6 +550,11 @@ impl FormId {
     /// This may be useful in certain situations.
     pub const fn to_u16(self) -> u16 {
         self.0
+    }
+
+	/// The name of this [`FormId`]
+    pub fn name(self) -> &'static str {
+        name_of(self)
     }
 }
 

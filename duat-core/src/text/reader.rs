@@ -9,6 +9,8 @@
 //! [`Ui`]: crate::ui::Ui
 use std::{any::TypeId, ops::Range};
 
+use crate::text::transform_ranges;
+
 use super::{
     Bytes, Change, Key, Keys, Tag, Text, TextRange, err, merge_range_in, split_range_within,
     tags::Tags,
@@ -197,6 +199,7 @@ impl Readers {
 
         if changes.len() <= MAX_CHANGES_TO_CONSIDER {
             for (reader, ranges, _) in self.0.iter_mut() {
+                transform_ranges(ranges, changes);
                 for range in reader.ranges_to_update(bytes, changes) {
                     if !range.is_empty() {
                         merge_range_in(ranges, range);

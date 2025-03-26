@@ -12,8 +12,6 @@ use std::{
     sync::atomic::{AtomicU16, Ordering},
 };
 
-use crossterm::style::Stylize;
-
 static KEY_COUNT: AtomicU16 = AtomicU16::new(4);
 
 /// The id of a [ghost text]
@@ -24,8 +22,7 @@ pub struct GhostId(u16);
 
 impl std::fmt::Debug for GhostId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let ghost = "GhostId".yellow();
-        write!(f, "{ghost}{}{}{}", "(".cyan(), self.0, ")".cyan())
+        write!(f, "GhostId({})", self.0)
     }
 }
 
@@ -37,8 +34,7 @@ pub struct ToggleId(u16);
 
 impl std::fmt::Debug for ToggleId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let toggle = "ToggleId".yellow();
-        write!(f, "{toggle}{}{}{}", "(".cyan(), self.0, ")".cyan())
+        write!(f, "ToggleId({})", self.0)
     }
 }
 
@@ -165,8 +161,7 @@ impl Key {
 
 impl std::fmt::Debug for Key {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let key = "Key".yellow();
-        write!(f, "{key}{}{}{}", "(".cyan(), self.0, ")".cyan())
+        write!(f, "Key({})", self.0)
     }
 }
 

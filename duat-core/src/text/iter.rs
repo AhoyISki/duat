@@ -469,7 +469,7 @@ impl Part {
     #[inline]
     pub(super) fn from_raw(value: RawTag) -> Self {
         match value {
-            RawTag::PushForm(_, id) => Part::PushForm(id),
+            RawTag::PushForm(_, id, _) => Part::PushForm(id),
             RawTag::PopForm(_, id) => Part::PopForm(id),
             RawTag::MainCursor(_) => Part::MainCursor,
             RawTag::ExtraCursor(_) => Part::ExtraCursor,
