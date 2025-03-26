@@ -87,7 +87,7 @@ impl Default for ToggleId {
 ///
 /// let id = form::id_of!("Invisible");
 ///
-/// text.insert_tag(18, Tag::PushForm(id), key1);
+/// text.insert_tag(18, Tag::PushForm(id, 0), key1);
 /// text.insert_tag(20, Tag::PopForm(id), key1);
 ///
 /// assert_eq!(

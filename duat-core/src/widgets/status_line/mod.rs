@@ -344,12 +344,11 @@ pub macro status {
     (@append $pre_fn:expr, $checker:expr, []) => {{
         let pre_fn = move |builder: &mut Builder, reader: &mut Reader<_>| {
             $pre_fn(builder, reader);
-            builder.push($crate::text::Tag::PushForm(form::DEFAULT_ID));
+            builder.push($crate::text::Tag::PushForm(form::DEFAULT_ID, 0));
         };
 
         (pre_fn, $checker)
     }},
-
     // Insertion of directly named form.
     (@append $pre_fn:expr, $checker:expr, [$form:ident $(.$suffix:ident)*]) => {{
         let id = crate::form::id_of!(concat!(
@@ -358,7 +357,7 @@ pub macro status {
 
         let pre_fn = move |builder: &mut Builder, reader: &mut Reader<_>| {
             $pre_fn(builder, reader);
-            builder.push($crate::text::Tag::PushForm(id));
+            builder.push($crate::text::Tag::PushForm(id, 0));
         };
 
         (pre_fn, $checker)

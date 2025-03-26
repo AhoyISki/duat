@@ -45,13 +45,29 @@ pub enum Tag {
     /// The [`PushForm`] tag is the only one with a user defined
     /// priority, that is, it lets you set which tags should go first
     /// on the same byte. If a tag has a higher priority, it goes
-    /// later.
+    /// later, thus, it's [`Form`] takes priority over those behind
+    /// it.
     ///
     /// In the vast majority of cases, this does not matter, and you
-    /// should just set it to 0.
+    /// should just set it to 100. In more specific cases, you should
+    /// evaluate how "uncommon" your tags are, for example, a plugin
+    /// like [`duat-treesitter`] should give its tags low priority, as
+    /// they are "background" tags, giving way to things like search
+    /// queries and cursor selections.
+    ///
+    /// [`PushForm`]: Tag::PushForm
+    /// [`Form`]: crate::form::Form
+    /// [`duat-treesitter`]: https://github.com/AhoyISki/duat-treesitter
     PushForm(FormId, u8),
-    /// Removes a form from the stack. It won't always be the last
-    /// one.
+    /// Removes a form from the stack.
+    ///
+    /// Unlike its [`PushForm`] counterpart, this one does not include
+    /// a priority argument, as the order in which [`Form`]s are
+    /// removed from the stack does not matter when determining what
+    /// the new [`Form`] should be.
+    ///
+    /// [`PushForm`]: Tag::PushForm
+    /// [`Form`]: crate::form::Form
     PopForm(FormId),
 
     /// Places the main cursor.

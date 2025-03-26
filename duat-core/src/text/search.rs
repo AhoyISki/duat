@@ -384,14 +384,22 @@ fn dfas_from_pat(pat: impl RegexPattern) -> Result<&'static DFAs, Box<regex_synt
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum Patterns<'a> {
     One(&'a str),
-    Many(&'a [&'static str]),
+    Many(&'a [&'a str]),
 }
 
 impl Patterns<'_> {
     fn leak(&self) -> Patterns<'static> {
         match self {
             Patterns::One(str) => Patterns::One(String::from(*str).leak()),
-            Patterns::Many(strs) => Patterns::Many(Vec::from(*strs).leak()),
+            Patterns::Many(strs) => Patterns::Many(
+                strs.iter()
+                    .map(|s| {
+                        let str: &'static str = s.to_string().leak();
+                        str
+                    })
+                    .collect::<Vec<&'static str>>()
+                    .leak(),
+            ),
         }
     }
 
@@ -463,19 +471,19 @@ impl RegexPattern for char {
     }
 }
 
-impl<const N: usize> RegexPattern for [&'static str; N] {
-    type Match = (Point, Point, usize);
+impl<const N: usize> RegexPattern for [&str; N] {
+    type Match = (usize, [Point; 2]);
 
     fn get_match(points: [Point; 2], pattern: PatternID) -> Self::Match {
-        (points[0], points[1], pattern.as_usize())
+        (pattern.as_usize(), points)
     }
 }
 
-impl RegexPattern for &[&'static str] {
-    type Match = (Point, Point, usize);
+impl RegexPattern for &[&str] {
+    type Match = (usize, [Point; 2]);
 
     fn get_match(points: [Point; 2], pattern: PatternID) -> Self::Match {
-        (points[0], points[1], pattern.as_usize())
+        (pattern.as_usize(), points)
     }
 }
 
@@ -507,13 +515,13 @@ impl InnerRegexPattern for char {
     }
 }
 
-impl<const N: usize> InnerRegexPattern for [&'static str; N] {
+impl<const N: usize> InnerRegexPattern for [&str; N] {
     fn as_patterns<'b>(&'b self, _bytes: &'b mut [u8; 4]) -> Patterns<'b> {
         Patterns::Many(self)
     }
 }
 
-impl InnerRegexPattern for &[&'static str] {
+impl InnerRegexPattern for &[&str] {
     fn as_patterns<'b>(&'b self, _bytes: &'b mut [u8; 4]) -> Patterns<'b> {
         Patterns::Many(self)
     }

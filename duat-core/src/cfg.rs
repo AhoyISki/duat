@@ -117,6 +117,20 @@ impl WordChars {
     }
 }
 
+impl std::hash::Hash for WordChars {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.1.hash(state);
+    }
+}
+
+impl std::cmp::PartialEq for WordChars {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.1 == other.0.1
+    }
+}
+
+impl std::cmp::Eq for WordChars {}
+
 /// Configuration options for printing.
 #[derive(Clone, Copy, Debug)]
 pub struct PrintCfg {
