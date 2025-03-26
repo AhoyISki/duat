@@ -1038,15 +1038,14 @@ impl<U: Ui> Mode<U> for Insert {
                 helper.move_many(.., |mut m| {
                     let caret = m.caret();
                     anchors.push(m.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
-                    m.set_anchor();
-                    m.move_hor(1);
                 });
                 let mut anchors = anchors.into_iter().cycle();
                 helper.edit_many(.., |editor| editor.replace(""));
                 helper.move_many(.., |mut m| {
-                    if let Some(Some((anchor, _))) = anchors.next() {
+                    if let Some(Some((anchor, anchor_ahead))) = anchors.next() {
                         m.set_anchor();
                         m.move_to(anchor);
+                        m.move_hor(-(anchor_ahead as i32));
                         m.swap_ends()
                     } else {
                         m.unset_anchor();
