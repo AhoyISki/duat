@@ -483,6 +483,8 @@ pub mod clipboard {
     }
 }
 
+////////// General utility functions
+
 /// A checker that returns `true` every `duration`
 ///
 /// This is primarily used within [`WidgetCfg::build`], where a
@@ -590,6 +592,37 @@ fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize, usi
     };
 
     (start, end)
+}
+
+/// Binary searching by key taking into account the index
+fn binary_search_by_key_and_index<T, K>(
+    container: &(impl std::ops::Index<usize, Output = T> + ?Sized),
+    len: usize,
+    key: K,
+    f: impl Fn(usize, &T) -> K,
+) -> std::result::Result<usize, usize>
+where
+    K: PartialEq + Eq + PartialOrd + Ord,
+{
+    let mut size = len;
+    let mut left = 0;
+    let mut right = size;
+
+    while left < right {
+        let mid = left + size / 2;
+
+        let k = f(mid, &container[mid]);
+
+        match k.cmp(&key) {
+            std::cmp::Ordering::Less => left = mid + 1,
+            std::cmp::Ordering::Equal => return Ok(mid),
+            std::cmp::Ordering::Greater => right = mid,
+        }
+
+        size = right - left;
+    }
+
+    Err(left)
 }
 
 /// An entry for a file with the given name

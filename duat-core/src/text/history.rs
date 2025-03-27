@@ -20,6 +20,7 @@ use serde::{
 };
 
 use super::{Point, Text};
+use crate::binary_search_by_key_and_index;
 
 /// The history of edits, contains all moments
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -100,14 +101,14 @@ impl History {
         } else {
             self.cur_moment -= 1;
 
-            let mut shift = (0, 0, 0);
-            let iter = self.moments[self.cur_moment].0.iter().map(move |c| {
-                let mut change = c.as_ref();
-                change.shift_by(shift);
+            let [mut b, mut c, mut l] = [0; 3];
+            let iter = self.moments[self.cur_moment].0.iter().map(move |change| {
+                let mut change = change.as_ref();
+                change.shift_by([b, c, l]);
 
-                shift.0 += change.taken_end().byte() as i32 - change.added_end().byte() as i32;
-                shift.1 += change.taken_end().char() as i32 - change.added_end().char() as i32;
-                shift.2 += change.taken_end().line() as i32 - change.added_end().line() as i32;
+                b += change.taken_end().byte() as i32 - change.added_end().byte() as i32;
+                c += change.taken_end().char() as i32 - change.added_end().char() as i32;
+                l += change.taken_end().line() as i32 - change.added_end().line() as i32;
 
                 change.reverse()
             });
@@ -137,22 +138,6 @@ pub struct Moment(Vec<Change<String>>);
 impl Moment {
     /// First try to merge this change with as many changes as
     /// possible, then add it in
-    ///
-    /// # Safety
-    ///
-    /// This function, unlike [`add_change`], does not shift the
-    /// [`Change`]s ahead of the inserted position, this means that
-    /// one must be careful to do it themselves. This is done safely
-    /// in the [`EditHelper`].
-    ///
-    /// # Returns
-    ///
-    /// - The index where the change was inserted;
-    /// - The number of changes that were added or subtracted during
-    ///   its insertion.
-    ///
-    /// [`add_change`]: Moment::add_change
-    /// [`EditHelper`]: crate::mode::EditHelper
     fn add_change(
         &mut self,
         guess_i: Option<usize>,
@@ -164,91 +149,79 @@ impl Moment {
         let c = change.added_end().char() as i32 - change.taken_end().char() as i32;
         let l = change.added_end().line() as i32 - change.taken_end().line() as i32;
 
-        let (change_i, sh_from) = match self.add_change_inner(guess_i, change, shift, sh_from) {
-            Ok((change_i, sh_from)) => (change_i, sh_from),
-            // A failure can happen if we are inserting before the `sh_from`, which would violate
-            // the strict ordering of changes.
-            // In order to remedy that, we synchronize the remaining changes and do it again with a
-            // fresh SyncState. This should never fail.
-            Err((guess_i, change)) => {
-                finish_synchronizing(self, ss);
-                *ss = SyncState::default();
-                self.add_change_inner(Some(guess_i), change, (0, 0, 0), 0)
-                    .unwrap()
-            }
-        };
-        ss.sh_from = sh_from;
-        ss.shift.0 += b;
-        ss.shift.1 += c;
-        ss.shift.2 += l;
-
-        change_i
-    }
-
-    /// Inner insertion of a [`Change`]
-    fn add_change_inner(
-        &mut self,
-        guess_i: Option<usize>,
-        mut change: Change<String>,
-        shift: (i32, i32, i32),
-        sh_from: usize,
-    ) -> Result<(usize, usize), (usize, Change<String>)> {
-        let sh = |n: usize| if sh_from <= n { shift } else { (0, 0, 0) };
+        let mut change = change;
+        let sh_from = sh_from;
+        let sh = |n: usize| if sh_from <= n { shift } else { [0; 3] };
 
         // The range of changes that will be drained
-        let c_range = if let Some(guess_i) = guess_i
-            && let Some(c) = self.0.get(guess_i)
-            && c.start.shift_by(sh(guess_i)) <= change.start
-            && change.start <= c.added_end().shift_by(sh(guess_i))
-        {
-            // If we intersect the initial change, include it
-            guess_i..guess_i + 1
-        } else {
-            let f = |i: usize, c: &Change<String>| c.start.shift_by(sh(i));
-            match binary_search_by_key_and_index(&self.0, change.start, f) {
-                // Same thing here
-                Ok(i) => i..i + 1,
-                Err(i) => {
-                    // This is if we intersect the added part
-                    if let Some(older_i) = i.checked_sub(1)
-                        && change.start <= self.0[older_i].added_end().shift_by(sh(older_i))
-                    {
-                        older_i..i
-                    // And here is if we intersect nothing on the
-                    // start, no changes drained.
-                    } else {
-                        i..i
+        let c_range = {
+            let c_range = if let Some(guess_i) = guess_i
+                && let Some(c) = self.0.get(guess_i)
+                && c.start.shift_by(sh(guess_i)) <= change.start
+                && change.start <= c.added_end().shift_by(sh(guess_i))
+            {
+                // If we intersect the initial change, include it
+                guess_i..guess_i + 1
+            } else {
+                let f = |i: usize, c: &Change<String>| c.start.shift_by(sh(i));
+                match binary_search_by_key_and_index(&self.0, self.0.len(), change.start, f) {
+                    // Same thing here
+                    Ok(i) => i..i + 1,
+                    Err(i) => {
+                        // This is if we intersect the added part
+                        if let Some(prev_i) = i.checked_sub(1)
+                            && change.start <= self.0[prev_i].added_end().shift_by(sh(prev_i))
+                        {
+                            prev_i..i
+                        // And here is if we intersect nothing on the
+                        // start, no changes drained.
+                        } else {
+                            i..i
+                        }
                     }
+                }
+            };
+
+            // This block determines how far ahead this change will merge
+            if self
+                .0
+                .get(c_range.end)
+                .is_none_or(|c| change.taken_end() < c.start.shift_by(sh(c_range.end)))
+            {
+                // If there is no change ahead, or it doesn't intersec, don't merge
+                c_range
+            } else {
+                let start_i = c_range.start + 1;
+                // Otherwise search for another change to be merged
+                let slice = &self.0[start_i..];
+                let f = |i: usize, c: &Change<String>| c.start.shift_by(sh(start_i + i));
+                match binary_search_by_key_and_index(slice, slice.len(), change.taken_end(), f) {
+                    Ok(i) => c_range.start..start_i + i + 1,
+                    Err(i) => c_range.start..start_i + i,
                 }
             }
         };
 
-        if c_range.start < sh_from {
-            return Err((c_range.start, change));
-        }
-
-        // This block determines how far ahead this change will merge
-        let c_range = if self
-            .0
-            .get(c_range.end)
-            .is_none_or(|c| change.taken_end() < c.start.shift_by(sh(c_range.end)))
-        {
-            // If there is no change ahead, or it doesn't intersec, don't merge
-            c_range
-        } else {
-            let start_i = c_range.start + 1;
-            // Otherwise search ahead for another change to be merged
-            let f = |i: usize, c: &Change<String>| c.start.shift_by(sh(start_i + i));
-            match binary_search_by_key_and_index(&self.0[start_i..], change.taken_end(), f) {
-                Ok(i) => c_range.start..start_i + i + 1,
-                Err(i) => c_range.start..start_i + i,
+        // If sh_from < c_range.end, I need to shift the changes between the
+        // two, so that they match the shifting of the changes before sh_from
+        if sh_from < c_range.end {
+            if shift != [0; 3] {
+                for change in &mut self.0[sh_from..c_range.end] {
+                    change.shift_by(shift);
+                }
             }
-        };
-
-        // Shift all ranges that preceed the end of the range.
-        if shift != (0, 0, 0) && sh_from < c_range.end {
-            for change in &mut self.0[sh_from..c_range.end] {
-                change.shift_by(shift);
+        // If sh_from > c_range.end, There are now three shifted
+        // states among ranges: The ones before c_range.start, between
+        // c_range.end and sh_from, and after c_range.end.
+        // I will update the second group so that it is shifted by
+        // shift + change.shift(), that way, it will be shifted like
+        // the first group.
+        } else if sh_from > c_range.end {
+            let shift = change.shift();
+            if shift != [0; 3] {
+                for change in &mut self.0[c_range.end..sh_from] {
+                    change.shift_by(shift);
+                }
             }
         }
 
@@ -256,14 +229,18 @@ impl Moment {
             change.try_merge(c);
         }
 
-        let sh_from = if !(change.added_text() == "" && change.taken_text() == "") {
+        let changes_taken = c_range.clone().count();
+        ss.sh_from = if !(change.added_text() == "" && change.taken_text() == "") {
             self.0.insert(c_range.start, change);
-            c_range.start + 1
+            c_range.start.max(sh_from.saturating_sub(changes_taken)) + 1
         } else {
-            c_range.start
+            c_range.start.max(sh_from.saturating_sub(changes_taken))
         };
+        ss.shift[0] += b;
+        ss.shift[1] += c;
+        ss.shift[2] += l;
 
-        Ok((c_range.start, sh_from))
+        c_range.start
     }
 
     pub fn changes(&self) -> &[Change<String>] {
@@ -366,7 +343,7 @@ impl<S: AsRef<str>> Change<S> {
     }
 
     /// Shifts the [`Change`] by a "signed point"
-    pub(crate) fn shift_by(&mut self, shift: (i32, i32, i32)) {
+    pub(crate) fn shift_by(&mut self, shift: [i32; 3]) {
         self.start = self.start.shift_by(shift);
     }
 
@@ -400,9 +377,13 @@ impl<S: AsRef<str>> Change<S> {
         self.taken.as_ref()
     }
 
-    /// The difference in chars of the added and taken texts
-    pub fn chars_diff(&self) -> i32 {
-        self.added.as_ref().chars().count() as i32 - self.taken.as_ref().chars().count() as i32
+    /// The total shift caused by this [`Change`]
+    pub fn shift(&self) -> [i32; 3] {
+        [
+            self.added_end().byte() as i32 - self.taken_end().byte() as i32,
+            self.added_end().char() as i32 - self.taken_end().char() as i32,
+            self.added_end().line() as i32 - self.taken_end().line() as i32,
+        ]
     }
 }
 
@@ -466,43 +447,13 @@ fn has_start_of(lhs: Range<usize>, rhs: Range<usize>) -> bool {
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 struct SyncState {
-    shift: (i32, i32, i32),
+    shift: [i32; 3],
     sh_from: usize,
-}
-
-/// Binary searching by key taking into account the index
-fn binary_search_by_key_and_index<T, K>(
-    vec: &[T],
-    key: K,
-    f: impl Fn(usize, &T) -> K,
-) -> std::result::Result<usize, usize>
-where
-    K: PartialEq + Eq + PartialOrd + Ord,
-{
-    let mut size = vec.len();
-    let mut left = 0;
-    let mut right = size;
-
-    while left < right {
-        let mid = left + size / 2;
-
-        let k = f(mid, &vec[mid]);
-
-        match k.cmp(&key) {
-            std::cmp::Ordering::Less => left = mid + 1,
-            std::cmp::Ordering::Equal => return Ok(mid),
-            std::cmp::Ordering::Greater => right = mid,
-        }
-
-        size = right - left;
-    }
-
-    Err(left)
 }
 
 /// Finish synchronizing the unsynchronized changes
 fn finish_synchronizing(moment: &mut Moment, ss: &mut SyncState) {
-    if ss.shift != (0, 0, 0) {
+    if ss.shift != [0; 3] {
         // You can't get to this point without having at least one moment.
         for change in &mut moment.0[ss.sh_from..] {
             change.shift_by(ss.shift);
