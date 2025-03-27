@@ -1290,12 +1290,13 @@ fn match_inside_around(
                     m.move_hor(-1);
                 } else {
                     move_to_points(m, [p0, p2]);
-                    if let Some(';' | ',') = m.char_at(p2) {
+                    if !matches!(m.char_at(p2), Some(';' | ',')) {
+                        m.move_hor(-1);
+                    }
+                    if !matches!(m.char_at(p0), Some(';' | ',')) {
                         m.swap_ends();
                         m.move_hor(1);
                         m.swap_ends();
-                    } else {
-                        m.move_hor(-1);
                     }
                 }
 
@@ -1672,7 +1673,7 @@ static INSERT_TABS: AtomicBool = AtomicBool::new(false);
 enum Object<'a> {
     Anchored(&'a str),
     Bounds(&'a str, &'a str),
-    SemiBounds(&'a str, &'a str, &'a str),
+    Argument(&'a str, &'a str, &'a str),
     Bound(&'a str),
 }
 
@@ -1704,7 +1705,7 @@ impl<'a> Object<'a> {
                         .collect();
                     [r"(;|,)\s*", s_pat.leak(), e_pat.leak()]
                 });
-                Some(Self::SemiBounds(m_b, s_b, e_b))
+                Some(Self::Argument(m_b, s_b, e_b))
             }
             'w' => Some(Self::Anchored({
                 static PATTERNS: LazyLock<Mutex<HashMap<WordChars, &str>>> =
@@ -1750,9 +1751,10 @@ impl<'a> Object<'a> {
                 Some([p0, p1])
             }
             Object::Bound(b) => m.search_fwd(b, until).next(),
-            Object::SemiBounds(m_b, s_b, e_b) => {
-                let (_, [p0, p1]) = m.search_fwd([m_b, s_b, e_b], None).find(|&(id, _)| {
-                    s_count += (id == 1) as i32 - (id == 2) as i32;
+            Object::Argument(m_b, s_b, e_b) => {
+                let caret = m.caret();
+                let (_, [p0, p1]) = m.search_fwd([m_b, s_b, e_b], None).find(|&(id, [p, _])| {
+                    s_count += (id == 1) as i32 - (id == 2 && p != caret) as i32;
                     s_count == 0 || (s_count == 1 && id == 0)
                 })?;
                 Some([p0, p1])
@@ -1780,10 +1782,10 @@ impl<'a> Object<'a> {
                 Some([p0, p1])
             }
             Object::Bound(b) => m.search_rev(b, until).next(),
-            Object::SemiBounds(m_b, s_b, e_b) => {
+            Object::Argument(m_b, s_b, e_b) => {
                 let (_, [p0, p1]) = m.search_rev([m_b, s_b, e_b], None).find(|&(id, _)| {
                     e_count += (id == 2) as i32 - (id == 1) as i32;
-                    e_count == 0 || (e_count == 1 && id == 0)
+                    e_count <= 0 || (e_count == 1 && id == 0)
                 })?;
                 Some([p0, p1])
             }
