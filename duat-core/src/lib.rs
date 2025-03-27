@@ -244,7 +244,9 @@
     debug_closure_helpers,
     box_as_ptr,
     unboxed_closures,
-    fn_traits
+    fn_traits,
+    associated_type_defaults,
+    tuple_trait
 )]
 #![allow(clippy::single_range_in_vec_init)]
 

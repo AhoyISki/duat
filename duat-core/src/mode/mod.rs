@@ -29,7 +29,7 @@ mod switch {
         context,
         data::RwData,
         duat_name, file_entry,
-        hooks::{self, KeySent, KeySentTo, ModeSwitched},
+        hooks::{self, KeySent, KeySentTo, ModeSetTo, ModeSwitched},
         session::sender,
         ui::{Area, DuatEvent, Ui},
         widget_entry,
@@ -186,7 +186,7 @@ mod switch {
     }
 
     /// Inner function that sets [`Mode`]s
-    fn set_mode_fn<M: Mode<U>, U: Ui>(mut mode: M) {
+    fn set_mode_fn<M: Mode<U>, U: Ui>(mode: M) {
         // If we are on the correct widget, no switch is needed.
         if context::cur_widget::<U>().unwrap().type_id() != TypeId::of::<M::Widget>() {
             let windows = context::windows().read();
@@ -208,7 +208,9 @@ mod switch {
         }
 
         let widget = context::cur_widget::<U>().unwrap();
-        widget.mutate_data_as::<M::Widget, ()>(|w, area, related| {
+        let mode = widget.mutate_data_as(|w: &RwData<M::Widget>, area, related| {
+            let mut mode = hooks::trigger_now::<ModeSetTo<M, U>>((mode, w.clone(), area.clone()));
+
             let mut widget = w.write();
             let cfg = widget.print_cfg();
             widget.text_mut().remove_cursors(area, cfg);
@@ -232,6 +234,7 @@ mod switch {
                     }
                 }
             }
+            mode
         });
 
         crate::mode::set_send_key::<M, U>();
@@ -241,6 +244,7 @@ mod switch {
         hooks::trigger::<ModeSwitched>((&old_mode, new_mode));
         *old_mode = new_mode;
 
+        let mut mode = mode.unwrap();
         *SEND_KEYS.lock() = Box::new(move |keys| send_keys_fn::<M, U>(&mut mode, keys));
     }
 }

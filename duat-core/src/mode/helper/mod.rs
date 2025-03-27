@@ -365,6 +365,15 @@ where
         }
     }
 
+    /// Moves all [`Cursor`]s
+    ///
+    /// This is the equivalent of calling [`Helper::move_many(.., f)`]
+    ///
+    /// [`Helper::move_many(.., f)`]: Helper::move_many
+    pub fn move_all<_T>(&mut self, mov: impl FnMut(Mover<A, S>) -> _T) {
+        self.move_many(.., mov);
+    }
+
     ////////// Getter functions
 
     /// A shared reference to the [`Widget`]
@@ -658,6 +667,12 @@ where
                 text.search_fwd(pat, start..end).unwrap()
             }
         }
+    }
+
+    /// Wether the current selection matches a regex pattern
+    pub fn matches<R: RegexPattern>(&mut self, pat: R) -> bool {
+        let range = self.cursor.range(self.widget.text());
+        self.widget.text_mut().matches(pat, range).unwrap()
     }
 
     /// Searches the [`Text`] for a regex, in reverse
@@ -1170,6 +1185,12 @@ where
     ) -> impl Iterator<Item = R::Match> + '_ {
         let end = self.cursor.as_ref().unwrap().caret();
         self.text.search_rev(pat, (start, end)).unwrap()
+    }
+
+    /// Wether the current selection matches a regex pattern
+    pub fn matches<R: RegexPattern>(&mut self, pat: R) -> bool {
+        let range = self.cursor.as_ref().unwrap().range(self.text);
+        self.text.matches(pat, range).unwrap()
     }
 
     ////////// Behavior changes
