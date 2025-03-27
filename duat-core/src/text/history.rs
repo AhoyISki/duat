@@ -165,7 +165,6 @@ impl Moment {
             (sh_from, shift),
             (Change::start, Change::added_end),
         );
-        crate::log_file!("{c_range:?}");
 
         // If sh_from < c_range.end, I need to shift the changes between the
         // two, so that they match the shifting of the changes before sh_from

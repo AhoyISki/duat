@@ -578,26 +578,32 @@ impl Text {
 
     /// Undoes the last moment, if there was one
     pub fn undo(&mut self) {
-        if let Some(mut history) = self.0.history.take()
+        let mut history = self.0.history.take();
+
+        if let Some(history) = history.as_mut()
             && let Some(changes) = history.move_backwards()
             && !changes.is_empty()
         {
             self.apply_and_process_changes(changes);
             self.0.has_changed = true;
-            self.0.history = Some(history);
         }
+
+        self.0.history = history;
     }
 
     /// Redoes the last moment in the history, if there is one
     pub fn redo(&mut self) {
-        if let Some(mut history) = self.0.history.take()
+        let mut history = self.0.history.take();
+
+        if let Some(history) = history.as_mut()
             && let Some(changes) = history.move_forward()
             && !changes.is_empty()
         {
             self.apply_and_process_changes(changes);
             self.0.has_changed = true;
-            self.0.history = Some(history);
         }
+
+        self.0.history = history;
     }
 
     pub fn apply_and_process_changes(&mut self, changes: Vec<Change<&str>>) {
