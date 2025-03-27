@@ -1,105 +1,96 @@
-use std::ops::RangeBounds;
+use std::{cell::Cell, ops::RangeBounds};
 
 use gapbuf::{GapBuffer, gap_buffer};
 use serde::{Deserialize, Serialize, de::Visitor, ser::SerializeSeq};
 
 pub use self::cursor::{Cursor, VPoint};
-use crate::text::Text;
+use crate::{add_shifts, get_ends, merging_range_by_guess_and_lazy_shift};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Cursors {
     buf: CursorGapBuffer,
     main_i: usize,
+    shift_state: Cell<(usize, [i32; 3])>,
 }
 
 impl Cursors {
     ////////// Definition functions
-    pub fn new_excl() -> Self {
+    pub fn new() -> Self {
         Self {
             buf: CursorGapBuffer(gap_buffer![Cursor::default()]),
             main_i: 0,
+            shift_state: Cell::new((0, [0; 3])),
         }
     }
 
-    pub fn new_incl() -> Self {
-        Self {
-            buf: CursorGapBuffer(gap_buffer![Cursor::default()]),
-            main_i: 0,
-        }
-    }
+    pub fn insert(
+        &mut self,
+        guess_i: usize,
+        was_main: bool,
+        cursor: Cursor,
+        new_shift: [i32; 3],
+    ) -> usize {
+        let (sh_from, shift) = self.shift_state.take();
 
-    pub fn reset_on_byte(&mut self, b: usize, text: &Text) {
-        let cursor = Cursor::new(text.point_at(b), None, text);
-        self.buf = CursorGapBuffer(gap_buffer![cursor]);
-        self.main_i = 0;
-    }
-
-    pub fn insert(&mut self, guess_i: usize, was_main: bool, cursor: Cursor) -> usize {
         // The range of cursors that will be drained
-        let c_range = if let Some(prev_i) = guess_i.checked_sub(1)
-            && let Some(prev) = self.get(prev_i)
-            && prev.start() <= cursor.start()
-            && cursor.start() <= prev.end_excl()
-        {
-            prev_i..guess_i
-        } else {
-            let buf = self.buf.range(..);
-            match binary_search_by_key(buf, cursor.start(), |c| c.start()) {
-                Ok(i) => i..i + 1,
-                Err(i) => {
-                    if let Some(prev_i) = i.checked_sub(1)
-                        && let Some(prev) = self.buf.get(prev_i)
-                        && cursor.start() <= prev.end_excl()
-                    {
-                        prev_i..i
-                    } else {
-                        i..i
-                    }
+        let c_range = merging_range_by_guess_and_lazy_shift(
+            (&self.buf.0, self.buf.len()),
+            (guess_i, [cursor.start(), cursor.end_excl()]),
+            (sh_from, shift),
+            (Cursor::start, Cursor::end_excl),
+        );
+
+        // Shift all ranges that preceed the end of the cursor's range.
+        if sh_from < c_range.end && shift != [0; 3] {
+            for cursor in self.buf.range(sh_from..c_range.end).into_iter() {
+                cursor.shift_by(shift);
+            }
+        } else if sh_from > c_range.end && new_shift != [0; 3] {
+            for cursor in self.buf.range(c_range.end..sh_from).into_iter() {
+                cursor.shift_by(new_shift);
+            }
+        }
+
+        // Get the minimum and maximum Points in the taken range, designate
+        // those as the new Cursor's bounds.
+        let (caret, anchor) = {
+            let mut c_range = c_range.clone();
+            let first = c_range.next().and_then(|i| self.get(i));
+            let last = c_range.last().and_then(|i| self.get(i));
+            let start = first
+                .map(|c| c.lazy_v_start().min(cursor.lazy_v_start()))
+                .unwrap_or(cursor.lazy_v_start());
+            let end = last
+                .map(|c| c.lazy_v_end().max(cursor.lazy_v_end()))
+                .unwrap_or(cursor.lazy_v_end());
+
+            if let Some(anchor) = cursor.anchor() {
+                match cursor.caret() < anchor {
+                    true => (start, Some(end)),
+                    false => (end, Some(start)),
                 }
+            } else {
+                (end, (start != end).then_some(start))
             }
-        };
-
-        // This block determines how far ahead this cursor will merge
-        let c_range = if self
-            .get(c_range.end)
-            .is_none_or(|c| cursor.end_excl() < c.start())
-        {
-            c_range
-        } else {
-            let buf = self.buf.range(..);
-            match binary_search_by_key(buf, cursor.end_excl(), |c| c.start()) {
-                Ok(i) => c_range.start..i + 1,
-                Err(i) => c_range.start..i,
-            }
-        };
-
-        let mut c_range_iter = c_range.clone();
-        let first = c_range_iter.next().and_then(|i| self.get(i));
-        let last = c_range_iter.last().and_then(|i| self.get(i));
-        let start = first
-            .map(|c| c.lazy_v_start().min(cursor.lazy_v_start()))
-            .unwrap_or(cursor.lazy_v_start());
-        let end = last
-            .map(|c| c.lazy_v_end().max(cursor.lazy_v_end()))
-            .unwrap_or(cursor.lazy_v_end());
-
-        let (caret, anchor) = if let Some(anchor) = cursor.anchor() {
-            match cursor.caret() < anchor {
-                true => (start, Some(end)),
-                false => (end, Some(start)),
-            }
-        } else {
-            (end, (start != end).then_some(start))
         };
 
         let cursor = Cursor::from_v(caret, anchor, cursor.change_i);
-        self.buf.drain(c_range.clone());
-        self.buf.insert(c_range.start, cursor);
+        self.buf.splice(c_range.clone(), [cursor]);
 
         if was_main {
             self.main_i = c_range.start;
         } else if self.main_i > c_range.start {
             self.main_i = (self.main_i - c_range.clone().count()).max(c_range.start)
+        }
+
+        // If there are no more Cursors after this, don't set the shift_state.
+        if c_range.start + 1 < self.buf.len() {
+            let cursors_taken = c_range.clone().count();
+
+            self.shift_state.set((
+                c_range.start.max(sh_from.saturating_sub(cursors_taken)) + 1,
+                add_shifts(shift, new_shift),
+            ));
         }
 
         c_range.start
@@ -112,6 +103,10 @@ impl Cursors {
     pub fn remove_extras(&mut self) {
         if !self.is_empty() {
             let cursor = self.buf.remove(self.main_i);
+            let (sh_from, shift) = self.shift_state.take();
+            if sh_from <= self.main_i {
+                cursor.shift_by(shift);
+            }
             self.buf = CursorGapBuffer(gap_buffer![cursor]);
         }
         self.main_i = 0;
@@ -122,14 +117,26 @@ impl Cursors {
     }
 
     pub fn get(&self, i: usize) -> Option<&Cursor> {
+        if i >= self.len() {
+            return None;
+        }
+        self.try_shift_until(i + 1);
         self.buf.get(i)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&Cursor, bool)> {
+        // Since we don't know how many Cursors will be iterated over, we
+        // shift all cursors, just in case.
+        let (sh_from, shift) = self.shift_state.take();
+        if shift != [0; 3] {
+            for cursor in self.buf.range(sh_from..).iter() {
+                cursor.shift_by(shift);
+            }
+        }
         self.buf
             .iter()
             .enumerate()
-            .map(move |(index, cursor)| (cursor, index == self.main_i))
+            .map(move |(i, cursor)| (cursor, i == self.main_i))
     }
 
     pub fn main_index(&self) -> usize {
@@ -146,7 +153,8 @@ impl Cursors {
     }
 
     pub fn clear(&mut self) {
-        self.buf = CursorGapBuffer(GapBuffer::new())
+        self.buf = CursorGapBuffer(GapBuffer::new());
+        self.shift_state.take();
     }
 
     pub fn reset(&mut self) {
@@ -155,27 +163,24 @@ impl Cursors {
     }
 
     pub(super) fn remove(&mut self, i: usize) -> Option<(Cursor, bool)> {
-        (i < self.buf.len()).then(|| {
-            let was_main = self.main_i == i;
-            if self.main_i >= i {
-                self.main_i = self.main_i.saturating_sub(1);
-            }
-            (self.buf.remove(i), was_main)
-        })
-    }
-
-    pub(crate) fn shift_by(&mut self, from: usize, shift: (i32, i32, i32)) {
-        if shift != (0, 0, 0) {
-            for cursor in self.buf.iter_mut().skip(from) {
-                cursor.shift_by(shift);
-            }
+        if i >= self.buf.len() {
+            return None;
         }
+        self.try_shift_until(i + 1);
+        let was_main = self.main_i == i;
+        if self.main_i >= i {
+            self.main_i = self.main_i.saturating_sub(1);
+        }
+        Some((self.buf.remove(i), was_main))
     }
 
     pub(super) fn drain(
         &mut self,
-        range: impl RangeBounds<usize>,
+        range: impl RangeBounds<usize> + Clone,
     ) -> impl Iterator<Item = (Cursor, bool)> + '_ {
+        let (_, end) = get_ends(range.clone(), self.buf.len());
+        self.try_shift_until(end);
+
         let orig_main = self.main_i;
         self.main_i = 0;
         self.buf
@@ -193,11 +198,25 @@ impl Cursors {
             self.buf.0 = gap_buffer![Cursor::default()];
         }
     }
+
+    fn try_shift_until(&self, end: usize) {
+        let (sh_from, shift) = self.shift_state.get();
+        if end > sh_from && shift != [0; 3] {
+            for cursor in self.buf.range(sh_from..end).iter() {
+                cursor.shift_by(shift);
+            }
+            if end < self.buf.len() {
+                self.shift_state.set((end, shift));
+            } else {
+                self.shift_state.take();
+            }
+        }
+    }
 }
 
 impl Default for Cursors {
     fn default() -> Self {
-        Self::new_excl()
+        Self::new()
     }
 }
 
@@ -404,12 +423,12 @@ mod cursor {
             });
         }
 
-        pub(crate) fn shift_by(&mut self, shift: (i32, i32, i32)) {
+        pub(crate) fn shift_by(&self, shift: [i32; 3]) {
             let shifted_caret = self.caret().shift_by(shift);
-            *self.caret.get_mut() = LazyVPoint::Unknown(shifted_caret);
+            self.caret.set(LazyVPoint::Unknown(shifted_caret));
             if let Some(anchor) = self.anchor.get() {
                 let shifted_anchor = anchor.point().shift_by(shift);
-                *self.anchor.get_mut() = Some(LazyVPoint::Unknown(shifted_anchor));
+                self.anchor.set(Some(LazyVPoint::Unknown(shifted_anchor)));
             }
         }
 
@@ -735,36 +754,6 @@ mod cursor {
             self.p == other.p
         }
     }
-}
-
-/// Binary searching by keys for [`GapBuffer`]s
-fn binary_search_by_key<K>(
-    buf: gapbuf::Range<Cursor>,
-    key: K,
-    f: impl Fn(&Cursor) -> K,
-) -> Result<usize, usize>
-where
-    K: PartialEq + Eq + PartialOrd + Ord,
-{
-    let mut size = buf.len();
-    let mut left = 0;
-    let mut right = size;
-
-    while left < right {
-        let mid = left + size / 2;
-
-        let k = f(&buf[mid]);
-
-        match k.cmp(&key) {
-            std::cmp::Ordering::Less => left = mid + 1,
-            std::cmp::Ordering::Equal => return Ok(mid),
-            std::cmp::Ordering::Greater => right = mid,
-        }
-
-        size = right - left;
-    }
-
-    Err(left)
 }
 
 #[derive(Clone)]

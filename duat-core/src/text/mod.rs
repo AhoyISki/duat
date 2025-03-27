@@ -556,11 +556,8 @@ impl Text {
     pub fn update_range(&mut self, range: (Point, Point)) {
         let within = range.0.byte()..(range.1.byte() + 1);
 
-        if let Some(changes) = self
-            .0
-            .history
-            .as_mut()
-            .and_then(|h| h.unprocessed_changes())
+        if let Some(history) = self.0.history.as_mut()
+            && let Some(changes) = history.unprocessed_changes()
         {
             let changes: Vec<Change<&str>> = changes.iter().map(|c| c.as_ref()).collect();
             self.0.readers.process_changes(&mut self.0.bytes, &changes);
@@ -621,7 +618,7 @@ impl Text {
 
                 let anchor = (start != added_end).then_some(start);
                 let cursor = Cursor::new(added_end, anchor, self);
-                cursors.insert(i, i == changes.len() - 1, cursor);
+                cursors.insert(i, i == changes.len() - 1, cursor, [0; 3]);
             }
         }
 
@@ -784,12 +781,6 @@ impl Text {
         }
 
         self.0.cursors = Some(cursors)
-    }
-
-    pub(crate) fn shift_cursors(&mut self, from: usize, by: (i32, i32, i32)) {
-        if let Some(cursors) = self.cursors_mut() {
-            cursors.shift_by(from, by);
-        }
     }
 
     /// Adds a [`Cursor`] to the [`Text`]

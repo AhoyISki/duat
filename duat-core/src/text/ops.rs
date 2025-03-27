@@ -103,7 +103,7 @@ impl Point {
     /// Shifts the [`Point`] by a "signed point"
     ///
     /// This assumes that no overflow is going to happen
-    pub(crate) fn shift_by(self, (b, c, l): (i32, i32, i32)) -> Self {
+    pub(crate) fn shift_by(self, [b, c, l]: [i32; 3]) -> Self {
         Self {
             b: (self.b as i32 + b) as u32,
             c: (self.c as i32 + c) as u32,

@@ -253,6 +253,7 @@
 use std::{
     any::{TypeId, type_name},
     collections::HashMap,
+    ops::Range,
     sync::{
         Arc, LazyLock, Once,
         atomic::{AtomicBool, Ordering},
@@ -263,6 +264,7 @@ use std::{
 #[allow(unused_imports)]
 use dirs_next::cache_dir;
 pub use parking_lot::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use text::Point;
 use ui::Window;
 use widgets::{File, Node, Widget};
 
@@ -594,35 +596,93 @@ fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize, usi
     (start, end)
 }
 
-/// Binary searching by key taking into account the index
-fn binary_search_by_key_and_index<T, K>(
-    container: &(impl std::ops::Index<usize, Output = T> + ?Sized),
-    len: usize,
-    key: K,
-    f: impl Fn(usize, &T) -> K,
-) -> std::result::Result<usize, usize>
-where
-    K: PartialEq + Eq + PartialOrd + Ord,
-{
-    let mut size = len;
-    let mut left = 0;
-    let mut right = size;
+/// Adds two shifts together
+fn add_shifts(lhs: [i32; 3], rhs: [i32; 3]) -> [i32; 3] {
+    let b = lhs[0] + rhs[0];
+    let c = lhs[1] + rhs[1];
+    let l = lhs[2] + rhs[2];
+    [b, c, l]
+}
 
-    while left < right {
-        let mid = left + size / 2;
+/// Allows binary searching with an initial guess and displaced
+/// entries
+///
+/// This function essentially looks at a list of entries and with a
+/// starting shift position, shifts them by an amount, before
+/// comparing inside of the binary search.
+///
+/// By using this function, it is very possible to
+/// It is currently used in 2 places, in the `History` of [`Text`]s,
+/// and in the `Cursors` list.
+fn merging_range_by_guess_and_lazy_shift<T>(
+    (container, len): (&impl std::ops::Index<usize, Output = T>, usize),
+    (guess_i, [start, end]): (usize, [Point; 2]),
+    (sh_from, shift): (usize, [i32; 3]),
+    (start_fn, end_fn): (impl Fn(&T) -> Point, impl Fn(&T) -> Point),
+) -> Range<usize> {
+    fn binary_search_by_key_and_index<T, K>(
+        container: &(impl std::ops::Index<usize, Output = T> + ?Sized),
+        len: usize,
+        key: K,
+        f: impl Fn(usize, &T) -> K,
+    ) -> std::result::Result<usize, usize>
+    where
+        K: PartialEq + Eq + PartialOrd + Ord,
+    {
+        let mut size = len;
+        let mut left = 0;
+        let mut right = size;
 
-        let k = f(mid, &container[mid]);
+        while left < right {
+            let mid = left + size / 2;
 
-        match k.cmp(&key) {
-            std::cmp::Ordering::Less => left = mid + 1,
-            std::cmp::Ordering::Equal => return Ok(mid),
-            std::cmp::Ordering::Greater => right = mid,
+            let k = f(mid, &container[mid]);
+
+            match k.cmp(&key) {
+                std::cmp::Ordering::Less => left = mid + 1,
+                std::cmp::Ordering::Equal => return Ok(mid),
+                std::cmp::Ordering::Greater => right = mid,
+            }
+
+            size = right - left;
         }
 
-        size = right - left;
+        Err(left)
     }
 
-    Err(left)
+    let sh = |n: usize| if sh_from <= n { shift } else { [0; 3] };
+    let start_of = |i: usize| start_fn(&container[i]).shift_by(sh(i));
+    let end_of = |i: usize| end_fn(&container[i]).shift_by(sh(i));
+    let search = |n: usize, t: &T| start_fn(t).shift_by(sh(n));
+
+    let c_range = if let Some(prev_i) = guess_i.checked_sub(1)
+        && (prev_i < len && start_of(prev_i) <= start && start <= end_of(prev_i))
+    {
+        prev_i..guess_i
+    } else {
+        match binary_search_by_key_and_index(container, len, start, search) {
+            Ok(i) => i..i + 1,
+            Err(i) => {
+                if let Some(prev_i) = i.checked_sub(1)
+                    && start <= end_of(prev_i)
+                {
+                    prev_i..i
+                } else {
+                    i..i
+                }
+            }
+        }
+    };
+
+    // This block determines how far ahead this cursor will merge
+    if c_range.end == len || end < start_of(c_range.end) {
+        c_range
+    } else {
+        match binary_search_by_key_and_index(container, len, end, search) {
+            Ok(i) => c_range.start..i + 1,
+            Err(i) => c_range.start..i,
+        }
+    }
 }
 
 /// An entry for a file with the given name

@@ -406,7 +406,11 @@ impl<W: Widget<U>, U: Ui> Hookable for KeySentTo<W, U> {
     type Args<'b> = (KeyEvent, &'b mut W, &'b U::Area);
     type PreArgs = (KeyEvent, RwData<W>, U::Area);
 
-    fn trigger_hooks<'b>(
+    fn trigger_hooks<'b>(_: Self::PreArgs, _: impl Iterator<Item = Hook<'b, Self>>) {
+        unreachable!("This hook is not meant to be triggered asynchronously")
+    }
+
+    fn trigger_hooks_now<'b>(
         (key, widget, area): Self::PreArgs,
         hooks: impl Iterator<Item = Hook<'b, Self>>,
     ) {

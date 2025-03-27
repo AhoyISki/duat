@@ -9,6 +9,7 @@ use std::ops::RangeBounds;
 
 pub use self::cursors::{Cursor, Cursors, VPoint};
 use crate::{
+    add_shifts,
     cfg::PrintCfg,
     text::{Change, Point, Reader, RegexPattern, Searcher, Strs, Text, TextRange},
     ui::Area,
@@ -180,7 +181,7 @@ where
             panic!("Cursor index {n} out of bounds");
         };
 
-        let mut shift = (0, 0, 0);
+        let mut shift = [0; 3];
 
         edit(&mut Editor::<A, W>::new(
             &mut cursor,
@@ -191,9 +192,7 @@ where
         ));
 
         let cursors = self.widget.cursors_mut().unwrap();
-        cursors.insert(n, was_main, cursor);
-
-        self.widget.text_mut().shift_cursors(n + 1, shift);
+        cursors.insert(n, was_main, cursor, shift);
     }
 
     /// Edits on the main [`Cursor`]'s selection
@@ -235,28 +234,22 @@ where
         assert!(end <= cursors.len(), "Cursor index {end} out of bounds");
         let mut removed: Vec<(Cursor, bool)> = cursors.drain(start..).collect();
 
-        let mut shift = (0, 0, 0);
+        let mut total_shift = [0; 3];
 
         for (i, (mut cursor, was_main)) in removed.splice(..(end - start), []).enumerate() {
+            let mut shift = [0; 3];
             let guess_i = i + start;
-            cursor.shift_by(shift);
+            cursor.shift_by(total_shift);
 
             let mut editor = Editor::new(&mut cursor, self.widget, self.area, &mut shift, was_main);
             f(&mut editor);
 
-            self.widget
-                .cursors_mut()
-                .unwrap()
-                .insert(guess_i, was_main, cursor);
-        }
+            total_shift = add_shifts(total_shift, shift);
 
-        for (i, (mut cursor, was_main)) in removed.into_iter().enumerate() {
-            let guess_i = i + end;
-            cursor.shift_by(shift);
             self.widget
                 .cursors_mut()
                 .unwrap()
-                .insert(guess_i, was_main, cursor);
+                .insert(guess_i, was_main, cursor, shift);
         }
     }
 
@@ -296,7 +289,9 @@ where
         ));
 
         if let Some(cursor) = cursor {
-            text.cursors_mut().unwrap().insert(n, is_main, cursor);
+            text.cursors_mut()
+                .unwrap()
+                .insert(n, is_main, cursor, [0; 3]);
         }
     }
 
@@ -360,7 +355,9 @@ where
             ));
 
             if let Some(cursor) = cursor {
-                text.cursors_mut().unwrap().insert(guess_i, is_main, cursor);
+                text.cursors_mut()
+                    .unwrap()
+                    .insert(guess_i, is_main, cursor, [0; 3]);
             }
         }
     }
@@ -482,7 +479,7 @@ where
     cursor: &'a mut Cursor,
     widget: &'b mut W,
     area: &'b A,
-    shift: &'a mut (i32, i32, i32),
+    shift: &'a mut [i32; 3],
     is_main: bool,
 }
 
@@ -497,7 +494,7 @@ where
         cursor: &'a mut Cursor,
         widget: &'b mut W,
         area: &'b A,
-        shift: &'a mut (i32, i32, i32),
+        shift: &'a mut [i32; 3],
         is_main: bool,
     ) -> Self {
         Self { cursor, widget, area, shift, is_main }
@@ -600,9 +597,7 @@ where
 
     /// Edits the file with a [`Change`]
     fn edit(&mut self, change: Change<String>) {
-        self.shift.0 += change.added_end().byte() as i32 - change.taken_end().byte() as i32;
-        self.shift.1 += change.added_end().char() as i32 - change.taken_end().char() as i32;
-        self.shift.2 += change.added_end().line() as i32 - change.taken_end().line() as i32;
+        *self.shift = add_shifts(*self.shift, change.shift());
 
         let text = self.widget.text_mut();
         let change_i = text.apply_change(self.cursor.change_i.map(|i| i as usize), change);
@@ -948,7 +943,7 @@ where
     /// other, they will be merged into one.
     pub fn copy(&mut self) {
         let cursors = self.text.cursors_mut().unwrap();
-        cursors.insert(0, false, self.cursor.clone().unwrap());
+        cursors.insert(0, false, self.cursor.clone().unwrap(), [0; 3]);
     }
 
     /// Copies the current [`Cursor`] and applies a function to it
@@ -969,7 +964,7 @@ where
             self.inc_searcher,
         ));
         if let Some(copy) = copy {
-            self.text.cursors_mut().unwrap().insert(0, false, copy);
+            self.text.cursors_mut().unwrap().insert(0, false, copy, [0; 3]);
         }
     }
 

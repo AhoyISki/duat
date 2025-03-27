@@ -20,16 +20,16 @@ use serde::{
 };
 
 use super::{Point, Text};
-use crate::binary_search_by_key_and_index;
+use crate::{add_shifts, merging_range_by_guess_and_lazy_shift};
 
 /// The history of edits, contains all moments
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct History {
     moments: Vec<Moment>,
     cur_moment: usize,
-    new_moment: Option<(Moment, SyncState)>,
+    new_moment: Option<(Moment, (usize, [i32; 3]))>,
     /// Used to update ranges on the File
-    unproc_moment: Option<(Moment, SyncState)>,
+    unproc_moment: Option<(Moment, (usize, [i32; 3]))>,
 }
 
 impl History {
@@ -49,20 +49,26 @@ impl History {
     ///
     /// [`EditHelper`]: crate::mode::EditHelper
     pub fn add_change(&mut self, guess_i: Option<usize>, change: Change<String>) -> usize {
-        let (unproc_moment, unproc_ss) = self.unproc_moment.get_or_insert_default();
-        unproc_moment.add_change(guess_i, change.clone(), unproc_ss);
+        let (moment, shift_state) = self.unproc_moment.get_or_insert_default();
+        moment.add_change(guess_i, change.clone(), shift_state);
 
-        let (new_moment, new_ss) = self.new_moment.get_or_insert_default();
-        new_moment.add_change(guess_i, change, new_ss)
+        let (moment, shift_state) = self.new_moment.get_or_insert_default();
+        let ret = moment.add_change(guess_i, change, shift_state);
+
+        ret
     }
 
     /// Declares that the current moment is complete and starts a
     /// new one
     pub fn new_moment(&mut self) {
-        let Some((mut new_moment, mut new_ss)) = self.new_moment.take() else {
+        let Some((mut new_moment, (sh_from, shift))) = self.new_moment.take() else {
             return;
         };
-        finish_synchronizing(&mut new_moment, &mut new_ss);
+        if shift != [0; 3] {
+            for change in new_moment.0[sh_from..].iter_mut() {
+                change.shift_by(shift);
+            }
+        }
 
         self.moments.truncate(self.cur_moment);
         self.moments.push(new_moment);
@@ -101,14 +107,12 @@ impl History {
         } else {
             self.cur_moment -= 1;
 
-            let [mut b, mut c, mut l] = [0; 3];
+            let mut shift = [0; 3];
             let iter = self.moments[self.cur_moment].0.iter().map(move |change| {
                 let mut change = change.as_ref();
-                change.shift_by([b, c, l]);
+                change.shift_by(shift);
 
-                b += change.taken_end().byte() as i32 - change.added_end().byte() as i32;
-                c += change.taken_end().char() as i32 - change.added_end().char() as i32;
-                l += change.taken_end().line() as i32 - change.added_end().line() as i32;
+                shift = add_shifts(shift, change.reverse().shift());
 
                 change.reverse()
             });
@@ -119,7 +123,14 @@ impl History {
     pub fn unprocessed_changes(&mut self) -> Option<Vec<Change<String>>> {
         self.unproc_moment
             .take()
-            .map(|(c, _)| c.0.into_iter().collect())
+            .map(|(mut moment, (sh_from, shift))| {
+                if shift != [0; 3] {
+                    for change in moment.0[sh_from..].iter_mut() {
+                        change.shift_by(shift);
+                    }
+                }
+                moment.0
+            })
     }
 
     pub fn has_unprocessed_changes(&self) -> bool {
@@ -141,74 +152,26 @@ impl Moment {
     fn add_change(
         &mut self,
         guess_i: Option<usize>,
-        change: Change<String>,
-        ss: &mut SyncState,
+        mut change: Change<String>,
+        shift_state: &mut (usize, [i32; 3]),
     ) -> usize {
-        let (shift, sh_from) = (ss.shift, ss.sh_from);
-        let b = change.added_end().byte() as i32 - change.taken_end().byte() as i32;
-        let c = change.added_end().char() as i32 - change.taken_end().char() as i32;
-        let l = change.added_end().line() as i32 - change.taken_end().line() as i32;
-
-        let mut change = change;
-        let sh_from = sh_from;
-        let sh = |n: usize| if sh_from <= n { shift } else { [0; 3] };
+        let (sh_from, shift) = std::mem::take(shift_state);
+        let new_shift = change.shift();
 
         // The range of changes that will be drained
-        let c_range = {
-            let c_range = if let Some(guess_i) = guess_i
-                && let Some(c) = self.0.get(guess_i)
-                && c.start.shift_by(sh(guess_i)) <= change.start
-                && change.start <= c.added_end().shift_by(sh(guess_i))
-            {
-                // If we intersect the initial change, include it
-                guess_i..guess_i + 1
-            } else {
-                let f = |i: usize, c: &Change<String>| c.start.shift_by(sh(i));
-                match binary_search_by_key_and_index(&self.0, self.0.len(), change.start, f) {
-                    // Same thing here
-                    Ok(i) => i..i + 1,
-                    Err(i) => {
-                        // This is if we intersect the added part
-                        if let Some(prev_i) = i.checked_sub(1)
-                            && change.start <= self.0[prev_i].added_end().shift_by(sh(prev_i))
-                        {
-                            prev_i..i
-                        // And here is if we intersect nothing on the
-                        // start, no changes drained.
-                        } else {
-                            i..i
-                        }
-                    }
-                }
-            };
-
-            // This block determines how far ahead this change will merge
-            if self
-                .0
-                .get(c_range.end)
-                .is_none_or(|c| change.taken_end() < c.start.shift_by(sh(c_range.end)))
-            {
-                // If there is no change ahead, or it doesn't intersec, don't merge
-                c_range
-            } else {
-                let start_i = c_range.start + 1;
-                // Otherwise search for another change to be merged
-                let slice = &self.0[start_i..];
-                let f = |i: usize, c: &Change<String>| c.start.shift_by(sh(start_i + i));
-                match binary_search_by_key_and_index(slice, slice.len(), change.taken_end(), f) {
-                    Ok(i) => c_range.start..start_i + i + 1,
-                    Err(i) => c_range.start..start_i + i,
-                }
-            }
-        };
+        let c_range = merging_range_by_guess_and_lazy_shift(
+            (&self.0, self.0.len()),
+            (guess_i.unwrap_or(0), [change.start(), change.taken_end()]),
+            (sh_from, shift),
+            (Change::start, Change::added_end),
+        );
+        crate::log_file!("{c_range:?}");
 
         // If sh_from < c_range.end, I need to shift the changes between the
         // two, so that they match the shifting of the changes before sh_from
-        if sh_from < c_range.end {
-            if shift != [0; 3] {
-                for change in &mut self.0[sh_from..c_range.end] {
-                    change.shift_by(shift);
-                }
+        if sh_from < c_range.end && shift != [0; 3] {
+            for change in &mut self.0[sh_from..c_range.end] {
+                change.shift_by(shift);
             }
         // If sh_from > c_range.end, There are now three shifted
         // states among ranges: The ones before c_range.start, between
@@ -216,12 +179,9 @@ impl Moment {
         // I will update the second group so that it is shifted by
         // shift + change.shift(), that way, it will be shifted like
         // the first group.
-        } else if sh_from > c_range.end {
-            let shift = change.shift();
-            if shift != [0; 3] {
-                for change in &mut self.0[c_range.end..sh_from] {
-                    change.shift_by(shift);
-                }
+        } else if sh_from > c_range.end && new_shift != [0; 3] {
+            for change in &mut self.0[c_range.end..sh_from] {
+                change.shift_by(shift);
             }
         }
 
@@ -230,15 +190,17 @@ impl Moment {
         }
 
         let changes_taken = c_range.clone().count();
-        ss.sh_from = if !(change.added_text() == "" && change.taken_text() == "") {
+        let sh_from = if !(change.added_text() == "" && change.taken_text() == "") {
             self.0.insert(c_range.start, change);
             c_range.start.max(sh_from.saturating_sub(changes_taken)) + 1
         } else {
             c_range.start.max(sh_from.saturating_sub(changes_taken))
         };
-        ss.shift[0] += b;
-        ss.shift[1] += c;
-        ss.shift[2] += l;
+        // If there are no more Changes after this, don't set the shift_state.
+        if c_range.start + 1 < self.0.len() {
+            let shift = add_shifts(shift, new_shift);
+            *shift_state = (sh_from, shift);
+        }
 
         c_range.start
     }
@@ -310,7 +272,7 @@ impl Change<String> {
             let range = (fixed_end.byte() - older.start.byte())..;
             self.added.push_str(&older.added[range]);
         } else {
-            unreachable!("Files chosen that don't interact");
+            unreachable!("Changes chosen that don't interact");
         }
     }
 }
@@ -443,20 +405,4 @@ impl<'de> Deserialize<'de> for Change<String> {
 /// If `lhs` contains the start of`rhs`
 fn has_start_of(lhs: Range<usize>, rhs: Range<usize>) -> bool {
     lhs.start <= rhs.start && rhs.start <= lhs.end
-}
-
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
-struct SyncState {
-    shift: [i32; 3],
-    sh_from: usize,
-}
-
-/// Finish synchronizing the unsynchronized changes
-fn finish_synchronizing(moment: &mut Moment, ss: &mut SyncState) {
-    if ss.shift != [0; 3] {
-        // You can't get to this point without having at least one moment.
-        for change in &mut moment.0[ss.sh_from..] {
-            change.shift_by(ss.shift);
-        }
-    }
 }
