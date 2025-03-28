@@ -4,7 +4,7 @@ use gapbuf::{GapBuffer, gap_buffer};
 use serde::{Deserialize, Serialize, de::Visitor, ser::SerializeSeq};
 
 pub use self::cursor::{Cursor, VPoint};
-use crate::{add_shifts, get_ends, merging_range_by_guess_and_lazy_shift};
+use crate::{add_shifts, get_ends, merging_range_by_guess_and_lazy_shift, text::Change};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Cursors {
@@ -23,13 +23,7 @@ impl Cursors {
         }
     }
 
-    pub fn insert(
-        &mut self,
-        guess_i: usize,
-        was_main: bool,
-        cursor: Cursor,
-        new_shift: [i32; 3],
-    ) -> usize {
+    pub fn insert(&mut self, guess_i: usize, cursor: Cursor, was_main: bool) -> [usize; 2] {
         let (sh_from, shift) = self.shift_state.take();
 
         // The range of cursors that will be drained
@@ -44,10 +38,6 @@ impl Cursors {
         if sh_from < c_range.end && shift != [0; 3] {
             for cursor in self.buf.range(sh_from..c_range.end).into_iter() {
                 cursor.shift_by(shift);
-            }
-        } else if sh_from > c_range.end && new_shift != [0; 3] {
-            for cursor in self.buf.range(c_range.end..sh_from).into_iter() {
-                cursor.shift_by(new_shift);
             }
         }
 
@@ -84,16 +74,46 @@ impl Cursors {
         }
 
         // If there are no more Cursors after this, don't set the shift_state.
+        let cursors_taken = c_range.clone().count();
         if c_range.start + 1 < self.buf.len() {
-            let cursors_taken = c_range.clone().count();
-
             self.shift_state.set((
-                c_range.start.max(sh_from.saturating_sub(cursors_taken)) + 1,
-                add_shifts(shift, new_shift),
+                sh_from.saturating_sub(cursors_taken).max(c_range.start) + 1,
+                shift,
             ));
         }
 
-        c_range.start
+        [c_range.start, cursors_taken]
+    }
+
+    /// Applies a [`Change`] to the [`Cursor`]s list
+    pub(crate) fn apply_change(&mut self, guess_i: usize, change: Change<&str>) {
+        let (sh_from, shift) = self.shift_state.take();
+
+        // The range of cursors that will be drained
+        let c_range = merging_range_by_guess_and_lazy_shift(
+            (&self.buf.0, self.buf.len()),
+            (guess_i, [change.start(), change.taken_end()]),
+            (sh_from, shift),
+            (Cursor::start, Cursor::end_excl),
+        );
+
+        // Since applied changes don't remove Cursors, we need to shift all
+        // Cursors in the whole range. First by the original shift, in order
+        // to update them to the latest shift leve, then by the change.
+        if c_range.end > sh_from && shift != [0; 3] {
+            for cursor in self.buf.range(sh_from..c_range.end).into_iter() {
+                cursor.shift_by(shift);
+            }
+        }
+        let range = c_range.start..c_range.end.max(sh_from);
+        for cursor in self.buf.range(range).into_iter() {
+            cursor.shift_by_change(change);
+        }
+
+        if c_range.end < self.buf.len() {
+            self.shift_state
+                .set((sh_from.max(c_range.end), add_shifts(shift, change.shift())));
+        }
     }
 
     pub fn rotate_main(&mut self, amount: i32) {
@@ -227,7 +247,7 @@ mod cursor {
 
     use crate::{
         cfg::PrintCfg,
-        text::{Point, Text},
+        text::{Change, Point, Text},
         ui::{Area, Caret},
     };
 
@@ -423,6 +443,22 @@ mod cursor {
             });
         }
 
+        pub(crate) fn shift_by_change(&self, change: Change<&str>) {
+            let (shift, taken) = (change.shift(), change.taken_end());
+            if self.caret() >= change.start() {
+                let shifted_caret = self.caret().max(taken).shift_by(shift);
+                self.caret.set(LazyVPoint::Unknown(shifted_caret));
+            }
+            if let Some(anchor) = self.anchor.get()
+                && anchor.point() >= change.start()
+            {
+                let shifted_anchor = anchor.point().max(taken).shift_by(shift);
+                self.anchor.set(Some(LazyVPoint::Unknown(shifted_anchor)));
+            }
+        }
+
+        /// Assumes tha both parts of the cursor are ahead of the
+        /// shift
         pub(crate) fn shift_by(&self, shift: [i32; 3]) {
             let shifted_caret = self.caret().shift_by(shift);
             self.caret.set(LazyVPoint::Unknown(shifted_caret));
