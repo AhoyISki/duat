@@ -276,14 +276,14 @@ use std::{
 };
 
 use duat_core::{
-    Mutex, Plugin,
+    Lender, Mutex, Plugin,
     cfg::WordChars,
     cmd, context, form,
     hooks::{self, ModeSwitched},
     mode::{
         self, EditHelper, Editor, ExtendFwd, ExtendRev, IncSearch, IncSearcher, KeyCode::*,
-        KeyEvent as Event, KeyMod as Mod, Mode, Mover, Orig, PipeSelections, RunCommands,
-        SearchFwd, SearchRev, key,
+        KeyEvent as Event, KeyMod as Mod, Mode, Orig, PipeSelections, RunCommands, SearchFwd,
+        SearchRev, key,
     },
     text::{Point, Searcher, err, text},
     ui::{Area, Ui},
@@ -300,13 +300,17 @@ use treesitter::TsParser;
 /// cursors when the mode changes. This is the pattern that the forms
 /// take:
 ///
-/// - On [`Insert`] mode: `"MainCursorInsert"`, `"ExtraCursorInsert"`
-/// - On [`Normal`] mode: `"MainCursorNormal"`, `"ExtraCursorNormal"`
+/// - On [`Insert`] mode: `"MainCursor.Insert"`,
+///   `"ExtraCursor.Insert"`
+/// - On [`Normal`] mode: `"MainCursor.Normal"`,
+///   `"ExtraCursor.Normal"`
 ///
 /// And so on and so forth.
 ///
 /// If you don't want the [`Form`]s to change, see
 /// [`Kak::dont_set_cursor_forms`].
+///
+/// [`Form`]: duat_core::Form
 pub struct Kak<U> {
     set_cursor_forms: bool,
     insert_tabs: bool,
@@ -363,12 +367,59 @@ impl<U> Kak<U> {
     }
 }
 
-#[derive(Clone)]
-pub struct Normal(SelType);
+#[derive(Clone, Copy)]
+pub struct Normal {
+    sel_type: SelType,
+    brackets: Brackets,
+    indent_on_capital_i: bool,
+}
 
 impl Normal {
+    /// Returns an instance of the [`Normal`] mode, inspired by
+    /// Kakoune
     pub fn new() -> Self {
-        Normal(SelType::Normal)
+        const B_PATS: Brackets = &[[r"\(", r"\)"], [r"\{", r"\}"], [r"\[", r"\]"]];
+        Normal {
+            sel_type: SelType::Normal,
+            brackets: B_PATS,
+            indent_on_capital_i: false,
+        }
+    }
+
+    /// [`Normal`] mode with different type of selection
+    fn new_with_sel_type(sel_type: SelType) -> Self {
+        let mut normal = Self::new();
+        normal.sel_type = sel_type;
+        normal
+    }
+
+    /// Changes what is considered a "bracket" in [`Normal`] mode
+    ///
+    /// More specifically, this will change the behavior of keys like
+    /// `'m'` and the `'u'` object, which will now consider more
+    /// patterns when selecting.
+    pub fn with_brackets(self, brackets: impl Iterator<Item = [&'static str; 2]>) -> Self {
+        static BRACKETS: Memoized<Vec<[&str; 2]>, Brackets> = Memoized::new();
+
+        let brackets: Vec<[&str; 2]> = brackets.collect();
+        assert!(
+            brackets.iter().all(|[s_b, e_b]| s_b != e_b),
+            "Brackets are not allowed to look the same"
+        );
+
+        let brackets = BRACKETS.get_or_insert_with(brackets.clone(), || brackets.leak());
+        Self { brackets, ..self }
+    }
+
+    /// Makes it so the `'I'` key no longer indents the line
+    ///
+    /// By default, when you press `'I'`, the line will be reindented,
+    /// in order to send you to the "proper" insertion spot, not just
+    /// the end of the current indentation.
+    ///
+    /// This function disables that behavior.
+    pub fn with_no_indent_on_capital_i(self) -> Self {
+        Self { indent_on_capital_i: false, ..self }
     }
 }
 
@@ -382,49 +433,55 @@ impl<U: Ui> Mode<U> for Normal {
         match key {
             ////////// Basic movement keys
             key!(Char('h' | 'H') | Left, Mod::NONE | Mod::SHIFT) => {
-                helper.move_all(|mut m| {
+                helper.edit_iter().for_each(|mut e| {
                     let set_anchor = key.code == Char('H') || key.modifiers == Mod::SHIFT;
-                    set_anchor_if_needed(set_anchor, &mut m);
-                    m.move_hor(-1);
+                    set_anchor_if_needed(set_anchor, &mut e);
+                    e.move_hor(-1);
                 });
-                self.0 = SelType::Normal;
+                self.sel_type = SelType::Normal;
             }
-            key!(Down) => helper.move_all(|mut m| {
-                set_anchor_if_needed(key.modifiers.contains(Mod::SHIFT), &mut m);
-                m.move_ver_wrapped(1);
+            key!(Down) => helper.edit_iter().for_each(|mut e| {
+                set_anchor_if_needed(key.modifiers.contains(Mod::SHIFT), &mut e);
+                e.move_ver_wrapped(1);
             }),
-            key!(Up) => helper.move_all(|mut m| {
-                set_anchor_if_needed(key.modifiers.contains(Mod::SHIFT), &mut m);
-                m.move_ver_wrapped(-1);
+            key!(Up) => helper.edit_iter().for_each(|mut e| {
+                set_anchor_if_needed(key.modifiers.contains(Mod::SHIFT), &mut e);
+                e.move_ver_wrapped(-1);
             }),
             key!(Char('l' | 'L') | Right, Mod::NONE | Mod::SHIFT) => {
-                helper.move_all(|mut m| {
+                helper.edit_iter().for_each(|mut e| {
                     let set_anchor = key.code == Char('L') || key.modifiers == Mod::SHIFT;
-                    set_anchor_if_needed(set_anchor, &mut m);
-                    m.move_hor(1);
+                    set_anchor_if_needed(set_anchor, &mut e);
+                    e.move_hor(1);
                 });
-                self.0 = SelType::Normal;
+                self.sel_type = SelType::Normal;
             }
-            key!(Char('j' | 'J')) => helper.move_all(|mut m| {
-                set_anchor_if_needed(key.code == Char('J'), &mut m);
-                m.move_ver(1);
-                let v_caret = m.v_caret();
-                if m.char() == '\n' && v_caret.char_col() > 0 && self.0 != SelType::ToEndOfLine {
-                    m.move_hor(-1);
-                    m.set_desired_vcol(if self.0 == SelType::BeforeEndOfLine {
+            key!(Char('j' | 'J')) => helper.edit_iter().for_each(|mut e| {
+                set_anchor_if_needed(key.code == Char('J'), &mut e);
+                e.move_ver(1);
+                let v_caret = e.v_caret();
+                if e.char() == '\n'
+                    && v_caret.char_col() > 0
+                    && self.sel_type != SelType::ToEndOfLine
+                {
+                    e.move_hor(-1);
+                    e.set_desired_vcol(if self.sel_type == SelType::BeforeEndOfLine {
                         usize::MAX
                     } else {
                         v_caret.desired_visual_col()
                     });
                 }
             }),
-            key!(Char('k' | 'K')) => helper.move_all(|mut m| {
-                set_anchor_if_needed(key.code == Char('K'), &mut m);
-                m.move_ver(-1);
-                let v_caret = m.v_caret();
-                if m.char() == '\n' && v_caret.char_col() > 0 && self.0 != SelType::ToEndOfLine {
-                    m.move_hor(-1);
-                    m.set_desired_vcol(if self.0 == SelType::BeforeEndOfLine {
+            key!(Char('k' | 'K')) => helper.edit_iter().for_each(|mut e| {
+                set_anchor_if_needed(key.code == Char('K'), &mut e);
+                e.move_ver(-1);
+                let v_caret = e.v_caret();
+                if e.char() == '\n'
+                    && v_caret.char_col() > 0
+                    && self.sel_type != SelType::ToEndOfLine
+                {
+                    e.move_hor(-1);
+                    e.set_desired_vcol(if self.sel_type == SelType::BeforeEndOfLine {
                         usize::MAX
                     } else {
                         v_caret.desired_visual_col()
@@ -433,106 +490,106 @@ impl<U: Ui> Mode<U> for Normal {
             }),
 
             ////////// Object selection keys.
-            key!(Char('w'), Mod::NONE | Mod::ALT) => helper.move_all(|mut m| {
+            key!(Char('w'), Mod::NONE | Mod::ALT) => helper.edit_iter().for_each(|mut e| {
                 let alt_word = key.modifiers.contains(Mod::ALT);
-                let init = no_nl_windows(m.fwd()).next();
+                let init = no_nl_windows(e.chars_fwd()).next();
                 if let Some(((p0, c0), (p1, c1))) = init {
                     if Category::of(c0, wc) == Category::of(c1, wc) {
-                        m.move_to(p0);
+                        e.move_to(p0);
                     } else {
-                        m.move_to(p1);
+                        e.move_to(p1);
                     }
 
-                    let points = m.search_fwd(word_and_space(alt_word, wc), None).next();
+                    let points = e.search_fwd(word_and_space(alt_word, wc), None).next();
                     if let Some([_, p1]) = points {
-                        m.set_anchor();
-                        m.move_to(p1);
-                        m.move_hor(-1);
+                        e.set_anchor();
+                        e.move_to(p1);
+                        e.move_hor(-1);
                     }
                 };
             }),
-            key!(Char('e'), Mod::NONE | Mod::ALT) => helper.move_all(|mut m| {
+            key!(Char('e'), Mod::NONE | Mod::ALT) => helper.edit_iter().for_each(|mut e| {
                 let alt_word = key.modifiers.contains(Mod::ALT);
-                let init = no_nl_windows(m.fwd()).next();
+                let init = no_nl_windows(e.chars_fwd()).next();
                 if let Some(((p0, c0), (p1, c1))) = init {
                     if Category::of(c0, wc) == Category::of(c1, wc) {
-                        m.move_to(p0);
+                        e.move_to(p0);
                     } else {
-                        m.move_to(p1);
+                        e.move_to(p1);
                     }
 
-                    let points = m.search_fwd(space_and_word(alt_word, wc), None).next();
+                    let points = e.search_fwd(space_and_word(alt_word, wc), None).next();
                     if let Some([_, p1]) = points {
-                        m.set_anchor();
-                        m.move_to(p1);
-                        m.move_hor(-1);
+                        e.set_anchor();
+                        e.move_to(p1);
+                        e.move_hor(-1);
                     }
                 };
             }),
-            key!(Char('b'), Mod::NONE | Mod::ALT) => helper.move_all(|mut m| {
+            key!(Char('b'), Mod::NONE | Mod::ALT) => helper.edit_iter().for_each(|mut e| {
                 let alt_word = key.modifiers.contains(Mod::ALT);
                 let init = {
-                    let iter = [(m.caret(), m.char())].into_iter().chain(m.rev());
+                    let iter = [(e.caret(), e.char())].into_iter().chain(e.chars_rev());
                     no_nl_windows(iter).next()
                 };
                 if let Some(((p1, c1), (_, c0))) = init {
-                    m.move_to(p1);
+                    e.move_to(p1);
                     if Category::of(c0, wc) == Category::of(c1, wc) {
-                        m.move_hor(1);
+                        e.move_hor(1);
                     }
-                    let points = m.search_rev(word_and_space(alt_word, wc), None).next();
+                    let points = e.search_rev(word_and_space(alt_word, wc), None).next();
                     if let Some([p0, p1]) = points {
-                        m.move_to(p0);
-                        m.set_anchor();
-                        m.move_to(p1);
-                        m.move_hor(-1);
-                        m.swap_ends();
+                        e.move_to(p0);
+                        e.set_anchor();
+                        e.move_to(p1);
+                        e.move_hor(-1);
+                        e.swap_ends();
                     };
                 };
             }),
 
-            key!(Char('W'), Mod::ALT | Mod::NONE) => helper.move_all(|mut m| {
+            key!(Char('W'), Mod::ALT | Mod::NONE) => helper.edit_iter().for_each(|mut e| {
                 let alt_word = key.modifiers.contains(Mod::ALT);
-                set_anchor_if_needed(true, &mut m);
-                m.move_hor(1);
-                let points = m.search_fwd(word_and_space(alt_word, wc), None).next();
+                set_anchor_if_needed(true, &mut e);
+                e.move_hor(1);
+                let points = e.search_fwd(word_and_space(alt_word, wc), None).next();
                 if let Some([_, p1]) = points {
-                    m.move_to(p1);
-                    m.move_hor(-1);
+                    e.move_to(p1);
+                    e.move_hor(-1);
                 }
             }),
-            key!(Char('E'), Mod::NONE | Mod::ALT) => helper.move_all(|mut m| {
+            key!(Char('E'), Mod::NONE | Mod::ALT) => helper.edit_iter().for_each(|mut e| {
                 let alt_word = key.modifiers.contains(Mod::ALT);
-                set_anchor_if_needed(true, &mut m);
-                m.move_hor(1);
-                let points = m.search_fwd(space_and_word(alt_word, wc), None).next();
+                set_anchor_if_needed(true, &mut e);
+                e.move_hor(1);
+                let points = e.search_fwd(space_and_word(alt_word, wc), None).next();
                 if let Some([_, p1]) = points {
-                    m.move_to(p1);
-                    m.move_hor(-1);
+                    e.move_to(p1);
+                    e.move_hor(-1);
                 }
             }),
-            key!(Char('B'), Mod::NONE | Mod::ALT) => helper.move_all(|mut m| {
+            key!(Char('B'), Mod::NONE | Mod::ALT) => helper.edit_iter().for_each(|mut e| {
                 let alt_word = key.modifiers.contains(Mod::ALT);
-                set_anchor_if_needed(true, &mut m);
-                let points = m.search_rev(word_and_space(alt_word, wc), None).next();
+                set_anchor_if_needed(true, &mut e);
+                let points = e.search_rev(word_and_space(alt_word, wc), None).next();
                 if let Some([p0, _]) = points {
-                    m.move_to(p0);
+                    e.move_to(p0);
                 }
             }),
 
-            key!(Char('x')) => helper.move_all(|mut m| {
-                self.0 = SelType::ToEndOfLine;
-                set_anchor_if_needed(true, &mut m);
-                m.set_caret_on_start();
-                let p0 = m.search_rev("\n", None).next().map(|[_, p0]| p0);
-                m.move_to(p0.unwrap_or_default());
-                m.swap_ends();
+            key!(Char('x')) => helper.edit_iter().for_each(|mut e| {
+                self.sel_type = SelType::ToEndOfLine;
+                set_anchor_if_needed(true, &mut e);
+                e.set_caret_on_start();
+                let p0 = e.search_rev("\n", None).next().map(|[_, p0]| p0);
+                e.move_to(p0.unwrap_or_default());
+                e.swap_ends();
 
-                let p1 = m.search_fwd("\n", None).next().map(|[p1, _]| p1);
-                if let Some(p1) = p1.or(m.last_point()) {
-                    m.move_to(p1);
+                let p1 = e.search_fwd("\n", None).next().map(|[p1, _]| p1);
+                if let Some(p1) = p1.or(e.last_point()) {
+                    e.move_to(p1);
                 }
-                m.set_desired_vcol(usize::MAX);
+                e.set_desired_vcol(usize::MAX);
             }),
             key!(Char('f' | 'F' | 't' | 'T'), Mod::NONE | Mod::ALT) => {
                 let mf = key.modifiers;
@@ -549,100 +606,89 @@ impl<U: Ui> Mode<U> for Normal {
                     OneKey::Until(sel_type)
                 });
             }
-            key!(Char('l' | 'L'), Mod::ALT) | key!(End) => helper.move_all(|mut m| {
+            key!(Char('l' | 'L'), Mod::ALT) | key!(End) => helper.edit_iter().for_each(|mut e| {
                 if key.code == Char('l') {
-                    m.unset_anchor();
+                    e.unset_anchor();
                 }
-                select_to_end_of_line(true, m);
-                self.0 = SelType::BeforeEndOfLine;
+                select_to_end_of_line(true, e);
+                self.sel_type = SelType::BeforeEndOfLine;
             }),
-            key!(Char('h' | 'H'), Mod::ALT) | key!(Home) => helper.move_all(|mut m| {
+            key!(Char('h' | 'H'), Mod::ALT) | key!(Home) => helper.edit_iter().for_each(|mut e| {
                 if key.code == Char('h') {
-                    m.unset_anchor();
+                    e.unset_anchor();
                 }
-                set_anchor_if_needed(true, &mut m);
-                m.move_hor(-(m.v_caret().char_col() as i32));
+                set_anchor_if_needed(true, &mut e);
+                e.move_hor(-(e.v_caret().char_col() as i32));
             }),
-            key!(Char('a'), Mod::ALT) => mode::set::<U>(OneKey::Around),
-            key!(Char('i'), Mod::ALT) => mode::set::<U>(OneKey::Inside),
-            key!(Char('%')) => helper.move_main(|mut m| {
-                m.move_to(Point::default());
-                m.set_anchor();
-                m.move_to(m.last_point().unwrap())
-            }),
+            key!(Char('a'), Mod::ALT) => mode::set::<U>(OneKey::Around(self.brackets)),
+            key!(Char('i'), Mod::ALT) => mode::set::<U>(OneKey::Inside(self.brackets)),
+            key!(Char('%')) => {
+                let mut e = helper.edit_main();
+                e.move_to(Point::default());
+                e.set_anchor();
+                e.move_to(e.last_point().unwrap())
+            }
 
             ////////// Insertion mode keys
             key!(Char('i')) => {
                 helper.new_moment();
-                helper.move_all(|mut m| m.set_caret_on_start());
+                helper.edit_iter().for_each(|mut e| {
+                    e.set_caret_on_start();
+                });
                 mode::set::<U>(Insert::new());
             }
             key!(Char('I')) => {
                 helper.new_moment();
-                set_indent(&mut helper);
+                let processed_lines = Vec::new();
+                helper.edit_iter().for_each(|mut e| {
+                    if self.indent_on_capital_i {
+                        reindent(&mut e, &mut processed_lines);
+                    } else {
+                        e.unset_anchor();
+                        e.move_hor(-(e.v_caret().char_col() as i32));
+                        e.set_anchor();
+                        let indent = e.indent();
+                        e.move_hor(indent as i32)
+                    }
+                });
                 mode::set::<U>(Insert::new());
-                // helper.move_all( |mut m| {
-                //    m.unset_anchor();
-                //    m.move_hor(-(m.v_caret().char_col() as i32));
-                //    m.set_anchor();
-                //    let points = m.search_fwd("\\A[ \t]*[^ \t\n]",
-                // None).next();    if let Some([_,
-                // p1]) = points {
-                //        m.move_to(p1);
-                //        m.move_hor(-1);
-                //    }
-                //});
             }
             key!(Char('a')) => {
                 helper.new_moment();
-                helper.move_all(|mut m| {
-                    m.set_caret_on_end();
-                    m.move_hor(1);
+                helper.edit_iter().for_each(|mut e| {
+                    e.set_caret_on_end();
+                    e.move_hor(1);
                 });
                 mode::set::<U>(Insert::new());
             }
             key!(Char('A')) => {
                 helper.new_moment();
-                helper.move_all(|mut m| {
-                    m.unset_anchor();
-                    let (p, _) = m.fwd().find(|(_, c)| *c == '\n').unwrap();
-                    m.move_to(p);
+                helper.edit_iter().for_each(|mut e| {
+                    e.unset_anchor();
+                    let (p, _) = e.chars_fwd().find(|(_, c)| *c == '\n').unwrap();
+                    e.move_to(p);
                 });
                 mode::set::<U>(Insert::new());
             }
             key!(Char('o' | 'O'), Mod::NONE | Mod::ALT) => {
                 helper.new_moment();
-                let mut orig_points = Vec::new();
-                helper.move_all(|mut m| {
-                    orig_points.push((m.caret(), m.anchor()));
-                    m.unset_anchor();
+                helper.edit_iter().for_each(|mut e| {
                     if key.code == Char('O') {
-                        m.move_hor(-(m.v_caret().char_col() as i32));
+                        e.set_caret_on_start();
+                        let char_col = e.v_caret().char_col();
+                        e.move_hor(-(char_col as i32));
+                        e.insert("\n");
+                        e.move_hor(char_col as i32 + 1);
                     } else {
-                        let (p, _) = m.fwd().find(|(_, c)| *c == '\n').unwrap();
-                        m.move_to(p);
-                        m.move_hor(1);
+                        e.set_caret_on_end();
+                        let caret = e.caret();
+                        let (p, _) = e.chars_fwd().find(|(_, c)| *c == '\n').unwrap();
+                        e.move_to(p);
+                        e.append("\n");
+                        e.move_to(caret);
                     }
                 });
-                helper.edit_many(.., |e| e.insert("\n"));
-                if key.modifiers == Mod::ALT {
-                    let mut orig_points = orig_points.into_iter();
-                    helper.move_all(|mut m| {
-                        let (caret, anchor) = orig_points.next().unwrap();
-                        if let Some(anchor) = anchor {
-                            m.move_to(anchor);
-                            m.set_anchor();
-                            if key.code == Char('O') {
-                                m.move_hor(1);
-                            }
-                        }
-                        m.move_to(caret);
-                        if key.code == Char('O') {
-                            m.move_hor(1);
-                        }
-                    });
-                } else {
-                    set_indent(&mut helper);
+                if key.modifiers == Mod::NONE {
                     mode::set::<U>(Insert::new());
                 }
             }
@@ -654,7 +700,7 @@ impl<U: Ui> Mode<U> for Normal {
             }
             key!(Char('`')) => {
                 helper.new_moment();
-                helper.edit_many(.., |e| {
+                helper.edit_iter().for_each(|mut e| {
                     let lower = e
                         .selection()
                         .flat_map(str::chars)
@@ -664,7 +710,7 @@ impl<U: Ui> Mode<U> for Normal {
             }
             key!(Char('~')) => {
                 helper.new_moment();
-                helper.edit_many(.., |e| {
+                helper.edit_iter().for_each(|mut e| {
                     let upper = e
                         .selection()
                         .flat_map(str::chars)
@@ -674,7 +720,7 @@ impl<U: Ui> Mode<U> for Normal {
             }
             key!(Char('`'), Mod::ALT) => {
                 helper.new_moment();
-                helper.edit_many(.., |e| {
+                helper.edit_iter().for_each(|mut e| {
                     let inverted = e.selection().flat_map(str::chars).map(|c| {
                         if c.is_uppercase() {
                             c.to_lowercase().collect::<String>()
@@ -687,74 +733,74 @@ impl<U: Ui> Mode<U> for Normal {
             }
 
             ////////// Advanced selection manipulation
-            key!(Char(';'), Mod::ALT) => helper.move_all(|mut m| m.swap_ends()),
-            key!(Char(';')) => helper.move_all(|mut m| m.unset_anchor()),
-            key!(Char(':'), Mod::ALT) => helper.move_all(|mut m| m.set_caret_on_end()),
+            key!(Char(';'), Mod::ALT) => helper.edit_iter().for_each(|mut e| e.swap_ends()),
+            key!(Char(';')) => helper.edit_iter().for_each(|mut e| {
+                e.unset_anchor();
+            }),
+            key!(Char(':'), Mod::ALT) => helper.edit_iter().for_each(|mut e| {
+                e.set_caret_on_end();
+            }),
             key!(Char(')')) => helper.cursors_mut().rotate_main(1),
             key!(Char('(')) => helper.cursors_mut().rotate_main(-1),
             key!(Char(')'), Mod::ALT) => {
                 helper.new_moment();
-                let mut last_sel = None;
-                helper.move_all(|mut m| m.set_anchor());
-                helper.edit_many(.., |e| {
-                    if let Some(last) = last_sel.replace(e.selection().collect::<String>()) {
-                        e.replace(last);
-                    }
-                });
-                helper.edit_nth(0, |e| {
-                    if let Some(last) = last_sel {
-                        e.replace(last);
-                    }
-                });
+                let mut iter = helper.edit_iter();
+                let last_sel = iter.next().map(|mut e| e.selection().to_string());
+
+                while let Some(mut e) = iter.next() {
+                    e.replace(last_sel.replace(e.selection().to_string()).unwrap());
+                }
+
+                helper.edit_nth(0).replace(last_sel.unwrap());
             }
             key!(Char('('), Mod::ALT) => {
                 helper.new_moment();
                 let mut selections = Vec::<String>::new();
-                helper.move_all(|mut m| {
-                    m.set_anchor();
-                    selections.push(m.selection().collect())
+                helper.edit_iter().for_each(|mut e| {
+                    e.set_anchor();
+                    selections.push(e.selection().collect())
                 });
                 let mut s_iter = selections.into_iter().cycle();
                 s_iter.next();
-                helper.edit_many(.., |e| {
+                helper.edit_iter().for_each(|mut e| {
                     if let Some(next) = s_iter.next() {
                         e.replace(next);
                     }
                 });
             }
             key!(Char('_'), Mod::ALT) => {
-                helper.move_all(|mut m| {
-                    m.set_caret_on_end();
-                    m.move_hor(1)
+                helper.edit_iter().for_each(|mut e| {
+                    e.set_caret_on_end();
+                    e.move_hor(1)
                 });
-                helper.move_all(|mut m| m.move_hor(-1));
+                // In the first iteration, connected Cursors are joined, this one just
+                // undoes the movement.
+                helper.edit_iter().for_each(|mut e| e.move_hor(-1));
             }
-            key!(Char('s'), Mod::ALT) => helper.move_all(|mut m| {
-                m.set_caret_on_start();
-                let Some(end) = m.anchor() else {
+            key!(Char('s'), Mod::ALT) => helper.edit_iter().for_each(|mut e| {
+                e.set_caret_on_start();
+                let Some(end) = e.anchor() else {
                     return;
                 };
-                let lines: Vec<[Point; 2]> = m.search_fwd("[^\n]*\n", Some(end)).collect();
-                let mut last_p1 = m.caret();
+                let lines: Vec<[Point; 2]> = e.search_fwd("[^\n]*\n", Some(end)).collect();
+                let mut last_p1 = e.caret();
                 for [p0, p1] in lines {
-                    m.copy_and(|mut m| {
-                        m.move_to(p0);
-                        m.set_anchor();
-                        m.move_to(p1);
-                        m.move_hor(-1);
-                    });
+                    let e_copy = e.copy();
+                    e_copy.move_to(p0);
+                    e_copy.set_anchor();
+                    e_copy.move_to(p1);
+                    e_copy.move_hor(-1);
                     last_p1 = p1;
                 }
-                m.move_to(last_p1);
-                m.swap_ends();
+                e.move_to(last_p1);
+                e.swap_ends();
             }),
-            key!(Char('S'), Mod::ALT) => helper.move_all(|mut m| {
-                if m.anchor().is_some() {
-                    m.copy_and(|mut m| {
-                        m.swap_ends();
-                        m.unset_anchor();
-                    });
-                    m.unset_anchor();
+            key!(Char('S'), Mod::ALT) => helper.edit_iter().for_each(|mut e| {
+                if e.anchor().is_some() {
+                    let mut e_copy = e.copy();
+                    e_copy.swap_ends();
+                    e_copy.unset_anchor();
+                    e.unset_anchor();
                 }
             }),
 
@@ -768,58 +814,52 @@ impl<U: Ui> Mode<U> for Normal {
                 if key.modifiers == Mod::NONE {
                     copy_selections(&mut helper);
                 }
-                helper.edit_many(.., |e| e.replace(""));
-                helper.move_all(|mut m| m.unset_anchor());
+                helper.edit_iter().for_each(|mut e| {
+                    e.replace("");
+                    e.unset_anchor();
+                });
             }
             key!(Char('c'), Mod::NONE | Mod::ALT) => {
                 helper.new_moment();
                 if key.modifiers == Mod::NONE {
                     copy_selections(&mut helper);
                 }
-                helper.edit_many(.., |e| e.replace(""));
-                helper.move_all(|mut m| m.unset_anchor());
+                helper.edit_iter().for_each(|mut e| {
+                    e.replace("");
+                    e.unset_anchor();
+                });
                 mode::set::<U>(Insert::new());
             }
             key!(Char('p' | 'P')) => {
                 let pastes = paste_strings();
                 if !pastes.is_empty() {
                     helper.new_moment();
-                    let mut swap_ends = Vec::new();
                     let mut p_iter = pastes.iter().cycle();
-                    helper.move_all(|mut m| {
-                        swap_ends.push(!m.anchor_is_start());
+                    helper.edit_iter().for_each(|mut e| {
+                        let paste = p_iter.next().unwrap();
                         // If it ends in a new line, we gotta move to the start of the line.
-                        if p_iter.next().unwrap().ends_with('\n') {
-                            if key.code == Char('p') {
-                                m.set_caret_on_end();
-                                let (p, _) = m.fwd().find(|(_, c)| *c == '\n').unwrap_or_default();
-                                m.move_to(p);
-                            } else {
-                                m.set_caret_on_start();
-                                m.move_hor(-(m.v_caret().char_col() as i32))
-                            }
-                        } else {
-                            m.set_caret_on_start();
-                            if key.code == Char('p') {
-                                m.swap_ends();
-                            }
-                        }
-                    });
-                    let mut lens = pastes.iter().map(|str| str.chars().count()).cycle();
-                    let mut p_iter = pastes.iter().cycle();
-                    helper.edit_many(.., |e| match key.code {
-                        Char('p') => e.append(p_iter.next().unwrap()),
-                        _ => e.insert(p_iter.next().unwrap()),
-                    });
-                    let mut swap_ends = swap_ends.into_iter();
-                    helper.move_all(|mut m| {
                         if key.code == Char('p') {
-                            m.move_hor(1);
-                        }
-                        m.set_anchor();
-                        m.move_hor(lens.next().unwrap().saturating_sub(1) as i32);
-                        if swap_ends.next().unwrap() {
-                            m.swap_ends();
+                            e.set_caret_on_end();
+                            if paste.ends_with('\n') {
+                                let caret = e.caret();
+                                let (p, _) =
+                                    e.chars_fwd().find(|(_, c)| *c == '\n').unwrap_or_default();
+                                e.move_to(p);
+                                e.append(paste);
+                                e.move_to(caret);
+                            } else {
+                                e.move_hor(-(e.v_caret().char_col() as i32))
+                            }
+                        } else if key.code == Char('P') {
+                            e.set_caret_on_start();
+                            if paste.ends_with('\n') {
+                                let char_col = e.v_caret().char_col();
+                                e.move_hor(-(char_col as i32));
+                                e.insert(paste);
+                                e.move_hor(char_col as i32 + 1);
+                            } else {
+                                e.insert(paste)
+                            }
                         }
                     });
                 }
@@ -829,7 +869,9 @@ impl<U: Ui> Mode<U> for Normal {
                 if !pastes.is_empty() {
                     helper.new_moment();
                     let mut p_iter = pastes.iter().cycle();
-                    helper.edit_many(.., |e| e.replace(p_iter.next().unwrap()));
+                    helper
+                        .edit_iter()
+                        .for_each(|e| e.replace(p_iter.next().unwrap()));
                 }
             }
 
@@ -837,67 +879,65 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char(',')) => helper.cursors_mut().remove_extras(),
             key!(Char('C')) => {
                 helper.new_moment();
-                helper.move_nth(helper.cursors().len() - 1, |mut m| {
-                    let v_caret = m.v_caret();
-                    m.copy();
-                    if let Some(v_anchor) = m.v_anchor() {
-                        let lines_diff = v_anchor.line() as i32 - m.caret().line() as i32;
-                        let len_lines = lines_diff.unsigned_abs() as usize;
-                        while m.caret().line() + len_lines < m.len().line() {
-                            m.move_ver(len_lines as i32 + 1);
-                            m.set_anchor();
-                            m.set_desired_vcol(v_anchor.visual_col());
-                            m.move_ver(lines_diff);
-                            m.swap_ends();
-                            if m.v_caret().visual_col() == v_caret.visual_col()
-                                && m.v_anchor().unwrap().visual_col() == v_anchor.visual_col()
-                            {
-                                return;
-                            }
-                            m.swap_ends();
+                let mut e = helper.edit_nth(helper.cursors().len() - 1);
+                let v_caret = e.v_caret();
+                e.copy();
+                if let Some(v_anchor) = e.v_anchor() {
+                    let lines_diff = v_anchor.line() as i32 - e.caret().line() as i32;
+                    let len_lines = lines_diff.unsigned_abs() as usize;
+                    while e.caret().line() + len_lines < e.len().line() {
+                        e.move_ver(len_lines as i32 + 1);
+                        e.set_anchor();
+                        e.set_desired_vcol(v_anchor.visual_col());
+                        e.move_ver(lines_diff);
+                        e.swap_ends();
+                        if e.v_caret().visual_col() <= v_caret.visual_col()
+                            && e.v_anchor().unwrap().visual_col() <= v_anchor.visual_col()
+                        {
+                            return;
                         }
-                    } else {
-                        while m.caret().line() < m.len().line() {
-                            m.move_ver(1);
-                            if m.v_caret().visual_col() == v_caret.visual_col() {
-                                return;
-                            }
+                        e.swap_ends();
+                    }
+                } else {
+                    while e.caret().line() < e.len().line() {
+                        e.move_ver(1);
+                        if e.v_caret().visual_col() == v_caret.visual_col() {
+                            return;
                         }
                     }
-                    m.destroy();
-                })
+                }
+                e.destroy();
             }
             key!(Char('C'), Mod::ALT) => {
                 helper.new_moment();
-                helper.move_nth(0, |mut m| {
-                    let v_caret = m.v_caret();
-                    m.copy();
-                    if let Some(v_anchor) = m.v_anchor() {
-                        let lines_diff = v_anchor.line() as i32 - m.caret().line() as i32;
-                        let len_lines = lines_diff.unsigned_abs() as usize;
-                        while m.caret().line().checked_sub(len_lines + 1).is_some() {
-                            m.move_ver(-1 - len_lines as i32);
-                            m.set_anchor();
-                            m.set_desired_vcol(v_anchor.visual_col());
-                            m.move_ver(lines_diff);
-                            m.swap_ends();
-                            if m.v_caret().visual_col() == v_caret.visual_col()
-                                && m.v_anchor().unwrap().visual_col() == v_anchor.visual_col()
-                            {
-                                return;
-                            }
-                            m.swap_ends();
+                let mut e = helper.edit_nth(0);
+                let v_caret = e.v_caret();
+                e.copy();
+                if let Some(v_anchor) = e.v_anchor() {
+                    let lines_diff = v_anchor.line() as i32 - e.caret().line() as i32;
+                    let len_lines = lines_diff.unsigned_abs() as usize;
+                    while e.caret().line().checked_sub(len_lines + 1).is_some() {
+                        e.move_ver(-1 - len_lines as i32);
+                        e.set_anchor();
+                        e.set_desired_vcol(v_anchor.visual_col());
+                        e.move_ver(lines_diff);
+                        e.swap_ends();
+                        if e.v_caret().visual_col() == v_caret.visual_col()
+                            && e.v_anchor().unwrap().visual_col() == v_anchor.visual_col()
+                        {
+                            return;
                         }
-                    } else {
-                        while m.caret().line() > 0 {
-                            m.move_ver(-1);
-                            if m.v_caret().visual_col() == v_caret.visual_col() {
-                                return;
-                            }
+                        e.swap_ends();
+                    }
+                } else {
+                    while e.caret().line() > 0 {
+                        e.move_ver(-1);
+                        if e.v_caret().visual_col() == v_caret.visual_col() {
+                            return;
                         }
                     }
-                    m.destroy();
-                })
+                }
+                e.destroy();
             }
 
             ////////// Other mode changing keys.
@@ -922,8 +962,6 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('U')) => helper.redo(),
             _ => {}
         }
-
-        // helper.move_all( |mut m| m.unset_empty_range());
     }
 }
 
@@ -934,22 +972,41 @@ impl Default for Normal {
 }
 
 #[derive(Clone)]
-pub struct Insert(bool);
+pub struct Insert {
+    insert_tabs: bool,
+    indent_keys: Vec<char>,
+}
 
 impl Insert {
     /// Returns a new instance of Kakoune's [`Insert`]
     pub fn new() -> Self {
-        Self(INSERT_TABS.load(Ordering::Relaxed))
+        Self {
+            insert_tabs: INSERT_TABS.load(Ordering::Relaxed),
+            indent_keys: vec!['\n', '(', ')', '{', '}', '[', ']'],
+        }
     }
 
     /// Returns Kakoune's [`Insert`] mode, inserting tabs
     pub fn with_tabs(self) -> Self {
-        Self(true)
+        Self { insert_tabs: true, ..self }
     }
 
     /// Returns Kakoune's [`Insert`] mode, not inserting tabs
     pub fn without_tabs(self) -> Self {
-        Self(false)
+        Self { insert_tabs: false, ..self }
+    }
+
+    /// Which [`char`]s, when sent, should reindent the line
+    ///
+    /// By default, this is `'\n'` and the `'('`, `'{'`, `'['` pairs.
+    /// Note that you have to include `'\n'` in order for the
+    /// [`Enter`] key to reindent.
+    ///
+    /// Additionally, if you add '\t' to the list of indent keys, upon
+    /// pressint [`Tab`] on the first character of the line, it will
+    /// automatically be indented by the right amount.
+    pub fn with_indent_keys(self, chars: impl Iterator<Item = char>) -> Self {
+        Self { indent_keys: chars.collect(), ..self }
     }
 }
 
@@ -967,99 +1024,96 @@ impl<U: Ui> Mode<U> for Insert {
 
         if let key!(Left | Down | Up | Right, mods) = key {
             if mods.contains(Mod::SHIFT) {
-                helper.move_all(|mut m| {
-                    if m.anchor().is_none() {
-                        m.set_anchor()
+                helper.edit_iter().for_each(|mut e| {
+                    if e.anchor().is_none() {
+                        e.set_anchor()
                     }
                 });
-            } else {
-                let anchors = get_anchors(&mut helper);
-                helper.move_all(|mut m| m.unset_anchor());
-                remove_empty_line(&mut helper);
-                restore_anchors(&mut helper, anchors);
             }
         }
 
+        let mut processed_lines = Vec::new();
         match key {
-            key!(Tab) => {
-                if self.0 {
-                    helper.edit_many(.., |e| e.insert('\t'));
-                    helper.move_all(|mut m| m.move_hor(1));
+            key!(Tab) => helper.edit_iter().for_each(|mut e| {
+                let char_col = e.v_caret().char_col();
+                if self.indent_keys.contains(&'\t') && char_col == 0 {
+                    reindent(&mut e, &mut processed_lines);
+                } else if self.insert_tabs {
+                    e.insert('\t');
+                    e.move_hor(1);
                 } else {
-                    let mut tabs = Vec::new();
-                    helper.edit_many(.., |e| {
-                        let tab_len = e.cfg().tab_stops.spaces_at(e.v_caret().visual_col() as u32);
-                        tabs.push(tab_len);
-                        e.insert(" ".repeat(tab_len as usize))
-                    });
-                    let mut t_iter = tabs.into_iter();
-                    helper.move_all(|mut m| m.move_hor(t_iter.next().unwrap() as i32))
+                    let tab_len = e.cfg().tab_stops.spaces_at(e.v_caret().visual_col() as u32);
+                    e.insert(" ".repeat(tab_len as usize));
+                    e.move_hor(tab_len as i32);
                 }
-            }
-            key!(Char(char)) => {
-                helper.edit_many(.., |e| e.insert(char));
-                helper.move_all(|mut m| m.move_hor(1));
-            }
-            key!(Enter, Mod::NONE) => {
-                let anchors = get_anchors(&mut helper);
-                remove_empty_line(&mut helper);
-                helper.edit_many(.., |e| e.insert('\n'));
-                helper.move_all(|mut m| m.move_hor(1));
-                set_indent(&mut helper);
-                restore_anchors(&mut helper, anchors);
-            }
-            key!(Backspace, Mod::NONE) => {
-                let mut prev = Vec::with_capacity(helper.cursors().len());
-                helper.move_all(|mut m| {
-                    prev.push((m.caret(), {
-                        let c = m.caret();
-                        m.unset_anchor().map(|a| match a > c {
-                            true => a.char() as i32 - c.char() as i32,
-                            false => a.char() as i32 - (c.char() as i32 - 1),
-                        })
-                    }));
-                    m.move_hor(-1);
-                });
-                let mut prev_iter = prev.iter();
-                helper.edit_many(.., |e| {
-                    if let Some((caret, _)) = prev_iter.next()
-                        && *caret != Point::default()
-                    {
-                        e.replace("")
-                    }
-                });
-                let mut anchors = prev.into_iter();
-                helper.move_all(|mut m| {
-                    if let Some((_, Some(diff))) = anchors.next() {
-                        m.set_anchor();
-                        m.move_hor(diff);
-                        m.swap_ends()
-                    }
-                });
-            }
-            key!(Delete, Mod::NONE) => {
-                let mut anchors = Vec::with_capacity(helper.cursors().len());
-                helper.move_all(|mut m| {
-                    let caret = m.caret();
-                    anchors.push(m.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
-                });
-                let mut anchors = anchors.into_iter().cycle();
-                helper.edit_many(.., |editor| editor.replace(""));
-                helper.move_all(|mut m| {
-                    if let Some(Some((anchor, anchor_ahead))) = anchors.next() {
-                        m.set_anchor();
-                        m.move_to(anchor);
-                        m.move_hor(-(anchor_ahead as i32));
-                        m.swap_ends()
+            }),
+            key!(Char(char)) => helper.edit_iter().for_each(|mut e| {
+                e.insert(char);
+                e.move_hor(1);
+                if self.indent_keys.contains(&char) {
+                    reindent(&mut e, &mut processed_lines);
+                }
+            }),
+            key!(Enter) => helper.edit_iter().for_each(|mut e| {
+                e.insert('\n');
+                e.move_hor(1);
+                if self.indent_keys.contains(&'\n') {
+                    reindent(&mut e, &mut processed_lines);
+                }
+            }),
+            key!(Backspace) => helper.edit_iter().for_each(|mut e| {
+                let prev_caret = e.caret();
+                let prev_anchor = e.unset_anchor();
+                e.move_hor(-1);
+                e.replace("");
+                if let Some(prev_anchor) = prev_anchor {
+                    e.set_anchor();
+                    if prev_anchor > prev_caret {
+                        e.move_hor((prev_anchor.char() - prev_caret.char()) as i32);
                     } else {
-                        m.unset_anchor();
+                        e.move_to(prev_anchor);
                     }
-                });
-            }
-            key!(Left) => helper.move_all(|mut m| m.move_hor(-1)),
-            key!(Down) => helper.move_all(|mut m| m.move_ver_wrapped(1)),
-            key!(Up) => helper.move_all(|mut m| m.move_ver_wrapped(-1)),
-            key!(Right) => helper.move_all(|mut m| m.move_hor(1)),
+                    e.swap_ends();
+                }
+            }),
+            key!(Delete) => helper.edit_iter().for_each(|mut e| {
+                let prev_caret = e.caret();
+                let prev_anchor = e.unset_anchor();
+                e.replace("");
+                if let Some(prev_anchor) = prev_anchor {
+                    e.set_anchor();
+                    if prev_anchor > prev_caret {
+                        e.move_hor((prev_anchor.char() - prev_caret.char()) as i32 - 1);
+                    } else {
+                        e.move_to(prev_anchor);
+                    }
+                    e.swap_ends();
+                }
+            }),
+            key!(Left, Mod::NONE | Mod::SHIFT) => helper.edit_iter().for_each(|mut e| {
+                set_anchor_if_needed(key.modifiers == Mod::SHIFT, &mut e);
+                e.move_hor(-1)
+            }),
+            key!(Down, Mod::NONE | Mod::SHIFT) => helper.edit_iter().for_each(|mut e| {
+                set_anchor_if_needed(key.modifiers == Mod::SHIFT, &mut e);
+                if key.modifiers == Mod::NONE {
+                    e.unset_anchor();
+                    remove_empty_line(&mut e);
+                }
+                e.move_ver_wrapped(1);
+            }),
+            key!(Up, Mod::NONE | Mod::SHIFT) => helper.edit_iter().for_each(|mut e| {
+                set_anchor_if_needed(key.modifiers == Mod::SHIFT, &mut e);
+                if key.modifiers == Mod::NONE {
+                    e.unset_anchor();
+                    remove_empty_line(&mut e);
+                }
+                e.move_ver_wrapped(-1)
+            }),
+            key!(Right) => helper.edit_iter().for_each(|mut e| {
+                set_anchor_if_needed(key.modifiers == Mod::SHIFT, &mut e);
+                e.move_hor(1);
+            }),
 
             key!(Esc) => {
                 helper.new_moment();
@@ -1075,8 +1129,8 @@ enum OneKey {
     GoTo(SelType),
     Find(SelType),
     Until(SelType),
-    Inside,
-    Around,
+    Inside(Brackets),
+    Around(Brackets),
     Replace,
 }
 
@@ -1092,22 +1146,23 @@ impl<U: Ui> Mode<U> for OneKey {
                 match_find_until(helper, char, matches!(*self, OneKey::Until(_)), st);
                 SelType::Normal
             }
-            OneKey::Inside | OneKey::Around => {
-                match_inside_around(helper, key, matches!(*self, OneKey::Inside));
+            OneKey::Inside(brackets) | OneKey::Around(brackets) => {
+                let is_inside = matches!(*self, OneKey::Inside(_));
+                match_inside_around(helper, key, brackets, is_inside);
                 SelType::Normal
             }
             OneKey::Replace if let Some(char) = just_char(key) => {
-                helper.edit_many(.., |e| {
+                helper.edit_iter().for_each(|mut e| {
                     let len = e.selection().flat_map(str::chars).count();
                     e.replace(char.to_string().repeat(len));
+                    e.move_hor(-1);
                 });
-                helper.move_all(|mut m| m.move_hor(-1));
                 SelType::Normal
             }
             _ => SelType::Normal,
         };
 
-        mode::set::<U>(Normal(sel_type));
+        mode::set::<U>(Normal::new_with_sel_type(sel_type));
     }
 }
 
@@ -1119,32 +1174,32 @@ fn match_goto<S, U: Ui>(
     static LAST_FILE: LazyLock<Mutex<Option<String>>> = LazyLock::new(Mutex::default);
 
     match key {
-        key!(Char('h')) => helper.move_all(|mut m| {
-            set_anchor_if_needed(sel_type == SelType::Extend, &mut m);
-            let p1 = m.search_rev("\n", None).next().map(|[_, p1]| p1);
-            m.move_to(p1.unwrap_or_default());
+        key!(Char('h')) => helper.edit_iter().for_each(|mut e| {
+            set_anchor_if_needed(sel_type == SelType::Extend, &mut e);
+            let p1 = e.search_rev("\n", None).next().map(|[_, p1]| p1);
+            e.move_to(p1.unwrap_or_default());
         }),
-        key!(Char('j')) => helper.move_all(|mut m| {
-            set_anchor_if_needed(sel_type == SelType::Extend, &mut m);
-            m.move_ver(i32::MAX)
+        key!(Char('j')) => helper.edit_iter().for_each(|mut e| {
+            set_anchor_if_needed(sel_type == SelType::Extend, &mut e);
+            e.move_ver(i32::MAX)
         }),
-        key!(Char('k')) => helper.move_all(|mut m| {
-            set_anchor_if_needed(sel_type == SelType::Extend, &mut m);
-            m.move_to_coords(0, 0)
+        key!(Char('k')) => helper.edit_iter().for_each(|mut e| {
+            set_anchor_if_needed(sel_type == SelType::Extend, &mut e);
+            e.move_to_coords(0, 0)
         }),
-        key!(Char('l')) => helper.move_all(|m| {
-            select_to_end_of_line(sel_type == SelType::Extend, m);
+        key!(Char('l')) => helper.edit_iter().for_each(|e| {
+            select_to_end_of_line(sel_type == SelType::Extend, e);
             sel_type = SelType::BeforeEndOfLine;
         }),
-        key!(Char('i')) => helper.move_all(|mut m| {
-            set_anchor_if_needed(sel_type == SelType::Extend, &mut m);
-            let p1 = m.search_rev("(^|\n)[ \t]*", None).next().map(|[_, p1]| p1);
+        key!(Char('i')) => helper.edit_iter().for_each(|mut e| {
+            set_anchor_if_needed(sel_type == SelType::Extend, &mut e);
+            let p1 = e.search_rev("(^|\n)[ \t]*", None).next().map(|[_, p1]| p1);
             if let Some(p1) = p1 {
-                m.move_to(p1);
+                e.move_to(p1);
 
-                let points = m.search_fwd("[^ \t]", None).next();
+                let points = e.search_fwd("[^ \t]", None).next();
                 if let Some([p0, _]) = points {
-                    m.move_to(p0)
+                    e.move_to(p0)
                 }
             }
         }),
@@ -1182,25 +1237,25 @@ fn match_find_until(
     st: SelType,
 ) {
     use SelType::*;
-    helper.move_all(|mut m| {
+    helper.edit_iter().for_each(|mut e| {
         let search = format!("\\x{{{:X}}}", char as u32);
-        let cur = m.caret();
+        let cur = e.caret();
         let (points, back) = match st {
-            Reverse | ExtendRev => (m.search_rev(search, None).find(|[p1, _]| *p1 != cur), 1),
-            Normal | Extend => (m.search_fwd(search, None).find(|[p0, _]| *p0 != cur), -1),
+            Reverse | ExtendRev => (e.search_rev(search, None).find(|[p1, _]| *p1 != cur), 1),
+            Normal | Extend => (e.search_fwd(search, None).find(|[p0, _]| *p0 != cur), -1),
             _ => unreachable!(),
         };
 
         if let Some([p0, _]) = points
-            && p0 != m.caret()
+            && p0 != e.caret()
         {
             let is_extension = !matches!(st, Extend | ExtendRev);
-            if is_extension || m.anchor().is_none() {
-                m.set_anchor();
+            if is_extension || e.anchor().is_none() {
+                e.set_anchor();
             }
-            m.move_to(p0);
+            e.move_to(p0);
             if is_t {
-                m.move_hor(back);
+                e.move_hor(back);
             }
         } else {
             context::notify(err!("Char " [*a] {char} [] " not found"))
@@ -1211,22 +1266,23 @@ fn match_find_until(
 fn match_inside_around(
     mut helper: EditHelper<'_, File, impl Area, ()>,
     key: Event,
+    brackets: Brackets,
     is_inside: bool,
 ) {
-    fn move_to_points<S>(m: &mut Mover<impl Area, S>, [p0, p1]: [Point; 2]) {
+    fn move_to_points<S>(m: &mut Editor<File, impl Area, S>, [p0, p1]: [Point; 2]) {
         m.move_to(p0);
         m.set_anchor();
         m.move_to(p1);
     }
-    fn do_or_destroy<A: Area>(
+    fn do_or_destroy<A: Area, S>(
         failed_at_least_once: &mut bool,
-        mut f: impl FnMut(&mut Mover<'_, A, ()>) -> Option<()> + Clone,
-    ) -> impl FnMut(Mover<'_, A, ()>) {
-        move |mut m: Mover<_, _>| {
-            let ret: Option<()> = f(&mut m);
+        mut f: impl FnMut(&mut Editor<File, A, S>) -> Option<()> + Clone,
+    ) -> impl FnMut(Editor<File, A, S>) {
+        move |mut e: Editor<File, A, S>| {
+            let ret: Option<()> = f(&mut e);
             if ret.is_none() {
-                m.reset();
-                m.destroy();
+                e.reset();
+                e.destroy();
                 *failed_at_least_once = true;
             }
         }
@@ -1237,109 +1293,108 @@ fn match_inside_around(
         return;
     };
 
-    const BC: BracketPatterns = &[[r"\(", r"\)"], [r"\{", r"\}"], [r"\[", r"\]"], ["<", ">"]];
     let wc = helper.cfg().word_chars;
     let initial_cursors_len = helper.cursors().len();
 
     let mut failed_once = false;
 
-    if let Some(object) = Object::from_char(char, wc, BC) {
+    if let Some(object) = Object::from_char(char, wc, brackets) {
         match char {
-            'w' | 'W' => helper.move_all(do_or_destroy(&mut failed_once, |m| {
-                let start = object.find_behind(m, 0, None);
-                let [_, p1] = object.find_ahead(m, 0, None)?;
+            'w' | 'W' => helper.edit_iter().for_each(do_or_destroy(&mut failed_once, |e| {
+                let start = object.find_behind(e, 0, None);
+                let [_, p1] = object.find_ahead(e, 0, None)?;
                 let p0 = {
-                    let p0 = start.map(|[p0, _]| p0).unwrap_or(m.caret());
-                    let p0_cat = Category::of(m.char_at(p0).unwrap(), wc);
-                    let p1_cat = Category::of(m.char(), wc);
+                    let p0 = start.map(|[p0, _]| p0).unwrap_or(e.caret());
+                    let p0_cat = Category::of(e.char_at(p0).unwrap(), wc);
+                    let p1_cat = Category::of(e.char(), wc);
                     let is_same_cat = char == 'W' || p0_cat == p1_cat;
-                    if is_same_cat { p0 } else { m.caret() }
+                    if is_same_cat { p0 } else { e.caret() }
                 };
-                move_to_points(m, [p0, p1]);
-                m.move_hor(-1);
+                move_to_points(e, [p0, p1]);
+                e.move_hor(-1);
                 Some(())
             })),
-            's' | ' ' => helper.move_all(do_or_destroy(&mut failed_once, |m| {
-                let [_, p0] = object.find_behind(m, 0, None)?;
-                let [p1, _] = object.find_ahead(m, 0, None)?;
-                move_to_points(m, [p0, p1]);
-                if is_inside || char == ' ' && p0 < m.text().len() {
-                    m.move_hor(-1);
+            's' | ' ' => helper.edit_iter().for_each(do_or_destroy(&mut failed_once, |e| {
+                let [_, p0] = object.find_behind(e, 0, None)?;
+                let [p1, _] = object.find_ahead(e, 0, None)?;
+                move_to_points(e, [p0, p1]);
+                if is_inside || char == ' ' && p0 < e.text().len() {
+                    e.move_hor(-1);
                 }
                 Some(())
             })),
-            'p' => helper.move_all(do_or_destroy(&mut failed_once, |m| {
-                let end = object.find_ahead(m, 0, None);
+            'p' => helper.edit_iter().for_each(do_or_destroy(&mut failed_once, |e| {
+                let end = object.find_ahead(e, 0, None);
                 let [p1, _] = end?;
-                m.move_to(p1);
-                m.set_anchor();
-                let [_, p0] = object.find_behind(m, 0, None).unwrap_or_default();
-                m.move_to(p0);
-                m.swap_ends();
+                e.move_to(p1);
+                e.set_anchor();
+                let [_, p0] = object.find_behind(e, 0, None).unwrap_or_default();
+                e.move_to(p0);
+                e.swap_ends();
                 if is_inside {
-                    m.move_hor(-1);
+                    e.move_hor(-1);
                 }
                 Some(())
             })),
-            'u' => helper.move_all(do_or_destroy(&mut failed_once, |m| {
-                let [p2, _] = object.find_ahead(m, 1, None)?;
-                m.move_to(p2);
-                let [p0, p1] = object.find_behind(m, 1, None)?;
+            'u' => helper.edit_iter().for_each(do_or_destroy(&mut failed_once, |e| {
+                let [p2, _] = object.find_ahead(e, 1, None)?;
+                e.move_to(p2);
+                let [p0, p1] = object.find_behind(e, 1, None)?;
                 if is_inside {
-                    move_to_points(m, [p1, p2]);
-                    m.move_hor(-1);
+                    move_to_points(e, [p1, p2]);
+                    e.move_hor(-1);
                 } else {
-                    move_to_points(m, [p0, p2]);
-                    if !matches!(m.char_at(p2), Some(';' | ',')) {
-                        m.move_hor(-1);
+                    move_to_points(e, [p0, p2]);
+                    if !matches!(e.char_at(p2), Some(';' | ',')) {
+                        e.move_hor(-1);
                     }
-                    if !matches!(m.char_at(p0), Some(';' | ',')) {
-                        m.swap_ends();
-                        m.move_hor(1);
-                        m.swap_ends();
+                    if !matches!(e.char_at(p0), Some(';' | ',')) {
+                        e.swap_ends();
+                        e.move_hor(1);
+                        e.swap_ends();
                     }
                 }
 
                 Some(())
             })),
-            _char => helper.move_all(do_or_destroy(&mut failed_once, |m| {
-                let [p2, p3] = object.find_ahead(m, 1, None)?;
-                let [p0, p1] = object.find_behind(m, 1, None)?;
+            _char => helper.edit_iter().for_each(do_or_destroy(&mut failed_once, |e| {
+                let [p2, p3] = object.find_ahead(e, 1, None)?;
+                let [p0, p1] = object.find_behind(e, 1, None)?;
                 let [p0, p1] = if is_inside { [p1, p2] } else { [p0, p3] };
-                move_to_points(m, [p0, p1]);
-                m.move_hor(-1);
+                move_to_points(e, [p0, p1]);
+                e.move_hor(-1);
                 Some(())
             })),
         }
     } else {
         match char {
-            'i' => helper.move_all(|mut m| {
-                let indent = m.indent();
+            'i' => helper.edit_iter().for_each(|mut e| {
+                let indent = e.indent();
                 if indent == 0 {
-                    let end = m.len();
-                    move_to_points(&mut m, [Point::default(), end]);
+                    let end = e.len();
+                    move_to_points(&mut e, [Point::default(), end]);
                 } else {
-                    m.set_anchor();
-                    m.move_hor(-(m.v_caret().char_col() as i32));
+                    e.set_anchor();
+                    e.move_hor(-(e.v_caret().char_col() as i32));
 
-                    while m.indent() >= indent && m.caret().line() > 0 {
-                        m.move_ver(-1);
+                    while e.indent() >= indent && e.caret().line() > 0 {
+                        e.move_ver(-1);
                     }
-                    m.move_ver(1);
-                    m.swap_ends();
+                    e.move_ver(1);
+                    e.swap_ends();
 
-                    while m.indent() >= indent && m.caret().line() + 1 < m.text().len().line() {
-                        m.move_ver(1);
+                    while e.indent() >= indent && e.caret().line() + 1 < e.text().len().line() {
+                        e.move_ver(1);
                     }
-                    m.move_ver(-1);
+                    e.move_ver(-1);
 
                     if is_inside {
-                        let [_, p1] = m.text().points_of_line(m.caret().line());
-                        m.move_to(p1);
-                        m.move_hor(-1);
+                        let [_, p1] = e.text().points_of_line(e.caret().line());
+                        e.move_to(p1);
+                        e.move_hor(-1);
                     } else {
-                        let p1 = m.search_fwd("\n+", None).next().map(|[_, p1]| p1).unwrap();
-                        m.move_to(p1);
+                        let p1 = e.search_fwd("\n+", None).next().map(|[_, p1]| p1).unwrap();
+                        e.move_to(p1);
                     }
                 }
             }),
@@ -1401,15 +1456,15 @@ fn w_char_cat(wc: WordChars) -> String {
         .collect()
 }
 
-fn select_to_end_of_line<S>(set_anchor: bool, mut m: Mover<'_, impl Area, S>) {
-    set_anchor_if_needed(set_anchor, &mut m);
-    m.set_desired_vcol(usize::MAX);
-    let pre_nl = match m.char() {
-        '\n' => m.rev().take_while(|(_, char)| *char != '\n').next(),
-        _ => m.fwd().take_while(|(_, char)| *char != '\n').last(),
+fn select_to_end_of_line<S>(set_anchor: bool, mut e: Editor<File, impl Area, S>) {
+    set_anchor_if_needed(set_anchor, &mut e);
+    e.set_desired_vcol(usize::MAX);
+    let pre_nl = match e.char() {
+        '\n' => e.chars_rev().take_while(|(_, char)| *char != '\n').next(),
+        _ => e.chars_fwd().take_while(|(_, char)| *char != '\n').last(),
     };
     if let Some((p, _)) = pre_nl {
-        m.move_to(p);
+        e.move_to(p);
     }
 }
 
@@ -1523,81 +1578,69 @@ impl<U: Ui> IncSearcher<U> for Split {
 }
 
 /// Sets the indentation for every cursor
-fn set_indent(helper: &mut EditHelper<'_, File, impl Area, ()>) {
-    helper.move_all(|mut m| {
-        m.move_hor(-(m.v_caret().char_col() as i32));
-        if let Some((p1, _)) = m.fwd().take_while(|(_, c)| is_non_nl_space(*c)).last() {
-            m.set_anchor();
-            m.move_to(p1);
-        }
-    });
-    helper.edit_many(.., |e| {
-        let cfg = e.cfg();
-        let caret = e.caret();
-        let indent = if let Some(mut ts) = e.get_reader::<TsParser>()
-            && let Some(indent) = ts.indent_on(caret, cfg)
-        {
-            indent
+fn reindent<S>(e: &mut Editor<File, impl Area, S>, processed_lines: &mut Vec<usize>) {
+    let prev_caret = e.caret();
+    let prev_anchor = e.unset_anchor();
+    if processed_lines.contains(&prev_caret.line()) {
+        return;
+    }
+    e.move_hor(-(e.v_caret().char_col() as i32));
+    e.set_anchor();
+    e.move_hor(e.indent() as i32);
+
+    let cfg = e.cfg();
+    let indent = if let Some(mut ts) = e.get_reader::<TsParser>()
+        && let Some(indent) = ts.indent_on(prev_caret, cfg)
+    {
+        indent
+    } else {
+        let prev_non_empty = prev_non_empty_line_points(e);
+        prev_non_empty.map(|[p0, _]| e.indent_on(p0)).unwrap_or(0)
+    };
+
+    if e.caret() == e.anchor().unwrap() {
+        e.insert(" ".repeat(indent));
+    } else {
+        e.move_hor(-1);
+        e.replace(" ".repeat(indent));
+    }
+    e.unset_anchor();
+
+    if let Some(prev_anchor) = prev_anchor {
+        e.set_anchor();
+        if prev_anchor > prev_caret {
+            e.move_hor((prev_anchor.char() - prev_caret.char()) as i32);
         } else {
-            let prev_non_empty = prev_non_empty_line_points(e);
-            prev_non_empty.map(|[p0, _]| e.indent_on(p0)).unwrap_or(0)
-        };
-        if e.anchor().is_some() {
-            e.replace(" ".repeat(indent));
-        } else {
-            e.insert(" ".repeat(indent));
+            e.move_to(prev_anchor);
         }
-    });
-    helper.move_all(|mut m| {
-        m.unset_anchor();
-        let indent_end = m.fwd().find(|(_, c)| !is_non_nl_space(*c));
-        if let Some((p, _)) = indent_end {
-            m.move_to(p);
-        }
-    });
+        e.swap_ends();
+    }
+
+    if prev_caret < e.caret() {
+        e.move_to(prev_caret);
+    } else {
+        e.move_hor(prev_caret.char() as i32 - e.caret().char() as i32)
+    }
+
+    processed_lines.push(e.caret().line());
 }
 
 /// removes an empty line
-fn remove_empty_line(helper: &mut EditHelper<'_, File, impl Area, ()>) {
-    helper.move_all(|mut m| {
-        m.unset_anchor();
-        let indent_start = m.rev().find(|(_, c)| !is_non_nl_space(*c));
-        let (s, char) = indent_start.unwrap_or((Point::default(), '\n'));
-        if char == '\n' && m.char() == '\n' && s.byte() + 1 < m.caret().byte() {
-            m.move_hor(-1);
-            m.set_anchor();
-            m.move_to(s);
-            m.move_hor(1);
-        }
-    });
-    helper.edit_many(.., |e| {
-        if e.anchor().is_some() {
-            e.replace("")
-        }
-    });
-    helper.move_all(|mut m| m.unset_anchor());
-}
+fn remove_empty_line<S>(e: &mut Editor<File, impl Area, S>) {
+    let (_, line) = e.lines_on(e.caret()).next().unwrap();
+    if !line.chars().all(char::is_whitespace) || line.len() == 1 {
+        return;
+    }
+    let chars_count = line.chars().count();
 
-fn get_anchors(helper: &mut EditHelper<'_, File, impl Area, ()>) -> Vec<Option<Point>> {
-    let mut anchors = Vec::new();
-    helper.move_all(|m| anchors.push(m.anchor()));
-    anchors
-}
+    let dvcol = e.v_caret().desired_visual_col();
+    e.move_hor(-(e.v_caret().char_col() as i32));
+    e.set_anchor();
+    e.move_hor(chars_count as i32 - 1);
 
-fn restore_anchors(helper: &mut EditHelper<'_, File, impl Area, ()>, anchors: Vec<Option<Point>>) {
-    let mut anchors = anchors.into_iter();
-    helper.move_all(|mut m| {
-        if let Some(Some(anchor)) = anchors.next() {
-            m.set_anchor();
-            match anchor < m.caret() {
-                true => m.move_to(anchor),
-                false => m.move_hor(anchor.byte() as i32 - m.caret().byte() as i32),
-            }
-            m.swap_ends();
-        } else {
-            m.unset_anchor();
-        }
-    });
+    e.replace("");
+    e.unset_anchor();
+    e.set_desired_vcol(dvcol);
 }
 
 fn is_non_nl_space(char: char) -> bool {
@@ -1608,7 +1651,9 @@ static CLIPBOARD: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 fn copy_selections(helper: &mut EditHelper<'_, File, impl Area, ()>) {
     let mut copies: Vec<String> = Vec::new();
-    helper.move_all(|m| copies.push(m.selection().collect()));
+    helper
+        .edit_iter()
+        .for_each(|e| copies.push(e.selection().collect()));
     if !copies.iter().all(String::is_empty) {
         if copies.len() == 1 {
             duat_core::clipboard::set_text(copies.first().unwrap());
@@ -1637,13 +1682,13 @@ fn paste_strings() -> Vec<String> {
     }
 }
 
-fn set_anchor_if_needed<S>(set_anchor: bool, m: &mut Mover<impl Area, S>) {
+fn set_anchor_if_needed<S>(set_anchor: bool, e: &mut Editor<File, impl Area, S>) {
     if set_anchor {
-        if m.anchor().is_none() {
-            m.set_anchor();
+        if e.anchor().is_none() {
+            e.set_anchor();
         }
     } else {
-        m.unset_anchor();
+        e.unset_anchor();
     }
 }
 
@@ -1655,7 +1700,7 @@ fn just_char(key: Event) -> Option<char> {
     }
 }
 
-fn prev_non_empty_line_points(e: &mut Editor<impl Area, File>) -> Option<[Point; 2]> {
+fn prev_non_empty_line_points<S>(e: &mut Editor<File, impl Area, S>) -> Option<[Point; 2]> {
     let byte_col = e
         .text()
         .buffers(..e.caret().byte())
@@ -1678,7 +1723,7 @@ enum Object<'a> {
 }
 
 impl<'a> Object<'a> {
-    fn from_char(char: char, wc: WordChars, bc: BracketPatterns) -> Option<Self> {
+    fn from_char(char: char, wc: WordChars, brackets: Brackets) -> Option<Self> {
         match char {
             'Q' => Some(Self::Bound("\"")),
             'q' => Some(Self::Bound("'")),
@@ -1693,12 +1738,10 @@ impl<'a> Object<'a> {
             'r' | '[' | ']' => Some(Self::Bounds(r"\[", r"\]")),
             'a' | '<' | '>' => Some(Self::Bounds("<", ">")),
             'u' => {
-                static PATTERNS: LazyLock<Mutex<HashMap<BracketPatterns, [&'static str; 3]>>> =
-                    LazyLock::new(Mutex::default);
+                static BRACKET_PATS: Memoized<Brackets, [&'static str; 3]> = Memoized::new();
 
-                let mut patterns = PATTERNS.lock();
-                let [m_b, s_b, e_b] = patterns.entry(bc).or_insert_with(|| {
-                    let (s_pat, e_pat): (String, String) = bc
+                let [m_b, s_b, e_b] = BRACKET_PATS.get_or_insert_with(brackets, || {
+                    let (s_pat, e_pat): (String, String) = brackets
                         .iter()
                         .map(|[s_b, e_b]| (*s_b, *e_b))
                         .intersperse(("|", "|"))
@@ -1708,24 +1751,17 @@ impl<'a> Object<'a> {
                 Some(Self::Argument(m_b, s_b, e_b))
             }
             'w' => Some(Self::Anchored({
-                static PATTERNS: LazyLock<Mutex<HashMap<WordChars, &str>>> =
-                    LazyLock::new(Mutex::default);
-
-                let cat = w_char_cat(wc);
-                PATTERNS
-                    .lock()
-                    .entry(wc)
-                    .or_insert_with(|| format!("\\A([{cat}]+|[^{cat} \t\n]+)\\z").leak())
+                static WORD_PATS: Memoized<WordChars, &str> = Memoized::new();
+                WORD_PATS.get_or_insert_with(wc, || {
+                    let cat = w_char_cat(wc);
+                    format!("\\A([{cat}]+|[^{cat} \t\n]+)\\z").leak()
+                })
             })),
             'W' => Some(Self::Anchored("\\A[^ \t\n]+\\z")),
             ' ' => Some(Self::Anchored(r"\A\s*\z")),
             char if !char.is_alphanumeric() => Some(Self::Bound({
-                static BOUNDS: LazyLock<Mutex<HashMap<char, &str>>> = LazyLock::new(Mutex::default);
-
-                BOUNDS
-                    .lock()
-                    .entry(char)
-                    .or_insert_with(|| char.to_string().leak())
+                static BOUNDS: Memoized<char, &str> = Memoized::new();
+                BOUNDS.get_or_insert_with(char, || char.to_string().leak())
             })),
             _ => None,
         }
@@ -1733,7 +1769,7 @@ impl<'a> Object<'a> {
 
     fn find_ahead<S>(
         self,
-        m: &mut Mover<impl Area, S>,
+        e: &mut Editor<File, impl Area, S>,
         s_count: usize,
         until: Option<Point>,
     ) -> Option<[Point; 2]> {
@@ -1741,19 +1777,19 @@ impl<'a> Object<'a> {
         match self {
             Object::Anchored(pat) => {
                 let pat = pat.strip_suffix(r"\z").unwrap();
-                m.search_fwd(pat, until).next()
+                e.search_fwd(pat, until).next()
             }
             Object::Bounds(s_b, e_b) => {
-                let (_, [p0, p1]) = m.search_fwd([s_b, e_b], None).find(|&(id, _)| {
+                let (_, [p0, p1]) = e.search_fwd([s_b, e_b], None).find(|&(id, _)| {
                     s_count += (id == 0) as i32 - (id == 1) as i32;
                     s_count == 0
                 })?;
                 Some([p0, p1])
             }
-            Object::Bound(b) => m.search_fwd(b, until).next(),
+            Object::Bound(b) => e.search_fwd(b, until).next(),
             Object::Argument(m_b, s_b, e_b) => {
-                let caret = m.caret();
-                let (_, [p0, p1]) = m.search_fwd([m_b, s_b, e_b], None).find(|&(id, [p, _])| {
+                let caret = e.caret();
+                let (_, [p0, p1]) = e.search_fwd([m_b, s_b, e_b], None).find(|&(id, [p, _])| {
                     s_count += (id == 1) as i32 - (id == 2 && p != caret) as i32;
                     s_count == 0 || (s_count == 1 && id == 0)
                 })?;
@@ -1764,7 +1800,7 @@ impl<'a> Object<'a> {
 
     fn find_behind<S>(
         self,
-        m: &mut Mover<impl Area, S>,
+        e: &mut Editor<File, impl Area, S>,
         e_count: usize,
         until: Option<Point>,
     ) -> Option<[Point; 2]> {
@@ -1772,18 +1808,18 @@ impl<'a> Object<'a> {
         match self {
             Object::Anchored(pat) => {
                 let pat = pat.strip_prefix(r"\A").unwrap();
-                m.search_rev(pat, until).next()
+                e.search_rev(pat, until).next()
             }
             Object::Bounds(s_b, e_b) => {
-                let (_, [p0, p1]) = m.search_rev([s_b, e_b], None).find(|&(id, _)| {
+                let (_, [p0, p1]) = e.search_rev([s_b, e_b], None).find(|&(id, _)| {
                     e_count += (id == 1) as i32 - (id == 0) as i32;
                     e_count == 0
                 })?;
                 Some([p0, p1])
             }
-            Object::Bound(b) => m.search_rev(b, until).next(),
+            Object::Bound(b) => e.search_rev(b, until).next(),
             Object::Argument(m_b, s_b, e_b) => {
-                let (_, [p0, p1]) = m.search_rev([m_b, s_b, e_b], None).find(|&(id, _)| {
+                let (_, [p0, p1]) = e.search_rev([m_b, s_b, e_b], None).find(|&(id, _)| {
                     e_count += (id == 2) as i32 - (id == 1) as i32;
                     e_count <= 0 || (e_count == 1 && id == 0)
                 })?;
@@ -1793,4 +1829,16 @@ impl<'a> Object<'a> {
     }
 }
 
-type BracketPatterns = &'static [[&'static str; 2]];
+type Brackets = &'static [[&'static str; 2]];
+
+struct Memoized<K: std::hash::Hash + std::cmp::Eq, V>(LazyLock<Mutex<HashMap<K, V>>>);
+
+impl<K: std::hash::Hash + std::cmp::Eq, V: Clone + 'static> Memoized<K, V> {
+    const fn new() -> Self {
+        Self(LazyLock::new(Mutex::default))
+    }
+
+    fn get_or_insert_with(&self, k: K, f: impl FnOnce() -> V) -> V {
+        self.0.lock().entry(k).or_insert_with(f).clone()
+    }
+}
