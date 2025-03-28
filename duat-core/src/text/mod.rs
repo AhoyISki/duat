@@ -516,31 +516,37 @@ impl Text {
         let change = Change::new(edit, [start, end], self);
 
         self.0.has_changed = true;
-        self.apply_change_inner(change.as_ref());
-        self.0.history.as_mut().map(|h| h.add_change(None, change));
+        self.apply_change_inner(0, change.as_ref());
+        self.0
+            .history
+            .as_mut()
+            .map(|h| h.apply_change(None, change));
     }
 
-    pub fn apply_change(
+    pub(crate) fn apply_change(
         &mut self,
         guess_i: Option<usize>,
         change: Change<String>,
     ) -> Option<usize> {
         self.0.has_changed = true;
-        self.apply_change_inner(change.as_ref());
-        self.0
-            .history
-            .as_mut()
-            .map(|h| h.add_change(guess_i, change))
+
+        self.apply_change_inner(guess_i.unwrap_or(0), change.as_ref());
+        let history = self.0.history.as_mut();
+        history.map(|h| h.apply_change(guess_i, change))
     }
 
     /// Merges `String`s with the body of text, given a range to
     /// replace
-    fn apply_change_inner(&mut self, change: Change<&str>) {
+    fn apply_change_inner(&mut self, guess_i: usize, change: Change<&str>) {
         self.0.bytes.apply_change(change);
         self.0.tags.transform(
             change.start().byte()..change.taken_end().byte(),
             change.added_end().byte(),
         );
+
+        if let Some(cursors) = self.0.cursors.as_mut() {
+            cursors.apply_change(guess_i, change);
+        }
 
         *self.0.has_unsaved_changes.get_mut() = true;
     }
@@ -613,7 +619,7 @@ impl Text {
         }
 
         for (i, change) in changes.iter().enumerate() {
-            self.apply_change_inner(*change);
+            self.apply_change_inner(0, *change);
 
             if let Some(cursors) = cursors.as_mut() {
                 let start = change.start();
@@ -624,7 +630,7 @@ impl Text {
 
                 let anchor = (start != added_end).then_some(start);
                 let cursor = Cursor::new(added_end, anchor, self);
-                cursors.insert(i, i == changes.len() - 1, cursor, [0; 3]);
+                cursors.insert(i, cursor, i == changes.len() - 1);
             }
         }
 

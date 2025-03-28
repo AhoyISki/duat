@@ -3,7 +3,7 @@ use core::str;
 pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
 
 pub use self::{
-    helper::{Cursor, Cursors, EditHelper, Editor, Mover},
+    helper::{Cursor, Cursors, EditHelper, Editor},
     inc_search::{ExtendFwd, ExtendRev, IncSearcher, Orig, SearchFwd, SearchRev},
     prompt::{IncSearch, PipeSelections, Prompt, PromptMode, RunCommands},
     regular::Regular,

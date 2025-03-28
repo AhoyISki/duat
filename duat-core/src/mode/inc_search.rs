@@ -1,3 +1,5 @@
+use lender::Lender;
+
 use super::{Cursors, EditHelper};
 use crate::{
     text::{Searcher, Text, text},
@@ -24,18 +26,17 @@ impl<U: Ui> IncSearcher<U> for SearchFwd {
         }
 
         let mut helper = EditHelper::new_inc(file, area, searcher);
-
-        helper.move_many(.., |mut m| {
-            let caret = m.caret();
-            let next = m.search_inc_fwd(None).find(|[p, _]| *p != caret);
+        helper.edit_iter().for_each(|mut e| {
+            let caret = e.caret();
+            let next = e.search_inc_fwd(None).find(|[p, _]| *p != caret);
             if let Some([p0, p1]) = next {
-                m.move_to(p0);
+                e.move_to(p0);
                 if p1 > p0 {
-                    m.set_anchor();
-                    m.move_to(p1);
-                    m.move_hor(-1);
+                    e.set_anchor();
+                    e.move_to(p1);
+                    e.move_hor(-1);
                 }
-            } else if m.is_main() {
+            } else if e.is_main() {
                 area.set_print_info(info.clone());
             }
         });
@@ -59,18 +60,17 @@ impl<U: Ui> IncSearcher<U> for SearchRev {
         }
 
         let mut helper = EditHelper::new_inc(file, area, searcher);
-
-        helper.move_many(.., |mut m| {
-            let caret = m.caret();
-            let next = m.search_inc_rev(None).find(|[_, p]| *p != caret);
+        helper.edit_iter().for_each(|mut e| {
+            let caret = e.caret();
+            let next = e.search_inc_rev(None).find(|[_, p]| *p != caret);
             if let Some([p0, p1]) = next {
-                m.move_to(p0);
+                e.move_to(p0);
                 if p1 > p0 {
-                    m.set_anchor();
-                    m.move_to(p1);
-                    m.move_hor(-1);
+                    e.set_anchor();
+                    e.move_to(p1);
+                    e.move_hor(-1);
                 }
-            } else if m.is_main() {
+            } else if e.is_main() {
                 area.set_print_info(info.clone());
             }
         });
@@ -94,16 +94,15 @@ impl<U: Ui> IncSearcher<U> for ExtendFwd {
         }
 
         let mut helper = EditHelper::new_inc(file, area, searcher);
-
-        helper.move_many(.., |mut m| {
-            let caret = m.caret();
-            let next = m.search_inc_fwd(None).find(|[p, _]| *p != caret);
+        helper.edit_iter().for_each(|mut e| {
+            let caret = e.caret();
+            let next = e.search_inc_fwd(None).find(|[p, _]| *p != caret);
             if let Some([_, p1]) = next {
-                if m.anchor().is_none() {
-                    m.set_anchor();
+                if e.anchor().is_none() {
+                    e.set_anchor();
                 }
-                m.move_to(p1);
-            } else if m.is_main() {
+                e.move_to(p1);
+            } else if e.is_main() {
                 area.set_print_info(info.clone());
             }
         });
@@ -127,16 +126,15 @@ impl<U: Ui> IncSearcher<U> for ExtendRev {
         }
 
         let mut helper = EditHelper::new_inc(file, area, searcher);
-
-        helper.move_many(.., |mut m| {
-            let caret = m.caret();
-            let next = m.search_inc_rev(None).find(|[_, p]| *p != caret);
+        helper.edit_iter().for_each(|mut e| {
+            let caret = e.caret();
+            let next = e.search_inc_rev(None).find(|[_, p]| *p != caret);
             if let Some([p0, _]) = next {
-                if m.anchor().is_none() {
-                    m.set_anchor();
+                if e.anchor().is_none() {
+                    e.set_anchor();
                 }
-                m.move_to(p0);
-            } else if m.is_main() {
+                e.move_to(p0);
+            } else if e.is_main() {
                 area.set_print_info(info.clone());
             }
         });

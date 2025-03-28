@@ -157,7 +157,7 @@ impl Tag {
             Self::GhostText(mut text) => {
                 if text.0.forced_new_line {
                     let change = Change::remove_nl(text.last_point().unwrap());
-                    text.apply_change_inner(change);
+                    text.apply_change_inner(0, change);
                     text.0.forced_new_line = false;
                 }
                 let id = GhostId::new();

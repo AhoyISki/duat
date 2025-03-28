@@ -1,3 +1,5 @@
+use lender::Lender;
+
 use super::{
     EditHelper, IncSearch, KeyCode, KeyEvent, KeyMod, RunCommands, SearchFwd, SearchRev, key,
 };
@@ -17,56 +19,29 @@ impl<U: Ui> super::Mode<U> for Regular {
 
         match key {
             // Characters
-            key!(KeyCode::Char(char), KeyMod::SHIFT | KeyMod::NONE) => {
-                helper.edit_many(.., |e| e.insert(char));
-                helper.move_many(.., |mut m| m.move_hor(1));
-            }
-            key!(KeyCode::Enter) => {
-                helper.edit_many(.., |e| e.insert('\n'));
-                helper.move_many(.., |mut m| m.move_hor(1));
-            }
+            key!(KeyCode::Char(char)) => helper.edit_iter().for_each(|mut e| {
+                e.insert(char);
+                e.move_hor(1)
+            }),
+            key!(KeyCode::Enter) => helper.edit_iter().for_each(|mut e| {
+                e.insert('\n');
+                e.move_hor(1);
+            }),
 
             // Text Removal
-            key!(KeyCode::Backspace) => {
-                let mut anchors = Vec::with_capacity(helper.cursors().len());
-                helper.move_many(.., |mut m| {
-                    let caret = m.caret();
-                    anchors.push(m.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
-                    m.set_anchor();
-                    m.move_hor(-1);
-                });
-                let mut anchors = anchors.into_iter().cycle();
-                helper.edit_many(.., |e| e.replace(""));
-                helper.move_many(.., |mut m| {
-                    if let Some(Some((anchor, _))) = anchors.next() {
-                        m.set_anchor();
-                        m.move_to(anchor);
-                        m.swap_ends()
-                    } else {
-                        m.unset_anchor();
-                    }
-                });
-            }
-            key!(KeyCode::Delete) => {
-                let mut anchors = Vec::with_capacity(helper.cursors().len());
-                helper.move_many(.., |mut m| {
-                    let caret = m.caret();
-                    anchors.push(m.unset_anchor().map(|anchor| (anchor, anchor >= caret)));
-                    m.set_anchor();
-                    m.move_hor(1);
-                });
-                let mut anchors = anchors.into_iter().cycle();
-                helper.edit_many(.., |e| e.replace(""));
-                helper.move_many(.., |mut m| {
-                    if let Some(Some((anchor, _))) = anchors.next() {
-                        m.set_anchor();
-                        m.move_to(anchor);
-                        m.swap_ends();
-                    } else {
-                        m.unset_anchor();
-                    }
-                });
-            }
+            key!(KeyCode::Backspace) => helper.edit_iter().for_each(|mut e| {
+                if e.anchor().is_some() {
+                    e.replace("");
+                    e.unset_anchor();
+                } else {
+                    e.move_hor(-1);
+                    e.replace("");
+                }
+            }),
+            key!(KeyCode::Delete) => helper.edit_iter().for_each(|mut e| {
+                e.replace("");
+                e.unset_anchor();
+            }),
 
             // Movement
             key!(KeyCode::Left, KeyMod::SHIFT) => move_each_and_select(helper, Side::Left, 1),
@@ -88,32 +63,32 @@ impl<U: Ui> super::Mode<U> for Regular {
     }
 }
 
-fn move_each<I>(mut helper: EditHelper<File, impl Area, I>, direction: Side, amount: u32) {
-    helper.move_many(.., |mut m| {
-        m.unset_anchor();
+fn move_each<S>(mut helper: EditHelper<File, impl Area, S>, direction: Side, amount: u32) {
+    helper.edit_iter().for_each(|mut e| {
+        e.unset_anchor();
         match direction {
-            Side::Top => m.move_ver(-(amount as i32)),
-            Side::Bottom => m.move_ver(amount as i32),
-            Side::Left => m.move_hor(-(amount as i32)),
-            Side::Right => m.move_hor(amount as i32),
+            Side::Top => e.move_ver(-(amount as i32)),
+            Side::Bottom => e.move_ver(amount as i32),
+            Side::Left => e.move_hor(-(amount as i32)),
+            Side::Right => e.move_hor(amount as i32),
         }
     });
 }
 
-fn move_each_and_select<I>(
-    mut helper: EditHelper<File, impl Area, I>,
+fn move_each_and_select<S>(
+    mut helper: EditHelper<File, impl Area, S>,
     direction: Side,
     amount: u32,
 ) {
-    helper.move_many(.., |mut m| {
-        if m.anchor().is_none() {
-            m.set_anchor();
+    helper.edit_iter().for_each(|mut e| {
+        if e.anchor().is_none() {
+            e.set_anchor();
         }
         match direction {
-            Side::Top => m.move_ver(-(amount as i32)),
-            Side::Bottom => m.move_ver(amount as i32),
-            Side::Left => m.move_hor(-(amount as i32)),
-            Side::Right => m.move_hor(amount as i32),
+            Side::Top => e.move_ver(-(amount as i32)),
+            Side::Bottom => e.move_ver(amount as i32),
+            Side::Left => e.move_hor(-(amount as i32)),
+            Side::Right => e.move_hor(amount as i32),
         }
     });
 }

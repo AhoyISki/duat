@@ -246,7 +246,7 @@
     unboxed_closures,
     fn_traits,
     associated_type_defaults,
-    tuple_trait
+    dropck_eyepatch
 )]
 #![allow(clippy::single_range_in_vec_init)]
 
@@ -263,6 +263,7 @@ use std::{
 
 #[allow(unused_imports)]
 use dirs_next::cache_dir;
+pub use lender::{Lender, Lending};
 pub use parking_lot::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use text::Point;
 use ui::Window;
@@ -655,7 +656,7 @@ fn merging_range_by_guess_and_lazy_shift<T>(
     let end_of = |i: usize| end_fn(&container[i]).shift_by(sh(i));
     let search = |n: usize, t: &T| start_fn(t).shift_by(sh(n));
 
-    let c_range = if let Some(prev_i) = guess_i.checked_sub(1)
+    let mut c_range = if let Some(prev_i) = guess_i.checked_sub(1)
         && (prev_i < len && start_of(prev_i) <= start && start <= end_of(prev_i))
     {
         prev_i..guess_i
@@ -674,15 +675,24 @@ fn merging_range_by_guess_and_lazy_shift<T>(
         }
     };
 
-    // This block determines how far ahead this cursor will merge
-    if c_range.end == len || end < start_of(c_range.end) {
-        c_range
-    } else {
-        match binary_search_by_key_and_index(container, len, end, search) {
-            Ok(i) => c_range.start..i + 1,
-            Err(i) => c_range.start..i,
-        }
+    // On Cursors, the Cursors can intersect, so we need to check
+    while c_range.start > 0 && start <= end_of(c_range.start - 1) {
+        c_range.start -= 1;
     }
+
+    // This block determines how far ahead this cursor will merge
+    if c_range.end < len && end >= start_of(c_range.end) {
+        c_range.end = match binary_search_by_key_and_index(container, len, end, search) {
+            Ok(i) => i + 1,
+            Err(i) => i,
+        }
+    };
+
+    while c_range.end + 1 < len && end < start_of(c_range.end + 1) {
+        c_range.end += 1;
+    }
+
+    c_range
 }
 
 /// An entry for a file with the given name

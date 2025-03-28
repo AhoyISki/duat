@@ -1,10 +1,10 @@
-use std::{cell::Cell, ops::RangeBounds};
+use std::cell::Cell;
 
 use gapbuf::{GapBuffer, gap_buffer};
 use serde::{Deserialize, Serialize, de::Visitor, ser::SerializeSeq};
 
 pub use self::cursor::{Cursor, VPoint};
-use crate::{add_shifts, get_ends, merging_range_by_guess_and_lazy_shift, text::Change};
+use crate::{add_shifts, merging_range_by_guess_and_lazy_shift, text::Change};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Cursors {
@@ -194,24 +194,6 @@ impl Cursors {
         Some((self.buf.remove(i), was_main))
     }
 
-    pub(super) fn drain(
-        &mut self,
-        range: impl RangeBounds<usize> + Clone,
-    ) -> impl Iterator<Item = (Cursor, bool)> + '_ {
-        let (_, end) = get_ends(range.clone(), self.buf.len());
-        self.try_shift_until(end);
-
-        let orig_main = self.main_i;
-        self.main_i = 0;
-        self.buf
-            .drain(range)
-            .enumerate()
-            .map(move |(i, c)| match i == orig_main {
-                true => (c, true),
-                false => (c, false),
-            })
-    }
-
     pub(super) fn populate(&mut self) {
         if self.buf.0.is_empty() {
             self.main_i = 0;
@@ -290,7 +272,8 @@ mod cursor {
             if p == self.caret() {
                 return;
             }
-            *self.caret.get_mut() = LazyVPoint::Unknown(p.min(text.last_point().unwrap()));
+            let p = text.point_at(p.byte().min(text.last_point().unwrap().byte()));
+            *self.caret.get_mut() = LazyVPoint::Unknown(p);
         }
 
         /// Internal horizontal movement function.

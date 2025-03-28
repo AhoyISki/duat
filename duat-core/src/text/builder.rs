@@ -124,7 +124,7 @@ impl Builder {
             self.last_was_empty = false;
             let end = self.text.len();
             self.text
-                .apply_change_inner(Change::str_insert(&self.buffer, end))
+                .apply_change_inner(0, Change::str_insert(&self.buffer, end))
         }
     }
 
@@ -173,7 +173,7 @@ impl Builder {
     pub(crate) fn push_text(&mut self, mut text: Text) {
         if text.0.forced_new_line {
             let change = Change::remove_nl(text.last_point().unwrap());
-            text.apply_change_inner(change);
+            text.apply_change_inner(0, change);
             text.0.forced_new_line = false;
         }
         self.last_was_empty = text.is_empty();

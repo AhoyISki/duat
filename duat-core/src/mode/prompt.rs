@@ -1,5 +1,7 @@
 use std::{io::Write, marker::PhantomData, sync::LazyLock};
 
+use lender::Lender;
+
 use super::{Cursors, EditHelper, IncSearcher, KeyCode, KeyEvent, Mode, key};
 use crate::{
     cmd, context, form,
@@ -28,54 +30,38 @@ impl<M: PromptMode<U>, U: Ui> Mode<U> for Prompt<M, U> {
 
         match key {
             key!(KeyCode::Backspace) => {
-                helper.move_main(|mut m| {
-                    m.set_anchor();
-                    m.move_hor(-1);
-                });
-                helper.edit_main(|e| e.replace(""));
-                helper.move_main(|mut m| {
-                    m.unset_anchor();
-                });
+                let mut e = helper.edit_main();
+                e.move_hor(-1);
+                e.replace("");
                 self.0.update(helper.text_mut(), area);
             }
             key!(KeyCode::Delete) => {
-                helper.move_main(|mut m| {
-                    m.set_anchor();
-                    m.move_hor(1);
-                });
-                helper.edit_main(|e| e.replace(""));
-                helper.move_main(|mut m| m.unset_anchor());
+                helper.edit_main().replace("");
                 self.0.update(helper.text_mut(), area);
             }
 
             key!(KeyCode::Char(char)) => {
-                helper.edit_main(|e| e.insert(char));
-                helper.move_main(|mut m| m.move_hor(1));
+                let mut e = helper.edit_main();
+                e.insert(char);
+                e.move_hor(1);
                 self.0.update(helper.text_mut(), area);
             }
             key!(KeyCode::Left) => {
-                helper.move_main(|mut m| {
-                    m.unset_anchor();
-                    m.move_hor(-1)
-                });
+                helper.edit_main().move_hor(-1);
                 self.0.update(helper.text_mut(), area);
             }
             key!(KeyCode::Right) => {
-                helper.move_main(|mut m| {
-                    m.unset_anchor();
-                    m.move_hor(1)
-                });
+                helper.edit_main().move_hor(1);
                 self.0.update(helper.text_mut(), area);
             }
 
             key!(KeyCode::Esc) => {
                 let p = helper.text().len();
-                helper.move_main(|mut m| {
-                    m.move_to(Point::default());
-                    m.set_anchor();
-                    m.move_to(p);
-                });
-                helper.edit_main(|e| e.replace(""));
+                let mut e = helper.edit_main();
+                e.move_to(Point::default());
+                e.set_anchor();
+                e.move_to(p);
+                e.replace("");
                 helper.cursors_mut().clear();
                 self.0.update(helper.text_mut(), area);
                 self.0.before_exit(helper.text_mut(), area);
@@ -293,8 +279,7 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
         let mut ff = context::fixed_file::<U>().unwrap();
         let (mut file, area) = ff.write();
         let mut helper = EditHelper::new(&mut *file, area);
-
-        helper.edit_many(.., |e| {
+        helper.edit_iter().for_each(|mut e| {
             let Ok(mut child) = Command::new(caller)
                 .args(cmd::args_iter(&command).map(|(a, _)| a))
                 .stdin(Stdio::piped())

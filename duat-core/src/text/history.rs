@@ -48,14 +48,12 @@ impl History {
     /// with the one being added.
     ///
     /// [`EditHelper`]: crate::mode::EditHelper
-    pub fn add_change(&mut self, guess_i: Option<usize>, change: Change<String>) -> usize {
+    pub fn apply_change(&mut self, guess_i: Option<usize>, change: Change<String>) -> usize {
         let (moment, shift_state) = self.unproc_moment.get_or_insert_default();
         moment.add_change(guess_i, change.clone(), shift_state);
 
         let (moment, shift_state) = self.new_moment.get_or_insert_default();
-        let ret = moment.add_change(guess_i, change, shift_state);
-
-        ret
+        moment.add_change(guess_i, change, shift_state)
     }
 
     /// Declares that the current moment is complete and starts a

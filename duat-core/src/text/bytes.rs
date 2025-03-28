@@ -138,7 +138,7 @@ impl Bytes {
         &mut self,
         range: impl TextRange,
     ) -> impl DoubleEndedIterator<Item = (usize, &str)> + '_ {
-        let range = range.to_range_fwd(self.len().byte());
+        let range = range.to_range_at(self.len().byte());
         let start = self.point_at_line(self.point_at(range.start).line());
         let end = {
             let end = self.point_at(range.end);

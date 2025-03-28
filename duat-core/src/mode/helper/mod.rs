@@ -7,7 +7,7 @@
 //! [`Mode`]: super::Mode
 use std::{cell::Cell, rc::Rc};
 
-use gat_lending_iterator::LendingIterator;
+use lender::{Lender, Lending};
 
 pub use self::cursors::{Cursor, Cursors, VPoint};
 use crate::{
@@ -134,21 +134,13 @@ mod cursors;
 /// [`KeyEvent`]: super::KeyEvent
 /// [editing]: Editor
 /// [moving]: Mover
-pub struct EditHelper<'a, W, A, S>
-where
-    W: Widget<A::Ui> + 'static,
-    A: Area,
-{
+pub struct EditHelper<'a, W: Widget<A::Ui>, A: Area, S> {
     widget: &'a mut W,
     area: &'a A,
     inc_searcher: S,
 }
 
-impl<'a, W, A> EditHelper<'a, W, A, ()>
-where
-    W: Widget<A::Ui> + 'static,
-    A: Area,
-{
+impl<'a, W: Widget<A::Ui>, A: Area> EditHelper<'a, W, A, ()> {
     /// Returns a new instance of [`EditHelper`]
     pub fn new(widget: &'a mut W, area: &'a A) -> Self {
         widget.text_mut().enable_cursors();
@@ -157,25 +149,20 @@ where
     }
 }
 
-impl<W, A, S> EditHelper<'_, W, A, S>
-where
-    W: Widget<A::Ui> + 'static,
-    A: Area,
-{
+impl<W: Widget<A::Ui>, A: Area, S> EditHelper<'_, W, A, S> {
     ////////// Editing functions
 
-    /// Edits on the `nth` [`Cursor`]'s selection
+    /// Edits on the main [`Cursor`] in the [`Text`]
     ///
-    /// Since the editing function takes [`Editor`] as an argument,
-    /// you cannot change the selection of the [`Cursor`].
+    /// Once dropped, the [`Cursor`] in this [`Editor`] will be added
+    /// back to the list of [`Cursor`]s, unless it is [destroyed]
     ///
-    /// If you want to move the `nth` cursor, see [`move_nth`],
-    /// if you want to edit on the main cursor, see [`edit_main`],
-    /// if you want to edit each cursor, see [`edit_many`].
+    /// If you want to edit on the main cursor, see [`edit_main`], if
+    /// you want to edit on many [`Cursor`]s, see [`edit_iter`].
     ///
-    /// [`move_nth`]: Self::move_nth
+    /// [destroyed]: Editor::destroy
     /// [`edit_main`]: Self::edit_main
-    /// [`edit_many`]: Self::edit_many
+    /// [`edit_iter`]: Self::edit_iter
     pub fn edit_nth(&mut self, n: usize) -> Editor<W, A, S> {
         let cursors = self.widget.cursors_mut().unwrap();
         let Some((cursor, was_main)) = cursors.remove(n) else {
@@ -193,36 +180,36 @@ where
         )
     }
 
-    /// Edits on the main [`Cursor`]'s selection
+    /// Edits on the main [`Cursor`] in the [`Text`]
     ///
-    /// Since the editing function takes [`Editor`] as an argument,
-    /// you cannot change the selection of the [`Cursor`].
+    /// Once dropped, the [`Cursor`] in this [`Editor`] will be added
+    /// back to the list of [`Cursor`]s, unless it is [destroyed]
     ///
-    /// If you want to move the main cursor, see [`move_main`],
-    /// if you want to edit on the `nth` cursor, see [`edit_nth`],
-    /// if you want to edit each cursor, see [`edit_many`].
+    /// If you want to edit on the `nth` cursor, see [`edit_nth`], if
+    /// you want to edit on many [`Cursor`]s, see [`edit_iter`].
     ///
-    /// [`move_main`]: Self::move_main
+    /// [destroyed]: Editor::destroy
     /// [`edit_nth`]: Self::edit_nth
-    /// [`edit_many`]: Self::edit_many
+    /// [`edit_iter`]: Self::edit_iter
     pub fn edit_main(&mut self) -> Editor<W, A, S> {
         let n = self.widget.cursors().unwrap().main_index();
         self.edit_nth(n)
     }
 
-    /// Edits on a range of [`Cursor`]s
+    /// A [`Lender`] over all [`Editor`]s of the [`Text`]
     ///
-    /// Since the editing function takes [`Editor`] as an argument,
-    /// you cannot change the selection of the [`Cursor`].
+    /// This lets you easily iterate over all [`Cursor`]s, without
+    /// having to worry about insertion affecting the order at which
+    /// they are edited (like what repeated calls to [`edit_nth`]
+    /// would do)
     ///
-    /// If you want to move many cursors, see [`move_many`],
-    /// if you want to edit on a specific cursor, see [`edit_nth`]
-    /// or [`edit_main`].
+    /// Note however that you can't use a [`Lender`] (also known as a
+    /// lending iterator) in a `for` loop, but you should be able
+    /// to just `while let Some(e) = editors.next() {}` or
+    /// `helper.edit_iter().for_each(|_| {})` instead.
     ///
-    /// [`move_many`]: Self::move_many
     /// [`edit_nth`]: Self::edit_nth
-    /// [`edit_main`]: Self::edit_main
-    pub fn edit_iter<'a>(&'a mut self) -> impl LendingIterator<Item<'a> = Editor<'a, W, A, S>> {
+    pub fn edit_iter<'b>(&'b mut self) -> EditIter<'b, W, A, S> {
         EditIter {
             next_i: Rc::new(Cell::new(0)),
             widget: self.widget,
@@ -533,21 +520,31 @@ impl<'a, W: Widget<A::Ui>, A: Area, S> Editor<'a, W, A, S> {
 
     /// Sets the caret of the [`Cursor`] on the start of the
     /// selection
-    pub fn set_caret_on_start(&mut self) {
+    ///
+    /// Returns `true` if a swap occurred
+    pub fn set_caret_on_start(&mut self) -> bool {
         if let Some(anchor) = self.anchor()
             && anchor < self.caret()
         {
             self.swap_ends();
+            true
+        } else {
+            false
         }
     }
 
     /// Sets the caret of the [`Cursor`] on the end of the
     /// selection
-    pub fn set_caret_on_end(&mut self) {
+    ///
+    /// Returns `true` if a swap occurred
+    pub fn set_caret_on_end(&mut self) -> bool {
         if let Some(anchor) = self.anchor()
             && anchor > self.caret()
         {
             self.swap_ends();
+            true
+        } else {
+            false
         }
     }
 
@@ -588,8 +585,10 @@ impl<'a, W: Widget<A::Ui>, A: Area, S> Editor<'a, W, A, S> {
     ///
     /// If this was the main cursor, the main cursor will now be the
     /// cursor immediately behind it.
-    pub fn destroy(self) {
+    pub fn destroy(mut self) {
         if self.widget.cursors().unwrap().len() > 1 {
+            // Rc<Cell> needs to be manually dropped to reduce its counter.
+            self.next_i.take();
             // The destructor is what inserts the Cursor back into the list, so
             // don't run it.
             std::mem::forget(self);
@@ -769,7 +768,7 @@ impl<'a, W: Widget<A::Ui>, A: Area, S> Editor<'a, W, A, S> {
     }
 
     /// Gets the current level of indentation
-    pub fn indent(&mut self) -> usize {
+    pub fn indent(&self) -> usize {
         self.widget
             .text()
             .indent(self.caret(), self.area, self.cfg())
@@ -799,12 +798,12 @@ impl<'a, W: Widget<A::Ui>, A: Area, S> Editor<'a, W, A, S> {
         self.cursor.anchor()
     }
 
-    pub fn v_caret(&mut self) -> VPoint {
+    pub fn v_caret(&self) -> VPoint {
         self.cursor
             .v_caret(self.widget.text(), self.area, self.widget.print_cfg())
     }
 
-    pub fn v_anchor(&mut self) -> Option<VPoint> {
+    pub fn v_anchor(&self) -> Option<VPoint> {
         self.cursor
             .v_anchor(self.widget.text(), self.area, self.widget.print_cfg())
     }
@@ -871,7 +870,11 @@ impl<W: Widget<A::Ui>, A: Area> Editor<'_, W, A, Searcher> {
     }
 }
 
-impl<W: Widget<A::Ui>, A: Area, S> Drop for Editor<'_, W, A, S> {
+// SAFETY: Since this struct only owns references to a Widget, Area,
+// and maybe a Searcher, dropping it early doesn't drop anything with
+// the exception of the Rc<Cell>, which should have its count
+// decreased.
+unsafe impl<#[may_dangle] 'a, W: Widget<A::Ui>, A: Area, S> Drop for Editor<'a, W, A, S> {
     fn drop(&mut self) {
         let cursors = self.widget.cursors_mut().unwrap();
         let cursor = std::mem::take(&mut self.cursor);
@@ -892,13 +895,12 @@ pub struct EditIter<'a, W: Widget<A::Ui>, A: Area, S> {
     inc_searcher: &'a mut S,
 }
 
-impl<'a, W: Widget<A::Ui>, A: Area, S> LendingIterator for EditIter<'a, W, A, S> {
-    type Item<'b>
-        = Editor<'b, W, A, S>
-    where
-        Self: 'b;
+impl<'a, 'lend, W: Widget<A::Ui>, A: Area, S> Lending<'lend> for EditIter<'a, W, A, S> {
+    type Lend = Editor<'lend, W, A, S>;
+}
 
-    fn next(&mut self) -> Option<Self::Item<'_>> {
+impl<'a, W: Widget<A::Ui>, A: Area, S> Lender for EditIter<'a, W, A, S> {
+    fn next<'lend>(&'lend mut self) -> Option<<Self as Lending<'lend>>::Lend> {
         let current_i = self.next_i.get();
         let (cursor, was_main) = self.widget.cursors_mut().unwrap().remove(current_i)?;
         Some(Editor::new(
