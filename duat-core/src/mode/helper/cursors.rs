@@ -25,6 +25,7 @@ impl Cursors {
 
     pub fn insert(&mut self, guess_i: usize, cursor: Cursor, was_main: bool) -> [usize; 2] {
         let (sh_from, shift) = self.shift_state.take();
+        let sh_from = sh_from.min(self.len());
 
         // The range of cursors that will be drained
         let c_range = merging_range_by_guess_and_lazy_shift(
@@ -69,13 +70,13 @@ impl Cursors {
 
         if was_main {
             self.main_i = c_range.start;
-        } else if self.main_i > c_range.start {
-            self.main_i = (self.main_i - c_range.clone().count()).max(c_range.start)
+        } else if self.main_i >= c_range.start {
+            self.main_i = (self.main_i + 1 - c_range.clone().count()).max(c_range.start)
         }
 
         // If there are no more Cursors after this, don't set the shift_state.
         let cursors_taken = c_range.clone().count();
-        if c_range.start + 1 < self.buf.len() {
+        if sh_from.saturating_sub(cursors_taken).max(c_range.start) + 1 < self.buf.len() {
             self.shift_state.set((
                 sh_from.saturating_sub(cursors_taken).max(c_range.start) + 1,
                 shift,
@@ -88,6 +89,7 @@ impl Cursors {
     /// Applies a [`Change`] to the [`Cursor`]s list
     pub(crate) fn apply_change(&mut self, guess_i: usize, change: Change<&str>) {
         let (sh_from, shift) = self.shift_state.take();
+        let sh_from = sh_from.min(self.len());
 
         // The range of cursors that will be drained
         let c_range = merging_range_by_guess_and_lazy_shift(
@@ -110,7 +112,7 @@ impl Cursors {
             cursor.shift_by_change(change);
         }
 
-        if c_range.end < self.buf.len() {
+        if sh_from.max(c_range.end) < self.buf.len() {
             self.shift_state
                 .set((sh_from.max(c_range.end), add_shifts(shift, change.shift())));
         }
@@ -140,7 +142,18 @@ impl Cursors {
         if i >= self.len() {
             return None;
         }
-        self.try_shift_until(i + 1);
+        let (sh_from, shift) = self.shift_state.get();
+        if i >= sh_from && shift != [0; 3] {
+            for cursor in self.buf.range(sh_from..i + 1).iter() {
+                cursor.shift_by(shift);
+            }
+            if i + 1 < self.buf.len() {
+                self.shift_state.set((i + 1, shift));
+            } else {
+                self.shift_state.take();
+            }
+        }
+
         self.buf.get(i)
     }
 
@@ -186,7 +199,24 @@ impl Cursors {
         if i >= self.buf.len() {
             return None;
         }
-        self.try_shift_until(i + 1);
+        let (sh_from, shift) = self.shift_state.get();
+
+        if i >= sh_from && shift != [0; 3] {
+            for cursor in self.buf.range(sh_from..i + 1).iter() {
+                cursor.shift_by(shift);
+            }
+            if i + 1 < self.buf.len() {
+                // i here, instead of i + 1, since this Cursor is about to be removed.
+                self.shift_state.set((i, shift));
+            } else {
+                self.shift_state.take();
+            }
+        } else if i < sh_from {
+            // If I am removing before sh_from, obviously the index of the first
+            // unshifted Cursor is moved back.
+            self.shift_state.set((sh_from - 1, shift));
+        }
+
         let was_main = self.main_i == i;
         if self.main_i >= i {
             self.main_i = self.main_i.saturating_sub(1);
@@ -198,20 +228,6 @@ impl Cursors {
         if self.buf.0.is_empty() {
             self.main_i = 0;
             self.buf.0 = gap_buffer![Cursor::default()];
-        }
-    }
-
-    fn try_shift_until(&self, end: usize) {
-        let (sh_from, shift) = self.shift_state.get();
-        if end > sh_from && shift != [0; 3] {
-            for cursor in self.buf.range(sh_from..end).iter() {
-                cursor.shift_by(shift);
-            }
-            if end < self.buf.len() {
-                self.shift_state.set((end, shift));
-            } else {
-                self.shift_state.take();
-            }
         }
     }
 }

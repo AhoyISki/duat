@@ -688,7 +688,7 @@ fn merging_range_by_guess_and_lazy_shift<T>(
         }
     };
 
-    while c_range.end + 1 < len && end < start_of(c_range.end + 1) {
+    while c_range.end + 1 < len && end >= start_of(c_range.end + 1) {
         c_range.end += 1;
     }
 
