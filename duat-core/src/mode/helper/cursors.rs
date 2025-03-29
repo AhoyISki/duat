@@ -702,6 +702,7 @@ mod cursor {
     impl VPoint {
         fn new(p: Point, text: &Text, area: &impl Area, cfg: PrintCfg) -> Self {
             let [start, _] = text.points_of_line(p.line());
+            
             let mut vcol = 0;
 
             let wcol = area

@@ -326,19 +326,14 @@ impl Text {
 
     /// Gets the indentation level on the current line
     pub fn indent(&self, p: Point, area: &impl Area, cfg: PrintCfg) -> usize {
-        let [_, end] = self.points_of_line(p.line());
-        let t_iter = self.iter_rev(end).no_ghosts().no_conceals();
-        let iter = area
-            .rev_print_iter(t_iter, cfg)
+        let [start, _] = self.points_of_line(p.line());
+        let t_iter = self.iter_fwd(start).no_ghosts().no_conceals();
+        area.print_iter(t_iter, cfg.new_line_as('\n'))
             .filter_map(|(caret, item)| Some(caret).zip(item.part.as_char()))
-            // Skip the first '\n'
-            .skip(1)
-            // And this should make sure we only capture one line.
-            .take_while(|(_, char)| *char != '\n');
-        iter.fold(0, |mut indent, (caret, char)| {
-            indent = indent.max((caret.x + caret.len) as usize);
-            indent * char.is_whitespace() as usize
-        })
+            .inspect(|(_, char)| crate::log_file!("iterated over {char}"))
+            .find(|(_, char)| !char.is_whitespace() || *char == '\n')
+            .map(|(caret, _)| caret.x as usize)
+            .unwrap_or(0)
     }
 
     /////////// Reader functions
