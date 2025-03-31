@@ -378,7 +378,7 @@ impl Normal {
     /// Returns an instance of the [`Normal`] mode, inspired by
     /// Kakoune
     pub fn new() -> Self {
-        const B_PATS: Brackets = &[[r"\(", r"\)"], [r"\{", r"\}"], [r"\[", r"\]"]];
+        const B_PATS: Brackets = Brackets(&[[r"\(", r"\)"], [r"\{", r"\}"], [r"\[", r"\]"]]);
         Normal {
             sel_type: SelType::Normal,
             brackets: B_PATS,
@@ -398,16 +398,16 @@ impl Normal {
     /// More specifically, this will change the behavior of keys like
     /// `'m'` and the `'u'` object, which will now consider more
     /// patterns when selecting.
-    pub fn with_brackets(self, brackets: impl Iterator<Item = [&'static str; 2]>) -> Self {
+    pub fn with_brackets<'a>(self, brackets: impl Iterator<Item = [&'a str; 2]>) -> Self {
         static BRACKETS: Memoized<Vec<[&str; 2]>, Brackets> = Memoized::new();
 
-        let brackets: Vec<[&str; 2]> = brackets.collect();
+        let brackets: Vec<[&str; 2]> = brackets.map(|bs| bs.map(|b| escaped_regex(b))).collect();
         assert!(
             brackets.iter().all(|[s_b, e_b]| s_b != e_b),
             "Brackets are not allowed to look the same"
         );
 
-        let brackets = BRACKETS.get_or_insert_with(brackets.clone(), || brackets.leak());
+        let brackets = BRACKETS.get_or_insert_with(brackets.clone(), || Brackets(brackets.leak()));
         Self { brackets, ..self }
     }
 
@@ -628,6 +628,57 @@ impl<U: Ui> Mode<U> for Normal {
                 e.set_anchor();
                 e.move_to(e.last_point().unwrap())
             }
+            key!(Char('m' | 'M')) => {
+                let mut failed = false;
+                let failed = &mut failed;
+                helper.edit_iter().for_each(do_or_destroy(failed, |mut e| {
+                    let object = Object::from_char('m', e.cfg().word_chars, self.brackets).unwrap();
+                    let [p2, p3] = object.find_ahead(&mut e, 0, None)?;
+                    let prev_caret = e.caret();
+                    set_anchor_if_needed(key.code == Char('M'), &mut e);
+                    e.move_to(p3);
+                    e.move_hor(-1);
+
+                    let [s_b, e_b] = self.brackets.bounds_matching(e.contiguous_in((p2, p3)))?;
+                    let [p0, _] = Object::Bounds(s_b, e_b).find_behind(&mut e, 1, None)?;
+                    set_anchor_if_needed(key.code == Char('m'), &mut e);
+                    e.move_to(p0);
+                    if prev_caret.char() != p3.char() - 1 {
+                        if key.code == Char('m') {
+                            e.set_anchor();
+                        }
+                        e.move_to(p3);
+                        e.move_hor(-1);
+                    }
+
+                    Some(())
+                }))
+            }
+            key!(Char('m' | 'M'), Mod::ALT) => {
+                let mut failed = false;
+                let failed = &mut failed;
+                helper.edit_iter().for_each(do_or_destroy(failed, |mut e| {
+                    let object = Object::from_char('m', e.cfg().word_chars, self.brackets).unwrap();
+                    let [p0, p1] = object.find_behind(&mut e, 0, None)?;
+                    let prev_caret = e.caret();
+                    set_anchor_if_needed(key.code == Char('M'), &mut e);
+                    e.move_to(p0);
+
+                    let [s_b, e_b] = self.brackets.bounds_matching(e.contiguous_in((p0, p1)))?;
+                    let [_, p3] = Object::Bounds(s_b, e_b).find_ahead(&mut e, 1, None)?;
+                    set_anchor_if_needed(key.code == Char('m'), &mut e);
+                    e.move_to(p3);
+                    e.move_hor(-1);
+                    if prev_caret != p0 {
+                        if key.code == Char('m') {
+                            e.set_anchor();
+                        }
+                        e.move_to(p0);
+                    }
+
+                    Some(())
+                }))
+            }
 
             ////////// Insertion mode keys
             key!(Char('i')) => {
@@ -639,7 +690,7 @@ impl<U: Ui> Mode<U> for Normal {
             }
             key!(Char('I')) => {
                 helper.new_moment();
-                let processed_lines = Vec::new();
+                let mut processed_lines = Vec::new();
                 helper.edit_iter().for_each(|mut e| {
                     if self.indent_on_capital_i {
                         reindent(&mut e, &mut processed_lines);
@@ -672,20 +723,32 @@ impl<U: Ui> Mode<U> for Normal {
             }
             key!(Char('o' | 'O'), Mod::NONE | Mod::ALT) => {
                 helper.new_moment();
+                let mut processed_lines = Vec::new();
                 helper.edit_iter().for_each(|mut e| {
                     if key.code == Char('O') {
                         e.set_caret_on_start();
                         let char_col = e.v_caret().char_col();
                         e.move_hor(-(char_col as i32));
                         e.insert("\n");
-                        e.move_hor(char_col as i32 + 1);
+                        if key.modifiers == Mod::NONE {
+                            reindent(&mut e, &mut processed_lines);
+                            e.move_hor(e.indent() as i32);
+                        } else {
+                            e.move_hor(char_col as i32 + 1);
+                        }
                     } else {
                         e.set_caret_on_end();
                         let caret = e.caret();
                         let (p, _) = e.chars_fwd().find(|(_, c)| *c == '\n').unwrap();
                         e.move_to(p);
                         e.append("\n");
-                        e.move_to(caret);
+                        if key.modifiers == Mod::NONE {
+                            e.move_hor(1);
+                            reindent(&mut e, &mut processed_lines);
+                            e.move_hor(e.indent() as i32);
+                        } else {
+                            e.move_to(caret);
+                        }
                     }
                 });
                 if key.modifiers == Mod::NONE {
@@ -745,10 +808,11 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char(')'), Mod::ALT) => {
                 helper.new_moment();
                 let mut iter = helper.edit_iter();
-                let last_sel = iter.next().map(|mut e| e.selection().to_string());
+                let mut last_sel = iter.next().map(|e| e.selection().to_string());
 
                 while let Some(mut e) = iter.next() {
-                    e.replace(last_sel.replace(e.selection().to_string()).unwrap());
+                    let selection = e.selection().to_string();
+                    e.replace(last_sel.replace(selection).unwrap());
                 }
 
                 helper.edit_nth(0).replace(last_sel.unwrap());
@@ -785,11 +849,12 @@ impl<U: Ui> Mode<U> for Normal {
                 let lines: Vec<[Point; 2]> = e.search_fwd("[^\n]*\n", Some(end)).collect();
                 let mut last_p1 = e.caret();
                 for [p0, p1] in lines {
-                    let e_copy = e.copy();
+                    let mut e_copy = e.copy();
                     e_copy.move_to(p0);
                     e_copy.set_anchor();
                     e_copy.move_to(p1);
                     e_copy.move_hor(-1);
+
                     last_p1 = p1;
                 }
                 e.move_to(last_p1);
@@ -871,7 +936,7 @@ impl<U: Ui> Mode<U> for Normal {
                     let mut p_iter = pastes.iter().cycle();
                     helper
                         .edit_iter()
-                        .for_each(|e| e.replace(p_iter.next().unwrap()));
+                        .for_each(|mut e| e.replace(p_iter.next().unwrap()));
                 }
             }
 
@@ -1059,6 +1124,7 @@ impl<U: Ui> Mode<U> for Insert {
                 e.move_hor(1);
                 if self.indent_keys.contains(&'\n') {
                     reindent(&mut e, &mut processed_lines);
+                    e.move_hor(e.indent() as i32);
                 }
             }),
             key!(Backspace) => helper.edit_iter().for_each(|mut e| {
@@ -1274,19 +1340,6 @@ fn match_inside_around(
         m.set_anchor();
         m.move_to(p1);
     }
-    fn do_or_destroy<A: Area, S>(
-        failed_at_least_once: &mut bool,
-        mut f: impl FnMut(&mut Editor<File, A, S>) -> Option<()> + Clone,
-    ) -> impl FnMut(Editor<File, A, S>) {
-        move |mut e: Editor<File, A, S>| {
-            let ret: Option<()> = f(&mut e);
-            if ret.is_none() {
-                e.reset();
-                e.destroy();
-                *failed_at_least_once = true;
-            }
-        }
-    }
 
     let Char(char) = key.code else {
         context::notify(err!("Key " [*a] { key.code } [] " not mapped on this mode"));
@@ -1296,11 +1349,11 @@ fn match_inside_around(
     let wc = helper.cfg().word_chars;
     let initial_cursors_len = helper.cursors().len();
 
-    let mut failed_once = false;
+    let mut failed = false;
 
     if let Some(object) = Object::from_char(char, wc, brackets) {
         match char {
-            'w' | 'W' => helper.edit_iter().for_each(do_or_destroy(&mut failed_once, |e| {
+            'w' | 'W' => helper.edit_iter().for_each(do_or_destroy(&mut failed, |e| {
                 let start = object.find_behind(e, 0, None);
                 let [_, p1] = object.find_ahead(e, 0, None)?;
                 let p0 = {
@@ -1314,7 +1367,7 @@ fn match_inside_around(
                 e.move_hor(-1);
                 Some(())
             })),
-            's' | ' ' => helper.edit_iter().for_each(do_or_destroy(&mut failed_once, |e| {
+            's' | ' ' => helper.edit_iter().for_each(do_or_destroy(&mut failed, |e| {
                 let [_, p0] = object.find_behind(e, 0, None)?;
                 let [p1, _] = object.find_ahead(e, 0, None)?;
                 move_to_points(e, [p0, p1]);
@@ -1323,7 +1376,7 @@ fn match_inside_around(
                 }
                 Some(())
             })),
-            'p' => helper.edit_iter().for_each(do_or_destroy(&mut failed_once, |e| {
+            'p' => helper.edit_iter().for_each(do_or_destroy(&mut failed, |e| {
                 let end = object.find_ahead(e, 0, None);
                 let [p1, _] = end?;
                 e.move_to(p1);
@@ -1336,7 +1389,7 @@ fn match_inside_around(
                 }
                 Some(())
             })),
-            'u' => helper.edit_iter().for_each(do_or_destroy(&mut failed_once, |e| {
+            'u' => helper.edit_iter().for_each(do_or_destroy(&mut failed, |e| {
                 let [p2, _] = object.find_ahead(e, 1, None)?;
                 e.move_to(p2);
                 let [p0, p1] = object.find_behind(e, 1, None)?;
@@ -1357,7 +1410,7 @@ fn match_inside_around(
 
                 Some(())
             })),
-            _char => helper.edit_iter().for_each(do_or_destroy(&mut failed_once, |e| {
+            _char => helper.edit_iter().for_each(do_or_destroy(&mut failed, |e| {
                 let [p2, p3] = object.find_ahead(e, 1, None)?;
                 let [p0, p1] = object.find_behind(e, 1, None)?;
                 let [p0, p1] = if is_inside { [p1, p2] } else { [p0, p3] };
@@ -1402,9 +1455,23 @@ fn match_inside_around(
         }
     }
 
-    if initial_cursors_len == 1 && failed_once {
+    if initial_cursors_len == 1 && failed {
         let rel = if is_inside { "inside" } else { "around" };
         context::notify(err!("Failed selecting " rel " object"));
+    }
+}
+
+fn do_or_destroy<A: Area, S>(
+    failed_at_least_once: &mut bool,
+    mut f: impl FnMut(&mut Editor<File, A, S>) -> Option<()> + Clone,
+) -> impl FnMut(Editor<File, A, S>) {
+    move |mut e: Editor<File, A, S>| {
+        let ret: Option<()> = f(&mut e);
+        if ret.is_none() {
+            e.reset();
+            e.destroy();
+            *failed_at_least_once = true;
+        }
     }
 }
 
@@ -1500,23 +1567,22 @@ impl<U: Ui> IncSearcher<U> for Select {
         }
 
         let mut helper = EditHelper::new_inc(file, area, searcher);
-
-        helper.move_all(|mut m| {
-            m.set_caret_on_start();
-            if let Some(anchor) = m.anchor() {
-                let ranges: Vec<[Point; 2]> = m.search_inc_fwd(Some(anchor)).collect();
+        helper.edit_iter().for_each(|mut e| {
+            e.set_caret_on_start();
+            if let Some(anchor) = e.anchor() {
+                let ranges: Vec<[Point; 2]> = e.search_inc_fwd(Some(anchor)).collect();
 
                 for (i, &[p0, p1]) in ranges.iter().enumerate() {
-                    m.move_to(p0);
+                    e.move_to(p0);
                     if p1.char() > p0.char() + 1 {
-                        m.set_anchor();
-                        m.move_to(p1);
-                        m.move_hor(-1);
+                        e.set_anchor();
+                        e.move_to(p1);
+                        e.move_hor(-1);
                     } else {
-                        m.unset_anchor();
+                        e.unset_anchor();
                     }
                     if i < ranges.len() - 1 {
-                        m.copy();
+                        e.copy();
                     }
                 }
             }
@@ -1541,31 +1607,30 @@ impl<U: Ui> IncSearcher<U> for Split {
         }
 
         let mut helper = EditHelper::new_inc(file, area, searcher);
-
-        helper.move_all(|mut m| {
-            m.set_caret_on_start();
-            if let Some(anchor) = m.anchor() {
-                let ranges: Vec<Point> = m.search_inc_fwd(Some(anchor)).flatten().collect();
+        helper.edit_iter().for_each(|mut e| {
+            e.set_caret_on_start();
+            if let Some(anchor) = e.anchor() {
+                let ranges: Vec<Point> = e.search_inc_fwd(Some(anchor)).flatten().collect();
                 let cursors_to_add = ranges.len() / 2 + 1;
-                let iter = [m.caret()]
+                let iter = [e.caret()]
                     .into_iter()
                     .chain(ranges)
                     .chain([anchor])
                     .array_chunks();
 
                 for (i, [p0, p1]) in iter.enumerate() {
-                    m.move_to(p0);
+                    e.move_to(p0);
                     if p1.char() > p0.char() + 1 {
-                        m.set_anchor();
-                        m.move_to(p1);
-                        m.move_hor(-1);
+                        e.set_anchor();
+                        e.move_to(p1);
+                        e.move_hor(-1);
                     } else if p1 > p0 {
-                        m.unset_anchor();
+                        e.unset_anchor();
                     } else {
                         continue;
                     }
                     if i < cursors_to_add {
-                        m.copy();
+                        e.copy();
                     }
                 }
             }
@@ -1641,10 +1706,6 @@ fn remove_empty_line<S>(e: &mut Editor<File, impl Area, S>) {
     e.replace("");
     e.unset_anchor();
     e.set_desired_vcol(dvcol);
-}
-
-fn is_non_nl_space(char: char) -> bool {
-    char.is_whitespace() && char != '\n'
 }
 
 static CLIPBOARD: Mutex<Vec<String>> = Mutex::new(Vec::new());
@@ -1724,6 +1785,7 @@ enum Object<'a> {
 
 impl<'a> Object<'a> {
     fn from_char(char: char, wc: WordChars, brackets: Brackets) -> Option<Self> {
+        static BRACKET_PATS: Memoized<Brackets, [&'static str; 3]> = Memoized::new();
         match char {
             'Q' => Some(Self::Bound("\"")),
             'q' => Some(Self::Bound("'")),
@@ -1737,9 +1799,7 @@ impl<'a> Object<'a> {
             'B' | '{' | '}' => Some(Self::Bounds(r"\{", r"\}")),
             'r' | '[' | ']' => Some(Self::Bounds(r"\[", r"\]")),
             'a' | '<' | '>' => Some(Self::Bounds("<", ">")),
-            'u' => {
-                static BRACKET_PATS: Memoized<Brackets, [&'static str; 3]> = Memoized::new();
-
+            'm' | 'u' => Some({
                 let [m_b, s_b, e_b] = BRACKET_PATS.get_or_insert_with(brackets, || {
                     let (s_pat, e_pat): (String, String) = brackets
                         .iter()
@@ -1748,8 +1808,13 @@ impl<'a> Object<'a> {
                         .collect();
                     [r"(;|,)\s*", s_pat.leak(), e_pat.leak()]
                 });
-                Some(Self::Argument(m_b, s_b, e_b))
-            }
+
+                if char == 'm' {
+                    Self::Bounds(s_b, e_b)
+                } else {
+                    Self::Argument(m_b, s_b, e_b)
+                }
+            }),
             'w' => Some(Self::Anchored({
                 static WORD_PATS: Memoized<WordChars, &str> = Memoized::new();
                 WORD_PATS.get_or_insert_with(wc, || {
@@ -1782,7 +1847,7 @@ impl<'a> Object<'a> {
             Object::Bounds(s_b, e_b) => {
                 let (_, [p0, p1]) = e.search_fwd([s_b, e_b], None).find(|&(id, _)| {
                     s_count += (id == 0) as i32 - (id == 1) as i32;
-                    s_count == 0
+                    s_count <= 0
                 })?;
                 Some([p0, p1])
             }
@@ -1813,7 +1878,7 @@ impl<'a> Object<'a> {
             Object::Bounds(s_b, e_b) => {
                 let (_, [p0, p1]) = e.search_rev([s_b, e_b], None).find(|&(id, _)| {
                     e_count += (id == 1) as i32 - (id == 0) as i32;
-                    e_count == 0
+                    e_count <= 0
                 })?;
                 Some([p0, p1])
             }
@@ -1821,7 +1886,7 @@ impl<'a> Object<'a> {
             Object::Argument(m_b, s_b, e_b) => {
                 let (_, [p0, p1]) = e.search_rev([m_b, s_b, e_b], None).find(|&(id, _)| {
                     e_count += (id == 2) as i32 - (id == 1) as i32;
-                    e_count <= 0 || (e_count == 1 && id == 0)
+                    e_count == 0 || (e_count == 1 && id == 0)
                 })?;
                 Some([p0, p1])
             }
@@ -1829,7 +1894,21 @@ impl<'a> Object<'a> {
     }
 }
 
-type Brackets = &'static [[&'static str; 2]];
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+struct Brackets(&'static [[&'static str; 2]]);
+
+impl Brackets {
+    fn bounds_matching(&self, bound: &str) -> Option<[&'static str; 2]> {
+        self.0
+            .iter()
+            .find(|bs| bs.contains(&escaped_regex(bound)))
+            .copied()
+    }
+
+    fn iter(&self) -> impl Iterator<Item = &[&'static str; 2]> + '_ {
+        self.0.iter()
+    }
+}
 
 struct Memoized<K: std::hash::Hash + std::cmp::Eq, V>(LazyLock<Mutex<HashMap<K, V>>>);
 
@@ -1841,4 +1920,20 @@ impl<K: std::hash::Hash + std::cmp::Eq, V: Clone + 'static> Memoized<K, V> {
     fn get_or_insert_with(&self, k: K, f: impl FnOnce() -> V) -> V {
         self.0.lock().entry(k).or_insert_with(f).clone()
     }
+}
+
+fn escaped_regex(str: &str) -> &'static str {
+    static ESCAPED: Memoized<String, &str> = Memoized::new();
+    ESCAPED.get_or_insert_with(str.to_string(), || {
+        let mut escaped = String::new();
+        for char in str.chars() {
+            if let '(' | ')' | '{' | '}' | '[' | ']' | '$' | '^' | '.' | '*' | '+' | '?' | '|' =
+                char
+            {
+                escaped.push('\\');
+            }
+            escaped.push(char);
+        }
+        escaped.leak()
+    })
 }
