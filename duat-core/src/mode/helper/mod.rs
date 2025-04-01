@@ -452,8 +452,16 @@ impl<'a, W: Widget<A::Ui>, A: Area, S> Editor<'a, W, A, S> {
     /// Edits the file with a [`Change`]
     fn edit(&mut self, change: Change<String>) {
         let text = self.widget.text_mut();
-        let change_i = text.apply_change(self.cursor.change_i.map(|i| i as usize), change);
+        let (change_i, cursors_taken) =
+            text.apply_change(self.cursor.change_i.map(|i| i as usize), change);
         self.cursor.change_i = change_i.map(|i| i as u32);
+
+        if let Some((change_i, cursors_taken)) = change_i.zip(cursors_taken)
+            && let Some(next_i) = self.next_i.as_ref()
+            && change_i <= next_i.get()
+        {
+            next_i.set(next_i.get().saturating_sub(cursors_taken));
+        }
     }
 
     ////////// Movement functions
@@ -747,6 +755,10 @@ impl<'a, W: Widget<A::Ui>, A: Area, S> Editor<'a, W, A, S> {
         self.text().strs(range)
     }
 
+    pub fn contiguous_in(&mut self, range: impl TextRange) -> &str {
+        self.widget.text_mut().contiguous(range)
+    }
+
     /// Returns the length of the [`Text`], in [`Point`]
     pub fn len(&self) -> Point {
         self.text().len()
@@ -796,6 +808,10 @@ impl<'a, W: Widget<A::Ui>, A: Area, S> Editor<'a, W, A, S> {
     /// Returns the `anchor`
     pub fn anchor(&self) -> Option<Point> {
         self.cursor.anchor()
+    }
+
+    pub fn range(&self) -> [Point; 2] {
+        self.cursor.point_range(self.text())
     }
 
     pub fn v_caret(&self) -> VPoint {
@@ -878,12 +894,14 @@ unsafe impl<#[may_dangle] 'a, W: Widget<A::Ui>, A: Area, S> Drop for Editor<'a, 
     fn drop(&mut self) {
         let cursors = self.widget.cursors_mut().unwrap();
         let cursor = std::mem::take(&mut self.cursor);
-        let [inserted_i, cursors_taken] = cursors.insert(self.n, cursor, self.was_main);
+        let ([inserted_i, cursors_taken], last_cursor_overhangs) =
+            cursors.insert(self.n, cursor, self.was_main);
 
         if let Some(next_i) = self.next_i.as_ref()
             && inserted_i <= next_i.get()
         {
-            next_i.set(next_i.get().saturating_sub(cursors_taken).max(inserted_i) + 1)
+            let go_to_next = !last_cursor_overhangs as usize;
+            next_i.set(next_i.get().saturating_sub(cursors_taken).max(inserted_i) + go_to_next)
         }
     }
 }

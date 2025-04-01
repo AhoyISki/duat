@@ -330,7 +330,6 @@ impl Text {
         let t_iter = self.iter_fwd(start).no_ghosts().no_conceals();
         area.print_iter(t_iter, cfg.new_line_as('\n'))
             .filter_map(|(caret, item)| Some(caret).zip(item.part.as_char()))
-            .inspect(|(_, char)| crate::log_file!("iterated over {char}"))
             .find(|(_, char)| !char.is_whitespace() || *char == '\n')
             .map(|(caret, _)| caret.x as usize)
             .unwrap_or(0)
@@ -522,28 +521,30 @@ impl Text {
         &mut self,
         guess_i: Option<usize>,
         change: Change<String>,
-    ) -> Option<usize> {
+    ) -> (Option<usize>, Option<usize>) {
         self.0.has_changed = true;
 
-        self.apply_change_inner(guess_i.unwrap_or(0), change.as_ref());
+        let cursors_taken = self.apply_change_inner(guess_i.unwrap_or(0), change.as_ref());
         let history = self.0.history.as_mut();
-        history.map(|h| h.apply_change(guess_i, change))
+        let insertion_i = history.map(|h| h.apply_change(guess_i, change));
+        (insertion_i, cursors_taken)
     }
 
     /// Merges `String`s with the body of text, given a range to
     /// replace
-    fn apply_change_inner(&mut self, guess_i: usize, change: Change<&str>) {
+    fn apply_change_inner(&mut self, guess_i: usize, change: Change<&str>) -> Option<usize> {
         self.0.bytes.apply_change(change);
         self.0.tags.transform(
             change.start().byte()..change.taken_end().byte(),
             change.added_end().byte(),
         );
 
-        if let Some(cursors) = self.0.cursors.as_mut() {
-            cursors.apply_change(guess_i, change);
-        }
-
         *self.0.has_unsaved_changes.get_mut() = true;
+
+        self.0
+            .cursors
+            .as_mut()
+            .map(|cs| cs.apply_change(guess_i, change))
     }
 
     /// This is used by [`Area`]s in order to update visible text
@@ -608,28 +609,25 @@ impl Text {
     }
 
     pub fn apply_and_process_changes(&mut self, changes: Vec<Change<&str>>) {
-        let mut cursors = self.0.cursors.take();
-        if let Some(cursors) = cursors.as_mut() {
+        if let Some(cursors) = self.cursors_mut() {
             cursors.clear();
         }
 
         for (i, change) in changes.iter().enumerate() {
             self.apply_change_inner(0, *change);
 
-            if let Some(cursors) = cursors.as_mut() {
+            if let Some(cursors) = self.0.cursors.as_mut() {
                 let start = change.start();
                 let added_end = match change.added_text().chars().next_back() {
                     Some(last) => change.added_end().rev(last),
                     None => change.start(),
                 };
 
-                let anchor = (start != added_end).then_some(start);
-                let cursor = Cursor::new(added_end, anchor, self);
+                let cursor = Cursor::new(added_end, (start != added_end).then_some(start));
                 cursors.insert(i, cursor, i == changes.len() - 1);
             }
         }
 
-        self.0.cursors = cursors;
         self.0.readers.process_changes(&mut self.0.bytes, &changes);
     }
 

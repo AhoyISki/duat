@@ -124,7 +124,7 @@ impl Builder {
             self.last_was_empty = false;
             let end = self.text.len();
             self.text
-                .apply_change_inner(0, Change::str_insert(&self.buffer, end))
+                .apply_change_inner(0, Change::str_insert(&self.buffer, end));
         }
     }
 

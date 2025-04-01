@@ -23,7 +23,7 @@ impl Cursors {
         }
     }
 
-    pub fn insert(&mut self, guess_i: usize, cursor: Cursor, was_main: bool) -> [usize; 2] {
+    pub fn insert(&mut self, guess_i: usize, cursor: Cursor, was_main: bool) -> ([usize; 2], bool) {
         let (sh_from, shift) = self.shift_state.take();
         let sh_from = sh_from.min(self.len());
 
@@ -44,24 +44,28 @@ impl Cursors {
 
         // Get the minimum and maximum Points in the taken range, designate
         // those as the new Cursor's bounds.
-        let (caret, anchor) = {
+        let (caret, anchor, last_cursor_overhangs) = {
             let mut c_range = c_range.clone();
             let first = c_range.next().and_then(|i| self.get(i));
-            let last = c_range.last().and_then(|i| self.get(i));
+            let last = c_range.last().and_then(|i| self.get(i)).or(first);
             let start = first
-                .map(|c| c.lazy_v_start().min(cursor.lazy_v_start()))
+                .map(|first| first.lazy_v_start().min(cursor.lazy_v_start()))
                 .unwrap_or(cursor.lazy_v_start());
-            let end = last
-                .map(|c| c.lazy_v_end().max(cursor.lazy_v_end()))
-                .unwrap_or(cursor.lazy_v_end());
+            let (end, last_cursor_overhangs) = if let Some(last) = last
+                && last.lazy_v_end() >= cursor.lazy_v_end()
+            {
+                (last.lazy_v_end(), true)
+            } else {
+                (cursor.lazy_v_end(), false)
+            };
 
             if let Some(anchor) = cursor.anchor() {
                 match cursor.caret() < anchor {
-                    true => (start, Some(end)),
-                    false => (end, Some(start)),
+                    true => (start, Some(end), last_cursor_overhangs),
+                    false => (end, Some(start), last_cursor_overhangs),
                 }
             } else {
-                (end, (start != end).then_some(start))
+                (end, (start != end).then_some(start), last_cursor_overhangs)
             }
         };
 
@@ -83,11 +87,11 @@ impl Cursors {
             ));
         }
 
-        [c_range.start, cursors_taken]
+        ([c_range.start, cursors_taken], last_cursor_overhangs)
     }
 
     /// Applies a [`Change`] to the [`Cursor`]s list
-    pub(crate) fn apply_change(&mut self, guess_i: usize, change: Change<&str>) {
+    pub(crate) fn apply_change(&mut self, guess_i: usize, change: Change<&str>) -> usize {
         let (sh_from, shift) = self.shift_state.take();
         let sh_from = sh_from.min(self.len());
 
@@ -112,10 +116,29 @@ impl Cursors {
             cursor.shift_by_change(change);
         }
 
-        if sh_from.max(c_range.end) < self.buf.len() {
-            self.shift_state
-                .set((sh_from.max(c_range.end), add_shifts(shift, change.shift())));
+        let (cursors_taken, cursors_added) = {
+            let mut cursors_taken = self.buf.splice(c_range.clone(), []);
+            if let Some(first) = cursors_taken.next() {
+                let last = cursors_taken.last().unwrap_or(first.clone());
+                let (start, end) = (first.start(), last.end_excl());
+                let merged = Cursor::new(start, (start < end).then_some(end));
+                self.buf.insert(c_range.start, merged);
+
+                (c_range.len(), 1)
+            } else {
+                (0, 0)
+            }
+        };
+
+        let shifted_sh_from = sh_from.saturating_sub(cursors_taken);
+        if shifted_sh_from.max(c_range.start) + cursors_added < self.buf.len() {
+            self.shift_state.set((
+                shifted_sh_from.max(c_range.start) + cursors_added,
+                add_shifts(shift, change.shift()),
+            ));
         }
+
+        cursors_taken - cursors_added
     }
 
     pub fn rotate_main(&mut self, amount: i32) {
@@ -260,10 +283,7 @@ mod cursor {
 
     impl Cursor {
         /// Returns a new instance of [`Cursor`].
-        pub fn new(caret: Point, anchor: Option<Point>, text: &Text) -> Self {
-            let last = text.last_point().unwrap();
-            let caret = caret.min(last);
-            let anchor = anchor.map(|a| a.min(last));
+        pub(crate) fn new(caret: Point, anchor: Option<Point>) -> Self {
             Self {
                 caret: Cell::new(LazyVPoint::Unknown(caret)),
                 anchor: Cell::new(anchor.map(LazyVPoint::Unknown)),
@@ -702,7 +722,7 @@ mod cursor {
     impl VPoint {
         fn new(p: Point, text: &Text, area: &impl Area, cfg: PrintCfg) -> Self {
             let [start, _] = text.points_of_line(p.line());
-            
+
             let mut vcol = 0;
 
             let wcol = area
