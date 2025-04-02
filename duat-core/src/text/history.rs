@@ -213,6 +213,8 @@ pub struct Change<S: AsRef<str>> {
     start: Point,
     added: S,
     taken: S,
+    added_end: Point,
+    taken_end: Point,
 }
 
 impl Change<String> {
@@ -229,7 +231,15 @@ impl Change<String> {
         };
 
         let taken = text.strs(p0.byte()..p1.byte()).collect();
-        Change { start: p0, added, taken }
+        let added_end = p0 + Point::len_of(&added);
+        let taken_end = p0 + Point::len_of(&taken);
+        Change {
+            start: p0,
+            added,
+            taken,
+            added_end,
+            taken_end,
+        }
     }
 
     /// Returns a copyable [`Change`]
@@ -238,6 +248,8 @@ impl Change<String> {
             start: self.start,
             added: &self.added,
             taken: &self.taken,
+            added_end: self.added_end,
+            taken_end: self.taken_end,
         }
     }
 
@@ -277,12 +289,24 @@ impl Change<String> {
 impl<'a> Change<&'a str> {
     /// Returns a new copyable [`Change`] from an insertion.
     pub fn str_insert(added_text: &'a str, start: Point) -> Self {
-        Self { start, added: added_text, taken: "" }
+        Self {
+            start,
+            added: added_text,
+            taken: "",
+            added_end: start + Point::len_of(added_text),
+            taken_end: start,
+        }
     }
 
     /// This function should only be used with ghost text and builders
     pub(super) fn remove_nl(p0: Point) -> Self {
-        Change { start: p0, added: "", taken: "\n" }
+        Change {
+            start: p0,
+            added: "",
+            taken: "\n",
+            added_end: p0 + Point::len_of("\n"),
+            taken_end: p0,
+        }
     }
 }
 
@@ -293,6 +317,8 @@ impl<S: AsRef<str>> Change<S> {
             start: self.start,
             added: self.taken,
             taken: self.added,
+            added_end: self.taken_end,
+            taken_end: self.added_end,
         }
     }
 
@@ -308,12 +334,12 @@ impl<S: AsRef<str>> Change<S> {
 
     /// Returns the end of the [`Change`], before it was applied
     pub fn taken_end(&self) -> Point {
-        self.start + Point::len_of(&self.taken)
+        self.taken_end
     }
 
     /// Returns the end of the [`Change`], after it was applied
     pub fn added_end(&self) -> Point {
-        self.start + Point::len_of(&self.added)
+        self.added_end
     }
 
     /// Returns the taken [`Range`]
