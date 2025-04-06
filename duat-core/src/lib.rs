@@ -100,6 +100,8 @@
 //!     seq: String,
 //! }
 //!
+//! (NOTE: something)
+//!
 //! impl EasyMotion {
 //!     pub fn word() -> Self {
 //!         Self {
@@ -589,10 +591,18 @@ fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize, usi
         std::ops::Bound::Unbounded => 0,
     };
     let end = match range.end_bound() {
-        std::ops::Bound::Included(end) => (*end + 1).min(max),
-        std::ops::Bound::Excluded(end) => (*end).min(max),
+        std::ops::Bound::Included(end) => *end + 1,
+        std::ops::Bound::Excluded(end) => *end,
         std::ops::Bound::Unbounded => max,
     };
+    assert!(
+        start <= max,
+        "byte out of bounds: the len is {max}, but the byte is {start}",
+    );
+    assert!(
+        end <= max,
+        "byte out of bounds: the len is {max}, but the byte is {end}",
+    );
 
     (start, end)
 }

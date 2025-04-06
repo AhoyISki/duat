@@ -15,7 +15,7 @@ use std::{fmt::Alignment, marker::PhantomData};
 use crate::{
     context::{self, FixedFile},
     form::{self, Form},
-    text::{Builder, Tag, Text, text},
+    text::{AlignCenter, AlignLeft, AlignRight, Builder, Text, text},
     ui::{Area, Constraint, PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
 };
@@ -44,11 +44,11 @@ impl<U: Ui> LineNumbers<U> {
         };
 
         let mut builder = Text::builder();
-        text!(builder, { tag_from_align(self.cfg.align) });
+        align(&mut builder, self.cfg.align);
 
         for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
             if main_line == *line {
-                text!(builder, { tag_from_align(self.cfg.main_align) });
+                align(&mut builder, self.cfg.main_align);
             }
 
             match (main_line == *line, is_wrapped) {
@@ -62,7 +62,7 @@ impl<U: Ui> LineNumbers<U> {
             push_text(&mut builder, *line, main_line, is_wrapped, &self.cfg);
 
             if main_line == *line {
-                text!(builder, { tag_from_align(self.cfg.align) });
+                align(&mut builder, self.cfg.align);
             }
         }
 
@@ -220,14 +220,14 @@ impl<U: Ui> WidgetCfg<U> for LineNumbersCfg<U> {
 
 /// Writes the text of the line number to a given [`String`].
 fn push_text<U>(
-    builder: &mut Builder,
+    b: &mut Builder,
     line: usize,
     main: usize,
     is_wrapped: bool,
     cfg: &LineNumbersCfg<U>,
 ) {
     if is_wrapped && !cfg.show_wraps {
-        text!(*builder, "\n");
+        text!(*b, "\n");
     } else if main != usize::MAX {
         let num = match cfg.num_rel {
             LineNum::Abs => line + 1,
@@ -241,16 +241,16 @@ fn push_text<U>(
             }
         };
 
-        text!(*builder, num "\n");
+        text!(*b, num "\n");
     } else {
-        text!(*builder, { line + 1 } "\n");
+        text!(*b, { line + 1 } "\n");
     }
 }
 
-fn tag_from_align(alignment: Alignment) -> Option<Tag> {
+fn align(b: &mut Builder, alignment: Alignment) {
     match alignment {
-        Alignment::Left => None,
-        Alignment::Right => Some(Tag::StartAlignRight),
-        Alignment::Center => Some(Tag::StartAlignCenter),
+        Alignment::Left => text!(*b, AlignLeft),
+        Alignment::Center => text!(*b, AlignCenter),
+        Alignment::Right => text!(*b, AlignRight),
     }
 }

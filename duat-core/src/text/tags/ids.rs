@@ -9,64 +9,10 @@
 //! [`Text`]: crate::text::Text
 use std::{
     ops::Range,
-    sync::atomic::{AtomicU16, Ordering},
+    sync::atomic::{AtomicU16, AtomicUsize, Ordering},
 };
 
 static KEY_COUNT: AtomicU16 = AtomicU16::new(4);
-
-/// The id of a [ghost text]
-///
-/// [ghost text]: super::Tag::GhostText
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct GhostId(u16);
-
-impl std::fmt::Debug for GhostId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "GhostId({})", self.0)
-    }
-}
-
-/// The id of a [toggleable]
-///
-/// [toggleable]: super::Tag::StartToggle
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ToggleId(u16);
-
-impl std::fmt::Debug for ToggleId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ToggleId({})", self.0)
-    }
-}
-
-impl GhostId {
-    /// Creates a new [`TextId`]
-    pub fn new() -> Self {
-        static TEXT_COUNT: AtomicU16 = AtomicU16::new(0);
-
-        Self(TEXT_COUNT.fetch_add(1, Ordering::Relaxed))
-    }
-}
-
-impl Default for GhostId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ToggleId {
-    /// Creates a new [`ToggleId`]
-    pub fn new() -> Self {
-        static TOGGLE_COUNT: AtomicU16 = AtomicU16::new(0);
-
-        Self(TOGGLE_COUNT.fetch_add(1, Ordering::Relaxed))
-    }
-}
-
-impl Default for ToggleId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 /// A key letting one add and remove [`Tag`]s to a [`Text`]
 ///
@@ -223,5 +169,71 @@ impl Keys for &[Key] {
 impl Keys for &[Range<Key>] {
     fn contains(self, key: Key) -> bool {
         self.iter().any(|r| r.contains(&key))
+    }
+}
+
+/// The id of a [ghost text]
+///
+/// [ghost text]: super::Tag::GhostText
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct GhostId(u16);
+
+impl std::fmt::Debug for GhostId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "GhostId({})", self.0)
+    }
+}
+
+/// The id of a [toggleable]
+///
+/// [toggleable]: super::Tag::StartToggle
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ToggleId(u16);
+
+impl std::fmt::Debug for ToggleId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ToggleId({})", self.0)
+    }
+}
+
+impl GhostId {
+    /// Creates a new [`TextId`]
+    pub fn new() -> Self {
+        static TEXT_COUNT: AtomicU16 = AtomicU16::new(0);
+
+        Self(TEXT_COUNT.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+impl Default for GhostId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ToggleId {
+    /// Creates a new [`ToggleId`]
+    pub fn new() -> Self {
+        static TOGGLE_COUNT: AtomicU16 = AtomicU16::new(0);
+
+        Self(TOGGLE_COUNT.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+impl Default for ToggleId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct RangeId(usize);
+
+impl RangeId {
+    /// Creates a new [`RangeId`]
+    pub fn new() -> Self {
+        static RANGE_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+        Self(RANGE_COUNT.fetch_add(1, Ordering::Relaxed))
     }
 }

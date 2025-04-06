@@ -344,7 +344,7 @@ pub macro status {
     (@append $pre_fn:expr, $checker:expr, []) => {{
         let pre_fn = move |builder: &mut Builder, reader: &mut Reader<_>| {
             $pre_fn(builder, reader);
-            builder.push($crate::text::Tag::PushForm(form::DEFAULT_ID, 0));
+            builder.push(form::DEFAULT_ID);
         };
 
         (pre_fn, $checker)
@@ -357,7 +357,7 @@ pub macro status {
 
         let pre_fn = move |builder: &mut Builder, reader: &mut Reader<_>| {
             $pre_fn(builder, reader);
-            builder.push($crate::text::Tag::PushForm(id, 0));
+            builder.push(id);
         };
 
         (pre_fn, $checker)

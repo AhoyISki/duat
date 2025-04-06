@@ -4,9 +4,13 @@
 //! [`err!`], [`ok!`] and [`hint!`]. These are supposed to be used in
 //! various contexts, and they have differences on what the `Default`
 //! and `Accent` form.
-use std::{fmt::Write, marker::PhantomData, path::PathBuf};
+use std::{
+    fmt::{Alignment, Display, Write},
+    marker::PhantomData,
+    path::PathBuf,
+};
 
-use super::{Change, Key, Tag, Text, ToggleId, tags::RawTag};
+use super::{Change, Key, Tag, Text};
 use crate::{data::RwData, form::FormId};
 
 /// Builds and modifies a [`Text`], based on replacements applied
@@ -36,8 +40,8 @@ use crate::{data::RwData, form::FormId};
 /// [`Form`]: crate::form::Form
 pub struct Builder {
     text: Text,
-    last_form: Option<FormId>,
-    last_align: Option<Tag>,
+    last_form: Option<(usize, FormId)>,
+    last_align: Option<(usize, Alignment)>,
     buffer: String,
     last_was_empty: bool,
 }
@@ -59,14 +63,20 @@ impl Builder {
     /// [`Form`]: crate::form::Form
     /// [`PopForm`]: Tag::PopForm
     pub fn finish(mut self) -> Text {
-        let len = self.text.len().byte();
-
-        if let Some(tag) = self.last_form {
-            self.text
-                .0
-                .tags
-                .insert(len, Tag::PopForm(tag), Key::basic());
+        let end = self.text.len().byte();
+        if let Some((b, id)) = self.last_form {
+            self.text.insert_tag(Key::basic(), Tag::Form(b..end, id, 0));
         }
+        match self.last_align {
+            Some((b, Alignment::Center)) => {
+                self.text.insert_tag(Key::basic(), Tag::AlignCenter(b..end));
+            }
+            Some((b, Alignment::Right)) => {
+                self.text.insert_tag(Key::basic(), Tag::AlignRight(b..end));
+            }
+            Some(_) | None => {}
+        }
+
         if (self.text.buffers(..).next_back()).is_none_or(|b| b != b'\n') {
             self.push_str("\n");
             self.text.0.forced_new_line = true;
@@ -82,25 +92,47 @@ impl Builder {
     ///
     /// [`impl Display`]: std::fmt::Display
     /// [tag surrogate]: Ghost
-    pub fn push<S: ToString, _T>(&mut self, part: impl Into<BuilderPart<S, _T>>) {
+    pub fn push<D: Display, _T>(&mut self, part: impl Into<BuilderPart<D, _T>>) {
         let part = part.into();
+        let end = self.text.len().byte();
         match part {
             BuilderPart::Text(text) => self.push_text(text),
-            BuilderPart::Tag(tag) | BuilderPart::OptToTag(Some(tag)) => {
-                self.push_tag(tag);
-            }
-            BuilderPart::ToString(display) => self.push_str(&display.to_string()),
-            BuilderPart::OptToString(Some(display)) => self.push_str(&display.to_string()),
-            BuilderPart::EndLastAlign(_) => match self.last_align {
-                Some(Tag::StartAlignCenter) => {
-                    self.push_tag(Tag::EndAlignCenter);
+            BuilderPart::ToString(display) => self.push_str(display),
+            BuilderPart::Form(id) => {
+                let last_form = match id == crate::form::DEFAULT_ID {
+                    true => self.last_form.take(),
+                    false => self.last_form.replace((self.text.len().byte(), id)),
+                };
+
+                if let Some((b, id)) = last_form {
+                    self.text.insert_tag(Key::basic(), Tag::Form(b..end, id, 0));
                 }
-                Some(Tag::StartAlignRight) => {
-                    self.push_tag(Tag::EndAlignRight);
+            }
+            BuilderPart::AlignLeft => match self.last_align {
+                Some((b, Alignment::Center)) => {
+                    self.text.insert_tag(Key::basic(), Tag::AlignCenter(b..end));
+                }
+                Some((b, Alignment::Right)) => {
+                    self.text.insert_tag(Key::basic(), Tag::AlignRight(b..end));
                 }
                 _ => {}
             },
-            _ => {}
+            BuilderPart::AlignCenter => match self.last_align {
+                Some((b, Alignment::Right)) => {
+                    self.text.insert_tag(Key::basic(), Tag::AlignRight(b..end));
+                }
+                None => self.last_align = Some((self.text.len().byte(), Alignment::Center)),
+                Some(_) => {}
+            },
+            BuilderPart::AlignRight => match self.last_align {
+                Some((b, Alignment::Center)) => {
+                    self.text.insert_tag(Key::basic(), Tag::AlignCenter(b..end));
+                }
+                None => self.last_align = Some((self.text.len().byte(), Alignment::Right)),
+                Some(_) => {}
+            },
+            BuilderPart::Spacer(_) => self.text.insert_tag(Key::basic(), Tag::Spacer(end)),
+            BuilderPart::Ghost(text) => self.text.insert_tag(Key::basic(), Tag::Ghost(end, text)),
         }
     }
 
@@ -115,9 +147,9 @@ impl Builder {
     /// Pushes an [`impl Display`] to the [`Text`]
     ///
     /// [`impl Display`]: std::fmt::Display
-    pub(crate) fn push_str(&mut self, display: &str) {
+    pub(crate) fn push_str<D: Display>(&mut self, d: D) {
         self.buffer.clear();
-        write!(self.buffer, "{display}").unwrap();
+        write!(self.buffer, "{d}").unwrap();
         if self.buffer.is_empty() {
             self.last_was_empty = true;
         } else {
@@ -125,47 +157,6 @@ impl Builder {
             let end = self.text.len();
             self.text
                 .apply_change_inner(0, Change::str_insert(&self.buffer, end));
-        }
-    }
-
-    /// Pushes a [`Tag`] to the end of the list of [`Tag`]s, as well
-    /// as its inverse at the end of the [`Text`]
-    pub(crate) fn push_tag(&mut self, tag: Tag) -> Option<ToggleId> {
-        let len = self.text.len().byte();
-        if let Tag::PushForm(id, _) = tag {
-            let last_form = match id == crate::form::DEFAULT_ID {
-                true => self.last_form.take(),
-                false => self.last_form.replace(id),
-            };
-
-            if let Some(id) = last_form {
-                self.text.0.tags.insert(len, Tag::PopForm(id), Key::basic());
-            }
-
-            match id == crate::form::DEFAULT_ID {
-                true => None,
-                false => self.text.0.tags.insert(len, tag, Key::basic()),
-            }
-        } else {
-            match tag {
-                Tag::StartAlignCenter => {
-                    self.last_align = Some(Tag::StartAlignCenter);
-                    self.text.0.tags.insert(len, tag, Key::basic())
-                }
-                Tag::StartAlignRight => {
-                    self.last_align = Some(Tag::StartAlignRight);
-                    self.text.0.tags.insert(len, tag, Key::basic())
-                }
-                Tag::EndAlignCenter | Tag::EndAlignRight => {
-                    if self.last_align.as_ref().is_some_and(|a| a.ends_with(&tag)) {
-                        self.last_align = None;
-                        self.text.0.tags.insert(len, tag, Key::basic())
-                    } else {
-                        None
-                    }
-                }
-                tag => self.text.0.tags.insert(len, tag, Key::basic()),
-            }
         }
     }
 
@@ -177,20 +168,10 @@ impl Builder {
             text.0.forced_new_line = false;
         }
         self.last_was_empty = text.is_empty();
-        let end = self.text.len();
 
-        if let Some(last_id) = self.last_form.take() {
-            let initial = text.tags_fwd(0).next();
-            if let Some((0, RawTag::PushForm(_, id, _))) = initial
-                && id == last_id
-            {
-                text.0.tags.remove_at_if(0, |t| t.key() == Key::basic());
-            } else {
-                self.text
-                    .0
-                    .tags
-                    .insert(end.byte(), Tag::PopForm(last_id), Key::basic());
-            }
+        if let Some((b, id)) = self.last_form.take() {
+            self.text
+                .insert_tag(Key::basic(), Tag::Form(b..self.text.len().byte(), id, 0));
         }
 
         self.text.0.bytes.extend(text.0.bytes);
@@ -211,11 +192,14 @@ impl Default for Builder {
 }
 
 /// [`Builder`] part: Aligns the line centrally
+#[derive(Clone)]
 pub struct AlignCenter;
 /// [`Builder`] part: Aligns the line on the left
+#[derive(Clone)]
 pub struct AlignLeft;
 /// [`Builder`] part: Aligns the line on the right, which is the
 /// default
+#[derive(Clone)]
 pub struct AlignRight;
 /// [`Builder`] part: A spacer for more advanced alignment
 ///
@@ -244,56 +228,61 @@ pub struct AlignRight;
 /// ```text
 /// This is my line,    please,    pretend it has tags
 /// ```
+#[derive(Clone)]
 pub struct Spacer;
 /// [`Builder`] part: Places ghost text
 ///
 /// This is useful when, for example, creating command line prompts,
 /// since the text is non interactable.
+#[derive(Clone)]
 pub struct Ghost(pub Text);
 
-impl From<AlignCenter> for Tag {
-    fn from(_: AlignCenter) -> Self {
-        Tag::StartAlignCenter
-    }
-}
-
-impl From<AlignRight> for Tag {
-    fn from(_: AlignRight) -> Self {
-        Tag::StartAlignRight
-    }
-}
-
-impl From<Spacer> for Tag {
-    fn from(_: Spacer) -> Self {
-        Tag::Spacer
-    }
-}
-
-impl From<Ghost> for Tag {
-    fn from(value: Ghost) -> Self {
-        Tag::GhostText(value.0)
-    }
-}
-
 /// A part to be pushed to a [`Builder`] by a macro
-pub enum BuilderPart<S: ToString, _T> {
+#[derive(Clone)]
+pub enum BuilderPart<D: Display, _T = String> {
     Text(Text),
-    Tag(Tag),
-    ToString(S),
-    OptToString(Option<S>),
-    OptToTag(Option<Tag>),
-    EndLastAlign(PhantomData<_T>),
+    ToString(D),
+    Form(FormId),
+    AlignLeft,
+    AlignCenter,
+    AlignRight,
+    Spacer(PhantomData<_T>),
+    Ghost(Text),
 }
 
-impl<T: Into<Tag>> From<T> for BuilderPart<String, Tag> {
-    fn from(value: T) -> Self {
-        BuilderPart::Tag(value.into())
+impl From<FormId> for BuilderPart<String, FormId> {
+    fn from(value: FormId) -> Self {
+        Self::Form(value)
     }
 }
 
 impl From<AlignLeft> for BuilderPart<String, AlignLeft> {
     fn from(_: AlignLeft) -> Self {
-        BuilderPart::EndLastAlign(PhantomData)
+        BuilderPart::AlignLeft
+    }
+}
+
+impl From<AlignCenter> for BuilderPart<String, AlignCenter> {
+    fn from(_: AlignCenter) -> Self {
+        BuilderPart::AlignCenter
+    }
+}
+
+impl From<AlignRight> for BuilderPart<String, AlignRight> {
+    fn from(_: AlignRight) -> Self {
+        BuilderPart::AlignRight
+    }
+}
+
+impl From<Spacer> for BuilderPart<String, Spacer> {
+    fn from(_: Spacer) -> Self {
+        BuilderPart::Spacer(PhantomData)
+    }
+}
+
+impl From<Ghost> for BuilderPart<String, Ghost> {
+    fn from(value: Ghost) -> Self {
+        BuilderPart::Ghost(value.0)
     }
 }
 
@@ -303,14 +292,14 @@ impl From<Text> for BuilderPart<String, Text> {
     }
 }
 
-impl<S: ToString> From<&RwData<S>> for BuilderPart<String, S> {
-    fn from(value: &RwData<S>) -> Self {
+impl<D: Display> From<&RwData<D>> for BuilderPart<String, D> {
+    fn from(value: &RwData<D>) -> Self {
         BuilderPart::ToString(value.read().to_string())
     }
 }
 
-impl<S: ToString> From<S> for BuilderPart<S, S> {
-    fn from(value: S) -> Self {
+impl<D: Display> From<D> for BuilderPart<D, D> {
+    fn from(value: D) -> Self {
         BuilderPart::ToString(value)
     }
 }
@@ -333,12 +322,6 @@ impl From<RwData<PathBuf>> for BuilderPart<String, PathBuf> {
     }
 }
 
-impl<T: Into<Tag>> From<Option<T>> for BuilderPart<String, Option<Tag>> {
-    fn from(value: Option<T>) -> Self {
-        BuilderPart::OptToTag(value.map(|t| t.into()))
-    }
-}
-
 /// The standard [`Text`] construction macro
 ///
 /// TODO: Docs
@@ -356,7 +339,7 @@ pub macro text {
         let id = crate::form::id_of!(concat!(
             stringify!($form) $(, stringify!(.), stringify!($suffix))*
         ));
-        $builder.push(crate::text::Tag::PushForm(id, 0))
+        $builder.push(id)
     },
     (@push $builder:expr, [$($other:tt)+]) => {
         compile_error!(concat!(
@@ -394,18 +377,15 @@ pub macro text {
 pub macro ok {
     // Forms
     (@push $builder:expr, []) => {
-        let id = crate::form::id_of!("DefaultOk");
-        $builder.push(crate::text::Tag::PushForm(id, 0))
+        $builder.push(crate::form::id_of!("DefaultOk"))
     },
     (@push $builder:expr, [*a]) => {
-        let id = crate::form::id_of!("AccentOk");
-        $builder.push(crate::text::Tag::PushForm(id, 0))
+        $builder.push(crate::form::id_of!("AccentOk"))
     },
     (@push $builder:expr, [$form:ident $(.$suffix:ident)*]) => {
-        let id = crate::form::id_of!(concat!(
+        $builder.push(crate::form::id_of!(concat!(
             stringify!($form) $(, stringify!(.), stringify!($suffix))*
-        ));
-        $builder.push(crate::text::Tag::PushForm(id, 0))
+        )));
     },
     (@push $builder:expr, [$($other:tt)+]) => {
         compile_error!(concat!(
@@ -443,18 +423,15 @@ pub macro ok {
 pub macro err {
     // Forms
     (@push $builder:expr, []) => {
-        let id = crate::form::id_of!("DefaultErr");
-        $builder.push(crate::text::Tag::PushForm(id, 0))
+        $builder.push(crate::form::id_of!("DefaultErr"))
     },
     (@push $builder:expr, [*a]) => {
-        let id = crate::form::id_of!("AccentErr");
-        $builder.push(crate::text::Tag::PushForm(id, 0))
+        $builder.push(crate::form::id_of!("AccentErr"))
     },
     (@push $builder:expr, [$form:ident $(.$suffix:ident)*]) => {
-        let id = crate::form::id_of!(concat!(
+        $builder.push(crate::form::id_of!(concat!(
             stringify!($form) $(, stringify!(.), stringify!($suffix))*
-        ));
-        $builder.push(crate::text::Tag::PushForm(id, 0))
+        )));
     },
     (@push $builder:expr, [$($other:tt)+]) => {
         compile_error!(concat!(
@@ -492,18 +469,15 @@ pub macro err {
 pub macro hint {
     // Forms
     (@push $builder:expr, []) => {
-        let id = crate::form::id_of!("DefaultHint");
-        $builder.push(crate::text::Tag::PushForm(id, 0))
+        $builder.push(crate::form::id_of!("DefaultHint"))
     },
     (@push $builder:expr, [*a]) => {
-        let id = crate::form::id_of!("AccentHint");
-        $builder.push(crate::text::Tag::PushForm(id, 0))
+        $builder.push(crate::form::id_of!("AccentHint"))
     },
     (@push $builder:expr, [$form:ident $(.$suffix:ident)*]) => {
-        let id = crate::form::id_of!(concat!(
+        $builder.push(crate::form::id_of!(concat!(
             stringify!($form) $(, stringify!(.), stringify!($suffix))*
-        ));
-        $builder.push(crate::text::Tag::PushForm(id, 0))
+        )))
     },
     (@push $builder:expr, [$($other:tt)+]) => {
         compile_error!(concat!(

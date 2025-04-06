@@ -7,7 +7,7 @@
 //! be as small as possible in order not to waste memory, as they will
 //! be stored in the [`Text`]. As such, they have as little
 //! information as possible, occupying only 8 bytes.
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, ops::Range, sync::Arc};
 
 use crossterm::event::MouseEventKind;
 
@@ -37,9 +37,24 @@ use crate::{
 /// * Conceal [`Text`] arbitrarily;
 /// * Add toggles for mouse events (Not yet implemented);
 /// * ...Possibly more to come!
+///
+/// # Internals
+///
+/// While externally, it may seem like some [`Tag`]s occupy more than
+/// one space (like [`Form`], which needs a start and an end), this is
+/// an illusion. Internally, those are separated into multiple
+/// [`RawTag`]s, which are separated by skips, so for example, a
+/// [`Form`] would be separated into a [`RawTag::PushForm`] and a
+/// [`RawTag::PopForm`].
+///
+/// Previously, you could have unbounded ranges from [`Tag`]s (e.g. a
+/// `Tag::PushForm`), but that was removed, because keeping things
+/// internally correct would significantly hurt performance.
+///
+/// [`Form`]: Tag::Form
 #[derive(Clone)]
 pub enum Tag {
-    // Implemented:
+    ////////// Implemented:
     /// Appends a form to the stack.
     ///
     /// The [`PushForm`] tag is the only one with a user defined
@@ -58,35 +73,25 @@ pub enum Tag {
     /// [`PushForm`]: Tag::PushForm
     /// [`Form`]: crate::form::Form
     /// [`duat-treesitter`]: https://github.com/AhoyISki/duat-treesitter
-    PushForm(FormId, u8),
-    /// Removes a form from the stack.
-    ///
-    /// Unlike its [`PushForm`] counterpart, this one does not include
-    /// a priority argument, as the order in which [`Form`]s are
-    /// removed from the stack does not matter when determining what
-    /// the new [`Form`] should be.
-    ///
-    /// [`PushForm`]: Tag::PushForm
-    /// [`Form`]: crate::form::Form
-    PopForm(FormId),
+    Form(Range<usize>, FormId, u8),
 
     /// Places the main cursor.
-    MainCursor,
+    MainCursor(usize),
     /// Places an extra cursor.
-    ExtraCursor,
+    ExtraCursor(usize),
 
-    /// Starts aligning to the center, should happen at the beginning
-    /// of the next line, if in the middle of a line.
-    StartAlignCenter,
-    /// Ends alignment to the center, returning to the usual alignment
-    /// (by default, left).
-    EndAlignCenter,
-    /// Starts aligning to the right, should happen at the beginning
-    /// of the next line, if in the middle of a line.
-    StartAlignRight,
-    /// Ends alignment to the right, returning to the usual alignment
-    /// (by default, left).
-    EndAlignRight,
+    /// Aligns text to the center of the screen within the lines
+    /// containing the region. If said region intersects with an
+    /// [`AlignRight`], the latest one prevails.
+    ///
+    /// [`AlignRight`]: Tag::AlignRight
+    AlignCenter(Range<usize>),
+    /// Aligns text to the right of the screen within the lines
+    /// containing the region. If said region intersects with an
+    /// [`AlignCenter`], the latest one prevails.
+    ///
+    /// [`AlignCenter`]: Tag::AlignCenter
+    AlignRight(Range<usize>),
     /// A spacer for a single screen line
     ///
     /// When printing this screen line (one row on screen, i.e. until
@@ -114,47 +119,51 @@ pub enum Tag {
     /// ```text
     /// This is my line,   please,   pretend it has tags
     /// ```
-    Spacer,
+    Spacer(usize),
 
     /// Text that shows up on screen, but "doesn't exist"
-    GhostText(Text),
+    Ghost(usize, Text),
     /// Start concealing the [`Text`] from this point
-    StartConceal,
-    /// Finish [`Text`] concealment
-    EndConceal,
+    Conceal(Range<usize>),
 
-    // Not yet implemented:
+    ////////// Not yet implemented:
     // TODO: Make this take a Widget and Area arguments
     /// Begins a toggleable section in the file.
-    StartToggle(Toggle),
-    EndToggle(ToggleId),
+    Toggle(Range<usize>, Toggle),
 }
 
 impl Tag {
-    pub fn ghost_text(to_text: impl Into<Text>) -> Self {
-        Self::GhostText(to_text.into())
-    }
-
-    pub fn to_raw(
+    pub(super) fn into_raw(
         self,
         key: Key,
         texts: &mut HashMap<GhostId, Text>,
         toggles: &mut HashMap<ToggleId, Toggle>,
-    ) -> (RawTag, Option<ToggleId>) {
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<ToggleId>) {
+        use RawTag::*;
+
         match self {
-            Self::PushForm(id, priority) => {
-                debug_assert!(priority <= 250, "PushForm priority greater than 250");
-                (RawTag::PushForm(key, id, priority), None)
+            Self::Form(range, id, priority) => {
+                debug_assert!(priority <= 250, "Form priority greater than 250");
+                (
+                    (range.start, PushForm(key, id, priority)),
+                    Some((range.end, PopForm(key, id))),
+                    None,
+                )
             }
-            Self::PopForm(id) => (RawTag::PopForm(key, id), None),
-            Self::MainCursor => (RawTag::MainCursor(key), None),
-            Self::ExtraCursor => (RawTag::ExtraCursor(key), None),
-            Self::StartAlignCenter => (RawTag::StartAlignCenter(key), None),
-            Self::EndAlignCenter => (RawTag::EndAlignCenter(key), None),
-            Self::StartAlignRight => (RawTag::StartAlignRight(key), None),
-            Self::EndAlignRight => (RawTag::EndAlignRight(key), None),
-            Self::Spacer => (RawTag::Spacer(key), None),
-            Self::GhostText(mut text) => {
+            Self::MainCursor(b) => ((b, MainCursor(key)), None, None),
+            Self::ExtraCursor(b) => ((b, ExtraCursor(key)), None, None),
+            Self::AlignCenter(range) => (
+                (range.start, StartAlignCenter(key)),
+                Some((range.end, EndAlignCenter(key))),
+                None,
+            ),
+            Self::AlignRight(range) => (
+                (range.start, StartAlignRight(key)),
+                Some((range.end, EndAlignRight(key))),
+                None,
+            ),
+            Self::Spacer(b) => ((b, Spacer(key)), None, None),
+            Self::Ghost(b, mut text) => {
                 if text.0.forced_new_line {
                     let change = Change::remove_nl(text.last_point().unwrap());
                     text.apply_change_inner(0, change);
@@ -162,32 +171,27 @@ impl Tag {
                 }
                 let id = GhostId::new();
                 texts.insert(id, text);
-                (RawTag::GhostText(key, id), None)
+                ((b, GhostText(key, id)), None, None)
             }
-            Self::StartConceal => (RawTag::StartConceal(key), None),
-            Self::EndConceal => (RawTag::EndConceal(key), None),
-            Self::StartToggle(toggle) => {
+            Self::Conceal(range) => (
+                (range.start, StartConceal(key)),
+                Some((range.end, EndConceal(key))),
+                None,
+            ),
+            Self::Toggle(range, toggle) => {
                 let id = ToggleId::new();
                 toggles.insert(id, toggle);
-                (RawTag::ToggleStart(key, id), Some(id))
+                (
+                    (range.start, ToggleStart(key, id)),
+                    Some((range.end, ToggleEnd(key, id))),
+                    Some(id),
+                )
             }
-            Self::EndToggle(id) => (RawTag::ToggleEnd(key, id), None),
-        }
-    }
-
-    /// Works only on tags that are not toggles.
-    pub fn ends_with(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::PushForm(lhs, _), Self::PopForm(rhs)) => lhs == rhs,
-            (Self::StartAlignCenter, Self::EndAlignCenter)
-            | (Self::StartAlignRight, Self::EndAlignRight)
-            | (Self::StartConceal, Self::EndConceal) => true,
-            _ => false,
         }
     }
 }
 
-#[derive(Clone, Copy, PartialOrd, Ord)]
+#[derive(Clone, Copy, Eq, PartialOrd, Ord)]
 pub enum RawTag {
     // Implemented:
     /// Appends a form to the stack.
@@ -248,6 +252,39 @@ pub enum RawTag {
     ToggleStart(Key, ToggleId),
     /// Ends a toggleable section in the text.
     ToggleEnd(Key, ToggleId),
+}
+
+impl PartialEq for RawTag {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::PushForm(l_key, l_id, _), Self::PushForm(r_key, r_id, _)) => {
+                l_key == r_key && l_id == r_id
+            }
+            (Self::PopForm(l_key, l_id), Self::PopForm(r_key, r_id)) => {
+                l_key == r_key && l_id == r_id
+            }
+            (Self::MainCursor(l_key), Self::MainCursor(r_key)) => l_key == r_key,
+            (Self::ExtraCursor(l_key), Self::ExtraCursor(r_key)) => l_key == r_key,
+            (Self::StartAlignCenter(l_key), Self::StartAlignCenter(r_key)) => l_key == r_key,
+            (Self::EndAlignCenter(l_key), Self::EndAlignCenter(r_key)) => l_key == r_key,
+            (Self::StartAlignRight(l_key), Self::StartAlignRight(r_key)) => l_key == r_key,
+            (Self::EndAlignRight(l_key), Self::EndAlignRight(r_key)) => l_key == r_key,
+            (Self::Spacer(l_key), Self::Spacer(r_key)) => l_key == r_key,
+            (Self::StartConceal(l_key), Self::StartConceal(r_key)) => l_key == r_key,
+            (Self::EndConceal(l_key), Self::EndConceal(r_key)) => l_key == r_key,
+            (Self::ConcealUntil(l_key), Self::ConcealUntil(r_key)) => l_key == r_key,
+            (Self::GhostText(l_key, l_id), Self::GhostText(r_key, r_id)) => {
+                l_key == r_key && l_id == r_id
+            }
+            (Self::ToggleStart(l_key, l_id), Self::ToggleStart(r_key, r_id)) => {
+                l_key == r_key && l_id == r_id
+            }
+            (Self::ToggleEnd(l_key, l_id), Self::ToggleEnd(r_key, r_id)) => {
+                l_key == r_key && l_id == r_id
+            }
+            _ => false,
+        }
+    }
 }
 
 impl RawTag {
@@ -376,21 +413,6 @@ impl std::fmt::Debug for RawTag {
             RawTag::GhostText(key, id) => write!(f, "GhostText({key:?}, {id:?})"),
             RawTag::ToggleStart(key, id) => write!(f, "ToggleStart({key:?}), {id:?})"),
             RawTag::ToggleEnd(key, id) => write!(f, "ToggleEnd({key:?}, {id:?})"),
-        }
-    }
-}
-
-impl Eq for RawTag {}
-
-impl PartialEq for RawTag {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (RawTag::PushForm(_, lhs, _), RawTag::PushForm(_, rhs, _)) => lhs == rhs,
-            (RawTag::PopForm(_, lhs), RawTag::PopForm(_, rhs)) => lhs == rhs,
-            (RawTag::GhostText(_, lhs), RawTag::GhostText(_, rhs)) => lhs == rhs,
-            (RawTag::ToggleStart(_, lhs), RawTag::ToggleStart(_, rhs)) => lhs == rhs,
-            (RawTag::ToggleEnd(_, lhs), RawTag::ToggleEnd(_, rhs)) => lhs == rhs,
-            (lhs, rhs) => std::mem::discriminant(lhs) == std::mem::discriminant(rhs),
         }
     }
 }

@@ -165,8 +165,10 @@ impl ui::Ui for Ui {
             );
             if let std::backtrace::BacktraceStatus::Captured = trace.status() {
                 for line in trace.to_string().lines() {
-                    println!("{line}");
-                    queue!(io::stdout(), cursor::MoveToColumn(0));
+                    if !line.contains("             at ") {
+                        println!("{line}");
+                        queue!(io::stdout(), cursor::MoveToColumn(0));
+                    }
                 }
             }
             for line in info.to_string().lines() {

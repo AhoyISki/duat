@@ -119,9 +119,10 @@ impl Cursors {
         let (cursors_taken, cursors_added) = {
             let mut cursors_taken = self.buf.splice(c_range.clone(), []);
             if let Some(first) = cursors_taken.next() {
-                let last = cursors_taken.last().unwrap_or(first.clone());
+                let last = cursors_taken.next_back().unwrap_or(first.clone());
                 let (start, end) = (first.start(), last.end_excl());
                 let merged = Cursor::new(start, (start < end).then_some(end));
+                drop(cursors_taken);
                 self.buf.insert(c_range.start, merged);
 
                 (c_range.len(), 1)

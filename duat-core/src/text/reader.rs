@@ -9,12 +9,11 @@
 //! [`Ui`]: crate::ui::Ui
 use std::{any::TypeId, ops::Range};
 
-use crate::text::transform_ranges;
-
 use super::{
     Bytes, Change, Key, Keys, Tag, Text, TextRange, err, merge_range_in, split_range_within,
     tags::Tags,
 };
+use crate::text::transform_ranges;
 
 /// A [`Text`] reader, modifying it whenever a [`Change`] happens
 #[allow(unused_variables)]
@@ -104,8 +103,8 @@ pub struct MutTags<'a>(&'a mut Tags);
 
 impl MutTags<'_> {
     /// Inserts a [`Tag`] at the given position
-    pub fn insert(&mut self, at: usize, tag: Tag, key: Key) {
-        self.0.insert(at, tag, key);
+    pub fn insert(&mut self, key: Key, tag: Tag) {
+        self.0.insert(key, tag);
     }
 
     /// Removes the [`Tag`]s of a [key] from a region
@@ -127,11 +126,7 @@ impl MutTags<'_> {
     /// [`Point`]: super::Point
     pub fn remove(&mut self, range: impl TextRange, keys: impl Keys) {
         let range = range.to_range_at(self.0.len_bytes());
-        if range.end == range.start + 1 {
-            self.0.remove_at(range.start, keys)
-        } else {
-            self.0.remove_from(range, keys)
-        }
+        self.0.remove_from(range, keys)
     }
 
     /// Removes all [`Tag`]s

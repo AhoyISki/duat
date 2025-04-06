@@ -41,6 +41,11 @@
 //!         text!([HorseCount] count " " [Horses] "horses")
 //!     }
 //! }
+//! fn inlined_number_of_horses(count: usize) -> Text {
+//!     text!([HorseCount] count " " [Horses] {
+//!         if count == 1 { "horse" } else { "horses" }
+//!     })
+//! }
 //! ```
 //!
 //! You can use this whenever you need to update a widget, for
@@ -91,7 +96,10 @@ use std::{
 
 pub(crate) use self::history::History;
 pub use self::{
-    builder::{AlignCenter, AlignLeft, AlignRight, Builder, Ghost, Spacer, err, hint, ok, text},
+    builder::{
+        AlignCenter, AlignLeft, AlignRight, Builder, BuilderPart, Ghost, Spacer, err, hint, ok,
+        text,
+    },
     bytes::{Buffers, Bytes, Strs},
     history::Change,
     iter::{FwdIter, Item, Part, RevIter},
@@ -107,6 +115,7 @@ use self::{
 use crate::{
     cache,
     cfg::PrintCfg,
+    form,
     mode::{Cursor, Cursors},
     ui::Area,
 };
@@ -684,8 +693,8 @@ impl Text {
     ////////// Tag addition/deletion functions
 
     /// Inserts a [`Tag`] at the given position
-    pub fn insert_tag(&mut self, at: usize, tag: Tag, key: Key) {
-        self.0.tags.insert(at, tag, key);
+    pub fn insert_tag(&mut self, key: Key, tag: Tag) {
+        self.0.tags.insert(key, tag);
     }
 
     /// Removes the [`Tag`]s of a [key] from a region
@@ -706,11 +715,7 @@ impl Text {
     /// [`File`]: crate::widgets::File
     pub fn remove_tags(&mut self, range: impl TextRange, keys: impl Keys) {
         let range = range.to_range_at(self.len().byte());
-        if range.end == range.start + 1 {
-            self.0.tags.remove_at(range.start, keys)
-        } else {
-            self.0.tags.remove_from(range, keys)
-        }
+        self.0.tags.remove_from(range, keys)
     }
 
     /// Removes all [`Tag`]s
@@ -741,6 +746,7 @@ impl Text {
     /// Removes the tags for all the cursors, used before they are
     /// expected to move
     pub(crate) fn add_cursors(&mut self, area: &impl Area, cfg: PrintCfg) {
+        crate::log_file!("adding cursors");
         let Some(cursors) = self.0.cursors.take() else {
             return;
         };
@@ -760,12 +766,15 @@ impl Text {
             }
         }
 
+        crate::log_file!("{:#?}", self.0.tags);
+
         self.0.cursors = Some(cursors);
     }
 
     /// Adds the tags for all the cursors, used after they are
     /// expected to have moved
     pub(crate) fn remove_cursors(&mut self, area: &impl Area, cfg: PrintCfg) {
+        crate::log_file!("removing cursors");
         let Some(cursors) = self.0.cursors.take() else {
             return;
         };
@@ -791,12 +800,22 @@ impl Text {
     /// Adds a [`Cursor`] to the [`Text`]
     fn add_cursor(&mut self, cursor: &Cursor, is_main: bool) {
         let (caret, selection) = cursor.tag_points(self);
-        let tags_and_points = cursor_tags(is_main)
-            .into_iter()
-            .zip([caret].into_iter().chain(selection.into_iter().flatten()));
-        for (tag, p) in tags_and_points {
-            self.0.bytes.add_record([p.byte(), p.char(), p.line()]);
-            self.0.tags.insert(p.byte(), tag, Key::for_cursors());
+
+        let (cursor, form) = if is_main {
+            (Tag::MainCursor(caret.byte()), form::M_CUR_ID)
+        } else {
+            (Tag::ExtraCursor(caret.byte()), form::E_CUR_ID)
+        };
+        self.0
+            .bytes
+            .add_record([caret.byte(), caret.char(), caret.line()]);
+        self.0.tags.insert(Key::for_cursors(), cursor);
+
+        if let Some([start, end]) = selection {
+            self.0.tags.insert(
+                Key::for_cursors(),
+                Tag::Form(start.byte()..end.byte(), form, 250),
+            );
         }
     }
 
@@ -805,9 +824,9 @@ impl Text {
         let (caret, selection) = cursor.tag_points(self);
         let points = [caret]
             .into_iter()
-            .chain(selection.into_iter().flatten().filter(|p| *p != caret));
+            .chain(selection.into_iter().flatten().find(|p| *p != caret));
         for p in points {
-            self.0.tags.remove_at(p.byte(), Key::for_cursors());
+            self.remove_tags(p.byte(), Key::for_cursors());
         }
     }
 
@@ -1053,19 +1072,6 @@ fn transform_ranges(ranges: &mut [Range<usize>], changes: &[Change<&str>]) {
     }
     for bound in range_bounds {
         *bound = (*bound as i32 + shift) as usize
-    }
-}
-
-/// A list of [`Tag`]s to be added with a [`Cursor`]
-fn cursor_tags(is_main: bool) -> [Tag; 3] {
-    use tags::Tag::{ExtraCursor, MainCursor, PopForm, PushForm};
-
-    use crate::form::{E_SEL_ID, M_SEL_ID};
-
-    if is_main {
-        [MainCursor, PushForm(M_SEL_ID, 250), PopForm(M_SEL_ID)]
-    } else {
-        [ExtraCursor, PushForm(E_SEL_ID, 250), PopForm(E_SEL_ID)]
     }
 }
 

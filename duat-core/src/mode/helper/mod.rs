@@ -886,13 +886,21 @@ impl<W: Widget<A::Ui>, A: Area> Editor<'_, W, A, Searcher> {
     }
 }
 
-// SAFETY: Since this struct only owns references to a Widget, Area,
-// and maybe a Searcher, dropping it early doesn't drop anything with
-// the exception of the Rc<Cell>, which should have its count
-// decreased.
-unsafe impl<#[may_dangle] 'a, W: Widget<A::Ui>, A: Area, S> Drop for Editor<'a, W, A, S> {
+// SAFETY: In theory, it should be impossible to maintain a reference
+// to W after it has dropped, since EditHelper would be mutably
+// borrowing from said W, and you can only get an Editor from
+// EditHelper. Thus. the only thing which may have been dropped is the
+// Cursors within, which are accounted for.
+// Also, since this is created by an EditHelper, it is created after
+// it, and thus is dropped before it, making its &mut Cursor reference
+// valid.
+unsafe impl<#[may_dangle] 'a, W: Widget<A::Ui> + 'a, A: Area + 'a, S: 'a> Drop
+    for Editor<'a, W, A, S>
+{
     fn drop(&mut self) {
-        let cursors = self.widget.cursors_mut().unwrap();
+        let Some(cursors) = self.widget.cursors_mut() else {
+            return;
+        };
         let cursor = std::mem::take(&mut self.cursor);
         let ([inserted_i, cursors_taken], last_cursor_overhangs) =
             cursors.insert(self.n, cursor, self.was_main);
@@ -921,6 +929,7 @@ impl<'a, W: Widget<A::Ui>, A: Area, S> Lender for EditIter<'a, W, A, S> {
     fn next<'lend>(&'lend mut self) -> Option<<Self as Lending<'lend>>::Lend> {
         let current_i = self.next_i.get();
         let (cursor, was_main) = self.widget.cursors_mut().unwrap().remove(current_i)?;
+
         Some(Editor::new(
             cursor,
             current_i,

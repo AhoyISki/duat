@@ -12,12 +12,12 @@
 use std::fmt::Debug;
 
 /// Minimum length to insert a new record
-const LEN_PER_RECORD: usize = 150;
+const LEN_PER_RECORD: usize = 75;
 
 /// A struct that keeps track of positions
 pub trait Record: Default + Debug + Clone + Copy + Eq + Ord + 'static {
     /// The bytes at of this [`Record`]
-    fn bytes(&self) -> usize;
+    fn units(&self) -> usize;
 
     /// Adds the values of two [`Record`]s
     fn add(self, other: Self) -> Self;
@@ -30,8 +30,8 @@ pub trait Record: Default + Debug + Clone + Copy + Eq + Ord + 'static {
 }
 
 impl Record for [usize; 2] {
-    fn bytes(&self) -> usize {
-        self[1]
+    fn units(&self) -> usize {
+        self[0]
     }
 
     fn add(self, other: Self) -> Self {
@@ -48,7 +48,7 @@ impl Record for [usize; 2] {
 }
 
 impl Record for [usize; 3] {
-    fn bytes(&self) -> usize {
+    fn units(&self) -> usize {
         self[0]
     }
 
@@ -73,7 +73,7 @@ impl Record for [usize; 3] {
 pub struct Records<R: Record> {
     last: (usize, R),
     max: R,
-    pub stored: Vec<R>,
+    stored: Vec<R>,
 }
 
 impl<R: Record> Records<R> {
@@ -95,13 +95,13 @@ impl<R: Record> Records<R> {
     pub fn insert(&mut self, new: R) {
         // For internal functions, I assume that I'm not
         // going over self.max.
-        let (i, prev) = self.search(new.bytes(), Record::bytes);
+        let (i, prev) = self.search(new.units(), Record::units);
         let len = *self.stored.get(i.min(self.stored.len() - 1)).unwrap();
 
         // If the recrds would be too close, don't add any
         if [prev, prev.add(len)]
             .iter()
-            .any(|rec| rec.bytes().abs_diff(new.bytes()) < LEN_PER_RECORD)
+            .any(|rec| rec.units().abs_diff(new.units()) < LEN_PER_RECORD)
         {
             return;
         }
@@ -115,8 +115,8 @@ impl<R: Record> Records<R> {
 
     /// Transforms a range in the [`Records`]
     pub fn transform(&mut self, start: R, old_len: R, new_len: R) {
-        let (s_i, s_rec) = self.search(start.bytes(), Record::bytes);
-        let (e_i, e_rec) = self.search(start.bytes() + old_len.bytes(), Record::bytes);
+        let (s_i, s_rec) = self.search(start.units(), Record::units);
+        let (e_i, e_rec) = self.search(start.units() + old_len.units(), Record::units);
         let e_len = self.stored.get(e_i).cloned().unwrap_or_default();
 
         if s_i < e_i {
@@ -133,7 +133,7 @@ impl<R: Record> Records<R> {
             // If there are no tags or skips, no skip will start
             // exactly on this record, making it invalid.
             if let Some(prev_i) = s_i.checked_sub(1)
-                && start.bytes() == s_rec.bytes()
+                && start.units() == s_rec.units()
             {
                 let prev_len = self.stored.get_mut(prev_i).unwrap();
                 *prev_len = prev_len.add(len);
@@ -163,7 +163,7 @@ impl<R: Record> Records<R> {
         let self_e_len = self.stored.last().unwrap();
         let other_s_len = other.stored.first_mut().unwrap();
 
-        if self_e_len.bytes() + other_s_len.bytes() < LEN_PER_RECORD {
+        if self_e_len.units() + other_s_len.units() < LEN_PER_RECORD {
             self.last = (self.stored.len(), self.max.add(*other_s_len));
             *other_s_len = self_e_len.add(*other_s_len);
             self.stored.pop();
@@ -187,10 +187,10 @@ impl<R: Record> Records<R> {
 
     /// Returns the [`Record`] closest to the byte
     pub fn closest_to(&self, b: usize) -> R {
-        let (i, rec) = self.search(b, Record::bytes);
+        let (i, rec) = self.search(b, Record::units);
         let len = self.stored.get(i).cloned().unwrap_or(R::default());
 
-        if rec.bytes().abs_diff(b) > len.add(rec).bytes().abs_diff(b) {
+        if rec.units().abs_diff(b) > len.add(rec).units().abs_diff(b) {
             len.add(rec)
         } else {
             rec

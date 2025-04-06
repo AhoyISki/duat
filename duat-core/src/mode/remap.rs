@@ -419,9 +419,8 @@ impl Remapper {
                 } else if *is_alias {
                     remove_alias_and::<U>(|widget, area, main| {
                         widget.text_mut().insert_tag(
-                            main,
-                            Tag::GhostText(text!([Alias] { keys_to_string(cur_seq) })),
                             Key::for_alias(),
+                            Tag::Ghost(main, text!([Alias] { keys_to_string(cur_seq) })),
                         );
 
                         let cfg = widget.print_cfg();

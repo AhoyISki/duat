@@ -232,13 +232,12 @@ impl Change<String> {
 
         let taken = text.strs(p0.byte()..p1.byte()).collect();
         let added_end = p0 + Point::len_of(&added);
-        let taken_end = p0 + Point::len_of(&taken);
         Change {
             start: p0,
             added,
             taken,
             added_end,
-            taken_end,
+            taken_end: p1,
         }
     }
 
@@ -279,10 +278,13 @@ impl Change<String> {
             self.taken.replace_range(range, &older.taken);
 
             let range = (fixed_end.byte() - older.start.byte())..;
+
             self.added.push_str(&older.added[range]);
         } else {
             unreachable!("Changes chosen that don't interact");
         }
+        self.added_end = self.start + Point::len_of(&self.added);
+        self.taken_end = self.start + Point::len_of(&self.taken);
     }
 }
 
@@ -304,8 +306,8 @@ impl<'a> Change<&'a str> {
             start: p0,
             added: "",
             taken: "\n",
-            added_end: p0 + Point::len_of("\n"),
-            taken_end: p0,
+            added_end: p0,
+            taken_end: p0 + Point::len_of("\n"),
         }
     }
 }
@@ -330,6 +332,8 @@ impl<S: AsRef<str>> Change<S> {
     /// Shifts the [`Change`] by a "signed point"
     pub(crate) fn shift_by(&mut self, shift: [i32; 3]) {
         self.start = self.start.shift_by(shift);
+        self.added_end = self.added_end.shift_by(shift);
+        self.taken_end = self.taken_end.shift_by(shift);
     }
 
     /// Returns the end of the [`Change`], before it was applied
@@ -384,6 +388,8 @@ impl Serialize for Change<String> {
         ser_change.serialize_field("start", &self.start)?;
         ser_change.serialize_field("added", &self.added)?;
         ser_change.serialize_field("taken", &self.taken)?;
+        ser_change.serialize_field("added_end", &self.added_end)?;
+        ser_change.serialize_field("taken_end", &self.taken_end)?;
 
         ser_change.end()
     }
@@ -417,7 +423,19 @@ impl<'de> Deserialize<'de> for Change<String> {
                 let taken = seq
                     .next_element()?
                     .ok_or(de::Error::invalid_length(2, &self))?;
-                Ok(Change { start, added, taken })
+                let added_end = seq
+                    .next_element()?
+                    .ok_or(de::Error::invalid_length(3, &self))?;
+                let taken_end = seq
+                    .next_element()?
+                    .ok_or(de::Error::invalid_length(4, &self))?;
+                Ok(Change {
+                    start,
+                    added,
+                    taken,
+                    added_end,
+                    taken_end,
+                })
             }
         }
 
@@ -425,7 +443,7 @@ impl<'de> Deserialize<'de> for Change<String> {
     }
 }
 
-/// If `lhs` contains the start of`rhs`
+/// If `lhs` contains the start of `rhs`
 fn has_start_of(lhs: Range<usize>, rhs: Range<usize>) -> bool {
     lhs.start <= rhs.start && rhs.start <= lhs.end
 }

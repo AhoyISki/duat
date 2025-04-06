@@ -81,12 +81,11 @@ impl<M: PromptMode<U>, U: Ui> Mode<U> for Prompt<M, U> {
         *widget.text_mut() = Text::new_with_cursors();
         run_once::<M, U>();
 
-        let tag = Tag::ghost_text(if let Some(text) = widget.prompt_of::<M>() {
-            text
-        } else {
-            self.0.prompt()
+        let tag = Tag::Ghost(0, match widget.prompt_of::<M>() {
+            Some(text) => text,
+            None => self.0.prompt(),
         });
-        widget.text_mut().insert_tag(0, tag, *PROMPT_KEY);
+        widget.text_mut().insert_tag(*PROMPT_KEY, tag);
 
         self.0.on_switch(widget.text_mut(), area);
     }
@@ -123,23 +122,19 @@ impl<U: Ui> PromptMode<U> for RunCommands {
         if let Some(caller) = caller {
             if let Some((ok_ranges, err_range)) = cmd::check_args(&command) {
                 let id = form::id_of!("CallerExists");
-                text.insert_tag(0, Tag::PushForm(id, 0), *KEY);
-                text.insert_tag(caller.len(), Tag::PopForm(id), *KEY);
+                text.insert_tag(*KEY, Tag::Form(0..caller.len(), id, 0));
 
                 let id = form::id_of!("ParameterOk");
                 for range in ok_ranges {
-                    text.insert_tag(range.start, Tag::PushForm(id, 0), *KEY);
-                    text.insert_tag(range.end, Tag::PopForm(id), *KEY);
+                    text.insert_tag(*KEY, Tag::Form(range, id, 0));
                 }
                 if let Some((range, _)) = err_range {
                     let id = form::id_of!("ParameterErr");
-                    text.insert_tag(range.start, Tag::PushForm(id, 0), *KEY);
-                    text.insert_tag(range.end, Tag::PopForm(id), *KEY);
+                    text.insert_tag(*KEY, Tag::Form(range, id, 0));
                 }
             } else {
                 let id = form::id_of!("CallerNotFound");
-                text.insert_tag(0, Tag::PushForm(id, 0), *KEY);
-                text.insert_tag(caller.len(), Tag::PopForm(id), *KEY);
+                text.insert_tag(*KEY, Tag::Form(0..caller.len(), id, 0));
             }
         }
     }
@@ -198,8 +193,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
                 let span = err.span();
                 let id = form::id_of!("ParseCommandErr");
 
-                text.insert_tag(span.start.offset, Tag::PushForm(id, 0), *KEY);
-                text.insert_tag(span.end.offset, Tag::PopForm(id), *KEY);
+                text.insert_tag(*KEY, Tag::Form(span.start.offset..span.end.offset, id, 0));
             }
         }
     }
@@ -258,12 +252,10 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
         };
 
         let c_s = command.len() - command.trim_start().len();
-        text.insert_tag(c_s, Tag::PushForm(caller_id, 0), *KEY);
-        text.insert_tag(c_s + caller.len(), Tag::PopForm(caller_id), *KEY);
+        text.insert_tag(*KEY, Tag::Form(c_s..c_s + caller.len(), caller_id, 0));
 
         for (_, range) in args {
-            text.insert_tag(range.start, Tag::PushForm(args_id, 0), *KEY);
-            text.insert_tag(range.end, Tag::PopForm(args_id), *KEY);
+            text.insert_tag(*KEY, Tag::Form(range, args_id, 0));
         }
     }
 

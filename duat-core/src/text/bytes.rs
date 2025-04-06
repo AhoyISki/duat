@@ -237,7 +237,7 @@ impl Bytes {
     pub fn point_at_char(&self, c: usize) -> Point {
         assert!(
             c <= self.len().char(),
-            "byte out of bounds: the len is {}, but the char is {c}",
+            "char out of bounds: the len is {}, but the char is {c}",
             self.len().char()
         );
         let [c_b, c_c, mut c_l] = self.records.closest_to_by_key(c, |[_, c, _]| *c);
@@ -288,7 +288,7 @@ impl Bytes {
     pub fn point_at_line(&self, l: usize) -> Point {
         assert!(
             l <= self.len().line(),
-            "byte out of bounds: the len is {}, but the line is {l}",
+            "line out of bounds: the len is {}, but the line is {l}",
             self.len().line()
         );
         let (c_b, c_c, mut c_l) = {
