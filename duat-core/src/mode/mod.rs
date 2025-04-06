@@ -38,14 +38,15 @@ mod switch {
 
     static SEND_KEYS: LazyLock<Mutex<Box<KeyFn>>> =
         LazyLock::new(|| Mutex::new(Box::new(|_| None)));
-    static RESET_MODE: LazyLock<Mutex<Box<dyn Fn() + Send>>> =
-        LazyLock::new(|| Mutex::new(Box::new(|| {})));
-    static SET_MODE: Mutex<Option<Box<dyn FnOnce() + Send>>> = Mutex::new(None);
+    static RESET_MODE: LazyLock<Mutex<Box<dyn Fn() -> bool + Send>>> =
+        LazyLock::new(|| Mutex::new(Box::new(|| true)));
+    static SET_MODE: Mutex<Option<Box<dyn FnOnce() -> bool + Send>>> = Mutex::new(None);
 
-    type KeyFn = dyn FnMut(&mut IntoIter<KeyEvent>) -> Option<Box<dyn FnOnce() + Send>> + Send;
+    type KeyFn =
+        dyn FnMut(&mut IntoIter<KeyEvent>) -> Option<Box<dyn FnOnce() -> bool + Send>> + Send;
 
     /// Whether or not the [`Mode`] has changed
-    pub fn was_set() -> Option<Box<dyn FnOnce() + Send>> {
+    pub fn get_set_mode_fn() -> Option<Box<dyn FnOnce() -> bool + Send>> {
         SET_MODE.lock().take()
     }
 
@@ -61,7 +62,7 @@ mod switch {
         let prev = set_mode.take();
         *set_mode = Some(Box::new(move || {
             if let Some(f) = prev {
-                f()
+                f();
             }
             RESET_MODE.lock()()
         }));
@@ -75,7 +76,7 @@ mod switch {
         let prev = set_mode.take();
         *set_mode = Some(Box::new(move || {
             if let Some(f) = prev {
-                f()
+                f();
             }
             set_mode_fn(mode)
         }));
@@ -124,8 +125,9 @@ mod switch {
         let mut send_keys = std::mem::replace(&mut *SEND_KEYS.lock(), Box::new(|_| None));
         while keys.len() > 0 {
             if let Some(set_mode) = send_keys(&mut keys) {
-                set_mode();
-                send_keys = std::mem::replace(&mut *SEND_KEYS.lock(), Box::new(|_| None));
+                if set_mode() {
+                    send_keys = std::mem::replace(&mut *SEND_KEYS.lock(), Box::new(|_| None));
+                }
             }
         }
         *SEND_KEYS.lock() = send_keys;
@@ -135,7 +137,7 @@ mod switch {
     fn send_keys_fn<M: Mode<U>, U: Ui>(
         mode: &mut M,
         keys: &mut IntoIter<KeyEvent>,
-    ) -> Option<Box<dyn FnOnce() + Send>> {
+    ) -> Option<Box<dyn FnOnce() -> bool + Send>> {
         let Ok(widget) = context::cur_widget::<U>() else {
             return None;
         };
@@ -151,7 +153,7 @@ mod switch {
                     let Some(key) = keys.next() else { break None };
                     sent_keys.push(key);
                     mode.send_key(key, &mut widget, area);
-                    if let Some(mode_fn) = was_set() {
+                    if let Some(mode_fn) = get_set_mode_fn() {
                         break Some(mode_fn);
                     }
                 }
@@ -185,8 +187,8 @@ mod switch {
         })?
     }
 
-    /// Inner function that sets [`Mode`]s
-    fn set_mode_fn<M: Mode<U>, U: Ui>(mode: M) {
+    /// Function that sets [`Mode`]s, returns `true` if successful
+    fn set_mode_fn<M: Mode<U>, U: Ui>(mode: M) -> bool {
         // If we are on the correct widget, no switch is needed.
         if context::cur_widget::<U>().unwrap().type_id() != TypeId::of::<M::Widget>() {
             let windows = context::windows().read();
@@ -202,7 +204,7 @@ mod switch {
                 Ok((.., node)) => switch_widget(node.clone()),
                 Err(err) => {
                     context::notify(err);
-                    return;
+                    return false;
                 }
             };
         }
@@ -246,6 +248,7 @@ mod switch {
 
         let mut mode = mode.unwrap();
         *SEND_KEYS.lock() = Box::new(move |keys| send_keys_fn::<M, U>(&mut mode, keys));
+        true
     }
 }
 

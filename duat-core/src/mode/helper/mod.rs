@@ -467,21 +467,27 @@ impl<'a, W: Widget<A::Ui>, A: Area, S> Editor<'a, W, A, S> {
     ////////// Movement functions
 
     /// Moves the cursor horizontally. May cause vertical movement
-    pub fn move_hor(&mut self, count: i32) {
-        self.cursor.move_hor(count, self.widget.text());
+    ///
+    /// Returns the distance moved in chars.
+    pub fn move_hor(&mut self, count: i32) -> i32 {
+        self.cursor.move_hor(count, self.widget.text())
     }
 
     /// Moves the cursor vertically. May cause horizontal movement
-    pub fn move_ver(&mut self, count: i32) {
+    ///
+    /// Returns the distance moved in lines.
+    pub fn move_ver(&mut self, count: i32) -> i32 {
         self.cursor.move_ver(
             count,
             self.widget.text(),
             self.area,
             self.widget.print_cfg(),
-        );
+        )
     }
 
     /// Moves the cursor vertically. May cause horizontal movement
+    ///
+    /// Returns the distance moved in wrapped lines.
     pub fn move_ver_wrapped(&mut self, count: i32) {
         self.cursor.move_ver_wrapped(
             count,
@@ -594,7 +600,9 @@ impl<'a, W: Widget<A::Ui>, A: Area, S> Editor<'a, W, A, S> {
     /// If this was the main cursor, the main cursor will now be the
     /// cursor immediately behind it.
     pub fn destroy(mut self) {
-        if self.widget.cursors().unwrap().len() > 1 {
+        // If it is 1, it is actually 2, because this Cursor is also part of
+        // that list.
+        if self.widget.cursors().unwrap().len() >= 1 {
             // Rc<Cell> needs to be manually dropped to reduce its counter.
             self.next_i.take();
             // The destructor is what inserts the Cursor back into the list, so

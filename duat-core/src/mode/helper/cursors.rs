@@ -314,10 +314,12 @@ mod cursor {
         }
 
         /// Internal horizontal movement function.
-        pub fn move_hor(&mut self, by: i32, text: &Text) {
+        ///
+        /// Returns the number of distance moved through.
+        pub fn move_hor(&mut self, by: i32, text: &Text) -> i32 {
             let by = by as isize;
             let (Some(last), false) = (text.last_point(), by == 0) else {
-                return;
+                return 0;
             };
             let target = self.caret.get().point().char().saturating_add_signed(by);
 
@@ -345,17 +347,21 @@ mod cursor {
                 text.point_at_char(target)
             };
 
-            *self.caret.get_mut() = LazyVPoint::Unknown(p)
+            let moved = p.char() as i32 - self.caret.get().point().char() as i32;
+            *self.caret.get_mut() = LazyVPoint::Unknown(p);
+            moved
         }
 
         /// Internal vertical movement function.
-        pub fn move_ver(&mut self, by: i32, text: &Text, area: &impl Area, cfg: PrintCfg) {
+        ///
+        /// Returns the distance moved in lines.
+        pub fn move_ver(&mut self, by: i32, text: &Text, area: &impl Area, cfg: PrintCfg) -> i32 {
             let by = by as isize;
             let (Some(last), false) = (text.last_point(), by == 0) else {
-                return;
+                return 0;
             };
 
-            *self.caret.get_mut() = LazyVPoint::Known({
+            let (vp, moved) = {
                 let vp = self.caret.get().calculate(text, area, cfg);
                 let line_start = {
                     let target = self.caret.get().point().line().saturating_add_signed(by);
@@ -379,14 +385,27 @@ mod cursor {
                     })
                     .unwrap_or((0, last));
 
-                vp.known(p, (p.char() - line_start.char()) as u16, vcol, wcol)
-            });
+                let moved = p.line() as i32 - vp.p.line() as i32;
+                let vp = vp.known(p, (p.char() - line_start.char()) as u16, vcol, wcol);
+                (vp, moved)
+            };
+
+            *self.caret.get_mut() = LazyVPoint::Known(vp);
+            moved
         }
 
         /// Internal vertical movement function.
-        pub fn move_ver_wrapped(&mut self, by: i32, text: &Text, area: &impl Area, cfg: PrintCfg) {
+        ///
+        /// Returns the distance moved in wrapped lines.
+        pub fn move_ver_wrapped(
+            &mut self,
+            by: i32,
+            text: &Text,
+            area: &impl Area,
+            cfg: PrintCfg,
+        ) -> i32 {
             if text.last_point().is_none() || by == 0 {
-                return;
+                return 0;
             };
             let vp = self.caret.get().calculate(text, area, cfg);
 
@@ -461,6 +480,8 @@ mod cursor {
                     vp.known(p, ccol, vcol, wcol)
                 }
             });
+
+            wraps
         }
 
         pub(crate) fn shift_by_change(&self, change: Change<&str>) {

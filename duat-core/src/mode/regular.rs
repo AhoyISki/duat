@@ -21,7 +21,7 @@ impl<U: Ui> super::Mode<U> for Regular {
             // Characters
             key!(KeyCode::Char(char)) => helper.edit_iter().for_each(|mut e| {
                 e.insert(char);
-                e.move_hor(1)
+                e.move_hor(1);
             }),
             key!(KeyCode::Enter) => helper.edit_iter().for_each(|mut e| {
                 e.insert('\n');
@@ -71,7 +71,7 @@ fn move_each<S>(mut helper: EditHelper<File, impl Area, S>, direction: Side, amo
             Side::Bottom => e.move_ver(amount as i32),
             Side::Left => e.move_hor(-(amount as i32)),
             Side::Right => e.move_hor(amount as i32),
-        }
+        };
     });
 }
 
@@ -89,7 +89,7 @@ fn move_each_and_select<S>(
             Side::Bottom => e.move_ver(amount as i32),
             Side::Left => e.move_hor(-(amount as i32)),
             Side::Right => e.move_hor(amount as i32),
-        }
+        };
     });
 }
 
