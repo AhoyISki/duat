@@ -229,10 +229,10 @@
 (comment) @comment @spell
 
 ((comment) @comment.documentation
-  (#match? @comment.documentation "^---"))
+  (#match? @comment.documentation "^[-][-][-]"))
 
 ((comment) @comment.documentation
-  (#match? @comment.documentation "^--(\s?)@"))
+  (#match? @comment.documentation "^[-][-](%s?)@"))
 
 (hash_bang_line) @keyword.directive
 

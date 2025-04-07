@@ -8,13 +8,13 @@
 
 ; Identifier naming conventions
 ((identifier) @type
-  (#lua-match? @type "^[A-Z].*[a-z]"))
+  (#match? @type "^[A-Z].*[a-z]"))
 
 ((identifier) @constant
-  (#lua-match? @constant "^[A-Z][A-Z_0-9]*$"))
+  (#match? @constant "^[A-Z][A-Z_0-9]*$"))
 
 ((identifier) @constant.builtin
-  (#lua-match? @constant.builtin "^__[a-zA-Z0-9_]*__$"))
+  (#match? @constant.builtin "^__[a-zA-Z0-9_]*__$"))
 
 ((identifier) @constant.builtin
   (#any-of? @constant.builtin
@@ -25,7 +25,7 @@
 
 ((attribute
   attribute: (identifier) @variable.member)
-  (#lua-match? @variable.member "^[%l_].*$"))
+  (#match? @variable.member "^[%l_].*$"))
 
 ((assignment
   left: (identifier) @type.definition
@@ -49,12 +49,12 @@
 
 ((call
   function: (identifier) @constructor)
-  (#lua-match? @constructor "^%u"))
+  (#match? @constructor "^%u"))
 
 ((call
   function: (attribute
     attribute: (identifier) @constructor))
-  (#lua-match? @constructor "^%u"))
+  (#match? @constructor "^%u"))
 
 ; Decorators
 ((decorator
@@ -189,7 +189,7 @@
 ((module
   .
   (comment) @keyword.directive @nospell)
-  (#lua-match? @keyword.directive "^#!/"))
+  (#match? @keyword.directive "^#!/"))
 
 (string) @string
 
@@ -413,7 +413,7 @@
     (expression_statement
       (assignment
         left: (identifier) @variable.member))))
-  (#lua-match? @variable.member "^[%l_].*$"))
+  (#match? @variable.member "^[%l_].*$"))
 
 ((class_definition
   body: (block
@@ -421,7 +421,7 @@
       (assignment
         left: (_
           (identifier) @variable.member)))))
-  (#lua-match? @variable.member "^[%l_].*$"))
+  (#match? @variable.member "^[%l_].*$"))
 
 ((class_definition
   (block

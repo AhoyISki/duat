@@ -75,10 +75,10 @@
 (keyframes_name) @variable
 
 ((property_name) @variable
-  (#lua-match? @variable "^[-][-]"))
+  (#match? @variable "^[-][-]"))
 
 ((plain_value) @variable
-  (#lua-match? @variable "^[-][-]"))
+  (#match? @variable "^[-][-]"))
 
 [
   (string_value)

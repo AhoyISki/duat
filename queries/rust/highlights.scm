@@ -1,8 +1,10 @@
-; Forked from https://github.com/nvim-treesitter/nvim-treesitter
+; Forked from https://github.com/tree-sitter/tree-sitter-rust
 ; Copyright (c) 2017 Maxim Sokolov
 ; Licensed under the MIT license.
 ; Identifier conventions
 (shebang) @keyword.directive
+
+(identifier) @variable
 
 ((identifier) @type
   (#match? @type "^[A-Z]"))
@@ -12,7 +14,7 @@
 
 ; Assume all-caps names are constants
 ((identifier) @constant
-  (#match? @constant "^[A-Z][A-Z0-9]*$"))
+  (#match? @constant "^[A-Z][A-Z0-9_]*$"))
 
 ; Other identifiers
 (type_identifier) @type
@@ -122,7 +124,7 @@
 
 ((scoped_identifier
   name: (identifier) @constant)
-  (#match? @constant "^[A-Z][A-Z0-9]*$"))
+  (#match? @constant "^[A-Z][A-Z0-9_]*$"))
 
 ((scoped_identifier
   path: (identifier) @type
@@ -263,6 +265,7 @@
 [
   "async"
   "await"
+  "gen"
 ] @keyword.coroutine
 
 "try" @keyword.exception
@@ -270,6 +273,7 @@
 [
   "ref"
   "pub"
+  "raw"
   (mutable_specifier)
   "const"
   "static"
@@ -341,6 +345,7 @@
 
 ; Operators
 [
+  "!"
   "!="
   "%"
   "%="
@@ -376,9 +381,6 @@
   "|="
   "||"
 ] @operator
-
-(unary_expression
-  "!" @operator)
 
 (use_wildcard
   "*" @character.special)
@@ -476,7 +478,7 @@
   (block_comment)
   (outer_doc_comment_marker)
   (inner_doc_comment_marker)
-] @comment
+] @comment @spell
 
 (line_comment
   (doc_comment)) @comment.documentation

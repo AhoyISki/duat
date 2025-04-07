@@ -12,7 +12,7 @@
 (comment) @comment @spell
 
 ((comment) @comment.documentation
-  (#match? @comment.documentation "^[%][%]"))
+  (#match? @comment.documentation "^[%%][%%]"))
 
 ; keyword
 [

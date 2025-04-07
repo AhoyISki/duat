@@ -77,7 +77,7 @@
 ;
 (if_statement
   condition: (parenthesized_expression) @indent.align
-  (#lua-match? @indent.align "^%([^\n]")
+  (#match? @indent.align "^%([^\n]")
   (#set! indent.open_delimiter "(")
   (#set! indent.close_delimiter ")")
   (#set! indent.avoid_last_matching_next 1))
@@ -90,7 +90,7 @@
 ;
 (while_statement
   condition: (parenthesized_expression) @indent.align
-  (#lua-match? @indent.align "[^\n ]%)$")
+  (#match? @indent.align "[^\n ]%)$")
   (#set! indent.open_delimiter "(")
   (#set! indent.close_delimiter ")")
   (#set! indent.avoid_last_matching_next 1))
@@ -103,7 +103,7 @@
 ;
 (if_statement
   condition: (parenthesized_expression) @indent.align
-  (#lua-match? @indent.align "[^\n ]%)$")
+  (#match? @indent.align "[^\n ]%)$")
   (#set! indent.open_delimiter "(")
   (#set! indent.close_delimiter ")")
   (#set! indent.avoid_last_matching_next 1))
@@ -124,7 +124,7 @@
   (#set! indent.close_delimiter ")"))
 
 ((parameters) @indent.align
-  (#lua-match? @indent.align "[^\n ]%)$")
+  (#match? @indent.align "[^\n ]%)$")
   (#set! indent.open_delimiter "(")
   (#set! indent.close_delimiter ")")
   (#set! indent.avoid_last_matching_next 1))
@@ -156,13 +156,13 @@
   (_) @indent.branch
   ":"
   .
-  (#lua-match? @indent.branch "^else"))
+  (#match? @indent.branch "^else"))
 
 (ERROR
   (_) @indent.branch @indent.dedent
   ":"
   .
-  (#lua-match? @indent.branch "^elif"))
+  (#match? @indent.branch "^elif"))
 
 (generator_expression
   ")" @indent.end)

@@ -39,10 +39,10 @@
 (marginalia) @comment
 
 ((literal) @number
-  (#lua-match? @number "^%d+$"))
+  (#match? @number "^%d+$"))
 
 ((literal) @number.float
-  (#lua-match? @number.float "^[-]?%d*\.%d*$"))
+  (#match? @number.float "^[-]?%d*\.%d*$"))
 
 (parameter) @variable.parameter
 

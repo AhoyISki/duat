@@ -283,7 +283,7 @@
 ] @comment @spell
 
 ((block_comment) @comment.documentation
-  (#lua-match? @comment.documentation "^/[*][*][^*].*[*]/$"))
+  (#match? @comment.documentation "^/[*][*][^*].*[*]/$"))
 
 ; `case` is a conditional keyword in case_block
 (case_block
