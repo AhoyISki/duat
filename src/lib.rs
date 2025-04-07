@@ -699,7 +699,7 @@ impl<U: Ui> Mode<U> for Normal {
                         e.move_hor(-(e.v_caret().char_col() as i32));
                         e.set_anchor();
                         let indent = e.indent();
-                        e.move_hor(indent as i32)
+                        e.move_hor(indent as i32);
                     }
                 });
                 mode::set::<U>(Insert::new());
@@ -835,11 +835,13 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('_'), Mod::ALT) => {
                 helper.edit_iter().for_each(|mut e| {
                     e.set_caret_on_end();
-                    e.move_hor(1)
+                    e.move_hor(1);
                 });
                 // In the first iteration, connected Cursors are joined, this one just
                 // undoes the movement.
-                helper.edit_iter().for_each(|mut e| e.move_hor(-1));
+                helper.edit_iter().for_each(|mut e| {
+                    e.move_hor(-1);
+                });
             }
             key!(Char('s'), Mod::ALT) => helper.edit_iter().for_each(|mut e| {
                 e.set_caret_on_start();
@@ -913,7 +915,7 @@ impl<U: Ui> Mode<U> for Normal {
                                 e.append(paste);
                                 e.move_to(caret);
                             } else {
-                                e.move_hor(-(e.v_caret().char_col() as i32))
+                                e.move_hor(-(e.v_caret().char_col() as i32));
                             }
                         } else if key.code == Char('P') {
                             e.set_caret_on_start();
@@ -965,7 +967,9 @@ impl<U: Ui> Mode<U> for Normal {
                     }
                 } else {
                     while e.caret().line() < e.len().line() {
-                        e.move_ver(1);
+                        if e.move_ver(1) == 0 {
+                            break;
+                        }
                         if e.v_caret().visual_col() == v_caret.visual_col() {
                             return;
                         }
@@ -1047,7 +1051,7 @@ impl Insert {
     pub fn new() -> Self {
         Self {
             insert_tabs: INSERT_TABS.load(Ordering::Relaxed),
-            indent_keys: vec!['\n', '(', ')', '{', '}', '[', ']'],
+            indent_keys: vec!['\n', '\t', '(', ')', '{', '}', '[', ']'],
         }
     }
 
@@ -1115,7 +1119,7 @@ impl<U: Ui> Mode<U> for Insert {
             key!(Char(char)) => helper.edit_iter().for_each(|mut e| {
                 e.insert(char);
                 e.move_hor(1);
-                if self.indent_keys.contains(&char) {
+                if self.indent_keys.contains(&char) && e.indent() == e.v_caret().char_col() - 1 {
                     reindent(&mut e, &mut processed_lines);
                 }
             }),
@@ -1158,7 +1162,7 @@ impl<U: Ui> Mode<U> for Insert {
             }),
             key!(Left, Mod::NONE | Mod::SHIFT) => helper.edit_iter().for_each(|mut e| {
                 set_anchor_if_needed(key.modifiers == Mod::SHIFT, &mut e);
-                e.move_hor(-1)
+                e.move_hor(-1);
             }),
             key!(Down, Mod::NONE | Mod::SHIFT) => helper.edit_iter().for_each(|mut e| {
                 set_anchor_if_needed(key.modifiers == Mod::SHIFT, &mut e);
@@ -1247,7 +1251,7 @@ fn match_goto<S, U: Ui>(
         }),
         key!(Char('j')) => helper.edit_iter().for_each(|mut e| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut e);
-            e.move_ver(i32::MAX)
+            e.move_ver(i32::MAX);
         }),
         key!(Char('k')) => helper.edit_iter().for_each(|mut e| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut e);
@@ -1684,7 +1688,7 @@ fn reindent<S>(e: &mut Editor<File, impl Area, S>, processed_lines: &mut Vec<usi
     if prev_caret < e.caret() {
         e.move_to(prev_caret);
     } else {
-        e.move_hor(prev_caret.char() as i32 - e.caret().char() as i32)
+        e.move_hor(prev_caret.char() as i32 - e.caret().char() as i32);
     }
 
     processed_lines.push(e.caret().line());
