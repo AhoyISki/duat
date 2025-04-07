@@ -9,7 +9,7 @@
 //! with the [`PubTsParser`] public API.
 //!
 //! [tree-sitter]: https://tree-sitter.github.io/tree-sitter
-#![feature(decl_macro, let_chains)]
+#![feature(decl_macro, let_chains, macro_metavar_expr_concat)]
 
 use std::{collections::HashMap, marker::PhantomData, ops::Range, path::Path, sync::LazyLock};
 
@@ -20,12 +20,12 @@ use duat_core::{
     hooks::{self, OnFileOpen},
     text::{
         Bytes, Change, Key, Matcheable, MutTags, Point, Reader, ReaderCfg, Tag, Text,
-        merge_range_in, text,
+        merge_range_in,
     },
 };
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{
-    InputEdit, Language, Node, Parser, Point as TSPoint, Query, QueryCaptures, QueryCursor,
+    InputEdit, Language, Node, Parser, Point as TSPoint, Query, QueryCapture, QueryCursor,
     TextProvider, Tree,
 };
 
@@ -101,14 +101,165 @@ impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter<U> {
 
 pub struct TsParser {
     parser: Parser,
+    range: Range<usize>,
+    offset: TSPoint,
     lang_parts: LangParts<'static>,
-    forms: &'static [(FormId, Key, Key, usize)],
-    keys: Range<Key>,
+    forms: &'static [(FormId, u8)],
     tree: Tree,
     old_tree: Option<Tree>,
+    sub_trees: Vec<TsParser>,
+    key: Key,
 }
 
 impl TsParser {
+    fn init(
+        bytes: &mut Bytes,
+        tags: &mut MutTags,
+        range: Range<usize>,
+        offset: TSPoint,
+        lang_parts: LangParts<'static>,
+        forms: &'static [(FormId, u8)],
+    ) -> TsParser {
+        let (.., lang, _) = &lang_parts;
+
+        let mut parser = Parser::new();
+        parser.set_language(lang).unwrap();
+
+        let tree = parser
+            .parse_with_options(&mut buf_parse(bytes, range.clone()), None, None)
+            .unwrap();
+
+        let mut parser = TsParser {
+            parser,
+            range: range.clone(),
+            offset,
+            lang_parts,
+            forms,
+            tree,
+            old_tree: None,
+            sub_trees: Vec::new(),
+            key: ts_key(),
+        };
+
+        parser.highlight_and_inject(bytes, tags, range);
+
+        parser
+    }
+
+    fn highlight_and_inject(&mut self, bytes: &mut Bytes, tags: &mut MutTags, range: Range<usize>) {
+        if range.start >= self.range.end || range.end <= self.range.start {
+            return;
+        }
+
+        let (.., [hi_query, _, inj_query]) = &self.lang_parts;
+        let buf = TsBuf(bytes);
+
+        tags.remove(range.clone(), self.key);
+
+        // Include a little bit of overhang, in order to deal with some loose
+        // ends, mostly related to comments.
+        // There should be no tag duplication, since Duat does not allow that.
+        let start = range.start.saturating_sub(1).max(self.range.start);
+        let end = (range.end + 1).min(bytes.len().byte()).min(self.range.end);
+        let mut cursor = QueryCursor::new();
+        cursor.set_byte_range(start..end);
+        let root = self
+            .tree
+            .root_node_with_offset(self.range.start, self.offset);
+
+        let sub_trees_to_add = {
+            let mut sub_trees_to_add: Vec<(Range<usize>, TSPoint, String)> = Vec::new();
+
+            let mut inj_captures = cursor.captures(inj_query, root, buf);
+            let cap_names = inj_query.capture_names();
+            let is_content =
+                |cap: &&QueryCapture| cap_names[cap.index as usize] == "injection.content";
+            let is_language =
+                |cap: &&QueryCapture| cap_names[cap.index as usize] == "injection.language";
+            while let Some((qm, _)) = inj_captures.next() {
+                let Some(cap) = qm.captures.iter().find(is_content) else {
+                    continue;
+                };
+
+                let props = inj_query.property_settings(qm.pattern_index);
+                let lang = props
+                    .iter()
+                    .find_map(|p| {
+                        (p.key.as_ref() == "injection.language")
+                            .then_some(p.value.as_ref().unwrap().to_string())
+                    })
+                    .or_else(|| {
+                        let cap = qm.captures.iter().find(is_language)?;
+                        Some(bytes.strs(cap.node.byte_range()).to_string())
+                    });
+
+                if let Some(lang) = lang
+                    && !sub_trees_to_add
+                        .iter()
+                        .any(|(lhs, ..)| *lhs == cap.node.byte_range())
+                {
+                    sub_trees_to_add.push((cap.node.byte_range(), cap.node.start_position(), lang));
+                }
+            }
+
+            sub_trees_to_add
+        };
+
+        // If a tree was not in sub_trees_to_add, but is part of the affected
+        // range, that means it was removed.
+        self.sub_trees.retain_mut(|st| {
+            if let Some((.., lang)) = sub_trees_to_add.iter().find(|(lhs, ..)| *lhs == st.range) {
+                if lang != st.lang_parts.1[0] {
+                    if !(st.range.start >= start && st.range.end <= end) {
+                        tags.remove(st.range.clone(), self.key);
+                    }
+                    false
+                } else {
+                    st.highlight_and_inject(bytes, tags, st.range.clone());
+                    true
+                }
+            // If the sub tree was not found, but its range was
+            // parsed, it was deleted
+            } else if st.range.start >= start && st.range.end <= end {
+                false
+            } else {
+                st.highlight_and_inject(bytes, tags, range.clone());
+                true
+            }
+        });
+
+        // In the end, we add the sub trees that weren't already in there.
+        // This should automatically handle all of the sub trees's sub trees.
+        for (range, offset, lang) in sub_trees_to_add {
+            if !self.sub_trees.iter().any(|st| st.range == range) {
+                let Some(lang_parts) = lang_parts_from_ident(&lang) else {
+                    continue;
+                };
+
+                let form_parts = forms_from_query(&lang_parts);
+                self.sub_trees.push(TsParser::init(
+                    bytes, tags, range, offset, lang_parts, form_parts,
+                ))
+            }
+        }
+
+        // We highlight at the very end, so if, for example, a sub tree gets
+        // removed, tags can be readded, without leaving a blank space, in
+        // case the injection was of the same language.
+        let buf = TsBuf(bytes);
+        let mut hi_captures = cursor.captures(hi_query, root, buf);
+        while let Some((qm, _)) = hi_captures.next() {
+            for cap in qm.captures.iter() {
+                let range = cap.node.range();
+                let (start, end) = (range.start_byte, range.end_byte);
+                let (form, priority) = self.forms[cap.index as usize];
+                if start != end {
+                    tags.insert(self.key, Tag::Form(start..end, form, priority));
+                }
+            }
+        }
+    }
+
     fn cfg(file: &str) -> Option<TsParserCfg> {
         TsParserCfg::new(file)
     }
@@ -120,6 +271,22 @@ impl Reader for TsParser {
     // `apply_changes` is not meant to modify the `Text`, it is only meant
     // to update the internal state of the `Reader`.
     fn apply_changes(&mut self, bytes: &mut Bytes, changes: &[Change<&str>]) {
+        fn deoffset(ts_point: TSPoint, offset: TSPoint) -> TSPoint {
+            if ts_point.row == offset.row {
+                TSPoint::new(ts_point.row - offset.row, ts_point.column - offset.column)
+            } else {
+                TSPoint::new(ts_point.row - offset.row, ts_point.column)
+            }
+        }
+        fn reoffset(ts_point: TSPoint, offset: TSPoint) -> TSPoint {
+            if ts_point.row == 0 {
+                TSPoint::new(ts_point.row + offset.row, ts_point.column + offset.column)
+            } else {
+                TSPoint::new(ts_point.row + offset.row, ts_point.column)
+            }
+        }
+
+        let mut at_least_one_change = false;
         for change in changes {
             let start = change.start();
             let added = change.added_end();
@@ -128,25 +295,60 @@ impl Reader for TsParser {
             let ts_start = ts_point(start, bytes);
             let ts_taken_end = ts_point_from(taken, (ts_start.column, start), change.taken_text());
             let ts_added_end = ts_point_from(added, (ts_start.column, start), change.added_text());
-            // Tree::edit will update the inner tree to reflect changes.
+
+            // Only make changes to this tree if the Change takes place in it.
+            // If the Change happens before the tree, we can just shift it.
+            if start.byte() < self.range.start && taken.byte() <= self.range.start {
+                self.range.start = (self.range.start as i32 + change.shift()[0]) as usize;
+                self.range.end = (self.range.end as i32 + change.shift()[0]) as usize;
+                self.offset = deoffset(self.offset, ts_taken_end);
+                self.offset = reoffset(self.offset, ts_added_end);
+                continue;
+            // If it happens after, we can just ignore it.
+            // By this point, sub trees that intersect with a change
+            // should already have been removed, so we can ignore that
+            // scenario.
+            } else if start.byte() >= self.range.end {
+                continue;
+            }
+            at_least_one_change = true;
+
             self.tree.edit(&InputEdit {
-                start_byte: start.byte(),
-                old_end_byte: taken.byte(),
-                new_end_byte: added.byte(),
-                start_position: ts_start,
-                old_end_position: ts_taken_end,
-                new_end_position: ts_added_end,
+                start_byte: start.byte() - self.range.start,
+                old_end_byte: taken.byte() - self.range.start,
+                new_end_byte: added.byte() - self.range.start,
+                start_position: deoffset(ts_start, self.offset),
+                old_end_position: deoffset(ts_taken_end, self.offset),
+                new_end_position: deoffset(ts_added_end, self.offset),
+            });
+
+            self.range.end = (self.range.end as i32 + change.shift()[0]) as usize;
+
+            self.sub_trees.retain_mut(|st| {
+                // Remove trees which are partially contained by the Change.
+                (st.range.start > start.byte() && st.range.end < taken.byte())
+                    || (start.byte() > st.range.start && taken.byte() < st.range.end)
             });
         }
 
+        if !at_least_one_change {
+            return;
+        }
+
+        let mut parse_fn = buf_parse(bytes, self.range.clone());
         let tree = self
             .parser
-            .parse_with_options(&mut buf_parse(bytes), Some(&self.tree), None)
+            .parse_with_options(&mut parse_fn, Some(&self.tree), None)
             .unwrap();
 
         // I keep an old tree around, in order to compare it for tagging
         // purposes.
         self.old_tree = Some(std::mem::replace(&mut self.tree, tree));
+        drop(parse_fn);
+
+        for st in self.sub_trees.iter_mut() {
+            st.apply_changes(bytes, changes);
+        }
     }
 
     // `ranges_to_update` takes the information stored in `apply_changes`
@@ -169,9 +371,6 @@ impl Reader for TsParser {
         if let Some(old_tree) = self.old_tree.as_ref() {
             for range in self.tree.changed_ranges(old_tree) {
                 let range = range.start_byte..range.end_byte;
-                if range.clone().count() > 300 {
-                    duat_core::log_file!("range {range:?} is long");
-                }
                 merge_range_in(&mut ranges, range);
             }
         }
@@ -191,19 +390,7 @@ impl Reader for TsParser {
     }
 
     fn update_range(&mut self, bytes: &mut Bytes, mut tags: MutTags, range: Range<usize>) {
-        let (.., [hi_query, _]) = &self.lang_parts;
-        let buf = TsBuf(bytes);
-
-        tags.remove(range.clone(), self.keys.clone());
-
-        let start = range.start.saturating_sub(1);
-        let end = (range.end + 1).min(bytes.len().byte());
-
-        let mut cursor = QueryCursor::new();
-
-        cursor.set_byte_range(start..end);
-        let query_captures = cursor.captures(hi_query, self.tree.root_node(), buf);
-        highlight_captures(tags, query_captures, self.forms);
+        self.highlight_and_inject(bytes, &mut tags, range);
     }
 
     fn public_reader<'a>(&'a mut self, bytes: &'a mut Bytes) -> Self::PublicReader<'a> {
@@ -211,47 +398,46 @@ impl Reader for TsParser {
     }
 }
 
+impl std::fmt::Debug for TsParser {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let start = self.range.start;
+        f.debug_struct("TsParser")
+            .field("range", &self.range)
+            .field("offset", &self.offset)
+            .field("tree", &self.tree.root_node_with_offset(start, self.offset))
+            .field("old_tree", &self.old_tree)
+            .field("sub_trees", &self.sub_trees)
+            .finish_non_exhaustive()
+    }
+}
+
 pub struct TsParserCfg {
     lang_parts: LangParts<'static>,
-    forms: &'static [(FormId, Key, Key, usize)],
-    keys: Range<Key>,
+    form_parts: &'static [(FormId, u8)],
 }
 
 impl TsParserCfg {
     pub fn new(file: &str) -> Option<Self> {
-        let lang_parts = lang_parts(file)?;
-        let (keys, forms) = forms_from_query(&lang_parts);
+        let lang_parts = lang_parts_from_file(file)?;
+        let form_parts = forms_from_query(&lang_parts);
 
-        Some(TsParserCfg { lang_parts, forms, keys })
+        Some(TsParserCfg { lang_parts, form_parts })
     }
 }
 
 impl ReaderCfg for TsParserCfg {
     type Reader = TsParser;
 
-    fn init(self, bytes: &mut Bytes, tags: MutTags) -> Result<Self::Reader, Text> {
-        let (_, lang, [hi_query, _]) = &self.lang_parts;
-
-        let mut parser = Parser::new();
-        parser.set_language(lang).unwrap();
-
-        let tree = parser
-            .parse_with_options(&mut buf_parse(bytes), None, None)
-            .unwrap();
-        let mut cursor = QueryCursor::new();
-        let buf = TsBuf(bytes);
-
-        let query_captures = cursor.captures(hi_query, tree.root_node(), buf);
-        highlight_captures(tags, query_captures, self.forms);
-
-        Ok(TsParser {
-            parser,
-            lang_parts: self.lang_parts,
-            tree,
-            forms: self.forms,
-            keys: self.keys,
-            old_tree: None,
-        })
+    fn init(self, bytes: &mut Bytes, mut tags: MutTags) -> Result<Self::Reader, Text> {
+        let offset = TSPoint::default();
+        Ok(TsParser::init(
+            bytes,
+            &mut tags,
+            0..bytes.len().byte(),
+            offset,
+            self.lang_parts,
+            self.form_parts,
+        ))
     }
 }
 
@@ -259,14 +445,14 @@ pub struct PubTsParser<'a>(&'a mut TsParser, &'a mut Bytes);
 
 impl<'a> PubTsParser<'a> {
     pub fn lang(&self) -> &'static str {
-        self.0.lang_parts.0[1]
+        self.0.lang_parts.1[0]
     }
 
     /// Returns the indentation difference from the previous line
     // WARNING: long ass function
     pub fn indent_on(&mut self, p: Point, cfg: PrintCfg) -> Option<usize> {
-        let (.., [_, indent_query]) = &self.0.lang_parts;
-        if indent_query.pattern_count() == 0 {
+        let (.., [_, ind_query, _]) = &self.0.lang_parts;
+        if ind_query.pattern_count() == 0 {
             return None;
         }
         let tab = cfg.tab_stops.size() as i32;
@@ -280,9 +466,9 @@ impl<'a> PubTsParser<'a> {
         let q = {
             let mut cursor = QueryCursor::new();
             let buf = TsBuf(self.1);
-            cursor.matches(indent_query, root, buf).for_each(|qm| {
+            cursor.matches(ind_query, root, buf).for_each(|qm| {
                 for cap in qm.captures.iter() {
-                    let cap_end = indent_query.capture_names()[cap.index as usize]
+                    let cap_end = ind_query.capture_names()[cap.index as usize]
                         .strip_prefix("indent.")
                         .unwrap();
                     let nodes = if let Some(nodes) = caps.get_mut(cap_end) {
@@ -291,7 +477,7 @@ impl<'a> PubTsParser<'a> {
                         caps.insert(cap_end, HashMap::new());
                         caps.get_mut(cap_end).unwrap()
                     };
-                    let props = indent_query.property_settings(qm.pattern_index).iter();
+                    let props = ind_query.property_settings(qm.pattern_index).iter();
                     nodes.insert(
                         cap.node.id(),
                         props
@@ -501,8 +687,11 @@ fn descendant_in(node: Node, byte: usize) -> Node {
     node.descendant_for_byte_range(byte, byte + 1).unwrap()
 }
 
-fn buf_parse<'a>(bytes: &'a mut Bytes) -> impl FnMut(usize, TSPoint) -> &'a [u8] {
-    let [s0, s1] = bytes.strs(..).to_array();
+fn buf_parse<'a>(
+    bytes: &'a mut Bytes,
+    range: Range<usize>,
+) -> impl FnMut(usize, TSPoint) -> &'a [u8] {
+    let [s0, s1] = bytes.strs(range).to_array();
     |byte, _point| {
         if byte < s0.len() {
             &s0.as_bytes()[byte..]
@@ -530,82 +719,43 @@ fn ts_point_from(to: Point, (col, from): (usize, Point), str: &str) -> TSPoint {
     TSPoint::new(to.line(), col)
 }
 
-fn forms_from_query(([_, lang, _], _, [query, ..]): &LangParts<'static>) -> FormParts<'static> {
+fn forms_from_query(
+    (_, [lang, _], _, [query, ..]): &LangParts<'static>,
+) -> &'static [(FormId, u8)] {
     #[rustfmt::skip]
-    const PRECEDENCES: &[&str] = &[
+    const PRIORITIES: &[&str] = &[
         "variable", "module", "label", "string", "character", "boolean", "number", "type",
         "attribute", "property", "function", "constant", "constructor", "operator", "keyword",
         "punctuation", "comment", "markup"
     ];
-    static LISTS: LazyLock<Mutex<HashMap<&str, FormParts<'static>>>> =
-        LazyLock::new(Mutex::default);
+    static LISTS: LazyLock<Mutex<HashMap<&str, &[(FormId, u8)]>>> = LazyLock::new(Mutex::default);
     let mut lists = LISTS.lock();
 
-    if let Some((keys, forms)) = lists.get(lang) {
-        (keys.clone(), forms)
+    if let Some(forms) = lists.get(lang) {
+        forms
     } else {
         let capture_names = query.capture_names();
-        let precedences = capture_names.iter().map(|name| {
-            PRECEDENCES
+        let priorities = capture_names.iter().map(|name| {
+            PRIORITIES
                 .iter()
-                .position(|p| name.starts_with(p))
-                .unwrap_or(usize::MAX)
+                .take_while(|p| !name.starts_with(*p))
+                .count() as u8
         });
 
-        let keys = Key::new_many(capture_names.len() * 2);
-
-        let mut iter_keys = keys.clone();
         let ids = form::ids_of_non_static(
             capture_names
                 .iter()
                 .map(|name| name.to_string() + "." + lang),
         );
-        let forms: Vec<(FormId, Key, Key, usize)> = ids
-            .into_iter()
-            .zip(precedences)
-            .map(|(id, p)| (id, iter_keys.next().unwrap(), iter_keys.next().unwrap(), p))
-            .collect();
+        let forms: Vec<(FormId, u8)> = ids.into_iter().zip(priorities).collect();
 
-        lists.insert(lang, (keys, forms.leak()));
-        lists.get(lang).unwrap().clone()
+        lists.insert(lang, forms.leak());
+        lists.get(lang).unwrap()
     }
 }
 
-fn highlight_captures<'a>(
-    mut tags: MutTags,
-    mut query_captures: QueryCaptures<TsBuf<'a>, &'a [u8]>,
-    forms: &[(FormId, Key, Key, usize)],
-) {
-    let mut cur_start = 0;
-    let mut cur_caps: Vec<(FormId, Key, Key, usize, usize)> = Vec::new();
-
-    while let Some((query_matches, _)) = query_captures.next() {
-        for cap in query_matches.captures.iter() {
-            let range = cap.node.range();
-            let (start, end) = (range.start_byte, range.end_byte);
-            let (form, start_key, end_key, precedence) = forms[cap.index as usize];
-            if start != cur_start {
-                for (form, start_key, end_key, end, _) in cur_caps.drain(..) {
-                    tags.insert(cur_start, Tag::PushForm(form), start_key);
-                    tags.insert(end, Tag::PopForm(form), end_key);
-                }
-                cur_start = start;
-            }
-            if start != end {
-                let i = cur_caps
-                    .iter()
-                    .take_while(|(.., lhs)| *lhs <= precedence)
-                    .count();
-                cur_caps.insert(i, (form, start_key, end_key, end, precedence));
-            }
-        }
-    }
-
-    for (form, start_key, end_key, end, _) in cur_caps.drain(..) {
-        tags.insert(cur_start, Tag::PushForm(form), start_key);
-        tags.insert(end, Tag::PopForm(form), end_key);
-    }
-}
+#[derive(Clone, Copy)]
+struct TsBuf<'a>(&'a Bytes);
 
 impl<'a> TextProvider<&'a [u8]> for TsBuf<'a> {
     type I = std::array::IntoIter<&'a [u8], 2>;
@@ -617,104 +767,32 @@ impl<'a> TextProvider<&'a [u8]> for TsBuf<'a> {
     }
 }
 
-#[derive(Clone, Copy)]
-struct TsBuf<'a>(&'a Bytes);
-
-fn lang_parts(path: impl AsRef<Path>) -> Option<LangParts<'static>> {
-    type InnerLangParts<'a> = ([&'a str; 3], &'a Language, [&'a str; 2]);
-    static LANGUAGES: LazyLock<HashMap<&'static str, InnerLangParts>> = LazyLock::new(|| {
-        macro l($lang:ident) {{
-            let lang: &'static Language = Box::leak(Box::new($lang::LANGUAGE.into()));
-            lang
-        }}
-        macro lf($lang:ident) {
-            Box::leak(Box::new($lang::language()))
-        }
-        macro h($lang:ident) {{
-            let hi = include_str!(concat!("../queries/", stringify!($lang), "/highlights.scm"));
-            [hi, ""]
-        }}
-        macro i($lang:ident) {
-            include_str!(concat!("../queries/", stringify!($lang), "/indents.scm"))
-        }
-        macro h_i($lang:ident) {
-            [h!($lang)[0], i!($lang)]
-        }
-
-        let lang_ocaml = Box::leak(Box::new(ts_ocaml::LANGUAGE_OCAML.into()));
-        let lang_php = Box::leak(Box::new(ts_php::LANGUAGE_PHP_ONLY.into()));
-        let lang_ts = Box::leak(Box::new(ts_ts::LANGUAGE_TYPESCRIPT.into()));
-        let lang_xml = Box::leak(Box::new(ts_xml::LANGUAGE_XML.into()));
-
-        let list = [
-            (["asm", "asm", "Assembly"], l!(ts_asm), h!(asm)),
-            (["c", "c", "C"], l!(ts_c), h_i!(c)),
-            (["h", "c", "C"], l!(ts_c), h_i!(c)),
-            (["cc", "cpp", "C++"], l!(ts_cpp), h_i!(cpp)),
-            (["cpp", "cpp", "C++"], l!(ts_cpp), h_i!(cpp)),
-            (["cxx", "cpp", "C++"], l!(ts_cpp), h_i!(cpp)),
-            (["hpp", "cpp", "C++"], l!(ts_cpp), h_i!(cpp)),
-            (["hxx", "cpp", "C++"], l!(ts_cpp), h_i!(cpp)),
-            (["cs", "csharp", "C#"], l!(ts_c_sharp), h!(c_sharp)),
-            (["css", "css", "CSS"], l!(ts_css), h_i!(css)),
-            (["dart", "dart", "Dart"], lf!(ts_dart), h_i!(dart)),
-            (["ex", "elixir", "Elixir"], l!(ts_elixir), h_i!(elixir)),
-            (["exs", "elixir", "Elixir"], l!(ts_elixir), h_i!(elixir)),
-            (["erl", "erlang", "Erlang"], l!(ts_erlang), h!(erlang)),
-            (["hrl", "erlang", "Erlang"], l!(ts_erlang), h!(erlang)),
-            (["xrl", "erlang", "Erlang"], l!(ts_erlang), h!(erlang)),
-            (["yrl", "erlang", "Erlang"], l!(ts_erlang), h!(erlang)),
-            (["for", "fortran", "Fortran"], l!(ts_fortran), h_i!(fortran)),
-            (["fpp", "fortran", "Fortran"], l!(ts_fortran), h_i!(fortran)),
-            (["gleam", "gleam", "Gleam"], l!(ts_gleam), h_i!(gleam)),
-            (["go", "go", "Go"], l!(ts_go), h_i!(go)),
-            (["groovy", "groovy", "Groovy"], l!(ts_groovy), h_i!(groovy)),
-            (["gvy", "groovy", "Groovy"], l!(ts_groovy), h_i!(groovy)),
-            (["hsc", "haskell", "Haskell"], l!(ts_haskell), h!(haskell)),
-            (["hs", "haskell", "Haskell"], l!(ts_haskell), h!(haskell)),
-            (["htm", "html", "HTML"], l!(ts_html), h_i!(html)),
-            (["html", "html", "HTML"], l!(ts_html), h_i!(html)),
-            (["java", "java", "Java"], l!(ts_java), h_i!(java)),
-            (["js", "js", "JavaScript"], l!(ts_js), h_i!(js)),
-            (["jsonc", "json", "JSON"], l!(ts_json), h_i!(json)),
-            (["json", "json", "JSON"], l!(ts_json), h_i!(json)),
-            (["jl", "julia", "Julia"], l!(ts_julia), h_i!(julia)),
-            (["lua", "lua", "Lua"], l!(ts_lua), h_i!(lua)),
-            (["md", "markdown", "Markdown"], l!(ts_md), h_i!(markdown)),
-            (["nix", "nix", "Nix"], l!(ts_nix), h_i!(nix)),
-            (["m", "objc", "Objective-C"], l!(ts_objc), h_i!(objc)),
-            (["ml", "ocaml", "OCaml"], lang_ocaml, h_i!(ocaml)),
-            (["php", "php", "PHP"], lang_php, h_i!(php)),
-            (["pyc", "python", "Python"], l!(ts_python), h_i!(python)),
-            (["pyo", "python", "Python"], l!(ts_python), h_i!(python)),
-            (["py", "python", "Python"], l!(ts_python), h_i!(python)),
-            (["r", "r", "R"], l!(ts_r), h_i!(r)),
-            (["rb", "ruby", "Ruby"], l!(ts_ruby), h_i!(ruby)),
-            (["rs", "rust", "Rust"], l!(ts_rust), h_i!(rust)),
-            (["scala", "scala", "Scala"], l!(ts_scala), h!(scala)),
-            (["sc", "scala", "Scala"], l!(ts_scala), h!(scala)),
-            (["scss", "scss", "SCSS"], lf!(ts_scss), h_i!(scss)),
-            (["sh", "shell", "Shell"], l!(ts_bash), h!(bash)),
-            (["sql", "sql", "SQL"], l!(ts_sequel), h_i!(sql)),
-            (["swift", "swift", "Swift"], l!(ts_swift), h_i!(swift)),
-            (["ts", "ts", "TypeScript"], lang_ts, h!(ts)),
-            (["vim", "viml", "Viml"], lf!(ts_vim), h!(vim)),
-            (["xml", "xml", "XML"], lang_xml, h_i!(xml)),
-            (["yaml", "yaml", "YAML"], l!(ts_yaml), h_i!(yaml)),
-            (["yml", "yaml", "YAML"], l!(ts_yaml), h_i!(yaml)),
-            (["zig", "zig", "Zig"], l!(ts_zig), h_i!(zig)),
-        ];
-
-        HashMap::from_iter(list.into_iter().map(|lp| (lp.0[0], lp)))
+fn lang_parts_from_file(path: impl AsRef<Path>) -> Option<LangParts<'static>> {
+    static LANGUAGES: LazyLock<HashMap<&str, &InnerLangParts>> = LazyLock::new(|| {
+        HashMap::from_iter(LANGS.iter().filter_map(|parts| parts.0.map(|e| (e, parts))))
     });
 
     let ext = path.as_ref().extension()?.to_str()?;
-    LANGUAGES.get(ext).copied().map(|(idents, lang, queries)| {
-        let queries = queries.map(|q| Query::new(lang, q).unwrap());
-        (idents, lang, queries)
+    LANGUAGES
+        .get(ext)
+        .copied()
+        .map(|(ext, idents, lang_and_queries)| {
+            let (lang, queries) = &**lang_and_queries;
+            (*ext, *idents, lang, queries)
+        })
+}
+
+fn lang_parts_from_ident(lang: &str) -> Option<LangParts<'static>> {
+    static LANGUAGES: LazyLock<HashMap<&str, &InnerLangParts>> =
+        LazyLock::new(|| HashMap::from_iter(LANGS.iter().map(|lp| (lp.1[0], lp))));
+
+    LANGUAGES.get(lang).map(|(ext, idents, lang_and_queries)| {
+        let (lang, queries) = &**lang_and_queries;
+        (*ext, *idents, lang, queries)
     })
 }
 
+#[allow(dead_code)]
 fn log_node(node: tree_sitter::Node) {
     use std::fmt::Write;
 
@@ -734,5 +812,137 @@ fn log_node(node: tree_sitter::Node) {
     duat_core::log_file!("{log}");
 }
 
-type LangParts<'a> = ([&'a str; 3], &'a Language, [Query; 2]);
-type FormParts<'a> = (Range<Key>, &'a [(FormId, Key, Key, usize)]);
+type InnerLangParts<'a> = (
+    Option<&'a str>,
+    [&'a str; 2],
+    LazyLock<&'a (Language, [Query; 3])>,
+);
+type LangParts<'a> = (Option<&'a str>, [&'a str; 2], &'a Language, &'a [Query; 3]);
+
+#[rustfmt::skip]
+static LANGS: [InnerLangParts; 57] = {
+    use ts_md::INLINE_LANGUAGE as INLINE_MARKDOWN;
+    macro l($name:ident) {
+        ${concat(ts_, $name)}::LANGUAGE.into()
+    }
+    macro lf($name:ident) {
+        ${concat(ts_, $name)}::language()
+    }
+
+    macro h($name:ident, $lang:expr) {
+        Query::new(
+            &$lang,
+            include_str!(concat!("../queries/", stringify!($name), "/highlights.scm")),
+        )
+        .unwrap()
+    }
+    macro i($name:ident, $lang:expr) {
+        Query::new(
+            &$lang,
+            include_str!(concat!("../queries/", stringify!($name), "/indents.scm")),
+        )
+        .unwrap()
+    }
+    macro j($name:ident, $lang:expr) {
+        Query::new(
+            &$lang,
+            include_str!(concat!("../queries/", stringify!($name), "/injections.scm")),
+        )
+        .unwrap()
+    }
+    macro h_i($name:ident, $lang:expr) {{
+        LazyLock::new(|| {
+            let lang = $lang;
+            let queries = [
+                h!($name, lang),
+                i!($name, lang),
+                Query::new(&$lang, "").unwrap(),
+            ];
+            Box::leak(Box::new((lang, queries)))
+        })
+    }}
+    macro h_j($name:ident, $lang:expr) {{
+        LazyLock::new(|| {
+            let lang = $lang;
+            let queries = [
+                h!($name, lang),
+                Query::new(&$lang, "").unwrap(),
+                j!($name, lang),
+            ];
+            Box::leak(Box::new((lang, queries)))
+        })
+    }}
+    macro h_i_j($name:ident, $lang:expr) {{
+        LazyLock::new(|| {
+            let lang = $lang;
+            let queries = [h!($name, $lang), i!($name, $lang), j!($name, $lang)];
+            Box::leak(Box::new((lang, queries)))
+        })
+    }}
+
+    [
+        (Some("asm"), ["asm", "Assembly"], h_j!(asm, l!(asm))),
+        (Some("c"), ["c", "C"], h_i_j!(c, l!(c))),
+        (Some("h"), ["c", "C"], h_i_j!(c, l!(c))),
+        (Some("cc"), ["cpp", "C++"], h_i_j!(cpp, l!(cpp))),
+        (Some("cpp"), ["cpp", "C++"], h_i_j!(cpp, l!(cpp))),
+        (Some("cxx"), ["cpp", "C++"], h_i_j!(cpp, l!(cpp))),
+        (Some("hpp"), ["cpp", "C++"], h_i_j!(cpp, l!(cpp))),
+        (Some("hxx"), ["cpp", "C++"], h_i_j!(cpp, l!(cpp))),
+        (Some("cs"), ["csharp", "C#"], h_j!(c_sharp, l!(c_sharp))),
+        (Some("css"), ["css", "CSS"], h_i_j!(css, l!(css))),
+        (Some("dart"), ["dart", "Dart"], h_i_j!(dart, lf!(dart))),
+        (Some("ex"), ["elixir", "Elixir"], h_i_j!(elixir, l!(elixir))),
+        (Some("exs"), ["elixir", "Elixir"], h_i_j!(elixir, l!(elixir))),
+        (Some("erl"), ["erlang", "Erlang"], h_j!(erlang, l!(erlang))),
+        (Some("hrl"), ["erlang", "Erlang"], h_j!(erlang, l!(erlang))),
+        (Some("xrl"), ["erlang", "Erlang"], h_j!(erlang, l!(erlang))),
+        (Some("yrl"), ["erlang", "Erlang"], h_j!(erlang, l!(erlang))),
+        (Some("for"), ["fortran", "Fortran"], h_i_j!(fortran, l!(fortran))),
+        (Some("fpp"), ["fortran", "Fortran"], h_i_j!(fortran, l!(fortran))),
+        (Some("gleam"), ["gleam", "Gleam"], h_i_j!(gleam, l!(gleam))),
+        (Some("go"), ["go", "Go"], h_i_j!(go, l!(go))),
+        (Some("groovy"), ["groovy", "Groovy"], h_i_j!(groovy, l!(groovy))),
+        (Some("gvy"), ["groovy", "Groovy"], h_i_j!(groovy, l!(groovy))),
+        (Some("hsc"), ["haskell", "Haskell"], h_j!(haskell, l!(haskell))),
+        (Some("hs"), ["haskell", "Haskell"], h_j!(haskell, l!(haskell))),
+        (Some("htm"), ["html", "HTML"], h_i_j!(html, l!(html))),
+        (Some("html"), ["html", "HTML"], h_i_j!(html, l!(html))),
+        (Some("java"), ["java", "Java"], h_i_j!(java, l!(java))),
+        (Some("js"), ["js", "JavaScript"], h_i_j!(javascript, l!(js))),
+        (Some("jsonc"), ["json", "JSON"], h_i!(json, l!(json))),
+        (Some("json"), ["json", "JSON"], h_i!(json, l!(json))),
+        (Some("jl"), ["julia", "Julia"], h_i_j!(julia, l!(julia))),
+        (Some("lua"), ["lua", "Lua"], h_i_j!(lua, l!(lua))),
+        (Some("md"), ["markdown", "Markdown"], h_i_j!(markdown, l!(md))),
+        (None, ["markdown_inline", "Markdown"], h_j!(markdown_inline, INLINE_MARKDOWN.into())),
+        (Some("nix"), ["nix", "Nix"], h_i_j!(nix, l!(nix))),
+        (Some("m"), ["objc", "Objective-C"], h_i_j!(objc, l!(objc))),
+        (Some("ml"), ["ocaml", "OCaml"], h_i_j!(ocaml, ts_ocaml::LANGUAGE_OCAML.into())),
+        (Some("php"), ["php", "PHP"], h_i_j!(php, ts_php::LANGUAGE_PHP_ONLY.into())),
+        (Some("pyc"), ["python", "Python"], h_i_j!(python, l!(python))),
+        (Some("pyo"), ["python", "Python"], h_i_j!(python, l!(python))),
+        (Some("py"), ["python", "Python"], h_i_j!(python, l!(python))),
+        (Some("r"), ["r", "R"], h_i_j!(r, l!(r))),
+        (Some("rb"), ["ruby", "Ruby"], h_i_j!(ruby, l!(ruby))),
+        (Some("rs"), ["rust", "Rust"], h_i_j!(rust, l!(rust))),
+        (Some("scala"), ["scala", "Scala"], h_j!(scala, l!(scala))),
+        (Some("sc"), ["scala", "Scala"], h_j!(scala, l!(scala))),
+        (Some("scss"), ["scss", "SCSS"], h_i_j!(scss, lf!(scss))),
+        (Some("sh"), ["shell", "Shell"], h_j!(bash, l!(bash))),
+        (Some("sql"), ["sql", "SQL"], h_i_j!(sql, l!(sequel))),
+        (Some("swift"), ["swift", "Swift"], h_i_j!(swift, l!(swift))),
+        (Some("ts"), ["ts", "TypeScript"], h_j!(typescript, ts_ts::LANGUAGE_TYPESCRIPT.into())),
+        (Some("vim"), ["viml", "Viml"], h_j!(vim, lf!(vim))),
+        (Some("xml"), ["xml", "XML"], h_i_j!(xml, ts_xml::LANGUAGE_XML.into())),
+        (Some("yaml"), ["yaml", "YAML"], h_i_j!(yaml, l!(yaml))),
+        (Some("yml"), ["yaml", "YAML"], h_i_j!(yaml, l!(yaml))),
+        (Some("zig"), ["zig", "Zig"], h_i_j!(zig, l!(zig))),
+    ]
+};
+
+/// The Key for tree-sitter
+fn ts_key() -> Key {
+    static KEY: LazyLock<Key> = LazyLock::new(Key::new);
+    *KEY
+}
