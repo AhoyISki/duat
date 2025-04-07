@@ -285,7 +285,7 @@ impl<U: Ui> Session<U> {
             loop {
                 let cur_window = &windows[win];
 
-                if let Some(set_mode) = mode::was_set() {
+                if let Some(set_mode) = mode::get_set_mode_fn() {
                     set_mode();
                 }
 

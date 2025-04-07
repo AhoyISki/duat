@@ -142,6 +142,10 @@ impl Cursors {
         cursors_taken - cursors_added
     }
 
+    pub fn set_main(&mut self, new: usize) {
+        self.main_i = new.min(self.buf.len().saturating_sub(1));
+    }
+
     pub fn rotate_main(&mut self, amount: i32) {
         self.main_i = (self.main_i as i32 + amount).rem_euclid(self.buf.len() as i32) as usize
     }

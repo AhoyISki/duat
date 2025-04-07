@@ -114,10 +114,6 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
         form::set_weak("Mode", Form::green());
         Ok(())
     }
-
-    fn print_cfg(&self) -> PrintCfg {
-        PrintCfg::new().width_wrapped()
-    }
 }
 
 #[doc(hidden)]

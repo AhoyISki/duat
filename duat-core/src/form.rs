@@ -552,7 +552,7 @@ impl FormId {
         self.0
     }
 
-	/// The name of this [`FormId`]
+    /// The name of this [`FormId`]
     pub fn name(self) -> &'static str {
         name_of(self)
     }
@@ -565,7 +565,7 @@ impl std::fmt::Debug for FormId {
 }
 
 /// A style for text.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Form {
     pub style: ContentStyle,
 }
@@ -1193,7 +1193,7 @@ pub(crate) fn set_sender(sender: Sender) {
 }
 
 /// An enum that helps in the modification of forms
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 enum FormType {
     Normal,
     Ref(usize),
@@ -1397,6 +1397,103 @@ const fn str_to_color(str: &str) -> std::result::Result<Color, &'static str> {
         Ok(Color::Rgb { r, g, b })
     } else {
         return Err("Color format was not recognized");
+    }
+}
+
+impl std::fmt::Debug for Form {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        struct DebugColor(Option<Color>);
+        impl std::fmt::Debug for DebugColor {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self.0 {
+                    Some(Color::Rgb { r, g, b }) => write!(f, "Some(Rgb({r}, {g}, {b}))"),
+                    Some(Color::AnsiValue(ansi)) => write!(f, "Some(Ansi({ansi}))"),
+                    Some(color) => write!(f, "Some({color:?})"),
+                    None => f.write_str("None"),
+                }
+            }
+        }
+
+        struct DebugAttributes(Attributes);
+        impl std::fmt::Debug for DebugAttributes {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                if self.0.is_empty() {
+                    f.write_str("None")
+                } else {
+                    let mut is_first = true;
+                    for attr in Attribute::iterator() {
+                        if self.0.has(attr) {
+                            if !is_first {
+                                f.write_str(" | ")?;
+                            }
+                            is_first = false;
+                            write!(f, "{attr:?}")?;
+                        }
+                    }
+                    Ok(())
+                }
+            }
+        }
+
+        f.debug_struct("Form")
+            .field("fg", &DebugColor(self.style.foreground_color))
+            .field("bg", &DebugColor(self.style.background_color))
+            .field("ul", &DebugColor(self.style.underline_color))
+            .field("attr", &DebugAttributes(self.style.attributes))
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for InnerPalette {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        struct DebugForms<'a>(&'a [(&'static str, Form, FormType)]);
+        impl std::fmt::Debug for DebugForms<'_> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                if f.alternate() {
+                    f.write_str("[\n")?;
+					let max = self.0.len().ilog10() as usize + 3;
+                    for (n, entry) in self.0.iter().enumerate() {
+                        let num = format!("{n}:");
+                        writeln!(f, "{num:<max$}{entry:#?}")?;
+                    }
+                    f.write_str("]")
+                } else {
+                    write!(f, "{:?}", self.0)
+                }
+            }
+        }
+
+        struct DebugCursorShape(CursorShape);
+        impl std::fmt::Debug for DebugCursorShape {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self.0 {
+                    CursorShape::DefaultUserShape => f.write_str("DefaultUserShape"),
+                    CursorShape::BlinkingBlock => f.write_str("BlinkingBlock"),
+                    CursorShape::SteadyBlock => f.write_str("SteadyBlock"),
+                    CursorShape::BlinkingUnderScore => f.write_str("BlinkingUnderScore"),
+                    CursorShape::SteadyUnderScore => f.write_str("SteadyUnderScore"),
+                    CursorShape::BlinkingBar => f.write_str("BlinkingBar"),
+                    CursorShape::SteadyBar => f.write_str("SteadyBar"),
+                }
+            }
+        }
+
+        f.debug_struct("InnerPalette")
+            .field("main_cursor", &self.main_cursor.map(DebugCursorShape))
+            .field("extra_cursor", &self.extra_cursor.map(DebugCursorShape))
+            .field("forms", &DebugForms(&self.forms))
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for FormType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Normal => write!(f, "Normal"),
+            Self::Ref(refed) => write!(f, "Ref({refed})"),
+            Self::Weakest => write!(f, "Weakest"),
+            Self::WeakestRef(refed) => write!(f, "WeakestRef({refed})"),
+        }
     }
 }
 

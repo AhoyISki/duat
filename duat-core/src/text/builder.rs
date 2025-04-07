@@ -63,6 +63,11 @@ impl Builder {
     /// [`Form`]: crate::form::Form
     /// [`PopForm`]: Tag::PopForm
     pub fn finish(mut self) -> Text {
+        if (self.text.buffers(..).next_back()).is_none_or(|b| b != b'\n') {
+            self.push_str("\n");
+            self.text.0.forced_new_line = true;
+        }
+
         let end = self.text.len().byte();
         if let Some((b, id)) = self.last_form {
             self.text.insert_tag(Key::basic(), Tag::Form(b..end, id, 0));
@@ -75,11 +80,6 @@ impl Builder {
                 self.text.insert_tag(Key::basic(), Tag::AlignRight(b..end));
             }
             Some(_) | None => {}
-        }
-
-        if (self.text.buffers(..).next_back()).is_none_or(|b| b != b'\n') {
-            self.push_str("\n");
-            self.text.0.forced_new_line = true;
         }
 
         self.text
@@ -101,14 +101,14 @@ impl Builder {
             BuilderPart::Form(id) => {
                 let last_form = match id == crate::form::DEFAULT_ID {
                     true => self.last_form.take(),
-                    false => self.last_form.replace((self.text.len().byte(), id)),
+                    false => self.last_form.replace((end, id)),
                 };
 
                 if let Some((b, id)) = last_form {
                     self.text.insert_tag(Key::basic(), Tag::Form(b..end, id, 0));
                 }
             }
-            BuilderPart::AlignLeft => match self.last_align {
+            BuilderPart::AlignLeft => match self.last_align.take() {
                 Some((b, Alignment::Center)) => {
                     self.text.insert_tag(Key::basic(), Tag::AlignCenter(b..end));
                 }
@@ -117,18 +117,20 @@ impl Builder {
                 }
                 _ => {}
             },
-            BuilderPart::AlignCenter => match self.last_align {
+            BuilderPart::AlignCenter => match self.last_align.take() {
+                Some((b, Alignment::Center)) => self.last_align = Some((b, Alignment::Center)),
                 Some((b, Alignment::Right)) => {
                     self.text.insert_tag(Key::basic(), Tag::AlignRight(b..end));
                 }
-                None => self.last_align = Some((self.text.len().byte(), Alignment::Center)),
+                None => self.last_align = Some((end, Alignment::Center)),
                 Some(_) => {}
             },
-            BuilderPart::AlignRight => match self.last_align {
+            BuilderPart::AlignRight => match self.last_align.take() {
+                Some((b, Alignment::Right)) => self.last_align = Some((b, Alignment::Right)),
                 Some((b, Alignment::Center)) => {
                     self.text.insert_tag(Key::basic(), Tag::AlignCenter(b..end));
                 }
-                None => self.last_align = Some((self.text.len().byte(), Alignment::Right)),
+                None => self.last_align = Some((end, Alignment::Right)),
                 Some(_) => {}
             },
             BuilderPart::Spacer(_) => self.text.insert_tag(Key::basic(), Tag::Spacer(end)),

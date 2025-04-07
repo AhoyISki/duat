@@ -576,7 +576,7 @@ impl Text {
         self.0
             .readers
             .update_range(&mut self.0.bytes, &mut self.0.tags, within.clone());
-        self.0.tags.update_range(within);
+        self.0.tags.update_bounds();
 
         self.0.has_changed = false;
     }
@@ -694,7 +694,8 @@ impl Text {
 
     /// Inserts a [`Tag`] at the given position
     pub fn insert_tag(&mut self, key: Key, tag: Tag) {
-        self.0.tags.insert(key, tag);
+        self.0.tags.insert(key, tag.clone());
+        self.0.has_changed = true;
     }
 
     /// Removes the [`Tag`]s of a [key] from a region
@@ -746,7 +747,6 @@ impl Text {
     /// Removes the tags for all the cursors, used before they are
     /// expected to move
     pub(crate) fn add_cursors(&mut self, area: &impl Area, cfg: PrintCfg) {
-        crate::log_file!("adding cursors");
         let Some(cursors) = self.0.cursors.take() else {
             return;
         };
@@ -766,15 +766,12 @@ impl Text {
             }
         }
 
-        crate::log_file!("{:#?}", self.0.tags);
-
         self.0.cursors = Some(cursors);
     }
 
     /// Adds the tags for all the cursors, used after they are
     /// expected to have moved
     pub(crate) fn remove_cursors(&mut self, area: &impl Area, cfg: PrintCfg) {
-        crate::log_file!("removing cursors");
         let Some(cursors) = self.0.cursors.take() else {
             return;
         };
@@ -802,9 +799,9 @@ impl Text {
         let (caret, selection) = cursor.tag_points(self);
 
         let (cursor, form) = if is_main {
-            (Tag::MainCursor(caret.byte()), form::M_CUR_ID)
+            (Tag::MainCursor(caret.byte()), form::M_SEL_ID)
         } else {
-            (Tag::ExtraCursor(caret.byte()), form::E_CUR_ID)
+            (Tag::ExtraCursor(caret.byte()), form::E_SEL_ID)
         };
         self.0
             .bytes

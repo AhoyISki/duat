@@ -155,7 +155,7 @@ pub struct PrintCfg {
 impl PrintCfg {
     pub const fn new() -> Self {
         Self {
-            wrap_method: WrapMethod::NoWrap,
+            wrap_method: WrapMethod::Width,
             indent_wrapped: true,
             tab_stops: TabStops(4),
             new_line: NewLine::AlwaysAs('\n'),

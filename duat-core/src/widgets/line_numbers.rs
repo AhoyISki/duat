@@ -66,7 +66,7 @@ impl<U: Ui> LineNumbers<U> {
             }
         }
 
-        self.text = builder.finish()
+        self.text = builder.finish();
     }
 
     pub fn get_cfg(&self) -> LineNumbersCfg<U> {

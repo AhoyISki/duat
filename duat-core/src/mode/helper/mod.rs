@@ -97,20 +97,20 @@ mod cursors;
 ///         match key {
 ///             key!(KeyCode::Char(c)) => {
 ///                 helper.edit_many(.., |e| e.insert('c'));
-///                 helper.move_many(.., |mut m| m.move_hor(1));
+///                 helper.move_many(.., |mut m| { m.move_hor(1); });
 ///             },
 ///             key!(KeyCode::Right, KeyMod::SHIFT) => {
 ///                 helper.move_many(.., |mut m| {
 ///                     if m.anchor().is_none() {
 ///                         m.set_anchor()
 ///                     }
-///                     m.move_hor(1)
+///                     m.move_hor(1);
 ///                 })
 ///             }
 ///             key!(KeyCode::Right) => {
 ///                 helper.move_many(.., |mut m| {
 ///                     m.unset_anchor();
-///                     m.move_hor(1)
+///                     m.move_hor(1);
 ///                 })
 ///             }
 ///             /* Predictable remaining implementations */
@@ -605,6 +605,9 @@ impl<'a, W: Widget<A::Ui>, A: Area, S> Editor<'a, W, A, S> {
         if self.widget.cursors().unwrap().len() >= 1 {
             // Rc<Cell> needs to be manually dropped to reduce its counter.
             self.next_i.take();
+            if self.was_main {
+                self.widget.cursors_mut().unwrap().rotate_main(-1);
+            }
             // The destructor is what inserts the Cursor back into the list, so
             // don't run it.
             std::mem::forget(self);

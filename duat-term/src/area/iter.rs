@@ -48,7 +48,7 @@ fn parts<'a>(
         let mut old_x = x;
         x += len;
 
-        let width_wrap = x > cap || (x == cap && len == 0);
+        let width_wrap = x > cap || (x == cap && processed_part.is_tag());
         let nl_wrap = needs_to_wrap && prev_char.is_some();
         if nl_wrap || width_wrap {
             old_x = old_indent;
@@ -301,6 +301,7 @@ fn len_from(char: char, start: u32, max_width: u32, cfg: &PrintCfg) -> u32 {
         '\t' => (cfg.tab_stops.spaces_at(start))
             .min(max_width.saturating_sub(start))
             .max(1),
+        '\n' => 0,
         _ => UnicodeWidthChar::width(char).unwrap_or(0) as u32,
     }
 }

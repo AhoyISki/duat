@@ -813,17 +813,15 @@ pub static LOG: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::ne
 /// Log information to a log file
 #[doc(hidden)]
 pub macro log_file($($text:tt)*) {{
-    if let Some(cache) = cache_dir() {
-        let mut file = std::io::BufWriter::new(
-            std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(cache.join("duat/log"))
-                .unwrap(),
-        );
-
+    if let Some(cache) = cache_dir()
+        && let Ok(file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(cache.join("duat/log"))
+    {
         use std::{io::Write, time::Instant};
 
+        let mut file = std::io::BufWriter::new(file);
         let mut text = format!($($text)*);
 
         if let Some(start) = $crate::DEBUG_TIME_START.get()
