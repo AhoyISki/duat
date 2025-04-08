@@ -1262,7 +1262,7 @@ fn assert_bounds(tags: &Tags) {
         }
     }
 
-    for (bound, tag, id) in tags.bounds.iter() {
+    for (bound, tag, _) in tags.bounds.iter() {
         let [bound_n, bound_b] = bound.get();
         let [recs_n, recs_b, recs_skip] = tags.skip_at(bound_b);
         let (Break([can_n, can_b, can_skip]) | Continue([can_n, can_b, can_skip])) = tags

@@ -1,8 +1,8 @@
 //! Creation and execution of commands.
 //!
 //! Commands on Duat are bits of code that can be executed on the
-//! [`PromptLine`] widget. They can also be invoked from other parts of
-//! the code, but their use is mostly intended for runtime calls.
+//! [`PromptLine`] widget. They can also be invoked from other parts
+//! of the code, but their use is mostly intended for runtime calls.
 //!
 //! They are executed asynchronously in order to prevent deadlocks in
 //! Duat's internal systems.
@@ -26,8 +26,8 @@
 //! ```
 //!
 //! [`cmd::run_notify`] is what is used by Duat when running commands
-//! in the [`PromptLine`], but you can silence notifications by including
-//! leading whitespace:
+//! in the [`PromptLine`], but you can silence notifications by
+//! including leading whitespace:
 //!
 //! ```rust
 //! # use duat_core::{cmd, context};
@@ -208,7 +208,7 @@ use crate::{
     file_entry, iter_around, iter_around_rev,
     mode::{self},
     session::sender,
-    text::{Text, err, ok},
+    text::{Text, err, ok, hint},
     ui::{DuatEvent, Ui, Window},
     widget_entry,
     widgets::{File, Widget},
@@ -429,6 +429,35 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
 
         sender().send(DuatEvent::Quit).unwrap();
         Ok(None)
+    })?;
+
+    add!(["reload"], || {
+        let Some(toml_path) = dirs_next::config_dir()
+            .map(|config_dir| config_dir.join("duat/Cargo.toml"))
+            .filter(|path| path.try_exists().is_ok_and(|exists| exists))
+        else {
+            return Err(err!("Cargo.toml was not found"));
+        };
+        crate::log_file!("{toml_path:?}");
+
+        let mut cargo = std::process::Command::new("cargo");
+        cargo.stdin(std::process::Stdio::null());
+        cargo.stdout(std::process::Stdio::null());
+        cargo.stderr(std::process::Stdio::piped());
+        cargo.args([
+            "build",
+            "--quiet",
+            "--manifest-path",
+            toml_path.to_str().unwrap(),
+        ]);
+        if !cfg!(debug_assertions) {
+            cargo.arg("--release");
+        };
+
+        match cargo.spawn() {
+            Ok(child) => Ok(Some(hint!("Started config recompilation"))),
+            Err(err) => Err(err!("Failed to start cargo: " [*a] err)),
+        }
     })?;
 
     add!(["edit", "e"], |path: PossibleFile| {

@@ -186,11 +186,11 @@ impl<R: Record> Records<R> {
     }
 
     /// Returns the [`Record`] closest to the byte
-    pub fn closest_to(&self, b: usize) -> R {
-        let (i, rec) = self.search(b, Record::units);
+    pub fn closest_to(&self, u: usize) -> R {
+        let (i, rec) = self.search(u, Record::units);
         let len = self.stored.get(i).cloned().unwrap_or(R::default());
 
-        if rec.units().abs_diff(b) > len.add(rec).units().abs_diff(b) {
+        if rec.units().abs_diff(u) > len.add(rec).units().abs_diff(u) {
             len.add(rec)
         } else {
             rec

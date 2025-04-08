@@ -2,14 +2,12 @@
 
 use std::{
     io::Read,
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::{Command, Output},
     sync::{
         LazyLock,
-        atomic::{AtomicBool, Ordering},
-        mpsc::{self, Receiver, Sender},
+        mpsc::{self, Receiver},
     },
-    time::{Duration, Instant},
 };
 
 use dlopen_rs::{Dylib, ElfLibrary, OpenFlags, Symbol};
@@ -20,7 +18,7 @@ use duat_core::{
     session::FileRet,
     ui::{self, DuatEvent, Ui as UiTrait},
 };
-use notify::{Event, EventKind, RecursiveMode, Watcher};
+use notify::{Event, EventKind, RecursiveMode::*, Watcher};
 
 static MS: LazyLock<<Ui as ui::Ui>::MetaStatics> =
     LazyLock::new(<Ui as ui::Ui>::MetaStatics::default);
@@ -41,6 +39,8 @@ fn main() {
             .map(|cd| cd.join("duat"))
             .filter(|cd| cd.exists())
         else {
+            let msg = err!("No config crate found, loading default config");
+            duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
             pre_setup();
             run_duat((&MS, &CLIPB), Vec::new(), (duat_tx, duat_rx));
             return;
@@ -49,38 +49,22 @@ fn main() {
         let mut watcher = notify::recommended_watcher({
             let reload_tx = reload_tx.clone();
             let duat_tx = duat_tx.clone();
-            let crate_dir = crate_dir.clone();
-            let lock_path = crate_dir.join("Cargo.lock");
-            let ignored_target_path = crate_dir.join("target");
-
             move |res| {
-                static IS_RELOADING: AtomicBool = AtomicBool::new(false);
-                if let Ok(Event { kind: EventKind::Modify(_), paths, .. }) = res {
-                    if IS_RELOADING.load(Ordering::Acquire)
-                        || paths
-                            .iter()
-                            .all(|p| p.starts_with(&ignored_target_path) || p == &lock_path)
-                    {
-                        return;
-                    }
-                    IS_RELOADING.store(true, Ordering::Release);
-                    // Reload only the debug build when running in debug mode.
-                    // Reload first the debug, then the release build otherwise.
-                    if cfg!(debug_assertions) {
-                        reload_config(&reload_tx, &duat_tx, &crate_dir, false);
-                    } else if reload_config(&reload_tx, &duat_tx, &crate_dir, false) {
-                        reload_config(&reload_tx, &duat_tx, &crate_dir, true);
-                    }
-                    // Sleep for one second to prevent too many activations.
-                    std::thread::spawn(|| {
-                        std::thread::sleep(Duration::new(1, 0));
-                        IS_RELOADING.store(false, Ordering::Release);
-                    });
+                if let Ok(Event { kind: EventKind::Create(_), paths, .. }) = res
+                    && let Some(so_path) = paths.iter().find(|path| path.ends_with("libconfig.so"))
+                {
+                    duat_core::log_file!("{so_path:?}");
+                    let on_release = so_path.ends_with("release/libconfig.so");
+                    reload_tx.send((so_path.clone(), on_release)).unwrap();
+                    duat_tx.send(DuatEvent::ReloadConfig).unwrap();
                 }
             }
         })
         .unwrap();
-        watcher.watch(&crate_dir, RecursiveMode::Recursive).unwrap();
+        let debug_dir = crate_dir.join("target/debug");
+        let release_dir = crate_dir.join("target/release");
+        watcher.watch(&debug_dir, NonRecursive).unwrap();
+        watcher.watch(&release_dir, NonRecursive).unwrap();
         (watcher, crate_dir)
     };
 
@@ -138,10 +122,9 @@ fn main() {
         };
         drop(run_lib);
 
-        if let Ok((so_path, start, on_release)) = reload_rx.try_recv() {
+        if let Ok((so_path, on_release)) = reload_rx.try_recv() {
             let profile = if on_release { "Release" } else { "Debug" };
-            let secs = format!("{:.2}", start.elapsed().as_secs_f32());
-            let msg = ok!([*a] profile [] " profile reloaded in " [*a] secs "s");
+            let msg = ok!([*a] profile [] " profile reloaded");
             duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
             lib = ElfLibrary::dlopen(so_path, OpenFlags::RTLD_NOW | OpenFlags::RTLD_LOCAL).ok();
         } else {
@@ -150,37 +133,6 @@ fn main() {
     }
 
     Ui::close(&MS);
-}
-
-/// Returns [`true`] if it reloaded the library and run function
-fn reload_config(
-    reload_tx: &Sender<(PathBuf, Instant, bool)>,
-    duat_tx: &Sender<DuatEvent>,
-    crate_dir: &Path,
-    on_release: bool,
-) -> bool {
-    let start = Instant::now();
-
-    let so_path = crate_dir.join(if on_release {
-        "target/release/libconfig.so"
-    } else {
-        "target/debug/libconfig.so"
-    });
-
-    let msg = hint!("Began " [*a] "config" [] " compilation");
-    duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
-    let toml_path = crate_dir.join("Cargo.toml");
-    if let Ok(out) = run_cargo(toml_path, on_release, false)
-        && out.status.success()
-    {
-        reload_tx.send((so_path, start, on_release)).unwrap();
-        duat_tx.send(DuatEvent::ReloadConfig).unwrap();
-        true
-    } else {
-        let msg = err!("Failed to compile " [*a] "config" [] " crate");
-        duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
-        false
-    }
 }
 
 fn run_cargo(toml_path: PathBuf, on_release: bool, print: bool) -> Result<Output, std::io::Error> {

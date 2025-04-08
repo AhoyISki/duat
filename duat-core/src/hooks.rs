@@ -113,7 +113,12 @@
 //! [commands]: crate::cmd
 //! [`Mode`]: crate::mode::Mode
 //! [`&mut Widget`]: Widget
-use std::{any::TypeId, collections::HashMap, marker::PhantomData, sync::LazyLock};
+use std::{
+    any::TypeId,
+    collections::HashMap,
+    marker::PhantomData,
+    sync::{Arc, LazyLock},
+};
 
 use parking_lot::{Mutex, RwLock};
 
@@ -140,7 +145,7 @@ mod global {
     /// [hook]: Hookable
     /// [`hooks::add_grouped`]: add_grouped
     pub fn add<H: Hookable>(f: impl for<'a> FnMut(H::Args<'a>) -> H::Return + Send + 'static) {
-        crate::thread::spawn(move || HOOKS.add::<H>("", f));
+        HOOKS.add::<H>("", f);
     }
 
     /// Adds a grouped [hook]
@@ -156,7 +161,7 @@ mod global {
         group: &'static str,
         f: impl for<'a> FnMut(H::Args<'a>) -> H::Return + Send + 'static,
     ) {
-        crate::thread::spawn(move || HOOKS.add::<H>(group, f));
+        HOOKS.add::<H>(group, f);
     }
 
     /// Removes a [hook] group
@@ -167,7 +172,7 @@ mod global {
     /// [hook]: Hookable
     /// [`hooks::add_grouped`]: add_grouped
     pub fn remove(group: &'static str) {
-        crate::thread::spawn(move || HOOKS.remove(group));
+        HOOKS.remove(group);
     }
 
     /// Triggers a hooks for a [`Hookable`] struct
@@ -627,7 +632,7 @@ pub trait Hookable: Sized + 'static {
 
 /// Where all hooks of Duat are stored
 struct Hooks {
-    types: LazyLock<RwLock<HashMap<TypeId, Box<dyn HookHolder>>>>,
+    types: LazyLock<RwLock<HashMap<TypeId, Arc<dyn HookHolder>>>>,
     groups: LazyLock<RwLock<Vec<&'static str>>>,
 }
 
@@ -655,25 +660,26 @@ impl Hooks {
             }
         }
 
-        if let Some(holder) = map.get_mut(&TypeId::of::<H>()) {
+        if let Some(holder) = map.get(&TypeId::of::<H>()) {
             let hooks_of = unsafe {
-                let ptr = (&mut **holder as *mut dyn HookHolder).cast::<HooksOf<H>>();
-                ptr.as_mut().unwrap()
+                let ptr = (&**holder as *const dyn HookHolder).cast::<HooksOf<H>>();
+                ptr.as_ref().unwrap()
             };
 
-            hooks_of.0.lock().push((group, Box::new(f)))
+            let mut hooks = hooks_of.0.lock();
+            hooks.push((group, Box::leak(Box::new(Mutex::new(f)))));
         } else {
-            let hooks_of = HooksOf::<H>(Mutex::new(vec![(group, Box::new(f))]));
+            let hooks_of = HooksOf::<H>(Mutex::new(vec![(group, Box::leak(Box::new(Mutex::new(f))))]));
 
-            map.insert(TypeId::of::<H>(), Box::new(hooks_of));
+            map.insert(TypeId::of::<H>(), Arc::new(hooks_of));
         }
     }
 
     /// Removes hooks with said group
     fn remove(&'static self, group: &'static str) {
         self.groups.write().retain(|g| *g != group);
-        let mut map = self.types.write();
-        for holder in map.iter_mut() {
+        let map = self.types.read();
+        for holder in map.iter() {
             holder.1.remove(group)
         }
     }
@@ -683,14 +689,18 @@ impl Hooks {
         let map = self.types.read();
 
         if let Some(holder) = map.get(&TypeId::of::<H>()) {
+            let holder = holder.clone();
+            drop(map);
+            // SAFETY: HooksOf<H> is the only type that this HookHolder could be.
             let hooks_of = unsafe {
-                let ptr = (&**holder as *const dyn HookHolder).cast::<HooksOf<H>>();
+                let ptr = (&*holder as *const dyn HookHolder).cast::<HooksOf<H>>();
                 ptr.as_ref().unwrap()
             };
 
-            let mut hooks = hooks_of.0.lock();
+            let mut hooks = hooks_of.0.lock().clone();
             H::trigger_hooks(pre_args, hooks.iter_mut().map(|(_, f)| Hook(f)));
         } else {
+            drop(map);
             H::trigger_hooks(pre_args, std::iter::empty());
         }
     }
@@ -702,14 +712,18 @@ impl Hooks {
         let map = self.types.read();
 
         if let Some(holder) = map.get(&TypeId::of::<H>()) {
+            let holder = holder.clone();
+            drop(map);
+            // SAFETY: HooksOf<H> is the only type that this HookHolder could be.
             let hooks_of = unsafe {
-                let ptr = (&**holder as *const dyn HookHolder).cast::<HooksOf<H>>();
+                let ptr = (&*holder as *const dyn HookHolder).cast::<HooksOf<H>>();
                 ptr.as_ref().unwrap()
             };
 
             let mut hooks = hooks_of.0.lock();
             H::trigger_hooks_now(pre_args, hooks.iter_mut().map(|(_, f)| Hook(f)))
         } else {
+            drop(map);
             H::trigger_hooks_now(pre_args, std::iter::empty())
         }
     }
@@ -723,19 +737,16 @@ impl Hooks {
 /// An intermediary trait, meant for group removal
 trait HookHolder: Send + Sync {
     /// Remove the given group from hooks of this holder
-    fn remove(&mut self, group: &str);
+    fn remove(&self, group: &str);
 }
 
 /// An intermediary struct, meant to hold the hooks of a [`Hookable`]
 struct HooksOf<H: Hookable>(Mutex<Vec<(&'static str, InnerHookFn<H>)>>);
 
 impl<H: Hookable> HookHolder for HooksOf<H> {
-    fn remove(&mut self, group: &str) {
-        let mut hooks = None;
-        while hooks.is_none() {
-            hooks = self.0.try_lock();
-        }
-        hooks.unwrap().retain(|(g, _)| *g != group);
+    fn remove(&self, group: &str) {
+        let mut hooks = self.0.lock();
+        hooks.retain(|(g, _)| *g != group);
     }
 }
 
@@ -749,9 +760,10 @@ impl<'b, H: Hookable> std::ops::FnOnce<(H::Args<'_>,)> for Hook<'b, H> {
     type Output = H::Return;
 
     extern "rust-call" fn call_once(self, (args,): (H::Args<'_>,)) -> Self::Output {
-        (self.0)(args)
+        (self.0.lock())(args)
     }
 }
 
-pub type InnerHookFn<H> =
-    Box<dyn for<'a> FnMut(<H as Hookable>::Args<'a>) -> <H as Hookable>::Return + Send + 'static>;
+pub type InnerHookFn<H> = &'static Mutex<
+    (dyn for<'a> FnMut(<H as Hookable>::Args<'a>) -> <H as Hookable>::Return + Send + 'static),
+>;
