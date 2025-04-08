@@ -256,6 +256,7 @@ use std::{
     any::{TypeId, type_name},
     collections::HashMap,
     ops::Range,
+    path::Path,
     sync::{
         Arc, LazyLock, Once,
         atomic::{AtomicBool, Ordering},
@@ -580,6 +581,17 @@ pub fn src_crate<T: ?Sized + 'static>() -> &'static str {
     }
 
     src_crate_inner(TypeId::of::<T>(), std::any::type_name::<T>())
+}
+
+/// The path for the config crate of Duat
+pub fn crate_dir() -> Option<&'static Path> {
+    static CONFIG_PATH: LazyLock<Option<&'static Path>> = LazyLock::new(|| {
+        dirs_next::config_dir().map(|config_dir| {
+            let path: &'static str = config_dir.join("duat").to_string_lossy().to_string().leak();
+            Path::new(path)
+        })
+    });
+    *CONFIG_PATH
 }
 
 /// Convenience function for the bounds of a range

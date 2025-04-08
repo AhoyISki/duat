@@ -4,7 +4,7 @@ mod layout;
 use std::{
     fmt::Debug,
     marker::PhantomData,
-    sync::{Arc, mpsc},
+    sync::{mpsc, Arc}, time::Instant,
 };
 
 use crossterm::event::KeyEvent;
@@ -592,6 +592,7 @@ pub enum DuatEvent {
     SwapFiles(String, String),
     OpenWindow(String),
     SwitchWindow(usize),
+    ReloadStarted(Instant),
     Quit,
 }
 

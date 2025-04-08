@@ -5,7 +5,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         mpsc,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use arboard::Clipboard;
@@ -187,7 +187,7 @@ impl<U: Ui> Session<U> {
     pub fn start(
         mut self,
         duat_rx: mpsc::Receiver<DuatEvent>,
-    ) -> (Vec<Vec<FileRet>>, mpsc::Receiver<DuatEvent>) {
+    ) -> Option<(Vec<Vec<FileRet>>, mpsc::Receiver<DuatEvent>, Instant)> {
         hooks::trigger::<ConfigLoaded>(());
         form::set_sender(Sender::new(sender()));
 
@@ -223,6 +223,8 @@ impl<U: Ui> Session<U> {
             }
         });
 
+        let mut reload_instant = None;
+
         // The main loop.
         #[allow(clippy::never_loop)]
         loop {
@@ -234,7 +236,7 @@ impl<U: Ui> Session<U> {
                 node.update_and_print();
             }
 
-            let break_to = self.session_loop(windows, &duat_rx);
+            let break_to = self.session_loop(windows, &duat_rx, &mut reload_instant);
 
             for break_to in break_to {
                 match break_to {
@@ -243,7 +245,7 @@ impl<U: Ui> Session<U> {
                         hooks::trigger::<ExitedDuat>(());
                         context::order_reload_or_quit();
                         self.save_cache(true);
-                        return (Vec::new(), duat_rx);
+                        return None;
                     }
                     BreakTo::ReloadConfig => {
                         hooks::trigger::<ConfigUnloaded>(());
@@ -252,7 +254,7 @@ impl<U: Ui> Session<U> {
                         let ms = self.ms;
                         let files = self.take_files();
                         U::unload(ms);
-                        return (files, duat_rx);
+                        return Some((files, duat_rx, reload_instant.unwrap()));
                     }
                     BreakTo::OpenFile(name) => {
                         self.open_file(PathBuf::from(&name));
@@ -276,6 +278,7 @@ impl<U: Ui> Session<U> {
         &mut self,
         windows: RwLockReadGuard<Vec<Window<U>>>,
         duat_rx: &mpsc::Receiver<DuatEvent>,
+        reload_instant: &mut Option<Instant>,
     ) -> Vec<BreakTo> {
         let win = self.cur_window.load(Ordering::Relaxed);
         let mut breaks = Vec::new();
@@ -303,6 +306,7 @@ impl<U: Ui> Session<U> {
                         DuatEvent::SwapFiles(lhs, rhs) => breaks.push(BreakTo::SwapFiles(lhs, rhs)),
                         DuatEvent::OpenWindow(name) => breaks.push(BreakTo::OpenWindow(name)),
                         DuatEvent::SwitchWindow(win) => breaks.push(BreakTo::SwitchWindow(win)),
+                        DuatEvent::ReloadStarted(instant) => *reload_instant = Some(instant),
                         DuatEvent::Quit => breaks.push(BreakTo::QuitDuat),
                     }
                 } else if !breaks.is_empty() {

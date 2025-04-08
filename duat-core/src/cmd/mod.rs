@@ -191,6 +191,7 @@ use std::{
     fmt::Display,
     ops::Range,
     sync::{Arc, LazyLock},
+    time::Instant,
 };
 
 use crossterm::style::Color;
@@ -208,7 +209,7 @@ use crate::{
     file_entry, iter_around, iter_around_rev,
     mode::{self},
     session::sender,
-    text::{Text, err, ok, hint},
+    text::{Text, err, hint, ok},
     ui::{DuatEvent, Ui, Window},
     widget_entry,
     widgets::{File, Widget},
@@ -315,18 +316,17 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         let mut ff = context::fixed_file::<U>()?;
         let (mut file, _) = ff.write();
 
-        if let Some(path) = path {
-            let bytes = file.write_to(&path)?;
-            Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " path)))
+        let (bytes, name) = if let Some(path) = path {
+            (file.write_to(&path)?, path)
         } else if let Some(name) = file.name_set() {
-            if file.text().has_unsaved_changes() {
-                let bytes = file.write()?;
-                Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " [*a] name)))
-            } else {
-                Ok(Some(ok!("Nothing to be written")))
-            }
+            (file.write()?, std::path::PathBuf::from(name))
         } else {
-            Err(err!("File has no name path to write to"))
+            return Err(err!("File has no name path to write to"));
+        };
+
+        match bytes {
+            Some(bytes) => Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " [File] name))),
+            None => Ok(Some(ok!("Nothing to be written"))),
         }
     })?;
 
@@ -358,9 +358,14 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         mode::reset_switch_to::<U>(&next_name, true);
 
         sender().send(DuatEvent::CloseFile(name.clone())).unwrap();
-        Ok(Some(
-            ok!("Closed " [*a] name [] ", saving " [*a] bytes [] " bytes"),
-        ))
+        match bytes {
+            Some(bytes) => Ok(Some(
+                ok!("Wrote " [*a] bytes [] " bytes to " [File] name [] ", then closed it"),
+            )),
+            None => Ok(Some(
+                ok!("No changes in " [File] name [] ", so just closed it"),
+            )),
+        }
     })?;
 
     add!(["write-all", "wa"], || {
@@ -381,7 +386,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             .count();
 
         if written == file_count {
-            Ok(Some(ok!("Wrote to " [*a] written [] " files")))
+            Ok(Some(ok!("Wrote to " [File] written [] " files")))
         } else {
             let unwritten = file_count - written;
             let plural = if unwritten == 1 { "" } else { "s" };
@@ -432,18 +437,17 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
     })?;
 
     add!(["reload"], || {
-        let Some(toml_path) = dirs_next::config_dir()
-            .map(|config_dir| config_dir.join("duat/Cargo.toml"))
+        let Some(toml_path) = crate::crate_dir()
+            .map(|config_dir| config_dir.join("Cargo.toml"))
             .filter(|path| path.try_exists().is_ok_and(|exists| exists))
         else {
             return Err(err!("Cargo.toml was not found"));
         };
-        crate::log_file!("{toml_path:?}");
 
         let mut cargo = std::process::Command::new("cargo");
         cargo.stdin(std::process::Stdio::null());
         cargo.stdout(std::process::Stdio::null());
-        cargo.stderr(std::process::Stdio::piped());
+        cargo.stderr(std::process::Stdio::null());
         cargo.args([
             "build",
             "--quiet",
@@ -455,7 +459,22 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         };
 
         match cargo.spawn() {
-            Ok(child) => Ok(Some(hint!("Started config recompilation"))),
+            Ok(child) => {
+                sender()
+                    .send(DuatEvent::ReloadStarted(Instant::now()))
+                    .unwrap();
+                std::thread::spawn(|| {
+                    match child.wait_with_output() {
+                        Ok(out) => {
+                            if out.status.code() != Some(0) {
+                                context::notify(err!("Couldn't compile config crate"));
+                            }
+                        }
+                        Err(err) => context::notify(err!("cargo failed: " [*a] err)),
+                    };
+                });
+                Ok(Some(hint!("Started config recompilation")))
+            }
             Err(err) => Err(err!("Failed to start cargo: " [*a] err)),
         }
     })?;

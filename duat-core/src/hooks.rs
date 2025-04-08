@@ -33,8 +33,9 @@
 //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
 //! - [`ModeSwitched`] triggers when you change [`Mode`].
 //! - [`ModeSetTo`] lets you act on a [`Mode`] after switching.
-//! - [`SearchUpdated`] triggers after a search updates.
 //! - [`SearchPerformed`] triggers after a search is performed.
+//! - [`SearchUpdated`] triggers after a search updates.
+//! - [`FileWritten`] triggers after the [`File`] is written.
 //!
 //! # A note on execution
 //!
@@ -219,7 +220,7 @@ impl Hookable for ConfigLoaded {
     type Args<'a> = ();
     type PreArgs = ();
 
-    fn trigger_hooks<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
         for hook in hooks {
             hook(pre_args)
         }
@@ -235,7 +236,7 @@ impl Hookable for ConfigUnloaded {
     type Args<'a> = ();
     type PreArgs = ();
 
-    fn trigger_hooks<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
         for hook in hooks {
             hook(pre_args)
         }
@@ -251,7 +252,7 @@ impl Hookable for ExitedDuat {
     type Args<'a> = ();
     type PreArgs = ();
 
-    fn trigger_hooks<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
         for hook in hooks {
             hook(pre_args)
         }
@@ -273,14 +274,11 @@ impl<U: Ui> Hookable for OnFileOpen<U> {
     type Args<'a> = &'a mut FileBuilder<U>;
     type PreArgs = FileBuilder<U>;
 
-    fn trigger_hooks<'b>(_: Self::PreArgs, _: impl Iterator<Item = Hook<'b, Self>>) {
+    fn trigger<'b>(_: Self::PreArgs, _: impl Iterator<Item = Hook<'b, Self>>) {
         unreachable!("This hook is not meant to be triggered asynchronously")
     }
 
-    fn trigger_hooks_now<'b>(
-        mut pre_args: Self::PreArgs,
-        hooks: impl Iterator<Item = Hook<'b, Self>>,
-    ) {
+    fn trigger_now<'b>(mut pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
         for hook in hooks {
             hook(&mut pre_args)
         }
@@ -301,14 +299,11 @@ impl<U: Ui> Hookable for OnWindowOpen<U> {
     type Args<'a> = &'a mut WindowBuilder<U>;
     type PreArgs = WindowBuilder<U>;
 
-    fn trigger_hooks<'b>(_: Self::PreArgs, _: impl Iterator<Item = Hook<'b, Self>>) {
+    fn trigger<'b>(_: Self::PreArgs, _: impl Iterator<Item = Hook<'b, Self>>) {
         unreachable!("This hook is not meant to be triggered asynchronously")
     }
 
-    fn trigger_hooks_now<'b>(
-        mut pre_args: Self::PreArgs,
-        hooks: impl Iterator<Item = Hook<'b, Self>>,
-    ) {
+    fn trigger_now<'b>(mut pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
         for hook in hooks {
             hook(&mut pre_args)
         }
@@ -330,10 +325,7 @@ impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
     type Args<'a> = (&'a mut W, &'a U::Area);
     type PreArgs = (RwData<W>, U::Area);
 
-    fn trigger_hooks<'b>(
-        (widget, area): Self::PreArgs,
-        hooks: impl Iterator<Item = Hook<'b, Self>>,
-    ) {
+    fn trigger<'b>((widget, area): Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
         let mut widget = widget.write();
         let cfg = widget.print_cfg();
         widget.text_mut().remove_cursors(&area, cfg);
@@ -368,10 +360,7 @@ impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
     type Args<'a> = (&'a mut W, &'a U::Area);
     type PreArgs = (RwData<W>, U::Area);
 
-    fn trigger_hooks<'b>(
-        (widget, area): Self::PreArgs,
-        hooks: impl Iterator<Item = Hook<'b, Self>>,
-    ) {
+    fn trigger<'b>((widget, area): Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
         let mut widget = widget.write();
         let cfg = widget.print_cfg();
         widget.text_mut().remove_cursors(&area, cfg);
@@ -411,7 +400,7 @@ impl Hookable for ModeSwitched {
     type Args<'a> = (&'a str, &'a str);
     type PreArgs = (&'static str, &'static str);
 
-    fn trigger_hooks<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
         for hook in hooks {
             hook(pre_args)
         }
@@ -437,11 +426,11 @@ impl<M: Mode<U>, U: Ui> Hookable for ModeSetTo<M, U> {
     type PreArgs = (M, RwData<M::Widget>, U::Area);
     type Return = M;
 
-    fn trigger_hooks<'b>(_: Self::PreArgs, _: impl Iterator<Item = Hook<'b, Self>>) {
+    fn trigger<'b>(_: Self::PreArgs, _: impl Iterator<Item = Hook<'b, Self>>) {
         unreachable!("This hook is not meant to be triggered asynchronously")
     }
 
-    fn trigger_hooks_now<'b>(
+    fn trigger_now<'b>(
         (mut mode, widget, area): Self::PreArgs,
         hooks: impl Iterator<Item = Hook<'b, Self>>,
     ) -> Self::Return {
@@ -468,7 +457,7 @@ impl Hookable for KeySent {
     type Args<'a> = KeyEvent;
     type PreArgs = KeyEvent;
 
-    fn trigger_hooks<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
         for hook in hooks {
             hook(pre_args);
         }
@@ -489,11 +478,11 @@ impl<W: Widget<U>, U: Ui> Hookable for KeySentTo<W, U> {
     type Args<'b> = (KeyEvent, &'b mut W, &'b U::Area);
     type PreArgs = (KeyEvent, RwData<W>, U::Area);
 
-    fn trigger_hooks<'b>(_: Self::PreArgs, _: impl Iterator<Item = Hook<'b, Self>>) {
+    fn trigger<'b>(_: Self::PreArgs, _: impl Iterator<Item = Hook<'b, Self>>) {
         unreachable!("This hook is not meant to be triggered asynchronously")
     }
 
-    fn trigger_hooks_now<'b>(
+    fn trigger_now<'b>(
         (key, widget, area): Self::PreArgs,
         hooks: impl Iterator<Item = Hook<'b, Self>>,
     ) {
@@ -521,7 +510,7 @@ impl Hookable for FormSet {
     type Args<'b> = Self::PreArgs;
     type PreArgs = (&'static str, FormId, Form);
 
-    fn trigger_hooks<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
         for hook in hooks {
             hook(pre_args)
         }
@@ -544,7 +533,7 @@ impl Hookable for ColorSchemeSet {
     type Args<'b> = Self::PreArgs;
     type PreArgs = &'static str;
 
-    fn trigger_hooks<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
         for hook in hooks {
             hook(pre_args)
         }
@@ -567,7 +556,7 @@ impl Hookable for SearchPerformed {
     type PreArgs = String;
     type Return = ();
 
-    fn trigger_hooks<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
         for hook in hooks {
             hook(&pre_args)
         }
@@ -592,9 +581,34 @@ impl Hookable for SearchUpdated {
     type PreArgs = (String, String);
     type Return = ();
 
-    fn trigger_hooks<'b>((prev, cur): Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    fn trigger<'b>((prev, cur): Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
         for hook in hooks {
             hook((&prev, &cur))
+        }
+    }
+}
+
+/// [`Hookable`]: Triggers after [`File::write`] or [`File::write_to`]
+///
+/// Only triggers if the file was actually updated.
+///
+/// # Arguments
+///
+/// - The path of the file
+/// - The number of bytes written to said file
+///
+/// [`File::write`]: crate::widgets::File::write
+/// [`File::write_to`]: crate::widgets::File::write_to
+pub struct FileWritten;
+
+impl Hookable for FileWritten {
+    type Args<'a> = (&'a str, usize);
+    type PreArgs = (String, usize);
+    type Return = ();
+
+    fn trigger<'b>((file, bytes): Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+        for hook in hooks {
+            hook((&file, bytes));
         }
     }
 }
@@ -616,13 +630,13 @@ pub trait Hookable: Sized + 'static {
     /// by moving it to Args, while returning and reusing said value.
     type Return = ();
 
-    fn trigger_hooks<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>);
+    fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>);
 
     /// This function is only for internal use, it will not be used if
     /// you implement it.
     #[allow(unused_variables)]
     #[doc(hidden)]
-    fn trigger_hooks_now<'b>(
+    fn trigger_now<'b>(
         pre_args: Self::PreArgs,
         hooks: impl Iterator<Item = Hook<'b, Self>>,
     ) -> Self::Return {
@@ -669,7 +683,10 @@ impl Hooks {
             let mut hooks = hooks_of.0.lock();
             hooks.push((group, Box::leak(Box::new(Mutex::new(f)))));
         } else {
-            let hooks_of = HooksOf::<H>(Mutex::new(vec![(group, Box::leak(Box::new(Mutex::new(f))))]));
+            let hooks_of = HooksOf::<H>(Mutex::new(vec![(
+                group,
+                Box::leak(Box::new(Mutex::new(f))),
+            )]));
 
             map.insert(TypeId::of::<H>(), Arc::new(hooks_of));
         }
@@ -698,10 +715,10 @@ impl Hooks {
             };
 
             let mut hooks = hooks_of.0.lock().clone();
-            H::trigger_hooks(pre_args, hooks.iter_mut().map(|(_, f)| Hook(f)));
+            H::trigger(pre_args, hooks.iter_mut().map(|(_, f)| Hook(f)));
         } else {
             drop(map);
-            H::trigger_hooks(pre_args, std::iter::empty());
+            H::trigger(pre_args, std::iter::empty());
         }
     }
 
@@ -721,10 +738,10 @@ impl Hooks {
             };
 
             let mut hooks = hooks_of.0.lock();
-            H::trigger_hooks_now(pre_args, hooks.iter_mut().map(|(_, f)| Hook(f)))
+            H::trigger_now(pre_args, hooks.iter_mut().map(|(_, f)| Hook(f)))
         } else {
             drop(map);
-            H::trigger_hooks_now(pre_args, std::iter::empty())
+            H::trigger_now(pre_args, std::iter::empty())
         }
     }
 

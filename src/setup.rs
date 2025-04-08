@@ -4,10 +4,14 @@
 //! initial setup. For example, the [`CurFile`] and [`CurWidget`]
 //! variables are not set in the start of the program, since they
 //! require a [`Ui`], which cannot be defined in static time.
-use std::sync::{
-    LazyLock,
-    atomic::{AtomicUsize, Ordering},
-    mpsc::{Receiver, Sender},
+use std::{
+    path::Path,
+    sync::{
+        LazyLock,
+        atomic::{AtomicUsize, Ordering},
+        mpsc::{Receiver, Sender},
+    },
+    time::Instant,
 };
 
 use duat_core::{
@@ -26,7 +30,7 @@ use crate::{
     CfgFn, Ui,
     hooks::{self, FocusedOn, OnFileOpen, OnWindowOpen, UnfocusedFrom},
     mode,
-    prelude::{LineNumbers, Notifier, PromptLine, StatusLine},
+    prelude::{FileWritten, LineNumbers, Notifier, PromptLine, StatusLine},
 };
 
 // Setup statics.
@@ -66,9 +70,19 @@ pub fn pre_setup() {
     hooks::add_grouped::<UnfocusedFrom<PromptLine<Ui>>>("HidePromptLine", |(_, area)| {
         area.constrain_ver([Constraint::Len(0.0)]).unwrap();
     });
+
     hooks::add_grouped::<FocusedOn<PromptLine<Ui>>>("HidePromptLine", |(_, area)| {
         area.constrain_ver([Constraint::Ratio(1, 1), Constraint::Len(1.0)])
             .unwrap();
+    });
+
+    hooks::add_grouped::<FileWritten>("ReloadOnWrite", |(path, _)| {
+        let path = Path::new(path);
+        if let Some(config_dir) = crate::crate_dir()
+            && path.starts_with(config_dir)
+        {
+            crate::prelude::cmd::run("reload");
+        }
     });
 }
 
@@ -77,7 +91,7 @@ pub fn run_duat(
     (ui_ms, clipb): MetaStatics,
     prev: Vec<Vec<FileRet>>,
     (duat_tx, duat_rx): Messengers,
-) -> (Vec<Vec<FileRet>>, Receiver<DuatEvent>) {
+) -> Option<(Vec<Vec<FileRet>>, Receiver<DuatEvent>, Instant)> {
     <Ui as ui::Ui>::load(ui_ms);
     let mut cfg = SessionCfg::new(clipb);
 

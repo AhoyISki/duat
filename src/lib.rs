@@ -349,7 +349,7 @@
 #![feature(decl_macro, let_chains)]
 
 use duat_core::session::SessionCfg;
-pub use duat_core::{RwLock, thread};
+pub use duat_core::{RwLock, crate_dir, duat_name, src_crate, thread};
 
 pub use self::setup::{Messengers, MetaStatics, pre_setup, run_duat};
 
@@ -479,8 +479,9 @@ pub mod form {
 /// Hook utilities
 pub mod hooks {
     pub use duat_core::hooks::{
-        ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FormSet, Hookable, KeySent,
-        ModeSwitched, SearchPerformed, SearchUpdated, add, add_grouped, group_exists, remove,
+        ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FormSet, Hookable,
+        KeySent, ModeSwitched, SearchPerformed, SearchUpdated, add, add_grouped, group_exists,
+        remove,
     };
 
     use crate::Ui;
@@ -596,7 +597,7 @@ pub macro setup_duat($setup:expr) {
         ms: MetaStatics,
         prev_files: Vec<Vec<FileRet>>,
         messengers: Messengers,
-    ) -> (Vec<Vec<FileRet>>, mpsc::Receiver<DuatEvent>) {
+    ) -> Option<(Vec<Vec<FileRet>>, mpsc::Receiver<DuatEvent>, std::time::Instant)> {
         pre_setup();
         $setup();
         run_duat(ms, prev_files, messengers)
@@ -624,9 +625,9 @@ pub mod prelude {
         Area, Ui, control, cursor,
         form::{self, CursorShape, Form},
         hooks::{
-            self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FocusedOn, FormSet,
-            ModeSetTo, ModeSwitched, OnFileOpen, OnWindowOpen, SearchPerformed, SearchUpdated,
-            UnfocusedFrom,
+            self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FocusedOn,
+            FormSet, ModeSetTo, ModeSwitched, OnFileOpen, OnWindowOpen, SearchPerformed,
+            SearchUpdated, UnfocusedFrom,
         },
         mode::{self, Cursors, Mode, alias, map},
         print, setup_duat,

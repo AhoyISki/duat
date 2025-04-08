@@ -17,6 +17,7 @@ use crate::{
     cache::load_cache,
     cfg::PrintCfg,
     context, form,
+    hooks::{self, FileWritten},
     mode::Cursors,
     text::{Bytes, Text, err},
     ui::{Area, PushSpecs, Ui},
@@ -129,13 +130,25 @@ impl File {
     ///
     /// [`Path`]: std::path::Path
     #[allow(clippy::result_large_err)]
-    pub fn write(&mut self) -> Result<usize, Text> {
+    pub fn write(&mut self) -> Result<Option<usize>, Text> {
         if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &self.path {
             let path = path.clone();
-            self.text
-                .write_to(std::io::BufWriter::new(fs::File::create(&path)?))
-                .inspect(|_| self.path = PathKind::SetExists(path))
-                .map_err(Text::from)
+            if self.text.has_unsaved_changes() {
+                let res = self
+                    .text
+                    .write_to(std::io::BufWriter::new(fs::File::create(&path)?))
+                    .inspect(|_| self.path = PathKind::SetExists(path.clone()))
+                    .map(Some)
+                    .map_err(Text::from);
+
+                if let Ok(Some(bytes)) = res.as_ref() {
+                    hooks::trigger::<FileWritten>((path.to_string_lossy().to_string(), *bytes));
+                }
+
+                res
+            } else {
+                Ok(None)
+            }
         } else {
             Err(err!("No file was set"))
         }
@@ -144,9 +157,22 @@ impl File {
     /// Writes the file to the given [`Path`]
     ///
     /// [`Path`]: std::path::Path
-    pub fn write_to(&self, path: impl AsRef<std::path::Path>) -> std::io::Result<usize> {
-        self.text
-            .write_to(std::io::BufWriter::new(fs::File::create(path)?))
+    pub fn write_to(&self, path: impl AsRef<std::path::Path>) -> std::io::Result<Option<usize>> {
+        if self.text.has_unsaved_changes() {
+            let path = path.as_ref();
+            let res = self
+                .text
+                .write_to(std::io::BufWriter::new(fs::File::create(path)?))
+                .map(Some);
+
+            if let Ok(Some(bytes)) = res.as_ref() {
+                hooks::trigger::<FileWritten>((path.to_string_lossy().to_string(), *bytes));
+            }
+
+            res
+        } else {
+            Ok(None)
+        }
     }
 
     ////////// Path querying functions
