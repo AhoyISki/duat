@@ -17,7 +17,6 @@ mod state;
 
 pub use self::state::State;
 use crate::{
-    cfg::PrintCfg,
     context::{self, DynamicFile, FixedFile},
     form::{self, Form},
     status::{file_fmt, main_fmt, mode_fmt, mode_name, selections_fmt},

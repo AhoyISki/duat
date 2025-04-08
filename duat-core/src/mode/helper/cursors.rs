@@ -4,9 +4,12 @@ use gapbuf::{GapBuffer, gap_buffer};
 use serde::{Deserialize, Serialize, de::Visitor, ser::SerializeSeq};
 
 pub use self::cursor::{Cursor, VPoint};
-use crate::{add_shifts, merging_range_by_guess_and_lazy_shift, text::Change};
+use crate::{
+    add_shifts, merging_range_by_guess_and_lazy_shift,
+    text::{Change, Point},
+};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Cursors {
     buf: CursorGapBuffer,
     main_i: usize,
@@ -31,7 +34,7 @@ impl Cursors {
         let c_range = merging_range_by_guess_and_lazy_shift(
             (&self.buf.0, self.buf.len()),
             (guess_i, [cursor.start(), cursor.end_excl()]),
-            (sh_from, shift),
+            (sh_from, shift, [0; 3], Point::shift_by),
             (Cursor::start, Cursor::end_excl),
         );
 
@@ -80,11 +83,9 @@ impl Cursors {
 
         // If there are no more Cursors after this, don't set the shift_state.
         let cursors_taken = c_range.clone().count();
-        if sh_from.saturating_sub(cursors_taken).max(c_range.start) + 1 < self.buf.len() {
-            self.shift_state.set((
-                sh_from.saturating_sub(cursors_taken).max(c_range.start) + 1,
-                shift,
-            ));
+        let new_sh_from = sh_from.saturating_sub(cursors_taken).max(c_range.start) + 1;
+        if new_sh_from < self.buf.len() {
+            self.shift_state.set((new_sh_from, shift));
         }
 
         ([c_range.start, cursors_taken], last_cursor_overhangs)
@@ -99,7 +100,7 @@ impl Cursors {
         let c_range = merging_range_by_guess_and_lazy_shift(
             (&self.buf.0, self.buf.len()),
             (guess_i, [change.start(), change.taken_end()]),
-            (sh_from, shift),
+            (sh_from, shift, [0; 3], Point::shift_by),
             (Cursor::start, Cursor::end_excl),
         );
 
@@ -131,12 +132,10 @@ impl Cursors {
             }
         };
 
-        let shifted_sh_from = sh_from.saturating_sub(cursors_taken);
-        if shifted_sh_from.max(c_range.start) + cursors_added < self.buf.len() {
-            self.shift_state.set((
-                shifted_sh_from.max(c_range.start) + cursors_added,
-                add_shifts(shift, change.shift()),
-            ));
+        let new_sh_from = sh_from.saturating_sub(cursors_taken).max(c_range.start) + cursors_added;
+        if new_sh_from < self.buf.len() {
+            self.shift_state
+                .set((new_sh_from, add_shifts(shift, change.shift())));
         }
 
         cursors_taken - cursors_added
@@ -279,7 +278,7 @@ mod cursor {
 
     /// A cursor in the text file. This is an editing cursor, -(not
     /// a printing cursor.
-    #[derive(Default, Clone, Debug, Serialize, Deserialize)]
+    #[derive(Default, Clone, Serialize, Deserialize)]
     pub struct Cursor {
         caret: Cell<LazyVPoint>,
         anchor: Cell<Option<LazyVPoint>>,
@@ -680,7 +679,7 @@ mod cursor {
         }
     }
 
-    #[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize)]
+    #[derive(Clone, Copy, Eq, Serialize, Deserialize)]
     pub(super) enum LazyVPoint {
         Known(VPoint),
         Unknown(Point),
@@ -836,6 +835,26 @@ mod cursor {
             self.p == other.p
         }
     }
+
+    impl std::fmt::Debug for Cursor {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("Cursor")
+                .field("caret", &self.caret.get())
+                .field("anchor", &self.anchor.get())
+                .field("change_i", &self.change_i)
+                .finish()
+        }
+    }
+
+    impl std::fmt::Debug for LazyVPoint {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Self::Known(vp) => write!(f, "Known({:?})", vp.p),
+                Self::Unknown(p) => write!(f, "Unknown({p:?}"),
+                Self::Desired { p, .. } => write!(f, "Desired({p:?})"),
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -852,6 +871,23 @@ impl std::ops::Deref for CursorGapBuffer {
 impl std::ops::DerefMut for CursorGapBuffer {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+impl std::fmt::Debug for Cursors {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        struct DebugShiftState((usize, [i32; 3]));
+        impl std::fmt::Debug for DebugShiftState {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{:?}", self.0)
+            }
+        }
+
+        f.debug_struct("Cursors")
+            .field("buf", &self.buf)
+            .field("main_i", &self.main_i)
+            .field("shift_sate", &DebugShiftState(self.shift_state.get()))
+            .finish()
     }
 }
 

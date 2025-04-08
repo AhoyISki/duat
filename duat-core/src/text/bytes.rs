@@ -508,21 +508,6 @@ impl Bytes {
     }
 }
 
-impl std::fmt::Debug for Bytes {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Bytes")
-            .field("buf", &self.strs(..).to_array())
-            .field("records", &self.records)
-            .finish()
-    }
-}
-
-impl PartialEq for Bytes {
-    fn eq(&self, other: &Self) -> bool {
-        self.buf == other.buf
-    }
-}
-
 pub struct TextLines<'a> {
     lines: std::str::Lines<'a>,
     fwd_i: usize,
@@ -639,5 +624,34 @@ impl std::fmt::Display for Strs<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let [s0, s1] = self.to_array();
         write!(f, "{s0}{s1}")
+    }
+}
+
+impl std::fmt::Debug for Bytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Bytes")
+            .field("buf", &self.strs(..).to_array())
+            .field("records", &self.records)
+            .finish()
+    }
+}
+
+impl PartialEq for Bytes {
+    fn eq(&self, other: &Self) -> bool {
+        self.buf == other.buf
+    }
+}
+
+impl PartialEq<&str> for Bytes {
+    fn eq(&self, other: &&str) -> bool {
+        let [s0, s1] = self.strs(..).to_array();
+        other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
+    }
+}
+
+impl PartialEq<String> for Bytes {
+    fn eq(&self, other: &String) -> bool {
+        let [s0, s1] = self.strs(..).to_array();
+        other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
     }
 }

@@ -267,7 +267,6 @@ use std::{
 use dirs_next::cache_dir;
 pub use lender::{Lender, Lending};
 pub use parking_lot::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
-use text::Point;
 use ui::Window;
 use widgets::{File, Node, Widget};
 
@@ -597,11 +596,11 @@ fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize, usi
     };
     assert!(
         start <= max,
-        "byte out of bounds: the len is {max}, but the byte is {start}",
+        "index out of bounds: the len is {max}, but the index is {start}",
     );
     assert!(
         end <= max,
-        "byte out of bounds: the len is {max}, but the byte is {end}",
+        "index out of bounds: the len is {max}, but the index is {end}",
     );
 
     (start, end)
@@ -625,11 +624,11 @@ fn add_shifts(lhs: [i32; 3], rhs: [i32; 3]) -> [i32; 3] {
 /// By using this function, it is very possible to
 /// It is currently used in 2 places, in the `History` of [`Text`]s,
 /// and in the `Cursors` list.
-fn merging_range_by_guess_and_lazy_shift<T>(
+fn merging_range_by_guess_and_lazy_shift<T, U: Copy + Ord, V: Copy>(
     (container, len): (&impl std::ops::Index<usize, Output = T>, usize),
-    (guess_i, [start, end]): (usize, [Point; 2]),
-    (sh_from, shift): (usize, [i32; 3]),
-    (start_fn, end_fn): (impl Fn(&T) -> Point, impl Fn(&T) -> Point),
+    (guess_i, [start, end]): (usize, [U; 2]),
+    (sh_from, shift, zero_shift, shift_fn): (usize, V, V, fn(U, V) -> U),
+    (start_fn, end_fn): (fn(&T) -> U, fn(&T) -> U),
 ) -> Range<usize> {
     fn binary_search_by_key_and_index<T, K>(
         container: &(impl std::ops::Index<usize, Output = T> + ?Sized),
@@ -661,10 +660,10 @@ fn merging_range_by_guess_and_lazy_shift<T>(
         Err(left)
     }
 
-    let sh = |n: usize| if sh_from <= n { shift } else { [0; 3] };
-    let start_of = |i: usize| start_fn(&container[i]).shift_by(sh(i));
-    let end_of = |i: usize| end_fn(&container[i]).shift_by(sh(i));
-    let search = |n: usize, t: &T| start_fn(t).shift_by(sh(n));
+    let sh = |n: usize| if sh_from <= n { shift } else { zero_shift };
+    let start_of = |i: usize| shift_fn(start_fn(&container[i]), sh(i));
+    let end_of = |i: usize| shift_fn(end_fn(&container[i]), sh(i));
+    let search = |n: usize, t: &T| shift_fn(start_fn(t), sh(n));
 
     let mut c_range = if let Some(prev_i) = guess_i.checked_sub(1)
         && (prev_i < len && start_of(prev_i) <= start && start <= end_of(prev_i))

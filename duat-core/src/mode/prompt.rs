@@ -5,6 +5,7 @@ use lender::Lender;
 use super::{Cursors, EditHelper, IncSearcher, KeyCode, KeyEvent, Mode, key};
 use crate::{
     cmd, context, form,
+    hooks::{self, SearchPerformed, SearchUpdated},
     text::{Key, Point, Searcher, Tag, Text, text},
     ui::{Area, Ui},
     widgets::{PromptLine, Widget},
@@ -30,10 +31,17 @@ impl<M: PromptMode<U>, U: Ui> Mode<U> for Prompt<M, U> {
 
         match key {
             key!(KeyCode::Backspace) => {
-                let mut e = helper.edit_main();
-                e.move_hor(-1);
-                e.replace("");
-                self.0.update(helper.text_mut(), area);
+                if helper.text().is_empty() {
+                    helper.cursors_mut().clear();
+                    self.0.update(helper.text_mut(), area);
+                    self.0.before_exit(helper.text_mut(), area);
+                    super::reset();
+                } else {
+                    let mut e = helper.edit_main();
+                    e.move_hor(-1);
+                    e.replace("");
+                    self.0.update(helper.text_mut(), area);
+                }
             }
             key!(KeyCode::Delete) => {
                 helper.edit_main().replace("");
@@ -165,11 +173,17 @@ pub struct IncSearch<I: IncSearcher<U>, U: Ui> {
     inc: I,
     orig: Option<(Cursors, <U::Area as Area>::PrintInfo)>,
     ghost: PhantomData<U>,
+    prev: String,
 }
 
 impl<I: IncSearcher<U>, U: Ui> IncSearch<I, U> {
     pub fn new(inc: I) -> Prompt<Self, U> {
-        Prompt::new(Self { inc, orig: None, ghost: PhantomData })
+        Prompt::new(Self {
+            inc,
+            orig: None,
+            ghost: PhantomData,
+            prev: String::new(),
+        })
     }
 }
 
@@ -195,6 +209,17 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
 
                 text.insert_tag(*KEY, Tag::Form(span.start.offset..span.end.offset, id, 0));
             }
+        }
+
+        if *text != self.prev {
+            let prev = std::mem::replace(&mut self.prev, text.to_string());
+            hooks::trigger::<SearchUpdated>((prev, self.prev.clone()));
+        }
+    }
+
+    fn before_exit(&mut self, text: &mut Text, _area: &<U as Ui>::Area) {
+        if !text.is_empty() {
+            hooks::trigger::<SearchPerformed>(text.to_string());
         }
     }
 

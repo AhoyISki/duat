@@ -398,7 +398,9 @@ impl RawTag {
 impl std::fmt::Debug for RawTag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RawTag::PushForm(key, id, _) => write!(f, "PushForm({key:?}, {})", id.name()),
+            RawTag::PushForm(key, id, prio) => {
+                write!(f, "PushForm({key:?}, {}, {prio})", id.name())
+            }
             RawTag::PopForm(key, id) => write!(f, "PopForm({key:?}, {})", id.name()),
             RawTag::MainCursor(key) => write!(f, "MainCursor({key:?})"),
             RawTag::ExtraCursor(key) => write!(f, "ExtraCursor({key:?})"),

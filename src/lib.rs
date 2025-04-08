@@ -480,7 +480,7 @@ pub mod form {
 pub mod hooks {
     pub use duat_core::hooks::{
         ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FormSet, Hookable, KeySent,
-        ModeSwitched, add, add_grouped, group_exists, remove,
+        ModeSwitched, SearchPerformed, SearchUpdated, add, add_grouped, group_exists, remove,
     };
 
     use crate::Ui;
@@ -534,6 +534,20 @@ pub mod hooks {
     /// [`Widget`]: crate::widgets::Widget
     /// [`RwData<W>`]: crate::prelude::RwData
     pub type KeySentTo<W> = duat_core::hooks::KeySentTo<W, Ui>;
+
+    /// [`Hookable`]: Lets you modify a [`Mode`] as it is set
+    ///
+    /// # Arguments
+    ///
+    /// - The new mode.
+    /// - Its widget.
+    ///
+    /// This hook is very useful if you want to, for example, set
+    /// different options upon switching to modes, depending on things
+    /// like the language of a [`File`].
+    ///
+    /// [`File`]: crate::widgets::File
+    pub type ModeSetTo<M> = duat_core::hooks::ModeSetTo<M, Ui>;
 }
 
 /// Duat's builtin widgets
@@ -597,8 +611,8 @@ pub mod prelude {
         Plugin, clipboard, cmd,
         data::{self, RwData},
         text::{
-            self, AlignCenter, AlignLeft, AlignRight, Builder, Ghost, Spacer, Tag, Text, err, hint,
-            ok, text, RawTag
+            self, AlignCenter, AlignLeft, AlignRight, Builder, Ghost, RawTag, Spacer, Tag, Text,
+            err, hint, ok, text,
         },
         ui::{Area as AreaTrait, FileBuilder, WindowBuilder},
         widgets::Widget,
@@ -611,7 +625,8 @@ pub mod prelude {
         form::{self, CursorShape, Form},
         hooks::{
             self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FocusedOn, FormSet,
-            ModeSwitched, OnFileOpen, OnWindowOpen, UnfocusedFrom,
+            ModeSetTo, ModeSwitched, OnFileOpen, OnWindowOpen, SearchPerformed, SearchUpdated,
+            UnfocusedFrom,
         },
         mode::{self, Cursors, Mode, alias, map},
         print, setup_duat,

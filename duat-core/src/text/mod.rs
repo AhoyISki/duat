@@ -67,7 +67,7 @@
 //!
 //! [gap buffers]: gapbuf::GapBuffer
 //! [colored]: crate::form::Form
-//! [ghost text]: Tag::GhostText
+//! [ghost text]: Tag::Ghost
 //! [`Ui`]: crate::ui::Ui
 //! [`File`]: crate::widgets::File
 //! [`Widget`]: crate::widgets::Widget
@@ -246,13 +246,16 @@ impl Text {
 
     /// Whether or not there are any characters in the [`Text`]
     ///
-    /// # Note
+    /// This ignores the last `'\n'` in the [`Text`], since it is
+    /// always there no matter what.
     ///
-    /// This does not check for tags, so with a [`Tag::GhostText`],
+    /// # Notes
+    ///
+    /// This does not check for tags, so with a [`Tag::Ghost`],
     /// there could actually be a "string" of characters on the
     /// [`Text`], it just wouldn't be considered real "text".
     pub fn is_empty(&self) -> bool {
-        self.0.bytes.is_empty()
+        self.0.bytes == "\n"
     }
 
     /// The `char` at the [`Point`]'s position
@@ -422,7 +425,7 @@ impl Text {
     ///
     /// This will essentially return the [last point] of the text,
     /// alongside the last possible [`Point`] of any
-    /// [`Tag::GhostText`] at the end of the text.
+    /// [`Tag::Ghost`] at the end of the text.
     ///
     /// [points]: TwoPoints
     /// [last point]: Self::len
@@ -447,7 +450,7 @@ impl Text {
     /// The maximum [points] in the `at`th byte
     ///
     /// This point is essentially the [point] at that byte, plus the
-    /// last possible [`Point`] of any [`Tag::GhostText`]s in that
+    /// last possible [`Point`] of any [`Tag::Ghost`]s in that
     /// position.
     ///
     /// [points]: TwoPoints
@@ -949,59 +952,11 @@ impl Text {
     }
 }
 
-impl Default for Text {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl std::fmt::Debug for Text {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Text")
-            .field("bytes", &self.0.bytes)
-            .field("tags", &self.0.tags)
-            .finish_non_exhaustive()
-    }
-}
-
-impl Clone for Text {
-    fn clone(&self) -> Self {
-        Self(Box::new(InnerText {
-            bytes: self.0.bytes.clone(),
-            tags: self.0.tags.clone(),
-            cursors: self.0.cursors.clone(),
-            history: self.0.history.clone(),
-            readers: Readers::default(),
-            forced_new_line: self.0.forced_new_line,
-            has_changed: self.0.has_changed,
-            has_unsaved_changes: AtomicBool::new(false),
-        }))
-    }
-}
-
-impl From<std::io::Error> for Text {
-    fn from(value: std::io::Error) -> Self {
-        err!({ value.kind().to_string() })
-    }
-}
-
-impl From<Box<dyn std::error::Error>> for Text {
-    fn from(value: Box<dyn std::error::Error>) -> Self {
-        err!({ value.to_string() })
-    }
-}
-
-impl PartialEq for Text {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.bytes == other.0.bytes && self.0.tags == other.0.tags
-    }
-}
-
 /// Merges a range in a sorted list of ranges, useful in [`Reader`]s
 ///
 /// Since ranges are not allowed to intersect, they will be sorted
 /// both in their starting bound and in their ending bound.
-pub fn merge_range_in(ranges: &mut Vec<Range<usize>>, range: Range<usize>) {
+pub fn merge_range_in(ranges: &mut Vec<Range<usize>>, range: Range<usize>) -> [usize; 2] {
     let (r_range, start) = match ranges.binary_search_by_key(&range.start, |r| r.start) {
         // Same thing here
         Ok(i) => (i..i + 1, range.start),
@@ -1029,6 +984,7 @@ pub fn merge_range_in(ranges: &mut Vec<Range<usize>>, range: Range<usize>) {
     };
 
     ranges.splice(r_range, [start..end]);
+    [start, end - start]
 }
 
 /// Splits a range within a region
@@ -1072,10 +1028,70 @@ fn transform_ranges(ranges: &mut [Range<usize>], changes: &[Change<&str>]) {
     }
 }
 
+impl Default for Text {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Debug for Text {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Text")
+            .field("bytes", &self.0.bytes)
+            .field("tags", &self.0.tags)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Clone for Text {
+    fn clone(&self) -> Self {
+        Self(Box::new(InnerText {
+            bytes: self.0.bytes.clone(),
+            tags: self.0.tags.clone(),
+            cursors: self.0.cursors.clone(),
+            history: self.0.history.clone(),
+            readers: Readers::default(),
+            forced_new_line: self.0.forced_new_line,
+            has_changed: self.0.has_changed,
+            has_unsaved_changes: AtomicBool::new(false),
+        }))
+    }
+}
+
+impl From<std::io::Error> for Text {
+    fn from(value: std::io::Error) -> Self {
+        err!({ value.kind().to_string() })
+    }
+}
+
+impl From<Box<dyn std::error::Error>> for Text {
+    fn from(value: Box<dyn std::error::Error>) -> Self {
+        err!({ value.to_string() })
+    }
+}
+
 impl From<&std::path::PathBuf> for Text {
     fn from(value: &std::path::PathBuf) -> Self {
         let value = value.to_str().unwrap_or("");
         Self::from(value)
+    }
+}
+
+impl PartialEq for Text {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.bytes == other.0.bytes && self.0.tags == other.0.tags
+    }
+}
+
+impl PartialEq<&str> for Text {
+    fn eq(&self, other: &&str) -> bool {
+        self.0.bytes == *other
+    }
+}
+
+impl PartialEq<String> for Text {
+    fn eq(&self, other: &String) -> bool {
+        self.0.bytes == *other
     }
 }
 

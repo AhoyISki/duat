@@ -23,7 +23,7 @@ use crate::{
 pub struct LineNumbers<U: Ui> {
     ff: FixedFile<U>,
     text: Text,
-    cfg: LineNumbersCfg<U>,
+    cfg: LineNumbersOptions<U>,
 }
 
 impl<U: Ui> LineNumbers<U> {
@@ -69,17 +69,19 @@ impl<U: Ui> LineNumbers<U> {
         self.text = builder.finish();
     }
 
-    pub fn get_cfg(&self) -> LineNumbersCfg<U> {
-        self.cfg.clone()
+	/// The options for these [`LineNumbers`]
+    pub fn options(&self) -> &LineNumbersOptions<U> {
+        &self.cfg
     }
 
-    pub fn reconfigure(&mut self, cfg: LineNumbersCfg<U>) {
-        self.cfg = cfg
+	/// The mutable options for these [`LineNumbers`]
+    pub fn options_mut(&mut self) -> &mut LineNumbersOptions<U> {
+        &mut self.cfg
     }
 }
 
 impl<U: Ui> Widget<U> for LineNumbers<U> {
-    type Cfg = LineNumbersCfg<U>;
+    type Cfg = LineNumbersOptions<U>;
 
     fn cfg() -> Self::Cfg {
         Self::Cfg {
@@ -132,7 +134,7 @@ pub enum LineNum {
 /// Configuration options for the [`LineNumbers<U>`] widget.
 #[derive(Debug, Clone, Copy)]
 #[doc(hidden)]
-pub struct LineNumbersCfg<U> {
+pub struct LineNumbersOptions<U> {
     pub num_rel: LineNum,
     pub align: Alignment,
     pub main_align: Alignment,
@@ -141,7 +143,7 @@ pub struct LineNumbersCfg<U> {
     _ghost: PhantomData<U>,
 }
 
-impl<U> LineNumbersCfg<U> {
+impl<U> LineNumbersOptions<U> {
     pub fn absolute(self) -> Self {
         Self { num_rel: LineNum::Abs, ..self }
     }
@@ -203,7 +205,7 @@ impl<U> LineNumbersCfg<U> {
     }
 }
 
-impl<U: Ui> WidgetCfg<U> for LineNumbersCfg<U> {
+impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
     type Widget = LineNumbers<U>;
 
     fn build(self, _: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
@@ -224,7 +226,7 @@ fn push_text<U>(
     line: usize,
     main: usize,
     is_wrapped: bool,
-    cfg: &LineNumbersCfg<U>,
+    cfg: &LineNumbersOptions<U>,
 ) {
     if is_wrapped && !cfg.show_wraps {
         text!(*b, "\n");

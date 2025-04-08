@@ -160,7 +160,7 @@ impl Moment {
         let c_range = merging_range_by_guess_and_lazy_shift(
             (&self.0, self.0.len()),
             (guess_i.unwrap_or(0), [change.start(), change.taken_end()]),
-            (sh_from, shift),
+            (sh_from, shift, [0; 3], Point::shift_by),
             (Change::start, Change::added_end),
         );
 
@@ -187,16 +187,16 @@ impl Moment {
         }
 
         let changes_taken = c_range.clone().count();
-        let sh_from = if !(change.added_text() == "" && change.taken_text() == "") {
+        let new_sh_from = if !(change.added_text() == "" && change.taken_text() == "") {
             self.0.insert(c_range.start, change);
-            c_range.start.max(sh_from.saturating_sub(changes_taken)) + 1
+            sh_from.saturating_sub(changes_taken).max(c_range.start) + 1
         } else {
-            c_range.start.max(sh_from.saturating_sub(changes_taken))
+            sh_from.saturating_sub(changes_taken).max(c_range.start)
         };
         // If there are no more Changes after this, don't set the shift_state.
-        if c_range.start + 1 < self.0.len() {
+        if new_sh_from < self.0.len() {
             let shift = add_shifts(shift, new_shift);
-            *shift_state = (sh_from, shift);
+            *shift_state = (new_sh_from, shift);
         }
 
         c_range.start

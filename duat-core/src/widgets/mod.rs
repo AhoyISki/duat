@@ -52,7 +52,7 @@ use std::sync::{
 pub use self::{
     prompt_line::{PromptLine, PromptLineCfg},
     file::{File, FileCfg, PathKind},
-    line_numbers::{LineNum, LineNumbers, LineNumbersCfg},
+    line_numbers::{LineNum, LineNumbers, LineNumbersOptions},
     notifier::{Notifier, NotificationsCfg},
     status_line::{State, StatusLine, StatusLineCfg, status},
 };

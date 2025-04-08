@@ -142,7 +142,7 @@ impl std::iter::Step for Key {
 ///
 /// [`Tag`]: super::Tag
 /// [removed]: crate::text::Text::remove_tags
-pub trait Keys: Clone + PartialEq + Eq {
+pub trait Keys: std::fmt::Debug + Clone + PartialEq + Eq {
     /// Whether this range contains a given [`Key`]
     fn contains(self, key: Key) -> bool;
 }
@@ -198,31 +198,19 @@ impl std::fmt::Debug for ToggleId {
 
 impl GhostId {
     /// Creates a new [`TextId`]
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         static TEXT_COUNT: AtomicU16 = AtomicU16::new(0);
-
         Self(TEXT_COUNT.fetch_add(1, Ordering::Relaxed))
-    }
-}
-
-impl Default for GhostId {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
 impl ToggleId {
     /// Creates a new [`ToggleId`]
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         static TOGGLE_COUNT: AtomicU16 = AtomicU16::new(0);
-
         Self(TOGGLE_COUNT.fetch_add(1, Ordering::Relaxed))
-    }
-}
-
-impl Default for ToggleId {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -231,9 +219,9 @@ pub struct RangeId(usize);
 
 impl RangeId {
     /// Creates a new [`RangeId`]
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         static RANGE_COUNT: AtomicUsize = AtomicUsize::new(0);
-
         Self(RANGE_COUNT.fetch_add(1, Ordering::Relaxed))
     }
 }

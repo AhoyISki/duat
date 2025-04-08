@@ -152,7 +152,7 @@ impl<'a, W: Widget<A::Ui>, A: Area> EditHelper<'a, W, A, ()> {
 impl<W: Widget<A::Ui>, A: Area, S> EditHelper<'_, W, A, S> {
     ////////// Editing functions
 
-    /// Edits on the main [`Cursor`] in the [`Text`]
+    /// Edits the nth [`Cursor`] in the [`Text`]
     ///
     /// Once dropped, the [`Cursor`] in this [`Editor`] will be added
     /// back to the list of [`Cursor`]s, unless it is [destroyed]
@@ -160,11 +160,16 @@ impl<W: Widget<A::Ui>, A: Area, S> EditHelper<'_, W, A, S> {
     /// If you want to edit on the main cursor, see [`edit_main`], if
     /// you want to edit on many [`Cursor`]s, see [`edit_iter`].
     ///
+    /// Just like all other `edit` methods, this one will populate the
+    /// [`Cursors`], so if there are no [`Cursor`]s, it will create
+    /// one at [`Point::default`].
+    ///
     /// [destroyed]: Editor::destroy
     /// [`edit_main`]: Self::edit_main
     /// [`edit_iter`]: Self::edit_iter
     pub fn edit_nth(&mut self, n: usize) -> Editor<W, A, S> {
         let cursors = self.widget.cursors_mut().unwrap();
+        cursors.populate();
         let Some((cursor, was_main)) = cursors.remove(n) else {
             panic!("Cursor index {n} out of bounds");
         };
@@ -180,20 +185,46 @@ impl<W: Widget<A::Ui>, A: Area, S> EditHelper<'_, W, A, S> {
         )
     }
 
-    /// Edits on the main [`Cursor`] in the [`Text`]
+    /// Edits the main [`Cursor`] in the [`Text`]
     ///
     /// Once dropped, the [`Cursor`] in this [`Editor`] will be added
     /// back to the list of [`Cursor`]s, unless it is [destroyed]
     ///
-    /// If you want to edit on the `nth` cursor, see [`edit_nth`], if
-    /// you want to edit on many [`Cursor`]s, see [`edit_iter`].
+    /// If you want to edit on the `nth` cursor, see [`edit_nth`],
+    /// same for [`edit_last`], if you want to edit on many
+    /// [`Cursor`]s, see [`edit_iter`].
+    ///
+    /// Just like all other `edit` methods, this one will populate the
+    /// [`Cursors`], so if there are no [`Cursor`]s, it will create
+    /// one at [`Point::default`].
     ///
     /// [destroyed]: Editor::destroy
     /// [`edit_nth`]: Self::edit_nth
+    /// [`edit_last`]: Self::edit_last
     /// [`edit_iter`]: Self::edit_iter
     pub fn edit_main(&mut self) -> Editor<W, A, S> {
-        let n = self.widget.cursors().unwrap().main_index();
-        self.edit_nth(n)
+        self.edit_nth(self.cursors().main_index())
+    }
+
+    /// Edits the last [`Cursor`] in the [`Text`]
+    ///
+    /// Once dropped, the [`Cursor`] in this [`Editor`] will be added
+    /// back to the list of [`Cursor`]s, unless it is [destroyed]
+    ///
+    /// If you want to edit on the `nth` cursor, see [`edit_nth`],
+    /// same for [`edit_main`], if you want to edit on many
+    /// [`Cursor`]s, see [`edit_iter`].
+    ///
+    /// Just like all other `edit` methods, this one will populate the
+    /// [`Cursors`], so if there are no [`Cursor`]s, it will create
+    /// one at [`Point::default`].
+    ///
+    /// [destroyed]: Editor::destroy
+    /// [`edit_nth`]: Self::edit_nth
+    /// [`edit_main`]: Self::edit_main
+    /// [`edit_iter`]: Self::edit_iter
+    pub fn edit_last(&mut self) -> Editor<W, A, S> {
+        self.edit_nth(self.cursors().len().saturating_sub(1))
     }
 
     /// A [`Lender`] over all [`Editor`]s of the [`Text`]
@@ -208,8 +239,13 @@ impl<W: Widget<A::Ui>, A: Area, S> EditHelper<'_, W, A, S> {
     /// to just `while let Some(e) = editors.next() {}` or
     /// `helper.edit_iter().for_each(|_| {})` instead.
     ///
+    /// Just like all other `edit` methods, this one will populate the
+    /// [`Cursors`], so if there are no [`Cursor`]s, it will create
+    /// one at [`Point::default`].
+    ///
     /// [`edit_nth`]: Self::edit_nth
     pub fn edit_iter<'b>(&'b mut self) -> EditIter<'b, W, A, S> {
+        self.cursors_mut().populate();
         EditIter {
             next_i: Rc::new(Cell::new(0)),
             widget: self.widget,
@@ -374,23 +410,19 @@ impl<'a, W: Widget<A::Ui>, A: Area, S> Editor<'a, W, A, S> {
             Change::new(edit, [p0, p1], self.widget.text())
         };
 
-        let edit_len = change.added_text().len();
+        let added_len = change.added_text().len();
         let end = change.added_end();
 
         self.edit(change);
 
-        let text = self.widget.text();
+        let caret_was_on_start = self.set_caret_on_end();
 
-        if let Some(anchor) = self.cursor.anchor()
-            && anchor >= self.cursor.caret()
-            && edit_len > 0
-        {
-            self.cursor.swap_ends();
-            self.cursor.move_to(end, text);
-            self.cursor.swap_ends();
-        } else {
-            self.cursor.unset_anchor();
-            self.cursor.move_to(end, text);
+        self.move_to(end);
+        if added_len > 0 {
+            self.move_hor(-1);
+        }
+        if caret_was_on_start {
+            self.set_caret_on_start();
         }
     }
 
@@ -456,6 +488,8 @@ impl<'a, W: Widget<A::Ui>, A: Area, S> Editor<'a, W, A, S> {
             text.apply_change(self.cursor.change_i.map(|i| i as usize), change);
         self.cursor.change_i = change_i.map(|i| i as u32);
 
+        // The Change may have happened before the index of the next curossr,
+        // so we need to account for that.
         if let Some((change_i, cursors_taken)) = change_i.zip(cursors_taken)
             && let Some(next_i) = self.next_i.as_ref()
             && change_i <= next_i.get()
@@ -602,7 +636,7 @@ impl<'a, W: Widget<A::Ui>, A: Area, S> Editor<'a, W, A, S> {
     pub fn destroy(mut self) {
         // If it is 1, it is actually 2, because this Cursor is also part of
         // that list.
-        if self.widget.cursors().unwrap().len() >= 1 {
+        if !self.widget.cursors().unwrap().is_empty() {
             // Rc<Cell> needs to be manually dropped to reduce its counter.
             self.next_i.take();
             if self.was_main {

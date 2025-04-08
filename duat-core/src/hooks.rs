@@ -33,6 +33,8 @@
 //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
 //! - [`ModeSwitched`] triggers when you change [`Mode`].
 //! - [`ModeSetTo`] lets you act on a [`Mode`] after switching.
+//! - [`SearchUpdated`] triggers after a search updates.
+//! - [`SearchPerformed`] triggers after a search is performed.
 //!
 //! # A note on execution
 //!
@@ -123,6 +125,82 @@ use crate::{
     ui::{Area, FileBuilder, Ui, WindowBuilder},
     widgets::Widget,
 };
+
+/// Hook functions
+mod global {
+    use super::{Hookable, Hooks};
+
+    static HOOKS: Hooks = Hooks::new();
+
+    /// Adds a [hook]
+    ///
+    /// This hook is ungrouped, that is, it cannot be removed. If you
+    /// want a hook that is removable, see [`hooks::add_grouped`].
+    ///
+    /// [hook]: Hookable
+    /// [`hooks::add_grouped`]: add_grouped
+    pub fn add<H: Hookable>(f: impl for<'a> FnMut(H::Args<'a>) -> H::Return + Send + 'static) {
+        crate::thread::spawn(move || HOOKS.add::<H>("", f));
+    }
+
+    /// Adds a grouped [hook]
+    ///
+    /// A grouped hook is one that, along with others on the same
+    /// group, can be removed by [`hooks::remove`]. If you do
+    /// not need/want this feature, take a look at [`hooks::add`]
+    ///
+    /// [hook]: Hookable
+    /// [`hooks::remove`]: remove
+    /// [`hooks::add`]: add
+    pub fn add_grouped<H: Hookable>(
+        group: &'static str,
+        f: impl for<'a> FnMut(H::Args<'a>) -> H::Return + Send + 'static,
+    ) {
+        crate::thread::spawn(move || HOOKS.add::<H>(group, f));
+    }
+
+    /// Removes a [hook] group
+    ///
+    /// By removing the group, this function will remove all hooks
+    /// added via [`hooks::add_grouped`] with the same group.
+    ///
+    /// [hook]: Hookable
+    /// [`hooks::add_grouped`]: add_grouped
+    pub fn remove(group: &'static str) {
+        crate::thread::spawn(move || HOOKS.remove(group));
+    }
+
+    /// Triggers a hooks for a [`Hookable`] struct
+    ///
+    /// When you trigger a hook, all hooks added via [`hooks::add`] or
+    /// [`hooks::add_grouped`] for said [`Hookable`] struct will
+    /// be called.
+    ///
+    /// [hook]: Hookable
+    /// [`hooks::add`]: add
+    /// [`hooks::add_grouped`]: add_grouped
+    pub fn trigger<H: Hookable>(args: H::PreArgs) {
+        crate::thread::spawn(move || {
+            HOOKS.trigger::<H>(args);
+        });
+    }
+
+    pub(crate) fn trigger_now<H: Hookable>(args: H::PreArgs) -> H::Return {
+        HOOKS.trigger_now::<H>(args)
+    }
+
+    /// Checks if a give group exists
+    ///
+    /// Returns `true` if said group was added via
+    /// [`hooks::add_grouped`], and no [`hooks::remove`]
+    /// followed these additions
+    ///
+    /// [`hooks::add_grouped`]: add_grouped
+    /// [`hooks::remove`]: remove
+    pub fn group_exists(group: &'static str) -> bool {
+        HOOKS.group_exists(group)
+    }
+}
 
 /// [`Hookable`]: Triggers when Duat opens or reloads
 ///
@@ -445,7 +523,7 @@ impl Hookable for FormSet {
     }
 }
 
-/// [`Hookable`]: Triggers whenever a [`ColorScheme`] is set
+/// [`Hookable`]: Triggers when a [`ColorScheme`] is set
 ///
 /// Since [`Form`]s are set asynchronously, this may happen before the
 /// [`ColorScheme`] is done with its changes.
@@ -468,79 +546,51 @@ impl Hookable for ColorSchemeSet {
     }
 }
 
-/// Hook functions
-mod global {
-    use super::{Hookable, Hooks};
+/// [`Hookable`]: Triggers when a [search] is performed
+///
+/// Will not be triggered on empty searches.
+///
+/// # Arguments
+///
+/// - The searched regex pattern
+///
+/// [search]: crate::mode::IncSearch
+pub struct SearchPerformed;
 
-    static HOOKS: Hooks = Hooks::new();
+impl Hookable for SearchPerformed {
+    type Args<'a> = &'a str;
+    type PreArgs = String;
+    type Return = ();
 
-    /// Adds a [hook]
-    ///
-    /// This hook is ungrouped, that is, it cannot be removed. If you
-    /// want a hook that is removable, see [`hooks::add_grouped`].
-    ///
-    /// [hook]: Hookable
-    /// [`hooks::add_grouped`]: add_grouped
-    pub fn add<H: Hookable>(f: impl for<'a> FnMut(H::Args<'a>) -> H::Return + Send + 'static) {
-        crate::thread::spawn(move || HOOKS.add::<H>("", f));
+    fn trigger_hooks<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+        for hook in hooks {
+            hook(&pre_args)
+        }
     }
+}
 
-    /// Adds a grouped [hook]
-    ///
-    /// A grouped hook is one that, along with others on the same
-    /// group, can be removed by [`hooks::remove`]. If you do
-    /// not need/want this feature, take a look at [`hooks::add`]
-    ///
-    /// [hook]: Hookable
-    /// [`hooks::remove`]: remove
-    /// [`hooks::add`]: add
-    pub fn add_grouped<H: Hookable>(
-        group: &'static str,
-        f: impl for<'a> FnMut(H::Args<'a>) -> H::Return + Send + 'static,
-    ) {
-        crate::thread::spawn(move || HOOKS.add::<H>(group, f));
-    }
+/// [`Hookable`]: Triggers when a [search] is updated
+///
+/// Will not be triggered if the previous and current patterns are the
+/// same.
+///
+/// # Arguments
+///
+/// - The previous regex pattern
+/// - The current regex pattern
+///
+/// [search]: crate::mode::IncSearch
+pub struct SearchUpdated;
 
-    /// Removes a [hook] group
-    ///
-    /// By removing the group, this function will remove all hooks
-    /// added via [`hooks::add_grouped`] with the same group.
-    ///
-    /// [hook]: Hookable
-    /// [`hooks::add_grouped`]: add_grouped
-    pub fn remove(group: &'static str) {
-        crate::thread::spawn(move || HOOKS.remove(group));
-    }
+impl Hookable for SearchUpdated {
+    type Args<'a> = (&'a str, &'a str);
+    type PreArgs = (String, String);
+    type Return = ();
 
-    /// Triggers a hooks for a [`Hookable`] struct
-    ///
-    /// When you trigger a hook, all hooks added via [`hooks::add`] or
-    /// [`hooks::add_grouped`] for said [`Hookable`] struct will
-    /// be called.
-    ///
-    /// [hook]: Hookable
-    /// [`hooks::add`]: add
-    /// [`hooks::add_grouped`]: add_grouped
-    pub fn trigger<H: Hookable>(args: H::PreArgs) {
-        crate::thread::spawn(move || {
-            HOOKS.trigger::<H>(args);
-        });
-    }
-
-    pub(crate) fn trigger_now<H: Hookable>(args: H::PreArgs) -> H::Return {
-        HOOKS.trigger_now::<H>(args)
-    }
-
-    /// Checks if a give group exists
-    ///
-    /// Returns `true` if said group was added via
-    /// [`hooks::add_grouped`], and no [`hooks::remove`]
-    /// followed these additions
-    ///
-    /// [`hooks::add_grouped`]: add_grouped
-    /// [`hooks::remove`]: remove
-    pub fn group_exists(group: &'static str) -> bool {
-        HOOKS.group_exists(group)
+    fn trigger_hooks<'b>((prev, cur): Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+        for hook in hooks {
+            hook((&prev, &cur))
+        }
     }
 }
 
@@ -555,8 +605,8 @@ mod global {
 ///
 /// [`hooks::trigger`]: trigger
 pub trait Hookable: Sized + 'static {
-    type PreArgs: Send;
     type Args<'a>;
+    type PreArgs: Send;
     /// This type is useful if, for example, you want to pass a value
     /// by moving it to Args, while returning and reusing said value.
     type Return = ();
@@ -572,25 +622,6 @@ pub trait Hookable: Sized + 'static {
         hooks: impl Iterator<Item = Hook<'b, Self>>,
     ) -> Self::Return {
         unreachable!("This Hookable is not meant to be called immediately");
-    }
-}
-
-/// An intermediary trait, meant for group removal
-trait HookHolder: Send + Sync {
-    /// Remove the given group from hooks of this holder
-    fn remove(&mut self, group: &str);
-}
-
-/// An intermediary struct, meant to hold the hooks of a [`Hookable`]
-struct HooksOf<H: Hookable>(Mutex<Vec<(&'static str, InnerHookFn<H>)>>);
-
-impl<H: Hookable> HookHolder for HooksOf<H> {
-    fn remove(&mut self, group: &str) {
-        let mut hooks = None;
-        while hooks.is_none() {
-            hooks = self.0.try_lock();
-        }
-        hooks.unwrap().retain(|(g, _)| *g != group);
     }
 }
 
@@ -686,6 +717,25 @@ impl Hooks {
     /// Checks if a hook group exists
     fn group_exists(&self, group: &str) -> bool {
         self.groups.read().contains(&group)
+    }
+}
+
+/// An intermediary trait, meant for group removal
+trait HookHolder: Send + Sync {
+    /// Remove the given group from hooks of this holder
+    fn remove(&mut self, group: &str);
+}
+
+/// An intermediary struct, meant to hold the hooks of a [`Hookable`]
+struct HooksOf<H: Hookable>(Mutex<Vec<(&'static str, InnerHookFn<H>)>>);
+
+impl<H: Hookable> HookHolder for HooksOf<H> {
+    fn remove(&mut self, group: &str) {
+        let mut hooks = None;
+        while hooks.is_none() {
+            hooks = self.0.try_lock();
+        }
+        hooks.unwrap().retain(|(g, _)| *g != group);
     }
 }
 
