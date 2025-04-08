@@ -55,6 +55,7 @@ impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter<U> {
 
     fn plug(self) {
         form::set_many!(
+            ("variable", Form::white()),
             ("variable.parameter", Form::italic()),
             ("variable.builtin", Form::dark_yellow()),
             ("constant", Form::grey()),
@@ -247,6 +248,12 @@ impl TsParser {
         // removed, tags can be readded, without leaving a blank space, in
         // case the injection was of the same language.
         let buf = TsBuf(bytes);
+        cursor.set_byte_range(start..end);
+        let comment_id = hi_query
+            .capture_names()
+            .iter()
+            .position(|name| *name == "comment")
+            .unwrap();
         let mut hi_captures = cursor.captures(hi_query, root, buf);
         while let Some((qm, _)) = hi_captures.next() {
             for cap in qm.captures.iter() {
@@ -308,7 +315,7 @@ impl Reader for TsParser {
             // By this point, sub trees that intersect with a change
             // should already have been removed, so we can ignore that
             // scenario.
-            } else if start.byte() >= self.range.end {
+            } else if start.byte() > self.range.end {
                 continue;
             }
             at_least_one_change = true;
@@ -325,9 +332,9 @@ impl Reader for TsParser {
             self.range.end = (self.range.end as i32 + change.shift()[0]) as usize;
 
             self.sub_trees.retain_mut(|st| {
-                // Remove trees which are partially contained by the Change.
-                (st.range.start > start.byte() && st.range.end < taken.byte())
-                    || (start.byte() > st.range.start && taken.byte() < st.range.end)
+                // Remove trees that intersect with the changes
+                !((start.byte() < st.range.start && st.range.start < taken.byte())
+                    || (start.byte() < st.range.end && st.range.end < taken.byte()))
             });
         }
 
@@ -724,7 +731,7 @@ fn forms_from_query(
 ) -> &'static [(FormId, u8)] {
     #[rustfmt::skip]
     const PRIORITIES: &[&str] = &[
-        "variable", "module", "label", "string", "character", "boolean", "number", "type",
+        "string", "variable", "module", "label", "character", "boolean", "number", "type",
         "attribute", "property", "function", "constant", "constructor", "operator", "keyword",
         "punctuation", "comment", "markup"
     ];
@@ -801,7 +808,9 @@ fn log_node(node: tree_sitter::Node) {
     let mut log = String::new();
     while let Some(no) = node {
         let indent = " ".repeat(cursor.depth() as usize);
-        writeln!(log, "{indent}{no:?}").unwrap();
+        if cursor.node().is_named() {
+            writeln!(log, "{indent}{no:?}").unwrap();
+        }
         let mut next_exists = cursor.goto_first_child() || cursor.goto_next_sibling();
         while !next_exists && cursor.goto_parent() {
             next_exists = cursor.goto_next_sibling();

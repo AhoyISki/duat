@@ -50,20 +50,43 @@
 
 (parameter
   [
-    (identifier)
-    "_"
-  ] @variable.parameter)
+    (identifier) @variable.parameter
+    "_" @variable.parameter
+    (ref_pattern
+      [
+        (mut_pattern
+          [
+            (identifier)
+            "_"
+          ] @variable.parameter)
+        (identifier) @variable.parameter
+        "_" @variable.parameter
+      ])
+  ])
 
 (parameter
-  (ref_pattern
+  (tuple_pattern
     [
-      (mut_pattern
-        (identifier) @variable.parameter)
-      (identifier) @variable.parameter
-    ]))
+      (identifier)
+      "_" 
+    ] @variable.parameter))
 
-(closure_parameters
-  (_) @variable.parameter)
+(parameter
+  (slice_pattern
+    [
+      (identifier) @variable.parameter
+      "_" @variable.parameter
+      (ref_pattern
+        [
+          (mut_pattern
+            [
+              (identifier)
+              "_"
+            ] @variable.parameter)
+          (identifier) @variable.parameter
+          "_" @variable.parameter
+        ])
+    ]))
 
 ; Function calls
 (call_expression

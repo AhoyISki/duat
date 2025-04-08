@@ -1,26 +1,3 @@
-(macro_invocation
-  macro: [
-    (scoped_identifier
-      name: (_) @_macro_name)
-    (identifier) @_macro_name
-  ]
-  (token_tree) @injection.content
-  (#not-eq? @_macro_name "slint")
-  (#set! injection.language "rust")
-  (#set! injection.include-children))
-
-(macro_invocation
-  macro: [
-    (scoped_identifier
-      name: (_) @_macro_name)
-    (identifier) @_macro_name
-  ]
-  (token_tree) @injection.content
-  (#eq? @_macro_name "slint")
-  (#offset! @injection.content 0 1 0 -1)
-  (#set! injection.language "slint")
-  (#set! injection.include-children))
-
 (macro_definition
   (macro_rule
     left: (token_tree_pattern) @injection.content
@@ -93,3 +70,26 @@
 ((block_comment) @injection.content
   (#match? @injection.content "/\\*!([a-zA-Z]+:)?re2c")
   (#set! injection.language "re2c"))
+
+; These may seem more obvious, but putting them at the end seems
+; to make them more reliable ¯\_(ツ)_/¯
+(macro_invocation
+  macro: [
+    (scoped_identifier
+      name: (_) @_macro_name)
+    (identifier) @_macro_name
+  ]
+  (token_tree) @injection.content
+  (#not-eq? @_macro_name "slint")
+  (#set! injection.language "rust"))
+
+(macro_invocation
+  macro: [
+    (scoped_identifier
+      name: (_) @_macro_name)
+    (identifier) @_macro_name
+  ]
+  (token_tree) @injection.content
+  (#eq? @_macro_name "slint")
+  (#offset! @injection.content 0 1 0 -1)
+  (#set! injection.language "slint"))
