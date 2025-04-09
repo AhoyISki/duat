@@ -187,7 +187,7 @@ impl<U: Ui> Session<U> {
     pub fn start(
         mut self,
         duat_rx: mpsc::Receiver<DuatEvent>,
-    ) -> Option<(Vec<Vec<FileRet>>, mpsc::Receiver<DuatEvent>, Instant)> {
+    ) -> (Vec<Vec<FileRet>>, mpsc::Receiver<DuatEvent>, Option<Instant>) {
         hooks::trigger::<ConfigLoaded>(());
         form::set_sender(Sender::new(sender()));
 
@@ -245,7 +245,7 @@ impl<U: Ui> Session<U> {
                         hooks::trigger::<ExitedDuat>(());
                         context::order_reload_or_quit();
                         self.save_cache(true);
-                        return None;
+                        return (Vec::new(), duat_rx, None);
                     }
                     BreakTo::ReloadConfig => {
                         hooks::trigger::<ConfigUnloaded>(());
@@ -254,7 +254,7 @@ impl<U: Ui> Session<U> {
                         let ms = self.ms;
                         let files = self.take_files();
                         U::unload(ms);
-                        return Some((files, duat_rx, reload_instant.unwrap()));
+                        return (files, duat_rx, reload_instant);
                     }
                     BreakTo::OpenFile(name) => {
                         self.open_file(PathBuf::from(&name));
@@ -354,11 +354,8 @@ impl<U: Ui> Session<U> {
             }
 
             let cursors = file.cursors_mut().unwrap();
-            if !cursors.is_empty() {
-                if is_quitting_duat {
-                    cursors.remove_extras();
-                }
-                store_cache(path, std::mem::take(&mut *cursors));
+            if let Some(main) = cursors.get_main() {
+                store_cache(path, main.clone());
             }
         }
     }

@@ -43,11 +43,7 @@ path = "src/lib.rs"
 [build-dependencies]
 dirs-next = "2.0.0"
 
-[profile.dev]
-panic = 'abort'
-
 [profile.release]
-panic = 'abort'
 incremental = true
 
 [profile.profiling]

@@ -233,7 +233,7 @@ impl<T: ?Sized> RwData<T> {
     /// assert!(!data_1.ptr_eq(&data_2));
     /// ```
     pub fn ptr_eq<U: ?Sized>(&self, other: &RwData<U>) -> bool {
-        Arc::as_ptr(&self.cur_state) == Arc::as_ptr(&other.cur_state)
+        Arc::ptr_eq(&self.cur_state, &other.cur_state)
     }
 
     /// Blocking exclusive reference to the information

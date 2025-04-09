@@ -27,11 +27,16 @@
 //! [`Cursors`]: crate::mode::Cursors
 //! [`Cursor`]: crate::mode::Cursor
 //! [`Point`]: crate::text::Point
-use std::{any::TypeId, fs::File, io::Write, path::PathBuf};
+use std::{any::TypeId, fs::File, path::PathBuf};
 
 use base64::Engine;
-pub use serde::{self, Deserialize, Serialize};
+pub use bincode;
 
+use self::bincode::{
+    Decode, Encode,
+    config::{Configuration, Fixint, LittleEndian, NoLimit},
+    encode_into_std_write,
+};
 use crate::{duat_name, src_crate};
 
 /// Tries to load the cache stored by Duat for the given type
@@ -39,8 +44,8 @@ use crate::{duat_name, src_crate};
 /// The cache must have been previously stored by [`store_cache`]. If
 /// it does not exist, or the file can't be correctly interpreted,
 /// returns [`None`]
-pub(super) fn load_cache<C: Deserialize<'static> + 'static>(path: impl Into<PathBuf>) -> Option<C> {
-    fn contents(path: PathBuf, type_id: TypeId, type_name: String) -> Option<&'static mut [u8]> {
+pub(super) fn load_cache<C: Decode<()> + 'static>(path: impl Into<PathBuf>) -> Option<C> {
+    fn contents(path: PathBuf, type_id: TypeId, type_name: String) -> Option<File> {
         if type_id == TypeId::of::<()>() {
             return None;
         }
@@ -57,12 +62,14 @@ pub(super) fn load_cache<C: Deserialize<'static> + 'static>(path: impl Into<Path
         src.push(format!("{encoded}:{file_name}"));
         src.push(type_name);
 
-        std::fs::read(src).ok().map(|bytes| bytes.leak::<'static>())
+        std::fs::OpenOptions::new().read(true).open(src).ok()
     }
 
     let type_name = format!("{}::{}", src_crate::<C>(), duat_name::<C>());
-    let contents = contents(path.into(), TypeId::of::<C>(), type_name)?;
-    bincode::deserialize(contents).ok()
+    let mut file = contents(path.into(), TypeId::of::<C>(), type_name)?;
+
+    let config = Configuration::<LittleEndian, Fixint, NoLimit>::default();
+    bincode::decode_from_std_read(&mut file, config).ok()
 }
 
 /// Stores the cache for the given type for that file
@@ -70,7 +77,7 @@ pub(super) fn load_cache<C: Deserialize<'static> + 'static>(path: impl Into<Path
 /// The cache will be stored under
 /// `$cache/duat/{base64_path}:{file_name}/{crate}::{type}`.
 /// The cache will then later be loaded by [`load_cache`].
-pub(super) fn store_cache<C: Serialize + 'static>(path: impl Into<PathBuf>, cache: C) {
+pub(super) fn store_cache<C: Encode + 'static>(path: impl Into<PathBuf>, cache: C) {
     fn cache_file(path: PathBuf, type_id: TypeId, type_name: String) -> Option<File> {
         if type_id == TypeId::of::<()>() {
             return None;
@@ -106,9 +113,8 @@ pub(super) fn store_cache<C: Serialize + 'static>(path: impl Into<PathBuf>, cach
         return;
     };
 
-    cache_file
-        .write_all(&bincode::serialize(&cache).unwrap())
-        .unwrap();
+    let config = Configuration::<LittleEndian, Fixint, NoLimit>::default();
+    encode_into_std_write(cache, &mut cache_file, config).unwrap();
 }
 
 /// Deletes the cache for all types for `path`

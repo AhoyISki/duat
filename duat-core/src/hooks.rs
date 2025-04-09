@@ -145,6 +145,7 @@ mod global {
     ///
     /// [hook]: Hookable
     /// [`hooks::add_grouped`]: add_grouped
+    #[inline(never)]
     pub fn add<H: Hookable>(f: impl for<'a> FnMut(H::Args<'a>) -> H::Return + Send + 'static) {
         HOOKS.add::<H>("", f);
     }
@@ -158,6 +159,7 @@ mod global {
     /// [hook]: Hookable
     /// [`hooks::remove`]: remove
     /// [`hooks::add`]: add
+    #[inline(never)]
     pub fn add_grouped<H: Hookable>(
         group: &'static str,
         f: impl for<'a> FnMut(H::Args<'a>) -> H::Return + Send + 'static,
@@ -185,12 +187,14 @@ mod global {
     /// [hook]: Hookable
     /// [`hooks::add`]: add
     /// [`hooks::add_grouped`]: add_grouped
+    #[inline(never)]
     pub fn trigger<H: Hookable>(args: H::PreArgs) {
         crate::thread::spawn(move || {
             HOOKS.trigger::<H>(args);
         });
     }
 
+    #[inline(never)]
     pub(crate) fn trigger_now<H: Hookable>(args: H::PreArgs) -> H::Return {
         HOOKS.trigger_now::<H>(args)
     }

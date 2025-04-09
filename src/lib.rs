@@ -597,7 +597,7 @@ pub macro setup_duat($setup:expr) {
         ms: MetaStatics,
         prev_files: Vec<Vec<FileRet>>,
         messengers: Messengers,
-    ) -> Option<(Vec<Vec<FileRet>>, mpsc::Receiver<DuatEvent>, std::time::Instant)> {
+    ) -> (Vec<Vec<FileRet>>, mpsc::Receiver<DuatEvent>, Option<std::time::Instant>) {
         pre_setup();
         $setup();
         run_duat(ms, prev_files, messengers)
@@ -669,7 +669,7 @@ pub mod prelude {
     ///
     /// As you can see above, they should also have a `plug` method,
     /// which consumes the plugin.
-    pub macro plug($($plugin:expr),+) {{
+    pub macro plug($($plugin:expr),+ $(,)?) {{
         $(
             plug_inner($plugin);
         )+

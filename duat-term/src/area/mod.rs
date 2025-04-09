@@ -4,7 +4,7 @@ use std::{fmt::Alignment, sync::Arc};
 
 use crossterm::cursor;
 use duat_core::{
-    cache::{Deserialize, Serialize},
+    cache::bincode::{Decode, Encode},
     cfg::PrintCfg,
     form::Painter,
     text::{FwdIter, Item, Part, Point, RevIter, Text, err},
@@ -92,11 +92,9 @@ impl Area {
         mut f: impl FnMut(&Caret, &Item) + 'a,
     ) {
         let layouts = self.layouts.lock();
-        if text.needs_update() {
-            let (first_point, _) = layouted::first_points(self, &layouts);
-            let (last_point, _) = layouted::last_points(self, &layouts, text, cfg);
-            text.update_range((first_point, last_point));
-        }
+        let start = |_: &Text| layouted::first_points(self, &layouts).0;
+        let end = |text: &Text| layouted::last_points(self, &layouts, text, cfg).0;
+        text.update_range(start, end);
 
         let layout = get_layout(&layouts, self.id).unwrap();
         let is_active = layout.active_id() == self.id;
@@ -576,8 +574,8 @@ impl ui::Area for Area {
 // NOTE: The defaultness in here, when it comes to `last_main`, may
 // cause issues in the future.
 /// Information about how to print the file on the `Label`.
-#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(crate = "duat_core::cache::serde")]
+#[derive(Default, Debug, Clone, Copy, Encode, Decode)]
+#[bincode(crate = "duat_core::cache::bincode")]
 pub struct PrintInfo {
     points: (Point, Option<Point>),
     x_shift: u32,

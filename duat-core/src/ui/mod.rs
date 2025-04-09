@@ -7,10 +7,10 @@ use std::{
     sync::{mpsc, Arc}, time::Instant,
 };
 
+use bincode::{Decode, Encode};
 use crossterm::event::KeyEvent;
 use layout::window_files;
 use parking_lot::lock_api::Mutex;
-use serde::{Deserialize, Serialize};
 
 pub use self::{
     builder::{FileBuilder, WindowBuilder},
@@ -119,7 +119,7 @@ pub trait Ui: Clone + Send + Sync + 'static {
 pub trait Area: Send + Sync + Sized {
     // This exists solely for automatic type recognition.
     type Ui: Ui<Area = Self>;
-    type Cache: Default + Serialize + Deserialize<'static> + 'static;
+    type Cache: Default + Encode + Decode<()> + 'static;
     type PrintInfo: Default + Clone + Send + Sync;
 
     ////////// Area modification

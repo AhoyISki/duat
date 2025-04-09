@@ -93,14 +93,13 @@ impl Tags {
 
         let [s_n, s_b, s_skip] = self.skip_at(s_at);
 
-        let range = if let Some((e_at, e_tag)) = end {
+        if let Some((e_at, e_tag)) = end {
             if s_at == e_at {
                 return None;
             }
 
             let [ins_s_n, s_n_diff] = self.insert_inner(s_at, s_tag, [s_n, s_b, s_skip]);
             let bounds_s_ins = self.shift_bounds_and_ranges((ins_s_n, [s_n_diff as i32, 0]));
-            assert_bounds(self);
 
             // This is very likely the hot path.
             let [e_n, e_b, e_skip] = if e_at < s_b + s_skip {
@@ -121,25 +120,52 @@ impl Tags {
                 self.skip_at(e_at)
             };
 
-            let [ins_e_n, e_n_diff] = self.insert_inner(e_at, e_tag, [e_n, e_b, e_skip]);
-            let bounds_e_ins = self.shift_bounds_and_ranges((ins_e_n, [e_n_diff as i32, 0]));
             assert_bounds(self);
 
+            let [ins_e_n, e_n_diff] = self.insert_inner(e_at, e_tag, [e_n, e_b, e_skip]);
+
             if e_n + e_n_diff - s_n + s_n_diff >= self.range_min {
-                let (sh_from, diff) = self.bounds_shift_state.get();
                 let id = RangeId::new();
-                let s_bound = (Cell::new([ins_s_n + s_n_diff - 1, s_at]), s_tag, id);
-                let e_bound = (Cell::new([ins_e_n + e_n_diff - 1, e_at]), e_tag, id);
-                for (bound, ins) in [(s_bound, bounds_s_ins), (e_bound, bounds_e_ins)] {
-                    self.bounds.insert(ins, bound);
-                    // By self.shift_bounds_and_ranges, sh_from should either be equal to
-                    // i or greatear than it.
-                    // Since these bounds are pre
-                    self.bounds_shift_state.set((sh_from.max(ins + 1), diff));
-                }
+                self.bounds.insert(
+                    bounds_s_ins,
+                    (Cell::new([ins_s_n + s_n_diff - 1, s_at]), s_tag, id),
+                );
+                self.bounds_shift_state.set({
+                    // Either I inserted before sh_from, in which case it moved once
+                    // ahead, or after sh_from, which would set it to bounds_s_ins, which,
+                    // after inserting, would be a shifted position, so move once ahead.
+                    if bounds_s_ins + 1 < self.bounds.len() {
+                        let (sh_from, diff) = self.bounds_shift_state.get();
+                        (sh_from + 1, diff)
+                    } else {
+                        (0, [0; 2])
+                    }
+                });
+
+                let bounds_e_ins = self.shift_bounds_and_ranges((ins_e_n, [e_n_diff as i32, 0]));
+                self.bounds_shift_state.set({
+                    if bounds_e_ins + 1 < self.bounds.len() {
+                        let (sh_from, diff) = self.bounds_shift_state.get();
+                        (sh_from + 1, diff)
+                    } else {
+                        (0, [0; 2])
+                    }
+                });
+
+                self.bounds.insert(
+                    bounds_e_ins,
+                    (Cell::new([ins_e_n + e_n_diff - 1, e_at]), e_tag, id),
+                );
+            } else {
+                self.shift_bounds_and_ranges((ins_e_n, [e_n_diff as i32, 0]));
             }
-            let [s, e] = [ins_s_n, ins_e_n + e_n_diff];
-            s.saturating_sub(self.range_min)..(e + self.range_min).min(self.buf.len())
+            assert_bounds(self);
+
+            for [s, e] in [[ins_s_n, ins_s_n + s_n_diff], [ins_e_n, ins_e_n + e_n_diff]] {
+                self.merge_range_to_update(
+                    s.saturating_sub(self.range_min)..(e + self.range_min).min(self.buf.len()),
+                );
+            }
         } else {
             let [ins_n, n_diff] = self.insert_inner(s_at, s_tag, [s_n, s_b, s_skip]);
             self.shift_bounds_and_ranges((ins_n, [n_diff as i32, 0]));
@@ -150,10 +176,10 @@ impl Tags {
             // inside to justify it.
             // However, this is going to be lazyly evaluated when Tags is updated.
             let [s, e] = [ins_n, ins_n + n_diff];
-            s.saturating_sub(self.range_min)..(e + self.range_min).min(self.buf.len())
-        };
-
-        self.merge_range_to_update(range);
+            self.merge_range_to_update(
+                s.saturating_sub(self.range_min)..(e + self.range_min).min(self.buf.len()),
+            );
+        }
 
         toggle
     }
@@ -241,7 +267,7 @@ impl Tags {
                     self.buf
                         .splice(prev_n..=prev_n + 1, [TagOrSkip::Skip(prev_skip + skip)]);
                     self.records.transform([n, b], [1, 0], [0, 0]);
-                    self.shift_bounds_and_ranges((prev_n, [-1, 0]));
+                    self.shift_bounds_and_ranges((n, [-1, 0]));
                 } else {
                     n += 1;
                 }
@@ -519,7 +545,8 @@ impl Tags {
             // before start, so we need to look for it.
             } else {
                 // Search from initial positions, to skip iterating through the range.
-                let (n, b, _) = find_match(&self.buf, (initial_n, initial_b, tag)).unwrap();
+                let (n, b, _) = find_match(&self.buf, (initial_n, initial_b, tag))
+                    .unwrap_or_else(|| panic!("{self:#?}"));
                 // Here, we'll shift all ranges ahead, since this happens so
                 // infrequently that I don't care about the performance impact.
                 return self.remove(n, b);
@@ -859,9 +886,9 @@ impl Tags {
         for ([n0, b0], [n1, b1]) in removed {
             let [s_n, s_b] = [n0.min(n1), b0.min(b1)];
             let [e_n, e_b] = [n0.max(n1), b0.max(b1)];
-            let ([rm_n, _], n_diff) = self.remove(e_n, e_b);
-            // Do the end first, to not incur shifts on the start.
 
+            // Do the end first, to not incur shifts on the start.
+            let ([rm_n, _], n_diff) = self.remove(e_n, e_b);
             self.shift_bounds_and_ranges((rm_n, [n_diff, 0]));
             assert_bounds(self);
             // We remove both bounds, in order to prevent a state of dangling
@@ -989,15 +1016,9 @@ impl Tags {
 
         let range = {
             let mut iter = self.ranges_to_update[m_range.clone()].iter();
-            let start = iter
-                .next()
-                .map(|r| r.start.min(range.start))
-                .unwrap_or(range.start);
-            let end = iter
-                .next_back()
-                .map(|r| r.end.max(range.end))
-                .unwrap_or(range.end);
-            start..end
+            let first = iter.next().cloned().unwrap_or(range.clone());
+            let last = iter.next_back().cloned().unwrap_or(first.clone());
+            first.start.min(range.start)..last.end.max(range.end)
         };
 
         self.ranges_to_update.splice(m_range.clone(), [range]);
@@ -1205,9 +1226,9 @@ impl std::fmt::Debug for DebugBounds<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if f.alternate() && !self.0.is_empty() {
             f.write_str("[\n")?;
-            for entry in &self.0.bounds {
-                writeln!(f, "    {entry:?}")?;
-                writeln!(f, "        {:?}", self.0.buf.get(entry.0.get()[0]))?;
+            for (bound, tag, id) in &self.0.bounds {
+                writeln!(f, "    {:?}", (bound.get(), tag, id))?;
+                writeln!(f, "        {:?}", self.0.buf.get(bound.get()[0]))?;
             }
             f.write_str("]")
         } else {
@@ -1250,7 +1271,6 @@ type Entry = (usize, usize, RawTag);
 #[track_caller]
 fn assert_bounds(tags: &Tags) {
     return;
-
     use std::ops::ControlFlow::*;
 
     struct DebugCandidates<'a>(&'a [(usize, usize, RawTag)]);
@@ -1264,8 +1284,18 @@ fn assert_bounds(tags: &Tags) {
         }
     }
 
-    for (bound, tag, _) in tags.bounds.iter() {
-        let [bound_n, bound_b] = bound.get();
+    for (n, (bound, tag, _)) in tags.bounds.iter().enumerate() {
+        let sh = |n: usize, sh: i32| (n as i32 + sh) as usize;
+        let [bound_n, bound_b] = {
+            let [bound_n, bound_b] = bound.get();
+            let (sh_from, [n_diff, b_diff]) = tags.bounds_shift_state.get();
+            if n >= sh_from {
+                [sh(bound_n, n_diff), sh(bound_b, b_diff)]
+            } else {
+                [bound_n, bound_b]
+            }
+        };
+
         let [recs_n, recs_b, recs_skip] = tags.skip_at(bound_b);
         let (Break([can_n, can_b, can_skip]) | Continue([can_n, can_b, can_skip])) = tags
             .buf
@@ -1298,23 +1328,5 @@ fn assert_bounds(tags: &Tags) {
             std::panic::Location::caller(),
             DebugCandidates(&matches)
         )
-    }
-
-    for (s_bound, s_tag, id) in tags.bounds.iter().filter(|(_, tag, _)| tag.is_start()) {
-        let [s_n, _] = s_bound.get();
-        let Some((e_bound, e_tag, _)) = tags
-            .bounds
-            .iter()
-            .find(|(_, l_tag, l_id)| l_tag != s_tag && l_id == id)
-        else {
-            panic!("{:?} had no matches", (s_bound, s_tag, id));
-        };
-
-        assert!(
-            s_n + tags.range_min <= e_bound.get()[0],
-            "Bounds not far enough apart:\n    {:?}\n    {:?}",
-            (s_bound, s_tag, id),
-            (e_bound, e_tag, id)
-        );
     }
 }

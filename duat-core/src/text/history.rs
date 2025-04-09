@@ -13,17 +13,13 @@
 //! [`redo`]: Text::redo
 use std::ops::Range;
 
-use serde::{
-    Deserialize, Serialize,
-    de::{self, Visitor},
-    ser::SerializeStruct,
-};
+use bincode::{Decode, Encode};
 
 use super::{Point, Text};
 use crate::{add_shifts, merging_range_by_guess_and_lazy_shift};
 
 /// The history of edits, contains all moments
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Encode, Decode)]
 pub struct History {
     moments: Vec<Moment>,
     cur_moment: usize,
@@ -141,7 +137,7 @@ impl History {
 ///
 /// It also contains information about how to print the file, so that
 /// going back in time is less jarring.
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Encode, Decode)]
 pub struct Moment(Vec<Change<String>>);
 
 impl Moment {
@@ -208,7 +204,7 @@ impl Moment {
 }
 
 /// A change in a file, with a start, taken text, and added text
-#[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Encode, Decode)]
 pub struct Change<S: AsRef<str>> {
     start: Point,
     added: S,
@@ -377,71 +373,6 @@ impl<S: AsRef<str>> Change<S> {
 }
 
 impl Copy for Change<&str> {}
-
-impl Serialize for Change<String> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut ser_change = serializer.serialize_struct("Change", 3)?;
-
-        ser_change.serialize_field("start", &self.start)?;
-        ser_change.serialize_field("added", &self.added)?;
-        ser_change.serialize_field("taken", &self.taken)?;
-        ser_change.serialize_field("added_end", &self.added_end)?;
-        ser_change.serialize_field("taken_end", &self.taken_end)?;
-
-        ser_change.end()
-    }
-}
-
-impl<'de> Deserialize<'de> for Change<String> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        static FIELDS: [&str; 3] = ["start", "added", "taken"];
-        struct ChangeVisitor;
-
-        impl<'de> Visitor<'de> for ChangeVisitor {
-            type Value = Change<String>;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("struct Change")
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-            where
-                A: de::SeqAccess<'de>,
-            {
-                let start = seq
-                    .next_element()?
-                    .ok_or(de::Error::invalid_length(0, &self))?;
-                let added = seq
-                    .next_element()?
-                    .ok_or(de::Error::invalid_length(1, &self))?;
-                let taken = seq
-                    .next_element()?
-                    .ok_or(de::Error::invalid_length(2, &self))?;
-                let added_end = seq
-                    .next_element()?
-                    .ok_or(de::Error::invalid_length(3, &self))?;
-                let taken_end = seq
-                    .next_element()?
-                    .ok_or(de::Error::invalid_length(4, &self))?;
-                Ok(Change {
-                    start,
-                    added,
-                    taken,
-                    added_end,
-                    taken_end,
-                })
-            }
-        }
-
-        deserializer.deserialize_struct("Change", &FIELDS, ChangeVisitor)
-    }
-}
 
 /// If `lhs` contains the start of `rhs`
 fn has_start_of(lhs: Range<usize>, rhs: Range<usize>) -> bool {

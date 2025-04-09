@@ -91,7 +91,7 @@ pub fn run_duat(
     (ui_ms, clipb): MetaStatics,
     prev: Vec<Vec<FileRet>>,
     (duat_tx, duat_rx): Messengers,
-) -> Option<(Vec<Vec<FileRet>>, Receiver<DuatEvent>, Instant)> {
+) -> (Vec<Vec<FileRet>>, Receiver<DuatEvent>, Option<Instant>) {
     <Ui as ui::Ui>::load(ui_ms);
     let mut cfg = SessionCfg::new(clipb);
 

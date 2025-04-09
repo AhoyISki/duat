@@ -1,7 +1,6 @@
 use std::cell::Cell;
 
 use gapbuf::{GapBuffer, gap_buffer};
-use serde::{Deserialize, Serialize, de::Visitor, ser::SerializeSeq};
 
 pub use self::cursor::{Cursor, VPoint};
 use crate::{
@@ -9,9 +8,9 @@ use crate::{
     text::{Change, Point},
 };
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 pub struct Cursors {
-    buf: CursorGapBuffer,
+    buf: GapBuffer<Cursor>,
     main_i: usize,
     shift_state: Cell<(usize, [i32; 3])>,
 }
@@ -20,7 +19,16 @@ impl Cursors {
     ////////// Definition functions
     pub fn new() -> Self {
         Self {
-            buf: CursorGapBuffer(gap_buffer![Cursor::default()]),
+            buf: gap_buffer![Cursor::default()],
+            main_i: 0,
+            shift_state: Cell::new((0, [0; 3])),
+        }
+    }
+
+	/// A new [`Cursors`] with a set main [`Cursor`]
+    pub(crate) fn new_with_main(main: Cursor) -> Self {
+        Self {
+            buf: gap_buffer![main],
             main_i: 0,
             shift_state: Cell::new((0, [0; 3])),
         }
@@ -32,7 +40,7 @@ impl Cursors {
 
         // The range of cursors that will be drained
         let c_range = merging_range_by_guess_and_lazy_shift(
-            (&self.buf.0, self.buf.len()),
+            (&self.buf, self.buf.len()),
             (guess_i, [cursor.start(), cursor.end_excl()]),
             (sh_from, shift, [0; 3], Point::shift_by),
             (Cursor::start, Cursor::end_excl),
@@ -98,7 +106,7 @@ impl Cursors {
 
         // The range of cursors that will be drained
         let c_range = merging_range_by_guess_and_lazy_shift(
-            (&self.buf.0, self.buf.len()),
+            (&self.buf, self.buf.len()),
             (guess_i, [change.start(), change.taken_end()]),
             (sh_from, shift, [0; 3], Point::shift_by),
             (Cursor::start, Cursor::end_excl),
@@ -156,7 +164,7 @@ impl Cursors {
             if sh_from <= self.main_i {
                 cursor.shift_by(shift);
             }
-            self.buf = CursorGapBuffer(gap_buffer![cursor]);
+            self.buf = gap_buffer![cursor];
         }
         self.main_i = 0;
     }
@@ -213,7 +221,7 @@ impl Cursors {
     }
 
     pub fn clear(&mut self) {
-        self.buf = CursorGapBuffer(GapBuffer::new());
+        self.buf = GapBuffer::new();
         self.shift_state.take();
     }
 
@@ -252,9 +260,9 @@ impl Cursors {
     }
 
     pub(super) fn populate(&mut self) {
-        if self.buf.0.is_empty() {
+        if self.buf.is_empty() {
             self.main_i = 0;
-            self.buf.0 = gap_buffer![Cursor::default()];
+            self.buf = gap_buffer![Cursor::default()];
         }
     }
 }
@@ -268,7 +276,7 @@ impl Default for Cursors {
 mod cursor {
     use std::{cell::Cell, cmp::Ordering, ops::Range};
 
-    use serde::{Deserialize, Serialize};
+    use bincode::{Decode, Encode};
 
     use crate::{
         cfg::PrintCfg,
@@ -278,7 +286,7 @@ mod cursor {
 
     /// A cursor in the text file. This is an editing cursor, -(not
     /// a printing cursor.
-    #[derive(Default, Clone, Serialize, Deserialize)]
+    #[derive(Default, Clone, Encode, Decode)]
     pub struct Cursor {
         caret: Cell<LazyVPoint>,
         anchor: Cell<Option<LazyVPoint>>,
@@ -679,7 +687,7 @@ mod cursor {
         }
     }
 
-    #[derive(Clone, Copy, Eq, Serialize, Deserialize)]
+    #[derive(Clone, Copy, Eq, Encode, Decode)]
     pub(super) enum LazyVPoint {
         Known(VPoint),
         Unknown(Point),
@@ -733,7 +741,7 @@ mod cursor {
         }
     }
 
-    #[derive(Clone, Copy, Debug, Eq, Serialize, Deserialize)]
+    #[derive(Clone, Copy, Debug, Eq, Encode, Decode)]
     pub struct VPoint {
         p: Point,
         // No plan to suppert lines that are far too long
@@ -857,23 +865,6 @@ mod cursor {
     }
 }
 
-#[derive(Clone)]
-struct CursorGapBuffer(GapBuffer<Cursor>);
-
-impl std::ops::Deref for CursorGapBuffer {
-    type Target = GapBuffer<Cursor>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl std::ops::DerefMut for CursorGapBuffer {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
 impl std::fmt::Debug for Cursors {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         struct DebugShiftState((usize, [i32; 3]));
@@ -888,61 +879,5 @@ impl std::fmt::Debug for Cursors {
             .field("main_i", &self.main_i)
             .field("shift_sate", &DebugShiftState(self.shift_state.get()))
             .finish()
-    }
-}
-
-impl std::fmt::Debug for CursorGapBuffer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(&self.0, f)
-    }
-}
-
-impl Serialize for CursorGapBuffer {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut ser_gapbuf = serializer.serialize_seq(Some(self.0.len()))?;
-
-        for cursor in self.0.iter() {
-            ser_gapbuf.serialize_element(cursor)?;
-        }
-        ser_gapbuf.end()
-    }
-}
-
-impl<'de> Deserialize<'de> for CursorGapBuffer {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct GapBufferVisitor;
-
-        impl<'v> Visitor<'v> for GapBufferVisitor {
-            type Value = CursorGapBuffer;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                write!(formatter, "This visitor expected a sequence of Cursors")
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-            where
-                A: serde::de::SeqAccess<'v>,
-            {
-                let mut buf = if let Some(len) = seq.size_hint() {
-                    GapBuffer::with_capacity(len)
-                } else {
-                    GapBuffer::new()
-                };
-
-                while let Some(cursor) = seq.next_element()? {
-                    buf.push_back(cursor);
-                }
-
-                Ok(CursorGapBuffer(buf))
-            }
-        }
-
-        deserializer.deserialize_seq(GapBufferVisitor)
     }
 }

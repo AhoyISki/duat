@@ -110,7 +110,8 @@ fn main() {
         let run_lib = lib.take();
         let mut run_fn = run_lib.as_ref().and_then(find_run_duat);
 
-        let ret = if let Some(run_duat) = run_fn.take() {
+        let reload_instant;
+        (prev, duat_rx, reload_instant) = if let Some(run_duat) = run_fn.take() {
             run_duat((&MS, &CLIPB), prev, (duat_tx, duat_rx))
         } else {
             let msg = err!("Failed to open load crate");
@@ -119,18 +120,21 @@ fn main() {
             run_duat((&MS, &CLIPB), prev, (duat_tx, duat_rx))
         };
 
-        let Some((new_prev, ret_duat_rx, reload_instant)) = ret else {
+        if prev.is_empty() {
             break;
-        };
-
-        (prev, duat_rx) = (new_prev, ret_duat_rx);
+        }
 
         drop(run_lib);
 
         let (so_path, on_release) = reload_rx.try_recv().unwrap();
         let profile = if on_release { "Release" } else { "Debug" };
-        let time = format!("{:.2?}", reload_instant.elapsed());
-        let msg = ok!([*a] profile [] " profile reloaded in " [*a] time);
+        let in_time = match reload_instant {
+            Some(reload_instant) => {
+                ok!(" in " [*a] { format!("{:.2?}", reload_instant.elapsed()) })
+            }
+            None => Text::new(),
+        };
+        let msg = ok!([*a] profile [] " profile reloaded" in_time);
         duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
         lib = ElfLibrary::dlopen(so_path, OpenFlags::RTLD_NOW | OpenFlags::RTLD_LOCAL).ok();
     }
@@ -187,4 +191,4 @@ type RunFn = fn(
     MetaStatics,
     Vec<Vec<FileRet>>,
     Messengers,
-) -> Option<(Vec<Vec<FileRet>>, Receiver<DuatEvent>, Instant)>;
+) -> (Vec<Vec<FileRet>>, Receiver<DuatEvent>, Option<Instant>);

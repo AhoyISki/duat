@@ -386,7 +386,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             .count();
 
         if written == file_count {
-            Ok(Some(ok!("Wrote to " [File] written [] " files")))
+            Ok(Some(ok!("Wrote to " [*a] written [] " files")))
         } else {
             let unwritten = file_count - written;
             let plural = if unwritten == 1 { "" } else { "s" };

@@ -567,25 +567,27 @@ impl Text {
     ///
     /// This should be done within the [`Area::print`] and
     /// [`Area::print_with`] functions.
-    pub fn update_range(&mut self, range: (Point, Point)) {
-        let within = range.0.byte()..(range.1.byte() + 1);
+    pub fn update_range(
+        &mut self,
+        start: impl FnOnce(&Text) -> Point,
+        end: impl FnOnce(&Text) -> Point,
+    ) {
+        if self.0.has_changed || self.0.readers.needs_update() {
+            let within = start(self).byte()..(end(self).byte() + 1);
+            if let Some(history) = self.0.history.as_mut()
+                && let Some(changes) = history.unprocessed_changes()
+            {
+                let changes: Vec<Change<&str>> = changes.iter().map(|c| c.as_ref()).collect();
+                self.0.readers.process_changes(&mut self.0.bytes, &changes);
+            }
+            self.0
+                .readers
+                .update_range(&mut self.0.bytes, &mut self.0.tags, within.clone());
 
-        if let Some(history) = self.0.history.as_mut()
-            && let Some(changes) = history.unprocessed_changes()
-        {
-            let changes: Vec<Change<&str>> = changes.iter().map(|c| c.as_ref()).collect();
-            self.0.readers.process_changes(&mut self.0.bytes, &changes);
+            self.0.has_changed = false;
         }
-        self.0
-            .readers
-            .update_range(&mut self.0.bytes, &mut self.0.tags, within.clone());
+
         self.0.tags.update_bounds();
-
-        self.0.has_changed = false;
-    }
-
-    pub fn needs_update(&self) -> bool {
-        self.0.has_changed || self.0.readers.needs_update()
     }
 
     ////////// History manipulation functions

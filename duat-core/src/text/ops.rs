@@ -8,14 +8,14 @@
 //! [`Text`]: super::Text
 use std::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive};
 
-use serde::{Deserialize, Serialize};
+use bincode::{Decode, Encode};
 
 use super::Item;
 
 /// A position in [`Text`]
 ///
 /// [`Text`]: super::Text
-#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Encode, Decode)]
 pub struct Point {
     b: u32,
     c: u32,

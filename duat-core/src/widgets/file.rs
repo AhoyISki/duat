@@ -71,23 +71,28 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
     fn build(self, _: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
         let (text, path) = match self.text_op {
             TextOp::NewBuffer => (Text::new_with_history(), PathKind::new_unset()),
-            TextOp::TakeBuf(bytes, path, has_unsaved_changes) => match &path {
-                PathKind::SetExists(p) | PathKind::SetAbsent(p) => {
-                    let cursors = load_cache(p).unwrap_or_default();
-                    let text = Text::from_file(bytes, cursors, p, has_unsaved_changes);
-                    (text, path)
+            TextOp::TakeBuf(bytes, pk, has_unsaved_changes) => match &pk {
+                PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
+                    let cursors = {
+                        let cursor = load_cache(path).unwrap_or_default();
+                        Cursors::new_with_main(cursor)
+                    };
+                    let text = Text::from_file(bytes, cursors, path, has_unsaved_changes);
+                    (text, pk)
                 }
-                PathKind::NotSet(_) => (
-                    Text::from_bytes(bytes, Some(Cursors::default()), true),
-                    path,
-                ),
+                PathKind::NotSet(_) => {
+                    (Text::from_bytes(bytes, Some(Cursors::default()), true), pk)
+                }
             },
             TextOp::OpenPath(path) => {
                 let canon_path = path.canonicalize();
                 if let Ok(path) = &canon_path
                     && let Ok(file) = std::fs::read_to_string(path)
                 {
-                    let cursors = load_cache(path).unwrap_or_default();
+                    let cursors = {
+                        let cursor = load_cache(path).unwrap_or_default();
+                        Cursors::new_with_main(cursor)
+                    };
                     let text = Text::from_file(Bytes::new(&file), cursors, path, false);
                     (text, PathKind::SetExists(path.clone()))
                 } else if canon_path.is_err()
