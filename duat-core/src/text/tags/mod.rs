@@ -150,13 +150,11 @@ impl Tags {
                 let [s, e] = [e_ins, e_ins + e_n_diff];
                 s.saturating_sub(self.range_min)..(e + self.range_min).min(self.buf.len())
             });
-            assert_correctness(self);
 
             toggle
         } else if end.is_none() {
             let [ins, n_diff] = self.insert_inner(s_at, s_tag, [s_n, s_b, s_skip]);
             self.shift_bounds_and_ranges(ins, [n_diff as i32, 0]);
-            assert_correctness(self);
 
             // Since we are adding more TagOrSkips, ranges surrounding this
             // insertion could need their bounds saved, as enough entries fit
@@ -268,15 +266,15 @@ impl Tags {
                     n += 1;
                     continue;
                 }
-                self.buf.remove(n);
+                crate::log_file!("remove_from {:?}", self.buf.remove(n));
                 self.shift_bounds_and_ranges(n, [-1, 0]);
 
                 // The handled removed RawTag is always before the range.
                 let ([rm_n, rm_b], n_diff) =
                     self.handle_removed_tag((b, tag), initial_n, initial_b, &mut starts);
                 if n_diff != 0 {
-                    n = (n as i32 + n_diff) as usize;
-                    initial_n = (initial_n as i32 + n_diff) as usize;
+                    n = sh(n, n_diff);
+                    initial_n = sh(initial_n, n_diff);
                     if initial_n == rm_n {
                         initial_b = rm_b
                     }
@@ -295,13 +293,10 @@ impl Tags {
         // This should be uncommon enought that I don't really care about
         // optimizing it tbh.
         for (_, tag) in starts {
-            let (n, b, _) = find_match(&self.buf, (n, b, tag)).unwrap_or_else(|| {
-                panic!("Failed to find a match for ({b}, {tag:?}) in {self:#?}")
-            });
+            let (n, b, _) = find_match(&self.buf, (n, b, tag)).unwrap();
             let ([rm_n, _], n_diff) = self.remove(n, b);
             self.shift_bounds_and_ranges(rm_n, [n_diff, 0]);
         }
-        assert_correctness(self);
 
         // Since we are only removing TagOrSkips, no bounds need to be
         // added to self.bounds.
@@ -316,11 +311,11 @@ impl Tags {
     /// will NOT handle shifting bounds, however, will return info
     /// useful for doing that.
     #[must_use]
-    #[track_caller]
     fn remove(&mut self, n: usize, b: usize) -> ([usize; 2], i32) {
-        let TagOrSkip::Tag(_) = self.buf.remove(n) else {
+        let TagOrSkip::Tag(tag) = self.buf.remove(n) else {
             unreachable!("You are only supposed to remove Tags like this, not skips")
         };
+        crate::log_file!("remove {tag:?}");
 
         // Try to merge this skip with the previous one.
         if let Some(&TagOrSkip::Skip(r_skip)) = self.buf.get(n)
@@ -366,12 +361,12 @@ impl Tags {
 
         // Old length removal.
         let [s_n, s_b] = if old.end > old.start {
+            crate::log_file!("removing intersecting bounds");
             // First, get rid of all ranges that start and/or end in the old
             // range.
             // old.start + 1 because we don't want to get rid of bounds that
             // merely coincide with the edges.
             self.remove_intersecting_bounds(old.start + 1..old.end, |_| true);
-            assert_correctness(self);
 
             let [s_n, s_b, s_skip] = self.skip_at(old.start);
 
@@ -389,6 +384,11 @@ impl Tags {
                 [n, b + skip]
             };
 
+            if self.len_bytes() > 1000 {
+                crate::log_file!("transforming {old:?} to {new:?}");
+                crate::log_file!("{:#?}", DebugTags(self, s_b - 5..e_b + 30));
+            }
+
             let skip = (e_b - s_b - b_diff) as u32;
             let added_n = (skip > 0) as usize;
             let rm: Vec<(usize, TagOrSkip)> = self
@@ -404,8 +404,6 @@ impl Tags {
             self.records
                 .transform([s_n, s_b], [rm.len(), b_diff], [added_n, 0]);
             self.shift_bounds_and_ranges(s_n, [added_n as i32 - rm.len() as i32, -(b_diff as i32)]);
-
-            assert_correctness(self);
 
             // We can do the same thing that is done in remove_from, since we are
             // also "removing from".
@@ -424,16 +422,12 @@ impl Tags {
                 }
             }
 
-            assert_correctness(self);
-
             for (_, tag) in starts {
                 let (n, b, _) =
                     find_match(&self.buf, (s_n + added_n, s_b + skip as usize, tag)).unwrap();
                 let ([rm_n, _], diff) = self.remove(n, b);
                 self.shift_bounds_and_ranges(rm_n, [diff, 0]);
             }
-
-            assert_correctness(self);
 
             // If the range becomes empty, we should remove the remainig pairs
             if skip == 0 && new.end == old.start {
@@ -475,11 +469,8 @@ impl Tags {
                 for n in to_remove.into_iter().rev() {
                     self.buf.remove(n);
                     self.shift_bounds_and_ranges(n, [-1, 0]);
-                    assert_correctness(self);
                 }
             }
-
-            assert_correctness(self);
 
             [s_n, s_b]
         } else {
@@ -493,13 +484,11 @@ impl Tags {
                 *skip += added_b as u32;
                 self.records.transform([s_n, s_b], [0, 0], [0, added_b]);
                 self.shift_bounds_and_ranges(s_n, [0, added_b as i32]);
-                assert_correctness(self);
             // The skip may have deleted by now, so we add it back.
             } else {
                 self.buf.insert(s_n, TagOrSkip::Skip(added_b as u32));
                 self.records.transform([s_n, s_b], [0, 0], [1, added_b]);
                 self.shift_bounds_and_ranges(s_n, [1, added_b as i32]);
-                assert_correctness(self);
             }
         }
 
@@ -526,8 +515,9 @@ impl Tags {
                 // Search from initial positions, to skip iterating through the range.
                 let Some((n, b, _)) = find_match(&self.buf, (initial_n, initial_b, tag)) else {
                     panic!(
-                        "Failed to find match for ({b}, {tag:?}) in {}",
-                        std::panic::Location::caller()
+                        "Failed to find match for ({b}, {tag:?}) in {}\ncontext: {:#?}",
+                        std::panic::Location::caller(),
+                        DebugTags(self, initial_b - 10..initial_b + 50)
                     )
                 };
                 // Here, we'll shift all ranges ahead, since this happens so
@@ -541,7 +531,6 @@ impl Tags {
 
     pub fn update_bounds(&mut self) {
         self.finish_shifting_bounds();
-        assert_correctness(self);
 
         // Finish shifting ranges to update
         let (sh_from, total_n_diff) = std::mem::take(&mut self.ranges_shift_state);
@@ -553,6 +542,7 @@ impl Tags {
         let ranges = std::mem::take(&mut self.ranges_to_update);
 
         for range in ranges.into_iter() {
+            crate::log_file!("{range:?}");
             let b = self.byte_at(range.start);
             // Add all tags in the range to the list, keeping only those whose
             // ranges are too long.
@@ -573,15 +563,11 @@ impl Tags {
                     let s_i = self.bounds.binary_search_by_key(&([s_n, s_b], s_tag), key);
                     let e_i = self.bounds.binary_search_by_key(&([n, b], tag), key);
 
-                    assert_eq!(Some(&TagOrSkip::Tag(tag)), self.buf.get(n));
-                    assert_eq!(Some(&TagOrSkip::Tag(s_tag)), self.buf.get(s_n));
-
                     match (s_i, e_i) {
                         (Err(s_i), Err(e_i)) => {
                             let id = RangeId::new();
                             self.bounds.insert(e_i, (Cell::new([n, b]), tag, id));
                             self.bounds.insert(s_i, (Cell::new([s_n, s_b]), s_tag, id));
-                            assert_correctness(self);
                         }
                         // The bounds were already set in these cases
                         (Ok(_), Ok(_) | Err(_)) | (Err(_), Ok(_)) => {}
@@ -836,14 +822,14 @@ impl Tags {
             return;
         }
 
-        let removed: Vec<([usize; 2], [usize; 2])> = {
+        let removed: Vec<[usize; 2]> = {
             let is_contained = extract(&mut sh_from, diff, |i, sh_from, bound, tag, _| {
                 let diff = if i < sh_from { 0 } else { diff[1] };
                 range.clone().contains(&sh(bound.get()[1], diff)) && f(tag)
             });
             let removed: Vec<_> = self.bounds.extract_if(.., is_contained).collect();
 
-            removed
+            let mut removed: Vec<[usize; 2]> = removed
                 .into_iter()
                 .filter_map(|(bound, _, id)| {
                     let is_match = extract(&mut sh_from, diff, |_, _, _, _, lhs| *lhs == id);
@@ -859,27 +845,24 @@ impl Tags {
                         .next()
                         .map(|(bound, ..)| {
                             let [n1, b1] = bound.get();
-                            ([n0, b0], [n1, b1])
+                            [[n0, b0], [n1, b1]]
                         })
                 })
-                .collect()
+                .flatten()
+                .collect();
+
+            removed.sort_unstable();
+
+            removed
         };
         self.bounds_shift_state.set((sh_from, diff));
-        assert_correctness(self);
 
-        for ([n0, b0], [n1, b1]) in removed {
-            let [s_n, s_b] = [n0.min(n1), b0.min(b1)];
-            let [e_n, e_b] = [n0.max(n1), b0.max(b1)];
-
-            // Do the end first, to not incur shifts on the start.
-            let ([rm_n, _], n_diff) = self.remove(e_n, e_b);
-            self.shift_bounds_and_ranges(rm_n, [n_diff, 0]);
+        for [n, b] in removed.into_iter().rev() {
             // We remove both bounds, in order to prevent a state of dangling
             // bounds, which would cause a lookback or lookahead over the whole
             // Text.
-            let ([rm_n, _], n_diff) = self.remove(s_n, s_b);
+            let ([rm_n, _], n_diff) = self.remove(n, b);
             self.shift_bounds_and_ranges(rm_n, [n_diff, 0]);
-            assert_correctness(self);
         }
     }
 
@@ -1009,8 +992,6 @@ impl Tags {
             let [n, b] = bound.get();
             bound.set([sh(n, total_n_diff), sh(b, total_b_diff)]);
         }
-
-        assert_correctness(self);
     }
 
     /// Inserts a callibrated range
@@ -1113,7 +1094,6 @@ impl TagOrSkip {
 }
 
 /// Forward iterator over a range in the [`GapBuffer`]
-#[track_caller]
 fn fwd_range(
     buf: &GapBuffer<TagOrSkip>,
     range: impl RangeBounds<usize> + std::fmt::Debug,
@@ -1301,88 +1281,6 @@ pub type FwdTags<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)>
 pub type RevTags<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)> + Clone + 'a>;
 
 type Entry = (usize, usize, RawTag);
-
-#[track_caller]
-fn assert_correctness(tags: &Tags) {
-    return;
-
-    struct DebugCandidates<'a>(&'a [(usize, usize, RawTag)]);
-    impl std::fmt::Debug for DebugCandidates<'_> {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.write_str("[\n")?;
-            for candidate in self.0 {
-                writeln!(f, "        {:?}", candidate)?;
-            }
-            f.write_str("    ]")
-        }
-    }
-
-    // let mut starts = Vec::new();
-
-    // for (n, b, tag) in fwd_range(&tags.buf,
-    // ..).filter_map(entries_fwd(0)) {    if tag.is_start() {
-    //        starts.push((n, b, tag));
-    //    } else if tag.is_end() {
-    //        let Some(i) = starts.iter().position(|(.., lhs)|
-    // lhs.ends_with(&tag)) else {            panic!("Did not find
-    // match for {:?}", (n, b, tag));        };
-    //        starts.remove(i);
-    //    }
-    //}
-
-    // if !starts.is_empty() {
-    //    panic!(
-    //        "failed to find matches for:\n{:?}",
-    //        DebugCandidates(&starts)
-    //    );
-    //}
-
-    let mut can_b = 0;
-    let mut last_n = 0;
-    let mut recs_b = 0;
-    for [n, b] in tags.records.stored.iter() {
-        assert_eq!(
-            recs_b,
-            can_b,
-            "Records {:#?},\n didn't match reality: {:#?}",
-            tags.records,
-            DebugTags(tags, ..300),
-        );
-
-        for ts in &tags.buf.range(last_n..(last_n + *n)) {
-            can_b += ts.len()
-        }
-
-        recs_b += b;
-        last_n += *n;
-    }
-
-    for (n, (bound, tag, _)) in tags.bounds.iter().enumerate() {
-        let [bound_n, bound_b] = {
-            let [bound_n, bound_b] = bound.get();
-            let (sh_from, [n_diff, b_diff]) = tags.bounds_shift_state.get();
-            if n >= sh_from {
-                [sh(bound_n, n_diff), sh(bound_b, b_diff)]
-            } else {
-                [bound_n, bound_b]
-            }
-        };
-
-        let [recs_n, ..] = tags.skip_at(bound_b);
-
-        let matches: Vec<_> = rev_range(&tags.buf, ..recs_n)
-            .map_while(|(n, ts)| ts.as_tag().map(|tag| (n, bound_b, tag)))
-            .filter(|(.., lhs)| lhs == tag)
-            .collect();
-
-        assert!(
-            matches.contains(&(bound_n, bound_b, *tag)),
-            "Bound {:?} didn't match on\n    {:?}\n    candidates: ",
-            ([bound_n, bound_b], tag),
-            DebugCandidates(&matches)
-        )
-    }
-}
 
 fn sh(n: usize, diff: i32) -> usize {
     (n as i32 + diff) as usize

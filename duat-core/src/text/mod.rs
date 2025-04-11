@@ -780,6 +780,7 @@ impl Text {
         let Some(cursors) = self.0.cursors.take() else {
             return;
         };
+        crate::log_file!("removing cursors");
 
         if cursors.len() < 500 {
             for (cursor, _) in cursors.iter() {

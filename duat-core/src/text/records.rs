@@ -212,18 +212,13 @@ impl<R: Record> Records<R> {
         if at >= key_f(&rec) {
             self.stored[n..].iter().enumerate().find_map(|(i, len)| {
                 rec = rec.add(*len);
-                (key_f(&rec) > at).then_some(((n + i), rec.sub(*len)))
+                (key_f(&rec) > at).then_some((n + i, rec.sub(*len)))
             })
         } else {
-            let mut ret = None;
-            for (i, len) in self.stored[..n].iter().enumerate().rev() {
+            self.stored[..n].iter().enumerate().rev().find_map(|(i, len)| {
                 rec = rec.sub(*len);
-                if key_f(&rec) <= at {
-                    ret = Some((i, rec));
-                    break;
-                }
-            }
-            ret
+                (key_f(&rec) <= at).then_some((i, rec))
+            })
         }
         .unwrap_or((self.stored.len(), self.max))
     }
