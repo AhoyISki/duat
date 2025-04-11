@@ -306,11 +306,15 @@ impl RawTag {
 
     pub fn ends_with(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::PushForm(_, lhs, _), Self::PopForm(_, rhs)) => lhs == rhs,
-            (Self::ToggleStart(_, lhs), Self::ToggleEnd(_, rhs)) => lhs == rhs,
-            (Self::StartAlignCenter(_), Self::EndAlignCenter(_))
-            | (Self::StartAlignRight(_), Self::EndAlignRight(_))
-            | (Self::StartConceal(_), Self::EndConceal(_)) => true,
+            (Self::PushForm(l_key, l_id, _), Self::PopForm(r_key, r_id)) => {
+                l_id == r_id && l_key == r_key
+            }
+            (Self::ToggleStart(l_key, l_id), Self::ToggleEnd(r_key, r_id)) => {
+                l_id == r_id && l_key == r_key
+            }
+            (Self::StartAlignCenter(l_key), Self::EndAlignCenter(r_key))
+            | (Self::StartAlignRight(l_key), Self::EndAlignRight(r_key))
+            | (Self::StartConceal(l_key), Self::EndConceal(r_key)) => l_key == r_key,
             _ => false,
         }
     }

@@ -9,21 +9,17 @@
 //!
 //! [`Text`]: super::Text
 //! [`Tags`]: super::Tags
-use std::fmt::Debug;
 
 /// A struct that keeps track of positions
-pub trait Record: Default + Debug + Clone + Copy + Eq + Ord + 'static {
+pub trait Record: std::fmt::Debug + Default + Clone + Copy + Eq + Ord + 'static {
     /// The bytes at of this [`Record`]
     fn units(&self) -> usize;
 
-    /// Adds the values of two [`Record`]s
+    /// Adds the values of two [`Record`]unwrap_or_default()
     fn add(self, other: Self) -> Self;
 
     /// Subtracts the values of two [`Record`]s
     fn sub(self, other: Self) -> Self;
-
-    /// Whether or not this value has no bytes
-    fn is_zero_len(&self) -> bool;
 
     fn len_per_record() -> usize;
 }
@@ -39,10 +35,6 @@ impl Record for [usize; 2] {
 
     fn sub(self, other: Self) -> Self {
         [self[0] - other[0], self[1] - other[1]]
-    }
-
-    fn is_zero_len(&self) -> bool {
-        self[0] == 0
     }
 
     fn len_per_record() -> usize {
@@ -63,10 +55,6 @@ impl Record for [usize; 3] {
         [self[0] - other[0], self[1] - other[1], self[2] - other[2]]
     }
 
-    fn is_zero_len(&self) -> bool {
-        false
-    }
-
     fn len_per_record() -> usize {
         64
     }
@@ -76,11 +64,11 @@ impl Record for [usize; 3] {
 ///
 /// [`Text`]: super::Text
 /// [`Tags`]: super::Tags
-#[derive(Default, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Records<R: Record> {
-    last: (usize, R),
+    last_used: (usize, R),
     max: R,
-    stored: Vec<R>,
+    pub stored: Vec<R>,
 }
 
 impl<R: Record> Records<R> {
@@ -91,7 +79,7 @@ impl<R: Record> Records<R> {
 
     /// Creates a new [`Records`] with a given len
     pub fn with_max(max: R) -> Self {
-        Self { max, ..Self::default() }
+        Self { max, stored: vec![max], ..Self::default() }
     }
 
     /// Insert a new [`Record`], if it would fit
@@ -99,26 +87,22 @@ impl<R: Record> Records<R> {
         // For internal functions, I assume that I'm not going over self.max.
         let (i, prev) = self.search(new.units(), Record::units);
 
+        let next = self.stored.get(i).map(|len| len.add(prev));
         if prev.units().abs_diff(new.units()) < R::len_per_record()
-            && (i + 1 >= self.stored.len()
-                || self.stored.get(i).unwrap().units().abs_diff(new.units()) < R::len_per_record())
+            || (i + 1 < self.stored.len()
+                && next.unwrap().add(prev).units().abs_diff(new.units()) < R::len_per_record())
         {
             return;
         }
-
-        // If the records would be too close, don't add any
-        // log_file!("{self:#?}");
-        // log_file!("{new:?}");
-        // log_file!("{prev:?}, {:?}", len.map(|len| prev.add(len)));
 
         if let Some(rec) = self.stored.get_mut(i) {
             let len = *rec;
             *rec = new.sub(prev);
             self.stored.insert(i + 1, len.sub(new.sub(prev)));
-            self.last = (i + 1, new);
+            self.last_used = (i + 1, new);
         } else {
             self.stored.insert(i, self.max.sub(new));
-            self.last = (i, new);
+            self.last_used = (i, new);
         }
     }
 
@@ -141,7 +125,7 @@ impl<R: Record> Records<R> {
             // Removing if new_len has size 0 (no tags or skips).
             // If there are no tags or skips, no skip will start
             // exactly on this record, making it invalid.
-            self.last = if let Some(prev_i) = s_i.checked_sub(1)
+            self.last_used = if let Some(prev_i) = s_i.checked_sub(1)
                 && start.units() == s_rec.units()
             {
                 let prev_len = self.stored.get_mut(prev_i).unwrap();
@@ -155,7 +139,7 @@ impl<R: Record> Records<R> {
         } else if let Some(last) = self.stored.last_mut() {
             *last = last.add(new_len).sub(old_len);
 
-            self.last = (s_i, s_rec.add(new_len).sub(old_len));
+            self.last_used = (s_i, s_rec.add(new_len).sub(old_len));
         };
 
         self.max = self.max.add(new_len).sub(old_len);
@@ -176,7 +160,7 @@ impl<R: Record> Records<R> {
         };
 
         if self_e_len.units() + other_s_len.units() < R::len_per_record() {
-            self.last = (self.stored.len(), self.max.add(*other_s_len));
+            self.last_used = (self.stored.len(), self.max.add(*other_s_len));
             *other_s_len = self_e_len.add(*other_s_len);
             self.stored.pop();
         }
@@ -187,9 +171,9 @@ impl<R: Record> Records<R> {
 
     /// Clears all [`Record`]s and makes the len 0
     pub fn clear(&mut self) {
-        self.last = (0, R::default());
+        self.last_used = (0, R::default());
         self.max = R::default();
-        self.stored = vec![R::default()];
+        self.stored = Vec::new();
     }
 
     /// The maximum [`Record`]
@@ -223,34 +207,42 @@ impl<R: Record> Records<R> {
 
     /// Search for `at` with a key extracting function
     fn search(&self, at: usize, key_f: impl Fn(&R) -> usize + Copy) -> (usize, R) {
-        let mut count = 0;
-        let (n, mut rec) = self.last;
+        let (n, mut rec) = self.last_used;
 
         if at >= key_f(&rec) {
             self.stored[n..].iter().enumerate().find_map(|(i, len)| {
-                count += 1;
                 rec = rec.add(*len);
                 (key_f(&rec) > at).then_some(((n + i), rec.sub(*len)))
             })
         } else {
-            self.stored[..n]
-                .iter()
-                .enumerate()
-                .rev()
-                .find_map(|(i, len)| {
-                    count += 1;
-                    rec = rec.sub(*len);
-                    (key_f(&rec) <= at).then_some((i, rec))
-                })
+            let mut ret = None;
+            for (i, len) in self.stored[..n].iter().enumerate().rev() {
+                rec = rec.sub(*len);
+                if key_f(&rec) <= at {
+                    ret = Some((i, rec));
+                    break;
+                }
+            }
+            ret
         }
         .unwrap_or((self.stored.len(), self.max))
     }
 }
 
-impl<R: Record> Debug for Records<R> {
+impl<R: Record + Default> Default for Records<R> {
+    fn default() -> Self {
+        Self {
+            last_used: (0, R::default()),
+            max: R::default(),
+            stored: vec![R::default()],
+        }
+    }
+}
+
+impl<R: Record + std::fmt::Debug> std::fmt::Debug for Records<R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Records")
-            .field("last", &format!("{:?}", self.last))
+            .field("last", &format!("{:?}", self.last_used))
             .field("max", &format!("{:?}", self.max))
             .field("stored", &format!("{:?}", self.stored))
             .finish()

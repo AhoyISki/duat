@@ -88,100 +88,90 @@ impl Tags {
 
     /// Insert a new [`Tag`] at a given byte
     pub fn insert(&mut self, key: Key, tag: Tag) -> Option<ToggleId> {
+        fn exists_at(tags: &GapBuffer<TagOrSkip>, n: usize, tag: RawTag) -> bool {
+            rev_range(tags, ..n)
+                .map_while(|(_, ts)| ts.as_tag())
+                .any(|lhs| lhs == tag)
+        }
+
         let ((s_at, s_tag), end, toggle) = tag.into_raw(key, &mut self.texts, &mut self.toggles);
         get_ends(s_at..end.map(|(e, _)| e).unwrap_or(s_at), self.len_bytes());
 
         let [s_n, s_b, s_skip] = self.skip_at(s_at);
 
-        if let Some((e_at, e_tag)) = end {
-            if s_at == e_at {
-                return None;
-            }
+        if let Some((e_at, e_tag)) = end
+            && s_at != e_at
+        {
+            let [e_n, e_b, e_skip] = {
+                // This is very likely the hot path.
+                let [n, b, skip] = if e_at < s_b + s_skip {
+                    // These changes account for a possibly split skip.
+                    [s_n, s_at, s_skip - (s_at - s_b)]
+                } else {
+                    self.skip_at(e_at)
+                };
 
-            let [ins_s_n, s_n_diff] = self.insert_inner(s_at, s_tag, [s_n, s_b, s_skip]);
-            let bounds_s_ins = self.shift_bounds_and_ranges((ins_s_n, [s_n_diff as i32, 0]));
+                if exists_at(&self.buf, s_n, s_tag) && exists_at(&self.buf, n, e_tag) {
+                    return None;
+                }
+                let s_n_diff = if s_at == s_b { 1 } else { 2 };
 
-            // This is very likely the hot path.
-            let [e_n, e_b, e_skip] = if e_at < s_b + s_skip {
-                // These changes account for a possibly split skip.
-                [s_n + s_n_diff, s_at, s_skip - (s_at - s_b)]
-            // Almost all insertions will fall here or above.
-            } else if e_at < s_at + self.range_min {
-                let [max_n, max_b] = self.records.max();
-                let mut b = s_b;
-                fwd_range(&self.buf, s_n..)
-                    .filter_map(|(n, ts)| Some(n).zip(ts.as_skip()))
-                    .find_map(|(n, skip)| {
-                        b += skip;
-                        (b > e_at).then_some([n, b - skip, skip])
-                    })
-                    .unwrap_or([max_n, max_b, 0])
-            } else {
-                self.skip_at(e_at)
+                [n + s_n_diff, b, skip]
             };
 
+            let [s_ins, s_n_diff] = self.insert_inner(s_at, s_tag, [s_n, s_b, s_skip]);
+            let bounds_s_ins = self.shift_bounds_and_ranges(s_ins, [s_n_diff as i32, 0]);
+            self.merge_range_to_update({
+                let [s, e] = [s_ins, s_ins + s_n_diff];
+                s.saturating_sub(self.range_min)..(e + self.range_min).min(self.buf.len())
+            });
             assert_bounds(self);
 
-            let [ins_e_n, e_n_diff] = self.insert_inner(e_at, e_tag, [e_n, e_b, e_skip]);
+            let [e_ins, e_n_diff] = self.insert_inner(e_at, e_tag, [e_n, e_b, e_skip]);
 
-            if e_n + e_n_diff - s_n + s_n_diff >= self.range_min {
+            if e_ins + e_n_diff - s_ins + s_n_diff >= self.range_min {
                 let id = RangeId::new();
+
+                self.declare_shifted(bounds_s_ins);
                 self.bounds.insert(
                     bounds_s_ins,
-                    (Cell::new([ins_s_n + s_n_diff - 1, s_at]), s_tag, id),
+                    (Cell::new([s_ins + s_n_diff - 1, s_at]), s_tag, id),
                 );
-                self.bounds_shift_state.set({
-                    // Either I inserted before sh_from, in which case it moved once
-                    // ahead, or after sh_from, which would set it to bounds_s_ins, which,
-                    // after inserting, would be a shifted position, so move once ahead.
-                    if bounds_s_ins + 1 < self.bounds.len() {
-                        let (sh_from, diff) = self.bounds_shift_state.get();
-                        (sh_from + 1, diff)
-                    } else {
-                        (0, [0; 2])
-                    }
-                });
 
-                let bounds_e_ins = self.shift_bounds_and_ranges((ins_e_n, [e_n_diff as i32, 0]));
-                self.bounds_shift_state.set({
-                    if bounds_e_ins + 1 < self.bounds.len() {
-                        let (sh_from, diff) = self.bounds_shift_state.get();
-                        (sh_from + 1, diff)
-                    } else {
-                        (0, [0; 2])
-                    }
-                });
-
+                let bounds_e_ins = self.shift_bounds_and_ranges(e_ins, [e_n_diff as i32, 0]);
+                self.declare_shifted(bounds_e_ins);
                 self.bounds.insert(
                     bounds_e_ins,
-                    (Cell::new([ins_e_n + e_n_diff - 1, e_at]), e_tag, id),
+                    (Cell::new([e_ins + e_n_diff - 1, e_at]), e_tag, id),
                 );
             } else {
-                self.shift_bounds_and_ranges((ins_e_n, [e_n_diff as i32, 0]));
+                self.shift_bounds_and_ranges(e_ins, [e_n_diff as i32, 0]);
             }
+            self.merge_range_to_update({
+                let [s, e] = [e_ins, e_ins + e_n_diff];
+                s.saturating_sub(self.range_min)..(e + self.range_min).min(self.buf.len())
+            });
             assert_bounds(self);
 
-            for [s, e] in [[ins_s_n, ins_s_n + s_n_diff], [ins_e_n, ins_e_n + e_n_diff]] {
-                self.merge_range_to_update(
-                    s.saturating_sub(self.range_min)..(e + self.range_min).min(self.buf.len()),
-                );
-            }
-        } else {
-            let [ins_n, n_diff] = self.insert_inner(s_at, s_tag, [s_n, s_b, s_skip]);
-            self.shift_bounds_and_ranges((ins_n, [n_diff as i32, 0]));
+            toggle
+        } else if end.is_none() {
+            let [ins, n_diff] = self.insert_inner(s_at, s_tag, [s_n, s_b, s_skip]);
+            self.shift_bounds_and_ranges(ins, [n_diff as i32, 0]);
             assert_bounds(self);
 
             // Since we are adding more TagOrSkips, ranges surrounding this
             // insertion could need their bounds saved, as enough entries fit
             // inside to justify it.
             // However, this is going to be lazyly evaluated when Tags is updated.
-            let [s, e] = [ins_n, ins_n + n_diff];
+            let [s, e] = [ins, ins + n_diff];
             self.merge_range_to_update(
                 s.saturating_sub(self.range_min)..(e + self.range_min).min(self.buf.len()),
             );
-        }
 
-        toggle
+            None
+        } else {
+            None
+        }
     }
 
     /// Inserts a [`RawTag`] in `at`, returns how many [`TagOrSkip`]s
@@ -195,8 +185,8 @@ impl Tags {
                 .count();
 
             self.buf.insert(n, TagOrSkip::Tag(tag));
-            self.records.transform([n, at], [0, 0], [1, 0]);
-            self.records.insert([n, at]);
+            self.records.transform([n, b], [0, 0], [1, 0]);
+            self.records.insert([n, b]);
             [n, 1]
         } else {
             self.buf.splice(n..=n, [
@@ -204,7 +194,7 @@ impl Tags {
                 TagOrSkip::Tag(tag),
                 TagOrSkip::Skip((b + skip - at) as u32),
             ]);
-            self.records.transform([n, at], [0, 0], [2, 0]);
+            self.records.transform([n + 1, at], [0, 0], [2, 0]);
             self.records.insert([n + 1, at]);
             [n, 2]
         }
@@ -265,9 +255,9 @@ impl Tags {
                     && let Some(TagOrSkip::Skip(prev_skip)) = self.buf.get(prev_n)
                 {
                     self.buf
-                        .splice(prev_n..=prev_n + 1, [TagOrSkip::Skip(prev_skip + skip)]);
+                        .splice(prev_n..=n, [TagOrSkip::Skip(prev_skip + skip)]);
                     self.records.transform([n, b], [1, 0], [0, 0]);
-                    self.shift_bounds_and_ranges((n, [-1, 0]));
+                    self.shift_bounds_and_ranges(n, [-1, 0]);
                 } else {
                     n += 1;
                 }
@@ -281,8 +271,9 @@ impl Tags {
                     continue;
                 }
                 self.buf.remove(n);
-                self.shift_bounds_and_ranges((n, [-1, 0]));
+                self.shift_bounds_and_ranges(n, [-1, 0]);
 
+                // The handled removed RawTag is always before the range.
                 let ([rm_n, rm_b], n_diff) =
                     self.handle_removed_tag((b, tag), initial_n, initial_b, &mut starts);
                 if n_diff != 0 {
@@ -291,7 +282,7 @@ impl Tags {
                     if initial_n == rm_n {
                         initial_b = rm_b
                     }
-                    self.shift_bounds_and_ranges((rm_n, [n_diff, 0]));
+                    self.shift_bounds_and_ranges(rm_n, [n_diff, 0]);
                 }
 
                 removed += 1;
@@ -307,10 +298,9 @@ impl Tags {
         // This should be uncommon enought that I don't really care about
         // optimizing it tbh.
         for (_, tag) in starts {
-            let (n, b, _) = find_match(&self.buf, (n, b, tag))
-                .unwrap_or_else(|| panic!("{tag:?}, {:#?}", DebugTags(self, initial_n..(n + 1))));
+            let (n, b, _) = find_match(&self.buf, (n, b, tag)).unwrap();
             let ([rm_n, _], n_diff) = self.remove(n, b);
-            self.shift_bounds_and_ranges((rm_n, [n_diff, 0]));
+            self.shift_bounds_and_ranges(rm_n, [n_diff, 0]);
             assert_bounds(self);
         }
 
@@ -335,13 +325,13 @@ impl Tags {
         // Try to merge this skip with the previous one.
         if let Some(&TagOrSkip::Skip(r_skip)) = self.buf.get(n)
             // We may be at the very start
-            && let Some(prev_n) = n.checked_sub(1)
-            && let Some(&TagOrSkip::Skip(l_skip)) = self.buf.get(prev_n)
+            && let Some(l_n) = n.checked_sub(1)
+            && let Some(&TagOrSkip::Skip(l_skip)) = self.buf.get(l_n)
         {
-            self.buf
-                .splice(prev_n..=n, [TagOrSkip::Skip(l_skip + r_skip)]);
-            self.records.transform([prev_n, b], [2, 0], [0, 0]);
-            ([prev_n, b - l_skip as usize], -2)
+            self.buf.splice(l_n..=n, [TagOrSkip::Skip(l_skip + r_skip)]);
+            self.records
+                .transform([l_n, b - l_skip as usize], [2, 0], [0, 0]);
+            ([l_n, b - l_skip as usize], -2)
         } else {
             self.records.transform([n, b], [1, 0], [0, 0]);
             ([n, b], -1)
@@ -354,11 +344,6 @@ impl Tags {
     /// range.
     pub fn transform(&mut self, old: Range<usize>, new_end: usize) {
         let new = old.start..new_end;
-
-        // First, get rid of all ranges that start and/or end in the old
-        // range.
-        self.remove_intersecting_bounds(old.clone(), |_| true);
-        assert_bounds(self);
 
         let [s_n, s_b, s_skip] = self.skip_at(old.start);
         // In case we're appending to the GapBuffer, a shortcut can be made.
@@ -383,6 +368,13 @@ impl Tags {
 
         // Old length removal.
         let [s_n, s_b] = if old.end > old.start {
+            // First, get rid of all ranges that start and/or end in the old
+            // range.
+            // old.start + 1 because we don't want to get rid of bounds that
+            // merely coincide with the edges.
+            self.remove_intersecting_bounds(old.start + 1..old.end, |_| true);
+            assert_bounds(self);
+
             let b_diff = old.end - old.start;
             // If the range to be removed is contained within one skip,
             // there is no need to check for where it ends.
@@ -398,110 +390,94 @@ impl Tags {
             };
 
             let skip = e_b - s_b - b_diff;
-            let (rm, added_n, rm_before_n, rm_after_n) = {
+            let (rm, added_n) = {
                 let replacement = (skip > 0).then_some(TagOrSkip::Skip(skip as u32));
+                // If the range becomes empty, get rid of pairs.
 
-                let mut rm_before = Vec::new();
-                let mut rm_after = Vec::new();
-                let mut rm_pairs_before_n = 0;
-                let mut rm_pairs_after_n = 0;
+                let rm: Vec<(usize, TagOrSkip)> = self
+                    .buf
+                    .splice(s_n..=e_n, replacement)
+                    .scan(s_b, |b, ts| {
+                        *b += ts.len();
+                        Some((*b - ts.len(), ts))
+                    })
+                    .collect();
 
-                // If the range collapses into a single byte, get rid of duplicates
-                // and pairs.
-                if replacement.is_none() && new.end == old.start {
-                    let mut dupes_and_pairs: Vec<Entry> = Vec::new();
-                    let mut to_remove = Vec::new();
-                    for (i, b, t) in rev_range(&self.buf, ..s_n)
-                        .map_while(|(i, ts)| ts.as_tag().map(|t| (i, s_b, t)))
-                        .chain(
-                            fwd_range(&self.buf, (e_n + 1)..)
-                                .map_while(|(i, ts)| ts.as_tag().map(|t| (i, e_b, t))),
-                        )
-                    {
-                        if let Some(j) = dupes_and_pairs
-                            .iter()
-                            .position(|(.., p)| p.ends_with(&t) || t.ends_with(p))
-                        {
-                            if b == s_b {
-                                rm_pairs_before_n += 1;
-                                to_remove.insert(0, i);
-                            } else {
-                                rm_pairs_after_n += 1;
-                                to_remove.push(i);
-                            }
-                            let (i, b, _) = dupes_and_pairs.remove(j);
-                            let (Ok(k) | Err(k)) = to_remove.binary_search(&i);
-                            to_remove.insert(k, i);
-                            if b == s_b {
-                                rm_pairs_before_n += 1;
-                            } else {
-                                rm_pairs_after_n += 1;
-                            }
-                        } else if dupes_and_pairs.iter().any(|(.., d)| *d == t) {
-                            if b == s_b {
-                                rm_before.push((b, t));
-                                to_remove.insert(0, i);
-                            } else {
-                                rm_after.push((b, t));
-                                to_remove.push(i);
-                            }
-                        } else {
-                            dupes_and_pairs.push((i, b, t));
-                        };
-                    }
-
-                    for i in to_remove.into_iter().rev() {
-                        self.buf.remove(i);
-                    }
-                }
-
-                let rm_before_n = rm_before.len() + rm_pairs_before_n;
-                let rm_after_n = rm_after.len() + rm_pairs_after_n;
-                let range = s_n - rm_before_n..=e_n - rm_before_n;
-                let mut rm = rm_before;
-                rm.extend(
-                    self.buf
-                        .splice(range, replacement)
-                        .scan(s_b, |b, ts| {
-                            *b += ts.len();
-                            Some((*b - ts.len(), ts))
-                        })
-                        .filter_map(|(b, ts)| ts.as_tag().map(|t| (b, t))),
-                );
-                rm.extend(rm_after);
-
-                (rm, replacement.is_some() as usize, rm_before_n, rm_after_n)
+                (rm, replacement.is_some() as usize)
             };
 
-            let taken_n = rm_before_n + rm_after_n + e_n + 1 - s_n;
-            let mut s_n = s_n - rm_before_n;
-            let mut s_b = s_b;
+            let (mut s_n, mut s_b) = (s_n, s_b);
             self.records
-                .transform([s_n, s_b], [taken_n, b_diff], [added_n, 0]);
-            let diff = [added_n as i32 - taken_n as i32, -(b_diff as i32)];
-            self.shift_bounds_and_ranges((s_n, diff));
+                .transform([s_n, s_b], [rm.len(), b_diff], [added_n, 0]);
+            self.shift_bounds_and_ranges(s_n, [added_n as i32 - rm.len() as i32, -(b_diff as i32)]);
             assert_bounds(self);
 
             // We can do the same thing that is done in remove_from, since we are
             // also "removing from".
             let mut starts = Vec::new();
-            for (b, tag) in rm {
+            for (b, tag) in rm
+                .into_iter()
+                .filter_map(|(b, ts)| ts.as_tag().map(|t| (b, t)))
+            {
                 let ([rm_n, rm_b], diff) = self.handle_removed_tag((b, tag), s_n, s_b, &mut starts);
                 if diff != 0 {
                     s_n = (s_n as i32 + diff) as usize;
                     if s_n == rm_n {
                         s_b = rm_b;
                     }
-                    self.shift_bounds_and_ranges((rm_n, [diff, 0]));
+                    self.shift_bounds_and_ranges(rm_n, [diff, 0]);
                     assert_bounds(self);
                 }
             }
 
             for (_, tag) in starts {
-                let (n, b, _) = find_match(&self.buf, (s_n + added_n, s_b + skip, tag)).unwrap();
+                let (n, b, _) = find_match(&self.buf, (s_n + added_n, s_n + skip, tag)).unwrap();
                 let ([rm_n, _], diff) = self.remove(n, b);
-                self.shift_bounds_and_ranges((rm_n, [diff, 0]));
+                self.shift_bounds_and_ranges(rm_n, [diff, 0]);
                 assert_bounds(self);
+            }
+
+            // If the range becomes empty, we should remove the remainig pairs
+            if skip == 0 && new.end == old.start {
+                let is_bound = |i| {
+                    self.bounds
+                        .binary_search_by(|(bound, ..)| bound.get()[0].cmp(&i))
+                        .map(|i| self.bounds[i].2)
+                };
+
+                let mut to_remove: Vec<usize> = Vec::new();
+                let mut starts = Vec::new();
+
+                let s_n = s_n
+                    - rev_range(&self.buf, ..s_n)
+                        .take_while(|(_, ts)| ts.is_tag())
+                        .count();
+
+                for (n, tag) in fwd_range(&self.buf, s_n..)
+                    .map_while(|(i, ts)| Some(i).zip(ts.as_tag()))
+                    .filter(|(_, tag)| tag.is_end())
+                {
+                    if tag.is_start() {
+                        starts.push((n, tag));
+                    } else if tag.is_end()
+                        && let Some(i) = starts.iter().position(|(_, lhs)| lhs.ends_with(&tag))
+                        && let (s_n, _) = starts.remove(i)
+                        && !is_bound(s_n).is_ok_and(|id| Ok(id) != is_bound(n))
+                    {
+                        for n in [n, s_n] {
+                            let ins = to_remove.iter().take_while(|j| **j < n).count();
+                            to_remove.insert(ins, n);
+                        }
+                    }
+                }
+
+                self.records
+                    .transform([s_n, s_b], [to_remove.len(), 0], [0, 0]);
+
+                for n in to_remove.into_iter().rev() {
+                    self.buf.remove(n);
+                    self.shift_bounds_and_ranges(n, [-1, 0]);
+                }
             }
 
             [s_n, s_b]
@@ -514,13 +490,13 @@ impl Tags {
             if let Some(TagOrSkip::Skip(skip)) = self.buf.get_mut(s_n) {
                 *skip += added_b as u32;
                 self.records.transform([s_n, s_b], [0, 0], [0, added_b]);
-                self.shift_bounds_and_ranges((s_n, [0, added_b as i32]));
+                self.shift_bounds_and_ranges(s_n, [0, added_b as i32]);
                 assert_bounds(self);
             // The skip may have deleted by now, so we add it back.
             } else {
                 self.buf.insert(s_n, TagOrSkip::Skip(added_b as u32));
                 self.records.transform([s_n, s_b], [0, 0], [1, added_b]);
-                self.shift_bounds_and_ranges((s_n, [1, added_b as i32]));
+                self.shift_bounds_and_ranges(s_n, [1, added_b as i32]);
                 assert_bounds(self);
             }
         }
@@ -529,6 +505,7 @@ impl Tags {
         // TagOrSkips away, so no new bounds need to be considered.
     }
 
+    #[track_caller]
     fn handle_removed_tag(
         &mut self,
         (b, tag): (usize, RawTag),
@@ -545,8 +522,12 @@ impl Tags {
             // before start, so we need to look for it.
             } else {
                 // Search from initial positions, to skip iterating through the range.
-                let (n, b, _) = find_match(&self.buf, (initial_n, initial_b, tag))
-                    .unwrap_or_else(|| panic!("{self:#?}"));
+                let Some((n, b, _)) = find_match(&self.buf, (initial_n, initial_b, tag)) else {
+                    panic!(
+                        "Failed to find match for ({b}, {tag:?}) in {}",
+                        std::panic::Location::caller()
+                    )
+                };
                 // Here, we'll shift all ranges ahead, since this happens so
                 // infrequently that I don't care about the performance impact.
                 return self.remove(n, b);
@@ -589,6 +570,9 @@ impl Tags {
                     let key = |(place, tag, _): &Bound| (place.get(), *tag);
                     let s_i = self.bounds.binary_search_by_key(&([s_n, s_b], s_tag), key);
                     let e_i = self.bounds.binary_search_by_key(&([n, b], tag), key);
+
+                    assert_eq!(Some(&TagOrSkip::Tag(tag)), self.buf.get(n));
+                    assert_eq!(Some(&TagOrSkip::Tag(s_tag)), self.buf.get(s_n));
 
                     match (s_i, e_i) {
                         (Err(s_i), Err(e_i)) => {
@@ -831,7 +815,6 @@ impl Tags {
             [n_diff, b_diff]: [i32; 2],
             f: impl Fn(usize, usize, &Cell<[usize; 2]>, &RawTag, &RangeId) -> bool,
         ) -> impl FnMut(&mut (Cell<[usize; 2]>, RawTag, RangeId)) -> bool {
-            let sh = |n: usize, sh: i32| (n as i32 + sh) as usize;
             let mut i = 0;
             move |(bound, tag, id)| {
                 let [n, b] = bound.get();
@@ -848,7 +831,6 @@ impl Tags {
                 }
             }
         }
-        let sh = |n: usize, sh: i32| (n as i32 + sh) as usize;
         let (mut sh_from, diff) = self.bounds_shift_state.get();
         if range.is_empty() {
             return;
@@ -882,6 +864,8 @@ impl Tags {
                 })
                 .collect()
         };
+        self.bounds_shift_state.set((sh_from, diff));
+        assert_bounds(self);
 
         for ([n0, b0], [n1, b1]) in removed {
             let [s_n, s_b] = [n0.min(n1), b0.min(b1)];
@@ -889,25 +873,23 @@ impl Tags {
 
             // Do the end first, to not incur shifts on the start.
             let ([rm_n, _], n_diff) = self.remove(e_n, e_b);
-            self.shift_bounds_and_ranges((rm_n, [n_diff, 0]));
+            self.shift_bounds_and_ranges(rm_n, [n_diff, 0]);
             assert_bounds(self);
             // We remove both bounds, in order to prevent a state of dangling
             // bounds, which would cause a lookback or lookahead over the whole
             // Text.
             let ([rm_n, _], n_diff) = self.remove(s_n, s_b);
-            self.shift_bounds_and_ranges((rm_n, [n_diff, 0]));
+            self.shift_bounds_and_ranges(rm_n, [n_diff, 0]);
             assert_bounds(self);
         }
     }
 
-    fn shift_bounds_and_ranges(&mut self, (ins_n, [n_diff, b_diff]): (usize, [i32; 2])) -> usize {
+    fn shift_bounds_and_ranges(&mut self, ins_n: usize, [n_diff, b_diff]: [i32; 2]) -> usize {
         ////////// Shifting of bounds
-        let (mut sh_from, [mut total_n_diff, mut total_b_diff]) = self.bounds_shift_state.get();
-        let sh = |n: usize, diff: i32| (n as i32 + diff) as usize;
-
-        let bounds_ins = if let Some((unshifted_bound, ..)) = self.bounds.get(sh_from) {
+        let (mut sh_from, [mut total_n_diff, mut total_b_diff]) = self.bounds_shift_state.take();
+        let bounds_ins = if let Some((first_unshifted, ..)) = self.bounds.get(sh_from) {
             let mut bounds_ins = sh_from;
-            let [unshifted_n, _] = unshifted_bound.get();
+            let [unshifted_n, _] = first_unshifted.get();
             // cur_n is the first bound that has not been shifted, so we need to
             // take that into consideration.
             if ins_n < sh(unshifted_n, total_n_diff) {
@@ -948,6 +930,43 @@ impl Tags {
         ////////// Shifting of ranges
         let (mut sh_from, mut total_n_diff) = std::mem::take(&mut self.ranges_shift_state);
 
+        // In this case, since n_diff < 0, it acts much like a taken_range
+        // from a Change, so we must merge the ranges that were caught up in
+        // ins_n..abs(n_diff)
+        if n_diff < 0 {
+            let m_range = merging_range_by_guess_and_lazy_shift(
+                (&self.ranges_to_update, self.ranges_to_update.len()),
+                (0, [ins_n, ins_n + n_diff.unsigned_abs() as usize]),
+                (sh_from, total_n_diff, 0, |i, sh| (i as i32 + sh) as usize),
+                (|r| r.start, |r| r.end),
+            );
+
+            if sh_from <= m_range.end {
+                for range in self.ranges_to_update[sh_from..m_range.end].iter_mut() {
+                    range.start = (range.start as i32 + total_n_diff) as usize;
+                    range.end = (range.end as i32 + total_n_diff) as usize;
+                }
+            }
+
+            let mut iter = self.ranges_to_update[m_range.clone()].iter();
+            let first = iter.next().cloned();
+            if let Some(first) = first {
+                let last = iter.next_back().cloned().unwrap_or(first.clone());
+                self.ranges_to_update
+                    .splice(m_range.clone(), [first.start..last.end]);
+            };
+
+            let ranges_taken = m_range.clone().count();
+            let new_sh_from = sh_from.saturating_sub(ranges_taken).max(m_range.start);
+            if new_sh_from < self.ranges_to_update.len() {
+                self.ranges_shift_state = (new_sh_from, total_n_diff);
+            } else {
+                return bounds_ins;
+            }
+        } else if n_diff == 0 {
+            return bounds_ins;
+        }
+
         if let Some(unshifted_range) = self.ranges_to_update.get_mut(sh_from) {
             if ins_n < sh(unshifted_range.start, total_n_diff) {
                 let mut iter = self.ranges_to_update[..sh_from]
@@ -986,7 +1005,6 @@ impl Tags {
 
     fn finish_shifting_bounds(&self) {
         let (sh_from, [total_n_diff, total_b_diff]) = self.bounds_shift_state.take();
-        let sh = |n: usize, diff: i32| (n as i32 + diff) as usize;
 
         for (bound, ..) in self.bounds[sh_from..].iter() {
             let [n, b] = bound.get();
@@ -998,19 +1016,19 @@ impl Tags {
 
     /// Inserts a callibrated range
     fn merge_range_to_update(&mut self, range: Range<usize>) {
-        let (sh_from, shift) = std::mem::take(&mut self.ranges_shift_state);
+        let (sh_from, total_n_diff) = std::mem::take(&mut self.ranges_shift_state);
         let m_range = merging_range_by_guess_and_lazy_shift(
             (&self.ranges_to_update, self.ranges_to_update.len()),
             (0, [range.start, range.end]),
-            (sh_from, shift, 0, |i, sh| (i as i32 + sh) as usize),
+            (sh_from, total_n_diff, 0, |i, sh| (i as i32 + sh) as usize),
             (|r| r.start, |r| r.end),
         );
 
         // The ranges in this region have not been callibrated yet.
         if sh_from <= m_range.end {
             for range in self.ranges_to_update[sh_from..m_range.end].iter_mut() {
-                range.start = (range.start as i32 + shift) as usize;
-                range.end = (range.end as i32 + shift) as usize;
+                range.start = (range.start as i32 + total_n_diff) as usize;
+                range.end = (range.end as i32 + total_n_diff) as usize;
             }
         }
 
@@ -1026,8 +1044,22 @@ impl Tags {
         let ranges_taken = m_range.clone().count();
         let new_sh_from = sh_from.saturating_sub(ranges_taken).max(m_range.start) + 1;
         if new_sh_from < self.ranges_to_update.len() {
-            self.ranges_shift_state = (new_sh_from, shift);
+            self.ranges_shift_state = (new_sh_from, total_n_diff);
         }
+    }
+
+    fn declare_shifted(&mut self, bounds_e_ins: usize) {
+        self.bounds_shift_state.set({
+            // Either I inserted before sh_from, in which case it moved once
+            // ahead, or after sh_from, which would set it to bounds_s_ins, which,
+            // after inserting, would be a shifted position, so move once ahead.
+            if bounds_e_ins + 1 < self.bounds.len() {
+                let (sh_from, diff) = self.bounds_shift_state.get();
+                (sh_from + 1, diff)
+            } else {
+                (0, [0; 2])
+            }
+        });
     }
 }
 
@@ -1082,6 +1114,7 @@ impl TagOrSkip {
 }
 
 /// Forward iterator over a range in the [`GapBuffer`]
+#[track_caller]
 fn fwd_range(
     buf: &GapBuffer<TagOrSkip>,
     range: impl RangeBounds<usize> + std::fmt::Debug,
@@ -1141,18 +1174,14 @@ fn entries_rev(mut b: usize) -> impl FnMut((usize, &TagOrSkip)) -> Option<Entry>
 }
 
 /// Look for a match for a [`RawTag`]
-fn find_match(buf: &GapBuffer<TagOrSkip>, (n, b, tag): Entry) -> Option<(usize, usize, RawTag)> {
-    fn is_tag((_, ts): &(usize, &TagOrSkip)) -> bool {
-        ts.is_tag()
-    }
+fn find_match(buf: &GapBuffer<TagOrSkip>, (n, b, tag): Entry) -> Option<Entry> {
     let mut bound_fn = find_bound_fn(tag);
     if tag.is_start() {
-        let n = n - rev_range(buf, ..n).take_while(is_tag).count();
         fwd_range(buf, n..)
+            .take(30)
             .filter_map(entries_fwd(b))
             .find_map(|(n, b, t)| bound_fn(t).then_some((n, b, t)))
     } else if tag.is_end() {
-        let n = n + fwd_range(buf, n..).take_while(is_tag).count();
         rev_range(buf, ..n)
             .filter_map(entries_rev(b))
             .find_map(|(n, b, t)| bound_fn(t).then_some((n, b, t)))
@@ -1225,14 +1254,20 @@ struct DebugBounds<'a>(&'a Tags);
 impl std::fmt::Debug for DebugBounds<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if f.alternate() && !self.0.is_empty() {
-            f.write_str("[\n")?;
-            for (bound, tag, id) in &self.0.bounds {
-                writeln!(f, "    {:?}", (bound.get(), tag, id))?;
-                writeln!(f, "        {:?}", self.0.buf.get(bound.get()[0]))?;
+            let (sh_from, [total_n_diff, total_b_diff]) = self.0.bounds_shift_state.get();
+            for (i, (bound, tag, id)) in self.0.bounds.iter().enumerate() {
+                let bound = if i < sh_from {
+                    bound.get()
+                } else {
+                    let [n, b] = bound.get();
+                    [sh(n, total_n_diff), sh(b, total_b_diff)]
+                };
+                writeln!(f, "    {:?}", (bound, tag, id))?;
+                writeln!(f, "        {:?}", self.0.buf.get(bound[0]))?;
             }
             f.write_str("]")
         } else {
-            write!(f, "{:?}", self.0)
+            write!(f, "{:?}", self.0.bounds)
         }
     }
 }
@@ -1268,10 +1303,8 @@ pub type RevTags<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)>
 
 type Entry = (usize, usize, RawTag);
 
-#[track_caller]
 fn assert_bounds(tags: &Tags) {
     return;
-    use std::ops::ControlFlow::*;
 
     struct DebugCandidates<'a>(&'a [(usize, usize, RawTag)]);
     impl std::fmt::Debug for DebugCandidates<'_> {
@@ -1285,7 +1318,6 @@ fn assert_bounds(tags: &Tags) {
     }
 
     for (n, (bound, tag, _)) in tags.bounds.iter().enumerate() {
-        let sh = |n: usize, sh: i32| (n as i32 + sh) as usize;
         let [bound_n, bound_b] = {
             let [bound_n, bound_b] = bound.get();
             let (sh_from, [n_diff, b_diff]) = tags.bounds_shift_state.get();
@@ -1296,37 +1328,22 @@ fn assert_bounds(tags: &Tags) {
             }
         };
 
-        let [recs_n, recs_b, recs_skip] = tags.skip_at(bound_b);
-        let (Break([can_n, can_b, can_skip]) | Continue([can_n, can_b, can_skip])) = tags
-            .buf
-            .iter()
-            .enumerate()
-            .try_fold([0; 3], |[_, b, prev_skip], (n, ts)| {
-                if b + prev_skip + ts.len() <= bound_b {
-                    Continue([n, b + prev_skip, ts.len()])
-                } else {
-                    Break([n, b + prev_skip, ts.len()])
-                }
-            });
+        let [recs_n, ..] = tags.skip_at(bound_b);
 
         let matches: Vec<_> = rev_range(&tags.buf, ..recs_n)
-            .map_while(|(n, ts)| ts.as_tag().map(|tag| (n, recs_b, tag)))
+            .map_while(|(n, ts)| ts.as_tag().map(|tag| (n, bound_b, tag)))
             .filter(|(.., lhs)| lhs == tag)
             .collect();
 
-        assert_eq!(
-            [recs_n, recs_b, recs_skip],
-            [can_n, can_b, can_skip],
-            "Records didn't match reality on {}",
-            std::panic::Location::caller()
-        );
-
         assert!(
             matches.contains(&(bound_n, bound_b, *tag)),
-            "Bound {:?} didn't match on\n    {}\n    candidates: {:#?}",
+            "Bound {:?} didn't match on\n    {:?}\n    candidates: ",
             ([bound_n, bound_b], tag),
-            std::panic::Location::caller(),
             DebugCandidates(&matches)
         )
     }
+}
+
+fn sh(n: usize, diff: i32) -> usize {
+    (n as i32 + diff) as usize
 }

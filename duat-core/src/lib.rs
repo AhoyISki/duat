@@ -248,7 +248,7 @@
     unboxed_closures,
     fn_traits,
     associated_type_defaults,
-    dropck_eyepatch
+    dropck_eyepatch,
 )]
 #![allow(clippy::single_range_in_vec_init)]
 
@@ -595,6 +595,7 @@ pub fn crate_dir() -> Option<&'static Path> {
 }
 
 /// Convenience function for the bounds of a range
+#[track_caller]
 fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize, usize) {
     let start = match range.start_bound() {
         std::ops::Bound::Included(start) => *start,
@@ -608,11 +609,13 @@ fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize, usi
     };
     assert!(
         start <= max,
-        "index out of bounds: the len is {max}, but the index is {start}",
+        "index out of bounds: the len is {max}, but the index is {start}, coming from {}",
+        std::panic::Location::caller()
     );
     assert!(
         end <= max,
-        "index out of bounds: the len is {max}, but the index is {end}",
+        "index out of bounds: the len is {max}, but the index is {end}, coming from {}",
+        std::panic::Location::caller()
     );
 
     (start, end)
