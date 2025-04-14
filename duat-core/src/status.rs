@@ -12,11 +12,14 @@
 //! [`status!`]: crate::widgets::status
 //! [`Cursor`]: crate::mode::Cursor
 //! [`Mode`]: crate::mode::Mode
+use std::sync::LazyLock;
+
 use crossterm::event::KeyEvent;
 
 use crate::{
     context,
     data::{DataMap, RwData},
+    hooks::{self, KeySent},
     mode::{self},
     text::{Text, text},
     ui::Area,
@@ -234,13 +237,19 @@ pub fn cur_map_fmt() -> DataMap<(Vec<KeyEvent>, bool), Text> {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [key]: KeyEvent
-pub fn last_key() -> DataMap<(Vec<KeyEvent>, bool), String> {
-    let mut last_key = String::new();
+pub fn last_key() -> RwData<String> {
+    static LAST_KEY: LazyLock<RwData<String>> = LazyLock::new(|| {
+        let last_key = RwData::new(String::new());
 
-    mode::cur_sequence().map(move |(keys, _)| {
-        if let Some(last) = keys.last() {
-            last_key = mode::keys_to_string(&[*last]);
-        }
-        last_key.clone()
-    })
+        hooks::add::<KeySent>({
+            let last_key = last_key.clone();
+            move |key| {
+                *last_key.write() = mode::keys_to_string(&[key]);
+            }
+        });
+
+        last_key
+    });
+
+    LAST_KEY.clone()
 }

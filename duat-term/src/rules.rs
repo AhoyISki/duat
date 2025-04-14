@@ -113,7 +113,7 @@ impl VertRuleCfg {
 
     pub fn on_the_right(self) -> Self {
         Self {
-            specs: PushSpecs::right().with_ver_len(1.0),
+            specs: PushSpecs::right().with_hor_len(1.0),
             ..self
         }
     }

@@ -93,7 +93,6 @@ pub struct FwdIter<'a> {
 }
 
 impl<'a> FwdIter<'a> {
-    #[track_caller]
     pub(super) fn new_at(text: &'a Text, tp: impl TwoPoints) -> Self {
         let (r, g) = tp.to_points();
         let point = r.min(text.len());
