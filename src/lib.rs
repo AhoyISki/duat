@@ -818,7 +818,7 @@ fn log_node(node: tree_sitter::Node) {
         node = next_exists.then_some(cursor.node());
     }
 
-    duat_core::log_file!("{log}");
+    duat_core::log!("{log}");
 }
 
 type InnerLangParts<'a> = (
