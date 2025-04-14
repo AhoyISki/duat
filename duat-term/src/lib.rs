@@ -432,7 +432,6 @@ macro style($lines:expr, $style:expr) {{
     #[cfg(not(unix))]
     queue!(
         $lines,
-        crossterm::style::ResetColor,
         crossterm::style::SetStyle($style)
     );
 }}

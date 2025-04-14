@@ -204,17 +204,17 @@ impl<U: Ui> Session<U> {
                     .unwrap(),
             );
 
-            crate::log_file!("deadlocks are active!");
+            crate::log!("deadlocks are active!");
 
             loop {
                 std::thread::sleep(std::time::Duration::new(2, 0));
                 let deadlocks = parking_lot::deadlock::check_deadlock();
-                crate::log_file!("{} deadlocks detected", deadlocks.len());
+                crate::log!("{} deadlocks detected", deadlocks.len());
                 for (i, threads) in deadlocks.iter().enumerate() {
-                    crate::log_file!("Deadlock #{}", i);
+                    crate::log!("Deadlock #{}", i);
                     for t in threads {
-                        crate::log_file!("Thread Id {:#?}", t.thread_id());
-                        crate::log_file!("{:#?}", t.backtrace());
+                        crate::log!("Thread Id {:#?}", t.thread_id());
+                        crate::log!("{:#?}", t.backtrace());
                     }
                 }
                 if context::will_reload_or_quit() {

@@ -422,9 +422,12 @@ impl Rects {
 
     pub fn swap(&mut self, p: &Printer, id0: AreaId, id1: AreaId) {
         let fr = self.fr;
+        // We're gonna need to reconstrain a bunch of Areas, this is the most
+        // ergonomic way of doing that.
         let mut to_constrain = Some(Vec::new());
         let mut old_eqs = Vec::new();
 
+        // We can't swap anything with the main Area, that makes no sense.
         if id0 == self.main.id || id1 == self.main.id {
             return;
         }

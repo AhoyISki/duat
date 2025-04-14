@@ -128,8 +128,6 @@ impl Printer {
         let mut vars = self.vars.lock();
         vars.update_variables(changes);
         self.has_to_print_edges.store(true, Ordering::Relaxed);
-        // Drop here, so self.updates and self.vars update "at the same time"
-        drop(vars)
     }
 
     pub fn replace(
@@ -232,12 +230,12 @@ impl Printer {
         cutoffs.push(0);
 
         Lines {
-            bytes: Vec::with_capacity(area * 2),
+            bytes: Vec::with_capacity(area * 4),
             cutoffs,
             coords,
             real_cursor: None,
 
-            line: Vec::new(),
+            line: Vec::with_capacity(cap as usize * 4),
             len: 0,
             positions: Vec::new(),
             gaps: Gaps::OnRight,

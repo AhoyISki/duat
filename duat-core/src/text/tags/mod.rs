@@ -48,7 +48,7 @@ const BUMP_AMOUNT: usize = 16;
 #[derive(Clone)]
 pub struct Tags {
     buf: GapBuffer<TagOrSkip>,
-    texts: HashMap<GhostId, Text>,
+    ghosts: HashMap<GhostId, Text>,
     toggles: HashMap<ToggleId, Toggle>,
     range_min: usize,
     records: Records<[usize; 2]>,
@@ -67,7 +67,7 @@ impl Tags {
             } else {
                 gap_buffer![TagOrSkip::Skip(len as u32)]
             },
-            texts: HashMap::new(),
+            ghosts: HashMap::new(),
             toggles: HashMap::new(),
             range_min: MIN_FOR_RANGE,
             bounds: Vec::new(),
@@ -81,7 +81,7 @@ impl Tags {
     /// Removes all [`RawTag`]s and sets the len to 0
     pub fn clear(&mut self) {
         self.buf = GapBuffer::new();
-        self.texts.clear();
+        self.ghosts.clear();
         self.toggles.clear();
         self.records.clear();
     }
@@ -94,7 +94,7 @@ impl Tags {
                 .any(|lhs| lhs == tag)
         }
 
-        let ((s_at, s_tag), end, toggle) = tag.into_raw(key, &mut self.texts, &mut self.toggles);
+        let ((s_at, s_tag), end, toggle) = tag.into_raw(key, &mut self.ghosts, &mut self.toggles);
         get_ends(s_at..end.map(|(e, _)| e).unwrap_or(s_at), self.len_bytes());
 
         let [s_n, s_b, s_skip] = self.skip_at(s_at);
@@ -220,7 +220,7 @@ impl Tags {
         }
 
         self.buf.extend(&other.buf);
-        self.texts.extend(other.texts);
+        self.ghosts.extend(other.ghosts);
         self.toggles.extend(other.toggles);
         self.records.extend(other.records);
         self.bounds.extend(other.bounds);
@@ -266,7 +266,7 @@ impl Tags {
                     n += 1;
                     continue;
                 }
-                crate::log_file!("remove_from {:?}", self.buf.remove(n));
+                self.buf.remove(n);
                 self.shift_bounds_and_ranges(n, [-1, 0]);
 
                 // The handled removed RawTag is always before the range.
@@ -312,10 +312,9 @@ impl Tags {
     /// useful for doing that.
     #[must_use]
     fn remove(&mut self, n: usize, b: usize) -> ([usize; 2], i32) {
-        let TagOrSkip::Tag(tag) = self.buf.remove(n) else {
+        let TagOrSkip::Tag(_) = self.buf.remove(n) else {
             unreachable!("You are only supposed to remove Tags like this, not skips")
         };
-        crate::log_file!("remove {tag:?}");
 
         // Try to merge this skip with the previous one.
         if let Some(&TagOrSkip::Skip(r_skip)) = self.buf.get(n)
@@ -361,7 +360,6 @@ impl Tags {
 
         // Old length removal.
         let [s_n, s_b] = if old.end > old.start {
-            crate::log_file!("removing intersecting bounds");
             // First, get rid of all ranges that start and/or end in the old
             // range.
             // old.start + 1 because we don't want to get rid of bounds that
@@ -383,11 +381,6 @@ impl Tags {
                 let [n, b, skip] = self.skip_behind(old.end);
                 [n, b + skip]
             };
-
-            if self.len_bytes() > 1000 {
-                crate::log_file!("transforming {old:?} to {new:?}");
-                crate::log_file!("{:#?}", DebugTags(self, s_b - 5..e_b + 30));
-            }
 
             let skip = (e_b - s_b - b_diff) as u32;
             let added_n = (skip > 0) as usize;
@@ -496,7 +489,6 @@ impl Tags {
         // TagOrSkips away, so no new bounds need to be considered.
     }
 
-    #[track_caller]
     fn handle_removed_tag(
         &mut self,
         (b, tag): (usize, RawTag),
@@ -513,13 +505,7 @@ impl Tags {
             // before start, so we need to look for it.
             } else {
                 // Search from initial positions, to skip iterating through the range.
-                let Some((n, b, _)) = find_match(&self.buf, (initial_n, initial_b, tag)) else {
-                    panic!(
-                        "Failed to find match for ({b}, {tag:?}) in {}\ncontext: {:#?}",
-                        std::panic::Location::caller(),
-                        DebugTags(self, initial_b - 10..initial_b + 50)
-                    )
-                };
+                let (n, b, _) = find_match(&self.buf, (initial_n, initial_b, tag)).unwrap();
                 // Here, we'll shift all ranges ahead, since this happens so
                 // infrequently that I don't care about the performance impact.
                 return self.remove(n, b);
@@ -542,7 +528,6 @@ impl Tags {
         let ranges = std::mem::take(&mut self.ranges_to_update);
 
         for range in ranges.into_iter() {
-            crate::log_file!("{range:?}");
             let b = self.byte_at(range.start);
             // Add all tags in the range to the list, keeping only those whose
             // ranges are too long.
@@ -721,7 +706,7 @@ impl Tags {
     pub fn ghosts_total_at(&self, at: usize) -> Option<Point> {
         self.iter_only_at(at).fold(None, |p, tag| match tag {
             RawTag::GhostText(_, id) => {
-                let max_point = self.texts.get(&id).unwrap().len();
+                let max_point = self.ghosts.get(&id).unwrap().len();
                 Some(p.map_or(max_point, |p| p + max_point))
             }
             _ => p,
@@ -730,7 +715,7 @@ impl Tags {
 
     /// Return the [`Text`] of a given [`TextId`]
     pub fn get_ghost(&self, k: GhostId) -> Option<&Text> {
-        self.texts.get(&k)
+        self.ghosts.get(&k)
     }
 
     /// Returns information about the skip in the byte `at`
@@ -1154,10 +1139,17 @@ fn entries_rev(mut b: usize) -> impl FnMut((usize, &TagOrSkip)) -> Option<Entry>
 
 /// Look for a match for a [`RawTag`]
 fn find_match(buf: &GapBuffer<TagOrSkip>, (n, b, tag): Entry) -> Option<Entry> {
-    let mut bound_fn = find_bound_fn(tag);
+    let mut bound_fn = {
+        let mut bounds = 1;
+        move |lhs| {
+            bounds -= (lhs == tag.inverse().unwrap()) as usize;
+            bounds += (lhs == tag) as usize;
+            bounds == 0
+        }
+    };
+
     if tag.is_start() {
         fwd_range(buf, n..)
-            .take(30)
             .filter_map(entries_fwd(b))
             .find_map(|(n, b, t)| bound_fn(t).then_some((n, b, t)))
     } else if tag.is_end() {
@@ -1166,16 +1158,6 @@ fn find_match(buf: &GapBuffer<TagOrSkip>, (n, b, tag): Entry) -> Option<Entry> {
             .find_map(|(n, b, t)| bound_fn(t).then_some((n, b, t)))
     } else {
         None
-    }
-}
-
-/// Nests equal [`RawTag`]s until a match is found
-fn find_bound_fn(rhs: RawTag) -> impl FnMut(RawTag) -> bool {
-    let mut bounds = 1;
-    move |lhs| {
-        bounds -= (lhs == rhs.inverse().unwrap()) as usize;
-        bounds += (lhs == rhs) as usize;
-        bounds == 0
     }
 }
 

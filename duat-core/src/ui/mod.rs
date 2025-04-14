@@ -4,7 +4,8 @@ mod layout;
 use std::{
     fmt::Debug,
     marker::PhantomData,
-    sync::{mpsc, Arc}, time::Instant,
+    sync::{Arc, mpsc},
+    time::Instant,
 };
 
 use bincode::{Decode, Encode};
@@ -500,7 +501,9 @@ impl<U: Ui> Window<U> {
                 .is_some_and(|file| file.layout_ordering >= layout_ordering)
         }) {
             for node in self.nodes[i..].iter() {
-                node.widget().write_as::<File>().unwrap().layout_ordering += 1;
+                if let Some(mut file) = node.widget().write_as::<File>() {
+                    file.layout_ordering += 1;
+                }
             }
             self.nodes.splice(i..i, nodes);
         } else {

@@ -45,6 +45,9 @@ fn main() {
             return;
         };
 
+        std::fs::create_dir_all(crate_dir.join("target/debug")).unwrap();
+        std::fs::create_dir_all(crate_dir.join("target/release")).unwrap();
+
         let mut watcher = notify::recommended_watcher({
             let reload_tx = reload_tx.clone();
             let duat_tx = duat_tx.clone();

@@ -265,11 +265,11 @@ impl ui::Area for Area {
 
     fn swap(&self, rhs: &Self, _: DuatPermission) {
         let mut layouts = self.layouts.lock();
-        let lhs_win = get_layout_pos(&layouts, self.id).unwrap();
-        let rhs_win = get_layout_pos(&layouts, rhs.id).unwrap();
+        let lhs_lay = get_layout_pos(&layouts, self.id).unwrap();
+        let rhs_lay = get_layout_pos(&layouts, rhs.id).unwrap();
 
-        if lhs_win == rhs_win {
-            let layout = get_layout_mut(&mut layouts, self.id).unwrap();
+        if lhs_lay == rhs_lay {
+            let layout = &mut layouts[lhs_lay];
             let lhs_id = layout.rects.get_cluster_master(self.id).unwrap_or(self.id);
             let rhs_id = layout.rects.get_cluster_master(rhs.id).unwrap_or(rhs.id);
             if lhs_id == rhs_id {
@@ -277,7 +277,7 @@ impl ui::Area for Area {
             }
             layout.swap(lhs_id, rhs_id);
         } else {
-            let [lhs_lay, rhs_lay] = layouts.get_disjoint_mut([lhs_win, rhs_win]).unwrap();
+            let [lhs_lay, rhs_lay] = layouts.get_disjoint_mut([lhs_lay, rhs_lay]).unwrap();
             let lhs_id = lhs_lay.rects.get_cluster_master(self.id).unwrap_or(self.id);
             let rhs_id = rhs_lay.rects.get_cluster_master(rhs.id).unwrap_or(rhs.id);
 
@@ -293,6 +293,10 @@ impl ui::Area for Area {
 
             lhs_lay.reset_eqs(rhs_id);
             rhs_lay.reset_eqs(lhs_id);
+        }
+
+        for lay in [lhs_lay, rhs_lay] {
+            layouts[lay].printer.update(false);
         }
     }
 

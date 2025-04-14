@@ -700,7 +700,6 @@ impl Text {
     /// Inserts a [`Tag`] at the given position
     pub fn insert_tag(&mut self, key: Key, tag: Tag) {
         self.0.tags.insert(key, tag.clone());
-        self.0.has_changed = true;
     }
 
     /// Removes the [`Tag`]s of a [key] from a region
@@ -780,7 +779,6 @@ impl Text {
         let Some(cursors) = self.0.cursors.take() else {
             return;
         };
-        crate::log_file!("removing cursors");
 
         if cursors.len() < 500 {
             for (cursor, _) in cursors.iter() {

@@ -229,3 +229,18 @@ pub fn cur_map_fmt() -> DataMap<(Vec<KeyEvent>, bool), Text> {
         }
     })
 }
+
+/// [`StatusLine`] part: The last typed [key]
+///
+/// [`StatusLine`]: crate::widgets::StatusLine
+/// [key]: KeyEvent
+pub fn last_key() -> DataMap<(Vec<KeyEvent>, bool), String> {
+    let mut last_key = String::new();
+
+    mode::cur_sequence().map(move |(keys, _)| {
+        if let Some(last) = keys.last() {
+            last_key = mode::keys_to_string(&[*last]);
+        }
+        last_key.clone()
+    })
+}

@@ -826,7 +826,7 @@ pub static LOG: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::ne
 
 /// Log information to a log file
 #[doc(hidden)]
-pub macro log_file($($text:tt)*) {{
+pub macro log($($text:tt)*) {{
     if let Some(cache) = cache_dir()
         && let Ok(file) = std::fs::OpenOptions::new()
             .create(true)

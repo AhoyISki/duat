@@ -56,7 +56,7 @@ impl Record for [usize; 3] {
     }
 
     fn len_per_record() -> usize {
-        64
+        256
     }
 }
 
@@ -79,7 +79,11 @@ impl<R: Record> Records<R> {
 
     /// Creates a new [`Records`] with a given len
     pub fn with_max(max: R) -> Self {
-        Self { max, stored: vec![max], ..Self::default() }
+        Self {
+            max,
+            stored: vec![max],
+            ..Self::default()
+        }
     }
 
     /// Insert a new [`Record`], if it would fit
@@ -194,7 +198,7 @@ impl<R: Record> Records<R> {
     }
 
     /// The [`Record`] closest to `at` by a key extracting function
-    pub fn closest_to_by_key(&self, at: usize, key_f: impl Fn(&R) -> usize + Copy) -> R {
+    pub fn closest_to_by_key(&self, at: usize, key_f: fn(&R) -> usize) -> R {
         let (i, rec) = self.search(at, key_f);
         let len = self.stored.get(i).cloned().unwrap_or_default();
 
@@ -206,21 +210,36 @@ impl<R: Record> Records<R> {
     }
 
     /// Search for `at` with a key extracting function
-    fn search(&self, at: usize, key_f: impl Fn(&R) -> usize + Copy) -> (usize, R) {
+    fn search(&self, at: usize, key_f: fn(&R) -> usize) -> (usize, R) {
         let (n, mut rec) = self.last_used;
 
-        if at >= key_f(&rec) {
-            self.stored[n..].iter().enumerate().find_map(|(i, len)| {
-                rec = rec.add(*len);
-                (key_f(&rec) > at).then_some((n + i, rec.sub(*len)))
-            })
-        } else {
-            self.stored[..n].iter().enumerate().rev().find_map(|(i, len)| {
-                rec = rec.sub(*len);
-                (key_f(&rec) <= at).then_some((i, rec))
-            })
+        if at == key_f(&self.max) {
+            return (self.stored.len(), self.max)
+        } else if at == key_f(&self.last_used.1) {
+            return self.last_used
         }
-        .unwrap_or((self.stored.len(), self.max))
+
+        if at >= key_f(&rec) {
+            let mut i = n;
+            for len in &self.stored[n..] {
+                if key_f(&rec.add(*len)) > at {
+                    return (i, rec)
+                }
+                rec = rec.add(*len);
+                i += 1;
+            }
+        } else {
+            let mut i = n;
+            for len in self.stored[..n].iter().rev() {
+                i -= 1;
+                rec = rec.sub(*len);
+                if key_f(&rec) <= at {
+                    return (i, rec)
+                }
+            }
+        }
+
+        (self.stored.len(), self.max)
     }
 }
 
