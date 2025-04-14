@@ -1,5 +1,7 @@
 # duat ![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) [![duat on crates.io](https://img.shields.io/crates/v/duat)](https://crates.io/crates/duat) [![duat on docs.rs](https://docs.rs/duat/badge.svg)](https://docs.rs/duat)
 
+![assets/demonstration.gif]
+
 Duat is a text editor meant to have as much modularity as
 possible, while keeping a sensible default configuration. It is
 written *and configured* in Rust, through the use of a
