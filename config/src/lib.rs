@@ -107,13 +107,12 @@ fn setup() {
     //// Commands
 
     // Adds a command for the LineNumbers widget.
-    cmd::add_for!("toggle-relative", |ln: LineNumbers<Ui>, _: Area| {
-        let mut cfg = ln.get_cfg();
-        cfg.num_rel = match cfg.num_rel {
+    cmd::add_for!(["toggle-relative", "tr"], |ln: LineNumbers<Ui>, _: Area| {
+        let opts = ln.options_mut();
+        opts.num_rel = match opts.num_rel {
             LineNum::Abs => LineNum::RelAbs,
             LineNum::Rel | LineNum::RelAbs => LineNum::Abs,
         };
-        ln.reconfigure(cfg);
         Ok(None)
     })
     .unwrap();
