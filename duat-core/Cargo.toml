@@ -1,6 +1,6 @@
 [package]
 name = "duat-core"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["AhoyISki"]
 description = "The core of Duat, a highly customizable text editor."
 repository = "https://github.com/AhoyISki/duat/tree/master/duat-core"
@@ -20,7 +20,7 @@ while_let_on_iterator = "allow"
 
 [dependencies]
 # Style handling
-crossterm = ">=0.28.0"
+crossterm = "0.28.0"
 parking_lot = "0.12.3"
 gapbuf = "0.1.4"
 dirs-next = "2.0.0"
