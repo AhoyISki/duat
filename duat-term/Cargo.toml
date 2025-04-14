@@ -13,7 +13,7 @@ edition = "2024"
 [dependencies]
 duat-core = { path = "../duat-core/", version = "0.4.0" }
 
-unicode-width = ">=0.1.10"
-crossterm = "0.28.0"
-smallvec = ">=1.10.0"
-cassowary = ">=0.3.0"
+unicode-width = "0.1.10"
+crossterm = "0.29.0"
+smallvec = "1.10.0"
+cassowary = "0.3.0"
