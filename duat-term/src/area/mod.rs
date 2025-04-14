@@ -610,7 +610,7 @@ fn scroll_ver_around(
     }
 
     let points = text.ghost_max_points_at(point.byte());
-    let after = text.points_after(points).unwrap_or(text.len_points());
+    let after = text.points_after(points).unwrap_or_else(|| text.len_points());
 
     let cap = cfg.wrap_width(width);
     let mut iter = rev_print_iter(text.iter_rev(after), cap, cfg)
@@ -642,7 +642,7 @@ fn scroll_hor_around(info: &mut PrintInfo, width: u32, p: Point, text: &Text, cf
 
     let (max_shift, start, end) = {
         let points = text.ghost_max_points_at(p.byte());
-        let after = text.points_after(points).unwrap_or(text.len_points());
+        let after = text.points_after(points).unwrap_or_else(|| text.len_points());
 
         let mut iter = rev_print_iter(text.iter_rev(after), cap, cfg);
 
