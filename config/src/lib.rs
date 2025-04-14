@@ -53,7 +53,8 @@ fn setup() {
     hooks::remove("WindowWidgets");
     // Same, but on the edges of the window.
     hooks::add::<OnWindowOpen>(|builder| {
-        // // Uncomment this and comment the rest for a StatusLine on the right
+        // // Uncomment this and comment the rest for one line
+        // // StatusLine PromptLine combo
         // let (child, _) = buider.push(PromptLine::cfg());
         // let status = status!(file_fmt " " mode_fmt " " selections_fmt " " main_fmt);
         // builder.push_to(child, status.right_ratioed(4, 7));
@@ -80,7 +81,7 @@ fn setup() {
     // // See what happens when you uncomment this hook removal:
     // hooks::remove("HidePromptLine");
 
-    // This hook will change the color of the Kitty as
+    // This hook will change the color of Kitty as
     // the ColorScheme is altered.
     hooks::add::<ColorSchemeSet>(|scheme| {
         let scheme = match scheme {
@@ -100,6 +101,8 @@ fn setup() {
     map::<Normal>("G", "gj");
     // Aliases show up on the screen as if they were text.
     alias::<Insert>("jk", "<Esc>");
+    // // You may see them by uncommenting this line:
+    // form::set("Alias", Form::red());
 
     //// Commands
 
