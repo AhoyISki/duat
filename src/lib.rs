@@ -279,7 +279,7 @@ use duat_core::{
     Lender, Mutex, Plugin,
     cfg::WordChars,
     cmd, context, form,
-    hooks::{self, ModeSwitched},
+    hooks::{self, ModeSwitched, SearchPerformed},
     mode::{
         self, EditHelper, Editor, ExtendFwd, ExtendRev, IncSearch, IncSearcher, KeyCode::*,
         KeyEvent as Event, KeyMod as Mod, Mode, Orig, PipeSelections, RunCommands, SearchFwd,
@@ -329,6 +329,11 @@ impl<U: Ui> Plugin<U> for Kak<U> {
     fn plug(self) {
         duat_core::mode::set_default::<Normal, U>(Normal::new());
         INSERT_TABS.store(self.insert_tabs, Ordering::Relaxed);
+
+        hooks::add::<SearchPerformed>(|search| {
+            *SEARCH.lock() = search.to_string();
+        });
+
         if self.set_cursor_forms {
             static MODES: &[&str] = &["Insert", "Normal", "GoTo"];
             form::ids_of_non_static(MODES.iter().flat_map(|mode| {
@@ -372,6 +377,7 @@ pub struct Normal {
     sel_type: SelType,
     brackets: Brackets,
     indent_on_capital_i: bool,
+    f_and_t_set_search: bool,
 }
 
 impl Normal {
@@ -383,6 +389,7 @@ impl Normal {
             sel_type: SelType::Normal,
             brackets: B_PATS,
             indent_on_capital_i: false,
+            f_and_t_set_search: false,
         }
     }
 
@@ -401,7 +408,7 @@ impl Normal {
     pub fn with_brackets<'a>(self, brackets: impl Iterator<Item = [&'a str; 2]>) -> Self {
         static BRACKETS: Memoized<Vec<[&str; 2]>, Brackets> = Memoized::new();
 
-        let brackets: Vec<[&str; 2]> = brackets.map(|bs| bs.map(|b| escaped_regex(b))).collect();
+        let brackets: Vec<[&str; 2]> = brackets.map(|bs| bs.map(escaped_regex)).collect();
         assert!(
             brackets.iter().all(|[s_b, e_b]| s_b != e_b),
             "Brackets are not allowed to look the same"
@@ -415,11 +422,19 @@ impl Normal {
     ///
     /// By default, when you press `'I'`, the line will be reindented,
     /// in order to send you to the "proper" insertion spot, not just
-    /// the end of the current indentation.
+    /// to the first non whitespace character.
     ///
     /// This function disables that behavior.
     pub fn with_no_indent_on_capital_i(self) -> Self {
         Self { indent_on_capital_i: false, ..self }
+    }
+
+    /// Makes the `'f'` and `'t'` keys set the search pattern
+    ///
+    /// If you type `"fm"`, for example, and then type `'n'`, `'n'`
+    /// will search for the next instance of an `'m'` in the [`File`]
+    pub fn f_and_t_set_search(self) -> Self {
+        Self { f_and_t_set_search: true, ..self }
     }
 }
 
@@ -489,7 +504,7 @@ impl<U: Ui> Mode<U> for Normal {
                 }
             }),
 
-            ////////// Object selection keys.
+            ////////// Object selection keys
             key!(Char('w'), Mod::NONE | Mod::ALT) => helper.edit_iter().for_each(|mut e| {
                 let alt_word = key.modifiers.contains(Mod::ALT);
                 let init = no_nl_windows(e.chars_fwd()).next();
@@ -601,9 +616,9 @@ impl<U: Ui> Mode<U> for Normal {
                 };
 
                 mode::set::<U>(if let Char('f' | 'F') = key.code {
-                    OneKey::Find(sel_type)
+                    OneKey::Find(sel_type, self.f_and_t_set_search)
                 } else {
-                    OneKey::Until(sel_type)
+                    OneKey::Until(sel_type, self.f_and_t_set_search)
                 });
             }
             key!(Char('l' | 'L'), Mod::ALT) | key!(End) => helper.edit_iter().for_each(|mut e| {
@@ -631,17 +646,19 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('m' | 'M')) => {
                 let mut failed = false;
                 let failed = &mut failed;
-                helper.edit_iter().for_each(do_or_destroy(failed, |mut e| {
+                helper.edit_iter().for_each(do_or_destroy(failed, |e| {
                     let object = Object::from_char('m', e.cfg().word_chars, self.brackets).unwrap();
-                    let [p2, p3] = object.find_ahead(&mut e, 0, None)?;
+                    let [p2, p3] = object.find_ahead(e, 0, None)?;
                     let prev_caret = e.caret();
-                    set_anchor_if_needed(key.code == Char('M'), &mut e);
+                    set_anchor_if_needed(key.code == Char('M'), e);
                     e.move_to(p3);
                     e.move_hor(-1);
 
                     let [s_b, e_b] = self.brackets.bounds_matching(e.contiguous_in((p2, p3)))?;
-                    let [p0, _] = Object::Bounds(s_b, e_b).find_behind(&mut e, 1, None)?;
-                    set_anchor_if_needed(key.code == Char('m'), &mut e);
+                    let [p0, _] = Object::Bounds(s_b, e_b).find_behind(e, 1, None)?;
+                    if key.code == Char('m') {
+                        e.set_anchor();
+                    }
                     e.move_to(p0);
                     if prev_caret.char() != p3.char() - 1 {
                         if key.code == Char('m') {
@@ -657,16 +674,18 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('m' | 'M'), Mod::ALT) => {
                 let mut failed = false;
                 let failed = &mut failed;
-                helper.edit_iter().for_each(do_or_destroy(failed, |mut e| {
+                helper.edit_iter().for_each(do_or_destroy(failed, |e| {
                     let object = Object::from_char('m', e.cfg().word_chars, self.brackets).unwrap();
-                    let [p0, p1] = object.find_behind(&mut e, 0, None)?;
+                    let [p0, p1] = object.find_behind(e, 0, None)?;
                     let prev_caret = e.caret();
-                    set_anchor_if_needed(key.code == Char('M'), &mut e);
+                    set_anchor_if_needed(key.code == Char('M'), e);
                     e.move_to(p0);
 
                     let [s_b, e_b] = self.brackets.bounds_matching(e.contiguous_in((p0, p1)))?;
-                    let [_, p3] = Object::Bounds(s_b, e_b).find_ahead(&mut e, 1, None)?;
-                    set_anchor_if_needed(key.code == Char('m'), &mut e);
+                    let [_, p3] = Object::Bounds(s_b, e_b).find_ahead(e, 1, None)?;
+                    if key.code == Char('m') {
+                        e.set_anchor();
+                    }
                     e.move_to(p3);
                     e.move_hor(-1);
                     if prev_caret != p0 {
@@ -756,7 +775,7 @@ impl<U: Ui> Mode<U> for Normal {
                 }
             }
 
-            ////////// Selection alteration keys.
+            ////////// Selection alteration keys
             key!(Char('r')) => {
                 helper.new_moment();
                 mode::set::<U>(OneKey::Replace)
@@ -820,10 +839,9 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('('), Mod::ALT) => {
                 helper.new_moment();
                 let mut selections = Vec::<String>::new();
-                helper.edit_iter().for_each(|mut e| {
-                    e.set_anchor();
-                    selections.push(e.selection().collect())
-                });
+                helper
+                    .edit_iter()
+                    .for_each(|e| selections.push(e.selection().collect()));
                 let mut s_iter = selections.into_iter().cycle();
                 s_iter.next();
                 helper.edit_iter().for_each(|mut e| {
@@ -871,7 +889,7 @@ impl<U: Ui> Mode<U> for Normal {
                 }
             }),
 
-            ////////// Clipboard keys.
+            ////////// Clipboard keys
             key!(Char('y')) => {
                 helper.new_moment();
                 copy_selections(&mut helper)
@@ -942,11 +960,11 @@ impl<U: Ui> Mode<U> for Normal {
                 }
             }
 
-            ////////// Cursor creation and destruction.
+            ////////// Cursor creation and destruction
             key!(Char(',')) => helper.cursors_mut().remove_extras(),
             key!(Char('C')) => {
                 helper.new_moment();
-                let mut e = helper.edit_nth(helper.cursors().len() - 1);
+                let mut e = helper.edit_last();
                 let v_caret = e.v_caret();
                 e.copy();
                 if let Some(v_anchor) = e.v_anchor() {
@@ -1009,7 +1027,7 @@ impl<U: Ui> Mode<U> for Normal {
                 e.destroy();
             }
 
-            ////////// Other mode changing keys.
+            ////////// Other mode changing keys
             key!(Char(':')) => mode::set::<U>(RunCommands::new()),
             key!(Char('|')) => {
                 helper.new_moment();
@@ -1018,15 +1036,41 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('G')) => mode::set::<U>(OneKey::GoTo(SelType::Extend)),
             key!(Char('g')) => mode::set::<U>(OneKey::GoTo(SelType::Normal)),
 
-            ////////// Incremental search methods.
+            ////////// Search methods
             key!(Char('/')) => mode::set::<U>(IncSearch::new(SearchFwd)),
             key!(Char('/'), Mod::ALT) => mode::set::<U>(IncSearch::new(SearchRev)),
             key!(Char('?')) => mode::set::<U>(IncSearch::new(ExtendFwd)),
             key!(Char('?'), Mod::ALT) => mode::set::<U>(IncSearch::new(ExtendRev)),
             key!(Char('s')) => mode::set::<U>(IncSearch::new(Select)),
             key!(Char('S')) => mode::set::<U>(IncSearch::new(Split)),
+            key!(Char('n' | 'N'), Mod::NONE | Mod::ALT) => {
+                let search = SEARCH.lock();
+                if search.is_empty() {
+                    context::notify(err!("No search pattern set"));
+                    return;
+                }
+                let mut e = helper.edit_main();
 
-            ////////// History manipulation.
+                if key.code == Char('N') {
+                    e.copy();
+                }
+                let caret = e.caret();
+                let next = if key.modifiers == Mod::ALT {
+                    e.search_rev(&*search, None).find(|[p, _]| *p != caret)
+                } else {
+                    e.search_fwd(&*search, None).find(|[p, _]| *p != caret)
+                };
+                if let Some([p0, p1]) = next {
+                    e.move_to(p0);
+                    if p1 > p0 {
+                        e.set_anchor();
+                        e.move_to(p1);
+                        e.move_hor(-1);
+                    }
+                }
+            }
+
+            ////////// History manipulation
             key!(Char('u')) => helper.undo(),
             key!(Char('U')) => helper.redo(),
             _ => {}
@@ -1107,7 +1151,14 @@ impl<U: Ui> Mode<U> for Insert {
                 let char_col = e.v_caret().char_col();
                 if self.indent_keys.contains(&'\t') && char_col == 0 {
                     reindent(&mut e, &mut processed_lines);
-                } else if self.insert_tabs {
+                    let indent = e.indent();
+                    e.move_hor(indent as i32);
+                    if e.indent() > 0 {
+                        return;
+                    }
+                }
+
+                if self.insert_tabs {
                     e.insert('\t');
                     e.move_hor(1);
                 } else {
@@ -1197,8 +1248,8 @@ impl<U: Ui> Mode<U> for Insert {
 #[derive(Clone)]
 enum OneKey {
     GoTo(SelType),
-    Find(SelType),
-    Until(SelType),
+    Find(SelType, bool),
+    Until(SelType, bool),
     Inside(Brackets),
     Around(Brackets),
     Replace,
@@ -1212,8 +1263,11 @@ impl<U: Ui> Mode<U> for OneKey {
 
         let sel_type = match *self {
             OneKey::GoTo(st) => match_goto::<(), U>(&mut helper, key, st),
-            OneKey::Find(st) | OneKey::Until(st) if let Some(char) = just_char(key) => {
-                match_find_until(helper, char, matches!(*self, OneKey::Until(_)), st);
+            OneKey::Find(st, ss) | OneKey::Until(st, ss) if let Some(char) = just_char(key) => {
+                match_find_until(helper, char, matches!(*self, OneKey::Until(..)), st);
+                if ss {
+                    *SEARCH.lock() = char.to_string();
+                }
                 SelType::Normal
             }
             OneKey::Inside(brackets) | OneKey::Around(brackets) => {
@@ -1225,7 +1279,6 @@ impl<U: Ui> Mode<U> for OneKey {
                 helper.edit_iter().for_each(|mut e| {
                     let len = e.selection().flat_map(str::chars).count();
                     e.replace(char.to_string().repeat(len));
-                    e.move_hor(-1);
                 });
                 SelType::Normal
             }
@@ -1274,7 +1327,7 @@ fn match_goto<S, U: Ui>(
             }
         }),
 
-        ////////// File change keys.
+        ////////// File change keys
         key!(Char('a')) => {
             let cur_name = helper.widget().name();
             let last_file = LAST_FILE.lock().clone();
@@ -1712,8 +1765,6 @@ fn remove_empty_line<S>(e: &mut Editor<File, impl Area, S>) {
     e.set_desired_vcol(dvcol);
 }
 
-static CLIPBOARD: Mutex<Vec<String>> = Mutex::new(Vec::new());
-
 fn copy_selections(helper: &mut EditHelper<'_, File, impl Area, ()>) {
     let mut copies: Vec<String> = Vec::new();
     helper
@@ -1941,3 +1992,6 @@ fn escaped_regex(str: &str) -> &'static str {
         escaped.leak()
     })
 }
+
+static CLIPBOARD: Mutex<Vec<String>> = Mutex::new(Vec::new());
+static SEARCH: Mutex<String> = Mutex::new(String::new());
