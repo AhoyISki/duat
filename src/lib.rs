@@ -338,23 +338,26 @@ impl Reader for TsParser {
             });
         }
 
-        if !at_least_one_change {
-            return;
+        if at_least_one_change {
+            let mut parse_fn = buf_parse(bytes, self.range.clone());
+            let tree = self
+                .parser
+                .parse_with_options(&mut parse_fn, Some(&self.tree), None)
+                .unwrap();
+
+            // I keep an old tree around, in order to compare it for tagging
+            // purposes.
+            self.old_tree = Some(std::mem::replace(&mut self.tree, tree));
         }
-
-        let mut parse_fn = buf_parse(bytes, self.range.clone());
-        let tree = self
-            .parser
-            .parse_with_options(&mut parse_fn, Some(&self.tree), None)
-            .unwrap();
-
-        // I keep an old tree around, in order to compare it for tagging
-        // purposes.
-        self.old_tree = Some(std::mem::replace(&mut self.tree, tree));
-        drop(parse_fn);
 
         for st in self.sub_trees.iter_mut() {
             st.apply_changes(bytes, changes);
+        }
+
+        for st in &self.sub_trees {
+            if st.range.end < 1500 {
+                duat_core::log!("{:?}", st.range);
+            }
         }
     }
 
