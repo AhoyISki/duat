@@ -52,10 +52,7 @@
 //!     type Args<'a> = usize;
 //!     type PreArgs = usize;
 //!
-//!     fn trigger_hooks<'b>(
-//!         pre_args: Self::PreArgs,
-//!         hooks: impl Iterator<Item = &'b mut HookFn<Self>>,
-//!     ) {
+//!     fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
 //!         for hook in hooks {
 //!             hook(pre_args)
 //!         }
@@ -81,10 +78,7 @@
 //!     // Some Send + 'static type
 //!     type PreArgs = usize;
 //!
-//!     fn trigger_hooks<'b>(
-//!         pre_args: Self::PreArgs,
-//!         hooks: impl Iterator<Item = &'b mut HookFn<Self>>,
-//!     ) {
+//!     fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
 //!         // Preprocessing before creating Self::Args
 //!         // ...
 //!         let args = args_from_pre_args(&pre_args);
@@ -775,7 +769,7 @@ impl<H: Hookable> HookHolder for HooksOf<H> {
 ///
 /// This function implements [`FnOnce`], as it is only meant to be
 /// called once per [`trigger`] call.
-struct Hook<'b, H: Hookable>(&'b mut InnerHookFn<H>);
+pub struct Hook<'b, H: Hookable>(&'b mut InnerHookFn<H>);
 
 impl<'b, H: Hookable> std::ops::FnOnce<(H::Args<'_>,)> for Hook<'b, H> {
     type Output = H::Return;

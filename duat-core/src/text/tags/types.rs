@@ -55,41 +55,37 @@ use crate::{
 #[derive(Clone)]
 pub enum Tag {
     ////////// Implemented:
-    /// Appends a form to the stack.
+    /// Stylizes a [range] with a [`Form`]
     ///
-    /// The [`PushForm`] tag is the only one with a user defined
-    /// priority, that is, it lets you set which tags should go first
-    /// on the same byte. If a tag has a higher priority, it goes
-    /// later, thus, it's [`Form`] takes priority over those behind
-    /// it.
+    /// The last argument is a priority factor, a higher priority
+    /// makes a [`Form`]'s application latent, so it takes precedence
+    /// of earlier [`Form`]s. This is important if, for example,
+    /// multiple [`Form`]s are inserted in the same byte.
     ///
-    /// In the vast majority of cases, this does not matter, and you
-    /// should just set it to 100. In more specific cases, you should
-    /// evaluate how "uncommon" your tags are, for example, a plugin
-    /// like [`duat-treesitter`] should give its tags low priority, as
-    /// they are "background" tags, giving way to things like search
-    /// queries and cursor selections.
+    /// Priority values higher than `250` are clamped back down to
+    /// `250`.
     ///
-    /// [`PushForm`]: Tag::PushForm
+    /// [range]: Range
     /// [`Form`]: crate::form::Form
-    /// [`duat-treesitter`]: https://github.com/AhoyISki/duat-treesitter
     Form(Range<usize>, FormId, u8),
 
-    /// Places the main cursor.
+    /// Places the main cursor
     MainCursor(usize),
-    /// Places an extra cursor.
+    /// Places an extra cursor
     ExtraCursor(usize),
 
     /// Aligns text to the center of the screen within the lines
-    /// containing the region. If said region intersects with an
+    /// containing the [range]. If said region intersects with an
     /// [`AlignRight`], the latest one prevails.
     ///
+    /// [range]: Range
     /// [`AlignRight`]: Tag::AlignRight
     AlignCenter(Range<usize>),
     /// Aligns text to the right of the screen within the lines
-    /// containing the region. If said region intersects with an
+    /// containing the [range]. If said region intersects with an
     /// [`AlignCenter`], the latest one prevails.
     ///
+    /// [range]: Range
     /// [`AlignCenter`]: Tag::AlignCenter
     AlignRight(Range<usize>),
     /// A spacer for a single screen line
@@ -123,12 +119,20 @@ pub enum Tag {
 
     /// Text that shows up on screen, but "doesn't exist"
     Ghost(usize, Text),
-    /// Start concealing the [`Text`] from this point
+    /// Conceal the given [range], preventing it from being printed
+    ///
+    /// This [range] is completely arbitrary, it can go over multiple
+    /// lines, [`Ghost`]s, whatever.
+    ///
+    /// [range]: Range
+    /// [`Ghost`]: Tag::Ghost
     Conceal(Range<usize>),
 
     ////////// Not yet implemented:
     // TODO: Make this take a Widget and Area arguments
-    /// Begins a toggleable section in the file.
+    /// Make this [range] toggleable
+    ///
+    /// [range]: Range
     Toggle(Range<usize>, Toggle),
 }
 
@@ -142,14 +146,11 @@ impl Tag {
         use RawTag::*;
 
         match self {
-            Self::Form(range, id, priority) => {
-                debug_assert!(priority <= 250, "Form priority greater than 250");
-                (
-                    (range.start, PushForm(key, id, priority)),
-                    Some((range.end, PopForm(key, id))),
-                    None,
-                )
-            }
+            Self::Form(range, id, priority) => (
+                (range.start, PushForm(key, id, priority.min(250))),
+                Some((range.end, PopForm(key, id))),
+                None,
+            ),
             Self::MainCursor(b) => ((b, MainCursor(key)), None, None),
             Self::ExtraCursor(b) => ((b, ExtraCursor(key)), None, None),
             Self::AlignCenter(range) => (
@@ -171,7 +172,7 @@ impl Tag {
                 }
                 let id = GhostId::new();
                 texts.insert(id, text);
-                ((b, GhostText(key, id)), None, None)
+                ((b, Ghost(key, id)), None, None)
             }
             Self::Conceal(range) => (
                 (range.start, StartConceal(key)),
@@ -224,16 +225,15 @@ pub enum RawTag {
 
     // In the process of implementing.
     /// Starts concealing the [`Text`], skipping all [`Tag`]s and
-    /// [`char`]s until the [`ConcealEnd`] tag shows up.
+    /// [`char`]s until the [`EndConceal`] tag shows up.
     ///
     /// [`Text`]: super::Text
-    /// [`ConcealEnd`]: RawTag::ConcealEnd
+    /// [`EndConceal`]: RawTag::EndConceal
     StartConceal(Key),
     /// Stops concealing the [`Text`], returning the iteration process
     /// back to the regular [`Text`] iterator.
     ///
     /// [`Text`]: super::Text
-    /// [`ConcealEnd`]: RawTag::ConcealEnd
     EndConceal(Key),
 
     // TODO: Deal with the consequences of changing this from a usize.
@@ -245,7 +245,7 @@ pub enum RawTag {
     ConcealUntil(u32),
 
     /// Text that shows up on screen, but is ignored otherwise.
-    GhostText(Key, GhostId),
+    Ghost(Key, GhostId),
 
     // Not Implemented:
     /// Begins a toggleable section in the text.
@@ -273,9 +273,7 @@ impl PartialEq for RawTag {
             (Self::StartConceal(l_key), Self::StartConceal(r_key)) => l_key == r_key,
             (Self::EndConceal(l_key), Self::EndConceal(r_key)) => l_key == r_key,
             (Self::ConcealUntil(l_key), Self::ConcealUntil(r_key)) => l_key == r_key,
-            (Self::GhostText(l_key, l_id), Self::GhostText(r_key, r_id)) => {
-                l_key == r_key && l_id == r_id
-            }
+            (Self::Ghost(l_key, l_id), Self::Ghost(r_key, r_id)) => l_key == r_key && l_id == r_id,
             (Self::ToggleStart(l_key, l_id), Self::ToggleStart(r_key, r_id)) => {
                 l_key == r_key && l_id == r_id
             }
@@ -371,7 +369,7 @@ impl RawTag {
             | Self::Spacer(key)
             | Self::StartConceal(key)
             | Self::EndConceal(key)
-            | Self::GhostText(key, _)
+            | Self::Ghost(key, _)
             | Self::ToggleStart(key, _)
             | Self::ToggleEnd(key, _) => Some(*key),
             Self::ConcealUntil(_) => None,
@@ -391,7 +389,7 @@ impl RawTag {
             RawTag::Spacer(..) => 2,
             RawTag::StartConceal(..) => 1,
             RawTag::EndConceal(..) => 2,
-            RawTag::GhostText(..) => 3,
+            RawTag::Ghost(..) => 3,
             RawTag::ToggleStart(..) => 1,
             RawTag::ToggleEnd(..) => 2,
             RawTag::ConcealUntil(_) => unreachable!("This shouldn't be queried"),
@@ -416,7 +414,7 @@ impl std::fmt::Debug for RawTag {
             RawTag::StartConceal(key) => write!(f, "StartConceal({key:?})"),
             RawTag::EndConceal(key) => write!(f, "EndConceal({key:?})"),
             RawTag::ConcealUntil(key) => write!(f, "ConcealUntil({key:?})"),
-            RawTag::GhostText(key, id) => write!(f, "GhostText({key:?}, {id:?})"),
+            RawTag::Ghost(key, id) => write!(f, "GhostText({key:?}, {id:?})"),
             RawTag::ToggleStart(key, id) => write!(f, "ToggleStart({key:?}), {id:?})"),
             RawTag::ToggleEnd(key, id) => write!(f, "ToggleEnd({key:?}, {id:?})"),
         }

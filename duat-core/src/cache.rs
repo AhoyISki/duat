@@ -9,15 +9,15 @@
 //! opening it in Duat. Another example is [`Cursors`], which stores a
 //! list of open [`Cursor`]s, to start the file on.
 //!
-//! Plugins are able to cache any type that implements [`Serialize`]
-//! and [`Deserialize`]. Duat provides these traits from [`serde`],
-//! but in order to derive them, you will need a small addition on the
-//! declaration of the type:
+//! Plugins are able to cache any type that implements [`Encode`]
+//! and [`Decode`]. Duat provides these traits from the [`bincode`]
+//! crate, but in order to derive them, you will need a small addition
+//! on the declaration of the type:
 //!
 //! ```rust
-//! # use duat_core::cache::{Deserialize, Serialize};
-//! #[derive(Deserialize, Serialize)]
-//! #[serde(crate = "duat_core::cache::serde")]
+//! # use duat_core::cache::{Encode, Decode};
+//! #[derive(Encode, Decode)]
+//! #[bincode(crate = "duat_core::cache::bincode")]
 //! enum MyCacheableEnum {
 //!     // ...
 //! }
@@ -30,10 +30,9 @@
 use std::{any::TypeId, fs::File, path::PathBuf};
 
 use base64::Engine;
-pub use bincode;
+pub use bincode::{self, Decode, Encode};
 
 use self::bincode::{
-    Decode, Encode,
     config::{Configuration, Fixint, LittleEndian, NoLimit},
     encode_into_std_write,
 };

@@ -1017,22 +1017,26 @@ impl Palette {
             .unwrap_or(Form::new().0);
         Painter {
             inner,
-            forms: vec![(default, id)],
+            default,
+            forms: Vec::new(),
             reset_count: 0,
-            final_form_start: 1,
-            still_on_same_byte: false,
-            reset_is_needed: false,
+            final_form_start: 0,
+            set_fg: true,
+            set_bg: true,
+            set_ul: true,
         }
     }
 }
 
 pub struct Painter {
     inner: RwLockReadGuard<'static, InnerPalette>,
+    default: Form,
     forms: Vec<(Form, FormId)>,
     reset_count: usize,
     final_form_start: usize,
-    still_on_same_byte: bool,
-    reset_is_needed: bool,
+    set_fg: bool,
+    set_bg: bool,
+    set_ul: bool,
 }
 
 impl Painter {
@@ -1044,7 +1048,7 @@ impl Painter {
     /// background, its combination with the other [`Form`]s also
     /// won't, since it wasn't changed.
     #[inline(always)]
-    pub fn apply(&mut self, id: FormId) -> ContentStyle {
+    pub fn apply(&mut self, id: FormId) {
         let i = id.0 as usize;
         let forms = &self.inner.forms;
         let form = forms.get(i).map(|(_, f, _)| *f).unwrap_or(Form::new().0);
@@ -1056,53 +1060,27 @@ impl Painter {
             self.final_form_start += 1;
         }
 
-        let mut style = self.make_style();
-        if self.reset_is_needed || self.reset_count > 0 {
-            self.still_on_same_byte = true;
-            self.reset_is_needed = true;
-            style.attributes.set(Attribute::Reset);
-        // Only when we are certain that all forms have been
-        // printed, can we cull unnecessary colors for efficiency
-        // (this happens most of the time).
-        } else if !self.still_on_same_byte {
-            self.still_on_same_byte = true;
-            style.foreground_color = form.fg().and(style.foreground_color.or(Some(Color::Reset)));
-            style.background_color = form.bg().and(style.background_color.or(Some(Color::Reset)));
-            style.underline_color = form.ul().and(style.underline_color.or(Some(Color::Reset)));
-        }
-        style
+        self.set_fg |= form.fg().is_some();
+        self.set_bg |= form.bg().is_some();
+        self.set_ul |= form.ul().is_some();
     }
 
     /// Removes the [`Form`] with the given `id` and returns the
     /// result, given previous triggers
     #[inline(always)]
-    pub fn remove(&mut self, id: FormId) -> ContentStyle {
+    pub fn remove(&mut self, id: FormId) {
         let mut applied_forms = self.forms.iter().enumerate();
-        let Some((i, &(form, _))) = applied_forms.rfind(|(_, (_, i))| *i == id) else {
-            return absolute_style(&self.forms);
+        if let Some((i, &(form, _))) = applied_forms.rfind(|(_, (_, i))| *i == id) {
+            self.reset_count -= form.style.attributes.has(Attribute::Reset) as usize;
+            self.forms.remove(i);
+            if id != M_SEL_ID && id != E_SEL_ID {
+                self.final_form_start -= 1;
+            }
+
+            self.set_fg |= form.fg().is_some();
+            self.set_bg |= form.bg().is_some();
+            self.set_ul |= form.ul().is_some();
         };
-
-        self.reset_count -= form.style.attributes.has(Attribute::Reset) as usize;
-        self.forms.remove(i);
-        if id != M_SEL_ID && id != E_SEL_ID {
-            self.final_form_start -= 1;
-        }
-
-        let mut style = self.make_style();
-        if !form.style.attributes.is_empty() || self.reset_is_needed || self.reset_count > 0 {
-            self.still_on_same_byte = true;
-            self.reset_is_needed = true;
-            style.attributes.set(Attribute::Reset);
-        // Only when we are certain that all forms have been
-        // printed, can we cull unnecessary colors for efficiency
-        // (this happens most of the time).
-        } else if !self.still_on_same_byte {
-            self.still_on_same_byte = true;
-            style.foreground_color = form.fg().and(style.foreground_color.or(Some(Color::Reset)));
-            style.background_color = form.bg().and(style.background_color.or(Some(Color::Reset)));
-            style.underline_color = form.ul().and(style.underline_color.or(Some(Color::Reset)));
-        }
-        style
     }
 
     /// Removes all [`Form`]s except the default one
@@ -1113,14 +1091,16 @@ impl Painter {
     #[inline(always)]
     pub fn reset(&mut self) -> ContentStyle {
         self.forms.splice(1.., []);
-        self.make_style()
+        self.absolute_style()
     }
 
-    /// Generates the form to be printed, given all the previously
-    /// pushed forms in the `Form` stack.
+    /// Generates the absolute [`ContentStyle`] to be set
+    ///
+    /// This function assumes that all previous styling is not being
+    /// carried over, i.e., we're styling from scratch.
     #[inline(always)]
-    pub fn make_style(&self) -> ContentStyle {
-        let mut style = ContentStyle::new();
+    pub fn absolute_style(&self) -> ContentStyle {
+        let mut style = self.default.style;
 
         for &(form, _) in &self.forms {
             style.foreground_color = form.fg().or(style.foreground_color);
@@ -1136,38 +1116,67 @@ impl Painter {
         style
     }
 
+    /// Generates the relative [`ContentStyle`] to be set
+    ///
+    /// This function assumes that previously printed styles are being
+    /// carried over, influencing this one.
+    ///
+    /// You should strive to use this function more than
+    /// [`absolute_style`], since it "theoretically" should be less
+    /// work to change just one aspect of the style, rather than
+    /// replacing the whole thing.
+    ///
+    /// [`absolute_style`]: Painter::absolute_style
     #[inline(always)]
-    pub fn apply_main_cursor(&mut self) -> ContentStyle {
-        let style = self.apply(M_CUR_ID);
+    pub fn relative_style(&mut self) -> ContentStyle {
+        let mut style = self.absolute_style();
+
+        if self.reset_count > 0 {
+            style.attributes.set(Attribute::Reset);
+        // Only when we are certain that all forms have been
+        // printed, can we cull unnecessary colors for efficiency
+        // (this happens most of the time).
+        } else {
+            style.foreground_color = self
+                .set_fg
+                .then_some(style.foreground_color.unwrap_or(Color::Reset));
+            style.background_color = self
+                .set_bg
+                .then_some(style.background_color.unwrap_or(Color::Reset));
+            style.underline_color = self
+                .set_ul
+                .then_some(style.underline_color.unwrap_or(Color::Reset));
+        }
+
+        self.set_fg = false;
+        self.set_bg = false;
+        self.set_ul = false;
+
+        style
+    }
+
+    #[inline(always)]
+    pub fn apply_main_cursor(&mut self) {
+        self.apply(M_CUR_ID);
         self.final_form_start -= 1;
-        style
     }
 
     #[inline(always)]
-    pub fn remove_main_cursor(&mut self) -> ContentStyle {
-        let style = self.remove(M_CUR_ID);
+    pub fn remove_main_cursor(&mut self) {
+        self.remove(M_CUR_ID);
         self.final_form_start += 1;
-        style
     }
 
     #[inline(always)]
-    pub fn apply_extra_cursor(&mut self) -> ContentStyle {
-        let style = self.apply(E_CUR_ID);
+    pub fn apply_extra_cursor(&mut self) {
+        self.apply(E_CUR_ID);
         self.final_form_start -= 1;
-        style
     }
 
     #[inline(always)]
-    pub fn remove_extra_cursor(&mut self) -> ContentStyle {
-        let style = self.remove(E_CUR_ID);
+    pub fn remove_extra_cursor(&mut self) {
+        self.remove(E_CUR_ID);
         self.final_form_start += 1;
-        style
-    }
-
-    /// Tells the [`Painter`] that it has printed a character
-    pub fn confirm_printing(&mut self) {
-        self.still_on_same_byte = false;
-        self.reset_is_needed = false;
     }
 
     /// The [`Form`] "ExtraCursor", and its shape.
@@ -1182,7 +1191,7 @@ impl Painter {
 
     /// The `"Default"` form's [`Form`]
     pub fn get_default(&self) -> Form {
-        self.forms[0].0
+        self.default
     }
 }
 
@@ -1225,24 +1234,6 @@ fn would_be_circular(inner: &InnerPalette, referee: usize, refed: usize) -> bool
     } else {
         false
     }
-}
-
-/// Returns an absolute [`Form`]
-fn absolute_style(list: &[(Form, FormId)]) -> ContentStyle {
-    let mut style = ContentStyle::new();
-
-    for &(form, _) in list {
-        style.foreground_color = form.fg().or(style.foreground_color);
-        style.background_color = form.bg().or(style.background_color);
-        style.underline_color = form.ul().or(style.underline_color);
-        style.attributes = if form.attr().has(Attribute::Reset) {
-            form.attr()
-        } else {
-            form.attr() | style.attributes
-        }
-    }
-
-    style
 }
 
 fn position_and_form(forms: &mut Vec<(&str, Form, FormType)>, name: &'static str) -> (usize, Form) {
@@ -1451,7 +1442,7 @@ impl std::fmt::Debug for InnerPalette {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 if f.alternate() {
                     f.write_str("[\n")?;
-					let max = self.0.len().ilog10() as usize + 3;
+                    let max = self.0.len().ilog10() as usize + 3;
                     for (n, entry) in self.0.iter().enumerate() {
                         let num = format!("{n}:");
                         writeln!(f, "{num:<max$}{entry:#?}")?;

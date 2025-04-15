@@ -89,8 +89,8 @@ use crate::{
 /// [`File`]: crate::widgets::File
 /// [`OnFileOpen`]: crate::hooks::OnFileOpen
 /// [`LineNumbers`]: crate::widgets::LineNumbers
-/// [relative]: crate::widgets::LineNumbersCfg::relative
-/// [absolute]: crate::widgets::LineNumbersCfg::absolute
+/// [relative]: crate::widgets::LineNumbersOptions::relative
+/// [absolute]: crate::widgets::LineNumbersOptions::absolute
 /// [hook group]: crate::hooks::add_grouped
 /// [`hooks::remove`]: crate::hooks::remove
 pub struct FileBuilder<U: Ui> {
@@ -159,7 +159,7 @@ impl<U: Ui> FileBuilder<U> {
     ///
     /// [`File`]: crate::widgets::File
     /// [`LineNumbers`]: crate::widgets::LineNumbers
-    /// [`relative/absolute`]: crate::widgets::LineNumbersCfg::rel_abs
+    /// [`relative/absolute`]: crate::widgets::LineNumbersOptions::rel_abs
     /// [`StatusLine`]: crate::widgets::StatusLine
     pub fn push<W: Widget<U>>(
         &mut self,

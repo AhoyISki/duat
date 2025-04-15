@@ -52,7 +52,7 @@ impl<U: Ui> LineNumbers<U> {
             }
 
             match (main_line == *line, is_wrapped) {
-                (false, false) => text!(builder, [LineNum]),
+                (false, false) => {}
                 (true, false) => text!(builder, [MainLineNum]),
                 (false, true) => text!(builder, [WrappedLineNum]),
                 (true, true) => text!(builder, [WrappedMainLineNum]),
@@ -69,12 +69,12 @@ impl<U: Ui> LineNumbers<U> {
         self.text = builder.finish();
     }
 
-	/// The options for these [`LineNumbers`]
+    /// The options for these [`LineNumbers`]
     pub fn options(&self) -> &LineNumbersOptions<U> {
         &self.cfg
     }
 
-	/// The mutable options for these [`LineNumbers`]
+    /// The mutable options for these [`LineNumbers`]
     pub fn options_mut(&mut self) -> &mut LineNumbersOptions<U> {
         &mut self.cfg
     }
@@ -229,7 +229,7 @@ fn push_text<U>(
     cfg: &LineNumbersOptions<U>,
 ) {
     if is_wrapped && !cfg.show_wraps {
-        text!(*b, "\n");
+        text!(*b, [] "\n");
     } else if main != usize::MAX {
         let num = match cfg.num_rel {
             LineNum::Abs => line + 1,
@@ -243,9 +243,9 @@ fn push_text<U>(
             }
         };
 
-        text!(*b, num "\n");
+        text!(*b, num [] "\n");
     } else {
-        text!(*b, { line + 1 } "\n");
+        text!(*b, { line + 1 } [] "\n");
     }
 }
 

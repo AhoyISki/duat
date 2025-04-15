@@ -141,10 +141,10 @@ impl<'a> FwdIter<'a> {
         *self = self.text.iter_fwd(tp.to_points().max(self.points()))
     }
 
-    #[inline]
+    #[inline(always)]
     fn handle_special_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {
-            RawTag::GhostText(_, id) => {
+            RawTag::Ghost(_, id) => {
                 if !self.print_ghosts || b < self.point.byte() || self.conceals > 0 {
                     return true;
                 }
@@ -194,10 +194,12 @@ impl<'a> FwdIter<'a> {
         true
     }
 
+	#[inline(always)]
     pub fn on_ghost(&self) -> bool {
         self.main_iter.is_some()
     }
 
+	#[inline(always)]
     pub fn points(&self) -> (Point, Option<Point>) {
         if let Some((real, ..)) = self.main_iter.as_ref() {
             (*real, self.ghost.map(|(tg, _)| tg))
@@ -305,7 +307,7 @@ impl<'a> RevIter<'a> {
     #[inline]
     fn handled_meta_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {
-            RawTag::GhostText(_, id) => {
+            RawTag::Ghost(_, id) => {
                 if !self.print_ghosts || b > self.point.byte() || self.conceals > 0 {
                     return true;
                 }
@@ -481,7 +483,7 @@ impl Part {
             RawTag::ToggleStart(_, id) => Part::ToggleStart(id),
             RawTag::ToggleEnd(_, id) => Part::ToggleEnd(id),
             RawTag::ConcealUntil(_) => Part::ResetState,
-            RawTag::StartConceal(_) | RawTag::EndConceal(_) | RawTag::GhostText(..) => {
+            RawTag::StartConceal(_) | RawTag::EndConceal(_) | RawTag::Ghost(..) => {
                 unreachable!("These tags are automatically processed elsewhere.")
             }
         }

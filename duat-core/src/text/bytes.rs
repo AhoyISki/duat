@@ -40,11 +40,11 @@ impl Bytes {
     ///
     /// # Note
     ///
-    /// This does not check for tags, so with a [`Tag::GhostText`],
+    /// This does not check for tags, so with a [`Tag::Ghost`],
     /// there could actually be a "string" of characters on the
     /// [`Text`], it just wouldn't be considered real "text".
     ///
-    /// [`Tag::GhostText`]: super::Tag::GhostText
+    /// [`Tag::Ghost`]: super::Tag::Ghost
     /// [`Text`]: super::Text
     pub fn is_empty(&self) -> bool {
         self.buf.is_empty()

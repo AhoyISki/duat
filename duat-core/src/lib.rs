@@ -11,7 +11,8 @@
 //!
 //! ```rust
 //! # use duat_core::{
-//! #     mode::{self, Cursors, EditHelper, KeyCode, KeyEvent, Mode, key}, ui::Ui, widgets::File,
+//! #     mode::{self, Cursors, EditHelper, KeyCode, KeyEvent, Mode, key},
+//! #     Lender, ui::Ui, widgets::File,
 //! # };
 //! #[derive(Default, Clone)]
 //! struct FindSeq(Option<char>);
@@ -34,14 +35,14 @@
 //!             return;
 //!         };
 //!
-//!         helper.move_many(.., |mut m| {
+//!         helper.edit_iter().for_each(|mut e| {
 //!             let pat: String = [first, c].iter().collect();
-//!             let matched = m.search_fwd(pat, None).next();
+//!             let matched = e.search_fwd(pat, None).next();
 //!             if let Some([p0, p1]) = matched {
-//!                 m.move_to(p0);
-//!                 m.set_anchor();
-//!                 m.move_to(p1);
-//!                 m.move_hor(-1)
+//!                 e.move_to(p0);
+//!                 e.set_anchor();
+//!                 e.move_to(p1);
+//!                 e.move_hor(-1);
 //!             }
 //!         });
 //!
@@ -90,7 +91,7 @@
 //! ```rust
 //! # use duat_core::{
 //! #     mode::{self, Cursors, EditHelper, KeyCode, KeyEvent, Mode, key},
-//! #     text::{Key, Point, Tag, text}, ui::{Area, Ui}, widgets::File,
+//! #     Lender, text::{Key, Point, Tag, text}, ui::{Area, Ui}, widgets::File,
 //! # };
 //! #[derive(Clone)]
 //! pub struct EasyMotion {
@@ -99,8 +100,6 @@
 //!     points: Vec<[Point; 2]>,
 //!     seq: String,
 //! }
-//!
-//! (NOTE: something)
 //!
 //! impl EasyMotion {
 //!     pub fn word() -> Self {
@@ -142,10 +141,9 @@
 //!         for (seq, [p0, _]) in seqs.iter().zip(&self.points) {
 //!             let ghost = text!([EasyMotionWord] seq);
 //!
-//!             text.insert_tag(p0.byte(), Tag::GhostText(ghost), self.key);
-//!             text.insert_tag(p0.byte(), Tag::StartConceal, self.key);
+//!             text.insert_tag(self.key, Tag::Ghost(p0.byte(), ghost));
 //!             let seq_end = p0.byte() + seq.chars().count() ;
-//!             text.insert_tag(seq_end, Tag::EndConceal, self.key);
+//!             text.insert_tag(self.key, Tag::Conceal(p0.byte()..seq_end));
 //!         }
 //!     }
 //!
@@ -163,11 +161,10 @@
 //!         let seqs = key_seqs(self.points.len());
 //!         for (seq, &[p0, p1]) in seqs.iter().zip(&self.points) {
 //!             if *seq == self.seq {
-//!                 helper.move_main(|mut m| {
-//!                     m.move_to(p0);
-//!                     m.set_anchor();
-//!                     m.move_to(p1);
-//!                 });
+//!                 let mut e = helper.edit_main();
+//!                 e.move_to(p0);
+//!                 e.set_anchor();
+//!                 e.move_to(p1);
 //!                 mode::reset();
 //!             } else if seq.starts_with(&self.seq) {
 //!                 continue;
@@ -200,8 +197,8 @@
 //! All that this plugin is doing is:
 //!
 //! - Search on the screen for words/lines;
-//! - In the beginning of said words/lines, add a [`Tag::GhostText`];
-//! - Also add a [`Tag::StartConceal`] and a [`Tag::EndConceal`];
+//! - In the beginning of said words/lines, add a [`Tag::Ghost`];
+//! - Also add a [`Tag::Conceal`];
 //! - Then, just match the typed keys and [remove] tags accordingly;
 //! - [Move] to the matched sequence, if it exists;
 //!
@@ -230,13 +227,12 @@
 //! [`File`]: crate::widgets::File
 //! [`map`]: https://docs.rs/duat/0.2.0/duat/prelude/fn.map.html
 //! [EasyMotion]: https://github.com/easymotion/vim-easymotion
-//! [ghost text]: crate::text::Tag::GhostText
-//! [concealment]: crate::text::Tag::StartConceal
-//! [`Tag::GhostText`]: crate::text::Tag::GhostText
-//! [`Tag::StartConceal`]: crate::text::Tag::StartConceal
-//! [`Tag::EndConceal`]: crate::text::Tag::EndConceal
+//! [ghost text]: crate::text::Tag::Ghost
+//! [concealment]: crate::text::Tag::Conceal
+//! [`Tag::Ghost`]: crate::text::Tag::Ghost
+//! [`Tag::Conceal`]: crate::text::Tag::Conceal
 //! [remove]: crate::text::Text::remove_tags
-//! [Move]: crate::mode::Mover::move_to
+//! [Move]: crate::mode::Editor::move_to
 #![feature(
     let_chains,
     decl_macro,
@@ -266,7 +262,7 @@ use std::{
 
 #[allow(unused_imports)]
 use dirs_next::cache_dir;
-pub use lender::{Lender, Lending};
+pub use lender::Lender;
 pub use parking_lot::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use ui::Window;
 use widgets::{File, Node, Widget};

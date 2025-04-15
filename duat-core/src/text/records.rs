@@ -88,6 +88,11 @@ impl<R: Record> Records<R> {
 
     /// Insert a new [`Record`], if it would fit
     pub fn insert(&mut self, new: R) {
+        // Quick early return.
+        if self.max.units() <= R::len_per_record() * 2 {
+            return;
+        }
+
         // For internal functions, I assume that I'm not going over self.max.
         let (i, prev) = self.search(new.units(), Record::units);
 

@@ -13,7 +13,7 @@ use duat_core::{
 use iter::{print_iter, print_iter_indented, rev_print_iter};
 
 use crate::{
-    AreaId, Mutex,
+    AreaId, CStyle, Mutex,
     layout::{Layout, Rect, transfer_vars},
     print::Gaps,
     queue, style,
@@ -71,6 +71,7 @@ impl Coords {
 pub struct Area {
     layouts: Arc<Mutex<Vec<Layout>>>,
     pub id: AreaId,
+    ansi_codes: Arc<Mutex<micromap::Map<CStyle, String, 16>>>,
 }
 
 impl PartialEq for Area {
@@ -81,7 +82,7 @@ impl PartialEq for Area {
 
 impl Area {
     pub fn new(id: AreaId, layouts: Arc<Mutex<Vec<Layout>>>) -> Self {
-        Self { layouts, id }
+        Self { layouts, id, ansi_codes: Arc::default() }
     }
 
     fn print<'a>(
@@ -92,6 +93,7 @@ impl Area {
         mut f: impl FnMut(&Caret, &Item) + 'a,
     ) {
         let layouts = self.layouts.lock();
+        let mut ansi_codes = self.ansi_codes.lock();
         let start = |_: &Text| layouted::first_points(self, &layouts).0;
         let end = |text: &Text| layouted::last_points(self, &layouts, text, cfg).0;
         text.update_range(start, end);
@@ -122,7 +124,7 @@ impl Area {
             (lines, iter)
         };
 
-        let mut cur_style = None;
+        let mut style_was_set = false;
         enum Cursor {
             Main,
             Extra,
@@ -142,21 +144,21 @@ impl Area {
 
                 if wrap {
                     if y > lines.coords().tl.y {
-                        lines.end_line(&painter);
+                        lines.end_line(&mut ansi_codes, &painter);
                     }
                     if y == lines.coords().br.y {
                         break;
                     }
                     (0..x).for_each(|_| lines.push_char(' ', 1));
-                    style!(lines, painter.make_style());
+                    style!(lines, &mut ansi_codes, painter.absolute_style());
                     y += 1
                 }
 
                 match part {
                     Part::Char(char) => {
-                        painter.confirm_printing();
-                        if let Some(style) = cur_style.take() {
-                            style!(lines, style);
+                        if style_was_set {
+                            style!(lines, &mut ansi_codes, painter.relative_style());
+                            style_was_set = false;
                         }
                         match char {
                             '\t' => (0..len).for_each(|_| lines.push_char(' ', 1)),
@@ -164,17 +166,20 @@ impl Area {
                             char => lines.push_char(char, len),
                         }
                         if let Some(cursor) = cursor.take() {
-                            style!(lines, match cursor {
+                            match cursor {
                                 Cursor::Main => painter.remove_main_cursor(),
                                 Cursor::Extra => painter.remove_extra_cursor(),
-                            })
+                            }
+                            style!(lines, &mut ansi_codes, painter.relative_style())
                         }
                     }
                     Part::PushForm(id) => {
-                        cur_style = Some(painter.apply(id));
+                        painter.apply(id);
+                        style_was_set = true;
                     }
                     Part::PopForm(id) => {
-                        cur_style = Some(painter.remove(id));
+                        painter.remove(id);
+                        style_was_set = true;
                     }
                     Part::MainCursor => {
                         if let Some(shape) = painter.main_cursor()
@@ -185,12 +190,14 @@ impl Area {
                         } else {
                             cursor = Some(Cursor::Main);
                             lines.hide_real_cursor();
-                            cur_style = Some(painter.apply_main_cursor());
+                            painter.apply_main_cursor();
+                            style_was_set = true;
                         }
                     }
                     Part::ExtraCursor => {
                         cursor = Some(Cursor::Extra);
-                        cur_style = Some(painter.apply_extra_cursor());
+                        painter.apply_extra_cursor();
+                        style_was_set = true;
                     }
                     Part::AlignLeft if !cfg.wrap_method.is_no_wrap() => {
                         lines.realign(Alignment::Left)
@@ -205,7 +212,7 @@ impl Area {
                         lines.add_spacer();
                     }
                     Part::ResetState => {
-                        style!(lines, painter.reset())
+                        style!(lines, &mut ansi_codes, painter.reset())
                     }
                     Part::ToggleStart(_) | Part::ToggleEnd(_) => todo!(),
                     _ => {}
@@ -213,14 +220,14 @@ impl Area {
             }
 
             if !lines.is_empty() {
-                lines.end_line(&painter);
+                lines.end_line(&mut ansi_codes, &painter);
             }
 
             lines.coords().br.y - y
         };
 
         for _ in 0..lines_left {
-            lines.end_line(&painter);
+            lines.end_line(&mut ansi_codes, &painter);
         }
 
         layout.printer.send(self.id, lines);
@@ -610,7 +617,9 @@ fn scroll_ver_around(
     }
 
     let points = text.ghost_max_points_at(point.byte());
-    let after = text.points_after(points).unwrap_or_else(|| text.len_points());
+    let after = text
+        .points_after(points)
+        .unwrap_or_else(|| text.len_points());
 
     let cap = cfg.wrap_width(width);
     let mut iter = rev_print_iter(text.iter_rev(after), cap, cfg)
@@ -642,7 +651,9 @@ fn scroll_hor_around(info: &mut PrintInfo, width: u32, p: Point, text: &Text, cf
 
     let (max_shift, start, end) = {
         let points = text.ghost_max_points_at(p.byte());
-        let after = text.points_after(points).unwrap_or_else(|| text.len_points());
+        let after = text
+            .points_after(points)
+            .unwrap_or_else(|| text.len_points());
 
         let mut iter = rev_print_iter(text.iter_rev(after), cap, cfg);
 

@@ -33,8 +33,7 @@ static KEY_COUNT: AtomicU16 = AtomicU16::new(4);
 ///
 /// let id = form::id_of!("Invisible");
 ///
-/// text.insert_tag(18, Tag::PushForm(id, 0), key1);
-/// text.insert_tag(20, Tag::PopForm(id), key1);
+/// text.insert_tag(key1, Tag::Form(18..20, id, 0));
 ///
 /// assert_eq!(
 ///     text,
@@ -174,7 +173,7 @@ impl Keys for &[Range<Key>] {
 
 /// The id of a [ghost text]
 ///
-/// [ghost text]: super::Tag::GhostText
+/// [ghost text]: super::Tag::Ghost
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GhostId(u16);
 
@@ -186,7 +185,7 @@ impl std::fmt::Debug for GhostId {
 
 /// The id of a [toggleable]
 ///
-/// [toggleable]: super::Tag::StartToggle
+/// [toggleable]: super::Tag::Toggle
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ToggleId(u16);
 

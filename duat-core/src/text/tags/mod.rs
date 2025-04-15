@@ -705,7 +705,7 @@ impl Tags {
     /// Returns the length of all [`GhostText`]s in a byte
     pub fn ghosts_total_at(&self, at: usize) -> Option<Point> {
         self.iter_only_at(at).fold(None, |p, tag| match tag {
-            RawTag::GhostText(_, id) => {
+            RawTag::Ghost(_, id) => {
                 let max_point = self.ghosts.get(&id).unwrap().len();
                 Some(p.map_or(max_point, |p| p + max_point))
             }
@@ -1170,8 +1170,8 @@ impl std::fmt::Debug for TagOrSkip {
     }
 }
 
-struct DebugTags<'a, R: RangeBounds<usize>>(&'a Tags, R);
-impl<R: RangeBounds<usize> + Clone> std::fmt::Debug for DebugTags<'_, R> {
+struct DebugBuf<'a, R: RangeBounds<usize>>(&'a Tags, R);
+impl<R: RangeBounds<usize> + Clone> std::fmt::Debug for DebugBuf<'_, R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let (start, end) = get_ends(self.1.clone(), self.0.len_bytes());
         let [n, mut b, _] = self.0.skip_behind(start);
@@ -1206,7 +1206,7 @@ impl<R: RangeBounds<usize> + Clone> std::fmt::Debug for DebugTags<'_, R> {
             }
             f.write_str("]")
         } else {
-            write!(f, "{:?}", self.0)
+            write!(f, "{:?}", self.0.buf)
         }
     }
 }
@@ -1236,7 +1236,7 @@ impl std::fmt::Debug for DebugBounds<'_> {
 impl std::fmt::Debug for Tags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Tags")
-            .field("buf", &DebugTags(self, ..))
+            .field("buf", &DebugBuf(self, ..))
             .field("bounds", &DebugBounds(self))
             .field("range_min", &self.range_min)
             .field("records", &self.records)
@@ -1246,7 +1246,32 @@ impl std::fmt::Debug for Tags {
 
 impl PartialEq for Tags {
     fn eq(&self, other: &Self) -> bool {
-        self.buf == other.buf
+        use RawTag::*;
+        use TagOrSkip::*;
+
+        self.buf
+            .iter()
+            .zip(&other.buf)
+            .all(|(lhs, rhs)| match (lhs, rhs) {
+                (Tag(PushForm(_, l_id, l_prio)), Tag(PushForm(_, r_id, r_prio))) => {
+                    l_id == r_id && l_prio == r_prio
+                }
+                (Tag(PopForm(_, lhs)), Tag(PopForm(_, rhs))) => lhs == rhs,
+                (Tag(Ghost(_, lhs)), Tag(Ghost(_, rhs))) => self.ghosts[lhs] == other.ghosts[rhs],
+                (Tag(MainCursor(_)), Tag(MainCursor(_)))
+                | (Tag(ExtraCursor(_)), Tag(ExtraCursor(_)))
+                | (Tag(StartAlignCenter(_)), Tag(StartAlignCenter(_)))
+                | (Tag(EndAlignCenter(_)), Tag(EndAlignCenter(_)))
+                | (Tag(StartAlignRight(_)), Tag(StartAlignRight(_)))
+                | (Tag(EndAlignRight(_)), Tag(EndAlignRight(_)))
+                | (Tag(Spacer(_)), Tag(Spacer(_)))
+                | (Tag(StartConceal(_)), Tag(StartConceal(_)))
+                | (Tag(EndConceal(_)), Tag(EndConceal(_)))
+                | (Tag(ToggleStart(..)), Tag(ToggleStart(..)))
+                | (Tag(ToggleEnd(..)), Tag(ToggleEnd(..))) => true,
+                (Skip(lhs), Skip(rhs)) => lhs == rhs,
+                _ => false,
+            })
     }
 }
 impl Eq for Tags {}

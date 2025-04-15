@@ -11,11 +11,15 @@ use crossterm::{
     style::Attribute,
     terminal,
 };
-use duat_core::{cfg::PrintCfg, form, ui::Axis};
+use duat_core::{
+    cfg::PrintCfg,
+    form::{self, Painter},
+    ui::Axis,
+};
 use sync_solver::SyncSolver;
 use variables::Variables;
 
-use crate::{AreaId, Coords, Equality, Mutex, area::Coord, layout::Rect, queue, style};
+use crate::{AreaId, CStyle, Coords, Equality, Mutex, area::Coord, layout::Rect, queue, style};
 
 mod frame;
 mod line;
@@ -644,7 +648,11 @@ impl Lines {
         }
     }
 
-    pub fn end_line(&mut self, painter: &duat_core::form::Painter) {
+    pub fn end_line(
+        &mut self,
+        ansi_codes: &mut micromap::Map<CStyle, String, 16>,
+        painter: &Painter,
+    ) {
         const BLANK: [u8; 1000] = [b' '; 1000];
         let mut default_form = painter.get_default();
         default_form.style.attributes.set(Attribute::Reset);
@@ -652,7 +660,7 @@ impl Lines {
         let spaces = self.gaps.get_spaces(self.cap - self.len);
         // Shortcut
         if self.coords.width() >= self.cap {
-            style!(self.bytes, default_form.style);
+            style!(self.bytes, ansi_codes, default_form.style);
 
             let start_d = match &self.gaps {
                 Gaps::OnRight => 0,
@@ -678,7 +686,7 @@ impl Lines {
             self.bytes.extend_from_slice(&self.line);
             let end_d = start_d + self.len;
             if self.coords.width() > end_d {
-                style!(self.bytes, default_form.style);
+                style!(self.bytes, ansi_codes, default_form.style);
                 self.bytes
                     .extend_from_slice(&BLANK[..(self.coords.width() - end_d) as usize])
             }
@@ -714,7 +722,7 @@ impl Lines {
             // Situation where the line is empty, from having no characters or
             // from being shifted out of sight.
             let Some(&(start, len)) = found_start else {
-                style!(self.bytes, default_form.style);
+                style!(self.bytes, ansi_codes, default_form.style);
                 self.bytes
                     .extend_from_slice(&BLANK[..self.coords.width() as usize]);
 
@@ -757,7 +765,7 @@ impl Lines {
             // Due to spacers in the middle of the line, end_i might actually be
             // smaller than start_i.
             let Some(&(end, len)) = found_end.filter(|(end_i, _)| *end_i >= start_i) else {
-                style!(self.bytes, default_form.style);
+                style!(self.bytes, ansi_codes, default_form.style);
                 self.bytes
                     .extend_from_slice(&BLANK[..self.coords.width() as usize]);
 
@@ -774,7 +782,7 @@ impl Lines {
             }
         };
 
-        style!(self.bytes, default_form.style);
+        style!(self.bytes, ansi_codes, default_form.style);
         self.bytes.extend_from_slice(&BLANK[..start_d as usize]);
 
         self.add_ansi(start_i);
@@ -800,7 +808,7 @@ impl Lines {
         }
 
         if self.coords.width() > end_d {
-            style!(self.bytes, default_form.style);
+            style!(self.bytes, ansi_codes, default_form.style);
             self.bytes
                 .extend_from_slice(&BLANK[..(self.coords.width() - end_d) as usize]);
         }

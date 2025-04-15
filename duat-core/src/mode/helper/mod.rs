@@ -84,7 +84,8 @@ mod cursors;
 ///
 /// ```rust
 /// # use duat_core::{
-/// #     mode::{ key, Cursors, EditHelper, Mode, KeyCode, KeyEvent, KeyMod}, ui::Ui, widgets::File,
+/// #     mode::{ key, Cursors, EditHelper, Mode, KeyCode, KeyEvent, KeyMod},
+/// #     Lender, ui::Ui, widgets::File,
 /// # };
 /// # #[derive(Clone)]
 /// # struct PlacesCharactersAndMoves;
@@ -96,22 +97,24 @@ mod cursors;
 ///         
 ///         match key {
 ///             key!(KeyCode::Char(c)) => {
-///                 helper.edit_many(.., |e| e.insert('c'));
-///                 helper.move_many(.., |mut m| { m.move_hor(1); });
+///                 helper.edit_iter().for_each(|mut e| {
+///                     e.insert('c');
+///                     e.move_hor(1);
+///                 });
 ///             },
 ///             key!(KeyCode::Right, KeyMod::SHIFT) => {
-///                 helper.move_many(.., |mut m| {
-///                     if m.anchor().is_none() {
-///                         m.set_anchor()
+///                 helper.edit_iter().for_each(|mut e| {
+///                     if e.anchor().is_none() {
+///                         e.set_anchor();
 ///                     }
-///                     m.move_hor(1);
-///                 })
+///                     e.move_hor(1);
+///                 });
 ///             }
 ///             key!(KeyCode::Right) => {
-///                 helper.move_many(.., |mut m| {
-///                     m.unset_anchor();
-///                     m.move_hor(1);
-///                 })
+///                 helper.edit_iter().for_each(|mut e| {
+///                     e.unset_anchor();
+///                     e.move_hor(1);
+///                 });
 ///             }
 ///             /* Predictable remaining implementations */
 /// #           _ => todo!()
@@ -133,7 +136,7 @@ mod cursors;
 /// [`key!`]: super::key
 /// [`KeyEvent`]: super::KeyEvent
 /// [editing]: Editor
-/// [moving]: Mover
+/// [moving]: Editor
 pub struct EditHelper<'a, W: Widget<A::Ui>, A: Area, S> {
     widget: &'a mut W,
     area: &'a A,
@@ -328,32 +331,35 @@ where
 /// This struct will be used only inside functions passed to the
 /// [`edit_*`] family of methods from the [`EditHelper`].
 ///
-/// To make edits, you can use two different functions. You can either
-/// [`replace`] or you can [`insert`]. The former will completely
-/// replace the [`Cursor`]'s selection, while the latter will only
-/// place the edit before the position of the `caret`, which could be
-/// either in the start or the end of the selection.
+/// To make edits, you can use three different functions. You can,
+/// those being [`replace`], [`insert`], and [`append`]. [`replace`]
+/// will completely replace the [`Cursor`]'s selection. [`insert`]
+/// will place text behind the `caret`, and [`append`] will place it
+/// after the `caret`.
+///
+/// You can also move the [`Cursor`]'s selection in many different
+/// ways, which are described below, in the `impl` section for this
+/// struct.
 ///
 /// ```rust
 /// # use duat_core::{mode::EditHelper, ui::Area, widgets::File};
 /// # fn test<S>(helper: &mut EditHelper<File, impl Area, S>) {
-/// helper.edit_main(|e| {
-///     e.replace("my replacement");
-///     e.insert(" and my edit");
-/// });
-/// helper.move_main(|mut m| {
-///     m.move_hor(" and my edit".chars().count() as i32);
-///     m.set_anchor();
-///     m.move_hor(-("my replacement and my edit".chars().count() as i32));
-///     let sel: String = m.selection().into_iter().collect();
-///     assert_eq!(sel, "my replacement and my edit".to_string());
-/// });
+/// let mut e = helper.edit_main();
+/// e.replace("my replacement");
+/// e.insert(" and my edit");
+/// e.move_hor(" and my edit".chars().count() as i32);
+/// e.set_anchor();
+/// e.move_hor(-("my replacement and my edit".chars().count() as i32));
+/// let sel: String = e.selection().into_iter().collect();
+///
+/// assert_eq!(&sel, "my replacement and my edit");
 /// # }
 /// ```
 ///
 /// [`edit_*`]: EditHelper::edit_nth
 /// [`replace`]: Editor::replace
 /// [`insert`]: Editor::insert
+/// [`append`]: Editor::append
 pub struct Editor<'a, W: Widget<A::Ui>, A: Area, S> {
     initial: Cursor,
     cursor: Cursor,
@@ -661,8 +667,8 @@ impl<'a, W: Widget<A::Ui>, A: Area, S> Editor<'a, W, A, S> {
     /// the same thing but used when moving vertically in a [wrapped]
     /// fashion.
     ///
-    /// [up and down]: Mover::move_ver
-    /// [wrapped]: Mover::move_ver_wrapped
+    /// [up and down]: Editor::move_ver
+    /// [wrapped]: Editor::move_ver_wrapped
     pub fn set_desired_vcol(&mut self, x: usize) {
         self.cursor.set_desired_cols(x, x);
     }
@@ -696,17 +702,17 @@ impl<'a, W: Widget<A::Ui>, A: Area, S> Editor<'a, W, A, S> {
     /// If the regex is not valid, this method will panic.
     ///
     /// ```rust
-    /// # use duat_core::{mode::EditHelper, ui::Area, widgets::File};
+    /// # use duat_core::{mode::EditHelper, ui::Area, widgets::File, Lender};
     /// fn search_nth_paren<S>(
     ///     helper: &mut EditHelper<File, impl Area, S>,
     ///     n: usize,
     /// ) {
-    ///     helper.move_many(.., |mut m| {
-    ///         let mut nth = m.search_fwd('(', None).nth(n);
+    ///     helper.edit_iter().for_each(|mut e| {
+    ///         let mut nth = e.search_fwd('(', None).nth(n);
     ///         if let Some([p0, p1]) = nth {
-    ///             m.move_to(p0);
-    ///             m.set_anchor();
-    ///             m.move_to(p1);
+    ///             e.move_to(p0);
+    ///             e.set_anchor();
+    ///             e.move_to(p1);
     ///         }
     ///     })
     /// }
@@ -738,18 +744,18 @@ impl<'a, W: Widget<A::Ui>, A: Area, S> Editor<'a, W, A, S> {
     /// If the regex is not valid, this method will panic.
     ///
     /// ```rust
-    /// # use duat_core::{mode::EditHelper, ui::Area, widgets::File};
+    /// # use duat_core::{mode::EditHelper, ui::Area, widgets::File, Lender};
     /// fn search_nth_rev<S>(
     ///     helper: &mut EditHelper<File, impl Area, S>,
     ///     n: usize,
     ///     s: &str,
     /// ) {
-    ///     helper.move_many(.., |mut m| {
-    ///         let mut nth = m.search_rev(s, None).nth(n);
+    ///     helper.edit_iter().for_each(|mut e| {
+    ///         let mut nth = e.search_rev(s, None).nth(n);
     ///         if let Some([p0, p1]) = nth {
-    ///             m.move_to(p0);
-    ///             m.set_anchor();
-    ///             m.move_to(p1);
+    ///             e.move_to(p0);
+    ///             e.set_anchor();
+    ///             e.move_to(p1);
     ///         }
     ///     })
     /// }

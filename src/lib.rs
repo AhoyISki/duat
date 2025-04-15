@@ -194,12 +194,11 @@
 //! # fn test() -> Result<(), Text> {
 //! let callers = ["toggle-relative", "tr"];
 //! cmd::add_for!(callers, |line_numbers: LineNumbers<Ui>, _: Area| {
-//!     let mut cfg = line_numbers.get_cfg();
-//!     cfg.num_rel = match cfg.num_rel {
+//!     let opts = line_numbers.options_mut();
+//!     opts.num_rel = match opts.num_rel {
 //!         LineNum::Abs => LineNum::RelAbs,
 //!         LineNum::Rel | LineNum::RelAbs => LineNum::Abs,
 //!     };
-//!     line_numbers.reconfigure(cfg);
 //!     Ok(None)
 //! })
 //! # }
@@ -448,7 +447,7 @@ pub mod mode {
     /// "insert like" modes. You can also use any key in the input or
     /// output of this `alias`
     ///
-    /// [ghost text]: duat_core::text::Tag::GhostText
+    /// [ghost text]: duat_core::text::Tag::Ghost
     /// [form]: crate::form::Form
     pub fn alias<M: Mode<Ui>>(take: &str, give: impl AsGives<Ui>) {
         mode::alias::<M, Ui>(take, give);
@@ -547,6 +546,7 @@ pub mod hooks {
     /// different options upon switching to modes, depending on things
     /// like the language of a [`File`].
     ///
+    /// [`Mode`]: crate::mode::Mode
     /// [`File`]: crate::widgets::File
     pub type ModeSetTo<M> = duat_core::hooks::ModeSetTo<M, Ui>;
 }

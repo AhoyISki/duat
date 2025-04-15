@@ -304,7 +304,7 @@ impl PartialEq for Rect {
 
 impl PartialEq<Area> for Rect {
     fn eq(&self, other: &Area) -> bool {
-        self.id == other.id
+        self.id() == other.id
     }
 }
 

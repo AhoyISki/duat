@@ -83,6 +83,7 @@ impl Point {
     ////////// Shifting functions
 
     /// Moves a [`Point`] forward by one character
+    #[inline(always)]
     pub(crate) fn fwd(self, char: char) -> Self {
         Self {
             b: self.b + char.len_utf8() as u32,
@@ -92,6 +93,7 @@ impl Point {
     }
 
     /// Moves a [`Point`] in reverse by one character
+    #[inline(always)]
     pub(crate) fn rev(self, char: char) -> Self {
         Self {
             b: self.b - char.len_utf8() as u32,
@@ -438,7 +440,7 @@ impl TextRange for (Option<Point>, Point) {
 /// [`TwoPoints`] represents the beginning of a [ghost text].
 ///
 /// [`Text`]: super::Text
-/// [ghost text]: super::Tag::GhostText
+/// [ghost text]: super::Tag::Ghost
 pub trait TwoPoints: Clone + Copy {
     /// Returns two [`Point`]s, for `Text` and ghosts
     fn to_points(self) -> (Point, Option<Point>);

@@ -30,9 +30,9 @@
 //! including leading whitespace:
 //!
 //! ```rust
-//! # use duat_core::{cmd, context};
+//! # use duat_core::{cmd, context, text::Text};
 //! cmd::run_notify(" set-form Default.StatusLine #000000 #ffffff");
-//! assert!(*context::notifications().read() == Vec::new());
+//! assert_eq!(*context::notifications().read(), Vec::<Text>::new());
 //! ```
 //!
 //! The `set-form` command above will fail, since the hsl [`Color`]
@@ -161,12 +161,11 @@
 //! # use duat_core::{cmd, widgets::{LineNumbers, LineNum}};
 //! # fn test<U: duat_core::ui::Ui>() {
 //! cmd::add_for!("toggle-relative", |ln: LineNumbers<U>, _: U::Area| {
-//!     let mut cfg = ln.get_cfg();
-//!     cfg.num_rel = match cfg.num_rel {
+//!     let opts = ln.options_mut();
+//!     opts.num_rel = match opts.num_rel {
 //!         LineNum::Abs => LineNum::RelAbs,
 //!         LineNum::Rel | LineNum::RelAbs => LineNum::Abs,
 //!     };
-//!     ln.reconfigure(cfg);
 //!     Ok(None)
 //! });
 //! # }

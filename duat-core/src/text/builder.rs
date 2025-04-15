@@ -57,11 +57,11 @@ impl Builder {
 
     /// Finish construction and returns the [`Text`]
     ///
-    /// Will also finish the last [`Form`] tag, pushing a [`PopForm`]
-    /// at the very end.
+    /// Will also finish the last [`Form`] and alignments pushed to
+    /// the [builder].
     ///
     /// [`Form`]: crate::form::Form
-    /// [`PopForm`]: Tag::PopForm
+    /// [builder]: Builder
     pub fn finish(mut self) -> Text {
         if (self.text.buffers(..).next_back()).is_none_or(|b| b != b'\n') {
             self.push_str("\n");
@@ -69,17 +69,19 @@ impl Builder {
         }
 
         let end = self.text.len().byte();
-        if let Some((b, id)) = self.last_form {
+        if let Some((b, id)) = self.last_form
+            && b < end
+        {
             self.text.insert_tag(Key::basic(), Tag::Form(b..end, id, 0));
         }
-        match self.last_align {
-            Some((b, Alignment::Center)) => {
-                self.text.insert_tag(Key::basic(), Tag::AlignCenter(b..end));
+        if let Some((b, align)) = self.last_align
+            && b < end
+        {
+            match align {
+                Alignment::Center => self.text.insert_tag(Key::basic(), Tag::AlignCenter(b..end)),
+                Alignment::Right => self.text.insert_tag(Key::basic(), Tag::AlignRight(b..end)),
+                _ => {}
             }
-            Some((b, Alignment::Right)) => {
-                self.text.insert_tag(Key::basic(), Tag::AlignRight(b..end));
-            }
-            Some(_) | None => {}
         }
 
         self.text
@@ -104,22 +106,24 @@ impl Builder {
                     false => self.last_form.replace((end, id)),
                 };
 
-                if let Some((b, id)) = last_form {
+                if let Some((b, id)) = last_form
+                    && b < end
+                {
                     self.text.insert_tag(Key::basic(), Tag::Form(b..end, id, 0));
                 }
             }
             BuilderPart::AlignLeft => match self.last_align.take() {
-                Some((b, Alignment::Center)) => {
+                Some((b, Alignment::Center)) if b < end => {
                     self.text.insert_tag(Key::basic(), Tag::AlignCenter(b..end));
                 }
-                Some((b, Alignment::Right)) => {
+                Some((b, Alignment::Right)) if b < end => {
                     self.text.insert_tag(Key::basic(), Tag::AlignRight(b..end));
                 }
                 _ => {}
             },
             BuilderPart::AlignCenter => match self.last_align.take() {
                 Some((b, Alignment::Center)) => self.last_align = Some((b, Alignment::Center)),
-                Some((b, Alignment::Right)) => {
+                Some((b, Alignment::Right)) if b < end => {
                     self.text.insert_tag(Key::basic(), Tag::AlignRight(b..end));
                 }
                 None => self.last_align = Some((end, Alignment::Center)),
@@ -127,7 +131,7 @@ impl Builder {
             },
             BuilderPart::AlignRight => match self.last_align.take() {
                 Some((b, Alignment::Right)) => self.last_align = Some((b, Alignment::Right)),
-                Some((b, Alignment::Center)) => {
+                Some((b, Alignment::Center)) if b < end => {
                     self.text.insert_tag(Key::basic(), Tag::AlignCenter(b..end));
                 }
                 None => self.last_align = Some((end, Alignment::Right)),
@@ -330,12 +334,10 @@ impl From<RwData<PathBuf>> for BuilderPart<String, PathBuf> {
 pub macro text {
     // Forms
     (@push $builder:expr, []) => {
-        let id = crate::form::id_of!("Default");
-        $builder.push(crate::text::Tag::PushForm(id, 0))
+        $builder.push(crate::form::id_of!("Default"))
     },
     (@push $builder:expr, [*a]) => {
-        let id = crate::form::id_of!("Accent");
-        $builder.push(crate::text::Tag::PushForm(id, 0))
+        $builder.push(crate::form::id_of!("Accent"))
     },
     (@push $builder:expr, [$form:ident $(.$suffix:ident)*]) => {
         let id = crate::form::id_of!(concat!(
