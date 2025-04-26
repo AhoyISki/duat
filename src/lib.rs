@@ -249,11 +249,6 @@ impl TsParser {
         // case the injection was of the same language.
         let buf = TsBuf(bytes);
         cursor.set_byte_range(start..end);
-        let comment_id = hi_query
-            .capture_names()
-            .iter()
-            .position(|name| *name == "comment")
-            .unwrap();
         let mut hi_captures = cursor.captures(hi_query, root, buf);
         while let Some((qm, _)) = hi_captures.next() {
             for cap in qm.captures.iter() {
@@ -261,7 +256,7 @@ impl TsParser {
                 let (start, end) = (range.start_byte, range.end_byte);
                 let (form, priority) = self.forms[cap.index as usize];
                 if start != end {
-                    tags.insert(self.key, Tag::Form(start..end, form, priority));
+                    tags.insert(self.key, Tag::form(start..end, form, priority));
                 }
             }
         }
@@ -352,12 +347,6 @@ impl Reader for TsParser {
 
         for st in self.sub_trees.iter_mut() {
             st.apply_changes(bytes, changes);
-        }
-
-        for st in &self.sub_trees {
-            if st.range.end < 1500 {
-                duat_core::log!("{:?}", st.range);
-            }
         }
     }
 
@@ -738,7 +727,9 @@ fn forms_from_query(
         "attribute", "property", "function", "constant", "constructor", "operator", "keyword",
         "punctuation", "comment", "markup"
     ];
-    static LISTS: LazyLock<Mutex<HashMap<&str, &[(FormId, u8)]>>> = LazyLock::new(Mutex::default);
+    type MemoizedForms<'a> = HashMap<&'a str, &'a [(FormId, u8)]>;
+
+    static LISTS: LazyLock<Mutex<MemoizedForms<'static>>> = LazyLock::new(Mutex::default);
     let mut lists = LISTS.lock();
 
     if let Some(forms) = lists.get(lang) {
