@@ -258,13 +258,7 @@
 //! [`Cursor`]: duat_core::mode::Cursor
 //! [Undoes]: duat_core::text::Text::undo
 //! [Redoes]: duat_core::text::Text::redo
-#![feature(
-    let_chains,
-    iter_map_windows,
-    if_let_guard,
-    iter_array_chunks,
-    iter_intersperse
-)]
+#![feature(iter_map_windows, if_let_guard, iter_array_chunks, iter_intersperse)]
 
 use std::{
     collections::HashMap,
@@ -281,13 +275,14 @@ use duat_core::{
     cmd, context, form,
     hooks::{self, ModeSwitched, SearchPerformed},
     mode::{
-        self, EditHelper, Editor, ExtendFwd, ExtendRev, IncSearch, IncSearcher, KeyCode::*,
-        KeyEvent as Event, KeyMod as Mod, Mode, Orig, PipeSelections, RunCommands, SearchFwd,
-        SearchRev, key,
+        self, Cursors, EditHelper, Editor, KeyCode::*, KeyEvent as Event, KeyMod as Mod, Mode, key,
     },
     text::{Point, Searcher, err, text},
-    ui::{Area, Ui},
+    ui::{RawArea, Ui},
     widgets::File,
+};
+use duat_utils::modes::{
+    ExtendFwd, ExtendRev, IncSearch, IncSearcher, PipeSelections, RunCommands, SearchFwd, SearchRev,
 };
 use treesitter::TsParser;
 
@@ -1135,14 +1130,14 @@ impl<U: Ui> Mode<U> for Insert {
     fn send_key(&mut self, key: Event, widget: &mut Self::Widget, area: &U::Area) {
         let mut helper = EditHelper::new(widget, area);
 
-        if let key!(Left | Down | Up | Right, mods) = key {
-            if mods.contains(Mod::SHIFT) {
-                helper.edit_iter().for_each(|mut e| {
-                    if e.anchor().is_none() {
-                        e.set_anchor()
-                    }
-                });
-            }
+        if let key!(Left | Down | Up | Right, mods) = key
+            && mods.contains(Mod::SHIFT)
+        {
+            helper.edit_iter().for_each(|mut e| {
+                if e.anchor().is_none() {
+                    e.set_anchor()
+                }
+            });
         }
 
         let mut processed_lines = Vec::new();
@@ -1354,7 +1349,7 @@ fn match_goto<S, U: Ui>(
 }
 
 fn match_find_until(
-    mut helper: EditHelper<'_, File, impl Area, ()>,
+    mut helper: EditHelper<'_, File, impl RawArea, ()>,
     char: char,
     is_t: bool,
     st: SelType,
@@ -1387,12 +1382,12 @@ fn match_find_until(
 }
 
 fn match_inside_around(
-    mut helper: EditHelper<'_, File, impl Area, ()>,
+    mut helper: EditHelper<'_, File, impl RawArea, ()>,
     key: Event,
     brackets: Brackets,
     is_inside: bool,
 ) {
-    fn move_to_points<S>(m: &mut Editor<File, impl Area, S>, [p0, p1]: [Point; 2]) {
+    fn move_to_points<S>(m: &mut Editor<File, impl RawArea, S>, [p0, p1]: [Point; 2]) {
         m.move_to(p0);
         m.set_anchor();
         m.move_to(p1);
@@ -1518,7 +1513,7 @@ fn match_inside_around(
     }
 }
 
-fn do_or_destroy<A: Area, S>(
+fn do_or_destroy<A: RawArea, S>(
     failed_at_least_once: &mut bool,
     mut f: impl FnMut(&mut Editor<File, A, S>) -> Option<()> + Clone,
 ) -> impl FnMut(Editor<File, A, S>) {
@@ -1580,7 +1575,7 @@ fn w_char_cat(wc: WordChars) -> String {
         .collect()
 }
 
-fn select_to_end_of_line<S>(set_anchor: bool, mut e: Editor<File, impl Area, S>) {
+fn select_to_end_of_line<S>(set_anchor: bool, mut e: Editor<File, impl RawArea, S>) {
     set_anchor_if_needed(set_anchor, &mut e);
     e.set_desired_vcol(usize::MAX);
     let pre_nl = match e.char() {
@@ -1615,7 +1610,13 @@ impl Category {
 struct Select;
 
 impl<U: Ui> IncSearcher<U> for Select {
-    fn search(&mut self, orig: &Orig<U>, file: &mut File, area: &U::Area, searcher: Searcher) {
+    fn search(
+        &mut self,
+        orig: &(Cursors, <<U as Ui>::Area as RawArea>::PrintInfo),
+        file: &mut File,
+        area: &<U as Ui>::Area,
+        searcher: Searcher,
+    ) {
         let (cursors, info) = orig;
         *file.cursors_mut().unwrap() = cursors.clone();
         if searcher.is_empty() {
@@ -1655,7 +1656,13 @@ impl<U: Ui> IncSearcher<U> for Select {
 struct Split;
 
 impl<U: Ui> IncSearcher<U> for Split {
-    fn search(&mut self, orig: &Orig<U>, file: &mut File, area: &U::Area, searcher: Searcher) {
+    fn search(
+        &mut self,
+        orig: &(Cursors, <<U as Ui>::Area as RawArea>::PrintInfo),
+        file: &mut File,
+        area: &<U as Ui>::Area,
+        searcher: Searcher,
+    ) {
         let (cursors, info) = orig;
         *file.cursors_mut().unwrap() = cursors.clone();
         if searcher.is_empty() {
@@ -1700,7 +1707,7 @@ impl<U: Ui> IncSearcher<U> for Split {
 }
 
 /// Sets the indentation for every cursor
-fn reindent<S>(e: &mut Editor<File, impl Area, S>, processed_lines: &mut Vec<usize>) {
+fn reindent<S>(e: &mut Editor<File, impl RawArea, S>, processed_lines: &mut Vec<usize>) {
     let prev_caret = e.caret();
     let prev_anchor = e.unset_anchor();
     if processed_lines.contains(&prev_caret.line()) {
@@ -1748,7 +1755,7 @@ fn reindent<S>(e: &mut Editor<File, impl Area, S>, processed_lines: &mut Vec<usi
 }
 
 /// removes an empty line
-fn remove_empty_line<S>(e: &mut Editor<File, impl Area, S>) {
+fn remove_empty_line<S>(e: &mut Editor<File, impl RawArea, S>) {
     let (_, line) = e.lines_on(e.caret()).next().unwrap();
     if !line.chars().all(char::is_whitespace) || line.len() == 1 {
         return;
@@ -1765,7 +1772,7 @@ fn remove_empty_line<S>(e: &mut Editor<File, impl Area, S>) {
     e.set_desired_vcol(dvcol);
 }
 
-fn copy_selections(helper: &mut EditHelper<'_, File, impl Area, ()>) {
+fn copy_selections(helper: &mut EditHelper<'_, File, impl RawArea, ()>) {
     let mut copies: Vec<String> = Vec::new();
     helper
         .edit_iter()
@@ -1798,7 +1805,7 @@ fn paste_strings() -> Vec<String> {
     }
 }
 
-fn set_anchor_if_needed<S>(set_anchor: bool, e: &mut Editor<File, impl Area, S>) {
+fn set_anchor_if_needed<S>(set_anchor: bool, e: &mut Editor<File, impl RawArea, S>) {
     if set_anchor {
         if e.anchor().is_none() {
             e.set_anchor();
@@ -1816,7 +1823,7 @@ fn just_char(key: Event) -> Option<char> {
     }
 }
 
-fn prev_non_empty_line_points<S>(e: &mut Editor<File, impl Area, S>) -> Option<[Point; 2]> {
+fn prev_non_empty_line_points<S>(e: &mut Editor<File, impl RawArea, S>) -> Option<[Point; 2]> {
     let byte_col = e
         .text()
         .buffers(..e.caret().byte())
@@ -1889,7 +1896,7 @@ impl<'a> Object<'a> {
 
     fn find_ahead<S>(
         self,
-        e: &mut Editor<File, impl Area, S>,
+        e: &mut Editor<File, impl RawArea, S>,
         s_count: usize,
         until: Option<Point>,
     ) -> Option<[Point; 2]> {
@@ -1920,7 +1927,7 @@ impl<'a> Object<'a> {
 
     fn find_behind<S>(
         self,
-        e: &mut Editor<File, impl Area, S>,
+        e: &mut Editor<File, impl RawArea, S>,
         e_count: usize,
         until: Option<Point>,
     ) -> Option<[Point; 2]> {
