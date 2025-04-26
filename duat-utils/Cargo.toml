@@ -1,0 +1,14 @@
+[package]
+name = "duat-utils"
+version = "0.1.0"
+authors = ["AhoyISki"]
+description = "Basic components common in Duat, such as widgets and modes"
+repository = "https://github.com/AhoyISki/duat/tree/master/duat-utils"
+license = "AGPL-3.0-or-later"
+keywords = ["editor", "text", "application", "duat"]
+categories = ["command-line-utilities", "text-editors", "config"]
+edition = "2024"
+
+[dependencies]
+duat-core = { version = "0.4.0", path = "../duat-core/" }
+regex_syntax = "0.8.5"

@@ -1,12 +1,7 @@
 use std::sync::Arc;
 
 use cassowary::{WeightedRelation::*, strength::STRONG};
-use duat_core::{
-    cfg::PrintCfg,
-    prelude::Text,
-    text::TwoPoints,
-    ui::{Axis, Constraint, PushSpecs},
-};
+use duat_core::ui::{Axis, Constraint, PushSpecs, SpawnSpecs};
 
 pub use self::rect::{Rect, Rects, transfer_vars};
 use crate::{AreaId, Equality, Frame, area::PrintInfo, print::Printer};
@@ -150,14 +145,8 @@ impl Layout {
         self.active_id
     }
 
-    pub(crate) fn new_floating(
-        &self,
-        at: impl TwoPoints,
-        specs: PushSpecs,
-        text: &Text,
-        cfg: PrintCfg,
-    ) -> AreaId {
-        self.rects.new_floating(at, specs, text, cfg, &self.printer)
+    pub(crate) fn new_floating(&mut self, id: AreaId, specs: SpawnSpecs) -> AreaId {
+        self.rects.new_floating(&self.printer, id, specs)
     }
 }
 
@@ -190,14 +179,21 @@ impl Constraints {
     ///
     /// Will also add all equalities needed to make this constraint
     /// work.
-    fn new(ps: PushSpecs, new: &Rect, parent: AreaId, rects: &Rects, p: &Printer) -> Self {
+    fn new(
+        p: &Printer,
+        v_cons: impl Iterator<Item = Constraint> + Clone,
+        h_cons: impl Iterator<Item = Constraint> + Clone,
+        new: &Rect,
+        parent: AreaId,
+        rects: &Rects,
+    ) -> Self {
         let ver_cons = {
-            let mut ver_cons: Vec<Constraint> = ps.ver_cons().collect();
+            let mut ver_cons: Vec<Constraint> = v_cons.clone().collect();
             ver_cons.sort_unstable();
             ver_cons
         };
         let hor_cons = {
-            let mut hor_cons: Vec<Constraint> = ps.hor_cons().collect();
+            let mut hor_cons: Vec<Constraint> = h_cons.clone().collect();
             hor_cons.sort_unstable();
             hor_cons
         };
@@ -213,8 +209,8 @@ impl Constraints {
         Self {
             ver_eqs,
             hor_eqs,
-            ver_cons: (ps.ver_cons().collect(), false),
-            hor_cons: (ps.hor_cons().collect(), false),
+            ver_cons: (v_cons.collect(), false),
+            hor_cons: (h_cons.collect(), false),
         }
     }
 

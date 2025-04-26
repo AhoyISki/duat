@@ -15,15 +15,16 @@
 //! [data]: crate::data
 mod state;
 
-pub use self::state::State;
-use crate::{
+use duat_core::{
     context::{self, DynamicFile, FixedFile},
     form::{self, Form},
-    status::{file_fmt, main_fmt, mode_fmt, mode_name, selections_fmt},
     text::{AlignRight, Builder, Spacer, Text, text},
     ui::{PushSpecs, Side, Ui},
     widgets::{Widget, WidgetCfg},
 };
+
+pub use self::state::State;
+use crate::status::{file_fmt, main_fmt, mode_fmt, mode_name, selections_fmt};
 
 /// A widget to show information, usually about a [`File`]
 ///
@@ -117,7 +118,7 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
 
 #[doc(hidden)]
 pub struct StatusLineCfg<U: Ui> {
-    pre_fn: Option<Box<dyn FnMut(crate::text::Builder, &mut Reader<U>) -> Text + Send>>,
+    builder: Option<BuilderFn<U>>,
     checker: Option<Box<dyn Fn() -> bool + Send + Sync>>,
     specs: PushSpecs,
 }
@@ -125,14 +126,11 @@ pub struct StatusLineCfg<U: Ui> {
 impl<U: Ui> StatusLineCfg<U> {
     #[doc(hidden)]
     pub fn new_with(
-        (pre_fn, checker): (
-            Box<dyn FnMut(Builder, &mut Reader<U>) -> Text + 'static + Send>,
-            Box<dyn Fn() -> bool + 'static + Send + Sync>,
-        ),
+        (builder, checker): (BuilderFn<U>, Box<dyn Fn() -> bool + 'static + Send + Sync>),
         specs: PushSpecs,
     ) -> Self {
         Self {
-            pre_fn: Some(pre_fn),
+            builder: Some(builder),
             checker: Some(checker),
             specs,
         }
@@ -171,7 +169,7 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
             (reader, move || file_checker() || checker())
         };
 
-        let text_fn: TextFn<U> = match self.pre_fn {
+        let text_fn: TextFn<U> = match self.builder {
             Some(mut pre_fn) => Box::new(move |reader| pre_fn(Text::builder(), reader)),
             None => {
                 let cfg = match self.specs.side() {
@@ -191,7 +189,7 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
                     Side::Left => unreachable!(),
                 };
 
-                let mut pre_fn = cfg.pre_fn.unwrap();
+                let mut pre_fn = cfg.builder.unwrap();
                 Box::new(move |reader| pre_fn(Text::builder(), reader))
             }
         };
@@ -410,3 +408,4 @@ pub macro status {
 }
 
 type TextFn<U> = Box<dyn FnMut(&mut Reader<U>) -> Text + Send>;
+type BuilderFn<U> = Box<dyn FnMut(Builder, &mut Reader<U>) -> Text + Send>;

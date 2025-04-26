@@ -7,11 +7,11 @@
 //! use (usually when these become visible).
 //!
 //! [`Ui`]: crate::ui::Ui
-use std::{any::TypeId, ops::Range};
+use std::{any::TypeId, ops::{Range, RangeBounds}};
 
 use super::{
     Bytes, Change, Key, Keys, Tag, Text, TextRange, err, merge_range_in, split_range_within,
-    tags::Tags,
+    tags::{Tags, RawTagsFn},
 };
 use crate::text::transform_ranges;
 
@@ -103,7 +103,7 @@ pub struct MutTags<'a>(&'a mut Tags);
 
 impl MutTags<'_> {
     /// Inserts a [`Tag`] at the given position
-    pub fn insert(&mut self, key: Key, tag: Tag) {
+    pub fn insert(&mut self, key: Key, tag: Tag<impl RangeBounds<usize>, impl RawTagsFn>) {
         self.0.insert(key, tag);
     }
 

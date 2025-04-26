@@ -8,7 +8,6 @@ license = "AGPL-3.0-or-later"
 readme = "README.md"
 keywords = ["editor", "text", "application", "duat"]
 categories = ["command-line-utilities", "text-editors", "config"]
-include = ["src/", "ts-queries/"]
 edition = "2024"
 
 [lints.rust]
@@ -19,13 +18,11 @@ type_complexity = "allow"
 while_let_on_iterator = "allow"
 
 [dependencies]
-# Style handling
 crossterm = "0.29.0"
 parking_lot = "0.12.3"
 gapbuf = "0.1.4"
 dirs-next = "2.0.0"
 base64 = "0.22.1"
-#serde = { version = "1.0.219", features = ["derive"] }
 bincode = "2.0.1"
 regex-automata = "0.4.9"
 regex-syntax = "0.8.5"

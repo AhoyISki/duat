@@ -56,11 +56,11 @@ fn parts<'a>(
             needs_to_wrap = false;
         };
 
-        if let Some(char) = item.part.as_char() {
-            if char == '\n' {
-                needs_to_wrap = true;
-                x = 0;
-            }
+        if let Some(char) = item.part.as_char()
+            && char == '\n'
+        {
+            needs_to_wrap = true;
+            x = 0;
         }
 
         item.part = processed_part;
@@ -145,11 +145,11 @@ fn attach_caret(
         *needs_to_wrap = false;
     };
 
-    if let Some(char) = item.part.as_char() {
-        if char == '\n' {
-            *needs_to_wrap = true;
-            *x = 0;
-        }
+    if let Some(char) = item.part.as_char()
+        && char == '\n'
+    {
+        *needs_to_wrap = true;
+        *x = 0;
     }
 
     item.part = processed_part;

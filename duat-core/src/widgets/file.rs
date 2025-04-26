@@ -2,7 +2,7 @@
 //!
 //! Most extensible features of Duat have the primary purpose of
 //! serving the [`File`], such as multiple [`Cursor`]s, a
-//! [`History`] system, [`Area::PrintInfo`], etc.
+//! [`History`] system, [`RawArea::PrintInfo`], etc.
 //!
 //! The [`File`] also provides a list of printed lines through the
 //! [`File::printed_lines`] method. This method is notably used by the
@@ -20,7 +20,7 @@ use crate::{
     hooks::{self, FileWritten},
     mode::Cursors,
     text::{Bytes, Text, err},
-    ui::{Area, PushSpecs, Ui},
+    ui::{RawArea, PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
 };
 

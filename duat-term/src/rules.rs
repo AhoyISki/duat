@@ -2,7 +2,7 @@ use duat_core::{
     context::{self, FixedFile},
     form::{self, Form},
     text::{Text, text},
-    ui::{Area as UiArea, PushSpecs},
+    ui::{RawArea as UiArea, PushSpecs},
     widgets::{Widget, WidgetCfg},
 };
 

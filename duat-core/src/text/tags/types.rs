@@ -11,13 +11,14 @@ use std::{collections::HashMap, ops::Range, sync::Arc};
 
 use crossterm::event::MouseEventKind;
 
+use self::RawTag::*;
 use super::{
     Key,
     ids::{GhostId, ToggleId},
 };
 use crate::{
     form::FormId,
-    text::{Change, Point, Text},
+    text::{Point, Text},
 };
 
 /// A [`Text`] modifier
@@ -53,41 +54,22 @@ use crate::{
 ///
 /// [`Form`]: Tag::Form
 #[derive(Clone)]
-pub enum Tag {
-    ////////// Implemented:
-    /// Stylizes a [range] with a [`Form`]
-    ///
-    /// The last argument is a priority factor, a higher priority
-    /// makes a [`Form`]'s application latent, so it takes precedence
-    /// of earlier [`Form`]s. This is important if, for example,
-    /// multiple [`Form`]s are inserted in the same byte.
-    ///
-    /// Priority values higher than `250` are clamped back down to
-    /// `250`.
-    ///
-    /// [range]: Range
-    /// [`Form`]: crate::form::Form
-    Form(Range<usize>, FormId, u8),
+pub struct Tag<R: std::ops::RangeBounds<usize>, F: RawTagsFn = RawTagsFnPtr> {
+    pub(super) range: R,
+    pub(super) tags: F,
+}
 
+impl Tag<Range<usize>> {
     /// Places the main cursor
-    MainCursor(usize),
-    /// Places an extra cursor
-    ExtraCursor(usize),
+    pub fn main_cursor(b: usize) -> Self {
+        Self::new(b..b, |key, _, _| (MainCursor(key), None, None))
+    }
 
-    /// Aligns text to the center of the screen within the lines
-    /// containing the [range]. If said region intersects with an
-    /// [`AlignRight`], the latest one prevails.
-    ///
-    /// [range]: Range
-    /// [`AlignRight`]: Tag::AlignRight
-    AlignCenter(Range<usize>),
-    /// Aligns text to the right of the screen within the lines
-    /// containing the [range]. If said region intersects with an
-    /// [`AlignCenter`], the latest one prevails.
-    ///
-    /// [range]: Range
-    /// [`AlignCenter`]: Tag::AlignCenter
-    AlignRight(Range<usize>),
+    /// Places an extra cursor
+    pub fn extra_cursor(b: usize) -> Self {
+        Self::new(b..b, |key, _, _| (ExtraCursor(key), None, None))
+    }
+
     /// A spacer for a single screen line
     ///
     /// When printing this screen line (one row on screen, i.e. until
@@ -115,10 +97,73 @@ pub enum Tag {
     /// ```text
     /// This is my line,   please,   pretend it has tags
     /// ```
-    Spacer(usize),
+    pub fn spacer(b: usize) -> Self {
+        Self::new(b..b, |key, _, _| (Spacer(key), None, None))
+    }
 
     /// Text that shows up on screen, but "doesn't exist"
-    Ghost(usize, Text),
+    pub fn ghost(b: usize, text: impl Into<Text>) -> Tag<Range<usize>, impl RawTagsFn> {
+        let text = text.into();
+        Self::new(b..b, move |key, ghosts, _| {
+            let id = GhostId::new();
+            ghosts.insert(id, text);
+            (Ghost(key, id), None, None)
+        })
+    }
+}
+
+impl<R: std::ops::RangeBounds<usize>> Tag<R> {
+    /// Returns a new instance of [`Tag`]
+    fn new<F: RawTagsFn>(range: R, tags: F) -> Tag<R, F> {
+        Tag { range, tags }
+    }
+
+    /// Stylizes a [range] with a [`Form`]
+    ///
+    /// The last argument is a priority factor, a higher priority
+    /// makes a [`Form`]'s application latent, so it takes precedence
+    /// of earlier [`Form`]s. This is important if, for example,
+    /// multiple [`Form`]s are inserted in the same byte.
+    ///
+    /// Priority values higher than `250` are clamped back down to
+    /// `250`.
+    ///
+    /// [range]: Range
+    /// [`Form`]: crate::form::Form
+    pub fn form(range: R, form: FormId, priority: u8) -> Tag<R, impl RawTagsFn> {
+        Self::new(range, move |key, _, _| {
+            (
+                PushForm(key, form, priority),
+                Some(PopForm(key, form)),
+                None,
+            )
+        })
+    }
+
+    /// Aligns text to the center of the screen within the lines
+    /// containing the [range]. If said region intersects with an
+    /// [`AlignRight`], the latest one prevails.
+    ///
+    /// [range]: Range
+    /// [`AlignRight`]: Tag::AlignRight
+    pub fn align_center(range: R) -> Tag<R> {
+        Self::new(range, |key, _, _| {
+            (StartAlignCenter(key), Some(EndAlignCenter(key)), None)
+        })
+    }
+
+    /// Aligns text to the right of the screen within the lines
+    /// containing the [range]. If said region intersects with an
+    /// [`AlignCenter`], the latest one prevails.
+    ///
+    /// [range]: Range
+    /// [`AlignCenter`]: Tag::AlignCenter
+    pub fn align_right(range: R) -> Tag<R> {
+        Self::new(range, |key, _, _| {
+            (StartAlignRight(key), Some(EndAlignRight(key)), None)
+        })
+    }
+
     /// Conceal the given [range], preventing it from being printed
     ///
     /// This [range] is completely arbitrary, it can go over multiple
@@ -126,69 +171,10 @@ pub enum Tag {
     ///
     /// [range]: Range
     /// [`Ghost`]: Tag::Ghost
-    Conceal(Range<usize>),
-
-    ////////// Not yet implemented:
-    // TODO: Make this take a Widget and Area arguments
-    /// Make this [range] toggleable
-    ///
-    /// [range]: Range
-    Toggle(Range<usize>, Toggle),
-}
-
-impl Tag {
-    pub(super) fn into_raw(
-        self,
-        key: Key,
-        texts: &mut HashMap<GhostId, Text>,
-        toggles: &mut HashMap<ToggleId, Toggle>,
-    ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<ToggleId>) {
-        use RawTag::*;
-
-        match self {
-            Self::Form(range, id, priority) => (
-                (range.start, PushForm(key, id, priority.min(250))),
-                Some((range.end, PopForm(key, id))),
-                None,
-            ),
-            Self::MainCursor(b) => ((b, MainCursor(key)), None, None),
-            Self::ExtraCursor(b) => ((b, ExtraCursor(key)), None, None),
-            Self::AlignCenter(range) => (
-                (range.start, StartAlignCenter(key)),
-                Some((range.end, EndAlignCenter(key))),
-                None,
-            ),
-            Self::AlignRight(range) => (
-                (range.start, StartAlignRight(key)),
-                Some((range.end, EndAlignRight(key))),
-                None,
-            ),
-            Self::Spacer(b) => ((b, Spacer(key)), None, None),
-            Self::Ghost(b, mut text) => {
-                if text.0.forced_new_line {
-                    let change = Change::remove_nl(text.last_point().unwrap());
-                    text.apply_change_inner(0, change);
-                    text.0.forced_new_line = false;
-                }
-                let id = GhostId::new();
-                texts.insert(id, text);
-                ((b, Ghost(key, id)), None, None)
-            }
-            Self::Conceal(range) => (
-                (range.start, StartConceal(key)),
-                Some((range.end, EndConceal(key))),
-                None,
-            ),
-            Self::Toggle(range, toggle) => {
-                let id = ToggleId::new();
-                toggles.insert(id, toggle);
-                (
-                    (range.start, ToggleStart(key, id)),
-                    Some((range.end, ToggleEnd(key, id))),
-                    Some(id),
-                )
-            }
-        }
+    pub fn conceal(range: R) -> Tag<R> {
+        Self::new(range, |key, _, _| {
+            (StartConceal(key), Some(EndConceal(key)), None)
+        })
     }
 }
 
@@ -378,21 +364,21 @@ impl RawTag {
 
     pub(super) fn priority(&self) -> u8 {
         match self {
-            RawTag::PushForm(.., priority) => *priority + 5,
-            RawTag::PopForm(..) => 0,
-            RawTag::MainCursor(..) => 4,
-            RawTag::ExtraCursor(..) => 4,
-            RawTag::StartAlignCenter(..) => 1,
-            RawTag::EndAlignCenter(..) => 2,
-            RawTag::StartAlignRight(..) => 1,
-            RawTag::EndAlignRight(..) => 2,
-            RawTag::Spacer(..) => 2,
-            RawTag::StartConceal(..) => 1,
-            RawTag::EndConceal(..) => 2,
-            RawTag::Ghost(..) => 3,
-            RawTag::ToggleStart(..) => 1,
-            RawTag::ToggleEnd(..) => 2,
-            RawTag::ConcealUntil(_) => unreachable!("This shouldn't be queried"),
+            Self::PushForm(.., priority) => *priority + 5,
+            Self::PopForm(..) => 0,
+            Self::MainCursor(..) => 4,
+            Self::ExtraCursor(..) => 4,
+            Self::StartAlignCenter(..) => 1,
+            Self::EndAlignCenter(..) => 2,
+            Self::StartAlignRight(..) => 1,
+            Self::EndAlignRight(..) => 2,
+            Self::Spacer(..) => 2,
+            Self::StartConceal(..) => 1,
+            Self::EndConceal(..) => 2,
+            Self::Ghost(..) => 3,
+            Self::ToggleStart(..) => 1,
+            Self::ToggleEnd(..) => 2,
+            Self::ConcealUntil(_) => unreachable!("This shouldn't be queried"),
         }
     }
 }
@@ -400,25 +386,37 @@ impl RawTag {
 impl std::fmt::Debug for RawTag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RawTag::PushForm(key, id, prio) => {
+            Self::PushForm(key, id, prio) => {
                 write!(f, "PushForm({key:?}, {}, {prio})", id.name())
             }
-            RawTag::PopForm(key, id) => write!(f, "PopForm({key:?}, {})", id.name()),
-            RawTag::MainCursor(key) => write!(f, "MainCursor({key:?})"),
-            RawTag::ExtraCursor(key) => write!(f, "ExtraCursor({key:?})"),
-            RawTag::StartAlignCenter(key) => write!(f, "StartAlignCenter({key:?})"),
-            RawTag::EndAlignCenter(key) => write!(f, "EndAlignCenter({key:?})"),
-            RawTag::StartAlignRight(key) => write!(f, "StartAlignRight({key:?})"),
-            RawTag::EndAlignRight(key) => write!(f, "EndAlignRight({key:?})"),
-            RawTag::Spacer(key) => write!(f, "Spacer({key:?})"),
-            RawTag::StartConceal(key) => write!(f, "StartConceal({key:?})"),
-            RawTag::EndConceal(key) => write!(f, "EndConceal({key:?})"),
-            RawTag::ConcealUntil(key) => write!(f, "ConcealUntil({key:?})"),
-            RawTag::Ghost(key, id) => write!(f, "GhostText({key:?}, {id:?})"),
-            RawTag::ToggleStart(key, id) => write!(f, "ToggleStart({key:?}), {id:?})"),
-            RawTag::ToggleEnd(key, id) => write!(f, "ToggleEnd({key:?}, {id:?})"),
+            Self::PopForm(key, id) => write!(f, "PopForm({key:?}, {})", id.name()),
+            Self::MainCursor(key) => write!(f, "MainCursor({key:?})"),
+            Self::ExtraCursor(key) => write!(f, "ExtraCursor({key:?})"),
+            Self::StartAlignCenter(key) => write!(f, "StartAlignCenter({key:?})"),
+            Self::EndAlignCenter(key) => write!(f, "EndAlignCenter({key:?})"),
+            Self::StartAlignRight(key) => write!(f, "StartAlignRight({key:?})"),
+            Self::EndAlignRight(key) => write!(f, "EndAlignRight({key:?})"),
+            Self::Spacer(key) => write!(f, "Spacer({key:?})"),
+            Self::StartConceal(key) => write!(f, "StartConceal({key:?})"),
+            Self::EndConceal(key) => write!(f, "EndConceal({key:?})"),
+            Self::ConcealUntil(key) => write!(f, "ConcealUntil({key:?})"),
+            Self::Ghost(key, id) => write!(f, "GhostText({key:?}, {id:?})"),
+            Self::ToggleStart(key, id) => write!(f, "ToggleStart({key:?}), {id:?})"),
+            Self::ToggleEnd(key, id) => write!(f, "ToggleEnd({key:?}, {id:?})"),
         }
     }
 }
 
 pub type Toggle = Arc<dyn Fn(Point, MouseEventKind) + 'static + Send + Sync>;
+pub trait RawTagsFn = FnOnce(
+        Key,
+        &mut HashMap<GhostId, Text>,
+        &mut HashMap<ToggleId, Toggle>,
+    ) -> (RawTag, Option<RawTag>, Option<ToggleId>)
+    + Clone;
+
+type RawTagsFnPtr = fn(
+    Key,
+    &mut HashMap<GhostId, Text>,
+    &mut HashMap<ToggleId, Toggle>,
+) -> (RawTag, Option<RawTag>, Option<ToggleId>);

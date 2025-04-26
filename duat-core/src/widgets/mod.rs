@@ -49,13 +49,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-pub use self::{
-    prompt_line::{PromptLine, PromptLineCfg},
-    file::{File, FileCfg, PathKind},
-    line_numbers::{LineNum, LineNumbers, LineNumbersOptions},
-    notifier::{Notifier, NotificationsCfg},
-    status_line::{State, StatusLine, StatusLineCfg, status},
-};
+pub use self::file::{File, FileCfg, PathKind};
 use crate::{
     cfg::PrintCfg,
     context::FileParts,
@@ -64,14 +58,10 @@ use crate::{
     hooks::{self, FocusedOn, UnfocusedFrom},
     mode::Cursors,
     text::Text,
-    ui::{Area, PushSpecs, Ui},
+    ui::{PushSpecs, RawArea, Ui},
 };
 
-mod prompt_line;
 mod file;
-mod line_numbers;
-mod notifier;
-mod status_line;
 
 /// An area where [`Text`] will be printed to the screen
 ///
@@ -341,7 +331,8 @@ pub trait Widget<U: Ui>: Send + 'static {
     where
         Self: Sized;
 
-    /// Updates the widget, allowing the modification of its [`Area`]
+    /// Updates the widget, allowing the modification of its
+    /// [`RawArea`]
     ///
     /// There are a few contexts in which this function is triggered:
     ///
@@ -350,13 +341,13 @@ pub trait Widget<U: Ui>: Send + 'static {
     /// * The window was resized, so all widgets must be reprinted
     ///
     /// In this function, the text should be updated to match its new
-    /// conditions, or request changes to its [`Area`]. As an example,
-    /// the [`LineNumbers`] widget asks for [more or less width],
-    /// depending on the number of lines in the file, in order
-    /// to show an appropriate number of digits.
+    /// conditions, or request changes to its [`RawArea`]. As an
+    /// example, the [`LineNumbers`] widget asks for [more or less
+    /// width], depending on the number of lines in the file, in
+    /// order to show an appropriate number of digits.
     ///
     /// [`Session`]: crate::session::Session
-    /// [more or less width]: Area::constrain_hor
+    /// [more or less width]: RawArea::constrain_hor
     /// [`IncSearch`]: crate::mode::IncSearch
     fn update(&mut self, _area: &U::Area) {}
 
@@ -398,9 +389,9 @@ pub trait Widget<U: Ui>: Send + 'static {
     ///
     /// Very rarely shouuld you actually implement this method, one
     /// example of where this is actually implemented is in
-    /// [`File::print`], where [`Area::print_with`] is called in order
-    /// to simultaneously update the list of lines numbers, for
-    /// widgets like [`LineNumbers`] to read.
+    /// [`File::print`], where [`RawArea::print_with`] is called in
+    /// order to simultaneously update the list of lines numbers,
+    /// for widgets like [`LineNumbers`] to read.
     fn print(&mut self, area: &U::Area) {
         // crate::log_file!("printing {}", crate::duat_name::<Self>());
         let cfg = self.print_cfg();

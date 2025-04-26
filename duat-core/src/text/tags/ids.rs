@@ -84,7 +84,7 @@ impl Key {
     /// [`File`] widget, since you're probably the only one that is
     /// going to be modifying said widget anyway.
     ///
-    /// The advantage of this function is speed. Since it has a
+    /// The advantage of this function is speed. Since it is a
     /// `const` function, it's value is just substituted in with the
     /// code, so there is no need to store it in structs or statics.
     ///

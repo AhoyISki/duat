@@ -3,7 +3,6 @@ mod layout;
 
 use std::{
     fmt::Debug,
-    marker::PhantomData,
     sync::{Arc, mpsc},
     time::Instant,
 };
@@ -50,7 +49,7 @@ use crate::{
 /// }
 /// ```
 pub trait Ui: Clone + Send + Sync + 'static {
-    type Area: Area<Ui = Self> + Clone + PartialEq + Send + 'static;
+    type Area: RawArea<Ui = Self>;
     type MetaStatics: Default;
 
     ////////// Functions executed from the outer loop
@@ -73,7 +72,10 @@ pub trait Ui: Clone + Send + Sync + 'static {
     /// a new window, that is, a plain region with nothing in it.
     ///
     /// [`Area`]: Ui::Area
-    fn new_root(ms: &'static Self::MetaStatics, cache: <Self::Area as Area>::Cache) -> Self::Area;
+    fn new_root(
+        ms: &'static Self::MetaStatics,
+        cache: <Self::Area as RawArea>::Cache,
+    ) -> Self::Area;
 
     /// Switches the currently active window
     ///
@@ -113,11 +115,11 @@ pub trait Ui: Clone + Send + Sync + 'static {
     fn remove_window(ms: &'static Self::MetaStatics, win: usize);
 }
 
-/// An [`Area`] that supports printing [`Text`]
+/// An [`RawArea`] that supports printing [`Text`]
 ///
 /// These represent the entire GUI of Parsec, the only parts of the
 /// screen where text may be printed.
-pub trait Area: Send + Sync + Sized {
+pub trait RawArea: Clone + PartialEq + Send + Sync + Sized + 'static {
     // This exists solely for automatic type recognition.
     type Ui: Ui<Area = Self>;
     type Cache: Default + Encode + Decode<()> + 'static;
@@ -125,7 +127,7 @@ pub trait Area: Send + Sync + Sized {
 
     ////////// Area modification
 
-    /// Bisects the [`Area`][Ui::Area] with the given index into
+    /// Bisects the [`RawArea`][Ui::Area] with the given index into
     /// two.
     ///
     /// Will return 2 indices, the first one is the index of a new
@@ -160,44 +162,49 @@ pub trait Area: Send + Sync + Sized {
     /// ╰─────────────────╯     ╰─────────────────╯
     /// ```
     ///
-    /// And so [`Area::bisect`] should return `(3, None)`.
+    /// And so [`RawArea::bisect`] should return `(3, None)`.
     fn bisect(
-        &self,
+        area: MutArea<Self>,
         specs: PushSpecs,
         cluster: bool,
         on_files: bool,
         cache: Self::Cache,
-        _: DuatPermission,
     ) -> (Self, Option<Self>);
 
-    /// Deletes this [`Area`], signaling the closing of a [`Widget`]
+    /// Deletes this [`RawArea`], signaling the closing of a
+    /// [`Widget`]
     ///
-    /// If the [`Area`]'s parent was also deleted, return it.
-    fn delete(&self, _: DuatPermission) -> Option<Self>;
+    /// If the [`RawArea`]'s parent was also deleted, return it.
+    fn delete(area: MutArea<Self>) -> Option<Self>;
 
-    /// Swaps this [`Area`] with another one
+    /// Swaps this [`RawArea`] with another one
     ///
-    /// The swapped [`Area`]s will be cluster masters of the
-    /// respective [`Area`]s. As such, if they belong to the same
+    /// The swapped [`RawArea`]s will be cluster masters of the
+    /// respective [`RawArea`]s. As such, if they belong to the same
     /// master, nothing happens.
-    fn swap(&self, other: &Self, _: DuatPermission);
+    fn swap(lhs: MutArea<Self>, rhs: &Self);
 
-    /// Spawns a floating area from a [`TwoPoints`]
+    /// Spawns a floating area on this [`RawArea`]
     ///
-    /// This [`Area`] will be placed in some position "pushed" onto
-    /// where those [`TwoPoints`] are on screen, and the [`PushSpecs`]
-    /// are mostlya a "suggestion", that is, if it can't be placed in
-    /// that specific direction, another one will be found, and if
-    /// none of them fit, then the maximum allowed space on screen
-    /// will be allocated to meet at least some of the demands.
-    fn spawn_floating(
-        &self,
+    /// This function will take a list of [`SpawnSpecs`], taking the
+    /// first one that fits, and readapting as the constraints are
+    /// altered
+    fn spawn_floating(area: MutArea<Self>, specs: SpawnSpecs) -> Result<Self, Text>;
+
+    /// Spawns a floating area
+    ///
+    /// If the [`TwoPoints`] parameter is not specified, this new
+    /// [`RawArea`] will be pushed to the edges of the old one, the
+    /// pushed edge being the same as the [`Side`] used for pushing.
+    ///
+    /// If there is a [`TwoPoints`] argument, the
+    fn spawn_floating_at(
+        area: MutArea<Self>,
+        specs: SpawnSpecs,
         at: impl TwoPoints,
-        specs: PushSpecs,
         text: &Text,
         cfg: PrintCfg,
-        _: DuatPermission,
-    ) -> Self;
+    ) -> Result<Self, Text>;
 
     /// Changes the horizontal constraint of the area
     fn constrain_hor(&self, cons: impl IntoIterator<Item = Constraint>) -> Result<(), Text>;
@@ -218,11 +225,11 @@ pub trait Area: Send + Sync + Sized {
     /// [`ScrollOff`]: crate::cfg::ScrollOff
     fn scroll_around_point(&self, text: &Text, point: Point, cfg: PrintCfg);
 
-    /// Tells the [`Ui`] that this [`Area`] is the one that is
+    /// Tells the [`Ui`] that this [`RawArea`] is the one that is
     /// currently focused.
     ///
-    /// Should make [`self`] the active [`Area`] while deactivating
-    /// any other active [`Area`].
+    /// Should make [`self`] the active [`RawArea`] while deactivating
+    /// any other active [`RawArea`].
     fn set_as_active(&self);
 
     ////////// Printing
@@ -250,24 +257,21 @@ pub trait Area: Send + Sync + Sized {
     /// essentially represents where horizontally would this character
     /// be printed.
     ///
-    /// If you want a reverse iterator, see [`Area::rev_print_iter`].
+    /// If you want a reverse iterator, see
+    /// [`RawArea::rev_print_iter`].
     ///
     /// [`text::Item`]: Item
     fn print_iter<'a>(
         &self,
         iter: FwdIter<'a>,
         cfg: PrintCfg,
-    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a
-    where
-        Self: Sized;
+    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
 
     fn print_iter_from_top<'a>(
         &self,
         text: &'a Text,
         cfg: PrintCfg,
-    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a
-    where
-        Self: Sized;
+    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
 
     /// Returns a reversed printing iterator
     ///
@@ -276,7 +280,7 @@ pub trait Area: Send + Sync + Sized {
     /// struct essentially represents where horizontally each
     /// character would be printed.
     ///
-    /// If you want a forwards iterator, see [`Area::print_iter`].
+    /// If you want a forwards iterator, see [`RawArea::print_iter`].
     ///
     /// [`text::Item`]: Item
     fn rev_print_iter<'a>(
@@ -327,13 +331,13 @@ pub trait Area: Send + Sync + Sized {
     /// The current printing information of the area
     fn print_info(&self) -> Self::PrintInfo;
 
-    /// Returns `true` if this is the currently active [`Area`]
+    /// Returns `true` if this is the currently active [`RawArea`]
     ///
-    /// Only one [`Area`] should be active at any given moment.
+    /// Only one [`RawArea`] should be active at any given moment.
     fn is_active(&self) -> bool;
 }
 
-/// A container for a master [`Area`] in Parsec
+/// A container for a master [`RawArea`] in Parsec
 pub struct Window<U: Ui> {
     nodes: Vec<Node<U>>,
     files_area: U::Area,
@@ -351,11 +355,11 @@ impl<U: Ui> Window<U> {
         let widget = RwData::<dyn Widget<U>>::new_unsized::<W>(Arc::new(Mutex::new(widget)));
 
         let cache = if let Some(file) = widget.read_as::<File>()
-            && let Some(cache) = load_cache::<<U::Area as Area>::Cache>(file.path())
+            && let Some(cache) = load_cache::<<U::Area as RawArea>::Cache>(file.path())
         {
             cache
         } else {
-            <U::Area as Area>::Cache::default()
+            <U::Area as RawArea>::Cache::default()
         };
 
         let area = U::new_root(ms, cache);
@@ -394,15 +398,14 @@ impl<U: Ui> Window<U> {
         let widget = RwData::<dyn Widget<U>>::new_unsized::<W>(Arc::new(Mutex::new(widget)));
 
         let cache = if let Some(file) = widget.read_as::<File>()
-            && let Some(cache) = load_cache::<<U::Area as Area>::Cache>(file.path())
+            && let Some(cache) = load_cache::<<U::Area as RawArea>::Cache>(file.path())
         {
             cache
         } else {
-            <U::Area as Area>::Cache::default()
+            <U::Area as RawArea>::Cache::default()
         };
 
-        let (child, parent) =
-            area.bisect(specs, do_cluster, on_files, cache, DuatPermission::new());
+        let (child, parent) = MutArea(area).bisect(specs, do_cluster, on_files, cache);
 
         self.nodes.push(Node::new::<W>(widget, child, checker));
         (self.nodes.last().unwrap().clone(), parent)
@@ -434,7 +437,7 @@ impl<U: Ui> Window<U> {
         Ok((child, parent))
     }
 
-    /// Removes all [`Node`]s whose [`Area`]s where deleted
+    /// Removes all [`Node`]s whose [`RawArea`]s where deleted
     pub(crate) fn remove_file(&mut self, name: &str) {
         let Some(node) = self
             .nodes
@@ -450,7 +453,7 @@ impl<U: Ui> Window<U> {
         // If this is the case, this means there is only one File left in this
         // Window, so the files_area should be the cluster master of that
         // File.
-        if let Some(parent) = node.area().delete(DuatPermission::new())
+        if let Some(parent) = MutArea(node.area()).delete()
             && parent == self.files_area
         {
             let files = self.file_nodes();
@@ -464,7 +467,7 @@ impl<U: Ui> Window<U> {
         if let Some(related) = node.related_widgets() {
             let nodes = related.read();
             for node in self.nodes.extract_if(.., |node| nodes.contains(node)) {
-                node.area().delete(DuatPermission::new());
+                MutArea(node.area()).delete();
             }
         }
     }
@@ -670,8 +673,8 @@ impl<U: Ui> RoWindow<'_, U> {
 /// * A horizontal [`Constraint`];
 /// * A vertical [`Constraint`];
 ///
-/// Constraints are demands that must be met by the widget's [`Area`],
-/// on a best effort basis.
+/// Constraints are demands that must be met by the widget's
+/// [`RawArea`], on a best effort basis.
 ///
 /// So, for example, if the [`PushSpecs`] are:
 ///
@@ -748,106 +751,42 @@ impl PushSpecs {
     }
 
     pub fn with_ver_len(mut self, len: f32) -> Self {
-        for con in self.ver_cons.iter_mut() {
-            match con {
-                Some(Constraint::Len(_)) | None => {
-                    *con = Some(Constraint::Len(len));
-                    break;
-                }
-                _ => {}
-            }
-        }
+        constrain(&mut self.ver_cons, Constraint::Len(len));
         self
     }
 
     pub fn with_ver_min(mut self, min: f32) -> Self {
-        for con in self.ver_cons.iter_mut() {
-            match con {
-                Some(Constraint::Min(_)) | None => {
-                    *con = Some(Constraint::Min(min));
-                    break;
-                }
-                _ => {}
-            }
-        }
+        constrain(&mut self.ver_cons, Constraint::Min(min));
         self
     }
 
     pub fn with_ver_max(mut self, max: f32) -> Self {
-        for con in self.ver_cons.iter_mut() {
-            match con {
-                Some(Constraint::Max(_)) | None => {
-                    *con = Some(Constraint::Max(max));
-                    break;
-                }
-                _ => {}
-            }
-        }
+        constrain(&mut self.ver_cons, Constraint::Max(max));
         self
     }
 
     pub fn with_ver_ratio(mut self, den: u16, div: u16) -> Self {
-        for con in self.ver_cons.iter_mut() {
-            match con {
-                Some(Constraint::Ratio(..)) | None => {
-                    *con = Some(Constraint::Ratio(den, div));
-                    break;
-                }
-                _ => {}
-            }
-        }
+        constrain(&mut self.ver_cons, Constraint::Ratio(den, div));
         self
     }
 
     pub fn with_hor_len(mut self, len: f32) -> Self {
-        for con in self.hor_cons.iter_mut() {
-            match con {
-                Some(Constraint::Len(_)) | None => {
-                    *con = Some(Constraint::Len(len));
-                    break;
-                }
-                _ => {}
-            }
-        }
+        constrain(&mut self.hor_cons, Constraint::Len(len));
         self
     }
 
     pub fn with_hor_min(mut self, min: f32) -> Self {
-        for con in self.hor_cons.iter_mut() {
-            match con {
-                Some(Constraint::Min(_)) | None => {
-                    *con = Some(Constraint::Min(min));
-                    break;
-                }
-                _ => {}
-            }
-        }
+        constrain(&mut self.hor_cons, Constraint::Min(min));
         self
     }
 
     pub fn with_hor_max(mut self, max: f32) -> Self {
-        for con in self.hor_cons.iter_mut() {
-            match con {
-                Some(Constraint::Max(_)) | None => {
-                    *con = Some(Constraint::Max(max));
-                    break;
-                }
-                _ => {}
-            }
-        }
+        constrain(&mut self.hor_cons, Constraint::Max(max));
         self
     }
 
     pub fn with_hor_ratio(mut self, den: u16, div: u16) -> Self {
-        for con in self.hor_cons.iter_mut() {
-            match con {
-                Some(Constraint::Ratio(..)) | None => {
-                    *con = Some(Constraint::Ratio(den, div));
-                    break;
-                }
-                _ => {}
-            }
-        }
+        constrain(&mut self.hor_cons, Constraint::Ratio(den, div));
         self
     }
 
@@ -864,6 +803,93 @@ impl PushSpecs {
 
     pub fn comes_earlier(&self) -> bool {
         matches!(self.side, Side::Left | Side::Above)
+    }
+
+    pub fn ver_cons(&self) -> impl Iterator<Item = Constraint> + Clone {
+        self.ver_cons.into_iter().flatten()
+    }
+
+    pub fn hor_cons(&self) -> impl Iterator<Item = Constraint> + Clone {
+        self.hor_cons.into_iter().flatten()
+    }
+
+    pub fn cons_on(&self, axis: Axis) -> impl Iterator<Item = Constraint> {
+        match axis {
+            Axis::Horizontal => self.hor_cons.into_iter().flatten(),
+            Axis::Vertical => self.ver_cons.into_iter().flatten(),
+        }
+    }
+
+    pub fn is_resizable_on(&self, axis: Axis) -> bool {
+        let cons = match axis {
+            Axis::Horizontal => &self.hor_cons,
+            Axis::Vertical => &self.ver_cons,
+        };
+        cons.iter()
+            .flatten()
+            .all(|con| matches!(con, Constraint::Min(..) | Constraint::Max(..)))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SpawnSpecs {
+    pub choices: Vec<[Corner; 2]>,
+    ver_cons: [Option<Constraint>; 4],
+    hor_cons: [Option<Constraint>; 4],
+}
+
+impl SpawnSpecs {
+    pub fn new(choices: impl IntoIterator<Item = [Corner; 2]>) -> Self {
+        Self {
+            choices: choices.into_iter().collect(),
+            ver_cons: [None; 4],
+            hor_cons: [None; 4],
+        }
+    }
+
+    pub fn with_fallbacks(mut self, choices: impl IntoIterator<Item = [Corner; 2]>) -> Self {
+        self.choices.extend(choices);
+        self
+    }
+
+    pub fn with_ver_len(mut self, len: f32) -> Self {
+        constrain(&mut self.ver_cons, Constraint::Len(len));
+        self
+    }
+
+    pub fn with_ver_min(mut self, min: f32) -> Self {
+        constrain(&mut self.ver_cons, Constraint::Min(min));
+        self
+    }
+
+    pub fn with_ver_max(mut self, max: f32) -> Self {
+        constrain(&mut self.ver_cons, Constraint::Max(max));
+        self
+    }
+
+    pub fn with_ver_ratio(mut self, den: u16, div: u16) -> Self {
+        constrain(&mut self.ver_cons, Constraint::Ratio(den, div));
+        self
+    }
+
+    pub fn with_hor_len(mut self, len: f32) -> Self {
+        constrain(&mut self.hor_cons, Constraint::Len(len));
+        self
+    }
+
+    pub fn with_hor_min(mut self, min: f32) -> Self {
+        constrain(&mut self.hor_cons, Constraint::Min(min));
+        self
+    }
+
+    pub fn with_hor_max(mut self, max: f32) -> Self {
+        constrain(&mut self.hor_cons, Constraint::Max(max));
+        self
+    }
+
+    pub fn with_hor_ratio(mut self, den: u16, div: u16) -> Self {
+        constrain(&mut self.hor_cons, Constraint::Ratio(den, div));
+        self
     }
 
     pub fn ver_cons(&self) -> impl Iterator<Item = Constraint> {
@@ -975,6 +1001,19 @@ pub enum Side {
     Left,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Corner {
+    TopLeft,
+    Top,
+    TopRight,
+    Right,
+    BottomRight,
+    Bottom,
+    BottomLeft,
+    Left,
+    Center,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Caret {
     pub x: u32,
@@ -989,12 +1028,85 @@ impl Caret {
     }
 }
 
-/// Only Duat is allowed to alter the layout of [`Widget`]s, so this
-/// struct is used to forbid the end user from doing the same.
-pub struct DuatPermission(PhantomData<()>);
+fn constrain(cons: &mut [Option<Constraint>; 4], con: Constraint) {
+    use std::mem::discriminant;
+    let old = cons
+        .iter_mut()
+        .find(|lhs| lhs.is_none_or(|lhs| discriminant(&lhs) == discriminant(&con)))
+        .unwrap();
+    *old = Some(con);
+}
 
-impl DuatPermission {
-    pub(crate) fn new() -> Self {
-        Self(PhantomData)
+/// A struct used to modify the layout of [`RawArea`]s
+///
+/// The end user should not have access to methods that directly
+/// modify the layout, like [`RawArea::delete`] or
+/// [`RawArea::bisect`], since they will modify the layout without
+/// any coordination with the rest of Duat, so this struct is used to
+/// "hide" those methods, in order to prevent users from directly
+/// accessing them.
+///
+/// Higher lever versions of these methods are still available to the
+/// end user, in the more controled APIs of [`Area`]
+pub struct MutArea<'area, A: RawArea>(pub(crate) &'area A);
+
+impl<A: RawArea> MutArea<'_, A> {
+    pub fn bisect(
+        self,
+        specs: PushSpecs,
+        cluster: bool,
+        on_files: bool,
+        cache: A::Cache,
+    ) -> (A, Option<A>) {
+        A::bisect(self, specs, cluster, on_files, cache)
+    }
+
+    /// Calls [`RawArea::delete`] on `self`
+    pub fn delete(self) -> Option<A> {
+        A::delete(self)
+    }
+
+    /// Calls [`RawArea::swap`] on `self`
+    pub fn swap(self, other: &A) {
+        A::swap(self, other);
+    }
+
+    /// Calls [`RawArea::spawn_floating`] on `self`
+    pub fn spawn_floating(self, specs: SpawnSpecs) -> Result<A, Text> {
+        A::spawn_floating(self, specs)
+    }
+
+    /// Calls [`RawArea::spawn_floating_at`] on `self`
+    pub fn spawn_floating_at(
+        self,
+        specs: SpawnSpecs,
+        at: impl TwoPoints,
+        text: &Text,
+        cfg: PrintCfg,
+    ) -> Result<A, Text> {
+        A::spawn_floating_at(self, specs, at, text, cfg)
+    }
+}
+
+impl<A: RawArea> std::ops::Deref for MutArea<'_, A> {
+    type Target = A;
+
+    fn deref(&self) -> &Self::Target {
+        self.0
+    }
+}
+
+/// A public API for [`Ui::Area`]
+#[derive(Clone, PartialEq)]
+pub struct Area<U: Ui> {
+    area: U::Area,
+    
+}
+
+impl<U: Ui> std::ops::Deref for Area<U> {
+    type Target = U::Area;
+
+    fn deref(&self) -> &Self::Target {
+        &self.area
     }
 }

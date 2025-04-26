@@ -23,7 +23,7 @@ pub use self::{
     ids::{GhostId, Key, Keys, ToggleId},
     types::{
         RawTag::{self, *},
-        Tag,
+        RawTagsFn, Tag,
     },
 };
 use super::{Point, Text, records::Records};
@@ -87,19 +87,23 @@ impl Tags {
     }
 
     /// Insert a new [`Tag`] at a given byte
-    pub fn insert(&mut self, key: Key, tag: Tag) -> Option<ToggleId> {
+    pub fn insert(
+        &mut self,
+        key: Key,
+        tag: Tag<impl RangeBounds<usize>, impl RawTagsFn>,
+    ) -> Option<ToggleId> {
         fn exists_at(tags: &GapBuffer<TagOrSkip>, n: usize, tag: RawTag) -> bool {
             rev_range(tags, ..n)
                 .map_while(|(_, ts)| ts.as_tag())
                 .any(|lhs| lhs == tag)
         }
 
-        let ((s_at, s_tag), end, toggle) = tag.into_raw(key, &mut self.ghosts, &mut self.toggles);
-        get_ends(s_at..end.map(|(e, _)| e).unwrap_or(s_at), self.len_bytes());
+		let (s_at, e_at) = get_ends(tag.range, self.len_bytes());
+        let (s_tag, e_tag, toggle) = (tag.tags)(key, &mut self.ghosts, &mut self.toggles);
 
         let [s_n, s_b, s_skip] = self.skip_at(s_at);
 
-        if let Some((e_at, e_tag)) = end
+        if let Some(e_tag) = e_tag
             && s_at != e_at
         {
             let [e_n, e_b, e_skip] = {
@@ -152,7 +156,7 @@ impl Tags {
             });
 
             toggle
-        } else if end.is_none() {
+        } else if e_tag.is_none() {
             let [ins, n_diff] = self.insert_inner(s_at, s_tag, [s_n, s_b, s_skip]);
             self.shift_bounds_and_ranges(ins, [n_diff as i32, 0]);
 
@@ -1164,7 +1168,7 @@ fn find_match(buf: &GapBuffer<TagOrSkip>, (n, b, tag): Entry) -> Option<Entry> {
 impl std::fmt::Debug for TagOrSkip {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TagOrSkip::Tag(tag) => write!(f, "{:?}", tag),
+            TagOrSkip::Tag(tag) => write!(f, "{tag:?}"),
             TagOrSkip::Skip(amount) => write!(f, "Skip({amount})"),
         }
     }

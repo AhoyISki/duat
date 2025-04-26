@@ -12,11 +12,12 @@ include = ["src/", "config/src/", "config/Cargo_.toml", "build.rs"]
 edition = "2024"
 
 [workspace]
-members = ["duat-core", "duat-term"]
+members = ["duat-core", "duat-term", "duat-utils"]
 exclude = ["config"]
 
 [dependencies]
 duat-core = { version = "0.4.0", path = "duat-core" }
+duat-utils = { version = "0.1.0", path = "duat-utils" }
 
 # List of UIs.
 duat-term = { version = "0.4.0", path = "duat-term", optional = true }

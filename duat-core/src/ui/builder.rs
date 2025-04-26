@@ -12,7 +12,7 @@
 //! [`File`]: crate::widgets::File
 use std::sync::LazyLock;
 
-use super::{Area, Ui};
+use super::{RawArea, Ui};
 use crate::{
     context::{self, FixedFile, WriteFileGuard},
     data::{ReadDataGuard, RwData},

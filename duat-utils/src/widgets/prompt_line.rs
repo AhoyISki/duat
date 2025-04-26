@@ -16,7 +16,7 @@
 //! [`Mode`]: crate::mode::Mode
 use std::{any::TypeId, collections::HashMap, marker::PhantomData};
 
-use crate::{
+use duat_core::{
     cfg::PrintCfg,
     form, hooks,
     mode::PromptMode,

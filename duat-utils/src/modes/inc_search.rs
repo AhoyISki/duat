@@ -1,9 +1,8 @@
-use lender::Lender;
-
-use super::{Cursors, EditHelper};
-use crate::{
+use duat_core::{
+    Lender,
+    mode::{Cursors, EditHelper},
     text::{Searcher, Text, text},
-    ui::{Area, Ui},
+    ui::{RawArea, Ui},
     widgets::File,
 };
 
@@ -146,4 +145,4 @@ impl<U: Ui> IncSearcher<U> for ExtendRev {
 }
 
 #[allow(type_alias_bounds)]
-pub type Orig<U: Ui> = (Cursors, <U::Area as Area>::PrintInfo);
+pub type Orig<U: Ui> = (Cursors, <U::Area as RawArea>::PrintInfo);

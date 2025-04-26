@@ -1129,9 +1129,8 @@ mod global {
         COMMANDS.add_for(callers, cmd, Arc::new(check_args))
     }
 
-    pub(crate) fn check_args(
-        caller: &str,
-    ) -> Option<(Vec<Range<usize>>, Option<(Range<usize>, Text)>)> {
+	/// Check if the arguments for a given `caller` are correct
+    pub fn check_args(caller: &str) -> Option<(Vec<Range<usize>>, Option<(Range<usize>, Text)>)> {
         COMMANDS.check_args(caller)
     }
 }

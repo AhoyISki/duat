@@ -115,7 +115,7 @@ impl ui::Ui for Ui {
 
     fn new_root(
         ms: &'static Self::MetaStatics,
-        cache: <Self::Area as ui::Area>::Cache,
+        cache: <Self::Area as ui::RawArea>::Cache,
     ) -> Self::Area {
         let mut ms = ms.lock();
         let printer = (ms.printer_fn)();

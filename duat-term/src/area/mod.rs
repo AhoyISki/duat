@@ -8,7 +8,7 @@ use duat_core::{
     cfg::PrintCfg,
     form::Painter,
     text::{FwdIter, Item, Part, Point, RevIter, Text, err},
-    ui::{self, Axis, Caret, Constraint, DuatPermission, PushSpecs},
+    ui::{self, Axis, Caret, Constraint, MutArea, PushSpecs, SpawnSpecs},
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
 
@@ -234,7 +234,7 @@ impl Area {
     }
 }
 
-impl ui::Area for Area {
+impl ui::RawArea for Area {
     type Cache = PrintInfo;
     type PrintInfo = PrintInfo;
     type Ui = crate::Ui;
@@ -242,42 +242,41 @@ impl ui::Area for Area {
     /////////// Modification
 
     fn bisect(
-        &self,
+        area: MutArea<Self>,
         specs: PushSpecs,
         cluster: bool,
         on_files: bool,
         cache: PrintInfo,
-        _: DuatPermission,
     ) -> (Area, Option<Area>) {
-        let mut layouts = self.layouts.lock();
-        let layout = get_layout_mut(&mut layouts, self.id).unwrap();
+        let mut layouts = area.layouts.lock();
+        let layout = get_layout_mut(&mut layouts, area.id).unwrap();
 
-        let (child, parent) = layout.bisect(self.id, specs, cluster, on_files, cache);
+        let (child, parent) = layout.bisect(area.id, specs, cluster, on_files, cache);
 
         (
-            Area::new(child, self.layouts.clone()),
-            parent.map(|parent| Area::new(parent, self.layouts.clone())),
+            Self::new(child, area.layouts.clone()),
+            parent.map(|parent| Self::new(parent, area.layouts.clone())),
         )
     }
 
-    fn delete(&self, _: DuatPermission) -> Option<Self> {
-        let mut layouts = self.layouts.lock();
+    fn delete(area: MutArea<Self>) -> Option<Self> {
+        let mut layouts = area.layouts.lock();
         // This Area may have already been deleted, so a Layout may not be
         // found.
-        let layout = get_layout_mut(&mut layouts, self.id)?;
+        let layout = get_layout_mut(&mut layouts, area.id)?;
         layout
-            .delete(self.id)
-            .map(|id| Area::new(id, self.layouts.clone()))
+            .delete(area.id)
+            .map(|id| Self::new(id, area.layouts.clone()))
     }
 
-    fn swap(&self, rhs: &Self, _: DuatPermission) {
-        let mut layouts = self.layouts.lock();
-        let lhs_lay = get_layout_pos(&layouts, self.id).unwrap();
+    fn swap(lhs: MutArea<Self>, rhs: &Self) {
+        let mut layouts = lhs.layouts.lock();
+        let lhs_lay = get_layout_pos(&layouts, lhs.id).unwrap();
         let rhs_lay = get_layout_pos(&layouts, rhs.id).unwrap();
 
         if lhs_lay == rhs_lay {
             let layout = &mut layouts[lhs_lay];
-            let lhs_id = layout.rects.get_cluster_master(self.id).unwrap_or(self.id);
+            let lhs_id = layout.rects.get_cluster_master(lhs.id).unwrap_or(lhs.id);
             let rhs_id = layout.rects.get_cluster_master(rhs.id).unwrap_or(rhs.id);
             if lhs_id == rhs_id {
                 return;
@@ -285,7 +284,7 @@ impl ui::Area for Area {
             layout.swap(lhs_id, rhs_id);
         } else {
             let [lhs_lay, rhs_lay] = layouts.get_disjoint_mut([lhs_lay, rhs_lay]).unwrap();
-            let lhs_id = lhs_lay.rects.get_cluster_master(self.id).unwrap_or(self.id);
+            let lhs_id = lhs_lay.rects.get_cluster_master(lhs.id).unwrap_or(lhs.id);
             let rhs_id = rhs_lay.rects.get_cluster_master(rhs.id).unwrap_or(rhs.id);
 
             let lhs_rect = lhs_lay.rects.get_mut(lhs_id).unwrap();
@@ -307,35 +306,24 @@ impl ui::Area for Area {
         }
     }
 
-    fn spawn_floating(
-        &self,
-        at: impl duat_core::text::TwoPoints,
-        specs: PushSpecs,
-        text: &Text,
-        cfg: PrintCfg,
-        _: DuatPermission,
-    ) -> Self {
-        let points = at.to_points();
-        let mut coord = {
-            let layouts = self.layouts.lock();
-            let layout = get_layout(&layouts, self.id).unwrap();
-            let rect = layout.get(self.id).unwrap();
-            layout.printer.coords(rect.var_points(), false).tl
-        };
-        let mut iter = self.print_iter_from_top(text, cfg);
-        while let Some((caret, item)) = iter.next()
-            && item.points() <= points
-        {
-            coord.x = caret.x;
-            coord.y += caret.wrap as u32;
-        }
+    fn spawn_floating(area: MutArea<Self>, specs: SpawnSpecs) -> Result<Self, Text> {
+        let mut layouts = area.layouts.lock();
+        let layout = get_layout_mut(&mut layouts, area.id).unwrap();
 
-        let mut layouts = self.layouts.lock();
-        let layout = get_layout_mut(&mut layouts, self.id).unwrap();
+        Ok(Self::new(
+            layout.new_floating(area.id, specs),
+            area.layouts.clone(),
+        ))
+    }
 
-        let _floating = layout.new_floating(at, specs, text, cfg);
-
-        todo!();
+    fn spawn_floating_at(
+        _area: MutArea<Self>,
+        _specs: SpawnSpecs,
+        _at: impl duat_core::text::TwoPoints,
+        _text: &Text,
+        _cfg: PrintCfg,
+    ) -> Result<Self, Text> {
+        todo!()
     }
 
     fn constrain_hor(&self, cons: impl IntoIterator<Item = Constraint>) -> Result<(), Text> {
@@ -531,7 +519,7 @@ impl ui::Area for Area {
             .unwrap()
             .rects
             .get_cluster_master(self.id)
-            .map(|id| Area::new(id, self.layouts.clone()))
+            .map(|id| Self::new(id, self.layouts.clone()))
     }
 
     fn cache(&self) -> Option<Self::Cache> {

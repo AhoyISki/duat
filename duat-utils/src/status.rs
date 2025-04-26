@@ -14,15 +14,13 @@
 //! [`Mode`]: crate::mode::Mode
 use std::sync::LazyLock;
 
-use crossterm::event::KeyEvent;
-
-use crate::{
+use duat_core::{
     context,
     data::{DataMap, RwData},
     hooks::{self, KeySent},
-    mode::{self},
+    mode::{self, KeyEvent},
     text::{Text, text},
-    ui::Area,
+    ui::RawArea,
     widgets::File,
 };
 
@@ -93,8 +91,8 @@ pub fn file_fmt(file: &File) -> Text {
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [mode]: mode::Mode
 /// [`IncSearch`]: mode::IncSearch
-pub fn mode_name() -> RwData<&'static str> {
-    context::mode_name().clone()
+pub fn mode_name() -> DataMap<&'static str, &'static str> {
+    context::mode_name()
 }
 
 /// [`StatusLine`] part: The active mode of Duat, formatted
@@ -141,7 +139,7 @@ pub fn main_line(file: &File) -> usize {
 /// [`StatusLine`] part: Column of the main cursor
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_col(file: &File, area: &impl Area) -> usize {
+pub fn main_col(file: &File, area: &impl RawArea) -> usize {
     let main = file.cursors().get_main().unwrap();
     main.v_caret(file.text(), area, file.print_cfg()).char_col()
 }
@@ -149,7 +147,7 @@ pub fn main_col(file: &File, area: &impl Area) -> usize {
 /// [`StatusLine`] part: Desired wrapped column of the main cursor
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_dwcol(file: &File, area: &impl Area) -> usize {
+pub fn main_dwcol(file: &File, area: &impl RawArea) -> usize {
     let main = file.cursors().get_main().unwrap();
     main.v_caret(file.text(), area, file.print_cfg())
         .desired_wrapped_col()
@@ -164,7 +162,7 @@ pub fn main_dwcol(file: &File, area: &impl Area) -> usize {
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_fmt(file: &File, area: &impl Area) -> Text {
+pub fn main_fmt(file: &File, area: &impl RawArea) -> Text {
     text!(
         [Coord] { main_col(file, area) } [Separator] ":"
         [Coord] { main_line(file) } [Separator] "/"

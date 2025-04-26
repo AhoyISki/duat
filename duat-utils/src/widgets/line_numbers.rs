@@ -12,11 +12,11 @@
 //! [`File`]: super::File
 use std::{fmt::Alignment, marker::PhantomData};
 
-use crate::{
+use duat_core::{
     context::{self, FixedFile},
     form::{self, Form},
     text::{AlignCenter, AlignLeft, AlignRight, Builder, Text, text},
-    ui::{Area, Constraint, PushSpecs, Ui},
+    ui::{RawArea, Constraint, PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
 };
 

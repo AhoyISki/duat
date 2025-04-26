@@ -85,12 +85,11 @@ mod search;
 mod tags;
 
 use std::{
-    ops::Range,
+    ops::{Range, RangeBounds},
     path::Path,
     rc::Rc,
     sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, Ordering}, Arc
     },
 };
 
@@ -106,7 +105,7 @@ pub use self::{
     ops::{Point, TextRange, TwoPoints, utf8_char_width},
     reader::{MutTags, Reader, ReaderCfg},
     search::{Matcheable, RegexPattern, Searcher},
-    tags::{Key, Keys, RawTag, Tag, ToggleId},
+    tags::{Key, Keys, RawTag, Tag, ToggleId, RawTagsFn},
 };
 use self::{
     reader::Readers,
@@ -117,7 +116,7 @@ use crate::{
     cfg::PrintCfg,
     form,
     mode::{Cursor, Cursors},
-    ui::Area,
+    ui::RawArea,
 };
 
 /// The text in a given [`Area`]
@@ -337,7 +336,7 @@ impl Text {
     }
 
     /// Gets the indentation level on the current line
-    pub fn indent(&self, p: Point, area: &impl Area, cfg: PrintCfg) -> usize {
+    pub fn indent(&self, p: Point, area: &impl RawArea, cfg: PrintCfg) -> usize {
         let [start, _] = self.points_of_line(p.line());
         let t_iter = self.iter_fwd(start).no_ghosts().no_conceals();
         area.print_iter(t_iter, cfg.new_line_as('\n'))
@@ -698,8 +697,8 @@ impl Text {
     ////////// Tag addition/deletion functions
 
     /// Inserts a [`Tag`] at the given position
-    pub fn insert_tag(&mut self, key: Key, tag: Tag) {
-        self.0.tags.insert(key, tag.clone());
+    pub fn insert_tag(&mut self, key: Key, tag: Tag<impl RangeBounds<usize>, impl RawTagsFn>) {
+        self.0.tags.insert(key, tag);
     }
 
     /// Removes the [`Tag`]s of a [key] from a region
@@ -750,7 +749,7 @@ impl Text {
 
     /// Removes the tags for all the cursors, used before they are
     /// expected to move
-    pub(crate) fn add_cursors(&mut self, area: &impl Area, cfg: PrintCfg) {
+    pub(crate) fn add_cursors(&mut self, area: &impl RawArea, cfg: PrintCfg) {
         let Some(cursors) = self.0.cursors.take() else {
             return;
         };
@@ -775,7 +774,7 @@ impl Text {
 
     /// Adds the tags for all the cursors, used after they are
     /// expected to have moved
-    pub(crate) fn remove_cursors(&mut self, area: &impl Area, cfg: PrintCfg) {
+    pub(crate) fn remove_cursors(&mut self, area: &impl RawArea, cfg: PrintCfg) {
         let Some(cursors) = self.0.cursors.take() else {
             return;
         };
@@ -803,9 +802,9 @@ impl Text {
         let (caret, selection) = cursor.tag_points(self);
 
         let (cursor, form) = if is_main {
-            (Tag::MainCursor(caret.byte()), form::M_SEL_ID)
+            (Tag::main_cursor(caret.byte()), form::M_SEL_ID)
         } else {
-            (Tag::ExtraCursor(caret.byte()), form::E_SEL_ID)
+            (Tag::main_cursor(caret.byte()), form::E_SEL_ID)
         };
         self.0
             .bytes
@@ -815,7 +814,7 @@ impl Text {
         if let Some([start, end]) = selection {
             self.0.tags.insert(
                 Key::for_cursors(),
-                Tag::Form(start.byte()..end.byte(), form, 250),
+                Tag::form(start.byte()..end.byte(), form, 250),
             );
         }
     }

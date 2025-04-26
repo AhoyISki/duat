@@ -18,7 +18,7 @@
 use std::{fmt::Display, marker::PhantomData};
 
 use super::Reader;
-use crate::{
+use duat_core::{
     data::{DataMap, RwData},
     text::{AlignCenter, AlignLeft, AlignRight, Builder, BuilderPart, Ghost, Spacer, Text},
     ui::Ui,
@@ -101,7 +101,7 @@ impl<D: Display + Send + Clone, U: Ui> From<RwData<D>> for State<U, DataArg<D>> 
     }
 }
 
-impl<U: Ui> From<RwData<Text>> for State<U, DataArg<Text>> {
+impl<U: Ui> From<RwData<Text>> for State<U, DataArg<()>> {
     fn from(value: RwData<Text>) -> Self {
         Self {
             appender: Appender::NoArgs({

@@ -1,15 +1,17 @@
 use std::{io::Write, marker::PhantomData, sync::LazyLock};
 
-use lender::Lender;
-
-use super::{Cursors, EditHelper, IncSearcher, KeyCode, KeyEvent, Mode, key};
-use crate::{
-    cmd, context, form,
+use duat_core::{
+    Lender, cmd, context, form,
     hooks::{self, SearchPerformed, SearchUpdated},
+    mode::{Cursors, EditHelper, KeyCode, KeyEvent, key, self},
     text::{Key, Point, Searcher, Tag, Text, text},
-    ui::{Area, Ui},
-    widgets::{PromptLine, Widget},
+    ui::{RawArea, Ui},
+    widgets::Widget,
 };
+
+use crate::widgets::PromptLine;
+
+use super::IncSearcher;
 
 static PROMPT_KEY: LazyLock<Key> = LazyLock::new(Key::new);
 static KEY: LazyLock<Key> = LazyLock::new(Key::new);
@@ -23,7 +25,7 @@ impl<M: PromptMode<U>, U: Ui> Prompt<M, U> {
     }
 }
 
-impl<M: PromptMode<U>, U: Ui> Mode<U> for Prompt<M, U> {
+impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
     type Widget = PromptLine<U>;
 
     fn send_key(&mut self, key: KeyEvent, widget: &mut Self::Widget, area: &U::Area) {
@@ -35,7 +37,7 @@ impl<M: PromptMode<U>, U: Ui> Mode<U> for Prompt<M, U> {
                     helper.cursors_mut().clear();
                     self.0.update(helper.text_mut(), area);
                     self.0.before_exit(helper.text_mut(), area);
-                    super::reset();
+                    mode::reset();
                 } else {
                     let mut e = helper.edit_main();
                     e.move_hor(-1);
@@ -73,13 +75,13 @@ impl<M: PromptMode<U>, U: Ui> Mode<U> for Prompt<M, U> {
                 helper.cursors_mut().clear();
                 self.0.update(helper.text_mut(), area);
                 self.0.before_exit(helper.text_mut(), area);
-                super::reset();
+                mode::reset();
             }
             key!(KeyCode::Enter) => {
                 helper.cursors_mut().clear();
                 self.0.update(helper.text_mut(), area);
                 self.0.before_exit(helper.text_mut(), area);
-                super::reset();
+                mode::reset();
             }
             _ => {}
         }
@@ -89,7 +91,7 @@ impl<M: PromptMode<U>, U: Ui> Mode<U> for Prompt<M, U> {
         *widget.text_mut() = Text::new_with_cursors();
         run_once::<M, U>();
 
-        let tag = Tag::Ghost(0, match widget.prompt_of::<M>() {
+        let tag = Tag::ghost(0, match widget.prompt_of::<M>() {
             Some(text) => text,
             None => self.0.prompt(),
         });
@@ -130,19 +132,19 @@ impl<U: Ui> PromptMode<U> for RunCommands {
         if let Some(caller) = caller {
             if let Some((ok_ranges, err_range)) = cmd::check_args(&command) {
                 let id = form::id_of!("CallerExists");
-                text.insert_tag(*KEY, Tag::Form(0..caller.len(), id, 0));
+                text.insert_tag(*KEY, Tag::form(0..caller.len(), id, 0));
 
                 let id = form::id_of!("ParameterOk");
                 for range in ok_ranges {
-                    text.insert_tag(*KEY, Tag::Form(range, id, 0));
+                    text.insert_tag(*KEY, Tag::form(range, id, 0));
                 }
                 if let Some((range, _)) = err_range {
                     let id = form::id_of!("ParameterErr");
-                    text.insert_tag(*KEY, Tag::Form(range, id, 0));
+                    text.insert_tag(*KEY, Tag::form(range, id, 0));
                 }
             } else {
                 let id = form::id_of!("CallerNotFound");
-                text.insert_tag(*KEY, Tag::Form(0..caller.len(), id, 0));
+                text.insert_tag(*KEY, Tag::form(0..caller.len(), id, 0));
             }
         }
     }
@@ -152,7 +154,7 @@ impl<U: Ui> PromptMode<U> for RunCommands {
 
         let command = text.to_string();
         if !command.is_empty() {
-            crate::thread::spawn(move || cmd::run_notify(command));
+            duat_core::thread::spawn(move || cmd::run_notify(command));
         }
     }
 
@@ -171,7 +173,7 @@ impl<U: Ui> PromptMode<U> for RunCommands {
 #[derive(Clone)]
 pub struct IncSearch<I: IncSearcher<U>, U: Ui> {
     inc: I,
-    orig: Option<(Cursors, <U::Area as Area>::PrintInfo)>,
+    orig: Option<(Cursors, <U::Area as RawArea>::PrintInfo)>,
     ghost: PhantomData<U>,
     prev: String,
 }
@@ -207,7 +209,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
                 let span = err.span();
                 let id = form::id_of!("ParseCommandErr");
 
-                text.insert_tag(*KEY, Tag::Form(span.start.offset..span.end.offset, id, 0));
+                text.insert_tag(*KEY, Tag::form(span.start.offset..span.end.offset, id, 0));
             }
         }
 
@@ -252,7 +254,7 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
         fn is_in_path(program: &str) -> bool {
             if let Ok(path) = std::env::var("PATH") {
                 for p in path.split(":") {
-                    let p_str = format!("{}/{}", p, program);
+                    let p_str = format!("{p}/{program}");
                     if let Ok(true) = std::fs::exists(p_str) {
                         return true;
                     }
@@ -277,10 +279,10 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
         };
 
         let c_s = command.len() - command.trim_start().len();
-        text.insert_tag(*KEY, Tag::Form(c_s..c_s + caller.len(), caller_id, 0));
+        text.insert_tag(*KEY, Tag::form(c_s..c_s + caller.len(), caller_id, 0));
 
         for (_, range) in args {
-            text.insert_tag(*KEY, Tag::Form(range, args_id, 0));
+            text.insert_tag(*KEY, Tag::form(range, args_id, 0));
         }
     }
 

@@ -6,7 +6,7 @@ use crate::{text::Text, widgets::File};
 mod internals {
     use crate::{
         text::Text,
-        ui::{Area, Node, PushSpecs, Ui},
+        ui::{RawArea, Node, PushSpecs, Ui},
         widgets::File,
     };
 

@@ -59,6 +59,12 @@ impl Printer {
 
     ////////// Area setup functions
 
+    /// Adds a new [`Variable`] to the list of [`Variables`] and
+    /// returns it
+    pub fn new_var(&self) -> Variable {
+        self.vars.lock().new_var()
+    }
+
     /// Adds a new [`VarPoint`] to the list of [`Variable`]s and
     /// returns it
     pub fn new_point(&self) -> VarPoint {

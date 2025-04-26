@@ -4,18 +4,12 @@ pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
 
 pub use self::{
     helper::{Cursor, Cursors, EditHelper, Editor},
-    inc_search::{ExtendFwd, ExtendRev, IncSearcher, Orig, SearchFwd, SearchRev},
-    prompt::{IncSearch, PipeSelections, Prompt, PromptMode, RunCommands},
-    regular::Regular,
     remap::*,
     switch::*,
 };
 use crate::{ui::Ui, widgets::Widget};
 
 mod helper;
-mod inc_search;
-mod prompt;
-mod regular;
 mod remap;
 
 mod switch {
@@ -31,7 +25,7 @@ mod switch {
         duat_name, file_entry,
         hooks::{self, KeySent, KeySentTo, ModeSetTo, ModeSwitched},
         session::sender,
-        ui::{Area, DuatEvent, Ui},
+        ui::{RawArea, DuatEvent, Ui},
         widget_entry,
         widgets::{File, Node, Widget},
     };
@@ -241,7 +235,7 @@ mod switch {
 
         crate::mode::set_send_key::<M, U>();
 
-        let mut old_mode = context::mode_name().write();
+        let mut old_mode = context::raw_mode_name().write();
         let new_mode = duat_name::<M>();
         hooks::trigger::<ModeSwitched>((&old_mode, new_mode));
         *old_mode = new_mode;

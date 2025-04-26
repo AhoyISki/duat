@@ -12,7 +12,7 @@ use crate::{
     data::{ReadDataGuard, RwData, WriteDataGuard},
     mode::Cursors,
     text::Text,
-    ui::{Area, Ui},
+    ui::{RawArea, Ui},
     widgets::{File, Node, Related, Widget},
 };
 
@@ -30,16 +30,13 @@ mod global {
 
     use super::{CurFile, CurWidget, DynamicFile, FileParts, FixedFile, Notifications};
     use crate::{
-        data::RwData,
-        duat_name,
-        mode::Regular,
+        data::{DataMap, RwData},
         text::{Text, err},
         ui::{Ui, Window},
         widgets::Node,
     };
 
-    static MODE_NAME: LazyLock<RwData<&str>> =
-        LazyLock::new(|| RwData::new(duat_name::<Regular>()));
+    static MODE_NAME: LazyLock<RwData<&str>> = LazyLock::new(|| RwData::new(""));
     static CUR_FILE: OnceLock<&(dyn Any + Send + Sync)> = OnceLock::new();
     static CUR_WIDGET: OnceLock<&(dyn Any + Send + Sync)> = OnceLock::new();
     static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
@@ -48,8 +45,18 @@ mod global {
     static WILL_RELOAD_OR_QUIT: AtomicBool = AtomicBool::new(false);
     static CUR_DIR: OnceLock<Mutex<PathBuf>> = OnceLock::new();
 
+    /// The name of the current [`Mode`]
+    ///
+    /// This uses a [`DataMap`] in order to prevent mutation of said
+    /// name.
+    ///
+    /// [`Mode`]: crate::mode::Mode
+    pub fn mode_name() -> DataMap<&'static str, &'static str> {
+        MODE_NAME.map(|name| *name)
+    }
+
     // pub(crate) in order to keep just the status one public
-    pub(crate) fn mode_name() -> &'static RwData<&'static str> {
+    pub(crate) fn raw_mode_name() -> &'static RwData<&'static str> {
         &MODE_NAME
     }
 
@@ -269,16 +276,8 @@ impl<U: Ui> FixedFile<U> {
         other.ptr_eq(&self.0.0)
     }
 
-    pub(crate) fn get_related_widget<W>(&mut self) -> Option<(RwData<W>, U::Area)> {
-        let (.., related) = &self.0;
-        let related = related.read();
-        related.iter().find_map(|node| {
-            let (widget, area, _) = node.parts();
-            widget.try_downcast().map(|data| (data, area.clone()))
-        })
-    }
-
-    pub(crate) fn inspect_related<W: 'static, R>(
+    #[doc(hidden)]
+    pub fn inspect_related<W: 'static, R>(
         &mut self,
         f: impl FnOnce(&W, &U::Area) -> R,
     ) -> Option<R> {
@@ -293,6 +292,15 @@ impl<U: Ui> FixedFile<U> {
                 .find(|node| node.data_is::<W>())
                 .and_then(|node| node.widget().read_as().map(|w| f(&w, node.area())))
         }
+    }
+
+    pub(crate) fn get_related_widget<W>(&mut self) -> Option<(RwData<W>, U::Area)> {
+        let (.., related) = &self.0;
+        let related = related.read();
+        related.iter().find_map(|node| {
+            let (widget, area, _) = node.parts();
+            widget.try_downcast().map(|data| (data, area.clone()))
+        })
     }
 
     pub(crate) fn related_widgets(&self) -> &RwData<Vec<Node<U>>> {
@@ -352,13 +360,8 @@ impl<U: Ui> DynamicFile<U> {
         move || checker.lock()() || { dyn_checker() }
     }
 
-    // NOTE: Doesn't return result, since it is expected that widgets can
-    // only be created after the file exists.
-    pub fn file_ptr_eq(&self, other: &Node<U>) -> bool {
-        other.ptr_eq(&self.dyn_parts.raw_read().as_ref().unwrap().0)
-    }
-
-    pub(crate) fn inspect_related<W: 'static, R>(
+    #[doc(hidden)]
+    pub fn inspect_related<W: 'static, R>(
         &mut self,
         f: impl FnOnce(&W, &U::Area) -> R,
     ) -> Option<R> {
@@ -378,6 +381,12 @@ impl<U: Ui> DynamicFile<U> {
                 .find(|node| node.data_is::<W>())
                 .and_then(|node| node.widget().read_as().map(|w| f(&w, node.area())))
         }
+    }
+
+    // NOTE: Doesn't return result, since it is expected that widgets can
+    // only be created after the file exists.
+    pub fn file_ptr_eq(&self, other: &Node<U>) -> bool {
+        other.ptr_eq(&self.dyn_parts.raw_read().as_ref().unwrap().0)
     }
 }
 

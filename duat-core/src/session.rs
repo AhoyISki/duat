@@ -19,7 +19,7 @@ use crate::{
     mode,
     text::Bytes,
     ui::{
-        Area, DuatEvent, DuatPermission, FileBuilder, Layout, MasterOnLeft, Sender, Ui, Window,
+        DuatEvent, FileBuilder, Layout, MasterOnLeft, MutArea, RawArea, Sender, Ui, Window,
         WindowBuilder,
     },
     widgets::{File, FileCfg, Node, PathKind, WidgetCfg},
@@ -187,7 +187,11 @@ impl<U: Ui> Session<U> {
     pub fn start(
         mut self,
         duat_rx: mpsc::Receiver<DuatEvent>,
-    ) -> (Vec<Vec<FileRet>>, mpsc::Receiver<DuatEvent>, Option<Instant>) {
+    ) -> (
+        Vec<Vec<FileRet>>,
+        mpsc::Receiver<DuatEvent>,
+        Option<Instant>,
+    ) {
         hooks::trigger::<ConfigLoaded>(());
         form::set_sender(Sender::new(sender()));
 
@@ -478,8 +482,8 @@ impl<U: Ui> Session<U> {
             let layout = (self.layout_fn)();
 
             // Create a new Window Swapping the new root with files_area
-            let new_root = U::new_root(self.ms, <U::Area as Area>::Cache::default());
-            node.area().swap(&new_root, DuatPermission::new());
+            let new_root = U::new_root(self.ms, <U::Area as RawArea>::Cache::default());
+            U::Area::swap(MutArea(node.area()), &new_root);
             let window = Window::<U>::from_raw(node.area().clone(), nodes, layout);
             windows.push(window);
 
@@ -487,13 +491,13 @@ impl<U: Ui> Session<U> {
             let lo = node.read_as::<File>().unwrap().layout_ordering;
 
             for (node, _) in &windows[win].file_nodes()[lo..] {
-                new_root.swap(node.area(), DuatPermission::new());
+                MutArea(&new_root).swap(node.area());
             }
             drop(windows);
 
             // Delete the new_root, which should be the last "File" in the
             // list of the original Window.
-            new_root.delete(DuatPermission::new());
+            MutArea(&new_root).delete();
         } else {
             let (widget, checker, _) = <FileCfg as WidgetCfg<U>>::build(
                 self.file_cfg.clone().open_path(PathBuf::from(name.clone())),
@@ -535,7 +539,7 @@ fn swap<U: Ui>(windows: &mut [Window<U>], [lhs_w, rhs_w]: [usize; 2], [lhs, rhs]
     let rhs_nodes = windows[rhs_w].take_file_and_related_nodes(rhs);
     windows[lhs_w].insert_file_nodes(lhs_ordering, rhs_nodes);
 
-    lhs.area().swap(rhs.area(), DuatPermission::new());
+    MutArea(lhs.area()).swap(rhs.area());
 }
 
 enum BreakTo {

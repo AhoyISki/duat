@@ -68,18 +68,17 @@ impl Builder {
             self.text.0.forced_new_line = true;
         }
 
-        let end = self.text.len().byte();
         if let Some((b, id)) = self.last_form
-            && b < end
+            && b < self.text.len().byte()
         {
-            self.text.insert_tag(Key::basic(), Tag::Form(b..end, id, 0));
+            self.text.insert_tag(Key::basic(), Tag::form(b.., id, 0));
         }
         if let Some((b, align)) = self.last_align
-            && b < end
+            && b < self.text.len().byte()
         {
             match align {
-                Alignment::Center => self.text.insert_tag(Key::basic(), Tag::AlignCenter(b..end)),
-                Alignment::Right => self.text.insert_tag(Key::basic(), Tag::AlignRight(b..end)),
+                Alignment::Center => self.text.insert_tag(Key::basic(), Tag::align_center(b..)),
+                Alignment::Right => self.text.insert_tag(Key::basic(), Tag::align_right(b..)),
                 _ => {}
             }
         }
@@ -109,22 +108,22 @@ impl Builder {
                 if let Some((b, id)) = last_form
                     && b < end
                 {
-                    self.text.insert_tag(Key::basic(), Tag::Form(b..end, id, 0));
+                    self.text.insert_tag(Key::basic(), Tag::form(b.., id, 0));
                 }
             }
             BuilderPart::AlignLeft => match self.last_align.take() {
                 Some((b, Alignment::Center)) if b < end => {
-                    self.text.insert_tag(Key::basic(), Tag::AlignCenter(b..end));
+                    self.text.insert_tag(Key::basic(), Tag::align_center(b..));
                 }
                 Some((b, Alignment::Right)) if b < end => {
-                    self.text.insert_tag(Key::basic(), Tag::AlignRight(b..end));
+                    self.text.insert_tag(Key::basic(), Tag::align_right(b..));
                 }
                 _ => {}
             },
             BuilderPart::AlignCenter => match self.last_align.take() {
                 Some((b, Alignment::Center)) => self.last_align = Some((b, Alignment::Center)),
                 Some((b, Alignment::Right)) if b < end => {
-                    self.text.insert_tag(Key::basic(), Tag::AlignRight(b..end));
+                    self.text.insert_tag(Key::basic(), Tag::align_right(b..));
                 }
                 None => self.last_align = Some((end, Alignment::Center)),
                 Some(_) => {}
@@ -132,13 +131,13 @@ impl Builder {
             BuilderPart::AlignRight => match self.last_align.take() {
                 Some((b, Alignment::Right)) => self.last_align = Some((b, Alignment::Right)),
                 Some((b, Alignment::Center)) if b < end => {
-                    self.text.insert_tag(Key::basic(), Tag::AlignCenter(b..end));
+                    self.text.insert_tag(Key::basic(), Tag::align_center(b..));
                 }
                 None => self.last_align = Some((end, Alignment::Right)),
                 Some(_) => {}
             },
-            BuilderPart::Spacer(_) => self.text.insert_tag(Key::basic(), Tag::Spacer(end)),
-            BuilderPart::Ghost(text) => self.text.insert_tag(Key::basic(), Tag::Ghost(end, text)),
+            BuilderPart::Spacer(_) => self.text.insert_tag(Key::basic(), Tag::spacer(end)),
+            BuilderPart::Ghost(text) => self.text.insert_tag(Key::basic(), Tag::ghost(end, text)),
         }
     }
 
@@ -177,7 +176,7 @@ impl Builder {
 
         if let Some((b, id)) = self.last_form.take() {
             self.text
-                .insert_tag(Key::basic(), Tag::Form(b..self.text.len().byte(), id, 0));
+                .insert_tag(Key::basic(), Tag::form(b.., id, 0));
         }
 
         self.text.0.bytes.extend(text.0.bytes);

@@ -122,7 +122,7 @@ use crate::{
     data::RwData,
     form::{Form, FormId},
     mode::{Cursors, KeyEvent, Mode},
-    ui::{Area, FileBuilder, Ui, WindowBuilder},
+    ui::{RawArea, FileBuilder, Ui, WindowBuilder},
     widgets::Widget,
 };
 

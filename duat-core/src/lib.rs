@@ -234,7 +234,6 @@
 //! [remove]: crate::text::Text::remove_tags
 //! [Move]: crate::mode::Editor::move_to
 #![feature(
-    let_chains,
     decl_macro,
     step_trait,
     type_alias_impl_trait,
@@ -281,7 +280,6 @@ pub mod form;
 pub mod hooks;
 pub mod mode;
 pub mod session;
-pub mod status;
 pub mod text;
 pub mod ui;
 pub mod widgets;

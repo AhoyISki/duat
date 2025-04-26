@@ -1,9 +1,9 @@
 //! A [`Widget`] that shows notifications
 //!
 //! This is a very simple [`Widget`], and will usually be placed right
-//! under a [`PromptLine`], which, when the `"HidePromptLine"` [hook] group
-//! exists, will be hidden when the [`PromptLine`] is not in focus,
-//! allowing for the [`Notifications`] widget to pop up.
+//! under a [`PromptLine`], which, when the `"HidePromptLine"` [hook]
+//! group exists, will be hidden when the [`PromptLine`] is not in
+//! focus, allowing for the [`Notifications`] widget to pop up.
 //!
 //! [`PromptLine`]: super::PromptLine
 //! [hook]: hooks
@@ -12,19 +12,19 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use super::{CheckerFn, Widget, WidgetCfg};
-use crate::{
+use duat_core::{
     context::{self, Notifications},
     hooks::{self, KeySent},
     text::Text,
     ui::{PushSpecs, Ui},
+    widgets::{CheckerFn, Widget, WidgetCfg},
 };
 
 /// A [`Widget`] to show notifications
 ///
-/// By default, it is expected to be placed "under" a [`PromptLine`], and
-/// with the `"HidePromptLine"` [hook] group, take its place when the
-/// [`PromptLine`] is not in focus.
+/// By default, it is expected to be placed "under" a [`PromptLine`],
+/// and with the `"HidePromptLine"` [hook] group, take its place when
+/// the [`PromptLine`] is not in focus.
 ///
 /// If you don't want this behaviour, see [`left_with_ratio`]
 ///
@@ -74,9 +74,9 @@ impl<U: Ui> Widget<U> for Notifier<U> {
 
 /// A [`Widget`] to show notifications
 ///
-/// By default, it is expected to be placed "under" a [`PromptLine`], and
-/// with the `"HidePromptLine"` [hook] group, take its place when the
-/// [`PromptLine`] is not in focus.
+/// By default, it is expected to be placed "under" a [`PromptLine`],
+/// and with the `"HidePromptLine"` [hook] group, take its place when
+/// the [`PromptLine`] is not in focus.
 ///
 /// If you don't want this behaviour, see [`left_with_ratio`]
 ///

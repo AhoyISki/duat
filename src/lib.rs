@@ -615,7 +615,7 @@ pub mod prelude {
             self, AlignCenter, AlignLeft, AlignRight, Builder, Ghost, RawTag, Spacer, Tag, Text,
             err, hint, ok, text,
         },
-        ui::{Area as AreaTrait, FileBuilder, WindowBuilder},
+        ui::{RawArea as AreaTrait, FileBuilder, WindowBuilder},
         widgets::Widget,
     };
     #[cfg(feature = "term-ui")]

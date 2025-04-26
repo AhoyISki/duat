@@ -1,17 +1,16 @@
-use lender::Lender;
-
-use super::{
-    EditHelper, IncSearch, KeyCode, KeyEvent, KeyMod, RunCommands, SearchFwd, SearchRev, key,
-};
-use crate::{
-    ui::{Area, Ui},
+use duat_core::{
+    Lender,
+    mode::{self, EditHelper, KeyCode, KeyEvent, KeyMod, key},
+    ui::{RawArea, Ui},
     widgets::File,
 };
+
+use super::{IncSearch, RunCommands, SearchFwd, SearchRev};
 
 #[derive(Clone)]
 pub struct Regular;
 
-impl<U: Ui> super::Mode<U> for Regular {
+impl<U: Ui> mode::Mode<U> for Regular {
     type Widget = File;
 
     fn send_key(&mut self, key: KeyEvent, widget: &mut Self::Widget, area: &U::Area) {
@@ -54,16 +53,16 @@ impl<U: Ui> super::Mode<U> for Regular {
             key!(KeyCode::Down, KeyMod::NONE) => move_each(helper, Side::Bottom, 1),
 
             // Control
-            key!(KeyCode::Char('p'), KeyMod::CONTROL) => super::set::<U>(RunCommands::new()),
-            key!(KeyCode::Char('f'), KeyMod::CONTROL) => super::set::<U>(IncSearch::new(SearchFwd)),
-            key!(KeyCode::Char('F'), KeyMod::CONTROL) => super::set::<U>(IncSearch::new(SearchRev)),
+            key!(KeyCode::Char('p'), KeyMod::CONTROL) => mode::set::<U>(RunCommands::new()),
+            key!(KeyCode::Char('f'), KeyMod::CONTROL) => mode::set::<U>(IncSearch::new(SearchFwd)),
+            key!(KeyCode::Char('F'), KeyMod::CONTROL) => mode::set::<U>(IncSearch::new(SearchRev)),
 
             _ => {}
         }
     }
 }
 
-fn move_each<S>(mut helper: EditHelper<File, impl Area, S>, direction: Side, amount: u32) {
+fn move_each<S>(mut helper: EditHelper<File, impl RawArea, S>, direction: Side, amount: u32) {
     helper.edit_iter().for_each(|mut e| {
         e.unset_anchor();
         match direction {
@@ -76,7 +75,7 @@ fn move_each<S>(mut helper: EditHelper<File, impl Area, S>, direction: Side, amo
 }
 
 fn move_each_and_select<S>(
-    mut helper: EditHelper<File, impl Area, S>,
+    mut helper: EditHelper<File, impl RawArea, S>,
     direction: Side,
     amount: u32,
 ) {

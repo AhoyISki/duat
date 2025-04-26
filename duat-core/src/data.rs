@@ -491,6 +491,14 @@ impl<T: ?Sized> RwData<T> {
     }
 }
 
+impl<I: ?Sized + Send + 'static> RwData<I> {
+    pub fn map<O>(&self, mut f: impl FnMut(&I) -> O + Send + 'static) -> DataMap<I, O> {
+        let data = self.clone();
+        let f = move || f(&*data.read());
+        DataMap { data: self.clone(), f: Box::new(f) }
+    }
+}
+
 impl<T: ?Sized + std::fmt::Debug> std::fmt::Debug for RwData<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Debug::fmt(&*self.data.lock(), f)
@@ -562,6 +570,9 @@ pub struct DataMap<I: ?Sized + Send + 'static, O> {
 }
 
 impl<I: ?Sized + Send + 'static, O> DataMap<I, O> {
+    /// Deconstructs this [mapping] into its `map` and `checker` parts
+    ///
+    /// [mapping]: DataMap
     pub fn fns(
         self,
     ) -> (
@@ -569,6 +580,33 @@ impl<I: ?Sized + Send + 'static, O> DataMap<I, O> {
         Box<dyn Fn() -> bool + Send + Sync>,
     ) {
         (self.f, Box::new(self.data.checker()))
+    }
+
+    /// A function that returns true if the data has changed
+    ///
+    /// This is essentially a faster way of writing
+    ///
+    /// ```rust
+    /// # use duat_core::data::RwData;
+    /// let my_data = RwData::new(42);
+    /// let checker = {
+    ///     let my_data = my_data.clone();
+    ///     move || my_data.has_changed()
+    /// };
+    /// ```
+    ///
+    /// [`Widget`]: crate::widgets::Widget
+    pub fn checker(&self) -> impl Fn() -> bool + Send + Sync + use<I, O> {
+        self.data.checker()
+    }
+}
+
+impl<I: ?Sized + Send + 'static, O: 'static> DataMap<I, O> {
+    pub fn map<O2>(mut self, mut f: impl FnMut(O) -> O2 + Send + 'static) -> DataMap<I, O2> {
+        DataMap {
+            data: self.data,
+            f: Box::new(move || f((self.f)())),
+        }
     }
 }
 
@@ -583,22 +621,5 @@ impl<I: ?Sized + Send + 'static, O> FnOnce<()> for DataMap<I, O> {
 impl<I: ?Sized + Send + 'static, O> FnMut<()> for DataMap<I, O> {
     extern "rust-call" fn call_mut(&mut self, _: ()) -> Self::Output {
         (self.f)()
-    }
-}
-
-impl<I: ?Sized + Send + 'static> RwData<I> {
-    pub fn map<O>(&self, mut f: impl FnMut(&I) -> O + Send + 'static) -> DataMap<I, O> {
-        let data = self.clone();
-        let f = move || f(&*data.read());
-        DataMap { data: self.clone(), f: Box::new(f) }
-    }
-}
-
-impl<I: ?Sized + Send + 'static, O: 'static> DataMap<I, O> {
-    pub fn map<O2>(mut self, mut f: impl FnMut(O) -> O2 + Send + 'static) -> DataMap<I, O2> {
-        DataMap {
-            data: self.data,
-            f: Box::new(move || f((self.f)())),
-        }
     }
 }
