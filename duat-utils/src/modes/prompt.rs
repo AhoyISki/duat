@@ -310,7 +310,7 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
 
             let input: String = e.selection().collect();
             if let Some(mut stdin) = child.stdin.take() {
-                crate::thread::spawn(move || {
+                duat_core::thread::spawn(move || {
                     stdin.write_all(input.as_bytes()).unwrap();
                 });
             }
@@ -332,7 +332,7 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
 fn run_once<M: PromptMode<U>, U: Ui>() {
     use std::{any::TypeId, sync::LazyLock};
 
-    use crate::data::RwData;
+    use duat_core::data::RwData;
     static LIST: LazyLock<RwData<Vec<TypeId>>> = LazyLock::new(|| RwData::new(Vec::new()));
 
     let mut list = LIST.write();

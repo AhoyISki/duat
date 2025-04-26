@@ -19,11 +19,12 @@ use std::{any::TypeId, collections::HashMap, marker::PhantomData};
 use duat_core::{
     cfg::PrintCfg,
     form, hooks,
-    mode::PromptMode,
     text::Text,
     ui::{PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
 };
+
+use crate::modes::PromptMode;
 
 impl<U: Ui> WidgetCfg<U> for PromptLineCfg<U> {
     type Widget = PromptLine<U>;

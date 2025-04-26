@@ -933,7 +933,7 @@ mod global {
             (ok_ranges, None)
         };
 
-        add_for_inner::<$w_ty, <$a_ty as $crate::ui::Area>::Ui>($callers, cmd, check_args)
+        add_for_inner::<$w_ty, <$a_ty as $crate::ui::RawArea>::Ui>($callers, cmd, check_args)
     }}
 
     /// Canonical way to quit Duat.

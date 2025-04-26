@@ -7,7 +7,13 @@ use duat_core::{
 };
 
 pub trait IncSearcher<U: Ui>: Clone + Send + Sync + 'static {
-    fn search(&mut self, orig: &Orig<U>, file: &mut File, area: &U::Area, searcher: Searcher);
+    fn search(
+        &mut self,
+        orig: &(Cursors, <U::Area as RawArea>::PrintInfo),
+        file: &mut File,
+        area: &U::Area,
+        searcher: Searcher,
+    );
 
     fn prompt(&self) -> Text;
 }
@@ -16,7 +22,13 @@ pub trait IncSearcher<U: Ui>: Clone + Send + Sync + 'static {
 pub struct SearchFwd;
 
 impl<U: Ui> IncSearcher<U> for SearchFwd {
-    fn search(&mut self, orig: &Orig<U>, file: &mut File, area: &U::Area, searcher: Searcher) {
+    fn search(
+        &mut self,
+        orig: &(Cursors, <U::Area as RawArea>::PrintInfo),
+        file: &mut File,
+        area: &U::Area,
+        searcher: Searcher,
+    ) {
         let (cursors, info) = orig;
         *file.cursors_mut().unwrap() = cursors.clone();
         if searcher.is_empty() {
@@ -50,7 +62,13 @@ impl<U: Ui> IncSearcher<U> for SearchFwd {
 pub struct SearchRev;
 
 impl<U: Ui> IncSearcher<U> for SearchRev {
-    fn search(&mut self, orig: &Orig<U>, file: &mut File, area: &U::Area, searcher: Searcher) {
+    fn search(
+        &mut self,
+        orig: &(Cursors, <U::Area as RawArea>::PrintInfo),
+        file: &mut File,
+        area: &U::Area,
+        searcher: Searcher,
+    ) {
         let (cursors, info) = orig;
         *file.cursors_mut().unwrap() = cursors.clone();
         if searcher.is_empty() {
@@ -84,7 +102,13 @@ impl<U: Ui> IncSearcher<U> for SearchRev {
 pub struct ExtendFwd;
 
 impl<U: Ui> IncSearcher<U> for ExtendFwd {
-    fn search(&mut self, orig: &Orig<U>, file: &mut File, area: &U::Area, searcher: Searcher) {
+    fn search(
+        &mut self,
+        orig: &(Cursors, <U::Area as RawArea>::PrintInfo),
+        file: &mut File,
+        area: &U::Area,
+        searcher: Searcher,
+    ) {
         let (cursors, info) = orig;
         *file.cursors_mut().unwrap() = cursors.clone();
         if searcher.is_empty() {
@@ -116,7 +140,13 @@ impl<U: Ui> IncSearcher<U> for ExtendFwd {
 pub struct ExtendRev;
 
 impl<U: Ui> IncSearcher<U> for ExtendRev {
-    fn search(&mut self, orig: &Orig<U>, file: &mut File, area: &U::Area, searcher: Searcher) {
+    fn search(
+        &mut self,
+        orig: &(Cursors, <U::Area as RawArea>::PrintInfo),
+        file: &mut File,
+        area: &U::Area,
+        searcher: Searcher,
+    ) {
         let (cursors, info) = orig;
         *file.cursors_mut().unwrap() = cursors.clone();
         if searcher.is_empty() {
@@ -143,6 +173,3 @@ impl<U: Ui> IncSearcher<U> for ExtendRev {
         text!([Prompt] "rev search (extend)" [Prompt.colon] ":")
     }
 }
-
-#[allow(type_alias_bounds)]
-pub type Orig<U: Ui> = (Cursors, <U::Area as RawArea>::PrintInfo);

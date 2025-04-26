@@ -554,13 +554,14 @@ pub mod hooks {
 /// Duat's builtin widgets
 pub mod widgets {
     pub use duat_core::widgets::*;
+    pub use duat_utils::widgets::*;
 }
 
 /// Common [`StatusLine`] fields
 ///
-/// [`StatusLine`]: crate::widgets::StatusLine
+/// [`StatusLine`]: duat_utils::widgets::StatusLine
 pub mod state {
-    pub use duat_core::status::*;
+    pub use duat_utils::state::*;
 }
 
 /// Prebuilt general controls for Duat

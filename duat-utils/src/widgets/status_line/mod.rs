@@ -24,7 +24,7 @@ use duat_core::{
 };
 
 pub use self::state::State;
-use crate::status::{file_fmt, main_fmt, mode_fmt, mode_name, selections_fmt};
+use crate::state::{file_fmt, main_fmt, mode_fmt, mode_name, selections_fmt};
 
 /// A widget to show information, usually about a [`File`]
 ///
@@ -164,7 +164,7 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
             let checker = match self.checker {
                 Some(checker) => checker,
                 // mode checker because mode_name is used in the default
-                None => Box::new(crate::status::mode_name().checker()),
+                None => Box::new(crate::state::mode_name().checker()),
             };
             (reader, move || file_checker() || checker())
         };
@@ -344,7 +344,7 @@ pub macro status {
     }},
     // Insertion of directly named form.
     (@append $pre_fn:expr, $checker:expr, [$form:ident $(.$suffix:ident)*]) => {{
-        let id = crate::form::id_of!(concat!(
+        let id = form::id_of!(concat!(
             stringify!($form) $(, stringify!(.), stringify!($suffix))*
         ));
 

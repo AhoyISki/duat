@@ -19,12 +19,12 @@ use duat_core::{
     cfg::PrintCfg,
     clipboard::Clipboard,
     context::{CurFile, CurWidget},
-    mode::Regular,
     session::{FileRet, SessionCfg},
-    ui::{self, RawArea, Constraint, DuatEvent, Window},
+    ui::{self, Constraint, DuatEvent, RawArea, Window},
     widgets::Widget,
 };
 use duat_term::VertRule;
+use duat_utils::modes::Regular;
 
 use crate::{
     CfgFn, Ui,

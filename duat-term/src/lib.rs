@@ -1,4 +1,4 @@
-#![feature(let_chains, decl_macro, debug_closure_helpers)]
+#![feature(decl_macro, debug_closure_helpers)]
 use std::{
     fmt::Debug,
     io::{self, Write},

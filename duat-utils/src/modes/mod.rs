@@ -1,5 +1,5 @@
 pub use self::{
-    inc_search::{ExtendFwd, ExtendRev, IncSearcher, Orig, SearchFwd, SearchRev},
+    inc_search::{ExtendFwd, ExtendRev, IncSearcher, SearchFwd, SearchRev},
     prompt::{IncSearch, PipeSelections, Prompt, PromptMode, RunCommands},
     regular::Regular,
 };

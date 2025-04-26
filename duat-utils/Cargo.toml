@@ -11,4 +11,4 @@ edition = "2024"
 
 [dependencies]
 duat-core = { version = "0.4.0", path = "../duat-core/" }
-regex_syntax = "0.8.5"
+regex-syntax = "0.8.5"

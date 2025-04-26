@@ -1,5 +1,5 @@
 #![feature(decl_macro)]
 
-pub mod status;
+pub mod state;
 pub mod widgets;
 pub mod modes;
