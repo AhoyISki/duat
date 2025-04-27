@@ -164,6 +164,8 @@ impl ui::Ui for Ui {
                 Print(info)
             );
             if let std::backtrace::BacktraceStatus::Captured = trace.status() {
+                println!();
+                queue!(io::stdout(), cursor::MoveToColumn(0));
                 for line in trace.to_string().lines() {
                     if !line.contains("             at ") {
                         println!("{line}");

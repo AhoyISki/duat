@@ -18,7 +18,6 @@ type_complexity = "allow"
 while_let_on_iterator = "allow"
 
 [dependencies]
-crossterm = "0.29.0"
 parking_lot = "0.12.3"
 gapbuf = "0.1.4"
 dirs-next = "2.0.0"
@@ -28,6 +27,7 @@ regex-automata = "0.4.9"
 regex-syntax = "0.8.5"
 arboard = { version = "3.5.0", default-features = false }
 lender = { version = "0.3.1", default-features = false }
+crossterm = { version = "0.29.0", default-features = false, features = ["events"] }
 
 [features]
 # NOTE: Features meant for testing only by myself.

@@ -48,7 +48,7 @@ fn parts<'a>(
         let mut old_x = x;
         x += len;
 
-        let width_wrap = x > cap || (x == cap && processed_part.is_tag());
+        let width_wrap = x > cap;
         let nl_wrap = needs_to_wrap && prev_char.is_some();
         if nl_wrap || width_wrap {
             old_x = old_indent;
@@ -56,9 +56,7 @@ fn parts<'a>(
             needs_to_wrap = false;
         };
 
-        if let Some(char) = item.part.as_char()
-            && char == '\n'
-        {
+        if item.part == Part::Char('\n') {
             needs_to_wrap = true;
             x = 0;
         }
@@ -137,7 +135,7 @@ fn attach_caret(
     let mut old_x = *x;
     *x += len;
 
-    let width_wrap = *x > cap || (*x == cap && len == 0);
+    let width_wrap = *x > cap;
     let nl_wrap = *needs_to_wrap && prev_char.is_some();
     if nl_wrap || width_wrap {
         old_x = indent;

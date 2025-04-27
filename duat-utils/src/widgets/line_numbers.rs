@@ -47,7 +47,7 @@ impl<U: Ui> LineNumbers<U> {
         align(&mut builder, self.cfg.align);
 
         for (index, (line, is_wrapped)) in printed_lines.iter().enumerate() {
-            if main_line == *line {
+            if *line == main_line {
                 align(&mut builder, self.cfg.main_align);
             }
 
@@ -61,7 +61,7 @@ impl<U: Ui> LineNumbers<U> {
             let is_wrapped = *is_wrapped && index > 0;
             push_text(&mut builder, *line, main_line, is_wrapped, &self.cfg);
 
-            if main_line == *line {
+            if *line == main_line {
                 align(&mut builder, self.cfg.align);
             }
         }

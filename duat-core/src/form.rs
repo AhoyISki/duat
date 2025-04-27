@@ -702,7 +702,7 @@ impl Form {
     }
 
     /// The attributes
-    pub const fn attr(&self) -> Attributes {
+    pub const fn attrs(&self) -> Attributes {
         self.style.attributes
     }
 }
@@ -1019,11 +1019,11 @@ impl Palette {
             inner,
             default,
             forms: Vec::new(),
-            reset_count: 0,
             final_form_start: 0,
             set_fg: true,
             set_bg: true,
             set_ul: true,
+            reset_attrs: false,
         }
     }
 }
@@ -1032,11 +1032,11 @@ pub struct Painter {
     inner: RwLockReadGuard<'static, InnerPalette>,
     default: Form,
     forms: Vec<(Form, FormId)>,
-    reset_count: usize,
     final_form_start: usize,
     set_fg: bool,
     set_bg: bool,
     set_ul: bool,
+    reset_attrs: bool,
 }
 
 impl Painter {
@@ -1053,16 +1053,15 @@ impl Painter {
         let forms = &self.inner.forms;
         let form = forms.get(i).map(|(_, f, _)| *f).unwrap_or(Form::new().0);
 
-        self.reset_count += form.style.attributes.has(Attribute::Reset) as usize;
-
         self.forms.insert(self.final_form_start, (form, id));
-        if !(id == M_SEL_ID || id == E_SEL_ID) {
+        if id != M_SEL_ID && id != E_SEL_ID {
             self.final_form_start += 1;
         }
 
         self.set_fg |= form.fg().is_some();
         self.set_bg |= form.bg().is_some();
         self.set_ul |= form.ul().is_some();
+        self.reset_attrs |= form.attrs().has(Attribute::Reset);
     }
 
     /// Removes the [`Form`] with the given `id` and returns the
@@ -1070,8 +1069,7 @@ impl Painter {
     #[inline(always)]
     pub fn remove(&mut self, id: FormId) {
         let mut applied_forms = self.forms.iter().enumerate();
-        if let Some((i, &(form, _))) = applied_forms.rfind(|(_, (_, i))| *i == id) {
-            self.reset_count -= form.style.attributes.has(Attribute::Reset) as usize;
+        if let Some((i, &(form, _))) = applied_forms.rfind(|(_, (_, lhs))| *lhs == id) {
             self.forms.remove(i);
             if id != M_SEL_ID && id != E_SEL_ID {
                 self.final_form_start -= 1;
@@ -1080,6 +1078,7 @@ impl Painter {
             self.set_fg |= form.fg().is_some();
             self.set_bg |= form.bg().is_some();
             self.set_ul |= form.ul().is_some();
+            self.reset_attrs |= !form.attrs().is_empty();
         };
     }
 
@@ -1090,7 +1089,8 @@ impl Painter {
     /// [`ResetState`]: crate::text::Part::ResetState
     #[inline(always)]
     pub fn reset(&mut self) -> ContentStyle {
-        self.forms.splice(1.., []);
+        self.final_form_start = 0;
+        self.forms.clear();
         self.absolute_style()
     }
 
@@ -1106,10 +1106,10 @@ impl Painter {
             style.foreground_color = form.fg().or(style.foreground_color);
             style.background_color = form.bg().or(style.background_color);
             style.underline_color = form.ul().or(style.underline_color);
-            style.attributes = if form.attr().has(Attribute::Reset) {
-                form.attr()
+            style.attributes = if form.attrs().has(Attribute::Reset) {
+                form.attrs()
             } else {
-                form.attr() | style.attributes
+                form.attrs() | style.attributes
             }
         }
 
@@ -1131,7 +1131,7 @@ impl Painter {
     pub fn relative_style(&mut self) -> ContentStyle {
         let mut style = self.absolute_style();
 
-        if self.reset_count > 0 {
+        if style.attributes.has(Attribute::Reset) || self.reset_attrs {
             style.attributes.set(Attribute::Reset);
         // Only when we are certain that all forms have been
         // printed, can we cull unnecessary colors for efficiency
@@ -1151,6 +1151,7 @@ impl Painter {
         self.set_fg = false;
         self.set_bg = false;
         self.set_ul = false;
+        self.reset_attrs = false;
 
         style
     }
@@ -1163,8 +1164,8 @@ impl Painter {
 
     #[inline(always)]
     pub fn remove_main_cursor(&mut self) {
-        self.remove(M_CUR_ID);
         self.final_form_start += 1;
+        self.remove(M_CUR_ID);
     }
 
     #[inline(always)]
@@ -1175,8 +1176,8 @@ impl Painter {
 
     #[inline(always)]
     pub fn remove_extra_cursor(&mut self) {
-        self.remove(E_CUR_ID);
         self.final_form_start += 1;
+        self.remove(E_CUR_ID);
     }
 
     /// The [`Form`] "ExtraCursor", and its shape.

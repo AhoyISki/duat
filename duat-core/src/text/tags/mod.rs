@@ -98,7 +98,7 @@ impl Tags {
                 .any(|lhs| lhs == tag)
         }
 
-		let (s_at, e_at) = get_ends(tag.range, self.len_bytes());
+        let (s_at, e_at) = get_ends(tag.range, self.len_bytes());
         let (s_tag, e_tag, toggle) = (tag.tags)(key, &mut self.ghosts, &mut self.toggles);
 
         let [s_n, s_b, s_skip] = self.skip_at(s_at);
@@ -525,8 +525,8 @@ impl Tags {
         // Finish shifting ranges to update
         let (sh_from, total_n_diff) = std::mem::take(&mut self.ranges_shift_state);
         for range in self.ranges_to_update[sh_from..].iter_mut() {
-            range.start = (range.start as i32 + total_n_diff) as usize;
-            range.end = (range.end as i32 + total_n_diff) as usize;
+            range.start = sh(range.start, total_n_diff);
+            range.end = sh(range.end, total_n_diff);
         }
 
         let ranges = std::mem::take(&mut self.ranges_to_update);
@@ -904,33 +904,40 @@ impl Tags {
         // In this case, since n_diff < 0, it acts much like a taken_range
         // from a Change, so we must merge the ranges that were caught up in
         // ins_n..abs(n_diff)
+
         if n_diff < 0 {
             let m_range = merging_range_by_guess_and_lazy_shift(
                 (&self.ranges_to_update, self.ranges_to_update.len()),
                 (0, [ins_n, ins_n + n_diff.unsigned_abs() as usize]),
-                (sh_from, total_n_diff, 0, |i, sh| (i as i32 + sh) as usize),
+                (sh_from, total_n_diff, 0, sh),
                 (|r| r.start, |r| r.end),
             );
 
-            if sh_from <= m_range.end {
+            let new_sh_from = if sh_from <= m_range.end {
                 for range in self.ranges_to_update[sh_from..m_range.end].iter_mut() {
-                    range.start = (range.start as i32 + total_n_diff) as usize;
-                    range.end = (range.end as i32 + total_n_diff) as usize;
+                    range.start = sh(range.start, total_n_diff);
+                    range.end = sh(range.end, total_n_diff);
                 }
-            }
+                m_range.end
+            } else {
+                sh_from
+            };
 
             let mut iter = self.ranges_to_update[m_range.clone()].iter();
             let first = iter.next().cloned();
             if let Some(first) = first {
                 let last = iter.next_back().cloned().unwrap_or(first.clone());
-                self.ranges_to_update
-                    .splice(m_range.clone(), [first.start..last.end]);
+                self.ranges_to_update.splice(m_range.clone(), [
+                    // Either last.end <= ins_n, in which case take ins_n, or last.end > ins_n,
+                    // needing to be shifted.
+                    first.start..sh(last.end, n_diff).max(ins_n),
+                ]);
             };
 
-            let ranges_taken = m_range.clone().count();
-            let new_sh_from = sh_from.saturating_sub(ranges_taken).max(m_range.start);
-            if new_sh_from < self.ranges_to_update.len() {
-                self.ranges_shift_state = (new_sh_from, total_n_diff);
+            // If any ranges were taken, at least one was added.
+            let shifted_sh_from = new_sh_from - m_range.clone().count().saturating_sub(1);
+            if shifted_sh_from < self.ranges_to_update.len() {
+                self.ranges_shift_state = (shifted_sh_from, total_n_diff);
             } else {
                 return bounds_ins;
             }
@@ -996,8 +1003,8 @@ impl Tags {
         // The ranges in this region have not been callibrated yet.
         if sh_from <= m_range.end {
             for range in self.ranges_to_update[sh_from..m_range.end].iter_mut() {
-                range.start = (range.start as i32 + total_n_diff) as usize;
-                range.end = (range.end as i32 + total_n_diff) as usize;
+                range.start = sh(range.start, total_n_diff);
+                range.end = sh(range.end, total_n_diff);
             }
         }
 

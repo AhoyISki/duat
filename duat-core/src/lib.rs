@@ -243,7 +243,7 @@
     unboxed_closures,
     fn_traits,
     associated_type_defaults,
-    dropck_eyepatch,
+    dropck_eyepatch
 )]
 #![allow(clippy::single_range_in_vec_init)]
 
@@ -633,7 +633,7 @@ fn add_shifts(lhs: [i32; 3], rhs: [i32; 3]) -> [i32; 3] {
 /// By using this function, it is very possible to
 /// It is currently used in 2 places, in the `History` of [`Text`]s,
 /// and in the `Cursors` list.
-fn merging_range_by_guess_and_lazy_shift<T, U: Copy + Ord, V: Copy>(
+fn merging_range_by_guess_and_lazy_shift<T, U: Copy + Ord + std::fmt::Debug, V: Copy>(
     (container, len): (&impl std::ops::Index<usize, Output = T>, usize),
     (guess_i, [start, end]): (usize, [U; 2]),
     (sh_from, shift, zero_shift, shift_fn): (usize, V, V, fn(U, V) -> U),
@@ -669,7 +669,7 @@ fn merging_range_by_guess_and_lazy_shift<T, U: Copy + Ord, V: Copy>(
         Err(left)
     }
 
-    let sh = |n: usize| if sh_from <= n { shift } else { zero_shift };
+    let sh = |n: usize| if n >= sh_from { shift } else { zero_shift };
     let start_of = |i: usize| shift_fn(start_fn(&container[i]), sh(i));
     let end_of = |i: usize| shift_fn(end_fn(&container[i]), sh(i));
     let search = |n: usize, t: &T| shift_fn(start_fn(t), sh(n));
@@ -704,7 +704,7 @@ fn merging_range_by_guess_and_lazy_shift<T, U: Copy + Ord, V: Copy>(
             Ok(i) => i + 1,
             Err(i) => i,
         }
-    };
+    }
 
     while c_range.end + 1 < len && end >= start_of(c_range.end + 1) {
         c_range.end += 1;
