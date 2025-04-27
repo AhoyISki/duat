@@ -135,18 +135,18 @@ impl Tags {
             if e_ins + e_n_diff - s_ins + s_n_diff >= self.range_min {
                 let id = RangeId::new();
 
-                self.declare_shifted(bounds_s_ins);
                 self.bounds.insert(
                     bounds_s_ins,
                     (Cell::new([s_ins + s_n_diff - 1, s_at]), s_tag, id),
                 );
+                self.declare_shifted(bounds_s_ins);
 
                 let bounds_e_ins = self.shift_bounds_and_ranges(e_ins, [e_n_diff as i32, 0]);
-                self.declare_shifted(bounds_e_ins);
                 self.bounds.insert(
                     bounds_e_ins,
                     (Cell::new([e_ins + e_n_diff - 1, e_at]), e_tag, id),
                 );
+                self.declare_shifted(bounds_e_ins);
             } else {
                 self.shift_bounds_and_ranges(e_ins, [e_n_diff as i32, 0]);
             }
@@ -855,6 +855,7 @@ impl Tags {
         }
     }
 
+    #[track_caller]
     fn shift_bounds_and_ranges(&mut self, ins_n: usize, [n_diff, b_diff]: [i32; 2]) -> usize {
         ////////// Shifting of bounds
         let (mut sh_from, [mut total_n_diff, mut total_b_diff]) = self.bounds_shift_state.take();
@@ -913,15 +914,13 @@ impl Tags {
                 (|r| r.start, |r| r.end),
             );
 
-            let new_sh_from = if sh_from <= m_range.end {
+            if sh_from <= m_range.end {
                 for range in self.ranges_to_update[sh_from..m_range.end].iter_mut() {
                     range.start = sh(range.start, total_n_diff);
                     range.end = sh(range.end, total_n_diff);
                 }
-                m_range.end
-            } else {
-                sh_from
-            };
+                sh_from = m_range.end;
+            }
 
             let mut iter = self.ranges_to_update[m_range.clone()].iter();
             let first = iter.next().cloned();
@@ -935,12 +934,7 @@ impl Tags {
             };
 
             // If any ranges were taken, at least one was added.
-            let shifted_sh_from = new_sh_from - m_range.clone().count().saturating_sub(1);
-            if shifted_sh_from < self.ranges_to_update.len() {
-                self.ranges_shift_state = (shifted_sh_from, total_n_diff);
-            } else {
-                return bounds_ins;
-            }
+            sh_from -= m_range.clone().count().saturating_sub(1);
         } else if n_diff == 0 {
             return bounds_ins;
         }
@@ -1226,6 +1220,7 @@ struct DebugBounds<'a>(&'a Tags);
 impl std::fmt::Debug for DebugBounds<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if f.alternate() && !self.0.is_empty() {
+            f.write_str("[\n")?;
             let (sh_from, [total_n_diff, total_b_diff]) = self.0.bounds_shift_state.get();
             for (i, (bound, tag, id)) in self.0.bounds.iter().enumerate() {
                 let bound = if i < sh_from {
