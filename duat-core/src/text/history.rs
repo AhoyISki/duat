@@ -149,6 +149,8 @@ impl Moment {
         mut change: Change<String>,
         shift_state: &mut (usize, [i32; 3]),
     ) -> usize {
+        crate::log!("adding {change:#?}");
+        crate::log!("{:?}", shift_state);
         let (sh_from, shift) = std::mem::take(shift_state);
         let new_shift = change.shift();
 
@@ -173,6 +175,7 @@ impl Moment {
         // shift + change.shift(), that way, it will be shifted like
         // the first group.
         } else if sh_from > c_range.end && new_shift != [0; 3] {
+            let shift = change.shift();
             for change in &mut self.0[c_range.end..sh_from] {
                 change.shift_by(shift);
             }
@@ -194,6 +197,8 @@ impl Moment {
             let shift = add_shifts(shift, new_shift);
             *shift_state = (new_sh_from, shift);
         }
+
+        crate::log!("{self:#?}");
 
         c_range.start
     }

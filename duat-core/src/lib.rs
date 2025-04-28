@@ -616,7 +616,7 @@ fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize, usi
 }
 
 /// Adds two shifts together
-fn add_shifts(lhs: [i32; 3], rhs: [i32; 3]) -> [i32; 3] {
+pub fn add_shifts(lhs: [i32; 3], rhs: [i32; 3]) -> [i32; 3] {
     let b = lhs[0] + rhs[0];
     let c = lhs[1] + rhs[1];
     let l = lhs[2] + rhs[2];
