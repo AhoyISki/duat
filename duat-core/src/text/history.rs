@@ -149,8 +149,6 @@ impl Moment {
         mut change: Change<String>,
         shift_state: &mut (usize, [i32; 3]),
     ) -> usize {
-        crate::log!("adding {change:#?}");
-        crate::log!("{:?}", shift_state);
         let (sh_from, shift) = std::mem::take(shift_state);
         let new_shift = change.shift();
 
@@ -197,8 +195,6 @@ impl Moment {
             let shift = add_shifts(shift, new_shift);
             *shift_state = (new_sh_from, shift);
         }
-
-        crate::log!("{self:#?}");
 
         c_range.start
     }
