@@ -7,11 +7,14 @@
 //! use (usually when these become visible).
 //!
 //! [`Ui`]: crate::ui::Ui
-use std::{any::TypeId, ops::{Range, RangeBounds}};
+use std::{
+    any::TypeId,
+    ops::{Range, RangeBounds},
+};
 
 use super::{
     Bytes, Change, Key, Keys, Tag, Text, TextRange, err, merge_range_in, split_range_within,
-    tags::{Tags, RawTagsFn},
+    tags::{RawTagsFn, Tags},
 };
 use crate::text::transform_ranges;
 
@@ -158,9 +161,10 @@ impl Readers {
         reader_cfg: R,
     ) -> Result<(), Text> {
         if self.0.iter().any(|(.., t)| *t == TypeId::of::<R::Reader>()) {
-            return Err(
-                err!("There is already a reader of type " [*a] { crate::duat_name::<R::Reader>() }),
-            );
+            return Err(err!(
+                "There is already a reader of type [a]{}",
+                crate::duat_name::<R::Reader>()
+            ));
         }
 
         let reader = Box::new(reader_cfg.init(bytes, MutTags(tags))?);

@@ -10,5 +10,6 @@ categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2024"
 
 [dependencies]
+format-like = { version = "0.2.0", path = "../../format-like/" }
 duat-core = { version = "0.4.0", path = "../duat-core/" }
 regex-syntax = "0.8.5"

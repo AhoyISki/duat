@@ -72,7 +72,7 @@ fn main() {
     if cfg!(debug_assertions) {
         let toml_path = crate_dir.join("Cargo.toml");
         if run_cargo(toml_path, false, true).is_err() {
-            let msg = err!("Failed to compile " [*a] "config" [] " crate");
+            let msg = err!("Failed to compile [a]config[] crate");
             duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
         }
     }
@@ -96,11 +96,11 @@ fn main() {
                 std::thread::spawn(move || {
                     // Also compile it in debug mode, to speed up recompilation.
                     run_cargo(toml_path, false, false).unwrap();
-                    let msg = hint!("Compiled " [*a] "debug" [] " profile");
+                    let msg = hint!("Compiled [a]debug[] profile");
                     duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
                 });
             } else {
-                let msg = err!("Failed to compile " [*a] "release" [] " profile");
+                let msg = err!("Failed to compile [a]release[] profile");
                 duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
             }
         }
@@ -133,11 +133,11 @@ fn main() {
         let profile = if on_release { "Release" } else { "Debug" };
         let in_time = match reload_instant {
             Some(reload_instant) => {
-                ok!(" in " [*a] { format!("{:.2?}", reload_instant.elapsed()) })
+                ok!(" in [a]{:.2?}", reload_instant.elapsed())
             }
             None => Text::new(),
         };
-        let msg = ok!([*a] profile [] " profile reloaded" in_time);
+        let msg = ok!("[a]{profile}[] profile reloaded {in_time}");
         duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
         lib = ElfLibrary::dlopen(so_path, OpenFlags::RTLD_NOW | OpenFlags::RTLD_LOCAL).ok();
     }

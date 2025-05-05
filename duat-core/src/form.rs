@@ -412,7 +412,7 @@ mod global {
             cs.apply();
             hooks::trigger::<ColorSchemeSet>(cs.name());
         } else {
-            context::notify(err!("The colorscheme " [*a] name [] " was not found"));
+            context::notify(err!("The colorscheme [a]{name}[] was not found"));
         }
     }
 

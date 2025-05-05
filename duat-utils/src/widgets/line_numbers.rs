@@ -15,8 +15,8 @@ use std::{fmt::Alignment, marker::PhantomData};
 use duat_core::{
     context::{self, FixedFile},
     form::{self, Form},
-    text::{AlignCenter, AlignLeft, AlignRight, Builder, Text, text},
-    ui::{RawArea, Constraint, PushSpecs, Ui},
+    text::{AlignCenter, AlignLeft, AlignRight, Builder, Text, add_text},
+    ui::{Constraint, PushSpecs, RawArea, Ui},
     widgets::{Widget, WidgetCfg},
 };
 
@@ -53,9 +53,9 @@ impl<U: Ui> LineNumbers<U> {
 
             match (main_line == *line, is_wrapped) {
                 (false, false) => {}
-                (true, false) => text!(builder, [MainLineNum]),
-                (false, true) => text!(builder, [WrappedLineNum]),
-                (true, true) => text!(builder, [WrappedMainLineNum]),
+                (true, false) => add_text!(builder, "[MainLineNum]"),
+                (false, true) => add_text!(builder, "[WrappedLineNum]"),
+                (true, true) => add_text!(builder, "[WrappedMainLineNum]"),
             }
 
             let is_wrapped = *is_wrapped && index > 0;
@@ -229,7 +229,7 @@ fn push_text<U>(
     cfg: &LineNumbersOptions<U>,
 ) {
     if is_wrapped && !cfg.show_wraps {
-        text!(*b, [] "\n");
+        add_text!(*b, "[]\n");
     } else if main != usize::MAX {
         let num = match cfg.num_rel {
             LineNum::Abs => line + 1,
@@ -243,16 +243,16 @@ fn push_text<U>(
             }
         };
 
-        text!(*b, num [] "\n");
+        add_text!(*b, "{num}[]\n");
     } else {
-        text!(*b, { line + 1 } [] "\n");
+        add_text!(*b, "{}[]\n", line + 1);
     }
 }
 
 fn align(b: &mut Builder, alignment: Alignment) {
     match alignment {
-        Alignment::Left => text!(*b, AlignLeft),
-        Alignment::Center => text!(*b, AlignCenter),
-        Alignment::Right => text!(*b, AlignRight),
+        Alignment::Left => add_text!(*b, "{AlignLeft}"),
+        Alignment::Center => add_text!(*b, "{AlignCenter}"),
+        Alignment::Right => add_text!(*b, "{AlignRight}"),
     }
 }

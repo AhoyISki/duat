@@ -54,7 +54,7 @@ impl<U: Ui> IncSearcher<U> for SearchFwd {
     }
 
     fn prompt(&self) -> Text {
-        text!([Prompt] "search" [Prompt.colon] ":")
+        text!("[Prompt]search[Prompt.colon]:")
     }
 }
 
@@ -94,7 +94,7 @@ impl<U: Ui> IncSearcher<U> for SearchRev {
     }
 
     fn prompt(&self) -> Text {
-        text!([Prompt] "rev search" [Prompt.colon] ":")
+        text!("[Prompt]rev search[Prompt.colon]:")
     }
 }
 
@@ -132,7 +132,7 @@ impl<U: Ui> IncSearcher<U> for ExtendFwd {
     }
 
     fn prompt(&self) -> Text {
-        text!([Prompt] "search (extend)" [Prompt.colon] ":")
+        text!("[Prompt]search (extend)[Prompt.colon]:")
     }
 }
 
@@ -170,6 +170,6 @@ impl<U: Ui> IncSearcher<U> for ExtendRev {
     }
 
     fn prompt(&self) -> Text {
-        text!([Prompt] "rev search (extend)" [Prompt.colon] ":")
+        text!("[Prompt]rev search (extend)[Prompt.colon]:")
     }
 }

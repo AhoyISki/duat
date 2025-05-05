@@ -89,15 +89,16 @@ use std::{
     path::Path,
     rc::Rc,
     sync::{
-        atomic::{AtomicBool, Ordering}, Arc
+        Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
 pub(crate) use self::history::History;
 pub use self::{
     builder::{
-        AlignCenter, AlignLeft, AlignRight, Builder, BuilderPart, Ghost, Spacer, err, hint, ok,
-        text,
+        AlignCenter, AlignLeft, AlignRight, Builder, BuilderPart, Ghost, Spacer, add_text, err,
+        hint, ok, text,
     },
     bytes::{Buffers, Bytes, Strs},
     history::Change,
@@ -105,7 +106,7 @@ pub use self::{
     ops::{Point, TextRange, TwoPoints, utf8_char_width},
     reader::{MutTags, Reader, ReaderCfg},
     search::{Matcheable, RegexPattern, Searcher},
-    tags::{Key, Keys, RawTag, Tag, ToggleId, RawTagsFn},
+    tags::{Key, Keys, RawTag, RawTagsFn, Tag, ToggleId},
 };
 use self::{
     reader::Readers,
@@ -1060,13 +1061,13 @@ impl Clone for Text {
 
 impl From<std::io::Error> for Text {
     fn from(value: std::io::Error) -> Self {
-        err!({ value.kind().to_string() })
+        err!("{}", value.kind().to_string())
     }
 }
 
 impl From<Box<dyn std::error::Error>> for Text {
     fn from(value: Box<dyn std::error::Error>) -> Self {
-        err!({ value.to_string() })
+        err!("{}", value.to_string())
     }
 }
 

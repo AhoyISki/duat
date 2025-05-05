@@ -28,6 +28,7 @@ regex-syntax = "0.8.5"
 arboard = { version = "3.5.0", default-features = false }
 lender = { version = "0.3.1", default-features = false }
 crossterm = { version = "0.29.0", default-features = false, features = ["events"] }
+format-like = { version = "0.2.0", path = "../../format-like/" }
 
 [features]
 # NOTE: Features meant for testing only by myself.

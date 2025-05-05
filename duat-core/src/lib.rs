@@ -251,7 +251,7 @@ use std::{
     any::{TypeId, type_name},
     collections::HashMap,
     ops::Range,
-    path::Path,
+    path::{Path, PathBuf},
     sync::{
         Arc, LazyLock, Once,
         atomic::{AtomicBool, Ordering},
@@ -482,6 +482,63 @@ pub mod clipboard {
     }
 }
 
+////////// Text Builder macros (for pub/private bending)
+mod private_exports {
+    pub use format_like::format_like;
+
+    pub macro inner_text($builder:expr, $default_id:expr, $accent_id:expr, $($parts:tt)*) {{
+        #[allow(unused_imports)]
+        use $crate::private_exports::{format_like, parse_arg, parse_form, parse_str};
+
+        format_like!(
+            parse_str,
+            [('{', parse_arg, false), ('[', parse_form, true)],
+            ($builder, $default_id, $accent_id),
+            $($parts)*
+        );
+    }}
+
+    pub macro parse_str($builder_and_forms:expr, $str:literal) {{
+        let (builder, default_id, accent_id) = $builder_and_forms;
+        builder.push_str($str);
+        (builder, default_id, accent_id)
+    }}
+
+    pub macro parse_arg {
+        ($builder_and_forms:expr, "", $arg:expr) => {{
+            let (builder, default_id, accent_id) = $builder_and_forms;
+            builder.push($arg);
+            (builder, default_id, accent_id)
+        }},
+        ($builder_and_forms:expr, $modif:literal, $arg:expr) => {{
+            let (builder, default_id, accent_id) = $builder_and_forms;
+            builder.push(format!(concat!("{:", $modif, "}"), $arg));
+            (builder, default_id, accent_id)
+        }},
+    }
+
+    pub macro parse_form {
+        ($builder_and_forms:expr, "",) => {{
+            let (builder, default_id, accent_id) = $builder_and_forms;
+            builder.push(default_id);
+            (builder, default_id, accent_id)
+        }},
+        ($builder_and_forms:expr, "", a) => {{
+            let (builder, default_id, accent_id) = $builder_and_forms;
+            builder.push(accent_id);
+            (builder, default_id, accent_id)
+        }},
+        ($builder_and_forms:expr, "", $($form:tt)*) => {{
+            let (builder, default_id, accent_id) = $builder_and_forms;
+            builder.push($crate::form::id_of!(concat!($(stringify!($form)),*)));
+            (builder, default_id, accent_id)
+        }},
+        ($builder_and_forms:expr, $modif:literal, $($form:tt)*) => {{
+            compile_error!(concat!("at the moment, Forms don't support modifiers like ", $modif))
+        }}
+    }
+}
+
 ////////// General utility functions
 
 /// A checker that returns `true` every `duration`
@@ -579,15 +636,43 @@ pub fn src_crate<T: ?Sized + 'static>() -> &'static str {
 
 /// The path for the config crate of Duat
 pub fn crate_dir() -> Option<&'static Path> {
-    static CONFIG_PATH: LazyLock<Option<&'static Path>> = LazyLock::new(|| {
+    static CONFIG_DIR: LazyLock<Option<&Path>> = LazyLock::new(|| {
         dirs_next::config_dir().map(|config_dir| {
             let path: &'static str = config_dir.join("duat").to_string_lossy().to_string().leak();
+
+            std::fs::create_dir_all(path).unwrap();
             Path::new(path)
         })
     });
-    *CONFIG_PATH
+    *CONFIG_DIR
 }
 
+/// The path for a plugin's auxiliary files
+///
+/// If you want to store something in a more permanent basis, and also
+/// possibly allow for the user to modify some files (e.g. a TOML file
+/// with definitions for various LSPs), you should place it in here.
+///
+/// This function will also create said directory, if it doesn't
+/// already exist, only returning [`Some`], if it managed to verify
+/// its existance.
+pub fn plugin_dir(plugin: &str) -> Option<PathBuf> {
+    static PLUGIN_DIR: LazyLock<Option<&Path>> = LazyLock::new(|| {
+        dirs_next::data_local_dir().map(|local_dir| {
+            let path: &'static str = local_dir
+                .join("duat/plugins")
+                .to_string_lossy()
+                .to_string()
+                .leak();
+
+            Path::new(path)
+        })
+    });
+    let plugin_dir = (*PLUGIN_DIR)?.join(plugin);
+    std::fs::create_dir_all(&plugin_dir).ok()?;
+
+    Some(plugin_dir)
+}
 /// Convenience function for the bounds of a range
 #[track_caller]
 fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize, usize) {
@@ -724,7 +809,7 @@ fn file_entry<'a, U: Ui>(
         .enumerate()
         .flat_map(window_index_widget)
         .find(|(.., node)| node.read_as::<File>().is_some_and(|f| f.name() == name))
-        .ok_or_else(|| err!("File with name " [*a] name [] " not found."))
+        .ok_or_else(|| err!("File with name [a]{name}[] not found"))
 }
 
 /// An entry for a widget of a specific type
@@ -744,7 +829,7 @@ fn widget_entry<W: Widget<U>, U: Ui>(
     } else {
         iter_around(windows, w, 0).find(|(.., node)| node.data_is::<W>())
     }
-    .ok_or(err!("No widget of type " [*a] { type_name::<W>() } [] " found."))
+    .ok_or(err!("No widget of type [a]{}[] found", type_name::<W>()))
 }
 
 /// Iterator over a group of windows, that returns the window's index

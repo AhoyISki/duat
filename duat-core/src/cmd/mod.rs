@@ -237,7 +237,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             file.text().has_unsaved_changes() && file.exists()
         };
         if has_unsaved_changes {
-            return Err(err!([*a] name [] " has unsaved changes"));
+            return Err(err!("[a]{name}[] has unsaved changes"));
         }
 
         // If we are on the current File, switch to the next one.
@@ -258,7 +258,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         sender()
             .send(DuatEvent::CloseFile(name.to_string()))
             .unwrap();
-        Ok(Some(ok!("Closed " [*a] name)))
+        Ok(Some(ok!("Closed [a]{name}")))
     })?;
 
     add!(["quit!", "q!"], |name: Option<FileBuffer<U>>| {
@@ -282,7 +282,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         sender()
             .send(DuatEvent::CloseFile(name.to_string()))
             .unwrap();
-        Ok(Some(ok!("Closed " [*a] name)))
+        Ok(Some(ok!("Closed [a]{name}")))
     })?;
 
     add!(["quit-all", "qa"], || {
@@ -300,9 +300,9 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             sender().send(DuatEvent::Quit).unwrap();
             Ok(None)
         } else if unwritten == 1 {
-            Err(err!("There is " [*a] 1 [] " unsaved file"))
+            Err(err!("There is [a]1[] unsaved file"))
         } else {
-            Err(err!("There are " [*a] unwritten [] " unsaved files"))
+            Err(err!("There are [a]{unwritten}[] unsaved files"))
         }
     })?;
 
@@ -324,7 +324,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         };
 
         match bytes {
-            Some(bytes) => Ok(Some(ok!("Wrote " [*a] bytes [] " bytes to " [File] name))),
+            Some(bytes) => Ok(Some(ok!("Wrote [a]{bytes}[] bytes to [File]{name}"))),
             None => Ok(Some(ok!("Nothing to be written"))),
         }
     })?;
@@ -358,12 +358,10 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
 
         sender().send(DuatEvent::CloseFile(name.clone())).unwrap();
         match bytes {
-            Some(bytes) => Ok(Some(
-                ok!("Wrote " [*a] bytes [] " bytes to " [File] name [] ", then closed it"),
-            )),
-            None => Ok(Some(
-                ok!("No changes in " [File] name [] ", so just closed it"),
-            )),
+            Some(bytes) => Ok(Some(ok!(
+                "Wrote [a]{bytes}[] bytes to [File]{name}[], then closed it"
+            ))),
+            None => Ok(Some(ok!("No changes in [File]{name}[], so just closed it"))),
         }
     })?;
 
@@ -385,11 +383,11 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             .count();
 
         if written == file_count {
-            Ok(Some(ok!("Wrote to " [*a] written [] " files")))
+            Ok(Some(ok!("Wrote to [a]{written}[] files")))
         } else {
             let unwritten = file_count - written;
             let plural = if unwritten == 1 { "" } else { "s" };
-            Err(err!("Failed to write to " [*a] unwritten [] " file" plural))
+            Err(err!("Failed to write to [a]{unwritten}[] file{plural}"))
         }
     })?;
 
@@ -416,7 +414,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         } else {
             let unwritten = file_count - written;
             let plural = if unwritten == 1 { "" } else { "s" };
-            Err(err!("Failed to write to " [*a] unwritten [] " file" plural))
+            Err(err!("Failed to write to [a]{unwritten}[] file{plural}"))
         }
     })?;
 
@@ -469,12 +467,12 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
                                 context::notify(err!("Couldn't compile config crate"));
                             }
                         }
-                        Err(err) => context::notify(err!("cargo failed: " [*a] err)),
+                        Err(err) => context::notify(err!("cargo failed: [a]{err}")),
                     };
                 });
                 Ok(Some(hint!("Started config recompilation")))
             }
-            Err(err) => Err(err!("Failed to start cargo: " [*a] err)),
+            Err(err) => Err(err!("Failed to start cargo: [a]{err}")),
         }
     })?;
 
@@ -489,11 +487,11 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
 
         if file_entry(&windows, &name).is_err() {
             sender().send(DuatEvent::OpenFile(name.clone())).unwrap();
-            return Ok(Some(ok!("Opened " [*a] name)));
+            return Ok(Some(ok!("Opened [a]{name}")));
         }
 
         mode::reset_switch_to::<U>(name.clone(), true);
-        Ok(Some(ok!("Switched to " [*a] name)))
+        Ok(Some(ok!("Switched to [a]{name}")))
     })?;
 
     add!(["open", "o"], |path: PossibleFile| {
@@ -507,21 +505,21 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
 
         let Ok((win, wid, node)) = file_entry(&windows, &name) else {
             sender().send(DuatEvent::OpenWindow(name.clone())).unwrap();
-            return Ok(Some(ok!("Opened " [*a] name [] " on new window")));
+            return Ok(Some(ok!("Opened [a]{name}[] on new window")));
         };
 
         if windows[win].file_nodes().len() == 1 {
             mode::reset_switch_to::<U>(name.clone(), true);
-            Ok(Some(ok!("Switched to " [*a] name)))
+            Ok(Some(ok!("Switched to [a]{name}")))
         } else {
             sender().send(DuatEvent::OpenWindow(name.clone())).unwrap();
-            Ok(Some(ok!("Moved " [*a] name [] " to a new window")))
+            Ok(Some(ok!("Moved [a]{name}[] to a new window")))
         }
     })?;
 
     add!(["buffer", "b"], |name: OtherFileBuffer<U>| {
         mode::reset_switch_to::<U>(&name, true);
-        Ok(Some(ok!("Switched to " [*a] name)))
+        Ok(Some(ok!("Switched to [a]{name}")))
     })?;
 
     add!("next-file", |flags: Flags| {
@@ -546,7 +544,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         };
 
         mode::reset_switch_to::<U>(&name, true);
-        Ok(Some(ok!("Switched to " [*a] name)))
+        Ok(Some(ok!("Switched to [a]{name}")))
     })?;
 
     add!("prev-file", |flags: Flags| {
@@ -572,7 +570,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
 
         mode::reset_switch_to::<U>(&name, true);
 
-        Ok(Some(ok!("Switched to " [*a] name)))
+        Ok(Some(ok!("Switched to [a]{name}")))
     })?;
 
     add!("swap", |lhs: FileBuffer<U>, rhs: Option<FileBuffer<U>>| {
@@ -585,12 +583,12 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             .send(DuatEvent::SwapFiles(lhs.to_string(), rhs.clone()))
             .unwrap();
 
-        Ok(Some(ok!("Swapped " [*a] lhs [] " and " [*a] rhs)))
+        Ok(Some(ok!("Swapped [a]{lhs}[] and [a]{rhs}")))
     })?;
 
     add!("colorscheme", |scheme: ColorSchemeArg| {
         crate::form::set_colorscheme(scheme);
-        Ok(Some(ok!("Set colorscheme to " [*a] scheme [])))
+        Ok(Some(ok!("Set colorscheme to [a]{scheme}[]")))
     })?;
 
     add!(
@@ -602,7 +600,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             form.style.underline_color = colors.get(2).cloned();
             crate::form::set(name, form);
 
-            Ok(Some(ok!("Set " [*a] name [] " to a new Form")))
+            Ok(Some(ok!("Set [a]{name}[] to a new Form")))
         }
     )?;
 
@@ -1129,7 +1127,7 @@ mod global {
         COMMANDS.add_for(callers, cmd, Arc::new(check_args))
     }
 
-	/// Check if the arguments for a given `caller` are correct
+    /// Check if the arguments for a given `caller` are correct
     pub fn check_args(caller: &str) -> Option<(Vec<Range<usize>>, Option<(Range<usize>, Text)>)> {
         COMMANDS.check_args(caller)
     }
@@ -1184,7 +1182,7 @@ impl Commands {
                     .list
                     .iter()
                     .find(|cmd| cmd.callers().contains(&caller))
-                    .ok_or(err!("The caller " [*a] caller [] " was not found"))?;
+                    .ok_or(err!("The caller [a]{caller}[] was not found"))?;
 
                 (command.clone(), call.clone())
             }
@@ -1241,8 +1239,8 @@ impl Commands {
 
                     if windows.is_empty() {
                         return Err(err!(
-                            "Widget command executed before the " [*a] "Ui" []
-                            " was initiated, try executing after " [*a] "OnUiStart" []
+                            "Widget command executed before the [a]Ui[] was initiated, try \
+                             executing after [a]OnUiStart[]"
                         ));
                     }
 
@@ -1331,7 +1329,7 @@ impl InnerCommands {
         let commands = self.list.iter();
         for caller in commands.flat_map(|cmd| cmd.callers().iter()) {
             if new_callers.any(|new_caller| new_caller == caller) {
-                return Err(err!("The caller " [*a] caller [] " already exists."));
+                return Err(err!("The caller [a]{caller}[] already exists"));
             }
         }
 
@@ -1344,7 +1342,7 @@ impl InnerCommands {
     /// arguments) to an alias.
     fn try_alias(&mut self, alias: String, call: String) -> Result<Option<Text>, Text> {
         if alias.split_whitespace().count() != 1 {
-            return Err(err!("Alias " [*a] alias [] " is not a single word"));
+            return Err(err!("Alias [a]{alias}[] is not a single word"));
         }
 
         let caller = call
@@ -1358,15 +1356,13 @@ impl InnerCommands {
         if let Some(command) = cmds.find(|cmd| cmd.callers().contains(&caller)) {
             let entry = (command.clone(), call.clone());
             Ok(Some(match self.aliases.insert(alias.clone(), entry) {
-                Some((_, prev_call)) => ok!(
-                    "Aliased " [*a] alias []
-                    " from " [*a] prev_call []
-                    " to " [*a] call
-                ),
-                None => ok!("Aliased " [*a] alias [] " to " [*a] call),
+                Some((_, prev_call)) => {
+                    ok!("Aliased [a]{alias}[] from [a]{prev_call}[] to [a]{call}")
+                }
+                None => ok!("Aliased [a]{alias}[] to [a]{call}"),
             }))
         } else {
-            Err(err!("The caller " [*a] caller [] " was not found"))
+            Err(err!("The caller [a]{caller}[] was not found"))
         }
     }
 }

@@ -117,8 +117,9 @@ impl<'a, const MIN: usize, const MAX: usize, P: Parameter<'a>> Parameter<'a>
             Ok(returns)
         } else {
             Err(err!(
-                "List needed at least " [*a] MIN []
-                " elements, got only " [*a] { returns.len() }))
+                "List needed at least [a]{MIN}[] elements, got only [a]{}",
+                returns.len()
+            ))
         }
     }
 }
@@ -172,7 +173,7 @@ impl<'a> Parameter<'a> for ColorSchemeArg {
         if crate::form::colorscheme_exists(scheme) {
             Ok(scheme)
         } else {
-            Err(err!("The colorscheme " [*a] scheme [] " was not found"))
+            Err(err!("The colorscheme [a]{scheme}[] was not found"))
         }
     }
 }
@@ -195,7 +196,7 @@ impl<'a, U: crate::ui::Ui> Parameter<'a> for FileBuffer<U> {
         {
             Ok(buffer)
         } else {
-            Err(err!("No buffer called " [*a] buffer [] " open"))
+            Err(err!("No buffer called [a]{buffer}[] open"))
         }
     }
 }
@@ -263,16 +264,16 @@ impl Parameter<'_> for F32PercentOfU8 {
         if let Some(percentage) = arg.strip_suffix("%") {
             let percentage: u8 = percentage
                 .parse()
-                .map_err(|_| err!([*a] arg [] " is not a valid percentage"))?;
+                .map_err(|_| err!("[a]{arg}[] is not a valid percentage"))?;
             if percentage <= 100 {
                 Ok(percentage as f32 / 100.0)
             } else {
-                Err(err!([*a] arg [] " is more than " [*a] "100%"))
+                Err(err!("[a]{arg}[] is more than [a]100%"))
             }
         } else {
             let byte: u8 = arg
                 .parse()
-                .map_err(|_| err!([*a] arg [] " couldn't be parsed"))?;
+                .map_err(|_| err!("[a]{arg}[] couldn't be parsed"))?;
             Ok(byte as f32 / 255.0)
         }
     }
@@ -353,7 +354,7 @@ impl<'a> Parameter<'a> for FormName {
         if crate::form::exists(arg) {
             Ok(arg)
         } else {
-            Err(err!("The form " [*a] arg [] " has not been set"))
+            Err(err!("The form [a]{arg}[] has not been set"))
         }
     }
 }
@@ -562,11 +563,10 @@ macro parse_impl($t:ty) {
     impl Parameter<'_> for $t {
         type Returns = Self;
 
-        fn new(args: &mut Args) -> Result<Self::Returns, Text> { let arg = args.next()?;
-            arg.parse().map_err(|_| err!(
-                [*a] arg [] "couldn't be parsed as "
-                [*a] { stringify!($t) } []
-            ))
+        fn new(args: &mut Args) -> Result<Self::Returns, Text> {
+            let arg = args.next()?;
+            arg.parse()
+                .map_err(|_| err!("[a]{arg}[] couldn't be parsed as [a]{}[]", stringify!($t)))
         }
     }
 }

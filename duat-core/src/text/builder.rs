@@ -10,6 +10,7 @@ use std::{
     path::PathBuf,
 };
 
+pub use self::macros::*;
 use super::{Change, Key, Tag, Text};
 use crate::{data::RwData, form::FormId};
 
@@ -152,7 +153,7 @@ impl Builder {
     /// Pushes an [`impl Display`] to the [`Text`]
     ///
     /// [`impl Display`]: std::fmt::Display
-    pub(crate) fn push_str<D: Display>(&mut self, d: D) {
+    pub fn push_str<D: Display>(&mut self, d: D) {
         self.buffer.clear();
         write!(self.buffer, "{d}").unwrap();
         if self.buffer.is_empty() {
@@ -175,8 +176,7 @@ impl Builder {
         self.last_was_empty = text.is_empty();
 
         if let Some((b, id)) = self.last_form.take() {
-            self.text
-                .insert_tag(Key::basic(), Tag::form(b.., id, 0));
+            self.text.insert_tag(Key::basic(), Tag::form(b.., id, 0));
         }
 
         self.text.0.bytes.extend(text.0.bytes);
@@ -327,187 +327,73 @@ impl From<RwData<PathBuf>> for BuilderPart<String, PathBuf> {
     }
 }
 
-/// The standard [`Text`] construction macro
-///
-/// TODO: Docs
-pub macro text {
-    // Forms
-    (@push $builder:expr, []) => {
-        $builder.push(crate::form::id_of!("Default"))
-    },
-    (@push $builder:expr, [*a]) => {
-        $builder.push(crate::form::id_of!("Accent"))
-    },
-    (@push $builder:expr, [$form:ident $(.$suffix:ident)*]) => {
-        let id = crate::form::id_of!(concat!(
-            stringify!($form) $(, stringify!(.), stringify!($suffix))*
-        ));
-        $builder.push(id)
-    },
-    (@push $builder:expr, [$($other:tt)+]) => {
-        compile_error!(concat!(
-            "Forms should be a list of identifiers separated by '.'s, received \"",
-             stringify!($($other)+),
-             "\" instead"
-        ))
-    },
+mod macros {
 
-    // Plain text
-    (@push $builder:expr, $part:expr) => {
-        $builder.push($part)
-    },
+    /// The standard [`Text`] construction macro
+    ///
+    /// TODO: Docs
+    ///
+    /// [`Text`]: super::Text
+    pub macro text($($parts:tt)+) {{
+        use $crate::{form::id_of, private_exports::inner_text};
+        let (default, accent) = (id_of!("Default"), id_of!("Accent"));
 
-    (@parse $builder:expr, $part:tt $($parts:tt)*) => {{
-        text!(@push $builder, $part);
-        text!(@parse $builder, $($parts)*);
-    }},
-    (@parse $builder:expr,) => {},
-
-    ($builder:expr, $($parts:tt)+) => {{
-        let builder: &mut Builder = &mut $builder;
-        text!(@parse builder, $($parts)+);
-    }},
-    ($($parts:tt)+) => {{
-        let mut builder = Builder::new();
-        text!(builder, $($parts)+);
+        let mut builder = $crate::text::Builder::new();
+        inner_text!(&mut builder, default, accent, $($parts)+);
         builder.finish()
-    }},
-}
+    }}
 
-/// The standard [`Text`] construction macro
-///
-/// TODO: Docs
-pub macro ok {
-    // Forms
-    (@push $builder:expr, []) => {
-        $builder.push(crate::form::id_of!("DefaultOk"))
-    },
-    (@push $builder:expr, [*a]) => {
-        $builder.push(crate::form::id_of!("AccentOk"))
-    },
-    (@push $builder:expr, [$form:ident $(.$suffix:ident)*]) => {
-        $builder.push(crate::form::id_of!(concat!(
-            stringify!($form) $(, stringify!(.), stringify!($suffix))*
-        )));
-    },
-    (@push $builder:expr, [$($other:tt)+]) => {
-        compile_error!(concat!(
-            "Forms should be a list of identifiers separated by '.'s, received \"",
-             stringify!($($other)+),
-             "\" instead"
-        ))
-    },
+    /// Allows you to add more [`Text`] to a [`Builder`]
+    ///
+    /// [`Text`]: super::Text
+    /// [`Builder`]: super::Builder
+    pub macro add_text($builder:expr, $($parts:tt)+) {{
+        use $crate::{form::id_of, private_exports::inner_text};
+        let (default, accent) = (id_of!("Default"), id_of!("Accent"));
 
-    // Plain text
-    (@push $builder:expr, $part:expr) => {
-        $builder.push($part)
-    },
+        let builder: &mut $crate::text::Builder = &mut $builder;
+        inner_text!(builder, default, accent, $($parts)+);
+    }}
 
-    (@parse $builder:expr, $part:tt $($parts:tt)*) => {{
-        ok!(@push $builder, $part);
-        ok!(@parse $builder, $($parts)*);
-    }},
-    (@parse $builder:expr,) => {},
+    /// Builds a [`Text`] for [`Ok`] results from commands
+    ///
+    /// TODO: Docs
+    ///
+    /// [`Text`]: super::Text
+    pub macro ok($($parts:tt)+) {{
+        use $crate::{form::id_of, private_exports::inner_text};
+        let (default, accent) = (id_of!("DefaultOk"), id_of!("AccentOk"));
 
-    ($builder:expr, $($parts:tt)+) => {{
-        let builder: &mut Builder = &mut $builder;
-        ok!(@parse builder, $($parts)+);
-    }},
-    ($($parts:tt)+) => {{
-        let mut builder = Builder::new();
-        ok!(builder, [DefaultOk] $($parts)+);
+        let mut builder = $crate::text::Builder::new();
+        inner_text!(&mut builder, default, accent, $($parts)+);
         builder.finish()
-    }},
-}
+    }}
 
-/// The standard [`Text`] construction macro
-///
-/// TODO: Docs
-pub macro err {
-    // Forms
-    (@push $builder:expr, []) => {
-        $builder.push(crate::form::id_of!("DefaultErr"))
-    },
-    (@push $builder:expr, [*a]) => {
-        $builder.push(crate::form::id_of!("AccentErr"))
-    },
-    (@push $builder:expr, [$form:ident $(.$suffix:ident)*]) => {
-        $builder.push(crate::form::id_of!(concat!(
-            stringify!($form) $(, stringify!(.), stringify!($suffix))*
-        )));
-    },
-    (@push $builder:expr, [$($other:tt)+]) => {
-        compile_error!(concat!(
-            "Forms should be a list of identifiers separated by '.'s, received \"",
-             stringify!($($other)+),
-             "\" instead"
-        ))
-    },
+    /// Builds a [`Text`] for [`Err`] results from commands
+    ///
+    /// TODO: Docs
+    ///
+    /// [`Text`]: super::Text
+    pub macro err($($parts:tt)+) {{
+        use $crate::{form::id_of, private_exports::inner_text};
+        let (default, accent) = (id_of!("DefaultErr"), id_of!("AccentErr"));
 
-    // Plain text
-    (@push $builder:expr, $part:expr) => {
-        $builder.push($part)
-    },
-
-    (@parse $builder:expr, $part:tt $($parts:tt)*) => {{
-        err!(@push $builder, $part);
-        err!(@parse $builder, $($parts)*);
-    }},
-    (@parse $builder:expr,) => {},
-
-    ($builder:expr, $($parts:tt)+) => {{
-        let builder: &mut Builder = &mut $builder;
-        err!(@parse builder, $($parts)+);
-    }},
-    ($($parts:tt)+) => {{
-        let mut builder = Builder::new();
-        err!(builder, [DefaultErr] $($parts)+);
+        let mut builder = $crate::text::Builder::new();
+        inner_text!(&mut builder, default, accent, $($parts)+);
         builder.finish()
-    }},
-}
+    }}
 
-/// The standard [`Text`] construction macro
-///
-/// TODO: Docs
-pub macro hint {
-    // Forms
-    (@push $builder:expr, []) => {
-        $builder.push(crate::form::id_of!("DefaultHint"))
-    },
-    (@push $builder:expr, [*a]) => {
-        $builder.push(crate::form::id_of!("AccentHint"))
-    },
-    (@push $builder:expr, [$form:ident $(.$suffix:ident)*]) => {
-        $builder.push(crate::form::id_of!(concat!(
-            stringify!($form) $(, stringify!(.), stringify!($suffix))*
-        )))
-    },
-    (@push $builder:expr, [$($other:tt)+]) => {
-        compile_error!(concat!(
-            "Forms should be a list of identifiers separated by '.'s, received \"",
-             stringify!($($other)+),
-             "\" instead"
-        ))
-    },
+    /// Builds a [`Text`] for hints
+    ///
+    /// TODO: Docs
+    ///
+    /// [`Text`]: super::Text
+    pub macro hint($($parts:tt)+) {{
+        use $crate::{form::id_of, private_exports::inner_text};
+        let (default, accent) = (id_of!("DefaultHint"), id_of!("AccentHint"));
 
-    // Plain text
-    (@push $builder:expr, $part:expr) => {
-        $builder.push($part)
-    },
-
-    (@parse $builder:expr, $part:tt $($parts:tt)*) => {{
-        hint!(@push $builder, $part);
-        hint!(@parse $builder, $($parts)*);
-    }},
-    (@parse $builder:expr,) => {},
-
-    ($builder:expr, $($parts:tt)+) => {{
-        let builder: &mut Builder = &mut $builder;
-        hint!(@parse builder, $($parts)+);
-    }},
-    ($($parts:tt)+) => {{
-        let mut builder = Builder::new();
-        hint!(builder, [DefaultHint] $($parts)+);
+        let mut builder = $crate::text::Builder::new();
+        inner_text!(&mut builder, default, accent, $($parts)+);
         builder.finish()
-    }},
+    }}
 }

@@ -24,7 +24,7 @@ mod global {
     use crate::{
         data::DataMap,
         mode::Mode,
-        text::{Text, text},
+        text::{Text, add_text},
         ui::Ui,
     };
 
@@ -109,33 +109,33 @@ mod global {
 
         for key in keys {
             match key.code {
-                Backspace => text!(seq, [SeqSpecialKey] "BS"),
-                Enter => text!(seq, [SeqSpecialKey] "Enter"),
-                Left => text!(seq, [SeqSpecialKey] "Left"),
-                Right => text!(seq, [SeqSpecialKey] "Right"),
-                Up => text!(seq, [SeqSpecialKey] "Up"),
-                Down => text!(seq, [SeqSpecialKey] "Down"),
-                Home => text!(seq, [SeqSpecialKey] "Home"),
-                End => text!(seq, [SeqSpecialKey] "End"),
-                PageUp => text!(seq, [SeqSpecialKey] "PageU"),
-                PageDown => text!(seq, [SeqSpecialKey] "PageD"),
-                Tab => text!(seq, [SeqSpecialKey] "Tab"),
-                BackTab => text!(seq, [SeqSpecialKey] "BTab"),
-                Delete => text!(seq, [SeqSpecialKey] "Del"),
-                Insert => text!(seq, [SeqSpecialKey] "Ins"),
-                F(num) => text!(seq, [SeqSpecialKey] "F" num),
-                Char(char) => text!(seq, [SeqCharKey] char),
-                Null => text!(seq, [SeqSpecialKey] "Null"),
-                Esc => text!(seq, [SeqSpecialKey] "Esc"),
-                CapsLock => text!(seq, [SeqSpecialKey] "CapsL"),
-                ScrollLock => text!(seq, [SeqSpecialKey] "ScrollL"),
-                NumLock => text!(seq, [SeqSpecialKey] "NumL"),
-                PrintScreen => text!(seq, [SeqSpecialKey] "PrSc"),
-                Pause => text!(seq, [SeqSpecialKey] "Pause"),
-                Menu => text!(seq, [SeqSpecialKey] "Menu"),
-                KeypadBegin => text!(seq, [SeqSpecialKey] "KeypadBeg"),
-                Media(m_code) => text!(seq, [SeqSpecialKey] "Media" m_code),
-                Modifier(m_code) => text!(seq, [SeqSpecialKey] "Mod" m_code),
+                Backspace => add_text!(seq, "[SeqSpecialKey]BS"),
+                Enter => add_text!(seq, "[SeqSpecialKey]Enter"),
+                Left => add_text!(seq, "[SeqSpecialKey]Left"),
+                Right => add_text!(seq, "[SeqSpecialKey]Right"),
+                Up => add_text!(seq, "[SeqSpecialKey]Up"),
+                Down => add_text!(seq, "[SeqSpecialKey]Down"),
+                Home => add_text!(seq, "[SeqSpecialKey]Home"),
+                End => add_text!(seq, "[SeqSpecialKey]End"),
+                PageUp => add_text!(seq, "[SeqSpecialKey]PageU"),
+                PageDown => add_text!(seq, "[SeqSpecialKey]PageD"),
+                Tab => add_text!(seq, "[SeqSpecialKey]Tab"),
+                BackTab => add_text!(seq, "[SeqSpecialKey]BTab"),
+                Delete => add_text!(seq, "[SeqSpecialKey]Del"),
+                Insert => add_text!(seq, "[SeqSpecialKey]Ins"),
+                F(num) => add_text!(seq, "[SeqSpecialKey]F{num}"),
+                Char(char) => add_text!(seq, "[SeqCharKey]{char}"),
+                Null => add_text!(seq, "[SeqSpecialKey]Null"),
+                Esc => add_text!(seq, "[SeqSpecialKey]Esc"),
+                CapsLock => add_text!(seq, "[SeqSpecialKey]CapsL"),
+                ScrollLock => add_text!(seq, "[SeqSpecialKey]ScrollL"),
+                NumLock => add_text!(seq, "[SeqSpecialKey]NumL"),
+                PrintScreen => add_text!(seq, "[SeqSpecialKey]PrSc"),
+                Pause => add_text!(seq, "[SeqSpecialKey]Pause"),
+                Menu => add_text!(seq, "[SeqSpecialKey]Menu"),
+                KeypadBegin => add_text!(seq, "[SeqSpecialKey]KeypadBeg"),
+                Media(m_code) => add_text!(seq, "[SeqSpecialKey]Media{m_code}"),
+                Modifier(m_code) => add_text!(seq, "[SeqSpecialKey]Mod{m_code}"),
             }
         }
 
@@ -420,7 +420,7 @@ impl Remapper {
                     remove_alias_and::<U>(|widget, area, main| {
                         widget.text_mut().insert_tag(
                             Key::for_alias(),
-                            Tag::ghost(main, text!([Alias] { keys_to_string(cur_seq) })),
+                            Tag::ghost(main, text!("[Alias]{}", keys_to_string(cur_seq))),
                         );
 
                         let cfg = widget.print_cfg();

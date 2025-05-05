@@ -166,7 +166,7 @@ impl<U: Ui> PromptMode<U> for RunCommands {
     }
 
     fn prompt(&self) -> Text {
-        text!([Prompt.colon] ":")
+        text!("[Prompt.colon]:")
     }
 }
 
@@ -322,7 +322,7 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
     }
 
     fn prompt(&self) -> Text {
-        text!([Prompt] "pipe" [Prompt.colon] ":")
+        text!("[Prompt]pipe[Prompt.colon]:")
     }
 }
 
