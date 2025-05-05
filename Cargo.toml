@@ -9,9 +9,11 @@ license = "AGPL-3.0-or-later"
 readme = "README.md"
 keywords = ["tree-sitter", "duat", "plugin"]
 categories = ["command-line-utilities", "text-editors", "config"]
+include = ["queries"]
 
 [dependencies]
 duat-core = { version = "0.4.0", git = "https://github.com/AhoyISki/duat" }
+duat-filetype = { version = "0.1.0", git = "https://github.com/AhoyISki/duat-filetype" }
 
 streaming-iterator = "0.1.9"
 tree-sitter = "0.25.2"
@@ -54,6 +56,10 @@ ts-gleam      = { version = "1.0.0",   package = "tree-sitter-gleam" }
 ts-yaml       = { version = "0.7.0",   package = "tree-sitter-yaml" } 
 ts-zig        = { version = "1.1.2",   package = "tree-sitter-zig" } 
 ts-scss       = { version = "1.0.0",   package = "tree-sitter-scss" } 
+dlopen-rs = "0.7.3"
+tree-sitter-language = "0.1.5"
+indoc = "2.0.6"
 
 [build-dependencies]
+dirs-next = "2.0.0"
 cc = "1.2.16"

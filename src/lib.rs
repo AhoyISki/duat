@@ -9,12 +9,12 @@
 //! with the [`PubTsParser`] public API.
 //!
 //! [tree-sitter]: https://tree-sitter.github.io/tree-sitter
-#![feature(decl_macro, let_chains, macro_metavar_expr_concat)]
+#![feature(decl_macro, macro_metavar_expr_concat)]
 
-use std::{collections::HashMap, marker::PhantomData, ops::Range, path::Path, sync::LazyLock};
+use std::{collections::HashMap, fs, marker::PhantomData, ops::Range, sync::LazyLock};
 
 use duat_core::{
-    Mutex,
+    Mutex, add_shifts,
     cfg::PrintCfg,
     form::{self, Form, FormId},
     hooks::{self, OnFileOpen},
@@ -23,11 +23,14 @@ use duat_core::{
         merge_range_in,
     },
 };
+use duat_filetype::FileType;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{
     InputEdit, Language, Node, Parser, Point as TSPoint, Query, QueryCapture, QueryCursor,
     TextProvider, Tree,
 };
+
+mod languages;
 
 /// The [tree-sitter] pluging for Duat
 ///
@@ -91,9 +94,15 @@ impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter<U> {
             ("markup.list.checked", Form::green()),
             ("markup.list.unchecked", Form::grey()),
         );
+
         hooks::add_grouped::<OnFileOpen<U>>("TreeSitter", |builder| {
-            let name = builder.read().0.name();
-            if let Some(ts_parser_cfg) = TsParser::cfg(&name) {
+            let (file, _) = builder.read();
+            let filetype = file.filetype();
+            
+            if let Some(filetype) = filetype
+                && let Some(ts_parser_cfg) = TsParser::cfg(filetype)
+            {
+                drop(file);
                 let _ = builder.add_reader(ts_parser_cfg);
             }
         });
@@ -194,12 +203,13 @@ impl TsParser {
                         Some(bytes.strs(cap.node.byte_range()).to_string())
                     });
 
+                let key = cap.node.byte_range().start;
+                let key_fn = |(range, ..): &(Range<usize>, _, _)| range.start;
                 if let Some(lang) = lang
-                    && !sub_trees_to_add
-                        .iter()
-                        .any(|(lhs, ..)| *lhs == cap.node.byte_range())
+                    && let Err(i) = sub_trees_to_add.binary_search_by_key(&key, key_fn)
                 {
-                    sub_trees_to_add.push((cap.node.byte_range(), cap.node.start_position(), lang));
+                    let to_add = (cap.node.byte_range(), cap.node.start_position(), lang);
+                    sub_trees_to_add.insert(i, to_add);
                 }
             }
 
@@ -210,7 +220,7 @@ impl TsParser {
         // range, that means it was removed.
         self.sub_trees.retain_mut(|st| {
             if let Some((.., lang)) = sub_trees_to_add.iter().find(|(lhs, ..)| *lhs == st.range) {
-                if lang != st.lang_parts.1[0] {
+                if lang != st.lang_parts.0 {
                     if !(st.range.start >= start && st.range.end <= end) {
                         tags.remove(st.range.clone(), self.key);
                     }
@@ -232,16 +242,19 @@ impl TsParser {
         // In the end, we add the sub trees that weren't already in there.
         // This should automatically handle all of the sub trees's sub trees.
         for (range, offset, lang) in sub_trees_to_add {
-            if !self.sub_trees.iter().any(|st| st.range == range) {
-                let Some(lang_parts) = lang_parts_from_ident(&lang) else {
-                    continue;
-                };
+            let key_fn = |st: &TsParser| st.range.start;
 
-                let form_parts = forms_from_query(&lang_parts);
-                self.sub_trees.push(TsParser::init(
-                    bytes, tags, range, offset, lang_parts, form_parts,
-                ))
-            }
+            let Err(i) = self.sub_trees.binary_search_by_key(&range.start, key_fn) else {
+                continue;
+            };
+
+            let Some(lang_parts) = lang_parts(lang.leak()) else {
+                continue;
+            };
+
+            let form_parts = forms_from_query(&lang_parts);
+            let st = TsParser::init(bytes, tags, range, offset, lang_parts, form_parts);
+            self.sub_trees.insert(i, st)
         }
 
         // We highlight at the very end, so if, for example, a sub tree gets
@@ -262,8 +275,68 @@ impl TsParser {
         }
     }
 
-    fn cfg(file: &str) -> Option<TsParserCfg> {
-        TsParserCfg::new(file)
+    fn cfg(filetype: &str) -> Option<TsParserCfg> {
+        TsParserCfg::new(filetype)
+    }
+
+    fn apply_sub_tree_change(&mut self, change: Change<&str>, bytes: &mut Bytes) {
+        let start = change.start();
+        let added = change.added_end();
+        let taken = change.taken_end();
+
+        // By this point, if this tree were to be clipped by the change, it
+        // would have been removed already.
+        if start.byte() < self.range.start && taken.byte() <= self.range.start {
+            let ts_start = ts_point(start, bytes);
+            let ts_taken_end = ts_point_from(taken, (ts_start.column, start), change.taken_text());
+            let ts_added_end = ts_point_from(added, (ts_start.column, start), change.added_text());
+
+            self.range.start = (self.range.start as i32 + change.shift()[0]) as usize;
+            self.range.end = (self.range.end as i32 + change.shift()[0]) as usize;
+            self.offset = deoffset(self.offset, ts_taken_end);
+            self.offset = reoffset(self.offset, ts_added_end);
+        } else if taken.byte() < self.range.end {
+            let edit = input_edit(change, bytes, self.offset, self.range.start);
+            self.tree.edit(&edit);
+            self.range.end = (self.range.end as i32 + change.shift()[0]) as usize;
+            self.old_tree = None;
+        } else {
+            // If this sub tree wasn't affected, neither will any of its children.
+            return;
+        }
+
+        self.sub_trees.retain_mut(|st| {
+            if change_clips(change, st.range.clone()) {
+                false
+            } else {
+                st.apply_sub_tree_change(change, bytes);
+                true
+            }
+        });
+    }
+
+    fn shift_tree(&mut self, shift: [i32; 3]) {
+        self.range.start = (self.range.start as i32 + shift[0]) as usize;
+        self.range.end = (self.range.end as i32 + shift[0]) as usize;
+        self.offset.row = (self.offset.row as i32 + shift[2]) as usize;
+        for st in self.sub_trees.iter_mut() {
+            st.shift_tree(shift);
+        }
+    }
+
+    fn reparse_sub_trees(&mut self, bytes: &mut Bytes) {
+        for st in self.sub_trees.iter_mut() {
+            st.reparse_sub_trees(bytes);
+            if st.old_tree.is_none() {
+                let mut parse_fn = buf_parse(bytes, self.range.clone());
+                let tree = self
+                    .parser
+                    .parse_with_options(&mut parse_fn, Some(&self.tree), None)
+                    .unwrap();
+
+                self.old_tree = Some(std::mem::replace(&mut self.tree, tree));
+            }
+        }
     }
 }
 
@@ -273,81 +346,109 @@ impl Reader for TsParser {
     // `apply_changes` is not meant to modify the `Text`, it is only meant
     // to update the internal state of the `Reader`.
     fn apply_changes(&mut self, bytes: &mut Bytes, changes: &[Change<&str>]) {
-        fn deoffset(ts_point: TSPoint, offset: TSPoint) -> TSPoint {
-            if ts_point.row == offset.row {
-                TSPoint::new(ts_point.row - offset.row, ts_point.column - offset.column)
-            } else {
-                TSPoint::new(ts_point.row - offset.row, ts_point.column)
-            }
-        }
-        fn reoffset(ts_point: TSPoint, offset: TSPoint) -> TSPoint {
-            if ts_point.row == 0 {
-                TSPoint::new(ts_point.row + offset.row, ts_point.column + offset.column)
-            } else {
-                TSPoint::new(ts_point.row + offset.row, ts_point.column)
-            }
+        fn changes_b_shift(changes: &[Change<&str>]) -> i32 {
+            changes
+                .iter()
+                .fold(0, |b_sh, change| b_sh + change.shift()[0])
         }
 
-        let mut at_least_one_change = false;
-        for change in changes {
+        let mut sub_trees_to_remove = Vec::new();
+        let mut sub_trees = self.sub_trees.iter_mut().enumerate().peekable();
+        let mut last_changes: Vec<Change<&str>> = Vec::new();
+        let (mut sh_from, mut shift) = (0, [0; 3]);
+
+        for &change in changes.iter() {
             let start = change.start();
-            let added = change.added_end();
-            let taken = change.taken_end();
 
-            let ts_start = ts_point(start, bytes);
-            let ts_taken_end = ts_point_from(taken, (ts_start.column, start), change.taken_text());
-            let ts_added_end = ts_point_from(added, (ts_start.column, start), change.added_text());
-
-            // Only make changes to this tree if the Change takes place in it.
-            // If the Change happens before the tree, we can just shift it.
-            if start.byte() < self.range.start && taken.byte() <= self.range.start {
-                self.range.start = (self.range.start as i32 + change.shift()[0]) as usize;
-                self.range.end = (self.range.end as i32 + change.shift()[0]) as usize;
-                self.offset = deoffset(self.offset, ts_taken_end);
-                self.offset = reoffset(self.offset, ts_added_end);
-                continue;
-            // If it happens after, we can just ignore it.
-            // By this point, sub trees that intersect with a change
-            // should already have been removed, so we can ignore that
-            // scenario.
-            } else if start.byte() > self.range.end {
-                continue;
-            }
-            at_least_one_change = true;
-
-            self.tree.edit(&InputEdit {
-                start_byte: start.byte() - self.range.start,
-                old_end_byte: taken.byte() - self.range.start,
-                new_end_byte: added.byte() - self.range.start,
-                start_position: deoffset(ts_start, self.offset),
-                old_end_position: deoffset(ts_taken_end, self.offset),
-                new_end_position: deoffset(ts_added_end, self.offset),
-            });
+            let input_edit = input_edit(change, bytes, self.offset, self.range.start);
+            self.tree.edit(&input_edit);
 
             self.range.end = (self.range.end as i32 + change.shift()[0]) as usize;
 
-            self.sub_trees.retain_mut(|st| {
-                // Remove trees that intersect with the changes
-                !((start.byte() < st.range.start && st.range.start < taken.byte())
-                    || (start.byte() < st.range.end && st.range.end < taken.byte()))
-            });
+            // First, deal with all sub trees before the Change.
+            while let Some((i, st)) = sub_trees.next_if(|(i, st)| {
+                let end = if *i >= sh_from {
+                    (st.range.end as i32 + shift[0] + changes_b_shift(&last_changes)) as usize
+                } else {
+                    st.range.end
+                };
+                end <= start.byte()
+            }) {
+                if i == sh_from {
+                    st.shift_tree(shift);
+                    for change in last_changes.iter() {
+                        st.apply_sub_tree_change(*change, bytes);
+                    }
+                }
+
+                sh_from = i + 1;
+            }
+
+            // Then, get rid of consecutively clipped sub trees.
+            while let Some((i, _)) = sub_trees.next_if(|(i, st)| {
+                let range = if *i == sh_from {
+                    let shift = shift[0] + changes_b_shift(&last_changes);
+                    let start = (st.range.start as i32 + shift) as usize;
+                    let end = (st.range.end as i32 + shift) as usize;
+                    start..end
+                } else {
+                    st.range.clone()
+                };
+                change_clips(change, range)
+            }) {
+                sub_trees_to_remove.push(i);
+                sh_from = i + 1;
+            }
+
+            // Now, this sub tree should either contain the change or be ahead of
+            // it.
+            if let Some((i, st)) = sub_trees.peek_mut() {
+                if *i == sh_from {
+                    st.shift_tree(shift);
+                    for change in last_changes.iter() {
+                        st.apply_sub_tree_change(*change, bytes);
+                    }
+                }
+
+                st.apply_sub_tree_change(change, bytes);
+                sh_from = *i + 1;
+            }
+
+            if let Some(last) = last_changes.last()
+                && last.taken_end().line() == start.line()
+            {
+                last_changes.push(change);
+            } else {
+                shift = last_changes
+                    .drain(..)
+                    .fold(shift, |sh, change| add_shifts(sh, change.shift()));
+                last_changes = vec![change];
+            };
         }
 
-        if at_least_one_change {
-            let mut parse_fn = buf_parse(bytes, self.range.clone());
-            let tree = self
-                .parser
-                .parse_with_options(&mut parse_fn, Some(&self.tree), None)
-                .unwrap();
-
-            // I keep an old tree around, in order to compare it for tagging
-            // purposes.
-            self.old_tree = Some(std::mem::replace(&mut self.tree, tree));
+        for (i, st) in sub_trees {
+            if i >= sh_from {
+                st.shift_tree(shift);
+                for change in last_changes.iter() {
+                    st.apply_sub_tree_change(*change, bytes);
+                }
+            }
         }
 
-        for st in self.sub_trees.iter_mut() {
-            st.apply_changes(bytes, changes);
+        let mut parse_fn = buf_parse(bytes, self.range.clone());
+        let tree = self
+            .parser
+            .parse_with_options(&mut parse_fn, Some(&self.tree), None)
+            .unwrap();
+
+        self.old_tree = Some(std::mem::replace(&mut self.tree, tree));
+        drop(parse_fn);
+
+        for i in sub_trees_to_remove.into_iter().rev() {
+            self.sub_trees.remove(i);
         }
+
+        self.reparse_sub_trees(bytes);
     }
 
     // `ranges_to_update` takes the information stored in `apply_changes`
@@ -416,8 +517,8 @@ pub struct TsParserCfg {
 }
 
 impl TsParserCfg {
-    pub fn new(file: &str) -> Option<Self> {
-        let lang_parts = lang_parts_from_file(file)?;
+    pub fn new(filetype: &str) -> Option<Self> {
+        let lang_parts = lang_parts(filetype)?;
         let form_parts = forms_from_query(&lang_parts);
 
         Some(TsParserCfg { lang_parts, form_parts })
@@ -444,7 +545,7 @@ pub struct PubTsParser<'a>(&'a mut TsParser, &'a mut Bytes);
 
 impl<'a> PubTsParser<'a> {
     pub fn lang(&self) -> &'static str {
-        self.0.lang_parts.1[0]
+        self.0.lang_parts.0
     }
 
     /// Returns the indentation difference from the previous line
@@ -718,9 +819,7 @@ fn ts_point_from(to: Point, (col, from): (usize, Point), str: &str) -> TSPoint {
     TSPoint::new(to.line(), col)
 }
 
-fn forms_from_query(
-    (_, [lang, _], _, [query, ..]): &LangParts<'static>,
-) -> &'static [(FormId, u8)] {
+fn forms_from_query((lang, _, [query, ..]): &LangParts<'static>) -> &'static [(FormId, u8)] {
     #[rustfmt::skip]
     const PRIORITIES: &[&str] = &[
         "string", "variable", "module", "label", "character", "boolean", "number", "type",
@@ -768,28 +867,45 @@ impl<'a> TextProvider<&'a [u8]> for TsBuf<'a> {
     }
 }
 
-fn lang_parts_from_file(path: impl AsRef<Path>) -> Option<LangParts<'static>> {
-    static LANGUAGES: LazyLock<HashMap<&str, &InnerLangParts>> = LazyLock::new(|| {
-        HashMap::from_iter(LANGS.iter().filter_map(|parts| parts.0.map(|e| (e, parts))))
-    });
+fn lang_parts(lang_name: &str) -> Option<LangParts<'static>> {
+    static MAPS: LazyLock<Mutex<HashMap<&str, LangParts<'static>>>> = LazyLock::new(Mutex::default);
 
-    let ext = path.as_ref().extension()?.to_str()?;
-    LANGUAGES
-        .get(ext)
-        .copied()
-        .map(|(ext, idents, lang_and_queries)| {
-            let (lang, queries) = &**lang_and_queries;
-            (*ext, *idents, lang, queries)
-        })
-}
+    let mut maps = MAPS.lock();
 
-fn lang_parts_from_ident(lang: &str) -> Option<LangParts<'static>> {
-    static LANGUAGES: LazyLock<HashMap<&str, &InnerLangParts>> =
-        LazyLock::new(|| HashMap::from_iter(LANGS.iter().map(|lp| (lp.1[0], lp))));
+    Some(if let Some(lang_parts) = maps.get(lang_name).copied() {
+        lang_parts
+    } else {
+        let language: &'static Language = Box::leak(Box::new(languages::get_language(lang_name)?));
 
-    LANGUAGES.get(lang).map(|(ext, idents, lang_and_queries)| {
-        let (lang, queries) = &**lang_and_queries;
-        (*ext, *idents, lang, queries)
+        let queries_dir = duat_core::plugin_dir("duat-treesitter")?
+            .join("queries")
+            .join(lang_name);
+
+        let hi_query = Query::new(
+            language,
+            &fs::read_to_string(queries_dir.join("highlights.scm")).unwrap_or_default(),
+        )
+        .ok()?;
+
+        let ind_query = Query::new(
+            language,
+            &fs::read_to_string(queries_dir.join("indents.scm")).unwrap_or_default(),
+        )
+        .ok()?;
+
+        let inj_query = Query::new(
+            language,
+            &fs::read_to_string(queries_dir.join("injections.scm")).unwrap_or_default(),
+        )
+        .ok()?;
+
+        let queries: &'static [Query; 3] = Box::leak(Box::new([hi_query, ind_query, inj_query]));
+
+        let lang_name = lang_name.to_string().leak();
+
+        maps.insert(lang_name, (lang_name, language, queries));
+
+        (lang_name, language, queries)
     })
 }
 
@@ -815,137 +931,58 @@ fn log_node(node: tree_sitter::Node) {
     duat_core::log!("{log}");
 }
 
-type InnerLangParts<'a> = (
-    Option<&'a str>,
-    [&'a str; 2],
-    LazyLock<&'a (Language, [Query; 3])>,
-);
-type LangParts<'a> = (Option<&'a str>, [&'a str; 2], &'a Language, &'a [Query; 3]);
-
-#[rustfmt::skip]
-static LANGS: [InnerLangParts; 57] = {
-    use ts_md::INLINE_LANGUAGE as INLINE_MARKDOWN;
-    macro l($name:ident) {
-        ${concat(ts_, $name)}::LANGUAGE.into()
-    }
-    macro lf($name:ident) {
-        ${concat(ts_, $name)}::language()
-    }
-
-    macro h($name:ident, $lang:expr) {
-        Query::new(
-            &$lang,
-            include_str!(concat!("../queries/", stringify!($name), "/highlights.scm")),
-        )
-        .unwrap()
-    }
-    macro i($name:ident, $lang:expr) {
-        Query::new(
-            &$lang,
-            include_str!(concat!("../queries/", stringify!($name), "/indents.scm")),
-        )
-        .unwrap()
-    }
-    macro j($name:ident, $lang:expr) {
-        Query::new(
-            &$lang,
-            include_str!(concat!("../queries/", stringify!($name), "/injections.scm")),
-        )
-        .unwrap()
-    }
-    macro h_i($name:ident, $lang:expr) {{
-        LazyLock::new(|| {
-            let lang = $lang;
-            let queries = [
-                h!($name, lang),
-                i!($name, lang),
-                Query::new(&$lang, "").unwrap(),
-            ];
-            Box::leak(Box::new((lang, queries)))
-        })
-    }}
-    macro h_j($name:ident, $lang:expr) {{
-        LazyLock::new(|| {
-            let lang = $lang;
-            let queries = [
-                h!($name, lang),
-                Query::new(&$lang, "").unwrap(),
-                j!($name, lang),
-            ];
-            Box::leak(Box::new((lang, queries)))
-        })
-    }}
-    macro h_i_j($name:ident, $lang:expr) {{
-        LazyLock::new(|| {
-            let lang = $lang;
-            let queries = [h!($name, $lang), i!($name, $lang), j!($name, $lang)];
-            Box::leak(Box::new((lang, queries)))
-        })
-    }}
-
-    [
-        (Some("asm"), ["asm", "Assembly"], h_j!(asm, l!(asm))),
-        (Some("c"), ["c", "C"], h_i_j!(c, l!(c))),
-        (Some("h"), ["c", "C"], h_i_j!(c, l!(c))),
-        (Some("cc"), ["cpp", "C++"], h_i_j!(cpp, l!(cpp))),
-        (Some("cpp"), ["cpp", "C++"], h_i_j!(cpp, l!(cpp))),
-        (Some("cxx"), ["cpp", "C++"], h_i_j!(cpp, l!(cpp))),
-        (Some("hpp"), ["cpp", "C++"], h_i_j!(cpp, l!(cpp))),
-        (Some("hxx"), ["cpp", "C++"], h_i_j!(cpp, l!(cpp))),
-        (Some("cs"), ["csharp", "C#"], h_j!(c_sharp, l!(c_sharp))),
-        (Some("css"), ["css", "CSS"], h_i_j!(css, l!(css))),
-        (Some("dart"), ["dart", "Dart"], h_i_j!(dart, lf!(dart))),
-        (Some("ex"), ["elixir", "Elixir"], h_i_j!(elixir, l!(elixir))),
-        (Some("exs"), ["elixir", "Elixir"], h_i_j!(elixir, l!(elixir))),
-        (Some("erl"), ["erlang", "Erlang"], h_j!(erlang, l!(erlang))),
-        (Some("hrl"), ["erlang", "Erlang"], h_j!(erlang, l!(erlang))),
-        (Some("xrl"), ["erlang", "Erlang"], h_j!(erlang, l!(erlang))),
-        (Some("yrl"), ["erlang", "Erlang"], h_j!(erlang, l!(erlang))),
-        (Some("for"), ["fortran", "Fortran"], h_i_j!(fortran, l!(fortran))),
-        (Some("fpp"), ["fortran", "Fortran"], h_i_j!(fortran, l!(fortran))),
-        (Some("gleam"), ["gleam", "Gleam"], h_i_j!(gleam, l!(gleam))),
-        (Some("go"), ["go", "Go"], h_i_j!(go, l!(go))),
-        (Some("groovy"), ["groovy", "Groovy"], h_i_j!(groovy, l!(groovy))),
-        (Some("gvy"), ["groovy", "Groovy"], h_i_j!(groovy, l!(groovy))),
-        (Some("hsc"), ["haskell", "Haskell"], h_j!(haskell, l!(haskell))),
-        (Some("hs"), ["haskell", "Haskell"], h_j!(haskell, l!(haskell))),
-        (Some("htm"), ["html", "HTML"], h_i_j!(html, l!(html))),
-        (Some("html"), ["html", "HTML"], h_i_j!(html, l!(html))),
-        (Some("java"), ["java", "Java"], h_i_j!(java, l!(java))),
-        (Some("js"), ["js", "JavaScript"], h_i_j!(javascript, l!(js))),
-        (Some("jsonc"), ["json", "JSON"], h_i!(json, l!(json))),
-        (Some("json"), ["json", "JSON"], h_i!(json, l!(json))),
-        (Some("jl"), ["julia", "Julia"], h_i_j!(julia, l!(julia))),
-        (Some("lua"), ["lua", "Lua"], h_i_j!(lua, l!(lua))),
-        (Some("md"), ["markdown", "Markdown"], h_i_j!(markdown, l!(md))),
-        (None, ["markdown_inline", "Markdown"], h_j!(markdown_inline, INLINE_MARKDOWN.into())),
-        (Some("nix"), ["nix", "Nix"], h_i_j!(nix, l!(nix))),
-        (Some("m"), ["objc", "Objective-C"], h_i_j!(objc, l!(objc))),
-        (Some("ml"), ["ocaml", "OCaml"], h_i_j!(ocaml, ts_ocaml::LANGUAGE_OCAML.into())),
-        (Some("php"), ["php", "PHP"], h_i_j!(php, ts_php::LANGUAGE_PHP_ONLY.into())),
-        (Some("pyc"), ["python", "Python"], h_i_j!(python, l!(python))),
-        (Some("pyo"), ["python", "Python"], h_i_j!(python, l!(python))),
-        (Some("py"), ["python", "Python"], h_i_j!(python, l!(python))),
-        (Some("r"), ["r", "R"], h_i_j!(r, l!(r))),
-        (Some("rb"), ["ruby", "Ruby"], h_i_j!(ruby, l!(ruby))),
-        (Some("rs"), ["rust", "Rust"], h_i_j!(rust, l!(rust))),
-        (Some("scala"), ["scala", "Scala"], h_j!(scala, l!(scala))),
-        (Some("sc"), ["scala", "Scala"], h_j!(scala, l!(scala))),
-        (Some("scss"), ["scss", "SCSS"], h_i_j!(scss, lf!(scss))),
-        (Some("sh"), ["shell", "Shell"], h_j!(bash, l!(bash))),
-        (Some("sql"), ["sql", "SQL"], h_i_j!(sql, l!(sequel))),
-        (Some("swift"), ["swift", "Swift"], h_i_j!(swift, l!(swift))),
-        (Some("ts"), ["ts", "TypeScript"], h_j!(typescript, ts_ts::LANGUAGE_TYPESCRIPT.into())),
-        (Some("vim"), ["viml", "Viml"], h_j!(vim, lf!(vim))),
-        (Some("xml"), ["xml", "XML"], h_i_j!(xml, ts_xml::LANGUAGE_XML.into())),
-        (Some("yaml"), ["yaml", "YAML"], h_i_j!(yaml, l!(yaml))),
-        (Some("yml"), ["yaml", "YAML"], h_i_j!(yaml, l!(yaml))),
-        (Some("zig"), ["zig", "Zig"], h_i_j!(zig, l!(zig))),
-    ]
-};
+type LangParts<'a> = (&'a str, &'a Language, &'a [Query; 3]);
 
 /// The Key for tree-sitter
 fn ts_key() -> Key {
     static KEY: LazyLock<Key> = LazyLock::new(Key::new);
     *KEY
+}
+
+fn deoffset(ts_point: TSPoint, offset: TSPoint) -> TSPoint {
+    if ts_point.row == offset.row {
+        TSPoint::new(ts_point.row - offset.row, ts_point.column - offset.column)
+    } else {
+        TSPoint::new(ts_point.row - offset.row, ts_point.column)
+    }
+}
+
+fn reoffset(ts_point: TSPoint, offset: TSPoint) -> TSPoint {
+    if ts_point.row == 0 {
+        TSPoint::new(ts_point.row + offset.row, ts_point.column + offset.column)
+    } else {
+        TSPoint::new(ts_point.row + offset.row, ts_point.column)
+    }
+}
+
+fn input_edit(
+    change: Change<&str>,
+    bytes: &mut Bytes,
+    offset: TSPoint,
+    r_start: usize,
+) -> InputEdit {
+    let start = change.start();
+    let added = change.added_end();
+    let taken = change.taken_end();
+
+    let ts_start = ts_point(start, bytes);
+    let ts_taken_end = ts_point_from(taken, (ts_start.column, start), change.taken_text());
+    let ts_added_end = ts_point_from(added, (ts_start.column, start), change.added_text());
+
+    InputEdit {
+        start_byte: start.byte() - r_start,
+        old_end_byte: taken.byte() - r_start,
+        new_end_byte: added.byte() - r_start,
+        start_position: deoffset(ts_start, offset),
+        old_end_position: deoffset(ts_taken_end, offset),
+        new_end_position: deoffset(ts_added_end, offset),
+    }
+}
+
+fn change_clips(change: Change<&str>, range: Range<usize>) -> bool {
+    let start = change.start();
+    let taken = change.taken_end();
+
+    (start.byte() <= range.start && range.start < taken.byte())
+        || (start.byte() < range.end && range.end <= taken.byte())
 }
