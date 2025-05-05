@@ -1,0 +1,9 @@
+[package]
+name = "duat-filetype"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dirs-next = "2.0.0"
+duat-core = { version = "0.4.0", git = "https://github.com/AhoyISki/duat" }
+regex = { version = "1.11.1", default-features = false, features = ["perf", "std"] }
