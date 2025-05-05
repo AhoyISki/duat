@@ -2,6 +2,13 @@
 name = "duat-filetype"
 version = "0.1.0"
 edition = "2024"
+authors = ["AhoyISki"]
+description = "Filetype detection for the File widget from Duat"
+homepage = "https://github.com/AhoyISki/duat-filetype"
+license = "AGPL-3.0-or-later"
+readme = "README.md"
+keywords = ["duat", "plugin"]
+categories = ["command-line-utilities", "text-editors", "config"]
 
 [dependencies]
 dirs-next = "2.0.0"
