@@ -288,48 +288,46 @@ impl<U: Ui> Session<U> {
         let mut breaks = Vec::new();
         let mut reprint_screen = false;
 
-        std::thread::scope(|s| {
-            loop {
-                let cur_window = &windows[win];
+        loop {
+            let cur_window = &windows[win];
 
-                if let Some(set_mode) = mode::get_set_mode_fn() {
-                    set_mode();
-                }
+            if let Some(set_mode) = mode::get_set_mode_fn() {
+                set_mode();
+            }
 
-                if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(20)) {
-                    match event {
-                        DuatEvent::Key(key) => mode::send_key(key),
-                        DuatEvent::Resize | DuatEvent::FormChange => {
-                            reprint_screen = true;
-                            continue;
-                        }
-                        DuatEvent::MetaMsg(msg) => context::notify(msg),
-                        DuatEvent::ReloadConfig => breaks.push(BreakTo::ReloadConfig),
-                        DuatEvent::OpenFile(name) => breaks.push(BreakTo::OpenFile(name)),
-                        DuatEvent::CloseFile(name) => breaks.push(BreakTo::CloseFile(name)),
-                        DuatEvent::SwapFiles(lhs, rhs) => breaks.push(BreakTo::SwapFiles(lhs, rhs)),
-                        DuatEvent::OpenWindow(name) => breaks.push(BreakTo::OpenWindow(name)),
-                        DuatEvent::SwitchWindow(win) => breaks.push(BreakTo::SwitchWindow(win)),
-                        DuatEvent::ReloadStarted(instant) => *reload_instant = Some(instant),
-                        DuatEvent::Quit => breaks.push(BreakTo::QuitDuat),
+            if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(20)) {
+                match event {
+                    DuatEvent::Key(key) => mode::send_key(key),
+                    DuatEvent::Resize | DuatEvent::FormChange => {
+                        reprint_screen = true;
+                        continue;
                     }
-                } else if !breaks.is_empty() {
-                    break breaks;
-                } else if reprint_screen {
-                    reprint_screen = false;
-                    for node in cur_window.nodes() {
-                        node.update_and_print();
-                    }
-                    continue;
+                    DuatEvent::MetaMsg(msg) => context::notify(msg),
+                    DuatEvent::ReloadConfig => breaks.push(BreakTo::ReloadConfig),
+                    DuatEvent::OpenFile(name) => breaks.push(BreakTo::OpenFile(name)),
+                    DuatEvent::CloseFile(name) => breaks.push(BreakTo::CloseFile(name)),
+                    DuatEvent::SwapFiles(lhs, rhs) => breaks.push(BreakTo::SwapFiles(lhs, rhs)),
+                    DuatEvent::OpenWindow(name) => breaks.push(BreakTo::OpenWindow(name)),
+                    DuatEvent::SwitchWindow(win) => breaks.push(BreakTo::SwitchWindow(win)),
+                    DuatEvent::ReloadStarted(instant) => *reload_instant = Some(instant),
+                    DuatEvent::Quit => breaks.push(BreakTo::QuitDuat),
                 }
-
+            } else if !breaks.is_empty() {
+                break breaks;
+            } else if reprint_screen {
+                reprint_screen = false;
                 for node in cur_window.nodes() {
-                    if node.needs_update() {
-                        node.update_and_print();
-                    }
+                    node.update_and_print();
+                }
+                continue;
+            }
+
+            for node in cur_window.nodes() {
+                if node.needs_update() {
+                    node.update_and_print();
                 }
             }
-        })
+        }
     }
 
     fn save_cache(&self, is_quitting_duat: bool) {
