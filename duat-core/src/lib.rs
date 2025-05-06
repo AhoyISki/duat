@@ -657,6 +657,8 @@ pub fn crate_dir() -> Option<&'static Path> {
 /// already exist, only returning [`Some`], if it managed to verify
 /// its existance.
 pub fn plugin_dir(plugin: &str) -> Option<PathBuf> {
+    assert_ne!(plugin, "", "Can't have an empty plugin name");
+
     static PLUGIN_DIR: LazyLock<Option<&Path>> = LazyLock::new(|| {
         dirs_next::data_local_dir().map(|local_dir| {
             let path: &'static str = local_dir
@@ -668,6 +670,7 @@ pub fn plugin_dir(plugin: &str) -> Option<PathBuf> {
             Path::new(path)
         })
     });
+
     let plugin_dir = (*PLUGIN_DIR)?.join(plugin);
     std::fs::create_dir_all(&plugin_dir).ok()?;
 

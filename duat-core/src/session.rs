@@ -318,14 +318,14 @@ impl<U: Ui> Session<U> {
                 } else if reprint_screen {
                     reprint_screen = false;
                     for node in cur_window.nodes() {
-                        s.spawn(|| node.update_and_print());
+                        node.update_and_print();
                     }
                     continue;
                 }
 
                 for node in cur_window.nodes() {
                     if node.needs_update() {
-                        s.spawn(|| node.update_and_print());
+                        node.update_and_print();
                     }
                 }
             }

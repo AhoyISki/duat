@@ -133,7 +133,7 @@ fn main() {
         let profile = if on_release { "Release" } else { "Debug" };
         let in_time = match reload_instant {
             Some(reload_instant) => {
-                ok!(" in [a]{:.2?}", reload_instant.elapsed())
+                ok!("in [a]{:.2?}", reload_instant.elapsed())
             }
             None => Text::new(),
         };

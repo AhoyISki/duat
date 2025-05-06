@@ -365,6 +365,7 @@ mod macros {
         let (default, accent) = (id_of!("DefaultOk"), id_of!("AccentOk"));
 
         let mut builder = $crate::text::Builder::new();
+        builder.push(default);
         inner_text!(&mut builder, default, accent, $($parts)+);
         builder.finish()
     }}
@@ -379,6 +380,7 @@ mod macros {
         let (default, accent) = (id_of!("DefaultErr"), id_of!("AccentErr"));
 
         let mut builder = $crate::text::Builder::new();
+        builder.push(default);
         inner_text!(&mut builder, default, accent, $($parts)+);
         builder.finish()
     }}
@@ -393,6 +395,7 @@ mod macros {
         let (default, accent) = (id_of!("DefaultHint"), id_of!("AccentHint"));
 
         let mut builder = $crate::text::Builder::new();
+        builder.push(default);
         inner_text!(&mut builder, default, accent, $($parts)+);
         builder.finish()
     }}

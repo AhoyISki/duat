@@ -49,7 +49,7 @@ mod private_exports {
 
             (pre_fn, checker)
         }},
-        ($pre_fn_and_checker:expr, $part:expr, $modif:literal) => {{
+        ($pre_fn_and_checker:expr, $modif:literal, $part:expr) => {{
             use crate::{
                 private_exports::duat_core::text::Builder,
                 widgets::status_line::{Reader, State},
@@ -71,10 +71,10 @@ mod private_exports {
     }
 
     pub macro parse_form {
-        (pre_fn_and_checker: expr, ,"") => {{
+        (pre_fn_and_checker:expr, "",) => {{
             use crate::{
                 private_exports::duat_core::{form, text::Builder},
-                widgets::status_line::Reader,
+                widgets::Reader,
             };
 
             let (mut pre_fn, checker) = $pre_fn_and_checker;
@@ -86,10 +86,10 @@ mod private_exports {
 
             (pre_fn, checker)
         }},
-        ($pre_fn_and_checker:expr, $($form:tt)*,"") => {{
+        ($pre_fn_and_checker:expr, "",$($form:tt)*) => {{
             use crate::{
                 private_exports::duat_core::{form, text::Builder},
-                widgets::status_line::Reader,
+                widgets::Reader,
             };
 
             let (mut pre_fn, checker) = $pre_fn_and_checker;
@@ -103,7 +103,7 @@ mod private_exports {
 
             (pre_fn, checker)
         }},
-        ($pre_fn_and_checker:expr, $($form:ident).*, $modif:literal) => {{
+        ($pre_fn_and_checker:expr, $modif:literal, $($form:ident).*) => {{
             compile_error!(concat!("at the moment, Forms don't support modifiers like ", $modif))
         }}
     }

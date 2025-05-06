@@ -23,7 +23,7 @@ use duat_core::{
     widgets::{Widget, WidgetCfg},
 };
 
-pub use self::state::State;
+pub use self::{macros::status, state::State};
 use crate::state::{file_fmt, main_fmt, mode_fmt, mode_name, selections_fmt};
 
 /// A widget to show information, usually about a [`File`]
@@ -227,7 +227,7 @@ impl<U: Ui> Reader<U> {
     }
 }
 
-pub mod macros {
+mod macros {
     /// The macro that creates a [`StatusLine`]
     ///
     /// This macro works like the [`text!`] macro, in  that [`Form`]s
