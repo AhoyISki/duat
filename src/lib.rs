@@ -1341,7 +1341,7 @@ fn match_goto<S, U: Ui>(
         }
         Event { code, .. } => {
             let code = format!("{code:?}");
-            context::notify(err!("Key " [*a] code [] " not mapped on " [*a] "go to"))
+            context::notify(err!("Key [a]{code}[] not mapped on [a]go to"))
         }
     }
 
@@ -1376,7 +1376,7 @@ fn match_find_until(
                 e.move_hor(back);
             }
         } else {
-            context::notify(err!("Char " [*a] {char} [] " not found"))
+            context::notify(err!("Char [a]{char}[] not found"))
         }
     });
 }
@@ -1394,7 +1394,7 @@ fn match_inside_around(
     }
 
     let Char(char) = key.code else {
-        context::notify(err!("Key " [*a] { key.code } [] " not mapped on this mode"));
+        context::notify(err!("Key [a]{key.code}[] not mapped on this mode"));
         return;
     };
 
@@ -1503,13 +1503,13 @@ fn match_inside_around(
                     }
                 }
             }),
-            _ => context::notify(err!("Key " [*a] { key.code } [] " not mapped on this mode")),
+            _ => context::notify(err!("Key [a]{key.code}[] not mapped on this mode")),
         }
     }
 
     if initial_cursors_len == 1 && failed {
         let rel = if is_inside { "inside" } else { "around" };
-        context::notify(err!("Failed selecting " rel " object"));
+        context::notify(err!("Failed selecting {rel} object"));
     }
 }
 
@@ -1648,7 +1648,7 @@ impl<U: Ui> IncSearcher<U> for Select {
     }
 
     fn prompt(&self) -> duat_core::prelude::Text {
-        text!([Prompt] "select" [Prompt.colon] ":")
+        text!("[Prompt]select[Prompt.colon]:")
     }
 }
 
@@ -1702,7 +1702,7 @@ impl<U: Ui> IncSearcher<U> for Split {
     }
 
     fn prompt(&self) -> duat_core::prelude::Text {
-        text!([Prompt] "split" [Prompt.colon] ":")
+        text!("[Prompt]split[Prompt.colon]:")
     }
 }
 
