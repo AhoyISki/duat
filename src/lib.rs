@@ -9,7 +9,14 @@
 //! with the [`PubTsParser`] public API.
 //!
 //! [tree-sitter]: https://tree-sitter.github.io/tree-sitter
-use std::{collections::HashMap, fs, marker::PhantomData, ops::Range, sync::LazyLock};
+use std::{
+    collections::HashMap,
+    fs,
+    marker::PhantomData,
+    ops::Range,
+    path::{Path, PathBuf},
+    sync::LazyLock,
+};
 
 use duat_core::{
     Mutex, add_shifts,
@@ -24,8 +31,8 @@ use duat_core::{
 use duat_filetype::FileType;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{
-    InputEdit, Language, Node, Parser, Point as TSPoint, Query, QueryCapture, QueryCursor,
-    TextProvider, Tree,
+    InputEdit, Language, Node, Parser, Point as TSPoint, Query, QueryCapture as QueryCap,
+    QueryCursor, TextProvider, Tree,
 };
 
 mod languages;
@@ -98,7 +105,7 @@ impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter<U> {
         hooks::add_grouped::<OnFileOpen<U>>("TreeSitter", |builder| {
             let (file, _) = builder.read();
             let filetype = file.filetype();
-            
+
             if let Some(filetype) = filetype
                 && let Some(ts_parser_cfg) = TsParser::cfg(filetype)
             {
@@ -161,7 +168,7 @@ impl TsParser {
             return;
         }
 
-        let (.., [hi_query, _, inj_query]) = &self.lang_parts;
+        let (.., Queries { highlights: highlight, injections, .. }) = &self.lang_parts;
         let buf = TsBuf(bytes);
 
         tags.remove(range.clone(), self.key);
@@ -178,20 +185,21 @@ impl TsParser {
             .root_node_with_offset(self.range.start, self.offset);
 
         let sub_trees_to_add = {
-            let mut sub_trees_to_add: Vec<(Range<usize>, TSPoint, String)> = Vec::new();
+            type SubTreeToAdd = (Range<usize>, TSPoint, LangParts<'static>);
+            let mut to_add: Vec<SubTreeToAdd> = Vec::new();
 
-            let mut inj_captures = cursor.captures(inj_query, root, buf);
-            let cap_names = inj_query.capture_names();
-            let is_content =
-                |cap: &&QueryCapture| cap_names[cap.index as usize] == "injection.content";
-            let is_language =
-                |cap: &&QueryCapture| cap_names[cap.index as usize] == "injection.language";
+            let mut inj_captures = cursor.captures(injections, root, buf);
+            let cn = injections.capture_names();
+
+            let is_content = |cap: &&QueryCap| cn[cap.index as usize] == "injection.content";
+            let is_language = |cap: &&QueryCap| cn[cap.index as usize] == "injection.language";
+
             while let Some((qm, _)) = inj_captures.next() {
                 let Some(cap) = qm.captures.iter().find(is_content) else {
                     continue;
                 };
 
-                let props = inj_query.property_settings(qm.pattern_index);
+                let props = injections.property_settings(qm.pattern_index);
                 let lang = props
                     .iter()
                     .find_map(|p| {
@@ -203,24 +211,35 @@ impl TsParser {
                         Some(bytes.strs(cap.node.byte_range()).to_string())
                     });
 
-                let key = cap.node.byte_range().start;
+                let range = cap.node.byte_range();
                 let key_fn = |(range, ..): &(Range<usize>, _, _)| range.start;
                 if let Some(lang) = lang
-                    && let Err(i) = sub_trees_to_add.binary_search_by_key(&key, key_fn)
+                    && let Some(mut lang_parts) = lang_parts(&lang)
+                    && let Err(i) = to_add.binary_search_by_key(&range.start, key_fn)
                 {
-                    let to_add = (cap.node.byte_range(), cap.node.start_position(), lang);
-                    sub_trees_to_add.insert(i, to_add);
+                    let start = cap.node.start_position();
+
+                    // You may want to set a new injections query, only for this capture.
+                    if let Some(prop) = props.iter().find(|p| p.key.as_ref() == "injection.query")
+                        && let Some(value) = prop.value.as_ref()
+                        && let Some(injections) =
+                            query_from_path(&format!("{lang}/{value}"), lang_parts.1)
+                    {
+                        lang_parts.2.injections = injections;
+                    }
+
+                    to_add.insert(i, (range, start, lang_parts));
                 }
             }
 
-            sub_trees_to_add
+            to_add
         };
 
         // If a tree was not in sub_trees_to_add, but is part of the affected
         // range, that means it was removed.
         self.sub_trees.retain_mut(|st| {
-            if let Some((.., lang)) = sub_trees_to_add.iter().find(|(lhs, ..)| *lhs == st.range) {
-                if lang != st.lang_parts.0 {
+            if let Some((.., lp)) = sub_trees_to_add.iter().find(|(lhs, ..)| *lhs == st.range) {
+                if lp.0 != st.lang_parts.0 {
                     if !(st.range.start >= start && st.range.end <= end) {
                         tags.remove(st.range.clone(), self.key);
                     }
@@ -231,6 +250,8 @@ impl TsParser {
                 }
             // If the sub tree was not found, but its range was
             // parsed, it was deleted
+            // Unless it is a non-empty duat-text sub tree, in which
+            // case this rule is ignored
             } else if st.range.start >= start && st.range.end <= end {
                 false
             } else {
@@ -241,18 +262,14 @@ impl TsParser {
 
         // In the end, we add the sub trees that weren't already in there.
         // This should automatically handle all of the sub trees's sub trees.
-        for (range, offset, lang) in sub_trees_to_add {
+        for (range, offset, lang_parts) in sub_trees_to_add {
             let key_fn = |st: &TsParser| st.range.start;
 
             let Err(i) = self.sub_trees.binary_search_by_key(&range.start, key_fn) else {
                 continue;
             };
 
-            let Some(lang_parts) = lang_parts(lang.leak()) else {
-                continue;
-            };
-
-            let form_parts = forms_from_query(&lang_parts);
+            let form_parts = forms_from_lang_parts(&lang_parts);
             let st = TsParser::init(bytes, tags, range, offset, lang_parts, form_parts);
             self.sub_trees.insert(i, st)
         }
@@ -262,7 +279,7 @@ impl TsParser {
         // case the injection was of the same language.
         let buf = TsBuf(bytes);
         cursor.set_byte_range(start..end);
-        let mut hi_captures = cursor.captures(hi_query, root, buf);
+        let mut hi_captures = cursor.captures(highlight, root, buf);
         while let Some((qm, _)) = hi_captures.next() {
             for cap in qm.captures.iter() {
                 let range = cap.node.range();
@@ -300,6 +317,7 @@ impl TsParser {
             self.tree.edit(&edit);
             self.range.end = (self.range.end as i32 + change.shift()[0]) as usize;
             self.old_tree = None;
+            duat_core::log!("the old tree in {:?} is None", self.range);
         } else {
             // If this sub tree wasn't affected, neither will any of its children.
             return;
@@ -328,13 +346,14 @@ impl TsParser {
         for st in self.sub_trees.iter_mut() {
             st.reparse_sub_trees(bytes);
             if st.old_tree.is_none() {
-                let mut parse_fn = buf_parse(bytes, self.range.clone());
-                let tree = self
+                duat_core::log!("reparsed tree at {:?}", st.range);
+                let mut parse_fn = buf_parse(bytes, st.range.clone());
+                let tree = st
                     .parser
-                    .parse_with_options(&mut parse_fn, Some(&self.tree), None)
+                    .parse_with_options(&mut parse_fn, Some(&st.tree), None)
                     .unwrap();
 
-                self.old_tree = Some(std::mem::replace(&mut self.tree, tree));
+                st.old_tree = Some(std::mem::replace(&mut st.tree, tree));
             }
         }
     }
@@ -412,18 +431,19 @@ impl Reader for TsParser {
 
                 st.apply_sub_tree_change(change, bytes);
                 sh_from = *i + 1;
-            }
 
-            if let Some(last) = last_changes.last()
-                && last.taken_end().line() == start.line()
-            {
-                last_changes.push(change);
-            } else {
-                shift = last_changes
-                    .drain(..)
-                    .fold(shift, |sh, change| add_shifts(sh, change.shift()));
-                last_changes = vec![change];
-            };
+                if let Some(last) = last_changes.last()
+                    && (last.taken_end().line() == start.line()
+                        || last.taken_end().byte() > st.range.start)
+                {
+                    last_changes.push(change);
+                } else {
+                    shift = last_changes
+                        .drain(..)
+                        .fold(shift, |sh, change| add_shifts(sh, change.shift()));
+                    last_changes = vec![change];
+                };
+            }
         }
 
         for (i, st) in sub_trees {
@@ -462,18 +482,25 @@ impl Reader for TsParser {
         bytes: &mut Bytes,
         changes: &[Change<&str>],
     ) -> Vec<Range<usize>> {
+        fn merge_tree_changed_ranges(parser: &TsParser, ranges: &mut Vec<Range<usize>>) {
+            if let Some(old_tree) = parser.old_tree.as_ref() {
+                for range in parser.tree.changed_ranges(old_tree) {
+                    let range = range.start_byte..range.end_byte;
+                    merge_range_in(ranges, range);
+                }
+
+                for st in parser.sub_trees.iter() {
+                    merge_tree_changed_ranges(st, ranges)
+                }
+            }
+        }
         let mut ranges = Vec::new();
         // let mut checked_points = Vec::new();
 
         // This initial check might find larger, somewhat self contained nodes
         // that have changed, e.g. an identifier that is now recognized as a
         // function, things of that sort.
-        if let Some(old_tree) = self.old_tree.as_ref() {
-            for range in self.tree.changed_ranges(old_tree) {
-                let range = range.start_byte..range.end_byte;
-                merge_range_in(&mut ranges, range);
-            }
-        }
+        merge_tree_changed_ranges(self, &mut ranges);
 
         // However, `changed_ranges` doesn't catch everything, so another
         // check is done. At a minimum, at least the lines where the changes
@@ -519,7 +546,7 @@ pub struct TsParserCfg {
 impl TsParserCfg {
     pub fn new(filetype: &str) -> Option<Self> {
         let lang_parts = lang_parts(filetype)?;
-        let form_parts = forms_from_query(&lang_parts);
+        let form_parts = forms_from_lang_parts(&lang_parts);
 
         Some(TsParserCfg { lang_parts, form_parts })
     }
@@ -551,8 +578,8 @@ impl<'a> PubTsParser<'a> {
     /// Returns the indentation difference from the previous line
     // WARNING: long ass function
     pub fn indent_on(&mut self, p: Point, cfg: PrintCfg) -> Option<usize> {
-        let (.., [_, ind_query, _]) = &self.0.lang_parts;
-        if ind_query.pattern_count() == 0 {
+        let (.., Queries { indents, .. }) = &self.0.lang_parts;
+        if indents.pattern_count() == 0 {
             return None;
         }
         let tab = cfg.tab_stops.size() as i32;
@@ -566,9 +593,9 @@ impl<'a> PubTsParser<'a> {
         let q = {
             let mut cursor = QueryCursor::new();
             let buf = TsBuf(self.1);
-            cursor.matches(ind_query, root, buf).for_each(|qm| {
+            cursor.matches(indents, root, buf).for_each(|qm| {
                 for cap in qm.captures.iter() {
-                    let cap_end = ind_query.capture_names()[cap.index as usize]
+                    let cap_end = indents.capture_names()[cap.index as usize]
                         .strip_prefix("indent.")
                         .unwrap();
                     let nodes = if let Some(nodes) = caps.get_mut(cap_end) {
@@ -577,7 +604,7 @@ impl<'a> PubTsParser<'a> {
                         caps.insert(cap_end, HashMap::new());
                         caps.get_mut(cap_end).unwrap()
                     };
-                    let props = ind_query.property_settings(qm.pattern_index).iter();
+                    let props = indents.property_settings(qm.pattern_index).iter();
                     nodes.insert(
                         cap.node.id(),
                         props
@@ -819,7 +846,9 @@ fn ts_point_from(to: Point, (col, from): (usize, Point), str: &str) -> TSPoint {
     TSPoint::new(to.line(), col)
 }
 
-fn forms_from_query((lang, _, [query, ..]): &LangParts<'static>) -> &'static [(FormId, u8)] {
+fn forms_from_lang_parts(
+    (lang, _, Queries { highlights, .. }): &LangParts<'static>,
+) -> &'static [(FormId, u8)] {
     #[rustfmt::skip]
     const PRIORITIES: &[&str] = &[
         "string", "variable", "module", "label", "character", "boolean", "number", "type",
@@ -834,7 +863,7 @@ fn forms_from_query((lang, _, [query, ..]): &LangParts<'static>) -> &'static [(F
     if let Some(forms) = lists.get(lang) {
         forms
     } else {
-        let capture_names = query.capture_names();
+        let capture_names = highlights.capture_names();
         let priorities = capture_names.iter().map(|name| {
             PRIORITIES
                 .iter()
@@ -867,45 +896,28 @@ impl<'a> TextProvider<&'a [u8]> for TsBuf<'a> {
     }
 }
 
-fn lang_parts(lang_name: &str) -> Option<LangParts<'static>> {
+fn lang_parts(lang: &str) -> Option<LangParts<'static>> {
     static MAPS: LazyLock<Mutex<HashMap<&str, LangParts<'static>>>> = LazyLock::new(Mutex::default);
 
     let mut maps = MAPS.lock();
 
-    Some(if let Some(lang_parts) = maps.get(lang_name).copied() {
+    Some(if let Some(lang_parts) = maps.get(lang).copied() {
         lang_parts
     } else {
-        let language: &'static Language = Box::leak(Box::new(languages::get_language(lang_name)?));
+        let language: &'static Language = Box::leak(Box::new(languages::get_language(lang)?));
 
-        let queries_dir = duat_core::plugin_dir("duat-treesitter")?
-            .join("queries")
-            .join(lang_name);
+        let path = PathBuf::from(lang);
+        let highlights = query_from_path(path.join("highlights"), language).unwrap();
+        let indents = query_from_path(path.join("indents"), language).unwrap();
+        let injections = query_from_path(path.join("injections"), language).unwrap();
 
-        let hi_query = Query::new(
-            language,
-            &fs::read_to_string(queries_dir.join("highlights.scm")).unwrap_or_default(),
-        )
-        .ok()?;
+        let queries = Queries { highlights, indents, injections };
 
-        let ind_query = Query::new(
-            language,
-            &fs::read_to_string(queries_dir.join("indents.scm")).unwrap_or_default(),
-        )
-        .ok()?;
+        let lang = lang.to_string().leak();
 
-        let inj_query = Query::new(
-            language,
-            &fs::read_to_string(queries_dir.join("injections.scm")).unwrap_or_default(),
-        )
-        .ok()?;
+        maps.insert(lang, (lang, language, queries.clone()));
 
-        let queries: &'static [Query; 3] = Box::leak(Box::new([hi_query, ind_query, inj_query]));
-
-        let lang_name = lang_name.to_string().leak();
-
-        maps.insert(lang_name, (lang_name, language, queries));
-
-        (lang_name, language, queries)
+        (lang, language, queries)
     })
 }
 
@@ -916,10 +928,10 @@ fn log_node(node: tree_sitter::Node) {
     let mut cursor = node.walk();
     let mut node = Some(cursor.node());
     let mut log = String::new();
-    while let Some(no) = node {
+    while let Some(n) = node {
         let indent = " ".repeat(cursor.depth() as usize);
         if cursor.node().is_named() {
-            writeln!(log, "{indent}{no:?}").unwrap();
+            writeln!(log, "{indent}{n:?}").unwrap();
         }
         let mut next_exists = cursor.goto_first_child() || cursor.goto_next_sibling();
         while !next_exists && cursor.goto_parent() {
@@ -931,7 +943,14 @@ fn log_node(node: tree_sitter::Node) {
     duat_core::log!("{log}");
 }
 
-type LangParts<'a> = (&'a str, &'a Language, &'a [Query; 3]);
+type LangParts<'a> = (&'a str, &'a Language, Queries<'a>);
+
+#[derive(Clone, Copy)]
+struct Queries<'a> {
+    highlights: &'a Query,
+    indents: &'a Query,
+    injections: &'a Query,
+}
 
 /// The Key for tree-sitter
 fn ts_key() -> Key {
@@ -985,4 +1004,28 @@ fn change_clips(change: Change<&str>, range: Range<usize>) -> bool {
 
     (start.byte() <= range.start && range.start < taken.byte())
         || (start.byte() < range.end && range.end <= taken.byte())
+}
+
+fn query_from_path(path: impl AsRef<Path>, language: &Language) -> Option<&'static Query> {
+    static QUERIES: LazyLock<Mutex<HashMap<PathBuf, &'static Query>>> =
+        LazyLock::new(Mutex::default);
+
+    let path = duat_core::plugin_dir("duat-treesitter")?
+        .join("queries")
+        .join(path.as_ref())
+        .with_extension("scm");
+
+    let mut queries = QUERIES.lock();
+
+    Some(if let Some(query) = queries.get(&path) {
+        query
+    } else {
+        let query = Box::leak(Box::new(
+            Query::new(language, &fs::read_to_string(&path).unwrap_or_default()).ok()?,
+        ));
+
+        queries.insert(path, query);
+
+        query
+    })
 }

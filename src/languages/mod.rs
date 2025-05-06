@@ -18,7 +18,9 @@ pub fn get_language(filetype: &str) -> Option<Language> {
     let lib_dir = parsers_dir.join("lib");
     let crate_dir = parsers_dir.join(format!("ts-{}", options.crate_name));
     let manifest_path = crate_dir.join("Cargo.toml");
-    let so_path = lib_dir.join(format!("lib{}.so", options.crate_name));
+
+    let lib = options.crate_name.replace("-", "_");
+    let so_path = lib_dir.join(format!("lib{lib}.so"));
 
     if let Ok(lib) = dlopen_rs::ElfLibrary::dlopen(
         so_path,
@@ -78,7 +80,6 @@ pub fn get_language(filetype: &str) -> Option<Language> {
             .collect();
 
         let crate_name = options.crate_name;
-        let lib = crate_name.replace("-", "_");
         let git = options.git;
 
         let cargo_toml = formatdoc! {r#"
