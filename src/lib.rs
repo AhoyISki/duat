@@ -9,8 +9,6 @@
 //! with the [`PubTsParser`] public API.
 //!
 //! [tree-sitter]: https://tree-sitter.github.io/tree-sitter
-#![feature(decl_macro, macro_metavar_expr_concat)]
-
 use std::{collections::HashMap, fs, marker::PhantomData, ops::Range, sync::LazyLock};
 
 use duat_core::{
@@ -57,6 +55,8 @@ impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter<U> {
     }
 
     fn plug(self) {
+        dlopen_rs::init();
+
         form::set_many!(
             ("variable", Form::white()),
             ("variable.parameter", Form::italic()),

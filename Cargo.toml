@@ -17,45 +17,6 @@ duat-filetype = { version = "0.1.0", git = "https://github.com/AhoyISki/duat-fil
 
 streaming-iterator = "0.1.9"
 tree-sitter = "0.25.2"
-
-ts-bash       = { version = "0.23.3",  package = "tree-sitter-bash" }
-ts-c          = { version = "0.23.4",  package = "tree-sitter-c" }
-ts-cpp        = { version = "0.23.4",  package = "tree-sitter-cpp" }
-ts-c-sharp    = { version = "0.23.1",  package = "tree-sitter-c-sharp" }
-ts-css        = { version = "0.23.2",  package = "tree-sitter-css" }
-ts-dart       = { version = "0.0.4",   package = "tree-sitter-dart" }
-ts-elixir     = { version = "0.3.4",   package = "tree-sitter-elixir" }
-ts-erlang     = { version = "0.13.0",  package = "tree-sitter-erlang" }
-ts-fortran    = { version = "0.5.0",   package = "tree-sitter-fortran" }
-ts-go         = { version = "0.23.4",  package = "tree-sitter-go" }
-ts-groovy     = { version = "0.1.2",   package = "tree-sitter-groovy" }
-ts-haskell    = { version = "0.23.1",  package = "tree-sitter-haskell" }
-ts-html       = { version = "0.23.2",  package = "tree-sitter-html" }
-ts-java       = { version = "0.23.5",  package = "tree-sitter-java" }
-ts-js         = { version = "0.23.1",  package = "tree-sitter-javascript" }
-ts-julia      = { version = "0.23.1",  package = "tree-sitter-julia" }
-ts-lua        = { version = "0.2.0",   package = "tree-sitter-lua" }
-ts-md         = { version = "0.3.2",   package = "tree-sitter-md" }
-ts-nix        = { version = "0.0.2",   package = "tree-sitter-nix" }
-ts-objc       = { version = "3.0.2",   package = "tree-sitter-objc" }
-ts-ocaml      = { version = "0.24.0",  package = "tree-sitter-ocaml" }
-ts-php        = { version = "0.23.11", package = "tree-sitter-php" }
-ts-python     = { version = "0.23.6",  package = "tree-sitter-python" }
-ts-r          = { version = "1.1.0",   package = "tree-sitter-r" }
-ts-ruby       = { version = "0.23.1",  package = "tree-sitter-ruby" }
-ts-rust       = { version = "0.23.2",  package = "tree-sitter-rust" }
-ts-scala      = { version = "0.23.4",  package = "tree-sitter-scala" }
-ts-swift      = { version = "0.7.0",   package = "tree-sitter-swift" }
-ts-ts         = { version = "0.23.2",  package = "tree-sitter-typescript" }
-ts-xml        = { version = "0.7.0",   package = "tree-sitter-xml" } 
-ts-vim        = { version = "0.4.0",   package = "tree-sitter-vim" } 
-ts-asm        = { version = "0.24.0",  package = "tree-sitter-asm" } 
-ts-json       = { version = "0.24.8",  package = "tree-sitter-json" } 
-ts-sequel     = { version = "0.3.8",   package = "tree-sitter-sequel" } 
-ts-gleam      = { version = "1.0.0",   package = "tree-sitter-gleam" } 
-ts-yaml       = { version = "0.7.0",   package = "tree-sitter-yaml" } 
-ts-zig        = { version = "1.1.2",   package = "tree-sitter-zig" } 
-ts-scss       = { version = "1.0.0",   package = "tree-sitter-scss" } 
 dlopen-rs = "0.7.3"
 tree-sitter-language = "0.1.5"
 indoc = "2.0.6"

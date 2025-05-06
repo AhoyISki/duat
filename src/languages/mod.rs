@@ -1,10 +1,9 @@
-use std::{path::PathBuf, process::Command};
+use std::{fs, path::PathBuf, process::Command};
 
 use dlopen_rs::{Dylib, OpenFlags};
 use duat_core::Mutex;
 use indoc::{formatdoc, indoc};
 use tree_sitter::Language;
-use tree_sitter_language::LanguageFn;
 
 use self::list::LANGUAGE_OPTIONS;
 
@@ -13,11 +12,11 @@ mod list;
 pub fn get_language(filetype: &str) -> Option<Language> {
     static LIBRARIES: Mutex<Vec<Dylib>> = Mutex::new(Vec::new());
 
-    let workspace = get_workspace_dir()?;
+    let parsers_dir = get_workspace_dir()?.join("parsers");
     let options = LANGUAGE_OPTIONS.get(filetype)?;
 
-    let lib_dir = workspace.join("lib");
-    let crate_dir = workspace.join(options.crate_name);
+    let lib_dir = parsers_dir.join("lib");
+    let crate_dir = parsers_dir.join(format!("ts-{}", options.crate_name));
     let manifest_path = crate_dir.join("Cargo.toml");
     let so_path = lib_dir.join(format!("lib{}.so", options.crate_name));
 
@@ -25,12 +24,10 @@ pub fn get_language(filetype: &str) -> Option<Language> {
         so_path,
         OpenFlags::RTLD_NOW | OpenFlags::CUSTOM_NOT_REGISTER,
     ) {
-        let language = if options.is_function {
-            let symbol = unsafe { lib.get::<fn() -> Language>(options.symbol).ok()? };
-            symbol()
-        } else {
-            let symbol = unsafe { lib.get::<LanguageFn>(options.symbol).ok()? };
-            (*symbol).into()
+        let language = unsafe {
+            let (symbol, _) = options.symbols[0];
+            let lang_fn = lib.get::<fn() -> Language>(&symbol.to_lowercase()).ok()?;
+            lang_fn()
         };
 
         // Push after getting the symbol, to ensure that the lib does indeed
@@ -38,7 +35,7 @@ pub fn get_language(filetype: &str) -> Option<Language> {
         LIBRARIES.lock().push(lib);
 
         Some(language)
-    } else if let Ok(true) = std::fs::exists(&manifest_path) {
+    } else if let Ok(true) = fs::exists(&manifest_path) {
         let mut cargo = Command::new("cargo");
 
         cargo.args([
@@ -60,32 +57,53 @@ pub fn get_language(filetype: &str) -> Option<Language> {
             None
         }
     } else {
-        const LIB_RS: &str = "pub use ts::*;";
+        let lib_rs: String = options
+            .symbols
+            .iter()
+            .map(|(symbol, is_function)| {
+                let fn_name = symbol.to_lowercase();
+                let language = if *is_function {
+                    format!("ts::{symbol}()")
+                } else {
+                    format!("ts::{symbol}.into()")
+                };
+
+                formatdoc! {"
+                    #[unsafe(no_mangle)]    
+                    pub fn {fn_name}() -> tree_sitter::Language {{
+                        {language}
+                    }}
+                "}
+            })
+            .collect();
 
         let crate_name = options.crate_name;
+        let lib = crate_name.replace("-", "_");
+        let git = options.git;
 
-        let cargo_toml = formatdoc!(
-            r#"
-                [package]
-				name = "ts-{crate_name}"
-    		    version = "0.1.0"
-        		edition = "2024"
-        		description = "Dynamic wrapper for tree-sitter-{crate_name}"
+        let cargo_toml = formatdoc! {r#"
+            [package]
+            name = "ts-{crate_name}"
+            version = "0.1.0"
+            edition = "2024"
+            description = "Dynamic wrapper for tree-sitter-{crate_name}"
 
-                [lib]
-                name = "{crate_name}"
-                crate-type = ["dylib"]
+            [lib]
+            name = "{lib}"
+            crate-type = ["dylib"]
 
-				[dependencies.ts]
-    		    version = "*"
-        		git = "{}"
-                package = "tree-sitter-{crate_name}""#,
-            options.git
-        );
+            [dependencies]
+            tree-sitter = "*"
 
-        std::fs::create_dir_all(crate_dir.join("src")).ok()?;
-        std::fs::write(manifest_path, cargo_toml).ok()?;
-        std::fs::write(crate_dir.join("src/lib.rs"), LIB_RS).ok()?;
+            [dependencies.ts]
+            version = "*"
+            git = "{git}"
+            package = "tree-sitter-{crate_name}"
+        "#};
+
+        fs::create_dir_all(crate_dir.join("src")).ok()?;
+        fs::write(manifest_path, cargo_toml).ok()?;
+        fs::write(crate_dir.join("src/lib.rs"), lib_rs).ok()?;
 
         get_language(filetype)
     }
@@ -96,14 +114,16 @@ fn get_workspace_dir() -> Option<PathBuf> {
         r#"
         [workspace]
         resolver = "2"
-        members = [ "*" ]"#
+        members = [ "*" ]"
+        exclude = [ "lib", "target" ]"#
     );
 
     let workspace_dir = duat_core::plugin_dir("duat-treesitter")?;
-    let manifest_path = workspace_dir.join("parsers/Cargo.toml");
+    let parsers_dir = workspace_dir.join("parsers");
 
-    if let Ok(false) | Err(_) = std::fs::exists(&manifest_path) {
-        std::fs::write(manifest_path, BASE_WORKSPACE_TOML).ok()?
+    if let Ok(false) | Err(_) = fs::exists(&parsers_dir) {
+        fs::create_dir_all(workspace_dir.join("parsers")).ok()?;
+        fs::write(parsers_dir.join("Cargo.toml"), BASE_WORKSPACE_TOML).ok()?
     }
 
     Some(workspace_dir)
@@ -111,8 +131,7 @@ fn get_workspace_dir() -> Option<PathBuf> {
 
 struct LanguageOptions {
     git: &'static str,
-    symbol: &'static str,
-    is_function: bool,
+    symbols: &'static [(&'static str, bool)],
     crate_name: &'static str,
     _maintainers: &'static [&'static str],
 }
@@ -125,8 +144,7 @@ impl LanguageOptions {
     ) -> (&'static str, Self) {
         let options = Self {
             git,
-            symbol: "LANGUAGE",
-            is_function: false,
+            symbols: &[("LANGUAGE", false)],
             crate_name: crate_name(lang),
             _maintainers,
         };
@@ -134,37 +152,30 @@ impl LanguageOptions {
         (lang, options)
     }
 
-    fn pair_with_symbol(
+    fn pairs_with_symbol(
         lang: &'static str,
         git: &'static str,
-        (symbol, is_function): (&'static str, bool),
-        maintainers: &'static [&'static str],
+        symbols: &'static [(&'static str, bool)],
+        _maintainers: &'static [&'static str],
     ) -> (&'static str, LanguageOptions) {
         let options = Self {
             git,
-            symbol,
-            is_function,
+            symbols,
             crate_name: crate_name(lang),
-            _maintainers: maintainers,
+            _maintainers,
         };
 
         (lang, options)
     }
 
-    fn pair_with_symbol_and_crate(
+    fn pairs_with_symbol_and_crate(
         lang: &'static str,
         git: &'static str,
-        (symbol, is_function): (&'static str, bool),
+        symbols: &'static [(&'static str, bool)],
         crate_name: &'static str,
-        maintainers: &'static [&'static str],
+        _maintainers: &'static [&'static str],
     ) -> (&'static str, LanguageOptions) {
-        let options = Self {
-            git,
-            symbol,
-            is_function,
-            crate_name,
-            _maintainers: maintainers,
-        };
+        let options = Self { git, symbols, crate_name, _maintainers };
 
         (lang, options)
     }
