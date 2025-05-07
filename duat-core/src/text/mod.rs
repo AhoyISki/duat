@@ -357,9 +357,7 @@ impl Text {
     /// parsers. Those can be used for, among other things, syntax
     /// hightlighting.
     pub fn add_reader(&mut self, reader_cfg: impl ReaderCfg) -> Result<(), Text> {
-        self.0
-            .readers
-            .add(&mut self.0.bytes, &mut self.0.tags, reader_cfg)
+        self.0.readers.add(&mut self.0.bytes, reader_cfg)
     }
 
     pub fn get_reader<R: Reader>(&mut self) -> Option<R::PublicReader<'_>> {
@@ -580,6 +578,7 @@ impl Text {
                 let changes: Vec<Change<&str>> = changes.iter().map(|c| c.as_ref()).collect();
                 self.0.readers.process_changes(&mut self.0.bytes, &changes);
             }
+
             self.0
                 .readers
                 .update_range(&mut self.0.bytes, &mut self.0.tags, within.clone());

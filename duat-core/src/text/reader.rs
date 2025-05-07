@@ -99,7 +99,7 @@ pub trait Reader: Send + Sync + 'static {
 pub trait ReaderCfg {
     type Reader: Reader;
 
-    fn init(self, buffer: &mut Bytes, tags: MutTags) -> Result<Self::Reader, Text>;
+    fn init(self, buffer: &mut Bytes) -> Result<Self::Reader, Text>;
 }
 
 pub struct MutTags<'a>(&'a mut Tags);
@@ -154,12 +154,7 @@ impl<'a> std::fmt::Debug for MutTags<'a> {
 pub struct Readers(Vec<(Box<dyn Reader>, Vec<Range<usize>>, TypeId)>);
 
 impl Readers {
-    pub fn add<R: ReaderCfg>(
-        &mut self,
-        bytes: &mut Bytes,
-        tags: &mut Tags,
-        reader_cfg: R,
-    ) -> Result<(), Text> {
+    pub fn add<R: ReaderCfg>(&mut self, bytes: &mut Bytes, reader_cfg: R) -> Result<(), Text> {
         if self.0.iter().any(|(.., t)| *t == TypeId::of::<R::Reader>()) {
             return Err(err!(
                 "There is already a reader of type [a]{}",
@@ -167,8 +162,12 @@ impl Readers {
             ));
         }
 
-        let reader = Box::new(reader_cfg.init(bytes, MutTags(tags))?);
-        self.0.push((reader, Vec::new(), TypeId::of::<R::Reader>()));
+        let reader = Box::new(reader_cfg.init(bytes)?);
+        self.0.push((
+            reader,
+            vec![0..bytes.len().byte()],
+            TypeId::of::<R::Reader>(),
+        ));
         Ok(())
     }
 

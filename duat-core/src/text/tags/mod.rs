@@ -729,22 +729,49 @@ impl Tags {
     /// * Its length
     fn skip_at(&self, at: usize) -> [usize; 3] {
         let [n, b] = self.records.closest_to_by_key(at, |[_, b]| *b);
-        let skips = {
-            let mut b_len = 0;
-            move |(n, ts): (usize, &TagOrSkip)| {
-                b_len += ts.len();
-                ts.as_skip().map(|s| [n, b_len, s])
-            }
-        };
 
         if at >= b {
-            let iter = fwd_range(&self.buf, n..).filter_map(skips);
-            iter.map(|[n, this_b, skip]| [n, b + (this_b - skip), skip])
-                .find(|[_, b, skip]| *b + *skip > at)
+            let iter = {
+                let (s0, s1) = self.buf.as_slices();
+                let (start, end) = crate::get_ends(n.., self.buf.len());
+
+                let r0 = start.min(s0.len())..end.min(s0.len());
+                let r1 = start.saturating_sub(s0.len())..end.saturating_sub(s0.len());
+
+                s0[r0].iter().chain(s1[r1].iter()).enumerate()
+            };
+
+            let mut ret = None;
+            let mut b = b;
+            for (i, skip) in iter.filter_map(|(i, ts)| Some(i).zip(ts.as_skip())) {
+                if b + skip > at {
+                    ret = Some([n + i, b, skip]);
+                    break;
+                }
+                b += skip;
+            }
+            ret
         } else {
-            let iter = rev_range(&self.buf, ..n).filter_map(skips);
-            iter.map(|[n, this_b, skip]| [n, b - this_b, skip])
-                .find(|[_, b, skip]| *b + *skip > at && *b <= at)
+            let iter = {
+                let (s0, s1) = self.buf.as_slices();
+                let (start, end) = crate::get_ends(..n, self.buf.len());
+
+                let r0 = start.min(s0.len())..end.min(s0.len());
+                let r1 = start.saturating_sub(s0.len())..end.saturating_sub(s0.len());
+
+                s1[r1].iter().rev().chain(s0[r0].iter().rev()).enumerate()
+            };
+
+            let mut ret = None;
+            let mut b = b;
+            for (i, skip) in iter.filter_map(|(i, ts)| Some(i).zip(ts.as_skip())) {
+                b -= skip;
+                if b <= at && b + skip > at {
+                    ret = Some([n - (i + 1), b, skip]);
+                    break;
+                }
+            }
+            ret
         }
         .unwrap_or({
             let [n, b] = self.records.max();
@@ -1042,6 +1069,7 @@ pub enum TagOrSkip {
 
 impl TagOrSkip {
     /// Returns how many bytes this skips, if any
+    #[inline(always)]
     pub fn as_skip(&self) -> Option<usize> {
         match self {
             Self::Skip(v) => Some(*v as usize),
@@ -1050,6 +1078,7 @@ impl TagOrSkip {
     }
 
     /// Returns the [`RawTag`] within, if any
+    #[inline(always)]
     fn as_tag(&self) -> Option<RawTag> {
         match self {
             TagOrSkip::Tag(tag) => Some(*tag),
@@ -1112,15 +1141,12 @@ fn rev_range(
     let r0 = start.min(s0.len())..end.min(s0.len());
     let r1 = start.saturating_sub(s0.len())..end.saturating_sub(s0.len());
 
-    if let (Some(s0), Some(s1)) = (s0.get(r0), s1.get(r1)) {
-        s1.iter()
-            .rev()
-            .chain(s0.iter().rev())
-            .enumerate()
-            .map(move |(n, ts)| (end - (n + 1), ts))
-    } else {
-        panic!("{buf:#?}, {range:?}");
-    }
+    s1[r1]
+        .iter()
+        .rev()
+        .chain(s0[r0].iter().rev())
+        .enumerate()
+        .map(move |(n, ts)| (end - (n + 1), ts))
 }
 
 /// Forward enumerating function for a [`TagOrSkip::Tag`] from a byte
