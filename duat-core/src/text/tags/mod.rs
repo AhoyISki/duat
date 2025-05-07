@@ -766,7 +766,7 @@ impl Tags {
             let mut b = b;
             for (i, skip) in iter.filter_map(|(i, ts)| Some(i).zip(ts.as_skip())) {
                 b -= skip;
-                if b <= at && b + skip > at {
+                if b <= at {
                     ret = Some([n - (i + 1), b, skip]);
                     break;
                 }
