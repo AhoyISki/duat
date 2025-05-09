@@ -43,10 +43,7 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
 /// The functions that will be exposed for public use.
 mod global {
     use std::{
-        any::TypeId,
-        collections::HashMap,
-        sync::{LazyLock, mpsc},
-        time::Duration,
+        any::TypeId, collections::HashMap, sync::{mpsc, LazyLock}, thread, time::Duration
     };
 
     use parking_lot::Mutex;
@@ -478,7 +475,7 @@ mod global {
         tx.send(f).unwrap();
         *sender = Some(tx);
 
-        crate::thread::spawn(move || {
+        thread::spawn(move || {
             while let Ok(f) = rx.recv_timeout(Duration::from_micros(500)) {
                 f();
             }

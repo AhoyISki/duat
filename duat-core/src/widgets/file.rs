@@ -14,14 +14,7 @@
 use std::{fs, path::PathBuf};
 
 use crate::{
-    cache::load_cache,
-    cfg::PrintCfg,
-    context, form,
-    hooks::{self, FileWritten},
-    mode::Cursors,
-    text::{Bytes, Text, err},
-    ui::{RawArea, PushSpecs, Ui},
-    widgets::{Widget, WidgetCfg},
+    cache::load_cache, cfg::PrintCfg, context, data::RwData2, form, hooks::{self, FileWritten}, mode::Cursors, text::{err, Bytes, Text}, ui::{PushSpecs, RawArea, Ui}, widgets::{Widget, WidgetCfg}
 };
 
 /// The configuration for a new [`File`]
@@ -111,7 +104,7 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
             text,
             cfg: self.cfg,
             printed_lines: (0..40).map(|i| (i, i == 1)).collect(),
-            layout_ordering: 0,
+            layout_order: 0,
         };
 
         // The PushSpecs don't matter
@@ -125,7 +118,7 @@ pub struct File {
     text: Text,
     cfg: PrintCfg,
     printed_lines: Vec<(usize, bool)>,
-    pub(crate) layout_ordering: usize,
+    pub(crate) layout_order: usize,
 }
 
 impl File {
@@ -278,7 +271,11 @@ impl<U: Ui> Widget<U> for File {
         FileCfg::new()
     }
 
-    fn update(&mut self, _area: &U::Area) {}
+    async fn update(_widget: RwData2<Self>, _area: &U::Area) {}
+
+    fn has_changed(&self) -> bool {
+         todo!();
+    }
 
     fn text(&self) -> &Text {
         &self.text

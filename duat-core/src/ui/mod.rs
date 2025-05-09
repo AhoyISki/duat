@@ -1,16 +1,11 @@
 mod builder;
 mod layout;
 
-use std::{
-    fmt::Debug,
-    sync::{Arc, mpsc},
-    time::Instant,
-};
+use std::{cell::RefCell, fmt::Debug, rc::Rc, sync::mpsc, time::Instant};
 
 use bincode::{Decode, Encode};
 use crossterm::event::KeyEvent;
 use layout::window_files;
-use parking_lot::lock_api::Mutex;
 
 pub use self::{
     builder::{FileBuilder, WindowBuilder},
@@ -19,7 +14,7 @@ pub use self::{
 use crate::{
     cache::load_cache,
     cfg::PrintCfg,
-    data::RwData,
+    data::RwData2,
     form::Painter,
     text::{FwdIter, Item, Point, RevIter, Text, TwoPoints},
     widgets::{File, Node, Widget},
@@ -352,20 +347,17 @@ impl<U: Ui> Window<U> {
         checker: impl Fn() -> bool + Send + Sync + 'static,
         layout: Box<dyn Layout<U>>,
     ) -> (Self, Node<U>) {
-        let widget = RwData::<dyn Widget<U>>::new_unsized::<W>(Arc::new(Mutex::new(widget)));
+        let widget =
+            unsafe { RwData2::<dyn Widget<U>>::new_unsized::<W>(Rc::new(RefCell::new(widget))) };
 
-        let cache = if let Some(file) = widget.read_as::<File>()
-            && let Some(cache) = load_cache::<<U::Area as RawArea>::Cache>(file.path())
-        {
-            cache
-        } else {
-            <U::Area as RawArea>::Cache::default()
-        };
+        let cache = widget
+            .read_as(|f: &File| load_cache::<<U::Area as RawArea>::Cache>(f.path()))
+            .flatten()
+            .unwrap_or_default();
 
         let area = U::new_root(ms, cache);
 
         let node = Node::new::<W>(widget, area.clone(), checker);
-        node.update();
 
         let window = Self {
             nodes: vec![node.clone()],
@@ -395,15 +387,13 @@ impl<U: Ui> Window<U> {
         do_cluster: bool,
         on_files: bool,
     ) -> (Node<U>, Option<U::Area>) {
-        let widget = RwData::<dyn Widget<U>>::new_unsized::<W>(Arc::new(Mutex::new(widget)));
+        let widget =
+            unsafe { RwData2::<dyn Widget<U>>::new_unsized::<W>(Rc::new(RefCell::new(widget))) };
 
-        let cache = if let Some(file) = widget.read_as::<File>()
-            && let Some(cache) = load_cache::<<U::Area as RawArea>::Cache>(file.path())
-        {
-            cache
-        } else {
-            <U::Area as RawArea>::Cache::default()
-        };
+        let cache = widget
+            .read_as(|f: &File| load_cache::<<U::Area as RawArea>::Cache>(f.path()))
+            .flatten()
+            .unwrap_or_default();
 
         let (child, parent) = MutArea(area).bisect(specs, do_cluster, on_files, cache);
 
@@ -423,7 +413,7 @@ impl<U: Ui> Window<U> {
         checker: impl Fn() -> bool + 'static + Send + Sync,
     ) -> Result<(Node<U>, Option<U::Area>), Text> {
         let window_files = window_files(&self.nodes);
-        file.layout_ordering = window_files.len();
+        file.layout_order = window_files.len();
         let (id, specs) = self.layout.new_file(&file, window_files)?;
 
         let (child, parent) = self.push(file, &id.0, checker, specs, false, true);
@@ -443,7 +433,7 @@ impl<U: Ui> Window<U> {
             .nodes
             .extract_if(.., |node| {
                 node.as_file()
-                    .is_some_and(|(f, ..)| f.read().name() == name)
+                    .is_some_and(|(f, ..)| f.read(File::name) == name)
             })
             .next()
         else {
@@ -465,33 +455,35 @@ impl<U: Ui> Window<U> {
         }
 
         if let Some(related) = node.related_widgets() {
-            let nodes = related.read();
-            for node in self.nodes.extract_if(.., |node| nodes.contains(node)) {
-                MutArea(node.area()).delete();
-            }
+            related.read(|related| {
+                for node in self.nodes.extract_if(.., |node| related.contains(node)) {
+                    MutArea(node.area()).delete();
+                }
+            });
         }
     }
 
     /// Takes all [`Node`]s related to a given [`Node`]
     pub(crate) fn take_file_and_related_nodes(&mut self, node: &Node<U>) -> Vec<Node<U>> {
         if let Some(related) = node.related_widgets() {
-            let layout_ordering = node.widget().read_as::<File>().unwrap().layout_ordering;
+            let layout_ordering = node.widget().read_as(|f: &File| f.layout_order).unwrap();
 
-            let nodes = related.read();
-            let nodes = self
-                .nodes
-                .extract_if(.., |n| nodes.contains(n) || n == node)
-                .collect();
+            related.read(|related| {
+                let nodes = self
+                    .nodes
+                    .extract_if(.., |n| related.contains(n) || n == node)
+                    .collect();
 
-            for node in &self.nodes {
-                if let Some(mut file) = node.widget().write_as::<File>() {
-                    if file.layout_ordering > layout_ordering {
-                        file.layout_ordering -= 1;
-                    }
+                for node in &self.nodes {
+                    node.widget().write_as(|f: &mut File| {
+                        if f.layout_order > layout_ordering {
+                            f.layout_order -= 1;
+                        }
+                    });
                 }
-            }
 
-            nodes
+                nodes
+            })
         } else {
             Vec::new()
         }
@@ -500,13 +492,13 @@ impl<U: Ui> Window<U> {
     pub(crate) fn insert_file_nodes(&mut self, layout_ordering: usize, nodes: Vec<Node<U>>) {
         if let Some(i) = self.nodes.iter().position(|node| {
             node.widget()
-                .read_as::<File>()
-                .is_some_and(|file| file.layout_ordering >= layout_ordering)
+                .read_as(|f: &File| f.layout_order >= layout_ordering)
+                == Some(true)
         }) {
             for node in self.nodes[i..].iter() {
-                if let Some(mut file) = node.widget().write_as::<File>() {
-                    file.layout_ordering += 1;
-                }
+                node.widget().write_as(|f: &mut File| {
+                    f.layout_order += 1;
+                });
             }
             self.nodes.splice(i..i, nodes);
         } else {
@@ -525,14 +517,14 @@ impl<U: Ui> Window<U> {
     pub fn file_names(&self) -> Vec<String> {
         window_files(&self.nodes)
             .into_iter()
-            .map(|f| f.0.widget().read_as::<File>().unwrap().name())
+            .map(|f| f.0.widget().read_as(|f: &File| f.name()).unwrap())
             .collect()
     }
 
     pub fn file_paths(&self) -> Vec<String> {
         window_files(&self.nodes)
             .into_iter()
-            .map(|f| f.0.widget().read_as::<File>().unwrap().name())
+            .map(|f| f.0.widget().read_as(|f: &File| f.name()).unwrap())
             .collect()
     }
 
@@ -640,8 +632,8 @@ impl<U: Ui> RoWindow<'_, U> {
     /// references to themselves.
     pub fn fold_files<B>(&self, init: B, mut f: impl FnMut(B, &File) -> B) -> B {
         self.0.nodes.iter().fold(init, |accum, node| {
-            if let Some(file) = node.try_downcast::<File>() {
-                f(accum, &file.read())
+            if node.data_is::<File>() {
+                node.read_as(|file: &File| f(accum, file)).unwrap()
             } else {
                 accum
             }
@@ -660,7 +652,7 @@ impl<U: Ui> RoWindow<'_, U> {
     pub fn fold_widgets<B>(&self, init: B, mut f: impl FnMut(B, &dyn Widget<U>) -> B) -> B {
         self.0.nodes.iter().fold(init, |accum, node| {
             let f = &mut f;
-            node.raw_inspect(|widget| f(accum, widget))
+            node.raw_read(|widget| f(accum, widget))
         })
     }
 }
@@ -1100,7 +1092,6 @@ impl<A: RawArea> std::ops::Deref for MutArea<'_, A> {
 #[derive(Clone, PartialEq)]
 pub struct Area<U: Ui> {
     area: U::Area,
-    
 }
 
 impl<U: Ui> std::ops::Deref for Area<U> {

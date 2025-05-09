@@ -6,7 +6,7 @@ use crate::{text::Text, widgets::File};
 mod internals {
     use crate::{
         text::Text,
-        ui::{RawArea, Node, PushSpecs, Ui},
+        ui::{Node, PushSpecs, RawArea, Ui},
         widgets::File,
     };
 
@@ -36,7 +36,7 @@ mod internals {
             })
             .collect();
 
-        files.sort_unstable_by_key(|(node, _)| node.read_as::<File>().unwrap().layout_ordering);
+        files.sort_unstable_by_key(|(node, _)| node.read_as(|f: &File| f.layout_order).unwrap());
 
         files
     }

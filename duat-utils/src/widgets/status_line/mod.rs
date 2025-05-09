@@ -91,6 +91,7 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
     type Cfg = StatusLineCfg<U>;
 
     fn cfg() -> Self::Cfg {
+        duat_core::mode::ge
         macros::status!("{file_fmt} {mode_fmt} {selections_fmt} {}", main_fmt)
     }
 

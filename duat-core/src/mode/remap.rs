@@ -324,7 +324,7 @@ mod global {
     }
 
     /// Sends a key to be remapped
-    pub(crate) fn send_key(mut key: KeyEvent) {
+    pub(crate) async fn send_key(mut key: KeyEvent) {
         // No need to send shift to, for example, Char('L').
         if let KeyCode::Char(_) = key.code {
             key.modifiers.remove(KeyMod::SHIFT);
@@ -425,8 +425,6 @@ impl Remapper {
 
                         let cfg = widget.print_cfg();
                         widget.text_mut().add_cursors(area, cfg);
-                        widget.update(area);
-                        widget.print(area);
                     })
                 }
             } else if *is_alias {
@@ -464,14 +462,15 @@ pub enum Gives {
 fn remove_alias_and<U: Ui>(f: impl FnOnce(&mut dyn Widget<U>, &U::Area, usize)) {
     let widget = context::cur_widget::<U>().unwrap();
     widget.mutate_data(|widget, area, _| {
-        let mut widget = widget.write();
-        let cfg = widget.print_cfg();
-        widget.text_mut().remove_cursors(area, cfg);
+        widget.write(|widget| {
+            let cfg = widget.print_cfg();
+            widget.text_mut().remove_cursors(area, cfg);
 
-        if let Some(main) = widget.cursors().unwrap().get_main() {
-            let main = main.byte();
-            widget.text_mut().remove_tags(main, Key::for_alias());
-            f(&mut *widget, area, main)
-        }
+            if let Some(main) = widget.cursors().unwrap().get_main() {
+                let main = main.byte();
+                widget.text_mut().remove_tags(main, Key::for_alias());
+                f(&mut *widget, area, main)
+            }
+        });
     })
 }

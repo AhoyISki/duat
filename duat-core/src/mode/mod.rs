@@ -21,27 +21,32 @@ mod switch {
     use super::{Cursors, Mode};
     use crate::{
         context,
-        data::RwData,
+        data::RwData2,
         duat_name, file_entry,
         hooks::{self, KeySent, KeySentTo, ModeSetTo, ModeSwitched},
         session::sender,
-        ui::{RawArea, DuatEvent, Ui},
+        ui::{DuatEvent, RawArea, Ui},
         widget_entry,
         widgets::{File, Node, Widget},
     };
 
-    static SEND_KEYS: LazyLock<Mutex<Box<KeyFn>>> =
-        LazyLock::new(|| Mutex::new(Box::new(|_| None)));
-    static RESET_MODE: LazyLock<Mutex<Box<dyn Fn() -> bool + Send>>> =
-        LazyLock::new(|| Mutex::new(Box::new(|| true)));
-    static SET_MODE: Mutex<Option<Box<dyn FnOnce() -> bool + Send>>> = Mutex::new(None);
+    thread_local! {
+        static SEND_KEYS: LazyLock<Mutex<Box<KeyFn>>> =
+            LazyLock::new(|| Mutex::new(Box::new(|_| None)));
+        static RESET_MODE: LazyLock<Mutex<Box<dyn Fn() -> bool>>> =
+            LazyLock::new(|| Mutex::new(Box::new(|| true)));
+        static SET_MODE: Mutex<Option<Box<dyn FnOnce() -> bool>>> = Mutex::new(None);
+    }
 
-    type KeyFn =
-        dyn FnMut(&mut IntoIter<KeyEvent>) -> Option<Box<dyn FnOnce() -> bool + Send>> + Send;
+    type KeyFn = dyn FnMut(&mut IntoIter<KeyEvent>) -> Option<Box<dyn FnOnce() -> bool>>;
 
     /// Whether or not the [`Mode`] has changed
-    pub fn get_set_mode_fn() -> Option<Box<dyn FnOnce() -> bool + Send>> {
-        SET_MODE.lock().take()
+    ///
+    /// Since this function is only called by Duat, I can ensure that
+    /// it will be called from the main thread, so no checks are done
+    /// in that regard.
+    pub(crate) fn take_set_mode_fn() -> Option<Box<dyn FnOnce() -> bool>> {
+        SET_MODE.with(|sm| sm.lock().take())
     }
 
     /// Sets the new default mode
@@ -51,41 +56,46 @@ mod switch {
     ///
     /// [`mode::reset`]: reset
     pub fn set_default<M: Mode<U>, U: Ui>(mode: M) {
-        *RESET_MODE.lock() = Box::new(move || set_mode_fn::<M, U>(mode.clone()));
-        let mut set_mode = SET_MODE.lock();
-        let prev = set_mode.take();
-        *set_mode = Some(Box::new(move || {
-            if let Some(f) = prev {
-                f();
-            }
-            RESET_MODE.lock()()
-        }));
+        context::assert_is_on_main_thread();
+        RESET_MODE.with(|rm| *rm.lock() = Box::new(move || set_mode_fn::<M, U>(mode.clone())));
+        SET_MODE.with(|sm| {
+            let mut set_mode = sm.lock();
+            let prev = set_mode.take();
+            *set_mode = Some(Box::new(move || {
+                if let Some(f) = prev {
+                    f();
+                }
+                RESET_MODE.with(|rm| rm.lock()())
+            }));
+        });
     }
 
     /// Sets the [`Mode`], switching to the appropriate [`Widget`]
     ///
     /// [`Widget`]: Mode::Widget
     pub fn set<U: Ui>(mode: impl Mode<U>) {
-        let mut set_mode = SET_MODE.lock();
-        let prev = set_mode.take();
-        *set_mode = Some(Box::new(move || {
-            if let Some(f) = prev {
-                f();
-            }
-            set_mode_fn(mode)
-        }));
+        SET_MODE.with(|sm| {
+            let mut set_mode = sm.lock();
+            let prev = set_mode.take();
+            *set_mode = Some(Box::new(move || {
+                if let Some(f) = prev {
+                    f();
+                }
+                set_mode_fn(mode)
+            }));
+        })
     }
 
     /// Resets the mode to the [default]
     ///
     /// [default]: set_default
     pub fn reset() {
-        *SET_MODE.lock() = Some(Box::new(|| RESET_MODE.lock()()))
+        SET_MODE.with(|sm| *sm.lock() = Some(Box::new(|| RESET_MODE.with(|rm| rm.lock()()))))
     }
 
     /// Switches to the file with the given name
     pub(crate) fn reset_switch_to<U: Ui>(name: impl std::fmt::Display, switch_window: bool) {
-        let windows = context::windows::<U>().read();
+        let windows = context::windows::<U>().borrow();
         let name = name.to_string();
         match file_entry(&windows, &name) {
             Ok((win, _, node)) => {
@@ -93,10 +103,12 @@ mod switch {
                     sender().send(DuatEvent::SwitchWindow(win)).unwrap();
                 }
                 let node = node.clone();
-                *SET_MODE.lock() = Some(Box::new(move || {
-                    switch_widget(node);
-                    RESET_MODE.lock()()
-                }));
+                SET_MODE.with(|sm| {
+                    *sm.lock() = Some(Box::new(move || {
+                        switch_widget(node);
+                        RESET_MODE.with(|rm| rm.lock()())
+                    }))
+                });
             }
             Err(err) => context::notify(err),
         }
@@ -116,41 +128,44 @@ mod switch {
     /// Sends the [`KeyEvent`] to the active [`Mode`]
     pub(super) fn send_keys_to(keys: Vec<KeyEvent>) {
         let mut keys = keys.into_iter();
-        let mut send_keys = std::mem::replace(&mut *SEND_KEYS.lock(), Box::new(|_| None));
+        let mut send_keys =
+            SEND_KEYS.with(|sk| std::mem::replace(&mut *sk.lock(), Box::new(|_| None)));
         while keys.len() > 0 {
             if let Some(set_mode) = send_keys(&mut keys) {
                 if set_mode() {
-                    send_keys = std::mem::replace(&mut *SEND_KEYS.lock(), Box::new(|_| None));
+                    send_keys =
+                        SEND_KEYS.with(|sk| std::mem::replace(&mut *sk.lock(), Box::new(|_| None)));
                 }
             }
         }
-        *SEND_KEYS.lock() = send_keys;
+        SEND_KEYS.with(|sk| *sk.lock() = send_keys);
     }
 
     /// Inner function that sends [`KeyEvent`]s
     fn send_keys_fn<M: Mode<U>, U: Ui>(
         mode: &mut M,
         keys: &mut IntoIter<KeyEvent>,
-    ) -> Option<Box<dyn FnOnce() -> bool + Send>> {
+    ) -> Option<Box<dyn FnOnce() -> bool>> {
         let Ok(widget) = context::cur_widget::<U>() else {
             return None;
         };
 
-        widget.mutate_data_as(|w: &RwData<M::Widget>, area, related| {
+        widget.mutate_data_as(|w: &RwData2<M::Widget>, area, _| {
             let mut sent_keys = Vec::new();
             let mode_fn = {
-                let mut widget = w.write();
-                let cfg = widget.print_cfg();
-                widget.text_mut().remove_cursors(area, cfg);
+                w.write(|widget| {
+                    let cfg = widget.print_cfg();
+                    widget.text_mut().remove_cursors(area, cfg);
 
-                loop {
-                    let Some(key) = keys.next() else { break None };
-                    sent_keys.push(key);
-                    mode.send_key(key, &mut widget, area);
-                    if let Some(mode_fn) = get_set_mode_fn() {
-                        break Some(mode_fn);
+                    loop {
+                        let Some(key) = keys.next() else { break None };
+                        sent_keys.push(key);
+                        mode.send_key(key, widget, area);
+                        if let Some(mode_fn) = take_set_mode_fn() {
+                            break Some(mode_fn);
+                        }
                     }
-                }
+                })
             };
 
             for key in sent_keys {
@@ -158,24 +173,13 @@ mod switch {
                 hooks::trigger::<KeySent>(key);
             }
 
-            let mut widget = w.write();
-            let cfg = widget.print_cfg();
-            widget.text_mut().add_cursors(area, cfg);
-            if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
-                area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
-            }
-            widget.update(area);
-            widget.print(area);
-            drop(widget);
-
-            if let Some(related) = related {
-                let related = related.read();
-                for node in related.iter() {
-                    if node.needs_update() {
-                        node.update_and_print();
-                    }
+            w.write(|widget| {
+                let cfg = widget.print_cfg();
+                widget.text_mut().add_cursors(area, cfg);
+                if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
+                    area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
                 }
-            }
+            });
 
             mode_fn
         })?
@@ -185,10 +189,12 @@ mod switch {
     fn set_mode_fn<M: Mode<U>, U: Ui>(mode: M) -> bool {
         // If we are on the correct widget, no switch is needed.
         if context::cur_widget::<U>().unwrap().type_id() != TypeId::of::<M::Widget>() {
-            let windows = context::windows().read();
+            let windows = context::windows().borrow();
             let w = context::cur_window();
             let entry = if TypeId::of::<M::Widget>() == TypeId::of::<File>() {
-                let name = context::fixed_file::<U>().unwrap().read().0.name();
+                let name = context::fixed_file::<U>()
+                    .unwrap()
+                    .read(|file, _| file.name());
                 file_entry(&windows, &name)
             } else {
                 widget_entry::<M::Widget, U>(&windows, w)
@@ -204,32 +210,22 @@ mod switch {
         }
 
         let widget = context::cur_widget::<U>().unwrap();
-        let mode = widget.mutate_data_as(|w: &RwData<M::Widget>, area, related| {
+        let mode = widget.mutate_data_as(|w: &RwData2<M::Widget>, area, _| {
             let mut mode = hooks::trigger_now::<ModeSetTo<M, U>>((mode, w.clone(), area.clone()));
 
-            let mut widget = w.write();
-            let cfg = widget.print_cfg();
-            widget.text_mut().remove_cursors(area, cfg);
+            w.write(|widget| {
+                let cfg = widget.print_cfg();
+                widget.text_mut().remove_cursors(area, cfg);
 
-            mode.on_switch(&mut widget, area);
+                mode.on_switch(widget, area);
 
-            let cfg = widget.print_cfg();
-            if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
-                area.scroll_around_point(widget.text(), main.caret(), cfg);
-            }
-            widget.text_mut().add_cursors(area, cfg);
-            widget.update(area);
-            widget.print(area);
-            drop(widget);
-
-            if let Some(related) = related {
-                let related = related.read();
-                for node in related.iter() {
-                    if node.needs_update() {
-                        node.update_and_print();
-                    }
+                let cfg = widget.print_cfg();
+                if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
+                    area.scroll_around_point(widget.text(), main.caret(), cfg);
                 }
-            }
+                widget.text_mut().add_cursors(area, cfg);
+            });
+
             mode
         });
 
@@ -241,7 +237,8 @@ mod switch {
         *old_mode = new_mode;
 
         let mut mode = mode.unwrap();
-        *SEND_KEYS.lock() = Box::new(move |keys| send_keys_fn::<M, U>(&mut mode, keys));
+        SEND_KEYS
+            .with(|sk| *sk.lock() = Box::new(move |keys| send_keys_fn::<M, U>(&mut mode, keys)));
         true
     }
 }

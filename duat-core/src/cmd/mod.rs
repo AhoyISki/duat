@@ -226,16 +226,15 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
     })?;
 
     add!(["quit", "q"], |name: Option<FileBuffer<U>>| {
-        let cur_name = context::fixed_file::<U>()?.read().0.name();
+        let cur_name = context::fixed_file::<U>()?.read(|file, _| file.name());
         let name = name.unwrap_or(&cur_name);
 
-        let windows = context::windows::<U>().read();
+        let windows = context::windows::<U>().borrow();
         let (win, wid, file) = file_entry(&windows, name).unwrap();
 
-        let has_unsaved_changes = {
-            let file = file.read_as::<File>().unwrap();
-            file.text().has_unsaved_changes() && file.exists()
-        };
+        let has_unsaved_changes = file
+            .read_as(|f: &File| f.text().has_unsaved_changes() && f.exists())
+            .unwrap();
         if has_unsaved_changes {
             return Err(err!("[a]{name}[] has unsaved changes"));
         }
@@ -243,7 +242,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         // If we are on the current File, switch to the next one.
         if name == cur_name {
             let Some(next_name) = iter_around::<U>(&windows, win, wid)
-                .find_map(|(.., node)| node.read_as::<File>().map(|f| f.name()))
+                .find_map(|(.., node)| node.read_as(|f: &File| f.name()))
             else {
                 sender().send(DuatEvent::Quit).unwrap();
                 return Ok(None);
@@ -262,16 +261,16 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
     })?;
 
     add!(["quit!", "q!"], |name: Option<FileBuffer<U>>| {
-        let cur_name = context::fixed_file::<U>()?.read().0.name();
+        let cur_name = context::fixed_file::<U>()?.read(|file, _| file.name());
         let name = name.unwrap_or(&cur_name);
 
         // Should wait here until I'm out of `session_loop`
-        let windows = context::windows::<U>().read();
+        let windows = context::windows::<U>().borrow();
         let (win, wid, file) = file_entry(&windows, name).unwrap();
 
         if name == cur_name {
             let Some(next_name) = iter_around::<U>(&windows, win, wid)
-                .find_map(|(.., node)| node.read_as::<File>().map(|f| f.name()))
+                .find_map(|(.., node)| node.read_as(|f: &File| f.name()))
             else {
                 sender().send(DuatEvent::Quit).unwrap();
                 return Ok(None);
@@ -286,13 +285,13 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
     })?;
 
     add!(["quit-all", "qa"], || {
-        let windows = context::windows::<U>().read();
+        let windows = context::windows::<U>().borrow();
         let unwritten = windows
             .iter()
             .flat_map(Window::file_nodes)
             .filter(|(node, _)| {
-                let file = node.read_as::<File>().unwrap();
-                file.exists() && file.text().has_unsaved_changes()
+                node.read_as(|f: &File| f.text().has_unsaved_changes() && f.exists())
+                    .unwrap()
             })
             .count();
 
@@ -312,43 +311,41 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
     })?;
 
     add!(["write", "w"], |path: Option<PossibleFile>| {
-        let mut ff = context::fixed_file::<U>()?;
-        let (mut file, _) = ff.write();
+        context::fixed_file::<U>()?.write(|file, _| {
+            let (bytes, name) = if let Some(path) = path {
+                (file.write_to(&path)?, path)
+            } else if let Some(name) = file.name_set() {
+                (file.write()?, std::path::PathBuf::from(name))
+            } else {
+                return Err(err!("File has no name path to write to"));
+            };
 
-        let (bytes, name) = if let Some(path) = path {
-            (file.write_to(&path)?, path)
-        } else if let Some(name) = file.name_set() {
-            (file.write()?, std::path::PathBuf::from(name))
-        } else {
-            return Err(err!("File has no name path to write to"));
-        };
-
-        match bytes {
-            Some(bytes) => Ok(Some(ok!("Wrote [a]{bytes}[] bytes to [File]{name}"))),
-            None => Ok(Some(ok!("Nothing to be written"))),
-        }
+            match bytes {
+                Some(bytes) => Ok(Some(ok!("Wrote [a]{bytes}[] bytes to [File]{name}"))),
+                None => Ok(Some(ok!("Nothing to be written"))),
+            }
+        })
     })?;
 
     add!(["write-quit", "wq"], |path: Option<PossibleFile>| {
         let mut ff = context::fixed_file::<U>()?;
-        let (bytes, name) = {
-            let (mut file, area) = ff.write();
+        let (bytes, name) = ff.write(|file, _| {
             let bytes = if let Some(path) = path {
                 file.write_to(&path)?
             } else {
                 file.write()?
             };
-            (bytes, file.name())
-        };
+            Result::<_, Text>::Ok((bytes, file.name()))
+        })?;
 
         // Should wait here until I'm out of `session_loop`
-        let windows = context::windows::<U>().read();
+        let windows = context::windows::<U>().borrow();
         let w = context::cur_window();
 
         let (win, wid, file) = file_entry(&windows, &name).unwrap();
 
         let Some(next_name) = iter_around::<U>(&windows, win, wid)
-            .find_map(|(.., node)| node.read_as::<File>().map(|f| f.name()))
+            .find_map(|(.., node)| node.read_as(|f: &File| f.name()))
         else {
             sender().send(DuatEvent::Quit).unwrap();
             return Ok(None);
@@ -366,19 +363,20 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
     })?;
 
     add!(["write-all", "wa"], || {
-        let windows = context::windows::<U>().read();
+        let windows = context::windows::<U>().borrow();
 
         let mut written = 0;
         let file_count = windows
             .iter()
             .flat_map(Window::file_nodes)
             .filter(|(node, _)| {
-                node.widget()
-                    .read_as::<File>()
-                    .is_some_and(|f| f.path_set().is_some())
+                node.widget().read_as(|f: &File| f.path_set().is_some()) == Some(true)
             })
             .inspect(|(node, _)| {
-                written += node.widget().write_as::<File>().unwrap().write().is_ok() as usize;
+                written += node
+                    .widget()
+                    .write_as(|f: &mut File| f.write().is_ok())
+                    .unwrap() as usize;
             })
             .count();
 
@@ -392,19 +390,20 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
     })?;
 
     add!(["write-all-quit", "waq"], || {
-        let windows = context::windows::<U>().read();
+        let windows = context::windows::<U>().borrow();
 
         let mut written = 0;
         let file_count = windows
             .iter()
             .flat_map(Window::file_nodes)
             .filter(|(node, _)| {
-                node.widget()
-                    .read_as::<File>()
-                    .is_some_and(|f| f.path_set().is_some())
+                node.widget().read_as(|f: &File| f.path_set().is_some()) == Some(true)
             })
             .inspect(|(node, _)| {
-                written += node.widget().write_as::<File>().unwrap().write().is_ok() as usize;
+                written += node
+                    .widget()
+                    .write_as(|f: &mut File| f.write().is_ok())
+                    .unwrap() as usize;
             })
             .count();
 
@@ -419,15 +418,11 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
     })?;
 
     add!(["write-all-quit!", "waq!"], || {
-        let windows = context::windows::<U>().read();
+        let windows = context::windows::<U>().borrow();
 
-        windows
-            .iter()
-            .flat_map(Window::file_nodes)
-            .filter_map(|(node, _)| node.widget().write_as::<File>())
-            .for_each(|mut file| {
-                let _ = file.write();
-            });
+        for (node, _) in windows.iter().flat_map(Window::file_nodes) {
+            node.widget().write_as(|f: &mut File| f.write());
+        }
 
         sender().send(DuatEvent::Quit).unwrap();
         Ok(None)
@@ -477,7 +472,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
     })?;
 
     add!(["edit", "e"], |path: PossibleFile| {
-        let windows = context::windows::<U>().read();
+        let windows = context::windows::<U>().borrow();
 
         let name = if let Ok(path) = path.strip_prefix(context::cur_dir()) {
             path.to_string_lossy().to_string()
@@ -495,7 +490,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
     })?;
 
     add!(["open", "o"], |path: PossibleFile| {
-        let windows = context::windows::<U>().read();
+        let windows = context::windows::<U>().borrow();
 
         let name = if let Ok(path) = path.strip_prefix(context::cur_dir()) {
             path.to_string_lossy().to_string()
@@ -523,23 +518,23 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
     })?;
 
     add!("next-file", |flags: Flags| {
-        let windows = context::windows().read();
-        let ff = context::fixed_file()?;
+        let windows = context::windows().borrow();
+        let ff = context::fixed_file::<U>()?;
         let win = context::cur_window();
 
         let wid = windows[win]
             .nodes()
-            .position(|node| ff.file_ptr_eq(node))
+            .position(|node| ff.ptr_eq(node.widget()))
             .unwrap();
 
         let name = if flags.word("global") {
             iter_around::<U>(&windows, win, wid)
-                .find_map(|(.., node)| node.read_as::<File>().map(|f| f.name()))
+                .find_map(|(.., node)| node.read_as(|f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other open files"))?
         } else {
             let slice = &windows[win..=win];
             iter_around(slice, 0, wid)
-                .find_map(|(.., node)| node.read_as::<File>().map(|f| f.name()))
+                .find_map(|(.., node)| node.read_as(|f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other files open in this window"))?
         };
 
@@ -548,23 +543,23 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
     })?;
 
     add!("prev-file", |flags: Flags| {
-        let windows = context::windows().read();
-        let file = context::fixed_file()?;
+        let windows = context::windows().borrow();
+        let ff = context::fixed_file::<U>()?;
         let w = context::cur_window();
 
         let widget_i = windows[w]
             .nodes()
-            .position(|node| file.file_ptr_eq(node))
+            .position(|node| ff.ptr_eq(node.widget()))
             .unwrap();
 
         let name = if flags.word("global") {
             iter_around_rev::<U>(&windows, w, widget_i)
-                .find_map(|(.., node)| node.read_as::<File>().map(|f| f.name()))
+                .find_map(|(.., node)| node.read_as(|f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other open files"))?
         } else {
             let slice = &windows[w..=w];
             iter_around_rev(slice, 0, widget_i)
-                .find_map(|(.., node)| node.read_as::<File>().map(|f| f.name()))
+                .find_map(|(.., node)| node.read_as(|f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other files open in this window"))?
         };
 
@@ -577,7 +572,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         let rhs = if let Some(rhs) = rhs {
             rhs.to_string()
         } else {
-            context::fixed_file::<U>()?.read().0.name()
+            context::fixed_file::<U>()?.read(|file, _| file.name())
         };
         sender()
             .send(DuatEvent::SwapFiles(lhs.to_string(), rhs.clone()))
@@ -611,7 +606,7 @@ mod global {
     use std::{ops::Range, sync::Arc};
 
     use super::{Args, CmdResult, Commands, Parameter};
-    use crate::{text::Text, ui::Ui, widgets::Widget};
+    use crate::{context, text::Text, ui::Ui, widgets::Widget};
 
     static COMMANDS: Commands = Commands::new();
 
@@ -939,8 +934,8 @@ mod global {
     /// By calling the quit command, all threads will finish their
     /// tasks, and then Duat will execute a program closing
     /// function, as defined by the [`Ui`].
-    pub fn quit() {
-        COMMANDS.run("quit").unwrap();
+    pub async fn quit() {
+        COMMANDS.run("quit").await.unwrap();
     }
 
     /// Switches to/opens a [`File`] with the given name.
@@ -951,8 +946,8 @@ mod global {
     /// If there are more arguments, they will be ignored.
     ///
     /// [`File`]: crate::widgets::File
-    pub fn edit(file: impl std::fmt::Display) -> Result<Option<Text>, Text> {
-        COMMANDS.run(format!("edit {file}"))
+    pub async fn edit(file: impl std::fmt::Display) -> Result<Option<Text>, Text> {
+        COMMANDS.run(format!("edit {file}")).await
     }
 
     /// Switches to a [`File`] with the given name.
@@ -963,8 +958,8 @@ mod global {
     /// If there are more arguments, they will be ignored.
     ///
     /// [`File`]: crate::widgets::File
-    pub fn buffer(file: impl std::fmt::Display) -> Result<Option<Text>, Text> {
-        COMMANDS.run(format!("buffer {file}"))
+    pub async fn buffer(file: impl std::fmt::Display) -> Result<Option<Text>, Text> {
+        COMMANDS.run(format!("buffer {file}")).await
     }
 
     /// Switches to the next [`File`].
@@ -974,8 +969,8 @@ mod global {
     /// search, use [`next_global_file`].
     ///
     /// [`File`]: crate::widgets::File
-    pub fn next_file() -> Result<Option<Text>, Text> {
-        COMMANDS.run("next-file")
+    pub async fn next_file() -> Result<Option<Text>, Text> {
+        COMMANDS.run("next-file").await
     }
 
     /// Switches to the previous [`File`].
@@ -985,8 +980,8 @@ mod global {
     /// search, use [`prev_global_file`].
     ///
     /// [`File`]: crate::widgets::File
-    pub fn prev_file() -> Result<Option<Text>, Text> {
-        COMMANDS.run("prev-file")
+    pub async fn prev_file() -> Result<Option<Text>, Text> {
+        COMMANDS.run("prev-file").await
     }
 
     /// Switches to the next [`File`].
@@ -996,8 +991,8 @@ mod global {
     /// [`next_file`].
     ///
     /// [`File`]: crate::widgets::File
-    pub fn next_global_file() -> Result<Option<Text>, Text> {
-        COMMANDS.run("next-file --global")
+    pub async fn next_global_file() -> Result<Option<Text>, Text> {
+        COMMANDS.run("next-file --global").await
     }
 
     /// Switches to the previous [`File`].
@@ -1007,8 +1002,8 @@ mod global {
     /// [`prev_file`].
     ///
     /// [`File`]: crate::widgets::File
-    pub fn prev_global_file() -> Result<Option<Text>, Text> {
-        COMMANDS.run("prev-file --global")
+    pub async fn prev_global_file() -> Result<Option<Text>, Text> {
+        COMMANDS.run("prev-file --global").await
     }
 
     /// Tries to alias a `caller` to an existing `command`.
@@ -1018,49 +1013,6 @@ mod global {
     /// existing command.
     pub fn alias(alias: impl ToString, command: impl ToString) -> Result<Option<Text>, Text> {
         COMMANDS.alias(alias, command)
-    }
-
-    /// A command executed via [`run`] or [`run_notify`]
-    ///
-    /// Since the command will only be executed once [`CmdRunner`] is
-    /// dropped, I would suggest that you shouldn't store it in a
-    /// variable.
-    pub struct CmdRunner {
-        cmd: Option<Box<dyn FnOnce() -> Result<Option<Text>, Text> + Send + Sync + 'static>>,
-        map: Vec<Box<dyn FnOnce(&Option<Text>) + Send + Sync + 'static>>,
-        map_err: Vec<Box<dyn FnOnce(&Text) + Send + Sync + 'static>>,
-    }
-
-    impl CmdRunner {
-        /// Maps the [`Ok`] result of this commmand.
-        ///
-        /// This is a convenient way of executing functions after a
-        /// command finished executing successfully.
-        pub fn map(mut self, f: impl FnOnce(&Option<Text>) + Send + Sync + 'static) -> Self {
-            self.map.push(Box::new(f));
-            self
-        }
-
-        /// Maps the [`Err`] result of this commmand.
-        ///
-        /// This is a convenient way to add fallbacks in case the
-        /// command fails for some reason or another.
-        pub fn map_err(mut self, f: impl FnOnce(&Text) + Send + Sync + 'static) -> Self {
-            self.map_err.push(Box::new(f));
-            self
-        }
-    }
-
-    impl Drop for CmdRunner {
-        fn drop(&mut self) {
-            let cmd = self.cmd.take().unwrap();
-            let map = std::mem::take(&mut self.map);
-            let map_err = std::mem::take(&mut self.map_err);
-            crate::thread::spawn(move || match cmd() {
-                Ok(ok) => map.into_iter().for_each(|f| f(&ok)),
-                Err(err) => map_err.into_iter().for_each(|f| f(&err)),
-            });
-        }
     }
 
     /// Runs a full command, with a caller and [`Args`].
@@ -1082,23 +1034,17 @@ mod global {
     ///
     /// [`PromptLine`]: crate::widgets::PromptLine
     /// [`Flags`]: super::Flags
-    pub fn run(call: impl std::fmt::Display) -> CmdRunner {
-        let call = call.to_string();
-        CmdRunner {
-            cmd: Some(Box::new(move || COMMANDS.run(call))),
-            map: Vec::new(),
-            map_err: Vec::new(),
-        }
+    pub async fn call(call: impl std::fmt::Display) -> Result<Option<Text>, Text> {
+        COMMANDS.run(call).await
     }
 
     /// Like [`run`], but notifies the result
-    pub fn run_notify(call: impl std::fmt::Display) -> CmdRunner {
-        let call = call.to_string();
-        CmdRunner {
-            cmd: Some(Box::new(move || COMMANDS.run_notify(call))),
-            map: Vec::new(),
-            map_err: Vec::new(),
+    pub async fn call_notify(call: impl std::fmt::Display) -> Result<Option<Text>, Text> {
+        let result = COMMANDS.run(call).await;
+        if let Ok(Some(result)) | Err(result) = result.clone() {
+            context::notify(result);
         }
+        result
     }
 
     /// Don't call this function, use [`cmd::add`] instead
@@ -1164,7 +1110,7 @@ impl Commands {
     }
 
     /// Runs a command from a call
-    fn run(&self, call: impl Display) -> Result<Option<Text>, Text> {
+    async fn run(&self, call: impl Display) -> Result<Option<Text>, Text> {
         let call = call.to_string();
         let mut args = call.split_whitespace();
         let caller = args.next().ok_or(err!("The command is empty"))?.to_string();
@@ -1199,8 +1145,8 @@ impl Commands {
     }
 
     /// Runs a command and notifies its result
-    fn run_notify(&self, call: impl Display) -> Result<Option<Text>, Text> {
-        let ret = self.run(call);
+    async fn run_notify(&self, call: impl Display) -> Result<Option<Text>, Text> {
+        let ret = self.run(call).await;
         match ret.as_ref() {
             Ok(Some(ok)) => context::notify(ok.clone()),
             Err(err) => context::notify(err.clone()),
@@ -1230,11 +1176,11 @@ impl Commands {
         let cmd = Box::new(move |args: Args| {
             let cur_file = context::inner_cur_file::<U>();
             cur_file
-                .mutate_related_widget::<W, CmdResult>(|widget, area| {
+                .write_related_widget::<W, CmdResult>(|widget, area| {
                     cmd(widget, area, args.clone())
                 })
                 .unwrap_or_else(|| {
-                    let windows = context::windows::<U>().read();
+                    let windows = context::windows::<U>().borrow();
                     let w = context::cur_window();
 
                     if windows.is_empty() {
@@ -1246,7 +1192,7 @@ impl Commands {
 
                     let (.., node) = widget_entry::<W, U>(&windows, w)?;
                     let (w, a, _) = node.parts();
-                    cmd(&mut w.write_as().unwrap(), a, args)
+                    w.write_as(|w| cmd(w, a, args)).unwrap()
                 })
         });
 

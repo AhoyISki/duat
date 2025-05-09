@@ -252,11 +252,7 @@ use std::{
     collections::HashMap,
     ops::Range,
     path::{Path, PathBuf},
-    sync::{
-        Arc, LazyLock, Once,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Duration,
+    sync::{LazyLock, Once},
 };
 
 #[allow(unused_imports)]
@@ -407,49 +403,6 @@ pub trait Plugin<U: Ui>: Sized {
     fn plug(self);
 }
 
-pub mod thread {
-    //! Multithreading for Duat
-    //!
-    //! The main rationale behind multithreading in Duat is not so
-    //! much the performance gains, but more to allow for multi
-    //! tasking, as some plugins (like an LSP) may block for a while,
-    //! which would be frustrating for end users.
-    //!
-    //! The functions in this module differ from [`std::thread`] in
-    //! that they synchronize with Duat, telling the application when
-    //! there are no more threads running, so Duat can safely quit or
-    //! reload.
-    use std::{
-        sync::atomic::{AtomicUsize, Ordering},
-        thread::JoinHandle,
-    };
-
-    /// Duat's [`JoinHandle`]s
-    pub static HANDLES: AtomicUsize = AtomicUsize::new(0);
-    /// Spawns a new thread, returning a [`JoinHandle`] for it.
-    ///
-    /// Use this function instead of [`std::thread::spawn`].
-    ///
-    /// The threads from this function work in the same way that
-    /// threads from [`std::thread::spawn`] work, but it has
-    /// synchronicity with Duat, and makes sure that the
-    /// application won't exit or reload the configuration before
-    /// all spawned threads have stopped.
-    pub fn spawn<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> JoinHandle<R> {
-        HANDLES.fetch_add(1, Ordering::Relaxed);
-        std::thread::spawn(|| {
-            let ret = f();
-            HANDLES.fetch_sub(1, Ordering::Relaxed);
-            ret
-        })
-    }
-
-    /// Returns true if there are any threads still running
-    pub(crate) fn still_running() -> bool {
-        HANDLES.load(Ordering::Relaxed) > 0
-    }
-}
-
 pub mod clipboard {
     //! Clipboard interaction for Duat
     //!
@@ -541,26 +494,26 @@ mod private_exports {
 
 ////////// General utility functions
 
-/// A checker that returns `true` every `duration`
-///
-/// This is primarily used within [`WidgetCfg::build`], where a
-/// `checker` must be returned in order to update the widget.
-///
-/// [`WidgetCfg::build`]: crate::widgets::WidgetCfg::build
-pub fn periodic_checker(duration: Duration) -> impl Fn() -> bool {
-    let check = Arc::new(AtomicBool::new(false));
-    crate::thread::spawn({
-        let check = check.clone();
-        move || {
-            while !crate::context::will_reload_or_quit() {
-                std::thread::sleep(duration);
-                check.store(true, Ordering::Release);
-            }
-        }
-    });
-
-    move || check.fetch_and(false, Ordering::Acquire)
-}
+// /// A checker that returns `true` every `duration`
+// ///
+// /// This is primarily used within [`WidgetCfg::build`], where a
+// /// `checker` must be returned in order to update the widget.
+// ///
+// /// [`WidgetCfg::build`]: crate::widgets::WidgetCfg::build
+//  pub fn periodic_checker(duration: Duration) -> impl Fn() -> bool {
+//     let check = Arc::new(AtomicBool::new(false));
+//     crate::thread::spawn({
+//         let check = check.clone();
+//         move || {
+//             while !crate::context::will_reload_or_quit() {
+//                 std::thread::sleep(duration);
+//                 check.store(true, Ordering::Release);
+//             }
+//         }
+//     });
+// 
+//     move || check.fetch_and(false, Ordering::Acquire)
+// }
 
 /// Takes a type and generates an appropriate name for it
 ///
@@ -811,7 +764,7 @@ fn file_entry<'a, U: Ui>(
         .iter()
         .enumerate()
         .flat_map(window_index_widget)
-        .find(|(.., node)| node.read_as::<File>().is_some_and(|f| f.name() == name))
+        .find(|(.., node)| node.read_as(|f: &File| f.name() == name) == Some(true))
         .ok_or_else(|| err!("File with name [a]{name}[] not found"))
 }
 

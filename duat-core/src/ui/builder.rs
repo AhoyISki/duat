@@ -14,8 +14,8 @@ use std::sync::LazyLock;
 
 use super::{RawArea, Ui};
 use crate::{
-    context::{self, FixedFile, WriteFileGuard},
-    data::{ReadDataGuard, RwData},
+    context::{self, FileHandle},
+    data::RwData,
     duat_name,
     prelude::Text,
     text::ReaderCfg,
@@ -95,7 +95,7 @@ use crate::{
 /// [`hooks::remove`]: crate::hooks::remove
 pub struct FileBuilder<U: Ui> {
     window_i: usize,
-    ff: FixedFile<U>,
+    ff: FileHandle<U>,
     area: U::Area,
     prev: Option<Node<U>>,
 }
@@ -168,13 +168,14 @@ impl<U: Ui> FileBuilder<U> {
         run_once::<W, U>();
         let (widget, checker, specs) = cfg.build(true);
 
-        let mut windows = context::windows().write();
+        let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];
 
         let (child, parent) = {
             let (node, parent) = window.push(widget, &self.area, checker, specs, true, true);
 
-            self.ff.related_widgets().write().push(node.clone());
+            self.ff
+                .write_related_widgets(|related| related.push(node.clone()));
 
             if let Some(parent) = &parent {
                 if parent.is_master_of(&window.files_area) {
@@ -247,18 +248,19 @@ impl<U: Ui> FileBuilder<U> {
     /// [`PromptLine`]: crate::widgets::PromptLine
     /// [hook group]: crate::hooks::add_grouped
     pub fn push_to<W: Widget<U>>(
-        &self,
+        &mut self,
         area: U::Area,
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
         let (widget, checker, specs) = cfg.build(true);
 
-        let mut windows = context::windows().write();
+        let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];
 
         let (node, parent) = window.push(widget, &area, checker, specs, true, true);
-        self.ff.related_widgets().write().push(node.clone());
+        self.ff
+            .write_related_widgets(|related| related.push(node.clone()));
         (node.area().clone(), parent)
     }
 
@@ -276,19 +278,19 @@ impl<U: Ui> FileBuilder<U> {
     /// [`Reader`]: crate::text::Reader
     /// [`Mode`]: crate::mode::Mode
     pub fn add_reader(&mut self, reader_cfg: impl ReaderCfg) -> Result<(), Text> {
-        let (mut file, _) = self.ff.write();
-        file.text_mut().add_reader(reader_cfg)
+        self.ff
+            .write(|file, _| file.text_mut().add_reader(reader_cfg))
     }
 
     /// The [`File`] that this hook is being applied to
-    pub fn read(&mut self) -> (ReadDataGuard<File>, &U::Area) {
-        self.ff.read()
+    pub fn read<Ret>(&mut self, f: impl FnOnce(&File, &U::Area) -> Ret) -> Ret {
+        self.ff.read(f)
     }
 
     /// Mutable reference to the [`File`] that this hooks is being
     /// applied to
-    pub fn write(&mut self) -> (WriteFileGuard<U>, &U::Area) {
-        self.ff.write()
+    pub fn write<Ret>(&mut self, f: impl FnOnce(&mut File, &U::Area) -> Ret) -> Ret {
+        self.ff.write(f)
     }
 }
 
@@ -375,7 +377,7 @@ pub struct WindowBuilder<U: Ui> {
 impl<U: Ui> WindowBuilder<U> {
     /// Creates a new [`WindowBuilder`].
     pub(crate) fn new(window_i: usize) -> Self {
-        let windows = context::windows::<U>().read();
+        let windows = context::windows::<U>().borrow();
         let area = windows[window_i].files_area.clone();
         Self { window_i, area }
     }
@@ -415,7 +417,7 @@ impl<U: Ui> WindowBuilder<U> {
         run_once::<W, U>();
         let (widget, checker, specs) = cfg.build(false);
 
-        let mut windows = context::windows().write();
+        let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];
 
         let (child, parent) = window.push(widget, &self.area, checker, specs, false, false);
@@ -469,14 +471,14 @@ impl<U: Ui> WindowBuilder<U> {
     /// [`StatusLine`]: crate::widgets::StatusLine
     /// [`PromptLine`]: crate::widgets::PromptLine
     pub fn push_to<W: Widget<U>>(
-        &self,
+        &mut self,
         area: U::Area,
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
         let (widget, checker, specs) = cfg.build(false);
 
-        let mut windows = context::windows().write();
+        let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];
 
         let (node, parent) = window.push(widget, &area, checker, specs, true, false);

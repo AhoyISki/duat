@@ -52,7 +52,10 @@
 //!     type Args<'a> = usize;
 //!     type PreArgs = usize;
 //!
-//!     fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+//!     fn trigger<'b>(
+//!         pre_args: Self::PreArgs,
+//!         hooks: impl Iterator<Item = Hook<'b, Self>>,
+//!     ) {
 //!         for hook in hooks {
 //!             hook(pre_args)
 //!         }
@@ -78,7 +81,10 @@
 //!     // Some Send + 'static type
 //!     type PreArgs = usize;
 //!
-//!     fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+//!     fn trigger<'b>(
+//!         pre_args: Self::PreArgs,
+//!         hooks: impl Iterator<Item = Hook<'b, Self>>,
+//!     ) {
 //!         // Preprocessing before creating Self::Args
 //!         // ...
 //!         let args = args_from_pre_args(&pre_args);
@@ -119,15 +125,17 @@ use parking_lot::{Mutex, RwLock};
 
 pub use self::global::*;
 use crate::{
-    data::RwData,
+    data::RwData2,
     form::{Form, FormId},
     mode::{Cursors, KeyEvent, Mode},
-    ui::{RawArea, FileBuilder, Ui, WindowBuilder},
+    ui::{FileBuilder, RawArea, Ui, WindowBuilder},
     widgets::Widget,
 };
 
 /// Hook functions
 mod global {
+    use tokio::task;
+
     use super::{Hookable, Hooks};
 
     static HOOKS: Hooks = Hooks::new();
@@ -182,8 +190,8 @@ mod global {
     /// [`hooks::add`]: add
     /// [`hooks::add_grouped`]: add_grouped
     #[inline(never)]
-    pub fn trigger<H: Hookable>(args: H::PreArgs) {
-        crate::thread::spawn(move || {
+    pub async fn trigger<H: Hookable>(args: H::PreArgs) {
+        task::spawn_local(async move {
             HOOKS.trigger::<H>(args);
         });
     }
@@ -321,25 +329,23 @@ pub struct FocusedOn<W: Widget<U>, U: Ui>(PhantomData<(W, U)>);
 
 impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
     type Args<'a> = (&'a mut W, &'a U::Area);
-    type PreArgs = (RwData<W>, U::Area);
+    type PreArgs = (RwData2<W>, U::Area);
 
     fn trigger<'b>((widget, area): Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
-        let mut widget = widget.write();
-        let cfg = widget.print_cfg();
-        widget.text_mut().remove_cursors(&area, cfg);
-        widget.on_focus(&area);
+        widget.write(|widget| {
+            let cfg = widget.print_cfg();
+            widget.text_mut().remove_cursors(&area, cfg);
+            widget.on_focus(&area);
 
-        for hook in hooks {
-            hook((&mut *widget, &area));
-        }
+            for hook in hooks {
+                hook((&mut *widget, &area));
+            }
 
-        widget.text_mut().add_cursors(&area, cfg);
-        if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
-            area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
-        }
-
-        widget.update(&area);
-        widget.print(&area);
+            widget.text_mut().add_cursors(&area, cfg);
+            if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
+                area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
+            }
+        });
     }
 }
 
@@ -356,25 +362,23 @@ pub struct UnfocusedFrom<W: Widget<U>, U: Ui>(PhantomData<(W, U)>);
 
 impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
     type Args<'a> = (&'a mut W, &'a U::Area);
-    type PreArgs = (RwData<W>, U::Area);
+    type PreArgs = (RwData2<W>, U::Area);
 
     fn trigger<'b>((widget, area): Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
-        let mut widget = widget.write();
-        let cfg = widget.print_cfg();
-        widget.text_mut().remove_cursors(&area, cfg);
-        widget.on_unfocus(&area);
+        widget.write(|widget| {
+            let cfg = widget.print_cfg();
+            widget.text_mut().remove_cursors(&area, cfg);
+            widget.on_focus(&area);
 
-        for hook in hooks {
-            hook((&mut *widget, &area));
-        }
+            for hook in hooks {
+                hook((&mut *widget, &area));
+            }
 
-        widget.text_mut().add_cursors(&area, cfg);
-        if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
-            area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
-        }
-
-        widget.update(&area);
-        widget.print(&area);
+            widget.text_mut().add_cursors(&area, cfg);
+            if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
+                area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
+            }
+        });
     }
 }
 
@@ -421,7 +425,7 @@ pub struct ModeSetTo<M: Mode<U>, U: Ui>(PhantomData<(M, U)>);
 
 impl<M: Mode<U>, U: Ui> Hookable for ModeSetTo<M, U> {
     type Args<'a> = (M, &'a M::Widget, &'a U::Area);
-    type PreArgs = (M, RwData<M::Widget>, U::Area);
+    type PreArgs = (M, RwData2<M::Widget>, U::Area);
     type Return = M;
 
     fn trigger<'b>(_: Self::PreArgs, _: impl Iterator<Item = Hook<'b, Self>>) {
@@ -432,13 +436,12 @@ impl<M: Mode<U>, U: Ui> Hookable for ModeSetTo<M, U> {
         (mut mode, widget, area): Self::PreArgs,
         hooks: impl Iterator<Item = Hook<'b, Self>>,
     ) -> Self::Return {
-        let widget = widget.read();
-
-        for hook in hooks {
-            mode = hook((mode, &widget, &area));
-        }
-
-        mode
+        widget.read(|widget| {
+            for hook in hooks {
+                mode = hook((mode, &widget, &area));
+            }
+            mode
+        })
     }
 }
 
@@ -474,7 +477,7 @@ pub struct KeySentTo<W: Widget<U>, U: Ui>(PhantomData<(&'static W, U)>);
 
 impl<W: Widget<U>, U: Ui> Hookable for KeySentTo<W, U> {
     type Args<'b> = (KeyEvent, &'b mut W, &'b U::Area);
-    type PreArgs = (KeyEvent, RwData<W>, U::Area);
+    type PreArgs = (KeyEvent, RwData2<W>, U::Area);
 
     fn trigger<'b>(_: Self::PreArgs, _: impl Iterator<Item = Hook<'b, Self>>) {
         unreachable!("This hook is not meant to be triggered asynchronously")
@@ -484,10 +487,11 @@ impl<W: Widget<U>, U: Ui> Hookable for KeySentTo<W, U> {
         (key, widget, area): Self::PreArgs,
         hooks: impl Iterator<Item = Hook<'b, Self>>,
     ) {
-        let mut widget = widget.write();
-        for hook in hooks {
-            hook((key, &mut *widget, &area));
-        }
+        widget.write(|widget| {
+            for hook in hooks {
+                hook((key, &mut *widget, &area));
+            }
+        });
     }
 }
 
@@ -623,7 +627,7 @@ impl Hookable for FileWritten {
 /// [`hooks::trigger`]: trigger
 pub trait Hookable: Sized + 'static {
     type Args<'a>;
-    type PreArgs: Send;
+    type PreArgs;
     /// This type is useful if, for example, you want to pass a value
     /// by moving it to Args, while returning and reusing said value.
     type Return = ();

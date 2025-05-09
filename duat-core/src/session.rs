@@ -9,7 +9,8 @@ use std::{
 };
 
 use arboard::Clipboard;
-use parking_lot::{Mutex, RwLockReadGuard};
+use parking_lot::Mutex;
+use tokio::task;
 
 use crate::{
     cache::{delete_cache, delete_cache_for, store_cache},
@@ -125,7 +126,7 @@ impl<U: Ui> SessionCfg<U> {
             let (widget, checker, _) = <FileCfg as WidgetCfg<U>>::build(file_cfg, false);
 
             let (window, node) = Window::new(ms, widget, checker, (session.layout_fn)());
-            context::windows::<U>().write().push(window);
+            context::windows::<U>().borrow_mut().push(window);
 
             if is_active {
                 context::set_cur(node.as_file(), node.clone());
@@ -167,7 +168,7 @@ impl<U: Ui> Session<U> {
     pub fn open_file(&mut self, path: PathBuf) {
         let windows = context::windows::<U>();
         let pushed = {
-            let mut windows = windows.write();
+            let mut windows = windows.borrow_mut();
             let cur_window = self.cur_window.load(Ordering::Relaxed);
             let (file, checker, _) =
                 <FileCfg as WidgetCfg<U>>::build(self.file_cfg.clone().open_path(path), false);
@@ -229,153 +230,153 @@ impl<U: Ui> Session<U> {
 
         let mut reload_instant = None;
 
-        // The main loop.
-        #[allow(clippy::never_loop)]
-        loop {
+        let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
+        let local = task::LocalSet::new();
+        runtime.block_on(async move {
+            let _local = local.enter();
+
             U::flush_layout(self.ms);
 
-            let win = self.cur_window.load(Ordering::Relaxed);
-            let windows = context::windows::<U>().read();
-            for node in windows[win].nodes() {
-                node.update_and_print();
+            {
+                let win = self.cur_window.load(Ordering::Relaxed);
+                let windows = context::windows::<U>().borrow();
+                for node in windows[win].nodes() {
+                    let node = node.clone();
+                    task::spawn_local(async move { node.update_and_print().await });
+                }
             }
 
-            let break_to = self.session_loop(windows, &duat_rx, &mut reload_instant);
+            let reload_instant: &mut Option<Instant> = &mut reload_instant;
+            let mut breaks = Vec::new();
+            let mut reprint_screen = false;
 
-            for break_to in break_to {
-                match break_to {
-                    BreakTo::QuitDuat => {
-                        hooks::trigger::<ConfigUnloaded>(());
-                        hooks::trigger::<ExitedDuat>(());
-                        context::order_reload_or_quit();
-                        self.save_cache(true);
-                        return (Vec::new(), duat_rx, None);
+            loop {
+                if let Some(set_mode) = mode::take_set_mode_fn() {
+                    set_mode();
+                }
+
+                if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(20)) {
+                    match event {
+                        DuatEvent::Key(key) => mode::send_key(key).await,
+                        DuatEvent::Resize | DuatEvent::FormChange => {
+                            reprint_screen = true;
+                            continue;
+                        }
+                        DuatEvent::MetaMsg(msg) => context::notify(msg),
+                        DuatEvent::ReloadConfig => breaks.push(BreakTo::ReloadConfig),
+                        DuatEvent::OpenFile(name) => breaks.push(BreakTo::OpenFile(name)),
+                        DuatEvent::CloseFile(name) => breaks.push(BreakTo::CloseFile(name)),
+                        DuatEvent::SwapFiles(lhs, rhs) => breaks.push(BreakTo::SwapFiles(lhs, rhs)),
+                        DuatEvent::OpenWindow(name) => breaks.push(BreakTo::OpenWindow(name)),
+                        DuatEvent::SwitchWindow(win) => breaks.push(BreakTo::SwitchWindow(win)),
+                        DuatEvent::ReloadStarted(instant) => *reload_instant = Some(instant),
+                        DuatEvent::Quit => breaks.push(BreakTo::QuitDuat),
                     }
-                    BreakTo::ReloadConfig => {
-                        hooks::trigger::<ConfigUnloaded>(());
-                        context::order_reload_or_quit();
-                        self.save_cache(false);
-                        let ms = self.ms;
-                        let files = self.take_files();
-                        U::unload(ms);
-                        return (files, duat_rx, reload_instant);
+                } else if !breaks.is_empty() {
+                    for break_to in breaks.drain(..) {
+                        match break_to {
+                            BreakTo::QuitDuat => {
+                                hooks::trigger::<ConfigUnloaded>(());
+                                hooks::trigger::<ExitedDuat>(());
+                                context::order_reload_or_quit();
+                                self.save_cache(true);
+                                return (Vec::new(), duat_rx, None);
+                            }
+                            BreakTo::ReloadConfig => {
+                                hooks::trigger::<ConfigUnloaded>(());
+                                context::order_reload_or_quit();
+                                self.save_cache(false);
+                                let ms = self.ms;
+                                let files = self.take_files();
+                                U::unload(ms);
+                                return (files, duat_rx, *reload_instant);
+                            }
+                            BreakTo::OpenFile(name) => {
+                                self.open_file(PathBuf::from(&name));
+                                mode::reset_switch_to::<U>(name, false);
+                            }
+                            BreakTo::CloseFile(name) => self.close_file(name),
+                            BreakTo::SwapFiles(lhs_name, rhs_name) => {
+                                self.swap_files(lhs_name, rhs_name)
+                            }
+                            BreakTo::OpenWindow(name) => self.open_window_with(name),
+                            BreakTo::SwitchWindow(win) => {
+                                self.cur_window.store(win, Ordering::SeqCst);
+                                U::switch_window(self.ms, win);
+                            }
+                        }
                     }
-                    BreakTo::OpenFile(name) => {
-                        self.open_file(PathBuf::from(&name));
-                        mode::reset_switch_to::<U>(name, false);
+                } else if reprint_screen {
+                    let windows = context::windows::<U>().borrow();
+                    let win = self.cur_window.load(Ordering::SeqCst);
+                    reprint_screen = false;
+                    for node in windows[win].nodes() {
+                        let node = node.clone();
+                        task::spawn_local(async move { node.update_and_print().await });
                     }
-                    BreakTo::CloseFile(name) => self.close_file(name),
-                    BreakTo::SwapFiles(lhs_name, rhs_name) => self.swap_files(lhs_name, rhs_name),
-                    BreakTo::OpenWindow(name) => self.open_window_with(name),
-                    BreakTo::SwitchWindow(win) => {
-                        self.cur_window.store(win, Ordering::Relaxed);
-                        U::switch_window(self.ms, win);
+                    continue;
+                }
+
+                let windows = context::windows::<U>().borrow();
+                let win = self.cur_window.load(Ordering::SeqCst);
+                for node in (&windows[win]).nodes() {
+                    if node.needs_update() {
+                        let node = node.clone();
+                        task::spawn_local(async move { node.update_and_print().await });
                     }
                 }
             }
-        }
-    }
-
-    /// The primary application loop, executed while no breaking
-    /// functions have been called
-    fn session_loop(
-        &mut self,
-        windows: RwLockReadGuard<Vec<Window<U>>>,
-        duat_rx: &mpsc::Receiver<DuatEvent>,
-        reload_instant: &mut Option<Instant>,
-    ) -> Vec<BreakTo> {
-        let win = self.cur_window.load(Ordering::Relaxed);
-        let mut breaks = Vec::new();
-        let mut reprint_screen = false;
-
-        loop {
-            let cur_window = &windows[win];
-
-            if let Some(set_mode) = mode::get_set_mode_fn() {
-                set_mode();
-            }
-
-            if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(20)) {
-                match event {
-                    DuatEvent::Key(key) => mode::send_key(key),
-                    DuatEvent::Resize | DuatEvent::FormChange => {
-                        reprint_screen = true;
-                        continue;
-                    }
-                    DuatEvent::MetaMsg(msg) => context::notify(msg),
-                    DuatEvent::ReloadConfig => breaks.push(BreakTo::ReloadConfig),
-                    DuatEvent::OpenFile(name) => breaks.push(BreakTo::OpenFile(name)),
-                    DuatEvent::CloseFile(name) => breaks.push(BreakTo::CloseFile(name)),
-                    DuatEvent::SwapFiles(lhs, rhs) => breaks.push(BreakTo::SwapFiles(lhs, rhs)),
-                    DuatEvent::OpenWindow(name) => breaks.push(BreakTo::OpenWindow(name)),
-                    DuatEvent::SwitchWindow(win) => breaks.push(BreakTo::SwitchWindow(win)),
-                    DuatEvent::ReloadStarted(instant) => *reload_instant = Some(instant),
-                    DuatEvent::Quit => breaks.push(BreakTo::QuitDuat),
-                }
-            } else if !breaks.is_empty() {
-                break breaks;
-            } else if reprint_screen {
-                reprint_screen = false;
-                for node in cur_window.nodes() {
-                    node.update_and_print();
-                }
-                continue;
-            }
-
-            for node in cur_window.nodes() {
-                if node.needs_update() {
-                    node.update_and_print();
-                }
-            }
-        }
+        })
     }
 
     fn save_cache(&self, is_quitting_duat: bool) {
-        let windows = context::windows::<U>().write();
+        let windows = context::windows::<U>().borrow_mut();
         for (file, area, _) in windows
             .iter()
             .flat_map(Window::nodes)
             .filter_map(|node| node.as_file())
         {
-            let mut file = file.write();
-            let path = file.path();
-            file.text_mut().new_moment();
+            file.write(|file| {
+                let path = file.path();
+                file.text_mut().new_moment();
 
-            if is_quitting_duat {
-                delete_cache_for::<crate::text::History>(&path);
-                if !file.exists() || file.text().has_unsaved_changes() {
-                    delete_cache(&path);
-                    return;
+                if is_quitting_duat {
+                    delete_cache_for::<crate::text::History>(&path);
+                    if !file.exists() || file.text().has_unsaved_changes() {
+                        delete_cache(&path);
+                        return;
+                    }
+                } else if let Some(history) = file.text().history() {
+                    store_cache(&path, history.clone());
                 }
-            } else if let Some(history) = file.text().history() {
-                store_cache(&path, history.clone());
-            }
 
-            if let Some(cache) = area.cache() {
-                store_cache(&path, cache);
-            }
+                if let Some(cache) = area.cache() {
+                    store_cache(&path, cache);
+                }
 
-            let cursors = file.cursors_mut().unwrap();
-            if let Some(main) = cursors.get_main() {
-                store_cache(path, main.clone());
-            }
+                let cursors = file.cursors_mut().unwrap();
+                if let Some(main) = cursors.get_main() {
+                    store_cache(path, main.clone());
+                }
+            });
         }
     }
 
     fn take_files(self) -> Vec<Vec<FileRet>> {
         context::windows::<U>()
-            .read()
+            .borrow()
             .iter()
             .map(|w| {
                 let files = w.nodes().filter_map(|node| {
                     node.try_downcast::<File>().map(|file| {
-                        let mut file = file.write();
-                        let text = std::mem::take(file.text_mut());
-                        let has_unsaved_changes = text.has_unsaved_changes();
-                        let bytes = text.take_bytes();
-                        let pk = file.path_kind();
-                        let is_active = node.area().is_active();
-                        FileRet::new(bytes, pk, is_active, has_unsaved_changes)
+                        file.write(|file| {
+                            let text = std::mem::take(file.text_mut());
+                            let has_unsaved_changes = text.has_unsaved_changes();
+                            let bytes = text.take_bytes();
+                            let pk = file.path_kind();
+                            let is_active = node.area().is_active();
+                            FileRet::new(bytes, pk, is_active, has_unsaved_changes)
+                        })
                     })
                 });
                 files.collect()
@@ -385,7 +386,7 @@ impl<U: Ui> Session<U> {
 
     fn open_file_from_cfg(&mut self, file_cfg: FileCfg, is_active: bool, win: usize) {
         let pushed = {
-            let mut windows = context::windows::<U>().write();
+            let mut windows = context::windows::<U>().borrow_mut();
             let (widget, checker, _) = <FileCfg as WidgetCfg<U>>::build(file_cfg, false);
 
             let result = windows[win].push_file(widget, checker);
@@ -416,14 +417,14 @@ impl<U: Ui> Session<U> {
 // BreakTo functions.
 impl<U: Ui> Session<U> {
     fn close_file(&self, name: String) {
-        let mut windows = context::windows::<U>().write();
+        let mut windows = context::windows::<U>().borrow_mut();
         let (win, lhs, nodes) = {
             let (lhs_win, _, lhs) = file_entry(&windows, &name).unwrap();
             let lhs = lhs.clone();
 
-            let ordering = lhs.read_as::<File>().unwrap().layout_ordering;
+            let lo = lhs.read_as(|f: &File| f.layout_order).unwrap();
 
-            let nodes: Vec<Node<U>> = windows[lhs_win].file_nodes()[(ordering + 1)..]
+            let nodes: Vec<Node<U>> = windows[lhs_win].file_nodes()[(lo + 1)..]
                 .iter()
                 .map(|(n, _)| (*n).clone())
                 .collect();
@@ -447,7 +448,7 @@ impl<U: Ui> Session<U> {
     }
 
     fn swap_files(&self, lhs_name: String, rhs_name: String) {
-        let mut windows = context::windows::<U>().write();
+        let mut windows = context::windows::<U>().borrow_mut();
         let (wins, [lhs_node, rhs_node]) = {
             let (lhs_win, _, lhs_node) = file_entry(&windows, &lhs_name).unwrap();
             let (rhs_win, _, rhs_node) = file_entry(&windows, &rhs_name).unwrap();
@@ -459,7 +460,9 @@ impl<U: Ui> Session<U> {
         swap(&mut windows, wins, [&lhs_node, &rhs_node]);
         drop(windows);
 
-        let name = context::fixed_file::<U>().unwrap().read().0.name();
+        let name = context::fixed_file::<U>()
+            .unwrap()
+            .read(|file, _| file.name());
         if wins[0] != wins[1] {
             if let Some(win) = [lhs_name, rhs_name].into_iter().position(|n| n == name) {
                 self.cur_window.store(win, Ordering::Relaxed);
@@ -469,13 +472,13 @@ impl<U: Ui> Session<U> {
     }
 
     fn open_window_with(&self, name: String) {
-        let mut windows = context::windows::<U>().write();
+        let mut windows = context::windows::<U>().borrow_mut();
         let new_win = windows.len();
 
         if let Ok((win, .., node)) = file_entry(&windows, &name) {
             // Take the nodes in the original Window
             let node = node.clone();
-            node.widget().write_as::<File>().unwrap().layout_ordering = 0;
+            node.widget().write_as(|f: &mut File| f.layout_order = 0);
             let nodes = windows[win].take_file_and_related_nodes(&node);
             let layout = (self.layout_fn)();
 
@@ -486,7 +489,7 @@ impl<U: Ui> Session<U> {
             windows.push(window);
 
             // Swap the Files ahead of the swapped new_root
-            let lo = node.read_as::<File>().unwrap().layout_ordering;
+            let lo = node.read_as(|f: &File| f.layout_order).unwrap();
 
             for (node, _) in &windows[win].file_nodes()[lo..] {
                 MutArea(&new_root).swap(node.area());
@@ -514,7 +517,11 @@ impl<U: Ui> Session<U> {
         let builder = WindowBuilder::new(new_win);
         hooks::trigger_now::<OnWindowOpen<U>>(builder);
 
-        if context::fixed_file::<U>().unwrap().read().0.name() != name {
+        if context::fixed_file::<U>()
+            .unwrap()
+            .read(|file, _| file.name())
+            != name
+        {
             mode::reset_switch_to::<U>(name, false);
         }
 
@@ -524,18 +531,20 @@ impl<U: Ui> Session<U> {
 }
 
 fn swap<U: Ui>(windows: &mut [Window<U>], [lhs_w, rhs_w]: [usize; 2], [lhs, rhs]: [&Node<U>; 2]) {
-    let rhs_ordering = rhs.widget().read_as::<File>().unwrap().layout_ordering;
-    let lhs_ordering = std::mem::replace(
-        &mut lhs.widget().write_as::<File>().unwrap().layout_ordering,
-        rhs_ordering,
-    );
-    rhs.widget().write_as::<File>().unwrap().layout_ordering = lhs_ordering;
+    let rhs_lo = rhs.widget().read_as(|f: &File| f.layout_order).unwrap();
+    let lhs_lo = lhs
+        .widget()
+        .write_as(|f: &mut File| std::mem::replace(&mut f.layout_order, rhs_lo))
+        .unwrap();
+
+    rhs.widget()
+        .write_as(|f: &mut File| f.layout_order = lhs_lo);
 
     let lhs_nodes = windows[lhs_w].take_file_and_related_nodes(lhs);
-    windows[rhs_w].insert_file_nodes(rhs_ordering, lhs_nodes);
+    windows[rhs_w].insert_file_nodes(rhs_lo, lhs_nodes);
 
     let rhs_nodes = windows[rhs_w].take_file_and_related_nodes(rhs);
-    windows[lhs_w].insert_file_nodes(lhs_ordering, rhs_nodes);
+    windows[lhs_w].insert_file_nodes(lhs_lo, rhs_nodes);
 
     MutArea(lhs.area()).swap(rhs.area());
 }

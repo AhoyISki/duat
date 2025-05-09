@@ -81,7 +81,7 @@ pub fn pre_setup() {
         if let Some(config_dir) = crate::crate_dir()
             && path.starts_with(config_dir)
         {
-            crate::prelude::cmd::run("reload");
+            crate::prelude::cmd::call("reload");
         }
     });
 }

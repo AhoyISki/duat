@@ -44,16 +44,19 @@
 //! [`OnFileOpen`]: crate::hooks::OnFileOpen
 //! [`OnWindowOpen`]: crate::hooks::OnWindowOpen
 //! [`Constraint`]: crate::ui::Constraint
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    pin::Pin,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 pub use self::file::{File, FileCfg, PathKind};
 use crate::{
     cfg::PrintCfg,
     context::FileParts,
-    data::{ReadDataGuard, RwData},
+    data::RwData2,
     form,
     hooks::{self, FocusedOn, UnfocusedFrom},
     mode::Cursors,
@@ -349,7 +352,12 @@ pub trait Widget<U: Ui>: Send + 'static {
     /// [`Session`]: crate::session::Session
     /// [more or less width]: RawArea::constrain_hor
     /// [`IncSearch`]: crate::mode::IncSearch
-    fn update(&mut self, _area: &U::Area) {}
+    #[allow(unused)]
+    async fn update(widget: RwData2<Self>, area: &U::Area)
+    where
+        Self: Sized;
+
+    fn has_changed(&self) -> bool;
 
     /// The text that this widget prints out
     fn text(&self) -> &Text;
@@ -445,31 +453,32 @@ where
 // Elements related to the [`Widget`]s
 #[derive(Clone)]
 pub struct Node<U: Ui> {
-    widget: RwData<dyn Widget<U>>,
+    widget: RwData2<dyn Widget<U>>,
     area: U::Area,
 
     checker: Arc<dyn Fn() -> bool + Send + Sync>,
     busy_updating: Arc<AtomicBool>,
 
     related_widgets: Related<U>,
-    on_focus: fn(&Node<U>),
-    on_unfocus: fn(&Node<U>),
+    on_focus: fn(&Self),
+    on_unfocus: fn(&Self),
+    update: fn(&Self) -> Pin<Box<dyn Future<Output = ()>>>,
 }
 
 impl<U: Ui> Node<U> {
     pub fn new<W: Widget<U>>(
-        widget: RwData<dyn Widget<U>>,
+        widget: RwData2<dyn Widget<U>>,
         area: U::Area,
         checker: impl CheckerFn,
     ) -> Self {
         fn related_widgets<U: Ui>(
-            widget: &RwData<dyn Widget<U>>,
+            widget: &RwData2<dyn Widget<U>>,
             area: &U::Area,
-        ) -> Option<RwData<Vec<Node<U>>>> {
-            widget.write_as::<File>().map(|mut file| {
+        ) -> Option<RwData2<Vec<Node<U>>>> {
+            widget.write_as(|file: &mut File| {
                 let cfg = file.print_cfg();
                 file.text_mut().add_cursors(area, cfg);
-                RwData::default()
+                RwData2::default()
             })
         }
         let related_widgets = related_widgets::<U>(&widget, &area);
@@ -482,17 +491,18 @@ impl<U: Ui> Node<U> {
             busy_updating: Arc::new(AtomicBool::new(false)),
 
             related_widgets,
+            update: Self::update_fn::<W>,
             on_focus: Self::on_focus_fn::<W>,
             on_unfocus: Self::on_unfocus_fn::<W>,
         }
     }
 
-    pub fn widget(&self) -> &RwData<dyn Widget<U>> {
+    pub fn widget(&self) -> &RwData2<dyn Widget<U>> {
         &self.widget
     }
 
     /// Returns the downcast ref of this [`Widget`].
-    pub fn try_downcast<W>(&self) -> Option<RwData<W>> {
+    pub fn try_downcast<W: 'static>(&self) -> Option<RwData2<W>> {
         self.widget.try_downcast()
     }
 
@@ -500,41 +510,45 @@ impl<U: Ui> Node<U> {
         self.widget.data_is::<W>()
     }
 
-    pub fn update_and_print(&self) {
+    pub async fn update_and_print(&self) {
         self.busy_updating.store(true, Ordering::Release);
 
         if let Some(nodes) = &self.related_widgets {
-            for node in &*nodes.read() {
-                if node.needs_update() {
-                    node.update_and_print();
+            nodes.read(|nodes| {
+                for node in nodes {
+                    if node.needs_update() {
+                        node.update_and_print();
+                    }
                 }
+            })
+        }
+
+        self.widget.raw_write(|widget| {
+            let cfg = widget.print_cfg();
+            widget.text_mut().remove_cursors(&self.area, cfg);
+        });
+
+        (self.update)(self).await;
+
+        self.widget.raw_write(|widget| {
+            let cfg = widget.print_cfg();
+            widget.text_mut().add_cursors(&self.area, cfg);
+            if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
+                self.area
+                    .scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
             }
-        }
 
-        let mut widget = self.widget.raw_write();
-
-        let cfg = widget.print_cfg();
-        widget.text_mut().remove_cursors(&self.area, cfg);
-
-        widget.update(&self.area);
-
-        widget.text_mut().add_cursors(&self.area, cfg);
-        if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
-            self.area
-                .scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
-        }
-
-        widget.print(&self.area);
-        drop(widget);
+            widget.print(&self.area);
+        });
 
         self.busy_updating.store(false, Ordering::Release);
     }
 
-    pub fn read_as<W: 'static>(&self) -> Option<ReadDataGuard<'_, W>> {
-        self.widget.read_as()
+    pub fn read_as<W: 'static, Ret>(&self, f: impl FnOnce(&W) -> Ret) -> Option<Ret> {
+        self.widget.read_as(f)
     }
 
-    pub fn ptr_eq<W: ?Sized>(&self, other: &RwData<W>) -> bool {
+    pub fn ptr_eq<W: ?Sized>(&self, other: &RwData2<W>) -> bool {
         self.widget.ptr_eq(other)
     }
 
@@ -546,16 +560,12 @@ impl<U: Ui> Node<U> {
         }
     }
 
-    pub(crate) fn update(&self) {
-        self.widget.raw_write().update(&self.area)
-    }
-
-    pub(crate) fn parts(&self) -> (&RwData<dyn Widget<U>>, &<U as Ui>::Area, &Related<U>) {
+    pub(crate) fn parts(&self) -> (&RwData2<dyn Widget<U>>, &<U as Ui>::Area, &Related<U>) {
         (&self.widget, &self.area, &self.related_widgets)
     }
 
     pub(crate) fn as_file(&self) -> Option<FileParts<U>> {
-        self.widget.try_downcast().map(|file| {
+        self.widget.try_downcast().map(|file: RwData2<File>| {
             (
                 file,
                 self.area.clone(),
@@ -573,17 +583,22 @@ impl<U: Ui> Node<U> {
         (self.on_unfocus)(self)
     }
 
-    pub(crate) fn raw_inspect<B>(&self, f: impl FnOnce(&dyn Widget<U>) -> B) -> B {
-        let widget = self.widget.raw_read();
-        f(&*widget)
+    pub(crate) fn raw_read<B>(&self, f: impl FnOnce(&dyn Widget<U>) -> B) -> B {
+        self.widget.raw_read(f)
     }
 
     pub(crate) fn area(&self) -> &U::Area {
         &self.area
     }
 
-    pub(crate) fn related_widgets(&self) -> Option<&RwData<Vec<Node<U>>>> {
+    pub(crate) fn related_widgets(&self) -> Option<&RwData2<Vec<Node<U>>>> {
         self.related_widgets.as_ref()
+    }
+
+    fn update_fn<W: Widget<U>>(&self) -> Pin<Box<dyn Future<Output = ()>>> {
+        let widget = self.widget.try_downcast::<W>().unwrap();
+        let area = self.area.clone();
+        Box::pin(async move { Widget::update(widget, &area).await })
     }
 
     fn on_focus_fn<W: Widget<U>>(&self) {
@@ -608,4 +623,4 @@ impl<U: Ui> Eq for Node<U> {}
 
 pub trait CheckerFn = Fn() -> bool + Send + Sync + 'static;
 
-pub type Related<U> = Option<RwData<Vec<Node<U>>>>;
+pub type Related<U> = Option<RwData2<Vec<Node<U>>>>;

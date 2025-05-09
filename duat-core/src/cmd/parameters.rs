@@ -188,7 +188,7 @@ impl<'a, U: crate::ui::Ui> Parameter<'a> for FileBuffer<U> {
 
     fn new(args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         let buffer = args.next()?;
-        let windows = crate::context::windows::<U>().read();
+        let windows = crate::context::windows::<U>().borrow();
         if windows
             .iter()
             .flat_map(|w| w.file_names())
@@ -212,7 +212,7 @@ impl<'a, U: crate::ui::Ui> Parameter<'a> for OtherFileBuffer<U> {
     fn new(args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         let buffer = args.next_as::<FileBuffer<U>>()?;
         let mut ff = crate::context::fixed_file::<U>().unwrap();
-        if buffer == ff.read().0.name() {
+        if buffer == ff.read(|file, _| file.name()) {
             Err(err!("Argument can't be the current file"))
         } else {
             Ok(buffer)

@@ -154,7 +154,7 @@ impl<U: Ui> PromptMode<U> for RunCommands {
 
         let command = text.to_string();
         if !command.is_empty() {
-            duat_core::thread::spawn(move || cmd::run_notify(command));
+            duat_core::thread::spawn(move || cmd::call_notify(command));
         }
     }
 

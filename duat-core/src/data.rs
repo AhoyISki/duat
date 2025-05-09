@@ -32,6 +32,9 @@
 //! [`context`]: crate::context
 use std::{
     any::TypeId,
+    cell::{Cell, RefCell},
+    marker::PhantomData,
+    rc::Rc,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -623,3 +626,186 @@ impl<I: ?Sized + Send + 'static, O> FnMut<()> for DataMap<I, O> {
         (self.f)()
     }
 }
+
+pub struct RwData2<T: ?Sized, Ops = ReadWrite> {
+    value: Rc<RefCell<T>>,
+    cur_state: Rc<Cell<usize>>,
+    read_state: Cell<usize>,
+    ty: TypeId,
+    _ops: PhantomData<Ops>,
+}
+
+impl<T: 'static> RwData2<T> {
+    pub fn new(value: T) -> Self {
+        Self {
+            value: Rc::new(RefCell::new(value)),
+            ty: TypeId::of::<T>(),
+            cur_state: Rc::new(Cell::new(1)),
+            read_state: Cell::new(0),
+            _ops: PhantomData,
+        }
+    }
+}
+
+impl<T: ?Sized> RwData2<T> {
+    /// Returns an unsized [`RwData`], such as [`RwData<dyn Trait>`]
+    ///
+    /// # Safety
+    ///
+    /// There is a type argument `SizedT` which _must_ be the exact
+    /// type you are passing to this constructor, i.e., if you are
+    /// creating an [`RwData<dyn Display>`] from a [`String`], you'd
+    /// do this:
+    ///
+    /// ```rust
+    /// # use std::{cell::RefCell, fmt::Display rc::Rc};
+    /// # use duat_core::data::RwData;
+    /// let rw_data: RwData<dyn Display> = unsafe {
+    ///     RwData::new_unsized::<String>(Rc::new(RefCell::new("testing".to_string()))
+    /// };
+    /// ```
+    pub unsafe fn new_unsized<SizedT: 'static>(value: Rc<RefCell<T>>) -> Self {
+        Self {
+            value,
+            ty: TypeId::of::<SizedT>(),
+            cur_state: Rc::new(Cell::new(1)),
+            read_state: Cell::new(0),
+            _ops: PhantomData,
+        }
+    }
+
+    #[track_caller]
+    pub fn write<Ret>(&self, f: impl FnOnce(&mut T) -> Ret) -> Ret {
+        let ret = f(&mut *self.value.borrow_mut());
+        self.cur_state.set(self.cur_state.get() + 1);
+        self.read_state.set(self.cur_state.get());
+        ret
+    }
+
+    #[track_caller]
+    pub fn write_as<Ret, U: 'static>(&self, f: impl FnOnce(&mut U) -> Ret) -> Option<Ret> {
+        if TypeId::of::<U>() != self.ty {
+            return None;
+        }
+
+        let ptr = Rc::as_ptr(&self.value);
+        let value = unsafe { (ptr as *const RefCell<U>).as_ref().unwrap() };
+
+        let ret = f(&mut *value.borrow_mut());
+        self.cur_state.set(self.cur_state.get() + 1);
+        self.read_state.set(self.cur_state.get());
+        Some(ret)
+    }
+
+    #[track_caller]
+    pub(crate) fn raw_write<Ret>(&self, f: impl FnOnce(&mut T) -> Ret) -> Ret {
+        f(&mut *self.value.borrow_mut())
+    }
+}
+
+impl<T: ?Sized, Ops> RwData2<T, Ops> {
+    #[track_caller]
+    pub fn read<Ret>(&self, f: impl FnOnce(&T) -> Ret) -> Ret {
+        let ret = f(&*self.value.borrow());
+        self.read_state.set(self.cur_state.get());
+        ret
+    }
+
+    #[track_caller]
+    pub fn read_as<Ret, U: 'static>(&self, f: impl FnOnce(&U) -> Ret) -> Option<Ret> {
+        if TypeId::of::<U>() != self.ty {
+            return None;
+        }
+
+        let ptr = Rc::as_ptr(&self.value);
+        let value = unsafe { (ptr as *const RefCell<U>).as_ref().unwrap() };
+        let ret = f(&*value.borrow());
+        self.read_state.set(self.cur_state.get());
+        Some(ret)
+    }
+
+    #[track_caller]
+    pub(crate) fn raw_read<Ret>(&self, f: impl FnOnce(&T) -> Ret) -> Ret {
+        f(&*self.value.borrow_mut())
+    }
+
+    pub fn ptr_eq<U: ?Sized, Ops2>(&self, other: &RwData2<U, Ops2>) -> bool {
+        self.value.as_ptr().addr() == other.value.as_ptr().addr()
+    }
+
+    pub fn data_is<U: 'static>(&self) -> bool {
+        self.ty == TypeId::of::<U>()
+    }
+
+    pub fn try_downcast<U: 'static>(&self) -> Option<RwData2<U, Ops>> {
+        if TypeId::of::<U>() != self.ty {
+            return None;
+        }
+
+        let ptr = Rc::into_raw(self.value.clone());
+        let value = unsafe { Rc::from_raw(ptr as *const RefCell<U>) };
+        Some(RwData2 {
+            value,
+            cur_state: self.cur_state.clone(),
+            read_state: Cell::new(self.cur_state.get()),
+            ty: TypeId::of::<U>(),
+            _ops: PhantomData,
+        })
+    }
+
+    /// Wether someone else called [`write`] or [`write_as`] since the
+    /// last [`read`] or [`write`]
+    ///
+    /// Do note that this *DOES NOT* mean that the value inside has
+    /// actually been changed, it just means a mutable reference was
+    /// acquired after the last call to [`has_changed`].
+    ///
+    /// Some types like [`Text`], and traits like [`Widget`] offer
+    /// [`has_changed`](crate::widgets::Widget::has_changed) methods,
+    /// you should try to determine what parts to look for changes.
+    ///
+    /// Generally though, you can use this method to gauge that.
+    ///
+    /// [`write`]: Self::write
+    /// [`write_as`]: Self::write_as
+    /// [`read`]: Self::read
+    /// [`has_changed`]: Self::has_changed
+    /// [`Text`]: crate::text::Text
+    /// [`Widget`]: crate::widgets::Widget
+    pub fn has_changed(&self) -> bool {
+        self.read_state.get() < self.cur_state.get()
+    }
+
+    pub(crate) fn read_raw<Ret>(&self, f: impl FnOnce(&T) -> Ret) -> Ret {
+        f(&*self.value.borrow())
+    }
+}
+
+impl<T: ?Sized, Ops> Clone for RwData2<T, Ops> {
+    fn clone(&self) -> Self {
+        Self {
+            value: self.value.clone(),
+            ty: self.ty,
+            cur_state: self.cur_state.clone(),
+            read_state: Cell::new(self.cur_state.get()),
+            _ops: PhantomData,
+        }
+    }
+}
+
+impl<T: Default + 'static> Default for RwData2<T> {
+    fn default() -> Self {
+        Self {
+            value: Rc::default(),
+            cur_state: Rc::new(Cell::new(1)),
+            read_state: Cell::default(),
+            ty: TypeId::of::<T>(),
+            _ops: PhantomData,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ReadWrite;
+#[derive(Clone)]
+pub struct Read;
