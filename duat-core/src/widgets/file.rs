@@ -14,7 +14,16 @@
 use std::{fs, path::PathBuf};
 
 use crate::{
-    cache::load_cache, cfg::PrintCfg, context, data::RwData2, form, hooks::{self, FileWritten}, mode::Cursors, text::{err, Bytes, Text}, ui::{PushSpecs, RawArea, Ui}, widgets::{Widget, WidgetCfg}
+    cache::load_cache,
+    cfg::PrintCfg,
+    context,
+    data::RwData2,
+    form,
+    hooks::{self, FileWritten},
+    mode::Cursors,
+    text::{Bytes, Text, err},
+    ui::{PushSpecs, RawArea, Ui},
+    widgets::{Widget, WidgetCfg},
 };
 
 /// The configuration for a new [`File`]
@@ -61,7 +70,7 @@ impl FileCfg {
 impl<U: Ui> WidgetCfg<U> for FileCfg {
     type Widget = File;
 
-    fn build(self, _: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
+    fn build(self, _: bool) -> (Self::Widget, PushSpecs) {
         let (text, path) = match self.text_op {
             TextOp::NewBuffer => (Text::new_with_history(), PathKind::new_unset()),
             TextOp::TakeBuf(bytes, pk, has_unsaved_changes) => match &pk {
@@ -108,7 +117,7 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
         };
 
         // The PushSpecs don't matter
-        (file, Box::new(|| false), PushSpecs::above())
+        (file, PushSpecs::above())
     }
 }
 
@@ -164,7 +173,7 @@ impl File {
                 .map(Some);
 
             if let Ok(Some(bytes)) = res.as_ref() {
-                hooks::trigger::<FileWritten>((path.to_string_lossy().to_string(), *bytes));
+                hooks::queue::<FileWritten>((path.to_string_lossy().to_string(), *bytes));
             }
 
             res
@@ -273,8 +282,8 @@ impl<U: Ui> Widget<U> for File {
 
     async fn update(_widget: RwData2<Self>, _area: &U::Area) {}
 
-    fn has_changed(&self) -> bool {
-         todo!();
+    fn needs_update(&self) -> bool {
+        false
     }
 
     fn text(&self) -> &Text {

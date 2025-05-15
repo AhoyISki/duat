@@ -66,7 +66,7 @@ impl<U: Ui> LineNumbers<U> {
             }
         }
 
-        self.text = builder.finish();
+        self.text = builder.build();
     }
 
     /// The options for these [`LineNumbers`]

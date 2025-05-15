@@ -12,7 +12,7 @@ use std::{
 
 pub use self::macros::*;
 use super::{Change, Key, Tag, Text};
-use crate::{data::RwData, form::FormId};
+use crate::{data::RwData2, form::FormId};
 
 /// Builds and modifies a [`Text`], based on replacements applied
 /// to it.
@@ -39,6 +39,7 @@ use crate::{data::RwData, form::FormId};
 /// [`impl Display`]: std::fmt::Display
 /// [tag]: AlignCenter
 /// [`Form`]: crate::form::Form
+#[derive(Clone)]
 pub struct Builder {
     text: Text,
     last_form: Option<(usize, FormId)>,
@@ -56,19 +57,71 @@ impl Builder {
         Self::default()
     }
 
+    /// Transforms a [`Text`] into a [`Builder`]
+    ///
+    /// There are not many situations in which you'd want to do this,
+    /// to be honest, the primary one would be sending a [`Text`]
+    /// across threads, since [`Builder`] implements [`Send`] and
+    /// [`Sync`], while [`Text`] does not.
+    ///
+    /// Keep in mind, however, that this will *DISABLE* the history
+    /// and *REMOVE* all [`Reader`]s, since those are not [`Send`] +
+    /// [`Sync`], and you _probably_ won't need them anyways.
+    pub fn from_text(mut text: Text) -> Self {
+        text.0.readers = super::Readers::default();
+        text.0.history = None;
+        Builder {
+            text,
+            last_form: None,
+            last_align: None,
+            buffer: String::new(),
+            last_was_empty: false,
+        }
+    }
+
     /// Finish construction and returns the [`Text`]
     ///
     /// Will also finish the last [`Form`] and alignments pushed to
-    /// the [builder].
+    /// the [builder], as well as pushing a `'\n'` at the end if there
+    /// is none, much like with regular [`Text`] construction.
+    ///
+    /// In general, you should only ever call this method (or
+    /// [`Builder::into::<Text>`]) if you actually _need_ the finished
+    /// [`Text`], and that will only really happen when finishing a
+    /// [`Text`] that should show up in a [`Widget`].
+    ///
+    /// The main reason for this is that, while [`Text`] doesn't
+    /// implement [`Send`] or [`Sync`], [`Builder`] _does_, so you
+    /// can, for example, [notify] messages to Duat using them.
+    ///
+    /// One misconception might be that formatting functions (such as
+    /// those used in the [`StatusLine`]) seem like they should return
+    /// [`Text`], but no, they should _actually_ return [`Builder`],
+    /// since it is more composable into a finalized [`Text`].
     ///
     /// [`Form`]: crate::form::Form
     /// [builder]: Builder
-    pub fn finish(mut self) -> Text {
+    /// [`Builder::into::<Text>`]: Builder::into
+    /// [`Widget`]: crate::widgets::Widget
+    /// [notify]: crate::context::notify
+    pub fn build(mut self) -> Text {
         if (self.text.buffers(..).next_back()).is_none_or(|b| b != b'\n') {
             self.push_str("\n");
-            self.text.0.forced_new_line = true;
         }
 
+        self.build_no_nl()
+    }
+
+    /// Builds the [`Text`] without adding a `'\n'` at the end
+    ///
+    /// This should only be used when adding [`Text`] to another
+    /// [`Builder`], as a `'\n'` should only be added at the end of
+    /// [`Text`]s, or when creating a [ghosts], which don't end in a
+    /// `'\n'`, since they are placed in the middle of another
+    /// [`Text`], much like [`Text`]s added to a [`Builder`]
+    ///
+    /// [ghosts]: super::Tag::ghost
+    pub(super) fn build_no_nl(mut self) -> Text {
         if let Some((b, id)) = self.last_form
             && b < self.text.len().byte()
         {
@@ -167,12 +220,7 @@ impl Builder {
     }
 
     /// Pushes [`Text`] directly
-    pub(crate) fn push_text(&mut self, mut text: Text) {
-        if text.0.forced_new_line {
-            let change = Change::remove_nl(text.last_point().unwrap());
-            text.apply_change_inner(0, change);
-            text.0.forced_new_line = false;
-        }
+    fn push_text(&mut self, text: Text) {
         self.last_was_empty = text.is_empty();
 
         if let Some((b, id)) = self.last_form.take() {
@@ -195,6 +243,25 @@ impl Default for Builder {
         }
     }
 }
+
+impl std::fmt::Debug for Builder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Builder")
+            .field("text", &self.text)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<T: Into<Text>> From<T> for Builder {
+    fn from(value: T) -> Self {
+        <T as Into<Text>>::into(value).into_builder()
+    }
+}
+
+// SAFETY: The non Send + Sync parts of Text (History and Readers) are
+// never accessed by
+unsafe impl Send for Builder {}
+unsafe impl Sync for Builder {}
 
 /// [`Builder`] part: Aligns the line centrally
 #[derive(Clone)]
@@ -255,6 +322,12 @@ pub enum BuilderPart<D: Display, _T = String> {
     Ghost(Text),
 }
 
+impl From<Builder> for BuilderPart<String, Builder> {
+    fn from(value: Builder) -> Self {
+        Self::Text(value.build_no_nl())
+    }
+}
+
 impl From<FormId> for BuilderPart<String, FormId> {
     fn from(value: FormId) -> Self {
         Self::Form(value)
@@ -297,9 +370,9 @@ impl From<Text> for BuilderPart<String, Text> {
     }
 }
 
-impl<D: Display> From<&RwData<D>> for BuilderPart<String, D> {
-    fn from(value: &RwData<D>) -> Self {
-        BuilderPart::ToString(value.read().to_string())
+impl<D: Display> From<&RwData2<D>> for BuilderPart<String, D> {
+    fn from(value: &RwData2<D>) -> Self {
+        BuilderPart::ToString(value.read(|d| d.to_string()))
     }
 }
 
@@ -321,14 +394,13 @@ impl From<&PathBuf> for BuilderPart<String, PathBuf> {
     }
 }
 
-impl From<RwData<PathBuf>> for BuilderPart<String, PathBuf> {
-    fn from(value: RwData<PathBuf>) -> Self {
-        BuilderPart::Text(Text::from(&*value.read()))
+impl From<RwData2<PathBuf>> for BuilderPart<String, PathBuf> {
+    fn from(value: RwData2<PathBuf>) -> Self {
+        BuilderPart::Text(value.read(|p| Text::from(p)))
     }
 }
 
 mod macros {
-
     /// The standard [`Text`] construction macro
     ///
     /// TODO: Docs
@@ -340,19 +412,7 @@ mod macros {
 
         let mut builder = $crate::text::Builder::new();
         inner_text!(&mut builder, default, accent, $($parts)+);
-        builder.finish()
-    }}
-
-    /// Allows you to add more [`Text`] to a [`Builder`]
-    ///
-    /// [`Text`]: super::Text
-    /// [`Builder`]: super::Builder
-    pub macro add_text($builder:expr, $($parts:tt)+) {{
-        use $crate::{form::id_of, private_exports::inner_text};
-        let (default, accent) = (id_of!("Default"), id_of!("Accent"));
-
-        let builder: &mut $crate::text::Builder = &mut $builder;
-        inner_text!(builder, default, accent, $($parts)+);
+        builder
     }}
 
     /// Builds a [`Text`] for [`Ok`] results from commands
@@ -367,7 +427,7 @@ mod macros {
         let mut builder = $crate::text::Builder::new();
         builder.push(default);
         inner_text!(&mut builder, default, accent, $($parts)+);
-        builder.finish()
+        builder
     }}
 
     /// Builds a [`Text`] for [`Err`] results from commands
@@ -382,7 +442,7 @@ mod macros {
         let mut builder = $crate::text::Builder::new();
         builder.push(default);
         inner_text!(&mut builder, default, accent, $($parts)+);
-        builder.finish()
+        builder
     }}
 
     /// Builds a [`Text`] for hints
@@ -397,6 +457,6 @@ mod macros {
         let mut builder = $crate::text::Builder::new();
         builder.push(default);
         inner_text!(&mut builder, default, accent, $($parts)+);
-        builder.finish()
+        builder
     }}
 }

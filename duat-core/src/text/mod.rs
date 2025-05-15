@@ -94,6 +94,8 @@ use std::{
     },
 };
 
+use history::Moment;
+
 pub(crate) use self::history::History;
 pub use self::{
     builder::{
@@ -132,12 +134,10 @@ struct InnerText {
     readers: Readers,
     has_changed: bool,
     has_unsaved_changes: AtomicBool,
-    // Used in Text building
-    forced_new_line: bool,
 }
 
 impl Text {
-    ////////// Creation of Text
+    ////////// Creation and Destruction of Text
 
     /// Returns a new empty [`Text`]
     pub fn new() -> Self {
@@ -188,13 +188,10 @@ impl Text {
         cursors: Option<Cursors>,
         with_history: bool,
     ) -> Self {
-        let forced_new_line = if bytes.buffers(..).next_back().is_none_or(|b| b != b'\n') {
+        if bytes.buffers(..).next_back().is_none_or(|b| b != b'\n') {
             let end = bytes.len();
             bytes.apply_change(Change::str_insert("\n", end));
-            true
-        } else {
-            false
-        };
+        }
         let tags = Tags::new(bytes.len().byte());
 
         Self(Box::new(InnerText {
@@ -203,7 +200,6 @@ impl Text {
             cursors,
             history: with_history.then(History::new),
             readers: Readers::default(),
-            forced_new_line,
             has_changed: false,
             has_unsaved_changes: AtomicBool::new(false),
         }))
@@ -219,7 +215,6 @@ impl Text {
             readers: Readers::default(),
             has_changed: false,
             has_unsaved_changes: AtomicBool::new(false),
-            forced_new_line: false,
         }))
     }
 
@@ -235,6 +230,25 @@ impl Text {
     /// ```
     pub fn builder() -> Builder {
         Builder::new()
+    }
+
+    /// Transforms this [`Text`] into a [`Builder`]
+    ///
+    /// There are not many situations in which you'd want to do this,
+    /// to be honest, the primary one would be sending a [`Text`]
+    /// across threads, since [`Builder`] implements [`Send`] and
+    /// [`Sync`], while [`Text`] does not.
+    ///
+    /// Keep in mind, however, that this will *DISABLE* the history
+    /// and *REMOVE* all [`Reader`]s, since those are not [`Send`] +
+    /// [`Sync`], and you _probably_ won't need them anyways.
+    pub fn into_builder(self) -> Builder {
+        Builder::from_text(self)
+    }
+
+    /// Takes the [`Bytes`] from this [`Text`], consuming it
+    pub(crate) fn take_bytes(self) -> Bytes {
+        self.0.bytes
     }
 
     ////////// Querying functions
@@ -573,10 +587,9 @@ impl Text {
         if self.0.has_changed || self.0.readers.needs_update() {
             let within = start(self).byte()..(end(self).byte() + 1);
             if let Some(history) = self.0.history.as_mut()
-                && let Some(changes) = history.unprocessed_changes()
+                && let Some(moment) = history.unprocessed_changes()
             {
-                let changes: Vec<Change<&str>> = changes.iter().map(|c| c.as_ref()).collect();
-                self.0.readers.process_changes(&mut self.0.bytes, &changes);
+                self.0.readers.process_changes(&mut self.0.bytes, moment);
             }
 
             self.0
@@ -596,10 +609,9 @@ impl Text {
         let mut history = self.0.history.take();
 
         if let Some(history) = history.as_mut()
-            && let Some(changes) = history.move_backwards()
-            && !changes.is_empty()
+            && let Some(moment) = history.move_backwards()
         {
-            self.apply_and_process_changes(changes);
+            self.apply_and_process_changes(moment);
             self.0.has_changed = true;
         }
 
@@ -611,23 +623,22 @@ impl Text {
         let mut history = self.0.history.take();
 
         if let Some(history) = history.as_mut()
-            && let Some(changes) = history.move_forward()
-            && !changes.is_empty()
+            && let Some(moment) = history.move_forward()
         {
-            self.apply_and_process_changes(changes);
+            self.apply_and_process_changes(moment);
             self.0.has_changed = true;
         }
 
         self.0.history = history;
     }
 
-    pub fn apply_and_process_changes(&mut self, changes: Vec<Change<&str>>) {
+    pub fn apply_and_process_changes(&mut self, moment: Moment) {
         if let Some(cursors) = self.cursors_mut() {
             cursors.clear();
         }
 
-        for (i, change) in changes.iter().enumerate() {
-            self.apply_change_inner(0, *change);
+        for (i, change) in moment.changes().enumerate() {
+            self.apply_change_inner(0, change);
 
             if let Some(cursors) = self.0.cursors.as_mut() {
                 let start = change.start();
@@ -637,11 +648,11 @@ impl Text {
                 };
 
                 let cursor = Cursor::new(added_end, (start != added_end).then_some(start));
-                cursors.insert(i, cursor, i == changes.len() - 1);
+                cursors.insert(i, cursor, i == moment.len() - 1);
             }
         }
 
-        self.0.readers.process_changes(&mut self.0.bytes, &changes);
+        self.0.readers.process_changes(&mut self.0.bytes, moment);
     }
 
     /// Finishes the current moment and adds a new one to the history
@@ -685,13 +696,6 @@ impl Text {
     /// [write]: Text::write_to
     pub fn has_unsaved_changes(&self) -> bool {
         self.0.has_unsaved_changes.load(Ordering::Relaxed)
-    }
-
-    ////////// Reload related functions
-
-    /// Takes the [`Bytes`] from this [`Text`], consuming it
-    pub(crate) fn take_bytes(self) -> Bytes {
-        self.0.bytes
     }
 
     ////////// Tag addition/deletion functions
@@ -952,41 +956,6 @@ impl Text {
     }
 }
 
-/// Merges a range in a sorted list of ranges, useful in [`Reader`]s
-///
-/// Since ranges are not allowed to intersect, they will be sorted
-/// both in their starting bound and in their ending bound.
-pub fn merge_range_in(ranges: &mut Vec<Range<usize>>, range: Range<usize>) -> [usize; 2] {
-    let (r_range, start) = match ranges.binary_search_by_key(&range.start, |r| r.start) {
-        // Same thing here
-        Ok(i) => (i..i + 1, range.start),
-        Err(i) => {
-            // This is if we intersect the added part
-            if let Some(older_i) = i.checked_sub(1)
-                && range.start <= ranges[older_i].end
-            {
-                (older_i..i, ranges[older_i].start)
-            // And here is if we intersect nothing on the
-            // start, no changes drained.
-            } else {
-                (i..i, range.start)
-            }
-        }
-    };
-    let start_i = r_range.start;
-    // Otherwise search ahead for another change to be merged
-    let (r_range, end) = match ranges[start_i..].binary_search_by_key(&range.end, |r| r.start) {
-        Ok(i) => (r_range.start..start_i + i + 1, ranges[start_i + i].end),
-        Err(i) => match (start_i + i).checked_sub(1).and_then(|i| ranges.get(i)) {
-            Some(older) => (r_range.start..start_i + i, range.end.max(older.end)),
-            None => (r_range.start..start_i + i, range.end),
-        },
-    };
-
-    ranges.splice(r_range, [start..end]);
-    [start, end - start]
-}
-
 /// Splits a range within a region
 ///
 /// The first return is the part of `within` that must be updated.
@@ -1007,24 +976,6 @@ fn split_range_within(
         let split_ranges = [start_range, end_range];
         let range_to_check = range.start.max(within.start)..(range.end.min(within.end));
         (Some(range_to_check), split_ranges)
-    }
-}
-
-fn transform_ranges(ranges: &mut [Range<usize>], changes: &[Change<&str>]) {
-    let mut range_bounds = ranges
-        .iter_mut()
-        .flat_map(|r| [&mut r.start, &mut r.end])
-        .peekable();
-    let mut shift = 0;
-
-    for change in changes.iter() {
-        while let Some(bound) = range_bounds.next_if(|b| **b < change.start().byte()) {
-            *bound = (*bound as i32 + shift) as usize;
-        }
-        shift += change.added_end().byte() as i32 - change.taken_end().byte() as i32;
-    }
-    for bound in range_bounds {
-        *bound = (*bound as i32 + shift) as usize
     }
 }
 
@@ -1051,7 +1002,6 @@ impl Clone for Text {
             cursors: self.0.cursors.clone(),
             history: self.0.history.clone(),
             readers: Readers::default(),
-            forced_new_line: self.0.forced_new_line,
             has_changed: self.0.has_changed,
             has_unsaved_changes: AtomicBool::new(false),
         }))

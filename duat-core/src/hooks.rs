@@ -28,8 +28,8 @@
 //! - [`OnWindowOpen`], which lets you push widgets around the window.
 //! - [`FocusedOn`] lets you act on a [widget] when focused.
 //! - [`UnfocusedFrom`] lets you act on a [widget] when unfocused.
-//! - [`KeySent`] lets you act on a [dyn Widget], given a[key].
-//! - [`KeySentTo`] lets you act on a given [widget], given a [key].
+//! - [`KeysSent`] lets you act on a [dyn Widget], given a[key].
+//! - [`KeysSentTo`] lets you act on a given [widget], given a [key].
 //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
 //! - [`ModeSwitched`] triggers when you change [`Mode`].
 //! - [`ModeSetTo`] lets you act on a [`Mode`] after switching.
@@ -114,14 +114,7 @@
 //! [commands]: crate::cmd
 //! [`Mode`]: crate::mode::Mode
 //! [`&mut Widget`]: Widget
-use std::{
-    any::TypeId,
-    collections::HashMap,
-    marker::PhantomData,
-    sync::{Arc, LazyLock},
-};
-
-use parking_lot::{Mutex, RwLock};
+use std::{any::TypeId, cell::RefCell, collections::HashMap, marker::PhantomData, rc::Rc};
 
 pub use self::global::*;
 use crate::{
@@ -134,11 +127,12 @@ use crate::{
 
 /// Hook functions
 mod global {
-    use tokio::task;
+    use super::{Hookable, InnerHooks};
+    use crate::{context, ui::DuatEvent};
 
-    use super::{Hookable, Hooks};
-
-    static HOOKS: Hooks = Hooks::new();
+    thread_local! {
+        static HOOKS: InnerHooks = InnerHooks::default();
+    }
 
     /// Adds a [hook]
     ///
@@ -148,8 +142,9 @@ mod global {
     /// [hook]: Hookable
     /// [`hooks::add_grouped`]: add_grouped
     #[inline(never)]
-    pub fn add<H: Hookable>(f: impl for<'a> FnMut(H::Args<'a>) -> H::Return + Send + 'static) {
-        HOOKS.add::<H>("", f);
+    pub fn add<H: Hookable>(f: impl for<'a> FnMut(H::Args<'a>) -> H::Output + 'static) {
+        context::assert_is_on_main_thread();
+        HOOKS.with(|h| h.add::<H>("", f));
     }
 
     /// Adds a grouped [hook]
@@ -164,9 +159,10 @@ mod global {
     #[inline(never)]
     pub fn add_grouped<H: Hookable>(
         group: &'static str,
-        f: impl for<'a> FnMut(H::Args<'a>) -> H::Return + Send + 'static,
+        f: impl for<'a> FnMut(H::Args<'a>) -> H::Output + 'static,
     ) {
-        HOOKS.add::<H>(group, f);
+        context::assert_is_on_main_thread();
+        HOOKS.with(|h| h.add::<H>(group, f));
     }
 
     /// Removes a [hook] group
@@ -177,7 +173,8 @@ mod global {
     /// [hook]: Hookable
     /// [`hooks::add_grouped`]: add_grouped
     pub fn remove(group: &'static str) {
-        HOOKS.remove(group);
+        context::assert_is_on_main_thread();
+        HOOKS.with(|h| h.remove(group));
     }
 
     /// Triggers a hooks for a [`Hookable`] struct
@@ -190,15 +187,37 @@ mod global {
     /// [`hooks::add`]: add
     /// [`hooks::add_grouped`]: add_grouped
     #[inline(never)]
-    pub async fn trigger<H: Hookable>(args: H::PreArgs) {
-        task::spawn_local(async move {
-            HOOKS.trigger::<H>(args);
-        });
+    pub async fn trigger<H: Hookable>(args: H::Input) -> H::Output {
+        context::assert_is_on_main_thread();
+        HOOKS.with(|h| h.clone()).trigger::<H>(args).await
     }
 
-    #[inline(never)]
-    pub(crate) fn trigger_now<H: Hookable>(args: H::PreArgs) -> H::Return {
-        HOOKS.trigger_now::<H>(args)
+    /// Queues a [`Hookable`]'s execution
+    ///
+    /// You should use this if you are not in an async environment or
+    /// on the main thread, and are thus unable to call [`trigger`].
+    /// The notable difference between this function and [`trigger`]
+    /// is that it doesn't return [`H::Output`], since the triggering
+    /// of this hook will happen outside of the calling function.
+    ///
+    /// Most of the time, this doesn't really matter, as only a few
+    /// types really need to recover [`H::Output`], so you should be
+    /// able to call this from pretty much anywhere.
+    ///
+    /// [`H::Output`]: Hookable::Output
+    pub fn queue<H>(args: H::Input)
+    where
+        H: Hookable,
+        H::Input: Send + 'static,
+    {
+        let sender = crate::session::sender();
+        sender
+            .send(DuatEvent::QueuedFunction(Box::new(move || {
+                Box::pin(async move {
+                    HOOKS.with(|h| h.clone()).trigger::<H>(args).await;
+                })
+            })))
+            .unwrap();
     }
 
     /// Checks if a give group exists
@@ -210,7 +229,8 @@ mod global {
     /// [`hooks::add_grouped`]: add_grouped
     /// [`hooks::remove`]: remove
     pub fn group_exists(group: &'static str) -> bool {
-        HOOKS.group_exists(group)
+        context::assert_is_on_main_thread();
+        HOOKS.with(|h| h.group_exists(group))
     }
 }
 
@@ -224,11 +244,11 @@ pub struct ConfigLoaded;
 
 impl Hookable for ConfigLoaded {
     type Args<'a> = ();
-    type PreArgs = ();
+    type Input = ();
 
-    fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    async fn trigger(input: Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
-            hook(pre_args)
+            hook(input)
         }
     }
 }
@@ -240,11 +260,11 @@ pub struct ConfigUnloaded;
 
 impl Hookable for ConfigUnloaded {
     type Args<'a> = ();
-    type PreArgs = ();
+    type Input = ();
 
-    fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    async fn trigger(input: Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
-            hook(pre_args)
+            hook(input)
         }
     }
 }
@@ -256,11 +276,11 @@ pub struct ExitedDuat;
 
 impl Hookable for ExitedDuat {
     type Args<'a> = ();
-    type PreArgs = ();
+    type Input = ();
 
-    fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    async fn trigger(input: Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
-            hook(pre_args)
+            hook(input)
         }
     }
 }
@@ -278,15 +298,11 @@ pub struct OnFileOpen<U: Ui>(PhantomData<U>);
 
 impl<U: Ui> Hookable for OnFileOpen<U> {
     type Args<'a> = &'a mut FileBuilder<U>;
-    type PreArgs = FileBuilder<U>;
+    type Input = FileBuilder<U>;
 
-    fn trigger<'b>(_: Self::PreArgs, _: impl Iterator<Item = Hook<'b, Self>>) {
-        unreachable!("This hook is not meant to be triggered asynchronously")
-    }
-
-    fn trigger_now<'b>(mut pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    async fn trigger(mut input: Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
-            hook(&mut pre_args)
+            hook(&mut input)
         }
     }
 }
@@ -303,15 +319,11 @@ pub struct OnWindowOpen<U: Ui>(PhantomData<U>);
 
 impl<U: Ui> Hookable for OnWindowOpen<U> {
     type Args<'a> = &'a mut WindowBuilder<U>;
-    type PreArgs = WindowBuilder<U>;
+    type Input = WindowBuilder<U>;
 
-    fn trigger<'b>(_: Self::PreArgs, _: impl Iterator<Item = Hook<'b, Self>>) {
-        unreachable!("This hook is not meant to be triggered asynchronously")
-    }
-
-    fn trigger_now<'b>(mut pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    async fn trigger(mut input: Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
-            hook(&mut pre_args)
+            hook(&mut input)
         }
     }
 }
@@ -329,9 +341,9 @@ pub struct FocusedOn<W: Widget<U>, U: Ui>(PhantomData<(W, U)>);
 
 impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
     type Args<'a> = (&'a mut W, &'a U::Area);
-    type PreArgs = (RwData2<W>, U::Area);
+    type Input = (RwData2<W>, U::Area);
 
-    fn trigger<'b>((widget, area): Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    async fn trigger((widget, area): Self::Input, hooks: Hooks<Self>) {
         widget.write(|widget| {
             let cfg = widget.print_cfg();
             widget.text_mut().remove_cursors(&area, cfg);
@@ -362,9 +374,9 @@ pub struct UnfocusedFrom<W: Widget<U>, U: Ui>(PhantomData<(W, U)>);
 
 impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
     type Args<'a> = (&'a mut W, &'a U::Area);
-    type PreArgs = (RwData2<W>, U::Area);
+    type Input = (RwData2<W>, U::Area);
 
-    fn trigger<'b>((widget, area): Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    async fn trigger((widget, area): Self::Input, hooks: Hooks<Self>) {
         widget.write(|widget| {
             let cfg = widget.print_cfg();
             widget.text_mut().remove_cursors(&area, cfg);
@@ -400,11 +412,11 @@ pub struct ModeSwitched;
 
 impl Hookable for ModeSwitched {
     type Args<'a> = (&'a str, &'a str);
-    type PreArgs = (&'static str, &'static str);
+    type Input = (&'static str, &'static str);
 
-    fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    async fn trigger(input: Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
-            hook(pre_args)
+            hook(input)
         }
     }
 }
@@ -425,20 +437,13 @@ pub struct ModeSetTo<M: Mode<U>, U: Ui>(PhantomData<(M, U)>);
 
 impl<M: Mode<U>, U: Ui> Hookable for ModeSetTo<M, U> {
     type Args<'a> = (M, &'a M::Widget, &'a U::Area);
-    type PreArgs = (M, RwData2<M::Widget>, U::Area);
-    type Return = M;
+    type Input = (M, RwData2<M::Widget>, U::Area);
+    type Output = M;
 
-    fn trigger<'b>(_: Self::PreArgs, _: impl Iterator<Item = Hook<'b, Self>>) {
-        unreachable!("This hook is not meant to be triggered asynchronously")
-    }
-
-    fn trigger_now<'b>(
-        (mut mode, widget, area): Self::PreArgs,
-        hooks: impl Iterator<Item = Hook<'b, Self>>,
-    ) -> Self::Return {
+    async fn trigger((mut mode, widget, area): Self::Input, hooks: Hooks<Self>) -> Self::Output {
         widget.read(|widget| {
             for hook in hooks {
-                mode = hook((mode, &widget, &area));
+                mode = hook((mode, widget, &area));
             }
             mode
         })
@@ -452,15 +457,15 @@ impl<M: Mode<U>, U: Ui> Hookable for ModeSetTo<M, U> {
 /// - The [key] sent.
 ///
 /// [key]: KeyEvent
-pub struct KeySent;
+pub struct KeysSent;
 
-impl Hookable for KeySent {
-    type Args<'a> = KeyEvent;
-    type PreArgs = KeyEvent;
+impl Hookable for KeysSent {
+    type Args<'a> = &'a [KeyEvent];
+    type Input = Vec<KeyEvent>;
 
-    fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    async fn trigger(input: Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
-            hook(pre_args);
+            hook(&input);
         }
     }
 }
@@ -473,23 +478,16 @@ impl Hookable for KeySent {
 /// - An [`RwData<W>`] for the widget.
 ///
 /// [key]: KeyEvent
-pub struct KeySentTo<W: Widget<U>, U: Ui>(PhantomData<(&'static W, U)>);
+pub struct KeysSentTo<W: Widget<U>, U: Ui>(PhantomData<(&'static W, U)>);
 
-impl<W: Widget<U>, U: Ui> Hookable for KeySentTo<W, U> {
-    type Args<'b> = (KeyEvent, &'b mut W, &'b U::Area);
-    type PreArgs = (KeyEvent, RwData2<W>, U::Area);
+impl<W: Widget<U>, U: Ui> Hookable for KeysSentTo<W, U> {
+    type Args<'b> = (&'b [KeyEvent], &'b mut W, &'b U::Area);
+    type Input = (Vec<KeyEvent>, RwData2<W>, U::Area);
 
-    fn trigger<'b>(_: Self::PreArgs, _: impl Iterator<Item = Hook<'b, Self>>) {
-        unreachable!("This hook is not meant to be triggered asynchronously")
-    }
-
-    fn trigger_now<'b>(
-        (key, widget, area): Self::PreArgs,
-        hooks: impl Iterator<Item = Hook<'b, Self>>,
-    ) {
+    async fn trigger((keys, widget, area): Self::Input, hooks: Hooks<Self>) {
         widget.write(|widget| {
             for hook in hooks {
-                hook((key, &mut *widget, &area));
+                hook((&keys, &mut *widget, &area));
             }
         });
     }
@@ -509,10 +507,10 @@ impl<W: Widget<U>, U: Ui> Hookable for KeySentTo<W, U> {
 pub struct FormSet;
 
 impl Hookable for FormSet {
-    type Args<'b> = Self::PreArgs;
-    type PreArgs = (&'static str, FormId, Form);
+    type Args<'b> = Self::Input;
+    type Input = (&'static str, FormId, Form);
 
-    fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    async fn trigger(pre_args: Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
             hook(pre_args)
         }
@@ -532,10 +530,10 @@ impl Hookable for FormSet {
 pub struct ColorSchemeSet;
 
 impl Hookable for ColorSchemeSet {
-    type Args<'b> = Self::PreArgs;
-    type PreArgs = &'static str;
+    type Args<'b> = Self::Input;
+    type Input = &'static str;
 
-    fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    async fn trigger(pre_args: Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
             hook(pre_args)
         }
@@ -555,10 +553,9 @@ pub struct SearchPerformed;
 
 impl Hookable for SearchPerformed {
     type Args<'a> = &'a str;
-    type PreArgs = String;
-    type Return = ();
+    type Input = String;
 
-    fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    async fn trigger(pre_args: Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
             hook(&pre_args)
         }
@@ -580,10 +577,10 @@ pub struct SearchUpdated;
 
 impl Hookable for SearchUpdated {
     type Args<'a> = (&'a str, &'a str);
-    type PreArgs = (String, String);
-    type Return = ();
+    type Input = (String, String);
+    type Output = ();
 
-    fn trigger<'b>((prev, cur): Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    async fn trigger((prev, cur): Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
             hook((&prev, &cur))
         }
@@ -605,10 +602,9 @@ pub struct FileWritten;
 
 impl Hookable for FileWritten {
     type Args<'a> = (&'a str, usize);
-    type PreArgs = (String, usize);
-    type Return = ();
+    type Input = (String, usize);
 
-    fn trigger<'b>((file, bytes): Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>) {
+    async fn trigger((file, bytes): Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
             hook((&file, bytes));
         }
@@ -627,50 +623,31 @@ impl Hookable for FileWritten {
 /// [`hooks::trigger`]: trigger
 pub trait Hookable: Sized + 'static {
     type Args<'a>;
-    type PreArgs;
-    /// This type is useful if, for example, you want to pass a value
-    /// by moving it to Args, while returning and reusing said value.
-    type Return = ();
+    type Input;
+    type Output = ();
 
-    fn trigger<'b>(pre_args: Self::PreArgs, hooks: impl Iterator<Item = Hook<'b, Self>>);
-
-    /// This function is only for internal use, it will not be used if
-    /// you implement it.
-    #[allow(unused_variables)]
-    #[doc(hidden)]
-    fn trigger_now<'b>(
-        pre_args: Self::PreArgs,
-        hooks: impl Iterator<Item = Hook<'b, Self>>,
-    ) -> Self::Return {
-        unreachable!("This Hookable is not meant to be called immediately");
-    }
+    #[allow(async_fn_in_trait)]
+    async fn trigger(input: Self::Input, hooks: Hooks<Self>) -> Self::Output;
 }
 
 /// Where all hooks of Duat are stored
-struct Hooks {
-    types: LazyLock<RwLock<HashMap<TypeId, Arc<dyn HookHolder>>>>,
-    groups: LazyLock<RwLock<Vec<&'static str>>>,
+#[derive(Default, Clone)]
+struct InnerHooks {
+    types: Rc<RefCell<HashMap<TypeId, Rc<dyn HookHolder>>>>,
+    groups: Rc<RefCell<Vec<&'static str>>>,
 }
 
-impl Hooks {
-    /// Returns a new instance of [`Hooks`]
-    const fn new() -> Self {
-        Hooks {
-            types: LazyLock::new(RwLock::default),
-            groups: LazyLock::new(RwLock::default),
-        }
-    }
-
+impl InnerHooks {
     /// Adds a hook for a [`Hookable`]
     fn add<H: Hookable>(
         &self,
         group: &'static str,
-        f: impl for<'a> FnMut(H::Args<'a>) -> H::Return + Send + 'static,
+        f: impl for<'a> FnMut(H::Args<'a>) -> H::Output + 'static,
     ) {
-        let mut map = self.types.write();
+        let mut map = self.types.borrow_mut();
 
         if !group.is_empty() {
-            let mut groups = self.groups.write();
+            let mut groups = self.groups.borrow_mut();
             if !groups.contains(&group) {
                 groups.push(group)
             }
@@ -682,89 +659,66 @@ impl Hooks {
                 ptr.as_ref().unwrap()
             };
 
-            let mut hooks = hooks_of.0.lock();
-            hooks.push((group, Box::leak(Box::new(Mutex::new(f)))));
+            let mut hooks = hooks_of.0.borrow_mut();
+            hooks.push((group, Box::leak(Box::new(RefCell::new(f)))));
         } else {
-            let hooks_of = HooksOf::<H>(Mutex::new(vec![(
+            let hooks_of = HooksOf::<H>(RefCell::new(vec![(
                 group,
-                Box::leak(Box::new(Mutex::new(f))),
+                Box::leak(Box::new(RefCell::new(f))),
             )]));
 
-            map.insert(TypeId::of::<H>(), Arc::new(hooks_of));
+            map.insert(TypeId::of::<H>(), Rc::new(hooks_of));
         }
     }
 
     /// Removes hooks with said group
-    fn remove(&'static self, group: &'static str) {
-        self.groups.write().retain(|g| *g != group);
-        let map = self.types.read();
+    fn remove(&self, group: &'static str) {
+        self.groups.borrow_mut().retain(|g| *g != group);
+        let map = self.types.borrow();
         for holder in map.iter() {
             holder.1.remove(group)
         }
     }
 
     /// Triggers hooks with args of the [`Hookable`]
-    fn trigger<H: Hookable>(&self, pre_args: H::PreArgs) {
-        let map = self.types.read();
+    #[define_opaque(Hooks)]
+    async fn trigger<H: Hookable>(&self, pre_args: H::Input) -> H::Output {
+        let holder = self.types.borrow().get(&TypeId::of::<H>()).cloned();
 
-        if let Some(holder) = map.get(&TypeId::of::<H>()) {
+        if let Some(holder) = holder {
             let holder = holder.clone();
-            drop(map);
             // SAFETY: HooksOf<H> is the only type that this HookHolder could be.
             let hooks_of = unsafe {
                 let ptr = (&*holder as *const dyn HookHolder).cast::<HooksOf<H>>();
                 ptr.as_ref().unwrap()
             };
 
-            let mut hooks = hooks_of.0.lock().clone();
-            H::trigger(pre_args, hooks.iter_mut().map(|(_, f)| Hook(f)));
+            let hooks = hooks_of.0.borrow_mut().clone();
+            let hooks: Hooks<H> = hooks.into_iter().map(Hook::new);
+            H::trigger(pre_args, hooks).await
         } else {
-            drop(map);
-            H::trigger(pre_args, std::iter::empty());
-        }
-    }
-
-    /// Triggers hooks, returning [`H::Return`]
-    ///
-    /// [`H::Return`]: Hookable::Return
-    fn trigger_now<H: Hookable>(&self, pre_args: H::PreArgs) -> H::Return {
-        let map = self.types.read();
-
-        if let Some(holder) = map.get(&TypeId::of::<H>()) {
-            let holder = holder.clone();
-            drop(map);
-            // SAFETY: HooksOf<H> is the only type that this HookHolder could be.
-            let hooks_of = unsafe {
-                let ptr = (&*holder as *const dyn HookHolder).cast::<HooksOf<H>>();
-                ptr.as_ref().unwrap()
-            };
-
-            let mut hooks = hooks_of.0.lock();
-            H::trigger_now(pre_args, hooks.iter_mut().map(|(_, f)| Hook(f)))
-        } else {
-            drop(map);
-            H::trigger_now(pre_args, std::iter::empty())
+            H::trigger(pre_args, Vec::new().into_iter().map(Hook::new)).await
         }
     }
 
     /// Checks if a hook group exists
     fn group_exists(&self, group: &str) -> bool {
-        self.groups.read().contains(&group)
+        self.groups.borrow().contains(&group)
     }
 }
 
 /// An intermediary trait, meant for group removal
-trait HookHolder: Send + Sync {
+trait HookHolder {
     /// Remove the given group from hooks of this holder
     fn remove(&self, group: &str);
 }
 
 /// An intermediary struct, meant to hold the hooks of a [`Hookable`]
-struct HooksOf<H: Hookable>(Mutex<Vec<(&'static str, InnerHookFn<H>)>>);
+struct HooksOf<H: Hookable>(RefCell<Vec<(&'static str, InnerHookFn<H>)>>);
 
 impl<H: Hookable> HookHolder for HooksOf<H> {
     fn remove(&self, group: &str) {
-        let mut hooks = self.0.lock();
+        let mut hooks = self.0.borrow_mut();
         hooks.retain(|(g, _)| *g != group);
     }
 }
@@ -773,16 +727,23 @@ impl<H: Hookable> HookHolder for HooksOf<H> {
 ///
 /// This function implements [`FnOnce`], as it is only meant to be
 /// called once per [`trigger`] call.
-pub struct Hook<'b, H: Hookable>(&'b mut InnerHookFn<H>);
+pub struct Hook<H: Hookable>(InnerHookFn<H>);
 
-impl<'b, H: Hookable> std::ops::FnOnce<(H::Args<'_>,)> for Hook<'b, H> {
-    type Output = H::Return;
-
-    extern "rust-call" fn call_once(self, (args,): (H::Args<'_>,)) -> Self::Output {
-        (self.0.lock())(args)
+impl<H: Hookable> Hook<H> {
+    fn new((_, f): (&str, InnerHookFn<H>)) -> Self {
+        Self(f)
     }
 }
 
-pub type InnerHookFn<H> = &'static Mutex<
-    (dyn for<'a> FnMut(<H as Hookable>::Args<'a>) -> <H as Hookable>::Return + Send + 'static),
+impl<H: Hookable> std::ops::FnOnce<(H::Args<'_>,)> for Hook<H> {
+    type Output = H::Output;
+
+    extern "rust-call" fn call_once(self, (args,): (H::Args<'_>,)) -> Self::Output {
+        self.0.borrow_mut()(args)
+    }
+}
+
+pub type InnerHookFn<H> = &'static RefCell<
+    (dyn for<'a> FnMut(<H as Hookable>::Args<'a>) -> <H as Hookable>::Output + 'static),
 >;
+pub type Hooks<H: Hookable> = impl Iterator<Item = Hook<H>>;

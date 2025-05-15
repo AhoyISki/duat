@@ -9,30 +9,26 @@
 //! [`Ui`]: crate::ui::Ui
 use std::{
     any::TypeId,
+    cell::RefCell,
+    fs::File,
     ops::{Range, RangeBounds},
+    pin::Pin,
+    rc::Rc,
 };
 
+use tokio::task;
+
 use super::{
-    Bytes, Change, Key, Keys, Tag, Text, TextRange, err, merge_range_in, split_range_within,
+    Builder, Bytes, Change, Key, Keys, Tag, Text, TextRange, err,
+    history::Moment,
+    split_range_within,
     tags::{RawTagsFn, Tags},
 };
-use crate::text::transform_ranges;
+use crate::data::{DataMap, RwData2};
 
 /// A [`Text`] reader, modifying it whenever a [`Change`] happens
 #[allow(unused_variables)]
 pub trait Reader: Send + Sync + 'static {
-    /// A convenience type for public facing APIs
-    ///
-    /// For many public facing APIs, it would be convenient for the
-    /// [`Reader`] to have access to the [`Bytes`] of the [`Text`],
-    /// this type is essentially a way to attach a [`Bytes`] to this
-    /// [`Reader`], simplifying the public API.
-    ///
-    /// If you don't need a public reader API, just set this to `()`.
-    type PublicReader<'a>
-    where
-        Self: Sized;
-
     /// Applies the [`Change`]s to this [`Reader`]
     ///
     /// After this point, even if no other functions are called, the
@@ -45,11 +41,14 @@ pub trait Reader: Send + Sync + 'static {
     /// can see by the lack of an appropriate argument for that. That
     /// is done in [`Reader::update_range`].
     ///
-    /// Another thing to note is the [`Reader::ranges_to_update`]
-    /// function. Since Duat might not care about what ranges actually
-    /// have to be updated, you should limit the processing of said
-    /// ranges to only that function, not this one.
-    fn apply_changes(&mut self, bytes: &mut Bytes, changes: &[Change<&str>]);
+    /// There is also a
+    async fn apply_changes(
+        reader: RwData2<Self>,
+        bytes: DataMap<File, &mut Bytes>,
+        moment: Moment,
+        ranges_to_update: Option<&mut RangeList>,
+    ) where
+        Self: Sized;
 
     /// Updates a given [`Range`]
     ///
@@ -67,33 +66,13 @@ pub trait Reader: Send + Sync + 'static {
     /// suggestion. In most circumstances, it would be a little
     /// convenient to go slightly over that range, just keep in
     /// mind that that overhang might be updated later.
+    ///
+    /// Finally, keep in mind that [`Tag`]s are not allowed to be
+    /// repeated, and you can use this to your advantage, as in,
+    /// instead of checking if you need to place a [`Tag`] in a
+    /// certain spot, you can just place it, and Duat will ignore that
+    /// request if that [`Tag`] was already there.
     fn update_range(&mut self, bytes: &mut Bytes, tags: MutTags, within: Range<usize>);
-
-    /// Returns ranges that must be updated after a [`Change`]
-    ///
-    /// Critically, this may not necessarily be called, so the state
-    /// must have been finished being updated by this point, via
-    /// [`Reader::apply_changes`].
-    fn ranges_to_update(
-        &mut self,
-        bytes: &mut Bytes,
-        changes: &[Change<&str>],
-    ) -> Vec<Range<usize>> {
-        vec![0..bytes.len().byte()]
-    }
-
-    /// The public facing portion of this [`Reader`]
-    ///
-    /// The [`PublicReader`] is essentially just the [`Reader`], but
-    /// with [`Bytes`] attached to it for convenience.
-    ///
-    /// [`PublicReader`]: Reader::PublicReader
-    fn public_reader<'a>(&'a mut self, bytes: &'a mut Bytes) -> Self::PublicReader<'a>
-    where
-        Self: Sized,
-    {
-        unreachable!("This Reader hasn't set up a public facing API.");
-    }
 }
 
 pub trait ReaderCfg {
@@ -151,65 +130,80 @@ impl<'a> std::fmt::Debug for MutTags<'a> {
 }
 
 #[derive(Default)]
-pub struct Readers(Vec<(Box<dyn Reader>, Vec<Range<usize>>, TypeId)>);
+pub struct Readers(Vec<ReaderEntry>);
 
 impl Readers {
-    pub fn add<R: ReaderCfg>(&mut self, bytes: &mut Bytes, reader_cfg: R) -> Result<(), Text> {
-        if self.0.iter().any(|(.., t)| *t == TypeId::of::<R::Reader>()) {
-            return Err(err!(
+    pub fn add<R: ReaderCfg>(&mut self, bytes: &mut Bytes, reader_cfg: R) -> Result<(), Builder> {
+        if self.0.iter().any(|re| re.ty == TypeId::of::<R::Reader>()) {
+            Err(err!(
                 "There is already a reader of type [a]{}",
                 crate::duat_name::<R::Reader>()
-            ));
+            ))?;
         }
 
-        let reader = Box::new(reader_cfg.init(bytes)?);
-        self.0.push((
-            reader,
-            vec![0..bytes.len().byte()],
-            TypeId::of::<R::Reader>(),
-        ));
+        self.0.push(ReaderEntry {
+            reader: unsafe {
+                RwData2::new_unsized::<R::Reader>(Rc::new(RefCell::new(reader_cfg.init(bytes)?)))
+            },
+            apply_changes: |reader, mut bytes, moment, mut ranges_to_update| {
+                let reader = reader.try_downcast().unwrap();
+                Box::pin(async move {
+                    let mut new_ranges = if ranges_to_update.is_some() {
+                        Some(RangeList::new(bytes.read(|bytes| bytes.len().byte())))
+                    } else {
+                        None
+                    };
+
+                    <R::Reader>::apply_changes(reader, bytes, moment, new_ranges.as_mut()).await;
+
+                    if let Some(ranges_to_update) = ranges_to_update.take() {
+                        ranges_to_update.write(|ru| ru.merge(new_ranges.unwrap()));
+                    }
+                })
+            },
+            ranges_to_update: RwData2::new(RangeList::new(bytes.len().byte())),
+            ty: TypeId::of::<R::Reader>(),
+        });
+
         Ok(())
     }
 
-    pub fn get_mut<'a, R: Reader>(
-        &'a mut self,
-        bytes: &'a mut Bytes,
-    ) -> Option<R::PublicReader<'a>> {
-        if TypeId::of::<R::PublicReader<'static>>() == TypeId::of::<()>() {
+    pub fn get_mut<'a, R: Reader>(&'a mut self) -> Option<RwData2<R>> {
+        if TypeId::of::<R>() == TypeId::of::<()>() {
             return None;
         }
 
-        let (reader, ..) = self.0.iter_mut().find(|(.., t)| *t == TypeId::of::<R>())?;
+        let entry = self.0.iter_mut().find(|re| re.ty == TypeId::of::<R>())?;
         // Since I am forcibly borrowing self for 'a, this should be safe, as
         // a mutable reference will prevent the removal of this Box's entry in
         // the list.
-        let ptr = Box::as_mut_ptr(reader);
-        let reader = unsafe { (ptr as *mut R).as_mut() }.unwrap();
-
-        Some(reader.public_reader(bytes))
+        entry.reader.try_downcast()
     }
 
-    pub fn process_changes(&mut self, bytes: &mut Bytes, changes: &[Change<&str>]) {
-        const MAX_CHANGES_TO_CONSIDER: usize = 15;
-        for (reader, ..) in self.0.iter_mut() {
-            reader.apply_changes(bytes, changes);
-        }
+    pub async fn process_changes<'a>(
+        &mut self,
+        bytes: DataMap<File, &'a mut Bytes>,
+        moment: Moment,
+    ) {
+        const MAX_CHANGES_TO_CONSIDER: usize = 100;
+        for entry in self.0.iter_mut() {
+            let new_ranges = if moment.clone().len() <= MAX_CHANGES_TO_CONSIDER {
+                Some(entry.ranges_to_update.clone())
+            } else {
+                // If there are too many changes, cut on processing and
+                // just assume that everything needs to be updated.
+                entry
+                    .ranges_to_update
+                    .write(|ru| *ru = RangeList::new(bytes.read(|bytes| bytes.len().byte())));
+                None
+            };
 
-        if changes.len() <= MAX_CHANGES_TO_CONSIDER {
-            for (reader, ranges, _) in self.0.iter_mut() {
-                transform_ranges(ranges, changes);
-                for range in reader.ranges_to_update(bytes, changes) {
-                    if !range.is_empty() {
-                        merge_range_in(ranges, range);
-                    }
-                }
-            }
-        // If there are too many changes, cut on processing and
-        // just assume that everything needs to be updated.
-        } else {
-            for (_, ranges, _) in self.0.iter_mut() {
-                *ranges = vec![0..bytes.len().byte()];
-            }
+            task::spawn_local((entry.apply_changes)(
+                entry.reader.clone(),
+                bytes.clone(),
+                moment.clone(),
+                new_ranges,
+            ));
         }
     }
 
@@ -229,6 +223,105 @@ impl Readers {
     }
 
     pub fn needs_update(&self) -> bool {
-        self.0.iter().any(|(_, ranges, _)| !ranges.is_empty())
+        self.0
+            .iter()
+            .any(|re| re.ranges_to_update.read(|ru| ru.is_empty()))
     }
+}
+
+#[derive(Clone)]
+pub struct RangeList(Vec<Range<usize>>);
+
+impl RangeList {
+    /// Return a new instance of [`RangesList`]
+    ///
+    /// By default, the whole [`Text`] should be updated.
+    pub fn new(max: usize) -> Self {
+        Self(vec![0..max])
+    }
+
+    /// Adds a range to the list of [`Range<usize>`]s
+    ///
+    /// This range will be merged in with the others on the list, so
+    /// it may bridge gaps between ranges or for longer ranges within,
+    /// without allowing for the existance of intersecting ranges.
+    pub fn add(&mut self, range: Range<usize>) {
+        let (r_range, start) = match self.0.binary_search_by_key(&range.start, |r| r.start) {
+            // Same thing here
+            Ok(i) => (i..i + 1, range.start),
+            Err(i) => {
+                // This is if we intersect the added part
+                if let Some(older_i) = i.checked_sub(1)
+                    && range.start <= self.0[older_i].end
+                {
+                    (older_i..i, self.0[older_i].start)
+                // And here is if we intersect nothing on the
+                // start, no changes drained.
+                } else {
+                    (i..i, range.start)
+                }
+            }
+        };
+        let start_i = r_range.start;
+        // Otherwise search ahead for another change to be merged
+        let (r_range, end) = match self.0[start_i..].binary_search_by_key(&range.end, |r| r.start) {
+            Ok(i) => (r_range.start..start_i + i + 1, self.0[start_i + i].end),
+            Err(i) => match (start_i + i).checked_sub(1).and_then(|i| self.0.get(i)) {
+                Some(older) => (r_range.start..start_i + i, range.end.max(older.end)),
+                None => (r_range.start..start_i + i, range.end),
+            },
+        };
+
+        self.0.splice(r_range, [start..end]);
+    }
+
+    /// Applies the [`add`] function to a list of [`Range<usize>`]s
+    ///
+    /// [`add`]: Self::add
+    pub fn merge(&mut self, other: Self) {
+        for range in other.0 {
+            self.add(range)
+        }
+    }
+
+    /// Returns the number of [`Range<usize>`]s
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns `true` if there are no [`Range<usize>`]s
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Shifts the [`Range<usize>`]s by a list of [`Change`]s
+    fn shift_by_changes<'a>(&mut self, changes: impl Iterator<Item = Change<&'a str>>) {
+        let mut bounds = {
+            let iter = self.0.iter_mut().flat_map(|r| [&mut r.start, &mut r.end]);
+            iter.peekable()
+        };
+        let mut shift = 0;
+
+        for change in changes {
+            while let Some(bound) = bounds.next_if(|b| **b < change.start().byte()) {
+                *bound = (*bound as i32 + shift) as usize;
+            }
+            shift += change.added_end().byte() as i32 - change.taken_end().byte() as i32;
+        }
+        for bound in bounds {
+            *bound = (*bound as i32 + shift) as usize
+        }
+    }
+}
+
+struct ReaderEntry {
+    reader: RwData2<dyn Reader>,
+    apply_changes: fn(
+        RwData2<dyn Reader>,
+        DataMap<File, &mut Bytes>,
+        Moment,
+        Option<RwData2<RangeList>>,
+    ) -> Pin<Box<dyn Future<Output = ()>>>,
+    ranges_to_update: RwData2<RangeList>,
+    ty: TypeId,
 }

@@ -44,13 +44,7 @@
 //! [`OnFileOpen`]: crate::hooks::OnFileOpen
 //! [`OnWindowOpen`]: crate::hooks::OnWindowOpen
 //! [`Constraint`]: crate::ui::Constraint
-use std::{
-    pin::Pin,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+use std::{self, cell::Cell, pin::Pin, rc::Rc};
 
 pub use self::file::{File, FileCfg, PathKind};
 use crate::{
@@ -302,7 +296,7 @@ mod file;
 /// [`Form`]: crate::form::Form
 /// [`form::set_weak*`]: crate::form::set_weak
 /// [`text!`]: crate::text::text
-pub trait Widget<U: Ui>: Send + 'static {
+pub trait Widget<U: Ui>: 'static {
     /// The configuration type
     type Cfg: WidgetCfg<U, Widget = Self>
     where
@@ -337,27 +331,77 @@ pub trait Widget<U: Ui>: Send + 'static {
     /// Updates the widget, allowing the modification of its
     /// [`RawArea`]
     ///
-    /// There are a few contexts in which this function is triggered:
+    /// This function will be triggered when Duat deems that a change
+    /// has happened to this [`Widget`], which is when
+    /// [`RwData2<Self>::has_changed`] returns `true`. This can happen
+    /// from many places, like [`hooks`], [commands], editing by
+    /// [`Mode`]s, etc.
     ///
-    /// * A key was sent to the widget, if it is an [`Widget`]
-    /// * It was modified externally by something like [`IncSearch`]
-    /// * The window was resized, so all widgets must be reprinted
+    /// Importantly, [`update`] should be able to handle any number of
+    /// changes that have taken place in this [`Widget`], so you
+    /// should avoid depending on state which may become
+    /// desynchronized.
     ///
-    /// In this function, the text should be updated to match its new
-    /// conditions, or request changes to its [`RawArea`]. As an
-    /// example, the [`LineNumbers`] widget asks for [more or less
-    /// width], depending on the number of lines in the file, in
-    /// order to show an appropriate number of digits.
-    ///
-    /// [`Session`]: crate::session::Session
-    /// [more or less width]: RawArea::constrain_hor
-    /// [`IncSearch`]: crate::mode::IncSearch
-    #[allow(unused)]
+    /// [commands]: crate::cmd
+    /// [`Mode`]: crate::mode::Mode
+    /// [`update`]: Widget::update
+    // Since these Futures don't need Send, I can just use async fn :D
+    #[allow(unused, async_fn_in_trait)]
     async fn update(widget: RwData2<Self>, area: &U::Area)
     where
         Self: Sized;
 
-    fn has_changed(&self) -> bool;
+    /// Tells Duat that this [`Widget`] should be updated
+    ///
+    /// Determining wether a [`Widget`] should be updated, for a good
+    /// chunk of them, will require some code like this:
+    ///
+    /// ```rust
+    /// # use duat_core::{context::FileHandle, ui::Ui};
+    /// # struct Cfg;
+    /// # impl<U: Ui> WidgetCfg<U> for Cfg {
+    /// #     type Widget = MyWidget;
+    /// #     fn build(self, _: bool) -> (Self::Widget, PushSpecs) {
+    /// #         todo!();
+    /// #     }
+    /// # }
+    /// struct MyWidget<U: Ui>(FileHandle<U>);
+    ///
+    /// impl<U: Ui> Widget<U> for MyWidget<U> {
+    /// #   type Cfg = Cfg;
+    /// #   fn cfg() -> Self::Cfg {
+    /// #       todo!()
+    /// #   }
+    /// #   async fn update(_: RwData2<Self>, _: &<U as Ui>::Area) {
+    /// #       todo!()
+    /// #   }
+    /// #   fn text(&self) -> &Text {
+    /// #       todo!()
+    /// #   }
+    /// #   fn text_mut(&mut self) -> &mut Text {
+    /// #       todo!()
+    /// #   }
+    /// #   fn once() -> Result<(), Text>k {
+    /// #       todo!()
+    /// #   }
+    ///     // ...
+    ///     fn needs_update(&self) -> bool {
+    ///         self.0.has_changed()
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// In this case, `MyWidget` is telling Duat that it should be
+    /// updated whenever the file in the [`FileHandle`] gets changed.
+    ///
+    /// One exception to this is the [`StatusLine`], which can be
+    /// altered if any of its parts get changed, some of them depend
+    /// on a [`FileHandle`], but a lot of others depend on checking
+    /// functions which might need to be triggered.
+    ///
+    /// [`FileHandle`]: crate::context::FileHandle
+    /// [`StatusLine`]: https://docs.rs/duat-core/latest/duat_utils/widgets/struct.StatusLine.html
+    fn needs_update(&self) -> bool;
 
     /// The text that this widget prints out
     fn text(&self) -> &Text;
@@ -375,11 +419,11 @@ pub trait Widget<U: Ui>: Send + 'static {
         self.text_mut().cursors_mut()
     }
 
-    /// Actions to do whenever this [`Widget`] is focused.
+    /// Actions to do whenever this [`Widget`] is focused
     #[allow(unused)]
     fn on_focus(&mut self, area: &U::Area) {}
 
-    /// Actions to do whenever this [`Widget`] is unfocused.
+    /// Actions to do whenever this [`Widget`] is unfocused
     #[allow(unused)]
     fn on_unfocus(&mut self, area: &U::Area) {}
 
@@ -447,7 +491,7 @@ where
 {
     type Widget: Widget<U>;
 
-    fn build(self, on_file: bool) -> (Self::Widget, impl CheckerFn, PushSpecs);
+    fn build(self, on_file: bool) -> (Self::Widget, PushSpecs);
 }
 
 // Elements related to the [`Widget`]s
@@ -455,22 +499,15 @@ where
 pub struct Node<U: Ui> {
     widget: RwData2<dyn Widget<U>>,
     area: U::Area,
-
-    checker: Arc<dyn Fn() -> bool + Send + Sync>,
-    busy_updating: Arc<AtomicBool>,
-
+    busy_updating: Rc<Cell<bool>>,
     related_widgets: Related<U>,
-    on_focus: fn(&Self),
-    on_unfocus: fn(&Self),
+    on_focus: fn(&Self) -> Pin<Box<dyn Future<Output = ()>>>,
+    on_unfocus: fn(&Self) -> Pin<Box<dyn Future<Output = ()>>>,
     update: fn(&Self) -> Pin<Box<dyn Future<Output = ()>>>,
 }
 
 impl<U: Ui> Node<U> {
-    pub fn new<W: Widget<U>>(
-        widget: RwData2<dyn Widget<U>>,
-        area: U::Area,
-        checker: impl CheckerFn,
-    ) -> Self {
+    pub fn new<W: Widget<U>>(widget: RwData2<dyn Widget<U>>, area: U::Area) -> Self {
         fn related_widgets<U: Ui>(
             widget: &RwData2<dyn Widget<U>>,
             area: &U::Area,
@@ -486,10 +523,7 @@ impl<U: Ui> Node<U> {
         Self {
             widget,
             area,
-
-            checker: Arc::new(checker),
-            busy_updating: Arc::new(AtomicBool::new(false)),
-
+            busy_updating: Rc::new(Cell::new(false)),
             related_widgets,
             update: Self::update_fn::<W>,
             on_focus: Self::on_focus_fn::<W>,
@@ -511,17 +545,7 @@ impl<U: Ui> Node<U> {
     }
 
     pub async fn update_and_print(&self) {
-        self.busy_updating.store(true, Ordering::Release);
-
-        if let Some(nodes) = &self.related_widgets {
-            nodes.read(|nodes| {
-                for node in nodes {
-                    if node.needs_update() {
-                        node.update_and_print();
-                    }
-                }
-            })
-        }
+        self.busy_updating.set(true);
 
         self.widget.raw_write(|widget| {
             let cfg = widget.print_cfg();
@@ -541,7 +565,7 @@ impl<U: Ui> Node<U> {
             widget.print(&self.area);
         });
 
-        self.busy_updating.store(false, Ordering::Release);
+        self.busy_updating.set(false);
     }
 
     pub fn read_as<W: 'static, Ret>(&self, f: impl FnOnce(&W) -> Ret) -> Option<Ret> {
@@ -553,11 +577,10 @@ impl<U: Ui> Node<U> {
     }
 
     pub fn needs_update(&self) -> bool {
-        if !self.busy_updating.load(Ordering::Acquire) {
-            self.area.has_changed() || (self.checker)()
-        } else {
-            false
-        }
+        !self.busy_updating.get()
+            && (self.area.has_changed()
+                || self.widget.has_changed()
+                || self.widget.read(|w| w.needs_update()))
     }
 
     pub(crate) fn parts(&self) -> (&RwData2<dyn Widget<U>>, &<U as Ui>::Area, &Related<U>) {
@@ -574,12 +597,12 @@ impl<U: Ui> Node<U> {
         })
     }
 
-    pub(crate) fn on_focus(&self) {
+    pub(crate) fn on_focus(&self) -> Pin<Box<dyn Future<Output = ()>>> {
         self.area.set_as_active();
         (self.on_focus)(self)
     }
 
-    pub(crate) fn on_unfocus(&self) {
+    pub(crate) fn on_unfocus(&self) -> Pin<Box<dyn Future<Output = ()>>> {
         (self.on_unfocus)(self)
     }
 
@@ -598,18 +621,23 @@ impl<U: Ui> Node<U> {
     fn update_fn<W: Widget<U>>(&self) -> Pin<Box<dyn Future<Output = ()>>> {
         let widget = self.widget.try_downcast::<W>().unwrap();
         let area = self.area.clone();
+
         Box::pin(async move { Widget::update(widget, &area).await })
     }
 
-    fn on_focus_fn<W: Widget<U>>(&self) {
+    fn on_focus_fn<W: Widget<U>>(&self) -> Pin<Box<dyn Future<Output = ()>>> {
         self.area.set_as_active();
         let widget = self.widget.try_downcast().unwrap();
-        hooks::trigger::<FocusedOn<W, U>>((widget, self.area.clone()));
+        let area = self.area.clone();
+
+        Box::pin(async move { hooks::trigger::<FocusedOn<W, U>>((widget, area)).await })
     }
 
-    fn on_unfocus_fn<W: Widget<U>>(&self) {
+    fn on_unfocus_fn<W: Widget<U>>(&self) -> Pin<Box<dyn Future<Output = ()>>> {
         let widget = self.widget.try_downcast().unwrap();
-        hooks::trigger::<UnfocusedFrom<W, U>>((widget, self.area.clone()));
+        let area = self.area.clone();
+
+        Box::pin(async move { hooks::trigger::<UnfocusedFrom<W, U>>((widget, area)).await })
     }
 }
 
@@ -620,7 +648,5 @@ impl<U: Ui> PartialEq for Node<U> {
 }
 
 impl<U: Ui> Eq for Node<U> {}
-
-pub trait CheckerFn = Fn() -> bool + Send + Sync + 'static;
 
 pub type Related<U> = Option<RwData2<Vec<Node<U>>>>;

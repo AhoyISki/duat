@@ -1,7 +1,7 @@
 mod builder;
 mod layout;
 
-use std::{cell::RefCell, fmt::Debug, rc::Rc, sync::mpsc, time::Instant};
+use std::{cell::RefCell, fmt::Debug, pin::Pin, rc::Rc, sync::mpsc, time::Instant};
 
 use bincode::{Decode, Encode};
 use crossterm::event::KeyEvent;
@@ -344,7 +344,6 @@ impl<U: Ui> Window<U> {
     pub(crate) fn new<W: Widget<U>>(
         ms: &'static U::MetaStatics,
         widget: W,
-        checker: impl Fn() -> bool + Send + Sync + 'static,
         layout: Box<dyn Layout<U>>,
     ) -> (Self, Node<U>) {
         let widget =
@@ -357,7 +356,7 @@ impl<U: Ui> Window<U> {
 
         let area = U::new_root(ms, cache);
 
-        let node = Node::new::<W>(widget, area.clone(), checker);
+        let node = Node::new::<W>(widget, area.clone());
 
         let window = Self {
             nodes: vec![node.clone()],
@@ -382,7 +381,6 @@ impl<U: Ui> Window<U> {
         &mut self,
         widget: W,
         area: &U::Area,
-        checker: impl Fn() -> bool + 'static + Send + Sync,
         specs: PushSpecs,
         do_cluster: bool,
         on_files: bool,
@@ -397,7 +395,7 @@ impl<U: Ui> Window<U> {
 
         let (child, parent) = MutArea(area).bisect(specs, do_cluster, on_files, cache);
 
-        self.nodes.push(Node::new::<W>(widget, child, checker));
+        self.nodes.push(Node::new::<W>(widget, child));
         (self.nodes.last().unwrap().clone(), parent)
     }
 
@@ -407,16 +405,12 @@ impl<U: Ui> Window<U> {
     /// This is an area, usually in the center, that contains all
     /// [`File`]s, and their associated [`Widget`]s,
     /// with others being at the perifery of this area.
-    pub(crate) fn push_file(
-        &mut self,
-        mut file: File,
-        checker: impl Fn() -> bool + 'static + Send + Sync,
-    ) -> Result<(Node<U>, Option<U::Area>), Text> {
+    pub(crate) fn push_file(&mut self, mut file: File) -> Result<(Node<U>, Option<U::Area>), Text> {
         let window_files = window_files(&self.nodes);
         file.layout_order = window_files.len();
         let (id, specs) = self.layout.new_file(&file, window_files)?;
 
-        let (child, parent) = self.push(file, &id.0, checker, specs, false, true);
+        let (child, parent) = self.push(file, &id.0, specs, false, true);
 
         if let Some(parent) = &parent
             && id.0 == self.files_area
@@ -578,20 +572,40 @@ impl From<PushSpecs> for Axis {
     }
 }
 
-#[derive(Debug)]
 pub enum DuatEvent {
     Key(KeyEvent),
+    QueuedFunction(Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = ()>>> + Send>),
     Resize,
     FormChange,
     MetaMsg(Text),
-    ReloadConfig,
     OpenFile(String),
     CloseFile(String),
     SwapFiles(String, String),
     OpenWindow(String),
     SwitchWindow(usize),
     ReloadStarted(Instant),
+    ReloadConfig,
     Quit,
+}
+
+impl Debug for DuatEvent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Key(key) => f.debug_tuple("Key").field(key).finish(),
+            Self::Resize => write!(f, "Resize"),
+            Self::FormChange => write!(f, "FormChange"),
+            Self::MetaMsg(msg) => f.debug_tuple("MetaMsg").field(msg).finish(),
+            Self::ReloadConfig => write!(f, "ReloadConfig"),
+            Self::OpenFile(file) => f.debug_tuple("OpenFile").field(file).finish(),
+            Self::CloseFile(file) => f.debug_tuple("CloseFile").field(file).finish(),
+            Self::SwapFiles(lhs, rhs) => f.debug_tuple("SwapFiles").field(lhs).field(rhs).finish(),
+            Self::OpenWindow(file) => f.debug_tuple("OpenWindow").field(file).finish(),
+            Self::SwitchWindow(win) => f.debug_tuple("SwitchWindow").field(win).finish(),
+            Self::ReloadStarted(instant) => f.debug_tuple("ReloadStarted").field(instant).finish(),
+            Self::QueuedFunction(_) => f.debug_struct("InnerFunction").finish(),
+            Self::Quit => write!(f, "Quit"),
+        }
+    }
 }
 
 pub struct Sender(&'static mpsc::Sender<DuatEvent>);

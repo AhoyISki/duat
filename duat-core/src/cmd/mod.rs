@@ -186,11 +186,7 @@
 //! [`Form`]: crate::form::Form
 //! [`Area`]: crate::ui::Ui::Area
 use std::{
-    collections::HashMap,
-    fmt::Display,
-    ops::Range,
-    sync::{Arc, LazyLock},
-    time::Instant,
+    cell::RefCell, collections::HashMap, fmt::Display, ops::Range, rc::Rc, sync::Arc, time::Instant,
 };
 
 use crossterm::style::Color;
@@ -204,11 +200,10 @@ pub use self::{
 };
 use crate::{
     context,
-    data::RwData,
-    file_entry, iter_around, iter_around_rev,
-    mode::{self},
+    data::RwData2,
+    file_entry, iter_around, iter_around_rev, mode,
     session::sender,
-    text::{Text, err, hint, ok},
+    text::{Builder, Text, err, hint, ok},
     ui::{DuatEvent, Ui, Window},
     widget_entry,
     widgets::{File, Widget},
@@ -216,7 +211,7 @@ use crate::{
 
 mod parameters;
 
-pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
+pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Builder> {
     add!("alias", |flags: Flags, alias: &str, command: Remainder| {
         if !flags.is_empty() {
             Err(err!("An alias cannot take any flags"))
@@ -603,12 +598,20 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
 }
 
 mod global {
-    use std::{ops::Range, sync::Arc};
+    use std::{cell::RefCell, ops::Range, rc::Rc};
 
-    use super::{Args, CmdResult, Commands, Parameter};
-    use crate::{context, text::Text, ui::Ui, widgets::Widget};
+    use super::{Args, CheckerFn, CmdFn, CmdResult, Commands, Parameter};
+    use crate::{
+        context,
+        data::RwData2,
+        text::{Builder, Text},
+        ui::{DuatEvent, Ui},
+        widgets::Widget,
+    };
 
-    static COMMANDS: Commands = Commands::new();
+    thread_local! {
+        static COMMANDS: Commands = Commands::new();
+    }
 
     /// Adds a command to Duat
     ///
@@ -683,8 +686,12 @@ mod global {
                 (ok_ranges, None)
             };
 
-            add_inner($callers, cmd, check_args)
-    	}},
+            let callers: Vec<String> = $callers.into_callers().map(str::to_string).collect();
+            // SAFETY: This type will never actually be queried
+            let cmd: CmdFn = unsafe { RwData2::new_unsized::<()>(Rc::new(RefCell::new(cmd))) };
+
+            add_inner(callers, cmd, check_args)
+        }},
 
         ($callers:expr, $($mv:ident)? || $f:block) => {{
             #[allow(unused_variables, unused_mut)]
@@ -707,8 +714,12 @@ mod global {
                 (Vec::new(), None)
             };
 
-            add_inner($callers, cmd, check_args)
-    	}}
+            let callers: Vec<String> = $callers.into_callers().map(str::to_string).collect();
+            // SAFETY: This type will never actually be queried
+            let cmd: CmdFn = unsafe { RwData2::new_unsized::<()>(Rc::new(RefCell::new(cmd))) };
+
+            add_inner(callers, cmd, check_args)
+        }}
     }
 
     /// Adds a command that can mutate a widget of the given type,
@@ -926,7 +937,9 @@ mod global {
             (ok_ranges, None)
         };
 
-        add_for_inner::<$w_ty, <$a_ty as $crate::ui::RawArea>::Ui>($callers, cmd, check_args)
+        let callers: Vec<String> = callers.into_callers().map(str::to_string).collect();
+
+        add_for_inner::<$w_ty, <$a_ty as $crate::ui::RawArea>::Ui>(callers, cmd, check_args)
     }}
 
     /// Canonical way to quit Duat.
@@ -935,7 +948,8 @@ mod global {
     /// tasks, and then Duat will execute a program closing
     /// function, as defined by the [`Ui`].
     pub async fn quit() {
-        COMMANDS.run("quit").await.unwrap();
+        context::assert_is_on_main_thread();
+        COMMANDS.with(Commands::clone).run("quit").await.unwrap();
     }
 
     /// Switches to/opens a [`File`] with the given name.
@@ -946,8 +960,12 @@ mod global {
     /// If there are more arguments, they will be ignored.
     ///
     /// [`File`]: crate::widgets::File
-    pub async fn edit(file: impl std::fmt::Display) -> Result<Option<Text>, Text> {
-        COMMANDS.run(format!("edit {file}")).await
+    pub async fn edit(file: impl std::fmt::Display) -> CmdResult {
+        context::assert_is_on_main_thread();
+        COMMANDS
+            .with(Commands::clone)
+            .run(format!("edit {file}"))
+            .await
     }
 
     /// Switches to a [`File`] with the given name.
@@ -958,8 +976,12 @@ mod global {
     /// If there are more arguments, they will be ignored.
     ///
     /// [`File`]: crate::widgets::File
-    pub async fn buffer(file: impl std::fmt::Display) -> Result<Option<Text>, Text> {
-        COMMANDS.run(format!("buffer {file}")).await
+    pub async fn buffer(file: impl std::fmt::Display) -> CmdResult {
+        context::assert_is_on_main_thread();
+        COMMANDS
+            .with(Commands::clone)
+            .run(format!("buffer {file}"))
+            .await
     }
 
     /// Switches to the next [`File`].
@@ -969,8 +991,9 @@ mod global {
     /// search, use [`next_global_file`].
     ///
     /// [`File`]: crate::widgets::File
-    pub async fn next_file() -> Result<Option<Text>, Text> {
-        COMMANDS.run("next-file").await
+    pub async fn next_file() -> CmdResult {
+        context::assert_is_on_main_thread();
+        COMMANDS.with(Commands::clone).run("next-file").await
     }
 
     /// Switches to the previous [`File`].
@@ -980,8 +1003,9 @@ mod global {
     /// search, use [`prev_global_file`].
     ///
     /// [`File`]: crate::widgets::File
-    pub async fn prev_file() -> Result<Option<Text>, Text> {
-        COMMANDS.run("prev-file").await
+    pub async fn prev_file() -> CmdResult {
+        context::assert_is_on_main_thread();
+        COMMANDS.with(Commands::clone).run("prev-file").await
     }
 
     /// Switches to the next [`File`].
@@ -991,8 +1015,12 @@ mod global {
     /// [`next_file`].
     ///
     /// [`File`]: crate::widgets::File
-    pub async fn next_global_file() -> Result<Option<Text>, Text> {
-        COMMANDS.run("next-file --global").await
+    pub async fn next_global_file() -> CmdResult {
+        context::assert_is_on_main_thread();
+        COMMANDS
+            .with(Commands::clone)
+            .run("next-file --global")
+            .await
     }
 
     /// Switches to the previous [`File`].
@@ -1002,8 +1030,12 @@ mod global {
     /// [`prev_file`].
     ///
     /// [`File`]: crate::widgets::File
-    pub async fn prev_global_file() -> Result<Option<Text>, Text> {
-        COMMANDS.run("prev-file --global").await
+    pub async fn prev_global_file() -> CmdResult {
+        context::assert_is_on_main_thread();
+        COMMANDS
+            .with(Commands::clone)
+            .run("prev-file --global")
+            .await
     }
 
     /// Tries to alias a `caller` to an existing `command`.
@@ -1011,8 +1043,9 @@ mod global {
     /// Returns an [`Err`] if the `caller` is already a caller for
     /// another command, or if `command` is not a real caller to an
     /// existing command.
-    pub fn alias(alias: impl ToString, command: impl ToString) -> Result<Option<Text>, Text> {
-        COMMANDS.alias(alias, command)
+    pub fn alias(alias: impl ToString, command: impl ToString) -> CmdResult {
+        context::assert_is_on_main_thread();
+        COMMANDS.with(Commands::clone).alias(alias, command)
     }
 
     /// Runs a full command, with a caller and [`Args`].
@@ -1034,48 +1067,92 @@ mod global {
     ///
     /// [`PromptLine`]: crate::widgets::PromptLine
     /// [`Flags`]: super::Flags
-    pub async fn call(call: impl std::fmt::Display) -> Result<Option<Text>, Text> {
-        COMMANDS.run(call).await
+    pub async fn call(call: impl std::fmt::Display) -> CmdResult {
+        context::assert_is_on_main_thread();
+        COMMANDS.with(Commands::clone).run(call).await
     }
 
-    /// Like [`run`], but notifies the result
-    pub async fn call_notify(call: impl std::fmt::Display) -> Result<Option<Text>, Text> {
-        let result = COMMANDS.run(call).await;
+    /// Like [`call`], but notifies the result
+    pub async fn call_notify(call: impl std::fmt::Display) -> CmdResult {
+        context::assert_is_on_main_thread();
+        let result = COMMANDS.with(Commands::clone).run(call).await;
         if let Ok(Some(result)) | Err(result) = result.clone() {
             context::notify(result);
         }
         result
     }
 
+    /// Queues a command call
+    ///
+    /// You should use this if you are not in an async environment or
+    /// on the main thread, and are thus unable to use the [`call`]
+    /// function. Do note that this will not happen in sequence with
+    /// the rest of your code.
+    ///
+    /// Since this function will run outside of the current scope, its
+    /// [`Result`] will not be returned.
+    pub fn queue(call: impl std::fmt::Display) {
+        let call = call.to_string();
+        let sender = crate::session::sender();
+        sender
+            .send(DuatEvent::QueuedFunction(Box::new(move || {
+                Box::pin(async move {
+                    let _ = COMMANDS.with(Commands::clone).run(call).await;
+                })
+            })))
+            .unwrap();
+    }
+
+    /// Like [`queue`], but notifies the result
+    pub fn queue_notify(call: impl std::fmt::Display) {
+        let call = call.to_string();
+        let sender = crate::session::sender();
+        sender
+            .send(DuatEvent::QueuedFunction(Box::new(move || {
+                Box::pin(async move {
+                    if let Ok(Some(result)) | Err(result) =
+                        COMMANDS.with(Commands::clone).run(call).await
+                    {
+                        context::notify(result);
+                    }
+                })
+            })))
+            .unwrap()
+    }
+
     /// Don't call this function, use [`cmd::add`] instead
     ///
     /// [`cmd::add`]: add
     #[doc(hidden)]
-    pub fn add_inner<'a>(
-        callers: impl super::Caller<'a>,
-        cmd: impl super::CmdFn,
-        check_args: impl super::CheckerFn,
-    ) -> Result<(), Text> {
-        let callers: Vec<String> = callers.into_callers().map(str::to_string).collect();
-        COMMANDS.add(callers, Box::new(cmd), Arc::new(check_args))
+    pub fn add_inner(
+        callers: Vec<String>,
+        cmd: CmdFn,
+        check_args: CheckerFn,
+    ) -> Result<(), Builder> {
+        context::assert_is_on_main_thread();
+
+        COMMANDS.with(|c| c.add(callers, cmd, check_args))
     }
 
     /// Don't call this function, use [`cmd::add_for`] instead
     ///
     /// [`cmd::add_for`]: add_for
     #[doc(hidden)]
-    pub fn add_for_inner<'a, W: Widget<U>, U: Ui>(
-        callers: impl super::Caller<'a>,
-        cmd: impl super::ArgCmdFn<W, U>,
-        check_args: impl super::CheckerFn,
+    pub fn add_for_inner<W: Widget<U>, U: Ui>(
+        callers: Vec<String>,
+        cmd: impl FnMut(&mut W, &U::Area, Args) -> CmdResult + 'static,
+        check_args: CheckerFn,
     ) -> Result<(), Text> {
-        let callers: Vec<String> = callers.into_callers().map(str::to_string).collect();
-        COMMANDS.add_for(callers, cmd, Arc::new(check_args))
+        context::assert_is_on_main_thread();
+        COMMANDS.with(|c| c.add_for(callers, cmd, check_args))
     }
 
     /// Check if the arguments for a given `caller` are correct
-    pub fn check_args(caller: &str) -> Option<(Vec<Range<usize>>, Option<(Range<usize>, Text)>)> {
-        COMMANDS.check_args(caller)
+    pub fn check_args(
+        caller: &str,
+    ) -> Option<(Vec<Range<usize>>, Option<(Range<usize>, Builder)>)> {
+        context::assert_is_on_main_thread();
+        COMMANDS.with(Commands::clone).check_args(caller)
     }
 }
 
@@ -1088,50 +1165,47 @@ mod global {
 /// [`File`]: crate::widgets::File
 /// [widget]: crate::widgets::ActiveWidget
 /// [windows]: crate::ui::Window
-struct Commands(LazyLock<RwData<InnerCommands>>);
+#[derive(Clone)]
+struct Commands(RwData2<InnerCommands>);
 
 impl Commands {
     /// Returns a new instance of [`Commands`].
     #[doc(hidden)]
-    const fn new() -> Self {
-        Self(LazyLock::new(|| {
-            RwData::new(InnerCommands {
-                list: Vec::new(),
-                aliases: HashMap::new(),
-            })
+    fn new() -> Self {
+        Self(RwData2::new(InnerCommands {
+            list: Vec::new(),
+            aliases: HashMap::new(),
         }))
     }
 
     /// Aliases a command to a specific word
-    fn alias(&self, alias: impl ToString, command: impl ToString) -> Result<Option<Text>, Text> {
+    fn alias(&self, alias: impl ToString, command: impl ToString) -> CmdResult {
         self.0
-            .write()
-            .try_alias(alias.to_string(), command.to_string())
+            .write(|inner| inner.try_alias(alias.to_string(), command.to_string()))
     }
 
     /// Runs a command from a call
-    async fn run(&self, call: impl Display) -> Result<Option<Text>, Text> {
+    async fn run(&self, call: impl Display) -> CmdResult {
         let call = call.to_string();
         let mut args = call.split_whitespace();
         let caller = args.next().ok_or(err!("The command is empty"))?.to_string();
 
-        let (command, call) = {
-            let inner = self.0.read();
-            if let Some(command) = inner.aliases.get(&caller) {
-                let (command, call) = command;
-                let mut call = call.clone() + " ";
-                call.extend(args);
+        let inner = self.0.acquire();
 
-                (command.clone(), call)
-            } else {
-                let command = inner
-                    .list
-                    .iter()
-                    .find(|cmd| cmd.callers().contains(&caller))
-                    .ok_or(err!("The caller [a]{caller}[] was not found"))?;
+        let (command, call) = if let Some(command) = inner.aliases.get(&caller) {
+            let (command, call) = command;
+            let mut call = call.clone() + " ";
+            call.extend(args);
 
-                (command.clone(), call.clone())
-            }
+            (command.clone(), call)
+        } else {
+            let command = inner
+                .list
+                .iter()
+                .find(|cmd| cmd.callers().contains(&caller))
+                .ok_or(err!("The caller [a]{caller}[] was not found"))?;
+
+            (command.clone(), call.clone())
         };
 
         let args = get_args(&call);
@@ -1141,81 +1215,78 @@ impl Commands {
         }
 
         let silent = call.len() > call.trim_start().len();
-        command.try_exec(args).map(|ok| ok.filter(|_| !silent))
-    }
-
-    /// Runs a command and notifies its result
-    async fn run_notify(&self, call: impl Display) -> Result<Option<Text>, Text> {
-        let ret = self.run(call).await;
-        match ret.as_ref() {
-            Ok(Some(ok)) => context::notify(ok.clone()),
-            Err(err) => context::notify(err.clone()),
-            _ => {}
-        }
-        ret
+        command.cmd.acquire_mut()(args).map(|ok| ok.filter(|_| !silent))
     }
 
     /// Adds a command to the list of commands
-    fn add(
-        &self,
-        callers: Vec<String>,
-        cmd: Box<dyn CmdFn>,
-        check_args: Arc<dyn CheckerFn>,
-    ) -> Result<(), Text> {
+    fn add(&self, callers: Vec<String>, cmd: CmdFn, check_args: CheckerFn) -> Result<(), Builder> {
         let command = Command::new(callers, cmd, check_args);
-        self.0.write().try_add(command)
+        self.0.write(|c| c.try_add(command))
     }
 
     /// Adds a command for a widget of type `W`
     fn add_for<W: Widget<U>, U: Ui>(
-        &'static self,
+        &self,
         callers: Vec<String>,
-        mut cmd: impl ArgCmdFn<W, U>,
-        check_args: Arc<dyn CheckerFn>,
+        mut cmd: impl FnMut(&mut W, &U::Area, Args) -> CmdResult + 'static,
+        check_args: CheckerFn,
     ) -> Result<(), Text> {
-        let cmd = Box::new(move |args: Args| {
-            let cur_file = context::inner_cur_file::<U>();
-            cur_file
-                .write_related_widget::<W, CmdResult>(|widget, area| {
-                    cmd(widget, area, args.clone())
-                })
-                .unwrap_or_else(|| {
-                    let windows = context::windows::<U>().borrow();
-                    let w = context::cur_window();
+        let f = move |args: Args| {
+            let mut cur_file = context::inner_cur_file::<U>().clone();
+            if let Some((widget, area)) = cur_file.get_related_widget::<W>() {
+                cmd(&mut *widget.acquire_mut(), &area, args)
+            } else {
+                let windows = context::windows::<U>().borrow();
+                let w = context::cur_window();
 
-                    if windows.is_empty() {
-                        return Err(err!(
-                            "Widget command executed before the [a]Ui[] was initiated, try \
-                             executing after [a]OnUiStart[]"
-                        ));
-                    }
+                if windows.is_empty() {
+                    return Err(err!(
+                        "Widget command executed before the [a]Ui[] was initiated, try executing \
+                         after [a]OnUiStart[]"
+                    ));
+                }
 
-                    let (.., node) = widget_entry::<W, U>(&windows, w)?;
-                    let (w, a, _) = node.parts();
-                    w.write_as(|w| cmd(w, a, args)).unwrap()
-                })
-        });
+                let node = match widget_entry::<W, U>(&windows, w) {
+                    Ok((.., node)) => node,
+                    Err(err) => return Err(err),
+                };
+                let (w, a, _) = node.parts();
+                let widget = w.try_downcast().unwrap();
+                let area = a.clone();
 
-        let command = Command::new(callers, cmd, check_args);
-        self.0.write().try_add(command)
+                cmd(&mut *widget.acquire_mut(), &area, args)
+            }
+        };
+
+        let command = Command::new(
+            callers,
+            // SAFETY: This type will never actually be queried
+            unsafe { RwData2::new_unsized::<()>(Rc::new(RefCell::new(f))) },
+            check_args,
+        );
+        self.0.write(|inner| inner.try_add(command))
     }
 
     /// Gets the parameter checker for a command, if it exists
-    fn check_args(&self, call: &str) -> Option<(Vec<Range<usize>>, Option<(Range<usize>, Text)>)> {
+    fn check_args(
+        &self,
+        call: &str,
+    ) -> Option<(Vec<Range<usize>>, Option<(Range<usize>, Builder)>)> {
         let mut args = call.split_whitespace();
         let caller = args.next()?.to_string();
 
-        let inner = self.0.read();
-        if let Some((command, _)) = inner.aliases.get(&caller) {
-            Some((command.check_args)(get_args(call)))
-        } else {
-            let command = inner
-                .list
-                .iter()
-                .find(|cmd| cmd.callers().contains(&caller))?;
+        self.0.read(|inner| {
+            if let Some((command, _)) = inner.aliases.get(&caller) {
+                Some((command.check_args)(get_args(call)))
+            } else {
+                let command = inner
+                    .list
+                    .iter()
+                    .find(|cmd| cmd.callers().contains(&caller))?;
 
-            Some((command.check_args)(get_args(call)))
-        }
+                Some((command.check_args)(get_args(call)))
+            }
+        })
     }
 }
 
@@ -1224,36 +1295,26 @@ impl Commands {
 ///
 /// This error _must_ include an error message in case of failure. It
 /// may also include a success message, but that is not required.
-pub type CmdResult = std::result::Result<Option<Text>, Text>;
+pub type CmdResult = Result<Option<Builder>, Builder>;
 
 /// A function that can be called by name.
 #[derive(Clone)]
 struct Command {
     callers: Arc<[String]>,
-    cmd: RwData<Box<dyn CmdFn>>,
-    check_args: Arc<dyn CheckerFn>,
+    cmd: CmdFn,
+    check_args: CheckerFn,
 }
 
 impl Command {
     /// Returns a new instance of command.
-    fn new(callers: Vec<String>, cmd: Box<dyn CmdFn>, check_args: Arc<dyn CheckerFn>) -> Self {
+    fn new(callers: Vec<String>, cmd: CmdFn, check_args: CheckerFn) -> Self {
         if let Some(caller) = callers
             .iter()
             .find(|caller| caller.split_whitespace().count() != 1)
         {
             panic!("Command caller \"{caller}\" contains more than one word");
         }
-        Self {
-            cmd: RwData::new(cmd),
-            check_args,
-            callers: callers.into(),
-        }
-    }
-
-    /// Executes the inner function if the `caller` matches any of
-    /// the callers in [`self`].
-    fn try_exec(&self, args: Args<'_>) -> Result<Option<Text>, Text> {
-        (self.cmd.write())(args)
+        Self { cmd, check_args, callers: callers.into() }
     }
 
     /// The list of callers that will trigger this command.
@@ -1269,7 +1330,7 @@ struct InnerCommands {
 
 impl InnerCommands {
     /// Tries to add the given command to the list.
-    fn try_add(&mut self, command: Command) -> Result<(), Text> {
+    fn try_add(&mut self, command: Command) -> Result<(), Builder> {
         let mut new_callers = command.callers().iter();
 
         let commands = self.list.iter();
@@ -1286,7 +1347,7 @@ impl InnerCommands {
 
     /// Tries to alias a full command (caller, flags, and
     /// arguments) to an alias.
-    fn try_alias(&mut self, alias: String, call: String) -> Result<Option<Text>, Text> {
+    fn try_alias(&mut self, alias: String, call: String) -> Result<Option<Builder>, Builder> {
         if alias.split_whitespace().count() != 1 {
             return Err(err!("Alias [a]{alias}[] is not a single word"));
         }
@@ -1335,7 +1396,5 @@ impl<'a, const N: usize> Caller<'a> for [&'a str; N] {
     }
 }
 
-trait CmdFn = FnMut(Args) -> CmdResult + 'static + Send + Sync;
-trait ArgCmdFn<W, U: Ui> = FnMut(&mut W, &U::Area, Args) -> CmdResult + 'static + Send + Sync;
-trait CheckerFn =
-    Fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) + 'static + Send + Sync;
+type CmdFn = RwData2<dyn FnMut(Args) -> CmdResult + 'static>;
+type CheckerFn = fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Builder)>);

@@ -7,23 +7,32 @@ pub use self::{
     remap::*,
     switch::*,
 };
-use crate::{ui::Ui, widgets::Widget};
+use crate::{
+    data::RwData2,
+    ui::Ui,
+    widgets::{File, Widget},
+};
 
 mod helper;
 mod remap;
 
 mod switch {
-    use std::{any::TypeId, sync::LazyLock, vec::IntoIter};
+    use std::{
+        any::{Any, TypeId},
+        cell::RefCell,
+        pin::Pin,
+        vec::IntoIter,
+    };
 
     use crossterm::event::KeyEvent;
-    use parking_lot::Mutex;
+    use tokio::task;
 
     use super::{Cursors, Mode};
     use crate::{
-        context,
+        context::{self, CurWidget},
         data::RwData2,
         duat_name, file_entry,
-        hooks::{self, KeySent, KeySentTo, ModeSetTo, ModeSwitched},
+        hooks::{self, KeysSent, KeysSentTo, ModeSetTo, ModeSwitched},
         session::sender,
         ui::{DuatEvent, RawArea, Ui},
         widget_entry,
@@ -31,22 +40,28 @@ mod switch {
     };
 
     thread_local! {
-        static SEND_KEYS: LazyLock<Mutex<Box<KeyFn>>> =
-            LazyLock::new(|| Mutex::new(Box::new(|_| None)));
-        static RESET_MODE: LazyLock<Mutex<Box<dyn Fn() -> bool>>> =
-            LazyLock::new(|| Mutex::new(Box::new(|| true)));
-        static SET_MODE: Mutex<Option<Box<dyn FnOnce() -> bool>>> = Mutex::new(None);
+        static SEND_KEYS: RefCell<Option<KeyFn>> = RefCell::new(None);
+        static RESET_MODE: RefCell<Box<dyn Fn() -> ModeFuture>> =
+            RefCell::new(Box::new(|| Box::pin(async { true })));
+        static SET_MODE: RefCell<Option<Box<dyn FnOnce() -> ModeFuture>>> = RefCell::new(None);
+        static MODE: &'static RefCell<Box<dyn Any>> =
+            Box::leak(Box::new(RefCell::new(Box::new("no mode") as Box<dyn Any>)));
     }
 
-    type KeyFn = dyn FnMut(&mut IntoIter<KeyEvent>) -> Option<Box<dyn FnOnce() -> bool>>;
+    type KeyFn = fn(
+        IntoIter<KeyEvent>,
+    ) -> Pin<
+        Box<dyn Future<Output = (IntoIter<KeyEvent>, Option<Box<dyn FnOnce() -> ModeFuture>>)>>,
+    >;
+    type ModeFuture = Pin<Box<dyn Future<Output = bool>>>;
 
     /// Whether or not the [`Mode`] has changed
     ///
     /// Since this function is only called by Duat, I can ensure that
     /// it will be called from the main thread, so no checks are done
     /// in that regard.
-    pub(crate) fn take_set_mode_fn() -> Option<Box<dyn FnOnce() -> bool>> {
-        SET_MODE.with(|sm| sm.lock().take())
+    fn take_set_mode_fn() -> Option<Box<dyn FnOnce() -> ModeFuture>> {
+        SET_MODE.with(|sm| sm.borrow_mut().take())
     }
 
     /// Sets the new default mode
@@ -57,15 +72,21 @@ mod switch {
     /// [`mode::reset`]: reset
     pub fn set_default<M: Mode<U>, U: Ui>(mode: M) {
         context::assert_is_on_main_thread();
-        RESET_MODE.with(|rm| *rm.lock() = Box::new(move || set_mode_fn::<M, U>(mode.clone())));
+        RESET_MODE.with(|rm| {
+            *rm.borrow_mut() = Box::new(move || Box::pin(set_mode_fn::<M, U>(mode.clone())))
+        });
         SET_MODE.with(|sm| {
-            let mut set_mode = sm.lock();
+            let mut set_mode = sm.borrow_mut();
             let prev = set_mode.take();
             *set_mode = Some(Box::new(move || {
                 if let Some(f) = prev {
-                    f();
+                    Box::pin(async move {
+                        f().await;
+                        RESET_MODE.with(|rm| rm.borrow_mut()()).await
+                    })
+                } else {
+                    RESET_MODE.with(|rm| rm.borrow_mut()())
                 }
-                RESET_MODE.with(|rm| rm.lock()())
             }));
         });
     }
@@ -74,14 +95,19 @@ mod switch {
     ///
     /// [`Widget`]: Mode::Widget
     pub fn set<U: Ui>(mode: impl Mode<U>) {
+        context::assert_is_on_main_thread();
         SET_MODE.with(|sm| {
-            let mut set_mode = sm.lock();
+            let mut set_mode = sm.borrow_mut();
             let prev = set_mode.take();
             *set_mode = Some(Box::new(move || {
                 if let Some(f) = prev {
-                    f();
+                    Box::pin(async move {
+                        f().await;
+                        set_mode_fn(mode).await
+                    })
+                } else {
+                    Box::pin(set_mode_fn(mode))
                 }
-                set_mode_fn(mode)
             }));
         })
     }
@@ -90,7 +116,10 @@ mod switch {
     ///
     /// [default]: set_default
     pub fn reset() {
-        SET_MODE.with(|sm| *sm.lock() = Some(Box::new(|| RESET_MODE.with(|rm| rm.lock()()))))
+        context::assert_is_on_main_thread();
+        SET_MODE.with(|sm| {
+            *sm.borrow_mut() = Some(Box::new(|| RESET_MODE.with(|rm| rm.borrow_mut()())))
+        })
     }
 
     /// Switches to the file with the given name
@@ -104,9 +133,11 @@ mod switch {
                 }
                 let node = node.clone();
                 SET_MODE.with(|sm| {
-                    *sm.lock() = Some(Box::new(move || {
-                        switch_widget(node);
-                        RESET_MODE.with(|rm| rm.lock()())
+                    *sm.borrow_mut() = Some(Box::new(move || {
+                        Box::pin(async move {
+                            switch_widget(node).await;
+                            RESET_MODE.with(|rm| rm.borrow_mut()()).await
+                        })
                     }))
                 });
             }
@@ -115,93 +146,104 @@ mod switch {
     }
 
     /// Switches to a certain widget
-    pub(super) fn switch_widget<U: Ui>(node: Node<U>) {
+    pub(super) async fn switch_widget<U: Ui>(node: Node<U>) {
         if let Ok(widget) = context::cur_widget::<U>() {
-            widget.node().on_unfocus();
+            task::spawn_local(widget.node().on_unfocus());
         }
 
         context::set_cur(node.as_file(), node.clone());
 
-        node.on_focus();
+        node.on_focus().await;
     }
 
     /// Sends the [`KeyEvent`] to the active [`Mode`]
-    pub(super) fn send_keys_to(keys: Vec<KeyEvent>) {
-        let mut keys = keys.into_iter();
-        let mut send_keys =
-            SEND_KEYS.with(|sk| std::mem::replace(&mut *sk.lock(), Box::new(|_| None)));
-        while keys.len() > 0 {
-            if let Some(set_mode) = send_keys(&mut keys) {
-                if set_mode() {
-                    send_keys =
-                        SEND_KEYS.with(|sk| std::mem::replace(&mut *sk.lock(), Box::new(|_| None)));
+    pub(super) async fn send_keys_to(keys: Vec<KeyEvent>) {
+        let mut keys = Some(keys.into_iter());
+        let mut send_keys = SEND_KEYS.with(|sk| sk.borrow_mut().take().unwrap());
+        while keys.as_ref().unwrap().len() > 0 {
+            if let (remainder, Some(set_mode)) = send_keys(keys.take().unwrap()).await {
+                keys = Some(remainder);
+                if set_mode().await {
+                    send_keys = SEND_KEYS.with(|sk| sk.borrow_mut().take().unwrap());
                 }
             }
         }
-        SEND_KEYS.with(|sk| *sk.lock() = send_keys);
+        SEND_KEYS.with(|sk| *sk.borrow_mut() = Some(send_keys));
     }
 
     /// Inner function that sends [`KeyEvent`]s
-    fn send_keys_fn<M: Mode<U>, U: Ui>(
-        mode: &mut M,
-        keys: &mut IntoIter<KeyEvent>,
-    ) -> Option<Box<dyn FnOnce() -> bool>> {
-        let Ok(widget) = context::cur_widget::<U>() else {
-            return None;
+    #[allow(clippy::await_holding_refcell_ref)]
+    async fn send_keys_fn<M: Mode<U>, U: Ui>(
+        mut keys: IntoIter<KeyEvent>,
+    ) -> (IntoIter<KeyEvent>, Option<Box<dyn FnOnce() -> ModeFuture>>) {
+        let Ok(node) = context::cur_widget::<U>().map(CurWidget::node) else {
+            unreachable!("Early, aren't we?");
         };
 
-        widget.mutate_data_as(|w: &RwData2<M::Widget>, area, _| {
-            let mut sent_keys = Vec::new();
-            let mode_fn = {
-                w.write(|widget| {
-                    let cfg = widget.print_cfg();
-                    widget.text_mut().remove_cursors(area, cfg);
+        let (widget, area, _) = node.parts();
+        let widget = widget.try_downcast::<M::Widget>().unwrap();
 
-                    loop {
-                        let Some(key) = keys.next() else { break None };
-                        sent_keys.push(key);
-                        mode.send_key(key, widget, area);
-                        if let Some(mode_fn) = take_set_mode_fn() {
-                            break Some(mode_fn);
-                        }
-                    }
-                })
-            };
+        let mut sent_keys = Vec::new();
+        let mode_fn = {
+            // We can hold across .awaits because the mode can only be accessed by
+            // this function and the mode switching functions, and once we get a
+            // new mode switch function, we immediately break out of this block,
+            // dropping the reference to MODE.
+            let mut mode = MODE.with(|m| *m).borrow_mut();
+            let mode: &mut M = mode.downcast_mut().unwrap();
 
-            for key in sent_keys {
-                hooks::trigger_now::<KeySentTo<M::Widget, U>>((key, w.clone(), area.clone()));
-                hooks::trigger::<KeySent>(key);
-            }
-
-            w.write(|widget| {
+            widget.write(|widget| {
                 let cfg = widget.print_cfg();
-                widget.text_mut().add_cursors(area, cfg);
-                if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
-                    area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
-                }
+                widget.text_mut().remove_cursors(area, cfg);
             });
 
-            mode_fn
-        })?
+            loop {
+                if let Some(mode_fn) = take_set_mode_fn() {
+                    break Some(mode_fn);
+                }
+                let Some(key) = keys.next() else { break None };
+                sent_keys.push(key);
+                mode.send_key(key, widget.clone(), area).await;
+            }
+        };
+
+        widget.write(|widget| {
+            let cfg = widget.print_cfg();
+            widget.text_mut().add_cursors(area, cfg);
+            if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
+                area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
+            }
+        });
+
+        tokio::task::spawn_local(hooks::trigger::<KeysSentTo<M::Widget, U>>((
+            sent_keys.clone(),
+            widget.clone(),
+            area.clone(),
+        )));
+        tokio::task::spawn_local(hooks::trigger::<KeysSent>(sent_keys));
+
+        (keys, mode_fn)
     }
 
     /// Function that sets [`Mode`]s, returns `true` if successful
-    fn set_mode_fn<M: Mode<U>, U: Ui>(mode: M) -> bool {
+    async fn set_mode_fn<M: Mode<U>, U: Ui>(mode: M) -> bool {
         // If we are on the correct widget, no switch is needed.
         if context::cur_widget::<U>().unwrap().type_id() != TypeId::of::<M::Widget>() {
-            let windows = context::windows().borrow();
-            let w = context::cur_window();
-            let entry = if TypeId::of::<M::Widget>() == TypeId::of::<File>() {
-                let name = context::fixed_file::<U>()
-                    .unwrap()
-                    .read(|file, _| file.name());
-                file_entry(&windows, &name)
-            } else {
-                widget_entry::<M::Widget, U>(&windows, w)
+            let node = {
+                let windows = context::windows().borrow();
+                let w = context::cur_window();
+                if TypeId::of::<M::Widget>() == TypeId::of::<File>() {
+                    let name = context::fixed_file::<U>()
+                        .unwrap()
+                        .read(|file, _| file.name());
+                    file_entry(&windows, &name).map(|(.., node)| node.clone())
+                } else {
+                    widget_entry::<M::Widget, U>(&windows, w).map(|(.., node)| node.clone())
+                }
             };
 
-            match entry {
-                Ok((.., node)) => switch_widget(node.clone()),
+            match node {
+                Ok(node) => switch_widget(node).await,
                 Err(err) => {
                     context::notify(err);
                     return false;
@@ -210,35 +252,36 @@ mod switch {
         }
 
         let widget = context::cur_widget::<U>().unwrap();
-        let mode = widget.mutate_data_as(|w: &RwData2<M::Widget>, area, _| {
-            let mut mode = hooks::trigger_now::<ModeSetTo<M, U>>((mode, w.clone(), area.clone()));
+        widget.node().parts();
+        let (w, area) = widget
+            .mutate_data_as(|w: &RwData2<M::Widget>, area, _| (w.clone(), area.clone()))
+            .unwrap();
 
-            w.write(|widget| {
-                let cfg = widget.print_cfg();
-                widget.text_mut().remove_cursors(area, cfg);
+        let mut mode = hooks::trigger::<ModeSetTo<M, U>>((mode, w.clone(), area.clone())).await;
 
-                mode.on_switch(widget, area);
+        w.write(|widget| {
+            let cfg = widget.print_cfg();
+            widget.text_mut().remove_cursors(&area, cfg);
 
-                let cfg = widget.print_cfg();
-                if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
-                    area.scroll_around_point(widget.text(), main.caret(), cfg);
-                }
-                widget.text_mut().add_cursors(area, cfg);
-            });
+            mode.on_switch(widget, &area);
 
-            mode
+            let cfg = widget.print_cfg();
+            if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
+                area.scroll_around_point(widget.text(), main.caret(), cfg);
+            }
+            widget.text_mut().add_cursors(&area, cfg);
         });
 
         crate::mode::set_send_key::<M, U>();
 
-        let mut old_mode = context::raw_mode_name().write();
-        let new_mode = duat_name::<M>();
-        hooks::trigger::<ModeSwitched>((&old_mode, new_mode));
-        *old_mode = new_mode;
+        context::raw_mode_name().write(|old_mode| {
+            let new_mode = duat_name::<M>();
+            tokio::task::spawn_local(hooks::trigger::<ModeSwitched>((*old_mode, new_mode)));
+            *old_mode = new_mode;
+        });
 
-        let mut mode = mode.unwrap();
-        SEND_KEYS
-            .with(|sk| *sk.lock() = Box::new(move |keys| send_keys_fn::<M, U>(&mut mode, keys)));
+        MODE.with(|m| m.replace(Box::new(mode)));
+        SEND_KEYS.with(|sk| *sk.borrow_mut() = Some(|keys| Box::pin(send_keys_fn::<M, U>(keys))));
         true
     }
 }
@@ -546,7 +589,8 @@ pub trait Mode<U: Ui>: Sized + Clone + Send + 'static {
     type Widget: Widget<U>;
 
     /// Sends a [`KeyEvent`] to this [`Mode`]
-    fn send_key(&mut self, key: KeyEvent, widget: &mut Self::Widget, area: &U::Area);
+    #[allow(async_fn_in_trait)]
+    async fn send_key(&mut self, key: KeyEvent, widget: RwData2<Self::Widget>, area: &U::Area);
 
     /// A function to trigger when switching to this [`Mode`]
     ///
@@ -570,9 +614,9 @@ pub trait Mode<U: Ui>: Sized + Clone + Send + 'static {
 // remaps.
 impl<U: Ui> Mode<U> for &'static str {
     // Doesn't matter
-    type Widget = crate::widgets::File;
+    type Widget = File;
 
-    fn send_key(&mut self, _: KeyEvent, _: &mut Self::Widget, _: &<U as Ui>::Area) {
+    async fn send_key(&mut self, _: KeyEvent, _: RwData2<File>, _: &<U as Ui>::Area) {
         unreachable!("&strs are only meant to be sent as AsGives, turning into keys");
     }
 

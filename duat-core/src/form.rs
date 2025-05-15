@@ -407,7 +407,7 @@ mod global {
         let colorschemes = COLORSCHEMES.lock();
         if let Some(cs) = colorschemes.iter().find(|cs| cs.name() == name) {
             cs.apply();
-            hooks::trigger::<ColorSchemeSet>(cs.name());
+            hooks::queue::<ColorSchemeSet>(cs.name());
         } else {
             context::notify(err!("The colorscheme [a]{name}[] was not found"));
         }
@@ -879,7 +879,7 @@ impl Palette {
             sender.send_form_changed().unwrap()
         }
 
-        hooks::trigger::<FormSet>((name, FormId(i as u16), form));
+        hooks::queue::<FormSet>((name, FormId(i as u16), form));
     }
 
     /// Sets a [`Form`] "weakly"
@@ -921,7 +921,7 @@ impl Palette {
         if let Some(sender) = SENDER.get() {
             sender.send_form_changed().unwrap()
         }
-        hooks::trigger::<FormSet>((name, FormId(i as u16), form));
+        hooks::queue::<FormSet>((name, FormId(i as u16), form));
     }
 
     /// Makes a [`Form`] reference another "weakly"

@@ -7,7 +7,7 @@ pub use self::global::*;
 use super::Mode;
 use crate::{
     context,
-    data::RwData,
+    data::RwData2,
     mode,
     text::{Key, Tag, text},
     ui::Ui,
@@ -15,21 +15,24 @@ use crate::{
 };
 
 mod global {
-    use std::str::Chars;
+    use std::{cell::RefCell, pin::Pin, str::Chars};
 
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
-    use parking_lot::Mutex;
 
     use super::{Gives, Remapper};
     use crate::{
+        context,
         data::DataMap,
         mode::Mode,
-        text::{Text, add_text},
+        text::{add_text, Builder, Text},
         ui::Ui,
     };
 
-    static REMAPPER: Remapper = Remapper::new();
-    static SEND_KEY: Mutex<fn(KeyEvent)> = Mutex::new(empty);
+    thread_local! {
+        static REMAPPER: &'static Remapper = Box::leak(Box::new(Remapper::new()));
+        static SEND_KEY: RefCell<fn(KeyEvent) -> Pin<Box<dyn Future<Output = ()>>>> =
+            RefCell::new(|_| Box::pin(async {}));
+    }
 
     /// Maps a sequence of keys to another
     ///
@@ -68,7 +71,8 @@ mod global {
     /// would intersect with this one, the new sequence will not be
     /// added.
     pub fn map<M: Mode<U>, U: Ui>(take: &str, give: impl AsGives<U>) {
-        REMAPPER.remap::<M, U>(str_to_keys(take), give.into_gives(), false);
+        context::assert_is_on_main_thread();
+        REMAPPER.with(|r| r.remap::<M, U>(str_to_keys(take), give.into_gives(), false));
     }
 
     /// Aliases a sequence of keys to another
@@ -95,15 +99,17 @@ mod global {
     /// [ghost text]: crate::text::Tag::Ghost
     /// [form]: crate::form::Form
     pub fn alias<M: Mode<U>, U: Ui>(take: &str, give: impl AsGives<U>) {
-        REMAPPER.remap::<M, U>(str_to_keys(take), give.into_gives(), true);
+        context::assert_is_on_main_thread();
+        REMAPPER.with(|r| r.remap::<M, U>(str_to_keys(take), give.into_gives(), true));
     }
 
     pub fn cur_sequence() -> DataMap<(Vec<KeyEvent>, bool), (Vec<KeyEvent>, bool)> {
-        REMAPPER.cur_seq.map(|seq| seq.clone())
+        context::assert_is_on_main_thread();
+        REMAPPER.with(|r| r.cur_seq.map(|seq| seq.clone()))
     }
 
     /// Turns a sequence of [`KeyEvent`]s into a [`Text`]
-    pub fn keys_to_text(keys: &[KeyEvent]) -> Text {
+    pub fn keys_to_text(keys: &[KeyEvent]) -> Builder {
         use crossterm::event::KeyCode::*;
         let mut seq = Text::builder();
 
@@ -139,7 +145,7 @@ mod global {
             }
         }
 
-        seq.finish()
+        seq
     }
 
     /// Turns a string of [`KeyEvent`]s into a [`String`]
@@ -329,28 +335,25 @@ mod global {
         if let KeyCode::Char(_) = key.code {
             key.modifiers.remove(KeyMod::SHIFT);
         }
-        let f = { *SEND_KEY.lock() };
-        f(key)
+        let f = { SEND_KEY.with(|sk| *sk.borrow()) };
+        f(key).await
     }
 
     /// Sets the key sending function
     pub(in crate::mode) fn set_send_key<M: Mode<U>, U: Ui>() {
-        *SEND_KEY.lock() = send_key_fn::<M, U>;
+        SEND_KEY.with(|sk| *sk.borrow_mut() = |key| Box::pin(send_key_fn::<M, U>(key)));
     }
 
     /// The key sending function, to be used as a pointer
-    fn send_key_fn<M: Mode<U>, U: Ui>(key: KeyEvent) {
-        REMAPPER.send_key::<M, U>(key);
+    async fn send_key_fn<M: Mode<U>, U: Ui>(key: KeyEvent) {
+        REMAPPER.with(|r| *r).send_key::<M, U>(key).await;
     }
-
-    /// Null key sending function
-    fn empty(_: KeyEvent) {}
 }
 
 /// The structure responsible for remapping sequences of characters
 struct Remapper {
     remaps: Mutex<Vec<(TypeId, Vec<Remap>)>>,
-    cur_seq: LazyLock<RwData<(Vec<KeyEvent>, bool)>>,
+    cur_seq: LazyLock<RwData2<(Vec<KeyEvent>, bool)>>,
 }
 
 impl Remapper {
@@ -358,7 +361,7 @@ impl Remapper {
     const fn new() -> Self {
         Remapper {
             remaps: Mutex::new(Vec::new()),
-            cur_seq: LazyLock::new(RwData::default),
+            cur_seq: LazyLock::new(RwData2::default),
         }
     }
 
@@ -390,53 +393,72 @@ impl Remapper {
     }
 
     /// Sends a key to be remapped or not
-    fn send_key<M: Mode<U>, U: Ui>(&self, key: KeyEvent) {
-        fn send_key_inner<U: Ui>(remapper: &Remapper, type_id: TypeId, key: KeyEvent) {
-            let remaps = remapper.remaps.lock();
-            let Some((_, remaps)) = remaps.iter().find(|(m, _)| type_id == *m) else {
-                mode::send_keys_to(vec![key]);
+    #[allow(clippy::await_holding_lock)]
+    async fn send_key<M: Mode<U>, U: Ui>(&self, key: KeyEvent) {
+        async fn send_key_inner<U: Ui>(remapper: &Remapper, ty: TypeId, key: KeyEvent) {
+            let Some(i) = remapper.remaps.lock().iter().position(|(m, _)| ty == *m) else {
+                mode::send_keys_to(vec![key]).await;
                 return;
             };
 
-            let mut cur_seq = remapper.cur_seq.write();
-            let (cur_seq, is_alias) = &mut *cur_seq;
-            cur_seq.push(key);
+            // Lock acquired here
+            let remaps_list = remapper.remaps.lock();
+            let (_, remaps) = &remaps_list[i];
 
-            if let Some(remap) = remaps.iter().find(|r| r.takes.starts_with(cur_seq)) {
-                *is_alias = remap.is_alias;
+            let (cur_seq, is_alias) = remapper.cur_seq.write(|(cur_seq, is_alias)| {
+                cur_seq.push(key);
+                (cur_seq.clone(), *is_alias)
+            });
+
+            let clear_cur_seq = || {
+                remapper
+                    .cur_seq
+                    .write(|(cur_seq, is_alias)| (*cur_seq, *is_alias) = (Vec::new(), false))
+            };
+
+            if let Some(remap) = remaps.iter().find(|r| r.takes.starts_with(&cur_seq)) {
                 if remap.takes.len() == cur_seq.len() {
                     if remap.is_alias {
                         remove_alias_and::<U>(|_, _, _| {});
                     }
 
-                    *is_alias = false;
+                    clear_cur_seq();
 
-                    cur_seq.clear();
                     match &remap.gives {
-                        Gives::Keys(keys) => mode::send_keys_to(keys.clone()),
+                        Gives::Keys(keys) => {
+                            let keys = keys.clone();
+                            // Lock dropped here, before any .awaits
+                            drop(remaps_list);
+                            mode::send_keys_to(keys).await
+                        }
                         Gives::Mode(f) => f(),
                     }
-                } else if *is_alias {
+                } else if remap.is_alias {
                     remove_alias_and::<U>(|widget, area, main| {
                         widget.text_mut().insert_tag(
                             Key::for_alias(),
-                            Tag::ghost(main, text!("[Alias]{}", keys_to_string(cur_seq))),
+                            Tag::ghost(main, text!("[Alias]{}", keys_to_string(&cur_seq))),
                         );
 
                         let cfg = widget.print_cfg();
                         widget.text_mut().add_cursors(area, cfg);
                     })
                 }
-            } else if *is_alias {
+            } else if is_alias {
+                // Lock dropped here, before any .awaits
+                drop(remaps_list);
                 remove_alias_and::<U>(|_, _, _| {});
-                *is_alias = false;
-                mode::send_keys_to(std::mem::take(cur_seq));
+                clear_cur_seq();
+                mode::send_keys_to(cur_seq).await;
             } else {
-                mode::send_keys_to(std::mem::take(cur_seq));
+                // Lock dropped here, before any .awaits
+                drop(remaps_list);
+                clear_cur_seq();
+                mode::send_keys_to(cur_seq).await;
             }
         }
 
-        send_key_inner::<U>(self, TypeId::of::<M>(), key);
+        send_key_inner::<U>(self, TypeId::of::<M>(), key).await;
     }
 }
 

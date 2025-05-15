@@ -17,9 +17,9 @@ use std::sync::LazyLock;
 use duat_core::{
     context,
     data::{DataMap, RwData},
-    hooks::{self, KeySent},
+    hooks::{self, KeysSent},
     mode::{self, KeyEvent},
-    text::{Text, add_text, text},
+    text::{add_text, text, Builder, Text},
     ui::RawArea,
     widgets::File,
 };
@@ -62,7 +62,7 @@ pub fn file_fmt(file: &File) -> Text {
         add_text!(b, "[File.new.scratch]{}", file.name());
     }
 
-    b.finish()
+    b.build()
 }
 
 /// [`StatusLine`] part: The active [mode] of Duat
@@ -222,10 +222,10 @@ pub fn selections_fmt(file: &File) -> Text {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [keys]: KeyEvent
-pub fn cur_map_fmt() -> DataMap<(Vec<KeyEvent>, bool), Text> {
+pub fn cur_map_fmt() -> DataMap<(Vec<KeyEvent>, bool), Builder> {
     mode::cur_sequence().map(|(keys, is_alias)| {
         if is_alias {
-            Text::default()
+            Builder::default()
         } else {
             mode::keys_to_text(&keys)
         }
@@ -240,7 +240,7 @@ pub fn last_key() -> RwData<String> {
     static LAST_KEY: LazyLock<RwData<String>> = LazyLock::new(|| {
         let last_key = RwData::new(String::new());
 
-        hooks::add::<KeySent>({
+        hooks::add::<KeysSent>({
             let last_key = last_key.clone();
             move |key| {
                 *last_key.write() = mode::keys_to_string(&[key]);

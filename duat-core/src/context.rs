@@ -3,13 +3,20 @@
 //! This module lets you access and mutate some things:
 //!
 //! # Files
-use std::any::TypeId;
+use std::{
+    any::TypeId,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
+
+use parking_lot::Mutex;
 
 pub use self::global::*;
 use crate::{
-    data::{ReadDataGuard, RwData, RwData2},
-    mode::Cursors,
-    text::Text,
+    data::RwData2,
+    text::{Builder, Text},
     ui::{RawArea, Ui},
     widgets::{File, Node, Related, Widget},
 };
@@ -29,8 +36,8 @@ mod global {
 
     use super::{CurFile, CurWidget, FileHandle, FileParts, Notifications};
     use crate::{
-        data::{DataMap, RwData},
-        text::{Text, err},
+        data::{DataMap, RwData2},
+        text::{err, Builder, Text},
         ui::{Ui, Window},
         widgets::Node,
     };
@@ -40,11 +47,12 @@ mod global {
         static CUR_FILE: OnceLock<&'static dyn Any> = OnceLock::new();
         static CUR_WIDGET: OnceLock<&'static dyn Any> = OnceLock::new();
         static WINDOWS: OnceLock<&'static dyn Any> = OnceLock::new();
+
+        static MODE_NAME: RwData2<&'static str> = RwData2::new("");
     }
 
-    static MODE_NAME: LazyLock<RwData<&str>> = LazyLock::new(|| RwData::new(""));
+    static NOTIFICATIONS: LazyLock<Notifications> = LazyLock::new(Notifications::new);
     static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
-    static NOTIFICATIONS: LazyLock<RwData<Vec<Text>>> = LazyLock::new(RwData::default);
     static WILL_RELOAD_OR_QUIT: AtomicBool = AtomicBool::new(false);
     static CUR_DIR: OnceLock<Mutex<PathBuf>> = OnceLock::new();
 
@@ -55,12 +63,14 @@ mod global {
     ///
     /// [`Mode`]: crate::mode::Mode
     pub fn mode_name() -> DataMap<&'static str, &'static str> {
-        MODE_NAME.map(|name| *name)
+        assert_is_on_main_thread();
+        MODE_NAME.with(|mn| mn.map(|name| *name))
     }
 
     // pub(crate) in order to keep just the status one public
-    pub(crate) fn raw_mode_name() -> &'static RwData<&'static str> {
-        &MODE_NAME
+    pub(crate) fn raw_mode_name() -> RwData2<&'static str> {
+        assert_is_on_main_thread();
+        MODE_NAME.with(RwData2::clone)
     }
 
     pub fn file_named<U: Ui>(name: impl ToString) -> Result<FileHandle<U>, Text> {
@@ -97,11 +107,11 @@ mod global {
     }
 
     pub fn notifications() -> Notifications {
-        Notifications(NOTIFICATIONS.clone())
+        NOTIFICATIONS.clone()
     }
 
-    pub fn notify(msg: Text) {
-        NOTIFICATIONS.write().push(msg)
+    pub fn notify(msg: impl Into<Builder>) {
+        NOTIFICATIONS.push(msg)
     }
 
     /// Returns `true` if Duat is about to reload
@@ -115,13 +125,16 @@ mod global {
     ) -> Option<(FileParts<U>, Node<U>)> {
         let prev = parts.and_then(|new| inner_cur_file().0.write(|old| old.replace(new)));
 
-        prev.zip(inner_cur_widget().0.write().replace(node))
+        prev.zip(inner_cur_widget().0.write(|cw| cw.replace(node)))
     }
 
     pub(crate) fn cur_widget<U: Ui>() -> Result<&'static CurWidget<U>, Text> {
         let cur_widget = inner_cur_widget();
-        cur_widget.0.read().as_ref().ok_or(err!("No widget yet"))?;
-        Ok(cur_widget)
+        if cur_widget.0.read(|cw| cw.is_none()) {
+            Err(err!("No widget yet"))
+        } else {
+            Ok(cur_widget)
+        }
     }
 
     pub(crate) fn set_windows<U: Ui>(wins: Vec<Window<U>>) -> &'static AtomicUsize {
@@ -193,6 +206,7 @@ mod global {
     }
 }
 
+#[derive(Clone)]
 pub struct CurFile<U: Ui>(RwData2<Option<FileParts<U>>>);
 
 impl<U: Ui> CurFile<U> {
@@ -211,40 +225,17 @@ impl<U: Ui> CurFile<U> {
         FileHandle { fixed: None, current: self.0.clone() }
     }
 
-    pub(crate) fn write_related_widget<W: Widget<U>, R>(
-        &self,
-        f: impl FnOnce(&mut W, &U::Area) -> R,
-    ) -> Option<R> {
-        let f = move |widget: &mut W, area: &U::Area| {
-            let cfg = widget.print_cfg();
-            widget.text_mut().remove_cursors(area, cfg);
-
-            let ret = f(widget, area);
-
-            let cfg = widget.print_cfg();
-
-            if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
-                area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
-            }
-            widget.text_mut().add_cursors(area, cfg);
-
-            ret
-        };
-
-        self.0.raw_read(|parts| {
+    pub(crate) fn get_related_widget<W: 'static>(&mut self) -> Option<(RwData2<W>, U::Area)> {
+        self.0.read(|parts| {
             let (file, area, related) = parts.as_ref().unwrap();
-
             if file.data_is::<W>() {
-                file.write_as(|w| f(w, area))
+                Some((file.try_downcast().unwrap(), area.clone()))
             } else {
                 related.read(|related| {
-                    related
-                        .iter()
-                        .find(|node| node.data_is::<W>())
-                        .and_then(|node| {
-                            let (widget, area, _) = node.parts();
-                            widget.write_as(|w| f(w, area))
-                        })
+                    related.iter().find_map(|node| {
+                        let (widget, area, _) = node.parts();
+                        widget.try_downcast().map(|data| (data, area.clone()))
+                    })
                 })
             }
         })
@@ -277,24 +268,19 @@ impl<U: Ui> FileHandle<U> {
 
     pub fn write<Ret>(&mut self, f: impl FnOnce(&mut File, &U::Area) -> Ret) -> Ret {
         let update = move |file: &RwData2<File>, area: &U::Area| {
-            let ret = file.write(|file| f(file, area));
-
             file.write(|file| {
                 let cfg = file.print_cfg();
                 file.text_mut().remove_cursors(area, cfg);
 
-                let cfg = file.print_cfg();
+                let ret = f(file, area);
 
                 if let Some(main) = file.cursors().get_main() {
                     area.scroll_around_point(file.text(), main.caret(), cfg);
                 }
                 file.text_mut().add_cursors(area, cfg);
-            });
 
-            <File as Widget<U>>::update(file.clone(), area);
-            file.write(|file| <File as Widget<U>>::print(file, area));
-
-            ret
+                ret
+            })
         };
 
         if let Some((file, area, _)) = self.fixed.as_ref() {
@@ -310,13 +296,13 @@ impl<U: Ui> FileHandle<U> {
     pub fn read_related<W: 'static, R>(&mut self, f: impl FnOnce(&W, &U::Area) -> R) -> Option<R> {
         let read = |(file, area, related): &FileParts<U>| {
             if file.data_is::<W>() {
-                file.read_as(|w| f(&w, area))
+                file.read_as(|w| f(w, area))
             } else {
                 related.read(|related| {
                     related
                         .iter()
                         .find(|node| node.data_is::<W>())
-                        .and_then(|node| node.widget().read_as(|w| f(&w, node.area())))
+                        .and_then(|node| node.widget().read_as(|w| f(w, node.area())))
                 })
             }
         };
@@ -329,20 +315,24 @@ impl<U: Ui> FileHandle<U> {
     }
 
     pub fn get_related_widget<W: 'static>(&mut self) -> Option<(RwData2<W>, U::Area)> {
-        let get_related = |related: &RwData2<Vec<Node<U>>>| {
-            related.read(|related| {
-                related.iter().find_map(|node| {
-                    let (widget, area, _) = node.parts();
-                    widget.try_downcast().map(|data| (data, area.clone()))
+        let get_related = |(file, area, related): &FileParts<U>| {
+            if file.data_is::<W>() {
+                Some((file.try_downcast().unwrap(), area.clone()))
+            } else {
+                related.read(|related| {
+                    related.iter().find_map(|node| {
+                        let (widget, area, _) = node.parts();
+                        widget.try_downcast().map(|data| (data, area.clone()))
+                    })
                 })
-            })
+            }
         };
 
-        if let Some((.., related)) = self.fixed.as_ref() {
-            get_related(related)
+        if let Some(parts) = self.fixed.as_ref() {
+            get_related(parts)
         } else {
             self.current
-                .read(|parts| get_related(&parts.as_ref().unwrap().2))
+                .read(|parts| get_related(parts.as_ref().unwrap()))
         }
     }
 
@@ -390,80 +380,117 @@ impl<U: Ui> FileHandle<U> {
 /// notified.
 ///
 /// [push]: Notifications::push
-#[derive(Clone)]
-pub struct Notifications(RwData<Vec<Text>>);
+pub struct Notifications {
+    list: Arc<Mutex<Vec<Text>>>,
+    current_state: Arc<AtomicUsize>,
+    read_state: AtomicUsize,
+}
+
+impl Clone for Notifications {
+    fn clone(&self) -> Self {
+        Self {
+            list: self.list.clone(),
+            current_state: self.current_state.clone(),
+            read_state: AtomicUsize::new(self.current_state.load(Ordering::Relaxed)),
+        }
+    }
+}
 
 impl Notifications {
+    /// Creates a new [`Notifications`]
+    fn new() -> Self {
+        Self {
+            list: Arc::default(),
+            current_state: Arc::new(AtomicUsize::new(1)),
+            read_state: AtomicUsize::new(0),
+        }
+    }
+
     /// Reads the notifications that were sent to Duat
-    pub fn read(&mut self) -> ReadDataGuard<Vec<Text>> {
-        self.0.read()
+    pub fn read<Ret>(&mut self, f: impl FnOnce(&[Text]) -> Ret) -> Ret {
+        let ret = f(&self.list.lock());
+        self.read_state.store(
+            self.current_state.load(Ordering::Relaxed),
+            Ordering::Relaxed,
+        );
+        ret
     }
 
     /// Wether there are new notifications or not
     pub fn has_changed(&self) -> bool {
-        self.0.has_changed()
-    }
-
-    /// Checker for new notifications
-    pub fn checker(&self) -> impl Fn() -> bool + Send + Sync + use<> {
-        self.0.checker()
+        self.read_state.load(Ordering::Relaxed) > self.current_state.load(Ordering::Relaxed)
     }
 
     /// Pushes a new [notification] to Duat
     ///
+    /// This could be any type that implements [`Into<Text>`]. If it
+    /// is a [`Text`] however, in order to implement [`Send`] +
+    /// [`Sync`], the [`Text`] will have its history and [`Reader`]s
+    /// removed.
+    ///
     /// [notification]: Text
-    pub fn push(&mut self, text: Text) {
-        self.0.write().push(text)
+    /// [`Reader`]: crate::text::Reader
+    pub fn push(&self, text: impl Into<Builder>) {
+        self.list.lock().push(Into::<Builder>::into(text).build())
     }
 }
 
+// SAFETY: The Texts in the list of notifications are sanitized (i.e.,
+// have their History and Readers removed), so there are no internal
+// parts without Send + Sync.
+// Additionaly, since it is impossible to get a mutable reference to
+// the Texts, those cannot be made not Send + Sync
+unsafe impl Send for Notifications {}
+unsafe impl Sync for Notifications {}
+
 #[doc(hidden)]
-pub struct CurWidget<U: Ui>(RwData<Option<Node<U>>>);
+pub struct CurWidget<U: Ui>(RwData2<Option<Node<U>>>);
 
 impl<U: Ui> CurWidget<U> {
     pub fn new() -> Self {
-        Self(RwData::new(None))
+        Self(RwData2::new(None))
     }
 
     pub fn type_id(&self) -> TypeId {
-        self.0.type_id
+        self.0.type_id()
     }
 
     pub fn inspect<R>(&self, f: impl FnOnce(&dyn Widget<U>, &U::Area) -> R) -> R {
-        let data = self.0.raw_read();
-        let (widget, area, _) = data.as_ref().unwrap().parts();
-        widget.read(|widget| f(widget, area))
+        self.0.raw_read(|node| {
+            let (widget, area, _) = node.as_ref().unwrap().parts();
+            widget.read(|widget| f(widget, area))
+        })
     }
 
     pub fn inspect_as<W: Widget<U>, R>(&self, f: impl FnOnce(&W, &U::Area) -> R) -> Option<R> {
-        let data = self.0.raw_read();
-        let (widget, area, _) = data.as_ref().unwrap().parts();
-
-        widget.read_as(|widget| f(&widget, area))
+        self.0.raw_read(|node| {
+            let (widget, area, _) = node.as_ref().unwrap().parts();
+            widget.read_as(|widget| f(widget, area))
+        })
     }
 
     pub(crate) fn mutate_data<R>(
         &self,
         f: impl FnOnce(&RwData2<dyn Widget<U>>, &U::Area, &Related<U>) -> R,
     ) -> R {
-        let data = self.0.read();
-        let (widget, area, related) = data.as_ref().unwrap().parts();
-
-        f(widget, area, related)
+        self.0.read(|node| {
+            let (widget, area, related) = node.as_ref().unwrap().parts();
+            f(widget, area, related)
+        })
     }
 
     pub(crate) fn mutate_data_as<W: Widget<U>, R>(
         &self,
         f: impl FnOnce(&RwData2<W>, &U::Area, &Related<U>) -> R,
     ) -> Option<R> {
-        let data = self.0.read();
-        let (widget, area, related) = data.as_ref().unwrap().parts();
-
-        Some(f(&widget.try_downcast::<W>()?, area, related))
+        self.0.read(|node| {
+            let (widget, area, related) = node.as_ref().unwrap().parts();
+            Some(f(&widget.try_downcast()?, area, related))
+        })
     }
 
     pub(crate) fn node(&self) -> Node<U> {
-        self.0.read().as_ref().unwrap().clone()
+        self.0.read(|node| node.clone().unwrap())
     }
 }
 

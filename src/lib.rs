@@ -479,7 +479,7 @@ pub mod form {
 pub mod hooks {
     pub use duat_core::hooks::{
         ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FormSet, Hookable,
-        KeySent, ModeSwitched, SearchPerformed, SearchUpdated, add, add_grouped, group_exists,
+        KeysSentitched, SearchPerformed, SearchUpdated, add, add_grouped, group_exists,
         remove,
     };
 
@@ -533,7 +533,7 @@ pub mod hooks {
     /// [key]: crate::mode::KeyEvent
     /// [`Widget`]: crate::widgets::Widget
     /// [`RwData<W>`]: crate::prelude::RwData
-    pub type KeySentTo<W> = duat_core::hooks::KeySentTo<W, Ui>;
+    pub type KeySentTo<W> = duat_core::hooks::KeysSentTo
 
     /// [`Hookable`]: Lets you modify a [`Mode`] as it is set
     ///

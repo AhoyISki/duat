@@ -18,7 +18,7 @@ use super::{
 };
 use crate::{
     form::FormId,
-    text::{Change, Point, Text},
+    text::{Builder, Point, Text},
 };
 
 /// A [`Text`] modifier
@@ -102,13 +102,10 @@ impl Tag<Range<usize>> {
     }
 
     /// Text that shows up on screen, but "doesn't exist"
-    pub fn ghost(b: usize, text: impl Into<Text>) -> Tag<Range<usize>, impl RawTagsFn> {
-        let mut text: Text = text.into();
-        if text.0.forced_new_line {
-            text.apply_change_inner(0, Change::remove_nl(text.last_point().unwrap()));
-        }
+    pub fn ghost(b: usize, text: impl Into<Builder>) -> Tag<Range<usize>, impl RawTagsFn> {
+        let text: Text = Into::<Builder>::into(text).build_no_nl();
 
-        Self::new(b..b, move |key, ghosts, _| {
+        Self::new(b..b, move |key, ghosts: &mut HashMap<GhostId, Text>, _| {
             let id = GhostId::new();
             ghosts.insert(id, text);
             (Ghost(key, id), None, None)

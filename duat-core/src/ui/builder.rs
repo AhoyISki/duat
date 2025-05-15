@@ -10,12 +10,11 @@
 //! layout modification fairly minimal, with minimal boilerplate.
 //!
 //! [`File`]: crate::widgets::File
-use std::sync::LazyLock;
+use parking_lot::Mutex;
 
 use super::{RawArea, Ui};
 use crate::{
     context::{self, FileHandle},
-    data::RwData,
     duat_name,
     prelude::Text,
     text::ReaderCfg,
@@ -166,13 +165,13 @@ impl<U: Ui> FileBuilder<U> {
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
-        let (widget, checker, specs) = cfg.build(true);
+        let (widget, specs) = cfg.build(true);
 
         let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];
 
         let (child, parent) = {
-            let (node, parent) = window.push(widget, &self.area, checker, specs, true, true);
+            let (node, parent) = window.push(widget, &self.area, specs, true, true);
 
             self.ff
                 .write_related_widgets(|related| related.push(node.clone()));
@@ -253,12 +252,12 @@ impl<U: Ui> FileBuilder<U> {
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
-        let (widget, checker, specs) = cfg.build(true);
+        let (widget, specs) = cfg.build(true);
 
         let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];
 
-        let (node, parent) = window.push(widget, &area, checker, specs, true, true);
+        let (node, parent) = window.push(widget, &area, specs, true, true);
         self.ff
             .write_related_widgets(|related| related.push(node.clone()));
         (node.area().clone(), parent)
@@ -415,12 +414,12 @@ impl<U: Ui> WindowBuilder<U> {
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
-        let (widget, checker, specs) = cfg.build(false);
+        let (widget, specs) = cfg.build(false);
 
         let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];
 
-        let (child, parent) = window.push(widget, &self.area, checker, specs, false, false);
+        let (child, parent) = window.push(widget, &self.area, specs, false, false);
 
         if let Some(parent) = &parent {
             self.area = parent.clone();
@@ -476,12 +475,12 @@ impl<U: Ui> WindowBuilder<U> {
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
-        let (widget, checker, specs) = cfg.build(false);
+        let (widget, specs) = cfg.build(false);
 
         let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];
 
-        let (node, parent) = window.push(widget, &area, checker, specs, true, false);
+        let (node, parent) = window.push(widget, &area, specs, true, false);
 
         (node.area().clone(), parent)
     }
@@ -491,10 +490,9 @@ impl<U: Ui> WindowBuilder<U> {
 ///
 /// [`once`]: Widget::once
 fn run_once<W: Widget<U>, U: Ui>() {
-    static ONCE_LIST: LazyLock<RwData<Vec<&'static str>>> =
-        LazyLock::new(|| RwData::new(Vec::new()));
+    static ONCE_LIST: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
 
-    let mut once_list = ONCE_LIST.write();
+    let mut once_list = ONCE_LIST.lock();
     if !once_list.contains(&duat_name::<W>()) {
         W::once().unwrap();
         once_list.push(duat_name::<W>());

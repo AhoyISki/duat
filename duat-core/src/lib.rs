@@ -243,7 +243,8 @@
     unboxed_closures,
     fn_traits,
     associated_type_defaults,
-    dropck_eyepatch
+    dropck_eyepatch,
+    ptr_metadata
 )]
 #![allow(clippy::single_range_in_vec_init)]
 
@@ -283,9 +284,7 @@ pub mod widgets;
 pub mod prelude {
     //! The prelude of Duat
     pub use crate::{
-        cmd,
-        data::{self, RwData},
-        form,
+        cmd, data, form,
         text::{Builder, Text, err, hint, ok, text},
         ui, widgets,
     };
@@ -511,7 +510,7 @@ mod private_exports {
 //             }
 //         }
 //     });
-// 
+//
 //     move || check.fetch_and(false, Ordering::Acquire)
 // }
 
@@ -759,7 +758,7 @@ fn merging_range_by_guess_and_lazy_shift<T, U: Copy + Ord + std::fmt::Debug, V: 
 fn file_entry<'a, U: Ui>(
     windows: &'a [Window<U>],
     name: &str,
-) -> std::result::Result<(usize, usize, &'a Node<U>), Text> {
+) -> Result<(usize, usize, &'a Node<U>), Text> {
     windows
         .iter()
         .enumerate()
@@ -773,7 +772,7 @@ fn file_entry<'a, U: Ui>(
 fn widget_entry<W: Widget<U>, U: Ui>(
     windows: &[Window<U>],
     w: usize,
-) -> std::result::Result<(usize, usize, &Node<U>), Text> {
+) -> Result<(usize, usize, &Node<U>), Text> {
     let mut ff = context::fixed_file::<U>().unwrap();
 
     if let Some((widget, _)) = ff.get_related_widget::<W>() {

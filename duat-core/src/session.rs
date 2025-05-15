@@ -60,16 +60,16 @@ impl<U: Ui> SessionCfg<U> {
         let mut args = std::env::args();
         let first = args.nth(1).map(PathBuf::from);
 
-        let (widget, checker, _) = if let Some(name) = first {
+        let (widget, _) = if let Some(name) = first {
             <FileCfg as WidgetCfg<U>>::build(self.file_cfg.clone().open_path(name), false)
         } else {
-            self.file_cfg.clone().build(false)
+            <FileCfg as WidgetCfg<U>>::build(self.file_cfg.clone(), false)
         };
 
-        let (window, node) = Window::new(ms, widget, checker, (self.layout_fn)());
+        let (window, node) = Window::new(ms, widget, (self.layout_fn)());
         let cur_window = context::set_windows(vec![window]);
 
-        let mut session = Session {
+        let session = Session {
             ms,
             cur_window,
             file_cfg: self.file_cfg,
@@ -80,13 +80,15 @@ impl<U: Ui> SessionCfg<U> {
 
         // Open and process files.
         let builder = FileBuilder::new(node, context::cur_window());
-        hooks::trigger_now::<OnFileOpen<U>>(builder);
+        task::spawn_local(hooks::trigger::<OnFileOpen<U>>(builder));
 
-        args.for_each(|file| session.open_file(PathBuf::from(file)));
+        for file in args {
+            session.open_file(PathBuf::from(file));
+        }
 
         // Build the window's widgets.
         let builder = WindowBuilder::new(0);
-        hooks::trigger_now::<OnWindowOpen<U>>(builder);
+        task::spawn_local(hooks::trigger::<OnWindowOpen<U>>(builder));
 
         session
     }
@@ -123,9 +125,9 @@ impl<U: Ui> SessionCfg<U> {
 
         for (win, mut cfgs) in inherited_cfgs {
             let (file_cfg, is_active) = cfgs.next().unwrap();
-            let (widget, checker, _) = <FileCfg as WidgetCfg<U>>::build(file_cfg, false);
+            let (widget, _) = <FileCfg as WidgetCfg<U>>::build(file_cfg, false);
 
-            let (window, node) = Window::new(ms, widget, checker, (session.layout_fn)());
+            let (window, node) = Window::new(ms, widget, (session.layout_fn)());
             context::windows::<U>().borrow_mut().push(window);
 
             if is_active {
@@ -137,7 +139,7 @@ impl<U: Ui> SessionCfg<U> {
             }
 
             let builder = FileBuilder::new(node, context::cur_window());
-            hooks::trigger_now::<OnFileOpen<U>>(builder);
+            task::spawn_local(hooks::trigger::<OnFileOpen<U>>(builder));
 
             for (file_cfg, is_active) in cfgs {
                 session.open_file_from_cfg(file_cfg, is_active, win);
@@ -145,7 +147,7 @@ impl<U: Ui> SessionCfg<U> {
 
             // Build the window's widgets.
             let builder = WindowBuilder::new(win);
-            hooks::trigger_now::<OnWindowOpen<U>>(builder);
+            task::spawn_local(hooks::trigger::<OnWindowOpen<U>>(builder));
         }
 
         session
@@ -165,20 +167,20 @@ pub struct Session<U: Ui> {
 }
 
 impl<U: Ui> Session<U> {
-    pub fn open_file(&mut self, path: PathBuf) {
+    fn open_file(&self, path: PathBuf) {
         let windows = context::windows::<U>();
         let pushed = {
             let mut windows = windows.borrow_mut();
             let cur_window = self.cur_window.load(Ordering::Relaxed);
-            let (file, checker, _) =
+            let (file, _) =
                 <FileCfg as WidgetCfg<U>>::build(self.file_cfg.clone().open_path(path), false);
-            windows[cur_window].push_file(file, checker)
+            windows[cur_window].push_file(file)
         };
 
         match pushed {
             Ok((node, _)) => {
                 let builder = FileBuilder::new(node, context::cur_window());
-                hooks::trigger_now::<OnFileOpen<U>>(builder);
+                task::spawn_local(hooks::trigger::<OnFileOpen<U>>(builder));
             }
             Err(err) => context::notify(err),
         }
@@ -186,14 +188,13 @@ impl<U: Ui> Session<U> {
 
     /// Start the application, initiating a read/response loop.
     pub fn start(
-        mut self,
+        self,
         duat_rx: mpsc::Receiver<DuatEvent>,
     ) -> (
         Vec<Vec<FileRet>>,
         mpsc::Receiver<DuatEvent>,
         Option<Instant>,
     ) {
-        hooks::trigger::<ConfigLoaded>(());
         form::set_sender(Sender::new(sender()));
 
         // This loop is very useful when trying to find deadlocks.
@@ -235,6 +236,8 @@ impl<U: Ui> Session<U> {
         runtime.block_on(async move {
             let _local = local.enter();
 
+            task::spawn_local(hooks::trigger::<ConfigLoaded>(()));
+
             U::flush_layout(self.ms);
 
             {
@@ -247,63 +250,49 @@ impl<U: Ui> Session<U> {
             }
 
             let reload_instant: &mut Option<Instant> = &mut reload_instant;
-            let mut breaks = Vec::new();
             let mut reprint_screen = false;
 
             loop {
-                if let Some(set_mode) = mode::take_set_mode_fn() {
-                    set_mode();
-                }
-
                 if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(20)) {
                     match event {
-                        DuatEvent::Key(key) => mode::send_key(key).await,
+                        DuatEvent::Key(key) => {
+                            task::spawn_local(mode::send_key(key));
+                        }
+                        DuatEvent::QueuedFunction(f) => {
+                            task::spawn_local(f());
+                        }
                         DuatEvent::Resize | DuatEvent::FormChange => {
                             reprint_screen = true;
                             continue;
                         }
                         DuatEvent::MetaMsg(msg) => context::notify(msg),
-                        DuatEvent::ReloadConfig => breaks.push(BreakTo::ReloadConfig),
-                        DuatEvent::OpenFile(name) => breaks.push(BreakTo::OpenFile(name)),
-                        DuatEvent::CloseFile(name) => breaks.push(BreakTo::CloseFile(name)),
-                        DuatEvent::SwapFiles(lhs, rhs) => breaks.push(BreakTo::SwapFiles(lhs, rhs)),
-                        DuatEvent::OpenWindow(name) => breaks.push(BreakTo::OpenWindow(name)),
-                        DuatEvent::SwitchWindow(win) => breaks.push(BreakTo::SwitchWindow(win)),
+                        DuatEvent::OpenFile(name) => {
+                            self.open_file(PathBuf::from(&name));
+                            mode::reset_switch_to::<U>(name, false);
+                        }
+                        DuatEvent::CloseFile(name) => self.close_file(name),
+                        DuatEvent::SwapFiles(lhs, rhs) => self.swap_files(lhs, rhs),
+                        DuatEvent::OpenWindow(name) => self.open_window_with(name),
+                        DuatEvent::SwitchWindow(win) => {
+                            self.cur_window.store(win, Ordering::SeqCst);
+                            U::switch_window(self.ms, win);
+                        }
                         DuatEvent::ReloadStarted(instant) => *reload_instant = Some(instant),
-                        DuatEvent::Quit => breaks.push(BreakTo::QuitDuat),
-                    }
-                } else if !breaks.is_empty() {
-                    for break_to in breaks.drain(..) {
-                        match break_to {
-                            BreakTo::QuitDuat => {
-                                hooks::trigger::<ConfigUnloaded>(());
-                                hooks::trigger::<ExitedDuat>(());
-                                context::order_reload_or_quit();
-                                self.save_cache(true);
-                                return (Vec::new(), duat_rx, None);
-                            }
-                            BreakTo::ReloadConfig => {
-                                hooks::trigger::<ConfigUnloaded>(());
-                                context::order_reload_or_quit();
-                                self.save_cache(false);
-                                let ms = self.ms;
-                                let files = self.take_files();
-                                U::unload(ms);
-                                return (files, duat_rx, *reload_instant);
-                            }
-                            BreakTo::OpenFile(name) => {
-                                self.open_file(PathBuf::from(&name));
-                                mode::reset_switch_to::<U>(name, false);
-                            }
-                            BreakTo::CloseFile(name) => self.close_file(name),
-                            BreakTo::SwapFiles(lhs_name, rhs_name) => {
-                                self.swap_files(lhs_name, rhs_name)
-                            }
-                            BreakTo::OpenWindow(name) => self.open_window_with(name),
-                            BreakTo::SwitchWindow(win) => {
-                                self.cur_window.store(win, Ordering::SeqCst);
-                                U::switch_window(self.ms, win);
-                            }
+                        DuatEvent::ReloadConfig => {
+                            hooks::trigger::<ConfigUnloaded>(()).await;
+                            context::order_reload_or_quit();
+                            self.save_cache(false);
+                            let ms = self.ms;
+                            let files = self.take_files();
+                            U::unload(ms);
+                            return (files, duat_rx, *reload_instant);
+                        }
+                        DuatEvent::Quit => {
+                            hooks::trigger::<ConfigUnloaded>(()).await;
+                            hooks::trigger::<ExitedDuat>(()).await;
+                            context::order_reload_or_quit();
+                            self.save_cache(true);
+                            return (Vec::new(), duat_rx, None);
                         }
                     }
                 } else if reprint_screen {
@@ -319,7 +308,7 @@ impl<U: Ui> Session<U> {
 
                 let windows = context::windows::<U>().borrow();
                 let win = self.cur_window.load(Ordering::SeqCst);
-                for node in (&windows[win]).nodes() {
+                for node in windows[win].nodes() {
                     if node.needs_update() {
                         let node = node.clone();
                         task::spawn_local(async move { node.update_and_print().await });
@@ -387,9 +376,9 @@ impl<U: Ui> Session<U> {
     fn open_file_from_cfg(&mut self, file_cfg: FileCfg, is_active: bool, win: usize) {
         let pushed = {
             let mut windows = context::windows::<U>().borrow_mut();
-            let (widget, checker, _) = <FileCfg as WidgetCfg<U>>::build(file_cfg, false);
+            let (widget, _) = <FileCfg as WidgetCfg<U>>::build(file_cfg, false);
 
-            let result = windows[win].push_file(widget, checker);
+            let result = windows[win].push_file(widget);
 
             if let Ok((node, _)) = &result
                 && is_active
@@ -407,14 +396,14 @@ impl<U: Ui> Session<U> {
         match pushed {
             Ok((node, _)) => {
                 let builder = FileBuilder::new(node, context::cur_window());
-                hooks::trigger_now::<OnFileOpen<U>>(builder);
+                task::spawn_local(hooks::trigger::<OnFileOpen<U>>(builder));
             }
             Err(err) => context::notify(err),
         }
     }
 }
 
-// BreakTo functions.
+// Loop functions
 impl<U: Ui> Session<U> {
     fn close_file(&self, name: String) {
         let mut windows = context::windows::<U>().borrow_mut();
@@ -471,7 +460,9 @@ impl<U: Ui> Session<U> {
         }
     }
 
+    #[allow(clippy::await_holding_refcell_ref)]
     fn open_window_with(&self, name: String) {
+        // Holding of the RefCell
         let mut windows = context::windows::<U>().borrow_mut();
         let new_win = windows.len();
 
@@ -494,28 +485,30 @@ impl<U: Ui> Session<U> {
             for (node, _) in &windows[win].file_nodes()[lo..] {
                 MutArea(&new_root).swap(node.area());
             }
+            // RefCell dropped here, before any .await
             drop(windows);
 
             // Delete the new_root, which should be the last "File" in the
             // list of the original Window.
             MutArea(&new_root).delete();
         } else {
-            let (widget, checker, _) = <FileCfg as WidgetCfg<U>>::build(
+            let (widget, _) = <FileCfg as WidgetCfg<U>>::build(
                 self.file_cfg.clone().open_path(PathBuf::from(name.clone())),
                 false,
             );
 
-            let (window, node) = Window::new(self.ms, widget, checker, (self.layout_fn)());
+            let (window, node) = Window::new(self.ms, widget, (self.layout_fn)());
             windows.push(window);
+            // RefCell dropped here, before any .await
             drop(windows);
 
             // Open and process files.
             let builder = FileBuilder::new(node, new_win);
-            hooks::trigger_now::<OnFileOpen<U>>(builder);
+            task::spawn_local(hooks::trigger::<OnFileOpen<U>>(builder));
         }
 
         let builder = WindowBuilder::new(new_win);
-        hooks::trigger_now::<OnWindowOpen<U>>(builder);
+        task::spawn_local(hooks::trigger::<OnWindowOpen<U>>(builder));
 
         if context::fixed_file::<U>()
             .unwrap()
@@ -547,16 +540,6 @@ fn swap<U: Ui>(windows: &mut [Window<U>], [lhs_w, rhs_w]: [usize; 2], [lhs, rhs]
     windows[lhs_w].insert_file_nodes(lhs_lo, rhs_nodes);
 
     MutArea(lhs.area()).swap(rhs.area());
-}
-
-enum BreakTo {
-    ReloadConfig,
-    OpenFile(String),
-    CloseFile(String),
-    SwapFiles(String, String),
-    OpenWindow(String),
-    SwitchWindow(usize),
-    QuitDuat,
 }
 
 pub struct FileRet {

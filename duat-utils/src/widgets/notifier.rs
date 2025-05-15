@@ -14,7 +14,7 @@ use std::{
 
 use duat_core::{
     context::{self, Notifications},
-    hooks::{self, KeySent},
+    hooks::{self, KeysSent},
     text::Text,
     ui::{PushSpecs, Ui},
     widgets::{CheckerFn, Widget, WidgetCfg},
@@ -65,7 +65,7 @@ impl<U: Ui> Widget<U> for Notifier<U> {
     }
 
     fn once() -> Result<(), Text> {
-        hooks::add_grouped::<KeySent>("RemoveNotificationsOnInput", |_| {
+        hooks::add_grouped::<KeysSent>("RemoveNotificationsOnInput", |_| {
             CLEAR_NOTIFS.store(true, Ordering::Relaxed);
         });
         Ok(())

@@ -11,7 +11,7 @@
 //!
 //! [`undo`]: Text::undo
 //! [`redo`]: Text::redo
-use std::ops::Range;
+use std::{ops::Range, rc::Rc};
 
 use bincode::{Decode, Encode};
 
@@ -23,9 +23,9 @@ use crate::{add_shifts, merging_range_by_guess_and_lazy_shift};
 pub struct History {
     moments: Vec<Moment>,
     cur_moment: usize,
-    new_moment: Option<(Moment, (usize, [i32; 3]))>,
+    new_changes: Option<(Vec<Change<String>>, (usize, [i32; 3]))>,
     /// Used to update ranges on the File
-    unproc_moment: Option<(Moment, (usize, [i32; 3]))>,
+    unproc_changes: Option<(Vec<Change<String>>, (usize, [i32; 3]))>,
 }
 
 impl History {
@@ -45,27 +45,31 @@ impl History {
     ///
     /// [`EditHelper`]: crate::mode::EditHelper
     pub fn apply_change(&mut self, guess_i: Option<usize>, change: Change<String>) -> usize {
-        let (moment, shift_state) = self.unproc_moment.get_or_insert_default();
-        moment.add_change(guess_i, change.clone(), shift_state);
+        let (changes, shift_state) = self.unproc_changes.get_or_insert_default();
+        add_change(changes, guess_i, change.clone(), shift_state);
 
-        let (moment, shift_state) = self.new_moment.get_or_insert_default();
-        moment.add_change(guess_i, change, shift_state)
+        let (changes, shift_state) = self.new_changes.get_or_insert_default();
+        add_change(changes, guess_i, change, shift_state)
     }
 
     /// Declares that the current moment is complete and starts a
     /// new one
     pub fn new_moment(&mut self) {
-        let Some((mut new_moment, (sh_from, shift))) = self.new_moment.take() else {
+        let Some((mut new_changes, (sh_from, shift))) = self.new_changes.take() else {
             return;
         };
         if shift != [0; 3] {
-            for change in new_moment.0[sh_from..].iter_mut() {
+            for change in new_changes[sh_from..].iter_mut() {
                 change.shift_by(shift);
             }
         }
 
         self.moments.truncate(self.cur_moment);
-        self.moments.push(new_moment);
+
+        self.moments.push(Moment {
+            changes: Rc::from(new_changes),
+            is_fwd: true,
+        });
         self.cur_moment += 1;
     }
 
@@ -73,19 +77,13 @@ impl History {
     ///
     /// Applying these [`Change`]s in the order that they're given
     /// will result in a correct redoing.
-    pub fn move_forward(&mut self) -> Option<Vec<Change<&str>>> {
+    pub fn move_forward(&mut self) -> Option<Moment> {
         self.new_moment();
         if self.cur_moment == self.moments.len() {
             None
         } else {
             self.cur_moment += 1;
-            Some(
-                self.moments[self.cur_moment - 1]
-                    .0
-                    .iter()
-                    .map(|c| c.as_ref())
-                    .collect(),
-            )
+            Some(self.moments[self.cur_moment - 1].clone())
         }
     }
 
@@ -94,41 +92,34 @@ impl History {
     /// These [`Change`]s will already be shifted corectly, such that
     /// applying them in sequential order, without further
     /// modifications, will result in a correct undoing.
-    pub fn move_backwards(&mut self) -> Option<Vec<Change<&str>>> {
+    pub fn move_backwards(&mut self) -> Option<Moment> {
         self.new_moment();
         if self.cur_moment == 0 {
             None
         } else {
             self.cur_moment -= 1;
-
-            let mut shift = [0; 3];
-            let iter = self.moments[self.cur_moment].0.iter().map(move |change| {
-                let mut change = change.as_ref();
-                change.shift_by(shift);
-
-                shift = add_shifts(shift, change.reverse().shift());
-
-                change.reverse()
-            });
-            Some(iter.collect())
+            let mut moment = self.moments[self.cur_moment - 1].clone();
+            moment.is_fwd = false;
+            Some(moment)
         }
     }
 
-    pub fn unprocessed_changes(&mut self) -> Option<Vec<Change<String>>> {
-        self.unproc_moment
+    pub fn unprocessed_changes(&mut self) -> Option<Moment> {
+        self.unproc_changes
             .take()
-            .map(|(mut moment, (sh_from, shift))| {
+            .map(|(mut changes, (sh_from, shift))| {
                 if shift != [0; 3] {
-                    for change in moment.0[sh_from..].iter_mut() {
+                    for change in changes[sh_from..].iter_mut() {
                         change.shift_by(shift);
                     }
                 }
-                moment.0
+
+                Moment { changes: Rc::from(changes), is_fwd: true }
             })
     }
 
     pub fn has_unprocessed_changes(&self) -> bool {
-        self.unproc_moment.as_ref().is_some()
+        self.unproc_changes.as_ref().is_some()
     }
 }
 
@@ -138,70 +129,96 @@ impl History {
 /// It also contains information about how to print the file, so that
 /// going back in time is less jarring.
 #[derive(Default, Debug, Clone, Encode, Decode)]
-pub struct Moment(Vec<Change<String>>);
+pub struct Moment {
+    changes: Rc<[Change<String>]>,
+    is_fwd: bool,
+}
 
 impl Moment {
-    /// First try to merge this change with as many changes as
-    /// possible, then add it in
-    fn add_change(
-        &mut self,
-        guess_i: Option<usize>,
-        mut change: Change<String>,
-        shift_state: &mut (usize, [i32; 3]),
-    ) -> usize {
-        let (sh_from, shift) = std::mem::take(shift_state);
-        let new_shift = change.shift();
-
-        // The range of changes that will be drained
-        let c_range = merging_range_by_guess_and_lazy_shift(
-            (&self.0, self.0.len()),
-            (guess_i.unwrap_or(0), [change.start(), change.taken_end()]),
-            (sh_from, shift, [0; 3], Point::shift_by),
-            (Change::start, Change::added_end),
-        );
-
-        // If sh_from < c_range.end, I need to shift the changes between the
-        // two, so that they match the shifting of the changes before sh_from
-        if sh_from < c_range.end && shift != [0; 3] {
-            for change in &mut self.0[sh_from..c_range.end] {
+    /// An [`Iterator`] over the [`Change`]s in this [`Moment`]
+    ///
+    /// These may represent forward or backwards [`Change`]s, forward
+    /// for newly introduced [`Change`]s and backwards when undoing.
+    pub fn changes(&self) -> impl ExactSizeIterator<Item = Change<&str>> + '_ {
+        let mut shift = [0; 3];
+        self.changes.iter().map(move |change| {
+            if self.is_fwd {
+                change.as_ref()
+            } else {
+                let mut change = change.as_ref().reverse();
                 change.shift_by(shift);
+
+                shift = add_shifts(shift, change.shift());
+
+                change
             }
-        // If sh_from > c_range.end, There are now three shifted
-        // states among ranges: The ones before c_range.start, between
-        // c_range.end and sh_from, and after c_range.end.
-        // I will update the second group so that it is shifted by
-        // shift + change.shift(), that way, it will be shifted like
-        // the first group.
-        } else if sh_from > c_range.end && new_shift != [0; 3] {
-            let shift = change.shift();
-            for change in &mut self.0[c_range.end..sh_from] {
-                change.shift_by(shift);
-            }
-        }
-
-        for c in self.0.drain(c_range.clone()).rev() {
-            change.try_merge(c);
-        }
-
-        let changes_taken = c_range.clone().count();
-        let new_sh_from = if !(change.added_text() == "" && change.taken_text() == "") {
-            self.0.insert(c_range.start, change);
-            sh_from.saturating_sub(changes_taken).max(c_range.start) + 1
-        } else {
-            sh_from.saturating_sub(changes_taken).max(c_range.start)
-        };
-        // If there are no more Changes after this, don't set the shift_state.
-        if new_sh_from < self.0.len() {
-            let shift = add_shifts(shift, new_shift);
-            *shift_state = (new_sh_from, shift);
-        }
-
-        c_range.start
+        })
     }
 
-    pub fn changes(&self) -> &[Change<String>] {
-        &self.0
+	/// Returns the number of [`Change`]s in this [`Moment`]
+	///
+	/// Should never be equal to 0.
+    pub fn len(&self) -> usize {
+        self.changes.len()
     }
+}
+
+/// First try to merge this change with as many changes as
+/// possible, then add it in
+fn add_change(
+    changes: &mut Vec<Change<String>>,
+    guess_i: Option<usize>,
+    mut change: Change<String>,
+    shift_state: &mut (usize, [i32; 3]),
+) -> usize {
+    let (sh_from, shift) = std::mem::take(shift_state);
+    let new_shift = change.shift();
+
+    // The range of changes that will be drained
+    let c_range = merging_range_by_guess_and_lazy_shift(
+        (changes, changes.len()),
+        (guess_i.unwrap_or(0), [change.start(), change.taken_end()]),
+        (sh_from, shift, [0; 3], Point::shift_by),
+        (Change::start, Change::added_end),
+    );
+
+    // If sh_from < c_range.end, I need to shift the changes between the
+    // two, so that they match the shifting of the changes before sh_from
+    if sh_from < c_range.end && shift != [0; 3] {
+        for change in &mut changes[sh_from..c_range.end] {
+            change.shift_by(shift);
+        }
+    // If sh_from > c_range.end, There are now three shifted
+    // states among ranges: The ones before c_range.start, between
+    // c_range.end and sh_from, and after c_range.end.
+    // I will update the second group so that it is shifted by
+    // shift + change.shift(), that way, it will be shifted like
+    // the first group.
+    } else if sh_from > c_range.end && new_shift != [0; 3] {
+        let shift = change.shift();
+        for change in &mut changes[c_range.end..sh_from] {
+            change.shift_by(shift);
+        }
+    }
+
+    for c in changes.drain(c_range.clone()).rev() {
+        change.try_merge(c);
+    }
+
+    let changes_taken = c_range.clone().count();
+    let new_sh_from = if !(change.added_text() == "" && change.taken_text() == "") {
+        changes.insert(c_range.start, change);
+        sh_from.saturating_sub(changes_taken).max(c_range.start) + 1
+    } else {
+        sh_from.saturating_sub(changes_taken).max(c_range.start)
+    };
+    // If there are no more Changes after this, don't set the shift_state.
+    if new_sh_from < changes.len() {
+        let shift = add_shifts(shift, new_shift);
+        *shift_state = (new_sh_from, shift);
+    }
+
+    c_range.start
 }
 
 /// A change in a file, with a start, taken text, and added text
