@@ -19,7 +19,7 @@ use duat_core::{
     data::{DataMap, RwData},
     hooks::{self, KeysSent},
     mode::{self, KeyEvent},
-    text::{add_text, text, Builder, Text},
+    text::{Builder, Text, text},
     ui::RawArea,
     widgets::File,
 };
@@ -52,14 +52,14 @@ pub fn file_fmt(file: &File) -> Text {
     let mut b = Text::builder();
 
     if let Some(name) = file.name_set() {
-        add_text!(b, "[File]{name}");
+        b.push(text!("[File]{name}"));
         if !file.exists() {
-            add_text!(b, "[File.new][[new file]]");
+            b.push(text!("[File.new][[new file]]"));
         } else if file.text().has_unsaved_changes() {
-            add_text!(b, "[File.unsaved][[+]]");
+            b.push(text!("[File.unsaved][[+]]"));
         }
     } else {
-        add_text!(b, "[File.new.scratch]{}", file.name());
+        b.push(text!("[File.new.scratch]{}", file.name()));
     }
 
     b.build()

@@ -17,6 +17,7 @@ use std::{
 
 use gapbuf::{GapBuffer, gap_buffer};
 use ids::RangeId;
+use types::TagId;
 
 use self::types::Toggle;
 pub use self::{
@@ -26,7 +27,7 @@ pub use self::{
         RawTagsFn, Tag,
     },
 };
-use super::{Point, Text, records::Records};
+use super::{Point, Text, TextRange, records::Records};
 use crate::{get_ends, merging_range_by_guess_and_lazy_shift};
 
 /// How many [`TagOrSkip`]s to keep a [`RawTag`] range
@@ -40,6 +41,64 @@ const LIMIT_TO_BUMP: usize = 128;
 /// How much to increase the minimum when enough [`RawTag`] ranges
 /// exist
 const BUMP_AMOUNT: usize = 16;
+
+/// A public interface for mutating the [`Tag`]s of a [`Text`]
+///
+/// It lets you modify the tags in expected ways, such as adding and
+/// removing [`Tag`]s, without letting you do things like swapping it
+/// for another instance.
+///
+/// This is very useful if you want to be able to add [`Tag`]s while,
+/// for example, holding a reference to the [`Bytes`] of the [`Text`]
+///
+/// [`Bytes`]: super::Bytes
+pub struct MutTags<'a>(pub(super) &'a mut Tags);
+
+impl MutTags<'_> {
+    /// Inserts a [`Tag`] at the given position
+    pub fn insert(&mut self, key: Key, tag: Tag<impl RawTagsFn>) {
+        self.0.insert(key, tag);
+    }
+
+    /// Removes the [`Tag`]s of a [key] from a region
+    ///
+    /// # Caution
+    ///
+    /// While it is fine to do this on your own widgets, you should
+    /// refrain from using this function in a [`File`]s [`Text`], as
+    /// it must iterate over all tags in the file, so if there are a
+    /// lot of other tags, this operation may be slow.
+    ///
+    /// # [`TextRange`] behavior
+    ///
+    /// If you give it a [`Point`] or [`usize`], it will be treated as
+    /// a one byte range.
+    ///
+    /// [key]: Keys
+    /// [`File`]: crate::widgets::File
+    /// [`Point`]: super::Point
+    pub fn remove(&mut self, range: impl TextRange, keys: impl Keys) {
+        let range = range.to_range_at(self.0.len_bytes());
+        self.0.remove_from(range, keys)
+    }
+
+    /// Removes all [`Tag`]s
+    ///
+    /// Refrain from using this function on [`File`]s, as there may be
+    /// other [`Tag`] providers, and you should avoid messing with
+    /// their tags.
+    ///
+    /// [`File`]: crate::widgets::File
+    pub fn clear(&mut self) {
+        *self.0 = Tags::new(self.0.len_bytes());
+    }
+}
+
+impl<'a> std::fmt::Debug for MutTags<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 /// The struct that holds the [`RawTag`]s of the [`Text`]
 ///
@@ -87,11 +146,7 @@ impl Tags {
     }
 
     /// Insert a new [`Tag`] at a given byte
-    pub fn insert(
-        &mut self,
-        key: Key,
-        tag: Tag<impl RangeBounds<usize>, impl RawTagsFn>,
-    ) -> Option<ToggleId> {
+    pub fn insert(&mut self, key: Key, tag: Tag<impl RawTagsFn>) -> Option<ToggleId> {
         fn exists_at(tags: &GapBuffer<TagOrSkip>, n: usize, tag: RawTag) -> bool {
             rev_range(tags, ..n)
                 .map_while(|(_, ts)| ts.as_tag())
@@ -99,7 +154,19 @@ impl Tags {
         }
 
         let (s_at, e_at) = get_ends(tag.range, self.len_bytes());
-        let (s_tag, e_tag, toggle) = (tag.tags)(key, &mut self.ghosts, &mut self.toggles);
+        let (s_tag, e_tag) = (tag.tags)(key);
+
+        let toggle = match tag.id {
+            Some(TagId::Ghost(id, ghost)) => {
+                self.ghosts.insert(id, ghost);
+                None
+            }
+            Some(TagId::Toggle(id, toggle)) => {
+                self.toggles.insert(id, toggle);
+                Some(id)
+            },
+            None => None,
+        };
 
         let [s_n, s_b, s_skip] = self.skip_at(s_at);
 

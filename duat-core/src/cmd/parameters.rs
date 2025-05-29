@@ -10,12 +10,18 @@ use std::{iter::Peekable, ops::Range, path::PathBuf};
 
 use crossterm::style::Color;
 
-use crate::text::{Builder, err};
+use crate::{
+    data::DataKey,
+    text::{Text, err},
+};
 
 pub trait Parameter<'a>: Sized {
     type Returns;
     /// Tries to consume arguments until forming a parameter
-    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Builder>;
+    ///
+    /// Since parameters shouldn't mutate data, dk is just a regular
+    /// shared reference.
+    fn new(dk: &DataKey<'_>, args: &mut Args<'a>) -> Result<Self::Returns, Text>;
 }
 
 impl<'a, P: Parameter<'a>> Parameter<'a> for Option<P> {
@@ -27,8 +33,8 @@ impl<'a, P: Parameter<'a>> Parameter<'a> for Option<P> {
     /// [`Parameter`] list, as it will either match correcly, finish
     /// matching, or match incorrectly in order to give accurate
     /// feedback.
-    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Builder> {
-        match args.next_as::<P>() {
+    fn new(dk: &DataKey<'_>, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
+        match args.next_as::<P>(&dk) {
             Ok(arg) => Ok(Some(arg)),
             Err(err) if args.is_forming_param => Err(err),
             Err(_) => Ok(None),
@@ -45,11 +51,11 @@ impl<'a, P: Parameter<'a>> Parameter<'a> for Vec<P> {
     /// [`Parameter`] list, as it will either match correcly, finish
     /// matching, or match incorrectly in order to give accurate
     /// feedback.
-    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Builder> {
+    fn new(dk: &DataKey<'_>, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         let mut returns = Vec::new();
 
         loop {
-            match args.next_as::<P>() {
+            match args.next_as::<P>(&dk) {
                 Ok(ret) => returns.push(ret),
                 Err(err) if args.is_forming_param => return Err(err),
                 Err(_) => break Ok(returns),
@@ -67,12 +73,12 @@ impl<'a, const N: usize, P: Parameter<'a>> Parameter<'a> for [P; N] {
     /// [`Parameter`] list, as it will either match correcly, finish
     /// matching, or match incorrectly in order to give accurate
     /// feedback.
-    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Builder> {
+    fn new(dk: &DataKey<'_>, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         use std::mem::MaybeUninit;
         let mut returns = [const { MaybeUninit::uninit() }; N];
 
         for r in returns.iter_mut() {
-            match args.next_as::<P>() {
+            match args.next_as::<P>(&dk) {
                 Ok(ret) => *r = MaybeUninit::new(ret),
                 Err(err) => return Err(err),
             }
@@ -101,11 +107,11 @@ impl<'a, const MIN: usize, const MAX: usize, P: Parameter<'a>> Parameter<'a>
     /// [`Parameter`] list, as it will either match correcly, finish
     /// matching, or match incorrectly in order to give accurate
     /// feedback.
-    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Builder> {
+    fn new(dk: &DataKey<'_>, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         let mut returns = Vec::new();
 
         for _ in 0..MAX {
-            match args.next_as::<P>() {
+            match args.next_as::<P>(&dk) {
                 Ok(ret) => returns.push(ret),
                 Err(err) if args.is_forming_param => return Err(err),
                 Err(_) if returns.len() >= MIN => return Ok(returns),
@@ -119,7 +125,8 @@ impl<'a, const MIN: usize, const MAX: usize, P: Parameter<'a>> Parameter<'a>
             Err(err!(
                 "List needed at least [a]{MIN}[] elements, got only [a]{}",
                 returns.len()
-            ))
+            )
+            .build())
         }
     }
 }
@@ -127,7 +134,7 @@ impl<'a, const MIN: usize, const MAX: usize, P: Parameter<'a>> Parameter<'a>
 impl<'a> Parameter<'a> for &'a str {
     type Returns = &'a str;
 
-    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Builder> {
+    fn new(_: &DataKey<'_>, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         args.next()
     }
 }
@@ -135,7 +142,7 @@ impl<'a> Parameter<'a> for &'a str {
 impl Parameter<'_> for String {
     type Returns = String;
 
-    fn new(args: &mut Args) -> Result<Self::Returns, Builder> {
+    fn new(_: &DataKey<'_>, args: &mut Args) -> Result<Self::Returns, Text> {
         Ok(args.next()?.to_string())
     }
 }
@@ -148,12 +155,12 @@ pub struct Remainder;
 impl Parameter<'_> for Remainder {
     type Returns = String;
 
-    fn new(args: &mut Args) -> Result<Self::Returns, Builder> {
+    fn new(_: &DataKey<'_>, args: &mut Args) -> Result<Self::Returns, Text> {
         let remainder: String = std::iter::from_fn(|| args.next().ok())
             .collect::<Vec<&str>>()
             .join(" ");
         if remainder.is_empty() {
-            Err(err!("There are no more arguments"))
+            Err(err!("There are no more arguments").build())
         } else {
             Ok(remainder)
         }
@@ -168,12 +175,12 @@ pub struct ColorSchemeArg;
 impl<'a> Parameter<'a> for ColorSchemeArg {
     type Returns = &'a str;
 
-    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Builder> {
+    fn new(_: &DataKey<'_>, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         let scheme = args.next()?;
         if crate::form::colorscheme_exists(scheme) {
             Ok(scheme)
         } else {
-            Err(err!("The colorscheme [a]{scheme}[] was not found"))
+            Err(err!("The colorscheme [a]{scheme}[] was not found").build())
         }
     }
 }
@@ -181,22 +188,22 @@ impl<'a> Parameter<'a> for ColorSchemeArg {
 /// Command [`Parameter`]: An open [`File`]'s name
 ///
 /// [`File`]: crate::widgets::File
-pub struct FileBuffer<U>(std::marker::PhantomData<U>);
+pub struct Buffer<U>(std::marker::PhantomData<U>);
 
-impl<'a, U: crate::ui::Ui> Parameter<'a> for FileBuffer<U> {
+impl<'a, U: crate::ui::Ui> Parameter<'a> for Buffer<U> {
     type Returns = &'a str;
 
-    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Builder> {
+    fn new(dk: &DataKey<'_>, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         let buffer = args.next()?;
         let windows = crate::context::windows::<U>().borrow();
         if windows
             .iter()
-            .flat_map(|w| w.file_names())
+            .flat_map(|w| w.file_names(dk))
             .any(|f| f == buffer)
         {
             Ok(buffer)
         } else {
-            Err(err!("No buffer called [a]{buffer}[] open"))
+            Err(err!("No buffer called [a]{buffer}[] open").build())
         }
     }
 }
@@ -209,11 +216,11 @@ pub struct OtherFileBuffer<U>(std::marker::PhantomData<U>);
 impl<'a, U: crate::ui::Ui> Parameter<'a> for OtherFileBuffer<U> {
     type Returns = &'a str;
 
-    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Builder> {
-        let buffer = args.next_as::<FileBuffer<U>>()?;
-        let mut ff = crate::context::fixed_file::<U>().unwrap();
-        if buffer == ff.read(|file, _| file.name()) {
-            Err(err!("Argument can't be the current file"))
+    fn new(dk: &DataKey<'_>, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
+        let buffer = args.next_as::<Buffer<U>>(&dk)?;
+        let mut ff = crate::context::fixed_file::<U>(dk).unwrap();
+        if buffer == ff.read(dk, |file, _| file.name()) {
+            Err(err!("Argument can't be the current file").build())
         } else {
             Ok(buffer)
         }
@@ -228,13 +235,13 @@ pub struct PossibleFile;
 impl Parameter<'_> for PossibleFile {
     type Returns = PathBuf;
 
-    fn new(args: &mut Args<'_>) -> Result<Self::Returns, Builder> {
-        let path = args.next_as::<PathBuf>()?;
+    fn new(dk: &DataKey<'_>, args: &mut Args<'_>) -> Result<Self::Returns, Text> {
+        let path = args.next_as::<PathBuf>(&dk)?;
 
         let canon_path = path.canonicalize();
         if let Ok(path) = &canon_path {
             if !path.is_file() {
-                return Err(err!("Path is not a file"));
+                return Err(err!("Path is not a file").build());
             }
             Ok(path.clone())
         } else if canon_path.is_err()
@@ -245,7 +252,7 @@ impl Parameter<'_> for PossibleFile {
                     .ok_or_else(|| err!("Path has no file name"))?,
             ))
         } else {
-            Err(err!("Path was not found"))
+            Err(err!("Path was not found").build())
         }
     }
 }
@@ -259,16 +266,16 @@ pub struct F32PercentOfU8;
 impl Parameter<'_> for F32PercentOfU8 {
     type Returns = f32;
 
-    fn new(args: &mut Args) -> Result<Self::Returns, Builder> {
+    fn new(_: &DataKey<'_>, args: &mut Args) -> Result<Self::Returns, Text> {
         let arg = args.next()?;
         if let Some(percentage) = arg.strip_suffix("%") {
             let percentage: u8 = percentage
                 .parse()
-                .map_err(|_| err!("[a]{arg}[] is not a valid percentage"))?;
+                .map_err(|_| err!("[a]{arg}[] is not a valid percentage").build())?;
             if percentage <= 100 {
                 Ok(percentage as f32 / 100.0)
             } else {
-                Err(err!("[a]{arg}[] is more than [a]100%"))
+                Err(err!("[a]{arg}[] is more than [a]100%").build())
             }
         } else {
             let byte: u8 = arg
@@ -282,7 +289,7 @@ impl Parameter<'_> for F32PercentOfU8 {
 impl<'a> Parameter<'a> for Color {
     type Returns = Color;
 
-    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Builder> {
+    fn new(dk: &DataKey<'_>, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         const fn hue_to_rgb(p: f32, q: f32, mut t: f32) -> f32 {
             t = if t < 0.0 { t + 1.0 } else { t };
             t = if t > 1.0 { t - 1.0 } else { t };
@@ -302,7 +309,7 @@ impl<'a> Parameter<'a> for Color {
         if let Some(hex) = arg.strip_prefix("#") {
             let total = match u32::from_str_radix(hex, 16) {
                 Ok(total) if hex.len() == 6 => total,
-                _ => return Err(err!("Hexcode does not contain 6 hex values")),
+                _ => return Err(err!("Hexcode does not contain 6 hex values").build()),
             };
             let r = (total >> 16) as u8;
             let g = (total >> 8) as u8;
@@ -310,15 +317,15 @@ impl<'a> Parameter<'a> for Color {
             Ok(Color::Rgb { r, g, b })
             // Expects "rgb {red} {green} {blue}"
         } else if arg == "rgb" {
-            let r = args.next_as::<u8>()?;
-            let g = args.next_as::<u8>()?;
-            let b = args.next_as::<u8>()?;
+            let r = args.next_as::<u8>(&dk)?;
+            let g = args.next_as::<u8>(&dk)?;
+            let b = args.next_as::<u8>(&dk)?;
             Ok(Color::Rgb { r, g, b })
             // Expects "hsl {hue%?} {saturation%?} {lightness%?}"
         } else if arg == "hsl" {
-            let hue = args.next_as::<F32PercentOfU8>()?;
-            let sat = args.next_as::<F32PercentOfU8>()?;
-            let lit = args.next_as::<F32PercentOfU8>()?;
+            let hue = args.next_as::<F32PercentOfU8>(&dk)?;
+            let sat = args.next_as::<F32PercentOfU8>(&dk)?;
+            let lit = args.next_as::<F32PercentOfU8>(&dk)?;
             let [r, g, b] = if sat == 0.0 {
                 [lit.round() as u8; 3]
             } else {
@@ -335,7 +342,7 @@ impl<'a> Parameter<'a> for Color {
             };
             Ok(Color::Rgb { r, g, b })
         } else {
-            return Err(err!("Color format was not recognized"));
+            return Err(err!("Color format was not recognized").build());
         }
     }
 }
@@ -349,12 +356,15 @@ pub struct FormName;
 impl<'a> Parameter<'a> for FormName {
     type Returns = &'a str;
 
-    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Builder> {
+    fn new(_: &DataKey<'_>, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         let arg = args.next()?;
+        if !arg.chars().all(|c| c.is_ascii_alphanumeric() || c == '.') {
+            return Err(err!("Expected identifiers separated by '.'s, found [a]{arg}").build());
+        }
         if crate::form::exists(arg) {
             Ok(arg)
         } else {
-            Err(err!("The form [a]{arg}[] has not been set"))
+            Err(err!("The form [a]{arg}[] has not been set").build())
         }
     }
 }
@@ -362,7 +372,7 @@ impl<'a> Parameter<'a> for FormName {
 impl<'a> Parameter<'a> for Flags<'a> {
     type Returns = Flags<'a>;
 
-    fn new(args: &mut Args<'a>) -> Result<Self::Returns, Builder> {
+    fn new(_: &DataKey<'_>, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
         Ok(args.flags.clone())
     }
 }
@@ -389,7 +399,7 @@ pub struct Args<'a> {
 
 impl<'a> Args<'a> {
     #[allow(clippy::should_implement_trait)]
-    pub fn next(&mut self) -> Result<&'a str, Builder> {
+    pub fn next(&mut self) -> Result<&'a str, Text> {
         match self.args.next() {
             Some((arg, range)) => {
                 self.param_range = range.clone();
@@ -399,20 +409,20 @@ impl<'a> Args<'a> {
                 }
                 Ok(arg)
             }
-            None => Err(err!("Wrong argument count")),
+            None => Err(err!("Wrong argument count").build()),
         }
     }
 
-    pub fn next_as<P: Parameter<'a>>(&mut self) -> Result<P::Returns, Builder> {
+    pub fn next_as<P: Parameter<'a>>(&mut self, dk: &DataKey<'_>) -> Result<P::Returns, Text> {
         self.has_to_start_param = true;
-        let ret = P::new(self);
+        let ret = P::new(dk, self);
         if ret.is_ok() {
             self.is_forming_param = false;
         }
         ret
     }
 
-    pub fn next_else<T: Into<Builder>>(&mut self, to_text: T) -> Result<&'a str, Builder> {
+    pub fn next_else<T: Into<Text>>(&mut self, to_text: T) -> Result<&'a str, Text> {
         match self.args.next() {
             Some((arg, _)) => Ok(arg),
             None => Err(to_text.into()),
@@ -563,10 +573,11 @@ macro parse_impl($t:ty) {
     impl Parameter<'_> for $t {
         type Returns = Self;
 
-        fn new(args: &mut Args) -> Result<Self::Returns, Builder> {
+        fn new(_: &DataKey<'_>, args: &mut Args) -> Result<Self::Returns, Text> {
             let arg = args.next()?;
-            arg.parse()
-                .map_err(|_| err!("[a]{arg}[] couldn't be parsed as [a]{}[]", stringify!($t)))
+            arg.parse().map_err(|_| {
+                err!("[a]{arg}[] couldn't be parsed as [a]{}[]", stringify!($t)).build()
+            })
         }
     }
 }

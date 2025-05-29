@@ -7,7 +7,7 @@ pub use self::global::*;
 use super::Mode;
 use crate::{
     context,
-    data::RwData2,
+    data::{DataKey, RwData},
     mode,
     text::{Key, Tag, text},
     ui::Ui,
@@ -22,16 +22,16 @@ mod global {
     use super::{Gives, Remapper};
     use crate::{
         context,
-        data::DataMap,
+        data::{DataKey, DataMap},
         mode::Mode,
-        text::{add_text, Builder, Text},
+        text::{Builder, Text, text},
         ui::Ui,
     };
 
     thread_local! {
         static REMAPPER: &'static Remapper = Box::leak(Box::new(Remapper::new()));
-        static SEND_KEY: RefCell<fn(KeyEvent) -> Pin<Box<dyn Future<Output = ()>>>> =
-            RefCell::new(|_| Box::pin(async {}));
+        static SEND_KEY: RefCell<fn(DataKey, KeyEvent) -> Pin<Box<dyn Future<Output = ()>>>> =
+            RefCell::new(|_, _| Box::pin(async {}));
     }
 
     /// Maps a sequence of keys to another
@@ -115,33 +115,33 @@ mod global {
 
         for key in keys {
             match key.code {
-                Backspace => add_text!(seq, "[SeqSpecialKey]BS"),
-                Enter => add_text!(seq, "[SeqSpecialKey]Enter"),
-                Left => add_text!(seq, "[SeqSpecialKey]Left"),
-                Right => add_text!(seq, "[SeqSpecialKey]Right"),
-                Up => add_text!(seq, "[SeqSpecialKey]Up"),
-                Down => add_text!(seq, "[SeqSpecialKey]Down"),
-                Home => add_text!(seq, "[SeqSpecialKey]Home"),
-                End => add_text!(seq, "[SeqSpecialKey]End"),
-                PageUp => add_text!(seq, "[SeqSpecialKey]PageU"),
-                PageDown => add_text!(seq, "[SeqSpecialKey]PageD"),
-                Tab => add_text!(seq, "[SeqSpecialKey]Tab"),
-                BackTab => add_text!(seq, "[SeqSpecialKey]BTab"),
-                Delete => add_text!(seq, "[SeqSpecialKey]Del"),
-                Insert => add_text!(seq, "[SeqSpecialKey]Ins"),
-                F(num) => add_text!(seq, "[SeqSpecialKey]F{num}"),
-                Char(char) => add_text!(seq, "[SeqCharKey]{char}"),
-                Null => add_text!(seq, "[SeqSpecialKey]Null"),
-                Esc => add_text!(seq, "[SeqSpecialKey]Esc"),
-                CapsLock => add_text!(seq, "[SeqSpecialKey]CapsL"),
-                ScrollLock => add_text!(seq, "[SeqSpecialKey]ScrollL"),
-                NumLock => add_text!(seq, "[SeqSpecialKey]NumL"),
-                PrintScreen => add_text!(seq, "[SeqSpecialKey]PrSc"),
-                Pause => add_text!(seq, "[SeqSpecialKey]Pause"),
-                Menu => add_text!(seq, "[SeqSpecialKey]Menu"),
-                KeypadBegin => add_text!(seq, "[SeqSpecialKey]KeypadBeg"),
-                Media(m_code) => add_text!(seq, "[SeqSpecialKey]Media{m_code}"),
-                Modifier(m_code) => add_text!(seq, "[SeqSpecialKey]Mod{m_code}"),
+                Backspace => seq.push(text!("[SeqSpecialKey]BS")),
+                Enter => seq.push(text!("[SeqSpecialKey]Enter")),
+                Left => seq.push(text!("[SeqSpecialKey]Left")),
+                Right => seq.push(text!("[SeqSpecialKey]Right")),
+                Up => seq.push(text!("[SeqSpecialKey]Up")),
+                Down => seq.push(text!("[SeqSpecialKey]Down")),
+                Home => seq.push(text!("[SeqSpecialKey]Home")),
+                End => seq.push(text!("[SeqSpecialKey]End")),
+                PageUp => seq.push(text!("[SeqSpecialKey]PageU")),
+                PageDown => seq.push(text!("[SeqSpecialKey]PageD")),
+                Tab => seq.push(text!("[SeqSpecialKey]Tab")),
+                BackTab => seq.push(text!("[SeqSpecialKey]BTab")),
+                Delete => seq.push(text!("[SeqSpecialKey]Del")),
+                Insert => seq.push(text!("[SeqSpecialKey]Ins")),
+                F(num) => seq.push(text!("[SeqSpecialKey]F{num}")),
+                Char(char) => seq.push(text!("[SeqCharKey]{char}")),
+                Null => seq.push(text!("[SeqSpecialKey]Null")),
+                Esc => seq.push(text!("[SeqSpecialKey]Esc")),
+                CapsLock => seq.push(text!("[SeqSpecialKey]CapsL")),
+                ScrollLock => seq.push(text!("[SeqSpecialKey]ScrollL")),
+                NumLock => seq.push(text!("[SeqSpecialKey]NumL")),
+                PrintScreen => seq.push(text!("[SeqSpecialKey]PrSc")),
+                Pause => seq.push(text!("[SeqSpecialKey]Pause")),
+                Menu => seq.push(text!("[SeqSpecialKey]Menu")),
+                KeypadBegin => seq.push(text!("[SeqSpecialKey]KeypadBeg")),
+                Media(m_code) => seq.push(text!("[SeqSpecialKey]Media{m_code}")),
+                Modifier(m_code) => seq.push(text!("[SeqSpecialKey]Mod{m_code}")),
             }
         }
 
@@ -330,30 +330,39 @@ mod global {
     }
 
     /// Sends a key to be remapped
-    pub(crate) async fn send_key(mut key: KeyEvent) {
+    pub(crate) async fn send_key(data_key: DataKey<'_>, mut key: KeyEvent) {
         // No need to send shift to, for example, Char('L').
         if let KeyCode::Char(_) = key.code {
             key.modifiers.remove(KeyMod::SHIFT);
         }
-        let f = { SEND_KEY.with(|sk| *sk.borrow()) };
-        f(key).await
+        let send_key = { SEND_KEY.with(|sk| *sk.borrow()) };
+        send_key(data_key, key).await
     }
 
     /// Sets the key sending function
     pub(in crate::mode) fn set_send_key<M: Mode<U>, U: Ui>() {
-        SEND_KEY.with(|sk| *sk.borrow_mut() = |key| Box::pin(send_key_fn::<M, U>(key)));
+        SEND_KEY.with(|sk| {
+            *sk.borrow_mut() = |_, key| {
+                Box::pin(async move {
+                    // SAFETY: Since this function is consuming a DataKey, I can create
+                    // new ones.
+                    let dk = unsafe { DataKey::new() };
+                    send_key_fn::<M, U>(dk, key).await
+                })
+            }
+        });
     }
 
     /// The key sending function, to be used as a pointer
-    async fn send_key_fn<M: Mode<U>, U: Ui>(key: KeyEvent) {
-        REMAPPER.with(|r| *r).send_key::<M, U>(key).await;
+    async fn send_key_fn<M: Mode<U>, U: Ui>(dk: DataKey<'_>, key: KeyEvent) {
+        REMAPPER.with(|r| *r).send_key::<M, U>(dk, key).await;
     }
 }
 
 /// The structure responsible for remapping sequences of characters
 struct Remapper {
     remaps: Mutex<Vec<(TypeId, Vec<Remap>)>>,
-    cur_seq: LazyLock<RwData2<(Vec<KeyEvent>, bool)>>,
+    cur_seq: LazyLock<RwData<(Vec<KeyEvent>, bool)>>,
 }
 
 impl Remapper {
@@ -361,7 +370,7 @@ impl Remapper {
     const fn new() -> Self {
         Remapper {
             remaps: Mutex::new(Vec::new()),
-            cur_seq: LazyLock::new(RwData2::default),
+            cur_seq: LazyLock::new(RwData::default),
         }
     }
 
@@ -394,10 +403,15 @@ impl Remapper {
 
     /// Sends a key to be remapped or not
     #[allow(clippy::await_holding_lock)]
-    async fn send_key<M: Mode<U>, U: Ui>(&self, key: KeyEvent) {
-        async fn send_key_inner<U: Ui>(remapper: &Remapper, ty: TypeId, key: KeyEvent) {
+    async fn send_key<M: Mode<U>, U: Ui>(&self, dk: DataKey<'_>, key: KeyEvent) {
+        async fn send_key_inner<U: Ui>(
+            remapper: &Remapper,
+            mut dk: DataKey<'_>,
+            ty: TypeId,
+            key: KeyEvent,
+        ) {
             let Some(i) = remapper.remaps.lock().iter().position(|(m, _)| ty == *m) else {
-                mode::send_keys_to(vec![key]).await;
+                mode::send_keys_to(dk, vec![key]).await;
                 return;
             };
 
@@ -405,36 +419,36 @@ impl Remapper {
             let remaps_list = remapper.remaps.lock();
             let (_, remaps) = &remaps_list[i];
 
-            let (cur_seq, is_alias) = remapper.cur_seq.write(|(cur_seq, is_alias)| {
+            let (cur_seq, is_alias) = remapper.cur_seq.write(&mut dk, |(cur_seq, is_alias)| {
                 cur_seq.push(key);
                 (cur_seq.clone(), *is_alias)
             });
 
-            let clear_cur_seq = || {
-                remapper
-                    .cur_seq
-                    .write(|(cur_seq, is_alias)| (*cur_seq, *is_alias) = (Vec::new(), false))
+            let clear_cur_seq = |dk| {
+                remapper.cur_seq.write(dk, |(cur_seq, is_alias)| {
+                    (*cur_seq, *is_alias) = (Vec::new(), false)
+                })
             };
 
             if let Some(remap) = remaps.iter().find(|r| r.takes.starts_with(&cur_seq)) {
                 if remap.takes.len() == cur_seq.len() {
                     if remap.is_alias {
-                        remove_alias_and::<U>(|_, _, _| {});
+                        dk = remove_alias_and::<U>(dk, |_, _, _| {});
                     }
 
-                    clear_cur_seq();
+                    clear_cur_seq(&mut dk);
 
                     match &remap.gives {
                         Gives::Keys(keys) => {
                             let keys = keys.clone();
                             // Lock dropped here, before any .awaits
                             drop(remaps_list);
-                            mode::send_keys_to(keys).await
+                            mode::send_keys_to(dk, keys).await
                         }
                         Gives::Mode(f) => f(),
                     }
                 } else if remap.is_alias {
-                    remove_alias_and::<U>(|widget, area, main| {
+                    remove_alias_and::<U>(dk, |widget, area, main| {
                         widget.text_mut().insert_tag(
                             Key::for_alias(),
                             Tag::ghost(main, text!("[Alias]{}", keys_to_string(&cur_seq))),
@@ -442,23 +456,23 @@ impl Remapper {
 
                         let cfg = widget.print_cfg();
                         widget.text_mut().add_cursors(area, cfg);
-                    })
+                    });
                 }
             } else if is_alias {
                 // Lock dropped here, before any .awaits
                 drop(remaps_list);
-                remove_alias_and::<U>(|_, _, _| {});
-                clear_cur_seq();
-                mode::send_keys_to(cur_seq).await;
+                dk = remove_alias_and::<U>(dk, |_, _, _| {});
+                clear_cur_seq(&mut dk);
+                mode::send_keys_to(dk, cur_seq).await;
             } else {
                 // Lock dropped here, before any .awaits
                 drop(remaps_list);
-                clear_cur_seq();
-                mode::send_keys_to(cur_seq).await;
+                clear_cur_seq(&mut dk);
+                mode::send_keys_to(dk, cur_seq).await;
             }
         }
 
-        send_key_inner::<U>(self, TypeId::of::<M>(), key).await;
+        send_key_inner::<U>(self, dk, TypeId::of::<M>(), key).await;
     }
 }
 
@@ -481,18 +495,27 @@ pub enum Gives {
     Mode(Box<dyn Fn() + Send>),
 }
 
-fn remove_alias_and<U: Ui>(f: impl FnOnce(&mut dyn Widget<U>, &U::Area, usize)) {
-    let widget = context::cur_widget::<U>().unwrap();
-    widget.mutate_data(|widget, area, _| {
-        widget.write(|widget| {
-            let cfg = widget.print_cfg();
-            widget.text_mut().remove_cursors(area, cfg);
+fn remove_alias_and<U: Ui>(
+    mut dk: DataKey<'_>,
+    f: impl FnOnce(&mut dyn Widget<U>, &U::Area, usize),
+) -> DataKey<'_> {
+    let widget = context::cur_widget::<U>(&dk).unwrap();
+    // SAFETY: Given that the DataKey is immediately mutably borrowed, it
+    // can't be used to act on CurWidget.current.
+    unsafe {
+        widget.mutate_data(|widget, area, _| {
+            widget.write(&mut dk, |widget| {
+                let cfg = widget.print_cfg();
+                widget.text_mut().remove_cursors(area, cfg);
 
-            if let Some(main) = widget.cursors().unwrap().get_main() {
-                let main = main.byte();
-                widget.text_mut().remove_tags(main, Key::for_alias());
-                f(&mut *widget, area, main)
-            }
-        });
-    })
+                if let Some(main) = widget.text().cursors().unwrap().get_main() {
+                    let main = main.byte();
+                    widget.text_mut().remove_tags(main, Key::for_alias());
+                    f(&mut *widget, area, main)
+                }
+            });
+        })
+    }
+
+    dk
 }

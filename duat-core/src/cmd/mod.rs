@@ -185,59 +185,59 @@
 //! [`text!`]: crate::prelude::text
 //! [`Form`]: crate::form::Form
 //! [`Area`]: crate::ui::Ui::Area
-use std::{
-    cell::RefCell, collections::HashMap, fmt::Display, ops::Range, rc::Rc, sync::Arc, time::Instant,
-};
+use std::{collections::HashMap, fmt::Display, ops::Range, sync::Arc, time::Instant};
 
 use crossterm::style::Color;
 
 pub use self::{
     global::*,
     parameters::{
-        Args, Between, ColorSchemeArg, F32PercentOfU8, FileBuffer, Flags, FormName,
-        OtherFileBuffer, Parameter, PossibleFile, Remainder, args_iter, get_args,
+        Args, Between, Buffer, ColorSchemeArg, F32PercentOfU8, Flags, FormName, OtherFileBuffer,
+        Parameter, PossibleFile, Remainder, args_iter, get_args,
     },
 };
 use crate::{
     context,
-    data::RwData2,
+    data::{DataKey, RwData},
     file_entry, iter_around, iter_around_rev, mode,
     session::sender,
-    text::{Builder, Text, err, hint, ok},
-    ui::{DuatEvent, Ui, Window},
-    widget_entry,
-    widgets::{File, Widget},
+    text::{Text, err, hint, ok},
+    ui::{DuatEvent, Ui},
+    widgets::File,
 };
 
 mod parameters;
 
-pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Builder> {
-    add!("alias", |flags: Flags, alias: &str, command: Remainder| {
+pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
+    add!("alias", |_dk,
+                   flags: Flags,
+                   alias: &str,
+                   command: Remainder| {
         if !flags.is_empty() {
-            Err(err!("An alias cannot take any flags"))
+            Err(err!("An alias cannot take any flags").build())
         } else {
-            Ok(crate::cmd::alias(alias, command)?)
+            crate::cmd::alias(alias, command)
         }
     })?;
 
-    add!(["quit", "q"], |name: Option<FileBuffer<U>>| {
-        let cur_name = context::fixed_file::<U>()?.read(|file, _| file.name());
+    add!(["quit", "q"], |dk, name: Option<Buffer<U>>| {
+        let cur_name = context::fixed_file::<U>(&dk)?.read(&dk, |file, _| file.name());
         let name = name.unwrap_or(&cur_name);
 
         let windows = context::windows::<U>().borrow();
-        let (win, wid, file) = file_entry(&windows, name).unwrap();
+        let (win, wid, file) = file_entry(&dk, &windows, name).unwrap();
 
         let has_unsaved_changes = file
-            .read_as(|f: &File| f.text().has_unsaved_changes() && f.exists())
+            .read_as(&dk, |f: &File| f.text().has_unsaved_changes() && f.exists())
             .unwrap();
         if has_unsaved_changes {
-            return Err(err!("[a]{name}[] has unsaved changes"));
+            return Err(err!("[a]{name}[] has unsaved changes").build());
         }
 
         // If we are on the current File, switch to the next one.
         if name == cur_name {
             let Some(next_name) = iter_around::<U>(&windows, win, wid)
-                .find_map(|(.., node)| node.read_as(|f: &File| f.name()))
+                .find_map(|(.., node)| node.read_as(&dk, |f: &File| f.name()))
             else {
                 sender().send(DuatEvent::Quit).unwrap();
                 return Ok(None);
@@ -246,46 +246,46 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Builder> {
             // If I send the switch signal first, and the Window is deleted, I
             // will have the synchronously change the current window number
             // without affecting anything else.
-            mode::reset_switch_to::<U>(&next_name, true);
+            mode::reset_switch_to::<U>(&dk, &next_name, true);
         }
 
         sender()
             .send(DuatEvent::CloseFile(name.to_string()))
             .unwrap();
-        Ok(Some(ok!("Closed [a]{name}")))
+        Ok(Some(ok!("Closed [a]{name}").build()))
     })?;
 
-    add!(["quit!", "q!"], |name: Option<FileBuffer<U>>| {
-        let cur_name = context::fixed_file::<U>()?.read(|file, _| file.name());
+    add!(["quit!", "q!"], |dk, name: Option<Buffer<U>>| {
+        let cur_name = context::fixed_file::<U>(&dk)?.read(&dk, |file, _| file.name());
         let name = name.unwrap_or(&cur_name);
 
         // Should wait here until I'm out of `session_loop`
         let windows = context::windows::<U>().borrow();
-        let (win, wid, file) = file_entry(&windows, name).unwrap();
+        let (win, wid, file) = file_entry(&dk, &windows, name).unwrap();
 
         if name == cur_name {
             let Some(next_name) = iter_around::<U>(&windows, win, wid)
-                .find_map(|(.., node)| node.read_as(|f: &File| f.name()))
+                .find_map(|(.., node)| node.read_as(&dk, |f: &File| f.name()))
             else {
                 sender().send(DuatEvent::Quit).unwrap();
                 return Ok(None);
             };
-            mode::reset_switch_to::<U>(&next_name, true);
+            mode::reset_switch_to::<U>(&dk, &next_name, true);
         }
 
         sender()
             .send(DuatEvent::CloseFile(name.to_string()))
             .unwrap();
-        Ok(Some(ok!("Closed [a]{name}")))
+        Ok(Some(ok!("Closed [a]{name}").build()))
     })?;
 
-    add!(["quit-all", "qa"], || {
+    add!(["quit-all", "qa"], |dk| {
         let windows = context::windows::<U>().borrow();
         let unwritten = windows
             .iter()
-            .flat_map(Window::file_nodes)
+            .flat_map(|w| w.file_nodes(&dk))
             .filter(|(node, _)| {
-                node.read_as(|f: &File| f.text().has_unsaved_changes() && f.exists())
+                node.read_as(&dk, |f: &File| f.text().has_unsaved_changes() && f.exists())
                     .unwrap()
             })
             .count();
@@ -294,37 +294,39 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Builder> {
             sender().send(DuatEvent::Quit).unwrap();
             Ok(None)
         } else if unwritten == 1 {
-            Err(err!("There is [a]1[] unsaved file"))
+            Err(err!("There is [a]1[] unsaved file").build())
         } else {
-            Err(err!("There are [a]{unwritten}[] unsaved files"))
+            Err(err!("There are [a]{unwritten}[] unsaved files").build())
         }
     })?;
 
-    add!(["quit-all!", "qa!"], || {
+    add!(["quit-all!", "qa!"], |_dk| {
         sender().send(DuatEvent::Quit).unwrap();
         Ok(None)
     })?;
 
-    add!(["write", "w"], |path: Option<PossibleFile>| {
-        context::fixed_file::<U>()?.write(|file, _| {
+    add!(["write", "w"], |dk, path: Option<PossibleFile>| {
+        context::fixed_file::<U>(&dk)?.write(&mut dk, |file, _| {
             let (bytes, name) = if let Some(path) = path {
                 (file.write_to(&path)?, path)
             } else if let Some(name) = file.name_set() {
                 (file.write()?, std::path::PathBuf::from(name))
             } else {
-                return Err(err!("File has no name path to write to"));
+                return Err(err!("File has no name path to write to").build());
             };
 
             match bytes {
-                Some(bytes) => Ok(Some(ok!("Wrote [a]{bytes}[] bytes to [File]{name}"))),
-                None => Ok(Some(ok!("Nothing to be written"))),
+                Some(bytes) => Ok(Some(
+                    ok!("Wrote [a]{bytes}[] bytes to [File]{name}").build(),
+                )),
+                None => Ok(Some(ok!("Nothing to be written").build())),
             }
         })
     })?;
 
-    add!(["write-quit", "wq"], |path: Option<PossibleFile>| {
-        let mut ff = context::fixed_file::<U>()?;
-        let (bytes, name) = ff.write(|file, _| {
+    add!(["write-quit", "wq"], |dk, path: Option<PossibleFile>| {
+        let mut ff = context::fixed_file::<U>(&dk)?;
+        let (bytes, name) = ff.write(&mut dk, |file, _| {
             let bytes = if let Some(path) = path {
                 file.write_to(&path)?
             } else {
@@ -337,68 +339,80 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Builder> {
         let windows = context::windows::<U>().borrow();
         let w = context::cur_window();
 
-        let (win, wid, file) = file_entry(&windows, &name).unwrap();
+        let (win, wid, file) = file_entry(&dk, &windows, &name).unwrap();
 
         let Some(next_name) = iter_around::<U>(&windows, win, wid)
-            .find_map(|(.., node)| node.read_as(|f: &File| f.name()))
+            .find_map(|(.., node)| node.read_as(&dk, |f: &File| f.name()))
         else {
             sender().send(DuatEvent::Quit).unwrap();
             return Ok(None);
         };
 
-        mode::reset_switch_to::<U>(&next_name, true);
+        mode::reset_switch_to::<U>(&dk, &next_name, true);
 
         sender().send(DuatEvent::CloseFile(name.clone())).unwrap();
         match bytes {
-            Some(bytes) => Ok(Some(ok!(
-                "Wrote [a]{bytes}[] bytes to [File]{name}[], then closed it"
-            ))),
-            None => Ok(Some(ok!("No changes in [File]{name}[], so just closed it"))),
+            Some(bytes) => Ok(Some(
+                ok!("Wrote [a]{bytes}[] bytes to [File]{name}[], then closed it").build(),
+            )),
+            None => Ok(Some(
+                ok!("No changes in [File]{name}[], so just closed it").build(),
+            )),
         }
     })?;
 
-    add!(["write-all", "wa"], || {
+    add!(["write-all", "wa"], |dk| {
         let windows = context::windows::<U>().borrow();
 
         let mut written = 0;
         let file_count = windows
             .iter()
-            .flat_map(Window::file_nodes)
+            .flat_map(|w| w.file_nodes(&dk))
             .filter(|(node, _)| {
-                node.widget().read_as(|f: &File| f.path_set().is_some()) == Some(true)
+                node.widget()
+                    .read_as(&dk, |f: &File| f.path_set().is_some())
+                    == Some(true)
             })
             .inspect(|(node, _)| {
-                written += node
-                    .widget()
-                    .write_as(|f: &mut File| f.write().is_ok())
-                    .unwrap() as usize;
+                // SAFETY: It is known that this function does not have any inner
+                // RwData.
+                written += unsafe {
+                    node.widget()
+                        .write_unsafe_as(|f: &mut File| f.write().is_ok())
+                        .unwrap() as usize
+                };
             })
             .count();
 
         if written == file_count {
-            Ok(Some(ok!("Wrote to [a]{written}[] files")))
+            Ok(Some(ok!("Wrote to [a]{written}[] files").build()))
         } else {
             let unwritten = file_count - written;
             let plural = if unwritten == 1 { "" } else { "s" };
-            Err(err!("Failed to write to [a]{unwritten}[] file{plural}"))
+            Err(err!("Failed to write to [a]{unwritten}[] file{plural}").build())
         }
     })?;
 
-    add!(["write-all-quit", "waq"], || {
+    add!(["write-all-quit", "waq"], |dk| {
         let windows = context::windows::<U>().borrow();
 
         let mut written = 0;
         let file_count = windows
             .iter()
-            .flat_map(Window::file_nodes)
+            .flat_map(|w| w.file_nodes(&dk))
             .filter(|(node, _)| {
-                node.widget().read_as(|f: &File| f.path_set().is_some()) == Some(true)
+                node.widget()
+                    .read_as(&dk, |f: &File| f.path_set().is_some())
+                    == Some(true)
             })
             .inspect(|(node, _)| {
-                written += node
-                    .widget()
-                    .write_as(|f: &mut File| f.write().is_ok())
-                    .unwrap() as usize;
+                // SAFETY: It is known that this function does not have any inner
+                // RwData.
+                written += unsafe {
+                    node.widget()
+                        .write_unsafe_as(|f: &mut File| f.write().is_ok())
+                        .unwrap() as usize
+                };
             })
             .count();
 
@@ -408,27 +422,31 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Builder> {
         } else {
             let unwritten = file_count - written;
             let plural = if unwritten == 1 { "" } else { "s" };
-            Err(err!("Failed to write to [a]{unwritten}[] file{plural}"))
+            Err(err!("Failed to write to [a]{unwritten}[] file{plural}").build())
         }
     })?;
 
-    add!(["write-all-quit!", "waq!"], || {
+    add!(["write-all-quit!", "waq!"], |dk| {
         let windows = context::windows::<U>().borrow();
 
-        for (node, _) in windows.iter().flat_map(Window::file_nodes) {
-            node.widget().write_as(|f: &mut File| f.write());
+        for (node, _) in windows.iter().flat_map(|w| w.file_nodes(&dk)) {
+            // SAFETY: It is known that this function does not have any inner
+            // RwData.
+            unsafe {
+                node.widget().write_unsafe_as(|f: &mut File| f.write());
+            }
         }
 
         sender().send(DuatEvent::Quit).unwrap();
         Ok(None)
     })?;
 
-    add!(["reload"], || {
+    add!(["reload"], |_dk| {
         let Some(toml_path) = crate::crate_dir()
             .map(|config_dir| config_dir.join("Cargo.toml"))
             .filter(|path| path.try_exists().is_ok_and(|exists| exists))
         else {
-            return Err(err!("Cargo.toml was not found"));
+            return Err(err!("Cargo.toml was not found").build());
         };
 
         let mut cargo = std::process::Command::new("cargo");
@@ -460,13 +478,13 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Builder> {
                         Err(err) => context::notify(err!("cargo failed: [a]{err}")),
                     };
                 });
-                Ok(Some(hint!("Started config recompilation")))
+                Ok(Some(hint!("Started config recompilation").build()))
             }
-            Err(err) => Err(err!("Failed to start cargo: [a]{err}")),
+            Err(err) => Err(err!("Failed to start cargo: [a]{err}").build()),
         }
     })?;
 
-    add!(["edit", "e"], |path: PossibleFile| {
+    add!(["edit", "e"], |dk, path: PossibleFile| {
         let windows = context::windows::<U>().borrow();
 
         let name = if let Ok(path) = path.strip_prefix(context::cur_dir()) {
@@ -475,16 +493,16 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Builder> {
             path.to_string_lossy().to_string()
         };
 
-        if file_entry(&windows, &name).is_err() {
+        if file_entry(&dk, &windows, &name).is_err() {
             sender().send(DuatEvent::OpenFile(name.clone())).unwrap();
-            return Ok(Some(ok!("Opened [a]{name}")));
+            return Ok(Some(ok!("Opened [a]{name}").build()));
         }
 
-        mode::reset_switch_to::<U>(name.clone(), true);
-        Ok(Some(ok!("Switched to [a]{name}")))
+        mode::reset_switch_to::<U>(&dk, name.clone(), true);
+        Ok(Some(ok!("Switched to [a]{name}").build()))
     })?;
 
-    add!(["open", "o"], |path: PossibleFile| {
+    add!(["open", "o"], |dk, path: PossibleFile| {
         let windows = context::windows::<U>().borrow();
 
         let name = if let Ok(path) = path.strip_prefix(context::cur_dir()) {
@@ -493,104 +511,104 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Builder> {
             path.to_string_lossy().to_string()
         };
 
-        let Ok((win, wid, node)) = file_entry(&windows, &name) else {
+        let Ok((win, wid, node)) = file_entry(&dk, &windows, &name) else {
             sender().send(DuatEvent::OpenWindow(name.clone())).unwrap();
-            return Ok(Some(ok!("Opened [a]{name}[] on new window")));
+            return Ok(Some(ok!("Opened [a]{name}[] on new window").build()));
         };
 
-        if windows[win].file_nodes().len() == 1 {
-            mode::reset_switch_to::<U>(name.clone(), true);
-            Ok(Some(ok!("Switched to [a]{name}")))
+        if windows[win].file_nodes(&dk).len() == 1 {
+            mode::reset_switch_to::<U>(&dk, name.clone(), true);
+            Ok(Some(ok!("Switched to [a]{name}").build()))
         } else {
             sender().send(DuatEvent::OpenWindow(name.clone())).unwrap();
-            Ok(Some(ok!("Moved [a]{name}[] to a new window")))
+            Ok(Some(ok!("Moved [a]{name}[] to a new window").build()))
         }
     })?;
 
-    add!(["buffer", "b"], |name: OtherFileBuffer<U>| {
-        mode::reset_switch_to::<U>(&name, true);
-        Ok(Some(ok!("Switched to [a]{name}")))
+    add!(["buffer", "b"], |dk, name: OtherFileBuffer<U>| {
+        mode::reset_switch_to::<U>(&dk, &name, true);
+        Ok(Some(ok!("Switched to [a]{name}").build()))
     })?;
 
-    add!("next-file", |flags: Flags| {
+    add!("next-file", |dk, flags: Flags| {
         let windows = context::windows().borrow();
-        let ff = context::fixed_file::<U>()?;
+        let ff = context::fixed_file::<U>(&dk)?;
         let win = context::cur_window();
 
         let wid = windows[win]
             .nodes()
-            .position(|node| ff.ptr_eq(node.widget()))
+            .position(|node| ff.ptr_eq(&dk, node.widget()))
             .unwrap();
 
         let name = if flags.word("global") {
             iter_around::<U>(&windows, win, wid)
-                .find_map(|(.., node)| node.read_as(|f: &File| f.name()))
+                .find_map(|(.., node)| node.read_as(&dk, |f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other open files"))?
         } else {
             let slice = &windows[win..=win];
             iter_around(slice, 0, wid)
-                .find_map(|(.., node)| node.read_as(|f: &File| f.name()))
+                .find_map(|(.., node)| node.read_as(&dk, |f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other files open in this window"))?
         };
 
-        mode::reset_switch_to::<U>(&name, true);
-        Ok(Some(ok!("Switched to [a]{name}")))
+        mode::reset_switch_to::<U>(&dk, &name, true);
+        Ok(Some(ok!("Switched to [a]{name}").build()))
     })?;
 
-    add!("prev-file", |flags: Flags| {
+    add!("prev-file", |dk, flags: Flags| {
         let windows = context::windows().borrow();
-        let ff = context::fixed_file::<U>()?;
+        let ff = context::fixed_file::<U>(&dk)?;
         let w = context::cur_window();
 
         let widget_i = windows[w]
             .nodes()
-            .position(|node| ff.ptr_eq(node.widget()))
+            .position(|node| ff.ptr_eq(&dk, node.widget()))
             .unwrap();
 
         let name = if flags.word("global") {
             iter_around_rev::<U>(&windows, w, widget_i)
-                .find_map(|(.., node)| node.read_as(|f: &File| f.name()))
+                .find_map(|(.., node)| node.read_as(&dk, |f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other open files"))?
         } else {
             let slice = &windows[w..=w];
             iter_around_rev(slice, 0, widget_i)
-                .find_map(|(.., node)| node.read_as(|f: &File| f.name()))
+                .find_map(|(.., node)| node.read_as(&dk, |f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other files open in this window"))?
         };
 
-        mode::reset_switch_to::<U>(&name, true);
+        mode::reset_switch_to::<U>(&dk, &name, true);
 
-        Ok(Some(ok!("Switched to [a]{name}")))
+        Ok(Some(ok!("Switched to [a]{name}").build()))
     })?;
 
-    add!("swap", |lhs: FileBuffer<U>, rhs: Option<FileBuffer<U>>| {
+    add!("swap", |dk, lhs: Buffer<U>, rhs: Option<Buffer<U>>| {
         let rhs = if let Some(rhs) = rhs {
             rhs.to_string()
         } else {
-            context::fixed_file::<U>()?.read(|file, _| file.name())
+            context::fixed_file::<U>(&dk)?.read(&dk, |file, _| file.name())
         };
         sender()
             .send(DuatEvent::SwapFiles(lhs.to_string(), rhs.clone()))
             .unwrap();
 
-        Ok(Some(ok!("Swapped [a]{lhs}[] and [a]{rhs}")))
+        Ok(Some(ok!("Swapped [a]{lhs}[] and [a]{rhs}").build()))
     })?;
 
-    add!("colorscheme", |scheme: ColorSchemeArg| {
+    add!("colorscheme", |_dk, scheme: ColorSchemeArg| {
         crate::form::set_colorscheme(scheme);
-        Ok(Some(ok!("Set colorscheme to [a]{scheme}[]")))
+        Ok(Some(ok!("Set colorscheme to [a]{scheme}[]").build()))
     })?;
 
     add!(
         "set-form",
-        |name: FormName, colors: Between<0, 3, Color>| {
+        |_dk, name: FormName, colors: Between<0, 3, Color>| {
             let mut form = crate::form::Form::new();
             form.style.foreground_color = colors.first().cloned();
             form.style.background_color = colors.get(1).cloned();
             form.style.underline_color = colors.get(2).cloned();
             crate::form::set(name, form);
 
-            Ok(Some(ok!("Set [a]{name}[] to a new Form")))
+            Ok(Some(ok!("Set [a]{name}[] to a new Form").build()))
         }
     )?;
 
@@ -603,10 +621,9 @@ mod global {
     use super::{Args, CheckerFn, CmdFn, CmdResult, Commands, Parameter};
     use crate::{
         context,
-        data::RwData2,
-        text::{Builder, Text},
-        ui::{DuatEvent, Ui},
-        widgets::Widget,
+        data::{DataKey, RwData},
+        text::Text,
+        ui::DuatEvent,
     };
 
     thread_local! {
@@ -646,279 +663,31 @@ mod global {
     ///
     /// [`StatusLine`]: crate::widgets::StatusLine
     /// [`RwData`]: crate::data::RwData
-    pub macro add {
-        ($callers:expr, $($mv:ident)? |$($arg:tt: $t:ty),+| $f:block) => {{
-            #[allow(unused_variables, unused_mut)]
-            let cmd = $($mv)? |mut args: Args| -> CmdResult {
-                $(
-                    let $arg: <$t as Parameter>::Returns = <$t as Parameter>::new(&mut args)?;
-                )*
-
-                if let Ok(arg) = args.next() {
-                    return Err($crate::text::err!("Too many arguments"));
-                }
-
-                $f
-            };
-
-            #[allow(unused_variables, unused_mut)]
-            let check_args = |mut args: Args| -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) {
-                let mut ok_ranges = Vec::new();
-
-                $(
-                    let start = args.next_start();
-                    match args.next_as::<$t>() {
-                        Ok(_) => if let Some(start) = start
-                            .filter(|s| args.param_range().end > *s)
-                        {
-                            ok_ranges.push(start..args.param_range().end);
-                        }
-                        Err(err) => return (ok_ranges, Some((args.param_range(), err)))
-                    }
-                )*
-
-                let start = args.next_start();
-                if let (Ok(_), Some(start)) = (args.next_as::<super::Remainder>(), start) {
-                    let err = $crate::text::err!("Too many arguments");
-                    return (ok_ranges, Some((start..args.param_range().end, err)))
-                }
-
-                (ok_ranges, None)
-            };
-
-            let callers: Vec<String> = $callers.into_callers().map(str::to_string).collect();
-            // SAFETY: This type will never actually be queried
-            let cmd: CmdFn = unsafe { RwData2::new_unsized::<()>(Rc::new(RefCell::new(cmd))) };
-
-            add_inner(callers, cmd, check_args)
-        }},
-
-        ($callers:expr, $($mv:ident)? || $f:block) => {{
-            #[allow(unused_variables, unused_mut)]
-            let cmd = $($mv)? |mut args: Args| -> CmdResult {
-                if let Ok(arg) = args.next() {
-                    return Err($crate::text::err!("Too many arguments"));
-                }
-
-                $f
-            };
-
-            #[allow(unused_variables, unused_mut)]
-            let check_args = |mut args: Args| -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) {
-                let start = args.next_start();
-                if let (Ok(_), Some(start)) = (args.next_as::<super::Remainder>(), start) {
-                    let err = $crate::text::err!("Too many arguments");
-                    return (Vec::new(), Some((start..args.param_range().end, err)))
-                }
-
-                (Vec::new(), None)
-            };
-
-            let callers: Vec<String> = $callers.into_callers().map(str::to_string).collect();
-            // SAFETY: This type will never actually be queried
-            let cmd: CmdFn = unsafe { RwData2::new_unsized::<()>(Rc::new(RefCell::new(cmd))) };
-
-            add_inner(callers, cmd, check_args)
-        }}
-    }
-
-    /// Adds a command that can mutate a widget of the given type,
-    /// along with its associated [`dyn Area`].
-    ///
-    /// This command will look for the [`Widget`] in the
-    /// following order:
-    ///
-    /// 1. Any widget directly attached to the current file.
-    /// 2. One other instance in the active window.
-    /// 3. Instances in other windows.
-    ///
-    /// Keep in mind that this command will always execute on the
-    /// first widget found.
-    ///
-    /// This search algorithm allows a more versatile configuration of
-    /// widgets, for example, one may have a [`PromptLine`] per
-    /// [`File`], or one singular [`PromptLine`] that acts upon
-    /// all files in the window, and both would respond correctly
-    /// to the `"set-prompt"` command.
-    ///
-    /// # Examples
-    ///
-    /// In this example, we'll create a simple `Timer` widget:
-    ///
-    /// ```rust
-    /// // Required feature for widgets.
-    /// # use std::{
-    /// #     sync::{atomic::{AtomicBool, Ordering}, Arc}, marker::PhantomData,
-    /// #     time::{Duration, Instant}
-    /// # };
-    /// # use duat_core::{
-    /// #     cmd, form::{self, Form}, text::{text, Text, AlignCenter},
-    /// #     ui::{Area, PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
-    /// # };
-    /// struct TimerCfg<U>(PhantomData<U>);
-    ///
-    /// impl<U: Ui> WidgetCfg<U> for TimerCfg<U> {
-    ///     type Widget = Timer;
-    ///
-    ///     fn build(self, _is_file: bool) -> (Timer, impl Fn() -> bool, PushSpecs) {
-    ///         let widget = Timer {
-    ///             text: text!(AlignCenter [Counter] 0 [] "ms"),
-    ///             instant: Instant::now(),
-    ///             // No need to use an `RwData`, since
-    ///             // `RwData::has_changed` is never called.
-    ///             running: Arc::new(AtomicBool::new(false)),
-    ///         };
-    ///
-    ///         let checker = {
-    ///             let p = duat_core::periodic_checker(Duration::from_millis(100));
-    ///             let running = widget.running.clone();
-    ///             move || p() && running.load(Ordering::Relaxed)
-    ///         };
-    ///
-    ///         let specs = PushSpecs::below().with_ver_len(1.0);
-    ///
-    ///         (widget, checker, specs)
-    ///     }
-    /// }
-    ///
-    /// struct Timer {
-    ///     text: Text,
-    ///     instant: Instant,
-    ///     running: Arc<AtomicBool>,
-    /// }
-    ///
-    /// impl<U: Ui> Widget<U> for Timer {
-    ///     type Cfg = TimerCfg<U>;
-    ///
-    ///     fn cfg() -> Self::Cfg {
-    ///         TimerCfg(PhantomData)
-    ///     }
-    ///     
-    ///     fn update(&mut self, _area: &U::Area) {
-    ///         if self.running.load(Ordering::Relaxed) {
-    ///             let duration = self.instant.elapsed();
-    ///             let time = format!("{:.3?}", duration);
-    ///             self.text = text!(AlignCenter [Counter] time [] "ms");
-    ///         }
-    ///     }
-    ///     // ...
-    /// #    fn text(&self) -> &Text {
-    /// #        &self.text
-    /// #    }
-    /// #    fn text_mut(&mut self) -> &mut Text {
-    /// #        &mut self.text
-    /// #    }
-    /// #     fn once() -> Result<(), Text> {
-    /// #         Ok(())
-    /// #     }
-    /// }
-    /// ```
-    ///
-    /// Next, we'll add three commands for this widget, "`play`",
-    /// "`pause`" and "`reset`". The best place to add them is in the
-    /// [`once`] function of [`Widget`]s
-    ///
-    /// ```rust
-    /// // Required feature for widgets.
-    /// # use std::{
-    /// #     sync::{atomic::{AtomicBool, Ordering}, Arc}, marker::PhantomData,
-    /// #     time::{Duration, Instant}
-    /// # };
-    /// # use duat_core::{
-    /// #     cmd, form::{self, Form}, text::{text, Text, AlignCenter},
-    /// #     ui::{Area, PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
-    /// # };
-    /// # struct TimerCfg<U>(PhantomData<U>);
-    /// # impl<U: Ui> WidgetCfg<U> for TimerCfg<U> {
-    /// #     type Widget = Timer;
-    /// #     fn build(self, _is_file: bool) -> (Timer, impl Fn() -> bool, PushSpecs) {
-    /// #         let widget = Timer {
-    /// #             text: text!(AlignCenter [Counter] 0 [] "ms"),
-    /// #             instant: Instant::now(),
-    /// #             running: Arc::new(AtomicBool::new(false)),
-    /// #         };
-    /// #         (widget, || false, PushSpecs::below().with_ver_len(1.0))
-    /// #     }
-    /// # }
-    /// # struct Timer {
-    /// #     text: Text,
-    /// #     instant: Instant,
-    /// #     running: Arc<AtomicBool>,
-    /// # }
-    /// impl<U: Ui> Widget<U> for Timer {
-    /// #    type Cfg = TimerCfg<U>;
-    /// #    fn cfg() -> Self::Cfg {
-    /// #        TimerCfg(PhantomData)
-    /// #    }
-    /// #    fn update(&mut self, _area: &U::Area) {
-    /// #    }
-    /// #    fn text(&self) -> &Text {
-    /// #        &self.text
-    /// #    }
-    /// #    fn text_mut(&mut self) -> &mut Text {
-    /// #        &mut self.text
-    /// #    }
-    ///     // ...
-    ///     fn once() -> Result<(), Text> {
-    ///         form::set_weak("Counter", Form::green());
-    ///
-    ///         cmd::add_for!("play", |timer: Timer, _: U::Area| {
-    ///             timer.running.store(true, Ordering::Relaxed);
-    ///             Ok(None)
-    ///         })?;
-    ///
-    ///         cmd::add_for!("pause", |timer: Timer, _: U::Area| {
-    ///             timer.running.store(false, Ordering::Relaxed);
-    ///             Ok(None)
-    ///         })?;
-    ///
-    ///         cmd::add_for!("reset", |timer: Timer, _: U::Area| {
-    ///             timer.instant = Instant::now();
-    ///             Ok(None)
-    ///         })
-    ///     }
-    /// }
-    /// ```
-    ///
-    /// I also added a [`Form`] in the [`once`] function. You should
-    /// use [`form::set_weak`] instead of [`form::set`], as to not
-    /// interfere with the user configuration.
-    ///
-    /// [`dyn Area`]: crate::ui::Area
-    /// [`File`]: crate::widgets::File
-    /// [`Session`]: crate::session::Session
-    /// [`PromptLine`]: crate::widgets::PromptLine
-    /// [`once`]: Widget::once
-    /// [`Form`]: crate::form::Form
-    /// [`form::set`]: crate::form::set
-    /// [`form::set_weak`]: crate::form::set_weak
-    pub macro add_for($callers:expr, $($mv:ident)? |
-        $widget:tt: $w_ty:ty, $area:tt: $a_ty:ty $(, $arg:tt: $t:ty)* $(,)?
-    | $f:block) {{
+    pub macro add(
+        $callers:expr, |$dk:ident $(: DataKey<'_>)? $(, $arg:tt: $t:ty)* $(,)?| $f:block
+    ) {{
         #[allow(unused_variables, unused_mut)]
-        let cmd = $($mv)? |
-            $widget: &mut $w_ty,
-            $area: &$a_ty,
-            mut args: Args
-        | -> CmdResult {
+        let cmd = move |dk: $crate::data::DataKey<'_>, mut args: Args| -> CmdResult {
             $(
-                let $arg: <$t as Parameter>::Returns = <$t as Parameter>::new(&mut args)?;
+                let $arg: <$t as Parameter>::Returns = <$t as Parameter>::new(&dk, &mut args)?;
             )*
 
             if let Ok(arg) = args.next() {
-                return Err($crate::text::err!("Too many arguments"));
+                return Err($crate::text::err!("Too many arguments").build());
             }
+
+            let mut $dk = dk;
 
             $f
         };
 
         #[allow(unused_variables, unused_mut)]
-        let check_args = |mut args: Args| -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>) {
+        let check_args = |dk: &$crate::data::DataKey<'_>, mut args: Args| {
             let mut ok_ranges = Vec::new();
 
             $(
                 let start = args.next_start();
-                match args.next_as::<$t>() {
+                match args.next_as::<$t>(dk) {
                     Ok(_) => if let Some(start) = start
                         .filter(|s| args.param_range().end > *s)
                     {
@@ -929,17 +698,19 @@ mod global {
             )*
 
             let start = args.next_start();
-            if let (Ok(_), Some(start)) = (args.next_as::<super::Remainder>(), start) {
-                let err = $crate::text::err!("Too many arguments");
+            if let (Ok(_), Some(start)) = (args.next_as::<super::Remainder>(dk), start) {
+                let err = $crate::text::err!("Too many arguments").build();
                 return (ok_ranges, Some((start..args.param_range().end, err)))
             }
 
             (ok_ranges, None)
         };
 
-        let callers: Vec<String> = callers.into_callers().map(str::to_string).collect();
+        let callers: Vec<String> = $callers.into_callers().map(str::to_string).collect();
+        // SAFETY: This type will never actually be queried
+        let cmd: CmdFn = unsafe { RwData::new_unsized::<()>(Rc::new(RefCell::new(cmd))) };
 
-        add_for_inner::<$w_ty, <$a_ty as $crate::ui::RawArea>::Ui>(callers, cmd, check_args)
+        add_inner(callers, cmd, check_args)
     }}
 
     /// Canonical way to quit Duat.
@@ -1045,7 +816,12 @@ mod global {
     /// existing command.
     pub fn alias(alias: impl ToString, command: impl ToString) -> CmdResult {
         context::assert_is_on_main_thread();
-        COMMANDS.with(Commands::clone).alias(alias, command)
+        // SAFETY: There is no way to obtain an external RwData of Commands,
+        // so you can modify it from anywhere in the main thread.
+        let mut dk = unsafe { DataKey::new() };
+        COMMANDS
+            .with(Commands::clone)
+            .alias(&mut dk, alias, command)
     }
 
     /// Runs a full command, with a caller and [`Args`].
@@ -1124,35 +900,21 @@ mod global {
     ///
     /// [`cmd::add`]: add
     #[doc(hidden)]
-    pub fn add_inner(
-        callers: Vec<String>,
-        cmd: CmdFn,
-        check_args: CheckerFn,
-    ) -> Result<(), Builder> {
+    pub fn add_inner(callers: Vec<String>, cmd: CmdFn, check_args: CheckerFn) -> Result<(), Text> {
         context::assert_is_on_main_thread();
-
-        COMMANDS.with(|c| c.add(callers, cmd, check_args))
-    }
-
-    /// Don't call this function, use [`cmd::add_for`] instead
-    ///
-    /// [`cmd::add_for`]: add_for
-    #[doc(hidden)]
-    pub fn add_for_inner<W: Widget<U>, U: Ui>(
-        callers: Vec<String>,
-        cmd: impl FnMut(&mut W, &U::Area, Args) -> CmdResult + 'static,
-        check_args: CheckerFn,
-    ) -> Result<(), Text> {
-        context::assert_is_on_main_thread();
-        COMMANDS.with(|c| c.add_for(callers, cmd, check_args))
+        // SAFETY: There is no way to obtain an external RwData of Commands,
+        // so you can modify it from anywhere in the main thread.
+        let mut dk = unsafe { DataKey::new() };
+        COMMANDS.with(|c| c.add(&mut dk, callers, cmd, check_args))
     }
 
     /// Check if the arguments for a given `caller` are correct
-    pub fn check_args(
-        caller: &str,
-    ) -> Option<(Vec<Range<usize>>, Option<(Range<usize>, Builder)>)> {
+    pub fn check_args(caller: &str) -> Option<(Vec<Range<usize>>, Option<(Range<usize>, Text)>)> {
         context::assert_is_on_main_thread();
-        COMMANDS.with(Commands::clone).check_args(caller)
+        // SAFETY: There is no way to obtain an external RwData of Commands,
+        // so you can modify it from anywhere in the main thread.
+        let dk = unsafe { DataKey::new() };
+        COMMANDS.with(Commands::clone).check_args(&dk, caller)
     }
 }
 
@@ -1166,26 +928,36 @@ mod global {
 /// [widget]: crate::widgets::ActiveWidget
 /// [windows]: crate::ui::Window
 #[derive(Clone)]
-struct Commands(RwData2<InnerCommands>);
+struct Commands(RwData<InnerCommands>);
 
 impl Commands {
     /// Returns a new instance of [`Commands`].
     #[doc(hidden)]
     fn new() -> Self {
-        Self(RwData2::new(InnerCommands {
+        Self(RwData::new(InnerCommands {
             list: Vec::new(),
             aliases: HashMap::new(),
         }))
     }
 
     /// Aliases a command to a specific word
-    fn alias(&self, alias: impl ToString, command: impl ToString) -> CmdResult {
-        self.0
-            .write(|inner| inner.try_alias(alias.to_string(), command.to_string()))
+    fn alias(
+        &self,
+        dk: &mut DataKey<'_>,
+        alias: impl ToString,
+        command: impl ToString,
+    ) -> CmdResult {
+        self.0.write(dk, |inner| {
+            inner.try_alias(alias.to_string(), command.to_string())
+        })
     }
 
     /// Runs a command from a call
     async fn run(&self, call: impl Display) -> CmdResult {
+        // SAFETY: Since this is an async fn, it must be .awaited in order to
+        // do anything, which means it cannot be executed inside of a
+        let dk = unsafe { DataKey::new() };
+
         let call = call.to_string();
         let mut args = call.split_whitespace();
         let caller = args.next().ok_or(err!("The command is empty"))?.to_string();
@@ -1210,81 +982,89 @@ impl Commands {
 
         let args = get_args(&call);
 
-        if let (_, Some((_, err))) = (command.check_args)(args.clone()) {
+        if let (_, Some((_, err))) = (command.check_args)(&dk, args.clone()) {
             return Err(err);
         }
 
         let silent = call.len() > call.trim_start().len();
-        command.cmd.acquire_mut()(args).map(|ok| ok.filter(|_| !silent))
+        command.cmd.acquire_mut()(dk, args).map(|ok| ok.filter(|_| !silent))
     }
 
     /// Adds a command to the list of commands
-    fn add(&self, callers: Vec<String>, cmd: CmdFn, check_args: CheckerFn) -> Result<(), Builder> {
-        let command = Command::new(callers, cmd, check_args);
-        self.0.write(|c| c.try_add(command))
-    }
-
-    /// Adds a command for a widget of type `W`
-    fn add_for<W: Widget<U>, U: Ui>(
+    fn add(
         &self,
+        dk: &mut DataKey<'_>,
         callers: Vec<String>,
-        mut cmd: impl FnMut(&mut W, &U::Area, Args) -> CmdResult + 'static,
+        cmd: CmdFn,
         check_args: CheckerFn,
     ) -> Result<(), Text> {
-        let f = move |args: Args| {
-            let mut cur_file = context::inner_cur_file::<U>().clone();
-            if let Some((widget, area)) = cur_file.get_related_widget::<W>() {
-                cmd(&mut *widget.acquire_mut(), &area, args)
-            } else {
-                let windows = context::windows::<U>().borrow();
-                let w = context::cur_window();
-
-                if windows.is_empty() {
-                    return Err(err!(
-                        "Widget command executed before the [a]Ui[] was initiated, try executing \
-                         after [a]OnUiStart[]"
-                    ));
-                }
-
-                let node = match widget_entry::<W, U>(&windows, w) {
-                    Ok((.., node)) => node,
-                    Err(err) => return Err(err),
-                };
-                let (w, a, _) = node.parts();
-                let widget = w.try_downcast().unwrap();
-                let area = a.clone();
-
-                cmd(&mut *widget.acquire_mut(), &area, args)
-            }
-        };
-
-        let command = Command::new(
-            callers,
-            // SAFETY: This type will never actually be queried
-            unsafe { RwData2::new_unsized::<()>(Rc::new(RefCell::new(f))) },
-            check_args,
-        );
-        self.0.write(|inner| inner.try_add(command))
+        let cmd = Command::new(callers, cmd, check_args);
+        self.0.write(dk, |c| c.try_add(cmd))
     }
+
+    // fn add_for<W: Widget<U>, U: Ui>(
+    //     &self,
+    //     callers: Vec<String>,
+    //     mut cmd: impl FnMut(&mut W, &U::Area, Args) -> CmdResult +
+    // 'static,     check_args: CheckerFn,
+    // ) -> Result<(), Text> {
+    //     let f = move |args: Args| {
+    //         let mut cur_file = context::inner_cur_file::<U>().clone();
+    //         if let Some((widget, area)) =
+    // cur_file.get_related_widget::<W>() {             cmd(&mut
+    // *widget.acquire_mut(), &area, args)         } else {
+    //             let windows = context::windows::<U>().borrow();
+    //             let w = context::cur_window();
+
+    //             if windows.is_empty() {
+    //                 return Err(err!(
+    //                     "Widget command executed before the [a]Ui[] was
+    // initiated, try executing \                      after
+    // [a]OnUiStart[]"                 )
+    //                 .build());
+    //             }
+
+    //             let node = match widget_entry::<W, U>(&windows, w) {
+    //                 Ok((.., node)) => node,
+    //                 Err(err) => return Err(err),
+    //             };
+    //             let (w, a, _) = node.parts();
+    //             let widget = w.try_downcast().unwrap();
+    //             let area = a.clone();
+
+    //             cmd(&mut *widget.acquire_mut(), &area, args)
+    //         }
+    //     };
+
+    //     let command = Command::new(
+    //         callers,
+    //         // SAFETY: This type will never actually be queried
+    //         unsafe {
+    // RwData::new_unsized::<()>(Rc::new(RefCell::new(f))) },
+    //         check_args,
+    //     );
+    //     self.0.write(|inner| inner.try_add(command))
+    // }
 
     /// Gets the parameter checker for a command, if it exists
     fn check_args(
         &self,
+        dk: &DataKey<'_>,
         call: &str,
-    ) -> Option<(Vec<Range<usize>>, Option<(Range<usize>, Builder)>)> {
+    ) -> Option<(Vec<Range<usize>>, Option<(Range<usize>, Text)>)> {
         let mut args = call.split_whitespace();
         let caller = args.next()?.to_string();
 
-        self.0.read(|inner| {
+        self.0.read(dk, |inner| {
             if let Some((command, _)) = inner.aliases.get(&caller) {
-                Some((command.check_args)(get_args(call)))
+                Some((command.check_args)(dk, get_args(call)))
             } else {
                 let command = inner
                     .list
                     .iter()
                     .find(|cmd| cmd.callers().contains(&caller))?;
 
-                Some((command.check_args)(get_args(call)))
+                Some((command.check_args)(dk, get_args(call)))
             }
         })
     }
@@ -1295,7 +1075,7 @@ impl Commands {
 ///
 /// This error _must_ include an error message in case of failure. It
 /// may also include a success message, but that is not required.
-pub type CmdResult = Result<Option<Builder>, Builder>;
+pub type CmdResult = Result<Option<Text>, Text>;
 
 /// A function that can be called by name.
 #[derive(Clone)]
@@ -1330,13 +1110,13 @@ struct InnerCommands {
 
 impl InnerCommands {
     /// Tries to add the given command to the list.
-    fn try_add(&mut self, command: Command) -> Result<(), Builder> {
+    fn try_add(&mut self, command: Command) -> Result<(), Text> {
         let mut new_callers = command.callers().iter();
 
         let commands = self.list.iter();
         for caller in commands.flat_map(|cmd| cmd.callers().iter()) {
             if new_callers.any(|new_caller| new_caller == caller) {
-                return Err(err!("The caller [a]{caller}[] already exists"));
+                return Err(err!("The caller [a]{caller}[] already exists").build());
             }
         }
 
@@ -1347,9 +1127,9 @@ impl InnerCommands {
 
     /// Tries to alias a full command (caller, flags, and
     /// arguments) to an alias.
-    fn try_alias(&mut self, alias: String, call: String) -> Result<Option<Builder>, Builder> {
+    fn try_alias(&mut self, alias: String, call: String) -> Result<Option<Text>, Text> {
         if alias.split_whitespace().count() != 1 {
-            return Err(err!("Alias [a]{alias}[] is not a single word"));
+            return Err(err!("Alias [a]{alias}[] is not a single word").build());
         }
 
         let caller = call
@@ -1364,12 +1144,12 @@ impl InnerCommands {
             let entry = (command.clone(), call.clone());
             Ok(Some(match self.aliases.insert(alias.clone(), entry) {
                 Some((_, prev_call)) => {
-                    ok!("Aliased [a]{alias}[] from [a]{prev_call}[] to [a]{call}")
+                    ok!("Aliased [a]{alias}[] from [a]{prev_call}[] to [a]{call}").build()
                 }
-                None => ok!("Aliased [a]{alias}[] to [a]{call}"),
+                None => ok!("Aliased [a]{alias}[] to [a]{call}").build(),
             }))
         } else {
-            Err(err!("The caller [a]{caller}[] was not found"))
+            Err(err!("The caller [a]{caller}[] was not found").build())
         }
     }
 }
@@ -1396,5 +1176,5 @@ impl<'a, const N: usize> Caller<'a> for [&'a str; N] {
     }
 }
 
-type CmdFn = RwData2<dyn FnMut(Args) -> CmdResult + 'static>;
-type CheckerFn = fn(Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Builder)>);
+type CmdFn = RwData<dyn FnMut(DataKey, Args) -> CmdResult + 'static>;
+type CheckerFn = fn(&DataKey, Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>);

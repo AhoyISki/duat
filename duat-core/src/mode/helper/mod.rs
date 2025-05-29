@@ -12,7 +12,7 @@ use lender::{Lender, Lending};
 pub use self::cursors::{Cursor, Cursors, VPoint};
 use crate::{
     cfg::PrintCfg,
-    text::{Change, Point, Reader, RegexPattern, Searcher, Strs, Text, TextRange},
+    text::{Change, Point, RegexPattern, Searcher, Strs, Text, TextRange},
     ui::RawArea,
     widgets::{File, Widget},
 };
@@ -46,7 +46,8 @@ mod cursors;
 ///
 /// - The [key].
 /// - A [`&mut Self::Widget`].
-/// - An [`RawArea`], which you can resize and modify it in other ways.
+/// - An [`RawArea`], which you can resize and modify it in other
+///   ways.
 /// - The current [`Cursors`] of the widget, these should be modified
 ///   by the [`EditHelper`].
 ///
@@ -147,7 +148,7 @@ impl<'a, W: Widget<A::Ui>, A: RawArea> EditHelper<'a, W, A, ()> {
     /// Returns a new instance of [`EditHelper`]
     pub fn new(widget: &'a mut W, area: &'a A) -> Self {
         widget.text_mut().enable_cursors();
-        widget.cursors_mut().unwrap().populate();
+        widget.text_mut().cursors_mut().unwrap().populate();
         EditHelper { widget, area, inc_searcher: () }
     }
 }
@@ -171,7 +172,7 @@ impl<W: Widget<A::Ui>, A: RawArea, S> EditHelper<'_, W, A, S> {
     /// [`edit_main`]: Self::edit_main
     /// [`edit_iter`]: Self::edit_iter
     pub fn edit_nth(&mut self, n: usize) -> Editor<W, A, S> {
-        let cursors = self.widget.cursors_mut().unwrap();
+        let cursors = self.widget.text_mut().cursors_mut().unwrap();
         cursors.populate();
         let Some((cursor, was_main)) = cursors.remove(n) else {
             panic!("Cursor index {n} out of bounds");
@@ -642,11 +643,15 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Editor<'a, W, A, S> {
     pub fn destroy(mut self) {
         // If it is 1, it is actually 2, because this Cursor is also part of
         // that list.
-        if !self.widget.cursors().unwrap().is_empty() {
+        if !self.widget.text().cursors().unwrap().is_empty() {
             // Rc<Cell> needs to be manually dropped to reduce its counter.
             self.next_i.take();
             if self.was_main {
-                self.widget.cursors_mut().unwrap().rotate_main(-1);
+                self.widget
+                    .text_mut()
+                    .cursors_mut()
+                    .unwrap()
+                    .rotate_main(-1);
             }
             // The destructor is what inserts the Cursor back into the list, so
             // don't run it.
@@ -842,13 +847,6 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Editor<'a, W, A, S> {
         self.widget.text().indent(p, self.area, self.cfg())
     }
 
-    /// Gets a [`Reader`]'s [public facing API], if it exists
-    ///
-    /// [public facing API]: Reader::PublicReader
-    pub fn get_reader<R: Reader>(&mut self) -> Option<R::PublicReader<'_>> {
-        self.widget.text_mut().get_reader::<R>()
-    }
-
     ////////// Cursor queries
 
     /// Returns the `caret`
@@ -949,7 +947,7 @@ unsafe impl<#[may_dangle] 'a, W: Widget<A::Ui> + 'a, A: RawArea + 'a, S: 'a> Dro
     for Editor<'a, W, A, S>
 {
     fn drop(&mut self) {
-        let Some(cursors) = self.widget.cursors_mut() else {
+        let Some(cursors) = self.widget.text_mut().cursors_mut() else {
             return;
         };
         let cursor = std::mem::take(&mut self.cursor);
@@ -979,7 +977,12 @@ impl<'a, 'lend, W: Widget<A::Ui>, A: RawArea, S> Lending<'lend> for EditIter<'a,
 impl<'a, W: Widget<A::Ui>, A: RawArea, S> Lender for EditIter<'a, W, A, S> {
     fn next<'lend>(&'lend mut self) -> Option<<Self as Lending<'lend>>::Lend> {
         let current_i = self.next_i.get();
-        let (cursor, was_main) = self.widget.cursors_mut().unwrap().remove(current_i)?;
+        let (cursor, was_main) = self
+            .widget
+            .text_mut()
+            .cursors_mut()
+            .unwrap()
+            .remove(current_i)?;
 
         Some(Editor::new(
             cursor,

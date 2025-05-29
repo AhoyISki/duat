@@ -14,9 +14,9 @@ pub use self::{
 use crate::{
     cache::load_cache,
     cfg::PrintCfg,
-    data::RwData2,
+    data::{DataKey, RwData},
     form::Painter,
-    text::{FwdIter, Item, Point, RevIter, Text, TwoPoints},
+    text::{Builder, FwdIter, Item, Point, RevIter, Text, TwoPoints},
     widgets::{File, Node, Widget},
 };
 
@@ -342,21 +342,24 @@ pub struct Window<U: Ui> {
 impl<U: Ui> Window<U> {
     /// Returns a new instance of [`Window`]
     pub(crate) fn new<W: Widget<U>>(
+        dk: &mut DataKey<'_>,
         ms: &'static U::MetaStatics,
         widget: W,
         layout: Box<dyn Layout<U>>,
     ) -> (Self, Node<U>) {
         let widget =
-            unsafe { RwData2::<dyn Widget<U>>::new_unsized::<W>(Rc::new(RefCell::new(widget))) };
+            unsafe { RwData::<dyn Widget<U>>::new_unsized::<W>(Rc::new(RefCell::new(widget))) };
 
         let cache = widget
-            .read_as(|f: &File| load_cache::<<U::Area as RawArea>::Cache>(f.path()))
+            .read_as(&*dk, |f: &File| {
+                load_cache::<<U::Area as RawArea>::Cache>(f.path())
+            })
             .flatten()
             .unwrap_or_default();
 
         let area = U::new_root(ms, cache);
 
-        let node = Node::new::<W>(widget, area.clone());
+        let node = Node::new::<W>(&mut *dk, widget, area.clone());
 
         let window = Self {
             nodes: vec![node.clone()],
@@ -379,6 +382,7 @@ impl<U: Ui> Window<U> {
     /// Pushes a [`Widget`] onto an existing one
     pub(crate) fn push<W: Widget<U>>(
         &mut self,
+        dk: &mut DataKey<'_>,
         widget: W,
         area: &U::Area,
         specs: PushSpecs,
@@ -386,16 +390,18 @@ impl<U: Ui> Window<U> {
         on_files: bool,
     ) -> (Node<U>, Option<U::Area>) {
         let widget =
-            unsafe { RwData2::<dyn Widget<U>>::new_unsized::<W>(Rc::new(RefCell::new(widget))) };
+            unsafe { RwData::<dyn Widget<U>>::new_unsized::<W>(Rc::new(RefCell::new(widget))) };
 
         let cache = widget
-            .read_as(|f: &File| load_cache::<<U::Area as RawArea>::Cache>(f.path()))
+            .read_as(&*dk, |f: &File| {
+                load_cache::<<U::Area as RawArea>::Cache>(f.path())
+            })
             .flatten()
             .unwrap_or_default();
 
         let (child, parent) = MutArea(area).bisect(specs, do_cluster, on_files, cache);
 
-        self.nodes.push(Node::new::<W>(widget, child));
+        self.nodes.push(Node::new::<W>(&mut *dk, widget, child));
         (self.nodes.last().unwrap().clone(), parent)
     }
 
@@ -405,12 +411,16 @@ impl<U: Ui> Window<U> {
     /// This is an area, usually in the center, that contains all
     /// [`File`]s, and their associated [`Widget`]s,
     /// with others being at the perifery of this area.
-    pub(crate) fn push_file(&mut self, mut file: File) -> Result<(Node<U>, Option<U::Area>), Text> {
-        let window_files = window_files(&self.nodes);
+    pub(crate) fn push_file(
+        &mut self,
+        dk: &mut DataKey<'_>,
+        mut file: File,
+    ) -> Result<(Node<U>, Option<U::Area>), Text> {
+        let window_files = window_files(&*dk, &self.nodes);
         file.layout_order = window_files.len();
         let (id, specs) = self.layout.new_file(&file, window_files)?;
 
-        let (child, parent) = self.push(file, &id.0, specs, false, true);
+        let (child, parent) = self.push(dk, file, &id.0, specs, false, true);
 
         if let Some(parent) = &parent
             && id.0 == self.files_area
@@ -422,12 +432,12 @@ impl<U: Ui> Window<U> {
     }
 
     /// Removes all [`Node`]s whose [`RawArea`]s where deleted
-    pub(crate) fn remove_file(&mut self, name: &str) {
+    pub(crate) fn remove_file(&mut self, mut dk: &DataKey, name: &str) {
         let Some(node) = self
             .nodes
             .extract_if(.., |node| {
                 node.as_file()
-                    .is_some_and(|(f, ..)| f.read(File::name) == name)
+                    .is_some_and(|(f, ..)| f.read(dk, File::name) == name)
             })
             .next()
         else {
@@ -440,7 +450,7 @@ impl<U: Ui> Window<U> {
         if let Some(parent) = MutArea(node.area()).delete()
             && parent == self.files_area
         {
-            let files = self.file_nodes();
+            let files = self.file_nodes(dk);
             let (only_file, _) = files.first().unwrap();
             self.files_area = only_file
                 .area()
@@ -449,7 +459,7 @@ impl<U: Ui> Window<U> {
         }
 
         if let Some(related) = node.related_widgets() {
-            related.read(|related| {
+            related.read(dk, |related| {
                 for node in self.nodes.extract_if(.., |node| related.contains(node)) {
                     MutArea(node.area()).delete();
                 }
@@ -458,39 +468,53 @@ impl<U: Ui> Window<U> {
     }
 
     /// Takes all [`Node`]s related to a given [`Node`]
-    pub(crate) fn take_file_and_related_nodes(&mut self, node: &Node<U>) -> Vec<Node<U>> {
+    pub(crate) fn take_file_and_related_nodes(
+        &mut self,
+        dk: &mut DataKey<'_>,
+        node: &Node<U>,
+    ) -> Vec<Node<U>> {
         if let Some(related) = node.related_widgets() {
-            let layout_ordering = node.widget().read_as(|f: &File| f.layout_order).unwrap();
+            let lo = node
+                .widget()
+                .read_as(&*dk, |f: &File| f.layout_order)
+                .unwrap();
 
-            related.read(|related| {
+            let nodes = related.read(&*dk, |related| {
                 let nodes = self
                     .nodes
                     .extract_if(.., |n| related.contains(n) || n == node)
                     .collect();
 
-                for node in &self.nodes {
-                    node.widget().write_as(|f: &mut File| {
-                        if f.layout_order > layout_ordering {
-                            f.layout_order -= 1;
-                        }
-                    });
-                }
-
                 nodes
-            })
+            });
+
+            for node in &self.nodes {
+                node.widget().write_as(&mut *dk, |f: &mut File| {
+                    if f.layout_order > lo {
+                        f.layout_order -= 1;
+                    }
+                });
+            }
+
+            nodes
         } else {
             Vec::new()
         }
     }
 
-    pub(crate) fn insert_file_nodes(&mut self, layout_ordering: usize, nodes: Vec<Node<U>>) {
+    pub(crate) fn insert_file_nodes<'a>(
+        &mut self,
+        dk: &mut DataKey<'a>,
+        layout_ordering: usize,
+        nodes: Vec<Node<U>>,
+    ) {
         if let Some(i) = self.nodes.iter().position(|node| {
             node.widget()
-                .read_as(|f: &File| f.layout_order >= layout_ordering)
+                .read_as(&*dk, |f: &File| f.layout_order >= layout_ordering)
                 == Some(true)
         }) {
             for node in self.nodes[i..].iter() {
-                node.widget().write_as(|f: &mut File| {
+                node.widget().write_as(&mut *dk, |f: &mut File| {
                     f.layout_order += 1;
                 });
             }
@@ -508,22 +532,22 @@ impl<U: Ui> Window<U> {
     /// and their respective [`Widget`] indices
     ///
     /// [`Widget`]: crate::widgets::Widget
-    pub fn file_names(&self) -> Vec<String> {
-        window_files(&self.nodes)
+    pub fn file_names(&self, dk: &DataKey<'_>) -> Vec<String> {
+        window_files(dk, &self.nodes)
             .into_iter()
-            .map(|f| f.0.widget().read_as(|f: &File| f.name()).unwrap())
+            .map(|f| f.0.widget().read_as(dk, |f: &File| f.name()).unwrap())
             .collect()
     }
 
-    pub fn file_paths(&self) -> Vec<String> {
-        window_files(&self.nodes)
+    pub fn file_paths(&self, dk: &DataKey<'_>) -> Vec<String> {
+        window_files(dk, &self.nodes)
             .into_iter()
-            .map(|f| f.0.widget().read_as(|f: &File| f.name()).unwrap())
+            .map(|f| f.0.widget().read_as(dk, |f: &File| f.name()).unwrap())
             .collect()
     }
 
-    pub fn file_nodes(&self) -> WindowFiles<U> {
-        window_files(&self.nodes)
+    pub fn file_nodes(&self, dk: &DataKey<'_>) -> WindowFiles<U> {
+        window_files(dk, &self.nodes)
     }
 
     pub fn len_widgets(&self) -> usize {
@@ -577,7 +601,7 @@ pub enum DuatEvent {
     QueuedFunction(Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = ()>>> + Send>),
     Resize,
     FormChange,
-    MetaMsg(Text),
+    MetaMsg(Builder),
     OpenFile(String),
     CloseFile(String),
     SwapFiles(String, String),
@@ -644,10 +668,10 @@ impl<U: Ui> RoWindow<'_, U> {
     /// reference, as to not do unnecessary cloning of the widget's
     /// inner [`RwData<W>`], and because [`Iterator`]s cannot return
     /// references to themselves.
-    pub fn fold_files<B>(&self, init: B, mut f: impl FnMut(B, &File) -> B) -> B {
+    pub fn fold_files<B>(&self, dk: &DataKey, init: B, mut f: impl FnMut(B, &File) -> B) -> B {
         self.0.nodes.iter().fold(init, |accum, node| {
             if node.data_is::<File>() {
-                node.read_as(|file: &File| f(accum, file)).unwrap()
+                node.read_as(dk, |file: &File| f(accum, file)).unwrap()
             } else {
                 accum
             }

@@ -79,13 +79,11 @@ mod bytes;
 mod history;
 mod iter;
 mod ops;
-mod reader;
 mod records;
 mod search;
 mod tags;
 
 use std::{
-    ops::{Range, RangeBounds},
     path::Path,
     rc::Rc,
     sync::{
@@ -94,25 +92,19 @@ use std::{
     },
 };
 
-use history::Moment;
-
 pub(crate) use self::history::History;
+use self::tags::{FwdTags, GhostId, RevTags, Tags};
 pub use self::{
     builder::{
-        AlignCenter, AlignLeft, AlignRight, Builder, BuilderPart, Ghost, Spacer, add_text, err,
-        hint, ok, text,
+        AlignCenter, AlignLeft, AlignRight, Builder, BuilderPart, Ghost, Spacer, err, hint, ok,
+        text,
     },
     bytes::{Buffers, Bytes, Strs},
-    history::Change,
+    history::{Change, Moment},
     iter::{FwdIter, Item, Part, RevIter},
     ops::{Point, TextRange, TwoPoints, utf8_char_width},
-    reader::{MutTags, Reader, ReaderCfg},
     search::{Matcheable, RegexPattern, Searcher},
-    tags::{Key, Keys, RawTag, RawTagsFn, Tag, ToggleId},
-};
-use self::{
-    reader::Readers,
-    tags::{FwdTags, GhostId, RevTags, Tags},
+    tags::{Key, Keys, MutTags, RawTag, RawTagsFn, Tag, ToggleId},
 };
 use crate::{
     cache,
@@ -131,7 +123,6 @@ struct InnerText {
     cursors: Option<Cursors>,
     // Specific to Files
     history: Option<History>,
-    readers: Readers,
     has_changed: bool,
     has_unsaved_changes: AtomicBool,
 }
@@ -199,7 +190,6 @@ impl Text {
             tags,
             cursors,
             history: with_history.then(History::new),
-            readers: Readers::default(),
             has_changed: false,
             has_unsaved_changes: AtomicBool::new(false),
         }))
@@ -212,7 +202,6 @@ impl Text {
             tags: Tags::new(0),
             cursors: None,
             history: None,
-            readers: Readers::default(),
             has_changed: false,
             has_unsaved_changes: AtomicBool::new(false),
         }))
@@ -230,20 +219,6 @@ impl Text {
     /// ```
     pub fn builder() -> Builder {
         Builder::new()
-    }
-
-    /// Transforms this [`Text`] into a [`Builder`]
-    ///
-    /// There are not many situations in which you'd want to do this,
-    /// to be honest, the primary one would be sending a [`Text`]
-    /// across threads, since [`Builder`] implements [`Send`] and
-    /// [`Sync`], while [`Text`] does not.
-    ///
-    /// Keep in mind, however, that this will *DISABLE* the history
-    /// and *REMOVE* all [`Reader`]s, since those are not [`Send`] +
-    /// [`Sync`], and you _probably_ won't need them anyways.
-    pub fn into_builder(self) -> Builder {
-        Builder::from_text(self)
     }
 
     /// Takes the [`Bytes`] from this [`Text`], consuming it
@@ -350,6 +325,10 @@ impl Text {
         &mut self.0.bytes
     }
 
+    pub fn bytes_and_tags(&mut self) -> (&mut Bytes, MutTags) {
+        (&mut self.0.bytes, MutTags(&mut self.0.tags))
+    }
+
     /// Gets the indentation level on the current line
     pub fn indent(&self, p: Point, area: &impl RawArea, cfg: PrintCfg) -> usize {
         let [start, _] = self.points_of_line(p.line());
@@ -359,23 +338,6 @@ impl Text {
             .find(|(_, char)| !char.is_whitespace() || *char == '\n')
             .map(|(caret, _)| caret.x as usize)
             .unwrap_or(0)
-    }
-
-    /////////// Reader functions
-
-    /// Adds a [`Reader`] to this [`Text`]
-    ///
-    /// A [`Reader`] will be informed of every change done to this
-    /// [`Text`], and can add or remove [`Tag`]s accordingly. Examples
-    /// of [`Reader`]s are the [tree-sitter] parser, and regex
-    /// parsers. Those can be used for, among other things, syntax
-    /// hightlighting.
-    pub fn add_reader(&mut self, reader_cfg: impl ReaderCfg) -> Result<(), Text> {
-        self.0.readers.add(&mut self.0.bytes, reader_cfg)
-    }
-
-    pub fn get_reader<R: Reader>(&mut self) -> Option<R::PublicReader<'_>> {
-        self.0.readers.get_mut::<R>(&mut self.0.bytes)
     }
 
     ////////// Point querying functions
@@ -571,38 +533,20 @@ impl Text {
             .map(|cs| cs.apply_change(guess_i, change))
     }
 
-    /// This is used by [`Area`]s in order to update visible text
+    /// Updates bounds, so that [`Tag`] ranges can visibly cross the
+    /// screen
     ///
-    /// In order to not update too much, an [`Area`] will request that
-    /// a region of the [`Text`] (usually roughly what is shown on
-    /// screen) to be updated, rather than the whole [`Text`].
+    /// This is used in order to allow for very long [`Tag`] ranges
+    /// (say, a [`Form`] being applied on the range `3..999`) to show
+    /// up properly without having to lookback a bazillion [`Tag`]s
+    /// which could be in the way.
     ///
-    /// This should be done within the [`Area::print`] and
-    /// [`Area::print_with`] functions.
-    pub fn update_range(
-        &mut self,
-        start: impl FnOnce(&Text) -> Point,
-        end: impl FnOnce(&Text) -> Point,
-    ) {
-        if self.0.has_changed || self.0.readers.needs_update() {
-            let within = start(self).byte()..(end(self).byte() + 1);
-            if let Some(history) = self.0.history.as_mut()
-                && let Some(moment) = history.unprocessed_changes()
-            {
-                self.0.readers.process_changes(&mut self.0.bytes, moment);
-            }
-
-            self.0
-                .readers
-                .update_range(&mut self.0.bytes, &mut self.0.tags, within.clone());
-
-            self.0.has_changed = false;
-        }
-
+    /// [`Form`]: crate::form::Form
+    pub fn update_bounds(&mut self) {
         self.0.tags.update_bounds();
     }
 
-    ////////// History manipulation functions
+    ////////// History functions
 
     /// Undoes the last moment, if there was one
     pub fn undo(&mut self) {
@@ -632,7 +576,25 @@ impl Text {
         self.0.history = history;
     }
 
-    pub fn apply_and_process_changes(&mut self, moment: Moment) {
+    /// Finishes the current moment and adds a new one to the history
+    pub fn new_moment(&mut self) {
+        if let Some(h) = self.0.history.as_mut() {
+            h.new_moment()
+        }
+    }
+
+    /// Returns a [`Moment`] containing all [`Change`]s since the last
+    /// call to this function
+    ///
+    /// This is useful if you want to figure out what has changed
+    /// after a certain period of time has passed.
+    ///
+    /// It also includes things like
+    pub fn last_unprocessed_moment(&mut self) -> Option<Moment> {
+        self.0.history.as_mut().and_then(|h| h.unprocessed_moment())
+    }
+
+    fn apply_and_process_changes(&mut self, moment: Moment) {
         if let Some(cursors) = self.cursors_mut() {
             cursors.clear();
         }
@@ -650,15 +612,6 @@ impl Text {
                 let cursor = Cursor::new(added_end, (start != added_end).then_some(start));
                 cursors.insert(i, cursor, i == moment.len() - 1);
             }
-        }
-
-        self.0.readers.process_changes(&mut self.0.bytes, moment);
-    }
-
-    /// Finishes the current moment and adds a new one to the history
-    pub fn new_moment(&mut self) {
-        if let Some(h) = self.0.history.as_mut() {
-            h.new_moment()
         }
     }
 
@@ -701,7 +654,7 @@ impl Text {
     ////////// Tag addition/deletion functions
 
     /// Inserts a [`Tag`] at the given position
-    pub fn insert_tag(&mut self, key: Key, tag: Tag<impl RangeBounds<usize>, impl RawTagsFn>) {
+    pub fn insert_tag(&mut self, key: Key, tag: Tag<impl RawTagsFn>) {
         self.0.tags.insert(key, tag);
     }
 
@@ -956,29 +909,6 @@ impl Text {
     }
 }
 
-/// Splits a range within a region
-///
-/// The first return is the part of `within` that must be updated.
-/// The second return is what is left of `range`.
-///
-/// If `range` is fully inside `within`, remove `range`;
-/// If `within` is fully inside `range`, split `range` in 2;
-/// If `within` intersects `range` in one side, cut it out;
-fn split_range_within(
-    range: Range<usize>,
-    within: Range<usize>,
-) -> (Option<Range<usize>>, [Option<Range<usize>>; 2]) {
-    if range.start >= within.end || within.start >= range.end {
-        (None, [Some(range), None])
-    } else {
-        let start_range = (within.start > range.start).then_some(range.start..within.start);
-        let end_range = (range.end > within.end).then_some(within.end..range.end);
-        let split_ranges = [start_range, end_range];
-        let range_to_check = range.start.max(within.start)..(range.end.min(within.end));
-        (Some(range_to_check), split_ranges)
-    }
-}
-
 impl Default for Text {
     fn default() -> Self {
         Self::new()
@@ -1001,7 +931,6 @@ impl Clone for Text {
             tags: self.0.tags.clone(),
             cursors: self.0.cursors.clone(),
             history: self.0.history.clone(),
-            readers: Readers::default(),
             has_changed: self.0.has_changed,
             has_unsaved_changes: AtomicBool::new(false),
         }))
@@ -1010,13 +939,13 @@ impl Clone for Text {
 
 impl From<std::io::Error> for Text {
     fn from(value: std::io::Error) -> Self {
-        err!("{}", value.kind().to_string())
+        err!("{}", value.kind().to_string()).build()
     }
 }
 
 impl From<Box<dyn std::error::Error>> for Text {
     fn from(value: Box<dyn std::error::Error>) -> Self {
-        err!("{}", value.to_string())
+        err!("{}", value.to_string()).build()
     }
 }
 

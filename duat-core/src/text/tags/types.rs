@@ -7,7 +7,10 @@
 //! be as small as possible in order not to waste memory, as they will
 //! be stored in the [`Text`]. As such, they have as little
 //! information as possible, occupying only 8 bytes.
-use std::{collections::HashMap, ops::Range, sync::Arc};
+use std::{
+    ops::{Range, RangeBounds},
+    sync::Arc,
+};
 
 use crossterm::event::MouseEventKind;
 
@@ -18,7 +21,8 @@ use super::{
 };
 use crate::{
     form::FormId,
-    text::{Builder, Point, Text},
+    get_ends,
+    text::{Point, Text},
 };
 
 /// A [`Text`] modifier
@@ -54,20 +58,70 @@ use crate::{
 ///
 /// [`Form`]: Tag::Form
 #[derive(Clone)]
-pub struct Tag<R: std::ops::RangeBounds<usize>, F: RawTagsFn = RawTagsFnPtr> {
-    pub(super) range: R,
+pub struct Tag<F: RawTagsFn = fn(Key) -> (RawTag, Option<RawTag>)> {
+    pub(super) range: Range<usize>,
     pub(super) tags: F,
+    pub(super) id: Option<TagId>,
 }
 
-impl Tag<Range<usize>> {
+impl Tag {
+    /// Returns a new instance of [`Tag`]
+    fn new<F: RawTagsFn>(range: impl RangeBounds<usize>, id: Option<TagId>, tags: F) -> Tag<F> {
+        let (start, end) = get_ends(range, usize::MAX);
+
+        Tag { range: start..end, tags, id }
+    }
+
+    /// Stylizes a [range] with a [`Form`]
+    ///
+    /// The last argument is a priority factor, a higher priority
+    /// makes a [`Form`]'s application latent, so it takes precedence
+    /// of earlier [`Form`]s. This is important if, for example,
+    /// multiple [`Form`]s are inserted in the same byte.
+    ///
+    /// Priority values higher than `250` are clamped back down to
+    /// `250`.
+    ///
+    /// [range]: Range
+    /// [`Form`]: crate::form::Form
+    pub fn form(range: impl RangeBounds<usize>, form: FormId, priority: u8) -> Tag<impl RawTagsFn> {
+        Self::new(range, None, move |key| {
+            (PushForm(key, form, priority), Some(PopForm(key, form)))
+        })
+    }
+
     /// Places the main cursor
     pub fn main_cursor(b: usize) -> Self {
-        Self::new(b..b, |key, _, _| (MainCursor(key), None, None))
+        Self::new(b..b, None, |key| (MainCursor(key), None))
     }
 
     /// Places an extra cursor
     pub fn extra_cursor(b: usize) -> Self {
-        Self::new(b..b, |key, _, _| (ExtraCursor(key), None, None))
+        Self::new(b..b, None, |key| (ExtraCursor(key), None))
+    }
+
+    /// Aligns text to the center of the screen within the lines
+    /// containing the [range]. If said region intersects with an
+    /// [`align_right`] region, the latest one prevails.
+    ///
+    /// [range]: Range
+    /// [`align_right`]: Tag::align_right
+    pub fn align_center(range: impl RangeBounds<usize>) -> Self {
+        Self::new(range, None, |key| {
+            (StartAlignCenter(key), Some(EndAlignCenter(key)))
+        })
+    }
+
+    /// Aligns text to the right of the screen within the lines
+    /// containing the [range]. If said region intersects with an
+    /// [`align_center`] region, the latest one prevails.
+    ///
+    /// [range]: Range
+    /// [`align_center`]: Tag::align_center
+    pub fn align_right(range: impl RangeBounds<usize>) -> Self {
+        Self::new(range, None, |key| {
+            (StartAlignRight(key), Some(EndAlignRight(key)))
+        })
     }
 
     /// A spacer for a single screen line
@@ -98,70 +152,18 @@ impl Tag<Range<usize>> {
     /// This is my line,   please,   pretend it has tags
     /// ```
     pub fn spacer(b: usize) -> Self {
-        Self::new(b..b, |key, _, _| (Spacer(key), None, None))
+        Self::new(b..b, None, |key| (Spacer(key), None))
     }
 
     /// Text that shows up on screen, but "doesn't exist"
-    pub fn ghost(b: usize, text: impl Into<Builder>) -> Tag<Range<usize>, impl RawTagsFn> {
-        let text: Text = Into::<Builder>::into(text).build_no_nl();
+    pub fn ghost(b: usize, text: impl Into<Text>) -> Tag<impl RawTagsFn> {
+        let mut text: Text = Into::<Text>::into(text);
+        text.replace_range(text.len().byte() - 1.., "");
 
-        Self::new(b..b, move |key, ghosts: &mut HashMap<GhostId, Text>, _| {
-            let id = GhostId::new();
-            ghosts.insert(id, text);
-            (Ghost(key, id), None, None)
-        })
-    }
-}
+        let id = GhostId::new();
 
-impl<R: std::ops::RangeBounds<usize>> Tag<R> {
-    /// Returns a new instance of [`Tag`]
-    fn new<F: RawTagsFn>(range: R, tags: F) -> Tag<R, F> {
-        Tag { range, tags }
-    }
-
-    /// Stylizes a [range] with a [`Form`]
-    ///
-    /// The last argument is a priority factor, a higher priority
-    /// makes a [`Form`]'s application latent, so it takes precedence
-    /// of earlier [`Form`]s. This is important if, for example,
-    /// multiple [`Form`]s are inserted in the same byte.
-    ///
-    /// Priority values higher than `250` are clamped back down to
-    /// `250`.
-    ///
-    /// [range]: Range
-    /// [`Form`]: crate::form::Form
-    pub fn form(range: R, form: FormId, priority: u8) -> Tag<R, impl RawTagsFn> {
-        Self::new(range, move |key, _, _| {
-            (
-                PushForm(key, form, priority),
-                Some(PopForm(key, form)),
-                None,
-            )
-        })
-    }
-
-    /// Aligns text to the center of the screen within the lines
-    /// containing the [range]. If said region intersects with an
-    /// [`AlignRight`], the latest one prevails.
-    ///
-    /// [range]: Range
-    /// [`AlignRight`]: Tag::AlignRight
-    pub fn align_center(range: R) -> Tag<R> {
-        Self::new(range, |key, _, _| {
-            (StartAlignCenter(key), Some(EndAlignCenter(key)), None)
-        })
-    }
-
-    /// Aligns text to the right of the screen within the lines
-    /// containing the [range]. If said region intersects with an
-    /// [`AlignCenter`], the latest one prevails.
-    ///
-    /// [range]: Range
-    /// [`AlignCenter`]: Tag::AlignCenter
-    pub fn align_right(range: R) -> Tag<R> {
-        Self::new(range, |key, _, _| {
-            (StartAlignRight(key), Some(EndAlignRight(key)), None)
+        Self::new(b..b, Some(TagId::Ghost(id, text)), move |key| {
+            (Ghost(key, id), None)
         })
     }
 
@@ -172,9 +174,9 @@ impl<R: std::ops::RangeBounds<usize>> Tag<R> {
     ///
     /// [range]: Range
     /// [`Ghost`]: Tag::Ghost
-    pub fn conceal(range: R) -> Tag<R> {
-        Self::new(range, |key, _, _| {
-            (StartConceal(key), Some(EndConceal(key)), None)
+    pub fn conceal(range: impl RangeBounds<usize>) -> Self {
+        Self::new(range, None, |key| {
+            (StartConceal(key), Some(EndConceal(key)))
         })
     }
 }
@@ -409,15 +411,12 @@ impl std::fmt::Debug for RawTag {
 }
 
 pub type Toggle = Arc<dyn Fn(Point, MouseEventKind) + 'static + Send + Sync>;
-pub trait RawTagsFn = FnOnce(
-        Key,
-        &mut HashMap<GhostId, Text>,
-        &mut HashMap<ToggleId, Toggle>,
-    ) -> (RawTag, Option<RawTag>, Option<ToggleId>)
-    + Clone;
 
-type RawTagsFnPtr = fn(
-    Key,
-    &mut HashMap<GhostId, Text>,
-    &mut HashMap<ToggleId, Toggle>,
-) -> (RawTag, Option<RawTag>, Option<ToggleId>);
+pub trait RawTagsFn = FnOnce(Key) -> (RawTag, Option<RawTag>) + Clone;
+
+#[derive(Clone)]
+#[allow(dead_code)]
+pub enum TagId {
+    Ghost(GhostId, Text),
+    Toggle(ToggleId, Toggle),
+}

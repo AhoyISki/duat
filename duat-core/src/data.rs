@@ -32,14 +32,14 @@
 //! [`context`]: crate::context
 use std::{
     self,
-    any::{Any, TypeId},
+    any::TypeId,
     cell::{Cell, RefCell},
     marker::PhantomData,
-    ptr::DynMetadata,
     rc::Rc,
 };
 
-pub struct RwData2<T: ?Sized> {
+#[derive(Debug)]
+pub struct RwData<T: ?Sized> {
     value: Rc<RefCell<T>>,
     cur_state: Rc<Cell<usize>>,
     read_state: Cell<usize>,
@@ -47,7 +47,7 @@ pub struct RwData2<T: ?Sized> {
     no_update: bool,
 }
 
-impl<T: 'static> RwData2<T> {
+impl<T: 'static> RwData<T> {
     pub fn new(value: T) -> Self {
         Self {
             value: Rc::new(RefCell::new(value)),
@@ -59,7 +59,7 @@ impl<T: 'static> RwData2<T> {
     }
 }
 
-impl<T: ?Sized> RwData2<T> {
+impl<T: ?Sized> RwData<T> {
     /// Returns an unsized [`RwData`], such as [`RwData<dyn Trait>`]
     ///
     /// # Safety
@@ -87,14 +87,38 @@ impl<T: ?Sized> RwData2<T> {
     }
 
     #[track_caller]
-    pub fn read<Ret>(&self, f: impl FnOnce(&T) -> Ret) -> Ret {
+    pub fn read<Ret>(&self, _dk: &DataKey, f: impl FnOnce(&T) -> Ret) -> Ret {
         let ret = f(&*self.value.borrow());
         self.read_state.set(self.cur_state.get());
         ret
     }
 
     #[track_caller]
-    pub fn read_as<Ret, U: 'static>(&self, f: impl FnOnce(&U) -> Ret) -> Option<Ret> {
+    pub fn read_as<Ret, U: 'static>(
+        &self,
+        _dk: &DataKey,
+        f: impl FnOnce(&U) -> Ret,
+    ) -> Option<Ret> {
+        if TypeId::of::<U>() != self.ty {
+            return None;
+        }
+
+        let ptr = Rc::as_ptr(&self.value);
+        let value = unsafe { (ptr as *const RefCell<U>).as_ref().unwrap() };
+        let ret = f(&*value.borrow());
+        self.read_state.set(self.cur_state.get());
+        Some(ret)
+    }
+
+    #[track_caller]
+    pub unsafe fn read_unsafe<Ret>(&self, f: impl FnOnce(&T) -> Ret) -> Ret {
+        let ret = f(&*self.value.borrow());
+        self.read_state.set(self.cur_state.get());
+        ret
+    }
+
+    #[track_caller]
+    pub unsafe fn read_unsafe_as<Ret, U: 'static>(&self, f: impl FnOnce(&U) -> Ret) -> Option<Ret> {
         if TypeId::of::<U>() != self.ty {
             return None;
         }
@@ -117,7 +141,7 @@ impl<T: ?Sized> RwData2<T> {
     }
 
     #[track_caller]
-    pub fn write<Ret>(&self, f: impl FnOnce(&mut T) -> Ret) -> Ret {
+    pub fn write<Ret>(&self, _dk: &mut DataKey, f: impl FnOnce(&mut T) -> Ret) -> Ret {
         let ret = f(&mut *self.value.borrow_mut());
         self.cur_state.set(self.cur_state.get() + 1);
         self.read_state.set(self.cur_state.get());
@@ -125,7 +149,37 @@ impl<T: ?Sized> RwData2<T> {
     }
 
     #[track_caller]
-    pub fn write_as<Ret, U: 'static>(&self, f: impl FnOnce(&mut U) -> Ret) -> Option<Ret> {
+    pub fn write_as<Ret, U: 'static>(
+        &self,
+        _dk: &mut DataKey,
+        f: impl FnOnce(&mut U) -> Ret,
+    ) -> Option<Ret> {
+        if TypeId::of::<U>() != self.ty {
+            return None;
+        }
+
+        let ptr = Rc::as_ptr(&self.value);
+        let value = unsafe { (ptr as *const RefCell<U>).as_ref().unwrap() };
+
+        let ret = f(&mut *value.borrow_mut());
+        self.cur_state.set(self.cur_state.get() + 1);
+        self.read_state.set(self.cur_state.get());
+        Some(ret)
+    }
+
+    #[track_caller]
+    pub unsafe fn write_unsafe<Ret>(&self, f: impl FnOnce(&mut T) -> Ret) -> Ret {
+        let ret = f(&mut *self.value.borrow_mut());
+        self.cur_state.set(self.cur_state.get() + 1);
+        self.read_state.set(self.cur_state.get());
+        ret
+    }
+
+    #[track_caller]
+    pub unsafe fn write_unsafe_as<Ret, U: 'static>(
+        &self,
+        f: impl FnOnce(&mut U) -> Ret,
+    ) -> Option<Ret> {
         if TypeId::of::<U>() != self.ty {
             return None;
         }
@@ -144,9 +198,15 @@ impl<T: ?Sized> RwData2<T> {
         f(&mut *self.value.borrow_mut())
     }
 
-    pub fn map<Ret>(&self, f: impl FnMut(&T) -> Ret + 'static) -> DataMap<T, Ret> {
-        let RwData2 { value, cur_state, read_state, .. } = self.clone();
-        let data = RwData2 {
+    pub(crate) fn acquire_mut(&self) -> std::cell::RefMut<'_, T> {
+        self.cur_state.set(self.cur_state.get() + 1);
+        self.read_state.set(self.cur_state.get());
+        self.value.borrow_mut()
+    }
+
+    pub fn map<Ret: 'static>(&self, map: impl FnMut(&T) -> Ret + 'static) -> DataMap<T, Ret> {
+        let RwData { value, cur_state, read_state, .. } = self.clone();
+        let data = RwData {
             value,
             cur_state,
             read_state,
@@ -154,25 +214,10 @@ impl<T: ?Sized> RwData2<T> {
             no_update: self.no_update,
         };
 
-        // SAFETY: std::mem::transmute just reinterprets the bytes, so in
-        // theory, I should be able re-reinterpret the bytes from the other
-        // end.
-        let masked_rc = unsafe {
-            let rc: Rc<RefCell<dyn FnMut(&T) -> Ret>> = Rc::new(RefCell::new(f));
-
-            std::mem::transmute(Some(rc))
-        };
-
-        DataMap { data, masked_rc, _ghost: PhantomData }
+        DataMap { data, map: Rc::new(RefCell::new(map)) }
     }
 
-    pub(crate) fn acquire_mut(&self) -> std::cell::RefMut<'_, T> {
-        self.cur_state.set(self.cur_state.get() + 1);
-        self.read_state.set(self.cur_state.get());
-        self.value.borrow_mut()
-    }
-
-    pub fn ptr_eq<U: ?Sized>(&self, other: &RwData2<U>) -> bool {
+    pub fn ptr_eq<U: ?Sized>(&self, other: &RwData<U>) -> bool {
         self.value.as_ptr().addr() == other.value.as_ptr().addr()
     }
 
@@ -184,14 +229,14 @@ impl<T: ?Sized> RwData2<T> {
         self.ty == TypeId::of::<U>()
     }
 
-    pub fn try_downcast<U: 'static>(&self) -> Option<RwData2<U>> {
+    pub fn try_downcast<U: 'static>(&self) -> Option<RwData<U>> {
         if TypeId::of::<U>() != self.ty {
             return None;
         }
 
         let ptr = Rc::into_raw(self.value.clone());
         let value = unsafe { Rc::from_raw(ptr as *const RefCell<U>) };
-        Some(RwData2 {
+        Some(RwData {
             value,
             cur_state: self.cur_state.clone(),
             read_state: Cell::new(self.cur_state.get()),
@@ -223,14 +268,26 @@ impl<T: ?Sized> RwData2<T> {
         self.read_state.get() < self.cur_state.get()
     }
 
+    /// Simulates a [`read`] without actually reading
+    ///
+    /// This is useful if you want to tell Duat that you don't want
+    /// [`has_changed`] to return `true`, but you don't have a
+    /// [`DataKey`] available to [`read`] the value.
+    ///
+    /// [`read`]: Self::read
+    /// [`has_changed`]: Self::has_changed
+    pub fn declare_as_read(&self) {
+        self.read_state.set(self.cur_state.get());
+    }
+
     pub(crate) fn read_raw<Ret>(&self, f: impl FnOnce(&T) -> Ret) -> Ret {
         f(&*self.value.borrow())
     }
 }
 
-impl<T: ?Sized + 'static> RwData2<T> {}
+impl<T: ?Sized + 'static> RwData<T> {}
 
-impl<T: ?Sized> Clone for RwData2<T> {
+impl<T: ?Sized> Clone for RwData<T> {
     fn clone(&self) -> Self {
         Self {
             value: self.value.clone(),
@@ -242,7 +299,7 @@ impl<T: ?Sized> Clone for RwData2<T> {
     }
 }
 
-impl<T: Default + 'static> Default for RwData2<T> {
+impl<T: Default + 'static> Default for RwData<T> {
     fn default() -> Self {
         Self {
             value: Rc::default(),
@@ -254,30 +311,12 @@ impl<T: Default + 'static> Default for RwData2<T> {
     }
 }
 
-pub struct DataMap<I: ?Sized + 'static, O> {
-    data: RwData2<I>,
-    masked_rc: Option<Rc<RefCell<dyn Any>>>,
-    _ghost: PhantomData<fn(O)>,
+pub struct DataMap<I: ?Sized + 'static, O: 'static> {
+    data: RwData<I>,
+    map: Rc<RefCell<dyn FnMut(&I) -> O>>,
 }
 
 impl<I: ?Sized + 'static, O> DataMap<I, O> {
-    /// Reads the output value, mapping it to something
-    #[track_caller]
-    pub fn read<Ret>(&mut self, f: impl FnOnce(O) -> Ret) -> Ret {
-        self.data.read(|input| {
-            // SAFETY: This is its real type, the other type is just a mask
-            let real_rc: Rc<RefCell<dyn FnMut(&I) -> O>> =
-                unsafe { std::mem::transmute(self.masked_rc.take().unwrap()) };
-
-            let ret = f(real_rc.borrow_mut()(input));
-
-            // SAFETY: Again, this is the masked type
-            self.masked_rc = Some(unsafe { std::mem::transmute(real_rc) });
-
-            ret
-        })
-    }
-
     /// Wether someone else called [`write`] or [`write_as`] since the
     /// last [`read`] or [`write`]
     ///
@@ -291,10 +330,10 @@ impl<I: ?Sized + 'static, O> DataMap<I, O> {
     ///
     /// Generally though, you can use this method to gauge that.
     ///
-    /// [`write`]: RwData2::write
-    /// [`write_as`]: RwData2::write_as
-    /// [`read`]: RwData2::read
-    /// [`has_changed`]: RwData2::has_changed
+    /// [`write`]: RwData::write
+    /// [`write_as`]: RwData::write_as
+    /// [`read`]: RwData::read
+    /// [`has_changed`]: RwData::has_changed
     /// [`Text`]: crate::text::Text
     /// [`Widget`]: crate::widgets::Widget
     pub fn has_changed(&self) -> bool {
@@ -306,64 +345,67 @@ impl<I: ?Sized + 'static, O> Clone for DataMap<I, O> {
     fn clone(&self) -> Self {
         Self {
             data: self.data.clone(),
-            masked_rc: self.masked_rc.clone(),
-            _ghost: PhantomData,
+            map: self.map.clone(),
         }
     }
 }
 
 impl<I: ?Sized + 'static, O: 'static> DataMap<I, O> {
-    pub fn map<O2>(mut self, mut f: impl FnMut(O) -> O2 + 'static) -> DataMap<I, O2> {
-        self.data.clone().map(move |input| {
-            // SAFETY: This is its real type, the other type is just a mask
-            let real_rc: Rc<RefCell<dyn FnMut(&I) -> O>> =
-                unsafe { std::mem::transmute(self.masked_rc.take().unwrap()) };
-
-            let ret = f(real_rc.borrow_mut()(input));
-
-            // SAFETY: Again, this is the masked type
-            self.masked_rc = Some(unsafe { std::mem::transmute(real_rc) });
-
-            ret
-        })
+    pub fn map<O2>(&self, mut f: impl FnMut(O) -> O2 + 'static) -> DataMap<I, O2> {
+        let data_map = self.clone();
+        data_map
+            .data
+            .clone()
+            .map(move |input| f(data_map.map.borrow_mut()(input)))
     }
 }
 
-impl<I: ?Sized + 'static, O: 'static> FnOnce<()> for DataMap<I, O> {
+impl<I: ?Sized + 'static, O: 'static> FnOnce<(&DataKey<'_>,)> for DataMap<I, O> {
     type Output = O;
 
-    extern "rust-call" fn call_once(mut self, _: ()) -> Self::Output {
-        // SAFETY: This is its real type, the other type is just a mask
-        let real_rc: Rc<RefCell<dyn FnMut(&I) -> O>> =
-            unsafe { std::mem::transmute(self.masked_rc.take().unwrap()) };
-
-        self.data.read(&mut *real_rc.borrow_mut())
+    extern "rust-call" fn call_once(self, (key,): (&DataKey,)) -> Self::Output {
+        self.data.read(key, |input| self.map.borrow_mut()(input))
     }
 }
 
-impl<I: ?Sized + 'static, O: 'static> FnMut<()> for DataMap<I, O> {
-    extern "rust-call" fn call_mut(&mut self, _: ()) -> Self::Output {
-        // SAFETY: This is its real type, the other type is just a mask
-        let real_rc: Rc<RefCell<dyn FnMut(&I) -> O>> =
-            unsafe { std::mem::transmute(self.masked_rc.take().unwrap()) };
-
-        let ret = self.data.read(&mut *real_rc.borrow_mut());
-
-        // SAFETY: Again, this is the masked type
-        self.masked_rc = Some(unsafe { std::mem::transmute(real_rc) });
-
-        ret
+impl<I: ?Sized + 'static, O: 'static> FnMut<(&DataKey<'_>,)> for DataMap<I, O> {
+    extern "rust-call" fn call_mut(&mut self, (key,): (&DataKey,)) -> Self::Output {
+        self.data.read(key, |input| self.map.borrow_mut()(input))
     }
 }
 
-impl<I: ?Sized + 'static, O> Drop for DataMap<I, O> {
-    fn drop(&mut self) {
-        // SAFETY: This is its real type, the other type is just a mask
-        let real_rc: Rc<RefCell<dyn FnMut(&I) -> O>> =
-            unsafe { std::mem::transmute(self.masked_rc.take()) };
+/// A key for reading/writing to [`RwData`]
+///
+/// This key is necessary in order to prevent breakage of the number
+/// one rule of Rust: any number of shared references, or one
+/// exclusive reference.
+///
+/// When you call [`RwData::read`], any call to [`RwData::write`] may
+/// end up breaking this rule, and vice-versa, which is why this
+/// struct is necessary.
+///
+/// One downside of this approach is that it is even more restrictive
+/// than Rust's rule of thumb, since that one is enforced on
+/// individual instances, while this one is enforced on all
+/// [`RwData`]s. This (as far as i know) cannot be circumvented, as a
+/// more advanced compile time checker (that distinguishes
+/// [`RwData<T>`]s of different `T`s, for example) does not seem
+/// feasible without the use of unfinished features, which I am not
+/// willing to use.
+///
+/// Do note that you can still ignore this if you want, by use of
+/// [`read_unsafe`] and [`write_unsafe`], but this might cause a panic
+/// in Duat because of the [`RefCell`]s under the hood.
+///
+/// [`read_unsafe`]: RwData::read_unsafe
+/// [`write_unsafe`]: RwData::write_unsafe
+pub struct DataKey<'a>(PhantomData<&'a Rc<RefCell<()>>>);
 
-        // We have to drop this rc specifically, since it contains all of the
-        // proper information fro dropping the inner function.
-        drop(real_rc)
+impl DataKey<'_> {
+    /// Returns a new instance of [`DataKey`]
+    ///
+    /// Be careful when using this!
+    pub(crate) unsafe fn new() -> Self {
+        DataKey(PhantomData)
     }
 }

@@ -241,10 +241,11 @@
     debug_closure_helpers,
     box_as_ptr,
     unboxed_closures,
-    fn_traits,
     associated_type_defaults,
     dropck_eyepatch,
-    ptr_metadata
+    fn_traits,
+    auto_traits,
+    negative_impls
 )]
 #![allow(clippy::single_range_in_vec_init)]
 
@@ -256,17 +257,16 @@ use std::{
     sync::{LazyLock, Once},
 };
 
+use data::DataKey;
 #[allow(unused_imports)]
 use dirs_next::cache_dir;
 pub use lender::Lender;
 pub use parking_lot::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use text::Text;
 use ui::Window;
 use widgets::{File, Node, Widget};
 
-use self::{
-    text::{Text, err},
-    ui::Ui,
-};
+use self::{text::err, ui::Ui};
 
 pub mod cache;
 pub mod cfg;
@@ -756,6 +756,7 @@ fn merging_range_by_guess_and_lazy_shift<T, U: Copy + Ord + std::fmt::Debug, V: 
 /// An entry for a file with the given name
 #[allow(clippy::result_large_err)]
 fn file_entry<'a, U: Ui>(
+    dk: &DataKey<'_>,
     windows: &'a [Window<U>],
     name: &str,
 ) -> Result<(usize, usize, &'a Node<U>), Text> {
@@ -763,19 +764,20 @@ fn file_entry<'a, U: Ui>(
         .iter()
         .enumerate()
         .flat_map(window_index_widget)
-        .find(|(.., node)| node.read_as(|f: &File| f.name() == name) == Some(true))
-        .ok_or_else(|| err!("File with name [a]{name}[] not found"))
+        .find(|(.., node)| node.read_as(dk, |f: &File| f.name() == name) == Some(true))
+        .ok_or_else(|| err!("File with name [a]{name}[] not found").build())
 }
 
 /// An entry for a widget of a specific type
 #[allow(clippy::result_large_err)]
-fn widget_entry<W: Widget<U>, U: Ui>(
-    windows: &[Window<U>],
+fn widget_entry<'a, W: Widget<U>, U: Ui>(
+    dk: &DataKey<'_>,
+    windows: &'a [Window<U>],
     w: usize,
-) -> Result<(usize, usize, &Node<U>), Text> {
-    let mut ff = context::fixed_file::<U>().unwrap();
+) -> Result<(usize, usize, &'a Node<U>), Text> {
+    let mut ff = context::fixed_file::<U>(dk).unwrap();
 
-    if let Some((widget, _)) = ff.get_related_widget::<W>() {
+    if let Some((widget, _)) = ff.get_related_widget::<W>(dk) {
         windows
             .iter()
             .enumerate()
@@ -784,7 +786,7 @@ fn widget_entry<W: Widget<U>, U: Ui>(
     } else {
         iter_around(windows, w, 0).find(|(.., node)| node.data_is::<W>())
     }
-    .ok_or(err!("No widget of type [a]{}[] found", type_name::<W>()))
+    .ok_or(err!("No widget of type [a]{}[] found", type_name::<W>()).build())
 }
 
 /// Iterator over a group of windows, that returns the window's index

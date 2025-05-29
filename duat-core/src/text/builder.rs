@@ -12,7 +12,7 @@ use std::{
 
 pub use self::macros::*;
 use super::{Change, Key, Tag, Text};
-use crate::{data::RwData2, form::FormId};
+use crate::form::FormId;
 
 /// Builds and modifies a [`Text`], based on replacements applied
 /// to it.
@@ -57,28 +57,6 @@ impl Builder {
         Self::default()
     }
 
-    /// Transforms a [`Text`] into a [`Builder`]
-    ///
-    /// There are not many situations in which you'd want to do this,
-    /// to be honest, the primary one would be sending a [`Text`]
-    /// across threads, since [`Builder`] implements [`Send`] and
-    /// [`Sync`], while [`Text`] does not.
-    ///
-    /// Keep in mind, however, that this will *DISABLE* the history
-    /// and *REMOVE* all [`Reader`]s, since those are not [`Send`] +
-    /// [`Sync`], and you _probably_ won't need them anyways.
-    pub fn from_text(mut text: Text) -> Self {
-        text.0.readers = super::Readers::default();
-        text.0.history = None;
-        Builder {
-            text,
-            last_form: None,
-            last_align: None,
-            buffer: String::new(),
-            last_was_empty: false,
-        }
-    }
-
     /// Finish construction and returns the [`Text`]
     ///
     /// Will also finish the last [`Form`] and alignments pushed to
@@ -105,10 +83,7 @@ impl Builder {
     /// [`Widget`]: crate::widgets::Widget
     /// [notify]: crate::context::notify
     pub fn build(mut self) -> Text {
-        if (self.text.buffers(..).next_back()).is_none_or(|b| b != b'\n') {
-            self.push_str("\n");
-        }
-
+        self.push_str("\n");
         self.build_no_nl()
     }
 
@@ -252,9 +227,9 @@ impl std::fmt::Debug for Builder {
     }
 }
 
-impl<T: Into<Text>> From<T> for Builder {
-    fn from(value: T) -> Self {
-        <T as Into<Text>>::into(value).into_builder()
+impl From<Builder> for Text {
+    fn from(value: Builder) -> Self {
+        value.build()
     }
 }
 
@@ -307,7 +282,7 @@ pub struct Spacer;
 /// This is useful when, for example, creating command line prompts,
 /// since the text is non interactable.
 #[derive(Clone)]
-pub struct Ghost(pub Text);
+pub struct Ghost<T: Into<Text>>(T);
 
 /// A part to be pushed to a [`Builder`] by a macro
 #[derive(Clone)]
@@ -358,21 +333,16 @@ impl From<Spacer> for BuilderPart<String, Spacer> {
     }
 }
 
-impl From<Ghost> for BuilderPart<String, Ghost> {
-    fn from(value: Ghost) -> Self {
-        BuilderPart::Ghost(value.0)
+impl<T: Into<Text>> From<Ghost<T>> for BuilderPart<String, Ghost<T>> {
+    fn from(value: Ghost<T>) -> Self {
+        BuilderPart::Ghost(value.0.into())
     }
 }
 
 impl From<Text> for BuilderPart<String, Text> {
-    fn from(value: Text) -> Self {
+    fn from(mut value: Text) -> Self {
+        value.replace_range(value.len().byte() - 1.., "");
         BuilderPart::Text(value)
-    }
-}
-
-impl<D: Display> From<&RwData2<D>> for BuilderPart<String, D> {
-    fn from(value: &RwData2<D>) -> Self {
-        BuilderPart::ToString(value.read(|d| d.to_string()))
     }
 }
 
@@ -384,19 +354,13 @@ impl<D: Display> From<D> for BuilderPart<D, D> {
 
 impl From<PathBuf> for BuilderPart<String, PathBuf> {
     fn from(value: PathBuf) -> Self {
-        BuilderPart::Text(Text::from(&value))
+        BuilderPart::ToString(value.to_string_lossy().to_string())
     }
 }
 
 impl From<&PathBuf> for BuilderPart<String, PathBuf> {
     fn from(value: &PathBuf) -> Self {
-        BuilderPart::Text(Text::from(value))
-    }
-}
-
-impl From<RwData2<PathBuf>> for BuilderPart<String, PathBuf> {
-    fn from(value: RwData2<PathBuf>) -> Self {
-        BuilderPart::Text(value.read(|p| Text::from(p)))
+        BuilderPart::ToString(value.to_string_lossy().to_string())
     }
 }
 

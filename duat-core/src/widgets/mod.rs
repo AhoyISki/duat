@@ -46,11 +46,11 @@
 //! [`Constraint`]: crate::ui::Constraint
 use std::{self, cell::Cell, pin::Pin, rc::Rc};
 
-pub use self::file::{File, FileCfg, PathKind};
+pub use self::file::{File, FileCfg, PathKind, Reader, ReaderCfg};
 use crate::{
     cfg::PrintCfg,
     context::FileParts,
-    data::RwData2,
+    data::{DataKey, RwData},
     form,
     hooks::{self, FocusedOn, UnfocusedFrom},
     mode::Cursors,
@@ -333,7 +333,7 @@ pub trait Widget<U: Ui>: 'static {
     ///
     /// This function will be triggered when Duat deems that a change
     /// has happened to this [`Widget`], which is when
-    /// [`RwData2<Self>::has_changed`] returns `true`. This can happen
+    /// [`RwData<Self>::has_changed`] returns `true`. This can happen
     /// from many places, like [`hooks`], [commands], editing by
     /// [`Mode`]s, etc.
     ///
@@ -347,9 +347,25 @@ pub trait Widget<U: Ui>: 'static {
     /// [`update`]: Widget::update
     // Since these Futures don't need Send, I can just use async fn :D
     #[allow(unused, async_fn_in_trait)]
-    async fn update(widget: RwData2<Self>, area: &U::Area)
+    async fn update(dk: DataKey<'_>, widget: RwData<Self>, area: &U::Area)
     where
         Self: Sized;
+
+    /// Actions to do whenever this [`Widget`] is focused
+    #[allow(unused)]
+    async fn on_focus(dk: DataKey<'_>, widget: RwData<Self>, area: &U::Area)
+    where
+        Self: Sized,
+    {
+    }
+
+    /// Actions to do whenever this [`Widget`] is unfocused
+    #[allow(unused)]
+    async fn on_unfocus(dk: DataKey<'_>, widget: RwData<Self>, area: &U::Area)
+    where
+        Self: Sized,
+    {
+    }
 
     /// Tells Duat that this [`Widget`] should be updated
     ///
@@ -372,7 +388,7 @@ pub trait Widget<U: Ui>: 'static {
     /// #   fn cfg() -> Self::Cfg {
     /// #       todo!()
     /// #   }
-    /// #   async fn update(_: RwData2<Self>, _: &<U as Ui>::Area) {
+    /// #   async fn update(_: RwData<Self>, _: &<U as Ui>::Area) {
     /// #       todo!()
     /// #   }
     /// #   fn text(&self) -> &Text {
@@ -408,24 +424,6 @@ pub trait Widget<U: Ui>: 'static {
 
     /// A mutable reference to the [`Text`] that is printed
     fn text_mut(&mut self) -> &mut Text;
-
-    /// The [`Cursors`] that are used on the [`Text`], if they exist
-    fn cursors(&self) -> Option<&Cursors> {
-        self.text().cursors()
-    }
-
-    /// A mutable reference to the [`Cursors`], if they exist
-    fn cursors_mut(&mut self) -> Option<&mut Cursors> {
-        self.text_mut().cursors_mut()
-    }
-
-    /// Actions to do whenever this [`Widget`] is focused
-    #[allow(unused)]
-    fn on_focus(&mut self, area: &U::Area) {}
-
-    /// Actions to do whenever this [`Widget`] is unfocused
-    #[allow(unused)]
-    fn on_unfocus(&mut self, area: &U::Area) {}
 
     /// The [configuration] for how to print [`Text`]
     ///
@@ -497,7 +495,7 @@ where
 // Elements related to the [`Widget`]s
 #[derive(Clone)]
 pub struct Node<U: Ui> {
-    widget: RwData2<dyn Widget<U>>,
+    widget: RwData<dyn Widget<U>>,
     area: U::Area,
     busy_updating: Rc<Cell<bool>>,
     related_widgets: Related<U>,
@@ -507,18 +505,23 @@ pub struct Node<U: Ui> {
 }
 
 impl<U: Ui> Node<U> {
-    pub fn new<W: Widget<U>>(widget: RwData2<dyn Widget<U>>, area: U::Area) -> Self {
+    pub fn new<W: Widget<U>>(
+        dk: &mut DataKey,
+        widget: RwData<dyn Widget<U>>,
+        area: U::Area,
+    ) -> Self {
         fn related_widgets<U: Ui>(
-            widget: &RwData2<dyn Widget<U>>,
+            dk: &mut DataKey,
+            widget: &RwData<dyn Widget<U>>,
             area: &U::Area,
-        ) -> Option<RwData2<Vec<Node<U>>>> {
-            widget.write_as(|file: &mut File| {
+        ) -> Option<RwData<Vec<Node<U>>>> {
+            widget.write_as(dk, |file: &mut File| {
                 let cfg = file.print_cfg();
                 file.text_mut().add_cursors(area, cfg);
-                RwData2::default()
+                RwData::default()
             })
         }
-        let related_widgets = related_widgets::<U>(&widget, &area);
+        let related_widgets = related_widgets::<U>(dk, &widget, &area);
 
         Self {
             widget,
@@ -531,12 +534,12 @@ impl<U: Ui> Node<U> {
         }
     }
 
-    pub fn widget(&self) -> &RwData2<dyn Widget<U>> {
+    pub fn widget(&self) -> &RwData<dyn Widget<U>> {
         &self.widget
     }
 
     /// Returns the downcast ref of this [`Widget`].
-    pub fn try_downcast<W: 'static>(&self) -> Option<RwData2<W>> {
+    pub fn try_downcast<W: 'static>(&self) -> Option<RwData<W>> {
         self.widget.try_downcast()
     }
 
@@ -557,7 +560,7 @@ impl<U: Ui> Node<U> {
         self.widget.raw_write(|widget| {
             let cfg = widget.print_cfg();
             widget.text_mut().add_cursors(&self.area, cfg);
-            if let Some(main) = widget.cursors().and_then(Cursors::get_main) {
+            if let Some(main) = widget.text().cursors().and_then(Cursors::get_main) {
                 self.area
                     .scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
             }
@@ -568,27 +571,27 @@ impl<U: Ui> Node<U> {
         self.busy_updating.set(false);
     }
 
-    pub fn read_as<W: 'static, Ret>(&self, f: impl FnOnce(&W) -> Ret) -> Option<Ret> {
-        self.widget.read_as(f)
+    pub fn read_as<W: 'static, Ret>(&self, dk: &DataKey, f: impl FnOnce(&W) -> Ret) -> Option<Ret> {
+        self.widget.read_as(dk, f)
     }
 
-    pub fn ptr_eq<W: ?Sized>(&self, other: &RwData2<W>) -> bool {
+    pub fn ptr_eq<W: ?Sized>(&self, other: &RwData<W>) -> bool {
         self.widget.ptr_eq(other)
     }
 
-    pub fn needs_update(&self) -> bool {
+    pub fn needs_update(&self, dk: &DataKey) -> bool {
         !self.busy_updating.get()
             && (self.area.has_changed()
                 || self.widget.has_changed()
-                || self.widget.read(|w| w.needs_update()))
+                || self.widget.read(dk, |w| w.needs_update()))
     }
 
-    pub(crate) fn parts(&self) -> (&RwData2<dyn Widget<U>>, &<U as Ui>::Area, &Related<U>) {
+    pub(crate) fn parts(&self) -> (&RwData<dyn Widget<U>>, &<U as Ui>::Area, &Related<U>) {
         (&self.widget, &self.area, &self.related_widgets)
     }
 
     pub(crate) fn as_file(&self) -> Option<FileParts<U>> {
-        self.widget.try_downcast().map(|file: RwData2<File>| {
+        self.widget.try_downcast().map(|file: RwData<File>| {
             (
                 file,
                 self.area.clone(),
@@ -614,7 +617,7 @@ impl<U: Ui> Node<U> {
         &self.area
     }
 
-    pub(crate) fn related_widgets(&self) -> Option<&RwData2<Vec<Node<U>>>> {
+    pub(crate) fn related_widgets(&self) -> Option<&RwData<Vec<Node<U>>>> {
         self.related_widgets.as_ref()
     }
 
@@ -622,7 +625,13 @@ impl<U: Ui> Node<U> {
         let widget = self.widget.try_downcast::<W>().unwrap();
         let area = self.area.clone();
 
-        Box::pin(async move { Widget::update(widget, &area).await })
+        Box::pin(async move {
+            // SAFETY: Since this is an "async" function, it can only do work if
+            // .awaited, which means a RwData won't be borrowed.
+            let dk = unsafe { DataKey::new() };
+
+            Widget::update(dk, widget, &area).await
+        })
     }
 
     fn on_focus_fn<W: Widget<U>>(&self) -> Pin<Box<dyn Future<Output = ()>>> {
@@ -630,14 +639,26 @@ impl<U: Ui> Node<U> {
         let widget = self.widget.try_downcast().unwrap();
         let area = self.area.clone();
 
-        Box::pin(async move { hooks::trigger::<FocusedOn<W, U>>((widget, area)).await })
+        Box::pin(async move {
+            hooks::trigger::<FocusedOn<W, U>>((widget.clone(), area.clone())).await;
+            // SAFETY: Since this is an "async" function, it can only do work if
+            // .awaited, which means a RwData won't be borrowed.
+            let dk = unsafe { DataKey::new() };
+            Widget::on_focus(dk, widget, &area).await;
+        })
     }
 
     fn on_unfocus_fn<W: Widget<U>>(&self) -> Pin<Box<dyn Future<Output = ()>>> {
         let widget = self.widget.try_downcast().unwrap();
         let area = self.area.clone();
 
-        Box::pin(async move { hooks::trigger::<UnfocusedFrom<W, U>>((widget, area)).await })
+        Box::pin(async move {
+            hooks::trigger::<UnfocusedFrom<W, U>>((widget.clone(), area.clone())).await;
+            // SAFETY: Since this is an "async" function, it can only do work if
+            // .awaited, which means a RwData won't be borrowed.
+            let dk = unsafe { DataKey::new() };
+            Widget::on_unfocus(dk, widget, &area).await;
+        })
     }
 }
 
@@ -649,4 +670,4 @@ impl<U: Ui> PartialEq for Node<U> {
 
 impl<U: Ui> Eq for Node<U> {}
 
-pub type Related<U> = Option<RwData2<Vec<Node<U>>>>;
+pub type Related<U> = Option<RwData<Vec<Node<U>>>>;

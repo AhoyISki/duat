@@ -11,7 +11,7 @@
 //!
 //! [`undo`]: Text::undo
 //! [`redo`]: Text::redo
-use std::{ops::Range, rc::Rc};
+use std::ops::Range;
 
 use bincode::{Decode, Encode};
 
@@ -19,7 +19,7 @@ use super::{Point, Text};
 use crate::{add_shifts, merging_range_by_guess_and_lazy_shift};
 
 /// The history of edits, contains all moments
-#[derive(Default, Debug, Clone, Encode, Decode)]
+#[derive(Default, Debug, Clone, Encode)]
 pub struct History {
     moments: Vec<Moment>,
     cur_moment: usize,
@@ -67,7 +67,7 @@ impl History {
         self.moments.truncate(self.cur_moment);
 
         self.moments.push(Moment {
-            changes: Rc::from(new_changes),
+            changes: Box::leak(Box::from(new_changes)),
             is_fwd: true,
         });
         self.cur_moment += 1;
@@ -83,7 +83,7 @@ impl History {
             None
         } else {
             self.cur_moment += 1;
-            Some(self.moments[self.cur_moment - 1].clone())
+            Some(self.moments[self.cur_moment - 1])
         }
     }
 
@@ -98,13 +98,13 @@ impl History {
             None
         } else {
             self.cur_moment -= 1;
-            let mut moment = self.moments[self.cur_moment - 1].clone();
+            let mut moment = self.moments[self.cur_moment - 1];
             moment.is_fwd = false;
             Some(moment)
         }
     }
 
-    pub fn unprocessed_changes(&mut self) -> Option<Moment> {
+    pub fn unprocessed_moment(&mut self) -> Option<Moment> {
         self.unproc_changes
             .take()
             .map(|(mut changes, (sh_from, shift))| {
@@ -114,7 +114,10 @@ impl History {
                     }
                 }
 
-                Moment { changes: Rc::from(changes), is_fwd: true }
+                Moment {
+                    changes: Box::leak(Box::from(changes)),
+                    is_fwd: true,
+                }
             })
     }
 
@@ -123,14 +126,27 @@ impl History {
     }
 }
 
+impl<Context> Decode<Context> for History {
+    fn decode<D: bincode::de::Decoder<Context = Context>>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        Ok(History {
+            moments: Decode::decode(decoder)?,
+            cur_moment: Decode::decode(decoder)?,
+            new_changes: Decode::decode(decoder)?,
+            unproc_changes: Decode::decode(decoder)?,
+        })
+    }
+}
+
 /// A moment in history, which may contain changes, or may just
 /// contain selections
 ///
 /// It also contains information about how to print the file, so that
 /// going back in time is less jarring.
-#[derive(Default, Debug, Clone, Encode, Decode)]
+#[derive(Clone, Copy, Default, Debug, Encode)]
 pub struct Moment {
-    changes: Rc<[Change<String>]>,
+    changes: &'static [Change<String>],
     is_fwd: bool,
 }
 
@@ -155,11 +171,23 @@ impl Moment {
         })
     }
 
-	/// Returns the number of [`Change`]s in this [`Moment`]
-	///
-	/// Should never be equal to 0.
+    /// Returns the number of [`Change`]s in this [`Moment`]
+    ///
+    /// Should never be equal to 0.
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.changes.len()
+    }
+}
+
+impl<Context> Decode<Context> for Moment {
+    fn decode<D: bincode::de::Decoder<Context = Context>>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        Ok(Moment {
+            changes: Vec::decode(decoder)?.leak(),
+            is_fwd: Decode::decode(decoder)?,
+        })
     }
 }
 
@@ -311,17 +339,6 @@ impl<'a> Change<&'a str> {
             taken: "",
             added_end: start + Point::len_of(added_text),
             taken_end: start,
-        }
-    }
-
-    /// This function should only be used with ghost text and builders
-    pub(super) fn remove_nl(p0: Point) -> Self {
-        Change {
-            start: p0,
-            added: "",
-            taken: "\n",
-            added_end: p0,
-            taken_end: p0 + Point::len_of("\n"),
         }
     }
 }

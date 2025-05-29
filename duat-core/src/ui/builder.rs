@@ -15,10 +15,9 @@ use parking_lot::Mutex;
 use super::{RawArea, Ui};
 use crate::{
     context::{self, FileHandle},
+    data::DataKey,
     duat_name,
-    prelude::Text,
-    text::ReaderCfg,
-    widgets::{File, Node, Widget, WidgetCfg},
+    widgets::{File, Node, ReaderCfg, Widget, WidgetCfg},
 };
 
 /// A constructor helper for [`File`] initiations
@@ -101,9 +100,9 @@ pub struct FileBuilder<U: Ui> {
 
 impl<U: Ui> FileBuilder<U> {
     /// Creates a new [`FileBuilder`].
-    pub(crate) fn new(node: Node<U>, window_i: usize) -> Self {
-        let (_, prev) = context::set_cur(node.as_file(), node.clone()).unzip();
-        let ff = context::fixed_file().unwrap();
+    pub(crate) fn new(dk: &mut DataKey<'_>, node: Node<U>, window_i: usize) -> Self {
+        let (_, prev) = context::set_cur(&mut *dk, node.as_file(), node.clone()).unzip();
+        let ff = context::fixed_file(&*dk).unwrap();
         let area = node.area().clone();
 
         Self { window_i, ff, area, prev }
@@ -162,6 +161,7 @@ impl<U: Ui> FileBuilder<U> {
     /// [`StatusLine`]: crate::widgets::StatusLine
     pub fn push<W: Widget<U>>(
         &mut self,
+        dk: &mut DataKey<'_>,
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
@@ -171,10 +171,10 @@ impl<U: Ui> FileBuilder<U> {
         let window = &mut windows[self.window_i];
 
         let (child, parent) = {
-            let (node, parent) = window.push(widget, &self.area, specs, true, true);
+            let (node, parent) = window.push(&mut *dk, widget, &self.area, specs, true, true);
 
             self.ff
-                .write_related_widgets(|related| related.push(node.clone()));
+                .write_related_widgets(&mut *dk, |related| related.push(node.clone()));
 
             if let Some(parent) = &parent {
                 if parent.is_master_of(&window.files_area) {
@@ -248,6 +248,7 @@ impl<U: Ui> FileBuilder<U> {
     /// [hook group]: crate::hooks::add_grouped
     pub fn push_to<W: Widget<U>>(
         &mut self,
+        dk: &mut DataKey<'_>,
         area: U::Area,
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
@@ -257,9 +258,9 @@ impl<U: Ui> FileBuilder<U> {
         let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];
 
-        let (node, parent) = window.push(widget, &area, specs, true, true);
+        let (node, parent) = window.push(&mut *dk, widget, &area, specs, true, true);
         self.ff
-            .write_related_widgets(|related| related.push(node.clone()));
+            .write_related_widgets(&mut *dk, |related| related.push(node.clone()));
         (node.area().clone(), parent)
     }
 
@@ -276,27 +277,33 @@ impl<U: Ui> FileBuilder<U> {
     /// [`Tag`]: crate::text::Tag
     /// [`Reader`]: crate::text::Reader
     /// [`Mode`]: crate::mode::Mode
-    pub fn add_reader(&mut self, reader_cfg: impl ReaderCfg) -> Result<(), Text> {
-        self.ff
-            .write(|file, _| file.text_mut().add_reader(reader_cfg))
+    pub fn add_reader(&mut self, dk: &mut DataKey<'_>, reader_cfg: impl ReaderCfg) {
+        self.ff.write(dk, |file, _| {
+            // SAFETY: Because this function takes in a &mut DataKey, it is safe
+            // to create new ones inside.
+            let mut dk = unsafe { DataKey::new() };
+            file.add_reader(&mut dk, reader_cfg)
+        })
     }
 
     /// The [`File`] that this hook is being applied to
-    pub fn read<Ret>(&mut self, f: impl FnOnce(&File, &U::Area) -> Ret) -> Ret {
-        self.ff.read(f)
+    pub fn read<Ret>(&mut self, dk: &DataKey<'_>, f: impl FnOnce(&File, &U::Area) -> Ret) -> Ret {
+        self.ff.read(dk, f)
     }
 
     /// Mutable reference to the [`File`] that this hooks is being
     /// applied to
-    pub fn write<Ret>(&mut self, f: impl FnOnce(&mut File, &U::Area) -> Ret) -> Ret {
-        self.ff.write(f)
+    pub fn write<Ret>(
+        &mut self,
+        dk: &mut DataKey<'_>,
+        f: impl FnOnce(&mut File, &U::Area) -> Ret,
+    ) -> Ret {
+        self.ff.write(dk, f)
     }
-}
 
-impl<U: Ui> Drop for FileBuilder<U> {
-    fn drop(&mut self) {
-        if let Some(prev) = self.prev.take() {
-            context::set_cur(prev.as_file(), prev);
+    pub(crate) fn finish(self, dk: &mut DataKey<'_>) {
+        if let Some(prev) = self.prev {
+            context::set_cur(dk, prev.as_file(), prev);
         }
     }
 }
@@ -411,6 +418,7 @@ impl<U: Ui> WindowBuilder<U> {
     /// [cfg]: WidgetCfg
     pub fn push<W: Widget<U>>(
         &mut self,
+        dk: &mut DataKey<'_>,
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
@@ -419,7 +427,7 @@ impl<U: Ui> WindowBuilder<U> {
         let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];
 
-        let (child, parent) = window.push(widget, &self.area, specs, false, false);
+        let (child, parent) = window.push(dk, widget, &self.area, specs, false, false);
 
         if let Some(parent) = &parent {
             self.area = parent.clone();
@@ -471,6 +479,7 @@ impl<U: Ui> WindowBuilder<U> {
     /// [`PromptLine`]: crate::widgets::PromptLine
     pub fn push_to<W: Widget<U>>(
         &mut self,
+        dk: &mut DataKey<'_>,
         area: U::Area,
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
@@ -480,7 +489,7 @@ impl<U: Ui> WindowBuilder<U> {
         let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];
 
-        let (node, parent) = window.push(widget, &area, specs, true, false);
+        let (node, parent) = window.push(dk, widget, &area, specs, true, false);
 
         (node.area().clone(), parent)
     }

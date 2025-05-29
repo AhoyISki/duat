@@ -96,7 +96,7 @@ impl Area {
         let mut ansi_codes = self.ansi_codes.lock();
         let start = |_: &Text| layouted::first_points(self, &layouts).0;
         let end = |text: &Text| layouted::last_points(self, &layouts, text, cfg).0;
-        text.update_range(start, end);
+        text.update_bounds(start, end);
 
         let layout = get_layout(&layouts, self.id).unwrap();
         let is_active = layout.active_id() == self.id;

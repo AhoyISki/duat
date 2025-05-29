@@ -5,6 +5,7 @@ use crate::{text::Text, widgets::File};
 
 mod internals {
     use crate::{
+        data::DataKey,
         text::Text,
         ui::{Node, PushSpecs, RawArea, Ui},
         widgets::File,
@@ -23,7 +24,7 @@ mod internals {
 
     pub struct FileId<U: Ui>(pub(in crate::ui) U::Area);
 
-    pub fn window_files<U: Ui>(nodes: &[Node<U>]) -> WindowFiles<'_, U> {
+    pub fn window_files<'a, U: Ui>(dk: &DataKey<'_>, nodes: &'a [Node<U>]) -> WindowFiles<'a, U> {
         let mut files: Vec<(&Node<U>, FileId<U>)> = nodes
             .iter()
             .filter(|&node| node.widget().data_is::<File>())
@@ -36,7 +37,8 @@ mod internals {
             })
             .collect();
 
-        files.sort_unstable_by_key(|(node, _)| node.read_as(|f: &File| f.layout_order).unwrap());
+        files
+            .sort_unstable_by_key(|(node, _)| node.read_as(dk, |f: &File| f.layout_order).unwrap());
 
         files
     }
