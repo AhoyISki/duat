@@ -18,6 +18,7 @@ use std::{any::TypeId, collections::HashMap, marker::PhantomData};
 
 use duat_core::{
     cfg::PrintCfg,
+    data::{Pass, RwData},
     form, hooks,
     text::Text,
     ui::{PushSpecs, Ui},
@@ -29,7 +30,7 @@ use crate::modes::PromptMode;
 impl<U: Ui> WidgetCfg<U> for PromptLineCfg<U> {
     type Widget = PromptLine<U>;
 
-    fn build(self, _: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
+    fn build(self, _: Pass, _: bool) -> (Self::Widget, PushSpecs) {
         let specs = if hooks::group_exists("HidePromptLine") {
             self.specs.with_ver_len(0.0)
         } else {
@@ -42,7 +43,7 @@ impl<U: Ui> WidgetCfg<U> for PromptLineCfg<U> {
             _ghost: PhantomData,
         };
 
-        (widget, || false, specs)
+        (widget, specs)
     }
 }
 
@@ -88,16 +89,22 @@ impl<U: Ui> PromptLine<U> {
 impl<U: Ui> Widget<U> for PromptLine<U> {
     type Cfg = PromptLineCfg<U>;
 
+    async fn update(_: Pass<'_>, _: RwData<Self>, _: &<U as Ui>::Area) {}
+
+    async fn on_unfocus(mut pa: Pass<'_>, widget: RwData<Self>, _: &<U as Ui>::Area) {
+        widget.write(&mut pa, |wid| wid.text = Text::new());
+    }
+
+    fn needs_update(&self) -> bool {
+        false
+    }
+
     fn cfg() -> Self::Cfg {
         Self::Cfg {
             prompts: HashMap::new(),
             specs: PushSpecs::below().with_ver_len(1.0),
             _ghost: PhantomData,
         }
-    }
-
-    fn on_unfocus(&mut self, _area: &<U as Ui>::Area) {
-        self.text = Text::new();
     }
 
     fn text(&self) -> &Text {

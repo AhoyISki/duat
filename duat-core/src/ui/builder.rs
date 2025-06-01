@@ -15,7 +15,7 @@ use parking_lot::Mutex;
 use super::{RawArea, Ui};
 use crate::{
     context::{self, FileHandle},
-    data::DataKey,
+    data::Pass,
     duat_name,
     widgets::{File, Node, ReaderCfg, Widget, WidgetCfg},
 };
@@ -100,9 +100,9 @@ pub struct FileBuilder<U: Ui> {
 
 impl<U: Ui> FileBuilder<U> {
     /// Creates a new [`FileBuilder`].
-    pub(crate) fn new(dk: &mut DataKey<'_>, node: Node<U>, window_i: usize) -> Self {
-        let (_, prev) = context::set_cur(&mut *dk, node.as_file(), node.clone()).unzip();
-        let ff = context::fixed_file(&*dk).unwrap();
+    pub(crate) fn new(pa: &mut Pass, node: Node<U>, window_i: usize) -> Self {
+        let (_, prev) = context::set_cur(&mut *pa, node.as_file(), node.clone()).unzip();
+        let ff = context::fixed_file(&*pa).unwrap();
         let area = node.area().clone();
 
         Self { window_i, ff, area, prev }
@@ -161,20 +161,21 @@ impl<U: Ui> FileBuilder<U> {
     /// [`StatusLine`]: crate::widgets::StatusLine
     pub fn push<W: Widget<U>>(
         &mut self,
-        dk: &mut DataKey<'_>,
+        pa: &mut Pass,
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
-        let (widget, specs) = cfg.build(true);
+        // SAFETY: Exclusive borrow of Pass means I can create my own.
+        let (widget, specs) = cfg.build(unsafe { Pass::new() }, true);
 
         let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];
 
         let (child, parent) = {
-            let (node, parent) = window.push(&mut *dk, widget, &self.area, specs, true, true);
+            let (node, parent) = window.push(&mut *pa, widget, &self.area, specs, true, true);
 
             self.ff
-                .write_related_widgets(&mut *dk, |related| related.push(node.clone()));
+                .write_related_widgets(&mut *pa, |related| related.push(node.clone()));
 
             if let Some(parent) = &parent {
                 if parent.is_master_of(&window.files_area) {
@@ -248,19 +249,20 @@ impl<U: Ui> FileBuilder<U> {
     /// [hook group]: crate::hooks::add_grouped
     pub fn push_to<W: Widget<U>>(
         &mut self,
-        dk: &mut DataKey<'_>,
+        pa: &mut Pass,
         area: U::Area,
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
-        let (widget, specs) = cfg.build(true);
+        // SAFETY: Exclusive borrow of Pass means I can create my own.
+        let (widget, specs) = cfg.build(unsafe { Pass::new() }, true);
 
         let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];
 
-        let (node, parent) = window.push(&mut *dk, widget, &area, specs, true, true);
+        let (node, parent) = window.push(&mut *pa, widget, &area, specs, true, true);
         self.ff
-            .write_related_widgets(&mut *dk, |related| related.push(node.clone()));
+            .write_related_widgets(&mut *pa, |related| related.push(node.clone()));
         (node.area().clone(), parent)
     }
 
@@ -277,33 +279,29 @@ impl<U: Ui> FileBuilder<U> {
     /// [`Tag`]: crate::text::Tag
     /// [`Reader`]: crate::text::Reader
     /// [`Mode`]: crate::mode::Mode
-    pub fn add_reader(&mut self, dk: &mut DataKey<'_>, reader_cfg: impl ReaderCfg) {
-        self.ff.write(dk, |file, _| {
-            // SAFETY: Because this function takes in a &mut DataKey, it is safe
+    pub fn add_reader(&mut self, pa: &mut Pass, reader_cfg: impl ReaderCfg) {
+        self.ff.write(pa, |file, _| {
+            // SAFETY: Because this function takes in a &mut Pass, it is safe
             // to create new ones inside.
-            let mut dk = unsafe { DataKey::new() };
-            file.add_reader(&mut dk, reader_cfg)
+            let mut pa = unsafe { Pass::new() };
+            file.add_reader(&mut pa, reader_cfg)
         })
     }
 
     /// The [`File`] that this hook is being applied to
-    pub fn read<Ret>(&mut self, dk: &DataKey<'_>, f: impl FnOnce(&File, &U::Area) -> Ret) -> Ret {
-        self.ff.read(dk, f)
+    pub fn read<Ret>(&mut self, pa: &Pass, f: impl FnOnce(&File, &U::Area) -> Ret) -> Ret {
+        self.ff.read(pa, f)
     }
 
     /// Mutable reference to the [`File`] that this hooks is being
     /// applied to
-    pub fn write<Ret>(
-        &mut self,
-        dk: &mut DataKey<'_>,
-        f: impl FnOnce(&mut File, &U::Area) -> Ret,
-    ) -> Ret {
-        self.ff.write(dk, f)
+    pub fn write<Ret>(&mut self, pa: &mut Pass, f: impl FnOnce(&mut File, &U::Area) -> Ret) -> Ret {
+        self.ff.write(pa, f)
     }
 
-    pub(crate) fn finish(self, dk: &mut DataKey<'_>) {
+    pub(crate) fn finish(self, pa: &mut Pass) {
         if let Some(prev) = self.prev {
-            context::set_cur(dk, prev.as_file(), prev);
+            context::set_cur(pa, prev.as_file(), prev);
         }
     }
 }
@@ -418,16 +416,17 @@ impl<U: Ui> WindowBuilder<U> {
     /// [cfg]: WidgetCfg
     pub fn push<W: Widget<U>>(
         &mut self,
-        dk: &mut DataKey<'_>,
+        pa: &mut Pass,
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
-        let (widget, specs) = cfg.build(false);
+        // SAFETY: Exclusive borrow of Pass means I can create my own.
+        let (widget, specs) = cfg.build(unsafe { Pass::new() }, false);
 
         let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];
 
-        let (child, parent) = window.push(dk, widget, &self.area, specs, false, false);
+        let (child, parent) = window.push(pa, widget, &self.area, specs, false, false);
 
         if let Some(parent) = &parent {
             self.area = parent.clone();
@@ -479,17 +478,18 @@ impl<U: Ui> WindowBuilder<U> {
     /// [`PromptLine`]: crate::widgets::PromptLine
     pub fn push_to<W: Widget<U>>(
         &mut self,
-        dk: &mut DataKey<'_>,
+        pa: &mut Pass,
         area: U::Area,
         cfg: impl WidgetCfg<U, Widget = W>,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W, U>();
-        let (widget, specs) = cfg.build(false);
+        // SAFETY: Exclusive borrow of Pass means I can create my own.
+        let (widget, specs) = cfg.build(unsafe { Pass::new() }, false);
 
         let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];
 
-        let (node, parent) = window.push(dk, widget, &area, specs, true, false);
+        let (node, parent) = window.push(pa, widget, &area, specs, true, false);
 
         (node.area().clone(), parent)
     }

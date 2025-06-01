@@ -85,7 +85,7 @@ impl MutTags<'_> {
     /// Removes all [`Tag`]s
     ///
     /// Refrain from using this function on [`File`]s, as there may be
-    /// other [`Tag`] providers, and you should avoid messing with
+    /// other [`Tag`] providers, and you should avoid measing with
     /// their tags.
     ///
     /// [`File`]: crate::widgets::File

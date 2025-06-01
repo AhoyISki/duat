@@ -48,7 +48,7 @@ pub use self::{
     line_numbers::{LineNum, LineNumbers, LineNumbersOptions},
     notifier::{NotificationsCfg, Notifier},
     prompt_line::{PromptLine, PromptLineCfg},
-    status_line::{Reader, State, StatusLine, StatusLineCfg, status},
+    status_line::{StateFrom, State, StatusLine, StatusLineCfg, status},
 };
 
 mod line_numbers;

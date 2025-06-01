@@ -15,15 +15,21 @@
 //! [data]: crate::data
 mod state;
 
+use std::{cell::RefCell, rc::Rc};
+
 use duat_core::{
-    context::{self, DynamicFile, FixedFile},
+    context::{self, FileHandle},
+    data::{Pass, RwData},
     form::{self, Form},
     text::{AlignRight, Builder, Spacer, Text, text},
     ui::{PushSpecs, Side, Ui},
     widgets::{Widget, WidgetCfg},
 };
 
-pub use self::{macros::status, state::State};
+pub use self::{
+    macros::status,
+    state::{State, StateFrom},
+};
 use crate::state::{file_fmt, main_fmt, mode_fmt, mode_name, selections_fmt};
 
 /// A widget to show information, usually about a [`File`]
@@ -82,9 +88,10 @@ use crate::state::{file_fmt, main_fmt, mode_fmt, mode_name, selections_fmt};
 /// [`OnFileOpen`]: crate::hooks::OnFileOpen
 /// [`OnWindowOpen`]: crate::hooks::OnWindowOpen
 pub struct StatusLine<U: Ui> {
-    reader: Reader<U>,
+    handle: FileHandle<U>,
     text_fn: TextFn<U>,
     text: Text,
+    checker: Box<dyn Fn() -> bool>,
 }
 
 impl<U: Ui> Widget<U> for StatusLine<U> {
@@ -94,8 +101,10 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
         macros::status!("{file_fmt} {mode_fmt} {selections_fmt} {}", main_fmt)
     }
 
-    fn update(&mut self, _area: &U::Area) {
-        self.text = (self.text_fn)(&mut self.reader);
+    async fn update(mut pa: Pass<'_>, widget: RwData<Self>, _: &<U as Ui>::Area) {
+        let (text_fn, handle) = widget.read(&pa, |wid| (wid.text_fn.clone(), wid.handle.clone()));
+        let text = text_fn.borrow_mut()(&pa, handle);
+        widget.write(&mut pa, |wid| wid.text = text);
     }
 
     fn text(&self) -> &Text {
@@ -104,6 +113,10 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
 
     fn text_mut(&mut self) -> &mut Text {
         &mut self.text
+    }
+
+    fn needs_update(&self) -> bool {
+        self.handle.has_changed() || (self.checker)()
     }
 
     fn once() -> Result<(), Text> {
@@ -119,14 +132,14 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
 #[doc(hidden)]
 pub struct StatusLineCfg<U: Ui> {
     builder: Option<BuilderFn<U>>,
-    checker: Option<Box<dyn Fn() -> bool + Send + Sync>>,
+    checker: Option<Box<dyn Fn() -> bool>>,
     specs: PushSpecs,
 }
 
 impl<U: Ui> StatusLineCfg<U> {
     #[doc(hidden)]
     pub fn new_with(
-        (builder, checker): (BuilderFn<U>, Box<dyn Fn() -> bool + 'static + Send + Sync>),
+        (builder, checker): (BuilderFn<U>, Box<dyn Fn() -> bool>),
         specs: PushSpecs,
     ) -> Self {
         Self {
@@ -154,23 +167,25 @@ impl<U: Ui> StatusLineCfg<U> {
 impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
     type Widget = StatusLine<U>;
 
-    fn build(self, on_file: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
-        let (reader, checker) = {
-            let reader = match on_file {
-                true => Reader::Fixed(context::fixed_file().unwrap()),
-                false => Reader::Dynamic(context::dyn_file().unwrap()),
-            };
-            let file_checker = reader.checker();
-            let checker = match self.checker {
-                Some(checker) => checker,
-                // mode checker because mode_name is used in the default
-                None => Box::new(crate::state::mode_name().checker()),
-            };
-            (reader, move || file_checker() || checker())
+    fn build(self, pa: Pass, on_file: bool) -> (Self::Widget, PushSpecs) {
+        let handle = if on_file {
+            context::fixed_file(&pa).unwrap()
+        } else {
+            context::dyn_file(&pa).unwrap()
+        };
+
+        let checker = match self.checker {
+            Some(checker) => checker,
+            // mode checker because mode_name is used in the default
+            None => Box::new(crate::state::mode_name().checker()),
         };
 
         let text_fn: TextFn<U> = match self.builder {
-            Some(mut pre_fn) => Box::new(move |reader| pre_fn(Text::builder(), reader)),
+            Some(mut text_fn) => Rc::new(RefCell::new(
+                for<'a, 'b> move |pa: &'b Pass<'a>, handle: FileHandle<U>| -> Text {
+                    text_fn(pa, Text::builder(), handle)
+                },
+            )),
             None => {
                 let cfg = match self.specs.side() {
                     Side::Above | Side::Below => {
@@ -179,7 +194,7 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
                                 Some((mode, _)) => mode,
                                 None => mode,
                             };
-                            text!("[Mode]{}", mode.to_uppercase())
+                            text!("[Mode]{}", mode.to_uppercase()).build()
                         });
                         macros::status!(
                             "{mode_upper_fmt}{Spacer}{file_fmt} {selections_fmt} {main_fmt}"
@@ -193,37 +208,22 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
                     Side::Left => unreachable!(),
                 };
 
-                let mut pre_fn = cfg.builder.unwrap();
-                Box::new(move |reader| pre_fn(Text::builder(), reader))
+                let mut text_fn = cfg.builder.unwrap();
+                Rc::new(RefCell::new(
+                    for<'a, 'b> move |pa: &'b Pass<'a>, handle: FileHandle<U>| -> Text {
+                        text_fn(pa, Text::builder(), handle)
+                    },
+                ))
             }
         };
 
-        let widget = StatusLine { reader, text_fn, text: Text::default() };
-        (widget, checker, self.specs)
-    }
-}
-
-pub enum Reader<U: Ui> {
-    Fixed(FixedFile<U>),
-    Dynamic(DynamicFile<U>),
-}
-
-impl<U: Ui> Reader<U> {
-    fn checker(&self) -> Box<dyn Fn() -> bool + Send + Sync + 'static> {
-        match self {
-            Reader::Fixed(ff) => Box::new(ff.checker()),
-            Reader::Dynamic(df) => Box::new(df.checker()),
-        }
-    }
-
-    fn inspect_related<W: 'static, R: 'static>(
-        &mut self,
-        f: impl FnOnce(&W, &U::Area) -> R,
-    ) -> Option<R> {
-        match self {
-            Reader::Fixed(ff) => ff.inspect_related(f),
-            Reader::Dynamic(df) => df.inspect_related(f),
-        }
+        let widget = StatusLine {
+            handle,
+            text_fn,
+            text: Text::default(),
+            checker: Box::new(checker),
+        };
+        (widget, self.specs)
     }
 }
 
@@ -346,28 +346,28 @@ mod macros {
         #[allow(unused_imports)]
         use $crate::{
             private_exports::{
-                duat_core::{text::Builder, ui::PushSpecs},
+                duat_core::{context::FileHandle, data::Pass, text::Builder, ui::PushSpecs},
                 format_like, parse_form, parse_status_part, parse_str
             },
-            widgets::{Reader, StatusLineCfg},
+            widgets::StatusLineCfg,
         };
 
-        let pre_fn = |_: &mut Builder, _: &mut Reader<_>| {};
+        let text_fn= |_: &Pass<'_>, _: &mut Builder, _: &FileHandle<_>| {};
         let checker = || false;
 
-        let (mut pre_fn, checker) = format_like!(
+        let (mut text_fn, checker) = format_like!(
             parse_str,
             [('{', parse_status_part, false), ('[', parse_form, true)],
-            (pre_fn, checker),
+            (text_fn, checker),
             $($parts)*
         );
 
         StatusLineCfg::new_with(
             {
                 (
-                    Box::new(move |mut builder: Builder, reader: &mut Reader<_>| {
-                        pre_fn(&mut builder, reader);
-                        builder.finish()
+                    Box::new(move |pa: &Pass<'_>, mut builder: Builder, handle: FileHandle<_>| {
+                        text_fn(pa, &mut builder, &handle);
+                        builder.build()
                     }),
                     Box::new(checker),
                 )
@@ -377,5 +377,5 @@ mod macros {
     }}
 }
 
-type TextFn<U> = Box<dyn FnMut(&mut Reader<U>) -> Text + Send>;
-type BuilderFn<U> = Box<dyn FnMut(Builder, &mut Reader<U>) -> Text + Send>;
+type TextFn<U> = Rc<RefCell<dyn FnMut(&Pass<'_>, FileHandle<U>) -> Text>>;
+type BuilderFn<U> = Box<dyn FnMut(&Pass<'_>, Builder, FileHandle<U>) -> Text>;

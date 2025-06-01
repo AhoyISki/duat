@@ -15,7 +15,7 @@ use parking_lot::Mutex;
 
 pub use self::global::*;
 use crate::{
-    data::{DataKey, RwData},
+    data::{Pass, RwData},
     text::Text,
     ui::{RawArea, Ui},
     widgets::{File, Node, Related, Widget},
@@ -36,7 +36,7 @@ mod global {
 
     use super::{CurFile, CurWidget, FileHandle, FileParts, Notifications};
     use crate::{
-        data::{DataKey, DataMap, RwData},
+        data::{DataMap, Pass, RwData},
         text::{Text, err},
         ui::{Ui, Window},
         widgets::Node,
@@ -73,26 +73,26 @@ mod global {
         MODE_NAME.with(RwData::clone)
     }
 
-    pub fn file_named<U: Ui>(dk: &DataKey<'_>, name: impl ToString) -> Result<FileHandle<U>, Text> {
+    pub fn file_named<U: Ui>(pa: &Pass, name: impl ToString) -> Result<FileHandle<U>, Text> {
         let windows = windows::<U>().borrow();
         let name = name.to_string();
-        let (.., node) = crate::file_entry(dk, &windows, &name)?;
+        let (.., node) = crate::file_entry(pa, &windows, &name)?;
 
         let (widget, area, related) = node.parts();
         let file = widget.try_downcast().unwrap();
 
         Ok(FileHandle {
             fixed: Some((file, area.clone(), related.clone().unwrap_or_default())),
-            current: cur_file(dk).unwrap().0.clone(),
+            current: cur_file(pa).unwrap().0.clone(),
         })
     }
 
-    pub fn fixed_file<U: Ui>(dk: &DataKey<'_>) -> Result<FileHandle<U>, Text> {
-        Ok(cur_file(dk)?.fixed(dk))
+    pub fn fixed_file<U: Ui>(pa: &Pass) -> Result<FileHandle<U>, Text> {
+        Ok(cur_file(pa)?.fixed(pa))
     }
 
-    pub fn dyn_file<U: Ui>(dk: &DataKey<'_>) -> Result<FileHandle<U>, Text> {
-        Ok(cur_file(dk)?.dynamic())
+    pub fn dyn_file<U: Ui>(pa: &Pass) -> Result<FileHandle<U>, Text> {
+        Ok(cur_file(pa)?.dynamic())
     }
 
     pub fn cur_window() -> usize {
@@ -120,18 +120,18 @@ mod global {
     }
 
     pub(crate) fn set_cur<U: Ui>(
-        dk: &mut DataKey<'_>,
+        pa: &mut Pass,
         parts: Option<FileParts<U>>,
         node: Node<U>,
     ) -> Option<(FileParts<U>, Node<U>)> {
-        let old = parts.and_then(|new| inner_cur_file().0.write(&mut *dk, |old| old.replace(new)));
+        let old = parts.and_then(|new| inner_cur_file().0.write(&mut *pa, |old| old.replace(new)));
 
-        old.zip(inner_cur_widget().0.write(&mut *dk, |cw| cw.replace(node)))
+        old.zip(inner_cur_widget().0.write(&mut *pa, |cw| cw.replace(node)))
     }
 
-    pub(crate) fn cur_widget<U: Ui>(dk: &DataKey<'_>) -> Result<&'static CurWidget<U>, Text> {
+    pub(crate) fn cur_widget<U: Ui>(pa: &Pass) -> Result<&'static CurWidget<U>, Text> {
         let cur_widget = inner_cur_widget();
-        if cur_widget.0.read(dk, |cw| cw.is_none()) {
+        if cur_widget.0.read(pa, |cw| cw.is_none()) {
             Err(err!("No widget yet").build())
         } else {
             Ok(cur_widget)
@@ -158,9 +158,9 @@ mod global {
         WILL_RELOAD_OR_QUIT.store(true, Ordering::Relaxed);
     }
 
-    fn cur_file<U: Ui>(dk: &DataKey<'_>) -> Result<&'static CurFile<U>, Text> {
+    fn cur_file<U: Ui>(pa: &Pass) -> Result<&'static CurFile<U>, Text> {
         let cur_file = inner_cur_file();
-        if cur_file.0.read(dk, |f| f.is_none()) {
+        if cur_file.0.read(pa, |f| f.is_none()) {
             return Err(err!("No file yet").build());
         }
         Ok(cur_file)
@@ -214,9 +214,9 @@ impl<U: Ui> CurFile<U> {
         Self(RwData::new(None))
     }
 
-    pub fn fixed(&self, dk: &DataKey<'_>) -> FileHandle<U> {
+    pub fn fixed(&self, pa: &Pass) -> FileHandle<U> {
         FileHandle {
-            fixed: self.0.read(dk, |parts| parts.clone()),
+            fixed: self.0.read(pa, |parts| parts.clone()),
             current: self.0.clone(),
         }
     }
@@ -225,16 +225,16 @@ impl<U: Ui> CurFile<U> {
         FileHandle { fixed: None, current: self.0.clone() }
     }
 
-    pub(crate) fn get_related_widget<W: 'static>(
+    pub(crate) fn _get_related_widget<W: 'static>(
         &mut self,
-        dk: &DataKey<'_>,
+        pa: &Pass,
     ) -> Option<(RwData<W>, U::Area)> {
-        self.0.read(dk, |parts| {
+        self.0.read(pa, |parts| {
             let (file, area, related) = parts.as_ref().unwrap();
             if file.data_is::<W>() {
                 Some((file.try_downcast().unwrap(), area.clone()))
             } else {
-                related.read(dk, |related| {
+                related.read(pa, |related| {
                     related.iter().find_map(|node| {
                         let (widget, area, _) = node.parts();
                         widget.try_downcast().map(|data| (data, area.clone()))
@@ -258,24 +258,20 @@ pub struct FileHandle<U: Ui> {
 }
 
 impl<U: Ui> FileHandle<U> {
-    pub fn read<Ret>(&mut self, dk: &DataKey<'_>, f: impl FnOnce(&File, &U::Area) -> Ret) -> Ret {
+    pub fn read<Ret>(&self, pa: &Pass, f: impl FnOnce(&File, &U::Area) -> Ret) -> Ret {
         if let Some((file, area, _)) = self.fixed.as_ref() {
-            file.read(dk, |file| f(file, area))
+            file.read(pa, |file| f(file, area))
         } else {
-            self.current.read(dk, |parts| {
+            self.current.read(pa, |parts| {
                 let (file, area, _) = parts.as_ref().unwrap();
-                file.read(dk, |file| f(file, area))
+                file.read(pa, |file| f(file, area))
             })
         }
     }
 
-    pub fn write<Ret>(
-        &mut self,
-        dk: &mut DataKey<'_>,
-        f: impl FnOnce(&mut File, &U::Area) -> Ret,
-    ) -> Ret {
+    pub fn write<Ret>(&self, pa: &mut Pass, f: impl FnOnce(&mut File, &U::Area) -> Ret) -> Ret {
         let update = move |file: &RwData<File>, area: &U::Area| {
-            file.write(dk, |file| {
+            file.write(pa, |file| {
                 let cfg = file.print_cfg();
                 file.text_mut().remove_cursors(area, cfg);
 
@@ -294,7 +290,7 @@ impl<U: Ui> FileHandle<U> {
             update(file, area)
         } else {
             // SAFETY: Since the update closure only uses a write method, the
-            // DataKey becomes unusable for other purposes, making it impossible
+            // Pass becomes unusable for other purposes, making it impossible
             // to make further borrows, asserting that there is no other borrow
             // for self.current.
             unsafe {
@@ -307,19 +303,19 @@ impl<U: Ui> FileHandle<U> {
     }
 
     pub fn read_related<W: 'static, R>(
-        &mut self,
-        dk: &DataKey<'_>,
+        &self,
+        pa: &Pass,
         f: impl FnOnce(&W, &U::Area) -> R,
     ) -> Option<R> {
         let read = |(file, area, related): &FileParts<U>| {
             if file.data_is::<W>() {
-                file.read_as(dk, |w| f(w, area))
+                file.read_as(pa, |w| f(w, area))
             } else {
-                related.read(dk, |related| {
+                related.read(pa, |related| {
                     related
                         .iter()
                         .find(|node| node.data_is::<W>())
-                        .and_then(|node| node.widget().read_as(dk, |w| f(w, node.area())))
+                        .and_then(|node| node.widget().read_as(pa, |w| f(w, node.area())))
                 })
             }
         };
@@ -327,19 +323,16 @@ impl<U: Ui> FileHandle<U> {
         if let Some(parts) = self.fixed.as_ref() {
             read(parts)
         } else {
-            self.current.read(dk, |parts| read(parts.as_ref().unwrap()))
+            self.current.read(pa, |parts| read(parts.as_ref().unwrap()))
         }
     }
 
-    pub fn get_related_widget<W: 'static>(
-        &mut self,
-        dk: &DataKey<'_>,
-    ) -> Option<(RwData<W>, U::Area)> {
+    pub fn get_related_widget<W: 'static>(&self, pa: &Pass) -> Option<(RwData<W>, U::Area)> {
         let get_related = |(file, area, related): &FileParts<U>| {
             if file.data_is::<W>() {
                 Some((file.try_downcast().unwrap(), area.clone()))
             } else {
-                related.read(dk, |related| {
+                related.read(pa, |related| {
                     related.iter().find_map(|node| {
                         let (widget, area, _) = node.parts();
                         widget.try_downcast().map(|data| (data, area.clone()))
@@ -352,22 +345,18 @@ impl<U: Ui> FileHandle<U> {
             get_related(parts)
         } else {
             self.current
-                .read(dk, |parts| get_related(parts.as_ref().unwrap()))
+                .read(pa, |parts| get_related(parts.as_ref().unwrap()))
         }
     }
 
-    pub(crate) fn write_related_widgets(
-        &mut self,
-        dk: &mut DataKey<'_>,
-        f: impl FnOnce(&mut Vec<Node<U>>),
-    ) {
+    pub(crate) fn write_related_widgets(&self, pa: &mut Pass, f: impl FnOnce(&mut Vec<Node<U>>)) {
         if let Some((.., related)) = self.fixed.as_ref() {
-            related.write(dk, f)
+            related.write(pa, f)
         } else {
             // SAFETY: Same situation as the write method
             unsafe {
                 self.current
-                    .read_unsafe(|parts| parts.as_ref().unwrap().2.write(dk, f))
+                    .read_unsafe(|parts| parts.as_ref().unwrap().2.write(pa, f))
             }
         }
     }
@@ -390,12 +379,12 @@ impl<U: Ui> FileHandle<U> {
         has_changed
     }
 
-    pub fn ptr_eq<T: ?Sized>(&self, dk: &DataKey<'_>, other: &RwData<T>) -> bool {
+    pub fn ptr_eq<T: ?Sized>(&self, pa: &Pass, other: &RwData<T>) -> bool {
         if let Some((file, ..)) = self.fixed.as_ref() {
             file.ptr_eq(other)
         } else {
             self.current
-                .read(dk, |parts| parts.as_ref().unwrap().0.ptr_eq(other))
+                .read(pa, |parts| parts.as_ref().unwrap().0.ptr_eq(other))
         }
     }
 }
@@ -482,21 +471,21 @@ impl<U: Ui> CurWidget<U> {
         self.0.type_id()
     }
 
-    pub fn read<R>(&self, dk: &DataKey<'_>, f: impl FnOnce(&dyn Widget<U>, &U::Area) -> R) -> R {
-        self.0.raw_read(|node| {
+    pub fn read<R>(&self, pa: &Pass, f: impl FnOnce(&dyn Widget<U>, &U::Area) -> R) -> R {
+        self.0.read(pa, |node| {
             let (widget, area, _) = node.as_ref().unwrap().parts();
-            widget.read(dk, |widget| f(widget, area))
+            widget.read(pa, |widget| f(widget, area))
         })
     }
 
     pub fn read_as<W: Widget<U>, R>(
         &self,
-        dk: &DataKey<'_>,
+        pa: &Pass,
         f: impl FnOnce(&W, &U::Area) -> R,
     ) -> Option<R> {
-        self.0.raw_read(|node| {
+        self.0.read(pa, |node| {
             let (widget, area, _) = node.as_ref().unwrap().parts();
-            widget.read_as(dk, |widget| f(widget, area))
+            widget.read_as(pa, |widget| f(widget, area))
         })
     }
 
@@ -524,8 +513,8 @@ impl<U: Ui> CurWidget<U> {
         }
     }
 
-    pub(crate) fn node(&self, dk: &DataKey<'_>) -> Node<U> {
-        self.0.read(dk, |node| node.clone().unwrap())
+    pub(crate) fn node(&self, pa: &Pass) -> Node<U> {
+        self.0.read(pa, |node| node.clone().unwrap())
     }
 }
 

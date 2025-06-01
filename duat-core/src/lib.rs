@@ -243,9 +243,7 @@
     unboxed_closures,
     associated_type_defaults,
     dropck_eyepatch,
-    fn_traits,
-    auto_traits,
-    negative_impls
+    fn_traits
 )]
 #![allow(clippy::single_range_in_vec_init)]
 
@@ -257,7 +255,7 @@ use std::{
     sync::{LazyLock, Once},
 };
 
-use data::DataKey;
+use data::Pass;
 #[allow(unused_imports)]
 use dirs_next::cache_dir;
 pub use lender::Lender;
@@ -756,7 +754,7 @@ fn merging_range_by_guess_and_lazy_shift<T, U: Copy + Ord + std::fmt::Debug, V: 
 /// An entry for a file with the given name
 #[allow(clippy::result_large_err)]
 fn file_entry<'a, U: Ui>(
-    dk: &DataKey<'_>,
+    pa: &Pass,
     windows: &'a [Window<U>],
     name: &str,
 ) -> Result<(usize, usize, &'a Node<U>), Text> {
@@ -764,20 +762,20 @@ fn file_entry<'a, U: Ui>(
         .iter()
         .enumerate()
         .flat_map(window_index_widget)
-        .find(|(.., node)| node.read_as(dk, |f: &File| f.name() == name) == Some(true))
+        .find(|(.., node)| node.read_as(pa, |f: &File| f.name() == name) == Some(true))
         .ok_or_else(|| err!("File with name [a]{name}[] not found").build())
 }
 
 /// An entry for a widget of a specific type
 #[allow(clippy::result_large_err)]
 fn widget_entry<'a, W: Widget<U>, U: Ui>(
-    dk: &DataKey<'_>,
+    pa: &Pass,
     windows: &'a [Window<U>],
     w: usize,
 ) -> Result<(usize, usize, &'a Node<U>), Text> {
-    let mut ff = context::fixed_file::<U>(dk).unwrap();
+    let handle = context::fixed_file::<U>(pa).unwrap();
 
-    if let Some((widget, _)) = ff.get_related_widget::<W>(dk) {
+    if let Some((widget, _)) = handle.get_related_widget::<W>(pa) {
         windows
             .iter()
             .enumerate()

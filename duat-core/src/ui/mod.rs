@@ -14,7 +14,7 @@ pub use self::{
 use crate::{
     cache::load_cache,
     cfg::PrintCfg,
-    data::{DataKey, RwData},
+    data::{Pass, RwData},
     form::Painter,
     text::{Builder, FwdIter, Item, Point, RevIter, Text, TwoPoints},
     widgets::{File, Node, Widget},
@@ -342,7 +342,7 @@ pub struct Window<U: Ui> {
 impl<U: Ui> Window<U> {
     /// Returns a new instance of [`Window`]
     pub(crate) fn new<W: Widget<U>>(
-        dk: &mut DataKey<'_>,
+        pa: &mut Pass,
         ms: &'static U::MetaStatics,
         widget: W,
         layout: Box<dyn Layout<U>>,
@@ -351,7 +351,7 @@ impl<U: Ui> Window<U> {
             unsafe { RwData::<dyn Widget<U>>::new_unsized::<W>(Rc::new(RefCell::new(widget))) };
 
         let cache = widget
-            .read_as(&*dk, |f: &File| {
+            .read_as(&*pa, |f: &File| {
                 load_cache::<<U::Area as RawArea>::Cache>(f.path())
             })
             .flatten()
@@ -359,7 +359,7 @@ impl<U: Ui> Window<U> {
 
         let area = U::new_root(ms, cache);
 
-        let node = Node::new::<W>(&mut *dk, widget, area.clone());
+        let node = Node::new::<W>(&mut *pa, widget, area.clone());
 
         let window = Self {
             nodes: vec![node.clone()],
@@ -382,7 +382,7 @@ impl<U: Ui> Window<U> {
     /// Pushes a [`Widget`] onto an existing one
     pub(crate) fn push<W: Widget<U>>(
         &mut self,
-        dk: &mut DataKey<'_>,
+        pa: &mut Pass,
         widget: W,
         area: &U::Area,
         specs: PushSpecs,
@@ -393,7 +393,7 @@ impl<U: Ui> Window<U> {
             unsafe { RwData::<dyn Widget<U>>::new_unsized::<W>(Rc::new(RefCell::new(widget))) };
 
         let cache = widget
-            .read_as(&*dk, |f: &File| {
+            .read_as(&*pa, |f: &File| {
                 load_cache::<<U::Area as RawArea>::Cache>(f.path())
             })
             .flatten()
@@ -401,7 +401,7 @@ impl<U: Ui> Window<U> {
 
         let (child, parent) = MutArea(area).bisect(specs, do_cluster, on_files, cache);
 
-        self.nodes.push(Node::new::<W>(&mut *dk, widget, child));
+        self.nodes.push(Node::new::<W>(&mut *pa, widget, child));
         (self.nodes.last().unwrap().clone(), parent)
     }
 
@@ -413,14 +413,14 @@ impl<U: Ui> Window<U> {
     /// with others being at the perifery of this area.
     pub(crate) fn push_file(
         &mut self,
-        dk: &mut DataKey<'_>,
+        pa: &mut Pass,
         mut file: File,
     ) -> Result<(Node<U>, Option<U::Area>), Text> {
-        let window_files = window_files(&*dk, &self.nodes);
+        let window_files = window_files(&*pa, &self.nodes);
         file.layout_order = window_files.len();
         let (id, specs) = self.layout.new_file(&file, window_files)?;
 
-        let (child, parent) = self.push(dk, file, &id.0, specs, false, true);
+        let (child, parent) = self.push(pa, file, &id.0, specs, false, true);
 
         if let Some(parent) = &parent
             && id.0 == self.files_area
@@ -432,12 +432,12 @@ impl<U: Ui> Window<U> {
     }
 
     /// Removes all [`Node`]s whose [`RawArea`]s where deleted
-    pub(crate) fn remove_file(&mut self, mut dk: &DataKey, name: &str) {
+    pub(crate) fn remove_file(&mut self, pa: &Pass, name: &str) {
         let Some(node) = self
             .nodes
             .extract_if(.., |node| {
                 node.as_file()
-                    .is_some_and(|(f, ..)| f.read(dk, File::name) == name)
+                    .is_some_and(|(f, ..)| f.read(pa, File::name) == name)
             })
             .next()
         else {
@@ -450,7 +450,7 @@ impl<U: Ui> Window<U> {
         if let Some(parent) = MutArea(node.area()).delete()
             && parent == self.files_area
         {
-            let files = self.file_nodes(dk);
+            let files = self.file_nodes(pa);
             let (only_file, _) = files.first().unwrap();
             self.files_area = only_file
                 .area()
@@ -459,7 +459,7 @@ impl<U: Ui> Window<U> {
         }
 
         if let Some(related) = node.related_widgets() {
-            related.read(dk, |related| {
+            related.read(pa, |related| {
                 for node in self.nodes.extract_if(.., |node| related.contains(node)) {
                     MutArea(node.area()).delete();
                 }
@@ -470,16 +470,16 @@ impl<U: Ui> Window<U> {
     /// Takes all [`Node`]s related to a given [`Node`]
     pub(crate) fn take_file_and_related_nodes(
         &mut self,
-        dk: &mut DataKey<'_>,
+        pa: &mut Pass,
         node: &Node<U>,
     ) -> Vec<Node<U>> {
         if let Some(related) = node.related_widgets() {
             let lo = node
                 .widget()
-                .read_as(&*dk, |f: &File| f.layout_order)
+                .read_as(&*pa, |f: &File| f.layout_order)
                 .unwrap();
 
-            let nodes = related.read(&*dk, |related| {
+            let nodes = related.read(&*pa, |related| {
                 let nodes = self
                     .nodes
                     .extract_if(.., |n| related.contains(n) || n == node)
@@ -489,7 +489,7 @@ impl<U: Ui> Window<U> {
             });
 
             for node in &self.nodes {
-                node.widget().write_as(&mut *dk, |f: &mut File| {
+                node.widget().write_as(&mut *pa, |f: &mut File| {
                     if f.layout_order > lo {
                         f.layout_order -= 1;
                     }
@@ -504,17 +504,17 @@ impl<U: Ui> Window<U> {
 
     pub(crate) fn insert_file_nodes<'a>(
         &mut self,
-        dk: &mut DataKey<'a>,
+        pa: &mut Pass<'a>,
         layout_ordering: usize,
         nodes: Vec<Node<U>>,
     ) {
         if let Some(i) = self.nodes.iter().position(|node| {
             node.widget()
-                .read_as(&*dk, |f: &File| f.layout_order >= layout_ordering)
+                .read_as(&*pa, |f: &File| f.layout_order >= layout_ordering)
                 == Some(true)
         }) {
             for node in self.nodes[i..].iter() {
-                node.widget().write_as(&mut *dk, |f: &mut File| {
+                node.widget().write_as(&mut *pa, |f: &mut File| {
                     f.layout_order += 1;
                 });
             }
@@ -532,22 +532,22 @@ impl<U: Ui> Window<U> {
     /// and their respective [`Widget`] indices
     ///
     /// [`Widget`]: crate::widgets::Widget
-    pub fn file_names(&self, dk: &DataKey<'_>) -> Vec<String> {
-        window_files(dk, &self.nodes)
+    pub fn file_names(&self, pa: &Pass) -> Vec<String> {
+        window_files(pa, &self.nodes)
             .into_iter()
-            .map(|f| f.0.widget().read_as(dk, |f: &File| f.name()).unwrap())
+            .map(|f| f.0.widget().read_as(pa, |f: &File| f.name()).unwrap())
             .collect()
     }
 
-    pub fn file_paths(&self, dk: &DataKey<'_>) -> Vec<String> {
-        window_files(dk, &self.nodes)
+    pub fn file_paths(&self, pa: &Pass) -> Vec<String> {
+        window_files(pa, &self.nodes)
             .into_iter()
-            .map(|f| f.0.widget().read_as(dk, |f: &File| f.name()).unwrap())
+            .map(|f| f.0.widget().read_as(pa, |f: &File| f.name()).unwrap())
             .collect()
     }
 
-    pub fn file_nodes(&self, dk: &DataKey<'_>) -> WindowFiles<U> {
-        window_files(dk, &self.nodes)
+    pub fn file_nodes(&self, pa: &Pass) -> WindowFiles<U> {
+        window_files(pa, &self.nodes)
     }
 
     pub fn len_widgets(&self) -> usize {
@@ -668,10 +668,10 @@ impl<U: Ui> RoWindow<'_, U> {
     /// reference, as to not do unnecessary cloning of the widget's
     /// inner [`RwData<W>`], and because [`Iterator`]s cannot return
     /// references to themselves.
-    pub fn fold_files<B>(&self, dk: &DataKey, init: B, mut f: impl FnMut(B, &File) -> B) -> B {
+    pub fn fold_files<B>(&self, pa: &Pass, init: B, mut f: impl FnMut(B, &File) -> B) -> B {
         self.0.nodes.iter().fold(init, |accum, node| {
             if node.data_is::<File>() {
-                node.read_as(dk, |file: &File| f(accum, file)).unwrap()
+                node.read_as(pa, |file: &File| f(accum, file)).unwrap()
             } else {
                 accum
             }
@@ -687,10 +687,15 @@ impl<U: Ui> RoWindow<'_, U> {
     /// reference, as to not do unnecessary cloning of the widget's
     /// inner [`RwData<W>`], and because [`Iterator`]s cannot return
     /// references to themselves.
-    pub fn fold_widgets<B>(&self, init: B, mut f: impl FnMut(B, &dyn Widget<U>) -> B) -> B {
+    pub fn fold_widgets<B>(
+        &self,
+        pa: &Pass,
+        init: B,
+        mut f: impl FnMut(B, &dyn Widget<U>) -> B,
+    ) -> B {
         self.0.nodes.iter().fold(init, |accum, node| {
             let f = &mut f;
-            node.raw_read(|widget| f(accum, widget))
+            node.widget().read(pa, |widget| f(accum, widget))
         })
     }
 }
@@ -725,7 +730,7 @@ pub struct PushSpecs {
 
 impl PushSpecs {
     /// Returns a new instance of [`PushSpecs`]
-    pub fn left() -> Self {
+    pub const fn left() -> Self {
         Self {
             side: Side::Left,
             ver_cons: [None; 4],
@@ -734,7 +739,7 @@ impl PushSpecs {
     }
 
     /// Returns a new instance of [`PushSpecs`]
-    pub fn right() -> Self {
+    pub const fn right() -> Self {
         Self {
             side: Side::Right,
             ver_cons: [None; 4],
@@ -743,7 +748,7 @@ impl PushSpecs {
     }
 
     /// Returns a new instance of [`PushSpecs`]
-    pub fn above() -> Self {
+    pub const fn above() -> Self {
         Self {
             side: Side::Above,
             ver_cons: [None; 4],
@@ -752,7 +757,7 @@ impl PushSpecs {
     }
 
     /// Returns a new instance of [`PushSpecs`]
-    pub fn below() -> Self {
+    pub const fn below() -> Self {
         Self {
             side: Side::Below,
             ver_cons: [None; 4],
@@ -761,77 +766,77 @@ impl PushSpecs {
     }
 
     /// Returns a new instance of [`PushSpecs`]
-    pub fn to_left(self) -> Self {
+    pub const fn to_left(self) -> Self {
         Self { side: Side::Left, ..self }
     }
 
     /// Returns a new instance of [`PushSpecs`]
-    pub fn to_right(self) -> Self {
+    pub const fn to_right(self) -> Self {
         Self { side: Side::Right, ..self }
     }
 
     /// Returns a new instance of [`PushSpecs`]
-    pub fn to_above(self) -> Self {
+    pub const fn to_above(self) -> Self {
         Self { side: Side::Above, ..self }
     }
 
     /// Returns a new instance of [`PushSpecs`]
-    pub fn to_below(self) -> Self {
+    pub const fn to_below(self) -> Self {
         Self { side: Side::Below, ..self }
     }
 
-    pub fn with_ver_len(mut self, len: f32) -> Self {
+    pub const fn with_ver_len(mut self, len: f32) -> Self {
         constrain(&mut self.ver_cons, Constraint::Len(len));
         self
     }
 
-    pub fn with_ver_min(mut self, min: f32) -> Self {
+    pub const fn with_ver_min(mut self, min: f32) -> Self {
         constrain(&mut self.ver_cons, Constraint::Min(min));
         self
     }
 
-    pub fn with_ver_max(mut self, max: f32) -> Self {
+    pub const fn with_ver_max(mut self, max: f32) -> Self {
         constrain(&mut self.ver_cons, Constraint::Max(max));
         self
     }
 
-    pub fn with_ver_ratio(mut self, den: u16, div: u16) -> Self {
+    pub const fn with_ver_ratio(mut self, den: u16, div: u16) -> Self {
         constrain(&mut self.ver_cons, Constraint::Ratio(den, div));
         self
     }
 
-    pub fn with_hor_len(mut self, len: f32) -> Self {
+    pub const fn with_hor_len(mut self, len: f32) -> Self {
         constrain(&mut self.hor_cons, Constraint::Len(len));
         self
     }
 
-    pub fn with_hor_min(mut self, min: f32) -> Self {
+    pub const fn with_hor_min(mut self, min: f32) -> Self {
         constrain(&mut self.hor_cons, Constraint::Min(min));
         self
     }
 
-    pub fn with_hor_max(mut self, max: f32) -> Self {
+    pub const fn with_hor_max(mut self, max: f32) -> Self {
         constrain(&mut self.hor_cons, Constraint::Max(max));
         self
     }
 
-    pub fn with_hor_ratio(mut self, den: u16, div: u16) -> Self {
+    pub const fn with_hor_ratio(mut self, den: u16, div: u16) -> Self {
         constrain(&mut self.hor_cons, Constraint::Ratio(den, div));
         self
     }
 
-    pub fn axis(&self) -> Axis {
+    pub const fn axis(&self) -> Axis {
         match self.side {
             Side::Above | Side::Below => Axis::Vertical,
             Side::Right | Side::Left => Axis::Horizontal,
         }
     }
 
-    pub fn side(&self) -> Side {
+    pub const fn side(&self) -> Side {
         self.side
     }
 
-    pub fn comes_earlier(&self) -> bool {
+    pub const fn comes_earlier(&self) -> bool {
         matches!(self.side, Side::Left | Side::Above)
     }
 
@@ -850,14 +855,23 @@ impl PushSpecs {
         }
     }
 
-    pub fn is_resizable_on(&self, axis: Axis) -> bool {
+    pub const fn is_resizable_on(&self, axis: Axis) -> bool {
         let cons = match axis {
             Axis::Horizontal => &self.hor_cons,
             Axis::Vertical => &self.ver_cons,
         };
-        cons.iter()
-            .flatten()
-            .all(|con| matches!(con, Constraint::Min(..) | Constraint::Max(..)))
+
+        let mut i = 0;
+
+        while i < 4 {
+            let (None | Some(Constraint::Min(..) | Constraint::Max(..))) = cons[i] else {
+                return false
+            };
+
+            i += 1;
+        }
+
+        true
     }
 }
 
@@ -1058,13 +1072,23 @@ impl Caret {
     }
 }
 
-fn constrain(cons: &mut [Option<Constraint>; 4], con: Constraint) {
-    use std::mem::discriminant;
-    let old = cons
-        .iter_mut()
-        .find(|lhs| lhs.is_none_or(|lhs| discriminant(&lhs) == discriminant(&con)))
-        .unwrap();
-    *old = Some(con);
+const fn constrain(cons: &mut [Option<Constraint>; 4], con: Constraint) {
+    let mut i = 0;
+
+    while i < 4 {
+        i += 1;
+
+        cons[i - 1] = match (cons[i - 1], con) {
+            (None, _)
+            | (Some(Constraint::Len(_)), Constraint::Len(_))
+            | (Some(Constraint::Min(_)), Constraint::Min(_))
+            | (Some(Constraint::Max(_)), Constraint::Max(_))
+            | (Some(Constraint::Ratio(..)), Constraint::Ratio(..)) => Some(con),
+            _ => continue,
+        };
+
+        break;
+    }
 }
 
 /// A struct used to modify the layout of [`RawArea`]s

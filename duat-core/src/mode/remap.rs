@@ -7,7 +7,7 @@ pub use self::global::*;
 use super::Mode;
 use crate::{
     context,
-    data::{DataKey, RwData},
+    data::{Pass, RwData},
     mode,
     text::{Key, Tag, text},
     ui::Ui,
@@ -22,7 +22,7 @@ mod global {
     use super::{Gives, Remapper};
     use crate::{
         context,
-        data::{DataKey, DataMap},
+        data::{DataMap, Pass},
         mode::Mode,
         text::{Builder, Text, text},
         ui::Ui,
@@ -30,7 +30,7 @@ mod global {
 
     thread_local! {
         static REMAPPER: &'static Remapper = Box::leak(Box::new(Remapper::new()));
-        static SEND_KEY: RefCell<fn(DataKey, KeyEvent) -> Pin<Box<dyn Future<Output = ()>>>> =
+        static SEND_KEY: RefCell<fn(Pass, KeyEvent) -> Pin<Box<dyn Future<Output = ()>>>> =
             RefCell::new(|_, _| Box::pin(async {}));
     }
 
@@ -330,7 +330,7 @@ mod global {
     }
 
     /// Sends a key to be remapped
-    pub(crate) async fn send_key(data_key: DataKey<'_>, mut key: KeyEvent) {
+    pub(crate) async fn send_key(data_key: Pass<'_>, mut key: KeyEvent) {
         // No need to send shift to, for example, Char('L').
         if let KeyCode::Char(_) = key.code {
             key.modifiers.remove(KeyMod::SHIFT);
@@ -344,18 +344,18 @@ mod global {
         SEND_KEY.with(|sk| {
             *sk.borrow_mut() = |_, key| {
                 Box::pin(async move {
-                    // SAFETY: Since this function is consuming a DataKey, I can create
+                    // SAFETY: Since this function is consuming a Pass, I can create
                     // new ones.
-                    let dk = unsafe { DataKey::new() };
-                    send_key_fn::<M, U>(dk, key).await
+                    let pa = unsafe { Pass::new() };
+                    send_key_fn::<M, U>(pa, key).await
                 })
             }
         });
     }
 
     /// The key sending function, to be used as a pointer
-    async fn send_key_fn<M: Mode<U>, U: Ui>(dk: DataKey<'_>, key: KeyEvent) {
-        REMAPPER.with(|r| *r).send_key::<M, U>(dk, key).await;
+    async fn send_key_fn<M: Mode<U>, U: Ui>(pa: Pass<'_>, key: KeyEvent) {
+        REMAPPER.with(|r| *r).send_key::<M, U>(pa, key).await;
     }
 }
 
@@ -403,15 +403,15 @@ impl Remapper {
 
     /// Sends a key to be remapped or not
     #[allow(clippy::await_holding_lock)]
-    async fn send_key<M: Mode<U>, U: Ui>(&self, dk: DataKey<'_>, key: KeyEvent) {
+    async fn send_key<M: Mode<U>, U: Ui>(&self, pa: Pass<'_>, key: KeyEvent) {
         async fn send_key_inner<U: Ui>(
             remapper: &Remapper,
-            mut dk: DataKey<'_>,
+            mut pa: Pass<'_>,
             ty: TypeId,
             key: KeyEvent,
         ) {
             let Some(i) = remapper.remaps.lock().iter().position(|(m, _)| ty == *m) else {
-                mode::send_keys_to(dk, vec![key]).await;
+                mode::send_keys_to(pa, vec![key]).await;
                 return;
             };
 
@@ -419,13 +419,13 @@ impl Remapper {
             let remaps_list = remapper.remaps.lock();
             let (_, remaps) = &remaps_list[i];
 
-            let (cur_seq, is_alias) = remapper.cur_seq.write(&mut dk, |(cur_seq, is_alias)| {
+            let (cur_seq, is_alias) = remapper.cur_seq.write(&mut pa, |(cur_seq, is_alias)| {
                 cur_seq.push(key);
                 (cur_seq.clone(), *is_alias)
             });
 
-            let clear_cur_seq = |dk| {
-                remapper.cur_seq.write(dk, |(cur_seq, is_alias)| {
+            let clear_cur_seq = |pa| {
+                remapper.cur_seq.write(pa, |(cur_seq, is_alias)| {
                     (*cur_seq, *is_alias) = (Vec::new(), false)
                 })
             };
@@ -433,22 +433,22 @@ impl Remapper {
             if let Some(remap) = remaps.iter().find(|r| r.takes.starts_with(&cur_seq)) {
                 if remap.takes.len() == cur_seq.len() {
                     if remap.is_alias {
-                        dk = remove_alias_and::<U>(dk, |_, _, _| {});
+                        pa = remove_alias_and::<U>(pa, |_, _, _| {});
                     }
 
-                    clear_cur_seq(&mut dk);
+                    clear_cur_seq(&mut pa);
 
                     match &remap.gives {
                         Gives::Keys(keys) => {
                             let keys = keys.clone();
                             // Lock dropped here, before any .awaits
                             drop(remaps_list);
-                            mode::send_keys_to(dk, keys).await
+                            mode::send_keys_to(pa, keys).await
                         }
                         Gives::Mode(f) => f(),
                     }
                 } else if remap.is_alias {
-                    remove_alias_and::<U>(dk, |widget, area, main| {
+                    remove_alias_and::<U>(pa, |widget, area, main| {
                         widget.text_mut().insert_tag(
                             Key::for_alias(),
                             Tag::ghost(main, text!("[Alias]{}", keys_to_string(&cur_seq))),
@@ -461,18 +461,18 @@ impl Remapper {
             } else if is_alias {
                 // Lock dropped here, before any .awaits
                 drop(remaps_list);
-                dk = remove_alias_and::<U>(dk, |_, _, _| {});
-                clear_cur_seq(&mut dk);
-                mode::send_keys_to(dk, cur_seq).await;
+                pa = remove_alias_and::<U>(pa, |_, _, _| {});
+                clear_cur_seq(&mut pa);
+                mode::send_keys_to(pa, cur_seq).await;
             } else {
                 // Lock dropped here, before any .awaits
                 drop(remaps_list);
-                clear_cur_seq(&mut dk);
-                mode::send_keys_to(dk, cur_seq).await;
+                clear_cur_seq(&mut pa);
+                mode::send_keys_to(pa, cur_seq).await;
             }
         }
 
-        send_key_inner::<U>(self, dk, TypeId::of::<M>(), key).await;
+        send_key_inner::<U>(self, pa, TypeId::of::<M>(), key).await;
     }
 }
 
@@ -496,15 +496,15 @@ pub enum Gives {
 }
 
 fn remove_alias_and<U: Ui>(
-    mut dk: DataKey<'_>,
+    mut pa: Pass,
     f: impl FnOnce(&mut dyn Widget<U>, &U::Area, usize),
-) -> DataKey<'_> {
-    let widget = context::cur_widget::<U>(&dk).unwrap();
-    // SAFETY: Given that the DataKey is immediately mutably borrowed, it
+) -> Pass {
+    let widget = context::cur_widget::<U>(&pa).unwrap();
+    // SAFETY: Given that the Pass is immediately mutably borrowed, it
     // can't be used to act on CurWidget.current.
     unsafe {
         widget.mutate_data(|widget, area, _| {
-            widget.write(&mut dk, |widget| {
+            widget.write(&mut pa, |widget| {
                 let cfg = widget.print_cfg();
                 widget.text_mut().remove_cursors(area, cfg);
 
@@ -517,5 +517,5 @@ fn remove_alias_and<U: Ui>(
         })
     }
 
-    dk
+    pa
 }

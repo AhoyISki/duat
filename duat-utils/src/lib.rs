@@ -1,4 +1,4 @@
-#![feature(decl_macro)]
+#![feature(decl_macro, closure_lifetime_binder)]
 
 pub mod modes;
 pub mod state;
@@ -8,100 +8,90 @@ mod private_exports {
     pub use duat_core;
     pub use format_like::format_like;
 
-    pub macro parse_str($pre_fn_and_checker:expr, $str:literal) {{
+    pub macro parse_str($appender_checker:expr, $str:literal) {{
         use crate::{
-            private_exports::duat_core::text::Builder,
-            widgets::{Reader, State},
+            private_exports::duat_core::{context::FileHandle, data::Pass, text::Builder},
+            widgets::State,
         };
 
-        let (mut pre_fn, checker) = $pre_fn_and_checker;
+        let (mut appender, checker) = $appender_checker;
+        let (mut ap, _) = State::from($str).fns();
 
-        let (mut appender, new_checker) = State::from($str).fns();
-
-        let checker = move || checker() || new_checker();
-
-        let pre_fn = move |builder: &mut Builder, reader: &mut Reader<_>| {
-            pre_fn(builder, reader);
-            appender(builder, reader);
+        let appender = move |pa: &Pass, builder: &mut Builder, reader: &FileHandle<_>| {
+            appender(pa, builder, reader);
+            ap(pa, builder, reader);
         };
 
-        (pre_fn, checker)
+        (appender, checker)
     }}
 
     pub macro parse_status_part {
-        ($pre_fn_and_checker:expr, "", $part:expr) => {{
+        ($appender_checker:expr, "", $part:expr) => {{
             use crate::{
-                private_exports::duat_core::text::Builder,
-                widgets::{Reader, State},
+                private_exports::duat_core::{context::FileHandle, data::Pass, text::Builder},
+                widgets::State,
             };
 
-            #[allow(unused_mut)]
-            let (mut pre_fn, checker) = $pre_fn_and_checker;
+			#[allow(unused_mut)]
+    		let (mut appender, checker) = $appender_checker;
+            let (mut ap, ch) = State::from($part).fns();
 
-            let (mut appender, new_checker) = State::from($part).fns();
+            let checker = move || checker() || ch();
 
-            let checker = move || checker() || new_checker();
-
-            let pre_fn = move |builder: &mut Builder, reader: &mut Reader<_>| {
-                pre_fn(builder, reader);
-                appender(builder, reader);
+            let pre_fn = move |pa: &Pass, builder: &mut Builder, handle: &FileHandle<_>| {
+                appender(pa, builder, handle);
+                ap(pa, builder, handle);
             };
 
             (pre_fn, checker)
         }},
-        ($pre_fn_and_checker:expr, $modif:literal, $part:expr) => {{
+        ($appender_checker:expr, $modif:literal, $part:expr) => {{
             use crate::{
-                private_exports::duat_core::text::Builder,
-                widgets::status_line::{Reader, State},
+                private_exports::duat_core::{context::FileHandle, data::Pass, text::Builder},
+                widgets::State,
             };
 
-            let (mut pre_fn, checker) = $pre_fn_and_checker;
-
-            let (mut appender, ch) = State::from(format!(concat!("{:", $modif, "}"), $part)).fns();
+            let (mut appender, checker) = $appender_checker;
+            let (mut ap, ch) =
+                State::from(format!(concat!("{:", $modif, "}"), $part)).fns();
 
             let checker = move || checker() || ch();
 
-            let pre_fn = move |builder: &mut Builder, reader: &mut Reader<_>| {
-                pre_fn(builder, reader);
-                appender(builder, reader);
+            let appender = move |pa: &Pass, builder: &mut Builder, handle: &FileHandle<_>| {
+                appender(pa, builder, handle);
+                ap(pa, builder, handle);
             };
 
-            (pre_fn, checker)
+            (appender, checker)
         }}
     }
 
     pub macro parse_form {
-        (pre_fn_and_checker:expr, "",) => {{
+        (($appender:expr, $checker:expr), "",) => {{
             use crate::{
-                private_exports::duat_core::{form, text::Builder},
-                widgets::Reader,
+                private_exports::duat_core::{context::FileHandle, data::Pass, text::Builder},
             };
 
-            let (mut pre_fn, checker) = $pre_fn_and_checker;
-
-            let pre_fn = move |builder: &mut Builder, reader: &mut Reader<_>| {
-                pre_fn(builder, reader);
+            let appender = move |pa: &Pass, builder: &mut Builder, handle: &mut FileHandle<_>| {
+                $appender(builder, handle);
                 builder.push(form::DEFAULT_ID);
             };
 
-            (pre_fn, checker)
+            (appender, $checker)
         }},
-        ($pre_fn_and_checker:expr, "",$($form:tt)*) => {{
+        (($appender:expr, $checker:expr), "", $($form:tt)*) => {{
             use crate::{
-                private_exports::duat_core::{form, text::Builder},
-                widgets::Reader,
+                private_exports::duat_core::{context::FileHandle, data::Pass, text::Builder},
             };
-
-            let (mut pre_fn, checker) = $pre_fn_and_checker;
 
             let id = form::id_of!(concat!($(stringify!($form)),*));
 
-            let pre_fn = move |builder: &mut Builder, reader: &mut Reader<_>| {
-                pre_fn(builder, reader);
+            let appender = move |pa: &Pass, builder: &mut Builder, handle: &mut FileHandle<_>| {
+                $appender(pa, builder, handle);
                 builder.push(id);
             };
 
-            (pre_fn, checker)
+            (appender, $checker)
         }},
         ($pre_fn_and_checker:expr, $modif:literal, $($form:ident).*) => {{
             compile_error!(concat!("at the moment, Forms don't support modifiers like ", $modif))

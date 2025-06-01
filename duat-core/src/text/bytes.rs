@@ -457,7 +457,7 @@ impl Bytes {
     ///
     /// This is the equivalent of calling
     /// [`Bytes::make_contiguous`] and [`Bytes::get_contiguous`].
-    /// While this takes less space in code, calling the other two
+    /// While this takes leas space in code, calling the other two
     /// functions means that you won't be mutably borrowing the
     /// [`Bytes`] anymore, so if that matters to you, you should do
     /// that.

@@ -198,7 +198,7 @@ pub use self::{
 };
 use crate::{
     context,
-    data::{DataKey, RwData},
+    data::{Pass, RwData},
     file_entry, iter_around, iter_around_rev, mode,
     session::sender,
     text::{Text, err, hint, ok},
@@ -220,15 +220,15 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         }
     })?;
 
-    add!(["quit", "q"], |dk, name: Option<Buffer<U>>| {
-        let cur_name = context::fixed_file::<U>(&dk)?.read(&dk, |file, _| file.name());
+    add!(["quit", "q"], |pa, name: Option<Buffer<U>>| {
+        let cur_name = context::fixed_file::<U>(&pa)?.read(&pa, |file, _| file.name());
         let name = name.unwrap_or(&cur_name);
 
         let windows = context::windows::<U>().borrow();
-        let (win, wid, file) = file_entry(&dk, &windows, name).unwrap();
+        let (win, wid, file) = file_entry(&pa, &windows, name).unwrap();
 
         let has_unsaved_changes = file
-            .read_as(&dk, |f: &File| f.text().has_unsaved_changes() && f.exists())
+            .read_as(&pa, |f: &File| f.text().has_unsaved_changes() && f.exists())
             .unwrap();
         if has_unsaved_changes {
             return Err(err!("[a]{name}[] has unsaved changes").build());
@@ -237,7 +237,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         // If we are on the current File, switch to the next one.
         if name == cur_name {
             let Some(next_name) = iter_around::<U>(&windows, win, wid)
-                .find_map(|(.., node)| node.read_as(&dk, |f: &File| f.name()))
+                .find_map(|(.., node)| node.read_as(&pa, |f: &File| f.name()))
             else {
                 sender().send(DuatEvent::Quit).unwrap();
                 return Ok(None);
@@ -246,7 +246,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             // If I send the switch signal first, and the Window is deleted, I
             // will have the synchronously change the current window number
             // without affecting anything else.
-            mode::reset_switch_to::<U>(&dk, &next_name, true);
+            mode::reset_switch_to::<U>(&pa, &next_name, true);
         }
 
         sender()
@@ -255,22 +255,22 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         Ok(Some(ok!("Closed [a]{name}").build()))
     })?;
 
-    add!(["quit!", "q!"], |dk, name: Option<Buffer<U>>| {
-        let cur_name = context::fixed_file::<U>(&dk)?.read(&dk, |file, _| file.name());
+    add!(["quit!", "q!"], |pa, name: Option<Buffer<U>>| {
+        let cur_name = context::fixed_file::<U>(&pa)?.read(&pa, |file, _| file.name());
         let name = name.unwrap_or(&cur_name);
 
         // Should wait here until I'm out of `session_loop`
         let windows = context::windows::<U>().borrow();
-        let (win, wid, file) = file_entry(&dk, &windows, name).unwrap();
+        let (win, wid, file) = file_entry(&pa, &windows, name).unwrap();
 
         if name == cur_name {
             let Some(next_name) = iter_around::<U>(&windows, win, wid)
-                .find_map(|(.., node)| node.read_as(&dk, |f: &File| f.name()))
+                .find_map(|(.., node)| node.read_as(&pa, |f: &File| f.name()))
             else {
                 sender().send(DuatEvent::Quit).unwrap();
                 return Ok(None);
             };
-            mode::reset_switch_to::<U>(&dk, &next_name, true);
+            mode::reset_switch_to::<U>(&pa, &next_name, true);
         }
 
         sender()
@@ -279,13 +279,13 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         Ok(Some(ok!("Closed [a]{name}").build()))
     })?;
 
-    add!(["quit-all", "qa"], |dk| {
+    add!(["quit-all", "qa"], |pa| {
         let windows = context::windows::<U>().borrow();
         let unwritten = windows
             .iter()
-            .flat_map(|w| w.file_nodes(&dk))
+            .flat_map(|w| w.file_nodes(&pa))
             .filter(|(node, _)| {
-                node.read_as(&dk, |f: &File| f.text().has_unsaved_changes() && f.exists())
+                node.read_as(&pa, |f: &File| f.text().has_unsaved_changes() && f.exists())
                     .unwrap()
             })
             .count();
@@ -305,8 +305,8 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         Ok(None)
     })?;
 
-    add!(["write", "w"], |dk, path: Option<PossibleFile>| {
-        context::fixed_file::<U>(&dk)?.write(&mut dk, |file, _| {
+    add!(["write", "w"], |pa, path: Option<PossibleFile>| {
+        context::fixed_file::<U>(&pa)?.write(&mut pa, |file, _| {
             let (bytes, name) = if let Some(path) = path {
                 (file.write_to(&path)?, path)
             } else if let Some(name) = file.name_set() {
@@ -324,9 +324,9 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         })
     })?;
 
-    add!(["write-quit", "wq"], |dk, path: Option<PossibleFile>| {
-        let mut ff = context::fixed_file::<U>(&dk)?;
-        let (bytes, name) = ff.write(&mut dk, |file, _| {
+    add!(["write-quit", "wq"], |pa, path: Option<PossibleFile>| {
+        let mut ff = context::fixed_file::<U>(&pa)?;
+        let (bytes, name) = ff.write(&mut pa, |file, _| {
             let bytes = if let Some(path) = path {
                 file.write_to(&path)?
             } else {
@@ -339,16 +339,16 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         let windows = context::windows::<U>().borrow();
         let w = context::cur_window();
 
-        let (win, wid, file) = file_entry(&dk, &windows, &name).unwrap();
+        let (win, wid, file) = file_entry(&pa, &windows, &name).unwrap();
 
         let Some(next_name) = iter_around::<U>(&windows, win, wid)
-            .find_map(|(.., node)| node.read_as(&dk, |f: &File| f.name()))
+            .find_map(|(.., node)| node.read_as(&pa, |f: &File| f.name()))
         else {
             sender().send(DuatEvent::Quit).unwrap();
             return Ok(None);
         };
 
-        mode::reset_switch_to::<U>(&dk, &next_name, true);
+        mode::reset_switch_to::<U>(&pa, &next_name, true);
 
         sender().send(DuatEvent::CloseFile(name.clone())).unwrap();
         match bytes {
@@ -361,16 +361,16 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         }
     })?;
 
-    add!(["write-all", "wa"], |dk| {
+    add!(["write-all", "wa"], |pa| {
         let windows = context::windows::<U>().borrow();
 
         let mut written = 0;
         let file_count = windows
             .iter()
-            .flat_map(|w| w.file_nodes(&dk))
+            .flat_map(|w| w.file_nodes(&pa))
             .filter(|(node, _)| {
                 node.widget()
-                    .read_as(&dk, |f: &File| f.path_set().is_some())
+                    .read_as(&pa, |f: &File| f.path_set().is_some())
                     == Some(true)
             })
             .inspect(|(node, _)| {
@@ -393,16 +393,16 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         }
     })?;
 
-    add!(["write-all-quit", "waq"], |dk| {
+    add!(["write-all-quit", "waq"], |pa| {
         let windows = context::windows::<U>().borrow();
 
         let mut written = 0;
         let file_count = windows
             .iter()
-            .flat_map(|w| w.file_nodes(&dk))
+            .flat_map(|w| w.file_nodes(&pa))
             .filter(|(node, _)| {
                 node.widget()
-                    .read_as(&dk, |f: &File| f.path_set().is_some())
+                    .read_as(&pa, |f: &File| f.path_set().is_some())
                     == Some(true)
             })
             .inspect(|(node, _)| {
@@ -426,10 +426,10 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         }
     })?;
 
-    add!(["write-all-quit!", "waq!"], |dk| {
+    add!(["write-all-quit!", "waq!"], |pa| {
         let windows = context::windows::<U>().borrow();
 
-        for (node, _) in windows.iter().flat_map(|w| w.file_nodes(&dk)) {
+        for (node, _) in windows.iter().flat_map(|w| w.file_nodes(&pa)) {
             // SAFETY: It is known that this function does not have any inner
             // RwData.
             unsafe {
@@ -484,7 +484,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         }
     })?;
 
-    add!(["edit", "e"], |dk, path: PossibleFile| {
+    add!(["edit", "e"], |pa, path: PossibleFile| {
         let windows = context::windows::<U>().borrow();
 
         let name = if let Ok(path) = path.strip_prefix(context::cur_dir()) {
@@ -493,16 +493,16 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             path.to_string_lossy().to_string()
         };
 
-        if file_entry(&dk, &windows, &name).is_err() {
+        if file_entry(&pa, &windows, &name).is_err() {
             sender().send(DuatEvent::OpenFile(name.clone())).unwrap();
             return Ok(Some(ok!("Opened [a]{name}").build()));
         }
 
-        mode::reset_switch_to::<U>(&dk, name.clone(), true);
+        mode::reset_switch_to::<U>(&pa, name.clone(), true);
         Ok(Some(ok!("Switched to [a]{name}").build()))
     })?;
 
-    add!(["open", "o"], |dk, path: PossibleFile| {
+    add!(["open", "o"], |pa, path: PossibleFile| {
         let windows = context::windows::<U>().borrow();
 
         let name = if let Ok(path) = path.strip_prefix(context::cur_dir()) {
@@ -511,13 +511,13 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             path.to_string_lossy().to_string()
         };
 
-        let Ok((win, wid, node)) = file_entry(&dk, &windows, &name) else {
+        let Ok((win, wid, node)) = file_entry(&pa, &windows, &name) else {
             sender().send(DuatEvent::OpenWindow(name.clone())).unwrap();
             return Ok(Some(ok!("Opened [a]{name}[] on new window").build()));
         };
 
-        if windows[win].file_nodes(&dk).len() == 1 {
-            mode::reset_switch_to::<U>(&dk, name.clone(), true);
+        if windows[win].file_nodes(&pa).len() == 1 {
+            mode::reset_switch_to::<U>(&pa, name.clone(), true);
             Ok(Some(ok!("Switched to [a]{name}").build()))
         } else {
             sender().send(DuatEvent::OpenWindow(name.clone())).unwrap();
@@ -525,67 +525,67 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         }
     })?;
 
-    add!(["buffer", "b"], |dk, name: OtherFileBuffer<U>| {
-        mode::reset_switch_to::<U>(&dk, &name, true);
+    add!(["buffer", "b"], |pa, name: OtherFileBuffer<U>| {
+        mode::reset_switch_to::<U>(&pa, &name, true);
         Ok(Some(ok!("Switched to [a]{name}").build()))
     })?;
 
-    add!("next-file", |dk, flags: Flags| {
+    add!("next-file", |pa, flags: Flags| {
         let windows = context::windows().borrow();
-        let ff = context::fixed_file::<U>(&dk)?;
+        let ff = context::fixed_file::<U>(&pa)?;
         let win = context::cur_window();
 
         let wid = windows[win]
             .nodes()
-            .position(|node| ff.ptr_eq(&dk, node.widget()))
+            .position(|node| ff.ptr_eq(&pa, node.widget()))
             .unwrap();
 
         let name = if flags.word("global") {
             iter_around::<U>(&windows, win, wid)
-                .find_map(|(.., node)| node.read_as(&dk, |f: &File| f.name()))
+                .find_map(|(.., node)| node.read_as(&pa, |f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other open files"))?
         } else {
             let slice = &windows[win..=win];
             iter_around(slice, 0, wid)
-                .find_map(|(.., node)| node.read_as(&dk, |f: &File| f.name()))
+                .find_map(|(.., node)| node.read_as(&pa, |f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other files open in this window"))?
         };
 
-        mode::reset_switch_to::<U>(&dk, &name, true);
+        mode::reset_switch_to::<U>(&pa, &name, true);
         Ok(Some(ok!("Switched to [a]{name}").build()))
     })?;
 
-    add!("prev-file", |dk, flags: Flags| {
+    add!("prev-file", |pa, flags: Flags| {
         let windows = context::windows().borrow();
-        let ff = context::fixed_file::<U>(&dk)?;
+        let ff = context::fixed_file::<U>(&pa)?;
         let w = context::cur_window();
 
         let widget_i = windows[w]
             .nodes()
-            .position(|node| ff.ptr_eq(&dk, node.widget()))
+            .position(|node| ff.ptr_eq(&pa, node.widget()))
             .unwrap();
 
         let name = if flags.word("global") {
             iter_around_rev::<U>(&windows, w, widget_i)
-                .find_map(|(.., node)| node.read_as(&dk, |f: &File| f.name()))
+                .find_map(|(.., node)| node.read_as(&pa, |f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other open files"))?
         } else {
             let slice = &windows[w..=w];
             iter_around_rev(slice, 0, widget_i)
-                .find_map(|(.., node)| node.read_as(&dk, |f: &File| f.name()))
+                .find_map(|(.., node)| node.read_as(&pa, |f: &File| f.name()))
                 .ok_or_else(|| err!("There are no other files open in this window"))?
         };
 
-        mode::reset_switch_to::<U>(&dk, &name, true);
+        mode::reset_switch_to::<U>(&pa, &name, true);
 
         Ok(Some(ok!("Switched to [a]{name}").build()))
     })?;
 
-    add!("swap", |dk, lhs: Buffer<U>, rhs: Option<Buffer<U>>| {
+    add!("swap", |pa, lhs: Buffer<U>, rhs: Option<Buffer<U>>| {
         let rhs = if let Some(rhs) = rhs {
             rhs.to_string()
         } else {
-            context::fixed_file::<U>(&dk)?.read(&dk, |file, _| file.name())
+            context::fixed_file::<U>(&pa)?.read(&pa, |file, _| file.name())
         };
         sender()
             .send(DuatEvent::SwapFiles(lhs.to_string(), rhs.clone()))
@@ -621,7 +621,7 @@ mod global {
     use super::{Args, CheckerFn, CmdFn, CmdResult, Commands, Parameter};
     use crate::{
         context,
-        data::{DataKey, RwData},
+        data::{Pass, RwData},
         text::Text,
         ui::DuatEvent,
     };
@@ -664,30 +664,30 @@ mod global {
     /// [`StatusLine`]: crate::widgets::StatusLine
     /// [`RwData`]: crate::data::RwData
     pub macro add(
-        $callers:expr, |$dk:ident $(: DataKey<'_>)? $(, $arg:tt: $t:ty)* $(,)?| $f:block
+        $callers:expr, |$pa:ident $(: Pass)? $(, $arg:tt: $t:ty)* $(,)?| $f:block
     ) {{
         #[allow(unused_variables, unused_mut)]
-        let cmd = move |dk: $crate::data::DataKey<'_>, mut args: Args| -> CmdResult {
+        let cmd = move |pa: $crate::data::Pass, mut args: Args| -> CmdResult {
             $(
-                let $arg: <$t as Parameter>::Returns = <$t as Parameter>::new(&dk, &mut args)?;
+                let $arg: <$t as Parameter>::Returns = <$t as Parameter>::new(&pa, &mut args)?;
             )*
 
             if let Ok(arg) = args.next() {
                 return Err($crate::text::err!("Too many arguments").build());
             }
 
-            let mut $dk = dk;
+            let mut $pa = pa;
 
             $f
         };
 
         #[allow(unused_variables, unused_mut)]
-        let check_args = |dk: &$crate::data::DataKey<'_>, mut args: Args| {
+        let check_args = |pa: &$crate::data::Pass, mut args: Args| {
             let mut ok_ranges = Vec::new();
 
             $(
                 let start = args.next_start();
-                match args.next_as::<$t>(dk) {
+                match args.next_as::<$t>(pa) {
                     Ok(_) => if let Some(start) = start
                         .filter(|s| args.param_range().end > *s)
                     {
@@ -698,7 +698,7 @@ mod global {
             )*
 
             let start = args.next_start();
-            if let (Ok(_), Some(start)) = (args.next_as::<super::Remainder>(dk), start) {
+            if let (Ok(_), Some(start)) = (args.next_as::<super::Remainder>(pa), start) {
                 let err = $crate::text::err!("Too many arguments").build();
                 return (ok_ranges, Some((start..args.param_range().end, err)))
             }
@@ -818,10 +818,10 @@ mod global {
         context::assert_is_on_main_thread();
         // SAFETY: There is no way to obtain an external RwData of Commands,
         // so you can modify it from anywhere in the main thread.
-        let mut dk = unsafe { DataKey::new() };
+        let mut pa = unsafe { Pass::new() };
         COMMANDS
             .with(Commands::clone)
-            .alias(&mut dk, alias, command)
+            .alias(&mut pa, alias, command)
     }
 
     /// Runs a full command, with a caller and [`Args`].
@@ -904,8 +904,8 @@ mod global {
         context::assert_is_on_main_thread();
         // SAFETY: There is no way to obtain an external RwData of Commands,
         // so you can modify it from anywhere in the main thread.
-        let mut dk = unsafe { DataKey::new() };
-        COMMANDS.with(|c| c.add(&mut dk, callers, cmd, check_args))
+        let mut pa = unsafe { Pass::new() };
+        COMMANDS.with(|c| c.add(&mut pa, callers, cmd, check_args))
     }
 
     /// Check if the arguments for a given `caller` are correct
@@ -913,8 +913,8 @@ mod global {
         context::assert_is_on_main_thread();
         // SAFETY: There is no way to obtain an external RwData of Commands,
         // so you can modify it from anywhere in the main thread.
-        let dk = unsafe { DataKey::new() };
-        COMMANDS.with(Commands::clone).check_args(&dk, caller)
+        let pa = unsafe { Pass::new() };
+        COMMANDS.with(Commands::clone).check_args(&pa, caller)
     }
 }
 
@@ -941,13 +941,8 @@ impl Commands {
     }
 
     /// Aliases a command to a specific word
-    fn alias(
-        &self,
-        dk: &mut DataKey<'_>,
-        alias: impl ToString,
-        command: impl ToString,
-    ) -> CmdResult {
-        self.0.write(dk, |inner| {
+    fn alias(&self, pa: &mut Pass, alias: impl ToString, command: impl ToString) -> CmdResult {
+        self.0.write(pa, |inner| {
             inner.try_alias(alias.to_string(), command.to_string())
         })
     }
@@ -956,50 +951,52 @@ impl Commands {
     async fn run(&self, call: impl Display) -> CmdResult {
         // SAFETY: Since this is an async fn, it must be .awaited in order to
         // do anything, which means it cannot be executed inside of a
-        let dk = unsafe { DataKey::new() };
+        let pa = unsafe { Pass::new() };
 
         let call = call.to_string();
         let mut args = call.split_whitespace();
         let caller = args.next().ok_or(err!("The command is empty"))?.to_string();
 
-        let inner = self.0.acquire();
+        let (command, call) = unsafe {
+            self.0.read_unsafe(|inner| {
+                Result::<_, Text>::Ok(if let Some(command) = inner.aliases.get(&caller) {
+                    let (command, call) = command;
+                    let mut call = call.clone() + " ";
+                    call.extend(args);
 
-        let (command, call) = if let Some(command) = inner.aliases.get(&caller) {
-            let (command, call) = command;
-            let mut call = call.clone() + " ";
-            call.extend(args);
+                    (command.clone(), call)
+                } else {
+                    let command = inner
+                        .list
+                        .iter()
+                        .find(|cmd| cmd.callers().contains(&caller))
+                        .ok_or(err!("The caller [a]{caller}[] was not found"))?;
 
-            (command.clone(), call)
-        } else {
-            let command = inner
-                .list
-                .iter()
-                .find(|cmd| cmd.callers().contains(&caller))
-                .ok_or(err!("The caller [a]{caller}[] was not found"))?;
-
-            (command.clone(), call.clone())
+                    (command.clone(), call.clone())
+                })
+            })?
         };
 
         let args = get_args(&call);
 
-        if let (_, Some((_, err))) = (command.check_args)(&dk, args.clone()) {
+        if let (_, Some((_, err))) = (command.check_args)(&pa, args.clone()) {
             return Err(err);
         }
 
         let silent = call.len() > call.trim_start().len();
-        command.cmd.acquire_mut()(dk, args).map(|ok| ok.filter(|_| !silent))
+        command.cmd.acquire_mut()(pa, args).map(|ok| ok.filter(|_| !silent))
     }
 
     /// Adds a command to the list of commands
     fn add(
         &self,
-        dk: &mut DataKey<'_>,
+        pa: &mut Pass,
         callers: Vec<String>,
         cmd: CmdFn,
         check_args: CheckerFn,
     ) -> Result<(), Text> {
         let cmd = Command::new(callers, cmd, check_args);
-        self.0.write(dk, |c| c.try_add(cmd))
+        self.0.write(pa, |c| c.try_add(cmd))
     }
 
     // fn add_for<W: Widget<U>, U: Ui>(
@@ -1049,22 +1046,22 @@ impl Commands {
     /// Gets the parameter checker for a command, if it exists
     fn check_args(
         &self,
-        dk: &DataKey<'_>,
+        pa: &Pass,
         call: &str,
     ) -> Option<(Vec<Range<usize>>, Option<(Range<usize>, Text)>)> {
         let mut args = call.split_whitespace();
         let caller = args.next()?.to_string();
 
-        self.0.read(dk, |inner| {
+        self.0.read(pa, |inner| {
             if let Some((command, _)) = inner.aliases.get(&caller) {
-                Some((command.check_args)(dk, get_args(call)))
+                Some((command.check_args)(pa, get_args(call)))
             } else {
                 let command = inner
                     .list
                     .iter()
                     .find(|cmd| cmd.callers().contains(&caller))?;
 
-                Some((command.check_args)(dk, get_args(call)))
+                Some((command.check_args)(pa, get_args(call)))
             }
         })
     }
@@ -1176,5 +1173,5 @@ impl<'a, const N: usize> Caller<'a> for [&'a str; N] {
     }
 }
 
-type CmdFn = RwData<dyn FnMut(DataKey, Args) -> CmdResult + 'static>;
-type CheckerFn = fn(&DataKey, Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>);
+type CmdFn = RwData<dyn FnMut(Pass, Args) -> CmdResult + 'static>;
+type CheckerFn = fn(&Pass, Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>);

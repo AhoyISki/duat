@@ -17,17 +17,17 @@
 //! [data]: crate::data
 use std::{fmt::Display, marker::PhantomData};
 
-use super::Reader;
 use duat_core::{
-    data::{DataMap, RwData},
+    context::FileHandle,
+    data::{DataMap, Pass, RwData},
     text::{AlignCenter, AlignLeft, AlignRight, Builder, BuilderPart, Ghost, Spacer, Text},
     ui::Ui,
     widgets::Widget,
 };
 
 /// A struct that reads state in order to return [`Text`].
-enum Appender<U: Ui, _T: Clone = (), D: Display + Send + Clone = String, W = ()> {
-    NoArgs(Box<dyn FnMut(&mut Builder) + Send + 'static>),
+enum Appender<U: Ui, _T: Clone = (), D: Display + Clone = String, W = ()> {
+    PassArg(Box<dyn FnMut(&Pass, &mut Builder) + 'static>),
     FromWidget(WidgetAreaFn<W, U>),
     Part(BuilderPart<D, _T>),
 }
@@ -41,34 +41,36 @@ enum Appender<U: Ui, _T: Clone = (), D: Display + Send + Clone = String, W = ()>
 /// [`StatusLine`]: super::StatusLine
 /// [`impl Display`]: std::fmt::Display
 /// [`File`]: crate::widgets::File
-pub struct State<U: Ui, _T: Clone = (), D: Display + Send + Clone = String, W: 'static = ()> {
+pub struct State<U: Ui, _T: Clone = (), D: Display + Clone = String, W: 'static = ()> {
     appender: Appender<U, _T, D, W>,
-    checker: Option<Box<dyn Fn() -> bool + Send + Sync>>,
+    checker: Option<Box<dyn Fn() -> bool>>,
     ghost: PhantomData<_T>,
 }
 
 impl<U, _T, D, W> State<U, _T, D, W>
 where
     U: Ui,
-    _T: Send + Clone + 'static,
-    D: Display + Send + Clone + 'static,
+    _T: Clone + 'static,
+    D: Display + Clone + 'static,
     W: 'static,
 {
-    pub fn fns(self) -> (ReaderFn<U>, Box<dyn Fn() -> bool + Send + Sync>) {
+    pub fn fns(self) -> (BuilderFn<U>, Box<dyn Fn() -> bool>) {
         (
             match self.appender {
-                Appender::NoArgs(mut f) => Box::new(move |b, _| f(b)),
-                Appender::FromWidget(mut f) => Box::new(move |b, reader| {
-                    reader.inspect_related(|w, a| f(b, w, a));
+                Appender::PassArg(mut f) => Box::new(move |pa, b, _| f(pa, b)),
+                Appender::FromWidget(mut f) => Box::new(move |pa, b, reader| {
+                    reader.read_related(pa, |w, a| f(b, w, a));
                 }),
-                Appender::Part(builder_part) => Box::new(move |b, _| b.push(builder_part.clone())),
+                Appender::Part(builder_part) => {
+                    Box::new(move |_, b, _| b.push(builder_part.clone()))
+                }
             },
             Box::new(move || self.checker.as_ref().is_some_and(|check| check())),
         )
     }
 }
 
-impl<D: Display + Send + Clone + 'static, U: Ui> From<D> for State<U, D, D> {
+impl<D: Display + Clone + 'static, U: Ui> From<D> for State<U, D, D> {
     fn from(value: D) -> Self {
         Self {
             appender: Appender::Part(BuilderPart::from(value)),
@@ -88,12 +90,12 @@ impl<U: Ui> From<Text> for State<U, Text> {
     }
 }
 
-impl<D: Display + Send + Clone, U: Ui> From<RwData<D>> for State<U, DataArg<D>> {
+impl<D: Display + Clone + 'static, U: Ui> From<RwData<D>> for State<U, DataArg<D>> {
     fn from(value: RwData<D>) -> Self {
         Self {
-            appender: Appender::NoArgs({
+            appender: Appender::PassArg({
                 let value = value.clone();
-                Box::new(move |b| b.push(value.read().clone()))
+                Box::new(move |pa, b| value.read(pa, |d| b.push(d).clone()))
             }),
             checker: Some(Box::new(value.checker())),
             ghost: PhantomData,
@@ -103,39 +105,34 @@ impl<D: Display + Send + Clone, U: Ui> From<RwData<D>> for State<U, DataArg<D>> 
 
 impl<U: Ui> From<RwData<Text>> for State<U, DataArg<()>> {
     fn from(value: RwData<Text>) -> Self {
+        let checker = value.checker();
         Self {
-            appender: Appender::NoArgs({
-                let value = value.clone();
-                Box::new(move |b| b.push(value.read().clone()))
+            appender: Appender::PassArg({
+                Box::new(move |pa, b| value.read(pa, |d| b.push(d.clone())))
             }),
-            checker: Some(Box::new(value.checker())),
+            checker: Some(Box::new(checker)),
             ghost: PhantomData,
         }
     }
 }
 
-impl<U, I, O> From<DataMap<I, O>> for State<U, DataArg<String>>
-where
-    U: Ui,
-    I: ?Sized + Send,
-    O: Display + 'static,
-{
+impl<I: ?Sized, O: Display, U: Ui> From<DataMap<I, O>> for State<U, DataArg<String>> {
     fn from(value: DataMap<I, O>) -> Self {
-        let (mut reader, checker) = value.fns();
+        let checker = value.checker();
         State {
-            appender: Appender::NoArgs(Box::new(move |b| b.push(reader()))),
-            checker: Some(checker),
+            appender: Appender::PassArg(Box::new(move |pa, b| b.push(value(pa)))),
+            checker: Some(Box::new(checker)),
             ghost: PhantomData,
         }
     }
 }
 
-impl<U: Ui, I: ?Sized + Send> From<DataMap<I, Text>> for State<U, DataArg<Text>> {
+impl<U: Ui, I: ?Sized> From<DataMap<I, Text>> for State<U, DataArg<Text>> {
     fn from(value: DataMap<I, Text>) -> Self {
-        let (mut reader, checker) = value.fns();
+        let checker = value.checker();
         State {
-            appender: Appender::NoArgs(Box::new(move |b| b.push(reader()))),
-            checker: Some(checker),
+            appender: Appender::PassArg(Box::new(move |pa, b| b.push(value(pa)))),
+            checker: Some(Box::new(checker)),
             ghost: PhantomData,
         }
     }
@@ -145,14 +142,15 @@ impl<U, F, I, O> From<F> for State<U, IntoDataArg<String>>
 where
     U: Ui,
     F: FnOnce() -> DataMap<I, O>,
-    I: ?Sized + Send + 'static,
+    I: ?Sized + 'static,
     O: Display + 'static,
 {
     fn from(value: F) -> Self {
-        let (mut reader, checker) = value().fns();
+        let value = value();
+        let checker = value.checker();
         State {
-            appender: Appender::NoArgs(Box::new(move |b| b.push(reader()))),
-            checker: Some(checker),
+            appender: Appender::PassArg(Box::new(move |pa, b| b.push(value(pa)))),
+            checker: Some(Box::new(checker)),
             ghost: PhantomData,
         }
     }
@@ -162,13 +160,14 @@ impl<U, F, I> From<F> for State<U, IntoDataArg<Text>>
 where
     U: Ui,
     F: FnOnce() -> DataMap<I, Text>,
-    I: ?Sized + Send + 'static,
+    I: ?Sized + 'static,
 {
     fn from(value: F) -> Self {
-        let (mut reader, checker) = value().fns();
+        let value = value();
+        let checker = value.checker();
         State {
-            appender: Appender::NoArgs(Box::new(move |b| b.push(reader()))),
-            checker: Some(checker),
+            appender: Appender::PassArg(Box::new(move |pa, b| b.push(value(pa)))),
+            checker: Some(Box::new(checker)),
             ghost: PhantomData,
         }
     }
@@ -177,13 +176,13 @@ where
 impl<D, Reader, Checker, U> From<(Reader, Checker)> for State<U, NoArg<String>>
 where
     D: Display,
-    Reader: Fn() -> D + Send + 'static,
-    Checker: Fn() -> bool + Send + Sync + 'static,
+    Reader: Fn(&Pass) -> D + 'static,
+    Checker: Fn() -> bool + 'static,
     U: Ui,
 {
-    fn from((reader, checker): (Reader, Checker)) -> Self {
+    fn from((value, checker): (Reader, Checker)) -> Self {
         State {
-            appender: Appender::NoArgs(Box::new(move |b| b.push(reader()))),
+            appender: Appender::PassArg(Box::new(move |pa, b| b.push(value(pa)))),
             checker: Some(Box::new(checker)),
             ghost: PhantomData,
         }
@@ -192,13 +191,13 @@ where
 
 impl<Reader, Checker, U> From<(Reader, Checker)> for State<U, NoArg<Text>>
 where
-    Reader: Fn() -> Text + Send + 'static,
-    Checker: Fn() -> bool + Send + Sync + 'static,
+    Reader: Fn(&Pass) -> Text + 'static,
+    Checker: Fn() -> bool + 'static,
     U: Ui,
 {
-    fn from((reader, checker): (Reader, Checker)) -> Self {
+    fn from((value, checker): (Reader, Checker)) -> Self {
         State {
-            appender: Appender::NoArgs(Box::new(move |b| b.push(reader()))),
+            appender: Appender::PassArg(Box::new(move |pa, b| b.push(value(pa)))),
             checker: Some(Box::new(checker)),
             ghost: PhantomData,
         }
@@ -207,9 +206,9 @@ where
 
 impl<D, W, ReadFn, U> From<ReadFn> for State<U, WidgetArg<String>, String, W>
 where
-    D: Display + Send + 'static,
+    D: Display + 'static,
     W: Widget<U> + Sized,
-    ReadFn: Fn(&W) -> D + Send + 'static,
+    ReadFn: Fn(&W) -> D + 'static,
     U: Ui,
 {
     fn from(value: ReadFn) -> Self {
@@ -224,7 +223,7 @@ where
 impl<W, ReadFn, U> From<ReadFn> for State<U, WidgetArg<Text>, String, W>
 where
     W: Widget<U> + Sized,
-    ReadFn: Fn(&W) -> Text + Send + 'static,
+    ReadFn: Fn(&W) -> Text + 'static,
     U: Ui,
 {
     fn from(value: ReadFn) -> Self {
@@ -238,9 +237,9 @@ where
 
 impl<D, W, ReadFn, U> From<ReadFn> for State<U, WidgetAreaArg<String>, String, W>
 where
-    D: Display + Send + 'static,
+    D: Display + 'static,
     W: Widget<U> + Sized,
-    ReadFn: Fn(&W, &U::Area) -> D + Send + 'static,
+    ReadFn: Fn(&W, &U::Area) -> D + 'static,
     U: Ui,
 {
     fn from(value: ReadFn) -> Self {
@@ -257,7 +256,7 @@ where
 impl<W, ReadFn, U> From<ReadFn> for State<U, WidgetAreaArg<Text>, String, W>
 where
     W: Widget<U> + Sized,
-    ReadFn: Fn(&W, &U::Area) -> Text + Send + 'static,
+    ReadFn: Fn(&W, &U::Area) -> Text + 'static,
     U: Ui,
 {
     fn from(value: ReadFn) -> Self {
@@ -311,8 +310,8 @@ impl<U: Ui> From<Spacer> for State<U, Spacer> {
     }
 }
 
-impl<U: Ui> From<Ghost> for State<U, Ghost> {
-    fn from(value: Ghost) -> Self {
+impl<T: Into<Text> + Clone, U: Ui> From<Ghost<T>> for State<U, Ghost<T>> {
+    fn from(value: Ghost<T>) -> Self {
         Self {
             appender: Appender::Part(BuilderPart::from(value)),
             checker: None,
@@ -339,5 +338,5 @@ pub struct WidgetArg<W>(PhantomData<W>);
 pub struct WidgetAreaArg<W>(PhantomData<W>);
 
 // The various types of function aliases
-type WidgetAreaFn<W, U> = Box<dyn FnMut(&mut Builder, &W, &<U as Ui>::Area) + Send + 'static>;
-type ReaderFn<U> = Box<dyn FnMut(&mut Builder, &mut Reader<U>) + Send>;
+type WidgetAreaFn<W, U> = Box<dyn FnMut(&mut Builder, &W, &<U as Ui>::Area) + 'static>;
+type BuilderFn<U> = Box<dyn FnMut(&Pass, &mut Builder, &FileHandle<U>)>;

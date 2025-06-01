@@ -12,8 +12,10 @@ use lender::{Lender, Lending};
 pub use self::cursors::{Cursor, Cursors, VPoint};
 use crate::{
     cfg::PrintCfg,
+    context::FileHandle,
+    data::{Pass, RwData},
     text::{Change, Point, RegexPattern, Searcher, Strs, Text, TextRange},
-    ui::RawArea,
+    ui::{RawArea, Ui},
     widgets::{File, Widget},
 };
 
@@ -138,22 +140,49 @@ mod cursors;
 /// [`KeyEvent`]: super::KeyEvent
 /// [editing]: Editor
 /// [moving]: Editor
-pub struct EditHelper<'a, W: Widget<A::Ui>, A: RawArea, S> {
-    widget: &'a mut W,
-    area: &'a A,
+pub struct EditHelper<W: Widget<U>, U: Ui, S> {
+    widget: RwData<W>,
+    area: U::Area,
     inc_searcher: S,
 }
 
-impl<'a, W: Widget<A::Ui>, A: RawArea> EditHelper<'a, W, A, ()> {
-    /// Returns a new instance of [`EditHelper`]
-    pub fn new(widget: &'a mut W, area: &'a A) -> Self {
-        widget.text_mut().enable_cursors();
-        widget.text_mut().cursors_mut().unwrap().populate();
+impl<W: Widget<U>, U: Ui> EditHelper<W, U, ()> {
+    /// Returns an [`EditHelper`]
+    pub fn new(pa: &mut Pass, widget: RwData<W>, area: U::Area) -> Self {
+        widget.write(pa, |wid| wid.text_mut().enable_cursors());
         EditHelper { widget, area, inc_searcher: () }
     }
 }
 
-impl<W: Widget<A::Ui>, A: RawArea, S> EditHelper<'_, W, A, S> {
+impl<U: Ui> EditHelper<File, U, ()> {
+    /// Returns an [`EditHelper`] for a given [`FileHandle`]
+    pub fn from_handle(pa: &mut Pass, handle: FileHandle<U>) -> Self {
+        handle.write(&mut *pa, |wid, _| wid.text_mut().enable_cursors());
+        let (widget, area) = handle.get_related_widget(&*pa).unwrap();
+        Self { widget, area, inc_searcher: () }
+    }
+}
+
+impl<U: Ui> EditHelper<File, U, Searcher> {
+    /// Returns an [`EditHelper`] with incremental search
+    pub fn new_inc(pa: &mut Pass, widget: RwData<File>, area: U::Area, searcher: Searcher) -> Self {
+        widget.write(pa, |wid| wid.text_mut().enable_cursors());
+
+        EditHelper { widget, area, inc_searcher: searcher }
+    }
+
+    /// Returns an [`EditHelper`] with incremental search for a given
+    /// [`FileHandle`]
+    pub fn inc_from_handle(pa: &mut Pass, handle: FileHandle<U>, searcher: Searcher) -> Self {
+        handle.write(pa, |wid, _| wid.text_mut().enable_cursors());
+
+        let (widget, area) = handle.get_related_widget(&pa).unwrap();
+
+        EditHelper { widget, area, inc_searcher: searcher }
+    }
+}
+
+impl<W: Widget<U>, U: Ui, S> EditHelper<W, U, S> {
     ////////// Editing functions
 
     /// Edits the nth [`Cursor`] in the [`Text`]
@@ -171,22 +200,29 @@ impl<W: Widget<A::Ui>, A: RawArea, S> EditHelper<'_, W, A, S> {
     /// [destroyed]: Editor::destroy
     /// [`edit_main`]: Self::edit_main
     /// [`edit_iter`]: Self::edit_iter
-    pub fn edit_nth(&mut self, n: usize) -> Editor<W, A, S> {
-        let cursors = self.widget.text_mut().cursors_mut().unwrap();
-        cursors.populate();
-        let Some((cursor, was_main)) = cursors.remove(n) else {
-            panic!("Cursor index {n} out of bounds");
-        };
+    pub fn edit_nth<Ret>(
+        &mut self,
+        pa: &mut Pass,
+        n: usize,
+        edit: impl FnOnce(Editor<W, U::Area, S>) -> Ret,
+    ) -> Ret {
+        self.widget.write(pa, |wid| {
+            let cursors = wid.text_mut().cursors_mut().unwrap();
+            cursors.populate();
+            let Some((cursor, was_main)) = cursors.remove(n) else {
+                panic!("Cursor index {n} out of bounds");
+            };
 
-        Editor::new(
-            cursor,
-            n,
-            was_main,
-            self.widget,
-            self.area,
-            None,
-            &mut self.inc_searcher,
-        )
+            edit(Editor::new(
+                cursor,
+                n,
+                was_main,
+                wid,
+                &self.area,
+                None,
+                &mut self.inc_searcher,
+            ))
+        })
     }
 
     /// Edits the main [`Cursor`] in the [`Text`]
@@ -206,8 +242,16 @@ impl<W: Widget<A::Ui>, A: RawArea, S> EditHelper<'_, W, A, S> {
     /// [`edit_nth`]: Self::edit_nth
     /// [`edit_last`]: Self::edit_last
     /// [`edit_iter`]: Self::edit_iter
-    pub fn edit_main(&mut self) -> Editor<W, A, S> {
-        self.edit_nth(self.cursors().main_index())
+    pub fn edit_main<Ret>(
+        &mut self,
+        pa: &mut Pass,
+        edit: impl FnOnce(Editor<W, U::Area, S>) -> Ret,
+    ) -> Ret {
+        self.edit_nth(
+            pa,
+            self.read(&*pa, |wid| wid.text().cursors().unwrap().main_index()),
+            edit,
+        )
     }
 
     /// Edits the last [`Cursor`] in the [`Text`]
@@ -227,8 +271,17 @@ impl<W: Widget<A::Ui>, A: RawArea, S> EditHelper<'_, W, A, S> {
     /// [`edit_nth`]: Self::edit_nth
     /// [`edit_main`]: Self::edit_main
     /// [`edit_iter`]: Self::edit_iter
-    pub fn edit_last(&mut self) -> Editor<W, A, S> {
-        self.edit_nth(self.cursors().len().saturating_sub(1))
+    pub fn edit_last<Ret>(
+        &mut self,
+        pa: &mut Pass,
+        edit: impl FnOnce(Editor<W, U::Area, S>) -> Ret,
+    ) -> Ret {
+        self.edit_nth(
+            pa,
+            self.read(&*pa, |wid| wid.text().cursors().unwrap().len())
+                .saturating_sub(1),
+            edit,
+        )
     }
 
     /// A [`Lender`] over all [`Editor`]s of the [`Text`]
@@ -248,82 +301,98 @@ impl<W: Widget<A::Ui>, A: RawArea, S> EditHelper<'_, W, A, S> {
     /// one at [`Point::default`].
     ///
     /// [`edit_nth`]: Self::edit_nth
-    pub fn edit_iter<'b>(&'b mut self) -> EditIter<'b, W, A, S> {
-        self.cursors_mut().populate();
-        EditIter {
-            next_i: Rc::new(Cell::new(0)),
-            widget: self.widget,
-            area: self.area,
-            inc_searcher: &mut self.inc_searcher,
-        }
+    pub fn edit_iter<Ret>(
+        &mut self,
+        pa: &mut Pass,
+        edit: impl FnOnce(EditIter<'_, W, U::Area, S>) -> Ret,
+    ) -> Ret {
+        self.widget.write(pa, |wid| {
+            let cursors = wid.text_mut().cursors_mut().unwrap();
+            cursors.populate();
+
+            edit(EditIter {
+                next_i: Rc::new(Cell::new(0)),
+                widget: wid,
+                area: &self.area,
+                inc_searcher: &mut self.inc_searcher,
+            })
+        })
+    }
+
+    /// A shortcut for iterating over all cursors
+    ///
+    /// This is the equivalent of calling:
+    ///
+    /// ```rust
+    /// # use duat_core::{data::Pass, mode::EditHelper, ui::Area, widgets::File};
+    /// # fn test<A: Area>(pa: &mut Pass, helper: EditHelper<File, A, ()>) {
+    /// helper.edit_iter(pa, |iter| iter.for_each(|e| { /* .. */ }));
+    /// # }
+    /// ```
+    ///
+    /// But it can't return a value, and is meant to reduce the
+    /// indentation that will inevitably come from using the
+    /// equivalent long form call.
+    pub fn edit_all(&mut self, pa: &mut Pass, edit: impl FnMut(Editor<W, U::Area, S>)) {
+        self.widget.write(pa, |wid| {
+            let cursors = wid.text_mut().cursors_mut().unwrap();
+            cursors.populate();
+
+            let iter = EditIter {
+                next_i: Rc::new(Cell::new(0)),
+                widget: wid,
+                area: &self.area,
+                inc_searcher: &mut self.inc_searcher,
+            };
+
+            iter.for_each(edit);
+        })
     }
 
     ////////// Getter functions
 
-    /// A shared reference to the [`Widget`]
-    pub fn widget(&self) -> &W {
-        self.widget
+    /// Reads the [`W`] within
+    ///
+    /// [`W`]: Widget
+    pub fn read<Ret>(&self, pa: &Pass, read: impl FnOnce(&W) -> Ret) -> Ret {
+        self.widget.read(pa, read)
     }
 
-    /// A mutable reference to the [`Widget`]
-    pub fn widget_mut(&mut self) -> &mut W {
-        self.widget
+    /// Writes to the [`W`] within
+    ///
+    /// [`W`]: Widget
+    pub fn write<Ret>(&self, pa: &mut Pass, write: impl FnOnce(&mut W) -> Ret) -> Ret {
+        self.widget.write(pa, write)
     }
 
-    /// A shared reference to the [`Widget`]
-    pub fn text(&self) -> &Text {
-        self.widget.text()
+    /// Clones the [`Text`] within
+    pub fn clone_text(&self, pa: &Pass) -> Text {
+        self.widget.read(pa, |wid| wid.text().clone())
     }
 
-    /// A mutable reference to the [`Widget`]
-    pub fn text_mut(&mut self) -> &mut Text {
-        self.widget.text_mut()
-    }
-
-    /// A shared reference to the [`Widget`]
-    pub fn cursors(&self) -> &Cursors {
-        self.widget.text().cursors().unwrap()
-    }
-
-    /// A mutable reference to the [`Widget`]
-    pub fn cursors_mut(&mut self) -> &mut Cursors {
-        self.widget.text_mut().cursors_mut().unwrap()
+    /// Replaces the [`Text`] within with a [`Default`] version
+    pub fn take_text(&self, pa: &mut Pass) -> Text {
+        self.widget.write(pa, |wid| std::mem::take(wid.text_mut()))
     }
 
     /// Undoes the last moment in the history, if there is one
-    pub fn undo(&mut self) {
-        self.widget.text_mut().undo();
+    pub fn undo(&mut self, pa: &mut Pass) {
+        self.widget.write(pa, |wid| wid.text_mut().undo());
     }
 
     /// Redoes the last moment in the history, if there is one
-    pub fn redo(&mut self) {
-        self.widget.text_mut().redo();
+    pub fn redo(&mut self, pa: &mut Pass) {
+        self.widget.write(pa, |wid| wid.text_mut().redo());
     }
 
     /// Finishes the current moment and adds a new one to the history
-    pub fn new_moment(&mut self) {
-        self.widget.text_mut().new_moment();
+    pub fn new_moment(&mut self, pa: &mut Pass) {
+        self.widget.write(pa, |wid| wid.text_mut().new_moment());
     }
 
     /// The [`PrintCfg`] in use
-    pub fn cfg(&self) -> PrintCfg {
-        self.widget.print_cfg()
-    }
-}
-
-impl<'a, A> EditHelper<'a, File, A, Searcher>
-where
-    A: RawArea,
-{
-    /// Returns a new instance of [`EditHelper`]
-    pub fn new_inc(widget: &'a mut File, area: &'a A, searcher: Searcher) -> Self {
-        let cfg = widget.print_cfg();
-        if let Some(c) = widget.cursors_mut() {
-            c.populate()
-        }
-        widget.text_mut().remove_cursors(area, cfg);
-
-        EditHelper { widget, area, inc_searcher: searcher }
+    pub fn cfg(&self, pa: &Pass) -> PrintCfg {
+        self.widget.read(pa, |wid| wid.print_cfg())
     }
 }
 
@@ -566,6 +635,13 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Editor<'a, W, A, S> {
     /// Sets the `anchor` to the current `caret`
     pub fn set_anchor(&mut self) {
         self.cursor.set_anchor()
+    }
+
+    /// Sets the `anchor` if it was not already set
+    pub fn set_anchor_if_needed(&mut self) {
+        if self.anchor().is_none() {
+            self.cursor.set_anchor()
+        }
     }
 
     /// Swaps the position of the `caret` and `anchor`

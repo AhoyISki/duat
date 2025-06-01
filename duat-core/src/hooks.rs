@@ -118,7 +118,7 @@ use std::{any::TypeId, cell::RefCell, collections::HashMap, marker::PhantomData,
 
 pub use self::global::*;
 use crate::{
-    data::{DataKey, RwData},
+    data::{Pass, RwData},
     form::{Form, FormId},
     mode::{Cursors, KeyEvent, Mode},
     ui::{FileBuilder, RawArea, Ui, WindowBuilder},
@@ -128,7 +128,7 @@ use crate::{
 /// Hook functions
 mod global {
     use super::{Hookable, InnerHooks};
-    use crate::{context, data::DataKey, ui::DuatEvent};
+    use crate::{context, data::Pass, ui::DuatEvent};
 
     thread_local! {
         static HOOKS: InnerHooks = InnerHooks::default();
@@ -142,9 +142,7 @@ mod global {
     /// [hook]: Hookable
     /// [`hooks::add_grouped`]: add_grouped
     #[inline(never)]
-    pub fn add<H: Hookable>(
-        f: impl for<'a> FnMut(DataKey<'_>, H::Args<'a>) -> H::Output + 'static,
-    ) {
+    pub fn add<H: Hookable>(f: impl for<'a> FnMut(Pass, H::Args<'a>) -> H::Output + 'static) {
         context::assert_is_on_main_thread();
         HOOKS.with(|h| h.add::<H>("", f));
     }
@@ -161,7 +159,7 @@ mod global {
     #[inline(never)]
     pub fn add_grouped<H: Hookable>(
         group: &'static str,
-        f: impl for<'a> FnMut(DataKey<'_>, H::Args<'a>) -> H::Output + 'static,
+        f: impl for<'a> FnMut(Pass, H::Args<'a>) -> H::Output + 'static,
     ) {
         context::assert_is_on_main_thread();
         HOOKS.with(|h| h.add::<H>(group, f));
@@ -248,9 +246,9 @@ impl Hookable for ConfigLoaded {
     type Args<'a> = ();
     type Input = ();
 
-    async fn trigger(mut dk: DataKey<'_>, input: Self::Input, hooks: Hooks<Self>) {
+    async fn trigger(mut pa: Pass<'_>, input: Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
-            hook(&mut dk, input)
+            hook(&mut pa, input)
         }
     }
 }
@@ -264,9 +262,9 @@ impl Hookable for ConfigUnloaded {
     type Args<'a> = ();
     type Input = ();
 
-    async fn trigger(mut dk: DataKey<'_>, input: Self::Input, hooks: Hooks<Self>) {
+    async fn trigger(mut pa: Pass<'_>, input: Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
-            hook(&mut dk, input)
+            hook(&mut pa, input)
         }
     }
 }
@@ -280,9 +278,9 @@ impl Hookable for ExitedDuat {
     type Args<'a> = ();
     type Input = ();
 
-    async fn trigger(mut dk: DataKey<'_>, input: Self::Input, hooks: Hooks<Self>) {
+    async fn trigger(mut pa: Pass<'_>, input: Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
-            hook(&mut dk, input)
+            hook(&mut pa, input)
         }
     }
 }
@@ -302,12 +300,12 @@ impl<U: Ui> Hookable for OnFileOpen<U> {
     type Args<'a> = &'a mut FileBuilder<U>;
     type Input = FileBuilder<U>;
 
-    async fn trigger(mut dk: DataKey<'_>, mut input: Self::Input, hooks: Hooks<Self>) {
+    async fn trigger(mut pa: Pass<'_>, mut input: Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
-            hook(&mut dk, &mut input)
+            hook(&mut pa, &mut input)
         }
 
-        input.finish(&mut dk);
+        input.finish(&mut pa);
     }
 }
 
@@ -325,9 +323,9 @@ impl<U: Ui> Hookable for OnWindowOpen<U> {
     type Args<'a> = &'a mut WindowBuilder<U>;
     type Input = WindowBuilder<U>;
 
-    async fn trigger(mut dk: DataKey<'_>, mut input: Self::Input, hooks: Hooks<Self>) {
+    async fn trigger(mut pa: Pass<'_>, mut input: Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
-            hook(&mut dk, &mut input)
+            hook(&mut pa, &mut input)
         }
     }
 }
@@ -347,21 +345,21 @@ impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
     type Args<'a> = (&'a RwData<W>, &'a U::Area);
     type Input = (RwData<W>, U::Area);
 
-    async fn trigger(mut dk: DataKey<'_>, (widget, area): Self::Input, hooks: Hooks<Self>) {
-        widget.write(&mut dk, |widget| {
+    async fn trigger(mut pa: Pass<'_>, (widget, area): Self::Input, hooks: Hooks<Self>) {
+        widget.write(&mut pa, |widget| {
             let cfg = widget.print_cfg();
             widget.text_mut().remove_cursors(&area, cfg);
         });
 
         for hook in hooks {
-            hook(&mut dk, (&widget, &area));
+            hook(&mut pa, (&widget, &area));
         }
 
-        Widget::on_focus(dk, widget.clone(), &area).await;
+        Widget::on_focus(pa, widget.clone(), &area).await;
 
-        // SAFETY: Since the last DataKey was consumed, we can create a new
+        // SAFETY: Since the last Pass was consumed, we can create a new
         // one.
-        widget.write(&mut unsafe { DataKey::new() }, |widget| {
+        widget.write(&mut unsafe { Pass::new() }, |widget| {
             let cfg = widget.print_cfg();
             widget.text_mut().add_cursors(&area, cfg);
             if let Some(main) = widget.text().cursors().and_then(Cursors::get_main) {
@@ -386,21 +384,21 @@ impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
     type Args<'a> = (&'a RwData<W>, &'a U::Area);
     type Input = (RwData<W>, U::Area);
 
-    async fn trigger(mut dk: DataKey<'_>, (widget, area): Self::Input, hooks: Hooks<Self>) {
-        widget.write(&mut dk, |widget| {
+    async fn trigger(mut pa: Pass<'_>, (widget, area): Self::Input, hooks: Hooks<Self>) {
+        widget.write(&mut pa, |widget| {
             let cfg = widget.print_cfg();
             widget.text_mut().remove_cursors(&area, cfg);
         });
 
         for hook in hooks {
-            hook(&mut dk, (&widget, &area));
+            hook(&mut pa, (&widget, &area));
         }
 
-        Widget::on_unfocus(dk, widget.clone(), &area).await;
+        Widget::on_unfocus(pa, widget.clone(), &area).await;
 
-        // SAFETY: Since the last DataKey was consumed, we can create a new
+        // SAFETY: Since the last Pass was consumed, we can create a new
         // one.
-        widget.write(&mut unsafe { DataKey::new() }, |widget| {
+        widget.write(&mut unsafe { Pass::new() }, |widget| {
             let cfg = widget.print_cfg();
             widget.text_mut().add_cursors(&area, cfg);
             if let Some(main) = widget.text().cursors().and_then(Cursors::get_main) {
@@ -430,9 +428,9 @@ impl Hookable for ModeSwitched {
     type Args<'a> = (&'a str, &'a str);
     type Input = (&'static str, &'static str);
 
-    async fn trigger(mut dk: DataKey<'_>, input: Self::Input, hooks: Hooks<Self>) {
+    async fn trigger(mut pa: Pass<'_>, input: Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
-            hook(&mut dk, input)
+            hook(&mut pa, input)
         }
     }
 }
@@ -457,12 +455,12 @@ impl<M: Mode<U>, U: Ui> Hookable for ModeSetTo<M, U> {
     type Output = M;
 
     async fn trigger(
-        mut dk: DataKey<'_>,
+        mut pa: Pass<'_>,
         (mut mode, widget, area): Self::Input,
         hooks: Hooks<Self>,
     ) -> Self::Output {
         for hook in hooks {
-            mode = hook(&mut dk, (mode, &widget, &area));
+            mode = hook(&mut pa, (mode, &widget, &area));
         }
         mode
     }
@@ -481,9 +479,9 @@ impl Hookable for KeysSent {
     type Args<'a> = &'a [KeyEvent];
     type Input = Vec<KeyEvent>;
 
-    async fn trigger(mut dk: DataKey<'_>, input: Self::Input, hooks: Hooks<Self>) {
+    async fn trigger(mut pa: Pass<'_>, input: Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
-            hook(&mut dk, &input);
+            hook(&mut pa, &input);
         }
     }
 }
@@ -502,9 +500,9 @@ impl<W: Widget<U>, U: Ui> Hookable for KeysSentTo<W, U> {
     type Args<'b> = (&'b [KeyEvent], &'b RwData<W>, &'b U::Area);
     type Input = (Vec<KeyEvent>, RwData<W>, U::Area);
 
-    async fn trigger(mut dk: DataKey<'_>, (keys, widget, area): Self::Input, hooks: Hooks<Self>) {
+    async fn trigger(mut pa: Pass<'_>, (keys, widget, area): Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
-            hook(&mut dk, (&keys, &widget, &area));
+            hook(&mut pa, (&keys, &widget, &area));
         }
     }
 }
@@ -526,9 +524,9 @@ impl Hookable for FormSet {
     type Args<'b> = Self::Input;
     type Input = (&'static str, FormId, Form);
 
-    async fn trigger(mut dk: DataKey<'_>, pre_args: Self::Input, hooks: Hooks<Self>) {
+    async fn trigger(mut pa: Pass<'_>, pre_args: Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
-            hook(&mut dk, pre_args)
+            hook(&mut pa, pre_args)
         }
     }
 }
@@ -549,9 +547,9 @@ impl Hookable for ColorSchemeSet {
     type Args<'b> = Self::Input;
     type Input = &'static str;
 
-    async fn trigger(mut dk: DataKey<'_>, pre_args: Self::Input, hooks: Hooks<Self>) {
+    async fn trigger(mut pa: Pass<'_>, pre_args: Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
-            hook(&mut dk, pre_args)
+            hook(&mut pa, pre_args)
         }
     }
 }
@@ -571,9 +569,9 @@ impl Hookable for SearchPerformed {
     type Args<'a> = &'a str;
     type Input = String;
 
-    async fn trigger(mut dk: DataKey<'_>, pre_args: Self::Input, hooks: Hooks<Self>) {
+    async fn trigger(mut pa: Pass<'_>, pre_args: Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
-            hook(&mut dk, &pre_args)
+            hook(&mut pa, &pre_args)
         }
     }
 }
@@ -596,9 +594,9 @@ impl Hookable for SearchUpdated {
     type Input = (String, String);
     type Output = ();
 
-    async fn trigger(mut dk: DataKey<'_>, (prev, cur): Self::Input, hooks: Hooks<Self>) {
+    async fn trigger(mut pa: Pass<'_>, (prev, cur): Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
-            hook(&mut dk, (&prev, &cur))
+            hook(&mut pa, (&prev, &cur))
         }
     }
 }
@@ -620,9 +618,9 @@ impl Hookable for FileWritten {
     type Args<'a> = (&'a str, usize);
     type Input = (String, usize);
 
-    async fn trigger(mut dk: DataKey<'_>, (file, bytes): Self::Input, hooks: Hooks<Self>) {
+    async fn trigger(mut pa: Pass<'_>, (file, bytes): Self::Input, hooks: Hooks<Self>) {
         for hook in hooks {
-            hook(&mut dk, (&file, bytes));
+            hook(&mut pa, (&file, bytes));
         }
     }
 }
@@ -643,7 +641,7 @@ pub trait Hookable: Sized + 'static {
     type Output = ();
 
     #[allow(async_fn_in_trait)]
-    async fn trigger(dk: DataKey<'_>, input: Self::Input, hooks: Hooks<Self>) -> Self::Output;
+    async fn trigger(pa: Pass<'_>, input: Self::Input, hooks: Hooks<Self>) -> Self::Output;
 }
 
 /// Where all hooks of Duat are stored
@@ -658,7 +656,7 @@ impl InnerHooks {
     fn add<H: Hookable>(
         &self,
         group: &'static str,
-        f: impl for<'a> FnMut(DataKey, H::Args<'a>) -> H::Output + 'static,
+        f: impl for<'a> FnMut(Pass, H::Args<'a>) -> H::Output + 'static,
     ) {
         let mut map = self.types.borrow_mut();
 
@@ -703,7 +701,7 @@ impl InnerHooks {
 
         // SAFETY: Since this is an async function, it won't be called while
         // an RwData is borrowed.
-        let dk = unsafe { DataKey::new() };
+        let pa = unsafe { Pass::new() };
 
         if let Some(holder) = holder {
             let holder = holder.clone();
@@ -715,9 +713,9 @@ impl InnerHooks {
 
             let hooks = hooks_of.0.borrow_mut().clone();
             let hooks: Hooks<H> = hooks.into_iter().map(Hook::new);
-            H::trigger(dk, pre_args, hooks).await
+            H::trigger(pa, pre_args, hooks).await
         } else {
-            H::trigger(dk, pre_args, Vec::new().into_iter().map(Hook::new)).await
+            H::trigger(pa, pre_args, Vec::new().into_iter().map(Hook::new)).await
         }
     }
 
@@ -755,21 +753,18 @@ impl<H: Hookable> Hook<H> {
     }
 }
 
-impl<H: Hookable> std::ops::FnOnce<(&mut DataKey<'_>, H::Args<'_>)> for Hook<H> {
+impl<H: Hookable> std::ops::FnOnce<(&mut Pass<'_>, H::Args<'_>)> for Hook<H> {
     type Output = H::Output;
 
-    extern "rust-call" fn call_once(
-        self,
-        (_, args): (&mut DataKey<'_>, H::Args<'_>),
-    ) -> Self::Output {
+    extern "rust-call" fn call_once(self, (_, args): (&mut Pass<'_>, H::Args<'_>)) -> Self::Output {
         // SAFETY: Since this function requires an exclusive reference to a
-        // DataKey, I can freely create new DataKeys.
-        let dk = unsafe { DataKey::new() };
-        self.0.borrow_mut()(dk, args)
+        // Pass, I can freely create new Passs.
+        let pa = unsafe { Pass::new() };
+        self.0.borrow_mut()(pa, args)
     }
 }
 
 pub type InnerHookFn<H> = &'static RefCell<
-    (dyn for<'a> FnMut(DataKey, <H as Hookable>::Args<'a>) -> <H as Hookable>::Output + 'static),
+    (dyn for<'a> FnMut(Pass, <H as Hookable>::Args<'a>) -> <H as Hookable>::Output + 'static),
 >;
 pub type Hooks<H: Hookable> = impl Iterator<Item = Hook<H>>;

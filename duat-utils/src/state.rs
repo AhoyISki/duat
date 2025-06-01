@@ -12,14 +12,12 @@
 //! [`status!`]: crate::widgets::status
 //! [`Cursor`]: crate::mode::Cursor
 //! [`Mode`]: crate::mode::Mode
-use std::sync::LazyLock;
-
 use duat_core::{
     context,
     data::{DataMap, RwData},
     hooks::{self, KeysSent},
     mode::{self, KeyEvent},
-    text::{Builder, Text, text},
+    text::{Text, text},
     ui::RawArea,
     widgets::File,
 };
@@ -111,7 +109,7 @@ pub fn mode_fmt() -> DataMap<&'static str, Text> {
             Some((mode, _)) => mode,
             None => &mode,
         };
-        text!("[Mode]{mode}")
+        text!("[Mode]{mode}").build()
     })
 }
 
@@ -169,6 +167,7 @@ pub fn main_fmt(file: &File, area: &impl RawArea) -> Text {
         main_line(file),
         file.len_lines()
     )
+    .build()
 }
 
 /// [`StatusLine`] part: The number of cursors
@@ -198,9 +197,9 @@ pub fn selections(file: &File) -> usize {
 /// [`Cursor`]: crate::mode::Cursor
 pub fn selections_fmt(file: &File) -> Text {
     if file.cursors().len() == 1 {
-        text!("[Selections]1 sel")
+        text!("[Selections]1 sel").build()
     } else {
-        text!("[Selections]{} sels", file.cursors().len())
+        text!("[Selections]{} sels", file.cursors().len()).build()
     }
 }
 
@@ -222,12 +221,12 @@ pub fn selections_fmt(file: &File) -> Text {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [keys]: KeyEvent
-pub fn cur_map_fmt() -> DataMap<(Vec<KeyEvent>, bool), Builder> {
+pub fn cur_map_fmt() -> DataMap<(Vec<KeyEvent>, bool), Text> {
     mode::cur_sequence().map(|(keys, is_alias)| {
         if is_alias {
-            Builder::default()
+            Text::default()
         } else {
-            mode::keys_to_text(&keys)
+            mode::keys_to_text(&keys).build()
         }
     })
 }
@@ -237,18 +236,20 @@ pub fn cur_map_fmt() -> DataMap<(Vec<KeyEvent>, bool), Builder> {
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [key]: KeyEvent
 pub fn last_key() -> RwData<String> {
-    static LAST_KEY: LazyLock<RwData<String>> = LazyLock::new(|| {
-        let last_key = RwData::new(String::new());
+    thread_local! {
+        static LAST_KEY: RwData<String> = {
+            let last_key = RwData::new(String::new());
 
-        hooks::add::<KeysSent>({
-            let last_key = last_key.clone();
-            move |key| {
-                *last_key.write() = mode::keys_to_string(&[key]);
-            }
-        });
+            hooks::add::<KeysSent>({
+                let last_key = last_key.clone();
+                move |mut pa, keys| {
+                    last_key.write(&mut pa, |lk| *lk = mode::keys_to_string(keys));
+                }
+            });
 
-        last_key
-    });
+            last_key
+        };
+    }
 
-    LAST_KEY.clone()
+    LAST_KEY.with(|lk| lk.clone())
 }

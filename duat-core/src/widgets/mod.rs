@@ -50,7 +50,7 @@ pub use self::file::{File, FileCfg, PathKind, Reader, ReaderCfg};
 use crate::{
     cfg::PrintCfg,
     context::FileParts,
-    data::{DataKey, RwData},
+    data::{Pass, RwData},
     form,
     hooks::{self, FocusedOn, UnfocusedFrom},
     mode::Cursors,
@@ -296,35 +296,10 @@ mod file;
 /// [`Form`]: crate::form::Form
 /// [`form::set_weak*`]: crate::form::set_weak
 /// [`text!`]: crate::text::text
+#[allow(async_fn_in_trait)]
 pub trait Widget<U: Ui>: 'static {
     /// The configuration type
     type Cfg: WidgetCfg<U, Widget = Self>
-    where
-        Self: Sized;
-
-    /// Returns a [`WidgetCfg`], for use in layout construction
-    ///
-    /// This function exists primarily so the [`WidgetCfg`]s
-    /// themselves don't need to be in scope. You will want to use
-    /// these in [hooks] like [`OnFileOpen`]:
-    ///
-    /// ```rust
-    /// # use duat_core::{
-    /// #     hooks::{self, OnFileOpen}, ui::{FileBuilder, Ui},
-    /// #     widgets::{File, LineNumbers, Widget},
-    /// # };
-    /// # fn test<U: Ui>() {
-    /// hooks::remove("FileWidgets");
-    /// hooks::add::<OnFileOpen<U>>(|builder| {
-    ///     // Screw it, LineNumbers on both sides.
-    ///     builder.push(LineNumbers::cfg());
-    ///     builder.push(LineNumbers::cfg().on_the_right().align_right());
-    /// });
-    /// # }
-    /// ```
-    ///
-    /// [`OnFileOpen`]: crate::hooks::OnFileOpen
-    fn cfg() -> Self::Cfg
     where
         Self: Sized;
 
@@ -346,14 +321,14 @@ pub trait Widget<U: Ui>: 'static {
     /// [`Mode`]: crate::mode::Mode
     /// [`update`]: Widget::update
     // Since these Futures don't need Send, I can just use async fn :D
-    #[allow(unused, async_fn_in_trait)]
-    async fn update(dk: DataKey<'_>, widget: RwData<Self>, area: &U::Area)
+    #[allow(unused)]
+    async fn update(pa: Pass<'_>, widget: RwData<Self>, area: &U::Area)
     where
         Self: Sized;
 
     /// Actions to do whenever this [`Widget`] is focused
     #[allow(unused)]
-    async fn on_focus(dk: DataKey<'_>, widget: RwData<Self>, area: &U::Area)
+    async fn on_focus(pa: Pass<'_>, widget: RwData<Self>, area: &U::Area)
     where
         Self: Sized,
     {
@@ -361,7 +336,7 @@ pub trait Widget<U: Ui>: 'static {
 
     /// Actions to do whenever this [`Widget`] is unfocused
     #[allow(unused)]
-    async fn on_unfocus(dk: DataKey<'_>, widget: RwData<Self>, area: &U::Area)
+    async fn on_unfocus(pa: Pass<'_>, widget: RwData<Self>, area: &U::Area)
     where
         Self: Sized,
     {
@@ -373,11 +348,11 @@ pub trait Widget<U: Ui>: 'static {
     /// chunk of them, will require some code like this:
     ///
     /// ```rust
-    /// # use duat_core::{context::FileHandle, ui::Ui};
+    /// # use duat_core::{context::FileHandle, data::Pass, ui::Ui};
     /// # struct Cfg;
     /// # impl<U: Ui> WidgetCfg<U> for Cfg {
     /// #     type Widget = MyWidget;
-    /// #     fn build(self, _: bool) -> (Self::Widget, PushSpecs) {
+    /// #     fn build(self, _: Pass, _: bool) -> (Self::Widget, PushSpecs) {
     /// #         todo!();
     /// #     }
     /// # }
@@ -388,7 +363,7 @@ pub trait Widget<U: Ui>: 'static {
     /// #   fn cfg() -> Self::Cfg {
     /// #       todo!()
     /// #   }
-    /// #   async fn update(_: RwData<Self>, _: &<U as Ui>::Area) {
+    /// #   async fn update(_: Pass<'_>, _: RwData<Self>, _: &<U as Ui>::Area) {
     /// #       todo!()
     /// #   }
     /// #   fn text(&self) -> &Text {
@@ -418,6 +393,32 @@ pub trait Widget<U: Ui>: 'static {
     /// [`FileHandle`]: crate::context::FileHandle
     /// [`StatusLine`]: https://docs.rs/duat-core/latest/duat_utils/widgets/struct.StatusLine.html
     fn needs_update(&self) -> bool;
+
+    /// Returns a [`WidgetCfg`], for use in layout construction
+    ///
+    /// This function exists primarily so the [`WidgetCfg`]s
+    /// themselves don't need to be in scope. You will want to use
+    /// these in [hooks] like [`OnFileOpen`]:
+    ///
+    /// ```rust
+    /// # use duat_core::{
+    /// #     hooks::{self, OnFileOpen}, ui::{FileBuilder, Ui},
+    /// #     widgets::{File, LineNumbers, Widget},
+    /// # };
+    /// # fn test<U: Ui>() {
+    /// hooks::remove("FileWidgets");
+    /// hooks::add::<OnFileOpen<U>>(|builder| {
+    ///     // Screw it, LineNumbers on both sides.
+    ///     builder.push(LineNumbers::cfg());
+    ///     builder.push(LineNumbers::cfg().on_the_right().align_right());
+    /// });
+    /// # }
+    /// ```
+    ///
+    /// [`OnFileOpen`]: crate::hooks::OnFileOpen
+    fn cfg() -> Self::Cfg
+    where
+        Self: Sized;
 
     /// The text that this widget prints out
     fn text(&self) -> &Text;
@@ -489,7 +490,7 @@ where
 {
     type Widget: Widget<U>;
 
-    fn build(self, on_file: bool) -> (Self::Widget, PushSpecs);
+    fn build(self, pa: Pass, on_file: bool) -> (Self::Widget, PushSpecs);
 }
 
 // Elements related to the [`Widget`]s
@@ -506,22 +507,22 @@ pub struct Node<U: Ui> {
 
 impl<U: Ui> Node<U> {
     pub fn new<W: Widget<U>>(
-        dk: &mut DataKey,
+        pa: &mut Pass,
         widget: RwData<dyn Widget<U>>,
         area: U::Area,
     ) -> Self {
         fn related_widgets<U: Ui>(
-            dk: &mut DataKey,
+            pa: &mut Pass,
             widget: &RwData<dyn Widget<U>>,
             area: &U::Area,
         ) -> Option<RwData<Vec<Node<U>>>> {
-            widget.write_as(dk, |file: &mut File| {
+            widget.write_as(pa, |file: &mut File| {
                 let cfg = file.print_cfg();
                 file.text_mut().add_cursors(area, cfg);
                 RwData::default()
             })
         }
-        let related_widgets = related_widgets::<U>(dk, &widget, &area);
+        let related_widgets = related_widgets::<U>(pa, &widget, &area);
 
         Self {
             widget,
@@ -571,19 +572,19 @@ impl<U: Ui> Node<U> {
         self.busy_updating.set(false);
     }
 
-    pub fn read_as<W: 'static, Ret>(&self, dk: &DataKey, f: impl FnOnce(&W) -> Ret) -> Option<Ret> {
-        self.widget.read_as(dk, f)
+    pub fn read_as<W: 'static, Ret>(&self, pa: &Pass, f: impl FnOnce(&W) -> Ret) -> Option<Ret> {
+        self.widget.read_as(pa, f)
     }
 
     pub fn ptr_eq<W: ?Sized>(&self, other: &RwData<W>) -> bool {
         self.widget.ptr_eq(other)
     }
 
-    pub fn needs_update(&self, dk: &DataKey) -> bool {
+    pub fn needs_update(&self, pa: &Pass) -> bool {
         !self.busy_updating.get()
             && (self.area.has_changed()
                 || self.widget.has_changed()
-                || self.widget.read(dk, |w| w.needs_update()))
+                || self.widget.read(pa, |w| w.needs_update()))
     }
 
     pub(crate) fn parts(&self) -> (&RwData<dyn Widget<U>>, &<U as Ui>::Area, &Related<U>) {
@@ -609,10 +610,6 @@ impl<U: Ui> Node<U> {
         (self.on_unfocus)(self)
     }
 
-    pub(crate) fn raw_read<B>(&self, f: impl FnOnce(&dyn Widget<U>) -> B) -> B {
-        self.widget.raw_read(f)
-    }
-
     pub(crate) fn area(&self) -> &U::Area {
         &self.area
     }
@@ -628,9 +625,9 @@ impl<U: Ui> Node<U> {
         Box::pin(async move {
             // SAFETY: Since this is an "async" function, it can only do work if
             // .awaited, which means a RwData won't be borrowed.
-            let dk = unsafe { DataKey::new() };
+            let pa = unsafe { Pass::new() };
 
-            Widget::update(dk, widget, &area).await
+            Widget::update(pa, widget, &area).await
         })
     }
 
@@ -643,8 +640,8 @@ impl<U: Ui> Node<U> {
             hooks::trigger::<FocusedOn<W, U>>((widget.clone(), area.clone())).await;
             // SAFETY: Since this is an "async" function, it can only do work if
             // .awaited, which means a RwData won't be borrowed.
-            let dk = unsafe { DataKey::new() };
-            Widget::on_focus(dk, widget, &area).await;
+            let pa = unsafe { Pass::new() };
+            Widget::on_focus(pa, widget, &area).await;
         })
     }
 
@@ -656,8 +653,8 @@ impl<U: Ui> Node<U> {
             hooks::trigger::<UnfocusedFrom<W, U>>((widget.clone(), area.clone())).await;
             // SAFETY: Since this is an "async" function, it can only do work if
             // .awaited, which means a RwData won't be borrowed.
-            let dk = unsafe { DataKey::new() };
-            Widget::on_unfocus(dk, widget, &area).await;
+            let pa = unsafe { Pass::new() };
+            Widget::on_unfocus(pa, widget, &area).await;
         })
     }
 }

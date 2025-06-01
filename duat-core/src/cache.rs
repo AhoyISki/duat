@@ -40,7 +40,7 @@ use crate::{duat_name, src_crate};
 
 /// Tries to load the cache stored by Duat for the given type
 ///
-/// The cache must have been previously stored by [`store_cache`]. If
+/// The cache must have been previously stored by [astore_cache`]. If
 /// it does not exist, or the file can't be correctly interpreted,
 /// returns [`None`]
 pub(super) fn load_cache<C: Decode<()> + 'static>(path: impl Into<PathBuf>) -> Option<C> {

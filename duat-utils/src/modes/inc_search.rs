@@ -1,19 +1,15 @@
 use duat_core::{
     Lender,
-    mode::{Cursors, EditHelper},
+    context::FileHandle,
+    data::{Pass, RwData},
+    mode::EditHelper,
     text::{Searcher, Text, text},
-    ui::{RawArea, Ui},
+    ui::Ui,
     widgets::File,
 };
 
-pub trait IncSearcher<U: Ui>: Clone + Send + Sync + 'static {
-    fn search(
-        &mut self,
-        orig: &(Cursors, <U::Area as RawArea>::PrintInfo),
-        file: &mut File,
-        area: &U::Area,
-        searcher: Searcher,
-    );
+pub trait IncSearcher<U: Ui>: Clone + 'static {
+    fn search(&mut self, pa: &mut Pass, handle: FileHandle<U>, searcher: Searcher);
 
     fn prompt(&self) -> Text;
 }
@@ -22,22 +18,9 @@ pub trait IncSearcher<U: Ui>: Clone + Send + Sync + 'static {
 pub struct SearchFwd;
 
 impl<U: Ui> IncSearcher<U> for SearchFwd {
-    fn search(
-        &mut self,
-        orig: &(Cursors, <U::Area as RawArea>::PrintInfo),
-        file: &mut File,
-        area: &U::Area,
-        searcher: Searcher,
-    ) {
-        let (cursors, info) = orig;
-        *file.cursors_mut().unwrap() = cursors.clone();
-        if searcher.is_empty() {
-            area.set_print_info(info.clone());
-            return;
-        }
-
-        let mut helper = EditHelper::new_inc(file, area, searcher);
-        helper.edit_iter().for_each(|mut e| {
+    fn search(&mut self, pa: &mut Pass, file: &RwData<File>, area: &U::Area, searcher: Searcher) {
+        let mut helper = EditHelper::new_inc(&mut *pa, file, area, searcher);
+        helper.edit_all(pa, |mut e| {
             let caret = e.caret();
             let next = e.search_inc_fwd(None).find(|[p, _]| *p != caret);
             if let Some([p0, p1]) = next {
@@ -47,8 +30,6 @@ impl<U: Ui> IncSearcher<U> for SearchFwd {
                     e.move_to(p1);
                     e.move_hor(-1);
                 }
-            } else if e.is_main() {
-                area.set_print_info(info.clone());
             }
         });
     }
@@ -64,20 +45,13 @@ pub struct SearchRev;
 impl<U: Ui> IncSearcher<U> for SearchRev {
     fn search(
         &mut self,
-        orig: &(Cursors, <U::Area as RawArea>::PrintInfo),
-        file: &mut File,
-        area: &U::Area,
+        pa: &mut Pass,
+        file: &RwData<File>,
+        area: &<U as Ui>::Area,
         searcher: Searcher,
     ) {
-        let (cursors, info) = orig;
-        *file.cursors_mut().unwrap() = cursors.clone();
-        if searcher.is_empty() {
-            area.set_print_info(info.clone());
-            return;
-        }
-
-        let mut helper = EditHelper::new_inc(file, area, searcher);
-        helper.edit_iter().for_each(|mut e| {
+        let mut helper = EditHelper::new_inc(&mut *pa, file, area, searcher);
+        helper.edit_all(pa, |mut e| {
             let caret = e.caret();
             let next = e.search_inc_rev(None).find(|[_, p]| *p != caret);
             if let Some([p0, p1]) = next {
@@ -87,8 +61,6 @@ impl<U: Ui> IncSearcher<U> for SearchRev {
                     e.move_to(p1);
                     e.move_hor(-1);
                 }
-            } else if e.is_main() {
-                area.set_print_info(info.clone());
             }
         });
     }
@@ -104,20 +76,13 @@ pub struct ExtendFwd;
 impl<U: Ui> IncSearcher<U> for ExtendFwd {
     fn search(
         &mut self,
-        orig: &(Cursors, <U::Area as RawArea>::PrintInfo),
-        file: &mut File,
-        area: &U::Area,
+        pa: &mut Pass,
+        file: &RwData<File>,
+        area: &<U as Ui>::Area,
         searcher: Searcher,
     ) {
-        let (cursors, info) = orig;
-        *file.cursors_mut().unwrap() = cursors.clone();
-        if searcher.is_empty() {
-            area.set_print_info(info.clone());
-            return;
-        }
-
-        let mut helper = EditHelper::new_inc(file, area, searcher);
-        helper.edit_iter().for_each(|mut e| {
+        let mut helper = EditHelper::new_inc(&mut *pa, file, area, searcher);
+        helper.edit_all(pa, |mut e| {
             let caret = e.caret();
             let next = e.search_inc_fwd(None).find(|[p, _]| *p != caret);
             if let Some([_, p1]) = next {
@@ -125,8 +90,6 @@ impl<U: Ui> IncSearcher<U> for ExtendFwd {
                     e.set_anchor();
                 }
                 e.move_to(p1);
-            } else if e.is_main() {
-                area.set_print_info(info.clone());
             }
         });
     }
@@ -142,20 +105,13 @@ pub struct ExtendRev;
 impl<U: Ui> IncSearcher<U> for ExtendRev {
     fn search(
         &mut self,
-        orig: &(Cursors, <U::Area as RawArea>::PrintInfo),
-        file: &mut File,
-        area: &U::Area,
+        pa: &mut Pass,
+        file: &RwData<File>,
+        area: &<U as Ui>::Area,
         searcher: Searcher,
     ) {
-        let (cursors, info) = orig;
-        *file.cursors_mut().unwrap() = cursors.clone();
-        if searcher.is_empty() {
-            area.set_print_info(info.clone());
-            return;
-        }
-
-        let mut helper = EditHelper::new_inc(file, area, searcher);
-        helper.edit_iter().for_each(|mut e| {
+        let mut helper = EditHelper::new_inc(&mut *pa, file, area, searcher);
+        helper.edit_all(pa, |mut e| {
             let caret = e.caret();
             let next = e.search_inc_rev(None).find(|[_, p]| *p != caret);
             if let Some([p0, _]) = next {
@@ -163,8 +119,6 @@ impl<U: Ui> IncSearcher<U> for ExtendRev {
                     e.set_anchor();
                 }
                 e.move_to(p0);
-            } else if e.is_main() {
-                area.set_print_info(info.clone());
             }
         });
     }

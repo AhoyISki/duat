@@ -14,10 +14,11 @@ use std::{
 
 use duat_core::{
     context::{self, Notifications},
+    data::{Pass, RwData},
     hooks::{self, KeysSent},
     text::Text,
     ui::{PushSpecs, Ui},
-    widgets::{CheckerFn, Widget, WidgetCfg},
+    widgets::{Widget, WidgetCfg},
 };
 
 /// A [`Widget`] to show notifications
@@ -46,14 +47,16 @@ impl<U: Ui> Widget<U> for Notifier<U> {
         NotificationsCfg(None, PhantomData)
     }
 
-    fn update(&mut self, _area: &<U as Ui>::Area) {
+    async fn update(mut pa: Pass<'_>, widget: RwData<Self>, _: &<U as Ui>::Area) {
         let clear_notifs = CLEAR_NOTIFS.swap(false, Ordering::Relaxed);
-        if self.notifications.has_changed() {
-            let notifications = self.notifications.read();
-            self.text = notifications.last().cloned().unwrap_or_default()
-        } else if clear_notifs {
-            self.text = Text::new()
-        }
+        widget.write(&mut pa, |wid| {
+            if wid.notifications.has_changed() {
+                wid.notifications
+                    .read(|notifs| wid.text = notifs.last().cloned().unwrap_or_default());
+            } else if clear_notifs {
+                wid.text = Text::new()
+            }
+        });
     }
 
     fn text(&self) -> &Text {
@@ -65,10 +68,14 @@ impl<U: Ui> Widget<U> for Notifier<U> {
     }
 
     fn once() -> Result<(), Text> {
-        hooks::add_grouped::<KeysSent>("RemoveNotificationsOnInput", |_| {
+        hooks::add_grouped::<KeysSent>("RemoveNotificationsOnInput", |_, _| {
             CLEAR_NOTIFS.store(true, Ordering::Relaxed);
         });
         Ok(())
+    }
+
+    fn needs_update(&self) -> bool {
+        self.notifications.has_changed() || CLEAR_NOTIFS.load(Ordering::Relaxed)
     }
 }
 
@@ -89,9 +96,11 @@ pub struct NotificationsCfg<U>(Option<(u16, u16)>, PhantomData<U>);
 impl<U> NotificationsCfg<U> {
     /// Pushes to the left and sets a height
     ///
-    /// Use this if you want notifications that don't occupy the same
-    /// space as a [`PromptLine`].
+    /// You might want this if you want something like a
+    /// [`StatusLine`] on the same line as the notifications and the
+    /// [`PromptLine`]
     ///
+    /// [`StatusLine`]: super::StatusLine
     /// [`PromptLine`]: super::PromptLine
     pub fn left_with_ratio(self, den: u16, div: u16) -> Self {
         Self(Some((den, div)), PhantomData)
@@ -101,16 +110,11 @@ impl<U> NotificationsCfg<U> {
 impl<U: Ui> WidgetCfg<U> for NotificationsCfg<U> {
     type Widget = Notifier<U>;
 
-    fn build(self, _: bool) -> (Self::Widget, impl CheckerFn, PushSpecs) {
+    fn build(self, _: Pass, _: bool) -> (Self::Widget, PushSpecs) {
         let widget = Notifier {
             notifications: context::notifications(),
             text: Text::new(),
             _ghost: PhantomData,
-        };
-
-        let checker = {
-            let checker = widget.notifications.checker();
-            move || checker() || CLEAR_NOTIFS.load(Ordering::Relaxed)
         };
 
         let specs = if let Some((den, div)) = self.0 {
@@ -119,6 +123,6 @@ impl<U: Ui> WidgetCfg<U> for NotificationsCfg<U> {
             PushSpecs::below().with_ver_len(1.0)
         };
 
-        (widget, checker, specs)
+        (widget, specs)
     }
 }

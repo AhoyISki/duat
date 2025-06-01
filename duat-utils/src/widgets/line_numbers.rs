@@ -13,35 +13,37 @@
 use std::{fmt::Alignment, marker::PhantomData};
 
 use duat_core::{
-    context::{self, FixedFile},
+    context::{self, FileHandle},
+    data::{Pass, RwData},
     form::{self, Form},
-    text::{AlignCenter, AlignLeft, AlignRight, Builder, Text, add_text},
+    text::{AlignCenter, AlignLeft, AlignRight, Builder, Text},
     ui::{Constraint, PushSpecs, RawArea, Ui},
     widgets::{Widget, WidgetCfg},
 };
 
 pub struct LineNumbers<U: Ui> {
-    ff: FixedFile<U>,
+    handle: FileHandle<U>,
     text: Text,
     cfg: LineNumbersOptions<U>,
 }
 
 impl<U: Ui> LineNumbers<U> {
     /// The minimum width that would be needed to show the last line.
-    fn calculate_width(&mut self) -> f32 {
-        let len = self.ff.read().0.text().len().line();
+    fn calculate_width(&mut self, pa: &Pass) -> f32 {
+        let len = self.handle.read(pa, |file, _| file.text().len().line());
         len.ilog10() as f32
     }
 
-    fn update_text(&mut self) {
-        let (main_line, printed_lines) = {
-            let (file, _) = self.ff.read();
-            let main_line = match file.cursors().is_empty() {
-                true => usize::MAX,
-                false => file.cursors().get_main().unwrap().line(),
+    fn form_text(&self, pa: &Pass) -> Text {
+        let (main_line, printed_lines) = self.handle.read(pa, |file, _| {
+            let main_line = if file.cursors().is_empty() {
+                usize::MAX
+            } else {
+                file.cursors().get_main().unwrap().line()
             };
+
             (main_line, file.printed_lines().to_vec())
-        };
+        });
 
         let mut builder = Text::builder();
         align(&mut builder, self.cfg.align);
@@ -53,9 +55,9 @@ impl<U: Ui> LineNumbers<U> {
 
             match (main_line == *line, is_wrapped) {
                 (false, false) => {}
-                (true, false) => add_text!(builder, "[MainLineNum]"),
-                (false, true) => add_text!(builder, "[WrappedLineNum]"),
-                (true, true) => add_text!(builder, "[WrappedMainLineNum]"),
+                (true, false) => builder.push(form::id_of!("MainLineNum")),
+                (false, true) => builder.push(form::id_of!("WrappedLineNum")),
+                (true, true) => builder.push(form::id_of!("WrappedMainLineNum")),
             }
 
             let is_wrapped = *is_wrapped && index > 0;
@@ -66,7 +68,7 @@ impl<U: Ui> LineNumbers<U> {
             }
         }
 
-        self.text = builder.build();
+        builder.build()
     }
 
     /// The options for these [`LineNumbers`]
@@ -94,11 +96,11 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
         }
     }
 
-    fn update(&mut self, area: &U::Area) {
-        let width = self.calculate_width();
+    async fn update(pa: Pass<'_>, widget: RwData<Self>, area: &<U as Ui>::Area) {
+        let width = widget.read(&pa, |ln| ln.calculate_width(&pa));
         area.constrain_hor([Constraint::Len(width + 1.0)]).unwrap();
 
-        self.update_text();
+        self.update_text(pa);
     }
 
     fn text(&self) -> &Text {
@@ -135,12 +137,12 @@ pub enum LineNum {
 #[derive(Debug, Clone, Copy)]
 #[doc(hidden)]
 pub struct LineNumbersOptions<U> {
-    pub num_rel: LineNum,
-    pub align: Alignment,
-    pub main_align: Alignment,
-    pub show_wraps: bool,
-    specs: PushSpecs,
-    _ghost: PhantomData<U>,
+    pub num_rel: LineNum = LineNum::Abs,
+    pub align: Alignment = Alignment::Left,
+    pub main_align: Alignment = Alignment::Right,
+    pub show_wraps: bool = false,
+    specs: PushSpecs = PushSpecs::left(),
+    _ghost: PhantomData<U> = PhantomData,
 }
 
 impl<U> LineNumbersOptions<U> {
@@ -213,7 +215,11 @@ impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
         let specs = self.specs;
 
         let checker = ff.checker();
-        let mut widget = LineNumbers { ff, text: Text::default(), cfg: self };
+        let mut widget = LineNumbers {
+            handle: ff,
+            text: Text::default(),
+            cfg: self,
+        };
         widget.update_text();
 
         (widget, checker, specs)
