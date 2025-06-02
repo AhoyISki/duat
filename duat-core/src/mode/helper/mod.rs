@@ -63,9 +63,9 @@ mod cursors;
 /// # #[derive(Clone)]
 /// # struct PlacesCharactersAndMoves;
 /// impl<U: Ui> Mode<U> for PlacesCharactersAndMoves {
-/// #   type Widget = File;
+/// #   type Widget = File<U>;
 ///     /* ... */
-///     fn send_key(&mut self, key: KeyEvent, widget: &mut File, area: &U::RawArea) {
+///     fn send_key(&mut self, key: KeyEvent, widget: &mut File<U>, area: &U::RawArea) {
 ///         match key {
 ///             // actions based on the key pressed
 ///             key!(KeyCode::Char('c')) => {
@@ -154,7 +154,7 @@ impl<W: Widget<U>, U: Ui> EditHelper<W, U, ()> {
     }
 }
 
-impl<U: Ui> EditHelper<File, U, ()> {
+impl<U: Ui> EditHelper<File<U>, U, ()> {
     /// Returns an [`EditHelper`] for a given [`FileHandle`]
     pub fn from_handle(pa: &mut Pass, handle: FileHandle<U>) -> Self {
         handle.write(&mut *pa, |wid, _| wid.text_mut().enable_cursors());
@@ -163,9 +163,9 @@ impl<U: Ui> EditHelper<File, U, ()> {
     }
 }
 
-impl<U: Ui> EditHelper<File, U, Searcher> {
+impl<U: Ui> EditHelper<File<U>, U, Searcher> {
     /// Returns an [`EditHelper`] with incremental search
-    pub fn new_inc(pa: &mut Pass, widget: RwData<File>, area: U::Area, searcher: Searcher) -> Self {
+    pub fn new_inc(pa: &mut Pass, widget: RwData<File<U>>, area: U::Area, searcher: Searcher) -> Self {
         widget.write(pa, |wid| wid.text_mut().enable_cursors());
 
         EditHelper { widget, area, inc_searcher: searcher }
@@ -176,7 +176,7 @@ impl<U: Ui> EditHelper<File, U, Searcher> {
     pub fn inc_from_handle(pa: &mut Pass, handle: FileHandle<U>, searcher: Searcher) -> Self {
         handle.write(pa, |wid, _| wid.text_mut().enable_cursors());
 
-        let (widget, area) = handle.get_related_widget(&pa).unwrap();
+        let (widget, area) = handle.get_related_widget(pa).unwrap();
 
         EditHelper { widget, area, inc_searcher: searcher }
     }

@@ -53,6 +53,8 @@ use std::{
     rc::Rc,
 };
 
+use crate::{cfg::PrintCfg, text::Text, ui::Ui, widgets::Widget};
+
 #[derive(Debug)]
 pub struct RwData<T: ?Sized> {
     value: Rc<RefCell<T>>,
@@ -101,7 +103,7 @@ impl<T: ?Sized> RwData<T> {
         }
     }
 
-    /// Reads the value within, using a [`Pass`]
+    /// Reads the value within using a [`Pass`]
     ///
     /// The consistent use of a [`Pass`] for the purposes of
     /// reading/writing to the values of [`RwData`]s ensures that no
@@ -126,7 +128,7 @@ impl<T: ?Sized> RwData<T> {
         ret
     }
 
-    /// Reads the value within as `U`, using a [`Pass`]
+    /// Reads the value within as `U` using a [`Pass`]
     ///
     /// The consistent use of a [`Pass`] for the purposes of
     /// reading/writing to the values of [`RwData`]s ensures that no
@@ -145,11 +147,7 @@ impl<T: ?Sized> RwData<T> {
     /// [`write_unsafe`]: Self::write_unsafe
     /// [`write_unsafe_as`]: Self::write_unsafe_as
     #[track_caller]
-    pub fn read_as<Ret, U: 'static>(
-        &self,
-        _dk: &Pass,
-        f: impl FnOnce(&U) -> Ret,
-    ) -> Option<Ret> {
+    pub fn read_as<Ret, U: 'static>(&self, _dk: &Pass, f: impl FnOnce(&U) -> Ret) -> Option<Ret> {
         if TypeId::of::<U>() != self.ty {
             return None;
         }
@@ -178,6 +176,12 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// - The value being read does not have any [`RwData`] within;
     /// - You know that this value is not being shared anywhere else;
+    /// - This is being called in an async block that is being sent to
+    ///   [`tokio::task::spawn_local`], i.e., nothing on the main
+    ///   thread would be running at the same time.
+    ///
+    /// Essentially, in order to use this safely, you should treat it
+    /// like a glorified [`RefCell`]
     #[track_caller]
     pub unsafe fn read_unsafe<Ret>(&self, f: impl FnOnce(&T) -> Ret) -> Ret {
         let ret = f(&*self.value.borrow());
@@ -202,6 +206,12 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// - The value being read does not have any [`RwData`] within;
     /// - You know that this value is not being shared anywhere else;
+    /// - This is being called in an async block that is being sent to
+    ///   [`tokio::task::spawn_local`], i.e., nothing on the main
+    ///   thread would be running at the same time.
+    ///
+    /// Essentially, in order to use this safely, you should treat it
+    /// like a glorified [`RefCell`]
     #[track_caller]
     pub unsafe fn read_unsafe_as<Ret, U: 'static>(&self, f: impl FnOnce(&U) -> Ret) -> Option<Ret> {
         if TypeId::of::<U>() != self.ty {
@@ -242,6 +252,30 @@ impl<T: ?Sized> RwData<T> {
         Some(ret)
     }
 
+    /// Writes to the value within as `U`, without a [`Pass`]
+    ///
+    /// While a lack of [`Pass`]es grants you more freedom, it may
+    /// also cause panics if not handled carefully, since you could be
+    /// breaking the number one rule of Rust.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if there is a shared reference of the value within
+    /// somewhere else.
+    ///
+    /// # Safety
+    ///
+    /// In order to safely use this function without panicking, there
+    /// are some useful guidelines that you should follow:
+    ///
+    /// - The value being read does not have any [`RwData`] within;
+    /// - You know that this value is not being shared anywhere else;
+    /// - This is being called in an async block that is being sent to
+    ///   [`tokio::task::spawn_local`], i.e., nothing on the main
+    ///   thread would be running at the same time.
+    ///
+    /// Essentially, in order to use this safely, you should treat it
+    /// like a glorified [`RefCell`]
     #[track_caller]
     pub unsafe fn write_unsafe<Ret>(&self, f: impl FnOnce(&mut T) -> Ret) -> Ret {
         let ret = f(&mut *self.value.borrow_mut());
@@ -250,6 +284,30 @@ impl<T: ?Sized> RwData<T> {
         ret
     }
 
+    /// Writes to the value within, without a [`Pass`]
+    ///
+    /// While a lack of [`Pass`]es grants you more freedom, it may
+    /// also cause panics if not handled carefully, since you could be
+    /// breaking the number one rule of Rust.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if there is a shared reference of the value within
+    /// somewhere else.
+    ///
+    /// # Safety
+    ///
+    /// In order to safely use this function without panicking, there
+    /// are some useful guidelines that you should follow:
+    ///
+    /// - The value being read does not have any [`RwData`] within;
+    /// - You know that this value is not being shared anywhere else;
+    /// - This is being called in an async block that is being sent to
+    ///   [`tokio::task::spawn_local`], i.e., nothing on the main
+    ///   thread would be running at the same time.
+    ///
+    /// Essentially, in order to use this safely, you should treat it
+    /// like a glorified [`RefCell`]
     #[track_caller]
     pub unsafe fn write_unsafe_as<Ret, U: 'static>(
         &self,
@@ -371,6 +429,54 @@ impl<T: ?Sized> RwData<T> {
     pub(crate) fn read_raw<Ret>(&self, f: impl FnOnce(&T) -> Ret) -> Ret {
         f(&*self.value.borrow())
     }
+
+    ////////// Widget Functions
+
+    /// Clones the [`Text`] of the [`Widget`]
+    pub fn clone_text<U>(&self, pa: &Pass) -> Text
+    where
+        T: Widget<U>,
+        U: Ui,
+    {
+        self.read(pa, |wid| wid.text().clone())
+    }
+
+    /// Takes the [`Text`] from the [`Widget`], replacing it with the [`Default`]
+    pub fn take_text<U>(&self, pa: &mut Pass) -> Text
+    where
+        T: Widget<U>,
+        U: Ui,
+    {
+        self.write(pa, |wid| std::mem::take(wid.text_mut()))
+    }
+
+    /// Replaces the [`Text`] of the [`Widget`], returning the
+    /// previous value
+    pub fn replace_text<U>(&self, pa: &mut Pass, text: Text) -> Text
+    where
+        T: Widget<U>,
+        U: Ui,
+    {
+        self.write(pa, |wid| std::mem::replace(wid.text_mut(), text))
+    }
+
+    /// The [`PrintCfg`] of the [`Widget`]
+    pub fn print_cfg<U>(&self, pa: &Pass) -> PrintCfg
+    where
+        T: Widget<U>,
+        U: Ui,
+    {
+        self.read(pa, |wid| wid.print_cfg())
+    }
+
+    /// Whether the [`Widget`] needs to be updated
+    pub fn needs_update<U>(&self, pa: &Pass) -> bool
+    where
+        T: Widget<U>,
+        U: Ui,
+    {
+        self.read(pa, |wid| wid.needs_update())
+    }
 }
 
 impl<T: ?Sized + 'static> RwData<T> {}
@@ -458,8 +564,7 @@ impl<I: ?Sized + 'static, O> Clone for DataMap<I, O> {
     }
 }
 
-impl<I: ?Sized + 'static, O: 'static> DataMap<I, O> {
-}
+impl<I: ?Sized + 'static, O: 'static> DataMap<I, O> {}
 
 impl<I: ?Sized + 'static, O: 'static> FnOnce<(&Pass<'_>,)> for DataMap<I, O> {
     type Output = O;

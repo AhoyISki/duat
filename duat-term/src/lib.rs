@@ -2,7 +2,7 @@
 use std::{
     fmt::Debug,
     io::{self, Write},
-    sync::{Arc, mpsc},
+    sync::{Arc, Mutex, mpsc},
     time::Duration,
 };
 
@@ -15,7 +15,6 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 use duat_core::{
-    Mutex,
     form::Color,
     ui::{self, Sender},
 };
@@ -39,9 +38,9 @@ impl ui::Ui for Ui {
 
     fn open(ms: &'static Self::MetaStatics, tx: Sender) {
         let thread = std::thread::Builder::new().name("print loop".to_string());
-        let _ = thread.spawn(move || {
-            let rx = ms.lock().rx.take().unwrap();
+        let rx = ms.lock().unwrap().rx.take().unwrap();
 
+        let _ = thread.spawn(move || {
             // Wait for everything to be setup before doing anything to the
             // terminal, for a less jarring effect.
             let Ok(Event::NewPrinter(mut printer)) = rx.recv() else {
@@ -100,7 +99,7 @@ impl ui::Ui for Ui {
     }
 
     fn close(ms: &'static Self::MetaStatics) {
-        ms.lock().tx.send(Event::Quit).unwrap();
+        ms.lock().unwrap().tx.send(Event::Quit).unwrap();
         terminal::disable_raw_mode().unwrap();
         execute!(
             io::stdout(),
@@ -117,11 +116,11 @@ impl ui::Ui for Ui {
         ms: &'static Self::MetaStatics,
         cache: <Self::Area as ui::RawArea>::Cache,
     ) -> Self::Area {
-        let mut ms = ms.lock();
+        let mut ms = ms.lock().unwrap();
         let printer = (ms.printer_fn)();
 
         let main_id = {
-            let mut layouts = ms.layouts.lock();
+            let mut layouts = ms.layouts.lock().unwrap();
             let layout = Layout::new(ms.fr, printer.clone(), cache);
             let main_id = layout.main_id();
             layouts.push(layout);
@@ -138,13 +137,13 @@ impl ui::Ui for Ui {
     }
 
     fn switch_window(ms: &'static Self::MetaStatics, win: usize) {
-        let mut ms = ms.lock();
+        let mut ms = ms.lock().unwrap();
         ms.win = win;
         ms.tx.send(Event::NewPrinter(ms.cur_printer())).unwrap()
     }
 
     fn flush_layout(ms: &'static Self::MetaStatics) {
-        ms.lock().cur_printer().update(false);
+        ms.lock().unwrap().cur_printer().update(false);
     }
 
     fn load(_ms: &'static Self::MetaStatics) {
@@ -181,16 +180,16 @@ impl ui::Ui for Ui {
     }
 
     fn unload(ms: &'static Self::MetaStatics) {
-        let mut ms = ms.lock();
+        let mut ms = ms.lock().unwrap();
         ms.windows = Vec::new();
-        *ms.layouts.lock() = Vec::new();
+        *ms.layouts.lock().unwrap() = Vec::new();
         ms.win = 0;
     }
 
     fn remove_window(ms: &'static Self::MetaStatics, win: usize) {
-        let mut ms = ms.lock();
+        let mut ms = ms.lock().unwrap();
         ms.windows.remove(win);
-        ms.layouts.lock().remove(win);
+        ms.layouts.lock().unwrap().remove(win);
         if ms.win > win {
             ms.win -= 1;
         }
@@ -200,6 +199,12 @@ impl ui::Ui for Ui {
 impl Clone for Ui {
     fn clone(&self) -> Self {
         panic!("You are not supposed to clone the Ui");
+    }
+}
+
+impl Default for Ui {
+    fn default() -> Self {
+        panic!("You are not supposed to use the default constructor of the Ui");
     }
 }
 

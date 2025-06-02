@@ -18,7 +18,7 @@ use duat_core::{
     hooks::{self, KeysSent},
     mode::{self, KeyEvent},
     text::{Text, text},
-    ui::RawArea,
+    ui::Ui,
     widgets::File,
 };
 
@@ -46,7 +46,7 @@ use duat_core::{
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn file_fmt(file: &File) -> Text {
+pub fn file_fmt(file: &File<impl Ui>) -> Text {
     let mut b = Text::builder();
 
     if let Some(name) = file.name_set() {
@@ -116,28 +116,28 @@ pub fn mode_fmt() -> DataMap<&'static str, Text> {
 /// [`StatusLine`] part: Byte of the main cursor
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_byte(file: &File) -> usize {
+pub fn main_byte(file: &File<impl Ui>) -> usize {
     file.cursors().get_main().unwrap().byte() + 1
 }
 
 /// [`StatusLine`] part: Char of the main cursor
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_char(file: &File) -> usize {
+pub fn main_char(file: &File<impl Ui>) -> usize {
     file.cursors().get_main().unwrap().char() + 1
 }
 
 /// [`StatusLine`] part: Line of the main cursor
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_line(file: &File) -> usize {
+pub fn main_line(file: &File<impl Ui>) -> usize {
     file.cursors().get_main().unwrap().line() + 1
 }
 
 /// [`StatusLine`] part: Column of the main cursor
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_col(file: &File, area: &impl RawArea) -> usize {
+pub fn main_col<U: Ui>(file: &File<U>, area: &U::Area) -> usize {
     let main = file.cursors().get_main().unwrap();
     main.v_caret(file.text(), area, file.print_cfg()).char_col()
 }
@@ -145,7 +145,7 @@ pub fn main_col(file: &File, area: &impl RawArea) -> usize {
 /// [`StatusLine`] part: Desired wrapped column of the main cursor
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_dwcol(file: &File, area: &impl RawArea) -> usize {
+pub fn main_dwcol<U: Ui>(file: &File<U>, area: &U::Area) -> usize {
     let main = file.cursors().get_main().unwrap();
     main.v_caret(file.text(), area, file.print_cfg())
         .desired_wrapped_col()
@@ -160,7 +160,7 @@ pub fn main_dwcol(file: &File, area: &impl RawArea) -> usize {
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_fmt(file: &File, area: &impl RawArea) -> Text {
+pub fn main_fmt<U: Ui>(file: &File<U>, area: &U::Area) -> Text {
     text!(
         "[Coord]{}[Separator]:[Coord]{}[Separator]/[Coord]{}",
         main_col(file, area),
@@ -173,7 +173,7 @@ pub fn main_fmt(file: &File, area: &impl RawArea) -> Text {
 /// [`StatusLine`] part: The number of cursors
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn selections(file: &File) -> usize {
+pub fn selections(file: &File<impl Ui>) -> usize {
     file.cursors().len()
 }
 
@@ -195,7 +195,7 @@ pub fn selections(file: &File) -> usize {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [`Cursor`]: crate::mode::Cursor
-pub fn selections_fmt(file: &File) -> Text {
+pub fn selections_fmt(file: &File<impl Ui>) -> Text {
     if file.cursors().len() == 1 {
         text!("[Selections]1 sel").build()
     } else {

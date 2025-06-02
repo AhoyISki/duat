@@ -14,12 +14,12 @@ use tokio::task;
 use super::BytesDataMap;
 use crate::{
     data::{Pass, RwData},
-    text::{Bytes, Change, Moment, MutTags, RawTagsFn, Text, err},
+    text::{err, Bytes, Change, Moment, MutTags, RawTagsFn, Text}, ui::Ui,
 };
 
 /// A [`Text`] reader, modifying it whenever a [`Change`] happens
 #[allow(unused_variables, async_fn_in_trait)]
-pub trait Reader: Send + Sync + 'static {
+pub trait Reader<U: Ui>: 'static {
     /// Applies the [`Change`]s to this [`Reader`]
     ///
     /// After this point, even if no other functions are called, the
@@ -36,7 +36,7 @@ pub trait Reader: Send + Sync + 'static {
     async fn apply_changes(
         pa: Pass<'_>,
         reader: RwData<Self>,
-        bytes: BytesDataMap,
+        bytes: BytesDataMap<U>,
         moment: Moment,
         ranges_to_update: Option<&mut RangeList>,
     ) where
@@ -67,17 +67,17 @@ pub trait Reader: Send + Sync + 'static {
     fn update_range(&mut self, bytes: &mut Bytes, tags: MutTags, within: Range<usize>);
 }
 
-pub trait ReaderCfg {
-    type Reader: Reader;
+pub trait ReaderCfg<U: Ui> {
+    type Reader: Reader<U>;
 
     fn init(self, buffer: &mut Bytes) -> Result<Self::Reader, Text>;
 }
 
 #[derive(Default, Clone)]
-pub struct Readers(RwData<Vec<ReaderEntry>>);
+pub struct Readers<U: Ui>(RwData<Vec<ReaderEntry<U>>>);
 
-impl Readers {
-    pub fn add<R: ReaderCfg>(
+impl<U: Ui> Readers<U> {
+    pub fn add<R: ReaderCfg<U>>(
         &mut self,
         pa: &mut Pass,
         bytes: &mut Bytes,
@@ -130,7 +130,7 @@ impl Readers {
         })
     }
 
-    pub fn get<R: Reader>(&mut self) -> Option<RwData<R>> {
+    pub fn get<R: Reader<U>>(&mut self) -> Option<RwData<R>> {
         if TypeId::of::<R>() == TypeId::of::<()>() {
             return None;
         }
@@ -151,7 +151,7 @@ impl Readers {
         entry.reader.try_downcast()
     }
 
-    pub async fn process_changes(&self, bytes: BytesDataMap, moment: Moment) {
+    pub async fn process_changes(&self, bytes: BytesDataMap<U>, moment: Moment) {
         const MAX_CHANGES_TO_CONSIDER: usize = 100;
         // SAFETY: Firstly, it is impossible to aqcuire a copy of this RwData,
         // nor is it possible to call this function from somewhere else, so
@@ -312,11 +312,11 @@ impl RangeList {
 }
 
 #[derive(Clone)]
-struct ReaderEntry {
-    reader: RwData<dyn Reader>,
+struct ReaderEntry<U: Ui> {
+    reader: RwData<dyn Reader<U>>,
     apply_changes: fn(
-        RwData<dyn Reader>,
-        BytesDataMap,
+        RwData<dyn Reader<U>>,
+        BytesDataMap<U>,
         Moment,
         Option<RwData<RangeList>>,
     ) -> Pin<Box<dyn Future<Output = ()>>>,

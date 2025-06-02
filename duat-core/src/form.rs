@@ -4,7 +4,7 @@ use std::sync::{LazyLock, OnceLock};
 use FormType::*;
 use crossterm::style::{Attribute, Attributes, ContentStyle};
 pub use crossterm::{cursor::SetCursorStyle as CursorShape, style::Color};
-use parking_lot::{RwLock, RwLockReadGuard};
+use std::sync::{RwLock, RwLockReadGuard};
 
 pub use self::global::*;
 pub(crate) use self::global::{colorscheme_exists, exists};
@@ -46,7 +46,7 @@ mod global {
         any::TypeId, collections::HashMap, sync::{mpsc, LazyLock}, thread, time::Duration
     };
 
-    use parking_lot::Mutex;
+    use std::sync::Mutex;
 
     use super::{BASE_FORMS, BuiltForm, ColorScheme, CursorShape, Form, FormId, Painter, Palette};
     use crate::{
@@ -104,7 +104,7 @@ mod global {
             Kind::Ref(refed) => queue(move || PALETTE.set_ref(name, refed)),
         };
 
-        let mut forms = FORMS.lock();
+        let mut forms = FORMS.lock().unwrap();
         if let Kind::Ref(refed) = kind {
             position_of_name(&mut forms, refed);
         }
@@ -141,7 +141,7 @@ mod global {
             Kind::Ref(refed) => queue(move || PALETTE.set_weak_ref(name, refed)),
         };
 
-        let mut forms = FORMS.lock();
+        let mut forms = FORMS.lock().unwrap();
         if let Kind::Ref(refed) = kind {
             position_of_name(&mut forms, refed);
         }
@@ -272,7 +272,7 @@ mod global {
     pub fn painter<W: ?Sized + 'static>() -> Painter {
         fn default_id(type_id: TypeId, type_name: &'static str) -> FormId {
             static IDS: LazyLock<Mutex<HashMap<TypeId, FormId>>> = LazyLock::new(Mutex::default);
-            let mut ids = IDS.lock();
+            let mut ids = IDS.lock().unwrap();
 
             if let Some(id) = ids.get(&type_id) {
                 *id
@@ -357,7 +357,7 @@ mod global {
             .collect();
 
         let mut ids = Vec::new();
-        let mut forms = FORMS.lock();
+        let mut forms = FORMS.lock().unwrap();
         for name in names.iter() {
             ids.push(FormId(position_of_name(&mut forms, name) as u16));
         }
@@ -368,7 +368,7 @@ mod global {
     /// Returns the [`FormId`] of the form's name
     #[doc(hidden)]
     pub fn id_from_name(name: &'static str) -> FormId {
-        let mut forms = FORMS.lock();
+        let mut forms = FORMS.lock().unwrap();
         FormId(position_of_name(&mut forms, name) as u16)
     }
 
@@ -388,7 +388,7 @@ mod global {
     ///
     /// [`form::set_colorscheme`]: set_colorscheme
     pub fn add_colorscheme(cs: impl ColorScheme) {
-        let mut colorschemes = COLORSCHEMES.lock();
+        let mut colorschemes = COLORSCHEMES.lock().unwrap();
         let name = cs.name();
         if let Some(i) = colorschemes.iter().position(|cs| cs.name() == name) {
             colorschemes[i] = Box::new(cs);
@@ -404,7 +404,7 @@ mod global {
     ///
     /// [`form::add_colorscheme`]: add_colorscheme
     pub fn set_colorscheme(name: &str) {
-        let colorschemes = COLORSCHEMES.lock();
+        let colorschemes = COLORSCHEMES.lock().unwrap();
         if let Some(cs) = colorschemes.iter().find(|cs| cs.name() == name) {
             cs.apply();
             hooks::queue::<ColorSchemeSet>(cs.name());
@@ -424,17 +424,17 @@ mod global {
 
     /// Wether or not a specific [`Form`] has been set
     pub(crate) fn exists(name: &str) -> bool {
-        FORMS.lock().contains(&name)
+        FORMS.lock().unwrap().contains(&name)
     }
 
     /// Wether or not a specific [`ColorScheme`] was added
     pub(crate) fn colorscheme_exists(name: &str) -> bool {
-        COLORSCHEMES.lock().iter().any(|cs| cs.name() == name)
+        COLORSCHEMES.lock().unwrap().iter().any(|cs| cs.name() == name)
     }
 
     /// The name of a form, given a [`FormId`]
     pub(super) fn name_of(id: FormId) -> &'static str {
-        FORMS.lock()[id.0 as usize]
+        FORMS.lock().unwrap()[id.0 as usize]
     }
 
     fn position_of_name(names: &mut Vec<&'static str>, name: &'static str) -> usize {
@@ -462,7 +462,7 @@ mod global {
             f();
         });
 
-        let mut sender = SENDER.lock();
+        let mut sender = SENDER.lock().unwrap();
         let f = if let Some(tx) = sender.as_ref() {
             let Err(err) = tx.send(f) else {
                 return;
@@ -866,7 +866,7 @@ impl Palette {
 
     /// Sets a [`Form`]
     fn set_form(&self, name: &'static str, form: Form) {
-        let mut inner = self.0.write();
+        let mut inner = self.0.write().unwrap();
         let (i, _) = position_and_form(&mut inner.forms, name);
 
         inner.forms[i] = (name, form, FormType::Normal);
@@ -884,7 +884,7 @@ impl Palette {
 
     /// Sets a [`Form`] "weakly"
     fn set_weak_form(&self, name: &'static str, form: Form) {
-        let mut inner = self.0.write();
+        let mut inner = self.0.write().unwrap();
         let (i, _) = position_and_form(&mut inner.forms, name);
 
         let (_, f, f_ty) = &mut inner.forms[i];
@@ -903,7 +903,7 @@ impl Palette {
 
     /// Makes a [`Form`] reference another
     fn set_ref(&self, name: &'static str, refed: &'static str) {
-        let mut inner = self.0.write();
+        let mut inner = self.0.write().unwrap();
         let (refed, form) = position_and_form(&mut inner.forms, refed);
         let (i, _) = position_and_form(&mut inner.forms, name);
 
@@ -926,7 +926,7 @@ impl Palette {
 
     /// Makes a [`Form`] reference another "weakly"
     fn set_weak_ref(&self, name: &'static str, refed: &'static str) {
-        let mut inner = self.0.write();
+        let mut inner = self.0.write().unwrap();
         let (refed, form) = position_and_form(&mut inner.forms, refed);
         let (i, _) = position_and_form(&mut inner.forms, name);
 
@@ -948,7 +948,7 @@ impl Palette {
 
     /// Sets many [`Form`]s
     fn set_many(&self, names: &[&'static str]) {
-        let mut inner = self.0.write();
+        let mut inner = self.0.write().unwrap();
         for name in names {
             position_and_form(&mut inner.forms, name);
         }
@@ -956,25 +956,25 @@ impl Palette {
 
     /// Returns a form, given a [`FormId`].
     fn form_from_id(&self, id: FormId) -> Option<Form> {
-        let inner = self.0.read();
+        let inner = self.0.read().unwrap();
         inner.forms.get(id.0 as usize).map(|(_, form, _)| *form)
     }
 
     /// The [`Form`] and [`CursorShape`] of the main cursor
     fn main_cursor(&self) -> (Form, Option<CursorShape>) {
         let form = self.form_from_id(M_CUR_ID).unwrap();
-        (form, self.0.read().main_cursor)
+        (form, self.0.read().unwrap().main_cursor)
     }
 
     /// The [`Form`] and [`CursorShape`] of extra cursors
     fn extra_cursor(&self) -> (Form, Option<CursorShape>) {
         let form = self.form_from_id(E_CUR_ID).unwrap();
-        (form, self.0.read().extra_cursor)
+        (form, self.0.read().unwrap().extra_cursor)
     }
 
     /// Sets the [`CursorShape`] of the main cursor
     fn set_main_cursor(&self, shape: CursorShape) {
-        self.0.write().main_cursor = Some(shape);
+        self.0.write().unwrap().main_cursor = Some(shape);
         if let Some(sender) = SENDER.get() {
             sender.send_form_changed().unwrap()
         }
@@ -982,7 +982,7 @@ impl Palette {
 
     /// Sets the [`CursorShape`] of extra cursors
     fn set_extra_cursor(&self, shape: CursorShape) {
-        self.0.write().extra_cursor = Some(shape);
+        self.0.write().unwrap().extra_cursor = Some(shape);
         if let Some(sender) = SENDER.get() {
             sender.send_form_changed().unwrap()
         }
@@ -990,7 +990,7 @@ impl Palette {
 
     /// Unsets the [`CursorShape`] of the main cursor
     fn unset_main_cursor(&self) {
-        self.0.write().main_cursor = None;
+        self.0.write().unwrap().main_cursor = None;
         if let Some(sender) = SENDER.get() {
             sender.send_form_changed().unwrap()
         }
@@ -998,7 +998,7 @@ impl Palette {
 
     /// Unsets the [`CursorShape`] of the extra cursors
     fn unset_extra_cursor(&self) {
-        self.0.write().extra_cursor = None;
+        self.0.write().unwrap().extra_cursor = None;
         if let Some(sender) = SENDER.get() {
             sender.send_form_changed().unwrap()
         }
@@ -1006,7 +1006,7 @@ impl Palette {
 
     /// Returns a [`Painter`]
     fn painter(&'static self, id: FormId) -> Painter {
-        let inner = self.0.read();
+        let inner = self.0.read().unwrap();
         let default = inner
             .forms
             .get(id.0 as usize)

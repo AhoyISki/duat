@@ -11,7 +11,7 @@
 //! [`IncSearcher`]: crate::mode::IncSearcher
 use std::{collections::HashMap, ops::RangeBounds, sync::LazyLock};
 
-use parking_lot::{RwLock, RwLockWriteGuard};
+use std::sync::{RwLock, RwLockWriteGuard};
 use regex_automata::{
     Anchored, Input, PatternID,
     hybrid::dfa::{Cache, DFA},
@@ -37,8 +37,8 @@ impl Text {
 
         let mut fwd_input = Input::new(haystack);
         let mut rev_input = Input::new(haystack).anchored(Anchored::Yes);
-        let mut fwd_cache = dfas.fwd.1.write();
-        let mut rev_cache = dfas.rev.1.write();
+        let mut fwd_cache = dfas.fwd.1.write().unwrap();
+        let mut rev_cache = dfas.rev.1.write().unwrap();
 
         let bytes = bytes as &super::Bytes;
         Ok(std::iter::from_fn(move || {
@@ -87,8 +87,8 @@ impl Text {
 
         let mut fwd_input = Input::new(haystack).anchored(Anchored::Yes);
         let mut rev_input = Input::new(haystack);
-        let mut fwd_cache = dfas.fwd.1.write();
-        let mut rev_cache = dfas.rev.1.write();
+        let mut fwd_cache = dfas.fwd.1.write().unwrap();
+        let mut rev_cache = dfas.rev.1.write().unwrap();
 
         let bytes = bytes as &super::Bytes;
         let gap = range.start;
@@ -137,7 +137,7 @@ impl Text {
         let haystack = self.contiguous(range);
         let fwd_input = Input::new(haystack);
 
-        let mut fwd_cache = dfas.fwd.1.write();
+        let mut fwd_cache = dfas.fwd.1.write().unwrap();
         if let Ok(Some(_)) = dfas.fwd.0.try_search_fwd(&mut fwd_cache, &fwd_input) {
             Ok(true)
         } else {
@@ -166,7 +166,7 @@ impl<const N: usize> Matcheable for std::array::IntoIter<&str, N> {
         let fwd_input =
             Input::new(unsafe { std::str::from_utf8_unchecked(&str.as_bytes()[start..end]) });
 
-        let mut fwd_cache = dfas.fwd.1.write();
+        let mut fwd_cache = dfas.fwd.1.write().unwrap();
         if let Ok(Some(_)) = dfas.fwd.0.try_search_fwd(&mut fwd_cache, &fwd_input) {
             Ok(true)
         } else {
@@ -186,7 +186,7 @@ impl Matcheable for &'_ str {
         let fwd_input =
             Input::new(unsafe { std::str::from_utf8_unchecked(&self.as_bytes()[start..end]) });
 
-        let mut fwd_cache = dfas.fwd.1.write();
+        let mut fwd_cache = dfas.fwd.1.write().unwrap();
         if let Ok(Some(_)) = dfas.fwd.0.try_search_fwd(&mut fwd_cache, &fwd_input) {
             Ok(true)
         } else {
@@ -210,8 +210,8 @@ impl Searcher {
             pat,
             fwd_dfa: &dfas.fwd.0,
             rev_dfa: &dfas.rev.0,
-            fwd_cache: dfas.fwd.1.write(),
-            rev_cache: dfas.rev.1.write(),
+            fwd_cache: dfas.fwd.1.write().unwrap(),
+            rev_cache: dfas.rev.1.write().unwrap(),
         })
     }
 
@@ -360,7 +360,7 @@ fn dfas_from_pat(pat: impl RegexPattern) -> Result<&'static DFAs, Box<regex_synt
     static DFA_LIST: LazyLock<RwLock<HashMap<Patterns<'static>, &'static DFAs>>> =
         LazyLock::new(RwLock::default);
 
-    let mut list = DFA_LIST.write();
+    let mut list = DFA_LIST.write().unwrap();
 
     let mut bytes = [0; 4];
     let pat = pat.as_patterns(&mut bytes);

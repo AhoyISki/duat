@@ -1,7 +1,9 @@
-use std::{any::TypeId, sync::LazyLock};
+use std::{
+    any::TypeId,
+    sync::{LazyLock, Mutex},
+};
 
 use crossterm::event::KeyEvent;
-use parking_lot::Mutex;
 
 pub use self::global::*;
 use super::Mode;
@@ -385,7 +387,7 @@ impl Remapper {
         ) {
             let remap = Remap::new(take, give, is_alias);
 
-            let mut remaps = remapper.remaps.lock();
+            let mut remaps = remapper.remaps.lock().unwrap();
 
             if let Some((_, remaps)) = remaps.iter_mut().find(|(m, _)| type_id == *m) {
                 if remaps.iter().all(|r| {
@@ -410,13 +412,15 @@ impl Remapper {
             ty: TypeId,
             key: KeyEvent,
         ) {
-            let Some(i) = remapper.remaps.lock().iter().position(|(m, _)| ty == *m) else {
+            // Lock acquired here
+            let remaps_list = remapper.remaps.lock().unwrap();
+
+            let Some(i) = remaps_list.iter().position(|(m, _)| ty == *m) else {
+                drop(remaps_list);
                 mode::send_keys_to(pa, vec![key]).await;
                 return;
             };
 
-            // Lock acquired here
-            let remaps_list = remapper.remaps.lock();
             let (_, remaps) = &remaps_list[i];
 
             let (cur_seq, is_alias) = remapper.cur_seq.write(&mut pa, |(cur_seq, is_alias)| {
@@ -492,7 +496,7 @@ impl Remap {
 
 pub enum Gives {
     Keys(Vec<KeyEvent>),
-    Mode(Box<dyn Fn() + Send>),
+    Mode(Box<dyn Fn()>),
 }
 
 fn remove_alias_and<U: Ui>(

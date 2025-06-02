@@ -1,6 +1,6 @@
 mod iter;
 
-use std::{fmt::Alignment, sync::Arc};
+use std::{cell::Cell, fmt::Alignment, sync::Arc};
 
 use crossterm::cursor;
 use duat_core::{
@@ -92,11 +92,8 @@ impl Area {
         mut painter: Painter,
         mut f: impl FnMut(&Caret, &Item) + 'a,
     ) {
-        let layouts = self.layouts.lock();
-        let mut ansi_codes = self.ansi_codes.lock();
-        let start = |_: &Text| layouted::first_points(self, &layouts).0;
-        let end = |text: &Text| layouted::last_points(self, &layouts, text, cfg).0;
-        text.update_bounds(start, end);
+        let layouts = self.layouts.lock().unwrap();
+        let mut ansi_codes = self.ansi_codes.lock().unwrap();
 
         let layout = get_layout(&layouts, self.id).unwrap();
         let is_active = layout.active_id() == self.id;
@@ -105,9 +102,10 @@ impl Area {
             let rect = layout.get(self.id).unwrap();
 
             let info = {
-                let mut info = rect.print_info().unwrap().write();
+                let mut info = rect.print_info().unwrap().get();
                 info.fix(text);
-                *info
+                rect.print_info().unwrap().set(info);
+                info
             };
 
             let lines = layout.printer.lines(rect.var_points(), info.x_shift, cfg);
@@ -248,7 +246,7 @@ impl ui::RawArea for Area {
         on_files: bool,
         cache: PrintInfo,
     ) -> (Area, Option<Area>) {
-        let mut layouts = area.layouts.lock();
+        let mut layouts = area.layouts.lock().unwrap();
         let layout = get_layout_mut(&mut layouts, area.id).unwrap();
 
         let (child, parent) = layout.bisect(area.id, specs, cluster, on_files, cache);
@@ -260,7 +258,7 @@ impl ui::RawArea for Area {
     }
 
     fn delete(area: MutArea<Self>) -> Option<Self> {
-        let mut layouts = area.layouts.lock();
+        let mut layouts = area.layouts.lock().unwrap();
         // This Area may have already been deleted, so a Layout may not be
         // found.
         let layout = get_layout_mut(&mut layouts, area.id)?;
@@ -270,7 +268,7 @@ impl ui::RawArea for Area {
     }
 
     fn swap(lhs: MutArea<Self>, rhs: &Self) {
-        let mut layouts = lhs.layouts.lock();
+        let mut layouts = lhs.layouts.lock().unwrap();
         let lhs_lay = get_layout_pos(&layouts, lhs.id).unwrap();
         let rhs_lay = get_layout_pos(&layouts, rhs.id).unwrap();
 
@@ -307,7 +305,7 @@ impl ui::RawArea for Area {
     }
 
     fn spawn_floating(area: MutArea<Self>, specs: SpawnSpecs) -> Result<Self, Text> {
-        let mut layouts = area.layouts.lock();
+        let mut layouts = area.layouts.lock().unwrap();
         let layout = get_layout_mut(&mut layouts, area.id).unwrap();
 
         Ok(Self::new(
@@ -333,7 +331,7 @@ impl ui::RawArea for Area {
             cons
         };
 
-        let mut layouts = self.layouts.lock();
+        let mut layouts = self.layouts.lock().unwrap();
         let layout = get_layout_mut(&mut layouts, self.id).unwrap();
         let old_cons = layout
             .rects
@@ -366,7 +364,7 @@ impl ui::RawArea for Area {
             cons
         };
 
-        let mut layouts = self.layouts.lock();
+        let mut layouts = self.layouts.lock().unwrap();
         let layout = get_layout_mut(&mut layouts, self.id).unwrap();
         let old_cons = layout
             .rects
@@ -401,14 +399,14 @@ impl ui::RawArea for Area {
     }
 
     fn scroll_around_point(&self, text: &Text, point: Point, cfg: PrintCfg) {
-        let layouts = self.layouts.lock();
+        let layouts = self.layouts.lock().unwrap();
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
 
         let (mut info, w, h) = {
             let coords = layout.printer.coords(rect.var_points(), false);
-            let info = rect.print_info().unwrap();
-            (info.write(), coords.width(), coords.height())
+            let info = rect.print_info().unwrap().get();
+            (info, coords.width(), coords.height())
         };
 
         if w > 0 && h > 0 {
@@ -421,7 +419,7 @@ impl ui::RawArea for Area {
     }
 
     fn set_as_active(&self) {
-        let mut layouts = self.layouts.lock();
+        let mut layouts = self.layouts.lock().unwrap();
         get_layout_mut(&mut layouts, self.id).unwrap().active_id = self.id;
     }
 
@@ -442,9 +440,9 @@ impl ui::RawArea for Area {
     }
 
     fn set_print_info(&self, info: Self::PrintInfo) {
-        let layouts = self.layouts.lock();
+        let layouts = self.layouts.lock().unwrap();
         let layout = get_layout(&layouts, self.id).unwrap();
-        *layout.get(self.id).unwrap().print_info().unwrap().write() = info;
+        layout.get(self.id).unwrap().print_info().unwrap().set(info);
     }
 
     fn print_iter<'a>(
@@ -462,16 +460,14 @@ impl ui::RawArea for Area {
         cfg: PrintCfg,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
         let (info, width) = {
-            let layouts = self.layouts.lock();
+            let layouts = self.layouts.lock().unwrap();
             let layout = get_layout(&layouts, self.id).unwrap();
             let rect = get_rect(&layouts, self.id).unwrap();
 
-            let info = rect.print_info().unwrap();
-            let info = info.read();
-
+            let info = rect.print_info().unwrap().get();
             let coords = layout.printer.coords(rect.var_points(), false);
 
-            (*info, coords.width())
+            (info, coords.width())
         };
         let line_start = text.visual_line_start(info.points);
         let iter = text.iter_fwd(line_start);
@@ -488,7 +484,7 @@ impl ui::RawArea for Area {
     }
 
     fn has_changed(&self) -> bool {
-        let layouts = self.layouts.lock();
+        let layouts = self.layouts.lock().unwrap();
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
         rect.has_changed(layout)
@@ -500,7 +496,7 @@ impl ui::RawArea for Area {
         if other.id == self.id {
             return true;
         }
-        let layouts = self.layouts.lock();
+        let layouts = self.layouts.lock().unwrap();
         let layout = get_layout(&layouts, self.id).unwrap();
         let mut parent_id = other.id;
         while let Some((_, parent)) = layout.get_parent(parent_id) {
@@ -514,7 +510,7 @@ impl ui::RawArea for Area {
     }
 
     fn get_cluster_master(&self) -> Option<Self> {
-        let layouts = self.layouts.lock();
+        let layouts = self.layouts.lock().unwrap();
         get_layout(&layouts, self.id)
             .unwrap()
             .rects
@@ -523,15 +519,15 @@ impl ui::RawArea for Area {
     }
 
     fn cache(&self) -> Option<Self::Cache> {
-        let layouts = self.layouts.lock();
+        let layouts = self.layouts.lock().unwrap();
         get_rect(&layouts, self.id)
             .unwrap()
             .print_info()
-            .map(|info| *info.read())
+            .map(Cell::get)
     }
 
     fn width(&self) -> u32 {
-        let layouts = self.layouts.lock();
+        let layouts = self.layouts.lock().unwrap();
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
         let coords = layout.printer.coords(rect.var_points(), false);
@@ -539,7 +535,7 @@ impl ui::RawArea for Area {
     }
 
     fn height(&self) -> u32 {
-        let layouts = self.layouts.lock();
+        let layouts = self.layouts.lock().unwrap();
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
         let coords = layout.printer.coords(rect.var_points(), false);
@@ -547,26 +543,26 @@ impl ui::RawArea for Area {
     }
 
     fn first_points(&self, _text: &Text, _cfg: PrintCfg) -> (Point, Option<Point>) {
-        let layouts = self.layouts.lock();
+        let layouts = self.layouts.lock().unwrap();
         layouted::first_points(self, &layouts)
     }
 
     fn last_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>) {
-        let layouts = self.layouts.lock();
+        let layouts = self.layouts.lock().unwrap();
         layouted::last_points(self, &layouts, text, cfg)
     }
 
     fn print_info(&self) -> Self::PrintInfo {
-        let layouts = self.layouts.lock();
-        *get_rect(&layouts, self.id)
+        let layouts = self.layouts.lock().unwrap();
+        get_rect(&layouts, self.id)
             .unwrap()
             .print_info()
             .unwrap()
-            .read()
+            .get()
     }
 
     fn is_active(&self) -> bool {
-        get_layout(&self.layouts.lock(), self.id).unwrap().active_id == self.id
+        get_layout(&self.layouts.lock().unwrap(), self.id).unwrap().active_id == self.id
     }
 }
 
@@ -718,8 +714,7 @@ mod layouted {
 
     pub fn first_points(area: &Area, layouts: &[Layout]) -> (Point, Option<Point>) {
         let rect = get_rect(layouts, area.id).unwrap();
-        let info = rect.print_info().unwrap();
-        let info = info.read();
+        let info = rect.print_info().unwrap().get();
         info.points
     }
 
@@ -733,10 +728,7 @@ mod layouted {
             let layout = get_layout(layouts, area.id).unwrap();
             let rect = layout.get(area.id).unwrap();
             let info = rect.print_info().unwrap();
-            (
-                info.write(),
-                layout.printer.coords(rect.var_points(), false),
-            )
+            (info.get(), layout.printer.coords(rect.var_points(), false))
         };
 
         if let Some(last) = info.last_points {
@@ -764,6 +756,9 @@ mod layouted {
         }
 
         info.last_points = Some(points);
+        let layout = get_layout(layouts, area.id).unwrap();
+        let rect = layout.get(area.id).unwrap();
+        rect.print_info().unwrap().set(info);
 
         points
     }

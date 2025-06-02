@@ -49,7 +49,7 @@ use std::{self, cell::Cell, pin::Pin, rc::Rc};
 pub use self::file::{File, FileCfg, PathKind, Reader, ReaderCfg};
 use crate::{
     cfg::PrintCfg,
-    context::FileParts,
+    context::{FileHandle, FileParts},
     data::{Pass, RwData},
     form,
     hooks::{self, FocusedOn, UnfocusedFrom},
@@ -484,13 +484,10 @@ pub trait Widget<U: Ui>: 'static {
 /// });
 /// # }
 /// ```
-pub trait WidgetCfg<U>: Sized
-where
-    U: Ui,
-{
+pub trait WidgetCfg<U: Ui>: Sized {
     type Widget: Widget<U>;
 
-    fn build(self, pa: Pass, on_file: bool) -> (Self::Widget, PushSpecs);
+    fn build(self, pa: Pass, handle: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs);
 }
 
 // Elements related to the [`Widget`]s
@@ -506,17 +503,13 @@ pub struct Node<U: Ui> {
 }
 
 impl<U: Ui> Node<U> {
-    pub fn new<W: Widget<U>>(
-        pa: &mut Pass,
-        widget: RwData<dyn Widget<U>>,
-        area: U::Area,
-    ) -> Self {
+    pub fn new<W: Widget<U>>(pa: &mut Pass, widget: RwData<dyn Widget<U>>, area: U::Area) -> Self {
         fn related_widgets<U: Ui>(
             pa: &mut Pass,
             widget: &RwData<dyn Widget<U>>,
             area: &U::Area,
         ) -> Option<RwData<Vec<Node<U>>>> {
-            widget.write_as(pa, |file: &mut File| {
+            widget.write_as(pa, |file: &mut File<U>| {
                 let cfg = file.print_cfg();
                 file.text_mut().add_cursors(area, cfg);
                 RwData::default()
@@ -592,7 +585,7 @@ impl<U: Ui> Node<U> {
     }
 
     pub(crate) fn as_file(&self) -> Option<FileParts<U>> {
-        self.widget.try_downcast().map(|file: RwData<File>| {
+        self.widget.try_downcast().map(|file: RwData<File<U>>| {
             (
                 file,
                 self.area.clone(),

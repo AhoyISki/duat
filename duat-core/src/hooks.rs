@@ -304,8 +304,6 @@ impl<U: Ui> Hookable for OnFileOpen<U> {
         for hook in hooks {
             hook(&mut pa, &mut input)
         }
-
-        input.finish(&mut pa);
     }
 }
 

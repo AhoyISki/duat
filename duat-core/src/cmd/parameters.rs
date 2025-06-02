@@ -111,7 +111,7 @@ impl<'a, const MIN: usize, const MAX: usize, P: Parameter<'a>> Parameter<'a>
         let mut returns = Vec::new();
 
         for _ in 0..MAX {
-            match args.next_as::<P>(&pa) {
+            match args.next_as::<P>(pa) {
                 Ok(ret) => returns.push(ret),
                 Err(err) if args.is_forming_param => return Err(err),
                 Err(_) if returns.len() >= MIN => return Ok(returns),
@@ -217,7 +217,7 @@ impl<'a, U: crate::ui::Ui> Parameter<'a> for OtherFileBuffer<U> {
     type Returns = &'a str;
 
     fn new(pa: &Pass, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
-        let buffer = args.next_as::<Buffer<U>>(&pa)?;
+        let buffer = args.next_as::<Buffer<U>>(pa)?;
         let handle = crate::context::fixed_file::<U>(pa).unwrap();
         if buffer == handle.read(pa, |file, _| file.name()) {
             Err(err!("Argument can't be the current file").build())
@@ -236,7 +236,7 @@ impl Parameter<'_> for PossibleFile {
     type Returns = PathBuf;
 
     fn new(pa: &Pass, args: &mut Args<'_>) -> Result<Self::Returns, Text> {
-        let path = args.next_as::<PathBuf>(&pa)?;
+        let path = args.next_as::<PathBuf>(pa)?;
 
         let canon_path = path.canonicalize();
         if let Ok(path) = &canon_path {

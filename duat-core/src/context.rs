@@ -11,7 +11,7 @@ use std::{
     },
 };
 
-use parking_lot::Mutex;
+use std::sync::Mutex;
 
 pub use self::global::*;
 use crate::{
@@ -32,7 +32,7 @@ mod global {
         },
     };
 
-    use parking_lot::Mutex;
+    use std::sync::Mutex;
 
     use super::{CurFile, CurWidget, FileHandle, FileParts, Notifications};
     use crate::{
@@ -103,6 +103,7 @@ mod global {
         CUR_DIR
             .get_or_init(|| Mutex::new(std::env::current_dir().unwrap()))
             .lock()
+            .unwrap()
             .clone()
     }
 
@@ -258,7 +259,7 @@ pub struct FileHandle<U: Ui> {
 }
 
 impl<U: Ui> FileHandle<U> {
-    pub fn read<Ret>(&self, pa: &Pass, f: impl FnOnce(&File, &U::Area) -> Ret) -> Ret {
+    pub fn read<Ret>(&self, pa: &Pass, f: impl FnOnce(&File<U>, &U::Area) -> Ret) -> Ret {
         if let Some((file, area, _)) = self.fixed.as_ref() {
             file.read(pa, |file| f(file, area))
         } else {
@@ -269,8 +270,8 @@ impl<U: Ui> FileHandle<U> {
         }
     }
 
-    pub fn write<Ret>(&self, pa: &mut Pass, f: impl FnOnce(&mut File, &U::Area) -> Ret) -> Ret {
-        let update = move |file: &RwData<File>, area: &U::Area| {
+    pub fn write<Ret>(&self, pa: &mut Pass, f: impl FnOnce(&mut File<U>, &U::Area) -> Ret) -> Ret {
+        let update = move |file: &RwData<File<U>>, area: &U::Area| {
             file.write(pa, |file| {
                 let cfg = file.print_cfg();
                 file.text_mut().remove_cursors(area, cfg);
@@ -424,7 +425,7 @@ impl Notifications {
 
     /// Reads the notifications that were sent to Duat
     pub fn read<Ret>(&mut self, f: impl FnOnce(&[Text]) -> Ret) -> Ret {
-        let ret = f(&self.list.lock());
+        let ret = f(&self.list.lock().unwrap());
         self.read_state.store(
             self.current_state.load(Ordering::Relaxed),
             Ordering::Relaxed,
@@ -447,7 +448,7 @@ impl Notifications {
     /// [notification]: Text
     /// [`Reader`]: crate::text::Reader
     pub fn push(&self, text: impl Into<Text>) {
-        self.list.lock().push(Into::<Text>::into(text))
+        self.list.lock().unwrap().push(Into::<Text>::into(text))
     }
 }
 
@@ -524,4 +525,4 @@ impl<U: Ui> Default for CurWidget<U> {
     }
 }
 
-pub(crate) type FileParts<U> = (RwData<File>, <U as Ui>::Area, RwData<Vec<Node<U>>>);
+pub(crate) type FileParts<U> = (RwData<File<U>>, <U as Ui>::Area, RwData<Vec<Node<U>>>);

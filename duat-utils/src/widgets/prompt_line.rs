@@ -18,6 +18,7 @@ use std::{any::TypeId, collections::HashMap, marker::PhantomData};
 
 use duat_core::{
     cfg::PrintCfg,
+    context::FileHandle,
     data::{Pass, RwData},
     form, hooks,
     text::Text,
@@ -30,7 +31,7 @@ use crate::modes::PromptMode;
 impl<U: Ui> WidgetCfg<U> for PromptLineCfg<U> {
     type Widget = PromptLine<U>;
 
-    fn build(self, _: Pass, _: bool) -> (Self::Widget, PushSpecs) {
+    fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
         let specs = if hooks::group_exists("HidePromptLine") {
             self.specs.with_ver_len(0.0)
         } else {

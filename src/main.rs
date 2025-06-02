@@ -5,7 +5,7 @@ use std::{
     path::PathBuf,
     process::{Command, Output},
     sync::{
-        LazyLock,
+        LazyLock, Mutex,
         mpsc::{self, Receiver},
     },
     time::Instant,
@@ -14,7 +14,6 @@ use std::{
 use dlopen_rs::{Dylib, ElfLibrary, OpenFlags, Symbol};
 use duat::{Messengers, MetaStatics, pre_setup, prelude::*, run_duat};
 use duat_core::{
-    Mutex,
     clipboard::Clipboard,
     session::FileRet,
     ui::{self, DuatEvent, Ui as UiTrait},
@@ -133,7 +132,7 @@ fn main() {
         let profile = if on_release { "Release" } else { "Debug" };
         let in_time = match reload_instant {
             Some(reload_instant) => {
-                ok!("in [a]{:.2?}", reload_instant.elapsed())
+                ok!("in [a]{:.2?}", reload_instant.elapsed()).build()
             }
             None => Text::new(),
         };

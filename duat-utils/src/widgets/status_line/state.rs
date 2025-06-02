@@ -27,7 +27,7 @@ use duat_core::{
 
 /// A struct that reads state in order to return [`Text`].
 enum Appender<U: Ui, _T: Clone = (), D: Display + Clone = String, W = ()> {
-    PassArg(Box<dyn FnMut(&Pass, &mut Builder) + 'static>),
+    PassArg(PassArgFn),
     FromWidget(WidgetAreaFn<W, U>),
     Part(BuilderPart<D, _T>),
 }
@@ -95,7 +95,7 @@ impl<D: Display + Clone + 'static, U: Ui> From<RwData<D>> for State<U, DataArg<D
         Self {
             appender: Appender::PassArg({
                 let value = value.clone();
-                Box::new(move |pa, b| value.read(pa, |d| b.push(d).clone()))
+                Box::new(move |pa, b| value.read(pa, |d| b.push(d)))
             }),
             checker: Some(Box::new(value.checker())),
             ghost: PhantomData,
@@ -338,5 +338,6 @@ pub struct WidgetArg<W>(PhantomData<W>);
 pub struct WidgetAreaArg<W>(PhantomData<W>);
 
 // The various types of function aliases
+type PassArgFn = Box<dyn FnMut(&Pass, &mut Builder) + 'static>;
 type WidgetAreaFn<W, U> = Box<dyn FnMut(&mut Builder, &W, &<U as Ui>::Area) + 'static>;
 type BuilderFn<U> = Box<dyn FnMut(&Pass, &mut Builder, &FileHandle<U>)>;

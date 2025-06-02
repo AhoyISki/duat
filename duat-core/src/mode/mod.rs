@@ -280,7 +280,7 @@ mod switch {
             let node = {
                 let windows = context::windows().borrow();
                 let w = context::cur_window();
-                if TypeId::of::<M::Widget>() == TypeId::of::<File>() {
+                if TypeId::of::<M::Widget>() == TypeId::of::<File<U>>() {
                     let name = context::fixed_file::<U>(&pa)
                         .unwrap()
                         .read(&pa, |file, _| file.name());
@@ -652,7 +652,7 @@ mod switch {
 /// [Kakoune]: https://github.com/mawww/kakoune
 /// [`Text`]: crate::Text
 /// [`&mut Cursors`]: Cursors
-pub trait Mode<U: Ui>: Sized + Clone + Send + 'static {
+pub trait Mode<U: Ui>: Sized + Clone + 'static {
     type Widget: Widget<U>;
 
     /// Sends a [`KeyEvent`] to this [`Mode`]
@@ -687,9 +687,9 @@ pub trait Mode<U: Ui>: Sized + Clone + Send + 'static {
 // remaps.
 impl<U: Ui> Mode<U> for &'static str {
     // Doesn't matter
-    type Widget = File;
+    type Widget = File<U>;
 
-    async fn send_key(&mut self, _: Pass<'_>, _: KeyEvent, _: RwData<File>, _: <U as Ui>::Area) {
+    async fn send_key(&mut self, _: Pass<'_>, _: KeyEvent, _: RwData<Self::Widget>, _: <U as Ui>::Area) {
         unreachable!("&strs are only meant to be sent as AsGives, turning into keys");
     }
 

@@ -1,7 +1,7 @@
 use std::{
     path::PathBuf,
     sync::{
-        OnceLock,
+        Mutex, OnceLock,
         atomic::{AtomicUsize, Ordering},
         mpsc,
     },
@@ -9,7 +9,6 @@ use std::{
 };
 
 use arboard::Clipboard;
-use parking_lot::Mutex;
 use tokio::task;
 
 use crate::{
@@ -68,9 +67,9 @@ impl<U: Ui> SessionCfg<U> {
         let first = args.nth(1).map(PathBuf::from);
 
         let (widget, _) = if let Some(name) = first {
-            <FileCfg as WidgetCfg<U>>::build(self.file_cfg.clone().open_path(name), pa, false)
+            self.file_cfg.clone().open_path(name).build(pa, None)
         } else {
-            <FileCfg as WidgetCfg<U>>::build(self.file_cfg.clone(), pa, false)
+            self.file_cfg.clone().build(pa, None)
         };
 
         // SAFETY: Last Pass was consumed
@@ -140,7 +139,7 @@ impl<U: Ui> SessionCfg<U> {
             let pa = unsafe { Pass::new() };
 
             let (file_cfg, is_active) = cfgs.next().unwrap();
-            let (widget, _) = <FileCfg as WidgetCfg<U>>::build(file_cfg, pa, false);
+            let (widget, _) = file_cfg.build(pa, None);
 
             // SAFETY: Last Pass was just consumed.
             let mut pa = unsafe { Pass::new() };
@@ -192,11 +191,11 @@ impl<U: Ui> Session<U> {
             let cur_window = self.cur_window.load(Ordering::Relaxed);
 
             // SAFETY: Exclusive borrow of Pass means I can create my own.
-            let file_dk = unsafe { Pass::new() };
+            let file_pa = unsafe { Pass::new() };
             let (file, _) = <FileCfg as WidgetCfg<U>>::build(
                 self.file_cfg.clone().open_path(path),
-                file_dk,
-                false,
+                file_pa,
+                None,
             );
 
             windows[cur_window].push_file(&mut *pa, file)
@@ -353,7 +352,7 @@ impl<U: Ui> Session<U> {
             .iter()
             .map(|w| {
                 let files = w.nodes().filter_map(|node| {
-                    node.try_downcast::<File>().map(|file| {
+                    node.try_downcast::<File<U>>().map(|file| {
                         file.write(pa, |file| {
                             let text = std::mem::take(file.text_mut());
                             let has_unsaved_changes = text.has_unsaved_changes();
@@ -379,8 +378,8 @@ impl<U: Ui> Session<U> {
         let pushed = {
             let mut windows = context::windows::<U>().borrow_mut();
             // SAFETY: Exclusive borrow of Pass means I can create my own.
-            let file_dk = unsafe { Pass::new() };
-            let (widget, _) = <FileCfg as WidgetCfg<U>>::build(file_cfg, file_dk, false);
+            let file_pa = unsafe { Pass::new() };
+            let (widget, _) = file_cfg.build(file_pa, None);
 
             let result = windows[win].push_file(&mut *pa, widget);
 
@@ -415,7 +414,7 @@ impl<U: Ui> Session<U> {
             let (lhs_win, _, lhs) = file_entry(&*pa, &windows, &name).unwrap();
             let lhs = lhs.clone();
 
-            let lo = lhs.read_as(&*pa, |f: &File| f.layout_order).unwrap();
+            let lo = lhs.read_as(&*pa, |f: &File<U>| f.layout_order).unwrap();
 
             let nodes: Vec<Node<U>> = windows[lhs_win].file_nodes(&*pa)[(lo + 1)..]
                 .iter()
@@ -429,8 +428,8 @@ impl<U: Ui> Session<U> {
             swap(&mut *pa, &mut windows, [win, win], [&lhs, &rhs]);
         }
 
-        windows[win].remove_file(&mut *pa, &name);
-        if windows[win].file_names(&*pa).is_empty() {
+        windows[win].remove_file(pa, &name);
+        if windows[win].file_names(pa).is_empty() {
             windows.remove(win);
             U::remove_window(self.ms, win);
             let cur_win = context::cur_window();
@@ -456,11 +455,11 @@ impl<U: Ui> Session<U> {
         let name = context::fixed_file::<U>(&*pa)
             .unwrap()
             .read(&*pa, |file, _| file.name());
-        if wins[0] != wins[1] {
-            if let Some(win) = [lhs_name, rhs_name].into_iter().position(|n| n == name) {
-                self.cur_window.store(win, Ordering::Relaxed);
-                U::switch_window(self.ms, win);
-            }
+        if wins[0] != wins[1]
+            && let Some(win) = [lhs_name, rhs_name].into_iter().position(|n| n == name)
+        {
+            self.cur_window.store(win, Ordering::Relaxed);
+            U::switch_window(self.ms, win);
         }
     }
 
@@ -474,7 +473,7 @@ impl<U: Ui> Session<U> {
             // Take the nodes in the original Window
             let node = node.clone();
             node.widget()
-                .write_as(&mut *pa, |f: &mut File| f.layout_order = 0);
+                .write_as(&mut *pa, |f: &mut File<U>| f.layout_order = 0);
             let nodes = windows[win].take_file_and_related_nodes(&mut *pa, &node);
             let layout = (self.layout_fn)();
 
@@ -485,7 +484,7 @@ impl<U: Ui> Session<U> {
             windows.push(window);
 
             // Swap the Files ahead of the swapped new_root
-            let lo = node.read_as(&*pa, |f: &File| f.layout_order).unwrap();
+            let lo = node.read_as(&*pa, |f: &File<U>| f.layout_order).unwrap();
 
             for (node, _) in &windows[win].file_nodes(&*pa)[lo..] {
                 MutArea(&new_root).swap(node.area());
@@ -498,12 +497,12 @@ impl<U: Ui> Session<U> {
             MutArea(&new_root).delete();
         } else {
             // SAFETY: Exclusive borrow of Pass means I can create my own.
-            let file_dk = unsafe { Pass::new() };
-            let (widget, _) = <FileCfg as WidgetCfg<U>>::build(
-                self.file_cfg.clone().open_path(PathBuf::from(name.clone())),
-                file_dk,
-                false,
-            );
+            let file_pa = unsafe { Pass::new() };
+            let (widget, _) = self
+                .file_cfg
+                .clone()
+                .open_path(PathBuf::from(name.clone()))
+                .build(file_pa, None);
 
             let (window, node) = Window::new(&mut *pa, self.ms, widget, (self.layout_fn)());
             windows.push(window);
@@ -539,17 +538,17 @@ fn swap<U: Ui>(
 ) {
     let rhs_lo = rhs
         .widget()
-        .read_as(&*pa, |f: &File| f.layout_order)
+        .read_as(&*pa, |f: &File<U>| f.layout_order)
         .unwrap();
     let lhs_lo = lhs
         .widget()
-        .write_as(&mut *pa, |f: &mut File| {
+        .write_as(&mut *pa, |f: &mut File<U>| {
             std::mem::replace(&mut f.layout_order, rhs_lo)
         })
         .unwrap();
 
     rhs.widget()
-        .write_as(&mut *pa, |f: &mut File| f.layout_order = lhs_lo);
+        .write_as(&mut *pa, |f: &mut File<U>| f.layout_order = lhs_lo);
 
     let lhs_nodes = windows[lhs_w].take_file_and_related_nodes(&mut *pa, lhs);
     windows[rhs_w].insert_file_nodes(&mut *pa, rhs_lo, lhs_nodes);

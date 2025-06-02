@@ -25,7 +25,7 @@ impl Cursors {
         }
     }
 
-	/// A new [`Cursors`] with a set main [`Cursor`]
+    /// A new [`Cursors`] with a set main [`Cursor`]
     pub(crate) fn new_with_main(main: Cursor) -> Self {
         Self {
             buf: gap_buffer![main],
@@ -281,7 +281,7 @@ mod cursor {
     use crate::{
         cfg::PrintCfg,
         text::{Change, Point, Text},
-        ui::{RawArea, Caret},
+        ui::{Caret, RawArea},
     };
 
     /// A cursor in the text file. This is an editing cursor, -(not
@@ -366,7 +366,13 @@ mod cursor {
         /// Internal vertical movement function.
         ///
         /// Returns the distance moved in lines.
-        pub fn move_ver(&mut self, by: i32, text: &Text, area: &impl RawArea, cfg: PrintCfg) -> i32 {
+        pub fn move_ver(
+            &mut self,
+            by: i32,
+            text: &Text,
+            area: &impl RawArea,
+            cfg: PrintCfg,
+        ) -> i32 {
             let by = by as isize;
             let (Some(last), false) = (text.last_point(), by == 0) else {
                 return 0;
@@ -386,11 +392,12 @@ mod cursor {
                     .print_iter(text.iter_fwd(line_start), cfg.new_line_as('\n'))
                     .find_map(|(Caret { len, x, wrap }, item)| {
                         wraps += wrap as usize;
-                        if let Some((p, char)) = item.as_real_char() {
-                            if vcol + len as u16 > vp.dvcol || char == '\n' {
-                                return Some((x as u16, p));
-                            }
+                        if let Some((p, char)) = item.as_real_char()
+                            && (vcol + len as u16 > vp.dvcol || char == '\n')
+                        {
+                            return Some((x as u16, p));
                         }
+
                         vcol += len as u16;
                         None
                     })

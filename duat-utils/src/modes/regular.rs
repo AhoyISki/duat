@@ -11,7 +11,7 @@ use super::{IncSearch, RunCommands, SearchFwd, SearchRev};
 pub struct Regular;
 
 impl<U: Ui> mode::Mode<U> for Regular {
-    type Widget = File;
+    type Widget = File<U>;
 
     async fn send_key(
         &mut self,

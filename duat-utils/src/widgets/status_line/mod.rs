@@ -26,10 +26,7 @@ use duat_core::{
     widgets::{Widget, WidgetCfg},
 };
 
-pub use self::{
-    macros::status,
-    state::{State, StateFrom},
-};
+pub use self::{macros::status, state::State};
 use crate::state::{file_fmt, main_fmt, mode_fmt, mode_name, selections_fmt};
 
 /// A widget to show information, usually about a [`File`]
@@ -97,14 +94,18 @@ pub struct StatusLine<U: Ui> {
 impl<U: Ui> Widget<U> for StatusLine<U> {
     type Cfg = StatusLineCfg<U>;
 
-    fn cfg() -> Self::Cfg {
-        macros::status!("{file_fmt} {mode_fmt} {selections_fmt} {}", main_fmt)
-    }
-
     async fn update(mut pa: Pass<'_>, widget: RwData<Self>, _: &<U as Ui>::Area) {
         let (text_fn, handle) = widget.read(&pa, |wid| (wid.text_fn.clone(), wid.handle.clone()));
         let text = text_fn.borrow_mut()(&pa, handle);
         widget.write(&mut pa, |wid| wid.text = text);
+    }
+
+    fn needs_update(&self) -> bool {
+        self.handle.has_changed() || (self.checker)()
+    }
+
+    fn cfg() -> Self::Cfg {
+        macros::status!("{file_fmt} {mode_fmt} {selections_fmt} {}", main_fmt)
     }
 
     fn text(&self) -> &Text {
@@ -113,10 +114,6 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
 
     fn text_mut(&mut self) -> &mut Text {
         &mut self.text
-    }
-
-    fn needs_update(&self) -> bool {
-        self.handle.has_changed() || (self.checker)()
     }
 
     fn once() -> Result<(), Text> {
@@ -167,11 +164,10 @@ impl<U: Ui> StatusLineCfg<U> {
 impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
     type Widget = StatusLine<U>;
 
-    fn build(self, pa: Pass, on_file: bool) -> (Self::Widget, PushSpecs) {
-        let handle = if on_file {
-            context::fixed_file(&pa).unwrap()
-        } else {
-            context::dyn_file(&pa).unwrap()
+    fn build(self, pa: Pass, handle: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+        let handle = match handle {
+            Some(handle) => handle,
+            None => context::dyn_file(&pa).unwrap(),
         };
 
         let checker = match self.checker {

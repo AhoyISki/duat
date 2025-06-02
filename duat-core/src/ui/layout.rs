@@ -17,7 +17,7 @@ mod internals {
     {
         fn new_file(
             &mut self,
-            file: &File,
+            file: &File<U>,
             prev: WindowFiles<'_, U>,
         ) -> Result<(FileId<U>, PushSpecs), Text>;
     }
@@ -27,7 +27,7 @@ mod internals {
     pub fn window_files<'a, U: Ui>(pa: &Pass, nodes: &'a [Node<U>]) -> WindowFiles<'a, U> {
         let mut files: Vec<(&Node<U>, FileId<U>)> = nodes
             .iter()
-            .filter(|&node| node.widget().data_is::<File>())
+            .filter(|&node| node.widget().data_is::<File<U>>())
             .map(|node| {
                 let area = node
                     .area()
@@ -38,7 +38,7 @@ mod internals {
             .collect();
 
         files
-            .sort_unstable_by_key(|(node, _)| node.read_as(pa, |f: &File| f.layout_order).unwrap());
+            .sort_unstable_by_key(|(node, _)| node.read_as(pa, |f: &File<U>| f.layout_order).unwrap());
 
         files
     }
@@ -54,7 +54,7 @@ where
 {
     fn new_file(
         &mut self,
-        _file: &File,
+        _file: &File<U>,
         mut prev: WindowFiles<'_, U>,
     ) -> Result<(FileId<U>, PushSpecs), Text> {
         let (_, last) = prev.pop().unwrap();

@@ -11,6 +11,7 @@
 //!
 //! [`LineNumbers`]: crate::widgets::LineNumbers
 //! [`Cursor`]: crate::mode::Cursor
+//! [`History`]: crate::text::History
 use std::{fs, marker::PhantomData, path::PathBuf};
 
 use tokio::task;
@@ -20,12 +21,12 @@ pub use self::reader::{Reader, ReaderCfg};
 use crate::{
     cache::load_cache,
     cfg::PrintCfg,
-    context,
+    context::{self, FileHandle},
     data::{Pass, RwData},
     form,
     hooks::{self, FileWritten},
     mode::Cursors,
-    text::{Bytes, Text, err},
+    text::{err, Bytes, Text},
     ui::{PushSpecs, RawArea, Ui},
     widgets::{Widget, WidgetCfg},
 };
@@ -74,9 +75,9 @@ impl FileCfg {
 }
 
 impl<U: Ui> WidgetCfg<U> for FileCfg {
-    type Widget = File;
+    type Widget = File<U>;
 
-    fn build(self, _: Pass, _: bool) -> (Self::Widget, PushSpecs) {
+    fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
         let (text, path) = match self.text_op {
             TextOp::NewBuffer => (Text::new_with_history(), PathKind::new_unset()),
             TextOp::TakeBuf(bytes, pk, has_unsaved_changes) => match &pk {
@@ -121,6 +122,7 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
             printed_lines: (0..40).map(|i| (i, i == 1)).collect(),
             readers: Readers::default(),
             layout_order: 0,
+            _ghost: PhantomData
         };
 
         // The PushSpecs don't matter
@@ -134,7 +136,7 @@ pub struct File<U: Ui> {
     text: Text,
     cfg: PrintCfg,
     printed_lines: Vec<(usize, bool)>,
-    readers: Readers,
+    readers: Readers<U>,
     pub(crate) layout_order: usize,
     _ghost: PhantomData<U>,
 }
@@ -145,7 +147,6 @@ impl<U: Ui> File<U> {
     /// Writes the file to the current [`Path`], if one was set
     ///
     /// [`Path`]: std::path::Path
-    #[allow(clippy::result_large_err)]
     pub fn write(&mut self) -> Result<Option<usize>, Text> {
         if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &self.path {
             let path = path.clone();
@@ -277,13 +278,13 @@ impl<U: Ui> File<U> {
             .is_some_and(|p| std::fs::exists(PathBuf::from(&p)).is_ok_and(|e| e))
     }
 
-    pub fn add_reader(&mut self, pa: &mut Pass, cfg: impl ReaderCfg) {
+    pub fn add_reader(&mut self, pa: &mut Pass, cfg: impl ReaderCfg<U>) {
         if let Err(err) = self.readers.add(pa, self.text.bytes_mut(), cfg) {
             context::notify(err);
         }
     }
 
-    pub fn get_reader<R: Reader>(&mut self) -> Option<RwData<R>> {
+    pub fn get_reader<R: Reader<U>>(&mut self) -> Option<RwData<R>> {
         self.readers.get()
     }
 }

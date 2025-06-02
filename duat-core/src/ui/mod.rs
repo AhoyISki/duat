@@ -25,13 +25,14 @@ use crate::{
 ///
 /// # NOTE
 ///
-/// The dependency on [`Clone`] is only here for convenience. Many
-/// types require a [`Ui`] as a generic parameter, and if [`Ui`] does
-/// not implement [`Clone`], deriving [`Clone`] for said types would
+/// The dependencies on [`Clone`] and [`Default`] is only here for
+/// convenience. Many types require a [`Ui`] as a generic parameter,
+/// and if [`Ui`] does not implement [`Clone`] or [`Default`],
+/// deriving [`Clone`] or [`Default`] for said types would
 /// be a very manual task.
 ///
-/// Below is the recommended implementation of [`Clone`] for all types
-/// that implement [`Ui`]:
+/// Below is the recommended implementation of [`Clone`] adn
+/// [`Default`] for all types that implement [`Ui`]:
 ///
 /// ```rust
 /// # mod duat_smart_fridge {
@@ -42,8 +43,13 @@ use crate::{
 ///         panic!("You are not supposed to clone the Ui");
 ///     }
 /// }
+/// impl Default for duat_smart_fridge::Ui {
+///     fn default() -> Self {
+///         panic!("You are not supposed to call the Ui's default constructor");
+///     }
+/// }
 /// ```
-pub trait Ui: Clone + Send + Sync + 'static {
+pub trait Ui: Default + Clone + 'static {
     type Area: RawArea<Ui = Self>;
     type MetaStatics: Default;
 
@@ -114,11 +120,11 @@ pub trait Ui: Clone + Send + Sync + 'static {
 ///
 /// These represent the entire GUI of Parsec, the only parts of the
 /// screen where text may be printed.
-pub trait RawArea: Clone + PartialEq + Send + Sync + Sized + 'static {
+pub trait RawArea: Clone + PartialEq + Sized + 'static {
     // This exists solely for automatic type recognition.
     type Ui: Ui<Area = Self>;
     type Cache: Default + Encode + Decode<()> + 'static;
-    type PrintInfo: Default + Clone + Send + Sync;
+    type PrintInfo: Default + Clone;
 
     ////////// Area modification
 
@@ -351,7 +357,7 @@ impl<U: Ui> Window<U> {
             unsafe { RwData::<dyn Widget<U>>::new_unsized::<W>(Rc::new(RefCell::new(widget))) };
 
         let cache = widget
-            .read_as(&*pa, |f: &File| {
+            .read_as(&*pa, |f: &File<U>| {
                 load_cache::<<U::Area as RawArea>::Cache>(f.path())
             })
             .flatten()
@@ -393,7 +399,7 @@ impl<U: Ui> Window<U> {
             unsafe { RwData::<dyn Widget<U>>::new_unsized::<W>(Rc::new(RefCell::new(widget))) };
 
         let cache = widget
-            .read_as(&*pa, |f: &File| {
+            .read_as(&*pa, |f: &File<U>| {
                 load_cache::<<U::Area as RawArea>::Cache>(f.path())
             })
             .flatten()
@@ -414,7 +420,7 @@ impl<U: Ui> Window<U> {
     pub(crate) fn push_file(
         &mut self,
         pa: &mut Pass,
-        mut file: File,
+        mut file: File<U>,
     ) -> Result<(Node<U>, Option<U::Area>), Text> {
         let window_files = window_files(&*pa, &self.nodes);
         file.layout_order = window_files.len();
@@ -476,20 +482,17 @@ impl<U: Ui> Window<U> {
         if let Some(related) = node.related_widgets() {
             let lo = node
                 .widget()
-                .read_as(&*pa, |f: &File| f.layout_order)
+                .read_as(&*pa, |f: &File<U>| f.layout_order)
                 .unwrap();
 
             let nodes = related.read(&*pa, |related| {
-                let nodes = self
-                    .nodes
+                self.nodes
                     .extract_if(.., |n| related.contains(n) || n == node)
-                    .collect();
-
-                nodes
+                    .collect()
             });
 
             for node in &self.nodes {
-                node.widget().write_as(&mut *pa, |f: &mut File| {
+                node.widget().write_as(&mut *pa, |f: &mut File<U>| {
                     if f.layout_order > lo {
                         f.layout_order -= 1;
                     }
@@ -510,11 +513,11 @@ impl<U: Ui> Window<U> {
     ) {
         if let Some(i) = self.nodes.iter().position(|node| {
             node.widget()
-                .read_as(&*pa, |f: &File| f.layout_order >= layout_ordering)
+                .read_as(&*pa, |f: &File<U>| f.layout_order >= layout_ordering)
                 == Some(true)
         }) {
             for node in self.nodes[i..].iter() {
-                node.widget().write_as(&mut *pa, |f: &mut File| {
+                node.widget().write_as(&mut *pa, |f: &mut File<U>| {
                     f.layout_order += 1;
                 });
             }
@@ -535,14 +538,14 @@ impl<U: Ui> Window<U> {
     pub fn file_names(&self, pa: &Pass) -> Vec<String> {
         window_files(pa, &self.nodes)
             .into_iter()
-            .map(|f| f.0.widget().read_as(pa, |f: &File| f.name()).unwrap())
+            .map(|f| f.0.widget().read_as(pa, |f: &File<U>| f.name()).unwrap())
             .collect()
     }
 
     pub fn file_paths(&self, pa: &Pass) -> Vec<String> {
         window_files(pa, &self.nodes)
             .into_iter()
-            .map(|f| f.0.widget().read_as(pa, |f: &File| f.name()).unwrap())
+            .map(|f| f.0.widget().read_as(pa, |f: &File<U>| f.name()).unwrap())
             .collect()
     }
 
@@ -668,10 +671,10 @@ impl<U: Ui> RoWindow<'_, U> {
     /// reference, as to not do unnecessary cloning of the widget's
     /// inner [`RwData<W>`], and because [`Iterator`]s cannot return
     /// references to themselves.
-    pub fn fold_files<B>(&self, pa: &Pass, init: B, mut f: impl FnMut(B, &File) -> B) -> B {
+    pub fn fold_files<B>(&self, pa: &Pass, init: B, mut f: impl FnMut(B, &File<U>) -> B) -> B {
         self.0.nodes.iter().fold(init, |accum, node| {
-            if node.data_is::<File>() {
-                node.read_as(pa, |file: &File| f(accum, file)).unwrap()
+            if node.data_is::<File<U>>() {
+                node.read_as(pa, |file: &File<U>| f(accum, file)).unwrap()
             } else {
                 accum
             }
@@ -865,7 +868,7 @@ impl PushSpecs {
 
         while i < 4 {
             let (None | Some(Constraint::Min(..) | Constraint::Max(..))) = cons[i] else {
-                return false
+                return false;
             };
 
             i += 1;

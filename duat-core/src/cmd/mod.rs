@@ -228,7 +228,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         let (win, wid, file) = file_entry(&pa, &windows, name).unwrap();
 
         let has_unsaved_changes = file
-            .read_as(&pa, |f: &File| f.text().has_unsaved_changes() && f.exists())
+            .read_as(&pa, |f: &File<U>| f.text().has_unsaved_changes() && f.exists())
             .unwrap();
         if has_unsaved_changes {
             return Err(err!("[a]{name}[] has unsaved changes").build());
@@ -237,7 +237,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         // If we are on the current File, switch to the next one.
         if name == cur_name {
             let Some(next_name) = iter_around::<U>(&windows, win, wid)
-                .find_map(|(.., node)| node.read_as(&pa, |f: &File| f.name()))
+                .find_map(|(.., node)| node.read_as(&pa, |f: &File<U>| f.name()))
             else {
                 sender().send(DuatEvent::Quit).unwrap();
                 return Ok(None);
@@ -265,7 +265,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
 
         if name == cur_name {
             let Some(next_name) = iter_around::<U>(&windows, win, wid)
-                .find_map(|(.., node)| node.read_as(&pa, |f: &File| f.name()))
+                .find_map(|(.., node)| node.read_as(&pa, |f: &File<U>| f.name()))
             else {
                 sender().send(DuatEvent::Quit).unwrap();
                 return Ok(None);
@@ -285,7 +285,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             .iter()
             .flat_map(|w| w.file_nodes(&pa))
             .filter(|(node, _)| {
-                node.read_as(&pa, |f: &File| f.text().has_unsaved_changes() && f.exists())
+                node.read_as(&pa, |f: &File<U>| f.text().has_unsaved_changes() && f.exists())
                     .unwrap()
             })
             .count();
@@ -342,7 +342,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         let (win, wid, file) = file_entry(&pa, &windows, &name).unwrap();
 
         let Some(next_name) = iter_around::<U>(&windows, win, wid)
-            .find_map(|(.., node)| node.read_as(&pa, |f: &File| f.name()))
+            .find_map(|(.., node)| node.read_as(&pa, |f: &File<U>| f.name()))
         else {
             sender().send(DuatEvent::Quit).unwrap();
             return Ok(None);
@@ -370,7 +370,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             .flat_map(|w| w.file_nodes(&pa))
             .filter(|(node, _)| {
                 node.widget()
-                    .read_as(&pa, |f: &File| f.path_set().is_some())
+                    .read_as(&pa, |f: &File<U>| f.path_set().is_some())
                     == Some(true)
             })
             .inspect(|(node, _)| {
@@ -378,7 +378,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
                 // RwData.
                 written += unsafe {
                     node.widget()
-                        .write_unsafe_as(|f: &mut File| f.write().is_ok())
+                        .write_unsafe_as(|f: &mut File<U>| f.write().is_ok())
                         .unwrap() as usize
                 };
             })
@@ -402,7 +402,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             .flat_map(|w| w.file_nodes(&pa))
             .filter(|(node, _)| {
                 node.widget()
-                    .read_as(&pa, |f: &File| f.path_set().is_some())
+                    .read_as(&pa, |f: &File<U>| f.path_set().is_some())
                     == Some(true)
             })
             .inspect(|(node, _)| {
@@ -410,7 +410,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
                 // RwData.
                 written += unsafe {
                     node.widget()
-                        .write_unsafe_as(|f: &mut File| f.write().is_ok())
+                        .write_unsafe_as(|f: &mut File<U>| f.write().is_ok())
                         .unwrap() as usize
                 };
             })
@@ -433,7 +433,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             // SAFETY: It is known that this function does not have any inner
             // RwData.
             unsafe {
-                node.widget().write_unsafe_as(|f: &mut File| f.write());
+                node.widget().write_unsafe_as(|f: &mut File<U>| f.write());
             }
         }
 
@@ -542,12 +542,12 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
 
         let name = if flags.word("global") {
             iter_around::<U>(&windows, win, wid)
-                .find_map(|(.., node)| node.read_as(&pa, |f: &File| f.name()))
+                .find_map(|(.., node)| node.read_as(&pa, |f: &File<U>| f.name()))
                 .ok_or_else(|| err!("There are no other open files"))?
         } else {
             let slice = &windows[win..=win];
             iter_around(slice, 0, wid)
-                .find_map(|(.., node)| node.read_as(&pa, |f: &File| f.name()))
+                .find_map(|(.., node)| node.read_as(&pa, |f: &File<U>| f.name()))
                 .ok_or_else(|| err!("There are no other files open in this window"))?
         };
 
@@ -567,12 +567,12 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
 
         let name = if flags.word("global") {
             iter_around_rev::<U>(&windows, w, widget_i)
-                .find_map(|(.., node)| node.read_as(&pa, |f: &File| f.name()))
+                .find_map(|(.., node)| node.read_as(&pa, |f: &File<U>| f.name()))
                 .ok_or_else(|| err!("There are no other open files"))?
         } else {
             let slice = &windows[w..=w];
             iter_around_rev(slice, 0, widget_i)
-                .find_map(|(.., node)| node.read_as(&pa, |f: &File| f.name()))
+                .find_map(|(.., node)| node.read_as(&pa, |f: &File<U>| f.name()))
                 .ok_or_else(|| err!("There are no other files open in this window"))?
         };
 

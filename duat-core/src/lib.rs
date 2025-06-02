@@ -252,14 +252,13 @@ use std::{
     collections::HashMap,
     ops::Range,
     path::{Path, PathBuf},
-    sync::{LazyLock, Once},
+    sync::{LazyLock, RwLock},
 };
 
 use data::Pass;
 #[allow(unused_imports)]
 use dirs_next::cache_dir;
 pub use lender::Lender;
-pub use parking_lot::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use text::Text;
 use ui::Window;
 use widgets::{File, Node, Widget};
@@ -404,10 +403,9 @@ pub mod clipboard {
     //! Clipboard interaction for Duat
     //!
     //! Just a regular clipboard, no image functionality.
-    use std::sync::OnceLock;
+    use std::sync::{Mutex, OnceLock};
 
     pub use arboard::Clipboard;
-    use parking_lot::Mutex;
 
     static CLIPB: OnceLock<&'static Mutex<Clipboard>> = OnceLock::new();
 
@@ -418,13 +416,13 @@ pub mod clipboard {
     ///
     /// Or if there is no clipboard i guess
     pub fn get_text() -> Option<String> {
-        CLIPB.get().unwrap().lock().get_text().ok()
+        CLIPB.get().unwrap().lock().unwrap().get_text().ok()
     }
 
     /// Sets a [`String`] to the clipboard
     pub fn set_text(text: impl std::fmt::Display) {
         let clipb = CLIPB.get().unwrap();
-        clipb.lock().set_text(text.to_string()).unwrap();
+        clipb.lock().unwrap().set_text(text.to_string()).unwrap();
     }
 
     pub(crate) fn set_clipboard(clipb: &'static Mutex<Clipboard>) {
@@ -526,7 +524,7 @@ pub fn duat_name<T: ?Sized + 'static>() -> &'static str {
     fn duat_name_inner(type_id: TypeId, type_name: &str) -> &'static str {
         static NAMES: LazyLock<RwLock<HashMap<TypeId, &'static str>>> =
             LazyLock::new(RwLock::default);
-        let mut names = NAMES.write();
+        let mut names = NAMES.write().unwrap();
 
         if let Some(name) = names.get(&type_id) {
             name
@@ -569,7 +567,7 @@ pub fn src_crate<T: ?Sized + 'static>() -> &'static str {
     fn src_crate_inner(type_id: TypeId, type_name: &'static str) -> &'static str {
         static CRATES: LazyLock<RwLock<HashMap<TypeId, &'static str>>> =
             LazyLock::new(|| RwLock::new(HashMap::new()));
-        let mut crates = CRATES.write();
+        let mut crates = CRATES.write().unwrap();
 
         if let Some(src_crate) = crates.get(&type_id) {
             src_crate
@@ -762,7 +760,7 @@ fn file_entry<'a, U: Ui>(
         .iter()
         .enumerate()
         .flat_map(window_index_widget)
-        .find(|(.., node)| node.read_as(pa, |f: &File| f.name() == name) == Some(true))
+        .find(|(.., node)| node.read_as(pa, |f: &File<U>| f.name() == name) == Some(true))
         .ok_or_else(|| err!("File with name [a]{name}[] not found").build())
 }
 
@@ -853,10 +851,6 @@ fn iter_around_rev<U: Ui>(
 // Debugging objects.
 #[doc(hidden)]
 pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-#[doc(hidden)]
-pub static HOOK: Once = Once::new();
-#[doc(hidden)]
-pub static LOG: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(String::new()));
 
 /// Log information to a log file
 #[doc(hidden)]

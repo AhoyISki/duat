@@ -1,5 +1,6 @@
 use duat_core::{
-    context::{self, FixedFile},
+    context::FileHandle,
+    data::{Pass, RwData},
     form::{self, Form},
     text::{Text, text},
     ui::{PushSpecs, RawArea as UiArea},
@@ -14,7 +15,7 @@ use crate::{Area, Ui};
 /// [`File`]: duat_core::widgets::File
 /// [`LineNumbers`]: duat_core::widgets::LineNumbers
 pub struct VertRule {
-    ff: Option<FixedFile<Ui>>,
+    handle: Option<FileHandle<Ui>>,
     text: Text,
     sep_char: SepChar,
 }
@@ -22,40 +23,49 @@ pub struct VertRule {
 impl Widget<Ui> for VertRule {
     type Cfg = VertRuleCfg;
 
-    fn cfg() -> Self::Cfg {
-        VertRuleCfg::new()
+    async fn update(mut pa: Pass<'_>, widget: RwData<Self>, area: &Area) {
+        let text = widget.read(&pa, |wid| {
+            if let Some(handle) = wid.handle.as_ref()
+                && let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = wid.sep_char
+            {
+                let (upper, middle, lower) = handle.read(&pa, |file, _| {
+                    let lines = file.printed_lines();
+                    if let Some(main) = file.cursors().get_main() {
+                        let main = main.line();
+                        let upper = lines.iter().filter(|&(line, _)| *line < main).count();
+                        let middle = lines.iter().filter(|&(line, _)| *line == main).count();
+                        let lower = lines.iter().filter(|&(line, _)| *line > main).count();
+                        (upper, middle, lower)
+                    } else {
+                        (0, lines.len(), 0)
+                    }
+                });
+
+                let chars = wid.sep_char.chars();
+                text!(
+                    "[VertRule.upper]{}[VertRule]{}[VertRule.lower]{}",
+                    form_string(chars[0], upper),
+                    form_string(chars[1], middle),
+                    form_string(chars[2], lower)
+                )
+                .build()
+            } else {
+                let full_line =
+                    format!("{}\n", wid.sep_char.chars()[1]).repeat(area.height() as usize);
+
+                text!("[VertRule]{full_line}").build()
+            }
+        });
+
+        widget.replace_text(&mut pa, text);
     }
 
-    fn update(&mut self, area: &Area) {
-        self.text = if let Some(ff) = self.ff.as_mut()
-            && let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = self.sep_char
-        {
-            let (file, _) = ff.read();
-            let lines = file.printed_lines();
-            let (upper, middle, lower) = if let Some(main) = file.cursors().get_main() {
-                let main = main.line();
-                let upper = lines.iter().filter(|&(line, _)| *line < main).count();
-                let middle = lines.iter().filter(|&(line, _)| *line == main).count();
-                let lower = lines.iter().filter(|&(line, _)| *line > main).count();
-                (upper, middle, lower)
-            } else {
-                (0, lines.len(), 0)
-            };
+    fn needs_update(&self) -> bool {
+        self.handle.as_ref().is_some_and(FileHandle::has_changed)
+    }
 
-            let chars = self.sep_char.chars();
-
-            text!(
-                "[VertRule.upper]{}[VertRule]{}[VertRule.lower]{}",
-                form_string(chars[0], upper),
-                form_string(chars[1], middle),
-                form_string(chars[2], lower)
-            )
-        } else {
-            let full_line =
-                format!("{}\n", self.sep_char.chars()[1]).repeat(area.height() as usize);
-
-            text!("[VertRule]{full_line}")
-        }
+    fn cfg() -> Self::Cfg {
+        VertRuleCfg::new()
     }
 
     fn text(&self) -> &Text {
@@ -166,25 +176,14 @@ impl Default for VertRuleCfg {
 impl WidgetCfg<Ui> for VertRuleCfg {
     type Widget = VertRule;
 
-    fn build(self, on_file: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
-        let ff = on_file.then_some(context::fixed_file().unwrap());
-
-        let checker = if let Some(ff) = ff.as_ref()
-            && let SepChar::TwoWay(..) | SepChar::ThreeWay(..) = self.sep_char
-        {
-            let checker = ff.checker();
-            Box::new(checker) as Box<dyn Fn() -> bool + Send + Sync>
-        } else {
-            Box::new(move || false)
-        };
-
+    fn build(self, _: Pass, handle: Option<FileHandle<Ui>>) -> (Self::Widget, PushSpecs) {
         let widget = VertRule {
-            ff,
+            handle,
             text: Text::default(),
             sep_char: self.sep_char,
         };
 
-        (widget, checker, self.specs)
+        (widget, self.specs)
     }
 }
 

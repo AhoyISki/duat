@@ -1,7 +1,7 @@
 use std::{io::Write, marker::PhantomData, sync::LazyLock};
 
 use duat_core::{
-    Lender, cmd, context,
+    cmd, context,
     data::{Pass, RwData},
     form,
     hooks::{self, SearchPerformed, SearchUpdated},
@@ -34,17 +34,18 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
         mut pa: Pass<'_>,
         key: KeyEvent,
         widget: RwData<Self::Widget>,
-        area: &U::Area,
+        area: U::Area,
     ) {
-        let mut helper = EditHelper::new(&mut pa, &widget, area);
+        let mut helper = EditHelper::new(&mut pa, widget, area.clone());
 
         match key {
             key!(KeyCode::Backspace) => {
                 if helper.read(&pa, |pl| pl.text().is_empty()) {
                     helper.write(&mut pa, |pl| pl.text_mut().cursors_mut().unwrap().clear());
 
-                    let text = self.0.update(&mut pa, helper.take_text(&mut pa), area);
-                    let text = self.0.before_exit(&mut pa, text, area);
+                    let text = helper.take_text(&mut pa);
+                    let text = self.0.update(&mut pa, text, &area);
+                    let text = self.0.before_exit(&mut pa, text, &area);
 
                     helper.write(&mut pa, |wid| *wid.text_mut() = text);
 
@@ -55,14 +56,14 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
                         e.replace("");
                     });
                     let text = helper.take_text(&mut pa);
-                    let text = self.0.update(&mut pa, text, area);
+                    let text = self.0.update(&mut pa, text, &area);
                     helper.write(&mut pa, |wid| *wid.text_mut() = text);
                 }
             }
             key!(KeyCode::Delete) => {
                 helper.edit_main(&mut pa, |mut e| e.replace(""));
                 let text = helper.take_text(&mut pa);
-                let text = self.0.update(&mut pa, text, area);
+                let text = self.0.update(&mut pa, text, &area);
                 helper.write(&mut pa, |wid| *wid.text_mut() = text);
             }
 
@@ -72,19 +73,19 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
                     e.move_hor(1);
                 });
                 let text = helper.take_text(&mut pa);
-                let text = self.0.update(&mut pa, text, area);
+                let text = self.0.update(&mut pa, text, &area);
                 helper.write(&mut pa, |wid| *wid.text_mut() = text);
             }
             key!(KeyCode::Left) => {
                 helper.edit_main(&mut pa, |mut e| e.move_hor(-1));
                 let text = helper.take_text(&mut pa);
-                let text = self.0.update(&mut pa, text, area);
+                let text = self.0.update(&mut pa, text, &area);
                 helper.write(&mut pa, |wid| *wid.text_mut() = text);
             }
             key!(KeyCode::Right) => {
                 helper.edit_main(&mut pa, |mut e| e.move_hor(1));
                 let text = helper.take_text(&mut pa);
-                let text = self.0.update(&mut pa, text, area);
+                let text = self.0.update(&mut pa, text, &area);
                 helper.write(&mut pa, |wid| *wid.text_mut() = text);
             }
 
@@ -98,16 +99,16 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
                 });
                 helper.write(&mut pa, |wid| wid.text_mut().cursors_mut().unwrap().clear());
                 let text = helper.take_text(&mut pa);
-                let text = self.0.update(&mut pa, text, area);
-                let text = self.0.before_exit(&mut pa, text, area);
+                let text = self.0.update(&mut pa, text, &area);
+                let text = self.0.before_exit(&mut pa, text, &area);
                 helper.write(&mut pa, |wid| *wid.text_mut() = text);
                 mode::reset();
             }
             key!(KeyCode::Enter) => {
                 helper.write(&mut pa, |wid| wid.text_mut().cursors_mut().unwrap().clear());
                 let text = helper.take_text(&mut pa);
-                let text = self.0.update(&mut pa, text, area);
-                let text = self.0.before_exit(&mut pa, text, area);
+                let text = self.0.update(&mut pa, text, &area);
+                let text = self.0.before_exit(&mut pa, text, &area);
                 helper.write(&mut pa, |wid| *wid.text_mut() = text);
                 mode::reset();
             }
@@ -115,7 +116,7 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
         }
     }
 
-    fn on_switch(&mut self, mut pa: Pass, widget: RwData<Self::Widget>, area: &<U as Ui>::Area) {
+    fn on_switch(&mut self, mut pa: Pass, widget: RwData<Self::Widget>, area: <U as Ui>::Area) {
         let text = widget.write(&mut pa, |wid| {
             *wid.text_mut() = Text::new_with_cursors();
             run_once::<M, U>();
@@ -129,19 +130,23 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
             std::mem::take(wid.text_mut())
         });
 
-        let text = self.0.on_switch(&mut pa, text, area);
+        let text = self.0.on_switch(&mut pa, text, &area);
 
         widget.write(&mut pa, |wid| *wid.text_mut() = text);
     }
 }
 
 #[allow(unused_variables)]
-pub trait PromptMode<U: Ui>: Clone + Send + 'static {
+pub trait PromptMode<U: Ui>: Clone + 'static {
     fn update(&mut self, pa: &mut Pass, text: Text, area: &U::Area) -> Text;
 
-    fn on_switch(&mut self, pa: &mut Pass, text: Text, area: &U::Area) -> Text {}
+    fn on_switch(&mut self, pa: &mut Pass, text: Text, area: &U::Area) -> Text {
+        text
+    }
 
-    fn before_exit(&mut self, pa: &mut Pass, text: Text, area: &U::Area) -> Text {}
+    fn before_exit(&mut self, pa: &mut Pass, text: Text, area: &U::Area) -> Text {
+        text
+    }
 
     fn once() {}
 
@@ -158,7 +163,7 @@ impl RunCommands {
 }
 
 impl<U: Ui> PromptMode<U> for RunCommands {
-    fn update(&mut self, pa: &mut Pass, mut text: Text, area: &<U as Ui>::Area) -> Text {
+    fn update(&mut self, _: &mut Pass, mut text: Text, _: &<U as Ui>::Area) -> Text {
         text.remove_tags(.., *KEY);
 
         let command = text.to_string();
@@ -185,7 +190,7 @@ impl<U: Ui> PromptMode<U> for RunCommands {
         text
     }
 
-    fn before_exit(&mut self, pa: &mut Pass, text: Text, area: &<U as Ui>::Area) -> Text {
+    fn before_exit(&mut self, _: &mut Pass, text: Text, _: &<U as Ui>::Area) -> Text {
         let call = text.to_string();
         if !call.is_empty() {
             cmd::queue_notify(call);
@@ -202,7 +207,7 @@ impl<U: Ui> PromptMode<U> for RunCommands {
     }
 
     fn prompt(&self) -> Text {
-        text!("[Prompt.colon]:")
+        text!("[Prompt.colon]:").build()
     }
 }
 
@@ -226,11 +231,11 @@ impl<I: IncSearcher<U>, U: Ui> IncSearch<I, U> {
 }
 
 impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
-    fn update(&mut self, pa: &mut Pass, mut text: Text, area: &<U as Ui>::Area) -> Text {
+    fn update(&mut self, pa: &mut Pass, mut text: Text, _: &<U as Ui>::Area) -> Text {
         let (orig_cursors, orig_print_info) = self.orig.as_ref().unwrap();
         text.remove_tags(.., *KEY);
 
-        let mut handle = context::fixed_file::<U>(&*pa).unwrap();
+        let handle = context::fixed_file::<U>(&*pa).unwrap();
 
         match Searcher::new(text.to_string()) {
             Ok(searcher) => {
@@ -239,7 +244,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
                     *file.cursors_mut().unwrap() = orig_cursors.clone();
                 });
 
-                self.inc.search(&mut pa, handle, searcher);
+                self.inc.search(pa, handle, searcher);
             }
             Err(err) => {
                 let regex_syntax::Error::Parse(err) = *err else {
@@ -253,24 +258,29 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
             }
         }
 
-        if *text != self.prev {
+        if text != self.prev {
             let prev = std::mem::replace(&mut self.prev, text.to_string());
-            hooks::trigger::<SearchUpdated>((prev, self.prev.clone()));
+            hooks::queue::<SearchUpdated>((prev, self.prev.clone()));
         }
 
         text
     }
 
-    fn before_exit(&mut self, text: &mut Text, _area: &<U as Ui>::Area) {
+    fn before_exit(&mut self, _: &mut Pass, text: Text, _: &<U as Ui>::Area) -> Text {
         if !text.is_empty() {
-            hooks::trigger::<SearchPerformed>(text.to_string());
+            hooks::queue::<SearchPerformed>(text.to_string());
         }
+
+        text
     }
 
-    fn on_switch(&mut self, _text: &mut Text, _area: &U::Area) {
-        let mut ff = context::fixed_file::<U>().unwrap();
-        let (file, area) = ff.read();
-        self.orig = Some((file.cursors().clone(), area.print_info()));
+    fn on_switch(&mut self, pa: &mut Pass, text: Text, _: &<U as Ui>::Area) -> Text {
+        let handle = context::fixed_file::<U>(&*pa).unwrap();
+        handle.read(pa, |file, area| {
+            self.orig = Some((file.cursors().clone(), area.print_info()));
+        });
+
+        text
     }
 
     fn once() {
@@ -292,7 +302,7 @@ impl<U: Ui> PipeSelections<U> {
 }
 
 impl<U: Ui> PromptMode<U> for PipeSelections<U> {
-    fn update(&mut self, text: &mut Text, _area: &U::Area) {
+    fn update(&mut self, _: &mut Pass, mut text: Text, _: &<U as Ui>::Area) -> Text {
         fn is_in_path(program: &str) -> bool {
             if let Ok(path) = std::env::var("PATH") {
                 for p in path.split(":") {
@@ -309,7 +319,7 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
 
         let command = text.to_string();
         let Some(caller) = command.split_whitespace().next() else {
-            return;
+            return text;
         };
 
         let args = cmd::args_iter(&command);
@@ -326,9 +336,11 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
         for (_, range) in args {
             text.insert_tag(*KEY, Tag::form(range, args_id, 0));
         }
+
+        text
     }
 
-    fn before_exit(&mut self, pa: &mut Pass, text: Text, area: &<U as Ui>::Area) -> Text {
+    fn before_exit(&mut self, pa: &mut Pass, text: Text, _: &<U as Ui>::Area) -> Text {
         use std::process::{Command, Stdio};
 
         let command = text.to_string();
@@ -336,7 +348,7 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
             return text;
         };
 
-        let mut handle = context::fixed_file::<U>(&*pa).unwrap();
+        let handle = context::fixed_file::<U>(&*pa).unwrap();
         let mut helper = EditHelper::from_handle(&mut *pa, handle);
         helper.edit_all(pa, |mut e| {
             let Ok(mut child) = Command::new(caller)
@@ -364,7 +376,7 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
     }
 
     fn prompt(&self) -> Text {
-        text!("[Prompt]pipe[Prompt.colon]:")
+        text!("[Prompt]pipe[Prompt.colon]:").build()
     }
 }
 
@@ -372,12 +384,11 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
 ///
 /// [`once`]: Widget::once
 fn run_once<M: PromptMode<U>, U: Ui>() {
-    use std::{any::TypeId, sync::LazyLock};
+    use std::{any::TypeId, sync::Mutex};
 
-    use duat_core::data::RwData;
-    static LIST: LazyLock<RwData<Vec<TypeId>>> = LazyLock::new(|| RwData::new(Vec::new()));
+    static LIST: LazyLock<Mutex<Vec<TypeId>>> = LazyLock::new(|| Mutex::new(Vec::new()));
 
-    let mut list = LIST.write();
+    let mut list = LIST.lock().unwrap();
     if !list.contains(&TypeId::of::<M>()) {
         M::once();
         list.push(TypeId::of::<M>());

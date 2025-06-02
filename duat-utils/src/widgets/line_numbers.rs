@@ -13,10 +13,10 @@
 use std::{fmt::Alignment, marker::PhantomData};
 
 use duat_core::{
-    context::{self, FileHandle},
+    context::FileHandle,
     data::{Pass, RwData},
     form::{self, Form},
-    text::{AlignCenter, AlignLeft, AlignRight, Builder, Text},
+    text::{AlignCenter, AlignLeft, AlignRight, Builder, Text, text},
     ui::{Constraint, PushSpecs, RawArea, Ui},
     widgets::{Widget, WidgetCfg},
 };
@@ -29,7 +29,7 @@ pub struct LineNumbers<U: Ui> {
 
 impl<U: Ui> LineNumbers<U> {
     /// The minimum width that would be needed to show the last line.
-    fn calculate_width(&mut self, pa: &Pass) -> f32 {
+    fn calculate_width(&self, pa: &Pass) -> f32 {
         let len = self.handle.read(pa, |file, _| file.text().len().line());
         len.ilog10() as f32
     }
@@ -85,6 +85,18 @@ impl<U: Ui> LineNumbers<U> {
 impl<U: Ui> Widget<U> for LineNumbers<U> {
     type Cfg = LineNumbersOptions<U>;
 
+    async fn update(mut pa: Pass<'_>, widget: RwData<Self>, area: &<U as Ui>::Area) {
+        let width = widget.read(&pa, |ln| ln.calculate_width(&pa));
+        area.constrain_hor([Constraint::Len(width + 1.0)]).unwrap();
+
+        let text = widget.read(&pa, |ln| ln.form_text(&pa));
+        widget.write(&mut pa, |ln| ln.text = text);
+    }
+
+    fn needs_update(&self) -> bool {
+        self.handle.has_changed()
+    }
+
     fn cfg() -> Self::Cfg {
         Self::Cfg {
             num_rel: LineNum::Abs,
@@ -94,13 +106,6 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
             specs: PushSpecs::left(),
             _ghost: PhantomData,
         }
-    }
-
-    async fn update(pa: Pass<'_>, widget: RwData<Self>, area: &<U as Ui>::Area) {
-        let width = widget.read(&pa, |ln| ln.calculate_width(&pa));
-        area.constrain_hor([Constraint::Len(width + 1.0)]).unwrap();
-
-        self.update_text(pa);
     }
 
     fn text(&self) -> &Text {
@@ -133,7 +138,7 @@ pub enum LineNum {
     RelAbs,
 }
 
-/// Configuration options for the [`LineNumbers<U>`] widget.
+/// Configuration options for the [`LineNumbers`] widget.
 #[derive(Debug, Clone, Copy)]
 #[doc(hidden)]
 pub struct LineNumbersOptions<U> {
@@ -210,19 +215,16 @@ impl<U> LineNumbersOptions<U> {
 impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
     type Widget = LineNumbers<U>;
 
-    fn build(self, _: bool) -> (Self::Widget, impl Fn() -> bool, PushSpecs) {
-        let ff = context::fixed_file().unwrap();
+    fn build(self, pa: Pass, handle: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+        let Some(handle) = handle else {
+            panic!("For now, you can't push LineNumbers to something that is not a File");
+        };
         let specs = self.specs;
 
-        let checker = ff.checker();
-        let mut widget = LineNumbers {
-            handle: ff,
-            text: Text::default(),
-            cfg: self,
-        };
-        widget.update_text();
+        let mut widget = LineNumbers { handle, text: Text::default(), cfg: self };
+        widget.text = widget.form_text(&pa);
 
-        (widget, checker, specs)
+        (widget, specs)
     }
 }
 
@@ -235,7 +237,7 @@ fn push_text<U>(
     cfg: &LineNumbersOptions<U>,
 ) {
     if is_wrapped && !cfg.show_wraps {
-        add_text!(*b, "[]\n");
+        b.push(text!("[]\n"));
     } else if main != usize::MAX {
         let num = match cfg.num_rel {
             LineNum::Abs => line + 1,
@@ -249,16 +251,16 @@ fn push_text<U>(
             }
         };
 
-        add_text!(*b, "{num}[]\n");
+        b.push(text!("{num}[]\n"));
     } else {
-        add_text!(*b, "{}[]\n", line + 1);
+        b.push(text!("{}[]\n", line + 1));
     }
 }
 
 fn align(b: &mut Builder, alignment: Alignment) {
     match alignment {
-        Alignment::Left => add_text!(*b, "{AlignLeft}"),
-        Alignment::Center => add_text!(*b, "{AlignCenter}"),
-        Alignment::Right => add_text!(*b, "{AlignRight}"),
+        Alignment::Left => b.push(AlignLeft),
+        Alignment::Center => b.push(AlignCenter),
+        Alignment::Right => b.push(AlignRight),
     }
 }

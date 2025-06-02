@@ -1,10 +1,11 @@
+use std::cell::{Cell};
+
 use cassowary::{
     Expression, Variable,
     WeightedRelation::{EQ, GE, LE},
     strength::{REQUIRED, STRONG, WEAK},
 };
 use duat_core::{
-    data::RwData,
     ui::{
         Axis::{self, *},
         Corner, PushSpecs, SpawnSpecs,
@@ -19,7 +20,7 @@ use crate::{
 };
 
 enum Kind {
-    End(RwData<PrintInfo>),
+    End(Cell<PrintInfo>),
     Middle {
         children: Vec<(Rect, Constraints)>,
         axis: Axis,
@@ -29,7 +30,7 @@ enum Kind {
 
 impl Kind {
     fn end(info: PrintInfo) -> Self {
-        Self::End(RwData::new(info))
+        Self::End(Cell::new(info))
     }
 
     fn middle(axis: Axis, clustered: bool) -> Self {
@@ -282,7 +283,7 @@ impl Rect {
     /// It is only [`Some`] if the [`Rect`] is a [child]
     ///
     /// [child]: Kind::End
-    pub fn print_info(&self) -> Option<&RwData<PrintInfo>> {
+    pub fn print_info(&self) -> Option<&Cell<PrintInfo>> {
         match &self.kind {
             Kind::End(info) => Some(info),
             Kind::Middle { .. } => None,

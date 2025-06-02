@@ -347,8 +347,10 @@
 //! [dependencies section]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
 #![feature(decl_macro, let_chains)]
 
+use std::sync::RwLock;
+
 use duat_core::session::SessionCfg;
-pub use duat_core::{RwLock, crate_dir, duat_name, src_crate, thread};
+pub use duat_core::{crate_dir, duat_name, src_crate};
 
 pub use self::setup::{Messengers, MetaStatics, pre_setup, run_duat};
 
@@ -479,8 +481,8 @@ pub mod form {
 pub mod hooks {
     pub use duat_core::hooks::{
         ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FormSet, Hookable,
-        KeysSentitched, SearchPerformed, SearchUpdated, add, add_grouped, group_exists,
-        remove,
+        KeysSent, KeysSentTo, ModeSwitched, SearchPerformed, SearchUpdated, add, add_grouped,
+        group_exists, remove,
     };
 
     use crate::Ui;
@@ -533,7 +535,7 @@ pub mod hooks {
     /// [key]: crate::mode::KeyEvent
     /// [`Widget`]: crate::widgets::Widget
     /// [`RwData<W>`]: crate::prelude::RwData
-    pub type KeySentTo<W> = duat_core::hooks::KeysSentTo
+    pub type KeySentTo<W> = duat_core::hooks::KeysSentTo<W, Ui>;
 
     /// [`Hookable`]: Lets you modify a [`Mode`] as it is set
     ///
@@ -598,7 +600,11 @@ pub macro setup_duat($setup:expr) {
         ms: MetaStatics,
         prev_files: Vec<Vec<FileRet>>,
         messengers: Messengers,
-    ) -> (Vec<Vec<FileRet>>, mpsc::Receiver<DuatEvent>, Option<std::time::Instant>) {
+    ) -> (
+        Vec<Vec<FileRet>>,
+        mpsc::Receiver<DuatEvent>,
+        Option<std::time::Instant>,
+    ) {
         pre_setup();
         $setup();
         run_duat(ms, prev_files, messengers)
@@ -616,7 +622,7 @@ pub mod prelude {
             self, AlignCenter, AlignLeft, AlignRight, Builder, Ghost, RawTag, Spacer, Tag, Text,
             err, hint, ok, text,
         },
-        ui::{RawArea as AreaTrait, FileBuilder, WindowBuilder},
+        ui::{FileBuilder, RawArea as AreaTrait, WindowBuilder},
         widgets::Widget,
     };
     #[cfg(feature = "term-ui")]

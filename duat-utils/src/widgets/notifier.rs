@@ -13,7 +13,7 @@ use std::{
 };
 
 use duat_core::{
-    context::{self, Notifications},
+    context::{self, FileHandle, Notifications},
     data::{Pass, RwData},
     hooks::{self, KeysSent},
     text::Text,
@@ -110,7 +110,7 @@ impl<U> NotificationsCfg<U> {
 impl<U: Ui> WidgetCfg<U> for NotificationsCfg<U> {
     type Widget = Notifier<U>;
 
-    fn build(self, _: Pass, _: bool) -> (Self::Widget, PushSpecs) {
+    fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
         let widget = Notifier {
             notifications: context::notifications(),
             text: Text::new(),

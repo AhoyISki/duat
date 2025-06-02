@@ -1,4 +1,4 @@
-#![feature(decl_macro, closure_lifetime_binder)]
+#![feature(decl_macro, closure_lifetime_binder, default_field_values)]
 
 pub mod modes;
 pub mod state;

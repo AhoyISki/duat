@@ -5,9 +5,10 @@
 //! variables are not set in the start of the program, since they
 //! require a [`Ui`], which cannot be defined in static time.
 use std::{
+    cell::RefCell,
     path::Path,
     sync::{
-        LazyLock,
+        LazyLock, Mutex, RwLock,
         atomic::{AtomicUsize, Ordering},
         mpsc::{Receiver, Sender},
     },
@@ -15,7 +16,6 @@ use std::{
 };
 
 use duat_core::{
-    Mutex, RwLock,
     cfg::PrintCfg,
     clipboard::Clipboard,
     context::{CurFile, CurWidget},
@@ -46,7 +46,7 @@ pub fn pre_setup() {
     // State statics.
     let cur_file: &'static CurFile<Ui> = Box::leak(Box::new(CurFile::new()));
     let cur_widget: &'static CurWidget<Ui> = Box::leak(Box::new(CurWidget::new()));
-    let windows: &'static RwLock<Vec<Window<Ui>>> = Box::leak(Box::new(RwLock::new(Vec::new())));
+    let windows: &'static RefCell<Vec<Window<Ui>>> = Box::leak(Box::new(RefCell::new(Vec::new())));
     static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
 
     duat_core::context::setup_non_statics::<Ui>(
@@ -56,32 +56,32 @@ pub fn pre_setup() {
         windows,
     );
 
-    hooks::add_grouped::<OnFileOpen>("FileWidgets", |builder| {
-        builder.push(VertRule::cfg());
-        builder.push(LineNumbers::cfg());
+    hooks::add_grouped::<OnFileOpen>("FileWidgets", |mut pa, builder| {
+        builder.push(&mut pa, VertRule::cfg());
+        builder.push(&mut pa, LineNumbers::cfg());
     });
 
-    hooks::add_grouped::<OnWindowOpen>("WindowWidgets", |builder| {
-        builder.push(StatusLine::cfg());
-        let (child, _) = builder.push(PromptLine::cfg());
-        builder.push_to(child, Notifier::cfg());
+    hooks::add_grouped::<OnWindowOpen>("WindowWidgets", |mut pa, builder| {
+        builder.push(&mut pa, StatusLine::cfg());
+        let (child, _) = builder.push(&mut pa, PromptLine::cfg());
+        builder.push_to(&mut pa, child, Notifier::cfg());
     });
 
-    hooks::add_grouped::<UnfocusedFrom<PromptLine<Ui>>>("HidePromptLine", |(_, area)| {
+    hooks::add_grouped::<UnfocusedFrom<PromptLine<Ui>>>("HidePromptLine", |_, (_, area)| {
         area.constrain_ver([Constraint::Len(0.0)]).unwrap();
     });
 
-    hooks::add_grouped::<FocusedOn<PromptLine<Ui>>>("HidePromptLine", |(_, area)| {
+    hooks::add_grouped::<FocusedOn<PromptLine<Ui>>>("HidePromptLine", |_, (_, area)| {
         area.constrain_ver([Constraint::Ratio(1, 1), Constraint::Len(1.0)])
             .unwrap();
     });
 
-    hooks::add_grouped::<FileWritten>("ReloadOnWrite", |(path, _)| {
+    hooks::add_grouped::<FileWritten>("ReloadOnWrite", |_, (path, _)| {
         let path = Path::new(path);
         if let Some(config_dir) = crate::crate_dir()
             && path.starts_with(config_dir)
         {
-            crate::prelude::cmd::call("reload");
+            crate::prelude::cmd::queue("reload");
         }
     });
 }
@@ -95,11 +95,11 @@ pub fn run_duat(
     <Ui as ui::Ui>::load(ui_ms);
     let mut cfg = SessionCfg::new(clipb);
 
-    if let Some(cfg_fn) = CFG_FN.write().take() {
+    if let Some(cfg_fn) = CFG_FN.write().unwrap().take() {
         cfg_fn(&mut cfg)
     }
 
-    let print_cfg = match PRINT_CFG.write().take() {
+    let print_cfg = match PRINT_CFG.write().unwrap().take() {
         Some(cfg) => cfg,
         None => PrintCfg::default_for_input(),
     };
@@ -116,7 +116,7 @@ pub fn run_duat(
         } else {
             cfg.session_from_prev(ui_ms, prev, duat_tx)
         };
-        session.start(duat_rx, local_set)
+        session.start(duat_rx, local_set).await
     })
 }
 
