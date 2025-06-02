@@ -18,7 +18,7 @@ use duat_core::{
     form::{self, Form},
     text::{AlignCenter, AlignLeft, AlignRight, Builder, Text, text},
     ui::{Constraint, PushSpecs, RawArea, Ui},
-    widgets::{Widget, WidgetCfg},
+    widget::{Widget, WidgetCfg},
 };
 
 pub struct LineNumbers<U: Ui> {

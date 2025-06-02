@@ -28,7 +28,7 @@ use crate::{
     mode::Cursors,
     text::{Bytes, Text, err},
     ui::{PushSpecs, RawArea, Ui},
-    widgets::{Widget, WidgetCfg},
+    widget::{Widget, WidgetCfg},
 };
 
 mod reader;

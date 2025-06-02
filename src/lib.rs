@@ -555,7 +555,7 @@ pub mod hooks {
 
 /// Duat's builtin widgets
 pub mod widgets {
-    pub use duat_core::widgets::*;
+    pub use duat_core::widget::*;
     pub use duat_utils::widgets::*;
 }
 
@@ -623,7 +623,7 @@ pub mod prelude {
             err, hint, ok, text,
         },
         ui::{FileBuilder, RawArea as AreaTrait, WindowBuilder},
-        widgets::Widget,
+        widget,
     };
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self as term, VertRule};

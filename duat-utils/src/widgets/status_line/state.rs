@@ -22,7 +22,7 @@ use duat_core::{
     data::{DataMap, Pass, RwData},
     text::{AlignCenter, AlignLeft, AlignRight, Builder, BuilderPart, Ghost, Spacer, Text},
     ui::Ui,
-    widgets::Widget,
+    widget::Widget,
 };
 
 /// A struct that reads state in order to return [`Text`].

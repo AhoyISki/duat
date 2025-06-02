@@ -17,7 +17,7 @@ use crate::{
     file::File,
     text::{Change, Point, RegexPattern, Searcher, Strs, Text, TextRange},
     ui::{RawArea, Ui},
-    widgets::Widget,
+    widget::Widget,
 };
 
 /// The [`Cursor`] and [`Cursors`] structs

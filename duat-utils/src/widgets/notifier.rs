@@ -18,7 +18,7 @@ use duat_core::{
     hook::{self, KeysSent},
     text::Text,
     ui::{PushSpecs, Ui},
-    widgets::{Widget, WidgetCfg},
+    widget::{Widget, WidgetCfg},
 };
 
 /// A [`Widget`] to show notifications

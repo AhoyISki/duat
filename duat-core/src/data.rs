@@ -53,7 +53,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::{cfg::PrintCfg, text::Text, ui::Ui, widgets::Widget};
+use crate::{cfg::PrintCfg, text::Text, ui::Ui, widget::Widget};
 
 #[derive(Debug)]
 pub struct RwData<T: ?Sized> {

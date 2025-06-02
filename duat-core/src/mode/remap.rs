@@ -13,7 +13,7 @@ use crate::{
     mode,
     text::{Key, Tag, text},
     ui::Ui,
-    widgets::Widget,
+    widget::Widget,
 };
 
 mod global {

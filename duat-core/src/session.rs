@@ -25,7 +25,7 @@ use crate::{
         DuatEvent, FileBuilder, Layout, MasterOnLeft, MutArea, RawArea, Sender, Ui, Window,
         WindowBuilder,
     },
-    widgets::{Node, WidgetCfg},
+    widget::{Node, WidgetCfg},
     file::PathKind
 };
 

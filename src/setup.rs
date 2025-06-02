@@ -21,7 +21,7 @@ use duat_core::{
     context::{CurFile, CurWidget},
     session::{FileRet, SessionCfg},
     ui::{self, Constraint, DuatEvent, RawArea, Window},
-    widgets::Widget,
+    widget::Widget,
 };
 use duat_term::VertRule;
 use duat_utils::modes::Regular;

@@ -4,7 +4,7 @@ use duat_core::{
     form::{self, Form},
     text::{Text, text},
     ui::{PushSpecs, RawArea as UiArea},
-    widgets::{Widget, WidgetCfg},
+    widget::{Widget, WidgetCfg},
 };
 
 use crate::{Area, Ui};

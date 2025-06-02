@@ -18,7 +18,7 @@ use crate::{
     file::File,
     form::Painter,
     text::{Builder, FwdIter, Item, Point, RevIter, Text, TwoPoints},
-    widgets::{Node, Widget},
+    widget::{Node, Widget},
 };
 
 /// All the methods that a working gui/tui will need to implement, in

@@ -17,7 +17,7 @@ use crate::{
     file::File,
     text::Text,
     ui::{RawArea, Ui},
-    widgets::{Node, Related, Widget},
+    widget::{Node, Related, Widget},
 };
 
 mod global {
@@ -36,7 +36,7 @@ mod global {
         data::{DataMap, Pass, RwData},
         text::{Text, err},
         ui::{Ui, Window},
-        widgets::Node,
+        widget::Node,
     };
 
     static MAIN_THREAD_ID: OnceLock<std::thread::ThreadId> = OnceLock::new();

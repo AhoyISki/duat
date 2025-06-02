@@ -264,7 +264,7 @@ use self::{
     file::File,
     text::{Text, err},
     ui::{Ui, Window},
-    widgets::{Node, Widget},
+    widget::{Node, Widget},
 };
 
 pub mod cache;
@@ -276,17 +276,18 @@ pub mod file;
 pub mod form;
 pub mod hook;
 pub mod mode;
+#[doc(hidden)]
 pub mod session;
 pub mod text;
 pub mod ui;
-pub mod widgets;
+pub mod widget;
 
 pub mod prelude {
     //! The prelude of Duat
     pub use crate::{
         cmd, data, form,
         text::{Builder, Text, err, hint, ok, text},
-        ui, widgets,
+        ui, widget,
     };
 }
 

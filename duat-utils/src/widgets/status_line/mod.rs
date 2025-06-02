@@ -23,7 +23,7 @@ use duat_core::{
     form::{self, Form},
     text::{AlignRight, Builder, Spacer, Text, text},
     ui::{PushSpecs, Side, Ui},
-    widgets::{Widget, WidgetCfg},
+    widget::{Widget, WidgetCfg},
 };
 
 pub use self::{macros::status, state::State};

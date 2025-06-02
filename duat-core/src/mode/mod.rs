@@ -11,7 +11,7 @@ use crate::{
     data::{Pass, RwData},
     file::File,
     ui::Ui,
-    widgets::Widget,
+    widget::Widget,
 };
 
 mod helper;
@@ -39,7 +39,7 @@ mod switch {
         session::sender,
         ui::{DuatEvent, RawArea, Ui},
         widget_entry,
-        widgets::{Node, Widget},
+        widget::{Node, Widget},
     };
 
     thread_local! {

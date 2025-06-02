@@ -23,7 +23,7 @@ use duat_core::{
     form, hook,
     text::Text,
     ui::{PushSpecs, Ui},
-    widgets::{Widget, WidgetCfg},
+    widget::{Widget, WidgetCfg},
 };
 
 use crate::modes::PromptMode;

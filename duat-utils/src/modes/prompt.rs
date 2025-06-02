@@ -8,7 +8,7 @@ use duat_core::{
     mode::{self, Cursors, EditHelper, KeyCode, KeyEvent, key},
     text::{Key, Point, Searcher, Tag, Text, text},
     ui::{RawArea, Ui},
-    widgets::Widget,
+    widget::Widget,
 };
 
 use super::IncSearcher;
