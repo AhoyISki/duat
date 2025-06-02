@@ -15,9 +15,10 @@ use crate::{
     cache::load_cache,
     cfg::PrintCfg,
     data::{Pass, RwData},
+    file::File,
     form::Painter,
     text::{Builder, FwdIter, Item, Point, RevIter, Text, TwoPoints},
-    widgets::{File, Node, Widget},
+    widgets::{Node, Widget},
 };
 
 /// All the methods that a working gui/tui will need to implement, in

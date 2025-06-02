@@ -1,8 +1,8 @@
 use duat_core::{
     data::{Pass, RwData},
+    file::File,
     mode::{self, EditHelper, KeyCode, KeyEvent, KeyMod, key},
     ui::Ui,
-    widgets::File,
 };
 
 use super::{IncSearch, RunCommands, SearchFwd, SearchRev};

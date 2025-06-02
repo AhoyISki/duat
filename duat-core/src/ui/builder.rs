@@ -17,7 +17,8 @@ use crate::{
     context::{self, FileHandle},
     data::Pass,
     duat_name,
-    widgets::{File, Node, ReaderCfg, Widget, WidgetCfg},
+    file::{File, ReaderCfg},
+    widgets::{Node, Widget, WidgetCfg},
 };
 
 /// A constructor helper for [`File`] initiations

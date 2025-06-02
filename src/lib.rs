@@ -479,7 +479,7 @@ pub mod form {
 
 /// Hook utilities
 pub mod hooks {
-    pub use duat_core::hooks::{
+    pub use duat_core::hook::{
         ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FormSet, Hookable,
         KeysSent, KeysSentTo, ModeSwitched, SearchPerformed, SearchUpdated, add, add_grouped,
         group_exists, remove,
@@ -495,7 +495,7 @@ pub mod hooks {
     ///
     /// [`File`]: duat_core::widgets::File
     /// [builder]: duat_core::ui::FileBuilder
-    pub type OnFileOpen = duat_core::hooks::OnFileOpen<Ui>;
+    pub type OnFileOpen = duat_core::hook::OnFileOpen<Ui>;
 
     /// [`Hookable`]: Triggers when a new window is opened
     ///
@@ -505,7 +505,7 @@ pub mod hooks {
     ///   the edges of the window, surrounding the inner file region.
     ///
     /// [builder]: duat_core::ui::WindowBuilder
-    pub type OnWindowOpen = duat_core::hooks::OnWindowOpen<Ui>;
+    pub type OnWindowOpen = duat_core::hook::OnWindowOpen<Ui>;
 
     /// [`Hookable`]: Triggers when the [`Widget`] is focused
     ///
@@ -514,7 +514,7 @@ pub mod hooks {
     /// - The widget itself.
     ///
     /// [`Widget`]: duat_core::widgets::Widget
-    pub type FocusedOn<W> = duat_core::hooks::FocusedOn<W, Ui>;
+    pub type FocusedOn<W> = duat_core::hook::FocusedOn<W, Ui>;
 
     /// [`Hookable`]: Triggers when the [`Widget`] is unfocused
     ///
@@ -523,7 +523,7 @@ pub mod hooks {
     /// - The widget itself.
     ///
     /// [`Widget`]: duat_core::widgets::Widget
-    pub type UnfocusedFrom<W> = duat_core::hooks::UnfocusedFrom<W, Ui>;
+    pub type UnfocusedFrom<W> = duat_core::hook::UnfocusedFrom<W, Ui>;
 
     /// [`Hookable`]: Triggers whenever a [key] is sent to the [`Widget`]
     ///
@@ -535,7 +535,7 @@ pub mod hooks {
     /// [key]: crate::mode::KeyEvent
     /// [`Widget`]: crate::widgets::Widget
     /// [`RwData<W>`]: crate::prelude::RwData
-    pub type KeySentTo<W> = duat_core::hooks::KeysSentTo<W, Ui>;
+    pub type KeySentTo<W> = duat_core::hook::KeysSentTo<W, Ui>;
 
     /// [`Hookable`]: Lets you modify a [`Mode`] as it is set
     ///
@@ -550,7 +550,7 @@ pub mod hooks {
     ///
     /// [`Mode`]: crate::mode::Mode
     /// [`File`]: crate::widgets::File
-    pub type ModeSetTo<M> = duat_core::hooks::ModeSetTo<M, Ui>;
+    pub type ModeSetTo<M> = duat_core::hook::ModeSetTo<M, Ui>;
 }
 
 /// Duat's builtin widgets

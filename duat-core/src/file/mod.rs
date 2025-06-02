@@ -17,16 +17,16 @@ use std::{fs, marker::PhantomData, path::PathBuf};
 use tokio::task;
 
 use self::reader::Readers;
-pub use self::reader::{Reader, ReaderCfg};
+pub use self::reader::{RangeList, Reader, ReaderCfg};
 use crate::{
     cache::load_cache,
     cfg::PrintCfg,
     context::{self, FileHandle},
     data::{Pass, RwData},
     form,
-    hooks::{self, FileWritten},
+    hook::{self, FileWritten},
     mode::Cursors,
-    text::{err, Bytes, Text},
+    text::{Bytes, Text, err},
     ui::{PushSpecs, RawArea, Ui},
     widgets::{Widget, WidgetCfg},
 };
@@ -122,7 +122,7 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
             printed_lines: (0..40).map(|i| (i, i == 1)).collect(),
             readers: Readers::default(),
             layout_order: 0,
-            _ghost: PhantomData
+            _ghost: PhantomData,
         };
 
         // The PushSpecs don't matter
@@ -156,7 +156,7 @@ impl<U: Ui> File<U> {
                     .write_to(std::io::BufWriter::new(fs::File::create(&path)?))
                     .inspect(|_| self.path = PathKind::SetExists(path.clone()))?;
 
-                hooks::queue::<FileWritten>((path.to_string_lossy().to_string(), bytes));
+                hook::queue::<FileWritten>((path.to_string_lossy().to_string(), bytes));
 
                 Ok(Some(bytes))
             } else {
@@ -179,7 +179,7 @@ impl<U: Ui> File<U> {
                 .map(Some);
 
             if let Ok(Some(bytes)) = res.as_ref() {
-                hooks::queue::<FileWritten>((path.to_string_lossy().to_string(), *bytes));
+                hook::queue::<FileWritten>((path.to_string_lossy().to_string(), *bytes));
             }
 
             res

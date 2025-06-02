@@ -255,23 +255,26 @@ use std::{
     sync::{LazyLock, RwLock},
 };
 
-use data::Pass;
 #[allow(unused_imports)]
 use dirs_next::cache_dir;
 pub use lender::Lender;
-use text::Text;
-use ui::Window;
-use widgets::{File, Node, Widget};
 
-use self::{text::err, ui::Ui};
+use self::{
+    data::Pass,
+    file::File,
+    text::{Text, err},
+    ui::{Ui, Window},
+    widgets::{Node, Widget},
+};
 
 pub mod cache;
 pub mod cfg;
 pub mod cmd;
 pub mod context;
 pub mod data;
+pub mod file;
 pub mod form;
-pub mod hooks;
+pub mod hook;
 pub mod mode;
 pub mod session;
 pub mod text;

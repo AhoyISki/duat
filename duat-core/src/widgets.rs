@@ -46,19 +46,17 @@
 //! [`Constraint`]: crate::ui::Constraint
 use std::{self, cell::Cell, pin::Pin, rc::Rc};
 
-pub use self::file::{File, FileCfg, PathKind, Reader, ReaderCfg};
 use crate::{
     cfg::PrintCfg,
     context::{FileHandle, FileParts},
     data::{Pass, RwData},
+    file::File,
     form,
-    hooks::{self, FocusedOn, UnfocusedFrom},
+    hook::{self, FocusedOn, UnfocusedFrom},
     mode::Cursors,
     text::Text,
     ui::{PushSpecs, RawArea, Ui},
 };
-
-mod file;
 
 /// An area where [`Text`] will be printed to the screen
 ///
@@ -630,7 +628,7 @@ impl<U: Ui> Node<U> {
         let area = self.area.clone();
 
         Box::pin(async move {
-            hooks::trigger::<FocusedOn<W, U>>((widget.clone(), area.clone())).await;
+            hook::trigger::<FocusedOn<W, U>>((widget.clone(), area.clone())).await;
             // SAFETY: Since this is an "async" function, it can only do work if
             // .awaited, which means a RwData won't be borrowed.
             let pa = unsafe { Pass::new() };
@@ -643,7 +641,7 @@ impl<U: Ui> Node<U> {
         let area = self.area.clone();
 
         Box::pin(async move {
-            hooks::trigger::<UnfocusedFrom<W, U>>((widget.clone(), area.clone())).await;
+            hook::trigger::<UnfocusedFrom<W, U>>((widget.clone(), area.clone())).await;
             // SAFETY: Since this is an "async" function, it can only do work if
             // .awaited, which means a RwData won't be borrowed.
             let pa = unsafe { Pass::new() };

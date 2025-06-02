@@ -40,7 +40,7 @@ enum Appender<U: Ui, _T: Clone = (), D: Display + Clone = String, W = ()> {
 ///
 /// [`StatusLine`]: super::StatusLine
 /// [`impl Display`]: std::fmt::Display
-/// [`File`]: crate::widgets::File
+/// [`File`]: crate::file::File
 pub struct State<U: Ui, _T: Clone = (), D: Display + Clone = String, W: 'static = ()> {
     appender: Appender<U, _T, D, W>,
     checker: Option<Box<dyn Fn() -> bool>>,

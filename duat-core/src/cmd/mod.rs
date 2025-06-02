@@ -203,7 +203,7 @@ use crate::{
     session::sender,
     text::{Text, err, hint, ok},
     ui::{DuatEvent, Ui},
-    widgets::File,
+    file::File,
 };
 
 mod parameters;

@@ -6,19 +6,18 @@
 use std::{
     any::TypeId,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
 };
 
-use std::sync::Mutex;
-
 pub use self::global::*;
 use crate::{
     data::{Pass, RwData},
+    file::File,
     text::Text,
     ui::{RawArea, Ui},
-    widgets::{File, Node, Related, Widget},
+    widgets::{Node, Related, Widget},
 };
 
 mod global {
@@ -27,12 +26,10 @@ mod global {
         cell::RefCell,
         path::PathBuf,
         sync::{
-            LazyLock, OnceLock,
+            LazyLock, Mutex, OnceLock,
             atomic::{AtomicBool, AtomicUsize, Ordering},
         },
     };
-
-    use std::sync::Mutex;
 
     use super::{CurFile, CurWidget, FileHandle, FileParts, Notifications};
     use crate::{

@@ -4,7 +4,7 @@ use duat_core::{
     cmd, context,
     data::{Pass, RwData},
     form,
-    hooks::{self, SearchPerformed, SearchUpdated},
+    hook::{self, SearchPerformed, SearchUpdated},
     mode::{self, Cursors, EditHelper, KeyCode, KeyEvent, key},
     text::{Key, Point, Searcher, Tag, Text, text},
     ui::{RawArea, Ui},
@@ -260,7 +260,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
 
         if text != self.prev {
             let prev = std::mem::replace(&mut self.prev, text.to_string());
-            hooks::queue::<SearchUpdated>((prev, self.prev.clone()));
+            hook::queue::<SearchUpdated>((prev, self.prev.clone()));
         }
 
         text
@@ -268,7 +268,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
 
     fn before_exit(&mut self, _: &mut Pass, text: Text, _: &<U as Ui>::Area) -> Text {
         if !text.is_empty() {
-            hooks::queue::<SearchPerformed>(text.to_string());
+            hook::queue::<SearchPerformed>(text.to_string());
         }
 
         text

@@ -15,7 +15,7 @@ use std::{
 use duat_core::{
     context::{self, FileHandle, Notifications},
     data::{Pass, RwData},
-    hooks::{self, KeysSent},
+    hook::{self, KeysSent},
     text::Text,
     ui::{PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
@@ -68,7 +68,7 @@ impl<U: Ui> Widget<U> for Notifier<U> {
     }
 
     fn once() -> Result<(), Text> {
-        hooks::add_grouped::<KeysSent>("RemoveNotificationsOnInput", |_, _| {
+        hook::add_grouped::<KeysSent>("RemoveNotificationsOnInput", |_, _| {
             CLEAR_NOTIFS.store(true, Ordering::Relaxed);
         });
         Ok(())

@@ -1,14 +1,14 @@
 pub use internals::{FileId, Layout, WindowFiles, window_files};
 
 use super::{PushSpecs, Ui};
-use crate::{text::Text, widgets::File};
+use crate::{file::File, text::Text};
 
 mod internals {
     use crate::{
         data::Pass,
+        file::File,
         text::Text,
         ui::{Node, PushSpecs, RawArea, Ui},
-        widgets::File,
     };
 
     pub trait Layout<U>: Send + Sync
@@ -37,8 +37,9 @@ mod internals {
             })
             .collect();
 
-        files
-            .sort_unstable_by_key(|(node, _)| node.read_as(pa, |f: &File<U>| f.layout_order).unwrap());
+        files.sort_unstable_by_key(|(node, _)| {
+            node.read_as(pa, |f: &File<U>| f.layout_order).unwrap()
+        });
 
         files
     }

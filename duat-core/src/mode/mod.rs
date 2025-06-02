@@ -9,8 +9,9 @@ pub use self::{
 };
 use crate::{
     data::{Pass, RwData},
+    file::File,
     ui::Ui,
-    widgets::{File, Widget},
+    widgets::Widget,
 };
 
 mod helper;
@@ -31,12 +32,14 @@ mod switch {
     use crate::{
         context::{self},
         data::{Pass, RwData},
-        duat_name, file_entry,
-        hooks::{self, KeysSent, KeysSentTo, ModeSetTo, ModeSwitched},
+        duat_name,
+        file::File,
+        file_entry,
+        hook::{self, KeysSent, KeysSentTo, ModeSetTo, ModeSwitched},
         session::sender,
         ui::{DuatEvent, RawArea, Ui},
         widget_entry,
-        widgets::{File, Node, Widget},
+        widgets::{Node, Widget},
     };
 
     thread_local! {
@@ -263,12 +266,12 @@ mod switch {
             }
         });
 
-        tokio::task::spawn_local(hooks::trigger::<KeysSentTo<M::Widget, U>>((
+        tokio::task::spawn_local(hook::trigger::<KeysSentTo<M::Widget, U>>((
             sent_keys.clone(),
             widget.clone(),
             area.clone(),
         )));
-        tokio::task::spawn_local(hooks::trigger::<KeysSent>(sent_keys));
+        tokio::task::spawn_local(hook::trigger::<KeysSent>(sent_keys));
 
         (keys, mode_fn)
     }
@@ -312,7 +315,7 @@ mod switch {
                 .unwrap()
         };
 
-        let mut mode = hooks::trigger::<ModeSetTo<M, U>>((mode, w.clone(), area.clone())).await;
+        let mut mode = hook::trigger::<ModeSetTo<M, U>>((mode, w.clone(), area.clone())).await;
 
         w.write(&mut pa, |widget| {
             let cfg = widget.print_cfg();
@@ -334,7 +337,7 @@ mod switch {
 
         context::raw_mode_name().write(&mut pa, |old_mode| {
             let new_mode = duat_name::<M>();
-            tokio::task::spawn_local(hooks::trigger::<ModeSwitched>((*old_mode, new_mode)));
+            tokio::task::spawn_local(hook::trigger::<ModeSwitched>((*old_mode, new_mode)));
             *old_mode = new_mode;
         });
 
@@ -689,7 +692,13 @@ impl<U: Ui> Mode<U> for &'static str {
     // Doesn't matter
     type Widget = File<U>;
 
-    async fn send_key(&mut self, _: Pass<'_>, _: KeyEvent, _: RwData<Self::Widget>, _: <U as Ui>::Area) {
+    async fn send_key(
+        &mut self,
+        _: Pass<'_>,
+        _: KeyEvent,
+        _: RwData<Self::Widget>,
+        _: <U as Ui>::Area,
+    ) {
         unreachable!("&strs are only meant to be sent as AsGives, turning into keys");
     }
 

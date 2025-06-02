@@ -16,15 +16,17 @@ use crate::{
     cfg::PrintCfg,
     cmd, context,
     data::Pass,
+    file::{File, FileCfg},
     file_entry, form,
-    hooks::{self, ConfigLoaded, ConfigUnloaded, ExitedDuat, OnFileOpen, OnWindowOpen},
+    hook::{self, ConfigLoaded, ConfigUnloaded, ExitedDuat, OnFileOpen, OnWindowOpen},
     mode,
     text::Bytes,
     ui::{
         DuatEvent, FileBuilder, Layout, MasterOnLeft, MutArea, RawArea, Sender, Ui, Window,
         WindowBuilder,
     },
-    widgets::{File, FileCfg, Node, PathKind, WidgetCfg},
+    widgets::{Node, WidgetCfg},
+    file::PathKind
 };
 
 static DUAT_SENDER: OnceLock<&mpsc::Sender<DuatEvent>> = OnceLock::new();
@@ -89,7 +91,7 @@ impl<U: Ui> SessionCfg<U> {
 
         // Open and process files.
         let builder = FileBuilder::new(&mut pa, node, context::cur_window());
-        task::spawn_local(hooks::trigger::<OnFileOpen<U>>(builder));
+        task::spawn_local(hook::trigger::<OnFileOpen<U>>(builder));
 
         for file in args {
             session.open_file(&mut pa, PathBuf::from(file));
@@ -97,7 +99,7 @@ impl<U: Ui> SessionCfg<U> {
 
         // Build the window's widgets.
         let builder = WindowBuilder::new(0);
-        task::spawn_local(hooks::trigger::<OnWindowOpen<U>>(builder));
+        task::spawn_local(hook::trigger::<OnWindowOpen<U>>(builder));
 
         session
     }
@@ -156,7 +158,7 @@ impl<U: Ui> SessionCfg<U> {
             }
 
             let builder = FileBuilder::new(&mut pa, node, context::cur_window());
-            task::spawn_local(hooks::trigger::<OnFileOpen<U>>(builder));
+            task::spawn_local(hook::trigger::<OnFileOpen<U>>(builder));
 
             for (file_cfg, is_active) in cfgs {
                 session.open_file_from_cfg(&mut pa, file_cfg, is_active, win);
@@ -164,7 +166,7 @@ impl<U: Ui> SessionCfg<U> {
 
             // Build the window's widgets.
             let builder = WindowBuilder::new(win);
-            task::spawn_local(hooks::trigger::<OnWindowOpen<U>>(builder));
+            task::spawn_local(hook::trigger::<OnWindowOpen<U>>(builder));
         }
 
         session
@@ -204,7 +206,7 @@ impl<U: Ui> Session<U> {
         match pushed {
             Ok((node, _)) => {
                 let builder = FileBuilder::new(&mut *pa, node, context::cur_window());
-                task::spawn_local(hooks::trigger::<OnFileOpen<U>>(builder));
+                task::spawn_local(hook::trigger::<OnFileOpen<U>>(builder));
             }
             Err(err) => context::notify(err),
         }
@@ -222,7 +224,7 @@ impl<U: Ui> Session<U> {
     ) {
         form::set_sender(Sender::new(sender()));
 
-        task::spawn_local(hooks::trigger::<ConfigLoaded>(()));
+        task::spawn_local(hook::trigger::<ConfigLoaded>(()));
 
         U::flush_layout(self.ms);
 
@@ -271,7 +273,7 @@ impl<U: Ui> Session<U> {
                     }
                     DuatEvent::ReloadStarted(instant) => reload_instant = Some(instant),
                     DuatEvent::ReloadConfig => {
-                        hooks::trigger::<ConfigUnloaded>(()).await;
+                        hook::trigger::<ConfigUnloaded>(()).await;
                         context::order_reload_or_quit();
                         self.save_cache(&mut pa, false);
                         let ms = self.ms;
@@ -280,8 +282,8 @@ impl<U: Ui> Session<U> {
                         return (files, duat_rx, reload_instant);
                     }
                     DuatEvent::Quit => {
-                        hooks::trigger::<ConfigUnloaded>(()).await;
-                        hooks::trigger::<ExitedDuat>(()).await;
+                        hook::trigger::<ConfigUnloaded>(()).await;
+                        hook::trigger::<ExitedDuat>(()).await;
                         context::order_reload_or_quit();
                         self.save_cache(&mut pa, true);
                         return (Vec::new(), duat_rx, None);
@@ -399,7 +401,7 @@ impl<U: Ui> Session<U> {
         match pushed {
             Ok((node, _)) => {
                 let builder = FileBuilder::new(&mut *pa, node, context::cur_window());
-                task::spawn_local(hooks::trigger::<OnFileOpen<U>>(builder));
+                task::spawn_local(hook::trigger::<OnFileOpen<U>>(builder));
             }
             Err(err) => context::notify(err),
         }
@@ -511,11 +513,11 @@ impl<U: Ui> Session<U> {
 
             // Open and process files.
             let builder = FileBuilder::new(&mut *pa, node, new_win);
-            task::spawn_local(hooks::trigger::<OnFileOpen<U>>(builder));
+            task::spawn_local(hook::trigger::<OnFileOpen<U>>(builder));
         }
 
         let builder = WindowBuilder::new(new_win);
-        task::spawn_local(hooks::trigger::<OnWindowOpen<U>>(builder));
+        task::spawn_local(hook::trigger::<OnWindowOpen<U>>(builder));
 
         if context::fixed_file::<U>(&*pa)
             .unwrap()

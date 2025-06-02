@@ -15,11 +15,11 @@
 use duat_core::{
     context,
     data::{DataMap, RwData},
-    hooks::{self, KeysSent},
+    file::File,
+    hook::{self, KeysSent},
     mode::{self, KeyEvent},
     text::{Text, text},
     ui::Ui,
-    widgets::File,
 };
 
 /// [`StatusLine`] part: The [`File`]'s name, formatted
@@ -240,7 +240,7 @@ pub fn last_key() -> RwData<String> {
         static LAST_KEY: RwData<String> = {
             let last_key = RwData::new(String::new());
 
-            hooks::add::<KeysSent>({
+            hook::add::<KeysSent>({
                 let last_key = last_key.clone();
                 move |mut pa, keys| {
                     last_key.write(&mut pa, |lk| *lk = mode::keys_to_string(keys));

@@ -20,7 +20,7 @@ use duat_core::{
     cfg::PrintCfg,
     context::FileHandle,
     data::{Pass, RwData},
-    form, hooks,
+    form, hook,
     text::Text,
     ui::{PushSpecs, Ui},
     widgets::{Widget, WidgetCfg},
@@ -32,7 +32,7 @@ impl<U: Ui> WidgetCfg<U> for PromptLineCfg<U> {
     type Widget = PromptLine<U>;
 
     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
-        let specs = if hooks::group_exists("HidePromptLine") {
+        let specs = if hook::group_exists("HidePromptLine") {
             self.specs.with_ver_len(0.0)
         } else {
             self.specs

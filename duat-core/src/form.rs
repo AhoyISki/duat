@@ -9,7 +9,7 @@ use std::sync::{RwLock, RwLockReadGuard};
 pub use self::global::*;
 pub(crate) use self::global::{colorscheme_exists, exists};
 use crate::{
-    hooks::{self, FormSet},
+    hook::{self, FormSet},
     ui::Sender,
 };
 
@@ -51,7 +51,7 @@ mod global {
     use super::{BASE_FORMS, BuiltForm, ColorScheme, CursorShape, Form, FormId, Painter, Palette};
     use crate::{
         context,
-        hooks::{self, ColorSchemeSet},
+        hook::{self, ColorSchemeSet},
         text::err,
     };
 
@@ -407,7 +407,7 @@ mod global {
         let colorschemes = COLORSCHEMES.lock().unwrap();
         if let Some(cs) = colorschemes.iter().find(|cs| cs.name() == name) {
             cs.apply();
-            hooks::queue::<ColorSchemeSet>(cs.name());
+            hook::queue::<ColorSchemeSet>(cs.name());
         } else {
             context::notify(err!("The colorscheme [a]{name}[] was not found"));
         }
@@ -879,7 +879,7 @@ impl Palette {
             sender.send_form_changed().unwrap()
         }
 
-        hooks::queue::<FormSet>((name, FormId(i as u16), form));
+        hook::queue::<FormSet>((name, FormId(i as u16), form));
     }
 
     /// Sets a [`Form`] "weakly"
@@ -921,7 +921,7 @@ impl Palette {
         if let Some(sender) = SENDER.get() {
             sender.send_form_changed().unwrap()
         }
-        hooks::queue::<FormSet>((name, FormId(i as u16), form));
+        hook::queue::<FormSet>((name, FormId(i as u16), form));
     }
 
     /// Makes a [`Form`] reference another "weakly"

@@ -14,9 +14,10 @@ use crate::{
     cfg::PrintCfg,
     context::FileHandle,
     data::{Pass, RwData},
+    file::File,
     text::{Change, Point, RegexPattern, Searcher, Strs, Text, TextRange},
     ui::{RawArea, Ui},
-    widgets::{File, Widget},
+    widgets::Widget,
 };
 
 /// The [`Cursor`] and [`Cursors`] structs
@@ -165,7 +166,12 @@ impl<U: Ui> EditHelper<File<U>, U, ()> {
 
 impl<U: Ui> EditHelper<File<U>, U, Searcher> {
     /// Returns an [`EditHelper`] with incremental search
-    pub fn new_inc(pa: &mut Pass, widget: RwData<File<U>>, area: U::Area, searcher: Searcher) -> Self {
+    pub fn new_inc(
+        pa: &mut Pass,
+        widget: RwData<File<U>>,
+        area: U::Area,
+        searcher: Searcher,
+    ) -> Self {
         widget.write(pa, |wid| wid.text_mut().enable_cursors());
 
         EditHelper { widget, area, inc_searcher: searcher }
@@ -365,14 +371,46 @@ impl<W: Widget<U>, U: Ui, S> EditHelper<W, U, S> {
         self.widget.write(pa, write)
     }
 
+    /// Reads the [`Text`] of the [`Widget`]
+    pub fn read_text<Ret>(&self, pa: &Pass, read: impl FnOnce(&Text) -> Ret) -> Ret {
+        self.widget.read(pa, |wid| read(wid.text()))
+    }
+
+    /// Writes to the [`Text`] of the [`Widget`]
+    pub fn write_text<Ret>(&self, pa: &mut Pass, write: impl FnOnce(&mut Text) -> Ret) -> Ret {
+        self.widget.write(pa, |wid| write(wid.text_mut()))
+    }
+
+    /// Reads the [`Cursors`] of the [`Widget`]
+    pub fn read_cursors<Ret>(&self, pa: &Pass, read: impl FnOnce(&Cursors) -> Ret) -> Ret {
+        self.widget
+            .read(pa, |wid| read(wid.text().cursors().unwrap()))
+    }
+
+    /// Writes to the [`Cursors`] of the [`Widget`]
+    pub fn write_cursors<Ret>(
+        &self,
+        pa: &mut Pass,
+        write: impl FnOnce(&mut Cursors) -> Ret,
+    ) -> Ret {
+        self.widget
+            .write(pa, |wid| write(wid.text_mut().cursors_mut().unwrap()))
+    }
+
     /// Clones the [`Text`] within
     pub fn clone_text(&self, pa: &Pass) -> Text {
-        self.widget.read(pa, |wid| wid.text().clone())
+        self.widget.clone_text(pa)
     }
 
     /// Replaces the [`Text`] within with a [`Default`] version
     pub fn take_text(&self, pa: &mut Pass) -> Text {
-        self.widget.write(pa, |wid| std::mem::take(wid.text_mut()))
+        self.widget.take_text(pa)
+    }
+
+    /// Replaces the [`Text`] of the [`Widget`], returning the
+    /// previous value
+    pub fn replace_text(&self, pa: &mut Pass, text: Text) -> Text {
+        self.widget.replace_text(pa, text)
     }
 
     /// Undoes the last moment in the history, if there is one
