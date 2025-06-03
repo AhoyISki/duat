@@ -457,9 +457,6 @@ pub struct BytesDataMap<U: Ui>(RwData<File<U>>);
 impl<U: Ui> BytesDataMap<U> {
     /// Reads the [`Bytes`] of the [`File`]'s [`Text`]
     ///
-    /// This requires a [`&mut Pass`] because some reading operations
-    /// on [`Bytes`] require exclusive acess.
-    ///
     /// If you are looking at this method from the context of
     /// [`Reader::apply_changes`], you probably actually want to use
     /// [`BytesDataMap::read_and_write_reader`], since it is far more
@@ -470,8 +467,8 @@ impl<U: Ui> BytesDataMap<U> {
     /// Panics if there is a mutable borrow of this struct somewhere,
     /// which could happen if you use [`RwData::write_unsafe`] or
     /// [`RwData::write_unsafe_as`]
-    pub fn read<Ret>(&self, _: &mut Pass, f: impl FnOnce(&mut Bytes) -> Ret) -> Ret {
-        self.0.raw_write(|file| f(file.text.bytes_mut()))
+    pub fn read<Ret>(&self, pa: &Pass, f: impl FnOnce(&Bytes) -> Ret) -> Ret {
+        self.0.read(pa, |file| f(file.text.bytes()))
     }
 
     /// Reads the [`Bytes`] of a [`File`], alongside a [`Reader`]
@@ -490,10 +487,14 @@ impl<U: Ui> BytesDataMap<U> {
         &self,
         pa: &mut Pass,
         rd: &RwData<Rd>,
-        f: impl FnOnce(&mut Bytes, &mut Rd) -> Ret,
+        f: impl FnOnce(&Bytes, &mut Rd) -> Ret,
     ) -> Ret {
-        self.0
-            .raw_write(|file| rd.write(pa, |rd| f(file.text.bytes_mut(), rd)))
+        // SAFETY: Since the other type is not a File, we can safely borrow
+        // both.
+        unsafe {
+            self.0
+                .read_unsafe(|file| rd.write(pa, |rd| f(file.text.bytes(), rd)))
+        }
     }
 
     pub fn has_changed(&self) -> bool {

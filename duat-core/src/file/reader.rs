@@ -101,12 +101,10 @@ impl<U: Ui> Readers<U> {
                     Box::pin(async move {
                         // SAFETY: Since this is an async block, it cannot be .awaited while
                         // an RwData is borrowed.
-                        let mut pa = unsafe { Pass::new() };
+                        let pa = unsafe { Pass::new() };
 
                         let mut new_ranges = if ranges_to_update.is_some() {
-                            Some(RangeList::new(
-                                bytes.read(&mut pa, |bytes| bytes.len().byte()),
-                            ))
+                            Some(RangeList::new(bytes.read(&pa, |bytes| bytes.len().byte())))
                         } else {
                             None
                         };
@@ -171,8 +169,8 @@ impl<U: Ui> Readers<U> {
                         entry.ranges_to_update.write_unsafe(|ru| {
                             // SAFETY: Since this is an async function, which will be executed via
                             // spawn_local, no other RwData borrows could be happening.
-                            let mut pa = Pass::new();
-                            *ru = RangeList::new(bytes.read(&mut pa, |bytes| bytes.len().byte()))
+                            let pa = Pass::new();
+                            *ru = RangeList::new(bytes.read(&pa, |bytes| bytes.len().byte()))
                         });
                         None
                     };
