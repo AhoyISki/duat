@@ -14,7 +14,8 @@ use tokio::task;
 use super::BytesDataMap;
 use crate::{
     data::{Pass, RwData},
-    text::{err, Bytes, Change, Moment, MutTags, RawTagsFn, Text}, ui::Ui,
+    text::{Bytes, Change, Moment, MutTags, RawTagsFn, Text, err},
+    ui::Ui,
 };
 
 /// A [`Text`] reader, modifying it whenever a [`Change`] happens
@@ -100,10 +101,12 @@ impl<U: Ui> Readers<U> {
                     Box::pin(async move {
                         // SAFETY: Since this is an async block, it cannot be .awaited while
                         // an RwData is borrowed.
-                        let pa = unsafe { Pass::new() };
+                        let mut pa = unsafe { Pass::new() };
 
                         let mut new_ranges = if ranges_to_update.is_some() {
-                            Some(RangeList::new(bytes.read(|bytes| bytes.len().byte())))
+                            Some(RangeList::new(
+                                bytes.read(&mut pa, |bytes| bytes.len().byte()),
+                            ))
                         } else {
                             None
                         };
@@ -166,7 +169,10 @@ impl<U: Ui> Readers<U> {
                         // If there are too many changes, cut on processing and
                         // just assume that everything needs to be updated.
                         entry.ranges_to_update.write_unsafe(|ru| {
-                            *ru = RangeList::new(bytes.read(|bytes| bytes.len().byte()))
+                            // SAFETY: Since this is an async function, which will be executed via
+                            // spawn_local, no other RwData borrows could be happening.
+                            let mut pa = Pass::new();
+                            *ru = RangeList::new(bytes.read(&mut pa, |bytes| bytes.len().byte()))
                         });
                         None
                     };

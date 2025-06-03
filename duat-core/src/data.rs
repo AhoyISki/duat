@@ -260,8 +260,8 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// # Panics
     ///
-    /// Will panic if there is a shared reference of the value within
-    /// somewhere else.
+    /// Will panic if there are any types of borrows of the value
+    /// within somewhere else.
     ///
     /// # Safety
     ///
@@ -292,8 +292,8 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// # Panics
     ///
-    /// Will panic if there is a shared reference of the value within
-    /// somewhere else.
+    /// Will panic if there are any types of borrows of the value
+    /// within somewhere else.
     ///
     /// # Safety
     ///
@@ -441,7 +441,8 @@ impl<T: ?Sized> RwData<T> {
         self.read(pa, |wid| wid.text().clone())
     }
 
-    /// Takes the [`Text`] from the [`Widget`], replacing it with the [`Default`]
+    /// Takes the [`Text`] from the [`Widget`], replacing it with the
+    /// [`Default`]
     pub fn take_text<U>(&self, pa: &mut Pass) -> Text
     where
         T: Widget<U>,

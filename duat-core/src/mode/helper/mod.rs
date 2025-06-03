@@ -15,7 +15,7 @@ use crate::{
     context::FileHandle,
     data::{Pass, RwData},
     file::File,
-    text::{Change, Point, RegexPattern, Searcher, Strs, Text, TextRange},
+    text::{Change, Lines, Point, RegexPattern, Searcher, Strs, Text, TextRange},
     ui::{RawArea, Ui},
     widget::Widget,
 };
@@ -942,10 +942,7 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Editor<'a, W, A, S> {
     /// An [`Iterator`] over the lines in a given [range]
     ///
     /// [range]: TextRange
-    pub fn lines_on(
-        &mut self,
-        range: impl TextRange,
-    ) -> impl DoubleEndedIterator<Item = (usize, &'_ str)> + '_ {
+    pub fn lines_on(&mut self, range: impl TextRange) -> Lines {
         self.widget.text_mut().lines(range)
     }
 

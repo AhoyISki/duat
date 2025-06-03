@@ -1,6 +1,7 @@
 use std::{iter::FusedIterator, ops::RangeBounds, str::from_utf8_unchecked};
 
 use gapbuf::GapBuffer;
+use lender::{DoubleEndedLender, ExactSizeLender, Lender, Lending};
 
 use super::{Point, TextRange, records::Records, utf8_char_width};
 
@@ -127,17 +128,8 @@ impl Bytes {
     /// The lines are inclusive, that is, it will iterate over the
     /// whole line, not just the parts within the range.
     ///
-    /// # NOTE
-    ///
-    /// The reason why this requires mutable access is because we may
-    /// need to move the [`GapBuffer`]'s gap in order to make the
-    /// [range] contiguous for proper iteration.
-    ///
     /// [range]: TextRange
-    pub fn lines(
-        &mut self,
-        range: impl TextRange,
-    ) -> impl DoubleEndedIterator<Item = (usize, &str)> + '_ {
+    pub fn lines(&self, range: impl TextRange) -> Lines<'_> {
         let range = range.to_range_at(self.len().byte());
         let start = self.point_at_line(self.point_at(range.start).line());
         let end = {
@@ -148,9 +140,40 @@ impl Bytes {
                 false => self.point_at_line((end.line() + 1).min(self.len().line())),
             }
         };
-        let lines = self.contiguous((start, end)).lines();
+
+        // If the gap is outside of the range, we can just iterate through it
+        // regularly
         let (fwd_i, rev_i) = (start.line(), end.line());
-        TextLines { lines, fwd_i, rev_i }
+        if let Some(str) = self.get_contiguous((start, end)) {
+            let lines = [str.lines(), "".lines()];
+            Lines::new(lines, None, fwd_i, rev_i)
+        // If the gap is within the range, but on a line split, we
+        // can just iterate through two sets of lines.
+        } else if end.byte() > start.byte()
+            && self.buf[self.buf.gap() - 1] != b'\n'
+            && self.buf[self.buf.gap()] != b'\n'
+        {
+            let [str_0, str_1] = self.strs((start, end)).to_array();
+            let lines = [str_0.lines(), str_1.lines()];
+            Lines::new(lines, None, fwd_i, rev_i)
+            // Otherwise, the line that was split will need to be
+            // allocated and returned separately.
+        } else {
+            let [str0, str1] = self.strs((start, end)).to_array();
+
+            let (before, split0) = match str0.rsplit_once('\n') {
+                Some((before, split)) => (before, split),
+                None => ("", str0),
+            };
+            let (after, split1) = match str1.split_once('\n') {
+                Some((after, split)) => (after, split),
+                None => ("", str1),
+            };
+
+            let lines = [before.lines(), after.lines()];
+            let split_line = Some(split0.to_string() + split1);
+            Lines::new(lines, split_line, fwd_i, rev_i)
+        }
     }
 
     /// Returns the two `&str`s in the byte range.
@@ -488,12 +511,16 @@ impl Bytes {
         }
     }
 
-    /// Assumes that the `range` given is contiguous in `self`
+    /// Tries to get a contiguous [`&str`] from the [`Bytes`]
     ///
-    /// You *MUST* call [`make_contiguous`] before using this
-    /// function. The sole purpose of this function is to not keep the
-    /// [`Bytes`] mutably borrowed.
+    /// Returns [`None`] if the gap of the inner buffer was within the
+    /// given range.
     ///
+    /// You can ensure that the gap is outside of that range by
+    /// calling [`make_contiguous`], although that requires a mutable
+    /// reference.
+    ///
+    /// [`&str`]: str
     /// [`make_contiguous`]: Self::make_contiguous
     pub fn get_contiguous(&self, range: impl TextRange) -> Option<&str> {
         let range = range.to_range_fwd(self.len().byte());
@@ -508,31 +535,80 @@ impl Bytes {
     }
 }
 
-pub struct TextLines<'a> {
-    lines: std::str::Lines<'a>,
+pub struct Lines<'a> {
+    lines: [std::str::Lines<'a>; 2],
+    split_line: Option<String>,
     fwd_i: usize,
     rev_i: usize,
+    split_line_used: bool,
 }
 
-impl<'a> Iterator for TextLines<'a> {
-    type Item = (usize, &'a str);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.lines.next().map(|line| {
-            self.fwd_i += 1;
-            (self.fwd_i - 1, line)
-        })
+impl<'a> Lines<'a> {
+    fn new(
+        lines: [std::str::Lines<'a>; 2],
+        split_line: Option<String>,
+        fwd_i: usize,
+        rev_i: usize,
+    ) -> Self {
+        Self {
+            lines,
+            split_line,
+            fwd_i,
+            rev_i,
+            split_line_used: false,
+        }
     }
 }
 
-impl DoubleEndedIterator for TextLines<'_> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        self.lines.next_back().map(|line| {
-            self.rev_i -= 1;
-            (self.rev_i, line)
-        })
+impl<'a, 'text> Lending<'a> for Lines<'text> {
+    type Lend = (usize, &'a str);
+}
+
+impl<'a> Lender for Lines<'a> {
+    fn next(&mut self) -> Option<lender::Lend<'_, Self>> {
+        self.lines[0]
+            .next()
+            .or_else(|| {
+                if self.split_line_used {
+                    None
+                } else {
+                    self.split_line_used = true;
+                    self.split_line.as_deref()
+                }
+            })
+            .or_else(|| self.lines[1].next())
+            .map(|line| {
+                self.fwd_i += 1;
+                (self.fwd_i - 1, line)
+            })
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.rev_i - self.fwd_i, Some(self.rev_i - self.fwd_i))
     }
 }
+
+impl<'a> DoubleEndedLender for Lines<'a> {
+    fn next_back(&mut self) -> Option<lender::Lend<'_, Self>> {
+        self.lines[1]
+            .next_back()
+            .or_else(|| {
+                if self.split_line_used {
+                    None
+                } else {
+                    self.split_line_used = true;
+                    self.split_line.as_deref()
+                }
+            })
+            .or_else(|| self.lines[0].next_back())
+            .map(|line| {
+                self.rev_i -= 1;
+                (self.rev_i, line)
+            })
+    }
+}
+
+impl<'a> ExactSizeLender for Lines<'a> {}
 
 /// An [`Iterator`] over the bytes in a [`Text`]
 ///

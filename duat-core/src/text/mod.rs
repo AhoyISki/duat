@@ -99,7 +99,7 @@ pub use self::{
         AlignCenter, AlignLeft, AlignRight, Builder, BuilderPart, Ghost, Spacer, err, hint, ok,
         text,
     },
-    bytes::{Buffers, Bytes, Strs},
+    bytes::{Buffers, Bytes, Lines, Strs},
     history::{Change, Moment},
     iter::{FwdIter, Item, Part, RevIter},
     ops::{Point, TextRange, TwoPoints, utf8_char_width},
@@ -301,10 +301,7 @@ impl Text {
     ///
     /// The lines are inclusive, that is, it will iterate over the
     /// whole line, not just the parts within the range.
-    pub fn lines(
-        &mut self,
-        range: impl TextRange,
-    ) -> impl DoubleEndedIterator<Item = (usize, &str)> + '_ {
+    pub fn lines(&mut self, range: impl TextRange) -> Lines {
         self.0.bytes.lines(range)
     }
 

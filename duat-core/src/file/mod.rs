@@ -455,8 +455,45 @@ enum TextOp {
 pub struct BytesDataMap<U: Ui>(RwData<File<U>>);
 
 impl<U: Ui> BytesDataMap<U> {
-    pub fn read<Ret>(&self, f: impl FnOnce(&mut Bytes) -> Ret) -> Ret {
+    /// Reads the [`Bytes`] of the [`File`]'s [`Text`]
+    ///
+    /// This requires a [`&mut Pass`] because some reading operations
+    /// on [`Bytes`] require exclusive acess.
+    ///
+    /// If you are looking at this method from the context of
+    /// [`Reader::apply_changes`], you probably actually want to use
+    /// [`BytesDataMap::read_and_write_reader`], since it is far more
+    /// compatible with that usecase.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there is a mutable borrow of this struct somewhere,
+    /// which could happen if you use [`RwData::write_unsafe`] or
+    /// [`RwData::write_unsafe_as`]
+    pub fn read<Ret>(&self, _: &mut Pass, f: impl FnOnce(&mut Bytes) -> Ret) -> Ret {
         self.0.raw_write(|file| f(file.text.bytes_mut()))
+    }
+
+    /// Reads the [`Bytes`] of a [`File`], alongside a [`Reader`]
+    ///
+    /// This can be very convenient when you want access to these two
+    /// things at once, and is completely safe, since [`File`] doesn't
+    /// implement [`Reader`], the other [`RwData`] will never be
+    /// [`RwData<File>`], so a double borrow could never happen.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there is are any borrows of either struct elsewhere,
+    /// which could happen if you use [`RwData::write_unsafe`] or
+    /// [`RwData::write_unsafe_as`]
+    pub fn read_and_write_reader<Ret, Rd: Reader<U>>(
+        &self,
+        pa: &mut Pass,
+        rd: &RwData<Rd>,
+        f: impl FnOnce(&mut Bytes, &mut Rd) -> Ret,
+    ) -> Ret {
+        self.0
+            .raw_write(|file| rd.write(pa, |rd| f(file.text.bytes_mut(), rd)))
     }
 
     pub fn has_changed(&self) -> bool {

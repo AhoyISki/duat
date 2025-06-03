@@ -199,11 +199,11 @@ pub use self::{
 use crate::{
     context,
     data::{Pass, RwData},
+    file::File,
     file_entry, iter_around, iter_around_rev, mode,
     session::sender,
     text::{Text, err, hint, ok},
     ui::{DuatEvent, Ui},
-    file::File,
 };
 
 mod parameters;
@@ -228,7 +228,9 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         let (win, wid, file) = file_entry(&pa, &windows, name).unwrap();
 
         let has_unsaved_changes = file
-            .read_as(&pa, |f: &File<U>| f.text().has_unsaved_changes() && f.exists())
+            .read_as(&pa, |f: &File<U>| {
+                f.text().has_unsaved_changes() && f.exists()
+            })
             .unwrap();
         if has_unsaved_changes {
             return Err(err!("[a]{name}[] has unsaved changes").build());
@@ -285,8 +287,10 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             .iter()
             .flat_map(|w| w.file_nodes(&pa))
             .filter(|(node, _)| {
-                node.read_as(&pa, |f: &File<U>| f.text().has_unsaved_changes() && f.exists())
-                    .unwrap()
+                node.read_as(&pa, |f: &File<U>| {
+                    f.text().has_unsaved_changes() && f.exists()
+                })
+                .unwrap()
             })
             .count();
 
@@ -891,6 +895,19 @@ mod global {
                     {
                         context::notify(result);
                     }
+                })
+            })))
+            .unwrap()
+    }
+
+	/// Like [`queue`], but acts on the [`Result`]
+    pub fn queue_and(call: impl std::fmt::Display, map: impl FnOnce(CmdResult) + Send + 'static) {
+        let call = call.to_string();
+        let sender = crate::session::sender();
+        sender
+            .send(DuatEvent::QueuedFunction(Box::new(move || {
+                Box::pin(async move {
+                    map(COMMANDS.with(Commands::clone).run(call).await);
                 })
             })))
             .unwrap()
