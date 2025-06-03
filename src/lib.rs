@@ -15,18 +15,18 @@ use std::{
     marker::PhantomData,
     ops::Range,
     path::{Path, PathBuf},
-    sync::LazyLock,
+    sync::{LazyLock, Mutex},
 };
 
 use duat_core::{
-    Mutex, add_shifts,
+    Lender, add_shifts,
     cfg::PrintCfg,
+    data::{Pass, RwData},
+    file::{BytesDataMap, RangeList, Reader, ReaderCfg},
     form::{self, Form, FormId},
-    hooks::{self, OnFileOpen},
-    text::{
-        Bytes, Change, Key, Matcheable, MutTags, Point, Reader, ReaderCfg, Tag, Text,
-        merge_range_in,
-    },
+    hook::{self, OnFileOpen},
+    text::{Bytes, Change, Key, Matcheable, Moment, MutTags, Point, Tag, Text},
+    ui::Ui,
 };
 use duat_filetype::FileType;
 use streaming_iterator::StreamingIterator;
@@ -102,15 +102,11 @@ impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter<U> {
             ("markup.list.unchecked", Form::grey()),
         );
 
-        hooks::add_grouped::<OnFileOpen<U>>("TreeSitter", |builder| {
-            let (file, _) = builder.read();
-            let filetype = file.filetype();
-
-            if let Some(filetype) = filetype
+        hook::add_grouped::<OnFileOpen<U>>("TreeSitter", |mut pa, builder| {
+            if let Some(filetype) = builder.read(&pa, |file, _| file.filetype())
                 && let Some(ts_parser_cfg) = TsParser::cfg(filetype)
             {
-                drop(file);
-                let _ = builder.add_reader(ts_parser_cfg);
+                builder.add_reader(&mut pa, ts_parser_cfg);
             }
         });
     }
@@ -131,7 +127,6 @@ pub struct TsParser {
 impl TsParser {
     fn init(
         bytes: &mut Bytes,
-        tags: &mut MutTags,
         range: Range<usize>,
         offset: TSPoint,
         lang_parts: LangParts<'static>,
@@ -146,9 +141,9 @@ impl TsParser {
             .parse_with_options(&mut buf_parse(bytes, range.clone()), None, None)
             .unwrap();
 
-        let mut parser = TsParser {
+        TsParser {
             parser,
-            range: range.clone(),
+            range,
             offset,
             lang_parts,
             forms,
@@ -156,11 +151,7 @@ impl TsParser {
             old_tree: None,
             sub_trees: Vec::new(),
             key: ts_key(),
-        };
-
-        parser.highlight_and_inject(bytes, tags, range);
-
-        parser
+        }
     }
 
     fn highlight_and_inject(&mut self, bytes: &mut Bytes, tags: &mut MutTags, range: Range<usize>) {
@@ -223,7 +214,7 @@ impl TsParser {
                     if let Some(prop) = props.iter().find(|p| p.key.as_ref() == "injection.query")
                         && let Some(value) = prop.value.as_ref()
                         && let Some(injections) =
-                            query_from_path(&format!("{lang}/{value}"), lang_parts.1)
+                            query_from_path(format!("{lang}/{value}"), lang_parts.1)
                     {
                         lang_parts.2.injections = injections;
                     }
@@ -270,7 +261,8 @@ impl TsParser {
             };
 
             let form_parts = forms_from_lang_parts(&lang_parts);
-            let st = TsParser::init(bytes, tags, range, offset, lang_parts, form_parts);
+            let mut st = TsParser::init(bytes, range.clone(), offset, lang_parts, form_parts);
+            st.highlight_and_inject(bytes, tags, range);
             self.sub_trees.insert(i, st)
         }
 
@@ -296,7 +288,7 @@ impl TsParser {
         TsParserCfg::new(filetype)
     }
 
-    fn apply_sub_tree_change(&mut self, change: Change<&str>, bytes: &mut Bytes) {
+    fn apply_sub_tree_change(&mut self, change: Change<&str>, bytes: &Bytes) {
         let start = change.start();
         let added = change.added_end();
         let taken = change.taken_end();
@@ -317,7 +309,6 @@ impl TsParser {
             self.tree.edit(&edit);
             self.range.end = (self.range.end as i32 + change.shift()[0]) as usize;
             self.old_tree = None;
-            duat_core::log!("the old tree in {:?} is None", self.range);
         } else {
             // If this sub tree wasn't affected, neither will any of its children.
             return;
@@ -342,11 +333,10 @@ impl TsParser {
         }
     }
 
-    fn reparse_sub_trees(&mut self, bytes: &mut Bytes) {
+    fn reparse_sub_trees(&mut self, bytes: &Bytes) {
         for st in self.sub_trees.iter_mut() {
             st.reparse_sub_trees(bytes);
             if st.old_tree.is_none() {
-                duat_core::log!("reparsed tree at {:?}", st.range);
                 let mut parse_fn = buf_parse(bytes, st.range.clone());
                 let tree = st
                     .parser
@@ -357,14 +347,8 @@ impl TsParser {
             }
         }
     }
-}
 
-impl Reader for TsParser {
-    type PublicReader<'a> = PubTsParser<'a>;
-
-    // `apply_changes` is not meant to modify the `Text`, it is only meant
-    // to update the internal state of the `Reader`.
-    fn apply_changes(&mut self, bytes: &mut Bytes, changes: &[Change<&str>]) {
+    fn apply_changes(&mut self, bytes: &Bytes, moment: Moment) {
         fn changes_b_shift(changes: &[Change<&str>]) -> i32 {
             changes
                 .iter()
@@ -376,7 +360,7 @@ impl Reader for TsParser {
         let mut last_changes: Vec<Change<&str>> = Vec::new();
         let (mut sh_from, mut shift) = (0, [0; 3]);
 
-        for &change in changes.iter() {
+        for change in moment.changes() {
             let start = change.start();
 
             let input_edit = input_edit(change, bytes, self.offset, self.range.start);
@@ -470,58 +454,58 @@ impl Reader for TsParser {
 
         self.reparse_sub_trees(bytes);
     }
+}
 
-    // `ranges_to_update` takes the information stored in `apply_changes`
-    // and returns a `Range<usize>` of byte indexes that need to be
-    // updated.
-    // This is done for efficiency reasons, but you don't _have_ to
-    // implement this function. If you don't, it will be assumed that the
-    // whole `Text` needs updates.
-    fn ranges_to_update(
-        &mut self,
-        bytes: &mut Bytes,
-        changes: &[Change<&str>],
-    ) -> Vec<Range<usize>> {
-        fn merge_tree_changed_ranges(parser: &TsParser, ranges: &mut Vec<Range<usize>>) {
+impl<U: Ui> Reader<U> for TsParser {
+    // `apply_changes` is not meant to modify the `Text`, it is only meant
+    // to update the internal state of the `Reader`.
+    async fn apply_changes(
+        mut pa: Pass<'_>,
+        reader: RwData<Self>,
+        bytes: BytesDataMap<U>,
+        moment: Moment,
+        ranges_to_update: Option<&mut RangeList>,
+    ) {
+        fn merge_tree_changed_ranges(parser: &TsParser, list: &mut RangeList) {
             if let Some(old_tree) = parser.old_tree.as_ref() {
                 for range in parser.tree.changed_ranges(old_tree) {
                     let range = range.start_byte..range.end_byte;
-                    merge_range_in(ranges, range);
+                    list.add(range);
                 }
 
                 for st in parser.sub_trees.iter() {
-                    merge_tree_changed_ranges(st, ranges)
+                    merge_tree_changed_ranges(st, list)
                 }
             }
         }
-        let mut ranges = Vec::new();
-        // let mut checked_points = Vec::new();
 
-        // This initial check might find larger, somewhat self contained nodes
-        // that have changed, e.g. an identifier that is now recognized as a
-        // function, things of that sort.
-        merge_tree_changed_ranges(self, &mut ranges);
+        bytes.read_and_write_reader(&mut pa, &reader, |bytes, ts| {
+            ts.apply_changes(bytes, moment)
+        });
 
-        // However, `changed_ranges` doesn't catch everything, so another
-        // check is done. At a minimum, at least the lines where the changes
-        // took place should be updated.
-        for change in changes {
-            let start = change.start();
-            let added = change.added_end();
-            let start = bytes.point_at_line(start.line());
-            let end = bytes.point_at_line((added.line() + 1).min(bytes.len().line()));
-            merge_range_in(&mut ranges, start.byte()..end.byte());
+        if let Some(list) = ranges_to_update {
+            // This initial check might find larger, somewhat self contained nodes
+            // that have changed, e.g. an identifier that is now recognized as a
+            // function, things of that sort.
+            reader.read(&pa, |ts| merge_tree_changed_ranges(ts, list));
+
+            // However, `changed_ranges` doesn't catch everything, so another
+            // check is done. At a minimum, at least the lines where the changes
+            // took place should be updated.
+            bytes.read(&pa, |bytes| {
+                for change in moment.changes() {
+                    let start = change.start();
+                    let added = change.added_end();
+                    let start = bytes.point_at_line(start.line());
+                    let end = bytes.point_at_line((added.line() + 1).min(bytes.len().line()));
+                    list.add(start.byte()..end.byte());
+                }
+            })
         }
-
-        ranges
     }
 
     fn update_range(&mut self, bytes: &mut Bytes, mut tags: MutTags, range: Range<usize>) {
         self.highlight_and_inject(bytes, &mut tags, range);
-    }
-
-    fn public_reader<'a>(&'a mut self, bytes: &'a mut Bytes) -> Self::PublicReader<'a> {
-        PubTsParser(self, bytes)
     }
 }
 
@@ -552,14 +536,13 @@ impl TsParserCfg {
     }
 }
 
-impl ReaderCfg for TsParserCfg {
+impl<U: Ui> ReaderCfg<U> for TsParserCfg {
     type Reader = TsParser;
 
-    fn init(self, bytes: &mut Bytes, mut tags: MutTags) -> Result<Self::Reader, Text> {
+    fn init(self, bytes: &mut Bytes) -> Result<Self::Reader, Text> {
         let offset = TSPoint::default();
         Ok(TsParser::init(
             bytes,
-            &mut tags,
             0..bytes.len().byte(),
             offset,
             self.lang_parts,
@@ -638,11 +621,9 @@ impl<'a> PubTsParser<'a> {
         // If the line is empty, look behind for another.
         } else {
             // Find last previous empty line.
-            let Some((prev_l, line)) = self
-                .1
-                .lines((Point::default(), start))
-                .rev()
-                .find(|(_, line)| !(line.matches(r"^\s*$", ..).unwrap()))
+            let mut lines = self.1.lines(..start).rev();
+            let Some((prev_l, line)) =
+                lines.find(|(_, line)| !(line.matches(r"^\s*$", ..).unwrap()))
             else {
                 // If there is no previous non empty line, align to 0.
                 return Some(0);
@@ -814,10 +795,7 @@ fn descendant_in(node: Node, byte: usize) -> Node {
     node.descendant_for_byte_range(byte, byte + 1).unwrap()
 }
 
-fn buf_parse<'a>(
-    bytes: &'a mut Bytes,
-    range: Range<usize>,
-) -> impl FnMut(usize, TSPoint) -> &'a [u8] {
+fn buf_parse<'a>(bytes: &'a Bytes, range: Range<usize>) -> impl FnMut(usize, TSPoint) -> &'a [u8] {
     let [s0, s1] = bytes.strs(range).to_array();
     |byte, _point| {
         if byte < s0.len() {
@@ -858,7 +836,7 @@ fn forms_from_lang_parts(
     type MemoizedForms<'a> = HashMap<&'a str, &'a [(FormId, u8)]>;
 
     static LISTS: LazyLock<Mutex<MemoizedForms<'static>>> = LazyLock::new(Mutex::default);
-    let mut lists = LISTS.lock();
+    let mut lists = LISTS.lock().unwrap();
 
     if let Some(forms) = lists.get(lang) {
         forms
@@ -899,7 +877,7 @@ impl<'a> TextProvider<&'a [u8]> for TsBuf<'a> {
 fn lang_parts(lang: &str) -> Option<LangParts<'static>> {
     static MAPS: LazyLock<Mutex<HashMap<&str, LangParts<'static>>>> = LazyLock::new(Mutex::default);
 
-    let mut maps = MAPS.lock();
+    let mut maps = MAPS.lock().unwrap();
 
     Some(if let Some(lang_parts) = maps.get(lang).copied() {
         lang_parts
@@ -915,7 +893,7 @@ fn lang_parts(lang: &str) -> Option<LangParts<'static>> {
 
         let lang = lang.to_string().leak();
 
-        maps.insert(lang, (lang, language, queries.clone()));
+        maps.insert(lang, (lang, language, queries));
 
         (lang, language, queries)
     })
@@ -974,12 +952,7 @@ fn reoffset(ts_point: TSPoint, offset: TSPoint) -> TSPoint {
     }
 }
 
-fn input_edit(
-    change: Change<&str>,
-    bytes: &mut Bytes,
-    offset: TSPoint,
-    r_start: usize,
-) -> InputEdit {
+fn input_edit(change: Change<&str>, bytes: &Bytes, offset: TSPoint, r_start: usize) -> InputEdit {
     let start = change.start();
     let added = change.added_end();
     let taken = change.taken_end();
@@ -1015,7 +988,7 @@ fn query_from_path(path: impl AsRef<Path>, language: &Language) -> Option<&'stat
         .join(path.as_ref())
         .with_extension("scm");
 
-    let mut queries = QUERIES.lock();
+    let mut queries = QUERIES.lock().unwrap();
 
     Some(if let Some(query) = queries.get(&path) {
         query

@@ -1,7 +1,6 @@
-use std::{fs, path::PathBuf, process::Command};
+use std::{fs, path::PathBuf, process::Command, sync::Mutex};
 
 use dlopen_rs::{Dylib, OpenFlags};
-use duat_core::Mutex;
 use indoc::{formatdoc, indoc};
 use tree_sitter::Language;
 
@@ -34,7 +33,7 @@ pub fn get_language(filetype: &str) -> Option<Language> {
 
         // Push after getting the symbol, to ensure that the lib does indeed
         // have it.
-        LIBRARIES.lock().push(lib);
+        LIBRARIES.lock().unwrap().push(lib);
 
         Some(language)
     } else if let Ok(true) = fs::exists(&manifest_path) {
