@@ -9,9 +9,12 @@
 //! [incremental search]: crate::widgets::IncSearch
 //! [`CmdLine`]: crate::widgets::CmdLine
 //! [`IncSearcher`]: crate::mode::IncSearcher
-use std::{collections::HashMap, ops::RangeBounds, sync::LazyLock};
+use std::{
+    collections::HashMap,
+    ops::RangeBounds,
+    sync::{LazyLock, RwLock, RwLockWriteGuard},
+};
 
-use std::sync::{RwLock, RwLockWriteGuard};
 use regex_automata::{
     Anchored, Input, PatternID,
     hybrid::dfa::{Cache, DFA},
@@ -28,7 +31,7 @@ impl Text {
         range: impl TextRange,
     ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
         let bytes = self.bytes_mut();
-        let range = range.to_range_fwd(bytes.len().byte());
+        let range = range.to_range(bytes.len().byte());
         let dfas = dfas_from_pat(pat)?;
         let haystack = {
             bytes.make_contiguous(range.clone());
@@ -78,7 +81,7 @@ impl Text {
         range: impl TextRange,
     ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
         let bytes = self.bytes_mut();
-        let range = range.to_range_rev(bytes.len().byte());
+        let range = range.to_range(bytes.len().byte());
         let dfas = dfas_from_pat(pat)?;
         let haystack = {
             bytes.make_contiguous(range.clone());
@@ -131,7 +134,7 @@ impl Text {
         pat: impl RegexPattern,
         range: impl TextRange,
     ) -> Result<bool, Box<regex_syntax::Error>> {
-        let range = range.to_range_fwd(self.len().byte());
+        let range = range.to_range(self.len().byte());
         let dfas = dfas_from_pat(pat)?;
 
         let haystack = self.contiguous(range);
@@ -220,7 +223,7 @@ impl Searcher {
         text: &'b mut Text,
         range: impl TextRange,
     ) -> impl Iterator<Item = [Point; 2]> + 'b {
-        let range = range.to_range_fwd(text.len().byte());
+        let range = range.to_range(text.len().byte());
         let mut last_point = text.point_at(range.start);
 
         let haystack = text.contiguous(range.clone());
@@ -280,7 +283,7 @@ impl Searcher {
         text: &'b mut Text,
         range: impl TextRange,
     ) -> impl Iterator<Item = [Point; 2]> + 'b {
-        let range = range.to_range_rev(text.len().byte());
+        let range = range.to_range(text.len().byte());
         let mut last_point = text.point_at(range.end);
 
         let haystack = text.contiguous(range.clone());

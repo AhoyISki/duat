@@ -102,7 +102,7 @@ pub use self::{
     bytes::{Buffers, Bytes, Lines, Strs},
     history::{Change, Moment},
     iter::{FwdIter, Item, Part, RevIter},
-    ops::{Point, TextRange, TwoPoints, utf8_char_width},
+    ops::{Point, TextRange, TextRangeOrPoint, TwoPoints, utf8_char_width},
     search::{Matcheable, RegexPattern, Searcher},
     tags::{Key, Keys, MutTags, RawTag, RawTagsFn, Tag, ToggleId},
 };
@@ -488,7 +488,7 @@ impl Text {
     ///
     /// [range]: TextRange
     pub fn replace_range(&mut self, range: impl TextRange, edit: impl ToString) {
-        let range = range.to_range_at(self.len().byte());
+        let range = range.to_range(self.len().byte());
         let (start, end) = (self.point_at(range.start), self.point_at(range.end));
         let change = Change::new(edit, [start, end], self);
 
@@ -671,8 +671,8 @@ impl Text {
     ///
     /// [key]: Keys
     /// [`File`]: crate::widgets::File
-    pub fn remove_tags(&mut self, range: impl TextRange, keys: impl Keys) {
-        let range = range.to_range_at(self.len().byte());
+    pub fn remove_tags(&mut self, range: impl TextRangeOrPoint, keys: impl Keys) {
+        let range = range.to_range(self.len().byte());
         self.0.tags.remove_from(range, keys)
     }
 

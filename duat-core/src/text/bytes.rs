@@ -72,7 +72,7 @@ impl Bytes {
     ///
     /// [range]: TextRange
     pub fn buffers(&self, range: impl TextRange) -> Buffers {
-        let range = range.to_range_fwd(self.buf.len());
+        let range = range.to_range(self.buf.len());
         let (s0, s1) = self.buf.range(range).as_slices();
         Buffers([s0.iter(), s1.iter()])
     }
@@ -119,7 +119,7 @@ impl Bytes {
     /// [range]: TextRange
     /// [`strs`]: Self::strs
     pub fn strs(&self, range: impl TextRange) -> Strs {
-        let range = range.to_range_fwd(self.buf.len());
+        let range = range.to_range(self.buf.len());
         Strs(self.strs_in_range_inner(range).into_iter())
     }
 
@@ -130,7 +130,7 @@ impl Bytes {
     ///
     /// [range]: TextRange
     pub fn lines(&self, range: impl TextRange) -> Lines<'_> {
-        let range = range.to_range_at(self.len().byte());
+        let range = range.to_range(self.len().byte());
         let start = self.point_at_line(self.point_at(range.start).line());
         let end = {
             let end = self.point_at(range.end);
@@ -144,7 +144,7 @@ impl Bytes {
         // If the gap is outside of the range, we can just iterate through it
         // regularly
         let (fwd_i, rev_i) = (start.line(), end.line());
-        if let Some(str) = self.get_contiguous((start, end)) {
+        if let Some(str) = self.get_contiguous(start..end) {
             let lines = [str.lines(), "".lines()];
             Lines::new(lines, None, fwd_i, rev_i)
         // If the gap is within the range, but on a line split, we
@@ -153,13 +153,13 @@ impl Bytes {
             && self.buf[self.buf.gap() - 1] != b'\n'
             && self.buf[self.buf.gap()] != b'\n'
         {
-            let [str_0, str_1] = self.strs((start, end)).to_array();
+            let [str_0, str_1] = self.strs(start..end).to_array();
             let lines = [str_0.lines(), str_1.lines()];
             Lines::new(lines, None, fwd_i, rev_i)
             // Otherwise, the line that was split will need to be
             // allocated and returned separately.
         } else {
-            let [str0, str1] = self.strs((start, end)).to_array();
+            let [str0, str1] = self.strs(start..end).to_array();
 
             let (before, split0) = match str0.rsplit_once('\n') {
                 Some((before, split)) => (before, split),
@@ -497,7 +497,7 @@ impl Bytes {
     /// The return value is the value of the gap, if the second `&str`
     /// is the contiguous one.
     pub fn make_contiguous(&mut self, range: impl TextRange) {
-        let range = range.to_range_fwd(self.len().byte());
+        let range = range.to_range(self.len().byte());
         let gap = self.buf.gap();
 
         if range.end <= gap || range.start >= gap {
@@ -523,7 +523,7 @@ impl Bytes {
     /// [`&str`]: str
     /// [`make_contiguous`]: Self::make_contiguous
     pub fn get_contiguous(&self, range: impl TextRange) -> Option<&str> {
-        let range = range.to_range_fwd(self.len().byte());
+        let range = range.to_range(self.len().byte());
         let [s0, s1] = self.strs(..).to_array();
 
         if range.end <= self.buf.gap() {

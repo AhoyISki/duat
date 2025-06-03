@@ -27,7 +27,7 @@ pub use self::{
         RawTagsFn, Tag,
     },
 };
-use super::{Point, Text, TextRange, records::Records};
+use super::{Point, Text, TextRangeOrPoint, records::Records};
 use crate::{get_ends, merging_range_by_guess_and_lazy_shift};
 
 /// How many [`TagOrSkip`]s to keep a [`RawTag`] range
@@ -64,21 +64,17 @@ impl MutTags<'_> {
     ///
     /// # Caution
     ///
-    /// While it is fine to do this on your own widgets, you should
-    /// refrain from using this function in a [`File`]s [`Text`], as
-    /// it must iterate over all tags in the file, so if there are a
-    /// lot of other tags, this operation may be slow.
-    ///
-    /// # [`TextRange`] behavior
-    ///
-    /// If you give it a [`Point`] or [`usize`], it will be treated as
-    /// a one byte range.
+    /// While it is fine to use a [`RangeFull`] (`..`) in your own
+    /// widgets, you should refrain from using this type of argument
+    /// in a [`File`]s [`Text`], as it must iterate over all tags
+    /// in the file, so if there are a lot of other tags, this
+    /// operation may be slow.
     ///
     /// [key]: Keys
-    /// [`File`]: crate::widgets::File
+    /// [`File`]: crate::file::File
     /// [`Point`]: super::Point
-    pub fn remove(&mut self, range: impl TextRange, keys: impl Keys) {
-        let range = range.to_range_at(self.0.len_bytes());
+    pub fn remove(&mut self, range: impl TextRangeOrPoint, keys: impl Keys) {
+        let range = range.to_range(self.0.len_bytes());
         self.0.remove_from(range, keys)
     }
 
@@ -164,7 +160,7 @@ impl Tags {
             Some(TagId::Toggle(id, toggle)) => {
                 self.toggles.insert(id, toggle);
                 Some(id)
-            },
+            }
             None => None,
         };
 

@@ -1016,8 +1016,12 @@ impl<W: Widget<A::Ui>, A: RawArea> Editor<'_, W, A, Searcher> {
     ///
     /// [`IncSearch`]: crate::mode::IncSearch
     pub fn search_inc_fwd(&mut self, end: Option<Point>) -> impl Iterator<Item = [Point; 2]> + '_ {
-        self.inc_searcher
-            .search_fwd(self.widget.text_mut(), (self.cursor.caret(), end))
+        let range = if let Some(end) = end {
+            (self.cursor.caret()..end).to_range(self.text().len().byte())
+        } else {
+            (self.cursor.caret()..).to_range(self.text().len().byte())
+        };
+        self.inc_searcher.search_fwd(self.widget.text_mut(), range)
     }
 
     /// Search incrementally from an [`IncSearch`] request in reverse
@@ -1031,8 +1035,12 @@ impl<W: Widget<A::Ui>, A: RawArea> Editor<'_, W, A, Searcher> {
         &mut self,
         start: Option<Point>,
     ) -> impl Iterator<Item = [Point; 2]> + '_ {
-        self.inc_searcher
-            .search_rev(self.widget.text_mut(), (start, self.cursor.caret()))
+        let range = if let Some(start) = start {
+            (start..self.cursor.caret()).to_range(self.text().len().byte())
+        } else {
+            (..self.cursor.caret()).to_range(self.text().len().byte())
+        };
+        self.inc_searcher.search_rev(self.widget.text_mut(), range)
     }
 
     /// Whether the [`Cursor`]'s selection matches the [`IncSearch`]

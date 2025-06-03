@@ -192,245 +192,71 @@ pub const fn utf8_char_width(b: u8) -> u32 {
 
 /// Ranges that can be used to index the [`Text`]
 ///
-/// These include:
-///
-/// - A single [`usize`] (interpretation varies)
-/// - All ranges that implement [`RangeBounds<usize>`]
-/// - A single [`Point`] (interpretation varies)
-/// - A 2 [`Point`] tuple
-/// - A 2 [`Option<Point>`] tuple
-/// - And a tuple of a [`Point`] and an [`Option<Point>`]
-///
-/// The behavior of [`usize`] and [`Point`] depends on where they are
-/// sent, but is pretty straightforward:
-///
-/// - On forward iterators, they act as a [`RangeFrom`]
-/// - On reverse iterators, they act as a [`RangeTo`]
-/// - On insertion of [`Tag`]s, they act as a 1 element range
-///
-/// The purpose of this trait is to minimize the number of functions
-/// needed to perform tasks.
+/// All of the [ranges] in [`std`] that implement either
+/// [`RangeBounds<usize>`] or [`RangeBounds<Point>`] should work as an
+/// argument. If it implements [`RangeBounds<usize>`], then the
+/// `usize` represents the a byte index in the [`Text`].
 ///
 /// [`Text`]: super::Text
-/// [`Tag`]: super::Tag
+/// [ranges]: std::range
 /// [`RangeBounds<usize>`]: std::ops::RangeBounds
+/// [`RangeBounds<Point>`]: std::ops::RangeBounds
 pub trait TextRange: Clone {
     /// A "forward facing range"
     ///
     /// If given a single [`usize`]/[`Point`], acts like [`RangeFrom`]
-    fn to_range_fwd(self, max: usize) -> Range<usize>;
-
-    /// A "reverse facing range"
-    ///
-    /// If given a single [`usize`]/[`Point`], acts like [`RangeTo`]
-    fn to_range_rev(self, max: usize) -> Range<usize>;
-
-    /// A "single point range"
-    ///
-    /// If given a single [`usize`]/[`Point`], acts like one element
-    fn to_range_at(self, max: usize) -> Range<usize>;
+    fn to_range(self, max: usize) -> Range<usize>;
 }
 
-impl TextRange for usize {
-    fn to_range_fwd(self, max: usize) -> Range<usize> {
-        self.min(max)..max
-    }
-
-    fn to_range_rev(self, max: usize) -> Range<usize> {
-        max..self.min(max)
-    }
-
-    fn to_range_at(self, max: usize) -> Range<usize> {
-        self.min(max)..(self + 1).min(max)
-    }
-}
-
-impl TextRange for Range<usize> {
-    fn to_range_fwd(self, max: usize) -> Range<usize> {
-        self.start.min(max)..self.end.min(max)
-    }
-
-    fn to_range_rev(self, max: usize) -> Range<usize> {
-        self.start.min(max)..self.end.min(max)
-    }
-
-    fn to_range_at(self, max: usize) -> Range<usize> {
-        self.start.min(max)..self.end.min(max)
-    }
-}
-
-impl TextRange for RangeInclusive<usize> {
-    fn to_range_fwd(self, max: usize) -> Range<usize> {
-        max.min(*self.start())..max.min(self.end() + 1)
-    }
-
-    fn to_range_rev(self, max: usize) -> Range<usize> {
-        max.min(*self.start())..max.min(self.end() + 1)
-    }
-
-    fn to_range_at(self, max: usize) -> Range<usize> {
-        max.min(*self.start())..max.min(self.end() + 1)
-    }
-}
-
-impl TextRange for RangeTo<usize> {
-    fn to_range_fwd(self, max: usize) -> Range<usize> {
-        0..max.min(self.end)
-    }
-
-    fn to_range_rev(self, max: usize) -> Range<usize> {
-        0..max.min(self.end)
-    }
-
-    fn to_range_at(self, max: usize) -> Range<usize> {
-        0..max.min(self.end)
-    }
-}
-
-impl TextRange for RangeToInclusive<usize> {
-    fn to_range_fwd(self, max: usize) -> Range<usize> {
-        0..max.min(self.end + 1)
-    }
-
-    fn to_range_rev(self, max: usize) -> Range<usize> {
-        0..max.min(self.end + 1)
-    }
-
-    fn to_range_at(self, max: usize) -> Range<usize> {
-        0..max.min(self.end + 1)
-    }
-}
-
-impl TextRange for RangeFrom<usize> {
-    fn to_range_fwd(self, max: usize) -> Range<usize> {
-        max.min(self.start)..max
-    }
-
-    fn to_range_rev(self, max: usize) -> Range<usize> {
-        max.min(self.start)..max
-    }
-
-    fn to_range_at(self, max: usize) -> Range<usize> {
-        max.min(self.start)..max
-    }
-}
+implTextRange!(Range, r, r.start, r.end, r.start.byte(), r.end.byte());
+implTextRange!(
+    RangeInclusive,
+    r,
+    *r.start(),
+    r.end() + 1,
+    r.start().byte(),
+    r.end().byte() + 1
+);
+implTextRange!(RangeTo, r, 0, r.end, 0, r.end.byte());
+implTextRange!(RangeToInclusive, r, 0, r.end, 0, r.end.byte());
+implTextRange!(RangeFrom, r, r.start, MAX, r.start.byte(), MAX);
 
 impl TextRange for RangeFull {
-    fn to_range_fwd(self, max: usize) -> Range<usize> {
-        0..max
-    }
-
-    fn to_range_rev(self, max: usize) -> Range<usize> {
-        0..max
-    }
-
-    fn to_range_at(self, max: usize) -> Range<usize> {
+    fn to_range(self, max: usize) -> Range<usize> {
         0..max
     }
 }
+/// Either a [`TextRange`], a [`usize`] or a [`Point`]
+///
+/// This trait's purpose is to be used for [`Tag`] removal in the
+/// [`MutTags::remove`] and [`Text::remove_tags`] functions. This is
+/// useful in order to reduce the number of functions exposed to API
+/// users.
+///
+/// [`Tag`]: super::Tag
+/// [`MutTags::remove`]: super::MutTags::remove
+/// [`Text::remove_tags`]: super::Text::remove_tags
+pub trait TextRangeOrPoint {
+    fn to_range(self, max: usize) -> Range<usize>;
+}
 
-impl TextRange for Point {
-    fn to_range_fwd(self, max: usize) -> Range<usize> {
-        self.byte().min(max)..max
-    }
-
-    fn to_range_rev(self, max: usize) -> Range<usize> {
-        0..self.byte().min(max)
-    }
-
-    fn to_range_at(self, max: usize) -> Range<usize> {
-        self.byte().min(max)..(self.byte() + 1).min(max)
+impl TextRangeOrPoint for usize {
+    fn to_range(self, max: usize) -> Range<usize> {
+        max.min(self)..max.min(self + 1)
     }
 }
 
-impl TextRange for (Point, Point) {
-    fn to_range_fwd(self, max: usize) -> Range<usize> {
-        self.0.byte().min(max)..self.1.byte().min(max)
-    }
-
-    fn to_range_rev(self, max: usize) -> Range<usize> {
-        self.0.byte().min(max)..self.1.byte().min(max)
-    }
-
-    fn to_range_at(self, max: usize) -> Range<usize> {
-        self.0.byte().min(max)..self.1.byte().min(max)
+impl TextRangeOrPoint for Point {
+    fn to_range(self, max: usize) -> Range<usize> {
+        max.min(self.byte())..max.min(self.byte() + 1)
     }
 }
 
-impl TextRange for (Option<Point>, Option<Point>) {
-    fn to_range_fwd(self, max: usize) -> Range<usize> {
-        match self {
-            (None, None) => (..).to_range_fwd(max),
-            (None, Some(end)) => (..end.byte()).to_range_fwd(max),
-            (Some(start), None) => (start.byte()..).to_range_fwd(max),
-            (Some(start), Some(end)) => (start.byte()..end.byte()).to_range_fwd(max),
-        }
-    }
-
-    fn to_range_rev(self, max: usize) -> Range<usize> {
-        match self {
-            (None, None) => (..).to_range_rev(max),
-            (None, Some(end)) => (..end.byte()).to_range_rev(max),
-            (Some(start), None) => (start.byte()..).to_range_rev(max),
-            (Some(start), Some(end)) => (start.byte()..end.byte()).to_range_rev(max),
-        }
-    }
-
-    fn to_range_at(self, max: usize) -> Range<usize> {
-        match self {
-            (None, None) => (..).to_range_rev(max),
-            (None, Some(end)) => (..end.byte()).to_range_rev(max),
-            (Some(start), None) => (start.byte()..).to_range_rev(max),
-            (Some(start), Some(end)) => (start.byte()..end.byte()).to_range_rev(max),
-        }
-    }
-}
-
-impl TextRange for (Point, Option<Point>) {
-    fn to_range_fwd(self, max: usize) -> Range<usize> {
-        match self {
-            (start, None) => (start.byte()..).to_range_fwd(max),
-            (start, Some(end)) => (start.byte()..end.byte()).to_range_fwd(max),
-        }
-    }
-
-    fn to_range_rev(self, max: usize) -> Range<usize> {
-        match self {
-            (start, None) => (start.byte()..).to_range_rev(max),
-            (start, Some(end)) => (start.byte()..end.byte()).to_range_rev(max),
-        }
-    }
-
-    fn to_range_at(self, max: usize) -> Range<usize> {
-        match self {
-            (start, None) => (start.byte()..).to_range_rev(max),
-            (start, Some(end)) => (start.byte()..end.byte()).to_range_rev(max),
-        }
-    }
-}
-
-impl TextRange for (Option<Point>, Point) {
-    fn to_range_fwd(self, max: usize) -> Range<usize> {
-        match self {
-            (None, end) => (..end.byte()).to_range_fwd(max),
-            (Some(start), end) => (start.byte()..end.byte()).to_range_fwd(max),
-        }
-    }
-
-    fn to_range_rev(self, max: usize) -> Range<usize> {
-        match self {
-            (None, end) => (..end.byte()).to_range_rev(max),
-            (Some(start), end) => (start.byte()..end.byte()).to_range_rev(max),
-        }
-    }
-
-    fn to_range_at(self, max: usize) -> Range<usize> {
-        match self {
-            (None, end) => (..end.byte()).to_range_rev(max),
-            (Some(start), end) => (start.byte()..end.byte()).to_range_rev(max),
-        }
-    }
-}
+implTextRangeOrPoint!(Range);
+implTextRangeOrPoint!(RangeInclusive);
+implTextRangeOrPoint!(RangeTo);
+implTextRangeOrPoint!(RangeToInclusive);
+implTextRangeOrPoint!(RangeFrom);
 
 /// Two positions, one for the [`Text`], and one for [ghost text]
 ///
@@ -467,5 +293,37 @@ impl TwoPoints for (Point, Option<Point>) {
 impl TwoPoints for Item {
     fn to_points(self) -> (Point, Option<Point>) {
         (self.real, self.ghost)
+    }
+}
+
+const MAX: usize = usize::MAX;
+
+macro implTextRange($range:ident, $r:ident, $sb:expr, $eb:expr, $sp:expr, $ep:expr) {
+    impl TextRange for $range<usize> {
+        fn to_range(self, max: usize) -> Range<usize> {
+            let $r = self;
+            max.min($sb)..max.min($eb)
+        }
+    }
+
+    impl TextRange for $range<Point> {
+        fn to_range(self, max: usize) -> Range<usize> {
+            let $r = self;
+            max.min($sp)..max.min($ep)
+        }
+    }
+}
+
+macro implTextRangeOrPoint($range:ident) {
+    impl TextRangeOrPoint for $range<usize> {
+        fn to_range(self, max: usize) -> Range<usize> {
+            <$range<usize> as TextRange>::to_range(self, max)
+        }
+    }
+
+    impl TextRangeOrPoint for $range<Point> {
+        fn to_range(self, max: usize) -> Range<usize> {
+            <$range<Point> as TextRange>::to_range(self, max)
+        }
     }
 }
