@@ -252,6 +252,12 @@ impl TextRangeOrPoint for Point {
     }
 }
 
+impl TextRangeOrPoint for RangeFull {
+    fn to_range(self, max: usize) -> Range<usize> {
+        TextRange::to_range(self, max)
+    }
+}
+
 implTextRangeOrPoint!(Range);
 implTextRangeOrPoint!(RangeInclusive);
 implTextRangeOrPoint!(RangeTo);
@@ -317,13 +323,13 @@ macro implTextRange($range:ident, $r:ident, $sb:expr, $eb:expr, $sp:expr, $ep:ex
 macro implTextRangeOrPoint($range:ident) {
     impl TextRangeOrPoint for $range<usize> {
         fn to_range(self, max: usize) -> Range<usize> {
-            <$range<usize> as TextRange>::to_range(self, max)
+            TextRange::to_range(self, max)
         }
     }
 
     impl TextRangeOrPoint for $range<Point> {
         fn to_range(self, max: usize) -> Range<usize> {
-            <$range<Point> as TextRange>::to_range(self, max)
+            TextRange::to_range(self, max)
         }
     }
 }

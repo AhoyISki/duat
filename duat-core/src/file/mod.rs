@@ -284,7 +284,7 @@ impl<U: Ui> File<U> {
         }
     }
 
-    pub fn get_reader<R: Reader<U>>(&mut self) -> Option<RwData<R>> {
+    pub fn get_reader<R: Reader<U>>(&self) -> Option<RwData<R>> {
         self.readers.get()
     }
 }

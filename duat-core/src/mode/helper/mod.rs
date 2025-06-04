@@ -14,8 +14,8 @@ use crate::{
     cfg::PrintCfg,
     context::FileHandle,
     data::{Pass, RwData},
-    file::File,
-    text::{Change, Lines, Point, RegexPattern, Searcher, Strs, Text, TextRange},
+    file::{File, Reader},
+    text::{Bytes, Change, Lines, Point, RegexPattern, Searcher, Strs, Text, TextRange},
     ui::{RawArea, Ui},
     widget::Widget,
 };
@@ -1001,6 +1001,20 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Editor<'a, W, A, S> {
     /// The [`PrintCfg`] in use
     pub fn cfg(&self) -> PrintCfg {
         self.widget.print_cfg()
+    }
+}
+
+impl<U: Ui, S> Editor<'_, File<U>, U::Area, S> {
+    pub fn read_bytes_and_reader<R: Reader<U>, Ret>(
+        &self,
+        f: impl FnOnce(&Bytes, &R) -> Ret,
+    ) -> Option<Ret> {
+        // SAFETY: Since the creation of an Editor requires the use of a &mut
+        // Pass, It should be safe to read a Reader, since it cannot be a
+        // File.
+        self.widget.get_reader().map(|reader| unsafe {
+            reader.read_unsafe(|reader| f(self.widget.text().bytes(), reader))
+        })
     }
 }
 

@@ -131,7 +131,7 @@ impl<U: Ui> Readers<U> {
         })
     }
 
-    pub fn get<R: Reader<U>>(&mut self) -> Option<RwData<R>> {
+    pub fn get<R: Reader<U>>(&self) -> Option<RwData<R>> {
         if TypeId::of::<R>() == TypeId::of::<()>() {
             return None;
         }
