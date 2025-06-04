@@ -9,6 +9,7 @@
 //! with the [`PubTsParser`] public API.
 //!
 //! [tree-sitter]: https://tree-sitter.github.io/tree-sitter
+#![feature(closure_lifetime_binder)]
 use std::{
     collections::HashMap,
     fs,
@@ -22,9 +23,10 @@ use duat_core::{
     Lender, add_shifts,
     cfg::PrintCfg,
     data::{Pass, RwData},
-    file::{BytesDataMap, RangeList, Reader, ReaderCfg},
+    file::{BytesDataMap, File, RangeList, Reader, ReaderCfg},
     form::{self, Form, FormId},
     hook::{self, OnFileOpen},
+    mode::Editor,
     text::{Bytes, Change, Key, Matcheable, Moment, MutTags, Point, Tag, Text},
     ui::Ui,
 };
@@ -454,6 +456,241 @@ impl TsParser {
 
         self.reparse_sub_trees(bytes);
     }
+
+    fn indent_on(&self, p: Point, bytes: &Bytes, cfg: PrintCfg) -> Option<usize> {
+        let (.., Queries { indents, .. }) = &self.lang_parts;
+        if indents.pattern_count() == 0 {
+            return None;
+        }
+        let tab = cfg.tab_stops.size() as i32;
+        let [start, _] = bytes.points_of_line(p.line());
+
+        // TODO: Get injected trees
+        let root = self.tree.root_node();
+
+        type Captures<'a> = HashMap<&'a str, HashMap<usize, HashMap<&'a str, Option<&'a str>>>>;
+        let mut caps: Captures = HashMap::new();
+        let q = {
+            let mut cursor = QueryCursor::new();
+            let buf = TsBuf(bytes);
+            cursor.matches(indents, root, buf).for_each(|qm| {
+                for cap in qm.captures.iter() {
+                    let cap_end = indents.capture_names()[cap.index as usize]
+                        .strip_prefix("indent.")
+                        .unwrap();
+                    let nodes = if let Some(nodes) = caps.get_mut(cap_end) {
+                        nodes
+                    } else {
+                        caps.insert(cap_end, HashMap::new());
+                        caps.get_mut(cap_end).unwrap()
+                    };
+                    let props = indents.property_settings(qm.pattern_index).iter();
+                    nodes.insert(
+                        cap.node.id(),
+                        props
+                            .map(|p| {
+                                let key = p.key.strip_prefix("indent.").unwrap();
+                                (key, p.value.as_deref())
+                            })
+                            .collect(),
+                    );
+                }
+            });
+            |caps: &Captures, node: Node, queries: &[&str]| {
+                caps.get(queries[0])
+                    .and_then(|nodes| nodes.get(&node.id()))
+                    .is_some_and(|props| {
+                        let key = queries.get(1);
+                        key.is_none_or(|key| props.iter().any(|(k, _)| k == key))
+                    })
+            }
+        };
+
+        // The first non indent character of this line.
+        let indented_start = bytes
+            .chars_fwd(start)
+            .take_while(|(p, _)| p.line() == start.line())
+            .find_map(|(p, c)| (!c.is_whitespace()).then_some(p));
+
+        let mut opt_node = if let Some(indented_start) = indented_start {
+            Some(descendant_in(root, indented_start.byte()))
+        // If the line is empty, look behind for another.
+        } else {
+            // Find last previous empty line.
+            let mut lines = bytes.lines(..start).rev();
+            let Some((prev_l, line)) =
+                lines.find(|(_, line)| !(line.matches(r"^\s*$", ..).unwrap()))
+            else {
+                // If there is no previous non empty line, align to 0.
+                return Some(0);
+            };
+            let trail = line.chars().rev().take_while(|c| c.is_whitespace()).count();
+
+            let [prev_start, prev_end] = bytes.points_of_line(prev_l);
+            let mut node = descendant_in(root, prev_end.byte() - (trail + 1));
+            if node.kind().contains("comment") {
+                // Unless the whole line is a comment, try to find the last node
+                // before the comment.
+                // This technically fails if there are multiple block comments.
+                let first_node = descendant_in(root, prev_start.byte());
+                if first_node.id() != node.id() {
+                    node = descendant_in(root, node.start_byte() - 1)
+                }
+            }
+
+            Some(if q(&caps, node, &["end"]) {
+                descendant_in(root, start.byte())
+            } else {
+                node
+            })
+        };
+
+        if q(&caps, opt_node.unwrap(), &["zero"]) {
+            return Some(0);
+        }
+
+        let mut indent = 0;
+        let mut processed_lines = Vec::new();
+        while let Some(node) = opt_node {
+            // If a node is not an indent and is marked as auto or ignore, act
+            // accordingly.
+            if !q(&caps, node, &["begin"])
+                && node.start_position().row < p.line()
+                && p.line() <= node.end_position().row
+            {
+                if !q(&caps, node, &["align"]) && q(&caps, node, &["auto"]) {
+                    return None;
+                } else if q(&caps, node, &["ignore"]) {
+                    return Some(0);
+                }
+            }
+
+            let s_line = node.range().start_point.row;
+            let e_line = node.range().end_point.row;
+            let should_process = !processed_lines.contains(&s_line);
+
+            let mut is_processed = false;
+
+            if should_process
+                && ((s_line == p.line() && q(&caps, node, &["branch"]))
+                    || (s_line != p.line() && q(&caps, node, &["dedent"])))
+            {
+                indent -= tab;
+                is_processed = true;
+            }
+
+            let is_in_err = should_process && node.parent().is_some_and(|p| p.is_error());
+            // Indent only if the node spans more than one line, or under other
+            // special circumstances.
+            if should_process
+                && q(&caps, node, &["begin"])
+                && (s_line != e_line || is_in_err || q(&caps, node, &["begin", "immediate"]))
+                && (s_line != p.line() || q(&caps, node, &["begin", "start_at_same_line"]))
+            {
+                is_processed = true;
+                indent += tab;
+            }
+
+            if is_in_err && !q(&caps, node, &["align"]) {
+                let mut cursor = node.walk();
+                for child in node.children(&mut cursor) {
+                    if q(&caps, child, &["align"]) {
+                        let props = caps["align"][&child.id()].clone();
+                        caps.get_mut("align").unwrap().insert(node.id(), props);
+                    }
+                }
+            }
+
+            type FoundDelim<'a> = (Option<Node<'a>>, bool);
+            let find_delim = for<'a, 'b> |node: Node<'a>, delim: &'b str| -> FoundDelim<'a> {
+                let mut c = node.walk();
+                let child = node.children(&mut c).find(|child| child.kind() == delim);
+                let ret = child.map(|child| {
+                    let [_, end] = bytes.points_of_line(child.range().start_point.row);
+                    let range = child.range().start_byte..end.byte();
+
+                    let is_last_in_line = if let Some(line) = bytes.get_contiguous(range.clone()) {
+                        line.split_whitespace().any(|w| w != delim)
+                    } else {
+                        let line = bytes.strs(range).to_string();
+                        line.split_whitespace().any(|w| w != delim)
+                    };
+
+                    (child, is_last_in_line)
+                });
+                let (child, is_last_in_line) = ret.unzip();
+                (child, is_last_in_line.unwrap_or(false))
+            };
+
+            if should_process
+                && q(&caps, node, &["align"])
+                && (s_line != e_line || is_in_err)
+                && s_line != p.line()
+            {
+                let props = &caps["align"][&node.id()];
+                let (o_delim_node, o_is_last_in_line) = props
+                    .get(&"open_delimiter")
+                    .and_then(|delim| delim.map(|d| find_delim(node, d)))
+                    .unwrap_or((Some(node), false));
+                let (c_delim_node, c_is_last_in_line) = props
+                    .get(&"close_delimiter")
+                    .and_then(|delim| delim.map(|d| find_delim(node, d)))
+                    .unwrap_or((Some(node), false));
+
+                if let Some(o_delim_node) = o_delim_node {
+                    let o_s_line = o_delim_node.start_position().row;
+                    let o_s_col = o_delim_node.start_position().row;
+                    let c_s_line = c_delim_node.map(|n| n.start_position().row);
+
+                    // If the previous line was marked with an open_delimiter, treat it
+                    // like an indent.
+                    let indent_is_absolute = if o_is_last_in_line && should_process {
+                        indent += tab;
+                        // If the aligned node ended before the current line, its @align
+                        // shouldn't affect it.
+                        if c_is_last_in_line && c_s_line.is_some_and(|l| l < p.line()) {
+                            indent = (indent - 1).max(0);
+                        }
+                        false
+                    // Aligned indent
+                    } else if c_is_last_in_line
+                        && let Some(c_s_line) = c_s_line
+                        // If the aligned node ended before the current line, its @align
+                        // shouldn't affect it.
+                        && (o_s_line != c_s_line && c_s_line < p.line())
+                    {
+                        indent = (indent - 1).max(0);
+                        false
+                    } else {
+                        let inc = props.get("increment").cloned().flatten();
+                        indent = o_s_col as i32 + inc.map(str::parse::<i32>).unwrap().unwrap();
+                        true
+                    };
+
+                    // If this is the last line of the @align, then some additional
+                    // indentation may be needed to avoid clashes. This is the case in
+                    // some function parameters, for example.
+                    let avoid_last_matching_next = c_s_line
+                        .is_some_and(|c_s_line| c_s_line != o_s_line && c_s_line == p.line())
+                        && props.contains_key("avoid_last_matching_next");
+                    if avoid_last_matching_next {
+                        indent += tab;
+                    }
+                    is_processed = true;
+                    if indent_is_absolute {
+                        return Some(indent as usize);
+                    }
+                }
+            }
+
+            if should_process && is_processed {
+                processed_lines.push(s_line);
+            }
+            opt_node = node.parent();
+        }
+
+        Some(indent as usize)
+    }
 }
 
 impl<U: Ui> Reader<U> for TsParser {
@@ -548,246 +785,6 @@ impl<U: Ui> ReaderCfg<U> for TsParserCfg {
             self.lang_parts,
             self.form_parts,
         ))
-    }
-}
-
-pub struct PubTsParser<'a>(&'a mut TsParser, &'a mut Bytes);
-
-impl<'a> PubTsParser<'a> {
-    pub fn lang(&self) -> &'static str {
-        self.0.lang_parts.0
-    }
-
-    /// Returns the indentation difference from the previous line
-    // WARNING: long ass function
-    pub fn indent_on(&mut self, p: Point, cfg: PrintCfg) -> Option<usize> {
-        let (.., Queries { indents, .. }) = &self.0.lang_parts;
-        if indents.pattern_count() == 0 {
-            return None;
-        }
-        let tab = cfg.tab_stops.size() as i32;
-        let [start, _] = self.1.points_of_line(p.line());
-
-        // TODO: Get injected trees
-        let root = self.0.tree.root_node();
-
-        type Captures<'a> = HashMap<&'a str, HashMap<usize, HashMap<&'a str, Option<&'a str>>>>;
-        let mut caps: Captures = HashMap::new();
-        let q = {
-            let mut cursor = QueryCursor::new();
-            let buf = TsBuf(self.1);
-            cursor.matches(indents, root, buf).for_each(|qm| {
-                for cap in qm.captures.iter() {
-                    let cap_end = indents.capture_names()[cap.index as usize]
-                        .strip_prefix("indent.")
-                        .unwrap();
-                    let nodes = if let Some(nodes) = caps.get_mut(cap_end) {
-                        nodes
-                    } else {
-                        caps.insert(cap_end, HashMap::new());
-                        caps.get_mut(cap_end).unwrap()
-                    };
-                    let props = indents.property_settings(qm.pattern_index).iter();
-                    nodes.insert(
-                        cap.node.id(),
-                        props
-                            .map(|p| {
-                                let key = p.key.strip_prefix("indent.").unwrap();
-                                (key, p.value.as_deref())
-                            })
-                            .collect(),
-                    );
-                }
-            });
-            |caps: &Captures, node: Node, queries: &[&str]| {
-                caps.get(queries[0])
-                    .and_then(|nodes| nodes.get(&node.id()))
-                    .is_some_and(|props| {
-                        let key = queries.get(1);
-                        key.is_none_or(|key| props.iter().any(|(k, _)| k == key))
-                    })
-            }
-        };
-
-        // The first non indent character of this line.
-        let indented_start = self
-            .1
-            .chars_fwd(start)
-            .take_while(|(p, _)| p.line() == start.line())
-            .find_map(|(p, c)| (!c.is_whitespace()).then_some(p));
-
-        let mut opt_node = if let Some(indented_start) = indented_start {
-            Some(descendant_in(root, indented_start.byte()))
-        // If the line is empty, look behind for another.
-        } else {
-            // Find last previous empty line.
-            let mut lines = self.1.lines(..start).rev();
-            let Some((prev_l, line)) =
-                lines.find(|(_, line)| !(line.matches(r"^\s*$", ..).unwrap()))
-            else {
-                // If there is no previous non empty line, align to 0.
-                return Some(0);
-            };
-            let trail = line.chars().rev().take_while(|c| c.is_whitespace()).count();
-
-            let [prev_start, prev_end] = self.1.points_of_line(prev_l);
-            let mut node = descendant_in(root, prev_end.byte() - (trail + 1));
-            if node.kind().contains("comment") {
-                // Unless the whole line is a comment, try to find the last node
-                // before the comment.
-                // This technically fails if there are multiple block comments.
-                let first_node = descendant_in(root, prev_start.byte());
-                if first_node.id() != node.id() {
-                    node = descendant_in(root, node.start_byte() - 1)
-                }
-            }
-
-            Some(if q(&caps, node, &["end"]) {
-                descendant_in(root, start.byte())
-            } else {
-                node
-            })
-        };
-
-        if q(&caps, opt_node.unwrap(), &["zero"]) {
-            return Some(0);
-        }
-
-        let mut indent = 0;
-        let mut processed_lines = Vec::new();
-        while let Some(node) = opt_node {
-            // If a node is not an indent and is marked as auto or ignore, act
-            // accordingly.
-            if !q(&caps, node, &["begin"])
-                && node.start_position().row < p.line()
-                && p.line() <= node.end_position().row
-            {
-                if !q(&caps, node, &["align"]) && q(&caps, node, &["auto"]) {
-                    return None;
-                } else if q(&caps, node, &["ignore"]) {
-                    return Some(0);
-                }
-            }
-
-            let s_line = node.range().start_point.row;
-            let e_line = node.range().end_point.row;
-            let should_process = !processed_lines.contains(&s_line);
-
-            let mut is_processed = false;
-
-            if should_process
-                && ((s_line == p.line() && q(&caps, node, &["branch"]))
-                    || (s_line != p.line() && q(&caps, node, &["dedent"])))
-            {
-                indent -= tab;
-                is_processed = true;
-            }
-
-            let is_in_err = should_process && node.parent().is_some_and(|p| p.is_error());
-            // Indent only if the node spans more than one line, or under other
-            // special circumstances.
-            if should_process
-                && q(&caps, node, &["begin"])
-                && (s_line != e_line || is_in_err || q(&caps, node, &["begin", "immediate"]))
-                && (s_line != p.line() || q(&caps, node, &["begin", "start_at_same_line"]))
-            {
-                is_processed = true;
-                indent += tab;
-            }
-
-            if is_in_err && !q(&caps, node, &["align"]) {
-                let mut cursor = node.walk();
-                for child in node.children(&mut cursor) {
-                    if q(&caps, child, &["align"]) {
-                        let props = caps["align"][&child.id()].clone();
-                        caps.get_mut("align").unwrap().insert(node.id(), props);
-                    }
-                }
-            }
-
-            type FoundDelim<'a> = (Option<Node<'a>>, bool);
-            fn find_delim<'a>(bytes: &mut Bytes, node: Node<'a>, delim: &str) -> FoundDelim<'a> {
-                let mut c = node.walk();
-                let child = node.children(&mut c).find(|child| child.kind() == delim);
-                let ret = child.map(|child| {
-                    let [_, end] = bytes.points_of_line(child.range().start_point.row);
-                    let range = child.range().start_byte..end.byte();
-                    let line = bytes.contiguous(range);
-                    let is_last_in_line = line.split_whitespace().any(|w| w != delim);
-                    (child, is_last_in_line)
-                });
-                let (child, is_last_in_line) = ret.unzip();
-                (child, is_last_in_line.unwrap_or(false))
-            }
-
-            if should_process
-                && q(&caps, node, &["align"])
-                && (s_line != e_line || is_in_err)
-                && s_line != p.line()
-            {
-                let props = &caps["align"][&node.id()];
-                let (o_delim_node, o_is_last_in_line) = props
-                    .get(&"open_delimiter")
-                    .and_then(|delim| delim.map(|d| find_delim(self.1, node, d)))
-                    .unwrap_or((Some(node), false));
-                let (c_delim_node, c_is_last_in_line) = props
-                    .get(&"close_delimiter")
-                    .and_then(|delim| delim.map(|d| find_delim(self.1, node, d)))
-                    .unwrap_or((Some(node), false));
-
-                if let Some(o_delim_node) = o_delim_node {
-                    let o_s_line = o_delim_node.start_position().row;
-                    let o_s_col = o_delim_node.start_position().row;
-                    let c_s_line = c_delim_node.map(|n| n.start_position().row);
-
-                    // If the previous line was marked with an open_delimiter, treat it
-                    // like an indent.
-                    let indent_is_absolute = if o_is_last_in_line && should_process {
-                        indent += tab;
-                        // If the aligned node ended before the current line, its @align
-                        // shouldn't affect it.
-                        if c_is_last_in_line && c_s_line.is_some_and(|l| l < p.line()) {
-                            indent = (indent - 1).max(0);
-                        }
-                        false
-                    // Aligned indent
-                    } else if c_is_last_in_line
-                        && let Some(c_s_line) = c_s_line
-                        // If the aligned node ended before the current line, its @align
-                        // shouldn't affect it.
-                        && (o_s_line != c_s_line && c_s_line < p.line())
-                    {
-                        indent = (indent - 1).max(0);
-                        false
-                    } else {
-                        let inc = props.get("increment").cloned().flatten();
-                        indent = o_s_col as i32 + inc.map(str::parse::<i32>).unwrap().unwrap();
-                        true
-                    };
-
-                    // If this is the last line of the @align, then some additional
-                    // indentation may be needed to avoid clashes. This is the case in
-                    // some function parameters, for example.
-                    let avoid_last_matching_next = c_s_line
-                        .is_some_and(|c_s_line| c_s_line != o_s_line && c_s_line == p.line())
-                        && props.contains_key("avoid_last_matching_next");
-                    if avoid_last_matching_next {
-                        indent += tab;
-                    }
-                    is_processed = true;
-                    if indent_is_absolute {
-                        return Some(indent as usize);
-                    }
-                }
-            }
-
-            if should_process && is_processed {
-                processed_lines.push(s_line);
-            }
-            opt_node = node.parent();
-        }
-
-        Some(indent as usize)
     }
 }
 
@@ -1001,4 +998,57 @@ fn query_from_path(path: impl AsRef<Path>, language: &Language) -> Option<&'stat
 
         query
     })
+}
+
+/// Convenience methods for use of tree-sitter in [`File`]s
+pub trait TsFile {
+    /// The level of indentation required at a certain [`Point`]
+    ///
+    /// This is determined by a query, currently, it is the query
+    /// located in
+    /// `"{plugin_dir}/duat-treesitter/queries/{lang}/indent.scm"`
+    fn ts_indent_on(&self, p: Point) -> Option<usize>;
+}
+
+impl<U: Ui> TsFile for File<U> {
+    fn ts_indent_on(&self, p: Point) -> Option<usize> {
+        self.get_reader::<TsParser>()
+            .map(|reader| {
+                // SAFETY: Since this requires the borrowing of an RwDataFile,
+                unsafe {
+                    reader.read_unsafe(|ts| ts.indent_on(p, self.text().bytes(), self.print_cfg()))
+                }
+            })
+            .flatten()
+    }
+}
+
+/// Convenience methods for use of tree-sitter in [`Editor`]s
+pub trait TsEditor {
+    /// The level of indentation required at the [`Editor`]'s `caret`
+    ///
+    /// This is determined by a query, currently, it is the query
+    /// located in
+    /// `"{plugin_dir}/duat-treesitter/queries/{lang}/indent.scm"`
+    fn ts_indent(&self) -> Option<usize>;
+
+    /// The level of indentation required at a certain [`Point`]
+    ///
+    /// This is determined by a query, currently, it is the query
+    /// located in
+    /// `"{plugin_dir}/duat-treesitter/queries/{lang}/indent.scm"`
+    fn ts_indent_on(&self, p: Point) -> Option<usize>;
+}
+
+impl<U: Ui, S> TsEditor for Editor<'_, File<U>, U::Area, S> {
+    fn ts_indent(&self) -> Option<usize> {
+        self.ts_indent_on(self.caret())
+    }
+
+    fn ts_indent_on(&self, p: Point) -> Option<usize> {
+        let cfg = self.cfg();
+
+        self.read_bytes_and_reader(|bytes, reader: &TsParser| reader.indent_on(p, bytes, cfg))
+            .flatten()
+    }
 }
