@@ -4,11 +4,11 @@ use std::{collections::HashMap, path::PathBuf, sync::LazyLock};
 use regex::RegexSet;
 
 pub trait FileType {
-    fn filetype(&self) -> Option<&str>;
+    fn filetype(&self) -> Option<&'static str>;
 }
 
-impl FileType for duat_core::widgets::File {
-    fn filetype(&self) -> Option<&str> {
+impl<U: duat_core::ui::Ui> FileType for duat_core::file::File<U> {
+    fn filetype(&self) -> Option<&'static str> {
         let path = PathBuf::from(self.path_set()?);
 
         path.extension()
@@ -76,7 +76,7 @@ static EXTENSIONS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new
         ("ref", "b"),
         ("imp", "b"),
         ("mch", "b"),
-        // TODO: implement detection of basic (form WHOM???)
+        // TODO: implement detection of basic (for WHOM???)
         ("bas", "basic"),
         ("bass", "bass"),
         ("bi", "basic"),
@@ -614,12 +614,12 @@ static EXTENSIONS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new
         ("mpl", "maple"),
         ("mv", "maple"),
         // TODO: could be fake markdowns
-        ("mkdn", "md"),
-        ("md", "md"),
-        ("mdwn", "md"),
-        ("mkd", "md"),
-        ("markdown", "md"),
-        ("mdown", "md"),
+        ("mkdn", "markdown"),
+        ("md", "markdown"),
+        ("mdwn", "markdown"),
+        ("mkd", "markdown"),
+        ("markdown", "markdown"),
+        ("mdown", "markdown"),
         ("masm", "masm"),
         ("mhtml", "mason"),
         ("mason", "mason"),
@@ -2445,7 +2445,7 @@ static PATTERNS: LazyLock<(RegexSet, Vec<&str>)> = LazyLock::new(|| {
 });
 
 fn var(str: &str) -> String {
-    std::env::var(str).unwrap_or(String::new())
+    std::env::var(str).unwrap_or_default()
 }
 
 macro fmt($($tt:tt)*) {{
