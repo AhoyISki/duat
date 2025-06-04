@@ -557,6 +557,8 @@ pub mod hooks {
 pub mod widgets {
     pub use duat_core::widget::*;
     pub use duat_utils::widgets::*;
+
+    pub type File = duat_core::file::File<super::Ui>;
 }
 
 /// Common [`StatusLine`] fields

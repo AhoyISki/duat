@@ -67,31 +67,33 @@ mod private_exports {
     }
 
     pub macro parse_form {
-        (($appender:expr, $checker:expr), "",) => {{
+        ($appender_checker:expr, "",) => {{
             use crate::{
-                private_exports::duat_core::{context::FileHandle, data::Pass, text::Builder},
+                private_exports::duat_core::{context::FileHandle, data::Pass, form, text::Builder},
             };
 
-            let appender = move |pa: &Pass, builder: &mut Builder, handle: &mut FileHandle<_>| {
-                $appender(builder, handle);
+            let (mut appender, checker) = $appender_checker;
+            let appender = move |pa: &Pass, builder: &mut Builder, handle: &FileHandle<_>| {
+                appender(builder, handle);
                 builder.push(form::DEFAULT_ID);
             };
 
-            (appender, $checker)
+            (appender, checker)
         }},
-        (($appender:expr, $checker:expr), "", $($form:tt)*) => {{
+        ($appender_checker:expr, "", $($form:tt)*) => {{
             use crate::{
-                private_exports::duat_core::{context::FileHandle, data::Pass, text::Builder},
+                private_exports::duat_core::{context::FileHandle, data::Pass, form, text::Builder},
             };
 
+            let (mut appender, checker) = $appender_checker;
             let id = form::id_of!(concat!($(stringify!($form)),*));
 
-            let appender = move |pa: &Pass, builder: &mut Builder, handle: &mut FileHandle<_>| {
-                $appender(pa, builder, handle);
+            let appender = move |pa: &Pass, builder: &mut Builder, handle: &FileHandle<_>| {
+                appender(pa, builder, handle);
                 builder.push(id);
             };
 
-            (appender, $checker)
+            (appender, checker)
         }},
         ($pre_fn_and_checker:expr, $modif:literal, $($form:ident).*) => {{
             compile_error!(concat!("at the moment, Forms don't support modifiers like ", $modif))
