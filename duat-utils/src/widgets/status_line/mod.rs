@@ -94,7 +94,7 @@ pub struct StatusLine<U: Ui> {
 impl<U: Ui> Widget<U> for StatusLine<U> {
     type Cfg = StatusLineCfg<U>;
 
-    async fn update(mut pa: Pass<'_>, widget: RwData<Self>, _: &<U as Ui>::Area) {
+    fn update(mut pa: Pass, widget: RwData<Self>, _: &<U as Ui>::Area) {
         let (text_fn, handle) = widget.read(&pa, |wid| (wid.text_fn.clone(), wid.handle.clone()));
         let text = text_fn.borrow_mut()(&pa, handle);
         widget.write(&mut pa, |wid| wid.text = text);

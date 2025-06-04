@@ -44,7 +44,7 @@
 //! [`OnFileOpen`]: crate::hooks::OnFileOpen
 //! [`OnWindowOpen`]: crate::hooks::OnWindowOpen
 //! [`Constraint`]: crate::ui::Constraint
-use std::{self, cell::Cell, pin::Pin, rc::Rc};
+use std::{self, cell::Cell, rc::Rc};
 
 use crate::{
     cfg::PrintCfg,
@@ -294,7 +294,6 @@ use crate::{
 /// [`Form`]: crate::form::Form
 /// [`form::set_weak*`]: crate::form::set_weak
 /// [`text!`]: crate::text::text
-#[allow(async_fn_in_trait)]
 pub trait Widget<U: Ui>: 'static {
     /// The configuration type
     type Cfg: WidgetCfg<U, Widget = Self>
@@ -318,15 +317,14 @@ pub trait Widget<U: Ui>: 'static {
     /// [commands]: crate::cmd
     /// [`Mode`]: crate::mode::Mode
     /// [`update`]: Widget::update
-    // Since these Futures don't need Send, I can just use async fn :D
     #[allow(unused)]
-    async fn update(pa: Pass<'_>, widget: RwData<Self>, area: &U::Area)
+    fn update(pa: Pass, widget: RwData<Self>, area: &U::Area)
     where
         Self: Sized;
 
     /// Actions to do whenever this [`Widget`] is focused
     #[allow(unused)]
-    async fn on_focus(pa: Pass<'_>, widget: RwData<Self>, area: &U::Area)
+    fn on_focus(pa: Pass, widget: RwData<Self>, area: &U::Area)
     where
         Self: Sized,
     {
@@ -334,7 +332,7 @@ pub trait Widget<U: Ui>: 'static {
 
     /// Actions to do whenever this [`Widget`] is unfocused
     #[allow(unused)]
-    async fn on_unfocus(pa: Pass<'_>, widget: RwData<Self>, area: &U::Area)
+    fn on_unfocus(pa: Pass, widget: RwData<Self>, area: &U::Area)
     where
         Self: Sized,
     {
@@ -361,7 +359,7 @@ pub trait Widget<U: Ui>: 'static {
     /// #   fn cfg() -> Self::Cfg {
     /// #       todo!()
     /// #   }
-    /// #   async fn update(_: Pass<'_>, _: RwData<Self>, _: &<U as Ui>::Area) {
+    /// #   fn update(_: Pass<'_>, _: RwData<Self>, _: &<U as Ui>::Area) {
     /// #       todo!()
     /// #   }
     /// #   fn text(&self) -> &Text {
@@ -495,9 +493,9 @@ pub struct Node<U: Ui> {
     area: U::Area,
     busy_updating: Rc<Cell<bool>>,
     related_widgets: Related<U>,
-    on_focus: fn(&Self) -> Pin<Box<dyn Future<Output = ()>>>,
-    on_unfocus: fn(&Self) -> Pin<Box<dyn Future<Output = ()>>>,
-    update: fn(&Self) -> Pin<Box<dyn Future<Output = ()>>>,
+    on_focus: fn(&Self, Pass),
+    on_unfocus: fn(&Self, Pass),
+    update: fn(&Self, &mut Pass),
 }
 
 impl<U: Ui> Node<U> {
@@ -539,7 +537,7 @@ impl<U: Ui> Node<U> {
         self.widget.data_is::<W>()
     }
 
-    pub async fn update_and_print(&self) {
+    pub fn update_and_print(&self, mut pa: Pass) {
         self.busy_updating.set(true);
 
         self.widget.raw_write(|widget| {
@@ -547,7 +545,7 @@ impl<U: Ui> Node<U> {
             widget.text_mut().remove_cursors(&self.area, cfg);
         });
 
-        (self.update)(self).await;
+        (self.update)(self, &mut pa);
 
         self.widget.raw_write(|widget| {
             let cfg = widget.print_cfg();
@@ -592,13 +590,15 @@ impl<U: Ui> Node<U> {
         })
     }
 
-    pub(crate) fn on_focus(&self) -> Pin<Box<dyn Future<Output = ()>>> {
+    pub(crate) fn on_focus(&self, _: &mut Pass) {
         self.area.set_as_active();
-        (self.on_focus)(self)
+        // SAFETY: &mut Pass is an argument.
+        (self.on_focus)(self, unsafe { Pass::new() })
     }
 
-    pub(crate) fn on_unfocus(&self) -> Pin<Box<dyn Future<Output = ()>>> {
-        (self.on_unfocus)(self)
+    pub(crate) fn on_unfocus(&self, _: &mut Pass) {
+        // SAFETY: &mut Pass is an argument.
+        (self.on_unfocus)(self, unsafe { Pass::new() })
     }
 
     pub(crate) fn area(&self) -> &U::Area {
@@ -609,44 +609,31 @@ impl<U: Ui> Node<U> {
         self.related_widgets.as_ref()
     }
 
-    fn update_fn<W: Widget<U>>(&self) -> Pin<Box<dyn Future<Output = ()>>> {
+    fn update_fn<W: Widget<U>>(&self, _: &mut Pass) {
         let widget = self.widget.try_downcast::<W>().unwrap();
         let area = self.area.clone();
 
-        Box::pin(async move {
-            // SAFETY: Since this is an "async" function, it can only do work if
-            // .awaited, which means a RwData won't be borrowed.
-            let pa = unsafe { Pass::new() };
-
-            Widget::update(pa, widget, &area).await
-        })
+        // SAFETY: This function takes in a &mut Pass, so I can safely create
+        // others inside.
+        let pa = unsafe { Pass::new() };
+        Widget::update(pa, widget, &area);
     }
 
-    fn on_focus_fn<W: Widget<U>>(&self) -> Pin<Box<dyn Future<Output = ()>>> {
+    fn on_focus_fn<W: Widget<U>>(&self, mut pa: Pass) {
         self.area.set_as_active();
         let widget = self.widget.try_downcast().unwrap();
         let area = self.area.clone();
 
-        Box::pin(async move {
-            hook::trigger::<FocusedOn<W, U>>((widget.clone(), area.clone())).await;
-            // SAFETY: Since this is an "async" function, it can only do work if
-            // .awaited, which means a RwData won't be borrowed.
-            let pa = unsafe { Pass::new() };
-            Widget::on_focus(pa, widget, &area).await;
-        })
+        hook::trigger::<FocusedOn<W, U>>(&mut pa, (widget.clone(), area.clone()));
+        Widget::on_focus(pa, widget, &area);
     }
 
-    fn on_unfocus_fn<W: Widget<U>>(&self) -> Pin<Box<dyn Future<Output = ()>>> {
+    fn on_unfocus_fn<W: Widget<U>>(&self, mut pa: Pass) {
         let widget = self.widget.try_downcast().unwrap();
         let area = self.area.clone();
 
-        Box::pin(async move {
-            hook::trigger::<UnfocusedFrom<W, U>>((widget.clone(), area.clone())).await;
-            // SAFETY: Since this is an "async" function, it can only do work if
-            // .awaited, which means a RwData won't be borrowed.
-            let pa = unsafe { Pass::new() };
-            Widget::on_unfocus(pa, widget, &area).await;
-        })
+        hook::trigger::<UnfocusedFrom<W, U>>(&mut pa, (widget.clone(), area.clone()));
+        Widget::on_unfocus(pa, widget, &area);
     }
 }
 

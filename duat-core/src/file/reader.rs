@@ -7,9 +7,7 @@
 //! use (usually when these become visible).
 //!
 //! [`Ui`]: crate::ui::Ui
-use std::{any::TypeId, cell::RefCell, ops::Range, pin::Pin, rc::Rc};
-
-use tokio::task;
+use std::{any::TypeId, cell::RefCell, ops::Range, rc::Rc};
 
 use super::BytesDataMap;
 use crate::{
@@ -19,7 +17,6 @@ use crate::{
 };
 
 /// A [`Text`] reader, modifying it whenever a [`Change`] happens
-#[allow(unused_variables, async_fn_in_trait)]
 pub trait Reader<U: Ui>: 'static {
     /// Applies the [`Change`]s to this [`Reader`]
     ///
@@ -34,8 +31,8 @@ pub trait Reader<U: Ui>: 'static {
     /// is done in [`Reader::update_range`].
     ///
     /// There is also a
-    async fn apply_changes(
-        pa: Pass<'_>,
+    fn apply_changes(
+        pa: Pass,
         reader: RwData<Self>,
         bytes: BytesDataMap<U>,
         moment: Moment,
@@ -98,30 +95,27 @@ impl<U: Ui> Readers<U> {
                 },
                 apply_changes: |reader, bytes, moment, mut ranges_to_update| {
                     let reader = reader.try_downcast().unwrap();
-                    Box::pin(async move {
-                        // SAFETY: Since this is an async block, it cannot be .awaited while
-                        // an RwData is borrowed.
-                        let pa = unsafe { Pass::new() };
+                    // SAFETY: Since this is an async block, it cannot be .awaited while
+                    // an RwData is borrowed.
+                    let pa = unsafe { Pass::new() };
 
-                        let mut new_ranges = if ranges_to_update.is_some() {
-                            Some(RangeList::new(bytes.read(&pa, |bytes| bytes.len().byte())))
-                        } else {
-                            None
-                        };
+                    let mut new_ranges = if ranges_to_update.is_some() {
+                        Some(RangeList::new(bytes.read(&pa, |bytes| bytes.len().byte())))
+                    } else {
+                        None
+                    };
 
-                        <R::Reader>::apply_changes(pa, reader, bytes, moment, new_ranges.as_mut())
-                            .await;
+                    <R::Reader>::apply_changes(pa, reader, bytes, moment, new_ranges.as_mut());
 
-                        // SAFETY: Since the last Pass was consumed, we can create new
-                        // ones.
-                        let mut pa = unsafe { Pass::new() };
-                        if let Some(ranges_to_update) = ranges_to_update.take() {
-                            ranges_to_update.write(&mut pa, |ru| {
-                                ru.shift_by_changes(moment.changes());
-                                ru.merge(new_ranges.unwrap())
-                            });
-                        }
-                    })
+                    // SAFETY: Since the last Pass was consumed, we can create new
+                    // ones.
+                    let mut pa = unsafe { Pass::new() };
+                    if let Some(ranges_to_update) = ranges_to_update.take() {
+                        ranges_to_update.write(&mut pa, |ru| {
+                            ru.shift_by_changes(moment.changes());
+                            ru.merge(new_ranges.unwrap())
+                        });
+                    }
                 },
                 ranges_to_update: RwData::new(RangeList::new(bytes.len().byte())),
                 ty: TypeId::of::<R::Reader>(),
@@ -152,7 +146,7 @@ impl<U: Ui> Readers<U> {
         entry.reader.try_downcast()
     }
 
-    pub async fn process_changes(&self, bytes: BytesDataMap<U>, moment: Moment) {
+    pub fn process_changes(&self, bytes: BytesDataMap<U>, moment: Moment) {
         const MAX_CHANGES_TO_CONSIDER: usize = 100;
         // SAFETY: Firstly, it is impossible to aqcuire a copy of this RwData,
         // nor is it possible to call this function from somewhere else, so
@@ -175,12 +169,7 @@ impl<U: Ui> Readers<U> {
                         None
                     };
 
-                    task::spawn_local((entry.apply_changes)(
-                        entry.reader.clone(),
-                        bytes.clone(),
-                        moment,
-                        new_ranges,
-                    ));
+                    (entry.apply_changes)(entry.reader.clone(), bytes.clone(), moment, new_ranges);
                 }
             });
         }
@@ -318,12 +307,7 @@ impl RangeList {
 #[derive(Clone)]
 struct ReaderEntry<U: Ui> {
     reader: RwData<dyn Reader<U>>,
-    apply_changes: fn(
-        RwData<dyn Reader<U>>,
-        BytesDataMap<U>,
-        Moment,
-        Option<RwData<RangeList>>,
-    ) -> Pin<Box<dyn Future<Output = ()>>>,
+    apply_changes: fn(RwData<dyn Reader<U>>, BytesDataMap<U>, Moment, Option<RwData<RangeList>>),
     ranges_to_update: RwData<RangeList>,
     ty: TypeId,
 }

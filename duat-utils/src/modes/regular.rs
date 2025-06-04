@@ -13,9 +13,9 @@ pub struct Regular;
 impl<U: Ui> mode::Mode<U> for Regular {
     type Widget = File<U>;
 
-    async fn send_key(
+    fn send_key(
         &mut self,
-        mut pa: Pass<'_>,
+        mut pa: Pass,
         key: KeyEvent,
         widget: RwData<Self::Widget>,
         area: U::Area,

@@ -14,8 +14,6 @@
 //! [`History`]: crate::text::History
 use std::{fs, marker::PhantomData, path::PathBuf};
 
-use tokio::task;
-
 use self::reader::Readers;
 pub use self::reader::{RangeList, Reader, ReaderCfg};
 use crate::{
@@ -296,13 +294,13 @@ impl<U: Ui> Widget<U> for File<U> {
         FileCfg::new()
     }
 
-    async fn update(mut pa: Pass<'_>, widget: RwData<Self>, area: &U::Area) {
+    fn update(mut pa: Pass<'_>, widget: RwData<Self>, area: &U::Area) {
         let (map, readers) = widget.read(&pa, |file| {
             (BytesDataMap(widget.clone()), file.readers.clone())
         });
 
         if let Some(moment) = widget.raw_write(|file| file.text.last_unprocessed_moment()) {
-            task::spawn_local(async move { readers.process_changes(map, moment).await });
+            readers.process_changes(map, moment);
         }
 
         widget.write(&mut pa, |file| {

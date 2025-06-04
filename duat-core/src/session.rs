@@ -9,14 +9,13 @@ use std::{
 };
 
 use arboard::Clipboard;
-use tokio::task;
 
 use crate::{
     cache::{delete_cache, delete_cache_for, store_cache},
     cfg::PrintCfg,
     cmd, context,
     data::Pass,
-    file::{File, FileCfg},
+    file::{File, FileCfg, PathKind},
     file_entry, form,
     hook::{self, ConfigLoaded, ConfigUnloaded, ExitedDuat, OnFileOpen, OnWindowOpen},
     mode,
@@ -26,7 +25,6 @@ use crate::{
         WindowBuilder,
     },
     widget::{Node, WidgetCfg},
-    file::PathKind
 };
 
 static DUAT_SENDER: OnceLock<&mpsc::Sender<DuatEvent>> = OnceLock::new();
@@ -91,7 +89,7 @@ impl<U: Ui> SessionCfg<U> {
 
         // Open and process files.
         let builder = FileBuilder::new(&mut pa, node, context::cur_window());
-        task::spawn_local(hook::trigger::<OnFileOpen<U>>(builder));
+        hook::trigger::<OnFileOpen<U>>(&mut pa, builder);
 
         for file in args {
             session.open_file(&mut pa, PathBuf::from(file));
@@ -99,7 +97,7 @@ impl<U: Ui> SessionCfg<U> {
 
         // Build the window's widgets.
         let builder = WindowBuilder::new(0);
-        task::spawn_local(hook::trigger::<OnWindowOpen<U>>(builder));
+        hook::trigger::<OnWindowOpen<U>>(&mut pa, builder);
 
         session
     }
@@ -158,7 +156,7 @@ impl<U: Ui> SessionCfg<U> {
             }
 
             let builder = FileBuilder::new(&mut pa, node, context::cur_window());
-            task::spawn_local(hook::trigger::<OnFileOpen<U>>(builder));
+            hook::trigger::<OnFileOpen<U>>(&mut pa, builder);
 
             for (file_cfg, is_active) in cfgs {
                 session.open_file_from_cfg(&mut pa, file_cfg, is_active, win);
@@ -166,7 +164,7 @@ impl<U: Ui> SessionCfg<U> {
 
             // Build the window's widgets.
             let builder = WindowBuilder::new(win);
-            task::spawn_local(hook::trigger::<OnWindowOpen<U>>(builder));
+            hook::trigger::<OnWindowOpen<U>>(&mut pa, builder);
         }
 
         session
@@ -206,17 +204,16 @@ impl<U: Ui> Session<U> {
         match pushed {
             Ok((node, _)) => {
                 let builder = FileBuilder::new(&mut *pa, node, context::cur_window());
-                task::spawn_local(hook::trigger::<OnFileOpen<U>>(builder));
+                hook::trigger::<OnFileOpen<U>>(pa, builder);
             }
             Err(err) => context::notify(err),
         }
     }
 
     /// Start the application, initiating a read/response loop.
-    pub async fn start(
+    pub fn start(
         self,
         duat_rx: mpsc::Receiver<DuatEvent>,
-        local_set: task::LocalSet,
     ) -> (
         Vec<Vec<FileRet>>,
         mpsc::Receiver<DuatEvent>,
@@ -224,7 +221,8 @@ impl<U: Ui> Session<U> {
     ) {
         form::set_sender(Sender::new(sender()));
 
-        task::spawn_local(hook::trigger::<ConfigLoaded>(()));
+        // SAFETY: No Passes exists at this point in time.
+        hook::trigger::<ConfigLoaded>(&mut unsafe { Pass::new() }, ());
 
         U::flush_layout(self.ms);
 
@@ -233,7 +231,8 @@ impl<U: Ui> Session<U> {
             let windows = context::windows::<U>().borrow();
             for node in windows[win].nodes() {
                 let node = node.clone();
-                task::spawn_local(async move { node.update_and_print().await });
+                // SAFETY: No Passes exist at this point in time.
+                node.update_and_print(unsafe { Pass::new() });
             }
         }
 
@@ -241,8 +240,6 @@ impl<U: Ui> Session<U> {
         let mut reprint_screen = false;
 
         loop {
-            local_set.run_until(async {}).await;
-
             if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(20)) {
                 // SAFETY: The safeness of a Pass is dependant on there being only
                 // one at any given time, that will be asured in here, and in any
@@ -250,10 +247,10 @@ impl<U: Ui> Session<U> {
                 let mut pa = unsafe { Pass::new() };
                 match event {
                     DuatEvent::Key(key) => {
-                        task::spawn_local(mode::send_key(pa, key));
+                        mode::send_key(pa, key);
                     }
                     DuatEvent::QueuedFunction(f) => {
-                        task::spawn_local(f());
+                        f(pa);
                     }
                     DuatEvent::Resize | DuatEvent::FormChange => {
                         reprint_screen = true;
@@ -273,7 +270,7 @@ impl<U: Ui> Session<U> {
                     }
                     DuatEvent::ReloadStarted(instant) => reload_instant = Some(instant),
                     DuatEvent::ReloadConfig => {
-                        hook::trigger::<ConfigUnloaded>(()).await;
+                        hook::trigger::<ConfigUnloaded>(&mut pa, ());
                         context::order_reload_or_quit();
                         self.save_cache(&mut pa, false);
                         let ms = self.ms;
@@ -282,8 +279,8 @@ impl<U: Ui> Session<U> {
                         return (files, duat_rx, reload_instant);
                     }
                     DuatEvent::Quit => {
-                        hook::trigger::<ConfigUnloaded>(()).await;
-                        hook::trigger::<ExitedDuat>(()).await;
+                        hook::trigger::<ConfigUnloaded>(&mut pa, ());
+                        hook::trigger::<ExitedDuat>(&mut pa, ());
                         context::order_reload_or_quit();
                         self.save_cache(&mut pa, true);
                         return (Vec::new(), duat_rx, None);
@@ -296,7 +293,7 @@ impl<U: Ui> Session<U> {
                 reprint_screen = false;
                 for node in windows[win].nodes() {
                     let node = node.clone();
-                    task::spawn_local(async move { node.update_and_print().await });
+                    node.update_and_print(unsafe { Pass::new() });
                 }
 
                 continue;
@@ -309,7 +306,7 @@ impl<U: Ui> Session<U> {
                 let pa = unsafe { Pass::new() };
                 if node.needs_update(&pa) {
                     let node = node.clone();
-                    task::spawn_local(async move { node.update_and_print().await });
+                    node.update_and_print(pa);
                 }
             }
         }
@@ -401,7 +398,7 @@ impl<U: Ui> Session<U> {
         match pushed {
             Ok((node, _)) => {
                 let builder = FileBuilder::new(&mut *pa, node, context::cur_window());
-                task::spawn_local(hook::trigger::<OnFileOpen<U>>(builder));
+                hook::trigger::<OnFileOpen<U>>(pa, builder);
             }
             Err(err) => context::notify(err),
         }
@@ -513,11 +510,11 @@ impl<U: Ui> Session<U> {
 
             // Open and process files.
             let builder = FileBuilder::new(&mut *pa, node, new_win);
-            task::spawn_local(hook::trigger::<OnFileOpen<U>>(builder));
+            hook::trigger::<OnFileOpen<U>>(&mut *pa, builder);
         }
 
         let builder = WindowBuilder::new(new_win);
-        task::spawn_local(hook::trigger::<OnWindowOpen<U>>(builder));
+        hook::trigger::<OnWindowOpen<U>>(&mut *pa, builder);
 
         if context::fixed_file::<U>(&*pa)
             .unwrap()

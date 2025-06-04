@@ -85,7 +85,7 @@ impl<U: Ui> LineNumbers<U> {
 impl<U: Ui> Widget<U> for LineNumbers<U> {
     type Cfg = LineNumbersOptions<U>;
 
-    async fn update(mut pa: Pass<'_>, widget: RwData<Self>, area: &<U as Ui>::Area) {
+    fn update(mut pa: Pass, widget: RwData<Self>, area: &<U as Ui>::Area) {
         let width = widget.read(&pa, |ln| ln.calculate_width(&pa));
         area.constrain_hor([Constraint::Len(width + 1.0)]).unwrap();
 

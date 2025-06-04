@@ -17,7 +17,7 @@ use crate::{
 };
 
 mod global {
-    use std::{cell::RefCell, pin::Pin, str::Chars};
+    use std::{cell::RefCell, str::Chars};
 
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
 
@@ -32,8 +32,7 @@ mod global {
 
     thread_local! {
         static REMAPPER: &'static Remapper = Box::leak(Box::new(Remapper::new()));
-        static SEND_KEY: RefCell<fn(Pass, KeyEvent) -> Pin<Box<dyn Future<Output = ()>>>> =
-            RefCell::new(|_, _| Box::pin(async {}));
+        static SEND_KEY: RefCell<fn(Pass, KeyEvent)> = RefCell::new(|_, _| {});
     }
 
     /// Maps a sequence of keys to another
@@ -332,32 +331,30 @@ mod global {
     }
 
     /// Sends a key to be remapped
-    pub(crate) async fn send_key(data_key: Pass<'_>, mut key: KeyEvent) {
+    pub(crate) fn send_key(data_key: Pass<'_>, mut key: KeyEvent) {
         // No need to send shift to, for example, Char('L').
         if let KeyCode::Char(_) = key.code {
             key.modifiers.remove(KeyMod::SHIFT);
         }
         let send_key = { SEND_KEY.with(|sk| *sk.borrow()) };
-        send_key(data_key, key).await
+        send_key(data_key, key)
     }
 
     /// Sets the key sending function
     pub(in crate::mode) fn set_send_key<M: Mode<U>, U: Ui>() {
         SEND_KEY.with(|sk| {
             *sk.borrow_mut() = |_, key| {
-                Box::pin(async move {
-                    // SAFETY: Since this function is consuming a Pass, I can create
-                    // new ones.
-                    let pa = unsafe { Pass::new() };
-                    send_key_fn::<M, U>(pa, key).await
-                })
+                // SAFETY: Since this function is consuming a Pass, I can create
+                // new ones.
+                let pa = unsafe { Pass::new() };
+                send_key_fn::<M, U>(pa, key)
             }
         });
     }
 
     /// The key sending function, to be used as a pointer
-    async fn send_key_fn<M: Mode<U>, U: Ui>(pa: Pass<'_>, key: KeyEvent) {
-        REMAPPER.with(|r| *r).send_key::<M, U>(pa, key).await;
+    fn send_key_fn<M: Mode<U>, U: Ui>(pa: Pass<'_>, key: KeyEvent) {
+        REMAPPER.with(|r| *r).send_key::<M, U>(pa, key);
     }
 }
 
@@ -405,19 +402,14 @@ impl Remapper {
 
     /// Sends a key to be remapped or not
     #[allow(clippy::await_holding_lock)]
-    async fn send_key<M: Mode<U>, U: Ui>(&self, pa: Pass<'_>, key: KeyEvent) {
-        async fn send_key_inner<U: Ui>(
-            remapper: &Remapper,
-            mut pa: Pass<'_>,
-            ty: TypeId,
-            key: KeyEvent,
-        ) {
+    fn send_key<M: Mode<U>, U: Ui>(&self, pa: Pass<'_>, key: KeyEvent) {
+        fn send_key_inner<U: Ui>(remapper: &Remapper, mut pa: Pass<'_>, ty: TypeId, key: KeyEvent) {
             // Lock acquired here
             let remaps_list = remapper.remaps.lock().unwrap();
 
             let Some(i) = remaps_list.iter().position(|(m, _)| ty == *m) else {
                 drop(remaps_list);
-                mode::send_keys_to(pa, vec![key]).await;
+                mode::send_keys_to(pa, vec![key]);
                 return;
             };
 
@@ -446,8 +438,7 @@ impl Remapper {
                         Gives::Keys(keys) => {
                             let keys = keys.clone();
                             // Lock dropped here, before any .awaits
-                            drop(remaps_list);
-                            mode::send_keys_to(pa, keys).await
+                            mode::send_keys_to(pa, keys)
                         }
                         Gives::Mode(f) => f(),
                     }
@@ -464,19 +455,17 @@ impl Remapper {
                 }
             } else if is_alias {
                 // Lock dropped here, before any .awaits
-                drop(remaps_list);
                 pa = remove_alias_and::<U>(pa, |_, _, _| {});
                 clear_cur_seq(&mut pa);
-                mode::send_keys_to(pa, cur_seq).await;
+                mode::send_keys_to(pa, cur_seq);
             } else {
                 // Lock dropped here, before any .awaits
-                drop(remaps_list);
                 clear_cur_seq(&mut pa);
-                mode::send_keys_to(pa, cur_seq).await;
+                mode::send_keys_to(pa, cur_seq);
             }
         }
 
-        send_key_inner::<U>(self, pa, TypeId::of::<M>(), key).await;
+        send_key_inner::<U>(self, pa, TypeId::of::<M>(), key);
     }
 }
 

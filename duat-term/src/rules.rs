@@ -23,7 +23,7 @@ pub struct VertRule {
 impl Widget<Ui> for VertRule {
     type Cfg = VertRuleCfg;
 
-    async fn update(mut pa: Pass<'_>, widget: RwData<Self>, area: &Area) {
+    fn update(mut pa: Pass, widget: RwData<Self>, area: &Area) {
         let text = widget.read(&pa, |wid| {
             if let Some(handle) = wid.handle.as_ref()
                 && let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = wid.sep_char

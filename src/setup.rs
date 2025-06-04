@@ -104,20 +104,14 @@ pub fn run_duat(
         None => PrintCfg::default_for_input(),
     };
 
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(async move {
-        let local_set = tokio::task::LocalSet::new();
-        let _guard = local_set.enter();
+    cfg.set_print_cfg(print_cfg);
 
-        cfg.set_print_cfg(print_cfg);
-
-        let session = if prev.is_empty() {
-            cfg.session_from_args(ui_ms, duat_tx)
-        } else {
-            cfg.session_from_prev(ui_ms, prev, duat_tx)
-        };
-        session.start(duat_rx, local_set).await
-    })
+    let session = if prev.is_empty() {
+        cfg.session_from_args(ui_ms, duat_tx)
+    } else {
+        cfg.session_from_prev(ui_ms, prev, duat_tx)
+    };
+    session.start(duat_rx)
 }
 
 type PluginFn = dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync + 'static;

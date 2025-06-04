@@ -1,7 +1,7 @@
 mod builder;
 mod layout;
 
-use std::{cell::RefCell, fmt::Debug, pin::Pin, rc::Rc, sync::mpsc, time::Instant};
+use std::{cell::RefCell, fmt::Debug, rc::Rc, sync::mpsc, time::Instant};
 
 use bincode::{Decode, Encode};
 use crossterm::event::KeyEvent;
@@ -602,7 +602,7 @@ impl From<PushSpecs> for Axis {
 
 pub enum DuatEvent {
     Key(KeyEvent),
-    QueuedFunction(Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = ()>>> + Send>),
+    QueuedFunction(Box<dyn FnOnce(Pass) + Send>),
     Resize,
     FormChange,
     MetaMsg(Builder),

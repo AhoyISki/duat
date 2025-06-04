@@ -29,9 +29,9 @@ impl<M: PromptMode<U>, U: Ui> Prompt<M, U> {
 impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
     type Widget = PromptLine<U>;
 
-    async fn send_key(
+    fn send_key(
         &mut self,
-        mut pa: Pass<'_>,
+        mut pa: Pass,
         key: KeyEvent,
         widget: RwData<Self::Widget>,
         area: U::Area,

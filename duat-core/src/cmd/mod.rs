@@ -171,11 +171,11 @@
 //! # }
 //! ```
 //!
-//! [`PromptLine`]: crate::widgets::PromptLine
+//! [`PromptLine`]: crate::widget::PromptLine
 //! [`cmd::run_notify`]: run_notify
 //! [`Color`]: crate::form::Color
-//! [`Widget`]: crate::widgets::Widget
-//! [`File`]: crate::widgets::File
+//! [`Widget`]: crate::widget::Widget
+//! [`File`]: crate::file::File
 //! [`&str`]: str
 //! [`cmd`]: self
 //! [`ok!`]: crate::prelude::ok
@@ -665,7 +665,7 @@ mod global {
     /// Since `var` is an [`RwData`], it will be updated
     /// automatically in the [`StatusLine`]
     ///
-    /// [`StatusLine`]: crate::widgets::StatusLine
+    /// [`StatusLine`]: crate::widget::StatusLine
     /// [`RwData`]: crate::data::RwData
     pub macro add(
         $callers:expr, |$pa:ident $(: Pass)? $(, $arg:tt: $t:ty)* $(,)?| $f:block
@@ -722,9 +722,8 @@ mod global {
     /// By calling the quit command, all threads will finish their
     /// tasks, and then Duat will execute a program closing
     /// function, as defined by the [`Ui`].
-    pub async fn quit() {
-        context::assert_is_on_main_thread();
-        COMMANDS.with(Commands::clone).run("quit").await.unwrap();
+    pub fn quit() {
+        queue("quit");
     }
 
     /// Switches to/opens a [`File`] with the given name.
@@ -734,13 +733,9 @@ mod global {
     ///
     /// If there are more arguments, they will be ignored.
     ///
-    /// [`File`]: crate::widgets::File
-    pub async fn edit(file: impl std::fmt::Display) -> CmdResult {
-        context::assert_is_on_main_thread();
-        COMMANDS
-            .with(Commands::clone)
-            .run(format!("edit {file}"))
-            .await
+    /// [`File`]: crate::file::File
+    pub fn edit(pa: &mut Pass, file: impl std::fmt::Display) -> CmdResult {
+        call(pa, format!("edit {file}"))
     }
 
     /// Switches to a [`File`] with the given name.
@@ -750,13 +745,9 @@ mod global {
     ///
     /// If there are more arguments, they will be ignored.
     ///
-    /// [`File`]: crate::widgets::File
-    pub async fn buffer(file: impl std::fmt::Display) -> CmdResult {
-        context::assert_is_on_main_thread();
-        COMMANDS
-            .with(Commands::clone)
-            .run(format!("buffer {file}"))
-            .await
+    /// [`File`]: crate::file::File
+    pub fn buffer(pa: &mut Pass, file: impl std::fmt::Display) -> CmdResult {
+        call(pa, format!("buffer {file}"))
     }
 
     /// Switches to the next [`File`].
@@ -765,10 +756,9 @@ mod global {
     /// current window. If you want to include other windows in the
     /// search, use [`next_global_file`].
     ///
-    /// [`File`]: crate::widgets::File
-    pub async fn next_file() -> CmdResult {
-        context::assert_is_on_main_thread();
-        COMMANDS.with(Commands::clone).run("next-file").await
+    /// [`File`]: crate::file::File
+    pub fn next_file(pa: &mut Pass) -> CmdResult {
+        call(pa, "next-file")
     }
 
     /// Switches to the previous [`File`].
@@ -777,10 +767,9 @@ mod global {
     /// current window. If you want to include other windows in the
     /// search, use [`prev_global_file`].
     ///
-    /// [`File`]: crate::widgets::File
-    pub async fn prev_file() -> CmdResult {
-        context::assert_is_on_main_thread();
-        COMMANDS.with(Commands::clone).run("prev-file").await
+    /// [`File`]: crate::file::File
+    pub fn prev_file(pa: &mut Pass) -> CmdResult {
+        call(pa, "prev-file")
     }
 
     /// Switches to the next [`File`].
@@ -789,13 +778,9 @@ mod global {
     /// to limit the search to just the current window, use
     /// [`next_file`].
     ///
-    /// [`File`]: crate::widgets::File
-    pub async fn next_global_file() -> CmdResult {
-        context::assert_is_on_main_thread();
-        COMMANDS
-            .with(Commands::clone)
-            .run("next-file --global")
-            .await
+    /// [`File`]: crate::file::File
+    pub fn next_global_file(pa: &mut Pass) -> CmdResult {
+        call(pa, "next-file --global")
     }
 
     /// Switches to the previous [`File`].
@@ -804,13 +789,9 @@ mod global {
     /// to limit the search to just the current window, use
     /// [`prev_file`].
     ///
-    /// [`File`]: crate::widgets::File
-    pub async fn prev_global_file() -> CmdResult {
-        context::assert_is_on_main_thread();
-        COMMANDS
-            .with(Commands::clone)
-            .run("prev-file --global")
-            .await
+    /// [`File`]: crate::file::File
+    pub fn prev_global_file(pa: &mut Pass) -> CmdResult {
+        call(pa, "prev-file --global")
     }
 
     /// Tries to alias a `caller` to an existing `command`.
@@ -819,7 +800,6 @@ mod global {
     /// another command, or if `command` is not a real caller to an
     /// existing command.
     pub fn alias(alias: impl ToString, command: impl ToString) -> CmdResult {
-        context::assert_is_on_main_thread();
         // SAFETY: There is no way to obtain an external RwData of Commands,
         // so you can modify it from anywhere in the main thread.
         let mut pa = unsafe { Pass::new() };
@@ -845,17 +825,15 @@ mod global {
     /// relevant [`PromptLine`]. See [`add_for`] for
     /// more information.
     ///
-    /// [`PromptLine`]: crate::widgets::PromptLine
+    /// [`PromptLine`]: crate::widget::PromptLine
     /// [`Flags`]: super::Flags
-    pub async fn call(call: impl std::fmt::Display) -> CmdResult {
-        context::assert_is_on_main_thread();
-        COMMANDS.with(Commands::clone).run(call).await
+    pub fn call(pa: &mut Pass, call: impl std::fmt::Display) -> CmdResult {
+        COMMANDS.with(Commands::clone).run(pa, call)
     }
 
     /// Like [`call`], but notifies the result
-    pub async fn call_notify(call: impl std::fmt::Display) -> CmdResult {
-        context::assert_is_on_main_thread();
-        let result = COMMANDS.with(Commands::clone).run(call).await;
+    pub fn call_notify(pa: &mut Pass, call: impl std::fmt::Display) -> CmdResult {
+        let result = COMMANDS.with(Commands::clone).run(pa, call);
         if let Ok(Some(result)) | Err(result) = result.clone() {
             context::notify(result);
         }
@@ -875,10 +853,8 @@ mod global {
         let call = call.to_string();
         let sender = crate::session::sender();
         sender
-            .send(DuatEvent::QueuedFunction(Box::new(move || {
-                Box::pin(async move {
-                    let _ = COMMANDS.with(Commands::clone).run(call).await;
-                })
+            .send(DuatEvent::QueuedFunction(Box::new(move |mut pa| {
+                let _ = COMMANDS.with(Commands::clone).run(&mut pa, call);
             })))
             .unwrap();
     }
@@ -888,27 +864,22 @@ mod global {
         let call = call.to_string();
         let sender = crate::session::sender();
         sender
-            .send(DuatEvent::QueuedFunction(Box::new(move || {
-                Box::pin(async move {
-                    if let Ok(Some(result)) | Err(result) =
-                        COMMANDS.with(Commands::clone).run(call).await
-                    {
-                        context::notify(result);
-                    }
-                })
+            .send(DuatEvent::QueuedFunction(Box::new(move |mut pa| {
+                if let Ok(Some(res)) | Err(res) = COMMANDS.with(Commands::clone).run(&mut pa, call)
+                {
+                    context::notify(res);
+                }
             })))
             .unwrap()
     }
 
-	/// Like [`queue`], but acts on the [`Result`]
+    /// Like [`queue`], but acts on the [`Result`]
     pub fn queue_and(call: impl std::fmt::Display, map: impl FnOnce(CmdResult) + Send + 'static) {
         let call = call.to_string();
         let sender = crate::session::sender();
         sender
-            .send(DuatEvent::QueuedFunction(Box::new(move || {
-                Box::pin(async move {
-                    map(COMMANDS.with(Commands::clone).run(call).await);
-                })
+            .send(DuatEvent::QueuedFunction(Box::new(move |mut pa| {
+                map(COMMANDS.with(Commands::clone).run(&mut pa, call));
             })))
             .unwrap()
     }
@@ -941,8 +912,8 @@ mod global {
 /// added to Duat, as well as info on the current [`File`],
 /// [widget] and all of the [windows].
 ///
-/// [`File`]: crate::widgets::File
-/// [widget]: crate::widgets::ActiveWidget
+/// [`File`]: crate::file::File
+/// [widget]: crate::widget::Widget
 /// [windows]: crate::ui::Window
 #[derive(Clone)]
 struct Commands(RwData<InnerCommands>);
@@ -965,9 +936,8 @@ impl Commands {
     }
 
     /// Runs a command from a call
-    async fn run(&self, call: impl Display) -> CmdResult {
-        // SAFETY: Since this is an async fn, it must be .awaited in order to
-        // do anything, which means it cannot be executed inside of a
+    fn run(&self, _: &mut Pass, call: impl Display) -> CmdResult {
+        // SAFETY: &mut Pass is an argument.
         let pa = unsafe { Pass::new() };
 
         let call = call.to_string();

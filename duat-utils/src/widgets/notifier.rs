@@ -47,7 +47,7 @@ impl<U: Ui> Widget<U> for Notifier<U> {
         NotificationsCfg(None, PhantomData)
     }
 
-    async fn update(mut pa: Pass<'_>, widget: RwData<Self>, _: &<U as Ui>::Area) {
+    fn update(mut pa: Pass, widget: RwData<Self>, _: &<U as Ui>::Area) {
         let clear_notifs = CLEAR_NOTIFS.swap(false, Ordering::Relaxed);
         widget.write(&mut pa, |wid| {
             if wid.notifications.has_changed() {

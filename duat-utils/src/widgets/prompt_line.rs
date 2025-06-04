@@ -90,9 +90,9 @@ impl<U: Ui> PromptLine<U> {
 impl<U: Ui> Widget<U> for PromptLine<U> {
     type Cfg = PromptLineCfg<U>;
 
-    async fn update(_: Pass<'_>, _: RwData<Self>, _: &<U as Ui>::Area) {}
+    fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
 
-    async fn on_unfocus(mut pa: Pass<'_>, widget: RwData<Self>, _: &<U as Ui>::Area) {
+    fn on_unfocus(mut pa: Pass, widget: RwData<Self>, _: &<U as Ui>::Area) {
         widget.write(&mut pa, |wid| wid.text = Text::new());
     }
 
