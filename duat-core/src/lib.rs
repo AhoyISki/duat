@@ -282,15 +282,6 @@ pub mod text;
 pub mod ui;
 pub mod widget;
 
-pub mod prelude {
-    //! The prelude of Duat
-    pub use crate::{
-        cmd, data, form,
-        text::{Builder, Text, err, hint, ok, text},
-        ui, widget,
-    };
-}
-
 /// A plugin for Duat
 ///
 /// Plugins must follow the builder pattern, and can be specific to
@@ -401,6 +392,46 @@ pub trait Plugin<U: Ui>: Sized {
 
     /// Sets up the [`Plugin`]
     fn plug(self);
+}
+
+pub mod prelude {
+    //! The prelude of Duat
+    pub use crate::{
+        cmd, data, form,
+        text::{Builder, Text, err, hint, ok, text},
+        ui, widget,
+    };
+}
+
+mod main_thread_only {
+    /// A container meant for access in only the main thread
+    ///
+    /// Use this if you want a static value that is not
+    /// [`Send`]/[`Sync`].
+    #[derive(Default)]
+    pub struct MainThreadOnly<T>(T);
+
+    impl<T> MainThreadOnly<T> {
+        /// Returns a new [`MainThreadOnly`]
+        pub const fn new(value: T) -> Self {
+            Self(value)
+        }
+
+        /// Acquires the inner value.
+        ///
+        /// # Safety
+        ///
+        /// You must ensure that this operation is taking place in the
+        /// main thread of execution, although this function might
+        /// take a [`Pass`] parameter later on, in order to
+        /// lift that requirement.
+        pub unsafe fn get(&'static self) -> &'static T {
+            &self.0
+        }
+    }
+
+    unsafe impl<T> Send for MainThreadOnly<T> {}
+    unsafe impl<T> Sync for MainThreadOnly<T> {}
 }
 
 pub mod clipboard {
@@ -629,7 +660,6 @@ pub fn plugin_dir(plugin: &str) -> Option<PathBuf> {
     Some(plugin_dir)
 }
 /// Convenience function for the bounds of a range
-#[track_caller]
 fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize, usize) {
     let start = match range.start_bound() {
         std::ops::Bound::Included(start) => *start,

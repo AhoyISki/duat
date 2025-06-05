@@ -121,7 +121,6 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// [`write_unsafe`]: Self::write_unsafe
     /// [`write_unsafe_as`]: Self::write_unsafe_as
-    #[track_caller]
     pub fn read<Ret>(&self, _dk: &Pass, f: impl FnOnce(&T) -> Ret) -> Ret {
         let ret = f(&*self.value.borrow());
         self.read_state.set(self.cur_state.get());
@@ -146,7 +145,6 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// [`write_unsafe`]: Self::write_unsafe
     /// [`write_unsafe_as`]: Self::write_unsafe_as
-    #[track_caller]
     pub fn read_as<Ret, U: 'static>(&self, _dk: &Pass, f: impl FnOnce(&U) -> Ret) -> Option<Ret> {
         if TypeId::of::<U>() != self.ty {
             return None;
@@ -182,7 +180,6 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// Essentially, in order to use this safely, you should treat it
     /// like a glorified [`RefCell`]
-    #[track_caller]
     pub unsafe fn read_unsafe<Ret>(&self, f: impl FnOnce(&T) -> Ret) -> Ret {
         let ret = f(&*self.value.borrow());
         self.read_state.set(self.cur_state.get());
@@ -212,7 +209,6 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// Essentially, in order to use this safely, you should treat it
     /// like a glorified [`RefCell`]
-    #[track_caller]
     pub unsafe fn read_unsafe_as<Ret, U: 'static>(&self, f: impl FnOnce(&U) -> Ret) -> Option<Ret> {
         if TypeId::of::<U>() != self.ty {
             return None;
@@ -225,7 +221,6 @@ impl<T: ?Sized> RwData<T> {
         Some(ret)
     }
 
-    #[track_caller]
     pub fn write<Ret>(&self, _dk: &mut Pass, f: impl FnOnce(&mut T) -> Ret) -> Ret {
         let ret = f(&mut *self.value.borrow_mut());
         self.cur_state.set(self.cur_state.get() + 1);
@@ -233,7 +228,6 @@ impl<T: ?Sized> RwData<T> {
         ret
     }
 
-    #[track_caller]
     pub fn write_as<Ret, U: 'static>(
         &self,
         _dk: &mut Pass,
@@ -276,7 +270,6 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// Essentially, in order to use this safely, you should treat it
     /// like a glorified [`RefCell`]
-    #[track_caller]
     pub unsafe fn write_unsafe<Ret>(&self, f: impl FnOnce(&mut T) -> Ret) -> Ret {
         let ret = f(&mut *self.value.borrow_mut());
         self.cur_state.set(self.cur_state.get() + 1);
@@ -308,7 +301,6 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// Essentially, in order to use this safely, you should treat it
     /// like a glorified [`RefCell`]
-    #[track_caller]
     pub unsafe fn write_unsafe_as<Ret, U: 'static>(
         &self,
         f: impl FnOnce(&mut U) -> Ret,
@@ -326,7 +318,6 @@ impl<T: ?Sized> RwData<T> {
         Some(ret)
     }
 
-    #[track_caller]
     pub(crate) fn raw_write<Ret>(&self, f: impl FnOnce(&mut T) -> Ret) -> Ret {
         f(&mut *self.value.borrow_mut())
     }

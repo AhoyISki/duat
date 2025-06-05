@@ -21,6 +21,7 @@ mod switch {
     use std::{
         any::{Any, TypeId},
         cell::RefCell,
+        sync::LazyLock,
         vec::IntoIter,
     };
 
@@ -34,20 +35,21 @@ mod switch {
         file::File,
         file_entry,
         hook::{self, KeysSent, KeysSentTo, ModeSetTo, ModeSwitched},
+        main_thread_only::MainThreadOnly,
         session::sender,
         ui::{DuatEvent, RawArea, Ui},
         widget::{Node, Widget},
         widget_entry,
     };
 
-    thread_local! {
-        static SEND_KEYS: RefCell<Option<KeyFn>> = RefCell::new(None);
-        static RESET_MODE: RefCell<Box<dyn Fn(Pass) -> bool>> =
-            RefCell::new(Box::new(|_| true));
-        static SET_MODE: RefCell<Option<ModeFn>> = RefCell::new(None);
-        static MODE: &'static RefCell<Box<dyn Any>> =
-            Box::leak(Box::new(RefCell::new(Box::new("no mode") as Box<dyn Any>)));
-    }
+    static SEND_KEYS: MainThreadOnly<RefCell<Option<KeyFn>>> =
+        MainThreadOnly::new(RefCell::new(None));
+    static RESET_MODE: LazyLock<MainThreadOnly<RefCell<Box<dyn Fn(Pass) -> bool>>>> =
+        LazyLock::new(|| MainThreadOnly::new(RefCell::new(Box::new(|_| true))));
+    static SET_MODE: MainThreadOnly<RefCell<Option<ModeFn>>> =
+        MainThreadOnly::new(RefCell::new(None));
+    static MODE: LazyLock<MainThreadOnly<RefCell<Box<dyn Any>>>> =
+        LazyLock::new(|| MainThreadOnly::new(RefCell::new(Box::new("no mode") as Box<dyn Any>)));
 
     type KeyFn = fn(Pass, IntoIter<KeyEvent>) -> (IntoIter<KeyEvent>, Option<ModeFn>);
     type ModeFn = Box<dyn FnOnce(Pass) -> bool>;
@@ -58,7 +60,8 @@ mod switch {
     /// it will be called from the main thread, so no checks are done
     /// in that regard.
     fn take_set_mode_fn() -> Option<ModeFn> {
-        SET_MODE.with(|sm| sm.borrow_mut().take())
+        // SAFETY: The caller of this function's caller has a Pass argument.
+        unsafe { SET_MODE.get() }.borrow_mut().take()
     }
 
     /// Sets the new default mode
@@ -71,28 +74,24 @@ mod switch {
         // SAFETY: Since the functions here consumes a Pass, one is one
         // being used elsewhere, so I am safe to create more.
         context::assert_is_on_main_thread();
-        RESET_MODE.with(|rm| {
-            *rm.borrow_mut() = Box::new(move |_| {
-                let mode = mode.clone();
-                let pa = unsafe { Pass::new() };
-                set_mode_fn::<M, U>(pa, mode)
-            })
+        *unsafe { RESET_MODE.get() }.borrow_mut() = Box::new(move |_| {
+            let mode = mode.clone();
+            let pa = unsafe { Pass::new() };
+            set_mode_fn::<M, U>(pa, mode)
         });
-        SET_MODE.with(|sm| {
-            let mut set_mode = sm.borrow_mut();
-            let prev = set_mode.take();
-            *set_mode = Some(Box::new(move |_| {
-                if let Some(f) = prev {
-                    let pa = unsafe { Pass::new() };
-                    f(pa);
-                    let pa = unsafe { Pass::new() };
-                    RESET_MODE.with(|rm| rm.borrow_mut()(pa))
-                } else {
-                    let pa = unsafe { Pass::new() };
-                    RESET_MODE.with(|rm| rm.borrow_mut()(pa))
-                }
-            }));
-        });
+        let set_mode = unsafe { SET_MODE.get() };
+        let prev = set_mode.take();
+        *set_mode.borrow_mut() = Some(Box::new(move |_| unsafe {
+            if let Some(f) = prev {
+                let pa = Pass::new();
+                f(pa);
+                let pa = Pass::new();
+                RESET_MODE.get().borrow_mut()(pa)
+            } else {
+                let pa = Pass::new();
+                RESET_MODE.get().borrow_mut()(pa)
+            }
+        }));
     }
 
     /// Sets the [`Mode`], switching to the appropriate [`Widget`]
@@ -100,20 +99,18 @@ mod switch {
     /// [`Widget`]: Mode::Widget
     pub fn set<U: Ui>(mode: impl Mode<U>) {
         context::assert_is_on_main_thread();
-        SET_MODE.with(|sm| {
-            let mut set_mode = sm.borrow_mut();
-            let prev = set_mode.take();
-            *set_mode = Some(Box::new(move |_| {
-                // SAFETY: Since this function consumes a Pass, one is one being
-                // used elsewhere, so I am safe to create more.
-                if let Some(prev) = prev {
-                    let pa = unsafe { Pass::new() };
-                    prev(pa);
-                }
+        let set_mode = unsafe { SET_MODE.get() };
+        let prev = set_mode.take();
+        *set_mode.borrow_mut() = Some(Box::new(move |_| {
+            // SAFETY: Since this function consumes a Pass, one is one being
+            // used elsewhere, so I am safe to create more.
+            if let Some(prev) = prev {
                 let pa = unsafe { Pass::new() };
-                set_mode_fn(pa, mode)
-            }));
-        })
+                prev(pa);
+            }
+            let pa = unsafe { Pass::new() };
+            set_mode_fn(pa, mode)
+        }));
     }
 
     /// Resets the mode to the [default]
@@ -121,14 +118,13 @@ mod switch {
     /// [default]: set_default
     pub fn reset() {
         context::assert_is_on_main_thread();
-        SET_MODE.with(|sm| {
-            *sm.borrow_mut() = Some(Box::new(|pa| RESET_MODE.with(|rm| rm.borrow_mut()(pa))))
-        })
+        let set_mode = unsafe { SET_MODE.get() };
+        *set_mode.borrow_mut() = Some(Box::new(|pa| unsafe { RESET_MODE.get() }.borrow_mut()(pa)));
     }
 
     /// Switches to the [`File`] with the given name
     pub(crate) fn reset_switch_to<U: Ui>(
-        pa: &Pass<'_>,
+        pa: &Pass,
         name: impl std::fmt::Display,
         switch_window: bool,
     ) {
@@ -140,17 +136,17 @@ mod switch {
                     sender().send(DuatEvent::SwitchWindow(win)).unwrap();
                 }
                 let node = node.clone();
-                SET_MODE.with(|sm| {
-                    *sm.borrow_mut() = Some(Box::new(move |_| {
-                        // SAFETY: Since this function consumes a Pass, one is one being
-                        // used elsewhere, so I am safe to create more.
-                        unsafe {
-                            switch_widget(node);
-                            let pa = Pass::new();
-                            RESET_MODE.with(|rm| rm.borrow_mut()(pa))
-                        }
-                    }))
-                });
+                // SAFETY: There is a Pass argument.
+                let set_mode = unsafe { SET_MODE.get() };
+                *set_mode.borrow_mut() = Some(Box::new(move |_| {
+                    // SAFETY: Since this function consumes a Pass, one is one being
+                    // used elsewhere, so I am safe to create more.
+                    unsafe {
+                        switch_widget(node);
+                        let pa = Pass::new();
+                        RESET_MODE.get().borrow_mut()(pa)
+                    }
+                }))
             }
             Err(err) => context::notify(err),
         }
@@ -177,22 +173,26 @@ mod switch {
     /// Sends the [`KeyEvent`] to the active [`Mode`]
     pub(super) fn send_keys_to(_: Pass<'_>, keys: Vec<KeyEvent>) {
         let mut keys = Some(keys.into_iter());
-        let mut send_keys = SEND_KEYS.with(|sk| sk.borrow_mut().take().unwrap());
+        // SAFETY: There is a Pass argument.
+        let send_keys = unsafe { SEND_KEYS.get() };
+        let mut sk = send_keys.take().unwrap();
 
         while keys.as_ref().unwrap().len() > 0 {
             // SAFETY: Since this function is taking a Pass, but that one is
             // reliably not being used, I can safely create my own Passes.
             let pa = unsafe { Pass::new() };
-            if let (remainder, Some(set_mode)) = send_keys(pa, keys.take().unwrap()) {
+            if let (remainder, Some(set_mode)) = sk(pa, keys.take().unwrap()) {
                 keys = Some(remainder);
 
                 if set_mode(unsafe { Pass::new() }) {
-                    send_keys = SEND_KEYS.with(|sk| sk.borrow_mut().take().unwrap());
+                    sk = send_keys.take().unwrap();
+                } else {
+                    break;
                 }
             }
         }
 
-        SEND_KEYS.with(|sk| *sk.borrow_mut() = Some(send_keys));
+        *send_keys.borrow_mut() = Some(sk);
     }
 
     /// Inner function that sends [`KeyEvent`]s
@@ -217,11 +217,8 @@ mod switch {
         let mut sent_keys = Vec::new();
 
         let mode_fn = {
-            // We can hold across .awaits because the mode can only be accessed by
-            // this function and the mode switching functions, and once we get a
-            // new mode switch function, we immediately break out of this block,
-            // dropping the reference to MODE.
-            let mut mode = MODE.with(|m| *m).borrow_mut();
+            // SAFETY: This function's caller has a Pass argument.
+            let mut mode = unsafe { MODE.get() }.borrow_mut();
             let mode: &mut M = mode.downcast_mut().unwrap();
 
             widget.write(&mut pa, |widget| {
@@ -328,14 +325,14 @@ mod switch {
 
         hook::trigger::<ModeSwitched>(&mut pa, modes);
 
-        MODE.with(|m| m.replace(Box::new(mode)));
-        SEND_KEYS.with(|sk| {
-            *sk.borrow_mut() = Some(|_, keys| {
+        unsafe {
+            MODE.get().replace(Box::new(mode));
+            SEND_KEYS.get().replace(Some(|_, keys| {
                 // SAFETY: This function is consuming a Pass, so it is valid to
                 // create new Passes.
-                unsafe { send_keys_fn::<M, U>(keys) }
-            })
-        });
+                send_keys_fn::<M, U>(keys)
+            }));
+        }
 
         true
     }
@@ -644,7 +641,6 @@ pub trait Mode<U: Ui>: Sized + Clone + 'static {
     type Widget: Widget<U>;
 
     /// Sends a [`KeyEvent`] to this [`Mode`]
-    #[allow(async_fn_in_trait)]
     fn send_key(&mut self, pa: Pass, key: KeyEvent, widget: RwData<Self::Widget>, area: U::Area);
 
     /// A function to trigger when switching to this [`Mode`]

@@ -185,7 +185,13 @@
 //! [`text!`]: crate::prelude::text
 //! [`Form`]: crate::form::Form
 //! [`Area`]: crate::ui::Ui::Area
-use std::{collections::HashMap, fmt::Display, ops::Range, sync::Arc, time::Instant};
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    ops::Range,
+    sync::{Arc, LazyLock},
+    time::Instant,
+};
 
 use crossterm::style::Color;
 
@@ -209,14 +215,14 @@ use crate::{
 mod parameters;
 
 pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
-    add!("alias", |_dk,
+    add!("alias", |pa,
                    flags: Flags,
                    alias: &str,
                    command: Remainder| {
         if !flags.is_empty() {
             Err(err!("An alias cannot take any flags").build())
         } else {
-            crate::cmd::alias(alias, command)
+            crate::cmd::alias(&mut pa, alias, command)
         }
     })?;
 
@@ -626,13 +632,12 @@ mod global {
     use crate::{
         context,
         data::{Pass, RwData},
+        main_thread_only::MainThreadOnly,
         text::Text,
         ui::DuatEvent,
     };
 
-    thread_local! {
-        static COMMANDS: Commands = Commands::new();
-    }
+    static COMMANDS: MainThreadOnly<Commands> = MainThreadOnly::new(Commands::new());
 
     /// Adds a command to Duat
     ///
@@ -799,13 +804,9 @@ mod global {
     /// Returns an [`Err`] if the `caller` is already a caller for
     /// another command, or if `command` is not a real caller to an
     /// existing command.
-    pub fn alias(alias: impl ToString, command: impl ToString) -> CmdResult {
-        // SAFETY: There is no way to obtain an external RwData of Commands,
-        // so you can modify it from anywhere in the main thread.
-        let mut pa = unsafe { Pass::new() };
-        COMMANDS
-            .with(Commands::clone)
-            .alias(&mut pa, alias, command)
+    pub fn alias(pa: &mut Pass, alias: impl ToString, command: impl ToString) -> CmdResult {
+        // SAFETY: Function has a Pass argument.
+        unsafe { COMMANDS.get() }.alias(pa, alias, command)
     }
 
     /// Runs a full command, with a caller and [`Args`].
@@ -828,12 +829,14 @@ mod global {
     /// [`PromptLine`]: crate::widget::PromptLine
     /// [`Flags`]: super::Flags
     pub fn call(pa: &mut Pass, call: impl std::fmt::Display) -> CmdResult {
-        COMMANDS.with(Commands::clone).run(pa, call)
+        // SAFETY: Function has a Pass argument.
+        unsafe { COMMANDS.get() }.run(pa, call)
     }
 
     /// Like [`call`], but notifies the result
     pub fn call_notify(pa: &mut Pass, call: impl std::fmt::Display) -> CmdResult {
-        let result = COMMANDS.with(Commands::clone).run(pa, call);
+        // SAFETY: Function has a Pass argument.
+        let result = unsafe { COMMANDS.get() }.run(pa, call);
         if let Ok(Some(result)) | Err(result) = result.clone() {
             context::notify(result);
         }
@@ -854,7 +857,8 @@ mod global {
         let sender = crate::session::sender();
         sender
             .send(DuatEvent::QueuedFunction(Box::new(move |mut pa| {
-                let _ = COMMANDS.with(Commands::clone).run(&mut pa, call);
+                // SAFETY: Closure has Pass argument.
+                let _ = unsafe { COMMANDS.get() }.run(&mut pa, call);
             })))
             .unwrap();
     }
@@ -865,8 +869,7 @@ mod global {
         let sender = crate::session::sender();
         sender
             .send(DuatEvent::QueuedFunction(Box::new(move |mut pa| {
-                if let Ok(Some(res)) | Err(res) = COMMANDS.with(Commands::clone).run(&mut pa, call)
-                {
+                if let Ok(Some(res)) | Err(res) = unsafe { COMMANDS.get() }.run(&mut pa, call) {
                     context::notify(res);
                 }
             })))
@@ -879,7 +882,8 @@ mod global {
         let sender = crate::session::sender();
         sender
             .send(DuatEvent::QueuedFunction(Box::new(move |mut pa| {
-                map(COMMANDS.with(Commands::clone).run(&mut pa, call));
+                // SAFETY: Function has a Pass argument.
+                map(unsafe { COMMANDS.get() }.run(&mut pa, call));
             })))
             .unwrap()
     }
@@ -889,20 +893,20 @@ mod global {
     /// [`cmd::add`]: add
     #[doc(hidden)]
     pub fn add_inner(callers: Vec<String>, cmd: CmdFn, check_args: CheckerFn) -> Result<(), Text> {
-        context::assert_is_on_main_thread();
         // SAFETY: There is no way to obtain an external RwData of Commands,
         // so you can modify it from anywhere in the main thread.
         let mut pa = unsafe { Pass::new() };
-        COMMANDS.with(|c| c.add(&mut pa, callers, cmd, check_args))
+        context::assert_is_on_main_thread();
+        unsafe { COMMANDS.get() }.add(&mut pa, callers, cmd, check_args)
     }
 
     /// Check if the arguments for a given `caller` are correct
     pub fn check_args(caller: &str) -> Option<(Vec<Range<usize>>, Option<(Range<usize>, Text)>)> {
-        context::assert_is_on_main_thread();
         // SAFETY: There is no way to obtain an external RwData of Commands,
         // so you can modify it from anywhere in the main thread.
         let pa = unsafe { Pass::new() };
-        COMMANDS.with(Commands::clone).check_args(&pa, caller)
+        context::assert_is_on_main_thread();
+        unsafe { COMMANDS.get() }.check_args(&pa, caller)
     }
 }
 
@@ -915,16 +919,16 @@ mod global {
 /// [`File`]: crate::file::File
 /// [widget]: crate::widget::Widget
 /// [windows]: crate::ui::Window
-#[derive(Clone)]
-struct Commands(RwData<InnerCommands>);
+struct Commands(LazyLock<RwData<InnerCommands>>);
 
 impl Commands {
     /// Returns a new instance of [`Commands`].
-    #[doc(hidden)]
-    fn new() -> Self {
-        Self(RwData::new(InnerCommands {
-            list: Vec::new(),
-            aliases: HashMap::new(),
+    const fn new() -> Self {
+        Self(LazyLock::new(|| {
+            RwData::new(InnerCommands {
+                list: Vec::new(),
+                aliases: HashMap::new(),
+            })
         }))
     }
 

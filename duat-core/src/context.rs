@@ -34,19 +34,21 @@ mod global {
     use super::{CurFile, CurWidget, FileHandle, FileParts, Notifications};
     use crate::{
         data::{DataMap, Pass, RwData},
+        main_thread_only::MainThreadOnly,
         text::{Text, err},
         ui::{Ui, Window},
         widget::Node,
     };
 
     static MAIN_THREAD_ID: OnceLock<std::thread::ThreadId> = OnceLock::new();
-    thread_local! {
-        static CUR_FILE: OnceLock<&'static dyn Any> = OnceLock::new();
-        static CUR_WIDGET: OnceLock<&'static dyn Any> = OnceLock::new();
-        static WINDOWS: OnceLock<&'static dyn Any> = OnceLock::new();
-
-        static MODE_NAME: RwData<&'static str> = RwData::new("");
-    }
+    static CUR_FILE: MainThreadOnly<OnceLock<&'static dyn Any>> =
+        MainThreadOnly::new(OnceLock::new());
+    static CUR_WIDGET: MainThreadOnly<OnceLock<&'static dyn Any>> =
+        MainThreadOnly::new(OnceLock::new());
+    static WINDOWS: MainThreadOnly<OnceLock<&'static dyn Any>> =
+        MainThreadOnly::new(OnceLock::new());
+    static MODE_NAME: LazyLock<MainThreadOnly<RwData<&'static str>>> =
+        LazyLock::new(MainThreadOnly::default);
 
     static NOTIFICATIONS: LazyLock<Notifications> = LazyLock::new(Notifications::new);
     static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
@@ -61,13 +63,13 @@ mod global {
     /// [`Mode`]: crate::mode::Mode
     pub fn mode_name() -> DataMap<&'static str, &'static str> {
         assert_is_on_main_thread();
-        MODE_NAME.with(|mn| mn.map(|name| *name))
+        unsafe { MODE_NAME.get() }.map(|name| *name)
     }
 
-    // pub(crate) in order to keep just the status one public
+    // pub(crate) in order to keep just the DataMap one public
     pub(crate) fn raw_mode_name() -> RwData<&'static str> {
         assert_is_on_main_thread();
-        MODE_NAME.with(RwData::clone)
+        unsafe { MODE_NAME.get() }.clone()
     }
 
     pub fn file_named<U: Ui>(pa: &Pass, name: impl ToString) -> Result<FileHandle<U>, Text> {
@@ -143,12 +145,14 @@ mod global {
 
     pub(crate) fn windows<U: Ui>() -> &'static RefCell<Vec<Window<U>>> {
         assert_is_on_main_thread();
-        WINDOWS.with(|win| win.get().unwrap().downcast_ref().expect("1 Ui only"))
+        let windows = unsafe { WINDOWS.get() };
+        windows.get().unwrap().downcast_ref().expect("1 Ui only")
     }
 
     pub(crate) fn inner_cur_file<U: Ui>() -> &'static CurFile<U> {
         assert_is_on_main_thread();
-        CUR_FILE.with(|cf| cf.get().unwrap().downcast_ref().expect("1 Ui only"))
+        let cur_file = unsafe { CUR_FILE.get() };
+        cur_file.get().unwrap().downcast_ref().expect("1 Ui only")
     }
 
     /// Orders to quit Duat
@@ -165,7 +169,8 @@ mod global {
     }
 
     fn inner_cur_widget<U: Ui>() -> &'static CurWidget<U> {
-        CUR_WIDGET.with(|cw| cw.get().unwrap().downcast_ref().expect("1 Ui only"))
+        let cur_widget = unsafe { CUR_WIDGET.get() };
+        cur_widget.get().unwrap().downcast_ref().expect("1 Ui only")
     }
 
     /// Asserts that the current thread is the main one
@@ -178,7 +183,6 @@ mod global {
     /// # Panics
     ///
     /// Panics if not on the main thread of execution.
-    #[track_caller]
     pub fn assert_is_on_main_thread() {
         assert!(
             std::thread::current().id() == *MAIN_THREAD_ID.get().unwrap(),
@@ -187,7 +191,7 @@ mod global {
     }
 
     #[doc(hidden)]
-    pub fn setup_non_statics<U: Ui>(
+    pub unsafe fn setup_non_statics<U: Ui>(
         cur_file: &'static CurFile<U>,
         cur_widget: &'static CurWidget<U>,
         cur_window: usize,
@@ -197,9 +201,12 @@ mod global {
             .set(std::thread::current().id())
             .expect("setup ran twice");
 
-        CUR_FILE.with(|cf| cf.set(cur_file).expect("setup ran twice"));
-        CUR_WIDGET.with(|cw| cw.set(cur_widget).expect("setup ran twice"));
-        WINDOWS.with(|win| win.set(windows).expect("setup ran twice"));
+        unsafe {
+            CUR_FILE.get().set(cur_file).expect("setup ran twice");
+            CUR_WIDGET.get().set(cur_widget).expect("setup ran twice");
+            WINDOWS.get().set(windows).expect("setup ran twice");
+        }
+
         CUR_WINDOW.store(cur_window, Ordering::Relaxed);
     }
 }

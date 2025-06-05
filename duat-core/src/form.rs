@@ -1,10 +1,9 @@
 //! Utilities for stylizing the text of Duat
-use std::sync::{LazyLock, OnceLock};
+use std::sync::{LazyLock, OnceLock, RwLock, RwLockReadGuard};
 
 use FormType::*;
 use crossterm::style::{Attribute, Attributes, ContentStyle};
 pub use crossterm::{cursor::SetCursorStyle as CursorShape, style::Color};
-use std::sync::{RwLock, RwLockReadGuard};
 
 pub use self::global::*;
 pub(crate) use self::global::{colorscheme_exists, exists};
@@ -43,10 +42,12 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
 /// The functions that will be exposed for public use.
 mod global {
     use std::{
-        any::TypeId, collections::HashMap, sync::{mpsc, LazyLock}, thread, time::Duration
+        any::TypeId,
+        collections::HashMap,
+        sync::{LazyLock, Mutex, mpsc},
+        thread,
+        time::Duration,
     };
-
-    use std::sync::Mutex;
 
     use super::{BASE_FORMS, BuiltForm, ColorScheme, CursorShape, Form, FormId, Painter, Palette};
     use crate::{
@@ -429,7 +430,11 @@ mod global {
 
     /// Wether or not a specific [`ColorScheme`] was added
     pub(crate) fn colorscheme_exists(name: &str) -> bool {
-        COLORSCHEMES.lock().unwrap().iter().any(|cs| cs.name() == name)
+        COLORSCHEMES
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|cs| cs.name() == name)
     }
 
     /// The name of a form, given a [`FormId`]
@@ -1385,7 +1390,7 @@ const fn str_to_color(str: &str) -> std::result::Result<Color, &'static str> {
         let b = (0.5 + b * 255.0) as u8;
         Ok(Color::Rgb { r, g, b })
     } else {
-        return Err("Color format was not recognized");
+        Err("Color format was not recognized")
     }
 }
 

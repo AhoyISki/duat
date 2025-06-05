@@ -396,19 +396,34 @@ impl<U: Ui> Window<U> {
         do_cluster: bool,
         on_files: bool,
     ) -> (Node<U>, Option<U::Area>) {
+        #[inline(never)]
+        fn get_areas<U: Ui>(
+            pa: &mut Pass<'_>,
+            area: &<U as Ui>::Area,
+            specs: PushSpecs,
+            do_cluster: bool,
+            on_files: bool,
+            widget: &RwData<dyn Widget<U> + 'static>,
+        ) -> (U::Area, Option<U::Area>) {
+            let cache = widget
+                .read_as(&*pa, |f: &File<U>| {
+                    load_cache::<<U::Area as RawArea>::Cache>(f.path())
+                })
+                .flatten()
+                .unwrap_or_default();
+
+            let (child, parent) = MutArea(area).bisect(specs, do_cluster, on_files, cache);
+
+            (child, parent)
+        }
+
         let widget =
             unsafe { RwData::<dyn Widget<U>>::new_unsized::<W>(Rc::new(RefCell::new(widget))) };
 
-        let cache = widget
-            .read_as(&*pa, |f: &File<U>| {
-                load_cache::<<U::Area as RawArea>::Cache>(f.path())
-            })
-            .flatten()
-            .unwrap_or_default();
-
-        let (child, parent) = MutArea(area).bisect(specs, do_cluster, on_files, cache);
+        let (child, parent) = get_areas(pa, area, specs, do_cluster, on_files, &widget);
 
         self.nodes.push(Node::new::<W>(&mut *pa, widget, child));
+
         (self.nodes.last().unwrap().clone(), parent)
     }
 

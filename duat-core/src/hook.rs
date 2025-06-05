@@ -127,12 +127,12 @@ use crate::{
 
 /// Hook functions
 mod global {
-    use super::{Hookable, InnerHooks};
-    use crate::{context, data::Pass, ui::DuatEvent};
+    use std::sync::LazyLock;
 
-    thread_local! {
-        static HOOKS: InnerHooks = InnerHooks::default();
-    }
+    use super::{Hookable, InnerHooks};
+    use crate::{context, data::Pass, main_thread_only::MainThreadOnly, ui::DuatEvent};
+
+    static HOOKS: LazyLock<MainThreadOnly<InnerHooks>> = LazyLock::new(MainThreadOnly::default);
 
     /// Adds a [hook]
     ///
@@ -142,9 +142,9 @@ mod global {
     /// [hook]: Hookable
     /// [`hooks::add_grouped`]: add_grouped
     #[inline(never)]
-    pub fn add<H: Hookable>(f: impl for<'a> FnMut(Pass, H::Args<'a>) -> H::Output + 'static) {
+    pub fn add<H: Hookable>(f: impl FnMut(Pass, H::Args<'_>) -> H::Output + 'static) {
         context::assert_is_on_main_thread();
-        HOOKS.with(|h| h.add::<H>("", f));
+        unsafe { HOOKS.get() }.add::<H>("", f);
     }
 
     /// Adds a grouped [hook]
@@ -159,10 +159,10 @@ mod global {
     #[inline(never)]
     pub fn add_grouped<H: Hookable>(
         group: &'static str,
-        f: impl for<'a> FnMut(Pass, H::Args<'a>) -> H::Output + 'static,
+        f: impl FnMut(Pass, H::Args<'_>) -> H::Output + 'static,
     ) {
         context::assert_is_on_main_thread();
-        HOOKS.with(|h| h.add::<H>(group, f));
+        unsafe { HOOKS.get() }.add::<H>(group, f);
     }
 
     /// Removes a [hook] group
@@ -174,7 +174,7 @@ mod global {
     /// [`hooks::add_grouped`]: add_grouped
     pub fn remove(group: &'static str) {
         context::assert_is_on_main_thread();
-        HOOKS.with(|h| h.remove(group));
+        unsafe { HOOKS.get() }.remove(group);
     }
 
     /// Triggers a hooks for a [`Hookable`] struct
@@ -189,7 +189,7 @@ mod global {
     #[inline(never)]
     pub fn trigger<H: Hookable>(pa: &mut Pass, args: H::Input) -> H::Output {
         context::assert_is_on_main_thread();
-        HOOKS.with(|h| h.clone()).trigger::<H>(pa, args)
+        unsafe { HOOKS.get().trigger::<H>(pa, args) }
     }
 
     /// Queues a [`Hookable`]'s execution
@@ -213,7 +213,8 @@ mod global {
         let sender = crate::session::sender();
         sender
             .send(DuatEvent::QueuedFunction(Box::new(|mut pa| {
-                HOOKS.with(|h| h.clone()).trigger::<H>(&mut pa, args);
+                // SAFETY: There is a Pass argument
+                unsafe { HOOKS.get() }.trigger::<H>(&mut pa, args);
             })))
             .unwrap();
     }
@@ -228,7 +229,7 @@ mod global {
     /// [`hooks::remove`]: remove
     pub fn group_exists(group: &'static str) -> bool {
         context::assert_is_on_main_thread();
-        HOOKS.with(|h| h.group_exists(group))
+        unsafe { HOOKS.get() }.group_exists(group)
     }
 }
 
@@ -636,7 +637,6 @@ pub trait Hookable: Sized + 'static {
     type Input: 'static;
     type Output = ();
 
-    #[allow(async_fn_in_trait)]
     fn trigger(pa: Pass<'_>, input: Self::Input, hooks: Hooks<Self>) -> Self::Output;
 }
 
@@ -652,7 +652,7 @@ impl InnerHooks {
     fn add<H: Hookable>(
         &self,
         group: &'static str,
-        f: impl for<'a> FnMut(Pass, H::Args<'a>) -> H::Output + 'static,
+        f: impl FnMut(Pass, H::Args<'_>) -> H::Output + 'static,
     ) {
         let mut map = self.types.borrow_mut();
 
@@ -751,7 +751,7 @@ impl<H: Hookable> Hook<H> {
 impl<H: Hookable> std::ops::FnOnce<(&mut Pass<'_>, H::Args<'_>)> for Hook<H> {
     type Output = H::Output;
 
-    extern "rust-call" fn call_once(self, (_, args): (&mut Pass<'_>, H::Args<'_>)) -> Self::Output {
+    extern "rust-call" fn call_once(self, (_, args): (&mut Pass, H::Args<'_>)) -> Self::Output {
         // SAFETY: Since this function requires an exclusive reference to a
         // Pass, I can freely create new Passs.
         let pa = unsafe { Pass::new() };
@@ -760,6 +760,6 @@ impl<H: Hookable> std::ops::FnOnce<(&mut Pass<'_>, H::Args<'_>)> for Hook<H> {
 }
 
 pub type InnerHookFn<H> = &'static RefCell<
-    (dyn for<'a> FnMut(Pass, <H as Hookable>::Args<'a>) -> <H as Hookable>::Output + 'static),
+    (dyn FnMut(Pass, <H as Hookable>::Args<'_>) -> <H as Hookable>::Output + 'static),
 >;
 pub type Hooks<H: Hookable> = impl Iterator<Item = Hook<H>>;

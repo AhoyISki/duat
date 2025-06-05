@@ -159,6 +159,7 @@ impl<U: Ui> FileBuilder<U> {
     /// [`LineNumbers`]: crate::widgets::LineNumbers
     /// [`relative/absolute`]: crate::widgets::LineNumbersOptions::rel_abs
     /// [`StatusLine`]: crate::widgets::StatusLine
+    #[inline(never)]
     pub fn push<W: Widget<U>>(
         &mut self,
         pa: &mut Pass,
@@ -171,26 +172,29 @@ impl<U: Ui> FileBuilder<U> {
         let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];
 
-        let (child, parent) = {
-            let (node, parent) = window.push(&mut *pa, widget, &self.area, specs, true, true);
+        let (node, parent) = window.push(&mut *pa, widget, &self.area, specs, true, true);
 
-            self.handle
-                .write_related_widgets(&mut *pa, |related| related.push(node.clone()));
+        self.get_areas(pa, window, node, parent)
+    }
 
-            if let Some(parent) = &parent
-                && parent.is_master_of(&window.files_area)
-            {
-                window.files_area = parent.clone();
-            }
+    fn get_areas(
+        &mut self,
+        pa: &mut Pass,
+        window: &mut super::Window<U>,
+        node: Node<U>,
+        parent: Option<U::Area>,
+    ) -> (U::Area, Option<U::Area>) {
+        self.handle
+            .write_related_widgets(&mut *pa, |related| related.push(node.clone()));
 
-            (node.area().clone(), parent)
-        };
-
-        if let Some(parent) = &parent {
+        if let Some(parent) = &parent
+            && parent.is_master_of(&window.files_area)
+        {
+            window.files_area = parent.clone();
             self.area = parent.clone();
         }
 
-        (child, parent)
+        (node.area().clone(), parent)
     }
 
     /// Pushes a widget to a specific area around a [`File`]
@@ -247,6 +251,7 @@ impl<U: Ui> FileBuilder<U> {
     /// [`Notifier`]: crate::widgets::Notifier
     /// [`PromptLine`]: crate::widgets::PromptLine
     /// [hook group]: crate::hooks::add_grouped
+    #[inline(never)]
     pub fn push_to<W: Widget<U>>(
         &mut self,
         pa: &mut Pass,
@@ -412,6 +417,7 @@ impl<U: Ui> WindowBuilder<U> {
     ///
     /// [widget]: Widget
     /// [cfg]: WidgetCfg
+    #[inline(never)]
     pub fn push<W: Widget<U>>(
         &mut self,
         pa: &mut Pass,
@@ -474,6 +480,7 @@ impl<U: Ui> WindowBuilder<U> {
     /// [`push`]: Self::push
     /// [`StatusLine`]: crate::widgets::StatusLine
     /// [`PromptLine`]: crate::widgets::PromptLine
+    #[inline(never)]
     pub fn push_to<W: Widget<U>>(
         &mut self,
         pa: &mut Pass,

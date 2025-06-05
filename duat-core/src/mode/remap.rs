@@ -17,7 +17,7 @@ use crate::{
 };
 
 mod global {
-    use std::{cell::RefCell, str::Chars};
+    use std::{cell::RefCell, str::Chars, sync::LazyLock};
 
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
 
@@ -25,15 +25,15 @@ mod global {
     use crate::{
         context,
         data::{DataMap, Pass},
+        main_thread_only::MainThreadOnly,
         mode::Mode,
         text::{Builder, Text, text},
         ui::Ui,
     };
 
-    thread_local! {
-        static REMAPPER: &'static Remapper = Box::leak(Box::new(Remapper::new()));
-        static SEND_KEY: RefCell<fn(Pass, KeyEvent)> = RefCell::new(|_, _| {});
-    }
+    static REMAPPER: MainThreadOnly<Remapper> = MainThreadOnly::new(Remapper::new());
+    static SEND_KEY: LazyLock<MainThreadOnly<RefCell<fn(Pass, KeyEvent)>>> =
+        LazyLock::new(|| MainThreadOnly::new(RefCell::new(|_, _| {})));
 
     /// Maps a sequence of keys to another
     ///
@@ -73,7 +73,8 @@ mod global {
     /// added.
     pub fn map<M: Mode<U>, U: Ui>(take: &str, give: impl AsGives<U>) {
         context::assert_is_on_main_thread();
-        REMAPPER.with(|r| r.remap::<M, U>(str_to_keys(take), give.into_gives(), false));
+        let remapper = unsafe { REMAPPER.get() };
+        remapper.remap::<M, U>(str_to_keys(take), give.into_gives(), false);
     }
 
     /// Aliases a sequence of keys to another
@@ -101,12 +102,14 @@ mod global {
     /// [form]: crate::form::Form
     pub fn alias<M: Mode<U>, U: Ui>(take: &str, give: impl AsGives<U>) {
         context::assert_is_on_main_thread();
-        REMAPPER.with(|r| r.remap::<M, U>(str_to_keys(take), give.into_gives(), true));
+        let remapper = unsafe { REMAPPER.get() };
+        remapper.remap::<M, U>(str_to_keys(take), give.into_gives(), true);
     }
 
     pub fn cur_sequence() -> DataMap<(Vec<KeyEvent>, bool), (Vec<KeyEvent>, bool)> {
         context::assert_is_on_main_thread();
-        REMAPPER.with(|r| r.cur_seq.map(|seq| seq.clone()))
+        let remapper = unsafe { REMAPPER.get() };
+        remapper.cur_seq.map(|seq| seq.clone())
     }
 
     /// Turns a sequence of [`KeyEvent`]s into a [`Text`]
@@ -336,25 +339,28 @@ mod global {
         if let KeyCode::Char(_) = key.code {
             key.modifiers.remove(KeyMod::SHIFT);
         }
-        let send_key = { SEND_KEY.with(|sk| *sk.borrow()) };
-        send_key(data_key, key)
+        // SAFETY: This function takes a Pass.
+        let send_key = unsafe { SEND_KEY.get() };
+        send_key.borrow()(data_key, key)
     }
 
     /// Sets the key sending function
     pub(in crate::mode) fn set_send_key<M: Mode<U>, U: Ui>() {
-        SEND_KEY.with(|sk| {
-            *sk.borrow_mut() = |_, key| {
-                // SAFETY: Since this function is consuming a Pass, I can create
-                // new ones.
-                let pa = unsafe { Pass::new() };
-                send_key_fn::<M, U>(pa, key)
-            }
-        });
+        // SAFETY: This function is only ever called within a function that
+        // takes a Pass.
+        let send_key = unsafe { SEND_KEY.get() };
+        *send_key.borrow_mut() = |_, key| {
+            // SAFETY: Since this function is consuming a Pass, I can create
+            // new ones.
+            let pa = unsafe { Pass::new() };
+            send_key_fn::<M, U>(pa, key)
+        }
     }
 
     /// The key sending function, to be used as a pointer
     fn send_key_fn<M: Mode<U>, U: Ui>(pa: Pass<'_>, key: KeyEvent) {
-        REMAPPER.with(|r| *r).send_key::<M, U>(pa, key);
+        // SAFETY: This function takes a Pass.
+        unsafe { REMAPPER.get() }.send_key::<M, U>(pa, key);
     }
 }
 

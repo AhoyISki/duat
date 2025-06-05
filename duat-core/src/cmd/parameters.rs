@@ -342,7 +342,7 @@ impl<'a> Parameter<'a> for Color {
             };
             Ok(Color::Rgb { r, g, b })
         } else {
-            return Err(err!("Color format was not recognized").build());
+            Err(err!("Color format was not recognized").build())
         }
     }
 }

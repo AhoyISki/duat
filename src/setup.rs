@@ -28,7 +28,7 @@ use duat_utils::modes::Regular;
 
 use crate::{
     CfgFn, Ui,
-    hooks::{self, FocusedOn, OnFileOpen, OnWindowOpen, UnfocusedFrom},
+    hook::{self, FocusedOn, OnFileOpen, OnWindowOpen, UnfocusedFrom},
     mode,
     prelude::{FileWritten, LineNumbers, Notifier, PromptLine, StatusLine},
 };
@@ -49,34 +49,38 @@ pub fn pre_setup() {
     let windows: &'static RefCell<Vec<Window<Ui>>> = Box::leak(Box::new(RefCell::new(Vec::new())));
     static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
 
-    duat_core::context::setup_non_statics::<Ui>(
-        cur_file,
-        cur_widget,
-        CUR_WINDOW.load(Ordering::Relaxed),
-        windows,
-    );
+    // SAFETY: This function is supposed to be called only from the main
+    // thread, this is that thread.
+    unsafe {
+        duat_core::context::setup_non_statics::<Ui>(
+            cur_file,
+            cur_widget,
+            CUR_WINDOW.load(Ordering::Relaxed),
+            windows,
+        );
+    }
 
-    hooks::add_grouped::<OnFileOpen>("FileWidgets", |mut pa, builder| {
+    hook::add_grouped::<OnFileOpen>("FileWidgets", |mut pa, builder| {
         builder.push(&mut pa, VertRule::cfg());
         builder.push(&mut pa, LineNumbers::cfg());
     });
 
-    hooks::add_grouped::<OnWindowOpen>("WindowWidgets", |mut pa, builder| {
+    hook::add_grouped::<OnWindowOpen>("WindowWidgets", |mut pa, builder| {
         builder.push(&mut pa, StatusLine::cfg());
         let (child, _) = builder.push(&mut pa, PromptLine::cfg());
         builder.push_to(&mut pa, child, Notifier::cfg());
     });
 
-    hooks::add_grouped::<UnfocusedFrom<PromptLine<Ui>>>("HidePromptLine", |_, (_, area)| {
+    hook::add_grouped::<UnfocusedFrom<PromptLine<Ui>>>("HidePromptLine", |_, (_, area)| {
         area.constrain_ver([Constraint::Len(0.0)]).unwrap();
     });
 
-    hooks::add_grouped::<FocusedOn<PromptLine<Ui>>>("HidePromptLine", |_, (_, area)| {
+    hook::add_grouped::<FocusedOn<PromptLine<Ui>>>("HidePromptLine", |_, (_, area)| {
         area.constrain_ver([Constraint::Ratio(1, 1), Constraint::Len(1.0)])
             .unwrap();
     });
 
-    hooks::add_grouped::<FileWritten>("ReloadOnWrite", |_, (path, _)| {
+    hook::add_grouped::<FileWritten>("ReloadOnWrite", |_, (path, _)| {
         let path = Path::new(path);
         if let Some(config_dir) = crate::crate_dir()
             && path.starts_with(config_dir)

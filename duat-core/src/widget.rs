@@ -511,6 +511,7 @@ impl<U: Ui> Node<U> {
                 RwData::default()
             })
         }
+
         let related_widgets = related_widgets::<U>(pa, &widget, &area);
 
         Self {

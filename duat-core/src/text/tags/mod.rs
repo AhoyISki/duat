@@ -945,7 +945,6 @@ impl Tags {
         }
     }
 
-    #[track_caller]
     fn shift_bounds_and_ranges(&mut self, ins_n: usize, [n_diff, b_diff]: [i32; 2]) -> usize {
         ////////// Shifting of bounds
         let (mut sh_from, [mut total_n_diff, mut total_b_diff]) = self.bounds_shift_state.take();

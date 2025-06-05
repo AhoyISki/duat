@@ -478,7 +478,7 @@ pub mod form {
 }
 
 /// Hook utilities
-pub mod hooks {
+pub mod hook {
     pub use duat_core::hook::{
         ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FormSet, Hookable,
         KeysSent, KeysSentTo, ModeSwitched, SearchPerformed, SearchUpdated, add, add_grouped,
@@ -633,7 +633,7 @@ pub mod prelude {
     pub use crate::{
         Area, Ui, control, cursor,
         form::{self, CursorShape, Form},
-        hooks::{
+        hook::{
             self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FocusedOn,
             FormSet, ModeSetTo, ModeSwitched, OnFileOpen, OnWindowOpen, SearchPerformed,
             SearchUpdated, UnfocusedFrom,
