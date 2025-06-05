@@ -696,8 +696,8 @@ impl TsParser {
 impl<U: Ui> Reader<U> for TsParser {
     // `apply_changes` is not meant to modify the `Text`, it is only meant
     // to update the internal state of the `Reader`.
-    async fn apply_changes(
-        mut pa: Pass<'_>,
+    fn apply_changes(
+        mut pa: Pass,
         reader: RwData<Self>,
         bytes: BytesDataMap<U>,
         moment: Moment,
@@ -1012,14 +1012,13 @@ pub trait TsFile {
 
 impl<U: Ui> TsFile for File<U> {
     fn ts_indent_on(&self, p: Point) -> Option<usize> {
-        self.get_reader::<TsParser>()
-            .map(|reader| {
-                // SAFETY: Since this requires the borrowing of an RwDataFile,
-                unsafe {
-                    reader.read_unsafe(|ts| ts.indent_on(p, self.text().bytes(), self.print_cfg()))
-                }
-            })
-            .flatten()
+        self.get_reader::<TsParser>().and_then(|reader| {
+            // SAFETY: Since this requires the borrowing of an RwData<File>, no
+            // mutable borrows should exist.
+            unsafe {
+                reader.read_unsafe(|ts| ts.indent_on(p, self.text().bytes(), self.print_cfg()))
+            }
+        })
     }
 }
 
