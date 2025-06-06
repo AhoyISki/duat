@@ -23,8 +23,9 @@ use self::types::Toggle;
 pub use self::{
     ids::{GhostId, Key, Keys, ToggleId},
     types::{
+        AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCursor, FormTag, Ghost, MainCursor,
         RawTag::{self, *},
-        RawTagsFn, Tag,
+        Spacer, Tag,
     },
 };
 use super::{Point, Text, TextRangeOrPoint, records::Records};
@@ -56,8 +57,8 @@ pub struct MutTags<'a>(pub(super) &'a mut Tags);
 
 impl MutTags<'_> {
     /// Inserts a [`Tag`] at the given position
-    pub fn insert(&mut self, key: Key, tag: Tag<impl RawTagsFn>) {
-        self.0.insert(key, tag);
+    pub fn insert<R>(&mut self, key: Key, r: R, tag: impl Tag<R>) {
+        self.0.insert(key, r, tag);
     }
 
     /// Removes the [`Tag`]s of a [key] from a region
@@ -142,97 +143,104 @@ impl Tags {
     }
 
     /// Insert a new [`Tag`] at a given byte
-    pub fn insert(&mut self, key: Key, tag: Tag<impl RawTagsFn>) -> Option<ToggleId> {
+    pub fn insert<R>(&mut self, key: Key, r: R, tag: impl Tag<R>) -> Option<ToggleId> {
         fn exists_at(tags: &GapBuffer<TagOrSkip>, n: usize, tag: RawTag) -> bool {
             rev_range(tags, ..n)
                 .map_while(|(_, ts)| ts.as_tag())
                 .any(|lhs| lhs == tag)
         }
 
-        let (s_at, e_at) = get_ends(tag.range, self.len_bytes());
-        let (s_tag, e_tag) = (tag.tags)(key);
-
-        let toggle = match tag.id {
-            Some(TagId::Ghost(id, ghost)) => {
-                self.ghosts.insert(id, ghost);
-                None
+        fn insert_id(tags: &mut Tags, id: Option<TagId>) -> Option<ToggleId> {
+            match id {
+                Some(TagId::Ghost(id, ghost)) => {
+                    tags.ghosts.insert(id, ghost);
+                    None
+                }
+                Some(TagId::Toggle(id, toggle)) => {
+                    tags.toggles.insert(id, toggle);
+                    Some(id)
+                }
+                None => None,
             }
-            Some(TagId::Toggle(id, toggle)) => {
-                self.toggles.insert(id, toggle);
-                Some(id)
-            }
-            None => None,
-        };
+        }
 
-        let [s_n, s_b, s_skip] = self.skip_at(s_at);
+        fn insert_raw_tags(
+            tags: &mut Tags,
+            (s_at, s_tag): (usize, RawTag),
+            end: Option<(usize, RawTag)>,
+        ) -> bool {
+            let [s_n, s_b, s_skip] = tags.skip_at(s_at);
 
-        if let Some(e_tag) = e_tag
-            && s_at != e_at
-        {
-            let [e_n, e_b, e_skip] = {
-                // This is very likely the hot path.
-                let [n, b, skip] = if e_at < s_b + s_skip {
-                    // These changes account for a possibly split skip.
-                    [s_n, s_at, s_skip - (s_at - s_b)]
-                } else {
-                    self.skip_at(e_at)
+            if let Some((e_at, e_tag)) = end
+                && s_at != e_at
+            {
+                let [e_n, e_b, e_skip] = {
+                    // This is very likely the hot path.
+                    let [n, b, skip] = if e_at < s_b + s_skip {
+                        // These changes account for a possibly split skip.
+                        [s_n, s_at, s_skip - (s_at - s_b)]
+                    } else {
+                        tags.skip_at(e_at)
+                    };
+
+                    if exists_at(&tags.buf, s_n, s_tag) && exists_at(&tags.buf, n, e_tag) {
+                        return false;
+                    }
+                    let s_n_diff = if s_at == s_b { 1 } else { 2 };
+
+                    [n + s_n_diff, b, skip]
                 };
 
-                if exists_at(&self.buf, s_n, s_tag) && exists_at(&self.buf, n, e_tag) {
-                    return None;
+                let [s_ins, s_n_diff] = tags.insert_inner(s_at, s_tag, [s_n, s_b, s_skip]);
+                let bounds_s_ins = tags.shift_bounds_and_ranges(s_ins, [s_n_diff as i32, 0]);
+                tags.merge_range_to_update({
+                    let [s, e] = [s_ins, s_ins + s_n_diff];
+                    s.saturating_sub(tags.range_min)..(e + tags.range_min).min(tags.buf.len())
+                });
+
+                let [e_ins, e_n_diff] = tags.insert_inner(e_at, e_tag, [e_n, e_b, e_skip]);
+
+                if e_ins + e_n_diff - s_ins + s_n_diff >= tags.range_min {
+                    let id = RangeId::new();
+
+                    tags.bounds.insert(
+                        bounds_s_ins,
+                        (Cell::new([s_ins + s_n_diff - 1, s_at]), s_tag, id),
+                    );
+                    tags.declare_shifted(bounds_s_ins);
+
+                    let bounds_e_ins = tags.shift_bounds_and_ranges(e_ins, [e_n_diff as i32, 0]);
+                    tags.bounds.insert(
+                        bounds_e_ins,
+                        (Cell::new([e_ins + e_n_diff - 1, e_at]), e_tag, id),
+                    );
+                    tags.declare_shifted(bounds_e_ins);
+                } else {
+                    tags.shift_bounds_and_ranges(e_ins, [e_n_diff as i32, 0]);
                 }
-                let s_n_diff = if s_at == s_b { 1 } else { 2 };
+                tags.merge_range_to_update({
+                    let [s, e] = [e_ins, e_ins + e_n_diff];
+                    s.saturating_sub(tags.range_min)..(e + tags.range_min).min(tags.buf.len())
+                });
+            } else if end.is_none() {
+                let [ins, n_diff] = tags.insert_inner(s_at, s_tag, [s_n, s_b, s_skip]);
+                tags.shift_bounds_and_ranges(ins, [n_diff as i32, 0]);
 
-                [n + s_n_diff, b, skip]
-            };
-
-            let [s_ins, s_n_diff] = self.insert_inner(s_at, s_tag, [s_n, s_b, s_skip]);
-            let bounds_s_ins = self.shift_bounds_and_ranges(s_ins, [s_n_diff as i32, 0]);
-            self.merge_range_to_update({
-                let [s, e] = [s_ins, s_ins + s_n_diff];
-                s.saturating_sub(self.range_min)..(e + self.range_min).min(self.buf.len())
-            });
-
-            let [e_ins, e_n_diff] = self.insert_inner(e_at, e_tag, [e_n, e_b, e_skip]);
-
-            if e_ins + e_n_diff - s_ins + s_n_diff >= self.range_min {
-                let id = RangeId::new();
-
-                self.bounds.insert(
-                    bounds_s_ins,
-                    (Cell::new([s_ins + s_n_diff - 1, s_at]), s_tag, id),
+                // Since we are adding more TagOrSkips, ranges surrounding this
+                // insertion could need their bounds saved, as enough entries fit
+                // inside to justify it.
+                // However, this is going to be lazyly evaluated when Tags is updated.
+                let [s, e] = [ins, ins + n_diff];
+                tags.merge_range_to_update(
+                    s.saturating_sub(tags.range_min)..(e + tags.range_min).min(tags.buf.len()),
                 );
-                self.declare_shifted(bounds_s_ins);
-
-                let bounds_e_ins = self.shift_bounds_and_ranges(e_ins, [e_n_diff as i32, 0]);
-                self.bounds.insert(
-                    bounds_e_ins,
-                    (Cell::new([e_ins + e_n_diff - 1, e_at]), e_tag, id),
-                );
-                self.declare_shifted(bounds_e_ins);
-            } else {
-                self.shift_bounds_and_ranges(e_ins, [e_n_diff as i32, 0]);
             }
-            self.merge_range_to_update({
-                let [s, e] = [e_ins, e_ins + e_n_diff];
-                s.saturating_sub(self.range_min)..(e + self.range_min).min(self.buf.len())
-            });
 
-            toggle
-        } else if e_tag.is_none() {
-            let [ins, n_diff] = self.insert_inner(s_at, s_tag, [s_n, s_b, s_skip]);
-            self.shift_bounds_and_ranges(ins, [n_diff as i32, 0]);
-
-            // Since we are adding more TagOrSkips, ranges surrounding this
-            // insertion could need their bounds saved, as enough entries fit
-            // inside to justify it.
-            // However, this is going to be lazyly evaluated when Tags is updated.
-            let [s, e] = [ins, ins + n_diff];
-            self.merge_range_to_update(
-                s.saturating_sub(self.range_min)..(e + self.range_min).min(self.buf.len()),
-            );
-
-            None
+            true
+        }
+        let (start, end, tag_id) = tag.decompose(r, self.len_bytes(), key);
+        if insert_raw_tags(self, start, end) {
+            insert_id(self, tag_id)
         } else {
             None
         }

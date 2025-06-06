@@ -80,7 +80,7 @@ impl<D: Display + Clone + 'static, U: Ui> From<D> for State<U, D, D> {
     }
 }
 
-impl<U: Ui> From<Text> for State<U, Text> {
+impl<U: Ui> From<Text> for State<U, ()> {
     fn from(value: Text) -> Self {
         Self {
             appender: Appender::Part(BuilderPart::from(value)),
@@ -300,7 +300,7 @@ impl<U: Ui> From<AlignRight> for State<U, AlignRight> {
     }
 }
 
-impl<U: Ui> From<Spacer> for State<U, Spacer> {
+impl<U: Ui> From<Spacer> for State<U, ()> {
     fn from(_: Spacer) -> Self {
         Self {
             appender: Appender::Part(BuilderPart::from(Spacer)),
@@ -310,7 +310,7 @@ impl<U: Ui> From<Spacer> for State<U, Spacer> {
     }
 }
 
-impl<T: Into<Text> + Clone, U: Ui> From<Ghost<T>> for State<U, Ghost<T>> {
+impl<T: Into<Text> + Clone, U: Ui> From<Ghost<T>> for State<U, ()> {
     fn from(value: Ghost<T>) -> Self {
         Self {
             appender: Appender::Part(BuilderPart::from(value)),

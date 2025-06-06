@@ -7,179 +7,199 @@
 //! be as small as possible in order not to waste memory, as they will
 //! be stored in the [`Text`]. As such, they have as little
 //! information as possible, occupying only 8 bytes.
-use std::{
-    ops::{Range, RangeBounds},
-    sync::Arc,
-};
+use std::{ops::RangeBounds, sync::Arc};
 
+use RawTag::*;
 use crossterm::event::MouseEventKind;
 
-use self::RawTag::*;
 use super::{
     Key,
     ids::{GhostId, ToggleId},
 };
 use crate::{
     form::FormId,
-    get_ends,
     text::{Point, Text},
 };
 
-/// A [`Text`] modifier
-///
-/// [`Tag`]s are one of the most powerful tools of Duat, they abstract
-/// a ton of things that would usually be done through various APIs
-/// and simplify them to just a single one.
-///
-/// They can do many things, such as:
-///
-/// * Change the style when printing;
-/// * Add cursors on screen;
-/// * Change alignment of text;
-/// * Insert spacers for text formatting;
-/// * Place "ghost [`Text`]" which can be easily ignored by readers of
-///   the [`Text`];
-/// * Conceal [`Text`] arbitrarily;
-/// * Add toggles for mouse events (Not yet implemented);
-/// * ...Possibly more to come!
-///
-/// # Internals
-///
-/// While externally, it may seem like some [`Tag`]s occupy more than
-/// one space (like [`Form`], which needs a start and an end), this is
-/// an illusion. Internally, those are separated into multiple
-/// [`RawTag`]s, which are separated by skips, so for example, a
-/// [`Form`] would be separated into a [`RawTag::PushForm`] and a
-/// [`RawTag::PopForm`].
-///
-/// Previously, you could have unbounded ranges from [`Tag`]s (e.g. a
-/// `Tag::PushForm`), but that was removed, because keeping things
-/// internally correct would significantly hurt performance.
-///
-/// [`Form`]: Tag::Form
-#[derive(Clone)]
-pub struct Tag<F: RawTagsFn = fn(Key) -> (RawTag, Option<RawTag>)> {
-    pub(super) range: Range<usize>,
-    pub(super) tags: F,
-    pub(super) id: Option<TagId>,
+pub trait Tag<R>: Sized {
+    fn decompose(
+        self,
+        r: R,
+        max: usize,
+        key: Key,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>);
 }
 
-impl Tag {
-    /// Returns a new instance of [`Tag`]
-    fn new<F: RawTagsFn>(range: impl RangeBounds<usize>, id: Option<TagId>, tags: F) -> Tag<F> {
-        let (start, end) = get_ends(range, usize::MAX);
+////////// Form-like Tags
 
-        Tag { range: start..end, tags, id }
+/// [`Tag`]: Applies a [`Form`] to a given [range] in the [`Text`]
+///
+/// This struct can be created from the [`FormId::to_tag`] method,
+/// granting it a priority that is used to properly order the
+/// [`RawTag`]s within.
+///
+/// The [`Form`] is able to intersect with other [`Form`]s, which,
+/// unlike when pushing [`Form`]s to a [`Builder`], interfere
+/// constructively, with the latest attributes and colors winning out.
+///
+/// [`Form`]: crate::form::Form
+/// [range]: RangeBounds
+/// [`Builder`]: crate::text::Builder
+#[derive(Clone, Copy)]
+pub struct FormTag(pub FormId, pub u8);
+
+impl<R: RangeBounds<usize>> Tag<R> for FormTag {
+    fn decompose(
+        self,
+        r: R,
+        max: usize,
+        key: Key,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
+        let FormTag(id, prio) = self;
+        ranged(r, max, PushForm(key, id, prio), PopForm(key, id), None)
     }
+}
 
-    /// Stylizes a [range] with a [`Form`]
-    ///
-    /// The last argument is a priority factor, a higher priority
-    /// makes a [`Form`]'s application latent, so it takes precedence
-    /// of earlier [`Form`]s. This is important if, for example,
-    /// multiple [`Form`]s are inserted in the same byte.
-    ///
-    /// Priority values higher than `250` are clamped back down to
-    /// `250`.
-    ///
-    /// [range]: Range
-    /// [`Form`]: crate::form::Form
-    pub fn form(range: impl RangeBounds<usize>, form: FormId, priority: u8) -> Tag<impl RawTagsFn> {
-        Self::new(range, None, move |key| {
-            (PushForm(key, form, priority), Some(PopForm(key, form)))
-        })
-    }
+/// [`Tag`]: Places the main Cursor on the [`Text`]
+///
+/// You shouldn't have to use this most of the time, since the
+/// [`Text`] can come equipped with [`Cursors`], which manage that
+/// automatically for you.
+///
+/// [`Cursors`]: crate::mode::Cursors
+#[derive(Clone, Copy)]
+pub struct MainCursor;
+simple_impl_Tag!(MainCursor, RawTag::MainCursor);
 
-    /// Places the main cursor
-    pub fn main_cursor(b: usize) -> Self {
-        Self::new(b..b, None, |key| (MainCursor(key), None))
-    }
+/// [`Tag`]: Places an extra Cursor on the [`Text`]
+///
+/// How the extra cursor gets inserted is [`Ui`] dependant, for
+/// example, a terminal can't show more than one cursor, so in
+/// [`duat-term`], it defaults to showing the `"ExtraCursor"`
+/// [`Form`], but in other platforms, it could show an actual cursor.
+///
+/// You shouldn't have to use this most of the time, since the
+/// [`Text`] can come equipped with [`Cursors`], which manage that
+/// automatically for you.
+///
+/// [`Cursors`]: crate::mode::Cursors
+/// [`Ui`]: crate::ui::Ui
+/// [`duat-term`]: https://crates.io/crates/duat-term
+/// [`Form`]: crate::form::Form
+#[derive(Clone, Copy)]
+pub struct ExtraCursor;
+simple_impl_Tag!(ExtraCursor, RawTag::ExtraCursor);
 
-    /// Places an extra cursor
-    pub fn extra_cursor(b: usize) -> Self {
-        Self::new(b..b, None, |key| (ExtraCursor(key), None))
-    }
+/////////// Alignment Tags
 
-    /// Aligns text to the center of the screen within the lines
-    /// containing the [range]. If said region intersects with an
-    /// [`align_right`] region, the latest one prevails.
-    ///
-    /// [range]: Range
-    /// [`align_right`]: Tag::align_right
-    pub fn align_center(range: impl RangeBounds<usize>) -> Self {
-        Self::new(range, None, |key| {
-            (StartAlignCenter(key), Some(EndAlignCenter(key)))
-        })
-    }
+/// [`Builder`] part: Begins centered alignment
+///
+/// [`Tag`]: Aligns the [`Text`] on the center in a [range]
+///
+/// [`Builder`]: crate::text::Builder
+/// [range]: RangeBounds
+#[derive(Clone, Copy)]
+pub struct AlignCenter;
+ranged_impl_tag!(
+    AlignCenter,
+    RawTag::StartAlignCenter,
+    RawTag::EndAlignCenter
+);
 
-    /// Aligns text to the right of the screen within the lines
-    /// containing the [range]. If said region intersects with an
-    /// [`align_center`] region, the latest one prevails.
-    ///
-    /// [range]: Range
-    /// [`align_center`]: Tag::align_center
-    pub fn align_right(range: impl RangeBounds<usize>) -> Self {
-        Self::new(range, None, |key| {
-            (StartAlignRight(key), Some(EndAlignRight(key)))
-        })
-    }
+/// [`Builder`] part: Begins alignment on the right
+///
+/// [`Tag`]: Aligns the [`Text`] on the right in a [range]
+///
+/// [`Builder`]: crate::text::Builder
+/// [range]: RangeBounds
+#[derive(Clone, Copy)]
+pub struct AlignRight;
+ranged_impl_tag!(AlignRight, RawTag::StartAlignRight, RawTag::EndAlignRight);
 
-    /// A spacer for a single screen line
-    ///
-    /// When printing this screen line (one row on screen, i.e. until
-    /// it wraps), Instead of following the current alignment, will
-    /// put spacing between this character and the previous one. The
-    /// length of the space will be roughly equal to the available
-    /// space on this line divided by the number of spacers on it.
-    ///
-    /// # Example
-    ///
-    /// Let's say that this is the line being printed:
-    ///
-    /// ```text
-    /// This is my line,please,pretend it has tags
-    /// ```
-    ///
-    /// If we were to print it with `{Divider}`s like this:
-    ///
-    /// ```text
-    /// This is my line,{Divider}please,{Divider}pretend it has tags
-    /// ```
-    ///
-    /// In a screen with a width of 48, it would come out like:
-    ///
-    /// ```text
-    /// This is my line,   please,   pretend it has tags
-    /// ```
-    pub fn spacer(b: usize) -> Self {
-        Self::new(b..b, None, |key| (Spacer(key), None))
-    }
+/// [`Builder`] part: Begins alignment on the left
+///
+/// Note that, unlike [`AlignCenter`] and [`AlignRight`], this struct
+/// is not a [`Tag`], since the left alignment is the default
+/// alignment, i.e., the lack of those other alignment tags. So this
+/// just serves to cancel these other alignments inside of a
+/// [`Builder`].
+///
+/// [`Builder`]: crate::text::Builder
+/// [range]: RangeBounds
+#[derive(Clone, Copy)]
+pub struct AlignLeft;
 
-    /// Text that shows up on screen, but "doesn't exist"
-    pub fn ghost(b: usize, text: impl Into<Text>) -> Tag<impl RawTagsFn> {
-        let mut text: Text = Into::<Text>::into(text);
-        text.replace_range(text.len().byte() - 1.., "");
+/// [`Builder`] part and [`Tag`]: A spacer for more advanced alignment
+///
+/// When printing this screen line (one row on screen, i.e. until
+/// it wraps), Instead of following the current alignment, will
+/// put spacing between the next and previous characters. The
+/// length of the space will be roughly equal to the available
+/// space on this line divided by the number of [`Spacer`]s on it.
+///
+/// # Example
+///
+/// Let's say that this is the line being printed:
+///
+/// ```text
+/// This is my line,please,pretend it has tags
+/// ```
+///
+/// If we were to print it with `{Spacer}as like this:
+///
+/// ```text
+/// This is my line,{Spacer}please,{Spacer}pretend it has tags
+/// ```
+///
+/// In a screen with a width of 50, it would come out like:
+///
+/// ```text
+/// This is my line,    please,    pretend it has tags
+/// ```
+///
+/// [`Builder`]: crate::text::Builder
+#[derive(Clone, Copy)]
+pub struct Spacer;
+simple_impl_Tag!(Spacer, RawTag::Spacer);
 
+////////// Text modification Tags
+
+/// [`Builder`] part and [`Tag`]: Places ghost text
+///
+/// This is useful when, for example, creating command line prompts,
+/// since the text is non interactable.
+///
+/// [`Builder`]: crate::text::Builder
+#[derive(Clone, Copy)]
+pub struct Ghost<T: Into<Text>>(pub T);
+
+impl<T: Into<Text>> Tag<usize> for Ghost<T> {
+    fn decompose(
+        self,
+        r: usize,
+        max: usize,
+        key: Key,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
+        assert!(
+            r <= max,
+            "index out of bounds: the len is {max}, but the index is {r}",
+        );
         let id = GhostId::new();
-
-        Self::new(b..b, Some(TagId::Ghost(id, text)), move |key| {
-            (Ghost(key, id), None)
-        })
-    }
-
-    /// Conceal the given [range], preventing it from being printed
-    ///
-    /// This [range] is completely arbitrary, it can go over multiple
-    /// lines, [`Ghost`]s, whatever.
-    ///
-    /// [range]: Range
-    /// [`Ghost`]: Tag::Ghost
-    pub fn conceal(range: impl RangeBounds<usize>) -> Self {
-        Self::new(range, None, |key| {
-            (StartConceal(key), Some(EndConceal(key)))
-        })
+        let tag_id = TagId::Ghost(id, self.0.into());
+        ((r, RawTag::Ghost(key, id)), None, Some(tag_id))
     }
 }
+
+/// [`Tag`]: Conceals a [range] in the [`Text`]
+///
+/// This [range] is completely arbitrary, being able to partially
+/// contain lines, as long as it is contained within the length of the
+/// [`Text`].
+///
+/// [range]: RangeBounds
+#[derive(Clone, Copy)]
+pub struct Conceal;
+ranged_impl_tag!(Conceal, RawTag::StartConceal, RawTag::EndConceal);
 
 #[derive(Clone, Copy, Eq, PartialOrd, Ord)]
 pub enum RawTag {
@@ -412,11 +432,51 @@ impl std::fmt::Debug for RawTag {
 
 pub type Toggle = Arc<dyn Fn(Point, MouseEventKind) + 'static + Send + Sync>;
 
-pub trait RawTagsFn = FnOnce(Key) -> (RawTag, Option<RawTag>) + Clone;
-
 #[derive(Clone)]
 #[allow(dead_code)]
 pub enum TagId {
     Ghost(GhostId, Text),
     Toggle(ToggleId, Toggle),
+}
+
+fn ranged(
+    r: impl RangeBounds<usize>,
+    max: usize,
+    s_tag: RawTag,
+    e_tag: RawTag,
+    id: Option<TagId>,
+) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
+    let (s, e) = crate::get_ends(r, max);
+    ((s, s_tag), Some((e, e_tag)), id)
+}
+
+macro simple_impl_Tag($tag:ty, $raw_tag:expr) {
+    impl Tag<usize> for $tag {
+        fn decompose(
+            self,
+            r: usize,
+            max: usize,
+            key: Key,
+        ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
+            assert!(
+                r <= max,
+                "index out of bounds: the len is {max}, but the index is {r}",
+            );
+            ((r, $raw_tag(key)), None, None)
+        }
+    }
+}
+
+macro ranged_impl_tag($tag:ty, $start:expr, $end:expr) {
+    impl<R: RangeBounds<usize>> Tag<R> for $tag {
+        fn decompose(
+            self,
+            r: R,
+            max: usize,
+            key: Key,
+        ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
+            let (s, e) = $crate::get_ends(r, max);
+            ((s, $start(key)), Some((e, $end(key))), None)
+        }
+    }
 }

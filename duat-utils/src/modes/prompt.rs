@@ -6,7 +6,7 @@ use duat_core::{
     form,
     hook::{self, SearchPerformed, SearchUpdated},
     mode::{self, Cursors, EditHelper, KeyCode, KeyEvent, key},
-    text::{Key, Point, Searcher, Tag, Text, text},
+    text::{Ghost, Key, Point, Searcher, Text, text},
     ui::{RawArea, Ui},
     widget::Widget,
 };
@@ -41,13 +41,13 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
         match key {
             key!(KeyCode::Backspace) => {
                 if helper.read(&pa, |pl| pl.text().is_empty()) {
-                    helper.write(&mut pa, |pl| pl.text_mut().cursors_mut().unwrap().clear());
+                    helper.write_cursors(&mut pa, |c| c.clear());
 
                     let text = helper.take_text(&mut pa);
                     let text = self.0.update(&mut pa, text, &area);
                     let text = self.0.before_exit(&mut pa, text, &area);
 
-                    helper.write(&mut pa, |wid| *wid.text_mut() = text);
+                    helper.replace_text(&mut pa, text);
 
                     mode::reset();
                 } else {
@@ -57,14 +57,14 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
                     });
                     let text = helper.take_text(&mut pa);
                     let text = self.0.update(&mut pa, text, &area);
-                    helper.write(&mut pa, |wid| *wid.text_mut() = text);
+                    helper.replace_text(&mut pa, text);
                 }
             }
             key!(KeyCode::Delete) => {
                 helper.edit_main(&mut pa, |mut e| e.replace(""));
                 let text = helper.take_text(&mut pa);
                 let text = self.0.update(&mut pa, text, &area);
-                helper.write(&mut pa, |wid| *wid.text_mut() = text);
+                helper.replace_text(&mut pa, text);
             }
 
             key!(KeyCode::Char(char)) => {
@@ -74,19 +74,19 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
                 });
                 let text = helper.take_text(&mut pa);
                 let text = self.0.update(&mut pa, text, &area);
-                helper.write(&mut pa, |wid| *wid.text_mut() = text);
+                helper.replace_text(&mut pa, text);
             }
             key!(KeyCode::Left) => {
                 helper.edit_main(&mut pa, |mut e| e.move_hor(-1));
                 let text = helper.take_text(&mut pa);
                 let text = self.0.update(&mut pa, text, &area);
-                helper.write(&mut pa, |wid| *wid.text_mut() = text);
+                helper.replace_text(&mut pa, text);
             }
             key!(KeyCode::Right) => {
                 helper.edit_main(&mut pa, |mut e| e.move_hor(1));
                 let text = helper.take_text(&mut pa);
                 let text = self.0.update(&mut pa, text, &area);
-                helper.write(&mut pa, |wid| *wid.text_mut() = text);
+                helper.replace_text(&mut pa, text);
             }
 
             key!(KeyCode::Esc) => {
@@ -97,19 +97,19 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
                     e.move_to(p);
                     e.replace("");
                 });
-                helper.write(&mut pa, |wid| wid.text_mut().cursors_mut().unwrap().clear());
+                helper.write_cursors(&mut pa, |c| c.clear());
                 let text = helper.take_text(&mut pa);
                 let text = self.0.update(&mut pa, text, &area);
                 let text = self.0.before_exit(&mut pa, text, &area);
-                helper.write(&mut pa, |wid| *wid.text_mut() = text);
+                helper.replace_text(&mut pa, text);
                 mode::reset();
             }
             key!(KeyCode::Enter) => {
-                helper.write(&mut pa, |wid| wid.text_mut().cursors_mut().unwrap().clear());
+                helper.write_cursors(&mut pa, |c| c.clear());
                 let text = helper.take_text(&mut pa);
                 let text = self.0.update(&mut pa, text, &area);
                 let text = self.0.before_exit(&mut pa, text, &area);
-                helper.write(&mut pa, |wid| *wid.text_mut() = text);
+                helper.replace_text(&mut pa, text);
                 mode::reset();
             }
             _ => {}
@@ -121,11 +121,11 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
             *wid.text_mut() = Text::new_with_cursors();
             run_once::<M, U>();
 
-            let tag = Tag::ghost(0, match wid.prompt_of::<M>() {
+            let tag = Ghost(match wid.prompt_of::<M>() {
                 Some(text) => text,
                 None => self.0.prompt(),
             });
-            wid.text_mut().insert_tag(*PROMPT_KEY, tag);
+            wid.text_mut().insert_tag(*PROMPT_KEY, 0, tag);
 
             std::mem::take(wid.text_mut())
         });
@@ -171,19 +171,19 @@ impl<U: Ui> PromptMode<U> for RunCommands {
         if let Some(caller) = caller {
             if let Some((ok_ranges, err_range)) = cmd::check_args(&command) {
                 let id = form::id_of!("CallerExists");
-                text.insert_tag(*KEY, Tag::form(0..caller.len(), id, 0));
+                text.insert_tag(*KEY, 0..caller.len(), id.to_tag(0));
 
                 let id = form::id_of!("ParameterOk");
                 for range in ok_ranges {
-                    text.insert_tag(*KEY, Tag::form(range, id, 0));
+                    text.insert_tag(*KEY, range, id.to_tag(0));
                 }
                 if let Some((range, _)) = err_range {
                     let id = form::id_of!("ParameterErr");
-                    text.insert_tag(*KEY, Tag::form(range, id, 0));
+                    text.insert_tag(*KEY, range, id.to_tag(0));
                 }
             } else {
                 let id = form::id_of!("CallerNotFound");
-                text.insert_tag(*KEY, Tag::form(0..caller.len(), id, 0));
+                text.insert_tag(*KEY, 0..caller.len(), id.to_tag(0));
             }
         }
 
@@ -254,7 +254,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
                 let span = err.span();
                 let id = form::id_of!("ParseCommandErr");
 
-                text.insert_tag(*KEY, Tag::form(span.start.offset..span.end.offset, id, 0));
+                text.insert_tag(*KEY, span.start.offset..span.end.offset, id.to_tag(0));
             }
         }
 
@@ -331,10 +331,10 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
         };
 
         let c_s = command.len() - command.trim_start().len();
-        text.insert_tag(*KEY, Tag::form(c_s..c_s + caller.len(), caller_id, 0));
+        text.insert_tag(*KEY, c_s..c_s + caller.len(), caller_id.to_tag(0));
 
         for (_, range) in args {
-            text.insert_tag(*KEY, Tag::form(range, args_id, 0));
+            text.insert_tag(*KEY, range, args_id.to_tag(0));
         }
 
         text

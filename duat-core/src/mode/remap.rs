@@ -11,7 +11,7 @@ use crate::{
     context,
     data::{Pass, RwData},
     mode,
-    text::{Key, Tag, text},
+    text::{Ghost, Key, text},
     ui::Ui,
     widget::Widget,
 };
@@ -334,26 +334,29 @@ mod global {
     }
 
     /// Sends a key to be remapped
-    pub(crate) fn send_key(data_key: Pass<'_>, mut key: KeyEvent) {
+    pub(crate) fn send_key(pa: Pass<'_>, mut key: KeyEvent) {
         // No need to send shift to, for example, Char('L').
         if let KeyCode::Char(_) = key.code {
             key.modifiers.remove(KeyMod::SHIFT);
         }
+
+        if let Some(set_mode) = crate::mode::take_set_mode_fn() {
+            set_mode(unsafe { Pass::new() });
+        }
+
         // SAFETY: This function takes a Pass.
-        let send_key = unsafe { SEND_KEY.get() };
-        send_key.borrow()(data_key, key)
+        let send_key = *unsafe { SEND_KEY.get() }.borrow();
+        send_key(pa, key)
     }
 
     /// Sets the key sending function
     pub(in crate::mode) fn set_send_key<M: Mode<U>, U: Ui>() {
         // SAFETY: This function is only ever called within a function that
         // takes a Pass.
-        let send_key = unsafe { SEND_KEY.get() };
-        *send_key.borrow_mut() = |_, key| {
+        *unsafe { SEND_KEY.get() }.borrow_mut() = |_, key| {
             // SAFETY: Since this function is consuming a Pass, I can create
             // new ones.
-            let pa = unsafe { Pass::new() };
-            send_key_fn::<M, U>(pa, key)
+            send_key_fn::<M, U>(unsafe { Pass::new() }, key)
         }
     }
 
@@ -452,7 +455,8 @@ impl Remapper {
                     remove_alias_and::<U>(pa, |widget, area, main| {
                         widget.text_mut().insert_tag(
                             Key::for_alias(),
-                            Tag::ghost(main, text!("[Alias]{}", keys_to_string(&cur_seq))),
+                            main,
+                            Ghost(text!("[Alias]{}", keys_to_string(&cur_seq))),
                         );
 
                         let cfg = widget.print_cfg();

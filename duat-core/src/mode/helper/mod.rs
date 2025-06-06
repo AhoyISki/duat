@@ -5,7 +5,10 @@
 //! cursors and dealing with editing the text directly.
 //!
 //! [`Mode`]: super::Mode
-use std::{cell::Cell, rc::Rc};
+use std::{
+    cell::{Cell, RefMut},
+    rc::Rc,
+};
 
 use lender::{Lender, Lending};
 
@@ -212,23 +215,32 @@ impl<W: Widget<U>, U: Ui, S> EditHelper<W, U, S> {
         n: usize,
         edit: impl FnOnce(Editor<W, U::Area, S>) -> Ret,
     ) -> Ret {
-        self.widget.write(pa, |wid| {
-            let cursors = wid.text_mut().cursors_mut().unwrap();
+        fn get_parts<'a, W: Widget<U>, U: Ui>(
+            widget: &'a RwData<W>,
+            pa: &mut Pass,
+            n: usize,
+        ) -> (Cursor, bool, RefMut<'a, W>) {
+            let mut widget = widget.acquire_mut(pa);
+            let cursors = widget.text_mut().cursors_mut().unwrap();
             cursors.populate();
             let Some((cursor, was_main)) = cursors.remove(n) else {
                 panic!("Cursor index {n} out of bounds");
             };
 
-            edit(Editor::new(
-                cursor,
-                n,
-                was_main,
-                wid,
-                &self.area,
-                None,
-                &mut self.inc_searcher,
-            ))
-        })
+            (cursor, was_main, widget)
+        }
+
+        let (cursor, was_main, mut widget) = get_parts(&self.widget, pa, n);
+
+        edit(Editor::new(
+            cursor,
+            n,
+            was_main,
+            &mut *widget,
+            &self.area,
+            None,
+            &mut self.inc_searcher,
+        ))
     }
 
     /// Edits the main [`Cursor`] in the [`Text`]
@@ -312,17 +324,7 @@ impl<W: Widget<U>, U: Ui, S> EditHelper<W, U, S> {
         pa: &mut Pass,
         edit: impl FnOnce(EditIter<'_, W, U::Area, S>) -> Ret,
     ) -> Ret {
-        self.widget.write(pa, |wid| {
-            let cursors = wid.text_mut().cursors_mut().unwrap();
-            cursors.populate();
-
-            edit(EditIter {
-                next_i: Rc::new(Cell::new(0)),
-                widget: wid,
-                area: &self.area,
-                inc_searcher: &mut self.inc_searcher,
-            })
-        })
+        edit(self.get_iter(pa))
     }
 
     /// A shortcut for iterating over all cursors
@@ -340,19 +342,19 @@ impl<W: Widget<U>, U: Ui, S> EditHelper<W, U, S> {
     /// indentation that will inevitably come from using the
     /// equivalent long form call.
     pub fn edit_all(&mut self, pa: &mut Pass, edit: impl FnMut(Editor<W, U::Area, S>)) {
-        self.widget.write(pa, |wid| {
-            let cursors = wid.text_mut().cursors_mut().unwrap();
-            cursors.populate();
+        self.get_iter(pa).for_each(edit);
+    }
 
-            let iter = EditIter {
-                next_i: Rc::new(Cell::new(0)),
-                widget: wid,
-                area: &self.area,
-                inc_searcher: &mut self.inc_searcher,
-            };
-
-            iter.for_each(edit);
-        })
+    fn get_iter(&mut self, pa: &mut Pass) -> EditIter<'_, W, U::Area, S> {
+        let mut widget = self.widget.acquire_mut(pa);
+        let cursors = widget.text_mut().cursors_mut().unwrap();
+        cursors.populate();
+        EditIter {
+            next_i: Rc::new(Cell::new(0)),
+            widget,
+            area: &self.area,
+            inc_searcher: &mut self.inc_searcher,
+        }
     }
 
     ////////// Getter functions
@@ -361,30 +363,34 @@ impl<W: Widget<U>, U: Ui, S> EditHelper<W, U, S> {
     ///
     /// [`W`]: Widget
     pub fn read<Ret>(&self, pa: &Pass, read: impl FnOnce(&W) -> Ret) -> Ret {
-        self.widget.read(pa, read)
+        let widget = self.widget.acquire(pa);
+        read(&*widget)
     }
 
     /// Writes to the [`W`] within
     ///
     /// [`W`]: Widget
     pub fn write<Ret>(&self, pa: &mut Pass, write: impl FnOnce(&mut W) -> Ret) -> Ret {
-        self.widget.write(pa, write)
+        let mut widget = self.widget.acquire_mut(pa);
+        write(&mut *widget)
     }
 
     /// Reads the [`Text`] of the [`Widget`]
     pub fn read_text<Ret>(&self, pa: &Pass, read: impl FnOnce(&Text) -> Ret) -> Ret {
-        self.widget.read(pa, |wid| read(wid.text()))
+        let widget = self.widget.acquire(pa);
+        read(widget.text())
     }
 
     /// Writes to the [`Text`] of the [`Widget`]
     pub fn write_text<Ret>(&self, pa: &mut Pass, write: impl FnOnce(&mut Text) -> Ret) -> Ret {
-        self.widget.write(pa, |wid| write(wid.text_mut()))
+        let mut widget = self.widget.acquire_mut(pa);
+        write(widget.text_mut())
     }
 
     /// Reads the [`Cursors`] of the [`Widget`]
     pub fn read_cursors<Ret>(&self, pa: &Pass, read: impl FnOnce(&Cursors) -> Ret) -> Ret {
-        self.widget
-            .read(pa, |wid| read(wid.text().cursors().unwrap()))
+        let widget = self.widget.acquire(pa);
+        read(widget.text().cursors().unwrap())
     }
 
     /// Writes to the [`Cursors`] of the [`Widget`]
@@ -393,8 +399,8 @@ impl<W: Widget<U>, U: Ui, S> EditHelper<W, U, S> {
         pa: &mut Pass,
         write: impl FnOnce(&mut Cursors) -> Ret,
     ) -> Ret {
-        self.widget
-            .write(pa, |wid| write(wid.text_mut().cursors_mut().unwrap()))
+        let mut widget = self.widget.acquire_mut(pa);
+        write(widget.text_mut().cursors_mut().unwrap())
     }
 
     /// Clones the [`Text`] within
@@ -1098,7 +1104,7 @@ unsafe impl<#[may_dangle] 'a, W: Widget<A::Ui> + 'a, A: RawArea + 'a, S: 'a> Dro
 
 pub struct EditIter<'a, W: Widget<A::Ui>, A: RawArea, S> {
     next_i: Rc<Cell<usize>>,
-    widget: &'a mut W,
+    widget: RefMut<'a, W>,
     area: &'a A,
     inc_searcher: &'a mut S,
 }
@@ -1121,7 +1127,7 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Lender for EditIter<'a, W, A, S> {
             cursor,
             current_i,
             was_main,
-            self.widget,
+            &mut *self.widget,
             self.area,
             Some(self.next_i.clone()),
             self.inc_searcher,

@@ -28,6 +28,7 @@ mod global {
         sync::{
             LazyLock, Mutex, OnceLock,
             atomic::{AtomicBool, AtomicUsize, Ordering},
+            mpsc,
         },
     };
 
@@ -36,7 +37,7 @@ mod global {
         data::{DataMap, Pass, RwData},
         main_thread_only::MainThreadOnly,
         text::{Text, err},
-        ui::{Ui, Window},
+        ui::{DuatEvent, Ui, Window},
         widget::Node,
     };
 
@@ -54,6 +55,7 @@ mod global {
     static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
     static WILL_RELOAD_OR_QUIT: AtomicBool = AtomicBool::new(false);
     static CUR_DIR: OnceLock<Mutex<PathBuf>> = OnceLock::new();
+    static SENDER: OnceLock<&mpsc::Sender<DuatEvent>> = OnceLock::new();
 
     /// The name of the current [`Mode`]
     ///
@@ -117,6 +119,10 @@ mod global {
     /// Returns `true` if Duat is about to reload
     pub fn will_reload_or_quit() -> bool {
         WILL_RELOAD_OR_QUIT.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn sender() -> &'static mpsc::Sender<DuatEvent> {
+        SENDER.get().unwrap()
     }
 
     pub(crate) fn set_cur<U: Ui>(
@@ -184,8 +190,9 @@ mod global {
     ///
     /// Panics if not on the main thread of execution.
     pub fn assert_is_on_main_thread() {
-        assert!(
-            std::thread::current().id() == *MAIN_THREAD_ID.get().unwrap(),
+        assert_eq!(
+            std::thread::current().id(),
+            *MAIN_THREAD_ID.get().unwrap(),
             "Not on main thread"
         );
     }
@@ -196,6 +203,7 @@ mod global {
         cur_widget: &'static CurWidget<U>,
         cur_window: usize,
         windows: &'static RefCell<Vec<Window<U>>>,
+        sender: &'static mpsc::Sender<DuatEvent>,
     ) {
         MAIN_THREAD_ID
             .set(std::thread::current().id())
@@ -208,6 +216,7 @@ mod global {
         }
 
         CUR_WINDOW.store(cur_window, Ordering::Relaxed);
+        SENDER.set(sender).expect("setup ran twice");
     }
 }
 

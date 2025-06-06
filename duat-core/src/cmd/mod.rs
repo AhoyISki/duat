@@ -204,10 +204,10 @@ pub use self::{
 };
 use crate::{
     context,
+    context::sender,
     data::{Pass, RwData},
     file::File,
     file_entry, iter_around, iter_around_rev, mode,
-    session::sender,
     text::{Text, err, hint, ok},
     ui::{DuatEvent, Ui},
 };
@@ -854,8 +854,7 @@ mod global {
     /// [`Result`] will not be returned.
     pub fn queue(call: impl std::fmt::Display) {
         let call = call.to_string();
-        let sender = crate::session::sender();
-        sender
+        crate::context::sender()
             .send(DuatEvent::QueuedFunction(Box::new(move |mut pa| {
                 // SAFETY: Closure has Pass argument.
                 let _ = unsafe { COMMANDS.get() }.run(&mut pa, call);
@@ -866,8 +865,7 @@ mod global {
     /// Like [`queue`], but notifies the result
     pub fn queue_notify(call: impl std::fmt::Display) {
         let call = call.to_string();
-        let sender = crate::session::sender();
-        sender
+        crate::context::sender()
             .send(DuatEvent::QueuedFunction(Box::new(move |mut pa| {
                 if let Ok(Some(res)) | Err(res) = unsafe { COMMANDS.get() }.run(&mut pa, call) {
                     context::notify(res);
@@ -879,8 +877,7 @@ mod global {
     /// Like [`queue`], but acts on the [`Result`]
     pub fn queue_and(call: impl std::fmt::Display, map: impl FnOnce(CmdResult) + Send + 'static) {
         let call = call.to_string();
-        let sender = crate::session::sender();
-        sender
+        crate::context::sender()
             .send(DuatEvent::QueuedFunction(Box::new(move |mut pa| {
                 // SAFETY: Function has a Pass argument.
                 map(unsafe { COMMANDS.get() }.run(&mut pa, call));
@@ -975,7 +972,8 @@ impl Commands {
         }
 
         let silent = call.len() > call.trim_start().len();
-        command.cmd.acquire_mut()(pa, args).map(|ok| ok.filter(|_| !silent))
+        command.cmd.acquire_mut(&mut unsafe { Pass::new() })(pa, args)
+            .map(|ok| ok.filter(|_| !silent))
     }
 
     /// Adds a command to the list of commands

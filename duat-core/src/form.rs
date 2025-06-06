@@ -9,6 +9,7 @@ pub use self::global::*;
 pub(crate) use self::global::{colorscheme_exists, exists};
 use crate::{
     hook::{self, FormSet},
+    text::FormTag,
     ui::Sender,
 };
 
@@ -330,15 +331,15 @@ mod global {
         ($($form:expr),+) => {{
             static IDS: std::sync::OnceLock<&[FormId]> = std::sync::OnceLock::new();
             let ids = *IDS.get_or_init(|| {
-    			let mut ids = Vec::new();
-    			let names = vec![$( $form ),+];
-    			for name in names.iter() {
-        			ids.push(id_from_name(name));
-    			}
-    			add_forms(names);
-    			ids.leak()
-    		});
-    		ids
+                let mut ids = Vec::new();
+                let names = vec![$( $form ),+];
+                for name in names.iter() {
+                    ids.push(id_from_name(name));
+                }
+                add_forms(names);
+                ids.leak()
+            });
+            ids
         }}
     }
 
@@ -535,6 +536,8 @@ mod global {
 
 /// An identifier of a [`Form`]
 ///
+/// [`Builder`] part: Applies the [`Form`] destructively
+///
 /// This struct is always going to point to the same form, since those
 /// cannot be destroyed.
 ///
@@ -547,6 +550,15 @@ mod global {
 pub struct FormId(u16);
 
 impl FormId {
+    /// Creates a [`Tag`] out of this [`FormId`]
+    ///
+    /// In order to push a [`Form`] to the [`Text`], it needs a
+    /// priority value, in order to properly sort the [`Form`]s within
+    /// the same byte.
+    pub const fn to_tag(self, prio: u8) -> FormTag {
+        FormTag(self, prio)
+    }
+
     /// The internal id of the [`FormId`]
     ///
     /// This may be useful in certain situations.
@@ -1557,14 +1569,14 @@ macro mimic_method_mod {
             self
         }
 
-		/// Turns the background of this [`Form`]
+        /// Turns the background of this [`Form`]
         #[$attr]
         pub const fn $bg(mut self) -> Self {
             self.0.style.background_color = Some($color);
             self
         }
 
-		/// Turns the underlining of this [`Form`]
+        /// Turns the underlining of this [`Form`]
         #[$attr]
         ///
         /// Do note that this feature may not be supported in all [`Ui`]s.

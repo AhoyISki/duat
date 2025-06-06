@@ -95,16 +95,16 @@ use std::{
 pub(crate) use self::history::History;
 use self::tags::{FwdTags, GhostId, RevTags, Tags};
 pub use self::{
-    builder::{
-        AlignCenter, AlignLeft, AlignRight, Builder, BuilderPart, Ghost, Spacer, err, hint, ok,
-        text,
-    },
+    builder::{Builder, BuilderPart, err, hint, ok, text},
     bytes::{Buffers, Bytes, Lines, Strs},
     history::{Change, Moment},
     iter::{FwdIter, Item, Part, RevIter},
     ops::{Point, TextRange, TextRangeOrPoint, TwoPoints, utf8_char_width},
     search::{Matcheable, RegexPattern, Searcher},
-    tags::{Key, Keys, MutTags, RawTag, RawTagsFn, Tag, ToggleId},
+    tags::{
+        AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCursor, FormTag, Ghost, Key, Keys,
+        MainCursor, MutTags, RawTag, Spacer, Tag, ToggleId,
+    },
 };
 use crate::{
     cache,
@@ -651,8 +651,8 @@ impl Text {
     ////////// Tag addition/deletion functions
 
     /// Inserts a [`Tag`] at the given position
-    pub fn insert_tag(&mut self, key: Key, tag: Tag<impl RawTagsFn>) {
-        self.0.tags.insert(key, tag);
+    pub fn insert_tag<R>(&mut self, key: Key, r: R, tag: impl Tag<R>) {
+        self.0.tags.insert(key, r, tag);
     }
 
     /// Removes the [`Tag`]s of a [key] from a region
@@ -755,21 +755,22 @@ impl Text {
     fn add_cursor(&mut self, cursor: &Cursor, is_main: bool) {
         let (caret, selection) = cursor.tag_points(self);
 
-        let (cursor, form) = if is_main {
-            (Tag::main_cursor(caret.byte()), form::M_SEL_ID)
+        let key = Key::for_cursors();
+        let form = if is_main {
+            self.0.tags.insert(key, caret.byte(), MainCursor);
+            form::M_SEL_ID
         } else {
-            (Tag::main_cursor(caret.byte()), form::E_SEL_ID)
+            self.0.tags.insert(key, caret.byte(), ExtraCursor);
+            form::E_SEL_ID
         };
+
         self.0
             .bytes
             .add_record([caret.byte(), caret.char(), caret.line()]);
-        self.0.tags.insert(Key::for_cursors(), cursor);
 
         if let Some([start, end]) = selection {
-            self.0.tags.insert(
-                Key::for_cursors(),
-                Tag::form(start.byte()..end.byte(), form, 250),
-            );
+            let range = start.byte()..end.byte();
+            self.0.tags.insert(key, range, form.to_tag(250));
         }
     }
 

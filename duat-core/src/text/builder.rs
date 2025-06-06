@@ -11,8 +11,11 @@ use std::{
 };
 
 pub use self::macros::*;
-use super::{Change, Key, Tag, Text};
-use crate::form::FormId;
+use super::{Change, Key, Text};
+use crate::{
+    form::FormId,
+    text::{AlignCenter, AlignLeft, AlignRight, Ghost, Spacer},
+};
 
 /// Builds and modifies a [`Text`], based on replacements applied
 /// to it.
@@ -100,14 +103,14 @@ impl Builder {
         if let Some((b, id)) = self.last_form
             && b < self.text.len().byte()
         {
-            self.text.insert_tag(Key::basic(), Tag::form(b.., id, 0));
+            self.text.insert_tag(Key::basic(), b.., id.to_tag(0));
         }
         if let Some((b, align)) = self.last_align
             && b < self.text.len().byte()
         {
             match align {
-                Alignment::Center => self.text.insert_tag(Key::basic(), Tag::align_center(b..)),
-                Alignment::Right => self.text.insert_tag(Key::basic(), Tag::align_right(b..)),
+                Alignment::Center => self.text.insert_tag(Key::basic(), b.., AlignCenter),
+                Alignment::Right => self.text.insert_tag(Key::basic(), b.., AlignRight),
                 _ => {}
             }
         }
@@ -123,50 +126,60 @@ impl Builder {
     /// [`impl Display`]: std::fmt::Display
     /// [tag surrogate]: Ghost
     pub fn push<D: Display, _T>(&mut self, part: impl Into<BuilderPart<D, _T>>) {
-        let part = part.into();
-        let end = self.text.len().byte();
-        match part {
-            BuilderPart::Text(text) => self.push_text(text),
-            BuilderPart::ToString(display) => self.push_str(display),
-            BuilderPart::Form(id) => {
-                let last_form = match id == crate::form::DEFAULT_ID {
-                    true => self.last_form.take(),
-                    false => self.last_form.replace((end, id)),
-                };
+        fn push_basic(builder: &mut Builder, part: BuilderPart) {
+            use Alignment::*;
+            use BuilderPart as BP;
 
-                if let Some((b, id)) = last_form
-                    && b < end
-                {
-                    self.text.insert_tag(Key::basic(), Tag::form(b.., id, 0));
+            let end = builder.text.len().byte();
+            match part {
+                BP::Text(text) => builder.push_text(text),
+                BP::Form(id) => {
+                    let last_form = match id == crate::form::DEFAULT_ID {
+                        true => builder.last_form.take(),
+                        false => builder.last_form.replace((end, id)),
+                    };
+
+                    if let Some((b, id)) = last_form
+                        && b < end
+                    {
+                        builder.text.insert_tag(Key::basic(), b.., id.to_tag(0));
+                    }
                 }
+                BP::AlignLeft => match builder.last_align.take() {
+                    Some((b, Center)) if b < end => {
+                        builder.text.insert_tag(Key::basic(), b.., AlignCenter);
+                    }
+                    Some((b, Right)) if b < end => {
+                        builder.text.insert_tag(Key::basic(), b.., AlignRight);
+                    }
+                    _ => {}
+                },
+                BP::AlignCenter => match builder.last_align.take() {
+                    Some((b, Center)) => builder.last_align = Some((b, Center)),
+                    Some((b, Right)) if b < end => {
+                        builder.text.insert_tag(Key::basic(), b.., AlignRight);
+                    }
+                    None => builder.last_align = Some((end, Center)),
+                    Some(_) => {}
+                },
+                BP::AlignRight => match builder.last_align.take() {
+                    Some((b, Right)) => builder.last_align = Some((b, Right)),
+                    Some((b, Center)) if b < end => {
+                        builder.text.insert_tag(Key::basic(), b.., AlignCenter);
+                    }
+                    None => builder.last_align = Some((end, Right)),
+                    Some(_) => {}
+                },
+                BP::Spacer(_) => builder.text.insert_tag(Key::basic(), end, Spacer),
+                BP::Ghost(text) => builder.text.insert_tag(Key::basic(), end, Ghost(text)),
+                BP::ToString(_) => unsafe { std::hint::unreachable_unchecked() },
             }
-            BuilderPart::AlignLeft => match self.last_align.take() {
-                Some((b, Alignment::Center)) if b < end => {
-                    self.text.insert_tag(Key::basic(), Tag::align_center(b..));
-                }
-                Some((b, Alignment::Right)) if b < end => {
-                    self.text.insert_tag(Key::basic(), Tag::align_right(b..));
-                }
-                _ => {}
-            },
-            BuilderPart::AlignCenter => match self.last_align.take() {
-                Some((b, Alignment::Center)) => self.last_align = Some((b, Alignment::Center)),
-                Some((b, Alignment::Right)) if b < end => {
-                    self.text.insert_tag(Key::basic(), Tag::align_right(b..));
-                }
-                None => self.last_align = Some((end, Alignment::Center)),
-                Some(_) => {}
-            },
-            BuilderPart::AlignRight => match self.last_align.take() {
-                Some((b, Alignment::Right)) => self.last_align = Some((b, Alignment::Right)),
-                Some((b, Alignment::Center)) if b < end => {
-                    self.text.insert_tag(Key::basic(), Tag::align_center(b..));
-                }
-                None => self.last_align = Some((end, Alignment::Right)),
-                Some(_) => {}
-            },
-            BuilderPart::Spacer(_) => self.text.insert_tag(Key::basic(), Tag::spacer(end)),
-            BuilderPart::Ghost(text) => self.text.insert_tag(Key::basic(), Tag::ghost(end, text)),
+        }
+
+        match Into::<BuilderPart<D, _T>>::into(part).try_to_basic() {
+            Ok(basic_part) => push_basic(self, basic_part),
+            Err(BuilderPart::ToString(display)) => self.push_str(display),
+            Err(_) => unsafe { std::hint::unreachable_unchecked() },
         }
     }
 
@@ -199,7 +212,7 @@ impl Builder {
         self.last_was_empty = text.is_empty();
 
         if let Some((b, id)) = self.last_form.take() {
-            self.text.insert_tag(Key::basic(), Tag::form(b.., id, 0));
+            self.text.insert_tag(Key::basic(), b.., id.to_tag(0));
         }
 
         self.text.0.bytes.extend(text.0.bytes);
@@ -233,60 +246,9 @@ impl From<Builder> for Text {
     }
 }
 
-// SAFETY: The non Send + Sync parts of Text (History and Readers) are
-// never accessed by
-unsafe impl Send for Builder {}
-unsafe impl Sync for Builder {}
-
-/// [`Builder`] part: Aligns the line centrally
-#[derive(Clone)]
-pub struct AlignCenter;
-/// [`Builder`] part: Aligns the line on the left
-#[derive(Clone)]
-pub struct AlignLeft;
-/// [`Builder`] part: Aligns the line on the right, which is the
-/// default
-#[derive(Clone)]
-pub struct AlignRight;
-/// [`Builder`] part: A spacer for more advanced alignment
-///
-/// When printing this screen line (one row on screen, i.e. until
-/// it wraps), Instead of following the current alignment, will
-/// put spacing between the next and previous characters. The
-/// length of the space will be roughly equal to the available
-/// space on this line divided by the number of [`Spacer`]s on it.
-///
-/// # Example
-///
-/// Let's say that this is the line being printed:
-///
-/// ```text
-/// This is my line,please,pretend it has tags
-/// ```
-///
-/// If we were to print it with `{Spacer}as like this:
-///
-/// ```text
-/// This is my line,{Spacer}please,{Spacer}pretend it has tags
-/// ```
-///
-/// In a screen with a width of 50, it would come out like:
-///
-/// ```text
-/// This is my line,    please,    pretend it has tags
-/// ```
-#[derive(Clone)]
-pub struct Spacer;
-/// [`Builder`] part: Places ghost text
-///
-/// This is useful when, for example, creating command line prompts,
-/// since the text is non interactable.
-#[derive(Clone)]
-pub struct Ghost<T: Into<Text>>(T);
-
 /// A part to be pushed to a [`Builder`] by a macro
 #[derive(Clone)]
-pub enum BuilderPart<D: Display, _T = String> {
+pub enum BuilderPart<D: Display = String, _T = ()> {
     Text(Text),
     ToString(D),
     Form(FormId),
@@ -297,49 +259,64 @@ pub enum BuilderPart<D: Display, _T = String> {
     Ghost(Text),
 }
 
-impl From<Builder> for BuilderPart<String, Builder> {
+impl<D: Display, _T> BuilderPart<D, _T> {
+    fn try_to_basic(self) -> Result<BuilderPart, Self> {
+        match self {
+            BuilderPart::Text(text) => Ok(BuilderPart::Text(text)),
+            BuilderPart::ToString(d) => Err(BuilderPart::ToString(d)),
+            BuilderPart::Form(form_id) => Ok(BuilderPart::Form(form_id)),
+            BuilderPart::AlignLeft => Ok(BuilderPart::AlignLeft),
+            BuilderPart::AlignCenter => Ok(BuilderPart::AlignCenter),
+            BuilderPart::AlignRight => Ok(BuilderPart::AlignRight),
+            BuilderPart::Spacer(_) => Ok(BuilderPart::Spacer(PhantomData)),
+            BuilderPart::Ghost(text) => Ok(BuilderPart::Ghost(text)),
+        }
+    }
+}
+
+impl From<Builder> for BuilderPart {
     fn from(value: Builder) -> Self {
         Self::Text(value.build_no_nl())
     }
 }
 
-impl From<FormId> for BuilderPart<String, FormId> {
+impl From<FormId> for BuilderPart {
     fn from(value: FormId) -> Self {
         Self::Form(value)
     }
 }
 
-impl From<AlignLeft> for BuilderPart<String, AlignLeft> {
+impl From<AlignLeft> for BuilderPart {
     fn from(_: AlignLeft) -> Self {
         BuilderPart::AlignLeft
     }
 }
 
-impl From<AlignCenter> for BuilderPart<String, AlignCenter> {
+impl From<AlignCenter> for BuilderPart {
     fn from(_: AlignCenter) -> Self {
         BuilderPart::AlignCenter
     }
 }
 
-impl From<AlignRight> for BuilderPart<String, AlignRight> {
+impl From<AlignRight> for BuilderPart {
     fn from(_: AlignRight) -> Self {
         BuilderPart::AlignRight
     }
 }
 
-impl From<Spacer> for BuilderPart<String, Spacer> {
+impl From<Spacer> for BuilderPart {
     fn from(_: Spacer) -> Self {
         BuilderPart::Spacer(PhantomData)
     }
 }
 
-impl<T: Into<Text>> From<Ghost<T>> for BuilderPart<String, Ghost<T>> {
+impl<T: Into<Text>> From<Ghost<T>> for BuilderPart {
     fn from(value: Ghost<T>) -> Self {
         BuilderPart::Ghost(value.0.into())
     }
 }
 
-impl From<Text> for BuilderPart<String, Text> {
+impl From<Text> for BuilderPart {
     fn from(mut value: Text) -> Self {
         value.replace_range(value.len().byte() - 1.., "");
         BuilderPart::Text(value)
@@ -352,13 +329,13 @@ impl<D: Display> From<D> for BuilderPart<D, D> {
     }
 }
 
-impl From<PathBuf> for BuilderPart<String, PathBuf> {
+impl From<PathBuf> for BuilderPart {
     fn from(value: PathBuf) -> Self {
         BuilderPart::ToString(value.to_string_lossy().to_string())
     }
 }
 
-impl From<&PathBuf> for BuilderPart<String, PathBuf> {
+impl From<&PathBuf> for BuilderPart {
     fn from(value: &PathBuf) -> Self {
         BuilderPart::ToString(value.to_string_lossy().to_string())
     }

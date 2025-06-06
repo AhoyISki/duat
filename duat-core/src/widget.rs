@@ -541,14 +541,16 @@ impl<U: Ui> Node<U> {
     pub fn update_and_print(&self, mut pa: Pass) {
         self.busy_updating.set(true);
 
-        self.widget.raw_write(|widget| {
+        {
+            let mut widget = self.widget.raw_acquire_mut(&mut pa);
             let cfg = widget.print_cfg();
             widget.text_mut().remove_cursors(&self.area, cfg);
-        });
+        }
 
         (self.update)(self, &mut pa);
 
-        self.widget.raw_write(|widget| {
+        {
+            let mut widget = self.widget.raw_acquire_mut(&mut pa);
             let cfg = widget.print_cfg();
             widget.text_mut().add_cursors(&self.area, cfg);
             if let Some(main) = widget.text().cursors().and_then(Cursors::get_main) {
@@ -557,7 +559,7 @@ impl<U: Ui> Node<U> {
             }
 
             widget.print(&self.area);
-        });
+        }
 
         self.busy_updating.set(false);
     }

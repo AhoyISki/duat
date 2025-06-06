@@ -61,7 +61,6 @@ pub struct RwData<T: ?Sized> {
     cur_state: Rc<Cell<usize>>,
     read_state: Rc<Cell<usize>>,
     ty: TypeId,
-    no_update: bool,
 }
 
 impl<T: 'static> RwData<T> {
@@ -71,7 +70,6 @@ impl<T: 'static> RwData<T> {
             ty: TypeId::of::<T>(),
             cur_state: Rc::new(Cell::new(1)),
             read_state: Rc::new(Cell::new(0)),
-            no_update: false,
         }
     }
 }
@@ -99,7 +97,6 @@ impl<T: ?Sized> RwData<T> {
             ty: TypeId::of::<SizedT>(),
             cur_state: Rc::new(Cell::new(1)),
             read_state: Rc::new(Cell::new(0)),
-            no_update: false,
         }
     }
 
@@ -121,10 +118,9 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// [`write_unsafe`]: Self::write_unsafe
     /// [`write_unsafe_as`]: Self::write_unsafe_as
-    pub fn read<Ret>(&self, _dk: &Pass, f: impl FnOnce(&T) -> Ret) -> Ret {
-        let ret = f(&*self.value.borrow());
-        self.read_state.set(self.cur_state.get());
-        ret
+    pub fn read<Ret>(&self, _: &Pass, f: impl FnOnce(&T) -> Ret) -> Ret {
+        update_read_state(&self.read_state, &self.cur_state);
+        f(&*self.value.borrow())
     }
 
     /// Reads the value within as `U` using a [`Pass`]
@@ -145,16 +141,18 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// [`write_unsafe`]: Self::write_unsafe
     /// [`write_unsafe_as`]: Self::write_unsafe_as
-    pub fn read_as<Ret, U: 'static>(&self, _dk: &Pass, f: impl FnOnce(&U) -> Ret) -> Option<Ret> {
-        if TypeId::of::<U>() != self.ty {
-            return None;
+    pub fn read_as<Ret, U: 'static>(&self, _: &Pass, f: impl FnOnce(&U) -> Ret) -> Option<Ret> {
+        fn prepare<T: ?Sized, U: 'static>(data: &RwData<T>) -> Option<std::cell::Ref<U>> {
+            if TypeId::of::<U>() != data.ty {
+                return None;
+            }
+
+            data.read_state.set(data.cur_state.get());
+            let ptr = Rc::as_ptr(&data.value);
+            Some(unsafe { (ptr as *const RefCell<U>).as_ref().unwrap().borrow() })
         }
 
-        let ptr = Rc::as_ptr(&self.value);
-        let value = unsafe { (ptr as *const RefCell<U>).as_ref().unwrap() };
-        let ret = f(&*value.borrow());
-        self.read_state.set(self.cur_state.get());
-        Some(ret)
+        prepare(self).map(|mapped| f(&*mapped))
     }
 
     /// Reads the value within, without a [`Pass`]
@@ -181,9 +179,8 @@ impl<T: ?Sized> RwData<T> {
     /// Essentially, in order to use this safely, you should treat it
     /// like a glorified [`RefCell`]
     pub unsafe fn read_unsafe<Ret>(&self, f: impl FnOnce(&T) -> Ret) -> Ret {
-        let ret = f(&*self.value.borrow());
-        self.read_state.set(self.cur_state.get());
-        ret
+        update_read_state(&self.read_state, &self.cur_state);
+        f(&*self.value.borrow())
     }
 
     /// Reads the value within as `U`, without a [`Pass`]
@@ -214,36 +211,39 @@ impl<T: ?Sized> RwData<T> {
             return None;
         }
 
+        self.read_state.set(self.cur_state.get());
         let ptr = Rc::as_ptr(&self.value);
         let value = unsafe { (ptr as *const RefCell<U>).as_ref().unwrap() };
-        let ret = f(&*value.borrow());
-        self.read_state.set(self.cur_state.get());
-        Some(ret)
+        Some(f(&*value.borrow()))
     }
 
-    pub fn write<Ret>(&self, _dk: &mut Pass, f: impl FnOnce(&mut T) -> Ret) -> Ret {
-        let ret = f(&mut *self.value.borrow_mut());
-        self.cur_state.set(self.cur_state.get() + 1);
-        self.read_state.set(self.cur_state.get());
-        ret
+    pub(crate) fn acquire(&self, _: &Pass) -> std::cell::RefMut<'_, T> {
+        update_read_state(&self.read_state, &self.cur_state);
+        self.value.borrow_mut()
+    }
+
+    pub fn write<Ret>(&self, _: &mut Pass, f: impl FnOnce(&mut T) -> Ret) -> Ret {
+        update_cur_state(&self.read_state, &self.cur_state);
+        f(&mut *self.value.borrow_mut())
     }
 
     pub fn write_as<Ret, U: 'static>(
         &self,
-        _dk: &mut Pass,
+        _: &mut Pass,
         f: impl FnOnce(&mut U) -> Ret,
     ) -> Option<Ret> {
-        if TypeId::of::<U>() != self.ty {
-            return None;
+        fn prepare<T: ?Sized, U: 'static>(data: &RwData<T>) -> Option<std::cell::RefMut<U>> {
+            if TypeId::of::<U>() != data.ty {
+                return None;
+            }
+
+            data.cur_state.set(data.cur_state.get() + 1);
+            data.read_state.set(data.cur_state.get());
+            let ptr = Rc::as_ptr(&data.value);
+            Some(unsafe { (ptr as *const RefCell<U>).as_ref().unwrap().borrow_mut() })
         }
 
-        let ptr = Rc::as_ptr(&self.value);
-        let value = unsafe { (ptr as *const RefCell<U>).as_ref().unwrap() };
-
-        let ret = f(&mut *value.borrow_mut());
-        self.cur_state.set(self.cur_state.get() + 1);
-        self.read_state.set(self.cur_state.get());
-        Some(ret)
+        prepare(self).map(|mut mapped| f(&mut *mapped))
     }
 
     /// Writes to the value within as `U`, without a [`Pass`]
@@ -271,10 +271,8 @@ impl<T: ?Sized> RwData<T> {
     /// Essentially, in order to use this safely, you should treat it
     /// like a glorified [`RefCell`]
     pub unsafe fn write_unsafe<Ret>(&self, f: impl FnOnce(&mut T) -> Ret) -> Ret {
-        let ret = f(&mut *self.value.borrow_mut());
-        self.cur_state.set(self.cur_state.get() + 1);
-        self.read_state.set(self.cur_state.get());
-        ret
+        update_cur_state(&self.read_state, &self.cur_state);
+        f(&mut *self.value.borrow_mut())
     }
 
     /// Writes to the value within, without a [`Pass`]
@@ -305,26 +303,26 @@ impl<T: ?Sized> RwData<T> {
         &self,
         f: impl FnOnce(&mut U) -> Ret,
     ) -> Option<Ret> {
-        if TypeId::of::<U>() != self.ty {
-            return None;
+        fn prepare<T: ?Sized, U: 'static>(data: &RwData<T>) -> Option<std::cell::RefMut<U>> {
+            if TypeId::of::<U>() != data.ty {
+                return None;
+            }
+
+            data.cur_state.set(data.cur_state.get() + 1);
+            data.read_state.set(data.cur_state.get());
+            let ptr = Rc::as_ptr(&data.value);
+            Some(unsafe { (ptr as *const RefCell<U>).as_ref().unwrap().borrow_mut() })
         }
 
-        let ptr = Rc::as_ptr(&self.value);
-        let value = unsafe { (ptr as *const RefCell<U>).as_ref().unwrap() };
-
-        let ret = f(&mut *value.borrow_mut());
-        self.cur_state.set(self.cur_state.get() + 1);
-        self.read_state.set(self.cur_state.get());
-        Some(ret)
+        prepare(self).map(|mut mapped| f(&mut *mapped))
     }
 
-    pub(crate) fn raw_write<Ret>(&self, f: impl FnOnce(&mut T) -> Ret) -> Ret {
-        f(&mut *self.value.borrow_mut())
+    pub(crate) fn acquire_mut(&self, _: &mut Pass) -> std::cell::RefMut<'_, T> {
+        update_cur_state(&self.read_state, &self.cur_state);
+        self.value.borrow_mut()
     }
 
-    pub(crate) fn acquire_mut(&self) -> std::cell::RefMut<'_, T> {
-        self.cur_state.set(self.cur_state.get() + 1);
-        self.read_state.set(self.cur_state.get());
+    pub(crate) fn raw_acquire_mut(&self, _: &mut Pass) -> std::cell::RefMut<'_, T> {
         self.value.borrow_mut()
     }
 
@@ -335,7 +333,6 @@ impl<T: ?Sized> RwData<T> {
             cur_state,
             read_state,
             ty: TypeId::of::<T>(),
-            no_update: self.no_update,
         };
 
         DataMap { data, map: Rc::new(RefCell::new(map)) }
@@ -365,7 +362,6 @@ impl<T: ?Sized> RwData<T> {
             cur_state: self.cur_state.clone(),
             read_state: Rc::new(Cell::new(self.cur_state.get())),
             ty: TypeId::of::<U>(),
-            no_update: self.no_update,
         })
     }
 
@@ -429,7 +425,7 @@ impl<T: ?Sized> RwData<T> {
         T: Widget<U>,
         U: Ui,
     {
-        self.read(pa, |wid| wid.text().clone())
+        self.acquire(pa).text().clone()
     }
 
     /// Takes the [`Text`] from the [`Widget`], replacing it with the
@@ -439,7 +435,7 @@ impl<T: ?Sized> RwData<T> {
         T: Widget<U>,
         U: Ui,
     {
-        self.write(pa, |wid| std::mem::take(wid.text_mut()))
+        std::mem::take(self.acquire_mut(pa).text_mut())
     }
 
     /// Replaces the [`Text`] of the [`Widget`], returning the
@@ -449,7 +445,7 @@ impl<T: ?Sized> RwData<T> {
         T: Widget<U>,
         U: Ui,
     {
-        self.write(pa, |wid| std::mem::replace(wid.text_mut(), text))
+        std::mem::replace(self.acquire_mut(pa).text_mut(), text)
     }
 
     /// The [`PrintCfg`] of the [`Widget`]
@@ -458,7 +454,7 @@ impl<T: ?Sized> RwData<T> {
         T: Widget<U>,
         U: Ui,
     {
-        self.read(pa, |wid| wid.print_cfg())
+        self.acquire(pa).print_cfg()
     }
 
     /// Whether the [`Widget`] needs to be updated
@@ -467,7 +463,7 @@ impl<T: ?Sized> RwData<T> {
         T: Widget<U>,
         U: Ui,
     {
-        self.read(pa, |wid| wid.needs_update())
+        self.acquire(pa).needs_update()
     }
 }
 
@@ -480,7 +476,6 @@ impl<T: ?Sized> Clone for RwData<T> {
             ty: self.ty,
             cur_state: self.cur_state.clone(),
             read_state: Rc::new(Cell::new(self.cur_state.get())),
-            no_update: self.no_update,
         }
     }
 }
@@ -492,7 +487,6 @@ impl<T: Default + 'static> Default for RwData<T> {
             cur_state: Rc::new(Cell::new(1)),
             read_state: Rc::new(Cell::default()),
             ty: TypeId::of::<T>(),
-            no_update: false,
         }
     }
 }
@@ -612,4 +606,13 @@ impl Pass<'_> {
     pub(crate) unsafe fn new() -> Self {
         Pass(PhantomData)
     }
+}
+
+fn update_read_state(read_state: &Rc<Cell<usize>>, cur_state: &Rc<Cell<usize>>) {
+    read_state.set(cur_state.get());
+}
+
+fn update_cur_state(read_state: &Rc<Cell<usize>>, cur_state: &Rc<Cell<usize>>) {
+    cur_state.set(cur_state.get() + 1);
+    read_state.set(cur_state.get());
 }

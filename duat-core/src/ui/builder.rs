@@ -160,12 +160,8 @@ impl<U: Ui> FileBuilder<U> {
     /// [`relative/absolute`]: crate::widgets::LineNumbersOptions::rel_abs
     /// [`StatusLine`]: crate::widgets::StatusLine
     #[inline(never)]
-    pub fn push<W: Widget<U>>(
-        &mut self,
-        pa: &mut Pass,
-        cfg: impl WidgetCfg<U, Widget = W>,
-    ) -> (U::Area, Option<U::Area>) {
-        run_once::<W, U>();
+    pub fn push<W: WidgetCfg<U>>(&mut self, pa: &mut Pass, cfg: W) -> (U::Area, Option<U::Area>) {
+        run_once::<W::Widget, U>();
         // SAFETY: Exclusive borrow of Pass means I can create my own.
         let (widget, specs) = cfg.build(unsafe { Pass::new() }, Some(self.handle.clone()));
 
@@ -252,13 +248,13 @@ impl<U: Ui> FileBuilder<U> {
     /// [`PromptLine`]: crate::widgets::PromptLine
     /// [hook group]: crate::hooks::add_grouped
     #[inline(never)]
-    pub fn push_to<W: Widget<U>>(
+    pub fn push_to<W: WidgetCfg<U>>(
         &mut self,
         pa: &mut Pass,
         area: U::Area,
-        cfg: impl WidgetCfg<U, Widget = W>,
+        cfg: W,
     ) -> (U::Area, Option<U::Area>) {
-        run_once::<W, U>();
+        run_once::<W::Widget, U>();
         // SAFETY: Exclusive borrow of Pass means I can create my own.
         let (widget, specs) = cfg.build(unsafe { Pass::new() }, Some(self.handle.clone()));
 
@@ -418,12 +414,8 @@ impl<U: Ui> WindowBuilder<U> {
     /// [widget]: Widget
     /// [cfg]: WidgetCfg
     #[inline(never)]
-    pub fn push<W: Widget<U>>(
-        &mut self,
-        pa: &mut Pass,
-        cfg: impl WidgetCfg<U, Widget = W>,
-    ) -> (U::Area, Option<U::Area>) {
-        run_once::<W, U>();
+    pub fn push<W: WidgetCfg<U>>(&mut self, pa: &mut Pass, cfg: W) -> (U::Area, Option<U::Area>) {
+        run_once::<W::Widget, U>();
         // SAFETY: Exclusive borrow of Pass means I can create my own.
         let (widget, specs) = cfg.build(unsafe { Pass::new() }, None);
 
@@ -481,13 +473,13 @@ impl<U: Ui> WindowBuilder<U> {
     /// [`StatusLine`]: crate::widgets::StatusLine
     /// [`PromptLine`]: crate::widgets::PromptLine
     #[inline(never)]
-    pub fn push_to<W: Widget<U>>(
+    pub fn push_to<W: WidgetCfg<U>>(
         &mut self,
         pa: &mut Pass,
         area: U::Area,
-        cfg: impl WidgetCfg<U, Widget = W>,
+        cfg: W,
     ) -> (U::Area, Option<U::Area>) {
-        run_once::<W, U>();
+        run_once::<W::Widget, U>();
         // SAFETY: Exclusive borrow of Pass means I can create my own.
         let (widget, specs) = cfg.build(unsafe { Pass::new() }, None);
 

@@ -1,7 +1,7 @@
 use std::{
     path::PathBuf,
     sync::{
-        Mutex, OnceLock,
+        Mutex,
         atomic::{AtomicUsize, Ordering},
         mpsc,
     },
@@ -13,7 +13,7 @@ use arboard::Clipboard;
 use crate::{
     cache::{delete_cache, delete_cache_for, store_cache},
     cfg::PrintCfg,
-    cmd, context,
+    cmd, context::{self, sender},
     data::Pass,
     file::{File, FileCfg, PathKind},
     file_entry, form,
@@ -26,12 +26,6 @@ use crate::{
     },
     widget::{Node, WidgetCfg},
 };
-
-static DUAT_SENDER: OnceLock<&mpsc::Sender<DuatEvent>> = OnceLock::new();
-
-pub(crate) fn sender() -> &'static mpsc::Sender<DuatEvent> {
-    DUAT_SENDER.get().unwrap()
-}
 
 #[doc(hidden)]
 pub struct SessionCfg<U: Ui> {
@@ -50,17 +44,12 @@ impl<U: Ui> SessionCfg<U> {
         }
     }
 
-    pub fn session_from_args(
-        self,
-        ms: &'static U::MetaStatics,
-        duat_tx: &'static mpsc::Sender<DuatEvent>,
-    ) -> Session<U> {
+    pub fn session_from_args(self, ms: &'static U::MetaStatics) -> Session<U> {
         // SAFETY: This function is only called from the main thread in
         // ../src/setup.rs, and from there, there are no other active
         // Passs, so this is fine.
         let pa = unsafe { Pass::new() };
 
-        DUAT_SENDER.set(duat_tx).unwrap();
         cmd::add_session_commands::<U>().unwrap();
 
         let mut args = std::env::args();
@@ -106,9 +95,7 @@ impl<U: Ui> SessionCfg<U> {
         self,
         ms: &'static U::MetaStatics,
         prev: Vec<Vec<FileRet>>,
-        duat_tx: &'static mpsc::Sender<DuatEvent>,
     ) -> Session<U> {
-        DUAT_SENDER.set(duat_tx).unwrap();
         cmd::add_session_commands::<U>().unwrap();
 
         let cur_window = context::set_windows::<U>(Vec::new());

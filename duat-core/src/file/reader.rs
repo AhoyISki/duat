@@ -12,7 +12,7 @@ use std::{any::TypeId, cell::RefCell, ops::Range, rc::Rc};
 use super::BytesDataMap;
 use crate::{
     data::{Pass, RwData},
-    text::{Bytes, Change, Moment, MutTags, RawTagsFn, Text, err},
+    text::{Bytes, Change, Moment, MutTags, Text, err},
     ui::Ui,
 };
 

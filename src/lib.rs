@@ -601,15 +601,15 @@ pub macro setup_duat($setup:expr) {
     fn run(
         ms: MetaStatics,
         prev_files: Vec<Vec<FileRet>>,
-        messengers: Messengers,
+        (duat_tx, duat_rx): Messengers,
     ) -> (
         Vec<Vec<FileRet>>,
         mpsc::Receiver<DuatEvent>,
         Option<std::time::Instant>,
     ) {
-        pre_setup();
+        pre_setup(duat_tx);
         $setup();
-        run_duat(ms, prev_files, messengers)
+        run_duat(ms, prev_files, duat_rx)
     }
 }
 
@@ -621,10 +621,10 @@ pub mod prelude {
         Plugin, clipboard, cmd,
         data::{self, RwData},
         text::{
-            self, AlignCenter, AlignLeft, AlignRight, Builder, Ghost, RawTag, Spacer, Tag, Text,
-            err, hint, ok, text,
+            self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, Text, err,
+            hint, ok, text,
         },
-        ui::{FileBuilder, RawArea as AreaTrait, WindowBuilder},
+        ui::{FileBuilder, RawArea, WindowBuilder},
         widget,
     };
     #[cfg(feature = "term-ui")]

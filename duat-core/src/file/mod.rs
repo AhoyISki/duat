@@ -299,24 +299,26 @@ impl<U: Ui> Widget<U> for File<U> {
             (BytesDataMap(widget.clone()), file.readers.clone())
         });
 
-        if let Some(moment) = widget.raw_write(|file| file.text.last_unprocessed_moment()) {
+        let moment = widget
+            .raw_acquire_mut(&mut pa)
+            .text
+            .last_unprocessed_moment();
+        if let Some(moment) = moment {
             readers.process_changes(map, moment);
         }
 
-        widget.write(&mut pa, |file| {
-            if file.readers.needs_update() {
-                let (start, _) = area.first_points(&file.text, file.cfg);
-                let (end, _) = area.last_points(&file.text, file.cfg);
+        let mut file = widget.acquire_mut(&mut pa);
+        if file.readers.needs_update() {
+            let (start, _) = area.first_points(&file.text, file.cfg);
+            let (end, _) = area.last_points(&file.text, file.cfg);
 
-                // SAFETY: While it would be rare for this to be a problem, there is
-                // none ¯\_(ツ)_/¯.
-                let pa = unsafe { Pass::new() };
-                file.readers
-                    .update_range(pa, &mut file.text, start.byte()..end.byte());
+            // SAFETY: While it would be rare for this to be a problem, there is
+            // none ¯\_(ツ)_/¯.
+            let pa = unsafe { Pass::new() };
+            readers.update_range(pa, &mut file.text, start.byte()..end.byte());
 
-                file.text.update_bounds();
-            }
-        })
+            file.text.update_bounds();
+        }
     }
 
     fn text(&self) -> &Text {

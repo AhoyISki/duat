@@ -39,8 +39,8 @@ fn main() {
         let Some(crate_dir) = duat_core::crate_dir().filter(|cd| cd.exists()) else {
             let msg = err!("No config crate found, loading default config");
             duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
-            pre_setup();
-            run_duat((&MS, &CLIPB), Vec::new(), (duat_tx, duat_rx));
+            pre_setup(duat_tx);
+            run_duat((&MS, &CLIPB), Vec::new(), duat_rx);
             return;
         };
 
@@ -118,8 +118,8 @@ fn main() {
         } else {
             let msg = err!("Failed to open load crate");
             duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
-            pre_setup();
-            run_duat((&MS, &CLIPB), prev, (duat_tx, duat_rx))
+            pre_setup(duat_tx);
+            run_duat((&MS, &CLIPB), prev, duat_rx)
         };
 
         if prev.is_empty() {
@@ -131,9 +131,7 @@ fn main() {
         let (so_path, on_release) = reload_rx.try_recv().unwrap();
         let profile = if on_release { "Release" } else { "Debug" };
         let in_time = match reload_instant {
-            Some(reload_instant) => {
-                ok!("in [a]{:.2?}", reload_instant.elapsed()).build()
-            }
+            Some(reload_instant) => ok!("in [a]{:.2?}", reload_instant.elapsed()).build(),
             None => Text::new(),
         };
         let msg = ok!("[a]{profile}[] profile reloaded {in_time}");

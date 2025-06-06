@@ -36,7 +36,6 @@ mod switch {
         file_entry,
         hook::{self, KeysSent, KeysSentTo, ModeSetTo, ModeSwitched},
         main_thread_only::MainThreadOnly,
-        session::sender,
         ui::{DuatEvent, RawArea, Ui},
         widget::{Node, Widget},
         widget_entry,
@@ -59,7 +58,7 @@ mod switch {
     /// Since this function is only called by Duat, I can ensure that
     /// it will be called from the main thread, so no checks are done
     /// in that regard.
-    fn take_set_mode_fn() -> Option<ModeFn> {
+    pub(super) fn take_set_mode_fn() -> Option<ModeFn> {
         // SAFETY: The caller of this function's caller has a Pass argument.
         unsafe { SET_MODE.get() }.borrow_mut().take()
     }
@@ -76,20 +75,16 @@ mod switch {
         context::assert_is_on_main_thread();
         *unsafe { RESET_MODE.get() }.borrow_mut() = Box::new(move |_| {
             let mode = mode.clone();
-            let pa = unsafe { Pass::new() };
-            set_mode_fn::<M, U>(pa, mode)
+            set_mode_fn::<M, U>(unsafe { Pass::new() }, mode)
         });
         let set_mode = unsafe { SET_MODE.get() };
         let prev = set_mode.take();
         *set_mode.borrow_mut() = Some(Box::new(move |_| unsafe {
             if let Some(f) = prev {
-                let pa = Pass::new();
-                f(pa);
-                let pa = Pass::new();
-                RESET_MODE.get().borrow_mut()(pa)
+                f(Pass::new());
+                RESET_MODE.get().borrow_mut()(Pass::new())
             } else {
-                let pa = Pass::new();
-                RESET_MODE.get().borrow_mut()(pa)
+                RESET_MODE.get().borrow_mut()(Pass::new())
             }
         }));
     }
@@ -133,7 +128,9 @@ mod switch {
         match file_entry(pa, &windows, &name) {
             Ok((win, _, node)) => {
                 if win != context::cur_window() && switch_window {
-                    sender().send(DuatEvent::SwitchWindow(win)).unwrap();
+                    crate::context::sender()
+                        .send(DuatEvent::SwitchWindow(win))
+                        .unwrap();
                 }
                 let node = node.clone();
                 // SAFETY: There is a Pass argument.
@@ -181,18 +178,19 @@ mod switch {
             // SAFETY: Since this function is taking a Pass, but that one is
             // reliably not being used, I can safely create my own Passes.
             let pa = unsafe { Pass::new() };
-            if let (remainder, Some(set_mode)) = sk(pa, keys.take().unwrap()) {
+            if let (remainder, Some(set_mode)) = sk(pa, keys.take().unwrap())
+                && set_mode(unsafe { Pass::new() })
+            {
                 keys = Some(remainder);
-
-                if set_mode(unsafe { Pass::new() }) {
-                    sk = send_keys.take().unwrap();
-                } else {
-                    break;
-                }
+                sk = send_keys.take().unwrap();
+            } else {
+                // You probably don't really want to send the remaining keys to the
+                // current mode if set_mode fails.
+                break;
             }
         }
 
-        *send_keys.borrow_mut() = Some(sk);
+        send_keys.replace(Some(sk));
     }
 
     /// Inner function that sends [`KeyEvent`]s

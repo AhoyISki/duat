@@ -40,9 +40,7 @@ pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
     LazyLock::new(|| RwLock::new(Box::new(|_| {})));
 
 #[doc(hidden)]
-pub fn pre_setup() {
-    mode::set_default(Regular);
-
+pub fn pre_setup(duat_tx: &'static Sender<DuatEvent>) {
     // State statics.
     let cur_file: &'static CurFile<Ui> = Box::leak(Box::new(CurFile::new()));
     let cur_widget: &'static CurWidget<Ui> = Box::leak(Box::new(CurWidget::new()));
@@ -57,8 +55,11 @@ pub fn pre_setup() {
             cur_widget,
             CUR_WINDOW.load(Ordering::Relaxed),
             windows,
+            duat_tx,
         );
     }
+
+    mode::set_default(Regular);
 
     hook::add_grouped::<OnFileOpen>("FileWidgets", |mut pa, builder| {
         builder.push(&mut pa, VertRule::cfg());
@@ -94,7 +95,7 @@ pub fn pre_setup() {
 pub fn run_duat(
     (ui_ms, clipb): MetaStatics,
     prev: Vec<Vec<FileRet>>,
-    (duat_tx, duat_rx): Messengers,
+    duat_rx: Receiver<DuatEvent>,
 ) -> (Vec<Vec<FileRet>>, Receiver<DuatEvent>, Option<Instant>) {
     <Ui as ui::Ui>::load(ui_ms);
     let mut cfg = SessionCfg::new(clipb);
@@ -111,9 +112,9 @@ pub fn run_duat(
     cfg.set_print_cfg(print_cfg);
 
     let session = if prev.is_empty() {
-        cfg.session_from_args(ui_ms, duat_tx)
+        cfg.session_from_args(ui_ms)
     } else {
-        cfg.session_from_prev(ui_ms, prev, duat_tx)
+        cfg.session_from_prev(ui_ms, prev)
     };
     session.start(duat_rx)
 }

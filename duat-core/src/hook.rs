@@ -144,7 +144,7 @@ mod global {
     #[inline(never)]
     pub fn add<H: Hookable>(f: impl FnMut(Pass, H::Args<'_>) -> H::Output + 'static) {
         context::assert_is_on_main_thread();
-        unsafe { HOOKS.get() }.add::<H>("", f);
+        unsafe { HOOKS.get() }.add::<H>("", Box::new(f));
     }
 
     /// Adds a grouped [hook]
@@ -162,7 +162,7 @@ mod global {
         f: impl FnMut(Pass, H::Args<'_>) -> H::Output + 'static,
     ) {
         context::assert_is_on_main_thread();
-        unsafe { HOOKS.get() }.add::<H>(group, f);
+        unsafe { HOOKS.get() }.add::<H>(group, Box::new(f));
     }
 
     /// Removes a [hook] group
@@ -210,7 +210,7 @@ mod global {
         H: Hookable,
         H::Input: Send + 'static,
     {
-        let sender = crate::session::sender();
+        let sender = crate::context::sender();
         sender
             .send(DuatEvent::QueuedFunction(Box::new(|mut pa| {
                 // SAFETY: There is a Pass argument
@@ -652,7 +652,7 @@ impl InnerHooks {
     fn add<H: Hookable>(
         &self,
         group: &'static str,
-        f: impl FnMut(Pass, H::Args<'_>) -> H::Output + 'static,
+        f: Box<dyn FnMut(Pass, H::Args<'_>) -> H::Output + 'static>,
     ) {
         let mut map = self.types.borrow_mut();
 
