@@ -217,7 +217,6 @@ impl<U: Ui> Session<U> {
             let win = self.cur_window.load(Ordering::Relaxed);
             let windows = context::windows::<U>().borrow();
             for node in windows[win].nodes() {
-                let node = node.clone();
                 // SAFETY: No Passes exist at this point in time.
                 node.update_and_print(unsafe { Pass::new() });
             }
@@ -279,7 +278,6 @@ impl<U: Ui> Session<U> {
                 let win = self.cur_window.load(Ordering::SeqCst);
                 reprint_screen = false;
                 for node in windows[win].nodes() {
-                    let node = node.clone();
                     node.update_and_print(unsafe { Pass::new() });
                 }
 
@@ -292,7 +290,6 @@ impl<U: Ui> Session<U> {
                 // SAFETY: No other Passs exist at this point.
                 let pa = unsafe { Pass::new() };
                 if node.needs_update(&pa) {
-                    let node = node.clone();
                     node.update_and_print(pa);
                 }
             }

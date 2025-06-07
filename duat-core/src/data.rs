@@ -365,6 +365,26 @@ impl<T: ?Sized> RwData<T> {
         })
     }
 
+    /// A clone that keeps the same read_state as its parent
+    ///
+    /// This is useful when you want to update a [`Widget`] from
+    /// within the [`Widget::update`] function, without triggering
+    /// infinite looping calls to said function.
+    pub(crate) fn try_downcast_same_read_state<U: 'static>(&self) -> Option<RwData<U>> {
+        if TypeId::of::<U>() != self.ty {
+            return None;
+        }
+
+        let ptr = Rc::into_raw(self.value.clone());
+        let value = unsafe { Rc::from_raw(ptr as *const RefCell<U>) };
+        Some(RwData {
+            value,
+            cur_state: self.cur_state.clone(),
+            read_state: self.read_state.clone(),
+            ty: TypeId::of::<U>(),
+        })
+    }
+
     /// Wether someone else called [`write`] or [`write_as`] since the
     /// last [`read`] or [`write`]
     ///

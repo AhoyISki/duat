@@ -99,7 +99,7 @@ impl Builder {
     /// [`Text`], much like [`Text`]s added to a [`Builder`]
     ///
     /// [ghosts]: super::Tag::ghost
-    pub(super) fn build_no_nl(mut self) -> Text {
+    fn build_no_nl(mut self) -> Text {
         if let Some((b, id)) = self.last_form
             && b < self.text.len().byte()
         {
@@ -134,9 +134,10 @@ impl Builder {
             match part {
                 BP::Text(text) => builder.push_text(text),
                 BP::Form(id) => {
-                    let last_form = match id == crate::form::DEFAULT_ID {
-                        true => builder.last_form.take(),
-                        false => builder.last_form.replace((end, id)),
+                    let last_form = if id == crate::form::DEFAULT_ID {
+                        builder.last_form.take()
+                    } else {
+                        builder.last_form.replace((end, id))
                     };
 
                     if let Some((b, id)) = last_form
@@ -158,6 +159,7 @@ impl Builder {
                     Some((b, Center)) => builder.last_align = Some((b, Center)),
                     Some((b, Right)) if b < end => {
                         builder.text.insert_tag(Key::basic(), b.., AlignRight);
+                        builder.last_align = Some((end, Center));
                     }
                     None => builder.last_align = Some((end, Center)),
                     Some(_) => {}
@@ -166,6 +168,7 @@ impl Builder {
                     Some((b, Right)) => builder.last_align = Some((b, Right)),
                     Some((b, Center)) if b < end => {
                         builder.text.insert_tag(Key::basic(), b.., AlignCenter);
+                        builder.last_align = Some((end, Right));
                     }
                     None => builder.last_align = Some((end, Right)),
                     Some(_) => {}
@@ -317,9 +320,8 @@ impl<T: Into<Text>> From<Ghost<T>> for BuilderPart {
 }
 
 impl From<Text> for BuilderPart {
-    fn from(mut value: Text) -> Self {
-        value.replace_range(value.len().byte() - 1.., "");
-        BuilderPart::Text(value)
+    fn from(value: Text) -> Self {
+        BuilderPart::Text(value.without_last_nl())
     }
 }
 

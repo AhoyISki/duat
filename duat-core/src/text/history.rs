@@ -341,6 +341,16 @@ impl<'a> Change<&'a str> {
             taken_end: start,
         }
     }
+
+    pub(super) fn remove_last_nl(len: Point) -> Self {
+        Self {
+            start: len.rev('\n'),
+            added: "",
+            taken: "\n",
+            added_end: len.rev('\n'),
+            taken_end: len,
+        }
+    }
 }
 
 impl<S: AsRef<str>> Change<S> {

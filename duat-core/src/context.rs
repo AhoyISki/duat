@@ -412,7 +412,7 @@ impl<U: Ui> FileHandle<U> {
 /// [push]: Notifications::push
 pub struct Notifications {
     list: Arc<Mutex<Vec<Text>>>,
-    current_state: Arc<AtomicUsize>,
+    cur_state: Arc<AtomicUsize>,
     read_state: AtomicUsize,
 }
 
@@ -420,8 +420,8 @@ impl Clone for Notifications {
     fn clone(&self) -> Self {
         Self {
             list: self.list.clone(),
-            current_state: self.current_state.clone(),
-            read_state: AtomicUsize::new(self.current_state.load(Ordering::Relaxed)),
+            cur_state: self.cur_state.clone(),
+            read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed)),
         }
     }
 }
@@ -431,24 +431,23 @@ impl Notifications {
     fn new() -> Self {
         Self {
             list: Arc::default(),
-            current_state: Arc::new(AtomicUsize::new(1)),
+            cur_state: Arc::new(AtomicUsize::new(1)),
             read_state: AtomicUsize::new(0),
         }
     }
 
     /// Reads the notifications that were sent to Duat
     pub fn read<Ret>(&mut self, f: impl FnOnce(&[Text]) -> Ret) -> Ret {
-        let ret = f(&self.list.lock().unwrap());
         self.read_state.store(
-            self.current_state.load(Ordering::Relaxed),
+            self.cur_state.load(Ordering::Relaxed),
             Ordering::Relaxed,
         );
-        ret
+        f(&self.list.lock().unwrap())
     }
 
     /// Wether there are new notifications or not
     pub fn has_changed(&self) -> bool {
-        self.read_state.load(Ordering::Relaxed) > self.current_state.load(Ordering::Relaxed)
+        self.cur_state.load(Ordering::Relaxed) > self.read_state.load(Ordering::Relaxed)
     }
 
     /// Pushes a new [notification] to Duat
@@ -461,6 +460,7 @@ impl Notifications {
     /// [notification]: Text
     /// [`Reader`]: crate::text::Reader
     pub fn push(&self, text: impl Into<Text>) {
+        self.cur_state.fetch_add(1, Ordering::Relaxed);
         self.list.lock().unwrap().push(Into::<Text>::into(text))
     }
 }

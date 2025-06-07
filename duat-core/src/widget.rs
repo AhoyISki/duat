@@ -440,7 +440,6 @@ pub trait Widget<U: Ui>: 'static {
     /// order to simultaneously update the list of lines numbers,
     /// for widgets like [`LineNumbers`] to read.
     fn print(&mut self, area: &U::Area) {
-        // crate::log_file!("printing {}", crate::duat_name::<Self>());
         let cfg = self.print_cfg();
         area.print(self.text_mut(), cfg, form::painter::<Self>())
     }
@@ -550,7 +549,7 @@ impl<U: Ui> Node<U> {
         (self.update)(self, &mut pa);
 
         {
-            let mut widget = self.widget.raw_acquire_mut(&mut pa);
+            let mut widget = self.widget.acquire_mut(&mut pa);
             let cfg = widget.print_cfg();
             widget.text_mut().add_cursors(&self.area, cfg);
             if let Some(main) = widget.text().cursors().and_then(Cursors::get_main) {
@@ -613,7 +612,7 @@ impl<U: Ui> Node<U> {
     }
 
     fn update_fn<W: Widget<U>>(&self, _: &mut Pass) {
-        let widget = self.widget.try_downcast::<W>().unwrap();
+        let widget = self.widget.try_downcast_same_read_state::<W>().unwrap();
         let area = self.area.clone();
 
         // SAFETY: This function takes in a &mut Pass, so I can safely create
@@ -624,7 +623,7 @@ impl<U: Ui> Node<U> {
 
     fn on_focus_fn<W: Widget<U>>(&self, mut pa: Pass) {
         self.area.set_as_active();
-        let widget = self.widget.try_downcast().unwrap();
+        let widget = self.widget.try_downcast_same_read_state().unwrap();
         let area = self.area.clone();
 
         hook::trigger::<FocusedOn<W, U>>(&mut pa, (widget.clone(), area.clone()));
@@ -632,7 +631,7 @@ impl<U: Ui> Node<U> {
     }
 
     fn on_unfocus_fn<W: Widget<U>>(&self, mut pa: Pass) {
-        let widget = self.widget.try_downcast().unwrap();
+        let widget = self.widget.try_downcast_same_read_state().unwrap();
         let area = self.area.clone();
 
         hook::trigger::<UnfocusedFrom<W, U>>(&mut pa, (widget.clone(), area.clone()));

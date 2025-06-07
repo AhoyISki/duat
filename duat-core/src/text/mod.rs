@@ -530,6 +530,12 @@ impl Text {
             .map(|cs| cs.apply_change(guess_i, change))
     }
 
+    fn without_last_nl(mut self) -> Self {
+        let change = Change::remove_last_nl(self.len());
+        self.apply_change_inner(0, change);
+        self
+    }
+
     /// Updates bounds, so that [`Tag`] ranges can visibly cross the
     /// screen
     ///

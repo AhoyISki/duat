@@ -185,7 +185,7 @@ impl<T: Into<Text>> Tag<usize> for Ghost<T> {
             "index out of bounds: the len is {max}, but the index is {r}",
         );
         let id = GhostId::new();
-        let tag_id = TagId::Ghost(id, self.0.into());
+        let tag_id = TagId::Ghost(id, Into::<Text>::into(self.0).without_last_nl());
         ((r, RawTag::Ghost(key, id)), None, Some(tag_id))
     }
 }

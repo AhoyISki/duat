@@ -53,9 +53,12 @@ impl<U: Ui> LineNumbers<U> {
                 align(&mut builder, self.cfg.main_align);
             }
 
-            match (main_line == *line, is_wrapped) {
+            match (*line == main_line, is_wrapped) {
                 (false, false) => {}
-                (true, false) => builder.push(form::id_of!("MainLineNum")),
+                (true, false) => {
+                    let id = form::id_of!("MainLineNum");
+                    builder.push(id)
+                }
                 (false, true) => builder.push(form::id_of!("WrappedLineNum")),
                 (true, true) => builder.push(form::id_of!("WrappedMainLineNum")),
             }
@@ -237,7 +240,7 @@ fn push_text<U>(
     cfg: &LineNumbersOptions<U>,
 ) {
     if is_wrapped && !cfg.show_wraps {
-        b.push(text!("[]\n"));
+        b.push(text!("\n"));
     } else if main != usize::MAX {
         let num = match cfg.num_rel {
             LineNum::Abs => line + 1,
@@ -251,9 +254,11 @@ fn push_text<U>(
             }
         };
 
-        b.push(text!("{num}[]\n"));
+        b.push(num);
+        b.push(text!("\n"));
     } else {
-        b.push(text!("{}[]\n", line + 1));
+        b.push(line + 1);
+        b.push(text!("\n"));
     }
 }
 
