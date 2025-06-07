@@ -26,6 +26,7 @@ pub struct History {
     new_changes: Option<(Vec<Change<String>>, (usize, [i32; 3]))>,
     /// Used to update ranges on the File
     unproc_changes: Option<(Vec<Change<String>>, (usize, [i32; 3]))>,
+    unproc_moments: Vec<Moment>,
 }
 
 impl History {
@@ -58,10 +59,14 @@ impl History {
         let Some((mut new_changes, (sh_from, shift))) = self.new_changes.take() else {
             return;
         };
-        if shift != [0; 3] {
-            for change in new_changes[sh_from..].iter_mut() {
-                change.shift_by(shift);
-            }
+        finish_shifting(&mut new_changes, sh_from, shift);
+
+        if let Some((mut unproc_changes, (sh_from, shift))) = self.unproc_changes.take() {
+            finish_shifting(&mut unproc_changes, sh_from, shift);
+            self.unproc_moments.push(Moment {
+                changes: Box::leak(Box::from(unproc_changes)),
+                is_fwd: true,
+            });
         }
 
         self.moments.truncate(self.cur_moment);
@@ -83,6 +88,8 @@ impl History {
             None
         } else {
             self.cur_moment += 1;
+            self.unproc_moments
+                .push(self.moments[self.cur_moment - 1].clone());
             Some(self.moments[self.cur_moment - 1])
         }
     }
@@ -98,27 +105,29 @@ impl History {
             None
         } else {
             self.cur_moment -= 1;
-            let mut moment = self.moments[self.cur_moment - 1];
+            let mut moment = self.moments[self.cur_moment];
             moment.is_fwd = false;
+            self.unproc_moments.push(moment.clone());
             Some(moment)
         }
     }
 
-    pub fn unprocessed_moment(&mut self) -> Option<Moment> {
-        self.unproc_changes
+    pub fn unprocessed_moments(&mut self) -> Vec<Moment> {
+        let fresh_moment = self
+            .unproc_changes
             .take()
             .map(|(mut changes, (sh_from, shift))| {
-                if shift != [0; 3] {
-                    for change in changes[sh_from..].iter_mut() {
-                        change.shift_by(shift);
-                    }
-                }
+                finish_shifting(&mut changes, sh_from, shift);
 
                 Moment {
                     changes: Box::leak(Box::from(changes)),
                     is_fwd: true,
                 }
-            })
+            });
+
+        self.unproc_moments.extend(fresh_moment);
+
+        std::mem::take(&mut self.unproc_moments)
     }
 
     pub fn has_unprocessed_changes(&self) -> bool {
@@ -135,6 +144,7 @@ impl<Context> Decode<Context> for History {
             cur_moment: Decode::decode(decoder)?,
             new_changes: Decode::decode(decoder)?,
             unproc_changes: Decode::decode(decoder)?,
+            unproc_moments: Decode::decode(decoder)?,
         })
     }
 }
@@ -422,4 +432,12 @@ impl Copy for Change<&str> {}
 /// If `lhs` contains the start of `rhs`
 fn has_start_of(lhs: Range<usize>, rhs: Range<usize>) -> bool {
     lhs.start <= rhs.start && rhs.start <= lhs.end
+}
+
+fn finish_shifting(changes: &mut [Change<String>], sh_from: usize, shift: [i32; 3]) {
+    if shift != [0; 3] {
+        for change in changes[sh_from..].iter_mut() {
+            change.shift_by(shift);
+        }
+    }
 }

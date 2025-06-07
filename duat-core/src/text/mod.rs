@@ -593,8 +593,8 @@ impl Text {
     /// after a certain period of time has passed.
     ///
     /// It also includes things like
-    pub fn last_unprocessed_moment(&mut self) -> Option<Moment> {
-        self.0.history.as_mut().and_then(|h| h.unprocessed_moment())
+    pub fn last_unprocessed_moment(&mut self) -> Option<Vec<Moment>> {
+        self.0.history.as_mut().map(|h| h.unprocessed_moments())
     }
 
     fn apply_and_process_changes(&mut self, moment: Moment) {

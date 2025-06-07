@@ -299,9 +299,11 @@ impl<U: Ui> Widget<U> for File<U> {
             (BytesDataMap(widget.clone()), file.readers.clone())
         });
 
-        let moment = widget.acquire_mut(&mut pa).text.last_unprocessed_moment();
-        if let Some(moment) = moment {
-            readers.process_changes(map, moment);
+        let moments = widget.acquire_mut(&mut pa).text.last_unprocessed_moment();
+        if let Some(moments) = moments {
+            for moment in moments {
+                readers.process_changes(map.clone(), moment);
+            }
         }
 
         let mut file = widget.acquire_mut(&mut pa);
