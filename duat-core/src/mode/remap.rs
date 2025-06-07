@@ -452,6 +452,10 @@ impl Remapper {
                         Gives::Mode(f) => f(),
                     }
                 } else if remap.is_alias {
+                    remapper
+                        .cur_seq
+                        .write(&mut pa, |(_, is_alias)| *is_alias = true);
+
                     remove_alias_and::<U>(pa, |widget, area, main| {
                         widget.text_mut().insert_tag(
                             Key::for_alias(),
