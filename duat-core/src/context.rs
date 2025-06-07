@@ -465,14 +465,6 @@ impl Notifications {
     }
 }
 
-// SAFETY: The Texts in the list of notifications are sanitized (i.e.,
-// have their History and Readers removed), so there are no internal
-// parts without Send + Sync.
-// Additionaly, since it is impossible to get a mutable reference to
-// the Texts, those cannot be made not Send + Sync
-unsafe impl Send for Notifications {}
-unsafe impl Sync for Notifications {}
-
 #[doc(hidden)]
 pub struct CurWidget<U: Ui>(RwData<Option<Node<U>>>);
 

@@ -416,6 +416,8 @@ impl ui::RawArea for Area {
 
         info.prev_main = point;
         info.last_points = None;
+
+        rect.print_info().unwrap().set(info);
     }
 
     fn set_as_active(&self) {
@@ -562,7 +564,10 @@ impl ui::RawArea for Area {
     }
 
     fn is_active(&self) -> bool {
-        get_layout(&self.layouts.lock().unwrap(), self.id).unwrap().active_id == self.id
+        get_layout(&self.layouts.lock().unwrap(), self.id)
+            .unwrap()
+            .active_id
+            == self.id
     }
 }
 
