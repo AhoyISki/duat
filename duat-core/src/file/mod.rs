@@ -309,13 +309,13 @@ impl<U: Ui> Widget<U> for File<U> {
             let (start, _) = area.first_points(&file.text, file.cfg);
             let (end, _) = area.last_points(&file.text, file.cfg);
 
-            // SAFETY: While it would be rare for this to be a problem, there is
-            // none ¯\_(ツ)_/¯.
+            // SAFETY: I'm not passing the Pass to inner structures, so this
+            // should be fine.
             let pa = unsafe { Pass::new() };
             readers.update_range(pa, &mut file.text, start.byte()..end.byte());
-
-            file.text.update_bounds();
         }
+
+        file.text.update_bounds();
     }
 
     fn text(&self) -> &Text {

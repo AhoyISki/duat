@@ -231,9 +231,9 @@ impl Tags {
                 // inside to justify it.
                 // However, this is going to be lazyly evaluated when Tags is updated.
                 let [s, e] = [ins, ins + n_diff];
-                tags.merge_range_to_update(
-                    s.saturating_sub(tags.range_min)..(e + tags.range_min).min(tags.buf.len()),
-                );
+                let range =
+                    s.saturating_sub(tags.range_min)..(e + tags.range_min).min(tags.buf.len());
+                tags.merge_range_to_update(range);
             }
 
             true
@@ -1043,7 +1043,7 @@ impl Tags {
                     .rev()
                     .flat_map(|range| [&mut range.end, &mut range.start]);
                 while let Some(bound) = iter.next()
-                    && *bound >= ins_n
+                    && *bound > ins_n
                 {
                     *bound = sh(*bound, n_diff);
                 }
@@ -1063,6 +1063,18 @@ impl Tags {
             }
 
             total_n_diff += n_diff;
+        } else {
+            let mut iter = self
+                .ranges_to_update
+                .iter_mut()
+                .rev()
+                .flat_map(|range| [&mut range.end, &mut range.start]);
+
+            while let Some(bound) = iter.next()
+                && *bound > ins_n
+            {
+                *bound = sh(*bound, n_diff);
+            }
         }
 
         if sh_from < self.ranges_to_update.len() {
@@ -1394,3 +1406,4 @@ type Entry = (usize, usize, RawTag);
 fn sh(n: usize, diff: i32) -> usize {
     (n as i32 + diff) as usize
 }
+

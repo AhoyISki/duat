@@ -574,7 +574,7 @@ impl ui::RawArea for Area {
 // NOTE: The defaultness in here, when it comes to `last_main`, may
 // cause issues in the future.
 /// Information about how to print the file on the `Label`.
-#[derive(Default, Debug, Clone, Copy, Encode, Decode)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Debug, Encode, Decode)]
 #[bincode(crate = "duat_core::cache::bincode")]
 pub struct PrintInfo {
     points: (Point, Option<Point>),

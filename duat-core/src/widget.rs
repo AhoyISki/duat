@@ -557,6 +557,10 @@ impl<U: Ui> Node<U> {
                     .scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
             }
 
+            if self.area.print_info() != <U::Area as RawArea>::PrintInfo::default() {
+                widget.text_mut().update_bounds();
+            }
+
             widget.print(&self.area);
         }
 

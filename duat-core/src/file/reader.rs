@@ -214,7 +214,7 @@ impl<U: Ui> Readers<U> {
         self.0.read(&pa, |readers| {
             readers
                 .iter()
-                .any(|re| re.ranges_to_update.read(&pa, |ru| ru.is_empty()))
+                .any(|re| re.ranges_to_update.read(&pa, |ru| !ru.is_empty()))
         })
     }
 }

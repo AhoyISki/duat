@@ -301,7 +301,7 @@ impl Text {
     ///
     /// The lines are inclusive, that is, it will iterate over the
     /// whole line, not just the parts within the range.
-    pub fn lines(&mut self, range: impl TextRange) -> Lines {
+    pub fn lines(&self, range: impl TextRange) -> Lines {
         self.0.bytes.lines(range)
     }
 

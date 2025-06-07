@@ -125,7 +125,7 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
     // This exists solely for automatic type recognition.
     type Ui: Ui<Area = Self>;
     type Cache: Default + Encode + Decode<()> + 'static;
-    type PrintInfo: Default + Clone;
+    type PrintInfo: Default + Clone + PartialEq + Eq;
 
     ////////// Area modification
 
