@@ -851,6 +851,7 @@ impl Tags {
     }
 
     /// The byte in the `at`th position
+    #[track_caller]
     fn byte_at(&self, at: usize) -> usize {
         let [n, b] = self.records.closest_to(at);
         if n < at {
@@ -999,86 +1000,51 @@ impl Tags {
         ////////// Shifting of ranges
         let (mut sh_from, mut total_n_diff) = std::mem::take(&mut self.ranges_shift_state);
 
-        // In this case, since n_diff < 0, it acts much like a taken_range
-        // from a Change, so we must merge the ranges that were caught up in
-        // ins_n..abs(n_diff)
+        // The range of changes that will be drained
+        let m_range = merging_range_by_guess_and_lazy_shift(
+            (&self.ranges_to_update, self.ranges_to_update.len()),
+            (sh_from, [ins_n, ins_n + n_diff.unsigned_abs() as usize]),
+            (sh_from, total_n_diff, 0, sh),
+            (|r| r.start, |r| r.end),
+        );
 
-        if n_diff < 0 {
-            let m_range = merging_range_by_guess_and_lazy_shift(
-                (&self.ranges_to_update, self.ranges_to_update.len()),
-                (0, [ins_n, ins_n + n_diff.unsigned_abs() as usize]),
-                (sh_from, total_n_diff, 0, sh),
-                (|r| r.start, |r| r.end),
-            );
-
-            if sh_from <= m_range.end {
-                for range in self.ranges_to_update[sh_from..m_range.end].iter_mut() {
-                    range.start = sh(range.start, total_n_diff);
-                    range.end = sh(range.end, total_n_diff);
-                }
-                sh_from = m_range.end;
+        // If sh_from < c_range.end, I need to shift the changes between the
+        // two, so that they match the shifting of the changes before sh_from
+        if sh_from < m_range.end && total_n_diff != 0 {
+            for range in self.ranges_to_update[sh_from..m_range.end].iter_mut() {
+                range.start = sh(range.start, total_n_diff);
+                range.end = sh(range.end, total_n_diff);
             }
-
-            let mut iter = self.ranges_to_update[m_range.clone()].iter();
-            let first = iter.next().cloned();
-            if let Some(first) = first {
-                let last = iter.next_back().cloned().unwrap_or(first.clone());
-                self.ranges_to_update.splice(m_range.clone(), [
-                    // Either last.end <= ins_n, in which case take ins_n, or last.end > ins_n,
-                    // needing to be shifted.
-                    first.start..sh(last.end, n_diff).max(ins_n),
-                ]);
-            };
-
-            // If any ranges were taken, at least one was added.
-            sh_from -= m_range.clone().count().saturating_sub(1);
-        } else if n_diff == 0 {
-            return bounds_ins;
+        // If sh_from > c_range.end, There are now three shifted
+        // states among ranges: The ones before c_range.start, between
+        // c_range.end and sh_from, and after c_range.end.
+        // I will update the second group so that it is shifted by
+        // shift + change.shift(), that way, it will be shifted like
+        // the first group.
+        } else if sh_from > m_range.end && n_diff != 0 {
+            for range in self.ranges_to_update[m_range.end..sh_from].iter_mut() {
+                range.start = sh(range.start, n_diff);
+                range.end = sh(range.end, n_diff);
+            }
         }
 
-        if let Some(unshifted_range) = self.ranges_to_update.get_mut(sh_from) {
-            if ins_n < sh(unshifted_range.start, total_n_diff) {
-                let mut iter = self.ranges_to_update[..sh_from]
-                    .iter_mut()
-                    .rev()
-                    .flat_map(|range| [&mut range.end, &mut range.start]);
-                while let Some(bound) = iter.next()
-                    && *bound > ins_n
-                {
-                    *bound = sh(*bound, n_diff);
-                }
-            // The change could happen in the middle of this range.
-            } else if ins_n < sh(unshifted_range.end, total_n_diff) {
-                unshifted_range.end = sh(unshifted_range.end, n_diff);
-                sh_from += 1;
-            } else {
-                let mut iter = self.ranges_to_update[sh_from..].iter_mut();
-                while let Some(range) = iter.next()
-                    && sh(range.start, total_n_diff) < ins_n
-                {
-                    range.start = sh(range.start, total_n_diff);
-                    range.end = sh(range.end, total_n_diff);
-                    sh_from += 1;
-                }
-            }
+        let mut iter = self.ranges_to_update[m_range.clone()].iter();
+        let first = iter.next().cloned();
+        sh_from = if let Some(first) = first {
+            let last = iter.next_back().cloned().unwrap_or(first.clone());
+            let range = first.start..sh(last.end, n_diff).max(ins_n);
+            let range_is_large_enough = range.end - range.start >= self.range_min;
+            self.ranges_to_update
+                .splice(m_range.clone(), range_is_large_enough.then_some(range));
 
-            total_n_diff += n_diff;
+            let ranges_taken = m_range.clone().count();
+            sh_from.saturating_sub(ranges_taken).max(m_range.start) + range_is_large_enough as usize
         } else {
-            let mut iter = self
-                .ranges_to_update
-                .iter_mut()
-                .rev()
-                .flat_map(|range| [&mut range.end, &mut range.start]);
-
-            while let Some(bound) = iter.next()
-                && *bound > ins_n
-            {
-                *bound = sh(*bound, n_diff);
-            }
-        }
+            sh_from.max(m_range.start)
+        };
 
         if sh_from < self.ranges_to_update.len() {
-            self.ranges_shift_state = (sh_from, total_n_diff);
+            self.ranges_shift_state = (sh_from, total_n_diff + n_diff);
         }
 
         bounds_ins
@@ -1195,6 +1161,7 @@ impl TagOrSkip {
 }
 
 /// Forward iterator over a range in the [`GapBuffer`]
+#[track_caller]
 fn fwd_range(
     buf: &GapBuffer<TagOrSkip>,
     range: impl RangeBounds<usize> + std::fmt::Debug,
@@ -1406,4 +1373,3 @@ type Entry = (usize, usize, RawTag);
 fn sh(n: usize, diff: i32) -> usize {
     (n as i32 + diff) as usize
 }
-
