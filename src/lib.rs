@@ -438,13 +438,7 @@ impl Normal {
 impl<U: Ui> Mode<U> for Normal {
     type Widget = File<U>;
 
-    async fn send_key(
-        &mut self,
-        mut pa: Pass<'_>,
-        key: Event,
-        widget: RwData<Self::Widget>,
-        area: U::Area,
-    ) {
+    fn send_key(&mut self, mut pa: Pass, key: Event, widget: RwData<Self::Widget>, area: U::Area) {
         let mut helper = EditHelper::new(&mut pa, widget, area);
         let wc = helper.cfg(&pa).word_chars;
 
@@ -1139,13 +1133,7 @@ impl Default for Insert {
 impl<U: Ui> Mode<U> for Insert {
     type Widget = File<U>;
 
-    async fn send_key(
-        &mut self,
-        mut pa: Pass<'_>,
-        key: Event,
-        widget: RwData<Self::Widget>,
-        area: <U as Ui>::Area,
-    ) {
+    fn send_key(&mut self, mut pa: Pass, key: Event, widget: RwData<Self::Widget>, area: U::Area) {
         let mut helper = EditHelper::new(&mut pa, widget, area);
 
         if let key!(Left | Down | Up | Right, mods) = key
@@ -1271,13 +1259,7 @@ enum OneKey {
 impl<U: Ui> Mode<U> for OneKey {
     type Widget = File<U>;
 
-    async fn send_key(
-        &mut self,
-        mut pa: Pass<'_>,
-        key: Event,
-        widget: RwData<Self::Widget>,
-        area: <U as Ui>::Area,
-    ) {
+    fn send_key(&mut self, mut pa: Pass, key: Event, widget: RwData<Self::Widget>, area: U::Area) {
         let mut helper = EditHelper::new(&mut pa, widget, area);
 
         let sel_type = match *self {
