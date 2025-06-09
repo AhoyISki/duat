@@ -184,13 +184,13 @@ impl<U: Ui> Readers<U> {
                 for entry in readers.iter() {
                     entry.reader.write(&mut pa, |reader| {
                         entry.ranges_to_update.write_unsafe(|ranges| {
-                            let old_ranges =
-                                std::mem::replace(ranges, RangeList::new(text.len().byte()));
+                            let old_ranges = std::mem::replace(ranges, RangeList::empty());
 
                             for range in old_ranges {
                                 let (bytes, tags) = text.bytes_and_tags();
                                 let (to_check, split_off) =
                                     split_range_within(range.clone(), within.clone());
+                                    
                                 if let Some(range) = to_check {
                                     reader.update_range(bytes, tags, range);
                                 }
@@ -228,6 +228,10 @@ impl RangeList {
     /// By default, the whole [`Text`] should be updated.
     pub fn new(max: usize) -> Self {
         Self(vec![0..max])
+    }
+
+    pub fn empty() -> Self {
+        Self(Vec::new())
     }
 
     /// Adds a range to the list of [`Range<usize>`]s

@@ -307,6 +307,11 @@ impl<U: Ui> Widget<U> for File<U> {
         }
 
         let mut file = widget.acquire_mut(&mut pa);
+
+        if let Some(main) = file.text().cursors().and_then(Cursors::get_main) {
+            area.scroll_around_point(file.text(), main.caret(), file.print_cfg());
+        }
+
         if file.readers.needs_update() {
             let (start, _) = area.first_points(&file.text, file.cfg);
             let (end, _) = area.last_points(&file.text, file.cfg);

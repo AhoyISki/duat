@@ -88,8 +88,7 @@ impl History {
             None
         } else {
             self.cur_moment += 1;
-            self.unproc_moments
-                .push(self.moments[self.cur_moment - 1].clone());
+            self.unproc_moments.push(self.moments[self.cur_moment - 1]);
             Some(self.moments[self.cur_moment - 1])
         }
     }
@@ -107,7 +106,7 @@ impl History {
             self.cur_moment -= 1;
             let mut moment = self.moments[self.cur_moment];
             moment.is_fwd = false;
-            self.unproc_moments.push(moment.clone());
+            self.unproc_moments.push(moment);
             Some(moment)
         }
     }

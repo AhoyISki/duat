@@ -53,7 +53,6 @@ use crate::{
     file::File,
     form,
     hook::{self, FocusedOn, UnfocusedFrom},
-    mode::Cursors,
     text::Text,
     ui::{PushSpecs, RawArea, Ui},
 };
@@ -552,10 +551,6 @@ impl<U: Ui> Node<U> {
             let mut widget = self.widget.acquire_mut(&mut pa);
             let cfg = widget.print_cfg();
             widget.text_mut().add_cursors(&self.area, cfg);
-            if let Some(main) = widget.text().cursors().and_then(Cursors::get_main) {
-                self.area
-                    .scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
-            }
 
             if self.area.print_info() != <U::Area as RawArea>::PrintInfo::default() {
                 widget.text_mut().update_bounds();

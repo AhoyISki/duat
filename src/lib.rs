@@ -595,19 +595,20 @@ use duat_core::{session::FileRet, ui::DuatEvent};
 pub macro setup_duat($setup:expr) {
     use std::sync::mpsc;
 
-    use crate::prelude::{File, Text};
+    use $crate::prelude::{File, Text};
 
     #[unsafe(no_mangle)]
     fn run(
         ms: MetaStatics,
         prev_files: Vec<Vec<FileRet>>,
         (duat_tx, duat_rx): Messengers,
+        dlopen: $crate::prelude::Dlopener
     ) -> (
         Vec<Vec<FileRet>>,
         mpsc::Receiver<DuatEvent>,
         Option<std::time::Instant>,
     ) {
-        pre_setup(duat_tx);
+        pre_setup(duat_tx, dlopen);
         $setup();
         run_duat(ms, prev_files, duat_rx)
     }
@@ -626,6 +627,7 @@ pub mod prelude {
         },
         ui::{FileBuilder, RawArea, WindowBuilder},
         widget,
+        Dlopener
     };
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self as term, VertRule};

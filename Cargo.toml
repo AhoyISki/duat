@@ -25,7 +25,7 @@ duat-term = { version = "0.4.0", path = "duat-term", optional = true }
 dirs-next = "2.0.0"
 notify = "8.0.0"
 dlopen-rs = "0.7.3"
-env_logger = "0.11.8"
+fern = "0.7.1"
 
 [features]
 default = ["term-ui"]
@@ -46,4 +46,7 @@ dirs-next = "2.0.0"
 
 [profile.profiling]
 inherits = "dev"
+debug = true
+
+[profile.release]
 debug = true

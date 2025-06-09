@@ -219,6 +219,7 @@ mod switch {
             let mut mode = unsafe { MODE.get() }.borrow_mut();
             let mode: &mut M = mode.downcast_mut().unwrap();
 
+			// The Cursors will be readded after Node::update_and_print
             widget.write(&mut pa, |widget| {
                 let cfg = widget.print_cfg();
                 widget.text_mut().remove_cursors(area, cfg);
@@ -237,14 +238,6 @@ mod switch {
                 mode.send_key(pa, key, widget.clone(), area.clone());
             }
         };
-
-        widget.write(&mut pa, |widget| {
-            let cfg = widget.print_cfg();
-            widget.text_mut().add_cursors(area, cfg);
-            if let Some(main) = widget.text().cursors().and_then(Cursors::get_main) {
-                area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
-            }
-        });
 
         hook::trigger::<KeysSentTo<M::Widget, U>>(
             &mut pa,

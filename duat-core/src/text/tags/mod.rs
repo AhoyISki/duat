@@ -998,7 +998,7 @@ impl Tags {
         }
 
         ////////// Shifting of ranges
-        let (mut sh_from, mut total_n_diff) = std::mem::take(&mut self.ranges_shift_state);
+        let (mut sh_from, total_n_diff) = std::mem::take(&mut self.ranges_shift_state);
 
         // The range of changes that will be drained
         let m_range = merging_range_by_guess_and_lazy_shift(

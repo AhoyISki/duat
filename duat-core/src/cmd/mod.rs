@@ -466,12 +466,13 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         cargo.args([
             "build",
             "--quiet",
+            "--release",
             "--manifest-path",
             toml_path.to_str().unwrap(),
         ]);
-        if !cfg!(debug_assertions) {
-            cargo.arg("--release");
-        };
+        //if !cfg!(debug_assertions) {
+        //    cargo.arg("--release");
+        //};
 
         match cargo.spawn() {
             Ok(child) => {

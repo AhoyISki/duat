@@ -18,15 +18,18 @@ use duat_core::{
     session::FileRet,
     ui::{self, DuatEvent, Ui as UiTrait},
 };
-use notify::{Event, EventKind, RecursiveMode::*, Watcher};
+use notify::{
+    Event, EventKind,
+    RecursiveMode::*,
+    Watcher,
+    event::{AccessKind, AccessMode},
+};
 
 static MS: LazyLock<<Ui as ui::Ui>::MetaStatics> =
     LazyLock::new(<Ui as ui::Ui>::MetaStatics::default);
 static CLIPB: LazyLock<Mutex<Clipboard>> = LazyLock::new(|| Mutex::new(Clipboard::new().unwrap()));
 
 fn main() {
-    // ????????????????????????????????????
-    env_logger::init();
     dlopen_rs::init();
 
     let (reload_tx, reload_rx) = mpsc::channel();
@@ -39,7 +42,7 @@ fn main() {
         let Some(crate_dir) = duat_core::crate_dir().filter(|cd| cd.exists()) else {
             let msg = err!("No config crate found, loading default config");
             duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
-            pre_setup(duat_tx);
+            pre_setup(duat_tx, duat_core::Dlopener::new());
             run_duat((&MS, &CLIPB), Vec::new(), duat_rx);
             return;
         };
@@ -50,14 +53,22 @@ fn main() {
         let mut watcher = notify::recommended_watcher({
             let reload_tx = reload_tx.clone();
             let duat_tx = duat_tx.clone();
-            move |res| {
-                if let Ok(Event { kind: EventKind::Create(_), paths, .. }) = res
-                    && let Some(so_path) = paths.iter().find(|path| path.ends_with("libconfig.so"))
-                {
-                    let on_release = so_path.ends_with("release/libconfig.so");
-                    reload_tx.send((so_path.clone(), on_release)).unwrap();
-                    duat_tx.send(DuatEvent::ReloadConfig).unwrap();
+            move |res| match res {
+                Ok(Event { kind: EventKind::Create(_), paths, .. }) => {
+                    if let Some(so_path) = paths.iter().find(|p| p.ends_with("libconfig.so")) {
+                        let on_release = so_path.ends_with("release/libconfig.so");
+                        reload_tx.send((so_path.clone(), on_release)).unwrap();
+                    }
                 }
+                Ok(Event {
+                    kind: EventKind::Access(AccessKind::Close(AccessMode::Write)),
+                    paths,
+                    ..
+                }) if paths.iter().any(|p| p.ends_with(".cargo-lock")) => {
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                    duat_tx.send(DuatEvent::ReloadConfig).unwrap()
+                }
+                _ => {}
             }
         })
         .unwrap();
@@ -103,22 +114,27 @@ fn main() {
                 duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
             }
         }
-        ElfLibrary::dlopen(so_path, OpenFlags::RTLD_NOW | OpenFlags::RTLD_LOCAL).ok()
+        ElfLibrary::dlopen(so_path, DEFAULT_FLAGS).ok()
     };
 
     Ui::open(&MS, ui::Sender::new(duat_tx));
 
     loop {
-        let run_lib = lib.take();
-        let mut run_fn = run_lib.as_ref().and_then(find_run_duat);
+        let running_lib = lib.take();
+        let mut run_fn = running_lib.as_ref().and_then(find_run_duat);
 
         let reload_instant;
         (prev, duat_rx, reload_instant) = if let Some(run_duat) = run_fn.take() {
-            run_duat((&MS, &CLIPB), prev, (duat_tx, duat_rx))
+            run_duat(
+                (&MS, &CLIPB),
+                prev,
+                (duat_tx, duat_rx),
+                duat_core::Dlopener::new(),
+            )
         } else {
             let msg = err!("Failed to open load crate");
             duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
-            pre_setup(duat_tx);
+            pre_setup(duat_tx, duat_core::Dlopener::new());
             run_duat((&MS, &CLIPB), prev, duat_rx)
         };
 
@@ -126,17 +142,16 @@ fn main() {
             break;
         }
 
-        drop(run_lib);
-
         let (so_path, on_release) = reload_rx.try_recv().unwrap();
+
         let profile = if on_release { "Release" } else { "Debug" };
-        let in_time = match reload_instant {
+        let time = match reload_instant {
             Some(reload_instant) => ok!("in [a]{:.2?}", reload_instant.elapsed()).build(),
             None => Text::new(),
         };
-        let msg = ok!("[a]{profile}[] profile reloaded {in_time}");
+        let msg = ok!("[a]{profile}[] profile reloaded {time}");
         duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
-        lib = ElfLibrary::dlopen(so_path, OpenFlags::RTLD_NOW | OpenFlags::RTLD_LOCAL).ok();
+        lib = ElfLibrary::dlopen(so_path, DEFAULT_FLAGS).ok();
     }
 
     Ui::close(&MS);
@@ -191,4 +206,7 @@ type RunFn = fn(
     MetaStatics,
     Vec<Vec<FileRet>>,
     Messengers,
+    duat_core::Dlopener,
 ) -> (Vec<Vec<FileRet>>, Receiver<DuatEvent>, Option<Instant>);
+
+const DEFAULT_FLAGS: OpenFlags = OpenFlags::RTLD_NOW.union(OpenFlags::CUSTOM_NOT_REGISTER);
