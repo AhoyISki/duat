@@ -17,9 +17,9 @@ duat-filetype = { version = "0.1.0", git = "https://github.com/AhoyISki/duat-fil
 
 streaming-iterator = "0.1.9"
 tree-sitter = "0.25.2"
-dlopen-rs = "0.7.3"
 tree-sitter-language = "0.1.5"
 indoc = "2.0.6"
+dlopen-rs = "0.7.3"
 
 [build-dependencies]
 dirs-next = "2.0.0"

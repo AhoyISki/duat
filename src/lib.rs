@@ -27,7 +27,7 @@ use duat_core::{
     form::{self, Form, FormId},
     hook::{self, OnFileOpen},
     mode::Editor,
-    text::{Bytes, Change, Key, Matcheable, Moment, MutTags, Point, Tag, Text},
+    text::{Bytes, Change, Key, Matcheable, Moment, MutTags, Point, Text},
     ui::Ui,
 };
 use duat_filetype::FileType;
@@ -280,7 +280,7 @@ impl TsParser {
                 let (start, end) = (range.start_byte, range.end_byte);
                 let (form, priority) = self.forms[cap.index as usize];
                 if start != end {
-                    tags.insert(self.key, Tag::form(start..end, form, priority));
+                    tags.insert(self.key, start..end, form.to_tag(priority));
                 }
             }
         }

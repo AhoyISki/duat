@@ -23,16 +23,15 @@ pub fn get_language(filetype: &str) -> Option<Language> {
 
     if let Ok(lib) = dlopen_rs::ElfLibrary::dlopen(
         so_path,
-        OpenFlags::RTLD_NOW | OpenFlags::CUSTOM_NOT_REGISTER,
+        OpenFlags::RTLD_LOCAL | OpenFlags::CUSTOM_NOT_REGISTER,
     ) {
         let language = unsafe {
             let (symbol, _) = options.symbols[0];
             let lang_fn = lib.get::<fn() -> Language>(&symbol.to_lowercase()).ok()?;
+
             lang_fn()
         };
 
-        // Push after getting the symbol, to ensure that the lib does indeed
-        // have it.
         LIBRARIES.lock().unwrap().push(lib);
 
         Some(language)
@@ -114,8 +113,8 @@ fn get_workspace_dir() -> Option<PathBuf> {
         r#"
         [workspace]
         resolver = "2"
-        members = [ "*" ]"
-        exclude = [ "lib", "target" ]"#
+        members = ["*"]"
+        exclude = ["lib", "target"]"#
     );
 
     let workspace_dir = duat_core::plugin_dir("duat-treesitter")?;
