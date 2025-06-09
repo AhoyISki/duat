@@ -42,7 +42,7 @@ fn main() {
         let Some(crate_dir) = duat_core::crate_dir().filter(|cd| cd.exists()) else {
             let msg = err!("No config crate found, loading default config");
             duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
-            pre_setup(duat_tx, duat_core::Dlopener::new());
+            pre_setup(duat_tx);
             run_duat((&MS, &CLIPB), Vec::new(), duat_rx);
             return;
         };
@@ -125,16 +125,11 @@ fn main() {
 
         let reload_instant;
         (prev, duat_rx, reload_instant) = if let Some(run_duat) = run_fn.take() {
-            run_duat(
-                (&MS, &CLIPB),
-                prev,
-                (duat_tx, duat_rx),
-                duat_core::Dlopener::new(),
-            )
+            run_duat((&MS, &CLIPB), prev, (duat_tx, duat_rx))
         } else {
             let msg = err!("Failed to open load crate");
             duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
-            pre_setup(duat_tx, duat_core::Dlopener::new());
+            pre_setup(duat_tx);
             run_duat((&MS, &CLIPB), prev, duat_rx)
         };
 
@@ -206,7 +201,6 @@ type RunFn = fn(
     MetaStatics,
     Vec<Vec<FileRet>>,
     Messengers,
-    duat_core::Dlopener,
 ) -> (Vec<Vec<FileRet>>, Receiver<DuatEvent>, Option<Instant>);
 
 const DEFAULT_FLAGS: OpenFlags = OpenFlags::RTLD_NOW.union(OpenFlags::CUSTOM_NOT_REGISTER);

@@ -252,7 +252,7 @@ use std::{
     collections::HashMap,
     ops::Range,
     path::{Path, PathBuf},
-    sync::{LazyLock, Mutex, OnceLock, RwLock},
+    sync::{LazyLock, RwLock},
 };
 
 #[allow(unused_imports)]
@@ -393,67 +393,6 @@ pub trait Plugin<U: Ui>: Sized {
 
     /// Sets up the [`Plugin`]
     fn plug(self);
-}
-
-static DLOPENER: OnceLock<Dlopener> = OnceLock::new();
-
-/// An external struct for `dlopen`ing
-///
-/// The purpose of this struct is to call
-/// [`dlopen_rs::ElfLibrary::dlopen`] from the main duat app instead
-/// of from the loaded dylib, in order to keep good track of
-/// `dlopen_rs`'s static variables.
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct Dlopener {
-    dylib_list: &'static Mutex<HashMap<PathBuf, &'static Library>>,
-    call: fn(path: &Path) -> Result<Library, libloading::Error>,
-}
-
-impl Dlopener {
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        static DYLIB_LIST: LazyLock<Mutex<HashMap<PathBuf, &'static Library>>> =
-            LazyLock::new(Mutex::default);
-
-        Self {
-            dylib_list: &*DYLIB_LIST,
-            call: |path| unsafe { Library::new(path) },
-        }
-    }
-}
-
-/// Loads a dynamic library
-///
-/// Since Duat works via hot-reloading of the configuration crate,
-/// `dlopen`ing is something that may not work very well. That's
-/// where this module comes in, it lets you dynamically load
-/// things to be kept open throughout reloads.
-///
-/// You are not meant to unload things during Duat's execution, as
-/// that may not work, so [`dlopen`] keeps libraries open,
-/// so just keep that in mind.
-pub fn dlopen(path: impl AsRef<Path>) -> Result<&'static Library, libloading::Error> {
-    let dlopen = DLOPENER.get().expect("No Dlopen static has been setup");
-
-    let mut dylib_list = dlopen.dylib_list.lock().unwrap();
-
-    if let Some(lib) = dylib_list.get(path.as_ref()) {
-        Ok(lib)
-    } else {
-        let dylib = Box::leak(Box::new(unsafe {
-            libloading::Library::new(path.as_ref())?
-        }));
-        dylib_list.insert(path.as_ref().to_path_buf(), dylib);
-
-        Ok(dylib)
-    }
-}
-
-/// Sets up dlopen for general use
-#[doc(hidden)]
-pub fn setup_dlopen(dlopen: Dlopener) {
-    DLOPENER.set(dlopen).expect("setup ran twice");
 }
 
 pub mod prelude {

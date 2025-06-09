@@ -40,7 +40,7 @@ pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
     LazyLock::new(|| RwLock::new(Box::new(|_| {})));
 
 #[doc(hidden)]
-pub fn pre_setup(duat_tx: &'static Sender<DuatEvent>, dlopener: duat_core::Dlopener) {
+pub fn pre_setup(duat_tx: &'static Sender<DuatEvent>) {
     // State statics.
     let cur_file: &'static CurFile<Ui> = Box::leak(Box::new(CurFile::new()));
     let cur_widget: &'static CurWidget<Ui> = Box::leak(Box::new(CurWidget::new()));
@@ -58,8 +58,6 @@ pub fn pre_setup(duat_tx: &'static Sender<DuatEvent>, dlopener: duat_core::Dlope
             duat_tx,
         );
     }
-
-    duat_core::setup_dlopen(dlopener);
 
     mode::set_default(Regular);
 
@@ -99,32 +97,25 @@ pub fn run_duat(
     prev: Vec<Vec<FileRet>>,
     duat_rx: Receiver<DuatEvent>,
 ) -> (Vec<Vec<FileRet>>, Receiver<DuatEvent>, Option<Instant>) {
-    duat_core::log!("started run_duat");
     <Ui as ui::Ui>::load(ui_ms);
-    duat_core::log!("loaded Ui");
     let mut cfg = SessionCfg::new(clipb);
-    duat_core::log!("Created SessionCfg");
 
     if let Some(cfg_fn) = CFG_FN.write().unwrap().take() {
         cfg_fn(&mut cfg)
     }
-    duat_core::log!("took CFG_FN");
 
     let print_cfg = match PRINT_CFG.write().unwrap().take() {
         Some(cfg) => cfg,
         None => PrintCfg::default_for_input(),
     };
-    duat_core::log!("took PRINT_CFG");
 
     cfg.set_print_cfg(print_cfg);
-    duat_core::log!("set print_cfg");
 
     let session = if prev.is_empty() {
         cfg.session_from_args(ui_ms)
     } else {
         cfg.session_from_prev(ui_ms, prev)
     };
-    duat_core::log!("set created session");
     session.start(duat_rx)
 }
 
