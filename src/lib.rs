@@ -268,20 +268,9 @@ use std::{
 };
 
 use duat_core::{
-    Lender, Plugin,
-    cfg::WordChars,
-    cmd,
-    context::{self, FileHandle},
-    data::{Pass, RwData},
-    file::File,
-    form,
-    hook::{self, ModeSwitched, SearchPerformed},
-    mode::{
-        self, Cursors, EditHelper, Editor, KeyCode::*, KeyEvent as Event, KeyMod as Mod, Mode, key,
-    },
-    prelude::Text,
-    text::{Point, Searcher, err, text},
-    ui::Ui,
+    cfg::WordChars, cmd, context::{self, FileHandle}, data::{Pass, RwData}, file::File, form, hook::{self, ModeSwitched, SearchPerformed}, mode::{
+        self, key, Cursors, EditHelper, Editor, KeyCode::*, KeyEvent as Event, KeyMod as Mod, Mode
+    }, prelude::Text, text::{err, text, Point, Searcher}, ui::Ui, widget::Widget, Lender, Plugin
 };
 use duat_utils::modes::{
     ExtendFwd, ExtendRev, IncSearch, IncSearcher, PipeSelections, RunCommands, SearchFwd, SearchRev,
