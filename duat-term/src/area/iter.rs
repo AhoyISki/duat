@@ -286,7 +286,7 @@ fn inner_iter<'a>(
     cfg: PrintCfg,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
     match cfg.wrap_method {
-        WrapMethod::Width | WrapMethod::NoWrap | WrapMethod::Capped(_) => {
+        WrapMethod::Edge | WrapMethod::NoWrap | WrapMethod::Capped(_) => {
             Iter::Parts(parts(iter, cap, cfg, initial), PhantomData)
         }
         WrapMethod::Word => Iter::Words(words(iter, cap, cfg, initial)),

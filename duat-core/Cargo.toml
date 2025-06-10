@@ -12,6 +12,7 @@ edition = "2024"
 
 [lints.rust]
 private_bounds = "allow"
+missing_docs = "warn"
 
 [lints.clippy]
 type_complexity = "allow"

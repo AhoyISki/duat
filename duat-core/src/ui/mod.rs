@@ -340,7 +340,7 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
 }
 
 /// A container for a master [`RawArea`] in Parsec
-pub struct Window<U: Ui> {
+pub(crate) struct Window<U: Ui> {
     nodes: Vec<Node<U>>,
     files_area: U::Area,
     layout: Box<dyn Layout<U>>,
@@ -543,14 +543,15 @@ impl<U: Ui> Window<U> {
         }
     }
 
-    pub fn nodes(&self) -> impl ExactSizeIterator<Item = &Node<U>> + DoubleEndedIterator {
+	/// An [`Iterator`] over the [`Node`]s in a [`Window`]
+    pub(crate) fn nodes(&self) -> impl ExactSizeIterator<Item = &Node<U>> + DoubleEndedIterator {
         self.nodes.iter()
     }
 
     /// Returns an [`Iterator`] over the names of [`File`]s
     /// and their respective [`Widget`] indices
     ///
-    /// [`Widget`]: crate::widgets::Widget
+    /// [`Widget`]: crate::widget::Widget
     pub fn file_names(&self, pa: &Pass) -> Vec<String> {
         window_files(pa, &self.nodes)
             .into_iter()
@@ -558,6 +559,10 @@ impl<U: Ui> Window<U> {
             .collect()
     }
 
+    /// Returns an [`Iterator`] over the paths of [`File`]s
+    /// and their respective [`Widget`] indices
+    ///
+    /// [`Widget`]: crate::widget::Widget
     pub fn file_paths(&self, pa: &Pass) -> Vec<String> {
         window_files(pa, &self.nodes)
             .into_iter()
@@ -565,11 +570,13 @@ impl<U: Ui> Window<U> {
             .collect()
     }
 
-    pub fn file_nodes(&self, pa: &Pass) -> WindowFiles<U> {
+	/// An [`Iterator`] over the [`File`] [`Node`]s in a [`Window`]
+    pub(crate) fn file_nodes(&self, pa: &Pass) -> WindowFiles<U> {
         window_files(pa, &self.nodes)
     }
 
-    pub fn len_widgets(&self) -> usize {
+	/// How many [`Widget`]s are in this [`Window`]
+    pub(crate) fn len_widgets(&self) -> usize {
         self.nodes.len()
     }
 }

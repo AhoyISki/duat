@@ -117,7 +117,7 @@ impl<U: Ui> Widget<U> for PromptLine<U> {
     }
 
     fn print_cfg(&self) -> PrintCfg {
-        PrintCfg::default_for_input().with_forced_scrolloff()
+        PrintCfg::default_for_input().with_forced_horizontal_scrolloff()
     }
 
     fn once() -> Result<(), Text> {

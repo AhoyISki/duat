@@ -8,6 +8,28 @@ use crate::{
     text::{Change, Point},
 };
 
+/// The list of [`Cursor`]s in a [`Text`]
+///
+/// This list can contain any number of [`Cursor`]s, and they should
+/// be usable in whatever order the end user may want, without
+/// breaking from, for example, modifications that should move cursors
+/// backwards or ahead. If that is not the case, report it as a bug.
+///
+/// they are primarily meant to be interacted with from the
+/// [`EditHelper`], a struct intended for acting on a very large
+/// number of [`Cursor`]s in an efficient manner, although you can
+/// interact with them separately.
+///
+/// A [`Text`] will keep itself in check with regards to its
+/// [`Cursors`], that is, it will automatically remove and add the
+/// [`MainCursor`] and [`ExtraCursor`] [tags] when the [`Cursors`] are
+/// altered. If it fails to do that, report it as a bug.
+///
+/// [`EditHelper`]: super::EditHelper
+/// [`Text`]: crate::text::Text
+/// [`MainCursor`]: crate::text::MainCursor
+/// [`ExtraCursor`]: crate::text::ExtraCursor
+/// [tags]: crate::text::Tag
 #[derive(Clone)]
 pub struct Cursors {
     buf: GapBuffer<Cursor>,
@@ -16,7 +38,7 @@ pub struct Cursors {
 }
 
 impl Cursors {
-    ////////// Definition functions
+    /// Returns a new [`Cursors`]
     pub fn new() -> Self {
         Self {
             buf: gap_buffer![Cursor::default()],
@@ -34,7 +56,113 @@ impl Cursors {
         }
     }
 
-    pub fn insert(&mut self, guess_i: usize, cursor: Cursor, was_main: bool) -> ([usize; 2], bool) {
+    ////////// Modification functions
+
+    /// Sets the main [`Cursor`]
+    pub fn set_main(&mut self, new: usize) {
+        self.main_i = new.min(self.buf.len().saturating_sub(1));
+    }
+
+    /// Rotates the main [`Cursor`] by an amount
+    pub fn rotate_main(&mut self, amount: i32) {
+        self.main_i = (self.main_i as i32 + amount).rem_euclid(self.buf.len() as i32) as usize
+    }
+
+    /// Removes all [`Cursor`]s
+    pub fn clear(&mut self) {
+        self.buf = GapBuffer::new();
+        self.shift_state.take();
+    }
+
+    /// Removes all [`Cursor`]s and adds a [default `Cursor`] as main
+    ///
+    /// [default `Cursor`]: Cursor::default
+    pub fn reset(&mut self) {
+        self.remove_extras();
+        self.buf[self.main_i] = Cursor::default();
+    }
+
+    /// Removes all but the main [`Cursor`]
+    pub fn remove_extras(&mut self) {
+        if !self.is_empty() {
+            let cursor = self.buf.remove(self.main_i);
+            let (sh_from, shift) = self.shift_state.take();
+            if sh_from <= self.main_i {
+                cursor.shift_by(shift);
+            }
+            self.buf = gap_buffer![cursor];
+        }
+        self.main_i = 0;
+    }
+
+    ////////// Querying functions
+
+    /// Gets the main [`Cursor`], if there is one
+    pub fn get_main(&self) -> Option<&Cursor> {
+        self.get(self.main_i)
+    }
+
+    /// Gets the `n`th [`Cursor`] if there is one
+    pub fn get(&self, n: usize) -> Option<&Cursor> {
+        if n >= self.len() {
+            return None;
+        }
+        let (sh_from, shift) = self.shift_state.get();
+        if n >= sh_from && shift != [0; 3] {
+            for cursor in self.buf.range(sh_from..n + 1).iter() {
+                cursor.shift_by(shift);
+            }
+            if n + 1 < self.buf.len() {
+                self.shift_state.set((n + 1, shift));
+            } else {
+                self.shift_state.take();
+            }
+        }
+
+        self.buf.get(n)
+    }
+
+    /// Iterates over all [`Cursor`]s in order
+    pub fn iter(&self) -> impl Iterator<Item = (&Cursor, bool)> {
+        // Since we don't know how many Cursors will be iterated over, we
+        // shift all cursors, just in case.
+        let (sh_from, shift) = self.shift_state.take();
+        if shift != [0; 3] {
+            for cursor in self.buf.range(sh_from..).iter() {
+                cursor.shift_by(shift);
+            }
+        }
+        self.buf
+            .iter()
+            .enumerate()
+            .map(move |(i, cursor)| (cursor, i == self.main_i))
+    }
+
+    /// The index of the main [`Cursor`]
+    pub fn main_index(&self) -> usize {
+        self.main_i
+    }
+
+    /// How many [`Cursor`]s there are in the list
+    pub fn len(&self) -> usize {
+        self.buf.len()
+    }
+
+    /// Returns [`true`] when there are no [`Cursor`]s
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    ////////// Internal modification functions
+
+    /// Inserts a [`Cursor`] back from editing
+    pub(crate) fn insert(
+        &mut self,
+        guess_i: usize,
+        cursor: Cursor,
+        was_main: bool,
+    ) -> ([usize; 2], bool) {
         let (sh_from, shift) = self.shift_state.take();
         let sh_from = sh_from.min(self.len());
 
@@ -149,87 +277,7 @@ impl Cursors {
         cursors_taken - cursors_added
     }
 
-    pub fn set_main(&mut self, new: usize) {
-        self.main_i = new.min(self.buf.len().saturating_sub(1));
-    }
-
-    pub fn rotate_main(&mut self, amount: i32) {
-        self.main_i = (self.main_i as i32 + amount).rem_euclid(self.buf.len() as i32) as usize
-    }
-
-    pub fn remove_extras(&mut self) {
-        if !self.is_empty() {
-            let cursor = self.buf.remove(self.main_i);
-            let (sh_from, shift) = self.shift_state.take();
-            if sh_from <= self.main_i {
-                cursor.shift_by(shift);
-            }
-            self.buf = gap_buffer![cursor];
-        }
-        self.main_i = 0;
-    }
-
-    pub fn get_main(&self) -> Option<&Cursor> {
-        self.get(self.main_i)
-    }
-
-    pub fn get(&self, i: usize) -> Option<&Cursor> {
-        if i >= self.len() {
-            return None;
-        }
-        let (sh_from, shift) = self.shift_state.get();
-        if i >= sh_from && shift != [0; 3] {
-            for cursor in self.buf.range(sh_from..i + 1).iter() {
-                cursor.shift_by(shift);
-            }
-            if i + 1 < self.buf.len() {
-                self.shift_state.set((i + 1, shift));
-            } else {
-                self.shift_state.take();
-            }
-        }
-
-        self.buf.get(i)
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = (&Cursor, bool)> {
-        // Since we don't know how many Cursors will be iterated over, we
-        // shift all cursors, just in case.
-        let (sh_from, shift) = self.shift_state.take();
-        if shift != [0; 3] {
-            for cursor in self.buf.range(sh_from..).iter() {
-                cursor.shift_by(shift);
-            }
-        }
-        self.buf
-            .iter()
-            .enumerate()
-            .map(move |(i, cursor)| (cursor, i == self.main_i))
-    }
-
-    pub fn main_index(&self) -> usize {
-        self.main_i
-    }
-
-    pub fn len(&self) -> usize {
-        self.buf.len()
-    }
-
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    pub fn clear(&mut self) {
-        self.buf = GapBuffer::new();
-        self.shift_state.take();
-    }
-
-    pub fn reset(&mut self) {
-        self.remove_extras();
-        self.buf[self.main_i] = Cursor::default();
-    }
-
+    /// Removes a [`Cursor`], which might be brought back
     pub(super) fn remove(&mut self, i: usize) -> Option<(Cursor, bool)> {
         if i >= self.buf.len() {
             return None;
@@ -259,6 +307,7 @@ impl Cursors {
         Some((self.buf.remove(i), was_main))
     }
 
+    /// Ensures that there is at least one [`Cursor`] on the list
     pub(super) fn populate(&mut self) {
         if self.buf.is_empty() {
             self.main_i = 0;
@@ -556,6 +605,7 @@ mod cursor {
             self.caret.get().point()
         }
 
+        /// The anchor of this [`Cursor`], if it exists
         pub fn anchor(&self) -> Option<Point> {
             self.anchor.get().map(|a| a.point())
         }
@@ -659,12 +709,22 @@ mod cursor {
             }
         }
 
+        /// The visual caret of this [`Cursor`]
+        ///
+        /// [`VPoint`]s include a lot more information than regular
+        /// [`Point`]s, like visual distance form the left edge, what
+        /// the desired distance is, etc.
         pub fn v_caret(&self, text: &Text, area: &impl RawArea, cfg: PrintCfg) -> VPoint {
             let vp = self.caret.get().calculate(text, area, cfg);
             self.caret.set(LazyVPoint::Known(vp));
             vp
         }
 
+        /// The visual anchor of this [`Cursor`], if it exists
+        ///
+        /// [`VPoint`]s include a lot more information than regular
+        /// [`Point`]s, like visual distance form the left edge, what
+        /// the desired distance is, etc.
         pub fn v_anchor(&self, text: &Text, area: &impl RawArea, cfg: PrintCfg) -> Option<VPoint> {
             self.anchor.get().map(|anchor| {
                 let vp = anchor.calculate(text, area, cfg);
@@ -673,12 +733,19 @@ mod cursor {
             })
         }
 
+        /// The visual range between the caret and anchor of this
+        /// [`Cursor`]
+        ///
+        /// [`VPoint`]s include a lot more information than regular
+        /// [`Point`]s, like visual distance form the left edge, what
+        /// the desired distance is, etc.
         pub fn v_range(&self, text: &Text, area: &impl RawArea, cfg: PrintCfg) -> [VPoint; 2] {
             let v_caret = self.v_caret(text, area, cfg);
             let v_anchor = self.v_anchor(text, area, cfg).unwrap_or(v_caret);
             [v_caret.min(v_anchor), v_caret.max(v_anchor)]
         }
 
+        /// The starting [`LazyVPoint`]
         pub(super) fn lazy_v_start(&self) -> LazyVPoint {
             match self.anchor.get() {
                 Some(anchor) => self.caret.get().min(anchor),
@@ -686,6 +753,7 @@ mod cursor {
             }
         }
 
+        /// The ending [`LazyVPoint`]
         pub(super) fn lazy_v_end(&self) -> LazyVPoint {
             match self.anchor.get() {
                 Some(anchor) => self.caret.get().max(anchor),
@@ -694,6 +762,8 @@ mod cursor {
         }
     }
 
+    /// A struct meant to minimize calculations on very large numbers
+    /// of [`Cursor`]s
     #[derive(Clone, Copy, Eq, Encode, Decode)]
     pub(super) enum LazyVPoint {
         Known(VPoint),
@@ -702,6 +772,7 @@ mod cursor {
     }
 
     impl LazyVPoint {
+        /// The actual [`Point`]
         fn point(self) -> Point {
             match self {
                 LazyVPoint::Known(vp) => vp.p,
@@ -710,6 +781,7 @@ mod cursor {
             }
         }
 
+        /// Calculates the [`VPoint`], to be used sparingly
         fn calculate(self, text: &Text, area: &impl RawArea, cfg: PrintCfg) -> VPoint {
             match self {
                 Self::Known(vp) => vp,
@@ -748,10 +820,33 @@ mod cursor {
         }
     }
 
+    /// A visual [`Point`], which includes more information
+    ///
+    /// Alongside the byte, char, and line of the [`Point`], this
+    /// struct has:
+    ///
+    /// - Number of [`char`]s from the left edge
+    /// - Number of visual cells from the left edge
+    /// - Desired number of visual cells from the left edge
+    /// - Number of wrapped cells from the left edge
+    /// - Desired number of wrapped cells from the left edge
+    ///
+    /// The difference between visual cells and wrapped cells is that
+    /// visual cells are essentially "The distance a [`Point`] would
+    /// be if this line were not wrapped"
+    ///
+    /// Desired cells are used when moving vertically, since when you
+    /// move a [`Cursor`] up or down to a shorter line, then to a
+    /// longer one, you expect the horizontal position to hold. This
+    /// is applied both in [full line] and [wrapped line] vertical
+    /// movement.
+    ///
+    /// [full line]: crate::mode::Editor::move_ver
+    /// [wrapped line]: crate::mode::Editor::move_ver_wrapped
     #[derive(Clone, Copy, Debug, Eq, Encode, Decode)]
     pub struct VPoint {
         p: Point,
-        // No plan to suppert lines that are far too long
+        // No plan to support lines that are far too long
         ccol: u16,
         vcol: u16,
         dvcol: u16,
@@ -760,6 +855,7 @@ mod cursor {
     }
 
     impl VPoint {
+        /// Returns a new [`VPoint`]
         fn new(p: Point, text: &Text, area: &impl RawArea, cfg: PrintCfg) -> Self {
             let [start, _] = text.points_of_line(p.line());
 
@@ -788,6 +884,7 @@ mod cursor {
             }
         }
 
+		/// Returns a new [`VPoint`] from raw data
         fn known(self, p: Point, ccol: u16, vcol: u16, wcol: u16) -> Self {
             Self { p, ccol, vcol, wcol, ..self }
         }

@@ -62,6 +62,8 @@ pub trait Reader<U: Ui>: 'static {
     /// instead of checking if you need to place a [`Tag`] in a
     /// certain spot, you can just place it, and Duat will ignore that
     /// request if that [`Tag`] was already there.
+    ///
+    /// [`Tag`]: crate::text::Tag
     fn update_range(&mut self, bytes: &mut Bytes, tags: MutTags, within: Range<usize>);
 }
 
@@ -190,7 +192,7 @@ impl<U: Ui> Readers<U> {
                                 let (bytes, tags) = text.bytes_and_tags();
                                 let (to_check, split_off) =
                                     split_range_within(range.clone(), within.clone());
-                                    
+
                                 if let Some(range) = to_check {
                                     reader.update_range(bytes, tags, range);
                                 }

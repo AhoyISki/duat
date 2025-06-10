@@ -615,9 +615,9 @@ fn scroll_ver_around(
         .filter_map(|(caret, item)| caret.wrap.then_some(item.points()));
 
     let target = if info.prev_main > point {
-        cfg.scrolloff.y()
+        cfg.scrolloff.y as u32
     } else {
-        height.saturating_sub(cfg.scrolloff.y() + 1)
+        height.saturating_sub(cfg.scrolloff.y as u32 + 1)
     };
     let first = iter.nth(target as usize).unwrap_or_default();
 
@@ -697,11 +697,11 @@ fn scroll_hor_around(info: &mut PrintInfo, width: u32, p: Point, text: &Text, cf
 
     info.x_shift = info
         .x_shift
-        .min(start.saturating_sub(cfg.scrolloff.x()))
+        .min(start.saturating_sub(cfg.scrolloff.x as u32))
         .max(if cfg.force_scrolloff {
-            (end + cfg.scrolloff.x()).saturating_sub(width)
+            (end + cfg.scrolloff.x as u32).saturating_sub(width)
         } else {
-            (end + cfg.scrolloff.x())
+            (end + cfg.scrolloff.x as u32)
                 .min(max_shift)
                 .saturating_sub(width)
         });

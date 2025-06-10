@@ -639,7 +639,8 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Editor<'a, W, A, S> {
         )
     }
 
-    /// Moves the cursor vertically. May cause horizontal movement
+    /// Moves the cursor vertically a number of wrapped lines. May
+    /// cause horizontal movement
     ///
     /// Returns the distance moved in wrapped lines.
     pub fn move_ver_wrapped(&mut self, count: i32) {

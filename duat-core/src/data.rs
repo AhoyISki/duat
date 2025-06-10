@@ -36,11 +36,11 @@
 //!
 //! [read]: RwData::read
 //! [written to]: RwData::write
-//! [`Widget`]: crate::widgets::Widget
-//! [`File`]: crate::widgets::File
-//! [updated]: crate::widgets::Widget::update
+//! [`Widget`]: crate::widget::Widget
+//! [`File`]: crate::widget::File
+//! [updated]: crate::widget::Widget::update
 //! [`Text`]: crate::text::Text
-//! [`StatusLine`]: crate::widgets::StatusLine
+//! [`StatusLine`]: crate::widget::StatusLine
 //! [`context`]: crate::context
 //! [`Mutex`]: std::sync::Mutex
 //! [`Arc<Mutex>`]: std::sync::Arc
@@ -55,6 +55,54 @@ use std::{
 
 use crate::{cfg::PrintCfg, text::Text, ui::Ui, widget::Widget};
 
+/// A container for shared read/write state
+///
+/// This is the struct used internally (and externally) to allow for
+/// massively shareable state in duat's API. Its main purpose is to
+/// hold all of the [`Widget`]s in Duat, making them available for
+/// usage from any function with access to a [`Pass`].
+///
+/// # [`Pass`]es
+///
+/// The [`Pass`] is a sort of "key" for accessing the value within an
+/// [`RwData`], it's purpose is to maintain Rust's number one rule,
+/// i.e. one exclusive reference or multiple shared references, and
+/// that is done by borrowing the [`Pass`] mutably or non mutably.
+/// That comes with some limitations, of course, mainly that you can't
+/// really mutate two [`RwData`]s at the same time, even if it is
+/// known that they don't point to the same data.
+///
+/// There are some common exceptions to this, where Duat provides some
+/// safe way to do that when it is known that the two types are not
+/// the same.
+///
+/// # Not [`Send`]/[`Sync`]
+///
+/// Internally, the [`RwData`] makes use of an [`Rc<RefCell>`]. The
+/// usage of an [`Rc<RefCell>`] over an [`Arc<Mutex>`] is, i've
+/// assumed, a necessary evil in order to preserve the aforementioned
+/// rule. But the lack of [`Send`]/[`Sync`] does confer the [`RwData`]
+/// some advantages:
+///
+/// * Deadlocks are impossible, being replaced by much easier to debug
+///   panics.
+/// * The order in which data is accessed doesn't matter, unlike with
+///   [`Mutex`]es.
+/// * Performance of unlocking and cloning should generally be better,
+///   since no atomic operations are done (I actually managed to
+///   observe this, where in my rudimentary benchmarks against neovim,
+///   the [`Arc<Mutex>`] version was very frequently losing to a
+///   comparable neovim build.
+///
+/// However, I admit that there are also some drawbacks, the most
+/// notable being the difficulty of reading or writing to [`Text`]
+/// from outside of the main thread. But for the most common usecase
+/// where that will be needed ([`Reader`]s), a [`Send`]/[`Sync`]
+/// solution will be provided soon.
+///
+/// [`Arc<Mutex>`]: std::sync::Arc
+/// [`Mutex`]: std::sync::Mutex
+/// [`Reader`]: crate::file::Reader
 #[derive(Debug)]
 pub struct RwData<T: ?Sized> {
     value: Rc<RefCell<T>>,
@@ -64,6 +112,11 @@ pub struct RwData<T: ?Sized> {
 }
 
 impl<T: 'static> RwData<T> {
+    /// Returns a new [`RwData<T>`]
+    ///
+    /// Note that this is only for sized types. For unsized types, the
+    /// process is a little more convoluted, and you need to use
+    /// [`RwData::new_unsized`].
     pub fn new(value: T) -> Self {
         Self {
             value: Rc::new(RefCell::new(value)),
@@ -91,6 +144,13 @@ impl<T: ?Sized> RwData<T> {
     ///     RwData::new_unsized::<String>(Rc::new(RefCell::new("testing".to_string()))
     /// };
     /// ```
+    ///
+    /// This ensures that methods such as [`read_as`] and [`write_as`]
+    /// will correctly identify such [`RwData<dyn Display>`] as a
+    /// [`String`].
+    ///
+    /// [`read_as`]: Self::read_as
+    /// [`write_as`]: Self::write_as
     pub unsafe fn new_unsized<SizedT: 'static>(value: Rc<RefCell<T>>) -> Self {
         Self {
             value,
@@ -100,6 +160,8 @@ impl<T: ?Sized> RwData<T> {
         }
     }
 
+    ////////// Reading functions
+
     /// Reads the value within using a [`Pass`]
     ///
     /// The consistent use of a [`Pass`] for the purposes of
@@ -108,7 +170,8 @@ impl<T: ?Sized> RwData<T> {
     /// with untrusted code. More importantly, Duat uses these
     /// guarantees in order to give the end user a ridiculous amount
     /// of freedom in where they can do things, whilst keeping Rust's
-    /// number one rule and ensuring thread safety.
+    /// number one rule and ensuring thread safety, even with a
+    /// relatively large amount of shareable state.
     ///
     /// # Panics
     ///
@@ -131,7 +194,8 @@ impl<T: ?Sized> RwData<T> {
     /// with untrusted code. More importantly, Duat uses these
     /// guarantees in order to give the end user a ridiculous amount
     /// of freedom in where they can do things, whilst keeping Rust's
-    /// number one rule and ensuring thread safety.
+    /// number one rule and ensuring thread safety, even with a
+    /// relatively large amount of shareable state.
     ///
     /// # Panics
     ///
@@ -217,16 +281,76 @@ impl<T: ?Sized> RwData<T> {
         Some(f(&*value.borrow()))
     }
 
+    /// Simulates a [`read`] without actually reading
+    ///
+    /// This is useful if you want to tell Duat that you don't want
+    /// [`has_changed`] to return `true`, but you don't have a
+    /// [`Pass`] available to [`read`] the value.
+    ///
+    /// [`read`]: Self::read
+    /// [`has_changed`]: Self::has_changed
+    pub fn declare_as_read(&self) {
+        self.read_state.set(self.cur_state.get());
+    }
+
+    /// Reads the data without updating its read state, might be
+    /// removed, idk
+    pub(crate) fn read_raw<Ret>(&self, f: impl FnOnce(&T) -> Ret) -> Ret {
+        f(&*self.value.borrow())
+    }
+
+    /// Acquires the value within, meant for improving compile times
+    /// internally.
     pub(crate) fn acquire(&self, _: &Pass) -> std::cell::RefMut<'_, T> {
         update_read_state(&self.read_state, &self.cur_state);
         self.value.borrow_mut()
     }
 
+    ////////// Writing functions
+
+    /// Writes to the value within using a [`Pass`]
+    ///
+    /// The consistent use of a [`Pass`] for the purposes of
+    /// reading/writing to the values of [`RwData`]s ensures that no
+    /// panic or invalid borrow happens at runtime, even while working
+    /// with untrusted code. More importantly, Duat uses these
+    /// guarantees in order to give the end user a ridiculous amount
+    /// of freedom in where they can do things, whilst keeping Rust's
+    /// number one rule and ensuring thread safety, even with a
+    /// relatively large amount of shareable state.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there is any type of borrow of this struct
+    /// somewhere, which could happen if you use [`read_unsafe`]
+    /// or [`write_unsafe`], for example.
+    ///
+    /// [`read_unsafe`]: Self::read_unsafe
+    /// [`write_unsafe`]: Self::write_unsafe
     pub fn write<Ret>(&self, _: &mut Pass, f: impl FnOnce(&mut T) -> Ret) -> Ret {
         update_cur_state(&self.read_state, &self.cur_state);
         f(&mut *self.value.borrow_mut())
     }
 
+    /// Writes to the value within as `U` using a [`Pass`]
+    ///
+    /// The consistent use of a [`Pass`] for the purposes of
+    /// reading/writing to the values of [`RwData`]s ensures that no
+    /// panic or invalid borrow happens at runtime, even while working
+    /// with untrusted code. More importantly, Duat uses these
+    /// guarantees in order to give the end user a ridiculous amount
+    /// of freedom in where they can do things, whilst keeping Rust's
+    /// number one rule and ensuring thread safety, even with a
+    /// relatively large amount of shareable state.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there is any type of borrow of this struct
+    /// somewhere, which could happen if you use [`read_unsafe`]
+    /// or [`write_unsafe`], for example.
+    ///
+    /// [`read_unsafe`]: Self::read_unsafe
+    /// [`write_unsafe`]: Self::write_unsafe
     pub fn write_as<Ret, U: 'static>(
         &self,
         _: &mut Pass,
@@ -317,15 +441,20 @@ impl<T: ?Sized> RwData<T> {
         prepare(self).map(|mut mapped| f(&mut *mapped))
     }
 
+    /// Acquires a mutable reference to the value within, for
+    /// compilation time improvements inside Duat
     pub(crate) fn acquire_mut(&self, _: &mut Pass) -> std::cell::RefMut<'_, T> {
         update_cur_state(&self.read_state, &self.cur_state);
         self.value.borrow_mut()
     }
 
-    pub(crate) fn raw_acquire_mut(&self, _: &mut Pass) -> std::cell::RefMut<'_, T> {
-        self.value.borrow_mut()
-    }
+    ////////// Mapping of the inner value
 
+    /// Maps the value to another value with a function
+    ///
+    /// This function will return a struct that acts like a "read
+    /// only" version of [`RwData`], which also maps the value to
+    /// a return type.
     pub fn map<Ret: 'static>(&self, map: impl FnMut(&T) -> Ret + 'static) -> DataMap<T, Ret> {
         let RwData { value, cur_state, read_state, .. } = self.clone();
         let data = RwData {
@@ -338,18 +467,13 @@ impl<T: ?Sized> RwData<T> {
         DataMap { data, map: Rc::new(RefCell::new(map)) }
     }
 
-    pub fn ptr_eq<U: ?Sized>(&self, other: &RwData<U>) -> bool {
-        self.value.as_ptr().addr() == other.value.as_ptr().addr()
-    }
-
-    pub fn type_id(&self) -> TypeId {
-        self.ty
-    }
-
-    pub fn data_is<U: 'static>(&self) -> bool {
-        self.ty == TypeId::of::<U>()
-    }
-
+    /// Attempts to downcast an [`RwData`] to a concrete type
+    ///
+    /// Returns [`Some(RwData<U>)`] if the value within was of type
+    /// `U`, i.e., for unsized types, `U` was the type parameter
+    /// passed when calling [`RwData::new_unsized`].
+    ///
+    /// [`Some(RwData<U>)`]: Some
     pub fn try_downcast<U: 'static>(&self) -> Option<RwData<U>> {
         if TypeId::of::<U>() != self.ty {
             return None;
@@ -385,6 +509,23 @@ impl<T: ?Sized> RwData<T> {
         })
     }
 
+    ////////// Querying functions
+
+    /// Wether this [`RwData`] and another point to the same value
+    pub fn ptr_eq<U: ?Sized>(&self, other: &RwData<U>) -> bool {
+        self.value.as_ptr().addr() == other.value.as_ptr().addr()
+    }
+
+    /// The [`TypeId`] of the concrete type within
+    pub fn type_id(&self) -> TypeId {
+        self.ty
+    }
+
+    /// Wether the concrete [`TypeId`] matches that of `U`
+    pub fn data_is<U: 'static>(&self) -> bool {
+        self.ty == TypeId::of::<U>()
+    }
+
     /// Wether someone else called [`write`] or [`write_as`] since the
     /// last [`read`] or [`write`]
     ///
@@ -393,7 +534,7 @@ impl<T: ?Sized> RwData<T> {
     /// acquired after the last call to [`has_changed`].
     ///
     /// Some types like [`Text`], and traits like [`Widget`] offer
-    /// [`has_changed`](crate::widgets::Widget::has_changed) methods,
+    /// [`has_changed`](crate::widget::Widget::needs_update) methods,
     /// you should try to determine what parts to look for changes.
     ///
     /// Generally though, you can use this method to gauge that.
@@ -403,7 +544,7 @@ impl<T: ?Sized> RwData<T> {
     /// [`read`]: Self::read
     /// [`has_changed`]: Self::has_changed
     /// [`Text`]: crate::text::Text
-    /// [`Widget`]: crate::widgets::Widget
+    /// [`Widget`]: crate::widget::Widget
     pub fn has_changed(&self) -> bool {
         self.read_state.get() < self.cur_state.get()
     }
@@ -419,22 +560,6 @@ impl<T: ?Sized> RwData<T> {
     pub fn checker(&self) -> impl Fn() -> bool + 'static {
         let (cur, read) = (self.cur_state.clone(), self.read_state.clone());
         move || read.get() < cur.get()
-    }
-
-    /// Simulates a [`read`] without actually reading
-    ///
-    /// This is useful if you want to tell Duat that you don't want
-    /// [`has_changed`] to return `true`, but you don't have a
-    /// [`Pass`] available to [`read`] the value.
-    ///
-    /// [`read`]: Self::read
-    /// [`has_changed`]: Self::has_changed
-    pub fn declare_as_read(&self) {
-        self.read_state.set(self.cur_state.get());
-    }
-
-    pub(crate) fn read_raw<Ret>(&self, f: impl FnOnce(&T) -> Ret) -> Ret {
-        f(&*self.value.borrow())
     }
 
     ////////// Widget Functions
@@ -511,12 +636,14 @@ impl<T: Default + 'static> Default for RwData<T> {
     }
 }
 
+/// A mapping of an [`RwData`]
 pub struct DataMap<I: ?Sized + 'static, O: 'static> {
     data: RwData<I>,
     map: Rc<RefCell<dyn FnMut(&I) -> O>>,
 }
 
 impl<I: ?Sized, O> DataMap<I, O> {
+    /// Maps the value within, works just like [`RwData::map`]
     pub fn map<O2>(&self, mut f: impl FnMut(O) -> O2 + 'static) -> DataMap<I, O2> {
         let data_map = self.clone();
         data_map
@@ -533,7 +660,7 @@ impl<I: ?Sized, O> DataMap<I, O> {
     /// acquired after the last call to [`has_changed`].
     ///
     /// Some types like [`Text`], and traits like [`Widget`] offer
-    /// [`has_changed`](crate::widgets::Widget::has_changed) methods,
+    /// [`has_changed`](crate::widget::Widget::has_changed) methods,
     /// you should try to determine what parts to look for changes.
     ///
     /// Generally though, you can use this method to gauge that.
@@ -543,7 +670,7 @@ impl<I: ?Sized, O> DataMap<I, O> {
     /// [`read`]: RwData::read
     /// [`has_changed`]: RwData::has_changed
     /// [`Text`]: crate::text::Text
-    /// [`Widget`]: crate::widgets::Widget
+    /// [`Widget`]: crate::widget::Widget
     pub fn has_changed(&self) -> bool {
         self.data.has_changed()
     }

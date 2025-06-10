@@ -23,8 +23,8 @@ pub fn wrap_on_width() {
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.width_wrapped(),
-        None => PrintCfg::default_for_input().width_wrapped(),
+        Some(prev) => prev.edge_wrapped(),
+        None => PrintCfg::default_for_input().edge_wrapped(),
     })
 }
 
@@ -56,8 +56,8 @@ pub fn indent_on_wrap() {
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.indent_wrapped(),
-        None => PrintCfg::default_for_input().indent_wrapped(),
+        Some(prev) => prev.indent_wraps(),
+        None => PrintCfg::default_for_input().indent_wraps(),
     })
 }
 
@@ -67,8 +67,8 @@ pub fn tab_size(tab_size: u8) {
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.tab_sized(tab_size),
-        None => PrintCfg::default_for_input().tab_sized(tab_size),
+        Some(prev) => prev.with_tabstop(tab_size),
+        None => PrintCfg::default_for_input().with_tabstop(tab_size),
     })
 }
 

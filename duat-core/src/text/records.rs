@@ -219,16 +219,16 @@ impl<R: Record> Records<R> {
         let (n, mut rec) = self.last_used;
 
         if at == key_f(&self.max) {
-            return (self.stored.len(), self.max)
+            return (self.stored.len(), self.max);
         } else if at == key_f(&self.last_used.1) {
-            return self.last_used
+            return self.last_used;
         }
 
         if at >= key_f(&rec) {
             let mut i = n;
             for len in &self.stored[n..] {
                 if key_f(&rec.add(*len)) > at {
-                    return (i, rec)
+                    return (i, rec);
                 }
                 rec = rec.add(*len);
                 i += 1;
@@ -239,7 +239,7 @@ impl<R: Record> Records<R> {
                 i -= 1;
                 rec = rec.sub(*len);
                 if key_f(&rec) <= at {
-                    return (i, rec)
+                    return (i, rec);
                 }
             }
         }

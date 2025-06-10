@@ -219,7 +219,7 @@ mod switch {
             let mut mode = unsafe { MODE.get() }.borrow_mut();
             let mode: &mut M = mode.downcast_mut().unwrap();
 
-			// The Cursors will be readded after Node::update_and_print
+            // The Cursors will be readded after Node::update_and_print
             widget.write(&mut pa, |widget| {
                 let cfg = widget.print_cfg();
                 widget.text_mut().remove_cursors(area, cfg);

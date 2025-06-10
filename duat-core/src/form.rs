@@ -13,9 +13,19 @@ use crate::{
     ui::Sender,
 };
 
+/// Lists of [`Form`]s to be applied by a name
 pub trait ColorScheme: Send + Sync + 'static {
+    /// Applies the [`Form`]s
+    ///
+    /// # Note
+    ///
+    /// This can technically do anything, mostly because one might
+    /// want to do a bunch of `if`s and `else`s in order to get to a
+    /// finalized [`ColorScheme`], but you should refrain from doing
+    /// anything but that in this function
     fn apply(&self);
 
+    /// The name of this [`ColorScheme`], shouldn't be altered
     fn name(&self) -> &'static str;
 }
 
@@ -581,6 +591,7 @@ impl std::fmt::Debug for FormId {
 /// A style for text.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Form {
+    /// The actual [style](ContentStyle) that is applied
     pub style: ContentStyle,
 }
 
@@ -1042,6 +1053,10 @@ impl Palette {
     }
 }
 
+/// A struct to create [`Form`]s from [`RawTag`] in a [`Text`]
+///
+/// [`RawTag`]: crate::text::RawTag
+/// [`Text`]: crate::text::Text
 pub struct Painter {
     inner: RwLockReadGuard<'static, InnerPalette>,
     default: Form,
@@ -1170,24 +1185,28 @@ impl Painter {
         style
     }
 
+	/// Applies the `"MainCursor"` [`Form`]
     #[inline(always)]
     pub fn apply_main_cursor(&mut self) {
         self.apply(M_CUR_ID);
         self.final_form_start -= 1;
     }
 
+	/// Removes the `"MainCursor"` [`Form`]
     #[inline(always)]
     pub fn remove_main_cursor(&mut self) {
         self.final_form_start += 1;
         self.remove(M_CUR_ID);
     }
 
+	/// Applies the `"ExtraCursor"` [`Form`]
     #[inline(always)]
     pub fn apply_extra_cursor(&mut self) {
         self.apply(E_CUR_ID);
         self.final_form_start -= 1;
     }
 
+	/// Removes the `"ExtraCursor"` [`Form`]
     #[inline(always)]
     pub fn remove_extra_cursor(&mut self) {
         self.final_form_start += 1;

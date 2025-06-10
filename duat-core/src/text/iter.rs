@@ -194,12 +194,12 @@ impl<'a> FwdIter<'a> {
         true
     }
 
-	#[inline(always)]
+    #[inline(always)]
     pub fn on_ghost(&self) -> bool {
         self.main_iter.is_some()
     }
 
-	#[inline(always)]
+    #[inline(always)]
     pub fn points(&self) -> (Point, Option<Point>) {
         if let Some((real, ..)) = self.main_iter.as_ref() {
             (*real, self.ghost.map(|(tg, _)| tg))

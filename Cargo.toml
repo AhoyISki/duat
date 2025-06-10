@@ -11,6 +11,9 @@ categories = ["command-line-utilities", "text-editors", "config"]
 include = ["src/", "config/src/", "config/Cargo_.toml", "build.rs"]
 edition = "2024"
 
+[lints.rust]
+missing_docs = "warn"
+
 [workspace]
 members = ["duat-core", "duat-term", "duat-utils"]
 exclude = ["config"]

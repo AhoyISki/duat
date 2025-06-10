@@ -252,13 +252,21 @@ impl From<Builder> for Text {
 /// A part to be pushed to a [`Builder`] by a macro
 #[derive(Clone)]
 pub enum BuilderPart<D: Display = String, _T = ()> {
+    /// Text to be pushed
     Text(Text),
+    /// An [`impl Display`](std::fmt::Display) type
     ToString(D),
+    /// A [`FormId`]
     Form(FormId),
+    /// Sets the alignment to the left, i.e. resets it
     AlignLeft,
+    /// Sets the alignment to the center
     AlignCenter,
+    /// Sets the alignment to the right
     AlignRight,
+    /// A spacer for more advanced alignment
     Spacer(PhantomData<_T>),
+    /// Ghost [`Text`] that is separate from the real thing
     Ghost(Text),
 }
 

@@ -13,7 +13,8 @@ use arboard::Clipboard;
 use crate::{
     cache::{delete_cache, delete_cache_for, store_cache},
     cfg::PrintCfg,
-    cmd, context::{self, sender},
+    cmd,
+    context::{self, sender},
     data::Pass,
     file::{File, FileCfg, PathKind},
     file_entry, form,
@@ -211,8 +212,6 @@ impl<U: Ui> Session<U> {
         // SAFETY: No Passes exists at this point in time.
         hook::trigger::<ConfigLoaded>(&mut unsafe { Pass::new() }, ());
 
-        U::flush_layout(self.ms);
-
         {
             let win = self.cur_window.load(Ordering::Relaxed);
             let windows = context::windows::<U>().borrow();
@@ -221,6 +220,8 @@ impl<U: Ui> Session<U> {
                 node.update_and_print(unsafe { Pass::new() });
             }
         }
+
+        U::flush_layout(self.ms);
 
         let mut reload_instant = None;
         let mut reprint_screen = false;

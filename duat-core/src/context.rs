@@ -74,6 +74,9 @@ mod global {
         unsafe { MODE_NAME.get() }.clone()
     }
 
+    /// Returns a [`FileHandle`] for a [`File`] with the given name
+    ///
+    /// [`File`]: crate::file::File
     pub fn file_named<U: Ui>(pa: &Pass, name: impl ToString) -> Result<FileHandle<U>, Text> {
         let windows = windows::<U>().borrow();
         let name = name.to_string();
@@ -88,18 +91,36 @@ mod global {
         })
     }
 
+    /// Returns a "fixed" [`FileHandle`] for the currently active
+    /// [`File`]
+    ///
+    /// This [`FileHandle`] will always point to the same [`File`],
+    /// even when it is not active. If you want a [`FileHandle`] that
+    /// always points to the current [`File`], see [`dyn_file`]
+    ///
+    /// [`File`]: crate::file::File
     pub fn fixed_file<U: Ui>(pa: &Pass) -> Result<FileHandle<U>, Text> {
         Ok(cur_file(pa)?.fixed(pa))
     }
 
+    /// Returns a "dynamic" [`FileHandle`] for the active [`File`]
+    ///
+    /// This [`FileHandle`] will change to point to the current
+    /// [`File`], whenever the user swicthes which [`File`] is active.
+    /// If you want a [`FileHandle`] that will stay on the current
+    /// [`File`], see [`fixed_file`].
+    ///
+    /// [`File`]: crate::file::File
     pub fn dyn_file<U: Ui>(pa: &Pass) -> Result<FileHandle<U>, Text> {
         Ok(cur_file(pa)?.dynamic())
     }
 
+    /// The index of the currently active window.
     pub fn cur_window() -> usize {
         CUR_WINDOW.load(Ordering::Relaxed)
     }
 
+    /// The current directory
     pub fn cur_dir() -> PathBuf {
         CUR_DIR
             .get_or_init(|| Mutex::new(std::env::current_dir().unwrap()))
@@ -108,10 +129,18 @@ mod global {
             .clone()
     }
 
+    /// Notifications for duat
+    ///
+    /// This is a mutable, shareable, [`Send`]/[`Sync`] list of
+    /// notifications in the form of [`Text`]s, you can read this,
+    /// send new notifications, and check for updates, just like with
+    /// [`RwData`], except in this case, you don't need [`Pass`]es, so
+    /// there might be changes to make this API safer in the future.
     pub fn notifications() -> Notifications {
         NOTIFICATIONS.clone()
     }
 
+    /// Sends a notification to Duat
     pub fn notify(msg: impl Into<Text>) {
         NOTIFICATIONS.push(msg)
     }
@@ -121,10 +150,12 @@ mod global {
         WILL_RELOAD_OR_QUIT.load(Ordering::Relaxed)
     }
 
+    /// A [`mpsc::Sender`] for [`DuatEvent`]s in the main loop
     pub(crate) fn sender() -> &'static mpsc::Sender<DuatEvent> {
         SENDER.get().unwrap()
     }
 
+    /// Sets the [`CurWidget`] and [`CurFile`], if needed
     pub(crate) fn set_cur<U: Ui>(
         pa: &mut Pass,
         parts: Option<FileParts<U>>,
@@ -135,6 +166,7 @@ mod global {
         old.zip(inner_cur_widget().0.write(&mut *pa, |cw| cw.replace(node)))
     }
 
+    /// The [`CurWidget`]
     pub(crate) fn cur_widget<U: Ui>(pa: &Pass) -> Result<&'static CurWidget<U>, Text> {
         let cur_widget = inner_cur_widget();
         if cur_widget.0.read(pa, |cw| cw.is_none()) {
@@ -144,17 +176,20 @@ mod global {
         }
     }
 
+    /// Sets the [`Window`]s for Duat
     pub(crate) fn set_windows<U: Ui>(wins: Vec<Window<U>>) -> &'static AtomicUsize {
         *windows().borrow_mut() = wins;
         &CUR_WINDOW
     }
 
+    /// The [`Window`]s of Duat, must be used on main thread
     pub(crate) fn windows<U: Ui>() -> &'static RefCell<Vec<Window<U>>> {
         assert_is_on_main_thread();
         let windows = unsafe { WINDOWS.get() };
         windows.get().unwrap().downcast_ref().expect("1 Ui only")
     }
 
+    /// The [`CurFile`], must be used on main thread
     pub(crate) fn inner_cur_file<U: Ui>() -> &'static CurFile<U> {
         assert_is_on_main_thread();
         let cur_file = unsafe { CUR_FILE.get() };
@@ -166,6 +201,7 @@ mod global {
         WILL_RELOAD_OR_QUIT.store(true, Ordering::Relaxed);
     }
 
+    /// The inner [`CurFile`]
     fn cur_file<U: Ui>(pa: &Pass) -> Result<&'static CurFile<U>, Text> {
         let cur_file = inner_cur_file();
         if cur_file.0.read(pa, |f| f.is_none()) {
@@ -174,6 +210,7 @@ mod global {
         Ok(cur_file)
     }
 
+    /// The inner [`CurWidget`]
     fn inner_cur_widget<U: Ui>() -> &'static CurWidget<U> {
         let cur_widget = unsafe { CUR_WIDGET.get() };
         cur_widget.get().unwrap().downcast_ref().expect("1 Ui only")
@@ -197,6 +234,7 @@ mod global {
         );
     }
 
+    /// Sets us static variables that were created by leaking memory
     #[doc(hidden)]
     pub unsafe fn setup_non_statics<U: Ui>(
         cur_file: &'static CurFile<U>,
@@ -220,22 +258,28 @@ mod global {
     }
 }
 
+/// The current file
+#[doc(hidden)]
 #[derive(Clone)]
 pub struct CurFile<U: Ui>(RwData<Option<FileParts<U>>>);
 
 impl<U: Ui> CurFile<U> {
+    /// Returns a new [`CurFile`]
+    #[doc(hidden)]
     pub fn new() -> Self {
         Self(RwData::new(None))
     }
 
-    pub fn fixed(&self, pa: &Pass) -> FileHandle<U> {
+    /// Returns a new "fixed" [`FileHandle`]
+    fn fixed(&self, pa: &Pass) -> FileHandle<U> {
         FileHandle {
             fixed: self.0.read(pa, |parts| parts.clone()),
             current: self.0.clone(),
         }
     }
 
-    pub fn dynamic(&self) -> FileHandle<U> {
+    /// Returns a new "dynamic" [`FileHandle`]
+    fn dynamic(&self) -> FileHandle<U> {
         FileHandle { fixed: None, current: self.0.clone() }
     }
 
@@ -265,6 +309,21 @@ impl<U: Ui> Default for CurFile<U> {
     }
 }
 
+/// A handle to a [`File`] widget
+///
+/// This handle acts much like an [`RwData<File>`], but it also
+/// includes an [`Area`] that can be acted upon alongside the
+/// [`File`].
+///
+/// This is the only way you are supposed to read information about
+/// the [`File`], in order to display it on [`Widget`]s, create
+/// [`Text`]s, and do all sorts of things. You can, of course, also
+/// modify a [`File`] from within this struct, but you should be
+/// careful to prevent infinite loops, where you modify a [`File`], it
+/// gets updated, and then you modify it again after noticing that it
+/// has changed.
+///
+/// [`Area`]: crate::ui::RawArea
 #[derive(Clone)]
 pub struct FileHandle<U: Ui> {
     fixed: Option<FileParts<U>>,
@@ -272,6 +331,24 @@ pub struct FileHandle<U: Ui> {
 }
 
 impl<U: Ui> FileHandle<U> {
+    /// Reads from the [`File`] and the [`Area`] using a [`Pass`]
+    ///
+    /// The consistent use of a [`Pass`] for the purposes of
+    /// reading/writing to the values of [`RwData`]s ensures that no
+    /// panic or invalid borrow happens at runtime, even while working
+    /// with untrusted code. More importantly, Duat uses these
+    /// guarantees in order to give the end user a ridiculous amount
+    /// of freedom in where they can do things, whilst keeping Rust's
+    /// number one rule and ensuring thread safety, even with a
+    /// relatively large amount of shareable state.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there is a mutable borrow of this struct somewhere,
+    /// which could happen if you use [`RwData::write_unsafe`] or
+    /// [`RwData::write_unsafe_as`] from some other place
+    ///
+    /// [`Area`]: crate::ui::RawArea
     pub fn read<Ret>(&self, pa: &Pass, f: impl FnOnce(&File<U>, &U::Area) -> Ret) -> Ret {
         if let Some((file, area, _)) = self.fixed.as_ref() {
             file.read(pa, |file| f(file, area))
@@ -283,6 +360,25 @@ impl<U: Ui> FileHandle<U> {
         }
     }
 
+    /// Writes to the [`File`] and [`Area`] within using a [`Pass`]
+    ///
+    /// The consistent use of a [`Pass`] for the purposes of
+    /// reading/writing to the values of [`RwData`]s ensures that no
+    /// panic or invalid borrow happens at runtime, even while working
+    /// with untrusted code. More importantly, Duat uses these
+    /// guarantees in order to give the end user a ridiculous amount
+    /// of freedom in where they can do things, whilst keeping Rust's
+    /// number one rule and ensuring thread safety, even with a
+    /// relatively large amount of shareable state.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there is any type of borrow of this struct
+    /// somewhere, which could happen if you use
+    /// [`RwData::read_unsafe`] or [`RwData::write_unsafe`], for
+    /// example.
+    ///
+    /// [`Area`]: crate::ui::RawArea
     pub fn write<Ret>(&self, pa: &mut Pass, f: impl FnOnce(&mut File<U>, &U::Area) -> Ret) -> Ret {
         let update = move |file: &RwData<File<U>>, area: &U::Area| {
             file.write(pa, |file| {
@@ -316,6 +412,15 @@ impl<U: Ui> FileHandle<U> {
         }
     }
 
+    /// Reads a [`Widget`] related to this [`File`], alongside its
+    /// [`Area`], with a [`Pass`]
+    ///
+    /// A related [`Widget`] is one that was pushed to this [`File`]
+    /// during the [`OnFileOpen`] [hook].
+    ///
+    /// [`Area`]: crate::ui::Area
+    /// [`OnFileOpen`]: crate::hook::OnFileOpen
+    /// [hook]: crate::hook
     pub fn read_related<W: 'static, R>(
         &self,
         pa: &Pass,
@@ -341,6 +446,15 @@ impl<U: Ui> FileHandle<U> {
         }
     }
 
+    /// Gets the [`RwData`] and [`Area`] of a related widget, with a
+    /// [`Pass`]
+    ///
+    /// A related [`Widget`] is one that was pushed to this [`File`]
+    /// during the [`OnFileOpen`] [hook].
+    ///
+    /// [`Area`]: crate::ui::Area
+    /// [`OnFileOpen`]: crate::hook::OnFileOpen
+    /// [hook]: crate::hook
     pub fn get_related_widget<W: 'static>(&self, pa: &Pass) -> Option<(RwData<W>, U::Area)> {
         let get_related = |(file, area, related): &FileParts<U>| {
             if file.data_is::<W>() {
@@ -363,6 +477,7 @@ impl<U: Ui> FileHandle<U> {
         }
     }
 
+    /// Writes to the related widgets
     pub(crate) fn write_related_widgets(&self, pa: &mut Pass, f: impl FnOnce(&mut Vec<Node<U>>)) {
         if let Some((.., related)) = self.fixed.as_ref() {
             related.write(pa, f)
@@ -375,6 +490,27 @@ impl<U: Ui> FileHandle<U> {
         }
     }
 
+    ////////// Querying functions
+
+    /// Wether someone else called [`write`] or [`write_as`] since the
+    /// last [`read`] or [`write`]
+    ///
+    /// Do note that this *DOES NOT* mean that the value inside has
+    /// actually been changed, it just means a mutable reference was
+    /// acquired after the last call to [`has_changed`].
+    ///
+    /// Some types like [`Text`], and traits like [`Widget`] offer
+    /// [`has_changed`](crate::widgets::Widget::has_changed) methods,
+    /// you should try to determine what parts to look for changes.
+    ///
+    /// Generally though, you can use this method to gauge that.
+    ///
+    /// [`write`]: Self::write
+    /// [`write_as`]: Self::write_as
+    /// [`read`]: Self::read
+    /// [`has_changed`]: Self::has_changed
+    /// [`Text`]: crate::text::Text
+    /// [`Widget`]: crate::widget::Widget
     pub fn has_changed(&self) -> bool {
         if let Some((file, area, _)) = self.fixed.as_ref() {
             file.has_changed() || area.has_changed()
@@ -387,12 +523,17 @@ impl<U: Ui> FileHandle<U> {
         }
     }
 
+    /// Wether the [`File`] within has swapped to another
+    ///
+    /// This can only happen when this is a
     pub fn has_swapped(&self) -> bool {
         let has_changed = self.current.has_changed();
         self.current.declare_as_read();
         has_changed
     }
 
+    /// Wether the [`RwData`] within and another point to the same
+    /// value
     pub fn ptr_eq<T: ?Sized>(&self, pa: &Pass, other: &RwData<T>) -> bool {
         if let Some((file, ..)) = self.fixed.as_ref() {
             file.ptr_eq(other)
@@ -438,10 +579,8 @@ impl Notifications {
 
     /// Reads the notifications that were sent to Duat
     pub fn read<Ret>(&mut self, f: impl FnOnce(&[Text]) -> Ret) -> Ret {
-        self.read_state.store(
-            self.cur_state.load(Ordering::Relaxed),
-            Ordering::Relaxed,
-        );
+        self.read_state
+            .store(self.cur_state.load(Ordering::Relaxed), Ordering::Relaxed);
         f(&self.list.lock().unwrap())
     }
 
@@ -465,18 +604,22 @@ impl Notifications {
     }
 }
 
+/// The current [`Widget`]
 #[doc(hidden)]
 pub struct CurWidget<U: Ui>(RwData<Option<Node<U>>>);
 
 impl<U: Ui> CurWidget<U> {
+    /// Returns a new [`CurWidget`]
     pub fn new() -> Self {
         Self(RwData::new(None))
     }
 
+    /// The [`Widget`]'s [`TypeId`]
     pub fn type_id(&self) -> TypeId {
         self.0.type_id()
     }
 
+    /// Reads the [`Widget`] and its [`Area`](crate::ui::RawArea)
     pub fn read<R>(&self, pa: &Pass, f: impl FnOnce(&dyn Widget<U>, &U::Area) -> R) -> R {
         self.0.read(pa, |node| {
             let (widget, area, _) = node.as_ref().unwrap().parts();
@@ -484,6 +627,8 @@ impl<U: Ui> CurWidget<U> {
         })
     }
 
+    /// Reads the [`Widget`] as `W` and its
+    /// [`Area`](crate::ui::RawArea)
     pub fn read_as<W: Widget<U>, R>(
         &self,
         pa: &Pass,
@@ -495,6 +640,8 @@ impl<U: Ui> CurWidget<U> {
         })
     }
 
+    /// Mutates the [`RwData<dyn Widget<U>>`], its
+    /// [`Area`](crate::ui::RawArea), and related [`Widget`]s
     pub(crate) unsafe fn mutate_data<R>(
         &self,
         f: impl FnOnce(&RwData<dyn Widget<U>>, &U::Area, &Related<U>) -> R,
@@ -507,6 +654,8 @@ impl<U: Ui> CurWidget<U> {
         }
     }
 
+    /// Mutates the [`RwData<dyn Widget<U>>`] as `W`, its
+    /// [`Area`](crate::ui::RawArea), and related [`Widget`]s
     pub(crate) unsafe fn mutate_data_as<W: Widget<U>, R>(
         &self,
         f: impl FnOnce(&RwData<W>, &U::Area, &Related<U>) -> R,
@@ -519,6 +668,7 @@ impl<U: Ui> CurWidget<U> {
         }
     }
 
+    /// The inner [`Node`]
     pub(crate) fn node(&self, pa: &Pass) -> Node<U> {
         self.0.read(pa, |node| node.clone().unwrap())
     }

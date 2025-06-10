@@ -299,6 +299,8 @@ pub trait Widget<U: Ui>: 'static {
     where
         Self: Sized;
 
+    ////////// Stateful functions
+
     /// Updates the widget, allowing the modification of its
     /// [`RawArea`]
     ///
@@ -479,14 +481,24 @@ pub trait Widget<U: Ui>: 'static {
 /// # }
 /// ```
 pub trait WidgetCfg<U: Ui>: Sized {
+    /// The [`Widget`] that will be created by this [`WidgetCfg`]
     type Widget: Widget<U>;
 
+    /// Builds the [`Widget`] alongside [`PushSpecs`]
+    ///
+    /// The [`PushSpecs`] are determined by the [`WidgetCfg`] itself,
+    /// and the end user is meant to change it by public facing
+    /// functions in the [`WidgetCfg`]. This is to prevent nonsensical
+    /// [`Widget`] pushing, like [`LineNumbers`] on the bottom of a
+    /// [`File`], for example.
+    ///
+    /// [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
     fn build(self, pa: Pass, handle: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs);
 }
 
-// Elements related to the [`Widget`]s
+/// Elements related to the [`Widget`]s
 #[derive(Clone)]
-pub struct Node<U: Ui> {
+pub(crate) struct Node<U: Ui> {
     widget: RwData<dyn Widget<U>>,
     area: U::Area,
     busy_updating: Rc<Cell<bool>>,
@@ -497,7 +509,12 @@ pub struct Node<U: Ui> {
 }
 
 impl<U: Ui> Node<U> {
-    pub fn new<W: Widget<U>>(pa: &mut Pass, widget: RwData<dyn Widget<U>>, area: U::Area) -> Self {
+    /// Returns a new [`Node`]
+    pub(crate) fn new<W: Widget<U>>(
+        pa: &mut Pass,
+        widget: RwData<dyn Widget<U>>,
+        area: U::Area,
+    ) -> Self {
         fn related_widgets<U: Ui>(
             pa: &mut Pass,
             widget: &RwData<dyn Widget<U>>,
@@ -523,24 +540,76 @@ impl<U: Ui> Node<U> {
         }
     }
 
-    pub fn widget(&self) -> &RwData<dyn Widget<U>> {
+    ////////// Reading and parts acquisition
+
+    pub(crate) fn read_as<W: 'static, Ret>(
+        &self,
+        pa: &Pass,
+        f: impl FnOnce(&W) -> Ret,
+    ) -> Option<Ret> {
+        self.widget.read_as(pa, f)
+    }
+
+    /// The [`Widget`] of this [`Node`]
+    pub(crate) fn widget(&self) -> &RwData<dyn Widget<U>> {
         &self.widget
     }
 
+    pub(crate) fn area(&self) -> &U::Area {
+        &self.area
+    }
+
     /// Returns the downcast ref of this [`Widget`].
-    pub fn try_downcast<W: 'static>(&self) -> Option<RwData<W>> {
+    pub(crate) fn try_downcast<W: 'static>(&self) -> Option<RwData<W>> {
         self.widget.try_downcast()
     }
 
-    pub fn data_is<W: 'static>(&self) -> bool {
+    pub(crate) fn parts(&self) -> (&RwData<dyn Widget<U>>, &<U as Ui>::Area, &Related<U>) {
+        (&self.widget, &self.area, &self.related_widgets)
+    }
+
+    pub(crate) fn as_file(&self) -> Option<FileParts<U>> {
+        self.widget.try_downcast().map(|file: RwData<File<U>>| {
+            (
+                file,
+                self.area.clone(),
+                self.related_widgets.clone().unwrap(),
+            )
+        })
+    }
+
+    pub(crate) fn related_widgets(&self) -> Option<&RwData<Vec<Node<U>>>> {
+        self.related_widgets.as_ref()
+    }
+
+    ////////// Querying functions
+
+    /// Wether the value within is `W`
+    pub(crate) fn data_is<W: 'static>(&self) -> bool {
         self.widget.data_is::<W>()
     }
 
-    pub fn update_and_print(&self, mut pa: Pass) {
+    /// Wether this and [`RwData`] point to the same value
+    pub(crate) fn ptr_eq<W: ?Sized>(&self, other: &RwData<W>) -> bool {
+        self.widget.ptr_eq(other)
+    }
+
+    /// Wether this [`Widget`] needs to be updated
+    pub(crate) fn needs_update(&self, pa: &Pass) -> bool {
+        !self.busy_updating.get()
+            && (self.area.has_changed()
+                || self.widget.has_changed()
+                || self.widget.read(pa, |w| w.needs_update()))
+    }
+
+    ////////// Eventful functions
+
+    /// Updates and prints this [`Node`]
+    pub(crate) fn update_and_print(&self, mut pa: Pass) {
         self.busy_updating.set(true);
 
         {
-            let mut widget = self.widget.raw_acquire_mut(&mut pa);
+            let mut widget = self.widget.acquire_mut(&mut pa);
             let cfg = widget.print_cfg();
             widget.text_mut().remove_cursors(&self.area, cfg);
         }
@@ -562,54 +631,20 @@ impl<U: Ui> Node<U> {
         self.busy_updating.set(false);
     }
 
-    pub fn read_as<W: 'static, Ret>(&self, pa: &Pass, f: impl FnOnce(&W) -> Ret) -> Option<Ret> {
-        self.widget.read_as(pa, f)
-    }
-
-    pub fn ptr_eq<W: ?Sized>(&self, other: &RwData<W>) -> bool {
-        self.widget.ptr_eq(other)
-    }
-
-    pub fn needs_update(&self, pa: &Pass) -> bool {
-        !self.busy_updating.get()
-            && (self.area.has_changed()
-                || self.widget.has_changed()
-                || self.widget.read(pa, |w| w.needs_update()))
-    }
-
-    pub(crate) fn parts(&self) -> (&RwData<dyn Widget<U>>, &<U as Ui>::Area, &Related<U>) {
-        (&self.widget, &self.area, &self.related_widgets)
-    }
-
-    pub(crate) fn as_file(&self) -> Option<FileParts<U>> {
-        self.widget.try_downcast().map(|file: RwData<File<U>>| {
-            (
-                file,
-                self.area.clone(),
-                self.related_widgets.clone().unwrap(),
-            )
-        })
-    }
-
+    /// What to do when focusing
     pub(crate) fn on_focus(&self, _: &mut Pass) {
         self.area.set_as_active();
         // SAFETY: &mut Pass is an argument.
         (self.on_focus)(self, unsafe { Pass::new() })
     }
 
+    /// What to do when unfocusing
     pub(crate) fn on_unfocus(&self, _: &mut Pass) {
         // SAFETY: &mut Pass is an argument.
         (self.on_unfocus)(self, unsafe { Pass::new() })
     }
 
-    pub(crate) fn area(&self) -> &U::Area {
-        &self.area
-    }
-
-    pub(crate) fn related_widgets(&self) -> Option<&RwData<Vec<Node<U>>>> {
-        self.related_widgets.as_ref()
-    }
-
+    /// Static dispatch inner update function
     fn update_fn<W: Widget<U>>(&self, _: &mut Pass) {
         let widget = self.widget.try_downcast_same_read_state::<W>().unwrap();
         let area = self.area.clone();
@@ -620,6 +655,7 @@ impl<U: Ui> Node<U> {
         Widget::update(pa, widget, &area);
     }
 
+    /// Static dispatch inner update on_focus
     fn on_focus_fn<W: Widget<U>>(&self, mut pa: Pass) {
         self.area.set_as_active();
         let widget = self.widget.try_downcast_same_read_state().unwrap();
@@ -629,6 +665,7 @@ impl<U: Ui> Node<U> {
         Widget::on_focus(pa, widget, &area);
     }
 
+    /// Static dispatch inner update on_unfocus
     fn on_unfocus_fn<W: Widget<U>>(&self, mut pa: Pass) {
         let widget = self.widget.try_downcast_same_read_state().unwrap();
         let area = self.area.clone();
@@ -646,4 +683,5 @@ impl<U: Ui> PartialEq for Node<U> {
 
 impl<U: Ui> Eq for Node<U> {}
 
-pub type Related<U> = Option<RwData<Vec<Node<U>>>>;
+/// [`Widget`]s related to another [`Widget`]
+pub(crate) type Related<U> = Option<RwData<Vec<Node<U>>>>;

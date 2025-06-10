@@ -470,7 +470,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             "--manifest-path",
             toml_path.to_str().unwrap(),
         ]);
-        //if !cfg!(debug_assertions) {
+        // if !cfg!(debug_assertions) {
         //    cargo.arg("--release");
         //};
 
@@ -1141,7 +1141,9 @@ impl InnerCommands {
     }
 }
 
+/// A list of names to call a command with
 pub trait Caller<'a>: Sized {
+    /// An [`Iterator`] over said callers
     fn into_callers(self) -> impl Iterator<Item = &'a str>;
 }
 
