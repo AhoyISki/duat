@@ -9,7 +9,7 @@ use std::{
 pub use area::{Area, Coords};
 use crossterm::{
     cursor,
-    event::{Event as CtEvent, PopKeyboardEnhancementFlags, poll as ct_poll, read as ct_read},
+    event::{Event as CtEvent, poll as ct_poll, read as ct_read},
     execute,
     style::{ContentStyle, Print},
     terminal::{self, ClearType},
@@ -107,7 +107,6 @@ impl ui::Ui for Ui {
             terminal::LeaveAlternateScreen,
             terminal::EnableLineWrap,
             cursor::Show,
-            PopKeyboardEnhancementFlags
         )
         .unwrap();
     }
@@ -151,7 +150,7 @@ impl ui::Ui for Ui {
         std::panic::set_hook(Box::new(|info| {
             let trace = std::backtrace::Backtrace::capture();
             terminal::disable_raw_mode().unwrap();
-            queue!(
+            execute!(
                 io::stdout(),
                 terminal::Clear(ClearType::All),
                 terminal::LeaveAlternateScreen,
@@ -159,12 +158,12 @@ impl ui::Ui for Ui {
                 terminal::Clear(ClearType::FromCursorDown),
                 terminal::EnableLineWrap,
                 cursor::Show,
-                PopKeyboardEnhancementFlags,
                 Print(info)
-            );
+            )
+            .unwrap();
             if let std::backtrace::BacktraceStatus::Captured = trace.status() {
                 println!();
-                queue!(io::stdout(), cursor::MoveToColumn(0));
+                execute!(io::stdout(), cursor::MoveToColumn(0)).unwrap();
                 for line in trace.to_string().lines() {
                     if !line.contains("             at ") {
                         println!("{line}");
@@ -174,7 +173,7 @@ impl ui::Ui for Ui {
             }
             for line in info.to_string().lines() {
                 println!("{line}");
-                queue!(io::stdout(), cursor::MoveToColumn(0));
+                execute!(io::stdout(), cursor::MoveToColumn(0)).unwrap();
             }
         }));
     }
