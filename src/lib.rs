@@ -29,6 +29,7 @@ use duat_core::{
     mode::Editor,
     text::{Bytes, Change, Key, Matcheable, Moment, MutTags, Point, Text},
     ui::Ui,
+    widget::Widget,
 };
 use duat_filetype::FileType;
 use streaming_iterator::StreamingIterator;
