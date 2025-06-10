@@ -38,4 +38,8 @@ package = "duat-catppuccin"
 
 [dependencies.duat]
 git = "https://github.com/AhoyISki/duat"
-version = ">=0.4.0"
+version = "0.4.0"
+# 
+# [patch."https://github.com/AhoyISki/duat".duat-core]
+# git = "https://github.com/AhoyISki/duat"
+# version = "0.4.0"
