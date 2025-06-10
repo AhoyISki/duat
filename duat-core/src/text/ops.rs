@@ -72,6 +72,7 @@ impl Point {
         self.l as usize
     }
 
+    /// Checked [`Point`] subtraction
     pub fn checked_sub(self, rhs: Point) -> Option<Point> {
         Some(Self {
             b: self.b.checked_sub(rhs.b)?,
@@ -237,6 +238,7 @@ impl TextRange for RangeFull {
 /// [`MutTags::remove`]: super::MutTags::remove
 /// [`Text::remove_tags`]: super::Text::remove_tags
 pub trait TextRangeOrPoint {
+    /// Transforms `self` into a [`Range<usize>`]
     fn to_range(self, max: usize) -> Range<usize>;
 }
 

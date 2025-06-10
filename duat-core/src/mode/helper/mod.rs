@@ -932,6 +932,10 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Editor<'a, W, A, S> {
         self.text().strs(range)
     }
 
+    /// Shifts the gap within the [`GapBuffer`] in order to return a
+    /// contiguous `&str`
+    ///
+    /// [`GapBuffer`]: gapbuf::GapBuffer
     pub fn contiguous_in(&mut self, range: impl TextRange) -> &str {
         self.widget.text_mut().contiguous(range)
     }
@@ -977,15 +981,24 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Editor<'a, W, A, S> {
         self.cursor.anchor()
     }
 
+    /// The [`Point`] range of the [`Cursor`]
     pub fn range(&self) -> [Point; 2] {
         self.cursor.point_range(self.text())
     }
 
+    /// The [`VPoint`] range of the [`Cursor`]
+    ///
+    /// Use only if you need the things that the [`VPoint`] provides,
+    /// in order to preven extraneous calculations
     pub fn v_caret(&self) -> VPoint {
         self.cursor
             .v_caret(self.widget.text(), self.area, self.widget.print_cfg())
     }
 
+    /// The [`VPoint`] of the anchor, if it exists
+    ///
+    /// Use only if you need the things that the [`VPoint`] provides,
+    /// in order to preven extraneous calculations
     pub fn v_anchor(&self) -> Option<VPoint> {
         self.cursor
             .v_anchor(self.widget.text(), self.area, self.widget.print_cfg())
@@ -1001,6 +1014,7 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Editor<'a, W, A, S> {
         self.was_main
     }
 
+    /// The [`Text`] of the [`Widget`]
     pub fn text(&self) -> &Text {
         self.widget.text()
     }
@@ -1012,6 +1026,7 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Editor<'a, W, A, S> {
 }
 
 impl<U: Ui, S> Editor<'_, File<U>, U::Area, S> {
+    /// Reads the [`Bytes`] and a [`Reader`]
     pub fn read_bytes_and_reader<R: Reader<U>, Ret>(
         &self,
         f: impl FnOnce(&Bytes, &R) -> Ret,

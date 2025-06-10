@@ -6,6 +6,9 @@ use duat_core::cfg::{PrintCfg, WordChars, word_chars as w_chars};
 
 use crate::setup::PRINT_CFG;
 
+/// Disables wrapping for all [`File`]s
+///
+/// [`File`]: crate::widgets::File
 #[inline(never)]
 pub fn no_wrapping() {
     let mut print_cfg = PRINT_CFG.write().unwrap();
@@ -17,8 +20,11 @@ pub fn no_wrapping() {
     })
 }
 
+/// Wraps [`File`]s on the right edge of the area
+///
+/// [`File`]: crate::widgets::File
 #[inline(never)]
-pub fn wrap_on_width() {
+pub fn wrap_on_edge() {
     let mut print_cfg = PRINT_CFG.write().unwrap();
     let prev = print_cfg.take();
 
@@ -28,6 +34,10 @@ pub fn wrap_on_width() {
     })
 }
 
+/// Wraps [`File`]s on [word] terminations
+///
+/// [`File`]: crate::widgets::File
+/// [word]: word_chars!
 #[inline(never)]
 pub fn wrap_on_words() {
     let mut print_cfg = PRINT_CFG.write().unwrap();
@@ -39,6 +49,12 @@ pub fn wrap_on_words() {
     })
 }
 
+/// Wraps [`File`]s a certain distance from the left edge
+///
+/// This can wrap beyond the screen, being a mix of [`no_wrapping`]
+/// and [`wrap_on_edge`].
+///
+/// [`File`]: crate::widgets::File
 #[inline(never)]
 pub fn wrap_on_cap(cap: u8) {
     let mut print_cfg = PRINT_CFG.write().unwrap();
@@ -50,8 +66,12 @@ pub fn wrap_on_cap(cap: u8) {
     })
 }
 
+/// Reindent wrapped lines on [`File`]s to the same level of
+/// indentation
+///
+/// [`File`]: crate::widgets::File
 #[inline(never)]
-pub fn indent_on_wrap() {
+pub fn indent_wraps() {
     let mut print_cfg = PRINT_CFG.write().unwrap();
     let prev = print_cfg.take();
 
@@ -61,8 +81,9 @@ pub fn indent_on_wrap() {
     })
 }
 
+/// Sets the size of tabs
 #[inline(never)]
-pub fn tab_size(tab_size: u8) {
+pub fn tabstop(tab_size: u8) {
     let mut print_cfg = PRINT_CFG.write().unwrap();
     let prev = print_cfg.take();
 
@@ -72,6 +93,7 @@ pub fn tab_size(tab_size: u8) {
     })
 }
 
+/// Sets a character to replace `'\n'`s with
 #[inline(never)]
 pub fn new_line(char: char) {
     let mut print_cfg = PRINT_CFG.write().unwrap();
@@ -83,6 +105,7 @@ pub fn new_line(char: char) {
     })
 }
 
+/// Sets a character to replace `'\n'` only with trailing white space
 #[inline(never)]
 pub fn trailing_new_line(char: char) {
     let mut print_cfg = PRINT_CFG.write().unwrap();
@@ -94,6 +117,9 @@ pub fn trailing_new_line(char: char) {
     })
 }
 
+/// Sets the scrolloff for [`File`]s
+///
+/// [`File`]: crate::widgets::File
 #[inline(never)]
 pub fn scrolloff(x: u8, y: u8) {
     let mut print_cfg = PRINT_CFG.write().unwrap();
@@ -105,6 +131,15 @@ pub fn scrolloff(x: u8, y: u8) {
     })
 }
 
+/// Returns a new [`WordChars`] composed of inclusive ranges of
+/// [`char`]s
+///
+/// The syntax is as follows:
+///
+/// ```rust
+/// # use duat_core::cfg::word_chars;
+/// let word_chars = worc_chars!('a'-'z''A'-'Z''0'-'9''-'-'-''_'-'_');
+/// ```
 pub macro word_chars($($w_chars:tt)+) {
     word_chars(w_chars!($($w_chars:tt)+))
 }

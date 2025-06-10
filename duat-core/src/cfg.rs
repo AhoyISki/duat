@@ -1,3 +1,29 @@
+//! General printing options for printing [`File`]s
+//!
+//! This is essentially the things that you'd expect to change in a
+//! text editor such as Neovim or Kakoune. They are contained in a
+//! [`PrintCfg`] struct, which is very light and cheap to copy around,
+//! and is used not only by the [`File`], but by every other
+//! [`Widget`] as well. Right now, these options are:
+//!
+//! - [`WrapMethod`]: How to wrap lines;
+//! - [`TabStops`]: How many spaces a tab should occupy;
+//! - [`NewLine`]: What to put in place of a `'\n'`, potentially only
+//!   after trailing whitespace;
+//! - [`ScrollOff`]: How many cells to keep between the main cursor
+//!   and the edges of [`Area`]s;
+//! - [`WordChars`]: Which [`char`]s are considered part of a word;
+//! - [forced_scrolloff]: Keeps the scrolloff distance, preventing the
+//!   main cursor from reaching the right edge;
+//!
+//! If you have any other recomendations of printing options that are
+//! common, feel free to recomend them!
+//!
+//! [`File`]: crate::file::File
+//! [`Widget`]: crate::widget::Widget
+//! [`Area`]: crate::ui::Ui::Area
+//! [forced_scrolloff]: PrintCfg::with_forced_horizontal_scrolloff
+//! [show_ghosts]: PrintCfg::show_ghosts
 use std::{ops::RangeInclusive, sync::LazyLock};
 
 use regex_automata::meta::Regex;
@@ -366,6 +392,7 @@ impl Default for PrintCfg {
 /// let word_chars = worc_chars!('a'-'z''A'-'Z''0'-'9''-'-'-''_'-'_');
 /// ```
 // TODO: Deal with characters that need to be escaped.
+// TODO: Probably turn this into a proc-macro that acts on strings.
 pub macro word_chars {
     (@range $regex:expr, [$($slice:tt)*],) => {{
         static MATCHERS: LazyLock<(Regex, &'static [RangeInclusive<char>])> =

@@ -21,7 +21,39 @@ use crate::{
     text::{Point, Text},
 };
 
+/// [`Tag`]s are used for every visual modification to [`Text`]
+///
+/// [`Tag`]s allow for all sorts of configuration on the [`Text`],
+/// like changing colors throug [`Form`]s, or text alignment, or
+/// [`Spacer`]s, or even concealing and ghost [`Text`].
+///
+/// Currently, these are the [`Tag`]s in Duat:
+///
+/// - [`FormTag`]: Applies a [`Form`] on a [range];
+/// - [`MainCursor`] and [`ExtraCursor`]: Place [`Cursor`]s on the
+///   [`Text`]. Can be an actual [`Cursor`] or just a temporary
+///   [`Form`];
+/// - [`AlignCenter`] and [`AlignRight`]: Change the text alignment in
+///   a [range];
+/// - [`Spacer`]: Lets you put arbitrary equally sized spaces on a
+///   line;
+/// - [`Ghost`]: Places "ghost [`Text`]" on the [`Text`]. This is
+///   [`Text`] that can be easily ignored when parsing the regular
+///   [`Text`], and [`Cursor`]s can't interact with;
+/// - [`Conceal`]: Hides a [range] in the [`Text`], mostly only useful
+///   in the [`File`] [`Widget`];
+///
+/// Additionally, there is also a `Toggle` internal [`Tag`], but it is
+/// not currently implemented.
+///
+/// [`Form`]: crate::form::Form
+/// [range]: RangeBounds
+/// [`Cursor`]: crate::mode::Cursor
+/// [`File`]: crate::file::File
+/// [`Widget`]: crate::widget::Widget
 pub trait Tag<R>: Sized {
+    /// Decomposes the [`Tag`] to its base elements
+    #[doc(hidden)]
     fn decompose(
         self,
         r: R,
@@ -201,6 +233,11 @@ impl<T: Into<Text>> Tag<usize> for Ghost<T> {
 pub struct Conceal;
 ranged_impl_tag!(Conceal, RawTag::StartConceal, RawTag::EndConceal);
 
+/// An internal representation of [`Tag`]s
+///
+/// Unlike [`Tag`]s, however, each variant here is only placed in a
+/// single position, and [`Tag`]s that occupy a range are replaced by
+/// two [`RawTag`]s, like [`PushForm`] and [`PopForm`], for example.
 #[derive(Clone, Copy, Eq, PartialOrd, Ord)]
 pub enum RawTag {
     // Implemented:
@@ -295,6 +332,7 @@ impl PartialEq for RawTag {
 }
 
 impl RawTag {
+    /// Inverts a [`RawTag`] that occupies a range
     pub fn inverse(&self) -> Option<Self> {
         match self {
             Self::PushForm(key, id, _) => Some(Self::PopForm(*key, *id)),
@@ -311,6 +349,7 @@ impl RawTag {
         }
     }
 
+    /// Wether this [`RawTag`] ends with another
     pub fn ends_with(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::PushForm(l_key, l_id, _), Self::PopForm(r_key, r_id)) => {
@@ -326,6 +365,7 @@ impl RawTag {
         }
     }
 
+    /// Wether this [`RawTag`] is the start of a range
     pub fn is_start(&self) -> bool {
         matches!(
             self,
@@ -337,6 +377,7 @@ impl RawTag {
         )
     }
 
+    /// Wether this [`RawTag`] is the end of a range
     pub fn is_end(&self) -> bool {
         matches!(
             self,
@@ -348,14 +389,17 @@ impl RawTag {
         )
     }
 
+    /// Wether this is [`StartAlignCenter`] or [`StartAlignRight`]
     pub fn is_start_align(&self) -> bool {
         matches!(self, Self::StartAlignCenter(_) | Self::StartAlignRight(_))
     }
 
+    /// Wether this is [`EndAlignCenter`] or [`EndAlignRight`]
     pub fn is_end_align(&self) -> bool {
         matches!(self, Self::EndAlignCenter(_) | Self::EndAlignRight(_))
     }
 
+    /// The [`Key`] of this [`RawTag`]
     pub(in crate::text) fn key(&self) -> Key {
         match self.get_key() {
             Some(key) => key,
@@ -365,6 +409,11 @@ impl RawTag {
         }
     }
 
+    /// Gets the [`Key`] of this [`RawTag`], if it is not
+    /// [`ConcealUntil`], since that one is never actually stored in
+    /// [`Tags`]
+    ///
+    /// [`Tags`]: super::Tags
     fn get_key(&self) -> Option<Key> {
         match self {
             Self::PushForm(key, ..)
@@ -385,6 +434,10 @@ impl RawTag {
         }
     }
 
+    /// The prioriy of this [`RawTag`], only varies with [`Form`]
+    /// [`RawTag`]s
+    ///
+    /// [`Form`]: crate::form::Form
     pub(super) fn priority(&self) -> u8 {
         match self {
             Self::PushForm(.., priority) => *priority + 5,
@@ -430,6 +483,8 @@ impl std::fmt::Debug for RawTag {
     }
 }
 
+/// A toggleable function in a range of [`Text`], kind of like a
+/// button
 pub type Toggle = Arc<dyn Fn(Point, MouseEventKind) + 'static + Send + Sync>;
 
 #[derive(Clone)]

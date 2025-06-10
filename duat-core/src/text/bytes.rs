@@ -5,6 +5,9 @@ use lender::{DoubleEndedLender, ExactSizeLender, Lender, Lending};
 
 use super::{Point, TextRange, records::Records, utf8_char_width};
 
+/// The bytes of a [`Text`], encoded in UTF-8
+///
+/// [`Text`]: super::Text
 #[derive(Default, Clone)]
 pub struct Bytes {
     buf: GapBuffer<u8>,
@@ -535,6 +538,13 @@ impl Bytes {
     }
 }
 
+/// A [`Lender`] over the lines on [`Bytes`]
+///
+/// The reason for this being a [`Lender`], rather than a regular
+/// [`Iterator`] is because the [`Bytes`] use a [`GapBuffer`] within,
+/// which means that any line may be split in two. In order to still
+/// return it as an `&str`, a new [`String`] needs to be allocated,
+/// which will be owned by the [`Lines`], hence the [`Lender`] trait.
 pub struct Lines<'a> {
     lines: [std::str::Lines<'a>; 2],
     split_line: Option<String>,

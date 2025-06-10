@@ -15,7 +15,25 @@ use crate::{
     text::{Text, err},
 };
 
+/// A parameter for commands that can be called
+///
+/// This parameter must be parseable from [`Args`], which come from a
+/// `&str`. It can take multiple words, and can be composed of other
+/// [`Parameter`]s. An example of this is the [`Form`], which is
+/// composed of multiple [`Color`] parameters, which are then composed
+/// of some format (rgb, hsl), which is then composed of more
+/// parameters, like rgb values, for example.
+///
+/// Other types of [`Parameter`] are just a "list" of other
+/// [`Parameter`]s. For example, [`Vec<P>`] can be used as a
+/// [`Parameter`] to capture any number of `P` arguments.
+/// Additionally, there is the [`Between<MIN, MAX, P>`], which is
+/// _like_ [`Vec<P>`], but takes at least `MIN` `P`s and at most `MAX`
+/// `P`s.
+///
+/// [`Form`]: crate::form::Form
 pub trait Parameter<'a>: Sized {
+    /// The type that is returned
     type Returns;
     /// Tries to consume arguments until forming a parameter
     ///
@@ -398,6 +416,7 @@ pub struct Args<'a> {
 }
 
 impl<'a> Args<'a> {
+    /// Returns the next word or quoted argument
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<&'a str, Text> {
         match self.args.next() {
@@ -413,6 +432,10 @@ impl<'a> Args<'a> {
         }
     }
 
+    /// Tries to parse the next argument as `P`
+    ///
+    /// For now, this will consume arguments even if it fails, but
+    /// that may change in the future.
     pub fn next_as<P: Parameter<'a>>(&mut self, pa: &Pass) -> Result<P::Returns, Text> {
         self.has_to_start_param = true;
         let ret = P::new(pa, self);
@@ -422,6 +445,8 @@ impl<'a> Args<'a> {
         ret
     }
 
+    /// Tries to parse the next argument as `P`, otherwise returns a
+    /// [`Text`]
     pub fn next_else<T: Into<Text>>(&mut self, to_text: T) -> Result<&'a str, Text> {
         match self.args.next() {
             Some((arg, _)) => Ok(arg),
@@ -429,15 +454,29 @@ impl<'a> Args<'a> {
         }
     }
 
+    /// Returns the char position of the next argument
+    ///
+    /// Mostly used for error feedback by the [`PromptLine`]
+    ///
+    /// [`PromptLine`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
     pub fn next_start(&mut self) -> Option<usize> {
         self.args.peek().map(|(_, r)| r.start)
     }
 
+    /// The range of the previous [`Parameter`]
+    ///
+    /// Mostly used for error feedback by the [`PromptLine`]
+    ///
+    /// [`PromptLine`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
     pub fn param_range(&self) -> Range<usize> {
         self.param_range.clone()
     }
 }
 
+/// The flags passed to a command
+///
+/// They work just like flags on regular Linux commands, i.e., you
+/// have word flags, like `"--global"`, and glob flags, like `"-aBc"`.
 #[derive(Clone)]
 pub struct Flags<'a> {
     blob: String,
@@ -510,6 +549,7 @@ pub fn get_args(command: &str) -> super::Args<'_> {
     }
 }
 
+/// The [`Iterator`] over the [`Parameter`]s of the command
 #[define_opaque(ArgsIter)]
 pub fn args_iter(command: &str) -> ArgsIter {
     let mut chars = command.char_indices();

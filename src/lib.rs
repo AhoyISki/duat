@@ -558,6 +558,7 @@ pub mod widgets {
     pub use duat_core::widget::*;
     pub use duat_utils::widgets::*;
 
+    /// The widget that is used to print and edit files
     pub type File = duat_core::file::File<super::Ui>;
 }
 
@@ -745,6 +746,9 @@ compile_error!("No ui has been chosen to compile Duat with.");
 #[cfg(feature = "term-ui")]
 pub type Ui = duat_term::Ui;
 #[cfg(feature = "term-ui")]
+/// The [`RawArea`] of the [`Ui`]
+///
+/// [`RawArea`]: duat_core::ui::RawArea
 pub type Area = <duat_term::Ui as duat_core::ui::Ui>::Area;
 
 /// A function that sets the [`SessionCfg`].

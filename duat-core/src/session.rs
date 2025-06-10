@@ -22,10 +22,10 @@ use crate::{
     mode,
     text::Bytes,
     ui::{
-        DuatEvent, FileBuilder, Layout, MasterOnLeft, MutArea, RawArea, Sender, Ui, Window,
+        DuatEvent, FileBuilder, FileId, Layout, MasterOnLeft, MutArea, RawArea, Sender, Ui, Window,
         WindowBuilder,
     },
-    widget::{Node, WidgetCfg},
+    widget::{Node, Widget, WidgetCfg},
 };
 
 #[doc(hidden)]
@@ -400,9 +400,11 @@ impl<U: Ui> Session<U> {
 
             let lo = lhs.read_as(&*pa, |f: &File<U>| f.layout_order).unwrap();
 
-            let nodes: Vec<Node<U>> = windows[lhs_win].file_nodes(&*pa)[(lo + 1)..]
-                .iter()
-                .map(|(n, _)| (*n).clone())
+            let nodes: Vec<Node<U>> = windows[lhs_win]
+                .nodes()
+                .filter(|n| n.data_is::<File<U>>())
+                .skip(lo + 1)
+                .cloned()
                 .collect();
 
             (lhs_win, lhs, nodes)
@@ -470,8 +472,8 @@ impl<U: Ui> Session<U> {
             // Swap the Files ahead of the swapped new_root
             let lo = node.read_as(&*pa, |f: &File<U>| f.layout_order).unwrap();
 
-            for (node, _) in &windows[win].file_nodes(&*pa)[lo..] {
-                MutArea(&new_root).swap(node.area());
+            for (_, FileId(area)) in &windows[win].file_nodes(&*pa)[lo..] {
+                MutArea(&new_root).swap(area);
             }
             // RefCell dropped here, before any .await
             drop(windows);

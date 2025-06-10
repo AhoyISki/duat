@@ -18,8 +18,8 @@ use duat_core::{
     file::File,
     hook::{self, KeysSent},
     mode::{self, KeyEvent},
-    text::{Text, text},
-    ui::Ui,
+    text::{text, Text},
+    ui::Ui, widget::Widget,
 };
 
 /// [`StatusLine`] part: The [`File`]'s name, formatted

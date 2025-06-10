@@ -1,4 +1,5 @@
-#![feature(decl_macro, let_chains)]
+//! The runner for Duat
+#![feature(decl_macro)]
 
 use std::{
     io::Read,

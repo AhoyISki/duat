@@ -1,3 +1,36 @@
+//! [`Ui`] structs and functions
+//!
+//! Although there is only a terminal [`Ui`] implemented at the
+//! moment, Duat is supposed to be Ui agnostic, and I plan to create a
+//! GUI app (probably in `iced` or something), and a web app as well,
+//! which is honestly more of an excuse for me to become more well
+//! versed on javascript.
+//!
+//! Each [`Ui`] is essentially a screen separated by a bunch of
+//! [`Ui::Area`]s. This happens by splitting a main [`Ui::Area`]
+//! continuously, by pushing [`Widget`]s on other [`Widget`]s. When a
+//! [`Widget`] is pushed to another, the area of the prior [`Widget`]
+//! is split in half, with [`Constraint`]s set by the [`PushSpecs`],
+//! letting the user define the exact space that each [`Widget`] will
+//! take up on the screen.
+//!
+//! Duat also supports multiple tabs, each of which is defined by a
+//! main [`Ui::Area`] that was split many times over.
+//!
+//! The [`Ui`] also supports the concept of "clustering", that is,
+//! when you push a [`Widget`] to a [`File`] via the [`OnFileOpen`]
+//! [`hook`], it gets "clustered" to that [`File`]. This means a few
+//! things. For one, if you close a [`File`], all of its clustered
+//! [`Widget`]s will also close. If you swap two [`File`]s, what you
+//! will actually swap is the [`Ui::Area`] that contains the [`File`]
+//! and all of its clustered [`Widget`].
+//!
+//! Additionally, on the terminal [`Ui`], clustering is used to
+//! determine where to draw borders between [`Ui::Area`]s, and it
+//! should be used like that in other [`Ui`] implementations as well.
+//!
+//! [`OnFileOpen`]: crate::hook::OnFileOpen
+//! [`hook`]: crate::hook
 mod builder;
 mod layout;
 
@@ -9,7 +42,7 @@ use layout::window_files;
 
 pub use self::{
     builder::{FileBuilder, WindowBuilder},
-    layout::{FileId, Layout, MasterOnLeft, WindowFiles},
+    layout::{FileId, Layout, MasterOnLeft},
 };
 use crate::{
     cache::load_cache,
@@ -22,7 +55,7 @@ use crate::{
 };
 
 /// All the methods that a working gui/tui will need to implement, in
-/// order to use Parsec.
+/// order to use Duat.
 ///
 /// # NOTE
 ///
@@ -51,7 +84,25 @@ use crate::{
 /// }
 /// ```
 pub trait Ui: Default + Clone + 'static {
+    /// The [`RawArea`] of this [`Ui`]
     type Area: RawArea<Ui = Self>;
+    /// Variables to initialize at the Duat application, outside the
+    /// config
+    ///
+    /// Of the ways that Duat can be extended and modified, only the
+    /// [`Ui`] can be accessed by the Duat executor itself, since it
+    /// is one of its dependencies. This means that it is possible to
+    /// keep some things between reloads.
+    ///
+    /// This is particularly useful for some kinds of static
+    /// variables. For example, in [`term-ui`], it makes heavy use of
+    /// [`std`] defined functions to print to the terminal. Those use
+    /// a static [`Mutex`] internally, and I have found that it is
+    /// better to use the one from the Duat app, rather than one from
+    /// the config crate
+    ///
+    /// [`term-ui`]: docs.rs/term-ui/latest/term_ui
+    /// [`Mutex`]: std::sync::Mutex
     type MetaStatics: Default;
 
     ////////// Functions executed from the outer loop
@@ -66,7 +117,7 @@ pub trait Ui: Default + Clone + 'static {
     /// These will happen in the main `duat` runner
     fn close(ms: &'static Self::MetaStatics);
 
-    ////////// Functions executed from within the configuration loop
+    ////////// Functions executed from within the configuratio loop
 
     /// Initiates and returns a new "master" [`Area`]
     ///
@@ -102,7 +153,7 @@ pub trait Ui: Default + Clone + 'static {
     /// Unloads the [`Ui`]
     ///
     /// Unlike [`Ui::close`], this will happen both when Duat reloads
-    /// the configuration and when it closes the app.
+    /// the configuratio and when it closes the app.
     ///
     /// These will happen inside of the dynamically loaded config
     /// crate.
@@ -119,12 +170,27 @@ pub trait Ui: Default + Clone + 'static {
 
 /// An [`RawArea`] that supports printing [`Text`]
 ///
-/// These represent the entire GUI of Parsec, the only parts of the
+/// These represent the entire GUI of Duat, the only parts of the
 /// screen where text may be printed.
 pub trait RawArea: Clone + PartialEq + Sized + 'static {
-    // This exists solely for automatic type recognition.
+    /// The [`Ui`] this [`RawArea`] belongs to
     type Ui: Ui<Area = Self>;
+    /// Something to be kept between app instances/reloads
+    ///
+    /// The most useful thing to keep in this case is the
+    /// [`PrintInfo`], but you could include other things
+    ///
+    /// [`PrintInfo`]: RawArea::PrintInfo
     type Cache: Default + Encode + Decode<()> + 'static;
+    /// Information about what parts of a [`Text`] should be printed
+    ///
+    /// For the [`term-ui`], for example, this is quite simple, it
+    /// only needs to include the real and ghost [`Point`]s on the
+    /// top left corner in order to print correctly, but your own
+    /// [`Ui`] could differ in what it needs to keep, if it makes
+    /// use of smooth scrolling, for example.
+    ///
+    /// [`term-ui`]: docs.rs/term-ui/latest/term_ui
     type PrintInfo: Default + Clone + PartialEq + Eq;
 
     ////////// Area modification
@@ -239,6 +305,7 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
     /// Prints the [`Text`] via an [`Iterator`]
     fn print(&self, text: &mut Text, cfg: PrintCfg, painter: Painter);
 
+    /// Prints the [`Text`] with a callback function
     fn print_with<'a>(
         &self,
         text: &mut Text,
@@ -266,12 +333,6 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
     fn print_iter<'a>(
         &self,
         iter: FwdIter<'a>,
-        cfg: PrintCfg,
-    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
-
-    fn print_iter_from_top<'a>(
-        &self,
-        text: &'a Text,
         cfg: PrintCfg,
     ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a;
 
@@ -339,8 +400,9 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
     fn is_active(&self) -> bool;
 }
 
-/// A container for a master [`RawArea`] in Parsec
-pub(crate) struct Window<U: Ui> {
+/// A container for a master [`RawArea`] in Duat
+#[doc(hidden)]
+pub struct Window<U: Ui> {
     nodes: Vec<Node<U>>,
     files_area: U::Area,
     layout: Box<dyn Layout<U>>,
@@ -377,6 +439,7 @@ impl<U: Ui> Window<U> {
         (window, node)
     }
 
+    /// Returns a new [`Window`] from raw elements
     pub(crate) fn from_raw(
         files_area: U::Area,
         nodes: Vec<Node<U>>,
@@ -473,11 +536,8 @@ impl<U: Ui> Window<U> {
             && parent == self.files_area
         {
             let files = self.file_nodes(pa);
-            let (only_file, _) = files.first().unwrap();
-            self.files_area = only_file
-                .area()
-                .get_cluster_master()
-                .unwrap_or(only_file.area().clone())
+            let (_, FileId(area)) = files.first().unwrap();
+            self.files_area = area.clone();
         }
 
         if let Some(related) = node.related_widgets() {
@@ -521,6 +581,7 @@ impl<U: Ui> Window<U> {
         }
     }
 
+    /// Inserts [`File`] nodes orderly
     pub(crate) fn insert_file_nodes<'a>(
         &mut self,
         pa: &mut Pass<'a>,
@@ -543,7 +604,7 @@ impl<U: Ui> Window<U> {
         }
     }
 
-	/// An [`Iterator`] over the [`Node`]s in a [`Window`]
+    /// An [`Iterator`] over the [`Node`]s in a [`Window`]
     pub(crate) fn nodes(&self) -> impl ExactSizeIterator<Item = &Node<U>> + DoubleEndedIterator {
         self.nodes.iter()
     }
@@ -555,7 +616,7 @@ impl<U: Ui> Window<U> {
     pub fn file_names(&self, pa: &Pass) -> Vec<String> {
         window_files(pa, &self.nodes)
             .into_iter()
-            .map(|f| f.0.widget().read_as(pa, |f: &File<U>| f.name()).unwrap())
+            .map(|f| f.0.read_as(pa, |f: &File<U>| f.name()).unwrap())
             .collect()
     }
 
@@ -566,16 +627,16 @@ impl<U: Ui> Window<U> {
     pub fn file_paths(&self, pa: &Pass) -> Vec<String> {
         window_files(pa, &self.nodes)
             .into_iter()
-            .map(|f| f.0.widget().read_as(pa, |f: &File<U>| f.name()).unwrap())
+            .map(|f| f.0.read_as(pa, |f: &File<U>| f.name()).unwrap())
             .collect()
     }
 
-	/// An [`Iterator`] over the [`File`] [`Node`]s in a [`Window`]
-    pub(crate) fn file_nodes(&self, pa: &Pass) -> WindowFiles<U> {
+    /// An [`Iterator`] over the [`File`] [`Node`]s in a [`Window`]
+    pub(crate) fn file_nodes(&self, pa: &Pass) -> Vec<(RwData<File<U>>, FileId<U>)> {
         window_files(pa, &self.nodes)
     }
 
-	/// How many [`Widget`]s are in this [`Window`]
+    /// How many [`Widget`]s are in this [`Window`]
     pub(crate) fn len_widgets(&self) -> usize {
         self.nodes.len()
     }
@@ -584,11 +645,14 @@ impl<U: Ui> Window<U> {
 /// A dimension on screen, can either be horizontal or vertical
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Axis {
+    /// The horizontal axis
     Horizontal,
+    /// The vertical axis
     Vertical,
 }
 
 impl Axis {
+    /// The [`Axis`] perpendicular to this one
     pub fn perp(&self) -> Self {
         match self {
             Axis::Horizontal => Axis::Vertical,
@@ -622,19 +686,36 @@ impl From<PushSpecs> for Axis {
     }
 }
 
+/// An event that Duat must handle
+#[doc(hidden)]
 pub enum DuatEvent {
+    /// A [`KeyEvent`] was typed
     Key(KeyEvent),
+    /// A function was queued
     QueuedFunction(Box<dyn FnOnce(Pass) + Send>),
+    /// The application resized
     Resize,
+    /// A [`Form`] was altered, which one it is, doesn't matter
+    ///
+    /// [`Form`]: crate::form::Form
     FormChange,
+    /// Send a message from the Duat application to the config
     MetaMsg(Builder),
+    /// Open a new [`File`]
     OpenFile(String),
+    /// Close an open [`File`]
     CloseFile(String),
+    /// Swap two [`File`]s
     SwapFiles(String, String),
+    /// Open a new window with a [`File`]
     OpenWindow(String),
+    /// Switch to the n'th window
     SwitchWindow(usize),
+    /// Started a reload/recompilation at an [`Instant`]
     ReloadStarted(Instant),
+    /// The Duat app sent a message to reload the config
     ReloadConfig,
+    /// Quit Duat
     Quit,
 }
 
@@ -658,38 +739,42 @@ impl Debug for DuatEvent {
     }
 }
 
+/// A sender of [`DuatEvent`]s
 pub struct Sender(&'static mpsc::Sender<DuatEvent>);
 
 impl Sender {
+    /// Returns a new [`Sender`]
     pub fn new(sender: &'static mpsc::Sender<DuatEvent>) -> Self {
         Self(sender)
     }
 
+    /// Sends a [`KeyEvent`]
     pub fn send_key(&self, key: KeyEvent) -> Result<(), mpsc::SendError<DuatEvent>> {
         self.0.send(DuatEvent::Key(key))
     }
 
-    pub fn send_reload_config(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
-        self.0.send(DuatEvent::ReloadConfig)
-    }
-
+    /// Sends a notice that the app has resized
     pub fn send_resize(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
         self.0.send(DuatEvent::Resize)
     }
 
+    /// Sends a notice that a [`Form`] has changed
+    ///
+    /// [`Form`]: crate::form::Form
     pub(crate) fn send_form_changed(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
         self.0.send(DuatEvent::FormChange)
     }
 }
 
+/// A read-only [`Window`]
 pub struct RoWindow<'a, U: Ui>(&'a Window<U>);
 
 impl<U: Ui> RoWindow<'_, U> {
-    /// Similar to the [`Iterator::fold`] operation, folding each
-    /// [`&File`][File`] by applying an operation,
+    /// Similar to the [`Iterator::fold`] operatio, folding each
+    /// [`&File`][File`] by applying an operatio,
     /// returning a final result.
     ///
-    /// The reason why this is a `fold` operation, and doesn't just
+    /// The reason why this is a `fold` operatio, and doesn't just
     /// return an [`Iterator`], is because `f` will act on a
     /// reference, as to not do unnecessary cloning of the widget's
     /// inner [`RwData<W>`], and because [`Iterator`]s cannot return
@@ -704,11 +789,11 @@ impl<U: Ui> RoWindow<'_, U> {
         })
     }
 
-    /// Similar to the [`Iterator::fold`] operation, folding each
+    /// Similar to the [`Iterator::fold`] operatio, folding each
     /// [`&dyn Widget<U>`][Widget] by applying an
-    /// operation, returning a final result.
+    /// operatio, returning a final result.
     ///
-    /// The reason why this is a `fold` operation, and doesn't just
+    /// The reason why this is a `fold` operatio, and doesn't just
     /// return an [`Iterator`], is because `f` will act on a
     /// reference, as to not do unnecessary cloning of the widget's
     /// inner [`RwData<W>`], and because [`Iterator`]s cannot return
@@ -755,7 +840,7 @@ pub struct PushSpecs {
 }
 
 impl PushSpecs {
-    /// Returns a new instance of [`PushSpecs`]
+    /// Push the [`Widget`] to the left
     pub const fn left() -> Self {
         Self {
             side: Side::Left,
@@ -764,7 +849,7 @@ impl PushSpecs {
         }
     }
 
-    /// Returns a new instance of [`PushSpecs`]
+    /// Push the [`Widget`] to the right
     pub const fn right() -> Self {
         Self {
             side: Side::Right,
@@ -773,7 +858,7 @@ impl PushSpecs {
         }
     }
 
-    /// Returns a new instance of [`PushSpecs`]
+    /// Push the [`Widget`] above
     pub const fn above() -> Self {
         Self {
             side: Side::Above,
@@ -782,7 +867,7 @@ impl PushSpecs {
         }
     }
 
-    /// Returns a new instance of [`PushSpecs`]
+    /// Push the [`Widget`] below
     pub const fn below() -> Self {
         Self {
             side: Side::Below,
@@ -791,66 +876,78 @@ impl PushSpecs {
         }
     }
 
-    /// Returns a new instance of [`PushSpecs`]
+    /// Changes the direction of pushing to the left
     pub const fn to_left(self) -> Self {
         Self { side: Side::Left, ..self }
     }
 
-    /// Returns a new instance of [`PushSpecs`]
+    /// Changes the direction of pushing to the right
     pub const fn to_right(self) -> Self {
         Self { side: Side::Right, ..self }
     }
 
-    /// Returns a new instance of [`PushSpecs`]
+    /// Changes the direction of pushing to above
     pub const fn to_above(self) -> Self {
         Self { side: Side::Above, ..self }
     }
 
-    /// Returns a new instance of [`PushSpecs`]
+    /// Changes the direction of pushing to below
     pub const fn to_below(self) -> Self {
         Self { side: Side::Below, ..self }
     }
 
+    /// Sets the required vertical length
     pub const fn with_ver_len(mut self, len: f32) -> Self {
         constrain(&mut self.ver_cons, Constraint::Len(len));
         self
     }
 
+    /// Sets the minimum vertical length
     pub const fn with_ver_min(mut self, min: f32) -> Self {
         constrain(&mut self.ver_cons, Constraint::Min(min));
         self
     }
 
+    /// Sets the maximum vertical length
     pub const fn with_ver_max(mut self, max: f32) -> Self {
         constrain(&mut self.ver_cons, Constraint::Max(max));
         self
     }
 
+    /// Sets the vertical ratio between it and its parent
     pub const fn with_ver_ratio(mut self, den: u16, div: u16) -> Self {
         constrain(&mut self.ver_cons, Constraint::Ratio(den, div));
         self
     }
 
+    /// Sets the required horizontal length
     pub const fn with_hor_len(mut self, len: f32) -> Self {
         constrain(&mut self.hor_cons, Constraint::Len(len));
         self
     }
 
+    /// Sets the minimum horizontal length
     pub const fn with_hor_min(mut self, min: f32) -> Self {
         constrain(&mut self.hor_cons, Constraint::Min(min));
         self
     }
 
+    /// Sets the maximum horizontal length
     pub const fn with_hor_max(mut self, max: f32) -> Self {
         constrain(&mut self.hor_cons, Constraint::Max(max));
         self
     }
 
+    /// Sets the horizontal ratio between it and its parent
     pub const fn with_hor_ratio(mut self, den: u16, div: u16) -> Self {
         constrain(&mut self.hor_cons, Constraint::Ratio(den, div));
         self
     }
 
+    /// The [`Axis`] where it will be pushed
+    ///
+    /// - left/right: [`Axis::Horizontal`]
+    /// - above/below: [`Axis::Vertical`]
     pub const fn axis(&self) -> Axis {
         match self.side {
             Side::Above | Side::Below => Axis::Vertical,
@@ -858,22 +955,31 @@ impl PushSpecs {
         }
     }
 
+    /// The [`Side`] where it will be pushed
     pub const fn side(&self) -> Side {
         self.side
     }
 
+    /// Wether this "comes earlier" on the screen
+    ///
+    /// This returns true if `self.side() == Side::Left || self.side()
+    /// == Side::Above`, since that is considered "earlier" on
+    /// screens.
     pub const fn comes_earlier(&self) -> bool {
         matches!(self.side, Side::Left | Side::Above)
     }
 
+    /// An [`Iterator`] over the vertical constraints
     pub fn ver_cons(&self) -> impl Iterator<Item = Constraint> + Clone {
         self.ver_cons.into_iter().flatten()
     }
 
+    /// An [`Iterator`] over the horizontal constraints
     pub fn hor_cons(&self) -> impl Iterator<Item = Constraint> + Clone {
         self.hor_cons.into_iter().flatten()
     }
 
+    /// The constraints on a given [`Axis`]
     pub fn cons_on(&self, axis: Axis) -> impl Iterator<Item = Constraint> {
         match axis {
             Axis::Horizontal => self.hor_cons.into_iter().flatten(),
@@ -881,6 +987,10 @@ impl PushSpecs {
         }
     }
 
+    /// Wether it is resizable in an [`Axis`]
+    ///
+    /// It will be resizable if there are no [`Constraint::Len`] in
+    /// that [`Axis`].
     pub const fn is_resizable_on(&self, axis: Axis) -> bool {
         let cons = match axis {
             Axis::Horizontal => &self.hor_cons,
@@ -901,14 +1011,17 @@ impl PushSpecs {
     }
 }
 
+/// Much like [`PushSpecs`], but for floating [`Widget`]s
 #[derive(Debug, Clone)]
 pub struct SpawnSpecs {
+    /// Potential spawning [`Corner`]s to connect to and from
     pub choices: Vec<[Corner; 2]>,
     ver_cons: [Option<Constraint>; 4],
     hor_cons: [Option<Constraint>; 4],
 }
 
 impl SpawnSpecs {
+    /// Returns a new [`SpawnSpecs`] from possible [`Corner`]s
     pub fn new(choices: impl IntoIterator<Item = [Corner; 2]>) -> Self {
         Self {
             choices: choices.into_iter().collect(),
@@ -917,59 +1030,71 @@ impl SpawnSpecs {
         }
     }
 
+    /// Adds more [`Corner`]s as fallback to spawn on
     pub fn with_fallbacks(mut self, choices: impl IntoIterator<Item = [Corner; 2]>) -> Self {
         self.choices.extend(choices);
         self
     }
 
+    /// Sets the required vertical length
     pub fn with_ver_len(mut self, len: f32) -> Self {
         constrain(&mut self.ver_cons, Constraint::Len(len));
         self
     }
 
+    /// Sets the minimum vertical length
     pub fn with_ver_min(mut self, min: f32) -> Self {
         constrain(&mut self.ver_cons, Constraint::Min(min));
         self
     }
 
+    /// Sets the maximum vertical length
     pub fn with_ver_max(mut self, max: f32) -> Self {
         constrain(&mut self.ver_cons, Constraint::Max(max));
         self
     }
 
+    /// Sets the vertical ratio between it and its parent
     pub fn with_ver_ratio(mut self, den: u16, div: u16) -> Self {
         constrain(&mut self.ver_cons, Constraint::Ratio(den, div));
         self
     }
 
+    /// Sets the required horizontal length
     pub fn with_hor_len(mut self, len: f32) -> Self {
         constrain(&mut self.hor_cons, Constraint::Len(len));
         self
     }
 
+    /// Sets the minimum horizontal length
     pub fn with_hor_min(mut self, min: f32) -> Self {
         constrain(&mut self.hor_cons, Constraint::Min(min));
         self
     }
 
+    /// Sets the maximum horizontal length
     pub fn with_hor_max(mut self, max: f32) -> Self {
         constrain(&mut self.hor_cons, Constraint::Max(max));
         self
     }
 
+    /// Sets the horizontal ratio between it and its parent
     pub fn with_hor_ratio(mut self, den: u16, div: u16) -> Self {
         constrain(&mut self.hor_cons, Constraint::Ratio(den, div));
         self
     }
 
+    /// An [`Iterator`] over the vertical [`Constraint`]s
     pub fn ver_cons(&self) -> impl Iterator<Item = Constraint> {
         self.ver_cons.into_iter().flatten()
     }
 
+    /// An [`Iterator`] over the horizontal [`Constraint`]s
     pub fn hor_cons(&self) -> impl Iterator<Item = Constraint> {
         self.hor_cons.into_iter().flatten()
     }
 
+    /// The constraints on a given [`Axis`]
     pub fn cons_on(&self, axis: Axis) -> impl Iterator<Item = Constraint> {
         match axis {
             Axis::Horizontal => self.hor_cons.into_iter().flatten(),
@@ -977,6 +1102,10 @@ impl SpawnSpecs {
         }
     }
 
+    /// Wether it is resizable in an [`Axis`]
+    ///
+    /// It will be resizable if there are no [`Constraint::Len`] in
+    /// that [`Axis`].
     pub fn is_resizable_on(&self, axis: Axis) -> bool {
         let cons = match axis {
             Axis::Horizontal => &self.hor_cons,
@@ -988,11 +1117,17 @@ impl SpawnSpecs {
     }
 }
 
+/// A constraint used to determine the size of [`Widget`]s
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Constraint {
+    /// Constrain this dimension to a certain length
     Len(f32),
+    /// The length in this dimension must be at least this long
     Min(f32),
+    /// The length in this dimension must be at most this long
     Max(f32),
+    /// The length in this dimension should be this fraction of its
+    /// parent
     Ratio(u16, u16),
 }
 
@@ -1065,33 +1200,59 @@ impl Constraint {
 /// another.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
+    /// Put the [`Widget`] above another
     Above,
+    /// Put the [`Widget`] on the right
     Right,
+    /// Put the [`Widget`] on the left
     Below,
+    /// Put the [`Widget`] below another
     Left,
 }
 
+/// A corner to attach a [`Widget`] to and from
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Corner {
+    /// Attach on/from the top left corner
     TopLeft,
+    /// Attach on/from the top
     Top,
+    /// Attach on/from the top right corner
     TopRight,
+    /// Attach on/from the right
     Right,
+    /// Attach on/from the bottom right corner
     BottomRight,
+    /// Attach on/from the bottom
     Bottom,
+    /// Attach on/from the bottom left  corner
     BottomLeft,
+    /// Attach on/from the left
     Left,
+    /// Attach on/from the center
     Center,
 }
 
+/// A struct representing a "visual position" on the screen
+///
+/// This position differs from a [`VPoint`] in the sense that it
+/// represents three properties of a printed character:
+///
+/// - The x position in which it was printed;
+/// - The amount of horizontal space it occupies;
+/// - Wether this character is the first on the line (i.e. it wraps)
 #[derive(Debug, Clone, Copy)]
 pub struct Caret {
+    /// The horizontal position in which a character was printed
     pub x: u32,
+    /// The horizontal space it occupied
     pub len: u32,
+    /// Wether it is the first character in the line
     pub wrap: bool,
 }
 
 impl Caret {
+    /// Returns a new [`Caret`]
     #[inline(always)]
     pub fn new(x: u32, len: u32, wrap: bool) -> Self {
         Self { x, len, wrap }
@@ -1131,6 +1292,7 @@ const fn constrain(cons: &mut [Option<Constraint>; 4], con: Constraint) {
 pub struct MutArea<'area, A: RawArea>(pub(crate) &'area A);
 
 impl<A: RawArea> MutArea<'_, A> {
+    /// Bisects the [`RawArea`] in two
     pub fn bisect(
         self,
         specs: PushSpecs,

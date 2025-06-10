@@ -67,17 +67,20 @@ pub trait Reader<U: Ui>: 'static {
     fn update_range(&mut self, bytes: &mut Bytes, tags: MutTags, within: Range<usize>);
 }
 
+/// A [`Reader`] builder struct
 pub trait ReaderCfg<U: Ui> {
+    /// The [`Reader`] that this [`ReaderCfg`] will construct
     type Reader: Reader<U>;
 
+    /// Constructs the [`Reader`]
     fn init(self, buffer: &mut Bytes) -> Result<Self::Reader, Text>;
 }
 
 #[derive(Default, Clone)]
-pub struct Readers<U: Ui>(RwData<Vec<ReaderEntry<U>>>);
+pub(super) struct Readers<U: Ui>(RwData<Vec<ReaderEntry<U>>>);
 
 impl<U: Ui> Readers<U> {
-    pub fn add<R: ReaderCfg<U>>(
+    pub(super) fn add<R: ReaderCfg<U>>(
         &mut self,
         pa: &mut Pass,
         bytes: &mut Bytes,
@@ -127,7 +130,7 @@ impl<U: Ui> Readers<U> {
         })
     }
 
-    pub fn get<R: Reader<U>>(&self) -> Option<RwData<R>> {
+    pub(super) fn get<R: Reader<U>>(&self) -> Option<RwData<R>> {
         if TypeId::of::<R>() == TypeId::of::<()>() {
             return None;
         }
@@ -148,7 +151,7 @@ impl<U: Ui> Readers<U> {
         entry.reader.try_downcast()
     }
 
-    pub fn process_changes(&self, bytes: BytesDataMap<U>, moment: Moment) {
+    pub(super) fn process_changes(&self, bytes: BytesDataMap<U>, moment: Moment) {
         const MAX_CHANGES_TO_CONSIDER: usize = 100;
         // SAFETY: Firstly, it is impossible to aqcuire a copy of this RwData,
         // nor is it possible to call this function from somewhere else, so
@@ -179,7 +182,7 @@ impl<U: Ui> Readers<U> {
 
     // TODO: Improve safety and throughput by creating a Text proxy and
     // making it async.
-    pub fn update_range(&self, mut pa: Pass, text: &mut Text, within: Range<usize>) {
+    pub(super) fn update_range(&self, mut pa: Pass, text: &mut Text, within: Range<usize>) {
         // SAFETY: The same as the SAFETY section above.
         unsafe {
             self.0.read_unsafe(|readers| {
@@ -208,7 +211,7 @@ impl<U: Ui> Readers<U> {
         }
     }
 
-    pub fn needs_update(&self) -> bool {
+    pub(super) fn needs_update(&self) -> bool {
         // SAFETY: This function is only called on File::update within a
         // region where a Pass was mutably borrowed, so we can create
         // another here.
@@ -221,6 +224,14 @@ impl<U: Ui> Readers<U> {
     }
 }
 
+/// A list of non intersecting exclusive [`Range<usize>`]s
+///
+/// The primary purpose of this struct is to serve [`Reader`]s by
+/// telling Duat which ranges need to be updated. This lets Duat
+/// minimize as much as possible the amount of work done to update the
+/// [`Text`] when it changes in a [`File`].
+///
+/// [`File`]: super::File
 #[derive(Clone)]
 pub struct RangeList(Vec<Range<usize>>);
 
@@ -232,6 +243,7 @@ impl RangeList {
         Self(vec![0..max])
     }
 
+	/// Returns a new empty [`RangeList`]
     pub fn empty() -> Self {
         Self(Vec::new())
     }

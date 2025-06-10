@@ -456,27 +456,6 @@ impl ui::RawArea for Area {
         print_iter(iter, cfg.wrap_width(self.width()), cfg, points)
     }
 
-    fn print_iter_from_top<'a>(
-        &self,
-        text: &'a Text,
-        cfg: PrintCfg,
-    ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-        let (info, width) = {
-            let layouts = self.layouts.lock().unwrap();
-            let layout = get_layout(&layouts, self.id).unwrap();
-            let rect = get_rect(&layouts, self.id).unwrap();
-
-            let info = rect.print_info().unwrap().get();
-            let coords = layout.printer.coords(rect.var_points(), false);
-
-            (info, coords.width())
-        };
-        let line_start = text.visual_line_start(info.points);
-        let iter = text.iter_fwd(line_start);
-
-        print_iter(iter, cfg.wrap_width(width), cfg, info.points)
-    }
-
     fn rev_print_iter<'a>(
         &self,
         iter: RevIter<'a>,

@@ -25,6 +25,17 @@ use regex_automata::{
 use super::{Point, Text, TextRange};
 
 impl Text {
+    /// Searches forward for a [`RegexPattern`] in a [range]
+    ///
+    /// A [`RegexPattern`] can either be a single regex string, an
+    /// array of strings, or a slice of strings. When there are more
+    /// than one pattern, The return value will include which pattern
+    /// matched.
+    ///
+    /// The patterns will also automatically be cached, so you don't
+    /// need to do that.
+    ///
+    /// [range]: TextRange
     pub fn search_fwd<R: RegexPattern>(
         &mut self,
         pat: R,
@@ -74,7 +85,17 @@ impl Text {
         }))
     }
 
-    /// Returns an iterator over the reverse matches of the regex
+    /// Searches in reverse for a [`RegexPattern`] in a [range]
+    ///
+    /// A [`RegexPattern`] can either be a single regex string, an
+    /// array of strings, or a slice of strings. When there are more
+    /// than one pattern, The return value will include which pattern
+    /// matched.
+    ///
+    /// The patterns will also automatically be cached, so you don't
+    /// need to do that.
+    ///
+    /// [range]: TextRange
     pub fn search_rev<R: RegexPattern>(
         &mut self,
         pat: R,
@@ -149,7 +170,9 @@ impl Text {
     }
 }
 
+/// A trait to match regexes on `&str`s
 pub trait Matcheable: Sized {
+    /// Checks if a type matches a [`RegexPattern`]
     fn matches(
         &self,
         pat: impl RegexPattern,
@@ -198,6 +221,9 @@ impl Matcheable for &'_ str {
     }
 }
 
+/// A struct for incremental searching in [`IncSearch`]
+///
+/// [`IncSearch`]: docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
 pub struct Searcher {
     pat: String,
     fwd_dfa: &'static DFA,
@@ -207,6 +233,7 @@ pub struct Searcher {
 }
 
 impl Searcher {
+    /// Returns a new [`Searcher`]
     pub fn new(pat: String) -> Result<Self, Box<regex_syntax::Error>> {
         let dfas = dfas_from_pat(&pat)?;
         Ok(Self {
@@ -218,6 +245,9 @@ impl Searcher {
         })
     }
 
+    /// Searches forward for the required regex in a [range]
+    ///
+    /// [range]: TextRange
     pub fn search_fwd<'b>(
         &'b mut self,
         text: &'b mut Text,
@@ -278,6 +308,9 @@ impl Searcher {
         })
     }
 
+    /// Searches in reverse for the required regex in a range[range]
+    ///
+    /// [range]: TextRange
     pub fn search_rev<'b>(
         &'b mut self,
         text: &'b mut Text,
@@ -436,9 +469,15 @@ impl Patterns<'_> {
     }
 }
 
+/// A regex pattern to search for
+///
+/// It can either be a single `&str`, or a list of `&str`s, in which
+/// case the matched pattern will be specified.
 pub trait RegexPattern: InnerRegexPattern {
+    /// Either two [`Point`]s, or two [`Point`]s and a match index
     type Match: 'static;
 
+    /// transforms a matched pattern into [`RegexPattern::Match`]
     fn get_match(points: [Point; 2], pattern: PatternID) -> Self::Match;
 }
 

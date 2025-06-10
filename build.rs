@@ -1,3 +1,13 @@
+//! This module populates a configuration crate for Duat
+//!
+//! It will create a directory for a `config` crate in
+//! `$XDG_CONFIG_HOME/duat`, only if said directory doesn't exist.
+//!
+//! Additionlly, it also changes the dependencies to their respective
+//! git versions, if the `git-deps` feature was enabled.
+//!
+//! In the future, it will also be able to make modifications based on
+//! the desired `Ui`, and maybe even other choices for default `Mode`.
 use core::str;
 use std::{
     fs::{self, File},

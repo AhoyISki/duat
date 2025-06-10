@@ -142,9 +142,7 @@ pub struct File<U: Ui> {
 impl<U: Ui> File<U> {
     ////////// Writing the File
 
-    /// Writes the file to the current [`Path`], if one was set
-    ///
-    /// [`Path`]: std::path::Path
+    /// Writes the file to the current [`PathBuf`], if one was set
     pub fn write(&mut self) -> Result<Option<usize>, Text> {
         if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &self.path {
             let path = path.clone();
@@ -216,6 +214,11 @@ impl<U: Ui> File<U> {
         self.path.name_set()
     }
 
+    /// The type of [`PathBuf`]
+    ///
+    /// This represents the three possible states for a [`File`]'s
+    /// [`PathBuf`], as it could either represent a real [`File`], not
+    /// exist, or not have been defined yet.
     pub fn path_kind(&self) -> PathKind {
         self.path.clone()
     }
@@ -246,20 +249,6 @@ impl<U: Ui> File<U> {
         self.text.len().line()
     }
 
-    /// The [`Text`] of the [`File`]
-    pub fn text(&self) -> &Text {
-        &self.text
-    }
-
-    pub fn text_mut(&mut self) -> &mut Text {
-        &mut self.text
-    }
-
-    /// The mutable [`Text`] of the [`File`]
-    pub fn print_cfg(&self) -> PrintCfg {
-        self.cfg
-    }
-
     /// The [`Cursors`] that are used on the [`Text`], if they exist
     pub fn cursors(&self) -> &Cursors {
         self.text.cursors().unwrap()
@@ -276,12 +265,16 @@ impl<U: Ui> File<U> {
             .is_some_and(|p| std::fs::exists(PathBuf::from(&p)).is_ok_and(|e| e))
     }
 
+    /// Adds a [`Reader`] to react to [`Text`] [`Change`]s
+    ///
+    /// [`Change`]: crate::text::Change
     pub fn add_reader(&mut self, pa: &mut Pass, cfg: impl ReaderCfg<U>) {
         if let Err(err) = self.readers.add(pa, self.text.bytes_mut(), cfg) {
             context::notify(err);
         }
     }
 
+    /// Gets a [`Reader`]
     pub fn get_reader<R: Reader<U>>(&self) -> Option<RwData<R>> {
         self.readers.get()
     }
@@ -378,13 +371,20 @@ impl<U: Ui> Widget<U> for File<U> {
 /// Represents the presence or absence of a path
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PathKind {
+    /// A [`PathBuf`] that has been defined and points to a real file
     SetExists(PathBuf),
+    /// A [`PathBuf`] that has been defined but isn't a real file
     SetAbsent(PathBuf),
+    /// A [`PathBuf`] that has not been defined
+    ///
+    /// The number within represents a specific [`File`], and when
+    /// printed to, for example, the [`StatusLine`], would show up as
+    /// `text!("[File]*scratch file*#{id}")`
     NotSet(usize),
 }
 
 impl PathKind {
-    /// Returns a new unset [`Path`]
+    /// Returns a new unset [`PathBuf`]
     fn new_unset() -> PathKind {
         use std::sync::atomic::{AtomicUsize, Ordering};
         static UNSET_COUNT: AtomicUsize = AtomicUsize::new(1);
@@ -392,22 +392,23 @@ impl PathKind {
         PathKind::NotSet(UNSET_COUNT.fetch_add(1, Ordering::Relaxed))
     }
 
+    /// The full path of the file.
+    ///
+    /// If there is no set path, returns `"*scratch file*#{id}"`.
     pub fn path(&self) -> String {
         match self {
             PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
                 path.to_string_lossy().to_string()
             }
             PathKind::NotSet(id) => {
-                let path = std::env::current_dir()
-                    .unwrap()
-                    .to_string_lossy()
-                    .to_string();
-
-                format!("{path}/*scratch file*#{id}")
+                format!("*scratch file*#{id}")
             }
         }
     }
 
+    /// The full path of the file.
+    ///
+    /// Returns [`None`] if the path has not been set yet.
     pub fn path_set(&self) -> Option<String> {
         match self {
             PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
@@ -417,6 +418,9 @@ impl PathKind {
         }
     }
 
+    /// The file's name.
+    ///
+    /// If there is no set path, returns `"*scratch file #{id}*"`.
     pub fn name(&self) -> String {
         match self {
             PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
@@ -431,6 +435,9 @@ impl PathKind {
         }
     }
 
+    /// The file's name.
+    ///
+    /// Returns [`None`] if the path has not been set yet.
     pub fn name_set(&self) -> Option<String> {
         match self {
             PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
@@ -455,6 +462,8 @@ enum TextOp {
     OpenPath(PathBuf),
 }
 
+/// An [`RwData`] wrapper which only gives access to the [`Bytes`] of
+/// a [`File`]
 #[derive(Clone)]
 pub struct BytesDataMap<U: Ui>(RwData<File<U>>);
 
@@ -501,6 +510,21 @@ impl<U: Ui> BytesDataMap<U> {
         }
     }
 
+    /// Wether someone else called [`write`] or [`write_as`] since the
+    /// last [`read`] or [`write`]
+    ///
+    /// Do note that this *DOES NOT* mean that the value inside has
+    /// actually been changed, it just means a mutable reference was
+    /// acquired after the last call to [`has_changed`].
+    ///
+    /// Generally though, you can use this method to gauge that.
+    ///
+    /// [`write`]: RwData::write
+    /// [`write_as`]: RwData::write_as
+    /// [`read`]: RwData::read
+    /// [`has_changed`]: RwData::has_changed
+    /// [`Text`]: crate::text::Text
+    /// [`Widget`]: crate::widget::Widget
     pub fn has_changed(&self) -> bool {
         self.0.has_changed()
     }

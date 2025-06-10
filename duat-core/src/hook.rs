@@ -633,10 +633,21 @@ impl Hookable for FileWritten {
 ///
 /// [`hooks::trigger`]: trigger
 pub trait Hookable: Sized + 'static {
+    /// The arguments that should be passed to each [`Hook`]
     type Args<'a>;
-    type Input: 'static;
+    /// What to pass to the [`Hookable::trigger`] function
+    type Input;
+    /// The output of triggering all [`Hook`]s. Mostly never used
     type Output = ();
 
+    /// Trigger all [`Hook`]s
+    ///
+    /// This is done this way in order to allow the [`Hookable`] more
+    /// fine grained control over the activation of individual
+    /// [`Hook`]s. It also permits the transformation of
+    /// [`Hookable::Input`] into [`Hookable::Args`], which would
+    /// otherwise just be a simple reference, which may not be the
+    /// best type in each scenario.
     fn trigger(pa: Pass<'_>, input: Self::Input, hooks: Hooks<Self>) -> Self::Output;
 }
 
@@ -759,7 +770,9 @@ impl<H: Hookable> std::ops::FnOnce<(&mut Pass<'_>, H::Args<'_>)> for Hook<H> {
     }
 }
 
-pub type InnerHookFn<H> = &'static RefCell<
+type InnerHookFn<H> = &'static RefCell<
     (dyn FnMut(Pass, <H as Hookable>::Args<'_>) -> <H as Hookable>::Output + 'static),
 >;
+/// An [`Iterator`] over all of the [`Hook`]s that a [`Hookable`] must
+/// process
 pub type Hooks<H: Hookable> = impl Iterator<Item = Hook<H>>;

@@ -1,3 +1,23 @@
+//! [`Mode`]s that handle user input
+//!
+//! Each [`Mode`] controls a specifig type of [`Widget`], and
+//! switching [`Mode`]s is how one sets the current [`Widget`]. For
+//! example, the [`Standard`] (like most [`Mode`]s), controls the
+//! [`File`] [`Widget`]. So when you switch to that [`Mode`], you
+//! return to the active [`File`] if you were focused on another
+//! [`Widget`].
+//!
+//! Other than the [`File`] the main [`Widget`] that is controled by
+//! [`Mode`]s is the [`PromptLine`]. It is an example of a [`Widget`]
+//! that has many [`Mode`]s implemented for it. Chief of which is
+//! [`RunCommands`], but there is also [`IncSearch`] and
+//! [`PipeCommands`], and the creation of more [`Mode`]s for the
+//! [`PromptLine`] is very much encouraged.
+//!
+//! [`PromptLine`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
+//! [`RunCommands`]: docs.rs/duat-utils/latest/duat_utils/modes/struct.RunCommands.html
+//! [`IncSearch`]: docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
+//! [`PipeSelections`]: docs.rs/duat-utils/latest/duat_utils/modes/struct.PipeSelections.html
 use core::str;
 
 pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
@@ -629,6 +649,7 @@ mod switch {
 /// [`Text`]: crate::Text
 /// [`&mut Cursors`]: Cursors
 pub trait Mode<U: Ui>: Sized + Clone + 'static {
+    /// The [`Widget`] that this [`Mode`] controls
     type Widget: Widget<U>;
 
     /// Sends a [`KeyEvent`] to this [`Mode`]

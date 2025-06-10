@@ -23,53 +23,6 @@ use super::{
 };
 use crate::mode::Cursor;
 
-#[derive(Debug, Clone, Copy)]
-pub struct Item {
-    pub real: Point,
-    pub ghost: Option<Point>,
-    pub part: Part,
-}
-
-impl Item {
-    pub fn is_real(&self) -> bool {
-        self.ghost.is_none()
-    }
-
-    pub fn as_real_char(self) -> Option<(Point, char)> {
-        if self.ghost.is_none() {
-            Some(self.real).zip(self.part.as_char())
-        } else {
-            None
-        }
-    }
-
-    pub fn byte(&self) -> usize {
-        self.real.byte()
-    }
-
-    pub fn char(&self) -> usize {
-        self.real.char()
-    }
-
-    pub fn line(&self) -> usize {
-        self.real.line()
-    }
-
-    pub fn points(&self) -> (Point, Option<Point>) {
-        (self.real, self.ghost)
-    }
-
-    pub fn lines(&self) -> (usize, Option<usize>) {
-        (self.real.line(), self.ghost.map(|g| g.line()))
-    }
-
-    #[inline]
-    fn new(tp: impl TwoPoints, part: Part) -> Self {
-        let (real, ghost) = tp.to_points();
-        Self { real, ghost, part }
-    }
-}
-
 /// An [`Iterator`] over the [`Part`]s of the [`Text`].
 ///
 /// This is useful for both printing and measurement of [`Text`], and
@@ -93,6 +46,8 @@ pub struct FwdIter<'a> {
 }
 
 impl<'a> FwdIter<'a> {
+    /// Returns a new forward [`Iterator`] over the [`Item`]s in the
+    /// [`Text`]
     pub(super) fn new_at(text: &'a Text, tp: impl TwoPoints) -> Self {
         let (r, g) = tp.to_points();
         let point = r.min(text.len());
@@ -118,10 +73,21 @@ impl<'a> FwdIter<'a> {
         }
     }
 
+    ////////// Iteration modifiers
+
+    /// Disable all [`Conceal`]s
+    ///
+    /// [`Conceal`]: super::Conceal
     pub fn no_conceals(self) -> Self {
         Self { _conceals: Conceal::None, ..self }
     }
 
+    /// Disable all [`Conceal`]s containing any of the
+    /// [`Cursor`]s
+    ///
+    /// Not yet implemented
+    ///
+    /// [`Conceal`]: super::Conceal
     pub fn dont_conceal_containing(self, list: &'a [Cursor]) -> Self {
         Self {
             _conceals: Conceal::Excluding(list),
@@ -129,18 +95,56 @@ impl<'a> FwdIter<'a> {
         }
     }
 
+    /// Disable all [`Ghost`]s
+    ///
+    /// [`Ghost`]: super::Ghost
     pub fn no_ghosts(self) -> Self {
         Self { print_ghosts: false, ..self }
     }
 
+    /// Returns an [`Iterator`] over only the `char`s
+    ///
+    /// The difference betwen this and a regular [`Text::chars_fwd`]
+    /// is that this [`Iterator`] will return [`Ghost`] `char`s and
+    /// won't return `char`s that have been concealed
+    ///
+    /// [`Tag`]: super::Tag
+    /// [`Ghost`]: super::Ghost
     pub fn no_tags(self) -> impl Iterator<Item = Item> + 'a {
         self.filter(|item| item.part.is_char())
     }
 
+    /// Skips to a certain [`TwoPoints`]
+    ///
+    /// Does nothing if the [`TwoPoints`] are behind.
     pub fn skip_to(&mut self, tp: impl TwoPoints) {
         *self = self.text.iter_fwd(tp.to_points().max(self.points()))
     }
 
+    ////////// Querying functions
+
+    /// Wether the [`Iterator`] is on a [`Ghost`]
+    ///
+    /// [`Ghost`]: super::Ghost
+    #[inline(always)]
+    pub fn is_on_ghost(&self) -> bool {
+        self.main_iter.is_some()
+    }
+
+    /// Returns the current real and ghost [`Point`]s of the
+    /// [`Iterator`]
+    #[inline(always)]
+    pub fn points(&self) -> (Point, Option<Point>) {
+        if let Some((real, ..)) = self.main_iter.as_ref() {
+            (*real, self.ghost.map(|(tg, _)| tg))
+        } else {
+            (self.point, self.ghost.map(|(p, _)| p))
+        }
+    }
+
+    /// Handles special [`Tag`]s and [`Tag`] exceptions
+    ///
+    /// [`Tag`]: super::Tag
     #[inline(always)]
     fn handle_special_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {
@@ -192,20 +196,6 @@ impl<'a> FwdIter<'a> {
         }
 
         true
-    }
-
-    #[inline(always)]
-    pub fn on_ghost(&self) -> bool {
-        self.main_iter.is_some()
-    }
-
-    #[inline(always)]
-    pub fn points(&self) -> (Point, Option<Point>) {
-        if let Some((real, ..)) = self.main_iter.as_ref() {
-            (*real, self.ghost.map(|(tg, _)| tg))
-        } else {
-            (self.point, self.ghost.map(|(p, _)| p))
-        }
     }
 }
 
@@ -267,6 +257,8 @@ pub struct RevIter<'a> {
 }
 
 impl<'a> RevIter<'a> {
+    /// Returns a new reverse [`Iterator`] over the [`Item`]s in the
+    /// [`Text`]
     pub(super) fn new_at(text: &'a Text, tp: impl TwoPoints) -> Self {
         let (r, g) = tp.to_points();
         let point = r.min(text.len());
@@ -292,18 +284,55 @@ impl<'a> RevIter<'a> {
         }
     }
 
+    ////////// Iteration modifiers
+
+    /// Disable all [`Conceal`]s
+    ///
+    /// [`Conceal`]: super::Conceal
     pub fn no_conceals(self) -> Self {
         Self { _conceals: Conceal::None, ..self }
     }
 
+    /// Disable all [`Ghost`]s
+    ///
+    /// [`Ghost`]: super::Ghost
     pub fn no_ghosts(self) -> Self {
         Self { print_ghosts: false, ..self }
     }
 
+    /// Returns an [`Iterator`] over only the `char`s
+    ///
+    /// The difference betwen this and a regular [`Text::chars_rev`]
+    /// is that this [`Iterator`] will return [`Ghost`] `char`s and
+    /// won't return `char`s that have been concealed
+    ///
+    /// [`Tag`]: super::Tag
+    /// [`Ghost`]: super::Ghost
     pub fn no_tags(self) -> impl Iterator<Item = Item> + 'a {
         self.filter(|item| item.part.is_char())
     }
 
+    ////////// Querying functions
+
+    /// Returns the current real and ghost [`Point`]s
+    pub fn points(&self) -> (Point, Option<Point>) {
+        if let Some((real, ..)) = self.main_iter.as_ref() {
+            (*real, Some(self.point))
+        } else {
+            (self.point, self.ghost.map(|(p, _)| p))
+        }
+    }
+
+    /// Wether the [`Iterator`] is on a [`Ghost`]
+    ///
+    /// [`Ghost`]: super::Ghost
+    pub fn is_on_ghost(&self) -> bool {
+        self.main_iter.is_some()
+    }
+
+    /// Handles special [`Tag`]s and [`Tag`] exceptions
+    ///
+    /// [`Tag`]: super::Tag
     #[inline]
     fn handled_meta_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {
@@ -358,18 +387,6 @@ impl<'a> RevIter<'a> {
 
         true
     }
-
-    pub fn points(&self) -> (Point, Option<Point>) {
-        if let Some((real, ..)) = self.main_iter.as_ref() {
-            (*real, Some(self.point))
-        } else {
-            (self.point, self.ghost.map(|(p, _)| p))
-        }
-    }
-
-    pub fn is_on_ghost(&self) -> bool {
-        self.main_iter.is_some()
-    }
 }
 
 impl Iterator for RevIter<'_> {
@@ -417,6 +434,84 @@ fn buf_chars_rev(text: &Text, b: usize) -> RevChars {
     s1.chars().rev().chain(s0.chars().rev())
 }
 
+/// An element of a [`Text`]
+///
+/// This struct is comprised of three parts:
+///
+/// - A real [`Point`], representing a position on the real [`Text`];
+/// - A ghost [`Point`], which is a position in a [`Ghost`], [`None`]
+///   if not in a [`Ghost`];
+/// - A [`Part`], which will either be a `char` or a [`Tag`];
+///
+/// [`Ghost`]: super::Ghost
+/// [`Tag`]: super::Tag
+#[derive(Debug, Clone, Copy)]
+pub struct Item {
+    /// The real [`Point`]
+    pub real: Point,
+    /// The [`Point`] in a [`Ghost`]
+    ///
+    /// If there are multiple [`Ghost`]s in the same byte, this
+    /// [`Point`] will point to a sum of the previous [`Text`]'s
+    /// [lengths] plus the position on this specific [`Ghost`], so
+    /// every [`Point`] should point to a specific position in a byte.
+    ///
+    /// [`Ghost`]: super::Ghost
+    /// [lengths]: Text::len
+    pub ghost: Option<Point>,
+    /// A [`Part`], which will either be a `char` or a [`Tag`];
+    ///
+    /// [`Tag`]: super::Tag
+    pub part: Part,
+}
+
+impl Item {
+    /// Returns a new [`Item`]
+    #[inline]
+    fn new(tp: impl TwoPoints, part: Part) -> Self {
+        let (real, ghost) = tp.to_points();
+        Self { real, ghost, part }
+    }
+
+    /// Whether this [`Item`] is in a [`Ghost`]
+    ///
+    /// [`Ghost`]: super::Ghost
+    pub fn is_real(&self) -> bool {
+        self.ghost.is_none()
+    }
+
+    /// Returns the real position, if not on a [`Ghost`]
+    ///
+    /// [`Ghost`]: super::Ghost
+    pub fn as_real_char(self) -> Option<(Point, char)> {
+        if self.ghost.is_none() {
+            Some(self.real).zip(self.part.as_char())
+        } else {
+            None
+        }
+    }
+
+    /// The real [byte](Point::byte)
+    pub fn byte(&self) -> usize {
+        self.real.byte()
+    }
+
+    /// The real [char](Point::char)
+    pub fn char(&self) -> usize {
+        self.real.char()
+    }
+
+    /// The real [line](Point::line)
+    pub fn line(&self) -> usize {
+        self.real.line()
+    }
+
+    /// The real and ghost [`Point`]s, can be used as [`TwoPoints`]
+    pub fn points(&self) -> (Point, Option<Point>) {
+        (self.real, self.ghost)
+    }
+}
+
 // To be rethought
 #[allow(dead_code)]
 #[derive(Debug, Default, Clone)]
@@ -452,17 +547,60 @@ use crate::form::FormId;
 /// [`ResetState`]: Part::ResetState
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Part {
+    /// A printed `char`, can be real or a [`Ghost`]
+    ///
+    /// [`Ghost`]: super::Ghost
     Char(char),
+    /// Push a [`Form`] to the [`Painter`]
+    ///
+    /// [`Form`]: crate::form::Form
+    /// [`Painter`]: crate::form::Painter
     PushForm(FormId),
+    /// Pop a [`Form`] from the [`Painter`]
+    ///
+    /// [`Form`]: crate::form::Form
+    /// [`Painter`]: crate::form::Painter
     PopForm(FormId),
+    /// Place the main [`Cursor`] or the `"MainCursor"` [`Form`] to
+    /// the [`Painter`]
+    ///
+    /// [`Form`]: crate::form::Form
+    /// [`Painter`]: crate::form::Painter
     MainCursor,
+    /// Place the extra [`Cursor`] or the `"ExtraCursor"` [`Form`] to
+    /// the [`Painter`]
+    ///
+    /// [`Form`]: crate::form::Form
+    /// [`Painter`]: crate::form::Painter
     ExtraCursor,
+    /// End other forms of alignment
     AlignLeft,
+    /// Begin centered alignment
     AlignCenter,
+    /// Begin right alignment
     AlignRight,
+    /// Add a [`Spacer`]
+    ///
+    /// [`Spacer`]: super::Spacer
     Spacer,
+    /// Starts a toggleable region for the given [`ToggleId`]
+    ///
+    /// Not yet implemented
     ToggleStart(ToggleId),
+    /// Ends a toggleable region for the given [`ToggleId`]
+    ///
+    /// Not yet implemented
     ToggleEnd(ToggleId),
+    /// Resets all [`FormId`]s, [`ToggleId`]s and alignments
+    ///
+    /// Used when a [`Conceal`] covers a large region, which Duat
+    /// optimizes by just not iterating over the [`Part`]s within.
+    /// This could skip some [`Tag`]s, so this variant serves the
+    /// purpose of terminating or initiating in place of skipped
+    /// [`Tag`]s
+    ///
+    /// [`Conceal`]: super::Conceal
+    /// [`Tag`]: super::Tag
     ResetState,
 }
 

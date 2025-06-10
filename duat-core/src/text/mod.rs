@@ -135,6 +135,7 @@ impl Text {
         Self::from_bytes(Bytes::default(), None, false)
     }
 
+    /// Returns a new empty [`Text`] with [`Cursors`] enabled
     pub fn new_with_cursors() -> Self {
         Self::from_bytes(Bytes::default(), Some(Cursors::default()), false)
     }
@@ -322,6 +323,7 @@ impl Text {
         &mut self.0.bytes
     }
 
+    /// The [`Bytes`] and [`Tags`], mutably
     pub fn bytes_and_tags(&mut self) -> (&mut Bytes, MutTags) {
         (&mut self.0.bytes, MutTags(&mut self.0.tags))
     }
@@ -473,6 +475,7 @@ impl Text {
         points
     }
 
+    /// Gets the [`Ghost`] of a given [`GhostId`]
     pub fn get_ghost(&self, id: GhostId) -> Option<&Text> {
         self.0.tags.get_ghost(id)
     }
@@ -851,10 +854,20 @@ impl Text {
         self.0.tags.rev_at(b)
     }
 
+    /// A forward [`Iterator`] over the [`RawTag`]s
+    ///
+    /// This [`Iterator`] does not take into account [`Tag`] ranges
+    /// that intersect with the starting point, unlike
+    /// [`Text::tags_fwd`]
     pub fn raw_tags_fwd(&self, b: usize) -> impl Iterator<Item = (usize, RawTag)> {
         self.0.tags.raw_fwd_at(b)
     }
 
+    /// A reverse [`Iterator`] over the [`RawTag`]s
+    ///
+    /// This [`Iterator`] does not take into account [`Tag`] ranges
+    /// that intersect with the starting point, unlike
+    /// [`Text::tags_rev`]
     pub fn raw_tags_rev(&self, b: usize) -> impl Iterator<Item = (usize, RawTag)> {
         self.0.tags.raw_rev_at(b)
     }

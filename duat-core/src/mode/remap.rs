@@ -106,6 +106,7 @@ mod global {
         remapper.remap::<M, U>(str_to_keys(take), give.into_gives(), true);
     }
 
+    /// The current sequence of [`KeyEvent`]s being mapped
     pub fn cur_sequence() -> DataMap<(Vec<KeyEvent>, bool), (Vec<KeyEvent>, bool)> {
         context::assert_is_on_main_thread();
         let remapper = unsafe { REMAPPER.get() };
@@ -319,6 +320,8 @@ mod global {
         keys
     }
 
+    /// Trait to distinguish [`Mode`]s from [`KeyEvent`]s
+    #[doc(hidden)]
     pub trait AsGives<U> {
         fn into_gives(self) -> Gives;
     }
@@ -497,6 +500,8 @@ impl Remap {
     }
 }
 
+///
+#[doc(hidden)]
 pub enum Gives {
     Keys(Vec<KeyEvent>),
     Mode(Box<dyn Fn()>),

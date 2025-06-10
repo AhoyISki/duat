@@ -203,13 +203,12 @@ pub use self::{
     },
 };
 use crate::{
-    context,
-    context::sender,
+    context::{self, sender},
     data::{Pass, RwData},
     file::File,
     file_entry, iter_around, iter_around_rev, mode,
-    text::{Text, err, hint, ok},
-    ui::{DuatEvent, Ui},
+    text::{err, hint, ok, Text},
+    ui::{DuatEvent, Ui}, widget::Widget,
 };
 
 mod parameters;
@@ -292,12 +291,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         let unwritten = windows
             .iter()
             .flat_map(|w| w.file_nodes(&pa))
-            .filter(|(node, _)| {
-                node.read_as(&pa, |f: &File<U>| {
-                    f.text().has_unsaved_changes() && f.exists()
-                })
-                .unwrap()
-            })
+            .filter(|(node, _)| node.read(&pa, |f| f.text().has_unsaved_changes() && f.exists()))
             .count();
 
         if unwritten == 0 {
@@ -378,17 +372,12 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         let file_count = windows
             .iter()
             .flat_map(|w| w.file_nodes(&pa))
-            .filter(|(node, _)| {
-                node.widget()
-                    .read_as(&pa, |f: &File<U>| f.path_set().is_some())
-                    == Some(true)
-            })
+            .filter(|(node, _)| node.read(&pa, |f| f.path_set().is_some()))
             .inspect(|(node, _)| {
                 // SAFETY: It is known that this function does not have any inner
                 // RwData.
                 written += unsafe {
-                    node.widget()
-                        .write_unsafe_as(|f: &mut File<U>| f.write().is_ok())
+                    node.write_unsafe_as(|f: &mut File<U>| f.write().is_ok())
                         .unwrap() as usize
                 };
             })
@@ -410,19 +399,11 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         let file_count = windows
             .iter()
             .flat_map(|w| w.file_nodes(&pa))
-            .filter(|(node, _)| {
-                node.widget()
-                    .read_as(&pa, |f: &File<U>| f.path_set().is_some())
-                    == Some(true)
-            })
+            .filter(|(node, _)| node.read(&pa, |f| f.path_set().is_some()))
             .inspect(|(node, _)| {
                 // SAFETY: It is known that this function does not have any inner
                 // RwData.
-                written += unsafe {
-                    node.widget()
-                        .write_unsafe_as(|f: &mut File<U>| f.write().is_ok())
-                        .unwrap() as usize
-                };
+                written += unsafe { node.write_unsafe(|f| f.write().is_ok()) as usize };
             })
             .count();
 
@@ -443,7 +424,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             // SAFETY: It is known that this function does not have any inner
             // RwData.
             unsafe {
-                node.widget().write_unsafe_as(|f: &mut File<U>| f.write());
+                let _ = node.write_unsafe(|f| f.write());
             }
         }
 
