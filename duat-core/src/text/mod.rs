@@ -67,7 +67,7 @@
 //!
 //! [gap buffers]: gapbuf::GapBuffer
 //! [colored]: crate::form::Form
-//! [ghost text]: Tag::Ghost
+//! [ghost text]: Ghost
 //! [`Ui`]: crate::ui::Ui
 //! [`File`]: crate::widgets::File
 //! [`Widget`]: crate::widgets::Widget
@@ -239,13 +239,28 @@ impl Text {
     /// This ignores the last `'\n'` in the [`Text`], since it is
     /// always there no matter what.
     ///
-    /// # Notes
-    ///
-    /// This does not check for tags, so with a [`Tag::Ghost`],
+    /// This does not check for tags, so with a [`Ghost`],
     /// there could actually be a "string" of characters on the
-    /// [`Text`], it just wouldn't be considered real "text".
+    /// [`Text`], it just wouldn't be considered real "text". If you
+    /// want to make sure it is _indeed_ empty, see
+    /// [`is_empty_empty`].
+    ///
+    /// [`is_empty_empty`]: Self::is_empty_empty
     pub fn is_empty(&self) -> bool {
         self.0.bytes == "\n"
+    }
+
+    /// Whether the [`Bytes`] and [`Tags`] are empty
+    ///
+    /// This ignores the last `'\n'` in the [`Text`], since it is
+    /// always there no matter what.
+    ///
+    /// If you only want to check for the [`Bytes`], ignoring possible
+    /// [`Ghost`]s, see [`is_empty`].
+    ///
+    /// [`is_empty`]: Self::is_empty
+    pub fn is_empty_empty(&self) -> bool {
+        self.0.bytes == "\n" && self.0.tags.is_empty()
     }
 
     /// The `char` at the [`Point`]'s position
@@ -398,7 +413,7 @@ impl Text {
     ///
     /// This will essentially return the [last point] of the text,
     /// alongside the last possible [`Point`] of any
-    /// [`Tag::Ghost`] at the end of the text.
+    /// [`Ghost`] at the end of the text.
     ///
     /// [points]: TwoPoints
     /// [last point]: Self::len
@@ -423,7 +438,7 @@ impl Text {
     /// The maximum [points] in the `at`th byte
     ///
     /// This point is essentially the [point] at that byte, plus the
-    /// last possible [`Point`] of any [`Tag::Ghost`]s in that
+    /// last possible [`Point`] of any [`Ghost`]s in that
     /// position.
     ///
     /// [points]: TwoPoints

@@ -54,20 +54,24 @@ fn main() {
         let mut watcher = notify::recommended_watcher({
             let reload_tx = reload_tx.clone();
             let duat_tx = duat_tx.clone();
+            let mut sent_reload = false;
+
             move |res| match res {
                 Ok(Event { kind: EventKind::Create(_), paths, .. }) => {
                     if let Some(so_path) = paths.iter().find(|p| p.ends_with("libconfig.so")) {
                         let on_release = so_path.ends_with("release/libconfig.so");
                         reload_tx.send((so_path.clone(), on_release)).unwrap();
+                        sent_reload = true;
                     }
                 }
                 Ok(Event {
                     kind: EventKind::Access(AccessKind::Close(AccessMode::Write)),
                     paths,
                     ..
-                }) if paths.iter().any(|p| p.ends_with(".cargo-lock")) => {
+                }) if paths.iter().any(|p| p.ends_with(".cargo-lock")) && sent_reload => {
                     std::thread::sleep(std::time::Duration::from_millis(20));
-                    duat_tx.send(DuatEvent::ReloadConfig).unwrap()
+                    duat_tx.send(DuatEvent::ReloadConfig).unwrap();
+                    sent_reload = false;
                 }
                 _ => {}
             }
@@ -138,7 +142,7 @@ fn main() {
             break;
         }
 
-        let (so_path, on_release) = reload_rx.try_recv().unwrap();
+        let (so_path, on_release) = reload_rx.recv().unwrap();
 
         let profile = if on_release { "Release" } else { "Debug" };
         let time = match reload_instant {

@@ -212,6 +212,13 @@ impl<U: Ui> Session<U> {
         // SAFETY: No Passes exists at this point in time.
         hook::trigger::<ConfigLoaded>(&mut unsafe { Pass::new() }, ());
 
+        let Some(mode_fn) = mode::take_set_mode_fn() else {
+            unreachable!("Somebody forgot to set a default mode, I'm looking at you `duat`!");
+        };
+
+        // SAFETY: No Passes exists at this point in time.
+        mode_fn(unsafe { Pass::new() });
+
         {
             let win = self.cur_window.load(Ordering::Relaxed);
             let windows = context::windows::<U>().borrow();

@@ -666,7 +666,7 @@ impl Tags {
 
     /// Returns true if there are no [`RawTag`]s
     pub fn is_empty(&self) -> bool {
-        self.buf.len() == 0
+        self.buf.len() == 0 || self.buf.len() == 1 && self.buf[0].is_skip()
     }
 
     /// Returns the len of the [`Tags`] in bytes

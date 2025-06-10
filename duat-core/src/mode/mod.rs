@@ -78,7 +78,7 @@ mod switch {
     /// Since this function is only called by Duat, I can ensure that
     /// it will be called from the main thread, so no checks are done
     /// in that regard.
-    pub(super) fn take_set_mode_fn() -> Option<ModeFn> {
+    pub(crate) fn take_set_mode_fn() -> Option<ModeFn> {
         // SAFETY: The caller of this function's caller has a Pass argument.
         unsafe { SET_MODE.get() }.borrow_mut().take()
     }

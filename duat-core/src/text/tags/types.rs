@@ -173,17 +173,19 @@ pub struct AlignLeft;
 ///
 /// Let's say that this is the line being printed:
 ///
-/// ```text
-/// This is my line,please,pretend it has tags
+/// ```
+/// # use duat_core::text::text;
+/// text!("This is my line,please,pretend it has tags");
 /// ```
 ///
 /// If we were to print it with `{Spacer}as like this:
 ///
-/// ```text
-/// This is my line,{Spacer}please,{Spacer}pretend it has tags
+/// ```
+/// # use duat_core::text::{text, Spacer};
+/// text!("This is my line,{Spacer}please,{Spacer}pretend it has tags");
 /// ```
 ///
-/// In a screen with a width of 50, it would come out like:
+/// In a region with a width of 50, it would come out like:
 ///
 /// ```text
 /// This is my line,    please,    pretend it has tags

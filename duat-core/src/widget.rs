@@ -608,11 +608,12 @@ impl<U: Ui> Node<U> {
     pub(crate) fn update_and_print(&self, mut pa: Pass) {
         self.busy_updating.set(true);
 
-        {
+        let text_was_empty = {
             let mut widget = self.widget.acquire_mut(&mut pa);
             let cfg = widget.print_cfg();
             widget.text_mut().remove_cursors(&self.area, cfg);
-        }
+            widget.text().is_empty_empty()
+        };
 
         (self.update)(self, &mut pa);
 
@@ -625,7 +626,10 @@ impl<U: Ui> Node<U> {
                 widget.text_mut().update_bounds();
             }
 
-            widget.print(&self.area);
+			// Avoid calling the function if it is not needed
+            if !(text_was_empty && widget.text().is_empty_empty()) {
+                widget.print(&self.area);
+            }
         }
 
         self.busy_updating.set(false);
