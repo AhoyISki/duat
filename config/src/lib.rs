@@ -44,7 +44,7 @@ fn setup() {
 
     hook::remove("FileWidgets");
     // This hook lets you push widgets to the files.
-    // The Pass is used to prevent ownership collisions.
+    // The Pass is used to prevent borrowing collisions.
     hook::add::<OnFileOpen>(|mut pa, builder| {
         // These widgets go on the left by default.
         builder.push(&mut pa, VertRule::cfg());
