@@ -70,12 +70,12 @@
 //! #     }
 //! # }
 //! # mod kak {
-//! #     use duat::{prelude::mode::*, Area, Ui, widgets::File};
+//! #     use duat::{prelude::{*, mode::KeyEvent}};
 //! #     #[derive(Clone)]
 //! #     pub struct Normal;
 //! #     impl Mode<Ui> for Normal {
 //! #         type Widget = File;
-//! #         fn send_key(&mut self, _: KeyEvent, _: &mut File, _: &Area) {
+//! #         fn send_key(&mut self, _: Pass, _: KeyEvent, _: RwData<File>, _: Area) {
 //! #             todo!();
 //! #         }
 //! #     }
@@ -83,7 +83,7 @@
 //! #     pub struct Insert;
 //! #     impl Mode<Ui> for Insert {
 //! #         type Widget = File;
-//! #         fn send_key(&mut self, _: KeyEvent, _: &mut File, _: &Area) {
+//! #         fn send_key(&mut self, _: Pass, _: KeyEvent, _: RwData<File>, _: Area) {
 //! #             todo!();
 //! #         }
 //! #     }
@@ -106,30 +106,30 @@
 //!     );
 //!     map::<Insert>("jk", "<Esc>");
 //!
-//!     print::wrap_on_width();
+//!     print::wrap_on_edge();
 //!
-//!     hooks::remove("FileWidgets");
-//!     hooks::add::<OnFileOpen>(|builder| {
-//!         builder.push(VertRule::cfg());
-//!         builder.push(LineNumbers::cfg());
+//!     hook::remove("FileWidgets");
+//!     hook::add::<OnFileOpen>(|mut pa, builder| {
+//!         builder.push(&mut pa, VertRule::cfg());
+//!         builder.push(&mut pa, LineNumbers::cfg());
 //!     });
 //!
-//!     hooks::remove("WindowWidgets");
-//!     hooks::add::<OnWindowOpen>(|builder| {
+//!     hook::remove("WindowWidgets");
+//!     hook::add::<OnWindowOpen>(|mut pa, builder| {
 //!         let upper_mode = mode_name().map(|m| match m.split_once('<') {
 //!             Some((no_generics, _)) => no_generics.to_uppercase(),
 //!             None => m.to_uppercase(),
 //!         });
 //!         let status_line = status!(
-//!             [Mode] upper_mode Spacer file_fmt " " selections_fmt " " main_fmt
+//!             "[Mode]{upper_mode}{Spacer}{file_fmt}  {selections_fmt} {main_fmt}"
 //!         );
 //!
-//!         builder.push(status_line);
-//!         let (child, _) = builder.push(PromptLine::cfg());
-//!         builder.push_to(child, Notifier::cfg());
+//!         builder.push(&mut pa, status_line);
+//!         let (child, _) = builder.push(&mut pa, PromptLine::cfg());
+//!         builder.push_to(&mut pa, child, Notifier::cfg());
 //!     });
 //!
-//!     hooks::add::<ModeSwitched>(|(_, new)| match new {
+//!     hook::add::<ModeSwitched>(|_, (_, new)| match new {
 //!         "Insert" => cursor::set_main(CursorShape::SteadyBar),
 //!         _ => cursor::set_main(CursorShape::SteadyBlock)
 //!     });
@@ -160,12 +160,14 @@
 //!
 //! ```rust
 //! # use duat::prelude::*;
-//! hooks::add::<OnFileOpen>(|builder| {
-//!     builder.push(VertRule::cfg());
-//!     builder.push(LineNumbers::cfg());
-//!     builder.push(VertRule::cfg().on_the_right());
-//!     builder.push(LineNumbers::cfg().on_the_right());
+//! # fn test() {
+//! hook::add::<OnFileOpen>(|mut pa, builder| {
+//!     builder.push(&mut pa, VertRule::cfg());
+//!     builder.push(&mut pa, LineNumbers::cfg());
+//!     builder.push(&mut pa, VertRule::cfg().on_the_right());
+//!     builder.push(&mut pa, LineNumbers::cfg().on_the_right());
 //! });
+//! # }
 //! ```
 //!
 //! Now, every file will open with two lines of numbers, one on each
@@ -177,32 +179,19 @@
 //!
 //! ```rust
 //! # use duat::prelude::*;
-//! let text = text!([MyForm] "Waow it's my form!" [] " not anymore 😢");
+//! let text = text!("[MyForm]Waow it's my form![]not anymore 😢");
 //! ```
 //!
 //! In this example, I'm using the "MyForm" form in order to style the
-//! text, while `[]` reverts back to the "Default" form. The
-//! [`status!`] macro works similarly.
+//! text, while `[]` reverts back to the "Default" form. Double `[[`
+//! and `]]` escape the `[` and `]` The [`status!`] macro works
+//! similarly.
 //!
 //! Duat also has a simple command system, that lets you add commands
 //! with arguments supported by Rust's type system. As an example,
 //! this command will change the [numbering] of a [`LineNumbers`]
 //! widget, switching between absolute and relative numbering.
 //!
-//! ```rust
-//! # use duat::prelude::*;
-//! # fn test() -> Result<(), Text> {
-//! let callers = ["toggle-relative", "tr"];
-//! cmd::add_for!(callers, |line_numbers: LineNumbers<Ui>, _: Area| {
-//!     let opts = line_numbers.options_mut();
-//!     opts.num_rel = match opts.num_rel {
-//!         LineNum::Abs => LineNum::RelAbs,
-//!         LineNum::Rel | LineNum::RelAbs => LineNum::Abs,
-//!     };
-//!     Ok(None)
-//! })
-//! # }
-//! ```
 //! # Default plugins
 //!
 //! When you install duat, the default config crate will come with
@@ -620,7 +609,7 @@ pub mod prelude {
 
     pub use duat_core::{
         Plugin, clipboard, cmd,
-        data::{self, RwData},
+        data::{self, Pass, RwData},
         text::{
             self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, Text, err,
             hint, ok, text,

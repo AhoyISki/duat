@@ -1,7 +1,5 @@
 # duat ![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) [![duat on crates.io](https://img.shields.io/crates/v/duat)](https://crates.io/crates/duat) [![duat on docs.rs](https://docs.rs/duat/badge.svg)](https://docs.rs/duat)
 
-![A demonstration of live reloading, sorry for the awkwardness](assets/duat-demonstration.gif)
-
 Duat is a text editor meant to have as much modularity as
 possible, while keeping a sensible default configuration. It is
 written *and configured* in Rust, through the use of a
@@ -75,30 +73,30 @@ fn setup() {
     );
     map::<Insert>("jk", "<Esc>");
 
-    print::wrap_on_width();
+    print::wrap_on_edge();
 
-    hooks::remove("FileWidgets");
-    hooks::add::<OnFileOpen>(|builder| {
-        builder.push(VertRule::cfg());
-        builder.push(LineNumbers::cfg());
+    hook::remove("FileWidgets");
+    hook::add::<OnFileOpen>(|mut pa, builder| {
+        builder.push(&mut pa, VertRule::cfg());
+        builder.push(&mut pa, LineNumbers::cfg());
     });
 
-    hooks::remove("WindowWidgets");
-    hooks::add::<OnWindowOpen>(|builder| {
+    hook::remove("WindowWidgets");
+    hook::add::<OnWindowOpen>(|mut pa, builder| {
         let upper_mode = mode_name().map(|m| match m.split_once('<') {
             Some((no_generics, _)) => no_generics.to_uppercase(),
             None => m.to_uppercase(),
         });
         let status_line = status!(
-            [Mode] upper_mode Spacer file_fmt " " selections_fmt " " main_fmt
+            "[Mode]{upper_mode}{Spacer}{file_fmt}  {selections_fmt} {main_fmt}"
         );
 
-        builder.push(status_line);
-        let (child, _) = builder.push(PromptLine::cfg());
-        builder.push_to(child, Notifier::cfg());
+        builder.push(&mut pa, status_line);
+        let (child, _) = builder.push(&mut pa, PromptLine::cfg());
+        builder.push_to(&mut pa, child, Notifier::cfg());
     });
 
-    hooks::add::<ModeSwitched>(|(_, new)| match new {
+    hook::add::<ModeSwitched>(|_, (_, new)| match new {
         "Insert" => cursor::set_main(CursorShape::SteadyBar),
         _ => cursor::set_main(CursorShape::SteadyBlock)
     });
@@ -128,11 +126,11 @@ These are some of the ways you can configure Duat. You might
 notice some things that can be done with these simple options:
 
 ```rust
-hooks::add::<OnFileOpen>(|builder| {
-    builder.push(VertRule::cfg());
-    builder.push(LineNumbers::cfg());
-    builder.push(VertRule::cfg().on_the_right());
-    builder.push(LineNumbers::cfg().on_the_right());
+hook::add::<OnFileOpen>(|mut pa, builder| {
+    builder.push(&mut pa, VertRule::cfg());
+    builder.push(&mut pa, LineNumbers::cfg());
+    builder.push(&mut pa, VertRule::cfg().on_the_right());
+    builder.push(&mut pa, LineNumbers::cfg().on_the_right());
 });
 ```
 
@@ -144,30 +142,18 @@ Duat also comes with a fully fledged [text creation system][__link19], which
 significantly eases the creation of widgets:
 
 ```rust
-let text = text!([MyForm] "Waow it's my form!" [] " not anymore 😢");
+let text = text!("[MyForm]Waow it's my form![]not anymore 😢");
 ```
 
 In this example, I’m using the “MyForm” form in order to style the
-text, while `[]` reverts back to the “Default” form. The
-[`status!`][__link20] macro works similarly.
+text, while `[]` reverts back to the “Default” form. Double `[[`
+and `]]` escape the `[` and `]` The [`status!`][__link20] macro works
+similarly.
 
 Duat also has a simple command system, that lets you add commands
 with arguments supported by Rust’s type system. As an example,
 this command will change the [numbering][__link21] of a [`LineNumbers`][__link22]
 widget, switching between absolute and relative numbering.
-
-```rust
-let callers = ["toggle-relative", "tr"];
-cmd::add_for!(callers, |line_numbers: LineNumbers<Ui>, _: Area| {
-    let mut cfg = line_numbers.get_cfg();
-    cfg.num_rel = match cfg.num_rel {
-        LineNum::Abs => LineNum::RelAbs,
-        LineNum::Rel | LineNum::RelAbs => LineNum::Abs,
-    };
-    line_numbers.reconfigure(cfg);
-    Ok(None)
-})
-```
 
 ## Default plugins
 
@@ -281,36 +267,36 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG4ysAf6L-P22G-wkJ6ftft6UG9oI6bTlZhiMGwH1lSsIIYOvYWSBgmRkdWF0ZTAuMy4x
- [__link0]: https://docs.rs/duat/0.3.1/duat/?search=prelude::plug
- [__link1]: https://docs.rs/duat/0.3.1/duat/?search=prelude::mode::set_default
- [__link10]: https://docs.rs/duat/0.3.1/duat/?search=prelude::status
- [__link11]: https://docs.rs/duat/0.3.1/duat/?search=prelude::Spacer
- [__link12]: https://docs.rs/duat/0.3.1/duat/?search=prelude::mode_name
- [__link13]: https://docs.rs/duat/0.3.1/duat/?search=prelude::PromptLine
- [__link14]: https://docs.rs/duat/0.3.1/duat/?search=prelude::Notifier
- [__link15]: https://docs.rs/duat/0.3.1/duat/?search=prelude::hooks::add
- [__link16]: https://docs.rs/duat/0.3.1/duat/?search=prelude::hooks::ModeSwitched
- [__link17]: https://docs.rs/duat/0.3.1/duat/?search=form::set
- [__link18]: https://docs.rs/duat/0.3.1/duat/?search=prelude::form::Form
- [__link19]: https://docs.rs/duat/0.3.1/duat/?search=prelude::text::text
- [__link2]: https://docs.rs/duat/0.3.1/duat/?search=prelude::map
- [__link20]: https://docs.rs/duat/0.3.1/duat/?search=prelude::status
- [__link21]: https://docs.rs/duat/0.3.1/duat/?search=prelude::LineNum
- [__link22]: https://docs.rs/duat/0.3.1/duat/?search=prelude::LineNumbers
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEGziA7kbYHgnlG-vfd6DuQHlVGyMl0htJXqNLG_P61Z_0MrS9YWSBgmRkdWF0ZTAuNC4w
+ [__link0]: https://docs.rs/duat/0.4.0/duat/?search=prelude::plug
+ [__link1]: https://docs.rs/duat/0.4.0/duat/?search=prelude::mode::set_default
+ [__link10]: https://docs.rs/duat/0.4.0/duat/?search=prelude::status
+ [__link11]: https://docs.rs/duat/0.4.0/duat/?search=prelude::Spacer
+ [__link12]: https://docs.rs/duat/0.4.0/duat/?search=prelude::mode_name
+ [__link13]: https://docs.rs/duat/0.4.0/duat/?search=prelude::PromptLine
+ [__link14]: https://docs.rs/duat/0.4.0/duat/?search=prelude::Notifier
+ [__link15]: https://docs.rs/duat/0.4.0/duat/?search=prelude::hooks::add
+ [__link16]: https://docs.rs/duat/0.4.0/duat/?search=prelude::hooks::ModeSwitched
+ [__link17]: https://docs.rs/duat/0.4.0/duat/?search=form::set
+ [__link18]: https://docs.rs/duat/0.4.0/duat/?search=prelude::form::Form
+ [__link19]: https://docs.rs/duat/0.4.0/duat/?search=prelude::text::text
+ [__link2]: https://docs.rs/duat/0.4.0/duat/?search=prelude::map
+ [__link20]: https://docs.rs/duat/0.4.0/duat/?search=prelude::status
+ [__link21]: https://docs.rs/duat/0.4.0/duat/?search=prelude::LineNum
+ [__link22]: https://docs.rs/duat/0.4.0/duat/?search=prelude::LineNumbers
  [__link23]: https://github.com/AhoyISki/duat-kak
  [__link24]: https://github.com/mawww/kakoune
  [__link25]: https://github.com/AhoyISki/duat-catppuccin
  [__link26]: https://catppuccin.com
- [__link27]: https://docs.rs/duat/0.3.1/duat/?search=prelude::Form
+ [__link27]: https://docs.rs/duat/0.4.0/duat/?search=prelude::Form
  [__link28]: https://github.com/AhoyISki/duat-treesitter
  [__link29]: https://tree-sitter.github.io/tree-sitter
- [__link3]: https://docs.rs/duat/0.3.1/duat/?search=prelude::print::wrap_on_width
- [__link30]: https://docs.rs/duat/0.3.1/duat/?search=prelude::plug
+ [__link3]: https://docs.rs/duat/0.4.0/duat/?search=prelude::print::wrap_on_width
+ [__link30]: https://docs.rs/duat/0.4.0/duat/?search=prelude::plug
  [__link31]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
- [__link4]: https://docs.rs/duat/0.3.1/duat/?search=prelude::hooks::remove
- [__link5]: https://docs.rs/duat/0.3.1/duat/?search=prelude::hooks::add_grouped
- [__link6]: https://docs.rs/duat/0.3.1/duat/?search=prelude::FileBuilder::push
- [__link7]: https://docs.rs/duat/0.3.1/duat/?search=prelude::VertRule
- [__link8]: https://docs.rs/duat/0.3.1/duat/?search=prelude::LineNumbers
- [__link9]: https://docs.rs/duat/0.3.1/duat/?search=prelude::hooks::remove
+ [__link4]: https://docs.rs/duat/0.4.0/duat/?search=prelude::hooks::remove
+ [__link5]: https://docs.rs/duat/0.4.0/duat/?search=prelude::hooks::add_grouped
+ [__link6]: https://docs.rs/duat/0.4.0/duat/?search=prelude::FileBuilder::push
+ [__link7]: https://docs.rs/duat/0.4.0/duat/?search=prelude::VertRule
+ [__link8]: https://docs.rs/duat/0.4.0/duat/?search=prelude::LineNumbers
+ [__link9]: https://docs.rs/duat/0.4.0/duat/?search=prelude::hooks::remove

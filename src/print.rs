@@ -2,7 +2,8 @@
 //!
 //! [`File`]: crate::widgets::File
 #[allow(unused_imports)]
-use duat_core::cfg::{PrintCfg, WordChars, word_chars as w_chars};
+use duat_core::cfg::word_chars as w_chars;
+pub use duat_core::cfg::{PrintCfg, WordChars};
 
 use crate::setup::PRINT_CFG;
 
@@ -137,16 +138,18 @@ pub fn scrolloff(x: u8, y: u8) {
 /// The syntax is as follows:
 ///
 /// ```rust
-/// # use duat_core::cfg::word_chars;
-/// let word_chars = worc_chars!('a'-'z''A'-'Z''0'-'9''-'-'-''_'-'_');
+/// # use duat::print::word_chars;
+/// word_chars!('a'-'z''A'-'Z''0'-'9''-'-'-''_'-'_');
 /// ```
 pub macro word_chars($($w_chars:tt)+) {
-    word_chars(w_chars!($($w_chars:tt)+))
+    set_word_chars(w_chars!($($w_chars)+))
 }
 
+/// Sets the [`WordChars`]
+#[doc(hidden)]
 #[allow(dead_code)]
 #[inline(never)]
-pub(crate) fn word_chars(word_chars: WordChars) {
+pub fn set_word_chars(word_chars: WordChars) {
     let mut print_cfg = PRINT_CFG.write().unwrap();
     let prev = print_cfg.take();
 

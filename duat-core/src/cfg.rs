@@ -135,7 +135,7 @@ pub struct ScrollOff {
 /// given [`WrapMethod::Word`], or how many characters should be
 /// included in certain Vim/Neovim/Kakoune/Helix movements.
 #[derive(Clone, Copy, Debug)]
-pub struct WordChars(&'static LazyLock<(Regex, &'static [RangeInclusive<char>])>);
+pub struct WordChars(pub &'static LazyLock<(Regex, &'static [RangeInclusive<char>])>);
 
 impl WordChars {
     /// The default [`WordChars`]
