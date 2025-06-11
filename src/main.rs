@@ -69,7 +69,7 @@ fn main() {
                     paths,
                     ..
                 }) if paths.iter().any(|p| p.ends_with(".cargo-lock")) && sent_reload => {
-                    std::thread::sleep(std::time::Duration::from_millis(20));
+                    waiting_nap();
                     duat_tx.send(DuatEvent::ReloadConfig).unwrap();
                     sent_reload = false;
                 }
@@ -107,11 +107,12 @@ fn main() {
             if let Ok(out) = run_cargo(toml_path.clone(), true, true)
                 && out.status.success()
             {
+                waiting_nap();
                 let duat_tx = duat_tx.clone();
                 std::thread::spawn(move || {
                     // Also compile it in debug mode, to speed up recompilation.
                     run_cargo(toml_path, false, false).unwrap();
-                    let msg = hint!("Compiled [a]debug[] profile");
+                    let msg = hint!("Compiled [a]release[] profile");
                     duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
                 });
             } else {
@@ -200,6 +201,11 @@ fn run_cargo(toml_path: PathBuf, on_release: bool, print: bool) -> Result<Output
 
 fn find_run_duat(lib: &Dylib) -> Option<Symbol<RunFn>> {
     unsafe { lib.get::<RunFn>("run").ok() }
+}
+
+/// Time for the writing operations to finish or something.
+fn waiting_nap() {
+    std::thread::sleep(std::time::Duration::from_millis(20));
 }
 
 type RunFn = fn(
