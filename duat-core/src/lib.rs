@@ -398,9 +398,18 @@ pub trait Plugin<U: Ui>: Sized {
 pub mod prelude {
     //! The prelude of Duat
     pub use crate::{
-        cmd, data, form,
+        cmd::{self, Parameter},
+        context::{self, FileHandle},
+        data::{self, DataMap, Pass, RwData},
+        form::{self, Form, FormId},
+        hook::{
+            self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FocusedOn,
+            FormSet, Hook, Hookable, Hooks, KeysSent, KeysSentTo, ModeSetTo, ModeSwitched,
+            OnFileOpen, OnWindowOpen, SearchPerformed, SearchUpdated, UnfocusedFrom,
+        },
         text::{Builder, Text, err, hint, ok, text},
-        ui, widget,
+        ui::{PushSpecs, RawArea, Ui},
+        widget::{Widget, WidgetCfg},
     };
 }
 
@@ -441,7 +450,21 @@ pub mod clipboard {
     //! Just a regular clipboard, no image functionality.
     use std::sync::{Mutex, OnceLock};
 
-    pub use arboard::Clipboard;
+	/// A clipboard for Duat, can be platform based, or local
+    #[doc(hidden)]
+    pub enum Clipboard {
+        Platform(arboard::Clipboard),
+        Local(String),
+    }
+
+    impl Default for Clipboard {
+        fn default() -> Self {
+            match arboard::Clipboard::new() {
+                Ok(clipb) => Self::Platform(clipb),
+                Err(_) => Self::Local(String::new()),
+            }
+        }
+    }
 
     static CLIPB: OnceLock<&'static Mutex<Clipboard>> = OnceLock::new();
 
@@ -452,13 +475,20 @@ pub mod clipboard {
     ///
     /// Or if there is no clipboard i guess
     pub fn get_text() -> Option<String> {
-        CLIPB.get().unwrap().lock().unwrap().get_text().ok()
+        let mut clipb = CLIPB.get().unwrap().lock().unwrap();
+        match &mut *clipb {
+            Clipboard::Platform(clipb) => clipb.get_text().ok(),
+            Clipboard::Local(clipb) => Some(clipb.clone()).filter(String::is_empty),
+        }
     }
 
     /// Sets a [`String`] to the clipboard
     pub fn set_text(text: impl std::fmt::Display) {
-        let clipb = CLIPB.get().unwrap();
-        clipb.lock().unwrap().set_text(text.to_string()).unwrap();
+        let mut clipb = CLIPB.get().unwrap().lock().unwrap();
+        match &mut *clipb {
+            Clipboard::Platform(clipb) => clipb.set_text(text.to_string()).unwrap(),
+            Clipboard::Local(clipb) => *clipb = text.to_string(),
+        }
     }
 
     pub(crate) fn set_clipboard(clipb: &'static Mutex<Clipboard>) {

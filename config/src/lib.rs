@@ -87,19 +87,6 @@ fn setup() {
     // // See what happens when you uncomment this hook removal:
     // hook::remove("HidePromptLine");
 
-    // This hook will change the color of Kitty as
-    // the ColorScheme is altered.
-    hook::add::<ColorSchemeSet>(|_pa, scheme| {
-        let scheme = match scheme {
-            "catppuccin-latte" => "Catppuccin-Latte",
-            "catppuccin-frappe" => "Catppuccin-Frappe",
-            "catppuccin-macchiato" => "Catppuccin-Macchiato",
-            "catppuccin-mocha" => "Catppuccin-Mocha",
-            _ => return,
-        };
-        exec(format!("kitten themes {scheme}")).unwrap();
-    });
-
     //// Remapping
 
     // A command from Vim, derived from one from Kakoune.
