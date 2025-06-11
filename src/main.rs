@@ -37,62 +37,15 @@ fn main() {
     let (duat_tx, mut duat_rx) = mpsc::channel();
     let duat_tx = Box::leak(Box::new(duat_tx));
 
-    // Assert that the configuration crate actually exists.
-    // The watcher is returned as to not be dropped.
-    let (_watcher, crate_dir) = {
-        let Some(crate_dir) = duat_core::crate_dir().filter(|cd| cd.exists()) else {
-            let msg = err!("No config crate found, loading default config");
-            duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
-            pre_setup(duat_tx);
-            run_duat((&MS, &CLIPB), Vec::new(), duat_rx);
-            return;
-        };
-
-        std::fs::create_dir_all(crate_dir.join("target/debug")).unwrap();
-        std::fs::create_dir_all(crate_dir.join("target/release")).unwrap();
-
-        let mut watcher = notify::recommended_watcher({
-            let reload_tx = reload_tx.clone();
-            let duat_tx = duat_tx.clone();
-            let mut sent_reload = false;
-
-            move |res| match res {
-                Ok(Event { kind: EventKind::Create(_), paths, .. }) => {
-                    if let Some(so_path) = paths.iter().find(|p| p.ends_with("libconfig.so")) {
-                        let on_release = so_path.ends_with("release/libconfig.so");
-                        reload_tx.send((so_path.clone(), on_release)).unwrap();
-                        sent_reload = true;
-                    }
-                }
-                Ok(Event {
-                    kind: EventKind::Access(AccessKind::Close(AccessMode::Write)),
-                    paths,
-                    ..
-                }) if paths.iter().any(|p| p.ends_with(".cargo-lock")) && sent_reload => {
-                    waiting_nap();
-                    duat_tx.send(DuatEvent::ReloadConfig).unwrap();
-                    sent_reload = false;
-                }
-                _ => {}
-            }
-        })
-        .unwrap();
-        let debug_dir = crate_dir.join("target/debug");
-        let release_dir = crate_dir.join("target/release");
-        watcher.watch(&debug_dir, NonRecursive).unwrap();
-        watcher.watch(&release_dir, NonRecursive).unwrap();
-        (watcher, crate_dir)
-    };
-
-    if cfg!(debug_assertions) {
-        let toml_path = crate_dir.join("Cargo.toml");
-        if run_cargo(toml_path, false, true).is_err() {
-            let msg = err!("Failed to compile [a]config[] crate");
-            duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
-        }
-    }
-
     let mut prev = Vec::new();
+
+    let Some(crate_dir) = duat_core::crate_dir().filter(|cd| cd.exists()) else {
+        let msg = err!("No config crate found, loading default config");
+        duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
+        pre_setup(duat_tx);
+        run_duat((&MS, &CLIPB), Vec::new(), duat_rx);
+        return;
+    };
 
     let mut lib = {
         let so_path = crate_dir.join(if cfg!(debug_assertions) {
@@ -107,21 +60,20 @@ fn main() {
             if let Ok(out) = run_cargo(toml_path.clone(), true, true)
                 && out.status.success()
             {
-                waiting_nap();
-                let duat_tx = duat_tx.clone();
-                std::thread::spawn(move || {
-                    // Also compile it in debug mode, to speed up recompilation.
-                    run_cargo(toml_path, false, false).unwrap();
-                    let msg = hint!("Compiled [a]release[] profile");
-                    duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
-                });
+                let msg = ok!("Compiled [a]release[] profile");
+                duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
             } else {
                 let msg = err!("Failed to compile [a]release[] profile");
                 duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
             }
+            waiting_nap(20);
         }
         ElfLibrary::dlopen(so_path, DEFAULT_FLAGS).ok()
     };
+
+    // Assert that the configuration crate actually exists.
+    // The watcher is returned as to not be dropped.
+    let _watcher = spawn_watcher(reload_tx, duat_tx, crate_dir);
 
     Ui::open(&MS, ui::Sender::new(duat_tx));
 
@@ -156,6 +108,47 @@ fn main() {
     }
 
     Ui::close(&MS);
+}
+
+fn spawn_watcher(
+    reload_tx: mpsc::Sender<(PathBuf, bool)>,
+    duat_tx: &mut mpsc::Sender<DuatEvent>,
+    crate_dir: &'static std::path::Path,
+) -> (notify::INotifyWatcher, &'static std::path::Path) {
+    std::fs::create_dir_all(crate_dir.join("target/debug")).unwrap();
+    std::fs::create_dir_all(crate_dir.join("target/release")).unwrap();
+
+    let mut watcher = notify::recommended_watcher({
+        let reload_tx = reload_tx.clone();
+        let duat_tx = duat_tx.clone();
+        let mut sent_reload = false;
+
+        move |res| match res {
+            Ok(Event { kind: EventKind::Create(_), paths, .. }) => {
+                if let Some(so_path) = paths.iter().find(|p| p.ends_with("libconfig.so")) {
+                    let on_release = so_path.ends_with("release/libconfig.so");
+                    reload_tx.send((so_path.clone(), on_release)).unwrap();
+                    sent_reload = true;
+                }
+            }
+            Ok(Event {
+                kind: EventKind::Access(AccessKind::Close(AccessMode::Write)),
+                paths,
+                ..
+            }) if paths.iter().any(|p| p.ends_with(".cargo-lock")) && sent_reload => {
+                waiting_nap(20);
+                duat_tx.send(DuatEvent::ReloadConfig).unwrap();
+                sent_reload = false;
+            }
+            _ => {}
+        }
+    })
+    .unwrap();
+    let debug_dir = crate_dir.join("target/debug");
+    let release_dir = crate_dir.join("target/release");
+    watcher.watch(&debug_dir, NonRecursive).unwrap();
+    watcher.watch(&release_dir, NonRecursive).unwrap();
+    (watcher, crate_dir)
 }
 
 fn run_cargo(toml_path: PathBuf, on_release: bool, print: bool) -> Result<Output, std::io::Error> {
@@ -204,8 +197,8 @@ fn find_run_duat(lib: &Dylib) -> Option<Symbol<RunFn>> {
 }
 
 /// Time for the writing operations to finish or something.
-fn waiting_nap() {
-    std::thread::sleep(std::time::Duration::from_millis(20));
+fn waiting_nap(len: u64) {
+    std::thread::sleep(std::time::Duration::from_millis(len));
 }
 
 type RunFn = fn(
