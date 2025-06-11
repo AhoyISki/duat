@@ -39,6 +39,7 @@ fn main() {
 
     let mut prev = Vec::new();
 
+    // Assert that the configuration crate actually exists.
     let Some(crate_dir) = duat_core::crate_dir().filter(|cd| cd.exists()) else {
         let msg = err!("No config crate found, loading default config");
         duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
@@ -71,7 +72,6 @@ fn main() {
         ElfLibrary::dlopen(so_path, DEFAULT_FLAGS).ok()
     };
 
-    // Assert that the configuration crate actually exists.
     // The watcher is returned as to not be dropped.
     let _watcher = spawn_watcher(reload_tx, duat_tx, crate_dir);
 
