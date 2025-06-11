@@ -113,7 +113,7 @@ fn get_workspace_dir() -> Option<PathBuf> {
         r#"
         [workspace]
         resolver = "2"
-        members = ["*"]"
+        members = ["*"]
         exclude = ["lib", "target"]"#
     );
 
