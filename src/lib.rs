@@ -121,7 +121,7 @@
 //!             None => m.to_uppercase(),
 //!         });
 //!         let status_line = status!(
-//!             "[Mode]{upper_mode}{Spacer}{file_fmt}  {selections_fmt} {main_fmt}"
+//!             "[Mode]{upper_mode}{Spacer}{file_fmt} {selections_fmt} {main_fmt}"
 //!         );
 //!
 //!         builder.push(&mut pa, status_line);
