@@ -8,11 +8,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use arboard::Clipboard;
-
 use crate::{
     cache::{delete_cache, delete_cache_for, store_cache},
     cfg::PrintCfg,
+    clipboard::Clipboard,
     cmd,
     context::{self, sender},
     data::Pass,

@@ -28,7 +28,7 @@ use notify::{
 
 static MS: LazyLock<<Ui as ui::Ui>::MetaStatics> =
     LazyLock::new(<Ui as ui::Ui>::MetaStatics::default);
-static CLIPB: LazyLock<Mutex<Clipboard>> = LazyLock::new(|| Mutex::new(Clipboard::new().unwrap()));
+static CLIPB: LazyLock<Mutex<Clipboard>> = LazyLock::new(Mutex::default);
 
 fn main() {
     dlopen_rs::init();
