@@ -724,7 +724,7 @@ impl std::fmt::Debug for Bytes {
 
 impl PartialEq for Bytes {
     fn eq(&self, other: &Self) -> bool {
-        self.buf == other.buf
+        self.buf.as_slices() == other.buf.as_slices()
     }
 }
 
