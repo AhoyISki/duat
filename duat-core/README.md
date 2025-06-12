@@ -68,7 +68,7 @@ inspired, Emacs inspired, doesn’t matter. All the user has to do
 to use this mode is this:
 
 ```rust
-map::<Normal>("<C-s>", &FindSeq::default());
+map::<Normal>("<C-s>", FindSeq::default());
 ```
 
 And now, whenever the usert types `Control S` in `Normal` mode,
@@ -232,7 +232,7 @@ map::<Normal>("<CA-l>", &EasyMotion::line());
 ```
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEGz0hHR4LuaEPG-l3pgBXoCYXG5wH1cYwOxK-G5mXyaALATfoYWSBg2lkdWF0LWNvcmVlMC40LjBpZHVhdF9jb3Jl
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG0OmLlGHeMw5G5eFYjZphKZbGwhSAJAEF241GyyZv4gtQXFzYWSBg2lkdWF0LWNvcmVlMC40LjBpZHVhdF9jb3Jl
  [__link0]: https://docs.rs/duat-core/0.4.0/duat_core/?search=ui::Ui
  [__link1]: https://docs.rs/duat-core/0.4.0/duat_core/?search=mode::Mode
  [__link10]: https://docs.rs/duat-core/0.4.0/duat_core/?search=mode::Editor::move_to

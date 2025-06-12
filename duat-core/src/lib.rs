@@ -69,9 +69,9 @@
 //! # struct Normal;
 //! # #[derive(Default, Clone)]
 //! # struct FindSeq;
-//! # fn map<M>(take: &str, give: &impl std::any::Any) {}
+//! # fn map<M>(take: &str, give: impl std::any::Any) {}
 //! # // I fake it here because this function is from duat, not duat-core
-//! map::<Normal>("<C-s>", &FindSeq::default());
+//! map::<Normal>("<C-s>", FindSeq::default());
 //! ```
 //!
 //! And now, whenever the usert types `Control S` in `Normal` mode,
