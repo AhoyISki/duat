@@ -1,0 +1,64 @@
+name: "Feature Request"
+description: "Request a feature."
+title: "[Feat]: "
+labels: ["enhancement"]
+assignees:
+  - AhoyISki
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filling out this feature request!
+  - type: checkboxes
+    id: is-duat-related
+    attributes:
+      label: Is this feature request duat related? Or is it related to some plugin or extension?
+      description: |
+        For example, if you want something to do with syntax trees, your request should be on
+        [`duat-treesitter`](https://github.com/AhoyISki/duat-treesitter), and if you want some
+        additional keybindings, you should request that feature on the repository of the `Mode`
+        in use ([`duat-kak`](https://github.com/AhoyISki/duat-kak), for example).
+      options:
+        - label: Yes, it is most closely related to duat.
+          required: true
+        - label: I also checked, and this was not requested before.
+          required: true
+  - type: textarea
+    id: request
+    attributes:
+      label: What would you like?
+      placeholder: Duat not good enough
+    validations:
+      required: true
+  - type: dropdown
+    id: is-valid
+    attributes:
+      label: In your opinion, is this request valid?
+      description: |
+        Does this belong on the core crates of duat? Could it be implemented as a plugin?
+        Is it needlesly difficult to implement this as a plugin?
+        options:
+          - It belongs in duat, I think.
+          - It might be implementable as a plugin.
+          - I thought about it, and implementing it as a plugin seems too hard.
+    validations:
+      required: true
+  - type: dropdown
+    id: version
+    attributes:
+      label: "What version of duat are you using?"
+      description: "For now, the recommended version is the latest one from github."
+      options:
+        - "Latest from github"
+        - "Latest from crates.io"
+        - "Something else 🤨"
+      default: 0
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        If you installed with `--featues git-deps`, try running the `reload --clear` command inside duat.
+        That should remove the `~/.config/duat/target`, `~/.local/share/duat` and `~/.cache/duat` directories,
+        which should essentially rebuild the latest version of everything, while also removing potentially
+        incompatible cache entries. **NOTE** Rebuilding everything may take a little bit of time, so be patient.
