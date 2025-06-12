@@ -51,6 +51,11 @@ use std::{
     cell::{Cell, RefCell},
     marker::PhantomData,
     rc::Rc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
 };
 
 use crate::{cfg::PrintCfg, text::Text, ui::Ui, widget::Widget};
@@ -585,12 +590,12 @@ impl<T: ?Sized> RwData<T> {
 
     /// Replaces the [`Text`] of the [`Widget`], returning the
     /// previous value
-    pub fn replace_text<U>(&self, pa: &mut Pass, text: Text) -> Text
+    pub fn replace_text<U>(&self, pa: &mut Pass, text: impl Into<Text>) -> Text
     where
         T: Widget<U>,
         U: Ui,
     {
-        std::mem::replace(self.acquire_mut(pa).text_mut(), text)
+        std::mem::replace(self.acquire_mut(pa).text_mut(), text.into())
     }
 
     /// The [`PrintCfg`] of the [`Widget`]
@@ -716,6 +721,32 @@ impl<I: ?Sized + 'static, O: 'static> FnMut<(&Pass<'_>,)> for DataMap<I, O> {
 impl<I: ?Sized + 'static, O: 'static> Fn<(&Pass<'_>,)> for DataMap<I, O> {
     extern "rust-call" fn call(&self, (key,): (&Pass,)) -> Self::Output {
         self.data.read(key, |input| self.map.borrow_mut()(input))
+    }
+}
+
+/// A checking struct that periodically returns `true`
+pub struct PeriodicChecker(Arc<AtomicBool>);
+
+impl PeriodicChecker {
+    /// Returns a new [`PeriodicChecker`]
+    pub fn new(duration: Duration) -> Self {
+        let has_elapsed = Arc::new(AtomicBool::new(false));
+        std::thread::spawn({
+            let has_elapsed = has_elapsed.clone();
+            move || {
+                while !crate::context::will_reload_or_quit() {
+                    std::thread::sleep(duration);
+                    has_elapsed.store(true, Ordering::Relaxed);
+                }
+            }
+        });
+
+        Self(has_elapsed)
+    }
+
+    /// Checks if the requested [`Duration`] has elapsed
+    pub fn check(&self) -> bool {
+        self.0.fetch_and(false, Ordering::Relaxed)
     }
 }
 

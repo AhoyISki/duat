@@ -236,7 +236,7 @@ mod global {
 
     /// Sets us static variables that were created by leaking memory
     #[doc(hidden)]
-    pub unsafe fn setup_non_statics<U: Ui>(
+    pub unsafe fn setup_context<U: Ui>(
         cur_file: &'static CurFile<U>,
         cur_widget: &'static CurWidget<U>,
         cur_window: usize,

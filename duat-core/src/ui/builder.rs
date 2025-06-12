@@ -33,7 +33,7 @@ use crate::{
 /// #     widgets::{LineNumbers, Widget},
 /// # };
 /// # fn test<U: Ui>() {
-/// hooks::add::<OnFileOpen<U>>(|builder: &mut FileBuilder<U>| {
+/// hook::add::<OnFileOpen<U>>(|builder: &mut FileBuilder<U>| {
 ///     builder.push(LineNumbers::cfg());
 /// });
 /// # }
@@ -50,7 +50,7 @@ use crate::{
 /// #     widgets::{LineNumbers, Widget},
 /// # };
 /// # fn test<U: Ui>() {
-/// hooks::add::<OnFileOpen<U>>(|builder: &mut FileBuilder<U>| {
+/// hook::add::<OnFileOpen<U>>(|builder: &mut FileBuilder<U>| {
 ///     let line_numbers_cfg = LineNumbers::cfg().relative().on_the_right();
 ///     builder.push(line_numbers_cfg);
 /// });
@@ -64,7 +64,7 @@ use crate::{
 /// By default, there already exists a [hook group] that adds widgets
 /// to a file, the `"FileWidgets"` group. If you want to get rid of
 /// this group in order to create your own widget layout, you should
-/// use [`hooks::remove`]:
+/// use [`hook::remove`]:
 ///
 /// ```rust
 /// # use duat_core::{
@@ -73,8 +73,8 @@ use crate::{
 /// #     widgets::{PromptLine, LineNumbers, Widget, StatusLine},
 /// # };
 /// # fn test<U: Ui>() {
-/// hooks::remove("FileWidgets");
-/// hooks::add::<OnFileOpen<U>>(|builder: &mut FileBuilder<U>| {
+/// hook::remove("FileWidgets");
+/// hook::add::<OnFileOpen<U>>(|builder: &mut FileBuilder<U>| {
 ///     let line_numbers_cfg = LineNumbers::cfg().relative().on_the_right();
 ///     builder.push(line_numbers_cfg);
 ///     // Push a StatusLine to the bottom.
@@ -86,12 +86,12 @@ use crate::{
 /// ```
 ///
 /// [`File`]: crate::widgets::File
-/// [`OnFileOpen`]: crate::hooks::OnFileOpen
+/// [`OnFileOpen`]: crate::hook::OnFileOpen
 /// [`LineNumbers`]: crate::widgets::LineNumbers
 /// [relative]: crate::widgets::LineNumbersOptions::relative
 /// [absolute]: crate::widgets::LineNumbersOptions::absolute
-/// [hook group]: crate::hooks::add_grouped
-/// [`hooks::remove`]: crate::hooks::remove
+/// [hook group]: crate::hook::add_grouped
+/// [`hook::remove`]: crate::hook::remove
 pub struct FileBuilder<U: Ui> {
     window_i: usize,
     handle: FileHandle<U>,
@@ -140,8 +140,8 @@ impl<U: Ui> FileBuilder<U> {
     /// #     ui::{FileBuilder, Ui}, widgets::{File, LineNumbers, Widget, status},
     /// # };
     /// # fn test<U: Ui>() {
-    /// hooks::remove("FileWidgets");
-    /// hooks::add::<OnFileOpen<U>>(|builder: &mut FileBuilder<U>| {
+    /// hook::remove("FileWidgets");
+    /// hook::add::<OnFileOpen<U>>(|builder: &mut FileBuilder<U>| {
     ///     let line_numbers_cfg = LineNumbers::cfg().rel_abs();
     ///     builder.push(line_numbers_cfg);
     ///
@@ -212,8 +212,8 @@ impl<U: Ui> FileBuilder<U> {
     /// #     widgets::{PromptLine, File, LineNumbers, Notifier, Widget, status},
     /// # };
     /// # fn test<U: Ui>() {
-    /// hooks::remove("FileWidgets");
-    /// hooks::add::<OnFileOpen<U>>(|builder: &mut FileBuilder<U>| {
+    /// hook::remove("FileWidgets");
+    /// hook::add::<OnFileOpen<U>>(|builder: &mut FileBuilder<U>| {
     ///     builder.push(LineNumbers::cfg());
     ///     
     ///     let (child, _) = builder.push(
@@ -233,10 +233,10 @@ impl<U: Ui> FileBuilder<U> {
     /// ```rust
     /// # use duat_core::{hooks::{self, *}, widgets::PromptLine, ui::{Area, Constraint}};
     /// # fn test<Ui: duat_core::ui::Ui>() {
-    /// hooks::add_grouped::<UnfocusedFrom<PromptLine<Ui>, Ui>>("HidePromptLine", |(_, area)| {
+    /// hook::add_grouped::<UnfocusedFrom<PromptLine<Ui>, Ui>>("HidePromptLine", |(_, area)| {
     ///     area.constrain_ver([Constraint::Len(0.0)]).unwrap();
     /// });
-    /// hooks::add_grouped::<FocusedOn<PromptLine<Ui>, Ui>>("HidePromptLine", |(_, area)| {
+    /// hook::add_grouped::<FocusedOn<PromptLine<Ui>, Ui>>("HidePromptLine", |(_, area)| {
     ///     area.constrain_ver([Constraint::Ratio(1, 1), Constraint::Len(1.0)])
     ///         .unwrap();
     /// });
@@ -246,7 +246,7 @@ impl<U: Ui> FileBuilder<U> {
     /// [`File`]: crate::widgets::File
     /// [`Notifier`]: crate::widgets::Notifier
     /// [`PromptLine`]: crate::widgets::PromptLine
-    /// [hook group]: crate::hooks::add_grouped
+    /// [hook group]: crate::hook::add_grouped
     #[inline(never)]
     pub fn push_to<W: WidgetCfg<U>>(
         &mut self,
@@ -321,7 +321,7 @@ impl<U: Ui> FileBuilder<U> {
 /// #     widgets::{PromptLine, Widget, StatusLine},
 /// # };
 /// # fn test<U: Ui>() {
-/// hooks::add::<OnWindowOpen<U>>(|builder: &mut WindowBuilder<U>| {
+/// hook::add::<OnWindowOpen<U>>(|builder: &mut WindowBuilder<U>| {
 ///     // Push a StatusLine to the bottom.
 ///     builder.push(StatusLine::cfg());
 ///     // Push a PromptLine to the bottom.
@@ -346,14 +346,14 @@ impl<U: Ui> FileBuilder<U> {
 /// #     widgets::{PromptLine, LineNumbers, Widget, StatusLine},
 /// # };
 /// # fn test<U: Ui>() {
-/// hooks::remove("FileWidgets");
-/// hooks::add::<OnFileOpen<U>>(|builder| {
+/// hook::remove("FileWidgets");
+/// hook::add::<OnFileOpen<U>>(|builder| {
 ///     builder.push(LineNumbers::cfg());
 ///     builder.push(StatusLine::cfg());
 /// });
 ///
-/// hooks::remove("WindowWidgets");
-/// hooks::add::<OnWindowOpen<U>>(|builder| {
+/// hook::remove("WindowWidgets");
+/// hook::add::<OnWindowOpen<U>>(|builder| {
 ///     builder.push(PromptLine::cfg());
 /// });
 /// # }
@@ -368,8 +368,8 @@ impl<U: Ui> FileBuilder<U> {
 /// the whole window, and so on and so forth.
 ///
 /// [`File`]: crate::widgets::File
-/// [`OnFileOpen`]: crate::hooks::OnFileOpen
-/// [`OnWindowOpen`]: crate::hooks::OnWindowOpen
+/// [`OnFileOpen`]: crate::hook::OnFileOpen
+/// [`OnWindowOpen`]: crate::hook::OnWindowOpen
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [`PromptLine`]: crate::widgets::PromptLine
 pub struct WindowBuilder<U: Ui> {

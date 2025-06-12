@@ -265,6 +265,8 @@ impl<U: Ui> Session<U> {
                     DuatEvent::ReloadConfig => {
                         hook::trigger::<ConfigUnloaded>(&mut pa, ());
                         context::order_reload_or_quit();
+                        wait_for_threads_to_despawn();
+
                         self.save_cache(&mut pa, false);
                         let ms = self.ms;
                         let files = self.take_files(&mut pa);
@@ -275,6 +277,8 @@ impl<U: Ui> Session<U> {
                         hook::trigger::<ConfigUnloaded>(&mut pa, ());
                         hook::trigger::<ExitedDuat>(&mut pa, ());
                         context::order_reload_or_quit();
+                        wait_for_threads_to_despawn();
+
                         self.save_cache(&mut pa, true);
                         return (Vec::new(), duat_rx, None);
                     }
@@ -549,6 +553,12 @@ fn swap<U: Ui>(
     windows[lhs_w].insert_file_nodes(&mut *pa, lhs_lo, rhs_nodes);
 
     MutArea(lhs.area()).swap(rhs.area());
+}
+
+fn wait_for_threads_to_despawn() {
+    while thread_amount::thread_amount().unwrap().get() > 4 {
+        std::thread::sleep(std::time::Duration::from_millis(10))
+    }
 }
 
 pub struct FileRet {

@@ -30,6 +30,7 @@ lender = { version = "0.3.2", default-features = false }
 crossterm = { version = "0.29.0", default-features = false, features = ["events"] }
 format-like = "0.3.0"
 libloading = "0.8.8"
+thread-amount = "0.1.3"
 
 [features]
 # NOTE: Features meant for testing only by myself.

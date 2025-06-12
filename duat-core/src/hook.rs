@@ -8,7 +8,7 @@
 //! ```rust
 //! # use duat_core::{hooks::{self, *}, ui::Ui, widgets::{File, LineNumbers, Widget}};
 //! # fn test<U: Ui>() {
-//! hooks::add::<OnFileOpen<U>>(|builder| {
+//! hook::add::<OnFileOpen<U>>(|builder| {
 //!     builder.push(LineNumbers::cfg());
 //! });
 //! # }
@@ -137,10 +137,10 @@ mod global {
     /// Adds a [hook]
     ///
     /// This hook is ungrouped, that is, it cannot be removed. If you
-    /// want a hook that is removable, see [`hooks::add_grouped`].
+    /// want a hook that is removable, see [`hook::add_grouped`].
     ///
     /// [hook]: Hookable
-    /// [`hooks::add_grouped`]: add_grouped
+    /// [`hook::add_grouped`]: add_grouped
     #[inline(never)]
     pub fn add<H: Hookable>(f: impl FnMut(Pass, H::Args<'_>) -> H::Output + 'static) {
         context::assert_is_on_main_thread();
@@ -150,12 +150,12 @@ mod global {
     /// Adds a grouped [hook]
     ///
     /// A grouped hook is one that, along with others on the same
-    /// group, can be removed by [`hooks::remove`]. If you do
-    /// not need/want this feature, take a look at [`hooks::add`]
+    /// group, can be removed by [`hook::remove`]. If you do
+    /// not need/want this feature, take a look at [`hook::add`]
     ///
     /// [hook]: Hookable
-    /// [`hooks::remove`]: remove
-    /// [`hooks::add`]: add
+    /// [`hook::remove`]: remove
+    /// [`hook::add`]: add
     #[inline(never)]
     pub fn add_grouped<H: Hookable>(
         group: &'static str,
@@ -168,10 +168,10 @@ mod global {
     /// Removes a [hook] group
     ///
     /// By removing the group, this function will remove all hooks
-    /// added via [`hooks::add_grouped`] with the same group.
+    /// added via [`hook::add_grouped`] with the same group.
     ///
     /// [hook]: Hookable
-    /// [`hooks::add_grouped`]: add_grouped
+    /// [`hook::add_grouped`]: add_grouped
     pub fn remove(group: &'static str) {
         context::assert_is_on_main_thread();
         unsafe { HOOKS.get() }.remove(group);
@@ -179,13 +179,13 @@ mod global {
 
     /// Triggers a hooks for a [`Hookable`] struct
     ///
-    /// When you trigger a hook, all hooks added via [`hooks::add`] or
-    /// [`hooks::add_grouped`] for said [`Hookable`] struct will
+    /// When you trigger a hook, all hooks added via [`hook::add`] or
+    /// [`hook::add_grouped`] for said [`Hookable`] struct will
     /// be called.
     ///
     /// [hook]: Hookable
-    /// [`hooks::add`]: add
-    /// [`hooks::add_grouped`]: add_grouped
+    /// [`hook::add`]: add
+    /// [`hook::add_grouped`]: add_grouped
     #[inline(never)]
     pub fn trigger<H: Hookable>(pa: &mut Pass, args: H::Input) -> H::Output {
         context::assert_is_on_main_thread();
@@ -222,11 +222,11 @@ mod global {
     /// Checks if a give group exists
     ///
     /// Returns `true` if said group was added via
-    /// [`hooks::add_grouped`], and no [`hooks::remove`]
+    /// [`hook::add_grouped`], and no [`hook::remove`]
     /// followed these additions
     ///
-    /// [`hooks::add_grouped`]: add_grouped
-    /// [`hooks::remove`]: remove
+    /// [`hook::add_grouped`]: add_grouped
+    /// [`hook::remove`]: remove
     pub fn group_exists(group: &'static str) -> bool {
         context::assert_is_on_main_thread();
         unsafe { HOOKS.get() }.group_exists(group)

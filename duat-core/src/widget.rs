@@ -41,8 +41,8 @@
 //!
 //! [`duat-term`]: https://docs.rs/duat-term/latest/duat_term/
 //! [`VertRule`]: https://docs.rs/duat-term/latest/duat_term/struct.VertRule.html
-//! [`OnFileOpen`]: crate::hooks::OnFileOpen
-//! [`OnWindowOpen`]: crate::hooks::OnWindowOpen
+//! [`OnFileOpen`]: crate::hook::OnFileOpen
+//! [`OnWindowOpen`]: crate::hook::OnWindowOpen
 //! [`Constraint`]: crate::ui::Constraint
 use std::{self, cell::Cell, rc::Rc};
 
@@ -60,45 +60,40 @@ use crate::{
 /// An area where [`Text`] will be printed to the screen
 ///
 /// Most widgets are supposed to be passive widgets, that simply show
-/// information about the current state of Duat. If you want to see
-/// how to create a widget that takes in mode, see [`Mode`]
-///
-/// In order to show that information, widgets make use of [`Text`],
-/// which can show stylized text, buttons, and all sorts of other
-/// stuff.
+/// information about the current state of Duat. In order to
+/// show that information, widgets make use of [`Text`], which can
+/// show stylized text, buttons, and all sorts of other stuff. (For
+/// widgets that react to input, see the documentation for[`Mode`]).
 ///
 /// For a demonstration on how to create a widget, I will create a
 /// widget that shows the uptime, in seconds, for Duat.
 ///
 /// ```rust
-/// # use duat_core::text::Text;
-/// struct UpTime(Text);
+/// # use duat_core::{data::PeriodicChecker, text::Text};
+/// struct UpTime(Text, PeriodicChecker);
 /// ```
 ///
 /// In order to be a proper widget, it must have a [`Text`] to
-/// display. Next, I must implement [`Widget`]:
+/// display. The [`PeriodicChecker`] will be explained later. Next, I
+/// implement [`Widget`] on `UpTime`:
 ///
 /// ```rust
 /// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
-/// # use duat_core::{
-/// #     hooks, periodic_checker, text::Text, ui::{PushSpecs, Ui},
-/// #     widgets::{Widget, WidgetCfg},
-/// # };
-/// # struct UpTime(Text);
+/// # use duat_core::{data::PeriodicChecker, prelude::*};
+/// # struct UpTime(Text, PeriodicChecker);
 /// # struct UpTimeCfg<U>(PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
 /// #     type Widget = UpTime;
-/// #     fn build(self,_: bool) -> (Self::Widget, impl Fn() -> bool + 'static, PushSpecs) {
-/// #         (UpTime(Text::new()), || false, PushSpecs::below())
+/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+/// #         todo!();
 /// #     }
 /// # }
 /// impl<U: Ui> Widget<U> for UpTime {
 ///     type Cfg = UpTimeCfg<U>;
-///
 ///     fn cfg() -> Self::Cfg {
 ///         UpTimeCfg(PhantomData)
 ///     }
-///     // ...
+///     // more methods remain below
 /// #     fn text(&self) -> &Text {
 /// #         &self.0
 /// #     }
@@ -108,32 +103,34 @@ use crate::{
 /// #     fn once() -> Result<(), Text> {
 /// #         Ok(())
 /// #     }
+/// #     fn update(_: Pass, _: RwData<Self>, _: &U::Area) {}
+/// #     fn needs_update(&self) -> bool {
+/// #         todo!();
+/// #     }
 /// }
 /// ```
 ///
-/// Note the [`Cfg`](Widget::Cfg) type, and the [`cfg`] method.
-/// These exist to give the user the ability to modify the widgets
-/// before they are pushed. The `Cfg` type, which implements
-/// [`WidgetCfg`] is the thing that will actually construct the
-/// widget. Let's look at `UpTimeCfg`:
+/// Notice the `UpTimeCfg` defined as the `Widget::Cfg` for `UpTime`.
+/// [`WidgetCfg`]s  exist to let users push [`Widget`]s to [`File`]s
+/// and the window through the [`OnFileOpen`] and [`OnWindowOpen`]
+/// [hooks]. It lets users configure widgets through methods defined
+/// by the widget author.
 ///
 /// ```rust
 /// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
-/// # use duat_core::{
-/// #     hooks, periodic_checker, text::Text, ui::{PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
-/// # };
-/// # struct UpTime(Text);
+/// # use duat_core::{data::PeriodicChecker, prelude::*};
+/// # struct UpTime(Text, PeriodicChecker);
 /// struct UpTimeCfg<U>(PhantomData<U>);
 ///
 /// impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
 ///     type Widget = UpTime;
 ///
-///     fn build(self, on_file: bool) -> (UpTime, impl Fn() -> bool + 'static, PushSpecs) {
-///         let widget = UpTime(Text::new());
-///         let checker = periodic_checker(Duration::new(1, 0));
+///     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (UpTime, PushSpecs) {
+///         let checker = PeriodicChecker::new(std::time::Duration::from_secs(1));
+///         let widget = UpTime(Text::new(), checker);
 ///         let specs = PushSpecs::below().with_ver_len(1.0);
 ///
-///         (widget, checker, specs)
+///         (widget, specs)
 ///     }
 /// }
 /// # impl<U: Ui> Widget<U> for UpTime {
@@ -150,17 +147,17 @@ use crate::{
 /// #     fn once() -> Result<(), Text> {
 /// #         Ok(())
 /// #     }
+/// #     fn update(_: Pass, _: RwData<Self>, _: &U::Area) {}
+/// #     fn needs_update(&self) -> bool {
+/// #         todo!();
+/// #     }
 /// # }
 /// ```
 ///
 /// The [`build`] method should return 3 objects:
 ///
 /// * The widget itself.
-/// * A checker function that tells Duat when to update the widget.
 /// * [How] to push the widget into the [`File`]/window.
-///
-/// In this case, [`periodic_checker`] returns a function that returns
-/// `true` every `duration` that passes.
 ///
 /// Also, note that `UpTimeCfg` includes a [`PhantomData<U>`]. This is
 /// done so that the end user does not need to specify a [`Ui`] when
@@ -177,37 +174,37 @@ use crate::{
 ///
 /// ```rust
 /// # use std::{sync::OnceLock, time::Instant};
-/// # use duat_core::{hooks::{self, ConfigLoaded}, ui::Ui};
+/// # use duat_core::{hook::{self, ConfigLoaded}, ui::Ui};
 /// # fn test<U: Ui>() {
 /// static START_TIME: OnceLock<Instant> = OnceLock::new();
-/// hooks::add::<ConfigLoaded>(|_| START_TIME.set(Instant::now()).unwrap());
+/// hook::add::<ConfigLoaded>(|_, _| START_TIME.set(Instant::now()).unwrap());
 /// # }
 /// ```
 ///
-/// I could put this code inside the [`cfg`] method, however, by
-/// doing so, it will be called every time this widget is added to the
-/// ui.
+/// This should be added to the `setup` function in the `config`
+/// crate. Obviously, requiring that the end user adds a [hook] for
+/// your [`Widget`] to work is poor UX design, so this should be
+/// placed inside of a [`Plugin`] instead.
 ///
-/// Instead, I'll put it in [`Widget::once`]. This function is
-/// only triggered once, no matter how many times the widget is added
-/// to the ui:
+/// Next I'm going to implement two other [`Widget`] functions:
+/// [`once`] and [`update`]. The [`once`] function will do things that
+/// should only happen once, even if multiple of a given [`Widget`]
+/// are spawned. The [`update`] function is where the [`Text`] should
+/// be updated:
 ///
 /// ```rust
-/// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
-/// # use duat_core::{
-/// #     form::{self, Form}, hooks::{self, ConfigLoaded}, periodic_checker,
-/// #     text::Text, ui::{PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
-/// # };
-/// # struct UpTime(Text);
+/// # use std::{marker::PhantomData, sync::OnceLock, time::Instant};
+/// # use duat_core::{prelude::*, data::PeriodicChecker};
+/// # struct UpTime(Text, PeriodicChecker);
 /// # struct UpTimeCfg<U>(PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
 /// #     type Widget = UpTime;
-/// #     fn build(self, on_file: bool) -> (UpTime, impl Fn() -> bool + 'static, PushSpecs) {
-/// #         (UpTime(Text::new()), || false, PushSpecs::below())
+/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (UpTime, PushSpecs) {
+/// #         todo!()
 /// #     }
 /// # }
+/// // This was set during the `setup` function
 /// static START_TIME: OnceLock<Instant> = OnceLock::new();
-///
 /// impl<U: Ui> Widget<U> for UpTime {
 /// #     type Cfg = UpTimeCfg<U>;
 /// #     fn cfg() -> Self::Cfg {
@@ -219,64 +216,89 @@ use crate::{
 /// #     fn text_mut(&mut self) -> &mut Text {
 /// #         &mut self.0
 /// #     }
+/// #     fn needs_update(&self) -> bool {
+/// #         todo!();
+/// #     }
 ///     // ...
+///     fn update(mut pa: Pass, widget: RwData<Self>, _: &U::Area) {
+///         let start = START_TIME.get().unwrap();
+///         let elapsed = start.elapsed();
+///         let mins = elapsed.as_secs() / 60;
+///         let secs = elapsed.as_secs() % 60;
+///
+///         widget.replace_text::<U>(&mut pa, text!("[UpTime]{mins}m {secs}s"));
+///     }
+///
 ///     fn once() -> Result<(), Text> {
-///         hooks::add::<ConfigLoaded>(|_| {
-///             START_TIME.set(Instant::now()).unwrap()
-///         });
-///         form::set_weak("UpTime", Form::cyan());
+///         form::set("UpTime", Form::new().green());
 ///         Ok(())
 ///     }
 /// }
 /// ```
 ///
-/// I also added the `"UpTime"` [`Form`], which will be used by the
-/// widget when it is updated. When adding form, you should use the
-/// [`form::set_weak*`] functions, in order to not interfere with
-/// the configuration crate.
-///
-/// Next, I need to implement the [`update`] method, which will simply
-/// format the [`Text`] into a readable format:
+/// In the [`once`] function, I am setting the `"UpTime"` [`Form`],
+/// which is going to be used on the `UpTime`'s [`Text`]. Finally, the
+/// only thing that remains to be done is a function to check for
+/// updates: [`Widget::needs_update`]. That's where the
+/// [`PeriodicChecker`] comes in:
 ///
 /// ```rust
 /// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
-/// # use duat_core::{
-/// #     hooks, periodic_checker, text::{Text, text}, ui::{PushSpecs, Ui},
-/// #     widgets::{Widget, WidgetCfg},
-/// # };
-/// # struct UpTime(Text);
-/// # struct UpTimeCfg<U>(PhantomData<U>);
-/// # impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
-/// #     type Widget = UpTime;
-/// #     fn build(self, on_file: bool) -> (UpTime, impl Fn() -> bool + 'static, PushSpecs) {
-/// #         (UpTime(Text::new()), || false, PushSpecs::below())
-/// #     }
-/// # }
-/// # static START_TIME: OnceLock<Instant> = OnceLock::new();
+/// # use duat_core::{prelude::*, data::PeriodicChecker};
+///
+/// // This was set during the `setup` function
+/// static START_TIME: OnceLock<Instant> = OnceLock::new();
+///
+/// struct UpTime(Text, PeriodicChecker);
+///
 /// impl<U: Ui> Widget<U> for UpTime {
-/// #     type Cfg = UpTimeCfg<U>;
-/// #     fn cfg() -> Self::Cfg {
-/// #         UpTimeCfg(PhantomData)
-/// #     }
-/// #     fn text(&self) -> &Text {
-/// #         &self.0
-/// #     }
-/// #     fn text_mut(&mut self) -> &mut Text {
-/// #         &mut self.0
-/// #     }
-///     // ...
-///     fn update(&mut self, _area: &U::Area) {
-///         let Some(start) = START_TIME.get() else {
-///             return;
-///         };
-///         let duration = start.elapsed();
-///         let mins = duration.as_secs() / 60;
-///         let secs = duration.as_secs() % 60;
-///         self.0 = text!([UpTime] mins "m " secs "s");
+///     type Cfg = UpTimeCfg<U>;
+///     
+///     fn needs_update(&self) -> bool {
+///         // Returns `true` once per second
+///         self.1.check()
 ///     }
-///     // ...
+///
+///     fn update(mut pa: Pass, widget: RwData<Self>, _: &U::Area) {
+///         let start = START_TIME.get().unwrap();
+///         let elapsed = start.elapsed();
+///         let mins = elapsed.as_secs() / 60;
+///         let secs = elapsed.as_secs() % 60;
+///
+///         widget.replace_text::<U>(&mut pa, text!("[UpTime]{mins}m {secs}s"));
+///     }
+///     
+///     fn cfg() -> Self::Cfg {
+///         UpTimeCfg(PhantomData)
+///     }
+///
+///     // Some methods used in Duat
+///     fn text(&self) -> &Text {
+///         &self.0
+///     }
+///     
+///     fn text_mut(&mut self) -> &mut Text {
+///         &mut self.0
+///     }
+///
 ///     fn once() -> Result<(), Text> {
+///         form::set("UpTime", Form::new().green());
 ///         Ok(())
+///     }
+/// }
+///
+/// struct UpTimeCfg<U>(PhantomData<U>);
+///
+/// impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
+///     type Widget = UpTime;
+///     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (UpTime, PushSpecs) {
+///         // You could imagine how a method on `UpTimeCfg` could
+///         // change the periodicity
+///         let checker = PeriodicChecker::new(Duration::from_secs(1));
+///         let widget = UpTime(Text::new(), checker);
+///         let specs = PushSpecs::below().with_ver_len(1.0);
+///
+///         (widget, specs)
 ///     }
 /// }
 /// ```
@@ -285,14 +307,19 @@ use crate::{
 /// [`cfg`]: Widget::cfg
 /// [`build`]: WidgetCfg::build
 /// [How]: PushSpecs
-/// [`periodic_checker`]: crate::periodic_checker
+/// [`PeriodicChecker`]: crate::data::PeriodicChecker
+/// [`OnFileOpen`]: crate::hook::OnFileOpen
+/// [`OnWindowOpen`]: crate::hook::OnWindowOpen\
+/// [hooks]: crate::hook
 /// [`PhantomData<U>`]: std::marker::PhantomData
 /// [`Instant`]: std::time::Instant
-/// [`ConfigLoaded`]: crate::hooks::ConfigLoaded
+/// [`ConfigLoaded`]: crate::hook::ConfigLoaded
+/// [`once`]: Widget::once
 /// [`update`]: Widget::update
 /// [`Form`]: crate::form::Form
 /// [`form::set_weak*`]: crate::form::set_weak
 /// [`text!`]: crate::text::text
+/// [`Plugin`]: crate::Plugin
 pub trait Widget<U: Ui>: 'static {
     /// The configuration type
     type Cfg: WidgetCfg<U, Widget = Self>
@@ -345,11 +372,11 @@ pub trait Widget<U: Ui>: 'static {
     /// chunk of them, will require some code like this:
     ///
     /// ```rust
-    /// # use duat_core::{context::FileHandle, data::Pass, ui::Ui};
+    /// # use duat_core::prelude::*;
     /// # struct Cfg;
     /// # impl<U: Ui> WidgetCfg<U> for Cfg {
-    /// #     type Widget = MyWidget;
-    /// #     fn build(self, _: Pass, _: bool) -> (Self::Widget, PushSpecs) {
+    /// #     type Widget = MyWidget<U>;
+    /// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
     /// #         todo!();
     /// #     }
     /// # }
@@ -360,7 +387,7 @@ pub trait Widget<U: Ui>: 'static {
     /// #   fn cfg() -> Self::Cfg {
     /// #       todo!()
     /// #   }
-    /// #   fn update(_: Pass<'_>, _: RwData<Self>, _: &<U as Ui>::Area) {
+    /// #   fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {
     /// #       todo!()
     /// #   }
     /// #   fn text(&self) -> &Text {
@@ -369,7 +396,7 @@ pub trait Widget<U: Ui>: 'static {
     /// #   fn text_mut(&mut self) -> &mut Text {
     /// #       todo!()
     /// #   }
-    /// #   fn once() -> Result<(), Text>k {
+    /// #   fn once() -> Result<(), Text> {
     /// #       todo!()
     /// #   }
     ///     // ...
@@ -398,21 +425,60 @@ pub trait Widget<U: Ui>: 'static {
     /// these in [hooks] like [`OnFileOpen`]:
     ///
     /// ```rust
-    /// # use duat_core::{
-    /// #     hooks::{self, OnFileOpen}, ui::{FileBuilder, Ui},
-    /// #     widgets::{File, LineNumbers, Widget},
-    /// # };
+    /// # use duat_core::prelude::*;
+    /// # struct LineNumbers<U: Ui> {
+    /// #     _ghost: std::marker::PhantomData<U>,
+    /// # }
+    /// # impl<U: Ui> Widget<U> for LineNumbers<U> {
+    /// #     type Cfg = LineNumbersOptions<U>;
+    /// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+    /// #     fn needs_update(&self) -> bool {
+    /// #         todo!();
+    /// #     }
+    /// #     fn cfg() -> Self::Cfg {
+    /// #         todo!();
+    /// #     }
+    /// #     fn text(&self) -> &Text {
+    /// #         todo!();
+    /// #     }
+    /// #     fn text_mut(&mut self) -> &mut Text {
+    /// #         todo!();
+    /// #     }
+    /// #     fn once() -> Result<(), Text> {
+    /// #         Ok(())
+    /// #     }
+    /// # }
+    /// # struct LineNumbersOptions<U> {
+    /// #     _ghost: std::marker::PhantomData<U>,
+    /// # }
+    /// # impl<U> LineNumbersOptions<U> {
+    /// #     pub fn align_right(self) -> Self {
+    /// #         todo!();
+    /// #     }
+    /// #     pub fn align_main_left(self) -> Self {
+    /// #         todo!();
+    /// #     }
+    /// #     pub fn on_the_right(self) -> Self {
+    /// #         todo!();
+    /// #     }
+    /// # }
+    /// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
+    /// #     type Widget = LineNumbers<U>;
+    /// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    /// #         todo!();
+    /// #     }
+    /// # }
     /// # fn test<U: Ui>() {
-    /// hooks::remove("FileWidgets");
-    /// hooks::add::<OnFileOpen<U>>(|builder| {
+    /// hook::remove("FileWidgets");
+    /// hook::add::<OnFileOpen<U>>(|mut pa, builder| {
     ///     // Screw it, LineNumbers on both sides.
-    ///     builder.push(LineNumbers::cfg());
-    ///     builder.push(LineNumbers::cfg().on_the_right().align_right());
+    ///     builder.push(&mut pa, LineNumbers::cfg());
+    ///     builder.push(&mut pa, LineNumbers::cfg().on_the_right().align_right());
     /// });
     /// # }
     /// ```
     ///
-    /// [`OnFileOpen`]: crate::hooks::OnFileOpen
+    /// [`OnFileOpen`]: crate::hook::OnFileOpen
     fn cfg() -> Self::Cfg
     where
         Self: Sized;
@@ -464,19 +530,57 @@ pub trait Widget<U: Ui>: 'static {
 /// direction it will be pushed:
 ///
 /// ```rust
-/// # use duat_core::{
-/// #     hooks::{self, OnFileOpen},
-/// #     ui::Ui,
-/// #     widgets::{LineNumbers, Widget},
-/// # };
+/// # use duat_core::prelude::*;
+/// # struct LineNumbers<U: Ui> {
+/// #     _ghost: std::marker::PhantomData<U>,
+/// # }
+/// # impl<U: Ui> Widget<U> for LineNumbers<U> {
+/// #     type Cfg = LineNumbersOptions<U>;
+/// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+/// #     fn needs_update(&self) -> bool {
+/// #         todo!();
+/// #     }
+/// #     fn cfg() -> Self::Cfg {
+/// #         todo!();
+/// #     }
+/// #     fn text(&self) -> &Text {
+/// #         todo!();
+/// #     }
+/// #     fn text_mut(&mut self) -> &mut Text {
+/// #         todo!();
+/// #     }
+/// #     fn once() -> Result<(), Text> {
+/// #         Ok(())
+/// #     }
+/// # }
+/// # struct LineNumbersOptions<U> {
+/// #     _ghost: std::marker::PhantomData<U>,
+/// # }
+/// # impl<U> LineNumbersOptions<U> {
+/// #     pub fn align_right(self) -> Self {
+/// #         todo!();
+/// #     }
+/// #     pub fn align_main_left(self) -> Self {
+/// #         todo!();
+/// #     }
+/// #     pub fn on_the_right(self) -> Self {
+/// #         todo!();
+/// #     }
+/// # }
+/// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
+/// #     type Widget = LineNumbers<U>;
+/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+/// #         todo!();
+/// #     }
+/// # }
 /// # fn test<U: Ui>() {
-/// hooks::add::<OnFileOpen<U>>(|builder| {
+/// hook::add::<OnFileOpen<U>>(|mut pa, builder| {
 ///     // Change pushing direction to the right.
 ///     let cfg = LineNumbers::cfg().on_the_right();
 ///     // Changes to where the numbers will be placed.
 ///     let cfg = cfg.align_right().align_main_left();
 ///
-///     builder.push(cfg);
+///     builder.push(&mut pa, cfg);
 /// });
 /// # }
 /// ```
@@ -626,7 +730,7 @@ impl<U: Ui> Node<U> {
                 widget.text_mut().update_bounds();
             }
 
-			// Avoid calling the function if it is not needed
+            // Avoid calling the function if it is not needed
             if !(text_was_empty && widget.text().is_empty_empty()) {
                 widget.print(&self.area);
             }

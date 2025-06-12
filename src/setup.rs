@@ -50,7 +50,7 @@ pub fn pre_setup(duat_tx: &'static Sender<DuatEvent>) {
     // SAFETY: This function is supposed to be called only from the main
     // thread, this is that thread.
     unsafe {
-        duat_core::context::setup_non_statics::<Ui>(
+        duat_core::context::setup_context::<Ui>(
             cur_file,
             cur_widget,
             CUR_WINDOW.load(Ordering::Relaxed),

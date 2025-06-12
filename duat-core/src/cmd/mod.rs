@@ -642,7 +642,7 @@ mod global {
     ///     Ok(None)
     /// });
     ///
-    /// hooks::add::<OnWindowOpen<U>>(move |builder| {
+    /// hook::add::<OnWindowOpen<U>>(move |builder| {
     ///     let var = var.clone();
     ///     builder.push(status!("The value is currently " var));
     /// });
