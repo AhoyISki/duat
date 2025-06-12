@@ -14,7 +14,7 @@ body:
     attributes:
       label: Is this issue duat related? Or is it related to some plugin or extension?
       description: |
-        For example, if your issue is related to syntax highlighting, it is probably related
+        For example, if your issue is about syntax highlighting, it is probably related
         to [`duat-treesitter`](https://github.com/AhoyISki/duat-treesitter), not duat.      
       options:
         - label: Yes, it is most closely related to duat.
