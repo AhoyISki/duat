@@ -35,7 +35,7 @@ body:
         If you installed with `--featues git-deps`, try running the `reload --clear` command inside duat.
         That should remove the `~/.config/duat/target`, `~/.local/share/duat` and `~/.cache/duat` directories,
         which should essentially rebuild the latest version of everything, while also removing potentially
-        incompatible cache entries. *NOTE* Rebuilding everything may take a little bit of time, so be patient.
+        incompatible cache entries. **NOTE** Rebuilding everything may take a little bit of time, so be patient.
   - type: input
     id: os
     attributes:
