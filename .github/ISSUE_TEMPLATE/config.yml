@@ -1,7 +1,7 @@
 blank_issues_enabled: true
 
-name: Bug Report
-description: File a bug report.
+name: "Bug Report"
+description: "File a bug report."
 title: "[Bug]: "
 labels: ["bug"]
 assignees:
@@ -14,20 +14,20 @@ body:
   - type: textarea
     id: what-happened
     attributes:
-      label: What happened?
-      description: How did duat mess up this time? How did you expect duat _not_ to mess up?
-      placeholder: Duat bad
+      label: "What happened?"
+      description: "How did duat mess up this time? How did you expect duat _not_ to mess up?"
+      placeholder: "Duat bad"
     validations:
       required: true
   - type: dropdown
     id: version
     attributes:
-      label: Version
-      description: What version of duat are you using?
+      label: "What version of duat are you using?"
+      description: "For now, the recommended version is the latest one from github"
       options:
-        - Latest from github
-        - Latest from crates.io
-        - Something else 🤨
+        - "Latest from github"
+        - "Latest from crates.io"
+        - "Something else 🤨"
       default: 0
     validations:
       required: true
@@ -39,13 +39,13 @@ body:
         which should essentially rebuild the latest version of everything, while also removing potentially
         incompatible cache entries
   - type: input
-    id: browsers
+    id: os
     attributes:
-      label: What operating system(s) are you using?
+      label: "What operating system(s) are you using?"
       description: |
         Currently, support for OSX is spotty, and support for Windows is untested and likely not working
         outside of WSL.
-      placeholder: linux
-      value: linux
+      placeholder: "linux"
+      value: "linux"
     validations:
       required: true
