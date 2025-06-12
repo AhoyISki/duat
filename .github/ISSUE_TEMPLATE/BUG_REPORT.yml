@@ -17,7 +17,7 @@ body:
         For example, if your issue is related to syntax highlighting, it is probably related
         to [`duat-treesitter`](https://github.com/AhoyISki/duat-treesitter), not duat.      
       options:
-        - label: Yes, it is most closely related to duat
+        - label: Yes, it is most closely related to duat.
           required: true
   - type: textarea
     id: what-happened
