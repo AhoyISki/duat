@@ -1,5 +1,5 @@
-name: "Bug Report"
-description: "File a bug report."
+name: Bug Report
+description: File a bug report.
 title: "[Bug]: "
 labels: ["bug"]
 assignees:
@@ -9,23 +9,32 @@ body:
     attributes:
       value: |
         Thanks for filling out this bug report!
+  - type: checkbox
+    id: is-duat-related
+    attributes:
+      options: Is this issue duat related? Or is it related to some plugin or extension?
+  - type: markdown
+    attributes:
+      value: |
+        For example, if your issue is related to syntax highlighting, it is probably related
+        to [`duat-treesitter`](https://github.com/AhoyISki/duat-treesitter), not duat.
   - type: textarea
     id: what-happened
     attributes:
-      label: "What happened?"
-      description: "How did duat mess up this time? How did you expect duat _not_ to mess up?"
-      placeholder: "Duat bad"
+      label: What happened?
+      description: How did duat mess up this time? How did you expect duat _not_ to mess up?
+      placeholder: Duat bad
     validations:
       required: true
   - type: dropdown
     id: version
     attributes:
-      label: "What version of duat are you using?"
-      description: "For now, the recommended version is the latest one from github."
+      label: What version of duat are you using?
+      description: For now, the recommended version is the latest one from github.
       options:
-        - "Latest from github"
-        - "Latest from crates.io"
-        - "Something else 🤨"
+        - Latest from github
+        - Latest from crates.io
+        - Something else 🤨
       default: 0
     validations:
       required: true
@@ -39,11 +48,18 @@ body:
   - type: input
     id: os
     attributes:
-      label: "What operating system(s) are you using?"
+      label: What operating system(s) are you using?
       description: |
         Currently, support for OSX is spotty, and support for Windows is untested and likely not working
         outside of WSL.
-      placeholder: "linux"
-      value: "linux"
+      placeholder: linux
+      value: linux
     validations:
       required: true
+  - type: textarea
+    id: more-info
+    attributes:
+      label: Additional context
+      description: |
+        What other bits of information do you think are worth mentioning?
+      placeholder: Not much, hbu
