@@ -241,10 +241,10 @@
 //! #         Self
 //! #     }
 //! # }
-//! # fn map<M>(take: &str, give: &impl std::any::Any) {}
+//! # fn map<M>(take: &str, give: impl std::any::Any) {}
 //! # // I fake it here because this function is from duat, not duat-core
-//! map::<Normal>("<CA-w>", &EasyMotion::word());
-//! map::<Normal>("<CA-l>", &EasyMotion::line());
+//! map::<Normal>("<CA-w>", EasyMotion::word());
+//! map::<Normal>("<CA-l>", EasyMotion::line());
 //! ```
 //!
 //! [`Mode`]: crate::mode::Mode

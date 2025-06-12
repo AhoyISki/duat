@@ -229,12 +229,12 @@ Now, in order to use this mode, it’s the exact same thing as
 
 ```rust
 #[derive(Clone)]
-map::<Normal>("<CA-w>", &EasyMotion::word());
-map::<Normal>("<CA-l>", &EasyMotion::line());
+map::<Normal>("<CA-w>", EasyMotion::word());
+map::<Normal>("<CA-l>", EasyMotion::line());
 ```
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG2v1JosfDy4WG7F9kWZsr4qdG4KxaOCrlygRG9XTpX8CxgoPYWSBg2lkdWF0LWNvcmVlMC40LjBpZHVhdF9jb3Jl
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG83QROZK5rwSGxrqRP3_vvBGG5Nk6hasOxIOG3-R7WMd6wgIYWSBg2lkdWF0LWNvcmVlMC40LjBpZHVhdF9jb3Jl
  [__link0]: https://docs.rs/duat-core/0.4.0/duat_core/?search=ui::Ui
  [__link1]: https://docs.rs/duat-core/0.4.0/duat_core/?search=mode::Mode
  [__link10]: https://docs.rs/duat-core/0.4.0/duat_core/?search=mode::Editor::move_to
