@@ -1,0 +1,50 @@
+blank_issues_enabled: true
+name: Bug Report
+description: File a bug report.
+title: "[Bug]: "
+labels: ["bug"]
+assignees:
+  - AhoyISki
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filling out this bug report!
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: How did duat mess up this time? How did you expect duat _not_ to mess up?
+      placeholder: Duat bad
+    validations:
+      required: true
+  - type: dropdown
+    id: version
+    attributes:
+      label: Version
+      description: What version of Duat are you using?
+      options:
+        - Latest from github
+        - Latest from crates.io
+        - Something else 🤨
+      default: 0
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        If you installed with `--featues git-deps`, try running the `reload --clear` command inside duat.
+        That should remove the `~/.config/duat/target`, `~/.local/share/duat` and `~/.cache/duat` directories,
+        which should essentially rebuild the latest version of everything, while also removing potentially
+        incompatible cache entries
+  - type: input
+    id: browsers
+    attributes:
+      label: What operating system(s) are you using?
+      description: |
+        Currently, support for OSX is spotty, and support for Windows is untested and likely not working
+        outside of WSL.
+      placeholder: linux
+      value: linux
+    validation:
+      required: true
