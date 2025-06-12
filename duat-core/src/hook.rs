@@ -6,7 +6,7 @@
 //! whenever said [`Hookable`] is triggered:
 //!
 //! ```rust
-//! # use duat_core::{hook::{self, *}, ui::Ui, widgets::{File, LineNumbers, Widget}};
+//! # use duat_core::{hook::{self, *}, ui::Ui, widget::{File, LineNumbers, Widget}};
 //! # fn test<U: Ui>() {
 //! hook::add::<OnFileOpen<U>>(|builder| {
 //!     builder.push(LineNumbers::cfg());
@@ -106,7 +106,7 @@
 //! done altering it.
 //!
 //! [`File`]: crate::file::File
-//! [`LineNumbers`]: crate::widgets::LineNumbers
+//! [`LineNumbers`]: crate::widget::LineNumbers
 //! [widget]: Widget
 //! [dyn Widget]: Widget
 //! [key]: KeyEvent
@@ -334,7 +334,7 @@ impl<U: Ui> Hookable for OnWindowOpen<U> {
 /// - The widget itself.
 /// - Its [area].
 ///
-/// [`Widget`]: crate::widgets::Widget
+/// [`Widget`]: crate::widget::Widget
 /// [area]: crate::ui::Area
 pub struct FocusedOn<W: Widget<U>, U: Ui>(PhantomData<(W, U)>);
 
@@ -373,7 +373,7 @@ impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
 /// - The widget itself.
 /// - Its [area].
 ///
-/// [`Widget`]: crate::widgets::Widget
+/// [`Widget`]: crate::widget::Widget
 /// [area]: crate::ui::Area
 pub struct UnfocusedFrom<W: Widget<U>, U: Ui>(PhantomData<(W, U)>);
 

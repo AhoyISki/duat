@@ -6,8 +6,8 @@
 //! This iterator is then used in a [`IncSearcher`] that can decide
 //! what to do with the results.
 //!
-//! [incremental search]: crate::widgets::IncSearch
-//! [`CmdLine`]: crate::widgets::CmdLine
+//! [incremental search]: crate::widget::IncSearch
+//! [`CmdLine`]: crate::widget::CmdLine
 //! [`IncSearcher`]: crate::mode::IncSearcher
 use std::{
     collections::HashMap,

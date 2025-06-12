@@ -1,7 +1,7 @@
 //! The primary data structure in Duat
 //!
 //! This struct is responsible for all of the text that will be
-//! printed to the screen, as well as any modifications of it.
+//! printed to the screen, as well as any modifications on it.
 //!
 //! The [`Text`] is a very versatile holder for characters, below is a
 //! list of some of its capabilities:
@@ -14,37 +14,41 @@
 //!   not actually part of the [`Text`], i.e., it can be easily
 //!   ignored by external modifiers (like an LSP or tree-sitter) of
 //!   the file, without any special checks;
-//! - Left/right/center alignment of output (although that is
+//! - [Left]/[right]/[center] alignment of output (although that is
 //!   implemented by the [`Ui`]);
-//! - The ability to undo/redo changes in the history;
+//! - [Spacers] for even more advanced alignment
+//! - The ability to [undo]/[redo] changes in the history;
 //! - In the future, button ranges that can interact with the mouse;
 //!
 //! The [`Text`] struct is created in two different ways:
 //!
 //! - By calling [`Text::new`] or one of its [`From`] implementations;
-//! - By building it with the [`text!`] macro;
+//! - By building it with the [`text!`] family of macros;
 //!
 //! The first method is recommended if you want a [`Text`] that will
-//! be modified by input. The only real example of this is the
-//! [`File`] widget.
+//! be modified by input. This is often the case if your [`Widget`] is
+//! some sort of text box, chief of which is the [`File`], which is
+//! the whole point of a text editor anyway.
 //!
 //! The second method is what should be used most of the time, as it
 //! lets you quickly create formatted [`Widget`]s/[`StatusLine`] parts
 //! in a very modular way:
 //!
 //! ```rust
-//! # use duat_core::text::{text, Text};
+//! # use duat_core::prelude::*;
 //! fn number_of_horses(count: usize) -> Text {
 //!     if count == 1 {
-//!         text!([HorseCount] 1 " " [Horses] "horse")
+//!         text!("[HorseCount]1[Horses] horse").build()
 //!     } else {
-//!         text!([HorseCount] count " " [Horses] "horses")
+//!         text!("[HorseCount]{count}[Horses] horses").build()
 //!     }
 //! }
 //! fn inlined_number_of_horses(count: usize) -> Text {
-//!     text!([HorseCount] count " " [Horses] {
+//!     text!(
+//!         "[HorseCount]{count} [Horses]{}",
 //!         if count == 1 { "horse" } else { "horses" }
-//!     })
+//!     )
+//!     .build()
 //! }
 //! ```
 //!
@@ -56,22 +60,31 @@
 //! functions:
 //!
 //! ```rust
-//! # use duat_core::text::{text, Text};
-//! let mut prompted = text!([Prompt] "type a key:");
+//! # use duat_core::prelude::*;
+//! let mut prompted = text!("[Prompt]type a key:").build();
 //! let end = prompted.len();
-//! prompted.replace_range((end, end), "a")
+//! prompted.replace_range(end..end, "a")
 //! ```
 //!
-//! These would be used mostly on the [`File`] widget and other whose
-//! [`Mode`]s make use of [`EditHelper`]s.
+//! A general rule of thumb for "too expensive" is this: if your
+//! [`Text`] can't scroll more than a few lines, it is not too
+//! expensive to rebuild. This way of editing the [`Text`] is mostly
+//! used on the [`File`] widget and other whose [`Mode`]s make use of
+//! [`EditHelper`]s.
 //!
+//! [Left]: AlignLeft
+//! [right]: AlignRight
+//! [center]: AlignCenter
+//! [Spacers]: Spacer
+//! [undo]: Text::undo
+//! [redo]: Text::redo
 //! [gap buffers]: gapbuf::GapBuffer
 //! [colored]: crate::form::Form
 //! [ghost text]: Ghost
 //! [`Ui`]: crate::ui::Ui
 //! [`File`]: crate::file::File
-//! [`Widget`]: crate::widgets::Widget
-//! [`StatusLine`]: crate::widgets::StatusLine
+//! [`Widget`]: crate::widget::Widget
+//! [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
 //! [`Mode`]: crate::mode::Mode
 //! [`EditHelper`]: crate::mode::EditHelper
 mod builder;
@@ -284,10 +297,10 @@ impl Text {
     /// If you want to iterate over them, you can do the following:
     ///
     /// ```rust
-    /// # use duat_core::text::{Point, Text};
+    /// # use duat_core::prelude::*;
     /// # let (p1, p2) = (Point::default(), Point::default());
     /// let text = Text::new();
-    /// text.strs((p1, p2)).flat_map(str::chars);
+    /// text.strs(p1..p2).flat_map(str::chars);
     /// ```
     ///
     /// Do note that you should avoid iterators like [`str::lines`],

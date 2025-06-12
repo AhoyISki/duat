@@ -29,15 +29,26 @@ use crate::{
 /// # use duat_core::text::{Text, hint};
 /// fn is_more_than_two(num: usize) -> Text {
 ///     let mut builder = Text::builder();
-///     hint!(builder, "The number " [*a] num [] " is ");
+///     builder.push(hint!("The number [a]{num}[] is"));
 ///     if num > 2 {
-///         hint!(builder, [*a] "more" [] " than 2.");
+///         builder.push(hint!("[a]more[] than 2."));
 ///     } else {
-///         hint!(builder, [*a] "not more" [] " than 2.");
+///         builder.push(hint!("[a]not more[] than 2."));
 ///     }
-///     builder.finish()
+///     builder.build()
 /// }
 /// ```
+///
+/// In the above call, you can see that `num` was interpolated, just
+/// like with [`println!`], there are also [`Form`]s being applied to
+/// the [`Text`]. Each `[]` pair denotes a [`Form`]. These pairs
+/// follow the following rule:
+///
+/// - `[]`: The default [`Form`], depends on which macro was called
+///   ([`err!`] uses `"DefaultErr"`, for example);
+/// - `[form_name]` will apply the `"form_name"` [`Form`]
+/// - `[a]`: Will apply the accent form (like with the default
+///   [`Form`], [`err!`] uses `"AccentErr"`, for example)
 ///
 /// [`impl Display`]: std::fmt::Display
 /// [tag]: AlignCenter
@@ -83,7 +94,7 @@ impl Builder {
     /// [`Form`]: crate::form::Form
     /// [builder]: Builder
     /// [`Builder::into::<Text>`]: Builder::into
-    /// [`Widget`]: crate::widgets::Widget
+    /// [`Widget`]: crate::widget::Widget
     /// [notify]: crate::context::notify
     pub fn build(mut self) -> Text {
         self.push_str("\n");

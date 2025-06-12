@@ -132,7 +132,7 @@ mod cursors;
 ///
 /// [`Mode`]: super::Mode
 /// [`Text`]: crate::text::Text
-/// [`PromptLine`]: crate::widgets::PromptLine
+/// [`PromptLine`]: crate::widget::PromptLine
 /// [`&mut Self::Widget`]: super::Mode::Widget
 /// [`Mode::send_key`]: super::Mode::send_key
 /// [key]: super::KeyEvent

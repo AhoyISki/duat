@@ -500,7 +500,7 @@ impl<U: Ui> FileHandle<U> {
     /// acquired after the last call to [`has_changed`].
     ///
     /// Some types like [`Text`], and traits like [`Widget`] offer
-    /// [`has_changed`](crate::widgets::Widget::has_changed) methods,
+    /// [`has_changed`](crate::widget::Widget::has_changed) methods,
     /// you should try to determine what parts to look for changes.
     ///
     /// Generally though, you can use this method to gauge that.

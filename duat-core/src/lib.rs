@@ -407,8 +407,11 @@ pub mod prelude {
             FormSet, Hook, Hookable, Hooks, KeysSent, KeysSentTo, ModeSetTo, ModeSwitched,
             OnFileOpen, OnWindowOpen, SearchPerformed, SearchUpdated, UnfocusedFrom,
         },
-        text::{Builder, Text, err, hint, ok, text},
-        ui::{PushSpecs, RawArea, Ui, FileBuilder, WindowBuilder, Constraint},
+        text::{
+            AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Key, Spacer, Text, err,
+            hint, ok, text, Point
+        },
+        ui::{Constraint, FileBuilder, PushSpecs, RawArea, Ui, WindowBuilder},
         widget::{Widget, WidgetCfg},
     };
 }
@@ -450,7 +453,7 @@ pub mod clipboard {
     //! Just a regular clipboard, no image functionality.
     use std::sync::{Mutex, OnceLock};
 
-	/// A clipboard for Duat, can be platform based, or local
+    /// A clipboard for Duat, can be platform based, or local
     #[doc(hidden)]
     pub enum Clipboard {
         Platform(arboard::Clipboard),
@@ -560,7 +563,7 @@ mod private_exports {
 // /// This is primarily used within [`WidgetCfg::build`], where a
 // /// `checker` must be returned in order to update the widget.
 // ///
-// /// [`WidgetCfg::build`]: crate::widgets::WidgetCfg::build
+// /// [`WidgetCfg::build`]: crate::widget::WidgetCfg::build
 //  pub fn periodic_checker(duration: Duration) -> impl Fn() -> bool {
 //     let check = Arc::new(AtomicBool::new(false));
 //     crate::thread::spawn({

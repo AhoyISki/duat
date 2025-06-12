@@ -26,18 +26,19 @@ static KEY_COUNT: AtomicU16 = AtomicU16::new(4);
 /// with eachother's work:
 ///
 /// ```rust
-/// use duat_core::{form, text::{text, Key, Tag}};
-/// let mut text = text!("This is text with no tags in it");
+/// # use duat_core::prelude::*;
+/// let mut text = text!("This is text with no tags in it").build();
 /// // This key will be used to modify text.
 /// let key1 = Key::new();
 ///
 /// let id = form::id_of!("Invisible");
 ///
-/// text.insert_tag(key1, Tag::Form(18..20, id, 0));
+/// // You can create an `impl Tag` directly from a `FormId`
+/// text.insert_tag(key1, 18..20, id.to_tag(0));
 ///
 /// assert_eq!(
 ///     text,
-///     text!("This is text with " [Invisible] "no" [] " tags in it")
+///     text!("This is text with [Invisible]no[] tags in it").build()
 /// );
 ///
 /// // key2 != key1, so it shouldn't be able to change what was done with key1.
@@ -46,7 +47,7 @@ static KEY_COUNT: AtomicU16 = AtomicU16::new(4);
 ///
 /// assert_eq!(
 ///     text,
-///     text!("This is text with " [Invisible] "no" [] " tags in it")
+///     text!("This is text with [Invisible]no[] tags in it").build()
 /// );
 /// ```
 ///

@@ -158,7 +158,7 @@
 //! need to be included and type anotated:
 //!
 //! ```rust
-//! # use duat_core::{cmd, widgets::{LineNumbers, LineNum}};
+//! # use duat_core::{cmd, widget::{LineNumbers, LineNum}};
 //! # fn test<U: duat_core::ui::Ui>() {
 //! cmd::add_for!("toggle-relative", |ln: LineNumbers<U>, _: U::Area| {
 //!     let opts = ln.options_mut();
@@ -632,7 +632,7 @@ mod global {
     /// # Examples
     ///
     /// ```rust
-    /// # use duat_core::{cmd, data::RwData, hook::{self, OnWindowOpen}, ui::Ui, widgets::status};
+    /// # use duat_core::{cmd, data::RwData, hook::{self, OnWindowOpen}, ui::Ui, widget::status};
     /// # fn test<U: Ui>() {
     /// let var = RwData::new(35);
     ///

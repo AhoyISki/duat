@@ -454,7 +454,7 @@ mod switch {
 /// # use std::marker::PhantomData;
 /// # use duat_core::{
 /// #     mode::{Mode, KeyEvent}, form::{self, Form},
-/// #     text::{text, Text}, ui::{PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
+/// #     text::{text, Text}, ui::{PushSpecs, Ui}, widget::{Widget, WidgetCfg},
 /// # };
 /// # #[derive(Default)]
 /// # struct Menu {
@@ -521,7 +521,7 @@ mod switch {
 /// # use std::marker::PhantomData;
 /// # use duat_core::{
 /// #     data::RwData, form::{self, Form}, text::{text, Text}, ui::{PushSpecs, Ui},
-/// #     widgets::{Widget, WidgetCfg},
+/// #     widget::{Widget, WidgetCfg},
 /// # };
 /// # #[derive(Default)]
 /// # struct Menu {
@@ -581,7 +581,7 @@ mod switch {
 /// # use std::marker::PhantomData;
 /// # use duat_core::{
 /// #     mode::{key, Cursors, Mode, KeyCode, KeyEvent}, form::{self, Form},
-/// #     text::{text, Text}, ui::{PushSpecs, Ui}, widgets::{Widget, WidgetCfg},
+/// #     text::{text, Text}, ui::{PushSpecs, Ui}, widget::{Widget, WidgetCfg},
 /// # };
 /// # #[derive(Default)]
 /// # struct Menu {

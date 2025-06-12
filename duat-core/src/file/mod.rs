@@ -9,7 +9,7 @@
 //! [`LineNumbers`] widget, that shows the numbers of the currently
 //! printed lines.
 //!
-//! [`LineNumbers`]: crate::widgets::LineNumbers
+//! [`LineNumbers`]: crate::widget::LineNumbers
 //! [`Cursor`]: crate::mode::Cursor
 //! [`History`]: crate::text::History
 use std::{fs, marker::PhantomData, path::PathBuf};

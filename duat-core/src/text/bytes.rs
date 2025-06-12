@@ -91,11 +91,11 @@ impl Bytes {
     /// If you want to iterate over them, you can do the following:
     ///
     /// ```rust
-    /// # use duat_core::text::{Point, Text};
+    /// # use duat_core::prelude::*;
     /// # let (p0, p1) = (Point::default(), Point::default());
     /// # let text = Text::new();
     /// let bytes = text.bytes();
-    /// bytes.strs((p0, p1)).flat_map(str::chars);
+    /// bytes.strs(p0..p1).flat_map(str::chars);
     /// ```
     ///
     /// Do note that you should avoid iterators like [`str::lines`],
