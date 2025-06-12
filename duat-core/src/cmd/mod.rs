@@ -304,7 +304,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         }
     })?;
 
-    add!(["quit-all!", "qa!"], |_dk| {
+    add!(["quit-all!", "qa!"], |_pa| {
         sender().send(DuatEvent::Quit).unwrap();
         Ok(None)
     })?;
@@ -432,13 +432,25 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         Ok(None)
     })?;
 
-    add!(["reload"], |_dk| {
-        let Some(toml_path) = crate::crate_dir()
-            .map(|config_dir| config_dir.join("Cargo.toml"))
-            .filter(|path| path.try_exists().is_ok_and(|exists| exists))
-        else {
-            return Err(err!("Cargo.toml was not found").build());
+    add!(["reload"], |_pa, flags: Flags| {
+        let Some(crate_dir) = crate::crate_dir() else {
+            return Err(err!("No config directory is set").build());
         };
+
+        let toml_path = crate_dir.join("Cargo.toml");
+        if let Ok(false) | Err(_) = toml_path.try_exists() {
+            return Err(err!("Cargo.toml was not found").build());
+        }
+
+        if flags.word("clear") {
+            let _ = std::fs::remove_dir_all(crate_dir.join("target"));
+            if let Some(cache_dir) = dirs_next::cache_dir() {
+                let _ = std::fs::remove_dir_all(cache_dir.join("duat"));
+            }
+            if let Some(local_dir) = dirs_next::data_local_dir() {
+                let _ = std::fs::remove_dir_all(local_dir.join("duat"));
+            }
+        }
 
         let mut cargo = std::process::Command::new("cargo");
         cargo.stdin(std::process::Stdio::null());
@@ -586,14 +598,14 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         Ok(Some(ok!("Swapped [a]{lhs}[] and [a]{rhs}").build()))
     })?;
 
-    add!("colorscheme", |_dk, scheme: ColorSchemeArg| {
+    add!("colorscheme", |_pa, scheme: ColorSchemeArg| {
         crate::form::set_colorscheme(scheme);
         Ok(Some(ok!("Set colorscheme to [a]{scheme}[]").build()))
     })?;
 
     add!(
         "set-form",
-        |_dk, name: FormName, colors: Between<0, 3, Color>| {
+        |_pa, name: FormName, colors: Between<0, 3, Color>| {
             let mut form = crate::form::Form::new();
             form.style.foreground_color = colors.first().cloned();
             form.style.background_color = colors.get(1).cloned();
@@ -655,7 +667,7 @@ mod global {
     /// [`StatusLine`]: crate::widget::StatusLine
     /// [`RwData`]: crate::data::RwData
     pub macro add(
-        $callers:expr, |$pa:ident $(: Pass)? $(, $arg:tt: $t:ty)* $(,)?| $f:block
+        $callers:expr, |$pa:ident $(: Pass)? $(, $arg:tt: $t:ty)* $(,)?| $f:tt
     ) {{
         #[allow(unused_variables, unused_mut)]
         let cmd = move |pa: $crate::data::Pass, mut args: Args| -> CmdResult {

@@ -653,7 +653,7 @@ pub fn src_crate<T: ?Sized + 'static>() -> &'static str {
 
 /// The path for the config crate of Duat
 pub fn crate_dir() -> Option<&'static Path> {
-    static CONFIG_DIR: LazyLock<Option<&Path>> = LazyLock::new(|| {
+    static CRATE_DIR: LazyLock<Option<&Path>> = LazyLock::new(|| {
         dirs_next::config_dir().map(|config_dir| {
             let path: &'static str = config_dir.join("duat").to_string_lossy().to_string().leak();
 
@@ -661,7 +661,7 @@ pub fn crate_dir() -> Option<&'static Path> {
             Path::new(path)
         })
     });
-    *CONFIG_DIR
+    *CRATE_DIR
 }
 
 /// The path for a plugin's auxiliary files
