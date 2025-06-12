@@ -556,8 +556,18 @@ fn swap<U: Ui>(
 }
 
 fn wait_for_threads_to_despawn() {
-    while thread_amount::thread_amount().unwrap().get() > 4 {
-        std::thread::sleep(std::time::Duration::from_millis(10))
+    loop {
+        if let Some(count) = thread_count::thread_count() {
+            if count.get() > 4 {
+                std::thread::sleep(std::time::Duration::from_millis(10))
+            } else {
+                break;
+            }
+        } else {
+            // Precautionary cushioning for when thread_amount is not supported.
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            break;
+        }
     }
 }
 
