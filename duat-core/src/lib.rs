@@ -231,7 +231,7 @@
 //!
 //! ```rust
 //! # struct Normal;
-//! #[derive(Clone)]
+//! # #[derive(Clone)]
 //! # pub struct EasyMotion;
 //! # impl EasyMotion {
 //! #     pub fn word() -> Self {
