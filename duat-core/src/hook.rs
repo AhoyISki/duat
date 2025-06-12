@@ -6,7 +6,7 @@
 //! whenever said [`Hookable`] is triggered:
 //!
 //! ```rust
-//! # use duat_core::{hooks::{self, *}, ui::Ui, widgets::{File, LineNumbers, Widget}};
+//! # use duat_core::{hook::{self, *}, ui::Ui, widgets::{File, LineNumbers, Widget}};
 //! # fn test<U: Ui>() {
 //! hook::add::<OnFileOpen<U>>(|builder| {
 //!     builder.push(LineNumbers::cfg());
@@ -46,7 +46,7 @@
 //! [`trigger`] is over:
 //!
 //! ```rust
-//! # use duat_core::hooks::{self, *};
+//! # use duat_core::hook::{self, *};
 //! struct CustomHook;
 //! impl Hookable for CustomHook {
 //!     type Args<'a> = usize;
@@ -63,7 +63,7 @@
 //! }
 //!
 //! let arg = 42;
-//! hooks::trigger::<CustomHook>(arg);
+//! hook::trigger::<CustomHook>(arg);
 //! println!("This will probably print before the trigger is over.");
 //! ```
 //!
@@ -73,7 +73,7 @@
 //!
 //! ```rust
 //! # fn args_from_pre_args(usize: &usize) -> usize { *usize }
-//! # use duat_core::hooks::{self, *};
+//! # use duat_core::hook::{self, *};
 //! struct NewHook;
 //! impl Hookable for NewHook {
 //!     // Some type derived from Self::PreArgs
@@ -105,7 +105,7 @@
 //! lets Duat immediately print the widget as soon as the hooks are
 //! done altering it.
 //!
-//! [`File`]: crate::widgets::File
+//! [`File`]: crate::file::File
 //! [`LineNumbers`]: crate::widgets::LineNumbers
 //! [widget]: Widget
 //! [dyn Widget]: Widget
@@ -291,7 +291,7 @@ impl Hookable for ExitedDuat {
 /// - The file [builder], which can be used to push widgets to the
 ///   file, and to eachother.
 ///
-/// [`File`]: crate::widgets::File
+/// [`File`]: crate::file::File
 /// [builder]: crate::ui::FileBuilder
 pub struct OnFileOpen<U: Ui>(PhantomData<U>);
 
@@ -443,7 +443,7 @@ impl Hookable for ModeSwitched {
 /// different options upon switching to modes, depending on things
 /// like the language of a [`File`].
 ///
-/// [`File`]: crate::widgets::File
+/// [`File`]: crate::file::File
 pub struct ModeSetTo<M: Mode<U>, U: Ui>(PhantomData<(M, U)>);
 
 impl<M: Mode<U>, U: Ui> Hookable for ModeSetTo<M, U> {
@@ -607,8 +607,8 @@ impl Hookable for SearchUpdated {
 /// - The path of the file
 /// - The number of bytes written to said file
 ///
-/// [`File::write`]: crate::widgets::File::write
-/// [`File::write_to`]: crate::widgets::File::write_to
+/// [`File::write`]: crate::file::File::write
+/// [`File::write_to`]: crate::file::File::write_to
 pub struct FileWritten;
 
 impl Hookable for FileWritten {
@@ -626,12 +626,12 @@ impl Hookable for FileWritten {
 ///
 /// Through this trait, Duat allows for custom hookable structs. With
 /// these structs, plugin creators can create their own custom hooks,
-/// and trigger them via [`hooks::trigger`].
+/// and trigger them via [`hook::trigger`].
 ///
 /// This further empowers an end user to customize the behaviour of
 /// Duat in the configuration crate.
 ///
-/// [`hooks::trigger`]: trigger
+/// [`hook::trigger`]: trigger
 pub trait Hookable: Sized + 'static {
     /// The arguments that should be passed to each [`Hook`]
     type Args<'a>;

@@ -632,7 +632,7 @@ mod global {
     /// # Examples
     ///
     /// ```rust
-    /// # use duat_core::{cmd, data::RwData, hooks::{self, OnWindowOpen}, ui::Ui, widgets::status};
+    /// # use duat_core::{cmd, data::RwData, hook::{self, OnWindowOpen}, ui::Ui, widgets::status};
     /// # fn test<U: Ui>() {
     /// let var = RwData::new(35);
     ///

@@ -84,9 +84,7 @@ use crate::{
 /// # struct UpTimeCfg<U>(PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
 /// #     type Widget = UpTime;
-/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
-/// #         todo!();
-/// #     }
+/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (UpTime, PushSpecs) { todo!() }
 /// # }
 /// impl<U: Ui> Widget<U> for UpTime {
 ///     type Cfg = UpTimeCfg<U>;
@@ -94,19 +92,11 @@ use crate::{
 ///         UpTimeCfg(PhantomData)
 ///     }
 ///     // more methods remain below
-/// #     fn text(&self) -> &Text {
-/// #         &self.0
-/// #     }
-/// #     fn text_mut(&mut self) -> &mut Text {
-/// #         &mut self.0
-/// #     }
-/// #     fn once() -> Result<(), Text> {
-/// #         Ok(())
-/// #     }
+/// #     fn text(&self) -> &Text { &self.0 }
+/// #     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
+/// #     fn once() -> Result<(), Text> { Ok(()) }
 /// #     fn update(_: Pass, _: RwData<Self>, _: &U::Area) {}
-/// #     fn needs_update(&self) -> bool {
-/// #         todo!();
-/// #     }
+/// #     fn needs_update(&self) -> bool { todo!(); }
 /// }
 /// ```
 ///
@@ -135,22 +125,12 @@ use crate::{
 /// }
 /// # impl<U: Ui> Widget<U> for UpTime {
 /// #     type Cfg = UpTimeCfg<U>;
-/// #     fn cfg() -> Self::Cfg {
-/// #         UpTimeCfg(PhantomData)
-/// #     }
-/// #     fn text(&self) -> &Text {
-/// #         &self.0
-/// #     }
-/// #     fn text_mut(&mut self) -> &mut Text{
-/// #         &mut self.0
-/// #     }
-/// #     fn once() -> Result<(), Text> {
-/// #         Ok(())
-/// #     }
+/// #     fn cfg() -> Self::Cfg { UpTimeCfg(PhantomData) }
+/// #     fn text(&self) -> &Text { &self.0 }
+/// #     fn text_mut(&mut self) -> &mut Text{ &mut self.0 }
+/// #     fn once() -> Result<(), Text> { Ok(()) }
 /// #     fn update(_: Pass, _: RwData<Self>, _: &U::Area) {}
-/// #     fn needs_update(&self) -> bool {
-/// #         todo!();
-/// #     }
+/// #     fn needs_update(&self) -> bool { todo!(); }
 /// # }
 /// ```
 ///
@@ -199,26 +179,16 @@ use crate::{
 /// # struct UpTimeCfg<U>(PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
 /// #     type Widget = UpTime;
-/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (UpTime, PushSpecs) {
-/// #         todo!()
-/// #     }
+/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (UpTime, PushSpecs) { todo!() }
 /// # }
 /// // This was set during the `setup` function
 /// static START_TIME: OnceLock<Instant> = OnceLock::new();
 /// impl<U: Ui> Widget<U> for UpTime {
 /// #     type Cfg = UpTimeCfg<U>;
-/// #     fn cfg() -> Self::Cfg {
-/// #         UpTimeCfg(PhantomData)
-/// #     }
-/// #     fn text(&self) -> &Text {
-/// #         &self.0
-/// #     }
-/// #     fn text_mut(&mut self) -> &mut Text {
-/// #         &mut self.0
-/// #     }
-/// #     fn needs_update(&self) -> bool {
-/// #         todo!();
-/// #     }
+/// #     fn cfg() -> Self::Cfg { UpTimeCfg(PhantomData) }
+/// #     fn text(&self) -> &Text { &self.0 }
+/// #     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
+/// #     fn needs_update(&self) -> bool { todo!(); }
 ///     // ...
 ///     fn update(mut pa: Pass, widget: RwData<Self>, _: &U::Area) {
 ///         let start = START_TIME.get().unwrap();
@@ -245,7 +215,6 @@ use crate::{
 /// ```rust
 /// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
 /// # use duat_core::{prelude::*, data::PeriodicChecker};
-///
 /// // This was set during the `setup` function
 /// static START_TIME: OnceLock<Instant> = OnceLock::new();
 ///
@@ -384,21 +353,11 @@ pub trait Widget<U: Ui>: 'static {
     ///
     /// impl<U: Ui> Widget<U> for MyWidget<U> {
     /// #   type Cfg = Cfg;
-    /// #   fn cfg() -> Self::Cfg {
-    /// #       todo!()
-    /// #   }
-    /// #   fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {
-    /// #       todo!()
-    /// #   }
-    /// #   fn text(&self) -> &Text {
-    /// #       todo!()
-    /// #   }
-    /// #   fn text_mut(&mut self) -> &mut Text {
-    /// #       todo!()
-    /// #   }
-    /// #   fn once() -> Result<(), Text> {
-    /// #       todo!()
-    /// #   }
+    /// #   fn cfg() -> Self::Cfg { todo!() }
+    /// #   fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) { todo!() }
+    /// #   fn text(&self) -> &Text { todo!() }
+    /// #   fn text_mut(&mut self) -> &mut Text { todo!() }
+    /// #   fn once() -> Result<(), Text> { todo!() }
     ///     // ...
     ///     fn needs_update(&self) -> bool {
     ///         self.0.has_changed()
@@ -426,41 +385,21 @@ pub trait Widget<U: Ui>: 'static {
     ///
     /// ```rust
     /// # use duat_core::prelude::*;
-    /// # struct LineNumbers<U: Ui> {
-    /// #     _ghost: std::marker::PhantomData<U>,
-    /// # }
+    /// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
     /// # impl<U: Ui> Widget<U> for LineNumbers<U> {
     /// #     type Cfg = LineNumbersOptions<U>;
     /// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
-    /// #     fn needs_update(&self) -> bool {
-    /// #         todo!();
-    /// #     }
-    /// #     fn cfg() -> Self::Cfg {
-    /// #         todo!();
-    /// #     }
-    /// #     fn text(&self) -> &Text {
-    /// #         todo!();
-    /// #     }
-    /// #     fn text_mut(&mut self) -> &mut Text {
-    /// #         todo!();
-    /// #     }
-    /// #     fn once() -> Result<(), Text> {
-    /// #         Ok(())
-    /// #     }
+    /// #     fn needs_update(&self) -> bool { todo!(); }
+    /// #     fn cfg() -> Self::Cfg { todo!() }
+    /// #     fn text(&self) -> &Text { todo!(); }
+    /// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
+    /// #     fn once() -> Result<(), Text> { Ok(()) }
     /// # }
-    /// # struct LineNumbersOptions<U> {
-    /// #     _ghost: std::marker::PhantomData<U>,
-    /// # }
+    /// # struct LineNumbersOptions<U>(std::marker::PhantomData<U>);
     /// # impl<U> LineNumbersOptions<U> {
-    /// #     pub fn align_right(self) -> Self {
-    /// #         todo!();
-    /// #     }
-    /// #     pub fn align_main_left(self) -> Self {
-    /// #         todo!();
-    /// #     }
-    /// #     pub fn on_the_right(self) -> Self {
-    /// #         todo!();
-    /// #     }
+    /// #     pub fn align_right(self) -> Self { todo!(); }
+    /// #     pub fn align_main_left(self) -> Self { todo!(); }
+    /// #     pub fn on_the_right(self) -> Self { todo!(); }
     /// # }
     /// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
     /// #     type Widget = LineNumbers<U>;

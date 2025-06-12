@@ -9,7 +9,12 @@
 //! This pushing to an unnamed, but known area makes the syntax for
 //! layout modification fairly minimal, with minimal boilerplate.
 //!
-//! [`File`]: crate::widgets::File
+//! *DO NOTE THAT THE EXAMPLES IN HERE USE WIDGETS FROM `duat-utils`*
+//!
+//! And because that is the case, in order to save space, the hidden
+//! doc code is complete gibberish, don't try to use that.
+//!
+//! [`File`]: crate::file::File
 use std::sync::Mutex;
 
 use super::{RawArea, Ui};
@@ -27,14 +32,27 @@ use crate::{
 /// question, and is only obtainable in a [`OnFileOpen`] hook:
 ///
 /// ```rust
-/// # use duat_core::{
-/// #     hooks::{self, OnFileOpen},
-/// #     ui::{FileBuilder, Ui},
-/// #     widgets::{LineNumbers, Widget},
-/// # };
+/// # use duat_core::prelude::*;
+/// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
+/// # impl<U: Ui> Widget<U> for LineNumbers<U> {
+/// #     type Cfg = LineNumbersOptions<U>;
+/// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+/// #     fn needs_update(&self) -> bool { todo!(); }
+/// #     fn cfg() -> Self::Cfg { todo!() }
+/// #     fn text(&self) -> &Text { todo!(); }
+/// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
+/// #     fn once() -> Result<(), Text> { Ok(()) }
+/// # }
+/// # struct LineNumbersOptions<U>(std::marker::PhantomData<U>);
+/// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
+/// #     type Widget = LineNumbers<U>;
+/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+/// #         todo!();
+/// #     }
+/// # }
 /// # fn test<U: Ui>() {
-/// hook::add::<OnFileOpen<U>>(|builder: &mut FileBuilder<U>| {
-///     builder.push(LineNumbers::cfg());
+/// hook::add::<OnFileOpen<U>>(|mut pa: Pass, builder: &mut FileBuilder<U>| {
+///     builder.push(&mut pa, LineNumbers::cfg());
 /// });
 /// # }
 /// ```
@@ -44,22 +62,38 @@ use crate::{
 /// change that:
 ///
 /// ```rust
-/// # use duat_core::{
-/// #     hooks::{self, OnFileOpen},
-/// #     ui::{FileBuilder, Ui},
-/// #     widgets::{LineNumbers, Widget},
-/// # };
+/// # use duat_core::prelude::*;
+/// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
+/// # impl<U: Ui> Widget<U> for LineNumbers<U> {
+/// #     type Cfg = LineNumbersOptions<U>;
+/// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+/// #     fn needs_update(&self) -> bool { todo!(); }
+/// #     fn cfg() -> Self::Cfg { todo!() }
+/// #     fn text(&self) -> &Text { todo!(); }
+/// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
+/// #     fn once() -> Result<(), Text> { Ok(()) }
+/// # }
+/// # struct LineNumbersOptions<U>(std::marker::PhantomData<U>);
+/// # impl<U> LineNumbersOptions<U> {
+/// #     pub fn relative(self) -> Self { todo!(); }
+/// #     pub fn on_the_right(self) -> Self { todo!(); }
+/// # }
+/// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
+/// #     type Widget = LineNumbers<U>;
+/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+/// #         todo!();
+/// #     }
+/// # }
 /// # fn test<U: Ui>() {
-/// hook::add::<OnFileOpen<U>>(|builder: &mut FileBuilder<U>| {
+/// hook::add::<OnFileOpen<U>>(|mut pa, builder| {
 ///     let line_numbers_cfg = LineNumbers::cfg().relative().on_the_right();
-///     builder.push(line_numbers_cfg);
+///     builder.push(&mut pa, line_numbers_cfg);
 /// });
 /// # }
 /// ```
 ///
 /// Note that I also made another change to the widget, it will now
-/// show [relative] numbers, instead of [absolute], like it usually
-/// does.
+/// show relative numbers, instead of absolute, like it usually does.
 ///
 /// By default, there already exists a [hook group] that adds widgets
 /// to a file, the `"FileWidgets"` group. If you want to get rid of
@@ -67,29 +101,46 @@ use crate::{
 /// use [`hook::remove`]:
 ///
 /// ```rust
-/// # use duat_core::{
-/// #     hooks::{self, OnFileOpen},
-/// #     ui::{FileBuilder, Ui},
-/// #     widgets::{PromptLine, LineNumbers, Widget, StatusLine},
-/// # };
+/// # use duat_core::prelude::*;
+/// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
+/// # impl<U: Ui> Widget<U> for LineNumbers<U> {
+/// #     type Cfg = LineNumbersOptions<U>;
+/// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+/// #     fn needs_update(&self) -> bool { todo!(); }
+/// #     fn cfg() -> Self::Cfg { todo!() }
+/// #     fn text(&self) -> &Text { todo!(); }
+/// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
+/// #     fn once() -> Result<(), Text> { Ok(()) }
+/// # }
+/// # struct LineNumbersOptions<U>(std::marker::PhantomData<U>);
+/// # impl<U> LineNumbersOptions<U> {
+/// #     pub fn relative(self) -> Self { todo!(); }
+/// #     pub fn on_the_right(self) -> Self { todo!(); }
+/// # }
+/// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
+/// #     type Widget = LineNumbers<U>;
+/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+/// #         todo!();
+/// #     }
+/// # }
+/// # type StatusLine<U> = LineNumbers<U>;
+/// # type PromptLine<U> = LineNumbers<U>;
 /// # fn test<U: Ui>() {
 /// hook::remove("FileWidgets");
-/// hook::add::<OnFileOpen<U>>(|builder: &mut FileBuilder<U>| {
+/// hook::add::<OnFileOpen<U>>(|mut pa, builder| {
 ///     let line_numbers_cfg = LineNumbers::cfg().relative().on_the_right();
-///     builder.push(line_numbers_cfg);
+///     builder.push(& mut pa, line_numbers_cfg);
 ///     // Push a StatusLine to the bottom.
-///     builder.push(StatusLine::cfg());
+///     builder.push(&mut pa, StatusLine::cfg());
 ///     // Push a PromptLine to the bottom.
-///     builder.push(PromptLine::cfg());
+///     builder.push(&mut pa, PromptLine::cfg());
 /// });
 /// # }
 /// ```
 ///
-/// [`File`]: crate::widgets::File
+/// [`File`]: crate::file::File
 /// [`OnFileOpen`]: crate::hook::OnFileOpen
-/// [`LineNumbers`]: crate::widgets::LineNumbers
-/// [relative]: crate::widgets::LineNumbersOptions::relative
-/// [absolute]: crate::widgets::LineNumbersOptions::absolute
+/// [`LineNumbers`]: https://crates.io/duat-utils/latest/duat_utils/wigets/struct.LineNumbers.html
 /// [hook group]: crate::hook::add_grouped
 /// [`hook::remove`]: crate::hook::remove
 pub struct FileBuilder<U: Ui> {
@@ -135,30 +186,47 @@ impl<U: Ui> FileBuilder<U> {
     /// Here's an example of such a layout:
     ///
     /// ```rust
-    /// # use duat_core::{
-    /// #     hooks::{self, OnFileOpen}, status::*,
-    /// #     ui::{FileBuilder, Ui}, widgets::{File, LineNumbers, Widget, status},
-    /// # };
+    /// # use duat_core::prelude::*;
+    /// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
+    /// # impl<U: Ui> Widget<U> for LineNumbers<U> {
+    /// #     type Cfg = LineNumbersOptions<U>;
+    /// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+    /// #     fn needs_update(&self) -> bool { todo!(); }
+    /// #     fn cfg() -> Self::Cfg { todo!() }
+    /// #     fn text(&self) -> &Text { todo!(); }
+    /// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
+    /// #     fn once() -> Result<(), Text> { Ok(()) }
+    /// # }
+    /// # struct LineNumbersOptions<U>(std::marker::PhantomData<U>);
+    /// # impl<U> LineNumbersOptions<U> {
+    /// #     pub fn rel_abs(self) -> Self { todo!(); }
+    /// # }
+    /// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
+    /// #     type Widget = LineNumbers<U>;
+    /// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    /// #         todo!();
+    /// #     }
+    /// # }
+    /// # macro_rules! status { ($str:literal) => { LineNumbers::cfg() } }
     /// # fn test<U: Ui>() {
     /// hook::remove("FileWidgets");
-    /// hook::add::<OnFileOpen<U>>(|builder: &mut FileBuilder<U>| {
+    /// hook::add::<OnFileOpen<U>>(|mut pa: Pass, builder: &mut FileBuilder<U>| {
     ///     let line_numbers_cfg = LineNumbers::cfg().rel_abs();
-    ///     builder.push(line_numbers_cfg);
+    ///     builder.push(&mut pa, line_numbers_cfg);
     ///
-    ///     let status_line_cfg = status!(file_fmt " " selections_fmt " " main_fmt);
-    ///     builder.push(status_line_cfg);
+    ///     let status_line_cfg = status!("{file_fmt} {selections_fmt} {main_fmt}");
+    ///     builder.push(&mut pa, status_line_cfg);
     /// });
     /// # }
     /// ```
     ///
     /// In this case, each file will have [`LineNumbers`] with
-    /// [`relative/absolute`] numbering, and a [`StatusLine`] showing
+    /// relative/absolute numbering, and a [`StatusLine`] showing
     /// the file's name and how many selections are in it.
     ///
-    /// [`File`]: crate::widgets::File
-    /// [`LineNumbers`]: crate::widgets::LineNumbers
-    /// [`relative/absolute`]: crate::widgets::LineNumbersOptions::rel_abs
-    /// [`StatusLine`]: crate::widgets::StatusLine
+    /// [`File`]: crate::file::File
+    /// [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
+    /// [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
     #[inline(never)]
     pub fn push<W: WidgetCfg<U>>(&mut self, pa: &mut Pass, cfg: W) -> (U::Area, Option<U::Area>) {
         run_once::<W::Widget, U>();
@@ -204,23 +272,41 @@ impl<U: Ui> FileBuilder<U> {
     /// widget.
     ///
     /// ```rust
-    /// # fn mode_fmt(file: &File) -> Text {
-    /// #     todo!();
+    /// # use duat_core::prelude::*;
+    /// # struct StatusLine<U: Ui>(std::marker::PhantomData<U>);
+    /// # impl<U: Ui> Widget<U> for StatusLine<U> {
+    /// #     type Cfg = StatusLineOptions<U>;
+    /// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+    /// #     fn needs_update(&self) -> bool { todo!(); }
+    /// #     fn cfg() -> Self::Cfg { todo!() }
+    /// #     fn text(&self) -> &Text { todo!(); }
+    /// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
+    /// #     fn once() -> Result<(), Text> { Ok(()) }
     /// # }
-    /// # use duat_core::{
-    /// #     hooks::{self, OnFileOpen}, text::Text, ui::{FileBuilder, Ui}, status::*,
-    /// #     widgets::{PromptLine, File, LineNumbers, Notifier, Widget, status},
-    /// # };
+    /// # struct StatusLineOptions<U>(std::marker::PhantomData<U>);
+    /// # impl<U> StatusLineOptions<U> {
+    /// #     pub fn left_ratioed(self, _: usize, _: usize) -> Self { todo!(); }
+    /// # }
+    /// # impl<U: Ui> WidgetCfg<U> for StatusLineOptions<U> {
+    /// #     type Widget = StatusLine<U>;
+    /// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    /// #         todo!();
+    /// #     }
+    /// # }
+    /// # type PromptLine<U> = StatusLine<U>;
+    /// # type Notifier<U> = StatusLine<U>;
+    /// # type LineNumbers<U> = StatusLine<U>;
+    /// # macro_rules! status { ($str:literal) => { StatusLine::cfg() } }
     /// # fn test<U: Ui>() {
     /// hook::remove("FileWidgets");
-    /// hook::add::<OnFileOpen<U>>(|builder: &mut FileBuilder<U>| {
-    ///     builder.push(LineNumbers::cfg());
-    ///     
-    ///     let (child, _) = builder.push(
-    ///         status!(file_fmt " " selections_fmt " " main_fmt)
-    ///     );
-    ///     let (child, _) = builder.push_to(child, PromptLine::cfg().left_ratioed(3, 5));
-    ///     builder.push_to(child, Notifier::cfg());
+    /// hook::add::<OnFileOpen<U>>(|mut pa: Pass, builder: &mut FileBuilder<U>| {
+    ///     builder.push(&mut pa, LineNumbers::cfg());
+    ///
+    ///     let status_cfg = status!("{file_fmt} {selections_fmt} {main_fmt}");
+    ///     let (child, _) = builder.push(&mut pa, status_cfg);
+    ///     let prompt_cfg = PromptLine::cfg().left_ratioed(3, 5);
+    ///     let (child, _) = builder.push_to(&mut pa, child, prompt_cfg);
+    ///     builder.push_to(&mut pa, child, Notifier::cfg());
     /// });
     /// # }
     /// ```
@@ -229,23 +315,45 @@ impl<U: Ui> FileBuilder<U> {
     /// they'll share a parent that holds only them. This can then be
     /// exploited by the `"HidePromptLine"` [hook group], which is
     /// defined as:
-    ///
     /// ```rust
-    /// # use duat_core::{hooks::{self, *}, widgets::PromptLine, ui::{Area, Constraint}};
-    /// # fn test<Ui: duat_core::ui::Ui>() {
-    /// hook::add_grouped::<UnfocusedFrom<PromptLine<Ui>, Ui>>("HidePromptLine", |(_, area)| {
-    ///     area.constrain_ver([Constraint::Len(0.0)]).unwrap();
-    /// });
-    /// hook::add_grouped::<FocusedOn<PromptLine<Ui>, Ui>>("HidePromptLine", |(_, area)| {
-    ///     area.constrain_ver([Constraint::Ratio(1, 1), Constraint::Len(1.0)])
-    ///         .unwrap();
-    /// });
+    /// # use duat_core::prelude::*;
+    /// # struct PromptLine<U: Ui>(std::marker::PhantomData<U>);
+    /// # impl<U: Ui> Widget<U> for PromptLine<U> {
+    /// #     type Cfg = PromptLineOptions<U>;
+    /// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+    /// #     fn needs_update(&self) -> bool { todo!(); }
+    /// #     fn cfg() -> Self::Cfg { todo!() }
+    /// #     fn text(&self) -> &Text { todo!(); }
+    /// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
+    /// #     fn once() -> Result<(), Text> { Ok(()) }
+    /// # }
+    /// # struct PromptLineOptions<U>(std::marker::PhantomData<U>);
+    /// # impl<U: Ui> WidgetCfg<U> for PromptLineOptions<U> {
+    /// #     type Widget = PromptLine<U>;
+    /// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    /// #         todo!();
+    /// #     }
+    /// # }
+    /// # fn test<U: duat_core::ui::Ui>() {
+    /// hook::add_grouped::<UnfocusedFrom<PromptLine<U>, U>>(
+    ///     "HidePromptLine",
+    ///     |_, (_, area)| {
+    ///         area.constrain_ver([Constraint::Len(0.0)]).unwrap();
+    ///     },
+    /// );
+    /// hook::add_grouped::<FocusedOn<PromptLine<U>, U>>(
+    ///     "HidePromptLine",
+    ///     |_, (_, area)| {
+    ///         area.constrain_ver([Constraint::Ratio(1, 1), Constraint::Len(1.0)])
+    ///             .unwrap();
+    ///     },
+    /// );
     /// # }
     /// ```
     ///
-    /// [`File`]: crate::widgets::File
-    /// [`Notifier`]: crate::widgets::Notifier
-    /// [`PromptLine`]: crate::widgets::PromptLine
+    /// [`File`]: crate::file::File
+    /// [`Notifier`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.Notifier.html
+    /// [`PromptLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
     /// [hook group]: crate::hook::add_grouped
     #[inline(never)]
     pub fn push_to<W: WidgetCfg<U>>(
@@ -278,7 +386,8 @@ impl<U: Ui> FileBuilder<U> {
     /// [`Mode`]s
     ///
     /// [`Tag`]: crate::text::Tag
-    /// [`Reader`]: crate::text::Reader
+    /// [`Text`]: crate::text::Text
+    /// [`Reader`]: crate::file::Reader
     /// [`Mode`]: crate::mode::Mode
     pub fn add_reader(&mut self, pa: &mut Pass, reader_cfg: impl ReaderCfg<U>) {
         self.handle.write(pa, |file, _| {
@@ -315,17 +424,31 @@ impl<U: Ui> FileBuilder<U> {
 /// happens whenever a new window is opened:
 ///
 /// ```rust
-/// # use duat_core::{
-/// #     hooks::{self, OnWindowOpen},
-/// #     ui::{Ui, WindowBuilder},
-/// #     widgets::{PromptLine, Widget, StatusLine},
-/// # };
+/// # use duat_core::prelude::*;
+/// # struct PromptLine<U: Ui>(std::marker::PhantomData<U>);
+/// # impl<U: Ui> Widget<U> for PromptLine<U> {
+/// #     type Cfg = PromptLineOptions<U>;
+/// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+/// #     fn needs_update(&self) -> bool { todo!(); }
+/// #     fn cfg() -> Self::Cfg { todo!() }
+/// #     fn text(&self) -> &Text { todo!(); }
+/// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
+/// #     fn once() -> Result<(), Text> { Ok(()) }
+/// # }
+/// # struct PromptLineOptions<U>(std::marker::PhantomData<U>);
+/// # impl<U: Ui> WidgetCfg<U> for PromptLineOptions<U> {
+/// #     type Widget = PromptLine<U>;
+/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+/// #         todo!();
+/// #     }
+/// # }
+/// # type StatusLine<U> = PromptLine<U>;
 /// # fn test<U: Ui>() {
-/// hook::add::<OnWindowOpen<U>>(|builder: &mut WindowBuilder<U>| {
+/// hook::add::<OnWindowOpen<U>>(|mut pa: Pass, builder: &mut WindowBuilder<U>| {
 ///     // Push a StatusLine to the bottom.
-///     builder.push(StatusLine::cfg());
+///     builder.push(&mut pa, StatusLine::cfg());
 ///     // Push a PromptLine to the bottom.
-///     builder.push(PromptLine::cfg());
+///     builder.push(&mut pa, PromptLine::cfg());
 /// });
 /// # }
 /// ```
@@ -340,21 +463,36 @@ impl<U: Ui> FileBuilder<U> {
 /// advanced choices on the layout:
 ///
 /// ```rust
-/// # use duat_core::{
-/// #     hooks::{self, OnFileOpen, OnWindowOpen},
-/// #     ui::{WindowBuilder, Ui},
-/// #     widgets::{PromptLine, LineNumbers, Widget, StatusLine},
-/// # };
+/// # use duat_core::prelude::*;
+/// # struct PromptLine<U: Ui>(std::marker::PhantomData<U>);
+/// # impl<U: Ui> Widget<U> for PromptLine<U> {
+/// #     type Cfg = PromptLineOptions<U>;
+/// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+/// #     fn needs_update(&self) -> bool { todo!(); }
+/// #     fn cfg() -> Self::Cfg { todo!() }
+/// #     fn text(&self) -> &Text { todo!(); }
+/// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
+/// #     fn once() -> Result<(), Text> { Ok(()) }
+/// # }
+/// # struct PromptLineOptions<U>(std::marker::PhantomData<U>);
+/// # impl<U: Ui> WidgetCfg<U> for PromptLineOptions<U> {
+/// #     type Widget = PromptLine<U>;
+/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+/// #         todo!();
+/// #     }
+/// # }
+/// # type StatusLine<U> = PromptLine<U>;
+/// # type LineNumbers<U> = PromptLine<U>;
 /// # fn test<U: Ui>() {
 /// hook::remove("FileWidgets");
-/// hook::add::<OnFileOpen<U>>(|builder| {
-///     builder.push(LineNumbers::cfg());
-///     builder.push(StatusLine::cfg());
+/// hook::add::<OnFileOpen<U>>(|mut pa, builder| {
+///     builder.push(&mut pa, LineNumbers::cfg());
+///     builder.push(&mut pa, StatusLine::cfg());
 /// });
 ///
 /// hook::remove("WindowWidgets");
-/// hook::add::<OnWindowOpen<U>>(|builder| {
-///     builder.push(PromptLine::cfg());
+/// hook::add::<OnWindowOpen<U>>(|mut pa, builder| {
+///     builder.push(&mut pa, PromptLine::cfg());
 /// });
 /// # }
 /// ```
@@ -367,11 +505,11 @@ impl<U: Ui> FileBuilder<U> {
 /// file, that shows different information from the status line for
 /// the whole window, and so on and so forth.
 ///
-/// [`File`]: crate::widgets::File
+/// [`File`]: crate::file::File
 /// [`OnFileOpen`]: crate::hook::OnFileOpen
 /// [`OnWindowOpen`]: crate::hook::OnWindowOpen
-/// [`StatusLine`]: crate::widgets::StatusLine
-/// [`PromptLine`]: crate::widgets::PromptLine
+/// [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
+/// [`PromptLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
 pub struct WindowBuilder<U: Ui> {
     window_i: usize,
     area: U::Area,
@@ -413,6 +551,7 @@ impl<U: Ui> WindowBuilder<U> {
     ///
     /// [widget]: Widget
     /// [cfg]: WidgetCfg
+    /// [`Area`]: crate::ui::Ui::Area
     #[inline(never)]
     pub fn push<W: WidgetCfg<U>>(&mut self, pa: &mut Pass, cfg: W) -> (U::Area, Option<U::Area>) {
         run_once::<W::Widget, U>();
@@ -442,15 +581,35 @@ impl<U: Ui> WindowBuilder<U> {
     /// status's area:
     ///
     /// ```rust
-    /// # use duat_core::{
-    /// #     ui::{Ui, WindowBuilder},
-    /// #     widgets::{PromptLine, Widget, StatusLine},
-    /// # };
-    /// # fn test<U: Ui>(builder: &mut WindowBuilder<U>) {
-    /// // StatusLine goes below by default
-    /// let (status_area, _) = builder.push(StatusLine::cfg());
-    /// let cmd_line_cfg = PromptLine::cfg().left_ratioed(3, 5);
-    /// builder.push_to(status_area, cmd_line_cfg);
+    /// # use duat_core::prelude::*;
+    /// # struct PromptLine<U: Ui>(std::marker::PhantomData<U>);
+    /// # impl<U: Ui> Widget<U> for PromptLine<U> {
+    /// #     type Cfg = PromptLineOptions<U>;
+    /// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+    /// #     fn needs_update(&self) -> bool { todo!(); }
+    /// #     fn cfg() -> Self::Cfg { todo!() }
+    /// #     fn text(&self) -> &Text { todo!(); }
+    /// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
+    /// #     fn once() -> Result<(), Text> { Ok(()) }
+    /// # }
+    /// # struct PromptLineOptions<U>(std::marker::PhantomData<U>);
+    /// # impl<U> PromptLineOptions<U> {
+    /// #     pub fn left_ratioed(self, _: usize, _: usize) -> Self { todo!(); }
+    /// # }
+    /// # impl<U: Ui> WidgetCfg<U> for PromptLineOptions<U> {
+    /// #     type Widget = PromptLine<U>;
+    /// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    /// #         todo!();
+    /// #     }
+    /// # }
+    /// # type StatusLine<U> = PromptLine<U>;
+    /// # fn test<U: Ui>() {
+    /// hook::add::<OnWindowOpen<U>>(|mut pa, builder| {
+    ///     // StatusLine goes below by default
+    ///     let (status_area, _) = builder.push(&mut pa, StatusLine::cfg());
+    ///     let prompt_cfg = PromptLine::cfg().left_ratioed(3, 5);
+    ///     builder.push_to(&mut pa, status_area, prompt_cfg);
+    /// });
     /// # }
     /// ```
     ///
@@ -466,12 +625,12 @@ impl<U: Ui> WindowBuilder<U> {
     /// ╰─────────────┴──────────────────────╯
     /// ```
     ///
-    /// This is the layout that Kakoune uses by default, and the
-    /// default for Duat as well.
+    /// This is the layout that Kakoune uses by default, and is also
+    /// avaliable as commented option in the default config.
     ///
     /// [`push`]: Self::push
-    /// [`StatusLine`]: crate::widgets::StatusLine
-    /// [`PromptLine`]: crate::widgets::PromptLine
+    /// [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
+    /// [`PromptLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
     #[inline(never)]
     pub fn push_to<W: WidgetCfg<U>>(
         &mut self,

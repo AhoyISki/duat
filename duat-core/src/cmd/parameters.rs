@@ -205,7 +205,7 @@ impl<'a> Parameter<'a> for ColorSchemeArg {
 
 /// Command [`Parameter`]: An open [`File`]'s name
 ///
-/// [`File`]: crate::widgets::File
+/// [`File`]: crate::file::File
 pub struct Buffer<U>(std::marker::PhantomData<U>);
 
 impl<'a, U: crate::ui::Ui> Parameter<'a> for Buffer<U> {
@@ -228,7 +228,7 @@ impl<'a, U: crate::ui::Ui> Parameter<'a> for Buffer<U> {
 
 /// Command [`Parameter`]: An open [`File`]'s name, except the current
 ///
-/// [`File`]: crate::widgets::File
+/// [`File`]: crate::file::File
 pub struct OtherFileBuffer<U>(std::marker::PhantomData<U>);
 
 impl<'a, U: crate::ui::Ui> Parameter<'a> for OtherFileBuffer<U> {
@@ -247,7 +247,7 @@ impl<'a, U: crate::ui::Ui> Parameter<'a> for OtherFileBuffer<U> {
 
 /// Command [`Parameter`]: A [`File`] whose parent is real
 ///
-/// [`File`]: crate::widgets::File
+/// [`File`]: crate::file::File
 pub struct PossibleFile;
 
 impl Parameter<'_> for PossibleFile {

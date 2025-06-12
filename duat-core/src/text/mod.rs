@@ -69,7 +69,7 @@
 //! [colored]: crate::form::Form
 //! [ghost text]: Ghost
 //! [`Ui`]: crate::ui::Ui
-//! [`File`]: crate::widgets::File
+//! [`File`]: crate::file::File
 //! [`Widget`]: crate::widgets::Widget
 //! [`StatusLine`]: crate::widgets::StatusLine
 //! [`Mode`]: crate::mode::Mode
@@ -694,7 +694,7 @@ impl Text {
     /// a one byte range.
     ///
     /// [key]: Keys
-    /// [`File`]: crate::widgets::File
+    /// [`File`]: crate::file::File
     pub fn remove_tags(&mut self, range: impl TextRangeOrPoint, keys: impl Keys) {
         let range = range.to_range(self.len().byte());
         self.0.tags.remove_from(range, keys)
@@ -706,7 +706,7 @@ impl Text {
     /// other [`Tag`] providers, and you should avoid messing with
     /// their tags.
     ///
-    /// [`File`]: crate::widgets::File
+    /// [`File`]: crate::file::File
     pub fn clear_tags(&mut self) {
         self.0.tags = Tags::new(self.0.bytes.len().byte());
     }

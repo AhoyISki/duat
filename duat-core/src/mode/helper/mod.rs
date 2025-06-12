@@ -33,7 +33,7 @@ mod cursors;
 /// mode for the [`File`] widget:
 ///
 /// ```rust
-/// # use duat_core::{mode::{EditHelper, Mode, KeyEvent, Cursors}, ui::Ui, widgets::File};
+/// # use duat_core::{mode::{EditHelper, Mode, KeyEvent, Cursors}, ui::Ui, file::File};
 /// /// A very basic example Mode.
 /// #[derive(Clone)]
 /// struct PlacesCharactersAndMoves;
@@ -62,7 +62,7 @@ mod cursors;
 ///
 /// ```rust
 /// # use duat_core::{
-/// #     mode::{key, Cursors, EditHelper, Mode, KeyCode, KeyEvent}, ui::Ui, widgets::File,
+/// #     mode::{key, Cursors, EditHelper, Mode, KeyCode, KeyEvent}, ui::Ui, file::File,
 /// # };
 /// # #[derive(Clone)]
 /// # struct PlacesCharactersAndMoves;
@@ -92,7 +92,7 @@ mod cursors;
 /// ```rust
 /// # use duat_core::{
 /// #     mode::{ key, Cursors, EditHelper, Mode, KeyCode, KeyEvent, KeyMod},
-/// #     Lender, ui::Ui, widgets::File,
+/// #     Lender, ui::Ui, file::File,
 /// # };
 /// # #[derive(Clone)]
 /// # struct PlacesCharactersAndMoves;
@@ -332,7 +332,7 @@ impl<W: Widget<U>, U: Ui, S> EditHelper<W, U, S> {
     /// This is the equivalent of calling:
     ///
     /// ```rust
-    /// # use duat_core::{data::Pass, mode::EditHelper, ui::Area, widgets::File};
+    /// # use duat_core::{data::Pass, mode::EditHelper, ui::Area, file::File};
     /// # fn test<A: Area>(pa: &mut Pass, helper: EditHelper<File, A, ()>) {
     /// helper.edit_iter(pa, |iter| iter.for_each(|e| { /* .. */ }));
     /// # }
@@ -456,7 +456,7 @@ impl<W: Widget<U>, U: Ui, S> EditHelper<W, U, S> {
 /// struct.
 ///
 /// ```rust
-/// # use duat_core::{mode::EditHelper, ui::RawArea, widgets::File};
+/// # use duat_core::{mode::EditHelper, ui::RawArea, file::File};
 /// # fn test<S>(helper: &mut EditHelper<File, impl RawArea, S>) {
 /// let mut e = helper.edit_main();
 /// e.replace("my replacement");
@@ -828,7 +828,7 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Editor<'a, W, A, S> {
     /// If the regex is not valid, this method will panic.
     ///
     /// ```rust
-    /// # use duat_core::{mode::EditHelper, ui::RawArea, widgets::File, Lender};
+    /// # use duat_core::{mode::EditHelper, ui::RawArea, file::File, Lender};
     /// fn search_nth_paren<S>(
     ///     helper: &mut EditHelper<File, impl RawArea, S>,
     ///     n: usize,
@@ -870,7 +870,7 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Editor<'a, W, A, S> {
     /// If the regex is not valid, this method will panic.
     ///
     /// ```rust
-    /// # use duat_core::{mode::EditHelper, ui::RawArea, widgets::File, Lender};
+    /// # use duat_core::{mode::EditHelper, ui::RawArea, file::File, Lender};
     /// fn search_nth_rev<S>(
     ///     helper: &mut EditHelper<File, impl RawArea, S>,
     ///     n: usize,

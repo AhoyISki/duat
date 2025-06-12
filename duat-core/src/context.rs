@@ -597,7 +597,7 @@ impl Notifications {
     /// removed.
     ///
     /// [notification]: Text
-    /// [`Reader`]: crate::text::Reader
+    /// [`Reader`]: crate::file::Reader
     pub fn push(&self, text: impl Into<Text>) {
         self.cur_state.fetch_add(1, Ordering::Relaxed);
         self.list.lock().unwrap().push(Into::<Text>::into(text))

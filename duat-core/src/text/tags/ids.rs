@@ -52,7 +52,7 @@ static KEY_COUNT: AtomicU16 = AtomicU16::new(4);
 ///
 /// [`Tag`]: super::Tag
 /// [`Text`]: super::Text
-/// [`File`]: crate::widgets::File
+/// [`File`]: crate::file::File
 /// [`Text::insert_tag`]: super::Text::insert_tag
 /// [`Text::remove_tags`]: super::Text::remove_tags
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -88,7 +88,7 @@ impl Key {
     /// `const` function, it's value is just substituted in with the
     /// code, so there is no need to store it in structs or statics.
     ///
-    /// [`File`]: crate::widgets::File
+    /// [`File`]: crate::file::File
     pub const fn basic() -> Self {
         Self(0)
     }

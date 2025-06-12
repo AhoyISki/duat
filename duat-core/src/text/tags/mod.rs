@@ -85,7 +85,7 @@ impl MutTags<'_> {
     /// other [`Tag`] providers, and you should avoid measing with
     /// their tags.
     ///
-    /// [`File`]: crate::widgets::File
+    /// [`File`]: crate::file::File
     pub fn clear(&mut self) {
         *self.0 = Tags::new(self.0.len_bytes());
     }

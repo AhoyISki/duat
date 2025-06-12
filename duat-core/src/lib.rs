@@ -12,7 +12,7 @@
 //! ```rust
 //! # use duat_core::{
 //! #     mode::{self, Cursors, EditHelper, KeyCode, KeyEvent, Mode, key},
-//! #     Lender, ui::Ui, widgets::File,
+//! #     Lender, ui::Ui, file::File,
 //! # };
 //! #[derive(Default, Clone)]
 //! struct FindSeq(Option<char>);
@@ -91,7 +91,7 @@
 //! ```rust
 //! # use duat_core::{
 //! #     mode::{self, Cursors, EditHelper, KeyCode, KeyEvent, Mode, key},
-//! #     Lender, text::{Key, Point, Tag, text}, ui::{Area, Ui}, widgets::File,
+//! #     Lender, text::{Key, Point, Tag, text}, ui::{Area, Ui}, file::File,
 //! # };
 //! #[derive(Clone)]
 //! pub struct EasyMotion {
@@ -224,7 +224,7 @@
 //! ```
 //!
 //! [`Mode`]: crate::mode::Mode
-//! [`File`]: crate::widgets::File
+//! [`File`]: crate::file::File
 //! [`map`]: https://docs.rs/duat/0.2.0/duat/prelude/fn.map.html
 //! [EasyMotion]: https://github.com/easymotion/vim-easymotion
 //! [ghost text]: crate::text::Tag::Ghost
@@ -408,7 +408,7 @@ pub mod prelude {
             OnFileOpen, OnWindowOpen, SearchPerformed, SearchUpdated, UnfocusedFrom,
         },
         text::{Builder, Text, err, hint, ok, text},
-        ui::{PushSpecs, RawArea, Ui},
+        ui::{PushSpecs, RawArea, Ui, FileBuilder, WindowBuilder, Constraint},
         widget::{Widget, WidgetCfg},
     };
 }
