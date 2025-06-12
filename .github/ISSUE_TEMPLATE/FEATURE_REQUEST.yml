@@ -37,10 +37,10 @@ body:
       description: |
         Does this belong on the core crates of duat? Could it be implemented as a plugin?
         Is it needlesly difficult to implement this as a plugin?
-        options:
-          - It belongs in duat, I think.
-          - It might be implementable as a plugin.
-          - I thought about it, and implementing it as a plugin seems too hard.
+      options:
+        - It belongs in duat, I think.
+        - It might be implementable as a plugin.
+        - I thought about it, and implementing it as a plugin seems too hard.
     validations:
       required: true
   - type: dropdown
