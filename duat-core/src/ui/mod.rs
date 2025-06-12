@@ -31,7 +31,7 @@
 //!
 //! [`OnFileOpen`]: crate::hook::OnFileOpen
 //! [`hook`]: crate::hook
-mod builder;
+pub(crate) mod builder;
 mod layout;
 
 use std::{cell::RefCell, fmt::Debug, rc::Rc, sync::mpsc, time::Instant};

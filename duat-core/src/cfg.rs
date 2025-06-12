@@ -214,17 +214,17 @@ impl PrintCfg {
     /// The default value is:
     ///
     /// ```rust
-    /// # use duat_core::cfg::*;
+    /// use duat_core::cfg::*;
     /// PrintCfg {
     ///     wrap_method: WrapMethod::Edge,
     ///     indent_wrapped: true,
     ///     tab_stops: TabStops(4),
     ///     new_line: NewLine::AlwaysAs('\n'),
     ///     scrolloff: ScrollOff { x: 3, y: 3 },
-    ///     word_chars: word_chars!('A' - 'Z', 'a' - 'z', '0' - '9', '_' - '_'),
+    ///     word_chars: word_chars!('A'-'Z''a'-'z''0'-'9''_'-'_'),
     ///     force_scrolloff: false,
     ///     show_ghosts: true,
-    /// }
+    /// };
     /// ```
     ///
     /// [`Widget`]: crate::widget::Widget
@@ -389,7 +389,7 @@ impl Default for PrintCfg {
 ///
 /// ```rust
 /// # use duat_core::cfg::word_chars;
-/// let word_chars = worc_chars!('a'-'z''A'-'Z''0'-'9''-'-'-''_'-'_');
+/// let word_chars = word_chars!('a'-'z''A'-'Z''0'-'9''-'-'-''_'-'_');
 /// ```
 // TODO: Deal with characters that need to be escaped.
 // TODO: Probably turn this into a proc-macro that acts on strings.

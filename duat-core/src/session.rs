@@ -78,15 +78,15 @@ impl<U: Ui> SessionCfg<U> {
 
         // Open and process files.
         let builder = FileBuilder::new(&mut pa, node, context::cur_window());
-        hook::trigger::<OnFileOpen<U>>(&mut pa, builder);
+        hook::trigger(&mut pa, OnFileOpen(builder));
 
         for file in args {
             session.open_file(&mut pa, PathBuf::from(file));
         }
 
         // Build the window's widgets.
-        let builder = WindowBuilder::new(0);
-        hook::trigger::<OnWindowOpen<U>>(&mut pa, builder);
+        let builder = WindowBuilder::<U>::new(0);
+        hook::trigger(&mut pa, OnWindowOpen(builder));
 
         session
     }
@@ -143,15 +143,15 @@ impl<U: Ui> SessionCfg<U> {
             }
 
             let builder = FileBuilder::new(&mut pa, node, context::cur_window());
-            hook::trigger::<OnFileOpen<U>>(&mut pa, builder);
+            hook::trigger(&mut pa, OnFileOpen(builder));
 
             for (file_cfg, is_active) in cfgs {
                 session.open_file_from_cfg(&mut pa, file_cfg, is_active, win);
             }
 
             // Build the window's widgets.
-            let builder = WindowBuilder::new(win);
-            hook::trigger::<OnWindowOpen<U>>(&mut pa, builder);
+            let builder = WindowBuilder::<U>::new(win);
+            hook::trigger(&mut pa, OnWindowOpen(builder));
         }
 
         session
@@ -191,7 +191,7 @@ impl<U: Ui> Session<U> {
         match pushed {
             Ok((node, _)) => {
                 let builder = FileBuilder::new(&mut *pa, node, context::cur_window());
-                hook::trigger::<OnFileOpen<U>>(pa, builder);
+                hook::trigger(pa, OnFileOpen(builder));
             }
             Err(err) => context::notify(err),
         }
@@ -209,7 +209,7 @@ impl<U: Ui> Session<U> {
         form::set_sender(Sender::new(sender()));
 
         // SAFETY: No Passes exists at this point in time.
-        hook::trigger::<ConfigLoaded>(&mut unsafe { Pass::new() }, ());
+        hook::trigger(&mut unsafe { Pass::new() }, ConfigLoaded(()));
 
         let Some(mode_fn) = mode::take_set_mode_fn() else {
             unreachable!("Somebody forgot to set a default mode, I'm looking at you `duat`!");
@@ -263,7 +263,7 @@ impl<U: Ui> Session<U> {
                     }
                     DuatEvent::ReloadStarted(instant) => reload_instant = Some(instant),
                     DuatEvent::ReloadConfig => {
-                        hook::trigger::<ConfigUnloaded>(&mut pa, ());
+                        hook::trigger(&mut pa, ConfigUnloaded(()));
                         context::order_reload_or_quit();
                         wait_for_threads_to_despawn();
 
@@ -274,8 +274,8 @@ impl<U: Ui> Session<U> {
                         return (files, duat_rx, reload_instant);
                     }
                     DuatEvent::Quit => {
-                        hook::trigger::<ConfigUnloaded>(&mut pa, ());
-                        hook::trigger::<ExitedDuat>(&mut pa, ());
+                        hook::trigger(&mut pa, ConfigUnloaded(()));
+                        hook::trigger(&mut pa, ExitedDuat(()));
                         context::order_reload_or_quit();
                         wait_for_threads_to_despawn();
 
@@ -393,7 +393,7 @@ impl<U: Ui> Session<U> {
         match pushed {
             Ok((node, _)) => {
                 let builder = FileBuilder::new(&mut *pa, node, context::cur_window());
-                hook::trigger::<OnFileOpen<U>>(pa, builder);
+                hook::trigger(pa, OnFileOpen(builder));
             }
             Err(err) => context::notify(err),
         }
@@ -507,11 +507,11 @@ impl<U: Ui> Session<U> {
 
             // Open and process files.
             let builder = FileBuilder::new(&mut *pa, node, new_win);
-            hook::trigger::<OnFileOpen<U>>(&mut *pa, builder);
+            hook::trigger(&mut *pa, OnFileOpen(builder));
         }
 
-        let builder = WindowBuilder::new(new_win);
-        hook::trigger::<OnWindowOpen<U>>(&mut *pa, builder);
+        let builder = WindowBuilder::<U>::new(new_win);
+        hook::trigger(&mut *pa, OnWindowOpen(builder));
 
         if context::fixed_file::<U>(&*pa)
             .unwrap()

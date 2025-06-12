@@ -23,6 +23,7 @@ use crate::{
     data::Pass,
     duat_name,
     file::{File, ReaderCfg},
+    hook::Hookable,
     widget::{Node, Widget, WidgetCfg},
 };
 
@@ -661,5 +662,42 @@ fn run_once<W: Widget<U>, U: Ui>() {
     if !once_list.contains(&duat_name::<W>()) {
         W::once().unwrap();
         once_list.push(duat_name::<W>());
+    }
+}
+
+/// [`Hookable`]: Triggers when a [`File`] is opened
+///
+/// # Arguments
+///
+/// - The file [builder], which can be used to push widgets to the
+///   file, and to eachother.
+///
+/// [`File`]: crate::file::File
+/// [builder]: FileBuilder
+pub struct OnFileOpen<U: Ui>(FileBuilder<U>);
+
+impl<U: Ui> Hookable for OnFileOpen<U> {
+    type Input<'h> = &'h mut FileBuilder<U>;
+
+    fn get_input<'h>(&'h mut self) -> Self::Input<'h> {
+        &mut self.0
+    }
+}
+
+/// [`Hookable`]: Triggers when a new window is opened
+///
+/// # Arguments
+///
+/// - The window [builder], which can be used to push widgets to the
+///   edges of the window, surrounding the inner file region.
+///
+/// [builder]: WindowBuilder
+pub struct OnWindowOpen<U: Ui>(WindowBuilder<U>);
+
+impl<U: Ui> Hookable for OnWindowOpen<U> {
+    type Input<'h> = &'h mut WindowBuilder<U>;
+
+    fn get_input<'h>(&'h mut self) -> Self::Input<'h> {
+        &mut self.0
     }
 }

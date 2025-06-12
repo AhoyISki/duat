@@ -4,57 +4,93 @@
 //! [`PromptLine`] widget. They can also be invoked from other parts
 //! of the code, but their use is mostly intended for runtime calls.
 //!
-//! They are executed asynchronously in order to prevent deadlocks in
-//! Duat's internal systems.
-//!
 //! # Running commands
 //!
+//! There are two environments where you'd run commands. When you have
+//! a [`Pass`] available, and when you don't.
+//!
+//! ## When you have a [`Pass`]
+//!
+//! If you have a [`Pass`] available, it means you are in the main
+//! thread of execution, and can safely execute commands. The
+//! advantage of using a [`Pass`] is that you can retrieve the value
+//! returned by the command:
+//!
 //! ```rust
-//! # use duat_core::cmd;
-//! cmd::run("colorscheme solarized");
+//! use duat_core::prelude::*;
+//! fn main_thread_function(pa: &mut Pass) {
+//!     let result = cmd::call(pa, "colorscheme solarized");
+//!     if result.is_ok() {
+//!         context::notify(ok!("[a]Awesome!"));
+//!     }
+//! }
 //! ```
 //!
 //! The code above runs the `colorscheme` command. In this case, if
 //! the command succeds or fails, no notification will be shown, if
-//! you want notifications, you should use [`cmd::run_notify`]:
+//! you want notifications, you should use [`cmd::call_notify`], and
+//! the return value would still be acquired.
+//!
+//! ## When you don't have a [`Pass`]
+//!
+//! you may not have a [`Pass`] if for example, you are not on the
+//! main thread of execution. In this case, there is [`cmd::queue`],
+//! which, as the name implies, queues up a call to be executed later.
+//! This means that you can't retrieve the return value, since it will
+//! be executed asynchronously:
 //!
 //! ```rust
-//! # use duat_core::cmd;
-//! cmd::run_notify(
-//!     "set-form --flag -abc punctuation.delimiter rgb 255 0 0 hsl 1",
-//! );
-//! ```
-//!
-//! [`cmd::run_notify`] is what is used by Duat when running commands
-//! in the [`PromptLine`], but you can silence notifications by
-//! including leading whitespace:
-//!
-//! ```rust
-//! # use duat_core::{cmd, context, text::Text};
-//! cmd::run_notify(" set-form Default.StatusLine #000000 #ffffff");
-//! assert_eq!(*context::notifications().read(), Vec::<Text>::new());
+//! use duat_core::prelude::*;
+//! fn on_a_thread_far_far_away() {
+//!     cmd::queue(
+//!         "set-form --flag -abc punctuation.delimiter rgb 255 0 0 hsl 1",
+//!     );
+//! }
 //! ```
 //!
 //! The `set-form` command above will fail, since the hsl [`Color`]
 //! [`Parameter`] was not completely matched, missing the saturation
 //! and lightness arguments. It also shows two flag arguments, word
-//! flags (`"--flag"`) and blob flags (`"-abc"`).
+//! flags (`"--flag"`) and blob flags (`"-abc"`). Even failing, no
+//! notification will be sent, because I called [`queue`], if you want
+//! notifications, call [`queue_notify`].
+//!
+//! If you want to "react" to the result of a queued call, you can use
+//! the [`cmd::queue_and`] function, which lets you also send a
+//! function that takes [`CmdResult`] as parameter:
+//!
+//! ```rust
+//! # use std::sync::atomic::{AtomicUsize, Ordering};
+//! use duat_core::prelude::*;
+//!
+//! static FAILURE_COUNT: AtomicUsize = AtomicUsize::new(0);
+//!
+//! fn on_a_thread_far_far_away() {
+//!     cmd::queue_and(
+//!         "set-form --flag -abc punctuation.delimiter rgb 255 0 0 hsl 1",
+//!         |res| {
+//!             if res.is_err() {
+//!                 FAILURE_COUNT.fetch_add(1, Ordering::Relaxed);
+//!             }
+//!         },
+//!     );
+//! }
+//! ```
+//!
+//! Note that, because this function might be sent to another thread,
+//! it must be [`Send + 'static`].
 //!
 //! # Adding commands
 //!
-//! Commands are added through the [`add!`] and [`add_for!`] macros.
-//! The first one is used if you only wish to interpret some [`Args`].
-//! The second one lets you modify a specific [`Widget`] and its
-//! [`Area`], allongside said [`Args`].
+//! Commands are added through the [`add!`] macro. This macro takes in
+//! two arguments. The first argument is a list of callers, for
+//! example `["quit", "q"]`, or just a caller, like `"reload"`.
 //!
-//! These macros will take two arguments, the first one is a list of
-//! callers for that command, e.g. `["quit", "q"]` for the `quit`
-//! command. Note that a regular [`&str`] argument is also accepted.
-//!
-//! The second argument is a _rust-like_ closure with a variable
-//! number of arguments. Each argument must implement the
-//! [`Parameter`] trait, and its type must be explicit, in order for
-//! Duat to automatically interpret user input as a specific type.
+//! The second argument is a _rust-like_ "closure" that receives a
+//! variable number of [`Parameter`]s as arguments, alongside a
+//! [`Pass`]. Inside of this "closure", you will have access to the
+//! ful breatdh of duat's shareable state (just like any other time
+//! you have a [`Pass`]).
 //!
 //! Most Rust [`std`] types (that would make sense) are implemented as
 //! [`Parameter`]s, so you can place [`String`]s, [`f32`]s, [`bool`]s,
@@ -65,14 +101,13 @@
 //! optional [`Parameter`].
 //!
 //! ```rust
-//! # use duat_core::prelude::{
-//! #     ok, form::{self, Form}, cmd::{self, Args, FormName, Flags}
-//! # };
-//! # use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
+//! # fn setup_test() {
+//! use duat_core::{cmd::FormName, prelude::*};
+//!
 //! let callers = ["unset-form", "uf"];
 //! // A `Vec<T>` parameter will try to collect all
 //! // remaining arguments as `T` in a list.
-//! let result = cmd::add!(callers, |forms: Vec<FormName>| {
+//! let result = cmd::add!(callers, |pa: Pass, forms: Vec<FormName>| {
 //!     for form in forms.iter() {
 //!         form::set("form", Form::new());
 //!     }
@@ -80,12 +115,13 @@
 //!     // return an error message.
 //!     // For those, you should use the `ok!` and `err!`
 //!     // macros.
-//!     Ok(Some(ok!("Unset " [*a] { forms.len() } [] " forms")))
+//!     Ok(Some(ok!("Unset [a]{}[] forms", forms.len()).build()))
 //! });
 //!
 //! // Adding a command can fail if a command with the same
 //! // name already exists.
 //! assert!(result.is_ok());
+//! # }
 //! ```
 //!
 //! In the command above, you'll notice that I used the [`ok!`] macro.
@@ -99,38 +135,40 @@
 //! and blob flags (`-singlechar`):
 //!
 //! ```rust
-//! # use duat_core::cmd;
-//! # use std::sync::{atomic::{AtomicU32, Ordering}, Arc};
-//! let expression = Arc::new(AtomicU32::default());
-//! let my_command = {
-//!     let expression = expression.clone();
-//!     cmd::add!("mood", move |flags: cmd::Flags| {
+//! # use std::sync::atomic::{AtomicU32, Ordering};
+//! use duat_core::prelude::*;
+//!
+//! static EXPRESSION: AtomicU32 = AtomicU32::new('a' as u32);
+//!
+//! // Imagine this is the config crate `setup` function
+//! fn setup() {
+//!     cmd::add!("mood", |_pa, flags: cmd::Flags| {
 //!         // `Flags::long` checks for `--` flags
 //!         if flags.word("happy") {
-//!             expression.store('😁' as u32, Ordering::Relaxed)
+//!             EXPRESSION.store('😁' as u32, Ordering::Relaxed)
 //!         // `Flags::short` checks for `-` flags
 //!         // They can check for any valid unicode character.
 //!         } else if flags.blob("🤯") {
-//!             expression.store('🤯' as u32, Ordering::Relaxed)
+//!             EXPRESSION.store('🤯' as u32, Ordering::Relaxed)
 //!         } else if flags.word("sad") {
-//!             expression.store('😢' as u32, Ordering::Relaxed)
+//!             EXPRESSION.store('😢' as u32, Ordering::Relaxed)
 //!         } else {
-//!             expression.store('😶' as u32, Ordering::Relaxed)
+//!             EXPRESSION.store('😶' as u32, Ordering::Relaxed)
 //!         }
 //!         Ok(None)
 //!     })
-//! };
+//!     .unwrap();
+//! }
 //!
-//! cmd::run("mood --sad -🤯");
-//! // Passing more arguments than needed results in
-//! // an error, so the command is never executed.
-//! cmd::run_notify("mood --happy extra args not allowed");
+//! fn main_thread_function(pa: &mut Pass) {
+//!     let _ = cmd::call(pa, "mood --sad -🤯");
+//!     // Passing more arguments than needed results in
+//!     // an error, so the command is never executed.
+//!     let _ = cmd::call_notify(pa, "mood --happy extra args not allowed");
 //!
-//! // Enough time for no async shenanigans.
-//! std::thread::sleep(std::time::Duration::new(1, 0));
-//!
-//! let num = expression.load(Ordering::Relaxed);
-//! assert_eq!(char::from_u32(num), Some('🤯'))
+//!     let num = EXPRESSION.load(Ordering::Relaxed);
+//!     assert_eq!(char::from_u32(num), Some('🤯'))
+//! }
 //! ```
 //!
 //! There are other builtin types of [`Parameter`]s in [`cmd`] that
@@ -139,40 +177,23 @@
 //! collects them into a single [`String`].
 //!
 //! ```rust
-//! # use duat_core::prelude::{cmd, err, ok};
-//! cmd::add!("pip", |args: cmd::Remainder| {
-//!     match std::process::Command::new("pip").spawn() {
-//!         Ok(child) => match child.wait_with_output() {
-//!             Ok(ok) => Ok(Some(ok!({
-//!                 String::from_utf8_lossy(&ok.stdout).into_owned()
-//!             }))),
-//!             Err(err) => Err(err!(err)),
-//!         },
-//!         Err(err) => Err(err!(err)),
-//!     }
-//! });
-//! ```
+//! use duat_core::prelude::*;
 //!
-//! The other type of command that Duat supports is one that also acts
-//! on a [`Widget`] and its [`Area`]. Both of these [`Parameter`]s
-//! need to be included and type anotated:
+//! fn setup() {
+//!     cmd::add!("pip", |_pa, args: cmd::Remainder| {
+//!         let child = std::process::Command::new("pip").spawn()?;
+//!         let res = child.wait_with_output()?;
 //!
-//! ```rust
-//! # use duat_core::{cmd, widget::{LineNumbers, LineNum}};
-//! # fn test<U: duat_core::ui::Ui>() {
-//! cmd::add_for!("toggle-relative", |ln: LineNumbers<U>, _: U::Area| {
-//!     let opts = ln.options_mut();
-//!     opts.num_rel = match opts.num_rel {
-//!         LineNum::Abs => LineNum::RelAbs,
-//!         LineNum::Rel | LineNum::RelAbs => LineNum::Abs,
-//!     };
-//!     Ok(None)
-//! });
-//! # }
+//!         Ok(Some(ok!("{res}").build()))
+//!     });
+//! }
 //! ```
 //!
 //! [`PromptLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
-//! [`cmd::run_notify`]: run_notify
+//! [`cmd::call_notify`]: call_notify
+//! [`cmd::queue`]: queue
+//! [`cmd::queue_and`]: queue_and
+//! [`Send + 'static`]: Send
 //! [`Color`]: crate::form::Color
 //! [`Widget`]: crate::widget::Widget
 //! [`File`]: crate::file::File
@@ -664,31 +685,55 @@ mod global {
     /// # Examples
     ///
     /// ```rust
-    /// # use duat_core::{cmd, data::RwData, hook::{self, OnWindowOpen}, ui::Ui, widget::status};
-    /// # fn test<U: Ui>() {
-    /// let var = RwData::new(35);
-    ///
-    /// let var_clone = var.clone();
-    /// cmd::add!("set-var", move |value: usize| {
-    ///     *var_clone.write() = value;
-    ///     Ok(None)
-    /// });
-    ///
-    /// hook::add::<OnWindowOpen<U>>(move |builder| {
-    ///     let var = var.clone();
-    ///     builder.push(status!("The value is currently " var));
-    /// });
+    /// # struct StatusLine<U: Ui>(std::marker::PhantomData<U>);
+    /// # impl<U: Ui> Widget<U> for StatusLine<U> {
+    /// #     type Cfg = StatusLineOptions<U>;
+    /// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+    /// #     fn needs_update(&self) -> bool { todo!(); }
+    /// #     fn cfg() -> Self::Cfg { todo!() }
+    /// #     fn text(&self) -> &Text { todo!(); }
+    /// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
+    /// #     fn once() -> Result<(), Text> { Ok(()) }
     /// # }
+    /// # struct StatusLineOptions<U>(std::marker::PhantomData<U>);
+    /// # impl<U> StatusLineOptions<U> {
+    /// #     pub fn rel_abs(self) -> Self { todo!(); }
+    /// # }
+    /// # impl<U: Ui> WidgetCfg<U> for StatusLineOptions<U> {
+    /// #     type Widget = StatusLine<U>;
+    /// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    /// #         todo!();
+    /// #     }
+    /// # }
+    /// # macro_rules! status { ($str:literal) => { StatusLine::cfg() } }
+    /// use duat_core::prelude::*;
+    ///
+    /// fn setup_with_ui<Ui: duat_core::ui::Ui>() {
+    ///     let var = RwData::new(35);
+    ///
+    ///     let var_clone = var.clone();
+    ///     cmd::add!("set-var", |pa: Pass, value: usize| {
+    ///         var_clone.replace(&mut pa, value);
+    ///         Ok(None)
+    ///     });
+    ///
+    ///     hook::add::<OnWindowOpen<Ui>>(move |mut pa, builder| {
+    ///         // status! macro is from duat-utils.
+    ///         builder.push(&mut pa, status!("The value is currently {var}"));
+    ///     });
+    /// }
     /// ```
     ///
     /// Since `var` is an [`RwData`], it will be updated
     /// automatically in the [`StatusLine`]
     ///
-    /// [`StatusLine`]: crate::widget::StatusLine
+    /// [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
     /// [`RwData`]: crate::data::RwData
     pub macro add(
         $callers:expr, |$pa:ident $(: Pass)? $(, $arg:tt: $t:ty)* $(,)?| $f:tt
     ) {{
+        use $crate::cmd::Caller;
+
         #[allow(unused_variables, unused_mut)]
         let cmd = move |pa: $crate::data::Pass, mut args: Args| -> CmdResult {
             $(
@@ -823,7 +868,13 @@ mod global {
         unsafe { COMMANDS.get() }.alias(pa, alias, command)
     }
 
-    /// Runs a full command, with a caller and [`Args`].
+    /// Runs a full command synchronously, with a [`Pass`].
+    ///
+    /// If you call commands through this function, you will be able
+    /// to retrieve their return values,  but because of the [`Pass`],
+    /// this function can only be used on the main thread of
+    /// execution. If you want to call commands from other threads,
+    /// see [`cmd::queue`].
     ///
     /// When running the command, the ordering of [`Flags`] does not
     /// matter, as long as they are placed before the arguments to the
@@ -832,14 +883,20 @@ mod global {
     /// # Examples
     ///
     /// ```rust
-    /// # use duat_core::cmd;
-    /// cmd::run("set-prompt new-prompt");
+    /// use duat_core::prelude::*;
+    ///
+    /// fn main_thread_function(pa: &mut Pass) {
+    ///     cmd::call(pa, "set-prompt new-prompt");
+    /// }
     /// ```
     ///
     /// In this case we're running a command that will affect the most
-    /// relevant [`PromptLine`]. See [`add_for`] for
-    /// more information.
+    /// relevant [`PromptLine`], and no notifications are sent. That's
+    /// because I used [`call`]. If you want notifications, see
+    /// [`cmd::call_notify`].
     ///
+    /// [`cmd::queue`]: queue
+    /// [`cmd::call_notify`]: call_notify
     /// [`PromptLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
     /// [`Flags`]: super::Flags
     pub fn call(pa: &mut Pass, call: impl std::fmt::Display) -> CmdResult {
@@ -859,10 +916,10 @@ mod global {
 
     /// Queues a command call
     ///
-    /// You should use this if you are not in an async environment or
-    /// on the main thread, and are thus unable to use the [`call`]
-    /// function. Do note that this will not happen in sequence with
-    /// the rest of your code.
+    /// You should only use this if you're not in the main thread of
+    /// execution, or if you don't have a [`Pass`] for some other
+    /// reason, like you are in the middle of accessing an [`RwData`]
+    /// or something like that.
     ///
     /// Since this function will run outside of the current scope, its
     /// [`Result`] will not be returned.

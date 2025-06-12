@@ -402,9 +402,11 @@ impl<'a> Parameter<'a> for Flags<'a> {
 ///
 /// ```rust
 /// # use duat_core::cmd;
-/// //                  cmd │      flags      │         arguments
-/// //                 ┌   ┐│┌               ┐│┌  ┐ ┌        ┐ ┌   ┐ ┌   ┐
-/// cmd::run_notify(r#"mycmd --flags -moreflag arg1 "more arg" \"arg arg\""#);
+/// # fn test() {
+/// //                    cmd │      flags      │         arguments
+/// //                   ┌   ┐│┌               ┐│┌  ┐ ┌        ┐ ┌   ┐ ┌   ┐
+/// cmd::queue_notify(r#"mycmd --flags -moreflag arg1 "more arg" \"arg arg\""#);
+/// # }
 /// ```
 #[derive(Clone)]
 pub struct Args<'a> {

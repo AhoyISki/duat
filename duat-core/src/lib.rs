@@ -125,36 +125,48 @@
 //! impl<U: Ui> Mode<U> for EasyMotion {
 //!     type Widget = File<U>;
 //!
-//!     fn on_switch(&mut self, mut pa: Pass, file: RwData<File<U>>, area: U::Area) {
+//!     fn on_switch(
+//!         &mut self,
+//!         mut pa: Pass,
+//!         file: RwData<File<U>>,
+//!         area: U::Area,
+//!     ) {
 //!         file.write(&mut pa, |file| {
 //!             let cfg = file.print_cfg();
 //!             let text = file.text_mut();
-//!    
+//!
 //!             let regex = match self.is_line {
 //!                 true => "[^\n\\s][^\n]+",
 //!                 false => "[^\n\\s]+",
 //!             };
 //!             let (start, _) = area.first_points(text, cfg);
 //!             let (end, _) = area.last_points(text, cfg);
-//!             self.points = text.search_fwd(regex, start..end).unwrap().collect();
-//!    
+//!             self.points =
+//!                 text.search_fwd(regex, start..end).unwrap().collect();
+//!
 //!             let seqs = key_seqs(self.points.len());
-//!    
+//!
 //!             for (seq, [p0, _]) in seqs.iter().zip(&self.points) {
 //!                 let ghost = Ghost(text!("[EasyMotionWord]{seq}"));
 //!                 text.insert_tag(self.key, *p0, ghost);
 //!
-//!                 let seq_end = p0.byte() + seq.chars().count() ;
+//!                 let seq_end = p0.byte() + seq.chars().count();
 //!                 text.insert_tag(self.key, p0.byte()..seq_end, Conceal);
 //!             }
 //!         });
 //!     }
 //!
-//!     fn send_key(&mut self, mut pa: Pass, key: KeyEvent, file: RwData<File<U>>, area: U::Area) {
+//!     fn send_key(
+//!         &mut self,
+//!         mut pa: Pass,
+//!         key: KeyEvent,
+//!         file: RwData<File<U>>,
+//!         area: U::Area,
+//!     ) {
 //!         let char = match key {
 //!             key!(KeyCode::Char(c)) => c,
 //!             // Return a char that will never match.
-//!             _ => '❌'
+//!             _ => '❌',
 //!         };
 //!         self.seq.push(char);
 //!
@@ -175,7 +187,9 @@
 //!             }
 //!
 //!             // Removing one end of the conceal range will remove both ends.
-//!             helper.write_text(&mut pa, |text| text.remove_tags(self.key, p1.byte()));
+//!             helper.write_text(&mut pa, |text| {
+//!                 text.remove_tags(self.key, p1.byte())
+//!             });
 //!         }
 //!
 //!         if self.seq.chars().count() == 2 || !LETTERS.contains(char) {
@@ -191,7 +205,11 @@
 //!     seqs.extend(LETTERS.chars().skip(double).map(char::into));
 //!
 //!     let chars = LETTERS.chars().take(double);
-//!     seqs.extend(chars.flat_map(|c1| LETTERS.chars().map(move |c2| format!("{c1}{c2}"))));
+//!     seqs.extend(
+//!         chars.flat_map(|c1| {
+//!             LETTERS.chars().map(move |c2| format!("{c1}{c2}"))
+//!         }),
+//!     );
 //!
 //!     seqs
 //! }
@@ -410,8 +428,8 @@ pub mod prelude {
         form::{self, Form, FormId},
         hook::{
             self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FocusedOn,
-            FormSet, Hook, Hookable, Hooks, KeysSent, KeysSentTo, ModeSetTo, ModeSwitched,
-            OnFileOpen, OnWindowOpen, SearchPerformed, SearchUpdated, UnfocusedFrom,
+            FormSet, Hookable, KeysSent, KeysSentTo, ModeSetTo, ModeSwitched, OnFileOpen,
+            OnWindowOpen, SearchPerformed, SearchUpdated, UnfocusedFrom,
         },
         mode::{self, EditHelper, KeyCode, KeyEvent, KeyMod, Mode, key},
         text::{

@@ -9,7 +9,7 @@
 //! [`LineNumbers`] widget, that shows the numbers of the currently
 //! printed lines.
 //!
-//! [`LineNumbers`]: crate::widget::LineNumbers
+//! [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
 //! [`Cursor`]: crate::mode::Cursor
 //! [`History`]: crate::text::History
 use std::{fs, marker::PhantomData, path::PathBuf};
@@ -152,7 +152,7 @@ impl<U: Ui> File<U> {
                     .write_to(std::io::BufWriter::new(fs::File::create(&path)?))
                     .inspect(|_| self.path = PathKind::SetExists(path.clone()))?;
 
-                hook::queue::<FileWritten>((path.to_string_lossy().to_string(), bytes));
+                hook::queue(FileWritten((path.to_string_lossy().to_string(), bytes)));
 
                 Ok(Some(bytes))
             } else {
@@ -175,7 +175,7 @@ impl<U: Ui> File<U> {
                 .map(Some);
 
             if let Ok(Some(bytes)) = res.as_ref() {
-                hook::queue::<FileWritten>((path.to_string_lossy().to_string(), *bytes));
+                hook::queue(FileWritten((path.to_string_lossy().to_string(), *bytes)));
             }
 
             res
@@ -295,7 +295,7 @@ impl<U: Ui> Widget<U> for File<U> {
         let moments = widget.acquire_mut(&mut pa).text.last_unprocessed_moment();
         if let Some(moments) = moments {
             for moment in moments {
-                readers.process_changes(map.clone(), moment);
+                readers.process_moment(map.clone(), moment);
             }
         }
 

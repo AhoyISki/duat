@@ -25,10 +25,9 @@
 //! thread is because, internally, they use non [`Send`]/[`Sync`]
 //! structs, specifically [`Rc`] and [`RefCell`]. These are often
 //! considered "crutches" by a lot of the Rust community, but in an
-//! environment that makes heavy use of `async` code, it is impossible
-//! to make sure that types live as long as necessary, and it is
-//! impossible to not have to borrow/reborrow, mutably or not, all of
-//! the time.
+//! environment where most of the code is supposed to be able to
+//! access most of the state, it is impossible to go without using
+//! them.
 //!
 //! As well as not having the problem of deadlocks that [`Mutex`]es
 //! would have, [`Rc<RefCell>`] is way faster to clone and lock than
@@ -40,7 +39,7 @@
 //! [`File`]: crate::widget::File
 //! [updated]: crate::widget::Widget::update
 //! [`Text`]: crate::text::Text
-//! [`StatusLine`]: crate::widget::StatusLine
+//! [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
 //! [`context`]: crate::context
 //! [`Mutex`]: std::sync::Mutex
 //! [`Arc<Mutex>`]: std::sync::Arc
@@ -130,6 +129,29 @@ impl<T: 'static> RwData<T> {
             read_state: Rc::new(Cell::new(0)),
         }
     }
+
+    /// Replaces the value within using a [`Pass`]
+    ///
+    /// The consistent use of a [`Pass`] for the purposes of
+    /// reading/writing to the values of [`RwData`]s ensures that no
+    /// panic or invalid borrow happens at runtime, even while working
+    /// with untrusted code. More importantly, Duat uses these
+    /// guarantees in order to give the end user a ridiculous amount
+    /// of freedom in where they can do things, whilst keeping Rust's
+    /// number one rule and ensuring thread safety, even with a
+    /// relatively large amount of shareable state.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there is any type of borrow of this struct
+    /// somewhere, which could happen if you use [`read_unsafe`]
+    /// or [`write_unsafe`], for example.
+    ///
+    /// [`read_unsafe`]: Self::read_unsafe
+    /// [`write_unsafe`]: Self::write_unsafe
+    pub fn replace(&self, pa: &mut Pass, new: T) -> T {
+        self.write(pa, |value| std::mem::replace(value, new))
+    }
 }
 
 impl<T: ?Sized> RwData<T> {
@@ -144,9 +166,11 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// ```rust
     /// # use std::{cell::RefCell, fmt::Display, rc::Rc};
-    /// # use duat_core::data::RwData;
+    /// # use duat_core::prelude::*;
     /// let rw_data: RwData<dyn Display> = unsafe {
-    ///     RwData::new_unsized::<String>(Rc::new(RefCell::new("testing".to_string()))
+    ///     RwData::new_unsized::<String>(Rc::new(RefCell::new(
+    ///         "testing".to_string(),
+    ///     )))
     /// };
     /// ```
     ///
@@ -241,9 +265,6 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// - The value being read does not have any [`RwData`] within;
     /// - You know that this value is not being shared anywhere else;
-    /// - This is being called in an async block that is being sent to
-    ///   [`tokio::task::spawn_local`], i.e., nothing on the main
-    ///   thread would be running at the same time.
     ///
     /// Essentially, in order to use this safely, you should treat it
     /// like a glorified [`RefCell`]
@@ -269,9 +290,6 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// - The value being read does not have any [`RwData`] within;
     /// - You know that this value is not being shared anywhere else;
-    /// - This is being called in an async block that is being sent to
-    ///   [`tokio::task::spawn_local`], i.e., nothing on the main
-    ///   thread would be running at the same time.
     ///
     /// Essentially, in order to use this safely, you should treat it
     /// like a glorified [`RefCell`]
@@ -393,9 +411,6 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// - The value being read does not have any [`RwData`] within;
     /// - You know that this value is not being shared anywhere else;
-    /// - This is being called in an async block that is being sent to
-    ///   [`tokio::task::spawn_local`], i.e., nothing on the main
-    ///   thread would be running at the same time.
     ///
     /// Essentially, in order to use this safely, you should treat it
     /// like a glorified [`RefCell`]
@@ -422,9 +437,6 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// - The value being read does not have any [`RwData`] within;
     /// - You know that this value is not being shared anywhere else;
-    /// - This is being called in an async block that is being sent to
-    ///   [`tokio::task::spawn_local`], i.e., nothing on the main
-    ///   thread would be running at the same time.
     ///
     /// Essentially, in order to use this safely, you should treat it
     /// like a glorified [`RefCell`]

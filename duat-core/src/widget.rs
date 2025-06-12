@@ -53,6 +53,7 @@ use crate::{
     file::File,
     form,
     hook::{self, FocusedOn, UnfocusedFrom},
+    mode::Cursors,
     text::Text,
     ui::{PushSpecs, RawArea, Ui},
 };
@@ -705,20 +706,52 @@ impl<U: Ui> Node<U> {
     /// Static dispatch inner update on_focus
     fn on_focus_fn<W: Widget<U>>(&self, mut pa: Pass) {
         self.area.set_as_active();
-        let widget = self.widget.try_downcast_same_read_state().unwrap();
+        let widget: RwData<W> = self.widget.try_downcast_same_read_state().unwrap();
         let area = self.area.clone();
 
-        hook::trigger::<FocusedOn<W, U>>(&mut pa, (widget.clone(), area.clone()));
-        Widget::on_focus(pa, widget, &area);
+        widget.write(&mut pa, |widget| {
+            let cfg = widget.print_cfg();
+            widget.text_mut().remove_cursors(&area, cfg);
+        });
+
+        hook::trigger(&mut pa, FocusedOn((widget.clone(), area.clone())));
+
+        Widget::on_focus(pa, widget.clone(), &area);
+
+        // SAFETY: Since the last Pass was consumed, we can create a new
+        // one.
+        widget.write(&mut unsafe { Pass::new() }, |widget| {
+            let cfg = widget.print_cfg();
+            widget.text_mut().add_cursors(&area, cfg);
+            if let Some(main) = widget.text().cursors().and_then(Cursors::get_main) {
+                area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
+            }
+        });
     }
 
     /// Static dispatch inner update on_unfocus
     fn on_unfocus_fn<W: Widget<U>>(&self, mut pa: Pass) {
-        let widget = self.widget.try_downcast_same_read_state().unwrap();
+        let widget: RwData<W> = self.widget.try_downcast_same_read_state().unwrap();
         let area = self.area.clone();
 
-        hook::trigger::<UnfocusedFrom<W, U>>(&mut pa, (widget.clone(), area.clone()));
-        Widget::on_unfocus(pa, widget, &area);
+        widget.write(&mut pa, |widget| {
+            let cfg = widget.print_cfg();
+            widget.text_mut().remove_cursors(&area, cfg);
+        });
+
+        hook::trigger(&mut pa, UnfocusedFrom((widget.clone(), area.clone())));
+
+        Widget::on_unfocus(pa, widget.clone(), &area);
+
+        // SAFETY: Since the last Pass was consumed, we can create a new
+        // one.
+        widget.write(&mut unsafe { Pass::new() }, |widget| {
+            let cfg = widget.print_cfg();
+            widget.text_mut().add_cursors(&area, cfg);
+            if let Some(main) = widget.text().cursors().and_then(Cursors::get_main) {
+                area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
+            }
+        });
     }
 }
 

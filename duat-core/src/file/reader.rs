@@ -80,6 +80,7 @@ pub trait ReaderCfg<U: Ui> {
 pub(super) struct Readers<U: Ui>(RwData<Vec<ReaderEntry<U>>>);
 
 impl<U: Ui> Readers<U> {
+    /// Attempts to add  a [`Reader`]
     pub(super) fn add<R: ReaderCfg<U>>(
         &mut self,
         pa: &mut Pass,
@@ -100,8 +101,9 @@ impl<U: Ui> Readers<U> {
                 },
                 apply_changes: |reader, bytes, moment, mut ranges_to_update| {
                     let reader = reader.try_downcast().unwrap();
-                    // SAFETY: Since this is an async block, it cannot be .awaited while
-                    // an RwData is borrowed.
+                    // SAFETY: In the block that is executing this function, no Passes
+                    // exist beyond the one that is being mutably borrowed in the Readers
+                    // struct
                     let pa = unsafe { Pass::new() };
 
                     let mut new_ranges = if ranges_to_update.is_some() {
@@ -130,6 +132,7 @@ impl<U: Ui> Readers<U> {
         })
     }
 
+	/// Gets a specific [`Reader`], if it was added in
     pub(super) fn get<R: Reader<U>>(&self) -> Option<RwData<R>> {
         if TypeId::of::<R>() == TypeId::of::<()>() {
             return None;
@@ -151,7 +154,8 @@ impl<U: Ui> Readers<U> {
         entry.reader.try_downcast()
     }
 
-    pub(super) fn process_changes(&self, bytes: BytesDataMap<U>, moment: Moment) {
+	/// Makes each [`Reader`] process a [`Moment`]
+    pub(super) fn process_moment(&self, bytes: BytesDataMap<U>, moment: Moment) {
         const MAX_CHANGES_TO_CONSIDER: usize = 100;
         // SAFETY: Firstly, it is impossible to aqcuire a copy of this RwData,
         // nor is it possible to call this function from somewhere else, so
@@ -166,8 +170,6 @@ impl<U: Ui> Readers<U> {
                         // If there are too many changes, cut on processing and
                         // just assume that everything needs to be updated.
                         entry.ranges_to_update.write_unsafe(|ru| {
-                            // SAFETY: Since this is an async function, which will be executed via
-                            // spawn_local, no other RwData borrows could be happening.
                             let pa = Pass::new();
                             *ru = RangeList::new(bytes.read(&pa, |bytes| bytes.len().byte()))
                         });
@@ -180,8 +182,7 @@ impl<U: Ui> Readers<U> {
         }
     }
 
-    // TODO: Improve safety and throughput by creating a Text proxy and
-    // making it async.
+	/// Updates the [`Reader`]s on a given range
     pub(super) fn update_range(&self, mut pa: Pass, text: &mut Text, within: Range<usize>) {
         // SAFETY: The same as the SAFETY section above.
         unsafe {
@@ -211,6 +212,7 @@ impl<U: Ui> Readers<U> {
         }
     }
 
+	/// Wether any of the [`Reader`]s need to be updated
     pub(super) fn needs_update(&self) -> bool {
         // SAFETY: This function is only called on File::update within a
         // region where a Pass was mutably borrowed, so we can create
@@ -243,7 +245,7 @@ impl RangeList {
         Self(vec![0..max])
     }
 
-	/// Returns a new empty [`RangeList`]
+    /// Returns a new empty [`RangeList`]
     pub fn empty() -> Self {
         Self(Vec::new())
     }

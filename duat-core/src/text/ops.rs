@@ -10,8 +10,6 @@ use std::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToIncl
 
 use bincode::{Decode, Encode};
 
-use crate::ui::RawArea;
-
 use super::Item;
 
 /// A position in [`Text`]

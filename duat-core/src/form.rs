@@ -419,7 +419,7 @@ mod global {
         let colorschemes = COLORSCHEMES.lock().unwrap();
         if let Some(cs) = colorschemes.iter().find(|cs| cs.name() == name) {
             cs.apply();
-            hook::queue::<ColorSchemeSet>(cs.name());
+            hook::queue(ColorSchemeSet(cs.name()));
         } else {
             context::notify(err!("The colorscheme [a]{name}[] was not found"));
         }
@@ -907,7 +907,7 @@ impl Palette {
             sender.send_form_changed().unwrap()
         }
 
-        hook::queue::<FormSet>((name, FormId(i as u16), form));
+        hook::queue(FormSet((name, FormId(i as u16), form)));
     }
 
     /// Sets a [`Form`] "weakly"
@@ -949,7 +949,7 @@ impl Palette {
         if let Some(sender) = SENDER.get() {
             sender.send_form_changed().unwrap()
         }
-        hook::queue::<FormSet>((name, FormId(i as u16), form));
+        hook::queue(FormSet((name, FormId(i as u16), form)));
     }
 
     /// Makes a [`Form`] reference another "weakly"
@@ -1185,28 +1185,28 @@ impl Painter {
         style
     }
 
-	/// Applies the `"MainCursor"` [`Form`]
+    /// Applies the `"MainCursor"` [`Form`]
     #[inline(always)]
     pub fn apply_main_cursor(&mut self) {
         self.apply(M_CUR_ID);
         self.final_form_start -= 1;
     }
 
-	/// Removes the `"MainCursor"` [`Form`]
+    /// Removes the `"MainCursor"` [`Form`]
     #[inline(always)]
     pub fn remove_main_cursor(&mut self) {
         self.final_form_start += 1;
         self.remove(M_CUR_ID);
     }
 
-	/// Applies the `"ExtraCursor"` [`Form`]
+    /// Applies the `"ExtraCursor"` [`Form`]
     #[inline(always)]
     pub fn apply_extra_cursor(&mut self) {
         self.apply(E_CUR_ID);
         self.final_form_start -= 1;
     }
 
-	/// Removes the `"ExtraCursor"` [`Form`]
+    /// Removes the `"ExtraCursor"` [`Form`]
     #[inline(always)]
     pub fn remove_extra_cursor(&mut self) {
         self.final_form_start += 1;

@@ -6,12 +6,31 @@
 //! whenever said [`Hookable`] is triggered:
 //!
 //! ```rust
-//! # use duat_core::{hook::{self, *}, ui::Ui, widget::{File, LineNumbers, Widget}};
-//! # fn test<U: Ui>() {
-//! hook::add::<OnFileOpen<U>>(|builder| {
-//!     builder.push(LineNumbers::cfg());
-//! });
+//! # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
+//! # impl<U: Ui> Widget<U> for LineNumbers<U> {
+//! #     type Cfg = LineNumbersOptions<U>;
+//! #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+//! #     fn needs_update(&self) -> bool { todo!(); }
+//! #     fn cfg() -> Self::Cfg { todo!() }
+//! #     fn text(&self) -> &Text { todo!(); }
+//! #     fn text_mut(&mut self) -> &mut Text { todo!(); }
+//! #     fn once() -> Result<(), Text> { Ok(()) }
 //! # }
+//! # struct LineNumbersOptions<U>(std::marker::PhantomData<U>);
+//! # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
+//! #     type Widget = LineNumbers<U>;
+//! #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+//! #         todo!();
+//! #     }
+//! # }
+//! use duat_core::prelude::*;
+//!
+//! fn test_with_ui<U: Ui>() {
+//!     hook::add::<OnFileOpen<U>>(|mut pa, builder| {
+//!         // `LineNumbers` comes from duat-utils
+//!         builder.push(&mut pa, LineNumbers::cfg());
+//!     });
+//! }
 //! ```
 //!
 //! The hook above is an example of a specialized use. [`OnFileOpen`]
@@ -37,76 +56,87 @@
 //! - [`SearchUpdated`] triggers after a search updates.
 //! - [`FileWritten`] triggers after the [`File`] is written.
 //!
-//! # A note on execution
+//! # Basic makeout
 //!
-//! In order to prevent [deadlocks], Duat executes hooks and
-//! [commands] asynchronously in the order that they are sent. For
-//! hooks, this means that if you [`trigger`] a [`Hookable`], close
-//! actions following said triggering will probably happen before the
-//! [`trigger`] is over:
+//! When a hook is added, it can take arguments
+//!
 //!
 //! ```rust
-//! # use duat_core::hook::{self, *};
-//! struct CustomHook;
+//! use duat_core::prelude::*;
+//! struct CustomHook(usize);
 //! impl Hookable for CustomHook {
-//!     type Args<'a> = usize;
-//!     type PreArgs = usize;
+//!     type Input<'h> = usize;
 //!
-//!     fn trigger<'b>(
-//!         pre_args: Self::PreArgs,
-//!         hooks: impl Iterator<Item = Hook<'b, Self>>,
-//!     ) {
-//!         for hook in hooks {
-//!             hook(pre_args)
-//!         }
+//!     fn get_input(&mut self) -> Self::Input<'_> {
+//!         self.0
 //!     }
 //! }
 //!
-//! let arg = 42;
-//! hook::trigger::<CustomHook>(arg);
-//! println!("This will probably print before the trigger is over.");
+//! fn runtime_function_that_triggers_hook(mut pa: Pass) {
+//!     let arg = 42;
+//!     hook::trigger(&mut pa, CustomHook(arg));
+//! }
 //! ```
 //!
-//! The above example ilustrates how hooks are implemented in Duat,
-//! that is, you are responsible for actually calling the functions.
-//! This is roughly how hooks should be defined:
+//! The above example ilustrates how hooks are implemented in Duat.
+//! You essentially pass a struct wich will hold the arguments that
+//! will be passed as input to the hooks. The [`Hookable::Input`]
+//! argument makes it so you can have more convenient parameters for
+//! hooks, like `(usize, &'h str)`, for example.
+//!
+//! [`Hookable`]s also have the [`Output`] type, which is set to `()`
+//! by default, because it is mostly unnecessary. But it can be used
+//! to, for example, make the builder pattern work through hooks:
 //!
 //! ```rust
-//! # fn args_from_pre_args(usize: &usize) -> usize { *usize }
-//! # use duat_core::hook::{self, *};
-//! struct NewHook;
-//! impl Hookable for NewHook {
-//!     // Some type derived from Self::PreArgs
-//!     type Args<'a> = usize;
-//!     // Some Send + 'static type
-//!     type PreArgs = usize;
+//! use duat_core::prelude::*;
+//! pub struct MyBuilder(bool, usize);
 //!
-//!     fn trigger<'b>(
-//!         pre_args: Self::PreArgs,
-//!         hooks: impl Iterator<Item = Hook<'b, Self>>,
-//!     ) {
-//!         // Preprocessing before creating Self::Args
-//!         // ...
-//!         let args = args_from_pre_args(&pre_args);
-//!         // Preprocessing before triggering hook functions
-//!         // ...
-//!         for hook in hooks {
-//!             hook(args)
-//!         }
-//!         // Postprocessing
-//!         // ...
+//! impl MyBuilder {
+//!     pub fn set_true(mut self) -> Self {
+//!         self.0 = true;
+//!         self
 //!     }
+//!
+//!     pub fn set_num(mut self, num: usize) -> Self {
+//!         self.1 = num;
+//!         self
+//!     }
+//!
+//!     pub fn consume(self) {
+//!         todo!();
+//!     }
+//! }
+//!
+//! struct MyBuilderCreated(Option<MyBuilder>);
+//! impl Hookable for MyBuilderCreated {
+//!     type Input<'h> = MyBuilder;
+//!     type Output = MyBuilder;
+//!
+//!     fn get_input(&mut self) -> Self::Input<'_> {
+//!         self.0.take().unwrap()
+//!     }
+//!
+//!     fn return_output(&mut self, output: Self::Output) {
+//!         self.0 = Some(output)
+//!     }
+//! }
+//!
+//! fn runtime_function_that_triggers_hook(mut pa: Pass) {
+//!     let builder = MyBuilder(false, 0);
+//!
+//!     let mut hookable =
+//!         hook::trigger(&mut pa, MyBuilderCreated(Some(builder)));
+//!
+//!     let builder = hookable.0.take().unwrap();
+//!     builder.consume();
 //! }
 //! ```
 //!
-//! One example of where this ends up being very useful is in
-//! [`Widget`] related hooks, since it allows Duat to pass just [`&mut
-//! Widget`] instead of [`RwData<Widget>`] as a parameter, and it also
-//! lets Duat immediately print the widget as soon as the hooks are
-//! done altering it.
+//! This is, for example, the pattern that [`ModeSetTo`] follows.
 //!
 //! [`File`]: crate::file::File
-//! [`LineNumbers`]: crate::widget::LineNumbers
+//! [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
 //! [widget]: Widget
 //! [dyn Widget]: Widget
 //! [key]: KeyEvent
@@ -114,14 +144,14 @@
 //! [commands]: crate::cmd
 //! [`Mode`]: crate::mode::Mode
 //! [`&mut Widget`]: Widget
-use std::{any::TypeId, cell::RefCell, collections::HashMap, marker::PhantomData, rc::Rc};
+use std::{any::TypeId, cell::RefCell, collections::HashMap, rc::Rc};
 
 pub use self::global::*;
 use crate::{
     data::{Pass, RwData},
     form::{Form, FormId},
-    mode::{Cursors, KeyEvent, Mode},
-    ui::{FileBuilder, RawArea, Ui, WindowBuilder},
+    mode::{KeyEvent, Mode},
+    ui::{FileBuilder, Ui, WindowBuilder},
     widget::Widget,
 };
 
@@ -142,7 +172,7 @@ mod global {
     /// [hook]: Hookable
     /// [`hook::add_grouped`]: add_grouped
     #[inline(never)]
-    pub fn add<H: Hookable>(f: impl FnMut(Pass, H::Args<'_>) -> H::Output + 'static) {
+    pub fn add<H: Hookable>(f: impl FnMut(Pass, H::Input<'_>) -> H::Output + 'static) {
         context::assert_is_on_main_thread();
         unsafe { HOOKS.get() }.add::<H>("", Box::new(f));
     }
@@ -159,7 +189,7 @@ mod global {
     #[inline(never)]
     pub fn add_grouped<H: Hookable>(
         group: &'static str,
-        f: impl FnMut(Pass, H::Args<'_>) -> H::Output + 'static,
+        f: impl FnMut(Pass, H::Input<'_>) -> H::Output + 'static,
     ) {
         context::assert_is_on_main_thread();
         unsafe { HOOKS.get() }.add::<H>(group, Box::new(f));
@@ -187,34 +217,28 @@ mod global {
     /// [`hook::add`]: add
     /// [`hook::add_grouped`]: add_grouped
     #[inline(never)]
-    pub fn trigger<H: Hookable>(pa: &mut Pass, args: H::Input) -> H::Output {
-        context::assert_is_on_main_thread();
-        unsafe { HOOKS.get().trigger::<H>(pa, args) }
+    pub fn trigger<H: Hookable>(pa: &mut Pass, hookable: H) -> H {
+        unsafe { HOOKS.get().trigger(pa, hookable) }
     }
 
     /// Queues a [`Hookable`]'s execution
     ///
-    /// You should use this if you are not in an async environment or
-    /// on the main thread, and are thus unable to call [`trigger`].
+    /// You should use this if you are not on the main thread of
+    /// execution, and are thus unable to call [`trigger`].
     /// The notable difference between this function and [`trigger`]
-    /// is that it doesn't return [`H::Output`], since the triggering
-    /// of this hook will happen outside of the calling function.
+    /// is that it doesn't return the [`Hookable`], since the
+    /// triggering of the hooks will happen outside of the calling
+    /// function.
     ///
-    /// Most of the time, this doesn't really matter, as only a few
-    /// types really need to recover [`H::Output`], so you should be
-    /// able to call this from pretty much anywhere.
-    ///
-    /// [`H::Output`]: Hookable::Output
-    pub fn queue<H>(args: H::Input)
-    where
-        H: Hookable,
-        H::Input: Send + 'static,
-    {
+    /// Most of the time, this doesn't really matter, as in only a few
+    /// cases do you actually need to recover the [`Hookable`], so you
+    /// should be able to call this from pretty much anywhere.
+    pub fn queue(hookable: impl Hookable + Send) {
         let sender = crate::context::sender();
         sender
-            .send(DuatEvent::QueuedFunction(Box::new(|mut pa| {
+            .send(DuatEvent::QueuedFunction(Box::new(move |mut pa| {
                 // SAFETY: There is a Pass argument
-                unsafe { HOOKS.get() }.trigger::<H>(&mut pa, args);
+                unsafe { HOOKS.get() }.trigger(&mut pa, hookable);
             })))
             .unwrap();
     }
@@ -239,49 +263,34 @@ mod global {
 /// Duat.
 ///
 /// There are no arguments
-pub struct ConfigLoaded;
+pub struct ConfigLoaded(pub(crate) ());
 
 impl Hookable for ConfigLoaded {
-    type Args<'a> = ();
-    type Input = ();
+    type Input<'h> = ();
 
-    fn trigger(mut pa: Pass<'_>, input: Self::Input, hooks: Hooks<Self>) {
-        for hook in hooks {
-            hook(&mut pa, input)
-        }
-    }
+    fn get_input(&mut self) -> Self::Input<'_> {}
 }
 
 /// [`Hookable`]: Triggers when Duat closes or has to reload
 ///
 /// There are no arguments
-pub struct ConfigUnloaded;
+pub struct ConfigUnloaded(pub(crate) ());
 
 impl Hookable for ConfigUnloaded {
-    type Args<'a> = ();
-    type Input = ();
+    type Input<'h> = ();
 
-    fn trigger(mut pa: Pass<'_>, input: Self::Input, hooks: Hooks<Self>) {
-        for hook in hooks {
-            hook(&mut pa, input)
-        }
-    }
+    fn get_input(&mut self) -> Self::Input<'_> {}
 }
 
 /// [`Hookable`]: Triggers when Duat closes
 ///
 /// There are no arguments
-pub struct ExitedDuat;
+pub struct ExitedDuat(pub(crate) ());
 
 impl Hookable for ExitedDuat {
-    type Args<'a> = ();
-    type Input = ();
+    type Input<'h> = ();
 
-    fn trigger(mut pa: Pass<'_>, input: Self::Input, hooks: Hooks<Self>) {
-        for hook in hooks {
-            hook(&mut pa, input)
-        }
-    }
+    fn get_input(&mut self) -> Self::Input<'_> {}
 }
 
 /// [`Hookable`]: Triggers when a [`File`] is opened
@@ -293,16 +302,13 @@ impl Hookable for ExitedDuat {
 ///
 /// [`File`]: crate::file::File
 /// [builder]: crate::ui::FileBuilder
-pub struct OnFileOpen<U: Ui>(PhantomData<U>);
+pub struct OnFileOpen<U: Ui>(pub(crate) FileBuilder<U>);
 
 impl<U: Ui> Hookable for OnFileOpen<U> {
-    type Args<'a> = &'a mut FileBuilder<U>;
-    type Input = FileBuilder<U>;
+    type Input<'h> = &'h mut FileBuilder<U>;
 
-    fn trigger(mut pa: Pass<'_>, mut input: Self::Input, hooks: Hooks<Self>) {
-        for hook in hooks {
-            hook(&mut pa, &mut input)
-        }
+    fn get_input(&mut self) -> Self::Input<'_> {
+        &mut self.0
     }
 }
 
@@ -314,16 +320,13 @@ impl<U: Ui> Hookable for OnFileOpen<U> {
 ///   edges of the window, surrounding the inner file region.
 ///
 /// [builder]: crate::ui::WindowBuilder
-pub struct OnWindowOpen<U: Ui>(PhantomData<U>);
+pub struct OnWindowOpen<U: Ui>(pub(crate) WindowBuilder<U>);
 
 impl<U: Ui> Hookable for OnWindowOpen<U> {
-    type Args<'a> = &'a mut WindowBuilder<U>;
-    type Input = WindowBuilder<U>;
+    type Input<'h> = &'h mut WindowBuilder<U>;
 
-    fn trigger(mut pa: Pass<'_>, mut input: Self::Input, hooks: Hooks<Self>) {
-        for hook in hooks {
-            hook(&mut pa, &mut input)
-        }
+    fn get_input(&mut self) -> Self::Input<'_> {
+        &mut self.0
     }
 }
 
@@ -336,33 +339,13 @@ impl<U: Ui> Hookable for OnWindowOpen<U> {
 ///
 /// [`Widget`]: crate::widget::Widget
 /// [area]: crate::ui::Area
-pub struct FocusedOn<W: Widget<U>, U: Ui>(PhantomData<(W, U)>);
+pub struct FocusedOn<W: Widget<U>, U: Ui>(pub(crate) (RwData<W>, U::Area));
 
 impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
-    type Args<'a> = (&'a RwData<W>, &'a U::Area);
-    type Input = (RwData<W>, U::Area);
+    type Input<'h> = (&'h RwData<W>, &'h U::Area);
 
-    fn trigger(mut pa: Pass<'_>, (widget, area): Self::Input, hooks: Hooks<Self>) {
-        widget.write(&mut pa, |widget| {
-            let cfg = widget.print_cfg();
-            widget.text_mut().remove_cursors(&area, cfg);
-        });
-
-        for hook in hooks {
-            hook(&mut pa, (&widget, &area));
-        }
-
-        Widget::on_focus(pa, widget.clone(), &area);
-
-        // SAFETY: Since the last Pass was consumed, we can create a new
-        // one.
-        widget.write(&mut unsafe { Pass::new() }, |widget| {
-            let cfg = widget.print_cfg();
-            widget.text_mut().add_cursors(&area, cfg);
-            if let Some(main) = widget.text().cursors().and_then(Cursors::get_main) {
-                area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
-            }
-        });
+    fn get_input(&mut self) -> Self::Input<'_> {
+        (&self.0.0, &self.0.1)
     }
 }
 
@@ -375,33 +358,13 @@ impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
 ///
 /// [`Widget`]: crate::widget::Widget
 /// [area]: crate::ui::Area
-pub struct UnfocusedFrom<W: Widget<U>, U: Ui>(PhantomData<(W, U)>);
+pub struct UnfocusedFrom<W: Widget<U>, U: Ui>(pub(crate) (RwData<W>, U::Area));
 
 impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
-    type Args<'a> = (&'a RwData<W>, &'a U::Area);
-    type Input = (RwData<W>, U::Area);
+    type Input<'h> = (&'h RwData<W>, &'h U::Area);
 
-    fn trigger(mut pa: Pass<'_>, (widget, area): Self::Input, hooks: Hooks<Self>) {
-        widget.write(&mut pa, |widget| {
-            let cfg = widget.print_cfg();
-            widget.text_mut().remove_cursors(&area, cfg);
-        });
-
-        for hook in hooks {
-            hook(&mut pa, (&widget, &area));
-        }
-
-        Widget::on_unfocus(pa, widget.clone(), &area);
-
-        // SAFETY: Since the last Pass was consumed, we can create a new
-        // one.
-        widget.write(&mut unsafe { Pass::new() }, |widget| {
-            let cfg = widget.print_cfg();
-            widget.text_mut().add_cursors(&area, cfg);
-            if let Some(main) = widget.text().cursors().and_then(Cursors::get_main) {
-                area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
-            }
-        });
+    fn get_input(&mut self) -> Self::Input<'_> {
+        (&self.0.0, &self.0.1)
     }
 }
 
@@ -419,16 +382,13 @@ impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
 /// but from different crates.
 ///
 /// [`Mode`]: crate::mode::Mode
-pub struct ModeSwitched;
+pub struct ModeSwitched(pub(crate) (&'static str, &'static str));
 
 impl Hookable for ModeSwitched {
-    type Args<'a> = (&'a str, &'a str);
-    type Input = (&'static str, &'static str);
+    type Input<'h> = (&'static str, &'static str);
 
-    fn trigger(mut pa: Pass<'_>, input: Self::Input, hooks: Hooks<Self>) {
-        for hook in hooks {
-            hook(&mut pa, input)
-        }
+    fn get_input(&mut self) -> Self::Input<'_> {
+        self.0
     }
 }
 
@@ -444,22 +404,18 @@ impl Hookable for ModeSwitched {
 /// like the language of a [`File`].
 ///
 /// [`File`]: crate::file::File
-pub struct ModeSetTo<M: Mode<U>, U: Ui>(PhantomData<(M, U)>);
+pub struct ModeSetTo<M: Mode<U>, U: Ui>(pub(crate) (Option<M>, RwData<M::Widget>, U::Area));
 
 impl<M: Mode<U>, U: Ui> Hookable for ModeSetTo<M, U> {
-    type Args<'a> = (M, &'a RwData<M::Widget>, &'a U::Area);
-    type Input = (M, RwData<M::Widget>, U::Area);
+    type Input<'h> = (M, &'h RwData<M::Widget>, &'h U::Area);
     type Output = M;
 
-    fn trigger(
-        mut pa: Pass<'_>,
-        (mut mode, widget, area): Self::Input,
-        hooks: Hooks<Self>,
-    ) -> Self::Output {
-        for hook in hooks {
-            mode = hook(&mut pa, (mode, &widget, &area));
-        }
-        mode
+    fn get_input(&mut self) -> Self::Input<'_> {
+        (self.0.0.take().unwrap(), &self.0.1, &self.0.2)
+    }
+
+    fn return_output(&mut self, output: Self::Output) {
+        self.0.0 = Some(output)
     }
 }
 
@@ -470,16 +426,13 @@ impl<M: Mode<U>, U: Ui> Hookable for ModeSetTo<M, U> {
 /// - The [key] sent.
 ///
 /// [key]: KeyEvent
-pub struct KeysSent;
+pub struct KeysSent(pub(crate) Vec<KeyEvent>);
 
 impl Hookable for KeysSent {
-    type Args<'a> = &'a [KeyEvent];
-    type Input = Vec<KeyEvent>;
+    type Input<'h> = &'h [KeyEvent];
 
-    fn trigger(mut pa: Pass<'_>, input: Self::Input, hooks: Hooks<Self>) {
-        for hook in hooks {
-            hook(&mut pa, &input);
-        }
+    fn get_input(&mut self) -> Self::Input<'_> {
+        &self.0
     }
 }
 
@@ -491,16 +444,13 @@ impl Hookable for KeysSent {
 /// - An [`RwData<W>`] for the widget.
 ///
 /// [key]: KeyEvent
-pub struct KeysSentTo<W: Widget<U>, U: Ui>(PhantomData<(&'static W, U)>);
+pub struct KeysSentTo<W: Widget<U>, U: Ui>(pub(crate) (Vec<KeyEvent>, RwData<W>, U::Area));
 
 impl<W: Widget<U>, U: Ui> Hookable for KeysSentTo<W, U> {
-    type Args<'b> = (&'b [KeyEvent], &'b RwData<W>, &'b U::Area);
-    type Input = (Vec<KeyEvent>, RwData<W>, U::Area);
+    type Input<'h> = (&'h [KeyEvent], &'h RwData<W>, &'h U::Area);
 
-    fn trigger(mut pa: Pass<'_>, (keys, widget, area): Self::Input, hooks: Hooks<Self>) {
-        for hook in hooks {
-            hook(&mut pa, (&keys, &widget, &area));
-        }
+    fn get_input(&mut self) -> Self::Input<'_> {
+        (&self.0.0, &self.0.1, &self.0.2)
     }
 }
 
@@ -515,16 +465,13 @@ impl<W: Widget<U>, U: Ui> Hookable for KeysSentTo<W, U> {
 /// - The [`Form`]'s name.
 /// - Its [`FormId`].
 /// - Its new value.
-pub struct FormSet;
+pub struct FormSet(pub(crate) (&'static str, FormId, Form));
 
 impl Hookable for FormSet {
-    type Args<'b> = Self::Input;
-    type Input = (&'static str, FormId, Form);
+    type Input<'h> = (&'static str, FormId, Form);
 
-    fn trigger(mut pa: Pass<'_>, pre_args: Self::Input, hooks: Hooks<Self>) {
-        for hook in hooks {
-            hook(&mut pa, pre_args)
-        }
+    fn get_input(&mut self) -> Self::Input<'_> {
+        (self.0.0, self.0.1, self.0.2)
     }
 }
 
@@ -538,16 +485,13 @@ impl Hookable for FormSet {
 /// - The name of the [`ColorScheme`]
 ///
 /// [`ColorScheme`]: crate::form::ColorScheme
-pub struct ColorSchemeSet;
+pub struct ColorSchemeSet(pub(crate) &'static str);
 
 impl Hookable for ColorSchemeSet {
-    type Args<'b> = Self::Input;
-    type Input = &'static str;
+    type Input<'h> = &'static str;
 
-    fn trigger(mut pa: Pass<'_>, pre_args: Self::Input, hooks: Hooks<Self>) {
-        for hook in hooks {
-            hook(&mut pa, pre_args)
-        }
+    fn get_input(&mut self) -> Self::Input<'_> {
+        self.0
     }
 }
 
@@ -560,16 +504,13 @@ impl Hookable for ColorSchemeSet {
 /// - The searched regex pattern
 ///
 /// [search]: crate::mode::IncSearch
-pub struct SearchPerformed;
+pub struct SearchPerformed(pub String);
 
 impl Hookable for SearchPerformed {
-    type Args<'a> = &'a str;
-    type Input = String;
+    type Input<'h> = &'h str;
 
-    fn trigger(mut pa: Pass<'_>, pre_args: Self::Input, hooks: Hooks<Self>) {
-        for hook in hooks {
-            hook(&mut pa, &pre_args)
-        }
+    fn get_input(&mut self) -> Self::Input<'_> {
+        &self.0
     }
 }
 
@@ -584,17 +525,13 @@ impl Hookable for SearchPerformed {
 /// - The current regex pattern
 ///
 /// [search]: crate::mode::IncSearch
-pub struct SearchUpdated;
+pub struct SearchUpdated(pub (String, String));
 
 impl Hookable for SearchUpdated {
-    type Args<'a> = (&'a str, &'a str);
-    type Input = (String, String);
-    type Output = ();
+    type Input<'h> = (&'h str, &'h str);
 
-    fn trigger(mut pa: Pass<'_>, (prev, cur): Self::Input, hooks: Hooks<Self>) {
-        for hook in hooks {
-            hook(&mut pa, (&prev, &cur))
-        }
+    fn get_input(&mut self) -> Self::Input<'_> {
+        (&self.0.0, &self.0.1)
     }
 }
 
@@ -609,16 +546,13 @@ impl Hookable for SearchUpdated {
 ///
 /// [`File::write`]: crate::file::File::write
 /// [`File::write_to`]: crate::file::File::write_to
-pub struct FileWritten;
+pub struct FileWritten(pub(crate) (String, usize));
 
 impl Hookable for FileWritten {
-    type Args<'a> = (&'a str, usize);
-    type Input = (String, usize);
+    type Input<'i> = (&'i str, usize);
 
-    fn trigger(mut pa: Pass<'_>, (file, bytes): Self::Input, hooks: Hooks<Self>) {
-        for hook in hooks {
-            hook(&mut pa, (&file, bytes));
-        }
+    fn get_input(&mut self) -> Self::Input<'_> {
+        (&self.0.0, self.0.1)
     }
 }
 
@@ -633,22 +567,33 @@ impl Hookable for FileWritten {
 ///
 /// [`hook::trigger`]: trigger
 pub trait Hookable: Sized + 'static {
-    /// The arguments that should be passed to each [`Hook`]
-    type Args<'a>;
-    /// What to pass to the [`Hookable::trigger`] function
-    type Input;
-    /// The output of triggering all [`Hook`]s. Mostly never used
+    /// The arguments that are passed to each hook.
+    type Input<'h>;
+    /// The output of triggering hooks. Mostly never used
+    ///
+    /// This value is never returned when calling [`hook::trigger`],
+    /// instead, through the [`Hookable::return_output`] function, you
+    /// are supposed to store it in [`Self`], and then you can access
+    /// it after the [`hook::trigger`] call, if it supposed to be
+    /// something like the builder pattern.
+    ///
+    /// [`hook::trigger`]: global::trigger
+    /// [`Self`]: Hookable
     type Output = ();
 
-    /// Trigger all [`Hook`]s
+    /// How to get the arguments from the [`Hookable`]
+    fn get_input(&mut self) -> Self::Input<'_>;
+
+    /// When a [`Hookable`] has an [`Output`], you can define how it
+    /// takes it back
     ///
-    /// This is done this way in order to allow the [`Hookable`] more
-    /// fine grained control over the activation of individual
-    /// [`Hook`]s. It also permits the transformation of
-    /// [`Hookable::Input`] into [`Hookable::Args`], which would
-    /// otherwise just be a simple reference, which may not be the
-    /// best type in each scenario.
-    fn trigger(pa: Pass<'_>, input: Self::Input, hooks: Hooks<Self>) -> Self::Output;
+    /// One example of how this can be useful is if your [`Hookable`]
+    /// is using a builder pattern definition for the [`Output`], like
+    /// the [`ModeSetTo`] [`Hookable`].
+    ///
+    /// [`Output`]: Hookable::Output
+    #[allow(unused_variables)]
+    fn return_output(&mut self, output: Self::Output) {}
 }
 
 /// Where all hooks of Duat are stored
@@ -663,7 +608,7 @@ impl InnerHooks {
     fn add<H: Hookable>(
         &self,
         group: &'static str,
-        f: Box<dyn FnMut(Pass, H::Args<'_>) -> H::Output + 'static>,
+        f: Box<dyn for<'h> FnMut(Pass, H::Input<'h>) -> H::Output + 'static>,
     ) {
         let mut map = self.types.borrow_mut();
 
@@ -702,27 +647,30 @@ impl InnerHooks {
     }
 
     /// Triggers hooks with args of the [`Hookable`]
-    #[define_opaque(Hooks)]
-    fn trigger<H: Hookable>(&self, _: &mut Pass, pre_args: H::Input) -> H::Output {
+    fn trigger<H: Hookable>(&self, _: &mut Pass, mut hookable: H) -> H {
         let holder = self.types.borrow().get(&TypeId::of::<H>()).cloned();
 
-        // SAFETY: There is a &mut Pass argument.
-        let pa = unsafe { Pass::new() };
+        let Some(holder) = holder else {
+            return hookable;
+        };
 
-        if let Some(holder) = holder {
-            let holder = holder.clone();
-            // SAFETY: HooksOf<H> is the only type that this HookHolder could be.
-            let hooks_of = unsafe {
-                let ptr = (&*holder as *const dyn HookHolder).cast::<HooksOf<H>>();
-                ptr.as_ref().unwrap()
-            };
+        let holder = holder.clone();
+        // SAFETY: HooksOf<H> is the only type that this HookHolder could be.
+        let hooks_of = unsafe {
+            let ptr = (&*holder as *const dyn HookHolder).cast::<HooksOf<H>>();
+            ptr.as_ref().unwrap()
+        };
 
-            let hooks = hooks_of.0.borrow_mut().clone();
-            let hooks: Hooks<H> = hooks.into_iter().map(Hook::new);
-            H::trigger(pa, pre_args, hooks)
-        } else {
-            H::trigger(pa, pre_args, Vec::new().into_iter().map(Hook::new))
+        let hooks = hooks_of.0.borrow_mut().clone();
+        for (_, hook) in hooks.into_iter() {
+            // SAFETY: There is a &mut Pass argument.
+            let pa = unsafe { Pass::new() };
+            let input = hookable.get_input();
+            let output = hook.borrow_mut()(pa, input);
+            hookable.return_output(output);
         }
+
+        hookable
     }
 
     /// Checks if a hook group exists
@@ -747,32 +695,5 @@ impl<H: Hookable> HookHolder for HooksOf<H> {
     }
 }
 
-/// A function to be called when a [`Hookable`] is triggered
-///
-/// This function implements [`FnOnce`], as it is only meant to be
-/// called once per [`trigger`] call.
-pub struct Hook<H: Hookable>(InnerHookFn<H>);
-
-impl<H: Hookable> Hook<H> {
-    fn new((_, f): (&str, InnerHookFn<H>)) -> Self {
-        Self(f)
-    }
-}
-
-impl<H: Hookable> std::ops::FnOnce<(&mut Pass<'_>, H::Args<'_>)> for Hook<H> {
-    type Output = H::Output;
-
-    extern "rust-call" fn call_once(self, (_, args): (&mut Pass, H::Args<'_>)) -> Self::Output {
-        // SAFETY: Since this function requires an exclusive reference to a
-        // Pass, I can freely create new Passs.
-        let pa = unsafe { Pass::new() };
-        self.0.borrow_mut()(pa, args)
-    }
-}
-
-type InnerHookFn<H> = &'static RefCell<
-    (dyn FnMut(Pass, <H as Hookable>::Args<'_>) -> <H as Hookable>::Output + 'static),
->;
-/// An [`Iterator`] over all of the [`Hook`]s that a [`Hookable`] must
-/// process
-pub type Hooks<H: Hookable> = impl Iterator<Item = Hook<H>>;
+type InnerHookFn<H> =
+    &'static RefCell<(dyn FnMut(Pass, <H as Hookable>::Input<'_>) -> <H as Hookable>::Output)>;

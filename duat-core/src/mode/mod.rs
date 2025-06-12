@@ -259,11 +259,11 @@ mod switch {
             }
         };
 
-        hook::trigger::<KeysSentTo<M::Widget, U>>(
+        hook::trigger(
             &mut pa,
-            (sent_keys.clone(), widget.clone(), area.clone()),
+            KeysSentTo((sent_keys.clone(), widget.clone(), area.clone())),
         );
-        hook::trigger::<KeysSent>(&mut pa, sent_keys);
+        hook::trigger(&mut pa, KeysSent(sent_keys));
 
         (keys, mode_fn)
     }
@@ -307,7 +307,8 @@ mod switch {
                 .unwrap()
         };
 
-        let mut mode = hook::trigger::<ModeSetTo<M, U>>(&mut pa, (mode, w.clone(), area.clone()));
+        let mst = ModeSetTo((Some(mode), w.clone(), area.clone()));
+        let mut mode = hook::trigger(&mut pa, mst).0.0.take().unwrap();
 
         w.write(&mut pa, |widget| {
             let cfg = widget.print_cfg();
@@ -327,14 +328,14 @@ mod switch {
 
         crate::mode::set_send_key::<M, U>();
 
-        let modes = context::raw_mode_name().write(&mut pa, |old_mode| {
+        let (old, new) = context::raw_mode_name().write(&mut pa, |old_mode| {
             let new_mode = duat_name::<M>();
             let ret = (*old_mode, new_mode);
             *old_mode = new_mode;
             ret
         });
 
-        hook::trigger::<ModeSwitched>(&mut pa, modes);
+        hook::trigger(&mut pa, ModeSwitched((old, new)));
 
         unsafe {
             MODE.get().replace(Box::new(mode));

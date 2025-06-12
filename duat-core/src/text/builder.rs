@@ -362,6 +362,12 @@ impl From<&PathBuf> for BuilderPart {
     }
 }
 
+impl From<std::process::Output> for BuilderPart {
+    fn from(value: std::process::Output) -> Self {
+        BuilderPart::ToString(String::from_utf8_lossy(&value.stdout).into_owned())
+    }
+}
+
 mod macros {
     /// The standard [`Text`] construction macro
     ///
