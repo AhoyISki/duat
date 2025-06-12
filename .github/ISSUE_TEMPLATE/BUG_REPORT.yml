@@ -9,10 +9,11 @@ body:
     attributes:
       value: |
         Thanks for filling out this bug report!
-  - type: checkbox
+  - type: checkboxes
     id: is-duat-related
     attributes:
       options: Is this issue duat related? Or is it related to some plugin or extension?
+      required: true
   - type: markdown
     attributes:
       value: |
