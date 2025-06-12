@@ -28,55 +28,47 @@ mod cursors;
 
 /// A struct used by [`Mode`]s to edit [`Text`]
 ///
-/// You will want to use this struct when editing [`Widget`]s
-/// with [`Cursors`]. For example, let's say you want to create an
-/// mode for the [`File`] widget:
+/// You will want to use this struct when editing [`Widget`]s with
+/// [`Cursors`]. For example, let's say you want to create a mode for
+/// the [`File`] [`Widget`]:
 ///
 /// ```rust
-/// # use duat_core::{mode::{EditHelper, Mode, KeyEvent, Cursors}, ui::Ui, file::File};
+/// # use duat_core::prelude::*;
 /// /// A very basic example Mode.
 /// #[derive(Clone)]
 /// struct PlacesCharactersAndMoves;
 ///
 /// impl<U: Ui> Mode<U> for PlacesCharactersAndMoves {
-///     type Widget = File;
+///     type Widget = File<U>;
 ///     /* ... */
-/// #   fn send_key(&mut self, key: KeyEvent, widget: &mut File, area: &U::RawArea) {
-/// #       todo!();
-/// #   }
-/// # }
+/// #     fn send_key(&mut self, _: Pass, _: KeyEvent, _: RwData<File<U>>, _: U::Area) { todo!(); }
+/// }
 /// ```
 ///
 /// In order to modify the widget, you must implement the
 /// [`Mode::send_key`] method. In it, you receive the following:
 ///
-/// - The [key].
-/// - A [`&mut Self::Widget`].
-/// - An [`RawArea`], which you can resize and modify it in other
-///   ways.
-/// - The current [`Cursors`] of the widget, these should be modified
-///   by the [`EditHelper`].
-///
-/// In a [`Mode`] without cursors, you'd probably want to run
-/// [`Cursors::clear`], in order to make sure there are no cursors.
+/// - A [`Pass`], which will give you access to all of duat's shared
+///   state;
+/// - The [key] that was sent, may be a [mapped] key.
+/// - An [`RwData<Self::Widget>`], which you can [`read`] and
+///   [`write`] to, using the [`Pass`].
+/// - A [`U::Area`], which you can resize and modify in other ways.
 ///
 /// ```rust
-/// # use duat_core::{
-/// #     mode::{key, Cursors, EditHelper, Mode, KeyCode, KeyEvent}, ui::Ui, file::File,
-/// # };
+/// # use duat_core::prelude::*;
 /// # #[derive(Clone)]
 /// # struct PlacesCharactersAndMoves;
 /// impl<U: Ui> Mode<U> for PlacesCharactersAndMoves {
-/// #   type Widget = File<U>;
+/// #     type Widget = File<U>;
 ///     /* ... */
-///     fn send_key(&mut self, key: KeyEvent, widget: &mut File<U>, area: &U::RawArea) {
+///     fn send_key(&mut self, pa: Pass, key: KeyEvent, file: RwData<File<U>>, area: U::Area) {
 ///         match key {
 ///             // actions based on the key pressed
 ///             key!(KeyCode::Char('c')) => {
 ///                 /* Do something when the character 'c' is typed. */
 ///             }
-///             /* Matching the rest of the keys */
-/// #           _ => todo!()
+///             _ => todo!("The remaining keys")
 ///         }
 ///     }
 /// # }
@@ -84,33 +76,30 @@ mod cursors;
 ///
 /// (You can use the [`key!`] macro in order to match [`KeyEvent`]s).
 ///
-/// With the `EditHelper`, you can modify [`Text`] in a simplified
+/// With the [`EditHelper`], you can modify [`Text`] in a simplified
 /// way. This is done by two actions, [editing] and [moving]. You
 /// can only do one of these on any number of cursors at the same
 /// time.
 ///
 /// ```rust
-/// # use duat_core::{
-/// #     mode::{ key, Cursors, EditHelper, Mode, KeyCode, KeyEvent, KeyMod},
-/// #     Lender, ui::Ui, file::File,
-/// # };
+/// # use duat_core::prelude::*;
 /// # #[derive(Clone)]
 /// # struct PlacesCharactersAndMoves;
 /// impl<U: Ui> Mode<U> for PlacesCharactersAndMoves {
-/// #   type Widget = File;
+/// #   type Widget = File<U>;
 ///     /* ... */
-///     fn send_key(&mut self, key: KeyEvent, file: &mut File, area: &U::RawArea) {
-///         let mut helper = EditHelper::new(file, area);
+///     fn send_key(&mut self, mut pa: Pass, key: KeyEvent, file: RwData<File<U>>, area: U::Area) {
+///         let mut helper = EditHelper::new(&mut pa, file, area);
 ///         
 ///         match key {
 ///             key!(KeyCode::Char(c)) => {
-///                 helper.edit_iter().for_each(|mut e| {
+///                 helper.edit_all(&mut pa, |mut e| {
 ///                     e.insert('c');
 ///                     e.move_hor(1);
 ///                 });
 ///             },
 ///             key!(KeyCode::Right, KeyMod::SHIFT) => {
-///                 helper.edit_iter().for_each(|mut e| {
+///                 helper.edit_all(&mut pa, |mut e| {
 ///                     if e.anchor().is_none() {
 ///                         e.set_anchor();
 ///                     }
@@ -118,13 +107,12 @@ mod cursors;
 ///                 });
 ///             }
 ///             key!(KeyCode::Right) => {
-///                 helper.edit_iter().for_each(|mut e| {
+///                 helper.edit_all(&mut pa, |mut e| {
 ///                     e.unset_anchor();
 ///                     e.move_hor(1);
 ///                 });
 ///             }
-///             /* Predictable remaining implementations */
-/// #           _ => todo!()
+///             _ => todo!("Predictable remaining implementations")
 ///         }
 ///     }
 /// # }
@@ -132,10 +120,15 @@ mod cursors;
 ///
 /// [`Mode`]: super::Mode
 /// [`Text`]: crate::text::Text
-/// [`PromptLine`]: crate::widget::PromptLine
+/// [`PromptLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
 /// [`&mut Self::Widget`]: super::Mode::Widget
 /// [`Mode::send_key`]: super::Mode::send_key
 /// [key]: super::KeyEvent
+/// [mapped]: super::map
+/// [`RwData<Self::Widget>`]: RwData
+/// [`read`]: RwData::read
+/// [`write`]: RwData::write
+/// [`U::Area`]: Ui::Area
 /// [`Self::Widget`]: super::Mode::Widget
 /// [`Some(cursors)`]: Some
 /// [`Ui::RawArea`]: crate::ui::Ui::RawArea
@@ -332,8 +325,8 @@ impl<W: Widget<U>, U: Ui, S> EditHelper<W, U, S> {
     /// This is the equivalent of calling:
     ///
     /// ```rust
-    /// # use duat_core::{data::Pass, mode::EditHelper, ui::Area, file::File};
-    /// # fn test<A: Area>(pa: &mut Pass, helper: EditHelper<File, A, ()>) {
+    /// # use duat_core::prelude::*;
+    /// # fn test<U: Ui>(pa: &mut Pass, mut helper: EditHelper<File<U>, U, ()>) {
     /// helper.edit_iter(pa, |iter| iter.for_each(|e| { /* .. */ }));
     /// # }
     /// ```
@@ -456,17 +449,25 @@ impl<W: Widget<U>, U: Ui, S> EditHelper<W, U, S> {
 /// struct.
 ///
 /// ```rust
-/// # use duat_core::{mode::EditHelper, ui::RawArea, file::File};
-/// # fn test<S>(helper: &mut EditHelper<File, impl RawArea, S>) {
-/// let mut e = helper.edit_main();
-/// e.replace("my replacement");
-/// e.insert(" and my edit");
-/// e.move_hor(" and my edit".chars().count() as i32);
-/// e.set_anchor();
-/// e.move_hor(-("my replacement and my edit".chars().count() as i32));
-/// let sel: String = e.selection().into_iter().collect();
+/// # use duat_core::prelude::*;
+/// # fn test<U: Ui, S>(mut pa: Pass, helper: &mut EditHelper<File<U>, U, S>) {
+/// let sel: String = helper.edit_main(&mut pa, |mut e| {
+///     e.set_anchor();
+///     e.set_caret_on_end();
+///     e.replace("my replacement");
+///     e.append(" and my edit");
 ///
-/// assert_eq!(&sel, "my replacement and my edit");
+///     e.swap_ends();
+///     e.insert("This is ");
+///     e.swap_ends();
+///
+///     e.move_hor(" and my edit".chars().count() as i32);
+///     e.set_anchor();
+///     e.move_hor(-("This is my replacement and my edit".chars().count() as i32));
+///     e.selection().into_iter().collect()
+/// });
+///
+/// assert_eq!(&sel, "This is my replacement and my edit");
 /// # }
 /// ```
 ///
@@ -828,12 +829,13 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Editor<'a, W, A, S> {
     /// If the regex is not valid, this method will panic.
     ///
     /// ```rust
-    /// # use duat_core::{mode::EditHelper, ui::RawArea, file::File, Lender};
-    /// fn search_nth_paren<S>(
-    ///     helper: &mut EditHelper<File, impl RawArea, S>,
+    /// # use duat_core::prelude::*;
+    /// fn search_nth_paren<U: Ui, S>(
+    ///     pa: &mut Pass,
+    ///     helper: &mut EditHelper<File<U>, U, S>,
     ///     n: usize,
     /// ) {
-    ///     helper.edit_iter().for_each(|mut e| {
+    ///     helper.edit_all(pa, |mut e| {
     ///         let mut nth = e.search_fwd('(', None).nth(n);
     ///         if let Some([p0, p1]) = nth {
     ///             e.move_to(p0);
@@ -870,13 +872,14 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Editor<'a, W, A, S> {
     /// If the regex is not valid, this method will panic.
     ///
     /// ```rust
-    /// # use duat_core::{mode::EditHelper, ui::RawArea, file::File, Lender};
-    /// fn search_nth_rev<S>(
-    ///     helper: &mut EditHelper<File, impl RawArea, S>,
-    ///     n: usize,
+    /// # use duat_core::prelude::*;
+    /// fn search_nth_paren<U: Ui, S>(
+    ///     pa: &mut Pass,
+    ///     helper: &mut EditHelper<File<U>, U, S>,
     ///     s: &str,
+    ///     n: usize,
     /// ) {
-    ///     helper.edit_iter().for_each(|mut e| {
+    ///     helper.edit_all(pa, |mut e| {
     ///         let mut nth = e.search_rev(s, None).nth(n);
     ///         if let Some([p0, p1]) = nth {
     ///             e.move_to(p0);

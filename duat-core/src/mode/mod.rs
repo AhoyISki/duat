@@ -388,7 +388,7 @@ mod switch {
 ///
 /// ```rust
 /// # #![feature(let_chains)]
-/// # use duat_core::text::{Text, text, AlignCenter};
+/// # use duat_core::prelude::*;
 /// # struct Menu {
 /// #     text: Text,
 /// #     selected_entry: usize,
@@ -415,27 +415,25 @@ mod switch {
 ///
 ///     fn build_text(&mut self) {
 ///         let mut builder = Text::builder();
-///         text!(builder, AlignCenter);
+///         builder.push(AlignCenter);
 ///
 ///         for i in 0..5 {
 ///             if let Some(active) = self.active_entry
 ///                 && active == i
 ///             {
 ///                 if self.selected_entry == i {
-///                     text!(builder, [MenuSelActive])
+///                     builder.push(form::id_of!("MenuSelActive"))
 ///                 } else {
-///                     text!(builder, [MenuActive])
+///                     builder.push(form::id_of!("MenuActive"))
 ///                 }
 ///             } else if self.selected_entry == i {
-///                 text!(builder, [MenuSelected]);
-///             } else {
-///                 text!(builder, [MenuInactive]);
+///                 builder.push(form::id_of!("MenuSelected"))
 ///             }
 ///
-///             text!(builder, "Entry " i);
+///             builder.push(text!("Entry {i}"));
 ///         }
 ///
-///         self.text = builder.finish();
+///         self.text = builder.build();
 ///     }
 /// }
 /// ```
@@ -452,10 +450,7 @@ mod switch {
 ///
 /// ```rust
 /// # use std::marker::PhantomData;
-/// # use duat_core::{
-/// #     mode::{Mode, KeyEvent}, form::{self, Form},
-/// #     text::{text, Text}, ui::{PushSpecs, Ui}, widget::{Widget, WidgetCfg},
-/// # };
+/// # use duat_core::prelude::*;
 /// # #[derive(Default)]
 /// # struct Menu {
 /// #     text: Text,
@@ -463,44 +458,45 @@ mod switch {
 /// #     active_entry: Option<usize>,
 /// # }
 /// # impl Menu {
-/// #     fn build_text(&mut self) {
-/// #         todo!();
-/// #     }
+/// #     fn build_text(&mut self) { todo!(); }
 /// # }
 /// struct MenuCfg<U>(PhantomData<U>);
 ///
 /// impl<U: Ui> WidgetCfg<U> for MenuCfg<U> {
 ///     type Widget = Menu;
 ///
-///     fn build(self, on_file: bool) -> (Menu, impl Fn() -> bool + 'static, PushSpecs) {
-///         let checker = || false;
-///
+///     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Menu, PushSpecs) {
 ///         let mut widget = Menu::default();
 ///         widget.build_text();
 ///
 ///         let specs = PushSpecs::left().with_hor_len(10.0).with_ver_len(5.0);
 ///
-///         (widget, checker, specs)
+///         (widget, specs)
 ///     }
 /// }
 ///
 /// impl<U: Ui> Widget<U> for Menu {
 ///     type Cfg = MenuCfg<U>;
 ///
-///     fn cfg() -> Self::Cfg {
-///         MenuCfg(PhantomData)
+///     fn update(_: Pass, _: RwData<Self>, _: &U::Area) {}
+///
+///     fn needs_update(&self) -> bool {
+///         false
 ///     }
 ///
 ///     fn text(&self) -> &Text {
 ///         &self.text
 ///     }
-///   
+///
 ///     fn text_mut(&mut self) -> &mut Text {
 ///         &mut self.text
 ///     }
 ///
+///     fn cfg() -> Self::Cfg {
+///         MenuCfg(PhantomData)
+///     }
+///
 ///     fn once() -> Result<(), Text> {
-///         form::set_weak("MenuInactive", "Inactive");
 ///         form::set_weak("MenuSelected", "Inactive");
 ///         form::set_weak("MenuActive", Form::blue());
 ///         form::set_weak("MenuSelActive", Form::blue());
@@ -509,9 +505,10 @@ mod switch {
 /// }
 /// ```
 ///
-/// We can use `let checker = || false` here, since active [`Widget`]s
-/// get automatically updated whenever they are focused or a key is
-/// sent.
+/// One thing that you'll notice is the definition of
+/// [`Widget::needs_update`]. It can always return `false` because the
+/// `Menu` only needs to update after keys are sent, and sent keys
+/// automatically trigger [`Widget::update`].
 ///
 /// Now, let's take a look at some [`Widget`] methods that are unique
 /// to widgets that can take mode. Those are the [`on_focus`] and
@@ -519,10 +516,7 @@ mod switch {
 ///
 /// ```rust
 /// # use std::marker::PhantomData;
-/// # use duat_core::{
-/// #     data::RwData, form::{self, Form}, text::{text, Text}, ui::{PushSpecs, Ui},
-/// #     widget::{Widget, WidgetCfg},
-/// # };
+/// # use duat_core::prelude::*;
 /// # #[derive(Default)]
 /// # struct Menu {
 /// #     text: Text,
@@ -532,33 +526,25 @@ mod switch {
 /// # struct MenuCfg<U>(PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for MenuCfg<U> {
 /// #     type Widget = Menu;
-/// #     fn build(self, on_file: bool) -> (Menu, impl Fn() -> bool + 'static, PushSpecs) {
-/// #         (Menu::default(), || false, PushSpecs::left())
-/// #     }
+/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Menu, PushSpecs) { todo!() }
 /// # }
 /// impl<U: Ui> Widget<U> for Menu {
 /// #     type Cfg = MenuCfg<U>;
-/// #     fn cfg() -> Self::Cfg {
-/// #         MenuCfg(PhantomData)
-/// #     }
-/// #     fn text(&self) -> &Text {
-/// #         &self.text
-/// #     }
-/// #     fn once() -> Result<(), Text> {
-/// #         Ok(())
-/// #     }
-/// #     fn text_mut(&mut self) -> &mut Text {
-/// #         &mut self.text
-/// #     }
+/// #     fn cfg() -> Self::Cfg { todo!() }
+/// #     fn text(&self) -> &Text { todo!() }
+/// #     fn text_mut(&mut self) -> &mut Text { todo!() }
+/// #     fn once() -> Result<(), Text> { Ok(()) }
+/// #     fn update(_: Pass, _: RwData<Self>, _: &U::Area) {}
+/// #     fn needs_update(&self) -> bool { todo!(); }
 ///     // ...
-///     fn on_focus(&mut self, _area: &U::Area) {
-///         form::set_weak("MenuInactive", "Default");
+///     fn on_focus(_: Pass, _: RwData<Self>, _: &U::Area) {
+///         form::set_weak("Default.Menu", "Default");
 ///         form::set_weak("MenuSelected", Form::new().on_grey());
 ///         form::set_weak("MenuSelActive", Form::blue().on_grey());
 ///     }
 ///
-///     fn on_unfocus(&mut self, _area: &U::Area) {
-///         form::set_weak("MenuInactive", "Inactive");
+///     fn on_unfocus(_: Pass, _: RwData<Self>, _: &U::Area) {
+///         form::set_weak("Default.Menu", "Inactive");
 ///         form::set_weak("MenuSelected", "Inactive");
 ///         form::set_weak("MenuSelActive", Form::blue());
 ///     }
@@ -568,21 +554,20 @@ mod switch {
 /// These methods can do work when the wiget is focused or unfocused.
 ///
 /// In this case, I chose to replace the [`Form`]s with "inactive"
-/// variants, to visually show when the widget is not active.
+/// variants, to visually show when the widget is not active. Also,
+/// the usage of [`form::set_weak`] means that if an end user used
+/// [`form::set`] on one of these [`Form`]s, that will be prioritized.
 ///
 /// Do also note that [`on_focus`] and [`on_unfocus`] are optional
-/// methods, since a change on focus is not always necessary.
+/// methods, since a [`Widget`] doesn't necessarily need to change on
+/// focus/unfocus.
 ///
 /// Now, all that is left to do is  the `MenuInput` [`Mode`]. We just
 /// need to create an empty struct and call the methods of the `Menu`:
 ///
 /// ```rust
-/// # #![feature(let_chains)]
 /// # use std::marker::PhantomData;
-/// # use duat_core::{
-/// #     mode::{key, Cursors, Mode, KeyCode, KeyEvent}, form::{self, Form},
-/// #     text::{text, Text}, ui::{PushSpecs, Ui}, widget::{Widget, WidgetCfg},
-/// # };
+/// # use duat_core::prelude::*;
 /// # #[derive(Default)]
 /// # struct Menu {
 /// #     text: Text,
@@ -597,24 +582,16 @@ mod switch {
 /// # struct MenuCfg<U>(PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for MenuCfg<U> {
 /// #     type Widget = Menu;
-/// #     fn build(self, on_file: bool) -> (Menu, impl Fn() -> bool + 'static, PushSpecs) {
-/// #         (Menu::default(), || false, PushSpecs::left())
-/// #     }
+/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Menu, PushSpecs) { todo!() }
 /// # }
 /// # impl<U: Ui> Widget<U> for Menu {
 /// #     type Cfg = MenuCfg<U>;
-/// #     fn cfg() -> Self::Cfg {
-/// #         MenuCfg(PhantomData)
-/// #     }
-/// #     fn text(&self) -> &Text {
-/// #         &self.text
-/// #     }
-/// #     fn once() -> Result<(), Text> {
-/// #         Ok(())
-/// #     }
-/// #     fn text_mut(&mut self) -> &mut Text {
-/// #         &mut self.text
-/// #     }
+/// #     fn cfg() -> Self::Cfg { todo!() }
+/// #     fn text(&self) -> &Text { todo!() }
+/// #     fn text_mut(&mut self) -> &mut Text { todo!() }
+/// #     fn once() -> Result<(), Text> { Ok(()) }
+/// #     fn update(_: Pass, _: RwData<Self>, _: &U::Area) {}
+/// #     fn needs_update(&self) -> bool { todo!(); }
 /// # }
 /// #[derive(Clone)]
 /// struct MenuInput;
@@ -622,15 +599,17 @@ mod switch {
 /// impl<U: Ui> Mode<U> for MenuInput {
 ///     type Widget = Menu;
 ///
-///     fn send_key(&mut self, key: KeyEvent, menu: &mut Menu, area: &U::Area) {
+///     fn send_key(&mut self, mut pa: Pass, key: KeyEvent, menu: RwData<Menu>, _: U::Area) {
 ///         use KeyCode::*;
-///         
-///         match key {
-///             key!(Down) => menu.shift_selection(1),
-///             key!(Up) => menu.shift_selection(-1),
-///             key!(Enter | Tab | Char(' ')) => menu.toggle(),
-///             _ => {}
-///         }
+///
+///         menu.write(&mut pa, |menu| {
+///             match key {
+///                 key!(Down) => menu.shift_selection(1),
+///                 key!(Up) => menu.shift_selection(-1),
+///                 key!(Enter | Tab | Char(' ')) => menu.toggle(),
+///                 _ => {}
+///             }
+///         });
 ///     }
 /// }
 /// ```
@@ -645,6 +624,8 @@ mod switch {
 /// [`Form`]: crate::form::Form
 /// [default]: self::regular::Regular
 /// [`duat-kak`]: https://docs.rs/duat-kak/latest/duat_kak/index.html
+/// [`form::set_weak`]: crate::form::set_weak
+/// [`form::set`]: crate::form::set
 /// [Kakoune]: https://github.com/mawww/kakoune
 /// [`Text`]: crate::Text
 /// [`&mut Cursors`]: Cursors

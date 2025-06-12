@@ -18,7 +18,7 @@
 //! struct FindSeq(Option<char>);
 //!
 //! impl<U: Ui> Mode<U> for FindSeq {
-//!     type Widget = File;
+//!     type Widget = File<U>;
 //!
 //!     fn send_key(&mut self, key: KeyEvent, file: &mut File, area: &U::Area) {
 //!         use KeyCode::*;
@@ -401,18 +401,21 @@ pub mod prelude {
         cmd::{self, Parameter},
         context::{self, FileHandle},
         data::{self, DataMap, Pass, RwData},
+        file::{File, Reader},
         form::{self, Form, FormId},
         hook::{
             self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FocusedOn,
             FormSet, Hook, Hookable, Hooks, KeysSent, KeysSentTo, ModeSetTo, ModeSwitched,
             OnFileOpen, OnWindowOpen, SearchPerformed, SearchUpdated, UnfocusedFrom,
         },
+        mode::{self, EditHelper, KeyCode, KeyEvent, KeyMod, Mode, key},
         text::{
-            AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Key, Spacer, Text, err,
-            hint, ok, text, Point
+            AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Key, Point, Spacer, Text,
+            err, hint, ok, text,
         },
         ui::{Constraint, FileBuilder, PushSpecs, RawArea, Ui, WindowBuilder},
         widget::{Widget, WidgetCfg},
+        Lender
     };
 }
 

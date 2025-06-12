@@ -171,7 +171,7 @@
 //! # }
 //! ```
 //!
-//! [`PromptLine`]: crate::widget::PromptLine
+//! [`PromptLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
 //! [`cmd::run_notify`]: run_notify
 //! [`Color`]: crate::form::Color
 //! [`Widget`]: crate::widget::Widget
@@ -840,7 +840,7 @@ mod global {
     /// relevant [`PromptLine`]. See [`add_for`] for
     /// more information.
     ///
-    /// [`PromptLine`]: crate::widget::PromptLine
+    /// [`PromptLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
     /// [`Flags`]: super::Flags
     pub fn call(pa: &mut Pass, call: impl std::fmt::Display) -> CmdResult {
         // SAFETY: Function has a Pass argument.
