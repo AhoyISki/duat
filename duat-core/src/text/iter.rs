@@ -9,8 +9,8 @@
 //! just [`Form`] changing [`Tag`]s
 //!
 //! [`Tag`]: super::Tag
-//! [ghost]: super::Tag::GhostText
-//! [concealment]: super::Tag::StartConceal
+//! [ghost]: super::Ghost
+//! [concealment]: super::StartConceal
 //! [`Form`]: crate::form::Form
 use std::{
     iter::{Chain, Rev},

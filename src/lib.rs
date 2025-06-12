@@ -470,9 +470,9 @@ pub mod form {
 pub mod hook {
     pub use duat_core::hook::{
         ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FormSet, Hookable,
-        KeysSent, KeysSentTo, ModeSwitched, SearchPerformed, SearchUpdated, add, add_grouped,
-        group_exists, remove,
+        KeysSent, KeysSentTo, ModeSwitched, add, add_grouped, group_exists, remove,
     };
+    pub use duat_utils::hooks::*;
 
     use crate::Ui;
     /// [`Hookable`]: Triggers when a [`File`] is created

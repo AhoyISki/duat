@@ -11,9 +11,10 @@
 //! [`Mode`]s is the [`PromptLine`]. It is an example of a [`Widget`]
 //! that has many [`Mode`]s implemented for it. Chief of which is
 //! [`RunCommands`], but there is also [`IncSearch`] and
-//! [`PipeCommands`], and the creation of more [`Mode`]s for the
+//! [`PipeSelections`], and the creation of more [`Mode`]s for the
 //! [`PromptLine`] is very much encouraged.
 //!
+//! [`Standard`]: docs.rs/duat-utils/latest/duat_utils/modes/struct.Standard.html
 //! [`PromptLine`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
 //! [`RunCommands`]: docs.rs/duat-utils/latest/duat_utils/modes/struct.RunCommands.html
 //! [`IncSearch`]: docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
@@ -23,7 +24,7 @@ use core::str;
 pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
 
 pub use self::{
-    helper::{Cursor, Cursors, EditHelper, Editor},
+    helper::{Cursor, Cursors, EditHelper, Editor, VPoint},
     remap::*,
     switch::*,
 };
@@ -621,9 +622,8 @@ mod switch {
 /// [`print`]: Widget::print
 /// [`on_focus`]: Widget::on_focus
 /// [`on_unfocus`]: Widget::on_unfocus
-/// [resizing]: crate::ui::Area::constrain_ver
+/// [resizing]: crate::ui::RawArea::constrain_ver
 /// [`Form`]: crate::form::Form
-/// [default]: self::regular::Regular
 /// [`duat-kak`]: https://docs.rs/duat-kak/latest/duat_kak/index.html
 /// [`form::set_weak`]: crate::form::set_weak
 /// [`form::set`]: crate::form::set

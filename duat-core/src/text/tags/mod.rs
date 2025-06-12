@@ -74,6 +74,7 @@ impl MutTags<'_> {
     /// [key]: Keys
     /// [`File`]: crate::file::File
     /// [`Point`]: super::Point
+    /// [`RangeFull`]: std::ops::RangeFull
     pub fn remove(&mut self, range: impl TextRangeOrPoint, keys: impl Keys) {
         let range = range.to_range(self.0.len_bytes());
         self.0.remove_from(range, keys)
@@ -99,7 +100,7 @@ impl<'a> std::fmt::Debug for MutTags<'a> {
 
 /// The struct that holds the [`RawTag`]s of the [`Text`]
 ///
-/// It also holds the [`Text`]s of any [`GhostText`]s, and the
+/// It also holds the [`Text`]s of any [`Ghost`]s, and the
 /// functions of [`ToggleStart`]s
 #[derive(Clone)]
 pub struct Tags {
@@ -777,7 +778,7 @@ impl Tags {
             .flatten()
     }
 
-    /// Returns the length of all [`GhostText`]s in a byte
+    /// Returns the length of all [`Ghost`]s in a byte
     pub fn ghosts_total_at(&self, at: usize) -> Option<Point> {
         self.iter_only_at(at).fold(None, |p, tag| match tag {
             RawTag::Ghost(_, id) => {
@@ -788,7 +789,7 @@ impl Tags {
         })
     }
 
-    /// Return the [`Text`] of a given [`TextId`]
+    /// Return the [`Text`] of a given [`GhostId`]
     pub fn get_ghost(&self, k: GhostId) -> Option<&Text> {
         self.ghosts.get(&k)
     }

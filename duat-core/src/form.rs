@@ -556,6 +556,7 @@ mod global {
 /// directly, instead of using a macro like [`text!`]
 ///
 /// [`text!`]: crate::text::text
+/// [`Builder`]: crate::text::Builder
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FormId(u16);
 
@@ -565,6 +566,9 @@ impl FormId {
     /// In order to push a [`Form`] to the [`Text`], it needs a
     /// priority value, in order to properly sort the [`Form`]s within
     /// the same byte.
+    ///
+    /// [`Tag`]: crate::text::Tag
+    /// [`Text`]: crate::text::Text
     pub const fn to_tag(self, prio: u8) -> FormTag {
         FormTag(self, prio)
     }

@@ -316,7 +316,7 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
 
     /// Sets a previously acquired [`PrintInfo`] to the area
     ///
-    /// [`PrintInfo`]: Area::PrintInfo
+    /// [`PrintInfo`]: RawArea::PrintInfo
     fn set_print_info(&self, info: Self::PrintInfo);
 
     /// Returns a printing iterator
@@ -360,7 +360,7 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
     /// by [`PrintInfo`], this is most likely going to be the bounding
     /// box, but it may be something else.
     ///
-    /// [`PrintInfo`]: Area::PrintInfo
+    /// [`PrintInfo`]: RawArea::PrintInfo
     fn has_changed(&self) -> bool;
 
     /// Whether or not [`self`] is the "master" of `other`
@@ -1241,6 +1241,8 @@ pub enum Corner {
 /// - The x position in which it was printed;
 /// - The amount of horizontal space it occupies;
 /// - Wether this character is the first on the line (i.e. it wraps)
+///
+/// [`VPoint`]: crate::mode::VPoint
 #[derive(Debug, Clone, Copy)]
 pub struct Caret {
     /// The horizontal position in which a character was printed

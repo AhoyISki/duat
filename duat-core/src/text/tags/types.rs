@@ -47,7 +47,7 @@ use crate::{
 /// not currently implemented.
 ///
 /// [`Form`]: crate::form::Form
-/// [range]: RangeBounds
+/// [range]: TextRange
 /// [`Cursor`]: crate::mode::Cursor
 /// [`File`]: crate::file::File
 /// [`Widget`]: crate::widget::Widget
@@ -75,7 +75,7 @@ pub trait Tag<I>: Sized {
 /// constructively, with the latest attributes and colors winning out.
 ///
 /// [`Form`]: crate::form::Form
-/// [range]: RangeBounds
+/// [range]: TextRange
 /// [`Builder`]: crate::text::Builder
 #[derive(Clone, Copy)]
 pub struct FormTag(pub FormId, pub u8);
@@ -130,7 +130,7 @@ simple_impl_Tag!(ExtraCursor, RawTag::ExtraCursor);
 /// [`Tag`]: Aligns the [`Text`] on the center in a [range]
 ///
 /// [`Builder`]: crate::text::Builder
-/// [range]: RangeBounds
+/// [range]: TextRange
 #[derive(Clone, Copy)]
 pub struct AlignCenter;
 ranged_impl_tag!(
@@ -144,7 +144,7 @@ ranged_impl_tag!(
 /// [`Tag`]: Aligns the [`Text`] on the right in a [range]
 ///
 /// [`Builder`]: crate::text::Builder
-/// [range]: RangeBounds
+/// [range]: TextRange
 #[derive(Clone, Copy)]
 pub struct AlignRight;
 ranged_impl_tag!(AlignRight, RawTag::StartAlignRight, RawTag::EndAlignRight);
@@ -158,7 +158,7 @@ ranged_impl_tag!(AlignRight, RawTag::StartAlignRight, RawTag::EndAlignRight);
 /// [`Builder`].
 ///
 /// [`Builder`]: crate::text::Builder
-/// [range]: RangeBounds
+/// [range]: TextRange
 #[derive(Clone, Copy)]
 pub struct AlignLeft;
 
@@ -243,7 +243,7 @@ impl<T: Into<Text>> Tag<Point> for Ghost<T> {
 /// contain lines, as long as it is contained within the length of the
 /// [`Text`].
 ///
-/// [range]: RangeBounds
+/// [range]: TextRange
 #[derive(Clone, Copy)]
 pub struct Conceal;
 ranged_impl_tag!(Conceal, RawTag::StartConceal, RawTag::EndConceal);
@@ -491,7 +491,7 @@ impl std::fmt::Debug for RawTag {
             Self::StartConceal(key) => write!(f, "StartConceal({key:?})"),
             Self::EndConceal(key) => write!(f, "EndConceal({key:?})"),
             Self::ConcealUntil(key) => write!(f, "ConcealUntil({key:?})"),
-            Self::Ghost(key, id) => write!(f, "GhostText({key:?}, {id:?})"),
+            Self::Ghost(key, id) => write!(f, "Ghost({key:?}, {id:?})"),
             Self::ToggleStart(key, id) => write!(f, "ToggleStart({key:?}), {id:?})"),
             Self::ToggleEnd(key, id) => write!(f, "ToggleEnd({key:?}, {id:?})"),
         }

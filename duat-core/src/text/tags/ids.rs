@@ -174,7 +174,7 @@ impl Keys for &[Range<Key>] {
 
 /// The id of a [ghost text]
 ///
-/// [ghost text]: super::Tag::Ghost
+/// [ghost text]: super::Ghost
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GhostId(u16);
 
@@ -184,9 +184,7 @@ impl std::fmt::Debug for GhostId {
     }
 }
 
-/// The id of a [toggleable]
-///
-/// [toggleable]: super::Tag::Toggle
+/// The id of a toggleable
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ToggleId(u16);
 
@@ -197,7 +195,7 @@ impl std::fmt::Debug for ToggleId {
 }
 
 impl GhostId {
-    /// Creates a new [`TextId`]
+    /// Creates a new [`GhostId`]
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         static TEXT_COUNT: AtomicU16 = AtomicU16::new(0);

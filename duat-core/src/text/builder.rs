@@ -93,9 +93,10 @@ impl Builder {
     ///
     /// [`Form`]: crate::form::Form
     /// [builder]: Builder
-    /// [`Builder::into::<Text>`]: Builder::into
+    /// [`Builder::into::<Text>`]: Into::into
     /// [`Widget`]: crate::widget::Widget
     /// [notify]: crate::context::notify
+    /// [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
     pub fn build(mut self) -> Text {
         self.push_str("\n");
         self.build_no_nl()
@@ -109,7 +110,7 @@ impl Builder {
     /// `'\n'`, since they are placed in the middle of another
     /// [`Text`], much like [`Text`]s added to a [`Builder`]
     ///
-    /// [ghosts]: super::Tag::ghost
+    /// [ghosts]: super::ghost
     fn build_no_nl(mut self) -> Text {
         if let Some((b, id)) = self.last_form
             && b < self.text.len().byte()
@@ -131,11 +132,11 @@ impl Builder {
 
     /// Pushes a part of the text
     ///
-    /// This can be an [`impl Display`] type, a [`RwData`] holding
-    /// an [`impl Display`] or a [tag surrogate].
+    /// This can be an [`impl Display`] type, an [`impl Tag`], a
+    /// [`FormId`], a [`PathBuf`], or even [`std::process::Output`].
     ///
     /// [`impl Display`]: std::fmt::Display
-    /// [tag surrogate]: Ghost
+    /// [`impl Tag`]: super::Tag
     pub fn push<D: Display, _T>(&mut self, part: impl Into<BuilderPart<D, _T>>) {
         fn push_basic(builder: &mut Builder, part: BuilderPart) {
             use Alignment::*;

@@ -36,7 +36,7 @@
 //! [read]: RwData::read
 //! [written to]: RwData::write
 //! [`Widget`]: crate::widget::Widget
-//! [`File`]: crate::widget::File
+//! [`File`]: crate::file::File
 //! [updated]: crate::widget::Widget::update
 //! [`Text`]: crate::text::Text
 //! [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
@@ -677,8 +677,8 @@ impl<I: ?Sized, O> DataMap<I, O> {
     /// acquired after the last call to [`has_changed`].
     ///
     /// Some types like [`Text`], and traits like [`Widget`] offer
-    /// [`has_changed`](crate::widget::Widget::has_changed) methods,
-    /// you should try to determine what parts to look for changes.
+    /// [`needs_update`] methods, you should try to determine what
+    /// parts to look for changes.
     ///
     /// Generally though, you can use this method to gauge that.
     ///
@@ -688,6 +688,7 @@ impl<I: ?Sized, O> DataMap<I, O> {
     /// [`has_changed`]: RwData::has_changed
     /// [`Text`]: crate::text::Text
     /// [`Widget`]: crate::widget::Widget
+    /// [`needs_update`]: crate::widget::Widget::needs_update
     pub fn has_changed(&self) -> bool {
         self.data.has_changed()
     }
@@ -699,7 +700,7 @@ impl<I: ?Sized, O> DataMap<I, O> {
     /// [`read`] on that specific [`RwData`] for example, this
     /// function will start returning `false`.
     ///
-    /// [`read`]: Self::read
+    /// [`read`]: RwData::read
     pub fn checker(&self) -> impl Fn() -> bool + 'static {
         self.data.checker()
     }

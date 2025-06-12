@@ -106,7 +106,7 @@ use std::{
 };
 
 pub(crate) use self::history::History;
-use self::tags::{FwdTags, GhostId, RevTags, Tags};
+use self::tags::{FwdTags, RevTags, Tags};
 pub use self::{
     builder::{Builder, BuilderPart, err, hint, ok, text},
     bytes::{Buffers, Bytes, Lines, Strs},
@@ -115,8 +115,8 @@ pub use self::{
     ops::{Point, TextRange, TextRangeOrPoint, TwoPoints, utf8_char_width},
     search::{Matcheable, RegexPattern, Searcher},
     tags::{
-        AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCursor, FormTag, Ghost, Key, Keys,
-        MainCursor, MutTags, RawTag, Spacer, Tag, ToggleId,
+        AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCursor, FormTag, Ghost, GhostId, Key,
+        Keys, MainCursor, MutTags, RawTag, Spacer, Tag, ToggleId,
     },
 };
 use crate::{
@@ -127,7 +127,16 @@ use crate::{
     ui::RawArea,
 };
 
-/// The text in a given [`Area`]
+/// The text of a given [`Widget`]
+///
+/// The [`Text`] is the backbone of Duat. It is the thing responsible
+/// for everything that shows up on screen.
+///
+/// You can build a [`Text`] manually, by using [`Text::new`], or with
+/// some convenience, by using the [`text!`] family of macros, making
+/// use of a [`Builder`].
+///
+/// [`Widget`]: crate::widget::Widget
 pub struct Text(Box<InnerText>);
 
 struct InnerText {
@@ -263,7 +272,7 @@ impl Text {
         self.0.bytes == "\n"
     }
 
-    /// Whether the [`Bytes`] and [`Tags`] are empty
+    /// Whether the [`Bytes`] and `Tags` are empty
     ///
     /// This ignores the last `'\n'` in the [`Text`], since it is
     /// always there no matter what.
@@ -351,7 +360,9 @@ impl Text {
         &mut self.0.bytes
     }
 
-    /// The [`Bytes`] and [`Tags`], mutably
+    /// The [`&mut Bytes`] and [`MutTags`]
+    ///
+    /// [`&mut Bytes`]: Bytes
     pub fn bytes_and_tags(&mut self) -> (&mut Bytes, MutTags) {
         (&mut self.0.bytes, MutTags(&mut self.0.tags))
     }

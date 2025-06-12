@@ -249,10 +249,10 @@
 //! [`File`]: crate::file::File
 //! [`map`]: https://docs.rs/duat/0.2.0/duat/prelude/fn.map.html
 //! [EasyMotion]: https://github.com/easymotion/vim-easymotion
-//! [ghost text]: crate::text::Tag::Ghost
-//! [concealment]: crate::text::Tag::Conceal
-//! [`Tag::Ghost`]: crate::text::Tag::Ghost
-//! [`Tag::Conceal`]: crate::text::Tag::Conceal
+//! [ghost text]: crate::text::Ghost
+//! [concealment]: crate::text::Conceal
+//! [`Tag::Ghost`]: crate::text::Ghost
+//! [`Tag::Conceal`]: crate::text::Conceal
 //! [remove]: crate::text::Text::remove_tags
 //! [Move]: crate::mode::Editor::move_to
 #![feature(
@@ -429,7 +429,7 @@ pub mod prelude {
         hook::{
             self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FocusedOn,
             FormSet, Hookable, KeysSent, KeysSentTo, ModeSetTo, ModeSwitched, OnFileOpen,
-            OnWindowOpen, SearchPerformed, SearchUpdated, UnfocusedFrom,
+            OnWindowOpen, UnfocusedFrom,
         },
         mode::{self, EditHelper, KeyCode, KeyEvent, KeyMod, Mode, key},
         text::{

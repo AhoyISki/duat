@@ -98,7 +98,7 @@ mod global {
     /// "insert like" modes. You can also use any key in the input or
     /// output of this `alias`
     ///
-    /// [ghost text]: crate::text::Tag::Ghost
+    /// [ghost text]: crate::text::Ghost
     /// [form]: crate::form::Form
     pub fn alias<M: Mode<U>, U: Ui>(take: &str, give: impl AsGives<U>) {
         context::assert_is_on_main_thread();

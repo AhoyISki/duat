@@ -3,8 +3,7 @@ use std::{io::Write, marker::PhantomData, sync::LazyLock};
 use duat_core::{
     cmd, context,
     data::{Pass, RwData},
-    form,
-    hook::{self, SearchPerformed, SearchUpdated},
+    form, hook,
     mode::{self, Cursors, EditHelper, KeyCode, KeyEvent, key},
     text::{Ghost, Key, Point, Searcher, Text, text},
     ui::{RawArea, Ui},
@@ -12,7 +11,7 @@ use duat_core::{
 };
 
 use super::IncSearcher;
-use crate::widgets::PromptLine;
+use crate::{hooks::{SearchPerformed, SearchUpdated}, widgets::PromptLine};
 
 static PROMPT_KEY: LazyLock<Key> = LazyLock::new(Key::new);
 static KEY: LazyLock<Key> = LazyLock::new(Key::new);

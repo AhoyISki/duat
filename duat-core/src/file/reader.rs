@@ -30,7 +30,7 @@ pub trait Reader<U: Ui>: 'static {
     /// can see by the lack of an appropriate argument for that. That
     /// is done in [`Reader::update_range`].
     ///
-    /// There is also a
+    /// [`Tag`]: crate::text::Tag
     fn apply_changes(
         pa: Pass,
         reader: RwData<Self>,
@@ -132,7 +132,7 @@ impl<U: Ui> Readers<U> {
         })
     }
 
-	/// Gets a specific [`Reader`], if it was added in
+    /// Gets a specific [`Reader`], if it was added in
     pub(super) fn get<R: Reader<U>>(&self) -> Option<RwData<R>> {
         if TypeId::of::<R>() == TypeId::of::<()>() {
             return None;
@@ -154,7 +154,7 @@ impl<U: Ui> Readers<U> {
         entry.reader.try_downcast()
     }
 
-	/// Makes each [`Reader`] process a [`Moment`]
+    /// Makes each [`Reader`] process a [`Moment`]
     pub(super) fn process_moment(&self, bytes: BytesDataMap<U>, moment: Moment) {
         const MAX_CHANGES_TO_CONSIDER: usize = 100;
         // SAFETY: Firstly, it is impossible to aqcuire a copy of this RwData,
@@ -182,7 +182,7 @@ impl<U: Ui> Readers<U> {
         }
     }
 
-	/// Updates the [`Reader`]s on a given range
+    /// Updates the [`Reader`]s on a given range
     pub(super) fn update_range(&self, mut pa: Pass, text: &mut Text, within: Range<usize>) {
         // SAFETY: The same as the SAFETY section above.
         unsafe {
@@ -212,7 +212,7 @@ impl<U: Ui> Readers<U> {
         }
     }
 
-	/// Wether any of the [`Reader`]s need to be updated
+    /// Wether any of the [`Reader`]s need to be updated
     pub(super) fn needs_update(&self) -> bool {
         // SAFETY: This function is only called on File::update within a
         // region where a Pass was mutably borrowed, so we can create

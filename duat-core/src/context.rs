@@ -500,17 +500,18 @@ impl<U: Ui> FileHandle<U> {
     /// acquired after the last call to [`has_changed`].
     ///
     /// Some types like [`Text`], and traits like [`Widget`] offer
-    /// [`has_changed`](crate::widget::Widget::has_changed) methods,
-    /// you should try to determine what parts to look for changes.
+    /// [`needs_update`] methods, you should try to determine what
+    /// parts to look for changes.
     ///
     /// Generally though, you can use this method to gauge that.
     ///
-    /// [`write`]: Self::write
-    /// [`write_as`]: Self::write_as
-    /// [`read`]: Self::read
-    /// [`has_changed`]: Self::has_changed
+    /// [`write`]: RwData::write
+    /// [`write_as`]: RwData::write_as
+    /// [`read`]: RwData::read
+    /// [`has_changed`]: RwData::has_changed
     /// [`Text`]: crate::text::Text
     /// [`Widget`]: crate::widget::Widget
+    /// [`needs_update`]: crate::widget::Widget::needs_update
     pub fn has_changed(&self) -> bool {
         if let Some((file, area, _)) = self.fixed.as_ref() {
             file.has_changed() || area.has_changed()

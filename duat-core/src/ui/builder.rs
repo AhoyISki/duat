@@ -312,7 +312,7 @@ impl<U: Ui> FileBuilder<U> {
     /// # }
     /// ```
     ///
-    /// Pushing directly to the [`PromptLine`]'s [`Area`] means that
+    /// Pushing directly to the [`PromptLine`]'s [`U::Area`] means that
     /// they'll share a parent that holds only them. This can then be
     /// exploited by the `"HidePromptLine"` [hook group], which is
     /// defined as:
@@ -355,6 +355,7 @@ impl<U: Ui> FileBuilder<U> {
     /// [`File`]: crate::file::File
     /// [`Notifier`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.Notifier.html
     /// [`PromptLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
+    /// [`U::Area`]: Ui::Area
     /// [hook group]: crate::hook::add_grouped
     #[inline(never)]
     pub fn push_to<W: WidgetCfg<U>>(

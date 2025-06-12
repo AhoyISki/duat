@@ -1,7 +1,8 @@
 //! Utilities for hooks in Duat
 //!
 //! In Duat, hooks are handled through the [`Hookable`] trait. This
-//! trait contains the [`Hookable::Args`] associated type. By
+//! trait contains the [`Hookable::Input`] associated type, which is
+//! what should be passed to hooks on the specific [`Hookable`]. By
 //! implementing this trait, you allow an end user to hook executions
 //! whenever said [`Hookable`] is triggered:
 //!
@@ -52,9 +53,11 @@
 //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
 //! - [`ModeSwitched`] triggers when you change [`Mode`].
 //! - [`ModeSetTo`] lets you act on a [`Mode`] after switching.
-//! - [`SearchPerformed`] triggers after a search is performed.
-//! - [`SearchUpdated`] triggers after a search updates.
 //! - [`FileWritten`] triggers after the [`File`] is written.
+//! - [`SearchPerformed`] (from duat-utils) triggers after a search is
+//!   performed.
+//! - [`SearchUpdated`]  (from duat-utils)triggers after a search
+//!   updates.
 //!
 //! # Basic makeout
 //!
@@ -144,6 +147,9 @@
 //! [commands]: crate::cmd
 //! [`Mode`]: crate::mode::Mode
 //! [`&mut Widget`]: Widget
+//! [`Output`]: Hookable::Output
+//! [`SearchPerformed`]: https://docs.rs/duat-utils/latest/duat_utils/hooks/struct.SearchPerformed.html
+//! [`SearchUpdated`]: https://docs.rs/duat-utils/latest/duat_utils/hooks/struct.SearchUpdated.html
 use std::{any::TypeId, cell::RefCell, collections::HashMap, rc::Rc};
 
 pub use self::global::*;
@@ -495,46 +501,6 @@ impl Hookable for ColorSchemeSet {
     }
 }
 
-/// [`Hookable`]: Triggers when a [search] is performed
-///
-/// Will not be triggered on empty searches.
-///
-/// # Arguments
-///
-/// - The searched regex pattern
-///
-/// [search]: crate::mode::IncSearch
-pub struct SearchPerformed(pub String);
-
-impl Hookable for SearchPerformed {
-    type Input<'h> = &'h str;
-
-    fn get_input(&mut self) -> Self::Input<'_> {
-        &self.0
-    }
-}
-
-/// [`Hookable`]: Triggers when a [search] is updated
-///
-/// Will not be triggered if the previous and current patterns are the
-/// same.
-///
-/// # Arguments
-///
-/// - The previous regex pattern
-/// - The current regex pattern
-///
-/// [search]: crate::mode::IncSearch
-pub struct SearchUpdated(pub (String, String));
-
-impl Hookable for SearchUpdated {
-    type Input<'h> = (&'h str, &'h str);
-
-    fn get_input(&mut self) -> Self::Input<'_> {
-        (&self.0.0, &self.0.1)
-    }
-}
-
 /// [`Hookable`]: Triggers after [`File::write`] or [`File::write_to`]
 ///
 /// Only triggers if the file was actually updated.
@@ -556,7 +522,7 @@ impl Hookable for FileWritten {
     }
 }
 
-/// A hookable struct, for hooks taking [`Hookable::Args`]
+/// A hookable struct, for hooks taking [`Hookable::Input`]
 ///
 /// Through this trait, Duat allows for custom hookable structs. With
 /// these structs, plugin creators can create their own custom hooks,

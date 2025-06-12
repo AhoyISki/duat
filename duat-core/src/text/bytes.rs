@@ -48,7 +48,7 @@ impl Bytes {
     /// there could actually be a "string" of characters on the
     /// [`Text`], it just wouldn't be considered real "text".
     ///
-    /// [`Tag::Ghost`]: super::Tag::Ghost
+    /// [`Tag::Ghost`]: super::Ghost
     /// [`Text`]: super::Text
     pub fn is_empty(&self) -> bool {
         self.buf.is_empty()

@@ -786,6 +786,8 @@ mod global {
     /// By calling the quit command, all threads will finish their
     /// tasks, and then Duat will execute a program closing
     /// function, as defined by the [`Ui`].
+    ///
+    /// [`Ui`]: crate::ui::Ui
     pub fn quit() {
         queue("quit");
     }
@@ -1127,11 +1129,13 @@ impl Commands {
     }
 }
 
-/// The standard error that should be returned when [`run`]ning
+/// The standard error that should be returned when [`call`]ing
 /// commands.
 ///
 /// This error _must_ include an error message in case of failure. It
 /// may also include a success message, but that is not required.
+///
+/// [`call`]: global::call
 pub type CmdResult = Result<Option<Text>, Text>;
 
 /// A function that can be called by name.

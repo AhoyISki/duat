@@ -39,6 +39,9 @@
 //! This module also describes a [`WidgetCfg`], which is used in
 //! widget construction.
 //!
+//! [`PromptLine`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
+//! [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
+//! [`StatusLine`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
 //! [`duat-term`]: https://docs.rs/duat-term/latest/duat_term/
 //! [`VertRule`]: https://docs.rs/duat-term/latest/duat_term/struct.VertRule.html
 //! [`OnFileOpen`]: crate::hook::OnFileOpen
@@ -304,7 +307,7 @@ pub trait Widget<U: Ui>: 'static {
     /// This function will be triggered when Duat deems that a change
     /// has happened to this [`Widget`], which is when
     /// [`RwData<Self>::has_changed`] returns `true`. This can happen
-    /// from many places, like [`hooks`], [commands], editing by
+    /// from many places, like [hooks], [commands], editing by
     /// [`Mode`]s, etc.
     ///
     /// Importantly, [`update`] should be able to handle any number of
@@ -312,6 +315,7 @@ pub trait Widget<U: Ui>: 'static {
     /// should avoid depending on state which may become
     /// desynchronized.
     ///
+    /// [hooks]: crate::hook
     /// [commands]: crate::cmd
     /// [`Mode`]: crate::mode::Mode
     /// [`update`]: Widget::update
@@ -418,6 +422,7 @@ pub trait Widget<U: Ui>: 'static {
     /// # }
     /// ```
     ///
+    /// [hooks]: crate::hook
     /// [`OnFileOpen`]: crate::hook::OnFileOpen
     fn cfg() -> Self::Cfg
     where
@@ -446,6 +451,8 @@ pub trait Widget<U: Ui>: 'static {
     /// [`File::print`], where [`RawArea::print_with`] is called in
     /// order to simultaneously update the list of lines numbers,
     /// for widgets like [`LineNumbers`] to read.
+    ///
+    /// [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
     fn print(&mut self, area: &U::Area) {
         let cfg = self.print_cfg();
         area.print(self.text_mut(), cfg, form::painter::<Self>())
@@ -456,6 +463,7 @@ pub trait Widget<U: Ui>: 'static {
     /// Examples of things that should go in here are [`form`]
     /// functions, [hooks], [commands] you want executed only once
     ///
+    /// [hooks]: crate::hook
     /// [commands]: crate::cmd
     fn once() -> Result<(), Text>
     where

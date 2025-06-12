@@ -275,7 +275,7 @@ implTextRangeOrPoint!(RangeFrom);
 /// [`TwoPoints`] represents the beginning of a [ghost text].
 ///
 /// [`Text`]: super::Text
-/// [ghost text]: super::Tag::Ghost
+/// [ghost text]: super::Ghost
 pub trait TwoPoints: Clone + Copy {
     /// Returns two [`Point`]s, for `Text` and ghosts
     fn to_points(self) -> (Point, Option<Point>);

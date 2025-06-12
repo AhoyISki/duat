@@ -2,7 +2,7 @@
 //!
 //! Most extensible features of Duat have the primary purpose of
 //! serving the [`File`], such as multiple [`Cursor`]s, a
-//! [`History`] system, [`RawArea::PrintInfo`], etc.
+//! `History` system, [`RawArea::PrintInfo`], etc.
 //!
 //! The [`File`] also provides a list of printed lines through the
 //! [`File::printed_lines`] method. This method is notably used by the
@@ -11,7 +11,6 @@
 //!
 //! [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
 //! [`Cursor`]: crate::mode::Cursor
-//! [`History`]: crate::text::History
 use std::{fs, marker::PhantomData, path::PathBuf};
 
 use self::reader::Readers;
@@ -380,6 +379,8 @@ pub enum PathKind {
     /// The number within represents a specific [`File`], and when
     /// printed to, for example, the [`StatusLine`], would show up as
     /// `text!("[File]*scratch file*#{id}")`
+    ///
+    /// [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
     NotSet(usize),
 }
 
