@@ -207,8 +207,9 @@ use crate::{
     data::{Pass, RwData},
     file::File,
     file_entry, iter_around, iter_around_rev, mode,
-    text::{err, hint, ok, Text},
-    ui::{DuatEvent, Ui}, widget::Widget,
+    text::{Text, err, hint, ok},
+    ui::{DuatEvent, Ui},
+    widget::Widget,
 };
 
 mod parameters;
@@ -433,6 +434,23 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
     })?;
 
     add!(["reload"], |_pa, flags: Flags| {
+        fn clear_path(path: std::path::PathBuf) {
+            let Ok(entries) = std::fs::read_dir(&path) else {
+                let _ = std::fs::remove_file(path);
+                return;
+            };
+
+            for entry in entries.filter_map(Result::ok) {
+                if let Ok(ft) = entry.file_type()
+                    && ft.is_dir()
+                {
+                    let _ = std::fs::remove_dir_all(entry.path());
+                } else {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
+        }
+
         let Some(crate_dir) = crate::crate_dir() else {
             return Err(err!("No config directory is set").build());
         };
@@ -443,12 +461,14 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         }
 
         if flags.word("clear") {
-            let _ = std::fs::remove_dir_all(crate_dir.join("target"));
+            clear_path(crate_dir.join("target/release"));
+            clear_path(crate_dir.join("target/debug"));
+
             if let Some(cache_dir) = dirs_next::cache_dir() {
-                let _ = std::fs::remove_dir_all(cache_dir.join("duat"));
+                clear_path(cache_dir.join("duat"));
             }
             if let Some(local_dir) = dirs_next::data_local_dir() {
-                let _ = std::fs::remove_dir_all(local_dir.join("duat"));
+                clear_path(local_dir.join("duat/plugins"));
             }
         }
 
