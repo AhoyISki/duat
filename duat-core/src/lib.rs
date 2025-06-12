@@ -219,8 +219,8 @@
 //! All that this plugin is doing is:
 //!
 //! - Search on the screen for words/lines;
-//! - In the beginning of said words/lines, add a [`Tag::Ghost`];
-//! - Also add a [`Tag::Conceal`];
+//! - In the beginning of said words/lines, add a [`Ghost`];
+//! - Also add a [`Conceal`];
 //! - Then, just match the typed keys and [remove] tags accordingly;
 //! - [Move] to the matched sequence, if it exists;
 //!
@@ -251,8 +251,8 @@
 //! [EasyMotion]: https://github.com/easymotion/vim-easymotion
 //! [ghost text]: crate::text::Ghost
 //! [concealment]: crate::text::Conceal
-//! [`Tag::Ghost`]: crate::text::Ghost
-//! [`Tag::Conceal`]: crate::text::Conceal
+//! [`Ghost`]: crate::text::Ghost
+//! [`Conceal`]: crate::text::Conceal
 //! [remove]: crate::text::Text::remove_tags
 //! [Move]: crate::mode::Editor::move_to
 #![feature(

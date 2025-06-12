@@ -217,8 +217,8 @@ static LETTERS: &str = "abcdefghijklmnopqrstuvwxyz";
 All that this plugin is doing is:
 
 * Search on the screen for words/lines;
-* In the beginning of said words/lines, add a [`Tag::Ghost`][__link7];
-* Also add a [`Tag::Conceal`][__link8];
+* In the beginning of said words/lines, add a [`Ghost`][__link7];
+* Also add a [`Conceal`][__link8];
 * Then, just match the typed keys and [remove][__link9] tags accordingly;
 * [Move][__link10] to the matched sequence, if it exists;
 
@@ -232,7 +232,7 @@ map::<Normal>("<CA-l>", &EasyMotion::line());
 ```
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG0OmLlGHeMw5G5eFYjZphKZbGwhSAJAEF241GyyZv4gtQXFzYWSBg2lkdWF0LWNvcmVlMC40LjBpZHVhdF9jb3Jl
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG0hWNMLYnOKEG8hz37dr7xyBG_Z5dIMuORNaGybJDEhx3h_mYWSBg2lkdWF0LWNvcmVlMC40LjBpZHVhdF9jb3Jl
  [__link0]: https://docs.rs/duat-core/0.4.0/duat_core/?search=ui::Ui
  [__link1]: https://docs.rs/duat-core/0.4.0/duat_core/?search=mode::Mode
  [__link10]: https://docs.rs/duat-core/0.4.0/duat_core/?search=mode::Editor::move_to
