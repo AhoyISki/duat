@@ -1,4 +1,5 @@
 blank_issues_enabled: true
+
 name: Bug Report
 description: File a bug report.
 title: "[Bug]: "
@@ -22,7 +23,7 @@ body:
     id: version
     attributes:
       label: Version
-      description: What version of Duat are you using?
+      description: What version of duat are you using?
       options:
         - Latest from github
         - Latest from crates.io
@@ -46,5 +47,5 @@ body:
         outside of WSL.
       placeholder: linux
       value: linux
-    validation:
+    validations:
       required: true
