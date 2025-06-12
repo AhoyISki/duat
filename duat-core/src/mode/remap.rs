@@ -522,7 +522,7 @@ fn remove_alias_and<U: Ui>(
 
                 if let Some(main) = widget.text().cursors().unwrap().get_main() {
                     let main = main.byte();
-                    widget.text_mut().remove_tags(main, Key::for_alias());
+                    widget.text_mut().remove_tags(Key::for_alias(), main);
                     f(&mut *widget, area, main)
                 }
             });

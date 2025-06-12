@@ -708,7 +708,7 @@ impl Text {
     ///
     /// [key]: Keys
     /// [`File`]: crate::file::File
-    pub fn remove_tags(&mut self, range: impl TextRangeOrPoint, keys: impl Keys) {
+    pub fn remove_tags(&mut self, keys: impl Keys, range: impl TextRangeOrPoint) {
         let range = range.to_range(self.len().byte());
         self.0.tags.remove_from(range, keys)
     }
@@ -818,7 +818,7 @@ impl Text {
             .into_iter()
             .chain(selection.into_iter().flatten().find(|p| *p != caret));
         for p in points {
-            self.remove_tags(p.byte(), Key::for_cursors());
+            self.remove_tags(Key::for_cursors(), p.byte());
         }
     }
 

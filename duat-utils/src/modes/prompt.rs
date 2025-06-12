@@ -164,7 +164,7 @@ impl RunCommands {
 
 impl<U: Ui> PromptMode<U> for RunCommands {
     fn update(&mut self, _: &mut Pass, mut text: Text, _: &<U as Ui>::Area) -> Text {
-        text.remove_tags(.., *KEY);
+        text.remove_tags(*KEY, ..);
 
         let command = text.to_string();
         let caller = command.split_whitespace().next();
@@ -233,7 +233,7 @@ impl<I: IncSearcher<U>, U: Ui> IncSearch<I, U> {
 impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
     fn update(&mut self, pa: &mut Pass, mut text: Text, _: &<U as Ui>::Area) -> Text {
         let (orig_cursors, orig_print_info) = self.orig.as_ref().unwrap();
-        text.remove_tags(.., *KEY);
+        text.remove_tags(*KEY, ..);
 
         let handle = context::fixed_file::<U>(&*pa).unwrap();
 
@@ -315,7 +315,7 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
             false
         }
 
-        text.remove_tags(.., *KEY);
+        text.remove_tags(*KEY, ..);
 
         let command = text.to_string();
         let Some(caller) = command.split_whitespace().next() else {

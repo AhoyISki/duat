@@ -10,19 +10,23 @@
 //! different interfaces:
 //!
 //! ```rust
-//! # use duat_core::{
-//! #     mode::{self, Cursors, EditHelper, KeyCode, KeyEvent, Mode, key},
-//! #     Lender, ui::Ui, file::File,
-//! # };
+//! // I recommend pulling the prelude in plugins.
+//! use duat_core::prelude::*;
 //! #[derive(Default, Clone)]
 //! struct FindSeq(Option<char>);
 //!
 //! impl<U: Ui> Mode<U> for FindSeq {
 //!     type Widget = File<U>;
 //!
-//!     fn send_key(&mut self, key: KeyEvent, file: &mut File, area: &U::Area) {
+//!     fn send_key(
+//!         &mut self,
+//!         mut pa: Pass,
+//!         key: KeyEvent,
+//!         file: RwData<File<U>>,
+//!         area: U::Area,
+//!     ) {
 //!         use KeyCode::*;
-//!         let mut helper = EditHelper::new(file, area);
+//!         let mut helper = EditHelper::new(&mut pa, file, area);
 //!
 //!         // Make sure that the typed key is a character.
 //!         let key!(Char(c)) = key else {
@@ -35,7 +39,7 @@
 //!             return;
 //!         };
 //!
-//!         helper.edit_iter().for_each(|mut e| {
+//!         helper.edit_all(&mut pa, |mut e| {
 //!             let pat: String = [first, c].iter().collect();
 //!             let matched = e.search_fwd(pat, None).next();
 //!             if let Some([p0, p1]) = matched {
@@ -89,10 +93,7 @@
 //! In order to emulate it, we use [ghost text] and [concealment]:
 //!
 //! ```rust
-//! # use duat_core::{
-//! #     mode::{self, Cursors, EditHelper, KeyCode, KeyEvent, Mode, key},
-//! #     Lender, text::{Key, Point, Tag, text}, ui::{Area, Ui}, file::File,
-//! # };
+//! use duat_core::prelude::*;
 //! #[derive(Clone)]
 //! pub struct EasyMotion {
 //!     is_line: bool,
@@ -122,32 +123,34 @@
 //! }
 //!
 //! impl<U: Ui> Mode<U> for EasyMotion {
-//!     type Widget = File;
+//!     type Widget = File<U>;
 //!
-//!     fn on_switch(&mut self, file: &mut File, area: &<U as Ui>::Area) {
-//!         let cfg = file.print_cfg();
-//!         let text = file.text_mut();
+//!     fn on_switch(&mut self, mut pa: Pass, file: RwData<File<U>>, area: U::Area) {
+//!         file.write(&mut pa, |file| {
+//!             let cfg = file.print_cfg();
+//!             let text = file.text_mut();
+//!    
+//!             let regex = match self.is_line {
+//!                 true => "[^\n\\s][^\n]+",
+//!                 false => "[^\n\\s]+",
+//!             };
+//!             let (start, _) = area.first_points(text, cfg);
+//!             let (end, _) = area.last_points(text, cfg);
+//!             self.points = text.search_fwd(regex, start..end).unwrap().collect();
+//!    
+//!             let seqs = key_seqs(self.points.len());
+//!    
+//!             for (seq, [p0, _]) in seqs.iter().zip(&self.points) {
+//!                 let ghost = Ghost(text!("[EasyMotionWord]{seq}"));
+//!                 text.insert_tag(self.key, *p0, ghost);
 //!
-//!         let regex = match self.is_line {
-//!             true => "[^\n\\s][^\n]+",
-//!             false => "[^\n\\s]+",
-//!         };
-//!         let (start, _) = area.first_points(text, cfg);
-//!         let (end, _) = area.last_points(text, cfg);
-//!         self.points = text.search_fwd(regex, (start, end)).unwrap().collect();
-//!
-//!         let seqs = key_seqs(self.points.len());
-//!
-//!         for (seq, [p0, _]) in seqs.iter().zip(&self.points) {
-//!             let ghost = text!([EasyMotionWord] seq);
-//!
-//!             text.insert_tag(self.key, Tag::Ghost(p0.byte(), ghost));
-//!             let seq_end = p0.byte() + seq.chars().count() ;
-//!             text.insert_tag(self.key, Tag::Conceal(p0.byte()..seq_end));
-//!         }
+//!                 let seq_end = p0.byte() + seq.chars().count() ;
+//!                 text.insert_tag(self.key, p0.byte()..seq_end, Conceal);
+//!             }
+//!         });
 //!     }
 //!
-//!     fn send_key(&mut self, key: KeyEvent, file: &mut File, area: &U::Area) {
+//!     fn send_key(&mut self, mut pa: Pass, key: KeyEvent, file: RwData<File<U>>, area: U::Area) {
 //!         let char = match key {
 //!             key!(KeyCode::Char(c)) => c,
 //!             // Return a char that will never match.
@@ -155,23 +158,24 @@
 //!         };
 //!         self.seq.push(char);
 //!
-//!         let mut helper = EditHelper::new(file, area);
-//!         helper.cursors_mut().remove_extras();
+//!         let mut helper = EditHelper::new(&mut pa, file, area);
+//!         helper.write_cursors(&mut pa, |c| c.remove_extras());
 //!
 //!         let seqs = key_seqs(self.points.len());
 //!         for (seq, &[p0, p1]) in seqs.iter().zip(&self.points) {
 //!             if *seq == self.seq {
-//!                 let mut e = helper.edit_main();
-//!                 e.move_to(p0);
-//!                 e.set_anchor();
-//!                 e.move_to(p1);
+//!                 helper.edit_main(&mut pa, |mut e| {
+//!                     e.move_to(p0);
+//!                     e.set_anchor();
+//!                     e.move_to(p1);
+//!                 });
 //!                 mode::reset();
 //!             } else if seq.starts_with(&self.seq) {
 //!                 continue;
 //!             }
 //!
-//!             helper.text_mut().remove_tags(p1.byte(), self.key);
-//!             helper.text_mut().remove_tags(p1.byte() + seq.len(), self.key);
+//!             // Removing one end of the conceal range will remove both ends.
+//!             helper.write_text(&mut pa, |text| text.remove_tags(self.key, p1.byte()));
 //!         }
 //!
 //!         if self.seq.chars().count() == 2 || !LETTERS.contains(char) {
@@ -398,6 +402,7 @@ pub trait Plugin<U: Ui>: Sized {
 pub mod prelude {
     //! The prelude of Duat
     pub use crate::{
+        Lender,
         cmd::{self, Parameter},
         context::{self, FileHandle},
         data::{self, DataMap, Pass, RwData},
@@ -415,7 +420,6 @@ pub mod prelude {
         },
         ui::{Constraint, FileBuilder, PushSpecs, RawArea, Ui, WindowBuilder},
         widget::{Widget, WidgetCfg},
-        Lender
     };
 }
 

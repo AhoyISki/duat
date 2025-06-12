@@ -43,7 +43,7 @@ static KEY_COUNT: AtomicU16 = AtomicU16::new(4);
 ///
 /// // key2 != key1, so it shouldn't be able to change what was done with key1.
 /// let key2 = Key::new();
-/// text.remove_tags(18, key2);
+/// text.remove_tags(key2, 18);
 ///
 /// assert_eq!(
 ///     text,

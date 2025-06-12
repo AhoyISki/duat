@@ -10,6 +10,8 @@ use std::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToIncl
 
 use bincode::{Decode, Encode};
 
+use crate::ui::RawArea;
+
 use super::Item;
 
 /// A position in [`Text`]
@@ -227,6 +229,7 @@ impl TextRange for RangeFull {
         0..max
     }
 }
+
 /// Either a [`TextRange`], a [`usize`] or a [`Point`]
 ///
 /// This trait's purpose is to be used for [`Tag`] removal in the

@@ -7,7 +7,7 @@
 //! be as small as possible in order not to waste memory, as they will
 //! be stored in the [`Text`]. As such, they have as little
 //! information as possible, occupying only 8 bytes.
-use std::{ops::RangeBounds, sync::Arc};
+use std::{ops::Range, sync::Arc};
 
 use RawTag::*;
 use crossterm::event::MouseEventKind;
@@ -18,7 +18,7 @@ use super::{
 };
 use crate::{
     form::FormId,
-    text::{Point, Text},
+    text::{Point, Text, TextRange},
 };
 
 /// [`Tag`]s are used for every visual modification to [`Text`]
@@ -51,12 +51,12 @@ use crate::{
 /// [`Cursor`]: crate::mode::Cursor
 /// [`File`]: crate::file::File
 /// [`Widget`]: crate::widget::Widget
-pub trait Tag<R>: Sized {
+pub trait Tag<I>: Sized {
     /// Decomposes the [`Tag`] to its base elements
     #[doc(hidden)]
     fn decompose(
         self,
-        r: R,
+        index: I,
         max: usize,
         key: Key,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>);
@@ -80,15 +80,16 @@ pub trait Tag<R>: Sized {
 #[derive(Clone, Copy)]
 pub struct FormTag(pub FormId, pub u8);
 
-impl<R: RangeBounds<usize>> Tag<R> for FormTag {
+impl<I: TextRange> Tag<I> for FormTag {
     fn decompose(
         self,
-        r: R,
+        index: I,
         max: usize,
         key: Key,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
         let FormTag(id, prio) = self;
-        ranged(r, max, PushForm(key, id, prio), PopForm(key, id), None)
+        let range = index.to_range(max);
+        ranged(range, PushForm(key, id, prio), PopForm(key, id), None)
     }
 }
 
@@ -210,17 +211,29 @@ pub struct Ghost<T: Into<Text>>(pub T);
 impl<T: Into<Text>> Tag<usize> for Ghost<T> {
     fn decompose(
         self,
-        r: usize,
+        byte: usize,
         max: usize,
         key: Key,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
         assert!(
-            r <= max,
-            "index out of bounds: the len is {max}, but the index is {r}",
+            byte <= max,
+            "index out of bounds: the len is {max}, but the index is {byte}",
         );
         let id = GhostId::new();
         let tag_id = TagId::Ghost(id, Into::<Text>::into(self.0).without_last_nl());
-        ((r, RawTag::Ghost(key, id)), None, Some(tag_id))
+        ((byte, RawTag::Ghost(key, id)), None, Some(tag_id))
+    }
+}
+
+impl<T: Into<Text>> Tag<Point> for Ghost<T> {
+    fn decompose(
+        self,
+        point: Point,
+        max: usize,
+        key: Key,
+    ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
+        let byte = point.byte();
+        self.decompose(byte, max, key)
     }
 }
 
@@ -497,43 +510,57 @@ pub enum TagId {
 }
 
 fn ranged(
-    r: impl RangeBounds<usize>,
-    max: usize,
+    r: Range<usize>,
     s_tag: RawTag,
     e_tag: RawTag,
     id: Option<TagId>,
 ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
-    let (s, e) = crate::get_ends(r, max);
-    ((s, s_tag), Some((e, e_tag)), id)
+    ((r.start, s_tag), Some((r.end, e_tag)), id)
 }
 
 macro simple_impl_Tag($tag:ty, $raw_tag:expr) {
     impl Tag<usize> for $tag {
         fn decompose(
             self,
-            r: usize,
+            byte: usize,
             max: usize,
             key: Key,
         ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
             assert!(
-                r <= max,
-                "index out of bounds: the len is {max}, but the index is {r}",
+                byte <= max,
+                "byte out of bounds: the len is {max}, but the byte is {byte}",
             );
-            ((r, $raw_tag(key)), None, None)
+            ((byte, $raw_tag(key)), None, None)
+        }
+    }
+
+    impl Tag<Point> for $tag {
+        fn decompose(
+            self,
+            point: Point,
+            max: usize,
+            key: Key,
+        ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
+            let byte = point.byte();
+            self.decompose(byte, max, key)
         }
     }
 }
 
 macro ranged_impl_tag($tag:ty, $start:expr, $end:expr) {
-    impl<R: RangeBounds<usize>> Tag<R> for $tag {
+    impl<I: TextRange> Tag<I> for $tag {
         fn decompose(
             self,
-            r: R,
+            index: I,
             max: usize,
             key: Key,
         ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
-            let (s, e) = $crate::get_ends(r, max);
-            ((s, $start(key)), Some((e, $end(key))), None)
+            let range = index.to_range(max);
+            (
+                (range.start, $start(key)),
+                Some((range.end, $end(key))),
+                None,
+            )
         }
     }
 }
