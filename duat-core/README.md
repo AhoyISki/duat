@@ -132,10 +132,12 @@ impl<U: Ui> Mode<U> for EasyMotion {
             let cfg = file.print_cfg();
             let text = file.text_mut();
 
-            let regex = match self.is_line {
-                true => "[^\n\\s][^\n]+",
-                false => "[^\n\\s]+",
+            let regex = if self.is_line {
+                "[^\n\\s][^\n]+"
+            } else {
+                "[^\n\\s]+"
             };
+
             let (start, _) = area.first_points(text, cfg);
             let (end, _) = area.last_points(text, cfg);
             self.points =
@@ -232,7 +234,7 @@ map::<Normal>("<CA-l>", &EasyMotion::line());
 ```
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG0hWNMLYnOKEG8hz37dr7xyBG_Z5dIMuORNaGybJDEhx3h_mYWSBg2lkdWF0LWNvcmVlMC40LjBpZHVhdF9jb3Jl
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG2v1JosfDy4WG7F9kWZsr4qdG4KxaOCrlygRG9XTpX8CxgoPYWSBg2lkdWF0LWNvcmVlMC40LjBpZHVhdF9jb3Jl
  [__link0]: https://docs.rs/duat-core/0.4.0/duat_core/?search=ui::Ui
  [__link1]: https://docs.rs/duat-core/0.4.0/duat_core/?search=mode::Mode
  [__link10]: https://docs.rs/duat-core/0.4.0/duat_core/?search=mode::Editor::move_to

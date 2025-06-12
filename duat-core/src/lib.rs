@@ -135,10 +135,12 @@
 //!             let cfg = file.print_cfg();
 //!             let text = file.text_mut();
 //!
-//!             let regex = match self.is_line {
-//!                 true => "[^\n\\s][^\n]+",
-//!                 false => "[^\n\\s]+",
+//!             let regex = if self.is_line {
+//!                 "[^\n\\s][^\n]+"
+//!             } else {
+//!                 "[^\n\\s]+"
 //!             };
+//!
 //!             let (start, _) = area.first_points(text, cfg);
 //!             let (end, _) = area.last_points(text, cfg);
 //!             self.points =
