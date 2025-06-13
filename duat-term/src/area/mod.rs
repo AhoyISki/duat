@@ -733,12 +733,19 @@ mod layouted {
             return last;
         }
 
-        let line_start = text.visual_line_start(info.prev_main);
+        let (line_start, mut y) = if let Some(cursors) = text.cursors()
+            && let Some(main) = cursors.get_main()
+            && main.caret() == info.prev_main
+        {
+            (text.visual_line_start(info.prev_main), info.vert_dist)
+        } else {
+            (text.visual_line_start(info.points), 0)
+        };
+
         let iter = text.iter_fwd(line_start);
 
         let iter = print_iter(iter, cfg.wrap_width(coords.width()), cfg, info.points);
         let mut points = info.points;
-        let mut y = info.vert_dist;
 
         for (Caret { wrap, .. }, Item { part, real, ghost }) in iter {
             if wrap {
