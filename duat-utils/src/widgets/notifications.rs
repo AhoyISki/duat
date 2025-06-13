@@ -51,8 +51,10 @@ impl<U: Ui> Widget<U> for Notifications<U> {
         let clear_notifs = CLEAR_NOTIFS.swap(false, Ordering::Relaxed);
         widget.write(&mut pa, |wid| {
             if wid.logs.has_changed() {
-                wid.logs
-                    .read(|notifs| wid.text = notifs.last().cloned().unwrap_or_default());
+                wid.text = match wid.logs.last().unwrap() {
+                    context::Log::Text(cursorless) => cursorless.get(),
+                    context::Log::CmdResult(_, cursorless) => cursorless.get(),
+                };
             } else if clear_notifs {
                 wid.text = Text::new()
             }
@@ -112,7 +114,7 @@ impl<U: Ui> WidgetCfg<U> for NotificationsCfg<U> {
 
     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
         let widget = Notifications {
-            logs: context::notifications(),
+            logs: context::logs(),
             text: Text::new(),
             _ghost: PhantomData,
         };

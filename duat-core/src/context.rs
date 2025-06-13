@@ -15,7 +15,7 @@ pub use self::global::*;
 use crate::{
     data::{Pass, RwData},
     file::File,
-    text::Text,
+    text::{Cursorless, Text},
     ui::{RawArea, Ui},
     widget::{Node, Related, Widget},
 };
@@ -136,7 +136,7 @@ mod global {
     /// send new notifications, and check for updates, just like with
     /// [`RwData`], except in this case, you don't need [`Pass`]es, so
     /// there might be changes to make this API safer in the future.
-    pub fn notifications() -> Logs {
+    pub fn logs() -> Logs {
         LOGS.clone()
     }
 
@@ -551,9 +551,10 @@ impl<U: Ui> FileHandle<U> {
 /// messages, and any other thing that you want to [push] to be
 /// notified.
 ///
-/// [push]: Notifications::push
+/// [push]: Logs::push
 pub struct Logs {
-    list: Arc<Mutex<Vec<Text>>>,
+    list: &'static Mutex<Vec<&'static Log>>,
+    cutoffs: &'static Mutex<Vec<usize>>,
     cur_state: Arc<AtomicUsize>,
     read_state: AtomicUsize,
 }
@@ -561,7 +562,8 @@ pub struct Logs {
 impl Clone for Logs {
     fn clone(&self) -> Self {
         Self {
-            list: self.list.clone(),
+            list: self.list,
+            cutoffs: self.cutoffs,
             cur_state: self.cur_state.clone(),
             read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed)),
         }
@@ -569,20 +571,33 @@ impl Clone for Logs {
 }
 
 impl Logs {
-    /// Creates a new [`Notifications`]
+    /// Creates a new [`Logs`]
     fn new() -> Self {
         Self {
-            list: Arc::default(),
+            list: Box::leak(Box::default()),
+            cutoffs: Box::leak(Box::default()),
             cur_state: Arc::new(AtomicUsize::new(1)),
             read_state: AtomicUsize::new(0),
         }
     }
 
-    /// Reads the notifications that were sent to Duat
-    pub fn read<Ret>(&mut self, f: impl FnOnce(&[Text]) -> Ret) -> Ret {
-        self.read_state
-            .store(self.cur_state.load(Ordering::Relaxed), Ordering::Relaxed);
-        f(&self.list.lock().unwrap())
+    /// Returns an owned valued of a [`SliceIndex`]
+    ///
+    /// - `&'static Log` for `usize`;
+    /// - [`Vec<&'static Log>`] for `impl RangeBounds<usize>`;
+    ///
+    /// [`SliceIndex`]: std::slice::SliceIndex
+    pub fn get<I>(&self, i: I) -> Option<<I::Output as ToOwned>::Owned>
+    where
+        I: std::slice::SliceIndex<[&'static Log]>,
+        I::Output: ToOwned,
+    {
+        self.list.lock().unwrap().get(i).map(ToOwned::to_owned)
+    }
+
+    /// Returns the last [`Log`]
+    pub fn last(&self) -> Option<&'static Log> {
+        self.list.lock().unwrap().last().copied()
     }
 
     /// Wether there are new notifications or not
@@ -601,8 +616,32 @@ impl Logs {
     /// [`Reader`]: crate::file::Reader
     pub fn push(&self, text: impl Into<Text>) {
         self.cur_state.fetch_add(1, Ordering::Relaxed);
-        self.list.lock().unwrap().push(Into::<Text>::into(text))
+        self.list.lock().unwrap().push(Box::leak(Box::new(Log::Text(
+            Into::<Text>::into(text).without_cursors(),
+        ))))
     }
+
+	/// Pushes a command's [`Text`] result
+    pub(crate) fn _push_cmd_result(&self, from: String, result: Text) {
+        self.cur_state.fetch_add(1, Ordering::Relaxed);
+        self.list
+            .lock()
+            .unwrap()
+            .push(Box::leak(Box::new(Log::CmdResult(
+                from,
+                result.without_cursors(),
+            ))))
+    }
+}
+
+/// A message that was sent to Duat
+pub enum Log {
+    /// Regular [`Text`], but [without cursors]
+    ///
+    /// [without cursors]: Cursorless
+    Text(Cursorless),
+    /// The result of a command
+    CmdResult(String, Cursorless),
 }
 
 /// The current [`Widget`]

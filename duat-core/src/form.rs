@@ -22,7 +22,7 @@ pub trait ColorScheme: Send + Sync + 'static {
     /// This can technically do anything, mostly because one might
     /// want to do a bunch of `if`s and `else`s in order to get to a
     /// finalized [`ColorScheme`], but you should refrain from doing
-    /// anything but that in this function
+    /// anything but that in this function.
     fn apply(&self);
 
     /// The name of this [`ColorScheme`], shouldn't be altered
@@ -47,7 +47,6 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
         Form::white().on_dark_grey().0,
         Ref(M_SEL_ID.0 as usize),
     ),
-    ("Inactive", Form::grey().0, Normal),
 ];
 
 /// The functions that will be exposed for public use.
@@ -296,7 +295,7 @@ mod global {
                 id
             }
         }
-        PALETTE.painter(default_id(TypeId::of::<W>(), crate::duat_name::<W>()))
+        PALETTE.painter(default_id(TypeId::of::<W>(), crate::duat_name::<W>()), "")
     }
 
     /// Returns the [`FormId`] from the name of a [`Form`]
@@ -877,6 +876,7 @@ struct InnerPalette {
     main_cursor: Option<CursorShape>,
     extra_cursor: Option<CursorShape>,
     forms: Vec<(&'static str, Form, FormType)>,
+    masks: Vec<(&'static str, Vec<usize>)>,
 }
 
 /// The list of forms to be used when rendering.
@@ -892,6 +892,7 @@ impl Palette {
                 main_cursor,
                 extra_cursor: main_cursor,
                 forms: BASE_FORMS.to_vec(),
+                masks: vec![("", (0..BASE_FORMS.len()).collect())],
             })
         }))
     }
@@ -911,6 +912,7 @@ impl Palette {
             sender.send_form_changed().unwrap()
         }
 
+        mask_form(name, i, &mut inner);
         hook::queue(FormSet((name, FormId(i as u16), form)));
     }
 
@@ -930,6 +932,8 @@ impl Palette {
             for refed in refs_of(&inner, i) {
                 inner.forms[refed].1 = form;
             }
+
+            mask_form(name, i, &mut inner);
         }
     }
 
@@ -953,6 +957,8 @@ impl Palette {
         if let Some(sender) = SENDER.get() {
             sender.send_form_changed().unwrap()
         }
+
+        mask_form(name, i, &mut inner);
         hook::queue(FormSet((name, FormId(i as u16), form)));
     }
 
@@ -975,14 +981,24 @@ impl Palette {
             for refed in refs_of(&inner, i) {
                 inner.forms[refed].1 = form;
             }
+
+            mask_form(name, i, &mut inner);
         }
     }
 
     /// Sets many [`Form`]s
     fn set_many(&self, names: &[&'static str]) {
         let mut inner = self.0.write().unwrap();
-        for name in names {
-            position_and_form(&mut inner.forms, name);
+        let form_indices: Vec<(usize, &str)> = names
+            .iter()
+            .map(|name| {
+                let (i, _) = position_and_form(&mut inner.forms, name);
+                (i, *name)
+            })
+            .collect();
+
+        for (i, name) in form_indices {
+            mask_form(name, i, &mut inner);
         }
     }
 
@@ -1037,15 +1053,19 @@ impl Palette {
     }
 
     /// Returns a [`Painter`]
-    fn painter(&'static self, id: FormId) -> Painter {
+    fn painter(&'static self, id: FormId, mask: &str) -> Painter {
         let inner = self.0.read().unwrap();
         let default = inner
             .forms
             .get(id.0 as usize)
             .map(|(_, f, _)| *f)
             .unwrap_or(Form::new().0);
+
+        let mask = inner.masks.iter().position(|(m, _)| *m == mask);
+
         Painter {
             inner,
+            mask: mask.unwrap_or_default(),
             default,
             forms: Vec::new(),
             final_form_start: 0,
@@ -1057,12 +1077,31 @@ impl Palette {
     }
 }
 
+/// If setting a form with an existing mask suffix, mask its prefix
+fn mask_form(name: &'static str, form_i: usize, inner: &mut InnerPalette) {
+    return;
+
+    if inner.masks[0].1.len() < inner.forms.len() {
+        for (_, remaps) in inner.masks.iter_mut() {
+            remaps.extend(remaps.len()..inner.forms.len());
+        }
+    }
+
+    if let Some((pref, mask)) = name.rsplit_once(".")
+        && let Some((_, remaps)) = inner.masks.iter_mut().find(|(m, _)| *m == mask)
+        && let Some(j) = inner.forms.iter().position(|(name, ..)| *name == pref)
+    {
+        remaps[j] = form_i;
+    }
+}
+
 /// A struct to create [`Form`]s from [`RawTag`] in a [`Text`]
 ///
 /// [`RawTag`]: crate::text::RawTag
 /// [`Text`]: crate::text::Text
 pub struct Painter {
     inner: RwLockReadGuard<'static, InnerPalette>,
+    mask: usize,
     default: Form,
     forms: Vec<(Form, FormId)>,
     final_form_start: usize,
@@ -1082,7 +1121,9 @@ impl Painter {
     /// won't, since it wasn't changed.
     #[inline(always)]
     pub fn apply(&mut self, id: FormId) {
+        // let mask = &self.inner.masks[self.mask].1;
         let i = id.0 as usize;
+
         let forms = &self.inner.forms;
         let form = forms.get(i).map(|(_, f, _)| *f).unwrap_or(Form::new().0);
 
@@ -1101,6 +1142,10 @@ impl Painter {
     /// result, given previous triggers
     #[inline(always)]
     pub fn remove(&mut self, id: FormId) {
+        // let mask = &self.inner.masks[self.mask].1;
+        let i = id.0 as usize; //mask.get(id.0 as usize).copied().unwrap_or(id.0 as usize);
+        let id = FormId(i as u16);
+
         let mut applied_forms = self.forms.iter().enumerate();
         if let Some((i, &(form, _))) = applied_forms.rfind(|(_, (_, lhs))| *lhs == id) {
             self.forms.remove(i);

@@ -560,6 +560,7 @@ pub struct PrintInfo {
     x_shift: u32,
     prev_main: Point,
     last_points: Option<(Point, Option<Point>)>,
+    vert_dist: u32,
 }
 
 impl PrintInfo {
@@ -590,20 +591,33 @@ fn scroll_ver_around(
         .unwrap_or_else(|| text.len_points());
 
     let cap = cfg.wrap_width(width);
+
+    let mut below_dist = 0;
+    let mut total_dist = 0;
     let mut iter = rev_print_iter(text.iter_rev(after), cap, cfg)
-        .filter_map(|(caret, item)| caret.wrap.then_some(item.points()));
+        .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
+        .inspect(|points| {
+            total_dist += 1;
+            below_dist += (*points >= info.points) as u32;
+        });
 
     let target = if info.prev_main > point {
-        cfg.scrolloff.y as u32
+        cfg.scrolloff.y as usize
     } else {
-        height.saturating_sub(cfg.scrolloff.y as u32 + 1)
+        height.saturating_sub(cfg.scrolloff.y as u32 + 1) as usize
     };
-    let first = iter.nth(target as usize).unwrap_or_default();
+    let first = iter.nth(target).unwrap_or_default();
 
     if (info.prev_main > point && first <= info.points)
         || (info.prev_main < point && first >= info.points)
     {
         info.points = first;
+        info.vert_dist = total_dist - 1;
+    } else if info.prev_main > point {
+        iter.take_while(|points| *points >= info.points)
+            .for_each(|_| {});
+
+        info.vert_dist = below_dist - 1;
     }
 }
 
@@ -719,12 +733,12 @@ mod layouted {
             return last;
         }
 
-        let line_start = text.visual_line_start(info.points);
+        let line_start = text.visual_line_start(info.prev_main);
         let iter = text.iter_fwd(line_start);
 
         let iter = print_iter(iter, cfg.wrap_width(coords.width()), cfg, info.points);
         let mut points = info.points;
-        let mut y = 0;
+        let mut y = info.vert_dist;
 
         for (Caret { wrap, .. }, Item { part, real, ghost }) in iter {
             if wrap {

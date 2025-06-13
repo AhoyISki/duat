@@ -15,7 +15,7 @@ use std::{fmt::Alignment, marker::PhantomData};
 use duat_core::{
     context::FileHandle,
     data::{Pass, RwData},
-    form::{self, Form},
+    form::{self, DEFAULT_ID, Form},
     text::{AlignCenter, AlignLeft, AlignRight, Builder, Text, text},
     ui::{Constraint, PushSpecs, RawArea, Ui},
     widget::{Widget, WidgetCfg},
@@ -239,9 +239,7 @@ fn push_text<U>(
     is_wrapped: bool,
     cfg: &LineNumbersOptions<U>,
 ) {
-    if is_wrapped && !cfg.show_wraps {
-        b.push(text!("\n"));
-    } else if main != usize::MAX {
+    if !is_wrapped || cfg.show_wraps || main != usize::MAX {
         let num = match cfg.num_rel {
             LineNum::Abs => line + 1,
             LineNum::Rel => line.abs_diff(main),
@@ -253,13 +251,13 @@ fn push_text<U>(
                 }
             }
         };
-
         b.push(num);
-        b.push(text!("\n"));
     } else {
         b.push(line + 1);
-        b.push(text!("\n"));
     }
+
+    b.push("\n");
+    b.push(DEFAULT_ID);
 }
 
 fn align(b: &mut Builder, alignment: Alignment) {

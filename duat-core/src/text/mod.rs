@@ -749,6 +749,17 @@ impl Text {
         }
     }
 
+	/// Returns a [`Text`] without [`Cursors`]
+    ///
+    /// You should use this if you want to send the [`Text`] across
+    /// threads.
+    ///
+    /// [`EditHelper`]: crate::mode::EditHelper
+    pub fn without_cursors(mut self) -> Cursorless {
+        self.0.cursors = None;
+        Cursorless(self)
+    }
+
     /// Removes the tags for all the cursors, used before they are
     /// expected to move
     pub(crate) fn add_cursors(&mut self, area: &impl RawArea, cfg: PrintCfg) {
@@ -1061,3 +1072,36 @@ macro impl_from_to_string($t:ty) {
         }
     }
 }
+
+/// A [`Text`] that is guaranteed not to have [`Cursors`] in it
+///
+/// Useful for sending across threads, especially when it comes to
+/// [`Logs`].
+///
+/// [`Logs`]: crate::context::Logs
+pub struct Cursorless(Text);
+
+impl Cursorless {
+    /// Takes the [`Text`] within, allowing for mutation again
+    pub fn take(self) -> Text {
+        self.0
+    }
+
+	/// Gets the [`Text`] within, allowing for mutation again
+    pub fn get(&self) -> Text {
+        self.0.clone()
+    }
+}
+
+impl std::ops::Deref for Cursorless {
+    type Target = Text;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+// SAFETY: This struct is defined by the lack of Cursors, the only non
+// Send/Sync part of a Text
+unsafe impl Send for Cursorless {}
+unsafe impl Sync for Cursorless {}

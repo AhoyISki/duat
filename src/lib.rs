@@ -126,7 +126,7 @@
 //!
 //!         builder.push(&mut pa, status_line);
 //!         let (child, _) = builder.push(&mut pa, PromptLine::cfg());
-//!         builder.push_to(&mut pa, child, Notifier::cfg());
+//!         builder.push_to(&mut pa, child, Notifications::cfg());
 //!     });
 //!
 //!     hook::add::<ModeSwitched>(|_, (_, new)| match new {

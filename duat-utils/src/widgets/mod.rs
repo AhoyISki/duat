@@ -55,3 +55,4 @@ mod line_numbers;
 mod notifications;
 mod prompt_line;
 mod status_line;
+
