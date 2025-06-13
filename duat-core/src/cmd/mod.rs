@@ -210,7 +210,10 @@ use std::{
     collections::HashMap,
     fmt::Display,
     ops::Range,
-    sync::{Arc, LazyLock},
+    sync::{
+        Arc, LazyLock,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Instant,
 };
 
@@ -455,6 +458,8 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
     })?;
 
     add!(["reload"], |_pa, flags: Flags| {
+        static IS_UPDATING: AtomicBool = AtomicBool::new(false);
+
         fn clear_path(path: std::path::PathBuf) {
             let Ok(entries) = std::fs::read_dir(&path) else {
                 let _ = std::fs::remove_file(path);
@@ -472,6 +477,12 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             }
         }
 
+        if IS_UPDATING.load(Ordering::Relaxed) {
+            return Err(err!("The config is already being recompiled").build());
+        } else {
+            IS_UPDATING.store(true, Ordering::Relaxed);
+        }
+
         let Some(crate_dir) = crate::crate_dir() else {
             return Err(err!("No config directory is set").build());
         };
@@ -481,7 +492,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             return Err(err!("Cargo.toml was not found").build());
         }
 
-        if flags.word("clear") {
+        if flags.word("clear") || flags.word("update") {
             clear_path(crate_dir.join("target/release"));
             clear_path(crate_dir.join("target/debug"));
 
@@ -504,9 +515,6 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             "--manifest-path",
             toml_path.to_str().unwrap(),
         ]);
-        // if !cfg!(debug_assertions) {
-        //    cargo.arg("--release");
-        //};
 
         match cargo.spawn() {
             Ok(child) => {
@@ -522,10 +530,14 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
                         }
                         Err(err) => context::notify(err!("cargo failed: [a]{err}")),
                     };
+                    IS_UPDATING.store(false, Ordering::Relaxed);
                 });
                 Ok(Some(hint!("Started config recompilation").build()))
             }
-            Err(err) => Err(err!("Failed to start cargo: [a]{err}").build()),
+            Err(err) => {
+                IS_UPDATING.store(false, Ordering::Relaxed);
+                Err(err!("Failed to start cargo: [a]{err}").build())
+            }
         }
     })?;
 

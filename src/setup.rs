@@ -83,8 +83,8 @@ pub fn pre_setup(duat_tx: &'static Sender<DuatEvent>) {
 
     hook::add_grouped::<FileWritten>("ReloadOnWrite", |_, (path, _)| {
         let path = Path::new(path);
-        if let Some(config_dir) = crate::crate_dir()
-            && path.starts_with(config_dir)
+        if let Some(crate_dir) = crate::crate_dir()
+            && path.starts_with(crate_dir)
         {
             crate::prelude::cmd::queue("reload");
         }

@@ -574,7 +574,7 @@ impl InnerHooks {
     fn add<H: Hookable>(
         &self,
         group: &'static str,
-        f: Box<dyn for<'h> FnMut(Pass, H::Input<'h>) -> H::Output + 'static>,
+        f: Box<dyn FnMut(Pass, H::Input<'_>) -> H::Output + 'static>,
     ) {
         let mut map = self.types.borrow_mut();
 
@@ -627,8 +627,8 @@ impl InnerHooks {
             ptr.as_ref().unwrap()
         };
 
-        let hooks = hooks_of.0.borrow_mut().clone();
-        for (_, hook) in hooks.into_iter() {
+        let hooks = hooks_of.0.borrow_mut();
+        for (_, hook) in hooks.iter() {
             // SAFETY: There is a &mut Pass argument.
             let pa = unsafe { Pass::new() };
             let input = hookable.get_input();

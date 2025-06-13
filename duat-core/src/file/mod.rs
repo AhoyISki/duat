@@ -151,7 +151,8 @@ impl<U: Ui> File<U> {
                     .write_to(std::io::BufWriter::new(fs::File::create(&path)?))
                     .inspect(|_| self.path = PathKind::SetExists(path.clone()))?;
 
-                hook::queue(FileWritten((path.to_string_lossy().to_string(), bytes)));
+				let path = path.to_string_lossy().to_string();
+                hook::queue(FileWritten((path, bytes)));
 
                 Ok(Some(bytes))
             } else {
