@@ -621,16 +621,12 @@ impl Logs {
         ))))
     }
 
-	/// Pushes a command's [`Text`] result
-    pub(crate) fn _push_cmd_result(&self, from: String, result: Text) {
+    /// Pushes a command's [`Text`] result
+    pub(crate) fn push_cmd_result(&self, cmd: String, was_success: bool, result: Text) {
         self.cur_state.fetch_add(1, Ordering::Relaxed);
-        self.list
-            .lock()
-            .unwrap()
-            .push(Box::leak(Box::new(Log::CmdResult(
-                from,
-                result.without_cursors(),
-            ))))
+
+        let log = Log::CmdResult(cmd, was_success, result.without_cursors());
+        self.list.lock().unwrap().push(Box::leak(Box::new(log)))
     }
 }
 
@@ -641,7 +637,7 @@ pub enum Log {
     /// [without cursors]: Cursorless
     Text(Cursorless),
     /// The result of a command
-    CmdResult(String, Cursorless),
+    CmdResult(String, bool, Cursorless),
 }
 
 /// The current [`Widget`]

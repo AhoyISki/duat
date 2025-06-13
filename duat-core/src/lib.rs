@@ -283,6 +283,7 @@ use std::{
 use dirs_next::cache_dir;
 pub use lender::Lender;
 pub use libloading::{Library, Symbol};
+pub use log;
 
 use self::{
     data::Pass,
@@ -946,40 +947,3 @@ fn iter_around_rev<U: Ui>(
 // Debugging objects.
 #[doc(hidden)]
 pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-
-/// Log information to a log file
-#[doc(hidden)]
-pub macro log($($text:tt)*) {{
-    if let Some(cache) = cache_dir()
-        && let Ok(file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(cache.join("duat/log"))
-    {
-        use std::{io::Write, time::Instant};
-
-        let mut file = std::io::BufWriter::new(file);
-        let mut text = format!($($text)*);
-
-        if let Some(start) = $crate::DEBUG_TIME_START.get()
-            && text != "" {
-            if text.lines().count() > 1 {
-                let chars = text
-                    .char_indices()
-                    .filter_map(|(pos, char)| (char == '\n').then_some(pos));
-                let nl_indices: Vec<usize> = chars.collect();
-                for index in nl_indices.iter().rev() {
-                    text.insert_str(index + 1, "  ");
-                }
-
-                let duration = Instant::now().duration_since(*start);
-                write!(file, "\nat {:.4?}:\n  {text}", duration).unwrap();
-            } else {
-                let duration = Instant::now().duration_since(*start);
-                write!(file, "\nat {:.4?}: {text}", duration).unwrap();
-            }
-        } else {
-            write!(file, "\n{text}").unwrap();
-        }
-    }
-}}

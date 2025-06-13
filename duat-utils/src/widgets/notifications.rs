@@ -17,7 +17,7 @@ use duat_core::{
     data::{Pass, RwData},
     form::{self, Form},
     hook::{self, KeysSent},
-    text::Text,
+    text::{Text, text},
     ui::{PushSpecs, RawArea, Ui},
     widget::{Widget, WidgetCfg},
 };
@@ -53,9 +53,13 @@ impl<U: Ui> Widget<U> for Notifications<U> {
         let clear_notifs = CLEAR_NOTIFS.swap(false, Ordering::Relaxed);
         widget.write(&mut pa, |wid| {
             if wid.logs.has_changed() {
-                wid.text = match wid.logs.last().unwrap() {
-                    context::Log::Text(cursorless) => cursorless.get(),
-                    context::Log::CmdResult(_, cursorless) => cursorless.get(),
+                (wid.text, wid.mask) = match wid.logs.last().unwrap() {
+                    context::Log::Text(cursorless) => (cursorless.get(), ""),
+                    context::Log::CmdResult(cmd, was_success, cursorless) => {
+                        let mask = if *was_success { "ok" } else { "err" };
+
+                        (text!("[a]{cmd}[]: {}", cursorless.get()).build(), mask)
+                    }
                 };
             } else if clear_notifs {
                 wid.text = Text::new()
@@ -73,6 +77,10 @@ impl<U: Ui> Widget<U> for Notifications<U> {
 
     fn once() -> Result<(), Text> {
         form::set_weak("Default.Notifications.err", Form::red());
+        form::set_weak("Accent.err", Form::red().bold());
+        form::set_weak("Default.Notifications.ok", Form::cyan());
+        form::set_weak("Accent.ok", Form::blue().bold());
+
         hook::add_grouped::<KeysSent>("RemoveNotificationsOnInput", |_, _| {
             CLEAR_NOTIFS.store(true, Ordering::Relaxed);
         });

@@ -21,7 +21,7 @@
 //! fn main_thread_function(pa: &mut Pass) {
 //!     let result = cmd::call(pa, "colorscheme solarized");
 //!     if result.is_ok() {
-//!         context::notify(ok!("[a]Awesome!"));
+//!         context::notify(text!("[a]Awesome!"));
 //!     }
 //! }
 //! ```
@@ -113,9 +113,9 @@
 //!     }
 //!     // You can return a success message, but must
 //!     // return an error message.
-//!     // For those, you should use the `ok!` and `err!`
+//!     // For those, you should use the `text!` and `text!`
 //!     // macros.
-//!     Ok(Some(ok!("Unset [a]{}[] forms", forms.len()).build()))
+//!     Ok(Some(text!("Unset [a]{}[] forms", forms.len()).build()))
 //! });
 //!
 //! // Adding a command can fail if a command with the same
@@ -124,11 +124,11 @@
 //! # }
 //! ```
 //!
-//! In the command above, you'll notice that I used the [`ok!`] macro.
-//! This macro is used when you want to return a notification saying
-//! that the command succeeded. Its counterpart is the [`err!`] macro.
-//! It represents failure in the execution of the command, and must be
-//! used.
+//! In the command above, you'll notice that I used the [`text!`]
+//! macro. This macro is used when you want to return a notification
+//! saying that the command succeeded. Its counterpart is the
+//! [`text!`] macro. It represents failure in the execution of the
+//! command, and must be used.
 //!
 //! Duat commands also offer flags in the form of the [`Flags`]
 //! [`Parameter`]. These can make use of word flags (`--full-words`)
@@ -184,7 +184,7 @@
 //!         let child = std::process::Command::new("pip").spawn()?;
 //!         let res = child.wait_with_output()?;
 //!
-//!         Ok(Some(ok!("{res}").build()))
+//!         Ok(Some(text!("{res}").build()))
 //!     });
 //! }
 //! ```
@@ -199,9 +199,9 @@
 //! [`File`]: crate::file::File
 //! [`&str`]: str
 //! [`cmd`]: self
-//! [`ok!`]: crate::prelude::ok
+//! [`text!`]: crate::prelude::ok
 //! [`Ok(Some({Text}))`]: Ok
-//! [`err!`]: crate::prelude::err
+//! [`text!`]: crate::prelude::err
 //! [`Text`]: crate::prelude::Text
 //! [`text!`]: crate::prelude::text
 //! [`Form`]: crate::form::Form
@@ -231,7 +231,7 @@ use crate::{
     data::{Pass, RwData},
     file::File,
     file_entry, iter_around, iter_around_rev, mode,
-    text::{Text, err, ok, text},
+    text::{Text, text},
     ui::{DuatEvent, Ui},
     widget::Widget,
 };
@@ -244,7 +244,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
                    alias: &str,
                    command: Remainder| {
         if !flags.is_empty() {
-            Err(err!("An alias cannot take any flags").build())
+            Err(text!("An alias cannot take any flags").build())
         } else {
             crate::cmd::alias(&mut pa, alias, command)
         }
@@ -263,7 +263,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             })
             .unwrap();
         if has_unsaved_changes {
-            return Err(err!("[a]{name}[] has unsaved changes").build());
+            return Err(text!("[a]{name}[] has unsaved changes").build());
         }
 
         // If we are on the current File, switch to the next one.
@@ -284,7 +284,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         sender()
             .send(DuatEvent::CloseFile(name.to_string()))
             .unwrap();
-        Ok(Some(ok!("Closed [a]{name}").build()))
+        Ok(Some(text!("Closed [a]{name}").build()))
     })?;
 
     add!(["quit!", "q!"], |pa, name: Option<Buffer<U>>| {
@@ -308,7 +308,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         sender()
             .send(DuatEvent::CloseFile(name.to_string()))
             .unwrap();
-        Ok(Some(ok!("Closed [a]{name}").build()))
+        Ok(Some(text!("Closed [a]{name}").build()))
     })?;
 
     add!(["quit-all", "qa"], |pa| {
@@ -323,9 +323,9 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             sender().send(DuatEvent::Quit).unwrap();
             Ok(None)
         } else if unwritten == 1 {
-            Err(err!("There is [a]1[] unsaved file").build())
+            Err(text!("There is [a]1[] unsaved file").build())
         } else {
-            Err(err!("There are [a]{unwritten}[] unsaved files").build())
+            Err(text!("There are [a]{unwritten}[] unsaved files").build())
         }
     })?;
 
@@ -341,14 +341,14 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             } else if let Some(name) = file.name_set() {
                 (file.write()?, std::path::PathBuf::from(name))
             } else {
-                return Err(err!("File has no name path to write to").build());
+                return Err(text!("File has no name path to write to").build());
             };
 
             match bytes {
                 Some(bytes) => Ok(Some(
-                    ok!("Wrote [a]{bytes}[] bytes to [File]{name}").build(),
+                    text!("Wrote [a]{bytes}[] bytes to [File]{name}").build(),
                 )),
-                None => Ok(Some(ok!("Nothing to be written").build())),
+                None => Ok(Some(text!("Nothing to be written").build())),
             }
         })
     })?;
@@ -382,10 +382,10 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         sender().send(DuatEvent::CloseFile(name.clone())).unwrap();
         match bytes {
             Some(bytes) => Ok(Some(
-                ok!("Wrote [a]{bytes}[] bytes to [File]{name}[], then closed it").build(),
+                text!("Wrote [a]{bytes}[] bytes to [File]{name}[], then closed it").build(),
             )),
             None => Ok(Some(
-                ok!("No changes in [File]{name}[], so just closed it").build(),
+                text!("No changes in [File]{name}[], so just closed it").build(),
             )),
         }
     })?;
@@ -409,11 +409,11 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             .count();
 
         if written == file_count {
-            Ok(Some(ok!("Wrote to [a]{written}[] files").build()))
+            Ok(Some(text!("Wrote to [a]{written}[] files").build()))
         } else {
             let unwritten = file_count - written;
             let plural = if unwritten == 1 { "" } else { "s" };
-            Err(err!("Failed to write to [a]{unwritten}[] file{plural}").build())
+            Err(text!("Failed to write to [a]{unwritten}[] file{plural}").build())
         }
     })?;
 
@@ -438,7 +438,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         } else {
             let unwritten = file_count - written;
             let plural = if unwritten == 1 { "" } else { "s" };
-            Err(err!("Failed to write to [a]{unwritten}[] file{plural}").build())
+            Err(text!("Failed to write to [a]{unwritten}[] file{plural}").build())
         }
     })?;
 
@@ -478,18 +478,18 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         }
 
         if IS_UPDATING.load(Ordering::Relaxed) {
-            return Err(err!("The config is already being recompiled").build());
+            return Err(text!("The config is already being recompiled").build());
         } else {
             IS_UPDATING.store(true, Ordering::Relaxed);
         }
 
         let Some(crate_dir) = crate::crate_dir() else {
-            return Err(err!("No config directory is set").build());
+            return Err(text!("No config directory is set").build());
         };
 
         let toml_path = crate_dir.join("Cargo.toml");
         if let Ok(false) | Err(_) = toml_path.try_exists() {
-            return Err(err!("Cargo.toml was not found").build());
+            return Err(text!("Cargo.toml was not found").build());
         }
 
         if flags.word("clear") || flags.word("update") {
@@ -525,10 +525,10 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
                     match child.wait_with_output() {
                         Ok(out) => {
                             if out.status.code() != Some(0) {
-                                context::notify(err!("Couldn't compile config crate"));
+                                context::notify(text!("Couldn't compile config crate"));
                             }
                         }
-                        Err(err) => context::notify(err!("cargo failed: [a]{err}")),
+                        Err(err) => context::notify(text!("cargo failed: [a]{err}")),
                     };
                     IS_UPDATING.store(false, Ordering::Relaxed);
                 });
@@ -536,7 +536,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             }
             Err(err) => {
                 IS_UPDATING.store(false, Ordering::Relaxed);
-                Err(err!("Failed to start cargo: [a]{err}").build())
+                Err(text!("Failed to start cargo: [a]{err}").build())
             }
         }
     })?;
@@ -552,11 +552,11 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
 
         if file_entry(&pa, &windows, &name).is_err() {
             sender().send(DuatEvent::OpenFile(name.clone())).unwrap();
-            return Ok(Some(ok!("Opened [a]{name}").build()));
+            return Ok(Some(text!("Opened [a]{name}").build()));
         }
 
         mode::reset_switch_to::<U>(&pa, name.clone(), true);
-        Ok(Some(ok!("Switched to [a]{name}").build()))
+        Ok(Some(text!("Switched to [a]{name}").build()))
     })?;
 
     add!(["open", "o"], |pa, path: PossibleFile| {
@@ -570,21 +570,21 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
 
         let Ok((win, wid, node)) = file_entry(&pa, &windows, &name) else {
             sender().send(DuatEvent::OpenWindow(name.clone())).unwrap();
-            return Ok(Some(ok!("Opened [a]{name}[] on new window").build()));
+            return Ok(Some(text!("Opened [a]{name}[] on new window").build()));
         };
 
         if windows[win].file_nodes(&pa).len() == 1 {
             mode::reset_switch_to::<U>(&pa, name.clone(), true);
-            Ok(Some(ok!("Switched to [a]{name}").build()))
+            Ok(Some(text!("Switched to [a]{name}").build()))
         } else {
             sender().send(DuatEvent::OpenWindow(name.clone())).unwrap();
-            Ok(Some(ok!("Moved [a]{name}[] to a new window").build()))
+            Ok(Some(text!("Moved [a]{name}[] to a new window").build()))
         }
     })?;
 
     add!(["buffer", "b"], |pa, name: OtherFileBuffer<U>| {
         mode::reset_switch_to::<U>(&pa, &name, true);
-        Ok(Some(ok!("Switched to [a]{name}").build()))
+        Ok(Some(text!("Switched to [a]{name}").build()))
     })?;
 
     add!("next-file", |pa, flags: Flags| {
@@ -600,16 +600,16 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         let name = if flags.word("global") {
             iter_around::<U>(&windows, win, wid)
                 .find_map(|(.., node)| node.read_as(&pa, |f: &File<U>| f.name()))
-                .ok_or_else(|| err!("There are no other open files"))?
+                .ok_or_else(|| text!("There are no other open files"))?
         } else {
             let slice = &windows[win..=win];
             iter_around(slice, 0, wid)
                 .find_map(|(.., node)| node.read_as(&pa, |f: &File<U>| f.name()))
-                .ok_or_else(|| err!("There are no other files open in this window"))?
+                .ok_or_else(|| text!("There are no other files open in this window"))?
         };
 
         mode::reset_switch_to::<U>(&pa, &name, true);
-        Ok(Some(ok!("Switched to [a]{name}").build()))
+        Ok(Some(text!("Switched to [a]{name}").build()))
     })?;
 
     add!("prev-file", |pa, flags: Flags| {
@@ -625,17 +625,17 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         let name = if flags.word("global") {
             iter_around_rev::<U>(&windows, w, widget_i)
                 .find_map(|(.., node)| node.read_as(&pa, |f: &File<U>| f.name()))
-                .ok_or_else(|| err!("There are no other open files"))?
+                .ok_or_else(|| text!("There are no other open files"))?
         } else {
             let slice = &windows[w..=w];
             iter_around_rev(slice, 0, widget_i)
                 .find_map(|(.., node)| node.read_as(&pa, |f: &File<U>| f.name()))
-                .ok_or_else(|| err!("There are no other files open in this window"))?
+                .ok_or_else(|| text!("There are no other files open in this window"))?
         };
 
         mode::reset_switch_to::<U>(&pa, &name, true);
 
-        Ok(Some(ok!("Switched to [a]{name}").build()))
+        Ok(Some(text!("Switched to [a]{name}").build()))
     })?;
 
     add!("swap", |pa, lhs: Buffer<U>, rhs: Option<Buffer<U>>| {
@@ -648,12 +648,12 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             .send(DuatEvent::SwapFiles(lhs.to_string(), rhs.clone()))
             .unwrap();
 
-        Ok(Some(ok!("Swapped [a]{lhs}[] and [a]{rhs}").build()))
+        Ok(Some(text!("Swapped [a]{lhs}[] and [a]{rhs}").build()))
     })?;
 
     add!("colorscheme", |_pa, scheme: ColorSchemeArg| {
         crate::form::set_colorscheme(scheme);
-        Ok(Some(ok!("Set colorscheme to [a]{scheme}[]").build()))
+        Ok(Some(text!("Set colorscheme to [a]{scheme}[]").build()))
     })?;
 
     add!(
@@ -665,7 +665,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             form.style.underline_color = colors.get(2).cloned();
             crate::form::set(name, form);
 
-            Ok(Some(ok!("Set [a]{name}[] to a new Form").build()))
+            Ok(Some(text!("Set [a]{name}[] to a new Form").build()))
         }
     )?;
 
@@ -753,7 +753,7 @@ mod global {
             )*
 
             if let Ok(arg) = args.next() {
-                return Err($crate::text::err!("Too many arguments").build());
+                return Err($crate::text::text!("Too many arguments").build());
             }
 
             let mut $pa = pa;
@@ -779,7 +779,7 @@ mod global {
 
             let start = args.next_start();
             if let (Ok(_), Some(start)) = (args.next_as::<super::Remainder>(pa), start) {
-                let err = $crate::text::err!("Too many arguments").build();
+                let err = $crate::text::text!("Too many arguments").build();
                 return (ok_ranges, Some((start..args.param_range().end, err)))
             }
 
@@ -921,9 +921,13 @@ mod global {
     /// Like [`call`], but notifies the result
     pub fn call_notify(pa: &mut Pass, call: impl std::fmt::Display) -> CmdResult {
         // SAFETY: Function has a Pass argument.
-        let result = unsafe { COMMANDS.get() }.run(pa, call);
-        if let Ok(Some(result)) | Err(result) = result.clone() {
-            context::notify(result);
+        let result = unsafe { COMMANDS.get() }.run(pa, call.to_string());
+        if let Ok(Some(res)) | Err(res) = result.clone() {
+            let call = call.to_string();
+            let cmd = call.split(' ').find(|w| !w.is_empty()).unwrap();
+
+            let was_success = result.is_ok();
+            context::logs().push_cmd_result(cmd.to_string(), was_success, res);
         }
         result
     }
@@ -952,8 +956,12 @@ mod global {
         let call = call.to_string();
         crate::context::sender()
             .send(DuatEvent::QueuedFunction(Box::new(move |mut pa| {
-                if let Ok(Some(res)) | Err(res) = unsafe { COMMANDS.get() }.run(&mut pa, call) {
-                    context::notify(res);
+                let result = unsafe { COMMANDS.get() }.run(&mut pa, call.clone());
+                if let Ok(Some(res)) | Err(res) = result.clone() {
+                    let cmd = call.split(' ').find(|w| !w.is_empty()).unwrap();
+
+                    let was_success = result.is_ok();
+                    context::logs().push_cmd_result(cmd.to_string(), was_success, res);
                 }
             })))
             .unwrap()
@@ -966,6 +974,28 @@ mod global {
             .send(DuatEvent::QueuedFunction(Box::new(move |mut pa| {
                 // SAFETY: Function has a Pass argument.
                 map(unsafe { COMMANDS.get() }.run(&mut pa, call));
+            })))
+            .unwrap()
+    }
+
+    /// Like [`queue_and`], but also notifies the [`Result`]
+    pub fn queue_notify_and(
+        call: impl std::fmt::Display,
+        map: impl FnOnce(CmdResult) + Send + 'static,
+    ) {
+        let call = call.to_string();
+        crate::context::sender()
+            .send(DuatEvent::QueuedFunction(Box::new(move |mut pa| {
+                // SAFETY: Function has a Pass argument.
+                let result = unsafe { COMMANDS.get() }.run(&mut pa, call.clone());
+                if let Ok(Some(res)) | Err(res) = result.clone() {
+                    let cmd = call.split(' ').find(|w| !w.is_empty()).unwrap();
+
+                    let was_success = result.is_ok();
+                    context::logs().push_cmd_result(cmd.to_string(), was_success, res);
+                }
+
+                map(result)
             })))
             .unwrap()
     }
@@ -1028,7 +1058,10 @@ impl Commands {
 
         let call = call.to_string();
         let mut args = call.split_whitespace();
-        let caller = args.next().ok_or(err!("The command is empty"))?.to_string();
+        let caller = args
+            .next()
+            .ok_or(text!("The command is empty"))?
+            .to_string();
 
         let (command, call) = unsafe {
             self.0.read_unsafe(|inner| {
@@ -1043,7 +1076,7 @@ impl Commands {
                         .list
                         .iter()
                         .find(|cmd| cmd.callers().contains(&caller))
-                        .ok_or(err!("The caller [a]{caller}[] was not found"))?;
+                        .ok_or(text!("No such command"))?;
 
                     (command.clone(), call.clone())
                 })
@@ -1088,7 +1121,7 @@ impl Commands {
     //             let w = context::cur_window();
 
     //             if windows.is_empty() {
-    //                 return Err(err!(
+    //                 return Err(text!(
     //                     "Widget command executed before the [a]Ui[] was
     // initiated, try executing \                      after
     // [a]OnUiStart[]"                 )
@@ -1189,7 +1222,7 @@ impl InnerCommands {
         let commands = self.list.iter();
         for caller in commands.flat_map(|cmd| cmd.callers().iter()) {
             if new_callers.any(|new_caller| new_caller == caller) {
-                return Err(err!("The caller [a]{caller}[] already exists").build());
+                return Err(text!("The caller [a]{caller}[] already exists").build());
             }
         }
 
@@ -1202,13 +1235,13 @@ impl InnerCommands {
     /// arguments) to an alias.
     fn try_alias(&mut self, alias: String, call: String) -> Result<Option<Text>, Text> {
         if alias.split_whitespace().count() != 1 {
-            return Err(err!("Alias [a]{alias}[] is not a single word").build());
+            return Err(text!("Alias [a]{alias}[] is not a single word").build());
         }
 
         let caller = call
             .split_whitespace()
             .next()
-            .ok_or(err!("The command is empty"))?
+            .ok_or(text!("The command is empty"))?
             .to_string();
 
         let mut cmds = self.list.iter();
@@ -1217,12 +1250,12 @@ impl InnerCommands {
             let entry = (command.clone(), call.clone());
             Ok(Some(match self.aliases.insert(alias.clone(), entry) {
                 Some((_, prev_call)) => {
-                    ok!("Aliased [a]{alias}[] from [a]{prev_call}[] to [a]{call}").build()
+                    text!("Aliased [a]{alias}[] from [a]{prev_call}[] to [a]{call}").build()
                 }
-                None => ok!("Aliased [a]{alias}[] to [a]{call}").build(),
+                None => text!("Aliased [a]{alias}[] to [a]{call}").build(),
             }))
         } else {
-            Err(err!("The caller [a]{caller}[] was not found").build())
+            Err(text!("The caller [a]{caller}[] was not found").build())
         }
     }
 }
