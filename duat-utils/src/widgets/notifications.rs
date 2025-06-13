@@ -15,9 +15,10 @@ use std::{
 use duat_core::{
     context::{self, FileHandle, Logs},
     data::{Pass, RwData},
+    form::{self, Form},
     hook::{self, KeysSent},
     text::Text,
-    ui::{PushSpecs, Ui},
+    ui::{PushSpecs, RawArea, Ui},
     widget::{Widget, WidgetCfg},
 };
 
@@ -36,6 +37,7 @@ pub struct Notifications<U> {
     logs: Logs,
     text: Text,
     _ghost: PhantomData<U>,
+    mask: &'static str,
 }
 
 static CLEAR_NOTIFS: AtomicBool = AtomicBool::new(false);
@@ -70,6 +72,7 @@ impl<U: Ui> Widget<U> for Notifications<U> {
     }
 
     fn once() -> Result<(), Text> {
+        form::set_weak("Default.Notifications.err", Form::red());
         hook::add_grouped::<KeysSent>("RemoveNotificationsOnInput", |_, _| {
             CLEAR_NOTIFS.store(true, Ordering::Relaxed);
         });
@@ -78,6 +81,12 @@ impl<U: Ui> Widget<U> for Notifications<U> {
 
     fn needs_update(&self) -> bool {
         self.logs.has_changed() || CLEAR_NOTIFS.load(Ordering::Relaxed)
+    }
+
+    fn print(&mut self, area: &<U as Ui>::Area) {
+        let cfg = self.print_cfg();
+        let painter = form::painter_with_mask::<Self>(self.mask);
+        area.print(self.text_mut(), cfg, painter)
     }
 }
 
@@ -117,6 +126,7 @@ impl<U: Ui> WidgetCfg<U> for NotificationsCfg<U> {
             logs: context::logs(),
             text: Text::new(),
             _ghost: PhantomData,
+            mask: "err",
         };
 
         let specs = if let Some((den, div)) = self.0 {

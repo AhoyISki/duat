@@ -233,7 +233,7 @@ impl<U: Ui> Session<U> {
         let mut reprint_screen = false;
 
         loop {
-            if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(20)) {
+            if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(50)) {
                 // SAFETY: The safeness of a Pass is dependant on there being only
                 // one at any given time, that will be asured in here, and in any
                 // other block which it is only called once.

@@ -16,7 +16,7 @@ use duat_core::{
     context::FileHandle,
     data::{Pass, RwData},
     form::{self, DEFAULT_ID, Form},
-    text::{AlignCenter, AlignLeft, AlignRight, Builder, Text, text},
+    text::{AlignCenter, AlignLeft, AlignRight, Builder, Text},
     ui::{Constraint, PushSpecs, RawArea, Ui},
     widget::{Widget, WidgetCfg},
 };
@@ -239,7 +239,7 @@ fn push_text<U>(
     is_wrapped: bool,
     cfg: &LineNumbersOptions<U>,
 ) {
-    if !is_wrapped || cfg.show_wraps || main != usize::MAX {
+    if (!is_wrapped || cfg.show_wraps) && main != usize::MAX {
         let num = match cfg.num_rel {
             LineNum::Abs => line + 1,
             LineNum::Rel => line.abs_diff(main),
@@ -252,8 +252,6 @@ fn push_text<U>(
             }
         };
         b.push(num);
-    } else {
-        b.push(line + 1);
     }
 
     b.push("\n");

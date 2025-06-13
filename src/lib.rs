@@ -461,7 +461,7 @@ pub mod cursor {
 /// [`Form`]: crate::form::Form
 pub mod form {
     pub use duat_core::form::{
-        Color, ColorScheme, CursorShape, Form, add_colorscheme, from_id, id_of, set,
+        Color, ColorScheme, CursorShape, Form, add_colorscheme, enable_mask, from_id, id_of, set,
         set_colorscheme, set_many,
     };
 }

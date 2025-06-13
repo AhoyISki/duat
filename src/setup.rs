@@ -27,10 +27,7 @@ use duat_term::VertRule;
 use duat_utils::modes::Regular;
 
 use crate::{
-    CfgFn, Ui,
-    hook::{self, FocusedOn, OnFileOpen, OnWindowOpen, UnfocusedFrom},
-    mode,
-    prelude::{FileWritten, LineNumbers, Notifications, PromptLine, StatusLine},
+    form, hook::{self, FocusedOn, OnFileOpen, OnWindowOpen, UnfocusedFrom}, mode, prelude::{FileWritten, LineNumbers, Notifications, PromptLine, StatusLine}, CfgFn, Ui
 };
 
 // Setup statics.
@@ -89,6 +86,9 @@ pub fn pre_setup(duat_tx: &'static Sender<DuatEvent>) {
             crate::prelude::cmd::queue("reload");
         }
     });
+
+    form::enable_mask("err");
+    form::enable_mask("ok");
 }
 
 #[doc(hidden)]

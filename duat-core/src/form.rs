@@ -281,21 +281,31 @@ mod global {
     ///
     /// [`Ui`]: crate::ui::Ui
     pub fn painter<W: ?Sized + 'static>() -> Painter {
-        fn default_id(type_id: TypeId, type_name: &'static str) -> FormId {
-            static IDS: LazyLock<Mutex<HashMap<TypeId, FormId>>> = LazyLock::new(Mutex::default);
-            let mut ids = IDS.lock().unwrap();
-
-            if let Some(id) = ids.get(&type_id) {
-                *id
-            } else {
-                let name: &'static str = format!("Default.{type_name}").leak();
-                let id = id_from_name(name);
-                add_forms(vec![name]);
-                ids.insert(type_id, id);
-                id
-            }
-        }
         PALETTE.painter(default_id(TypeId::of::<W>(), crate::duat_name::<W>()), "")
+    }
+
+    pub fn painter_with_mask<W: ?Sized + 'static>(mask: &'static str) -> Painter {
+        PALETTE.painter(default_id(TypeId::of::<W>(), crate::duat_name::<W>()), mask)
+    }
+
+    pub fn enable_mask(mask: &'static str) {
+        queue(move || {
+            let mut inner = PALETTE.0.write().unwrap();
+            if !inner.masks.iter().any(|(m, _)| *m == mask) {
+                let mut remaps: Vec<u16> = (0..inner.forms.len() as u16).collect();
+
+                for (i, (name, ..)) in inner.forms.iter().enumerate() {
+                    if let Some((pref, suf)) = name.rsplit_once('.')
+                        && suf == mask
+                        && let Some(j) = inner.forms.iter().position(|(name, ..)| *name == pref)
+                    {
+                        remaps[j] = i as u16;
+                    }
+                }
+
+                inner.masks.push((mask, remaps));
+            }
+        })
     }
 
     /// Returns the [`FormId`] from the name of a [`Form`]
@@ -450,6 +460,21 @@ mod global {
     /// The name of a form, given a [`FormId`]
     pub(super) fn name_of(id: FormId) -> &'static str {
         FORMS.lock().unwrap()[id.0 as usize]
+    }
+
+    fn default_id(type_id: TypeId, type_name: &'static str) -> FormId {
+        static IDS: LazyLock<Mutex<HashMap<TypeId, FormId>>> = LazyLock::new(Mutex::default);
+        let mut ids = IDS.lock().unwrap();
+
+        if let Some(id) = ids.get(&type_id) {
+            *id
+        } else {
+            let name: &'static str = format!("Default.{type_name}").leak();
+            let id = id_from_name(name);
+            add_forms(vec![name]);
+            ids.insert(type_id, id);
+            id
+        }
     }
 
     fn position_of_name(names: &mut Vec<&'static str>, name: &'static str) -> usize {
@@ -876,7 +901,7 @@ struct InnerPalette {
     main_cursor: Option<CursorShape>,
     extra_cursor: Option<CursorShape>,
     forms: Vec<(&'static str, Form, FormType)>,
-    masks: Vec<(&'static str, Vec<usize>)>,
+    masks: Vec<(&'static str, Vec<u16>)>,
 }
 
 /// The list of forms to be used when rendering.
@@ -892,7 +917,7 @@ impl Palette {
                 main_cursor,
                 extra_cursor: main_cursor,
                 forms: BASE_FORMS.to_vec(),
-                masks: vec![("", (0..BASE_FORMS.len()).collect())],
+                masks: vec![("", (0..BASE_FORMS.len() as u16).collect())],
             })
         }))
     }
@@ -1055,17 +1080,24 @@ impl Palette {
     /// Returns a [`Painter`]
     fn painter(&'static self, id: FormId, mask: &str) -> Painter {
         let inner = self.0.read().unwrap();
+        let mask_i = inner
+            .masks
+            .iter()
+            .position(|(m, _)| *m == mask)
+            .unwrap_or_default();
+
         let default = inner
             .forms
-            .get(id.0 as usize)
+            .get(match inner.masks[mask_i].1.get(id.0 as usize) {
+                Some(i) => *i as usize,
+                None => id.0 as usize,
+            })
             .map(|(_, f, _)| *f)
             .unwrap_or(Form::new().0);
 
-        let mask = inner.masks.iter().position(|(m, _)| *m == mask);
-
         Painter {
             inner,
-            mask: mask.unwrap_or_default(),
+            mask_i,
             default,
             forms: Vec::new(),
             final_form_start: 0,
@@ -1079,11 +1111,9 @@ impl Palette {
 
 /// If setting a form with an existing mask suffix, mask its prefix
 fn mask_form(name: &'static str, form_i: usize, inner: &mut InnerPalette) {
-    return;
-
     if inner.masks[0].1.len() < inner.forms.len() {
         for (_, remaps) in inner.masks.iter_mut() {
-            remaps.extend(remaps.len()..inner.forms.len());
+            remaps.extend(remaps.len() as u16..inner.forms.len() as u16);
         }
     }
 
@@ -1091,7 +1121,7 @@ fn mask_form(name: &'static str, form_i: usize, inner: &mut InnerPalette) {
         && let Some((_, remaps)) = inner.masks.iter_mut().find(|(m, _)| *m == mask)
         && let Some(j) = inner.forms.iter().position(|(name, ..)| *name == pref)
     {
-        remaps[j] = form_i;
+        remaps[j] = form_i as u16;
     }
 }
 
@@ -1101,7 +1131,7 @@ fn mask_form(name: &'static str, form_i: usize, inner: &mut InnerPalette) {
 /// [`Text`]: crate::text::Text
 pub struct Painter {
     inner: RwLockReadGuard<'static, InnerPalette>,
-    mask: usize,
+    mask_i: usize,
     default: Form,
     forms: Vec<(Form, FormId)>,
     final_form_start: usize,
@@ -1121,8 +1151,8 @@ impl Painter {
     /// won't, since it wasn't changed.
     #[inline(always)]
     pub fn apply(&mut self, id: FormId) {
-        // let mask = &self.inner.masks[self.mask].1;
-        let i = id.0 as usize;
+        let (_, mask) = &self.inner.masks[self.mask_i];
+        let i = mask[id.0 as usize] as usize;
 
         let forms = &self.inner.forms;
         let form = forms.get(i).map(|(_, f, _)| *f).unwrap_or(Form::new().0);
@@ -1142,9 +1172,8 @@ impl Painter {
     /// result, given previous triggers
     #[inline(always)]
     pub fn remove(&mut self, id: FormId) {
-        // let mask = &self.inner.masks[self.mask].1;
-        let i = id.0 as usize; //mask.get(id.0 as usize).copied().unwrap_or(id.0 as usize);
-        let id = FormId(i as u16);
+        let mask = &self.inner.masks[self.mask_i].1;
+        let id = FormId(mask.get(id.0 as usize).copied().unwrap_or(id.0));
 
         let mut applied_forms = self.forms.iter().enumerate();
         if let Some((i, &(form, _))) = applied_forms.rfind(|(_, (_, lhs))| *lhs == id) {

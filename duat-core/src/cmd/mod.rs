@@ -231,7 +231,7 @@ use crate::{
     data::{Pass, RwData},
     file::File,
     file_entry, iter_around, iter_around_rev, mode,
-    text::{Text, err, hint, ok},
+    text::{Text, err, ok, text},
     ui::{DuatEvent, Ui},
     widget::Widget,
 };
@@ -532,7 +532,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
                     };
                     IS_UPDATING.store(false, Ordering::Relaxed);
                 });
-                Ok(Some(hint!("Started config recompilation").build()))
+                Ok(Some(text!("Started config recompilation").build()))
             }
             Err(err) => {
                 IS_UPDATING.store(false, Ordering::Relaxed);
