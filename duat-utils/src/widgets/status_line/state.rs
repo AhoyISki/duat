@@ -138,7 +138,7 @@ impl<U: Ui, I: ?Sized> From<DataMap<I, Text>> for State<U, DataArg<Text>> {
     }
 }
 
-impl<U, F, I, O> From<F> for State<U, IntoDataArg<String>>
+impl<U, F, I, O> From<F> for State<U, IntoDataMapArg<String>>
 where
     U: Ui,
     F: FnOnce() -> DataMap<I, O>,
@@ -156,7 +156,7 @@ where
     }
 }
 
-impl<U, F, I> From<F> for State<U, IntoDataArg<Text>>
+impl<U, F, I> From<F> for State<U, IntoDataMapArg<Text>>
 where
     U: Ui,
     F: FnOnce() -> DataMap<I, Text>,
@@ -167,6 +167,39 @@ where
         let checker = value.checker();
         State {
             appender: Appender::PassArg(Box::new(move |pa, b| b.push(value(pa)))),
+            checker: Some(Box::new(checker)),
+            ghost: PhantomData,
+        }
+    }
+}
+
+impl<U, F, D> From<F> for State<U, IntoRwDataArg<String>>
+where
+    U: Ui,
+    F: FnOnce() -> RwData<D>,
+    D: Display + Clone + 'static,
+{
+    fn from(value: F) -> Self {
+        let value = value();
+        let checker = value.checker();
+        State {
+            appender: Appender::PassArg(Box::new(move |pa, b| b.push(value.get(pa)))),
+            checker: Some(Box::new(checker)),
+            ghost: PhantomData,
+        }
+    }
+}
+
+impl<U, F> From<F> for State<U, IntoRwDataArg<Text>>
+where
+    U: Ui,
+    F: FnOnce() -> RwData<Text>,
+{
+    fn from(value: F) -> Self {
+        let value = value();
+        let checker = value.checker();
+        State {
+            appender: Appender::PassArg(Box::new(move |pa, b| b.push(value.get(pa)))),
             checker: Some(Box::new(checker)),
             ghost: PhantomData,
         }
@@ -326,7 +359,9 @@ impl<T: Into<Text> + Clone, U: Ui> From<Ghost<T>> for State<U, ()> {
 pub struct DataArg<T>(PhantomData<T>);
 #[doc(hidden)]
 #[derive(Clone)]
-pub struct IntoDataArg<T>(PhantomData<T>);
+pub struct IntoDataMapArg<T>(PhantomData<T>);
+#[derive(Clone)]
+pub struct IntoRwDataArg<T>(PhantomData<T>);
 #[doc(hidden)]
 #[derive(Clone)]
 pub struct NoArg<T>(PhantomData<T>);

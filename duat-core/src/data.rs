@@ -152,6 +152,32 @@ impl<T: 'static> RwData<T> {
     pub fn replace(&self, pa: &mut Pass, new: T) -> T {
         self.write(pa, |value| std::mem::replace(value, new))
     }
+
+    /// Gets the value within using a [`Pass`]
+    ///
+    /// The consistent use of a [`Pass`] for the purposes of
+    /// reading/writing to the values of [`RwData`]s ensures that no
+    /// panic or invalid borrow happens at runtime, even while working
+    /// with untrusted code. More importantly, Duat uses these
+    /// guarantees in order to give the end user a ridiculous amount
+    /// of freedom in where they can do things, whilst keeping Rust's
+    /// number one rule and ensuring thread safety, even with a
+    /// relatively large amount of shareable state.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there is a mutable borrow of this struct somewhere,
+    /// which could happen if you use [`write_unsafe`] or
+    /// [`write_unsafe_as`]
+    ///
+    /// [`write_unsafe`]: Self::write_unsafe
+    /// [`write_unsafe_as`]: Self::write_unsafe_as
+    pub fn get(&self, pa: &Pass) -> T
+    where
+        T: Clone,
+    {
+        self.read(pa, |value| value.clone())
+    }
 }
 
 impl<T: ?Sized> RwData<T> {
