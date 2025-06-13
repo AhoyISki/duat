@@ -268,12 +268,28 @@ use std::{
 };
 
 use duat_core::{
-    cfg::WordChars, cmd, context::{self, FileHandle}, data::{Pass, RwData}, file::File, form, hook::{self, ModeSwitched, SearchPerformed}, mode::{
-        self, key, Cursors, EditHelper, Editor, KeyCode::*, KeyEvent as Event, KeyMod as Mod, Mode
-    }, prelude::Text, text::{err, text, Point, Searcher}, ui::Ui, widget::Widget, Lender, Plugin
+    Lender, Plugin,
+    cfg::WordChars,
+    cmd,
+    context::{self, FileHandle},
+    data::{Pass, RwData},
+    file::File,
+    form,
+    hook::{self, ModeSwitched},
+    mode::{
+        self, Cursors, EditHelper, Editor, KeyCode::*, KeyEvent as Event, KeyMod as Mod, Mode, key,
+    },
+    prelude::Text,
+    text::{Point, Searcher, err, text},
+    ui::Ui,
+    widget::Widget,
 };
-use duat_utils::modes::{
-    ExtendFwd, ExtendRev, IncSearch, IncSearcher, PipeSelections, RunCommands, SearchFwd, SearchRev,
+use duat_utils::{
+    hooks::SearchPerformed,
+    modes::{
+        ExtendFwd, ExtendRev, IncSearch, IncSearcher, PipeSelections, RunCommands, SearchFwd,
+        SearchRev,
+    },
 };
 use treesitter::TsEditor;
 
