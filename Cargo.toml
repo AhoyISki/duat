@@ -23,4 +23,3 @@ dlopen-rs = "0.7.3"
 
 [build-dependencies]
 dirs-next = "2.0.0"
-cc = "1.2.26"
