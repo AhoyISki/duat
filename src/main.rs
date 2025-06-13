@@ -41,7 +41,7 @@ fn main() {
 
     // Assert that the configuration crate actually exists.
     let Some(crate_dir) = duat_core::crate_dir().filter(|cd| cd.exists()) else {
-        let msg = text!("No config crate found, loading default config");
+        let msg = txt!("No config crate found, loading default config");
         duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
         pre_setup(duat_tx);
         run_duat((&MS, &CLIPB), Vec::new(), duat_rx);
@@ -61,10 +61,10 @@ fn main() {
             if let Ok(out) = run_cargo(toml_path.clone(), true, true)
                 && out.status.success()
             {
-                let msg = text!("Compiled [a]release[] profile");
+                let msg = txt!("Compiled [a]release[] profile");
                 duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
             } else {
-                let msg = text!("Failed to compile [a]release[] profile");
+                let msg = txt!("Failed to compile [a]release[] profile");
                 duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
             }
             waiting_nap(20);
@@ -85,7 +85,7 @@ fn main() {
         (prev, duat_rx, reload_instant) = if let Some(run_duat) = run_fn.take() {
             run_duat((&MS, &CLIPB), prev, (duat_tx, duat_rx))
         } else {
-            let msg = text!("Failed to open load crate");
+            let msg = txt!("Failed to open load crate");
             duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
             pre_setup(duat_tx);
             run_duat((&MS, &CLIPB), prev, duat_rx)
@@ -99,10 +99,10 @@ fn main() {
 
         let profile = if on_release { "Release" } else { "Debug" };
         let time = match reload_instant {
-            Some(reload_instant) => text!("in [a]{:.2?}", reload_instant.elapsed()).build(),
+            Some(reload_instant) => txt!("in [a]{:.2?}", reload_instant.elapsed()).build(),
             None => Text::new(),
         };
-        let msg = text!("[a]{profile}[] profile reloaded {time}");
+        let msg = txt!("[a]{profile}[] profile reloaded {time}");
         duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
         lib = ElfLibrary::dlopen(so_path, DEFAULT_FLAGS).ok();
     }

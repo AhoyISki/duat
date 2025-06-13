@@ -611,7 +611,7 @@ pub mod prelude {
         Plugin, clipboard, cmd,
         data::{self, Pass, RwData},
         text::{
-            self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, Text, text,
+            self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, Text, txt,
         },
         ui::{FileBuilder, RawArea, WindowBuilder},
         widget,
