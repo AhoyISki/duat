@@ -23,7 +23,7 @@
 //! The [`Text`] struct is created in two different ways:
 //!
 //! - By calling [`Text::new`] or one of its [`From`] implementations;
-//! - By building it with the [`text!`] family of macros;
+//! - By building it with the [`txt!`] family of macros;
 //!
 //! The first method is recommended if you want a [`Text`] that will
 //! be modified by input. This is often the case if your [`Widget`] is
@@ -38,13 +38,13 @@
 //! # use duat_core::prelude::*;
 //! fn number_of_horses(count: usize) -> Text {
 //!     if count == 1 {
-//!         text!("[HorseCount]1[Horses] horse").build()
+//!         txt!("[HorseCount]1[Horses] horse").build()
 //!     } else {
-//!         text!("[HorseCount]{count}[Horses] horses").build()
+//!         txt!("[HorseCount]{count}[Horses] horses").build()
 //!     }
 //! }
 //! fn inlined_number_of_horses(count: usize) -> Text {
-//!     text!(
+//!     txt!(
 //!         "[HorseCount]{count} [Horses]{}",
 //!         if count == 1 { "horse" } else { "horses" }
 //!     )
@@ -55,13 +55,13 @@
 //! You can use this whenever you need to update a widget, for
 //! example, just create a new [`Text`] to printed to the screen.
 //!
-//! However, when recreating the entire [`Text`] with a [`text!`]
+//! However, when recreating the entire [`Text`] with a [`txt!`]
 //! macro would be too expensive, you can use [`Text`] modifying
 //! functions:
 //!
 //! ```rust
 //! # use duat_core::prelude::*;
-//! let mut prompted = text!("[Prompt]type a key:").build();
+//! let mut prompted = txt!("[Prompt]type a key:").build();
 //! let end = prompted.len();
 //! prompted.replace_range(end..end, "a")
 //! ```
@@ -108,7 +108,7 @@ use std::{
 pub(crate) use self::history::History;
 use self::tags::{FwdTags, RevTags, Tags};
 pub use self::{
-    builder::{Builder, BuilderPart, err, hint, ok, text},
+    builder::{Builder, BuilderPart, txt},
     bytes::{Buffers, Bytes, Lines, Strs},
     history::{Change, Moment},
     iter::{FwdIter, Item, Part, RevIter},
@@ -133,7 +133,7 @@ use crate::{
 /// for everything that shows up on screen.
 ///
 /// You can build a [`Text`] manually, by using [`Text::new`], or with
-/// some convenience, by using the [`text!`] family of macros, making
+/// some convenience, by using the [`txt!`] family of macros, making
 /// use of a [`Builder`].
 ///
 /// [`Widget`]: crate::widget::Widget
@@ -749,7 +749,7 @@ impl Text {
         }
     }
 
-	/// Returns a [`Text`] without [`Cursors`]
+    /// Returns a [`Text`] without [`Cursors`]
     ///
     /// You should use this if you want to send the [`Text`] across
     /// threads.
@@ -1006,13 +1006,13 @@ impl Clone for Text {
 
 impl From<std::io::Error> for Text {
     fn from(value: std::io::Error) -> Self {
-        err!("{}", value.kind().to_string()).build()
+        txt!("{}", value.kind().to_string()).build()
     }
 }
 
 impl From<Box<dyn std::error::Error>> for Text {
     fn from(value: Box<dyn std::error::Error>) -> Self {
-        err!("{}", value.to_string()).build()
+        txt!("{}", value.to_string()).build()
     }
 }
 
@@ -1087,7 +1087,7 @@ impl Cursorless {
         self.0
     }
 
-	/// Gets the [`Text`] within, allowing for mutation again
+    /// Gets the [`Text`] within, allowing for mutation again
     pub fn get(&self) -> Text {
         self.0.clone()
     }

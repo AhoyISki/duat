@@ -18,7 +18,7 @@ use duat_core::{
     file::File,
     hook::{self, KeysSent},
     mode::{self, KeyEvent},
-    text::{text, Text},
+    text::{txt, Text},
     ui::Ui, widget::Widget,
 };
 
@@ -50,14 +50,14 @@ pub fn file_fmt(file: &File<impl Ui>) -> Text {
     let mut b = Text::builder();
 
     if let Some(name) = file.name_set() {
-        b.push(text!("[File]{name}"));
+        b.push(txt!("[File]{name}"));
         if !file.exists() {
-            b.push(text!("[File.new][[new file]]"));
+            b.push(txt!("[File.new][[new file]]"));
         } else if file.text().has_unsaved_changes() {
-            b.push(text!("[File.unsaved][[+]]"));
+            b.push(txt!("[File.unsaved][[+]]"));
         }
     } else {
-        b.push(text!("[File.new.scratch]{}", file.name()));
+        b.push(txt!("[File.new.scratch]{}", file.name()));
     }
 
     b.build()
@@ -109,7 +109,7 @@ pub fn mode_fmt() -> DataMap<&'static str, Text> {
             Some((mode, _)) => mode,
             None => &mode,
         };
-        text!("[Mode]{mode}").build()
+        txt!("[Mode]{mode}").build()
     })
 }
 
@@ -161,7 +161,7 @@ pub fn main_dwcol<U: Ui>(file: &File<U>, area: &U::Area) -> usize {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_fmt<U: Ui>(file: &File<U>, area: &U::Area) -> Text {
-    text!(
+    txt!(
         "[Coord]{}[Separator]:[Coord]{}[Separator]/[Coord]{}",
         main_col(file, area),
         main_line(file),
@@ -197,9 +197,9 @@ pub fn selections(file: &File<impl Ui>) -> usize {
 /// [`Cursor`]: crate::mode::Cursor
 pub fn selections_fmt(file: &File<impl Ui>) -> Text {
     if file.cursors().len() == 1 {
-        text!("[Selections]1 sel").build()
+        txt!("[Selections]1 sel").build()
     } else {
-        text!("[Selections]{} sels", file.cursors().len()).build()
+        txt!("[Selections]{} sels", file.cursors().len()).build()
     }
 }
 

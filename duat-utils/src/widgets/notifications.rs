@@ -17,7 +17,7 @@ use duat_core::{
     data::{Pass, RwData},
     form::{self, Form},
     hook::{self, KeysSent},
-    text::{Text, text},
+    text::{Text, txt},
     ui::{PushSpecs, RawArea, Ui},
     widget::{Widget, WidgetCfg},
 };
@@ -58,7 +58,7 @@ impl<U: Ui> Widget<U> for Notifications<U> {
                     context::Log::CmdResult(cmd, was_success, cursorless) => {
                         let mask = if *was_success { "ok" } else { "err" };
 
-                        (text!("[a]{cmd}[]: {}", cursorless.get()).build(), mask)
+                        (txt!("[a]{cmd}[]: {}", cursorless.get()).build(), mask)
                     }
                 };
             } else if clear_notifs {

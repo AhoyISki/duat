@@ -23,7 +23,7 @@ use crate::{
     form,
     hook::{self, FileWritten},
     mode::Cursors,
-    text::{Bytes, Text, err},
+    text::{txt, Bytes, Text},
     ui::{PushSpecs, RawArea, Ui},
     widget::{Widget, WidgetCfg},
 };
@@ -159,7 +159,7 @@ impl<U: Ui> File<U> {
                 Ok(None)
             }
         } else {
-            Err(err!("No file was set").build())
+            Err(txt!("No file was set").build())
         }
     }
 
@@ -379,7 +379,7 @@ pub enum PathKind {
     ///
     /// The number within represents a specific [`File`], and when
     /// printed to, for example, the [`StatusLine`], would show up as
-    /// `text!("[File]*scratch file*#{id}")`
+    /// `txt!("[File]*scratch file*#{id}")`
     ///
     /// [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
     NotSet(usize),

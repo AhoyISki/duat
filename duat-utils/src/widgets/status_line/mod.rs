@@ -21,7 +21,7 @@ use duat_core::{
     context::{self, FileHandle},
     data::{Pass, RwData},
     form::{self, Form},
-    text::{AlignRight, Builder, Spacer, Text, text},
+    text::{AlignRight, Builder, Spacer, Text, txt},
     ui::{PushSpecs, Side, Ui},
     widget::{Widget, WidgetCfg},
 };
@@ -189,7 +189,7 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
                                 Some((mode, _)) => mode,
                                 None => mode,
                             };
-                            text!("[Mode]{}", mode.to_uppercase()).build()
+                            txt!("[Mode]{}", mode.to_uppercase()).build()
                         });
                         macros::status!(
                             "{mode_upper_fmt}{Spacer}{file_fmt} {selections_fmt} {main_fmt}"

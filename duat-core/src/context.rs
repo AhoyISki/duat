@@ -36,7 +36,7 @@ mod global {
     use crate::{
         data::{DataMap, Pass, RwData},
         main_thread_only::MainThreadOnly,
-        text::{Text, err},
+        text::{Text, txt},
         ui::{DuatEvent, Ui, Window},
         widget::Node,
     };
@@ -170,7 +170,7 @@ mod global {
     pub(crate) fn cur_widget<U: Ui>(pa: &Pass) -> Result<&'static CurWidget<U>, Text> {
         let cur_widget = inner_cur_widget();
         if cur_widget.0.read(pa, |cw| cw.is_none()) {
-            Err(err!("No widget yet").build())
+            Err(txt!("No widget yet").build())
         } else {
             Ok(cur_widget)
         }
@@ -205,7 +205,7 @@ mod global {
     fn cur_file<U: Ui>(pa: &Pass) -> Result<&'static CurFile<U>, Text> {
         let cur_file = inner_cur_file();
         if cur_file.0.read(pa, |f| f.is_none()) {
-            return Err(err!("No file yet").build());
+            return Err(txt!("No file yet").build());
         }
         Ok(cur_file)
     }
@@ -622,7 +622,13 @@ impl Logs {
     }
 
     /// Pushes a command's [`Text`] result
-    pub(crate) fn push_cmd_result(&self, cmd: String, was_success: bool, result: Text) {
+    ///
+    /// This `cmd` is usually a function executed via something like
+    /// [`cmd::call`], but it could also be the name of a function
+    /// that didn't quite succeed.
+    ///
+    /// [`cmd::call`]: crate::cmd::call
+    pub fn push_result(&self, cmd: String, was_success: bool, result: Text) {
         self.cur_state.fetch_add(1, Ordering::Relaxed);
 
         let log = Log::CmdResult(cmd, was_success, result.without_cursors());

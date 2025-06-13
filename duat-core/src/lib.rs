@@ -149,7 +149,7 @@
 //!             let seqs = key_seqs(self.points.len());
 //!
 //!             for (seq, [p0, _]) in seqs.iter().zip(&self.points) {
-//!                 let ghost = Ghost(text!("[EasyMotionWord]{seq}"));
+//!                 let ghost = Ghost(txt!("[EasyMotionWord]{seq}"));
 //!                 text.insert_tag(self.key, *p0, ghost);
 //!
 //!                 let seq_end = p0.byte() + seq.chars().count();
@@ -288,10 +288,11 @@ pub use log;
 use self::{
     data::Pass,
     file::File,
-    text::{Text, err},
+    text::Text,
     ui::{Ui, Window},
     widget::{Node, Widget},
 };
+use crate::text::txt;
 
 pub mod cache;
 pub mod cfg;
@@ -437,7 +438,7 @@ pub mod prelude {
         mode::{self, EditHelper, KeyCode, KeyEvent, KeyMod, Mode, key},
         text::{
             AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Key, Point, Spacer, Text,
-            err, hint, ok, text,
+            txt,
         },
         ui::{Constraint, FileBuilder, PushSpecs, RawArea, Ui, WindowBuilder},
         widget::{Widget, WidgetCfg},
@@ -531,81 +532,48 @@ pub mod clipboard {
 mod private_exports {
     pub use format_like::format_like;
 
-    pub macro inner_text($builder:expr, $default_id:expr, $accent_id:expr, $($parts:tt)*) {{
-        #[allow(unused_imports)]
-        use $crate::private_exports::{format_like, parse_arg, parse_form, parse_str};
-
-        format_like!(
-            parse_str,
-            [('{', parse_arg, false), ('[', parse_form, true)],
-            ($builder, $default_id, $accent_id),
-            $($parts)*
-        );
-    }}
-
-    pub macro parse_str($builder_and_forms:expr, $str:literal) {{
-        let (builder, default_id, accent_id) = $builder_and_forms;
+    pub macro parse_str($builder:expr, $str:literal) {{
+        let builder = $builder;
         builder.push_str($str);
-        (builder, default_id, accent_id)
+        builder
     }}
 
     pub macro parse_arg {
-        ($builder_and_forms:expr, "", $arg:expr) => {{
-            let (builder, default_id, accent_id) = $builder_and_forms;
+        ($builder:expr, "", $arg:expr) => {{
+            let builder = $builder;
             builder.push($arg);
-            (builder, default_id, accent_id)
+            builder
         }},
-        ($builder_and_forms:expr, $modif:literal, $arg:expr) => {{
-            let (builder, default_id, accent_id) = $builder_and_forms;
-            builder.push(format!(concat!("{:", $modif, "}"), $arg));
-            (builder, default_id, accent_id)
+        ($builder:expr, $modif:literal, $arg:expr) => {{
+            let builder = $builder;
+            builder.push(format!(concat!("{:", $modif, "}"), &$arg));
+            builder
         }},
     }
 
     pub macro parse_form {
-        ($builder_and_forms:expr, "",) => {{
-            let (builder, default_id, accent_id) = $builder_and_forms;
-            builder.push(default_id);
-            (builder, default_id, accent_id)
+        ($builder:expr, "",) => {{
+            let builder = $builder;
+            builder.push($crate::form::DEFAULT_ID);
+            builder
         }},
-        ($builder_and_forms:expr, "", a) => {{
-            let (builder, default_id, accent_id) = $builder_and_forms;
-            builder.push(accent_id);
-            (builder, default_id, accent_id)
+        ($builder:expr, "", a) => {{
+            let builder = $builder;
+            builder.push($crate::form::ACCENT_ID);
+            builder
         }},
-        ($builder_and_forms:expr, "", $($form:tt)*) => {{
-            let (builder, default_id, accent_id) = $builder_and_forms;
+        ($builder:expr, "", $($form:tt)*) => {{
+            let builder = $builder;
             builder.push($crate::form::id_of!(concat!($(stringify!($form)),*)));
-            (builder, default_id, accent_id)
+            builder
         }},
-        ($builder_and_forms:expr, $modif:literal, $($form:tt)*) => {{
+        ($builder:expr, $modif:literal, $($form:tt)*) => {{
             compile_error!(concat!("at the moment, Forms don't support modifiers like ", $modif))
         }}
     }
 }
 
 ////////// General utility functions
-
-// /// A checker that returns `true` every `duration`
-// ///
-// /// This is primarily used within [`WidgetCfg::build`], where a
-// /// `checker` must be returned in order to update the widget.
-// ///
-// /// [`WidgetCfg::build`]: crate::widget::WidgetCfg::build
-//  pub fn periodic_checker(duration: Duration) -> impl Fn() -> bool {
-//     let check = Arc::new(AtomicBool::new(false));
-//     crate::thread::spawn({
-//         let check = check.clone();
-//         move || {
-//             while !crate::context::will_reload_or_quit() {
-//                 std::thread::sleep(duration);
-//                 check.store(true, Ordering::Release);
-//             }
-//         }
-//     });
-//
-//     move || check.fetch_and(false, Ordering::Acquire)
-// }
 
 /// Takes a type and generates an appropriate name for it
 ///
@@ -857,7 +825,7 @@ fn file_entry<'a, U: Ui>(
         .enumerate()
         .flat_map(window_index_widget)
         .find(|(.., node)| node.read_as(pa, |f: &File<U>| f.name() == name) == Some(true))
-        .ok_or_else(|| err!("File with name [a]{name}[] not found").build())
+        .ok_or_else(|| txt!("File with name [a]{name}[] not found").build())
 }
 
 /// An entry for a widget of a specific type
@@ -878,7 +846,7 @@ fn widget_entry<'a, W: Widget<U>, U: Ui>(
     } else {
         iter_around(windows, w, 0).find(|(.., node)| node.data_is::<W>())
     }
-    .ok_or(err!("No widget of type [a]{}[] found", type_name::<W>()).build())
+    .ok_or(txt!("No widget of type [a]{}[] found", type_name::<W>()).build())
 }
 
 /// Iterator over a group of windows, that returns the window's index

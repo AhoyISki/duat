@@ -2,7 +2,7 @@ use duat_core::{
     context::FileHandle,
     data::Pass,
     mode::EditHelper,
-    text::{Searcher, Text, text},
+    text::{Searcher, Text, txt},
     ui::Ui,
 };
 
@@ -33,7 +33,7 @@ impl<U: Ui> IncSearcher<U> for SearchFwd {
     }
 
     fn prompt(&self) -> Text {
-        text!("[Prompt]search[Prompt.colon]:").build()
+        txt!("[Prompt]search[Prompt.colon]:").build()
     }
 }
 
@@ -58,7 +58,7 @@ impl<U: Ui> IncSearcher<U> for SearchRev {
     }
 
     fn prompt(&self) -> Text {
-        text!("[Prompt]rev search[Prompt.colon]:").build()
+        txt!("[Prompt]rev search[Prompt.colon]:").build()
     }
 }
 
@@ -81,7 +81,7 @@ impl<U: Ui> IncSearcher<U> for ExtendFwd {
     }
 
     fn prompt(&self) -> Text {
-        text!("[Prompt]search (extend)[Prompt.colon]:").build()
+        txt!("[Prompt]search (extend)[Prompt.colon]:").build()
     }
 }
 
@@ -104,6 +104,6 @@ impl<U: Ui> IncSearcher<U> for ExtendRev {
     }
 
     fn prompt(&self) -> Text {
-        text!("[Prompt]rev search (extend)[Prompt.colon]:").build()
+        txt!("[Prompt]rev search (extend)[Prompt.colon]:").build()
     }
 }

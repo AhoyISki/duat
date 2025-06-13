@@ -11,7 +11,7 @@ use crate::{
     context,
     data::{Pass, RwData},
     mode,
-    text::{Ghost, Key, text},
+    text::{Ghost, Key, txt},
     ui::Ui,
     widget::Widget,
 };
@@ -27,7 +27,7 @@ mod global {
         data::{DataMap, Pass},
         main_thread_only::MainThreadOnly,
         mode::Mode,
-        text::{Builder, Text, text},
+        text::{Builder, Text, txt},
         ui::Ui,
     };
 
@@ -120,33 +120,33 @@ mod global {
 
         for key in keys {
             match key.code {
-                Backspace => seq.push(text!("[SeqSpecialKey]BS")),
-                Enter => seq.push(text!("[SeqSpecialKey]Enter")),
-                Left => seq.push(text!("[SeqSpecialKey]Left")),
-                Right => seq.push(text!("[SeqSpecialKey]Right")),
-                Up => seq.push(text!("[SeqSpecialKey]Up")),
-                Down => seq.push(text!("[SeqSpecialKey]Down")),
-                Home => seq.push(text!("[SeqSpecialKey]Home")),
-                End => seq.push(text!("[SeqSpecialKey]End")),
-                PageUp => seq.push(text!("[SeqSpecialKey]PageU")),
-                PageDown => seq.push(text!("[SeqSpecialKey]PageD")),
-                Tab => seq.push(text!("[SeqSpecialKey]Tab")),
-                BackTab => seq.push(text!("[SeqSpecialKey]BTab")),
-                Delete => seq.push(text!("[SeqSpecialKey]Del")),
-                Insert => seq.push(text!("[SeqSpecialKey]Ins")),
-                F(num) => seq.push(text!("[SeqSpecialKey]F{num}")),
-                Char(char) => seq.push(text!("[SeqCharKey]{char}")),
-                Null => seq.push(text!("[SeqSpecialKey]Null")),
-                Esc => seq.push(text!("[SeqSpecialKey]Esc")),
-                CapsLock => seq.push(text!("[SeqSpecialKey]CapsL")),
-                ScrollLock => seq.push(text!("[SeqSpecialKey]ScrollL")),
-                NumLock => seq.push(text!("[SeqSpecialKey]NumL")),
-                PrintScreen => seq.push(text!("[SeqSpecialKey]PrSc")),
-                Pause => seq.push(text!("[SeqSpecialKey]Pause")),
-                Menu => seq.push(text!("[SeqSpecialKey]Menu")),
-                KeypadBegin => seq.push(text!("[SeqSpecialKey]KeypadBeg")),
-                Media(m_code) => seq.push(text!("[SeqSpecialKey]Media{m_code}")),
-                Modifier(m_code) => seq.push(text!("[SeqSpecialKey]Mod{m_code}")),
+                Backspace => seq.push(txt!("[SeqSpecialKey]BS")),
+                Enter => seq.push(txt!("[SeqSpecialKey]Enter")),
+                Left => seq.push(txt!("[SeqSpecialKey]Left")),
+                Right => seq.push(txt!("[SeqSpecialKey]Right")),
+                Up => seq.push(txt!("[SeqSpecialKey]Up")),
+                Down => seq.push(txt!("[SeqSpecialKey]Down")),
+                Home => seq.push(txt!("[SeqSpecialKey]Home")),
+                End => seq.push(txt!("[SeqSpecialKey]End")),
+                PageUp => seq.push(txt!("[SeqSpecialKey]PageU")),
+                PageDown => seq.push(txt!("[SeqSpecialKey]PageD")),
+                Tab => seq.push(txt!("[SeqSpecialKey]Tab")),
+                BackTab => seq.push(txt!("[SeqSpecialKey]BTab")),
+                Delete => seq.push(txt!("[SeqSpecialKey]Del")),
+                Insert => seq.push(txt!("[SeqSpecialKey]Ins")),
+                F(num) => seq.push(txt!("[SeqSpecialKey]F{num}")),
+                Char(char) => seq.push(txt!("[SeqCharKey]{char}")),
+                Null => seq.push(txt!("[SeqSpecialKey]Null")),
+                Esc => seq.push(txt!("[SeqSpecialKey]Esc")),
+                CapsLock => seq.push(txt!("[SeqSpecialKey]CapsL")),
+                ScrollLock => seq.push(txt!("[SeqSpecialKey]ScrollL")),
+                NumLock => seq.push(txt!("[SeqSpecialKey]NumL")),
+                PrintScreen => seq.push(txt!("[SeqSpecialKey]PrSc")),
+                Pause => seq.push(txt!("[SeqSpecialKey]Pause")),
+                Menu => seq.push(txt!("[SeqSpecialKey]Menu")),
+                KeypadBegin => seq.push(txt!("[SeqSpecialKey]KeypadBeg")),
+                Media(m_code) => seq.push(txt!("[SeqSpecialKey]Media{m_code}")),
+                Modifier(m_code) => seq.push(txt!("[SeqSpecialKey]Mod{m_code}")),
             }
         }
 
@@ -463,7 +463,7 @@ impl Remapper {
                         widget.text_mut().insert_tag(
                             Key::for_alias(),
                             main,
-                            Ghost(text!("[Alias]{}", keys_to_string(&cur_seq))),
+                            Ghost(txt!("[Alias]{}", keys_to_string(&cur_seq))),
                         );
 
                         let cfg = widget.print_cfg();

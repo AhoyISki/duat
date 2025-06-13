@@ -7,7 +7,7 @@ use duat_core::{
     cache::bincode::{Decode, Encode},
     cfg::PrintCfg,
     form::Painter,
-    text::{FwdIter, Item, Part, Point, RevIter, Text, err},
+    text::{txt, FwdIter, Item, Part, Point, RevIter, Text},
     ui::{self, Axis, Caret, Constraint, MutArea, PushSpecs, SpawnSpecs},
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
@@ -336,7 +336,7 @@ impl ui::RawArea for Area {
         let old_cons = layout
             .rects
             .get_constraints_mut(self.id)
-            .ok_or_else(|| err!("Area has no parents, so it can't be constrained"))?
+            .ok_or_else(|| txt!("Area has no parents, so it can't be constrained"))?
             .clone();
 
         if old_cons.on(Axis::Horizontal).eq(cons.iter().cloned()) {
@@ -369,7 +369,7 @@ impl ui::RawArea for Area {
         let old_cons = layout
             .rects
             .get_constraints_mut(self.id)
-            .ok_or_else(|| err!("Area has no parents, so it can't be constrained"))?
+            .ok_or_else(|| txt!("Area has no parents, so it can't be constrained"))?
             .clone();
 
         if old_cons.on(Axis::Vertical).eq(cons.iter().cloned()) {

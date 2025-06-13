@@ -5,7 +5,7 @@ use duat_core::{
     data::{Pass, RwData},
     form, hook,
     mode::{self, Cursors, EditHelper, KeyCode, KeyEvent, key},
-    text::{Ghost, Key, Point, Searcher, Text, text},
+    text::{Ghost, Key, Point, Searcher, Text, txt},
     ui::{RawArea, Ui},
     widget::Widget,
 };
@@ -206,7 +206,7 @@ impl<U: Ui> PromptMode<U> for RunCommands {
     }
 
     fn prompt(&self) -> Text {
-        text!("[Prompt.colon]:").build()
+        txt!("[Prompt.colon]:").build()
     }
 }
 
@@ -375,7 +375,7 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
     }
 
     fn prompt(&self) -> Text {
-        text!("[Prompt]pipe[Prompt.colon]:").build()
+        txt!("[Prompt]pipe[Prompt.colon]:").build()
     }
 }
 

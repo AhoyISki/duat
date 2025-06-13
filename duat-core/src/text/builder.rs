@@ -1,6 +1,6 @@
 //! [`Text`] building macros
 //!
-//! This module contains 4 macros for text building: [`text!`],
+//! This module contains 4 macros for text building: [`txt!`],
 //! [`err!`], [`ok!`] and [`hint!`]. These are supposed to be used in
 //! various contexts, and they have differences on what the `Default`
 //! and `Accent` form.
@@ -10,7 +10,6 @@ use std::{
     path::PathBuf,
 };
 
-pub use self::macros::*;
 use super::{Change, Key, Text};
 use crate::{
     form::FormId,
@@ -20,7 +19,7 @@ use crate::{
 /// Builds and modifies a [`Text`], based on replacements applied
 /// to it.
 ///
-/// This struct is meant to be used alongside the [`text!`] family of
+/// This struct is meant to be used alongside the [`txt!`] family of
 /// macros. You pass it as the first argument, and the [`Text`] will
 /// be extended by the macro. This lets you write a [`Text`] with
 /// multiple macro invocations:
@@ -369,63 +368,23 @@ impl From<std::process::Output> for BuilderPart {
     }
 }
 
-mod macros {
-    /// The standard [`Text`] construction macro
-    ///
-    /// TODO: Docs
-    ///
-    /// [`Text`]: super::Text
-    pub macro text($($parts:tt)+) {{
-        use $crate::{form::id_of, private_exports::inner_text};
-        let (default, accent) = (id_of!("Default"), id_of!("Accent"));
+/// The standard [`Text`] construction macro
+///
+/// TODO: Docs
+///
+/// [`Text`]: super::Text
+pub macro txt($($parts:tt)+) {{
+    #[allow(unused_imports)]
+    use $crate::private_exports::{format_like, parse_arg, parse_form, parse_str};
 
-        let mut builder = $crate::text::Builder::new();
-        inner_text!(&mut builder, default, accent, $($parts)+);
-        builder
-    }}
+    let mut builder = $crate::text::Builder::new();
 
-    /// Builds a [`Text`] for [`Ok`] results from commands
-    ///
-    /// TODO: Docs
-    ///
-    /// [`Text`]: super::Text
-    pub macro ok($($parts:tt)+) {{
-        use $crate::{form::id_of, private_exports::inner_text};
-        let (default, accent) = (id_of!("DefaultOk"), id_of!("AccentOk"));
+    format_like!(
+        parse_str,
+        [('{', parse_arg, false), ('[', parse_form, true)],
+        &mut builder,
+        $($parts)*
+    );
 
-        let mut builder = $crate::text::Builder::new();
-        builder.push(default);
-        inner_text!(&mut builder, default, accent, $($parts)+);
-        builder
-    }}
-
-    /// Builds a [`Text`] for [`Err`] results from commands
-    ///
-    /// TODO: Docs
-    ///
-    /// [`Text`]: super::Text
-    pub macro err($($parts:tt)+) {{
-        use $crate::{form::id_of, private_exports::inner_text};
-        let (default, accent) = (id_of!("DefaultErr"), id_of!("AccentErr"));
-
-        let mut builder = $crate::text::Builder::new();
-        builder.push(default);
-        inner_text!(&mut builder, default, accent, $($parts)+);
-        builder
-    }}
-
-    /// Builds a [`Text`] for hints
-    ///
-    /// TODO: Docs
-    ///
-    /// [`Text`]: super::Text
-    pub macro hint($($parts:tt)+) {{
-        use $crate::{form::id_of, private_exports::inner_text};
-        let (default, accent) = (id_of!("DefaultHint"), id_of!("AccentHint"));
-
-        let mut builder = $crate::text::Builder::new();
-        builder.push(default);
-        inner_text!(&mut builder, default, accent, $($parts)+);
-        builder
-    }}
-}
+    builder
+}}

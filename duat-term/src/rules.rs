@@ -2,7 +2,7 @@ use duat_core::{
     context::FileHandle,
     data::{Pass, RwData},
     form::{self, Form},
-    text::{Text, text},
+    text::{Text, txt},
     ui::{PushSpecs, RawArea as UiArea},
     widget::{Widget, WidgetCfg},
 };
@@ -42,7 +42,7 @@ impl Widget<Ui> for VertRule {
                 });
 
                 let chars = wid.sep_char.chars();
-                text!(
+                txt!(
                     "[VertRule.upper]{}[VertRule]{}[VertRule.lower]{}",
                     form_string(chars[0], upper),
                     form_string(chars[1], middle),
@@ -53,7 +53,7 @@ impl Widget<Ui> for VertRule {
                 let full_line =
                     format!("{}\n", wid.sep_char.chars()[1]).repeat(area.height() as usize);
 
-                text!("[VertRule]{full_line}").build()
+                txt!("[VertRule]{full_line}").build()
             }
         });
 

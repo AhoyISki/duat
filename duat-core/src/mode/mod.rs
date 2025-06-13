@@ -432,7 +432,7 @@ mod switch {
 ///                 builder.push(form::id_of!("MenuSelected"))
 ///             }
 ///
-///             builder.push(text!("Entry {i}"));
+///             builder.push(txt!("Entry {i}"));
 ///         }
 ///
 ///         self.text = builder.build();

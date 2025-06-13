@@ -33,12 +33,6 @@ static SENDER: OnceLock<Sender> = OnceLock::new();
 static BASE_FORMS: &[(&str, Form, FormType)] = &[
     ("Default", Form::new().0, Normal),
     ("Accent", Form::bold().0, Normal),
-    ("DefaultOk", Form::blue().0, Normal),
-    ("AccentOk", Form::cyan().0, Normal),
-    ("DefaultErr", Form::red().0, Normal),
-    ("AccentErr", Form::red().bold().0, Normal),
-    ("DefaultHint", Form::grey().0, Normal),
-    ("AccentHint", Form::grey().bold().0, Normal),
     ("MainCursor", Form::reverse().0, Normal),
     ("ExtraCursor", Form::reverse().0, Ref(M_CUR_ID.0 as usize)),
     ("MainSelection", Form::white().on_dark_grey().0, Normal),
@@ -63,7 +57,7 @@ mod global {
     use crate::{
         context,
         hook::{self, ColorSchemeSet},
-        text::err,
+        text::txt,
     };
 
     static PALETTE: Palette = Palette::new();
@@ -430,7 +424,7 @@ mod global {
             cs.apply();
             hook::queue(ColorSchemeSet(cs.name()));
         } else {
-            context::notify(err!("The colorscheme [a]{name}[] was not found"));
+            context::notify(txt!("The colorscheme [a]{name}[] was not found"));
         }
     }
 
@@ -577,9 +571,9 @@ mod global {
 ///
 /// The main use for keeping these things directly is in order to
 /// modify a file's text in an efficient manner, by adding tags
-/// directly, instead of using a macro like [`text!`]
+/// directly, instead of using a macro like [`txt!`]
 ///
-/// [`text!`]: crate::text::text
+/// [`txt!`]: crate::text::txt
 /// [`Builder`]: crate::text::Builder
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FormId(u16);
@@ -886,16 +880,16 @@ impl std::ops::DerefMut for BuiltForm {
 
 /// The [`FormId`] of the `"Default"` form
 pub const DEFAULT_ID: FormId = FormId(0);
+/// The [`FormId`] of the `"Accent"` form
+pub const ACCENT_ID: FormId = FormId(1);
 /// The [`FormId`] of the `"MainCursor"` form
-pub const M_CUR_ID: FormId = FormId(8);
+pub const M_CUR_ID: FormId = FormId(2);
 /// The [`FormId`] of the `"ExtraCursor"` form
-pub const E_CUR_ID: FormId = FormId(9);
+pub const E_CUR_ID: FormId = FormId(3);
 /// The [`FormId`] of the `"MainSelection"` form
-pub const M_SEL_ID: FormId = FormId(10);
+pub const M_SEL_ID: FormId = FormId(4);
 /// The [`FormId`] of the `"ExtraSelection"` form
-pub const E_SEL_ID: FormId = FormId(11);
-/// The [`FormId`] of the `"Inactive"` form
-pub const INACTIVE_ID: FormId = FormId(12);
+pub const E_SEL_ID: FormId = FormId(5);
 
 struct InnerPalette {
     main_cursor: Option<CursorShape>,

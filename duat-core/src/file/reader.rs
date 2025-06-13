@@ -12,7 +12,7 @@ use std::{any::TypeId, cell::RefCell, ops::Range, rc::Rc};
 use super::BytesDataMap;
 use crate::{
     data::{Pass, RwData},
-    text::{Bytes, Change, Moment, MutTags, Text, err},
+    text::{txt, Bytes, Change, Moment, MutTags, Text},
     ui::Ui,
 };
 
@@ -89,7 +89,7 @@ impl<U: Ui> Readers<U> {
     ) -> Result<(), Text> {
         self.0.write(pa, |readers| {
             if readers.iter().any(|re| re.ty == TypeId::of::<R::Reader>()) {
-                Err(err!(
+                Err(txt!(
                     "There is already a reader of type [a]{}",
                     crate::duat_name::<R::Reader>()
                 ))?;

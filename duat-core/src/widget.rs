@@ -200,7 +200,7 @@ use crate::{
 ///         let mins = elapsed.as_secs() / 60;
 ///         let secs = elapsed.as_secs() % 60;
 ///
-///         widget.replace_text::<U>(&mut pa, text!("[UpTime]{mins}m {secs}s"));
+///         widget.replace_text::<U>(&mut pa, txt!("[UpTime]{mins}m {secs}s"));
 ///     }
 ///
 ///     fn once() -> Result<(), Text> {
@@ -238,7 +238,7 @@ use crate::{
 ///         let mins = elapsed.as_secs() / 60;
 ///         let secs = elapsed.as_secs() % 60;
 ///
-///         widget.replace_text::<U>(&mut pa, text!("[UpTime]{mins}m {secs}s"));
+///         widget.replace_text::<U>(&mut pa, txt!("[UpTime]{mins}m {secs}s"));
 ///     }
 ///     
 ///     fn cfg() -> Self::Cfg {
@@ -291,7 +291,7 @@ use crate::{
 /// [`update`]: Widget::update
 /// [`Form`]: crate::form::Form
 /// [`form::set_weak*`]: crate::form::set_weak
-/// [`text!`]: crate::text::text
+/// [`txt!`]: crate::text::txt
 /// [`Plugin`]: crate::Plugin
 pub trait Widget<U: Ui>: 'static {
     /// The configuration type

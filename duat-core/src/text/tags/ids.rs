@@ -27,7 +27,7 @@ static KEY_COUNT: AtomicU16 = AtomicU16::new(4);
 ///
 /// ```rust
 /// # use duat_core::prelude::*;
-/// let mut text = text!("This is text with no tags in it").build();
+/// let mut text = txt!("This is text with no tags in it").build();
 /// // This key will be used to modify text.
 /// let key1 = Key::new();
 ///
@@ -38,7 +38,7 @@ static KEY_COUNT: AtomicU16 = AtomicU16::new(4);
 ///
 /// assert_eq!(
 ///     text,
-///     text!("This is text with [Invisible]no[] tags in it").build()
+///     txt!("This is text with [Invisible]no[] tags in it").build()
 /// );
 ///
 /// // key2 != key1, so it shouldn't be able to change what was done with key1.
@@ -47,7 +47,7 @@ static KEY_COUNT: AtomicU16 = AtomicU16::new(4);
 ///
 /// assert_eq!(
 ///     text,
-///     text!("This is text with [Invisible]no[] tags in it").build()
+///     txt!("This is text with [Invisible]no[] tags in it").build()
 /// );
 /// ```
 ///
