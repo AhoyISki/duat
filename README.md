@@ -147,12 +147,12 @@ let text = text!("[MyForm]Waow it's my form![]not anymore 😢");
 
 In this example, I’m using the “MyForm” form in order to style the
 text, while `[]` reverts back to the “Default” form. Double `[[`
-and `]]` escape the `[` and `]` The [`status!`][__link20] macro works
-similarly.
+and `]]` escape the `[` and `]`, just like in [`println!`][__link20]. The
+[`status!`][__link21] macro works similarly.
 
 Duat also has a simple command system, that lets you add commands
 with arguments supported by Rust’s type system. As an example,
-this command will change the [numbering][__link21] of a [`LineNumbers`][__link22]
+this command will change the [numbering][__link22] of a [`LineNumbers`][__link23]
 widget, switching between absolute and relative numbering.
 
 ## Default plugins
@@ -160,22 +160,22 @@ widget, switching between absolute and relative numbering.
 When you install duat, the default config crate will come with
 some preinstalled plugins:
 
-* [`duat-kak`][__link23] is a plugin that changes the default mode of Duat
-  to one inspired by [Kakoune][__link24]’s “Normal”, also bringing with it
+* [`duat-kak`][__link24] is a plugin that changes the default mode of Duat
+  to one inspired by [Kakoune][__link25]’s “Normal”, also bringing with it
   various other modes from Kakoune.
-* [`duat-catppuccin`][__link25] is a just a simple colorscheme plugin, it
-  adds the four flavors from the [catppuccin][__link26] colorscheme. You can
+* [`duat-catppuccin`][__link26] is a just a simple colorscheme plugin, it
+  adds the four flavors from the [catppuccin][__link27] colorscheme. You can
   pick between the four of them, you can apply its colors to other
-  [`Form`][__link27]s and you can allow or disallow the colorscheme to set
+  [`Form`][__link28]s and you can allow or disallow the colorscheme to set
   the background color.
-* [`duat-treesitter`][__link28] brings [tree-sitter][__link29] to Duat in the form of
+* [`duat-treesitter`][__link29] brings [tree-sitter][__link30] to Duat in the form of
   syntax highlighting and indentation calculation, which can be
   used by Modes (such as those from `duat-kak`) in order to give
   better feedback when editing files.
 
-You can, of course, unplug these by not calling [`plug!`][__link30], or you
+You can, of course, unplug these by not calling [`plug!`][__link31], or you
 could remove them entirely by taking them out of the
-`Cargo.toml`’s [dependencies section][__link31].
+`Cargo.toml`’s [dependencies section][__link32].
 
 ### Features
 
@@ -267,7 +267,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEGyXzsozveLkaG94geJUHH4BdGzj3s5Kr_La5G6eO1jn3IYXXYWSBgmRkdWF0ZTAuNC4w
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG-_7RVcP6x6aGzwGTguCYI-aG-BhDroyoimOG3vC4iJb1mSGYWSBgmRkdWF0ZTAuNC4w
  [__link0]: https://docs.rs/duat/0.4.0/duat/?search=prelude::plug
  [__link1]: https://docs.rs/duat/0.4.0/duat/?search=prelude::mode::set_default
  [__link10]: https://docs.rs/duat/0.4.0/duat/?search=prelude::status
@@ -281,19 +281,20 @@ I don’t like it.
  [__link18]: https://docs.rs/duat/0.4.0/duat/?search=prelude::form::Form
  [__link19]: https://docs.rs/duat/0.4.0/duat/?search=prelude::text::text
  [__link2]: https://docs.rs/duat/0.4.0/duat/?search=prelude::map
- [__link20]: https://docs.rs/duat/0.4.0/duat/?search=prelude::status
- [__link21]: https://docs.rs/duat/0.4.0/duat/?search=prelude::LineNum
- [__link22]: https://docs.rs/duat/0.4.0/duat/?search=prelude::LineNumbers
- [__link23]: https://github.com/AhoyISki/duat-kak
- [__link24]: https://github.com/mawww/kakoune
- [__link25]: https://github.com/AhoyISki/duat-catppuccin
- [__link26]: https://catppuccin.com
- [__link27]: https://docs.rs/duat/0.4.0/duat/?search=prelude::Form
- [__link28]: https://github.com/AhoyISki/duat-treesitter
- [__link29]: https://tree-sitter.github.io/tree-sitter
+ [__link20]: https://doc.rust-lang.org/stable/std/macro.println.html
+ [__link21]: https://docs.rs/duat/0.4.0/duat/?search=prelude::status
+ [__link22]: https://docs.rs/duat/0.4.0/duat/?search=prelude::LineNum
+ [__link23]: https://docs.rs/duat/0.4.0/duat/?search=prelude::LineNumbers
+ [__link24]: https://github.com/AhoyISki/duat-kak
+ [__link25]: https://github.com/mawww/kakoune
+ [__link26]: https://github.com/AhoyISki/duat-catppuccin
+ [__link27]: https://catppuccin.com
+ [__link28]: https://docs.rs/duat/0.4.0/duat/?search=prelude::Form
+ [__link29]: https://github.com/AhoyISki/duat-treesitter
  [__link3]: https://docs.rs/duat/0.4.0/duat/?search=prelude::print::wrap_on_width
- [__link30]: https://docs.rs/duat/0.4.0/duat/?search=prelude::plug
- [__link31]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
+ [__link30]: https://tree-sitter.github.io/tree-sitter
+ [__link31]: https://docs.rs/duat/0.4.0/duat/?search=prelude::plug
+ [__link32]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
  [__link4]: https://docs.rs/duat/0.4.0/duat/?search=prelude::hooks::remove
  [__link5]: https://docs.rs/duat/0.4.0/duat/?search=prelude::hooks::add_grouped
  [__link6]: https://docs.rs/duat/0.4.0/duat/?search=prelude::FileBuilder::push

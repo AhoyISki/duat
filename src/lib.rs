@@ -184,8 +184,8 @@
 //!
 //! In this example, I'm using the "MyForm" form in order to style the
 //! text, while `[]` reverts back to the "Default" form. Double `[[`
-//! and `]]` escape the `[` and `]` The [`status!`] macro works
-//! similarly.
+//! and `]]` escape the `[` and `]`, just like in [`println!`]. The
+//! [`status!`] macro works similarly.
 //!
 //! Duat also has a simple command system, that lets you add commands
 //! with arguments supported by Rust's type system. As an example,
