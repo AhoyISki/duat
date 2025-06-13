@@ -46,12 +46,12 @@
 //! [`Constraint`]: crate::ui::Constraint
 pub use self::{
     line_numbers::{LineNum, LineNumbers, LineNumbersOptions},
-    notifier::{NotificationsCfg, Notifier},
+    notifications::{NotificationsCfg, Notifications},
     prompt_line::{PromptLine, PromptLineCfg},
     status_line::{State, StatusLine, StatusLineCfg, status},
 };
 
 mod line_numbers;
-mod notifier;
+mod notifications;
 mod prompt_line;
 mod status_line;

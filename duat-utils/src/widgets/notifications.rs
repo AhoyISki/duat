@@ -13,7 +13,7 @@ use std::{
 };
 
 use duat_core::{
-    context::{self, FileHandle, Notifications},
+    context::{self, FileHandle, Logs},
     data::{Pass, RwData},
     hook::{self, KeysSent},
     text::Text,
@@ -32,15 +32,15 @@ use duat_core::{
 /// [`PromptLine`]: super::PromptLine
 /// [hook]: hooks
 /// [`left_with_ratio`]: NotificationsCfg::left_with_ratio
-pub struct Notifier<U> {
-    notifications: Notifications,
+pub struct Notifications<U> {
+    logs: Logs,
     text: Text,
     _ghost: PhantomData<U>,
 }
 
 static CLEAR_NOTIFS: AtomicBool = AtomicBool::new(false);
 
-impl<U: Ui> Widget<U> for Notifier<U> {
+impl<U: Ui> Widget<U> for Notifications<U> {
     type Cfg = NotificationsCfg<U>;
 
     fn cfg() -> Self::Cfg {
@@ -50,8 +50,8 @@ impl<U: Ui> Widget<U> for Notifier<U> {
     fn update(mut pa: Pass, widget: RwData<Self>, _: &<U as Ui>::Area) {
         let clear_notifs = CLEAR_NOTIFS.swap(false, Ordering::Relaxed);
         widget.write(&mut pa, |wid| {
-            if wid.notifications.has_changed() {
-                wid.notifications
+            if wid.logs.has_changed() {
+                wid.logs
                     .read(|notifs| wid.text = notifs.last().cloned().unwrap_or_default());
             } else if clear_notifs {
                 wid.text = Text::new()
@@ -75,7 +75,7 @@ impl<U: Ui> Widget<U> for Notifier<U> {
     }
 
     fn needs_update(&self) -> bool {
-        self.notifications.has_changed() || CLEAR_NOTIFS.load(Ordering::Relaxed)
+        self.logs.has_changed() || CLEAR_NOTIFS.load(Ordering::Relaxed)
     }
 }
 
@@ -108,11 +108,11 @@ impl<U> NotificationsCfg<U> {
 }
 
 impl<U: Ui> WidgetCfg<U> for NotificationsCfg<U> {
-    type Widget = Notifier<U>;
+    type Widget = Notifications<U>;
 
     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
-        let widget = Notifier {
-            notifications: context::notifications(),
+        let widget = Notifications {
+            logs: context::notifications(),
             text: Text::new(),
             _ghost: PhantomData,
         };

@@ -32,7 +32,7 @@ mod global {
         },
     };
 
-    use super::{CurFile, CurWidget, FileHandle, FileParts, Notifications};
+    use super::{CurFile, CurWidget, FileHandle, FileParts, Logs};
     use crate::{
         data::{DataMap, Pass, RwData},
         main_thread_only::MainThreadOnly,
@@ -51,7 +51,7 @@ mod global {
     static MODE_NAME: LazyLock<MainThreadOnly<RwData<&'static str>>> =
         LazyLock::new(MainThreadOnly::default);
 
-    static NOTIFICATIONS: LazyLock<Notifications> = LazyLock::new(Notifications::new);
+    static LOGS: LazyLock<Logs> = LazyLock::new(Logs::new);
     static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
     static WILL_RELOAD_OR_QUIT: AtomicBool = AtomicBool::new(false);
     static CUR_DIR: OnceLock<Mutex<PathBuf>> = OnceLock::new();
@@ -136,13 +136,13 @@ mod global {
     /// send new notifications, and check for updates, just like with
     /// [`RwData`], except in this case, you don't need [`Pass`]es, so
     /// there might be changes to make this API safer in the future.
-    pub fn notifications() -> Notifications {
-        NOTIFICATIONS.clone()
+    pub fn notifications() -> Logs {
+        LOGS.clone()
     }
 
     /// Sends a notification to Duat
     pub fn notify(msg: impl Into<Text>) {
-        NOTIFICATIONS.push(msg)
+        LOGS.push(msg)
     }
 
     /// Returns `true` if Duat is about to reload
@@ -552,13 +552,13 @@ impl<U: Ui> FileHandle<U> {
 /// notified.
 ///
 /// [push]: Notifications::push
-pub struct Notifications {
+pub struct Logs {
     list: Arc<Mutex<Vec<Text>>>,
     cur_state: Arc<AtomicUsize>,
     read_state: AtomicUsize,
 }
 
-impl Clone for Notifications {
+impl Clone for Logs {
     fn clone(&self) -> Self {
         Self {
             list: self.list.clone(),
@@ -568,7 +568,7 @@ impl Clone for Notifications {
     }
 }
 
-impl Notifications {
+impl Logs {
     /// Creates a new [`Notifications`]
     fn new() -> Self {
         Self {

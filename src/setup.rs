@@ -30,7 +30,7 @@ use crate::{
     CfgFn, Ui,
     hook::{self, FocusedOn, OnFileOpen, OnWindowOpen, UnfocusedFrom},
     mode,
-    prelude::{FileWritten, LineNumbers, Notifier, PromptLine, StatusLine},
+    prelude::{FileWritten, LineNumbers, Notifications, PromptLine, StatusLine},
 };
 
 // Setup statics.
@@ -69,7 +69,7 @@ pub fn pre_setup(duat_tx: &'static Sender<DuatEvent>) {
     hook::add_grouped::<OnWindowOpen>("WindowWidgets", |mut pa, builder| {
         builder.push(&mut pa, StatusLine::cfg());
         let (child, _) = builder.push(&mut pa, PromptLine::cfg());
-        builder.push_to(&mut pa, child, Notifier::cfg());
+        builder.push_to(&mut pa, child, Notifications::cfg());
     });
 
     hook::add_grouped::<UnfocusedFrom<PromptLine<Ui>>>("HidePromptLine", |_, (_, area)| {
