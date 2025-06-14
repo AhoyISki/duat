@@ -434,7 +434,7 @@ impl Remapper {
             if let Some(remap) = remaps.iter().find(|r| r.takes.starts_with(&cur_seq)) {
                 if remap.takes.len() == cur_seq.len() {
                     if remap.is_alias {
-                        remove_alias_and::<U>(pa, |_, _, _| {});
+                        remove_alias_and::<U>(pa, |_, _| {});
                     }
 
                     clear_cur_seq(pa);
@@ -450,20 +450,17 @@ impl Remapper {
                 } else if remap.is_alias {
                     remapper.cur_seq.write(pa, |(_, is_alias)| *is_alias = true);
 
-                    remove_alias_and::<U>(pa, |widget, area, main| {
+                    remove_alias_and::<U>(pa, |widget, main| {
                         widget.text_mut().insert_tag(
                             Tagger::for_alias(),
                             main,
                             Ghost(txt!("[Alias]{}", keys_to_string(&cur_seq))),
                         );
-
-                        let cfg = widget.print_cfg();
-                        widget.text_mut().add_selections(area, cfg);
                     });
                 }
             } else if is_alias {
                 // Lock dropped here, before any .awaits
-                remove_alias_and::<U>(pa, |_, _, _| {});
+                remove_alias_and::<U>(pa, |_, _| {});
                 clear_cur_seq(pa);
                 mode::send_keys_to(pa, cur_seq);
             } else {
@@ -498,17 +495,17 @@ pub enum Gives {
     Mode(Box<dyn Fn()>),
 }
 
-fn remove_alias_and<U: Ui>(pa: &mut Pass, f: impl FnOnce(&mut dyn Widget<U>, &U::Area, usize)) {
+fn remove_alias_and<U: Ui>(pa: &mut Pass, f: impl FnOnce(&mut dyn Widget<U>, usize)) {
     let widget = context::cur_widget::<U>(pa).unwrap();
     // SAFETY: Given that the Pass is immediately mutably borrowed, it
     // can't be used to act on CurWidget.current.
     unsafe {
-        widget.mutate_data(|widget, area, _| {
+        widget.mutate_data(|widget, _, _| {
             widget.write(pa, |widget| {
                 if let Some(main) = widget.text().selections().unwrap().get_main() {
                     let main = main.byte();
                     widget.text_mut().remove_tags(Tagger::for_alias(), main);
-                    f(&mut *widget, area, main)
+                    f(&mut *widget, main)
                 }
             });
         })

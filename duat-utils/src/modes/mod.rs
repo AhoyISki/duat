@@ -31,7 +31,7 @@
 //!     }
 //!
 //!     fn prompt(&self) -> Text {
-//!     	txt!("[Prompt]keep matching[Prompt.colon]:").build()
+//!         txt!("[Prompt]keep matching[Prompt.colon]:").build()
 //!     }
 //! }
 //! ```

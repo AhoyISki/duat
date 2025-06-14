@@ -47,6 +47,8 @@
 //! [`OnFileOpen`]: crate::hook::OnFileOpen
 //! [`OnWindowOpen`]: crate::hook::OnWindowOpen
 //! [`Constraint`]: crate::ui::Constraint
+use std::any::TypeId;
+
 use crate::{
     cfg::PrintCfg,
     context::{FileHandle, FileParts, Handle},
@@ -54,7 +56,6 @@ use crate::{
     file::File,
     form,
     hook::{self, FocusedOn, UnfocusedFrom},
-    mode::Selections,
     text::Text,
     ui::{PushSpecs, RawArea, Ui},
 };
@@ -543,24 +544,8 @@ pub(crate) struct Node<U: Ui> {
 
 impl<U: Ui> Node<U> {
     /// Returns a new [`Node`]
-    pub(crate) fn new<W: Widget<U>>(
-        pa: &mut Pass,
-        widget: RwData<dyn Widget<U>>,
-        area: U::Area,
-    ) -> Self {
-        fn related_widgets<U: Ui>(
-            pa: &mut Pass,
-            widget: &RwData<dyn Widget<U>>,
-            area: &U::Area,
-        ) -> Option<RwData<Vec<Node<U>>>> {
-            widget.write_as(pa, |file: &mut File<U>| {
-                let cfg = file.print_cfg();
-                file.text_mut().add_selections(area, cfg);
-                RwData::default()
-            })
-        }
-
-        let related_widgets = related_widgets::<U>(pa, &widget, &area);
+    pub(crate) fn new<W: Widget<U>>(widget: RwData<dyn Widget<U>>, area: U::Area) -> Self {
+        let related_widgets = (TypeId::of::<W>() == TypeId::of::<File<U>>()).then(RwData::default);
 
         Self {
             widget,
@@ -684,23 +669,10 @@ impl<U: Ui> Node<U> {
         let widget: RwData<W> = self.widget.try_downcast_same_read_state().unwrap();
         let area = self.area.clone();
 
-        widget.write(pa, |widget| {
-            let cfg = widget.print_cfg();
-            widget.text_mut().remove_selections(&area, cfg);
-        });
-
         let handle = Handle::from_parts(widget.clone(), area.clone());
         hook::trigger(pa, FocusedOn(handle.clone()));
 
         Widget::on_focus(pa, handle);
-
-        widget.write(pa, |widget| {
-            let cfg = widget.print_cfg();
-            widget.text_mut().add_selections(&area, cfg);
-            if let Some(main) = widget.text().selections().and_then(Selections::get_main) {
-                area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
-            }
-        });
     }
 
     /// Static dispatch inner update on_unfocus
@@ -708,25 +680,10 @@ impl<U: Ui> Node<U> {
         let widget: RwData<W> = self.widget.try_downcast_same_read_state().unwrap();
         let area = self.area.clone();
 
-        widget.write(pa, |widget| {
-            let cfg = widget.print_cfg();
-            widget.text_mut().remove_selections(&area, cfg);
-        });
-
         let handle = Handle::from_parts(widget.clone(), area.clone());
         hook::trigger(pa, UnfocusedFrom(handle.clone()));
 
         Widget::on_unfocus(pa, handle);
-
-        // SAFETY: Since the last Pass was consumed, we can create a new
-        // one.
-        widget.write(&mut unsafe { Pass::new() }, |widget| {
-            let cfg = widget.print_cfg();
-            widget.text_mut().add_selections(&area, cfg);
-            if let Some(main) = widget.text().selections().and_then(Selections::get_main) {
-                area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
-            }
-        });
     }
 }
 

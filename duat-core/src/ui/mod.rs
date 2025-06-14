@@ -430,7 +430,7 @@ impl<U: Ui> Window<U> {
 
         let area = U::new_root(ms, cache);
 
-        let node = Node::new::<W>(pa, widget, area.clone());
+        let node = Node::new::<W>(widget, area.clone());
 
         let window = Self {
             nodes: vec![node.clone()],
@@ -487,7 +487,7 @@ impl<U: Ui> Window<U> {
 
         let (child, parent) = get_areas(pa, area, specs, do_cluster, on_files, &widget);
 
-        self.nodes.push(Node::new::<W>(pa, widget, child));
+        self.nodes.push(Node::new::<W>(widget, child));
 
         (self.nodes.last().unwrap().clone(), parent)
     }

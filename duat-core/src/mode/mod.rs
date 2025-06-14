@@ -48,7 +48,7 @@ mod switch {
 
     use crossterm::event::KeyEvent;
 
-    use super::{Mode, Selections};
+    use super::Mode;
     use crate::{
         context::{self, Handle},
         data::{Pass, RwData},
@@ -57,7 +57,7 @@ mod switch {
         file_entry,
         hook::{self, KeysSent, KeysSentTo, ModeSetTo, ModeSwitched},
         main_thread_only::MainThreadOnly,
-        ui::{DuatEvent, Node, RawArea, Ui, Widget},
+        ui::{DuatEvent, Node, Ui},
         widget_entry,
     };
 
@@ -280,20 +280,7 @@ mod switch {
         let mst = ModeSetTo((Some(mode), Handle::from_parts(w.clone(), area.clone())));
         let mut mode = hook::trigger(pa, mst).0.0.take().unwrap();
 
-        w.write(pa, |widget| {
-            let cfg = widget.print_cfg();
-            widget.text_mut().remove_selections(&area, cfg);
-        });
-
         mode.on_switch(pa, Handle::from_parts(w.clone(), area.clone()));
-
-        w.write(pa, |widget| {
-            let cfg = widget.print_cfg();
-            if let Some(main) = widget.text().selections().and_then(Selections::get_main) {
-                area.scroll_around_point(widget.text(), main.caret(), cfg);
-            }
-            widget.text_mut().add_selections(&area, cfg);
-        });
 
         // SAFETY: There is a Pass argument.
         unsafe {
@@ -331,8 +318,8 @@ mod switch {
 /// selections, you should run [`Selections::clear`], in order to make
 /// sure there are no selections.
 ///
-/// If a [`Mode`] has selections, it _must_ use the [`EditHelper`] struct
-/// in order to modify of the widget's [`Text`].
+/// If a [`Mode`] has selections, it _must_ use the [`EditHelper`]
+/// struct in order to modify of the widget's [`Text`].
 ///
 /// If your widget/mode combo is not based on selections. You get
 /// more freedom to modify things as you wish, but you should refrain
