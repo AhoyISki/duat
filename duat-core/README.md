@@ -22,13 +22,11 @@ impl<U: Ui> Mode<U> for FindSeq {
 
     fn send_key(
         &mut self,
-        mut pa: Pass,
+        pa: &mut Pass,
         key: KeyEvent,
-        file: RwData<File<U>>,
-        area: U::Area,
+        mut handle: Handle<File<U>, U>,
     ) {
         use KeyCode::*;
-        let mut helper = EditHelper::new(&mut pa, file, area);
 
         // Make sure that the typed key is a character.
         let key!(Char(c)) = key else {
@@ -41,7 +39,7 @@ impl<U: Ui> Mode<U> for FindSeq {
             return;
         };
 
-        helper.edit_all(&mut pa, |mut e| {
+        handle.edit_all(pa, |mut e| {
             let pat: String = [first, c].iter().collect();
             let matched = e.search_fwd(pat, None).next();
             if let Some([p0, p1]) = matched {
@@ -90,7 +88,7 @@ at most 2 keypresses.
 In order to emulate it, we use [ghost text][__link5] and [concealment][__link6]:
 
 ```rust
-use duat_core::prelude::*;
+use duat_core::{text::Point, prelude::*};
 #[derive(Clone)]
 pub struct EasyMotion {
     is_line: bool,
@@ -122,13 +120,8 @@ impl EasyMotion {
 impl<U: Ui> Mode<U> for EasyMotion {
     type Widget = File<U>;
 
-    fn on_switch(
-        &mut self,
-        mut pa: Pass,
-        file: RwData<File<U>>,
-        area: U::Area,
-    ) {
-        file.write(&mut pa, |file| {
+    fn on_switch(&mut self, pa: &mut Pass, mut handle: Handle<File<U>, U>) {
+        handle.write(pa, |file, _| {
             let cfg = file.print_cfg();
             let text = file.text_mut();
 
@@ -138,15 +131,15 @@ impl<U: Ui> Mode<U> for EasyMotion {
                 "[^\n\\s]+"
             };
 
-            let (start, _) = area.first_points(text, cfg);
-            let (end, _) = area.last_points(text, cfg);
+            let (start, _) = handle.area().first_points(text, cfg);
+            let (end, _) = handle.area().last_points(text, cfg);
             self.points =
                 text.search_fwd(regex, start..end).unwrap().collect();
 
             let seqs = key_seqs(self.points.len());
 
             for (seq, [p0, _]) in seqs.iter().zip(&self.points) {
-                let ghost = Ghost(text!("[EasyMotionWord]{seq}"));
+                let ghost = Ghost(txt!("[EasyMotionWord]{seq}"));
                 text.insert_tag(self.key, *p0, ghost);
 
                 let seq_end = p0.byte() + seq.chars().count();
@@ -157,10 +150,9 @@ impl<U: Ui> Mode<U> for EasyMotion {
 
     fn send_key(
         &mut self,
-        mut pa: Pass,
+        pa: &mut Pass,
         key: KeyEvent,
-        file: RwData<File<U>>,
-        area: U::Area,
+        mut handle: Handle<File<U>, U>,
     ) {
         let char = match key {
             key!(KeyCode::Char(c)) => c,
@@ -169,13 +161,12 @@ impl<U: Ui> Mode<U> for EasyMotion {
         };
         self.seq.push(char);
 
-        let mut helper = EditHelper::new(&mut pa, file, area);
-        helper.write_cursors(&mut pa, |c| c.remove_extras());
+        handle.write_selections(pa, |c| c.remove_extras());
 
         let seqs = key_seqs(self.points.len());
         for (seq, &[p0, p1]) in seqs.iter().zip(&self.points) {
             if *seq == self.seq {
-                helper.edit_main(&mut pa, |mut e| {
+                handle.edit_main(pa, |mut e| {
                     e.move_to(p0);
                     e.set_anchor();
                     e.move_to(p1);
@@ -186,7 +177,7 @@ impl<U: Ui> Mode<U> for EasyMotion {
             }
 
             // Removing one end of the conceal range will remove both ends.
-            helper.write_text(&mut pa, |text| {
+            handle.write_text(pa, |text| {
                 text.remove_tags(self.key, p1.byte())
             });
         }
@@ -233,7 +224,7 @@ map::<Normal>("<CA-l>", EasyMotion::line());
 ```
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG7meULcT0QzhG8yltLI5OiQzG1dzPHj9XFl8G9InPLc5JV9KYWSBg2lkdWF0LWNvcmVlMC40LjBpZHVhdF9jb3Jl
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG-FQS46r-gDAGx1XEj9tmILnG-xD5TnCz3kUG3Kw8Q8I4DjvYWSBg2lkdWF0LWNvcmVlMC40LjBpZHVhdF9jb3Jl
  [__link0]: https://docs.rs/duat-core/0.4.0/duat_core/?search=ui::Ui
  [__link1]: https://docs.rs/duat-core/0.4.0/duat_core/?search=mode::Mode
  [__link10]: https://docs.rs/duat-core/0.4.0/duat_core/?search=mode::Editor::move_to
