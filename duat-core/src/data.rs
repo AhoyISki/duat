@@ -195,8 +195,8 @@ impl<T: ?Sized> RwData<T> {
     /// do this:
     ///
     /// ```rust
-    /// # use std::{cell::RefCell, fmt::Display, rc::Rc};
-    /// # use duat_core::prelude::*;
+    /// use std::{cell::RefCell, fmt::Display, rc::Rc};
+    /// use duat_core::{data::RwData, prelude::*};
     /// let rw_data: RwData<dyn Display> = unsafe {
     ///     RwData::new_unsized::<String>(Rc::new(RefCell::new(
     ///         "testing".to_string(),

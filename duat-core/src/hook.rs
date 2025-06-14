@@ -10,7 +10,7 @@
 //! # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
 //! # impl<U: Ui> Widget<U> for LineNumbers<U> {
 //! #     type Cfg = LineNumbersOptions<U>;
-//! #     fn update(_: Pass, _: Handle<Self, U>) {}
+//! #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
 //! #     fn needs_update(&self) -> bool { todo!(); }
 //! #     fn cfg() -> Self::Cfg { todo!() }
 //! #     fn text(&self) -> &Text { todo!(); }
@@ -20,16 +20,16 @@
 //! # struct LineNumbersOptions<U>(std::marker::PhantomData<U>);
 //! # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
 //! #     type Widget = LineNumbers<U>;
-//! #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+//! #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
 //! #         todo!();
 //! #     }
 //! # }
-//! use duat_core::prelude::*;
+//! use duat_core::{hook::OnFileOpen, prelude::*};
 //!
 //! fn test_with_ui<U: Ui>() {
-//!     hook::add::<OnFileOpen<U>>(|mut pa, builder| {
+//!     hook::add::<OnFileOpen<U>>(|pa, builder| {
 //!         // `LineNumbers` comes from duat-utils
-//!         builder.push(&mut pa, LineNumbers::cfg());
+//!         builder.push(pa, LineNumbers::cfg());
 //!     });
 //! }
 //! ```
@@ -65,7 +65,7 @@
 //!
 //!
 //! ```rust
-//! use duat_core::prelude::*;
+//! use duat_core::{hook::Hookable, prelude::*};
 //! struct CustomHook(usize);
 //! impl Hookable for CustomHook {
 //!     type Input<'h> = usize;
@@ -75,9 +75,9 @@
 //!     }
 //! }
 //!
-//! fn runtime_function_that_triggers_hook(mut pa: Pass) {
+//! fn runtime_function_that_triggers_hook(pa: &mut Pass) {
 //!     let arg = 42;
-//!     hook::trigger(&mut pa, CustomHook(arg));
+//!     hook::trigger(pa, CustomHook(arg));
 //! }
 //! ```
 //!
@@ -92,7 +92,7 @@
 //! to, for example, make the builder pattern work through hooks:
 //!
 //! ```rust
-//! use duat_core::prelude::*;
+//! use duat_core::{hook::Hookable, prelude::*};
 //! pub struct MyBuilder(bool, usize);
 //!
 //! impl MyBuilder {
@@ -125,11 +125,10 @@
 //!     }
 //! }
 //!
-//! fn runtime_function_that_triggers_hook(mut pa: Pass) {
+//! fn runtime_function_that_triggers_hook(pa: &mut Pass) {
 //!     let builder = MyBuilder(false, 0);
 //!
-//!     let mut hookable =
-//!         hook::trigger(&mut pa, MyBuilderCreated(Some(builder)));
+//!     let mut hookable = hook::trigger(pa, MyBuilderCreated(Some(builder)));
 //!
 //!     let builder = hookable.0.take().unwrap();
 //!     builder.consume();

@@ -23,12 +23,10 @@ use crate::{
 /// The [`Selection`] and [`Selections`] structs
 mod selections;
 
-
-
 /// A selection that can edit [`Text`], but can't alter selections
 ///
 /// This struct will be used only inside functions passed to the
-/// [`edit_*`] family of methods from the [`EditHelper`].
+/// [`edit_*`] family of methods from the [`Handle`].
 ///
 /// To make edits, you can use three different functions. You can,
 /// those being [`replace`], [`insert`], and [`append`]. [`replace`]
@@ -42,8 +40,8 @@ mod selections;
 ///
 /// ```rust
 /// # use duat_core::prelude::*;
-/// # fn test<U: Ui, S>(mut pa: Pass, helper: &mut EditHelper<File<U>, U, S>) {
-/// let sel: String = helper.edit_main(&mut pa, |mut c| {
+/// # fn test<U: Ui, S>(mut pa: Pass, handle: &mut Handle<File<U>, U, S>) {
+/// let sel: String = handle.edit_main(&mut pa, |mut c| {
 ///     c.set_anchor();
 ///     c.set_caret_on_end();
 ///     c.replace("my replacement");
@@ -63,7 +61,7 @@ mod selections;
 /// # }
 /// ```
 ///
-/// [`edit_*`]: EditHelper::edit_nth
+/// [`edit_*`]: crate::context::Handle::edit_nth
 /// [`replace`]: Cursor::replace
 /// [`insert`]: Cursor::insert
 /// [`append`]: Cursor::append
@@ -253,8 +251,8 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Cursor<'a, W, A, S> {
         self.selection.move_to(point, self.widget.text());
     }
 
-    /// Moves the selection to [`Point::default`], i.e., the start of the
-    /// [`Text`]
+    /// Moves the selection to [`Point::default`], i.e., the start of
+    /// the [`Text`]
     pub fn move_to_start(&mut self) {
         self.selection.move_to(Point::default(), self.widget.text());
     }
@@ -338,8 +336,8 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Cursor<'a, W, A, S> {
     /// other, they will be merged into one.
     ///
     /// When this [`Cursor`] is dropped, like with normal [`Cursor`]s,
-    /// its [`Selection`] will be added to the [`Selections`], unless you
-    /// [destroy] it.
+    /// its [`Selection`] will be added to the [`Selections`], unless
+    /// you [destroy] it.
     ///
     /// [destroy]: Self::destroy
     pub fn copy(&mut self) -> Cursor<W, A, S> {
@@ -358,11 +356,11 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Cursor<'a, W, A, S> {
     ///
     /// Will not destroy it if it is the last [`Selection`] left
     ///
-    /// If this was the main selection, the main selection will now be the
-    /// selection immediately behind it.
+    /// If this was the main selection, the main selection will now be
+    /// the selection immediately behind it.
     pub fn destroy(mut self) {
-        // If it is 1, it is actually 2, because this Selection is also part of
-        // that list.
+        // If it is 1, it is actually 2, because this Selection is also part
+        // of that list.
         if !self.widget.text().selections().unwrap().is_empty() {
             // Rc<Cell> needs to be manually dropped to reduce its counter.
             self.next_i.take();
@@ -430,10 +428,10 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Cursor<'a, W, A, S> {
     /// # use duat_core::prelude::*;
     /// fn search_nth_paren<U: Ui, S>(
     ///     pa: &mut Pass,
-    ///     helper: &mut EditHelper<File<U>, U, S>,
+    ///     handle: &mut Handle<File<U>, U, S>,
     ///     n: usize,
     /// ) {
-    ///     helper.edit_all(pa, |mut e| {
+    ///     handle.edit_all(pa, |mut e| {
     ///         let mut nth = e.search_fwd('(', None).nth(n);
     ///         if let Some([p0, p1]) = nth {
     ///             e.move_to(p0);
@@ -470,14 +468,14 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Cursor<'a, W, A, S> {
     /// If the regex is not valid, this method will panic.
     ///
     /// ```rust
-    /// # use duat_core::{mode::EditHelper, prelude::*};
+    /// # use duat_core::prelude::*;
     /// fn search_nth_paren<U: Ui, S>(
     ///     pa: &mut Pass,
-    ///     helper: &mut EditHelper<File<U>, U, S>,
+    ///     handle: &mut Handle<File<U>, U, S>,
     ///     s: &str,
     ///     n: usize,
     /// ) {
-    ///     helper.edit_all(pa, |mut e| {
+    ///     handle.edit_all(pa, |mut e| {
     ///         let mut nth = e.search_rev(s, None).nth(n);
     ///         if let Some([p0, p1]) = nth {
     ///             e.move_to(p0);
@@ -680,8 +678,8 @@ impl<W: Widget<A::Ui>, A: RawArea> Cursor<'_, W, A, Searcher> {
         self.inc_searcher.search_rev(self.widget.text_mut(), range)
     }
 
-    /// Whether the [`Selection`]'s selection matches the [`IncSearch`]
-    /// request
+    /// Whether the [`Selection`]'s selection matches the
+    /// [`IncSearch`] request
     ///
     /// [`IncSearch`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
     pub fn matches_inc(&mut self) -> bool {
@@ -692,13 +690,10 @@ impl<W: Widget<A::Ui>, A: RawArea> Cursor<'_, W, A, Searcher> {
 }
 
 // SAFETY: In theory, it should be impossible to maintain a reference
-// to W after it has dropped, since EditHelper would be mutably
-// borrowing from said W, and you can only get an Cursor from
-// EditHelper. Thus. the only thing which may have been dropped is the
-// Selections within, which are accounted for.
-// Also, since this is created by an EditHelper, it is created after
-// it, and thus is dropped before it, making its &mut Selection reference
-// valid.
+// to W after it has dropped, since the Handle would be mutably
+// borrowing from said W, and you can only get a Cursor from Handles.
+// Thus, the only thing which may have been dropped is the Selections
+// within, which are accounted for.
 unsafe impl<#[may_dangle] 'a, W: Widget<A::Ui> + 'a, A: RawArea + 'a, S: 'a> Drop
     for Cursor<'a, W, A, S>
 {
@@ -714,7 +709,13 @@ unsafe impl<#[may_dangle] 'a, W: Widget<A::Ui> + 'a, A: RawArea + 'a, S: 'a> Dro
             && inserted_i <= next_i.get()
         {
             let go_to_next = !last_selection_overhangs as usize;
-            next_i.set(next_i.get().saturating_sub(selections_taken).max(inserted_i) + go_to_next)
+            next_i.set(
+                next_i
+                    .get()
+                    .saturating_sub(selections_taken)
+                    .max(inserted_i)
+                    + go_to_next,
+            )
         }
     }
 }

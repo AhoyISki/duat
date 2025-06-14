@@ -15,9 +15,9 @@
 //! on the declaration of the type:
 //!
 //! ```rust
-//! # use duat_core::cache::{Encode, Decode};
+//! use duat_core::context::{Encode, Decode};
 //! #[derive(Encode, Decode)]
-//! #[bincode(crate = "duat_core::cache::bincode")]
+//! #[bincode(crate = "duat_core::context::bincode")]
 //! enum MyCacheableEnum {
 //!     // ...
 //! }

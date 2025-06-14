@@ -305,7 +305,7 @@ impl Text {
     /// If you want to iterate over them, you can do the following:
     ///
     /// ```rust
-    /// # use duat_core::prelude::*;
+    /// # use duat_core::{text::Point, prelude::*};
     /// # let (p1, p2) = (Point::default(), Point::default());
     /// let text = Text::new();
     /// text.strs(p1..p2).flat_map(str::chars);

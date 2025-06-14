@@ -288,7 +288,12 @@ impl<U: Ui> FileHandle<U> {
 ///     type Widget = File<U>;
 ///
 ///     // ...
-///     fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget, U>) {
+///     fn send_key(
+///         &mut self,
+///         _: &mut Pass,
+///         _: KeyEvent,
+///         _: Handle<Self::Widget, U>,
+///     ) {
 ///         todo!();
 ///     }
 /// }
@@ -297,33 +302,38 @@ impl<U: Ui> FileHandle<U> {
 /// In order to modify the widget, you must implement the
 /// [`Mode::send_key`] method. In it, you receive the following:
 ///
-/// - A [`&mut Pass`], which will give you access to all of duat's shared
-///   state;
+/// - A [`&mut Pass`], which will give you access to all of duat's
+///   shared state;
 /// - The [key] that was sent, may be a [mapped] key.
 /// - The [`Handle`] for a [`Mode::Widget`].
 ///
 /// ```rust
-/// # use duat_core::prelude::*;
-/// # #[derive(Clone)]
-/// # struct PlacesCharactersAndMoves;
+/// use duat_core::prelude::*;
+/// #[derive(Clone)]
+/// struct PlacesCharactersAndMoves;
 /// impl<U: Ui> Mode<U> for PlacesCharactersAndMoves {
-/// #     type Widget = File<U>;
-///     /* ... */
-///     fn send_key(&mut self, pa: Pass, key: KeyEvent, file: RwData<File<U>>, area: U::Area) {
+///     type Widget = File<U>;
+///
+///     fn send_key(
+///         &mut self,
+///         pa: &mut Pass,
+///         key: KeyEvent,
+///         mut handle: Handle<File<U>, U>,
+///     ) {
 ///         match key {
 ///             // actions based on the key pressed
 ///             key!(KeyCode::Char('c')) => {
-///                 /* Do something when the character 'c' is typed. */
+///                 // Do something when the character 'c' is typed.
 ///             }
-///             _ => todo!("The remaining keys")
+///             _ => todo!("The remaining keys"),
 ///         }
 ///     }
-/// # }
+/// }
 /// ```
 ///
 /// (You can use the [`key!`] macro in order to match [`KeyEvent`]s).
 ///
-/// With the [`EditHelper`], you can modify [`Text`] in a simplified
+/// With tthe [`Handle`], you can modify [`Text`] in a simplified
 /// way. This is done by two actions, [editing] and [moving]. You
 /// can only do one of these on any number of selections at the same
 /// time.
@@ -569,7 +579,7 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     /// Note however that you can't use a [`Lender`] (also known as a
     /// lending iterator) in a `for` loop, but you should be able
     /// to just `while let Some(e) = editors.next() {}` or
-    /// `helper.edit_iter().for_each(|_| {})` instead.
+    /// `handle.edit_iter().for_each(|_| {})` instead.
     ///
     /// Just like all other `edit` methods, this one will populate the
     /// [`Selections`], so if there are no [`Selection`]s, it will
@@ -590,8 +600,8 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     ///
     /// ```rust
     /// # use duat_core::prelude::*;
-    /// # fn test<U: Ui>(pa: &mut Pass, mut helper: EditHelper<File<U>, U, ()>) {
-    /// helper.edit_iter(pa, |iter| iter.for_each(|e| { /* .. */ }));
+    /// # fn test<U: Ui>(pa: &mut Pass, mut handle: Handle<File<U>, U, ()>) {
+    /// handle.edit_iter(pa, |iter| iter.for_each(|e| { /* .. */ }));
     /// # }
     /// ```
     ///
@@ -730,7 +740,7 @@ impl<U: Ui> Handle<File<U>, U> {
     /// editing capabilities, but is also able to act on requested
     /// regex searches, like those from [`IncSearch`], in
     /// [`duat-utils`]. This means that a user can type up a
-    /// [prompt] to search for something, and an [`EditHelper`]
+    /// [prompt] to search for something, and the [`Handle`]
     /// can use the [`Searcher`] to interpret how that search will
     /// be utilized. Examples of this can be found in the
     /// [`duat-utils`] crate, as well as the [`duat-kak`] crate,

@@ -107,7 +107,7 @@
 //! let callers = ["unset-form", "uf"];
 //! // A `Vec<T>` parameter will try to collect all
 //! // remaining arguments as `T` in a list.
-//! let result = cmd::add!(callers, |pa: Pass, forms: Vec<FormName>| {
+//! let result = cmd::add!(callers, |pa: &mut Pass, forms: Vec<FormName>| {
 //!     for form in forms.iter() {
 //!         form::set("form", Form::new());
 //!     }
@@ -699,7 +699,7 @@ mod global {
     /// # struct StatusLine<U: Ui>(std::marker::PhantomData<U>);
     /// # impl<U: Ui> Widget<U> for StatusLine<U> {
     /// #     type Cfg = StatusLineOptions<U>;
-    /// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+    /// #     fn update(_: &mut Pass, _: Handle<StatusLine<U>, U>) {}
     /// #     fn needs_update(&self) -> bool { todo!(); }
     /// #     fn cfg() -> Self::Cfg { todo!() }
     /// #     fn text(&self) -> &Text { todo!(); }
@@ -712,18 +712,18 @@ mod global {
     /// # }
     /// # impl<U: Ui> WidgetCfg<U> for StatusLineOptions<U> {
     /// #     type Widget = StatusLine<U>;
-    /// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    /// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
     /// #         todo!();
     /// #     }
     /// # }
     /// # macro_rules! status { ($str:literal) => { StatusLine::cfg() } }
-    /// use duat_core::prelude::*;
+    /// use duat_core::{data::RwData, hook::OnWindowOpen, prelude::*};
     ///
     /// fn setup_with_ui<Ui: duat_core::ui::Ui>() {
     ///     let var = RwData::new(35);
     ///
     ///     let var_clone = var.clone();
-    ///     cmd::add!("set-var", |pa: Pass, value: usize| {
+    ///     cmd::add!("set-var", |pa: &mut Pass, value: usize| {
     ///         var_clone.replace(&mut pa, value);
     ///         Ok(None)
     ///     });
