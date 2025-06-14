@@ -19,10 +19,10 @@ use crate::{
 /// Builds and modifies a [`Text`], based on replacements applied
 /// to it.
 ///
-/// This struct is meant to be used alongside the [`txt!`] family of
-/// macros. You pass it as the first argument, and the [`Text`] will
-/// be extended by the macro. This lets you write a [`Text`] with
-/// multiple macro invocations:
+/// This struct is meant to be used alongside the [`txt!`] macro. You
+/// pass it as the first argument, and the [`Text`] will be extended
+/// by the macro. This lets you write a [`Text`] with multiple macro
+/// invocations:
 ///
 /// ```rust
 /// # use duat_core::text::{Text, txt};

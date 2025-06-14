@@ -23,7 +23,7 @@
 //! The [`Text`] struct is created in two different ways:
 //!
 //! - By calling [`Text::new`] or one of its [`From`] implementations;
-//! - By building it with the [`txt!`] family of macros;
+//! - By building it with the [`txt!`] macro;
 //!
 //! The first method is recommended if you want a [`Text`] that will
 //! be modified by input. This is often the case if your [`Widget`] is
@@ -133,8 +133,8 @@ use crate::{
 /// for everything that shows up on screen.
 ///
 /// You can build a [`Text`] manually, by using [`Text::new`], or with
-/// some convenience, by using the [`txt!`] family of macros, making
-/// use of a [`Builder`].
+/// some convenience, by using the [`txt!`] macro, making use of a
+/// [`Builder`].
 ///
 /// [`Widget`]: crate::widget::Widget
 pub struct Text(Box<InnerText>);
