@@ -237,7 +237,7 @@ impl Text {
     /// they want to construct the [`Text`] in [`Tag`]/content pairs.
     ///
     /// ```rust
-    /// use duat_core::text::{Tag, Text, text};
+    /// use duat_core::prelude::*;
     /// let mut builder = Text::builder();
     /// ```
     pub fn builder() -> Builder {

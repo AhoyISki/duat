@@ -25,14 +25,14 @@ use crate::{
 /// multiple macro invocations:
 ///
 /// ```rust
-/// # use duat_core::text::{Text, hint};
+/// # use duat_core::text::{Text, txt};
 /// fn is_more_than_two(num: usize) -> Text {
 ///     let mut builder = Text::builder();
-///     builder.push(hint!("The number [a]{num}[] is"));
+///     builder.push(txt!("The number [a]{num}[] is"));
 ///     if num > 2 {
-///         builder.push(hint!("[a]more[] than 2."));
+///         builder.push(txt!("[a]more[] than 2."));
 ///     } else {
-///         builder.push(hint!("[a]not more[] than 2."));
+///         builder.push(txt!("[a]not more[] than 2."));
 ///     }
 ///     builder.build()
 /// }

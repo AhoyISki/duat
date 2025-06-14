@@ -21,7 +21,7 @@
 //! fn main_thread_function(pa: &mut Pass) {
 //!     let result = cmd::call(pa, "colorscheme solarized");
 //!     if result.is_ok() {
-//!         context::notify(txt!("[a]Awesome!"));
+//!         context::info!("[a]Awesome!");
 //!     }
 //! }
 //! ```

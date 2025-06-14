@@ -3,7 +3,7 @@
 //! There are two "types" of tag: [`Tag`]s and [`RawTag`]s. [`Tag`]s
 //! are what is show to the end user, being convenient in the way they
 //! include extra information, like a whole function in the case of
-//! [`Tag::StartToggle`]. [`RawTag`]s, on the other hand, are meant to
+//! [`StartToggle`]. [`RawTag`]s, on the other hand, are meant to
 //! be as small as possible in order not to waste memory, as they will
 //! be stored in the [`Text`]. As such, they have as little
 //! information as possible, occupying only 8 bytes.
@@ -175,14 +175,14 @@ pub struct AlignLeft;
 /// Let's say that this is the line being printed:
 ///
 /// ```
-/// # use duat_core::text::txt;
+/// # use duat_core::prelude::*;
 /// txt!("This is my line,please,pretend it has tags");
 /// ```
 ///
 /// If we were to print it with `{Spacer}as like this:
 ///
 /// ```
-/// # use duat_core::text::{text, Spacer};
+/// # use duat_core::prelude::*;
 /// txt!("This is my line,{Spacer}please,{Spacer}pretend it has tags");
 /// ```
 ///

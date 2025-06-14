@@ -179,7 +179,7 @@
 //!
 //! ```rust
 //! # use duat::prelude::*;
-//! let text = text!("[MyForm]Waow it's my form![]not anymore 😢");
+//! let text = txt!("[MyForm]Waow it's my form![]not anymore 😢");
 //! ```
 //!
 //! In this example, I'm using the "MyForm" form in order to style the
@@ -598,7 +598,6 @@ pub macro setup_duat($setup:expr) {
         mpsc::Receiver<DuatEvent>,
         Option<std::time::Instant>,
     ) {
-        
         pre_setup(Some(logs), duat_tx);
         $setup();
         run_duat(ms, prev_files, duat_rx)
