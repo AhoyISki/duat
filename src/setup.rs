@@ -66,15 +66,15 @@ pub fn pre_setup(logs: Option<Logs>, duat_tx: &'static Sender<DuatEvent>) {
 
     mode::set_default(Regular);
 
-    hook::add_grouped::<OnFileOpen>("FileWidgets", |mut pa, builder| {
-        builder.push(&mut pa, VertRule::cfg());
-        builder.push(&mut pa, LineNumbers::cfg());
+    hook::add_grouped::<OnFileOpen>("FileWidgets", |pa, builder| {
+        builder.push(pa, VertRule::cfg());
+        builder.push(pa, LineNumbers::cfg());
     });
 
-    hook::add_grouped::<OnWindowOpen>("WindowWidgets", |mut pa, builder| {
-        builder.push(&mut pa, StatusLine::cfg());
-        let (child, _) = builder.push(&mut pa, PromptLine::cfg());
-        builder.push_to(&mut pa, child, Notifications::cfg());
+    hook::add_grouped::<OnWindowOpen>("WindowWidgets", |pa, builder| {
+        builder.push(pa, StatusLine::cfg());
+        let (child, _) = builder.push(pa, PromptLine::cfg());
+        builder.push_to(pa, child, Notifications::cfg());
     });
 
     hook::add_grouped::<UnfocusedFrom<PromptLine<Ui>>>("HidePromptLine", |_, (_, area)| {

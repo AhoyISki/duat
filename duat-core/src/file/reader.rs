@@ -12,7 +12,7 @@ use std::{any::TypeId, cell::RefCell, ops::Range, rc::Rc};
 use super::BytesDataMap;
 use crate::{
     data::{Pass, RwData},
-    text::{txt, Bytes, Change, Moment, MutTags, Text},
+    text::{Bytes, Change, Moment, MutTags, Text, txt},
     ui::Ui,
 };
 
@@ -32,7 +32,7 @@ pub trait Reader<U: Ui>: 'static {
     ///
     /// [`Tag`]: crate::text::Tag
     fn apply_changes(
-        pa: Pass,
+        pa: &mut Pass,
         reader: RwData<Self>,
         bytes: BytesDataMap<U>,
         moment: Moment,
@@ -73,7 +73,7 @@ pub trait ReaderCfg<U: Ui> {
     type Reader: Reader<U>;
 
     /// Constructs the [`Reader`]
-    fn init(self, buffer: &mut Bytes) -> Result<Self::Reader, Text>;
+    fn init(self, bytes: &mut Bytes) -> Result<Self::Reader, Text>;
 }
 
 #[derive(Default, Clone)]
@@ -104,7 +104,7 @@ impl<U: Ui> Readers<U> {
                     // SAFETY: In the block that is executing this function, no Passes
                     // exist beyond the one that is being mutably borrowed in the Readers
                     // struct
-                    let pa = unsafe { Pass::new() };
+                    let mut pa = unsafe { Pass::new() };
 
                     let mut new_ranges = if ranges_to_update.is_some() {
                         Some(RangeList::new(bytes.read(&pa, |bytes| bytes.len().byte())))
@@ -112,7 +112,7 @@ impl<U: Ui> Readers<U> {
                         None
                     };
 
-                    <R::Reader>::apply_changes(pa, reader, bytes, moment, new_ranges.as_mut());
+                    <R::Reader>::apply_changes(&mut pa, reader, bytes, moment, new_ranges.as_mut());
 
                     // SAFETY: Since the last Pass was consumed, we can create new
                     // ones.
@@ -183,12 +183,12 @@ impl<U: Ui> Readers<U> {
     }
 
     /// Updates the [`Reader`]s on a given range
-    pub(super) fn update_range(&self, mut pa: Pass, text: &mut Text, within: Range<usize>) {
+    pub(super) fn update_range(&self, pa: &mut Pass, text: &mut Text, within: Range<usize>) {
         // SAFETY: The same as the SAFETY section above.
         unsafe {
             self.0.read_unsafe(|readers| {
                 for entry in readers.iter() {
-                    entry.reader.write(&mut pa, |reader| {
+                    entry.reader.write(pa, |reader| {
                         entry.ranges_to_update.write_unsafe(|ranges| {
                             let old_ranges = std::mem::replace(ranges, RangeList::empty());
 

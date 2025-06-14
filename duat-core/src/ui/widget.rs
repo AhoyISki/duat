@@ -320,13 +320,13 @@ pub trait Widget<U: Ui>: 'static {
     /// [`Mode`]: crate::mode::Mode
     /// [`update`]: Widget::update
     #[allow(unused)]
-    fn update(pa: Pass, widget: RwData<Self>, area: &U::Area)
+    fn update(pa: &mut Pass, widget: RwData<Self>, area: &U::Area)
     where
         Self: Sized;
 
     /// Actions to do whenever this [`Widget`] is focused
     #[allow(unused)]
-    fn on_focus(pa: Pass, widget: RwData<Self>, area: &U::Area)
+    fn on_focus(pa: &mut Pass, widget: RwData<Self>, area: &U::Area)
     where
         Self: Sized,
     {
@@ -334,7 +334,7 @@ pub trait Widget<U: Ui>: 'static {
 
     /// Actions to do whenever this [`Widget`] is unfocused
     #[allow(unused)]
-    fn on_unfocus(pa: Pass, widget: RwData<Self>, area: &U::Area)
+    fn on_unfocus(pa: &mut Pass, widget: RwData<Self>, area: &U::Area)
     where
         Self: Sized,
     {
@@ -545,7 +545,7 @@ pub trait WidgetCfg<U: Ui>: Sized {
     /// [`File`], for example.
     ///
     /// [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
-    fn build(self, pa: Pass, handle: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs);
+    fn build(self, pa: &mut Pass, handle: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs);
 }
 
 /// Elements related to the [`Widget`]s
@@ -555,8 +555,8 @@ pub(crate) struct Node<U: Ui> {
     area: U::Area,
     busy_updating: Rc<Cell<bool>>,
     related_widgets: Related<U>,
-    on_focus: fn(&Self, Pass),
-    on_unfocus: fn(&Self, Pass),
+    on_focus: fn(&Self, &mut Pass),
+    on_unfocus: fn(&Self, &mut Pass),
     update: fn(&Self, &mut Pass),
 }
 
@@ -688,47 +688,40 @@ impl<U: Ui> Node<U> {
     }
 
     /// What to do when focusing
-    pub(crate) fn on_focus(&self, _: &mut Pass) {
+    pub(crate) fn on_focus(&self, pa: &mut Pass) {
         self.area.set_as_active();
-        // SAFETY: &mut Pass is an argument.
-        (self.on_focus)(self, unsafe { Pass::new() })
+        (self.on_focus)(self, pa)
     }
 
     /// What to do when unfocusing
-    pub(crate) fn on_unfocus(&self, _: &mut Pass) {
-        // SAFETY: &mut Pass is an argument.
-        (self.on_unfocus)(self, unsafe { Pass::new() })
+    pub(crate) fn on_unfocus(&self, pa: &mut Pass) {
+        (self.on_unfocus)(self, pa)
     }
 
     /// Static dispatch inner update function
-    fn update_fn<W: Widget<U>>(&self, _: &mut Pass) {
+    fn update_fn<W: Widget<U>>(&self, pa: &mut Pass) {
         let widget = self.widget.try_downcast_same_read_state::<W>().unwrap();
         let area = self.area.clone();
 
-        // SAFETY: This function takes in a &mut Pass, so I can safely create
-        // others inside.
-        let pa = unsafe { Pass::new() };
         Widget::update(pa, widget, &area);
     }
 
     /// Static dispatch inner update on_focus
-    fn on_focus_fn<W: Widget<U>>(&self, mut pa: Pass) {
+    fn on_focus_fn<W: Widget<U>>(&self, pa: &mut Pass) {
         self.area.set_as_active();
         let widget: RwData<W> = self.widget.try_downcast_same_read_state().unwrap();
         let area = self.area.clone();
 
-        widget.write(&mut pa, |widget| {
+        widget.write(pa, |widget| {
             let cfg = widget.print_cfg();
             widget.text_mut().remove_cursors(&area, cfg);
         });
 
-        hook::trigger(&mut pa, FocusedOn((widget.clone(), area.clone())));
+        hook::trigger(pa, FocusedOn((widget.clone(), area.clone())));
 
         Widget::on_focus(pa, widget.clone(), &area);
 
-        // SAFETY: Since the last Pass was consumed, we can create a new
-        // one.
-        widget.write(&mut unsafe { Pass::new() }, |widget| {
+        widget.write(pa, |widget| {
             let cfg = widget.print_cfg();
             widget.text_mut().add_cursors(&area, cfg);
             if let Some(main) = widget.text().cursors().and_then(Cursors::get_main) {
@@ -738,16 +731,16 @@ impl<U: Ui> Node<U> {
     }
 
     /// Static dispatch inner update on_unfocus
-    fn on_unfocus_fn<W: Widget<U>>(&self, mut pa: Pass) {
+    fn on_unfocus_fn<W: Widget<U>>(&self, pa: &mut Pass) {
         let widget: RwData<W> = self.widget.try_downcast_same_read_state().unwrap();
         let area = self.area.clone();
 
-        widget.write(&mut pa, |widget| {
+        widget.write(pa, |widget| {
             let cfg = widget.print_cfg();
             widget.text_mut().remove_cursors(&area, cfg);
         });
 
-        hook::trigger(&mut pa, UnfocusedFrom((widget.clone(), area.clone())));
+        hook::trigger(pa, UnfocusedFrom((widget.clone(), area.clone())));
 
         Widget::on_unfocus(pa, widget.clone(), &area);
 

@@ -234,8 +234,8 @@ pub fn last_key() -> RwData<String> {
 
             hook::add::<KeysSent>({
                 let last_key = last_key.clone();
-                move |mut pa, keys| {
-                    last_key.write(&mut pa, |lk| *lk = mode::keys_to_string(keys));
+                move |pa, keys| {
+                    last_key.write(pa, |lk| *lk = mode::keys_to_string(keys));
                 }
             });
 

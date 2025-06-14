@@ -87,9 +87,9 @@ pub struct StatusLine<U: Ui> {
 impl<U: Ui> Widget<U> for StatusLine<U> {
     type Cfg = StatusLineCfg<U>;
 
-    fn update(mut pa: Pass, widget: RwData<Self>, _: &<U as Ui>::Area) {
-        let text = widget.read(&pa, |wid| wid.text_fn.borrow_mut()(&pa, &wid.handle));
-        widget.replace_text(&mut pa, text);
+    fn update(pa: &mut Pass, widget: RwData<Self>, _: &<U as Ui>::Area) {
+        let text = widget.read(pa, |wid| wid.text_fn.borrow_mut()(pa, &wid.handle));
+        widget.replace_text(pa, text);
     }
 
     fn needs_update(&self) -> bool {
@@ -156,10 +156,10 @@ impl<U: Ui> StatusLineCfg<U> {
 impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
     type Widget = StatusLine<U>;
 
-    fn build(self, pa: Pass, handle: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    fn build(self, pa: &mut Pass, handle: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
         let handle = match handle {
             Some(handle) => handle,
-            None => context::dyn_file(&pa).unwrap(),
+            None => context::dyn_file(pa).unwrap(),
         };
 
         let checker = match self.checker {

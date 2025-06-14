@@ -178,7 +178,7 @@ mod global {
     /// [hook]: Hookable
     /// [`hook::add_grouped`]: add_grouped
     #[inline(never)]
-    pub fn add<H: Hookable>(f: impl FnMut(Pass, H::Input<'_>) -> H::Output + 'static) {
+    pub fn add<H: Hookable>(f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static) {
         context::assert_is_on_main_thread();
         unsafe { HOOKS.get() }.add::<H>("", Box::new(f));
     }
@@ -195,7 +195,7 @@ mod global {
     #[inline(never)]
     pub fn add_grouped<H: Hookable>(
         group: &'static str,
-        f: impl FnMut(Pass, H::Input<'_>) -> H::Output + 'static,
+        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static,
     ) {
         context::assert_is_on_main_thread();
         unsafe { HOOKS.get() }.add::<H>(group, Box::new(f));
@@ -574,7 +574,7 @@ impl InnerHooks {
     fn add<H: Hookable>(
         &self,
         group: &'static str,
-        f: Box<dyn FnMut(Pass, H::Input<'_>) -> H::Output + 'static>,
+        f: Box<dyn FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static>,
     ) {
         let mut map = self.types.borrow_mut();
 
@@ -613,7 +613,7 @@ impl InnerHooks {
     }
 
     /// Triggers hooks with args of the [`Hookable`]
-    fn trigger<H: Hookable>(&self, _: &mut Pass, mut hookable: H) -> H {
+    fn trigger<H: Hookable>(&self, pa: &mut Pass, mut hookable: H) -> H {
         let holder = self.types.borrow().get(&TypeId::of::<H>()).cloned();
 
         let Some(holder) = holder else {
@@ -629,8 +629,6 @@ impl InnerHooks {
 
         let hooks = hooks_of.0.borrow_mut();
         for (_, hook) in hooks.iter() {
-            // SAFETY: There is a &mut Pass argument.
-            let pa = unsafe { Pass::new() };
             let input = hookable.get_input();
             let output = hook.borrow_mut()(pa, input);
             hookable.return_output(output);
@@ -662,4 +660,4 @@ impl<H: Hookable> HookHolder for HooksOf<H> {
 }
 
 type InnerHookFn<H> =
-    &'static RefCell<(dyn FnMut(Pass, <H as Hookable>::Input<'_>) -> <H as Hookable>::Output)>;
+    &'static RefCell<(dyn FnMut(&mut Pass, <H as Hookable>::Input<'_>) -> <H as Hookable>::Output)>;

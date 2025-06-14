@@ -41,9 +41,9 @@ impl<U: Ui> Widget<U> for Notifications<U> {
         NotificationsCfg(None, PhantomData)
     }
 
-    fn update(mut pa: Pass, widget: RwData<Self>, _: &<U as Ui>::Area) {
+    fn update(pa: &mut Pass, widget: RwData<Self>, _: &<U as Ui>::Area) {
         let clear_notifs = CLEAR_NOTIFS.swap(false, Ordering::Relaxed);
-        widget.write(&mut pa, |wid| {
+        widget.write(pa, |wid| {
             if wid.logs.has_changed()
                 && let Some(rec) = wid.logs.last()
             {
@@ -123,7 +123,7 @@ impl<U> NotificationsCfg<U> {
 impl<U: Ui> WidgetCfg<U> for NotificationsCfg<U> {
     type Widget = Notifications<U>;
 
-    fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
         let widget = Notifications {
             logs: context::logs(),
             text: Text::new(),

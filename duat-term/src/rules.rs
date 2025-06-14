@@ -22,12 +22,12 @@ pub struct VertRule {
 impl Widget<Ui> for VertRule {
     type Cfg = VertRuleCfg;
 
-    fn update(mut pa: Pass, widget: RwData<Self>, area: &Area) {
-        let text = widget.read(&pa, |wid| {
+    fn update(pa: &mut Pass, widget: RwData<Self>, area: &Area) {
+        let text = widget.read(pa, |wid| {
             if let Some(handle) = wid.handle.as_ref()
                 && let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = wid.sep_char
             {
-                let (upper, middle, lower) = handle.read(&pa, |file, _| {
+                let (upper, middle, lower) = handle.read(pa, |file, _| {
                     let lines = file.printed_lines();
                     if let Some(main) = file.cursors().get_main() {
                         let main = main.line();
@@ -56,7 +56,7 @@ impl Widget<Ui> for VertRule {
             }
         });
 
-        widget.replace_text(&mut pa, text);
+        widget.replace_text(pa, text);
     }
 
     fn needs_update(&self) -> bool {
@@ -176,7 +176,7 @@ impl Default for VertRuleCfg {
 impl WidgetCfg<Ui> for VertRuleCfg {
     type Widget = VertRule;
 
-    fn build(self, _: Pass, handle: Option<FileHandle<Ui>>) -> (Self::Widget, PushSpecs) {
+    fn build(self, _: &mut Pass, handle: Option<FileHandle<Ui>>) -> (Self::Widget, PushSpecs) {
         let widget = VertRule {
             handle,
             text: Text::default(),

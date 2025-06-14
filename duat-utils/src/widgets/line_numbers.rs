@@ -81,12 +81,12 @@ impl<U: Ui> LineNumbers<U> {
 impl<U: Ui> Widget<U> for LineNumbers<U> {
     type Cfg = LineNumbersOptions<U>;
 
-    fn update(mut pa: Pass, widget: RwData<Self>, area: &<U as Ui>::Area) {
-        let width = widget.read(&pa, |ln| ln.calculate_width(&pa));
+    fn update(pa: &mut Pass, widget: RwData<Self>, area: &<U as Ui>::Area) {
+        let width = widget.read(pa, |ln| ln.calculate_width(pa));
         area.constrain_hor([Constraint::Len(width + 1.0)]).unwrap();
 
-        let text = widget.read(&pa, |ln| ln.form_text(&pa));
-        widget.write(&mut pa, |ln| ln.text = text);
+        let text = widget.read(pa, |ln| ln.form_text(pa));
+        widget.write(pa, |ln| ln.text = text);
     }
 
     fn needs_update(&self) -> bool {
@@ -211,14 +211,14 @@ impl<U> LineNumbersOptions<U> {
 impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
     type Widget = LineNumbers<U>;
 
-    fn build(self, pa: Pass, handle: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    fn build(self, pa: &mut Pass, handle: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
         let Some(handle) = handle else {
             panic!("For now, you can't push LineNumbers to something that is not a File");
         };
         let specs = self.specs;
 
         let mut widget = LineNumbers { handle, text: Text::default(), cfg: self };
-        widget.text = widget.form_text(&pa);
+        widget.text = widget.form_text(pa);
 
         (widget, specs)
     }

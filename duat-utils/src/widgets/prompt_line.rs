@@ -23,7 +23,7 @@ use crate::modes::PromptMode;
 impl<U: Ui> WidgetCfg<U> for PromptLineCfg<U> {
     type Widget = PromptLine<U>;
 
-    fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
         let specs = if hook::group_exists("HidePromptLine") {
             self.specs.with_ver_len(0.0)
         } else {
@@ -82,10 +82,10 @@ impl<U: Ui> PromptLine<U> {
 impl<U: Ui> Widget<U> for PromptLine<U> {
     type Cfg = PromptLineCfg<U>;
 
-    fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+    fn update(_: &mut Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
 
-    fn on_unfocus(mut pa: Pass, widget: RwData<Self>, _: &<U as Ui>::Area) {
-        widget.write(&mut pa, |wid| wid.text = Text::new());
+    fn on_unfocus(pa: &mut Pass, widget: RwData<Self>, _: &<U as Ui>::Area) {
+        widget.write(pa, |wid| wid.text = Text::new());
     }
 
     fn needs_update(&self) -> bool {

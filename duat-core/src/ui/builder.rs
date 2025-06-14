@@ -231,8 +231,7 @@ impl<U: Ui> FileBuilder<U> {
     #[inline(never)]
     pub fn push<W: WidgetCfg<U>>(&mut self, pa: &mut Pass, cfg: W) -> (U::Area, Option<U::Area>) {
         run_once::<W::Widget, U>();
-        // SAFETY: Exclusive borrow of Pass means I can create my own.
-        let (widget, specs) = cfg.build(unsafe { Pass::new() }, Some(self.handle.clone()));
+        let (widget, specs) = cfg.build(pa, Some(self.handle.clone()));
 
         let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];
@@ -365,8 +364,7 @@ impl<U: Ui> FileBuilder<U> {
         cfg: W,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W::Widget, U>();
-        // SAFETY: Exclusive borrow of Pass means I can create my own.
-        let (widget, specs) = cfg.build(unsafe { Pass::new() }, Some(self.handle.clone()));
+        let (widget, specs) = cfg.build(pa, Some(self.handle.clone()));
 
         let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];
@@ -557,8 +555,7 @@ impl<U: Ui> WindowBuilder<U> {
     #[inline(never)]
     pub fn push<W: WidgetCfg<U>>(&mut self, pa: &mut Pass, cfg: W) -> (U::Area, Option<U::Area>) {
         run_once::<W::Widget, U>();
-        // SAFETY: Exclusive borrow of Pass means I can create my own.
-        let (widget, specs) = cfg.build(unsafe { Pass::new() }, None);
+        let (widget, specs) = cfg.build(pa, None);
 
         let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];
@@ -641,8 +638,7 @@ impl<U: Ui> WindowBuilder<U> {
         cfg: W,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W::Widget, U>();
-        // SAFETY: Exclusive borrow of Pass means I can create my own.
-        let (widget, specs) = cfg.build(unsafe { Pass::new() }, None);
+        let (widget, specs) = cfg.build(pa, None);
 
         let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];

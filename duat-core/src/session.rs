@@ -47,7 +47,7 @@ impl<U: Ui> SessionCfg<U> {
         // SAFETY: This function is only called from the main thread in
         // ../src/setup.rs, and from there, there are no other active
         // Passs, so this is fine.
-        let pa = unsafe { Pass::new() };
+        let mut pa = unsafe { Pass::new() };
 
         cmd::add_session_commands::<U>().unwrap();
 
@@ -55,13 +55,10 @@ impl<U: Ui> SessionCfg<U> {
         let first = args.nth(1).map(PathBuf::from);
 
         let (widget, _) = if let Some(name) = first {
-            self.file_cfg.clone().open_path(name).build(pa, None)
+            self.file_cfg.clone().open_path(name).build(&mut pa, None)
         } else {
-            self.file_cfg.clone().build(pa, None)
+            self.file_cfg.clone().build(&mut pa, None)
         };
-
-        // SAFETY: Last Pass was consumed
-        let mut pa = unsafe { Pass::new() };
 
         let (window, node) = Window::new(&mut pa, ms, widget, (self.layout_fn)());
         let cur_window = context::set_windows(vec![window]);
@@ -96,6 +93,10 @@ impl<U: Ui> SessionCfg<U> {
         prev: Vec<Vec<FileRet>>,
     ) -> Session<U> {
         cmd::add_session_commands::<U>().unwrap();
+        // SAFETY: This function is only called from the main thread in
+        // ../src/setup.rs, and from there, there are no other active
+        // Passs, so this is fine.
+        let mut pa = unsafe { Pass::new() };
 
         let cur_window = context::set_windows::<U>(Vec::new());
 
@@ -119,13 +120,8 @@ impl<U: Ui> SessionCfg<U> {
         };
 
         for (win, mut cfgs) in inherited_cfgs {
-            // SAFETY: This function is only called from the main thread in
-            // ../src/setup.rs, and from there, there are no other active
-            // Passs, so this is fine.
-            let pa = unsafe { Pass::new() };
-
             let (file_cfg, is_active) = cfgs.next().unwrap();
-            let (widget, _) = file_cfg.build(pa, None);
+            let (widget, _) = file_cfg.build(&mut pa, None);
 
             // SAFETY: Last Pass was just consumed.
             let mut pa = unsafe { Pass::new() };
@@ -176,13 +172,8 @@ impl<U: Ui> Session<U> {
             let mut windows = windows.borrow_mut();
             let cur_window = self.cur_window.load(Ordering::Relaxed);
 
-            // SAFETY: Exclusive borrow of Pass means I can create my own.
-            let file_pa = unsafe { Pass::new() };
-            let (file, _) = <FileCfg as WidgetCfg<U>>::build(
-                self.file_cfg.clone().open_path(path),
-                file_pa,
-                None,
-            );
+            let (file, _) =
+                <FileCfg as WidgetCfg<U>>::build(self.file_cfg.clone().open_path(path), pa, None);
 
             windows[cur_window].push_file(pa, file)
         };
@@ -369,9 +360,7 @@ impl<U: Ui> Session<U> {
     ) {
         let pushed = {
             let mut windows = context::windows::<U>().borrow_mut();
-            // SAFETY: Exclusive borrow of Pass means I can create my own.
-            let file_pa = unsafe { Pass::new() };
-            let (widget, _) = file_cfg.build(file_pa, None);
+            let (widget, _) = file_cfg.build(pa, None);
 
             let result = windows[win].push_file(pa, widget);
 
@@ -490,13 +479,11 @@ impl<U: Ui> Session<U> {
             // list of the original Window.
             MutArea(&new_root).delete();
         } else {
-            // SAFETY: Exclusive borrow of Pass means I can create my own.
-            let file_pa = unsafe { Pass::new() };
             let (widget, _) = self
                 .file_cfg
                 .clone()
                 .open_path(PathBuf::from(name.clone()))
-                .build(file_pa, None);
+                .build(pa, None);
 
             let (window, node) = Window::new(pa, self.ms, widget, (self.layout_fn)());
             windows.push(window);

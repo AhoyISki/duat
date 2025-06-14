@@ -72,7 +72,7 @@ impl FileCfg {
 impl<U: Ui> WidgetCfg<U> for FileCfg {
     type Widget = File<U>;
 
-    fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
         let (text, path) = match self.text_op {
             TextOp::NewBuffer => (Text::new_with_history(), PathKind::new_unset()),
             TextOp::TakeBuf(bytes, pk, has_unsaved_changes) => match &pk {
@@ -285,19 +285,19 @@ impl<U: Ui> Widget<U> for File<U> {
         FileCfg::new()
     }
 
-    fn update(mut pa: Pass<'_>, widget: RwData<Self>, area: &U::Area) {
-        let (map, readers) = widget.read(&pa, |file| {
+    fn update(pa: &mut Pass, widget: RwData<Self>, area: &U::Area) {
+        let (map, readers) = widget.read(pa, |file| {
             (BytesDataMap(widget.clone()), file.readers.clone())
         });
 
-        let moments = widget.acquire_mut(&mut pa).text.last_unprocessed_moment();
+        let moments = widget.acquire_mut(pa).text.last_unprocessed_moment();
         if let Some(moments) = moments {
             for moment in moments {
                 readers.process_moment(map.clone(), moment);
             }
         }
 
-        let mut file = widget.acquire_mut(&mut pa);
+        let mut file = widget.acquire_mut(pa);
 
         if let Some(main) = file.text().cursors().and_then(Cursors::get_main) {
             area.scroll_around_point(file.text(), main.caret(), file.print_cfg());
@@ -309,8 +309,8 @@ impl<U: Ui> Widget<U> for File<U> {
 
             // SAFETY: I'm not passing the Pass to inner structures, so this
             // should be fine.
-            let pa = unsafe { Pass::new() };
-            readers.update_range(pa, &mut file.text, start.byte()..end.byte());
+            let mut pa = unsafe { Pass::new() };
+            readers.update_range(&mut pa, &mut file.text, start.byte()..end.byte());
         }
 
         file.text.update_bounds();
