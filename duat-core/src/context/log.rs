@@ -9,6 +9,27 @@ pub use self::macros::*;
 use crate::text::{Cursorless, Text};
 
 mod macros {
+    /// Logs an error to Duat
+    ///
+    /// This error follows the same construction as the [`txt!`]
+    /// macro, and will create a [`Record`] inside of the [`Logs`],
+    /// which can be accessed by anyone, at any time.
+    ///
+    /// The [`Record`] added to the [`Logs`] is related to
+    /// [`log::Record`], from the [`log`] crate. But it differs in the
+    /// sense that it is always `'static`, and instead of having an
+    /// [`std::fmt::Arguments`] inside, it contains a [`Text`], making
+    /// it a better fit for Duat.
+    ///
+    /// The connection to [`log::Record`] also means that external
+    /// libraries can log information using the [`log`] crate, and it
+    /// will also show up in Duat's [`Logs`]s, but reformatted to be a
+    /// [`Text`] instead.
+    ///
+    /// [`txt!`]: crate::text::txt
+    /// [`Record`]: super::Record
+    /// [`Logs`]: super::Logs
+    /// [`Text`]: crate::text::Text
     pub macro error {
         (target: $target:expr, $($arg:tt)+) => ({
             $crate::private_exports::log!(
@@ -26,6 +47,27 @@ mod macros {
         )
     }
 
+    /// Logs an warning to Duat
+    ///
+    /// This error follows the same construction as the [`txt!`]
+    /// macro, and will create a [`Record`] inside of the [`Logs`],
+    /// which can be accessed by anyone, at any time.
+    ///
+    /// The [`Record`] added to the [`Logs`] is related to
+    /// [`log::Record`], from the [`log`] crate. But it differs in the
+    /// sense that it is always `'static`, and instead of having an
+    /// [`std::fmt::Arguments`] inside, it contains a [`Text`], making
+    /// it a better fit for Duat.
+    ///
+    /// The connection to [`log::Record`] also means that external
+    /// libraries can log information using the [`log`] crate, and it
+    /// will also show up in Duat's [`Logs`]s, but reformatted to be a
+    /// [`Text`] instead.
+    ///
+    /// [`txt!`]: crate::text::txt
+    /// [`Record`]: super::Record
+    /// [`Logs`]: super::Logs
+    /// [`Text`]: crate::text::Text
     pub macro warn {
         (target: $target:expr, $($arg:tt)+) => ({
             $crate::private_exports::log!(
@@ -43,6 +85,27 @@ mod macros {
         )
     }
 
+    /// Logs an info to Duat
+    ///
+    /// This error follows the same construction as the [`txt!`]
+    /// macro, and will create a [`Record`] inside of the [`Logs`],
+    /// which can be accessed by anyone, at any time.
+    ///
+    /// The [`Record`] added to the [`Logs`] is related to
+    /// [`log::Record`], from the [`log`] crate. But it differs in the
+    /// sense that it is always `'static`, and instead of having an
+    /// [`std::fmt::Arguments`] inside, it contains a [`Text`], making
+    /// it a better fit for Duat.
+    ///
+    /// The connection to [`log::Record`] also means that external
+    /// libraries can log information using the [`log`] crate, and it
+    /// will also show up in Duat's [`Logs`]s, but reformatted to be a
+    /// [`Text`] instead.
+    ///
+    /// [`txt!`]: crate::text::txt
+    /// [`Record`]: super::Record
+    /// [`Logs`]: super::Logs
+    /// [`Text`]: crate::text::Text
     pub macro info {
         (target: $target:expr, $($arg:tt)+) => ({
             $crate::private_exports::log!(

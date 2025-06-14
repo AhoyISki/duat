@@ -277,10 +277,136 @@ mod global {
         PALETTE.painter(default_id(TypeId::of::<W>(), crate::duat_name::<W>()), "")
     }
 
+    /// Creates a [`Painter`] with a mask
+    ///
+    /// This [`Painter`] follows the same rules as the one from
+    /// [`painter`], but the main difference is that it also applies a
+    /// mask to the [`Form`]s. A mask is essentially a remapping of
+    /// [`Form`]s based on suffix, here's how it works:
+    ///
+    /// ```
+    /// # use duat_core::prelude::*;
+    /// # fn test<U: Ui>() {
+    /// // Assume that a Form with the given name exists
+    /// form::set("MyForm", Form::red().on_blue());
+    ///
+    /// // If I create a second Form like this one, they are separate
+    /// form::set("MyForm.suffix", Form::undercurled());
+    ///
+    /// let text = txt!(
+    ///     "[MyForm]This text is red on blue[], [MyForm.suffix]and this is \
+    ///      undercurled"
+    /// );
+    ///
+    /// // But if I enable the "suffix" mask that's at the end of the second Form
+    /// form::enable_mask("suffix");
+    ///
+    /// // The first Form will get mapped onto the second one,
+    /// // That is, instead of printing the first one, it'll print
+    /// // whichever Form matches its name + ".suffix".
+    /// let painter = form::painter_with_mask::<File<U>>("suffix");
+    ///
+    /// // While printing with the Painter, we'd have:
+    /// let text = txt!(
+    ///     "[MyForm]This text is undercurled[], [MyForm.suffix]and this is also \
+    ///      undercurled"
+    /// );
+    /// # }
+    /// ```
+    ///
+    /// Masks can serve a myriad of different purposes, but here's a
+    /// few:
+    ///
+    /// - When you want to temporarily change the [`Form`]s on a
+    ///   single [`Widget`]. This is, for example, used in the
+    ///   [`Notifications`] [`Widget`], which maps [`Form`]s in order
+    ///   to correspond to the [`Level`] of their severity.
+    /// - When you want to have [`Widget`]s change [`Form`] based on
+    ///   [hooks], so you could have, for example, an `"inactive"`
+    ///   mask for your [`File`]s
+    /// - If you want to quickly cycle through [`Form`]s in a
+    ///   [`Text`], this is the most efficient way of doing that,
+    ///   since it relies on static remaps, not on changing the
+    ///   [`Form`]s themselves.
+    ///
+    /// Do note that no suffix, except `"error"`, `"warn"` and
+    /// `"info"` is a mask when Duat starts. In order to enable more
+    /// masks, see [`enable_mask`].
+    ///
+    /// [`Widget`]: crate::widget::Widget
+    /// [`Notifications`]: https://docs.rs/duat-utils/latest/duat_utils
+    /// [`Level`]: crate::context::Level
+    /// [hooks]: crate::hook
+    /// [`File`]: crate::file::File
+    /// [`Text`]: crate::text::Text
     pub fn painter_with_mask<W: ?Sized + 'static>(mask: &'static str) -> Painter {
         PALETTE.painter(default_id(TypeId::of::<W>(), crate::duat_name::<W>()), mask)
     }
 
+    /// Enables the use of this mask
+    ///
+    /// A mask is essentially a remapping of [`Form`]s based on
+    /// suffix, this remapping doesn't take place outside of a
+    /// [`Painter`] (i.e. [`form::from_id`] won't be altered), here's
+    /// how it works:
+    ///
+    /// ```
+    /// # use duat_core::prelude::*;
+    /// # fn test<U: Ui>() {
+    /// // Assume that a Form with the given name exists
+    /// form::set("MyForm", Form::red().on_blue());
+    ///
+    /// // If I create a second Form like this one, they are separate
+    /// form::set("MyForm.suffix", Form::undercurled());
+    ///
+    /// let text = txt!(
+    ///     "[MyForm]This text is red on blue[], [MyForm.suffix]and this is \
+    ///      undercurled"
+    /// );
+    ///
+    /// // But if I enable the "suffix" mask that's at the end of the second Form
+    /// form::enable_mask("suffix");
+    ///
+    /// // The first Form will get mapped onto the second one,
+    /// // That is, instead of printing the first one, it'll print
+    /// // whichever Form matches its name + ".suffix".
+    /// let painter = form::painter_with_mask::<File<U>>("suffix");
+    ///
+    /// // While printing with the Painter, we'd have:
+    /// let text = txt!(
+    ///     "[MyForm]This text is undercurled[], [MyForm.suffix]and this is also \
+    ///      undercurled"
+    /// );
+    /// # }
+    /// ```
+    ///
+    /// Masks can serve a myriad of different purposes, but here's a
+    /// few:
+    ///
+    /// - When you want to temporarily change the [`Form`]s on a
+    ///   single [`Widget`]. This is, for example, used in the
+    ///   [`Notifications`] [`Widget`], which maps [`Form`]s in order
+    ///   to correspond to the [`Level`] of their severity.
+    /// - When you want to have [`Widget`]s change [`Form`] based on
+    ///   [hooks], so you could have, for example, an `"inactive"`
+    ///   mask for your [`File`]s
+    /// - If you want to quickly cycle through [`Form`]s in a
+    ///   [`Text`], this is the most efficient way of doing that,
+    ///   since it relies on static remaps, not on changing the
+    ///   [`Form`]s themselves.
+    ///
+    /// When Duat first starts, the only available masks are
+    /// `"error"`, `"warn"` and `"info"`, you can use this
+    /// function to add more of them. To actually make use of the
+    /// masks and remap [`Form`]s, see [`painter_with_mask`].
+    ///
+    /// [`form::from_id`]: from_id
+    /// [`Widget`]: crate::widget::Widget
+    /// [`Notifications`]: https://docs.rs/duat-utils/latest/duat_utils
+    /// [`Level`]: crate::context::Level
+    /// [hooks]: crate::hook
+    /// [`File`]: crate::file::File
+    /// [`Text`]: crate::text::Text
     pub fn enable_mask(mask: &'static str) {
         queue(move || {
             let mut inner = PALETTE.0.write().unwrap();
