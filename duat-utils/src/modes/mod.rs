@@ -9,28 +9,29 @@
 //! variety of things:
 //!
 //! ```rust
-//! use duat_core::prelude::*;
-//! use duat_utils::IncSearcher;
+//! use duat_core::{prelude::*, text::Searcher};
+//! use duat_utils::modes::IncSearcher;
 //!
 //! #[derive(Clone, Copy)]
 //! struct KeepMatching;
 //!
-//! impl<U: Ui> IncSearcher for KeepMatching {
+//! impl<U: Ui> IncSearcher<U> for KeepMatching {
 //!     fn search(
 //!         &mut self,
 //!         pa: &mut Pass,
-//!         handle: FileHandle<U>,
-//!         se: Searcher,
+//!         mut handle: Handle<File<U>, U, Searcher>,
 //!     ) {
-//!         let mut helper = EditHelper::inc_from_handle(pa, handle, se);
-//!
-//!         helper.edit_all(pa, |mut e| {
-//!             e.set_caret_on_start();
-//!             let [_, end] = e.range();
-//!             if e.search_inc_fwd(Some(end)).next().is_none() {
-//!                 e.destroy();
+//!         handle.edit_all(pa, |mut c| {
+//!             c.set_caret_on_start();
+//!             let [_, end] = c.range();
+//!             if c.search_inc_fwd(Some(end)).next().is_none() {
+//!                 c.destroy();
 //!             }
 //!         });
+//!     }
+//!
+//!     fn prompt(&self) -> Text {
+//!     	txt!("[Prompt]keep matching[Prompt.colon]:").build()
 //!     }
 //! }
 //! ```

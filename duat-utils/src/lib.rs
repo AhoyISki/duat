@@ -227,7 +227,7 @@ mod private_exports {
 
             let (mut appender, checker) = $appender_checker;
             let appender = move |pa: &Pass, builder: &mut Builder, handle: &FileHandle<_>| {
-                appender(builder, handle);
+                appender(pa, builder, handle);
                 builder.push(form::DEFAULT_ID);
             };
 

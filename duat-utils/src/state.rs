@@ -68,7 +68,8 @@ pub fn file_fmt(file: &File<impl Ui>) -> Text {
 /// simple trick is this:
 ///
 /// ```rust
-/// # use duat_core::state;
+/// # fn test() {
+/// use duat_utils::state;
 /// let mode = state::mode_name().map(|mode| {
 ///     let mode = match mode.split_once('<') {
 ///         Some((mode, _)) => mode,
@@ -76,6 +77,7 @@ pub fn file_fmt(file: &File<impl Ui>) -> Text {
 ///     };
 ///     // Further processing...
 /// });
+/// # }
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine

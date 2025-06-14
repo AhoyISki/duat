@@ -23,24 +23,24 @@ use duat_core::{prelude::*, text::Searcher};
 /// Here is how you can implement this trait yourself:
 ///
 /// ```rust
-/// use duat_core::prelude::*;
+/// use duat_core::{prelude::*, text::Searcher};
 /// use duat_utils::modes::IncSearcher;
 ///
 /// #[derive(Clone, Copy)]
 /// struct SearchAround;
 ///
 /// impl<U: Ui> IncSearcher<U> for SearchAround {
-///     fn search(&mut self, pa: &mut Pass, mut handle: EditHelper<File<U>, U, Searcher>) {
+///     fn search(&mut self, pa: &mut Pass, mut handle: Handle<File<U>, U, Searcher>) {
 ///        handle.edit_all(pa, |mut e| {
 ///            e.set_caret_on_end();
-///            let Some([_, p1]) = e.search_inc_fwd(None) else {
+///            let Some([_, p1]) = e.search_inc_fwd(None).next() else {
 ///                return;
 ///            };
 ///
 ///            e.set_caret_on_start();
-///            let Some([p0, _]) = e.search_inc_rev(None) else {
+///            let Some([p0, _]) = e.search_inc_rev(None).next() else {
 ///                return;
-///            ];
+///            };
 ///
 ///            e.move_to(p0);
 ///            e.set_anchor();
