@@ -14,6 +14,11 @@ use std::{fmt::Alignment, marker::PhantomData};
 
 use duat_core::{prelude::*, text::Builder, ui::Constraint};
 
+/// Shows a column of line numbers beside the [`File`]
+///
+/// This can be configured through [`LineNumbers::cfg`], in order to
+/// get, for example: relative numbering, different alignment,
+/// hidden/shown wrapped lines, etc.
 pub struct LineNumbers<U: Ui> {
     handle: FileHandle<U>,
     text: Text,

@@ -17,7 +17,7 @@ use self::reader::Readers;
 pub use self::reader::{RangeList, Reader, ReaderCfg};
 use crate::{
     cfg::PrintCfg,
-    context::{self, FileHandle, load_cache},
+    context::{self, FileHandle, Handle, load_cache},
     data::{Pass, RwData},
     form,
     hook::{self, FileWritten},
@@ -285,7 +285,8 @@ impl<U: Ui> Widget<U> for File<U> {
         FileCfg::new()
     }
 
-    fn update(pa: &mut Pass, widget: RwData<Self>, area: &U::Area) {
+    fn update(pa: &mut Pass, handle: Handle<Self, U>) {
+        let (widget, area) = (handle.widget(), handle.area());
         let (map, readers) = widget.read(pa, |file| {
             (BytesDataMap(widget.clone()), file.readers.clone())
         });

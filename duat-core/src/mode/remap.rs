@@ -12,8 +12,7 @@ use crate::{
     data::{Pass, RwData},
     mode,
     text::{Ghost, Tagger, txt},
-    ui::Ui,
-    ui::Widget,
+    ui::{Ui, Widget},
 };
 
 mod global {
@@ -32,7 +31,7 @@ mod global {
     };
 
     static REMAPPER: MainThreadOnly<Remapper> = MainThreadOnly::new(Remapper::new());
-    static SEND_KEY: LazyLock<MainThreadOnly<RefCell<fn(Pass, KeyEvent)>>> =
+    static SEND_KEY: LazyLock<MainThreadOnly<RefCell<fn(&mut Pass, KeyEvent)>>> =
         LazyLock::new(|| MainThreadOnly::new(RefCell::new(|_, _| {})));
 
     /// Maps a sequence of keys to another
@@ -337,14 +336,14 @@ mod global {
     }
 
     /// Sends a key to be remapped
-    pub(crate) fn send_key(pa: Pass<'_>, mut key: KeyEvent) {
+    pub(crate) fn send_key(pa: &mut Pass, mut key: KeyEvent) {
         // No need to send shift to, for example, Char('L').
         if let KeyCode::Char(_) = key.code {
             key.modifiers.remove(KeyMod::SHIFT);
         }
 
         if let Some(set_mode) = crate::mode::take_set_mode_fn() {
-            set_mode(unsafe { Pass::new() });
+            set_mode(pa);
         }
 
         // SAFETY: This function takes a Pass.
@@ -353,18 +352,12 @@ mod global {
     }
 
     /// Sets the key sending function
-    pub(in crate::mode) fn set_send_key<M: Mode<U>, U: Ui>() {
-        // SAFETY: This function is only ever called within a function that
-        // takes a Pass.
-        *unsafe { SEND_KEY.get() }.borrow_mut() = |_, key| {
-            // SAFETY: Since this function is consuming a Pass, I can create
-            // new ones.
-            send_key_fn::<M, U>(unsafe { Pass::new() }, key)
-        }
+    pub(in crate::mode) unsafe fn set_send_key<M: Mode<U>, U: Ui>() {
+        *unsafe { SEND_KEY.get() }.borrow_mut() = |pa, key| send_key_fn::<M, U>(pa, key)
     }
 
     /// The key sending function, to be used as a pointer
-    fn send_key_fn<M: Mode<U>, U: Ui>(pa: Pass<'_>, key: KeyEvent) {
+    fn send_key_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, key: KeyEvent) {
         // SAFETY: This function takes a Pass.
         unsafe { REMAPPER.get() }.send_key::<M, U>(pa, key);
     }
@@ -414,8 +407,8 @@ impl Remapper {
 
     /// Sends a key to be remapped or not
     #[allow(clippy::await_holding_lock)]
-    fn send_key<M: Mode<U>, U: Ui>(&self, pa: Pass<'_>, key: KeyEvent) {
-        fn send_key_inner<U: Ui>(remapper: &Remapper, mut pa: Pass<'_>, ty: TypeId, key: KeyEvent) {
+    fn send_key<M: Mode<U>, U: Ui>(&self, pa: &mut Pass, key: KeyEvent) {
+        fn send_key_inner<U: Ui>(remapper: &Remapper, pa: &mut Pass, ty: TypeId, key: KeyEvent) {
             // Lock acquired here
             let remaps_list = remapper.remaps.lock().unwrap();
 
@@ -427,7 +420,7 @@ impl Remapper {
 
             let (_, remaps) = &remaps_list[i];
 
-            let (cur_seq, is_alias) = remapper.cur_seq.write(&mut pa, |(cur_seq, is_alias)| {
+            let (cur_seq, is_alias) = remapper.cur_seq.write(pa, |(cur_seq, is_alias)| {
                 cur_seq.push(key);
                 (cur_seq.clone(), *is_alias)
             });
@@ -441,10 +434,10 @@ impl Remapper {
             if let Some(remap) = remaps.iter().find(|r| r.takes.starts_with(&cur_seq)) {
                 if remap.takes.len() == cur_seq.len() {
                     if remap.is_alias {
-                        pa = remove_alias_and::<U>(pa, |_, _, _| {});
+                        remove_alias_and::<U>(pa, |_, _, _| {});
                     }
 
-                    clear_cur_seq(&mut pa);
+                    clear_cur_seq(pa);
 
                     match &remap.gives {
                         Gives::Taggers(keys) => {
@@ -455,9 +448,7 @@ impl Remapper {
                         Gives::Mode(f) => f(),
                     }
                 } else if remap.is_alias {
-                    remapper
-                        .cur_seq
-                        .write(&mut pa, |(_, is_alias)| *is_alias = true);
+                    remapper.cur_seq.write(pa, |(_, is_alias)| *is_alias = true);
 
                     remove_alias_and::<U>(pa, |widget, area, main| {
                         widget.text_mut().insert_tag(
@@ -472,12 +463,12 @@ impl Remapper {
                 }
             } else if is_alias {
                 // Lock dropped here, before any .awaits
-                pa = remove_alias_and::<U>(pa, |_, _, _| {});
-                clear_cur_seq(&mut pa);
+                remove_alias_and::<U>(pa, |_, _, _| {});
+                clear_cur_seq(pa);
                 mode::send_keys_to(pa, cur_seq);
             } else {
                 // Lock dropped here, before any .awaits
-                clear_cur_seq(&mut pa);
+                clear_cur_seq(pa);
                 mode::send_keys_to(pa, cur_seq);
             }
         }
@@ -507,19 +498,13 @@ pub enum Gives {
     Mode(Box<dyn Fn()>),
 }
 
-fn remove_alias_and<U: Ui>(
-    mut pa: Pass,
-    f: impl FnOnce(&mut dyn Widget<U>, &U::Area, usize),
-) -> Pass {
-    let widget = context::cur_widget::<U>(&pa).unwrap();
+fn remove_alias_and<U: Ui>(pa: &mut Pass, f: impl FnOnce(&mut dyn Widget<U>, &U::Area, usize)) {
+    let widget = context::cur_widget::<U>(pa).unwrap();
     // SAFETY: Given that the Pass is immediately mutably borrowed, it
     // can't be used to act on CurWidget.current.
     unsafe {
         widget.mutate_data(|widget, area, _| {
-            widget.write(&mut pa, |widget| {
-                let cfg = widget.print_cfg();
-                widget.text_mut().remove_cursors(area, cfg);
-
+            widget.write(pa, |widget| {
                 if let Some(main) = widget.text().cursors().unwrap().get_main() {
                     let main = main.byte();
                     widget.text_mut().remove_tags(Tagger::for_alias(), main);
@@ -528,6 +513,4 @@ fn remove_alias_and<U: Ui>(
             });
         })
     }
-
-    pa
 }

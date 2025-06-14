@@ -47,11 +47,9 @@
 //! [`OnFileOpen`]: crate::hook::OnFileOpen
 //! [`OnWindowOpen`]: crate::hook::OnWindowOpen
 //! [`Constraint`]: crate::ui::Constraint
-use std::{self, cell::Cell, rc::Rc};
-
 use crate::{
     cfg::PrintCfg,
-    context::{FileHandle, FileParts},
+    context::{FileHandle, FileParts, Handle},
     data::{Pass, RwData},
     file::File,
     form,
@@ -320,13 +318,13 @@ pub trait Widget<U: Ui>: 'static {
     /// [`Mode`]: crate::mode::Mode
     /// [`update`]: Widget::update
     #[allow(unused)]
-    fn update(pa: &mut Pass, widget: RwData<Self>, area: &U::Area)
+    fn update(pa: &mut Pass, handle: Handle<Self, U>)
     where
         Self: Sized;
 
     /// Actions to do whenever this [`Widget`] is focused
     #[allow(unused)]
-    fn on_focus(pa: &mut Pass, widget: RwData<Self>, area: &U::Area)
+    fn on_focus(pa: &mut Pass, handle: Handle<Self, U>)
     where
         Self: Sized,
     {
@@ -334,7 +332,7 @@ pub trait Widget<U: Ui>: 'static {
 
     /// Actions to do whenever this [`Widget`] is unfocused
     #[allow(unused)]
-    fn on_unfocus(pa: &mut Pass, widget: RwData<Self>, area: &U::Area)
+    fn on_unfocus(pa: &mut Pass, handle: Handle<Self, U>)
     where
         Self: Sized,
     {
@@ -553,7 +551,6 @@ pub trait WidgetCfg<U: Ui>: Sized {
 pub(crate) struct Node<U: Ui> {
     widget: RwData<dyn Widget<U>>,
     area: U::Area,
-    busy_updating: Rc<Cell<bool>>,
     related_widgets: Related<U>,
     on_focus: fn(&Self, &mut Pass),
     on_unfocus: fn(&Self, &mut Pass),
@@ -584,7 +581,6 @@ impl<U: Ui> Node<U> {
         Self {
             widget,
             area,
-            busy_updating: Rc::new(Cell::new(false)),
             related_widgets,
             update: Self::update_fn::<W>,
             on_focus: Self::on_focus_fn::<W>,
@@ -648,29 +644,21 @@ impl<U: Ui> Node<U> {
 
     /// Wether this [`Widget`] needs to be updated
     pub(crate) fn needs_update(&self, pa: &Pass) -> bool {
-        !self.busy_updating.get()
-            && (self.area.has_changed()
-                || self.widget.has_changed()
-                || self.widget.read(pa, |w| w.needs_update()))
+        self.area.has_changed()
+            || self.widget.has_changed()
+            || self.widget.read(pa, |w| w.needs_update())
     }
 
     ////////// Eventful functions
 
     /// Updates and prints this [`Node`]
-    pub(crate) fn update_and_print(&self, mut pa: Pass) {
-        self.busy_updating.set(true);
+    pub(crate) fn update_and_print(&self, pa: &mut Pass) {
+        let text_was_empty = self.widget.acquire_mut(pa).text().is_empty_empty();
 
-        let text_was_empty = {
-            let mut widget = self.widget.acquire_mut(&mut pa);
-            let cfg = widget.print_cfg();
-            widget.text_mut().remove_cursors(&self.area, cfg);
-            widget.text().is_empty_empty()
-        };
-
-        (self.update)(self, &mut pa);
+        (self.update)(self, pa);
 
         {
-            let mut widget = self.widget.acquire_mut(&mut pa);
+            let mut widget = self.widget.acquire_mut(pa);
             let cfg = widget.print_cfg();
             widget.text_mut().add_cursors(&self.area, cfg);
 
@@ -682,9 +670,9 @@ impl<U: Ui> Node<U> {
             if !(text_was_empty && widget.text().is_empty_empty()) {
                 widget.print(&self.area);
             }
-        }
 
-        self.busy_updating.set(false);
+            widget.text_mut().remove_cursors(&self.area, cfg);
+        }
     }
 
     /// What to do when focusing
@@ -702,8 +690,8 @@ impl<U: Ui> Node<U> {
     fn update_fn<W: Widget<U>>(&self, pa: &mut Pass) {
         let widget = self.widget.try_downcast_same_read_state::<W>().unwrap();
         let area = self.area.clone();
-
-        Widget::update(pa, widget, &area);
+        let handle = Handle::from_parts(widget, area);
+        Widget::update(pa, handle);
     }
 
     /// Static dispatch inner update on_focus
@@ -717,9 +705,10 @@ impl<U: Ui> Node<U> {
             widget.text_mut().remove_cursors(&area, cfg);
         });
 
-        hook::trigger(pa, FocusedOn((widget.clone(), area.clone())));
+        let handle = Handle::from_parts(widget.clone(), area.clone());
+        hook::trigger(pa, FocusedOn(handle.clone()));
 
-        Widget::on_focus(pa, widget.clone(), &area);
+        Widget::on_focus(pa, handle);
 
         widget.write(pa, |widget| {
             let cfg = widget.print_cfg();
@@ -740,9 +729,10 @@ impl<U: Ui> Node<U> {
             widget.text_mut().remove_cursors(&area, cfg);
         });
 
-        hook::trigger(pa, UnfocusedFrom((widget.clone(), area.clone())));
+		let handle = Handle::from_parts(widget.clone(), area.clone());
+        hook::trigger(pa, UnfocusedFrom(handle.clone()));
 
-        Widget::on_unfocus(pa, widget.clone(), &area);
+        Widget::on_unfocus(pa, handle);
 
         // SAFETY: Since the last Pass was consumed, we can create a new
         // one.

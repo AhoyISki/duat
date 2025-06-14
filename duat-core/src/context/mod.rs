@@ -237,51 +237,6 @@ mod global {
     }
 }
 
-/// The current file
-#[doc(hidden)]
-#[derive(Clone)]
-pub struct CurFile<U: Ui>(RwData<Option<FileParts<U>>>);
-
-impl<U: Ui> CurFile<U> {
-    /// Returns a new [`CurFile`]
-    #[doc(hidden)]
-    pub fn new() -> Self {
-        Self(RwData::new(None))
-    }
-
-    /// Returns a new "fixed" [`FileHandle`]
-    fn fixed(&self, pa: &Pass) -> FileHandle<U> {
-        FileHandle {
-            fixed: self.0.read(pa, |parts| parts.clone()),
-            current: self.0.clone(),
-        }
-    }
-
-    /// Returns a new "dynamic" [`FileHandle`]
-    fn dynamic(&self) -> FileHandle<U> {
-        FileHandle { fixed: None, current: self.0.clone() }
-    }
-
-    pub(crate) fn _get_related_widget<W: 'static>(
-        &mut self,
-        pa: &Pass,
-    ) -> Option<(RwData<W>, U::Area)> {
-        self.0.read(pa, |parts| {
-            let (file, area, related) = parts.as_ref().unwrap();
-            if file.data_is::<W>() {
-                Some((file.try_downcast().unwrap(), area.clone()))
-            } else {
-                related.read(pa, |related| {
-                    related.iter().find_map(|node| {
-                        let (widget, area, _) = node.parts();
-                        widget.try_downcast().map(|data| (data, area.clone()))
-                    })
-                })
-            }
-        })
-    }
-}
-
 impl<U: Ui> Default for CurFile<U> {
     fn default() -> Self {
         Self::new()
@@ -302,7 +257,11 @@ impl<U: Ui> Default for CurFile<U> {
 /// gets updated, and then you modify it again after noticing that it
 /// has changed.
 ///
+/// The main difference between a [`FileHandle<U>`] and a
+/// [`Handle<File<U>, U>`] is that the
+///
 /// [`Area`]: crate::ui::RawArea
+/// [`Text`]: crate::text::Text
 #[derive(Clone)]
 pub struct FileHandle<U: Ui> {
     fixed: Option<FileParts<U>>,
@@ -359,24 +318,8 @@ impl<U: Ui> FileHandle<U> {
     ///
     /// [`Area`]: crate::ui::RawArea
     pub fn write<Ret>(&self, pa: &mut Pass, f: impl FnOnce(&mut File<U>, &U::Area) -> Ret) -> Ret {
-        let update = move |file: &RwData<File<U>>, area: &U::Area| {
-            file.write(pa, |file| {
-                let cfg = file.print_cfg();
-                file.text_mut().remove_cursors(area, cfg);
-
-                let ret = f(file, area);
-
-                if let Some(main) = file.cursors().get_main() {
-                    area.scroll_around_point(file.text(), main.caret(), cfg);
-                }
-                file.text_mut().add_cursors(area, cfg);
-
-                ret
-            })
-        };
-
         if let Some((file, area, _)) = self.fixed.as_ref() {
-            update(file, area)
+            f(&mut file.acquire_mut(pa), area)
         } else {
             // SAFETY: Since the update closure only uses a write method, the
             // Pass becomes unusable for other purposes, making it impossible
@@ -385,7 +328,7 @@ impl<U: Ui> FileHandle<U> {
             unsafe {
                 self.current.read_unsafe(|parts| {
                     let (file, area, _) = parts.as_ref().unwrap();
-                    update(file, area)
+                    f(&mut file.acquire_mut(pa), area)
                 })
             }
         }
@@ -434,15 +377,20 @@ impl<U: Ui> FileHandle<U> {
     /// [`Area`]: crate::ui::Area
     /// [`OnFileOpen`]: crate::hook::OnFileOpen
     /// [hook]: crate::hook
-    pub fn get_related_widget<W: 'static>(&self, pa: &Pass) -> Option<(RwData<W>, U::Area)> {
+    pub fn get_related_widget<W: Widget<U> + 'static>(&self, pa: &Pass) -> Option<Handle<W, U>> {
         let get_related = |(file, area, related): &FileParts<U>| {
             if file.data_is::<W>() {
-                Some((file.try_downcast().unwrap(), area.clone()))
+                Some(Handle {
+                    widget: file.try_downcast().unwrap(),
+                    area: area.clone(),
+                })
             } else {
                 related.read(pa, |related| {
                     related.iter().find_map(|node| {
                         let (widget, area, _) = node.parts();
-                        widget.try_downcast().map(|data| (data, area.clone()))
+                        widget
+                            .try_downcast()
+                            .map(|data| Handle { widget: data, area: area.clone() })
                     })
                 })
             }
@@ -564,9 +512,213 @@ impl<U: Ui> FileHandle<U> {
     }
 }
 
-/// The current [`Widget`]
+/// A handle to a [`Widget`] in Duat
+///
+/// This is commonly used as an argument in things like [`Mode`]s,
+/// some [`Widget`] functions, and other places where the [`Widget`]
+/// and [`U::Area`] should be bundled together.
+///
+/// [`U::Area`]: Ui::Area
+#[derive(Debug)]
+pub struct Handle<W: Widget<U>, U: Ui> {
+    widget: RwData<W>,
+    area: U::Area,
+}
+
+impl<W: Widget<U>, U: Ui> Handle<W, U> {
+    /// Returns a new instance of a [`Handle<W, U>`]
+    pub(crate) fn from_parts(widget: RwData<W>, area: U::Area) -> Self {
+        Self { widget, area }
+    }
+
+    /// Reads from the [`Widget`] and the [`Area`] using a [`Pass`]
+    ///
+    /// The consistent use of a [`Pass`] for the purposes of
+    /// reading/writing to the values of [`RwData`]s ensures that no
+    /// panic or invalid borrow happens at runtime, even while working
+    /// with untrusted code. More importantly, Duat uses these
+    /// guarantees in order to give the end user a ridiculous amount
+    /// of freedom in where they can do things, whilst keeping Rust's
+    /// number one rule and ensuring thread safety, even with a
+    /// relatively large amount of shareable state.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there is a mutable borrow of this struct somewhere,
+    /// which could happen if you use [`RwData::write_unsafe`] or
+    /// [`RwData::write_unsafe_as`] from some other place
+    ///
+    /// [`Area`]: crate::ui::RawArea
+    pub fn read<Ret>(&self, pa: &Pass, f: impl FnOnce(&W, &U::Area) -> Ret) -> Ret {
+        f(&self.widget.acquire(pa), &self.area)
+    }
+
+    /// Writes to the [`Widget`] and [`Area`] within using a [`Pass`]
+    ///
+    /// The consistent use of a [`Pass`] for the purposes of
+    /// reading/writing to the values of [`RwData`]s ensures that no
+    /// panic or invalid borrow happens at runtime, even while working
+    /// with untrusted code. More importantly, Duat uses these
+    /// guarantees in order to give the end user a ridiculous amount
+    /// of freedom in where they can do things, whilst keeping Rust's
+    /// number one rule and ensuring thread safety, even with a
+    /// relatively large amount of shareable state.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there is any type of borrow of this struct
+    /// somewhere, which could happen if you use
+    /// [`RwData::read_unsafe`] or [`RwData::write_unsafe`], for
+    /// example.
+    ///
+    /// [`Area`]: crate::ui::RawArea
+    pub fn write<Ret>(&self, pa: &mut Pass, f: impl FnOnce(&mut W, &U::Area) -> Ret) -> Ret {
+        f(&mut self.widget.acquire_mut(pa), &self.area)
+    }
+
+    /// Returns an [`EditHelper`] for this [`Handle`]
+    ///
+    /// The [`EditHelper`] is the struct that is used in order to
+    /// modify [`Widget`]s with their own [`Cursor`]s, in a very
+    /// declarative approach to editing, through [`Editor`]s for the
+    /// [`Cursor`]s within.
+    ///
+    /// [`Cursor`]: crate::mode::Cursor
+    /// [`Editor`]: crate::mode::Editor
+    pub fn edit_helper(&self, pa: &mut Pass) -> EditHelper<W, U, ()> {
+        EditHelper::new(pa, self)
+    }
+
+    ////////// Querying functions
+
+    /// This [`Handle`]'s [`Widget`]
+    pub fn widget(&self) -> &RwData<W> {
+        &self.widget
+    }
+
+    /// This [`Handle`]'s [`U::Area`]
+    ///
+    /// [`U::Area`]: Ui::Area
+    pub fn area(&self) -> &U::Area {
+        &self.area
+    }
+
+    /// Wether someone else called [`write`] or [`write_as`] since the
+    /// last [`read`] or [`write`]
+    ///
+    /// Do note that this *DOES NOT* mean that the value inside has
+    /// actually been changed, it just means a mutable reference was
+    /// acquired after the last call to [`has_changed`].
+    ///
+    /// Some types like [`Text`], and traits like [`Widget`] offer
+    /// [`needs_update`] methods, you should try to determine what
+    /// parts to look for changes.
+    ///
+    /// Generally though, you can use this method to gauge that.
+    ///
+    /// [`write`]: RwData::write
+    /// [`write_as`]: RwData::write_as
+    /// [`read`]: RwData::read
+    /// [`has_changed`]: RwData::has_changed
+    /// [`Text`]: crate::text::Text
+    /// [`Widget`]: crate::ui::Widget
+    /// [`needs_update`]: crate::ui::Widget::needs_update
+    pub fn has_changed(&self) -> bool {
+        self.widget.has_changed() || self.area.has_changed()
+    }
+
+    /// Wether the [`RwData`] within and another point to the same
+    /// value
+    pub fn ptr_eq<T: ?Sized>(&self, other: &RwData<T>) -> bool {
+        self.widget.ptr_eq(other)
+    }
+}
+
+impl<U: Ui> Handle<File<U>, U> {
+    /// Returns an [`EditHelper`] for this [`Handle`], with a
+    /// [`Searcher`]
+    ///
+    /// An [`EditHelper`] with a [`Searcher`] not only has its usual
+    /// capabilities, but is also able to act on requested regex
+    /// searches, like those from [`IncSearch`], in [`duat-utils`].
+    /// This means that a user can type up a [prompt] to search
+    /// for something, and an [`EditHelper`] can use the
+    /// [`Searcher`] to interpret how that search will be
+    /// utilized. Examples of this can be found in the
+    /// [`duat-utils`] crate, as well as the [`duat-kak`] crate,
+    /// which has some more advanced usage.
+    ///
+    /// [`Searcher`]: crate::text::Searcher
+    /// [`Cursor`]: crate::mode::Cursor
+    /// [`Editor`]: crate::mode::Editor
+    /// [`IncSearch`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
+    /// [`duat-utils`]: https://docs.rs/duat-utils/lastest/
+    /// [`duat-kak`]: https://docs.rs/duat-kak/lastest/
+    pub fn inc_edit_helper(
+        &self,
+        pa: &mut Pass,
+        searcher: Searcher,
+    ) -> EditHelper<File<U>, U, Searcher> {
+        EditHelper::new_inc(pa, self.clone(), searcher)
+    }
+}
+
+impl<W: Widget<U>, U: Ui> Clone for Handle<W, U> {
+    fn clone(&self) -> Self {
+        Self {
+            widget: self.widget.clone(),
+            area: self.area.clone(),
+        }
+    }
+}
+
+/// The current file
 #[doc(hidden)]
-pub struct CurWidget<U: Ui>(RwData<Option<Node<U>>>);
+#[derive(Clone)]
+pub struct CurFile<U: Ui>(RwData<Option<FileParts<U>>>);
+
+impl<U: Ui> CurFile<U> {
+    /// Returns a new [`CurFile`]
+    #[doc(hidden)]
+    pub fn new() -> Self {
+        Self(RwData::new(None))
+    }
+
+    /// Returns a new "fixed" [`FileHandle`]
+    fn fixed(&self, pa: &Pass) -> FileHandle<U> {
+        FileHandle {
+            fixed: self.0.read(pa, |parts| parts.clone()),
+            current: self.0.clone(),
+        }
+    }
+
+    /// Returns a new "dynamic" [`FileHandle`]
+    fn dynamic(&self) -> FileHandle<U> {
+        FileHandle { fixed: None, current: self.0.clone() }
+    }
+
+    pub(crate) fn _get_related_widget<W: 'static>(
+        &mut self,
+        pa: &Pass,
+    ) -> Option<(RwData<W>, U::Area)> {
+        self.0.read(pa, |parts| {
+            let (file, area, related) = parts.as_ref().unwrap();
+            if file.data_is::<W>() {
+                Some((file.try_downcast().unwrap(), area.clone()))
+            } else {
+                related.read(pa, |related| {
+                    related.iter().find_map(|node| {
+                        let (widget, area, _) = node.parts();
+                        widget.try_downcast().map(|data| (data, area.clone()))
+                    })
+                })
+            }
+        })
+    }
+}
+
+/// The current [`Widget`]
+pub(crate) struct CurWidget<U: Ui>(RwData<Option<Node<U>>>);
 
 impl<U: Ui> CurWidget<U> {
     /// Returns a new [`CurWidget`]

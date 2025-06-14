@@ -11,6 +11,28 @@ use crate::{
 static PROMPT_TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 static TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 
+/// A [`Mode`] for the [`PromptLine`]
+///
+/// This mode abstracts over what the inner [`PromptMode`] actually
+/// does, by letting them focus on just updating the [`Text`] and
+/// acting on user input, instead of having to worry about which keys
+/// do what, and when to update.
+///
+/// There are currently three [`PromptMode`]s:
+///
+/// - [`RunCommands`] is just your regular command runner, it can also
+///   detect if your [`Parameter`]s are correct and show that in real
+///   time.
+/// - [`PipeSelections`] pipes each [`Cursor`]'s selection in the
+///   current [`File`] to an external application, replacing each
+///   selection with the returned value.
+/// - [`IncSearch`] has a further inner abstraction, [`IncSearcher`],
+///   which lets you abstract over what the incremental search will
+///   actually do. I.e. will it search for the next ocurrence, split
+///   selections by matches, things of the sort.
+///
+/// [`Parameter`]: cmd::Parameter
+/// [`Cursor`]: mode::Cursor
 #[derive(Clone)]
 pub struct Prompt<M: PromptMode<U>, U: Ui>(M, PhantomData<U>);
 

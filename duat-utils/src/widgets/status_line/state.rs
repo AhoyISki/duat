@@ -39,6 +39,7 @@ enum Appender<U: Ui, _T: Clone = (), D: Display + Clone = String, W = ()> {
 /// [`StatusLine`]: super::StatusLine
 /// [`impl Display`]: std::fmt::Display
 /// [`File`]: crate::file::File
+#[doc(hidden)]
 pub struct State<U: Ui, _T: Clone = (), D: Display + Clone = String, W: 'static = ()> {
     appender: Appender<U, _T, D, W>,
     checker: Option<Box<dyn Fn() -> bool>>,
@@ -52,6 +53,10 @@ where
     D: Display + Clone + 'static,
     W: 'static,
 {
+    /// Returns the two building block functions for the
+    /// [`Statusline`]
+    ///
+    /// [`StatusLine`]: super::StatusLine
     pub fn fns(self) -> (BuilderFn<U>, Box<dyn Fn() -> bool>) {
         (
             match self.appender {

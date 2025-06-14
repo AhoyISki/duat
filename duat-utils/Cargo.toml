@@ -9,8 +9,8 @@ keywords = ["editor", "text", "application", "duat"]
 categories = ["command-line-utilities", "text-editors", "config"]
 edition = "2024"
 
-[lints.rust]
-missing_docs = "warn"
+#[lints.rust]
+#missing_docs = "warn"
 
 [dependencies]
 format-like = "0.3.0"

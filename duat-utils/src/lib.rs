@@ -104,6 +104,16 @@ pub mod state;
 pub mod widgets;
 
 pub mod hooks {
+    //! Additional hooks for `duat-utils` specific things
+    //!
+    //! Right now, these are the two [`hook`]s available for use:
+    //!
+    //!   - [`SearchUpdated`] for when an [`IncSearch`] is updated.
+    //!   - [`SearchPerformed`] for when an [`IncSearch`] is finished.
+    //!
+    //! More may come in the future
+    //!
+    //! [`hook`]: duat_core::hook
     use duat_core::hook::Hookable;
 
     /// [`Hookable`]: Triggers when a [search] is updated

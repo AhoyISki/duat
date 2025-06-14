@@ -15,7 +15,7 @@ use lender::{Lender, Lending};
 pub use self::cursors::{Cursor, Cursors, VPoint};
 use crate::{
     cfg::PrintCfg,
-    context::FileHandle,
+    context::{FileHandle, Handle},
     data::{Pass, RwData},
     file::{File, Reader},
     text::{Bytes, Change, Lines, Point, RegexPattern, Searcher, Strs, Text, TextRange},
@@ -137,16 +137,15 @@ mod cursors;
 /// [editing]: Editor
 /// [moving]: Editor
 pub struct EditHelper<W: Widget<U>, U: Ui, S> {
-    widget: RwData<W>,
-    area: U::Area,
-    inc_searcher: S,
+    handle: Handle<W, U>,
+    searcher: S,
 }
 
 impl<W: Widget<U>, U: Ui> EditHelper<W, U, ()> {
     /// Returns an [`EditHelper`]
-    pub fn new(pa: &mut Pass, widget: RwData<W>, area: U::Area) -> Self {
-        widget.write(pa, |wid| wid.text_mut().enable_cursors());
-        EditHelper { widget, area, inc_searcher: () }
+    pub fn new(pa: &mut Pass, handle: &Handle<W, U>) -> Self {
+        handle.write(pa, |wid, _| wid.text_mut().enable_cursors());
+        EditHelper { handle: handle.clone(), searcher: () }
     }
 }
 
@@ -154,32 +153,25 @@ impl<U: Ui> EditHelper<File<U>, U, ()> {
     /// Returns an [`EditHelper`] for a given [`FileHandle`]
     pub fn from_handle(pa: &mut Pass, handle: FileHandle<U>) -> Self {
         handle.write(pa, |wid, _| wid.text_mut().enable_cursors());
-        let (widget, area) = handle.get_related_widget(pa).unwrap();
-        Self { widget, area, inc_searcher: () }
+        let handle = handle.get_related_widget(pa).unwrap();
+        Self { handle, searcher: () }
     }
 }
 
 impl<U: Ui> EditHelper<File<U>, U, Searcher> {
     /// Returns an [`EditHelper`] with incremental search
-    pub fn new_inc(
-        pa: &mut Pass,
-        widget: RwData<File<U>>,
-        area: U::Area,
-        searcher: Searcher,
-    ) -> Self {
-        widget.write(pa, |wid| wid.text_mut().enable_cursors());
-
-        EditHelper { widget, area, inc_searcher: searcher }
+    pub fn new_inc(pa: &mut Pass, handle: Handle<File<U>, U>, searcher: Searcher) -> Self {
+        handle.write(pa, |wid, _| wid.text_mut().enable_cursors());
+        EditHelper { handle, searcher }
     }
 
     /// Returns an [`EditHelper`] with incremental search for a given
     /// [`FileHandle`]
     pub fn inc_from_handle(pa: &mut Pass, handle: FileHandle<U>, searcher: Searcher) -> Self {
         handle.write(pa, |wid, _| wid.text_mut().enable_cursors());
+        let handle = handle.get_related_widget(pa).unwrap();
 
-        let (widget, area) = handle.get_related_widget(pa).unwrap();
-
-        EditHelper { widget, area, inc_searcher: searcher }
+        EditHelper { handle, searcher }
     }
 }
 
@@ -208,8 +200,8 @@ impl<W: Widget<U>, U: Ui, S> EditHelper<W, U, S> {
         edit: impl FnOnce(Editor<W, U::Area, S>) -> Ret,
     ) -> Ret {
         fn get_parts<'a, W: Widget<U>, U: Ui>(
-            widget: &'a RwData<W>,
             pa: &mut Pass,
+            widget: &'a RwData<W>,
             n: usize,
         ) -> (Cursor, bool, RefMut<'a, W>) {
             let mut widget = widget.acquire_mut(pa);
@@ -222,16 +214,16 @@ impl<W: Widget<U>, U: Ui, S> EditHelper<W, U, S> {
             (cursor, was_main, widget)
         }
 
-        let (cursor, was_main, mut widget) = get_parts(&self.widget, pa, n);
+        let (cursor, was_main, mut widget) = get_parts(pa, self.handle.widget(), n);
 
         edit(Editor::new(
             cursor,
             n,
             was_main,
             &mut *widget,
-            &self.area,
+            &self.handle.area(),
             None,
-            &mut self.inc_searcher,
+            &mut self.searcher,
         ))
     }
 
@@ -338,24 +330,24 @@ impl<W: Widget<U>, U: Ui, S> EditHelper<W, U, S> {
     }
 
     fn get_iter(&mut self, pa: &mut Pass) -> EditIter<'_, W, U::Area, S> {
-        let mut widget = self.widget.acquire_mut(pa);
+        let mut widget = self.handle.widget().acquire_mut(pa);
         let cursors = widget.text_mut().cursors_mut().unwrap();
         cursors.populate();
         EditIter {
             next_i: Rc::new(Cell::new(0)),
             widget,
-            area: &self.area,
-            inc_searcher: &mut self.inc_searcher,
+            area: &self.handle.area(),
+            inc_searcher: &mut self.searcher,
         }
     }
 
-    ////////// Getter functions
+    ////////// RwData derived functions
 
     /// Reads the [`W`] within
     ///
     /// [`W`]: Widget
     pub fn read<Ret>(&self, pa: &Pass, read: impl FnOnce(&W) -> Ret) -> Ret {
-        let widget = self.widget.acquire(pa);
+        let widget = self.widget().acquire(pa);
         read(&*widget)
     }
 
@@ -363,25 +355,25 @@ impl<W: Widget<U>, U: Ui, S> EditHelper<W, U, S> {
     ///
     /// [`W`]: Widget
     pub fn write<Ret>(&self, pa: &mut Pass, write: impl FnOnce(&mut W) -> Ret) -> Ret {
-        let mut widget = self.widget.acquire_mut(pa);
+        let mut widget = self.widget().acquire_mut(pa);
         write(&mut *widget)
     }
 
     /// Reads the [`Text`] of the [`Widget`]
     pub fn read_text<Ret>(&self, pa: &Pass, read: impl FnOnce(&Text) -> Ret) -> Ret {
-        let widget = self.widget.acquire(pa);
+        let widget = self.widget().acquire(pa);
         read(widget.text())
     }
 
     /// Writes to the [`Text`] of the [`Widget`]
     pub fn write_text<Ret>(&self, pa: &mut Pass, write: impl FnOnce(&mut Text) -> Ret) -> Ret {
-        let mut widget = self.widget.acquire_mut(pa);
+        let mut widget = self.widget().acquire_mut(pa);
         write(widget.text_mut())
     }
 
     /// Reads the [`Cursors`] of the [`Widget`]
     pub fn read_cursors<Ret>(&self, pa: &Pass, read: impl FnOnce(&Cursors) -> Ret) -> Ret {
-        let widget = self.widget.acquire(pa);
+        let widget = self.widget().acquire(pa);
         read(widget.text().cursors().unwrap())
     }
 
@@ -391,44 +383,58 @@ impl<W: Widget<U>, U: Ui, S> EditHelper<W, U, S> {
         pa: &mut Pass,
         write: impl FnOnce(&mut Cursors) -> Ret,
     ) -> Ret {
-        let mut widget = self.widget.acquire_mut(pa);
+        let mut widget = self.widget().acquire_mut(pa);
         write(widget.text_mut().cursors_mut().unwrap())
     }
 
     /// Clones the [`Text`] within
     pub fn clone_text(&self, pa: &Pass) -> Text {
-        self.widget.clone_text(pa)
+        self.widget().clone_text(pa)
     }
 
     /// Replaces the [`Text`] within with a [`Default`] version
     pub fn take_text(&self, pa: &mut Pass) -> Text {
-        self.widget.take_text(pa)
+        self.widget().take_text(pa)
     }
 
     /// Replaces the [`Text`] of the [`Widget`], returning the
     /// previous value
     pub fn replace_text(&self, pa: &mut Pass, text: Text) -> Text {
-        self.widget.replace_text(pa, text)
+        self.widget().replace_text(pa, text)
     }
 
     /// Undoes the last moment in the history, if there is one
     pub fn undo(&mut self, pa: &mut Pass) {
-        self.widget.write(pa, |wid| wid.text_mut().undo());
+        self.widget().write(pa, |wid| wid.text_mut().undo());
     }
 
     /// Redoes the last moment in the history, if there is one
     pub fn redo(&mut self, pa: &mut Pass) {
-        self.widget.write(pa, |wid| wid.text_mut().redo());
+        self.widget().write(pa, |wid| wid.text_mut().redo());
     }
 
     /// Finishes the current moment and adds a new one to the history
     pub fn new_moment(&mut self, pa: &mut Pass) {
-        self.widget.write(pa, |wid| wid.text_mut().new_moment());
+        self.widget().write(pa, |wid| wid.text_mut().new_moment());
+    }
+
+    ////////// Querying functions
+
+    /// This [`EditHelper`]'s [`Widget`]
+    pub fn widget(&self) -> &RwData<W> {
+        self.handle.widget()
+    }
+
+    /// This [`EditHelper`]'s [`U::Area`]
+    ///
+    /// [`U::Area`]: ui::Area
+    pub fn area(&self) -> &U::Area {
+        self.handle.area()
     }
 
     /// The [`PrintCfg`] in use
     pub fn cfg(&self, pa: &Pass) -> PrintCfg {
-        self.widget.read(pa, |wid| wid.print_cfg())
+        self.widget().read(pa, |wid| wid.print_cfg())
     }
 }
 

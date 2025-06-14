@@ -29,10 +29,10 @@ pub use self::{
     switch::*,
 };
 use crate::{
+    context::Handle,
     data::{Pass, RwData},
     file::File,
-    ui::Ui,
-    ui::Widget,
+    ui::{Ui, Widget},
 };
 
 mod helper;
@@ -50,29 +50,28 @@ mod switch {
 
     use super::{Cursors, Mode};
     use crate::{
-        context::{self},
+        context::{self, Handle},
         data::{Pass, RwData},
         duat_name,
         file::File,
         file_entry,
         hook::{self, KeysSent, KeysSentTo, ModeSetTo, ModeSwitched},
         main_thread_only::MainThreadOnly,
-        ui::{DuatEvent, RawArea, Ui},
-        ui::{Node, Widget},
+        ui::{DuatEvent, Node, RawArea, Ui, Widget},
         widget_entry,
     };
 
     static SEND_KEYS: MainThreadOnly<RefCell<Option<KeyFn>>> =
         MainThreadOnly::new(RefCell::new(None));
-    static RESET_MODE: LazyLock<MainThreadOnly<RefCell<Box<dyn Fn(Pass) -> bool>>>> =
+    static RESET_MODE: LazyLock<MainThreadOnly<RefCell<Box<dyn FnMut(&mut Pass) -> bool>>>> =
         LazyLock::new(|| MainThreadOnly::new(RefCell::new(Box::new(|_| true))));
     static SET_MODE: MainThreadOnly<RefCell<Option<ModeFn>>> =
         MainThreadOnly::new(RefCell::new(None));
     static MODE: LazyLock<MainThreadOnly<RefCell<Box<dyn Any>>>> =
         LazyLock::new(|| MainThreadOnly::new(RefCell::new(Box::new("no mode") as Box<dyn Any>)));
 
-    type KeyFn = fn(Pass, IntoIter<KeyEvent>) -> (IntoIter<KeyEvent>, Option<ModeFn>);
-    type ModeFn = Box<dyn FnOnce(Pass) -> bool>;
+    type KeyFn = fn(&mut Pass, IntoIter<KeyEvent>) -> (IntoIter<KeyEvent>, Option<ModeFn>);
+    type ModeFn = Box<dyn FnOnce(&mut Pass) -> bool>;
 
     /// Whether or not the [`Mode`] has changed
     ///
@@ -91,21 +90,19 @@ mod switch {
     ///
     /// [`mode::reset`]: reset
     pub fn set_default<M: Mode<U>, U: Ui>(mode: M) {
-        // SAFETY: Since the functions here consumes a Pass, one is one
-        // being used elsewhere, so I am safe to create more.
         context::assert_is_on_main_thread();
-        *unsafe { RESET_MODE.get() }.borrow_mut() = Box::new(move |_| {
+        *unsafe { RESET_MODE.get() }.borrow_mut() = Box::new(move |pa| {
             let mode = mode.clone();
-            set_mode_fn::<M, U>(unsafe { Pass::new() }, mode)
+            set_mode_fn::<M, U>(pa, mode)
         });
         let set_mode = unsafe { SET_MODE.get() };
         let prev = set_mode.take();
-        *set_mode.borrow_mut() = Some(Box::new(move |_| unsafe {
+        *set_mode.borrow_mut() = Some(Box::new(move |pa| unsafe {
             if let Some(f) = prev {
-                f(Pass::new());
-                RESET_MODE.get().borrow_mut()(Pass::new())
+                f(pa);
+                RESET_MODE.get().borrow_mut()(pa)
             } else {
-                RESET_MODE.get().borrow_mut()(Pass::new())
+                RESET_MODE.get().borrow_mut()(pa)
             }
         }));
     }
@@ -117,14 +114,12 @@ mod switch {
         context::assert_is_on_main_thread();
         let set_mode = unsafe { SET_MODE.get() };
         let prev = set_mode.take();
-        *set_mode.borrow_mut() = Some(Box::new(move |_| {
+        *set_mode.borrow_mut() = Some(Box::new(move |pa| {
             // SAFETY: Since this function consumes a Pass, one is one being
             // used elsewhere, so I am safe to create more.
             if let Some(prev) = prev {
-                let pa = unsafe { Pass::new() };
                 prev(pa);
             }
-            let pa = unsafe { Pass::new() };
             set_mode_fn(pa, mode)
         }));
     }
@@ -156,14 +151,9 @@ mod switch {
                 let node = node.clone();
                 // SAFETY: There is a Pass argument.
                 let set_mode = unsafe { SET_MODE.get() };
-                *set_mode.borrow_mut() = Some(Box::new(move |_| {
-                    // SAFETY: Since this function consumes a Pass, one is one being
-                    // used elsewhere, so I am safe to create more.
-                    unsafe {
-                        switch_widget(node);
-                        let pa = Pass::new();
-                        RESET_MODE.get().borrow_mut()(pa)
-                    }
+                *set_mode.borrow_mut() = Some(Box::new(move |pa| unsafe {
+                    switch_widget(pa, node);
+                    RESET_MODE.get().borrow_mut()(pa)
                 }))
             }
             Err(err) => context::error!("{err}"),
@@ -171,25 +161,17 @@ mod switch {
     }
 
     /// Switches to a certain widget
-    ///
-    /// # SAFETY
-    ///
-    /// This function creates its own [`Pass`]es, so you must ensure
-    /// that whatever is calling it is consuming a [`Pass`].
-    pub(super) unsafe fn switch_widget<U: Ui>(node: Node<U>) {
-        let mut pa = unsafe { Pass::new() };
-
+    pub(super) fn switch_widget<U: Ui>(pa: &mut Pass, node: Node<U>) {
         if let Ok(widget) = context::cur_widget::<U>(&pa) {
-            widget.node(&pa).on_unfocus(&mut pa);
+            widget.node(pa).on_unfocus(pa);
         }
 
-        context::set_cur(&mut pa, node.as_file(), node.clone());
-
-        node.on_focus(&mut pa);
+        context::set_cur(pa, node.as_file(), node.clone());
+        node.on_focus(pa);
     }
 
     /// Sends the [`KeyEvent`] to the active [`Mode`]
-    pub(super) fn send_keys_to(_: Pass<'_>, keys: Vec<KeyEvent>) {
+    pub(super) fn send_keys_to(pa: &mut Pass, keys: Vec<KeyEvent>) {
         let mut keys = Some(keys.into_iter());
         // SAFETY: There is a Pass argument.
         let send_keys = unsafe { SEND_KEYS.get() };
@@ -198,9 +180,8 @@ mod switch {
         while keys.as_ref().unwrap().len() > 0 {
             // SAFETY: Since this function is taking a Pass, but that one is
             // reliably not being used, I can safely create my own Passes.
-            let pa = unsafe { Pass::new() };
             if let (remainder, Some(set_mode)) = sk(pa, keys.take().unwrap())
-                && set_mode(unsafe { Pass::new() })
+                && set_mode(pa)
             {
                 keys = Some(remainder);
                 sk = send_keys.take().unwrap();
@@ -222,16 +203,15 @@ mod switch {
     /// that whatever is calling it is consuming a [`Pass`].
     #[allow(clippy::await_holding_refcell_ref)]
     unsafe fn send_keys_fn<M: Mode<U>, U: Ui>(
+        pa: &mut Pass,
         mut keys: IntoIter<KeyEvent>,
     ) -> (IntoIter<KeyEvent>, Option<ModeFn>) {
-        let mut pa = unsafe { Pass::new() };
-
         let Ok(node) = context::cur_widget::<U>(&pa).map(|cw| cw.node(&pa)) else {
             unreachable!("Early, aren't we?");
         };
 
-        let (widget, area, _) = node.parts();
-        let widget = widget.try_downcast::<M::Widget>().unwrap();
+        let (widget, a, _) = node.parts();
+        let w = widget.try_downcast::<M::Widget>().unwrap();
 
         let mut sent_keys = Vec::new();
 
@@ -240,12 +220,7 @@ mod switch {
             let mut mode = unsafe { MODE.get() }.borrow_mut();
             let mode: &mut M = mode.downcast_mut().unwrap();
 
-            // The Cursors will be readded after Node::update_and_print
-            widget.write(&mut pa, |widget| {
-                let cfg = widget.print_cfg();
-                widget.text_mut().remove_cursors(area, cfg);
-            });
-
+            let handle = Handle::from_parts(w.clone(), a.clone());
             loop {
                 if let Some(mode_fn) = take_set_mode_fn() {
                     break Some(mode_fn);
@@ -253,34 +228,31 @@ mod switch {
                 let Some(key) = keys.next() else { break None };
                 sent_keys.push(key);
 
-                // SAFETY: The other Pass will no longer be used within this block, so
-                // its ok for me to create new Passes
-                let pa = unsafe { Pass::new() };
-                mode.send_key(pa, key, widget.clone(), area.clone());
+                mode.send_key(pa, key, handle.clone());
             }
         };
 
         hook::trigger(
-            &mut pa,
-            KeysSentTo((sent_keys.clone(), widget.clone(), area.clone())),
+            pa,
+            KeysSentTo((sent_keys.clone(), Handle::from_parts(w.clone(), a.clone()))),
         );
-        hook::trigger(&mut pa, KeysSent(sent_keys));
+        hook::trigger(pa, KeysSent(sent_keys));
 
         (keys, mode_fn)
     }
 
     /// Function that sets [`Mode`]s, returns `true` if successful
-    fn set_mode_fn<M: Mode<U>, U: Ui>(mut pa: Pass<'_>, mode: M) -> bool {
+    fn set_mode_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, mode: M) -> bool {
         // If we are on the correct widget, no switch is needed.
-        if context::cur_widget::<U>(&pa).unwrap().type_id() != TypeId::of::<M::Widget>() {
+        if context::cur_widget::<U>(pa).unwrap().type_id() != TypeId::of::<M::Widget>() {
             let node = {
                 let windows = context::windows().borrow();
                 let w = context::cur_window();
                 if TypeId::of::<M::Widget>() == TypeId::of::<File<U>>() {
                     let name = context::fixed_file::<U>(&pa)
                         .unwrap()
-                        .read(&pa, |file, _| file.name());
-                    file_entry(&pa, &windows, &name).map(|(.., node)| node.clone())
+                        .read(pa, |file, _| file.name());
+                    file_entry(pa, &windows, &name).map(|(.., node)| node.clone())
                 } else {
                     widget_entry::<M::Widget, U>(&pa, &windows, w).map(|(.., node)| node.clone())
                 }
@@ -290,7 +262,7 @@ mod switch {
                 // SAFETY: Since node does not _actively_ borrow the Pass (the borrow is just
                 // used to create the node, and the is dropped), pa is not borrowed here, so calling
                 // this is safe.
-                Ok(node) => unsafe { switch_widget(node) },
+                Ok(node) => unsafe { switch_widget(pa, node) },
                 Err(err) => {
                     context::error!("{err}");
                     return false;
@@ -308,18 +280,17 @@ mod switch {
                 .unwrap()
         };
 
-        let mst = ModeSetTo((Some(mode), w.clone(), area.clone()));
-        let mut mode = hook::trigger(&mut pa, mst).0.0.take().unwrap();
+        let mst = ModeSetTo((Some(mode), Handle::from_parts(w.clone(), area.clone())));
+        let mut mode = hook::trigger(pa, mst).0.0.take().unwrap();
 
-        w.write(&mut pa, |widget| {
+        w.write(pa, |widget| {
             let cfg = widget.print_cfg();
             widget.text_mut().remove_cursors(&area, cfg);
         });
 
-        // SAFETY: The Pass is not in use at the moment.
-        mode.on_switch(unsafe { Pass::new() }, w.clone(), area.clone());
+        mode.on_switch(pa, Handle::from_parts(w.clone(), area.clone()));
 
-        w.write(&mut pa, |widget| {
+        w.write(pa, |widget| {
             let cfg = widget.print_cfg();
             if let Some(main) = widget.text().cursors().and_then(Cursors::get_main) {
                 area.scroll_around_point(widget.text(), main.caret(), cfg);
@@ -327,24 +298,25 @@ mod switch {
             widget.text_mut().add_cursors(&area, cfg);
         });
 
-        crate::mode::set_send_key::<M, U>();
+		// SAFETY: There is a Pass argument.
+        unsafe {
+            crate::mode::set_send_key::<M, U>();
+        }
 
-        let (old, new) = context::raw_mode_name().write(&mut pa, |old_mode| {
+        let (old, new) = context::raw_mode_name().write(pa, |old_mode| {
             let new_mode = duat_name::<M>();
             let ret = (*old_mode, new_mode);
             *old_mode = new_mode;
             ret
         });
 
-        hook::trigger(&mut pa, ModeSwitched((old, new)));
+        hook::trigger(pa, ModeSwitched((old, new)));
 
         unsafe {
             MODE.get().replace(Box::new(mode));
-            SEND_KEYS.get().replace(Some(|_, keys| {
-                // SAFETY: This function is consuming a Pass, so it is valid to
-                // create new Passes.
-                send_keys_fn::<M, U>(keys)
-            }));
+            SEND_KEYS
+                .get()
+                .replace(Some(|pa, keys| send_keys_fn::<M, U>(pa, keys)));
         }
 
         true
@@ -635,7 +607,7 @@ pub trait Mode<U: Ui>: Sized + Clone + 'static {
     type Widget: Widget<U>;
 
     /// Sends a [`KeyEvent`] to this [`Mode`]
-    fn send_key(&mut self, pa: Pass, key: KeyEvent, widget: RwData<Self::Widget>, area: U::Area);
+    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>);
 
     /// A function to trigger when switching to this [`Mode`]
     ///
@@ -646,7 +618,7 @@ pub trait Mode<U: Ui>: Sized + Clone + 'static {
     /// [`Tag`]: crate::text::Tag
     /// [`Text`]: crate::text::Text
     #[allow(unused_variables)]
-    fn on_switch(&mut self, pa: Pass, widget: RwData<Self::Widget>, area: U::Area) {}
+    fn on_switch(&mut self, pa: &mut Pass, handle: Handle<Self::Widget, U>) {}
 
     /// DO NOT IMPLEMENT THIS FUNCTION, IT IS MEANT FOR `&str` ONLY
     #[doc(hidden)]
@@ -661,7 +633,7 @@ impl<U: Ui> Mode<U> for &'static str {
     // Doesn't matter
     type Widget = File<U>;
 
-    fn send_key(&mut self, _: Pass, _: KeyEvent, _: RwData<Self::Widget>, _: <U as Ui>::Area) {
+    fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget, U>) {
         unreachable!("&strs are only meant to be sent as AsGives, turning into keys");
     }
 

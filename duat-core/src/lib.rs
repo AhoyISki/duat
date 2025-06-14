@@ -428,7 +428,7 @@ pub mod prelude {
     pub use crate::{
         cfg::PrintCfg,
         cmd,
-        context::{self, FileHandle},
+        context::{self, FileHandle, Handle},
         data::{Pass, RwData},
         file::File,
         form::{self, Form},
@@ -842,12 +842,12 @@ fn widget_entry<'a, W: Widget<U>, U: Ui>(
 ) -> Result<(usize, usize, &'a Node<U>), Text> {
     let handle = context::fixed_file::<U>(pa).unwrap();
 
-    if let Some((widget, _)) = handle.get_related_widget::<W>(pa) {
+    if let Some(handle) = handle.get_related_widget::<W>(pa) {
         windows
             .iter()
             .enumerate()
             .flat_map(window_index_widget)
-            .find(|(.., n)| n.ptr_eq(&widget))
+            .find(|(.., n)| n.ptr_eq(handle.widget()))
     } else {
         iter_around(windows, w, 0).find(|(.., node)| node.data_is::<W>())
     }

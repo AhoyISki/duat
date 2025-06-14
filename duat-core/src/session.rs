@@ -199,21 +199,20 @@ impl<U: Ui> Session<U> {
         form::set_sender(Sender::new(sender()));
 
         // SAFETY: No Passes exists at this point in time.
-        hook::trigger(&mut unsafe { Pass::new() }, ConfigLoaded(()));
+        let mut pa = unsafe { Pass::new() };
+
+        hook::trigger(&mut pa, ConfigLoaded(()));
 
         let Some(mode_fn) = mode::take_set_mode_fn() else {
             unreachable!("Somebody forgot to set a default mode, I'm looking at you `duat`!");
         };
-
-        // SAFETY: No Passes exists at this point in time.
-        mode_fn(unsafe { Pass::new() });
+        mode_fn(&mut pa);
 
         {
             let win = self.cur_window.load(Ordering::Relaxed);
             let windows = context::windows::<U>().borrow();
             for node in windows[win].nodes() {
-                // SAFETY: No Passes exist at this point in time.
-                node.update_and_print(unsafe { Pass::new() });
+                node.update_and_print(&mut pa);
             }
         }
 
@@ -224,16 +223,12 @@ impl<U: Ui> Session<U> {
 
         loop {
             if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(50)) {
-                // SAFETY: The safeness of a Pass is dependant on there being only
-                // one at any given time, that will be asured in here, and in any
-                // other block which it is only called once.
-                let mut pa = unsafe { Pass::new() };
                 match event {
                     DuatEvent::Tagger(key) => {
-                        mode::send_key(pa, key);
+                        mode::send_key(&mut pa, key);
                     }
                     DuatEvent::QueuedFunction(f) => {
-                        f(pa);
+                        f(&mut pa);
                     }
                     DuatEvent::Resize | DuatEvent::FormChange => {
                         reprint_screen = true;
@@ -278,7 +273,7 @@ impl<U: Ui> Session<U> {
                 let win = self.cur_window.load(Ordering::SeqCst);
                 reprint_screen = false;
                 for node in windows[win].nodes() {
-                    node.update_and_print(unsafe { Pass::new() });
+                    node.update_and_print(&mut pa);
                 }
 
                 continue;
@@ -287,10 +282,8 @@ impl<U: Ui> Session<U> {
             let windows = context::windows::<U>().borrow();
             let win = self.cur_window.load(Ordering::SeqCst);
             for node in windows[win].nodes() {
-                // SAFETY: No other Passs exist at this point.
-                let pa = unsafe { Pass::new() };
                 if node.needs_update(&pa) {
-                    node.update_and_print(pa);
+                    node.update_and_print(&mut pa);
                 }
             }
         }

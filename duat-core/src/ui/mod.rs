@@ -694,7 +694,7 @@ pub enum DuatEvent {
     /// A [`KeyEvent`] was typed
     Tagger(KeyEvent),
     /// A function was queued
-    QueuedFunction(Box<dyn FnOnce(Pass) + Send>),
+    QueuedFunction(Box<dyn FnOnce(&mut Pass) + Send>),
     /// The application resized
     Resize,
     /// A [`Form`] was altered, which one it is, doesn't matter

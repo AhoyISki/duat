@@ -10,7 +10,7 @@
 //! # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
 //! # impl<U: Ui> Widget<U> for LineNumbers<U> {
 //! #     type Cfg = LineNumbersOptions<U>;
-//! #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+//! #     fn update(_: Pass, _: Handle<Self, U>) {}
 //! #     fn needs_update(&self) -> bool { todo!(); }
 //! #     fn cfg() -> Self::Cfg { todo!() }
 //! #     fn text(&self) -> &Text { todo!(); }
@@ -56,7 +56,7 @@
 //! - [`FileWritten`] triggers after the [`File`] is written.
 //! - [`SearchPerformed`] (from duat-utils) triggers after a search is
 //!   performed.
-//! - [`SearchUpdated`]  (from duat-utils)triggers after a search
+//! - [`SearchUpdated`] (from duat-utils) triggers after a search
 //!   updates.
 //!
 //! # Basic makeout
@@ -154,11 +154,11 @@ use std::{any::TypeId, cell::RefCell, collections::HashMap, rc::Rc};
 
 pub use self::global::*;
 use crate::{
-    data::{Pass, RwData},
+    context::Handle,
+    data::Pass,
     form::{Form, FormId},
     mode::{KeyEvent, Mode},
-    ui::{FileBuilder, Ui, WindowBuilder},
-    ui::Widget,
+    ui::{FileBuilder, Ui, Widget, WindowBuilder},
 };
 
 /// Hook functions
@@ -340,18 +340,16 @@ impl<U: Ui> Hookable for OnWindowOpen<U> {
 ///
 /// # Arguments
 ///
-/// - The widget itself.
-/// - Its [area].
+/// - A [`Handle`] for the [`Widget`]
 ///
 /// [`Widget`]: crate::ui::Widget
-/// [area]: crate::ui::Area
-pub struct FocusedOn<W: Widget<U>, U: Ui>(pub(crate) (RwData<W>, U::Area));
+pub struct FocusedOn<W: Widget<U>, U: Ui>(pub(crate) Handle<W, U>);
 
 impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
-    type Input<'h> = (&'h RwData<W>, &'h U::Area);
+    type Input<'h> = &'h Handle<W, U>;
 
     fn get_input(&mut self) -> Self::Input<'_> {
-        (&self.0.0, &self.0.1)
+        &self.0
     }
 }
 
@@ -359,18 +357,16 @@ impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
 ///
 /// # Arguments
 ///
-/// - The widget itself.
-/// - Its [area].
+/// - A [`Handle`] for the [`Widget`]
 ///
 /// [`Widget`]: crate::ui::Widget
-/// [area]: crate::ui::Area
-pub struct UnfocusedFrom<W: Widget<U>, U: Ui>(pub(crate) (RwData<W>, U::Area));
+pub struct UnfocusedFrom<W: Widget<U>, U: Ui>(pub(crate) Handle<W, U>);
 
 impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
-    type Input<'h> = (&'h RwData<W>, &'h U::Area);
+    type Input<'h> = &'h Handle<W, U>;
 
     fn get_input(&mut self) -> Self::Input<'_> {
-        (&self.0.0, &self.0.1)
+        &self.0
     }
 }
 
@@ -410,14 +406,14 @@ impl Hookable for ModeSwitched {
 /// like the language of a [`File`].
 ///
 /// [`File`]: crate::file::File
-pub struct ModeSetTo<M: Mode<U>, U: Ui>(pub(crate) (Option<M>, RwData<M::Widget>, U::Area));
+pub struct ModeSetTo<M: Mode<U>, U: Ui>(pub(crate) (Option<M>, Handle<M::Widget, U>));
 
 impl<M: Mode<U>, U: Ui> Hookable for ModeSetTo<M, U> {
-    type Input<'h> = (M, &'h RwData<M::Widget>, &'h U::Area);
+    type Input<'h> = (M, &'h Handle<M::Widget, U>);
     type Output = M;
 
     fn get_input(&mut self) -> Self::Input<'_> {
-        (self.0.0.take().unwrap(), &self.0.1, &self.0.2)
+        (self.0.0.take().unwrap(), &self.0.1)
     }
 
     fn return_output(&mut self, output: Self::Output) {
@@ -450,13 +446,13 @@ impl Hookable for KeysSent {
 /// - An [`RwData<W>`] for the widget.
 ///
 /// [key]: KeyEvent
-pub struct KeysSentTo<W: Widget<U>, U: Ui>(pub(crate) (Vec<KeyEvent>, RwData<W>, U::Area));
+pub struct KeysSentTo<W: Widget<U>, U: Ui>(pub(crate) (Vec<KeyEvent>, Handle<W, U>));
 
 impl<W: Widget<U>, U: Ui> Hookable for KeysSentTo<W, U> {
-    type Input<'h> = (&'h [KeyEvent], &'h RwData<W>, &'h U::Area);
+    type Input<'h> = (&'h [KeyEvent], &'h Handle<W, U>);
 
     fn get_input(&mut self) -> Self::Input<'_> {
-        (&self.0.0, &self.0.1, &self.0.2)
+        (&self.0.0, &self.0.1)
     }
 }
 
