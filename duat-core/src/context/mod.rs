@@ -426,7 +426,7 @@ impl<U: Ui> FileHandle<U> {
     ///
     /// [`Cursor`]: crate::mode::Cursor
     /// [`Editor`]: crate::mode::Editor
-    pub fn edit_helper(&self, pa: &mut Pass) -> EditHelper<File<U>, U, ()> {
+    pub fn helper(&self, pa: &mut Pass) -> EditHelper<File<U>, U, ()> {
         EditHelper::from_handle(pa, self.clone())
     }
 
@@ -449,7 +449,7 @@ impl<U: Ui> FileHandle<U> {
     /// [`IncSearch`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
     /// [`duat-utils`]: https://docs.rs/duat-utils/lastest/
     /// [`duat-kak`]: https://docs.rs/duat-kak/lastest/
-    pub fn inc_edit_helper(
+    pub fn inc_helper(
         &self,
         pa: &mut Pass,
         searcher: Searcher,
@@ -585,7 +585,7 @@ impl<W: Widget<U>, U: Ui> Handle<W, U> {
     ///
     /// [`Cursor`]: crate::mode::Cursor
     /// [`Editor`]: crate::mode::Editor
-    pub fn edit_helper(&self, pa: &mut Pass) -> EditHelper<W, U, ()> {
+    pub fn helper(&self, pa: &mut Pass) -> EditHelper<W, U, ()> {
         EditHelper::new(pa, self)
     }
 
@@ -654,7 +654,7 @@ impl<U: Ui> Handle<File<U>, U> {
     /// [`IncSearch`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
     /// [`duat-utils`]: https://docs.rs/duat-utils/lastest/
     /// [`duat-kak`]: https://docs.rs/duat-kak/lastest/
-    pub fn inc_edit_helper(
+    pub fn inc_helper(
         &self,
         pa: &mut Pass,
         searcher: Searcher,
@@ -718,7 +718,8 @@ impl<U: Ui> CurFile<U> {
 }
 
 /// The current [`Widget`]
-pub(crate) struct CurWidget<U: Ui>(RwData<Option<Node<U>>>);
+#[doc(hidden)]
+pub struct CurWidget<U: Ui>(RwData<Option<Node<U>>>);
 
 impl<U: Ui> CurWidget<U> {
     /// Returns a new [`CurWidget`]

@@ -77,12 +77,14 @@ pub fn pre_setup(logs: Option<Logs>, duat_tx: &'static Sender<DuatEvent>) {
         builder.push_to(pa, child, Notifications::cfg());
     });
 
-    hook::add_grouped::<UnfocusedFrom<PromptLine<Ui>>>("HidePromptLine", |_, (_, area)| {
-        area.constrain_ver([Constraint::Len(0.0)]).unwrap();
+    hook::add_grouped::<UnfocusedFrom<PromptLine<Ui>>>("HidePromptLine", |_, handle| {
+        handle.area().constrain_ver([Constraint::Len(0.0)]).unwrap();
     });
 
-    hook::add_grouped::<FocusedOn<PromptLine<Ui>>>("HidePromptLine", |_, (_, area)| {
-        area.constrain_ver([Constraint::Ratio(1, 1), Constraint::Len(1.0)])
+    hook::add_grouped::<FocusedOn<PromptLine<Ui>>>("HidePromptLine", |_, handle| {
+        handle
+            .area()
+            .constrain_ver([Constraint::Ratio(1, 1), Constraint::Len(1.0)])
             .unwrap();
     });
 

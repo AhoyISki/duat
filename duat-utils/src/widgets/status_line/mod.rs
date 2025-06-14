@@ -87,9 +87,9 @@ pub struct StatusLine<U: Ui> {
 impl<U: Ui> Widget<U> for StatusLine<U> {
     type Cfg = StatusLineCfg<U>;
 
-    fn update(pa: &mut Pass, widget: RwData<Self>, _: &<U as Ui>::Area) {
-        let text = widget.read(pa, |wid| wid.text_fn.borrow_mut()(pa, &wid.handle));
-        widget.replace_text(pa, text);
+    fn update(pa: &mut Pass, handle: Handle<Self, U>) {
+        let text = handle.read(pa, |wid, _| wid.text_fn.borrow_mut()(pa, &wid.handle));
+        handle.widget().replace_text(pa, text);
     }
 
     fn needs_update(&self) -> bool {

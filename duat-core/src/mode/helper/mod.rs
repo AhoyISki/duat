@@ -221,7 +221,7 @@ impl<W: Widget<U>, U: Ui, S> EditHelper<W, U, S> {
             n,
             was_main,
             &mut *widget,
-            &self.handle.area(),
+            self.handle.area(),
             None,
             &mut self.searcher,
         ))
@@ -336,7 +336,7 @@ impl<W: Widget<U>, U: Ui, S> EditHelper<W, U, S> {
         EditIter {
             next_i: Rc::new(Cell::new(0)),
             widget,
-            area: &self.handle.area(),
+            area: self.handle.area(),
             inc_searcher: &mut self.searcher,
         }
     }

@@ -82,10 +82,10 @@ impl<U: Ui> PromptLine<U> {
 impl<U: Ui> Widget<U> for PromptLine<U> {
     type Cfg = PromptLineCfg<U>;
 
-    fn update(_: &mut Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+    fn update(_: &mut Pass, _: Handle<Self, U>) {}
 
-    fn on_unfocus(pa: &mut Pass, widget: RwData<Self>, _: &<U as Ui>::Area) {
-        widget.write(pa, |wid| wid.text = Text::new());
+    fn on_unfocus(pa: &mut Pass, handle: Handle<Self, U>) {
+        handle.widget().take_text(pa);
     }
 
     fn needs_update(&self) -> bool {

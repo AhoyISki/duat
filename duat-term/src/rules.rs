@@ -1,12 +1,6 @@
-use duat_core::{
-    context::FileHandle,
-    data::{Pass, RwData},
-    form::{self, Form},
-    text::{Text, txt},
-    ui::{PushSpecs, RawArea as UiArea, Widget, WidgetCfg},
-};
+use duat_core::prelude::*;
 
-use crate::{Area, Ui};
+use crate::Ui;
 
 /// A vertical line on screen, useful, for example, for the separation
 /// of a [`File`] and [`LineNumbers`].
@@ -22,8 +16,8 @@ pub struct VertRule {
 impl Widget<Ui> for VertRule {
     type Cfg = VertRuleCfg;
 
-    fn update(pa: &mut Pass, widget: RwData<Self>, area: &Area) {
-        let text = widget.read(pa, |wid| {
+    fn update(pa: &mut Pass, handle: Handle<Self, Ui>) {
+        let text = handle.read(pa, |wid, area| {
             if let Some(handle) = wid.handle.as_ref()
                 && let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = wid.sep_char
             {
@@ -56,7 +50,7 @@ impl Widget<Ui> for VertRule {
             }
         });
 
-        widget.replace_text(pa, text);
+        handle.widget().replace_text(pa, text);
     }
 
     fn needs_update(&self) -> bool {

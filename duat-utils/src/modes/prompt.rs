@@ -45,95 +45,89 @@ impl<M: PromptMode<U>, U: Ui> Prompt<M, U> {
 impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
     type Widget = PromptLine<U>;
 
-    fn send_key(
-        &mut self,
-        mut pa: Pass,
-        key: KeyEvent,
-        widget: RwData<Self::Widget>,
-        area: U::Area,
-    ) {
-        let mut helper = widget.edit_helper(&mut pa, &area);
+    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>) {
+        let mut helper = handle.helper(pa);
 
         match key {
             key!(KeyCode::Backspace) => {
-                if helper.read(&pa, |pl| pl.text().is_empty()) {
-                    helper.write_cursors(&mut pa, |c| c.clear());
+                if helper.read(pa, |pl| pl.text().is_empty()) {
+                    helper.write_cursors(pa, |c| c.clear());
 
-                    let text = helper.take_text(&mut pa);
-                    let text = self.0.update(&mut pa, text, &area);
-                    let text = self.0.before_exit(&mut pa, text, &area);
+                    let text = helper.take_text(pa);
+                    let text = self.0.update(pa, text, handle.area());
+                    let text = self.0.before_exit(pa, text, handle.area());
 
-                    helper.replace_text(&mut pa, text);
+                    helper.replace_text(pa, text);
 
                     mode::reset();
                 } else {
-                    helper.edit_main(&mut pa, |mut e| {
+                    helper.edit_main(pa, |mut e| {
                         e.move_hor(-1);
                         e.replace("");
                     });
-                    let text = helper.take_text(&mut pa);
-                    let text = self.0.update(&mut pa, text, &area);
-                    helper.replace_text(&mut pa, text);
+                    let text = helper.take_text(pa);
+                    let text = self.0.update(pa, text, handle.area());
+                    helper.replace_text(pa, text);
                 }
             }
             key!(KeyCode::Delete) => {
-                helper.edit_main(&mut pa, |mut e| e.replace(""));
-                let text = helper.take_text(&mut pa);
-                let text = self.0.update(&mut pa, text, &area);
-                helper.replace_text(&mut pa, text);
+                helper.edit_main(pa, |mut e| e.replace(""));
+                let text = helper.take_text(pa);
+                let text = self.0.update(pa, text, handle.area());
+                helper.replace_text(pa, text);
             }
 
             key!(KeyCode::Char(char)) => {
-                helper.edit_main(&mut pa, |mut e| {
+                helper.edit_main(pa, |mut e| {
                     e.insert(char);
                     e.move_hor(1);
                 });
-                let text = helper.take_text(&mut pa);
-                let text = self.0.update(&mut pa, text, &area);
-                helper.replace_text(&mut pa, text);
+                let text = helper.take_text(pa);
+                let text = self.0.update(pa, text, handle.area());
+                helper.replace_text(pa, text);
             }
             key!(KeyCode::Left) => {
-                helper.edit_main(&mut pa, |mut e| e.move_hor(-1));
-                let text = helper.take_text(&mut pa);
-                let text = self.0.update(&mut pa, text, &area);
-                helper.replace_text(&mut pa, text);
+                helper.edit_main(pa, |mut e| e.move_hor(-1));
+                let text = helper.take_text(pa);
+                let text = self.0.update(pa, text, handle.area());
+                helper.replace_text(pa, text);
             }
             key!(KeyCode::Right) => {
-                helper.edit_main(&mut pa, |mut e| e.move_hor(1));
-                let text = helper.take_text(&mut pa);
-                let text = self.0.update(&mut pa, text, &area);
-                helper.replace_text(&mut pa, text);
+                helper.edit_main(pa, |mut e| e.move_hor(1));
+                let text = helper.take_text(pa);
+                let text = self.0.update(pa, text, handle.area());
+                helper.replace_text(pa, text);
             }
 
             key!(KeyCode::Esc) => {
-                let p = helper.read(&pa, |wid| wid.text().len());
-                helper.edit_main(&mut pa, |mut e| {
+                let p = helper.read(pa, |wid| wid.text().len());
+                helper.edit_main(pa, |mut e| {
                     e.move_to_start();
                     e.set_anchor();
                     e.move_to(p);
                     e.replace("");
                 });
-                helper.write_cursors(&mut pa, |c| c.clear());
-                let text = helper.take_text(&mut pa);
-                let text = self.0.update(&mut pa, text, &area);
-                let text = self.0.before_exit(&mut pa, text, &area);
-                helper.replace_text(&mut pa, text);
+                helper.write_cursors(pa, |c| c.clear());
+                let text = helper.take_text(pa);
+                let text = self.0.update(pa, text, handle.area());
+                let text = self.0.before_exit(pa, text, handle.area());
+                helper.replace_text(pa, text);
                 mode::reset();
             }
             key!(KeyCode::Enter) => {
-                helper.write_cursors(&mut pa, |c| c.clear());
-                let text = helper.take_text(&mut pa);
-                let text = self.0.update(&mut pa, text, &area);
-                let text = self.0.before_exit(&mut pa, text, &area);
-                helper.replace_text(&mut pa, text);
+                helper.write_cursors(pa, |c| c.clear());
+                let text = helper.take_text(pa);
+                let text = self.0.update(pa, text, handle.area());
+                let text = self.0.before_exit(pa, text, handle.area());
+                helper.replace_text(pa, text);
                 mode::reset();
             }
             _ => {}
         }
     }
 
-    fn on_switch(&mut self, mut pa: Pass, widget: RwData<Self::Widget>, area: <U as Ui>::Area) {
-        let text = widget.write(&mut pa, |wid| {
+    fn on_switch(&mut self, pa: &mut Pass, handle: Handle<Self::Widget, U>) {
+        let text = handle.write(pa, |wid, _| {
             *wid.text_mut() = Text::new_with_cursors();
             run_once::<M, U>();
 
@@ -146,9 +140,9 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
             std::mem::take(wid.text_mut())
         });
 
-        let text = self.0.on_switch(&mut pa, text, &area);
+        let text = self.0.on_switch(pa, text, handle.area());
 
-        widget.write(&mut pa, |wid| *wid.text_mut() = text);
+        handle.widget().replace_text(pa, text);
     }
 }
 
@@ -179,13 +173,13 @@ impl RunCommands {
 }
 
 impl<U: Ui> PromptMode<U> for RunCommands {
-    fn update(&mut self, _: &mut Pass, mut text: Text, _: &<U as Ui>::Area) -> Text {
+    fn update(&mut self, pa: &mut Pass, mut text: Text, _: &<U as Ui>::Area) -> Text {
         text.remove_tags(*TAGGER, ..);
 
         let command = text.to_string();
         let caller = command.split_whitespace().next();
         if let Some(caller) = caller {
-            if let Some((ok_ranges, err_range)) = cmd::check_args(&command) {
+            if let Some((ok_ranges, err_range)) = cmd::check_args(pa, &command) {
                 let id = form::id_of!("CallerExists");
                 text.insert_tag(*TAGGER, 0..caller.len(), id.to_tag(0));
 
@@ -365,7 +359,7 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
         };
 
         let handle = context::fixed_file::<U>(pa).unwrap();
-        let mut helper = handle.edit_helper(pa);
+        let mut helper = handle.helper(pa);
         helper.edit_all(pa, |mut e| {
             let Ok(mut child) = Command::new(caller)
                 .args(cmd::args_iter(&command).map(|(a, _)| a))

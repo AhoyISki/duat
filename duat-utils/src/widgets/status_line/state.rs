@@ -18,7 +18,7 @@
 use std::{fmt::Display, marker::PhantomData};
 
 use duat_core::{
-    data::DataMap,
+    data::{DataMap, RwData},
     prelude::*,
     text::{Builder, BuilderPart},
 };

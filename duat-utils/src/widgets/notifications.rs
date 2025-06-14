@@ -41,9 +41,9 @@ impl<U: Ui> Widget<U> for Notifications<U> {
         NotificationsCfg(None, PhantomData)
     }
 
-    fn update(pa: &mut Pass, widget: RwData<Self>, _: &<U as Ui>::Area) {
+    fn update(pa: &mut Pass, handle: Handle<Self, U>) {
         let clear_notifs = CLEAR_NOTIFS.swap(false, Ordering::Relaxed);
-        widget.write(pa, |wid| {
+        handle.write(pa, |wid, _| {
             if wid.logs.has_changed()
                 && let Some(rec) = wid.logs.last()
             {

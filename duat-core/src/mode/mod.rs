@@ -30,7 +30,7 @@ pub use self::{
 };
 use crate::{
     context::Handle,
-    data::{Pass, RwData},
+    data::Pass,
     file::File,
     ui::{Ui, Widget},
 };
@@ -162,7 +162,7 @@ mod switch {
 
     /// Switches to a certain widget
     pub(super) fn switch_widget<U: Ui>(pa: &mut Pass, node: Node<U>) {
-        if let Ok(widget) = context::cur_widget::<U>(&pa) {
+        if let Ok(widget) = context::cur_widget::<U>(pa) {
             widget.node(pa).on_unfocus(pa);
         }
 
@@ -206,7 +206,7 @@ mod switch {
         pa: &mut Pass,
         mut keys: IntoIter<KeyEvent>,
     ) -> (IntoIter<KeyEvent>, Option<ModeFn>) {
-        let Ok(node) = context::cur_widget::<U>(&pa).map(|cw| cw.node(&pa)) else {
+        let Ok(node) = context::cur_widget::<U>(pa).map(|cw| cw.node(pa)) else {
             unreachable!("Early, aren't we?");
         };
 
@@ -249,20 +249,17 @@ mod switch {
                 let windows = context::windows().borrow();
                 let w = context::cur_window();
                 if TypeId::of::<M::Widget>() == TypeId::of::<File<U>>() {
-                    let name = context::fixed_file::<U>(&pa)
+                    let name = context::fixed_file::<U>(pa)
                         .unwrap()
                         .read(pa, |file, _| file.name());
                     file_entry(pa, &windows, &name).map(|(.., node)| node.clone())
                 } else {
-                    widget_entry::<M::Widget, U>(&pa, &windows, w).map(|(.., node)| node.clone())
+                    widget_entry::<M::Widget, U>(pa, &windows, w).map(|(.., node)| node.clone())
                 }
             };
 
             match node {
-                // SAFETY: Since node does not _actively_ borrow the Pass (the borrow is just
-                // used to create the node, and the is dropped), pa is not borrowed here, so calling
-                // this is safe.
-                Ok(node) => unsafe { switch_widget(pa, node) },
+                Ok(node) => switch_widget(pa, node),
                 Err(err) => {
                     context::error!("{err}");
                     return false;
@@ -270,8 +267,8 @@ mod switch {
             };
         }
 
-        let widget = context::cur_widget::<U>(&pa).unwrap();
-        widget.node(&pa).parts();
+        let widget = context::cur_widget::<U>(pa).unwrap();
+        widget.node(pa).parts();
         // SAFETY: Other than the internal borrow in CurWidget, no other
         // borrows happen
         let (w, area) = unsafe {
@@ -298,7 +295,7 @@ mod switch {
             widget.text_mut().add_cursors(&area, cfg);
         });
 
-		// SAFETY: There is a Pass argument.
+        // SAFETY: There is a Pass argument.
         unsafe {
             crate::mode::set_send_key::<M, U>();
         }

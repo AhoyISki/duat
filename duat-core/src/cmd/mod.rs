@@ -940,9 +940,9 @@ mod global {
     pub fn queue(call: impl std::fmt::Display) {
         let call = call.to_string();
         crate::context::sender()
-            .send(DuatEvent::QueuedFunction(Box::new(move |mut pa| {
+            .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
                 // SAFETY: Closure has Pass argument.
-                let _ = unsafe { COMMANDS.get() }.run(&mut pa, call);
+                let _ = unsafe { COMMANDS.get() }.run(pa, call);
             })))
             .unwrap();
     }
@@ -951,8 +951,8 @@ mod global {
     pub fn queue_notify(call: impl std::fmt::Display) {
         let call = call.to_string();
         crate::context::sender()
-            .send(DuatEvent::QueuedFunction(Box::new(move |mut pa| {
-                let result = unsafe { COMMANDS.get() }.run(&mut pa, call.clone());
+            .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
+                let result = unsafe { COMMANDS.get() }.run(pa, call.clone());
                 let call = call;
                 let cmd = call.split(' ').find(|w| !w.is_empty()).unwrap();
                 context::logs().push_cmd_result(cmd.to_string(), result.clone());
@@ -964,9 +964,9 @@ mod global {
     pub fn queue_and(call: impl std::fmt::Display, map: impl FnOnce(CmdResult) + Send + 'static) {
         let call = call.to_string();
         crate::context::sender()
-            .send(DuatEvent::QueuedFunction(Box::new(move |mut pa| {
+            .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
                 // SAFETY: Function has a Pass argument.
-                map(unsafe { COMMANDS.get() }.run(&mut pa, call));
+                map(unsafe { COMMANDS.get() }.run(pa, call));
             })))
             .unwrap()
     }
@@ -978,9 +978,9 @@ mod global {
     ) {
         let call = call.to_string();
         crate::context::sender()
-            .send(DuatEvent::QueuedFunction(Box::new(move |mut pa| {
+            .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
                 // SAFETY: Function has a Pass argument.
-                let result = unsafe { COMMANDS.get() }.run(&mut pa, call.clone());
+                let result = unsafe { COMMANDS.get() }.run(pa, call.clone());
                 let call = call;
                 let cmd = call.split(' ').find(|w| !w.is_empty()).unwrap();
                 context::logs().push_cmd_result(cmd.to_string(), result.clone());
@@ -1003,12 +1003,12 @@ mod global {
     }
 
     /// Check if the arguments for a given `caller` are correct
-    pub fn check_args(caller: &str) -> Option<(Vec<Range<usize>>, Option<(Range<usize>, Text)>)> {
-        // SAFETY: There is no way to obtain an external RwData of Commands,
-        // so you can modify it from anywhere in the main thread.
-        let pa = unsafe { Pass::new() };
-        context::assert_is_on_main_thread();
-        unsafe { COMMANDS.get() }.check_args(&pa, caller)
+    pub fn check_args(
+        pa: &Pass,
+        caller: &str,
+    ) -> Option<(Vec<Range<usize>>, Option<(Range<usize>, Text)>)> {
+        // SAFETY: There is a Pass argument
+        unsafe { COMMANDS.get() }.check_args(pa, caller)
     }
 }
 

@@ -12,7 +12,7 @@
 //! [`status!`]: crate::widgets::status
 //! [`Cursor`]: duat_core::mode::Cursor
 //! [`Mode`]: duat_core::mode::Mode
-use duat_core::{data::DataMap, hook::KeysSent, prelude::*};
+use duat_core::{data::{DataMap, RwData}, hook::KeysSent, prelude::*};
 
 /// [`StatusLine`] part: The [`File`]'s name, formatted
 ///

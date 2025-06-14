@@ -86,12 +86,12 @@ impl<U: Ui> LineNumbers<U> {
 impl<U: Ui> Widget<U> for LineNumbers<U> {
     type Cfg = LineNumbersOptions<U>;
 
-    fn update(pa: &mut Pass, widget: RwData<Self>, area: &<U as Ui>::Area) {
-        let width = widget.read(pa, |ln| ln.calculate_width(pa));
-        area.constrain_hor([Constraint::Len(width + 1.0)]).unwrap();
+    fn update(pa: &mut Pass, handle: Handle<Self, U>) {
+        let width = handle.read(pa, |ln, _| ln.calculate_width(pa));
+        handle.area().constrain_hor([Constraint::Len(width + 1.0)]).unwrap();
 
-        let text = widget.read(pa, |ln| ln.form_text(pa));
-        widget.write(pa, |ln| ln.text = text);
+        let text = handle.read(pa, |ln, _| ln.form_text(pa));
+        handle.write(pa, |ln, _| ln.text = text);
     }
 
     fn needs_update(&self) -> bool {

@@ -242,9 +242,9 @@ mod global {
     pub fn queue(hookable: impl Hookable + Send) {
         let sender = crate::context::sender();
         sender
-            .send(DuatEvent::QueuedFunction(Box::new(move |mut pa| {
+            .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
                 // SAFETY: There is a Pass argument
-                unsafe { HOOKS.get() }.trigger(&mut pa, hookable);
+                unsafe { HOOKS.get() }.trigger(pa, hookable);
             })))
             .unwrap();
     }
