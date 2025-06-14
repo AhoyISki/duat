@@ -17,14 +17,7 @@ mod state;
 
 use std::{cell::RefCell, rc::Rc};
 
-use duat_core::{
-    context::{self, FileHandle},
-    data::{Pass, RwData},
-    form::{self, Form},
-    text::{AlignRight, Builder, Spacer, Text, txt},
-    ui::{PushSpecs, Side, Ui},
-    widget::{Widget, WidgetCfg},
-};
+use duat_core::{prelude::*, text::Builder, ui::Side};
 
 pub use self::{macros::status, state::State};
 use crate::state::{file_fmt, main_fmt, mode_fmt, mode_name, selections_fmt};

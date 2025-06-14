@@ -9,11 +9,10 @@ use std::{
 };
 
 use crate::{
-    cache::{delete_cache, delete_cache_for, store_cache},
     cfg::PrintCfg,
     clipboard::Clipboard,
     cmd,
-    context::{self, sender},
+    context::{self, delete_cache, delete_cache_for, sender, store_cache},
     data::Pass,
     file::{File, FileCfg, PathKind},
     file_entry, form,
@@ -21,10 +20,10 @@ use crate::{
     mode,
     text::Bytes,
     ui::{
-        DuatEvent, FileBuilder, FileId, Layout, MasterOnLeft, MutArea, RawArea, Sender, Ui, Window,
+        DuatEvent, FileBuilder, MutArea, Node, RawArea, Sender, Ui, Widget, WidgetCfg, Window,
         WindowBuilder,
+        layout::{FileId, Layout, MasterOnLeft},
     },
-    widget::{Node, Widget, WidgetCfg},
 };
 
 #[doc(hidden)]
@@ -185,12 +184,12 @@ impl<U: Ui> Session<U> {
                 None,
             );
 
-            windows[cur_window].push_file(&mut *pa, file)
+            windows[cur_window].push_file(pa, file)
         };
 
         match pushed {
             Ok((node, _)) => {
-                let builder = FileBuilder::new(&mut *pa, node, context::cur_window());
+                let builder = FileBuilder::new(pa, node, context::cur_window());
                 hook::trigger(pa, OnFileOpen(builder));
             }
             Err(err) => context::error!("{err}"),
@@ -239,7 +238,7 @@ impl<U: Ui> Session<U> {
                 // other block which it is only called once.
                 let mut pa = unsafe { Pass::new() };
                 match event {
-                    DuatEvent::Key(key) => {
+                    DuatEvent::Tagger(key) => {
                         mode::send_key(pa, key);
                     }
                     DuatEvent::QueuedFunction(f) => {
@@ -374,12 +373,12 @@ impl<U: Ui> Session<U> {
             let file_pa = unsafe { Pass::new() };
             let (widget, _) = file_cfg.build(file_pa, None);
 
-            let result = windows[win].push_file(&mut *pa, widget);
+            let result = windows[win].push_file(pa, widget);
 
             if let Ok((node, _)) = &result
                 && is_active
             {
-                context::set_cur(&mut *pa, node.as_file(), node.clone());
+                context::set_cur(pa, node.as_file(), node.clone());
                 if context::cur_window() != win {
                     self.cur_window.store(win, Ordering::Relaxed);
                     U::switch_window(self.ms, win);
@@ -391,7 +390,7 @@ impl<U: Ui> Session<U> {
 
         match pushed {
             Ok((node, _)) => {
-                let builder = FileBuilder::new(&mut *pa, node, context::cur_window());
+                let builder = FileBuilder::new(pa, node, context::cur_window());
                 hook::trigger(pa, OnFileOpen(builder));
             }
             Err(err) => context::error!("{err}"),
@@ -404,10 +403,10 @@ impl<U: Ui> Session<U> {
     fn close_file(&self, pa: &mut Pass, name: String) {
         let mut windows = context::windows::<U>().borrow_mut();
         let (win, lhs, nodes) = {
-            let (lhs_win, _, lhs) = file_entry(&*pa, &windows, &name).unwrap();
+            let (lhs_win, _, lhs) = file_entry(pa, &windows, &name).unwrap();
             let lhs = lhs.clone();
 
-            let lo = lhs.read_as(&*pa, |f: &File<U>| f.layout_order).unwrap();
+            let lo = lhs.read_as(pa, |f: &File<U>| f.layout_order).unwrap();
 
             let nodes: Vec<Node<U>> = windows[lhs_win]
                 .nodes()
@@ -420,7 +419,7 @@ impl<U: Ui> Session<U> {
         };
 
         for rhs in nodes {
-            swap(&mut *pa, &mut windows, [win, win], [&lhs, &rhs]);
+            swap(pa, &mut windows, [win, win], [&lhs, &rhs]);
         }
 
         windows[win].remove_file(pa, &name);
@@ -437,19 +436,19 @@ impl<U: Ui> Session<U> {
     fn swap_files(&self, pa: &mut Pass, lhs_name: String, rhs_name: String) {
         let mut windows = context::windows::<U>().borrow_mut();
         let (wins, [lhs_node, rhs_node]) = {
-            let (lhs_win, _, lhs_node) = file_entry(&*pa, &windows, &lhs_name).unwrap();
-            let (rhs_win, _, rhs_node) = file_entry(&*pa, &windows, &rhs_name).unwrap();
+            let (lhs_win, _, lhs_node) = file_entry(pa, &windows, &lhs_name).unwrap();
+            let (rhs_win, _, rhs_node) = file_entry(pa, &windows, &rhs_name).unwrap();
             let lhs_node = lhs_node.clone();
             let rhs_node = rhs_node.clone();
             ([lhs_win, rhs_win], [lhs_node, rhs_node])
         };
 
-        swap(&mut *pa, &mut windows, wins, [&lhs_node, &rhs_node]);
+        swap(pa, &mut windows, wins, [&lhs_node, &rhs_node]);
         drop(windows);
 
-        let name = context::fixed_file::<U>(&*pa)
+        let name = context::fixed_file::<U>(pa)
             .unwrap()
-            .read(&*pa, |file, _| file.name());
+            .read(pa, |file, _| file.name());
         if wins[0] != wins[1]
             && let Some(win) = [lhs_name, rhs_name].into_iter().position(|n| n == name)
         {
@@ -464,12 +463,12 @@ impl<U: Ui> Session<U> {
         let mut windows = context::windows::<U>().borrow_mut();
         let new_win = windows.len();
 
-        if let Ok((win, .., node)) = file_entry(&*pa, &windows, &name) {
+        if let Ok((win, .., node)) = file_entry(pa, &windows, &name) {
             // Take the nodes in the original Window
             let node = node.clone();
             node.widget()
-                .write_as(&mut *pa, |f: &mut File<U>| f.layout_order = 0);
-            let nodes = windows[win].take_file_and_related_nodes(&mut *pa, &node);
+                .write_as(pa, |f: &mut File<U>| f.layout_order = 0);
+            let nodes = windows[win].take_file_and_related_nodes(pa, &node);
             let layout = (self.layout_fn)();
 
             // Create a new Window Swapping the new root with files_area
@@ -479,9 +478,9 @@ impl<U: Ui> Session<U> {
             windows.push(window);
 
             // Swap the Files ahead of the swapped new_root
-            let lo = node.read_as(&*pa, |f: &File<U>| f.layout_order).unwrap();
+            let lo = node.read_as(pa, |f: &File<U>| f.layout_order).unwrap();
 
-            for (_, FileId(area)) in &windows[win].file_nodes(&*pa)[lo..] {
+            for (_, FileId(area)) in &windows[win].file_nodes(pa)[lo..] {
                 MutArea(&new_root).swap(area);
             }
             // RefCell dropped here, before any .await
@@ -499,25 +498,25 @@ impl<U: Ui> Session<U> {
                 .open_path(PathBuf::from(name.clone()))
                 .build(file_pa, None);
 
-            let (window, node) = Window::new(&mut *pa, self.ms, widget, (self.layout_fn)());
+            let (window, node) = Window::new(pa, self.ms, widget, (self.layout_fn)());
             windows.push(window);
             // RefCell dropped here, before any .await
             drop(windows);
 
             // Open and process files.
-            let builder = FileBuilder::new(&mut *pa, node, new_win);
-            hook::trigger(&mut *pa, OnFileOpen(builder));
+            let builder = FileBuilder::new(pa, node, new_win);
+            hook::trigger(pa, OnFileOpen(builder));
         }
 
         let builder = WindowBuilder::<U>::new(new_win);
-        hook::trigger(&mut *pa, OnWindowOpen(builder));
+        hook::trigger(pa, OnWindowOpen(builder));
 
-        if context::fixed_file::<U>(&*pa)
+        if context::fixed_file::<U>(pa)
             .unwrap()
-            .read(&*pa, |file, _| file.name())
+            .read(pa, |file, _| file.name())
             != name
         {
-            mode::reset_switch_to::<U>(&*pa, name, false);
+            mode::reset_switch_to::<U>(pa, name, false);
         }
 
         self.cur_window.store(new_win, Ordering::Relaxed);
@@ -533,23 +532,23 @@ fn swap<U: Ui>(
 ) {
     let rhs_lo = rhs
         .widget()
-        .read_as(&*pa, |f: &File<U>| f.layout_order)
+        .read_as(pa, |f: &File<U>| f.layout_order)
         .unwrap();
     let lhs_lo = lhs
         .widget()
-        .write_as(&mut *pa, |f: &mut File<U>| {
+        .write_as(pa, |f: &mut File<U>| {
             std::mem::replace(&mut f.layout_order, rhs_lo)
         })
         .unwrap();
 
     rhs.widget()
-        .write_as(&mut *pa, |f: &mut File<U>| f.layout_order = lhs_lo);
+        .write_as(pa, |f: &mut File<U>| f.layout_order = lhs_lo);
 
-    let lhs_nodes = windows[lhs_w].take_file_and_related_nodes(&mut *pa, lhs);
-    windows[rhs_w].insert_file_nodes(&mut *pa, rhs_lo, lhs_nodes);
+    let lhs_nodes = windows[lhs_w].take_file_and_related_nodes(pa, lhs);
+    windows[rhs_w].insert_file_nodes(pa, rhs_lo, lhs_nodes);
 
-    let rhs_nodes = windows[rhs_w].take_file_and_related_nodes(&mut *pa, rhs);
-    windows[lhs_w].insert_file_nodes(&mut *pa, lhs_lo, rhs_nodes);
+    let rhs_nodes = windows[rhs_w].take_file_and_related_nodes(pa, rhs);
+    windows[lhs_w].insert_file_nodes(pa, lhs_lo, rhs_nodes);
 
     MutArea(lhs.area()).swap(rhs.area());
 }

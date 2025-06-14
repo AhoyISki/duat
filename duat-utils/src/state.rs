@@ -10,17 +10,9 @@
 //!
 //! [`StatusLine`]: crate::widgets::StatusLine
 //! [`status!`]: crate::widgets::status
-//! [`Cursor`]: crate::mode::Cursor
-//! [`Mode`]: crate::mode::Mode
-use duat_core::{
-    context,
-    data::{DataMap, RwData},
-    file::File,
-    hook::{self, KeysSent},
-    mode::{self, KeyEvent},
-    text::{txt, Text},
-    ui::Ui, widget::Widget,
-};
+//! [`Cursor`]: duat_core::mode::Cursor
+//! [`Mode`]: duat_core::mode::Mode
+use duat_core::{data::DataMap, hook::KeysSent, prelude::*};
 
 /// [`StatusLine`] part: The [`File`]'s name, formatted
 ///
@@ -63,7 +55,7 @@ pub fn file_fmt(file: &File<impl Ui>) -> Text {
     b.build()
 }
 
-/// [`StatusLine`] part: The active [mode] of Duat
+/// [`StatusLine`] part: The currently active [mode] of Duat
 ///
 /// This mode is completely unprocessed, so something like
 /// [`IncSearch`] would show up like:
@@ -76,8 +68,8 @@ pub fn file_fmt(file: &File<impl Ui>) -> Text {
 /// simple trick is this:
 ///
 /// ```rust
-/// # use duat_core::status;
-/// let mode = status::mode_name().map(|mode| {
+/// # use duat_core::state;
+/// let mode = state::mode_name().map(|mode| {
 ///     let mode = match mode.split_once('<') {
 ///         Some((mode, _)) => mode,
 ///         None => mode,
@@ -87,8 +79,8 @@ pub fn file_fmt(file: &File<impl Ui>) -> Text {
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-/// [mode]: mode::Mode
-/// [`IncSearch`]: mode::IncSearch
+/// [mode]: duat_core::mode::Mode
+/// [`IncSearch`]: crate::modes::IncSearch
 pub fn mode_name() -> DataMap<&'static str, &'static str> {
     context::mode_name()
 }
@@ -194,7 +186,7 @@ pub fn selections(file: &File<impl Ui>) -> usize {
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-/// [`Cursor`]: crate::mode::Cursor
+/// [`Cursor`]: duat_core::mode::Cursor
 pub fn selections_fmt(file: &File<impl Ui>) -> Text {
     if file.cursors().len() == 1 {
         txt!("[Selections]1 sel").build()

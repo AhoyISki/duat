@@ -17,7 +17,7 @@ pub struct SearchFwd;
 
 impl<U: Ui> IncSearcher<U> for SearchFwd {
     fn search(&mut self, pa: &mut Pass, handle: FileHandle<U>, se: Searcher) {
-        let mut helper = EditHelper::inc_from_handle(&mut *pa, handle, se);
+        let mut helper = EditHelper::inc_from_handle(pa, handle, se);
         helper.edit_all(pa, |mut e| {
             let caret = e.caret();
             let next = e.search_inc_fwd(None).find(|[p, _]| *p != caret);
@@ -42,7 +42,7 @@ pub struct SearchRev;
 
 impl<U: Ui> IncSearcher<U> for SearchRev {
     fn search(&mut self, pa: &mut Pass, handle: FileHandle<U>, se: Searcher) {
-        let mut helper = EditHelper::inc_from_handle(&mut *pa, handle, se);
+        let mut helper = EditHelper::inc_from_handle(pa, handle, se);
         helper.edit_all(pa, |mut e| {
             let caret = e.caret();
             let next = e.search_inc_rev(None).find(|[_, p]| *p != caret);
@@ -67,7 +67,7 @@ pub struct ExtendFwd;
 
 impl<U: Ui> IncSearcher<U> for ExtendFwd {
     fn search(&mut self, pa: &mut Pass, handle: FileHandle<U>, se: Searcher) {
-        let mut helper = EditHelper::inc_from_handle(&mut *pa, handle, se);
+        let mut helper = EditHelper::inc_from_handle(pa, handle, se);
         helper.edit_all(pa, |mut e| {
             let caret = e.caret();
             let next = e.search_inc_fwd(None).find(|[p, _]| *p != caret);
@@ -90,7 +90,7 @@ pub struct ExtendRev;
 
 impl<U: Ui> IncSearcher<U> for ExtendRev {
     fn search(&mut self, pa: &mut Pass, handle: FileHandle<U>, se: Searcher) {
-        let mut helper = EditHelper::inc_from_handle(&mut *pa, handle, se);
+        let mut helper = EditHelper::inc_from_handle(pa, handle, se);
         helper.edit_all(pa, |mut e| {
             let caret = e.caret();
             let next = e.search_inc_rev(None).find(|[_, p]| *p != caret);

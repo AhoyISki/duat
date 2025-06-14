@@ -158,7 +158,7 @@ use crate::{
     form::{Form, FormId},
     mode::{KeyEvent, Mode},
     ui::{FileBuilder, Ui, WindowBuilder},
-    widget::Widget,
+    ui::Widget,
 };
 
 /// Hook functions
@@ -343,7 +343,7 @@ impl<U: Ui> Hookable for OnWindowOpen<U> {
 /// - The widget itself.
 /// - Its [area].
 ///
-/// [`Widget`]: crate::widget::Widget
+/// [`Widget`]: crate::ui::Widget
 /// [area]: crate::ui::Area
 pub struct FocusedOn<W: Widget<U>, U: Ui>(pub(crate) (RwData<W>, U::Area));
 
@@ -362,7 +362,7 @@ impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
 /// - The widget itself.
 /// - Its [area].
 ///
-/// [`Widget`]: crate::widget::Widget
+/// [`Widget`]: crate::ui::Widget
 /// [area]: crate::ui::Area
 pub struct UnfocusedFrom<W: Widget<U>, U: Ui>(pub(crate) (RwData<W>, U::Area));
 

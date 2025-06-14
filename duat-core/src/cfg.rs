@@ -20,7 +20,7 @@
 //! common, feel free to recomend them!
 //!
 //! [`File`]: crate::file::File
-//! [`Widget`]: crate::widget::Widget
+//! [`Widget`]: crate::ui::Widget
 //! [`Area`]: crate::ui::Ui::Area
 //! [forced_scrolloff]: PrintCfg::with_forced_horizontal_scrolloff
 //! [show_ghosts]: PrintCfg::show_ghosts
@@ -227,12 +227,12 @@ impl PrintCfg {
     /// };
     /// ```
     ///
-    /// [`Widget`]: crate::widget::Widget
+    /// [`Widget`]: crate::ui::Widget
     /// [`File`]: crate::file::File
     /// [default `PrintInfo`]: crate::ui::RawArea::PrintInfo
     /// [`RawArea`]: crate::ui::RawArea
     /// [`Text`]: crate::text::Text
-    /// [`Widget::print_cfg`]: crate::widget::Widget::print_cfg
+    /// [`Widget::print_cfg`]: crate::ui::Widget::print_cfg
     pub const fn new() -> Self {
         Self {
             wrap_method: WrapMethod::Edge,

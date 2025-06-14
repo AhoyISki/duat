@@ -16,16 +16,14 @@ use std::{fs, marker::PhantomData, path::PathBuf};
 use self::reader::Readers;
 pub use self::reader::{RangeList, Reader, ReaderCfg};
 use crate::{
-    cache::load_cache,
     cfg::PrintCfg,
-    context::{self, FileHandle},
+    context::{self, FileHandle, load_cache},
     data::{Pass, RwData},
     form,
     hook::{self, FileWritten},
     mode::Cursors,
     text::{Bytes, Text, txt},
-    ui::{PushSpecs, RawArea, Ui},
-    widget::{Widget, WidgetCfg},
+    ui::{PushSpecs, RawArea, Ui, Widget, WidgetCfg},
 };
 
 mod reader;
@@ -526,7 +524,7 @@ impl<U: Ui> BytesDataMap<U> {
     /// [`read`]: RwData::read
     /// [`has_changed`]: RwData::has_changed
     /// [`Text`]: crate::text::Text
-    /// [`Widget`]: crate::widget::Widget
+    /// [`Widget`]: crate::ui::Widget
     pub fn has_changed(&self) -> bool {
         self.0.has_changed()
     }

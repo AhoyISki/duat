@@ -19,8 +19,7 @@ use crate::{
     data::{Pass, RwData},
     file::{File, Reader},
     text::{Bytes, Change, Lines, Point, RegexPattern, Searcher, Strs, Text, TextRange},
-    ui::{RawArea, Ui},
-    widget::Widget,
+    ui::{RawArea, Ui, Widget},
 };
 
 /// The [`Cursor`] and [`Cursors`] structs
@@ -154,8 +153,8 @@ impl<W: Widget<U>, U: Ui> EditHelper<W, U, ()> {
 impl<U: Ui> EditHelper<File<U>, U, ()> {
     /// Returns an [`EditHelper`] for a given [`FileHandle`]
     pub fn from_handle(pa: &mut Pass, handle: FileHandle<U>) -> Self {
-        handle.write(&mut *pa, |wid, _| wid.text_mut().enable_cursors());
-        let (widget, area) = handle.get_related_widget(&*pa).unwrap();
+        handle.write(pa, |wid, _| wid.text_mut().enable_cursors());
+        let (widget, area) = handle.get_related_widget(pa).unwrap();
         Self { widget, area, inc_searcher: () }
     }
 }
@@ -260,7 +259,7 @@ impl<W: Widget<U>, U: Ui, S> EditHelper<W, U, S> {
     ) -> Ret {
         self.edit_nth(
             pa,
-            self.read(&*pa, |wid| wid.text().cursors().unwrap().main_index()),
+            self.read(pa, |wid| wid.text().cursors().unwrap().main_index()),
             edit,
         )
     }
@@ -289,7 +288,7 @@ impl<W: Widget<U>, U: Ui, S> EditHelper<W, U, S> {
     ) -> Ret {
         self.edit_nth(
             pa,
-            self.read(&*pa, |wid| wid.text().cursors().unwrap().len())
+            self.read(pa, |wid| wid.text().cursors().unwrap().len())
                 .saturating_sub(1),
             edit,
         )
@@ -659,6 +658,12 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Editor<'a, W, A, S> {
     ///   position allowed.
     pub fn move_to(&mut self, point: Point) {
         self.cursor.move_to(point, self.widget.text());
+    }
+
+    /// Moves the cursor to [`Point::default`], i.e., the start of the
+    /// [`Text`]
+    pub fn move_to_start(&mut self) {
+        self.cursor.move_to(Point::default(), self.widget.text());
     }
 
     /// Moves the cursor to a `line` and a `column`
@@ -1045,7 +1050,7 @@ impl<U: Ui, S> Editor<'_, File<U>, U::Area, S> {
 
 /// Incremental search functions, only available on [`IncSearcher`]s
 ///
-/// [`IncSearcher`]: docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearcher.html
+/// [`IncSearcher`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearcher.html
 impl<W: Widget<A::Ui>, A: RawArea> Editor<'_, W, A, Searcher> {
     /// Search incrementally from an [`IncSearch`] request
     ///
@@ -1053,7 +1058,7 @@ impl<W: Widget<A::Ui>, A: RawArea> Editor<'_, W, A, Searcher> {
     /// the caret. if `end` is [`Some`], the search will end at the
     /// requested [`Point`].
     ///
-    /// [`IncSearch`]: docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
+    /// [`IncSearch`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
     pub fn search_inc_fwd(&mut self, end: Option<Point>) -> impl Iterator<Item = [Point; 2]> + '_ {
         let range = if let Some(end) = end {
             (self.cursor.caret()..end).to_range(self.text().len().byte())
@@ -1069,7 +1074,7 @@ impl<W: Widget<A::Ui>, A: RawArea> Editor<'_, W, A, Searcher> {
     /// the caret in reverse. if `start` is [`Some`], the search will
     /// end at the requested [`Point`].
     ///
-    /// [`IncSearch`]: docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
+    /// [`IncSearch`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
     pub fn search_inc_rev(
         &mut self,
         start: Option<Point>,
@@ -1085,7 +1090,7 @@ impl<W: Widget<A::Ui>, A: RawArea> Editor<'_, W, A, Searcher> {
     /// Whether the [`Cursor`]'s selection matches the [`IncSearch`]
     /// request
     ///
-    /// [`IncSearch`]: docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
+    /// [`IncSearch`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
     pub fn matches_inc(&mut self) -> bool {
         let range = self.cursor.range(self.widget.text());
         self.inc_searcher

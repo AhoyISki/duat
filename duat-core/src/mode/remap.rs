@@ -11,9 +11,9 @@ use crate::{
     context,
     data::{Pass, RwData},
     mode,
-    text::{Ghost, Key, txt},
+    text::{Ghost, Tagger, txt},
     ui::Ui,
-    widget::Widget,
+    ui::Widget,
 };
 
 mod global {
@@ -329,7 +329,7 @@ mod global {
     impl<M: Mode<U>, U: Ui> AsGives<U> for M {
         fn into_gives(self) -> Gives {
             if let Some(keys) = self.just_keys() {
-                Gives::Keys(str_to_keys(keys))
+                Gives::Taggers(str_to_keys(keys))
             } else {
                 Gives::Mode(Box::new(move || crate::mode::set(self.clone())))
             }
@@ -447,7 +447,7 @@ impl Remapper {
                     clear_cur_seq(&mut pa);
 
                     match &remap.gives {
-                        Gives::Keys(keys) => {
+                        Gives::Taggers(keys) => {
                             let keys = keys.clone();
                             // Lock dropped here, before any .awaits
                             mode::send_keys_to(pa, keys)
@@ -461,7 +461,7 @@ impl Remapper {
 
                     remove_alias_and::<U>(pa, |widget, area, main| {
                         widget.text_mut().insert_tag(
-                            Key::for_alias(),
+                            Tagger::for_alias(),
                             main,
                             Ghost(txt!("[Alias]{}", keys_to_string(&cur_seq))),
                         );
@@ -503,7 +503,7 @@ impl Remap {
 ///
 #[doc(hidden)]
 pub enum Gives {
-    Keys(Vec<KeyEvent>),
+    Taggers(Vec<KeyEvent>),
     Mode(Box<dyn Fn()>),
 }
 
@@ -522,7 +522,7 @@ fn remove_alias_and<U: Ui>(
 
                 if let Some(main) = widget.text().cursors().unwrap().get_main() {
                     let main = main.byte();
-                    widget.text_mut().remove_tags(Key::for_alias(), main);
+                    widget.text_mut().remove_tags(Tagger::for_alias(), main);
                     f(&mut *widget, area, main)
                 }
             });

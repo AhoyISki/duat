@@ -16,15 +16,7 @@
 //! [`Mode`]: crate::mode::Mode
 use std::{any::TypeId, collections::HashMap, marker::PhantomData};
 
-use duat_core::{
-    cfg::PrintCfg,
-    context::FileHandle,
-    data::{Pass, RwData},
-    form, hook,
-    text::Text,
-    ui::{PushSpecs, Ui},
-    widget::{Widget, WidgetCfg},
-};
+use duat_core::prelude::*;
 
 use crate::modes::PromptMode;
 

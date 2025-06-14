@@ -12,15 +12,7 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use duat_core::{
-    context::{self, FileHandle, Level, Logs},
-    data::{Pass, RwData},
-    form::{self, Form},
-    hook::{self, KeysSent},
-    text::{Text, txt},
-    ui::{PushSpecs, RawArea, Ui},
-    widget::{Widget, WidgetCfg},
-};
+use duat_core::{hook::KeysSent, prelude::*};
 
 /// A [`Widget`] to show notifications
 ///
@@ -34,7 +26,7 @@ use duat_core::{
 /// [hook]: hooks
 /// [`left_with_ratio`]: NotificationsCfg::left_with_ratio
 pub struct Notifications<U> {
-    logs: Logs,
+    logs: context::Logs,
     text: Text,
     _ghost: PhantomData<U>,
     mask: &'static str,
@@ -56,11 +48,11 @@ impl<U: Ui> Widget<U> for Notifications<U> {
                 && let Some(rec) = wid.logs.last()
             {
                 wid.mask = match rec.level() {
-                    Level::Error => "error",
-                    Level::Warn => "warn",
-                    Level::Info => "info",
-                    Level::Debug => "debug",
-                    Level::Trace => unreachable!(),
+                    context::Level::Error => "error",
+                    context::Level::Warn => "warn",
+                    context::Level::Info => "info",
+                    context::Level::Debug => "debug",
+                    context::Level::Trace => unreachable!(),
                 };
                 wid.text = txt!("{}: {}", rec.target(), rec.text().clone()).build();
             } else if clear_notifs {

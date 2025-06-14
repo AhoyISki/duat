@@ -195,7 +195,7 @@
 //! [`cmd::queue_and`]: queue_and
 //! [`Send + 'static`]: Send
 //! [`Color`]: crate::form::Color
-//! [`Widget`]: crate::widget::Widget
+//! [`Widget`]: crate::ui::Widget
 //! [`File`]: crate::file::File
 //! [`&str`]: str
 //! [`cmd`]: self
@@ -233,7 +233,7 @@ use crate::{
     file_entry, iter_around, iter_around_rev, mode,
     text::{Text, txt},
     ui::{DuatEvent, Ui},
-    widget::Widget,
+    ui::Widget,
 };
 
 mod parameters;
@@ -1020,7 +1020,7 @@ mod global {
 /// [widget] and all of the [windows].
 ///
 /// [`File`]: crate::file::File
-/// [widget]: crate::widget::Widget
+/// [widget]: crate::ui::Widget
 /// [windows]: crate::ui::Window
 struct Commands(LazyLock<RwData<InnerCommands>>);
 

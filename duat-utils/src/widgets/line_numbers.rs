@@ -12,14 +12,7 @@
 //! [`File`]: super::File
 use std::{fmt::Alignment, marker::PhantomData};
 
-use duat_core::{
-    context::FileHandle,
-    data::{Pass, RwData},
-    form::{self, DEFAULT_ID, Form},
-    text::{AlignCenter, AlignLeft, AlignRight, Builder, Text},
-    ui::{Constraint, PushSpecs, RawArea, Ui},
-    widget::{Widget, WidgetCfg},
-};
+use duat_core::{prelude::*, text::Builder, ui::Constraint};
 
 pub struct LineNumbers<U: Ui> {
     handle: FileHandle<U>,
@@ -255,7 +248,7 @@ fn push_text<U>(
     }
 
     b.push("\n");
-    b.push(DEFAULT_ID);
+    b.push(form::DEFAULT_ID);
 }
 
 fn align(b: &mut Builder, alignment: Alignment) {

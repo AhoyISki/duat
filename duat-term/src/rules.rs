@@ -3,8 +3,7 @@ use duat_core::{
     data::{Pass, RwData},
     form::{self, Form},
     text::{Text, txt},
-    ui::{PushSpecs, RawArea as UiArea},
-    widget::{Widget, WidgetCfg},
+    ui::{PushSpecs, RawArea as UiArea, Widget, WidgetCfg},
 };
 
 use crate::{Area, Ui};

@@ -24,7 +24,7 @@ use crate::{
     duat_name,
     file::{File, ReaderCfg},
     hook::Hookable,
-    widget::{Node, Widget, WidgetCfg},
+    ui::{Node, Widget, WidgetCfg},
 };
 
 /// A constructor helper for [`File`] initiations
@@ -237,7 +237,7 @@ impl<U: Ui> FileBuilder<U> {
         let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];
 
-        let (node, parent) = window.push(&mut *pa, widget, &self.area, specs, true, true);
+        let (node, parent) = window.push(pa, widget, &self.area, specs, true, true);
 
         self.get_areas(pa, window, node, parent)
     }
@@ -250,7 +250,7 @@ impl<U: Ui> FileBuilder<U> {
         parent: Option<U::Area>,
     ) -> (U::Area, Option<U::Area>) {
         self.handle
-            .write_related_widgets(&mut *pa, |related| related.push(node.clone()));
+            .write_related_widgets(pa, |related| related.push(node.clone()));
 
         if let Some(parent) = &parent
             && parent.is_master_of(&window.files_area)
@@ -312,10 +312,10 @@ impl<U: Ui> FileBuilder<U> {
     /// # }
     /// ```
     ///
-    /// Pushing directly to the [`PromptLine`]'s [`U::Area`] means that
-    /// they'll share a parent that holds only them. This can then be
-    /// exploited by the `"HidePromptLine"` [hook group], which is
-    /// defined as:
+    /// Pushing directly to the [`PromptLine`]'s [`U::Area`] means
+    /// that they'll share a parent that holds only them. This can
+    /// then be exploited by the `"HidePromptLine"` [hook group],
+    /// which is defined as:
     /// ```rust
     /// # use duat_core::prelude::*;
     /// # struct PromptLine<U: Ui>(std::marker::PhantomData<U>);
@@ -371,9 +371,9 @@ impl<U: Ui> FileBuilder<U> {
         let mut windows = context::windows().borrow_mut();
         let window = &mut windows[self.window_i];
 
-        let (node, parent) = window.push(&mut *pa, widget, &area, specs, true, true);
+        let (node, parent) = window.push(pa, widget, &area, specs, true, true);
         self.handle
-            .write_related_widgets(&mut *pa, |related| related.push(node.clone()));
+            .write_related_widgets(pa, |related| related.push(node.clone()));
         (node.area().clone(), parent)
     }
 

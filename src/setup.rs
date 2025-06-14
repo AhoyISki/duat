@@ -20,8 +20,7 @@ use duat_core::{
     clipboard::Clipboard,
     context::{self, CurFile, CurWidget, Logs},
     session::{FileRet, SessionCfg},
-    ui::{self, Constraint, DuatEvent, RawArea, Window},
-    widget::Widget,
+    ui::{self, Constraint, DuatEvent, RawArea, Widget, Window},
 };
 use duat_term::VertRule;
 use duat_utils::modes::Regular;

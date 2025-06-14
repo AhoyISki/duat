@@ -1,20 +1,15 @@
 use std::{io::Write, marker::PhantomData, sync::LazyLock};
 
-use duat_core::{
-    cmd, context,
-    data::{Pass, RwData},
-    form, hook,
-    mode::{self, Cursors, EditHelper, KeyCode, KeyEvent, key},
-    text::{Ghost, Key, Point, Searcher, Text, txt},
-    ui::{RawArea, Ui},
-    widget::Widget,
-};
+use duat_core::{prelude::*, text::Searcher};
 
 use super::IncSearcher;
-use crate::{hooks::{SearchPerformed, SearchUpdated}, widgets::PromptLine};
+use crate::{
+    hooks::{SearchPerformed, SearchUpdated},
+    widgets::PromptLine,
+};
 
-static PROMPT_KEY: LazyLock<Key> = LazyLock::new(Key::new);
-static KEY: LazyLock<Key> = LazyLock::new(Key::new);
+static PROMPT_TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
+static TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 
 #[derive(Clone)]
 pub struct Prompt<M: PromptMode<U>, U: Ui>(M, PhantomData<U>);
@@ -35,7 +30,7 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
         widget: RwData<Self::Widget>,
         area: U::Area,
     ) {
-        let mut helper = EditHelper::new(&mut pa, widget, area.clone());
+        let mut helper = widget.edit_helper(&mut pa, &area);
 
         match key {
             key!(KeyCode::Backspace) => {
@@ -91,7 +86,7 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
             key!(KeyCode::Esc) => {
                 let p = helper.read(&pa, |wid| wid.text().len());
                 helper.edit_main(&mut pa, |mut e| {
-                    e.move_to(Point::default());
+                    e.move_to_start();
                     e.set_anchor();
                     e.move_to(p);
                     e.replace("");
@@ -124,7 +119,7 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
                 Some(text) => text,
                 None => self.0.prompt(),
             });
-            wid.text_mut().insert_tag(*PROMPT_KEY, 0, tag);
+            wid.text_mut().insert_tag(*PROMPT_TAGGER, 0, tag);
 
             std::mem::take(wid.text_mut())
         });
@@ -163,26 +158,26 @@ impl RunCommands {
 
 impl<U: Ui> PromptMode<U> for RunCommands {
     fn update(&mut self, _: &mut Pass, mut text: Text, _: &<U as Ui>::Area) -> Text {
-        text.remove_tags(*KEY, ..);
+        text.remove_tags(*TAGGER, ..);
 
         let command = text.to_string();
         let caller = command.split_whitespace().next();
         if let Some(caller) = caller {
             if let Some((ok_ranges, err_range)) = cmd::check_args(&command) {
                 let id = form::id_of!("CallerExists");
-                text.insert_tag(*KEY, 0..caller.len(), id.to_tag(0));
+                text.insert_tag(*TAGGER, 0..caller.len(), id.to_tag(0));
 
                 let id = form::id_of!("ParameterOk");
                 for range in ok_ranges {
-                    text.insert_tag(*KEY, range, id.to_tag(0));
+                    text.insert_tag(*TAGGER, range, id.to_tag(0));
                 }
                 if let Some((range, _)) = err_range {
                     let id = form::id_of!("ParameterErr");
-                    text.insert_tag(*KEY, range, id.to_tag(0));
+                    text.insert_tag(*TAGGER, range, id.to_tag(0));
                 }
             } else {
                 let id = form::id_of!("CallerNotFound");
-                text.insert_tag(*KEY, 0..caller.len(), id.to_tag(0));
+                text.insert_tag(*TAGGER, 0..caller.len(), id.to_tag(0));
             }
         }
 
@@ -213,7 +208,7 @@ impl<U: Ui> PromptMode<U> for RunCommands {
 #[derive(Clone)]
 pub struct IncSearch<I: IncSearcher<U>, U: Ui> {
     inc: I,
-    orig: Option<(Cursors, <U::Area as RawArea>::PrintInfo)>,
+    orig: Option<(mode::Cursors, <U::Area as RawArea>::PrintInfo)>,
     ghost: PhantomData<U>,
     prev: String,
 }
@@ -232,13 +227,13 @@ impl<I: IncSearcher<U>, U: Ui> IncSearch<I, U> {
 impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
     fn update(&mut self, pa: &mut Pass, mut text: Text, _: &<U as Ui>::Area) -> Text {
         let (orig_cursors, orig_print_info) = self.orig.as_ref().unwrap();
-        text.remove_tags(*KEY, ..);
+        text.remove_tags(*TAGGER, ..);
 
-        let handle = context::fixed_file::<U>(&*pa).unwrap();
+        let handle = context::fixed_file::<U>(pa).unwrap();
 
         match Searcher::new(text.to_string()) {
             Ok(searcher) => {
-                handle.write(&mut *pa, |file, area| {
+                handle.write(pa, |file, area| {
                     area.set_print_info(orig_print_info.clone());
                     *file.cursors_mut().unwrap() = orig_cursors.clone();
                 });
@@ -253,7 +248,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
                 let span = err.span();
                 let id = form::id_of!("ParseCommandErr");
 
-                text.insert_tag(*KEY, span.start.offset..span.end.offset, id.to_tag(0));
+                text.insert_tag(*TAGGER, span.start.offset..span.end.offset, id.to_tag(0));
             }
         }
 
@@ -274,7 +269,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
     }
 
     fn on_switch(&mut self, pa: &mut Pass, text: Text, _: &<U as Ui>::Area) -> Text {
-        let handle = context::fixed_file::<U>(&*pa).unwrap();
+        let handle = context::fixed_file::<U>(pa).unwrap();
         handle.read(pa, |file, area| {
             self.orig = Some((file.cursors().clone(), area.print_info()));
         });
@@ -314,7 +309,7 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
             false
         }
 
-        text.remove_tags(*KEY, ..);
+        text.remove_tags(*TAGGER, ..);
 
         let command = text.to_string();
         let Some(caller) = command.split_whitespace().next() else {
@@ -330,10 +325,10 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
         };
 
         let c_s = command.len() - command.trim_start().len();
-        text.insert_tag(*KEY, c_s..c_s + caller.len(), caller_id.to_tag(0));
+        text.insert_tag(*TAGGER, c_s..c_s + caller.len(), caller_id.to_tag(0));
 
         for (_, range) in args {
-            text.insert_tag(*KEY, range, args_id.to_tag(0));
+            text.insert_tag(*TAGGER, range, args_id.to_tag(0));
         }
 
         text
@@ -347,8 +342,8 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
             return text;
         };
 
-        let handle = context::fixed_file::<U>(&*pa).unwrap();
-        let mut helper = EditHelper::from_handle(&mut *pa, handle);
+        let handle = context::fixed_file::<U>(pa).unwrap();
+        let mut helper = handle.edit_helper(pa);
         helper.edit_all(pa, |mut e| {
             let Ok(mut child) = Command::new(caller)
                 .args(cmd::args_iter(&command).map(|(a, _)| a))

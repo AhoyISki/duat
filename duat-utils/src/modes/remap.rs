@@ -9,7 +9,7 @@ use crate::{
     context,
     data::RwData,
     mode,
-    text::{Key, Tag, text},
+    text::{Tagger, Tag, text},
     ui::Ui,
     widgets::Widget,
 };
@@ -419,7 +419,7 @@ impl Remapper {
                 } else if *is_alias {
                     remove_alias_and::<U>(|widget, area, main| {
                         widget.text_mut().insert_tag(
-                            Key::for_alias(),
+                            Tagger::for_alias(),
                             Tag::ghost(main, text!([Alias] { keys_to_string(cur_seq) })),
                         );
 
@@ -470,7 +470,7 @@ fn remove_alias_and<U: Ui>(f: impl FnOnce(&mut dyn Widget<U>, &U::Area, usize)) 
 
         if let Some(main) = widget.cursors().unwrap().get_main() {
             let main = main.byte();
-            widget.text_mut().remove_tags(main, Key::for_alias());
+            widget.text_mut().remove_tags(main, Tagger::for_alias());
             f(&mut *widget, area, main)
         }
     })

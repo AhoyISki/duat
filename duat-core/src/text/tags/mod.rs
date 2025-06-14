@@ -21,7 +21,7 @@ use types::TagId;
 
 use self::types::Toggle;
 pub use self::{
-    ids::{GhostId, Key, Keys, ToggleId},
+    ids::{GhostId, Tagger, Taggers, ToggleId},
     types::{
         AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCursor, FormTag, Ghost, MainCursor,
         RawTag::{self, *},
@@ -57,7 +57,7 @@ pub struct MutTags<'a>(pub(super) &'a mut Tags);
 
 impl MutTags<'_> {
     /// Inserts a [`Tag`] at the given position
-    pub fn insert<R>(&mut self, key: Key, r: R, tag: impl Tag<R>) {
+    pub fn insert<R>(&mut self, key: Tagger, r: R, tag: impl Tag<R>) {
         self.0.insert(key, r, tag);
     }
 
@@ -71,11 +71,11 @@ impl MutTags<'_> {
     /// in the file, so if there are a lot of other tags, this
     /// operation may be slow.
     ///
-    /// [key]: Keys
+    /// [key]: Taggers
     /// [`File`]: crate::file::File
     /// [`Point`]: super::Point
     /// [`RangeFull`]: std::ops::RangeFull
-    pub fn remove(&mut self, range: impl TextRangeOrPoint, keys: impl Keys) {
+    pub fn remove(&mut self, range: impl TextRangeOrPoint, keys: impl Taggers) {
         let range = range.to_range(self.0.len_bytes());
         self.0.remove_from(range, keys)
     }
@@ -144,7 +144,7 @@ impl Tags {
     }
 
     /// Insert a new [`Tag`] at a given byte
-    pub fn insert<R>(&mut self, key: Key, r: R, tag: impl Tag<R>) -> Option<ToggleId> {
+    pub fn insert<R>(&mut self, key: Tagger, r: R, tag: impl Tag<R>) -> Option<ToggleId> {
         fn exists_at(tags: &GapBuffer<TagOrSkip>, n: usize, tag: RawTag) -> bool {
             rev_range(tags, ..n)
                 .map_while(|(_, ts)| ts.as_tag())
@@ -302,8 +302,8 @@ impl Tags {
         self.bounds.extend(other.bounds);
     }
 
-    /// Removes all [`RawTag`]s of a give [`Keys`]
-    pub fn remove_from(&mut self, range: impl RangeBounds<usize>, keys: impl Keys) {
+    /// Removes all [`RawTag`]s of a give [`Taggers`]
+    pub fn remove_from(&mut self, range: impl RangeBounds<usize>, keys: impl Taggers) {
         let (start, end) = crate::get_ends(range, self.len_bytes());
 
         // It is best to do this first, so getting skips returns correct

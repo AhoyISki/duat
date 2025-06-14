@@ -97,7 +97,7 @@
 //! #[derive(Clone)]
 //! pub struct EasyMotion {
 //!     is_line: bool,
-//!     key: Key,
+//!     key: Tagger,
 //!     points: Vec<[Point; 2]>,
 //!     seq: String,
 //! }
@@ -106,7 +106,7 @@
 //!     pub fn word() -> Self {
 //!         Self {
 //!             is_line: false,
-//!             key: Key::new(),
+//!             key: Tagger::new(),
 //!             points: Vec::new(),
 //!             seq: String::new(),
 //!         }
@@ -115,7 +115,7 @@
 //!     pub fn line() -> Self {
 //!         Self {
 //!             is_line: true,
-//!             key: Key::new(),
+//!             key: Tagger::new(),
 //!             points: Vec::new(),
 //!             seq: String::new(),
 //!         }
@@ -281,19 +281,15 @@ use std::{
 
 #[allow(unused_imports)]
 use dirs_next::cache_dir;
-pub use lender::Lender;
-pub use libloading::{Library, Symbol};
 
 use self::{
     data::Pass,
     file::File,
     text::Text,
-    ui::{Ui, Window},
-    widget::{Node, Widget},
+    ui::{Node, Ui, Widget, Window},
 };
 use crate::text::txt;
 
-pub mod cache;
 pub mod cfg;
 pub mod cmd;
 pub mod context;
@@ -306,7 +302,6 @@ pub mod mode;
 pub mod session;
 pub mod text;
 pub mod ui;
-pub mod widget;
 
 /// A plugin for Duat
 ///
@@ -422,25 +417,25 @@ pub trait Plugin<U: Ui>: Sized {
 
 pub mod prelude {
     //! The prelude of Duat
+    //!
+    //! I recommend adding `use duat_core::prelude::*` to the top of
+    //! modules, in order to bring everything that you could possibly
+    //! need into scope. This is especially the case if you're not
+    //! working with an LSP which can just bring those symbols into
+    //! scope.
+    pub use lender::Lender;
+
     pub use crate::{
-        Lender,
-        cmd::{self, Parameter},
+        cfg::PrintCfg,
+        cmd,
         context::{self, FileHandle},
-        data::{self, DataMap, Pass, RwData},
-        file::{File, Reader},
-        form::{self, Form, FormId},
-        hook::{
-            self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FocusedOn,
-            FormSet, Hookable, KeysSent, KeysSentTo, ModeSetTo, ModeSwitched, OnFileOpen,
-            OnWindowOpen, UnfocusedFrom,
-        },
-        mode::{self, EditHelper, KeyCode, KeyEvent, KeyMod, Mode, key},
-        text::{
-            AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Key, Point, Spacer, Text,
-            txt,
-        },
-        ui::{Constraint, FileBuilder, PushSpecs, RawArea, Ui, WindowBuilder},
-        widget::{Widget, WidgetCfg},
+        data::{Pass, RwData},
+        file::File,
+        form::{self, Form},
+        hook,
+        mode::{self, KeyCode, KeyEvent, KeyMod, Mode, key},
+        text::{AlignCenter, AlignLeft, AlignRight, Conceal, Ghost, Spacer, Tagger, Text, txt},
+        ui::{PushSpecs, RawArea, Ui, Widget, WidgetCfg},
     };
 }
 
@@ -638,8 +633,6 @@ pub fn duat_name<T: ?Sized + 'static>() -> &'static str {
 }
 
 /// Returns the source crate of a given type
-///
-/// This is primarily used on the [`cache`] module.
 pub fn src_crate<T: ?Sized + 'static>() -> &'static str {
     fn src_crate_inner(type_id: TypeId, type_name: &'static str) -> &'static str {
         static CRATES: LazyLock<RwLock<HashMap<TypeId, &'static str>>> =

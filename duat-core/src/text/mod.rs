@@ -83,7 +83,7 @@
 //! [ghost text]: Ghost
 //! [`Ui`]: crate::ui::Ui
 //! [`File`]: crate::file::File
-//! [`Widget`]: crate::widget::Widget
+//! [`Widget`]: crate::ui::Widget
 //! [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
 //! [`Mode`]: crate::mode::Mode
 //! [`EditHelper`]: crate::mode::EditHelper
@@ -115,14 +115,13 @@ pub use self::{
     ops::{Point, TextRange, TextRangeOrPoint, TwoPoints, utf8_char_width},
     search::{Matcheable, RegexPattern, Searcher},
     tags::{
-        AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCursor, FormTag, Ghost, GhostId, Key,
-        Keys, MainCursor, MutTags, RawTag, Spacer, Tag, ToggleId,
+        AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCursor, FormTag, Ghost, GhostId,
+        MainCursor, MutTags, RawTag, Spacer, Tag, Tagger, Taggers, ToggleId,
     },
 };
 use crate::{
-    cache,
     cfg::PrintCfg,
-    form,
+    context, form,
     mode::{Cursor, Cursors},
     ui::RawArea,
 };
@@ -136,7 +135,7 @@ use crate::{
 /// some convenience, by using the [`txt!`] macro, making use of a
 /// [`Builder`].
 ///
-/// [`Widget`]: crate::widget::Widget
+/// [`Widget`]: crate::ui::Widget
 pub struct Text(Box<InnerText>);
 
 struct InnerText {
@@ -189,7 +188,7 @@ impl Text {
             .has_unsaved_changes
             .store(has_unsaved_changes, Ordering::Relaxed);
 
-        if let Some(history) = cache::load_cache(path.as_ref()) {
+        if let Some(history) = context::load_cache(path.as_ref()) {
             text.0.history = Some(history);
         }
 
@@ -699,7 +698,7 @@ impl Text {
     ////////// Tag addition/deletion functions
 
     /// Inserts a [`Tag`] at the given position
-    pub fn insert_tag<R>(&mut self, key: Key, r: R, tag: impl Tag<R>) {
+    pub fn insert_tag<R>(&mut self, key: Tagger, r: R, tag: impl Tag<R>) {
         self.0.tags.insert(key, r, tag);
     }
 
@@ -717,9 +716,9 @@ impl Text {
     /// If you give it a [`Point`] or [`usize`], it will be treated as
     /// a one byte range.
     ///
-    /// [key]: Keys
+    /// [key]: Taggers
     /// [`File`]: crate::file::File
-    pub fn remove_tags(&mut self, keys: impl Keys, range: impl TextRangeOrPoint) {
+    pub fn remove_tags(&mut self, keys: impl Taggers, range: impl TextRangeOrPoint) {
         let range = range.to_range(self.len().byte());
         self.0.tags.remove_from(range, keys)
     }
@@ -814,7 +813,7 @@ impl Text {
     fn add_cursor(&mut self, cursor: &Cursor, is_main: bool) {
         let (caret, selection) = cursor.tag_points(self);
 
-        let key = Key::for_cursors();
+        let key = Tagger::for_cursors();
         let form = if is_main {
             self.0.tags.insert(key, caret.byte(), MainCursor);
             form::M_SEL_ID
@@ -840,7 +839,7 @@ impl Text {
             .into_iter()
             .chain(selection.into_iter().flatten().find(|p| *p != caret));
         for p in points {
-            self.remove_tags(Key::for_cursors(), p.byte());
+            self.remove_tags(Tagger::for_cursors(), p.byte());
         }
     }
 

@@ -31,28 +31,30 @@
 //!
 //! [`OnFileOpen`]: crate::hook::OnFileOpen
 //! [`hook`]: crate::hook
-pub(crate) mod builder;
-mod layout;
-
 use std::{cell::RefCell, fmt::Debug, rc::Rc, sync::mpsc, time::Instant};
 
 use bincode::{Decode, Encode};
 use crossterm::event::KeyEvent;
 use layout::window_files;
 
+use self::layout::{FileId, Layout};
+pub(crate) use self::widget::{Node, Related};
 pub use self::{
     builder::{FileBuilder, WindowBuilder},
-    layout::{FileId, Layout, MasterOnLeft},
+    widget::{Widget, WidgetCfg},
 };
 use crate::{
-    cache::load_cache,
     cfg::PrintCfg,
+    context::load_cache,
     data::{Pass, RwData},
     file::File,
     form::Painter,
     text::{FwdIter, Item, Point, RevIter, Text, TwoPoints},
-    widget::{Node, Widget},
 };
+
+pub(crate) mod builder;
+pub mod layout;
+mod widget;
 
 /// All the methods that a working gui/tui will need to implement, in
 /// order to use Duat.
@@ -420,7 +422,7 @@ impl<U: Ui> Window<U> {
             unsafe { RwData::<dyn Widget<U>>::new_unsized::<W>(Rc::new(RefCell::new(widget))) };
 
         let cache = widget
-            .read_as(&*pa, |f: &File<U>| {
+            .read_as(pa, |f: &File<U>| {
                 load_cache::<<U::Area as RawArea>::Cache>(f.path())
             })
             .flatten()
@@ -428,7 +430,7 @@ impl<U: Ui> Window<U> {
 
         let area = U::new_root(ms, cache);
 
-        let node = Node::new::<W>(&mut *pa, widget, area.clone());
+        let node = Node::new::<W>(pa, widget, area.clone());
 
         let window = Self {
             nodes: vec![node.clone()],
@@ -469,7 +471,7 @@ impl<U: Ui> Window<U> {
             widget: &RwData<dyn Widget<U> + 'static>,
         ) -> (U::Area, Option<U::Area>) {
             let cache = widget
-                .read_as(&*pa, |f: &File<U>| {
+                .read_as(pa, |f: &File<U>| {
                     load_cache::<<U::Area as RawArea>::Cache>(f.path())
                 })
                 .flatten()
@@ -485,7 +487,7 @@ impl<U: Ui> Window<U> {
 
         let (child, parent) = get_areas(pa, area, specs, do_cluster, on_files, &widget);
 
-        self.nodes.push(Node::new::<W>(&mut *pa, widget, child));
+        self.nodes.push(Node::new::<W>(pa, widget, child));
 
         (self.nodes.last().unwrap().clone(), parent)
     }
@@ -501,7 +503,7 @@ impl<U: Ui> Window<U> {
         pa: &mut Pass,
         mut file: File<U>,
     ) -> Result<(Node<U>, Option<U::Area>), Text> {
-        let window_files = window_files(&*pa, &self.nodes);
+        let window_files = window_files(pa, &self.nodes);
         file.layout_order = window_files.len();
         let (id, specs) = self.layout.new_file(&file, window_files)?;
 
@@ -558,17 +560,17 @@ impl<U: Ui> Window<U> {
         if let Some(related) = node.related_widgets() {
             let lo = node
                 .widget()
-                .read_as(&*pa, |f: &File<U>| f.layout_order)
+                .read_as(pa, |f: &File<U>| f.layout_order)
                 .unwrap();
 
-            let nodes = related.read(&*pa, |related| {
+            let nodes = related.read(pa, |related| {
                 self.nodes
                     .extract_if(.., |n| related.contains(n) || n == node)
                     .collect()
             });
 
             for node in &self.nodes {
-                node.widget().write_as(&mut *pa, |f: &mut File<U>| {
+                node.widget().write_as(pa, |f: &mut File<U>| {
                     if f.layout_order > lo {
                         f.layout_order -= 1;
                     }
@@ -590,11 +592,11 @@ impl<U: Ui> Window<U> {
     ) {
         if let Some(i) = self.nodes.iter().position(|node| {
             node.widget()
-                .read_as(&*pa, |f: &File<U>| f.layout_order >= layout_ordering)
+                .read_as(pa, |f: &File<U>| f.layout_order >= layout_ordering)
                 == Some(true)
         }) {
             for node in self.nodes[i..].iter() {
-                node.widget().write_as(&mut *pa, |f: &mut File<U>| {
+                node.widget().write_as(pa, |f: &mut File<U>| {
                     f.layout_order += 1;
                 });
             }
@@ -612,7 +614,7 @@ impl<U: Ui> Window<U> {
     /// Returns an [`Iterator`] over the names of [`File`]s
     /// and their respective [`Widget`] indices
     ///
-    /// [`Widget`]: crate::widget::Widget
+    /// [`Widget`]: crate::ui::Widget
     pub fn file_names(&self, pa: &Pass) -> Vec<String> {
         window_files(pa, &self.nodes)
             .into_iter()
@@ -623,7 +625,7 @@ impl<U: Ui> Window<U> {
     /// Returns an [`Iterator`] over the paths of [`File`]s
     /// and their respective [`Widget`] indices
     ///
-    /// [`Widget`]: crate::widget::Widget
+    /// [`Widget`]: crate::ui::Widget
     pub fn file_paths(&self, pa: &Pass) -> Vec<String> {
         window_files(pa, &self.nodes)
             .into_iter()
@@ -690,7 +692,7 @@ impl From<PushSpecs> for Axis {
 #[doc(hidden)]
 pub enum DuatEvent {
     /// A [`KeyEvent`] was typed
-    Key(KeyEvent),
+    Tagger(KeyEvent),
     /// A function was queued
     QueuedFunction(Box<dyn FnOnce(Pass) + Send>),
     /// The application resized
@@ -720,7 +722,7 @@ pub enum DuatEvent {
 impl Debug for DuatEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Key(key) => f.debug_tuple("Key").field(key).finish(),
+            Self::Tagger(key) => f.debug_tuple("Tagger").field(key).finish(),
             Self::Resize => write!(f, "Resize"),
             Self::FormChange => write!(f, "FormChange"),
             Self::ReloadConfig => write!(f, "ReloadConfig"),
@@ -747,7 +749,7 @@ impl Sender {
 
     /// Sends a [`KeyEvent`]
     pub fn send_key(&self, key: KeyEvent) -> Result<(), mpsc::SendError<DuatEvent>> {
-        self.0.send(DuatEvent::Key(key))
+        self.0.send(DuatEvent::Tagger(key))
     }
 
     /// Sends a notice that the app has resized
@@ -760,51 +762,6 @@ impl Sender {
     /// [`Form`]: crate::form::Form
     pub(crate) fn send_form_changed(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
         self.0.send(DuatEvent::FormChange)
-    }
-}
-
-/// A read-only [`Window`]
-pub struct RoWindow<'a, U: Ui>(&'a Window<U>);
-
-impl<U: Ui> RoWindow<'_, U> {
-    /// Similar to the [`Iterator::fold`] operatio, folding each
-    /// [`&File`][File`] by applying an operatio,
-    /// returning a final result.
-    ///
-    /// The reason why this is a `fold` operatio, and doesn't just
-    /// return an [`Iterator`], is because `f` will act on a
-    /// reference, as to not do unnecessary cloning of the widget's
-    /// inner [`RwData<W>`], and because [`Iterator`]s cannot return
-    /// references to themselves.
-    pub fn fold_files<B>(&self, pa: &Pass, init: B, mut f: impl FnMut(B, &File<U>) -> B) -> B {
-        self.0.nodes.iter().fold(init, |accum, node| {
-            if node.data_is::<File<U>>() {
-                node.read_as(pa, |file: &File<U>| f(accum, file)).unwrap()
-            } else {
-                accum
-            }
-        })
-    }
-
-    /// Similar to the [`Iterator::fold`] operatio, folding each
-    /// [`&dyn Widget<U>`][Widget] by applying an
-    /// operatio, returning a final result.
-    ///
-    /// The reason why this is a `fold` operatio, and doesn't just
-    /// return an [`Iterator`], is because `f` will act on a
-    /// reference, as to not do unnecessary cloning of the widget's
-    /// inner [`RwData<W>`], and because [`Iterator`]s cannot return
-    /// references to themselves.
-    pub fn fold_widgets<B>(
-        &self,
-        pa: &Pass,
-        init: B,
-        mut f: impl FnMut(B, &dyn Widget<U>) -> B,
-    ) -> B {
-        self.0.nodes.iter().fold(init, |accum, node| {
-            let f = &mut f;
-            node.widget().read(pa, |widget| f(accum, widget))
-        })
     }
 }
 
@@ -1207,7 +1164,7 @@ pub enum Side {
     Left,
 }
 
-/// A corner to attach a [`Widget`] to and from
+/// A corner to attach a floating [`Widget`] to and from
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Corner {
     /// Attach on/from the top left corner

@@ -306,9 +306,9 @@
 //! [plugs]: prelude::plug
 //! [default mode]: prelude::mode::set_default
 //! [Maps]: prelude::map
-//! [Changes]: prelude::print::wrap_on_width
-//! [Removes]: prelude::hooks::remove
-//! [group]: prelude::hooks::add_grouped
+//! [Changes]: prelude::print::wrap_on_edge
+//! [Removes]: prelude::hook::remove
+//! [group]: prelude::hook::add_grouped
 //! [Pushes]: prelude::FileBuilder::push
 //! [vertical rule]: prelude::VertRule
 //! [line numbers]: prelude::LineNumbers
@@ -316,11 +316,11 @@
 //! [Spacer]: prelude::Spacer
 //! [`mode_name`]: prelude::mode_name
 //! [command line]: prelude::PromptLine
-//! [notifications widget]: prelude::Notifier
-//! [Adds]: prelude::hooks::add
-//! [mode changes]: prelude::hooks::ModeSwitched
+//! [notifications widget]: prelude::Notifications
+//! [Adds]: prelude::hook::add
+//! [mode changes]: prelude::hook::ModeSwitched
 //! [style]: prelude::form::Form
-//! [text creation system]: prelude::text::text
+//! [text creation system]: prelude::text::txt
 //! [`status!`]: prelude::status
 //! [numbering]: prelude::LineNum
 //! [`LineNumbers`]: prelude::LineNumbers
@@ -438,7 +438,7 @@ pub mod mode {
     /// "insert like" modes. You can also use any key in the input or
     /// output of this `alias`
     ///
-    /// [ghost text]: duat_core::text::Tag::Ghost
+    /// [ghost text]: duat_core::text::Ghost
     /// [form]: crate::form::Form
     pub fn alias<M: Mode<Ui>>(take: &str, give: impl AsGives<Ui>) {
         mode::alias::<M, Ui>(take, give);
@@ -482,7 +482,7 @@ pub mod hook {
     /// - The file [builder], which can be used to push widgets to the
     ///   file, and to eachother.
     ///
-    /// [`File`]: duat_core::widgets::File
+    /// [`File`]: duat_core::file::File
     /// [builder]: duat_core::ui::FileBuilder
     pub type OnFileOpen = duat_core::hook::OnFileOpen<Ui>;
 
@@ -502,7 +502,7 @@ pub mod hook {
     ///
     /// - The widget itself.
     ///
-    /// [`Widget`]: duat_core::widgets::Widget
+    /// [`Widget`]: duat_core::widget::Widget
     pub type FocusedOn<W> = duat_core::hook::FocusedOn<W, Ui>;
 
     /// [`Hookable`]: Triggers when the [`Widget`] is unfocused
@@ -511,7 +511,7 @@ pub mod hook {
     ///
     /// - The widget itself.
     ///
-    /// [`Widget`]: duat_core::widgets::Widget
+    /// [`Widget`]: duat_core::widget::Widget
     pub type UnfocusedFrom<W> = duat_core::hook::UnfocusedFrom<W, Ui>;
 
     /// [`Hookable`]: Triggers whenever a [key] is sent to the [`Widget`]
@@ -544,7 +544,7 @@ pub mod hook {
 
 /// Duat's builtin widgets
 pub mod widgets {
-    pub use duat_core::widget::*;
+    pub use duat_core::ui::{Widget, WidgetCfg};
     pub use duat_utils::widgets::*;
 
     /// The widget that is used to print and edit files
@@ -614,8 +614,7 @@ pub mod prelude {
         text::{
             self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, Text, txt,
         },
-        ui::{FileBuilder, RawArea, WindowBuilder},
-        widget,
+        ui::{self, FileBuilder, RawArea, WindowBuilder},
     };
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self as term, VertRule};

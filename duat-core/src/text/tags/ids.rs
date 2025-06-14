@@ -1,7 +1,7 @@
 //! Identification types for [`RawTag`]s
 //!
 //! There is an id for [`Text`]s in ghost text tags, an id for
-//! buttons, and the main id of this module is the [`Key`], which can
+//! buttons, and the main id of this module is the [`Tagger`], which can
 //! be used to discern the origin of tags, even if the tags do the
 //! same thing.
 //!
@@ -22,14 +22,14 @@ static KEY_COUNT: AtomicU16 = AtomicU16::new(4);
 /// The reason why keys exist is mainly for the sake of [`File`]
 /// widgets. In files, it is very expected that there will be many
 /// different sources of modifiers, which can add and remove tags on
-/// their own accord. Keys exist so that these actors don't interfere
+/// their own accord. Taggers exist so that these actors don't interfere
 /// with eachother's work:
 ///
 /// ```rust
 /// # use duat_core::prelude::*;
 /// let mut text = txt!("This is text with no tags in it").build();
 /// // This key will be used to modify text.
-/// let key1 = Key::new();
+/// let key1 = Tagger::new();
 ///
 /// let id = form::id_of!("Invisible");
 ///
@@ -42,7 +42,7 @@ static KEY_COUNT: AtomicU16 = AtomicU16::new(4);
 /// );
 ///
 /// // key2 != key1, so it shouldn't be able to change what was done with key1.
-/// let key2 = Key::new();
+/// let key2 = Tagger::new();
 /// text.remove_tags(key2, 18);
 ///
 /// assert_eq!(
@@ -57,15 +57,15 @@ static KEY_COUNT: AtomicU16 = AtomicU16::new(4);
 /// [`Text::insert_tag`]: super::Text::insert_tag
 /// [`Text::remove_tags`]: super::Text::remove_tags
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Key(u16);
+pub struct Tagger(u16);
 
-impl Key {
-    /// Returns a new, unique [`Key`]
+impl Tagger {
+    /// Returns a new, unique [`Tagger`]
     pub fn new() -> Self {
         Self(KEY_COUNT.fetch_add(1, Ordering::Relaxed))
     }
 
-    /// Returns a number of new, unique [`Key`]s
+    /// Returns a number of new, unique [`Tagger`]s
     ///
     /// You may want to do this if you expect to be placing and
     /// removing a lot of tags, and you want the finest possible
@@ -94,30 +94,30 @@ impl Key {
         Self(0)
     }
 
-    /// A [`Key`] specifically for cursors
+    /// A [`Tagger`] specifically for cursors
     pub(in crate::text) const fn for_cursors() -> Self {
         Self(1)
     }
 
-    /// A [`Key`] specifically for remaps
+    /// A [`Tagger`] specifically for remaps
     pub(crate) const fn for_alias() -> Self {
         Self(2)
     }
 }
 
-impl std::fmt::Debug for Key {
+impl std::fmt::Debug for Tagger {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Key({})", self.0)
+        write!(f, "Tagger({})", self.0)
     }
 }
 
-impl Default for Key {
+impl Default for Tagger {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl std::iter::Step for Key {
+impl std::iter::Step for Tagger {
     fn steps_between(start: &Self, end: &Self) -> (usize, Option<usize>) {
         if end.0 as usize >= start.0 as usize {
             ((end.0 - start.0) as usize, Some((end.0 - start.0) as usize))
@@ -137,37 +137,37 @@ impl std::iter::Step for Key {
 
 /// Trait used to distinguish [`Tag`]s
 ///
-/// This can be either one [`Key`] or multiple, in which case many
-/// different [`Key`]s will be searched for and [removed]
+/// This can be either one [`Tagger`] or multiple, in which case many
+/// different [`Tagger`]s will be searched for and [removed]
 ///
 /// [`Tag`]: super::Tag
 /// [removed]: crate::text::Text::remove_tags
-pub trait Keys: std::fmt::Debug + Clone + PartialEq + Eq {
-    /// Whether this range contains a given [`Key`]
-    fn contains(self, key: Key) -> bool;
+pub trait Taggers: std::fmt::Debug + Clone + PartialEq + Eq {
+    /// Whether this range contains a given [`Tagger`]
+    fn contains(self, key: Tagger) -> bool;
 }
 
-impl Keys for Key {
-    fn contains(self, key: Key) -> bool {
+impl Taggers for Tagger {
+    fn contains(self, key: Tagger) -> bool {
         self == key
     }
 }
 
-impl Keys for Range<Key> {
-    /// Whether this range contains a given [`Key`]
-    fn contains(self, key: Key) -> bool {
+impl Taggers for Range<Tagger> {
+    /// Whether this range contains a given [`Tagger`]
+    fn contains(self, key: Tagger) -> bool {
         key >= self.start && self.end > key
     }
 }
 
-impl Keys for &[Key] {
-    fn contains(self, key: Key) -> bool {
+impl Taggers for &[Tagger] {
+    fn contains(self, key: Tagger) -> bool {
         self.contains(&key)
     }
 }
 
-impl Keys for &[Range<Key>] {
-    fn contains(self, key: Key) -> bool {
+impl Taggers for &[Range<Tagger>] {
+    fn contains(self, key: Tagger) -> bool {
         self.iter().any(|r| r.contains(&key))
     }
 }

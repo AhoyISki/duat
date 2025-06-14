@@ -35,9 +35,9 @@
 //!
 //! [read]: RwData::read
 //! [written to]: RwData::write
-//! [`Widget`]: crate::widget::Widget
+//! [`Widget`]: crate::ui::Widget
 //! [`File`]: crate::file::File
-//! [updated]: crate::widget::Widget::update
+//! [updated]: crate::ui::Widget::update
 //! [`Text`]: crate::text::Text
 //! [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
 //! [`context`]: crate::context
@@ -57,7 +57,13 @@ use std::{
     time::Duration,
 };
 
-use crate::{cfg::PrintCfg, text::Text, ui::Ui, widget::Widget};
+use crate::{
+    cfg::PrintCfg,
+    file::File,
+    mode::EditHelper,
+    text::{Searcher, Text},
+    ui::{Ui, Widget},
+};
 
 /// A container for shared read/write state
 ///
@@ -177,6 +183,55 @@ impl<T: 'static> RwData<T> {
         T: Clone,
     {
         self.read(pa, |value| value.clone())
+    }
+
+    /// Returns an [`EditHelper`] for this [`Widget`] and its
+    /// [`U::Area`]
+    ///
+    /// The [`EditHelper`] is the struct that is used in order to
+    /// modify [`Widget`]s with their own [`Cursor`]s, in a very
+    /// declarative approach to editing, through [`Editor`]s for the
+    /// [`Cursor`]s within.
+    ///
+    /// [`U::Area`]: crate::ui::Ui::Area
+    /// [`Cursor`]: crate::mode::Cursor
+    /// [`Editor`]: crate::mode::Editor
+    pub fn edit_helper<U: Ui>(&self, pa: &mut Pass, area: &U::Area) -> EditHelper<T, U, ()>
+    where
+        T: Widget<U>,
+    {
+        EditHelper::new(pa, self.clone(), area.clone())
+    }
+}
+
+impl<U: Ui> RwData<File<U>> {
+    /// Returns an [`EditHelper`] for this [`Widget`] and its
+    /// [`U::Area`], with a [`Searcher`]
+    ///
+    /// An [`EditHelper`] with a [`Searcher`] not only has its usual
+    /// capabilities, but is also able to act on requested regex
+    /// searches, like those from [`IncSearch`], in [`duat-utils`].
+    /// This means that a user can type up a [prompt] to search
+    /// for something, and an [`EditHelper`] can use the
+    /// [`Searcher`] to interpret how that search will be
+    /// utilized. Examples of this can be found in the
+    /// [`duat-utils`] crate, as well as the [`duat-kak`] crate,
+    /// which has some more advanced usage.
+    ///
+    /// [`U::Area`]: crate::ui::Ui::Area
+    /// [`Searcher`]: crate::text::Searcher
+    /// [`Cursor`]: crate::mode::Cursor
+    /// [`Editor`]: crate::mode::Editor
+    /// [`IncSearch`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
+    /// [`duat-utils`]: https://docs.rs/duat-utils/lastest/
+    /// [`duat-kak`]: https://docs.rs/duat-kak/lastest/
+    pub fn inc_edit_helper(
+        &self,
+        pa: &mut Pass,
+        area: &U::Area,
+        searcher: Searcher,
+    ) -> EditHelper<File<U>, U, Searcher> {
+        EditHelper::new_inc(pa, self.clone(), area.clone(), searcher)
     }
 }
 
@@ -577,7 +632,7 @@ impl<T: ?Sized> RwData<T> {
     /// acquired after the last call to [`has_changed`].
     ///
     /// Some types like [`Text`], and traits like [`Widget`] offer
-    /// [`has_changed`](crate::widget::Widget::needs_update) methods,
+    /// [`has_changed`](crate::ui::Widget::needs_update) methods,
     /// you should try to determine what parts to look for changes.
     ///
     /// Generally though, you can use this method to gauge that.
@@ -587,7 +642,7 @@ impl<T: ?Sized> RwData<T> {
     /// [`read`]: Self::read
     /// [`has_changed`]: Self::has_changed
     /// [`Text`]: crate::text::Text
-    /// [`Widget`]: crate::widget::Widget
+    /// [`Widget`]: crate::ui::Widget
     pub fn has_changed(&self) -> bool {
         self.read_state.get() < self.cur_state.get()
     }
@@ -713,8 +768,8 @@ impl<I: ?Sized, O> DataMap<I, O> {
     /// [`read`]: RwData::read
     /// [`has_changed`]: RwData::has_changed
     /// [`Text`]: crate::text::Text
-    /// [`Widget`]: crate::widget::Widget
-    /// [`needs_update`]: crate::widget::Widget::needs_update
+    /// [`Widget`]: crate::ui::Widget
+    /// [`needs_update`]: crate::ui::Widget::needs_update
     pub fn has_changed(&self) -> bool {
         self.data.has_changed()
     }

@@ -10,7 +10,7 @@ use std::{
     path::PathBuf,
 };
 
-use super::{Change, Key, Text};
+use super::{Change, Tagger, Text};
 use crate::{
     form::FormId,
     text::{AlignCenter, AlignLeft, AlignRight, Ghost, Spacer},
@@ -93,7 +93,7 @@ impl Builder {
     /// [`Form`]: crate::form::Form
     /// [builder]: Builder
     /// [`Builder::into::<Text>`]: Into::into
-    /// [`Widget`]: crate::widget::Widget
+    /// [`Widget`]: crate::ui::Widget
     /// [notify]: crate::context::notify
     /// [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
     pub fn build(mut self) -> Text {
@@ -114,14 +114,14 @@ impl Builder {
         if let Some((b, id)) = self.last_form
             && b < self.text.len().byte()
         {
-            self.text.insert_tag(Key::basic(), b.., id.to_tag(0));
+            self.text.insert_tag(Tagger::basic(), b.., id.to_tag(0));
         }
         if let Some((b, align)) = self.last_align
             && b < self.text.len().byte()
         {
             match align {
-                Alignment::Center => self.text.insert_tag(Key::basic(), b.., AlignCenter),
-                Alignment::Right => self.text.insert_tag(Key::basic(), b.., AlignRight),
+                Alignment::Center => self.text.insert_tag(Tagger::basic(), b.., AlignCenter),
+                Alignment::Right => self.text.insert_tag(Tagger::basic(), b.., AlignRight),
                 _ => {}
             }
         }
@@ -154,22 +154,22 @@ impl Builder {
                     if let Some((b, id)) = last_form
                         && b < end
                     {
-                        builder.text.insert_tag(Key::basic(), b.., id.to_tag(0));
+                        builder.text.insert_tag(Tagger::basic(), b.., id.to_tag(0));
                     }
                 }
                 BP::AlignLeft => match builder.last_align.take() {
                     Some((b, Center)) if b < end => {
-                        builder.text.insert_tag(Key::basic(), b.., AlignCenter);
+                        builder.text.insert_tag(Tagger::basic(), b.., AlignCenter);
                     }
                     Some((b, Right)) if b < end => {
-                        builder.text.insert_tag(Key::basic(), b.., AlignRight);
+                        builder.text.insert_tag(Tagger::basic(), b.., AlignRight);
                     }
                     _ => {}
                 },
                 BP::AlignCenter => match builder.last_align.take() {
                     Some((b, Center)) => builder.last_align = Some((b, Center)),
                     Some((b, Right)) if b < end => {
-                        builder.text.insert_tag(Key::basic(), b.., AlignRight);
+                        builder.text.insert_tag(Tagger::basic(), b.., AlignRight);
                         builder.last_align = Some((end, Center));
                     }
                     None => builder.last_align = Some((end, Center)),
@@ -178,14 +178,14 @@ impl Builder {
                 BP::AlignRight => match builder.last_align.take() {
                     Some((b, Right)) => builder.last_align = Some((b, Right)),
                     Some((b, Center)) if b < end => {
-                        builder.text.insert_tag(Key::basic(), b.., AlignCenter);
+                        builder.text.insert_tag(Tagger::basic(), b.., AlignCenter);
                         builder.last_align = Some((end, Right));
                     }
                     None => builder.last_align = Some((end, Right)),
                     Some(_) => {}
                 },
-                BP::Spacer(_) => builder.text.insert_tag(Key::basic(), end, Spacer),
-                BP::Ghost(text) => builder.text.insert_tag(Key::basic(), end, Ghost(text)),
+                BP::Spacer(_) => builder.text.insert_tag(Tagger::basic(), end, Spacer),
+                BP::Ghost(text) => builder.text.insert_tag(Tagger::basic(), end, Ghost(text)),
                 BP::ToString(_) => unsafe { std::hint::unreachable_unchecked() },
             }
         }
@@ -226,7 +226,7 @@ impl Builder {
         self.last_was_empty = text.is_empty();
 
         if let Some((b, id)) = self.last_form.take() {
-            self.text.insert_tag(Key::basic(), b.., id.to_tag(0));
+            self.text.insert_tag(Tagger::basic(), b.., id.to_tag(0));
         }
 
         self.text.0.bytes.extend(text.0.bytes);

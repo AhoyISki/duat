@@ -18,11 +18,9 @@
 use std::{fmt::Display, marker::PhantomData};
 
 use duat_core::{
-    context::FileHandle,
-    data::{DataMap, Pass, RwData},
-    text::{AlignCenter, AlignLeft, AlignRight, Builder, BuilderPart, Ghost, Spacer, Text},
-    ui::Ui,
-    widget::Widget,
+    data::DataMap,
+    prelude::*,
+    text::{Builder, BuilderPart},
 };
 
 /// A struct that reads state in order to return [`Text`].

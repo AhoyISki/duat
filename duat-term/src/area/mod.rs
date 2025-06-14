@@ -4,10 +4,10 @@ use std::{cell::Cell, fmt::Alignment, sync::Arc};
 
 use crossterm::cursor;
 use duat_core::{
-    cache::bincode::{Decode, Encode},
     cfg::PrintCfg,
+    context::bincode::{Decode, Encode},
     form::Painter,
-    text::{txt, FwdIter, Item, Part, Point, RevIter, Text},
+    text::{FwdIter, Item, Part, Point, RevIter, Text, txt},
     ui::{self, Axis, Caret, Constraint, MutArea, PushSpecs, SpawnSpecs},
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
@@ -554,7 +554,7 @@ impl ui::RawArea for Area {
 // cause issues in the future.
 /// Information about how to print the file on the `Label`.
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug, Encode, Decode)]
-#[bincode(crate = "duat_core::cache::bincode")]
+#[bincode(crate = "duat_core::context::bincode")]
 pub struct PrintInfo {
     points: (Point, Option<Point>),
     x_shift: u32,

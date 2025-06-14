@@ -13,7 +13,7 @@ use RawTag::*;
 use crossterm::event::MouseEventKind;
 
 use super::{
-    Key,
+    Tagger,
     ids::{GhostId, ToggleId},
 };
 use crate::{
@@ -50,7 +50,7 @@ use crate::{
 /// [range]: TextRange
 /// [`Cursor`]: crate::mode::Cursor
 /// [`File`]: crate::file::File
-/// [`Widget`]: crate::widget::Widget
+/// [`Widget`]: crate::ui::Widget
 pub trait Tag<I>: Sized {
     /// Decomposes the [`Tag`] to its base elements
     #[doc(hidden)]
@@ -58,7 +58,7 @@ pub trait Tag<I>: Sized {
         self,
         index: I,
         max: usize,
-        key: Key,
+        key: Tagger,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>);
 }
 
@@ -85,7 +85,7 @@ impl<I: TextRange> Tag<I> for FormTag {
         self,
         index: I,
         max: usize,
-        key: Key,
+        key: Tagger,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
         let FormTag(id, prio) = self;
         let range = index.to_range(max);
@@ -213,7 +213,7 @@ impl<T: Into<Text>> Tag<usize> for Ghost<T> {
         self,
         byte: usize,
         max: usize,
-        key: Key,
+        key: Tagger,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
         assert!(
             byte <= max,
@@ -230,7 +230,7 @@ impl<T: Into<Text>> Tag<Point> for Ghost<T> {
         self,
         point: Point,
         max: usize,
-        key: Key,
+        key: Tagger,
     ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
         let byte = point.byte();
         self.decompose(byte, max, key)
@@ -257,32 +257,32 @@ ranged_impl_tag!(Conceal, RawTag::StartConceal, RawTag::EndConceal);
 pub enum RawTag {
     // Implemented:
     /// Appends a form to the stack.
-    PushForm(Key, FormId, u8),
+    PushForm(Tagger, FormId, u8),
     /// Removes a form from the stack. It won't always be the last
     /// one.
-    PopForm(Key, FormId),
+    PopForm(Tagger, FormId),
 
     /// Places the main cursor.
-    MainCursor(Key),
+    MainCursor(Tagger),
     /// Places an extra cursor.
-    ExtraCursor(Key),
+    ExtraCursor(Tagger),
 
     /// Starts aligning to the center, should happen to the whole
     /// line, even if it shows up in the middle of it.
-    StartAlignCenter(Key),
+    StartAlignCenter(Tagger),
     /// Ends aligning to the center, reverting to left alignment.
     /// Should happen to the whole line, even if it shows up in the
     /// middle of it.
-    EndAlignCenter(Key),
+    EndAlignCenter(Tagger),
     /// Starts aligning to the right, should happen to the whole
     /// line, even if it shows up in the middle of it.
-    StartAlignRight(Key),
+    StartAlignRight(Tagger),
     /// Ends aligning to the right, reverting to left alignment.
     /// Should happen to the whole line, even if it shows up in the
     /// middle of it.
-    EndAlignRight(Key),
+    EndAlignRight(Tagger),
     /// A spacer for the current screen line, replaces alignment.
-    Spacer(Key),
+    Spacer(Tagger),
 
     // In the process of implementing.
     /// Starts concealing the [`Text`], skipping all [`Tag`]s and
@@ -290,12 +290,12 @@ pub enum RawTag {
     ///
     /// [`Text`]: super::Text
     /// [`EndConceal`]: RawTag::EndConceal
-    StartConceal(Key),
+    StartConceal(Tagger),
     /// Stops concealing the [`Text`], returning the iteration process
     /// back to the regular [`Text`] iterator.
     ///
     /// [`Text`]: super::Text
-    EndConceal(Key),
+    EndConceal(Tagger),
 
     // TODO: Deal with the consequences of changing this from a usize.
     /// More direct skipping method, allowing for full skips without
@@ -306,13 +306,13 @@ pub enum RawTag {
     ConcealUntil(u32),
 
     /// Text that shows up on screen, but is ignored otherwise.
-    Ghost(Key, GhostId),
+    Ghost(Tagger, GhostId),
 
     // Not Implemented:
     /// Begins a toggleable section in the text.
-    ToggleStart(Key, ToggleId),
+    ToggleStart(Tagger, ToggleId),
     /// Ends a toggleable section in the text.
-    ToggleEnd(Key, ToggleId),
+    ToggleEnd(Tagger, ToggleId),
 }
 
 impl PartialEq for RawTag {
@@ -414,8 +414,8 @@ impl RawTag {
         matches!(self, Self::EndAlignCenter(_) | Self::EndAlignRight(_))
     }
 
-    /// The [`Key`] of this [`RawTag`]
-    pub(in crate::text) fn key(&self) -> Key {
+    /// The [`Tagger`] of this [`RawTag`]
+    pub(in crate::text) fn key(&self) -> Tagger {
         match self.get_key() {
             Some(key) => key,
             None => unreachable!(
@@ -424,12 +424,12 @@ impl RawTag {
         }
     }
 
-    /// Gets the [`Key`] of this [`RawTag`], if it is not
+    /// Gets the [`Tagger`] of this [`RawTag`], if it is not
     /// [`ConcealUntil`], since that one is never actually stored in
     /// [`Tags`]
     ///
     /// [`Tags`]: super::Tags
-    fn get_key(&self) -> Option<Key> {
+    fn get_key(&self) -> Option<Tagger> {
         match self {
             Self::PushForm(key, ..)
             | Self::PopForm(key, _)
@@ -524,7 +524,7 @@ macro simple_impl_Tag($tag:ty, $raw_tag:expr) {
             self,
             byte: usize,
             max: usize,
-            key: Key,
+            key: Tagger,
         ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
             assert!(
                 byte <= max,
@@ -539,7 +539,7 @@ macro simple_impl_Tag($tag:ty, $raw_tag:expr) {
             self,
             point: Point,
             max: usize,
-            key: Key,
+            key: Tagger,
         ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
             let byte = point.byte();
             self.decompose(byte, max, key)
@@ -553,7 +553,7 @@ macro ranged_impl_tag($tag:ty, $start:expr, $end:expr) {
             self,
             index: I,
             max: usize,
-            key: Key,
+            key: Tagger,
         ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>) {
             let range = index.to_range(max);
             (

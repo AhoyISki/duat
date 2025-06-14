@@ -32,7 +32,7 @@ use crate::{
     data::{Pass, RwData},
     file::File,
     ui::Ui,
-    widget::Widget,
+    ui::Widget,
 };
 
 mod helper;
@@ -58,7 +58,7 @@ mod switch {
         hook::{self, KeysSent, KeysSentTo, ModeSetTo, ModeSwitched},
         main_thread_only::MainThreadOnly,
         ui::{DuatEvent, RawArea, Ui},
-        widget::{Node, Widget},
+        ui::{Node, Widget},
         widget_entry,
     };
 

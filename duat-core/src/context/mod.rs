@@ -5,14 +5,16 @@
 //! # Files
 use std::any::TypeId;
 
-pub use self::{global::*, log::*};
+pub use self::{cache::*, global::*, log::*};
 use crate::{
     data::{Pass, RwData},
     file::File,
-    ui::{RawArea, Ui},
-    widget::{Node, Related, Widget},
+    mode::EditHelper,
+    text::Searcher,
+    ui::{Node, RawArea, Related, Ui, Widget},
 };
 
+mod cache;
 mod log;
 
 mod global {
@@ -32,8 +34,7 @@ mod global {
         data::{DataMap, Pass, RwData},
         main_thread_only::MainThreadOnly,
         text::{Text, txt},
-        ui::{DuatEvent, Ui, Window},
-        widget::Node,
+        ui::{DuatEvent, Node, Ui, Window},
     };
 
     static MAIN_THREAD_ID: OnceLock<std::thread::ThreadId> = OnceLock::new();
@@ -139,9 +140,9 @@ mod global {
         parts: Option<FileParts<U>>,
         node: Node<U>,
     ) -> Option<(FileParts<U>, Node<U>)> {
-        let old = parts.and_then(|new| inner_cur_file().0.write(&mut *pa, |old| old.replace(new)));
+        let old = parts.and_then(|new| inner_cur_file().0.write(pa, |old| old.replace(new)));
 
-        old.zip(inner_cur_widget().0.write(&mut *pa, |cw| cw.replace(node)))
+        old.zip(inner_cur_widget().0.write(pa, |cw| cw.replace(node)))
     }
 
     /// The [`CurWidget`]
@@ -468,6 +469,46 @@ impl<U: Ui> FileHandle<U> {
         }
     }
 
+    /// Returns an [`EditHelper`] for this [`FileHandle`]
+    ///
+    /// The [`EditHelper`] is the struct that is used in order to
+    /// modify [`Widget`]s with their own [`Cursor`]s, in a very
+    /// declarative approach to editing, through [`Editor`]s for the
+    /// [`Cursor`]s within.
+    ///
+    /// [`Cursor`]: crate::mode::Cursor
+    /// [`Editor`]: crate::mode::Editor
+    pub fn edit_helper(&self, pa: &mut Pass) -> EditHelper<File<U>, U, ()> {
+        EditHelper::from_handle(pa, self.clone())
+    }
+
+    /// Returns an [`EditHelper`] for this [`FileHandle`], with a
+    /// [`Searcher`]
+    ///
+    /// An [`EditHelper`] with a [`Searcher`] not only has its usual
+    /// capabilities, but is also able to act on requested regex
+    /// searches, like those from [`IncSearch`], in [`duat-utils`].
+    /// This means that a user can type up a [prompt] to search
+    /// for something, and an [`EditHelper`] can use the
+    /// [`Searcher`] to interpret how that search will be
+    /// utilized. Examples of this can be found in the
+    /// [`duat-utils`] crate, as well as the [`duat-kak`] crate,
+    /// which has some more advanced usage.
+    ///
+    /// [`Searcher`]: crate::text::Searcher
+    /// [`Cursor`]: crate::mode::Cursor
+    /// [`Editor`]: crate::mode::Editor
+    /// [`IncSearch`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
+    /// [`duat-utils`]: https://docs.rs/duat-utils/lastest/
+    /// [`duat-kak`]: https://docs.rs/duat-kak/lastest/
+    pub fn inc_edit_helper(
+        &self,
+        pa: &mut Pass,
+        searcher: Searcher,
+    ) -> EditHelper<File<U>, U, Searcher> {
+        EditHelper::inc_from_handle(pa, self.clone(), searcher)
+    }
+
     ////////// Querying functions
 
     /// Wether someone else called [`write`] or [`write_as`] since the
@@ -488,8 +529,8 @@ impl<U: Ui> FileHandle<U> {
     /// [`read`]: RwData::read
     /// [`has_changed`]: RwData::has_changed
     /// [`Text`]: crate::text::Text
-    /// [`Widget`]: crate::widget::Widget
-    /// [`needs_update`]: crate::widget::Widget::needs_update
+    /// [`Widget`]: crate::ui::Widget
+    /// [`needs_update`]: crate::ui::Widget::needs_update
     pub fn has_changed(&self) -> bool {
         if let Some((file, area, _)) = self.fixed.as_ref() {
             file.has_changed() || area.has_changed()

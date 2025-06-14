@@ -43,7 +43,7 @@ use crate::{duat_name, src_crate};
 /// The cache must have been previously stored by [astore_cache`]. If
 /// it does not exist, or the file can't be correctly interpreted,
 /// returns [`None`]
-pub(super) fn load_cache<C: Decode<()> + 'static>(path: impl Into<PathBuf>) -> Option<C> {
+pub(crate) fn load_cache<C: Decode<()> + 'static>(path: impl Into<PathBuf>) -> Option<C> {
     fn contents(path: PathBuf, type_id: TypeId, type_name: String) -> Option<File> {
         if type_id == TypeId::of::<()>() {
             return None;
@@ -76,7 +76,7 @@ pub(super) fn load_cache<C: Decode<()> + 'static>(path: impl Into<PathBuf>) -> O
 /// The cache will be stored under
 /// `$cache/duat/{base64_path}:{file_name}/{crate}::{type}`.
 /// The cache will then later be loaded by [`load_cache`].
-pub(super) fn store_cache<C: Encode + 'static>(path: impl Into<PathBuf>, cache: C) {
+pub(crate) fn store_cache<C: Encode + 'static>(path: impl Into<PathBuf>, cache: C) {
     fn cache_file(path: PathBuf, type_id: TypeId, type_name: String) -> Option<File> {
         if type_id == TypeId::of::<()>() {
             return None;
@@ -120,7 +120,7 @@ pub(super) fn store_cache<C: Encode + 'static>(path: impl Into<PathBuf>, cache: 
 ///
 /// This is done if the file no longer exists, in order to prevent
 /// incorrect storage.
-pub(super) fn delete_cache(path: impl Into<PathBuf>) {
+pub(crate) fn delete_cache(path: impl Into<PathBuf>) {
     fn delete_cache_inner(path: PathBuf) {
         let file_name = path.file_name().unwrap().to_str().unwrap();
         let Some(mut src) = dirs_next::cache_dir() else {
@@ -143,7 +143,7 @@ pub(super) fn delete_cache(path: impl Into<PathBuf>) {
     delete_cache_inner(path.into());
 }
 
-pub(super) fn delete_cache_for<C: 'static>(path: impl Into<PathBuf>) {
+pub(crate) fn delete_cache_for<C: 'static>(path: impl Into<PathBuf>) {
     fn delete_cache_for_inner(path: PathBuf, type_name: String) {
         let file_name = path.file_name().unwrap().to_str().unwrap();
         let Some(mut src) = dirs_next::cache_dir() else {

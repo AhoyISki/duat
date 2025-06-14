@@ -94,7 +94,7 @@ use duat_core::prelude::*;
 #[derive(Clone)]
 pub struct EasyMotion {
     is_line: bool,
-    key: Key,
+    key: Tagger,
     points: Vec<[Point; 2]>,
     seq: String,
 }
@@ -103,7 +103,7 @@ impl EasyMotion {
     pub fn word() -> Self {
         Self {
             is_line: false,
-            key: Key::new(),
+            key: Tagger::new(),
             points: Vec::new(),
             seq: String::new(),
         }
@@ -112,7 +112,7 @@ impl EasyMotion {
     pub fn line() -> Self {
         Self {
             is_line: true,
-            key: Key::new(),
+            key: Tagger::new(),
             points: Vec::new(),
             seq: String::new(),
         }

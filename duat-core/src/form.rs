@@ -333,7 +333,7 @@ mod global {
     /// `"info"` is a mask when Duat starts. In order to enable more
     /// masks, see [`enable_mask`].
     ///
-    /// [`Widget`]: crate::widget::Widget
+    /// [`Widget`]: crate::ui::Widget
     /// [`Notifications`]: https://docs.rs/duat-utils/latest/duat_utils
     /// [`Level`]: crate::context::Level
     /// [hooks]: crate::hook
@@ -401,7 +401,7 @@ mod global {
     /// masks and remap [`Form`]s, see [`painter_with_mask`].
     ///
     /// [`form::from_id`]: from_id
-    /// [`Widget`]: crate::widget::Widget
+    /// [`Widget`]: crate::ui::Widget
     /// [`Notifications`]: https://docs.rs/duat-utils/latest/duat_utils
     /// [`Level`]: crate::context::Level
     /// [hooks]: crate::hook

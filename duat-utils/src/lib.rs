@@ -1,3 +1,102 @@
+//! Standard complementary additions to Duat
+//!
+//! This crate essentially consists of the standard bits that pretty
+//! much every `config` crate will want to use, but aren't strictly
+//! speaking necessary for Duat to function. This split is mostly to
+//! improve compile times, but semantically, if a crate doesn't need
+//! all of these extra things, it is nice to separate them out.
+//!
+//! The crate has the following elements:
+//!
+//! - 4 [`widgets`]:
+//!   - [`LineNumbers`] shows the numbers on a [`File`] (for now), and
+//!     you can configure their alignment, relativeness, etc.
+//!   - The [`PromptLine`] lets you run commands and do other things,
+//!     like incremental search
+//!   - The [`StatusLine`] lets you display information that gets
+//!     updated automatically, it can show information from
+//!     [`RwData`]s, mapping functions, static elements, and every bit
+//!     of Duat. It's syntax, in [`status!`] is the same as the
+//!     [`txt!`] macro.
+//!   - [`Notifications`] shows things that have been logged to the
+//!     [`Logs`] of Duat, through the [`error!`], [`warn!`] and
+//!     [`info!`] macros.
+//!
+//! - 2 [`modes`]:
+//!   - [`Regular`] is essentially the standard [`Mode`] that text
+//!     editors use. Sort of like VSCode.
+//!   - [`Prompt`] is a multitool that can serve many purposes,
+//!     through the [`PromptMode`] trait, which allows one to act on
+//!     the [`PromptLine`] while abstracting over less important
+//!     elements of the [`Widget`].
+//!
+//! - For the [`PromptLine`], there are 3 [`PromptMode`]s:
+//!   - [`RunCommands`] will interpret and run Duat commands, with
+//!     syntax highlighting for correctness, defined by the
+//!     [`Parameter`] trait.
+//!   - [`PipeSelections`] will pipe each selection on the current
+//!     [`File`], replacing them with the return value from a shell
+//!     command.
+//!   - [`IncSearch`] is a specialized mode used for incremental
+//!     search, which can abstract over what the search actually does
+//!     with the [`IncSearcher`] trait.
+//!
+//! - For [`IncSearch`], there are 4 [`IncSearcher`]s:
+//!   - [`SearchFwd`] will move each [`Cursor`] to the next match.
+//!   - [`SearchRev`] will move each [`Cursor`] to the previous match.
+//!   - [`ExtendFwd`] will extend each [`Cursor`]'s selections to the
+//!     next match.
+//!   - [`ExtendRev`] will extend each [`Cursor`]'s selections to the
+//!     previous match.
+//!
+//! Note that the [`IncSearcher`] trait can be used for many more
+//! interesting things, like in [`duat-kak`] for example, where its
+//! implementors allow for splitting selections, selecting everything
+//! within a range, and many more such things in the future.
+//!
+//! - There are also two [`hooks`]:
+//!   - [`SearchUpdated`] for when an [`IncSearch`] is updated.
+//!   - [`SearchPerformed`] for when an [`IncSearch`] is finished.
+//!
+//! And finally, there is the [`state`] module, which contains a bunch
+//! of [`StatusLine`] parts for you to customize the [`StatusLine`]
+//! with.
+//!
+//! I would consider this crate essential for all `config`s of Duat
+//! out there, since it defines primitives that are not only hard to
+//! replace, but might also be very extensible by plugins in the
+//! ecosystem.
+//!
+//! [`LineNumbers`]: widgets::LineNumbers
+//! [`File`]: duat_core::file::File
+//! [`PromptLine`]: widgets::PromptLine
+//! [`StatusLine`]: widgets::StatusLine
+//! [`RwData`]: duat_core::data::RwData
+//! [`status!`]: widgets::status
+//! [`txt!`]: duat_core::text::txt
+//! [`Notifications`]: widgets::Notifications
+//! [`Logs`]: duat_core::context::Logs
+//! [`error!`]: duat_core::context::error
+//! [`warn!`]: duat_core::context::warn
+//! [`info!`]: duat_core::context::info
+//! [`Regular`]: modes::Regular
+//! [`Mode`]: duat_core::mode::Mode
+//! [`Prompt`]: modes::Prompt
+//! [`PromptMode`]: modes::PromptMode
+//! [`Widget`]: duat_core::widget::Widget
+//! [`RunCommands`]: modes::RunCommands
+//! [`Parameter`]: duat_core::cmd::Parameter
+//! [`PipeSelections`]: modes::PipeSelections
+//! [`IncSearch`]: modes::IncSearch
+//! [`IncSearcher`]: modes::IncSearcher
+//! [`SearchFwd`]: modes::SearchFwd
+//! [`Cursor`]: duat_core::mode::Cursor
+//! [`SearchRev`]: modes::SearchRev
+//! [`ExtendFwd`]: modes::ExtendFwd
+//! [`ExtendRev`]: modes::ExtendRev
+//! [`duat-kak`]: https://docs.rs/duat-kak/latest/duat_kak
+//! [`SearchUpdated`]: hooks::SearchUpdated
+//! [`SearchPerformed`]: hooks::SearchPerformed
 #![feature(decl_macro, closure_lifetime_binder, default_field_values)]
 
 pub mod modes;
@@ -6,25 +105,6 @@ pub mod widgets;
 
 pub mod hooks {
     use duat_core::hook::Hookable;
-
-    /// [`Hookable`]: Triggers when a [search] is performed
-    ///
-    /// Will not be triggered on empty searches.
-    ///
-    /// # Arguments
-    ///
-    /// - The searched regex pattern
-    ///
-    /// [search]: crate::modes::IncSearch
-    pub struct SearchPerformed(pub(crate) String);
-
-    impl Hookable for SearchPerformed {
-        type Input<'h> = &'h str;
-
-        fn get_input(&mut self) -> Self::Input<'_> {
-            &self.0
-        }
-    }
 
     /// [`Hookable`]: Triggers when a [search] is updated
     ///
@@ -44,6 +124,25 @@ pub mod hooks {
 
         fn get_input(&mut self) -> Self::Input<'_> {
             (&self.0.0, &self.0.1)
+        }
+    }
+
+    /// [`Hookable`]: Triggers when a [search] is performed
+    ///
+    /// Will not be triggered on empty searches.
+    ///
+    /// # Arguments
+    ///
+    /// - The searched regex pattern
+    ///
+    /// [search]: crate::modes::IncSearch
+    pub struct SearchPerformed(pub(crate) String);
+
+    impl Hookable for SearchPerformed {
+        type Input<'h> = &'h str;
+
+        fn get_input(&mut self) -> Self::Input<'_> {
+            &self.0
         }
     }
 }
