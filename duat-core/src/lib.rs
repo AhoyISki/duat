@@ -426,6 +426,7 @@ pub mod prelude {
     pub use lender::Lender;
 
     pub use crate::{
+        Plugin,
         cfg::PrintCfg,
         cmd,
         context::{self, FileHandle, Handle},

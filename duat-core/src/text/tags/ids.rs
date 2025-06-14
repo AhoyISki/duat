@@ -1,8 +1,8 @@
 //! Identification types for [`RawTag`]s
 //!
 //! There is an id for [`Text`]s in ghost text tags, an id for
-//! buttons, and the main id of this module is the [`Tagger`], which can
-//! be used to discern the origin of tags, even if the tags do the
+//! buttons, and the main id of this module is the [`Tagger`], which
+//! can be used to discern the origin of tags, even if the tags do the
 //! same thing.
 //!
 //! [`RawTag`]: super::RawTag
@@ -12,9 +12,9 @@ use std::{
     sync::atomic::{AtomicU16, AtomicUsize, Ordering},
 };
 
-static KEY_COUNT: AtomicU16 = AtomicU16::new(4);
+static TAGGER_COUNT: AtomicU16 = AtomicU16::new(4);
 
-/// A key letting one add and remove [`Tag`]s to a [`Text`]
+/// A struct that lets one add and remove [`Tag`]s to a [`Text`]
 ///
 /// With keys, you can use the methods [`Text::insert_tag`] and,
 /// [`Text::remove_tags`] to add and remove [`Tag`]s on the [`Text`].
@@ -22,8 +22,8 @@ static KEY_COUNT: AtomicU16 = AtomicU16::new(4);
 /// The reason why keys exist is mainly for the sake of [`File`]
 /// widgets. In files, it is very expected that there will be many
 /// different sources of modifiers, which can add and remove tags on
-/// their own accord. Taggers exist so that these actors don't interfere
-/// with eachother's work:
+/// their own accord. Taggers exist so that these actors don't
+/// interfere with eachother's work:
 ///
 /// ```rust
 /// # use duat_core::prelude::*;
@@ -62,7 +62,7 @@ pub struct Tagger(u16);
 impl Tagger {
     /// Returns a new, unique [`Tagger`]
     pub fn new() -> Self {
-        Self(KEY_COUNT.fetch_add(1, Ordering::Relaxed))
+        Self(TAGGER_COUNT.fetch_add(1, Ordering::Relaxed))
     }
 
     /// Returns a number of new, unique [`Tagger`]s
@@ -73,8 +73,8 @@ impl Tagger {
     ///
     /// [`Text`]: super::Text
     pub fn new_many(amount: usize) -> Range<Self> {
-        let start = Self(KEY_COUNT.fetch_add(amount as u16, Ordering::Relaxed));
-        let end = Self(KEY_COUNT.fetch_add(1, Ordering::Relaxed));
+        let start = Self(TAGGER_COUNT.fetch_add(amount as u16, Ordering::Relaxed));
+        let end = Self(TAGGER_COUNT.fetch_add(1, Ordering::Relaxed));
 
         start..end
     }

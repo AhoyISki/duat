@@ -75,7 +75,7 @@
 //! #     pub struct Normal;
 //! #     impl Mode<Ui> for Normal {
 //! #         type Widget = File;
-//! #         fn send_key(&mut self, _: Pass, _: KeyEvent, _: RwData<File>, _: Area) {
+//! #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<File, Ui>) {
 //! #             todo!();
 //! #         }
 //! #     }
@@ -83,7 +83,7 @@
 //! #     pub struct Insert;
 //! #     impl Mode<Ui> for Insert {
 //! #         type Widget = File;
-//! #         fn send_key(&mut self, _: Pass, _: KeyEvent, _: RwData<File>, _: Area) {
+//! #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<File, Ui>) {
 //! #             todo!();
 //! #         }
 //! #     }
@@ -109,24 +109,24 @@
 //!     print::wrap_on_edge();
 //!
 //!     hook::remove("FileWidgets");
-//!     hook::add::<OnFileOpen>(|mut pa, builder| {
-//!         builder.push(&mut pa, VertRule::cfg());
-//!         builder.push(&mut pa, LineNumbers::cfg());
+//!     hook::add::<OnFileOpen>(|pa, builder| {
+//!         builder.push(pa, VertRule::cfg());
+//!         builder.push(pa, LineNumbers::cfg());
 //!     });
 //!
 //!     hook::remove("WindowWidgets");
-//!     hook::add::<OnWindowOpen>(|mut pa, builder| {
+//!     hook::add::<OnWindowOpen>(|pa, builder| {
 //!         let upper_mode = mode_name().map(|m| match m.split_once('<') {
 //!             Some((no_generics, _)) => no_generics.to_uppercase(),
 //!             None => m.to_uppercase(),
 //!         });
 //!         let status_line = status!(
-//!             "[Mode]{upper_mode}{Spacer}{file_fmt} {selections_fmt} {main_fmt}"
+//!             "[Mode]{upper_mode}{Spacer}{file_fmt} {sels_fmt} {main_fmt}"
 //!         );
 //!
-//!         builder.push(&mut pa, status_line);
-//!         let (child, _) = builder.push(&mut pa, PromptLine::cfg());
-//!         builder.push_to(&mut pa, child, Notifications::cfg());
+//!         builder.push(pa, status_line);
+//!         let (child, _) = builder.push(pa, PromptLine::cfg());
+//!         builder.push_to(pa, child, Notifications::cfg());
 //!     });
 //!
 //!     hook::add::<ModeSwitched>(|_, (_, new)| match new {
@@ -159,13 +159,13 @@
 //! notice some things that can be done with these simple options:
 //!
 //! ```rust
-//! # use duat::prelude::*;
+//! use duat::prelude::*;
 //! # fn test() {
-//! hook::add::<OnFileOpen>(|mut pa, builder| {
-//!     builder.push(&mut pa, VertRule::cfg());
-//!     builder.push(&mut pa, LineNumbers::cfg());
-//!     builder.push(&mut pa, VertRule::cfg().on_the_right());
-//!     builder.push(&mut pa, LineNumbers::cfg().on_the_right());
+//! hook::add::<OnFileOpen>(|pa, builder| {
+//!     builder.push(pa, VertRule::cfg());
+//!     builder.push(pa, LineNumbers::cfg());
+//!     builder.push(pa, VertRule::cfg().on_the_right());
+//!     builder.push(pa, LineNumbers::cfg().on_the_right());
 //! });
 //! # }
 //! ```
@@ -609,12 +609,12 @@ pub mod prelude {
     use std::process::Output;
 
     pub use duat_core::{
-        Plugin, clipboard, cmd, context,
-        data::{self, Pass, RwData},
+        Plugin, clipboard, cmd, context::{self, Handle},
+        data::{self, Pass},
         text::{
             self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, Text, txt,
         },
-        ui::{self, FileBuilder, RawArea, WindowBuilder},
+        ui::{self, RawArea},
     };
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self as term, VertRule};
@@ -627,7 +627,7 @@ pub mod prelude {
             FormSet, ModeSetTo, ModeSwitched, OnFileOpen, OnWindowOpen, SearchPerformed,
             SearchUpdated, UnfocusedFrom,
         },
-        mode::{self, Cursors, Mode, alias, map},
+        mode::{self, Mode, alias, map},
         print, setup_duat,
         state::*,
         widgets::*,
