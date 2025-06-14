@@ -997,7 +997,7 @@ impl<U: Ui> TsFile for File<U> {
 }
 
 /// Convenience methods for use of tree-sitter in [`Editor`]s
-pub trait TsEditor {
+pub trait TsCursor {
     /// The level of indentation required at the [`Editor`]'s `caret`
     ///
     /// This is determined by a query, currently, it is the query
@@ -1013,7 +1013,7 @@ pub trait TsEditor {
     fn ts_indent_on(&self, p: Point) -> Option<usize>;
 }
 
-impl<U: Ui, S> TsEditor for Cursor<'_, File<U>, U::Area, S> {
+impl<U: Ui, S> TsCursor for Cursor<'_, File<U>, U::Area, S> {
     fn ts_indent(&self) -> Option<usize> {
         self.ts_indent_on(self.caret())
     }
