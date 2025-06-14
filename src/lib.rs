@@ -20,16 +20,13 @@ use std::{
 };
 
 use duat_core::{
-    Lender, add_shifts,
-    cfg::PrintCfg,
-    data::{Pass, RwData},
-    file::{BytesDataMap, File, RangeList, Reader, ReaderCfg},
-    form::{self, Form, FormId},
-    hook::{self, OnFileOpen},
-    mode::Editor,
-    text::{Bytes, Change, Key, Matcheable, Moment, MutTags, Point, Text},
-    ui::Ui,
-    widget::Widget,
+    data::RwData,
+    file::{self, Reader},
+    form::FormId,
+    hook::OnFileOpen,
+    mode::Cursor,
+    prelude::*,
+    text::{self, Bytes, Change, Matcheable, Moment, MutTags, Point},
 };
 use duat_filetype::FileType;
 use streaming_iterator::StreamingIterator;
@@ -105,11 +102,11 @@ impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter<U> {
             ("markup.list.unchecked", Form::grey()),
         );
 
-        hook::add_grouped::<OnFileOpen<U>>("TreeSitter", |mut pa, builder| {
-            if let Some(filetype) = builder.read(&pa, |file, _| file.filetype())
+        hook::add_grouped::<OnFileOpen<U>>("TreeSitter", |pa, builder| {
+            if let Some(filetype) = builder.read(pa, |file, _| file.filetype())
                 && let Some(ts_parser_cfg) = TsParser::cfg(filetype)
             {
-                builder.add_reader(&mut pa, ts_parser_cfg);
+                builder.add_reader(pa, ts_parser_cfg);
             }
         });
     }
@@ -124,7 +121,7 @@ pub struct TsParser {
     tree: Tree,
     old_tree: Option<Tree>,
     sub_trees: Vec<TsParser>,
-    key: Key,
+    tagger: Tagger,
 }
 
 impl TsParser {
@@ -153,7 +150,7 @@ impl TsParser {
             tree,
             old_tree: None,
             sub_trees: Vec::new(),
-            key: ts_key(),
+            tagger: ts_tagger(),
         }
     }
 
@@ -165,7 +162,7 @@ impl TsParser {
         let (.., Queries { highlights: highlight, injections, .. }) = &self.lang_parts;
         let buf = TsBuf(bytes);
 
-        tags.remove(range.clone(), self.key);
+        tags.remove(range.clone(), self.tagger);
 
         // Include a little bit of overhang, in order to deal with some loose
         // ends, mostly related to comments.
@@ -235,7 +232,7 @@ impl TsParser {
             if let Some((.., lp)) = sub_trees_to_add.iter().find(|(lhs, ..)| *lhs == st.range) {
                 if lp.0 != st.lang_parts.0 {
                     if !(st.range.start >= start && st.range.end <= end) {
-                        tags.remove(st.range.clone(), self.key);
+                        tags.remove(st.range.clone(), self.tagger);
                     }
                     false
                 } else {
@@ -281,7 +278,7 @@ impl TsParser {
                 let (start, end) = (range.start_byte, range.end_byte);
                 let (form, priority) = self.forms[cap.index as usize];
                 if start != end {
-                    tags.insert(self.key, start..end, form.to_tag(priority));
+                    tags.insert(self.tagger, start..end, form.to_tag(priority));
                 }
             }
         }
@@ -695,16 +692,16 @@ impl TsParser {
 }
 
 impl<U: Ui> Reader<U> for TsParser {
-    // `apply_changes` is not meant to modify the `Text`, it is only meant
-    // to update the internal state of the `Reader`.
     fn apply_changes(
-        mut pa: Pass,
+        pa: &mut Pass,
         reader: RwData<Self>,
-        bytes: BytesDataMap<U>,
-        moment: Moment,
-        ranges_to_update: Option<&mut RangeList>,
-    ) {
-        fn merge_tree_changed_ranges(parser: &TsParser, list: &mut RangeList) {
+        bytes: file::BytesDataMap<U>,
+        moment: text::Moment,
+        ranges_to_update: Option<&mut file::RangeList>,
+    ) where
+        Self: Sized,
+    {
+        fn merge_tree_changed_ranges(parser: &TsParser, list: &mut file::RangeList) {
             if let Some(old_tree) = parser.old_tree.as_ref() {
                 for range in parser.tree.changed_ranges(old_tree) {
                     let range = range.start_byte..range.end_byte;
@@ -717,20 +714,18 @@ impl<U: Ui> Reader<U> for TsParser {
             }
         }
 
-        bytes.read_and_write_reader(&mut pa, &reader, |bytes, ts| {
-            ts.apply_changes(bytes, moment)
-        });
+        bytes.read_and_write_reader(pa, &reader, |bytes, ts| ts.apply_changes(bytes, moment));
 
         if let Some(list) = ranges_to_update {
             // This initial check might find larger, somewhat self contained nodes
             // that have changed, e.g. an identifier that is now recognized as a
             // function, things of that sort.
-            reader.read(&pa, |ts| merge_tree_changed_ranges(ts, list));
+            reader.read(pa, |ts| merge_tree_changed_ranges(ts, list));
 
             // However, `changed_ranges` doesn't catch everything, so another
             // check is done. At a minimum, at least the lines where the changes
             // took place should be updated.
-            bytes.read(&pa, |bytes| {
+            bytes.read(pa, |bytes| {
                 for change in moment.changes() {
                     let start = change.start();
                     let added = change.added_end();
@@ -742,8 +737,8 @@ impl<U: Ui> Reader<U> for TsParser {
         }
     }
 
-    fn update_range(&mut self, bytes: &mut Bytes, mut tags: MutTags, range: Range<usize>) {
-        self.highlight_and_inject(bytes, &mut tags, range);
+    fn update_range(&mut self, bytes: &mut Bytes, mut tags: MutTags, within: Range<usize>) {
+        self.highlight_and_inject(bytes, &mut tags, within);
     }
 }
 
@@ -774,7 +769,7 @@ impl TsParserCfg {
     }
 }
 
-impl<U: Ui> ReaderCfg<U> for TsParserCfg {
+impl<U: Ui> file::ReaderCfg<U> for TsParserCfg {
     type Reader = TsParser;
 
     fn init(self, bytes: &mut Bytes) -> Result<Self::Reader, Text> {
@@ -897,28 +892,6 @@ fn lang_parts(lang: &str) -> Option<LangParts<'static>> {
     })
 }
 
-#[allow(dead_code)]
-fn log_node(node: tree_sitter::Node) {
-    use std::fmt::Write;
-
-    let mut cursor = node.walk();
-    let mut node = Some(cursor.node());
-    let mut log = String::new();
-    while let Some(n) = node {
-        let indent = " ".repeat(cursor.depth() as usize);
-        if cursor.node().is_named() {
-            writeln!(log, "{indent}{n:?}").unwrap();
-        }
-        let mut next_exists = cursor.goto_first_child() || cursor.goto_next_sibling();
-        while !next_exists && cursor.goto_parent() {
-            next_exists = cursor.goto_next_sibling();
-        }
-        node = next_exists.then_some(cursor.node());
-    }
-
-    duat_core::log!("{log}");
-}
-
 type LangParts<'a> = (&'a str, &'a Language, Queries<'a>);
 
 #[derive(Clone, Copy)]
@@ -929,8 +902,8 @@ struct Queries<'a> {
 }
 
 /// The Key for tree-sitter
-fn ts_key() -> Key {
-    static KEY: LazyLock<Key> = LazyLock::new(Key::new);
+fn ts_tagger() -> Tagger {
+    static KEY: LazyLock<Tagger> = LazyLock::new(Tagger::new);
     *KEY
 }
 
@@ -1040,7 +1013,7 @@ pub trait TsEditor {
     fn ts_indent_on(&self, p: Point) -> Option<usize>;
 }
 
-impl<U: Ui, S> TsEditor for Editor<'_, File<U>, U::Area, S> {
+impl<U: Ui, S> TsEditor for Cursor<'_, File<U>, U::Area, S> {
     fn ts_indent(&self) -> Option<usize> {
         self.ts_indent_on(self.caret())
     }
@@ -1051,4 +1024,12 @@ impl<U: Ui, S> TsEditor for Editor<'_, File<U>, U::Area, S> {
         self.read_bytes_and_reader(|bytes, reader: &TsParser| reader.indent_on(p, bytes, cfg))
             .flatten()
     }
+}
+
+/// Adds two shifts together
+fn add_shifts(lhs: [i32; 3], rhs: [i32; 3]) -> [i32; 3] {
+    let b = lhs[0] + rhs[0];
+    let c = lhs[1] + rhs[1];
+    let l = lhs[2] + rhs[2];
+    [b, c, l]
 }
