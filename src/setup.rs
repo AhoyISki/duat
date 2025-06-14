@@ -18,7 +18,7 @@ use std::{
 use duat_core::{
     cfg::PrintCfg,
     clipboard::Clipboard,
-    context::{CurFile, CurWidget},
+    context::{self, CurFile, CurWidget, Logs},
     session::{FileRet, SessionCfg},
     ui::{self, Constraint, DuatEvent, RawArea, Window},
     widget::Widget,
@@ -27,7 +27,10 @@ use duat_term::VertRule;
 use duat_utils::modes::Regular;
 
 use crate::{
-    form, hook::{self, FocusedOn, OnFileOpen, OnWindowOpen, UnfocusedFrom}, mode, prelude::{FileWritten, LineNumbers, Notifications, PromptLine, StatusLine}, CfgFn, Ui
+    CfgFn, Ui, form,
+    hook::{self, FocusedOn, OnFileOpen, OnWindowOpen, UnfocusedFrom},
+    mode,
+    prelude::{FileWritten, LineNumbers, Notifications, PromptLine, StatusLine},
 };
 
 // Setup statics.
@@ -37,7 +40,13 @@ pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
     LazyLock::new(|| RwLock::new(Box::new(|_| {})));
 
 #[doc(hidden)]
-pub fn pre_setup(duat_tx: &'static Sender<DuatEvent>) {
+pub fn pre_setup(logs: Option<Logs>, duat_tx: &'static Sender<DuatEvent>) {
+    // Is only Some when dlopening.
+    if let Some(logs) = logs {
+        log::set_logger(Box::leak(Box::new(logs.clone()))).unwrap();
+        context::set_logs(logs);
+    }
+
     // State statics.
     let cur_file: &'static CurFile<Ui> = Box::leak(Box::new(CurFile::new()));
     let cur_widget: &'static CurWidget<Ui> = Box::leak(Box::new(CurWidget::new()));
@@ -87,8 +96,8 @@ pub fn pre_setup(duat_tx: &'static Sender<DuatEvent>) {
         }
     });
 
-    form::enable_mask("err");
-    form::enable_mask("ok");
+    form::enable_mask("error");
+    form::enable_mask("info");
 }
 
 #[doc(hidden)]

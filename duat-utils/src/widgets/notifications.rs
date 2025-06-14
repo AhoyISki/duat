@@ -13,7 +13,7 @@ use std::{
 };
 
 use duat_core::{
-    context::{self, FileHandle, Logs},
+    context::{self, FileHandle, Level, Logs},
     data::{Pass, RwData},
     form::{self, Form},
     hook::{self, KeysSent},
@@ -52,15 +52,17 @@ impl<U: Ui> Widget<U> for Notifications<U> {
     fn update(mut pa: Pass, widget: RwData<Self>, _: &<U as Ui>::Area) {
         let clear_notifs = CLEAR_NOTIFS.swap(false, Ordering::Relaxed);
         widget.write(&mut pa, |wid| {
-            if wid.logs.has_changed() {
-                (wid.text, wid.mask) = match wid.logs.last().unwrap() {
-                    context::Log::Text(cursorless) => (cursorless.get(), ""),
-                    context::Log::CmdResult(cmd, was_success, cursorless) => {
-                        let mask = if *was_success { "ok" } else { "err" };
-
-                        (txt!("[a]{cmd}[]: {}", cursorless.get()).build(), mask)
-                    }
+            if wid.logs.has_changed()
+                && let Some(rec) = wid.logs.last()
+            {
+                wid.mask = match rec.level() {
+                    Level::Error => "error",
+                    Level::Warn => "warn",
+                    Level::Info => "info",
+                    Level::Debug => "debug",
+                    Level::Trace => unreachable!(),
                 };
+                wid.text = txt!("{}: {}", rec.target(), rec.text().clone()).build();
             } else if clear_notifs {
                 wid.text = Text::new()
             }
@@ -76,10 +78,10 @@ impl<U: Ui> Widget<U> for Notifications<U> {
     }
 
     fn once() -> Result<(), Text> {
-        form::set_weak("Default.Notifications.err", Form::red());
-        form::set_weak("Accent.err", Form::red().bold());
-        form::set_weak("Default.Notifications.ok", Form::cyan());
-        form::set_weak("Accent.ok", Form::blue().bold());
+        form::set_weak("Default.Notifications.error", Form::red());
+        form::set_weak("Accent.error", Form::red().bold());
+        form::set_weak("Default.Notifications.info", Form::cyan());
+        form::set_weak("Accent.info", Form::blue().bold());
 
         hook::add_grouped::<KeysSent>("RemoveNotificationsOnInput", |_, _| {
             CLEAR_NOTIFS.store(true, Ordering::Relaxed);

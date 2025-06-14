@@ -585,10 +585,11 @@ use duat_core::{session::FileRet, ui::DuatEvent};
 pub macro setup_duat($setup:expr) {
     use std::sync::mpsc;
 
-    use $crate::prelude::{File, Text};
+    use $crate::prelude::{File, Text, context::Logs};
 
     #[unsafe(no_mangle)]
     fn run(
+        logs: Logs,
         ms: MetaStatics,
         prev_files: Vec<Vec<FileRet>>,
         (duat_tx, duat_rx): Messengers,
@@ -597,7 +598,8 @@ pub macro setup_duat($setup:expr) {
         mpsc::Receiver<DuatEvent>,
         Option<std::time::Instant>,
     ) {
-        pre_setup(duat_tx);
+        
+        pre_setup(Some(logs), duat_tx);
         $setup();
         run_duat(ms, prev_files, duat_rx)
     }
@@ -608,7 +610,7 @@ pub mod prelude {
     use std::process::Output;
 
     pub use duat_core::{
-        Plugin, clipboard, cmd,
+        Plugin, clipboard, cmd, context,
         data::{self, Pass, RwData},
         text::{
             self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, Text, txt,

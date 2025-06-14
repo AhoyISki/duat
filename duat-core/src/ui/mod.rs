@@ -50,7 +50,7 @@ use crate::{
     data::{Pass, RwData},
     file::File,
     form::Painter,
-    text::{Builder, FwdIter, Item, Point, RevIter, Text, TwoPoints},
+    text::{FwdIter, Item, Point, RevIter, Text, TwoPoints},
     widget::{Node, Widget},
 };
 
@@ -699,8 +699,6 @@ pub enum DuatEvent {
     ///
     /// [`Form`]: crate::form::Form
     FormChange,
-    /// Send a message from the Duat application to the config
-    MetaMsg(Builder),
     /// Open a new [`File`]
     OpenFile(String),
     /// Close an open [`File`]
@@ -725,7 +723,6 @@ impl Debug for DuatEvent {
             Self::Key(key) => f.debug_tuple("Key").field(key).finish(),
             Self::Resize => write!(f, "Resize"),
             Self::FormChange => write!(f, "FormChange"),
-            Self::MetaMsg(msg) => f.debug_tuple("MetaMsg").field(msg).finish(),
             Self::ReloadConfig => write!(f, "ReloadConfig"),
             Self::OpenFile(file) => f.debug_tuple("OpenFile").field(file).finish(),
             Self::CloseFile(file) => f.debug_tuple("CloseFile").field(file).finish(),

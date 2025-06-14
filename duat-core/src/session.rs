@@ -193,7 +193,7 @@ impl<U: Ui> Session<U> {
                 let builder = FileBuilder::new(&mut *pa, node, context::cur_window());
                 hook::trigger(pa, OnFileOpen(builder));
             }
-            Err(err) => context::notify(err),
+            Err(err) => context::error!("{err}"),
         }
     }
 
@@ -249,7 +249,6 @@ impl<U: Ui> Session<U> {
                         reprint_screen = true;
                         continue;
                     }
-                    DuatEvent::MetaMsg(msg) => context::notify(msg),
                     DuatEvent::OpenFile(name) => {
                         self.open_file(&mut pa, PathBuf::from(&name));
                         mode::reset_switch_to::<U>(&pa, name, false);
@@ -395,7 +394,7 @@ impl<U: Ui> Session<U> {
                 let builder = FileBuilder::new(&mut *pa, node, context::cur_window());
                 hook::trigger(pa, OnFileOpen(builder));
             }
-            Err(err) => context::notify(err),
+            Err(err) => context::error!("{err}"),
         }
     }
 }

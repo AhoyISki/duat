@@ -525,10 +525,10 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
                     match child.wait_with_output() {
                         Ok(out) => {
                             if out.status.code() != Some(0) {
-                                context::notify(txt!("Couldn't compile config crate"));
+                                context::info!("Couldn't compile config crate");
                             }
                         }
-                        Err(err) => context::notify(txt!("cargo failed: [a]{err}")),
+                        Err(err) => context::error!("cargo failed: [a]{err}"),
                     };
                     IS_UPDATING.store(false, Ordering::Relaxed);
                 });
@@ -922,13 +922,10 @@ mod global {
     pub fn call_notify(pa: &mut Pass, call: impl std::fmt::Display) -> CmdResult {
         // SAFETY: Function has a Pass argument.
         let result = unsafe { COMMANDS.get() }.run(pa, call.to_string());
-        if let Ok(Some(res)) | Err(res) = result.clone() {
-            let call = call.to_string();
-            let cmd = call.split(' ').find(|w| !w.is_empty()).unwrap();
+        let call = call.to_string();
+        let cmd = call.split(' ').find(|w| !w.is_empty()).unwrap();
+        context::logs().push_cmd_result(cmd.to_string(), result.clone());
 
-            let was_success = result.is_ok();
-            context::logs().push_result(cmd.to_string(), was_success, res);
-        }
         result
     }
 
@@ -957,12 +954,9 @@ mod global {
         crate::context::sender()
             .send(DuatEvent::QueuedFunction(Box::new(move |mut pa| {
                 let result = unsafe { COMMANDS.get() }.run(&mut pa, call.clone());
-                if let Ok(Some(res)) | Err(res) = result.clone() {
-                    let cmd = call.split(' ').find(|w| !w.is_empty()).unwrap();
-
-                    let was_success = result.is_ok();
-                    context::logs().push_result(cmd.to_string(), was_success, res);
-                }
+                let call = call;
+                let cmd = call.split(' ').find(|w| !w.is_empty()).unwrap();
+                context::logs().push_cmd_result(cmd.to_string(), result.clone());
             })))
             .unwrap()
     }
@@ -988,12 +982,9 @@ mod global {
             .send(DuatEvent::QueuedFunction(Box::new(move |mut pa| {
                 // SAFETY: Function has a Pass argument.
                 let result = unsafe { COMMANDS.get() }.run(&mut pa, call.clone());
-                if let Ok(Some(res)) | Err(res) = result.clone() {
-                    let cmd = call.split(' ').find(|w| !w.is_empty()).unwrap();
-
-                    let was_success = result.is_ok();
-                    context::logs().push_result(cmd.to_string(), was_success, res);
-                }
+                let call = call;
+                let cmd = call.split(' ').find(|w| !w.is_empty()).unwrap();
+                context::logs().push_cmd_result(cmd.to_string(), result.clone());
 
                 map(result)
             })))
@@ -1058,10 +1049,7 @@ impl Commands {
 
         let call = call.to_string();
         let mut args = call.split_whitespace();
-        let caller = args
-            .next()
-            .ok_or(txt!("The command is empty"))?
-            .to_string();
+        let caller = args.next().ok_or(txt!("The command is empty"))?.to_string();
 
         let (command, call) = unsafe {
             self.0.read_unsafe(|inner| {

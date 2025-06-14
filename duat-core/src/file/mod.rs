@@ -23,7 +23,7 @@ use crate::{
     form,
     hook::{self, FileWritten},
     mode::Cursors,
-    text::{txt, Bytes, Text},
+    text::{Bytes, Text, txt},
     ui::{PushSpecs, RawArea, Ui},
     widget::{Widget, WidgetCfg},
 };
@@ -151,7 +151,7 @@ impl<U: Ui> File<U> {
                     .write_to(std::io::BufWriter::new(fs::File::create(&path)?))
                     .inspect(|_| self.path = PathKind::SetExists(path.clone()))?;
 
-				let path = path.to_string_lossy().to_string();
+                let path = path.to_string_lossy().to_string();
                 hook::queue(FileWritten((path, bytes)));
 
                 Ok(Some(bytes))
@@ -270,7 +270,7 @@ impl<U: Ui> File<U> {
     /// [`Change`]: crate::text::Change
     pub fn add_reader(&mut self, pa: &mut Pass, cfg: impl ReaderCfg<U>) {
         if let Err(err) = self.readers.add(pa, self.text.bytes_mut(), cfg) {
-            context::notify(err);
+            context::error!("{err}");
         }
     }
 

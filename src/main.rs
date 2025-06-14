@@ -16,6 +16,7 @@ use dlopen_rs::{Dylib, ElfLibrary, OpenFlags, Symbol};
 use duat::{Messengers, MetaStatics, pre_setup, prelude::*, run_duat};
 use duat_core::{
     clipboard::Clipboard,
+    context,
     session::FileRet,
     ui::{self, DuatEvent, Ui as UiTrait},
 };
@@ -31,6 +32,10 @@ static MS: LazyLock<<Ui as ui::Ui>::MetaStatics> =
 static CLIPB: LazyLock<Mutex<Clipboard>> = LazyLock::new(Mutex::default);
 
 fn main() {
+    let logs = duat_core::context::Logs::new();
+    log::set_logger(Box::leak(Box::new(logs.clone()))).unwrap();
+    context::set_logs(logs.clone());
+
     dlopen_rs::init();
 
     let (reload_tx, reload_rx) = mpsc::channel();
@@ -41,9 +46,8 @@ fn main() {
 
     // Assert that the configuration crate actually exists.
     let Some(crate_dir) = duat_core::crate_dir().filter(|cd| cd.exists()) else {
-        let msg = txt!("No config crate found, loading default config");
-        duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
-        pre_setup(duat_tx);
+        context::error!("No config crate found, loading default config");
+        pre_setup(None, duat_tx);
         run_duat((&MS, &CLIPB), Vec::new(), duat_rx);
         return;
     };
@@ -61,11 +65,9 @@ fn main() {
             if let Ok(out) = run_cargo(toml_path.clone(), true, true)
                 && out.status.success()
             {
-                let msg = txt!("Compiled [a]release[] profile");
-                duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
+                context::info!("Compile [a]release[] profile");
             } else {
-                let msg = txt!("Failed to compile [a]release[] profile");
-                duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
+                context::error!("Failed to compile [a]release[] profile");
             }
             waiting_nap(20);
         }
@@ -83,11 +85,10 @@ fn main() {
 
         let reload_instant;
         (prev, duat_rx, reload_instant) = if let Some(run_duat) = run_fn.take() {
-            run_duat((&MS, &CLIPB), prev, (duat_tx, duat_rx))
+            run_duat(logs.clone(), (&MS, &CLIPB), prev, (duat_tx, duat_rx))
         } else {
-            let msg = txt!("Failed to open load crate");
-            duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
-            pre_setup(duat_tx);
+            context::error!("Failed to open load crate");
+            pre_setup(None, duat_tx);
             run_duat((&MS, &CLIPB), prev, duat_rx)
         };
 
@@ -99,11 +100,10 @@ fn main() {
 
         let profile = if on_release { "Release" } else { "Debug" };
         let time = match reload_instant {
-            Some(reload_instant) => txt!("in [a]{:.2?}", reload_instant.elapsed()).build(),
-            None => Text::new(),
+            Some(reload_instant) => txt!("in [a]{:.2?}", reload_instant.elapsed()),
+            None => Text::builder(),
         };
-        let msg = txt!("[a]{profile}[] profile reloaded {time}");
-        duat_tx.send(DuatEvent::MetaMsg(msg)).unwrap();
+        context::info!("[a]{profile}[] profile reloaded {time}");
         lib = ElfLibrary::dlopen(so_path, DEFAULT_FLAGS).ok();
     }
 
@@ -202,6 +202,7 @@ fn waiting_nap(len: u64) {
 }
 
 type RunFn = fn(
+    context::Logs,
     MetaStatics,
     Vec<Vec<FileRet>>,
     Messengers,

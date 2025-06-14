@@ -283,7 +283,6 @@ use std::{
 use dirs_next::cache_dir;
 pub use lender::Lender;
 pub use libloading::{Library, Symbol};
-pub use log;
 
 use self::{
     data::Pass,
@@ -531,6 +530,19 @@ pub mod clipboard {
 ////////// Text Builder macros (for pub/private bending)
 mod private_exports {
     pub use format_like::format_like;
+
+    pub macro log($target:expr, $lvl:expr, $($arg:tt)*) {{
+        let text = $crate::text::txt!($($arg)*).build();
+
+		$crate::context::logs().push_record($crate::context::Record::new(
+    		text,
+    		$lvl,
+    		$target,
+    		Some(module_path!()),
+    		Some(file!()),
+    		Some(line!())
+		));
+    }}
 
     pub macro parse_str($builder:expr, $str:literal) {{
         let builder = $builder;

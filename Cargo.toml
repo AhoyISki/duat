@@ -28,6 +28,7 @@ duat-term = { version = "0.4.0", path = "duat-term", optional = true }
 dirs-next = "2.0.0"
 notify = "8.0.0"
 dlopen-rs = "0.7.3"
+log = "0.4.27"
 
 [features]
 default = ["term-ui"]

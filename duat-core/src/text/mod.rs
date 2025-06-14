@@ -755,7 +755,7 @@ impl Text {
     /// threads.
     ///
     /// [`EditHelper`]: crate::mode::EditHelper
-    pub fn without_cursors(mut self) -> Cursorless {
+    pub fn no_cursors(mut self) -> Cursorless {
         self.0.cursors = None;
         Cursorless(self)
     }
@@ -1079,14 +1079,10 @@ macro impl_from_to_string($t:ty) {
 /// [`Logs`].
 ///
 /// [`Logs`]: crate::context::Logs
+#[derive(Clone, Debug)]
 pub struct Cursorless(Text);
 
 impl Cursorless {
-    /// Takes the [`Text`] within, allowing for mutation again
-    pub fn take(self) -> Text {
-        self.0
-    }
-
     /// Gets the [`Text`] within, allowing for mutation again
     pub fn get(&self) -> Text {
         self.0.clone()
@@ -1098,6 +1094,12 @@ impl std::ops::Deref for Cursorless {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl From<Cursorless> for Text {
+    fn from(value: Cursorless) -> Self {
+        value.0
     }
 }
 

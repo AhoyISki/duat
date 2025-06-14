@@ -3,22 +3,17 @@
 //! This module lets you access and mutate some things:
 //!
 //! # Files
-use std::{
-    any::TypeId,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
-    },
-};
+use std::any::TypeId;
 
-pub use self::global::*;
+pub use self::{global::*, log::*};
 use crate::{
     data::{Pass, RwData},
     file::File,
-    text::{Cursorless, Text},
     ui::{RawArea, Ui},
     widget::{Node, Related, Widget},
 };
+
+mod log;
 
 mod global {
     use std::{
@@ -32,7 +27,7 @@ mod global {
         },
     };
 
-    use super::{CurFile, CurWidget, FileHandle, FileParts, Logs};
+    use super::{CurFile, CurWidget, FileHandle, FileParts};
     use crate::{
         data::{DataMap, Pass, RwData},
         main_thread_only::MainThreadOnly,
@@ -51,7 +46,6 @@ mod global {
     static MODE_NAME: LazyLock<MainThreadOnly<RwData<&'static str>>> =
         LazyLock::new(MainThreadOnly::default);
 
-    static LOGS: LazyLock<Logs> = LazyLock::new(Logs::new);
     static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
     static WILL_RELOAD_OR_QUIT: AtomicBool = AtomicBool::new(false);
     static CUR_DIR: OnceLock<Mutex<PathBuf>> = OnceLock::new();
@@ -127,22 +121,6 @@ mod global {
             .lock()
             .unwrap()
             .clone()
-    }
-
-    /// Notifications for duat
-    ///
-    /// This is a mutable, shareable, [`Send`]/[`Sync`] list of
-    /// notifications in the form of [`Text`]s, you can read this,
-    /// send new notifications, and check for updates, just like with
-    /// [`RwData`], except in this case, you don't need [`Pass`]es, so
-    /// there might be changes to make this API safer in the future.
-    pub fn logs() -> Logs {
-        LOGS.clone()
-    }
-
-    /// Sends a notification to Duat
-    pub fn notify(msg: impl Into<Text>) {
-        LOGS.push(msg)
     }
 
     /// Returns `true` if Duat is about to reload
@@ -543,107 +521,6 @@ impl<U: Ui> FileHandle<U> {
                 .read(pa, |parts| parts.as_ref().unwrap().0.ptr_eq(other))
         }
     }
-}
-
-/// The notifications sent to Duat.
-///
-/// This can include command results, failed mappings, recompilation
-/// messages, and any other thing that you want to [push] to be
-/// notified.
-///
-/// [push]: Logs::push
-pub struct Logs {
-    list: &'static Mutex<Vec<&'static Log>>,
-    cutoffs: &'static Mutex<Vec<usize>>,
-    cur_state: Arc<AtomicUsize>,
-    read_state: AtomicUsize,
-}
-
-impl Clone for Logs {
-    fn clone(&self) -> Self {
-        Self {
-            list: self.list,
-            cutoffs: self.cutoffs,
-            cur_state: self.cur_state.clone(),
-            read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed)),
-        }
-    }
-}
-
-impl Logs {
-    /// Creates a new [`Logs`]
-    fn new() -> Self {
-        Self {
-            list: Box::leak(Box::default()),
-            cutoffs: Box::leak(Box::default()),
-            cur_state: Arc::new(AtomicUsize::new(1)),
-            read_state: AtomicUsize::new(0),
-        }
-    }
-
-    /// Returns an owned valued of a [`SliceIndex`]
-    ///
-    /// - `&'static Log` for `usize`;
-    /// - [`Vec<&'static Log>`] for `impl RangeBounds<usize>`;
-    ///
-    /// [`SliceIndex`]: std::slice::SliceIndex
-    pub fn get<I>(&self, i: I) -> Option<<I::Output as ToOwned>::Owned>
-    where
-        I: std::slice::SliceIndex<[&'static Log]>,
-        I::Output: ToOwned,
-    {
-        self.list.lock().unwrap().get(i).map(ToOwned::to_owned)
-    }
-
-    /// Returns the last [`Log`]
-    pub fn last(&self) -> Option<&'static Log> {
-        self.list.lock().unwrap().last().copied()
-    }
-
-    /// Wether there are new notifications or not
-    pub fn has_changed(&self) -> bool {
-        self.cur_state.load(Ordering::Relaxed) > self.read_state.load(Ordering::Relaxed)
-    }
-
-    /// Pushes a new [notification] to Duat
-    ///
-    /// This could be any type that implements [`Into<Text>`]. If it
-    /// is a [`Text`] however, in order to implement [`Send`] +
-    /// [`Sync`], the [`Text`] will have its history and [`Reader`]s
-    /// removed.
-    ///
-    /// [notification]: Text
-    /// [`Reader`]: crate::file::Reader
-    pub fn push(&self, text: impl Into<Text>) {
-        self.cur_state.fetch_add(1, Ordering::Relaxed);
-        self.list.lock().unwrap().push(Box::leak(Box::new(Log::Text(
-            Into::<Text>::into(text).without_cursors(),
-        ))))
-    }
-
-    /// Pushes a command's [`Text`] result
-    ///
-    /// This `cmd` is usually a function executed via something like
-    /// [`cmd::call`], but it could also be the name of a function
-    /// that didn't quite succeed.
-    ///
-    /// [`cmd::call`]: crate::cmd::call
-    pub fn push_result(&self, cmd: String, was_success: bool, result: Text) {
-        self.cur_state.fetch_add(1, Ordering::Relaxed);
-
-        let log = Log::CmdResult(cmd, was_success, result.without_cursors());
-        self.list.lock().unwrap().push(Box::leak(Box::new(log)))
-    }
-}
-
-/// A message that was sent to Duat
-pub enum Log {
-    /// Regular [`Text`], but [without cursors]
-    ///
-    /// [without cursors]: Cursorless
-    Text(Cursorless),
-    /// The result of a command
-    CmdResult(String, bool, Cursorless),
 }
 
 /// The current [`Widget`]

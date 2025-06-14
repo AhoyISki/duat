@@ -166,7 +166,7 @@ mod switch {
                     }
                 }))
             }
-            Err(err) => context::notify(err),
+            Err(err) => context::error!("{err}"),
         }
     }
 
@@ -292,7 +292,7 @@ mod switch {
                 // this is safe.
                 Ok(node) => unsafe { switch_widget(node) },
                 Err(err) => {
-                    context::notify(err);
+                    context::error!("{err}");
                     return false;
                 }
             };

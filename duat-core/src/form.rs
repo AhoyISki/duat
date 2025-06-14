@@ -57,7 +57,6 @@ mod global {
     use crate::{
         context,
         hook::{self, ColorSchemeSet},
-        text::txt,
     };
 
     static PALETTE: Palette = Palette::new();
@@ -424,7 +423,7 @@ mod global {
             cs.apply();
             hook::queue(ColorSchemeSet(cs.name()));
         } else {
-            context::notify(txt!("The colorscheme [a]{name}[] was not found"));
+            context::error!("The colorscheme [a]{name}[] was not found");
         }
     }
 
@@ -1072,7 +1071,7 @@ impl Palette {
     }
 
     /// Returns a [`Painter`]
-    fn painter(&'static self, id: FormId, mask: &str) -> Painter {
+    fn painter(&'static self, default_id: FormId, mask: &str) -> Painter {
         let inner = self.0.read().unwrap();
         let mask_i = inner
             .masks
@@ -1082,9 +1081,9 @@ impl Palette {
 
         let default = inner
             .forms
-            .get(match inner.masks[mask_i].1.get(id.0 as usize) {
+            .get(match inner.masks[mask_i].1.get(default_id.0 as usize) {
                 Some(i) => *i as usize,
-                None => id.0 as usize,
+                None => default_id.0 as usize,
             })
             .map(|(_, f, _)| *f)
             .unwrap_or(Form::new().0);
@@ -1146,10 +1145,13 @@ impl Painter {
     #[inline(always)]
     pub fn apply(&mut self, id: FormId) {
         let (_, mask) = &self.inner.masks[self.mask_i];
-        let i = mask[id.0 as usize] as usize;
+        let id = FormId(mask.get(id.0 as usize).copied().unwrap_or(id.0));
 
         let forms = &self.inner.forms;
-        let form = forms.get(i).map(|(_, f, _)| *f).unwrap_or(Form::new().0);
+        let form = forms
+            .get(id.0 as usize)
+            .map(|(_, f, _)| *f)
+            .unwrap_or(Form::new().0);
 
         self.forms.insert(self.final_form_start, (form, id));
         if id != M_SEL_ID && id != E_SEL_ID {
@@ -1549,9 +1551,9 @@ impl std::fmt::Debug for InnerPalette {
                 if f.alternate() {
                     f.write_str("[\n")?;
                     let max = self.0.len().ilog10() as usize + 3;
-                    for (n, entry) in self.0.iter().enumerate() {
+                    for (n, (name, form, ty)) in self.0.iter().enumerate() {
                         let num = format!("{n}:");
-                        writeln!(f, "{num:<max$}{entry:#?}")?;
+                        writeln!(f, "{num:<max$}({name}, {ty:?}, {form:#?})")?;
                     }
                     f.write_str("]")
                 } else {
@@ -1579,6 +1581,7 @@ impl std::fmt::Debug for InnerPalette {
             .field("main_cursor", &self.main_cursor.map(DebugCursorShape))
             .field("extra_cursor", &self.extra_cursor.map(DebugCursorShape))
             .field("forms", &DebugForms(&self.forms))
+            .field("masks", &self.masks)
             .finish()
     }
 }
