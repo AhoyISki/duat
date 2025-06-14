@@ -115,14 +115,14 @@ pub use self::{
     ops::{Point, TextRange, TextRangeOrPoint, TwoPoints, utf8_char_width},
     search::{Matcheable, RegexPattern, Searcher},
     tags::{
-        AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCursor, FormTag, Ghost, GhostId,
-        MainCursor, MutTags, RawTag, Spacer, Tag, Tagger, Taggers, ToggleId,
+        AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCaret, FormTag, Ghost, GhostId,
+        MainCaret, MutTags, RawTag, Spacer, Tag, Tagger, Taggers, ToggleId,
     },
 };
 use crate::{
     cfg::PrintCfg,
     context, form,
-    mode::{Cursor, Cursors},
+    mode::{Selection, Selections},
     ui::RawArea,
 };
 
@@ -141,7 +141,7 @@ pub struct Text(Box<InnerText>);
 struct InnerText {
     bytes: Bytes,
     tags: Tags,
-    cursors: Option<Cursors>,
+    selections: Option<Selections>,
     // Specific to Files
     history: Option<History>,
     has_changed: bool,
@@ -156,14 +156,14 @@ impl Text {
         Self::from_bytes(Bytes::default(), None, false)
     }
 
-    /// Returns a new empty [`Text`] with [`Cursors`] enabled
-    pub fn new_with_cursors() -> Self {
-        Self::from_bytes(Bytes::default(), Some(Cursors::default()), false)
+    /// Returns a new empty [`Text`] with [`Selections`] enabled
+    pub fn new_with_selections() -> Self {
+        Self::from_bytes(Bytes::default(), Some(Selections::default()), false)
     }
 
     /// Returns a new empty [`Text`] with history enabled
     pub(crate) fn new_with_history() -> Self {
-        Self::from_bytes(Bytes::default(), Some(Cursors::default()), true)
+        Self::from_bytes(Bytes::default(), Some(Selections::default()), true)
     }
 
     /// Creates a [`Text`] from a file's [path]
@@ -171,19 +171,19 @@ impl Text {
     /// [path]: Path
     pub(crate) fn from_file(
         bytes: Bytes,
-        cursors: Cursors,
+        selections: Selections,
         path: impl AsRef<Path>,
         has_unsaved_changes: bool,
     ) -> Self {
-        let cursors = if let Some(cursor) = cursors.get_main()
-            && let Some(_) = bytes.char_at(cursor.caret())
+        let selections = if let Some(selection) = selections.get_main()
+            && let Some(_) = bytes.char_at(selection.caret())
         {
-            cursors
+            selections
         } else {
-            Cursors::default()
+            Selections::default()
         };
 
-        let mut text = Self::from_bytes(bytes, Some(cursors), true);
+        let mut text = Self::from_bytes(bytes, Some(selections), true);
         text.0
             .has_unsaved_changes
             .store(has_unsaved_changes, Ordering::Relaxed);
@@ -198,7 +198,7 @@ impl Text {
     /// Creates a [`Text`] from [`Bytes`]
     pub(crate) fn from_bytes(
         mut bytes: Bytes,
-        cursors: Option<Cursors>,
+        selections: Option<Selections>,
         with_history: bool,
     ) -> Self {
         if bytes.buffers(..).next_back().is_none_or(|b| b != b'\n') {
@@ -210,7 +210,7 @@ impl Text {
         Self(Box::new(InnerText {
             bytes,
             tags,
-            cursors,
+            selections,
             history: with_history.then(History::new),
             has_changed: false,
             has_unsaved_changes: AtomicBool::new(false),
@@ -222,7 +222,7 @@ impl Text {
         Self(Box::new(InnerText {
             bytes: Bytes::default(),
             tags: Tags::new(0),
-            cursors: None,
+            selections: None,
             history: None,
             has_changed: false,
             has_unsaved_changes: AtomicBool::new(false),
@@ -548,10 +548,10 @@ impl Text {
     ) -> (Option<usize>, Option<usize>) {
         self.0.has_changed = true;
 
-        let cursors_taken = self.apply_change_inner(guess_i.unwrap_or(0), change.as_ref());
+        let selections_taken = self.apply_change_inner(guess_i.unwrap_or(0), change.as_ref());
         let history = self.0.history.as_mut();
         let insertion_i = history.map(|h| h.apply_change(guess_i, change));
-        (insertion_i, cursors_taken)
+        (insertion_i, selections_taken)
     }
 
     /// Merges `String`s with the body of text, given a range to
@@ -566,7 +566,7 @@ impl Text {
         *self.0.has_unsaved_changes.get_mut() = true;
 
         self.0
-            .cursors
+            .selections
             .as_mut()
             .map(|cs| cs.apply_change(guess_i, change))
     }
@@ -639,22 +639,22 @@ impl Text {
     }
 
     fn apply_and_process_changes(&mut self, moment: Moment) {
-        if let Some(cursors) = self.cursors_mut() {
-            cursors.clear();
+        if let Some(selections) = self.selections_mut() {
+            selections.clear();
         }
 
         for (i, change) in moment.changes().enumerate() {
             self.apply_change_inner(0, change);
 
-            if let Some(cursors) = self.0.cursors.as_mut() {
+            if let Some(selections) = self.0.selections.as_mut() {
                 let start = change.start();
                 let added_end = match change.added_text().chars().next_back() {
                     Some(last) => change.added_end().rev(last),
                     None => change.start(),
                 };
 
-                let cursor = Cursor::new(added_end, (start != added_end).then_some(start));
-                cursors.insert(i, cursor, i == moment.len() - 1);
+                let selection = Selection::new(added_end, (start != added_end).then_some(start));
+                selections.insert(i, selection, i == moment.len() - 1);
             }
         }
     }
@@ -734,91 +734,91 @@ impl Text {
         self.0.tags = Tags::new(self.0.bytes.len().byte());
     }
 
-    /////////// Cursor functions
+    /////////// Selection functions
 
-    /// Enables the usage of [`Cursors`] in this [`Text`]
+    /// Enables the usage of [`Selections`] in this [`Text`]
     ///
     /// This is automatically done whenever you use the [`EditHelper`]
     /// struct.
     ///
     /// [`EditHelper`]: crate::mode::EditHelper
-    pub fn enable_cursors(&mut self) {
-        if self.0.cursors.is_none() {
-            self.0.cursors = Some(Cursors::default())
+    pub fn enable_selections(&mut self) {
+        if self.0.selections.is_none() {
+            self.0.selections = Some(Selections::default())
         }
     }
 
-    /// Returns a [`Text`] without [`Cursors`]
+    /// Returns a [`Text`] without [`Selections`]
     ///
     /// You should use this if you want to send the [`Text`] across
     /// threads.
     ///
     /// [`EditHelper`]: crate::mode::EditHelper
-    pub fn no_cursors(mut self) -> Cursorless {
-        self.0.cursors = None;
-        Cursorless(self)
+    pub fn no_selections(mut self) -> Selectionless {
+        self.0.selections = None;
+        Selectionless(self)
     }
 
-    /// Removes the tags for all the cursors, used before they are
+    /// Removes the tags for all the selections, used before they are
     /// expected to move
-    pub(crate) fn add_cursors(&mut self, area: &impl RawArea, cfg: PrintCfg) {
-        let Some(cursors) = self.0.cursors.take() else {
+    pub(crate) fn add_selections(&mut self, area: &impl RawArea, cfg: PrintCfg) {
+        let Some(selections) = self.0.selections.take() else {
             return;
         };
 
-        if cursors.len() < 500 {
-            for (cursor, is_main) in cursors.iter() {
-                self.add_cursor(cursor, is_main);
+        if selections.len() < 500 {
+            for (selection, is_main) in selections.iter() {
+                self.add_selection(selection, is_main);
             }
         } else {
             let (start, _) = area.first_points(self, cfg);
             let (end, _) = area.last_points(self, cfg);
-            for (cursor, is_main) in cursors.iter() {
-                let range = cursor.range(self);
+            for (selection, is_main) in selections.iter() {
+                let range = selection.range(self);
                 if range.end > start.byte() && range.start < end.byte() {
-                    self.add_cursor(cursor, is_main);
+                    self.add_selection(selection, is_main);
                 }
             }
         }
 
-        self.0.cursors = Some(cursors);
+        self.0.selections = Some(selections);
     }
 
-    /// Adds the tags for all the cursors, used after they are
+    /// Adds the tags for all the selections, used after they are
     /// expected to have moved
-    pub(crate) fn remove_cursors(&mut self, area: &impl RawArea, cfg: PrintCfg) {
-        let Some(cursors) = self.0.cursors.take() else {
+    pub(crate) fn remove_selections(&mut self, area: &impl RawArea, cfg: PrintCfg) {
+        let Some(selections) = self.0.selections.take() else {
             return;
         };
 
-        if cursors.len() < 500 {
-            for (cursor, _) in cursors.iter() {
-                self.remove_cursor(cursor);
+        if selections.len() < 500 {
+            for (selection, _) in selections.iter() {
+                self.remove_selection(selection);
             }
         } else {
             let (start, _) = area.first_points(self, cfg);
             let (end, _) = area.last_points(self, cfg);
-            for (cursor, _) in cursors.iter() {
-                let range = cursor.range(self);
+            for (selection, _) in selections.iter() {
+                let range = selection.range(self);
                 if range.end > start.byte() && range.start < end.byte() {
-                    self.remove_cursor(cursor);
+                    self.remove_selection(selection);
                 }
             }
         }
 
-        self.0.cursors = Some(cursors)
+        self.0.selections = Some(selections)
     }
 
-    /// Adds a [`Cursor`] to the [`Text`]
-    fn add_cursor(&mut self, cursor: &Cursor, is_main: bool) {
-        let (caret, selection) = cursor.tag_points(self);
+    /// Adds a [`Selection`] to the [`Text`]
+    fn add_selection(&mut self, selection: &Selection, is_main: bool) {
+        let (caret, selection) = selection.tag_points(self);
 
-        let key = Tagger::for_cursors();
+        let key = Tagger::for_selections();
         let form = if is_main {
-            self.0.tags.insert(key, caret.byte(), MainCursor);
+            self.0.tags.insert(key, caret.byte(), MainCaret);
             form::M_SEL_ID
         } else {
-            self.0.tags.insert(key, caret.byte(), ExtraCursor);
+            self.0.tags.insert(key, caret.byte(), ExtraCaret);
             form::E_SEL_ID
         };
 
@@ -832,14 +832,14 @@ impl Text {
         }
     }
 
-    /// Removes a [`Cursor`] from the [`Text`]
-    fn remove_cursor(&mut self, cursor: &Cursor) {
-        let (caret, selection) = cursor.tag_points(self);
+    /// Removes a [`Selection`] from the [`Text`]
+    fn remove_selection(&mut self, selection: &Selection) {
+        let (caret, selection) = selection.tag_points(self);
         let points = [caret]
             .into_iter()
             .chain(selection.into_iter().flatten().find(|p| *p != caret));
         for p in points {
-            self.remove_tags(Tagger::for_cursors(), p.byte());
+            self.remove_tags(Tagger::for_selections(), p.byte());
         }
     }
 
@@ -921,14 +921,15 @@ impl Text {
         self.0.tags.raw_rev_at(b)
     }
 
-    /// The [`Cursors`] printed to this [`Text`], if they exist
-    pub fn cursors(&self) -> Option<&Cursors> {
-        self.0.cursors.as_ref()
+    /// The [`Selections`] printed to this [`Text`], if they exist
+    pub fn selections(&self) -> Option<&Selections> {
+        self.0.selections.as_ref()
     }
 
-    /// A mut reference to this [`Text`]'s [`Cursors`] if they exist
-    pub fn cursors_mut(&mut self) -> Option<&mut Cursors> {
-        self.0.cursors.as_mut()
+    /// A mut reference to this [`Text`]'s [`Selections`] if they
+    /// exist
+    pub fn selections_mut(&mut self) -> Option<&mut Selections> {
+        self.0.selections.as_mut()
     }
 
     pub(crate) fn history(&self) -> Option<&History> {
@@ -995,7 +996,7 @@ impl Clone for Text {
         Self(Box::new(InnerText {
             bytes: self.0.bytes.clone(),
             tags: self.0.tags.clone(),
-            cursors: self.0.cursors.clone(),
+            selections: self.0.selections.clone(),
             history: self.0.history.clone(),
             has_changed: self.0.has_changed,
             has_unsaved_changes: AtomicBool::new(false),
@@ -1072,23 +1073,23 @@ macro impl_from_to_string($t:ty) {
     }
 }
 
-/// A [`Text`] that is guaranteed not to have [`Cursors`] in it
+/// A [`Text`] that is guaranteed not to have [`Selections`] in it
 ///
 /// Useful for sending across threads, especially when it comes to
 /// [`Logs`].
 ///
 /// [`Logs`]: crate::context::Logs
 #[derive(Clone, Debug)]
-pub struct Cursorless(Text);
+pub struct Selectionless(Text);
 
-impl Cursorless {
+impl Selectionless {
     /// Gets the [`Text`] within, allowing for mutation again
     pub fn get(&self) -> Text {
         self.0.clone()
     }
 }
 
-impl std::ops::Deref for Cursorless {
+impl std::ops::Deref for Selectionless {
     type Target = Text;
 
     fn deref(&self) -> &Self::Target {
@@ -1096,13 +1097,13 @@ impl std::ops::Deref for Cursorless {
     }
 }
 
-impl From<Cursorless> for Text {
-    fn from(value: Cursorless) -> Self {
+impl From<Selectionless> for Text {
+    fn from(value: Selectionless) -> Self {
         value.0
     }
 }
 
-// SAFETY: This struct is defined by the lack of Cursors, the only non
-// Send/Sync part of a Text
-unsafe impl Send for Cursorless {}
-unsafe impl Sync for Cursorless {}
+// SAFETY: This struct is defined by the lack of Selections, the only
+// non Send/Sync part of a Text
+unsafe impl Send for Selectionless {}
+unsafe impl Sync for Selectionless {}

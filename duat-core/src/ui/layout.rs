@@ -11,6 +11,7 @@
 //!
 //! ```rust
 //! use duat_core::{
+//!     data::RwData,
 //!     prelude::*,
 //!     ui::{PushSpecs, layout::*},
 //! };
@@ -25,15 +26,18 @@
 //!         // One File is always open.
 //!         let (_, last) = prev.last().unwrap();
 //!         match prev.len() % 4 {
-//!             1 => (last.clone(), PushSpecs::right()),
-//!             2 => (last.clone(), PushSpecs::below()),
-//!             3 => (last.clone(), PushSpecs::left()),
-//!             4 => (last.clone(), PushSpecs::above()),
+//!             1 => Ok((last.clone(), PushSpecs::right())),
+//!             2 => Ok((last.clone(), PushSpecs::below())),
+//!             3 => Ok((last.clone(), PushSpecs::left())),
+//!             4 => Ok((last.clone(), PushSpecs::above())),
 //!             _ => unreachable!("That's not how math works, man!"),
 //!         }
 //!     }
 //! }
 //! ```
+//!
+//! Also notice that this function can fail, which means you can set a
+//! limit to how many [`File`]s should can open in a single window.
 use super::{Node, PushSpecs, RawArea, Ui};
 use crate::{
     data::{Pass, RwData},
@@ -115,4 +119,5 @@ pub(super) fn window_files<U: Ui>(
 }
 
 /// A unique identifier for a [`File`]
+#[derive(Clone)]
 pub struct FileId<U: Ui>(pub(crate) U::Area);

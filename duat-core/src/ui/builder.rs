@@ -33,11 +33,11 @@ use crate::{
 /// question, and is only obtainable in a [`OnFileOpen`] hook:
 ///
 /// ```rust
-/// # use duat_core::prelude::*;
+/// # use duat_core::{hook::OnFileOpen, prelude::*, ui::FileBuilder};
 /// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
 /// # impl<U: Ui> Widget<U> for LineNumbers<U> {
 /// #     type Cfg = LineNumbersOptions<U>;
-/// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+/// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
 /// #     fn needs_update(&self) -> bool { todo!(); }
 /// #     fn cfg() -> Self::Cfg { todo!() }
 /// #     fn text(&self) -> &Text { todo!(); }
@@ -47,13 +47,13 @@ use crate::{
 /// # struct LineNumbersOptions<U>(std::marker::PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
 /// #     type Widget = LineNumbers<U>;
-/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+/// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
 /// #         todo!();
 /// #     }
 /// # }
 /// # fn test<U: Ui>() {
-/// hook::add::<OnFileOpen<U>>(|mut pa: Pass, builder: &mut FileBuilder<U>| {
-///     builder.push(&mut pa, LineNumbers::cfg());
+/// hook::add::<OnFileOpen<U>>(|pa: &mut Pass, builder: &mut FileBuilder<U>| {
+///     builder.push(pa, LineNumbers::cfg());
 /// });
 /// # }
 /// ```
@@ -63,11 +63,11 @@ use crate::{
 /// change that:
 ///
 /// ```rust
-/// # use duat_core::prelude::*;
+/// # use duat_core::{hook::OnFileOpen, prelude::*};
 /// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
 /// # impl<U: Ui> Widget<U> for LineNumbers<U> {
 /// #     type Cfg = LineNumbersOptions<U>;
-/// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+/// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
 /// #     fn needs_update(&self) -> bool { todo!(); }
 /// #     fn cfg() -> Self::Cfg { todo!() }
 /// #     fn text(&self) -> &Text { todo!(); }
@@ -81,14 +81,14 @@ use crate::{
 /// # }
 /// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
 /// #     type Widget = LineNumbers<U>;
-/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+/// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
 /// #         todo!();
 /// #     }
 /// # }
 /// # fn test<U: Ui>() {
-/// hook::add::<OnFileOpen<U>>(|mut pa, builder| {
+/// hook::add::<OnFileOpen<U>>(|pa, builder| {
 ///     let line_numbers_cfg = LineNumbers::cfg().relative().on_the_right();
-///     builder.push(&mut pa, line_numbers_cfg);
+///     builder.push(pa, line_numbers_cfg);
 /// });
 /// # }
 /// ```
@@ -102,11 +102,11 @@ use crate::{
 /// use [`hook::remove`]:
 ///
 /// ```rust
-/// # use duat_core::prelude::*;
+/// # use duat_core::{hook::OnFileOpen, prelude::*};
 /// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
 /// # impl<U: Ui> Widget<U> for LineNumbers<U> {
 /// #     type Cfg = LineNumbersOptions<U>;
-/// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+/// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
 /// #     fn needs_update(&self) -> bool { todo!(); }
 /// #     fn cfg() -> Self::Cfg { todo!() }
 /// #     fn text(&self) -> &Text { todo!(); }
@@ -120,7 +120,7 @@ use crate::{
 /// # }
 /// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
 /// #     type Widget = LineNumbers<U>;
-/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+/// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
 /// #         todo!();
 /// #     }
 /// # }
@@ -128,13 +128,13 @@ use crate::{
 /// # type PromptLine<U> = LineNumbers<U>;
 /// # fn test<U: Ui>() {
 /// hook::remove("FileWidgets");
-/// hook::add::<OnFileOpen<U>>(|mut pa, builder| {
+/// hook::add::<OnFileOpen<U>>(|pa, builder| {
 ///     let line_numbers_cfg = LineNumbers::cfg().relative().on_the_right();
-///     builder.push(& mut pa, line_numbers_cfg);
+///     builder.push(pa, line_numbers_cfg);
 ///     // Push a StatusLine to the bottom.
-///     builder.push(&mut pa, StatusLine::cfg());
+///     builder.push(pa, StatusLine::cfg());
 ///     // Push a PromptLine to the bottom.
-///     builder.push(&mut pa, PromptLine::cfg());
+///     builder.push(pa, PromptLine::cfg());
 /// });
 /// # }
 /// ```
@@ -187,11 +187,11 @@ impl<U: Ui> FileBuilder<U> {
     /// Here's an example of such a layout:
     ///
     /// ```rust
-    /// # use duat_core::prelude::*;
+    /// # use duat_core::{hook::OnFileOpen, prelude::*, ui::FileBuilder};
     /// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
     /// # impl<U: Ui> Widget<U> for LineNumbers<U> {
     /// #     type Cfg = LineNumbersOptions<U>;
-    /// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+    /// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
     /// #     fn needs_update(&self) -> bool { todo!(); }
     /// #     fn cfg() -> Self::Cfg { todo!() }
     /// #     fn text(&self) -> &Text { todo!(); }
@@ -204,19 +204,19 @@ impl<U: Ui> FileBuilder<U> {
     /// # }
     /// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
     /// #     type Widget = LineNumbers<U>;
-    /// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    /// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
     /// #         todo!();
     /// #     }
     /// # }
     /// # macro_rules! status { ($str:literal) => { LineNumbers::cfg() } }
     /// # fn test<U: Ui>() {
     /// hook::remove("FileWidgets");
-    /// hook::add::<OnFileOpen<U>>(|mut pa: Pass, builder: &mut FileBuilder<U>| {
+    /// hook::add::<OnFileOpen<U>>(|pa: &mut Pass, builder: &mut FileBuilder<U>| {
     ///     let line_numbers_cfg = LineNumbers::cfg().rel_abs();
-    ///     builder.push(&mut pa, line_numbers_cfg);
+    ///     builder.push(pa, line_numbers_cfg);
     ///
     ///     let status_line_cfg = status!("{file_fmt} {selections_fmt} {main_fmt}");
-    ///     builder.push(&mut pa, status_line_cfg);
+    ///     builder.push(pa, status_line_cfg);
     /// });
     /// # }
     /// ```
@@ -272,11 +272,11 @@ impl<U: Ui> FileBuilder<U> {
     /// widget.
     ///
     /// ```rust
-    /// # use duat_core::prelude::*;
+    /// # use duat_core::{hook::OnFileOpen, prelude::*};
     /// # struct StatusLine<U: Ui>(std::marker::PhantomData<U>);
     /// # impl<U: Ui> Widget<U> for StatusLine<U> {
     /// #     type Cfg = StatusLineOptions<U>;
-    /// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+    /// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
     /// #     fn needs_update(&self) -> bool { todo!(); }
     /// #     fn cfg() -> Self::Cfg { todo!() }
     /// #     fn text(&self) -> &Text { todo!(); }
@@ -289,7 +289,7 @@ impl<U: Ui> FileBuilder<U> {
     /// # }
     /// # impl<U: Ui> WidgetCfg<U> for StatusLineOptions<U> {
     /// #     type Widget = StatusLine<U>;
-    /// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    /// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
     /// #         todo!();
     /// #     }
     /// # }
@@ -299,14 +299,14 @@ impl<U: Ui> FileBuilder<U> {
     /// # macro_rules! status { ($str:literal) => { StatusLine::cfg() } }
     /// # fn test<U: Ui>() {
     /// hook::remove("FileWidgets");
-    /// hook::add::<OnFileOpen<U>>(|mut pa: Pass, builder: &mut FileBuilder<U>| {
-    ///     builder.push(&mut pa, LineNumbers::cfg());
+    /// hook::add::<OnFileOpen<U>>(|pa, builder| {
+    ///     builder.push(pa, LineNumbers::cfg());
     ///
     ///     let status_cfg = status!("{file_fmt} {selections_fmt} {main_fmt}");
-    ///     let (child, _) = builder.push(&mut pa, status_cfg);
+    ///     let (child, _) = builder.push(pa, status_cfg);
     ///     let prompt_cfg = PromptLine::cfg().left_ratioed(3, 5);
-    ///     let (child, _) = builder.push_to(&mut pa, child, prompt_cfg);
-    ///     builder.push_to(&mut pa, child, Notifier::cfg());
+    ///     let (child, _) = builder.push_to(pa, child, prompt_cfg);
+    ///     builder.push_to(pa, child, Notifier::cfg());
     /// });
     /// # }
     /// ```
@@ -316,11 +316,11 @@ impl<U: Ui> FileBuilder<U> {
     /// then be exploited by the `"HidePromptLine"` [hook group],
     /// which is defined as:
     /// ```rust
-    /// # use duat_core::prelude::*;
+    /// # use duat_core::{hook::{FocusedOn, UnfocusedFrom}, prelude::*, ui::Constraint};
     /// # struct PromptLine<U: Ui>(std::marker::PhantomData<U>);
     /// # impl<U: Ui> Widget<U> for PromptLine<U> {
     /// #     type Cfg = PromptLineOptions<U>;
-    /// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+    /// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
     /// #     fn needs_update(&self) -> bool { todo!(); }
     /// #     fn cfg() -> Self::Cfg { todo!() }
     /// #     fn text(&self) -> &Text { todo!(); }
@@ -330,21 +330,23 @@ impl<U: Ui> FileBuilder<U> {
     /// # struct PromptLineOptions<U>(std::marker::PhantomData<U>);
     /// # impl<U: Ui> WidgetCfg<U> for PromptLineOptions<U> {
     /// #     type Widget = PromptLine<U>;
-    /// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    /// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
     /// #         todo!();
     /// #     }
     /// # }
     /// # fn test<U: duat_core::ui::Ui>() {
     /// hook::add_grouped::<UnfocusedFrom<PromptLine<U>, U>>(
     ///     "HidePromptLine",
-    ///     |_, (_, area)| {
-    ///         area.constrain_ver([Constraint::Len(0.0)]).unwrap();
+    ///     |_, handle| {
+    ///         handle.area().constrain_ver([Constraint::Len(0.0)]).unwrap();
     ///     },
     /// );
     /// hook::add_grouped::<FocusedOn<PromptLine<U>, U>>(
     ///     "HidePromptLine",
-    ///     |_, (_, area)| {
-    ///         area.constrain_ver([Constraint::Ratio(1, 1), Constraint::Len(1.0)])
+    ///     |_, handle| {
+    ///         handle
+    ///             .area()
+    ///             .constrain_ver([Constraint::Ratio(1, 1), Constraint::Len(1.0)])
     ///             .unwrap();
     ///     },
     /// );
@@ -424,11 +426,11 @@ impl<U: Ui> FileBuilder<U> {
 /// happens whenever a new window is opened:
 ///
 /// ```rust
-/// # use duat_core::prelude::*;
+/// # use duat_core::{hook::OnWindowOpen, prelude::*};
 /// # struct PromptLine<U: Ui>(std::marker::PhantomData<U>);
 /// # impl<U: Ui> Widget<U> for PromptLine<U> {
 /// #     type Cfg = PromptLineOptions<U>;
-/// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+/// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
 /// #     fn needs_update(&self) -> bool { todo!(); }
 /// #     fn cfg() -> Self::Cfg { todo!() }
 /// #     fn text(&self) -> &Text { todo!(); }
@@ -438,17 +440,17 @@ impl<U: Ui> FileBuilder<U> {
 /// # struct PromptLineOptions<U>(std::marker::PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for PromptLineOptions<U> {
 /// #     type Widget = PromptLine<U>;
-/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+/// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
 /// #         todo!();
 /// #     }
 /// # }
 /// # type StatusLine<U> = PromptLine<U>;
 /// # fn test<U: Ui>() {
-/// hook::add::<OnWindowOpen<U>>(|mut pa: Pass, builder: &mut WindowBuilder<U>| {
+/// hook::add::<OnWindowOpen<U>>(|pa, builder| {
 ///     // Push a StatusLine to the bottom.
-///     builder.push(&mut pa, StatusLine::cfg());
+///     builder.push(pa, StatusLine::cfg());
 ///     // Push a PromptLine to the bottom.
-///     builder.push(&mut pa, PromptLine::cfg());
+///     builder.push(pa, PromptLine::cfg());
 /// });
 /// # }
 /// ```
@@ -463,11 +465,11 @@ impl<U: Ui> FileBuilder<U> {
 /// advanced choices on the layout:
 ///
 /// ```rust
-/// # use duat_core::prelude::*;
+/// # use duat_core::{hook::{OnFileOpen, OnWindowOpen}, prelude::*};
 /// # struct PromptLine<U: Ui>(std::marker::PhantomData<U>);
 /// # impl<U: Ui> Widget<U> for PromptLine<U> {
 /// #     type Cfg = PromptLineOptions<U>;
-/// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+/// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
 /// #     fn needs_update(&self) -> bool { todo!(); }
 /// #     fn cfg() -> Self::Cfg { todo!() }
 /// #     fn text(&self) -> &Text { todo!(); }
@@ -477,7 +479,7 @@ impl<U: Ui> FileBuilder<U> {
 /// # struct PromptLineOptions<U>(std::marker::PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for PromptLineOptions<U> {
 /// #     type Widget = PromptLine<U>;
-/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+/// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
 /// #         todo!();
 /// #     }
 /// # }
@@ -485,14 +487,14 @@ impl<U: Ui> FileBuilder<U> {
 /// # type LineNumbers<U> = PromptLine<U>;
 /// # fn test<U: Ui>() {
 /// hook::remove("FileWidgets");
-/// hook::add::<OnFileOpen<U>>(|mut pa, builder| {
-///     builder.push(&mut pa, LineNumbers::cfg());
-///     builder.push(&mut pa, StatusLine::cfg());
+/// hook::add::<OnFileOpen<U>>(|pa, builder| {
+///     builder.push(pa, LineNumbers::cfg());
+///     builder.push(pa, StatusLine::cfg());
 /// });
 ///
 /// hook::remove("WindowWidgets");
-/// hook::add::<OnWindowOpen<U>>(|mut pa, builder| {
-///     builder.push(&mut pa, PromptLine::cfg());
+/// hook::add::<OnWindowOpen<U>>(|pa, builder| {
+///     builder.push(pa, PromptLine::cfg());
 /// });
 /// # }
 /// ```
@@ -580,11 +582,11 @@ impl<U: Ui> WindowBuilder<U> {
     /// status's area:
     ///
     /// ```rust
-    /// # use duat_core::prelude::*;
+    /// # use duat_core::{hook::OnWindowOpen, prelude::*};
     /// # struct PromptLine<U: Ui>(std::marker::PhantomData<U>);
     /// # impl<U: Ui> Widget<U> for PromptLine<U> {
     /// #     type Cfg = PromptLineOptions<U>;
-    /// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+    /// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
     /// #     fn needs_update(&self) -> bool { todo!(); }
     /// #     fn cfg() -> Self::Cfg { todo!() }
     /// #     fn text(&self) -> &Text { todo!(); }
@@ -597,17 +599,17 @@ impl<U: Ui> WindowBuilder<U> {
     /// # }
     /// # impl<U: Ui> WidgetCfg<U> for PromptLineOptions<U> {
     /// #     type Widget = PromptLine<U>;
-    /// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    /// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
     /// #         todo!();
     /// #     }
     /// # }
     /// # type StatusLine<U> = PromptLine<U>;
     /// # fn test<U: Ui>() {
-    /// hook::add::<OnWindowOpen<U>>(|mut pa, builder| {
+    /// hook::add::<OnWindowOpen<U>>(|pa, builder| {
     ///     // StatusLine goes below by default
-    ///     let (status_area, _) = builder.push(&mut pa, StatusLine::cfg());
+    ///     let (status_area, _) = builder.push(pa, StatusLine::cfg());
     ///     let prompt_cfg = PromptLine::cfg().left_ratioed(3, 5);
-    ///     builder.push_to(&mut pa, status_area, prompt_cfg);
+    ///     builder.push_to(pa, status_area, prompt_cfg);
     /// });
     /// # }
     /// ```

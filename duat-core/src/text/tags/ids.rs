@@ -94,8 +94,8 @@ impl Tagger {
         Self(0)
     }
 
-    /// A [`Tagger`] specifically for cursors
-    pub(in crate::text) const fn for_cursors() -> Self {
+    /// A [`Tagger`] specifically for selections
+    pub(in crate::text) const fn for_selections() -> Self {
         Self(1)
     }
 

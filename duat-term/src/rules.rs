@@ -23,7 +23,7 @@ impl Widget<Ui> for VertRule {
             {
                 let (upper, middle, lower) = handle.read(pa, |file, _| {
                     let lines = file.printed_lines();
-                    if let Some(main) = file.cursors().get_main() {
+                    if let Some(main) = file.selections().get_main() {
                         let main = main.line();
                         let upper = lines.iter().filter(|&(line, _)| *line < main).count();
                         let middle = lines.iter().filter(|&(line, _)| *line == main).count();

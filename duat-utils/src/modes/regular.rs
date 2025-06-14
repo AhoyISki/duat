@@ -14,22 +14,20 @@ pub struct Regular;
 impl<U: Ui> mode::Mode<U> for Regular {
     type Widget = File<U>;
 
-    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>) {
-        let mut helper = handle.helper(pa);
-
+    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, mut handle: Handle<Self::Widget, U>) {
         match key {
             // Characters
-            key!(KeyCode::Char(char)) => helper.edit_all(pa, |mut e| {
+            key!(KeyCode::Char(char)) => handle.edit_all(pa, |mut e| {
                 e.insert(char);
                 e.move_hor(1);
             }),
-            key!(KeyCode::Enter) => helper.edit_all(pa, |mut e| {
+            key!(KeyCode::Enter) => handle.edit_all(pa, |mut e| {
                 e.insert('\n');
                 e.move_hor(1);
             }),
 
             // Text Removal
-            key!(KeyCode::Backspace) => helper.edit_all(pa, |mut e| {
+            key!(KeyCode::Backspace) => handle.edit_all(pa, |mut e| {
                 if e.anchor().is_some() {
                     e.replace("");
                     e.unset_anchor();
@@ -38,41 +36,41 @@ impl<U: Ui> mode::Mode<U> for Regular {
                     e.replace("");
                 }
             }),
-            key!(KeyCode::Delete) => helper.edit_all(pa, |mut e| {
+            key!(KeyCode::Delete) => handle.edit_all(pa, |mut e| {
                 e.replace("");
                 e.unset_anchor();
             }),
 
             // Movement
-            key!(KeyCode::Left, KeyMod::SHIFT) => helper.edit_all(pa, |mut e| {
+            key!(KeyCode::Left, KeyMod::SHIFT) => handle.edit_all(pa, |mut e| {
                 e.set_anchor_if_needed();
                 e.move_hor(-1);
             }),
-            key!(KeyCode::Right, KeyMod::SHIFT) => helper.edit_all(pa, |mut e| {
+            key!(KeyCode::Right, KeyMod::SHIFT) => handle.edit_all(pa, |mut e| {
                 e.set_anchor_if_needed();
                 e.move_hor(1);
             }),
-            key!(KeyCode::Up, KeyMod::SHIFT) => helper.edit_all(pa, |mut e| {
+            key!(KeyCode::Up, KeyMod::SHIFT) => handle.edit_all(pa, |mut e| {
                 e.set_anchor_if_needed();
                 e.move_ver(-1);
             }),
-            key!(KeyCode::Down, KeyMod::SHIFT) => helper.edit_all(pa, |mut e| {
+            key!(KeyCode::Down, KeyMod::SHIFT) => handle.edit_all(pa, |mut e| {
                 e.set_anchor_if_needed();
                 e.move_ver(1);
             }),
-            key!(KeyCode::Left, KeyMod::NONE) => helper.edit_all(pa, |mut e| {
+            key!(KeyCode::Left, KeyMod::NONE) => handle.edit_all(pa, |mut e| {
                 e.unset_anchor();
                 e.move_hor(-1);
             }),
-            key!(KeyCode::Right, KeyMod::NONE) => helper.edit_all(pa, |mut e| {
+            key!(KeyCode::Right, KeyMod::NONE) => handle.edit_all(pa, |mut e| {
                 e.unset_anchor();
                 e.move_hor(1);
             }),
-            key!(KeyCode::Up, KeyMod::NONE) => helper.edit_all(pa, |mut e| {
+            key!(KeyCode::Up, KeyMod::NONE) => handle.edit_all(pa, |mut e| {
                 e.unset_anchor();
                 e.move_ver(-1);
             }),
-            key!(KeyCode::Down, KeyMod::NONE) => helper.edit_all(pa, |mut e| {
+            key!(KeyCode::Down, KeyMod::NONE) => handle.edit_all(pa, |mut e| {
                 e.unset_anchor();
                 e.move_ver(1);
             }),

@@ -6,7 +6,7 @@ use std::sync::{
 pub use log::{Level, Metadata};
 
 pub use self::macros::*;
-use crate::text::{Cursorless, Text};
+use crate::text::{Selectionless, Text};
 
 mod macros {
     /// Logs an error to Duat
@@ -222,7 +222,7 @@ impl Logs {
             module_path: None,
             file: None,
             line: None,
-            text: Box::leak(Box::new(res.no_cursors())),
+            text: Box::leak(Box::new(res.no_selections())),
         };
 
         self.list.lock().unwrap().push(rec)
@@ -244,7 +244,7 @@ impl log::Log for Logs {
     fn log(&self, rec: &log::Record) {
         let rec = Record {
             text: Box::leak(Box::new(
-                Text::from(std::fmt::format(*rec.args())).no_cursors(),
+                Text::from(std::fmt::format(*rec.args())).no_selections(),
             )),
             metadata: log::MetadataBuilder::new()
                 .level(rec.level())
@@ -276,7 +276,7 @@ impl log::Log for Logs {
 /// [`std::fmt::Arguments`], but a [`Text`] instead.
 #[derive(Clone, Debug)]
 pub struct Record {
-    text: &'static Cursorless,
+    text: &'static Selectionless,
     metadata: log::Metadata<'static>,
     module_path: Option<&'static str>,
     file: Option<&'static str>,
@@ -295,7 +295,7 @@ impl Record {
         line: Option<u32>,
     ) -> Self {
         Self {
-            text: Box::leak(Box::new(text.no_cursors())),
+            text: Box::leak(Box::new(text.no_selections())),
             metadata: log::MetadataBuilder::new()
                 .level(level)
                 .target(target)

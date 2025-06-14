@@ -21,7 +21,7 @@ use crate::{
     data::{Pass, RwData},
     form,
     hook::{self, FileWritten},
-    mode::Cursors,
+    mode::Selections,
     text::{Bytes, Text, txt},
     ui::{PushSpecs, RawArea, Ui, Widget, WidgetCfg},
 };
@@ -77,15 +77,15 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
             TextOp::NewBuffer => (Text::new_with_history(), PathKind::new_unset()),
             TextOp::TakeBuf(bytes, pk, has_unsaved_changes) => match &pk {
                 PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
-                    let cursors = {
+                    let selections = {
                         let cursor = load_cache(path).unwrap_or_default();
-                        Cursors::new_with_main(cursor)
+                        Selections::new_with_main(cursor)
                     };
-                    let text = Text::from_file(bytes, cursors, path, has_unsaved_changes);
+                    let text = Text::from_file(bytes, selections, path, has_unsaved_changes);
                     (text, pk)
                 }
                 PathKind::NotSet(_) => {
-                    (Text::from_bytes(bytes, Some(Cursors::default()), true), pk)
+                    (Text::from_bytes(bytes, Some(Selections::default()), true), pk)
                 }
             },
             TextOp::OpenPath(path) => {
@@ -93,11 +93,11 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
                 if let Ok(path) = &canon_path
                     && let Ok(file) = std::fs::read_to_string(path)
                 {
-                    let cursors = {
+                    let selections = {
                         let cursor = load_cache(path).unwrap_or_default();
-                        Cursors::new_with_main(cursor)
+                        Selections::new_with_main(cursor)
                     };
-                    let text = Text::from_file(Bytes::new(&file), cursors, path, false);
+                    let text = Text::from_file(Bytes::new(&file), selections, path, false);
                     (text, PathKind::SetExists(path.clone()))
                 } else if canon_path.is_err()
                     && let Ok(mut canon_path) = path.with_file_name(".").canonicalize()
@@ -247,14 +247,14 @@ impl<U: Ui> File<U> {
         self.text.len().line()
     }
 
-    /// The [`Cursors`] that are used on the [`Text`], if they exist
-    pub fn cursors(&self) -> &Cursors {
-        self.text.cursors().unwrap()
+    /// The [`Selections`] that are used on the [`Text`], if they exist
+    pub fn selections(&self) -> &Selections {
+        self.text.selections().unwrap()
     }
 
-    /// A mutable reference to the [`Cursors`], if they exist
-    pub fn cursors_mut(&mut self) -> Option<&mut Cursors> {
-        self.text.cursors_mut()
+    /// A mutable reference to the [`Selections`], if they exist
+    pub fn selections_mut(&mut self) -> Option<&mut Selections> {
+        self.text.selections_mut()
     }
 
     /// Whether o not the [`File`] exists or not
@@ -300,7 +300,7 @@ impl<U: Ui> Widget<U> for File<U> {
 
         let mut file = widget.acquire_mut(pa);
 
-        if let Some(main) = file.text().cursors().and_then(Cursors::get_main) {
+        if let Some(main) = file.text().selections().and_then(Selections::get_main) {
             area.scroll_around_point(file.text(), main.caret(), file.print_cfg());
         }
 

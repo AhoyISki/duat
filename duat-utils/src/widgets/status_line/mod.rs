@@ -20,7 +20,7 @@ use std::{cell::RefCell, rc::Rc};
 use duat_core::{prelude::*, text::Builder, ui::Side};
 
 pub use self::{macros::status, state::State};
-use crate::state::{file_fmt, main_fmt, mode_fmt, mode_name, selections_fmt};
+use crate::state::{file_fmt, main_fmt, mode_fmt, mode_name, sels_fmt};
 
 /// A widget to show information, usually about a [`File`]
 ///
@@ -97,7 +97,7 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
     }
 
     fn cfg() -> Self::Cfg {
-        macros::status!("{file_fmt} {mode_fmt} {selections_fmt} {}", main_fmt)
+        macros::status!("{file_fmt} {mode_fmt} {sels_fmt} {}", main_fmt)
     }
 
     fn text(&self) -> &Text {
@@ -184,14 +184,10 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
                             };
                             txt!("[Mode]{}", mode.to_uppercase()).build()
                         });
-                        macros::status!(
-                            "{mode_upper_fmt}{Spacer}{file_fmt} {selections_fmt} {main_fmt}"
-                        )
+                        macros::status!("{mode_upper_fmt}{Spacer}{file_fmt} {sels_fmt} {main_fmt}")
                     }
                     Side::Right => {
-                        macros::status!(
-                            "{AlignRight}{file_fmt} {mode_fmt} {selections_fmt} {main_fmt}"
-                        )
+                        macros::status!("{AlignRight}{file_fmt} {mode_fmt} {sels_fmt} {main_fmt}")
                     }
                     Side::Left => unreachable!(),
                 };

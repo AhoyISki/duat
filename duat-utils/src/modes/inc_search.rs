@@ -7,12 +7,7 @@
 //!
 //! [`duat-core`]: duat_core
 //! [`Cursor`]: duat_core::mode::Cursor
-use duat_core::{
-    context::FileHandle,
-    data::Pass,
-    text::{Searcher, Text, txt},
-    ui::Ui,
-};
+use duat_core::{prelude::*, text::Searcher};
 
 /// An abstraction trait used to handle incremental search
 ///
@@ -35,9 +30,8 @@ use duat_core::{
 /// struct SearchAround;
 ///
 /// impl<U: Ui> IncSearcher<U> for SearchAround {
-///    fn search(&mut self, pa: &mut Pass, handle: FileHandle<U>, se: Searcher) {
-///        let helper = handle.inc_edit_helper(pa, se);
-///        helper.edit_all(pa, |mut e| {
+///     fn search(&mut self, pa: &mut Pass, mut handle: EditHelper<File<U>, U, Searcher>) {
+///        handle.edit_all(pa, |mut e| {
 ///            e.set_caret_on_end();
 ///            let Some([_, p1]) = e.search_inc_fwd(None) else {
 ///                return;
@@ -65,11 +59,11 @@ use duat_core::{
 /// [`duat-kak`]: https://docs.rs/duat-kak
 pub trait IncSearcher<U: Ui>: Clone + 'static {
     /// Performs the incremental search
-    fn search(&mut self, pa: &mut Pass, handle: FileHandle<U>, se: Searcher);
+    fn search(&mut self, pa: &mut Pass, handle: Handle<File<U>, U, Searcher>);
 
-	/// What prompt to show in the [`PromptLine`]
-	///
-	/// [`PromptLine`]: crate::widgets::PromptLine
+    /// What prompt to show in the [`PromptLine`]
+    ///
+    /// [`PromptLine`]: crate::widgets::PromptLine
     fn prompt(&self) -> Text;
 }
 
@@ -80,9 +74,8 @@ pub trait IncSearcher<U: Ui>: Clone + 'static {
 pub struct SearchFwd;
 
 impl<U: Ui> IncSearcher<U> for SearchFwd {
-    fn search(&mut self, pa: &mut Pass, handle: FileHandle<U>, se: Searcher) {
-        let mut helper = handle.inc_helper(pa, se);
-        helper.edit_all(pa, |mut e| {
+    fn search(&mut self, pa: &mut Pass, mut handle: Handle<File<U>, U, Searcher>) {
+        handle.edit_all(pa, |mut e| {
             let caret = e.caret();
             let next = e.search_inc_fwd(None).find(|[p, _]| *p != caret);
             if let Some([p0, p1]) = next {
@@ -108,9 +101,8 @@ impl<U: Ui> IncSearcher<U> for SearchFwd {
 pub struct SearchRev;
 
 impl<U: Ui> IncSearcher<U> for SearchRev {
-    fn search(&mut self, pa: &mut Pass, handle: FileHandle<U>, se: Searcher) {
-        let mut helper = handle.inc_helper(pa, se);
-        helper.edit_all(pa, |mut e| {
+    fn search(&mut self, pa: &mut Pass, mut handle: Handle<File<U>, U, Searcher>) {
+        handle.edit_all(pa, |mut e| {
             let caret = e.caret();
             let next = e.search_inc_rev(None).find(|[_, p]| *p != caret);
             if let Some([p0, p1]) = next {
@@ -136,9 +128,8 @@ impl<U: Ui> IncSearcher<U> for SearchRev {
 pub struct ExtendFwd;
 
 impl<U: Ui> IncSearcher<U> for ExtendFwd {
-    fn search(&mut self, pa: &mut Pass, handle: FileHandle<U>, se: Searcher) {
-        let mut helper = handle.inc_helper(pa, se);
-        helper.edit_all(pa, |mut e| {
+    fn search(&mut self, pa: &mut Pass, mut handle: Handle<File<U>, U, Searcher>) {
+        handle.edit_all(pa, |mut e| {
             let caret = e.caret();
             let next = e.search_inc_fwd(None).find(|[p, _]| *p != caret);
             if let Some([_, p1]) = next {
@@ -162,9 +153,8 @@ impl<U: Ui> IncSearcher<U> for ExtendFwd {
 pub struct ExtendRev;
 
 impl<U: Ui> IncSearcher<U> for ExtendRev {
-    fn search(&mut self, pa: &mut Pass, handle: FileHandle<U>, se: Searcher) {
-        let mut helper = handle.inc_helper(pa, se);
-        helper.edit_all(pa, |mut e| {
+    fn search(&mut self, pa: &mut Pass, mut handle: Handle<File<U>, U, Searcher>) {
+        handle.edit_all(pa, |mut e| {
             let caret = e.caret();
             let next = e.search_inc_rev(None).find(|[_, p]| *p != caret);
             if let Some([p0, _]) = next {

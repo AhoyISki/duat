@@ -91,7 +91,7 @@ impl Bytes {
     /// If you want to iterate over them, you can do the following:
     ///
     /// ```rust
-    /// # use duat_core::prelude::*;
+    /// # use duat_core::{text::Point, prelude::*};
     /// # let (p0, p1) = (Point::default(), Point::default());
     /// # let text = Text::new();
     /// let bytes = text.bytes();

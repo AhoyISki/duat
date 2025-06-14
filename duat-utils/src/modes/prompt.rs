@@ -23,7 +23,7 @@ static TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 /// - [`RunCommands`] is just your regular command runner, it can also
 ///   detect if your [`Parameter`]s are correct and show that in real
 ///   time.
-/// - [`PipeSelections`] pipes each [`Cursor`]'s selection in the
+/// - [`PipeSelections`] pipes each [`Selection`]'s selection in the
 ///   current [`File`] to an external application, replacing each
 ///   selection with the returned value.
 /// - [`IncSearch`] has a further inner abstraction, [`IncSearcher`],
@@ -32,7 +32,7 @@ static TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 ///   selections by matches, things of the sort.
 ///
 /// [`Parameter`]: cmd::Parameter
-/// [`Cursor`]: mode::Cursor
+/// [`Selection`]: mode::Selection
 #[derive(Clone)]
 pub struct Prompt<M: PromptMode<U>, U: Ui>(M, PhantomData<U>);
 
@@ -45,81 +45,79 @@ impl<M: PromptMode<U>, U: Ui> Prompt<M, U> {
 impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
     type Widget = PromptLine<U>;
 
-    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>) {
-        let mut helper = handle.helper(pa);
-
+    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, mut handle: Handle<Self::Widget, U>) {
         match key {
             key!(KeyCode::Backspace) => {
-                if helper.read(pa, |pl| pl.text().is_empty()) {
-                    helper.write_cursors(pa, |c| c.clear());
+                if handle.read(pa, |pl, _| pl.text().is_empty()) {
+                    handle.write_selections(pa, |c| c.clear());
 
-                    let text = helper.take_text(pa);
+                    let text = handle.take_text(pa);
                     let text = self.0.update(pa, text, handle.area());
                     let text = self.0.before_exit(pa, text, handle.area());
 
-                    helper.replace_text(pa, text);
+                    handle.replace_text(pa, text);
 
                     mode::reset();
                 } else {
-                    helper.edit_main(pa, |mut e| {
+                    handle.edit_main(pa, |mut e| {
                         e.move_hor(-1);
                         e.replace("");
                     });
-                    let text = helper.take_text(pa);
+                    let text = handle.take_text(pa);
                     let text = self.0.update(pa, text, handle.area());
-                    helper.replace_text(pa, text);
+                    handle.replace_text(pa, text);
                 }
             }
             key!(KeyCode::Delete) => {
-                helper.edit_main(pa, |mut e| e.replace(""));
-                let text = helper.take_text(pa);
+                handle.edit_main(pa, |mut e| e.replace(""));
+                let text = handle.take_text(pa);
                 let text = self.0.update(pa, text, handle.area());
-                helper.replace_text(pa, text);
+                handle.replace_text(pa, text);
             }
 
             key!(KeyCode::Char(char)) => {
-                helper.edit_main(pa, |mut e| {
+                handle.edit_main(pa, |mut e| {
                     e.insert(char);
                     e.move_hor(1);
                 });
-                let text = helper.take_text(pa);
+                let text = handle.take_text(pa);
                 let text = self.0.update(pa, text, handle.area());
-                helper.replace_text(pa, text);
+                handle.replace_text(pa, text);
             }
             key!(KeyCode::Left) => {
-                helper.edit_main(pa, |mut e| e.move_hor(-1));
-                let text = helper.take_text(pa);
+                handle.edit_main(pa, |mut e| e.move_hor(-1));
+                let text = handle.take_text(pa);
                 let text = self.0.update(pa, text, handle.area());
-                helper.replace_text(pa, text);
+                handle.replace_text(pa, text);
             }
             key!(KeyCode::Right) => {
-                helper.edit_main(pa, |mut e| e.move_hor(1));
-                let text = helper.take_text(pa);
+                handle.edit_main(pa, |mut e| e.move_hor(1));
+                let text = handle.take_text(pa);
                 let text = self.0.update(pa, text, handle.area());
-                helper.replace_text(pa, text);
+                handle.replace_text(pa, text);
             }
 
             key!(KeyCode::Esc) => {
-                let p = helper.read(pa, |wid| wid.text().len());
-                helper.edit_main(pa, |mut e| {
+                let p = handle.read(pa, |wid, _| wid.text().len());
+                handle.edit_main(pa, |mut e| {
                     e.move_to_start();
                     e.set_anchor();
                     e.move_to(p);
                     e.replace("");
                 });
-                helper.write_cursors(pa, |c| c.clear());
-                let text = helper.take_text(pa);
+                handle.write_selections(pa, |c| c.clear());
+                let text = handle.take_text(pa);
                 let text = self.0.update(pa, text, handle.area());
                 let text = self.0.before_exit(pa, text, handle.area());
-                helper.replace_text(pa, text);
+                handle.replace_text(pa, text);
                 mode::reset();
             }
             key!(KeyCode::Enter) => {
-                helper.write_cursors(pa, |c| c.clear());
-                let text = helper.take_text(pa);
+                handle.write_selections(pa, |c| c.clear());
+                let text = handle.take_text(pa);
                 let text = self.0.update(pa, text, handle.area());
                 let text = self.0.before_exit(pa, text, handle.area());
-                helper.replace_text(pa, text);
+                handle.replace_text(pa, text);
                 mode::reset();
             }
             _ => {}
@@ -128,7 +126,7 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
 
     fn on_switch(&mut self, pa: &mut Pass, handle: Handle<Self::Widget, U>) {
         let text = handle.write(pa, |wid, _| {
-            *wid.text_mut() = Text::new_with_cursors();
+            *wid.text_mut() = Text::new_with_selections();
             run_once::<M, U>();
 
             let tag = Ghost(match wid.prompt_of::<M>() {
@@ -180,19 +178,19 @@ impl<U: Ui> PromptMode<U> for RunCommands {
         let caller = command.split_whitespace().next();
         if let Some(caller) = caller {
             if let Some((ok_ranges, err_range)) = cmd::check_args(pa, &command) {
-                let id = form::id_of!("CallerExists");
+                let id = form::id_of!("Caller.info");
                 text.insert_tag(*TAGGER, 0..caller.len(), id.to_tag(0));
 
-                let id = form::id_of!("ParameterOk");
+                let id = form::id_of!("Parameter.info");
                 for range in ok_ranges {
                     text.insert_tag(*TAGGER, range, id.to_tag(0));
                 }
                 if let Some((range, _)) = err_range {
-                    let id = form::id_of!("ParameterErr");
+                    let id = form::id_of!("Parameter.error");
                     text.insert_tag(*TAGGER, range, id.to_tag(0));
                 }
             } else {
-                let id = form::id_of!("CallerNotFound");
+                let id = form::id_of!("Caller.error");
                 text.insert_tag(*TAGGER, 0..caller.len(), id.to_tag(0));
             }
         }
@@ -210,10 +208,10 @@ impl<U: Ui> PromptMode<U> for RunCommands {
     }
 
     fn once() {
-        form::set_weak("CallerExists", "AccentOk");
-        form::set_weak("CallerNotFound", "AccentErr");
-        form::set_weak("ParameterOk", "DefaultOk");
-        form::set_weak("ParameterErr", "DefaultErr");
+        form::set_weak("Caller.info", "Accent.info");
+        form::set_weak("Caller.error", "Accent.error");
+        form::set_weak("Parameter.info", "Default.info");
+        form::set_weak("Parameter.error", "Default.error");
     }
 
     fn prompt(&self) -> Text {
@@ -224,7 +222,7 @@ impl<U: Ui> PromptMode<U> for RunCommands {
 #[derive(Clone)]
 pub struct IncSearch<I: IncSearcher<U>, U: Ui> {
     inc: I,
-    orig: Option<(mode::Cursors, <U::Area as RawArea>::PrintInfo)>,
+    orig: Option<(mode::Selections, <U::Area as RawArea>::PrintInfo)>,
     ghost: PhantomData<U>,
     prev: String,
 }
@@ -242,19 +240,19 @@ impl<I: IncSearcher<U>, U: Ui> IncSearch<I, U> {
 
 impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
     fn update(&mut self, pa: &mut Pass, mut text: Text, _: &<U as Ui>::Area) -> Text {
-        let (orig_cursors, orig_print_info) = self.orig.as_ref().unwrap();
+        let (orig_selections, orig_print_info) = self.orig.as_ref().unwrap();
         text.remove_tags(*TAGGER, ..);
 
-        let handle = context::fixed_file::<U>(pa).unwrap();
+        let handle = context::fixed_file::<U>(pa).unwrap().handle(pa);
 
         match Searcher::new(text.to_string()) {
             Ok(searcher) => {
                 handle.write(pa, |file, area| {
                     area.set_print_info(orig_print_info.clone());
-                    *file.cursors_mut().unwrap() = orig_cursors.clone();
+                    *file.selections_mut().unwrap() = orig_selections.clone();
                 });
 
-                self.inc.search(pa, handle, searcher);
+                self.inc.search(pa, handle.attach_searcher(searcher));
             }
             Err(err) => {
                 let regex_syntax::Error::Parse(err) = *err else {
@@ -262,7 +260,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
                 };
 
                 let span = err.span();
-                let id = form::id_of!("ParseCommandErr");
+                let id = form::id_of!("ParseCommand.error");
 
                 text.insert_tag(*TAGGER, span.start.offset..span.end.offset, id.to_tag(0));
             }
@@ -287,7 +285,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
     fn on_switch(&mut self, pa: &mut Pass, text: Text, _: &<U as Ui>::Area) -> Text {
         let handle = context::fixed_file::<U>(pa).unwrap();
         handle.read(pa, |file, area| {
-            self.orig = Some((file.cursors().clone(), area.print_info()));
+            self.orig = Some((file.selections().clone(), area.print_info()));
         });
 
         text
@@ -358,9 +356,8 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
             return text;
         };
 
-        let handle = context::fixed_file::<U>(pa).unwrap();
-        let mut helper = handle.helper(pa);
-        helper.edit_all(pa, |mut e| {
+        let mut handle = context::fixed_file::<U>(pa).unwrap().handle(pa);
+        handle.edit_all(pa, |mut e| {
             let Ok(mut child) = Command::new(caller)
                 .args(cmd::args_iter(&command).map(|(a, _)| a))
                 .stdin(Stdio::piped())

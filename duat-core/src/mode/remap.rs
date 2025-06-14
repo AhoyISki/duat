@@ -458,7 +458,7 @@ impl Remapper {
                         );
 
                         let cfg = widget.print_cfg();
-                        widget.text_mut().add_cursors(area, cfg);
+                        widget.text_mut().add_selections(area, cfg);
                     });
                 }
             } else if is_alias {
@@ -505,7 +505,7 @@ fn remove_alias_and<U: Ui>(pa: &mut Pass, f: impl FnOnce(&mut dyn Widget<U>, &U:
     unsafe {
         widget.mutate_data(|widget, area, _| {
             widget.write(pa, |widget| {
-                if let Some(main) = widget.text().cursors().unwrap().get_main() {
+                if let Some(main) = widget.text().selections().unwrap().get_main() {
                     let main = main.byte();
                     widget.text_mut().remove_tags(Tagger::for_alias(), main);
                     f(&mut *widget, area, main)

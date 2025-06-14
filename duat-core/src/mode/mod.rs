@@ -24,7 +24,7 @@ use core::str;
 pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
 
 pub use self::{
-    helper::{Cursor, Cursors, EditHelper, Editor, VPoint},
+    cursor::{Cursor, Cursors, Selection, Selections, VPoint},
     remap::*,
     switch::*,
 };
@@ -35,7 +35,7 @@ use crate::{
     ui::{Ui, Widget},
 };
 
-mod helper;
+mod cursor;
 mod remap;
 
 mod switch {
@@ -48,7 +48,7 @@ mod switch {
 
     use crossterm::event::KeyEvent;
 
-    use super::{Cursors, Mode};
+    use super::{Mode, Selections};
     use crate::{
         context::{self, Handle},
         data::{Pass, RwData},
@@ -282,17 +282,17 @@ mod switch {
 
         w.write(pa, |widget| {
             let cfg = widget.print_cfg();
-            widget.text_mut().remove_cursors(&area, cfg);
+            widget.text_mut().remove_selections(&area, cfg);
         });
 
         mode.on_switch(pa, Handle::from_parts(w.clone(), area.clone()));
 
         w.write(pa, |widget| {
             let cfg = widget.print_cfg();
-            if let Some(main) = widget.text().cursors().and_then(Cursors::get_main) {
+            if let Some(main) = widget.text().selections().and_then(Selections::get_main) {
                 area.scroll_around_point(widget.text(), main.caret(), cfg);
             }
-            widget.text_mut().add_cursors(&area, cfg);
+            widget.text_mut().add_selections(&area, cfg);
         });
 
         // SAFETY: There is a Pass argument.
@@ -326,15 +326,15 @@ mod switch {
 /// modify widgets.
 ///
 /// In principle, there are two types of `Mode`, the ones which use
-/// [`Cursors`], and the ones which don't. In [`Mode::send_key`], you
-/// receive an [`&mut Cursors`], and if you're not using cursors, you
-/// should run [`Cursors::clear`], in order to make sure there are no
-/// cursors.
+/// [`Selections`], and the ones which don't. In [`Mode::send_key`],
+/// you receive an [`&mut Selections`], and if you're not using
+/// selections, you should run [`Selections::clear`], in order to make
+/// sure there are no selections.
 ///
-/// If a [`Mode`] has cursors, it _must_ use the [`EditHelper`] struct
+/// If a [`Mode`] has selections, it _must_ use the [`EditHelper`] struct
 /// in order to modify of the widget's [`Text`].
 ///
-/// If your widget/mode combo is not based on cursors. You get
+/// If your widget/mode combo is not based on selections. You get
 /// more freedom to modify things as you wish, but you should refrain
 /// from using [`Cursor`]s in order to prevent bugs.
 ///
@@ -436,7 +436,11 @@ mod switch {
 /// impl<U: Ui> WidgetCfg<U> for MenuCfg<U> {
 ///     type Widget = Menu;
 ///
-///     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Menu, PushSpecs) {
+///     fn build(
+///         self,
+///         _: &mut Pass,
+///         _: Option<FileHandle<U>>,
+///     ) -> (Menu, PushSpecs) {
 ///         let mut widget = Menu::default();
 ///         widget.build_text();
 ///
@@ -449,7 +453,7 @@ mod switch {
 /// impl<U: Ui> Widget<U> for Menu {
 ///     type Cfg = MenuCfg<U>;
 ///
-///     fn update(_: Pass, _: RwData<Self>, _: &U::Area) {}
+///     fn update(_: &mut Pass, handle: Handle<Self, U>) {}
 ///
 ///     fn needs_update(&self) -> bool {
 ///         false
@@ -497,7 +501,7 @@ mod switch {
 /// # struct MenuCfg<U>(PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for MenuCfg<U> {
 /// #     type Widget = Menu;
-/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Menu, PushSpecs) { todo!() }
+/// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Menu, PushSpecs) { todo!() }
 /// # }
 /// impl<U: Ui> Widget<U> for Menu {
 /// #     type Cfg = MenuCfg<U>;
@@ -505,16 +509,16 @@ mod switch {
 /// #     fn text(&self) -> &Text { todo!() }
 /// #     fn text_mut(&mut self) -> &mut Text { todo!() }
 /// #     fn once() -> Result<(), Text> { Ok(()) }
-/// #     fn update(_: Pass, _: RwData<Self>, _: &U::Area) {}
+/// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
 /// #     fn needs_update(&self) -> bool { todo!(); }
 ///     // ...
-///     fn on_focus(_: Pass, _: RwData<Self>, _: &U::Area) {
+///     fn on_focus(_: &mut Pass, _: Handle<Self, U>) {
 ///         form::set_weak("Default.Menu", "Default");
 ///         form::set_weak("MenuSelected", Form::new().on_grey());
 ///         form::set_weak("MenuSelActive", Form::blue().on_grey());
 ///     }
 ///
-///     fn on_unfocus(_: Pass, _: RwData<Self>, _: &U::Area) {
+///     fn on_unfocus(_: &mut Pass,_: Handle<Self, U>) {
 ///         form::set_weak("Default.Menu", "Inactive");
 ///         form::set_weak("MenuSelected", "Inactive");
 ///         form::set_weak("MenuSelActive", Form::blue());
@@ -553,7 +557,7 @@ mod switch {
 /// # struct MenuCfg<U>(PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for MenuCfg<U> {
 /// #     type Widget = Menu;
-/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Menu, PushSpecs) { todo!() }
+/// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Menu, PushSpecs) { todo!() }
 /// # }
 /// # impl<U: Ui> Widget<U> for Menu {
 /// #     type Cfg = MenuCfg<U>;
@@ -561,7 +565,7 @@ mod switch {
 /// #     fn text(&self) -> &Text { todo!() }
 /// #     fn text_mut(&mut self) -> &mut Text { todo!() }
 /// #     fn once() -> Result<(), Text> { Ok(()) }
-/// #     fn update(_: Pass, _: RwData<Self>, _: &U::Area) {}
+/// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
 /// #     fn needs_update(&self) -> bool { todo!(); }
 /// # }
 /// #[derive(Clone)]
@@ -570,10 +574,10 @@ mod switch {
 /// impl<U: Ui> Mode<U> for MenuInput {
 ///     type Widget = Menu;
 ///
-///     fn send_key(&mut self, mut pa: Pass, key: KeyEvent, menu: RwData<Menu>, _: U::Area) {
+///     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>) {
 ///         use KeyCode::*;
 ///
-///         menu.write(&mut pa, |menu| {
+///         handle.write(pa, |menu, _| {
 ///             match key {
 ///                 key!(Down) => menu.shift_selection(1),
 ///                 key!(Up) => menu.shift_selection(-1),
@@ -598,7 +602,7 @@ mod switch {
 /// [`form::set`]: crate::form::set
 /// [Kakoune]: https://github.com/mawww/kakoune
 /// [`Text`]: crate::Text
-/// [`&mut Cursors`]: Cursors
+/// [`&mut Selections`]: Selections
 pub trait Mode<U: Ui>: Sized + Clone + 'static {
     /// The [`Widget`] that this [`Mode`] controls
     type Widget: Widget<U>;

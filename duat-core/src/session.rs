@@ -314,8 +314,8 @@ impl<U: Ui> Session<U> {
                     store_cache(&path, cache);
                 }
 
-                let cursors = file.cursors_mut().unwrap();
-                if let Some(main) = cursors.get_main() {
+                let selections = file.selections_mut().unwrap();
+                if let Some(main) = selections.get_main() {
                     store_cache(path, main.clone());
                 }
             });

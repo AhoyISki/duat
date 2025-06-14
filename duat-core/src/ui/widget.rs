@@ -54,7 +54,7 @@ use crate::{
     file::File,
     form,
     hook::{self, FocusedOn, UnfocusedFrom},
-    mode::Cursors,
+    mode::Selections,
     text::Text,
     ui::{PushSpecs, RawArea, Ui},
 };
@@ -86,7 +86,7 @@ use crate::{
 /// # struct UpTimeCfg<U>(PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
 /// #     type Widget = UpTime;
-/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (UpTime, PushSpecs) { todo!() }
+/// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (UpTime, PushSpecs) { todo!() }
 /// # }
 /// impl<U: Ui> Widget<U> for UpTime {
 ///     type Cfg = UpTimeCfg<U>;
@@ -97,7 +97,7 @@ use crate::{
 /// #     fn text(&self) -> &Text { &self.0 }
 /// #     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
 /// #     fn once() -> Result<(), Text> { Ok(()) }
-/// #     fn update(_: Pass, _: RwData<Self>, _: &U::Area) {}
+/// #     fn update(_: &mut Pass, handle: Handle<Self, U>) {}
 /// #     fn needs_update(&self) -> bool { todo!(); }
 /// }
 /// ```
@@ -117,7 +117,7 @@ use crate::{
 /// impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
 ///     type Widget = UpTime;
 ///
-///     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (UpTime, PushSpecs) {
+///     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (UpTime, PushSpecs) {
 ///         let checker = PeriodicChecker::new(std::time::Duration::from_secs(1));
 ///         let widget = UpTime(Text::new(), checker);
 ///         let specs = PushSpecs::below().with_ver_len(1.0);
@@ -131,7 +131,7 @@ use crate::{
 /// #     fn text(&self) -> &Text { &self.0 }
 /// #     fn text_mut(&mut self) -> &mut Text{ &mut self.0 }
 /// #     fn once() -> Result<(), Text> { Ok(()) }
-/// #     fn update(_: Pass, _: RwData<Self>, _: &U::Area) {}
+/// #     fn update(_: &mut Pass, handle: Handle<Self, U>) {}
 /// #     fn needs_update(&self) -> bool { todo!(); }
 /// # }
 /// ```
@@ -181,7 +181,7 @@ use crate::{
 /// # struct UpTimeCfg<U>(PhantomData<U>);
 /// # impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
 /// #     type Widget = UpTime;
-/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (UpTime, PushSpecs) { todo!() }
+/// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (UpTime, PushSpecs) { todo!() }
 /// # }
 /// // This was set during the `setup` function
 /// static START_TIME: OnceLock<Instant> = OnceLock::new();
@@ -192,13 +192,13 @@ use crate::{
 /// #     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
 /// #     fn needs_update(&self) -> bool { todo!(); }
 ///     // ...
-///     fn update(mut pa: Pass, widget: RwData<Self>, _: &U::Area) {
+///     fn update(pa: &mut Pass, handle: Handle<Self, U>) {
 ///         let start = START_TIME.get().unwrap();
 ///         let elapsed = start.elapsed();
 ///         let mins = elapsed.as_secs() / 60;
 ///         let secs = elapsed.as_secs() % 60;
 ///
-///         widget.replace_text::<U>(&mut pa, txt!("[UpTime]{mins}m {secs}s"));
+///         handle.widget().replace_text::<U>(pa, txt!("[UpTime]{mins}m {secs}s"));
 ///     }
 ///
 ///     fn once() -> Result<(), Text> {
@@ -230,13 +230,13 @@ use crate::{
 ///         self.1.check()
 ///     }
 ///
-///     fn update(mut pa: Pass, widget: RwData<Self>, _: &U::Area) {
+///     fn update(pa: &mut Pass, handle: Handle<Self, U>) {
 ///         let start = START_TIME.get().unwrap();
 ///         let elapsed = start.elapsed();
 ///         let mins = elapsed.as_secs() / 60;
 ///         let secs = elapsed.as_secs() % 60;
 ///
-///         widget.replace_text::<U>(&mut pa, txt!("[UpTime]{mins}m {secs}s"));
+///         handle.widget().replace_text::<U>(pa, txt!("[UpTime]{mins}m {secs}s"));
 ///     }
 ///     
 ///     fn cfg() -> Self::Cfg {
@@ -262,7 +262,7 @@ use crate::{
 ///
 /// impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
 ///     type Widget = UpTime;
-///     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (UpTime, PushSpecs) {
+///     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (UpTime, PushSpecs) {
 ///         // You could imagine how a method on `UpTimeCfg` could
 ///         // change the periodicity
 ///         let checker = PeriodicChecker::new(Duration::from_secs(1));
@@ -348,7 +348,7 @@ pub trait Widget<U: Ui>: 'static {
     /// # struct Cfg;
     /// # impl<U: Ui> WidgetCfg<U> for Cfg {
     /// #     type Widget = MyWidget<U>;
-    /// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    /// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
     /// #         todo!();
     /// #     }
     /// # }
@@ -357,7 +357,7 @@ pub trait Widget<U: Ui>: 'static {
     /// impl<U: Ui> Widget<U> for MyWidget<U> {
     /// #   type Cfg = Cfg;
     /// #   fn cfg() -> Self::Cfg { todo!() }
-    /// #   fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) { todo!() }
+    /// #   fn update(_: &mut Pass, handle: Handle<Self, U>) { todo!() }
     /// #   fn text(&self) -> &Text { todo!() }
     /// #   fn text_mut(&mut self) -> &mut Text { todo!() }
     /// #   fn once() -> Result<(), Text> { todo!() }
@@ -387,11 +387,11 @@ pub trait Widget<U: Ui>: 'static {
     /// these in [hooks] like [`OnFileOpen`]:
     ///
     /// ```rust
-    /// # use duat_core::prelude::*;
+    /// # use duat_core::{hook::OnFileOpen, prelude::*};
     /// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
     /// # impl<U: Ui> Widget<U> for LineNumbers<U> {
     /// #     type Cfg = LineNumbersOptions<U>;
-    /// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
+    /// #     fn update(_: &mut Pass, handle: Handle<Self, U>) { todo!() }
     /// #     fn needs_update(&self) -> bool { todo!(); }
     /// #     fn cfg() -> Self::Cfg { todo!() }
     /// #     fn text(&self) -> &Text { todo!(); }
@@ -406,16 +406,16 @@ pub trait Widget<U: Ui>: 'static {
     /// # }
     /// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
     /// #     type Widget = LineNumbers<U>;
-    /// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    /// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
     /// #         todo!();
     /// #     }
     /// # }
     /// # fn test<U: Ui>() {
     /// hook::remove("FileWidgets");
-    /// hook::add::<OnFileOpen<U>>(|mut pa, builder| {
+    /// hook::add::<OnFileOpen<U>>(|pa, builder| {
     ///     // Screw it, LineNumbers on both sides.
-    ///     builder.push(&mut pa, LineNumbers::cfg());
-    ///     builder.push(&mut pa, LineNumbers::cfg().on_the_right().align_right());
+    ///     builder.push(pa, LineNumbers::cfg());
+    ///     builder.push(pa, LineNumbers::cfg().on_the_right().align_right());
     /// });
     /// # }
     /// ```
@@ -476,57 +476,41 @@ pub trait Widget<U: Ui>: 'static {
 /// direction it will be pushed:
 ///
 /// ```rust
-/// # use duat_core::prelude::*;
+/// # use duat_core::{hook::OnFileOpen, prelude::*};
 /// # struct LineNumbers<U: Ui> {
 /// #     _ghost: std::marker::PhantomData<U>,
 /// # }
 /// # impl<U: Ui> Widget<U> for LineNumbers<U> {
 /// #     type Cfg = LineNumbersOptions<U>;
-/// #     fn update(_: Pass, _: RwData<Self>, _: &<U as Ui>::Area) {}
-/// #     fn needs_update(&self) -> bool {
-/// #         todo!();
-/// #     }
-/// #     fn cfg() -> Self::Cfg {
-/// #         todo!();
-/// #     }
-/// #     fn text(&self) -> &Text {
-/// #         todo!();
-/// #     }
-/// #     fn text_mut(&mut self) -> &mut Text {
-/// #         todo!();
-/// #     }
-/// #     fn once() -> Result<(), Text> {
-/// #         Ok(())
-/// #     }
+/// #     fn update(_: &mut Pass, handle: Handle<Self, U>) {}
+/// #     fn needs_update(&self) -> bool { todo!(); }
+/// #     fn cfg() -> Self::Cfg { todo!(); }
+/// #     fn text(&self) -> &Text { todo!(); }
+/// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
+/// #     fn once() -> Result<(), Text> { Ok(()) }
 /// # }
 /// # struct LineNumbersOptions<U> {
 /// #     _ghost: std::marker::PhantomData<U>,
 /// # }
 /// # impl<U> LineNumbersOptions<U> {
-/// #     pub fn align_right(self) -> Self {
-/// #         todo!();
-/// #     }
-/// #     pub fn align_main_left(self) -> Self {
-/// #         todo!();
-/// #     }
-/// #     pub fn on_the_right(self) -> Self {
-/// #         todo!();
-/// #     }
+/// #     pub fn align_right(self) -> Self { todo!(); }
+/// #     pub fn align_main_left(self) -> Self { todo!(); }
+/// #     pub fn on_the_right(self) -> Self { todo!(); }
 /// # }
 /// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
 /// #     type Widget = LineNumbers<U>;
-/// #     fn build(self, _: Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+/// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
 /// #         todo!();
 /// #     }
 /// # }
 /// # fn test<U: Ui>() {
-/// hook::add::<OnFileOpen<U>>(|mut pa, builder| {
+/// hook::add::<OnFileOpen<U>>(|pa, builder| {
 ///     // Change pushing direction to the right.
 ///     let cfg = LineNumbers::cfg().on_the_right();
 ///     // Changes to where the numbers will be placed.
 ///     let cfg = cfg.align_right().align_main_left();
 ///
-///     builder.push(&mut pa, cfg);
+///     builder.push(pa, cfg);
 /// });
 /// # }
 /// ```
@@ -571,7 +555,7 @@ impl<U: Ui> Node<U> {
         ) -> Option<RwData<Vec<Node<U>>>> {
             widget.write_as(pa, |file: &mut File<U>| {
                 let cfg = file.print_cfg();
-                file.text_mut().add_cursors(area, cfg);
+                file.text_mut().add_selections(area, cfg);
                 RwData::default()
             })
         }
@@ -660,7 +644,7 @@ impl<U: Ui> Node<U> {
         {
             let mut widget = self.widget.acquire_mut(pa);
             let cfg = widget.print_cfg();
-            widget.text_mut().add_cursors(&self.area, cfg);
+            widget.text_mut().add_selections(&self.area, cfg);
 
             if self.area.print_info() != <U::Area as RawArea>::PrintInfo::default() {
                 widget.text_mut().update_bounds();
@@ -671,7 +655,7 @@ impl<U: Ui> Node<U> {
                 widget.print(&self.area);
             }
 
-            widget.text_mut().remove_cursors(&self.area, cfg);
+            widget.text_mut().remove_selections(&self.area, cfg);
         }
     }
 
@@ -702,7 +686,7 @@ impl<U: Ui> Node<U> {
 
         widget.write(pa, |widget| {
             let cfg = widget.print_cfg();
-            widget.text_mut().remove_cursors(&area, cfg);
+            widget.text_mut().remove_selections(&area, cfg);
         });
 
         let handle = Handle::from_parts(widget.clone(), area.clone());
@@ -712,8 +696,8 @@ impl<U: Ui> Node<U> {
 
         widget.write(pa, |widget| {
             let cfg = widget.print_cfg();
-            widget.text_mut().add_cursors(&area, cfg);
-            if let Some(main) = widget.text().cursors().and_then(Cursors::get_main) {
+            widget.text_mut().add_selections(&area, cfg);
+            if let Some(main) = widget.text().selections().and_then(Selections::get_main) {
                 area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
             }
         });
@@ -726,10 +710,10 @@ impl<U: Ui> Node<U> {
 
         widget.write(pa, |widget| {
             let cfg = widget.print_cfg();
-            widget.text_mut().remove_cursors(&area, cfg);
+            widget.text_mut().remove_selections(&area, cfg);
         });
 
-		let handle = Handle::from_parts(widget.clone(), area.clone());
+        let handle = Handle::from_parts(widget.clone(), area.clone());
         hook::trigger(pa, UnfocusedFrom(handle.clone()));
 
         Widget::on_unfocus(pa, handle);
@@ -738,8 +722,8 @@ impl<U: Ui> Node<U> {
         // one.
         widget.write(&mut unsafe { Pass::new() }, |widget| {
             let cfg = widget.print_cfg();
-            widget.text_mut().add_cursors(&area, cfg);
-            if let Some(main) = widget.text().cursors().and_then(Cursors::get_main) {
+            widget.text_mut().add_selections(&area, cfg);
+            if let Some(main) = widget.text().selections().and_then(Selections::get_main) {
                 area.scroll_around_point(widget.text(), main.caret(), widget.print_cfg());
             }
         });

@@ -23,7 +23,7 @@ use self::types::Toggle;
 pub use self::{
     ids::{GhostId, Tagger, Taggers, ToggleId},
     types::{
-        AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCursor, FormTag, Ghost, MainCursor,
+        AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCaret, FormTag, Ghost, MainCaret,
         RawTag::{self, *},
         Spacer, Tag,
     },
@@ -1340,8 +1340,8 @@ impl PartialEq for Tags {
                 }
                 (Tag(PopForm(_, lhs)), Tag(PopForm(_, rhs))) => lhs == rhs,
                 (Tag(Ghost(_, lhs)), Tag(Ghost(_, rhs))) => self.ghosts[lhs] == other.ghosts[rhs],
-                (Tag(MainCursor(_)), Tag(MainCursor(_)))
-                | (Tag(ExtraCursor(_)), Tag(ExtraCursor(_)))
+                (Tag(MainCaret(_)), Tag(MainCaret(_)))
+                | (Tag(ExtraCaret(_)), Tag(ExtraCaret(_)))
                 | (Tag(StartAlignCenter(_)), Tag(StartAlignCenter(_)))
                 | (Tag(EndAlignCenter(_)), Tag(EndAlignCenter(_)))
                 | (Tag(StartAlignRight(_)), Tag(StartAlignRight(_)))

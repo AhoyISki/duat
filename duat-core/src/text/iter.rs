@@ -21,7 +21,7 @@ use super::{
     Point, Text, ToggleId, TwoPoints,
     tags::{self, RawTag},
 };
-use crate::mode::Cursor;
+use crate::mode::Selection;
 
 /// An [`Iterator`] over the [`Part`]s of the [`Text`].
 ///
@@ -83,12 +83,12 @@ impl<'a> FwdIter<'a> {
     }
 
     /// Disable all [`Conceal`]s containing any of the
-    /// [`Cursor`]s
+    /// [`Caret`]s
     ///
     /// Not yet implemented
     ///
     /// [`Conceal`]: super::Conceal
-    pub fn dont_conceal_containing(self, list: &'a [Cursor]) -> Self {
+    pub fn dont_conceal_containing(self, list: &'a [Selection]) -> Self {
         Self {
             _conceals: Conceal::Excluding(list),
             ..self
@@ -190,7 +190,7 @@ impl<'a> FwdIter<'a> {
                 *self = FwdIter::new_at(self.text, point);
                 return false;
             }
-            RawTag::MainCursor(_) | RawTag::ExtraCursor(_) | RawTag::Spacer(_)
+            RawTag::MainCaret(_) | RawTag::ExtraCaret(_) | RawTag::Spacer(_)
                 if b < self.init_point.byte() => {}
             _ => return false,
         }
@@ -380,7 +380,7 @@ impl<'a> RevIter<'a> {
                 *self = RevIter::new_at(self.text, point);
                 return false;
             }
-            RawTag::MainCursor(_) | RawTag::ExtraCursor(_) | RawTag::Spacer(_)
+            RawTag::MainCaret(_) | RawTag::ExtraCaret(_) | RawTag::Spacer(_)
                 if b > self.init_point.byte() => {}
             _ => return false,
         }
@@ -519,8 +519,8 @@ enum Conceal<'a> {
     #[default]
     All,
     None,
-    Excluding(&'a [Cursor]),
-    NotOnLineOf(&'a [Cursor]),
+    Excluding(&'a [Selection]),
+    NotOnLineOf(&'a [Selection]),
 }
 
 type FwdChars<'a> = Chain<Chars<'a>, Chars<'a>>;
@@ -561,18 +561,18 @@ pub enum Part {
     /// [`Form`]: crate::form::Form
     /// [`Painter`]: crate::form::Painter
     PopForm(FormId),
-    /// Place the main [`Cursor`] or the `"MainCursor"` [`Form`] to
+    /// Place the main `caret` or the `"MainCaret"` [`Form`] to
     /// the [`Painter`]
     ///
     /// [`Form`]: crate::form::Form
     /// [`Painter`]: crate::form::Painter
-    MainCursor,
-    /// Place the extra [`Cursor`] or the `"ExtraCursor"` [`Form`] to
+    MainCaret,
+    /// Place the extra `caret` or the `"ExtraCaret"` [`Form`] to
     /// the [`Painter`]
     ///
     /// [`Form`]: crate::form::Form
     /// [`Painter`]: crate::form::Painter
-    ExtraCursor,
+    ExtraCaret,
     /// End other forms of alignment
     AlignLeft,
     /// Begin centered alignment
@@ -611,8 +611,8 @@ impl Part {
         match value {
             RawTag::PushForm(_, id, _) => Part::PushForm(id),
             RawTag::PopForm(_, id) => Part::PopForm(id),
-            RawTag::MainCursor(_) => Part::MainCursor,
-            RawTag::ExtraCursor(_) => Part::ExtraCursor,
+            RawTag::MainCaret(_) => Part::MainCaret,
+            RawTag::ExtraCaret(_) => Part::ExtraCaret,
             RawTag::StartAlignCenter(_) => Part::AlignCenter,
             RawTag::EndAlignCenter(_) => Part::AlignLeft,
             RawTag::StartAlignRight(_) => Part::AlignRight,

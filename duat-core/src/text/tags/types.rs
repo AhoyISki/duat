@@ -30,8 +30,8 @@ use crate::{
 /// Currently, these are the [`Tag`]s in Duat:
 ///
 /// - [`FormTag`]: Applies a [`Form`] on a [range];
-/// - [`MainCursor`] and [`ExtraCursor`]: Place [`Cursor`]s on the
-///   [`Text`]. Can be an actual [`Cursor`] or just a temporary
+/// - [`MainCaret`] and [`ExtraCaret`]: Place [`Caret`]s on the
+///   [`Text`]. Can be an actual [`Caret`] or just a temporary
 ///   [`Form`];
 /// - [`AlignCenter`] and [`AlignRight`]: Change the text alignment in
 ///   a [range];
@@ -39,7 +39,7 @@ use crate::{
 ///   line;
 /// - [`Ghost`]: Places "ghost [`Text`]" on the [`Text`]. This is
 ///   [`Text`] that can be easily ignored when parsing the regular
-///   [`Text`], and [`Cursor`]s can't interact with;
+///   [`Text`], and [`Caret`]s can't interact with;
 /// - [`Conceal`]: Hides a [range] in the [`Text`], mostly only useful
 ///   in the [`File`] [`Widget`];
 ///
@@ -48,7 +48,7 @@ use crate::{
 ///
 /// [`Form`]: crate::form::Form
 /// [range]: TextRange
-/// [`Cursor`]: crate::mode::Cursor
+/// [`Caret`]: crate::mode::Caret
 /// [`File`]: crate::file::File
 /// [`Widget`]: crate::ui::Widget
 pub trait Tag<I>: Sized {
@@ -93,35 +93,35 @@ impl<I: TextRange> Tag<I> for FormTag {
     }
 }
 
-/// [`Tag`]: Places the main Cursor on the [`Text`]
+/// [`Tag`]: Places the main Caret on the [`Text`]
 ///
 /// You shouldn't have to use this most of the time, since the
-/// [`Text`] can come equipped with [`Cursors`], which manage that
+/// [`Text`] can come equipped with [`Carets`], which manage that
 /// automatically for you.
 ///
-/// [`Cursors`]: crate::mode::Cursors
+/// [`Carets`]: crate::mode::Carets
 #[derive(Clone, Copy)]
-pub struct MainCursor;
-simple_impl_Tag!(MainCursor, RawTag::MainCursor);
+pub struct MainCaret;
+simple_impl_Tag!(MainCaret, RawTag::MainCaret);
 
-/// [`Tag`]: Places an extra Cursor on the [`Text`]
+/// [`Tag`]: Places an extra Caret on the [`Text`]
 ///
 /// How the extra cursor gets inserted is [`Ui`] dependant, for
 /// example, a terminal can't show more than one cursor, so in
-/// [`duat-term`], it defaults to showing the `"ExtraCursor"`
+/// [`duat-term`], it defaults to showing the `"ExtraCaret"`
 /// [`Form`], but in other platforms, it could show an actual cursor.
 ///
 /// You shouldn't have to use this most of the time, since the
-/// [`Text`] can come equipped with [`Cursors`], which manage that
+/// [`Text`] can come equipped with [`Carets`], which manage that
 /// automatically for you.
 ///
-/// [`Cursors`]: crate::mode::Cursors
+/// [`Carets`]: crate::mode::Carets
 /// [`Ui`]: crate::ui::Ui
 /// [`duat-term`]: https://crates.io/crates/duat-term
 /// [`Form`]: crate::form::Form
 #[derive(Clone, Copy)]
-pub struct ExtraCursor;
-simple_impl_Tag!(ExtraCursor, RawTag::ExtraCursor);
+pub struct ExtraCaret;
+simple_impl_Tag!(ExtraCaret, RawTag::ExtraCaret);
 
 /////////// Alignment Tags
 
@@ -263,9 +263,9 @@ pub enum RawTag {
     PopForm(Tagger, FormId),
 
     /// Places the main cursor.
-    MainCursor(Tagger),
+    MainCaret(Tagger),
     /// Places an extra cursor.
-    ExtraCursor(Tagger),
+    ExtraCaret(Tagger),
 
     /// Starts aligning to the center, should happen to the whole
     /// line, even if it shows up in the middle of it.
@@ -324,8 +324,8 @@ impl PartialEq for RawTag {
             (Self::PopForm(l_key, l_id), Self::PopForm(r_key, r_id)) => {
                 l_key == r_key && l_id == r_id
             }
-            (Self::MainCursor(l_key), Self::MainCursor(r_key)) => l_key == r_key,
-            (Self::ExtraCursor(l_key), Self::ExtraCursor(r_key)) => l_key == r_key,
+            (Self::MainCaret(l_key), Self::MainCaret(r_key)) => l_key == r_key,
+            (Self::ExtraCaret(l_key), Self::ExtraCaret(r_key)) => l_key == r_key,
             (Self::StartAlignCenter(l_key), Self::StartAlignCenter(r_key)) => l_key == r_key,
             (Self::EndAlignCenter(l_key), Self::EndAlignCenter(r_key)) => l_key == r_key,
             (Self::StartAlignRight(l_key), Self::StartAlignRight(r_key)) => l_key == r_key,
@@ -433,8 +433,8 @@ impl RawTag {
         match self {
             Self::PushForm(key, ..)
             | Self::PopForm(key, _)
-            | Self::MainCursor(key)
-            | Self::ExtraCursor(key)
+            | Self::MainCaret(key)
+            | Self::ExtraCaret(key)
             | Self::StartAlignCenter(key)
             | Self::EndAlignCenter(key)
             | Self::StartAlignRight(key)
@@ -457,8 +457,8 @@ impl RawTag {
         match self {
             Self::PushForm(.., priority) => *priority + 5,
             Self::PopForm(..) => 0,
-            Self::MainCursor(..) => 4,
-            Self::ExtraCursor(..) => 4,
+            Self::MainCaret(..) => 4,
+            Self::ExtraCaret(..) => 4,
             Self::StartAlignCenter(..) => 1,
             Self::EndAlignCenter(..) => 2,
             Self::StartAlignRight(..) => 1,
@@ -481,8 +481,8 @@ impl std::fmt::Debug for RawTag {
                 write!(f, "PushForm({key:?}, {}, {prio})", id.name())
             }
             Self::PopForm(key, id) => write!(f, "PopForm({key:?}, {})", id.name()),
-            Self::MainCursor(key) => write!(f, "MainCursor({key:?})"),
-            Self::ExtraCursor(key) => write!(f, "ExtraCursor({key:?})"),
+            Self::MainCaret(key) => write!(f, "MainCaret({key:?})"),
+            Self::ExtraCaret(key) => write!(f, "ExtraCaret({key:?})"),
             Self::StartAlignCenter(key) => write!(f, "StartAlignCenter({key:?})"),
             Self::EndAlignCenter(key) => write!(f, "EndAlignCenter({key:?})"),
             Self::StartAlignRight(key) => write!(f, "StartAlignRight({key:?})"),

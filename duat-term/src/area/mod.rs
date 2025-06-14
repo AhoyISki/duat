@@ -179,7 +179,7 @@ impl Area {
                         painter.remove(id);
                         style_was_set = true;
                     }
-                    Part::MainCursor => {
+                    Part::MainCaret => {
                         if let Some(shape) = painter.main_cursor()
                             && is_active
                         {
@@ -192,7 +192,7 @@ impl Area {
                             style_was_set = true;
                         }
                     }
-                    Part::ExtraCursor => {
+                    Part::ExtraCaret => {
                         cursor = Some(Cursor::Extra);
                         painter.apply_extra_cursor();
                         style_was_set = true;
@@ -733,7 +733,7 @@ mod layouted {
             return last;
         }
 
-        let (line_start, mut y) = if let Some(cursors) = text.cursors()
+        let (line_start, mut y) = if let Some(cursors) = text.selections()
             && let Some(main) = cursors.get_main()
             && main.caret() == info.prev_main
         {

@@ -2,53 +2,53 @@ use std::cell::Cell;
 
 use gapbuf::{GapBuffer, gap_buffer};
 
-pub use self::cursor::{Cursor, VPoint};
+pub use self::cursor::{Selection, VPoint};
 use crate::{
     add_shifts, merging_range_by_guess_and_lazy_shift,
     text::{Change, Point},
 };
 
-/// The list of [`Cursor`]s in a [`Text`]
+/// The list of [`Selection`]s in a [`Text`]
 ///
-/// This list can contain any number of [`Cursor`]s, and they should
+/// This list can contain any number of [`Selection`]s, and they should
 /// be usable in whatever order the end user may want, without
 /// breaking from, for example, modifications that should move cursors
 /// backwards or ahead. If that is not the case, report it as a bug.
 ///
 /// they are primarily meant to be interacted with from the
 /// [`EditHelper`], a struct intended for acting on a very large
-/// number of [`Cursor`]s in an efficient manner, although you can
+/// number of [`Selection`]s in an efficient manner, although you can
 /// interact with them separately.
 ///
 /// A [`Text`] will keep itself in check with regards to its
-/// [`Cursors`], that is, it will automatically remove and add the
-/// [`MainCursor`] and [`ExtraCursor`] [tags] when the [`Cursors`] are
+/// [`Selections`], that is, it will automatically remove and add the
+/// [`MainSelection`] and [`ExtraSelection`] [tags] when the [`Selections`] are
 /// altered. If it fails to do that, report it as a bug.
 ///
 /// [`EditHelper`]: super::EditHelper
 /// [`Text`]: crate::text::Text
-/// [`MainCursor`]: crate::text::MainCursor
-/// [`ExtraCursor`]: crate::text::ExtraCursor
+/// [`MainSelection`]: crate::text::MainSelection
+/// [`ExtraSelection`]: crate::text::ExtraSelection
 /// [tags]: crate::text::Tag
 #[derive(Clone)]
-pub struct Cursors {
-    buf: GapBuffer<Cursor>,
+pub struct Selections {
+    buf: GapBuffer<Selection>,
     main_i: usize,
     shift_state: Cell<(usize, [i32; 3])>,
 }
 
-impl Cursors {
-    /// Returns a new [`Cursors`]
+impl Selections {
+    /// Returns a new [`Selections`]
     pub fn new() -> Self {
         Self {
-            buf: gap_buffer![Cursor::default()],
+            buf: gap_buffer![Selection::default()],
             main_i: 0,
             shift_state: Cell::new((0, [0; 3])),
         }
     }
 
-    /// A new [`Cursors`] with a set main [`Cursor`]
-    pub(crate) fn new_with_main(main: Cursor) -> Self {
+    /// A new [`Selections`] with a set main [`Selection`]
+    pub(crate) fn new_with_main(main: Selection) -> Self {
         Self {
             buf: gap_buffer![main],
             main_i: 0,
@@ -58,31 +58,31 @@ impl Cursors {
 
     ////////// Modification functions
 
-    /// Sets the main [`Cursor`]
+    /// Sets the main [`Selection`]
     pub fn set_main(&mut self, new: usize) {
         self.main_i = new.min(self.buf.len().saturating_sub(1));
     }
 
-    /// Rotates the main [`Cursor`] by an amount
+    /// Rotates the main [`Selection`] by an amount
     pub fn rotate_main(&mut self, amount: i32) {
         self.main_i = (self.main_i as i32 + amount).rem_euclid(self.buf.len() as i32) as usize
     }
 
-    /// Removes all [`Cursor`]s
+    /// Removes all [`Selection`]s
     pub fn clear(&mut self) {
         self.buf = GapBuffer::new();
         self.shift_state.take();
     }
 
-    /// Removes all [`Cursor`]s and adds a [default `Cursor`] as main
+    /// Removes all [`Selection`]s and adds a [default `Selection`] as main
     ///
-    /// [default `Cursor`]: Cursor::default
+    /// [default `Selection`]: Selection::default
     pub fn reset(&mut self) {
         self.remove_extras();
-        self.buf[self.main_i] = Cursor::default();
+        self.buf[self.main_i] = Selection::default();
     }
 
-    /// Removes all but the main [`Cursor`]
+    /// Removes all but the main [`Selection`]
     pub fn remove_extras(&mut self) {
         if !self.is_empty() {
             let cursor = self.buf.remove(self.main_i);
@@ -97,13 +97,13 @@ impl Cursors {
 
     ////////// Querying functions
 
-    /// Gets the main [`Cursor`], if there is one
-    pub fn get_main(&self) -> Option<&Cursor> {
+    /// Gets the main [`Selection`], if there is one
+    pub fn get_main(&self) -> Option<&Selection> {
         self.get(self.main_i)
     }
 
-    /// Gets the `n`th [`Cursor`] if there is one
-    pub fn get(&self, n: usize) -> Option<&Cursor> {
+    /// Gets the `n`th [`Selection`] if there is one
+    pub fn get(&self, n: usize) -> Option<&Selection> {
         if n >= self.len() {
             return None;
         }
@@ -122,9 +122,9 @@ impl Cursors {
         self.buf.get(n)
     }
 
-    /// Iterates over all [`Cursor`]s in order
-    pub fn iter(&self) -> impl Iterator<Item = (&Cursor, bool)> {
-        // Since we don't know how many Cursors will be iterated over, we
+    /// Iterates over all [`Selection`]s in order
+    pub fn iter(&self) -> impl Iterator<Item = (&Selection, bool)> {
+        // Since we don't know how many Selections will be iterated over, we
         // shift all cursors, just in case.
         let (sh_from, shift) = self.shift_state.take();
         if shift != [0; 3] {
@@ -138,17 +138,17 @@ impl Cursors {
             .map(move |(i, cursor)| (cursor, i == self.main_i))
     }
 
-    /// The index of the main [`Cursor`]
+    /// The index of the main [`Selection`]
     pub fn main_index(&self) -> usize {
         self.main_i
     }
 
-    /// How many [`Cursor`]s there are in the list
+    /// How many [`Selection`]s there are in the list
     pub fn len(&self) -> usize {
         self.buf.len()
     }
 
-    /// Returns [`true`] when there are no [`Cursor`]s
+    /// Returns [`true`] when there are no [`Selection`]s
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
@@ -156,12 +156,12 @@ impl Cursors {
 
     ////////// Internal modification functions
 
-    /// Inserts a [`Cursor`] back from editing
+    /// Inserts a [`Selection`] back from editing
     pub(crate) fn insert(
         &mut self,
         guess_i: usize,
-        cursor: Cursor,
-        was_main: bool,
+        cursor: Selection,
+        main: bool,
     ) -> ([usize; 2], bool) {
         let (sh_from, shift) = self.shift_state.take();
         let sh_from = sh_from.min(self.len());
@@ -171,7 +171,7 @@ impl Cursors {
             (&self.buf, self.buf.len()),
             (guess_i, [cursor.start(), cursor.end_excl()]),
             (sh_from, shift, [0; 3], Point::shift_by),
-            (Cursor::start, Cursor::end_excl),
+            (Selection::start, Selection::end_excl),
         );
 
         // Shift all ranges that preceed the end of the cursor's range.
@@ -182,7 +182,7 @@ impl Cursors {
         }
 
         // Get the minimum and maximum Points in the taken range, designate
-        // those as the new Cursor's bounds.
+        // those as the new Selection's bounds.
         let (caret, anchor, last_cursor_overhangs) = {
             let mut c_range = c_range.clone();
             let first = c_range.next().and_then(|i| self.get(i));
@@ -208,16 +208,16 @@ impl Cursors {
             }
         };
 
-        let cursor = Cursor::from_v(caret, anchor, cursor.change_i);
+        let cursor = Selection::from_v(caret, anchor, cursor.change_i);
         self.buf.splice(c_range.clone(), [cursor]);
 
-        if was_main {
+        if main {
             self.main_i = c_range.start;
         } else if self.main_i >= c_range.start {
             self.main_i = (self.main_i + 1 - c_range.clone().count()).max(c_range.start)
         }
 
-        // If there are no more Cursors after this, don't set the shift_state.
+        // If there are no more Selections after this, don't set the shift_state.
         let cursors_taken = c_range.clone().count();
         let new_sh_from = sh_from.saturating_sub(cursors_taken).max(c_range.start) + 1;
         if new_sh_from < self.buf.len() {
@@ -227,7 +227,7 @@ impl Cursors {
         ([c_range.start, cursors_taken], last_cursor_overhangs)
     }
 
-    /// Applies a [`Change`] to the [`Cursor`]s list
+    /// Applies a [`Change`] to the [`Selection`]s list
     pub(crate) fn apply_change(&mut self, guess_i: usize, change: Change<&str>) -> usize {
         let (sh_from, shift) = self.shift_state.take();
         let sh_from = sh_from.min(self.len());
@@ -237,11 +237,11 @@ impl Cursors {
             (&self.buf, self.buf.len()),
             (guess_i, [change.start(), change.taken_end()]),
             (sh_from, shift, [0; 3], Point::shift_by),
-            (Cursor::start, Cursor::end_excl),
+            (Selection::start, Selection::end_excl),
         );
 
-        // Since applied changes don't remove Cursors, we need to shift all
-        // Cursors in the whole range. First by the original shift, in order
+        // Since applied changes don't remove Selections, we need to shift all
+        // Selections in the whole range. First by the original shift, in order
         // to update them to the latest shift leve, then by the change.
         if c_range.end > sh_from && shift != [0; 3] {
             for cursor in self.buf.range(sh_from..c_range.end).into_iter() {
@@ -258,7 +258,7 @@ impl Cursors {
             if let Some(first) = cursors_taken.next() {
                 let last = cursors_taken.next_back().unwrap_or(first.clone());
                 let (start, end) = (first.start(), last.end_excl());
-                let merged = Cursor::new(start, (start < end).then_some(end));
+                let merged = Selection::new(start, (start < end).then_some(end));
                 drop(cursors_taken);
                 self.buf.insert(c_range.start, merged);
 
@@ -277,8 +277,8 @@ impl Cursors {
         cursors_taken - cursors_added
     }
 
-    /// Removes a [`Cursor`], which might be brought back
-    pub(super) fn remove(&mut self, i: usize) -> Option<(Cursor, bool)> {
+    /// Removes a [`Selection`], which might be brought back
+    pub(crate) fn remove(&mut self, i: usize) -> Option<(Selection, bool)> {
         if i >= self.buf.len() {
             return None;
         }
@@ -289,14 +289,14 @@ impl Cursors {
                 cursor.shift_by(shift);
             }
             if i + 1 < self.buf.len() {
-                // i here, instead of i + 1, since this Cursor is about to be removed.
+                // i here, instead of i + 1, since this Selection is about to be removed.
                 self.shift_state.set((i, shift));
             } else {
                 self.shift_state.take();
             }
         } else if i < sh_from {
             // If I am removing before sh_from, obviously the index of the first
-            // unshifted Cursor is moved back.
+            // unshifted Selection is moved back.
             self.shift_state.set((sh_from - 1, shift));
         }
 
@@ -307,16 +307,16 @@ impl Cursors {
         Some((self.buf.remove(i), was_main))
     }
 
-    /// Ensures that there is at least one [`Cursor`] on the list
-    pub(super) fn populate(&mut self) {
+    /// Ensures that there is at least one [`Selection`] on the list
+    pub(crate) fn populate(&mut self) {
         if self.buf.is_empty() {
             self.main_i = 0;
-            self.buf = gap_buffer![Cursor::default()];
+            self.buf = gap_buffer![Selection::default()];
         }
     }
 }
 
-impl Default for Cursors {
+impl Default for Selections {
     fn default() -> Self {
         Self::new()
     }
@@ -336,14 +336,14 @@ mod cursor {
     /// A cursor in the text file. This is an editing cursor, -(not
     /// a printing cursor.
     #[derive(Default, Clone, Encode, Decode)]
-    pub struct Cursor {
+    pub struct Selection {
         caret: Cell<LazyVPoint>,
         anchor: Cell<Option<LazyVPoint>>,
-        pub(in crate::mode::helper) change_i: Option<u32>,
+        pub(in crate::mode::cursor) change_i: Option<u32>,
     }
 
-    impl Cursor {
-        /// Returns a new instance of [`Cursor`].
+    impl Selection {
+        /// Returns a new instance of [`Selection`].
         pub(crate) fn new(caret: Point, anchor: Option<Point>) -> Self {
             Self {
                 caret: Cell::new(LazyVPoint::Unknown(caret)),
@@ -605,7 +605,7 @@ mod cursor {
             self.caret.get().point()
         }
 
-        /// The anchor of this [`Cursor`], if it exists
+        /// The anchor of this [`Selection`], if it exists
         pub fn anchor(&self) -> Option<Point> {
             self.anchor.get().map(|a| a.point())
         }
@@ -631,7 +631,7 @@ mod cursor {
         ///
         /// If `anchor` isn't set, returns an empty range on `caret`.
         ///
-        /// A [`Cursor`]'s range will also never include the last
+        /// A [`Selection`]'s range will also never include the last
         /// character in a [`Text`], which must be a newline.
         ///
         /// # Warning
@@ -644,7 +644,7 @@ mod cursor {
             start.byte()..end.byte()
         }
 
-        /// The starting [`Point`] of this [`Cursor`]
+        /// The starting [`Point`] of this [`Selection`]
         pub fn start(&self) -> Point {
             if let Some(anchor) = self.anchor.get() {
                 anchor.point().min(self.caret.get().point())
@@ -653,7 +653,7 @@ mod cursor {
             }
         }
 
-        /// The ending [`Point`] of this [`Cursor`]
+        /// The ending [`Point`] of this [`Selection`]
         pub fn end(&self, text: &Text) -> Point {
             let raw = self.end_excl();
             raw.fwd(text.char_at(raw).unwrap())
@@ -685,7 +685,7 @@ mod cursor {
 
         /// Returns the range between `target` and `anchor`.
         ///
-        /// like [`Cursor::range`], this function will not include
+        /// like [`Selection::range`], this function will not include
         /// beyond the last character's [`Point`].
         ///
         /// If `anchor` isn't set, returns an empty range on `target`.
@@ -709,7 +709,7 @@ mod cursor {
             }
         }
 
-        /// The visual caret of this [`Cursor`]
+        /// The visual caret of this [`Selection`]
         ///
         /// [`VPoint`]s include a lot more information than regular
         /// [`Point`]s, like visual distance form the left edge, what
@@ -720,7 +720,7 @@ mod cursor {
             vp
         }
 
-        /// The visual anchor of this [`Cursor`], if it exists
+        /// The visual anchor of this [`Selection`], if it exists
         ///
         /// [`VPoint`]s include a lot more information than regular
         /// [`Point`]s, like visual distance form the left edge, what
@@ -734,7 +734,7 @@ mod cursor {
         }
 
         /// The visual range between the caret and anchor of this
-        /// [`Cursor`]
+        /// [`Selection`]
         ///
         /// [`VPoint`]s include a lot more information than regular
         /// [`Point`]s, like visual distance form the left edge, what
@@ -763,7 +763,7 @@ mod cursor {
     }
 
     /// A struct meant to minimize calculations on very large numbers
-    /// of [`Cursor`]s
+    /// of [`Selection`]s
     #[derive(Clone, Copy, Eq, Encode, Decode)]
     pub(super) enum LazyVPoint {
         Known(VPoint),
@@ -836,7 +836,7 @@ mod cursor {
     /// be if this line were not wrapped"
     ///
     /// Desired cells are used when moving vertically, since when you
-    /// move a [`Cursor`] up or down to a shorter line, then to a
+    /// move a [`Selection`] up or down to a shorter line, then to a
     /// longer one, you expect the horizontal position to hold. This
     /// is applied both in [full line] and [wrapped line] vertical
     /// movement.
@@ -884,7 +884,7 @@ mod cursor {
             }
         }
 
-		/// Returns a new [`VPoint`] from raw data
+        /// Returns a new [`VPoint`] from raw data
         fn known(self, p: Point, ccol: u16, vcol: u16, wcol: u16) -> Self {
             Self { p, ccol, vcol, wcol, ..self }
         }
@@ -948,9 +948,9 @@ mod cursor {
         }
     }
 
-    impl std::fmt::Debug for Cursor {
+    impl std::fmt::Debug for Selection {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.debug_struct("Cursor")
+            f.debug_struct("Selection")
                 .field("caret", &self.caret.get())
                 .field("anchor", &self.anchor.get())
                 .field("change_i", &self.change_i)
@@ -969,7 +969,7 @@ mod cursor {
     }
 }
 
-impl std::fmt::Debug for Cursors {
+impl std::fmt::Debug for Selections {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         struct DebugShiftState((usize, [i32; 3]));
         impl std::fmt::Debug for DebugShiftState {
@@ -978,7 +978,7 @@ impl std::fmt::Debug for Cursors {
             }
         }
 
-        f.debug_struct("Cursors")
+        f.debug_struct("Selections")
             .field("buf", &self.buf)
             .field("main_i", &self.main_i)
             .field("shift_sate", &DebugShiftState(self.shift_state.get()))

@@ -105,45 +105,45 @@ pub fn mode_fmt() -> DataMap<&'static str, Text> {
     })
 }
 
-/// [`StatusLine`] part: Byte of the main cursor
+/// [`StatusLine`] part: Byte of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_byte(file: &File<impl Ui>) -> usize {
-    file.cursors().get_main().unwrap().byte() + 1
+    file.selections().get_main().unwrap().byte() + 1
 }
 
-/// [`StatusLine`] part: Char of the main cursor
+/// [`StatusLine`] part: Char of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_char(file: &File<impl Ui>) -> usize {
-    file.cursors().get_main().unwrap().char() + 1
+    file.selections().get_main().unwrap().char() + 1
 }
 
-/// [`StatusLine`] part: Line of the main cursor
+/// [`StatusLine`] part: Line of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_line(file: &File<impl Ui>) -> usize {
-    file.cursors().get_main().unwrap().line() + 1
+    file.selections().get_main().unwrap().line() + 1
 }
 
-/// [`StatusLine`] part: Column of the main cursor
+/// [`StatusLine`] part: Column of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_col<U: Ui>(file: &File<U>, area: &U::Area) -> usize {
-    let main = file.cursors().get_main().unwrap();
+    let main = file.selections().get_main().unwrap();
     main.v_caret(file.text(), area, file.print_cfg()).char_col()
 }
 
-/// [`StatusLine`] part: Desired wrapped column of the main cursor
+/// [`StatusLine`] part: Desired wrapped column of the main selection
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_dwcol<U: Ui>(file: &File<U>, area: &U::Area) -> usize {
-    let main = file.cursors().get_main().unwrap();
+    let main = file.selections().get_main().unwrap();
     main.v_caret(file.text(), area, file.print_cfg())
         .desired_wrapped_col()
 }
 
-/// [`StatusLine`] part: The main cursor, formatted
+/// [`StatusLine`] part: The main selection, formatted
 ///
 /// # Formatting
 ///
@@ -162,14 +162,14 @@ pub fn main_fmt<U: Ui>(file: &File<U>, area: &U::Area) -> Text {
     .build()
 }
 
-/// [`StatusLine`] part: The number of cursors
+/// [`StatusLine`] part: The number of selections
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn selections(file: &File<impl Ui>) -> usize {
-    file.cursors().len()
+    file.selections().len()
 }
 
-/// [`StatusLine`] part: The number of cursors, formatted
+/// [`StatusLine`] part: The number of selections, formatted
 ///
 /// # Formatting
 ///
@@ -187,11 +187,11 @@ pub fn selections(file: &File<impl Ui>) -> usize {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [`Cursor`]: duat_core::mode::Cursor
-pub fn selections_fmt(file: &File<impl Ui>) -> Text {
-    if file.cursors().len() == 1 {
+pub fn sels_fmt(file: &File<impl Ui>) -> Text {
+    if file.selections().len() == 1 {
         txt!("[Selections]1 sel").build()
     } else {
-        txt!("[Selections]{} sels", file.cursors().len()).build()
+        txt!("[Selections]{} sels", file.selections().len()).build()
     }
 }
 

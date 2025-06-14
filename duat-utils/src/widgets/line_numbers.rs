@@ -7,7 +7,7 @@
 //! You can also change other things, like the
 //! relativeness/absoluteness of the numbers, as well as the alignment
 //! of the numbers, with one more option to change that of the main
-//! cursor's line number.
+//! selection's line number.
 //!
 //! [`File`]: super::File
 use std::{fmt::Alignment, marker::PhantomData};
@@ -34,10 +34,10 @@ impl<U: Ui> LineNumbers<U> {
 
     fn form_text(&self, pa: &Pass) -> Text {
         let (main_line, printed_lines) = self.handle.read(pa, |file, _| {
-            let main_line = if file.cursors().is_empty() {
+            let main_line = if file.selections().is_empty() {
                 usize::MAX
             } else {
-                file.cursors().get_main().unwrap().line()
+                file.selections().get_main().unwrap().line()
             };
 
             (main_line, file.printed_lines().to_vec())
@@ -88,7 +88,10 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
 
     fn update(pa: &mut Pass, handle: Handle<Self, U>) {
         let width = handle.read(pa, |ln, _| ln.calculate_width(pa));
-        handle.area().constrain_hor([Constraint::Len(width + 1.0)]).unwrap();
+        handle
+            .area()
+            .constrain_hor([Constraint::Len(width + 1.0)])
+            .unwrap();
 
         let text = handle.read(pa, |ln, _| ln.form_text(pa));
         handle.write(pa, |ln, _| ln.text = text);
@@ -132,10 +135,11 @@ pub enum LineNum {
     #[default]
     /// Line numbers relative to the beginning of the file.
     Abs,
-    /// Line numbers relative to the main cursor's line, including
+    /// Line numbers relative to the main selection's line, including
     /// that line.
     Rel,
-    /// Relative line numbers on every line, except the main cursor's.
+    /// Relative line numbers on every line, except the main
+    /// selection's.
     RelAbs,
 }
 
