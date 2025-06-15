@@ -38,15 +38,15 @@
 //! # use duat_core::prelude::*;
 //! fn number_of_horses(count: usize) -> Text {
 //!     if count == 1 {
-//!         txt!("[HorseCount]1[Horses] horse").build()
+//!         txt!("[horses.count]1[horses] horse").build()
 //!     } else {
-//!         txt!("[HorseCount]{}[Horses] horses", count).build()
+//!         txt!("[horses.count]{}[horses] horses", count).build()
 //!     }
 //! }
 //!
 //! fn inlined_number_of_horses(count: usize) -> Text {
 //!     txt!(
-//!         "[HorseCount]{count} [Horses]{}",
+//!         "[horses.count]{count} [horses]{}",
 //!         if count == 1 { "horse" } else { "horses" }
 //!     )
 //!     .build()
@@ -62,7 +62,7 @@
 //!
 //! ```rust
 //! # use duat_core::prelude::*;
-//! let mut prompted = txt!("[Prompt]type a key:").build();
+//! let mut prompted = txt!("[prompt]type a key: ").build();
 //! let end = prompted.len();
 //! prompted.replace_range(end..end, "a")
 //! ```
@@ -697,8 +697,8 @@ impl Text {
     ////////// Tag addition/deletion functions
 
     /// Inserts a [`Tag`] at the given position
-    pub fn insert_tag<R>(&mut self, key: Tagger, r: R, tag: impl Tag<R>) {
-        self.0.tags.insert(key, r, tag);
+    pub fn insert_tag<R>(&mut self, tagger: Tagger, r: R, tag: impl Tag<R>) {
+        self.0.tags.insert(tagger, r, tag);
     }
 
     /// Removes the [`Tag`]s of a [key] from a region

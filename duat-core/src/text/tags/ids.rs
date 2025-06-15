@@ -31,14 +31,14 @@ static TAGGER_COUNT: AtomicU16 = AtomicU16::new(4);
 /// // This key will be used to modify text.
 /// let key1 = Tagger::new();
 ///
-/// let id = form::id_of!("Invisible");
+/// let id = form::id_of!("invisible");
 ///
 /// // You can create an `impl Tag` directly from a `FormId`
 /// text.insert_tag(key1, 18..20, id.to_tag(0));
 ///
 /// assert_eq!(
 ///     text,
-///     txt!("This is text with [Invisible]no[] tags in it").build()
+///     txt!("This is text with [invisible]no[] tags in it").build()
 /// );
 ///
 /// // key2 != key1, so it shouldn't be able to change what was done with key1.

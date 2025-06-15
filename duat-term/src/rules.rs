@@ -5,8 +5,26 @@ use crate::Ui;
 /// A vertical line on screen, useful, for example, for the separation
 /// of a [`File`] and [`LineNumbers`].
 ///
-/// [`File`]: duat_core::widgets::File
-/// [`LineNumbers`]: duat_core::widgets::LineNumbers
+/// By default, this [`VertRule`] will show the `'│'` character on the
+/// whole line, using the `"default"` form. However, with the
+/// following options:
+///
+/// - [`VertRuleCfg::with_main_char`]
+/// - [`VertRuleCfg::with_char_above`]
+/// - [`VertRuleCfg::with_char_below`]
+/// - [`VertRuleCfg::with_char`]
+///
+/// If the main character is not the same as the other two characters,
+/// then the line will be printed with the `"rule.upper"` and
+/// `"rule.lower"` forms for the characters above and below.
+///
+/// If you want them to have the same characer, but printing with
+/// these different forms, you can just call [`with_main_char`] and
+/// set it to the same character.
+///
+/// [`File`]: duat_core::file::File
+/// [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
+/// [`with_main_char`]: VertRuleCfg::with_main_char
 pub struct VertRule {
     handle: Option<FileHandle<Ui>>,
     text: Text,
@@ -36,7 +54,7 @@ impl Widget<Ui> for VertRule {
 
                 let chars = wid.sep_char.chars();
                 txt!(
-                    "[VertRule.upper]{}[VertRule]{}[VertRule.lower]{}",
+                    "[rule.upper]{}[]{}[rule.lower]{}",
                     form_string(chars[0], upper),
                     form_string(chars[1], middle),
                     form_string(chars[2], lower)
@@ -46,7 +64,7 @@ impl Widget<Ui> for VertRule {
                 let full_line =
                     format!("{}\n", wid.sep_char.chars()[1]).repeat(area.height() as usize);
 
-                txt!("[VertRule]{full_line}").build()
+                txt!("{full_line}").build()
             }
         });
 
@@ -71,8 +89,8 @@ impl Widget<Ui> for VertRule {
     }
 
     fn once() -> Result<(), Text> {
-        form::set_weak("VertRule", Form::dark_grey());
-        form::id_of!("VertRule.upper", "VertRule.lower");
+        form::set_weak("rule.upper", "default.VertRule");
+        form::set_weak("rule.lower", "default.VertRule");
         Ok(())
     }
 }
@@ -116,6 +134,7 @@ impl VertRuleCfg {
         }
     }
 
+    /// Puts this [`VertRule`] on the right
     pub fn on_the_right(self) -> Self {
         Self {
             specs: PushSpecs::right().with_hor_len(1.0),
@@ -123,10 +142,15 @@ impl VertRuleCfg {
         }
     }
 
+    /// Sets a [`char`] to be displayed, is `'│'` by default
     pub fn with_char(self, char: char) -> Self {
         Self { sep_char: SepChar::Uniform(char), ..self }
     }
 
+    /// Sets a [`char`] to be displayed on the main line only, is
+    /// `'│'` by default
+    ///
+    /// The lower and upper ranges are unaffected by this option.
     pub fn with_main_char(self, main: char) -> Self {
         Self {
             sep_char: match self.sep_char {
@@ -138,6 +162,10 @@ impl VertRuleCfg {
         }
     }
 
+    /// Sets a [`char`] to be displayed on the main line only, is
+    /// `'│'` by default
+    ///
+    /// The lower and upper ranges are unaffected by this option.
     pub fn with_char_above(self, above: char) -> Self {
         Self {
             sep_char: match self.sep_char {

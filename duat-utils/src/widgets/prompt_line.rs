@@ -93,10 +93,6 @@ impl<U: Ui> Widget<U> for PromptLine<U> {
         })
     }
 
-    fn on_unfocus(pa: &mut Pass, handle: Handle<Self, U>) {
-        handle.widget().take_text(pa);
-    }
-
     fn needs_update(&self) -> bool {
         false
     }
@@ -122,8 +118,6 @@ impl<U: Ui> Widget<U> for PromptLine<U> {
     }
 
     fn once() -> Result<(), Text> {
-        form::set_weak("Prompt", "DefaultOk");
-        form::set_weak("Prompt.colon", "AccentOk");
         Ok(())
     }
 }

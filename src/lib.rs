@@ -179,11 +179,11 @@
 //!
 //! ```rust
 //! # use duat::prelude::*;
-//! let text = txt!("[MyForm]Waow it's my form![]not anymore 😢");
+//! let text = txt!("[my_form]Waow it's my form![]not anymore 😢");
 //! ```
 //!
-//! In this example, I'm using the "MyForm" form in order to style the
-//! text, while `[]` reverts back to the "Default" form. Double `[[`
+//! In this example, I'm using the "my_form" form in order to style the
+//! text, while `[]` reverts back to the "default" form. Double `[[`
 //! and `]]` escape the `[` and `]`, just like in [`println!`]. The
 //! [`status!`] macro works similarly.
 //!

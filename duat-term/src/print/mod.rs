@@ -176,7 +176,7 @@ impl Printer {
 
         let stdout = if self.has_to_print_edges.swap(false, Ordering::Relaxed) {
             let mut stdout = std::io::stdout().lock();
-            let id = form::id_of!("Frame");
+            let id = form::id_of!("terminal.frame");
             let edge_form = form::from_id(id);
             self.vars.lock().unwrap().print_edges(&mut stdout, edge_form);
             Some(stdout)

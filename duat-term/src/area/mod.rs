@@ -165,8 +165,8 @@ impl Area {
                         }
                         if let Some(cursor) = cursor.take() {
                             match cursor {
-                                Cursor::Main => painter.remove_main_cursor(),
-                                Cursor::Extra => painter.remove_extra_cursor(),
+                                Cursor::Main => painter.remove_main_caret(),
+                                Cursor::Extra => painter.remove_extra_caret(),
                             }
                             style!(lines, &mut ansi_codes, painter.relative_style())
                         }
@@ -217,9 +217,7 @@ impl Area {
                 }
             }
 
-            if !lines.is_empty() {
-                lines.end_line(&mut ansi_codes, &painter);
-            }
+            lines.end_line(&mut ansi_codes, &painter);
 
             lines.coords().br.y - y
         };

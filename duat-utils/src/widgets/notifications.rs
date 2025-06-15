@@ -12,7 +12,12 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use duat_core::{context::Record, form::Painter, hook::KeysSent, prelude::*};
+use duat_core::{
+    context::{Level, Record},
+    form::Painter,
+    hook::KeysSent,
+    prelude::*,
+};
 
 /// A [`Widget`] to show notifications
 ///
@@ -29,7 +34,7 @@ pub struct Notifications<U> {
     logs: context::Logs,
     text: Text,
     _ghost: PhantomData<U>,
-    format_rec: Box<dyn FnMut(Record) -> Text>,
+    format_rec: Box<dyn FnMut(Record) -> Option<Text>>,
     get_mask: Box<dyn FnMut(Record) -> &'static str>,
 }
 
@@ -42,12 +47,14 @@ impl<U: Ui> Widget<U> for Notifications<U> {
         NotificationsCfg {
             left_div: None,
             format_rec: Box::new(|rec| {
-                txt!(
-                    "[Notifications.target]{}[Notifications.colon]: {}",
-                    rec.target(),
-                    rec.text().clone()
-                )
-                .build()
+                (rec.level() > Level::Debug).then(|| {
+                    txt!(
+                        "[notifs.target]{}[notifs.colon]: {}",
+                        rec.target(),
+                        rec.text().clone()
+                    )
+                    .build()
+                })
             }),
             get_mask: Box::new(|rec| match rec.level() {
                 context::Level::Error => "error",
@@ -65,9 +72,10 @@ impl<U: Ui> Widget<U> for Notifications<U> {
         handle.write(pa, |wid, _| {
             if wid.logs.has_changed()
                 && let Some(rec) = wid.logs.last()
+                && let Some(text) = (wid.format_rec)(rec.clone())
             {
-                handle.set_mask((wid.get_mask)(rec.clone()));
-                wid.text = (wid.format_rec)(rec);
+                handle.set_mask((wid.get_mask)(rec));
+                wid.text = text
             } else if clear_notifs {
                 wid.text = Text::new()
             }
@@ -83,10 +91,10 @@ impl<U: Ui> Widget<U> for Notifications<U> {
     }
 
     fn once() -> Result<(), Text> {
-        form::set_weak("Default.Notifications.error", Form::red());
-        form::set_weak("Accent.error", Form::red().bold());
-        form::set_weak("Default.Notifications.info", Form::cyan());
-        form::set_weak("Accent.info", Form::blue().bold());
+        form::set_weak("default.Notifications.error", Form::red());
+        form::set_weak("accent.error", Form::red().underlined().bold());
+        form::set_weak("default.Notifications.info", Form::cyan());
+        form::set_weak("accent.info", Form::blue().underlined().bold());
 
         hook::add_grouped::<KeysSent>("RemoveNotificationsOnInput", |_, _| {
             CLEAR_NOTIFS.store(true, Ordering::Relaxed);
@@ -118,7 +126,7 @@ impl<U: Ui> Widget<U> for Notifications<U> {
 #[doc(hidden)]
 pub struct NotificationsCfg<U> {
     left_div: Option<(u16, u16)>,
-    format_rec: Box<dyn FnMut(Record) -> Text>,
+    format_rec: Box<dyn FnMut(Record) -> Option<Text>>,
     get_mask: Box<dyn FnMut(Record) -> &'static str>,
     _ghost: PhantomData<U>,
 }
@@ -137,7 +145,11 @@ impl<U> NotificationsCfg<U> {
     }
 
     /// Changes the way [`Record`]s are formatted by [`Notifications`]
-    pub fn formatted(self, format_rec: impl FnMut(Record) -> Text + 'static) -> Self {
+    ///
+    /// This function returns an [`Option<Text>`], which means you can
+    /// filter out unnecessary [`Record`]s. By default, only records
+    /// with a level of [`Level::Info`] or higher will get shown.
+    pub fn formatted(self, format_rec: impl FnMut(Record) -> Option<Text> + 'static) -> Self {
         Self { format_rec: Box::new(format_rec), ..self }
     }
 

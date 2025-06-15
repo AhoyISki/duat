@@ -375,7 +375,7 @@ pub enum PathKind {
     ///
     /// The number within represents a specific [`File`], and when
     /// printed to, for example, the [`StatusLine`], would show up as
-    /// `txt!("[File]*scratch file*#{id}")`
+    /// `txt!("[file]*scratch file*#{id}")`
     ///
     /// [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
     NotSet(usize),

@@ -54,11 +54,11 @@ impl<U: Ui> LineNumbers<U> {
             match (*line == main_line, is_wrapped) {
                 (false, false) => {}
                 (true, false) => {
-                    let id = form::id_of!("MainLineNum");
+                    let id = form::id_of!("linenum.main");
                     builder.push(id)
                 }
-                (false, true) => builder.push(form::id_of!("WrappedLineNum")),
-                (true, true) => builder.push(form::id_of!("WrappedMainLineNum")),
+                (false, true) => builder.push(form::id_of!("linenum.wrapped")),
+                (true, true) => builder.push(form::id_of!("linenum.wrapped.main")),
             }
 
             let is_wrapped = *is_wrapped && index > 0;
@@ -121,10 +121,9 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
     }
 
     fn once() -> Result<(), Text> {
-        form::set_weak("LineNum", Form::grey());
-        form::set_weak("MainLineNum", Form::yellow());
-        form::set_weak("WrappedLineNum", Form::cyan().italic());
-        form::set_weak("WrappedMainLineNum", "WrappedLineNum");
+        form::set_weak("linenum.main", Form::yellow());
+        form::set_weak("linenum.wrapped", Form::cyan().italic());
+        form::set_weak("linenum.wrapped.main", "linenum.wrapped");
         Ok(())
     }
 }

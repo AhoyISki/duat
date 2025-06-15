@@ -66,7 +66,7 @@ use crate::state::{file_fmt, main_fmt, mode_fmt, mode_name, sels_fmt};
 /// ```rust
 /// use duat_core::{hook::OnFileOpen, prelude::*};
 /// use duat_utils::widgets::*;
-/// 
+///
 /// fn setup_generic_over_ui<U: Ui>() {
 ///     hook::remove("FileWidgets");
 ///     hook::add::<OnFileOpen<U>>(|pa, builder| {
@@ -111,11 +111,11 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
     }
 
     fn once() -> Result<(), Text> {
-        form::set_weak("File", Form::yellow().italic());
-        form::set_weak("Selections", Form::dark_blue());
-        form::set_weak("Coord", Form::dark_yellow());
-        form::set_weak("Separator", Form::cyan());
-        form::set_weak("Mode", Form::green());
+        form::set_weak("file", Form::yellow().italic());
+        form::set_weak("selections", Form::dark_blue());
+        form::set_weak("coord", Form::dark_yellow());
+        form::set_weak("separator", Form::cyan());
+        form::set_weak("mode", Form::green());
         Ok(())
     }
 }
@@ -184,7 +184,7 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
                                 Some((mode, _)) => mode,
                                 None => mode,
                             };
-                            txt!("[Mode]{}", mode.to_uppercase()).build()
+                            txt!("[mode]{}", mode.to_uppercase()).build()
                         });
                         macros::status!("{mode_upper_fmt}{Spacer}{file_fmt} {sels_fmt} {main_fmt}")
                     }
@@ -256,7 +256,7 @@ mod macros {
     ///             .v_caret(file.text(), area, cfg);
     ///
     ///     txt!(
-    ///         "[Separator][Coord]{}[Separator][Coord]{}[Separator][Coord]{}",
+    ///         "[separator][coord]{}[separator][coord]{}[separator][coord]{}",
     ///         v_caret.visual_col(),
     ///         v_caret.line(),
     ///         file.len_lines()
@@ -267,7 +267,7 @@ mod macros {
     ///     hook::add::<OnWindowOpen<Ui>>(|pa, builder| {
     ///         builder.push(
     ///             pa,
-    ///             status!("[File]{name_but_funky}[] {powerline_main_fmt}"),
+    ///             status!("[file]{name_but_funky}[] {powerline_main_fmt}"),
     ///         );
     ///     });
     /// }
@@ -313,7 +313,10 @@ mod macros {
     ///
     ///         builder.push(
     ///             pa,
-    ///             status!("{changing_text} {} {text}", (counter, checker)),
+    ///             status!(
+    ///                 "{changing_text} [counter]{}[] {text}",
+    ///                 (counter, checker)
+    ///             ),
     ///         );
     ///     }
     /// });
@@ -322,8 +325,9 @@ mod macros {
     ///
     /// In the above example, I added some dynamic [`Text`], through
     /// the usage of an [`RwData<Text>`], I added some static
-    /// [`Text`], and even a counter, which will update whenever
-    /// `changing_text` is altered.
+    /// [`Text`], some [`Form`]s (`"counter"` and `"default"`) and
+    /// even a counter, which will update whenever `changing_text`
+    /// is altered.
     ///
     /// [`StatusLine`]: super::StatusLine
     /// [`txt!`]: duat_core::text::txt

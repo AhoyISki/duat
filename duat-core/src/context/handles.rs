@@ -763,6 +763,7 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     /// [`Form`]: crate::form::Form
     /// [`form::enable_mask`]: crate::form::enable_mask
     pub fn set_mask(&self, mask: &'static str) -> &'static str {
+        self.widget.declare_written();
         self.mask.replace(mask)
     }
 

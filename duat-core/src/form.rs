@@ -31,13 +31,13 @@ pub trait ColorScheme: Send + Sync + 'static {
 
 static SENDER: OnceLock<Sender> = OnceLock::new();
 static BASE_FORMS: &[(&str, Form, FormType)] = &[
-    ("Default", Form::new().0, Normal),
-    ("Accent", Form::bold().0, Normal),
-    ("MainCursor", Form::reverse().0, Normal),
-    ("ExtraCursor", Form::reverse().0, Ref(M_CUR_ID.0 as usize)),
-    ("MainSelection", Form::white().on_dark_grey().0, Normal),
+    ("default", Form::new().0, Normal),
+    ("accent", Form::bold().0, Normal),
+    ("caret.main", Form::reverse().0, Normal),
+    ("caret.extra", Form::reverse().0, Ref(M_CAR_ID.0 as usize)),
+    ("selection.main", Form::white().on_dark_grey().0, Normal),
     (
-        "ExtraSelection",
+        "selection.extra",
         Form::white().on_dark_grey().0,
         Ref(M_SEL_ID.0 as usize),
     ),
@@ -87,11 +87,13 @@ mod global {
     /// ```rust
     /// # use duat_core::form::{self, Form};
     /// // Creates a regular form
-    /// form::set("MyRegularForm", Form::red());
+    /// let reg_id = form::set("my_regular_form", Form::red());
     /// // Creates a form that references the first
-    /// form::set("MyRefForm", "MyRegularForm");
+    /// let ref_id = form::set("my_ref_form", "my_regular_form");
     /// // Sets both "MyRegularForm" and "MyRefForm" to blue
-    /// form::set("MyRegularForm", Form::blue());
+    /// form::set("my_regular_form", Form::blue());
+    ///
+    /// assert_eq!(form::from_id(reg_id), form::from_id(ref_id));
     /// ```
     ///
     /// If you are creating a plugin, or another kind of tool for
@@ -119,7 +121,7 @@ mod global {
     ///
     /// The difference between this function and [`form::set`] is
     /// that this function will only trigger if the form didn't
-    /// already exist.
+    /// already exist/was previously onle set with [`set_weak`].
     ///
     /// This is useful for plugins, since it prioritizes the user's
     /// preferences, no matter in what order this function and
@@ -127,12 +129,22 @@ mod global {
     ///
     /// ```rust
     /// use duat_core::form::{self, Form};
-    /// // Creates a form
-    /// form::set_weak("WeakForm", Form::blue().on_white());
-    /// // Creates a form "strongly"
-    /// form::set("StrongForm", Form::new().bold());
-    /// // Does nothing
-    /// form::set_weak("StrongForm", "Default");
+    ///
+    /// // Creates a form "weakly"
+    /// let weak_id = form::set_weak("weak_form", Form::blue().on_white());
+    ///
+    /// assert_eq!(form::from_id(weak_id), Form::blue().on_white());
+    ///
+    /// // Sets that form "strongly"
+    /// form::set("weak_form", Form::red().on_grey());
+    ///
+    /// assert_eq!(form::from_id(weak_id), Form::red().on_grey());
+    ///
+    /// // Even if setting the form weakly afterwards...
+    /// form::set_weak("weak_form", Form::blue().underlined());
+    ///
+    /// // It won't set the form, since it is deprioritized
+    /// assert_neq!(form::from_id(weak_id), Form::blue().underlined());
     /// ```
     ///
     /// [`form::set`]: set
@@ -180,7 +192,7 @@ mod global {
     ///
     /// ```rust
     /// # use duat_core::form::{self, Form, Color};
-    /// form::set("MainCursor", Form::black().on("rgb 240 210 200"));
+    /// form::set("caret.main", Form::black().on("rgb 240 210 200"));
     /// ```
     ///
     /// However, if possible, Duat will still try to use the main
@@ -206,7 +218,7 @@ mod global {
     ///
     /// ```rust
     /// # use duat_core::form::{self, Form, Color};
-    /// form::set("ExtraCursor", Form::black().on_cyan());
+    /// form::set("caret.extra", Form::black().on_cyan());
     /// ```
     ///
     /// However, if possible, Duat will still try to use the main
@@ -266,13 +278,13 @@ mod global {
     /// use duat_core::prelude::*;
     /// fn test<W: Widget<U>, U: Ui>(pa: &mut Pass, handle: Handle<W, U>) {
     ///     // Assume that a Form with the given name exists
-    ///     form::set("MyForm", Form::red().on_blue());
+    ///     form::set("my_form", Form::red().on_blue());
     ///
     ///     // If I create a second Form like this one, they are separate
-    ///     form::set("MyForm.suffix", Form::undercurled());
+    ///     form::set("my_form.suffix", Form::undercurled());
     ///
     ///     handle.replace_text(pa, txt!(
-    ///         "[MyForm]This text is red on blue[], [MyForm.suffix]and this is \
+    ///         "[my_form]This text is red on blue[], [my_form.suffix]and this is \
     ///          undercurled"
     ///     ));
     ///
@@ -284,7 +296,7 @@ mod global {
     ///
     ///     // So when the widget is printed, it'd be equivalent to this:
     ///     let text = txt!(
-    ///         "[MyForm.suffix]This text is red on blue[], [MyForm.suffix]and \
+    ///         "[my_form.suffix]This text is red on blue[], [my_form.suffix]and \
     ///          this is undercurled"
     ///     );
     /// }
@@ -497,7 +509,7 @@ mod global {
         if let Some(id) = ids.get(&type_id) {
             *id
         } else {
-            let name: &'static str = format!("Default.{type_name}").leak();
+            let name: &'static str = format!("default.{type_name}").leak();
             let id = id_from_name(name);
             add_forms(vec![name]);
             ids.insert(type_id, id);
@@ -912,17 +924,17 @@ impl std::ops::DerefMut for BuiltForm {
     }
 }
 
-/// The [`FormId`] of the `"Default"` form
+/// The [`FormId`] of the `"default"` form
 pub const DEFAULT_ID: FormId = FormId(0);
-/// The [`FormId`] of the `"Accent"` form
+/// The [`FormId`] of the `"accent"` form
 pub const ACCENT_ID: FormId = FormId(1);
-/// The [`FormId`] of the `"MainCursor"` form
-pub const M_CUR_ID: FormId = FormId(2);
-/// The [`FormId`] of the `"ExtraCursor"` form
-pub const E_CUR_ID: FormId = FormId(3);
-/// The [`FormId`] of the `"MainSelection"` form
+/// The [`FormId`] of the `"caret.main"` form
+pub const M_CAR_ID: FormId = FormId(2);
+/// The [`FormId`] of the `"caret.extra"` form
+pub const E_CAR_ID: FormId = FormId(3);
+/// The [`FormId`] of the `"slection.main"` form
 pub const M_SEL_ID: FormId = FormId(4);
-/// The [`FormId`] of the `"ExtraSelection"` form
+/// The [`FormId`] of the `"selection.extra"` form
 pub const E_SEL_ID: FormId = FormId(5);
 
 struct InnerPalette {
@@ -1063,13 +1075,13 @@ impl Palette {
 
     /// The [`Form`] and [`CursorShape`] of the main cursor
     fn main_cursor(&self) -> (Form, Option<CursorShape>) {
-        let form = self.form_from_id(M_CUR_ID).unwrap();
+        let form = self.form_from_id(M_CAR_ID).unwrap();
         (form, self.0.read().unwrap().main_cursor)
     }
 
     /// The [`Form`] and [`CursorShape`] of extra cursors
     fn extra_cursor(&self) -> (Form, Option<CursorShape>) {
-        let form = self.form_from_id(E_CUR_ID).unwrap();
+        let form = self.form_from_id(E_CAR_ID).unwrap();
         (form, self.0.read().unwrap().extra_cursor)
     }
 
@@ -1163,13 +1175,13 @@ fn mask_form(name: &'static str, form_i: usize, inner: &mut InnerPalette) {
 /// use duat_core::prelude::*;
 /// fn test<W: Widget<U>, U: Ui>(pa: &mut Pass, handle: Handle<W, U>) {
 ///     // Assume that a Form with the given name exists
-///     form::set("MyForm", Form::red().on_blue());
+///     form::set("my_form", Form::red().on_blue());
 ///
 ///     // If I create a second Form like this one, they are separate
-///     form::set("MyForm.suffix", Form::undercurled());
+///     form::set("my_form.suffix", Form::undercurled());
 ///
 ///     handle.replace_text(pa, txt!(
-///         "[MyForm]This text is red on blue[], [MyForm.suffix]and this is \
+///         "[my_form]This text is red on blue[], [my_form.suffix]and this is \
 ///          undercurled"
 ///     ));
 ///
@@ -1181,7 +1193,7 @@ fn mask_form(name: &'static str, form_i: usize, inner: &mut InnerPalette) {
 ///
 ///     // So when the widget is printed, it'd be equivalent to this:
 ///     let text = txt!(
-///         "[MyForm.suffix]This text is red on blue[], [MyForm.suffix]and \
+///         "[my_form.suffix]This text is red on blue[], [my_form.suffix]and \
 ///          this is undercurled"
 ///     );
 /// }
@@ -1354,29 +1366,29 @@ impl Painter {
     /// Applies the `"MainCursor"` [`Form`]
     #[inline(always)]
     pub fn apply_main_cursor(&mut self) {
-        self.apply(M_CUR_ID);
+        self.apply(M_CAR_ID);
         self.final_form_start -= 1;
     }
 
     /// Removes the `"MainCursor"` [`Form`]
     #[inline(always)]
-    pub fn remove_main_cursor(&mut self) {
+    pub fn remove_main_caret(&mut self) {
         self.final_form_start += 1;
-        self.remove(M_CUR_ID);
+        self.remove(M_CAR_ID);
     }
 
     /// Applies the `"ExtraCursor"` [`Form`]
     #[inline(always)]
     pub fn apply_extra_cursor(&mut self) {
-        self.apply(E_CUR_ID);
+        self.apply(E_CAR_ID);
         self.final_form_start -= 1;
     }
 
     /// Removes the `"ExtraCursor"` [`Form`]
     #[inline(always)]
-    pub fn remove_extra_cursor(&mut self) {
+    pub fn remove_extra_caret(&mut self) {
         self.final_form_start += 1;
-        self.remove(E_CUR_ID);
+        self.remove(E_CAR_ID);
     }
 
     /// The [`Form`] "ExtraCursor", and its shape.
@@ -1389,7 +1401,7 @@ impl Painter {
         self.inner.extra_cursor
     }
 
-    /// The `"Default"` form's [`Form`]
+    /// The `"default"` form's [`Form`]
     pub fn get_default(&self) -> Form {
         self.default
     }

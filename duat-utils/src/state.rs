@@ -24,17 +24,17 @@ use duat_core::{data::{DataMap, RwData}, hook::KeysSent, prelude::*};
 /// If the file's `name` was set:
 ///
 /// ```text
-/// [File]{name}
+/// [file]{name}
 /// ```
 ///
-/// If it has unwritten changes, a `[File.unsaved][[+]]` will be
-/// appended. If it doesn't exist, a `[File.new][[new file]]` will be
+/// If it has unwritten changes, a `[file.unsaved][[+]]` will be
+/// appended. If it doesn't exist, a `[file.new][[new file]]` will be
 /// appended.
 ///
 /// If the file's `name` was not set:
 ///
 /// ```text
-/// [File.new.scratch]{scratch_name}
+/// [file.new.scratch]{scratch_name}
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
@@ -42,14 +42,14 @@ pub fn file_fmt(file: &File<impl Ui>) -> Text {
     let mut b = Text::builder();
 
     if let Some(name) = file.name_set() {
-        b.push(txt!("[File]{name}"));
+        b.push(txt!("[file]{name}"));
         if !file.exists() {
-            b.push(txt!("[File.new][[new file]]"));
+            b.push(txt!("[file.new][[new file]]"));
         } else if file.text().has_unsaved_changes() {
-            b.push(txt!("[File.unsaved][[+]]"));
+            b.push(txt!("[file.unsaved][[+]]"));
         }
     } else {
-        b.push(txt!("[File.new.scratch]{}", file.name()));
+        b.push(txt!("[file.new.scratch]{}", file.name()));
     }
 
     b.build()
@@ -92,7 +92,7 @@ pub fn mode_name() -> DataMap<&'static str, &'static str> {
 /// # Formatting
 ///
 /// ```text
-/// [Mode]{mode}
+/// [mode]{mode}
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
@@ -103,7 +103,7 @@ pub fn mode_fmt() -> DataMap<&'static str, Text> {
             Some((mode, _)) => mode,
             None => &mode,
         };
-        txt!("[Mode]{mode}").build()
+        txt!("[mode]{mode}").build()
     })
 }
 
@@ -150,13 +150,13 @@ pub fn main_dwcol<U: Ui>(file: &File<U>, area: &U::Area) -> usize {
 /// # Formatting
 ///
 /// ```text
-/// [Coord]{col}[Separator]:[Coord]{line}[Separator]/[Coord]{lines}
+/// [coord]{col}[separator]:[coord]{line}[separator]/[coord]{lines}
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 pub fn main_fmt<U: Ui>(file: &File<U>, area: &U::Area) -> Text {
     txt!(
-        "[Coord]{}[Separator]:[Coord]{}[Separator]/[Coord]{}",
+        "[coord]{}[separator]:[coord]{}[separator]/[coord]{}",
         main_col(file, area),
         main_line(file),
         file.len_lines()
@@ -178,22 +178,22 @@ pub fn selections(file: &File<impl Ui>) -> usize {
 /// When there is one [`Cursor`]:
 ///
 /// ```text
-/// [Selections]1 sel
+/// [selections]1 sel
 /// ```
 ///
 /// When there is more than one [`Cursor`]:
 ///
 /// ```text
-/// [Selections]{n} sels
+/// [selections]{n} sels
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [`Cursor`]: duat_core::mode::Cursor
 pub fn sels_fmt(file: &File<impl Ui>) -> Text {
     if file.selections().len() == 1 {
-        txt!("[Selections]1 sel").build()
+        txt!("[selections]1 sel").build()
     } else {
-        txt!("[Selections]{} sels", file.selections().len()).build()
+        txt!("[selections]{} sels", file.selections().len()).build()
     }
 }
 
@@ -204,13 +204,13 @@ pub fn sels_fmt(file: &File<impl Ui>) -> Text {
 /// For every key, if they are a normal `char`:
 ///
 /// ```text
-/// [SeqCharKey]{char}
+/// [key]{char}
 /// ```
 ///
 /// Otherwise if they are a `special` key:
 ///
 /// ```text
-/// [SeqSpecialKey]{special}
+/// [key.special]{special}
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine

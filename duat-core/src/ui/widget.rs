@@ -47,7 +47,7 @@
 //! [`OnFileOpen`]: crate::hook::OnFileOpen
 //! [`OnWindowOpen`]: crate::hook::OnWindowOpen
 //! [`Constraint`]: crate::ui::Constraint
-use std::{any::TypeId, cell::Cell, rc::Rc};
+use std::{any::TypeId, cell::Cell, io::Write, rc::Rc};
 
 use crate::{
     cfg::PrintCfg,
@@ -199,11 +199,15 @@ use crate::{
 ///         let mins = elapsed.as_secs() / 60;
 ///         let secs = elapsed.as_secs() % 60;
 ///
-///         handle.widget().replace_text::<U>(pa, txt!("[UpTime]{mins}m {secs}s"));
+///         handle.widget().replace_text::<U>(
+///             pa,
+///             txt!("[uptime.mins]{mins}m [uptime.secs]{secs}s")
+///         );
 ///     }
 ///
 ///     fn once() -> Result<(), Text> {
-///         form::set("UpTime", Form::new().green());
+///         form::set_weak("uptime.mins", Form::new().green());
+///         form::set_weak("uptime.secs", Form::new().green());
 ///         Ok(())
 ///     }
 /// }
@@ -217,7 +221,7 @@ use crate::{
 ///
 /// ```rust
 /// # use std::{marker::PhantomData, sync::OnceLock, time::{Duration, Instant}};
-/// # use duat_core::{prelude::*, data::PeriodicChecker};
+/// # use duat_core::{data::PeriodicChecker, prelude::*};
 /// // This was set during the `setup` function
 /// static START_TIME: OnceLock<Instant> = OnceLock::new();
 ///
@@ -225,7 +229,7 @@ use crate::{
 ///
 /// impl<U: Ui> Widget<U> for UpTime {
 ///     type Cfg = UpTimeCfg<U>;
-///     
+///
 ///     fn needs_update(&self) -> bool {
 ///         // Returns `true` once per second
 ///         self.1.check()
@@ -237,9 +241,12 @@ use crate::{
 ///         let mins = elapsed.as_secs() / 60;
 ///         let secs = elapsed.as_secs() % 60;
 ///
-///         handle.widget().replace_text::<U>(pa, txt!("[UpTime]{mins}m {secs}s"));
+///         handle.widget().replace_text::<U>(
+///             pa,
+///             txt!("[uptime.mins]{mins}m [uptime.secs]{secs}s"),
+///         );
 ///     }
-///     
+///
 ///     fn cfg() -> Self::Cfg {
 ///         UpTimeCfg(PhantomData)
 ///     }
@@ -248,13 +255,14 @@ use crate::{
 ///     fn text(&self) -> &Text {
 ///         &self.0
 ///     }
-///     
+///
 ///     fn text_mut(&mut self) -> &mut Text {
 ///         &mut self.0
 ///     }
 ///
 ///     fn once() -> Result<(), Text> {
-///         form::set("UpTime", Form::new().green());
+///         form::set_weak("uptime.mins", Form::new().green());
+///         form::set_weak("uptime.secs", Form::new().green());
 ///         Ok(())
 ///     }
 /// }
@@ -263,7 +271,12 @@ use crate::{
 ///
 /// impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
 ///     type Widget = UpTime;
-///     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (UpTime, PushSpecs) {
+///
+///     fn build(
+///         self,
+///         _: &mut Pass,
+///         _: Option<FileHandle<U>>,
+///     ) -> (UpTime, PushSpecs) {
 ///         // You could imagine how a method on `UpTimeCfg` could
 ///         // change the periodicity
 ///         let checker = PeriodicChecker::new(Duration::from_secs(1));
@@ -568,7 +581,7 @@ impl<U: Ui> Node<U> {
         pa: &Pass,
         f: impl FnOnce(&W) -> Ret,
     ) -> Option<Ret> {
-        self.widget.read_as(pa, f)
+        self.widget.clone().read_as(pa, f)
     }
 
     /// The [`Widget`] of this [`Node`]
@@ -664,7 +677,7 @@ impl<U: Ui> Node<U> {
 
     /// Static dispatch inner update function
     fn update_fn<W: Widget<U>>(&self, pa: &mut Pass) {
-        let widget = self.widget.try_downcast_same_read_state::<W>().unwrap();
+        let widget = self.widget.try_downcast::<W>().unwrap();
         let handle = Handle::from_parts(widget, self.area.clone(), self.mask.clone());
         Widget::update(pa, handle);
     }
@@ -673,13 +686,14 @@ impl<U: Ui> Node<U> {
     fn print_fn<W: Widget<U>>(&self, pa: &mut Pass) {
         let painter = form::painter_with_mask::<W>(self.mask.get());
         let mut widget = self.widget.acquire_mut(pa);
+
         widget.print(painter, &self.area);
     }
 
     /// Static dispatch inner update on_focus
     fn on_focus_fn<W: Widget<U>>(&self, pa: &mut Pass) {
         self.area.set_as_active();
-        let widget: RwData<W> = self.widget.try_downcast_same_read_state().unwrap();
+        let widget: RwData<W> = self.widget.try_downcast().unwrap();
 
         let handle = Handle::from_parts(widget, self.area.clone(), self.mask.clone());
         hook::trigger(pa, FocusedOn(handle.clone()));
@@ -689,7 +703,7 @@ impl<U: Ui> Node<U> {
 
     /// Static dispatch inner update on_unfocus
     fn on_unfocus_fn<W: Widget<U>>(&self, pa: &mut Pass) {
-        let widget: RwData<W> = self.widget.try_downcast_same_read_state().unwrap();
+        let widget: RwData<W> = self.widget.try_downcast().unwrap();
 
         let handle = Handle::from_parts(widget, self.area.clone(), self.mask.clone());
         hook::trigger(pa, UnfocusedFrom(handle.clone()));

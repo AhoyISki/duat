@@ -142,7 +142,7 @@
 //!             let seqs = key_seqs(self.points.len());
 //!
 //!             for (seq, [p0, _]) in seqs.iter().zip(&self.points) {
-//!                 let ghost = Ghost(txt!("[EasyMotionWord]{seq}"));
+//!                 let ghost = Ghost(txt!("[easy_motion.word]{seq}"));
 //!                 text.insert_tag(self.key, *p0, ghost);
 //!
 //!                 let seq_end = p0.byte() + seq.chars().count();

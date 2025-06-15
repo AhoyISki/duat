@@ -72,7 +72,7 @@ mod switch {
     static BEFORE_EXIT: MainThreadOnly<RefCell<fn(&mut Pass)>> =
         MainThreadOnly::new(RefCell::new(|_| {}));
 
-    type KeyFn = fn(&mut Pass, IntoIter<KeyEvent>) -> (IntoIter<KeyEvent>, Option<ModeFn>);
+    type KeyFn = fn(&mut Pass, &mut IntoIter<KeyEvent>) -> Option<ModeFn>;
     type ModeFn = Box<dyn FnOnce(&mut Pass) -> bool>;
 
     /// Whether or not the [`Mode`] has changed
@@ -117,8 +117,6 @@ mod switch {
         let set_mode = unsafe { SET_MODE.get() };
         let prev = set_mode.take();
         *set_mode.borrow_mut() = Some(Box::new(move |pa| {
-            // SAFETY: Since this function consumes a Pass, one is one being
-            // used elsewhere, so I am safe to create more.
             if let Some(prev) = prev {
                 prev(pa);
             }
@@ -174,18 +172,17 @@ mod switch {
 
     /// Sends the [`KeyEvent`] to the active [`Mode`]
     pub(super) fn send_keys_to(pa: &mut Pass, keys: Vec<KeyEvent>) {
-        let mut keys = Some(keys.into_iter());
+        let mut keys = keys.into_iter();
         // SAFETY: There is a Pass argument.
         let send_keys = unsafe { SEND_KEYS.get() };
         let mut sk = send_keys.take().unwrap();
 
-        while keys.as_ref().unwrap().len() > 0 {
+        while keys.len() > 0 {
             // SAFETY: Since this function is taking a Pass, but that one is
             // reliably not being used, I can safely create my own Passes.
-            if let (remainder, Some(set_mode)) = sk(pa, keys.take().unwrap())
+            if let Some(set_mode) = sk(pa, &mut keys)
                 && set_mode(pa)
             {
-                keys = Some(remainder);
                 sk = send_keys.take().unwrap();
             } else {
                 // You probably don't really want to send the remaining keys to the
@@ -201,21 +198,21 @@ mod switch {
     #[allow(clippy::await_holding_refcell_ref)]
     fn send_keys_fn<M: Mode<U>, U: Ui>(
         pa: &mut Pass,
-        mut keys: IntoIter<KeyEvent>,
-    ) -> (IntoIter<KeyEvent>, Option<ModeFn>) {
+        keys: &mut IntoIter<KeyEvent>,
+    ) -> Option<ModeFn> {
         let node = context::cur_widget::<U>(pa).map(|cw| cw.node(pa)).unwrap();
 
         let (widget, area, mask, _) = node.parts();
         let widget = widget.try_downcast::<M::Widget>().unwrap();
 
         let mut sent_keys = Vec::new();
+        let handle = Handle::from_parts(widget.clone(), area.clone(), mask.clone());
 
         let mode_fn = {
             // SAFETY: This function's caller has a Pass argument.
             let mut mode = unsafe { MODE.get() }.borrow_mut();
             let mode: &mut M = mode.downcast_mut().unwrap();
 
-            let handle = Handle::from_parts(widget.clone(), area.clone(), mask.clone());
             loop {
                 if let Some(mode_fn) = take_set_mode_fn() {
                     break Some(mode_fn);
@@ -227,16 +224,10 @@ mod switch {
             }
         };
 
-        hook::trigger(
-            pa,
-            KeysSentTo((
-                sent_keys.clone(),
-                Handle::from_parts(widget.clone(), area.clone(), mask.clone()),
-            )),
-        );
+        hook::trigger(pa, KeysSentTo((sent_keys.clone(), handle.clone())));
         hook::trigger(pa, KeysSent(sent_keys));
 
-        (keys, mode_fn)
+        mode_fn
     }
 
     /// Static dispatch function to set the [`Mode`]
@@ -473,9 +464,9 @@ mod switch {
 ///     }
 ///
 ///     fn once() -> Result<(), Text> {
-///         form::set_weak("Menu.selected", "Default");
-///         form::set_weak("Menu.active", Form::blue());
-///         form::set_weak("Menu.sel_active", Form::blue());
+///         form::set_weak("menu.active", Form::blue());
+///         form::set_weak("menu.selected", "accent");
+///         form::set_weak("menu.selected.active", "menu.selected");
 ///         Ok(())
 ///     }
 /// }
@@ -513,16 +504,12 @@ mod switch {
 /// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
 /// #     fn needs_update(&self) -> bool { todo!(); }
 ///     // ...
-///     fn on_focus(_: &mut Pass, _: Handle<Self, U>) {
-///         form::set_weak("Default.Menu", "Default");
-///         form::set_weak("Menu.selected", Form::new().on_grey());
-///         form::set_weak("Menu.sel_active", Form::blue().on_grey());
+///     fn on_focus(_: &mut Pass, handle: Handle<Self, U>) {
+///         handle.set_mask("inactive");
 ///     }
 ///
-///     fn on_unfocus(_: &mut Pass,_: Handle<Self, U>) {
-///         form::set_weak("Default.Menu", "Inactive");
-///         form::set_weak("MenuSelected", "Inactive");
-///         form::set_weak("MenuSelActive", Form::blue());
+///     fn on_unfocus(_: &mut Pass, handle: Handle<Self, U>) {
+///         handle.set_mask("inactive");
 ///     }
 /// }
 /// ```

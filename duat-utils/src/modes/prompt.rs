@@ -1,7 +1,7 @@
 use std::{io::Write, marker::PhantomData, sync::LazyLock};
 
 use duat_core::{prelude::*, text::Searcher};
-use regex_syntax::{ast::Ast, hir::Hir};
+use regex_syntax::{ast::Ast};
 
 use super::IncSearcher;
 use crate::{
@@ -214,7 +214,7 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
 ///     }
 ///
 ///     fn prompt(&self) -> Text {
-///         txt!("[Prompt]switch to[Prompt.colon]:").build()
+///         txt!("[prompt]switch to").build()
 ///     }
 /// }
 /// ```
@@ -277,19 +277,19 @@ impl<U: Ui> PromptMode<U> for RunCommands {
         let caller = command.split_whitespace().next();
         if let Some(caller) = caller {
             if let Some((ok_ranges, err_range)) = cmd::check_args(pa, &command) {
-                let id = form::id_of!("Caller.info");
+                let id = form::id_of!("caller.info");
                 text.insert_tag(*TAGGER, 0..caller.len(), id.to_tag(0));
 
-                let id = form::id_of!("Parameter.info");
+                let id = form::id_of!("parameter.info");
                 for range in ok_ranges {
                     text.insert_tag(*TAGGER, range, id.to_tag(0));
                 }
                 if let Some((range, _)) = err_range {
-                    let id = form::id_of!("Parameter.error");
+                    let id = form::id_of!("parameter.error");
                     text.insert_tag(*TAGGER, range, id.to_tag(0));
                 }
             } else {
-                let id = form::id_of!("Caller.error");
+                let id = form::id_of!("caller.error");
                 text.insert_tag(*TAGGER, 0..caller.len(), id.to_tag(0));
             }
         }
@@ -305,14 +305,14 @@ impl<U: Ui> PromptMode<U> for RunCommands {
     }
 
     fn once() {
-        form::set_weak("Caller.info", "Accent.info");
-        form::set_weak("Caller.error", "Accent.error");
-        form::set_weak("Parameter.info", "Default.info");
-        form::set_weak("Parameter.error", "Default.error");
+        form::set_weak("caller.info", "accent.info");
+        form::set_weak("caller.error", "accent.error");
+        form::set_weak("parameter.info", "aefault.info");
+        form::set_weak("parameter.error", "default.error");
     }
 
     fn prompt(&self) -> Text {
-        txt!("[Prompt.colon]:").build()
+        txt!("[prompt.colon]:").build()
     }
 }
 
@@ -387,7 +387,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
                 };
 
                 let span = err.span();
-                let id = form::id_of!("Regex.error");
+                let id = form::id_of!("regex.error");
 
                 text.insert_tag(*TAGGER, span.start.offset..span.end.offset, id.to_tag(0));
             }
@@ -414,7 +414,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
 
                 let range = err.span().start.offset..err.span().end.offset;
                 let err = txt!(
-                    "[a]{:?}, \"{}\"[Prompt.colon]:[] {}",
+                    "[a]{:?}, \"{}\"[prompt.colon]:[] {}",
                     range,
                     text.strs(range),
                     err.kind()
@@ -428,14 +428,14 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
     }
 
     fn once() {
-        form::set("Regex.error", "Default.error");
-        form::set("Regex.operator", "operator");
-        form::set("Regex.class", "constant");
-        form::set("Regex.bracket", "punctuation.bracket");
+        form::set_weak("regex.error", "accent.error");
+        form::set_weak("regex.operator", "operator");
+        form::set_weak("regex.class", "constant");
+        form::set_weak("regex.bracket", "punctuation.bracket");
     }
 
     fn prompt(&self) -> Text {
-        txt!("{}[Prompt.colon]:", self.inc.prompt()).build()
+        txt!("{}[prompt.colon]:", self.inc.prompt()).build()
     }
 }
 
@@ -480,9 +480,9 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
         let args = cmd::args_iter(&command);
 
         let (caller_id, args_id) = if is_in_path(caller) {
-            (form::id_of!("CallerExists"), form::id_of!("ParameterOk"))
+            (form::id_of!("caller.info"), form::id_of!("parameter.indo"))
         } else {
-            (form::id_of!("CallerNotFound"), form::id_of!("ParameterErr"))
+            (form::id_of!("caller.error"), form::id_of!("parameter.error"))
         };
 
         let c_s = command.len() - command.trim_start().len();
@@ -528,7 +528,7 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
     }
 
     fn prompt(&self) -> Text {
-        txt!("[Prompt]pipe[Prompt.colon]:").build()
+        txt!("[prompt]pipe").build()
     }
 }
 

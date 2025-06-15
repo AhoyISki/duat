@@ -196,6 +196,7 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// ```rust
     /// use std::{cell::RefCell, fmt::Display, rc::Rc};
+    ///
     /// use duat_core::{data::RwData, prelude::*};
     /// let rw_data: RwData<dyn Display> = unsafe {
     ///     RwData::new_unsized::<String>(Rc::new(RefCell::new(
@@ -489,6 +490,18 @@ impl<T: ?Sized> RwData<T> {
         prepare(self).map(|mut mapped| f(&mut *mapped))
     }
 
+    /// Simulates a [`write`] without actually reading
+    ///
+    /// This is useful if you want to tell Duat that you want
+    /// [`has_changed`] to return `true`, but you don't have a
+    /// [`Pass`] available to [`write`] the value with.
+    ///
+    /// [`write`]: Self::write
+    /// [`has_changed`]: Self::has_changed
+    pub fn declare_written(&self) {
+        update_cur_state(&self.read_state, &self.cur_state);
+    }
+
     /// Acquires a mutable reference to the value within, for
     /// compilation time improvements inside Duat
     pub(crate) fn acquire_mut(&self, _: &mut Pass) -> std::cell::RefMut<'_, T> {
@@ -533,26 +546,6 @@ impl<T: ?Sized> RwData<T> {
             value,
             cur_state: self.cur_state.clone(),
             read_state: Rc::new(Cell::new(self.cur_state.get())),
-            ty: TypeId::of::<U>(),
-        })
-    }
-
-    /// A clone that keeps the same read_state as its parent
-    ///
-    /// This is useful when you want to update a [`Widget`] from
-    /// within the [`Widget::update`] function, without triggering
-    /// infinite looping calls to said function.
-    pub(crate) fn try_downcast_same_read_state<U: 'static>(&self) -> Option<RwData<U>> {
-        if TypeId::of::<U>() != self.ty {
-            return None;
-        }
-
-        let ptr = Rc::into_raw(self.value.clone());
-        let value = unsafe { Rc::from_raw(ptr as *const RefCell<U>) };
-        Some(RwData {
-            value,
-            cur_state: self.cur_state.clone(),
-            read_state: self.read_state.clone(),
             ty: TypeId::of::<U>(),
         })
     }
@@ -678,7 +671,7 @@ impl<T: Default + 'static> Default for RwData<T> {
         Self {
             value: Rc::default(),
             cur_state: Rc::new(Cell::new(1)),
-            read_state: Rc::new(Cell::default()),
+            read_state: Rc::default(),
             ty: TypeId::of::<T>(),
         }
     }
