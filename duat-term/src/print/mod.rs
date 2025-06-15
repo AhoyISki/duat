@@ -822,10 +822,6 @@ impl Lines {
         self.go_to_next_line();
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
-        self.line.is_empty()
-    }
-
     pub fn coords(&self) -> Coords {
         self.coords
     }

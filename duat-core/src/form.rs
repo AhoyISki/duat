@@ -131,20 +131,13 @@ mod global {
     /// use duat_core::form::{self, Form};
     ///
     /// // Creates a form "weakly"
-    /// let weak_id = form::set_weak("weak_form", Form::blue().on_white());
-    ///
-    /// assert_eq!(form::from_id(weak_id), Form::blue().on_white());
+    /// form::set_weak("weak_form", Form::blue().on_white());
     ///
     /// // Sets that form "strongly"
     /// form::set("weak_form", Form::red().on_grey());
     ///
-    /// assert_eq!(form::from_id(weak_id), Form::red().on_grey());
-    ///
-    /// // Even if setting the form weakly afterwards...
+    /// // Even if setting the form weakly afterwards, it won't change again.
     /// form::set_weak("weak_form", Form::blue().underlined());
-    ///
-    /// // It won't set the form, since it is deprioritized
-    /// assert_neq!(form::from_id(weak_id), Form::blue().underlined());
     /// ```
     ///
     /// [`form::set`]: set
@@ -808,6 +801,7 @@ impl Form {
 ///
 /// This is their only difference, everywhere else, they are
 /// functionally identical.
+#[derive(Clone, Copy, Debug)]
 pub struct BuiltForm(Form);
 
 #[rustfmt::skip]

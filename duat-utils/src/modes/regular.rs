@@ -15,7 +15,7 @@ pub struct Regular;
 impl<U: Ui> mode::Mode<U> for Regular {
     type Widget = File<U>;
 
-    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, mut handle: Handle<Self::Widget, U>) {
+    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>) {
         match key {
             // Characters
             key!(KeyCode::Char(char)) => handle.edit_all(pa, |mut e| {

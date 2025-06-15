@@ -47,7 +47,7 @@ static TAGGER_COUNT: AtomicU16 = AtomicU16::new(4);
 ///
 /// assert_eq!(
 ///     text,
-///     txt!("This is text with [Invisible]no[] tags in it").build()
+///     txt!("This is text with [invisible]no[] tags in it").build()
 /// );
 /// ```
 ///

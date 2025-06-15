@@ -5,7 +5,7 @@
 
 use std::{
     any::TypeId,
-    cell::{Cell, RefMut},
+    cell::{Cell, RefCell, RefMut},
     rc::Rc,
 };
 
@@ -355,7 +355,7 @@ impl<U: Ui> FileHandle<U> {
 ///         &mut self,
 ///         pa: &mut Pass,
 ///         key: KeyEvent,
-///         mut handle: Handle<File<U>, U>,
+///         handle: Handle<File<U>, U>,
 ///     ) {
 ///         match key {
 ///             // actions based on the key pressed
@@ -370,7 +370,7 @@ impl<U: Ui> FileHandle<U> {
 ///
 /// (You can use the [`key!`] macro in order to match [`KeyEvent`]s).
 ///
-/// With tthe [`Handle`], you can modify [`Text`] in a simplified
+/// With the [`Handle`], you can modify [`Text`] in a simplified
 /// way. This is done by two actions, [editing] and [moving]. You
 /// can only do one of these on any number of selections at the same
 /// time.
@@ -382,7 +382,7 @@ impl<U: Ui> FileHandle<U> {
 /// impl<U: Ui> Mode<U> for PlacesCharactersAndMoves {
 /// #   type Widget = File<U>;
 ///     /* ... */
-///     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, mut handle: Handle<Self::Widget, U>) {
+///     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>) {
 ///         match key {
 ///             key!(KeyCode::Char(c)) => {
 ///                 handle.edit_all(pa, |mut e| {
@@ -435,7 +435,7 @@ pub struct Handle<W: Widget<U>, U: Ui, S = ()> {
     widget: RwData<W>,
     area: U::Area,
     mask: Rc<Cell<&'static str>>,
-    searcher: S,
+    searcher: RefCell<S>,
 }
 
 impl<W: Widget<U>, U: Ui> Handle<W, U> {
@@ -445,7 +445,12 @@ impl<W: Widget<U>, U: Ui> Handle<W, U> {
         area: U::Area,
         mask: Rc<Cell<&'static str>>,
     ) -> Self {
-        Self { widget, area, mask, searcher: () }
+        Self {
+            widget,
+            area,
+            mask,
+            searcher: RefCell::new(()),
+        }
     }
 }
 
@@ -516,7 +521,7 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     /// [`edit_iter`]: Self::edit_iter
     /// [`Point::default`]: crate::text::Point::default
     pub fn edit_nth<Ret>(
-        &mut self,
+        &self,
         pa: &mut Pass,
         n: usize,
         edit: impl FnOnce(Cursor<W, U::Area, S>) -> Ret,
@@ -538,6 +543,9 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
 
         let (selection, was_main, mut widget) = get_parts(pa, &self.widget, n);
 
+        // This is safe because of the &mut Pass argument
+        let mut searcher = self.searcher.borrow_mut();
+
         edit(Cursor::new(
             selection,
             n,
@@ -545,7 +553,7 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
             &mut *widget,
             &self.area,
             None,
-            &mut self.searcher,
+            &mut searcher,
         ))
     }
 
@@ -569,7 +577,7 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     /// [`edit_iter`]: Self::edit_iter
     /// [`Point::default`]: crate::text::Point::default
     pub fn edit_main<Ret>(
-        &mut self,
+        &self,
         pa: &mut Pass,
         edit: impl FnOnce(Cursor<W, U::Area, S>) -> Ret,
     ) -> Ret {
@@ -601,7 +609,7 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     /// [`edit_iter`]: Self::edit_iter
     /// [`Point::default`]: crate::text::Point::default
     pub fn edit_last<Ret>(
-        &mut self,
+        &self,
         pa: &mut Pass,
         edit: impl FnOnce(Cursor<W, U::Area, S>) -> Ret,
     ) -> Ret {
@@ -633,7 +641,7 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     /// [`edit_nth`]: Self::edit_nth
     /// [`Point::default`]: crate::text::Point::default
     pub fn edit_iter<Ret>(
-        &mut self,
+        &self,
         pa: &mut Pass,
         edit: impl FnOnce(Cursors<'_, W, U::Area, S>) -> Ret,
     ) -> Ret {
@@ -646,7 +654,7 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     ///
     /// ```rust
     /// # use duat_core::prelude::*;
-    /// # fn test<U: Ui>(pa: &mut Pass, mut handle: Handle<File<U>, U, ()>) {
+    /// # fn test<U: Ui>(pa: &mut Pass, handle: Handle<File<U>, U, ()>) {
     /// handle.edit_iter(pa, |iter| iter.for_each(|e| { /* .. */ }));
     /// # }
     /// ```
@@ -654,15 +662,18 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     /// But it can't return a value, and is meant to reduce the
     /// indentation that will inevitably come from using the
     /// equivalent long form call.
-    pub fn edit_all(&mut self, pa: &mut Pass, edit: impl FnMut(Cursor<W, U::Area, S>)) {
+    pub fn edit_all(&self, pa: &mut Pass, edit: impl FnMut(Cursor<W, U::Area, S>)) {
         self.get_iter(pa).for_each(edit);
     }
 
-    fn get_iter(&mut self, pa: &mut Pass) -> Cursors<'_, W, U::Area, S> {
+    fn get_iter(&self, pa: &mut Pass) -> Cursors<'_, W, U::Area, S> {
         let mut widget = self.widget.acquire_mut(pa);
         let selections = widget.text_mut().selections_mut().unwrap();
         selections.populate();
-        Cursors::new(0, widget, &self.area, &mut self.searcher)
+
+        let searcher = self.searcher.borrow_mut();
+
+        Cursors::new(0, widget, &self.area, searcher)
     }
 
     ////////// Functions derived from RwData
@@ -829,7 +840,7 @@ impl<U: Ui> Handle<File<U>, U> {
             widget: self.widget.clone(),
             area: self.area.clone(),
             mask: self.mask.clone(),
-            searcher,
+            searcher: RefCell::new(searcher),
         }
     }
 }

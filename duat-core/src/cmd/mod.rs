@@ -350,7 +350,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
     })?;
 
     add!(["write-quit", "wq"], |pa, path: Option<PossibleFile>| {
-        let mut handle = context::fixed_file::<U>(pa)?;
+        let handle = context::fixed_file::<U>(pa)?;
         let (bytes, name) = handle.write(pa, |file, _| {
             let bytes = if let Some(path) = path {
                 file.write_to(path)?

@@ -24,7 +24,7 @@ impl<U: Ui> Mode<U> for FindSeq {
         &mut self,
         pa: &mut Pass,
         key: KeyEvent,
-        mut handle: Handle<File<U>, U>,
+        handle: Handle<File<U>, U>,
     ) {
         use KeyCode::*;
 
@@ -120,7 +120,7 @@ impl EasyMotion {
 impl<U: Ui> Mode<U> for EasyMotion {
     type Widget = File<U>;
 
-    fn on_switch(&mut self, pa: &mut Pass, mut handle: Handle<File<U>, U>) {
+    fn on_switch(&mut self, pa: &mut Pass, handle: Handle<File<U>, U>) {
         handle.write(pa, |file, _| {
             let cfg = file.print_cfg();
             let text = file.text_mut();
@@ -152,7 +152,7 @@ impl<U: Ui> Mode<U> for EasyMotion {
         &mut self,
         pa: &mut Pass,
         key: KeyEvent,
-        mut handle: Handle<File<U>, U>,
+        handle: Handle<File<U>, U>,
     ) {
         let char = match key {
             key!(KeyCode::Char(c)) => c,

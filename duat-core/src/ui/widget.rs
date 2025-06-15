@@ -47,7 +47,7 @@
 //! [`OnFileOpen`]: crate::hook::OnFileOpen
 //! [`OnWindowOpen`]: crate::hook::OnWindowOpen
 //! [`Constraint`]: crate::ui::Constraint
-use std::{any::TypeId, cell::Cell, io::Write, rc::Rc};
+use std::{any::TypeId, cell::Cell, rc::Rc};
 
 use crate::{
     cfg::PrintCfg,

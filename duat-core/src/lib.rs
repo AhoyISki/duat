@@ -12,6 +12,7 @@
 //! ```rust
 //! // I recommend pulling the prelude in plugins.
 //! use duat_core::prelude::*;
+//!
 //! #[derive(Default, Clone)]
 //! struct FindSeq(Option<char>);
 //!
@@ -22,7 +23,7 @@
 //!         &mut self,
 //!         pa: &mut Pass,
 //!         key: KeyEvent,
-//!         mut handle: Handle<File<U>, U>,
+//!         handle: Handle<File<U>, U>,
 //!     ) {
 //!         use KeyCode::*;
 //!
@@ -91,7 +92,7 @@
 //! In order to emulate it, we use [ghost text] and [concealment]:
 //!
 //! ```rust
-//! use duat_core::{text::Point, prelude::*};
+//! use duat_core::{prelude::*, text::Point};
 //! #[derive(Clone)]
 //! pub struct EasyMotion {
 //!     is_line: bool,
@@ -123,7 +124,7 @@
 //! impl<U: Ui> Mode<U> for EasyMotion {
 //!     type Widget = File<U>;
 //!
-//!     fn on_switch(&mut self, pa: &mut Pass, mut handle: Handle<File<U>, U>) {
+//!     fn on_switch(&mut self, pa: &mut Pass, handle: Handle<File<U>, U>) {
 //!         handle.write(pa, |file, _| {
 //!             let cfg = file.print_cfg();
 //!             let text = file.text_mut();
@@ -155,7 +156,7 @@
 //!         &mut self,
 //!         pa: &mut Pass,
 //!         key: KeyEvent,
-//!         mut handle: Handle<File<U>, U>,
+//!         handle: Handle<File<U>, U>,
 //!     ) {
 //!         let char = match key {
 //!             key!(KeyCode::Char(c)) => c,

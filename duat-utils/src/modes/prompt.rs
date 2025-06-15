@@ -1,7 +1,7 @@
 use std::{io::Write, marker::PhantomData, sync::LazyLock};
 
 use duat_core::{prelude::*, text::Searcher};
-use regex_syntax::{ast::Ast};
+use regex_syntax::ast::Ast;
 
 use super::IncSearcher;
 use crate::{
@@ -46,7 +46,7 @@ impl<M: PromptMode<U>, U: Ui> Prompt<M, U> {
 impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
     type Widget = PromptLine<U>;
 
-    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, mut handle: Handle<Self::Widget, U>) {
+    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>) {
         match key {
             key!(KeyCode::Backspace) => {
                 if handle.read(pa, |pl, _| pl.text().is_empty()) {
@@ -200,17 +200,10 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
 ///         text
 ///     }
 ///
-///     fn before_exit(
-///         &mut self,
-///         pa: &mut Pass,
-///         text: Text,
-///         area: &U::Area,
-///     ) -> Text {
+///     fn before_exit(&mut self, pa: &mut Pass, text: Text, area: &U::Area) {
 ///         if !self.name_was_correct {
 ///             cmd::buffer(pa, self.initial.take().unwrap());
 ///         }
-///
-///         text
 ///     }
 ///
 ///     fn prompt(&self) -> Text {
@@ -482,7 +475,10 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
         let (caller_id, args_id) = if is_in_path(caller) {
             (form::id_of!("caller.info"), form::id_of!("parameter.indo"))
         } else {
-            (form::id_of!("caller.error"), form::id_of!("parameter.error"))
+            (
+                form::id_of!("caller.error"),
+                form::id_of!("parameter.error"),
+            )
         };
 
         let c_s = command.len() - command.trim_start().len();
@@ -503,7 +499,7 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
             return;
         };
 
-        let mut handle = context::fixed_file::<U>(pa).unwrap().handle(pa);
+        let handle = context::fixed_file::<U>(pa).unwrap().handle(pa);
         handle.edit_all(pa, |mut e| {
             let Ok(mut child) = Command::new(caller)
                 .args(cmd::args_iter(&command).map(|(a, _)| a))

@@ -726,7 +726,7 @@ pub struct Cursors<'a, W: Widget<A::Ui>, A: RawArea, S> {
     next_i: Rc<Cell<usize>>,
     widget: RefMut<'a, W>,
     area: &'a A,
-    inc_searcher: &'a mut S,
+    inc_searcher: RefMut<'a, S>,
 }
 
 impl<'a, W: Widget<A::Ui>, A: RawArea, S> Cursors<'a, W, A, S> {
@@ -735,7 +735,7 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Cursors<'a, W, A, S> {
         next_i: usize,
         widget: RefMut<'a, W>,
         area: &'a A,
-        inc_searcher: &'a mut S,
+        inc_searcher: RefMut<'a, S>,
     ) -> Self {
         Self {
             next_i: Rc::new(Cell::new(next_i)),
@@ -764,10 +764,10 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Lender for Cursors<'a, W, A, S> {
             selection,
             current_i,
             was_main,
-            &mut *self.widget,
+            &mut self.widget,
             self.area,
             Some(self.next_i.clone()),
-            self.inc_searcher,
+            &mut self.inc_searcher,
         ))
     }
 }

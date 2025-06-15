@@ -19,7 +19,7 @@
 //!     fn search(
 //!         &mut self,
 //!         pa: &mut Pass,
-//!         mut handle: Handle<File<U>, U, Searcher>,
+//!         handle: Handle<File<U>, U, Searcher>,
 //!     ) {
 //!         handle.edit_all(pa, |mut c| {
 //!             c.set_caret_on_start();

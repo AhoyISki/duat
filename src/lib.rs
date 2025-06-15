@@ -75,7 +75,7 @@
 //! #     pub struct Normal;
 //! #     impl Mode<Ui> for Normal {
 //! #         type Widget = File;
-//! #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<File, Ui>) {
+//! #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<File>) {
 //! #             todo!();
 //! #         }
 //! #     }
@@ -83,7 +83,7 @@
 //! #     pub struct Insert;
 //! #     impl Mode<Ui> for Insert {
 //! #         type Widget = File;
-//! #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<File, Ui>) {
+//! #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<File>) {
 //! #             todo!();
 //! #         }
 //! #     }
@@ -182,10 +182,10 @@
 //! let text = txt!("[my_form]Waow it's my form![]not anymore 😢");
 //! ```
 //!
-//! In this example, I'm using the "my_form" form in order to style the
-//! text, while `[]` reverts back to the "default" form. Double `[[`
-//! and `]]` escape the `[` and `]`, just like in [`println!`]. The
-//! [`status!`] macro works similarly.
+//! In this example, I'm using the "my_form" form in order to style
+//! the text, while `[]` reverts back to the "default" form. Double
+//! `[[` and `]]` escape the `[` and `]`, just like in [`println!`].
+//! The [`status!`] macro works similarly.
 //!
 //! Duat also has a simple command system, that lets you add commands
 //! with arguments supported by Rust's type system. As an example,
@@ -500,18 +500,20 @@ pub mod hook {
     ///
     /// # Arguments
     ///
-    /// - The widget itself.
+    /// - The [`Handle`] for the [`Widget`]
     ///
-    /// [`Widget`]: duat_core::widget::Widget
+    /// [`Handle`]: crate::prelude::Handle
+    /// [`Widget`]: crate::prelude::Widget
     pub type FocusedOn<W> = duat_core::hook::FocusedOn<W, Ui>;
 
     /// [`Hookable`]: Triggers when the [`Widget`] is unfocused
     ///
     /// # Arguments
     ///
-    /// - The widget itself.
+    /// - The [`Handle`] for the [`Widget`]
     ///
-    /// [`Widget`]: duat_core::widget::Widget
+    /// [`Handle`]: crate::prelude::Handle
+    /// [`Widget`]: crate::prelude::Widget
     pub type UnfocusedFrom<W> = duat_core::hook::UnfocusedFrom<W, Ui>;
 
     /// [`Hookable`]: Triggers whenever a [key] is sent to the [`Widget`]
@@ -519,11 +521,11 @@ pub mod hook {
     /// # Arguments
     ///
     /// - The [key] sent.
-    /// - An [`RwData<W>`] for the widget.
+    /// - The [`Handle`] for its [`Widget`].
     ///
     /// [key]: crate::mode::KeyEvent
-    /// [`Widget`]: crate::widgets::Widget
-    /// [`RwData<W>`]: crate::prelude::RwData
+    /// [`Handle`]: crate::prelude::Handle
+    /// [`Widget`]: crate::prelude::Widget
     pub type KeySentTo<W> = duat_core::hook::KeysSentTo<W, Ui>;
 
     /// [`Hookable`]: Lets you modify a [`Mode`] as it is set
@@ -531,7 +533,7 @@ pub mod hook {
     /// # Arguments
     ///
     /// - The new mode.
-    /// - Its widget.
+    /// - The [`Handle`] for its [`Widget`].
     ///
     /// This hook is very useful if you want to, for example, set
     /// different options upon switching to modes, depending on things
@@ -539,6 +541,8 @@ pub mod hook {
     ///
     /// [`Mode`]: crate::mode::Mode
     /// [`File`]: crate::widgets::File
+    /// [`Handle`]: crate::prelude::Handle
+    /// [`Widget`]: crate::prelude::Widget
     pub type ModeSetTo<M> = duat_core::hook::ModeSetTo<M, Ui>;
 }
 
@@ -556,23 +560,6 @@ pub mod widgets {
 /// [`StatusLine`]: duat_utils::widgets::StatusLine
 pub mod state {
     pub use duat_utils::state::*;
-}
-
-/// Prebuilt general controls for Duat
-///
-/// This module contains the expected commands of a
-/// text editor that don't involve particular widgets
-/// or other more specific concepts
-///
-/// All of the functions listed in here also have a [command]
-/// equivalent, that you can call from the [`PromptLine`].
-///
-/// [command]: duat_core::cmd
-/// [`PromptLine`]: crate::prelude::PromptLine
-pub mod control {
-    pub use duat_core::cmd::{
-        alias, buffer, edit, next_file, next_global_file, prev_file, prev_global_file, quit,
-    };
 }
 
 #[allow(unused_imports)]
@@ -609,7 +596,7 @@ pub mod prelude {
     use std::process::Output;
 
     pub use duat_core::{
-        Plugin, clipboard, cmd, context::{self, Handle},
+        Plugin, clipboard, cmd, context,
         data::{self, Pass},
         text::{
             self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, Text, txt,
@@ -620,7 +607,7 @@ pub mod prelude {
     pub use duat_term::{self as term, VertRule};
 
     pub use crate::{
-        Area, Ui, control, cursor,
+        Area, Ui, cursor,
         form::{self, CursorShape, Form},
         hook::{
             self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FocusedOn,
@@ -719,6 +706,34 @@ pub mod prelude {
     pub fn plug_inner(plugin: impl Plugin<Ui>) {
         plugin.plug()
     }
+
+    /// A handle to a [`Widget`] in Duat
+    ///
+    /// The [`Handle`] lets you do all sorts of edits on a [`Widget`].
+    /// You can, for example, make use of the [`Selection`]s in
+    /// its [`Text`] in order to edit the [`Text`] in a very
+    /// declarative way.
+    ///
+    /// ```rust
+    /// use duat::prelude::*;
+    ///
+    /// fn set_hook() {
+    ///     hook::add::<UnfocusedFrom<File>>(|pa, handle| {
+    ///         handle.edit_all(pa, |mut cursor| {
+    ///             cursor.set_caret_on_end();
+    ///             cursor.unset_anchor();
+    ///         });
+    ///     });
+    /// }
+    /// ```
+    ///
+    /// In this case, the hook above will unset every `anchor` of each
+    /// [`Selection`] when you unfocus from a [`File`]. You could call
+    /// this from the [setup] function, in order to enable said [hook]
+    ///
+    /// [`Selection`]: crate::mode::Selection
+    /// [setup]: crate::prelude::setup_duat
+    pub type Handle<W> = duat_core::context::Handle<W, Ui>;
 }
 
 // This will eventually be a NOT AND to check if any Uis have been
