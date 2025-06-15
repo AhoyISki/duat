@@ -317,8 +317,7 @@ impl Text {
     /// ```rust
     /// let broken_up_line = [
     ///     "This is line 1, business as usual.\nThis is line 2, but it",
-    ///     "is broken into two separate strings.\nSo 4 lines would be counted, \
-    ///      instead of 3",
+    ///     "is broken into two separate strings.\nSo 4 lines would be counted, instead of 3",
     /// ];
     /// ```
     ///

@@ -1,15 +1,13 @@
-use std::cell::{Cell};
+use std::cell::Cell;
 
 use cassowary::{
     Expression, Variable,
     WeightedRelation::{EQ, GE, LE},
     strength::{REQUIRED, STRONG, WEAK},
 };
-use duat_core::{
-    ui::{
-        Axis::{self, *},
-        Corner, PushSpecs, SpawnSpecs,
-    },
+use duat_core::ui::{
+    Axis::{self, *},
+    Corner, PushSpecs, SpawnSpecs,
 };
 
 use super::{Constraints, Layout};

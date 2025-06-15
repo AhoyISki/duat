@@ -276,10 +276,10 @@ mod global {
     ///     // If I create a second Form like this one, they are separate
     ///     form::set("my_form.suffix", Form::undercurled());
     ///
-    ///     handle.replace_text(pa, txt!(
-    ///         "[my_form]This text is red on blue[], [my_form.suffix]and this is \
-    ///          undercurled"
-    ///     ));
+    ///     handle.replace_text(
+    ///         pa,
+    ///         txt!("[my_form]This text is red on blue[], [my_form.suffix]and this is undercurled"),
+    ///     );
     ///
     ///     // But if I enable the "suffix" mask that's at the end of the second Form
     ///     form::enable_mask("suffix");
@@ -289,8 +289,7 @@ mod global {
     ///
     ///     // So when the widget is printed, it'd be equivalent to this:
     ///     let text = txt!(
-    ///         "[my_form.suffix]This text is red on blue[], [my_form.suffix]and \
-    ///          this is undercurled"
+    ///         "[my_form.suffix]This text is red on blue[], [my_form.suffix]and this is undercurled"
     ///     );
     /// }
     /// ```
@@ -1174,10 +1173,10 @@ fn mask_form(name: &'static str, form_i: usize, inner: &mut InnerPalette) {
 ///     // If I create a second Form like this one, they are separate
 ///     form::set("my_form.suffix", Form::undercurled());
 ///
-///     handle.replace_text(pa, txt!(
-///         "[my_form]This text is red on blue[], [my_form.suffix]and this is \
-///          undercurled"
-///     ));
+///     handle.replace_text(
+///         pa,
+///         txt!("[my_form]This text is red on blue[], [my_form.suffix]and this is undercurled"),
+///     );
 ///
 ///     // But if I enable the "suffix" mask that's at the end of the second Form
 ///     form::enable_mask("suffix");
@@ -1187,8 +1186,7 @@ fn mask_form(name: &'static str, form_i: usize, inner: &mut InnerPalette) {
 ///
 ///     // So when the widget is printed, it'd be equivalent to this:
 ///     let text = txt!(
-///         "[my_form.suffix]This text is red on blue[], [my_form.suffix]and \
-///          this is undercurled"
+///         "[my_form.suffix]This text is red on blue[], [my_form.suffix]and this is undercurled"
 ///     );
 /// }
 /// ```

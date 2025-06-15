@@ -325,12 +325,7 @@ impl<U: Ui> FileHandle<U> {
 ///     type Widget = File<U>;
 ///
 ///     // ...
-///     fn send_key(
-///         &mut self,
-///         _: &mut Pass,
-///         _: KeyEvent,
-///         _: Handle<Self::Widget, U>,
-///     ) {
+///     fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget, U>) {
 ///         todo!();
 ///     }
 /// }
@@ -351,12 +346,7 @@ impl<U: Ui> FileHandle<U> {
 /// impl<U: Ui> Mode<U> for PlacesCharactersAndMoves {
 ///     type Widget = File<U>;
 ///
-///     fn send_key(
-///         &mut self,
-///         pa: &mut Pass,
-///         key: KeyEvent,
-///         handle: Handle<File<U>, U>,
-///     ) {
+///     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<File<U>, U>) {
 ///         match key {
 ///             // actions based on the key pressed
 ///             key!(KeyCode::Char('c')) => {

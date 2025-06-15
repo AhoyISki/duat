@@ -428,11 +428,7 @@ mod switch {
 /// impl<U: Ui> WidgetCfg<U> for MenuCfg<U> {
 ///     type Widget = Menu;
 ///
-///     fn build(
-///         self,
-///         _: &mut Pass,
-///         _: Option<FileHandle<U>>,
-///     ) -> (Menu, PushSpecs) {
+///     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Menu, PushSpecs) {
 ///         let mut widget = Menu::default();
 ///         widget.build_text();
 ///

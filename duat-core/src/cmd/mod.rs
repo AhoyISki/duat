@@ -42,9 +42,7 @@
 //! ```rust
 //! use duat_core::prelude::*;
 //! fn on_a_thread_far_far_away() {
-//!     cmd::queue(
-//!         "set-form --flag -abc punctuation.delimiter rgb 255 0 0 hsl 1",
-//!     );
+//!     cmd::queue("set-form --flag -abc punctuation.delimiter rgb 255 0 0 hsl 1");
 //! }
 //! ```
 //!

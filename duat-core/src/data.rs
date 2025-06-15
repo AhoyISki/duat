@@ -198,11 +198,8 @@ impl<T: ?Sized> RwData<T> {
     /// use std::{cell::RefCell, fmt::Display, rc::Rc};
     ///
     /// use duat_core::{data::RwData, prelude::*};
-    /// let rw_data: RwData<dyn Display> = unsafe {
-    ///     RwData::new_unsized::<String>(Rc::new(RefCell::new(
-    ///         "testing".to_string(),
-    ///     )))
-    /// };
+    /// let rw_data: RwData<dyn Display> =
+    ///     unsafe { RwData::new_unsized::<String>(Rc::new(RefCell::new("testing".to_string()))) };
     /// ```
     ///
     /// This ensures that methods such as [`read_as`] and [`write_as`]

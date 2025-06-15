@@ -427,11 +427,7 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Cursor<'a, W, A, S> {
     ///
     /// ```rust
     /// # use duat_core::prelude::*;
-    /// fn search_nth_paren<U: Ui, S>(
-    ///     pa: &mut Pass,
-    ///     handle: &mut Handle<File<U>, U, S>,
-    ///     n: usize,
-    /// ) {
+    /// fn search_nth_paren<U: Ui, S>(pa: &mut Pass, handle: &mut Handle<File<U>, U, S>, n: usize) {
     ///     handle.edit_all(pa, |mut e| {
     ///         let mut nth = e.search_fwd('(', None).nth(n);
     ///         if let Some([p0, p1]) = nth {

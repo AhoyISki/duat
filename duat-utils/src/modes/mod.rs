@@ -16,11 +16,7 @@
 //! struct KeepMatching;
 //!
 //! impl<U: Ui> IncSearcher<U> for KeepMatching {
-//!     fn search(
-//!         &mut self,
-//!         pa: &mut Pass,
-//!         handle: Handle<File<U>, U, Searcher>,
-//!     ) {
+//!     fn search(&mut self, pa: &mut Pass, handle: Handle<File<U>, U, Searcher>) {
 //!         handle.edit_all(pa, |mut c| {
 //!             c.set_caret_on_start();
 //!             let [_, end] = c.range();

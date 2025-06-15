@@ -621,7 +621,9 @@ impl Tags {
 
                     type Bound = (Cell<[usize; 2]>, RawTag, RangeId);
                     let tagger = |(place, tag, _): &Bound| (place.get(), *tag);
-                    let s_i = self.bounds.binary_search_by_key(&([s_n, s_b], s_tag), tagger);
+                    let s_i = self
+                        .bounds
+                        .binary_search_by_key(&([s_n, s_b], s_tag), tagger);
                     let e_i = self.bounds.binary_search_by_key(&([n, b], tag), tagger);
 
                     match (s_i, e_i) {

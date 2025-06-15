@@ -100,10 +100,7 @@
 //! use kak::{Insert, Normal};
 //!
 //! fn setup() {
-//!     plug!(
-//!         treesitter::TreeSitter::new(),
-//!         kak::Kak::new()
-//!     );
+//!     plug!(treesitter::TreeSitter::new(), kak::Kak::new());
 //!     map::<Insert>("jk", "<Esc>");
 //!
 //!     print::wrap_on_edge();
@@ -120,9 +117,7 @@
 //!             Some((no_generics, _)) => no_generics.to_uppercase(),
 //!             None => m.to_uppercase(),
 //!         });
-//!         let status_line = status!(
-//!             "[Mode]{upper_mode}{Spacer}{file_fmt} {sels_fmt} {main_fmt}"
-//!         );
+//!         let status_line = status!("[Mode]{upper_mode}{Spacer}{file_fmt} {sels_fmt} {main_fmt}");
 //!
 //!         builder.push(pa, status_line);
 //!         let (child, _) = builder.push(pa, PromptLine::cfg());
@@ -131,7 +126,7 @@
 //!
 //!     hook::add::<ModeSwitched>(|_, (_, new)| match new {
 //!         "Insert" => cursor::set_main(CursorShape::SteadyBar),
-//!         _ => cursor::set_main(CursorShape::SteadyBlock)
+//!         _ => cursor::set_main(CursorShape::SteadyBlock),
 //!     });
 //!
 //!     form::set("Mode", Form::dark_magenta());

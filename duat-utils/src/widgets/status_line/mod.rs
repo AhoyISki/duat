@@ -249,26 +249,23 @@ mod macros {
     /// fn powerline_main_fmt<U: Ui>(file: &File<U>, area: &U::Area) -> Text {
     ///     let selections = file.selections();
     ///     let cfg = file.print_cfg();
-    ///     let v_caret =
-    ///         selections
-    ///             .get_main()
-    ///             .unwrap()
-    ///             .v_caret(file.text(), area, cfg);
+    ///     let v_caret = selections
+    ///         .get_main()
+    ///         .unwrap()
+    ///         .v_caret(file.text(), area, cfg);
     ///
     ///     txt!(
     ///         "[separator][coord]{}[separator][coord]{}[separator][coord]{}",
     ///         v_caret.visual_col(),
     ///         v_caret.line(),
     ///         file.len_lines()
-    ///     ).build()
+    ///     )
+    ///     .build()
     /// }
     ///
     /// fn test<Ui: duat_core::ui::Ui>() {
     ///     hook::add::<OnWindowOpen<Ui>>(|pa, builder| {
-    ///         builder.push(
-    ///             pa,
-    ///             status!("[file]{name_but_funky}[] {powerline_main_fmt}"),
-    ///         );
+    ///         builder.push(pa, status!("[file]{name_but_funky}[] {powerline_main_fmt}"));
     ///     });
     /// }
     /// ```
@@ -313,10 +310,7 @@ mod macros {
     ///
     ///         builder.push(
     ///             pa,
-    ///             status!(
-    ///                 "{changing_text} [counter]{}[] {text}",
-    ///                 (counter, checker)
-    ///             ),
+    ///             status!("{changing_text} [counter]{}[] {text}", (counter, checker)),
     ///         );
     ///     }
     /// });

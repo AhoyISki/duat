@@ -67,10 +67,7 @@ use duat::prelude::*;
 use kak::{Insert, Normal};
 
 fn setup() {
-    plug!(
-        treesitter::TreeSitter::new(),
-        kak::Kak::new()
-    );
+    plug!(treesitter::TreeSitter::new(), kak::Kak::new());
     map::<Insert>("jk", "<Esc>");
 
     print::wrap_on_edge();
@@ -87,9 +84,7 @@ fn setup() {
             Some((no_generics, _)) => no_generics.to_uppercase(),
             None => m.to_uppercase(),
         });
-        let status_line = status!(
-            "[Mode]{upper_mode}{Spacer}{file_fmt} {sels_fmt} {main_fmt}"
-        );
+        let status_line = status!("[Mode]{upper_mode}{Spacer}{file_fmt} {sels_fmt} {main_fmt}");
 
         builder.push(pa, status_line);
         let (child, _) = builder.push(pa, PromptLine::cfg());
@@ -98,7 +93,7 @@ fn setup() {
 
     hook::add::<ModeSwitched>(|_, (_, new)| match new {
         "Insert" => cursor::set_main(CursorShape::SteadyBar),
-        _ => cursor::set_main(CursorShape::SteadyBlock)
+        _ => cursor::set_main(CursorShape::SteadyBlock),
     });
 
     form::set("Mode", Form::dark_magenta());
@@ -143,13 +138,13 @@ Duat also comes with a fully fledged [text creation system][__link19], which
 significantly eases the creation of widgets:
 
 ```rust
-let text = txt!("[MyForm]Waow it's my form![]not anymore 😢");
+let text = txt!("[my_form]Waow it's my form![]not anymore 😢");
 ```
 
-In this example, I’m using the “MyForm” form in order to style the
-text, while `[]` reverts back to the “Default” form. Double `[[`
-and `]]` escape the `[` and `]`, just like in [`println!`][__link20]. The
-[`status!`][__link21] macro works similarly.
+In this example, I’m using the “my_form” form in order to style
+the text, while `[]` reverts back to the “default” form. Double
+`[[` and `]]` escape the `[` and `]`, just like in [`println!`][__link20].
+The [`status!`][__link21] macro works similarly.
 
 Duat also has a simple command system, that lets you add commands
 with arguments supported by Rust’s type system. As an example,
@@ -268,7 +263,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEGzZL41fqsX7FGz3O4lUcTFM5GzDB-ANi6qF8G9ZhNCPoOsjMYWSBgmRkdWF0ZTAuNC4w
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG6_y5jBlKgBOG7OThffQaC1KG84D30R2xGIvG2nD0axqIVABYWSBgmRkdWF0ZTAuNC4w
  [__link0]: https://docs.rs/duat/0.4.0/duat/?search=prelude::plug
  [__link1]: https://docs.rs/duat/0.4.0/duat/?search=prelude::mode::set_default
  [__link10]: https://docs.rs/duat/0.4.0/duat/?search=prelude::status

@@ -19,12 +19,7 @@
 //! impl<U: Ui> Mode<U> for FindSeq {
 //!     type Widget = File<U>;
 //!
-//!     fn send_key(
-//!         &mut self,
-//!         pa: &mut Pass,
-//!         key: KeyEvent,
-//!         handle: Handle<File<U>, U>,
-//!     ) {
+//!     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<File<U>, U>) {
 //!         use KeyCode::*;
 //!
 //!         // Make sure that the typed key is a character.
@@ -137,8 +132,7 @@
 //!
 //!             let (start, _) = handle.area().first_points(text, cfg);
 //!             let (end, _) = handle.area().last_points(text, cfg);
-//!             self.points =
-//!                 text.search_fwd(regex, start..end).unwrap().collect();
+//!             self.points = text.search_fwd(regex, start..end).unwrap().collect();
 //!
 //!             let seqs = key_seqs(self.points.len());
 //!
@@ -152,12 +146,7 @@
 //!         });
 //!     }
 //!
-//!     fn send_key(
-//!         &mut self,
-//!         pa: &mut Pass,
-//!         key: KeyEvent,
-//!         handle: Handle<File<U>, U>,
-//!     ) {
+//!     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<File<U>, U>) {
 //!         let char = match key {
 //!             key!(KeyCode::Char(c)) => c,
 //!             // Return a char that will never match.
@@ -181,9 +170,7 @@
 //!             }
 //!
 //!             // Removing one end of the conceal range will remove both ends.
-//!             handle.write_text(pa, |text| {
-//!                 text.remove_tags(self.key, p1.byte())
-//!             });
+//!             handle.write_text(pa, |text| text.remove_tags(self.key, p1.byte()));
 //!         }
 //!
 //!         if self.seq.chars().count() == 2 || !LETTERS.contains(char) {
@@ -199,11 +186,7 @@
 //!     seqs.extend(LETTERS.chars().skip(double).map(char::into));
 //!
 //!     let chars = LETTERS.chars().take(double);
-//!     seqs.extend(
-//!         chars.flat_map(|c1| {
-//!             LETTERS.chars().map(move |c2| format!("{c1}{c2}"))
-//!         }),
-//!     );
+//!     seqs.extend(chars.flat_map(|c1| LETTERS.chars().map(move |c2| format!("{c1}{c2}"))));
 //!
 //!     seqs
 //! }

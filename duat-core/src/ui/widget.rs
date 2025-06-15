@@ -241,10 +241,9 @@ use crate::{
 ///         let mins = elapsed.as_secs() / 60;
 ///         let secs = elapsed.as_secs() % 60;
 ///
-///         handle.widget().replace_text::<U>(
-///             pa,
-///             txt!("[uptime.mins]{mins}m [uptime.secs]{secs}s"),
-///         );
+///         handle
+///             .widget()
+///             .replace_text::<U>(pa, txt!("[uptime.mins]{mins}m [uptime.secs]{secs}s"));
 ///     }
 ///
 ///     fn cfg() -> Self::Cfg {
@@ -272,11 +271,7 @@ use crate::{
 /// impl<U: Ui> WidgetCfg<U> for UpTimeCfg<U> {
 ///     type Widget = UpTime;
 ///
-///     fn build(
-///         self,
-///         _: &mut Pass,
-///         _: Option<FileHandle<U>>,
-///     ) -> (UpTime, PushSpecs) {
+///     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (UpTime, PushSpecs) {
 ///         // You could imagine how a method on `UpTimeCfg` could
 ///         // change the periodicity
 ///         let checker = PeriodicChecker::new(Duration::from_secs(1));

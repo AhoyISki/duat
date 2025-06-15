@@ -166,12 +166,7 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
 /// };
 ///
 /// impl<U: Ui> PromptMode<U> for RealTimeSwitch {
-///     fn update(
-///         &mut self,
-///         pa: &mut Pass,
-///         text: Text,
-///         area: &U::Area,
-///     ) -> Text {
+///     fn update(&mut self, pa: &mut Pass, text: Text, area: &U::Area) -> Text {
 ///         let name = text.to_string();
 ///
 ///         self.name_was_correct = if name != *self.current.as_ref().unwrap() {
@@ -188,12 +183,7 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
 ///         text
 ///     }
 ///
-///     fn on_switch(
-///         &mut self,
-///         pa: &mut Pass,
-///         text: Text,
-///         area: &U::Area,
-///     ) -> Text {
+///     fn on_switch(&mut self, pa: &mut Pass, text: Text, area: &U::Area) -> Text {
 ///         self.initial = Some(context::fixed_file::<U>(pa).unwrap().name(pa));
 ///         self.current = self.initial.clone();
 ///

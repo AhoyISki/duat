@@ -14,18 +14,14 @@ different interfaces:
 ```rust
 // I recommend pulling the prelude in plugins.
 use duat_core::prelude::*;
+
 #[derive(Default, Clone)]
 struct FindSeq(Option<char>);
 
 impl<U: Ui> Mode<U> for FindSeq {
     type Widget = File<U>;
 
-    fn send_key(
-        &mut self,
-        pa: &mut Pass,
-        key: KeyEvent,
-        handle: Handle<File<U>, U>,
-    ) {
+    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<File<U>, U>) {
         use KeyCode::*;
 
         // Make sure that the typed key is a character.
@@ -88,7 +84,7 @@ at most 2 keypresses.
 In order to emulate it, we use [ghost text][__link5] and [concealment][__link6]:
 
 ```rust
-use duat_core::{text::Point, prelude::*};
+use duat_core::{prelude::*, text::Point};
 #[derive(Clone)]
 pub struct EasyMotion {
     is_line: bool,
@@ -133,13 +129,12 @@ impl<U: Ui> Mode<U> for EasyMotion {
 
             let (start, _) = handle.area().first_points(text, cfg);
             let (end, _) = handle.area().last_points(text, cfg);
-            self.points =
-                text.search_fwd(regex, start..end).unwrap().collect();
+            self.points = text.search_fwd(regex, start..end).unwrap().collect();
 
             let seqs = key_seqs(self.points.len());
 
             for (seq, [p0, _]) in seqs.iter().zip(&self.points) {
-                let ghost = Ghost(txt!("[EasyMotionWord]{seq}"));
+                let ghost = Ghost(txt!("[easy_motion.word]{seq}"));
                 text.insert_tag(self.key, *p0, ghost);
 
                 let seq_end = p0.byte() + seq.chars().count();
@@ -148,12 +143,7 @@ impl<U: Ui> Mode<U> for EasyMotion {
         });
     }
 
-    fn send_key(
-        &mut self,
-        pa: &mut Pass,
-        key: KeyEvent,
-        handle: Handle<File<U>, U>,
-    ) {
+    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<File<U>, U>) {
         let char = match key {
             key!(KeyCode::Char(c)) => c,
             // Return a char that will never match.
@@ -177,9 +167,7 @@ impl<U: Ui> Mode<U> for EasyMotion {
             }
 
             // Removing one end of the conceal range will remove both ends.
-            handle.write_text(pa, |text| {
-                text.remove_tags(self.key, p1.byte())
-            });
+            handle.write_text(pa, |text| text.remove_tags(self.key, p1.byte()));
         }
 
         if self.seq.chars().count() == 2 || !LETTERS.contains(char) {
@@ -195,11 +183,7 @@ fn key_seqs(len: usize) -> Vec<String> {
     seqs.extend(LETTERS.chars().skip(double).map(char::into));
 
     let chars = LETTERS.chars().take(double);
-    seqs.extend(
-        chars.flat_map(|c1| {
-            LETTERS.chars().map(move |c2| format!("{c1}{c2}"))
-        }),
-    );
+    seqs.extend(chars.flat_map(|c1| LETTERS.chars().map(move |c2| format!("{c1}{c2}"))));
 
     seqs
 }
@@ -224,10 +208,10 @@ map::<Normal>("<CA-l>", EasyMotion::line());
 ```
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG-FQS46r-gDAGx1XEj9tmILnG-xD5TnCz3kUG3Kw8Q8I4DjvYWSBg2lkdWF0LWNvcmVlMC40LjBpZHVhdF9jb3Jl
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEGxgBurYiJ4LQGyeVbknk5xGOG5Ln7wIYGwDkG_yuwBmwGo20YWSBg2lkdWF0LWNvcmVlMC40LjBpZHVhdF9jb3Jl
  [__link0]: https://docs.rs/duat-core/0.4.0/duat_core/?search=ui::Ui
  [__link1]: https://docs.rs/duat-core/0.4.0/duat_core/?search=mode::Mode
- [__link10]: https://docs.rs/duat-core/0.4.0/duat_core/?search=mode::Editor::move_to
+ [__link10]: https://docs.rs/duat-core/0.4.0/duat_core/?search=mode::Cursor::move_to
  [__link2]: https://docs.rs/duat-core/0.4.0/duat_core/?search=file::File
  [__link3]: https://docs.rs/duat/0.2.0/duat/prelude/fn.map.html
  [__link4]: https://github.com/easymotion/vim-easymotion

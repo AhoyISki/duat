@@ -102,7 +102,10 @@ impl Printer {
     /// This is done when swapping two [`Rect`]s from different
     /// windows.
     pub fn remove_rect(&self, rect: &mut Rect) -> [Variable; 4] {
-        self.sync_solver.lock().unwrap().remove_eqs(rect.drain_eqs());
+        self.sync_solver
+            .lock()
+            .unwrap()
+            .remove_eqs(rect.drain_eqs());
 
         let mut vars = self.vars.lock().unwrap();
         let [tl, br] = rect.var_points();
@@ -178,7 +181,10 @@ impl Printer {
             let mut stdout = std::io::stdout().lock();
             let id = form::id_of!("terminal.frame");
             let edge_form = form::from_id(id);
-            self.vars.lock().unwrap().print_edges(&mut stdout, edge_form);
+            self.vars
+                .lock()
+                .unwrap()
+                .print_edges(&mut stdout, edge_form);
             Some(stdout)
         } else {
             None

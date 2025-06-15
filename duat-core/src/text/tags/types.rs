@@ -31,8 +31,7 @@ use crate::{
 ///
 /// - [`FormTag`]: Applies a [`Form`] on a [range];
 /// - [`MainCaret`] and [`ExtraCaret`]: Place `caret`s on the
-///   [`Text`]. Can be an actual `caret` or just a temporary
-///   [`Form`];
+///   [`Text`]. Can be an actual `caret` or just a temporary [`Form`];
 /// - [`AlignCenter`] and [`AlignRight`]: Change the text alignment in
 ///   a [range];
 /// - [`Spacer`]: Lets you put arbitrary equally sized spaces on a

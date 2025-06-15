@@ -4,7 +4,7 @@
 //! pretty much every `config` of Duat, since they are Duat
 //! equivalents to what is commonly found in other text editors.
 //!
-//! 
+//!
 //!
 //! [`Widget`]: duat_core::widget::Widget
 //! [`Text`]: duat_core::text::Text
