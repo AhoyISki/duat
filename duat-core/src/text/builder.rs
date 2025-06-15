@@ -1,9 +1,12 @@
 //! [`Text`] building macros
 //!
-//! This module contains 4 macros for text building: [`txt!`],
-//! [`err!`], [`ok!`] and [`hint!`]. These are supposed to be used in
-//! various contexts, and they have differences on what the `Default`
-//! and `Accent` form.
+//! This module defines the [`txt!`] macro, alongside its [`Builder`]
+//! companion struct. This macro is very convenient for the creation
+//! of [`Text`]s, since its syntax is just a superset of the natural
+//! syntax of [`format_args!`], also allowing for the addition of
+//! [`Form`]s through specialized arguments.
+//!
+//! [`Form`]: crate::form::Form
 use std::{
     fmt::{Alignment, Display, Write},
     marker::PhantomData,
@@ -19,10 +22,9 @@ use crate::{
 /// Builds and modifies a [`Text`], based on replacements applied
 /// to it.
 ///
-/// This struct is meant to be used alongside the [`txt!`] macro. You
-/// pass it as the first argument, and the [`Text`] will be extended
-/// by the macro. This lets you write a [`Text`] with multiple macro
-/// invocations:
+/// This struct is meant to be used alongside the [`txt!`] macro, as
+/// you can just push more [`Text`] to the [`Builder`] py pushing
+/// another [`Builder`], which can be returned by the [`txt!`] macro:
 ///
 /// ```rust
 /// # use duat_core::text::{Text, txt};
@@ -43,11 +45,11 @@ use crate::{
 /// the [`Text`]. Each `[]` pair denotes a [`Form`]. These pairs
 /// follow the following rule:
 ///
-/// - `[]`: The default [`Form`], depends on which macro was called
-///   ([`err!`] uses `"DefaultErr"`, for example);
-/// - `[form_name]` will apply the `"form_name"` [`Form`]
-/// - `[a]`: Will apply the accent form (like with the default
-///   [`Form`], [`err!`] uses `"AccentErr"`, for example)
+/// - `[]`: Will push the `"Default"` [`Form`], which is actually just
+///   removing prior [`Form`]s.
+/// - `[a]`: Will push the `"Accent"` [`Form`].
+/// - `[{form}]`: Will push the `"{form}"`, where `{form}` can be any
+///   sequence of valid identifiers, separated by `"."`s.
 ///
 /// [`impl Display`]: std::fmt::Display
 /// [tag]: AlignCenter
@@ -73,28 +75,13 @@ impl Builder {
     /// Finish construction and returns the [`Text`]
     ///
     /// Will also finish the last [`Form`] and alignments pushed to
-    /// the [builder], as well as pushing a `'\n'` at the end if there
-    /// is none, much like with regular [`Text`] construction.
-    ///
-    /// In general, you should only ever call this method (or
-    /// [`Builder::into::<Text>`]) if you actually _need_ the finished
-    /// [`Text`], and that will only really happen when finishing a
-    /// [`Text`] that should show up in a [`Widget`].
-    ///
-    /// The main reason for this is that, while [`Text`] doesn't
-    /// implement [`Send`] or [`Sync`], [`Builder`] _does_, so you
-    /// can, for example, [notify] messages to Duat using them.
-    ///
-    /// One misconception might be that formatting functions (such as
-    /// those used in the [`StatusLine`]) seem like they should return
-    /// [`Text`], but no, they should _actually_ return [`Builder`],
-    /// since it is more composable into a finalized [`Text`].
+    /// the [builder], as well as pushing a `'\n'` at the end, much
+    /// like with regular [`Text`] construction.
     ///
     /// [`Form`]: crate::form::Form
     /// [builder]: Builder
     /// [`Builder::into::<Text>`]: Into::into
     /// [`Widget`]: crate::ui::Widget
-    /// [notify]: crate::context::notify
     /// [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
     pub fn build(mut self) -> Text {
         self.push_str("\n");
@@ -109,7 +96,7 @@ impl Builder {
     /// `'\n'`, since they are placed in the middle of another
     /// [`Text`], much like [`Text`]s added to a [`Builder`]
     ///
-    /// [ghosts]: super::ghost
+    /// [ghosts]: super::Ghost
     fn build_no_nl(mut self) -> Text {
         if let Some((b, id)) = self.last_form
             && b < self.text.len().byte()

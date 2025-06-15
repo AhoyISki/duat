@@ -45,7 +45,7 @@ pub use self::{
 };
 use crate::{
     cfg::PrintCfg,
-    context::load_cache,
+    context::{Handle, load_cache},
     data::{Pass, RwData},
     file::File,
     form::Painter,
@@ -524,7 +524,7 @@ impl<U: Ui> Window<U> {
             .nodes
             .extract_if(.., |node| {
                 node.as_file()
-                    .is_some_and(|(f, ..)| f.read(pa, File::name) == name)
+                    .is_some_and(|(handle, ..)| handle.read(pa, |file, _| file.name()) == name)
             })
             .next()
         else {
@@ -618,7 +618,7 @@ impl<U: Ui> Window<U> {
     pub fn file_names(&self, pa: &Pass) -> Vec<String> {
         window_files(pa, &self.nodes)
             .into_iter()
-            .map(|f| f.0.read_as(pa, |f: &File<U>| f.name()).unwrap())
+            .map(|f| f.0.widget().read_as(pa, |f: &File<U>| f.name()).unwrap())
             .collect()
     }
 
@@ -629,12 +629,12 @@ impl<U: Ui> Window<U> {
     pub fn file_paths(&self, pa: &Pass) -> Vec<String> {
         window_files(pa, &self.nodes)
             .into_iter()
-            .map(|f| f.0.read_as(pa, |f: &File<U>| f.name()).unwrap())
+            .map(|f| f.0.widget().read_as(pa, |f: &File<U>| f.name()).unwrap())
             .collect()
     }
 
     /// An [`Iterator`] over the [`File`] [`Node`]s in a [`Window`]
-    pub(crate) fn file_nodes(&self, pa: &Pass) -> Vec<(RwData<File<U>>, FileId<U>)> {
+    pub(crate) fn file_nodes(&self, pa: &Pass) -> Vec<(Handle<File<U>, U>, FileId<U>)> {
         window_files(pa, &self.nodes)
     }
 

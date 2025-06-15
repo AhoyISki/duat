@@ -3,7 +3,7 @@
 //! This module lets you access and mutate some things:
 //!
 //! # Files
-use std::any::TypeId;
+use std::{any::TypeId, cell::Cell, rc::Rc};
 
 pub use self::{cache::*, global::*, handles::*, log::*};
 use crate::{
@@ -30,6 +30,7 @@ mod global {
 
     use super::{CurFile, CurWidget, FileHandle, FileParts};
     use crate::{
+        context::Handle,
         data::{DataMap, Pass, RwData},
         main_thread_only::MainThreadOnly,
         text::{Text, txt},
@@ -76,11 +77,13 @@ mod global {
         let name = name.to_string();
         let (.., node) = crate::file_entry(pa, &windows, &name)?;
 
-        let (widget, area, related) = node.parts();
+        let (widget, area, mask, related) = node.parts();
         let file = widget.try_downcast().unwrap();
 
+        let handle = Handle::from_parts(file, area.clone(), mask.clone());
+
         Ok(FileHandle::from_parts(
-            Some((file, area.clone(), related.clone().unwrap_or_default())),
+            Some((handle, related.clone().unwrap_or_default())),
             cur_file(pa).unwrap().0.clone(),
         ))
     }
@@ -264,19 +267,26 @@ impl<U: Ui> CurFile<U> {
         FileHandle::from_parts(None, self.0.clone())
     }
 
-    pub(crate) fn _get_related_widget<W: 'static>(
+    pub(crate) fn _get_related_widget<W: Widget<U> + 'static>(
         &mut self,
         pa: &Pass,
-    ) -> Option<(RwData<W>, U::Area)> {
+    ) -> Option<Handle<W, U>> {
         self.0.read(pa, |parts| {
-            let (file, area, related) = parts.as_ref().unwrap();
-            if file.data_is::<W>() {
-                Some((file.try_downcast().unwrap(), area.clone()))
+            let (handle, related) = parts.as_ref().unwrap();
+            if TypeId::of::<W>() == TypeId::of::<File<U>>() {
+                let widget = handle.widget().try_downcast()?;
+                Some(Handle::from_parts(
+                    widget,
+                    handle.area().clone(),
+                    handle.mask().clone(),
+                ))
             } else {
                 related.read(pa, |related| {
                     related.iter().find_map(|node| {
-                        let (widget, area, _) = node.parts();
-                        widget.try_downcast().map(|data| (data, area.clone()))
+                        let (widget, area, mask, _) = node.parts();
+                        widget
+                            .try_downcast()
+                            .map(|widget| Handle::from_parts(widget, area.clone(), mask.clone()))
                     })
                 })
             }
@@ -302,7 +312,7 @@ impl<U: Ui> CurWidget<U> {
     /// Reads the [`Widget`] and its [`Area`](crate::ui::RawArea)
     pub fn read<R>(&self, pa: &Pass, f: impl FnOnce(&dyn Widget<U>, &U::Area) -> R) -> R {
         self.0.read(pa, |node| {
-            let (widget, area, _) = node.as_ref().unwrap().parts();
+            let (widget, area, ..) = node.as_ref().unwrap().parts();
             widget.read(pa, |widget| f(widget, area))
         })
     }
@@ -315,7 +325,7 @@ impl<U: Ui> CurWidget<U> {
         f: impl FnOnce(&W, &U::Area) -> R,
     ) -> Option<R> {
         self.0.read(pa, |node| {
-            let (widget, area, _) = node.as_ref().unwrap().parts();
+            let (widget, area, ..) = node.as_ref().unwrap().parts();
             widget.read_as(pa, |widget| f(widget, area))
         })
     }
@@ -328,7 +338,7 @@ impl<U: Ui> CurWidget<U> {
     ) -> R {
         unsafe {
             self.0.read_unsafe(|node| {
-                let (widget, area, related) = node.as_ref().unwrap().parts();
+                let (widget, area, _, related) = node.as_ref().unwrap().parts();
                 f(widget, area, related)
             })
         }
@@ -338,12 +348,12 @@ impl<U: Ui> CurWidget<U> {
     /// [`Area`](crate::ui::RawArea), and related [`Widget`]s
     pub(crate) unsafe fn mutate_data_as<W: Widget<U>, R>(
         &self,
-        f: impl FnOnce(&RwData<W>, &U::Area, &Related<U>) -> R,
+        f: impl FnOnce(&RwData<W>, &U::Area, &Rc<Cell<&'static str>>, &Related<U>) -> R,
     ) -> Option<R> {
         unsafe {
             self.0.read_unsafe(|node| {
-                let (widget, area, related) = node.as_ref().unwrap().parts();
-                Some(f(&widget.try_downcast()?, area, related))
+                let (widget, area, mask, related) = node.as_ref().unwrap().parts();
+                Some(f(&widget.try_downcast()?, area, mask, related))
             })
         }
     }
@@ -360,4 +370,4 @@ impl<U: Ui> Default for CurWidget<U> {
     }
 }
 
-pub(crate) type FileParts<U> = (RwData<File<U>>, <U as Ui>::Area, RwData<Vec<Node<U>>>);
+pub(crate) type FileParts<U> = (Handle<File<U>, U>, RwData<Vec<Node<U>>>);

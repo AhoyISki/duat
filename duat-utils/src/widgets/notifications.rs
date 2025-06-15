@@ -12,7 +12,7 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use duat_core::{hook::KeysSent, prelude::*};
+use duat_core::{form::Painter, hook::KeysSent, prelude::*};
 
 /// A [`Widget`] to show notifications
 ///
@@ -29,7 +29,6 @@ pub struct Notifications<U> {
     logs: context::Logs,
     text: Text,
     _ghost: PhantomData<U>,
-    mask: &'static str,
 }
 
 static CLEAR_NOTIFS: AtomicBool = AtomicBool::new(false);
@@ -47,13 +46,13 @@ impl<U: Ui> Widget<U> for Notifications<U> {
             if wid.logs.has_changed()
                 && let Some(rec) = wid.logs.last()
             {
-                wid.mask = match rec.level() {
+                handle.set_mask(match rec.level() {
                     context::Level::Error => "error",
                     context::Level::Warn => "warn",
                     context::Level::Info => "info",
                     context::Level::Debug => "debug",
                     context::Level::Trace => unreachable!(),
-                };
+                });
                 wid.text = txt!("{}: {}", rec.target(), rec.text().clone()).build();
             } else if clear_notifs {
                 wid.text = Text::new()
@@ -85,9 +84,8 @@ impl<U: Ui> Widget<U> for Notifications<U> {
         self.logs.has_changed() || CLEAR_NOTIFS.load(Ordering::Relaxed)
     }
 
-    fn print(&mut self, area: &<U as Ui>::Area) {
+    fn print(&mut self, painter: Painter, area: &<U as Ui>::Area) {
         let cfg = self.print_cfg();
-        let painter = form::painter_with_mask::<Self>(self.mask);
         area.print(self.text_mut(), cfg, painter)
     }
 }
@@ -128,7 +126,6 @@ impl<U: Ui> WidgetCfg<U> for NotificationsCfg<U> {
             logs: context::logs(),
             text: Text::new(),
             _ghost: PhantomData,
-            mask: "err",
         };
 
         let specs = if let Some((den, div)) = self.0 {

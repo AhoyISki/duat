@@ -21,7 +21,7 @@
 //!     fn new_file(
 //!         &mut self,
 //!         file: &File<U>,
-//!         prev: Vec<(RwData<File<U>>, FileId<U>)>,
+//!         prev: Vec<(Handle<File<U>, U>, FileId<U>)>,
 //!     ) -> Result<(FileId<U>, PushSpecs), Text> {
 //!         // One File is always open.
 //!         let (_, last) = prev.last().unwrap();
@@ -39,11 +39,7 @@
 //! Also notice that this function can fail, which means you can set a
 //! limit to how many [`File`]s should can open in a single window.
 use super::{Node, PushSpecs, RawArea, Ui};
-use crate::{
-    data::{Pass, RwData},
-    file::File,
-    text::Text,
-};
+use crate::{data::Pass, file::File, prelude::Handle, text::Text};
 
 /// A form of organizing opened [`File`]s
 ///
@@ -67,7 +63,7 @@ where
     fn new_file(
         &mut self,
         file: &File<U>,
-        prev: Vec<(RwData<File<U>>, FileId<U>)>,
+        prev: Vec<(Handle<File<U>, U>, FileId<U>)>,
     ) -> Result<(FileId<U>, PushSpecs), Text>;
 }
 
@@ -84,7 +80,7 @@ where
     fn new_file(
         &mut self,
         _file: &File<U>,
-        mut prev: Vec<(RwData<File<U>>, FileId<U>)>,
+        mut prev: Vec<(Handle<File<U>, U>, FileId<U>)>,
     ) -> Result<(FileId<U>, PushSpecs), Text> {
         let (_, last) = prev.pop().unwrap();
         Ok(if prev.is_empty() {
@@ -99,8 +95,8 @@ where
 pub(super) fn window_files<U: Ui>(
     pa: &Pass,
     nodes: &[Node<U>],
-) -> Vec<(RwData<File<U>>, FileId<U>)> {
-    let mut files: Vec<_> = nodes
+) -> Vec<(Handle<File<U>, U>, FileId<U>)> {
+    let mut files: Vec<(Handle<File<U>, U>, FileId<U>)> = nodes
         .iter()
         .filter(|&node| node.widget().data_is::<File<U>>())
         .map(|node| {
@@ -113,7 +109,7 @@ pub(super) fn window_files<U: Ui>(
         })
         .collect();
 
-    files.sort_unstable_by_key(|(file, _)| file.read(pa, |f| f.layout_order));
+    files.sort_unstable_by_key(|(file, _)| file.read(pa, |f, _| f.layout_order));
 
     files
 }

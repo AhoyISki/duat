@@ -47,14 +47,14 @@
 //! [`OnFileOpen`]: crate::hook::OnFileOpen
 //! [`OnWindowOpen`]: crate::hook::OnWindowOpen
 //! [`Constraint`]: crate::ui::Constraint
-use std::any::TypeId;
+use std::{any::TypeId, cell::Cell, rc::Rc};
 
 use crate::{
     cfg::PrintCfg,
     context::{FileHandle, FileParts, Handle},
     data::{Pass, RwData},
     file::File,
-    form,
+    form::{self, Painter},
     hook::{self, FocusedOn, UnfocusedFrom},
     text::Text,
     ui::{PushSpecs, RawArea, Ui},
@@ -452,9 +452,9 @@ pub trait Widget<U: Ui>: 'static {
     /// for widgets like [`LineNumbers`] to read.
     ///
     /// [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
-    fn print(&mut self, area: &U::Area) {
+    fn print(&mut self, painter: Painter, area: &U::Area) {
         let cfg = self.print_cfg();
-        area.print(self.text_mut(), cfg, form::painter::<Self>())
+        area.print(self.text_mut(), cfg, painter)
     }
 
     /// Actions taken when this widget opens for the first time
@@ -536,10 +536,12 @@ pub trait WidgetCfg<U: Ui>: Sized {
 pub(crate) struct Node<U: Ui> {
     widget: RwData<dyn Widget<U>>,
     area: U::Area,
+    mask: Rc<Cell<&'static str>>,
     related_widgets: Related<U>,
+    update: fn(&Self, &mut Pass),
+    print: fn(&Self, &mut Pass),
     on_focus: fn(&Self, &mut Pass),
     on_unfocus: fn(&Self, &mut Pass),
-    update: fn(&Self, &mut Pass),
 }
 
 impl<U: Ui> Node<U> {
@@ -550,8 +552,10 @@ impl<U: Ui> Node<U> {
         Self {
             widget,
             area,
+            mask: Rc::new(Cell::new("")),
             related_widgets,
             update: Self::update_fn::<W>,
+            print: Self::print_fn::<W>,
             on_focus: Self::on_focus_fn::<W>,
             on_unfocus: Self::on_unfocus_fn::<W>,
         }
@@ -581,15 +585,21 @@ impl<U: Ui> Node<U> {
         self.widget.try_downcast()
     }
 
-    pub(crate) fn parts(&self) -> (&RwData<dyn Widget<U>>, &<U as Ui>::Area, &Related<U>) {
-        (&self.widget, &self.area, &self.related_widgets)
+    pub(crate) fn parts(
+        &self,
+    ) -> (
+        &RwData<dyn Widget<U>>,
+        &<U as Ui>::Area,
+        &Rc<Cell<&'static str>>,
+        &Related<U>,
+    ) {
+        (&self.widget, &self.area, &self.mask, &self.related_widgets)
     }
 
     pub(crate) fn as_file(&self) -> Option<FileParts<U>> {
         self.widget.try_downcast().map(|file: RwData<File<U>>| {
             (
-                file,
-                self.area.clone(),
+                Handle::from_parts(file, self.area.clone(), self.mask.clone()),
                 self.related_widgets.clone().unwrap(),
             )
         })
@@ -637,7 +647,7 @@ impl<U: Ui> Node<U> {
 
             // Avoid calling the function if it is not needed
             if !(text_was_empty && widget.text().is_empty_empty()) {
-                widget.print(&self.area);
+                (self.print)(self, pa);
             }
 
             widget.text_mut().remove_selections(&self.area, cfg);
@@ -658,18 +668,22 @@ impl<U: Ui> Node<U> {
     /// Static dispatch inner update function
     fn update_fn<W: Widget<U>>(&self, pa: &mut Pass) {
         let widget = self.widget.try_downcast_same_read_state::<W>().unwrap();
-        let area = self.area.clone();
-        let handle = Handle::from_parts(widget, area);
+        let handle = Handle::from_parts(widget, self.area.clone(), self.mask.clone());
         Widget::update(pa, handle);
+    }
+
+    fn print_fn<W: Widget<U>>(&self, pa: &mut Pass) {
+        let painter = form::painter_with_mask::<W>(self.mask.get());
+        self.widget
+            .write(pa, |widget| widget.print(painter, &self.area))
     }
 
     /// Static dispatch inner update on_focus
     fn on_focus_fn<W: Widget<U>>(&self, pa: &mut Pass) {
         self.area.set_as_active();
         let widget: RwData<W> = self.widget.try_downcast_same_read_state().unwrap();
-        let area = self.area.clone();
 
-        let handle = Handle::from_parts(widget.clone(), area.clone());
+        let handle = Handle::from_parts(widget, self.area.clone(), self.mask.clone());
         hook::trigger(pa, FocusedOn(handle.clone()));
 
         Widget::on_focus(pa, handle);
@@ -678,9 +692,8 @@ impl<U: Ui> Node<U> {
     /// Static dispatch inner update on_unfocus
     fn on_unfocus_fn<W: Widget<U>>(&self, pa: &mut Pass) {
         let widget: RwData<W> = self.widget.try_downcast_same_read_state().unwrap();
-        let area = self.area.clone();
 
-        let handle = Handle::from_parts(widget.clone(), area.clone());
+        let handle = Handle::from_parts(widget, self.area.clone(), self.mask.clone());
         hook::trigger(pa, UnfocusedFrom(handle.clone()));
 
         Widget::on_unfocus(pa, handle);

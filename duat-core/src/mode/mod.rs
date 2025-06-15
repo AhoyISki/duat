@@ -210,8 +210,8 @@ mod switch {
             unreachable!("Early, aren't we?");
         };
 
-        let (widget, a, _) = node.parts();
-        let w = widget.try_downcast::<M::Widget>().unwrap();
+        let (widget, area, mask, _) = node.parts();
+        let widget = widget.try_downcast::<M::Widget>().unwrap();
 
         let mut sent_keys = Vec::new();
 
@@ -220,7 +220,7 @@ mod switch {
             let mut mode = unsafe { MODE.get() }.borrow_mut();
             let mode: &mut M = mode.downcast_mut().unwrap();
 
-            let handle = Handle::from_parts(w.clone(), a.clone());
+            let handle = Handle::from_parts(widget.clone(), area.clone(), mask.clone());
             loop {
                 if let Some(mode_fn) = take_set_mode_fn() {
                     break Some(mode_fn);
@@ -234,7 +234,10 @@ mod switch {
 
         hook::trigger(
             pa,
-            KeysSentTo((sent_keys.clone(), Handle::from_parts(w.clone(), a.clone()))),
+            KeysSentTo((
+                sent_keys.clone(),
+                Handle::from_parts(widget.clone(), area.clone(), mask.clone()),
+            )),
         );
         hook::trigger(pa, KeysSent(sent_keys));
 
@@ -271,16 +274,19 @@ mod switch {
         widget.node(pa).parts();
         // SAFETY: Other than the internal borrow in CurWidget, no other
         // borrows happen
-        let (w, area) = unsafe {
+        let (widget, area, mask) = unsafe {
             widget
-                .mutate_data_as(|w: &RwData<M::Widget>, area, _| (w.clone(), area.clone()))
+                .mutate_data_as(|w: &RwData<M::Widget>, area, mask, _| {
+                    (w.clone(), area.clone(), mask.clone())
+                })
                 .unwrap()
         };
 
-        let mst = ModeSetTo((Some(mode), Handle::from_parts(w.clone(), area.clone())));
+        let handle = Handle::from_parts(widget, area, mask);
+        let mst = ModeSetTo((Some(mode), handle.clone()));
         let mut mode = hook::trigger(pa, mst).0.0.take().unwrap();
 
-        mode.on_switch(pa, Handle::from_parts(w.clone(), area.clone()));
+        mode.on_switch(pa, handle.clone());
 
         // SAFETY: There is a Pass argument.
         unsafe {
@@ -309,25 +315,16 @@ mod switch {
 
 /// A mode for a [`Widget`]
 ///
-/// Input methods are the way that Duat decides how keys are going to
+/// [`Mode`]s are the way that Duat decides how keys are going to
 /// modify widgets.
 ///
-/// In principle, there are two types of `Mode`, the ones which use
-/// [`Selections`], and the ones which don't. In [`Mode::send_key`],
-/// you receive an [`&mut Selections`], and if you're not using
-/// selections, you should run [`Selections::clear`], in order to make
-/// sure there are no selections.
+/// For this example, I will create a `Menu` widget. This example
+/// doesn't make use of the [`Cursor`] methods from the [`Handle`].
+/// Those are methods that modify [`Selection`]s, and can use them to
+/// modify the [`Text`] in a declarative fashion. For an example with
+/// [`Cursor`]s, see the documentation for [`Handle`]s.
 ///
-/// If a [`Mode`] has selections, it _must_ use the [`EditHelper`]
-/// struct in order to modify of the widget's [`Text`].
-///
-/// If your widget/mode combo is not based on selections. You get
-/// more freedom to modify things as you wish, but you should refrain
-/// from using [`Cursor`]s in order to prevent bugs.
-///
-/// For this example, I will create a `Menu` widget, which is not
-/// supposed to have [`Cursor`]s. For an example with [`Cursor`]s, see
-/// [`EditHelper`]:
+/// First, the [`Widget`] itself:
 ///
 /// ```rust
 /// # use duat_core::text::Text;
@@ -338,11 +335,9 @@ mod switch {
 ///     active_etry: Option<usize>,
 /// }
 /// ```
-/// In this widget, I will create a menu whose entries can be selected
-/// by an [`Mode`].
-///
-/// Let's say that said menu has five entries, and one of them can be
-/// active at a time:
+/// In this widget, the entries will be selectable via a [`Mode`], by
+/// pressing the up and down keys. Let's say that said menu has five
+/// entries, and one of them can be active at a time:
 ///
 /// ```rust
 /// # #![feature(let_chains)]
@@ -399,16 +394,9 @@ mod switch {
 /// By making `shift_selection` and `toggle` `pub`, I can allow an end
 /// user to create their own [`Mode`] for this widget.
 ///
-/// Let's say that I have created an [`Mode`] `MenuInput` for
-/// the `Menu`. This mode is actually the one that is documented on
-/// the documentation entry for [`Mode`], you can check it out next,
-/// to see how that was handled.
-///
 /// Now I'll implement [`Widget`]:
 ///
 /// ```rust
-/// # use std::marker::PhantomData;
-/// # use duat_core::prelude::*;
 /// # #[derive(Default)]
 /// # struct Menu {
 /// #     text: Text,
@@ -418,6 +406,10 @@ mod switch {
 /// # impl Menu {
 /// #     fn build_text(&mut self) { todo!(); }
 /// # }
+/// use std::marker::PhantomData;
+///
+/// use duat_core::prelude::*;
+///
 /// struct MenuCfg<U>(PhantomData<U>);
 ///
 /// impl<U: Ui> WidgetCfg<U> for MenuCfg<U> {
@@ -459,9 +451,9 @@ mod switch {
 ///     }
 ///
 ///     fn once() -> Result<(), Text> {
-///         form::set_weak("MenuSelected", "Inactive");
-///         form::set_weak("MenuActive", Form::blue());
-///         form::set_weak("MenuSelActive", Form::blue());
+///         form::set_weak("Menu.selected", "Default");
+///         form::set_weak("Menu.active", Form::blue());
+///         form::set_weak("Menu.sel_active", Form::blue());
 ///         Ok(())
 ///     }
 /// }
@@ -472,9 +464,9 @@ mod switch {
 /// `Menu` only needs to update after keys are sent, and sent keys
 /// automatically trigger [`Widget::update`].
 ///
-/// Now, let's take a look at some [`Widget`] methods that are unique
-/// to widgets that can take mode. Those are the [`on_focus`] and
-/// [`on_unfocus`] methods:
+/// Now, let's take a look at some [`Widget`] methods that are used
+/// when the [`Widget`] is supposed to be handled by [`Mode`]s. Those
+/// are the [`on_focus`] and [`on_unfocus`] methods:
 ///
 /// ```rust
 /// # use std::marker::PhantomData;
@@ -501,8 +493,8 @@ mod switch {
 ///     // ...
 ///     fn on_focus(_: &mut Pass, _: Handle<Self, U>) {
 ///         form::set_weak("Default.Menu", "Default");
-///         form::set_weak("MenuSelected", Form::new().on_grey());
-///         form::set_weak("MenuSelActive", Form::blue().on_grey());
+///         form::set_weak("Menu.selected", Form::new().on_grey());
+///         form::set_weak("Menu.sel_active", Form::blue().on_grey());
 ///     }
 ///
 ///     fn on_unfocus(_: &mut Pass,_: Handle<Self, U>) {

@@ -315,7 +315,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         let unwritten = windows
             .iter()
             .flat_map(|w| w.file_nodes(pa))
-            .filter(|(node, _)| node.read(pa, |f| f.text().has_unsaved_changes() && f.exists()))
+            .filter(|(node, _)| node.read(pa, |f, _| f.text().has_unsaved_changes() && f.exists()))
             .count();
 
         if unwritten == 0 {
@@ -396,12 +396,14 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         let file_count = windows
             .iter()
             .flat_map(|w| w.file_nodes(pa))
-            .filter(|(node, _)| node.read(pa, |f| f.path_set().is_some()))
-            .inspect(|(node, _)| {
+            .filter(|(handle, _)| handle.read(pa, |f, _| f.path_set().is_some()))
+            .inspect(|(handle, _)| {
                 // SAFETY: It is known that this function does not have any inner
                 // RwData.
                 written += unsafe {
-                    node.write_unsafe_as(|f: &mut File<U>| f.write().is_ok())
+                    handle
+                        .widget()
+                        .write_unsafe_as(|f: &mut File<U>| f.write().is_ok())
                         .unwrap() as usize
                 };
             })
@@ -423,11 +425,11 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         let file_count = windows
             .iter()
             .flat_map(|w| w.file_nodes(pa))
-            .filter(|(node, _)| node.read(pa, |f| f.path_set().is_some()))
-            .inspect(|(node, _)| {
+            .filter(|(handle, _)| handle.read(pa, |f, _| f.path_set().is_some()))
+            .inspect(|(handle, _)| {
                 // SAFETY: It is known that this function does not have any inner
                 // RwData.
-                written += unsafe { node.write_unsafe(|f| f.write().is_ok()) as usize };
+                written += unsafe { handle.widget().write_unsafe(|f| f.write().is_ok()) as usize };
             })
             .count();
 
@@ -444,11 +446,11 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
     add!(["write-all-quit!", "waq!"], |pa| {
         let windows = context::windows::<U>().borrow();
 
-        for (node, _) in windows.iter().flat_map(|w| w.file_nodes(pa)) {
+        for (handle, _) in windows.iter().flat_map(|w| w.file_nodes(pa)) {
             // SAFETY: It is known that this function does not have any inner
             // RwData.
             unsafe {
-                let _ = node.write_unsafe(|f| f.write());
+                let _ = handle.widget().write_unsafe(|f| f.write());
             }
         }
 

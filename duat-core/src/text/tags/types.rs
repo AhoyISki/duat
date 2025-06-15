@@ -30,8 +30,8 @@ use crate::{
 /// Currently, these are the [`Tag`]s in Duat:
 ///
 /// - [`FormTag`]: Applies a [`Form`] on a [range];
-/// - [`MainCaret`] and [`ExtraCaret`]: Place [`Caret`]s on the
-///   [`Text`]. Can be an actual [`Caret`] or just a temporary
+/// - [`MainCaret`] and [`ExtraCaret`]: Place `caret`s on the
+///   [`Text`]. Can be an actual `caret` or just a temporary
 ///   [`Form`];
 /// - [`AlignCenter`] and [`AlignRight`]: Change the text alignment in
 ///   a [range];
@@ -39,7 +39,7 @@ use crate::{
 ///   line;
 /// - [`Ghost`]: Places "ghost [`Text`]" on the [`Text`]. This is
 ///   [`Text`] that can be easily ignored when parsing the regular
-///   [`Text`], and [`Caret`]s can't interact with;
+///   [`Text`], and `caret`s can't interact with;
 /// - [`Conceal`]: Hides a [range] in the [`Text`], mostly only useful
 ///   in the [`File`] [`Widget`];
 ///
@@ -48,7 +48,6 @@ use crate::{
 ///
 /// [`Form`]: crate::form::Form
 /// [range]: TextRange
-/// [`Caret`]: crate::mode::Caret
 /// [`File`]: crate::file::File
 /// [`Widget`]: crate::ui::Widget
 pub trait Tag<I>: Sized {
@@ -93,13 +92,13 @@ impl<I: TextRange> Tag<I> for FormTag {
     }
 }
 
-/// [`Tag`]: Places the main Caret on the [`Text`]
+/// [`Tag`]: Places the main caret on the [`Text`]
 ///
 /// You shouldn't have to use this most of the time, since the
-/// [`Text`] can come equipped with [`Carets`], which manage that
+/// [`Text`] can come equipped with [`Selections`], which manage that
 /// automatically for you.
 ///
-/// [`Carets`]: crate::mode::Carets
+/// [`Selections`]: crate::mode::Selections
 #[derive(Clone, Copy)]
 pub struct MainCaret;
 simple_impl_Tag!(MainCaret, RawTag::MainCaret);
@@ -112,10 +111,10 @@ simple_impl_Tag!(MainCaret, RawTag::MainCaret);
 /// [`Form`], but in other platforms, it could show an actual cursor.
 ///
 /// You shouldn't have to use this most of the time, since the
-/// [`Text`] can come equipped with [`Carets`], which manage that
+/// [`Text`] can come equipped with [`Selections`], which manage that
 /// automatically for you.
 ///
-/// [`Carets`]: crate::mode::Carets
+/// [`Selections`]: crate::mode::Selections
 /// [`Ui`]: crate::ui::Ui
 /// [`duat-term`]: https://crates.io/crates/duat-term
 /// [`Form`]: crate::form::Form

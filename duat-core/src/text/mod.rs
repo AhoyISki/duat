@@ -28,7 +28,7 @@
 //! The first method is recommended if you want a [`Text`] that will
 //! be modified by input. This is often the case if your [`Widget`] is
 //! some sort of text box, chief of which is the [`File`], which is
-//! the whole point of a text editor anyway.
+//! the central [`Widget`] of every text editor.
 //!
 //! The second method is what should be used most of the time, as it
 //! lets you quickly create formatted [`Widget`]s/[`StatusLine`] parts
@@ -40,9 +40,10 @@
 //!     if count == 1 {
 //!         txt!("[HorseCount]1[Horses] horse").build()
 //!     } else {
-//!         txt!("[HorseCount]{count}[Horses] horses").build()
+//!         txt!("[HorseCount]{}[Horses] horses", count).build()
 //!     }
 //! }
+//!
 //! fn inlined_number_of_horses(count: usize) -> Text {
 //!     txt!(
 //!         "[HorseCount]{count} [Horses]{}",
@@ -69,8 +70,7 @@
 //! A general rule of thumb for "too expensive" is this: if your
 //! [`Text`] can't scroll more than a few lines, it is not too
 //! expensive to rebuild. This way of editing the [`Text`] is mostly
-//! used on the [`File`] widget and other whose [`Mode`]s make use of
-//! [`EditHelper`]s.
+//! used on the [`File`] widget and other textbox-like [`Widget`]s.
 //!
 //! [Left]: AlignLeft
 //! [right]: AlignRight
@@ -86,7 +86,6 @@
 //! [`Widget`]: crate::ui::Widget
 //! [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
 //! [`Mode`]: crate::mode::Mode
-//! [`EditHelper`]: crate::mode::EditHelper
 mod builder;
 mod bytes;
 mod history;
@@ -738,10 +737,10 @@ impl Text {
 
     /// Enables the usage of [`Selections`] in this [`Text`]
     ///
-    /// This is automatically done whenever you use the [`EditHelper`]
-    /// struct.
+    /// This is automatically done whenever you use the cursor editing
+    /// functions of a [`Handle`].
     ///
-    /// [`EditHelper`]: crate::mode::EditHelper
+    /// [`Handle`]: crate::context::Handle
     pub fn enable_selections(&mut self) {
         if self.0.selections.is_none() {
             self.0.selections = Some(Selections::default())
@@ -752,8 +751,6 @@ impl Text {
     ///
     /// You should use this if you want to send the [`Text`] across
     /// threads.
-    ///
-    /// [`EditHelper`]: crate::mode::EditHelper
     pub fn no_selections(mut self) -> Selectionless {
         self.0.selections = None;
         Selectionless(self)

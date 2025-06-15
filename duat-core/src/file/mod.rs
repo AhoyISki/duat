@@ -19,7 +19,7 @@ use crate::{
     cfg::PrintCfg,
     context::{self, FileHandle, Handle, load_cache},
     data::{Pass, RwData},
-    form,
+    form::Painter,
     hook::{self, FileWritten},
     mode::Selections,
     text::{Bytes, Text, txt},
@@ -84,9 +84,10 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
                     let text = Text::from_file(bytes, selections, path, has_unsaved_changes);
                     (text, pk)
                 }
-                PathKind::NotSet(_) => {
-                    (Text::from_bytes(bytes, Some(Selections::default()), true), pk)
-                }
+                PathKind::NotSet(_) => (
+                    Text::from_bytes(bytes, Some(Selections::default()), true),
+                    pk,
+                ),
             },
             TextOp::OpenPath(path) => {
                 let canon_path = path.canonicalize();
@@ -247,7 +248,8 @@ impl<U: Ui> File<U> {
         self.text.len().line()
     }
 
-    /// The [`Selections`] that are used on the [`Text`], if they exist
+    /// The [`Selections`] that are used on the [`Text`], if they
+    /// exist
     pub fn selections(&self) -> &Selections {
         self.text.selections().unwrap()
     }
@@ -333,7 +335,7 @@ impl<U: Ui> Widget<U> for File<U> {
         self.cfg
     }
 
-    fn print(&mut self, area: &<U as Ui>::Area) {
+    fn print(&mut self, painter: Painter, area: &<U as Ui>::Area) {
         let (start, _) = area.first_points(&self.text, self.cfg);
 
         let mut last_line = area
@@ -345,21 +347,16 @@ impl<U: Ui> Widget<U> for File<U> {
 
         let mut has_wrapped = false;
 
-        area.print_with(
-            &mut self.text,
-            self.cfg,
-            form::painter::<Self>(),
-            move |caret, item| {
-                has_wrapped |= caret.wrap;
-                if has_wrapped && item.part.is_char() {
-                    has_wrapped = false;
-                    let line = item.line();
-                    let wrapped = last_line.is_some_and(|ll| ll == line);
-                    last_line = Some(line);
-                    printed_lines.push((line, wrapped));
-                }
-            },
-        )
+        area.print_with(&mut self.text, self.cfg, painter, move |caret, item| {
+            has_wrapped |= caret.wrap;
+            if has_wrapped && item.part.is_char() {
+                has_wrapped = false;
+                let line = item.line();
+                let wrapped = last_line.is_some_and(|ll| ll == line);
+                last_line = Some(line);
+                printed_lines.push((line, wrapped));
+            }
+        })
     }
 
     fn once() -> Result<(), Text> {

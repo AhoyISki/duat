@@ -291,12 +291,12 @@ impl<U: Ui> Session<U> {
 
     fn save_cache(&self, pa: &mut Pass, is_quitting_duat: bool) {
         let windows = context::windows::<U>().borrow_mut();
-        for (file, area, _) in windows
+        for (handle, _) in windows
             .iter()
             .flat_map(Window::nodes)
             .filter_map(|node| node.as_file())
         {
-            file.write(pa, |file| {
+            handle.write(pa, |file, area| {
                 let path = file.path();
                 file.text_mut().new_moment();
 

@@ -83,7 +83,7 @@ impl<'a> FwdIter<'a> {
     }
 
     /// Disable all [`Conceal`]s containing any of the
-    /// [`Caret`]s
+    /// `caret`s
     ///
     /// Not yet implemented
     ///

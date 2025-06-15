@@ -3,7 +3,11 @@
 //! These are used pretty much everywhere, and are essentially just an
 //! [`RwData<W>`] conjoined to an [`Ui::Area`].
 
-use std::cell::RefMut;
+use std::{
+    any::TypeId,
+    cell::{Cell, RefMut},
+    rc::Rc,
+};
 
 use lender::Lender;
 
@@ -70,12 +74,14 @@ impl<U: Ui> FileHandle<U> {
     ///
     /// [`Area`]: crate::ui::RawArea
     pub fn read<Ret>(&self, pa: &Pass, f: impl FnOnce(&File<U>, &U::Area) -> Ret) -> Ret {
-        if let Some((file, area, _)) = self.fixed.as_ref() {
-            file.read(pa, |file| f(file, area))
+        if let Some((handle, _)) = self.fixed.as_ref() {
+            let file = handle.widget().acquire(pa);
+            f(&file, handle.area())
         } else {
             self.current.read(pa, |parts| {
-                let (file, area, _) = parts.as_ref().unwrap();
-                file.read(pa, |file| f(file, area))
+                let (handle, _) = parts.as_ref().unwrap();
+            let file = handle.widget().acquire(pa);
+            f(&file, handle.area())
             })
         }
     }
@@ -100,8 +106,8 @@ impl<U: Ui> FileHandle<U> {
     ///
     /// [`Area`]: crate::ui::RawArea
     pub fn write<Ret>(&self, pa: &mut Pass, f: impl FnOnce(&mut File<U>, &U::Area) -> Ret) -> Ret {
-        if let Some((file, area, _)) = self.fixed.as_ref() {
-            f(&mut file.acquire_mut(pa), area)
+        if let Some((handle, _)) = self.fixed.as_ref() {
+            f(&mut handle.widget.acquire_mut(pa), &handle.area)
         } else {
             // SAFETY: Since the update closure only uses a write method, the
             // Pass becomes unusable for other purposes, making it impossible
@@ -109,8 +115,8 @@ impl<U: Ui> FileHandle<U> {
             // for self.current.
             unsafe {
                 self.current.read_unsafe(|parts| {
-                    let (file, area, _) = parts.as_ref().unwrap();
-                    f(&mut file.acquire_mut(pa), area)
+                    let (handle, _) = parts.as_ref().unwrap();
+                    f(&mut handle.widget.acquire_mut(pa), &handle.area)
                 })
             }
         }
@@ -130,9 +136,10 @@ impl<U: Ui> FileHandle<U> {
         pa: &Pass,
         f: impl FnOnce(&W, &U::Area) -> R,
     ) -> Option<R> {
-        let read = |(file, area, related): &FileParts<U>| {
-            if file.data_is::<W>() {
-                file.read_as(pa, |w| f(w, area))
+        let read = |(handle, related): &FileParts<U>| {
+            if TypeId::of::<W>() == TypeId::of::<File<U>>() {
+                let area = handle.area();
+                handle.widget().read_as(pa, |w| f(w, area))
             } else {
                 related.read(pa, |related| {
                     related
@@ -160,22 +167,21 @@ impl<U: Ui> FileHandle<U> {
     /// [`OnFileOpen`]: crate::hook::OnFileOpen
     /// [hook]: crate::hook
     pub fn get_related_widget<W: Widget<U> + 'static>(&self, pa: &Pass) -> Option<Handle<W, U>> {
-        let get_related = |(file, area, related): &FileParts<U>| {
-            if file.data_is::<W>() {
-                Some(Handle {
-                    widget: file.try_downcast().unwrap(),
-                    area: area.clone(),
-                    searcher: (),
-                })
+        let get_related = |(handle, related): &FileParts<U>| {
+            if TypeId::of::<W>() == TypeId::of::<File<U>>() {
+                let widget = handle.widget().try_downcast()?;
+                Some(Handle::from_parts(
+                    widget,
+                    handle.area().clone(),
+                    handle.mask().clone(),
+                ))
             } else {
                 related.read(pa, |related| {
                     related.iter().find_map(|node| {
-                        let (widget, area, _) = node.parts();
-                        widget.try_downcast().map(|data| Handle {
-                            widget: data,
-                            area: area.clone(),
-                            searcher: (),
-                        })
+                        let (widget, area, mask, _) = node.parts();
+                        widget
+                            .try_downcast()
+                            .map(|data| Handle::from_parts(data, area.clone(), mask.clone()))
                     })
                 })
             }
@@ -197,7 +203,7 @@ impl<U: Ui> FileHandle<U> {
             // SAFETY: Same situation as the write method
             unsafe {
                 self.current
-                    .read_unsafe(|parts| parts.as_ref().unwrap().2.write(pa, f))
+                    .read_unsafe(|parts| parts.as_ref().unwrap().1.write(pa, f))
             }
         }
     }
@@ -206,12 +212,10 @@ impl<U: Ui> FileHandle<U> {
 
     /// Gets a [`Handle`] from this [`FileHandle`]
     pub fn handle(&self, pa: &Pass) -> Handle<File<U>, U> {
-        if let Some((file, area, _)) = self.fixed.as_ref() {
-            Handle::from_parts(file.clone(), area.clone())
+        if let Some((handle, _)) = self.fixed.as_ref() {
+            handle.clone()
         } else {
-            let parts = self.current.acquire(pa);
-            let (file, area, _) = parts.as_ref().unwrap();
-            Handle::from_parts(file.clone(), area.clone())
+            self.current.acquire(pa).as_ref().unwrap().0.clone()
         }
     }
 
@@ -236,13 +240,13 @@ impl<U: Ui> FileHandle<U> {
     /// [`Widget`]: crate::ui::Widget
     /// [`needs_update`]: crate::ui::Widget::needs_update
     pub fn has_changed(&self) -> bool {
-        if let Some((file, area, _)) = self.fixed.as_ref() {
-            file.has_changed() || area.has_changed()
+        if let Some((handle, _)) = self.fixed.as_ref() {
+            handle.has_changed()
         } else {
             self.current.has_changed()
                 || self.current.read_raw(|parts| {
-                    let (file, area, _) = parts.as_ref().unwrap();
-                    file.has_changed() || area.has_changed()
+                    let (handle, _) = parts.as_ref().unwrap();
+                    handle.has_changed()
                 })
         }
     }
@@ -397,13 +401,18 @@ impl<U: Ui> FileHandle<U> {
 pub struct Handle<W: Widget<U>, U: Ui, S = ()> {
     widget: RwData<W>,
     area: U::Area,
+    mask: Rc<Cell<&'static str>>,
     searcher: S,
 }
 
 impl<W: Widget<U>, U: Ui> Handle<W, U> {
     /// Returns a new instance of a [`Handle<W, U>`]
-    pub(crate) fn from_parts(widget: RwData<W>, area: U::Area) -> Self {
-        Self { widget, area, searcher: () }
+    pub(crate) fn from_parts(
+        widget: RwData<W>,
+        area: U::Area,
+        mask: Rc<Cell<&'static str>>,
+    ) -> Self {
+        Self { widget, area, mask, searcher: () }
     }
 }
 
@@ -663,8 +672,8 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
 
     /// Replaces the [`Text`] of the [`Widget`], returning the
     /// previous value
-    pub fn replace_text(&self, pa: &mut Pass, text: Text) -> Text {
-        self.widget.replace_text(pa, text)
+    pub fn replace_text(&self, pa: &mut Pass, text: impl Into<Text>) -> Text {
+        self.widget.replace_text(pa, text.into())
     }
 
     /// Undoes the last moment in the history, if there is one
@@ -694,6 +703,30 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     /// [`U::Area`]: ui::Area
     pub fn area(&self) -> &U::Area {
         &self.area
+    }
+
+    /// Gets this [`Handle`]'s mask
+    ///
+    /// This mask is going to be used to map [`Form`]s to other
+    /// [`Form`]s when printing via [`Widget::print`]. To see more
+    /// about how masks work, see [`form::enable_mask`].
+    ///
+    /// [`Form`]: crate::form::Form
+    /// [`form::enable_mask`]: crate::form::enable_mask
+    pub fn mask(&self) -> &Rc<Cell<&'static str>> {
+        &self.mask
+    }
+
+    /// Sets this [`Handle`]'s mask, returning the previous one
+    ///
+    /// This mask is going to be used to map [`Form`]s to other
+    /// [`Form`]s when printing via [`Widget::print`]. To see more
+    /// about how masks work, see [`form::enable_mask`].
+    ///
+    /// [`Form`]: crate::form::Form
+    /// [`form::enable_mask`]: crate::form::enable_mask
+    pub fn set_mask(&self, mask: &'static str) -> &'static str {
+        self.mask.replace(mask)
     }
 
     /// Wether someone else called [`write`] or [`write_as`] since the
@@ -756,6 +789,7 @@ impl<U: Ui> Handle<File<U>, U> {
         Handle {
             widget: self.widget.clone(),
             area: self.area.clone(),
+            mask: self.mask.clone(),
             searcher,
         }
     }
@@ -766,6 +800,7 @@ impl<W: Widget<U>, U: Ui, S: Clone> Clone for Handle<W, U, S> {
         Self {
             widget: self.widget.clone(),
             area: self.area.clone(),
+            mask: self.mask.clone(),
             searcher: self.searcher.clone(),
         }
     }
