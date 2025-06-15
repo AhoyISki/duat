@@ -144,27 +144,124 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
     }
 }
 
+/// A mode to control the [`Prompt`], by acting on its [`Text`] and
+/// [`U::Area`]
+///
+/// Through the [`Pass`], one can act on the entirety of Duat's shared
+/// state:
+///
+/// ```rust
+/// use duat_core::prelude::*;
+/// use duat_utils::modes::PromptMode;
+///
+/// #[derive(Default, Clone)]
+/// struct RealTimeSwitch {
+///     initial: Option<String>,
+///     current: Option<String>,
+///     name_was_correct: bool,
+/// };
+///
+/// impl<U: Ui> PromptMode<U> for RealTimeSwitch {
+///     fn update(
+///         &mut self,
+///         pa: &mut Pass,
+///         text: Text,
+///         area: &U::Area,
+///     ) -> Text {
+///         let name = text.to_string();
+///
+///         self.name_was_correct = if name != *self.current.as_ref().unwrap() {
+///             if cmd::buffer(pa, &name).is_ok() {
+///                 self.current = Some(name);
+///                 true
+///             } else {
+///                 false
+///             }
+///         } else {
+///             true
+///         };
+///
+///         text
+///     }
+///
+///     fn on_switch(
+///         &mut self,
+///         pa: &mut Pass,
+///         text: Text,
+///         area: &U::Area,
+///     ) -> Text {
+///         self.initial = Some(context::fixed_file::<U>(pa).unwrap().name(pa));
+///         self.current = self.initial.clone();
+///
+///         text
+///     }
+///
+///     fn before_exit(
+///         &mut self,
+///         pa: &mut Pass,
+///         text: Text,
+///         area: &U::Area,
+///     ) -> Text {
+///         if !self.name_was_correct {
+///             cmd::buffer(pa, self.initial.take().unwrap());
+///         }
+///
+///         text
+///     }
+///
+///     fn prompt(&self) -> Text {
+///         txt!("[Prompt]switch to[Prompt.colon]:").build()
+///     }
+/// }
+/// ```
+///
+/// The [`PromptMode`] above will switch to the file with the same
+/// name as the one in the [`PromptLine`], returning to the initial
+/// file if the match failed.
+///
+/// [`U::Area`]: Ui::Area
 #[allow(unused_variables)]
 pub trait PromptMode<U: Ui>: Clone + 'static {
+    /// Updates the [`PromptLine`] and [`Text`] of the [`Prompt`]
+    ///
+    /// This function is triggered every time the user presses a key
+    /// in the [`Prompt`] mode.
     fn update(&mut self, pa: &mut Pass, text: Text, area: &U::Area) -> Text;
 
+    /// What to do when switchin onto this [`PromptMode`]
+    ///
+    /// The initial [`Text`] is always empty, except for the [prompt]
+    /// [`Ghost`] at the beginning of the line.
+    ///
+    /// [prompt]: PromptMode::prompt
     fn on_switch(&mut self, pa: &mut Pass, text: Text, area: &U::Area) -> Text {
         text
     }
 
+    /// What to do before exiting the [`PromptMode`]
+    ///
+    /// This usually involves some sor of "commitment" to the result,
+    /// e.g., [`RunCommands`] executes the call, [`IncSearch`]
+    /// finishes the search, etc.
     fn before_exit(&mut self, pa: &mut Pass, text: Text, area: &U::Area) -> Text {
         text
     }
 
+    /// Things to do when this [`PromptMode`] is first instantiated
     fn once() {}
 
+    /// What text should be at the beginning of the [`PromptLine`], as
+    /// a [`Ghost`]
     fn prompt(&self) -> Text;
 }
 
+/// Runs Duat commands, with syntax highlighting for correct
+/// [`Parameter`]s
 #[derive(Default, Clone)]
 pub struct RunCommands;
 
 impl RunCommands {
+    /// Crates a new [`RunCommands`]
     pub fn new<U: Ui>() -> Prompt<Self, U> {
         Prompt::new(Self)
     }
@@ -219,6 +316,21 @@ impl<U: Ui> PromptMode<U> for RunCommands {
     }
 }
 
+/// The [`PromptMode`] that makes use of [`IncSearcher`]s
+///
+/// In order to make use of incremental search, you'd do something
+/// like this:
+///
+/// ```rust
+/// use duat_core::prelude::*;
+/// use duat_utils::modes::{IncSearch, Regular, SearchFwd};
+///
+/// fn setup_generic_over_ui<U: Ui>() {
+///     mode::map::<Regular, U>("<C-s>", IncSearch::new(SearchFwd));
+/// }
+/// ```
+///
+/// This function returns a [`Prompt<IncSearch<SearchFwd, U>, U>`],
 #[derive(Clone)]
 pub struct IncSearch<I: IncSearcher<U>, U: Ui> {
     inc: I,
@@ -228,6 +340,8 @@ pub struct IncSearch<I: IncSearcher<U>, U: Ui> {
 }
 
 impl<I: IncSearcher<U>, U: Ui> IncSearch<I, U> {
+    /// Returns a [`Prompt`] with [`IncSearch<I, U>`] as its
+    /// [`PromptMode`]
     pub fn new(inc: I) -> Prompt<Self, U> {
         Prompt::new(Self {
             inc,
@@ -300,10 +414,18 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
     }
 }
 
+/// Pipes the selections of a [`File`] through an external command
+///
+/// This can be useful if you, for example, don't have access to a
+/// formatter, but want to format text, so you pass it to
+/// [`PipeSelections`] with `fold` as the command, or things of the
+/// sort.
 #[derive(Clone, Copy)]
 pub struct PipeSelections<U>(PhantomData<U>);
 
 impl<U: Ui> PipeSelections<U> {
+    /// Returns a [`Prompt`] with [`PipeSelections`] as its
+    /// [`PromptMode`]
     pub fn new() -> Prompt<Self, U> {
         Prompt::new(Self(PhantomData))
     }

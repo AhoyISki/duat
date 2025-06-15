@@ -263,11 +263,44 @@ impl<U: Ui> FileHandle<U> {
     /// Wether the [`RwData`] within and another point to the same
     /// value
     pub fn ptr_eq<T: ?Sized>(&self, pa: &Pass, other: &RwData<T>) -> bool {
-        if let Some((file, ..)) = self.fixed.as_ref() {
-            file.ptr_eq(other)
+        if let Some((handle, ..)) = self.fixed.as_ref() {
+            handle.ptr_eq(other)
         } else {
             self.current
                 .read(pa, |parts| parts.as_ref().unwrap().0.ptr_eq(other))
+        }
+    }
+
+    /// The name of the [`File`] in question
+    pub fn name(&self, pa: &Pass) -> String {
+        if let Some((handle, ..)) = self.fixed.as_ref() {
+            handle.read(pa, |f, _| f.name())
+        } else {
+            self.current.read(pa, |parts| {
+                parts.as_ref().unwrap().0.read(pa, |f, _| f.name())
+            })
+        }
+    }
+
+    /// The path of the [`File`] in question
+    pub fn path(&self, pa: &Pass) -> String {
+        if let Some((handle, ..)) = self.fixed.as_ref() {
+            handle.read(pa, |f, _| f.path())
+        } else {
+            self.current.read(pa, |parts| {
+                parts.as_ref().unwrap().0.read(pa, |f, _| f.path())
+            })
+        }
+    }
+
+    /// The path of the [`File`] in question, if it was set
+    pub fn set_path(&self, pa: &Pass) -> Option<String> {
+        if let Some((handle, ..)) = self.fixed.as_ref() {
+            handle.read(pa, |f, _| f.path_set())
+        } else {
+            self.current.read(pa, |parts| {
+                parts.as_ref().unwrap().0.read(pa, |f, _| f.path_set())
+            })
         }
     }
 }

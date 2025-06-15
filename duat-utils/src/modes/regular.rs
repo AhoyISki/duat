@@ -8,6 +8,7 @@ use duat_core::{
 
 use super::{IncSearch, RunCommands, SearchFwd, SearchRev};
 
+/// The regular, bogstandard mode, a.k.a., supposed to be like VSCode
 #[derive(Clone)]
 pub struct Regular;
 
