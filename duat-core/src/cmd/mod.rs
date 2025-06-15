@@ -199,7 +199,7 @@
 //! [`File`]: crate::file::File
 //! [`&str`]: str
 //! [`cmd`]: self
-//! [`txt!`]: crate::prelude::ok
+//! [`txt!`]: crate::prelude::txt
 //! [`Ok(Some({Text}))`]: Ok
 //! [`txt!`]: crate::prelude::err
 //! [`Text`]: crate::prelude::Text

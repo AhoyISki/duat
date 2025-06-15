@@ -247,7 +247,7 @@
 //! [`Ghost`]: crate::text::Ghost
 //! [`Conceal`]: crate::text::Conceal
 //! [remove]: crate::text::Text::remove_tags
-//! [Move]: crate::mode::Editor::move_to
+//! [Move]: crate::mode::Cursor::move_to
 #![feature(
     decl_macro,
     step_trait,

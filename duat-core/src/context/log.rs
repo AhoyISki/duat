@@ -11,6 +11,11 @@ use crate::text::{Selectionless, Text};
 mod macros {
     /// Logs an error to Duat
     ///
+    /// Use this, as opposed to [`warn!`] and [`info!`], if you want
+    /// to tell the user that something explicitely failed, and they
+    /// need to find a workaround, like failing to write to/read from
+    /// a file, for example.
+    ///
     /// This error follows the same construction as the [`txt!`]
     /// macro, and will create a [`Record`] inside of the [`Logs`],
     /// which can be accessed by anyone, at any time.
@@ -49,6 +54,10 @@ mod macros {
 
     /// Logs an warning to Duat
     ///
+    /// Use this, as opposed to [`error!`] and [`info!`], if you want
+    /// to tell the user that something was partially successful, or
+    /// that a failure happened, but it's near inconsequential.
+    ///
     /// This error follows the same construction as the [`txt!`]
     /// macro, and will create a [`Record`] inside of the [`Logs`],
     /// which can be accessed by anyone, at any time.
@@ -86,6 +95,10 @@ mod macros {
     }
 
     /// Logs an info to Duat
+    ///
+    /// Use this, as opposed to [`error!`] and [`warn!`], when you
+    /// want to tell the user that something was successful, and it is
+    /// important for them to know it was successful.
     ///
     /// This error follows the same construction as the [`txt!`]
     /// macro, and will create a [`Record`] inside of the [`Logs`],
@@ -131,8 +144,10 @@ static LOGS: OnceLock<Logs> = OnceLock::new();
 /// This is a mutable, shareable, [`Send`]/[`Sync`] list of
 /// notifications in the form of [`Text`]s, you can read this,
 /// send new notifications, and check for updates, just like with
-/// [`RwData`], except in this case, you don't need [`Pass`]es, so
-/// there might be changes to make this API safer in the future.
+/// [`RwData`]s and [`Handle`]s.
+///
+/// [`RwData`]: crate::data::RwData
+/// [`Handle`]: super::Handle
 pub fn logs() -> Logs {
     LOGS.get().unwrap().clone()
 }
@@ -141,9 +156,8 @@ pub fn logs() -> Logs {
 ///
 /// This can include command results, failed mappings,
 /// recompilation messages, and any other thing that you want
-/// to [push] to be notified.
-///
-/// [push]: Logs::push
+/// to notify about. In order to set the level of severity for these
+/// messages, use the [`error!`], [`warn!`] and [`info!`] macros.
 #[derive(Debug)]
 pub struct Logs {
     list: &'static Mutex<Vec<Record>>,
@@ -191,7 +205,7 @@ impl Logs {
         self.list.lock().unwrap().get(i).map(ToOwned::to_owned)
     }
 
-    /// Returns the last [`Log`]
+    /// Returns the last [`Record`], if there was one
     pub fn last(&self) -> Option<Record> {
         self.read_state
             .store(self.cur_state.load(Ordering::Relaxed), Ordering::Relaxed);

@@ -442,7 +442,7 @@ impl Hookable for KeysSent {
 /// # Arguments
 ///
 /// - The [key] sent.
-/// - An [`RwData<W>`] for the widget.
+/// - An [`Handle<W>`] for the widget.
 ///
 /// [key]: KeyEvent
 pub struct KeysSentTo<W: Widget<U>, U: Ui>(pub(crate) (Vec<KeyEvent>, Handle<W, U>));

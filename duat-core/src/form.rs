@@ -306,9 +306,8 @@ mod global {
     ///   [`Form`]s themselves.
     ///
     /// When Duat first starts, the only available masks are
-    /// `"error"`, `"warn"` and `"info"`, you can use this
-    /// function to add more of them. To actually make use of the
-    /// masks and remap [`Form`]s, see [`painter_with_mask`].
+    /// `"error"`, `"warn"` and `"info"`, but you can use this
+    /// function to add more of them.
     ///
     /// [`form::from_id`]: from_id
     /// [`Widget`]: crate::ui::Widget

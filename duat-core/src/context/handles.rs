@@ -80,8 +80,8 @@ impl<U: Ui> FileHandle<U> {
         } else {
             self.current.read(pa, |parts| {
                 let (handle, _) = parts.as_ref().unwrap();
-            let file = handle.widget().acquire(pa);
-            f(&file, handle.area())
+                let file = handle.widget().acquire(pa);
+                f(&file, handle.area())
             })
         }
     }
@@ -481,6 +481,7 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     /// [destroyed]: Cursor::destroy
     /// [`edit_main`]: Self::edit_main
     /// [`edit_iter`]: Self::edit_iter
+    /// [`Point::default`]: crate::text::Point::default
     pub fn edit_nth<Ret>(
         &mut self,
         pa: &mut Pass,
@@ -533,6 +534,7 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     /// [`edit_nth`]: Self::edit_nth
     /// [`edit_last`]: Self::edit_last
     /// [`edit_iter`]: Self::edit_iter
+    /// [`Point::default`]: crate::text::Point::default
     pub fn edit_main<Ret>(
         &mut self,
         pa: &mut Pass,
@@ -564,6 +566,7 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     /// [`edit_nth`]: Self::edit_nth
     /// [`edit_main`]: Self::edit_main
     /// [`edit_iter`]: Self::edit_iter
+    /// [`Point::default`]: crate::text::Point::default
     pub fn edit_last<Ret>(
         &mut self,
         pa: &mut Pass,
@@ -595,6 +598,7 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     /// create one at [`Point::default`].
     ///
     /// [`edit_nth`]: Self::edit_nth
+    /// [`Point::default`]: crate::text::Point::default
     pub fn edit_iter<Ret>(
         &mut self,
         pa: &mut Pass,
@@ -700,7 +704,7 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
 
     /// This [`Handle`]'s [`U::Area`]
     ///
-    /// [`U::Area`]: ui::Area
+    /// [`U::Area`]: crate::ui::Ui::Area
     pub fn area(&self) -> &U::Area {
         &self.area
     }
@@ -784,6 +788,7 @@ impl<U: Ui> Handle<File<U>, U> {
     /// [`Cursor`]: crate::mode::Cursor
     /// [`IncSearch`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
     /// [`duat-utils`]: https://docs.rs/duat-utils/lastest/
+    /// [prompt]: https://docs.rs/duat-utils/latest/duat_utils/modes/trait.PromptMode.html
     /// [`duat-kak`]: https://docs.rs/duat-kak/lastest/
     pub fn attach_searcher(&self, searcher: Searcher) -> Handle<File<U>, U, Searcher> {
         Handle {

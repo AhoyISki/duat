@@ -62,6 +62,7 @@ mod selections;
 /// ```
 ///
 /// [`edit_*`]: crate::context::Handle::edit_nth
+/// [`Handle`]: crate::context::Handle
 /// [`replace`]: Cursor::replace
 /// [`insert`]: Cursor::insert
 /// [`append`]: Cursor::append

@@ -10,25 +10,26 @@ use crate::{
 
 /// The list of [`Selection`]s in a [`Text`]
 ///
-/// This list can contain any number of [`Selection`]s, and they should
-/// be usable in whatever order the end user may want, without
+/// This list can contain any number of [`Selection`]s, and they
+/// should be usable in whatever order the end user may want, without
 /// breaking from, for example, modifications that should move cursors
 /// backwards or ahead. If that is not the case, report it as a bug.
 ///
 /// they are primarily meant to be interacted with from the
-/// [`EditHelper`], a struct intended for acting on a very large
-/// number of [`Selection`]s in an efficient manner, although you can
-/// interact with them separately.
+/// [`Handle`], with its [`edit_`] methods meant to efficiently
+/// handle a large number of [`Selection`]s in an efficient manner,
+/// although you can interact with them separately.
 ///
 /// A [`Text`] will keep itself in check with regards to its
 /// [`Selections`], that is, it will automatically remove and add the
-/// [`MainSelection`] and [`ExtraSelection`] [tags] when the [`Selections`] are
-/// altered. If it fails to do that, report it as a bug.
+/// [`MainCaret`] and [`ExtraCaret`] [tags] when the [`Selections`]
+/// are altered. If it fails to do that, report it as a bug.
 ///
-/// [`EditHelper`]: super::EditHelper
+/// [`Handle`]: crate::context::Handle
+/// [`edit_`]: crate::context::Handle::edit_all
 /// [`Text`]: crate::text::Text
-/// [`MainSelection`]: crate::text::MainSelection
-/// [`ExtraSelection`]: crate::text::ExtraSelection
+/// [`MainCaret`]: crate::text::MainCaret
+/// [`ExtraCaret`]: crate::text::ExtraCaret
 /// [tags]: crate::text::Tag
 #[derive(Clone)]
 pub struct Selections {
@@ -74,7 +75,8 @@ impl Selections {
         self.shift_state.take();
     }
 
-    /// Removes all [`Selection`]s and adds a [default `Selection`] as main
+    /// Removes all [`Selection`]s and adds a [default `Selection`] as
+    /// main
     ///
     /// [default `Selection`]: Selection::default
     pub fn reset(&mut self) {
@@ -217,7 +219,8 @@ impl Selections {
             self.main_i = (self.main_i + 1 - c_range.clone().count()).max(c_range.start)
         }
 
-        // If there are no more Selections after this, don't set the shift_state.
+        // If there are no more Selections after this, don't set the
+        // shift_state.
         let cursors_taken = c_range.clone().count();
         let new_sh_from = sh_from.saturating_sub(cursors_taken).max(c_range.start) + 1;
         if new_sh_from < self.buf.len() {
@@ -241,8 +244,9 @@ impl Selections {
         );
 
         // Since applied changes don't remove Selections, we need to shift all
-        // Selections in the whole range. First by the original shift, in order
-        // to update them to the latest shift leve, then by the change.
+        // Selections in the whole range. First by the original shift, in
+        // order to update them to the latest shift leve, then by the
+        // change.
         if c_range.end > sh_from && shift != [0; 3] {
             for cursor in self.buf.range(sh_from..c_range.end).into_iter() {
                 cursor.shift_by(shift);
@@ -289,7 +293,8 @@ impl Selections {
                 cursor.shift_by(shift);
             }
             if i + 1 < self.buf.len() {
-                // i here, instead of i + 1, since this Selection is about to be removed.
+                // i here, instead of i + 1, since this Selection is about to be
+                // removed.
                 self.shift_state.set((i, shift));
             } else {
                 self.shift_state.take();
@@ -841,8 +846,8 @@ mod cursor {
     /// is applied both in [full line] and [wrapped line] vertical
     /// movement.
     ///
-    /// [full line]: crate::mode::Editor::move_ver
-    /// [wrapped line]: crate::mode::Editor::move_ver_wrapped
+    /// [full line]: crate::mode::Cursor::move_ver
+    /// [wrapped line]: crate::mode::Cursor::move_ver_wrapped
     #[derive(Clone, Copy, Debug, Eq, Encode, Decode)]
     pub struct VPoint {
         p: Point,
