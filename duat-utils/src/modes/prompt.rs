@@ -1,6 +1,7 @@
 use std::{io::Write, marker::PhantomData, sync::LazyLock};
 
 use duat_core::{prelude::*, text::Searcher};
+use regex_syntax::{ast::Ast, hir::Hir};
 
 use super::IncSearcher;
 use crate::{
@@ -53,8 +54,6 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
 
                     let text = handle.take_text(pa);
                     let text = self.0.update(pa, text, handle.area());
-                    let text = self.0.before_exit(pa, text, handle.area());
-
                     handle.replace_text(pa, text);
 
                     mode::reset();
@@ -108,16 +107,16 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
                 handle.write_selections(pa, |c| c.clear());
                 let text = handle.take_text(pa);
                 let text = self.0.update(pa, text, handle.area());
-                let text = self.0.before_exit(pa, text, handle.area());
                 handle.replace_text(pa, text);
+
                 mode::reset();
             }
             key!(KeyCode::Enter) => {
                 handle.write_selections(pa, |c| c.clear());
                 let text = handle.take_text(pa);
                 let text = self.0.update(pa, text, handle.area());
-                let text = self.0.before_exit(pa, text, handle.area());
                 handle.replace_text(pa, text);
+
                 mode::reset();
             }
             _ => {}
@@ -141,6 +140,11 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
         let text = self.0.on_switch(pa, text, handle.area());
 
         handle.widget().replace_text(pa, text);
+    }
+
+    fn before_exit(&mut self, pa: &mut Pass, handle: Handle<Self::Widget, U>) {
+        let text = handle.take_text(pa);
+        self.0.before_exit(pa, text, handle.area());
     }
 }
 
@@ -243,9 +247,7 @@ pub trait PromptMode<U: Ui>: Clone + 'static {
     /// This usually involves some sor of "commitment" to the result,
     /// e.g., [`RunCommands`] executes the call, [`IncSearch`]
     /// finishes the search, etc.
-    fn before_exit(&mut self, pa: &mut Pass, text: Text, area: &U::Area) -> Text {
-        text
-    }
+    fn before_exit(&mut self, pa: &mut Pass, text: Text, area: &U::Area) {}
 
     /// Things to do when this [`PromptMode`] is first instantiated
     fn once() {}
@@ -295,13 +297,11 @@ impl<U: Ui> PromptMode<U> for RunCommands {
         text
     }
 
-    fn before_exit(&mut self, _: &mut Pass, text: Text, _: &<U as Ui>::Area) -> Text {
+    fn before_exit(&mut self, _: &mut Pass, text: Text, _: &<U as Ui>::Area) {
         let call = text.to_string();
         if !call.is_empty() {
             cmd::queue_notify(call);
         }
-
-        Text::default()
     }
 
     fn once() {
@@ -359,12 +359,25 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
 
         let handle = context::fixed_file::<U>(pa).unwrap().handle(pa);
 
+        if text == self.prev {
+            return text;
+        } else {
+            let prev = std::mem::replace(&mut self.prev, text.to_string());
+            hook::queue(SearchUpdated((prev, self.prev.clone())));
+        }
+
         match Searcher::new(text.to_string()) {
             Ok(searcher) => {
                 handle.write(pa, |file, area| {
                     area.set_print_info(orig_print_info.clone());
                     *file.selections_mut().unwrap() = orig_selections.clone();
                 });
+
+                let ast = regex_syntax::ast::parse::Parser::new()
+                    .parse(&text.to_string())
+                    .unwrap();
+
+                tag_from_ast(*TAGGER, &mut text, &ast);
 
                 self.inc.search(pa, handle.attach_searcher(searcher));
             }
@@ -374,23 +387,10 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
                 };
 
                 let span = err.span();
-                let id = form::id_of!("ParseCommand.error");
+                let id = form::id_of!("Regex.error");
 
                 text.insert_tag(*TAGGER, span.start.offset..span.end.offset, id.to_tag(0));
             }
-        }
-
-        if text != self.prev {
-            let prev = std::mem::replace(&mut self.prev, text.to_string());
-            hook::queue(SearchUpdated((prev, self.prev.clone())));
-        }
-
-        text
-    }
-
-    fn before_exit(&mut self, _: &mut Pass, text: Text, _: &<U as Ui>::Area) -> Text {
-        if !text.is_empty() {
-            hook::queue(SearchPerformed(text.to_string()));
         }
 
         text
@@ -405,12 +405,37 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
         text
     }
 
+    fn before_exit(&mut self, _: &mut Pass, text: Text, _: &<U as Ui>::Area) {
+        if !text.is_empty() {
+            if let Err(err) = Searcher::new(text.to_string()) {
+                let regex_syntax::Error::Parse(err) = *err else {
+                    unreachable!("As far as I can tell, regex_syntax has goofed up");
+                };
+
+                let range = err.span().start.offset..err.span().end.offset;
+                let err = txt!(
+                    "[a]{:?}, \"{}\"[Prompt.colon]:[] {}",
+                    range,
+                    text.strs(range),
+                    err.kind()
+                );
+
+                context::error!(target: self.inc.prompt().to_string(), "{err}")
+            } else {
+                hook::queue(SearchPerformed(text.to_string()));
+            }
+        }
+    }
+
     fn once() {
-        form::set("Regex.err", "DefaultErr");
+        form::set("Regex.error", "Default.error");
+        form::set("Regex.operator", "operator");
+        form::set("Regex.class", "constant");
+        form::set("Regex.bracket", "punctuation.bracket");
     }
 
     fn prompt(&self) -> Text {
-        self.inc.prompt()
+        txt!("{}[Prompt.colon]:", self.inc.prompt()).build()
     }
 }
 
@@ -470,12 +495,12 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
         text
     }
 
-    fn before_exit(&mut self, pa: &mut Pass, text: Text, _: &<U as Ui>::Area) -> Text {
+    fn before_exit(&mut self, pa: &mut Pass, text: Text, _: &<U as Ui>::Area) {
         use std::process::{Command, Stdio};
 
         let command = text.to_string();
         let Some(caller) = command.split_whitespace().next() else {
-            return text;
+            return;
         };
 
         let mut handle = context::fixed_file::<U>(pa).unwrap().handle(pa);
@@ -500,8 +525,6 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
                 e.replace(out);
             }
         });
-
-        text
     }
 
     fn prompt(&self) -> Text {
@@ -521,5 +544,91 @@ fn run_once<M: PromptMode<U>, U: Ui>() {
     if !list.contains(&TypeId::of::<M>()) {
         M::once();
         list.push(TypeId::of::<M>());
+    }
+}
+
+fn tag_from_ast(tagger: Tagger, text: &mut Text, ast: &Ast) {
+    use duat_core::form::FormId;
+    use regex_syntax::ast::{Ast::*, Span};
+
+    let mut insert_form = |id: FormId, span: Span| {
+        text.insert_tag(tagger, span.start.offset..span.end.offset, id.to_tag(0));
+    };
+
+    match ast {
+        Empty(_) => {}
+        Flags(set_flags) => {
+            let id = form::id_of!("Regex.operator.flags");
+            insert_form(id, set_flags.span);
+        }
+        Literal(literal) => {
+            let id = form::id_of!("Regex.literal");
+            insert_form(id, literal.span);
+        }
+        Dot(span) => {
+            let id = form::id_of!("Regex.operator.dot");
+            insert_form(id, **span);
+        }
+        Assertion(assertion) => {
+            let id = form::id_of!("Regex.operator.assertion");
+            insert_form(id, assertion.span);
+        }
+        ClassUnicode(class) => {
+            let id = form::id_of!("Regex.class.unicode");
+            insert_form(id, class.span);
+        }
+        ClassPerl(class) => {
+            let id = form::id_of!("Regex.class.perl");
+            insert_form(id, class.span);
+        }
+        ClassBracketed(class) => {
+            let class_id = form::id_of!("Regex.class.bracketed");
+            let bracket_id = form::id_of!("Regex.bracket.class");
+
+            insert_form(class_id, *class.kind.span());
+
+            let range = class.span.start.offset..class.span.start.offset + 1;
+            text.insert_tag(tagger, range, bracket_id.to_tag(0));
+            let range = class.span.end.offset - 1..class.span.end.offset;
+            text.insert_tag(tagger, range, bracket_id.to_tag(0));
+        }
+        Repetition(repetition) => {
+            let id = form::id_of!("Regex.operator.repetition");
+            insert_form(id, repetition.op.span);
+        }
+        Group(group) => {
+            let group_id = form::id_of!("Regex.group");
+            let bracket_id = form::id_of!("Regex.bracket.group");
+
+            insert_form(group_id, *group.ast.span());
+
+            let range = group.span.start.offset..group.span.start.offset + 1;
+            text.insert_tag(tagger, range, bracket_id.to_tag(0));
+            let range = group.span.end.offset - 1..group.span.end.offset;
+            text.insert_tag(tagger, range, bracket_id.to_tag(0));
+
+            tag_from_ast(tagger, text, &group.ast);
+        }
+        Alternation(alternation) => {
+            let id = form::id_of!("Regex.operator.alternation");
+
+            let mut prev_end = None;
+
+            for ast in alternation.asts.iter() {
+                tag_from_ast(tagger, text, ast);
+
+                if let Some(end) = prev_end {
+                    let range = end..ast.span().start.offset;
+                    text.insert_tag(tagger, range, id.to_tag(0));
+                }
+
+                prev_end = Some(ast.span().end.offset);
+            }
+        }
+        Concat(concat) => {
+            for ast in concat.asts.iter() {
+                tag_from_ast(tagger, text, ast);
+            }
+        }
     }
 }

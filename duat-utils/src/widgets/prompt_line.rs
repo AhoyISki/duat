@@ -14,6 +14,7 @@
 //! [piping selections]: crate::mode::PipeSelections
 //! [user made functionalities]: PromptMode
 //! [`Mode`]: crate::mode::Mode
+//! [`Prompt`]: crate::modes::Prompt
 use std::{any::TypeId, collections::HashMap, marker::PhantomData};
 
 use duat_core::prelude::*;
@@ -82,7 +83,15 @@ impl<U: Ui> PromptLine<U> {
 impl<U: Ui> Widget<U> for PromptLine<U> {
     type Cfg = PromptLineCfg<U>;
 
-    fn update(_: &mut Pass, _: Handle<Self, U>) {}
+    fn update(pa: &mut Pass, handle: Handle<Self, U>) {
+        handle.write(pa, |pl, area| {
+            if let Some(sels) = pl.text.selections()
+                && let Some(main) = sels.get_main()
+            {
+                area.scroll_around_point(&pl.text, main.caret(), pl.print_cfg());
+            }
+        })
+    }
 
     fn on_unfocus(pa: &mut Pass, handle: Handle<Self, U>) {
         handle.widget().take_text(pa);

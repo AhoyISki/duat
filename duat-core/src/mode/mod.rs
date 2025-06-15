@@ -69,6 +69,8 @@ mod switch {
         MainThreadOnly::new(RefCell::new(None));
     static MODE: LazyLock<MainThreadOnly<RefCell<Box<dyn Any>>>> =
         LazyLock::new(|| MainThreadOnly::new(RefCell::new(Box::new("no mode") as Box<dyn Any>)));
+    static BEFORE_EXIT: MainThreadOnly<RefCell<fn(&mut Pass)>> =
+        MainThreadOnly::new(RefCell::new(|_| {}));
 
     type KeyFn = fn(&mut Pass, IntoIter<KeyEvent>) -> (IntoIter<KeyEvent>, Option<ModeFn>);
     type ModeFn = Box<dyn FnOnce(&mut Pass) -> bool>;
@@ -195,20 +197,13 @@ mod switch {
         send_keys.replace(Some(sk));
     }
 
-    /// Inner function that sends [`KeyEvent`]s
-    ///
-    /// # SAFETY
-    ///
-    /// This function creates its own [`Pass`]es, so you must ensure
-    /// that whatever is calling it is consuming a [`Pass`].
+    /// Static dispatch function that sends keys to a [`Mode`]
     #[allow(clippy::await_holding_refcell_ref)]
-    unsafe fn send_keys_fn<M: Mode<U>, U: Ui>(
+    fn send_keys_fn<M: Mode<U>, U: Ui>(
         pa: &mut Pass,
         mut keys: IntoIter<KeyEvent>,
     ) -> (IntoIter<KeyEvent>, Option<ModeFn>) {
-        let Ok(node) = context::cur_widget::<U>(pa).map(|cw| cw.node(pa)) else {
-            unreachable!("Early, aren't we?");
-        };
+        let node = context::cur_widget::<U>(pa).map(|cw| cw.node(pa)).unwrap();
 
         let (widget, area, mask, _) = node.parts();
         let widget = widget.try_downcast::<M::Widget>().unwrap();
@@ -244,7 +239,7 @@ mod switch {
         (keys, mode_fn)
     }
 
-    /// Function that sets [`Mode`]s, returns `true` if successful
+    /// Static dispatch function to set the [`Mode`]
     fn set_mode_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, mode: M) -> bool {
         // If we are on the correct widget, no switch is needed.
         if context::cur_widget::<U>(pa).unwrap().type_id() != TypeId::of::<M::Widget>() {
@@ -262,27 +257,32 @@ mod switch {
             };
 
             match node {
-                Ok(node) => switch_widget(pa, node),
+                Ok(node) => {
+                    unsafe { BEFORE_EXIT.get() }.borrow_mut()(pa);
+
+                    switch_widget(pa, node)
+                }
                 Err(err) => {
                     context::error!("{err}");
                     return false;
                 }
             };
+        } else {
+            unsafe { BEFORE_EXIT.get() }.borrow_mut()(pa);
         }
 
-        let widget = context::cur_widget::<U>(pa).unwrap();
-        widget.node(pa).parts();
+        let wid = context::cur_widget::<U>(pa).unwrap();
+        wid.node(pa).parts();
         // SAFETY: Other than the internal borrow in CurWidget, no other
         // borrows happen
-        let (widget, area, mask) = unsafe {
-            widget
-                .mutate_data_as(|w: &RwData<M::Widget>, area, mask, _| {
-                    (w.clone(), area.clone(), mask.clone())
-                })
-                .unwrap()
+        let (wid, area, mask) = unsafe {
+            wid.mutate_data_as(|w: &RwData<M::Widget>, area, mask, _| {
+                (w.clone(), area.clone(), mask.clone())
+            })
+            .unwrap()
         };
 
-        let handle = Handle::from_parts(widget, area, mask);
+        let handle = Handle::from_parts(wid, area, mask);
         let mst = ModeSetTo((Some(mode), handle.clone()));
         let mut mode = hook::trigger(pa, mst).0.0.take().unwrap();
 
@@ -307,9 +307,31 @@ mod switch {
             SEND_KEYS
                 .get()
                 .replace(Some(|pa, keys| send_keys_fn::<M, U>(pa, keys)));
+            BEFORE_EXIT.get().replace(|pa| before_exit_fn::<M, U>(pa));
         }
 
         true
+    }
+
+    /// Static dispatch function to use before exiting a given
+    /// [`Mode`]
+    fn before_exit_fn<M: Mode<U>, U: Ui>(pa: &mut Pass) {
+        let wid = context::cur_widget(pa).unwrap();
+
+        let (wid, area, mask) = unsafe {
+            wid.mutate_data_as(|w: &RwData<M::Widget>, area, mask, _| {
+                (w.clone(), area.clone(), mask.clone())
+            })
+            .unwrap()
+        };
+
+        let handle = Handle::from_parts(wid, area, mask);
+
+        // SAFETY: This function's caller has a Pass argument.
+        let mut mode = unsafe { MODE.get() }.borrow_mut();
+        let mode: &mut M = mode.downcast_mut().unwrap();
+
+        mode.before_exit(pa, handle);
     }
 }
 
@@ -582,6 +604,7 @@ mod switch {
 /// [Kakoune]: https://github.com/mawww/kakoune
 /// [`Text`]: crate::Text
 /// [`&mut Selections`]: Selections
+#[allow(unused_variables)]
 pub trait Mode<U: Ui>: Sized + Clone + 'static {
     /// The [`Widget`] that this [`Mode`] controls
     type Widget: Widget<U>;
@@ -589,7 +612,7 @@ pub trait Mode<U: Ui>: Sized + Clone + 'static {
     /// Sends a [`KeyEvent`] to this [`Mode`]
     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>);
 
-    /// A function to trigger when switching to this [`Mode`]
+    /// A function to trigger after switching to this [`Mode`]
     ///
     /// This can be some initial setup, like adding [`Tag`]s to the
     /// [`Text`] in order to show some important visual help for that
@@ -597,8 +620,24 @@ pub trait Mode<U: Ui>: Sized + Clone + 'static {
     ///
     /// [`Tag`]: crate::text::Tag
     /// [`Text`]: crate::text::Text
-    #[allow(unused_variables)]
     fn on_switch(&mut self, pa: &mut Pass, handle: Handle<Self::Widget, U>) {}
+
+    /// A function to trigger before switching off this [`Mode`]
+    ///
+    /// This can be some final cleanup like removing the [`Text`]
+    /// entirely, for example.
+    ///
+    /// You might think "Wait, can't I just do these things before
+    /// calling [`mode::set`] or [`mode::reset`]?". Yeah, you could,
+    /// but these functions can fail, so you would do cleanup without
+    /// actually leaving the [`Mode`]. [`before_exit`] _only_ triggers
+    /// if the switch was actually successful.
+    ///
+    /// [`Text`]: crate::text::Text
+    /// [`mode::set`]: set
+    /// [`mode::reset`]: reset
+    /// [`before_exit`]: Mode::before_exit
+    fn before_exit(&mut self, pa: &mut Pass, handle: Handle<Self::Widget, U>) {}
 
     /// DO NOT IMPLEMENT THIS FUNCTION, IT IS MEANT FOR `&str` ONLY
     #[doc(hidden)]

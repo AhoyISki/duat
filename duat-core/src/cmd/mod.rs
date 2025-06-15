@@ -201,9 +201,6 @@
 //! [`cmd`]: self
 //! [`txt!`]: crate::prelude::txt
 //! [`Ok(Some({Text}))`]: Ok
-//! [`txt!`]: crate::prelude::err
-//! [`Text`]: crate::prelude::Text
-//! [`txt!`]: crate::prelude::text
 //! [`Form`]: crate::form::Form
 //! [`Area`]: crate::ui::Ui::Area
 use std::{

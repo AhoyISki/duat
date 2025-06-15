@@ -144,7 +144,7 @@ impl Tags {
     }
 
     /// Insert a new [`Tag`] at a given byte
-    pub fn insert<R>(&mut self, key: Tagger, r: R, tag: impl Tag<R>) -> Option<ToggleId> {
+    pub fn insert<R>(&mut self, tagger: Tagger, r: R, tag: impl Tag<R>) -> Option<ToggleId> {
         fn exists_at(tags: &GapBuffer<TagOrSkip>, n: usize, tag: RawTag) -> bool {
             rev_range(tags, ..n)
                 .map_while(|(_, ts)| ts.as_tag())
@@ -239,7 +239,7 @@ impl Tags {
 
             true
         }
-        let (start, end, tag_id) = tag.decompose(r, self.len_bytes(), key);
+        let (start, end, tag_id) = tag.decompose(r, self.len_bytes(), tagger);
         if insert_raw_tags(self, start, end) {
             insert_id(self, tag_id)
         } else {
@@ -303,12 +303,12 @@ impl Tags {
     }
 
     /// Removes all [`RawTag`]s of a give [`Taggers`]
-    pub fn remove_from(&mut self, range: impl RangeBounds<usize>, keys: impl Taggers) {
+    pub fn remove_from(&mut self, range: impl RangeBounds<usize>, taggers: impl Taggers) {
         let (start, end) = crate::get_ends(range, self.len_bytes());
 
         // It is best to do this first, so getting skips returns correct
         // entries.
-        self.remove_intersecting_bounds(start..end, |tag| keys.clone().contains(tag.key()));
+        self.remove_intersecting_bounds(start..end, |tag| taggers.clone().contains(tag.tagger()));
 
         let [mut n, mut b, _] = self.skip_behind(start);
         let (mut initial_n, mut initial_b) = (n, b);
@@ -338,7 +338,7 @@ impl Tags {
                 b += skip as usize;
                 removed = 0;
             } else if let Some(TagOrSkip::Tag(tag)) = ts {
-                if !keys.clone().contains(tag.key()) {
+                if !taggers.clone().contains(tag.tagger()) {
                     n += 1;
                     continue;
                 }
@@ -620,9 +620,9 @@ impl Tags {
                     }
 
                     type Bound = (Cell<[usize; 2]>, RawTag, RangeId);
-                    let key = |(place, tag, _): &Bound| (place.get(), *tag);
-                    let s_i = self.bounds.binary_search_by_key(&([s_n, s_b], s_tag), key);
-                    let e_i = self.bounds.binary_search_by_key(&([n, b], tag), key);
+                    let tagger = |(place, tag, _): &Bound| (place.get(), *tag);
+                    let s_i = self.bounds.binary_search_by_key(&([s_n, s_b], s_tag), tagger);
+                    let e_i = self.bounds.binary_search_by_key(&([n, b], tag), tagger);
 
                     match (s_i, e_i) {
                         (Err(s_i), Err(e_i)) => {
@@ -695,7 +695,7 @@ impl Tags {
         let tags = {
             let iter = fwd_range(&self.buf, s_n..).filter_map(entries_fwd(s_b));
             iter.map(|(n, b, tag)| match tag {
-                StartConceal(key) => {
+                StartConceal(tagger) => {
                     if let Ok(i) = self
                         .bounds
                         .binary_search_by_key(&n, |(bound, ..)| bound.get()[0])
@@ -704,7 +704,7 @@ impl Tags {
                         let e_bound = self.bounds[(i + 1)..].iter().find(|(_, _, lhs)| *lhs == id);
                         (b, ConcealUntil(e_bound.unwrap().0.get()[1] as u32))
                     } else {
-                        (b, StartConceal(key))
+                        (b, StartConceal(tagger))
                     }
                 }
                 tag => (b, tag),
@@ -734,7 +734,7 @@ impl Tags {
         let tags = {
             let iter = rev_range(&self.buf, ..e_n).filter_map(entries_rev(e_b));
             iter.map(|(n, b, tag)| match tag {
-                EndConceal(key) => {
+                EndConceal(tagger) => {
                     if let Ok(i) = self
                         .bounds
                         .binary_search_by_key(&n, |(bound, ..)| bound.get()[0])
@@ -743,7 +743,7 @@ impl Tags {
                         let s_bound = self.bounds[..i].iter().rev().find(|(_, _, lhs)| *lhs == id);
                         (b, ConcealUntil(s_bound.unwrap().0.get()[1] as u32))
                     } else {
-                        (b, EndConceal(key))
+                        (b, EndConceal(tagger))
                     }
                 }
                 tag => (b, tag),

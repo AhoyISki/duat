@@ -632,8 +632,6 @@ impl<U: Ui> Node<U> {
 
     /// Updates and prints this [`Node`]
     pub(crate) fn update_and_print(&self, pa: &mut Pass) {
-        let text_was_empty = self.widget.acquire_mut(pa).text().is_empty_empty();
-
         (self.update)(self, pa);
 
         {
@@ -644,14 +642,13 @@ impl<U: Ui> Node<U> {
             if self.area.print_info() != <U::Area as RawArea>::PrintInfo::default() {
                 widget.text_mut().update_bounds();
             }
+        };
 
-            // Avoid calling the function if it is not needed
-            if !(text_was_empty && widget.text().is_empty_empty()) {
-                (self.print)(self, pa);
-            }
+        (self.print)(self, pa);
 
-            widget.text_mut().remove_selections(&self.area, cfg);
-        }
+        let mut widget = self.widget.acquire_mut(pa);
+        let cfg = widget.print_cfg();
+        widget.text_mut().remove_selections(&self.area, cfg);
     }
 
     /// What to do when focusing
@@ -672,10 +669,11 @@ impl<U: Ui> Node<U> {
         Widget::update(pa, handle);
     }
 
+    /// Static dispatch inner print function
     fn print_fn<W: Widget<U>>(&self, pa: &mut Pass) {
         let painter = form::painter_with_mask::<W>(self.mask.get());
-        self.widget
-            .write(pa, |widget| widget.print(painter, &self.area))
+        let mut widget = self.widget.acquire_mut(pa);
+        widget.print(painter, &self.area);
     }
 
     /// Static dispatch inner update on_focus

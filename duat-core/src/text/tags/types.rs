@@ -414,7 +414,7 @@ impl RawTag {
     }
 
     /// The [`Tagger`] of this [`RawTag`]
-    pub(in crate::text) fn key(&self) -> Tagger {
+    pub(in crate::text) fn tagger(&self) -> Tagger {
         match self.get_key() {
             Some(key) => key,
             None => unreachable!(

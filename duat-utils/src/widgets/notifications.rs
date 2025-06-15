@@ -12,7 +12,7 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use duat_core::{form::Painter, hook::KeysSent, prelude::*};
+use duat_core::{context::Record, form::Painter, hook::KeysSent, prelude::*};
 
 /// A [`Widget`] to show notifications
 ///
@@ -29,6 +29,8 @@ pub struct Notifications<U> {
     logs: context::Logs,
     text: Text,
     _ghost: PhantomData<U>,
+    format_rec: Box<dyn FnMut(Record) -> Text>,
+    get_mask: Box<dyn FnMut(Record) -> &'static str>,
 }
 
 static CLEAR_NOTIFS: AtomicBool = AtomicBool::new(false);
@@ -37,7 +39,25 @@ impl<U: Ui> Widget<U> for Notifications<U> {
     type Cfg = NotificationsCfg<U>;
 
     fn cfg() -> Self::Cfg {
-        NotificationsCfg(None, PhantomData)
+        NotificationsCfg {
+            left_div: None,
+            format_rec: Box::new(|rec| {
+                txt!(
+                    "[Notifications.target]{}[Notifications.colon]: {}",
+                    rec.target(),
+                    rec.text().clone()
+                )
+                .build()
+            }),
+            get_mask: Box::new(|rec| match rec.level() {
+                context::Level::Error => "error",
+                context::Level::Warn => "warn",
+                context::Level::Info => "info",
+                context::Level::Debug => "debug",
+                context::Level::Trace => unreachable!(),
+            }),
+            _ghost: PhantomData,
+        }
     }
 
     fn update(pa: &mut Pass, handle: Handle<Self, U>) {
@@ -46,14 +66,8 @@ impl<U: Ui> Widget<U> for Notifications<U> {
             if wid.logs.has_changed()
                 && let Some(rec) = wid.logs.last()
             {
-                handle.set_mask(match rec.level() {
-                    context::Level::Error => "error",
-                    context::Level::Warn => "warn",
-                    context::Level::Info => "info",
-                    context::Level::Debug => "debug",
-                    context::Level::Trace => unreachable!(),
-                });
-                wid.text = txt!("{}: {}", rec.target(), rec.text().clone()).build();
+                handle.set_mask((wid.get_mask)(rec.clone()));
+                wid.text = (wid.format_rec)(rec);
             } else if clear_notifs {
                 wid.text = Text::new()
             }
@@ -102,7 +116,12 @@ impl<U: Ui> Widget<U> for Notifications<U> {
 /// [hook]: hooks
 /// [`left_with_ratio`]: NotificationsCfg::left_with_ratio
 #[doc(hidden)]
-pub struct NotificationsCfg<U>(Option<(u16, u16)>, PhantomData<U>);
+pub struct NotificationsCfg<U> {
+    left_div: Option<(u16, u16)>,
+    format_rec: Box<dyn FnMut(Record) -> Text>,
+    get_mask: Box<dyn FnMut(Record) -> &'static str>,
+    _ghost: PhantomData<U>,
+}
 
 impl<U> NotificationsCfg<U> {
     /// Pushes to the left and sets a height
@@ -114,7 +133,19 @@ impl<U> NotificationsCfg<U> {
     /// [`StatusLine`]: super::StatusLine
     /// [`PromptLine`]: super::PromptLine
     pub fn left_with_ratio(self, den: u16, div: u16) -> Self {
-        Self(Some((den, div)), PhantomData)
+        Self { left_div: Some((den, div)), ..self }
+    }
+
+    /// Changes the way [`Record`]s are formatted by [`Notifications`]
+    pub fn formatted(self, format_rec: impl FnMut(Record) -> Text + 'static) -> Self {
+        Self { format_rec: Box::new(format_rec), ..self }
+    }
+
+    /// Changes how [`Notifications`] decides which [mask] to use
+    ///
+    /// [mask]: duat_core::context::Handle::set_mask
+    pub fn with_mask(self, get_mask: impl FnMut(Record) -> &'static str + 'static) -> Self {
+        Self { get_mask: Box::new(get_mask), ..self }
     }
 }
 
@@ -125,10 +156,12 @@ impl<U: Ui> WidgetCfg<U> for NotificationsCfg<U> {
         let widget = Notifications {
             logs: context::logs(),
             text: Text::new(),
+            format_rec: self.format_rec,
+            get_mask: self.get_mask,
             _ghost: PhantomData,
         };
 
-        let specs = if let Some((den, div)) = self.0 {
+        let specs = if let Some((den, div)) = self.left_div {
             PushSpecs::left().with_hor_ratio(den, div)
         } else {
             PushSpecs::below().with_ver_len(1.0)

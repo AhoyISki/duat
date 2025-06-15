@@ -380,6 +380,7 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// [`read_unsafe`]: Self::read_unsafe
     /// [`write_unsafe`]: Self::write_unsafe
+    #[track_caller]
     pub fn write<Ret>(&self, _: &mut Pass, f: impl FnOnce(&mut T) -> Ret) -> Ret {
         update_cur_state(&self.read_state, &self.cur_state);
         f(&mut *self.value.borrow_mut())
