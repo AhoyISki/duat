@@ -327,25 +327,9 @@ impl<U: Ui> Plugin<U> for Kak<U> {
         });
 
         if self.set_cursor_forms {
-            static MODES: &[&str] = &["Insert", "Normal", "GoTo"];
-            form::ids_of_non_static(MODES.iter().flat_map(|mode| {
-                [
-                    format!("MainCursor.{mode}"),
-                    format!("ExtraCursor.{mode}"),
-                    format!("MainSelection.{mode}"),
-                    format!("ExtraSelection.{mode}"),
-                ]
-            }));
-
-            hook::add::<ModeSwitched>(|_, (_, new)| {
-                if !MODES.contains(&new) {
-                    return;
-                }
-                form::set("MainCursor", format!("MainCursor.{new}"));
-                form::set("ExtraCursor", format!("ExtraCursor.{new}"));
-                form::set("MainSelection", format!("MainSelection.{new}"));
-                form::set("ExtraSelection", format!("ExtraSelection.{new}"));
-            });
+            form::enable_mask("Insert");
+            form::enable_mask("Normal");
+            form::enable_mask("OneKey");
         }
     }
 }
@@ -514,7 +498,7 @@ impl<U: Ui> Mode<U> for Normal {
                     }
                 };
             }),
-            key!(Char('c'), Mod::NONE | Mod::ALT) => handle.edit_all(pa, |mut c| {
+            key!(Char('e'), Mod::NONE | Mod::ALT) => handle.edit_all(pa, |mut c| {
                 let alt_word = key.modifiers.contains(Mod::ALT);
                 let init = no_nl_windows(c.chars_fwd()).next();
                 if let Some(((p0, c0), (p1, c1))) = init {
@@ -1071,6 +1055,10 @@ impl<U: Ui> Mode<U> for Normal {
             _ => {}
         }
     }
+
+    fn on_switch(&mut self, _: &mut Pass, handle: Handle<Self::Widget, U>) {
+        handle.set_mask("Normal");
+    }
 }
 
 impl Default for Normal {
@@ -1236,6 +1224,10 @@ impl<U: Ui> Mode<U> for Insert {
             _ => {}
         }
     }
+
+    fn on_switch(&mut self, _: &mut Pass, handle: Handle<Self::Widget, U>) {
+        handle.set_mask("Insert");
+    }
 }
 
 #[derive(Clone)]
@@ -1277,6 +1269,10 @@ impl<U: Ui> Mode<U> for OneKey {
         };
 
         mode::set::<U>(Normal::new_with_sel_type(sel_type));
+    }
+
+    fn on_switch(&mut self, _: &mut Pass, handle: Handle<Self::Widget, U>) {
+        handle.set_mask("OneKey");
     }
 }
 
@@ -1645,7 +1641,7 @@ impl<U: Ui> IncSearcher<U> for Select {
     }
 
     fn prompt(&self) -> Text {
-        txt!("[Prompt]select[Prompt.colon]:").build()
+        txt!("[prompt]select").build()
     }
 }
 
@@ -1685,7 +1681,7 @@ impl<U: Ui> IncSearcher<U> for Split {
     }
 
     fn prompt(&self) -> Text {
-        txt!("[Prompt]split[Prompt.colon]:").build()
+        txt!("[prompt]split").build()
     }
 }
 
