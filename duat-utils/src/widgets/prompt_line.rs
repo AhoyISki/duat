@@ -55,13 +55,13 @@ impl<U: Ui> WidgetCfg<U> for PromptLineCfg<U> {
 /// - [`PipeSelections`]: Will pass each selection to a shell command,
 ///   replacing the selections with the `stdout`.
 ///
-/// [`Prompt`]: crate::mode::Prompt
-/// [`Mode`]: crate::mode::Mode
-/// [`RunCommands`]: crate::mode::RunCommands
-/// [`IncSearch`]: crate::mode::IncSearch
-/// [`File`]: super::File
-/// [`IncSearcher`]: crate::mode::IncSearcher
-/// [`PipeSelections`]: crate::mode::PipeSelections
+/// [`Prompt`]: crate::modes::Prompt
+/// [`Mode`]: duat_core::mode::Mode
+/// [`RunCommands`]: crate::modes::RunCommands
+/// [`IncSearch`]: crate::modes::IncSearch
+/// [`File`]: duat_core::file::File
+/// [`IncSearcher`]: crate::modes::IncSearcher
+/// [`PipeSelections`]: crate::modes::PipeSelections
 pub struct PromptLine<U> {
     text: Text,
     prompts: HashMap<TypeId, Text>,

@@ -304,7 +304,7 @@
 //! [Changes]: prelude::print::wrap_on_edge
 //! [Removes]: prelude::hook::remove
 //! [group]: prelude::hook::add_grouped
-//! [Pushes]: prelude::FileBuilder::push
+//! [Pushes]: prelude::ui::FileBuilder::push
 //! [vertical rule]: prelude::VertRule
 //! [line numbers]: prelude::LineNumbers
 //! [custom status line]: prelude::status

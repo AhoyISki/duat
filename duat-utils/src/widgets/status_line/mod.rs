@@ -77,8 +77,8 @@ use crate::state::{file_fmt, main_fmt, mode_fmt, mode_name, sels_fmt};
 /// ```
 ///
 /// [`File`]: duat_core::file::File
-/// [`OnFileOpen`]: crate::hooks::OnFileOpen
-/// [`OnWindowOpen`]: crate::hooks::OnWindowOpen
+/// [`OnFileOpen`]: duat_core::hook::OnFileOpen
+/// [`OnWindowOpen`]: duat_core::hook::OnWindowOpen
 pub struct StatusLine<U: Ui> {
     handle: FileHandle<U>,
     text_fn: TextFn<U>,

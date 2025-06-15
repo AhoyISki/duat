@@ -83,7 +83,7 @@
 //! [`Mode`]: duat_core::mode::Mode
 //! [`Prompt`]: modes::Prompt
 //! [`PromptMode`]: modes::PromptMode
-//! [`Widget`]: duat_core::widget::Widget
+//! [`Widget`]: duat_core::ui::Widget
 //! [`RunCommands`]: modes::RunCommands
 //! [`Parameter`]: duat_core::cmd::Parameter
 //! [`PipeSelections`]: modes::PipeSelections
@@ -114,6 +114,7 @@ pub mod hooks {
     //! More may come in the future
     //!
     //! [`hook`]: duat_core::hook
+    //! [`IncSearch`]: crate::modes::IncSearch
     use duat_core::hook::Hookable;
 
     /// [`Hookable`]: Triggers when a [search] is updated

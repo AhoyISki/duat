@@ -4,18 +4,16 @@
 //! pretty much every `config` of Duat, since they are Duat
 //! equivalents to what is commonly found in other text editors.
 //!
+//! 
 //!
-//!
-//! [`Widget`]: duat_core::widget::Widget
+//! [`Widget`]: duat_core::ui::Widget
 //! [`Text`]: duat_core::text::Text
 //! [`File`]: duat_core::file::File
 //! [`OnFileOpen`]: duat_core::hook::OnFileOpen
 //! [`OnWindowOpen`]: duat_core::hook::OnWindowOpen
+//! [`Constraint`]: duat_core::ui::Constraint
 //! [`duat-term`]: https://docs.rs/duat-term/latest/duat_term/
 //! [`VertRule`]: https://docs.rs/duat-term/latest/duat_term/struct.VertRule.html
-//! [`OnFileOpen`]: crate::hooks::OnFileOpen
-//! [`OnWindowOpen`]: crate::hooks::OnWindowOpen
-//! [`Constraint`]: crate::ui::Constraint
 pub use self::{
     line_numbers::{LineNum, LineNumbers, LineNumbersOptions},
     notifications::{Notifications, NotificationsCfg},

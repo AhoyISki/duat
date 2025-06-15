@@ -242,6 +242,8 @@ pub trait PromptMode<U: Ui>: Clone + 'static {
 
 /// Runs Duat commands, with syntax highlighting for correct
 /// [`Parameter`]s
+///
+/// [`Parameter`]: duat_core::cmd::Parameter
 #[derive(Default, Clone)]
 pub struct RunCommands;
 

@@ -28,7 +28,7 @@ use duat_core::{
 /// If you don't want this behaviour, see [`left_with_ratio`]
 ///
 /// [`PromptLine`]: super::PromptLine
-/// [hook]: hooks
+/// [hook]: duat_core::hook
 /// [`left_with_ratio`]: NotificationsCfg::left_with_ratio
 pub struct Notifications<U> {
     logs: context::Logs,
