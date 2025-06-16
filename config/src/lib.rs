@@ -24,18 +24,19 @@ fn setup() {
         // Forms with them.
         catppuccin::Catppuccin::new().modify(|c| {
             form::set_many!(
-                ("MainCursor.Normal", Form::with(c.base).on(c.text)),
-                ("ExtraCursor.Normal", Form::with(c.base).on(c.sapphire)),
-                ("MainCursor.Insert", Form::with(c.base).on(c.mauve)),
-                ("ExtraCursor.Insert", Form::with(c.base).on(c.yellow)),
-                ("Default.StatusLine", Form::on(c.surface0))
+                ("caret.main.Normal", Form::with(c.base).on(c.text)),
+                ("caret.extra.Normal", Form::with(c.base).on(c.sapphire)),
+                ("caret.main.Insert", Form::with(c.base).on(c.mauve)),
+                ("caret.extra.Insert", Form::with(c.base).on(c.yellow)),
             );
         })
     );
 
     // You can also set Forms to reference other Forms.
-    form::set("MainCursor.GoTo", "MainCursor.Normal");
-    form::set("ExtraCursor.GoTo", "ExtraCursor.Normal");
+    form::set("caret.main.OneKey", "caret.main.Normal");
+    form::set("caret.extra.OneKey", "caret.extra.Normal");
+    // Disables the cursor's shape.
+    cursor::unset();
 
     // The print module configures file printing.
     print::wrap_on_edge();

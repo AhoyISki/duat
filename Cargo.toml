@@ -1,6 +1,6 @@
 [package]
 name = "duat"
-version = "0.5.0"
+version = "0.5.1"
 authors = ["AhoyISki"]
 description = "A Highly customizable text editor, configured through the use of a rust crate."
 homepage = "https://github.com/AhoyISki/duat"
@@ -19,7 +19,7 @@ members = ["duat-core", "duat-term", "duat-utils"]
 exclude = ["config"]
 
 [dependencies]
-duat-core = { version = "0.5.0", path = "duat-core" }
+duat-core = { version = "0.5.1", path = "duat-core" }
 duat-utils = { version = "0.2.0", path = "duat-utils" }
 duat-filetype = { version = "0.2.0", git = "https://github.com/AhoyISki/duat-filetype" }
 

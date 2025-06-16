@@ -162,12 +162,12 @@ mod global {
         PALETTE.form_from_id(id).unwrap_or(Form::new().0)
     }
 
-    /// The current main cursor, with the `"MainCursor"` [`Form`]
+    /// The current main cursor, with the `"caret.main"` [`Form`]
     pub fn main_cursor() -> (Form, Option<CursorShape>) {
         PALETTE.main_cursor()
     }
 
-    /// The current extra cursor, with the `"ExtraCursor"` [`Form`]
+    /// The current extra cursor, with the `"caret.extra"` [`Form`]
     pub fn extra_cursor() -> (Form, Option<CursorShape>) {
         PALETTE.extra_cursor()
     }
@@ -227,7 +227,7 @@ mod global {
     /// Removes the main cursor's [shape]
     ///
     /// By doing this, you will force Duat to draw the main cursor by
-    /// use of the `"MainCursor"` form.
+    /// use of the `"caret.main"` form.
     ///
     /// If you want to set the [shape] instead, see
     /// [`form::set_main_cursor`].
@@ -241,7 +241,7 @@ mod global {
     /// Removes extra cursors's [shape]s
     ///
     /// By doing this, you will force Duat to draw the extra cursor by
-    /// use of the `"MainCursor"` form. Do note however that, in
+    /// use of the `"caret.main"` form. Do note however that, in
     /// something like a terminal, extra cursors would never be
     /// printed as a [shape] anyways, since terminals can only
     /// print one cursor at a time.
@@ -253,6 +253,19 @@ mod global {
     /// [`form::set_extra_cursor`]: set_extra_cursor
     pub fn unset_extra_cursor() {
         queue(move || PALETTE.unset_extra_cursor());
+    }
+
+    /// Removes all cursors's [shape]s
+    ///
+    /// Is the equivalent of calling [`unset_main_cursor`] and
+    /// [`unset_extra_cursor`].
+    ///
+    /// [shape]: CursorShape
+    pub fn unset_cursors() {
+        queue(move || {
+            PALETTE.unset_main_cursor();
+            PALETTE.unset_extra_cursor();
+        })
     }
 
     /// Creates a [`Painter`] with a mask
@@ -1355,40 +1368,40 @@ impl Painter {
         style
     }
 
-    /// Applies the `"MainCursor"` [`Form`]
+    /// Applies the `"caret.main"` [`Form`]
     #[inline(always)]
     pub fn apply_main_cursor(&mut self) {
         self.apply(M_CAR_ID);
         self.final_form_start -= 1;
     }
 
-    /// Removes the `"MainCursor"` [`Form`]
+    /// Removes the `"caret.main"` [`Form`]
     #[inline(always)]
     pub fn remove_main_caret(&mut self) {
         self.final_form_start += 1;
         self.remove(M_CAR_ID);
     }
 
-    /// Applies the `"ExtraCursor"` [`Form`]
+    /// Applies the `"caret.extra"` [`Form`]
     #[inline(always)]
     pub fn apply_extra_cursor(&mut self) {
         self.apply(E_CAR_ID);
         self.final_form_start -= 1;
     }
 
-    /// Removes the `"ExtraCursor"` [`Form`]
+    /// Removes the `"caret.extra"` [`Form`]
     #[inline(always)]
     pub fn remove_extra_caret(&mut self) {
         self.final_form_start += 1;
         self.remove(E_CAR_ID);
     }
 
-    /// The [`Form`] "ExtraCursor", and its shape.
+    /// The [`Form`] "caret.extra", and its shape.
     pub fn main_cursor(&self) -> Option<CursorShape> {
         self.inner.main_cursor
     }
 
-    /// The [`Form`] "ExtraCursor", and its shape.
+    /// The [`Form`] "caret.extra", and its shape.
     pub fn extra_cursor(&self) -> Option<CursorShape> {
         self.inner.extra_cursor
     }
