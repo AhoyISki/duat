@@ -269,7 +269,6 @@ use std::{
 
 use duat_core::{
     cfg::WordChars,
-    hook::ModeSwitched,
     mode::{Cursor, KeyCode::*, KeyEvent as Event, KeyMod as Mod, Selections},
     prelude::*,
     text::{Point, Searcher},
@@ -417,7 +416,7 @@ impl Normal {
 impl<U: Ui> Mode<U> for Normal {
     type Widget = File<U>;
 
-    fn send_key(&mut self, pa: &mut Pass, key: Event, mut handle: Handle<Self::Widget, U>) {
+    fn send_key(&mut self, pa: &mut Pass, key: Event, handle: Handle<Self::Widget, U>) {
         let wc = handle.cfg(pa).word_chars;
 
         match key {
@@ -622,7 +621,7 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('m' | 'M')) => {
                 let mut failed = false;
                 let failed = &mut failed;
-                edit_or_destroy_all(pa, &mut handle, failed, |c| {
+                edit_or_destroy_all(pa, &handle, failed, |c| {
                     let object = Object::from_char('m', c.cfg().word_chars, self.brackets).unwrap();
                     let [p2, p3] = object.find_ahead(c, 0, None)?;
                     let prev_caret = c.caret();
@@ -650,7 +649,7 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('m' | 'M'), Mod::ALT) => {
                 let mut failed = false;
                 let failed = &mut failed;
-                edit_or_destroy_all(pa, &mut handle, failed, |c| {
+                edit_or_destroy_all(pa, &handle, failed, |c| {
                     let object = Object::from_char('m', c.cfg().word_chars, self.brackets).unwrap();
                     let [p0, p1] = object.find_behind(c, 0, None)?;
                     let prev_caret = c.caret();
@@ -869,12 +868,12 @@ impl<U: Ui> Mode<U> for Normal {
             ////////// Clipboard keys
             key!(Char('y')) => {
                 handle.new_moment(pa);
-                copy_selections(pa, &mut handle)
+                copy_selections(pa, &handle)
             }
             key!(Char('d'), Mod::NONE | Mod::ALT) => {
                 handle.new_moment(pa);
                 if key.modifiers == Mod::NONE {
-                    copy_selections(pa, &mut handle);
+                    copy_selections(pa, &handle);
                 }
                 handle.edit_all(pa, |mut c| {
                     c.replace("");
@@ -884,7 +883,7 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('c'), Mod::NONE | Mod::ALT) => {
                 handle.new_moment(pa);
                 if key.modifiers == Mod::NONE {
-                    copy_selections(pa, &mut handle);
+                    copy_selections(pa, &handle);
                 }
                 handle.edit_all(pa, |mut c| {
                     c.replace("");
@@ -1115,7 +1114,7 @@ impl Default for Insert {
 impl<U: Ui> Mode<U> for Insert {
     type Widget = File<U>;
 
-    fn send_key(&mut self, pa: &mut Pass, key: Event, mut handle: Handle<Self::Widget, U>) {
+    fn send_key(&mut self, pa: &mut Pass, key: Event, handle: Handle<Self::Widget, U>) {
         if let key!(Left | Down | Up | Right, mods) = key
             && mods.contains(Mod::SHIFT)
         {
@@ -1243,9 +1242,9 @@ enum OneKey {
 impl<U: Ui> Mode<U> for OneKey {
     type Widget = File<U>;
 
-    fn send_key(&mut self, pa: &mut Pass, key: Event, mut handle: Handle<Self::Widget, U>) {
+    fn send_key(&mut self, pa: &mut Pass, key: Event, handle: Handle<Self::Widget, U>) {
         let sel_type = match *self {
-            OneKey::GoTo(st) => match_goto::<(), U>(pa, &mut handle, key, st),
+            OneKey::GoTo(st) => match_goto::<(), U>(pa, &handle, key, st),
             OneKey::Find(st, ss) | OneKey::Until(st, ss) if let Some(char) = just_char(key) => {
                 match_find_until(pa, handle, char, matches!(*self, OneKey::Until(..)), st);
                 if ss {
@@ -1278,7 +1277,7 @@ impl<U: Ui> Mode<U> for OneKey {
 
 fn match_goto<S, U: Ui>(
     pa: &mut Pass,
-    handle: &mut Handle<File<U>, U, S>,
+    handle: &Handle<File<U>, U, S>,
     key: Event,
     mut sel_type: SelType,
 ) -> SelType {
@@ -1353,7 +1352,7 @@ fn match_goto<S, U: Ui>(
 
 fn match_find_until<U: Ui>(
     pa: &mut Pass,
-    mut handle: Handle<File<U>, U, ()>,
+    handle: Handle<File<U>, U, ()>,
     char: char,
     is_t: bool,
     st: SelType,
@@ -1387,7 +1386,7 @@ fn match_find_until<U: Ui>(
 
 fn match_inside_around<U: Ui>(
     pa: &mut Pass,
-    mut handle: Handle<File<U>, U, ()>,
+    handle: Handle<File<U>, U, ()>,
     key: Event,
     brackets: Brackets,
     is_inside: bool,
@@ -1410,7 +1409,7 @@ fn match_inside_around<U: Ui>(
 
     if let Some(object) = Object::from_char(char, wc, brackets) {
         match char {
-            'w' | 'W' => edit_or_destroy_all(pa, &mut handle, &mut failed, |c| {
+            'w' | 'W' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
                 let start = object.find_behind(c, 0, None);
                 let [_, p1] = object.find_ahead(c, 0, None)?;
                 let p0 = {
@@ -1424,7 +1423,7 @@ fn match_inside_around<U: Ui>(
                 c.move_hor(-1);
                 Some(())
             }),
-            's' | ' ' => edit_or_destroy_all(pa, &mut handle, &mut failed, |c| {
+            's' | ' ' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
                 let [_, p0] = object.find_behind(c, 0, None)?;
                 let [p1, _] = object.find_ahead(c, 0, None)?;
                 move_to_points(c, [p0, p1]);
@@ -1433,7 +1432,7 @@ fn match_inside_around<U: Ui>(
                 }
                 Some(())
             }),
-            'p' => edit_or_destroy_all(pa, &mut handle, &mut failed, |c| {
+            'p' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
                 let end = object.find_ahead(c, 0, None);
                 let [p1, _] = end?;
                 c.move_to(p1);
@@ -1446,7 +1445,7 @@ fn match_inside_around<U: Ui>(
                 }
                 Some(())
             }),
-            'u' => edit_or_destroy_all(pa, &mut handle, &mut failed, |c| {
+            'u' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
                 let [p2, _] = object.find_ahead(c, 1, None)?;
                 c.move_to(p2);
                 let [p0, p1] = object.find_behind(c, 1, None)?;
@@ -1467,7 +1466,7 @@ fn match_inside_around<U: Ui>(
 
                 Some(())
             }),
-            _char => edit_or_destroy_all(pa, &mut handle, &mut failed, |c| {
+            _char => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
                 let [p2, p3] = object.find_ahead(c, 1, None)?;
                 let [p0, p1] = object.find_behind(c, 1, None)?;
                 let [p0, p1] = if is_inside { [p1, p2] } else { [p0, p3] };
@@ -1520,7 +1519,7 @@ fn match_inside_around<U: Ui>(
 
 fn edit_or_destroy_all<U: Ui, S>(
     pa: &mut Pass,
-    handle: &mut Handle<File<U>, U, S>,
+    handle: &Handle<File<U>, U, S>,
     failed_at_least_once: &mut bool,
     mut f: impl FnMut(&mut Cursor<File<U>, U::Area, S>) -> Option<()> + Clone,
 ) {
@@ -1617,7 +1616,7 @@ impl Category {
 struct Select;
 
 impl<U: Ui> IncSearcher<U> for Select {
-    fn search(&mut self, pa: &mut Pass, mut handle: Handle<File<U>, U, Searcher>) {
+    fn search(&mut self, pa: &mut Pass, handle: Handle<File<U>, U, Searcher>) {
         handle.edit_all(pa, |mut c| {
             c.set_caret_on_start();
             if let Some(anchor) = c.anchor() {
@@ -1649,7 +1648,7 @@ impl<U: Ui> IncSearcher<U> for Select {
 struct Split;
 
 impl<U: Ui> IncSearcher<U> for Split {
-    fn search(&mut self, pa: &mut Pass, mut handle: Handle<File<U>, U, Searcher>) {
+    fn search(&mut self, pa: &mut Pass, handle: Handle<File<U>, U, Searcher>) {
         handle.edit_all(pa, |mut c| {
             c.set_caret_on_start();
             if let Some(anchor) = c.anchor() {
@@ -1749,7 +1748,7 @@ fn remove_empty_line<S, U: Ui>(c: &mut Cursor<File<U>, U::Area, S>) {
     c.set_desired_vcol(dvcol);
 }
 
-fn copy_selections<U: Ui>(pa: &mut Pass, handle: &mut Handle<File<U>, U, ()>) {
+fn copy_selections<U: Ui>(pa: &mut Pass, handle: &Handle<File<U>, U, ()>) {
     let mut copies: Vec<String> = Vec::new();
     handle.edit_all(pa, |c| copies.push(c.selection().collect()));
     if !copies.iter().all(String::is_empty) {
