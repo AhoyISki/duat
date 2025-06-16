@@ -9,7 +9,7 @@ license = "AGPL-3.0-or-later"
 readme = "README.md"
 keywords = ["tree-sitter", "duat", "plugin"]
 categories = ["command-line-utilities", "text-editors", "config"]
-include = ["queries", "build.rs"]
+include = ["src/*", "queries/*", "build.rs"]
 
 [dependencies]
 duat-core = { version = "0.5.0", git = "https://github.com/AhoyISki/duat" }
