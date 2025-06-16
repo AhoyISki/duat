@@ -1227,7 +1227,7 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
         ),
         LanguageOptions::pair(
             "toml",
-            "https://github.com/tree-sitter-grammars/tree-sitter-toml",
+            "https://github.com/ikatyang/tree-sitter-toml",
             &["@tk-shirasaka"],
         ),
         LanguageOptions::pairs_with_symbol_and_crate(
