@@ -16,5 +16,5 @@ duat-utils = { version = "0.2.0", git = "https://github.com/AhoyISki/duat" }
 
 [dependencies.treesitter]
 git = "https://github.com/AhoyISki/duat-treesitter"
-version = "0.1.1"
+version = "0.2.0"
 package = "duat-treesitter"
