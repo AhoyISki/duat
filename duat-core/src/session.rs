@@ -119,6 +119,7 @@ impl<U: Ui> SessionCfg<U> {
             layout_fn: self.layout_fn,
         };
 
+		let mut hasnt_set_cur = true;
         for (win, mut cfgs) in inherited_cfgs {
             let (file_cfg, is_active) = cfgs.next().unwrap();
             let (widget, _) = file_cfg.build(&mut pa, None);
@@ -129,12 +130,13 @@ impl<U: Ui> SessionCfg<U> {
             let (window, node) = Window::new(&mut pa, ms, widget, (session.layout_fn)());
             context::windows::<U>().borrow_mut().push(window);
 
-            if is_active {
+            if is_active || hasnt_set_cur {
                 context::set_cur(&mut pa, node.as_file(), node.clone());
                 if win != context::cur_window() {
                     session.cur_window.store(win, Ordering::Relaxed);
                     U::switch_window(session.ms, win);
                 }
+                hasnt_set_cur = false;
             }
 
             let builder = FileBuilder::new(&mut pa, node, context::cur_window());

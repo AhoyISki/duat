@@ -715,17 +715,17 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     }
 
     /// Undoes the last moment in the history, if there is one
-    pub fn undo(&mut self, pa: &mut Pass) {
+    pub fn undo(&self, pa: &mut Pass) {
         self.widget.write(pa, |wid| wid.text_mut().undo());
     }
 
     /// Redoes the last moment in the history, if there is one
-    pub fn redo(&mut self, pa: &mut Pass) {
+    pub fn redo(&self, pa: &mut Pass) {
         self.widget.write(pa, |wid| wid.text_mut().redo());
     }
 
     /// Finishes the current moment and adds a new one to the history
-    pub fn new_moment(&mut self, pa: &mut Pass) {
+    pub fn new_moment(&self, pa: &mut Pass) {
         self.widget.write(pa, |wid| wid.text_mut().new_moment());
     }
 

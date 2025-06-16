@@ -536,6 +536,7 @@ pub trait WidgetCfg<U: Ui>: Sized {
     /// [`File`], for example.
     ///
     /// [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
+    /// 
     fn build(self, pa: &mut Pass, handle: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs);
 }
 

@@ -257,10 +257,10 @@ impl<U: Ui> FileBuilder<U> {
         self.handle
             .write_related_widgets(pa, |related| related.push(node.clone()));
 
-        if let Some(parent) = &parent
-            && parent.is_master_of(&window.files_area)
-        {
-            window.files_area = parent.clone();
+        if let Some(parent) = &parent {
+            if parent.is_master_of(&window.files_area) {
+                window.files_area = parent.clone();
+            }
             self.area = parent.clone();
         }
 
