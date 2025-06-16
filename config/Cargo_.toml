@@ -34,11 +34,6 @@ git = "https://github.com/AhoyISki/duat-catppuccin"
 version = "0.2.0"
 package = "duat-catppuccin"
 
-[dependencies.filetype]
-git = "https://github.com/AhoyISki/duat-filetype"
-version = "0.2.0"
-package = "duat-filetype"
-
 [dependencies.duat]
 git = "https://github.com/AhoyISki/duat"
 version = "0.5.0"

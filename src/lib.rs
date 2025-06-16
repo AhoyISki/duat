@@ -516,8 +516,9 @@ pub mod hook {
     //!
     //! ```rust
     //! setup_duat!(setup);
-    //! use duat::prelude::*;
     //! use std::sync::atomic::{AtomicUsize, Ordering};
+    //!
+    //! use duat::prelude::*;
     //!
     //! fn setup() {
     //!     static KEY_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -770,6 +771,7 @@ pub mod prelude {
         },
         ui::{self, RawArea, Widget, WidgetCfg},
     };
+    pub use duat_filetype::*;
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self as term, VertRule};
 
