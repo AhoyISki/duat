@@ -53,17 +53,25 @@ fn setup() {
         // This function takes the mode and uppercases it.
         // The splitting is done to remove generic arguments.
         let mode = mode_name().map(|mode| match mode.split_once('<') {
-            Some((mode, _)) => mode.to_uppercase(),
-            None => mode.to_uppercase(),
+            Some((mode, _)) => txt!("[mode]{}", mode.to_uppercase()).build(),
+            None => txt!("[mode]{}", mode.to_uppercase()).build(),
         });
 
-        // // Uncomment this and comment the rest for one line
-        // // StatusLine PromptLine combo
-        // let (child, _) = buider.push(PromptLine::cfg());
-        // let s = status!("{file_fmt} {mode} {selections_fmt} {main_fmt}");
-        // builder.push_to(child, s.right_ratioed(4, 7));
-        // builder.push_to(child, Notifications::cfg());
-
+        // Uncomment this and comment the rest for one line
+        // StatusLine PromptLine combo
+        // let (child, _) = builder.push(
+        //     pa, 
+        //     status!("{AlignRight}{file_fmt} {mode} {sels_fmt} {main_fmt}")
+        // );
+        // let (child, _) = builder.push_to(
+        //     pa,
+        //     child,
+        //     PromptLine::cfg().left_ratioed(4, 7)
+        // );
+        // builder.push_to(pa, child, Notifications::cfg());
+        // form::set("default.Notifications", "default.StatusLine");
+        // form::set("default.PromptLine", "default.StatusLine");
+ 
         // Pushes a StatusLine to the bottom
         // // Square bracket pairs change the Form of text.
         builder.push(
