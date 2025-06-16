@@ -120,7 +120,7 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
     }
 }
 
-#[doc(hidden)]
+/// The [`WidgetCfg`] for a [`StatusLine`]
 pub struct StatusLineCfg<U: Ui> {
     builder: Option<BuilderFn<U>>,
     checker: Option<Box<dyn Fn() -> bool>>,
@@ -140,6 +140,12 @@ impl<U: Ui> StatusLineCfg<U> {
         }
     }
 
+    /// Replaces the previous formatting with a new one
+    pub fn replace(self, new: Self) -> Self {
+        Self { specs: self.specs, ..new }
+    }
+
+    /// Puts the [`StatusLine`] above, instead of below
     pub fn above(self) -> Self {
         Self {
             specs: PushSpecs::above().with_ver_len(1.0),
@@ -147,11 +153,23 @@ impl<U: Ui> StatusLineCfg<U> {
         }
     }
 
+    /// Puts the [`StatusLine`] on the right, instead of below
+    ///
+    /// use this if you want a single line [`StatusLine`],
+    /// [`PromptLine`]/[`Notifications`] combo.
+    ///
+    /// [`PromptLine`]: super::PromptLine
+    /// [`Notifications`]: super::Notifications
     pub fn right_ratioed(self, den: u16, div: u16) -> Self {
         Self {
             specs: self.specs.to_right().with_hor_ratio(den, div),
             ..self
         }
+    }
+
+	/// The [`PushSpecs`] in use
+    pub fn specs(&self) -> PushSpecs {
+        self.specs
     }
 }
 

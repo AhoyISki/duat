@@ -23,7 +23,7 @@ use crate::{
     data::Pass,
     duat_name,
     file::{File, ReaderCfg},
-    hook::Hookable,
+    hook::{self, Hookable, WidgetCreated},
     ui::{Node, Widget, WidgetCfg},
 };
 
@@ -231,6 +231,12 @@ impl<U: Ui> FileBuilder<U> {
     #[inline(never)]
     pub fn push<W: WidgetCfg<U>>(&mut self, pa: &mut Pass, cfg: W) -> (U::Area, Option<U::Area>) {
         run_once::<W::Widget, U>();
+
+        let cfg = {
+            let wc = WidgetCreated::<W::Widget, U>((Some(cfg), Some(self.handle.clone())));
+            hook::trigger(pa, wc).0.0.unwrap()
+        };
+
         let (widget, specs) = cfg.build(pa, Some(self.handle.clone()));
 
         let mut windows = context::windows().borrow_mut();
@@ -366,6 +372,12 @@ impl<U: Ui> FileBuilder<U> {
         cfg: W,
     ) -> (U::Area, Option<U::Area>) {
         run_once::<W::Widget, U>();
+
+        let cfg = {
+            let wc = WidgetCreated::<W::Widget, U>((Some(cfg), Some(self.handle.clone())));
+            hook::trigger(pa, wc).0.0.unwrap()
+        };
+
         let (widget, specs) = cfg.build(pa, Some(self.handle.clone()));
 
         let mut windows = context::windows().borrow_mut();
@@ -557,6 +569,12 @@ impl<U: Ui> WindowBuilder<U> {
     #[inline(never)]
     pub fn push<W: WidgetCfg<U>>(&mut self, pa: &mut Pass, cfg: W) -> (U::Area, Option<U::Area>) {
         run_once::<W::Widget, U>();
+
+        let cfg = {
+            let wc = WidgetCreated::<W::Widget, U>((Some(cfg), None));
+            hook::trigger(pa, wc).0.0.unwrap()
+        };
+
         let (widget, specs) = cfg.build(pa, None);
 
         let mut windows = context::windows().borrow_mut();

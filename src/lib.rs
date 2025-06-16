@@ -470,15 +470,50 @@ pub mod hook {
     pub use duat_utils::hooks::*;
 
     use crate::Ui;
-    /// [`Hookable`]: Triggers when a [`File`] is created
+
+    /// [`Hookable`]: Triggers when a [`Widget`]'s [cfg] is created
+    ///
+    /// # Arguments
+    ///
+    /// - The [`WidgetCfg`] in question.
+    /// - The [`FileHandle`] to which it was pushed, if there was one.
+    ///
+    /// Do note that this [hook] doesn't let you change the layout of
+    /// the pushed [`Widget`]s, only their configuration. So if
+    /// one of these changes changed the [direction] where the
+    /// [`Widget`] was pushed, for example, the layout could get
+    /// messed up.
+    ///
+    /// If you want to change the layout of the [`Widget`]s in a
+    /// controled fashion, look at [`OnFileOpen`] and
+    /// [`OnWindowOpen`].
+    ///
+    /// [`Widget`]: crate::prelude::Widget
+    /// [`FileHandle`]: crate::prelude::context::FileHandle
+    /// [cfg]: crate::prelude::Widget::Cfg
+    /// [`WidgetCfg`]: crate::prelude::WidgetCfg
+    /// [hook]: self
+    /// [direction]: crate::prelude::ui::PushSpecs
+    pub type WidgetCreated<W> = duat_core::hook::WidgetCreated<W, Ui>;
+
+    /// [`Hookable`]: Triggers when a [`File`] is opened
     ///
     /// # Arguments
     ///
     /// - The file [builder], which can be used to push widgets to the
     ///   file, and to eachother.
     ///
-    /// [`File`]: duat_core::file::File
-    /// [builder]: duat_core::ui::FileBuilder
+    /// This is a rather "advanced" [hook], since it lets you change
+    /// the layout of [`Widget`]s around the screen. If you don't
+    /// need all that power, you can check out [`WidgetCreated`],
+    /// which is a more straightforward form of changing
+    /// [`Widget`]s, and doesn't interfere with the default hooks
+    /// of `"FileWidgets"` and `"WindowWidgets"`, preset by Duat.
+    ///
+    /// [`File`]: crate::prelude::File
+    /// [`Widget`]: crate::prelude::Widget
+    /// [builder]: crate::prelude::ui::FileBuilder
+    /// [hook]: self
     pub type OnFileOpen = duat_core::hook::OnFileOpen<Ui>;
 
     /// [`Hookable`]: Triggers when a new window is opened
@@ -488,7 +523,18 @@ pub mod hook {
     /// - The window [builder], which can be used to push widgets to
     ///   the edges of the window, surrounding the inner file region.
     ///
-    /// [builder]: duat_core::ui::WindowBuilder
+    ///
+    /// This is a rather "advanced" [hook], since it lets you change
+    /// the layout of [`Widget`]s around the screen. If you don't
+    /// need all that power, you can check out [`WidgetCreated`],
+    /// which is a more straightforward form of changing
+    /// [`Widget`]s, and doesn't interfere with the default hooks
+    /// of `"FileWidgets"` and `"WindowWidgets"`, preset by Duat.
+    ///
+    /// [`File`]: crate::prelude::File
+    /// [`Widget`]: crate::prelude::Widget
+    /// [builder]: crate::prelude::ui::WindowBuilder
+    /// [hook]: self
     pub type OnWindowOpen = duat_core::hook::OnWindowOpen<Ui>;
 
     /// [`Hookable`]: Triggers when the [`Widget`] is focused
@@ -596,7 +642,7 @@ pub mod prelude {
         text::{
             self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, Text, txt,
         },
-        ui::{self, RawArea},
+        ui::{self, RawArea, Widget, WidgetCfg},
     };
     #[cfg(feature = "term-ui")]
     pub use duat_term::{self as term, VertRule};

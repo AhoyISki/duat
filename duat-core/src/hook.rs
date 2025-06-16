@@ -44,6 +44,8 @@
 //! - [`ConfigLoaded`] triggers after loading the config crate.
 //! - [`ConfigUnloaded`] triggers after unloading the config crate.
 //! - [`ExitedDuat`] triggers after Duat has exited.
+//! - [`WidgetCreated`] triggers when a [`Widget`]'s [cfg] is created,
+//!   letting you change it.
 //! - [`OnFileOpen`], which lets you push widgets around a [`File`].
 //! - [`OnWindowOpen`], which lets you push widgets around the window.
 //! - [`FocusedOn`] lets you act on a [widget] when focused.
@@ -137,6 +139,7 @@
 //!
 //! This is, for example, the pattern that [`ModeSetTo`] follows.
 //!
+//! [cfg]: crate::ui::Widget::Cfg
 //! [`File`]: crate::file::File
 //! [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
 //! [widget]: Widget
@@ -153,7 +156,7 @@ use std::{any::TypeId, cell::RefCell, collections::HashMap, rc::Rc};
 
 pub use self::global::*;
 use crate::{
-    context::Handle,
+    context::{FileHandle, Handle},
     data::Pass,
     form::{Form, FormId},
     mode::{KeyEvent, Mode},
@@ -298,6 +301,40 @@ impl Hookable for ExitedDuat {
     fn get_input(&mut self) -> Self::Input<'_> {}
 }
 
+/// [`Hookable`]: Triggers when a [`Widget`]'s [cfg] is created
+///
+/// # Arguments
+///
+/// - The [`WidgetCfg`] in question.
+/// - The [`FileHandle`] to which it was pushed, if there was one.
+///
+/// Do note that this [hook] doesn't let you change the layout of the
+/// pushed [`Widget`]s, only their configuration. So if one of these
+/// changes changed the [direction] where the [`Widget`] was pushed,
+/// for example, the layout could get messed up.
+///
+/// If you want to change the layout of the [`Widget`]s in a controled
+/// fashion, look at [`OnFileOpen`] and [`OnWindowOpen`].
+///
+/// [cfg]: crate::ui::Widget::Cfg
+/// [`WidgetCfg`]: crate::ui::WidgetCfg
+/// [hook]: self
+/// [direction]: crate::ui::PushSpecs
+pub struct WidgetCreated<W: Widget<U>, U: Ui>(pub(crate) (Option<W::Cfg>, Option<FileHandle<U>>));
+
+impl<W: Widget<U>, U: Ui> Hookable for WidgetCreated<W, U> {
+    type Input<'h> = (W::Cfg, Option<&'h FileHandle<U>>);
+    type Output = W::Cfg;
+
+    fn get_input(&mut self) -> Self::Input<'_> {
+        (self.0.0.take().unwrap(), self.0.1.as_ref())
+    }
+
+    fn return_output(&mut self, output: Self::Output) {
+        self.0.0 = Some(output)
+    }
+}
+
 /// [`Hookable`]: Triggers when a [`File`] is opened
 ///
 /// # Arguments
@@ -305,8 +342,16 @@ impl Hookable for ExitedDuat {
 /// - The file [builder], which can be used to push widgets to the
 ///   file, and to eachother.
 ///
+/// This is a rather "advanced" [hook], since it lets you change the
+/// layout of [`Widget`]s around the screen. If you don't need all
+/// that power, you can check out [`WidgetCreated`], which is a more
+/// straightforward form of changing [`Widget`]s, and doesn't
+/// interfere with the default hooks of `"FileWidgets"` and
+/// `"WindowWidgets"`, preset by Duat.
+///
 /// [`File`]: crate::file::File
 /// [builder]: crate::ui::FileBuilder
+/// [hook]: self
 pub struct OnFileOpen<U: Ui>(pub(crate) FileBuilder<U>);
 
 impl<U: Ui> Hookable for OnFileOpen<U> {
@@ -324,7 +369,15 @@ impl<U: Ui> Hookable for OnFileOpen<U> {
 /// - The window [builder], which can be used to push widgets to the
 ///   edges of the window, surrounding the inner file region.
 ///
+/// This is a rather "advanced" [hook], since it lets you change the
+/// layout of [`Widget`]s around the screen. If you don't need all
+/// that power, you can check out [`WidgetCreated`], which is a more
+/// straightforward form of changing [`Widget`]s, and doesn't
+/// interfere with the default hooks of `"FileWidgets"` and
+/// `"WindowWidgets"`, preset by Duat.
+///
 /// [builder]: crate::ui::WindowBuilder
+/// [hook]: self
 pub struct OnWindowOpen<U: Ui>(pub(crate) WindowBuilder<U>);
 
 impl<U: Ui> Hookable for OnWindowOpen<U> {

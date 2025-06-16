@@ -525,7 +525,7 @@ pub trait Widget<U: Ui>: 'static {
 /// ```
 pub trait WidgetCfg<U: Ui>: Sized {
     /// The [`Widget`] that will be created by this [`WidgetCfg`]
-    type Widget: Widget<U>;
+    type Widget: Widget<U, Cfg = Self>;
 
     /// Builds the [`Widget`] alongside [`PushSpecs`]
     ///
