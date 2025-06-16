@@ -1,6 +1,7 @@
 #![feature(decl_macro)]
 use std::{collections::HashMap, path::PathBuf, sync::LazyLock};
 
+use duat_core::prelude::*;
 use regex::RegexSet;
 
 pub trait FileType {
@@ -22,6 +23,22 @@ impl<U: duat_core::ui::Ui> FileType for duat_core::file::File<U> {
                     .get(patterns.matches(path.to_str()?).iter().min()?)
                     .copied()
             })
+    }
+}
+
+pub trait HandleFileType {
+    fn filetype(&self, pa: &Pass) -> Option<&'static str>;
+}
+
+impl<U: Ui> HandleFileType for Handle<File<U>, U> {
+    fn filetype(&self, pa: &Pass) -> Option<&'static str> {
+        self.read(pa, |file, _| file.filetype())
+    }
+}
+
+impl<U: Ui> HandleFileType for FileHandle<U> {
+    fn filetype(&self, pa: &Pass) -> Option<&'static str> {
+        self.read(pa, |file, _| file.filetype())
     }
 }
 
