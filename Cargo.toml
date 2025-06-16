@@ -13,7 +13,7 @@ include = ["queries"]
 
 [dependencies]
 duat-core = { version = "0.4.0", git = "https://github.com/AhoyISki/duat" }
-duat-filetype = { version = "0.1.0", git = "https://github.com/AhoyISki/duat-filetype" }
+duat-filetype = { version = "0.2.0", git = "https://github.com/AhoyISki/duat-filetype" }
 
 streaming-iterator = "0.1.9"
 tree-sitter = "0.25.6"
