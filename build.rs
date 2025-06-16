@@ -20,6 +20,10 @@ const LIB: &[u8] = include_bytes!("config/src/lib.rs");
 const TOML: &[u8] = include_bytes!("config/Cargo_.toml");
 
 fn main() -> std::io::Result<()> {
+    if std::env::var("DOCS_RS").is_ok() {
+        return Ok(());
+    }
+
     let Some(config_path) = dirs_next::config_dir().filter(|p| p.exists()) else {
         return Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
