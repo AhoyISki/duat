@@ -823,10 +823,10 @@ pub mod prelude {
     ///
     /// As you can see above, they should also have a `plug` method,
     /// which consumes the plugin.
-    pub macro plug($($plugin:expr),+ $(,)?) {{
+    pub macro plug($($plugin:expr),* $(,)?) {{
         $(
             plug_inner($plugin);
-        )+
+        )*
     }}
 
     /// Executes a shell command, returning its [`Output`] if
