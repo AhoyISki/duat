@@ -41,19 +41,15 @@ fn setup() {
     print::wrap_on_edge();
 
     //// Hooks
-
-    hook::remove("FileWidgets");
-    // This hook lets you push widgets to the files.
-    // The Pass is used to prevent borrowing collisions.
-    hook::add::<OnFileOpen>(|mut pa, builder| {
-        // These widgets go on the left by default.
-        builder.push(&mut pa, VertRule::cfg());
-        builder.push(&mut pa, LineNumbers::cfg());
+    // Changes every LineNumbers Widget.
+    hook::add::<WidgetCreated<LineNumbers<Ui>>>(|_, (ln, _)| {
+        ln.align_right().align_main_left().rel_abs()
     });
 
+    // The WindowWidgets hook group defines Widgets to be placed on
+    // windows. I can get rid of it, and push my own Widgets instead
     hook::remove("WindowWidgets");
-    // Same, but on the edges of the window.
-    hook::add::<OnWindowOpen>(|mut pa, builder| {
+    hook::add::<OnWindowOpen>(|pa, builder| {
         // // Uncomment this and comment the rest for one line
         // // StatusLine PromptLine combo
         // let (child, _) = buider.push(PromptLine::cfg());
@@ -64,7 +60,7 @@ fn setup() {
 
         // This function takes the mode and uppercases it.
         // The splitting is done to remove generic arguments.
-        let mode_upper = mode_name().map(|mode| match mode.split_once('<') {
+        let mode = mode_name().map(|mode| match mode.split_once('<') {
             Some((mode, _)) => mode.to_uppercase(),
             None => mode.to_uppercase(),
         });
@@ -72,17 +68,17 @@ fn setup() {
         // Pushes a StatusLine to the bottom
         // // Square bracket pairs change the Form of text.
         builder.push(
-            &mut pa,
-            status!("[Mode]{mode_upper}{Spacer}{file_fmt} {selections_fmt} {main_fmt}"),
+            pa,
+            status!("[mode]{mode}{Spacer}{file_fmt} {sels_fmt} {main_fmt}"),
         );
         // Pushes a PromptLine to the bottom
-        let (child, _) = builder.push(&mut pa, PromptLine::cfg());
+        let (child, _) = builder.push(pa, PromptLine::cfg());
         // By pushing this Notifications to the `child`, Duat will create a
         // parent that owns only the PromptLine and Notifier widgets.
         // With that, you can tell an Area to occupy the whole parent, "hiding
         // other sibling Areas. That's done in the "HidePromptLine" hook, for
         // example.
-        builder.push_to(&mut pa, child, Notifier::cfg());
+        builder.push_to(pa, child, Notifications::cfg());
     });
     // // See what happens when you uncomment this hook removal:
     // hook::remove("HidePromptLine");
@@ -107,17 +103,17 @@ fn file_fmt(file: &File) -> Text {
         // A TextBuilder lets you build Text incrementally.
         let mut builder = Text::builder();
         // [] pairs change the Form of the text
-        builder.push(text!("[File]{name}"));
+        builder.push(txt!("[file]{name}"));
         if !file.exists() {
             // Like in regular Rust formatting, double a "[" to escape it.
-            builder.push(text!("[NewFile][[new file]]"));
+            builder.push(txt!("[file.new][[new file]]"));
         } else if file.text().has_unsaved_changes() {
-            text!("[UnsavedChanges][[+]]");
+            txt!("[file.unsaved][[+]]");
         }
         builder.build()
     } else {
         // But you can also create Text directly
         // The second thing is a non identifier expression.
-        text!("[ScratchFile]{}", file.name()).build()
+        txt!("[file.new.scratch]{}", file.name()).build()
     }
 }

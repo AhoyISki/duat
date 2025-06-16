@@ -476,7 +476,7 @@ pub mod hook {
     //! use duat::prelude::*;
     //!
     //! fn setup() {
-    //!     hook::add::<WidgetCreated<LineNumbers>>(|pa, (ln, _)| {
+    //!     hook::add::<WidgetCreated<LineNumbers<Ui>>>(|pa, (ln, _)| {
     //!         ln.align_right().align_main_left().rel_abs()
     //!     });
     //! }
@@ -494,7 +494,7 @@ pub mod hook {
     //!
     //! fn setup() {
     //!     hook::add::<OnFileOpen>(|pa, builder| {
-    //!         builder.push(pa, status!("{file_fmt} {main_fmt}").above())
+    //!         builder.push(pa, status!("{file_fmt} {main_fmt}").above());
     //!     });
     //! }
     //! ```
@@ -517,7 +517,7 @@ pub mod hook {
     //! ```rust
     //! setup_duat!(setup);
     //! use duat::prelude::*;
-    //! use duat_core::sync::atomic::{AtomicUsize, Ordering};
+    //! use std::sync::atomic::{AtomicUsize, Ordering};
     //!
     //! fn setup() {
     //!     static KEY_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -589,9 +589,8 @@ pub mod hook {
     //! [`Form`]: crate::prelude::Form
     //! [key]: crate::mode::KeyEvent
     //! [deadlocks]: https://en.wikipedia.org/wiki/Deadlock_(computer_science)
-    //! [commands]: crate::cmd
     //! [`Mode`]: crate::mode::Mode
-    //! [`&mut Widget`]: Widget
+    //! [`&mut Widget`]: crate::prelude::Widget
     //! [`Output`]: Hookable::Output
     pub use duat_core::hook::*;
     pub use duat_utils::hooks::*;
@@ -779,8 +778,8 @@ pub mod prelude {
         form::{self, CursorShape, Form},
         hook::{
             self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FocusedOn,
-            FormSet, ModeSetTo, ModeSwitched, OnFileOpen, OnWindowOpen, SearchPerformed,
-            SearchUpdated, UnfocusedFrom, WidgetCreated
+            FormSet, KeysSent, KeysSentTo, ModeSetTo, ModeSwitched, OnFileOpen, OnWindowOpen,
+            SearchPerformed, SearchUpdated, UnfocusedFrom, WidgetCreated,
         },
         mode::{self, Mode, alias, map},
         print, setup_duat,

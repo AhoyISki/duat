@@ -47,7 +47,8 @@ impl<U: Ui> Widget<U> for Notifications<U> {
         NotificationsCfg {
             left_div: None,
             format_rec: Box::new(|rec| {
-                (rec.level() > Level::Debug).then(|| {
+                // This is so stupid
+                (rec.level() < Level::Debug).then(|| {
                     txt!(
                         "[notifs.target]{}[notifs.colon]: {}",
                         rec.target(),
