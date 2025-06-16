@@ -465,7 +465,7 @@
 (macro_invocation
   macro: (identifier) @keyword.exception
   "!" @keyword.exception
-  (#contains? @keyword.exception "assert"))
+  (#match? @keyword.exception "[a-z0-9_]*assert[a-z0-9_]*"))
 
 (macro_invocation
   macro: (identifier) @keyword.debug
