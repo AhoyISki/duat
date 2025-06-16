@@ -1225,9 +1225,11 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
             "https://github.com/arnarg/tree-sitter-todotxt",
             &["@arnarg"],
         ),
-        LanguageOptions::pair(
+        LanguageOptions::pairs_with_symbol_and_crate(
             "toml",
-            "https://github.com/ikatyang/tree-sitter-toml",
+            "https://github.com/tree-sitter-grammars/tree-sitter-toml",
+            &[("LANGUAGE", false)],
+            "toml-ng",
             &["@tk-shirasaka"],
         ),
         LanguageOptions::pairs_with_symbol_and_crate(
