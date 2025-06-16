@@ -1,6 +1,9 @@
 use std::{fs, io, path::Path};
 
 fn main() -> std::io::Result<()> {
+    if std::env::var("DOCS_RS").is_ok() {
+        return Ok(());
+    }
     let Some(config_path) = dirs_next::data_local_dir().filter(|p| p.exists()) else {
         return Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
