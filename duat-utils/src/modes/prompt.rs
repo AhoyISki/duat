@@ -292,7 +292,7 @@ impl<U: Ui> PromptMode<U> for RunCommands {
     fn once() {
         form::set_weak("caller.info", "accent.info");
         form::set_weak("caller.error", "accent.error");
-        form::set_weak("parameter.info", "aefault.info");
+        form::set_weak("parameter.info", "default.info");
         form::set_weak("parameter.error", "default.error");
     }
 
