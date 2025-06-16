@@ -122,6 +122,9 @@ impl Layout {
     pub fn delete(&mut self, id: AreaId) -> Option<AreaId> {
         let (mut rect, _, parent_id) = self.rects.delete(&self.printer, id)?;
         remove_children(&mut rect, &self.printer);
+
+        self.printer.update(false);
+
         parent_id
     }
 

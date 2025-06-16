@@ -469,7 +469,7 @@ impl ui::RawArea for Area {
         {
             rect.has_changed(layout)
         } else {
-            false
+            true
         }
     }
 

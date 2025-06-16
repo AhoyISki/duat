@@ -65,7 +65,7 @@ fn main() {
             if let Ok(out) = run_cargo(toml_path.clone(), true, true)
                 && out.status.success()
             {
-                context::info!("Compile [a]release[] profile");
+                context::info!("Compiled [a]release[] profile");
             } else {
                 context::error!("Failed to compile [a]release[] profile");
             }
@@ -87,7 +87,7 @@ fn main() {
         (prev, duat_rx, reload_instant) = if let Some(run_duat) = run_fn.take() {
             run_duat(logs.clone(), (&MS, &CLIPB), prev, (duat_tx, duat_rx))
         } else {
-            context::error!("Failed to open load crate");
+            context::error!("Failed to load config crate");
             pre_setup(None, duat_tx);
             run_duat((&MS, &CLIPB), prev, duat_rx)
         };
@@ -100,10 +100,10 @@ fn main() {
 
         let profile = if on_release { "Release" } else { "Debug" };
         let time = match reload_instant {
-            Some(reload_instant) => txt!("in [a]{:.2?}", reload_instant.elapsed()),
+            Some(reload_instant) => txt!(" in [a]{:.2?}", reload_instant.elapsed()),
             None => Text::builder(),
         };
-        context::info!("[a]{profile}[] profile reloaded {time}");
+        context::info!("[a]{profile}[] profile reloaded{time}");
         lib = ElfLibrary::dlopen(so_path, DEFAULT_FLAGS).ok();
     }
 
