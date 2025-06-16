@@ -1,5 +1,7 @@
 # duat ![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) [![duat on crates.io](https://img.shields.io/crates/v/duat)](https://crates.io/crates/duat) [![duat on docs.rs](https://docs.rs/duat/badge.svg)](https://docs.rs/duat)
 
+![new demonstration](./assets/new-demonstration.gif)
+
 Duat is a text editor meant to have as much modularity as
 possible, while keeping a sensible default configuration. It is
 written *and configured* in Rust, through the use of a
@@ -263,37 +265,37 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG6_y5jBlKgBOG7OThffQaC1KG84D30R2xGIvG2nD0axqIVABYWSBgmRkdWF0ZTAuNC4w
- [__link0]: https://docs.rs/duat/0.4.0/duat/?search=prelude::plug
- [__link1]: https://docs.rs/duat/0.4.0/duat/?search=prelude::mode::set_default
- [__link10]: https://docs.rs/duat/0.4.0/duat/?search=prelude::status
- [__link11]: https://docs.rs/duat/0.4.0/duat/?search=prelude::Spacer
- [__link12]: https://docs.rs/duat/0.4.0/duat/?search=prelude::mode_name
- [__link13]: https://docs.rs/duat/0.4.0/duat/?search=prelude::PromptLine
- [__link14]: https://docs.rs/duat/0.4.0/duat/?search=prelude::Notifications
- [__link15]: https://docs.rs/duat/0.4.0/duat/?search=prelude::hook::add
- [__link16]: https://docs.rs/duat/0.4.0/duat/?search=prelude::hook::ModeSwitched
- [__link17]: https://docs.rs/duat/0.4.0/duat/?search=form::set
- [__link18]: https://docs.rs/duat/0.4.0/duat/?search=prelude::form::Form
- [__link19]: https://docs.rs/duat/0.4.0/duat/?search=prelude::text::txt
- [__link2]: https://docs.rs/duat/0.4.0/duat/?search=prelude::map
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG098Iqh46FLTG-e7py1aLQbyG1v6xCbBzoHhG8gBAY2qSFl0YXKEG0kYQIuUdp1GGyxwPgQGZfGDG-vpYTYmhT-eG1OXGpjSYKllYWSBgmRkdWF0ZTAuNS4w
+ [__link0]: https://docs.rs/duat/0.5.0/duat/?search=prelude::plug
+ [__link1]: https://docs.rs/duat/0.5.0/duat/?search=prelude::mode::set_default
+ [__link10]: https://docs.rs/duat/0.5.0/duat/?search=prelude::status
+ [__link11]: https://docs.rs/duat/0.5.0/duat/?search=prelude::Spacer
+ [__link12]: https://docs.rs/duat/0.5.0/duat/?search=prelude::mode_name
+ [__link13]: https://docs.rs/duat/0.5.0/duat/?search=prelude::PromptLine
+ [__link14]: https://docs.rs/duat/0.5.0/duat/?search=prelude::Notifications
+ [__link15]: https://docs.rs/duat/0.5.0/duat/?search=prelude::hook::add
+ [__link16]: https://docs.rs/duat/0.5.0/duat/?search=prelude::hook::ModeSwitched
+ [__link17]: https://docs.rs/duat/0.5.0/duat/?search=form::set
+ [__link18]: https://docs.rs/duat/0.5.0/duat/?search=prelude::form::Form
+ [__link19]: https://docs.rs/duat/0.5.0/duat/?search=prelude::text::txt
+ [__link2]: https://docs.rs/duat/0.5.0/duat/?search=prelude::map
  [__link20]: https://doc.rust-lang.org/stable/std/macro.println.html
- [__link21]: https://docs.rs/duat/0.4.0/duat/?search=prelude::status
- [__link22]: https://docs.rs/duat/0.4.0/duat/?search=prelude::LineNum
- [__link23]: https://docs.rs/duat/0.4.0/duat/?search=prelude::LineNumbers
+ [__link21]: https://docs.rs/duat/0.5.0/duat/?search=prelude::status
+ [__link22]: https://docs.rs/duat/0.5.0/duat/?search=prelude::LineNum
+ [__link23]: https://docs.rs/duat/0.5.0/duat/?search=prelude::LineNumbers
  [__link24]: https://github.com/AhoyISki/duat-kak
  [__link25]: https://github.com/mawww/kakoune
  [__link26]: https://github.com/AhoyISki/duat-catppuccin
  [__link27]: https://catppuccin.com
- [__link28]: https://docs.rs/duat/0.4.0/duat/?search=prelude::Form
+ [__link28]: https://docs.rs/duat/0.5.0/duat/?search=prelude::Form
  [__link29]: https://github.com/AhoyISki/duat-treesitter
- [__link3]: https://docs.rs/duat/0.4.0/duat/?search=prelude::print::wrap_on_edge
+ [__link3]: https://docs.rs/duat/0.5.0/duat/?search=prelude::print::wrap_on_edge
  [__link30]: https://tree-sitter.github.io/tree-sitter
- [__link31]: https://docs.rs/duat/0.4.0/duat/?search=prelude::plug
+ [__link31]: https://docs.rs/duat/0.5.0/duat/?search=prelude::plug
  [__link32]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
- [__link4]: https://docs.rs/duat/0.4.0/duat/?search=prelude::hook::remove
- [__link5]: https://docs.rs/duat/0.4.0/duat/?search=prelude::hook::add_grouped
- [__link6]: https://docs.rs/duat/0.4.0/duat/?search=prelude::FileBuilder::push
- [__link7]: https://docs.rs/duat/0.4.0/duat/?search=prelude::VertRule
- [__link8]: https://docs.rs/duat/0.4.0/duat/?search=prelude::LineNumbers
- [__link9]: https://docs.rs/duat/0.4.0/duat/?search=prelude::hook::remove
+ [__link4]: https://docs.rs/duat/0.5.0/duat/?search=prelude::hook::remove
+ [__link5]: https://docs.rs/duat/0.5.0/duat/?search=prelude::hook::add_grouped
+ [__link6]: https://docs.rs/duat/0.5.0/duat/?search=prelude::ui::FileBuilder::push
+ [__link7]: https://docs.rs/duat/0.5.0/duat/?search=prelude::VertRule
+ [__link8]: https://docs.rs/duat/0.5.0/duat/?search=prelude::LineNumbers
+ [__link9]: https://docs.rs/duat/0.5.0/duat/?search=prelude::hook::remove
