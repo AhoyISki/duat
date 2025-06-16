@@ -464,9 +464,13 @@ impl ui::RawArea for Area {
 
     fn has_changed(&self) -> bool {
         let layouts = self.layouts.lock().unwrap();
-        let layout = get_layout(&layouts, self.id).unwrap();
-        let rect = layout.get(self.id).unwrap();
-        rect.has_changed(layout)
+        if let Some(layout) = get_layout(&layouts, self.id)
+            && let Some(rect) = layout.get(self.id)
+        {
+            rect.has_changed(layout)
+        } else {
+            false
+        }
     }
 
     ////////// Queries
