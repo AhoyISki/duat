@@ -50,20 +50,19 @@ fn setup() {
     // windows. I can get rid of it, and push my own Widgets instead
     hook::remove("WindowWidgets");
     hook::add::<OnWindowOpen>(|pa, builder| {
-        // // Uncomment this and comment the rest for one line
-        // // StatusLine PromptLine combo
-        // let (child, _) = buider.push(PromptLine::cfg());
-        // let status = status!("{file_fmt} {mode_fmt} {selections_fmt}
-        // {main_fmt});
-        // builder.push_to(child, status.right_ratioed(4, 7));
-        // builder.push_to(child, Notifier::cfg());
-
         // This function takes the mode and uppercases it.
         // The splitting is done to remove generic arguments.
         let mode = mode_name().map(|mode| match mode.split_once('<') {
             Some((mode, _)) => mode.to_uppercase(),
             None => mode.to_uppercase(),
         });
+
+        // // Uncomment this and comment the rest for one line
+        // // StatusLine PromptLine combo
+        // let (child, _) = buider.push(PromptLine::cfg());
+        // let s = status!("{file_fmt} {mode} {selections_fmt} {main_fmt}");
+        // builder.push_to(child, s.right_ratioed(4, 7));
+        // builder.push_to(child, Notifications::cfg());
 
         // Pushes a StatusLine to the bottom
         // // Square bracket pairs change the Form of text.

@@ -78,6 +78,7 @@ impl<U: Ui> Widget<U> for Notifications<U> {
                 handle.set_mask((wid.get_mask)(rec));
                 wid.text = text
             } else if clear_notifs {
+                handle.set_mask("");
                 wid.text = Text::new()
             }
         });
