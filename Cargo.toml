@@ -1,6 +1,6 @@
 [package]
 name = "duat-kak"
-version = "0.5.0"
+version = "0.5.1"
 authors = ["AhoyISki"]
 description = "A Kakoune inspired editing mode for Parsec"
 repository = "https://github.com/AhoyISki/duat/tree/master/duat-kak"
@@ -16,5 +16,5 @@ duat-utils = { version = "0.2.0", git = "https://github.com/AhoyISki/duat" }
 
 [dependencies.treesitter]
 git = "https://github.com/AhoyISki/duat-treesitter"
-version = "0.2.0"
+version = "0.2.1"
 package = "duat-treesitter"
