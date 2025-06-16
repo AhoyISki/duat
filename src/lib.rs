@@ -461,12 +461,139 @@ pub mod form {
     };
 }
 
-/// Hook utilities
 pub mod hook {
-    pub use duat_core::hook::{
-        ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FormSet, Hookable,
-        KeysSent, KeysSentTo, ModeSwitched, add, add_grouped, group_exists, remove,
-    };
+    //! Utilities for hooks in Duat
+    //!
+    //! In Duat, hooks are handled through the [`Hookable`] trait.
+    //! This trait contains the [`Hookable::Input`] associated
+    //! type, which is what should be passed to hooks on the
+    //! specific [`Hookable`]. By implementing this trait, you
+    //! allow an end user to hook executions whenever said
+    //! [`Hookable`] is triggered:
+    //!
+    //! ```rust
+    //! setup_duat!(setup);
+    //! use duat::prelude::*;
+    //!
+    //! fn setup() {
+    //!     hook::add::<WidgetCreated<LineNumbers>>(|pa, (ln, _)| {
+    //!         ln.align_right().align_main_left().rel_abs()
+    //!     });
+    //! }
+    //! ```
+    //!
+    //! The [hook above] makes it so that, whenever [`LineNumbers`]
+    //! are created, they main number is absolute and shifts left,
+    //! while other numbers are relative and shift right. This
+    //! hook gives you the power to configure any [`Widget`] that
+    //! gets created, but what if you want to add more widgets?
+    //!
+    //! ```rust
+    //! setup_duat!(setup);
+    //! use duat::prelude::*;
+    //!
+    //! fn setup() {
+    //!     hook::add::<OnFileOpen>(|pa, builder| {
+    //!         builder.push(pa, status!("{file_fmt} {main_fmt}").above())
+    //!     });
+    //! }
+    //! ```
+    //!
+    //! [That hook] lets you push more [`Widget`]s to a [`File`],
+    //! whenever one is opened. In this case, I'm pushing a
+    //! [`StatusLine`] on top of the [`File`], which displays the
+    //! [file's name], as well as its [main `Selection`].
+    //!
+    //! Do note that this is not the only [`Widget`] that will be
+    //! pushed around the [`File`], since there are some predefined
+    //! [hook groups] in Duat.
+    //!
+    //! # Default hook groups
+    //!
+    //! Hook groups are essentially "removable hooks", that are
+    //! predefined in order to give a more complete, yet customizable
+    //! default experience for Duat:
+    //!
+    //! ```rust
+    //! setup_duat!(setup);
+    //! use duat::prelude::*;
+    //! use duat_core::sync::atomic::{AtomicUsize, Ordering};
+    //!
+    //! fn setup() {
+    //!     static KEY_COUNT: AtomicUsize = AtomicUsize::new(0);
+    //!
+    //!     hook::add_grouped::<KeysSent>("CountKeys", |pa, keys| {
+    //!         KEY_COUNT.fetch_add(keys.len(), Ordering::Relaxed);
+    //!     });
+    //! }
+    //! ```
+    //!
+    //! These are the default [hook groups]:
+    //!
+    //! - `"FileWidgets"`: Pushes a [`VertRule`] and [`LineNumbers`]
+    //!   to new [`File`]s, via [`OnFileOpen`].
+    //! - `"WindowWidgets"`: Pushes a  [`StatusLine`], [`PromptLine`]
+    //!   and [`Notifications`] to new windows, via [`OnWindowOpen`].
+    //! - `"HidePromptLine"`: Is responsible for [hiding] the
+    //!   [`PromptLine`] when it is not in use, giving way to the
+    //!   [`Notifications`], via [`FocusedOn`] and [`UnfocusedFrom`].
+    //! - `"ReloadOnWrite"`: Reloads the `config` crate whenever any
+    //!   file in it is written to, via [`FileWritten`].
+    //!
+    //! # Available hooks
+    //!
+    //! Currently, these are the existing hooks in `duat-core` and
+    //! `duat-utils`:
+    //!
+    //! - [`ConfigLoaded`] triggers after loading the config crate.
+    //! - [`ConfigUnloaded`] triggers after unloading the config
+    //!   crate.
+    //! - [`ExitedDuat`] triggers after Duat has exited.
+    //! - [`WidgetCreated`] triggers when a [`Widget`]'s [cfg] is
+    //!   created, letting you change it.
+    //! - [`OnFileOpen`], which lets you push widgets around a
+    //!   [`File`].
+    //! - [`OnWindowOpen`], which lets you push widgets around the
+    //!   window.
+    //! - [`FocusedOn`] lets you act on a [`Widget`] when focused.
+    //! - [`UnfocusedFrom`] lets you act on a [`Widget`] when
+    //!   unfocused.
+    //! - [`KeysSent`] lets you act on a [`dyn Widget`], given a[key].
+    //! - [`KeysSentTo`] lets you act on a given [`Widget`], given a
+    //!   [key].
+    //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
+    //! - [`ModeSwitched`] triggers when you change [`Mode`].
+    //! - [`ModeSetTo`] lets you act on a [`Mode`] after switching.
+    //! - [`FileWritten`] triggers after the [`File`] is written.
+    //! - [`SearchPerformed`] (from duat-utils) triggers after a
+    //!   search is performed.
+    //! - [`SearchUpdated`] (from duat-utils) triggers after a search
+    //!   updates.
+    //!
+    //! [hook above]: WidgetCreated
+    //! [That hook]: OnFileOpen
+    //! [`StatusLine`]: crate::prelude::StatusLine
+    //! [file's name]: crate::prelude::file_fmt
+    //! [main `Selection`]: crate::prelude::main_fmt
+    //! [hook groups]: crate::hook::add_grouped
+    //! [`VertRule`]: crate::prelude::VertRule
+    //! [`PromptLine`]: crate::prelude::PromptLine
+    //! [`Notifications`]: crate::prelude::Notifications
+    //! [`OnWindowOpen`]: crate::prelude::OnWindowOpen
+    //! [hiding]: crate::prelude::RawArea::constrain_ver
+    //! [cfg]: crate::prelude::Widget::Cfg
+    //! [`File`]: crate::prelude::File
+    //! [`LineNumbers`]: crate::prelude::LineNumbers
+    //! [`dyn Widget`]: crate::prelude::Widget
+    //! [`Widget`]: crate::prelude::Widget
+    //! [`Form`]: crate::prelude::Form
+    //! [key]: crate::mode::KeyEvent
+    //! [deadlocks]: https://en.wikipedia.org/wiki/Deadlock_(computer_science)
+    //! [commands]: crate::cmd
+    //! [`Mode`]: crate::mode::Mode
+    //! [`&mut Widget`]: Widget
+    //! [`Output`]: Hookable::Output
+    pub use duat_core::hook::*;
     pub use duat_utils::hooks::*;
 
     use crate::Ui;
@@ -653,7 +780,7 @@ pub mod prelude {
         hook::{
             self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FocusedOn,
             FormSet, ModeSetTo, ModeSwitched, OnFileOpen, OnWindowOpen, SearchPerformed,
-            SearchUpdated, UnfocusedFrom,
+            SearchUpdated, UnfocusedFrom, WidgetCreated
         },
         mode::{self, Mode, alias, map},
         print, setup_duat,

@@ -9,7 +9,7 @@
 //! of the numbers, with one more option to change that of the main
 //! selection's line number.
 //!
-//! [`File`]: super::File
+//! [`File`]: duat_core::file::File
 use std::{fmt::Alignment, marker::PhantomData};
 
 use duat_core::{prelude::*, text::Builder, ui::Constraint};
