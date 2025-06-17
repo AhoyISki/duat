@@ -45,7 +45,7 @@
 //! - [`ConfigUnloaded`] triggers after unloading the config crate.
 //! - [`ExitedDuat`] triggers after Duat has exited.
 //! - [`WidgetCreated`] triggers when a [`Widget`]'s [cfg] is created,
-//!   letting you change it.
+//!   letting you change it, [`Widget`] can be used as its [alias]
 //! - [`OnFileOpen`], which lets you push widgets around a [`File`].
 //! - [`OnWindowOpen`], which lets you push widgets around the window.
 //! - [`FocusedOn`] lets you act on a [widget] when focused.
@@ -54,7 +54,7 @@
 //! - [`KeysSentTo`] lets you act on a given [widget], given a [key].
 //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
 //! - [`ModeSwitched`] triggers when you change [`Mode`].
-//! - [`ModeSetTo`] lets you act on a [`Mode`] after switching.
+//! - [`ModeCreated`] lets you act on a [`Mode`] after switching.
 //! - [`FileWritten`] triggers after the [`File`] is written.
 //! - [`SearchPerformed`] (from duat-utils) triggers after a search is
 //!   performed.
@@ -122,7 +122,7 @@
 //!         self.0.take().unwrap()
 //!     }
 //!
-//!     fn return_output(&mut self, output: Self::Output) {
+//!     fn take_output_back(&mut self, output: Self::Output) {
 //!         self.0 = Some(output)
 //!     }
 //! }
@@ -137,8 +137,9 @@
 //! }
 //! ```
 //!
-//! This is, for example, the pattern that [`ModeSetTo`] follows.
+//! This is, for example, the pattern that [`ModeCreated`] follows.
 //!
+//! [alias]: HookAlias
 //! [cfg]: crate::ui::Widget::Cfg
 //! [`File`]: crate::file::File
 //! [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
@@ -152,7 +153,7 @@
 //! [`Output`]: Hookable::Output
 //! [`SearchPerformed`]: https://docs.rs/duat-utils/latest/duat_utils/hooks/struct.SearchPerformed.html
 //! [`SearchUpdated`]: https://docs.rs/duat-utils/latest/duat_utils/hooks/struct.SearchUpdated.html
-use std::{any::TypeId, cell::RefCell, collections::HashMap, rc::Rc};
+use std::{any::TypeId, cell::RefCell, collections::HashMap, marker::PhantomData, rc::Rc};
 
 pub use self::global::*;
 use crate::{
@@ -167,20 +168,45 @@ use crate::{
 mod global {
     use std::sync::LazyLock;
 
-    use super::{Hookable, InnerHooks};
-    use crate::{context, data::Pass, main_thread_only::MainThreadOnly, ui::DuatEvent};
+    use super::{HookAlias, Hookable, InnerHooks};
+    use crate::{
+        context,
+        data::Pass,
+        hook::HookDummy,
+        main_thread_only::MainThreadOnly,
+        ui::{DuatEvent, Ui},
+    };
 
     static HOOKS: LazyLock<MainThreadOnly<InnerHooks>> = LazyLock::new(MainThreadOnly::default);
 
     /// Adds a [hook]
     ///
     /// This hook is ungrouped, that is, it cannot be removed. If you
-    /// want a hook that is removable, see [`hook::add_grouped`].
+    /// want a hook that is removable, see [`hook::add_grouped`]. If
+    /// you don't have access to a [`Ui`] argument for some reason,
+    /// see [`hook::add_no_alias`].
     ///
     /// [hook]: Hookable
     /// [`hook::add_grouped`]: add_grouped
+    /// [`hook::add_no_alias`]: add_no_alias
     #[inline(never)]
-    pub fn add<H: Hookable>(f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static) {
+    pub fn add<H: HookAlias<U, impl HookDummy>, U: Ui>(
+        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static,
+    ) {
+        context::assert_is_on_main_thread();
+        unsafe { HOOKS.get() }.add::<H::Hookable>("", Box::new(f));
+    }
+
+    /// Adds a [hook], without accepting aliases
+    ///
+    /// Use this if you want to add a hook, but have no access to
+    /// [`Ui`] parameter.
+    ///
+    /// [hook]: Hookable
+    #[doc(hidden)]
+    pub fn add_no_alias<H: Hookable>(
+        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static,
+    ) {
         context::assert_is_on_main_thread();
         unsafe { HOOKS.get() }.add::<H>("", Box::new(f));
     }
@@ -189,18 +215,35 @@ mod global {
     ///
     /// A grouped hook is one that, along with others on the same
     /// group, can be removed by [`hook::remove`]. If you do
-    /// not need/want this feature, take a look at [`hook::add`]
+    /// not need/want this feature, take a look at [`hook::add`]. If
+    /// you don't have access to a [`Ui`] argument for some reason,
+    /// see [`hook::add_grouped_no_alias`].
     ///
     /// [hook]: Hookable
     /// [`hook::remove`]: remove
     /// [`hook::add`]: add
+    /// [`hook::add_grouped_no_alias`]: add_grouped_no_alias
     #[inline(never)]
-    pub fn add_grouped<H: Hookable>(
+    pub fn add_grouped<H: HookAlias<U, impl HookDummy>, U: Ui>(
         group: &'static str,
         f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static,
     ) {
         context::assert_is_on_main_thread();
-        unsafe { HOOKS.get() }.add::<H>(group, Box::new(f));
+        unsafe { HOOKS.get() }.add::<H::Hookable>(group, Box::new(f));
+    }
+
+    /// Adds a grouped [hook], without accepting aliases
+    ///
+    /// Use this if you want to add a hook, but have no access to
+    /// [`Ui`] parameter.
+    ///
+    /// [hook]: Hookable
+    #[doc(hidden)]
+    pub fn add_grouped_no_alias<H: Hookable>(
+        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static,
+    ) {
+        context::assert_is_on_main_thread();
+        unsafe { HOOKS.get() }.add::<H>("", Box::new(f));
     }
 
     /// Removes a [hook] group
@@ -308,6 +351,69 @@ impl Hookable for ExitedDuat {
 /// - The [`WidgetCfg`] in question.
 /// - The [`FileHandle`] to which it was pushed, if there was one.
 ///
+/// # Aliases
+///
+/// Since every [`Widget`] implements the [`HookAlias`] trait, instead
+/// of writing this:
+///
+/// ```rust
+/// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
+/// # impl<U: Ui> Widget<U> for LineNumbers<U> {
+/// #     type Cfg = LineNumbersOptions<U>;
+/// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
+/// #     fn needs_update(&self) -> bool { todo!(); }
+/// #     fn cfg() -> Self::Cfg { todo!() }
+/// #     fn text(&self) -> &Text { todo!(); }
+/// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
+/// #     fn once() -> Result<(), Text> { Ok(()) }
+/// # }
+/// # struct LineNumbersOptions<U>(std::marker::PhantomData<U>);
+/// # impl<U> LineNumbersOptions<U> {
+/// #     pub fn rel_abs(self) -> Self { todo!(); }
+/// # }
+/// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
+/// #     type Widget = LineNumbers<U>;
+/// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+/// #         todo!();
+/// #     }
+/// # }
+/// use duat_core::{prelude::*, hook::WidgetCreated};
+///
+/// fn setup_generic_over_ui<U: Ui>() {
+///     hook::add::<WidgetCreated<LineNumbers<U>, U>>(|pa, (ln, handle)| ln);
+/// }
+/// ```
+///
+/// You can just write this:
+///
+/// ```rust
+/// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
+/// # impl<U: Ui> Widget<U> for LineNumbers<U> {
+/// #     type Cfg = LineNumbersOptions<U>;
+/// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
+/// #     fn needs_update(&self) -> bool { todo!(); }
+/// #     fn cfg() -> Self::Cfg { todo!() }
+/// #     fn text(&self) -> &Text { todo!(); }
+/// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
+/// #     fn once() -> Result<(), Text> { Ok(()) }
+/// # }
+/// # struct LineNumbersOptions<U>(std::marker::PhantomData<U>);
+/// # impl<U> LineNumbersOptions<U> {
+/// #     pub fn rel_abs(self) -> Self { todo!(); }
+/// # }
+/// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
+/// #     type Widget = LineNumbers<U>;
+/// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+/// #         todo!();
+/// #     }
+/// # }
+/// use duat_core::{prelude::*, hook::WidgetCreated};
+///
+/// fn setup_generic_over_ui<U: Ui>() {
+///     hook::add::<LineNumbers<U>>(|pa, (ln, handle)| ln);
+/// }
+/// ```
+///
 /// Do note that this [hook] doesn't let you change the layout of the
 /// pushed [`Widget`]s, only their configuration. So if one of these
 /// changes changed the [direction] where the [`Widget`] was pushed,
@@ -330,7 +436,7 @@ impl<W: Widget<U>, U: Ui> Hookable for WidgetCreated<W, U> {
         (self.0.0.take().unwrap(), self.0.1.as_ref())
     }
 
-    fn return_output(&mut self, output: Self::Output) {
+    fn take_output_back(&mut self, output: Self::Output) {
         self.0.0 = Some(output)
     }
 }
@@ -429,6 +535,41 @@ impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
 /// - The previous mode.
 /// - The current mode.
 ///
+/// # Aliases
+///
+/// Since every [`Mode`] implements the [`HookAlias`] trait, instead
+/// of writing this:
+///
+/// ```rust
+/// # #[derive(Clone)]
+/// # struct Normal;
+/// # impl<U: Ui> Mode<U> for Normal {
+/// #     type Widget = File<U>;
+/// #     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>) {}
+/// # }
+/// use duat_core::{prelude::*, hook::ModeCreated};
+///
+/// fn setup_generic_over_ui<U: Ui>() {
+///     hook::add::<ModeCreated<Normal, U>>(|pa, (normal, handle)| normal);
+/// }
+/// ```
+///
+/// You can just write this:
+///
+/// ```rust
+/// # #[derive(Clone)]
+/// # struct Normal;
+/// # impl<U: Ui> Mode<U> for Normal {
+/// #     type Widget = File<U>;
+/// #     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>) {}
+/// # }
+/// use duat_core::prelude::*;
+///
+/// fn setup() {
+///     hook::add::<Normal>(|pa, (normal, handle)| normal);
+/// }
+/// ```
+///
 /// # Note
 ///
 /// You should try to avoid more than one [`Mode`] with the same name.
@@ -458,9 +599,9 @@ impl Hookable for ModeSwitched {
 /// like the language of a [`File`].
 ///
 /// [`File`]: crate::file::File
-pub struct ModeSetTo<M: Mode<U>, U: Ui>(pub(crate) (Option<M>, Handle<M::Widget, U>));
+pub struct ModeCreated<M: Mode<U>, U: Ui>(pub(crate) (Option<M>, Handle<M::Widget, U>));
 
-impl<M: Mode<U>, U: Ui> Hookable for ModeSetTo<M, U> {
+impl<M: Mode<U>, U: Ui> Hookable for ModeCreated<M, U> {
     type Input<'h> = (M, &'h Handle<M::Widget, U>);
     type Output = M;
 
@@ -468,7 +609,7 @@ impl<M: Mode<U>, U: Ui> Hookable for ModeSetTo<M, U> {
         (self.0.0.take().unwrap(), &self.0.1)
     }
 
-    fn return_output(&mut self, output: Self::Output) {
+    fn take_output_back(&mut self, output: Self::Output) {
         self.0.0 = Some(output)
     }
 }
@@ -580,16 +721,16 @@ impl Hookable for FileWritten {
 /// Duat in the configuration crate.
 ///
 /// [`hook::trigger`]: trigger
-pub trait Hookable: Sized + 'static {
+pub trait Hookable<_H: HookDummy = NormalHook>: Sized + 'static {
     /// The arguments that are passed to each hook.
     type Input<'h>;
     /// The output of triggering hooks. Mostly never used
     ///
     /// This value is never returned when calling [`hook::trigger`],
-    /// instead, through the [`Hookable::return_output`] function, you
-    /// are supposed to store it in [`Self`], and then you can access
-    /// it after the [`hook::trigger`] call, if it supposed to be
-    /// something like the builder pattern.
+    /// instead, through the [`Hookable::take_output_back`] function,
+    /// you are supposed to store it in [`Self`], and then you can
+    /// access it after the [`hook::trigger`] call, if it supposed
+    /// to be something like the builder pattern.
     ///
     /// [`hook::trigger`]: global::trigger
     /// [`Self`]: Hookable
@@ -603,11 +744,11 @@ pub trait Hookable: Sized + 'static {
     ///
     /// One example of how this can be useful is if your [`Hookable`]
     /// is using a builder pattern definition for the [`Output`], like
-    /// the [`ModeSetTo`] [`Hookable`].
+    /// the [`ModeCreated`] [`Hookable`].
     ///
     /// [`Output`]: Hookable::Output
     #[allow(unused_variables)]
-    fn return_output(&mut self, output: Self::Output) {}
+    fn take_output_back(&mut self, output: Self::Output) {}
 }
 
 /// Where all hooks of Duat are stored
@@ -679,7 +820,7 @@ impl InnerHooks {
         for (_, hook) in hooks.iter() {
             let input = hookable.get_input();
             let output = hook.borrow_mut()(pa, input);
-            hookable.return_output(output);
+            hookable.take_output_back(output);
         }
 
         hookable
@@ -709,3 +850,153 @@ impl<H: Hookable> HookHolder for HooksOf<H> {
 
 type InnerHookFn<H> =
     &'static RefCell<(dyn FnMut(&mut Pass, <H as Hookable>::Input<'_>) -> <H as Hookable>::Output)>;
+
+/// An alias for a [`Hookable`]
+///
+/// This trait is not normally meant to be implemented manually,
+/// instead, it is automatically derived for every [`Hookable`].
+///
+/// You can use this if you want to use something that is not
+/// [`Hookable`] as a [`Hookable`] alias that gets translated to an
+/// actually [`Hookable`] type via [`HookAlias::Hookable`]. An example
+/// of where this is used is with [`Widget`]s and [`Mode`]s:
+///
+/// ```rust
+/// use duat_core::{
+///     hook::{HookAlias, HookDummy, Hookable},
+///     prelude::*,
+/// };
+/// # fn test() {
+/// pub struct CreatedStruct<T: 'static>(Option<T>);
+///
+/// impl<T: 'static> Hookable for CreatedStruct<T> {
+///     type Input<'h> = T;
+///     type Output = T;
+///
+///     fn get_input(&mut self) -> Self::Input<'_> {
+///         self.0.take().unwrap()
+///     }
+///
+///     fn take_output_back(&mut self, output: Self::Output) {
+///         self.0 = Some(output);
+///     }
+/// }
+///
+/// struct MyStructWithAVeryLongName;
+///
+/// // This is way too long
+/// hook::add::<CreatedStruct<MyStructWithAVeryLongName>>(|pa, arg| arg);
+///
+/// // Do this instead
+///
+/// struct MyDummy;
+///
+/// impl HookDummy for MyDummy {}
+///
+/// impl HookAlias<MyDummy> for MyStructWithAVeryLongName {
+///     type Hookable = CreatedStruct<MyStructWithAVeryLongName>;
+///     type Input<'h> = <Self::Hookable as Hookable>::Input<'h>;
+///     type Output = <Self::Hookable as Hookable>::Output;
+/// }
+///
+/// // Much better
+/// hook::add::<MyStructWithAVeryLongName>(|pa, arg| arg);
+/// # }
+/// ```
+pub trait HookAlias<U: Ui, D: HookDummy = NormalHook> {
+    /// Just a shorthand for less boilerplate in the function
+    /// definition
+    type Input<'h>;
+    /// Just a shorthand for less boilerplate in the function
+    /// definition
+    type Output;
+
+    /// The actual [`Hookable`] that this [`HookAlias`] is supposed to
+    /// map to
+    type Hookable: for<'h> Hookable<Input<'h> = Self::Input<'h>, Output = Self::Output>;
+}
+
+impl<H: Hookable, U: Ui> HookAlias<U> for H {
+    type Hookable = Self;
+    type Input<'h> = H::Input<'h>;
+    type Output = H::Output;
+}
+
+impl<W: Widget<U>, U: Ui> HookAlias<U, WidgetCreatedDummy<U>> for W {
+    type Hookable = WidgetCreated<W, U>;
+    type Input<'h> = <WidgetCreated<W, U> as Hookable>::Input<'h>;
+    type Output = <WidgetCreated<W, U> as Hookable>::Output;
+}
+
+impl<M: Mode<U>, U: Ui> HookAlias<U, ModeCreatedDummy<U>> for M {
+    type Hookable = ModeCreated<M, U>;
+    type Input<'h> = <ModeCreated<M, U> as Hookable>::Input<'h>;
+    type Output = <ModeCreated<M, U> as Hookable>::Output;
+}
+
+/// Use this trait if you want to make specialized hooks
+///
+/// This trait in particular doesn't really serve any purposes other
+/// than allowing for specialization resolution.
+///
+/// ```rust
+/// use duat_core::{
+///     hook::{HookAlias, HookDummy, Hookable},
+///     prelude::*,
+/// };
+/// # fn test() {
+/// pub struct CreatedStruct<T: 'static>(Option<T>);
+///
+/// impl<T: 'static> Hookable for CreatedStruct<T> {
+///     type Input<'h> = T;
+///     type Output = T;
+///
+///     fn get_input(&mut self) -> Self::Input<'_> {
+///         self.0.take().unwrap()
+///     }
+///
+///     fn take_output_back(&mut self, output: Self::Output) {
+///         self.0 = Some(output);
+///     }
+/// }
+///
+/// struct MyStructWithAVeryLongName;
+///
+/// // This is way too long
+/// hook::add::<CreatedStruct<MyStructWithAVeryLongName>>(|pa, arg| arg);
+///
+/// // Do this instead
+///
+/// struct MyDummy;
+///
+/// impl HookDummy for MyDummy {}
+///
+/// impl HookAlias<MyDummy> for MyStructWithAVeryLongName {
+///     type Hookable = CreatedStruct<MyStructWithAVeryLongName>;
+///     type Input<'h> = <Self::Hookable as Hookable>::Input<'h>;
+///     type Output = <Self::Hookable as Hookable>::Output;
+/// }
+///
+/// // Much better
+/// hook::add::<MyStructWithAVeryLongName>(|pa, arg| arg);
+/// # }
+/// ```
+pub trait HookDummy {}
+
+/// For specialization purposes
+#[doc(hidden)]
+pub struct NormalHook;
+
+impl HookDummy for NormalHook {}
+
+/// For specialization purposes
+#[doc(hidden)]
+pub struct WidgetCreatedDummy<U>(PhantomData<U>);
+
+impl<U> HookDummy for WidgetCreatedDummy<U> {}
+
+/// For specialization purposes
+#[doc(hidden)]
+pub struct ModeCreatedDummy<U>(PhantomData<U>);
+
+impl<U> HookDummy for ModeCreatedDummy<U> {}

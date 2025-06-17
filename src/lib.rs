@@ -105,10 +105,8 @@
 //!
 //!     print::wrap_on_edge();
 //!
-//!     hook::remove("FileWidgets");
-//!     hook::add::<OnFileOpen>(|pa, builder| {
-//!         builder.push(pa, VertRule::cfg());
-//!         builder.push(pa, LineNumbers::cfg());
+//!     hook::add::<LineNumbers<Ui>>(|pa, (line_nums, handle)| {
+//!         line_nums.align_right().align_main_left()
 //!     });
 //!
 //!     hook::remove("WindowWidgets");
@@ -140,8 +138,7 @@
 //!   also used by the `Kak` plugin;
 //! - [Maps] jk to esc in the `Insert` mode;
 //! - [Changes] the wrapping;
-//! - [Removes] the hook [group] "FileWidgets";
-//! - [Pushes] a [vertical rule] and [line numbers] to every file;
+//! - Changes the alignment of the [`LineNumbers`] [`Widget`];
 //! - [Removes] the hook group "WindowWidgets";
 //! - Pushes a [custom status line] (with a [Spacer] for 2 separate
 //!   sides, and a reformatted [`mode_name`]), a [command line], and a
@@ -319,6 +316,7 @@
 //! [`status!`]: prelude::status
 //! [numbering]: prelude::LineNum
 //! [`LineNumbers`]: prelude::LineNumbers
+//! [`Widget`]: prelude::Widget
 //! [tags]: duat_core::text::Tag
 //! [`duat-kak`]: https://github.com/AhoyISki/duat-kak
 //! [Kakoune]: https://github.com/mawww/kakoune
@@ -446,8 +444,8 @@ pub mod mode {
 pub mod cursor {
     pub use duat_core::form::{
         extra_cursor as get_extra, main_cursor as get_main, set_extra_cursor as set_extra,
-        set_main_cursor as set_main, unset_extra_cursor as unset_extra,
-        unset_main_cursor as unset_main, unset_cursors as unset
+        set_main_cursor as set_main, unset_cursors as unset, unset_extra_cursor as unset_extra,
+        unset_main_cursor as unset_main,
     };
 }
 
@@ -476,8 +474,8 @@ pub mod hook {
     //! use duat::prelude::*;
     //!
     //! fn setup() {
-    //!     hook::add::<WidgetCreated<LineNumbers<Ui>>>(|pa, (ln, _)| {
-    //!         ln.align_right().align_main_left().rel_abs()
+    //!     hook::add::<LineNumbers<Ui>>(|pa, (line_nums, _)| {
+    //!         line_nums.align_right().align_main_left().rel_abs()
     //!     });
     //! }
     //! ```
@@ -551,7 +549,8 @@ pub mod hook {
     //!   crate.
     //! - [`ExitedDuat`] triggers after Duat has exited.
     //! - [`WidgetCreated`] triggers when a [`Widget`]'s [cfg] is
-    //!   created, letting you change it.
+    //!   created, letting you change it, [`Widget`] can be used as
+    //!   its [alias]
     //! - [`OnFileOpen`], which lets you push widgets around a
     //!   [`File`].
     //! - [`OnWindowOpen`], which lets you push widgets around the
@@ -564,13 +563,14 @@ pub mod hook {
     //!   [key].
     //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
     //! - [`ModeSwitched`] triggers when you change [`Mode`].
-    //! - [`ModeSetTo`] lets you act on a [`Mode`] after switching.
+    //! - [`ModeCreated`] lets you act on a [`Mode`] after switching.
     //! - [`FileWritten`] triggers after the [`File`] is written.
     //! - [`SearchPerformed`] (from duat-utils) triggers after a
     //!   search is performed.
     //! - [`SearchUpdated`] (from duat-utils) triggers after a search
     //!   updates.
     //!
+    //! [alias]: duat_core::hook::HookAlias
     //! [hook above]: WidgetCreated
     //! [That hook]: OnFileOpen
     //! [`StatusLine`]: crate::prelude::StatusLine
@@ -593,12 +593,135 @@ pub mod hook {
     //! [`Mode`]: crate::mode::Mode
     //! [`&mut Widget`]: crate::prelude::Widget
     //! [`Output`]: Hookable::Output
+    use duat_core::data::Pass;
     pub use duat_core::hook::*;
     pub use duat_utils::hooks::*;
 
     use crate::Ui;
 
+    /// Adds a [hook]
+    ///
+    /// This hook is ungrouped, that is, it cannot be removed. If you
+    /// want a hook that is removable, see [`hook::add_grouped`].
+    ///
+    /// ```rust
+    /// # mod kak {
+    /// #     use duat::{prelude::{*, mode::KeyEvent}};
+    /// #     #[derive(Clone)]
+    /// #     pub struct Normal;
+    /// #     impl Mode<Ui> for Normal {
+    /// #         type Widget = File;
+    /// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<File>) {
+    /// #             todo!();
+    /// #         }
+    /// #     }
+    /// #     impl Normal {
+    /// #         fn f_and_t_set_search(self) -> Self { todo!() }
+    /// #     }
+    /// #     pub struct Kak;
+    /// #     impl duat_core::Plugin<Ui> for Kak {
+    /// #         fn new() -> Self {
+    /// #             Self
+    /// #         }
+    /// #         fn plug(self) {}
+    /// #     }
+    /// # }
+    /// setup_duat!(setup);
+    /// use duat::prelude::*;
+    ///
+    /// pub fn setup() {
+    ///     hook::add::<Normal>(|pa, (normal_mode, handle)| normal_mode.f_and_t_set_search());
+    /// }
+    /// ```
+    ///
+    /// [hook]: Hookable
+    /// [`hook::add_grouped`]: add_grouped
+    pub fn add<H: HookAlias<Ui, impl HookDummy>>(
+        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static,
+    ) {
+        duat_core::hook::add::<H, Ui>(f);
+    }
+
+    /// Adds a grouped [hook]
+    ///
+    /// A grouped hook is one that, along with others on the same
+    /// group, can be removed by [`hook::remove`]. If you do
+    /// not need/want this feature, take a look at [`hook::add`].
+    ///
+    /// [hook]: Hookable
+    /// [`hook::remove`]: remove
+    /// [`hook::add`]: add
+    pub fn add_grouped<H: HookAlias<Ui, impl HookDummy>>(
+        group: &'static str,
+        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static,
+    ) {
+        duat_core::hook::add_grouped::<H, Ui>(group, f);
+    }
+
     /// [`Hookable`]: Triggers when a [`Widget`]'s [cfg] is created
+    ///
+    /// # Aliases
+    ///
+    /// Since every [`Widget`] implements the [`HookAlias`] trait,
+    /// instead of writing this:
+    ///
+    /// ```rust
+    /// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
+    /// # impl<U: Ui> Widget<U> for LineNumbers<U> {
+    /// #     type Cfg = LineNumbersOptions<U>;
+    /// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
+    /// #     fn needs_update(&self) -> bool { todo!(); }
+    /// #     fn cfg() -> Self::Cfg { todo!() }
+    /// #     fn text(&self) -> &Text { todo!(); }
+    /// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
+    /// #     fn once() -> Result<(), Text> { Ok(()) }
+    /// # }
+    /// # struct LineNumbersOptions<U>(std::marker::PhantomData<U>);
+    /// # impl<U> LineNumbersOptions<U> {
+    /// #     pub fn rel_abs(self) -> Self { todo!(); }
+    /// # }
+    /// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
+    /// #     type Widget = LineNumbers<U>;
+    /// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    /// #         todo!();
+    /// #     }
+    /// # }
+    /// use duat_core::{prelude::*, hook::WidgetCreated};
+    ///
+    /// fn setup_generic_over_ui<U: Ui>() {
+    ///     hook::add::<WidgetCreated<LineNumbers<U>, U>>(|pa, (ln, handle)| ln);
+    /// }
+    /// ```
+    ///
+    /// You can just write this:
+    ///
+    /// ```rust
+    /// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
+    /// # impl<U: Ui> Widget<U> for LineNumbers<U> {
+    /// #     type Cfg = LineNumbersOptions<U>;
+    /// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
+    /// #     fn needs_update(&self) -> bool { todo!(); }
+    /// #     fn cfg() -> Self::Cfg { todo!() }
+    /// #     fn text(&self) -> &Text { todo!(); }
+    /// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
+    /// #     fn once() -> Result<(), Text> { Ok(()) }
+    /// # }
+    /// # struct LineNumbersOptions<U>(std::marker::PhantomData<U>);
+    /// # impl<U> LineNumbersOptions<U> {
+    /// #     pub fn rel_abs(self) -> Self { todo!(); }
+    /// # }
+    /// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
+    /// #     type Widget = LineNumbers<U>;
+    /// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    /// #         todo!();
+    /// #     }
+    /// # }
+    /// use duat_core::{prelude::*, hook::WidgetCreated};
+    ///
+    /// fn setup_generic_over_ui<U: Ui>() {
+    ///     hook::add::<LineNumbers<U>>(|pa, (ln, handle)| ln);
+    /// }
+    /// ```
     ///
     /// # Arguments
     ///
@@ -711,7 +834,7 @@ pub mod hook {
     /// [`File`]: crate::widgets::File
     /// [`Handle`]: crate::prelude::Handle
     /// [`Widget`]: crate::prelude::Widget
-    pub type ModeSetTo<M> = duat_core::hook::ModeSetTo<M, Ui>;
+    pub type ModeCreated<M> = duat_core::hook::ModeCreated<M, Ui>;
 }
 
 /// Duat's builtin widgets
@@ -780,7 +903,7 @@ pub mod prelude {
         form::{self, CursorShape, Form},
         hook::{
             self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FocusedOn,
-            FormSet, KeysSent, KeysSentTo, ModeSetTo, ModeSwitched, OnFileOpen, OnWindowOpen,
+            FormSet, KeysSent, KeysSentTo, ModeCreated, ModeSwitched, OnFileOpen, OnWindowOpen,
             SearchPerformed, SearchUpdated, UnfocusedFrom, WidgetCreated,
         },
         mode::{self, Mode, alias, map},

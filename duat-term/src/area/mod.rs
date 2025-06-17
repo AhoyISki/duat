@@ -114,9 +114,9 @@ impl Area {
             }
 
             let iter = {
-                let line_start = text.visual_line_start(info.points);
+                let line_start = text.visual_line_start(info.s_points);
                 let iter = text.iter_fwd(line_start);
-                print_iter(iter, lines.cap(), cfg, info.points)
+                print_iter(iter, lines.cap(), cfg, info.s_points)
             };
 
             (lines, iter)
@@ -401,29 +401,89 @@ impl ui::RawArea for Area {
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
 
-        let (mut info, w, h) = {
+        let (mut info, width, height) = {
             let coords = layout.printer.coords(rect.var_points(), false);
             let info = rect.print_info().unwrap().get();
             (info, coords.width(), coords.height())
         };
 
-        if w > 0 && h > 0 {
-            scroll_ver_around(&mut info, w, h, point, text, cfg);
-            scroll_hor_around(&mut info, w, point, text, cfg);
+        if width > 0 && height > 0 {
+            scroll_ver_around(&mut info, width, height, point, text, cfg);
+            scroll_hor_around(&mut info, width, point, text, cfg);
         }
 
         info.prev_main = point;
-        info.last_points = None;
+        info.e_points = None;
 
         rect.print_info().unwrap().set(info);
     }
+
+    fn scroll_ver(&self, text: &Text, dist: i32, cfg: PrintCfg) {
+        if dist == 0 {
+            return;
+        }
+
+        let layouts = self.layouts.lock().unwrap();
+        let layout = get_layout(&layouts, self.id).unwrap();
+        let rect = layout.get(self.id).unwrap();
+
+        let (mut info, width, height) = {
+            let coords = layout.printer.coords(rect.var_points(), false);
+            let info = rect.print_info().unwrap().get();
+            (info, coords.width(), coords.height())
+        };
+
+        let cap = cfg.wrap_width(width);
+
+        let line_start = text.visual_line_start(info.s_points);
+
+        if dist > 0 {
+            let max = if cfg.allow_overscroll {
+                cfg.scrolloff.y as usize
+            } else {
+                height as usize
+            };
+            let mut iter = print_iter(text.iter_fwd(line_start), cap, cfg, line_start)
+                .filter_map(|(caret, item)| caret.wrap.then_some(item.points()));
+
+            let mut line_starts = Vec::new();
+
+            for _ in 0..=dist as usize {
+                if let Some(line_start) = iter.next() {
+                    line_starts.push(line_start);
+                } else {
+                    break;
+                }
+            }
+
+            let look_back = max - iter.take(max).count();
+
+            if look_back > 0 {
+                info.s_points = line_starts[line_starts.len() - (1 + look_back)];
+                info.e_points = Some(text.ghost_max_points_at(text.len().byte()));
+            } else {
+                info.s_points = *line_starts.last().unwrap();
+                info.e_points = None
+            }
+        } else {
+            let mut iter = rev_print_iter(text.iter_rev(line_start), cap, cfg)
+                .filter_map(|(caret, item)| caret.wrap.then_some(item.points()));
+
+            info.s_points = iter
+                .nth(dist.unsigned_abs() as usize - 1)
+                .unwrap_or_default();
+            info.e_points = None;
+        }
+
+        rect.print_info().unwrap().set(info);
+    }
+
+    ////////// Printing
 
     fn set_as_active(&self) {
         let mut layouts = self.layouts.lock().unwrap();
         get_layout_mut(&mut layouts, self.id).unwrap().active_id = self.id;
     }
-
-    ////////// Printing
 
     fn print(&self, text: &mut Text, cfg: PrintCfg, painter: Painter) {
         self.print(text, cfg, painter, |_, _| {})
@@ -462,6 +522,8 @@ impl ui::RawArea for Area {
         rev_print_iter(iter, cfg.wrap_width(self.width()), cfg)
     }
 
+    ////////// Queries
+
     fn has_changed(&self) -> bool {
         let layouts = self.layouts.lock().unwrap();
         if let Some(layout) = get_layout(&layouts, self.id)
@@ -472,8 +534,6 @@ impl ui::RawArea for Area {
             true
         }
     }
-
-    ////////// Queries
 
     fn is_master_of(&self, other: &Self) -> bool {
         if other.id == self.id {
@@ -525,14 +585,14 @@ impl ui::RawArea for Area {
         coords.height()
     }
 
-    fn first_points(&self, _text: &Text, _cfg: PrintCfg) -> (Point, Option<Point>) {
+    fn start_points(&self, _text: &Text, _cfg: PrintCfg) -> (Point, Option<Point>) {
         let layouts = self.layouts.lock().unwrap();
-        layouted::first_points(self, &layouts)
+        layouted::start_points(self, &layouts)
     }
 
-    fn last_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>) {
+    fn end_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>) {
         let layouts = self.layouts.lock().unwrap();
-        layouted::last_points(self, &layouts, text, cfg)
+        layouted::end_points(self, &layouts, text, cfg)
     }
 
     fn print_info(&self) -> Self::PrintInfo {
@@ -558,18 +618,18 @@ impl ui::RawArea for Area {
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug, Encode, Decode)]
 #[bincode(crate = "duat_core::context::bincode")]
 pub struct PrintInfo {
-    points: (Point, Option<Point>),
+    s_points: (Point, Option<Point>),
     x_shift: u32,
     prev_main: Point,
-    last_points: Option<(Point, Option<Point>)>,
+    e_points: Option<(Point, Option<Point>)>,
     vert_dist: u32,
 }
 
 impl PrintInfo {
     fn fix(&mut self, text: &Text) {
-        let max = text.len().min(self.points.0);
+        let max = text.len().min(self.s_points.0);
         let (_, max_ghost) = text.ghost_max_points_at(max.byte());
-        self.points = (max, self.points.1.min(max_ghost))
+        self.s_points = (max, self.s_points.1.min(max_ghost))
     }
 }
 
@@ -600,7 +660,7 @@ fn scroll_ver_around(
         .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
         .inspect(|points| {
             total_dist += 1;
-            below_dist += (*points >= info.points) as u32;
+            below_dist += (*points >= info.s_points) as u32;
         });
 
     let target = if info.prev_main > point {
@@ -610,13 +670,13 @@ fn scroll_ver_around(
     };
     let first = iter.nth(target).unwrap_or_default();
 
-    if (info.prev_main > point && first <= info.points)
-        || (info.prev_main < point && first >= info.points)
+    if (info.prev_main > point && first <= info.s_points)
+        || (info.prev_main < point && first >= info.s_points)
     {
-        info.points = first;
+        info.s_points = first;
         info.vert_dist = total_dist - 1;
     } else if info.prev_main > point {
-        iter.take_while(|points| *points >= info.points)
+        iter.take_while(|points| *points >= info.s_points)
             .for_each(|_| {});
 
         info.vert_dist = below_dist - 1;
@@ -712,13 +772,13 @@ mod layouted {
     use super::{Area, get_layout, get_rect, iter::print_iter};
     use crate::layout::Layout;
 
-    pub fn first_points(area: &Area, layouts: &[Layout]) -> (Point, Option<Point>) {
+    pub fn start_points(area: &Area, layouts: &[Layout]) -> (Point, Option<Point>) {
         let rect = get_rect(layouts, area.id).unwrap();
         let info = rect.print_info().unwrap().get();
-        info.points
+        info.s_points
     }
 
-    pub fn last_points(
+    pub fn end_points(
         area: &Area,
         layouts: &[Layout],
         text: &Text,
@@ -731,7 +791,7 @@ mod layouted {
             (info.get(), layout.printer.coords(rect.var_points(), false))
         };
 
-        if let Some(last) = info.last_points {
+        if let Some(last) = info.e_points {
             return last;
         }
 
@@ -741,13 +801,13 @@ mod layouted {
         {
             (text.visual_line_start(info.prev_main), info.vert_dist)
         } else {
-            (text.visual_line_start(info.points), 0)
+            (text.visual_line_start(info.s_points), 0)
         };
 
         let iter = text.iter_fwd(line_start);
 
-        let iter = print_iter(iter, cfg.wrap_width(coords.width()), cfg, info.points);
-        let mut points = info.points;
+        let iter = print_iter(iter, cfg.wrap_width(coords.width()), cfg, info.s_points);
+        let mut points = info.s_points;
 
         for (Caret { wrap, .. }, Item { part, real, ghost }) in iter {
             if wrap {
@@ -762,7 +822,7 @@ mod layouted {
             }
         }
 
-        info.last_points = Some(points);
+        info.e_points = Some(points);
         let layout = get_layout(layouts, area.id).unwrap();
         let rect = layout.get(area.id).unwrap();
         rect.print_info().unwrap().set(info);

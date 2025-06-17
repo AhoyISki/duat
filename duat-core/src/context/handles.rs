@@ -75,13 +75,11 @@ impl<U: Ui> FileHandle<U> {
     /// [`Area`]: crate::ui::RawArea
     pub fn read<Ret>(&self, pa: &Pass, f: impl FnOnce(&File<U>, &U::Area) -> Ret) -> Ret {
         if let Some((handle, _)) = self.fixed.as_ref() {
-            let file = handle.widget().acquire(pa);
-            f(&file, handle.area())
+            f(&handle.widget.acquire(pa), &handle.area)
         } else {
             self.current.read(pa, |parts| {
                 let (handle, _) = parts.as_ref().unwrap();
-                let file = handle.widget().acquire(pa);
-                f(&file, handle.area())
+                f(&handle.widget.acquire(pa), &handle.area)
             })
         }
     }
@@ -141,12 +139,11 @@ impl<U: Ui> FileHandle<U> {
                 let area = handle.area();
                 handle.widget().read_as(pa, |w| f(w, area))
             } else {
-                related.read(pa, |related| {
-                    related
-                        .iter()
-                        .find(|node| node.data_is::<W>())
-                        .and_then(|node| node.widget().read_as(pa, |w| f(w, node.area())))
-                })
+                let related = related.acquire(pa);
+                related
+                    .iter()
+                    .find(|node| node.data_is::<W>())
+                    .and_then(|node| node.widget().read_as(pa, |w| f(w, node.area())))
             }
         };
 
@@ -727,6 +724,22 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     /// Finishes the current moment and adds a new one to the history
     pub fn new_moment(&self, pa: &mut Pass) {
         self.widget.write(pa, |wid| wid.text_mut().new_moment());
+    }
+
+    ////////// Area functions
+
+    /// Scrolls the [`Text`] veritcally by an amount
+    ///
+    /// If [`PrintCfg.allow_overscroll`] is set, then the [`Text`]
+    /// will be allowed to scroll beyond the last line, up until
+    /// reaching the `scrolloff.y` value.
+    ///
+    /// [`PrintCfg.allow_overscroll`]: crate::cfg::PrintCfg::allow_overscroll
+    pub fn scroll_ver(&self, pa: &Pass, dist: i32) {
+        let widget = self.widget.acquire(pa);
+        self.area()
+            .scroll_ver(widget.text(), dist, widget.print_cfg());
+        self.widget.declare_written();
     }
 
     ////////// Querying functions

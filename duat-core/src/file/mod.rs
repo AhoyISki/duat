@@ -307,8 +307,8 @@ impl<U: Ui> Widget<U> for File<U> {
         }
 
         if file.readers.needs_update() {
-            let (start, _) = area.first_points(&file.text, file.cfg);
-            let (end, _) = area.last_points(&file.text, file.cfg);
+            let (start, _) = area.start_points(&file.text, file.cfg);
+            let (end, _) = area.end_points(&file.text, file.cfg);
 
             // SAFETY: I'm not passing the Pass to inner structures, so this
             // should be fine.
@@ -336,7 +336,7 @@ impl<U: Ui> Widget<U> for File<U> {
     }
 
     fn print(&mut self, painter: Painter, area: &<U as Ui>::Area) {
-        let (start, _) = area.first_points(&self.text, self.cfg);
+        let (start, _) = area.start_points(&self.text, self.cfg);
 
         let mut last_line = area
             .rev_print_iter(self.text.iter_rev(start), self.cfg)

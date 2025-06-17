@@ -193,6 +193,11 @@ pub struct PrintCfg {
     pub word_chars: WordChars,
     /// Whether to show ghosts
     pub show_ghosts: bool,
+    /// Wether to allow the [`Text`] to scroll until only
+    /// `scrolloff.y` line are on screen
+    ///
+    /// [`Text`]: crate::text::Text
+    pub allow_overscroll: bool,
 }
 
 impl PrintCfg {
@@ -243,6 +248,7 @@ impl PrintCfg {
             word_chars: WordChars::default(),
             force_scrolloff: false,
             show_ghosts: true,
+            allow_overscroll: false
         }
     }
 
@@ -372,6 +378,7 @@ impl PrintCfg {
             word_chars: WordChars::default(),
             force_scrolloff: false,
             show_ghosts: true,
+            allow_overscroll: true
         }
     }
 }

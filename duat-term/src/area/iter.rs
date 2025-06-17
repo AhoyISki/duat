@@ -247,7 +247,7 @@ pub(super) fn print_iter_indented(
 
 pub fn rev_print_iter(
     mut iter: RevTextIter<'_>,
-    width: u32,
+    cap: u32,
     cfg: PrintCfg,
 ) -> impl Iterator<Item = (Caret, Item)> + Clone + '_ {
     let mut returns = Vec::new();
@@ -272,7 +272,7 @@ pub fn rev_print_iter(
                 }
             }
 
-            returns.extend(inner_iter(items.into_iter().rev(), width, (0, true), cfg));
+            returns.extend(inner_iter(items.into_iter().rev(), cap, (0, true), cfg));
 
             returns.pop()
         }

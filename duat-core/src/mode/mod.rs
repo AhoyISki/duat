@@ -55,7 +55,7 @@ mod switch {
         duat_name,
         file::File,
         file_entry,
-        hook::{self, KeysSent, KeysSentTo, ModeSetTo, ModeSwitched},
+        hook::{self, KeysSent, KeysSentTo, ModeCreated, ModeSwitched},
         main_thread_only::MainThreadOnly,
         ui::{DuatEvent, Node, Ui},
         widget_entry,
@@ -274,8 +274,8 @@ mod switch {
         };
 
         let handle = Handle::from_parts(wid, area, mask);
-        let mst = ModeSetTo((Some(mode), handle.clone()));
-        let mut mode = hook::trigger(pa, mst).0.0.take().unwrap();
+        let mc = ModeCreated((Some(mode), handle.clone()));
+        let mut mode = hook::trigger(pa, mc).0.0.unwrap();
 
         mode.on_switch(pa, handle.clone());
 

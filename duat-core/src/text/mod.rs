@@ -767,8 +767,8 @@ impl Text {
                 self.add_selection(selection, is_main);
             }
         } else {
-            let (start, _) = area.first_points(self, cfg);
-            let (end, _) = area.last_points(self, cfg);
+            let (start, _) = area.start_points(self, cfg);
+            let (end, _) = area.end_points(self, cfg);
             for (selection, is_main) in selections.iter() {
                 let range = selection.range(self);
                 if range.end > start.byte() && range.start < end.byte() {
@@ -792,8 +792,8 @@ impl Text {
                 self.remove_selection(selection);
             }
         } else {
-            let (start, _) = area.first_points(self, cfg);
-            let (end, _) = area.last_points(self, cfg);
+            let (start, _) = area.start_points(self, cfg);
+            let (end, _) = area.end_points(self, cfg);
             for (selection, _) in selections.iter() {
                 let range = selection.range(self);
                 if range.end > start.byte() && range.start < end.byte() {

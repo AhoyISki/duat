@@ -289,11 +289,18 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
     /// text.
     fn request_width_to_fit(&self, text: &str) -> Result<(), Text>;
 
-    /// Scrolls the [`Text`] (up or down) until the main cursor is
-    /// within the [`ScrollOff`] range.
+    /// Scrolls the [`Text`] on all four directions until the given
+    /// [`Point`] is within the [`ScrollOff`] range
     ///
     /// [`ScrollOff`]: crate::cfg::ScrollOff
     fn scroll_around_point(&self, text: &Text, point: Point, cfg: PrintCfg);
+
+    /// Scrolls the [`Text`] veritcally by an amount
+    ///
+    /// If `scroll_beyond` is set, then the [`Text`] will be allowed
+    /// to scroll beyond the last line, up until reaching the
+    /// `scrolloff.y` value.
+    fn scroll_ver(&self, text: &Text, dist: i32, cfg: PrintCfg);
 
     /// Tells the [`Ui`] that this [`RawArea`] is the one that is
     /// currently focused.
@@ -387,11 +394,11 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
     /// Gets the height of the area
     fn height(&self) -> u32;
 
-    /// The first point that should be printed
-    fn first_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>);
+    /// The start points that should be printed
+    fn start_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>);
 
-    /// The last point that should be printed
-    fn last_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>);
+    /// The end points that should be printed
+    fn end_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>);
 
     /// The current printing information of the area
     fn print_info(&self) -> Self::PrintInfo;

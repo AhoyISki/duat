@@ -98,7 +98,7 @@ impl<U: Ui> Widget<U> for Notifications<U> {
         form::set_weak("default.Notifications.info", Form::cyan());
         form::set_weak("accent.info", Form::blue().underlined().bold());
 
-        hook::add_grouped::<KeysSent>("RemoveNotificationsOnInput", |_, _| {
+        hook::add_grouped::<KeysSent, U>("RemoveNotificationsOnInput", |_, _| {
             CLEAR_NOTIFS.store(true, Ordering::Relaxed);
         });
         Ok(())
