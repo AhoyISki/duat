@@ -102,7 +102,7 @@ impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter<U> {
             ("markup.list.unchecked", Form::grey()),
         );
 
-        hook::add_grouped::<OnFileOpen<U>>("TreeSitter", |pa, builder| {
+        hook::add_grouped::<OnFileOpen<U>, U>("TreeSitter", |pa, builder| {
             if let Some(filetype) = builder.read(pa, |file, _| file.filetype())
                 && let Some(ts_parser_cfg) = TsParser::cfg(filetype)
             {
