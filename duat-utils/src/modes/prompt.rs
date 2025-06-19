@@ -1,7 +1,6 @@
 use std::{io::Write, marker::PhantomData, sync::LazyLock};
 
 use duat_core::{prelude::*, text::Searcher};
-use regex_syntax::ast::Ast;
 
 use super::IncSearcher;
 use crate::{
@@ -38,7 +37,12 @@ static TAGGER: LazyLock<Tagger> = LazyLock::new(Tagger::new);
 pub struct Prompt<M: PromptMode<U>, U: Ui>(M, PhantomData<U>);
 
 impl<M: PromptMode<U>, U: Ui> Prompt<M, U> {
-    fn new(mode: M) -> Self {
+    /// Returns a new [`Prompt`] from this [`PromptMode`]
+    ///
+    /// For convenience, you should make it so `new` methods in
+    /// [`PromptMode`] implementors return a [`Prompt<Self, U>`],
+    /// rather than the [`PromptMode`] itself.
+    pub fn new(mode: M) -> Self {
         Self(mode, PhantomData)
     }
 }
@@ -56,7 +60,11 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
                     let text = self.0.update(pa, text, handle.area());
                     handle.replace_text(pa, text);
 
-                    mode::reset();
+                    if let Some(ret_handle) = self.0.return_handle() {
+                        mode::reset_to(ret_handle);
+                    } else {
+                        mode::reset::<M::ExitWidget, U>();
+                    }
                 } else {
                     handle.edit_main(pa, |mut e| {
                         e.move_hor(-1);
@@ -109,7 +117,11 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
                 let text = self.0.update(pa, text, handle.area());
                 handle.replace_text(pa, text);
 
-                mode::reset();
+                if let Some(ret_handle) = self.0.return_handle() {
+                    mode::reset_to(ret_handle);
+                } else {
+                    mode::reset::<M::ExitWidget, U>();
+                }
             }
             key!(KeyCode::Enter) => {
                 handle.write_selections(pa, |c| c.clear());
@@ -117,7 +129,11 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
                 let text = self.0.update(pa, text, handle.area());
                 handle.replace_text(pa, text);
 
-                mode::reset();
+                if let Some(ret_handle) = self.0.return_handle() {
+                    mode::reset_to(ret_handle);
+                } else {
+                    mode::reset::<M::ExitWidget, U>();
+                }
             }
             _ => {}
         }
@@ -209,6 +225,10 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
 /// [`U::Area`]: Ui::Area
 #[allow(unused_variables)]
 pub trait PromptMode<U: Ui>: Clone + 'static {
+    /// What [`Widget`] to exit to, upon pressing enter, esc, or
+    /// backspace in an empty [`PromptLine`]
+    type ExitWidget: Widget<U> = File<U>;
+
     /// Updates the [`PromptLine`] and [`Text`] of the [`Prompt`]
     ///
     /// This function is triggered every time the user presses a key
@@ -238,6 +258,13 @@ pub trait PromptMode<U: Ui>: Clone + 'static {
     /// What text should be at the beginning of the [`PromptLine`], as
     /// a [`Ghost`]
     fn prompt(&self) -> Text;
+
+    /// An optional returning [`Handle`] for the [`ExitWidget`]
+    ///
+    /// [`ExitWidget`]: PromptMode::ExitWidget
+    fn return_handle(&self) -> Option<Handle<Self::ExitWidget, U>> {
+        None
+    }
 }
 
 /// Runs Duat commands, with syntax highlighting for correct
@@ -362,7 +389,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
                     .parse(&text.to_string())
                     .unwrap();
 
-                tag_from_ast(*TAGGER, &mut text, &ast);
+                crate::tag_from_ast(*TAGGER, &mut text, &ast);
 
                 self.inc.search(pa, handle.attach_searcher(searcher));
             }
@@ -532,91 +559,5 @@ fn run_once<M: PromptMode<U>, U: Ui>() {
     if !list.contains(&TypeId::of::<M>()) {
         M::once();
         list.push(TypeId::of::<M>());
-    }
-}
-
-fn tag_from_ast(tagger: Tagger, text: &mut Text, ast: &Ast) {
-    use duat_core::form::FormId;
-    use regex_syntax::ast::{Ast::*, Span};
-
-    let mut insert_form = |id: FormId, span: Span| {
-        text.insert_tag(tagger, span.start.offset..span.end.offset, id.to_tag(0));
-    };
-
-    match ast {
-        Empty(_) => {}
-        Flags(set_flags) => {
-            let id = form::id_of!("Regex.operator.flags");
-            insert_form(id, set_flags.span);
-        }
-        Literal(literal) => {
-            let id = form::id_of!("Regex.literal");
-            insert_form(id, literal.span);
-        }
-        Dot(span) => {
-            let id = form::id_of!("Regex.operator.dot");
-            insert_form(id, **span);
-        }
-        Assertion(assertion) => {
-            let id = form::id_of!("Regex.operator.assertion");
-            insert_form(id, assertion.span);
-        }
-        ClassUnicode(class) => {
-            let id = form::id_of!("Regex.class.unicode");
-            insert_form(id, class.span);
-        }
-        ClassPerl(class) => {
-            let id = form::id_of!("Regex.class.perl");
-            insert_form(id, class.span);
-        }
-        ClassBracketed(class) => {
-            let class_id = form::id_of!("Regex.class.bracketed");
-            let bracket_id = form::id_of!("Regex.bracket.class");
-
-            insert_form(class_id, *class.kind.span());
-
-            let range = class.span.start.offset..class.span.start.offset + 1;
-            text.insert_tag(tagger, range, bracket_id.to_tag(0));
-            let range = class.span.end.offset - 1..class.span.end.offset;
-            text.insert_tag(tagger, range, bracket_id.to_tag(0));
-        }
-        Repetition(repetition) => {
-            let id = form::id_of!("Regex.operator.repetition");
-            insert_form(id, repetition.op.span);
-        }
-        Group(group) => {
-            let group_id = form::id_of!("Regex.group");
-            let bracket_id = form::id_of!("Regex.bracket.group");
-
-            insert_form(group_id, *group.ast.span());
-
-            let range = group.span.start.offset..group.span.start.offset + 1;
-            text.insert_tag(tagger, range, bracket_id.to_tag(0));
-            let range = group.span.end.offset - 1..group.span.end.offset;
-            text.insert_tag(tagger, range, bracket_id.to_tag(0));
-
-            tag_from_ast(tagger, text, &group.ast);
-        }
-        Alternation(alternation) => {
-            let id = form::id_of!("Regex.operator.alternation");
-
-            let mut prev_end = None;
-
-            for ast in alternation.asts.iter() {
-                tag_from_ast(tagger, text, ast);
-
-                if let Some(end) = prev_end {
-                    let range = end..ast.span().start.offset;
-                    text.insert_tag(tagger, range, id.to_tag(0));
-                }
-
-                prev_end = Some(ast.span().end.offset);
-            }
-        }
-        Concat(concat) => {
-            for ast in concat.asts.iter() {
-                tag_from_ast(tagger, text, ast);
-            }
-        }
     }
 }

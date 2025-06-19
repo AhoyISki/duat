@@ -17,7 +17,7 @@ use crate::{
     data::{Pass, RwData},
     file::File,
     mode::{Cursor, Cursors, Selection, Selections},
-    text::{Searcher, Text},
+    text::{Point, Searcher, Text, TwoPoints},
     ui::{Node, RawArea, Ui, Widget},
 };
 
@@ -36,7 +36,9 @@ use crate::{
 /// has changed.
 ///
 /// The main difference between a [`FileHandle<U>`] and a
-/// [`Handle<File<U>, U>`] is that the
+/// [`Handle<File<U>, U>`] is that the [`Handle`] is capable of acting
+/// on selections, but is fixed to just one [`File`], while the
+/// [`FileHandle`] can automatically point to the current [`File`].
 ///
 /// [`Area`]: crate::ui::RawArea
 /// [`Text`]: crate::text::Text
@@ -742,6 +744,30 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
         self.widget.declare_written();
     }
 
+    /// Scrolls the [`Text`] to the visual line of a [`TwoPoints`]
+    ///
+    /// If `scroll_beyond` is set, then the [`Text`] will be allowed
+    /// to scroll beyond the last line, up until reaching the
+    /// `scrolloff.y` value.
+    pub fn scroll_to_points(&self, pa: &Pass, points: impl TwoPoints) {
+        let widget = self.widget.acquire(pa);
+        self.area
+            .scroll_to_points(widget.text(), points, widget.print_cfg());
+        self.widget.declare_written();
+    }
+
+    /// The start points that should be printed
+    pub fn start_points(&self, pa: &Pass) -> (Point, Option<Point>) {
+        let widget = self.widget.acquire(pa);
+        self.area.start_points(widget.text(), widget.print_cfg())
+    }
+
+    /// The end points that should be printed
+    pub fn end_points(&self, pa: &Pass) -> (Point, Option<Point>) {
+        let widget = self.widget.acquire(pa);
+        self.area.end_points(widget.text(), widget.print_cfg())
+    }
+    
     ////////// Querying functions
 
     /// This [`Handle`]'s [`Widget`]
@@ -817,7 +843,7 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     }
 }
 
-impl<U: Ui> Handle<File<U>, U> {
+impl<W: Widget<U>, U: Ui> Handle<W, U> {
     /// Attaches a [`Searcher`] to this [`Handle`], so you can do
     /// incremental search
     ///
@@ -838,7 +864,7 @@ impl<U: Ui> Handle<File<U>, U> {
     /// [`duat-utils`]: https://docs.rs/duat-utils/lastest/
     /// [prompt]: https://docs.rs/duat-utils/latest/duat_utils/modes/trait.PromptMode.html
     /// [`duat-kak`]: https://docs.rs/duat-kak/lastest/
-    pub fn attach_searcher(&self, searcher: Searcher) -> Handle<File<U>, U, Searcher> {
+    pub fn attach_searcher(&self, searcher: Searcher) -> Handle<W, U, Searcher> {
         Handle {
             widget: self.widget.clone(),
             area: self.area.clone(),

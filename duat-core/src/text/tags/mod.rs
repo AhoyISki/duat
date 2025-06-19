@@ -321,27 +321,31 @@ impl Tags {
             if let Some(TagOrSkip::Skip(skip)) = ts {
                 if removed > 0 {
                     self.records.transform([n, b], [removed, 0], [0, 0]);
-                }
 
-                // Try to merge this skip with the previous one.
-                if let Some(prev_n) = n.checked_sub(1)
-                    && let Some(TagOrSkip::Skip(prev_skip)) = self.buf.get(prev_n)
-                {
-                    self.buf
-                        .splice(prev_n..=n, [TagOrSkip::Skip(prev_skip + skip)]);
-                    self.records.transform([n, b], [1, 0], [0, 0]);
-                    self.shift_bounds_and_ranges(n, [-1, 0]);
+                    // Try to merge this skip with the previous one.
+                    if let Some(prev_n) = n.checked_sub(1)
+                        && let Some(TagOrSkip::Skip(prev_skip)) = self.buf.get(prev_n)
+                    {
+                        self.buf
+                            .splice(prev_n..=n, [TagOrSkip::Skip(prev_skip + skip)]);
+                        self.records.transform([n, b], [1, 0], [0, 0]);
+                        self.shift_bounds_and_ranges(n, [-1, 0]);
+                    } else {
+                        n += 1;
+                    }
+
+                    removed = 0;
                 } else {
                     n += 1;
                 }
 
                 b += skip as usize;
-                removed = 0;
             } else if let Some(TagOrSkip::Tag(tag)) = ts {
                 if !taggers.clone().contains(tag.tagger()) {
                     n += 1;
                     continue;
                 }
+                
                 self.buf.remove(n);
                 self.shift_bounds_and_ranges(n, [-1, 0]);
 

@@ -97,7 +97,15 @@
 //! [`duat-kak`]: https://docs.rs/duat-kak/latest/duat_kak
 //! [`SearchUpdated`]: hooks::SearchUpdated
 //! [`SearchPerformed`]: hooks::SearchPerformed
-#![feature(decl_macro, closure_lifetime_binder, default_field_values)]
+#![feature(
+    decl_macro,
+    closure_lifetime_binder,
+    default_field_values,
+    associated_type_defaults
+)]
+
+use duat_core::prelude::*;
+use regex_syntax::ast::Ast;
 
 pub mod modes;
 pub mod state;
@@ -154,6 +162,92 @@ pub mod hooks {
 
         fn get_input(&mut self) -> Self::Input<'_> {
             &self.0
+        }
+    }
+}
+
+fn tag_from_ast(tagger: Tagger, text: &mut Text, ast: &Ast) {
+    use duat_core::form::FormId;
+    use regex_syntax::ast::{Ast::*, Span};
+
+    let mut insert_form = |id: FormId, span: Span| {
+        text.insert_tag(tagger, span.start.offset..span.end.offset, id.to_tag(0));
+    };
+
+    match ast {
+        Empty(_) => {}
+        Flags(set_flags) => {
+            let id = form::id_of!("Regex.operator.flags");
+            insert_form(id, set_flags.span);
+        }
+        Literal(literal) => {
+            let id = form::id_of!("Regex.literal");
+            insert_form(id, literal.span);
+        }
+        Dot(span) => {
+            let id = form::id_of!("Regex.operator.dot");
+            insert_form(id, **span);
+        }
+        Assertion(assertion) => {
+            let id = form::id_of!("Regex.operator.assertion");
+            insert_form(id, assertion.span);
+        }
+        ClassUnicode(class) => {
+            let id = form::id_of!("Regex.class.unicode");
+            insert_form(id, class.span);
+        }
+        ClassPerl(class) => {
+            let id = form::id_of!("Regex.class.perl");
+            insert_form(id, class.span);
+        }
+        ClassBracketed(class) => {
+            let class_id = form::id_of!("Regex.class.bracketed");
+            let bracket_id = form::id_of!("Regex.bracket.class");
+
+            insert_form(class_id, *class.kind.span());
+
+            let range = class.span.start.offset..class.span.start.offset + 1;
+            text.insert_tag(tagger, range, bracket_id.to_tag(0));
+            let range = class.span.end.offset - 1..class.span.end.offset;
+            text.insert_tag(tagger, range, bracket_id.to_tag(0));
+        }
+        Repetition(repetition) => {
+            let id = form::id_of!("Regex.operator.repetition");
+            insert_form(id, repetition.op.span);
+        }
+        Group(group) => {
+            let group_id = form::id_of!("Regex.group");
+            let bracket_id = form::id_of!("Regex.bracket.group");
+
+            insert_form(group_id, *group.ast.span());
+
+            let range = group.span.start.offset..group.span.start.offset + 1;
+            text.insert_tag(tagger, range, bracket_id.to_tag(0));
+            let range = group.span.end.offset - 1..group.span.end.offset;
+            text.insert_tag(tagger, range, bracket_id.to_tag(0));
+
+            tag_from_ast(tagger, text, &group.ast);
+        }
+        Alternation(alternation) => {
+            let id = form::id_of!("Regex.operator.alternation");
+
+            let mut prev_end = None;
+
+            for ast in alternation.asts.iter() {
+                tag_from_ast(tagger, text, ast);
+
+                if let Some(end) = prev_end {
+                    let range = end..ast.span().start.offset;
+                    text.insert_tag(tagger, range, id.to_tag(0));
+                }
+
+                prev_end = Some(ast.span().end.offset);
+            }
+        }
+        Concat(concat) => {
+            for ast in concat.asts.iter() {
+                tag_from_ast(tagger, text, ast);
+            }
         }
     }
 }

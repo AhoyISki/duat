@@ -34,7 +34,7 @@ mod global {
         data::{DataMap, Pass, RwData},
         main_thread_only::MainThreadOnly,
         text::{Text, txt},
-        ui::{DuatEvent, Node, Ui, Window},
+        ui::{DuatEvent, Node, Ui, Widget, Window},
     };
 
     static MAIN_THREAD_ID: OnceLock<std::thread::ThreadId> = OnceLock::new();
@@ -110,6 +110,32 @@ mod global {
     /// [`File`]: crate::file::File
     pub fn dyn_file<U: Ui>(pa: &Pass) -> Result<FileHandle<U>, Text> {
         Ok(cur_file(pa)?.dynamic())
+    }
+
+    /// Gets the [`Widget`] from a [`U::Area`]
+    ///
+    /// [`U::Area`]: Ui::Area
+    pub fn get_widget<W: Widget<U>, U: Ui>(_: &Pass, area: &U::Area) -> Result<Handle<W, U>, Text> {
+        let windows = windows::<U>().borrow();
+
+        let node = windows
+            .iter()
+            .flat_map(Window::nodes)
+            .find(|node| node.area() == area);
+        if let Some(node) = node {
+            let (widget, area, mask, _) = node.parts();
+            if let Some(widget) = widget.try_downcast() {
+                Ok(Handle::from_parts(widget, area.clone(), mask.clone()))
+            } else {
+                Err(txt!(
+                    "The widget with the given U::Area is not [a]{}",
+                    crate::duat_name::<W>()
+                )
+                .build())
+            }
+        } else {
+            Err(txt!("No widget found that matches the given U::Area").build())
+        }
     }
 
     /// The index of the currently active window.

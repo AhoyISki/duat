@@ -272,7 +272,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             // If I send the switch signal first, and the Window is deleted, I
             // will have the synchronously change the current window number
             // without affecting anything else.
-            mode::reset_switch_to::<U>(pa, &next_name, true);
+            mode::reset_to_file::<U>(pa, &next_name, true);
         }
 
         sender()
@@ -296,7 +296,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
                 sender().send(DuatEvent::Quit).unwrap();
                 return Ok(None);
             };
-            mode::reset_switch_to::<U>(pa, &next_name, true);
+            mode::reset_to_file::<U>(pa, &next_name, true);
         }
 
         sender()
@@ -340,7 +340,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
 
             match bytes {
                 Some(bytes) => Ok(Some(
-                    txt!("Wrote [a]{bytes}[] bytes to [File]{name}").build(),
+                    txt!("Wrote [a]{bytes}[] bytes to [file]{name}").build(),
                 )),
                 None => Ok(Some(txt!("Nothing to be written").build())),
             }
@@ -371,7 +371,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             return Ok(None);
         };
 
-        mode::reset_switch_to::<U>(pa, &next_name, true);
+        mode::reset_to_file::<U>(pa, &next_name, true);
 
         sender().send(DuatEvent::CloseFile(name.clone())).unwrap();
         match bytes {
@@ -551,7 +551,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             return Ok(Some(txt!("Opened [a]{name}").build()));
         }
 
-        mode::reset_switch_to::<U>(pa, name.clone(), true);
+        mode::reset_to_file::<U>(pa, name.clone(), true);
         Ok(Some(txt!("Switched to [a]{name}").build()))
     })?;
 
@@ -570,7 +570,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         };
 
         if windows[win].file_nodes(pa).len() == 1 {
-            mode::reset_switch_to::<U>(pa, name.clone(), true);
+            mode::reset_to_file::<U>(pa, name.clone(), true);
             Ok(Some(txt!("Switched to [a]{name}").build()))
         } else {
             sender().send(DuatEvent::OpenWindow(name.clone())).unwrap();
@@ -579,7 +579,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
     })?;
 
     add!(["buffer", "b"], |pa, name: OtherFileBuffer<U>| {
-        mode::reset_switch_to::<U>(pa, &name, true);
+        mode::reset_to_file::<U>(pa, &name, true);
         Ok(Some(txt!("Switched to [a]{name}").build()))
     })?;
 
@@ -604,7 +604,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
                 .ok_or_else(|| txt!("There are no other files open in this window"))?
         };
 
-        mode::reset_switch_to::<U>(pa, &name, true);
+        mode::reset_to_file::<U>(pa, &name, true);
         Ok(Some(txt!("Switched to [a]{name}").build()))
     })?;
 
@@ -629,7 +629,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
                 .ok_or_else(|| txt!("There are no other files open in this window"))?
         };
 
-        mode::reset_switch_to::<U>(pa, &name, true);
+        mode::reset_to_file::<U>(pa, &name, true);
 
         Ok(Some(txt!("Switched to [a]{name}").build()))
     })?;

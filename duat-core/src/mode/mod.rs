@@ -20,8 +20,12 @@
 //! [`IncSearch`]: docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
 //! [`PipeSelections`]: docs.rs/duat-utils/latest/duat_utils/modes/struct.PipeSelections.html
 use core::str;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-pub use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as KeyMod};
+pub use crossterm::event::{KeyCode, KeyEvent};
+
+/// Key modifiers, like Shift, Alt, Super, Shift + Alt, etc
+pub type KeyMod = crossterm::event::KeyModifiers;
 
 pub use self::{
     cursor::{Cursor, Cursors, Selection, Selections, VPoint},
@@ -34,6 +38,56 @@ use crate::{
     file::File,
     ui::{Ui, Widget},
 };
+
+/// Wether the reverse modifier should be [alt] as opposed to [shift]
+///
+/// [shift]: KeyMod::SHIFT
+/// [alt]: KeyMod::ALT
+static ALT_IS_REFERSE: AtomicBool = AtomicBool::new(false);
+
+/// Wether [alt] should be the reverse [modifier], instead of [shift]
+///
+/// On most editing models, the key that reverses actions (mostly
+/// searching), is the [shift] key, (like `shift + n` to go to the
+/// previouse match). In other situations though, that may not be the
+/// case, like with [`duat-kak`], where that key is [alt] (for
+/// consistency reasons).
+///
+/// Changing this key via [`set_alt_is_reverse`] does not cause any
+/// internal changes in [`duat-core`] or [`duat-utils`]. It is only
+/// meant to serve as a general setting for plugins to follow.
+///
+/// [modifier]: KeyMod
+/// [shift]: KeyMod::SHIFT
+/// [alt]: KeyMod::ALT
+/// [`duat-kak`]: docs.rs/duat-kak/latest/duat_kak
+/// [`duat-core`]: docs.rs/duat-core/latest/duat_core
+/// [`duat-utils`]: docs.rs/duat-utils/latest/duat_utils
+pub fn alt_is_reverse() -> bool {
+    ALT_IS_REFERSE.load(Ordering::Relaxed)
+}
+
+/// Sets wether [alt] should be the reverse [modifier], instead of
+/// [shift]
+///
+/// On most editing models, the key that reverses actions (mostly
+/// searching), is the [shift] key, (like `shift + n` to go to the
+/// previouse match). In other situations though, that may not be the
+/// case, like with [`duat-kak`], where that key is [alt] (for
+/// consistency reasons).
+///
+/// The value of this setting can be retrieved with
+/// [`alt_is_reverse`].
+///
+/// [modifier]: KeyMod
+/// [shift]: KeyMod::SHIFT
+/// [alt]: KeyMod::ALT
+/// [`duat-kak`]: docs.rs/duat-kak/latest/duat_kak
+/// [`duat-core`]: docs.rs/duat-core/latest/duat_core
+/// [`duat-utils`]: docs.rs/duat-utils/latest/duat_utils
+pub fn set_alt_is_reverse(value: bool) -> bool {
+    ALT_IS_REFERSE.swap(value, Ordering::Relaxed)
+}
 
 mod cursor;
 mod remap;
@@ -57,14 +111,14 @@ mod switch {
         file_entry,
         hook::{self, KeysSent, KeysSentTo, ModeCreated, ModeSwitched},
         main_thread_only::MainThreadOnly,
-        ui::{DuatEvent, Node, Ui},
+        ui::{DuatEvent, Node, Ui, Widget},
         widget_entry,
     };
 
     static SEND_KEYS: MainThreadOnly<RefCell<Option<KeyFn>>> =
         MainThreadOnly::new(RefCell::new(None));
-    static RESET_MODE: LazyLock<MainThreadOnly<RefCell<Box<dyn FnMut(&mut Pass) -> bool>>>> =
-        LazyLock::new(|| MainThreadOnly::new(RefCell::new(Box::new(|_| true))));
+    static RESET_MODES: MainThreadOnly<RefCell<Vec<(TypeId, Box<dyn FnMut(&mut Pass) -> bool>)>>> =
+        MainThreadOnly::new(RefCell::new(Vec::new()));
     static SET_MODE: MainThreadOnly<RefCell<Option<ModeFn>>> =
         MainThreadOnly::new(RefCell::new(None));
     static MODE: LazyLock<MainThreadOnly<RefCell<Box<dyn Any>>>> =
@@ -93,18 +147,37 @@ mod switch {
     /// [`mode::reset`]: reset
     pub fn set_default<M: Mode<U>, U: Ui>(mode: M) {
         context::assert_is_on_main_thread();
-        *unsafe { RESET_MODE.get() }.borrow_mut() = Box::new(move |pa| {
-            let mode = mode.clone();
-            set_mode_fn::<M, U>(pa, mode)
-        });
+
+        let mut reset_modes = unsafe { RESET_MODES.get() }.borrow_mut();
+
+        let i = if let Some(i) = reset_modes
+            .iter()
+            .position(|(ty, _)| *ty == TypeId::of::<M::Widget>())
+        {
+            reset_modes[i].1 = Box::new(move |pa| {
+                let mode = mode.clone();
+                set_mode_fn::<M, U>(pa, mode)
+            });
+            i
+        } else {
+            reset_modes.push((
+                TypeId::of::<M::Widget>(),
+                Box::new(move |pa| {
+                    let mode = mode.clone();
+                    set_mode_fn::<M, U>(pa, mode)
+                }),
+            ));
+            reset_modes.len() - 1
+        };
+
         let set_mode = unsafe { SET_MODE.get() };
         let prev = set_mode.take();
         *set_mode.borrow_mut() = Some(Box::new(move |pa| unsafe {
             if let Some(f) = prev {
                 f(pa);
-                RESET_MODE.get().borrow_mut()(pa)
+                RESET_MODES.get().borrow_mut()[i].1(pa)
             } else {
-                RESET_MODE.get().borrow_mut()(pa)
+                RESET_MODES.get().borrow_mut()[i].1(pa)
             }
         }));
     }
@@ -124,17 +197,68 @@ mod switch {
         }));
     }
 
-    /// Resets the mode to the [default]
+    /// Resets the mode to the [default] of a given [`Widget`]
+    ///
+    /// Does nothing if no default was set for the given [`Widget`].
     ///
     /// [default]: set_default
-    pub fn reset() {
+    pub fn reset<W: Widget<U>, U: Ui>() {
         context::assert_is_on_main_thread();
-        let set_mode = unsafe { SET_MODE.get() };
-        *set_mode.borrow_mut() = Some(Box::new(|pa| unsafe { RESET_MODE.get() }.borrow_mut()(pa)));
+        let reset_modes = unsafe { RESET_MODES.get() }.borrow_mut();
+        if let Some(i) = reset_modes
+            .iter()
+            .position(|(ty, _)| *ty == TypeId::of::<W>())
+        {
+            *unsafe { SET_MODE.get() }.borrow_mut() = Some(Box::new(move |pa| {
+                unsafe { RESET_MODES.get() }.borrow_mut()[i].1(pa)
+            }));
+        } else if TypeId::of::<W>() == TypeId::of::<File<U>>() {
+            panic!("Something went terribly wrong, somehow");
+        } else {
+            context::error!(
+                "There is no default [a]Mode[] set for [a]{}[]",
+                crate::duat_name::<W>()
+            );
+        };
+    }
+
+    /// Resets to the default [`Mode`] of the given [`Widget`], on a
+    /// given [`Handle<W, U>`]
+    pub fn reset_to<W: Widget<U>, U: Ui>(handle: Handle<W, U>) {
+        context::assert_is_on_main_thread();
+        let reset_modes = unsafe { RESET_MODES.get() }.borrow_mut();
+        let windows = context::windows::<U>().borrow();
+
+        let i = reset_modes
+            .iter()
+            .position(|(ty, _)| *ty == TypeId::of::<W>());
+
+        if let Some(i) = i {
+            if let Some(node) = windows
+                .iter()
+                .flat_map(|w| w.nodes())
+                .find(|n| n.ptr_eq(handle.widget()))
+                .cloned()
+            {
+                *unsafe { SET_MODE.get() }.borrow_mut() = Some(Box::new(move |pa| {
+                    switch_widget(pa, node);
+                    (unsafe { RESET_MODES.get() }.borrow_mut()[i].1)(pa)
+                }));
+            } else {
+                context::error!("The Handle in question is no longer in use",);
+            }
+        } else if TypeId::of::<W>() == TypeId::of::<File<U>>() {
+            panic!("Something went terribly wrong, somehow");
+        } else {
+            context::error!(
+                "There is no default [a]Mode[] set for [a]{}[]",
+                crate::duat_name::<W>()
+            );
+        };
     }
 
     /// Switches to the [`File`] with the given name
-    pub(crate) fn reset_switch_to<U: Ui>(
+    pub(crate) fn reset_to_file<U: Ui>(
         pa: &Pass,
         name: impl std::fmt::Display,
         switch_window: bool,
@@ -151,9 +275,17 @@ mod switch {
                 let node = node.clone();
                 // SAFETY: There is a Pass argument.
                 let set_mode = unsafe { SET_MODE.get() };
-                *set_mode.borrow_mut() = Some(Box::new(move |pa| unsafe {
-                    switch_widget(pa, node);
-                    RESET_MODE.get().borrow_mut()(pa)
+                *set_mode.borrow_mut() = Some(Box::new(move |pa| {
+                    if let Some(i) = unsafe { RESET_MODES.get() }
+                        .borrow_mut()
+                        .iter_mut()
+                        .position(|(ty, _)| *ty == TypeId::of::<File<U>>())
+                    {
+                        switch_widget(pa, node);
+                        (unsafe { RESET_MODES.get() }.borrow_mut()[i].1)(pa)
+                    } else {
+                        panic!("Something went terribly wrong, somehow");
+                    }
                 }))
             }
             Err(err) => context::error!("{err}"),
@@ -163,6 +295,7 @@ mod switch {
     /// Switches to a certain widget
     pub(super) fn switch_widget<U: Ui>(pa: &mut Pass, node: Node<U>) {
         if let Ok(widget) = context::cur_widget::<U>(pa) {
+            unsafe { BEFORE_EXIT.get() }.replace(|_| {})(pa);
             widget.node(pa).on_unfocus(pa);
         }
 
@@ -249,8 +382,6 @@ mod switch {
 
             match node {
                 Ok(node) => {
-                    unsafe { BEFORE_EXIT.get() }.borrow_mut()(pa);
-
                     switch_widget(pa, node)
                 }
                 Err(err) => {

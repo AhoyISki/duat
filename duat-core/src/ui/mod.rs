@@ -289,18 +289,38 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
     /// text.
     fn request_width_to_fit(&self, text: &str) -> Result<(), Text>;
 
-    /// Scrolls the [`Text`] on all four directions until the given
-    /// [`Point`] is within the [`ScrollOff`] range
-    ///
-    /// [`ScrollOff`]: crate::cfg::ScrollOff
-    fn scroll_around_point(&self, text: &Text, point: Point, cfg: PrintCfg);
-
     /// Scrolls the [`Text`] veritcally by an amount
     ///
     /// If `scroll_beyond` is set, then the [`Text`] will be allowed
     /// to scroll beyond the last line, up until reaching the
     /// `scrolloff.y` value.
     fn scroll_ver(&self, text: &Text, dist: i32, cfg: PrintCfg);
+
+    /// Scrolls the [`Text`] on all four directions until the given
+    /// [`Point`] is within the [`ScrollOff`] range
+    ///
+    /// There are two other scrolling methods for [`RawArea`]:
+    /// [`scroll_ver`] and [`scroll_to_points`]. The difference
+    /// between this and [`scroll_to_points`] is that this method
+    /// doesn't do anything if the [`Point`] is already on screen.
+    ///
+    /// [`ScrollOff`]: crate::cfg::ScrollOff
+    /// [`scroll_ver`]: RawArea::scroll_ver
+    /// [`scroll_to_points`]: RawArea::scroll_to_points
+    fn scroll_around_point(&self, text: &Text, point: Point, cfg: PrintCfg);
+
+    /// Scrolls the [`Text`] to the visual line of a [`TwoPoints`]
+    ///
+    /// This method takes [line wrapping] into account, so it's not
+    /// the same as setting the starting points to the
+    /// [`Text::visual_line_start`] of these [`TwoPoints`].
+    ///
+    /// If `scroll_beyond` is set, then the [`Text`] will be allowed
+    /// to scroll beyond the last line, up until reaching the
+    /// `scrolloff.y` value.
+    ///
+    /// [line wrapping]: crate::cfg::WrapMethod
+    fn scroll_to_points(&self, text: &Text, points: impl TwoPoints, cfg: PrintCfg);
 
     /// Tells the [`Ui`] that this [`RawArea`] is the one that is
     /// currently focused.

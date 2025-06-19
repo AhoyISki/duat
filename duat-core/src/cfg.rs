@@ -248,7 +248,7 @@ impl PrintCfg {
             word_chars: WordChars::default(),
             force_scrolloff: false,
             show_ghosts: true,
-            allow_overscroll: false
+            allow_overscroll: false,
         }
     }
 
@@ -378,7 +378,7 @@ impl PrintCfg {
             word_chars: WordChars::default(),
             force_scrolloff: false,
             show_ghosts: true,
-            allow_overscroll: true
+            allow_overscroll: true,
         }
     }
 }

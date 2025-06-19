@@ -238,7 +238,7 @@ impl<U: Ui> Session<U> {
                     }
                     DuatEvent::OpenFile(name) => {
                         self.open_file(&mut pa, PathBuf::from(&name));
-                        mode::reset_switch_to::<U>(&pa, name, false);
+                        mode::reset_to_file::<U>(&pa, name, false);
                     }
                     DuatEvent::CloseFile(name) => self.close_file(&mut pa, name),
                     DuatEvent::SwapFiles(lhs, rhs) => self.swap_files(&mut pa, lhs, rhs),
@@ -498,7 +498,7 @@ impl<U: Ui> Session<U> {
             .read(pa, |file, _| file.name())
             != name
         {
-            mode::reset_switch_to::<U>(pa, name, false);
+            mode::reset_to_file::<U>(pa, name, false);
         }
 
         self.cur_window.store(new_win, Ordering::Relaxed);

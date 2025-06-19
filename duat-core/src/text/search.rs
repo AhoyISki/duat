@@ -22,7 +22,7 @@ use regex_automata::{
     util::syntax,
 };
 
-use super::{Point, Text, TextRange};
+use super::{Bytes, Point, Text, TextRange};
 
 impl Text {
     /// Searches forward for a [`RegexPattern`] in a [range]
@@ -250,13 +250,14 @@ impl Searcher {
     /// [range]: TextRange
     pub fn search_fwd<'b>(
         &'b mut self,
-        text: &'b mut Text,
+        as_mut_bytes: &'b mut impl AsMutBytes,
         range: impl TextRange,
     ) -> impl Iterator<Item = [Point; 2]> + 'b {
-        let range = range.to_range(text.len().byte());
-        let mut last_point = text.point_at(range.start);
+        let bytes = as_mut_bytes.as_mut_bytes();
+        let range = range.to_range(bytes.len().byte());
+        let mut last_point = bytes.point_at(range.start);
 
-        let haystack = text.contiguous(range.clone());
+        let haystack = bytes.contiguous(range.clone());
         let mut fwd_input = Input::new(haystack).anchored(Anchored::No);
         let mut rev_input = Input::new(haystack).anchored(Anchored::Yes);
 
@@ -313,13 +314,14 @@ impl Searcher {
     /// [range]: TextRange
     pub fn search_rev<'b>(
         &'b mut self,
-        text: &'b mut Text,
+        as_mut_bytes: &'b mut impl AsMutBytes,
         range: impl TextRange,
     ) -> impl Iterator<Item = [Point; 2]> + 'b {
-        let range = range.to_range(text.len().byte());
-        let mut last_point = text.point_at(range.end);
+        let bytes = as_mut_bytes.as_mut_bytes();
+        let range = range.to_range(bytes.len().byte());
+        let mut last_point = bytes.point_at(range.end);
 
-        let haystack = text.contiguous(range.clone());
+        let haystack = bytes.contiguous(range.clone());
         let mut fwd_input = Input::new(haystack).anchored(Anchored::Yes);
         let mut rev_input = Input::new(haystack).anchored(Anchored::Yes);
 
@@ -566,5 +568,22 @@ impl<const N: usize> InnerRegexPattern for [&str; N] {
 impl InnerRegexPattern for &[&str] {
     fn as_patterns<'b>(&'b self, _bytes: &'b mut [u8; 4]) -> Patterns<'b> {
         Patterns::Many(self)
+    }
+}
+
+/// Either [`Text`] or [`Bytes`]
+pub trait AsMutBytes {
+    fn as_mut_bytes(&mut self) -> &mut Bytes;
+}
+
+impl AsMutBytes for Bytes {
+    fn as_mut_bytes(&mut self) -> &mut Bytes {
+        self
+    }
+}
+
+impl AsMutBytes for Text {
+    fn as_mut_bytes(&mut self) -> &mut Bytes {
+        self.bytes_mut()
     }
 }

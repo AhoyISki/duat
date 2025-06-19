@@ -343,7 +343,7 @@ mod setup;
 ///
 /// [`Mode`]: crate::mode::Mode
 pub mod mode {
-    use duat_core::mode;
+    use duat_core::{mode, ui::Widget};
     pub use duat_core::mode::*;
 
     use crate::Ui;
@@ -365,11 +365,13 @@ pub mod mode {
         mode::set(mode);
     }
 
-    /// Resets the mode to the [default]
+    /// Resets the mode to the [default] of a given [`Widget`]
+    ///
+    /// Does nothing if no default was set for the given [`Widget`].
     ///
     /// [default]: set_default
-    pub fn reset() {
-        mode::reset();
+    pub fn reset<W: Widget<Ui>>() {
+        mode::reset::<W, Ui>();
     }
 
     /// Maps a sequence of keys to another

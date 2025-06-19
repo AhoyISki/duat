@@ -384,6 +384,8 @@ mod global {
     /// [default `Form`]: Form::new
     pub macro id_of {
         ($form:expr) => {{
+            use $crate::form::FormId;
+            
             static ID: std::sync::OnceLock<FormId> = std::sync::OnceLock::new();
             *ID.get_or_init(|| {
                 let name: &'static str = $form;
