@@ -170,16 +170,18 @@ mod switch {
             reset_modes.len() - 1
         };
 
-        let set_mode = unsafe { SET_MODE.get() };
-        let prev = set_mode.take();
-        *set_mode.borrow_mut() = Some(Box::new(move |pa| unsafe {
-            if let Some(f) = prev {
-                f(pa);
-                RESET_MODES.get().borrow_mut()[i].1(pa)
-            } else {
-                RESET_MODES.get().borrow_mut()[i].1(pa)
-            }
-        }));
+        if TypeId::of::<M::Widget>() == TypeId::of::<File<U>>() {
+            let set_mode = unsafe { SET_MODE.get() };
+            let prev = set_mode.take();
+            *set_mode.borrow_mut() = Some(Box::new(move |pa| {
+                if let Some(f) = prev {
+                    f(pa);
+                    unsafe { RESET_MODES.get() }.borrow_mut()[i].1(pa)
+                } else {
+                    unsafe { RESET_MODES.get() }.borrow_mut()[i].1(pa)
+                }
+            }));
+        }
     }
 
     /// Sets the [`Mode`], switching to the appropriate [`Widget`]
@@ -366,7 +368,7 @@ mod switch {
     /// Static dispatch function to set the [`Mode`]
     fn set_mode_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, mode: M) -> bool {
         // If we are on the correct widget, no switch is needed.
-        if context::cur_widget::<U>(pa).unwrap().type_id() != TypeId::of::<M::Widget>() {
+        if context::cur_widget::<U>(pa).unwrap().type_id(pa) != TypeId::of::<M::Widget>() {
             let node = {
                 let windows = context::windows().borrow();
                 let w = context::cur_window();
@@ -381,9 +383,7 @@ mod switch {
             };
 
             match node {
-                Ok(node) => {
-                    switch_widget(pa, node)
-                }
+                Ok(node) => switch_widget(pa, node),
                 Err(err) => {
                     context::error!("{err}");
                     return false;

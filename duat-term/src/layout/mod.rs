@@ -256,7 +256,7 @@ impl Constraints {
         (Self { ver_eqs, hor_eqs, ..self }, new_eqs)
     }
 
-    pub fn get_eqs(&self) -> impl Iterator<Item = Equality> {
+    pub fn get_eqs(&self) -> impl Iterator<Item = Equality> + use<> {
         self.hor_eqs.clone().into_iter().chain(self.ver_eqs.clone())
     }
 
@@ -287,9 +287,20 @@ fn get_eqs(
     rects: &Rects,
 ) -> [Vec<Equality>; 2] {
     if is_hidden {
-        let hor_eqs = vec![child.len(Axis::Horizontal) | EQ(STRONG + 1.0) | 0.0];
-        let ver_eqs = vec![child.len(Axis::Vertical) | EQ(STRONG + 1.0) | 0.0];
-        return [hor_eqs, ver_eqs];
+        if rects
+            .get(parent)
+            .map(|p| p.aligns_with(Axis::Horizontal))
+            .unwrap()
+        {
+            return [
+                vec![child.len(Axis::Horizontal) | EQ(STRONG + 1.0) | 0.0],
+                Vec::new(),
+            ];
+        } else {
+            return [Vec::new(), vec![
+                child.len(Axis::Vertical) | EQ(STRONG + 1.0) | 0.0,
+            ]];
+        }
     }
 
     let mut ver_eqs = Vec::new();

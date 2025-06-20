@@ -23,7 +23,10 @@ use duat_core::{
     ui::{self, Constraint, DuatEvent, RawArea, Widget, Window},
 };
 use duat_term::VertRule;
-use duat_utils::modes::Regular;
+use duat_utils::{
+    modes::{Pager, Regular},
+    widgets::LogBook,
+};
 
 use crate::{
     CfgFn, Ui, form,
@@ -65,6 +68,7 @@ pub fn pre_setup(logs: Option<Logs>, duat_tx: &'static Sender<DuatEvent>) {
     }
 
     mode::set_default(Regular);
+    mode::set_default(Pager::<LogBook, Ui>::new());
 
     hook::add_grouped::<OnFileOpen>("FileWidgets", |pa, builder| {
         builder.push(pa, VertRule::cfg());

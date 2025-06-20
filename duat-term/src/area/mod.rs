@@ -391,26 +391,27 @@ impl ui::RawArea for Area {
     fn hide(&self) -> Result<(), Text> {
         let mut layouts = self.layouts.lock().unwrap();
         let layout = get_layout_mut(&mut layouts, self.id).unwrap();
-        let cons = layout
+        let mut old_cons = layout
             .rects
             .get_constraints_mut(self.id)
-            .ok_or_else(|| txt!("Area has no parents, so it can't be constrained"))?;
+            .ok_or_else(|| txt!("Area has no parents, so it can't be constrained"))?
+            .clone();
 
-        if cons.is_hidden {
+        if old_cons.is_hidden {
             return Ok(());
         };
 
-        cons.is_hidden = true;
+        *layout.rects.get_constraints_mut(self.id).unwrap() = {
+            let old_eqs = old_cons.get_eqs();
+            old_cons.is_hidden = true;
 
-        let cons = cons.clone();
+            let (_, parent) = layout.get_parent(self.id).unwrap();
+            let rect = layout.get(self.id).unwrap();
 
-        let (_, parent) = layout.get_parent(self.id).unwrap();
-        let rect = layout.get(self.id).unwrap();
-
-        let (cons, new_eqs) = cons.apply(rect, parent.id(), &layout.rects);
-        layout
-            .printer
-            .replace_and_update(cons.get_eqs(), new_eqs, false);
+            let (cons, new_eqs) = old_cons.apply(rect, parent.id(), &layout.rects);
+            layout.printer.replace_and_update(old_eqs, new_eqs, false);
+            cons
+        };
 
         Ok(())
     }
@@ -418,26 +419,27 @@ impl ui::RawArea for Area {
     fn reveal(&self) -> Result<(), Text> {
         let mut layouts = self.layouts.lock().unwrap();
         let layout = get_layout_mut(&mut layouts, self.id).unwrap();
-        let cons = layout
+        let mut old_cons = layout
             .rects
             .get_constraints_mut(self.id)
-            .ok_or_else(|| txt!("Area has no parents, so it can't be constrained"))?;
+            .ok_or_else(|| txt!("Area has no parents, so it can't be constrained"))?
+            .clone();
 
-        if !cons.is_hidden {
+        if !old_cons.is_hidden {
             return Ok(());
         };
 
-        cons.is_hidden = false;
+        *layout.rects.get_constraints_mut(self.id).unwrap() = {
+            let old_eqs = old_cons.get_eqs();
+            old_cons.is_hidden = false;
 
-        let cons = cons.clone();
+            let (_, parent) = layout.get_parent(self.id).unwrap();
+            let rect = layout.get(self.id).unwrap();
 
-        let (_, parent) = layout.get_parent(self.id).unwrap();
-        let rect = layout.get(self.id).unwrap();
-
-        let (cons, new_eqs) = cons.apply(rect, parent.id(), &layout.rects);
-        layout
-            .printer
-            .replace_and_update(cons.get_eqs(), new_eqs, false);
+            let (cons, new_eqs) = old_cons.apply(rect, parent.id(), &layout.rects);
+            layout.printer.replace_and_update(old_eqs, new_eqs, false);
+            cons
+        };
 
         Ok(())
     }

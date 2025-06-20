@@ -331,8 +331,8 @@ impl<U: Ui> CurWidget<U> {
     }
 
     /// The [`Widget`]'s [`TypeId`]
-    pub fn type_id(&self) -> TypeId {
-        self.0.type_id()
+    pub fn type_id(&self, pa: &Pass) -> TypeId {
+        self.0.read(pa, |node| node.as_ref().unwrap().widget().type_id())
     }
 
     /// Reads the [`Widget`] and its [`Area`](crate::ui::RawArea)

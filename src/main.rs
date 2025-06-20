@@ -69,7 +69,7 @@ fn main() {
             } else {
                 context::error!("Failed to compile [a]release[] profile");
             }
-            waiting_nap(20);
+            waiting_nap(50);
         }
         ElfLibrary::dlopen(so_path, DEFAULT_FLAGS).ok()
     };
@@ -136,7 +136,7 @@ fn spawn_watcher(
                 paths,
                 ..
             }) if paths.iter().any(|p| p.ends_with(".cargo-lock")) && sent_reload => {
-                waiting_nap(20);
+                waiting_nap(50);
                 duat_tx.send(DuatEvent::ReloadConfig).unwrap();
                 sent_reload = false;
             }

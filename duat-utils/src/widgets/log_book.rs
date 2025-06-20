@@ -41,7 +41,7 @@ impl<U: Ui> Widget<U> for LogBook {
                 Some(builder.build())
             }),
             close_on_unfocus: true,
-            hidden: false,
+            hidden: true,
             side: Side::Below,
             _ghost: PhantomData,
         }
@@ -61,6 +61,7 @@ impl<U: Ui> Widget<U> for LogBook {
             for rec_text in new_records.into_iter().filter_map(&mut lb.format_rec) {
                 lb.text.insert_text(lb.text.len(), rec_text);
             }
+            
             area.scroll_to_points(&lb.text, lb.text.len(), Widget::<U>::print_cfg(lb));
         });
     }
@@ -86,7 +87,7 @@ impl<U: Ui> Widget<U> for LogBook {
         form::set_weak("log_book.bracket", "punctuation.bracket");
         form::set_weak("log_book.target", "module");
 
-        cmd::add!("log-pager", |pa| {
+        cmd::add!("logs", |pa| {
             mode::set(Pager::<LogBook, U>::new());
             Ok(None)
         })
@@ -124,7 +125,7 @@ pub struct LogBookCfg<U> {
 impl<U> LogBookCfg<U> {
     /// Have the [`LogBook`] be open by default
     pub fn open_by_default(self) -> Self {
-        Self { hidden: true, ..self }
+        Self { hidden: false, ..self }
     }
 
     /// Keeps the [`LogBook`] open when unfocused, as opposed to
@@ -183,10 +184,10 @@ impl<U: Ui> WidgetCfg<U> for LogBookCfg<U> {
         };
 
         let specs = match self.side {
-            Side::Right => PushSpecs::right().with_hor_len(30.0).hidden(),
-            Side::Left => PushSpecs::left().with_hor_len(30.0).hidden(),
-            Side::Above => PushSpecs::above().with_ver_len(10.0).hidden(),
-            Side::Below => PushSpecs::below().with_ver_len(10.0).hidden(),
+            Side::Right => PushSpecs::right().with_hor_len(30.0),
+            Side::Left => PushSpecs::left().with_hor_len(30.0),
+            Side::Above => PushSpecs::above().with_ver_len(10.0),
+            Side::Below => PushSpecs::below().with_ver_len(10.0),
         };
 
         (lb, if self.hidden { specs.hidden() } else { specs })
