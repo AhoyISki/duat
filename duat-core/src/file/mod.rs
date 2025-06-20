@@ -319,16 +319,16 @@ impl<U: Ui> Widget<U> for File<U> {
         file.text.update_bounds();
     }
 
+    fn needs_update(&self) -> bool {
+        false
+    }
+
     fn text(&self) -> &Text {
         &self.text
     }
 
     fn text_mut(&mut self) -> &mut Text {
         &mut self.text
-    }
-
-    fn needs_update(&self) -> bool {
-        false
     }
 
     fn print_cfg(&self) -> PrintCfg {

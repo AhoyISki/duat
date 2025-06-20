@@ -423,7 +423,8 @@ impl Rects {
         let (i, parent, cons, axis) = {
             let (i, parent) = self.get_parent(id).unwrap();
             let (v_cons, h_cons) = (ps.ver_cons(), ps.hor_cons());
-            let cons = Constraints::new(p, v_cons, h_cons, &rect, parent.id(), self);
+            let cons =
+                Constraints::new(p, v_cons, h_cons, ps.is_hidden(), &rect, parent.id(), self);
             let parent = self.get_mut(parent.id()).unwrap();
             let axis = parent.kind.axis().unwrap();
 

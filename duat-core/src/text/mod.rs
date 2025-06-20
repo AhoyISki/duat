@@ -516,7 +516,7 @@ impl Text {
         self.0.tags.get_ghost(id)
     }
 
-    ////////// String modification functions
+    ////////// Modification functions
 
     /// Replaces a [range] in the [`Text`]
     ///
@@ -588,6 +588,25 @@ impl Text {
         self.0.tags.update_bounds();
     }
 
+    /// Inserts a [`Text`] into this [`Text`], in a specific [`Point`]
+    pub fn insert_text(&mut self, p: Point, mut text: Text) {
+        let insert = if p.byte() == 1 && self.0.bytes == "\n" {
+            let change = Change::new(text.0.bytes.contiguous(..), [Point::default(), p], self);
+            self.apply_change_inner(0, change.as_ref());
+            Point::default()
+        } else {
+            let change = Change::str_insert(text.0.bytes.contiguous(..), p);
+            self.apply_change_inner(0, change);
+            p
+        };
+
+        if insert == self.len() {
+            self.0.tags.extend(text.0.tags);
+        } else {
+            self.0.tags.insert_tags(insert, text.0.tags);
+        }
+    }
+
     ////////// History functions
 
     /// Undoes the last moment, if there was one
@@ -630,8 +649,6 @@ impl Text {
     ///
     /// This is useful if you want to figure out what has changed
     /// after a certain period of time has passed.
-    ///
-    /// It also includes things like
     pub fn last_unprocessed_moment(&mut self) -> Option<Vec<Moment>> {
         self.0.history.as_mut().map(|h| h.unprocessed_moments())
     }

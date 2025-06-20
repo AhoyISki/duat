@@ -308,36 +308,36 @@ pub enum RawTag {
 
     // Not Implemented:
     /// Begins a toggleable section in the text.
-    ToggleStart(Tagger, ToggleId),
+    StartToggle(Tagger, ToggleId),
     /// Ends a toggleable section in the text.
-    ToggleEnd(Tagger, ToggleId),
+    EndToggle(Tagger, ToggleId),
 }
 
 impl PartialEq for RawTag {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::PushForm(l_key, l_id, _), Self::PushForm(r_key, r_id, _)) => {
-                l_key == r_key && l_id == r_id
+            (Self::PushForm(l_tagger, l_id, _), Self::PushForm(r_tagger, r_id, _)) => {
+                l_tagger == r_tagger && l_id == r_id
             }
-            (Self::PopForm(l_key, l_id), Self::PopForm(r_key, r_id)) => {
-                l_key == r_key && l_id == r_id
+            (Self::PopForm(l_tagger, l_id), Self::PopForm(r_tagger, r_id)) => {
+                l_tagger == r_tagger && l_id == r_id
             }
-            (Self::MainCaret(l_key), Self::MainCaret(r_key)) => l_key == r_key,
-            (Self::ExtraCaret(l_key), Self::ExtraCaret(r_key)) => l_key == r_key,
-            (Self::StartAlignCenter(l_key), Self::StartAlignCenter(r_key)) => l_key == r_key,
-            (Self::EndAlignCenter(l_key), Self::EndAlignCenter(r_key)) => l_key == r_key,
-            (Self::StartAlignRight(l_key), Self::StartAlignRight(r_key)) => l_key == r_key,
-            (Self::EndAlignRight(l_key), Self::EndAlignRight(r_key)) => l_key == r_key,
-            (Self::Spacer(l_key), Self::Spacer(r_key)) => l_key == r_key,
-            (Self::StartConceal(l_key), Self::StartConceal(r_key)) => l_key == r_key,
-            (Self::EndConceal(l_key), Self::EndConceal(r_key)) => l_key == r_key,
-            (Self::ConcealUntil(l_key), Self::ConcealUntil(r_key)) => l_key == r_key,
-            (Self::Ghost(l_key, l_id), Self::Ghost(r_key, r_id)) => l_key == r_key && l_id == r_id,
-            (Self::ToggleStart(l_key, l_id), Self::ToggleStart(r_key, r_id)) => {
-                l_key == r_key && l_id == r_id
+            (Self::MainCaret(l_tagger), Self::MainCaret(r_tagger)) => l_tagger == r_tagger,
+            (Self::ExtraCaret(l_tagger), Self::ExtraCaret(r_tagger)) => l_tagger == r_tagger,
+            (Self::StartAlignCenter(l_tagger), Self::StartAlignCenter(r_tagger)) => l_tagger == r_tagger,
+            (Self::EndAlignCenter(l_tagger), Self::EndAlignCenter(r_tagger)) => l_tagger == r_tagger,
+            (Self::StartAlignRight(l_tagger), Self::StartAlignRight(r_tagger)) => l_tagger == r_tagger,
+            (Self::EndAlignRight(l_tagger), Self::EndAlignRight(r_tagger)) => l_tagger == r_tagger,
+            (Self::Spacer(l_tagger), Self::Spacer(r_tagger)) => l_tagger == r_tagger,
+            (Self::StartConceal(l_tagger), Self::StartConceal(r_tagger)) => l_tagger == r_tagger,
+            (Self::EndConceal(l_tagger), Self::EndConceal(r_tagger)) => l_tagger == r_tagger,
+            (Self::ConcealUntil(l_tagger), Self::ConcealUntil(r_tagger)) => l_tagger == r_tagger,
+            (Self::Ghost(l_tagger, l_id), Self::Ghost(r_tagger, r_id)) => l_tagger == r_tagger && l_id == r_id,
+            (Self::StartToggle(l_tagger, l_id), Self::StartToggle(r_tagger, r_id)) => {
+                l_tagger == r_tagger && l_id == r_id
             }
-            (Self::ToggleEnd(l_key, l_id), Self::ToggleEnd(r_key, r_id)) => {
-                l_key == r_key && l_id == r_id
+            (Self::EndToggle(l_tagger, l_id), Self::EndToggle(r_tagger, r_id)) => {
+                l_tagger == r_tagger && l_id == r_id
             }
             _ => false,
         }
@@ -350,8 +350,8 @@ impl RawTag {
         match self {
             Self::PushForm(key, id, _) => Some(Self::PopForm(*key, *id)),
             Self::PopForm(key, id) => Some(Self::PushForm(*key, *id, 0)),
-            Self::ToggleStart(key, id) => Some(Self::ToggleEnd(*key, *id)),
-            Self::ToggleEnd(key, id) => Some(Self::ToggleStart(*key, *id)),
+            Self::StartToggle(key, id) => Some(Self::EndToggle(*key, *id)),
+            Self::EndToggle(key, id) => Some(Self::StartToggle(*key, *id)),
             Self::StartConceal(key) => Some(Self::EndConceal(*key)),
             Self::EndConceal(key) => Some(Self::StartConceal(*key)),
             Self::StartAlignCenter(key) => Some(Self::EndAlignCenter(*key)),
@@ -365,15 +365,15 @@ impl RawTag {
     /// Wether this [`RawTag`] ends with another
     pub fn ends_with(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::PushForm(l_key, l_id, _), Self::PopForm(r_key, r_id)) => {
-                l_id == r_id && l_key == r_key
+            (Self::PushForm(l_tagger, l_id, _), Self::PopForm(r_tagger, r_id)) => {
+                l_id == r_id && l_tagger == r_tagger
             }
-            (Self::ToggleStart(l_key, l_id), Self::ToggleEnd(r_key, r_id)) => {
-                l_id == r_id && l_key == r_key
+            (Self::StartToggle(l_tagger, l_id), Self::EndToggle(r_tagger, r_id)) => {
+                l_id == r_id && l_tagger == r_tagger
             }
-            (Self::StartAlignCenter(l_key), Self::EndAlignCenter(r_key))
-            | (Self::StartAlignRight(l_key), Self::EndAlignRight(r_key))
-            | (Self::StartConceal(l_key), Self::EndConceal(r_key)) => l_key == r_key,
+            (Self::StartAlignCenter(l_tagger), Self::EndAlignCenter(r_tagger))
+            | (Self::StartAlignRight(l_tagger), Self::EndAlignRight(r_tagger))
+            | (Self::StartConceal(l_tagger), Self::EndConceal(r_tagger)) => l_tagger == r_tagger,
             _ => false,
         }
     }
@@ -385,7 +385,7 @@ impl RawTag {
             Self::PushForm(..)
                 | Self::StartAlignCenter(_)
                 | Self::StartAlignRight(_)
-                | Self::ToggleStart(..)
+                | Self::StartToggle(..)
                 | Self::StartConceal(_)
         )
     }
@@ -397,7 +397,7 @@ impl RawTag {
             Self::PopForm(..)
                 | Self::EndAlignCenter(_)
                 | Self::EndAlignRight(_)
-                | Self::ToggleEnd(..)
+                | Self::EndToggle(..)
                 | Self::EndConceal(_)
         )
     }
@@ -414,7 +414,7 @@ impl RawTag {
 
     /// The [`Tagger`] of this [`RawTag`]
     pub(in crate::text) fn tagger(&self) -> Tagger {
-        match self.get_key() {
+        match self.get_tagger() {
             Some(key) => key,
             None => unreachable!(
                 "This method should only be used on stored tags, this not being one of them."
@@ -427,7 +427,7 @@ impl RawTag {
     /// [`Tags`]
     ///
     /// [`Tags`]: super::Tags
-    fn get_key(&self) -> Option<Tagger> {
+    fn get_tagger(&self) -> Option<Tagger> {
         match self {
             Self::PushForm(key, ..)
             | Self::PopForm(key, _)
@@ -441,8 +441,8 @@ impl RawTag {
             | Self::StartConceal(key)
             | Self::EndConceal(key)
             | Self::Ghost(key, _)
-            | Self::ToggleStart(key, _)
-            | Self::ToggleEnd(key, _) => Some(*key),
+            | Self::StartToggle(key, _)
+            | Self::EndToggle(key, _) => Some(*key),
             Self::ConcealUntil(_) => None,
         }
     }
@@ -465,8 +465,8 @@ impl RawTag {
             Self::StartConceal(..) => 1,
             Self::EndConceal(..) => 2,
             Self::Ghost(..) => 3,
-            Self::ToggleStart(..) => 1,
-            Self::ToggleEnd(..) => 2,
+            Self::StartToggle(..) => 1,
+            Self::EndToggle(..) => 2,
             Self::ConcealUntil(_) => unreachable!("This shouldn't be queried"),
         }
     }
@@ -490,8 +490,8 @@ impl std::fmt::Debug for RawTag {
             Self::EndConceal(key) => write!(f, "EndConceal({key:?})"),
             Self::ConcealUntil(key) => write!(f, "ConcealUntil({key:?})"),
             Self::Ghost(key, id) => write!(f, "Ghost({key:?}, {id:?})"),
-            Self::ToggleStart(key, id) => write!(f, "ToggleStart({key:?}), {id:?})"),
-            Self::ToggleEnd(key, id) => write!(f, "ToggleEnd({key:?}, {id:?})"),
+            Self::StartToggle(key, id) => write!(f, "ToggleStart({key:?}), {id:?})"),
+            Self::EndToggle(key, id) => write!(f, "ToggleEnd({key:?}, {id:?})"),
         }
     }
 }

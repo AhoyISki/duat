@@ -273,6 +273,55 @@ impl Tags {
         }
     }
 
+    /// Insert another [`Tags`] into this one
+    pub fn insert_tags(&mut self, p: Point, mut other: Tags) {
+        let mut starts = Vec::new();
+
+        for (_, b, tag) in fwd_range(&other.buf, ..).filter_map(entries_fwd(p.byte())) {
+            match tag {
+                PushForm(..) => starts.push((b, tag)),
+                PopForm(tagger, id) => {
+                    let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
+                    let (sb, _) = starts.remove(i);
+                    self.insert(tagger, sb..b, id.to_tag(tag.priority()));
+                }
+                RawTag::MainCaret(tagger) => {
+                    self.insert(tagger, b, MainCaret);
+                },
+                RawTag::ExtraCaret(tagger) => {
+                    self.insert(tagger, b, ExtraCaret);
+                },
+                StartAlignCenter(_) => starts.push((b, tag)),
+                EndAlignCenter(tagger) => {
+                    let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
+                    let (sb, _) = starts.remove(i);
+                    self.insert(tagger, sb..b, AlignCenter);
+                }
+                StartAlignRight(_) => starts.push((b, tag)),
+                EndAlignRight(tagger) => {
+                    let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
+                    let (sb, _) = starts.remove(i);
+                    self.insert(tagger, sb..b, AlignRight);
+                }
+                RawTag::Spacer(tagger) => {
+                    self.insert(tagger, b, Spacer);
+                },
+                StartConceal(_) => starts.push((b, tag)),
+                EndConceal(tagger) => {
+                    let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
+                    let (sb, _) = starts.remove(i);
+                    self.insert(tagger, sb..b, Conceal);
+                }
+                ConcealUntil(_) => unreachable!(),
+                RawTag::Ghost(tagger, id) => {
+                    self.insert(tagger, b, Ghost(other.ghosts.remove(&id).unwrap()));
+                }
+                StartToggle(..) => todo!(),
+                EndToggle(..) => todo!(),
+            };
+        }
+    }
+
     /// Extends this [`Tags`] with another one
     pub fn extend(&mut self, mut other: Tags) {
         self.finish_shifting_bounds();
@@ -345,7 +394,7 @@ impl Tags {
                     n += 1;
                     continue;
                 }
-                
+
                 self.buf.remove(n);
                 self.shift_bounds_and_ranges(n, [-1, 0]);
 
@@ -1355,8 +1404,8 @@ impl PartialEq for Tags {
                 | (Tag(Spacer(_)), Tag(Spacer(_)))
                 | (Tag(StartConceal(_)), Tag(StartConceal(_)))
                 | (Tag(EndConceal(_)), Tag(EndConceal(_)))
-                | (Tag(ToggleStart(..)), Tag(ToggleStart(..)))
-                | (Tag(ToggleEnd(..)), Tag(ToggleEnd(..))) => true,
+                | (Tag(StartToggle(..)), Tag(StartToggle(..)))
+                | (Tag(EndToggle(..)), Tag(EndToggle(..))) => true,
                 (Skip(lhs), Skip(rhs)) => lhs == rhs,
                 _ => false,
             })

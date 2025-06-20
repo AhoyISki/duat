@@ -19,9 +19,11 @@ pub use self::{
     notifications::{Notifications, NotificationsCfg},
     prompt_line::{PromptLine, PromptLineCfg},
     status_line::{State, StatusLine, StatusLineCfg, status},
+    log_book::{LogBook, LogBookCfg},
 };
 
 mod line_numbers;
 mod notifications;
 mod prompt_line;
 mod status_line;
+mod log_book;

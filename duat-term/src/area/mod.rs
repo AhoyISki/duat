@@ -388,8 +388,58 @@ impl ui::RawArea for Area {
         Ok(())
     }
 
-    fn restore_constraints(&self) -> Result<(), Text> {
-        todo!();
+    fn hide(&self) -> Result<(), Text> {
+        let mut layouts = self.layouts.lock().unwrap();
+        let layout = get_layout_mut(&mut layouts, self.id).unwrap();
+        let cons = layout
+            .rects
+            .get_constraints_mut(self.id)
+            .ok_or_else(|| txt!("Area has no parents, so it can't be constrained"))?;
+
+        if cons.is_hidden {
+            return Ok(());
+        };
+
+        cons.is_hidden = true;
+
+        let cons = cons.clone();
+
+        let (_, parent) = layout.get_parent(self.id).unwrap();
+        let rect = layout.get(self.id).unwrap();
+
+        let (cons, new_eqs) = cons.apply(rect, parent.id(), &layout.rects);
+        layout
+            .printer
+            .replace_and_update(cons.get_eqs(), new_eqs, false);
+
+        Ok(())
+    }
+
+    fn reveal(&self) -> Result<(), Text> {
+        let mut layouts = self.layouts.lock().unwrap();
+        let layout = get_layout_mut(&mut layouts, self.id).unwrap();
+        let cons = layout
+            .rects
+            .get_constraints_mut(self.id)
+            .ok_or_else(|| txt!("Area has no parents, so it can't be constrained"))?;
+
+        if !cons.is_hidden {
+            return Ok(());
+        };
+
+        cons.is_hidden = false;
+
+        let cons = cons.clone();
+
+        let (_, parent) = layout.get_parent(self.id).unwrap();
+        let rect = layout.get(self.id).unwrap();
+
+        let (cons, new_eqs) = cons.apply(rect, parent.id(), &layout.rects);
+        layout
+            .printer
+            .replace_and_update(cons.get_eqs(), new_eqs, false);
+
+        Ok(())
     }
 
     fn request_width_to_fit(&self, _text: &str) -> Result<(), Text> {
@@ -442,6 +492,8 @@ impl ui::RawArea for Area {
 
         rect.print_info().unwrap().set(info);
     }
+
+    ////////// Printing
 
     fn scroll_around_point(&self, text: &Text, point: Point, cfg: PrintCfg) {
         let layouts = self.layouts.lock().unwrap();
@@ -501,8 +553,6 @@ impl ui::RawArea for Area {
         rect.print_info().unwrap().set(info);
     }
 
-    ////////// Printing
-
     fn set_as_active(&self) {
         let mut layouts = self.layouts.lock().unwrap();
         get_layout_mut(&mut layouts, self.id).unwrap().active_id = self.id;
@@ -522,6 +572,8 @@ impl ui::RawArea for Area {
         self.print(text, cfg, painter, f)
     }
 
+    ////////// Queries
+
     fn set_print_info(&self, info: Self::PrintInfo) {
         let layouts = self.layouts.lock().unwrap();
         let layout = get_layout(&layouts, self.id).unwrap();
@@ -536,8 +588,6 @@ impl ui::RawArea for Area {
         let points = iter.points();
         print_iter(iter, cfg.wrap_width(self.width()), cfg, points)
     }
-
-    ////////// Queries
 
     fn rev_print_iter<'a>(
         &self,

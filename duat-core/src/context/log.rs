@@ -248,6 +248,19 @@ impl Logs {
         self.cur_state.fetch_add(1, Ordering::Relaxed);
         self.list.lock().unwrap().push(rec)
     }
+
+    /// Returns the number of [`Record`]s in the [`Logs`]
+    pub fn len(&self) -> usize {
+        self.list.lock().unwrap().len()
+    }
+
+    /// Wether there are any [`Record`]s in the [`Logs`]
+    ///
+    /// It's pretty much never `true`
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl log::Log for Logs {

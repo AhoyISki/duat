@@ -669,16 +669,10 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
 }
 
 mod global {
-    use std::{cell::RefCell, ops::Range, rc::Rc};
+    use std::ops::Range;
 
-    use super::{Args, CheckerFn, CmdFn, CmdResult, Commands, Parameter};
-    use crate::{
-        context,
-        data::{Pass, RwData},
-        main_thread_only::MainThreadOnly,
-        text::Text,
-        ui::DuatEvent,
-    };
+    use super::{CheckerFn, CmdFn, CmdResult, Commands};
+    use crate::{context, data::Pass, main_thread_only::MainThreadOnly, text::Text, ui::DuatEvent};
 
     static COMMANDS: MainThreadOnly<Commands> = MainThreadOnly::new(Commands::new());
 
@@ -740,10 +734,15 @@ mod global {
     pub macro add(
         $callers:expr, |$pa:ident $(: &mut Pass)? $(, $arg:tt: $t:ty)* $(,)?| $f:tt
     ) {{
-        use $crate::cmd::Caller;
+        use std::{rc::Rc, cell::RefCell};
+        #[allow(unused_imports)]
+        use $crate::{
+            data::{Pass, RwData},
+            cmd::{Args, Caller, CmdFn, CmdResult, Parameter, Remainder, add_inner}
+        };
 
         #[allow(unused_variables, unused_mut)]
-        let cmd = move |pa: &mut $crate::data::Pass, mut args: Args| -> CmdResult {
+        let cmd = move |pa: &mut Pass, mut args: Args| -> CmdResult {
             $(
                 let $arg: <$t as Parameter>::Returns = <$t as Parameter>::new(pa, &mut args)?;
             )*
@@ -758,7 +757,7 @@ mod global {
         };
 
         #[allow(unused_variables, unused_mut)]
-        let check_args = |pa: &$crate::data::Pass, mut args: Args| {
+        let check_args = |pa: &Pass, mut args: Args| {
             let mut ok_ranges = Vec::new();
 
             $(
@@ -774,7 +773,7 @@ mod global {
             )*
 
             let start = args.next_start();
-            if let (Ok(_), Some(start)) = (args.next_as::<super::Remainder>(pa), start) {
+            if let (Ok(_), Some(start)) = (args.next_as::<Remainder>(pa), start) {
                 let err = $crate::text::txt!("Too many arguments").build();
                 return (ok_ranges, Some((start..args.param_range().end, err)))
             }
@@ -1265,5 +1264,10 @@ impl<'a, const N: usize> Caller<'a> for [&'a str; N] {
     }
 }
 
-type CmdFn = RwData<dyn FnMut(&mut Pass, Args) -> CmdResult + 'static>;
-type CheckerFn = fn(&Pass, Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>);
+/// Inner function for Commands
+#[doc(hidden)]
+pub type CmdFn = RwData<dyn FnMut(&mut Pass, Args) -> CmdResult + 'static>;
+
+/// Inner checking function
+#[doc(hidden)]
+pub type CheckerFn = fn(&Pass, Args) -> (Vec<Range<usize>>, Option<(Range<usize>, Text)>);

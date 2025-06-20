@@ -81,6 +81,12 @@ impl<W: Widget<U>, U: Ui> Clone for Pager<W, U> {
     }
 }
 
+impl<W: Widget<U>, U: Ui> Default for Pager<W, U> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// The searcher [`PromptMode`] for a [`Pager`]ed [`Widget`]
 pub struct PagerSearch<W: Widget<U>, U: Ui> {
     is_fwd: bool,

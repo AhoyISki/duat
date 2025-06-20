@@ -618,8 +618,8 @@ impl Part {
             RawTag::StartAlignRight(_) => Part::AlignRight,
             RawTag::EndAlignRight(_) => Part::AlignLeft,
             RawTag::Spacer(_) => Part::Spacer,
-            RawTag::ToggleStart(_, id) => Part::ToggleStart(id),
-            RawTag::ToggleEnd(_, id) => Part::ToggleEnd(id),
+            RawTag::StartToggle(_, id) => Part::ToggleStart(id),
+            RawTag::EndToggle(_, id) => Part::ToggleEnd(id),
             RawTag::ConcealUntil(_) => Part::ResetState,
             RawTag::StartConceal(_) | RawTag::EndConceal(_) | RawTag::Ghost(..) => {
                 unreachable!("These tags are automatically processed elsewhere.")

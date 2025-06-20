@@ -276,14 +276,20 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
         cfg: PrintCfg,
     ) -> Result<Self, Text>;
 
+    ////////// Constraint changing functions
+
     /// Changes the horizontal constraint of the area
     fn constrain_hor(&self, cons: impl IntoIterator<Item = Constraint>) -> Result<(), Text>;
 
     /// Changes the vertical constraint of the area
     fn constrain_ver(&self, cons: impl IntoIterator<Item = Constraint>) -> Result<(), Text>;
 
-    /// Restores the original constraints of the widget
-    fn restore_constraints(&self) -> Result<(), Text>;
+    /// Changes [`Constraint`]s such that the [`RawArea`] becomes
+    /// hidden
+    fn hide(&self) -> Result<(), Text>;
+
+    /// Changes [`Constraint`]s such that the [`RawArea`] is revealed
+    fn reveal(&self) -> Result<(), Text>;
 
     /// Requests that the width be enough to fit a certain piece of
     /// text.
@@ -818,6 +824,7 @@ pub struct PushSpecs {
     side: Side,
     ver_cons: [Option<Constraint>; 4],
     hor_cons: [Option<Constraint>; 4],
+    is_hidden: bool,
 }
 
 impl PushSpecs {
@@ -827,6 +834,7 @@ impl PushSpecs {
             side: Side::Left,
             ver_cons: [None; 4],
             hor_cons: [None; 4],
+            is_hidden: false,
         }
     }
 
@@ -836,6 +844,7 @@ impl PushSpecs {
             side: Side::Right,
             ver_cons: [None; 4],
             hor_cons: [None; 4],
+            is_hidden: false,
         }
     }
 
@@ -845,6 +854,7 @@ impl PushSpecs {
             side: Side::Above,
             ver_cons: [None; 4],
             hor_cons: [None; 4],
+            is_hidden: false,
         }
     }
 
@@ -854,7 +864,23 @@ impl PushSpecs {
             side: Side::Below,
             ver_cons: [None; 4],
             hor_cons: [None; 4],
+            is_hidden: false,
         }
+    }
+
+    /// Turns this [`Widget`] hidden by default
+    ///
+    /// Hiding [`Widget`]s, as opposed to calling something like
+    /// [`PushSpecs::with_hor_len(0.0)`] has a few advantages.
+    ///
+    /// - Can be undone just by calling [`RawArea::reveal`]
+    /// - Can be redone just by calling [`RawArea::hide`]
+    /// - Is agnostic to other [`Constraint`]s, i.e., kind of
+    ///   memorizes what they should be before being hidden.
+    ///
+    /// [`PushSpecs::with_hor_len(0.0)`]: PushSpecs::with_hor_len
+    pub const fn hidden(self) -> Self {
+        Self { is_hidden: true, ..self }
     }
 
     /// Changes the direction of pushing to the left
@@ -923,6 +949,13 @@ impl PushSpecs {
     pub const fn with_hor_ratio(mut self, den: u16, div: u16) -> Self {
         constrain(&mut self.hor_cons, Constraint::Ratio(den, div));
         self
+    }
+
+    /// Wether this [`Widget`] should default to being [hidden] or not
+    ///
+    /// [hidden]: Self::hidden
+    pub const fn is_hidden(&self) -> bool {
+        self.is_hidden
     }
 
     /// The [`Axis`] where it will be pushed
@@ -1189,6 +1222,16 @@ pub enum Side {
     Below,
     /// Put the [`Widget`] below another
     Left,
+}
+
+impl Side {
+    /// Which [`Axis`] this [`Side`] belongs to
+    pub fn axis(&self) -> Axis {
+        match self {
+            Side::Above | Side::Below => Axis::Vertical,
+            Side::Right | Side::Left => Axis::Horizontal,
+        }
+    }
 }
 
 /// A corner to attach a floating [`Widget`] to and from

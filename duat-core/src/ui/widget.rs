@@ -306,6 +306,52 @@ pub trait Widget<U: Ui>: 'static {
     where
         Self: Sized;
 
+    /// Returns a [`WidgetCfg`], for use in layout construction
+    ///
+    /// This function exists primarily so the [`WidgetCfg`]s
+    /// themselves don't need to be in scope. You will want to use
+    /// these in [hooks] like [`OnFileOpen`]:
+    ///
+    /// ```rust
+    /// # use duat_core::{hook::OnFileOpen, prelude::*};
+    /// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
+    /// # impl<U: Ui> Widget<U> for LineNumbers<U> {
+    /// #     type Cfg = LineNumbersOptions<U>;
+    /// #     fn update(_: &mut Pass, handle: Handle<Self, U>) { todo!() }
+    /// #     fn needs_update(&self) -> bool { todo!(); }
+    /// #     fn cfg() -> Self::Cfg { todo!() }
+    /// #     fn text(&self) -> &Text { todo!(); }
+    /// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
+    /// #     fn once() -> Result<(), Text> { Ok(()) }
+    /// # }
+    /// # struct LineNumbersOptions<U>(std::marker::PhantomData<U>);
+    /// # impl<U> LineNumbersOptions<U> {
+    /// #     pub fn align_right(self) -> Self { todo!(); }
+    /// #     pub fn align_main_left(self) -> Self { todo!(); }
+    /// #     pub fn on_the_right(self) -> Self { todo!(); }
+    /// # }
+    /// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
+    /// #     type Widget = LineNumbers<U>;
+    /// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    /// #         todo!();
+    /// #     }
+    /// # }
+    /// # fn test<U: Ui>() {
+    /// hook::remove("FileWidgets");
+    /// hook::add::<OnFileOpen<U>>(|pa, builder| {
+    ///     // Screw it, LineNumbers on both sides.
+    ///     builder.push(pa, LineNumbers::cfg());
+    ///     builder.push(pa, LineNumbers::cfg().on_the_right().align_right());
+    /// });
+    /// # }
+    /// ```
+    ///
+    /// [hooks]: crate::hook
+    /// [`OnFileOpen`]: crate::hook::OnFileOpen
+    fn cfg() -> Self::Cfg
+    where
+        Self: Sized;
+
     ////////// Stateful functions
 
     /// Updates the widget, allowing the modification of its
@@ -388,52 +434,6 @@ pub trait Widget<U: Ui>: 'static {
     /// [`FileHandle`]: crate::context::FileHandle
     /// [`StatusLine`]: https://docs.rs/duat-core/latest/duat_utils/widgets/struct.StatusLine.html
     fn needs_update(&self) -> bool;
-
-    /// Returns a [`WidgetCfg`], for use in layout construction
-    ///
-    /// This function exists primarily so the [`WidgetCfg`]s
-    /// themselves don't need to be in scope. You will want to use
-    /// these in [hooks] like [`OnFileOpen`]:
-    ///
-    /// ```rust
-    /// # use duat_core::{hook::OnFileOpen, prelude::*};
-    /// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
-    /// # impl<U: Ui> Widget<U> for LineNumbers<U> {
-    /// #     type Cfg = LineNumbersOptions<U>;
-    /// #     fn update(_: &mut Pass, handle: Handle<Self, U>) { todo!() }
-    /// #     fn needs_update(&self) -> bool { todo!(); }
-    /// #     fn cfg() -> Self::Cfg { todo!() }
-    /// #     fn text(&self) -> &Text { todo!(); }
-    /// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
-    /// #     fn once() -> Result<(), Text> { Ok(()) }
-    /// # }
-    /// # struct LineNumbersOptions<U>(std::marker::PhantomData<U>);
-    /// # impl<U> LineNumbersOptions<U> {
-    /// #     pub fn align_right(self) -> Self { todo!(); }
-    /// #     pub fn align_main_left(self) -> Self { todo!(); }
-    /// #     pub fn on_the_right(self) -> Self { todo!(); }
-    /// # }
-    /// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
-    /// #     type Widget = LineNumbers<U>;
-    /// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
-    /// #         todo!();
-    /// #     }
-    /// # }
-    /// # fn test<U: Ui>() {
-    /// hook::remove("FileWidgets");
-    /// hook::add::<OnFileOpen<U>>(|pa, builder| {
-    ///     // Screw it, LineNumbers on both sides.
-    ///     builder.push(pa, LineNumbers::cfg());
-    ///     builder.push(pa, LineNumbers::cfg().on_the_right().align_right());
-    /// });
-    /// # }
-    /// ```
-    ///
-    /// [hooks]: crate::hook
-    /// [`OnFileOpen`]: crate::hook::OnFileOpen
-    fn cfg() -> Self::Cfg
-    where
-        Self: Sized;
 
     /// The text that this widget prints out
     fn text(&self) -> &Text;

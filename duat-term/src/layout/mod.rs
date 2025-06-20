@@ -175,6 +175,7 @@ pub struct Constraints {
     hor_eqs: Vec<Equality>,
     ver_cons: (Vec<Constraint>, bool),
     hor_cons: (Vec<Constraint>, bool),
+    pub(crate) is_hidden: bool,
 }
 
 impl Constraints {
@@ -186,6 +187,7 @@ impl Constraints {
         p: &Printer,
         v_cons: impl Iterator<Item = Constraint> + Clone,
         h_cons: impl Iterator<Item = Constraint> + Clone,
+        is_hidden: bool,
         new: &Rect,
         parent: AreaId,
         rects: &Rects,
@@ -206,7 +208,7 @@ impl Constraints {
             .chain(hor_cons.into_iter().map(|c| (c, Axis::Horizontal)))
             .map(|c| (c, false));
 
-        let [ver_eqs, hor_eqs] = get_eqs(cons, new, parent, rects);
+        let [ver_eqs, hor_eqs] = get_eqs(cons, is_hidden, new, parent, rects);
         p.add_eqs(ver_eqs.clone().into_iter().chain(hor_eqs.clone()));
 
         Self {
@@ -214,6 +216,7 @@ impl Constraints {
             hor_eqs,
             ver_cons: (v_cons.collect(), false),
             hor_cons: (h_cons.collect(), false),
+            is_hidden,
         }
     }
 
@@ -247,10 +250,14 @@ impl Constraints {
             .map(|c| ((*c, Axis::Vertical), *ver_m))
             .chain(hor_cons.iter().map(|c| ((*c, Axis::Horizontal), *hor_m)));
 
-        let [ver_eqs, hor_eqs] = get_eqs(cons, new, parent, rects);
+        let [ver_eqs, hor_eqs] = get_eqs(cons, self.is_hidden, new, parent, rects);
         let new_eqs = ver_eqs.clone().into_iter().chain(hor_eqs.clone());
 
         (Self { ver_eqs, hor_eqs, ..self }, new_eqs)
+    }
+
+    pub fn get_eqs(&self) -> impl Iterator<Item = Equality> {
+        self.hor_eqs.clone().into_iter().chain(self.ver_eqs.clone())
     }
 
     pub fn drain_eqs(&mut self) -> impl Iterator<Item = Equality> {
@@ -274,10 +281,17 @@ impl Constraints {
 
 fn get_eqs(
     cons: impl Iterator<Item = ((Constraint, Axis), bool)>,
-    new: &Rect,
+    is_hidden: bool,
+    child: &Rect,
     parent: AreaId,
     rects: &Rects,
 ) -> [Vec<Equality>; 2] {
+    if is_hidden {
+        let hor_eqs = vec![child.len(Axis::Horizontal) | EQ(STRONG + 1.0) | 0.0];
+        let ver_eqs = vec![child.len(Axis::Vertical) | EQ(STRONG + 1.0) | 0.0];
+        return [hor_eqs, ver_eqs];
+    }
+
     let mut ver_eqs = Vec::new();
     let mut hor_eqs = Vec::new();
 
@@ -286,11 +300,11 @@ fn get_eqs(
         let eq = match con {
             Constraint::Ratio(num, den) => {
                 let (_, ancestor) = rects.get_ancestor_on(axis, parent).unwrap();
-                (new.len(axis) * den as f64) | EQ(strength) | (ancestor.len(axis) * num as f64)
+                (child.len(axis) * den as f64) | EQ(strength) | (ancestor.len(axis) * num as f64)
             }
-            Constraint::Len(len) => new.len(axis) | EQ(strength) | len,
-            Constraint::Min(min) => new.len(axis) | GE(strength) | min,
-            Constraint::Max(max) => new.len(axis) | LE(strength) | max,
+            Constraint::Len(len) => child.len(axis) | EQ(strength) | len,
+            Constraint::Min(min) => child.len(axis) | GE(strength) | min,
+            Constraint::Max(max) => child.len(axis) | LE(strength) | max,
         };
         match axis {
             Axis::Horizontal => hor_eqs.push(eq),
