@@ -45,7 +45,6 @@ impl<U: Ui> Widget<U> for Notifications<U> {
 
     fn cfg() -> Self::Cfg {
         NotificationsCfg {
-            left_div: None,
             format_rec: Box::new(|rec| {
                 // This is so stupid
                 (rec.level() < Level::Debug).then(|| {
@@ -127,25 +126,12 @@ impl<U: Ui> Widget<U> for Notifications<U> {
 /// [`left_with_ratio`]: NotificationsCfg::left_with_ratio
 #[doc(hidden)]
 pub struct NotificationsCfg<U> {
-    left_div: Option<(u16, u16)>,
     format_rec: Box<dyn FnMut(Record) -> Option<Text>>,
     get_mask: Box<dyn FnMut(Record) -> &'static str>,
     _ghost: PhantomData<U>,
 }
 
 impl<U> NotificationsCfg<U> {
-    /// Pushes to the left and sets a height
-    ///
-    /// You might want this if you want something like a
-    /// [`StatusLine`] on the same line as the notifications and the
-    /// [`PromptLine`]
-    ///
-    /// [`StatusLine`]: super::StatusLine
-    /// [`PromptLine`]: super::PromptLine
-    pub fn left_with_ratio(self, den: u16, div: u16) -> Self {
-        Self { left_div: Some((den, div)), ..self }
-    }
-
     /// Changes the way [`Record`]s are formatted by [`Notifications`]
     ///
     /// This function returns an [`Option<Text>`], which means you can
@@ -175,12 +161,12 @@ impl<U: Ui> WidgetCfg<U> for NotificationsCfg<U> {
             _ghost: PhantomData,
         };
 
-        let specs = if let Some((den, div)) = self.left_div {
-            PushSpecs::left().with_hor_ratio(den, div)
-        } else {
-            PushSpecs::below().with_ver_len(1.0)
-        };
+        (widget, PushSpecs::below().with_ver_len(1.0))
+    }
+}
 
-        (widget, specs)
+impl<U: Ui> Default for NotificationsCfg<U> {
+    fn default() -> Self {
+        Notifications::cfg()
     }
 }

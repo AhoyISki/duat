@@ -145,10 +145,18 @@ impl<U: Ui> StatusLineCfg<U> {
         Self { specs: self.specs, ..new }
     }
 
-    /// Puts the [`StatusLine`] above, instead of below
+    /// Puts the [`StatusLine`] above, as opposed to below
     pub fn above(self) -> Self {
         Self {
             specs: PushSpecs::above().with_ver_len(1.0),
+            ..self
+        }
+    }
+
+    /// Puts the [`StatusLine`] below, this is the default
+    pub fn below(self) -> Self {
+        Self {
+            specs: PushSpecs::below().with_ver_len(1.0),
             ..self
         }
     }
@@ -228,6 +236,12 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
             checker: Box::new(checker),
         };
         (widget, self.specs)
+    }
+}
+
+impl<U: Ui> Default for StatusLineCfg<U> {
+    fn default() -> Self {
+        StatusLine::cfg()
     }
 }
 

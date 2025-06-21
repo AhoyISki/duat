@@ -498,16 +498,15 @@ impl<U: Ui> Hookable for OnWindowOpen<U> {
 ///
 /// # Arguments
 ///
-/// - A [`Handle`] for the [`Widget`]
-///
-/// [`Widget`]: crate::ui::Widget
-pub struct FocusedOn<W: Widget<U>, U: Ui>(pub(crate) Handle<W, U>);
+/// - A [`Handle<dyn Widget>`] for newly focused [`Widget`]
+/// - A [`Handle<W>`] for the unfocused [`Widget`]
+pub struct FocusedOn<W: Widget<U>, U: Ui>(pub(crate) (Handle<dyn Widget<U>, U>, Handle<W, U>));
 
 impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
-    type Input<'h> = &'h Handle<W, U>;
+    type Input<'h> = (&'h Handle<dyn Widget<U>, U>, &'h Handle<W, U>);
 
     fn get_input(&mut self) -> Self::Input<'_> {
-        &self.0
+        (&self.0.0, &self.0.1)
     }
 }
 
@@ -515,16 +514,15 @@ impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
 ///
 /// # Arguments
 ///
-/// - A [`Handle`] for the [`Widget`]
-///
-/// [`Widget`]: crate::ui::Widget
-pub struct UnfocusedFrom<W: Widget<U>, U: Ui>(pub(crate) Handle<W, U>);
+/// - A [`Handle<W>`] for newly focused [`Widget`]
+/// - A [`Handle<dyn Widget>`] for the unfocused [`Widget`]
+pub struct UnfocusedFrom<W: Widget<U>, U: Ui>(pub(crate) (Handle<W, U>, Handle<dyn Widget<U>, U>));
 
 impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
-    type Input<'h> = &'h Handle<W, U>;
+    type Input<'h> = (&'h Handle<W, U>, &'h Handle<dyn Widget<U>, U>);
 
     fn get_input(&mut self) -> Self::Input<'_> {
-        &self.0
+        (&self.0.0, &self.0.1)
     }
 }
 
@@ -937,7 +935,9 @@ impl<M: Mode<U>, U: Ui> HookAlias<U, ModeCreatedDummy<U>> for M {
 /// Use this trait if you want to make specialized hooks
 ///
 /// This trait in particular doesn't really serve any purposes other
-/// than allowing for specialization resolution.
+/// than allowing for specialization resolution. It is recommended
+/// that you use `#[doc(hidden)]` for any type implementing this
+/// trait.
 ///
 /// ```rust
 /// use duat_core::{
@@ -969,6 +969,7 @@ impl<M: Mode<U>, U: Ui> HookAlias<U, ModeCreatedDummy<U>> for M {
 ///
 /// struct MyDummy;
 ///
+/// #[doc(hidden)]
 /// impl HookDummy for MyDummy {}
 ///
 /// impl HookAlias<MyDummy> for MyStructWithAVeryLongName {

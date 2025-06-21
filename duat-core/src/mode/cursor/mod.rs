@@ -66,7 +66,7 @@ mod selections;
 /// [`replace`]: Cursor::replace
 /// [`insert`]: Cursor::insert
 /// [`append`]: Cursor::append
-pub struct Cursor<'a, W: Widget<A::Ui>, A: RawArea, S> {
+pub struct Cursor<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> {
     initial: Selection,
     selection: Selection,
     n: usize,
@@ -77,7 +77,7 @@ pub struct Cursor<'a, W: Widget<A::Ui>, A: RawArea, S> {
     inc_searcher: &'a mut S,
 }
 
-impl<'a, W: Widget<A::Ui>, A: RawArea, S> Cursor<'a, W, A, S> {
+impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
     /// Returns a new instance of [`Cursor`]
     pub(crate) fn new(
         selection: Selection,
@@ -639,7 +639,7 @@ impl<U: Ui, S> Cursor<'_, File<U>, U::Area, S> {
 /// Incremental search functions, only available on [`IncSearcher`]s
 ///
 /// [`IncSearcher`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearcher.html
-impl<W: Widget<A::Ui>, A: RawArea> Cursor<'_, W, A, Searcher> {
+impl<W: Widget<A::Ui> + ?Sized, A: RawArea> Cursor<'_, W, A, Searcher> {
     /// Search incrementally from an [`IncSearch`] request
     ///
     /// This will match the Regex pattern from the current position of
@@ -691,7 +691,7 @@ impl<W: Widget<A::Ui>, A: RawArea> Cursor<'_, W, A, Searcher> {
 // borrowing from said W, and you can only get a Cursor from Handles.
 // Thus, the only thing which may have been dropped is the Selections
 // within, which are accounted for.
-unsafe impl<#[may_dangle] 'a, W: Widget<A::Ui> + 'a, A: RawArea + 'a, S: 'a> Drop
+unsafe impl<#[may_dangle] 'a, W: Widget<A::Ui> + ?Sized + 'a, A: RawArea + 'a, S: 'a> Drop
     for Cursor<'a, W, A, S>
 {
     fn drop(&mut self) {
@@ -718,14 +718,14 @@ unsafe impl<#[may_dangle] 'a, W: Widget<A::Ui> + 'a, A: RawArea + 'a, S: 'a> Dro
 }
 
 /// An [`Iterator`] overf all [`Cursor`]s
-pub struct Cursors<'a, W: Widget<A::Ui>, A: RawArea, S> {
+pub struct Cursors<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> {
     next_i: Rc<Cell<usize>>,
     widget: RefMut<'a, W>,
     area: &'a A,
     inc_searcher: RefMut<'a, S>,
 }
 
-impl<'a, W: Widget<A::Ui>, A: RawArea, S> Cursors<'a, W, A, S> {
+impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursors<'a, W, A, S> {
     /// Creates a new [`Cursors`]
     pub(crate) fn new(
         next_i: usize,
@@ -742,11 +742,11 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Cursors<'a, W, A, S> {
     }
 }
 
-impl<'a, 'lend, W: Widget<A::Ui>, A: RawArea, S> Lending<'lend> for Cursors<'a, W, A, S> {
+impl<'a, 'lend, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Lending<'lend> for Cursors<'a, W, A, S> {
     type Lend = Cursor<'lend, W, A, S>;
 }
 
-impl<'a, W: Widget<A::Ui>, A: RawArea, S> Lender for Cursors<'a, W, A, S> {
+impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Lender for Cursors<'a, W, A, S> {
     fn next<'lend>(&'lend mut self) -> Option<<Self as Lending<'lend>>::Lend> {
         let current_i = self.next_i.get();
         let (selection, was_main) = self

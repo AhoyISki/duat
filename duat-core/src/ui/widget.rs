@@ -548,8 +548,8 @@ pub(crate) struct Node<U: Ui> {
     related_widgets: Related<U>,
     update: fn(&Self, &mut Pass),
     print: fn(&Self, &mut Pass),
-    on_focus: fn(&Self, &mut Pass),
-    on_unfocus: fn(&Self, &mut Pass),
+    on_focus: fn(&Self, &mut Pass, Handle<dyn Widget<U>, U>),
+    on_unfocus: fn(&Self, &mut Pass, Handle<dyn Widget<U>, U>),
 }
 
 impl<U: Ui> Node<U> {
@@ -660,14 +660,14 @@ impl<U: Ui> Node<U> {
     }
 
     /// What to do when focusing
-    pub(crate) fn on_focus(&self, pa: &mut Pass) {
+    pub(crate) fn on_focus(&self, pa: &mut Pass, old: Handle<dyn Widget<U>, U>) {
         self.area.set_as_active();
-        (self.on_focus)(self, pa)
+        (self.on_focus)(self, pa, old)
     }
 
     /// What to do when unfocusing
-    pub(crate) fn on_unfocus(&self, pa: &mut Pass) {
-        (self.on_unfocus)(self, pa)
+    pub(crate) fn on_unfocus(&self, pa: &mut Pass, new: Handle<dyn Widget<U>, U>) {
+        (self.on_unfocus)(self, pa, new)
     }
 
     /// Static dispatch inner update function
@@ -686,22 +686,22 @@ impl<U: Ui> Node<U> {
     }
 
     /// Static dispatch inner update on_focus
-    fn on_focus_fn<W: Widget<U>>(&self, pa: &mut Pass) {
+    fn on_focus_fn<W: Widget<U>>(&self, pa: &mut Pass, old: Handle<dyn Widget<U>, U>) {
         self.area.set_as_active();
         let widget: RwData<W> = self.widget.try_downcast().unwrap();
 
         let handle = Handle::from_parts(widget, self.area.clone(), self.mask.clone());
-        hook::trigger(pa, FocusedOn(handle.clone()));
+        hook::trigger(pa, FocusedOn((old, handle.clone())));
 
         Widget::on_focus(pa, handle);
     }
 
     /// Static dispatch inner update on_unfocus
-    fn on_unfocus_fn<W: Widget<U>>(&self, pa: &mut Pass) {
+    fn on_unfocus_fn<W: Widget<U>>(&self, pa: &mut Pass, new: Handle<dyn Widget<U>, U>) {
         let widget: RwData<W> = self.widget.try_downcast().unwrap();
 
         let handle = Handle::from_parts(widget, self.area.clone(), self.mask.clone());
-        hook::trigger(pa, UnfocusedFrom(handle.clone()));
+        hook::trigger(pa, UnfocusedFrom((handle.clone(), new)));
 
         Widget::on_unfocus(pa, handle);
     }

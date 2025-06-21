@@ -40,7 +40,7 @@ use layout::window_files;
 use self::layout::{FileId, Layout};
 pub(crate) use self::widget::{Node, Related};
 pub use self::{
-    builder::{FileBuilder, WindowBuilder},
+    builder::{FileBuilder, WindowBuilder, UiBuilder, BuilderDummy, WidgetAlias},
     widget::{Widget, WidgetCfg},
 };
 use crate::{
@@ -819,7 +819,7 @@ impl Sender {
 /// Then the widget should be pushed to the left, with a width of 3,
 /// and its height should be equal to two thirds of the area directly
 /// below.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct PushSpecs {
     side: Side,
     ver_cons: [Option<Constraint>; 4],

@@ -293,12 +293,12 @@ fn get_eqs(
             .unwrap()
         {
             return [
-                vec![child.len(Axis::Horizontal) | EQ(STRONG + 1.0) | 0.0],
+                vec![child.len(Axis::Horizontal) | EQ(STRONG + 3.0) | 0.0],
                 Vec::new(),
             ];
         } else {
             return [Vec::new(), vec![
-                child.len(Axis::Vertical) | EQ(STRONG + 1.0) | 0.0,
+                child.len(Axis::Vertical) | EQ(STRONG + 3.0) | 0.0,
             ]];
         }
     }

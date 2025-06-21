@@ -296,13 +296,23 @@ mod switch {
 
     /// Switches to a certain widget
     pub(super) fn switch_widget<U: Ui>(pa: &mut Pass, node: Node<U>) {
-        if let Ok(widget) = context::cur_widget::<U>(pa) {
-            unsafe { BEFORE_EXIT.get() }.replace(|_| {})(pa);
-            widget.node(pa).on_unfocus(pa);
-        }
+        let cur_widget = context::cur_widget::<U>(pa).unwrap();
+        unsafe { BEFORE_EXIT.get() }.replace(|_| {})(pa);
+
+        let handle = {
+            let (widget, area, mask, _) = node.parts();
+            Handle::from_parts(widget.clone(), area.clone(), mask.clone())
+        };
+        cur_widget.node(pa).on_unfocus(pa, handle);
 
         context::set_cur(pa, node.as_file(), node.clone());
-        node.on_focus(pa);
+
+        let handle = {
+            let node = cur_widget.node(pa);
+            let (widget, area, mask, _) = node.parts();
+            Handle::from_parts(widget.clone(), area.clone(), mask.clone())
+        };
+        node.on_focus(pa, handle);
     }
 
     /// Sends the [`KeyEvent`] to the active [`Mode`]

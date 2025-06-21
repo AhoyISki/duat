@@ -20,19 +20,19 @@ use duat_core::{
     clipboard::Clipboard,
     context::{self, CurFile, CurWidget, Logs},
     session::{FileRet, SessionCfg},
-    ui::{self, Constraint, DuatEvent, RawArea, Widget, Window},
+    ui::{self, DuatEvent, Widget, Window},
 };
 use duat_term::VertRule;
 use duat_utils::{
     modes::{Pager, Regular},
-    widgets::LogBook,
+    widgets::{FooterWidgets, LogBook},
 };
 
 use crate::{
     CfgFn, Ui, form,
-    hook::{self, FocusedOn, OnFileOpen, OnWindowOpen, UnfocusedFrom},
+    hook::{self, OnFileOpen, OnWindowOpen},
     mode,
-    prelude::{FileWritten, LineNumbers, Notifications, PromptLine, StatusLine},
+    prelude::{FileWritten, LineNumbers},
 };
 
 // Setup statics.
@@ -76,20 +76,7 @@ pub fn pre_setup(logs: Option<Logs>, duat_tx: &'static Sender<DuatEvent>) {
     });
 
     hook::add_grouped::<OnWindowOpen>("WindowWidgets", |pa, builder| {
-        builder.push(pa, StatusLine::cfg());
-        let (child, _) = builder.push(pa, PromptLine::cfg());
-        builder.push_to(pa, child, Notifications::cfg());
-    });
-
-    hook::add_grouped::<UnfocusedFrom<PromptLine<Ui>>>("HidePromptLine", |_, handle| {
-        handle.area().constrain_ver([Constraint::Len(0.0)]).unwrap();
-    });
-
-    hook::add_grouped::<FocusedOn<PromptLine<Ui>>>("HidePromptLine", |_, handle| {
-        handle
-            .area()
-            .constrain_ver([Constraint::Ratio(1, 1), Constraint::Len(1.0)])
-            .unwrap();
+        builder.push(pa, FooterWidgets::default());
     });
 
     hook::add_grouped::<FileWritten>("ReloadOnWrite", |_, (path, _)| {

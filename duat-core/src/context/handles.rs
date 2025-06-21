@@ -420,14 +420,14 @@ impl<U: Ui> FileHandle<U> {
 /// [`Mode`]: crate::mode::Mode
 /// [`U::Area`]: Ui::Area
 #[derive(Debug)]
-pub struct Handle<W: Widget<U>, U: Ui, S = ()> {
+pub struct Handle<W: Widget<U> + ?Sized, U: Ui, S = ()> {
     widget: RwData<W>,
     area: U::Area,
     mask: Rc<Cell<&'static str>>,
     searcher: RefCell<S>,
 }
 
-impl<W: Widget<U>, U: Ui> Handle<W, U> {
+impl<W: Widget<U> + ?Sized, U: Ui> Handle<W, U> {
     /// Returns a new instance of a [`Handle<W, U>`]
     pub(crate) fn from_parts(
         widget: RwData<W>,
@@ -443,7 +443,7 @@ impl<W: Widget<U>, U: Ui> Handle<W, U> {
     }
 }
 
-impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
+impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// Reads from the [`Widget`] and the [`Area`] using a [`Pass`]
     ///
     /// The consistent use of a [`Pass`] for the purposes of
@@ -515,7 +515,7 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
         n: usize,
         edit: impl FnOnce(Cursor<W, U::Area, S>) -> Ret,
     ) -> Ret {
-        fn get_parts<'a, W: Widget<U>, U: Ui>(
+        fn get_parts<'a, W: Widget<U> + ?Sized, U: Ui>(
             pa: &mut Pass,
             widget: &'a RwData<W>,
             n: usize,
@@ -767,7 +767,7 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
         let widget = self.widget.acquire(pa);
         self.area.end_points(widget.text(), widget.print_cfg())
     }
-    
+
     ////////// Querying functions
 
     /// This [`Handle`]'s [`Widget`]
@@ -841,9 +841,7 @@ impl<W: Widget<U>, U: Ui, S> Handle<W, U, S> {
     pub fn cfg(&self, pa: &Pass) -> PrintCfg {
         self.widget.read(pa, Widget::print_cfg)
     }
-}
 
-impl<W: Widget<U>, U: Ui> Handle<W, U> {
     /// Attaches a [`Searcher`] to this [`Handle`], so you can do
     /// incremental search
     ///
@@ -874,7 +872,7 @@ impl<W: Widget<U>, U: Ui> Handle<W, U> {
     }
 }
 
-impl<W: Widget<U>, U: Ui, S: Clone> Clone for Handle<W, U, S> {
+impl<W: Widget<U> + ?Sized, U: Ui, S: Clone> Clone for Handle<W, U, S> {
     fn clone(&self) -> Self {
         Self {
             widget: self.widget.clone(),

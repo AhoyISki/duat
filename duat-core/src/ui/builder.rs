@@ -23,9 +23,74 @@ use crate::{
     data::Pass,
     duat_name,
     file::{File, ReaderCfg},
-    hook::{self, Hookable, WidgetCreated},
+    hook::{self, WidgetCreated},
     ui::{Node, Widget, WidgetCfg},
 };
+
+/// A trait used to make [`Ui`] building generic
+///
+/// Its main implementors are [`FileBuilder`] and [`WindowBuilder`].
+pub trait UiBuilder<U: Ui>: Sized {
+    /// Pushes a [`Widget`] to this [`UiBuilder`], on its main
+    /// [`U::Area`]
+    ///
+    /// [`U::Area`]: Ui::Area
+    fn push_cfg<W: WidgetCfg<U>>(&mut self, pa: &mut Pass, cfg: W) -> (U::Area, Option<U::Area>);
+
+    /// Pushes a [`Widget`] to this [`UiBuilder`], on a given
+    /// [`U::Area`]
+    ///
+    /// [`U::Area`]: Ui::Area
+    fn push_cfg_to<W: WidgetCfg<U>>(
+        &mut self,
+        pa: &mut Pass,
+        area: U::Area,
+        cfg: W,
+    ) -> (U::Area, Option<U::Area>);
+}
+
+impl<U: Ui> UiBuilder<U> for FileBuilder<U> {
+    fn push_cfg<W: WidgetCfg<U>>(&mut self, pa: &mut Pass, cfg: W) -> (U::Area, Option<U::Area>) {
+        run_once::<W::Widget, U>();
+
+        let cfg = {
+            let wc = WidgetCreated::<W::Widget, U>((Some(cfg), Some(self.handle.clone())));
+            hook::trigger(pa, wc).0.0.unwrap()
+        };
+
+        let (widget, specs) = cfg.build(pa, Some(self.handle.clone()));
+
+        let mut windows = context::windows().borrow_mut();
+        let window = &mut windows[self.window_i];
+
+        let (node, parent) = window.push(pa, widget, &self.area, specs, true, true);
+
+        self.get_areas(pa, window, node, parent)
+    }
+
+    fn push_cfg_to<W: WidgetCfg<U>>(
+        &mut self,
+        pa: &mut Pass,
+        area: U::Area,
+        cfg: W,
+    ) -> (U::Area, Option<U::Area>) {
+        run_once::<W::Widget, U>();
+
+        let cfg = {
+            let wc = WidgetCreated::<W::Widget, U>((Some(cfg), Some(self.handle.clone())));
+            hook::trigger(pa, wc).0.0.unwrap()
+        };
+
+        let (widget, specs) = cfg.build(pa, Some(self.handle.clone()));
+
+        let mut windows = context::windows().borrow_mut();
+        let window = &mut windows[self.window_i];
+
+        let (node, parent) = window.push(pa, widget, &area, specs, true, true);
+
+        self.get_areas(pa, window, node, parent)
+    }
+}
 
 /// A constructor helper for [`File`] initiations
 ///
@@ -229,42 +294,12 @@ impl<U: Ui> FileBuilder<U> {
     /// [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
     /// [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
     #[inline(never)]
-    pub fn push<W: WidgetCfg<U>>(&mut self, pa: &mut Pass, cfg: W) -> (U::Area, Option<U::Area>) {
-        run_once::<W::Widget, U>();
-
-        let cfg = {
-            let wc = WidgetCreated::<W::Widget, U>((Some(cfg), Some(self.handle.clone())));
-            hook::trigger(pa, wc).0.0.unwrap()
-        };
-
-        let (widget, specs) = cfg.build(pa, Some(self.handle.clone()));
-
-        let mut windows = context::windows().borrow_mut();
-        let window = &mut windows[self.window_i];
-
-        let (node, parent) = window.push(pa, widget, &self.area, specs, true, true);
-
-        self.get_areas(pa, window, node, parent)
-    }
-
-    fn get_areas(
+    pub fn push<W: WidgetAlias<U, impl BuilderDummy>>(
         &mut self,
         pa: &mut Pass,
-        window: &mut super::Window<U>,
-        node: Node<U>,
-        parent: Option<U::Area>,
+        widget: W,
     ) -> (U::Area, Option<U::Area>) {
-        self.handle
-            .write_related_widgets(pa, |related| related.push(node.clone()));
-
-        if let Some(parent) = &parent {
-            if parent.is_master_of(&window.files_area) {
-                window.files_area = parent.clone();
-            }
-            self.area = parent.clone();
-        }
-
-        (node.area().clone(), parent)
+        widget.push(pa, self)
     }
 
     /// Pushes a widget to a specific area around a [`File`]
@@ -371,22 +406,7 @@ impl<U: Ui> FileBuilder<U> {
         area: U::Area,
         cfg: W,
     ) -> (U::Area, Option<U::Area>) {
-        run_once::<W::Widget, U>();
-
-        let cfg = {
-            let wc = WidgetCreated::<W::Widget, U>((Some(cfg), Some(self.handle.clone())));
-            hook::trigger(pa, wc).0.0.unwrap()
-        };
-
-        let (widget, specs) = cfg.build(pa, Some(self.handle.clone()));
-
-        let mut windows = context::windows().borrow_mut();
-        let window = &mut windows[self.window_i];
-
-        let (node, parent) = window.push(pa, widget, &area, specs, true, true);
-        self.handle
-            .write_related_widgets(pa, |related| related.push(node.clone()));
-        (node.area().clone(), parent)
+        self.push_cfg_to(pa, area, cfg)
     }
 
     /// Adds a [`Reader`] to this [`File`]
@@ -425,6 +445,26 @@ impl<U: Ui> FileBuilder<U> {
         f: impl FnOnce(&mut File<U>, &U::Area) -> Ret,
     ) -> Ret {
         self.handle.write(pa, f)
+    }
+
+    fn get_areas(
+        &mut self,
+        pa: &mut Pass,
+        window: &mut super::Window<U>,
+        node: Node<U>,
+        parent: Option<U::Area>,
+    ) -> (U::Area, Option<U::Area>) {
+        self.handle
+            .write_related_widgets(pa, |related| related.push(node.clone()));
+
+        if let Some(parent) = &parent {
+            if parent.is_master_of(&window.files_area) {
+                window.files_area = parent.clone();
+            }
+            self.area = parent.clone();
+        }
+
+        (node.area().clone(), parent)
     }
 }
 
@@ -529,6 +569,53 @@ pub struct WindowBuilder<U: Ui> {
     area: U::Area,
 }
 
+impl<U: Ui> UiBuilder<U> for WindowBuilder<U> {
+    fn push_cfg<W: WidgetCfg<U>>(&mut self, pa: &mut Pass, cfg: W) -> (U::Area, Option<U::Area>) {
+        run_once::<W::Widget, U>();
+
+        let cfg = {
+            let wc = WidgetCreated::<W::Widget, U>((Some(cfg), None));
+            hook::trigger(pa, wc).0.0.unwrap()
+        };
+
+        let (widget, specs) = cfg.build(pa, None);
+
+        let mut windows = context::windows().borrow_mut();
+        let window = &mut windows[self.window_i];
+
+        let (child, parent) = window.push(pa, widget, &self.area, specs, false, false);
+
+        if let Some(parent) = &parent {
+            self.area = parent.clone();
+        }
+
+        (child.area().clone(), parent)
+    }
+
+    fn push_cfg_to<W: WidgetCfg<U>>(
+        &mut self,
+        pa: &mut Pass,
+        area: U::Area,
+        cfg: W,
+    ) -> (U::Area, Option<U::Area>) {
+        run_once::<W::Widget, U>();
+        let (widget, specs) = cfg.build(pa, None);
+
+        let mut windows = context::windows().borrow_mut();
+        let window = &mut windows[self.window_i];
+
+        let (node, parent) = window.push(pa, widget, &area, specs, true, false);
+
+        if area == self.area
+            && let Some(parent) = &parent
+        {
+            self.area = parent.clone();
+        }
+
+        (node.area().clone(), parent)
+    }
+}
+
 impl<U: Ui> WindowBuilder<U> {
     /// Creates a new [`WindowBuilder`].
     pub(crate) fn new(window_i: usize) -> Self {
@@ -567,26 +654,12 @@ impl<U: Ui> WindowBuilder<U> {
     /// [cfg]: WidgetCfg
     /// [`Area`]: crate::ui::Ui::Area
     #[inline(never)]
-    pub fn push<W: WidgetCfg<U>>(&mut self, pa: &mut Pass, cfg: W) -> (U::Area, Option<U::Area>) {
-        run_once::<W::Widget, U>();
-
-        let cfg = {
-            let wc = WidgetCreated::<W::Widget, U>((Some(cfg), None));
-            hook::trigger(pa, wc).0.0.unwrap()
-        };
-
-        let (widget, specs) = cfg.build(pa, None);
-
-        let mut windows = context::windows().borrow_mut();
-        let window = &mut windows[self.window_i];
-
-        let (child, parent) = window.push(pa, widget, &self.area, specs, false, false);
-
-        if let Some(parent) = &parent {
-            self.area = parent.clone();
-        }
-
-        (child.area().clone(), parent)
+    pub fn push<W: WidgetAlias<U, impl BuilderDummy>>(
+        &mut self,
+        pa: &mut Pass,
+        widget: W,
+    ) -> (U::Area, Option<U::Area>) {
+        widget.push(pa, self)
     }
 
     /// Pushes a widget to a specific area
@@ -657,17 +730,41 @@ impl<U: Ui> WindowBuilder<U> {
         area: U::Area,
         cfg: W,
     ) -> (U::Area, Option<U::Area>) {
-        run_once::<W::Widget, U>();
-        let (widget, specs) = cfg.build(pa, None);
-
-        let mut windows = context::windows().borrow_mut();
-        let window = &mut windows[self.window_i];
-
-        let (node, parent) = window.push(pa, widget, &area, specs, true, false);
-
-        (node.area().clone(), parent)
+        self.push_cfg_to(pa, area, cfg)
     }
 }
+
+/// An alias to allow generic, yet consistent utilization of
+/// [`UiBuilder`]s
+///
+/// This trait lets you do any available actions with [`UiBuilder`]s,
+/// like pushing multiple [`Widget`]s, for example.
+///
+/// The reason for using this, rather than have your type just take a
+/// [`UiBuilder`] parameter in its creation function, is mostly for
+/// consistency's sake, since [`Ui`] building is done by pushing
+/// [`Widget`]s into the builder, this lets you push multiple
+/// [`Widget`]s, without breaking that same consistency.
+pub trait WidgetAlias<U: Ui, D: BuilderDummy = WidgetCfgDummy> {
+    /// "Pushes [`Widget`]s to a [`UiBuilder`], in a specific
+    /// [`U::Area`]
+    ///
+    /// [`U::Area`]: Ui::Area
+    fn push(self, pa: &mut Pass, builder: &mut impl UiBuilder<U>) -> (U::Area, Option<U::Area>);
+}
+
+impl<W: WidgetCfg<U>, U: Ui> WidgetAlias<U> for W {
+    fn push(self, pa: &mut Pass, builder: &mut impl UiBuilder<U>) -> (U::Area, Option<U::Area>) {
+        builder.push_cfg(pa, self)
+    }
+}
+
+/// A dummy trait, meant for specialization
+pub trait BuilderDummy {}
+
+pub struct WidgetCfgDummy;
+
+impl BuilderDummy for WidgetCfgDummy {}
 
 /// Runs the [`once`] function of widgets.
 ///
@@ -679,42 +776,5 @@ fn run_once<W: Widget<U>, U: Ui>() {
     if !once_list.contains(&duat_name::<W>()) {
         W::once().unwrap();
         once_list.push(duat_name::<W>());
-    }
-}
-
-/// [`Hookable`]: Triggers when a [`File`] is opened
-///
-/// # Arguments
-///
-/// - The file [builder], which can be used to push widgets to the
-///   file, and to eachother.
-///
-/// [`File`]: crate::file::File
-/// [builder]: FileBuilder
-pub struct OnFileOpen<U: Ui>(FileBuilder<U>);
-
-impl<U: Ui> Hookable for OnFileOpen<U> {
-    type Input<'h> = &'h mut FileBuilder<U>;
-
-    fn get_input<'h>(&'h mut self) -> Self::Input<'h> {
-        &mut self.0
-    }
-}
-
-/// [`Hookable`]: Triggers when a new window is opened
-///
-/// # Arguments
-///
-/// - The window [builder], which can be used to push widgets to the
-///   edges of the window, surrounding the inner file region.
-///
-/// [builder]: WindowBuilder
-pub struct OnWindowOpen<U: Ui>(WindowBuilder<U>);
-
-impl<U: Ui> Hookable for OnWindowOpen<U> {
-    type Input<'h> = &'h mut WindowBuilder<U>;
-
-    fn get_input<'h>(&'h mut self) -> Self::Input<'h> {
-        &mut self.0
     }
 }

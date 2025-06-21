@@ -139,11 +139,25 @@ impl<U: Ui> PromptLineCfg<U> {
         self
     }
 
+    /// Places the [`PromptLine`] above, as opposed to below
     pub fn above(self) -> Self {
         Self {
             specs: PushSpecs::above().with_ver_len(1.0),
             ..self
         }
+    }
+
+    /// Places the [`PromptLine`] below, this is the default
+    pub fn below(self) -> Self {
+        Self {
+            specs: PushSpecs::below().with_ver_len(1.0),
+            ..self
+        }
+    }
+
+    /// Hides the [`PromptLine`] by default
+    pub fn hidden(self) -> Self {
+        Self { specs: self.specs.hidden(), ..self }
     }
 
     /// Pushes this [`PromptLine`] to the left
@@ -152,5 +166,11 @@ impl<U: Ui> PromptLineCfg<U> {
             specs: PushSpecs::left().with_hor_ratio(den, div),
             ..self
         }
+    }
+}
+
+impl<U: Ui> Default for PromptLineCfg<U> {
+    fn default() -> Self {
+        PromptLine::cfg()
     }
 }
