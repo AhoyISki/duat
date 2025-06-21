@@ -1,6 +1,6 @@
 mod iter;
 
-use std::{cell::Cell, fmt::Alignment, sync::Arc};
+use std::{cell::{Cell, RefCell}, fmt::Alignment, rc::Rc, sync::Arc};
 
 use crossterm::cursor;
 use duat_core::{
@@ -69,7 +69,7 @@ impl Coords {
 
 #[derive(Clone)]
 pub struct Area {
-    layouts: Arc<Mutex<Vec<Layout>>>,
+    layouts: Rc<RefCell<Vec<Layout>>>,
     pub id: AreaId,
     ansi_codes: Arc<Mutex<micromap::Map<CStyle, String, 16>>>,
 }
@@ -81,7 +81,7 @@ impl PartialEq for Area {
 }
 
 impl Area {
-    pub fn new(id: AreaId, layouts: Arc<Mutex<Vec<Layout>>>) -> Self {
+    pub fn new(id: AreaId, layouts: Rc<RefCell<Vec<Layout>>>) -> Self {
         Self { layouts, id, ansi_codes: Arc::default() }
     }
 
@@ -92,7 +92,7 @@ impl Area {
         mut painter: Painter,
         mut f: impl FnMut(&Caret, &Item) + 'a,
     ) {
-        let layouts = self.layouts.lock().unwrap();
+        let layouts = self.layouts.borrow();
         let mut ansi_codes = self.ansi_codes.lock().unwrap();
 
         let layout = get_layout(&layouts, self.id).unwrap();
@@ -244,7 +244,7 @@ impl ui::RawArea for Area {
         on_files: bool,
         cache: PrintInfo,
     ) -> (Area, Option<Area>) {
-        let mut layouts = area.layouts.lock().unwrap();
+        let mut layouts = area.layouts.borrow_mut();
         let layout = get_layout_mut(&mut layouts, area.id).unwrap();
 
         let (child, parent) = layout.bisect(area.id, specs, cluster, on_files, cache);
@@ -256,7 +256,7 @@ impl ui::RawArea for Area {
     }
 
     fn delete(area: MutArea<Self>) -> Option<Self> {
-        let mut layouts = area.layouts.lock().unwrap();
+        let mut layouts = area.layouts.borrow_mut();
         // This Area may have already been deleted, so a Layout may not be
         // found.
         let layout = get_layout_mut(&mut layouts, area.id)?;
@@ -266,7 +266,7 @@ impl ui::RawArea for Area {
     }
 
     fn swap(lhs: MutArea<Self>, rhs: &Self) {
-        let mut layouts = lhs.layouts.lock().unwrap();
+        let mut layouts = lhs.layouts.borrow_mut();
         let lhs_lay = get_layout_pos(&layouts, lhs.id).unwrap();
         let rhs_lay = get_layout_pos(&layouts, rhs.id).unwrap();
 
@@ -303,7 +303,7 @@ impl ui::RawArea for Area {
     }
 
     fn spawn_floating(area: MutArea<Self>, specs: SpawnSpecs) -> Result<Self, Text> {
-        let mut layouts = area.layouts.lock().unwrap();
+        let mut layouts = area.layouts.borrow_mut();
         let layout = get_layout_mut(&mut layouts, area.id).unwrap();
 
         Ok(Self::new(
@@ -329,7 +329,7 @@ impl ui::RawArea for Area {
             cons
         };
 
-        let mut layouts = self.layouts.lock().unwrap();
+        let mut layouts = self.layouts.borrow_mut();
         let layout = get_layout_mut(&mut layouts, self.id).unwrap();
         let old_cons = layout
             .rects
@@ -362,7 +362,7 @@ impl ui::RawArea for Area {
             cons
         };
 
-        let mut layouts = self.layouts.lock().unwrap();
+        let mut layouts = self.layouts.borrow_mut();
         let layout = get_layout_mut(&mut layouts, self.id).unwrap();
         let old_cons = layout
             .rects
@@ -389,7 +389,7 @@ impl ui::RawArea for Area {
     }
 
     fn hide(&self) -> Result<(), Text> {
-        let mut layouts = self.layouts.lock().unwrap();
+        let mut layouts = self.layouts.borrow_mut();
         let layout = get_layout_mut(&mut layouts, self.id).unwrap();
         let mut old_cons = layout
             .rects
@@ -417,7 +417,7 @@ impl ui::RawArea for Area {
     }
 
     fn reveal(&self) -> Result<(), Text> {
-        let mut layouts = self.layouts.lock().unwrap();
+        let mut layouts = self.layouts.borrow_mut();
         let layout = get_layout_mut(&mut layouts, self.id).unwrap();
         let mut old_cons = layout
             .rects
@@ -453,7 +453,7 @@ impl ui::RawArea for Area {
             return;
         }
 
-        let layouts = self.layouts.lock().unwrap();
+        let layouts = self.layouts.borrow();
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
 
@@ -494,7 +494,7 @@ impl ui::RawArea for Area {
     ////////// Printing
 
     fn scroll_around_point(&self, text: &Text, point: Point, cfg: PrintCfg) {
-        let layouts = self.layouts.lock().unwrap();
+        let layouts = self.layouts.borrow();
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
 
@@ -521,7 +521,7 @@ impl ui::RawArea for Area {
         points: impl duat_core::text::TwoPoints,
         cfg: PrintCfg,
     ) {
-        let layouts = self.layouts.lock().unwrap();
+        let layouts = self.layouts.borrow();
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
 
@@ -552,7 +552,7 @@ impl ui::RawArea for Area {
     }
 
     fn set_as_active(&self) {
-        let mut layouts = self.layouts.lock().unwrap();
+        let mut layouts = self.layouts.borrow_mut();
         get_layout_mut(&mut layouts, self.id).unwrap().active_id = self.id;
     }
 
@@ -573,7 +573,7 @@ impl ui::RawArea for Area {
     ////////// Queries
 
     fn set_print_info(&self, info: Self::PrintInfo) {
-        let layouts = self.layouts.lock().unwrap();
+        let layouts = self.layouts.borrow();
         let layout = get_layout(&layouts, self.id).unwrap();
         layout.get(self.id).unwrap().print_info().unwrap().set(info);
     }
@@ -596,7 +596,7 @@ impl ui::RawArea for Area {
     }
 
     fn has_changed(&self) -> bool {
-        let layouts = self.layouts.lock().unwrap();
+        let layouts = self.layouts.borrow();
         if let Some(layout) = get_layout(&layouts, self.id)
             && let Some(rect) = layout.get(self.id)
         {
@@ -610,7 +610,7 @@ impl ui::RawArea for Area {
         if other.id == self.id {
             return true;
         }
-        let layouts = self.layouts.lock().unwrap();
+        let layouts = self.layouts.borrow();
         let layout = get_layout(&layouts, self.id).unwrap();
         let mut parent_id = other.id;
         while let Some((_, parent)) = layout.get_parent(parent_id) {
@@ -624,7 +624,7 @@ impl ui::RawArea for Area {
     }
 
     fn get_cluster_master(&self) -> Option<Self> {
-        let layouts = self.layouts.lock().unwrap();
+        let layouts = self.layouts.borrow();
         get_layout(&layouts, self.id)
             .unwrap()
             .rects
@@ -633,7 +633,7 @@ impl ui::RawArea for Area {
     }
 
     fn cache(&self) -> Option<Self::Cache> {
-        let layouts = self.layouts.lock().unwrap();
+        let layouts = self.layouts.borrow();
         get_rect(&layouts, self.id)
             .unwrap()
             .print_info()
@@ -641,7 +641,7 @@ impl ui::RawArea for Area {
     }
 
     fn width(&self) -> u32 {
-        let layouts = self.layouts.lock().unwrap();
+        let layouts = self.layouts.borrow();
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
         let coords = layout.printer.coords(rect.var_points(), false);
@@ -649,7 +649,7 @@ impl ui::RawArea for Area {
     }
 
     fn height(&self) -> u32 {
-        let layouts = self.layouts.lock().unwrap();
+        let layouts = self.layouts.borrow();
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
         let coords = layout.printer.coords(rect.var_points(), false);
@@ -657,17 +657,17 @@ impl ui::RawArea for Area {
     }
 
     fn start_points(&self, _text: &Text, _cfg: PrintCfg) -> (Point, Option<Point>) {
-        let layouts = self.layouts.lock().unwrap();
+        let layouts = self.layouts.borrow();
         layouted::start_points(self, &layouts)
     }
 
     fn end_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>) {
-        let layouts = self.layouts.lock().unwrap();
+        let layouts = self.layouts.borrow();
         layouted::end_points(self, &layouts, text, cfg)
     }
 
     fn print_info(&self) -> Self::PrintInfo {
-        let layouts = self.layouts.lock().unwrap();
+        let layouts = self.layouts.borrow();
         get_rect(&layouts, self.id)
             .unwrap()
             .print_info()
@@ -676,7 +676,7 @@ impl ui::RawArea for Area {
     }
 
     fn is_active(&self) -> bool {
-        get_layout(&self.layouts.lock().unwrap(), self.id)
+        get_layout(&self.layouts.borrow(), self.id)
             .unwrap()
             .active_id
             == self.id

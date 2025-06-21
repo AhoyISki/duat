@@ -1,7 +1,9 @@
 #![feature(decl_macro, debug_closure_helpers)]
 use std::{
+    cell::RefCell,
     fmt::Debug,
     io::{self, Write},
+    rc::Rc,
     sync::{Arc, Mutex, mpsc},
     time::Duration,
 };
@@ -15,6 +17,7 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 use duat_core::{
+    MainThreadOnly,
     form::Color,
     ui::{self, Sender},
 };
@@ -119,14 +122,16 @@ impl ui::Ui for Ui {
         let printer = (ms.printer_fn)();
 
         let main_id = {
-            let mut layouts = ms.layouts.lock().unwrap();
+            // SAFETY: Ui::MetaStatics is not Send + Sync, so this can't be called
+            // from another thread
+            let mut layouts = unsafe { ms.layouts.get() }.borrow_mut();
             let layout = Layout::new(ms.fr, printer.clone(), cache);
             let main_id = layout.main_id();
             layouts.push(layout);
             main_id
         };
 
-        let root = Area::new(main_id, ms.layouts.clone());
+        let root = Area::new(main_id, unsafe { ms.layouts.get() }.clone());
         ms.windows.push((root.clone(), printer.clone()));
         if ms.windows.len() == 1 {
             ms.tx.send(Event::NewPrinter(printer)).unwrap();
@@ -181,14 +186,18 @@ impl ui::Ui for Ui {
     fn unload(ms: &'static Self::MetaStatics) {
         let mut ms = ms.lock().unwrap();
         ms.windows = Vec::new();
-        *ms.layouts.lock().unwrap() = Vec::new();
+        // SAFETY: Ui::MetaStatics is not Send + Sync, so this can't be called
+        // from another thread
+        *unsafe { ms.layouts.get() }.borrow_mut() = Vec::new();
         ms.win = 0;
     }
 
     fn remove_window(ms: &'static Self::MetaStatics, win: usize) {
         let mut ms = ms.lock().unwrap();
         ms.windows.remove(win);
-        ms.layouts.lock().unwrap().remove(win);
+        // SAFETY: Ui::MetaStatics is not Send + Sync, so this can't be called
+        // from another thread
+        unsafe { ms.layouts.get() }.borrow_mut().remove(win);
         if ms.win > win {
             ms.win -= 1;
         }
@@ -210,7 +219,7 @@ impl Default for Ui {
 #[doc(hidden)]
 pub struct MetaStatics {
     windows: Vec<(Area, Arc<Printer>)>,
-    layouts: Arc<Mutex<Vec<Layout>>>,
+    layouts: MainThreadOnly<Rc<RefCell<Vec<Layout>>>>,
     win: usize,
     fr: Frame,
     printer_fn: fn() -> Arc<Printer>,
@@ -233,7 +242,7 @@ impl Default for MetaStatics {
         let (tx, rx) = mpsc::channel();
         Self {
             windows: Vec::new(),
-            layouts: Arc::new(Mutex::new(Vec::new())),
+            layouts: MainThreadOnly::default(),
             win: 0,
             fr: Frame::default(),
             printer_fn: || Arc::new(Printer::new()),

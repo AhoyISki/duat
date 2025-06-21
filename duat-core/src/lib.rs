@@ -414,6 +414,7 @@ pub mod prelude {
         ui::{PushSpecs, RawArea, Ui, Widget, WidgetCfg},
     };
 }
+pub use main_thread_only::MainThreadOnly;
 
 mod main_thread_only {
     /// A container meant for access in only the main thread
@@ -421,6 +422,7 @@ mod main_thread_only {
     /// Use this if you want a static value that is not
     /// [`Send`]/[`Sync`].
     #[derive(Default)]
+    #[doc(hidden)]
     pub struct MainThreadOnly<T>(T);
 
     impl<T> MainThreadOnly<T> {
@@ -437,7 +439,7 @@ mod main_thread_only {
         /// main thread of execution, although this function might
         /// take a [`Pass`] parameter later on, in order to
         /// lift that requirement.
-        pub unsafe fn get(&'static self) -> &'static T {
+        pub unsafe fn get(&self) -> &T {
             &self.0
         }
     }

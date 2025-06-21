@@ -27,14 +27,15 @@ use notify::{
     event::{AccessKind, AccessMode},
 };
 
-static MS: LazyLock<<Ui as ui::Ui>::MetaStatics> =
-    LazyLock::new(<Ui as ui::Ui>::MetaStatics::default);
 static CLIPB: LazyLock<Mutex<Clipboard>> = LazyLock::new(Mutex::default);
 
 fn main() {
     let logs = duat_core::context::Logs::new();
     log::set_logger(Box::leak(Box::new(logs.clone()))).unwrap();
     context::set_logs(logs.clone());
+
+    let ms: &'static <Ui as ui::Ui>::MetaStatics =
+        Box::leak(Box::new(<Ui as ui::Ui>::MetaStatics::default()));
 
     dlopen_rs::init();
 
@@ -48,7 +49,7 @@ fn main() {
     let Some(crate_dir) = duat_core::crate_dir().filter(|cd| cd.exists()) else {
         context::error!("No config crate found, loading default config");
         pre_setup(None, duat_tx);
-        run_duat((&MS, &CLIPB), Vec::new(), duat_rx);
+        run_duat((ms, &CLIPB), Vec::new(), duat_rx);
         return;
     };
 
@@ -77,7 +78,7 @@ fn main() {
     // The watcher is returned as to not be dropped.
     let _watcher = spawn_watcher(reload_tx, duat_tx, crate_dir);
 
-    Ui::open(&MS, ui::Sender::new(duat_tx));
+    Ui::open(ms, ui::Sender::new(duat_tx));
 
     loop {
         let running_lib = lib.take();
@@ -85,11 +86,11 @@ fn main() {
 
         let reload_instant;
         (prev, duat_rx, reload_instant) = if let Some(run_duat) = run_fn.take() {
-            run_duat(logs.clone(), (&MS, &CLIPB), prev, (duat_tx, duat_rx))
+            run_duat(logs.clone(), (ms, &CLIPB), prev, (duat_tx, duat_rx))
         } else {
             context::error!("Failed to load config crate");
             pre_setup(None, duat_tx);
-            run_duat((&MS, &CLIPB), prev, duat_rx)
+            run_duat((ms, &CLIPB), prev, duat_rx)
         };
 
         if prev.is_empty() {
@@ -107,7 +108,7 @@ fn main() {
         lib = ElfLibrary::dlopen(so_path, DEFAULT_FLAGS).ok();
     }
 
-    Ui::close(&MS);
+    Ui::close(ms);
 }
 
 fn spawn_watcher(
