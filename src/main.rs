@@ -192,7 +192,7 @@ fn run_cargo(toml_path: PathBuf, on_release: bool, print: bool) -> Result<Output
     }
 }
 
-fn find_run_duat(lib: &Dylib) -> Option<Symbol<RunFn>> {
+fn find_run_duat(lib: &Dylib) -> Option<Symbol<'_, RunFn>> {
     unsafe { lib.get::<RunFn>("run").ok() }
 }
 

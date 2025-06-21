@@ -341,7 +341,7 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Cursor<'a, W, A, S> {
     /// you [destroy] it.
     ///
     /// [destroy]: Self::destroy
-    pub fn copy(&mut self) -> Cursor<W, A, S> {
+    pub fn copy(&mut self) -> Cursor<'_, W, A, S> {
         Cursor::new(
             self.selection.clone(),
             self.n,
@@ -523,7 +523,7 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Cursor<'a, W, A, S> {
     /// empty.
     ///
     /// [`GapBuffer`]: gapbuf::GapBuffer
-    pub fn selection(&self) -> Strs {
+    pub fn selection(&self) -> Strs<'_> {
         let range = self.selection.range(self.text());
         self.text().strs(range)
     }
@@ -549,8 +549,8 @@ impl<'a, W: Widget<A::Ui>, A: RawArea, S> Cursor<'a, W, A, S> {
     /// An [`Iterator`] over the lines in a given [range]
     ///
     /// [range]: TextRange
-    pub fn lines_on(&mut self, range: impl TextRange) -> Lines {
-        self.widget.text_mut().lines(range)
+    pub fn lines_on(&self, range: impl TextRange) -> Lines<'_> {
+        self.widget.text().lines(range)
     }
 
     /// Gets the current level of indentation

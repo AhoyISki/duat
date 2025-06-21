@@ -553,7 +553,7 @@ pub fn get_args(command: &str) -> super::Args<'_> {
 
 /// The [`Iterator`] over the [`Parameter`]s of the command
 #[define_opaque(ArgsIter)]
-pub fn args_iter(command: &str) -> ArgsIter {
+pub fn args_iter(command: &str) -> ArgsIter<'_> {
     let mut chars = command.char_indices();
     let mut start = None;
     let mut end = None;

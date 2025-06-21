@@ -289,7 +289,7 @@ impl Text {
     }
 
     /// An [`Iterator`] over the bytes of the [`Text`]
-    pub fn buffers(&self, range: impl TextRange) -> Buffers {
+    pub fn buffers(&self, range: impl TextRange) -> Buffers<'_> {
         self.0.bytes.buffers(range)
     }
 
@@ -328,7 +328,7 @@ impl Text {
     ///
     /// [`&str`]: str
     /// [`GapBuffer`]: gapbuf::GapBuffer
-    pub fn strs(&self, range: impl TextRange) -> Strs {
+    pub fn strs(&self, range: impl TextRange) -> Strs<'_> {
         self.0.bytes.strs(range)
     }
 
@@ -336,7 +336,7 @@ impl Text {
     ///
     /// The lines are inclusive, that is, it will iterate over the
     /// whole line, not just the parts within the range.
-    pub fn lines(&self, range: impl TextRange) -> Lines {
+    pub fn lines(&self, range: impl TextRange) -> Lines<'_> {
         self.0.bytes.lines(range)
     }
 
@@ -360,7 +360,7 @@ impl Text {
     /// The [`&mut Bytes`] and [`MutTags`]
     ///
     /// [`&mut Bytes`]: Bytes
-    pub fn bytes_and_tags(&mut self) -> (&mut Bytes, MutTags) {
+    pub fn bytes_and_tags(&mut self) -> (&mut Bytes, MutTags<'_>) {
         (&mut self.0.bytes, MutTags(&mut self.0.tags))
     }
 
@@ -899,7 +899,7 @@ impl Text {
     ///
     /// Duat works fine with [`Tag`]s in the middle of a codepoint,
     /// but external utilizers may not, so keep that in mind.
-    pub fn tags_fwd(&self, b: usize) -> FwdTags {
+    pub fn tags_fwd(&self, b: usize) -> FwdTags<'_> {
         self.0.tags.fwd_at(b)
     }
 
@@ -912,7 +912,7 @@ impl Text {
     ///
     /// Duat works fine with [`Tag`]s in the middle of a codepoint,
     /// but external utilizers may not, so keep that in mind.
-    pub fn tags_rev(&self, b: usize) -> RevTags {
+    pub fn tags_rev(&self, b: usize) -> RevTags<'_> {
         self.0.tags.rev_at(b)
     }
 

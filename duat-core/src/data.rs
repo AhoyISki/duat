@@ -263,7 +263,7 @@ impl<T: ?Sized> RwData<T> {
     /// [`write_unsafe`]: Self::write_unsafe
     /// [`write_unsafe_as`]: Self::write_unsafe_as
     pub fn read_as<Ret, U: 'static>(&self, _: &Pass, f: impl FnOnce(&U) -> Ret) -> Option<Ret> {
-        fn prepare<T: ?Sized, U: 'static>(data: &RwData<T>) -> Option<std::cell::Ref<U>> {
+        fn prepare<T: ?Sized, U: 'static>(data: &RwData<T>) -> Option<std::cell::Ref<'_, U>> {
             if TypeId::of::<U>() != data.ty {
                 return None;
             }
@@ -408,7 +408,7 @@ impl<T: ?Sized> RwData<T> {
         _: &mut Pass,
         f: impl FnOnce(&mut U) -> Ret,
     ) -> Option<Ret> {
-        fn prepare<T: ?Sized, U: 'static>(data: &RwData<T>) -> Option<std::cell::RefMut<U>> {
+        fn prepare<T: ?Sized, U: 'static>(data: &RwData<T>) -> Option<std::cell::RefMut<'_, U>> {
             if TypeId::of::<U>() != data.ty {
                 return None;
             }
@@ -473,7 +473,7 @@ impl<T: ?Sized> RwData<T> {
         &self,
         f: impl FnOnce(&mut U) -> Ret,
     ) -> Option<Ret> {
-        fn prepare<T: ?Sized, U: 'static>(data: &RwData<T>) -> Option<std::cell::RefMut<U>> {
+        fn prepare<T: ?Sized, U: 'static>(data: &RwData<T>) -> Option<std::cell::RefMut<'_, U>> {
             if TypeId::of::<U>() != data.ty {
                 return None;
             }
@@ -738,7 +738,7 @@ impl<I: ?Sized + 'static, O> Clone for DataMap<I, O> {
 
 impl<I: ?Sized + 'static, O: 'static> DataMap<I, O> {}
 
-impl<I: ?Sized + 'static, O: 'static> FnOnce<(&Pass<'_>,)> for DataMap<I, O> {
+impl<I: ?Sized + 'static, O: 'static> FnOnce<(&Pass,)> for DataMap<I, O> {
     type Output = O;
 
     extern "rust-call" fn call_once(self, (key,): (&Pass,)) -> Self::Output {
@@ -746,13 +746,13 @@ impl<I: ?Sized + 'static, O: 'static> FnOnce<(&Pass<'_>,)> for DataMap<I, O> {
     }
 }
 
-impl<I: ?Sized + 'static, O: 'static> FnMut<(&Pass<'_>,)> for DataMap<I, O> {
+impl<I: ?Sized + 'static, O: 'static> FnMut<(&Pass,)> for DataMap<I, O> {
     extern "rust-call" fn call_mut(&mut self, (key,): (&Pass,)) -> Self::Output {
         self.data.read(key, |input| self.map.borrow_mut()(input))
     }
 }
 
-impl<I: ?Sized + 'static, O: 'static> Fn<(&Pass<'_>,)> for DataMap<I, O> {
+impl<I: ?Sized + 'static, O: 'static> Fn<(&Pass,)> for DataMap<I, O> {
     extern "rust-call" fn call(&self, (key,): (&Pass,)) -> Self::Output {
         self.data.read(key, |input| self.map.borrow_mut()(input))
     }
@@ -809,9 +809,9 @@ impl PeriodicChecker {
 ///
 /// [`read_unsafe`]: RwData::read_unsafe
 /// [`write_unsafe`]: RwData::write_unsafe
-pub struct Pass<'a>(PhantomData<&'a Rc<RefCell<()>>>);
+pub struct Pass(PhantomData<()>);
 
-impl Pass<'_> {
+impl Pass {
     /// Returns a new instance of [`Pass`]
     ///
     /// Be careful when using this!

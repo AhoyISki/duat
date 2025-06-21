@@ -167,7 +167,7 @@ impl<U: Ui> StatusLineCfg<U> {
         }
     }
 
-	/// The [`PushSpecs`] in use
+    /// The [`PushSpecs`] in use
     pub fn specs(&self) -> PushSpecs {
         self.specs
     }
@@ -190,7 +190,7 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
 
         let text_fn: TextFn<U> = match self.builder {
             Some(mut text_fn) => Rc::new(RefCell::new(
-                for<'a, 'b, 'c> move |pa: &'b Pass<'a>, handle: &'c FileHandle<U>| -> Text {
+                for<'a, 'b> move |pa: &'a Pass, handle: &'b FileHandle<U>| -> Text {
                     text_fn(pa, Text::builder(), handle)
                 },
             )),
@@ -214,7 +214,7 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
 
                 let mut text_fn = cfg.builder.unwrap();
                 Rc::new(RefCell::new(
-                    for<'a, 'b, 'c> move |pa: &'b Pass<'a>, handle: &'c FileHandle<U>| -> Text {
+                    for<'a, 'b> move |pa: &'a Pass, handle: &'b FileHandle<U>| -> Text {
                         text_fn(pa, Text::builder(), handle)
                     },
                 ))
@@ -365,7 +365,7 @@ mod macros {
             widgets::StatusLineCfg,
         };
 
-        let text_fn= |_: &Pass<'_>, _: &mut Builder, _: &FileHandle<_>| {};
+        let text_fn= |_: &Pass, _: &mut Builder, _: &FileHandle<_>| {};
         let checker = || false;
 
         let (mut text_fn, checker) = format_like!(
@@ -378,7 +378,7 @@ mod macros {
         StatusLineCfg::new_with(
             {
                 (
-                    Box::new(move |pa: &Pass<'_>, mut builder: Builder, handle: &FileHandle<_>| {
+                    Box::new(move |pa: &Pass, mut builder: Builder, handle: &FileHandle<_>| {
                         text_fn(pa, &mut builder, &handle);
                         builder.build()
                     }),
@@ -390,5 +390,5 @@ mod macros {
     }}
 }
 
-type TextFn<U> = Rc<RefCell<dyn FnMut(&Pass<'_>, &FileHandle<U>) -> Text>>;
-type BuilderFn<U> = Box<dyn FnMut(&Pass<'_>, Builder, &FileHandle<U>) -> Text>;
+type TextFn<U> = Rc<RefCell<dyn FnMut(&Pass, &FileHandle<U>) -> Text>>;
+type BuilderFn<U> = Box<dyn FnMut(&Pass, Builder, &FileHandle<U>) -> Text>;

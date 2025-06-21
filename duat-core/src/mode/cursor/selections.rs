@@ -807,6 +807,7 @@ mod cursor {
         }
     }
 
+	#[allow(clippy::non_canonical_partial_ord_impl)]
     impl PartialOrd for LazyVPoint {
         fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
             Some(self.point().cmp(&other.point()))
@@ -935,6 +936,7 @@ mod cursor {
         }
     }
 
+	#[allow(clippy::non_canonical_partial_ord_impl)]
     impl PartialOrd for VPoint {
         fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
             Some(self.p.cmp(&other.p))

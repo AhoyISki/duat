@@ -732,7 +732,7 @@ impl Tags {
 
     /// Returns a forward iterator at a given byte
     #[define_opaque(FwdTags)]
-    pub fn fwd_at(&self, at: usize) -> FwdTags {
+    pub fn fwd_at(&self, at: usize) -> FwdTags<'_> {
         self.finish_shifting_bounds();
 
         let [s_n, s_b] = {
@@ -771,7 +771,7 @@ impl Tags {
 
     /// Returns a reverse iterator at a given byte
     #[define_opaque(RevTags)]
-    pub fn rev_at(&self, at: usize) -> RevTags {
+    pub fn rev_at(&self, at: usize) -> RevTags<'_> {
         self.finish_shifting_bounds();
 
         let [e_n, e_b, _] = {

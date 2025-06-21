@@ -496,7 +496,7 @@ impl<U: Ui> Window<U> {
     ) -> (Node<U>, Option<U::Area>) {
         #[inline(never)]
         fn get_areas<U: Ui>(
-            pa: &mut Pass<'_>,
+            pa: &mut Pass,
             area: &<U as Ui>::Area,
             specs: PushSpecs,
             do_cluster: bool,
@@ -617,9 +617,9 @@ impl<U: Ui> Window<U> {
     }
 
     /// Inserts [`File`] nodes orderly
-    pub(crate) fn insert_file_nodes<'a>(
+    pub(crate) fn insert_file_nodes(
         &mut self,
-        pa: &mut Pass<'a>,
+        pa: &mut Pass,
         layout_ordering: usize,
         nodes: Vec<Node<U>>,
     ) {

@@ -465,28 +465,24 @@ impl ui::RawArea for Area {
 
         let cap = cfg.wrap_width(width);
 
-        let line_start = text.visual_line_start(info.s_points);
-
         if dist > 0 {
-            let line_start = print_iter(text.iter_fwd(line_start), cap, cfg, line_start)
+            let line_start = print_iter(text.iter_fwd(info.s_points), cap, cfg, info.s_points)
                 .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
                 .nth(dist as usize)
                 .unwrap_or_default();
 
-            let max_line_start = max_line_start(text, cfg, height, cap);
+            let max_s_points = max_s_points(text, cfg, height, cap);
 
-            if line_start < max_line_start {
+            if line_start < max_s_points {
                 info.s_points = line_start;
                 info.e_points = None;
             } else {
-                info.s_points = max_line_start;
+                info.s_points = max_s_points;
                 info.e_points = Some(text.len_points());
             }
         } else {
-            let mut iter = rev_print_iter(text.iter_rev(line_start), cap, cfg)
-                .filter_map(|(caret, item)| caret.wrap.then_some(item.points()));
-
-            info.s_points = iter
+            info.s_points = rev_print_iter(text.iter_rev(info.s_points), cap, cfg)
+                .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
                 .nth(dist.unsigned_abs() as usize - 1)
                 .unwrap_or_default();
             info.e_points = None;
@@ -542,7 +538,7 @@ impl ui::RawArea for Area {
             .next()
             .unwrap_or_default();
 
-        let max_line_start = max_line_start(text, cfg, height, cap);
+        let max_line_start = max_s_points(text, cfg, height, cap);
 
         if line_start < max_line_start {
             info.s_points = line_start;
@@ -922,13 +918,13 @@ fn get_layout_pos(layouts: &[Layout], id: AreaId) -> Option<usize> {
     layouts.iter().position(|l| l.get(id).is_some())
 }
 
-fn max_line_start(text: &Text, cfg: PrintCfg, height: u32, cap: u32) -> (Point, Option<Point>) {
+fn max_s_points(text: &Text, cfg: PrintCfg, height: u32, cap: u32) -> (Point, Option<Point>) {
     rev_print_iter(text.iter_rev(text.len_points()), cap, cfg)
         .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
         .nth(if cfg.allow_overscroll {
-            cfg.scrolloff.y as usize
+            cfg.scrolloff.y.saturating_sub(1) as usize
         } else {
-            height as usize
+            height.saturating_sub(1) as usize
         })
         .unwrap_or_default()
 }

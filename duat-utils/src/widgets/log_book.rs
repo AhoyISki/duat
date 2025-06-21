@@ -56,13 +56,16 @@ impl<U: Ui> Widget<U> for LogBook {
                 return;
             };
 
+            let records_were_added = !new_records.is_empty();
             lb.len_of_taken += new_records.len();
 
             for rec_text in new_records.into_iter().filter_map(&mut lb.format_rec) {
                 lb.text.insert_text(lb.text.len(), rec_text);
             }
-            
-            area.scroll_to_points(&lb.text, lb.text.len(), Widget::<U>::print_cfg(lb));
+
+            if records_were_added {
+                area.scroll_to_points(&lb.text, lb.text.len(), Widget::<U>::print_cfg(lb));
+            }
         });
     }
 
@@ -97,7 +100,7 @@ impl<U: Ui> Widget<U> for LogBook {
     }
 
     fn print_cfg(&self) -> PrintCfg {
-        PrintCfg::new().edge_wrapped()
+        PrintCfg::new().edge_wrapped().with_scrolloff(0, 0)
     }
 
     fn on_focus(_: &mut Pass, handle: Handle<Self, U>) {

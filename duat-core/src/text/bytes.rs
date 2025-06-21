@@ -74,7 +74,7 @@ impl Bytes {
     /// of the slices might be empty.
     ///
     /// [range]: TextRange
-    pub fn buffers(&self, range: impl TextRange) -> Buffers {
+    pub fn buffers(&self, range: impl TextRange) -> Buffers<'_> {
         let range = range.to_range(self.buf.len());
         let (s0, s1) = self.buf.range(range).as_slices();
         Buffers([s0.iter(), s1.iter()])
@@ -120,7 +120,7 @@ impl Bytes {
     /// [`Text`]: super::Text
     /// [range]: TextRange
     /// [`strs`]: Self::strs
-    pub fn strs(&self, range: impl TextRange) -> Strs {
+    pub fn strs(&self, range: impl TextRange) -> Strs<'_> {
         let range = range.to_range(self.buf.len());
         Strs(self.strs_in_range_inner(range).into_iter())
     }

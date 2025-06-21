@@ -11,10 +11,10 @@ use crate::text::{Selectionless, Text};
 mod macros {
     /// Logs an error to Duat
     ///
-    /// Use this, as opposed to [`warn!`] and [`info!`], if you want
-    /// to tell the user that something explicitely failed, and they
-    /// need to find a workaround, like failing to write to/read from
-    /// a file, for example.
+    /// Use this, as opposed to [`warn!`], [`info!`] or [`debug!`],
+    /// if you want to tell the user that something explicitely
+    /// failed, and they need to find a workaround, like failing
+    /// to write to/read from a file, for example.
     ///
     /// This error follows the same construction as the [`txt!`]
     /// macro, and will create a [`Record`] inside of the [`Logs`],
@@ -54,9 +54,10 @@ mod macros {
 
     /// Logs an warning to Duat
     ///
-    /// Use this, as opposed to [`error!`] and [`info!`], if you want
-    /// to tell the user that something was partially successful, or
-    /// that a failure happened, but it's near inconsequential.
+    /// Use this, as opposed to [`error!`], [`info!`] or [`debug!`],
+    /// if you want to tell the user that something was partially
+    /// successful, or that a failure happened, but
+    /// it's near inconsequential.
     ///
     /// This error follows the same construction as the [`txt!`]
     /// macro, and will create a [`Record`] inside of the [`Logs`],
@@ -96,9 +97,10 @@ mod macros {
 
     /// Logs an info to Duat
     ///
-    /// Use this, as opposed to [`error!`] and [`warn!`], when you
-    /// want to tell the user that something was successful, and it is
-    /// important for them to know it was successful.
+    /// Use this, as opposed to [`error!`], [`warn!`] or [`debug!],
+    /// when you want to tell the user that something was
+    /// successful, and it is important for them to know it was
+    /// successful.
     ///
     /// This error follows the same construction as the [`txt!`]
     /// macro, and will create a [`Record`] inside of the [`Logs`],
@@ -131,6 +133,50 @@ mod macros {
             $crate::private_exports::log!(
                 module_path!(),
                 $crate::context::Level::Info,
+                $($arg)+
+            )
+        )
+    }
+
+    /// Logs an debug information to Duat
+    ///
+    /// Use this, as opposed to [`error!`], [`warn!`] or [`info!`],
+    /// when you want to tell the user that something was
+    /// successful, but it is not that important, or the success is
+    /// only a smaller part of some bigger operation, or the success
+    /// is part of something that was done "silently".
+    ///
+    /// This error follows the same construction as the [`txt!`]
+    /// macro, and will create a [`Record`] inside of the [`Logs`],
+    /// which can be accessed by anyone, at any time.
+    ///
+    /// The [`Record`] added to the [`Logs`] is related to
+    /// [`log::Record`], from the [`log`] crate. But it differs in the
+    /// sense that it is always `'static`, and instead of having an
+    /// [`std::fmt::Arguments`] inside, it contains a [`Text`], making
+    /// it a better fit for Duat.
+    ///
+    /// The connection to [`log::Record`] also means that external
+    /// libraries can log information using the [`log`] crate, and it
+    /// will also show up in Duat's [`Logs`]s, but reformatted to be a
+    /// [`Text`] instead.
+    ///
+    /// [`txt!`]: crate::text::txt
+    /// [`Record`]: super::Record
+    /// [`Logs`]: super::Logs
+    /// [`Text`]: crate::text::Text
+    pub macro debug {
+        (target: $target:expr, $($arg:tt)+) => ({
+            $crate::private_exports::log!(
+                $target.to_string().leak(),
+                $crate::context::Level::Debug,
+                $($arg)+
+            )
+        }),
+        ($($arg:tt)+) => (
+            $crate::private_exports::log!(
+                module_path!(),
+                $crate::context::Level::Debug,
                 $($arg)+
             )
         )
