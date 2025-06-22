@@ -618,7 +618,7 @@ pub mod hook {
     /// #         }
     /// #     }
     /// #     impl Normal {
-    /// #         fn f_and_t_set_search(self) -> Self { todo!() }
+    /// #         pub fn f_and_t_set_search(self) -> Self { todo!() }
     /// #     }
     /// #     pub struct Kak;
     /// #     impl duat_core::Plugin<Ui> for Kak {
@@ -630,6 +630,7 @@ pub mod hook {
     /// # }
     /// setup_duat!(setup);
     /// use duat::prelude::*;
+    /// use kak::*;
     ///
     /// pub fn setup() {
     ///     hook::add::<Normal>(|pa, (normal_mode, handle)| normal_mode.f_and_t_set_search());
@@ -668,60 +669,22 @@ pub mod hook {
     /// instead of writing this:
     ///
     /// ```rust
-    /// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
-    /// # impl<U: Ui> Widget<U> for LineNumbers<U> {
-    /// #     type Cfg = LineNumbersOptions<U>;
-    /// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
-    /// #     fn needs_update(&self) -> bool { todo!(); }
-    /// #     fn cfg() -> Self::Cfg { todo!() }
-    /// #     fn text(&self) -> &Text { todo!(); }
-    /// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
-    /// #     fn once() -> Result<(), Text> { Ok(()) }
-    /// # }
-    /// # struct LineNumbersOptions<U>(std::marker::PhantomData<U>);
-    /// # impl<U> LineNumbersOptions<U> {
-    /// #     pub fn rel_abs(self) -> Self { todo!(); }
-    /// # }
-    /// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
-    /// #     type Widget = LineNumbers<U>;
-    /// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
-    /// #         todo!();
-    /// #     }
-    /// # }
-    /// use duat_core::{prelude::*, hook::WidgetCreated};
+    /// setup_duat!(setup);
+    /// use duat::{prelude::*, hook::WidgetCreated};
     ///
-    /// fn setup_generic_over_ui<U: Ui>() {
-    ///     hook::add::<WidgetCreated<LineNumbers<U>, U>>(|pa, (ln, handle)| ln);
+    /// fn setup() {
+    ///     hook::add::<WidgetCreated<LineNumbers<Ui>>>(|pa, (ln, handle)| ln.rel_abs());
     /// }
     /// ```
     ///
     /// You can just write this:
     ///
     /// ```rust
-    /// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
-    /// # impl<U: Ui> Widget<U> for LineNumbers<U> {
-    /// #     type Cfg = LineNumbersOptions<U>;
-    /// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
-    /// #     fn needs_update(&self) -> bool { todo!(); }
-    /// #     fn cfg() -> Self::Cfg { todo!() }
-    /// #     fn text(&self) -> &Text { todo!(); }
-    /// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
-    /// #     fn once() -> Result<(), Text> { Ok(()) }
-    /// # }
-    /// # struct LineNumbersOptions<U>(std::marker::PhantomData<U>);
-    /// # impl<U> LineNumbersOptions<U> {
-    /// #     pub fn rel_abs(self) -> Self { todo!(); }
-    /// # }
-    /// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
-    /// #     type Widget = LineNumbers<U>;
-    /// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
-    /// #         todo!();
-    /// #     }
-    /// # }
-    /// use duat_core::{prelude::*, hook::WidgetCreated};
+    /// setup_duat!(setup);
+    /// use duat::{prelude::*, hook::WidgetCreated};
     ///
-    /// fn setup_generic_over_ui<U: Ui>() {
-    ///     hook::add::<LineNumbers<U>>(|pa, (ln, handle)| ln);
+    /// fn setup() {
+    ///     hook::add::<LineNumbers<Ui>>(|pa, (ln, handle)| ln.rel_abs());
     /// }
     /// ```
     ///
@@ -1009,11 +972,12 @@ pub mod prelude {
     /// declarative way.
     ///
     /// ```rust
+    /// setup_duat!(setup);
     /// use duat::prelude::*;
     ///
-    /// fn set_hook() {
-    ///     hook::add::<UnfocusedFrom<File>>(|pa, handle| {
-    ///         handle.edit_all(pa, |mut cursor| {
+    /// fn setup() {
+    ///     hook::add::<UnfocusedFrom<File>>(|pa, (unfocused_handle, _)| {
+    ///         unfocused_handle.edit_all(pa, |mut cursor| {
     ///             cursor.set_caret_on_end();
     ///             cursor.unset_anchor();
     ///         });

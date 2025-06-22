@@ -51,9 +51,12 @@ mod status_line;
 ///
 /// fn setup_generic_over_ui<U: Ui>() {
 ///     hook::add::<OnFileOpen<U>, U>(|pa, builder| {
-///         builder.push(FooterWidgets::new(status!(
-///             "{file_fmt}{Spacer}{mode_fmt} {sels_fmt} {main_fmt}"
-///         )));
+///         builder.push(
+///             pa,
+///             FooterWidgets::new(status!(
+///                 "{file_fmt}{Spacer}{mode_fmt} {sels_fmt} {main_fmt}"
+///             )),
+///         );
 ///     });
 /// }
 /// ```

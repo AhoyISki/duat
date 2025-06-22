@@ -98,7 +98,6 @@ impl<U: Ui> UiBuilder<U> for FileBuilder<U> {
 /// question, and is only obtainable in a [`OnFileOpen`] hook:
 ///
 /// ```rust
-/// # use duat_core::{hook::OnFileOpen, prelude::*, ui::FileBuilder};
 /// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
 /// # impl<U: Ui> Widget<U> for LineNumbers<U> {
 /// #     type Cfg = LineNumbersOptions<U>;
@@ -116,11 +115,13 @@ impl<U: Ui> UiBuilder<U> for FileBuilder<U> {
 /// #         todo!();
 /// #     }
 /// # }
-/// # fn test<U: Ui>() {
-/// hook::add::<OnFileOpen<U>>(|pa: &mut Pass, builder: &mut FileBuilder<U>| {
-///     builder.push(pa, LineNumbers::cfg());
-/// });
-/// # }
+/// use duat_core::{hook::OnFileOpen, prelude::*, ui::FileBuilder};
+/// 
+/// fn setup_generic_over_ui<U: Ui>() {
+///     hook::add::<OnFileOpen<U>, U>(|pa: &mut Pass, builder: &mut FileBuilder<U>| {
+///         builder.push(pa, LineNumbers::cfg());
+///     });
+/// }
 /// ```
 ///
 /// In the example above, I pushed a [`LineNumbers`] widget to the
@@ -128,7 +129,6 @@ impl<U: Ui> UiBuilder<U> for FileBuilder<U> {
 /// change that:
 ///
 /// ```rust
-/// # use duat_core::{hook::OnFileOpen, prelude::*};
 /// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
 /// # impl<U: Ui> Widget<U> for LineNumbers<U> {
 /// #     type Cfg = LineNumbersOptions<U>;
@@ -150,12 +150,14 @@ impl<U: Ui> UiBuilder<U> for FileBuilder<U> {
 /// #         todo!();
 /// #     }
 /// # }
-/// # fn test<U: Ui>() {
-/// hook::add::<OnFileOpen<U>>(|pa, builder| {
-///     let line_numbers_cfg = LineNumbers::cfg().relative().on_the_right();
-///     builder.push(pa, line_numbers_cfg);
-/// });
-/// # }
+/// use duat_core::{hook::OnFileOpen, prelude::*};
+/// 
+/// fn setup_generic_over_ui<U: Ui>() {
+///     hook::add::<OnFileOpen<U>, U>(|pa, builder| {
+///         let line_numbers_cfg = LineNumbers::cfg().relative().on_the_right();
+///         builder.push(pa, line_numbers_cfg);
+///     });
+/// }
 /// ```
 ///
 /// Note that I also made another change to the widget, it will now
@@ -167,7 +169,6 @@ impl<U: Ui> UiBuilder<U> for FileBuilder<U> {
 /// use [`hook::remove`]:
 ///
 /// ```rust
-/// # use duat_core::{hook::OnFileOpen, prelude::*};
 /// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
 /// # impl<U: Ui> Widget<U> for LineNumbers<U> {
 /// #     type Cfg = LineNumbersOptions<U>;
@@ -191,17 +192,19 @@ impl<U: Ui> UiBuilder<U> for FileBuilder<U> {
 /// # }
 /// # type StatusLine<U> = LineNumbers<U>;
 /// # type PromptLine<U> = LineNumbers<U>;
-/// # fn test<U: Ui>() {
-/// hook::remove("FileWidgets");
-/// hook::add::<OnFileOpen<U>>(|pa, builder| {
-///     let line_numbers_cfg = LineNumbers::cfg().relative().on_the_right();
-///     builder.push(pa, line_numbers_cfg);
-///     // Push a StatusLine to the bottom.
-///     builder.push(pa, StatusLine::cfg());
-///     // Push a PromptLine to the bottom.
-///     builder.push(pa, PromptLine::cfg());
-/// });
-/// # }
+/// use duat_core::{hook::OnFileOpen, prelude::*};
+/// 
+/// fn setup_generic_over_ui<U: Ui>() {
+///     hook::remove("FileWidgets");
+///     hook::add::<OnFileOpen<U>, U>(|pa, builder| {
+///         let line_numbers_cfg = LineNumbers::cfg().relative().on_the_right();
+///         builder.push(pa, line_numbers_cfg);
+///         // Push a StatusLine to the bottom.
+///         builder.push(pa, StatusLine::cfg());
+///         // Push a PromptLine to the bottom.
+///         builder.push(pa, PromptLine::cfg());
+///     });
+/// }
 /// ```
 ///
 /// [`File`]: crate::file::File
@@ -252,7 +255,6 @@ impl<U: Ui> FileBuilder<U> {
     /// Here's an example of such a layout:
     ///
     /// ```rust
-    /// # use duat_core::{hook::OnFileOpen, prelude::*, ui::FileBuilder};
     /// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
     /// # impl<U: Ui> Widget<U> for LineNumbers<U> {
     /// #     type Cfg = LineNumbersOptions<U>;
@@ -274,16 +276,18 @@ impl<U: Ui> FileBuilder<U> {
     /// #     }
     /// # }
     /// # macro_rules! status { ($str:literal) => { LineNumbers::cfg() } }
-    /// # fn test<U: Ui>() {
-    /// hook::remove("FileWidgets");
-    /// hook::add::<OnFileOpen<U>>(|pa: &mut Pass, builder: &mut FileBuilder<U>| {
-    ///     let line_numbers_cfg = LineNumbers::cfg().rel_abs();
-    ///     builder.push(pa, line_numbers_cfg);
+    /// use duat_core::{hook::OnFileOpen, prelude::*, ui::FileBuilder};
+    /// 
+    /// fn setup_generic_over_ui<U: Ui>() {
+    ///     hook::remove("FileWidgets");
+    ///     hook::add::<OnFileOpen<U>, U>(|pa: &mut Pass, builder: &mut FileBuilder<U>| {
+    ///         let line_numbers_cfg = LineNumbers::cfg().rel_abs();
+    ///         builder.push(pa, line_numbers_cfg);
     ///
-    ///     let status_line_cfg = status!("{file_fmt} {selections_fmt} {main_fmt}");
-    ///     builder.push(pa, status_line_cfg);
-    /// });
-    /// # }
+    ///         let status_line_cfg = status!("{file_fmt} {selections_fmt} {main_fmt}");
+    ///         builder.push(pa, status_line_cfg);
+    ///     });
+    /// }
     /// ```
     ///
     /// In this case, each file will have [`LineNumbers`] with
@@ -313,7 +317,6 @@ impl<U: Ui> FileBuilder<U> {
     /// widget.
     ///
     /// ```rust
-    /// # use duat_core::{hook::OnFileOpen, prelude::*};
     /// # struct StatusLine<U: Ui>(std::marker::PhantomData<U>);
     /// # impl<U: Ui> Widget<U> for StatusLine<U> {
     /// #     type Cfg = StatusLineOptions<U>;
@@ -338,61 +341,24 @@ impl<U: Ui> FileBuilder<U> {
     /// # type Notifier<U> = StatusLine<U>;
     /// # type LineNumbers<U> = StatusLine<U>;
     /// # macro_rules! status { ($str:literal) => { StatusLine::cfg() } }
-    /// # fn test<U: Ui>() {
-    /// hook::remove("FileWidgets");
-    /// hook::add::<OnFileOpen<U>>(|pa, builder| {
-    ///     builder.push(pa, LineNumbers::cfg());
+    /// use duat_core::{hook::OnFileOpen, prelude::*};
+    /// 
+    /// fn setup_generic_over_ui<U: Ui>() {
+    ///     hook::remove("FileWidgets");
+    ///     hook::add::<OnFileOpen<U>, U>(|pa, builder| {
+    ///         builder.push(pa, LineNumbers::cfg());
     ///
-    ///     let status_cfg = status!("{file_fmt} {selections_fmt} {main_fmt}");
-    ///     let (child, _) = builder.push(pa, status_cfg);
-    ///     let prompt_cfg = PromptLine::cfg().left_ratioed(3, 5);
-    ///     let (child, _) = builder.push_to(pa, child, prompt_cfg);
-    ///     builder.push_to(pa, child, Notifier::cfg());
-    /// });
-    /// # }
+    ///         let status_cfg = status!("{file_fmt} {selections_fmt} {main_fmt}");
+    ///         let (child, _) = builder.push(pa, status_cfg);
+    ///         let prompt_cfg = PromptLine::cfg().left_ratioed(3, 5);
+    ///         let (child, _) = builder.push_to(pa, child, prompt_cfg);
+    ///         builder.push_to(pa, child, Notifier::cfg());
+    ///     });
+    /// }
     /// ```
     ///
     /// Pushing directly to the [`PromptLine`]'s [`U::Area`] means
-    /// that they'll share a parent that holds only them. This can
-    /// then be exploited by the `"HidePromptLine"` [hook group],
-    /// which is defined as:
-    /// ```rust
-    /// # use duat_core::{hook::{FocusedOn, UnfocusedFrom}, prelude::*, ui::Constraint};
-    /// # struct PromptLine<U: Ui>(std::marker::PhantomData<U>);
-    /// # impl<U: Ui> Widget<U> for PromptLine<U> {
-    /// #     type Cfg = PromptLineOptions<U>;
-    /// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
-    /// #     fn needs_update(&self) -> bool { todo!(); }
-    /// #     fn cfg() -> Self::Cfg { todo!() }
-    /// #     fn text(&self) -> &Text { todo!(); }
-    /// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
-    /// #     fn once() -> Result<(), Text> { Ok(()) }
-    /// # }
-    /// # struct PromptLineOptions<U>(std::marker::PhantomData<U>);
-    /// # impl<U: Ui> WidgetCfg<U> for PromptLineOptions<U> {
-    /// #     type Widget = PromptLine<U>;
-    /// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
-    /// #         todo!();
-    /// #     }
-    /// # }
-    /// # fn test<U: duat_core::ui::Ui>() {
-    /// hook::add_grouped::<UnfocusedFrom<PromptLine<U>, U>>(
-    ///     "HidePromptLine",
-    ///     |_, handle| {
-    ///         handle.area().constrain_ver([Constraint::Len(0.0)]).unwrap();
-    ///     },
-    /// );
-    /// hook::add_grouped::<FocusedOn<PromptLine<U>, U>>(
-    ///     "HidePromptLine",
-    ///     |_, handle| {
-    ///         handle
-    ///             .area()
-    ///             .constrain_ver([Constraint::Ratio(1, 1), Constraint::Len(1.0)])
-    ///             .unwrap();
-    ///     },
-    /// );
-    /// # }
-    /// ```
+    /// that they'll share a parent that holds only them.
     ///
     /// [`File`]: crate::file::File
     /// [`Notifier`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.Notifier.html
@@ -478,7 +444,6 @@ impl<U: Ui> FileBuilder<U> {
 /// happens whenever a new window is opened:
 ///
 /// ```rust
-/// # use duat_core::{hook::OnWindowOpen, prelude::*};
 /// # struct PromptLine<U: Ui>(std::marker::PhantomData<U>);
 /// # impl<U: Ui> Widget<U> for PromptLine<U> {
 /// #     type Cfg = PromptLineOptions<U>;
@@ -497,14 +462,16 @@ impl<U: Ui> FileBuilder<U> {
 /// #     }
 /// # }
 /// # type StatusLine<U> = PromptLine<U>;
-/// # fn test<U: Ui>() {
-/// hook::add::<OnWindowOpen<U>>(|pa, builder| {
-///     // Push a StatusLine to the bottom.
-///     builder.push(pa, StatusLine::cfg());
-///     // Push a PromptLine to the bottom.
-///     builder.push(pa, PromptLine::cfg());
-/// });
-/// # }
+/// use duat_core::{hook::OnWindowOpen, prelude::*};
+///
+/// fn setup_generic_over_ui<U: Ui>() {
+///     hook::add::<OnWindowOpen<U>, U>(|pa, builder| {
+///         // Push a StatusLine to the bottom.
+///         builder.push(pa, StatusLine::cfg());
+///         // Push a PromptLine to the bottom.
+///         builder.push(pa, PromptLine::cfg());
+///     });
+/// }
 /// ```
 ///
 /// Contrast this with the example in the [`FileBuilder`] docs, where
@@ -517,7 +484,6 @@ impl<U: Ui> FileBuilder<U> {
 /// advanced choices on the layout:
 ///
 /// ```rust
-/// # use duat_core::{hook::{OnFileOpen, OnWindowOpen}, prelude::*};
 /// # struct PromptLine<U: Ui>(std::marker::PhantomData<U>);
 /// # impl<U: Ui> Widget<U> for PromptLine<U> {
 /// #     type Cfg = PromptLineOptions<U>;
@@ -537,18 +503,20 @@ impl<U: Ui> FileBuilder<U> {
 /// # }
 /// # type StatusLine<U> = PromptLine<U>;
 /// # type LineNumbers<U> = PromptLine<U>;
-/// # fn test<U: Ui>() {
-/// hook::remove("FileWidgets");
-/// hook::add::<OnFileOpen<U>>(|pa, builder| {
-///     builder.push(pa, LineNumbers::cfg());
-///     builder.push(pa, StatusLine::cfg());
-/// });
+/// use duat_core::{hook::{OnFileOpen, OnWindowOpen}, prelude::*};
 ///
-/// hook::remove("WindowWidgets");
-/// hook::add::<OnWindowOpen<U>>(|pa, builder| {
-///     builder.push(pa, PromptLine::cfg());
-/// });
-/// # }
+/// fn setup_generic_over_ui<U: Ui>() {
+///     hook::remove("FileWidgets");
+///     hook::add::<OnFileOpen<U>, U>(|pa, builder| {
+///         builder.push(pa, LineNumbers::cfg());
+///         builder.push(pa, StatusLine::cfg());
+///     });
+///
+///     hook::remove("WindowWidgets");
+///     hook::add::<OnWindowOpen<U>, U>(|pa, builder| {
+///         builder.push(pa, PromptLine::cfg());
+///     });
+/// }
 /// ```
 ///
 /// In this case, each file gets a [`StatusLine`], and the window will
@@ -673,7 +641,6 @@ impl<U: Ui> WindowBuilder<U> {
     /// status's area:
     ///
     /// ```rust
-    /// # use duat_core::{hook::OnWindowOpen, prelude::*};
     /// # struct PromptLine<U: Ui>(std::marker::PhantomData<U>);
     /// # impl<U: Ui> Widget<U> for PromptLine<U> {
     /// #     type Cfg = PromptLineOptions<U>;
@@ -695,14 +662,16 @@ impl<U: Ui> WindowBuilder<U> {
     /// #     }
     /// # }
     /// # type StatusLine<U> = PromptLine<U>;
-    /// # fn test<U: Ui>() {
-    /// hook::add::<OnWindowOpen<U>>(|pa, builder| {
-    ///     // StatusLine goes below by default
-    ///     let (status_area, _) = builder.push(pa, StatusLine::cfg());
-    ///     let prompt_cfg = PromptLine::cfg().left_ratioed(3, 5);
-    ///     builder.push_to(pa, status_area, prompt_cfg);
-    /// });
-    /// # }
+    /// use duat_core::{hook::OnWindowOpen, prelude::*};
+    ///
+    /// fn setup_generic_over_ui<U: Ui>() {
+    ///     hook::add::<OnWindowOpen<U>, U>(|pa, builder| {
+    ///         // StatusLine goes below by default
+    ///         let (status_area, _) = builder.push(pa, StatusLine::cfg());
+    ///         let prompt_cfg = PromptLine::cfg().left_ratioed(3, 5);
+    ///         builder.push_to(pa, status_area, prompt_cfg);
+    ///     });
+    /// }
     /// ```
     ///
     /// The following would happen:

@@ -278,13 +278,13 @@ mod switch {
                 // SAFETY: There is a Pass argument.
                 let set_mode = unsafe { SET_MODE.get() };
                 *set_mode.borrow_mut() = Some(Box::new(move |pa| {
-                    if let Some(i) = unsafe { RESET_MODES.get() }
+                    if let Some((_, f)) = unsafe { RESET_MODES.get() }
                         .borrow_mut()
                         .iter_mut()
-                        .position(|(ty, _)| *ty == TypeId::of::<File<U>>())
+                        .find(|(ty, _)| *ty == TypeId::of::<File<U>>())
                     {
                         switch_widget(pa, node);
-                        (unsafe { RESET_MODES.get() }.borrow_mut()[i].1)(pa)
+                        f(pa)
                     } else {
                         panic!("Something went terribly wrong, somehow");
                     }

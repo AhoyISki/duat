@@ -27,7 +27,7 @@
 //! use duat_core::{hook::OnFileOpen, prelude::*};
 //!
 //! fn test_with_ui<U: Ui>() {
-//!     hook::add::<OnFileOpen<U>>(|pa, builder| {
+//!     hook::add::<OnFileOpen<U>, U>(|pa, builder| {
 //!         // `LineNumbers` comes from duat-utils
 //!         builder.push(pa, LineNumbers::cfg());
 //!     });
@@ -380,7 +380,7 @@ impl Hookable for ExitedDuat {
 /// use duat_core::{prelude::*, hook::WidgetCreated};
 ///
 /// fn setup_generic_over_ui<U: Ui>() {
-///     hook::add::<WidgetCreated<LineNumbers<U>, U>>(|pa, (ln, handle)| ln);
+///     hook::add::<WidgetCreated<LineNumbers<U>, U>, U>(|pa, (ln, handle)| ln.rel_abs());
 /// }
 /// ```
 ///
@@ -410,7 +410,7 @@ impl Hookable for ExitedDuat {
 /// use duat_core::{prelude::*, hook::WidgetCreated};
 ///
 /// fn setup_generic_over_ui<U: Ui>() {
-///     hook::add::<LineNumbers<U>>(|pa, (ln, handle)| ln);
+///     hook::add::<LineNumbers<U>, U>(|pa, (ln, handle)| ln.rel_abs());
 /// }
 /// ```
 ///
@@ -548,7 +548,7 @@ impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
 /// use duat_core::{prelude::*, hook::ModeCreated};
 ///
 /// fn setup_generic_over_ui<U: Ui>() {
-///     hook::add::<ModeCreated<Normal, U>>(|pa, (normal, handle)| normal);
+///     hook::add::<ModeCreated<Normal, U>, U>(|pa, (normal, handle)| normal);
 /// }
 /// ```
 ///
@@ -563,8 +563,8 @@ impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
 /// # }
 /// use duat_core::prelude::*;
 ///
-/// fn setup() {
-///     hook::add::<Normal>(|pa, (normal, handle)| normal);
+/// fn setup_generic_over_ui<U: Ui>() {
+///     hook::add::<Normal, U>(|pa, (normal, handle)| normal);
 /// }
 /// ```
 ///
@@ -864,7 +864,7 @@ type InnerHookFn<H> =
 ///     hook::{HookAlias, HookDummy, Hookable},
 ///     prelude::*,
 /// };
-/// # fn test() {
+///
 /// pub struct CreatedStruct<T: 'static>(Option<T>);
 ///
 /// impl<T: 'static> Hookable for CreatedStruct<T> {
@@ -882,24 +882,27 @@ type InnerHookFn<H> =
 ///
 /// struct MyStructWithAVeryLongName;
 ///
-/// // This is way too long
-/// hook::add::<CreatedStruct<MyStructWithAVeryLongName>>(|pa, arg| arg);
+/// fn setup_with_way_too_long_hook<U: Ui>() {
+///     hook::add::<CreatedStruct<MyStructWithAVeryLongName>, U>(|pa, arg| arg);
+/// }
 ///
 /// // Do this instead
 ///
 /// struct MyDummy;
 ///
+/// #[doc(hidden)]
 /// impl HookDummy for MyDummy {}
 ///
-/// impl HookAlias<MyDummy> for MyStructWithAVeryLongName {
+/// impl<U: Ui> HookAlias<U, MyDummy> for MyStructWithAVeryLongName {
 ///     type Hookable = CreatedStruct<MyStructWithAVeryLongName>;
 ///     type Input<'h> = <Self::Hookable as Hookable>::Input<'h>;
 ///     type Output = <Self::Hookable as Hookable>::Output;
 /// }
 ///
 /// // Much better
-/// hook::add::<MyStructWithAVeryLongName>(|pa, arg| arg);
-/// # }
+/// fn better_setup<U: Ui>() {
+///     hook::add::<MyStructWithAVeryLongName, U>(|pa, arg| arg);
+/// }
 /// ```
 pub trait HookAlias<U: Ui, D: HookDummy = NormalHook> {
     /// Just a shorthand for less boilerplate in the function
@@ -944,7 +947,7 @@ impl<M: Mode<U>, U: Ui> HookAlias<U, ModeCreatedDummy<U>> for M {
 ///     hook::{HookAlias, HookDummy, Hookable},
 ///     prelude::*,
 /// };
-/// # fn test() {
+///
 /// pub struct CreatedStruct<T: 'static>(Option<T>);
 ///
 /// impl<T: 'static> Hookable for CreatedStruct<T> {
@@ -963,7 +966,9 @@ impl<M: Mode<U>, U: Ui> HookAlias<U, ModeCreatedDummy<U>> for M {
 /// struct MyStructWithAVeryLongName;
 ///
 /// // This is way too long
-/// hook::add::<CreatedStruct<MyStructWithAVeryLongName>>(|pa, arg| arg);
+/// fn setup_with_way_too_long_hook<U: Ui>() {
+///     hook::add::<CreatedStruct<MyStructWithAVeryLongName>, U>(|pa, arg| arg);
+/// }
 ///
 /// // Do this instead
 ///
@@ -972,15 +977,16 @@ impl<M: Mode<U>, U: Ui> HookAlias<U, ModeCreatedDummy<U>> for M {
 /// #[doc(hidden)]
 /// impl HookDummy for MyDummy {}
 ///
-/// impl HookAlias<MyDummy> for MyStructWithAVeryLongName {
+/// impl<U: Ui> HookAlias<U, MyDummy> for MyStructWithAVeryLongName {
 ///     type Hookable = CreatedStruct<MyStructWithAVeryLongName>;
 ///     type Input<'h> = <Self::Hookable as Hookable>::Input<'h>;
 ///     type Output = <Self::Hookable as Hookable>::Output;
 /// }
 ///
 /// // Much better
-/// hook::add::<MyStructWithAVeryLongName>(|pa, arg| arg);
-/// # }
+/// fn better_setup<U: Ui>() {
+///     hook::add::<MyStructWithAVeryLongName, U>(|pa, arg| arg);
+/// }
 /// ```
 pub trait HookDummy {}
 

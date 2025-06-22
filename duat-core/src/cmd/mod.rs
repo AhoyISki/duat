@@ -710,7 +710,7 @@ mod global {
     /// # macro_rules! status { ($str:literal) => { StatusLine::cfg() } }
     /// use duat_core::{data::RwData, hook::OnWindowOpen, prelude::*};
     ///
-    /// fn setup_with_ui<Ui: duat_core::ui::Ui>() {
+    /// fn setup_generic_over_ui<U: Ui>() {
     ///     let var = RwData::new(35);
     ///
     ///     let var_clone = var.clone();
@@ -719,7 +719,7 @@ mod global {
     ///         Ok(None)
     ///     });
     ///
-    ///     hook::add::<OnWindowOpen<Ui>>(move |mut pa, builder| {
+    ///     hook::add::<OnWindowOpen<U>, U>(move |mut pa, builder| {
     ///         // status! macro is from duat-utils.
     ///         builder.push(&mut pa, status!("The value is currently {var}"));
     ///     });
@@ -731,6 +731,7 @@ mod global {
     ///
     /// [`StatusLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.StatusLine.html
     /// [`RwData`]: crate::data::RwData
+    /// [`Parameter`]: super::Parameter
     pub macro add(
         $callers:expr, |$pa:ident $(: &mut Pass)? $(, $arg:tt: $t:ty)* $(,)?| $f:tt
     ) {{
@@ -933,6 +934,8 @@ mod global {
     ///
     /// Since this function will run outside of the current scope, its
     /// [`Result`] will not be returned.
+    ///
+    /// [`RwData`]: crate::data::RwData
     pub fn queue(call: impl std::fmt::Display) {
         let call = call.to_string();
         crate::context::sender()

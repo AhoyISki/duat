@@ -21,15 +21,36 @@ use duat_core::{
 
 /// A [`Widget`] to show notifications
 ///
-/// By default, it is expected to be placed "under" a [`PromptLine`],
-/// and with the `"HidePromptLine"` [hook] group, take its place when
-/// the [`PromptLine`] is not in focus.
+/// With the [`FooterWidgets`] (a [`WidgetAlias`]), this [`Widget`]
+/// can be conveniently placed alongside a [`PromptLine`] and a
+/// [`StatusLine`], in a combination that hides the [`PromptLine`]
+/// when it is not in use, covering it with the [`Notifications`], and
+/// vice-versa. This is the default behaviour of Duat.
 ///
-/// If you don't want this behaviour, see [`left_with_ratio`]
+/// ```rust
+/// use duat_core::{hook::OnWindowOpen, prelude::*};
+/// use duat_utils::{state::*, widgets::*};
 ///
+/// fn setup_generic_over_ui<U: Ui>() {
+///     hook::remove("WindowWidgets");
+///     hook::add::<OnWindowOpen<U>, U>(|pa, builder| {
+///         let footer = FooterWidgets::default().notifs(Notifications::cfg().formatted(|rec| {
+///             Some(txt!(
+///                 "[notifs.bracket]([notifs.target]{}[notifs.bracket]) {}",
+///                 rec.target(),
+///                 rec.text().clone()
+///             ))
+///         }));
+///         builder.push(pa, footer);
+///     });
+/// }
+/// ```
+///
+/// [`FooterWidgets`]: super::FooterWidgets
+/// [`WidgetAlias`]: duat_core::ui::WidgetAlias
 /// [`PromptLine`]: super::PromptLine
+/// [`StatusLine`]: super::StatusLine
 /// [hook]: duat_core::hook
-/// [`left_with_ratio`]: NotificationsCfg::left_with_ratio
 pub struct Notifications<U> {
     logs: context::Logs,
     text: Text,
@@ -137,8 +158,14 @@ impl<U> NotificationsCfg<U> {
     /// This function returns an [`Option<Text>`], which means you can
     /// filter out unnecessary [`Record`]s. By default, only records
     /// with a level of [`Level::Info`] or higher will get shown.
-    pub fn formatted(self, format_rec: impl FnMut(Record) -> Option<Text> + 'static) -> Self {
-        Self { format_rec: Box::new(format_rec), ..self }
+    pub fn formatted<T: Into<Text>>(
+        self,
+        mut format_rec: impl FnMut(Record) -> Option<T> + 'static,
+    ) -> Self {
+        Self {
+            format_rec: Box::new(move |rec| format_rec(rec).map(Into::into)),
+            ..self
+        }
     }
 
     /// Changes how [`Notifications`] decides which [mask] to use

@@ -40,24 +40,24 @@ use crate::state::{file_fmt, main_fmt, mode_fmt, mode_name, sels_fmt};
 ///
 /// fn setup_generic_over_ui<U: Ui>() {
 ///     hook::remove("FileWidgets");
-///     hook::add::<OnFileOpen<U>>(|pa, builder| {
+///     hook::add::<OnFileOpen<U>, U>(|pa, builder| {
 ///         builder.push(pa, LineNumbers::cfg());
-///         builder.push(pa, status!("{file_fmt}"));
+///         builder.push(pa, status!("{file_fmt}").above());
 ///     });
 ///
 ///     hook::remove("WindowWidgets");
-///     hook::add::<OnWindowOpen<U>>(|pa, builder| {
-///         let (child, _) = builder.push(pa, PromptLine::cfg());
-///         let status = status!("{mode_fmt} {sels_fmt} {main_fmt}");
-///         builder.push_to(pa, child.clone(), status.right_ratioed(2, 3));
-///         builder.push_to(pa, child, Notifications::cfg());
+///     hook::add::<OnWindowOpen<U>, U>(|pa, builder| {
+///         let footer = FooterWidgets::new(status!("{mode_fmt} {sels_fmt} {main_fmt}"));
+///         builder.push(pa, footer);
 ///     });
 /// }
 /// ```
 ///
 /// In the above example, each file would have a status line with the
-/// name of the file, and there would be a global status line, showing
-/// more information about the currently active file.
+/// name of the file, and by pushing [`FooterWidgets`], you will push
+/// a [`StatusLine`], [`PromptLine`] and [`Notifications`] combo to
+/// each window. This [`StatusLine`] will point to the currently
+/// active [`File`], instead of a specific one.
 ///
 /// You will usually want to create [`StatusLine`]s via the
 /// [`status!`] macro, since that is how you can customize it.
@@ -69,9 +69,9 @@ use crate::state::{file_fmt, main_fmt, mode_fmt, mode_name, sels_fmt};
 ///
 /// fn setup_generic_over_ui<U: Ui>() {
 ///     hook::remove("FileWidgets");
-///     hook::add::<OnFileOpen<U>>(|pa, builder| {
+///     hook::add::<OnFileOpen<U>, U>(|pa, builder| {
 ///         builder.push(pa, LineNumbers::cfg());
-///         builder.push(pa, StatusLine::cfg());
+///         builder.push(pa, StatusLine::cfg().above());
 ///     });
 /// }
 /// ```
@@ -79,6 +79,9 @@ use crate::state::{file_fmt, main_fmt, mode_fmt, mode_name, sels_fmt};
 /// [`File`]: duat_core::file::File
 /// [`OnFileOpen`]: duat_core::hook::OnFileOpen
 /// [`OnWindowOpen`]: duat_core::hook::OnWindowOpen
+/// [`PromptLine`]: super::PromptLine
+/// [`Notifications`]: super::Notifications
+/// [`FooterWidgets`]: super::FooterWidgets
 pub struct StatusLine<U: Ui> {
     handle: FileHandle<U>,
     text_fn: TextFn<U>,
@@ -295,8 +298,8 @@ mod macros {
     ///     .build()
     /// }
     ///
-    /// fn test<Ui: duat_core::ui::Ui>() {
-    ///     hook::add::<OnWindowOpen<Ui>>(|pa, builder| {
+    /// fn setup_generic_over_ui<U: Ui>() {
+    ///     hook::add::<OnWindowOpen<U>, U>(|pa, builder| {
     ///         builder.push(pa, status!("[file]{name_but_funky}[] {powerline_main_fmt}"));
     ///     });
     /// }
@@ -332,7 +335,7 @@ mod macros {
     ///     COUNT.fetch_add(1, Ordering::Relaxed)
     /// }
     ///
-    /// hook::add::<OnWindowOpen<U>>({
+    /// hook::add::<OnWindowOpen<U>, U>({
     ///     let changing_text = changing_text.clone();
     ///     move |pa, builder| {
     ///         let changing_text = changing_text.clone();

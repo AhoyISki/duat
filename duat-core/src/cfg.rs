@@ -229,6 +229,7 @@ impl PrintCfg {
     ///     word_chars: word_chars!('A'-'Z''a'-'z''0'-'9''_'-'_'),
     ///     force_scrolloff: false,
     ///     show_ghosts: true,
+    ///     allow_overscroll: false,
     /// };
     /// ```
     ///

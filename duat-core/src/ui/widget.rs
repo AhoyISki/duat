@@ -156,12 +156,14 @@ use crate::{
 /// triggered.
 ///
 /// ```rust
-/// # use std::{sync::OnceLock, time::Instant};
-/// # use duat_core::{hook::{self, ConfigLoaded}, ui::Ui};
-/// # fn test<U: Ui>() {
-/// static START_TIME: OnceLock<Instant> = OnceLock::new();
-/// hook::add::<ConfigLoaded>(|_, _| START_TIME.set(Instant::now()).unwrap());
-/// # }
+/// use std::{sync::OnceLock, time::Instant};
+///
+/// use duat_core::{hook::ConfigLoaded, prelude::*};
+///
+/// fn setup_generic_over_ui<U: Ui>() {
+///     static START_TIME: OnceLock<Instant> = OnceLock::new();
+///     hook::add::<ConfigLoaded, U>(|_, _| START_TIME.set(Instant::now()).unwrap());
+/// }
 /// ```
 ///
 /// This should be added to the `setup` function in the `config`
@@ -313,7 +315,6 @@ pub trait Widget<U: Ui>: 'static {
     /// these in [hooks] like [`OnFileOpen`]:
     ///
     /// ```rust
-    /// # use duat_core::{hook::OnFileOpen, prelude::*};
     /// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
     /// # impl<U: Ui> Widget<U> for LineNumbers<U> {
     /// #     type Cfg = LineNumbersOptions<U>;
@@ -336,14 +337,16 @@ pub trait Widget<U: Ui>: 'static {
     /// #         todo!();
     /// #     }
     /// # }
-    /// # fn test<U: Ui>() {
-    /// hook::remove("FileWidgets");
-    /// hook::add::<OnFileOpen<U>>(|pa, builder| {
-    ///     // Screw it, LineNumbers on both sides.
-    ///     builder.push(pa, LineNumbers::cfg());
-    ///     builder.push(pa, LineNumbers::cfg().on_the_right().align_right());
-    /// });
-    /// # }
+    /// use duat_core::{hook::OnFileOpen, prelude::*};
+    ///
+    /// fn setup_generic_over_ui<U: Ui>() {
+    ///     hook::remove("FileWidgets");
+    ///     hook::add::<OnFileOpen<U>, U>(|pa, builder| {
+    ///         // Screw it, LineNumbers on both sides.
+    ///         builder.push(pa, LineNumbers::cfg());
+    ///         builder.push(pa, LineNumbers::cfg().on_the_right().align_right());
+    ///     });
+    /// }
     /// ```
     ///
     /// [hooks]: crate::hook
@@ -485,7 +488,6 @@ pub trait Widget<U: Ui>: 'static {
 /// direction it will be pushed:
 ///
 /// ```rust
-/// # use duat_core::{hook::OnFileOpen, prelude::*};
 /// # struct LineNumbers<U: Ui> {
 /// #     _ghost: std::marker::PhantomData<U>,
 /// # }
@@ -512,16 +514,18 @@ pub trait Widget<U: Ui>: 'static {
 /// #         todo!();
 /// #     }
 /// # }
-/// # fn test<U: Ui>() {
-/// hook::add::<OnFileOpen<U>>(|pa, builder| {
-///     // Change pushing direction to the right.
-///     let cfg = LineNumbers::cfg().on_the_right();
-///     // Changes to where the numbers will be placed.
-///     let cfg = cfg.align_right().align_main_left();
+/// use duat_core::{hook::OnFileOpen, prelude::*};
 ///
-///     builder.push(pa, cfg);
-/// });
-/// # }
+/// fn setup_generic_over_ui<U: Ui>() {
+///     hook::add::<OnFileOpen<U>, U>(|pa, builder| {
+///         // Change pushing direction to the right.
+///         let cfg = LineNumbers::cfg().on_the_right();
+///         // Changes to where the numbers will be placed.
+///         let cfg = cfg.align_right().align_main_left();
+///
+///         builder.push(pa, cfg);
+///     });
+/// }
 /// ```
 pub trait WidgetCfg<U: Ui>: Sized {
     /// The [`Widget`] that will be created by this [`WidgetCfg`]

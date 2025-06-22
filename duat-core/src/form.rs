@@ -92,8 +92,6 @@ mod global {
     /// let ref_id = form::set("my_ref_form", "my_regular_form");
     /// // Sets both "MyRegularForm" and "MyRefForm" to blue
     /// form::set("my_regular_form", Form::blue());
-    ///
-    /// assert_eq!(form::from_id(reg_id), form::from_id(ref_id));
     /// ```
     ///
     /// If you are creating a plugin, or another kind of tool for

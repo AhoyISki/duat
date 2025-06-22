@@ -24,7 +24,7 @@
 //!
 //!         // Make sure that the typed key is a character.
 //!         let key!(Char(c)) = key else {
-//!             mode::reset();
+//!             mode::reset::<File<U>, U>();
 //!             return;
 //!         };
 //!         // Checking if a character was already sent.
@@ -44,7 +44,7 @@
 //!             }
 //!         });
 //!
-//!         mode::reset();
+//!         mode::reset::<File<U>, U>();
 //!     }
 //! }
 //! ```
@@ -130,8 +130,8 @@
 //!                 "[^\n\\s]+"
 //!             };
 //!
-//!             let (start, _) = handle.area().first_points(text, cfg);
-//!             let (end, _) = handle.area().last_points(text, cfg);
+//!             let (start, _) = handle.area().start_points(text, cfg);
+//!             let (end, _) = handle.area().end_points(text, cfg);
 //!             self.points = text.search_fwd(regex, start..end).unwrap().collect();
 //!
 //!             let seqs = key_seqs(self.points.len());
@@ -164,7 +164,7 @@
 //!                     e.set_anchor();
 //!                     e.move_to(p1);
 //!                 });
-//!                 mode::reset();
+//!                 mode::reset::<File<U>, U>();
 //!             } else if seq.starts_with(&self.seq) {
 //!                 continue;
 //!             }
@@ -174,7 +174,7 @@
 //!         }
 //!
 //!         if self.seq.chars().count() == 2 || !LETTERS.contains(char) {
-//!             mode::reset();
+//!             mode::reset::<File<U>, U>();
 //!         }
 //!     }
 //! }
