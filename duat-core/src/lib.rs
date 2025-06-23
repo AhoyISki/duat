@@ -9,160 +9,6 @@
 //! terms of `U: Ui`,  which means that they can work on various
 //! different interfaces:
 //!
-//! <details>
-//! <summary>A `vim-sneak` inspired plugin</summary>
-//! 
-//! ```rust
-//! // I recommend pulling the prelude in plugins.
-//! use std::sync::LazyLock;
-//!
-//! use duat_core::{prelude::*, text::Point};
-//!
-//! static TAGGER: LazyLock<Tagger> = Tagger::new_static();
-//! static CUR_TAGGER: LazyLock<Tagger> = Tagger::new_static();
-//!
-//! #[derive(Default, Clone)]
-//! pub struct Sneak {
-//!     step: Step,
-//! }
-//!
-//! impl<U: Ui> Mode<U> for Sneak {
-//!     type Widget = File<U>;
-//!
-//!     fn send_key(&mut self, pa: &mut Pass, key: mode::KeyEvent, handle: Handle<File<U>, U>) {
-//!         use mode::{KeyCode::*, KeyMod as Mod};
-//!
-//!         let cur_id = form::id_of!("sneak.current");
-//!
-//!         match &mut self.step {
-//!             Step::Start => {
-//!                 // Make sure that the typed key is a character.
-//!                 let mode::key!(Char(c0)) = key else {
-//!                     mode::reset::<File<U>, U>();
-//!                     return;
-//!                 };
-//!
-//!                 let pat = format!("{c0}[A-Za-z0-9]");
-//!                 if highlight_matches(pa, &pat, &handle).1.is_none() {
-//!                     handle.write_text(pa, |text| text.remove_tags(*TAGGER, ..));
-//!                     context::error!("No matches found for [a]{pat}");
-//!                     mode::reset::<File<U>, U>();
-//!                     return;
-//!                 }
-//!
-//!                 self.step = Step::Filter(c0);
-//!             }
-//!             Step::Filter(c0) => {
-//!                 handle.write_text(pa, |text| text.remove_tags(*TAGGER, ..));
-//!
-//!                 let mode::key!(Char(c1)) = key else {
-//!                     mode::reset::<File<U>, U>();
-//!                     return;
-//!                 };
-//!
-//!                 let pat = format!("{c0}{c1}");
-//!                 let (matches, cur) = highlight_matches(pa, &pat, &handle);
-//!
-//!                 let Some(cur) = cur else {
-//!                     handle.write_text(pa, |text| text.remove_tags(*TAGGER, ..));
-//!                     context::error!("No matches found for [a]{pat}");
-//!                     mode::reset::<File<U>, U>();
-//!                     return;
-//!                 };
-//!                 let [p0, p1] = matches[cur];
-//!                 handle.write_text(pa, |text| {
-//!                     text.insert_tag(*CUR_TAGGER, p0..p1, cur_id.to_tag(51))
-//!                 });
-//!
-//!                 self.step = Step::Matched(matches, cur);
-//!             }
-//!             Step::Matched(matches, cur) => match (key, mode::alt_is_reverse()) {
-//!                 (mode::key!(Char('n')), _) => {
-//!                     let prev = *cur;
-//!                     let last = matches.len() - 1;
-//!                     *cur = if *cur == last { 0 } else { *cur + 1 };
-//!
-//!                     handle.write_text(pa, |text| {
-//!                         let [p0, _] = matches[prev];
-//!                         text.remove_tags(*CUR_TAGGER, p0);
-//!
-//!                         let [p0, p1] = matches[*cur];
-//!                         text.insert_tag(*CUR_TAGGER, p0..p1, cur_id.to_tag(51));
-//!                     });
-//!                 }
-//!                 (mode::key!(Char('N')), false) | (mode::key!(Char('n'), Mod::ALT), true) => {
-//!                     let prev = *cur;
-//!                     let last = matches.len() - 1;
-//!                     *cur = if *cur == 0 { last } else { *cur - 1 };
-//!
-//!                     handle.write_text(pa, |text| {
-//!                         let [p0, _] = matches[prev];
-//!                         text.remove_tags(*CUR_TAGGER, p0);
-//!
-//!                         let [p0, p1] = matches[*cur];
-//!                         text.insert_tag(*CUR_TAGGER, p0..p1, cur_id.to_tag(51));
-//!                     });
-//!                 }
-//!                 _ => {
-//!                     let [p0, p1] = matches[*cur];
-//!
-//!                     handle.edit_main(pa, |mut e| e.move_to(p0..p1));
-//!
-//!                     handle.write_text(pa, |text| text.remove_tags([*TAGGER, *CUR_TAGGER], ..));
-//!                     mode::reset::<File<U>, U>();
-//!                 }
-//!             },
-//!         }
-//!     }
-//! }
-//!
-//! fn highlight_matches<U: Ui>(
-//!     pa: &mut Pass,
-//!     pat: &str,
-//!     handle: &Handle<File<U>, U>,
-//! ) -> (Vec<[Point; 2]>, Option<usize>) {
-//!     handle.write(pa, |file, area| {
-//!         let (start, _) = area.start_points(file.text(), file.print_cfg());
-//!         let (end, _) = area.end_points(file.text(), file.print_cfg());
-//!         let caret = file.selections().get_main().unwrap().caret();
-//!
-//!         let (bytes, mut tags) = file.text_mut().bytes_and_tags();
-//!
-//!         let matches: Vec<_> = bytes.search_fwd(pat, start..end).unwrap().collect();
-//!
-//!         let id = form::id_of!("sneak.match");
-//!
-//!         let tagger = *TAGGER;
-//!         let mut next = None;
-//!         for (i, &[p0, p1]) in matches.iter().enumerate() {
-//!             if p0 > caret && next.is_none() {
-//!                 next = Some(i);
-//!             }
-//!             tags.insert(tagger, p0..p1, id.to_tag(50));
-//!         }
-//!
-//!         let last = matches.len().checked_sub(1);
-//!         (matches, next.or(last))
-//!     })
-//! }
-//!
-//! #[derive(Default, Clone)]
-//! enum Step {
-//!     #[default]
-//!     Start,
-//!     Filter(char),
-//!     Matched(Vec<[Point; 2]>, usize),
-//! }
-//! ```
-//! 
-//! </details>
-//!
-//! In this example, I have created a [`Mode`] for [`File`]s. This
-//! mode is based on [`vim-sneak`], which is popular (I think) within
-//! Vim circles. It's like the `f` key in Vim, but it lets you look
-//! for a sequence of 2 characters, instead of just one, also letting
-//! you pick between matches ahead and behind on the screen.
-//!
 //! What's great about it is that it will work no matter what editing
 //! model the user is using. It could be Vim inspired, Kakoune
 //! inspired, Emacs inspired, doesn't matter. All the user has to do
@@ -185,9 +31,6 @@
 //! Of course, this is most useful for plugins, for your own
 //! configuration, you should probably just rely on [`map`] to
 //! accomplish the same thing.
-//!
-//! Okay, but that was a relatively simple example, here's a more
-//! advanced example, which makes use of more of Duat's features.
 //!
 //! This is a copy of [EasyMotion], a plugin for
 //! Vim/Neovim/Kakoune/Emacs that lets you skip around the screen with
@@ -341,7 +184,6 @@
 //! [`Conceal`]: crate::text::Conceal
 //! [remove]: crate::text::Text::remove_tags
 //! [Move]: crate::mode::Cursor::move_to
-//! [`vim-sneak`]: https://github.com/justinmk/vim-sneak
 #![feature(
     decl_macro,
     step_trait,
