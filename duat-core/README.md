@@ -164,7 +164,7 @@ map::<Normal>("<CA-l>", EasyMotion::line());
 
 ## `duat-sneak`
 
-![sneak](./assets/sneak-demontration.gif)
+![sneak](../assets/sneak-demonstration.gif)
 
 [`duat-sneak`], inspired by [`vim-sneak`], lets you traverse the
 screen by searching through character sequences.
@@ -173,7 +173,7 @@ abcde
 
 [`duat-sneak`]: https://github.com/AhoyISki/duat-sneak
 [`vim-sneak`]: https://github.com/justinmk/vim-sneak
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG0Ut93JDfrrCG8GkPtX1LK6lG3uSu91S4VPYG0zmsYK-RnjCYXKEG4sEp1FGs1qkGzpiuCkL9zwqG0Ef9oCA893OG4ztl0I7Rre9YWSBg2lkdWF0LWNvcmVlMC41LjFpZHVhdF9jb3Jl
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEGyE1ll9fP3FJG5PjmE3N220iG_SvVDREmY-_Gw_nYJHRhuocYXKEG4sEp1FGs1qkGzpiuCkL9zwqG0Ef9oCA893OG4ztl0I7Rre9YWSBg2lkdWF0LWNvcmVlMC41LjFpZHVhdF9jb3Jl
  [__link0]: https://docs.rs/duat-core/0.5.1/duat_core/?search=ui::Ui
  [__link1]: https://docs.rs/duat/0.2.0/duat/prelude/fn.map.html
  [__link2]: https://github.com/easymotion/vim-easymotion
