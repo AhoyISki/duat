@@ -49,3 +49,7 @@ mod inc_search;
 mod prompt;
 mod regular;
 mod pager;
+
+/// A blank [`Mode`], intended for plugin authors to use
+#[derive(Clone, Copy, Debug)]
+pub struct User;

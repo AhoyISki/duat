@@ -872,7 +872,7 @@ pub mod prelude {
             FormSet, KeysSent, KeysSentTo, ModeCreated, ModeSwitched, OnFileOpen, OnWindowOpen,
             SearchPerformed, SearchUpdated, UnfocusedFrom, WidgetCreated,
         },
-        mode::{self, Mode, alias, map},
+        mode::{self, Mode, alias, map, User},
         print, setup_duat,
         state::*,
         widgets::*,
