@@ -1,5 +1,7 @@
 # duat-core ![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) [![duat-core on crates.io](https://img.shields.io/crates/v/duat-core)](https://crates.io/crates/duat-core) [![duat-core on docs.rs](https://docs.rs/duat-core/badge.svg)](https://docs.rs/duat-core) [![Source Code Repository](https://img.shields.io/badge/Code-On%20GitHub-blue?logo=GitHub)](https://github.com/AhoyISki/duat/tree/master/duat-core)
 
+![duat sneak demonstration](../assets/new-demontration.gif)
+
 The core of Duat, this crate is meant to be used only for the
 creation of plugins for Duat.
 
@@ -173,7 +175,7 @@ abcde
 
 [`duat-sneak`]: https://github.com/AhoyISki/duat-sneak
 [`vim-sneak`]: https://github.com/justinmk/vim-sneak
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG5OkJcgecQu9G-7ULsYFztE3G0VDp5QmqsNwGxojJZu3dIVvYXKEG4sEp1FGs1qkGzpiuCkL9zwqG0Ef9oCA893OG4ztl0I7Rre9YWSBg2lkdWF0LWNvcmVlMC41LjFpZHVhdF9jb3Jl
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG8XCCLSOC-2RGxChZqCXMqBmGy0wwF15uUmpGzaXIJ-1XdrwYXKEG4sEp1FGs1qkGzpiuCkL9zwqG0Ef9oCA893OG4ztl0I7Rre9YWSBg2lkdWF0LWNvcmVlMC41LjFpZHVhdF9jb3Jl
  [__link0]: https://docs.rs/duat-core/0.5.1/duat_core/?search=ui::Ui
  [__link1]: https://docs.rs/duat/0.2.0/duat/prelude/fn.map.html
  [__link2]: https://github.com/easymotion/vim-easymotion
