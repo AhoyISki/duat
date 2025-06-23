@@ -351,9 +351,9 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         let handle = context::fixed_file::<U>(pa)?;
         let (bytes, name) = handle.write(pa, |file, _| {
             let bytes = if let Some(path) = path {
-                file.write_to(path)?
+                file.write_quit_to(path, true)?
             } else {
-                file.write()?
+                file.write_quit(true)?
             };
             Result::<_, Text>::Ok((bytes, file.name()))
         })?;
@@ -424,7 +424,9 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             .inspect(|(handle, _)| {
                 // SAFETY: It is known that this function does not have any inner
                 // RwData.
-                written += unsafe { handle.widget().write_unsafe(|f| f.write().is_ok()) as usize };
+                written += unsafe {
+                    handle.widget().write_unsafe(|f| f.write_quit(true).is_ok()) as usize
+                };
             })
             .count();
 
@@ -445,7 +447,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             // SAFETY: It is known that this function does not have any inner
             // RwData.
             unsafe {
-                let _ = handle.widget().write_unsafe(|f| f.write());
+                let _ = handle.widget().write_unsafe(|f| f.write_quit(true));
             }
         }
 

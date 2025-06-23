@@ -696,16 +696,18 @@ impl Hookable for ColorSchemeSet {
 ///
 /// - The path of the file
 /// - The number of bytes written to said file
+/// - Wether Duat is in the process of quitting (happens when calling
+///   the `wq` or `waq` commands)
 ///
 /// [`File::write`]: crate::file::File::write
 /// [`File::write_to`]: crate::file::File::write_to
-pub struct FileWritten(pub(crate) (String, usize));
+pub struct FileWritten(pub(crate) (String, usize, bool));
 
 impl Hookable for FileWritten {
-    type Input<'i> = (&'i str, usize);
+    type Input<'i> = (&'i str, usize, bool);
 
     fn get_input(&mut self) -> Self::Input<'_> {
-        (&self.0.0, self.0.1)
+        (&self.0.0, self.0.1, self.0.2)
     }
 }
 

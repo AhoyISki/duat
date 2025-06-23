@@ -142,6 +142,10 @@ impl<U: Ui> File<U> {
 
     /// Writes the file to the current [`PathBuf`], if one was set
     pub fn write(&mut self) -> Result<Option<usize>, Text> {
+        self.write_quit(false)
+    }
+
+    pub(crate) fn write_quit(&mut self, quit: bool) -> Result<Option<usize>, Text> {
         if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &self.path {
             let path = path.clone();
             if self.text.has_unsaved_changes() {
@@ -151,7 +155,7 @@ impl<U: Ui> File<U> {
                     .inspect(|_| self.path = PathKind::SetExists(path.clone()))?;
 
                 let path = path.to_string_lossy().to_string();
-                hook::queue(FileWritten((path, bytes)));
+                hook::queue(FileWritten((path, bytes, quit)));
 
                 Ok(Some(bytes))
             } else {
@@ -166,6 +170,17 @@ impl<U: Ui> File<U> {
     ///
     /// [`Path`]: std::path::Path
     pub fn write_to(&self, path: impl AsRef<std::path::Path>) -> std::io::Result<Option<usize>> {
+        self.write_quit_to(path, false)
+    }
+
+    /// Writes the file to the given [`Path`]
+    ///
+    /// [`Path`]: std::path::Path
+    pub(crate) fn write_quit_to(
+        &self,
+        path: impl AsRef<std::path::Path>,
+        quit: bool
+    ) -> std::io::Result<Option<usize>> {
         if self.text.has_unsaved_changes() {
             let path = path.as_ref();
             let res = self
@@ -174,7 +189,11 @@ impl<U: Ui> File<U> {
                 .map(Some);
 
             if let Ok(Some(bytes)) = res.as_ref() {
-                hook::queue(FileWritten((path.to_string_lossy().to_string(), *bytes)));
+                hook::queue(FileWritten((
+                    path.to_string_lossy().to_string(),
+                    *bytes,
+                    quit,
+                )));
             }
 
             res

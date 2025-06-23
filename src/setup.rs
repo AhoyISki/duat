@@ -79,9 +79,10 @@ pub fn pre_setup(logs: Option<Logs>, duat_tx: &'static Sender<DuatEvent>) {
         builder.push(pa, FooterWidgets::default());
     });
 
-    hook::add_grouped::<FileWritten>("ReloadOnWrite", |_, (path, _)| {
+    hook::add_grouped::<FileWritten>("ReloadOnWrite", |_, (path, _, is_quitting)| {
         let path = Path::new(path);
-        if let Some(crate_dir) = crate::crate_dir()
+        if !is_quitting
+            && let Some(crate_dir) = crate::crate_dir()
             && path.starts_with(crate_dir)
         {
             crate::prelude::cmd::queue("reload");
