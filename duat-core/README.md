@@ -1,6 +1,6 @@
 # duat-core ![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) [![duat-core on crates.io](https://img.shields.io/crates/v/duat-core)](https://crates.io/crates/duat-core) [![duat-core on docs.rs](https://docs.rs/duat-core/badge.svg)](https://docs.rs/duat-core) [![Source Code Repository](https://img.shields.io/badge/Code-On%20GitHub-blue?logo=GitHub)](https://github.com/AhoyISki/duat/tree/master/duat-core)
 
-![sneak demonstration](./assets/sneak-demonstration.gif)
+![sneak demonstration](../assets/sneak-demonstration.gif)
 
 The core of Duat, this crate is meant to be used only for the
 creation of plugins for Duat.
@@ -314,7 +314,7 @@ map::<Normal>("<CA-l>", EasyMotion::line());
 ```
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG7OnKS_PkemFG56IpJ_QmFWVGx-ENAHaG7xgG84zvdQl8TPsYXKEG3iZRkqif6hpG9721XxfHELdG9StpAm4nCL4G1hLfc0Ir397YWSBg2lkdWF0LWNvcmVlMC41LjFpZHVhdF9jb3Jl
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG4IA0U4o2v_nG0nShNh9mFPVGzI2Nk_cFKuWG3RsDqMmIUI5YXKEG3iZRkqif6hpG9721XxfHELdG9StpAm4nCL4G1hLfc0Ir397YWSBg2lkdWF0LWNvcmVlMC41LjFpZHVhdF9jb3Jl
  [__link0]: https://docs.rs/duat-core/0.5.1/duat_core/?search=ui::Ui
  [__link1]: https://docs.rs/duat-core/0.5.1/duat_core/?search=mode::Mode
  [__link10]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Text::remove_tags
