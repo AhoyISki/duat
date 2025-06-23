@@ -11,6 +11,7 @@
 //!
 //! <details>
 //! <summary>A `vim-sneak` inspired plugin</summary>
+//! 
 //! ```rust
 //! // I recommend pulling the prelude in plugins.
 //! use std::sync::LazyLock;
@@ -153,6 +154,7 @@
 //!     Matched(Vec<[Point; 2]>, usize),
 //! }
 //! ```
+//! 
 //! </details>
 //!
 //! In this example, I have created a [`Mode`] for [`File`]s. This
