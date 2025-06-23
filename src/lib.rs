@@ -343,8 +343,8 @@ mod setup;
 ///
 /// [`Mode`]: crate::mode::Mode
 pub mod mode {
-    use duat_core::{mode, ui::Widget};
     pub use duat_core::mode::*;
+    use duat_core::{mode, ui::Widget};
 
     use crate::Ui;
 
@@ -670,7 +670,7 @@ pub mod hook {
     ///
     /// ```rust
     /// setup_duat!(setup);
-    /// use duat::{prelude::*, hook::WidgetCreated};
+    /// use duat::{hook::WidgetCreated, prelude::*};
     ///
     /// fn setup() {
     ///     hook::add::<WidgetCreated<LineNumbers<Ui>>>(|pa, (ln, handle)| ln.rel_abs());
@@ -681,7 +681,7 @@ pub mod hook {
     ///
     /// ```rust
     /// setup_duat!(setup);
-    /// use duat::{prelude::*, hook::WidgetCreated};
+    /// use duat::{hook::WidgetCreated, prelude::*};
     ///
     /// fn setup() {
     ///     hook::add::<LineNumbers<Ui>>(|pa, (ln, handle)| ln.rel_abs());
@@ -855,7 +855,8 @@ pub mod prelude {
         Plugin, clipboard, cmd, context,
         data::{self, Pass},
         text::{
-            self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, Text, txt,
+            self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, Tagger,
+            Text, txt,
         },
         ui::{self, RawArea, Widget, WidgetCfg},
     };

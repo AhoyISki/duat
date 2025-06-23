@@ -41,12 +41,74 @@ impl Text {
         pat: R,
         range: impl TextRange,
     ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
-        let bytes = self.bytes_mut();
-        let range = range.to_range(bytes.len().byte());
+        self.bytes_mut().search_fwd(pat, range)
+    }
+
+    /// Searches in reverse for a [`RegexPattern`] in a [range]
+    ///
+    /// A [`RegexPattern`] can either be a single regex string, an
+    /// array of strings, or a slice of strings. When there are more
+    /// than one pattern, The return value will include which pattern
+    /// matched.
+    ///
+    /// The patterns will also automatically be cached, so you don't
+    /// need to do that.
+    ///
+    /// [range]: TextRange
+    pub fn search_rev<R: RegexPattern>(
+        &mut self,
+        pat: R,
+        range: impl TextRange,
+    ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
+        self.bytes_mut().search_rev(pat, range)
+    }
+
+    /// Returns true if the pattern is found in the given range
+    ///
+    /// This is unanchored by default, if you want an anchored search,
+    /// use the `"^$"` characters.
+    pub fn matches(
+        &mut self,
+        pat: impl RegexPattern,
+        range: impl TextRange,
+    ) -> Result<bool, Box<regex_syntax::Error>> {
+        let range = range.to_range(self.len().byte());
+        let dfas = dfas_from_pat(pat)?;
+
+        let haystack = self.contiguous(range);
+        let fwd_input = Input::new(haystack);
+
+        let mut fwd_cache = dfas.fwd.1.write().unwrap();
+        if let Ok(Some(_)) = dfas.fwd.0.try_search_fwd(&mut fwd_cache, &fwd_input) {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+}
+
+impl Bytes {
+    /// Searches forward for a [`RegexPattern`] in a [range]
+    ///
+    /// A [`RegexPattern`] can either be a single regex string, an
+    /// array of strings, or a slice of strings. When there are more
+    /// than one pattern, The return value will include which pattern
+    /// matched.
+    ///
+    /// The patterns will also automatically be cached, so you don't
+    /// need to do that.
+    ///
+    /// [range]: TextRange
+    pub fn search_fwd<R: RegexPattern>(
+        &mut self,
+        pat: R,
+        range: impl TextRange,
+    ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
+        let range = range.to_range(self.len().byte());
         let dfas = dfas_from_pat(pat)?;
         let haystack = {
-            bytes.make_contiguous(range.clone());
-            bytes.get_contiguous(range.clone()).unwrap()
+            self.make_contiguous(range.clone());
+            self.get_contiguous(range.clone()).unwrap()
         };
 
         let mut fwd_input = Input::new(haystack);
@@ -54,7 +116,7 @@ impl Text {
         let mut fwd_cache = dfas.fwd.1.write().unwrap();
         let mut rev_cache = dfas.rev.1.write().unwrap();
 
-        let bytes = bytes as &super::Bytes;
+        let bytes = self as &super::Bytes;
         Ok(std::iter::from_fn(move || {
             let init = fwd_input.start();
             let h_end = loop {
@@ -101,12 +163,11 @@ impl Text {
         pat: R,
         range: impl TextRange,
     ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
-        let bytes = self.bytes_mut();
-        let range = range.to_range(bytes.len().byte());
+        let range = range.to_range(self.len().byte());
         let dfas = dfas_from_pat(pat)?;
         let haystack = {
-            bytes.make_contiguous(range.clone());
-            bytes.get_contiguous(range.clone()).unwrap()
+            self.make_contiguous(range.clone());
+            self.get_contiguous(range.clone()).unwrap()
         };
 
         let mut fwd_input = Input::new(haystack).anchored(Anchored::Yes);
@@ -114,7 +175,7 @@ impl Text {
         let mut fwd_cache = dfas.fwd.1.write().unwrap();
         let mut rev_cache = dfas.rev.1.write().unwrap();
 
-        let bytes = bytes as &super::Bytes;
+        let bytes = self as &super::Bytes;
         let gap = range.start;
         Ok(std::iter::from_fn(move || {
             let init = rev_input.end();

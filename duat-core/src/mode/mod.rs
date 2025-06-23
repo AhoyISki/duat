@@ -28,7 +28,7 @@ pub use crossterm::event::{KeyCode, KeyEvent};
 pub type KeyMod = crossterm::event::KeyModifiers;
 
 pub use self::{
-    cursor::{Cursor, Cursors, Selection, Selections, VPoint},
+    cursor::{Cursor, Cursors, PointOrPoints, Selection, Selections, VPoint},
     remap::*,
     switch::*,
 };
@@ -94,10 +94,7 @@ mod remap;
 
 mod switch {
     use std::{
-        any::{Any, TypeId},
-        cell::RefCell,
-        sync::LazyLock,
-        vec::IntoIter,
+        any::{Any, TypeId}, cell::RefCell, io::Write, sync::LazyLock, vec::IntoIter
     };
 
     use crossterm::event::KeyEvent;
@@ -323,8 +320,6 @@ mod switch {
         let mut sk = send_keys.take().unwrap();
 
         while keys.len() > 0 {
-            // SAFETY: Since this function is taking a Pass, but that one is
-            // reliably not being used, I can safely create my own Passes.
             if let Some(set_mode) = sk(pa, &mut keys)
                 && set_mode(pa)
             {

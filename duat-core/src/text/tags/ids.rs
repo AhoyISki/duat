@@ -9,7 +9,7 @@
 //! [`Text`]: crate::text::Text
 use std::{
     ops::Range,
-    sync::atomic::{AtomicU16, AtomicUsize, Ordering},
+    sync::{atomic::{AtomicU16, AtomicUsize, Ordering}, LazyLock},
 };
 
 static TAGGER_COUNT: AtomicU16 = AtomicU16::new(4);
@@ -63,6 +63,11 @@ impl Tagger {
     /// Returns a new, unique [`Tagger`]
     pub fn new() -> Self {
         Self(TAGGER_COUNT.fetch_add(1, Ordering::Relaxed))
+    }
+
+	/// Returns a new [`LazyLock<Tagger>`]
+    pub const fn new_static() -> LazyLock<Self> {
+        LazyLock::new(Self::new)
     }
 
     /// Returns a number of new, unique [`Tagger`]s
@@ -144,31 +149,37 @@ impl std::iter::Step for Tagger {
 /// [removed]: crate::text::Text::remove_tags
 pub trait Taggers: std::fmt::Debug + Clone + PartialEq + Eq {
     /// Whether this range contains a given [`Tagger`]
-    fn contains(self, key: Tagger) -> bool;
+    fn contains_tagger(self, tagger: Tagger) -> bool;
 }
 
 impl Taggers for Tagger {
-    fn contains(self, key: Tagger) -> bool {
-        self == key
+    fn contains_tagger(self, tagger: Tagger) -> bool {
+        self == tagger
     }
 }
 
 impl Taggers for Range<Tagger> {
     /// Whether this range contains a given [`Tagger`]
-    fn contains(self, key: Tagger) -> bool {
-        key >= self.start && self.end > key
+    fn contains_tagger(self, tagger: Tagger) -> bool {
+        tagger >= self.start && self.end > tagger
     }
 }
 
 impl Taggers for &[Tagger] {
-    fn contains(self, key: Tagger) -> bool {
-        self.contains(&key)
+    fn contains_tagger(self, tagger: Tagger) -> bool {
+        self.contains(&tagger)
     }
 }
 
 impl Taggers for &[Range<Tagger>] {
-    fn contains(self, key: Tagger) -> bool {
-        self.iter().any(|r| r.contains(&key))
+    fn contains_tagger(self, tagger: Tagger) -> bool {
+        self.iter().any(|r| r.contains(&tagger))
+    }
+}
+
+impl<const N: usize> Taggers for [Tagger; N] {
+    fn contains_tagger(self, tagger: Tagger) -> bool {
+        self.contains(&tagger)
     }
 }
 

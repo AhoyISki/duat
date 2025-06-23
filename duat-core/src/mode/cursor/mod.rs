@@ -7,6 +7,7 @@
 //! [`Mode`]: super::Mode
 use std::{
     cell::{Cell, RefMut},
+    ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive},
     rc::Rc,
 };
 
@@ -244,12 +245,21 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
         );
     }
 
-    /// Moves the selection to a [`Point`]
+    /// Moves the selection to a [`Point`] or a [range] of [`Point`]s
     ///
-    /// - If the position isn't valid, it will move to the "maximum"
-    ///   position allowed.
-    pub fn move_to(&mut self, point: Point) {
-        self.selection.move_to(point, self.widget.text());
+    /// If you give it just a [`Point`], it will move the caret,
+    /// without affecting the anchor. If you give it a [range] of
+    /// [`Point`]s, the anchor will be placed at the start, while the
+    /// caret will be placed at the end of said [range]. You can flip
+    /// those positions with a function like [`swap_ends`].
+    ///
+    /// If a [`Point`] is not valid, it will be corrected and clamped
+    /// to the lenght of the [`Text`].
+    ///
+    /// [range]: std::ops::RangeBounds
+    /// [`swap_ends`]: Self::swap_ends
+    pub fn move_to(&mut self, point_or_points: impl PointOrPoints) {
+        point_or_points.move_to(self);
     }
 
     /// Moves the selection to [`Point::default`], i.e., the start of
@@ -765,5 +775,89 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Lender for Cursors<'a, W, A, 
             Some(self.next_i.clone()),
             &mut self.inc_searcher,
         ))
+    }
+}
+
+/// One or two [`Point`]s
+pub trait PointOrPoints {
+    /// Internal movement function for monomorphization
+    #[doc(hidden)]
+    fn move_to<W: Widget<U> + ?Sized, U: Ui, S>(self, cursor: &mut Cursor<'_, W, U::Area, S>);
+}
+
+impl PointOrPoints for Point {
+    fn move_to<W: Widget<U> + ?Sized, U: Ui, S>(self, cursor: &mut Cursor<'_, W, U::Area, S>) {
+        cursor.selection.move_to(self, cursor.widget.text());
+    }
+}
+
+impl PointOrPoints for Range<Point> {
+    fn move_to<W: Widget<U> + ?Sized, U: Ui, S>(self, cursor: &mut Cursor<'_, W, U::Area, S>) {
+        assert!(
+            self.start <= self.end,
+            "slice index start is larger than end"
+        );
+
+        cursor.selection.move_to(self.start, cursor.widget.text());
+        if self.start < self.end {
+            cursor.set_anchor();
+            cursor.selection.move_to(self.end, cursor.widget.text());
+            cursor.move_hor(-1);
+        }
+    }
+}
+
+impl PointOrPoints for RangeInclusive<Point> {
+    fn move_to<W: Widget<U> + ?Sized, U: Ui, S>(self, cursor: &mut Cursor<'_, W, U::Area, S>) {
+        assert!(
+            self.start() <= self.end(),
+            "slice index start is larger than end"
+        );
+
+        cursor
+            .selection
+            .move_to(*self.start(), cursor.widget.text());
+        cursor.set_anchor();
+        cursor.selection.move_to(*self.end(), cursor.widget.text());
+    }
+}
+
+impl PointOrPoints for RangeFrom<Point> {
+    fn move_to<W: Widget<U> + ?Sized, U: Ui, S>(self, cursor: &mut Cursor<'_, W, U::Area, S>) {
+        cursor.selection.move_to(self.start, cursor.widget.text());
+        if self.start < cursor.text().len() {
+            cursor.set_anchor();
+            cursor
+                .selection
+                .move_to(cursor.widget.text().len(), cursor.widget.text());
+            cursor.move_hor(-1);
+        }
+    }
+}
+
+impl PointOrPoints for RangeTo<Point> {
+    fn move_to<W: Widget<U> + ?Sized, U: Ui, S>(self, cursor: &mut Cursor<'_, W, U::Area, S>) {
+        cursor.move_to_start();
+        if Point::default() < self.end {
+            cursor.set_anchor();
+            cursor.selection.move_to(self.end, cursor.widget.text());
+            cursor.move_hor(-1);
+        }
+    }
+}
+
+impl PointOrPoints for RangeToInclusive<Point> {
+    fn move_to<W: Widget<U> + ?Sized, U: Ui, S>(self, cursor: &mut Cursor<'_, W, U::Area, S>) {
+        cursor.move_to_start();
+        cursor.set_anchor();
+        cursor.selection.move_to(self.end, cursor.widget.text());
+    }
+}
+
+impl PointOrPoints for RangeFull {
+    fn move_to<W: Widget<U> + ?Sized, U: Ui, S>(self, cursor: &mut Cursor<'_, W, U::Area, S>) {
+        cursor.move_to_start();
+        cursor.set_anchor();
+        cursor.selection.move_to(cursor.widget.text().len(), cursor.widget.text());
     }
 }

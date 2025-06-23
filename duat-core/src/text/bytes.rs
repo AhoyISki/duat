@@ -740,3 +740,23 @@ impl PartialEq<String> for Bytes {
         other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
     }
 }
+
+impl PartialEq for Strs<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.to_array() == other.to_array()
+    }
+}
+
+impl PartialEq<&str> for Strs<'_> {
+    fn eq(&self, other: &&str) -> bool {
+        let [s0, s1] = self.to_array();
+        other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
+    }
+}
+
+impl PartialEq<String> for Strs<'_> {
+    fn eq(&self, other: &String) -> bool {
+        let [s0, s1] = self.to_array();
+        other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
+    }
+}

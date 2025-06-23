@@ -445,7 +445,12 @@ impl Remapper {
                             // Lock dropped here, before any .awaits
                             mode::send_keys_to(pa, keys)
                         }
-                        Gives::Mode(f) => f(),
+                        Gives::Mode(set_mode) => {
+                            set_mode();
+                            if let Some(mode_fn) = super::take_set_mode_fn() {
+                                mode_fn(pa);
+                            }
+                        }
                     }
                 } else if remap.is_alias {
                     remapper.cur_seq.write(pa, |(_, is_alias)| *is_alias = true);

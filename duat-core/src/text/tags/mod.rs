@@ -357,7 +357,7 @@ impl Tags {
 
         // It is best to do this first, so getting skips returns correct
         // entries.
-        self.remove_intersecting_bounds(start..end, |tag| taggers.clone().contains(tag.tagger()));
+        self.remove_intersecting_bounds(start..end, |tag| taggers.clone().contains_tagger(tag.tagger()));
 
         let [mut n, mut b, _] = self.skip_behind(start);
         let (mut initial_n, mut initial_b) = (n, b);
@@ -390,7 +390,7 @@ impl Tags {
 
                 b += skip as usize;
             } else if let Some(TagOrSkip::Tag(tag)) = ts {
-                if !taggers.clone().contains(tag.tagger()) {
+                if !taggers.clone().contains_tagger(tag.tagger()) {
                     n += 1;
                     continue;
                 }
