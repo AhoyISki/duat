@@ -13,158 +13,168 @@ this crate. In it, the public functions and types are defined in
 terms of `U: Ui`,  which means that they can work on various
 different interfaces:
 
+<details>
+<summary>A `vim-sneak` inspired plugin</summary>
 ```rust
 // I recommend pulling the prelude in plugins.
 use std::sync::LazyLock;
 
-use duat_core::{prelude::*, text::Point};
+use duat_core::{prelude::\*, text::Point};
 
 static TAGGER: LazyLock<Tagger> = Tagger::new_static();
 static CUR_TAGGER: LazyLock<Tagger> = Tagger::new_static();
 
-#[derive(Default, Clone)]
+\#[derive(Default, Clone)][__link1]
 pub struct Sneak {
-    step: Step,
+step: Step,
 }
 
-impl<U: Ui> Mode<U> for Sneak {
-    type Widget = File<U>;
+impl\<U: Ui> Mode<U> for Sneak {
+type Widget = File<U>;
 
-    fn send_key(&mut self, pa: &mut Pass, key: mode::KeyEvent, handle: Handle<File<U>, U>) {
-        use mode::{KeyCode::*, KeyMod as Mod};
+```rust
+fn send_key(&mut self, pa: &mut Pass, key: mode::KeyEvent, handle: Handle<File<U>, U>) {
+    use mode::{KeyCode::*, KeyMod as Mod};
 
-        let cur_id = form::id_of!("sneak.current");
+    let cur_id = form::id_of!("sneak.current");
 
-        match &mut self.step {
-            Step::Start => {
-                // Make sure that the typed key is a character.
-                let mode::key!(Char(c0)) = key else {
-                    mode::reset::<File<U>, U>();
-                    return;
-                };
+    match &mut self.step {
+        Step::Start => {
+            // Make sure that the typed key is a character.
+            let mode::key!(Char(c0)) = key else {
+                mode::reset::<File<U>, U>();
+                return;
+            };
 
-                let pat = format!("{c0}[A-Za-z0-9]");
-                if highlight_matches(pa, &pat, &handle).1.is_none() {
-                    handle.write_text(pa, |text| text.remove_tags(*TAGGER, ..));
-                    context::error!("No matches found for [a]{pat}");
-                    mode::reset::<File<U>, U>();
-                    return;
-                }
-
-                self.step = Step::Filter(c0);
-            }
-            Step::Filter(c0) => {
+            let pat = format!("{c0}[A-Za-z0-9]");
+            if highlight_matches(pa, &pat, &handle).1.is_none() {
                 handle.write_text(pa, |text| text.remove_tags(*TAGGER, ..));
+                context::error!("No matches found for [a]{pat}");
+                mode::reset::<File<U>, U>();
+                return;
+            }
 
-                let mode::key!(Char(c1)) = key else {
-                    mode::reset::<File<U>, U>();
-                    return;
-                };
+            self.step = Step::Filter(c0);
+        }
+        Step::Filter(c0) => {
+            handle.write_text(pa, |text| text.remove_tags(*TAGGER, ..));
 
-                let pat = format!("{c0}{c1}");
-                let (matches, cur) = highlight_matches(pa, &pat, &handle);
+            let mode::key!(Char(c1)) = key else {
+                mode::reset::<File<U>, U>();
+                return;
+            };
 
-                let Some(cur) = cur else {
-                    handle.write_text(pa, |text| text.remove_tags(*TAGGER, ..));
-                    context::error!("No matches found for [a]{pat}");
-                    mode::reset::<File<U>, U>();
-                    return;
-                };
-                let [p0, p1] = matches[cur];
+            let pat = format!("{c0}{c1}");
+            let (matches, cur) = highlight_matches(pa, &pat, &handle);
+
+            let Some(cur) = cur else {
+                handle.write_text(pa, |text| text.remove_tags(*TAGGER, ..));
+                context::error!("No matches found for [a]{pat}");
+                mode::reset::<File<U>, U>();
+                return;
+            };
+            let [p0, p1] = matches[cur];
+            handle.write_text(pa, |text| {
+                text.insert_tag(*CUR_TAGGER, p0..p1, cur_id.to_tag(51))
+            });
+
+            self.step = Step::Matched(matches, cur);
+        }
+        Step::Matched(matches, cur) => match (key, mode::alt_is_reverse()) {
+            (mode::key!(Char('n')), _) => {
+                let prev = *cur;
+                let last = matches.len() - 1;
+                *cur = if *cur == last { 0 } else { *cur + 1 };
+
                 handle.write_text(pa, |text| {
-                    text.insert_tag(*CUR_TAGGER, p0..p1, cur_id.to_tag(51))
-                });
+                    let [p0, _] = matches[prev];
+                    text.remove_tags(*CUR_TAGGER, p0);
 
-                self.step = Step::Matched(matches, cur);
-            }
-            Step::Matched(matches, cur) => match (key, mode::alt_is_reverse()) {
-                (mode::key!(Char('n')), _) => {
-                    let prev = *cur;
-                    let last = matches.len() - 1;
-                    *cur = if *cur == last { 0 } else { *cur + 1 };
-
-                    handle.write_text(pa, |text| {
-                        let [p0, _] = matches[prev];
-                        text.remove_tags(*CUR_TAGGER, p0);
-
-                        let [p0, p1] = matches[*cur];
-                        text.insert_tag(*CUR_TAGGER, p0..p1, cur_id.to_tag(51));
-                    });
-                }
-                (mode::key!(Char('N')), false) | (mode::key!(Char('n'), Mod::ALT), true) => {
-                    let prev = *cur;
-                    let last = matches.len() - 1;
-                    *cur = if *cur == 0 { last } else { *cur - 1 };
-
-                    handle.write_text(pa, |text| {
-                        let [p0, _] = matches[prev];
-                        text.remove_tags(*CUR_TAGGER, p0);
-
-                        let [p0, p1] = matches[*cur];
-                        text.insert_tag(*CUR_TAGGER, p0..p1, cur_id.to_tag(51));
-                    });
-                }
-                _ => {
                     let [p0, p1] = matches[*cur];
-
-                    handle.edit_main(pa, |mut e| e.move_to(p0..p1));
-
-                    handle.write_text(pa, |text| text.remove_tags([*TAGGER, *CUR_TAGGER], ..));
-                    mode::reset::<File<U>, U>();
-                }
-            },
-        }
-    }
-}
-
-fn highlight_matches<U: Ui>(
-    pa: &mut Pass,
-    pat: &str,
-    handle: &Handle<File<U>, U>,
-) -> (Vec<[Point; 2]>, Option<usize>) {
-    handle.write(pa, |file, area| {
-        let (start, _) = area.start_points(file.text(), file.print_cfg());
-        let (end, _) = area.end_points(file.text(), file.print_cfg());
-        let caret = file.selections().get_main().unwrap().caret();
-
-        let (bytes, mut tags) = file.text_mut().bytes_and_tags();
-
-        let matches: Vec<_> = bytes.search_fwd(pat, start..end).unwrap().collect();
-
-        let id = form::id_of!("sneak.match");
-
-        let tagger = *TAGGER;
-        let mut next = None;
-        for (i, &[p0, p1]) in matches.iter().enumerate() {
-            if p0 > caret && next.is_none() {
-                next = Some(i);
+                    text.insert_tag(*CUR_TAGGER, p0..p1, cur_id.to_tag(51));
+                });
             }
-            tags.insert(tagger, p0..p1, id.to_tag(50));
-        }
+            (mode::key!(Char('N')), false) | (mode::key!(Char('n'), Mod::ALT), true) => {
+                let prev = *cur;
+                let last = matches.len() - 1;
+                *cur = if *cur == 0 { last } else { *cur - 1 };
 
-        let last = matches.len().checked_sub(1);
-        (matches, next.or(last))
-    })
-}
+                handle.write_text(pa, |text| {
+                    let [p0, _] = matches[prev];
+                    text.remove_tags(*CUR_TAGGER, p0);
 
-#[derive(Default, Clone)]
-enum Step {
-    #[default]
-    Start,
-    Filter(char),
-    Matched(Vec<[Point; 2]>, usize),
+                    let [p0, p1] = matches[*cur];
+                    text.insert_tag(*CUR_TAGGER, p0..p1, cur_id.to_tag(51));
+                });
+            }
+            _ => {
+                let [p0, p1] = matches[*cur];
+
+                handle.edit_main(pa, |mut e| e.move_to(p0..p1));
+
+                handle.write_text(pa, |text| text.remove_tags([*TAGGER, *CUR_TAGGER], ..));
+                mode::reset::<File<U>, U>();
+            }
+        },
+    }
 }
 ```
 
-In this example, I have created a [`Mode`][__link1] for [`File`][__link2]s. This
-mode is based on [`vim-sneak`][__link3], which is popular (I think) within
-Vim circles. It’s like the `f` key in Vim, but it lets you look
+}
+
+fn highlight_matches\<U: Ui>(
+pa: &mut Pass,
+pat: &str,
+handle: &Handle\<File<U>, U>,
+) -> (Vec\<[Point; 2][__link2]\>, Option<usize>) {
+handle.write(pa, |file, area| {
+let (start, \_) = area.start_points(file.text(), file.print_cfg());
+let (end, \_) = area.end_points(file.text(), file.print_cfg());
+let caret = file.selections().get_main().unwrap().caret();
+
+```rust
+    let (bytes, mut tags) = file.text_mut().bytes_and_tags();
+
+    let matches: Vec<_> = bytes.search_fwd(pat, start..end).unwrap().collect();
+
+    let id = form::id_of!("sneak.match");
+
+    let tagger = *TAGGER;
+    let mut next = None;
+    for (i, &[p0, p1]) in matches.iter().enumerate() {
+        if p0 > caret && next.is_none() {
+            next = Some(i);
+        }
+        tags.insert(tagger, p0..p1, id.to_tag(50));
+    }
+
+    let last = matches.len().checked_sub(1);
+    (matches, next.or(last))
+})
+```
+
+}
+
+\#[derive(Default, Clone)][__link3]
+enum Step {
+\#[default][__link4]
+Start,
+Filter(char),
+Matched(Vec\<[Point; 2][__link5]\>, usize),
+}
+
+```rust
+</details>
+
+In this example, I have created a [`Mode`] for [`File`]s. This
+mode is based on [`vim-sneak`], which is popular (I think) within
+Vim circles. It's like the `f` key in Vim, but it lets you look
 for a sequence of 2 characters, instead of just one, also letting
 you pick between matches ahead and behind on the screen.
 
-What’s great about it is that it will work no matter what editing
+What's great about it is that it will work no matter what editing
 model the user is using. It could be Vim inspired, Kakoune
-inspired, Emacs inspired, doesn’t matter. All the user has to do
+inspired, Emacs inspired, doesn't matter. All the user has to do
 to use this mode is this:
 
 ```rust
@@ -177,17 +187,17 @@ any other mode, from any other editing model, and this would still
 work.
 
 Of course, this is most useful for plugins, for your own
-configuration, you should probably just rely on [`map`][__link4] to
+configuration, you should probably just rely on [`map`][__link6] to
 accomplish the same thing.
 
 Okay, but that was a relatively simple example, here’s a more
 advanced example, which makes use of more of Duat’s features.
 
-This is a copy of [EasyMotion][__link5], a plugin for
+This is a copy of [EasyMotion][__link7], a plugin for
 Vim/Neovim/Kakoune/Emacs that lets you skip around the screen with
 at most 2 keypresses.
 
-In order to emulate it, we use [ghost text][__link6] and [concealment][__link7]:
+In order to emulate it, we use [ghost text][__link8] and [concealment][__link9]:
 
 ```rust
 use duat_core::{prelude::*, text::Point};
@@ -300,10 +310,10 @@ static LETTERS: &str = "abcdefghijklmnopqrstuvwxyz";
 All that this plugin is doing is:
 
 * Search on the screen for words/lines;
-* In the beginning of said words/lines, add a [`Ghost`][__link8];
-* Also add a [`Conceal`][__link9];
-* Then, just match the typed keys and [remove][__link10] tags accordingly;
-* [Move][__link11] to the matched sequence, if it exists;
+* In the beginning of said words/lines, add a [`Ghost`][__link10];
+* Also add a [`Conceal`][__link11];
+* Then, just match the typed keys and [remove][__link12] tags accordingly;
+* [Move][__link13] to the matched sequence, if it exists;
 
 Now, in order to use this mode, it’s the exact same thing as
 `Sneak`:
@@ -314,16 +324,18 @@ map::<Normal>("<CA-l>", EasyMotion::line());
 ```
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG4IA0U4o2v_nG0nShNh9mFPVGzI2Nk_cFKuWG3RsDqMmIUI5YXKEG3iZRkqif6hpG9721XxfHELdG9StpAm4nCL4G1hLfc0Ir397YWSBg2lkdWF0LWNvcmVlMC41LjFpZHVhdF9jb3Jl
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG4IA0U4o2v_nG0nShNh9mFPVGzI2Nk_cFKuWG3RsDqMmIUI5YXKEG6zS_EAlCaSvG9kCRq-UXjB3G89yzbl4RDwZGxkveRpyrBncYWSCgmdkZWZhdWx09oNpZHVhdC1jb3JlZTAuNS4xaWR1YXRfY29yZQ
  [__link0]: https://docs.rs/duat-core/0.5.1/duat_core/?search=ui::Ui
- [__link1]: https://docs.rs/duat-core/0.5.1/duat_core/?search=mode::Mode
- [__link10]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Text::remove_tags
- [__link11]: https://docs.rs/duat-core/0.5.1/duat_core/?search=mode::Cursor::move_to
- [__link2]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::File
- [__link3]: https://github.com/justinmk/vim-sneak
- [__link4]: https://docs.rs/duat/0.2.0/duat/prelude/fn.map.html
- [__link5]: https://github.com/easymotion/vim-easymotion
- [__link6]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Ghost
- [__link7]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Conceal
+ [__link1]: derive(Default, Clone)
+ [__link10]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Ghost
+ [__link11]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Conceal
+ [__link12]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Text::remove_tags
+ [__link13]: https://docs.rs/duat-core/0.5.1/duat_core/?search=mode::Cursor::move_to
+ [__link2]: Point; 2
+ [__link3]: derive(Default, Clone)
+ [__link4]: https://crates.io/crates/default
+ [__link5]: Point; 2
+ [__link6]: https://docs.rs/duat/0.2.0/duat/prelude/fn.map.html
+ [__link7]: https://github.com/easymotion/vim-easymotion
  [__link8]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Ghost
  [__link9]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Conceal

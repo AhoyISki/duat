@@ -9,6 +9,8 @@
 //! terms of `U: Ui`,  which means that they can work on various
 //! different interfaces:
 //!
+//! <details>
+//! <summary>A `vim-sneak` inspired plugin</summary>
 //! ```rust
 //! // I recommend pulling the prelude in plugins.
 //! use std::sync::LazyLock;
@@ -151,6 +153,7 @@
 //!     Matched(Vec<[Point; 2]>, usize),
 //! }
 //! ```
+//! </details>
 //!
 //! In this example, I have created a [`Mode`] for [`File`]s. This
 //! mode is based on [`vim-sneak`], which is popular (I think) within
