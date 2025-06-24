@@ -21,26 +21,6 @@ use duat_core::prelude::*;
 
 use crate::modes::PromptMode;
 
-impl<U: Ui> WidgetCfg<U> for PromptLineCfg<U> {
-    type Widget = PromptLine<U>;
-
-    fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
-        let specs = if hook::group_exists("HidePromptLine") {
-            self.specs.with_ver_len(0.0)
-        } else {
-            self.specs
-        };
-
-        let widget = PromptLine {
-            text: Text::default(),
-            prompts: HashMap::new(),
-            _ghost: PhantomData,
-        };
-
-        (widget, specs)
-    }
-}
-
 /// A multi purpose text [`Widget`]
 ///
 /// This [`Widget`] will be used by a [`Prompt`]-type [`Mode`], which
@@ -119,6 +99,26 @@ impl<U: Ui> Widget<U> for PromptLine<U> {
 
     fn once() -> Result<(), Text> {
         Ok(())
+    }
+}
+
+impl<U: Ui> WidgetCfg<U> for PromptLineCfg<U> {
+    type Widget = PromptLine<U>;
+
+    fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+        let specs = if hook::group_exists("HidePromptLine") {
+            self.specs.with_ver_len(0.0)
+        } else {
+            self.specs
+        };
+
+        let widget = PromptLine {
+            text: Text::default(),
+            prompts: HashMap::new(),
+            _ghost: PhantomData,
+        };
+
+        (widget, specs)
     }
 }
 

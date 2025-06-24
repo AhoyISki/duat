@@ -3,6 +3,15 @@
 //!
 //! # Quick Start
 //!
+//! This crate is composed of a few main modules, which will be used
+//! in order to extend Duat:
+//!
+//! - [`ui`]: Has everything to do with the interface of Duat, that
+//!   includes things like:
+//!   - [`Widget`]s: As the name implies, this is the trait for
+//!     objects that will show up on the screen. The most noteworthy
+//!     [`Widget`] is [`File`], which displays the contents of a file.
+//!
 //! The capabilities of `duat-core` are largely the same as the those
 //! of Duat, however, the main difference is the multi [`Ui`] APIs of
 //! this crate. In it, the public functions and types are defined in
@@ -221,6 +230,8 @@ pub mod cfg;
 pub mod cmd;
 pub mod context;
 pub mod data;
+#[doc(hidden)]
+pub mod doc_duat;
 pub mod file;
 pub mod form;
 pub mod hook;

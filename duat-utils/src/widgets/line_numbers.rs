@@ -128,28 +128,14 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
     }
 }
 
-/// How to show the line numbers on screen.
-#[derive(Default, Debug, Clone, Copy)]
-pub enum LineNum {
-    #[default]
-    /// Line numbers relative to the beginning of the file.
-    Abs,
-    /// Line numbers relative to the main selection's line, including
-    /// that line.
-    Rel,
-    /// Relative line numbers on every line, except the main
-    /// selection's.
-    RelAbs,
-}
-
 /// Configuration options for the [`LineNumbers`] widget.
 #[derive(Debug, Clone, Copy)]
 #[doc(hidden)]
 pub struct LineNumbersOptions<U> {
-    pub num_rel: LineNum = LineNum::Abs,
-    pub align: Alignment = Alignment::Left,
-    pub main_align: Alignment = Alignment::Right,
-    pub show_wraps: bool = false,
+    num_rel: LineNum = LineNum::Abs,
+    align: Alignment = Alignment::Left,
+    main_align: Alignment = Alignment::Right,
+    show_wraps: bool = false,
     specs: PushSpecs = PushSpecs::left(),
     _ghost: PhantomData<U> = PhantomData,
 }
@@ -265,4 +251,18 @@ fn align(b: &mut Builder, alignment: Alignment) {
         Alignment::Center => b.push(AlignCenter),
         Alignment::Right => b.push(AlignRight),
     }
+}
+
+/// How to show the line numbers on screen.
+#[derive(Default, Debug, Clone, Copy)]
+enum LineNum {
+    #[default]
+    /// Line numbers relative to the beginning of the file.
+    Abs,
+    /// Line numbers relative to the main selection's line, including
+    /// that line.
+    Rel,
+    /// Relative line numbers on every line, except the main
+    /// selection's.
+    RelAbs,
 }
