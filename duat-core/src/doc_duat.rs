@@ -102,16 +102,16 @@ pub mod prelude {
             FocusedOn, FormSet, KeysSent, KeysSentTo, ModeCreated, ModeSwitched, OnFileOpen,
             OnWindowOpen, SearchPerformed, SearchUpdated, UnfocusedFrom, WidgetCreated,
         },
+        doc_mode::{self, Mode, User, alias, map},
+        doc_print as print,
         doc_state::*,
+        doc_ui::*,
         doc_widgets::*,
-        doc_print as print
     };
-    use crate::doc_duat::doc_ui::Ui;
     pub use crate::{
         Plugin, clipboard, cmd, context,
         data::{self, Pass},
         form::{self, CursorShape, Form},
-        mode::{self, Mode, User, alias, map},
         text::{
             self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, Tagger,
             Text, txt,
@@ -209,7 +209,7 @@ mod doc_widgets {
         }
     }
 
-    pub macro status($text:literal $(,$args:expr)* $(,)?) {}
+    pub macro status($text:literal $(,$args:expr)* $(,)?) {{ StatusLineCfg::default() }}
     
     pub struct PromptLine<U: Ui>(Text, std::marker::PhantomData<U>);
     impl<U: Ui> PromptLine<U> {
@@ -512,4 +512,17 @@ pub mod doc_print {
         set_word_chars(w_chars!($($w_chars)+))
     }
     pub fn set_word_chars(_: crate::cfg::WordChars) {}
+}
+
+/// This is a Doc only module *DONT USE IT*
+#[rustfmt::skip]
+pub mod doc_mode {
+    pub use crate::mode::*;
+    use crate::{doc_duat::doc_ui::Ui, mode, ui::Widget};
+
+    pub fn set_default(mode: impl Mode<Ui>) { mode::set_default(mode); }
+    pub fn set(mode: impl Mode<Ui>) { mode::set(mode); }
+    pub fn reset<W: Widget<Ui>>() { mode::reset::<W, Ui>(); }
+    pub fn map<M: Mode<Ui>>(_: &str, _: impl AsGives<Ui>) {}
+    pub fn alias<M: Mode<Ui>>(_: &str, _: impl AsGives<Ui>) {}
 }
