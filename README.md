@@ -66,15 +66,14 @@ config it is just `kak`.
 ```rust
 setup_duat!(setup);
 use duat::prelude::*;
-use kak::{Insert, Normal};
 
 fn setup() {
     plug!(treesitter::TreeSitter::new(), kak::Kak::new(),);
-    map::<Insert>("jk", "<Esc>");
+    map::<kak::Insert>("jk", "<Esc>");
 
     print::wrap_on_edge();
 
-    hook::add::<LineNumbers<Ui>>(|pa, (line_nums, handle)| {
+    hook::add::<LineNumbers<Ui>>(|pa, (line_nums, _)| {
         line_nums.align_right().align_main_left()
     });
 
@@ -261,7 +260,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG098Iqh46FLTG-e7py1aLQbyG1v6xCbBzoHhG8gBAY2qSFl0YXKEG-fub0tkOW4rG9hSggLoXRtsGzt48wzqLXk5G4PU_frwqjPoYWSBgmRkdWF0ZTAuNS4y
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG098Iqh46FLTG-e7py1aLQbyG1v6xCbBzoHhG8gBAY2qSFl0YXKEG7JGwLP4EI5lGyowRYrMYm7xGzanIu2f_QxTG9Nao-ecQH6kYWSBgmRkdWF0ZTAuNS4y
  [__link0]: https://docs.rs/duat/0.5.2/duat/?search=prelude::plug
  [__link1]: https://docs.rs/duat/0.5.2/duat/?search=prelude::mode::set_default
  [__link10]: https://docs.rs/duat/0.5.2/duat/?search=prelude::PromptLine

@@ -93,11 +93,10 @@
 //! # }
 //! setup_duat!(setup);
 //! use duat::prelude::*;
-//! use kak::{Insert, Normal};
 //!
 //! fn setup() {
 //!     plug!(treesitter::TreeSitter::new(), kak::Kak::new(),);
-//!     map::<Insert>("jk", "<Esc>");
+//!     map::<kak::Insert>("jk", "<Esc>");
 //!
 //!     print::wrap_on_edge();
 //!
