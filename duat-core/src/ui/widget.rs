@@ -156,13 +156,15 @@ use crate::{
 /// triggered.
 ///
 /// ```rust
+/// # use duat_core::doc_duat as duat;
+/// setup_duat!(setup);
 /// use std::{sync::OnceLock, time::Instant};
 ///
-/// use duat_core::{hook::ConfigLoaded, prelude::*};
+/// use duat::prelude::*;
 ///
-/// fn setup_generic_over_ui<U: Ui>() {
+/// fn setup() {
 ///     static START_TIME: OnceLock<Instant> = OnceLock::new();
-///     hook::add::<ConfigLoaded, U>(|_, _| START_TIME.set(Instant::now()).unwrap());
+///     hook::add::<ConfigLoaded>(|_, _| START_TIME.set(Instant::now()).unwrap());
 /// }
 /// ```
 ///
@@ -315,33 +317,13 @@ pub trait Widget<U: Ui>: 'static {
     /// these in [hooks] like [`OnFileOpen`]:
     ///
     /// ```rust
-    /// # struct LineNumbers<U: Ui>(std::marker::PhantomData<U>);
-    /// # impl<U: Ui> Widget<U> for LineNumbers<U> {
-    /// #     type Cfg = LineNumbersOptions<U>;
-    /// #     fn update(_: &mut Pass, handle: Handle<Self, U>) { todo!() }
-    /// #     fn needs_update(&self) -> bool { todo!(); }
-    /// #     fn cfg() -> Self::Cfg { todo!() }
-    /// #     fn text(&self) -> &Text { todo!(); }
-    /// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
-    /// #     fn once() -> Result<(), Text> { Ok(()) }
-    /// # }
-    /// # struct LineNumbersOptions<U>(std::marker::PhantomData<U>);
-    /// # impl<U> LineNumbersOptions<U> {
-    /// #     pub fn align_right(self) -> Self { todo!(); }
-    /// #     pub fn align_main_left(self) -> Self { todo!(); }
-    /// #     pub fn on_the_right(self) -> Self { todo!(); }
-    /// # }
-    /// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
-    /// #     type Widget = LineNumbers<U>;
-    /// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
-    /// #         todo!();
-    /// #     }
-    /// # }
-    /// use duat_core::{hook::OnFileOpen, prelude::*};
+    /// # use duat_core::doc_duat as duat;
+    /// setup_duat!(setup);
+    /// use duat::prelude::*;
     ///
-    /// fn setup_generic_over_ui<U: Ui>() {
+    /// fn setup() {
     ///     hook::remove("FileWidgets");
-    ///     hook::add::<OnFileOpen<U>, U>(|pa, builder| {
+    ///     hook::add::<OnFileOpen>(|pa, builder| {
     ///         // Screw it, LineNumbers on both sides.
     ///         builder.push(pa, LineNumbers::cfg());
     ///         builder.push(pa, LineNumbers::cfg().on_the_right().align_right());
@@ -488,36 +470,12 @@ pub trait Widget<U: Ui>: 'static {
 /// direction it will be pushed:
 ///
 /// ```rust
-/// # struct LineNumbers<U: Ui> {
-/// #     _ghost: std::marker::PhantomData<U>,
-/// # }
-/// # impl<U: Ui> Widget<U> for LineNumbers<U> {
-/// #     type Cfg = LineNumbersOptions<U>;
-/// #     fn update(_: &mut Pass, handle: Handle<Self, U>) {}
-/// #     fn needs_update(&self) -> bool { todo!(); }
-/// #     fn cfg() -> Self::Cfg { todo!(); }
-/// #     fn text(&self) -> &Text { todo!(); }
-/// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
-/// #     fn once() -> Result<(), Text> { Ok(()) }
-/// # }
-/// # struct LineNumbersOptions<U> {
-/// #     _ghost: std::marker::PhantomData<U>,
-/// # }
-/// # impl<U> LineNumbersOptions<U> {
-/// #     pub fn align_right(self) -> Self { todo!(); }
-/// #     pub fn align_main_left(self) -> Self { todo!(); }
-/// #     pub fn on_the_right(self) -> Self { todo!(); }
-/// # }
-/// # impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
-/// #     type Widget = LineNumbers<U>;
-/// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
-/// #         todo!();
-/// #     }
-/// # }
-/// use duat_core::{hook::OnFileOpen, prelude::*};
+/// # use duat_core::doc_duat as duat;
+/// setup_duat!(setup);
+/// use duat::prelude::*;
 ///
-/// fn setup_generic_over_ui<U: Ui>() {
-///     hook::add::<OnFileOpen<U>, U>(|pa, builder| {
+/// fn setup() {
+///     hook::add::<OnFileOpen>(|pa, builder| {
 ///         // Change pushing direction to the right.
 ///         let cfg = LineNumbers::cfg().on_the_right();
 ///         // Changes to where the numbers will be placed.
