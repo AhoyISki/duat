@@ -101,7 +101,7 @@
 //!
 //!     print::wrap_on_edge();
 //!
-//!     hook::add::<LineNumbers<Ui>>(|pa, (line_nums, handle)| {
+//!     hook::add::<LineNumbers<Ui>>(|pa, (line_nums, _)| {
 //!         line_nums.align_right().align_main_left()
 //!     });
 //!
@@ -136,7 +136,8 @@
 //! - [Removes] the hook group "WindowWidgets";
 //! - Pushes a [custom status line] (with a [Spacer] for 2 separate
 //!   sides, and a reformatted [`mode_name`]), a [command line], and a
-//!   [notifications widget] to the bottom of the screen;
+//!   [notifications widget] to the bottom of the screen through a
+//!   [widget combo];
 //! - [Adds] hooks for [mode changes] in Duat;
 //! - [Changes](form::set) the [style] of the mode printed on the
 //!   status line;
@@ -303,6 +304,7 @@
 //! [`mode_name`]: prelude::mode_name
 //! [command line]: prelude::PromptLine
 //! [notifications widget]: prelude::Notifications
+//! [widget combo]: prelude::FooterWidgets
 //! [Adds]: prelude::hook::add
 //! [mode changes]: prelude::hook::ModeSwitched
 //! [style]: prelude::form::Form
