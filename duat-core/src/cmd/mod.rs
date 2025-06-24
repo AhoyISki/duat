@@ -99,42 +99,49 @@
 //! optional [`Parameter`].
 //!
 //! ```rust
-//! # fn setup_test() {
-//! use duat_core::{cmd::FormName, prelude::*};
+//! # use duat_core::doc_duat as duat;
+//! setup_duat!(setup);
+//! use duat::prelude::*;
 //!
-//! let callers = ["unset-form", "uf"];
-//! // A `Vec<T>` parameter will try to collect all
-//! // remaining arguments as `T` in a list.
-//! let result = cmd::add!(callers, |pa: &mut Pass, forms: Vec<FormName>| {
-//!     for form in forms.iter() {
-//!         form::set("form", Form::new());
-//!     }
-//!     // You can return a success message, but must
-//!     // return an error message.
-//!     // For those, you should use the `txt!` and `txt!`
-//!     // macros.
-//!     Ok(Some(txt!("Unset [a]{}[] forms", forms.len()).build()))
-//! });
+//! fn setup() {
+//!     let callers = ["unset-form", "uf"];
+//!     // A `Vec<T>` parameter will try to collect all
+//!     // remaining arguments as `T` in a list.
+//!     let result = cmd::add!(callers, |pa: &mut Pass, forms: Vec<cmd::FormName>| {
+//!         for form in forms.iter() {
+//!             form::set("form", Form::new());
+//!         }
+//!         // You can return a success message, but must
+//!         // return an error message.
+//!         // For those, you should use the `txt!` macro.
+//!         Ok(Some(txt!("Unset [a]{}[] forms", forms.len()).build()))
+//!     });
 //!
-//! // Adding a command can fail if a command with the same
-//! // name already exists.
-//! assert!(result.is_ok());
-//! # }
+//!     // Adding a command can fail if a command with the same
+//!     // name already exists.
+//!     assert!(result.is_ok());
+//! }
 //! ```
 //!
-//! In the command above, you'll notice that I used the [`txt!`]
-//! macro. This macro is used when you want to return a notification
-//! saying that the command succeeded. Its counterpart is the
-//! [`txt!`] macro. It represents failure in the execution of the
-//! command, and must be used.
+//! In the command above, you'll notice that [`Ok`] values return
+//! [`Option<Text>`]. This is because you may not care about
+//! announcing that the command succedeed. For the [`Err`] variant,
+//! however, the return value is just [`Text`], because you should say
+//! what went wrong in the command. Most of the time, this happens
+//! because of something out of your control, like a file not
+//! existing. In these cases, the `?` is enough to return an
+//! appropriate [`Text`].
 //!
 //! Duat commands also offer flags in the form of the [`Flags`]
 //! [`Parameter`]. These can make use of word flags (`--full-words`)
 //! and blob flags (`-singlechar`):
 //!
 //! ```rust
-//! # use std::sync::atomic::{AtomicU32, Ordering};
-//! use duat_core::prelude::*;
+//! # use duat_core::doc_duat as duat;
+//! setup_duat!(setup);
+//! use std::sync::atomic::{AtomicU32, Ordering};
+//!
+//! use duat::prelude::*;
 //!
 //! static EXPRESSION: AtomicU32 = AtomicU32::new('a' as u32);
 //!
@@ -175,7 +182,9 @@
 //! collects them into a single [`String`].
 //!
 //! ```rust
-//! use duat_core::prelude::*;
+//! # use duat_core::doc_duat as duat;
+//! setup_duat!(setup);
+//! use duat::prelude::*;
 //!
 //! fn setup() {
 //!     cmd::add!("pip", |_pa, args: cmd::Remainder| {
@@ -688,32 +697,15 @@ mod global {
     ///
     /// # Examples
     ///
-    /// ```rust
-    /// # struct StatusLine<U: Ui>(std::marker::PhantomData<U>);
-    /// # impl<U: Ui> Widget<U> for StatusLine<U> {
-    /// #     type Cfg = StatusLineOptions<U>;
-    /// #     fn update(_: &mut Pass, _: Handle<StatusLine<U>, U>) {}
-    /// #     fn needs_update(&self) -> bool { todo!(); }
-    /// #     fn cfg() -> Self::Cfg { todo!() }
-    /// #     fn text(&self) -> &Text { todo!(); }
-    /// #     fn text_mut(&mut self) -> &mut Text { todo!(); }
-    /// #     fn once() -> Result<(), Text> { Ok(()) }
-    /// # }
-    /// # struct StatusLineOptions<U>(std::marker::PhantomData<U>);
-    /// # impl<U> StatusLineOptions<U> {
-    /// #     pub fn rel_abs(self) -> Self { todo!(); }
-    /// # }
-    /// # impl<U: Ui> WidgetCfg<U> for StatusLineOptions<U> {
-    /// #     type Widget = StatusLine<U>;
-    /// #     fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
-    /// #         todo!();
-    /// #     }
-    /// # }
-    /// # macro_rules! status { ($str:literal) => { StatusLine::cfg() } }
-    /// use duat_core::{data::RwData, hook::OnWindowOpen, prelude::*};
+    /// In the config crate:
     ///
-    /// fn setup_generic_over_ui<U: Ui>() {
-    ///     let var = RwData::new(35);
+    /// ```rust
+    /// # use duat_core::doc_duat as duat;
+    /// setup_duat!(setup);
+    /// use duat::prelude::*;
+    ///
+    /// fn setup() {
+    ///     let var = data::RwData::new(35);
     ///
     ///     let var_clone = var.clone();
     ///     cmd::add!("set-var", |pa: &mut Pass, value: usize| {
@@ -721,7 +713,7 @@ mod global {
     ///         Ok(None)
     ///     });
     ///
-    ///     hook::add::<OnWindowOpen<U>, U>(move |mut pa, builder| {
+    ///     hook::add::<OnWindowOpen>(move |mut pa, builder| {
     ///         // status! macro is from duat-utils.
     ///         builder.push(&mut pa, status!("The value is currently {var}"));
     ///     });
