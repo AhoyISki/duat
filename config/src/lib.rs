@@ -58,35 +58,18 @@ fn setup() {
             None => txt!("[mode]{}", mode.to_uppercase()).build(),
         });
 
-        // Uncomment this and comment the rest for one line
-        // StatusLine PromptLine combo
-        // let (child, _) = builder.push(
-        //     pa, 
-        //     status!("{AlignRight}{file_fmt} {mode} {sels_fmt} {main_fmt}")
-        // );
-        // let (child, _) = builder.push_to(
-        //     pa,
-        //     child,
-        //     PromptLine::cfg().left_ratioed(4, 7)
-        // );
-        // builder.push_to(pa, child, Notifications::cfg());
-        // form::set("default.Notifications", "default.StatusLine");
-        // form::set("default.PromptLine", "default.StatusLine");
- 
-        // Pushes a StatusLine to the bottom
-        // // Square bracket pairs change the Form of text.
+        // Pushes a StatusLine, PromptLine, and Notifications combo to the
+        // bottom
+        // Square bracket pairs change the Form of text.
         builder.push(
             pa,
-            status!("[mode]{mode}{Spacer}{file_fmt} {sels_fmt} {main_fmt}"),
+            FooterWidgets::new(status!(
+                "[mode]{mode}{Spacer}{file_fmt} {sels_fmt} {main_fmt}"
+            )),
+            // FooterWidgets also has the `one_line` method, if you want a one line combo,
+            // instead of the usual two. Uncomment this for that
+            // FooterWidgets::default().one_line()
         );
-        // Pushes a PromptLine to the bottom
-        let (child, _) = builder.push(pa, PromptLine::cfg());
-        // By pushing this Notifications to the `child`, Duat will create a
-        // parent that owns only the PromptLine and Notifier widgets.
-        // With that, you can tell an Area to occupy the whole parent, "hiding
-        // other sibling Areas. That's done in the "HidePromptLine" hook, for
-        // example.
-        builder.push_to(pa, child, Notifications::cfg());
     });
     // // See what happens when you uncomment this hook removal:
     // hook::remove("HidePromptLine");
@@ -99,7 +82,7 @@ fn setup() {
     // Aliases show up on the screen as if they were text.
     alias::<Insert>("jk", "<Esc>");
     // // You may see them by uncommenting this line:
-    // form::set("Alias", Form::red());
+    // form::set("alias", Form::red());
 
     form::set_colorscheme("catppuccin-mocha");
 }

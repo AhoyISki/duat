@@ -63,9 +63,7 @@
 //! # mod treesitter {
 //! #     pub struct TreeSitter;
 //! #     impl duat_core::Plugin<duat::Ui> for TreeSitter {
-//! #         fn new() -> Self {
-//! #             Self
-//! #         }
+//! #         fn new() -> Self { Self }
 //! #         fn plug(self) {}
 //! #     }
 //! # }
@@ -89,9 +87,7 @@
 //! #     }
 //! #     pub struct Kak;
 //! #     impl duat_core::Plugin<Ui> for Kak {
-//! #         fn new() -> Self {
-//! #             Self
-//! #         }
+//! #         fn new() -> Self { Self }
 //! #         fn plug(self) {}
 //! #     }
 //! # }
@@ -100,7 +96,7 @@
 //! use kak::{Insert, Normal};
 //!
 //! fn setup() {
-//!     plug!(treesitter::TreeSitter::new(), kak::Kak::new());
+//!     plug!(treesitter::TreeSitter::new(), kak::Kak::new(),);
 //!     map::<Insert>("jk", "<Esc>");
 //!
 //!     print::wrap_on_edge();
@@ -117,9 +113,7 @@
 //!         });
 //!         let status_line = status!("[Mode]{upper_mode}{Spacer}{file_fmt} {sels_fmt} {main_fmt}");
 //!
-//!         builder.push(pa, status_line);
-//!         let (child, _) = builder.push(pa, PromptLine::cfg());
-//!         builder.push_to(pa, child, Notifications::cfg());
+//!         builder.push(pa, FooterWidgets::new(status_line));
 //!     });
 //!
 //!     hook::add::<ModeSwitched>(|_, (_, new)| match new {
@@ -872,7 +866,7 @@ pub mod prelude {
             FormSet, KeysSent, KeysSentTo, ModeCreated, ModeSwitched, OnFileOpen, OnWindowOpen,
             SearchPerformed, SearchUpdated, UnfocusedFrom, WidgetCreated,
         },
-        mode::{self, Mode, alias, map, User},
+        mode::{self, Mode, User, alias, map},
         print, setup_duat,
         state::*,
         widgets::*,

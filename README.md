@@ -69,7 +69,7 @@ use duat::prelude::*;
 use kak::{Insert, Normal};
 
 fn setup() {
-    plug!(treesitter::TreeSitter::new(), kak::Kak::new());
+    plug!(treesitter::TreeSitter::new(), kak::Kak::new(),);
     map::<Insert>("jk", "<Esc>");
 
     print::wrap_on_edge();
@@ -86,9 +86,7 @@ fn setup() {
         });
         let status_line = status!("[Mode]{upper_mode}{Spacer}{file_fmt} {sels_fmt} {main_fmt}");
 
-        builder.push(pa, status_line);
-        let (child, _) = builder.push(pa, PromptLine::cfg());
-        builder.push_to(pa, child, Notifications::cfg());
+        builder.push(pa, FooterWidgets::new(status_line));
     });
 
     hook::add::<ModeSwitched>(|_, (_, new)| match new {
@@ -262,7 +260,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG098Iqh46FLTG-e7py1aLQbyG1v6xCbBzoHhG8gBAY2qSFl0YXKEG4inAGxYQdgPG-6twQ9olMGYG2t9ccVbXNVwG5vbhxN1JJB9YWSBgmRkdWF0ZTAuNS4y
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG098Iqh46FLTG-e7py1aLQbyG1v6xCbBzoHhG8gBAY2qSFl0YXKEG0P0zYQJ_-sBG7vpz4l99AejG4Qf-eW0ffxDGwd-Hi8kQNhVYWSBgmRkdWF0ZTAuNS4y
  [__link0]: https://docs.rs/duat/0.5.2/duat/?search=prelude::plug
  [__link1]: https://docs.rs/duat/0.5.2/duat/?search=prelude::mode::set_default
  [__link10]: https://docs.rs/duat/0.5.2/duat/?search=prelude::PromptLine
