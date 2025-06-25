@@ -96,7 +96,7 @@
 //! ## Creating a [`Plugin`]
 //!
 //! First of all, you're going to need [`cargo`], with it, you're
-//! gonna need to create a crate:
+//! will create a crate:
 //!
 //! ```bash
 //! cargo init --lib duat-word-count
