@@ -276,9 +276,10 @@ use duat_core::{
 use duat_utils::{
     hooks::SearchPerformed,
     modes::{
-        ExtendFwd, ExtendRev, IncSearch, IncSearcher, PipeSelections, RunCommands, SearchFwd,
-        SearchRev,
+        ExtendFwd, ExtendRev, IncSearch, IncSearcher, Pager, PipeSelections, RunCommands,
+        SearchFwd, SearchRev,
     },
+    widgets::LogBook,
 };
 use treesitter::TsCursor;
 
@@ -318,12 +319,14 @@ impl<U: Ui> Plugin<U> for Kak<U> {
     }
 
     fn plug(self) {
+        mode::set_alt_is_reverse(true);
         duat_core::mode::set_default::<Normal, U>(Normal::new());
         INSERT_TABS.store(self.insert_tabs, Ordering::Relaxed);
 
-        hook::add::<SearchPerformed>(|_, search| {
+        hook::add::<SearchPerformed, U>(|_, search| {
             *SEARCH.lock().unwrap() = search.to_string();
         });
+
 
         if self.set_cursor_forms {
             form::enable_mask("Insert");
@@ -437,6 +440,8 @@ impl<U: Ui> Mode<U> for Normal {
                 set_anchor_if_needed(key.modifiers.contains(Mod::SHIFT), &mut c);
                 c.move_ver_wrapped(-1);
             }),
+            key!(Down, Mod::ALT) => handle.scroll_ver(pa, 1),
+            key!(Up, Mod::ALT) => handle.scroll_ver(pa, -1),
             key!(Char('l' | 'L') | Right, Mod::NONE | Mod::SHIFT) => {
                 handle.edit_all(pa, |mut c| {
                     let set_anchor = key.code == Char('L') || key.modifiers == Mod::SHIFT;
@@ -1005,16 +1010,7 @@ impl<U: Ui> Mode<U> for Normal {
                 });
             }
 
-            ////////// Other mode changing keys
-            key!(Char(':')) => mode::set::<U>(RunCommands::new()),
-            key!(Char('|')) => {
-                handle.new_moment(pa);
-                mode::set::<U>(PipeSelections::new())
-            }
-            key!(Char('G')) => mode::set::<U>(OneKey::GoTo(SelType::Extend)),
-            key!(Char('g')) => mode::set::<U>(OneKey::GoTo(SelType::Normal)),
-
-            ////////// Search methods
+            ////////// Search keys
             key!(Char('/')) => mode::set::<U>(IncSearch::new(SearchFwd)),
             key!(Char('/'), Mod::ALT) => mode::set::<U>(IncSearch::new(SearchRev)),
             key!(Char('?')) => mode::set::<U>(IncSearch::new(ExtendFwd)),
@@ -1047,6 +1043,16 @@ impl<U: Ui> Mode<U> for Normal {
                     }
                 });
             }
+
+            ////////// Other mode changing keys
+            key!(Char(':')) => mode::set::<U>(RunCommands::new()),
+            key!(Char('|')) => {
+                handle.new_moment(pa);
+                mode::set::<U>(PipeSelections::new())
+            }
+            key!(Char('G')) => mode::set::<U>(OneKey::GoTo(SelType::Extend)),
+            key!(Char('g')) => mode::set::<U>(OneKey::GoTo(SelType::Normal)),
+            key!(Char(' ')) => mode::set::<U>(mode::User),
 
             ////////// History manipulation
             key!(Char('u')) => handle.undo(pa),
@@ -1319,9 +1325,10 @@ fn match_goto<S, U: Ui>(
             let cur_name = handle.read(pa, |file, _| file.name());
             let last_file = LAST_FILE.lock().unwrap().clone();
             if let Some(last_file) = last_file {
-                cmd::queue_and(format!("b {last_file}"), |res| match res {
-                    Ok(_) => *LAST_FILE.lock().unwrap() = Some(cur_name),
-                    Err(err) => context::error!("{err}"),
+                cmd::queue_notify_and(format!("b {last_file}"), |res| {
+                    if res.is_ok() {
+                        *LAST_FILE.lock().unwrap() = Some(cur_name)
+                    }
                 })
             } else {
                 context::error!("There is no previous file");
@@ -1329,16 +1336,18 @@ fn match_goto<S, U: Ui>(
         }
         key!(Char('n')) => {
             let cur_name = handle.read(pa, |file, _| file.name());
-            cmd::queue_and("next-file --global", |res| match res {
-                Ok(_) => *LAST_FILE.lock().unwrap() = Some(cur_name),
-                Err(err) => context::error!("{err}"),
+            cmd::queue_notify_and("next-file --global", |res| {
+                if res.is_ok() {
+                    *LAST_FILE.lock().unwrap() = Some(cur_name)
+                }
             })
         }
         key!(Char('N')) => {
             let cur_name = handle.read(pa, |file, _| file.name());
-            cmd::queue_and("prev-file --global", |res| match res {
-                Ok(_) => *LAST_FILE.lock().unwrap() = Some(cur_name),
-                Err(err) => context::warn!("{err}"),
+            cmd::queue_notify_and("prev-file --global", |res| {
+                if res.is_ok() {
+                    *LAST_FILE.lock().unwrap() = Some(cur_name)
+                }
             })
         }
         Event { code, .. } => {
