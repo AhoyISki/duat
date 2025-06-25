@@ -63,7 +63,6 @@
 //! # mod treesitter {
 //! #     pub struct TreeSitter;
 //! #     impl duat_core::Plugin<duat::Ui> for TreeSitter {
-//! #         fn new() -> Self { Self }
 //! #         fn plug(self) {}
 //! #     }
 //! # }
@@ -86,8 +85,10 @@
 //! #         }
 //! #     }
 //! #     pub struct Kak;
+//! #     impl Kak {
+//! #         pub fn new() -> Self { Self }
+//! #     }
 //! #     impl duat_core::Plugin<Ui> for Kak {
-//! #         fn new() -> Self { Self }
 //! #         fn plug(self) {}
 //! #     }
 //! # }
@@ -95,7 +96,7 @@
 //! use duat::prelude::*;
 //!
 //! fn setup() {
-//!     plug!(treesitter::TreeSitter::new(), kak::Kak::new(),);
+//!     plug!(treesitter::TreeSitter, kak::Kak::new(),);
 //!     map::<kak::Insert>("jk", "<Esc>");
 //!
 //!     print::wrap_on_edge();
@@ -616,10 +617,10 @@ pub mod hook {
     /// #         pub fn f_and_t_set_search(self) -> Self { todo!() }
     /// #     }
     /// #     pub struct Kak;
+    /// #     impl Kak {
+    /// #         pub fn new() -> Self { Self }
+    /// #     }
     /// #     impl duat_core::Plugin<Ui> for Kak {
-    /// #         fn new() -> Self {
-    /// #             Self
-    /// #         }
     /// #         fn plug(self) {}
     /// #     }
     /// # }
@@ -886,6 +887,11 @@ pub mod prelude {
     /// }
     ///
     /// impl MyPlugin {
+    ///     pub fn new() -> Self {
+    ///         // ...
+    ///         # todo!();
+    ///     }
+    ///
     ///     pub fn modify1(self, parameter: bool) -> Self {
     ///         // ...
     ///         # todo!();
@@ -898,11 +904,6 @@ pub mod prelude {
     /// }
     ///
     /// impl<U: Ui> Plugin<U> for MyPlugin {
-    ///     fn new() -> Self {
-    ///         // ...
-    ///         # todo!();
-    ///     }
-    ///
     ///     fn plug(self) {
     ///         // Finally applies the plugin, after all alterations
     ///     }

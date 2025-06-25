@@ -43,7 +43,6 @@
 //! #     #[derive(Clone, Copy)]
 //! #     pub struct MyCoolPlugin;
 //! #     impl<U: Ui> Plugin<U> for MyCoolPlugin {
-//! #         fn new() -> Self { Self }
 //! #         fn plug(self) {}
 //! #     }
 //! # }
@@ -67,7 +66,6 @@
 //! #     #[derive(Clone, Copy)]
 //! #     pub struct MyCoolPlugin;
 //! #     impl<U: Ui> Plugin<U> for MyCoolPlugin {
-//! #         fn new() -> Self { Self }
 //! #         fn plug(self) {}
 //! #     }
 //! # }
@@ -93,7 +91,7 @@
 //! example.
 //!
 //! [`Plugin`]: super::Plugin
-//! [`VertRule`]:
+//! [`VertRule`]: https://docs.rs/duat-term/latest/duat_term/struct.VertRule.html
 
 /// This is a Doc only module *DONT USE IT*
 pub mod prelude {

@@ -489,7 +489,7 @@ impl<U: Ui> BytesDataMap<U> {
     ///
     /// If you are looking at this method from the context of
     /// [`Reader::apply_changes`], you probably actually want to use
-    /// [`BytesDataMap::read_and_write_reader`], since it is far more
+    /// [`BytesDataMap::write_with_reader`], since it is far more
     /// compatible with that usecase.
     ///
     /// # Panics

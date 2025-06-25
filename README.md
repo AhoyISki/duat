@@ -68,7 +68,7 @@ setup_duat!(setup);
 use duat::prelude::*;
 
 fn setup() {
-    plug!(treesitter::TreeSitter::new(), kak::Kak::new(),);
+    plug!(treesitter::TreeSitter, kak::Kak::new(),);
     map::<kak::Insert>("jk", "<Esc>");
 
     print::wrap_on_edge();
@@ -260,35 +260,35 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG098Iqh46FLTG-e7py1aLQbyG1v6xCbBzoHhG8gBAY2qSFl0YXKEG7JGwLP4EI5lGyowRYrMYm7xGzanIu2f_QxTG9Nao-ecQH6kYWSBgmRkdWF0ZTAuNS4y
- [__link0]: https://docs.rs/duat/0.5.2/duat/?search=prelude::plug
- [__link1]: https://docs.rs/duat/0.5.2/duat/?search=prelude::mode::set_default
- [__link10]: https://docs.rs/duat/0.5.2/duat/?search=prelude::PromptLine
- [__link11]: https://docs.rs/duat/0.5.2/duat/?search=prelude::Notifications
- [__link12]: https://docs.rs/duat/0.5.2/duat/?search=prelude::FooterWidgets
- [__link13]: https://docs.rs/duat/0.5.2/duat/?search=prelude::hook::add
- [__link14]: https://docs.rs/duat/0.5.2/duat/?search=prelude::hook::ModeSwitched
- [__link15]: https://docs.rs/duat/0.5.2/duat/?search=form::set
- [__link16]: https://docs.rs/duat/0.5.2/duat/?search=prelude::form::Form
- [__link17]: https://docs.rs/duat/0.5.2/duat/?search=prelude::text::txt
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG098Iqh46FLTG-e7py1aLQbyG1v6xCbBzoHhG8gBAY2qSFl0YXKEGwOgWiGu11cvG8101LNCKKpwGzMOxCxKiRPXG51kgCybT_6XYWSBgmRkdWF0ZTAuNS4z
+ [__link0]: https://docs.rs/duat/0.5.3/duat/?search=prelude::plug
+ [__link1]: https://docs.rs/duat/0.5.3/duat/?search=prelude::mode::set_default
+ [__link10]: https://docs.rs/duat/0.5.3/duat/?search=prelude::PromptLine
+ [__link11]: https://docs.rs/duat/0.5.3/duat/?search=prelude::Notifications
+ [__link12]: https://docs.rs/duat/0.5.3/duat/?search=prelude::FooterWidgets
+ [__link13]: https://docs.rs/duat/0.5.3/duat/?search=prelude::hook::add
+ [__link14]: https://docs.rs/duat/0.5.3/duat/?search=prelude::hook::ModeSwitched
+ [__link15]: https://docs.rs/duat/0.5.3/duat/?search=form::set
+ [__link16]: https://docs.rs/duat/0.5.3/duat/?search=prelude::form::Form
+ [__link17]: https://docs.rs/duat/0.5.3/duat/?search=prelude::text::txt
  [__link18]: https://doc.rust-lang.org/stable/std/macro.println.html
- [__link19]: https://docs.rs/duat/0.5.2/duat/?search=prelude::status
- [__link2]: https://docs.rs/duat/0.5.2/duat/?search=prelude::map
- [__link20]: https://docs.rs/duat/0.5.2/duat/?search=prelude::LineNum
- [__link21]: https://docs.rs/duat/0.5.2/duat/?search=prelude::LineNumbers
+ [__link19]: https://docs.rs/duat/0.5.3/duat/?search=prelude::status
+ [__link2]: https://docs.rs/duat/0.5.3/duat/?search=prelude::map
+ [__link20]: https://docs.rs/duat/0.5.3/duat/?search=prelude::LineNum
+ [__link21]: https://docs.rs/duat/0.5.3/duat/?search=prelude::LineNumbers
  [__link22]: https://github.com/AhoyISki/duat-kak
  [__link23]: https://github.com/mawww/kakoune
  [__link24]: https://github.com/AhoyISki/duat-catppuccin
  [__link25]: https://catppuccin.com
- [__link26]: https://docs.rs/duat/0.5.2/duat/?search=prelude::Form
+ [__link26]: https://docs.rs/duat/0.5.3/duat/?search=prelude::Form
  [__link27]: https://github.com/AhoyISki/duat-treesitter
  [__link28]: https://tree-sitter.github.io/tree-sitter
- [__link29]: https://docs.rs/duat/0.5.2/duat/?search=prelude::plug
- [__link3]: https://docs.rs/duat/0.5.2/duat/?search=prelude::print::wrap_on_edge
+ [__link29]: https://docs.rs/duat/0.5.3/duat/?search=prelude::plug
+ [__link3]: https://docs.rs/duat/0.5.3/duat/?search=prelude::print::wrap_on_edge
  [__link30]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
- [__link4]: https://docs.rs/duat/0.5.2/duat/?search=prelude::LineNumbers
- [__link5]: https://docs.rs/duat/0.5.2/duat/?search=prelude::Widget
- [__link6]: https://docs.rs/duat/0.5.2/duat/?search=prelude::hook::remove
- [__link7]: https://docs.rs/duat/0.5.2/duat/?search=prelude::status
- [__link8]: https://docs.rs/duat/0.5.2/duat/?search=prelude::Spacer
- [__link9]: https://docs.rs/duat/0.5.2/duat/?search=prelude::mode_name
+ [__link4]: https://docs.rs/duat/0.5.3/duat/?search=prelude::LineNumbers
+ [__link5]: https://docs.rs/duat/0.5.3/duat/?search=prelude::Widget
+ [__link6]: https://docs.rs/duat/0.5.3/duat/?search=prelude::hook::remove
+ [__link7]: https://docs.rs/duat/0.5.3/duat/?search=prelude::status
+ [__link8]: https://docs.rs/duat/0.5.3/duat/?search=prelude::Spacer
+ [__link9]: https://docs.rs/duat/0.5.3/duat/?search=prelude::mode_name

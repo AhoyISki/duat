@@ -120,10 +120,6 @@
 //! pub struct WordCount;
 //!
 //! impl<U: Ui> Plugin<U> for WordCount {
-//!     fn new() -> Self {
-//!         WordCount
-//!     }
-//!
 //!     fn plug(self) {
 //!         todo!();
 //!     }
@@ -144,6 +140,11 @@
 //! pub struct WordCount(bool);
 //!
 //! impl WordCount {
+//!     /// Returns a new instance of the [`WordCount`] plugin
+//!     pub fn new() -> Self {
+//!         WordCount(false)
+//!     }
+//!
 //!     /// Count everything that isn't whitespace as a word character
 //!     pub fn not_whitespace(self) -> Self {
 //!         WordCount(true)
@@ -151,10 +152,6 @@
 //! }
 //!
 //! impl<U: Ui> Plugin<U> for WordCount {
-//!     fn new() -> Self {
-//!         WordCount(false)
-//!     }
-//!
 //!     fn plug(self) {
 //!         todo!();
 //!     }
@@ -388,6 +385,11 @@
 //! pub struct WordCount(bool);
 //!
 //! impl WordCount {
+//! 	/// Returns a new instance of the [`WordCount`] plugin
+//!     pub fn new() -> Self {
+//!         WordCount(false)
+//!     }
+//!
 //!     /// Count everything that isn't whitespace as a word character
 //!     pub fn not_whitespace(self) -> Self {
 //!         WordCount(true)
@@ -395,10 +397,6 @@
 //! }
 //!
 //! impl<U: Ui> Plugin<U> for WordCount {
-//!     fn new() -> Self {
-//!         WordCount(false)
-//!     }
-//!
 //!     fn plug(self) {
 //!         let not_whitespace = self.0;
 //!         
@@ -474,6 +472,11 @@
 //! pub struct WordCount(bool);
 //!
 //! impl WordCount {
+//!     /// Returns a new instance of [`WordCount`]
+//!     pub fn new() -> Self {
+//!         WordCount(false)
+//!     }
+//!
 //!     /// Count everything that isn't whitespace as a word character
 //!     pub fn not_whitespace(self) -> Self {
 //!         WordCount(true)
@@ -481,10 +484,6 @@
 //! }
 //!
 //! impl<U: Ui> Plugin<U> for WordCount {
-//!     fn new() -> Self {
-//!         WordCount(false)
-//!     }
-//!
 //!     fn plug(self) {
 //!         let not_whitespace = self.0;
 //!
@@ -587,13 +586,13 @@
 //!
 //! ```rust
 //! # mod word_count {
-//! #     use duat_core::prelude::*; 
-//! #     pub struct WordCount;
+//! #     use duat_core::prelude::*;
+//! #     pub struct WordCount(bool);
 //! #     impl WordCount {
+//! #         pub fn new() -> Self { WordCount(false) }
 //! #         pub fn not_whitespace(self) -> Self { WordCount(true) }
 //! #     }
 //! #     impl<U: Ui> Plugin<U> for WordCount {
-//! #         fn new() -> Self { WordCount }
 //! #         fn plug(self) { todo!(); }
 //! #     }
 //! # };
@@ -604,7 +603,7 @@
 //!
 //! fn setup() {
 //!     plug!(WordCount::new().not_whitespace());
-//!     
+//!
 //!     hook::add::<StatusLine<Ui>>(|pa, (sl, _)| {
 //!         sl.replace(status!(
 //!             "{file_fmt} has [wc]{file_words}[] words{Spacer}{mode_fmt} {sels_fmt} {main_fmt}"
@@ -651,6 +650,7 @@
 //! [`cargo`]: https://doc.rust-lang.org/book/ch01-01-installation.html
 //! [builder pattern]: https://rust-unofficial.github.io/patterns/patterns/creational/builder.html
 //! [`Reader`]: crate::file::Reader
+//! [`ReaderCfg`]: crate::file::ReaderCfg
 //! [`Moment`]: crate::text::Moment
 //! [`Change`]: crate::text::Change
 //! [`Reader::apply_changes`]: crate::file::Reader::apply_changes
@@ -672,7 +672,9 @@
 //! [installed duat]: https://github.com/AhoyISki/duat?tab=readme-ov-file#getting-started
 //! [dependencies]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
 //! [`StatusLine`]: https://docs.rs/duat/latest/duat/prelude/macro.status.html
-//! [commands]: cmd
+//! [commands]: crate::cmd
+//! [`BytesDataMap::write_with_reader`]: crate::file::BytesDataMap::write_with_reader
+//! [`RwData<Self>`]: crate::data::RwData
 #![feature(
     decl_macro,
     step_trait,
@@ -728,24 +730,25 @@ pub mod ui;
 ///
 /// [`Plugin`] will usually be [plugged] by a `macro` in the Duat
 /// config crate. This macro requires that the [`Plugin`] be
-/// compatible with the [`Ui`]. And this can cause some inconvenience
-/// for the end user. For example, say we have a plugin like this:
+/// compatible with the [`Ui`]:
 ///
 /// ```rust
 /// # use duat_core::{Plugin, ui::Ui};
-/// struct MyPlugin;
+/// struct MyPlugin(bool);
 ///
 /// impl<U: Ui> Plugin<U> for MyPlugin {
-///     fn new() -> Self {
-///         MyPlugin
-///     }
-///
 ///     fn plug(self) {
 ///         //..
 ///     }
 /// }
 ///
 /// impl MyPlugin {
+///     /// Returns a new instance of the [`MyPlugin`] plugin
+///     pub fn new() -> Self {
+///         Self(false)
+///     }
+///
+///     /// Modifies [`MyPlugin`]
 ///     pub fn modify(self) -> Self {
 ///         //..
 /// #       self
@@ -753,81 +756,12 @@ pub mod ui;
 /// }
 /// ```
 ///
-/// In the config crate, the user would have to add the plugin in a
-/// really awkward way:
+/// In this case, this [`Plugin`] is compatible with every possible
+/// [`Ui`].
 ///
-/// ```rust
-/// # use duat_core::Plugin;
-/// # macro_rules! plug {
-/// #     ($($plug:expr),+) => {};
-/// # }
-/// # struct MyPlugin;
-/// # impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for MyPlugin {
-/// #     fn new() -> Self {
-/// #         MyPlugin
-/// #     }
-/// #     fn plug(self) {}
-/// # }
-/// # fn test<Ui: duat_core::ui::Ui>() {
-/// plug!(<MyPlugin as Plugin<Ui>>::new().modify());
-/// # }
-/// ```
-///
-/// To prevent that, just add a [`Ui`] [`PhantomData`] parameter:
-///
-/// ```rust
-/// # use std::marker::PhantomData;
-/// # use duat_core::{Plugin, ui::Ui};
-/// struct MyPlugin<U>(PhantomData<U>);
-///
-/// impl<U: Ui> Plugin<U> for MyPlugin<U> {
-///     fn new() -> Self {
-///         MyPlugin(PhantomData)
-///     }
-///
-///     fn plug(self) {
-///         //..
-///     }
-/// }
-///
-/// impl<U> MyPlugin<U> {
-///     pub fn modify(self) -> Self {
-///         //..
-/// #       self
-///     }
-/// }
-/// ```
-/// And now the plugin can be plugged much more normally:
-///
-///
-/// ```rust
-/// # use std::marker::PhantomData;
-/// # use duat_core::Plugin;
-/// # macro_rules! plug {
-/// #     ($($plug:expr),+) => {};
-/// # }
-/// # struct MyPlugin<U>(PhantomData<U>);
-/// # impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for MyPlugin<U> {
-/// #     fn new() -> Self {
-/// #         MyPlugin(PhantomData)
-/// #     }
-/// #     fn plug(self) {}
-/// # }
-/// # impl<U> MyPlugin<U> {
-/// #     pub fn modify(self) -> Self {
-/// #         self
-/// #     }
-/// # }
-/// # fn test<Ui: duat_core::ui::Ui>() {
-/// plug!(MyPlugin::new().modify());
-/// # }
-/// ```
 /// [plugged]: Plugin::plug
 /// [`PhantomData`]: std::marker::PhantomData
 pub trait Plugin<U: Ui>: Sized {
-    /// Returns a builder pattern instance of this [`Plugin`]
-    fn new() -> Self;
-
     /// Sets up the [`Plugin`]
     fn plug(self);
 }
