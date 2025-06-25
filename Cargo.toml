@@ -1,6 +1,6 @@
 [package]
 name = "duat-kak"
-version = "0.5.1"
+version = "0.5.2"
 authors = ["AhoyISki"]
 description = "A Kakoune inspired editing mode for Parsec"
 repository = "https://github.com/AhoyISki/duat/tree/master/duat-kak"

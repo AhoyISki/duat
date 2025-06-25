@@ -6,9 +6,18 @@
 //! The plugin currently has 2 options: `insert_tabs` and
 //! `set_cursor_forms`. `insert_tabs` will make the `Tab` key insert a
 //! `\t` character, instead of an appropriate amount of spaces.
-//! `set_cursor_forms` will create a hook to set the `MainCursor`,
-//! `ExtraCursor`, `MainSelection` and `ExtraSelection` forms to mode
-//! specific varieties, c.g. `MainCursorInsert`.
+//! `set_cursor_forms` will create a hook to set the `caret.main.`
+//! and `caret.extra` forms to mode specific variants, c.g.
+//! `caret.main.Insert`.
+//!
+//! # Installation
+//!
+//! Just like other Duat plugins, this one can be installed by calling
+//! `cargo add` in the config directory:
+//!
+//! ```bash
+//! cargo add duat-kak@"*" --rename kak
+//! ```
 //!
 //! # Keymaps
 //!
@@ -256,11 +265,12 @@
 //! [`Cursor`]: duat_core::mode::Cursor
 //! [Undoes]: duat_core::text::Text::undo
 //! [Redoes]: duat_core::text::Text::redo
+//! [`File`]: duat_core::file::File
+//! [`Cargo.toml`'s `dependencies` section]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
 #![feature(iter_map_windows, if_let_guard, iter_array_chunks, iter_intersperse)]
 
 use std::{
     collections::HashMap,
-    marker::PhantomData,
     sync::{
         LazyLock, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -276,26 +286,25 @@ use duat_core::{
 use duat_utils::{
     hooks::SearchPerformed,
     modes::{
-        ExtendFwd, ExtendRev, IncSearch, IncSearcher, Pager, PipeSelections, RunCommands,
-        SearchFwd, SearchRev,
+        ExtendFwd, ExtendRev, IncSearch, IncSearcher, PipeSelections, RunCommands, SearchFwd,
+        SearchRev,
     },
-    widgets::LogBook,
 };
 use treesitter::TsCursor;
 
 /// The [`Plugin`] for the kakoune [`Mode`]s
 ///
-/// This [`Plugin`] will change the default mode to a facimily of
+/// This [`Plugin`] will change the default mode to one based on
 /// Kakoune's [`Normal`].
 ///
 /// It also adds a hook to automatically change the forms of the
 /// cursors when the mode changes. This is the pattern that the forms
 /// take:
 ///
-/// - On [`Insert`] mode: `"MainCursor.Insert"`,
-///   `"ExtraCursor.Insert"`
-/// - On [`Normal`] mode: `"MainCursor.Normal"`,
-///   `"ExtraCursor.Normal"`
+/// - On [`Insert`] mode: `"caret.main.Insert"`,
+///   `"caret.extra.Insert"`
+/// - On [`Normal`] mode: `"caret.main.Normal"`,
+///   `"caret.extra.Normal"`
 ///
 /// And so on and so forth.
 ///
@@ -303,40 +312,23 @@ use treesitter::TsCursor;
 /// [`Kak::dont_set_cursor_forms`].
 ///
 /// [`Form`]: duat_core::Form
-pub struct Kak<U> {
+pub struct Kak {
     set_cursor_forms: bool,
     insert_tabs: bool,
-    _u: PhantomData<U>,
 }
 
-impl<U: Ui> Plugin<U> for Kak<U> {
-    fn new() -> Self {
+impl Kak {
+    /// Returns a new instance of [`Kak`], the plugin for kakoune-like
+    /// editing
+    pub fn new() -> Self {
         Self {
             set_cursor_forms: true,
             insert_tabs: false,
-            _u: PhantomData,
-        }
-    }
-
-    fn plug(self) {
-        mode::set_alt_is_reverse(true);
-        duat_core::mode::set_default::<Normal, U>(Normal::new());
-        INSERT_TABS.store(self.insert_tabs, Ordering::Relaxed);
-
-        hook::add::<SearchPerformed, U>(|_, search| {
-            *SEARCH.lock().unwrap() = search.to_string();
-        });
-
-
-        if self.set_cursor_forms {
-            form::enable_mask("Insert");
-            form::enable_mask("Normal");
-            form::enable_mask("OneKey");
         }
     }
 }
 
-impl<U> Kak<U> {
+impl Kak {
     /// Stop the automatic setting of cursor [`Form`]s
     ///
     /// [`Form`]: duat_core::form::Form
@@ -347,6 +339,30 @@ impl<U> Kak<U> {
     /// Makes the tab key insert `\t` instead of spaces
     pub fn insert_tabs(self) -> Self {
         Self { insert_tabs: true, ..self }
+    }
+}
+
+impl<U: Ui> Plugin<U> for Kak {
+    fn plug(self) {
+        mode::set_alt_is_reverse(true);
+        duat_core::mode::set_default::<Normal, U>(Normal::new());
+        INSERT_TABS.store(self.insert_tabs, Ordering::Relaxed);
+
+        hook::add::<SearchPerformed, U>(|_, search| {
+            *SEARCH.lock().unwrap() = search.to_string();
+        });
+
+        if self.set_cursor_forms {
+            form::enable_mask("Insert");
+            form::enable_mask("Normal");
+            form::enable_mask("OneKey");
+        }
+    }
+}
+
+impl Default for Kak {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
