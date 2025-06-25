@@ -95,15 +95,15 @@
 //!
 //! ## Creating a [`Plugin`]
 //!
-//! First of all, you're going to need [`cargo`], then, you should create a crate with `cargo init`:
+//! First of all, you will need [`cargo`], then, you should create a
+//! crate with `cargo init`:
 //!
 //! ```bash
 //! cargo init --lib duat-word-count
 //! cd duat-word-count
 //! ```
 //!
-//! Wihin that crate, you're going to need to add the `duat-core`
-//! dependency:
+//! Wihin that crate, you're should add the `duat-core` dependency:
 //!
 //! ```bash
 //! cargo add duat-core
@@ -130,10 +130,12 @@
 //! }
 //! ```
 //!
-//! In the example, `WordChars` is a plugin that can be included in
-//! Duat's `config` crate. You can extend Duat with this plugin, and
-//! it should use the [builder pattern] for configuration, take this
-//! as an example:
+//! In the example, `WordCount` is a plugin that can be included in
+//! Duat's `config` crate. It will give the user the ability to get
+//! how many words are in a [`File`], without having to reparse the
+//! whole buffer every time, given that it could be a very large file.
+//! In order to configure the [`Plugin`], you should make use of the
+//! builder pattern, returning the [`Plugin`] on every modification.
 //!
 //! ```rust
 //! use duat_core::prelude::*;
@@ -584,13 +586,24 @@
 //! Then, in `src/lib.rs`, you can add the following:
 //!
 //! ```rust
-//! # mod word_count {};
+//! # mod word_count {
+//! # pub struct WordCount;
+//! # impl WordCount {
+//! #     pub fn not_whitespace(self) -> Self { WordCount(true) }
+//! # }
+//! # impl<U: Ui> Plugin<U> for WordCount {
+//! #     fn new() -> Self { WordCount }
+//! #     fn plug(self) { todo!(); }
+//! # }
+//! # };
 //! # use duat_core::doc_duat as duat;
 //! setup_duat!(setup);
 //! use duat::prelude::*;
 //! use word_count::*;
 //!
 //! fn setup() {
+//!     plug!(WordCount::new().not_whitespace());
+//!     
 //!     hook::add::<StatusLine<Ui>>(|pa, (sl, _)| {
 //!         sl.replace(status!(
 //!             "{file_fmt} has [wc]{file_words}[] words{Spacer}{mode_fmt} {sels_fmt} {main_fmt}"
@@ -608,157 +621,6 @@
 //! custom [`Widget`]s, [`Mode`](mode::Mode)s that can change how Duat
 //! behaves, customized [commands] and [hook]s, and many such things
 //!
-//! This is a copy of [EasyMotion], a plugin for
-//! Vim/Neovim/Kakoune/Emacs that lets you skip around the screen with
-//! at most 2 keypresses.
-//!
-//! In order to emulate it, we use [ghost text] and [concealment]:
-//! ```rust
-//! use duat_core::{prelude::*, text::Point};
-//! #[derive(Clone)]
-//! pub struct EasyMotion {
-//!     is_line: bool,
-//!     key: Tagger,
-//!     points: Vec<[Point; 2]>,
-//!     seq: String,
-//! }
-//!
-//! impl EasyMotion {
-//!     pub fn word() -> Self {
-//!         Self {
-//!             is_line: false,
-//!             key: Tagger::new(),
-//!             points: Vec::new(),
-//!             seq: String::new(),
-//!         }
-//!     }
-//!
-//!     pub fn line() -> Self {
-//!         Self {
-//!             is_line: true,
-//!             key: Tagger::new(),
-//!             points: Vec::new(),
-//!             seq: String::new(),
-//!         }
-//!     }
-//! }
-//!
-//! impl<U: Ui> Mode<U> for EasyMotion {
-//!     type Widget = File<U>;
-//!
-//!     fn on_switch(&mut self, pa: &mut Pass, handle: Handle<File<U>,
-//! U>) {         handle.write(pa, |file, _| {
-//!             let cfg = file.print_cfg();
-//!             let text = file.text_mut();
-//!
-//!             let regex = if self.is_line {
-//!                 "[^\n\\s][^\n]+"
-//!             } else {
-//!                 "[^\n\\s]+"
-//!             };
-//!
-//!             let (start, _) = handle.area().start_points(text,
-//! cfg);             let (end, _) = handle.area().end_points(text,
-//! cfg);             self.points = text.search_fwd(regex,
-//! start..end).unwrap().collect();
-//!
-//!             let seqs = key_seqs(self.points.len());
-//!
-//!             for (seq, [p0, _]) in seqs.iter().zip(&self.points) {
-//!                 let ghost =
-//! Ghost(txt!("[easy_motion.word]{seq}"));                 
-//! text.insert_tag(self.key, *p0, ghost);
-//!
-//!                 let seq_end = p0.byte() + seq.chars().count();
-//!                 text.insert_tag(self.key, p0.byte()..seq_end,
-//! Conceal);             }
-//!         });
-//!     }
-//!
-//!     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle:
-//! Handle<File<U>, U>) {         let char = match key {
-//!             key!(KeyCode::Char(c)) => c,
-//!             // Return a char that will never match.
-//!             _ => '❌',
-//!         };
-//!         self.seq.push(char);
-//!
-//!         handle.write_selections(pa, |c| c.remove_extras());
-//!
-//!         let seqs = key_seqs(self.points.len());
-//!         for (seq, &[p0, p1]) in seqs.iter().zip(&self.points) {
-//!             if *seq == self.seq {
-//!                 handle.edit_main(pa, |mut e| {
-//!                     e.move_to(p0);
-//!                     e.set_anchor();
-//!                     e.move_to(p1);
-//!                 });
-//!                 mode::reset::<File<U>, U>();
-//!             } else if seq.starts_with(&self.seq) {
-//!                 continue;
-//!             }
-//!
-//!             // Removing one end of the conceal range will remove
-//! both ends.             handle.write_text(pa, |text|
-//! text.remove_tags(self.key, p1.byte()));         }
-//!
-//!         if self.seq.chars().count() == 2 ||
-//! !LETTERS.contains(char) {             mode::reset::<File<U>, U>();
-//!         }
-//!     }
-//! }
-//!
-//! fn key_seqs(len: usize) -> Vec<String> {
-//!     let double = len / LETTERS.len();
-//!
-//!     let mut seqs = Vec::new();
-//!     seqs.extend(LETTERS.chars().skip(double).map(char::into));
-//!
-//!     let chars = LETTERS.chars().take(double);
-//!     seqs.extend(chars.flat_map(|c1| LETTERS.chars().map(move |c2|
-//! format!("{c1}{c2}"))));
-//!
-//!     seqs
-//! }
-//!
-//! static LETTERS: &str = "abcdefghijklmnopqrstuvwxyz";
-//! ```
-//! All that this plugin is doing is:
-//!
-//! - Search on the screen for words/lines;
-//! - In the beginning of said words/lines, add a [`Ghost`];
-//! - Also add a [`Conceal`];
-//! - Then, just match the typed keys and [remove] tags accordingly;
-//! - [Move] to the matched sequence, if it exists;
-//!
-//! Now, in order to use this mode, it's the exact same thing as
-//! `Sneak`:
-//! ```rust
-//! # struct Normal;
-//! # #[derive(Clone)]
-//! # pub struct EasyMotion;
-//! # impl EasyMotion {
-//! #     pub fn word() -> Self {
-//! #         Self
-//! #     }
-//! #     pub fn line() -> Self {
-//! #         Self
-//! #     }
-//! # }
-//! # fn map<M>(take: &str, give: impl std::any::Any) {}
-//! # // I fake it here because this function is from duat, not duat-core
-//! map::<Normal>("<CA-w>", EasyMotion::word());
-//! map::<Normal>("<CA-l>", EasyMotion::line());
-//! ```
-//!
-//! [`File`]: crate::file::File
-//! [EasyMotion]: https://github.com/easymotion/vim-easymotion
-//! [ghost text]: crate::text::Ghost
-//! [concealment]: crate::text::Conceal
-//! [`Ghost`]: crate::text::Ghost
-//! [`Conceal`]: crate::text::Conceal
-//! [remove]: crate::text::Text::remove_tags
-//! [Move]: crate::mode::Cursor::move_to
 //! [`WidgetCfg`]: crate::ui::WidgetCfg
 //! [`OnFileOpen`]: crate::hook::OnFileOpen
 //! [`OnWindowOpen`]: crate::hook::OnWindowOpen
@@ -816,7 +678,6 @@
     type_alias_impl_trait,
     trait_alias,
     debug_closure_helpers,
-    box_as_ptr,
     unboxed_closures,
     associated_type_defaults,
     dropck_eyepatch,

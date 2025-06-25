@@ -879,16 +879,13 @@ pub mod prelude {
     /// i.e., they should look like this:
     ///
     /// ```rust
+    /// # use duat::prelude as duat_core;
+    /// use duat_core::{Plugin, ui::Ui};
     /// pub struct MyPlugin {
     ///     // ..options
     /// }
     ///
     /// impl MyPlugin {
-    ///     pub fn new() -> Self {
-    ///         // ...
-    ///         # todo!();
-    ///     }
-    ///
     ///     pub fn modify1(self, parameter: bool) -> Self {
     ///         // ...
     ///         # todo!();
@@ -898,8 +895,15 @@ pub mod prelude {
     ///         // ...
     ///         # todo!();
     ///     }
+    /// }
     ///
-    ///     pub fn plug(self) {
+    /// impl<U: Ui> Plugin<U> for MyPlugin {
+    ///     fn new() -> Self {
+    ///         // ...
+    ///         # todo!();
+    ///     }
+    ///
+    ///     fn plug(self) {
     ///         // Finally applies the plugin, after all alterations
     ///     }
     /// }

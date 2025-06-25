@@ -29,7 +29,6 @@ arboard = { version = "3.5.0", default-features = false }
 lender = { version = "0.3.2", default-features = false }
 crossterm = { version = "0.29.0", default-features = false, features = ["events"] }
 format-like = "0.3.0"
-libloading = "0.8.8"
 thread-count = "0.3.0"
 log = "0.4.27"
 

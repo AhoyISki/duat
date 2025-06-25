@@ -128,7 +128,7 @@ pub mod prelude {
 
     pub macro plug($($plugin:expr),* $(,)?) {{
         $(
-            $plugin.plug();
+            Plugin::<Ui>::plug($plugin);
         )*
     }}
 

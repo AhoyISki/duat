@@ -98,15 +98,15 @@ time said [`File`][__link70] changes.
 
 ### Creating a [`Plugin`][__link71]
 
-First of all, you’re going to need [`cargo`][__link72], then, you should create a crate with `cargo init`:
+First of all, you will need [`cargo`][__link72], then, you should create a
+crate with `cargo init`:
 
 ```bash
 cargo init --lib duat-word-count
 cd duat-word-count
 ```
 
-Wihin that crate, you’re going to need to add the `duat-core`
-dependency:
+Wihin that crate, you’re should add the `duat-core` dependency:
 
 ```bash
 cargo add duat-core
@@ -133,10 +133,12 @@ impl<U: Ui> Plugin<U> for WordCount {
 }
 ```
 
-In the example, `WordChars` is a plugin that can be included in
-Duat’s `config` crate. You can extend Duat with this plugin, and
-it should use the [builder pattern][__link73] for configuration, take this
-as an example:
+In the example, `WordCount` is a plugin that can be included in
+Duat’s `config` crate. It will give the user the ability to get
+how many words are in a [`File`][__link73], without having to reparse the
+whole buffer every time, given that it could be a very large file.
+In order to configure the [`Plugin`][__link74], you should make use of the
+builder pattern, returning the [`Plugin`][__link75] on every modification.
 
 ```rust
 use duat_core::prelude::*;
@@ -167,8 +169,8 @@ including regular alphanumeric characters. This would count, for
 example “x(x^3 + 3)” as 3 words, rather than 4.
 
 Next, I need to add something to keep track of the number of words
-in a [`File`][__link74]. For [`File`][__link75]s specifically, there is a built-in way
-to keep track of changes through a [`Reader`][__link76]:
+in a [`File`][__link76]. For [`File`][__link77]s specifically, there is a built-in way
+to keep track of changes through a [`Reader`][__link78]:
 
 ```rust
 use std::ops::Range;
@@ -201,17 +203,17 @@ impl<U: Ui> Reader<U> for WordCounter {
 }
 ```
 
-Whenever changes take place in a [`File`][__link77], those changes will be
-reported in a [`Moment`][__link78], which is essentially just a list of
-[`Change`][__link79]s that took place. This [`Moment`][__link80] will be sent to the
-[`Reader::apply_changes`][__link81] function, in which you are supposed to
-change the internal state of the [`Reader`][__link82] to accomodate the
-[`Change`][__link83]s. Also, ignore [`update_range`][__link84], it wont be used in
+Whenever changes take place in a [`File`][__link79], those changes will be
+reported in a [`Moment`][__link80], which is essentially just a list of
+[`Change`][__link81]s that took place. This [`Moment`][__link82] will be sent to the
+[`Reader::apply_changes`][__link83] function, in which you are supposed to
+change the internal state of the [`Reader`][__link84] to accomodate the
+[`Change`][__link85]s. Also, ignore [`update_range`][__link86], it wont be used in
 this demonstration.
 
-In order to add this [`Reader`][__link85] to the [`File`][__link86], we’re going to
-need a [`ReaderCfg`][__link87], which is used for configuring [`Reader`][__link88]s
-before adding them to a [`File`][__link89]:
+In order to add this [`Reader`][__link87] to the [`File`][__link88], we’re going to
+need a [`ReaderCfg`][__link89], which is used for configuring [`Reader`][__link90]s
+before adding them to a [`File`][__link91]:
 
 ```rust
 use std::ops::Range;
@@ -239,9 +241,9 @@ impl<U: Ui> ReaderCfg<U> for WordCounterCfg {
 ```
 
 In this function, I am returning the `WordCounter`, with a
-precalculated number of words, based on the [`Bytes`][__link90] of the
-[`File`][__link91]’s [`Text`][__link92]. Now that there is a count of words, I can
-update it based on [`Change`][__link93]s:
+precalculated number of words, based on the [`Bytes`][__link92] of the
+[`File`][__link93]’s [`Text`][__link94]. Now that there is a count of words, I can
+update it based on [`Change`][__link95]s:
 
 ```rust
 use duat_core::{
@@ -268,15 +270,15 @@ fn word_diff(regex: &str, bytes: &mut Bytes, change: Change<&str>) -> i32 {
 ```
 
 In this method, I am calculating the difference between the number
-of words in the line before and after the [`Change`][__link94] took place.
-Here [`Bytes::points_of_line`][__link95] returns the [`Point`][__link96]s where a
+of words in the line before and after the [`Change`][__link96] took place.
+Here [`Bytes::points_of_line`][__link97] returns the [`Point`][__link98]s where a
 given line starts and ends. I know there are better ways to do
-this by comparing the text that [was taken][__link97] to [what was added][__link98],
+this by comparing the text that [was taken][__link99] to [what was added][__link100],
 with the context of the lines of the change, but this is
 just a demonstration, and the more efficient method is left as an
 exercise to the viewer.
 
-Now, just call this on [`<WordCounter as Reader>::apply_changes`][__link99]:
+Now, just call this on [`<WordCounter as Reader>::apply_changes`][__link101]:
 
 ```rust
 use std::ops::Range;
@@ -317,16 +319,16 @@ impl<U: Ui> Reader<U> for WordCounter {
 ```
 
 Note that, in order to modify the `WordCounter` or get access to
-the [`Bytes`][__link100], you need to use an access function:
-[`BytesDataMap::write_with_reader`][__link101], alongside a [`Pass`][__link102] and the
-[`RwData<Self>`][__link103] in question. Duat does this in order to
+the [`Bytes`][__link102], you need to use an access function:
+[`BytesDataMap::write_with_reader`][__link103], alongside a [`Pass`][__link104] and the
+[`RwData<Self>`][__link105] in question. Duat does this in order to
 protect massively shareable state from being modified and read at
-the same time, as per the [number one rule of Rust][__link104]. This also
+the same time, as per the [number one rule of Rust][__link106]. This also
 makes code much easier to reason about, and bugs much more
 avoidable.
 
-Now, to wrap this all up, the plugin needs to add this [`Reader`][__link105]
-to every opened [`File`][__link106]. We do this through the use of a [hook][__link107]:
+Now, to wrap this all up, the plugin needs to add this [`Reader`][__link107]
+to every opened [`File`][__link108]. We do this through the use of a [hook][__link109]:
 
 ```rust
 use duat_core::{hook::OnFileOpen, prelude::*};
@@ -356,12 +358,12 @@ impl<U: Ui> Plugin<U> for WordCount {
 }
 ```
 
-Now, whenever a [`File`][__link108] is opened, this [`Reader`][__link109] will be added
-to it. This is just one out of many types of [hook][__link110] that Duat
-provides by default. In Duat, you can even [create your own][__link111], and
-[choose when to trigger them][__link112].
+Now, whenever a [`File`][__link110] is opened, this [`Reader`][__link111] will be added
+to it. This is just one out of many types of [hook][__link112] that Duat
+provides by default. In Duat, you can even [create your own][__link113], and
+[choose when to trigger them][__link114].
 
-However, while we have added the [`Reader`][__link113], how is the user
+However, while we have added the [`Reader`][__link115], how is the user
 supposed to access this value? Well, one convenient way to do this
 is through a simple function:
 
@@ -482,9 +484,9 @@ fn word_diff(regex: &str, bytes: &mut Bytes, change: Change<&str>) -> i32 {
 ```
 
 Once you’re done modifying your plugin, you should be ready to
-publish it to [crates.io][__link114]. This is the common registry for
+publish it to [crates.io][__link116]. This is the common registry for
 packages (crates in Rust), and is also where Duat will pull
-plugins from. Before publishing, try to follow [these guidelines][__link115]
+plugins from. Before publishing, try to follow [these guidelines][__link117]
 in order to improve the usability of the plugin. Now, you should
 be able to just do this in the `duat-word-count` directory:
 
@@ -496,7 +498,7 @@ Ok, it’s published, but how does one use it?
 
 ### Using plugins
 
-Assuming that you’ve already [installed duat][__link116], you should have a
+Assuming that you’ve already [installed duat][__link118], you should have a
 config crate in `~/.config/duat` (or `$XDG_CONFIG_HOME/duat`), in
 it, you can call the following command:
 
@@ -512,6 +514,8 @@ use duat::prelude::*;
 use word_count::*;
 
 fn setup() {
+    plug!(WordCount::new().not_whitespace());
+    
     hook::add::<StatusLine<Ui>>(|pa, (sl, _)| {
         sl.replace(status!(
             "{file_fmt} has [wc]{file_words}[] words{Spacer}{mode_fmt} {sels_fmt} {main_fmt}"
@@ -520,147 +524,14 @@ fn setup() {
 }
 ```
 
-Now, the default [`StatusLine`][__link117] should have word count added in,
+Now, the default [`StatusLine`][__link119] should have word count added in,
 alongside the other usual things in there. It’s been added in the
 `{file_words}` part of the string, which just interpolated that
 function, imported by `use word_count::*;`, into the status line.
 
 There are many other things that plugins can do, like create
-custom [`Widget`][__link118]s, [`Mode`][__link119]s that can change how Duat
-behaves, customized [commands][__link120] and [hook][__link121]s, and many such things
-
-This is a copy of [EasyMotion][__link122], a plugin for
-Vim/Neovim/Kakoune/Emacs that lets you skip around the screen with
-at most 2 keypresses.
-
-In order to emulate it, we use [ghost text][__link123] and [concealment][__link124]:
-
-```rust
-use duat_core::{prelude::*, text::Point};
-#[derive(Clone)]
-pub struct EasyMotion {
-    is_line: bool,
-    key: Tagger,
-    points: Vec<[Point; 2]>,
-    seq: String,
-}
-
-impl EasyMotion {
-    pub fn word() -> Self {
-        Self {
-            is_line: false,
-            key: Tagger::new(),
-            points: Vec::new(),
-            seq: String::new(),
-        }
-    }
-
-    pub fn line() -> Self {
-        Self {
-            is_line: true,
-            key: Tagger::new(),
-            points: Vec::new(),
-            seq: String::new(),
-        }
-    }
-}
-
-impl<U: Ui> Mode<U> for EasyMotion {
-    type Widget = File<U>;
-
-    fn on_switch(&mut self, pa: &mut Pass, handle: Handle<File<U>,
-U>) {         handle.write(pa, |file, _| {
-            let cfg = file.print_cfg();
-            let text = file.text_mut();
-
-            let regex = if self.is_line {
-                "[^\n\\s][^\n]+"
-            } else {
-                "[^\n\\s]+"
-            };
-
-            let (start, _) = handle.area().start_points(text,
-cfg);             let (end, _) = handle.area().end_points(text,
-cfg);             self.points = text.search_fwd(regex,
-start..end).unwrap().collect();
-
-            let seqs = key_seqs(self.points.len());
-
-            for (seq, [p0, _]) in seqs.iter().zip(&self.points) {
-                let ghost =
-Ghost(txt!("[easy_motion.word]{seq}"));                 
-text.insert_tag(self.key, *p0, ghost);
-
-                let seq_end = p0.byte() + seq.chars().count();
-                text.insert_tag(self.key, p0.byte()..seq_end,
-Conceal);             }
-        });
-    }
-
-    fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle:
-Handle<File<U>, U>) {         let char = match key {
-            key!(KeyCode::Char(c)) => c,
-            // Return a char that will never match.
-            _ => '❌',
-        };
-        self.seq.push(char);
-
-        handle.write_selections(pa, |c| c.remove_extras());
-
-        let seqs = key_seqs(self.points.len());
-        for (seq, &[p0, p1]) in seqs.iter().zip(&self.points) {
-            if *seq == self.seq {
-                handle.edit_main(pa, |mut e| {
-                    e.move_to(p0);
-                    e.set_anchor();
-                    e.move_to(p1);
-                });
-                mode::reset::<File<U>, U>();
-            } else if seq.starts_with(&self.seq) {
-                continue;
-            }
-
-            // Removing one end of the conceal range will remove
-both ends.             handle.write_text(pa, |text|
-text.remove_tags(self.key, p1.byte()));         }
-
-        if self.seq.chars().count() == 2 ||
-!LETTERS.contains(char) {             mode::reset::<File<U>, U>();
-        }
-    }
-}
-
-fn key_seqs(len: usize) -> Vec<String> {
-    let double = len / LETTERS.len();
-
-    let mut seqs = Vec::new();
-    seqs.extend(LETTERS.chars().skip(double).map(char::into));
-
-    let chars = LETTERS.chars().take(double);
-    seqs.extend(chars.flat_map(|c1| LETTERS.chars().map(move |c2|
-format!("{c1}{c2}"))));
-
-    seqs
-}
-
-static LETTERS: &str = "abcdefghijklmnopqrstuvwxyz";
-```
-
-All that this plugin is doing is:
-
-* Search on the screen for words/lines;
-* In the beginning of said words/lines, add a [`Ghost`][__link125];
-* Also add a [`Conceal`][__link126];
-* Then, just match the typed keys and [remove][__link127] tags accordingly;
-* [Move][__link128] to the matched sequence, if it exists;
-
-Now, in order to use this mode, it’s the exact same thing as
-`Sneak`:
-
-```rust
-map::<Normal>("<CA-w>", EasyMotion::word());
-map::<Normal>("<CA-l>", EasyMotion::line());
-```
+custom [`Widget`][__link120]s, [`Mode`][__link121]s that can change how Duat
+behaves, customized [commands][__link122] and [hook][__link123]s, and many such things
 
 
 # Plugin examples
@@ -674,41 +545,36 @@ screen by searching through character sequences.
 
 [`duat-sneak`]: https://github.com/AhoyISki/duat-sneak
 [`vim-sneak`]: https://github.com/justinmk/vim-sneak
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEGy_bXjvdZUMkGwCrwWRAzyECGzH81m5BV9E_G9FxROuvZ7aRYXKEG_HMgcJ9LFOFG8Lby3gFX1ubGyD5WLrgkCloG0v_zba4M8wGYWSEgmxCeXRlc0RhdGFNYXD2gmlSZWFkZXJDZmf2gmZSd0RhdGH2g2lkdWF0LWNvcmVlMC41LjFpZHVhdF9jb3Jl
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEGy_bXjvdZUMkGwCrwWRAzyECGzH81m5BV9E_G9FxROuvZ7aRYXKEG5P1azSJBRn6G7BEGy3pKdlRG6yD-jzqZJNUG26gn9wgCmoQYWSEgmxCeXRlc0RhdGFNYXD2gmlSZWFkZXJDZmf2gmZSd0RhdGH2g2lkdWF0LWNvcmVlMC41LjFpZHVhdF9jb3Jl
  [__link0]: https://docs.rs/duat-core/0.5.1/duat_core/?search=ui::Ui
  [__link1]: https://docs.rs/duat-core/0.5.1/duat_core/ui/index.html
  [__link10]: https://docs.rs/duat-core/0.5.1/duat_core/?search=ui::Ui
- [__link100]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Bytes
- [__link101]: https://docs.rs/BytesDataMap/latest/BytesDataMap/?search=write_with_reader
- [__link102]: https://docs.rs/duat-core/0.5.1/duat_core/?search=data::Pass
- [__link103]: https://crates.io/crates/RwData
- [__link104]: https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html
- [__link105]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::Reader
- [__link106]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::File
- [__link107]: https://docs.rs/duat-core/0.5.1/duat_core/hook/index.html
+ [__link100]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Change::added_str
+ [__link101]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::Reader::apply_changes
+ [__link102]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Bytes
+ [__link103]: https://docs.rs/BytesDataMap/latest/BytesDataMap/?search=write_with_reader
+ [__link104]: https://docs.rs/duat-core/0.5.1/duat_core/?search=data::Pass
+ [__link105]: https://crates.io/crates/RwData
+ [__link106]: https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html
+ [__link107]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::Reader
  [__link108]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::File
- [__link109]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::Reader
+ [__link109]: https://docs.rs/duat-core/0.5.1/duat_core/hook/index.html
  [__link11]: https://docs.rs/duat-core/0.5.1/duat_core/?search=ui::RawArea
- [__link110]: https://docs.rs/duat-core/0.5.1/duat_core/hook/index.html
- [__link111]: https://docs.rs/duat-core/0.5.1/duat_core/?search=hook::Hookable
- [__link112]: https://docs.rs/duat-core/0.5.1/duat_core/?search=hook::trigger
- [__link113]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::Reader
- [__link114]: https://crates.io
- [__link115]: https://doc.rust-lang.org/book/ch14-02-publishing-to-crates-io.html
- [__link116]: https://github.com/AhoyISki/duat?tab=readme-ov-file#getting-started
- [__link117]: https://docs.rs/duat/latest/duat/prelude/macro.status.html
- [__link118]: https://docs.rs/duat-core/0.5.1/duat_core/?search=ui::Widget
- [__link119]: https://docs.rs/duat-core/0.5.1/duat_core/?search=mode::Mode
+ [__link110]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::File
+ [__link111]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::Reader
+ [__link112]: https://docs.rs/duat-core/0.5.1/duat_core/hook/index.html
+ [__link113]: https://docs.rs/duat-core/0.5.1/duat_core/?search=hook::Hookable
+ [__link114]: https://docs.rs/duat-core/0.5.1/duat_core/?search=hook::trigger
+ [__link115]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::Reader
+ [__link116]: https://crates.io
+ [__link117]: https://doc.rust-lang.org/book/ch14-02-publishing-to-crates-io.html
+ [__link118]: https://github.com/AhoyISki/duat?tab=readme-ov-file#getting-started
+ [__link119]: https://docs.rs/duat/latest/duat/prelude/macro.status.html
  [__link12]: https://docs.rs/duat-core/0.5.1/duat_core/text/index.html
- [__link120]: https://docs.rs/duat-core/0.5.1/duat_core/cmd/index.html
- [__link121]: https://docs.rs/duat-core/0.5.1/duat_core/hook/index.html
- [__link122]: https://github.com/easymotion/vim-easymotion
- [__link123]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Ghost
- [__link124]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Conceal
- [__link125]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Ghost
- [__link126]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Conceal
- [__link127]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Text::remove_tags
- [__link128]: https://docs.rs/duat-core/0.5.1/duat_core/?search=mode::Cursor::move_to
+ [__link120]: https://docs.rs/duat-core/0.5.1/duat_core/?search=ui::Widget
+ [__link121]: https://docs.rs/duat-core/0.5.1/duat_core/?search=mode::Mode
+ [__link122]: https://docs.rs/duat-core/0.5.1/duat_core/cmd/index.html
+ [__link123]: https://docs.rs/duat-core/0.5.1/duat_core/hook/index.html
  [__link13]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Text
  [__link14]: https://docs.rs/duat-core/0.5.1/duat_core/?search=ui::Ui
  [__link15]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Tag
@@ -775,32 +641,32 @@ screen by searching through character sequences.
  [__link70]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::File
  [__link71]: https://docs.rs/duat-core/0.5.1/duat_core/trait.Plugin.html
  [__link72]: https://doc.rust-lang.org/book/ch01-01-installation.html
- [__link73]: https://rust-unofficial.github.io/patterns/patterns/creational/builder.html
- [__link74]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::File
- [__link75]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::File
- [__link76]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::Reader
+ [__link73]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::File
+ [__link74]: https://docs.rs/duat-core/0.5.1/duat_core/trait.Plugin.html
+ [__link75]: https://docs.rs/duat-core/0.5.1/duat_core/trait.Plugin.html
+ [__link76]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::File
  [__link77]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::File
- [__link78]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Moment
- [__link79]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Change
+ [__link78]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::Reader
+ [__link79]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::File
  [__link8]: https://docs.rs/duat-core/0.5.1/duat_core/?search=hook::OnWindowOpen
  [__link80]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Moment
- [__link81]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::Reader::apply_changes
- [__link82]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::Reader
- [__link83]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Change
- [__link84]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::Reader::update_range
- [__link85]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::Reader
- [__link86]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::File
- [__link87]: https://crates.io/crates/ReaderCfg
- [__link88]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::Reader
- [__link89]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::File
+ [__link81]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Change
+ [__link82]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Moment
+ [__link83]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::Reader::apply_changes
+ [__link84]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::Reader
+ [__link85]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Change
+ [__link86]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::Reader::update_range
+ [__link87]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::Reader
+ [__link88]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::File
+ [__link89]: https://crates.io/crates/ReaderCfg
  [__link9]: https://docs.rs/duat-core/0.5.1/duat_core/hook/index.html
- [__link90]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Bytes
+ [__link90]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::Reader
  [__link91]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::File
- [__link92]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Text
- [__link93]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Change
- [__link94]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Change
- [__link95]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Bytes::points_of_line
- [__link96]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Point
- [__link97]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Change::taken_str
- [__link98]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Change::added_str
- [__link99]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::Reader::apply_changes
+ [__link92]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Bytes
+ [__link93]: https://docs.rs/duat-core/0.5.1/duat_core/?search=file::File
+ [__link94]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Text
+ [__link95]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Change
+ [__link96]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Change
+ [__link97]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Bytes::points_of_line
+ [__link98]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Point
+ [__link99]: https://docs.rs/duat-core/0.5.1/duat_core/?search=text::Change::taken_str
