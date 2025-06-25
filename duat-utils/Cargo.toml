@@ -1,6 +1,6 @@
 [package]
 name = "duat-utils"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["AhoyISki"]
 description = "Basic components common in Duat, such as widgets and modes"
 repository = "https://github.com/AhoyISki/duat/tree/master/duat-utils"
