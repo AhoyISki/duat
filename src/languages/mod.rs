@@ -23,7 +23,7 @@ pub fn get_language(filetype: &str) -> Option<Language> {
 
     if let Ok(lib) = dlopen_rs::ElfLibrary::dlopen(
         so_path,
-        OpenFlags::RTLD_LOCAL | OpenFlags::CUSTOM_NOT_REGISTER,
+        OpenFlags::RTLD_NOW | OpenFlags::CUSTOM_NOT_REGISTER,
     ) {
         let language = unsafe {
             let (symbol, _) = options.symbols[0];

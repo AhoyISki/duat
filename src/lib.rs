@@ -297,8 +297,8 @@ impl TsParser {
         // would have been removed already.
         if start.byte() < self.range.start && taken.byte() <= self.range.start {
             let ts_start = ts_point(start, bytes);
-            let ts_taken_end = ts_point_from(taken, (ts_start.column, start), change.taken_text());
-            let ts_added_end = ts_point_from(added, (ts_start.column, start), change.added_text());
+            let ts_taken_end = ts_point_from(taken, (ts_start.column, start), change.taken_str());
+            let ts_added_end = ts_point_from(added, (ts_start.column, start), change.added_str());
 
             self.range.start = (self.range.start as i32 + change.shift()[0]) as usize;
             self.range.end = (self.range.end as i32 + change.shift()[0]) as usize;
@@ -473,9 +473,12 @@ impl TsParser {
             let buf = TsBuf(bytes);
             cursor.matches(indents, root, buf).for_each(|qm| {
                 for cap in qm.captures.iter() {
-                    let cap_end = indents.capture_names()[cap.index as usize]
-                        .strip_prefix("indent.")
-                        .unwrap();
+                    let Some(cap_end) =
+                        indents.capture_names()[cap.index as usize].strip_prefix("indent.")
+                    else {
+                        continue;
+                    };
+                    
                     let nodes = if let Some(nodes) = caps.get_mut(cap_end) {
                         nodes
                     } else {
@@ -714,7 +717,7 @@ impl<U: Ui> Reader<U> for TsParser {
             }
         }
 
-        bytes.read_and_write_reader(pa, &reader, |bytes, ts| ts.apply_changes(bytes, moment));
+        bytes.write_with_reader(pa, &reader, |bytes, ts| ts.apply_changes(bytes, moment));
 
         if let Some(list) = ranges_to_update {
             // This initial check might find larger, somewhat self contained nodes
@@ -929,8 +932,8 @@ fn input_edit(change: Change<&str>, bytes: &Bytes, offset: TSPoint, r_start: usi
     let taken = change.taken_end();
 
     let ts_start = ts_point(start, bytes);
-    let ts_taken_end = ts_point_from(taken, (ts_start.column, start), change.taken_text());
-    let ts_added_end = ts_point_from(added, (ts_start.column, start), change.added_text());
+    let ts_taken_end = ts_point_from(taken, (ts_start.column, start), change.taken_str());
+    let ts_added_end = ts_point_from(added, (ts_start.column, start), change.added_str());
 
     InputEdit {
         start_byte: start.byte() - r_start,
