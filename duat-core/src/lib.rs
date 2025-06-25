@@ -84,12 +84,19 @@
 //!
 //! # How to extend Duat
 //!
+//! Duat is extended primarily through the use of [`Plugin`]s from
+//! external crates, these will be plugged in the main config through
+//! the [`plug!`] macro, and are modified in place through the builder
+//! pattern.
+//!
+//! For this demonstration, I will create a [`Plugin`] that keeps
+//! track of the word count in a [`File`], without reparsing it every
+//! time said [`File`] changes.
+//!
 //! ## Creating a [`Plugin`]
 //!
 //! First of all, you're going to need [`cargo`], with it, you're
-//! gonna need to create a crate. For this demonstration, I will
-//! create a [`Plugin`] that keeps track of the word count in a
-//! [`File`], without reparsing it every time said [`File`] changes:
+//! gonna need to create a crate:
 //!
 //! ```bash
 //! cargo init --lib duat-word-count
@@ -110,7 +117,8 @@
 //! // In duat-word-count/src/lib.rs
 //! use duat_core::prelude::*;
 //!
-//! struct WordCount;
+//! /// A [`Plugin`] to count the number of words in [`File`]s
+//! pub struct WordCount;
 //!
 //! impl<U: Ui> Plugin<U> for WordCount {
 //!     fn new() -> Self {
@@ -131,7 +139,8 @@
 //! ```rust
 //! use duat_core::prelude::*;
 //!
-//! struct WordCount(bool);
+//! /// A [`Plugin`] to count the number of words in [`File`]s
+//! pub struct WordCount(bool);
 //!
 //! impl WordCount {
 //!     /// Count everything that isn't whitespace as a word character
@@ -165,12 +174,19 @@
 //! #     type Reader = WordCounter;
 //! #     fn init(self, _: &mut Bytes) -> Result<Self::Reader, Text> { todo!() }
 //! # }
-//! use duat_core::prelude::*;
+//! use std::ops::Range;
+//!
+//! use duat_core::{
+//!     data::RwData,
+//!     file::{BytesDataMap, RangeList},
+//!     prelude::*,
+//!     text::{Bytes, Moment, MutTags},
+//! };
 //!
 //! /// A [`Reader`] to keep track of words in a [`File`]
 //! struct WordCounter {
 //!     words: usize,
-//!     count_punct: bool,
+//!     regex: &'static str,
 //! }
 //!
 //! impl<U: Ui> Reader<U> for WordCounter {
@@ -193,7 +209,8 @@
 //! [`Change`]s that took place. This [`Moment`] will be sent to the
 //! [`Reader::apply_changes`] function, in which you are supposed to
 //! change the internal state of the [`Reader`] to accomodate the
-//! [`Change`]s.
+//! [`Change`]s. Also, ignore [`update_range`], it wont be used in
+//! this demonstration.
 //!
 //! In order to add this [`Reader`] to the [`File`], we're going to
 //! need a [`ReaderCfg`], which is used for configuring [`Reader`]s
@@ -216,7 +233,14 @@
 //! #     }
 //! #     fn update_range(&mut self, _: &mut Bytes, _: MutTags, _: Range<usize>) {}
 //! # }
-//! use duat_core::{prelude::*, text::*};
+//! use std::ops::Range;
+//!
+//! use duat_core::{
+//!     data::RwData,
+//!     file::{BytesDataMap, RangeList},
+//!     prelude::*,
+//!     text::{Bytes, Moment, MutTags},
+//! };
 //!
 //! struct WordCounterCfg(bool);
 //!
@@ -224,7 +248,7 @@
 //!     type Reader = WordCounter;
 //!
 //!     fn init(self, bytes: &mut Bytes) -> Result<Self::Reader, Text> {
-//!         let regex = if self.0 { "\S+" } else { "\w+" };
+//!         let regex = if self.0 { r"\S+" } else { r"\w+" };
 //!
 //!         let words = bytes.search_fwd(regex, ..).unwrap().count();
 //!
@@ -239,19 +263,351 @@
 //! update it based on [`Change`]s:
 //!
 //! ```rust
-//! use duat_core::{prelude::*, text::*};
+//! use duat_core::{
+//!     data::RwData,
+//!     file::{BytesDataMap, RangeList},
+//!     prelude::*,
+//!     text::{Bytes, Change, Moment, MutTags},
+//! };
 //!
-//! fn word_diff(regex: &str, bytes: &mut Bytes, change: &Change) -> i32 {
+//! fn word_diff(regex: &str, bytes: &mut Bytes, change: Change<&str>) -> i32 {
 //!     let [start, _] = bytes.points_of_line(change.start().line());
 //!     let [_, end] = bytes.points_of_line(change.added_end().line());
 //!
+//!     // Recreate the line as it was before the change
 //!     let mut line_before = bytes.strs(start..change.start()).to_string();
 //!     line_before.push_str(change.taken_str());
-//!     line_before.push_str(bytes.strs(change.added_end()..end));
+//!     line_before.extend(bytes.strs(change.added_end()..end));
 //!
-//!     
+//!     let words_before = line_before.search_fwd(regex, ..).unwrap().count();
+//!     let words_after = bytes.search_fwd(regex, start..end).unwrap().count();
+//!
+//!     words_after as i32 - words_before as i32
 //! }
 //! ```
+//!
+//! In this method, I am calculating the difference between the number
+//! of words in the line before and after the [`Change`] took place.
+//! Here [`Bytes::points_of_line`] returns the [`Point`]s where a
+//! given line starts and ends. I know there are better ways to do
+//! this by comparing the text that [was taken] to [what was added],
+//! with the context of the lines of the change, but this is
+//! just a demonstration, and the more efficient method is left as an
+//! exercise to the viewer.
+//!
+//! Now, just call this on [`<WordCounter as Reader>::apply_changes`]:
+//!
+//! ```rust
+//! # use duat_core::text::Change;
+//! # struct WordCounterCfg;
+//! # impl<U: Ui> ReaderCfg<U> for WordCounterCfg {
+//! #     type Reader = WordCounter;
+//! #     fn init(self, _: &mut Bytes) -> Result<Self::Reader, Text> { todo!() }
+//! # }
+//! # fn word_diff(_: &str, _: &mut Bytes, _: Change<&str>) -> i32 { 0 }
+//! use std::ops::Range;
+//!
+//! use duat_core::{
+//!     data::RwData,
+//!     file::{BytesDataMap, RangeList},
+//!     prelude::*,
+//!     text::{Bytes, Moment, MutTags},
+//! };
+//!
+//! /// A [`Reader`] to keep track of words in a [`File`]
+//! struct WordCounter {
+//!     words: usize,
+//!     regex: &'static str,
+//! }
+//!
+//! impl<U: Ui> Reader<U> for WordCounter {
+//!     fn apply_changes(
+//!         pa: &mut Pass,
+//!         reader: RwData<Self>,
+//!         bytes: BytesDataMap<U>,
+//!         moment: Moment,
+//!         ranges_to_update: Option<&mut RangeList>,
+//!     ) {
+//!         bytes.write_with_reader(pa, &reader, |bytes, reader| {
+//!             let diff: i32 = moment
+//!                 .changes()
+//!                 .map(|change| word_diff(reader.regex, bytes, change))
+//!                 .sum();
+//!
+//!             reader.words = (reader.words as i32 + diff) as usize;
+//!         });
+//!     }
+//!
+//!     fn update_range(&mut self, bytes: &mut Bytes, tags: MutTags, within: Range<usize>) {}
+//! }
+//! ```
+//!
+//! Note that, in order to modify the `WordCounter` or get access to
+//! the [`Bytes`], you need to use an access function:
+//! [`BytesDataMap::write_with_reader`], alongside a [`Pass`] and the
+//! [`RwData<Self>`] in question. Duat does this in order to
+//! protect massively shareable state from being modified and read at
+//! the same time, as per the [number one rule of Rust]. This also
+//! makes code much easier to reason about, and bugs much more
+//! avoidable.
+//!
+//! Now, to wrap this all up, the plugin needs to add this [`Reader`]
+//! to every opened [`File`]. We do this through the use of a [hook]:
+//!
+//! ```rust
+//! # use std::ops::Range;
+//! # use duat_core::{
+//! #     data::RwData, file::{BytesDataMap, RangeList}, text::{Bytes, Moment, MutTags}
+//! # };
+//! # struct WordCounterCfg(bool);
+//! # impl<U: Ui> ReaderCfg<U> for WordCounterCfg {
+//! #     type Reader = WordCounter;
+//! #     fn init(self, _: &mut Bytes) -> Result<Self::Reader, Text> { todo!() }
+//! # }
+//! # /// A [`Reader`] to keep track of words in a [`File`]
+//! # struct WordCounter {
+//! #     words: usize,
+//! #     regex: &'static str
+//! # }
+//! # impl<U: Ui> Reader<U> for WordCounter {
+//! #     fn apply_changes(
+//! #         pa: &mut Pass,
+//! #         reader: RwData<Self>,
+//! #         bytes: BytesDataMap<U>,
+//! #         moment: Moment,
+//! #         ranges_to_update: Option<&mut RangeList>,
+//! #     ) {
+//! #
+//! #     }
+//! #     fn update_range(&mut self, bytes: &mut Bytes, tags: MutTags, within: Range<usize>) {}
+//! # }
+//! use duat_core::{hook::OnFileOpen, prelude::*};
+//!
+//! /// A [`Plugin`] to count the number of words in [`File`]s
+//! pub struct WordCount(bool);
+//!
+//! impl WordCount {
+//!     /// Count everything that isn't whitespace as a word character
+//!     pub fn not_whitespace(self) -> Self {
+//!         WordCount(true)
+//!     }
+//! }
+//!
+//! impl<U: Ui> Plugin<U> for WordCount {
+//!     fn new() -> Self {
+//!         WordCount(false)
+//!     }
+//!
+//!     fn plug(self) {
+//!         let not_whitespace = self.0;
+//!         
+//!         hook::add::<OnFileOpen<U>, U>(move |pa, builder| {
+//!             builder.add_reader(pa, WordCounterCfg(not_whitespace));
+//!         });
+//!     }
+//! }
+//! ```
+//!
+//! Now, whenever a [`File`] is opened, this [`Reader`] will be added
+//! to it. This is just one out of many types of [hook] that Duat
+//! provides by default. In Duat, you can even [create your own], and
+//! [choose when to trigger them].
+//!
+//! However, while we have added the [`Reader`], how is the user
+//! supposed to access this value? Well, one convenient way to do this
+//! is through a simple function:
+//!
+//! ```rust
+//! # use std::ops::Range;
+//! # use duat_core::{
+//! #     data::RwData, file::{BytesDataMap, RangeList}, text::{Bytes, Moment, MutTags}
+//! # };
+//! # struct WordCounterCfg(bool);
+//! # impl<U: Ui> ReaderCfg<U> for WordCounterCfg {
+//! #     type Reader = WordCounter;
+//! #     fn init(self, _: &mut Bytes) -> Result<Self::Reader, Text> { todo!() }
+//! # }
+//! # /// A [`Reader`] to keep track of words in a [`File`]
+//! # struct WordCounter {
+//! #     words: usize,
+//! #     regex: &'static str
+//! # }
+//! # impl<U: Ui> Reader<U> for WordCounter {
+//! #     fn apply_changes(
+//! #         pa: &mut Pass,
+//! #         reader: RwData<Self>,
+//! #         bytes: BytesDataMap<U>,
+//! #         moment: Moment,
+//! #         ranges_to_update: Option<&mut RangeList>,
+//! #     ) {
+//! #
+//! #     }
+//! #     fn update_range(&mut self, bytes: &mut Bytes, tags: MutTags, within: Range<usize>) {}
+//! # }
+//! use duat_core::prelude::*;
+//!
+//! /// The number of words in a [`File`]
+//! pub fn file_words<U: Ui>(pa: &Pass, file: &File<U>) -> usize {
+//!     if let Some(reader) = file.get_reader::<WordCounter>() {
+//!         reader.read(pa, |reader| reader.words)
+//!     } else {
+//!         0
+//!     }
+//! }
+//! ```
+//!
+//! Now, we have a finished plugin:
+//!
+//! ```rust
+//! use std::ops::Range;
+//!
+//! use duat_core::{
+//!     data::RwData,
+//!     file::{BytesDataMap, RangeList},
+//!     hook::OnFileOpen,
+//!     prelude::*,
+//!     text::{Bytes, Change, Moment, MutTags},
+//! };
+//!
+//! /// A [`Plugin`] to count the number of words in [`File`]s
+//! pub struct WordCount(bool);
+//!
+//! impl WordCount {
+//!     /// Count everything that isn't whitespace as a word character
+//!     pub fn not_whitespace(self) -> Self {
+//!         WordCount(true)
+//!     }
+//! }
+//!
+//! impl<U: Ui> Plugin<U> for WordCount {
+//!     fn new() -> Self {
+//!         WordCount(false)
+//!     }
+//!
+//!     fn plug(self) {
+//!         let not_whitespace = self.0;
+//!
+//!         hook::add::<OnFileOpen<U>, U>(move |pa, builder| {
+//!             builder.add_reader(pa, WordCounterCfg(not_whitespace));
+//!         });
+//!     }
+//! }
+//!
+//! /// The number of words in a [`File`]
+//! pub fn file_words<U: Ui>(pa: &Pass, file: &File<U>) -> usize {
+//!     if let Some(reader) = file.get_reader::<WordCounter>() {
+//!         reader.read(pa, |reader| reader.words)
+//!     } else {
+//!         0
+//!     }
+//! }
+//!
+//! /// A [`Reader`] to keep track of words in a [`File`]
+//! struct WordCounter {
+//!     words: usize,
+//!     regex: &'static str,
+//! }
+//!
+//! impl<U: Ui> Reader<U> for WordCounter {
+//!     fn apply_changes(
+//!         pa: &mut Pass,
+//!         reader: RwData<Self>,
+//!         bytes: BytesDataMap<U>,
+//!         moment: Moment,
+//!         ranges_to_update: Option<&mut RangeList>,
+//!     ) {
+//!         bytes.write_with_reader(pa, &reader, |bytes, reader| {
+//!             let diff: i32 = moment
+//!                 .changes()
+//!                 .map(|change| word_diff(reader.regex, bytes, change))
+//!                 .sum();
+//!
+//!             reader.words = (reader.words as i32 + diff) as usize;
+//!         });
+//!     }
+//!
+//!     fn update_range(&mut self, bytes: &mut Bytes, tags: MutTags, within: Range<usize>) {}
+//! }
+//!
+//! struct WordCounterCfg(bool);
+//!
+//! impl<U: Ui> ReaderCfg<U> for WordCounterCfg {
+//!     type Reader = WordCounter;
+//!
+//!     fn init(self, bytes: &mut Bytes) -> Result<Self::Reader, Text> {
+//!         let regex = if self.0 { r"\S+" } else { r"\w+" };
+//!
+//!         let words = bytes.search_fwd(regex, ..).unwrap().count();
+//!
+//!         Ok(WordCounter { words, regex })
+//!     }
+//! }
+//!
+//! fn word_diff(regex: &str, bytes: &mut Bytes, change: Change<&str>) -> i32 {
+//!     let [start, _] = bytes.points_of_line(change.start().line());
+//!     let [_, end] = bytes.points_of_line(change.added_end().line());
+//!
+//!     // Recreate the line as it was before the change
+//!     let mut line_before = bytes.strs(start..change.start()).to_string();
+//!     line_before.push_str(change.taken_str());
+//!     line_before.extend(bytes.strs(change.added_end()..end));
+//!
+//!     let words_before = line_before.search_fwd(regex, ..).unwrap().count();
+//!     let words_after = bytes.search_fwd(regex, start..end).unwrap().count();
+//!
+//!     words_after as i32 - words_before as i32
+//! }
+//! ```
+//!
+//! Once you're done modifying your plugin, you should be ready to
+//! publish it to [crates.io]. This is the common registry for
+//! packages (crates in Rust), and is also where Duat will pull
+//! plugins from. Before publishing, try to follow [these guidelines]
+//! in order to improve the usability of the plugin. Now, you should
+//! be able to just do this in the `duat-word-count` directory:
+//!
+//! ```bash
+//! cargo publish
+//! ```
+//!
+//! Ok, it's published, but how does one use it?
+//!
+//! ## Using plugins
+//!
+//! Assuming that you've already [installed duat], you should have a
+//! config crate in `~/.config/duat` (or `$XDG_CONFIG_HOME/duat`), in
+//! it, you can call the following command:
+//!
+//! ```bash
+//! cargo add duat-word-count@"*" --rename word-count
+//! ```
+//!
+//! Then, in `src/lib.rs`, you can add the following:
+//!
+//! ```rust
+//! # mod word_count {};
+//! # use duat_core::doc_duat as duat;
+//! setup_duat!(setup);
+//! use duat::prelude::*;
+//! use word_count::*;
+//!
+//! fn setup() {
+//!     hook::add::<StatusLine<Ui>>(|pa, (sl, _)| {
+//!         sl.replace(status!(
+//!             "{file_fmt} has [wc]{file_words}[] words{Spacer}{mode_fmt} {sels_fmt} {main_fmt}"
+//!         ))
+//!     });
+//! }
+//! ```
+//!
+//! Now, the default [`StatusLine`] should have word count added in,
+//! alongside the other usual things in there. It's been added in the
+//! `{file_words}` part of the string, which just interpolated that
+//! function, imported by `use word_count::*;`, into the status line.
+//!
+//! There are many other things that plugins can do, like create
+//! custom [`Widget`]s, [`Mode`](mode::Mode)s that can change how Duat
+//! behaves, customized [commands] and [hook]s, and many such things
 //!
 //! This is a copy of [EasyMotion], a plugin for
 //! Vim/Neovim/Kakoune/Emacs that lets you skip around the screen with
@@ -436,7 +792,25 @@
 //! [`Moment`]: crate::text::Moment
 //! [`Change`]: crate::text::Change
 //! [`Reader::apply_changes`]: crate::file::Reader::apply_changes
+//! [`update_range`]: crate::file::Reader::update_range
 //! [`Bytes`]: crate::text::Bytes
+//! [`Bytes::points_of_line`]: crate::text::Bytes::points_of_line
+//! [`Point`]: crate::text::Point
+//! [was taken]: crate::text::Change::taken_str
+//! [what was added]: crate::text::Change::added_str
+//! [`<WordCounter as Reader>::apply_changes`]: crate::file::Reader::apply_changes
+//! [`read`]: crate::data::RwData::read
+//! [`write`]: crate::data::RwData::write
+//! [number one rule of Rust]: https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html
+//! [create your own]: crate::hook::Hookable
+//! [choose when to trigger them]: crate::hook::trigger
+//! [`plug!`]: https://docs.rs/duat/latest/duat/prelude/macro.plug.html
+//! [crates.io]: https://crates.io
+//! [these guidelines]: https://doc.rust-lang.org/book/ch14-02-publishing-to-crates-io.html
+//! [installed duat]: https://github.com/AhoyISki/duat?tab=readme-ov-file#getting-started
+//! [dependencies]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
+//! [`StatusLine`]: https://docs.rs/duat/latest/duat/prelude/macro.status.html
+//! [commands]: cmd
 #![feature(
     decl_macro,
     step_trait,
@@ -613,11 +987,14 @@ pub mod prelude {
         cmd,
         context::{self, FileHandle, Handle},
         data::Pass,
-        file::{File, Reader},
+        file::{File, RangeList, Reader, ReaderCfg},
         form::{self, Form},
         hook,
         mode::{self, KeyCode, KeyEvent, KeyMod, Mode, key},
-        text::{AlignCenter, AlignLeft, AlignRight, Conceal, Ghost, Spacer, Tagger, Text, txt},
+        text::{
+            AlignCenter, AlignLeft, AlignRight, Conceal, Ghost, Matcheable, Moment, Spacer, Tagger,
+            Text, txt,
+        },
         ui::{PushSpecs, RawArea, Ui, Widget, WidgetCfg},
     };
 }

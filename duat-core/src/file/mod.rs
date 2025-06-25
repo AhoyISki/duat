@@ -179,7 +179,7 @@ impl<U: Ui> File<U> {
     pub(crate) fn write_quit_to(
         &self,
         path: impl AsRef<std::path::Path>,
-        quit: bool
+        quit: bool,
     ) -> std::io::Result<Option<usize>> {
         if self.text.has_unsaved_changes() {
             let path = path.as_ref();
@@ -513,17 +513,17 @@ impl<U: Ui> BytesDataMap<U> {
     /// Panics if there is are any borrows of either struct elsewhere,
     /// which could happen if you use [`RwData::write_unsafe`] or
     /// [`RwData::write_unsafe_as`]
-    pub fn read_and_write_reader<Ret, Rd: Reader<U>>(
+    pub fn write_with_reader<Ret, Rd: Reader<U>>(
         &self,
         pa: &mut Pass,
         rd: &RwData<Rd>,
-        f: impl FnOnce(&Bytes, &mut Rd) -> Ret,
+        f: impl FnOnce(&mut Bytes, &mut Rd) -> Ret,
     ) -> Ret {
         // SAFETY: Since the other type is not a File, we can safely borrow
         // both.
         unsafe {
             self.0
-                .read_unsafe(|file| rd.write(pa, |rd| f(file.text.bytes(), rd)))
+                .write_unsafe(|file| rd.write(pa, |rd| f(file.text.bytes_mut(), rd)))
         }
     }
 

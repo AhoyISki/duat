@@ -1485,23 +1485,20 @@ const fn str_to_color(str: &str) -> std::result::Result<Color, &'static str> {
             i += 1;
         }
 
-        let (_, str) = str.split_at(prefix.len());
-        Some(str)
+        Some(str.split_at(prefix.len()).1)
     }
     const fn strip_suffix<'a>(suffix: &str, str: &'a str) -> Option<&'a str> {
         let prefix = suffix.as_bytes();
-        let str = str.as_bytes();
 
         let mut i = str.len() - 1;
         while i >= str.len() - prefix.len() {
-            if str[i] != prefix[i - (str.len() - prefix.len())] {
+            if str.as_bytes()[i] != prefix[i - (str.len() - prefix.len())] {
                 return None;
             }
             i += 1;
         }
 
-        let (str, _) = str.split_at(str.len() - suffix.len());
-        Some(unsafe { utf8_str(str) })
+        Some(str.split_at(str.len() - suffix.len()).0)
     }
     const fn split_space(str: &str) -> Option<(&str, &str)> {
         if str.is_empty() {
@@ -1549,6 +1546,7 @@ const fn str_to_color(str: &str) -> std::result::Result<Color, &'static str> {
     } else if let Some(mut rgb) = strip_prefix("rgb ", str) {
         let mut values = [0, 0, 0];
         let mut i = 0;
+        
         while i < values.len() {
             if let Some((cut, rest)) = split_space(rgb) {
                 rgb = rest;

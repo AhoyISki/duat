@@ -119,7 +119,7 @@ impl Bytes {
         let bytes = self as &super::Bytes;
         Ok(std::iter::from_fn(move || {
             let init = fwd_input.start();
-            let h_end = loop {
+            let end = loop {
                 if let Ok(Some(half)) = dfas.fwd.0.try_search_fwd(&mut fwd_cache, &fwd_input) {
                     // Ignore empty matches at the start of the input.
                     if half.offset() == init {
@@ -132,16 +132,16 @@ impl Bytes {
                 }
             };
 
-            fwd_input.set_start(h_end);
-            rev_input.set_end(h_end);
+            fwd_input.set_start(end);
+            rev_input.set_end(end);
 
             let Ok(Some(half)) = dfas.rev.0.try_search_rev(&mut rev_cache, &rev_input) else {
                 return None;
             };
-            let h_start = half.offset();
+            let start = half.offset();
 
-            let p0 = bytes.point_at(h_start + range.start);
-            let p1 = bytes.point_at(h_end + range.start);
+            let p0 = bytes.point_at(start + range.start);
+            let p1 = bytes.point_at(end + range.start);
 
             Some(R::get_match([p0, p1], half.pattern()))
         }))
@@ -233,7 +233,15 @@ impl Bytes {
 
 /// A trait to match regexes on `&str`s
 pub trait Matcheable: Sized {
+    /// Returns a forward [`Iterator`] over matches of a given regex
     fn search_fwd(
+        &self,
+        pat: impl RegexPattern,
+        range: impl RangeBounds<usize> + Clone,
+    ) -> Result<impl Iterator<Item = ([usize; 2], &str)>, Box<regex_syntax::Error>>;
+
+    /// Returns a backwards [`Iterator`] over matches of a given regex
+    fn search_rev(
         &self,
         pat: impl RegexPattern,
         range: impl RangeBounds<usize> + Clone,
@@ -247,16 +255,17 @@ pub trait Matcheable: Sized {
     ) -> Result<bool, Box<regex_syntax::Error>>;
 }
 
-impl Matcheable for &'_ str {
+impl<S: AsRef<str>> Matcheable for S {
     fn search_fwd(
         &self,
         pat: impl RegexPattern,
         range: impl RangeBounds<usize> + Clone,
     ) -> Result<impl Iterator<Item = ([usize; 2], &str)>, Box<regex_syntax::Error>> {
-        let (start, end) = crate::get_ends(range, self.len());
+        let str = self.as_ref();
+        let (start, end) = crate::get_ends(range, str.len());
         let dfas = dfas_from_pat(pat)?;
 
-        let haystack = &self[start..end];
+        let haystack = &str[start..end];
 
         let mut fwd_input = Input::new(haystack);
         let mut rev_input = Input::new(haystack).anchored(Anchored::Yes);
@@ -265,7 +274,7 @@ impl Matcheable for &'_ str {
 
         Ok(std::iter::from_fn(move || {
             let init = fwd_input.start();
-            let h_end = loop {
+            let end = loop {
                 if let Ok(Some(half)) = dfas.fwd.0.try_search_fwd(&mut fwd_cache, &fwd_input) {
                     // Ignore empty matches at the start of the input.
                     if half.offset() == init {
@@ -278,15 +287,58 @@ impl Matcheable for &'_ str {
                 }
             };
 
-            fwd_input.set_start(h_end);
-            rev_input.set_end(h_end);
+            fwd_input.set_start(end);
+            rev_input.set_end(end);
 
             let Ok(Some(half)) = dfas.rev.0.try_search_rev(&mut rev_cache, &rev_input) else {
                 return None;
             };
-            let h_start = half.offset();
+            let start = half.offset();
 
-            Some(([h_start, h_end], &self[h_start..h_end]))
+            Some(([start, end], &str[start..end]))
+        }))
+    }
+
+    fn search_rev(
+        &self,
+        pat: impl RegexPattern,
+        range: impl RangeBounds<usize> + Clone,
+    ) -> Result<impl Iterator<Item = ([usize; 2], &str)>, Box<regex_syntax::Error>> {
+        let str = self.as_ref();
+        let (start, end) = crate::get_ends(range, str.len());
+        let dfas = dfas_from_pat(pat)?;
+
+        let haystack = &str[start..end];
+
+        let mut fwd_input = Input::new(haystack);
+        let mut rev_input = Input::new(haystack).anchored(Anchored::Yes);
+        let mut fwd_cache = dfas.fwd.1.write().unwrap();
+        let mut rev_cache = dfas.rev.1.write().unwrap();
+
+        Ok(std::iter::from_fn(move || {
+            let init = rev_input.end();
+            let start = loop {
+                if let Ok(Some(half)) = dfas.rev.0.try_search_rev(&mut rev_cache, &rev_input) {
+                    // Ignore empty matches at the end of the input.
+                    if half.offset() == init {
+                        rev_input.set_end(init.checked_sub(1)?);
+                    } else {
+                        break half.offset();
+                    }
+                } else {
+                    return None;
+                }
+            };
+
+            rev_input.set_end(start);
+            fwd_input.set_start(start);
+
+            let Ok(Some(half)) = dfas.fwd.0.try_search_fwd(&mut fwd_cache, &fwd_input) else {
+                return None;
+            };
+            let end = half.offset();
+
+            Some(([start, end], &str[start..end]))
         }))
     }
 
@@ -295,9 +347,10 @@ impl Matcheable for &'_ str {
         pat: impl RegexPattern,
         range: impl RangeBounds<usize> + Clone,
     ) -> Result<bool, Box<regex_syntax::Error>> {
-        let (start, end) = crate::get_ends(range, self.len());
+        let str = self.as_ref();
+        let (start, end) = crate::get_ends(range, str.len());
         let dfas = dfas_from_pat(pat)?;
-        let fwd_input = Input::new(&self[start..end]);
+        let fwd_input = Input::new(&str[start..end]);
 
         let mut fwd_cache = dfas.fwd.1.write().unwrap();
         if let Ok(Some(_)) = dfas.fwd.0.try_search_fwd(&mut fwd_cache, &fwd_input) {
