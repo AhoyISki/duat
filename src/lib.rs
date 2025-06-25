@@ -5,8 +5,16 @@
 //! * Syntax highlighting
 //! * Indentation calculation
 //!
-//! Both of those things are done through the [`TsParser`] reader,
-//! with the [`PubTsParser`] public API.
+//! # Installation
+//!
+//! Just like other Duat plugins, this one can be installed by calling
+//! `cargo add` in the config directory:
+//!
+//! ```bash
+//! cargo add duat-treesitter@"*" --rename treesitter
+//! ```
+//!
+//! But this is a default plugin, so you most likely won't have to do that.
 //!
 //! [tree-sitter]: https://tree-sitter.github.io/tree-sitter
 #![feature(closure_lifetime_binder)]
@@ -994,9 +1002,9 @@ impl<U: Ui> TsFile for File<U> {
     }
 }
 
-/// Convenience methods for use of tree-sitter in [`Editor`]s
+/// Convenience methods for use of tree-sitter in [`Cursor`]s
 pub trait TsCursor {
-    /// The level of indentation required at the [`Editor`]'s `caret`
+    /// The level of indentation required at the [`Cursor`]'s `caret`
     ///
     /// This is determined by a query, currently, it is the query
     /// located in
