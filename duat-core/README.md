@@ -98,8 +98,7 @@ time said [`File`][__link70] changes.
 
 ### Creating a [`Plugin`][__link71]
 
-First of all, you’re going to need [`cargo`][__link72], with it, you’re
-will create a crate:
+First of all, you’re going to need [`cargo`][__link72], then, you should create a crate with `cargo init`:
 
 ```bash
 cargo init --lib duat-word-count
@@ -675,7 +674,7 @@ screen by searching through character sequences.
 
 [`duat-sneak`]: https://github.com/AhoyISki/duat-sneak
 [`vim-sneak`]: https://github.com/justinmk/vim-sneak
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEGy_bXjvdZUMkGwCrwWRAzyECGzH81m5BV9E_G9FxROuvZ7aRYXKEG4rykI3pwAMoG81evJiFQlnAGytgfPAHrKUtG9VU74fgzB0sYWSEgmxCeXRlc0RhdGFNYXD2gmlSZWFkZXJDZmf2gmZSd0RhdGH2g2lkdWF0LWNvcmVlMC41LjFpZHVhdF9jb3Jl
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEGy_bXjvdZUMkGwCrwWRAzyECGzH81m5BV9E_G9FxROuvZ7aRYXKEG_HMgcJ9LFOFG8Lby3gFX1ubGyD5WLrgkCloG0v_zba4M8wGYWSEgmxCeXRlc0RhdGFNYXD2gmlSZWFkZXJDZmf2gmZSd0RhdGH2g2lkdWF0LWNvcmVlMC41LjFpZHVhdF9jb3Jl
  [__link0]: https://docs.rs/duat-core/0.5.1/duat_core/?search=ui::Ui
  [__link1]: https://docs.rs/duat-core/0.5.1/duat_core/ui/index.html
  [__link10]: https://docs.rs/duat-core/0.5.1/duat_core/?search=ui::Ui
