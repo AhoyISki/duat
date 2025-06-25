@@ -50,15 +50,8 @@ mod switch;
 /// other [`Mode`]s in a common place:
 ///
 /// ```rust
-/// # #![feature(decl_macro)]
-/// # mod duat {
-/// #     pub mod prelude {
-/// #         pub macro setup_duat($setup_fn:ident) {}
-/// #         pub fn map<M>(keys: &'static str, mode: impl std::any::Any) {}
-/// #         pub struct User;
-/// #     }
-/// # }
-/// # mod duat_plugin0 {
+/// # use duat_core::doc_duat as duat;
+/// # mod plugin0{
 /// #     use duat_core::prelude::*;
 /// #     #[derive(Clone, Copy, Debug)]
 /// #     pub struct PluginMode0;
@@ -67,7 +60,7 @@ mod switch;
 /// #         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<Self::Widget, U>) {}
 /// #     }
 /// # }
-/// # mod duat_plugin1 {
+/// # mod plugin1 {
 /// #     use duat_core::prelude::*;
 /// #     #[derive(Clone, Copy, Debug)]
 /// #     pub struct PluginMode1;
@@ -87,8 +80,8 @@ mod switch;
 /// # }
 /// setup_duat!(setup);
 /// use duat::prelude::*;
-/// use duat_plugin0::*;
-/// use duat_plugin1::*;
+/// use plugin0::*;
+/// use plugin1::*;
 ///
 /// fn setup() {
 ///     map::<User>("0", PluginMode0);

@@ -580,13 +580,8 @@ pub fn args_iter(command: &str) -> ArgsIter<'_> {
             }
         }
 
-        start.take().map(|s| unsafe {
-            let e = end.take().unwrap_or(command.len());
-            (
-                core::str::from_utf8_unchecked(&command.as_bytes()[s..e]),
-                s..e,
-            )
-        })
+        let e = end.take().unwrap_or(command.len());
+        start.take().map(|s| (&command[s..e], s..e))
     });
     args.next();
     args

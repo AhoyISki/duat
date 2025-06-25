@@ -23,9 +23,9 @@ use crate::{add_shifts, merging_range_by_guess_and_lazy_shift};
 pub struct History {
     moments: Vec<Moment>,
     cur_moment: usize,
-    new_changes: Option<(Vec<Change<String>>, (usize, [i32; 3]))>,
+    new_changes: Option<(Vec<Change>, (usize, [i32; 3]))>,
     /// Used to update ranges on the File
-    unproc_changes: Option<(Vec<Change<String>>, (usize, [i32; 3]))>,
+    unproc_changes: Option<(Vec<Change>, (usize, [i32; 3]))>,
     unproc_moments: Vec<Moment>,
 }
 
@@ -45,7 +45,7 @@ impl History {
     /// with the one being added.
     ///
     /// [`EditHelper`]: crate::mode::EditHelper
-    pub fn apply_change(&mut self, guess_i: Option<usize>, change: Change<String>) -> usize {
+    pub fn apply_change(&mut self, guess_i: Option<usize>, change: Change) -> usize {
         let (changes, shift_state) = self.unproc_changes.get_or_insert_default();
         add_change(changes, guess_i, change.clone(), shift_state);
 
@@ -155,7 +155,7 @@ impl<Context> Decode<Context> for History {
 /// going back in time is less jarring.
 #[derive(Clone, Copy, Default, Debug, Encode)]
 pub struct Moment {
-    changes: &'static [Change<String>],
+    changes: &'static [Change],
     is_fwd: bool,
 }
 
@@ -203,9 +203,9 @@ impl<Context> Decode<Context> for Moment {
 /// First try to merge this change with as many changes as
 /// possible, then add it in
 fn add_change(
-    changes: &mut Vec<Change<String>>,
+    changes: &mut Vec<Change>,
     guess_i: Option<usize>,
-    mut change: Change<String>,
+    mut change: Change,
     shift_state: &mut (usize, [i32; 3]),
 ) -> usize {
     let (sh_from, shift) = std::mem::take(shift_state);
@@ -243,7 +243,7 @@ fn add_change(
     }
 
     let changes_taken = c_range.clone().count();
-    let new_sh_from = if !(change.added_text() == "" && change.taken_text() == "") {
+    let new_sh_from = if !(change.added_str() == "" && change.taken_str() == "") {
         changes.insert(c_range.start, change);
         sh_from.saturating_sub(changes_taken).max(c_range.start) + 1
     } else {
@@ -259,8 +259,8 @@ fn add_change(
 }
 
 /// A change in a file, with a start, taken text, and added text
-#[derive(Default, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Encode, Decode)]
-pub struct Change<S: AsRef<str>> {
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Encode, Decode)]
+pub struct Change<S = String> {
     start: Point,
     added: S,
     taken: S,
@@ -268,7 +268,7 @@ pub struct Change<S: AsRef<str>> {
     taken_end: Point,
 }
 
-impl Change<String> {
+impl Change {
     /// Returns a new [Change].
     pub fn new(edit: impl ToString, [p0, p1]: [Point; 2], text: &Text) -> Self {
         let added = {
@@ -341,12 +341,12 @@ impl Change<String> {
 
 impl<'a> Change<&'a str> {
     /// Returns a new copyable [`Change`] from an insertion.
-    pub fn str_insert(added_text: &'a str, start: Point) -> Self {
+    pub fn str_insert(added_str: &'a str, start: Point) -> Self {
         Self {
             start,
-            added: added_text,
+            added: added_str,
             taken: "",
-            added_end: start + Point::len_of(added_text),
+            added_end: start + Point::len_of(added_str),
             taken_end: start,
         }
     }
@@ -407,12 +407,12 @@ impl<S: AsRef<str>> Change<S> {
     }
 
     /// The text that was taken on this [`Change`]
-    pub fn added_text(&self) -> &str {
+    pub fn added_str(&self) -> &str {
         self.added.as_ref()
     }
 
     /// The text that was added by this [`Change`]
-    pub fn taken_text(&self) -> &str {
+    pub fn taken_str(&self) -> &str {
         self.taken.as_ref()
     }
 
@@ -426,14 +426,12 @@ impl<S: AsRef<str>> Change<S> {
     }
 }
 
-impl Copy for Change<&str> {}
-
 /// If `lhs` contains the start of `rhs`
 fn has_start_of(lhs: Range<usize>, rhs: Range<usize>) -> bool {
     lhs.start <= rhs.start && rhs.start <= lhs.end
 }
 
-fn finish_shifting(changes: &mut [Change<String>], sh_from: usize, shift: [i32; 3]) {
+fn finish_shifting(changes: &mut [Change], sh_from: usize, shift: [i32; 3]) {
     if shift != [0; 3] {
         for change in changes[sh_from..].iter_mut() {
             change.shift_by(shift);

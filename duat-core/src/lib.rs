@@ -1,6 +1,12 @@
 //! The core of Duat, this crate is meant to be used only for the
 //! creation of plugins for Duat.
 //!
+//! The capabilities of `duat-core` are largely the same as the those
+//! of Duat, however, the main difference is the multi [`Ui`] APIs of
+//! this crate. In it, the public functions and types are defined in
+//! terms of `U: Ui`,  which means that they can work on various
+//! different interfaces:
+//!
 //! # Quick Start
 //!
 //! This crate is composed of a few main modules, which will be used
@@ -11,42 +17,247 @@
 //!   - [`Widget`]s: As the name implies, this is the trait for
 //!     objects that will show up on the screen. The most noteworthy
 //!     [`Widget`] is [`File`], which displays the contents of a file.
+//!   - [`WidgetCfg`]s: These are [`Widget`] builders. They are used
+//!     in the `setup` function of Duat's config, through the
+//!     [`OnFileOpen`] and [`OnWindowOpen`] [hook]s.
+//!   - [`Ui`] and [`RawArea`]s: These are used if you want to create
+//!     your own interface for Duat. Very much a work in progress, so
+//!     I wouldn't recommend trying that yet.
 //!
-//! The capabilities of `duat-core` are largely the same as the those
-//! of Duat, however, the main difference is the multi [`Ui`] APIs of
-//! this crate. In it, the public functions and types are defined in
-//! terms of `U: Ui`,  which means that they can work on various
-//! different interfaces:
+//! - [`text`]: Defines the struct used to show characters on screen
+//!   - [`Text`]: Is everything that Duat shows on screen (except
+//!     [`Ui`] specific decorations). This includes a UTF-8 string and
+//!     tags to modify it.
+//!   - [`Tag`]s: This is how Duat determines how [`Text`] will be
+//!     displayed on screen. There are tags for styling, text
+//!     alignment, spacing and all sorts of other things.
+//!   - [`txt!`]: This macro, with syntax reminiscent of [`format!`]
+//!     from Rust's [`std`],  can be used to create [`Text`] through
+//!     the [`text::Builder`] struct.
 //!
-//! What's great about it is that it will work no matter what editing
-//! model the user is using. It could be Vim inspired, Kakoune
-//! inspired, Emacs inspired, doesn't matter. All the user has to do
-//! to use this mode is this:
+//! - [`mode`]: Defines how Duat will take input in order to control
+//!   [`Widget`]s, includes things like:
+//!   - [`Mode`](mode::Mode)s: have the function [`send_key`], which
+//!     takes a [key] and the current [widget] as input, and decides
+//!     what to do with them. Only one [`Mode`](mode::Mode) is active
+//!     at any given time.
+//!   - [`map`] and [`alias`]: These functions provide vim-style
+//!     remapping on a given [`Mode`](mode::Mode), also letting you
+//!     switch modes on [key] sequences.
+//!   - [`set`], [`set_default`], [`reset`]: These functions are used
+//!     in order to switch [`Mode`](mode::Mode) on demand. Do note
+//!     that the switching is done asynchronously.
 //!
-//! ```rust
-//! # struct Normal;
-//! # #[derive(Default, Clone)]
-//! # struct Sneak;
-//! # fn map<M>(take: &str, give: impl std::any::Any) {}
-//! # // I fake it here because this function is from duat, not duat-core
-//! map::<Normal>("<C-s>", Sneak::default());
+//! - [`hook`]: Provides utilities for hooking functions in Duat
+//!   - [`Hookable`]: An event that you want to provide hooks for, in
+//!     order to trigger functions whenever it takes place.
+//!   - [`add`], [`add_grouped`], [`remove`]: These functions let you
+//!     add or remove functions from [`Hookable`] events. Their
+//!     arguments are statically determine by said [`Hookable`]s.
+//!
+//! - [`cmd`]: Creation of commands in Duat, which can be called at
+//!   runtime by the user.
+//!   - [`add!`]: This macro lets you create a command, with one or
+//!     more callers, and any number of [`Parameter`]s
+//!   - [`Parameter`]: A command argument parsed from a string. There
+//!     are a bunch of predefined [`Parameter`]s, and things like
+//!     [`Vec<P>`] where `P: Parameter`, can also be as
+//!     [`Parameter`]s, if you want multiple of the same kind.
+//!   - [`call`], [`queue`], [`call_notify`], [`queue_and`], etc:
+//!     functions to call or queue commands, which one should be used
+//!     depends on the context of the function calling them.
+//!
+//! - [`form`]: How to stylize [`Text`]
+//!   - [`Form`](form::Form): Has many options on what [`Text`] should
+//!     look like, are the same as those found on unix terminals.
+//!   - [`set`](form::set), [`set_weak`]: These functions let you set
+//!     forms with a name. They can be set to a [`Form`](form::Form)
+//!     or reference another name of a form.
+//!   - [`ColorScheme`]s: These are general purpose
+//!     [`Form`](form::Form) setters, with a name that can be called
+//!     from the `colorscheme` [command]
+//!
+//! These are the elements available to you if you want to extend
+//! Duat. Additionally, there are some other things that have been
+//! left out, but they are available in the [`prelude`], so you can
+//! just import it.
+//!
+//! # How to extend Duat
+//!
+//! ## Creating a [`Plugin`]
+//!
+//! First of all, you're going to need [`cargo`], with it, you're
+//! gonna need to create a crate. For this demonstration, I will
+//! create a [`Plugin`] that keeps track of the word count in a
+//! [`File`], without reparsing it every time said [`File`] changes:
+//!
+//! ```bash
+//! cargo init --lib duat-word-count
+//! cd duat-word-count
 //! ```
 //!
-//! And now, whenever the usert types `Control S` in `Normal` mode,
-//! the mode will switch to `Sneak`. You could replace `Normal` with
-//! any other mode, from any other editing model, and this would still
-//! work.
+//! Wihin that crate, you're going to need to add the `duat-core`
+//! dependency:
 //!
-//! Of course, this is most useful for plugins, for your own
-//! configuration, you should probably just rely on [`map`] to
-//! accomplish the same thing.
+//! ```bash
+//! cargo add duat-core
+//! ```
+//!
+//! Finally, you can remove everything in `duat-word-count/src/lib.rs`
+//! and start writing your plugin.
+//!
+//! ```rust
+//! // In duat-word-count/src/lib.rs
+//! use duat_core::prelude::*;
+//!
+//! struct WordCount;
+//!
+//! impl<U: Ui> Plugin<U> for WordCount {
+//!     fn new() -> Self {
+//!         WordCount
+//!     }
+//!
+//!     fn plug(self) {
+//!         todo!();
+//!     }
+//! }
+//! ```
+//!
+//! In the example, `WordChars` is a plugin that can be included in
+//! Duat's `config` crate. You can extend Duat with this plugin, and
+//! it should use the [builder pattern] for configuration, take this
+//! as an example:
+//!
+//! ```rust
+//! use duat_core::prelude::*;
+//!
+//! struct WordCount(bool);
+//!
+//! impl WordCount {
+//!     /// Count everything that isn't whitespace as a word character
+//!     pub fn not_whitespace(self) -> Self {
+//!         WordCount(true)
+//!     }
+//! }
+//!
+//! impl<U: Ui> Plugin<U> for WordCount {
+//!     fn new() -> Self {
+//!         WordCount(false)
+//!     }
+//!
+//!     fn plug(self) {
+//!         todo!();
+//!     }
+//! }
+//! ```
+//!
+//! Now, there is an option to exclude only whitespace, not just
+//! including regular alphanumeric characters. This would count, for
+//! example "x(x^3 + 3)" as 3 words, rather than 4.
+//!
+//! Next, I need to add something to keep track of the number of words
+//! in a [`File`]. For [`File`]s specifically, there is a built-in way
+//! to keep track of changes through a [`Reader`]:
+//!
+//! ```rust
+//! # struct WordCounterCfg;
+//! # impl<U: Ui> ReaderCfg<U> for WordCounterCfg {
+//! #     type Reader = WordCounter;
+//! #     fn init(self, _: &mut Bytes) -> Result<Self::Reader, Text> { todo!() }
+//! # }
+//! use duat_core::prelude::*;
+//!
+//! /// A [`Reader`] to keep track of words in a [`File`]
+//! struct WordCounter {
+//!     words: usize,
+//!     count_punct: bool,
+//! }
+//!
+//! impl<U: Ui> Reader<U> for WordCounter {
+//!     fn apply_changes(
+//!         pa: &mut Pass,
+//!         reader: RwData<Self>,
+//!         bytes: BytesDataMap<U>,
+//!         moment: Moment,
+//!         ranges_to_update: Option<&mut RangeList>,
+//!     ) {
+//!         todo!();
+//!     }
+//!
+//!     fn update_range(&mut self, bytes: &mut Bytes, tags: MutTags, within: Range<usize>) {}
+//! }
+//! ```
+//!
+//! Whenever changes take place in a [`File`], those changes will be
+//! reported in a [`Moment`], which is essentially just a list of
+//! [`Change`]s that took place. This [`Moment`] will be sent to the
+//! [`Reader::apply_changes`] function, in which you are supposed to
+//! change the internal state of the [`Reader`] to accomodate the
+//! [`Change`]s.
+//!
+//! In order to add this [`Reader`] to the [`File`], we're going to
+//! need a [`ReaderCfg`], which is used for configuring [`Reader`]s
+//! before adding them to a [`File`]:
+//!
+//! ```rust
+//! # struct WordCounter {
+//! #     words: usize,
+//! #     regex: &'static str,
+//! # }
+//! # impl<U: Ui> Reader<U> for WordCounter {
+//! #     fn apply_changes(
+//! #         _: &mut Pass,
+//! #         _: RwData<Self>,
+//! #         _: BytesDataMap<U>,
+//! #         _: Moment,
+//! #         _: Option<&mut RangeList>,
+//! #     ) {
+//! #         todo!();
+//! #     }
+//! #     fn update_range(&mut self, _: &mut Bytes, _: MutTags, _: Range<usize>) {}
+//! # }
+//! use duat_core::{prelude::*, text::*};
+//!
+//! struct WordCounterCfg(bool);
+//!
+//! impl<U: Ui> ReaderCfg<U> for WordCounterCfg {
+//!     type Reader = WordCounter;
+//!
+//!     fn init(self, bytes: &mut Bytes) -> Result<Self::Reader, Text> {
+//!         let regex = if self.0 { "\S+" } else { "\w+" };
+//!
+//!         let words = bytes.search_fwd(regex, ..).unwrap().count();
+//!
+//!         Ok(WordCounter { words, regex })
+//!     }
+//! }
+//! ```
+//!
+//! In this function, I am returning the `WordCounter`, with a
+//! precalculated number of words, based on the [`Bytes`] of the
+//! [`File`]'s [`Text`]. Now that there is a count of words, I can
+//! update it based on [`Change`]s:
+//!
+//! ```rust
+//! use duat_core::{prelude::*, text::*};
+//!
+//! fn word_diff(regex: &str, bytes: &mut Bytes, change: &Change) -> i32 {
+//!     let [start, _] = bytes.points_of_line(change.start().line());
+//!     let [_, end] = bytes.points_of_line(change.added_end().line());
+//!
+//!     let mut line_before = bytes.strs(start..change.start()).to_string();
+//!     line_before.push_str(change.taken_str());
+//!     line_before.push_str(bytes.strs(change.added_end()..end));
+//!
+//!     
+//! }
+//! ```
 //!
 //! This is a copy of [EasyMotion], a plugin for
 //! Vim/Neovim/Kakoune/Emacs that lets you skip around the screen with
 //! at most 2 keypresses.
 //!
 //! In order to emulate it, we use [ghost text] and [concealment]:
-//!
 //! ```rust
 //! use duat_core::{prelude::*, text::Point};
 //! #[derive(Clone)]
@@ -80,8 +291,8 @@
 //! impl<U: Ui> Mode<U> for EasyMotion {
 //!     type Widget = File<U>;
 //!
-//!     fn on_switch(&mut self, pa: &mut Pass, handle: Handle<File<U>, U>) {
-//!         handle.write(pa, |file, _| {
+//!     fn on_switch(&mut self, pa: &mut Pass, handle: Handle<File<U>,
+//! U>) {         handle.write(pa, |file, _| {
 //!             let cfg = file.print_cfg();
 //!             let text = file.text_mut();
 //!
@@ -91,24 +302,26 @@
 //!                 "[^\n\\s]+"
 //!             };
 //!
-//!             let (start, _) = handle.area().start_points(text, cfg);
-//!             let (end, _) = handle.area().end_points(text, cfg);
-//!             self.points = text.search_fwd(regex, start..end).unwrap().collect();
+//!             let (start, _) = handle.area().start_points(text,
+//! cfg);             let (end, _) = handle.area().end_points(text,
+//! cfg);             self.points = text.search_fwd(regex,
+//! start..end).unwrap().collect();
 //!
 //!             let seqs = key_seqs(self.points.len());
 //!
 //!             for (seq, [p0, _]) in seqs.iter().zip(&self.points) {
-//!                 let ghost = Ghost(txt!("[easy_motion.word]{seq}"));
-//!                 text.insert_tag(self.key, *p0, ghost);
+//!                 let ghost =
+//! Ghost(txt!("[easy_motion.word]{seq}"));                 
+//! text.insert_tag(self.key, *p0, ghost);
 //!
 //!                 let seq_end = p0.byte() + seq.chars().count();
-//!                 text.insert_tag(self.key, p0.byte()..seq_end, Conceal);
-//!             }
+//!                 text.insert_tag(self.key, p0.byte()..seq_end,
+//! Conceal);             }
 //!         });
 //!     }
 //!
-//!     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<File<U>, U>) {
-//!         let char = match key {
+//!     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle:
+//! Handle<File<U>, U>) {         let char = match key {
 //!             key!(KeyCode::Char(c)) => c,
 //!             // Return a char that will never match.
 //!             _ => '❌',
@@ -130,12 +343,12 @@
 //!                 continue;
 //!             }
 //!
-//!             // Removing one end of the conceal range will remove both ends.
-//!             handle.write_text(pa, |text| text.remove_tags(self.key, p1.byte()));
-//!         }
+//!             // Removing one end of the conceal range will remove
+//! both ends.             handle.write_text(pa, |text|
+//! text.remove_tags(self.key, p1.byte()));         }
 //!
-//!         if self.seq.chars().count() == 2 || !LETTERS.contains(char) {
-//!             mode::reset::<File<U>, U>();
+//!         if self.seq.chars().count() == 2 ||
+//! !LETTERS.contains(char) {             mode::reset::<File<U>, U>();
 //!         }
 //!     }
 //! }
@@ -147,7 +360,8 @@
 //!     seqs.extend(LETTERS.chars().skip(double).map(char::into));
 //!
 //!     let chars = LETTERS.chars().take(double);
-//!     seqs.extend(chars.flat_map(|c1| LETTERS.chars().map(move |c2| format!("{c1}{c2}"))));
+//!     seqs.extend(chars.flat_map(|c1| LETTERS.chars().map(move |c2|
+//! format!("{c1}{c2}"))));
 //!
 //!     seqs
 //! }
@@ -164,7 +378,6 @@
 //!
 //! Now, in order to use this mode, it's the exact same thing as
 //! `Sneak`:
-//!
 //! ```rust
 //! # struct Normal;
 //! # #[derive(Clone)]
@@ -183,9 +396,7 @@
 //! map::<Normal>("<CA-l>", EasyMotion::line());
 //! ```
 //!
-//! [`Mode`]: crate::mode::Mode
 //! [`File`]: crate::file::File
-//! [`map`]: https://docs.rs/duat/0.2.0/duat/prelude/fn.map.html
 //! [EasyMotion]: https://github.com/easymotion/vim-easymotion
 //! [ghost text]: crate::text::Ghost
 //! [concealment]: crate::text::Conceal
@@ -193,6 +404,39 @@
 //! [`Conceal`]: crate::text::Conceal
 //! [remove]: crate::text::Text::remove_tags
 //! [Move]: crate::mode::Cursor::move_to
+//! [`WidgetCfg`]: crate::ui::WidgetCfg
+//! [`OnFileOpen`]: crate::hook::OnFileOpen
+//! [`OnWindowOpen`]: crate::hook::OnWindowOpen
+//! [`RawArea`]: crate::ui::RawArea
+//! [`send_key`]: crate::mode::Mode::send_key
+//! [key]: crate::mode::KeyEvent
+//! [widget]: crate::context::Handle
+//! [`map`]: crate::mode::map
+//! [`alias`]: crate::mode::alias
+//! [`set`]: crate::mode::set
+//! [`set_default`]: crate::mode::set_default
+//! [`reset`]: crate::mode::reset
+//! [`Hookable`]: crate::hook::Hookable
+//! [`add`]: crate::hook::add
+//! [`add_grouped`]: crate::hook::add_grouped
+//! [`remove`]: crate::hook::remove
+//! [`Tag`]: crate::text::Tag
+//! [`add!`]: crate::cmd::add
+//! [`Parameter`]: crate::cmd::Parameter
+//! [`call`]: crate::cmd::call
+//! [`queue`]: crate::cmd::queue
+//! [`call_notify`]: crate::cmd::call_notify
+//! [`queue_and`]: crate::cmd::queue_and
+//! [`set_weak`]: crate::form::set_weak
+//! [`ColorScheme`]: crate::form::ColorScheme
+//! [command]: crate::cmd
+//! [`cargo`]: https://doc.rust-lang.org/book/ch01-01-installation.html
+//! [builder pattern]: https://rust-unofficial.github.io/patterns/patterns/creational/builder.html
+//! [`Reader`]: crate::file::Reader
+//! [`Moment`]: crate::text::Moment
+//! [`Change`]: crate::text::Change
+//! [`Reader::apply_changes`]: crate::file::Reader::apply_changes
+//! [`Bytes`]: crate::text::Bytes
 #![feature(
     decl_macro,
     step_trait,
@@ -369,7 +613,7 @@ pub mod prelude {
         cmd,
         context::{self, FileHandle, Handle},
         data::Pass,
-        file::File,
+        file::{File, Reader},
         form::{self, Form},
         hook,
         mode::{self, KeyCode, KeyEvent, KeyMod, Mode, key},

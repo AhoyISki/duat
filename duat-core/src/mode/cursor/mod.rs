@@ -123,7 +123,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
             Change::new(edit, [p0, p1], self.widget.text())
         };
 
-        let added_len = change.added_text().len();
+        let added_len = change.added_str().len();
         let end = change.added_end();
 
         self.edit(change);
@@ -195,7 +195,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
     }
 
     /// Edits the file with a [`Change`]
-    fn edit(&mut self, change: Change<String>) {
+    fn edit(&mut self, change: Change) {
         let text = self.widget.text_mut();
         let (change_i, selections_taken) =
             text.apply_change(self.selection.change_i.map(|i| i as usize), change);

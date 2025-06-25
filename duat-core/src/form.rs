@@ -383,7 +383,7 @@ mod global {
     pub macro id_of {
         ($form:expr) => {{
             use $crate::form::FormId;
-            
+
             static ID: std::sync::OnceLock<FormId> = std::sync::OnceLock::new();
             *ID.get_or_init(|| {
                 let name: &'static str = $form;
@@ -930,6 +930,12 @@ impl std::ops::DerefMut for BuiltForm {
     }
 }
 
+impl From<BuiltForm> for Form {
+    fn from(value: BuiltForm) -> Self {
+        value.0
+    }
+}
+
 /// The [`FormId`] of the `"default"` form
 pub const DEFAULT_ID: FormId = FormId(0);
 /// The [`FormId`] of the `"accent"` form
@@ -1468,21 +1474,19 @@ fn position_and_form(forms: &mut Vec<(&str, Form, FormType)>, name: &'static str
 
 /// Converts a string to a color, supporst hex, RGB and HSL
 const fn str_to_color(str: &str) -> std::result::Result<Color, &'static str> {
-    use core::str::from_utf8_unchecked as utf8_str;
     const fn strip_prefix<'a>(prefix: &str, str: &'a str) -> Option<&'a str> {
         let prefix = prefix.as_bytes();
-        let str = str.as_bytes();
 
         let mut i = 0;
         while i < prefix.len() {
-            if str[i] != prefix[i] {
+            if str.as_bytes()[i] != prefix[i] {
                 return None;
             }
             i += 1;
         }
 
         let (_, str) = str.split_at(prefix.len());
-        Some(unsafe { utf8_str(str) })
+        Some(str)
     }
     const fn strip_suffix<'a>(suffix: &str, str: &'a str) -> Option<&'a str> {
         let prefix = suffix.as_bytes();
@@ -1503,11 +1507,10 @@ const fn str_to_color(str: &str) -> std::result::Result<Color, &'static str> {
         if str.is_empty() {
             return None;
         }
-        let str = str.as_bytes();
 
         let mut i = 0;
         while i < str.len() {
-            if str[i] == b' ' {
+            if str.as_bytes()[i] == b' ' {
                 break;
             }
             i += 1;
@@ -1515,7 +1518,7 @@ const fn str_to_color(str: &str) -> std::result::Result<Color, &'static str> {
 
         let (cut, rest) = str.split_at(i);
         let (_, rest) = rest.split_at(if rest.is_empty() { 0 } else { 1 });
-        Some(unsafe { (utf8_str(cut), utf8_str(rest)) })
+        Some((cut, rest))
     }
     const fn hue_to_rgb(p: f32, q: f32, mut t: f32) -> f32 {
         t = if t < 0.0 { t + 1.0 } else { t };

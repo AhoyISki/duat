@@ -542,7 +542,7 @@ impl Text {
     pub(crate) fn apply_change(
         &mut self,
         guess_i: Option<usize>,
-        change: Change<String>,
+        change: Change,
     ) -> (Option<usize>, Option<usize>) {
         self.0.has_changed = true;
 
@@ -663,7 +663,7 @@ impl Text {
 
             if let Some(selections) = self.0.selections.as_mut() {
                 let start = change.start();
-                let added_end = match change.added_text().chars().next_back() {
+                let added_end = match change.added_str().chars().next_back() {
                     Some(last) => change.added_end().rev(last),
                     None => change.start(),
                 };

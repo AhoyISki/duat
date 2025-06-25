@@ -233,6 +233,12 @@ impl Bytes {
 
 /// A trait to match regexes on `&str`s
 pub trait Matcheable: Sized {
+    fn search_fwd(
+        &self,
+        pat: impl RegexPattern,
+        range: impl RangeBounds<usize> + Clone,
+    ) -> Result<impl Iterator<Item = ([usize; 2], &str)>, Box<regex_syntax::Error>>;
+
     /// Checks if a type matches a [`RegexPattern`]
     fn matches(
         &self,
@@ -241,28 +247,49 @@ pub trait Matcheable: Sized {
     ) -> Result<bool, Box<regex_syntax::Error>>;
 }
 
-impl<const N: usize> Matcheable for std::array::IntoIter<&str, N> {
-    fn matches(
+impl Matcheable for &'_ str {
+    fn search_fwd(
         &self,
         pat: impl RegexPattern,
         range: impl RangeBounds<usize> + Clone,
-    ) -> Result<bool, Box<regex_syntax::Error>> {
-        let str: String = self.as_slice().iter().copied().collect();
-        let (start, end) = crate::get_ends(range, str.len());
+    ) -> Result<impl Iterator<Item = ([usize; 2], &str)>, Box<regex_syntax::Error>> {
+        let (start, end) = crate::get_ends(range, self.len());
         let dfas = dfas_from_pat(pat)?;
-        let fwd_input =
-            Input::new(unsafe { std::str::from_utf8_unchecked(&str.as_bytes()[start..end]) });
 
+        let haystack = &self[start..end];
+
+        let mut fwd_input = Input::new(haystack);
+        let mut rev_input = Input::new(haystack).anchored(Anchored::Yes);
         let mut fwd_cache = dfas.fwd.1.write().unwrap();
-        if let Ok(Some(_)) = dfas.fwd.0.try_search_fwd(&mut fwd_cache, &fwd_input) {
-            Ok(true)
-        } else {
-            Ok(false)
-        }
-    }
-}
+        let mut rev_cache = dfas.rev.1.write().unwrap();
 
-impl Matcheable for &'_ str {
+        Ok(std::iter::from_fn(move || {
+            let init = fwd_input.start();
+            let h_end = loop {
+                if let Ok(Some(half)) = dfas.fwd.0.try_search_fwd(&mut fwd_cache, &fwd_input) {
+                    // Ignore empty matches at the start of the input.
+                    if half.offset() == init {
+                        fwd_input.set_start(init + 1);
+                    } else {
+                        break half.offset();
+                    }
+                } else {
+                    return None;
+                }
+            };
+
+            fwd_input.set_start(h_end);
+            rev_input.set_end(h_end);
+
+            let Ok(Some(half)) = dfas.rev.0.try_search_rev(&mut rev_cache, &rev_input) else {
+                return None;
+            };
+            let h_start = half.offset();
+
+            Some(([h_start, h_end], &self[h_start..h_end]))
+        }))
+    }
+
     fn matches(
         &self,
         pat: impl RegexPattern,
@@ -270,8 +297,7 @@ impl Matcheable for &'_ str {
     ) -> Result<bool, Box<regex_syntax::Error>> {
         let (start, end) = crate::get_ends(range, self.len());
         let dfas = dfas_from_pat(pat)?;
-        let fwd_input =
-            Input::new(unsafe { std::str::from_utf8_unchecked(&self.as_bytes()[start..end]) });
+        let fwd_input = Input::new(&self[start..end]);
 
         let mut fwd_cache = dfas.fwd.1.write().unwrap();
         if let Ok(Some(_)) = dfas.fwd.0.try_search_fwd(&mut fwd_cache, &fwd_input) {
@@ -353,16 +379,12 @@ impl Searcher {
             };
             let start = half.offset();
 
-            let start = unsafe {
-                std::str::from_utf8_unchecked(&haystack.as_bytes()[last_point.byte() - gap..start])
-            }
-            .chars()
-            .fold(last_point, |p, b| p.fwd(b));
-            let end = unsafe {
-                std::str::from_utf8_unchecked(&haystack.as_bytes()[start.byte() - gap..end])
-            }
-            .chars()
-            .fold(start, |p, b| p.fwd(b));
+            let start = haystack[last_point.byte() - gap..start]
+                .chars()
+                .fold(last_point, |p, b| p.fwd(b));
+            let end = haystack[start.byte() - gap..end]
+                .chars()
+                .fold(start, |p, b| p.fwd(b));
 
             last_point = end;
 
@@ -414,18 +436,12 @@ impl Searcher {
                 .unwrap()
                 .unwrap();
 
-            let end = unsafe {
-                std::str::from_utf8_unchecked(
-                    &haystack.as_bytes()[half.offset()..(last_point.byte() - gap)],
-                )
-            }
-            .chars()
-            .fold(last_point, |p, b| p.rev(b));
-            let start = unsafe {
-                std::str::from_utf8_unchecked(&haystack.as_bytes()[start..(end.byte() - gap)])
-            }
-            .chars()
-            .fold(end, |p, b| p.rev(b));
+            let end = haystack[half.offset()..(last_point.byte() - gap)]
+                .chars()
+                .fold(last_point, |p, b| p.rev(b));
+            let start = haystack[start..(end.byte() - gap)]
+                .chars()
+                .fold(end, |p, b| p.rev(b));
 
             last_point = start;
 

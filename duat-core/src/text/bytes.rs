@@ -1,4 +1,4 @@
-use std::{iter::FusedIterator, ops::RangeBounds, str::from_utf8_unchecked};
+use std::{iter::FusedIterator, ops::RangeBounds};
 
 use gapbuf::GapBuffer;
 use lender::{DoubleEndedLender, ExactSizeLender, Lender, Lending};
@@ -20,11 +20,7 @@ impl Bytes {
         let buf = GapBuffer::from_iter(string.bytes());
 
         let len = buf.len();
-        let chars = unsafe {
-            let (s0, s1) = buf.as_slices();
-            std::str::from_utf8_unchecked(s0).chars().count()
-                + std::str::from_utf8_unchecked(s1).chars().count()
-        };
+        let chars = string.chars().count();
         let lines = buf.iter().filter(|b| **b == b'\n').count();
         Self {
             buf,
@@ -180,6 +176,8 @@ impl Bytes {
 
     /// Returns the two `&str`s in the byte range.
     fn strs_in_range_inner(&self, range: impl RangeBounds<usize>) -> [&str; 2] {
+        use std::str::from_utf8_unchecked;
+
         let (s0, s1) = self.buf.as_slices();
         let (start, end) = crate::get_ends(range, self.buf.len());
         let (start, end) = (start, end);
@@ -439,7 +437,7 @@ impl Bytes {
     ///
     /// [`Change`]: super::Change
     pub(super) fn apply_change(&mut self, change: super::Change<&str>) {
-        let edit = change.added_text();
+        let edit = change.added_str();
         let start = change.start();
 
         let new_len = {
