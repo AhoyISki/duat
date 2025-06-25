@@ -39,10 +39,12 @@
 //!
 //! ```rust
 //! # mod duat_cool_plugin {
+//! #     use duat_core::prelude::*;
 //! #     #[derive(Clone, Copy)]
 //! #     pub struct MyCoolPlugin;
-//! #     impl MyCoolPlugin {
-//! #         pub fn plug(self) {}
+//! #     impl<U: Ui> Plugin<U> for MyCoolPlugin {
+//! #         fn new() -> Self { Self }
+//! #         fn plug(self) {}
 //! #     }
 //! # }
 //! use duat_cool_plugin as cool_plugin; // Prepend this line with #
@@ -61,10 +63,12 @@
 //!
 //! ```rust
 //! # mod duat_cool_plugin {
+//! #     use duat_core::prelude::*;
 //! #     #[derive(Clone, Copy)]
 //! #     pub struct MyCoolPlugin;
-//! #     impl MyCoolPlugin {
-//! #         pub fn plug(self) {}
+//! #     impl<U: Ui> Plugin<U> for MyCoolPlugin {
+//! #         fn new() -> Self { Self }
+//! #         fn plug(self) {}
 //! #     }
 //! # }
 //! # use duat_cool_plugin as cool_plugin;

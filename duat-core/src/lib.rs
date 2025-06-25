@@ -587,14 +587,15 @@
 //!
 //! ```rust
 //! # mod word_count {
-//! # pub struct WordCount;
-//! # impl WordCount {
-//! #     pub fn not_whitespace(self) -> Self { WordCount(true) }
-//! # }
-//! # impl<U: Ui> Plugin<U> for WordCount {
-//! #     fn new() -> Self { WordCount }
-//! #     fn plug(self) { todo!(); }
-//! # }
+//! #     use duat_core::prelude::*; 
+//! #     pub struct WordCount;
+//! #     impl WordCount {
+//! #         pub fn not_whitespace(self) -> Self { WordCount(true) }
+//! #     }
+//! #     impl<U: Ui> Plugin<U> for WordCount {
+//! #         fn new() -> Self { WordCount }
+//! #         fn plug(self) { todo!(); }
+//! #     }
 //! # };
 //! # use duat_core::doc_duat as duat;
 //! setup_duat!(setup);

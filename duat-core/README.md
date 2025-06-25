@@ -545,7 +545,7 @@ screen by searching through character sequences.
 
 [`duat-sneak`]: https://github.com/AhoyISki/duat-sneak
 [`vim-sneak`]: https://github.com/justinmk/vim-sneak
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEGy_bXjvdZUMkGwCrwWRAzyECGzH81m5BV9E_G9FxROuvZ7aRYXKEG5P1azSJBRn6G7BEGy3pKdlRG6yD-jzqZJNUG26gn9wgCmoQYWSEgmxCeXRlc0RhdGFNYXD2gmlSZWFkZXJDZmf2gmZSd0RhdGH2g2lkdWF0LWNvcmVlMC41LjFpZHVhdF9jb3Jl
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEGy_bXjvdZUMkGwCrwWRAzyECGzH81m5BV9E_G9FxROuvZ7aRYXKEG77X9Aepm-FwG0iDIkFctHgdG0E9zlilTKshGzeIKd7l2ZIvYWSEgmxCeXRlc0RhdGFNYXD2gmlSZWFkZXJDZmf2gmZSd0RhdGH2g2lkdWF0LWNvcmVlMC41LjFpZHVhdF9jb3Jl
  [__link0]: https://docs.rs/duat-core/0.5.1/duat_core/?search=ui::Ui
  [__link1]: https://docs.rs/duat-core/0.5.1/duat_core/ui/index.html
  [__link10]: https://docs.rs/duat-core/0.5.1/duat_core/?search=ui::Ui
