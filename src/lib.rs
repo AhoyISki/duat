@@ -13,7 +13,6 @@
 use std::{
     collections::HashMap,
     fs,
-    marker::PhantomData,
     ops::Range,
     path::{Path, PathBuf},
     sync::{LazyLock, Mutex},
@@ -54,13 +53,9 @@ mod languages;
 /// explanations for what is happening.
 ///
 /// [tree-sitter]: https://tree-sitter.github.io/tree-sitter
-pub struct TreeSitter<U>(PhantomData<U>);
+pub struct TreeSitter;
 
-impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter<U> {
-    fn new() -> Self {
-        Self(PhantomData)
-    }
-
+impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter {
     fn plug(self) {
         dlopen_rs::init();
 
@@ -478,7 +473,7 @@ impl TsParser {
                     else {
                         continue;
                     };
-                    
+
                     let nodes = if let Some(nodes) = caps.get_mut(cap_end) {
                         nodes
                     } else {
