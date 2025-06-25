@@ -62,7 +62,7 @@ where
             match self.appender {
                 Appender::PassArg(mut f) => Box::new(move |pa, b, _| f(pa, b)),
                 Appender::FromWidget(mut f) => Box::new(move |pa, b, reader| {
-                    reader.read_related(pa, |w, a| f(b, w, a));
+                    reader.read_related(pa, |w, a| f(b, pa, w, a));
                 }),
                 Appender::Part(builder_part) => {
                     Box::new(move |_, b, _| b.push(builder_part.clone()))
@@ -249,7 +249,7 @@ where
 {
     fn from(value: ReadFn) -> Self {
         State {
-            appender: Appender::FromWidget(Box::new(move |b, widget, _| b.push(value(widget)))),
+            appender: Appender::FromWidget(Box::new(move |b, _, widget, _| b.push(value(widget)))),
             checker: None,
             ghost: PhantomData,
         }
@@ -264,7 +264,7 @@ where
 {
     fn from(value: ReadFn) -> Self {
         State {
-            appender: Appender::FromWidget(Box::new(move |b, widget, _| b.push(value(widget)))),
+            appender: Appender::FromWidget(Box::new(move |b, _, widget, _| b.push(value(widget)))),
             checker: None,
             ghost: PhantomData,
         }
@@ -280,7 +280,7 @@ where
 {
     fn from(value: ReadFn) -> Self {
         State {
-            appender: Appender::FromWidget(Box::new(move |b, widget, area| {
+            appender: Appender::FromWidget(Box::new(move |b, _, widget, area| {
                 b.push(value(widget, area))
             })),
             checker: None,
@@ -297,8 +297,78 @@ where
 {
     fn from(value: ReadFn) -> Self {
         State {
-            appender: Appender::FromWidget(Box::new(move |b, widget, area| {
+            appender: Appender::FromWidget(Box::new(move |b, _, widget, area| {
                 b.push(value(widget, area))
+            })),
+            checker: None,
+            ghost: PhantomData,
+        }
+    }
+}
+
+impl<D, W, ReadFn, U> From<ReadFn> for State<U, PassWidgetArg<String>, String, W>
+where
+    D: Display + 'static,
+    W: Widget<U> + Sized,
+    ReadFn: Fn(&Pass, &W) -> D + 'static,
+    U: Ui,
+{
+    fn from(value: ReadFn) -> Self {
+        State {
+            appender: Appender::FromWidget(Box::new(move |b, pa, widget, _| {
+                b.push(value(pa, widget))
+            })),
+            checker: None,
+            ghost: PhantomData,
+        }
+    }
+}
+
+impl<W, ReadFn, U> From<ReadFn> for State<U, PassWidgetArg<Text>, String, W>
+where
+    W: Widget<U> + Sized,
+    ReadFn: Fn(&Pass, &W) -> Text + 'static,
+    U: Ui,
+{
+    fn from(value: ReadFn) -> Self {
+        State {
+            appender: Appender::FromWidget(Box::new(move |b, pa, widget, _| {
+                b.push(value(pa, widget))
+            })),
+            checker: None,
+            ghost: PhantomData,
+        }
+    }
+}
+
+impl<D, W, ReadFn, U> From<ReadFn> for State<U, PassWidgetAreaArg<String>, String, W>
+where
+    D: Display + 'static,
+    W: Widget<U> + Sized,
+    ReadFn: Fn(&Pass, &W, &U::Area) -> D + 'static,
+    U: Ui,
+{
+    fn from(value: ReadFn) -> Self {
+        State {
+            appender: Appender::FromWidget(Box::new(move |b, pa, widget, area| {
+                b.push(value(pa, widget, area))
+            })),
+            checker: None,
+            ghost: PhantomData,
+        }
+    }
+}
+
+impl<W, ReadFn, U> From<ReadFn> for State<U, PassWidgetAreaArg<Text>, String, W>
+where
+    W: Widget<U> + Sized,
+    ReadFn: Fn(&Pass, &W, &U::Area) -> Text + 'static,
+    U: Ui,
+{
+    fn from(value: ReadFn) -> Self {
+        State {
+            appender: Appender::FromWidget(Box::new(move |b, pa, widget, area| {
+                b.push(value(pa, widget, area))
             })),
             checker: None,
             ghost: PhantomData,
@@ -374,8 +444,13 @@ pub struct WidgetArg<W>(PhantomData<W>);
 #[doc(hidden)]
 #[derive(Clone)]
 pub struct WidgetAreaArg<W>(PhantomData<W>);
+#[derive(Clone)]
+pub struct PassWidgetArg<W>(PhantomData<W>);
+#[doc(hidden)]
+#[derive(Clone)]
+pub struct PassWidgetAreaArg<W>(PhantomData<W>);
 
 // The various types of function aliases
 type PassArgFn = Box<dyn FnMut(&Pass, &mut Builder) + 'static>;
-type WidgetAreaFn<W, U> = Box<dyn FnMut(&mut Builder, &W, &<U as Ui>::Area) + 'static>;
+type WidgetAreaFn<W, U> = Box<dyn FnMut(&mut Builder, &Pass, &W, &<U as Ui>::Area) + 'static>;
 type BuilderFn<U> = Box<dyn FnMut(&Pass, &mut Builder, &FileHandle<U>)>;
