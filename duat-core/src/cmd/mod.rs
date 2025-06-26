@@ -196,6 +196,36 @@
 //! }
 //! ```
 //!
+//! You can also act on [`Widget`]s, with the [`Handles`]
+//! [`Parameter`]:
+//!
+//! ```rust
+//! # use duat_core::doc_duat as duat;
+//! setup_duat!(setup);
+//! use duat::prelude::{*, file::File};
+//!
+//! fn setup() {
+//!     cmd::add!(
+//!         "set-mask",
+//!         |pa, mask: String, handles: cmd::Handles<File<Ui>>| {
+//!             handles.on_flags(pa, |pa, handle| {
+//!                 handle.set_mask(mask.clone().leak());
+//!             });
+//!
+//!             Ok(None)
+//!         }
+//!     );
+//! }
+//! ```
+//!
+//! In this case, [`Handles<File<Ui>>`] will grab every single
+//! [`Handle<File<Ui>>`] open at the moment, and lets you act on them.
+//! The function [`Handles::on_flags`] will act based on the [`Flags`]
+//! that were passed, i.e. if `"--global"` was passed, [`on_flags`]
+//! will act on every [`Handle`] of a a [`File`]. You can also ignore
+//! the [`Flags`] by calling something like [`Handles::on_window`], or
+//! [`Handles::on_current`].
+//!
 //! [`PromptLine`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
 //! [`cmd::call_notify`]: call_notify
 //! [`cmd::queue`]: queue
@@ -210,6 +240,9 @@
 //! [`Ok(Some({Text}))`]: Ok
 //! [`Form`]: crate::form::Form
 //! [`Area`]: crate::ui::Ui::Area
+//! [`Handle<File<Ui>>`]: crate::context::Handle
+//! [`on_flags`]: Handles::on_flags
+//! [`Handle`]: crate::context::Handle
 use std::{
     collections::HashMap,
     fmt::Display,
@@ -223,13 +256,7 @@ use std::{
 
 use crossterm::style::Color;
 
-pub use self::{
-    global::*,
-    parameters::{
-        Args, Between, Buffer, ColorSchemeArg, F32PercentOfU8, Flags, FormName, OtherFileBuffer,
-        Parameter, PossibleFile, Remainder, args_iter, get_args,
-    },
-};
+pub use self::{global::*, parameters::*};
 use crate::{
     context::{self, sender},
     data::{Pass, RwData},
@@ -1089,42 +1116,6 @@ impl Commands {
     //     mut cmd: impl FnMut(&mut W, &U::Area, Args) -> CmdResult +
     // 'static,     check_args: CheckerFn,
     // ) -> Result<(), Text> {
-    //     let f = move |args: Args| {
-    //         let mut cur_file = context::inner_cur_file::<U>().clone();
-    //         if let Some((widget, area)) =
-    // cur_file.get_related_widget::<W>() {             cmd(&mut
-    // *widget.acquire_mut(), &area, args)         } else {
-    //             let windows = context::windows::<U>().borrow();
-    //             let w = context::cur_window();
-
-    //             if windows.is_empty() {
-    //                 return Err(txt!(
-    //                     "Widget command executed before the [a]Ui[] was
-    // initiated, try executing \                      after
-    // [a]OnUiStart[]"                 )
-    //                 .build());
-    //             }
-
-    //             let node = match widget_entry::<W, U>(&windows, w) {
-    //                 Ok((.., node)) => node,
-    //                 Err(err) => return Err(err),
-    //             };
-    //             let (w, a, _) = node.parts();
-    //             let widget = w.try_downcast().unwrap();
-    //             let area = a.clone();
-
-    //             cmd(&mut *widget.acquire_mut(), &area, args)
-    //         }
-    //     };
-
-    //     let command = Command::new(
-    //         callers,
-    //         // SAFETY: This type will never actually be queried
-    //         unsafe {
-    // RwData::new_unsized::<()>(Rc::new(RefCell::new(f))) },
-    //         check_args,
-    //     );
-    //     self.0.write(|inner| inner.try_add(command))
     // }
 
     /// Gets the parameter checker for a command, if it exists

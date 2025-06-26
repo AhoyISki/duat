@@ -292,32 +292,6 @@ impl<U: Ui> CurFile<U> {
     fn dynamic(&self) -> FileHandle<U> {
         FileHandle::from_parts(None, self.0.clone())
     }
-
-    pub(crate) fn _get_related_widget<W: Widget<U> + 'static>(
-        &mut self,
-        pa: &Pass,
-    ) -> Option<Handle<W, U>> {
-        self.0.read(pa, |parts| {
-            let (handle, related) = parts.as_ref().unwrap();
-            if TypeId::of::<W>() == TypeId::of::<File<U>>() {
-                let widget = handle.widget().try_downcast()?;
-                Some(Handle::from_parts(
-                    widget,
-                    handle.area().clone(),
-                    handle.mask().clone(),
-                ))
-            } else {
-                related.read(pa, |related| {
-                    related.iter().find_map(|node| {
-                        let (widget, area, mask, _) = node.parts();
-                        widget
-                            .try_downcast()
-                            .map(|widget| Handle::from_parts(widget, area.clone(), mask.clone()))
-                    })
-                })
-            }
-        })
-    }
 }
 
 /// The current [`Widget`]
@@ -332,7 +306,8 @@ impl<U: Ui> CurWidget<U> {
 
     /// The [`Widget`]'s [`TypeId`]
     pub fn type_id(&self, pa: &Pass) -> TypeId {
-        self.0.read(pa, |node| node.as_ref().unwrap().widget().type_id())
+        self.0
+            .read(pa, |node| node.as_ref().unwrap().widget().type_id())
     }
 
     /// Reads the [`Widget`] and its [`Area`](crate::ui::RawArea)

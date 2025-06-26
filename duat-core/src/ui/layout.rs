@@ -71,6 +71,7 @@ where
 ///
 /// One [`File`] will occupy the whole left side of the screen, and
 /// future files will be vertically stacked on the right
+#[derive(Clone)]
 pub struct MasterOnLeft;
 
 impl<U> Layout<U> for MasterOnLeft

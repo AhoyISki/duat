@@ -335,111 +335,33 @@ pub use self::setup::{Messengers, MetaStatics, pre_setup, run_duat};
 pub mod print;
 mod setup;
 
-/// Commands for the manipulation of [`Mode`]s
-///
-/// [`Mode`]: crate::mode::Mode
-pub mod mode {
-    pub use duat_core::mode::*;
-    use duat_core::{mode, ui::Widget};
+pub mod cmd {
+    //! Command creation and calling utilities
+    pub use duat_core::cmd::*;
 
-    use crate::Ui;
-
-    /// Sets the new default mode
+    /// Command [`Parameter`]: [`Handle`]s for a given type of
+    /// [`Widget`]
     ///
-    /// This is the mode that will be set when [`mode::reset`] is
-    /// called.
+    /// This [`Parameter`] lets you act upon [`Handle`]s of a type of
+    /// [`Widget`] with the following methods:
     ///
-    /// [`mode::reset`]: reset
-    pub fn set_default(mode: impl Mode<Ui>) {
-        mode::set_default(mode);
-    }
-
-    /// Sets the [`Mode`], switching to the appropriate [`Widget`]
+    /// - [`on_current`]: Acts on the current, most relevant instance.
+    /// - [`on_each`]: Acts on every instance, on every window.
+    /// - [`on_window`]: Acts on all instances on the current window.
+    /// - [`on_flags`]: Acts based on [`Flags`] passed, `"global"` for
+    ///   [`on_each`], `"window"` for [`on_window`].
     ///
-    /// [`Widget`]: Mode::Widget
-    pub fn set(mode: impl Mode<Ui>) {
-        mode::set(mode);
-    }
-
-    /// Resets the mode to the [default] of a given [`Widget`]
-    ///
-    /// Does nothing if no default was set for the given [`Widget`].
-    ///
-    /// [default]: set_default
-    pub fn reset<W: Widget<Ui>>() {
-        mode::reset::<W, Ui>();
-    }
-
-    /// Maps a sequence of keys to another
-    ///
-    /// The keys follow the same rules as Vim, so regular, standalone
-    /// characters are mapped verbatim, while "`<{mod}-{key}>`" and
-    /// "`<{special}>`" sequences are mapped like in Vim.
-    ///
-    /// Here are the available special keys:
-    ///
-    /// - `<Enter> => Enter`,
-    /// - `<Tab> => Tab`,
-    /// - `<Bspc> => Backspace`,
-    /// - `<Del> => Delete`,
-    /// - `<Esc> => Esc`,
-    /// - `<Up> => Up`,
-    /// - `<Down> => Down`,
-    /// - `<Left> => Left`,
-    /// - `<Right> => Right`,
-    /// - `<PageU> => PageUp`,
-    /// - `<PageD> => PageDown`,
-    /// - `<Home> => Home`,
-    /// - `<End> => End`,
-    /// - `<Ins> => Insert`,
-    /// - `<F{1-12}> => F({1-12})`,
-    ///
-    /// And the following modifiers are available:
-    ///
-    /// - `C => Control`,
-    /// - `A => Alt`,
-    /// - `S => Shift`,
-    /// - `M => Meta`,
-    ///
-    /// If another sequence already exists on the same mode, which
-    /// would intersect with this one, the new sequence will not be
-    /// added.
-    pub fn map<M: Mode<Ui>>(take: &str, give: impl AsGives<Ui>) {
-        mode::map::<M, Ui>(take, give);
-    }
-
-    /// Aliases a sequence of keys to another
-    ///
-    /// The difference between aliasing and mapping is that an alias
-    /// will be displayed on the text as a [ghost text], making it
-    /// seem like you are typing normally. This text will be printed
-    /// with the `Alias` [form].
-    ///
-    /// If another sequence already exists on the same mode, which
-    /// would intersect with this one, the new sequence will not be
-    /// added.
-    ///
-    /// # Note
-    ///
-    /// This sequence is not like Vim's `alias`, in that if you make a
-    /// mistake while typing the sequence, the alias is undone, and
-    /// you will be just typing normally.
-    ///
-    /// The alias command also works on any [`Mode`], not just
-    /// "insert like" modes. You can also use any key in the input or
-    /// output of this `alias`
-    ///
-    /// [ghost text]: duat_core::text::Ghost
-    /// [form]: crate::form::Form
-    pub fn alias<M: Mode<Ui>>(take: &str, give: impl AsGives<Ui>) {
-        mode::alias::<M, Ui>(take, give);
-    }
+    /// [`on_current`]: Self::on_current
+    /// [`on_each`]: Self::on_each
+    /// [`on_window`]: Self::on_window
+    /// [`on_flags`]: Self::on_flags
+    pub type Handles<'a, W> = duat_core::cmd::Handles<'a, W, crate::Ui>;
 }
 
-/// Functions to alter the [`Cursors`] of Duat
-///
-/// [`Cursors`]: duat_core::mode::Cursors
 pub mod cursor {
+    //! Functions to alter the [`Cursors`] of Duat
+    //!
+    //! [`Cursors`]: duat_core::mode::Cursors
     pub use duat_core::form::{
         extra_cursor as get_extra, main_cursor as get_main, set_extra_cursor as set_extra,
         set_main_cursor as set_main, unset_cursors as unset, unset_extra_cursor as unset_extra,
@@ -447,10 +369,10 @@ pub mod cursor {
     };
 }
 
-/// Functions to alter the [`Form`]s of Duat
-///
-/// [`Form`]: crate::form::Form
 pub mod form {
+    //! Functions to alter the [`Form`]s of Duat
+    //!
+    //! [`Form`]: crate::form::Form
     pub use duat_core::form::{
         Color, ColorScheme, CursorShape, Form, add_colorscheme, enable_mask, from_id, id_of, set,
         set_colorscheme, set_many,
@@ -798,13 +720,105 @@ pub mod hook {
     pub type ModeCreated<M> = duat_core::hook::ModeCreated<M, Ui>;
 }
 
-/// Duat's builtin widgets
-pub mod widgets {
-    pub use duat_core::ui::{Widget, WidgetCfg};
-    pub use duat_utils::widgets::*;
+/// Commands for the manipulation of [`Mode`]s
+///
+/// [`Mode`]: crate::mode::Mode
+pub mod mode {
+    pub use duat_core::mode::*;
+    use duat_core::{mode, ui::Widget};
 
-    /// The widget that is used to print and edit files
-    pub type File = duat_core::file::File<super::Ui>;
+    use crate::Ui;
+
+    /// Sets the new default mode
+    ///
+    /// This is the mode that will be set when [`mode::reset`] is
+    /// called.
+    ///
+    /// [`mode::reset`]: reset
+    pub fn set_default(mode: impl Mode<Ui>) {
+        mode::set_default(mode);
+    }
+
+    /// Sets the [`Mode`], switching to the appropriate [`Widget`]
+    ///
+    /// [`Widget`]: Mode::Widget
+    pub fn set(mode: impl Mode<Ui>) {
+        mode::set(mode);
+    }
+
+    /// Resets the mode to the [default] of a given [`Widget`]
+    ///
+    /// Does nothing if no default was set for the given [`Widget`].
+    ///
+    /// [default]: set_default
+    pub fn reset<W: Widget<Ui>>() {
+        mode::reset::<W, Ui>();
+    }
+
+    /// Maps a sequence of keys to another
+    ///
+    /// The keys follow the same rules as Vim, so regular, standalone
+    /// characters are mapped verbatim, while "`<{mod}-{key}>`" and
+    /// "`<{special}>`" sequences are mapped like in Vim.
+    ///
+    /// Here are the available special keys:
+    ///
+    /// - `<Enter> => Enter`,
+    /// - `<Tab> => Tab`,
+    /// - `<Bspc> => Backspace`,
+    /// - `<Del> => Delete`,
+    /// - `<Esc> => Esc`,
+    /// - `<Up> => Up`,
+    /// - `<Down> => Down`,
+    /// - `<Left> => Left`,
+    /// - `<Right> => Right`,
+    /// - `<PageU> => PageUp`,
+    /// - `<PageD> => PageDown`,
+    /// - `<Home> => Home`,
+    /// - `<End> => End`,
+    /// - `<Ins> => Insert`,
+    /// - `<F{1-12}> => F({1-12})`,
+    ///
+    /// And the following modifiers are available:
+    ///
+    /// - `C => Control`,
+    /// - `A => Alt`,
+    /// - `S => Shift`,
+    /// - `M => Meta`,
+    ///
+    /// If another sequence already exists on the same mode, which
+    /// would intersect with this one, the new sequence will not be
+    /// added.
+    pub fn map<M: Mode<Ui>>(take: &str, give: impl AsGives<Ui>) {
+        mode::map::<M, Ui>(take, give);
+    }
+
+    /// Aliases a sequence of keys to another
+    ///
+    /// The difference between aliasing and mapping is that an alias
+    /// will be displayed on the text as a [ghost text], making it
+    /// seem like you are typing normally. This text will be printed
+    /// with the `Alias` [form].
+    ///
+    /// If another sequence already exists on the same mode, which
+    /// would intersect with this one, the new sequence will not be
+    /// added.
+    ///
+    /// # Note
+    ///
+    /// This sequence is not like Vim's `alias`, in that if you make a
+    /// mistake while typing the sequence, the alias is undone, and
+    /// you will be just typing normally.
+    ///
+    /// The alias command also works on any [`Mode`], not just
+    /// "insert like" modes. You can also use any key in the input or
+    /// output of this `alias`
+    ///
+    /// [ghost text]: duat_core::text::Ghost
+    /// [form]: crate::form::Form
+    pub fn alias<M: Mode<Ui>>(take: &str, give: impl AsGives<Ui>) {
+        mode::alias::<M, Ui>(take, give);
+    }
 }
 
 /// Common [`StatusLine`] fields
@@ -812,6 +826,15 @@ pub mod widgets {
 /// [`StatusLine`]: duat_utils::widgets::StatusLine
 pub mod state {
     pub use duat_utils::state::*;
+}
+
+/// Duat's builtin widgets
+pub mod widgets {
+    pub use duat_core::ui::{Widget, WidgetCfg};
+    pub use duat_utils::widgets::*;
+
+    /// The widget that is used to print and edit files
+    pub type File = duat_core::file::File<super::Ui>;
 }
 
 #[allow(unused_imports)]
@@ -848,8 +871,9 @@ pub mod prelude {
     use std::process::Output;
 
     pub use duat_core::{
-        Plugin, clipboard, cmd, context,
+        Plugin, clipboard, context,
         data::{self, Pass},
+        file,
         text::{
             self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, Tagger,
             Text, txt,
@@ -861,7 +885,7 @@ pub mod prelude {
     pub use duat_term::{self as term, VertRule};
 
     pub use crate::{
-        Area, Ui, cursor,
+        Area, Ui, cmd, cursor,
         form::{self, CursorShape, Form},
         hook::{
             self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FocusedOn,

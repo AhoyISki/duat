@@ -98,7 +98,7 @@ pub mod prelude {
     use std::process::Output;
 
     pub use super::{
-        doc_cursor as cursor,
+        doc_cmd as cmd, doc_cursor as cursor,
         doc_hook::{
             self as hook, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten,
             FocusedOn, FormSet, KeysSent, KeysSentTo, ModeCreated, ModeSwitched, OnFileOpen,
@@ -111,8 +111,9 @@ pub mod prelude {
         doc_widgets::*,
     };
     pub use crate::{
-        Plugin, clipboard, cmd, context,
+        Plugin, clipboard, context,
         data::{self, Pass},
+        file,
         form::{self, CursorShape, Form},
         text::{
             self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, Tagger,
@@ -142,6 +143,241 @@ pub mod prelude {
     pub fn plug_inner(_: impl Plugin<Ui>) {}
 
     pub type Handle<W> = crate::context::Handle<W, Ui>;
+}
+
+pub mod doc_cmd {
+    use super::doc_ui::Ui;
+    pub use crate::cmd::*;
+
+    pub type Handles<'a, W> = crate::cmd::Handles<'a, W, Ui>;
+}
+
+/// This is a Doc only module *DONT USE IT*
+pub mod doc_cursor {
+    pub use crate::form::{
+        extra_cursor as get_extra, main_cursor as get_main, set_extra_cursor as set_extra,
+        set_main_cursor as set_main, unset_cursors as unset, unset_extra_cursor as unset_extra,
+        unset_main_cursor as unset_main,
+    };
+}
+
+/// This is a Doc only module *DONT USE IT*
+#[rustfmt::skip]
+mod doc_filetype {
+    use crate::{data::Pass, doc_duat::doc_ui::Ui, file::File};
+    
+    pub trait FileType {
+        fn filetype(&self) -> Option<&'static str> { Some("") }
+    }
+    impl FileType for File<Ui> {}
+
+    pub trait HandleFileType {
+        fn filetype(&self, _: &Pass) -> Option<&'static str> { Some("") }
+    }
+    impl HandleFileType for crate::context::Handle<File<Ui>, Ui> {}
+}
+/// This is a Doc only module *DONT USE IT*
+#[rustfmt::skip]
+pub mod doc_hook {
+    pub use crate::hook::*;
+    use crate::{data::Pass, doc_duat::doc_ui::Ui};
+
+    pub fn add<H: HookAlias<Ui, impl HookDummy>>(
+        _: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static,
+    ) {
+    }
+
+    pub fn add_grouped<H: HookAlias<Ui, impl HookDummy>>(
+        _: &'static str,
+        _: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static,
+    ) {
+    }
+
+    pub type WidgetCreated<W> = crate::hook::WidgetCreated<W, Ui>;
+    pub type OnFileOpen = crate::hook::OnFileOpen<Ui>;
+    pub type OnWindowOpen = crate::hook::OnWindowOpen<Ui>;
+    pub type FocusedOn<W> = crate::hook::FocusedOn<W, Ui>;
+    pub type UnfocusedFrom<W> = crate::hook::UnfocusedFrom<W, Ui>;
+    pub type KeySentTo<W> = crate::hook::KeysSentTo<W, Ui>;
+    pub type ModeCreated<M> = crate::hook::ModeCreated<M, Ui>;
+
+    pub struct SearchUpdated(pub(crate) (String, String));
+    impl Hookable for SearchUpdated {
+        type Input<'h> = (&'h str, &'h str);
+        fn get_input(&mut self) -> Self::Input<'_> { (&self.0.0, &self.0.1) }
+    }
+    pub struct SearchPerformed(pub(crate) String);
+    impl Hookable for SearchPerformed {
+        type Input<'h> = &'h str;
+        fn get_input(&mut self) -> Self::Input<'_> { &self.0 }
+    }
+}
+
+/// This is a Doc only module *DONT USE IT*
+#[rustfmt::skip]
+pub mod doc_mode {
+    pub use crate::mode::*;
+    use crate::{doc_duat::doc_ui::Ui, mode, ui::Widget};
+
+    pub fn set_default(mode: impl Mode<Ui>) { mode::set_default(mode); }
+    pub fn set(mode: impl Mode<Ui>) { mode::set(mode); }
+    pub fn reset<W: Widget<Ui>>() { mode::reset::<W, Ui>(); }
+    pub fn map<M: Mode<Ui>>(_: &str, _: impl AsGives<Ui>) {}
+    pub fn alias<M: Mode<Ui>>(_: &str, _: impl AsGives<Ui>) {}
+}
+
+/// This is a Doc only module *DONT USE IT*
+#[rustfmt::skip]
+pub mod doc_print {
+    pub fn no_wrapping() {}
+    pub fn wrap_on_edge() {}
+    pub fn wrap_on_words() {}
+    pub fn wrap_on_cap(_: u8) {}
+    pub fn indent_wraps() {}
+    pub fn tabstop(_: u8) {}
+    pub fn new_line(_: char) {}
+    pub fn trailing_new_line(_: char) {}
+    pub fn scrolloff(_: u8, _: u8) {}
+    pub macro word_chars($($w_chars:tt)+) {
+        set_word_chars(w_chars!($($w_chars)+))
+    }
+    pub fn set_word_chars(_: crate::cfg::WordChars) {}
+}
+
+/// This is a Doc only module *DONT USE IT*
+#[rustfmt::skip]
+mod doc_state {
+    use crossterm::event::KeyEvent;
+    use crate::{data::{DataMap, RwData}, file::File, text::Text, ui::Ui};
+
+    pub fn file_fmt(_: &File<impl Ui>) -> Text { Text::default() }
+    pub fn mode_name() -> DataMap<&'static str, &'static str> {
+        RwData::default().map(|_| "")
+    }
+    pub fn mode_fmt() -> DataMap<&'static str, Text> {
+        RwData::default().map(|_| Text::new())
+    }
+    pub fn main_byte(_: &File<impl Ui>) -> usize { 0 }
+    pub fn main_char(_: &File<impl Ui>) -> usize { 0 }
+    pub fn main_line(_: &File<impl Ui>) -> usize { 0 }
+    pub fn main_col<U: Ui>(_: &File<U>, _: &U::Area) -> usize { 0 }
+    pub fn main_dwcol<U: Ui>(_: &File<U>, _: &U::Area) -> usize { 0 }
+    pub fn main_fmt<U: Ui>(_: &File<U>, _: &U::Area) -> Text { Text::default() }
+    pub fn selections(_: &File<impl Ui>) -> usize { 0 }
+    pub fn sels_fmt(_: &File<impl Ui>) -> Text { Text::default() }
+    pub fn cur_map_fmt() -> DataMap<(Vec<KeyEvent>, bool), Text> {
+        RwData::default().map(|_| Text::new())
+    }
+    pub fn last_key() -> RwData<String> { RwData::default() }
+}
+
+/// This is a Doc only module *DONT USE IT*
+#[rustfmt::skip]
+mod doc_ui {
+    use crate::{
+        cfg::PrintCfg, form::Painter, text::{FwdIter, Item, Point, RevIter, Text, TwoPoints},
+        ui::{Caret, Constraint, MutArea, PushSpecs, SpawnSpecs}
+    };
+
+    #[derive(Clone, Default, Debug)]
+    pub struct Ui;
+    impl crate::ui::Ui for Ui {
+        type Area = Area;
+        type MetaStatics = ();
+        fn open(_: &'static Self::MetaStatics, _: crate::ui::Sender) {}
+        fn close(_: &'static Self::MetaStatics) {}
+        fn new_root(
+            _: &'static Self::MetaStatics,
+            _: <Self::Area as crate::prelude::RawArea>::Cache,
+        ) -> Self::Area {
+            Area
+        }
+        fn switch_window(_: &'static Self::MetaStatics, _: usize) {}
+        fn flush_layout(_: &'static Self::MetaStatics) {}
+        fn load(_: &'static Self::MetaStatics) {}
+        fn unload(_: &'static Self::MetaStatics) {}
+        fn remove_window(_: &'static Self::MetaStatics, _: usize) {}
+    }
+
+    #[derive(Clone, Copy, Default, PartialEq, Eq)]
+    pub struct Area;
+    impl crate::ui::RawArea for Area {
+        type Cache = ();
+        type PrintInfo = ();
+        type Ui = Ui;
+        fn bisect(
+            _: MutArea<Self>,
+            _: PushSpecs,
+            _: bool,
+            _: bool,
+            _: Self::Cache,
+        ) -> (Self, Option<Self>) {
+            Default::default()
+        }
+        fn delete(_: MutArea<Self>) -> Option<Self> { None }
+        fn swap(_: MutArea<Self>, _: &Self) {}
+        fn spawn_floating(_: MutArea<Self>, _: SpawnSpecs) -> Result<Self, Text> { Ok(Area) }
+        fn spawn_floating_at(
+            _: MutArea<Self>,
+            _: SpawnSpecs,
+            _: impl TwoPoints,
+            _: &Text,
+            _: PrintCfg,
+        ) -> Result<Self, Text> {
+            Ok(Area)
+        }
+        fn constrain_hor(&self, _: impl IntoIterator<Item = Constraint>) -> Result<(), Text> {
+            Ok(())
+        }
+        fn constrain_ver(&self, _: impl IntoIterator<Item = Constraint>) -> Result<(), Text> {
+            Ok(())
+        }
+        fn hide(&self) -> Result<(), Text> { Ok(()) }
+        fn reveal(&self) -> Result<(), Text> { Ok(()) }
+        fn request_width_to_fit(&self, _: &str) -> Result<(), Text> { Ok(()) }
+        fn scroll_ver(&self, _: &Text, _: i32, _: PrintCfg) {}
+        fn scroll_around_point(&self, _: &Text, _: Point, _: PrintCfg) {}
+        fn scroll_to_points(&self, _: &Text, _: impl TwoPoints, _: PrintCfg) {}
+        fn set_as_active(&self) {}
+        fn print(&self, _: &mut Text, _: PrintCfg, _: Painter) {}
+        fn print_with<'a>(
+            &self,
+            _: &mut Text,
+            _: PrintCfg,
+            _: Painter,
+            _: impl FnMut(&Caret, &Item ) + 'a,
+        ) {
+        }
+        fn set_print_info(&self, _: Self::PrintInfo) {}
+        fn print_iter<'a>(
+            &self,
+            _: FwdIter<'a>,
+            _: PrintCfg,
+        ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
+            [].into_iter()
+        }
+        fn rev_print_iter<'a>(
+            &self,
+            _: RevIter<'a>,
+            _: PrintCfg,
+        ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
+            [].into_iter()
+        }
+        fn has_changed(&self) -> bool { false }
+        fn is_master_of(&self, _: &Self) -> bool { false }
+        fn get_cluster_master(&self) -> Option<Self> { None }
+        fn cache(&self) -> Option<Self::Cache> { None }
+        fn width(&self) -> u32 { 0 }
+        fn height(&self) -> u32 { 0 }
+        fn start_points(&self, _: &Text, _: PrintCfg) -> (Point, Option<Point>) {
+            (Point::default(), None)
+        }
+        fn end_points(&self, _: &Text, _: PrintCfg) -> (Point, Option<Point>) {
+            (Point::default(), None)
+        }
+        fn print_info(&self) -> Self::PrintInfo {}
+        fn is_active(&self) -> bool { false }
+    }
 }
 
 /// This is a Doc only module *DONT USE IT*
@@ -298,233 +534,4 @@ mod doc_widgets {
         pub fn on_the_left(self) -> Self { self }
         pub fn above(self) -> Self { self }
     }
-}
-
-/// This is a Doc only module *DONT USE IT*
-#[rustfmt::skip]
-mod doc_ui {
-    use crate::{
-        cfg::PrintCfg, form::Painter, text::{FwdIter, Item, Point, RevIter, Text, TwoPoints},
-        ui::{Caret, Constraint, MutArea, PushSpecs, SpawnSpecs}
-    };
-
-    #[derive(Clone, Default, Debug)]
-    pub struct Ui;
-    impl crate::ui::Ui for Ui {
-        type Area = Area;
-        type MetaStatics = ();
-        fn open(_: &'static Self::MetaStatics, _: crate::ui::Sender) {}
-        fn close(_: &'static Self::MetaStatics) {}
-        fn new_root(
-            _: &'static Self::MetaStatics,
-            _: <Self::Area as crate::prelude::RawArea>::Cache,
-        ) -> Self::Area {
-            Area
-        }
-        fn switch_window(_: &'static Self::MetaStatics, _: usize) {}
-        fn flush_layout(_: &'static Self::MetaStatics) {}
-        fn load(_: &'static Self::MetaStatics) {}
-        fn unload(_: &'static Self::MetaStatics) {}
-        fn remove_window(_: &'static Self::MetaStatics, _: usize) {}
-    }
-
-    #[derive(Clone, Copy, Default, PartialEq, Eq)]
-    pub struct Area;
-    impl crate::ui::RawArea for Area {
-        type Cache = ();
-        type PrintInfo = ();
-        type Ui = Ui;
-        fn bisect(
-            _: MutArea<Self>,
-            _: PushSpecs,
-            _: bool,
-            _: bool,
-            _: Self::Cache,
-        ) -> (Self, Option<Self>) {
-            Default::default()
-        }
-        fn delete(_: MutArea<Self>) -> Option<Self> { None }
-        fn swap(_: MutArea<Self>, _: &Self) {}
-        fn spawn_floating(_: MutArea<Self>, _: SpawnSpecs) -> Result<Self, Text> { Ok(Area) }
-        fn spawn_floating_at(
-            _: MutArea<Self>,
-            _: SpawnSpecs,
-            _: impl TwoPoints,
-            _: &Text,
-            _: PrintCfg,
-        ) -> Result<Self, Text> {
-            Ok(Area)
-        }
-        fn constrain_hor(&self, _: impl IntoIterator<Item = Constraint>) -> Result<(), Text> {
-            Ok(())
-        }
-        fn constrain_ver(&self, _: impl IntoIterator<Item = Constraint>) -> Result<(), Text> {
-            Ok(())
-        }
-        fn hide(&self) -> Result<(), Text> { Ok(()) }
-        fn reveal(&self) -> Result<(), Text> { Ok(()) }
-        fn request_width_to_fit(&self, _: &str) -> Result<(), Text> { Ok(()) }
-        fn scroll_ver(&self, _: &Text, _: i32, _: PrintCfg) {}
-        fn scroll_around_point(&self, _: &Text, _: Point, _: PrintCfg) {}
-        fn scroll_to_points(&self, _: &Text, _: impl TwoPoints, _: PrintCfg) {}
-        fn set_as_active(&self) {}
-        fn print(&self, _: &mut Text, _: PrintCfg, _: Painter) {}
-        fn print_with<'a>(
-            &self,
-            _: &mut Text,
-            _: PrintCfg,
-            _: Painter,
-            _: impl FnMut(&Caret, &Item ) + 'a,
-        ) {
-        }
-        fn set_print_info(&self, _: Self::PrintInfo) {}
-        fn print_iter<'a>(
-            &self,
-            _: FwdIter<'a>,
-            _: PrintCfg,
-        ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-            [].into_iter()
-        }
-        fn rev_print_iter<'a>(
-            &self,
-            _: RevIter<'a>,
-            _: PrintCfg,
-        ) -> impl Iterator<Item = (Caret, Item)> + Clone + 'a {
-            [].into_iter()
-        }
-        fn has_changed(&self) -> bool { false }
-        fn is_master_of(&self, _: &Self) -> bool { false }
-        fn get_cluster_master(&self) -> Option<Self> { None }
-        fn cache(&self) -> Option<Self::Cache> { None }
-        fn width(&self) -> u32 { 0 }
-        fn height(&self) -> u32 { 0 }
-        fn start_points(&self, _: &Text, _: PrintCfg) -> (Point, Option<Point>) {
-            (Point::default(), None)
-        }
-        fn end_points(&self, _: &Text, _: PrintCfg) -> (Point, Option<Point>) {
-            (Point::default(), None)
-        }
-        fn print_info(&self) -> Self::PrintInfo {}
-        fn is_active(&self) -> bool { false }
-    }
-}
-
-/// This is a Doc only module *DONT USE IT*
-#[rustfmt::skip]
-mod doc_filetype {
-    use crate::{data::Pass, doc_duat::doc_ui::Ui, file::File};
-    
-    pub trait FileType {
-        fn filetype(&self) -> Option<&'static str> { Some("") }
-    }
-    impl FileType for File<Ui> {}
-
-    pub trait HandleFileType {
-        fn filetype(&self, _: &Pass) -> Option<&'static str> { Some("") }
-    }
-    impl HandleFileType for crate::context::Handle<File<Ui>, Ui> {}
-}
-
-/// This is a Doc only module *DONT USE IT*
-pub mod doc_cursor {
-    pub use crate::form::{
-        extra_cursor as get_extra, main_cursor as get_main, set_extra_cursor as set_extra,
-        set_main_cursor as set_main, unset_cursors as unset, unset_extra_cursor as unset_extra,
-        unset_main_cursor as unset_main,
-    };
-}
-
-/// This is a Doc only module *DONT USE IT*
-#[rustfmt::skip]
-mod doc_state {
-    use crossterm::event::KeyEvent;
-    use crate::{data::{DataMap, RwData}, file::File, text::Text, ui::Ui};
-
-    pub fn file_fmt(_: &File<impl Ui>) -> Text { Text::default() }
-    pub fn mode_name() -> DataMap<&'static str, &'static str> {
-        RwData::default().map(|_| "")
-    }
-    pub fn mode_fmt() -> DataMap<&'static str, Text> {
-        RwData::default().map(|_| Text::new())
-    }
-    pub fn main_byte(_: &File<impl Ui>) -> usize { 0 }
-    pub fn main_char(_: &File<impl Ui>) -> usize { 0 }
-    pub fn main_line(_: &File<impl Ui>) -> usize { 0 }
-    pub fn main_col<U: Ui>(_: &File<U>, _: &U::Area) -> usize { 0 }
-    pub fn main_dwcol<U: Ui>(_: &File<U>, _: &U::Area) -> usize { 0 }
-    pub fn main_fmt<U: Ui>(_: &File<U>, _: &U::Area) -> Text { Text::default() }
-    pub fn selections(_: &File<impl Ui>) -> usize { 0 }
-    pub fn sels_fmt(_: &File<impl Ui>) -> Text { Text::default() }
-    pub fn cur_map_fmt() -> DataMap<(Vec<KeyEvent>, bool), Text> {
-        RwData::default().map(|_| Text::new())
-    }
-    pub fn last_key() -> RwData<String> { RwData::default() }
-}
-
-/// This is a Doc only module *DONT USE IT*
-#[rustfmt::skip]
-pub mod doc_hook {
-    pub use crate::hook::*;
-    use crate::{data::Pass, doc_duat::doc_ui::Ui};
-
-    pub fn add<H: HookAlias<Ui, impl HookDummy>>(
-        _: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static,
-    ) {
-    }
-
-    pub fn add_grouped<H: HookAlias<Ui, impl HookDummy>>(
-        _: &'static str,
-        _: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static,
-    ) {
-    }
-
-    pub type WidgetCreated<W> = crate::hook::WidgetCreated<W, Ui>;
-    pub type OnFileOpen = crate::hook::OnFileOpen<Ui>;
-    pub type OnWindowOpen = crate::hook::OnWindowOpen<Ui>;
-    pub type FocusedOn<W> = crate::hook::FocusedOn<W, Ui>;
-    pub type UnfocusedFrom<W> = crate::hook::UnfocusedFrom<W, Ui>;
-    pub type KeySentTo<W> = crate::hook::KeysSentTo<W, Ui>;
-    pub type ModeCreated<M> = crate::hook::ModeCreated<M, Ui>;
-
-    pub struct SearchUpdated(pub(crate) (String, String));
-    impl Hookable for SearchUpdated {
-        type Input<'h> = (&'h str, &'h str);
-        fn get_input(&mut self) -> Self::Input<'_> { (&self.0.0, &self.0.1) }
-    }
-    pub struct SearchPerformed(pub(crate) String);
-    impl Hookable for SearchPerformed {
-        type Input<'h> = &'h str;
-        fn get_input(&mut self) -> Self::Input<'_> { &self.0 }
-    }
-}
-
-/// This is a Doc only module *DONT USE IT*
-#[rustfmt::skip]
-pub mod doc_print {
-    pub fn no_wrapping() {}
-    pub fn wrap_on_edge() {}
-    pub fn wrap_on_words() {}
-    pub fn wrap_on_cap(_: u8) {}
-    pub fn indent_wraps() {}
-    pub fn tabstop(_: u8) {}
-    pub fn new_line(_: char) {}
-    pub fn trailing_new_line(_: char) {}
-    pub fn scrolloff(_: u8, _: u8) {}
-    pub macro word_chars($($w_chars:tt)+) {
-        set_word_chars(w_chars!($($w_chars)+))
-    }
-    pub fn set_word_chars(_: crate::cfg::WordChars) {}
-}
-
-/// This is a Doc only module *DONT USE IT*
-#[rustfmt::skip]
-pub mod doc_mode {
-    pub use crate::mode::*;
-    use crate::{doc_duat::doc_ui::Ui, mode, ui::Widget};
-
-    pub fn set_default(mode: impl Mode<Ui>) { mode::set_default(mode); }
-    pub fn set(mode: impl Mode<Ui>) { mode::set(mode); }
-    pub fn reset<W: Widget<Ui>>() { mode::reset::<W, Ui>(); }
-    pub fn map<M: Mode<Ui>>(_: &str, _: impl AsGives<Ui>) {}
-    pub fn alias<M: Mode<Ui>>(_: &str, _: impl AsGives<Ui>) {}
 }

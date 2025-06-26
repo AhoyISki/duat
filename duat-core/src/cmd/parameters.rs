@@ -6,13 +6,15 @@
 //! take multiple words, which makes this structure very flexible for
 //! multiple branching paths on how to read the arguments, all from
 //! the same command.
-use std::{iter::Peekable, ops::Range, path::PathBuf};
+use std::{iter::Peekable, marker::PhantomData, ops::Range, path::PathBuf};
 
 use crossterm::style::Color;
 
 use crate::{
+    context::{self, Handle},
     data::Pass,
     text::{Text, txt},
+    ui::{Node, Ui, Widget},
 };
 
 /// A parameter for commands that can be called
@@ -365,9 +367,9 @@ impl<'a> Parameter<'a> for Color {
     }
 }
 
-/// Command [`Parameter`]: A [`set`] [`Form`]'s name
+/// Command [`Parameter`]: The name of a [`Form`] that has been [set]
 ///
-/// [`set`]: crate::form::set
+/// [set]: crate::form::set
 /// [`Form`]: crate::form::Form
 pub struct FormName;
 
@@ -384,6 +386,168 @@ impl<'a> Parameter<'a> for FormName {
         } else {
             Err(txt!("The form [a]{arg}[] has not been set").build())
         }
+    }
+}
+
+/// Command [`Parameter`]: [`Handle`]s for a given type of [`Widget`]
+///
+/// This [`Parameter`] lets you act upon [`Handle`]s of a type of
+/// [`Widget`] with the following methods:
+///
+/// - [`on_current`]: Acts on the current, most relevant instance.
+/// - [`on_each`]: Acts on every instance, on every window.
+/// - [`on_window`]: Acts on all instances on the current window.
+/// - [`on_flags`]: Acts based on [`Flags`] passed, `"global"` for
+///   [`on_each`], `"window"` for [`on_window`].
+///
+/// [`on_current`]: Self::on_current
+/// [`on_each`]: Self::on_each
+/// [`on_window`]: Self::on_window
+/// [`on_flags`]: Self::on_flags
+pub struct Handles<'a, W: Widget<U>, U: Ui>(Flags<'a>, PhantomData<(W, U)>);
+
+impl<'a, W: Widget<U>, U: Ui> Handles<'a, W, U> {
+    /// Acts on a [`Handle`] of the most relevant instance of `W`
+    ///
+    /// The most relevant instance is determined in this order:
+    ///
+    /// - A [`Widget`] pushed to the currently active [`File`].
+    /// - A [`Widget`] pushed to the currently active window.
+    /// - A [`Widget`] that is open anywhere, starting from the next
+    ///   windows, ending on the previous.
+    ///
+    /// Do note that this function will only trigger once, so if there
+    /// are multiple instances of the [`Widget`] with the same level
+    /// of relevance, the first one that was pushed is the one that
+    /// will be picked. Since this is only triggered once, it can also
+    /// return a value.
+    ///
+    /// This function will be called by [`Handles::on_flags`], if no
+    /// context choosing [`Flags`] are passed.
+    ///
+    /// [`File`]: crate::file::File
+    pub fn on_current<Ret>(
+        &self,
+        pa: &mut Pass,
+        f: impl FnOnce(&mut Pass, Handle<W, U>) -> Ret,
+    ) -> Option<Ret> {
+        if let Some(handle) = context::fixed_file::<U>(pa)
+            .unwrap()
+            .get_related_widget::<W>(pa)
+        {
+            Some(f(pa, handle))
+        } else {
+            let windows = context::windows::<U>().borrow();
+            let w = context::cur_window();
+
+            if windows.is_empty() {
+                context::error!(
+                    "Widget command executed before the [a]Ui[] was initiated, try executing \
+                     after [a]OnUiStart[]"
+                );
+                return None;
+            }
+
+            let node = match crate::widget_entry::<W, U>(pa, &windows, w) {
+                Ok((.., node)) => node,
+                Err(err) => {
+                    context::error!("{err}");
+                    return None;
+                }
+            };
+
+            let (widget, area, mask, _) = node.parts();
+            let widget = widget.try_downcast().unwrap();
+            let handle = Handle::from_parts(widget, area.clone(), mask.clone());
+
+            Some(f(pa, handle))
+        }
+    }
+
+    /// Acts on a each [`Handle`] of any instance of `W`
+    ///
+    /// This will trigger in all windows, starting from the first, in
+    /// the order that they were pushed.
+    ///
+    /// Unlike [`Handles::on_current`], this can act on multiple
+    /// instances of the same type of [`Widget`] pushed to a single
+    /// window.
+    ///
+    /// This function will be called by [`Handles::on_flags`], if the
+    /// `"--global"` or `"-g"` [`Flags`] are passed.
+    pub fn on_each(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W, U>)) {
+        let nodes: Vec<Node<U>> = context::windows::<U>()
+            .borrow()
+            .iter()
+            .flat_map(|win| win.nodes().cloned())
+            .collect();
+
+        for (widget, area, mask, _) in nodes.iter().map(Node::parts) {
+            if let Some(widget) = widget.try_downcast() {
+                let handle = Handle::from_parts(widget, area.clone(), mask.clone());
+                f(pa, handle)
+            }
+        }
+    }
+
+    /// Acts on each [`Handle`] of `W` on the current window
+    ///
+    /// Will trigger in the order that they were pushed.
+    ///
+    /// Unlike [`Handles::on_current`], this can act on multiple
+    /// instances of the same type of [`Widget`] pushed to a single
+    /// window.
+    ///
+    /// This function will be called by [`Handles::on_flags`], if the
+    /// `"--window"` or `"-w"` [`Flags`] are passed.
+    pub fn on_window(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W, U>)) {
+        let cur_win = context::cur_window();
+        let nodes: Vec<Node<U>> = context::windows::<U>().borrow()[cur_win]
+            .nodes()
+            .cloned()
+            .collect();
+
+        for (widget, area, mask, _) in nodes.iter().map(Node::parts) {
+            if let Some(widget) = widget.try_downcast() {
+                let handle = Handle::from_parts(widget, area.clone(), mask.clone());
+                f(pa, handle)
+            }
+        }
+    }
+
+    /// Acts on [`Handle`]s of `W`, based on which[`Flags`] were
+    /// passed
+    ///
+    /// If the `"--global"` [`word`] or the `"-g"` [`blob`] flag are
+    /// passed, then will call [`Handles::on_each`]. If `"--window"`
+    /// or `"w"` are passed, then will call [`Handles::on_window`].
+    /// Otherwise, will call [`Handles::on_current`].
+    ///
+    /// If there are conflicting contexts, e.g. `"--global -w"`, then
+    /// nothing will be done, and an error will be notified.
+    pub fn on_flags(&self, pa: &mut Pass, f: impl FnMut(&mut Pass, Handle<W, U>)) {
+        let is_global = self.0.word("global") || self.0.blob("g");
+        let is_window = self.0.word("window") || self.0.blob("w");
+        if is_global && !is_window {
+            self.on_each(pa, f);
+        } else if is_window && !is_global {
+            self.on_window(pa, f);
+        } else if !is_global && !is_window {
+            self.on_current(pa, f);
+        } else {
+            context::error!(
+                "Multiple contexts chosen, either pick a [a]global[] context or a [a]window[] \
+                 context"
+            )
+        }
+    }
+}
+
+impl<'a, W: Widget<U>, U: Ui> Parameter<'a> for Handles<'a, W, U> {
+    type Returns = Self;
+
+    fn new(_: &Pass, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
+        Ok(Self(args.flags.clone(), PhantomData))
     }
 }
 
@@ -587,6 +751,8 @@ pub fn args_iter(command: &str) -> ArgsIter<'_> {
     args
 }
 
+/// An [`Iterator`] over the arguments in a command call
+#[doc(hidden)]
 pub type ArgsIter<'a> = impl Iterator<Item = (&'a str, std::ops::Range<usize>)> + Clone;
 
 parse_impl!(bool);
