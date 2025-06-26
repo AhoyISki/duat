@@ -385,7 +385,7 @@
 //! pub struct WordCount(bool);
 //!
 //! impl WordCount {
-//! 	/// Returns a new instance of the [`WordCount`] plugin
+//!     /// Returns a new instance of the [`WordCount`] plugin
 //!     pub fn new() -> Self {
 //!         WordCount(false)
 //!     }

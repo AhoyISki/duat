@@ -8,7 +8,7 @@
 //!
 //! The crate has the following elements:
 //!
-//! - 4 [`widgets`]:
+//! - 5 [`widgets`]:
 //!   - [`LineNumbers`] shows the numbers on a [`File`] (for now), and
 //!     you can configure their alignment, relativeness, etc.
 //!   - The [`PromptLine`] lets you run commands and do other things,
@@ -21,16 +21,22 @@
 //!   - [`Notifications`] shows things that have been logged to the
 //!     [`Logs`] of Duat, through the [`error!`], [`warn!`] and
 //!     [`info!`] macros.
+//!   - [`LogBook`] is a log of everything that has been notified to
+//!     Duat. It is usually more admissive than [`Notifications`], and
+//!     is most commonly scrolled by the [`Pager`] [`Mode`].
 //!
-//! - 2 [`modes`]:
+//! - 3 [`modes`]:
 //!   - [`Regular`] is essentially the standard [`Mode`] that text
 //!     editors use. Sort of like VSCode.
 //!   - [`Prompt`] is a multitool that can serve many purposes,
 //!     through the [`PromptMode`] trait, which allows one to act on
 //!     the [`PromptLine`] while abstracting over less important
 //!     elements of the [`Widget`].
+//!   - [`Pager`] is a simple, read only [`Mode`], designed for
+//!     scrolling and searching through [`Widget`]s, most commonly the
+//!     [`LogBook`].
 //!
-//! - For the [`PromptLine`], there are 3 [`PromptMode`]s:
+//! - For the [`PromptLine`], there are 4 [`PromptMode`]s:
 //!   - [`RunCommands`] will interpret and run Duat commands, with
 //!     syntax highlighting for correctness, defined by the
 //!     [`Parameter`] trait.
@@ -97,6 +103,8 @@
 //! [`duat-kak`]: https://docs.rs/duat-kak/latest/duat_kak
 //! [`SearchUpdated`]: hooks::SearchUpdated
 //! [`SearchPerformed`]: hooks::SearchPerformed
+//! [`Pager`]: modes::Pager
+//! [`LogBook`]: widgets::LogBook
 #![feature(
     decl_macro,
     closure_lifetime_binder,
@@ -177,32 +185,32 @@ fn tag_from_ast(tagger: Tagger, text: &mut Text, ast: &Ast) {
     match ast {
         Empty(_) => {}
         Flags(set_flags) => {
-            let id = form::id_of!("Regex.operator.flags");
+            let id = form::id_of!("regex.operator.flags");
             insert_form(id, set_flags.span);
         }
         Literal(literal) => {
-            let id = form::id_of!("Regex.literal");
+            let id = form::id_of!("regex.literal");
             insert_form(id, literal.span);
         }
         Dot(span) => {
-            let id = form::id_of!("Regex.operator.dot");
+            let id = form::id_of!("regex.operator.dot");
             insert_form(id, **span);
         }
         Assertion(assertion) => {
-            let id = form::id_of!("Regex.operator.assertion");
+            let id = form::id_of!("regex.operator.assertion");
             insert_form(id, assertion.span);
         }
         ClassUnicode(class) => {
-            let id = form::id_of!("Regex.class.unicode");
+            let id = form::id_of!("regex.class.unicode");
             insert_form(id, class.span);
         }
         ClassPerl(class) => {
-            let id = form::id_of!("Regex.class.perl");
+            let id = form::id_of!("regex.class.perl");
             insert_form(id, class.span);
         }
         ClassBracketed(class) => {
-            let class_id = form::id_of!("Regex.class.bracketed");
-            let bracket_id = form::id_of!("Regex.bracket.class");
+            let class_id = form::id_of!("regex.class.bracketed");
+            let bracket_id = form::id_of!("regex.bracket.class");
 
             insert_form(class_id, *class.kind.span());
 
@@ -212,12 +220,12 @@ fn tag_from_ast(tagger: Tagger, text: &mut Text, ast: &Ast) {
             text.insert_tag(tagger, range, bracket_id.to_tag(0));
         }
         Repetition(repetition) => {
-            let id = form::id_of!("Regex.operator.repetition");
+            let id = form::id_of!("regex.operator.repetition");
             insert_form(id, repetition.op.span);
         }
         Group(group) => {
-            let group_id = form::id_of!("Regex.group");
-            let bracket_id = form::id_of!("Regex.bracket.group");
+            let group_id = form::id_of!("regex.group");
+            let bracket_id = form::id_of!("regex.bracket.group");
 
             insert_form(group_id, *group.ast.span());
 
@@ -229,7 +237,7 @@ fn tag_from_ast(tagger: Tagger, text: &mut Text, ast: &Ast) {
             tag_from_ast(tagger, text, &group.ast);
         }
         Alternation(alternation) => {
-            let id = form::id_of!("Regex.operator.alternation");
+            let id = form::id_of!("regex.operator.alternation");
 
             let mut prev_end = None;
 
