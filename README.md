@@ -7,11 +7,16 @@ A [tree-sitter][__link0] implementation for Duat
 * Syntax highlighting
 * Indentation calculation
 
-Both of those things are done through the [`TsParser`][__link1] reader,
-with the [`PubTsParser`][__link2] public API.
+## Installation
+
+Just like other Duat plugins, this one can be installed by calling
+`cargo add` in the config directory:
+
+```bash
+cargo add duat-treesitter@"*" --rename treesitter
+```
+
+But this is a default plugin, so you most likely won’t have to do that.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG_R3sE90rHLiGwxh6nSAJHmAG_JvygzCiDBcG7eGFgK3ZZu0YWSBg29kdWF0LXRyZWVzaXR0ZXJlMC4xLjBvZHVhdF90cmVlc2l0dGVy
  [__link0]: https://tree-sitter.github.io/tree-sitter
- [__link1]: https://docs.rs/duat-treesitter/0.1.0/duat_treesitter/struct.TsParser.html
- [__link2]: https://docs.rs/duat-treesitter/0.1.0/duat_treesitter/struct.PubTsParser.html

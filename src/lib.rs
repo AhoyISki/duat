@@ -69,7 +69,6 @@ impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter {
 
         form::set_many!(
             ("variable", Form::white()),
-            ("variable.parameter", Form::italic()),
             ("variable.builtin", Form::dark_yellow()),
             ("constant", Form::grey()),
             ("constant.builtin", Form::dark_yellow()),
@@ -87,8 +86,8 @@ impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter {
             ("constructor", Form::dark_yellow().reset()),
             ("operator", Form::cyan()),
             ("keyword", Form::magenta()),
-            ("punctuation.bracket", Form::red()),
-            ("punctuation.delimiter", Form::cyan()),
+            ("punctuation.bracket", Form::grey()),
+            ("punctuation.delimiter", Form::grey()),
             ("comment", Form::grey()),
             ("comment.documentation", Form::grey().bold()),
             ("markup.strong", Form::bold()),
