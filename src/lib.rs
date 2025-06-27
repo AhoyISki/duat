@@ -956,9 +956,9 @@ impl<U: Ui> Mode<U> for Normal {
             }
 
             ////////// Cursor creation and destruction
-            key!(Char(',')) => handle.write(pa, |f, _| {
-                f.text_mut().selections_mut().unwrap().remove_extras()
-            }),
+            key!(Char(',')) => {
+                handle.write(pa, |f, _| f.text_mut().selections_mut().remove_extras())
+            }
             key!(Char('C')) => {
                 handle.new_moment(pa);
                 handle.edit_last(pa, |mut c| {
