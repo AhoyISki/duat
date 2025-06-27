@@ -33,8 +33,7 @@
 //! version, since that is kept much  more up to date:
 //!
 //! ```text
-//! git clone https://github.com/AhoyISki/duat
-//! cargo install --path duat --features git-deps
+//! cargo install --git https://github.com/AhoyISki/duat --force --features git-deps
 //! ```
 //!
 //! And if you want to nuke your config in order to get the newest
@@ -42,8 +41,7 @@
 //!
 //! ```text
 //! rm -rf ~/.config/duat
-//! git clone https://github.com/AhoyISki/duat
-//! cargo install --path duat --features git-deps
+//! cargo install --git https://github.com/AhoyISki/duat --force --features git-deps
 //! ```
 //!
 //! ## Configuration

@@ -37,8 +37,7 @@ Although, since this is an alpha, I would recommend the git
 version, since that is kept much  more up to date:
 
 ```text
-git clone https://github.com/AhoyISki/duat
-cargo install --path duat --features git-deps
+cargo install --git https://github.com/AhoyISki/duat --force --features git-deps
 ```
 
 And if you want to nuke your config in order to get the newest
@@ -46,8 +45,7 @@ default config crate, you can do the following:
 
 ```text
 rm -rf ~/.config/duat
-git clone https://github.com/AhoyISki/duat
-cargo install --path duat --features git-deps
+cargo install --git https://github.com/AhoyISki/duat --force --features git-deps
 ```
 
 ### Configuration
@@ -260,7 +258,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG098Iqh46FLTG-e7py1aLQbyG1v6xCbBzoHhG8gBAY2qSFl0YXKEGwOgWiGu11cvG8101LNCKKpwGzMOxCxKiRPXG51kgCybT_6XYWSBgmRkdWF0ZTAuNS4z
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG098Iqh46FLTG-e7py1aLQbyG1v6xCbBzoHhG8gBAY2qSFl0YXKEG-XYb03TxaCNGyR438RuLFDKGx8zkBUapDX_G0oKrsKXq-E4YWSBgmRkdWF0ZTAuNS4z
  [__link0]: https://docs.rs/duat/0.5.3/duat/?search=prelude::plug
  [__link1]: https://docs.rs/duat/0.5.3/duat/?search=prelude::mode::set_default
  [__link10]: https://docs.rs/duat/0.5.3/duat/?search=prelude::PromptLine

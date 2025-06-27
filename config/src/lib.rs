@@ -15,7 +15,7 @@ use kak::{Insert, Normal};
 fn setup() {
     plug!(
         // Adds a TsParser Reader, which enables syntax highlighting.
-        treesitter::TreeSitter::new(),
+        treesitter::TreeSitter,
         // This plugin sets the mode to Kakoune's Normal.
         kak::Kak::new(),
         // This one adds the Catppuccin colorschemes.
