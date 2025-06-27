@@ -17,12 +17,12 @@ use self::reader::Readers;
 pub use self::reader::{RangeList, Reader, ReaderCfg};
 use crate::{
     cfg::PrintCfg,
-    context::{self, FileHandle, Handle, load_cache},
+    context::{self, load_cache, FileHandle, Handle},
     data::{Pass, RwData},
     form::Painter,
     hook::{self, FileWritten},
     mode::Selections,
-    text::{Bytes, Text, txt},
+    text::{txt, Bytes, Moment, Text},
     ui::{PushSpecs, RawArea, Ui, Widget, WidgetCfg},
 };
 
@@ -317,6 +317,8 @@ impl<U: Ui> Widget<U> for File<U> {
             for moment in moments {
                 readers.process_moment(map.clone(), moment);
             }
+        } else {
+            readers.process_moment(map.clone(), Moment::default())
         }
 
         let mut file = widget.acquire_mut(pa);

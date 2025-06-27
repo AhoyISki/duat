@@ -65,7 +65,7 @@ impl History {
             finish_shifting(&mut unproc_changes, sh_from, shift);
             self.unproc_moments.push(Moment {
                 changes: Box::leak(Box::from(unproc_changes)),
-                is_fwd: true,
+                is_rev: true,
             });
         }
 
@@ -73,7 +73,7 @@ impl History {
 
         self.moments.push(Moment {
             changes: Box::leak(Box::from(new_changes)),
-            is_fwd: true,
+            is_rev: true,
         });
         self.cur_moment += 1;
     }
@@ -105,7 +105,7 @@ impl History {
         } else {
             self.cur_moment -= 1;
             let mut moment = self.moments[self.cur_moment];
-            moment.is_fwd = false;
+            moment.is_rev = false;
             self.unproc_moments.push(moment);
             Some(moment)
         }
@@ -120,7 +120,7 @@ impl History {
 
                 Moment {
                     changes: Box::leak(Box::from(changes)),
-                    is_fwd: true,
+                    is_rev: true,
                 }
             });
 
@@ -156,7 +156,7 @@ impl<Context> Decode<Context> for History {
 #[derive(Clone, Copy, Default, Debug, Encode)]
 pub struct Moment {
     changes: &'static [Change],
-    is_fwd: bool,
+    is_rev: bool,
 }
 
 impl Moment {
@@ -167,25 +167,37 @@ impl Moment {
     pub fn changes(&self) -> impl ExactSizeIterator<Item = Change<&str>> + '_ {
         let mut shift = [0; 3];
         self.changes.iter().map(move |change| {
-            if self.is_fwd {
-                change.as_ref()
-            } else {
+            if self.is_rev {
                 let mut change = change.as_ref().reverse();
                 change.shift_by(shift);
 
                 shift = add_shifts(shift, change.shift());
 
                 change
+            } else {
+                change.as_ref()
             }
         })
     }
 
     /// Returns the number of [`Change`]s in this [`Moment`]
     ///
-    /// Should never be equal to 0.
-    #[allow(clippy::len_without_is_empty)]
+    /// Can be `0`, since, in the case of [`Reader`]s, a call for
+    /// [`apply_changes`] is always sent, in order to update [`File`]s
+    /// every time they are printed.
+    ///
+    /// [`Reader`]: crate::file::Reader
+    /// [`apply_changes`]: crate::file::Reader::apply_changes
     pub fn len(&self) -> usize {
         self.changes.len()
+    }
+
+    /// Wether there are any [`Change`]s in this [`Moment`]
+    ///
+    /// This can happen when creating a [`Moment::default`].
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
@@ -195,7 +207,7 @@ impl<Context> Decode<Context> for Moment {
     ) -> Result<Self, bincode::error::DecodeError> {
         Ok(Moment {
             changes: Vec::decode(decoder)?.leak(),
-            is_fwd: Decode::decode(decoder)?,
+            is_rev: Decode::decode(decoder)?,
         })
     }
 }

@@ -11,7 +11,6 @@ mod types;
 use std::{
     self,
     cell::Cell,
-    collections::HashMap,
     ops::{Range, RangeBounds},
 };
 
@@ -105,8 +104,8 @@ impl<'a> std::fmt::Debug for MutTags<'a> {
 #[derive(Clone)]
 pub struct Tags {
     buf: GapBuffer<TagOrSkip>,
-    ghosts: HashMap<GhostId, Text>,
-    toggles: HashMap<ToggleId, Toggle>,
+    ghosts: Vec<(GhostId, Text)>,
+    toggles: Vec<(ToggleId, Toggle)>,
     range_min: usize,
     records: Records<[usize; 2]>,
     bounds: Vec<(Cell<[usize; 2]>, RawTag, RangeId)>,
@@ -124,8 +123,8 @@ impl Tags {
             } else {
                 gap_buffer![TagOrSkip::Skip(len as u32)]
             },
-            ghosts: HashMap::new(),
-            toggles: HashMap::new(),
+            ghosts: Vec::new(),
+            toggles: Vec::new(),
             range_min: MIN_FOR_RANGE,
             bounds: Vec::new(),
             records: Records::with_max([(len != 0) as usize, len]),
@@ -154,11 +153,11 @@ impl Tags {
         fn insert_id(tags: &mut Tags, id: Option<TagId>) -> Option<ToggleId> {
             match id {
                 Some(TagId::Ghost(id, ghost)) => {
-                    tags.ghosts.insert(id, ghost);
+                    tags.ghosts.push((id, ghost));
                     None
                 }
                 Some(TagId::Toggle(id, toggle)) => {
-                    tags.toggles.insert(id, toggle);
+                    tags.toggles.push((id, toggle));
                     Some(id)
                 }
                 None => None,
@@ -287,10 +286,10 @@ impl Tags {
                 }
                 RawTag::MainCaret(tagger) => {
                     self.insert(tagger, b, MainCaret);
-                },
+                }
                 RawTag::ExtraCaret(tagger) => {
                     self.insert(tagger, b, ExtraCaret);
-                },
+                }
                 StartAlignCenter(_) => starts.push((b, tag)),
                 EndAlignCenter(tagger) => {
                     let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
@@ -305,7 +304,7 @@ impl Tags {
                 }
                 RawTag::Spacer(tagger) => {
                     self.insert(tagger, b, Spacer);
-                },
+                }
                 StartConceal(_) => starts.push((b, tag)),
                 EndConceal(tagger) => {
                     let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
@@ -314,7 +313,8 @@ impl Tags {
                 }
                 ConcealUntil(_) => unreachable!(),
                 RawTag::Ghost(tagger, id) => {
-                    self.insert(tagger, b, Ghost(other.ghosts.remove(&id).unwrap()));
+                    let entry = other.ghosts.extract_if(.., |(l, _)| l == &id).next();
+                    self.insert(tagger, b, Ghost(entry.unwrap().1));
                 }
                 StartToggle(..) => todo!(),
                 EndToggle(..) => todo!(),
@@ -357,7 +357,9 @@ impl Tags {
 
         // It is best to do this first, so getting skips returns correct
         // entries.
-        self.remove_intersecting_bounds(start..end, |tag| taggers.clone().contains_tagger(tag.tagger()));
+        self.remove_intersecting_bounds(start..end, |tag| {
+            taggers.clone().contains_tagger(tag.tagger())
+        });
 
         let [mut n, mut b, _] = self.skip_behind(start);
         let (mut initial_n, mut initial_b) = (n, b);
@@ -837,16 +839,18 @@ impl Tags {
     pub fn ghosts_total_at(&self, at: usize) -> Option<Point> {
         self.iter_only_at(at).fold(None, |p, tag| match tag {
             RawTag::Ghost(_, id) => {
-                let max_point = self.ghosts.get(&id).unwrap().len();
-                Some(p.map_or(max_point, |p| p + max_point))
+                let (_, text) = self.ghosts.iter().find(|(lhs, _)| *lhs == id)?;
+                Some(p.map_or(text.len(), |p| p + text.len()))
             }
             _ => p,
         })
     }
 
     /// Return the [`Text`] of a given [`GhostId`]
-    pub fn get_ghost(&self, k: GhostId) -> Option<&Text> {
-        self.ghosts.get(&k)
+    pub fn get_ghost(&self, id: GhostId) -> Option<&Text> {
+        self.ghosts
+            .iter()
+            .find_map(|(lhs, text)| (*lhs == id).then_some(text))
     }
 
     /// Returns information about the skip in the byte `at`
@@ -1394,7 +1398,17 @@ impl PartialEq for Tags {
                     l_id == r_id && l_prio == r_prio
                 }
                 (Tag(PopForm(_, lhs)), Tag(PopForm(_, rhs))) => lhs == rhs,
-                (Tag(Ghost(_, lhs)), Tag(Ghost(_, rhs))) => self.ghosts[lhs] == other.ghosts[rhs],
+                (Tag(Ghost(_, lhs)), Tag(Ghost(_, rhs))) => {
+                    let self_ghost = self
+                        .ghosts
+                        .iter()
+                        .find_map(|(id, text)| (lhs == id).then_some(text));
+                    let other_ghost = other
+                        .ghosts
+                        .iter()
+                        .find_map(|(id, text)| (rhs == id).then_some(text));
+                    self_ghost == other_ghost
+                }
                 (Tag(MainCaret(_)), Tag(MainCaret(_)))
                 | (Tag(ExtraCaret(_)), Tag(ExtraCaret(_)))
                 | (Tag(StartAlignCenter(_)), Tag(StartAlignCenter(_)))

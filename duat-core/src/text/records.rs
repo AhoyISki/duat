@@ -74,7 +74,11 @@ pub struct Records<R: Record> {
 impl<R: Record> Records<R> {
     /// Creates a new [`Records`]
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            last_used: (0, R::default()),
+            max: R::default(),
+            stored: vec![R::default()],
+        }
     }
 
     /// Creates a new [`Records`] with a given len
@@ -82,7 +86,7 @@ impl<R: Record> Records<R> {
         Self {
             max,
             stored: vec![max],
-            ..Self::default()
+            ..Self::new()
         }
     }
 
@@ -250,11 +254,7 @@ impl<R: Record> Records<R> {
 
 impl<R: Record + Default> Default for Records<R> {
     fn default() -> Self {
-        Self {
-            last_used: (0, R::default()),
-            max: R::default(),
-            stored: vec![R::default()],
-        }
+        Self::new()
     }
 }
 
