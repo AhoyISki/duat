@@ -1758,7 +1758,7 @@ fn reindent<S, U: Ui>(c: &mut Cursor<File<U>, U::Area, S>, processed_lines: &mut
 fn remove_empty_line<S, U: Ui>(c: &mut Cursor<File<U>, U::Area, S>) {
     let mut lines = c.lines_on(c.caret()..);
     let (_, line) = lines.next().unwrap();
-    if !line.chars().all(char::is_whitespace) || line.len() == 1 {
+    if !line.chars().all(char::is_whitespace) || line.is_empty() {
         return;
     }
     let chars_count = line.chars().count();
