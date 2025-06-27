@@ -14,7 +14,8 @@
 //! cargo add duat-treesitter@"*" --rename treesitter
 //! ```
 //!
-//! But this is a default plugin, so you most likely won't have to do that.
+//! But this is a default plugin, so you most likely won't have to do
+//! that.
 //!
 //! [tree-sitter]: https://tree-sitter.github.io/tree-sitter
 #![feature(closure_lifetime_binder)]
@@ -31,9 +32,9 @@ use duat_core::{
     file::{self, Reader},
     form::FormId,
     hook::OnFileOpen,
-    mode::Cursor,
+    mode::{Cursor, Selections},
     prelude::*,
-    text::{self, Bytes, Change, Matcheable, Moment, MutTags, Point},
+    text::{self, Bytes, Change, Matcheable, Moment, MutTags, Point, RefBytes},
 };
 use duat_filetype::FileType;
 use streaming_iterator::StreamingIterator;
@@ -128,7 +129,7 @@ pub struct TsParser {
 
 impl TsParser {
     fn init(
-        bytes: &mut Bytes,
+        bytes: &mut RefBytes,
         range: Range<usize>,
         offset: TSPoint,
         lang_parts: LangParts<'static>,
@@ -156,15 +157,20 @@ impl TsParser {
         }
     }
 
-    fn highlight_and_inject(&mut self, bytes: &mut Bytes, tags: &mut MutTags, range: Range<usize>) {
+    fn highlight_and_inject(
+        &mut self,
+        bytes: &mut RefBytes,
+        tags: &mut MutTags,
+        range: Range<usize>,
+    ) {
         if range.start >= self.range.end || range.end <= self.range.start {
             return;
         }
 
         let (.., Queries { highlights: highlight, injections, .. }) = &self.lang_parts;
-        let buf = TsBuf(bytes);
+        let buf = TsBuf(&*bytes);
 
-        tags.remove(range.clone(), self.tagger);
+        tags.remove(self.tagger, range.clone());
 
         // Include a little bit of overhang, in order to deal with some loose
         // ends, mostly related to comments.
@@ -234,7 +240,7 @@ impl TsParser {
             if let Some((.., lp)) = sub_trees_to_add.iter().find(|(lhs, ..)| *lhs == st.range) {
                 if lp.0 != st.lang_parts.0 {
                     if !(st.range.start >= start && st.range.end <= end) {
-                        tags.remove(st.range.clone(), self.tagger);
+                        tags.remove(self.tagger, st.range.clone());
                     }
                     false
                 } else {
@@ -271,7 +277,7 @@ impl TsParser {
         // We highlight at the very end, so if, for example, a sub tree gets
         // removed, tags can be readded, without leaving a blank space, in
         // case the injection was of the same language.
-        let buf = TsBuf(bytes);
+        let buf = TsBuf(&*bytes);
         cursor.set_byte_range(start..end);
         let mut hi_captures = cursor.captures(highlight, root, buf);
         while let Some((qm, _)) = hi_captures.next() {
@@ -522,7 +528,7 @@ impl TsParser {
             // Find last previous empty line.
             let mut lines = bytes.lines(..start).rev();
             let Some((prev_l, line)) =
-                lines.find(|(_, line)| !(line.matches(r"^\s*$", ..).unwrap()))
+                lines.find(|(_, line)| !(line.reg_matches(r"^\s*$", ..).unwrap()))
             else {
                 // If there is no previous non empty line, align to 0.
                 return Some(0);
@@ -742,8 +748,14 @@ impl<U: Ui> Reader<U> for TsParser {
         }
     }
 
-    fn update_range(&mut self, bytes: &mut Bytes, mut tags: MutTags, within: Range<usize>) {
-        self.highlight_and_inject(bytes, &mut tags, within);
+    fn update_range(
+        &mut self,
+        mut bytes: RefBytes,
+        mut tags: MutTags,
+        _: &Selections,
+        within: Range<usize>,
+    ) {
+        self.highlight_and_inject(&mut bytes, &mut tags, within);
     }
 }
 
@@ -777,7 +789,7 @@ impl TsParserCfg {
 impl<U: Ui> file::ReaderCfg<U> for TsParserCfg {
     type Reader = TsParser;
 
-    fn init(self, bytes: &mut Bytes) -> Result<Self::Reader, Text> {
+    fn init(self, bytes: &mut RefBytes) -> Result<Self::Reader, Text> {
         let offset = TSPoint::default();
         Ok(TsParser::init(
             bytes,
