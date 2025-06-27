@@ -44,6 +44,7 @@ use tree_sitter::{
 };
 
 mod languages;
+mod cursor;
 
 /// The [tree-sitter] pluging for Duat
 ///
