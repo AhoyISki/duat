@@ -521,7 +521,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
             n: usize,
         ) -> (Selection, bool, RefMut<'a, W>) {
             let mut widget = widget.acquire_mut(pa);
-            let selections = widget.text_mut().selections_mut().unwrap();
+            let selections = widget.text_mut().selections_mut();
             selections.populate();
             let Some((selection, was_main)) = selections.remove(n) else {
                 panic!("Selection index {n} out of bounds");
@@ -573,7 +573,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         self.edit_nth(
             pa,
             self.widget
-                .read(pa, |wid| wid.text().selections().unwrap().main_index()),
+                .read(pa, |wid| wid.text().selections().main_index()),
             edit,
         )
     }
@@ -605,7 +605,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         self.edit_nth(
             pa,
             self.widget
-                .read(pa, |wid| wid.text().selections().unwrap().len())
+                .read(pa, |wid| wid.text().selections().len())
                 .saturating_sub(1),
             edit,
         )
@@ -657,8 +657,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
 
     fn get_iter(&self, pa: &mut Pass) -> Cursors<'_, W, U::Area, S> {
         let mut widget = self.widget.acquire_mut(pa);
-        let selections = widget.text_mut().selections_mut().unwrap();
-        selections.populate();
+        widget.text_mut().selections_mut().populate();
 
         let searcher = self.searcher.borrow_mut();
 
@@ -682,7 +681,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// Reads the [`Selections`] of the [`Widget`]
     pub fn read_selections<Ret>(&self, pa: &Pass, read: impl FnOnce(&Selections) -> Ret) -> Ret {
         let widget = self.widget.acquire(pa);
-        read(widget.text().selections().unwrap())
+        read(widget.text().selections())
     }
 
     /// Writes to the [`Selections`] of the [`Widget`]
@@ -692,7 +691,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         write: impl FnOnce(&mut Selections) -> Ret,
     ) -> Ret {
         let mut widget = self.widget.acquire_mut(pa);
-        write(widget.text_mut().selections_mut().unwrap())
+        write(widget.text_mut().selections_mut())
     }
 
     ////////// Direct Text manipulation

@@ -22,7 +22,7 @@ use regex_automata::{
     util::syntax,
 };
 
-use super::{Bytes, Point, Text, TextRange};
+use super::{AsRefBytes, Bytes, Point, Text, TextRange};
 
 impl Text {
     /// Searches forward for a [`RegexPattern`] in a [range]
@@ -41,7 +41,7 @@ impl Text {
         pat: R,
         range: impl TextRange,
     ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
-        self.bytes_mut().search_fwd(pat, range)
+        self.0.bytes.search_fwd(pat, range)
     }
 
     /// Searches in reverse for a [`RegexPattern`] in a [range]
@@ -60,7 +60,7 @@ impl Text {
         pat: R,
         range: impl TextRange,
     ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
-        self.bytes_mut().search_rev(pat, range)
+        self.0.bytes.search_rev(pat, range)
     }
 
     /// Returns true if the pattern is found in the given range
@@ -248,7 +248,7 @@ pub trait Matcheable: Sized {
     ) -> Result<impl Iterator<Item = ([usize; 2], &str)>, Box<regex_syntax::Error>>;
 
     /// Checks if a type matches a [`RegexPattern`]
-    fn matches(
+    fn reg_matches(
         &self,
         pat: impl RegexPattern,
         range: impl RangeBounds<usize> + Clone,
@@ -342,7 +342,7 @@ impl<S: AsRef<str>> Matcheable for S {
         }))
     }
 
-    fn matches(
+    fn reg_matches(
         &self,
         pat: impl RegexPattern,
         range: impl RangeBounds<usize> + Clone,
@@ -390,10 +390,10 @@ impl Searcher {
     /// [range]: TextRange
     pub fn search_fwd<'b>(
         &'b mut self,
-        as_mut_bytes: &'b mut impl AsMutBytes,
+        as_mut_bytes: &'b mut impl AsRefBytes,
         range: impl TextRange,
     ) -> impl Iterator<Item = [Point; 2]> + 'b {
-        let bytes = as_mut_bytes.as_mut_bytes();
+        let bytes = as_mut_bytes.ref_bytes().0;
         let range = range.to_range(bytes.len().byte());
         let mut last_point = bytes.point_at(range.start);
 
@@ -450,10 +450,10 @@ impl Searcher {
     /// [range]: TextRange
     pub fn search_rev<'b>(
         &'b mut self,
-        as_mut_bytes: &'b mut impl AsMutBytes,
+        as_mut_bytes: &'b mut impl AsRefBytes,
         range: impl TextRange,
     ) -> impl Iterator<Item = [Point; 2]> + 'b {
-        let bytes = as_mut_bytes.as_mut_bytes();
+        let bytes = as_mut_bytes.ref_bytes().0;
         let range = range.to_range(bytes.len().byte());
         let mut last_point = bytes.point_at(range.end);
 
@@ -698,22 +698,5 @@ impl<const N: usize> InnerRegexPattern for [&str; N] {
 impl InnerRegexPattern for &[&str] {
     fn as_patterns<'b>(&'b self, _bytes: &'b mut [u8; 4]) -> Patterns<'b> {
         Patterns::Many(self)
-    }
-}
-
-/// Either [`Text`] or [`Bytes`]
-pub trait AsMutBytes {
-    fn as_mut_bytes(&mut self) -> &mut Bytes;
-}
-
-impl AsMutBytes for Bytes {
-    fn as_mut_bytes(&mut self) -> &mut Bytes {
-        self
-    }
-}
-
-impl AsMutBytes for Text {
-    fn as_mut_bytes(&mut self) -> &mut Bytes {
-        self.bytes_mut()
     }
 }

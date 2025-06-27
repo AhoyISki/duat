@@ -65,9 +65,7 @@ impl<U: Ui> Widget<U> for PromptLine<U> {
 
     fn update(pa: &mut Pass, handle: Handle<Self, U>) {
         handle.write(pa, |pl, area| {
-            if let Some(sels) = pl.text.selections()
-                && let Some(main) = sels.get_main()
-            {
+            if let Some(main) = pl.text.selections().get_main() {
                 area.scroll_around_point(&pl.text, main.caret(), pl.print_cfg());
             }
         })

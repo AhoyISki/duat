@@ -382,7 +382,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
             Ok(searcher) => {
                 handle.write(pa, |file, area| {
                     area.set_print_info(orig_print_info.clone());
-                    *file.selections_mut().unwrap() = orig_selections.clone();
+                    *file.selections_mut() = orig_selections.clone();
                 });
 
                 let ast = regex_syntax::ast::parse::Parser::new()

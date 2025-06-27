@@ -119,7 +119,7 @@ impl<U: Ui> SessionCfg<U> {
             layout_fn: self.layout_fn,
         };
 
-		let mut hasnt_set_cur = true;
+        let mut hasnt_set_cur = true;
         for (win, mut cfgs) in inherited_cfgs {
             let (file_cfg, is_active) = cfgs.next().unwrap();
             let (widget, _) = file_cfg.build(&mut pa, None);
@@ -316,8 +316,7 @@ impl<U: Ui> Session<U> {
                     store_cache(&path, cache);
                 }
 
-                let selections = file.selections_mut().unwrap();
-                if let Some(main) = selections.get_main() {
+                if let Some(main) = file.selections_mut().get_main() {
                     store_cache(path, main.clone());
                 }
             });

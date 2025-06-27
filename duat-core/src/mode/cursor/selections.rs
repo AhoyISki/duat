@@ -39,21 +39,21 @@ pub struct Selections {
 }
 
 impl Selections {
-    /// Returns a new [`Selections`]
-    pub fn new() -> Self {
+    /// A new [`Selections`] with a set main [`Selection`]
+    pub(crate) fn new(main: Selection) -> Self {
         Self {
-            buf: gap_buffer![Selection::default()],
+            buf: gap_buffer![main],
             main_i: 0,
             shift_state: Cell::new((0, [0; 3])),
         }
     }
 
-    /// A new [`Selections`] with a set main [`Selection`]
-    pub(crate) fn new_with_main(main: Selection) -> Self {
+    /// Returns a new empty [`Selections`]
+    pub(crate) fn new_empty() -> Self {
         Self {
-            buf: gap_buffer![main],
+            buf: GapBuffer::new(),
             main_i: 0,
-            shift_state: Cell::new((0, [0; 3])),
+            shift_state: Cell::default(),
         }
     }
 
@@ -231,6 +231,8 @@ impl Selections {
     }
 
     /// Applies a [`Change`] to the [`Selection`]s list
+    ///
+    /// Returns the number of [`Selection`]s that were removed
     pub(crate) fn apply_change(&mut self, guess_i: usize, change: Change<&str>) -> usize {
         let (sh_from, shift) = self.shift_state.take();
         let sh_from = sh_from.min(self.len());
@@ -321,12 +323,6 @@ impl Selections {
     }
 }
 
-impl Default for Selections {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 mod cursor {
     use std::{cell::Cell, cmp::Ordering, ops::Range};
 
@@ -334,7 +330,7 @@ mod cursor {
 
     use crate::{
         cfg::PrintCfg,
-        text::{Change, Point, Text},
+        text::{Bytes, Change, Point, Text},
         ui::{Caret, RawArea},
     };
 
@@ -644,8 +640,8 @@ mod cursor {
         /// This function will return the range that is supposed
         /// to be replaced, if `self.is_inclusive()`, this means that
         /// it will return one more byte at the end, i.e. start..=end.
-        pub fn range(&self, text: &Text) -> Range<usize> {
-            let [start, end] = self.point_range(text);
+        pub fn range(&self, bytes: &Bytes) -> Range<usize> {
+            let [start, end] = self.point_range(bytes);
             start.byte()..end.byte()
         }
 
@@ -659,12 +655,12 @@ mod cursor {
         }
 
         /// The ending [`Point`] of this [`Selection`]
-        pub fn end(&self, text: &Text) -> Point {
+        pub fn end(&self, bytes: &Bytes) -> Point {
             let raw = self.end_excl();
-            raw.fwd(text.char_at(raw).unwrap())
+            raw.fwd(bytes.char_at(raw).unwrap())
         }
 
-        pub(crate) fn end_excl(&self) -> Point {
+        pub(super) fn end_excl(&self) -> Point {
             if let Some(anchor) = self.anchor.get() {
                 anchor.point().max(self.caret.get().point())
             } else {
@@ -672,14 +668,14 @@ mod cursor {
             }
         }
 
-        pub(crate) fn tag_points(&self, text: &Text) -> (Point, Option<[Point; 2]>) {
+        pub(crate) fn tag_points(&self, bytes: &Bytes) -> (Point, Option<[Point; 2]>) {
             let caret = self.caret();
             if let Some(anchor) = self.anchor() {
                 match anchor.cmp(&caret) {
                     Ordering::Less => (caret, Some([anchor, caret])),
                     Ordering::Equal => (caret, None),
                     Ordering::Greater => {
-                        let end = anchor.fwd(text.char_at(anchor).unwrap());
+                        let end = anchor.fwd(bytes.char_at(anchor).unwrap());
                         (caret, Some([caret, end]))
                     }
                 }
@@ -694,8 +690,8 @@ mod cursor {
         /// beyond the last character's [`Point`].
         ///
         /// If `anchor` isn't set, returns an empty range on `target`.
-        pub fn point_range(&self, text: &Text) -> [Point; 2] {
-            [self.start(), self.end(text)]
+        pub fn point_range(&self, bytes: &Bytes) -> [Point; 2] {
+            [self.start(), self.end(bytes)]
         }
 
         /// Sets both the desired visual column, as well as the
@@ -807,7 +803,7 @@ mod cursor {
         }
     }
 
-	#[allow(clippy::non_canonical_partial_ord_impl)]
+    #[allow(clippy::non_canonical_partial_ord_impl)]
     impl PartialOrd for LazyVPoint {
         fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
             Some(self.point().cmp(&other.point()))
@@ -936,7 +932,7 @@ mod cursor {
         }
     }
 
-	#[allow(clippy::non_canonical_partial_ord_impl)]
+    #[allow(clippy::non_canonical_partial_ord_impl)]
     impl PartialOrd for VPoint {
         fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
             Some(self.p.cmp(&other.p))

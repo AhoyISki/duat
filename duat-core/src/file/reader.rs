@@ -12,7 +12,8 @@ use std::{any::TypeId, cell::RefCell, ops::Range, rc::Rc};
 use super::BytesDataMap;
 use crate::{
     data::{Pass, RwData},
-    text::{Bytes, Change, Moment, MutTags, Text, txt},
+    mode::Selections,
+    text::{Change, Moment, MutTags, RefBytes, Text, txt},
     ui::Ui,
 };
 
@@ -40,7 +41,7 @@ pub trait Reader<U: Ui>: 'static {
     ) where
         Self: Sized;
 
-    /// Updates a given [`Range`]
+    /// Updates in a given [`Range`]
     ///
     /// This should take into account all changes that have taken
     /// place before this point.
@@ -64,7 +65,13 @@ pub trait Reader<U: Ui>: 'static {
     /// request if that [`Tag`] was already there.
     ///
     /// [`Tag`]: crate::text::Tag
-    fn update_range(&mut self, bytes: &mut Bytes, tags: MutTags, within: Range<usize>);
+    fn update_range(
+        &mut self,
+        bytes: RefBytes,
+        tags: MutTags,
+        selections: &Selections,
+        within: Range<usize>,
+    );
 }
 
 /// A [`Reader`] builder struct
@@ -73,7 +80,7 @@ pub trait ReaderCfg<U: Ui> {
     type Reader: Reader<U>;
 
     /// Constructs the [`Reader`]
-    fn init(self, bytes: &mut Bytes) -> Result<Self::Reader, Text>;
+    fn init(self, bytes: &mut RefBytes<'_>) -> Result<Self::Reader, Text>;
 }
 
 #[derive(Default, Clone)]
@@ -84,7 +91,7 @@ impl<U: Ui> Readers<U> {
     pub(super) fn add<R: ReaderCfg<U>>(
         &mut self,
         pa: &mut Pass,
-        bytes: &mut Bytes,
+        mut bytes: RefBytes,
         reader_cfg: R,
     ) -> Result<(), Text> {
         self.0.write(pa, |readers| {
@@ -97,7 +104,9 @@ impl<U: Ui> Readers<U> {
 
             readers.push(ReaderEntry {
                 reader: unsafe {
-                    RwData::new_unsized::<R::Reader>(Rc::new(RefCell::new(reader_cfg.init(bytes)?)))
+                    RwData::new_unsized::<R::Reader>(Rc::new(RefCell::new(
+                        reader_cfg.init(&mut bytes)?,
+                    )))
                 },
                 apply_changes: |reader, bytes, moment, mut ranges_to_update| {
                     let reader = reader.try_downcast().unwrap();
@@ -193,12 +202,12 @@ impl<U: Ui> Readers<U> {
                             let old_ranges = std::mem::replace(ranges, RangeList::empty());
 
                             for range in old_ranges {
-                                let (bytes, tags) = text.bytes_and_tags();
+                                let (bytes, tags, selections) = text.parts();
                                 let (to_check, split_off) =
                                     split_range_within(range.clone(), within.clone());
 
                                 if let Some(range) = to_check {
-                                    reader.update_range(bytes, tags, range);
+                                    reader.update_range(bytes, tags, selections, range);
                                 }
 
                                 for range in split_off.into_iter().flatten() {

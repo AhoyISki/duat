@@ -1,6 +1,11 @@
 mod iter;
 
-use std::{cell::{Cell, RefCell}, fmt::Alignment, rc::Rc, sync::Arc};
+use std::{
+    cell::{Cell, RefCell},
+    fmt::Alignment,
+    rc::Rc,
+    sync::Arc,
+};
 
 use crossterm::cursor;
 use duat_core::{
@@ -866,8 +871,7 @@ mod layouted {
             return last;
         }
 
-        let (line_start, mut y) = if let Some(cursors) = text.selections()
-            && let Some(main) = cursors.get_main()
+        let (line_start, mut y) = if let Some(main) = text.selections().get_main()
             && main.caret() == info.prev_main
         {
             (text.visual_line_start(info.prev_main), info.vert_dist)

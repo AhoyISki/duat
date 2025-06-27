@@ -74,9 +74,9 @@ impl MutTags<'_> {
     /// [`File`]: crate::file::File
     /// [`Point`]: super::Point
     /// [`RangeFull`]: std::ops::RangeFull
-    pub fn remove(&mut self, range: impl TextRangeOrPoint, keys: impl Taggers) {
+    pub fn remove(&mut self, taggers: impl Taggers, range: impl TextRangeOrPoint) {
         let range = range.to_range(self.0.len_bytes());
-        self.0.remove_from(range, keys)
+        self.0.remove_from(taggers, range)
     }
 
     /// Removes all [`Tag`]s
@@ -91,7 +91,15 @@ impl MutTags<'_> {
     }
 }
 
-impl<'a> std::fmt::Debug for MutTags<'a> {
+impl std::ops::Deref for MutTags<'_> {
+    type Target = Tags;
+
+    fn deref(&self) -> &Self::Target {
+        self.0
+    }
+}
+
+impl std::fmt::Debug for MutTags<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
     }
@@ -352,7 +360,7 @@ impl Tags {
     }
 
     /// Removes all [`RawTag`]s of a give [`Taggers`]
-    pub fn remove_from(&mut self, range: impl RangeBounds<usize>, taggers: impl Taggers) {
+    pub fn remove_from(&mut self, taggers: impl Taggers, range: impl RangeBounds<usize>) {
         let (start, end) = crate::get_ends(range, self.len_bytes());
 
         // It is best to do this first, so getting skips returns correct

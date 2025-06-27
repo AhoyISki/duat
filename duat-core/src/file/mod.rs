@@ -17,12 +17,12 @@ use self::reader::Readers;
 pub use self::reader::{RangeList, Reader, ReaderCfg};
 use crate::{
     cfg::PrintCfg,
-    context::{self, load_cache, FileHandle, Handle},
+    context::{self, FileHandle, Handle, load_cache},
     data::{Pass, RwData},
     form::Painter,
     hook::{self, FileWritten},
-    mode::Selections,
-    text::{txt, Bytes, Moment, Text},
+    mode::{Selection, Selections},
+    text::{AsRefBytes, Bytes, RefBytes, Text, txt},
     ui::{PushSpecs, RawArea, Ui, Widget, WidgetCfg},
 };
 
@@ -79,13 +79,13 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
                 PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
                     let selections = {
                         let cursor = load_cache(path).unwrap_or_default();
-                        Selections::new_with_main(cursor)
+                        Selections::new(cursor)
                     };
                     let text = Text::from_file(bytes, selections, path, has_unsaved_changes);
                     (text, pk)
                 }
                 PathKind::NotSet(_) => (
-                    Text::from_bytes(bytes, Some(Selections::default()), true),
+                    Text::from_bytes(bytes, Selections::new(Selection::default()), true),
                     pk,
                 ),
             },
@@ -96,7 +96,7 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
                 {
                     let selections = {
                         let cursor = load_cache(path).unwrap_or_default();
-                        Selections::new_with_main(cursor)
+                        Selections::new(cursor)
                     };
                     let text = Text::from_file(Bytes::new(&file), selections, path, false);
                     (text, PathKind::SetExists(path.clone()))
@@ -270,11 +270,11 @@ impl<U: Ui> File<U> {
     /// The [`Selections`] that are used on the [`Text`], if they
     /// exist
     pub fn selections(&self) -> &Selections {
-        self.text.selections().unwrap()
+        self.text.selections()
     }
 
     /// A mutable reference to the [`Selections`], if they exist
-    pub fn selections_mut(&mut self) -> Option<&mut Selections> {
+    pub fn selections_mut(&mut self) -> &mut Selections {
         self.text.selections_mut()
     }
 
@@ -288,7 +288,7 @@ impl<U: Ui> File<U> {
     ///
     /// [`Change`]: crate::text::Change
     pub fn add_reader(&mut self, pa: &mut Pass, cfg: impl ReaderCfg<U>) {
-        if let Err(err) = self.readers.add(pa, self.text.bytes_mut(), cfg) {
+        if let Err(err) = self.readers.add(pa, self.text.ref_bytes(), cfg) {
             context::error!("{err}");
         }
     }
@@ -317,13 +317,11 @@ impl<U: Ui> Widget<U> for File<U> {
             for moment in moments {
                 readers.process_moment(map.clone(), moment);
             }
-        } else {
-            readers.process_moment(map.clone(), Moment::default())
         }
 
         let mut file = widget.acquire_mut(pa);
 
-        if let Some(main) = file.text().selections().and_then(Selections::get_main) {
+        if let Some(main) = file.text().selections().get_main() {
             area.scroll_around_point(file.text(), main.caret(), file.print_cfg());
         }
 
@@ -519,13 +517,13 @@ impl<U: Ui> BytesDataMap<U> {
         &self,
         pa: &mut Pass,
         rd: &RwData<Rd>,
-        f: impl FnOnce(&mut Bytes, &mut Rd) -> Ret,
+        f: impl FnOnce(&mut RefBytes, &mut Rd) -> Ret,
     ) -> Ret {
         // SAFETY: Since the other type is not a File, we can safely borrow
         // both.
         unsafe {
             self.0
-                .write_unsafe(|file| rd.write(pa, |rd| f(file.text.bytes_mut(), rd)))
+                .write_unsafe(|file| rd.write(pa, |rd| f(&mut file.text.ref_bytes(), rd)))
         }
     }
 

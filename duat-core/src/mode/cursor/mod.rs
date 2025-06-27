@@ -203,7 +203,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
 
         // The Change may have happened before the index of the next curossr,
         // so we need to account for that.
-        if let Some((change_i, selections_taken)) = change_i.zip(selections_taken)
+        if let Some(change_i) = change_i
             && let Some(next_i) = self.next_i.as_ref()
             && change_i <= next_i.get()
         {
@@ -372,15 +372,11 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
     pub fn destroy(mut self) {
         // If it is 1, it is actually 2, because this Selection is also part
         // of that list.
-        if !self.widget.text().selections().unwrap().is_empty() {
+        if !self.widget.text().selections().is_empty() {
             // Rc<Cell> needs to be manually dropped to reduce its counter.
             self.next_i.take();
             if self.was_main {
-                self.widget
-                    .text_mut()
-                    .selections_mut()
-                    .unwrap()
-                    .rotate_main(-1);
+                self.widget.text_mut().selections_mut().rotate_main(-1);
             }
             // The destructor is what inserts the Selection back into the list, so
             // don't run it.
@@ -705,12 +701,12 @@ unsafe impl<#[may_dangle] 'a, W: Widget<A::Ui> + ?Sized + 'a, A: RawArea + 'a, S
     for Cursor<'a, W, A, S>
 {
     fn drop(&mut self) {
-        let Some(selections) = self.widget.text_mut().selections_mut() else {
-            return;
-        };
         let selection = std::mem::take(&mut self.selection);
-        let ([inserted_i, selections_taken], last_selection_overhangs) =
-            selections.insert(self.n, selection, self.was_main);
+        let ([inserted_i, selections_taken], last_selection_overhangs) = self
+            .widget
+            .text_mut()
+            .selections_mut()
+            .insert(self.n, selection, self.was_main);
 
         if let Some(next_i) = self.next_i.as_ref()
             && inserted_i <= next_i.get()
@@ -759,12 +755,7 @@ impl<'a, 'lend, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Lending<'lend> for Cur
 impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Lender for Cursors<'a, W, A, S> {
     fn next<'lend>(&'lend mut self) -> Option<<Self as Lending<'lend>>::Lend> {
         let current_i = self.next_i.get();
-        let (selection, was_main) = self
-            .widget
-            .text_mut()
-            .selections_mut()
-            .unwrap()
-            .remove(current_i)?;
+        let (selection, was_main) = self.widget.text_mut().selections_mut().remove(current_i)?;
 
         Some(Cursor::new(
             selection,
@@ -858,6 +849,8 @@ impl PointOrPoints for RangeFull {
     fn move_to<W: Widget<U> + ?Sized, U: Ui, S>(self, cursor: &mut Cursor<'_, W, U::Area, S>) {
         cursor.move_to_start();
         cursor.set_anchor();
-        cursor.selection.move_to(cursor.widget.text().len(), cursor.widget.text());
+        cursor
+            .selection
+            .move_to(cursor.widget.text().len(), cursor.widget.text());
     }
 }

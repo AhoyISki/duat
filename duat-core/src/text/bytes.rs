@@ -5,6 +5,92 @@ use lender::{DoubleEndedLender, ExactSizeLender, Lender, Lending};
 
 use super::{Point, TextRange, records::Records, utf8_char_width};
 
+/// A public reader for [`Bytes`], which doesn't allow for mutation
+pub struct RefBytes<'a>(pub(super) &'a mut Bytes);
+
+impl RefBytes<'_> {
+    /// Gets a single [`&str`] from a given [range]
+    ///
+    /// This is the equivalent of calling
+    /// [`Bytes::make_contiguous`] and [`Bytes::get_contiguous`].
+    /// While this takes leas space in code, calling the other two
+    /// functions means that you won't be mutably borrowing the
+    /// [`Bytes`] anymore, so if that matters to you, you should do
+    /// that.
+    ///
+    /// [`&str`]: str
+    /// [range]: TextRange
+    pub fn contiguous(&mut self, range: impl TextRange) -> &str {
+        self.0.contiguous(range)
+    }
+
+    /// Moves the [`GapBuffer`]'s gap, so that the `range` is whole
+    ///
+    /// The return value is the value of the gap, if the second `&str`
+    /// is the contiguous one.
+    pub fn make_contiguous(&mut self, range: impl TextRange) {
+        self.0.make_contiguous(range);
+    }
+
+    /// Searches forward for a [`RegexPattern`] in a [range]
+    ///
+    /// A [`RegexPattern`] can either be a single regex string, an
+    /// array of strings, or a slice of strings. When there are more
+    /// than one pattern, The return value will include which pattern
+    /// matched.
+    ///
+    /// The patterns will also automatically be cached, so you don't
+    /// need to do that.
+    ///
+    /// [range]: TextRange
+    pub fn search_fwd<R: super::RegexPattern>(
+        &mut self,
+        pat: R,
+        range: impl TextRange,
+    ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
+        self.0.search_fwd(pat, range)
+    }
+
+    /// Searches in reverse for a [`RegexPattern`] in a [range]
+    ///
+    /// A [`RegexPattern`] can either be a single regex string, an
+    /// array of strings, or a slice of strings. When there are more
+    /// than one pattern, The return value will include which pattern
+    /// matched.
+    ///
+    /// The patterns will also automatically be cached, so you don't
+    /// need to do that.
+    ///
+    /// [range]: TextRange
+    pub fn search_rev<R: super::RegexPattern>(
+        &mut self,
+        pat: R,
+        range: impl TextRange,
+    ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
+        self.0.search_rev(pat, range)
+    }
+
+    /// Returns true if the pattern is found in the given range
+    ///
+    /// This is unanchored by default, if you want an anchored search,
+    /// use the `"^$"` characters.
+    pub fn matches(
+        &mut self,
+        pat: impl super::RegexPattern,
+        range: impl TextRange,
+    ) -> Result<bool, Box<regex_syntax::Error>> {
+        self.0.matches(pat, range)
+    }
+}
+
+impl std::ops::Deref for RefBytes<'_> {
+    type Target = Bytes;
+
+    fn deref(&self) -> &Self::Target {
+        self.0
+    }
+}
+
 /// The bytes of a [`Text`], encoded in UTF-8
 ///
 /// [`Text`]: super::Text
@@ -36,18 +122,23 @@ impl Bytes {
         Point::from_raw(b, c, l)
     }
 
-    /// Whether or not there are any characters in [`Bytes`]
+    /// Whether or not there are any characters in [`Bytes`], besides
+    /// the final `b'\n'`
     ///
     /// # Note
     ///
     /// This does not check for tags, so with a [`Tag::Ghost`],
     /// there could actually be a "string" of characters on the
-    /// [`Text`], it just wouldn't be considered real "text".
+    /// [`Text`], it just wouldn't be considered real "text". If you
+    /// want to check for [`Tags`]'s possible emptyness, see
+    /// [`Text::is_empty_empty`].
     ///
     /// [`Tag::Ghost`]: super::Ghost
     /// [`Text`]: super::Text
+    /// [`Tags`]: super::Tags
+    /// [`Text::is_empty_empty`]: super::Text::is_empty_empty
     pub fn is_empty(&self) -> bool {
-        self.buf.is_empty()
+        self.buf == [b'\n']
     }
 
     /// The `char` at the [`Point`]'s position

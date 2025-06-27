@@ -108,7 +108,7 @@ pub(crate) use self::history::History;
 use self::tags::{FwdTags, RevTags, Tags};
 pub use self::{
     builder::{Builder, BuilderPart, txt},
-    bytes::{Buffers, Bytes, Lines, Strs},
+    bytes::{Buffers, Bytes, Lines, RefBytes, Strs},
     history::{Change, Moment},
     iter::{FwdIter, Item, Part, RevIter},
     ops::{Point, TextRange, TextRangeOrPoint, TwoPoints, utf8_char_width},
@@ -140,7 +140,7 @@ pub struct Text(Box<InnerText>);
 struct InnerText {
     bytes: Bytes,
     tags: Tags,
-    selections: Option<Selections>,
+    selections: Selections,
     // Specific to Files
     history: Option<History>,
     has_changed: bool,
@@ -152,17 +152,25 @@ impl Text {
 
     /// Returns a new empty [`Text`]
     pub fn new() -> Self {
-        Self::from_bytes(Bytes::default(), None, false)
+        Self::from_bytes(Bytes::default(), Selections::new_empty(), false)
     }
 
     /// Returns a new empty [`Text`] with [`Selections`] enabled
     pub fn new_with_selections() -> Self {
-        Self::from_bytes(Bytes::default(), Some(Selections::default()), false)
+        Self::from_bytes(
+            Bytes::default(),
+            Selections::new(Selection::default()),
+            false,
+        )
     }
 
     /// Returns a new empty [`Text`] with history enabled
     pub(crate) fn new_with_history() -> Self {
-        Self::from_bytes(Bytes::default(), Some(Selections::default()), true)
+        Self::from_bytes(
+            Bytes::default(),
+            Selections::new(Selection::default()),
+            true,
+        )
     }
 
     /// Creates a [`Text`] from a file's [path]
@@ -179,10 +187,10 @@ impl Text {
         {
             selections
         } else {
-            Selections::default()
+            Selections::new(Selection::default())
         };
 
-        let mut text = Self::from_bytes(bytes, Some(selections), true);
+        let mut text = Self::from_bytes(bytes, selections, true);
         text.0
             .has_unsaved_changes
             .store(has_unsaved_changes, Ordering::Relaxed);
@@ -195,11 +203,7 @@ impl Text {
     }
 
     /// Creates a [`Text`] from [`Bytes`]
-    pub(crate) fn from_bytes(
-        mut bytes: Bytes,
-        selections: Option<Selections>,
-        with_history: bool,
-    ) -> Self {
+    pub(crate) fn from_bytes(mut bytes: Bytes, selections: Selections, with_history: bool) -> Self {
         if bytes.buffers(..).next_back().is_none_or(|b| b != b'\n') {
             let end = bytes.len();
             bytes.apply_change(Change::str_insert("\n", end));
@@ -221,7 +225,7 @@ impl Text {
         Self(Box::new(InnerText {
             bytes: Bytes::default(),
             tags: Tags::new(0),
-            selections: None,
+            selections: Selections::new_empty(),
             history: None,
             has_changed: false,
             has_unsaved_changes: AtomicBool::new(false),
@@ -249,27 +253,6 @@ impl Text {
 
     ////////// Querying functions
 
-    /// The [`Point`] at the end of the text
-    pub fn len(&self) -> Point {
-        self.0.bytes.len()
-    }
-
-    /// Whether or not there are any characters in the [`Text`]
-    ///
-    /// This ignores the last `'\n'` in the [`Text`], since it is
-    /// always there no matter what.
-    ///
-    /// This does not check for tags, so with a [`Ghost`],
-    /// there could actually be a "string" of characters on the
-    /// [`Text`], it just wouldn't be considered real "text". If you
-    /// want to make sure it is _indeed_ empty, see
-    /// [`is_empty_empty`].
-    ///
-    /// [`is_empty_empty`]: Self::is_empty_empty
-    pub fn is_empty(&self) -> bool {
-        self.0.bytes == "\n"
-    }
-
     /// Whether the [`Bytes`] and `Tags` are empty
     ///
     /// This ignores the last `'\n'` in the [`Text`], since it is
@@ -283,85 +266,30 @@ impl Text {
         self.0.bytes == "\n" && self.0.tags.is_empty()
     }
 
-    /// The `char` at the [`Point`]'s position
-    pub fn char_at(&self, point: Point) -> Option<char> {
-        self.0.bytes.char_at(point)
-    }
-
-    /// An [`Iterator`] over the bytes of the [`Text`]
-    pub fn buffers(&self, range: impl TextRange) -> Buffers<'_> {
-        self.0.bytes.buffers(range)
-    }
-
-    /// An [`Iterator`] over the [`&str`]s of the [`Text`]
-    ///
-    /// # Note
-    ///
-    /// The reason why this function returns two strings is that the
-    /// contents of the text are stored in a [`GapBuffer`], which
-    /// works with two strings.
-    ///
-    /// If you want to iterate over them, you can do the following:
-    ///
-    /// ```rust
-    /// # use duat_core::{text::Point, prelude::*};
-    /// # let (p1, p2) = (Point::default(), Point::default());
-    /// let text = Text::new();
-    /// text.strs(p1..p2).flat_map(str::chars);
-    /// ```
-    ///
-    /// Do note that you should avoid iterators like [`str::lines`],
-    /// as they will separate the line that is partially owned by each
-    /// [`&str`]:
-    ///
-    /// ```rust
-    /// let broken_up_line = [
-    ///     "This is line 1, business as usual.\nThis is line 2, but it",
-    ///     "is broken into two separate strings.\nSo 4 lines would be counted, instead of 3",
-    /// ];
-    /// ```
-    ///
-    /// # [`TextRange`] behavior:
-    ///
-    /// If you give a single [`usize`]/[`Point`], it will be
-    /// interpreted as a range from.
-    ///
-    /// [`&str`]: str
-    /// [`GapBuffer`]: gapbuf::GapBuffer
-    pub fn strs(&self, range: impl TextRange) -> Strs<'_> {
-        self.0.bytes.strs(range)
-    }
-
-    /// Returns an iterator over the lines in a given range
-    ///
-    /// The lines are inclusive, that is, it will iterate over the
-    /// whole line, not just the parts within the range.
-    pub fn lines(&self, range: impl TextRange) -> Lines<'_> {
-        self.0.bytes.lines(range)
-    }
-
     /// The inner bytes of the [`Text`]
+    ///
+    /// Note that, since [`Text`] has an implementation of
+    /// [`std::ops::Deref<Target = Bytes>`], you mostly don't need
+    /// to call this method. Also, some things require partial
+    /// mutability of the [`Bytes`], such as [regex searching] and
+    /// [getting contiguous `&str`s]. For those, see
+    /// [`Text::ref_bytes`].
+    ///
+    /// [regex searching]: Bytes::search_fwd
+    /// [getting contiguous `&str`s]: Bytes::contiguous
     pub fn bytes(&self) -> &Bytes {
         &self.0.bytes
-    }
-
-    /// The inner bytes of the [`Text`], mutably
-    ///
-    /// Do note that this mutability isn't actually for modifying the
-    /// [`Bytes`] themselves, but instead it is used by some methods
-    /// to read said bytes, like [`make_contiguous`] or [`lines`]
-    ///
-    /// [`make_contiguous`]: Bytes::make_contiguous
-    /// [`lines`]: Bytes::lines
-    pub fn bytes_mut(&mut self) -> &mut Bytes {
-        &mut self.0.bytes
     }
 
     /// The [`&mut Bytes`] and [`MutTags`]
     ///
     /// [`&mut Bytes`]: Bytes
-    pub fn bytes_and_tags(&mut self) -> (&mut Bytes, MutTags<'_>) {
-        (&mut self.0.bytes, MutTags(&mut self.0.tags))
+    pub fn parts(&mut self) -> (RefBytes<'_>, MutTags<'_>, &Selections) {
+        (
+            RefBytes(&mut self.0.bytes),
+            MutTags(&mut self.0.tags),
+            &self.0.selections,
+        )
     }
 
     /// Gets the indentation level on the current line
@@ -373,85 +301,6 @@ impl Text {
             .find(|(_, char)| !char.is_whitespace() || *char == '\n')
             .map(|(caret, _)| caret.x as usize)
             .unwrap_or(0)
-    }
-
-    ////////// Point querying functions
-
-    /// The [`Point`] corresponding to the byte position, 0 indexed
-    ///
-    /// If the byte position would fall in between two characters
-    /// (because the first one comprises more than one byte), the
-    /// first character is chosen as the [`Point`] where the byte is
-    /// located.
-    ///
-    /// # Panics
-    ///
-    /// Will panic if `b` is greater than the length of the text
-    #[inline(always)]
-    pub fn point_at(&self, b: usize) -> Point {
-        self.0.bytes.point_at(b)
-    }
-
-    /// The [`Point`] associated with a char position, 0 indexed
-    ///
-    /// # Panics
-    ///
-    /// Will panic if `c` is greater than the number of chars in the
-    /// text.
-    #[inline(always)]
-    pub fn point_at_char(&self, c: usize) -> Point {
-        self.0.bytes.point_at_char(c)
-    }
-
-    /// The [`Point`] where the `l`th line starts, 0 indexed
-    ///
-    /// If `l == number_of_lines`, returns the last point of the
-    /// text.
-    ///
-    /// # Panics
-    ///
-    /// Will panic if `l` is greater than the number of lines on the
-    /// text
-    #[inline(always)]
-    pub fn point_at_line(&self, l: usize) -> Point {
-        self.0.bytes.point_at_line(l)
-    }
-
-    /// The start and end [`Point`]s for a given `l` line
-    ///
-    /// If `l == number_of_lines`, these points will be the same.
-    ///
-    /// # Panics
-    ///
-    /// Will panic if the number `l` is greater than the number of
-    /// lines on the text
-    #[inline(always)]
-    pub fn points_of_line(&self, l: usize) -> [Point; 2] {
-        self.0.bytes.points_of_line(l)
-    }
-
-    /// The [points] at the end of the text
-    ///
-    /// This will essentially return the [last point] of the text,
-    /// alongside the last possible [`Point`] of any
-    /// [`Ghost`] at the end of the text.
-    ///
-    /// [points]: TwoPoints
-    /// [last point]: Self::len
-    pub fn len_points(&self) -> (Point, Option<Point>) {
-        self.ghost_max_points_at(self.len().byte())
-    }
-
-    /// The last [`Point`] associated with a `char`
-    ///
-    /// This will give the [`Point`] of the last `char` of the text.
-    /// The difference between this method and [`len`] is that
-    /// it will return a [`Point`] one position earlier than it. If
-    /// the text is completely empty, it will return [`None`].
-    ///
-    /// [`len`]: Self::len
-    pub fn last_point(&self) -> Option<Point> {
-        self.0.bytes.last_point()
     }
 
     ////////// Tag related query functions
@@ -468,6 +317,18 @@ impl Text {
     pub fn ghost_max_points_at(&self, at: usize) -> (Point, Option<Point>) {
         let point = self.point_at(at);
         (point, self.0.tags.ghosts_total_at(point.byte()))
+    }
+
+    /// The [points] at the end of the text
+    ///
+    /// This will essentially return the [last point] of the text,
+    /// alongside the last possible [`Point`] of any
+    /// [`Ghost`] at the end of the text.
+    ///
+    /// [points]: TwoPoints
+    /// [last point]: Self::len
+    pub fn len_points(&self) -> (Point, Option<Point>) {
+        self.ghost_max_points_at(self.len().byte())
     }
 
     /// Points visually after the [`TwoPoints`]
@@ -543,7 +404,7 @@ impl Text {
         &mut self,
         guess_i: Option<usize>,
         change: Change,
-    ) -> (Option<usize>, Option<usize>) {
+    ) -> (Option<usize>, usize) {
         self.0.has_changed = true;
 
         let selections_taken = self.apply_change_inner(guess_i.unwrap_or(0), change.as_ref());
@@ -554,7 +415,7 @@ impl Text {
 
     /// Merges `String`s with the body of text, given a range to
     /// replace
-    fn apply_change_inner(&mut self, guess_i: usize, change: Change<&str>) -> Option<usize> {
+    fn apply_change_inner(&mut self, guess_i: usize, change: Change<&str>) -> usize {
         self.0.bytes.apply_change(change);
         self.0.tags.transform(
             change.start().byte()..change.taken_end().byte(),
@@ -562,11 +423,7 @@ impl Text {
         );
 
         *self.0.has_unsaved_changes.get_mut() = true;
-
-        self.0
-            .selections
-            .as_mut()
-            .map(|cs| cs.apply_change(guess_i, change))
+        self.0.selections.apply_change(guess_i, change)
     }
 
     fn without_last_nl(mut self) -> Self {
@@ -654,23 +511,21 @@ impl Text {
     }
 
     fn apply_and_process_changes(&mut self, moment: Moment) {
-        if let Some(selections) = self.selections_mut() {
-            selections.clear();
-        }
+        self.0.selections.clear();
 
         for (i, change) in moment.changes().enumerate() {
             self.apply_change_inner(0, change);
 
-            if let Some(selections) = self.0.selections.as_mut() {
-                let start = change.start();
-                let added_end = match change.added_str().chars().next_back() {
-                    Some(last) => change.added_end().rev(last),
-                    None => change.start(),
-                };
+            let start = change.start();
+            let added_end = match change.added_str().chars().next_back() {
+                Some(last) => change.added_end().rev(last),
+                None => change.start(),
+            };
 
-                let selection = Selection::new(added_end, (start != added_end).then_some(start));
-                selections.insert(i, selection, i == moment.len() - 1);
-            }
+            let selection = Selection::new(added_end, (start != added_end).then_some(start));
+            self.0
+                .selections
+                .insert(i, selection, i == moment.len() - 1);
         }
     }
 
@@ -733,9 +588,9 @@ impl Text {
     ///
     /// [key]: Taggers
     /// [`File`]: crate::file::File
-    pub fn remove_tags(&mut self, keys: impl Taggers, range: impl TextRangeOrPoint) {
+    pub fn remove_tags(&mut self, taggers: impl Taggers, range: impl TextRangeOrPoint) {
         let range = range.to_range(self.len().byte());
-        self.0.tags.remove_from(range, keys)
+        self.0.tags.remove_from(taggers, range)
     }
 
     /// Removes all [`Tag`]s
@@ -751,108 +606,89 @@ impl Text {
 
     /////////// Selection functions
 
-    /// Enables the usage of [`Selections`] in this [`Text`]
-    ///
-    /// This is automatically done whenever you use the cursor editing
-    /// functions of a [`Handle`].
-    ///
-    /// [`Handle`]: crate::context::Handle
-    pub fn enable_selections(&mut self) {
-        if self.0.selections.is_none() {
-            self.0.selections = Some(Selections::default())
-        }
-    }
-
     /// Returns a [`Text`] without [`Selections`]
     ///
     /// You should use this if you want to send the [`Text`] across
     /// threads.
     pub fn no_selections(mut self) -> Selectionless {
-        self.0.selections = None;
+        self.0.selections.clear();
         Selectionless(self)
     }
 
     /// Removes the tags for all the selections, used before they are
     /// expected to move
     pub(crate) fn add_selections(&mut self, area: &impl RawArea, cfg: PrintCfg) {
-        let Some(selections) = self.0.selections.take() else {
-            return;
-        };
-
-        if selections.len() < 500 {
-            for (selection, is_main) in selections.iter() {
-                self.add_selection(selection, is_main);
-            }
-        } else {
+        let within = (self.0.selections.len() >= 500).then(|| {
             let (start, _) = area.start_points(self, cfg);
             let (end, _) = area.end_points(self, cfg);
-            for (selection, is_main) in selections.iter() {
-                let range = selection.range(self);
+            (start, end)
+        });
+
+        let mut add_selection = |selection: &Selection, bytes: &mut Bytes, is_main: bool| {
+            let (caret, selection) = selection.tag_points(bytes);
+
+            let key = Tagger::for_selections();
+            let form = if is_main {
+                self.0.tags.insert(key, caret.byte(), MainCaret);
+                form::M_SEL_ID
+            } else {
+                self.0.tags.insert(key, caret.byte(), ExtraCaret);
+                form::E_SEL_ID
+            };
+
+            bytes.add_record([caret.byte(), caret.char(), caret.line()]);
+
+            if let Some([start, end]) = selection {
+                let range = start.byte()..end.byte();
+                self.0.tags.insert(key, range, form.to_tag(250));
+            }
+        };
+
+        if let Some((start, end)) = within {
+            for (selection, is_main) in self.0.selections.iter() {
+                let range = selection.range(&self.0.bytes);
                 if range.end > start.byte() && range.start < end.byte() {
-                    self.add_selection(selection, is_main);
+                    add_selection(selection, &mut self.0.bytes, is_main);
                 }
             }
+        } else {
+            for (selection, is_main) in self.0.selections.iter() {
+                add_selection(selection, &mut self.0.bytes, is_main);
+            }
         }
-
-        self.0.selections = Some(selections);
     }
 
     /// Adds the tags for all the selections, used after they are
     /// expected to have moved
     pub(crate) fn remove_selections(&mut self, area: &impl RawArea, cfg: PrintCfg) {
-        let Some(selections) = self.0.selections.take() else {
-            return;
-        };
-
-        if selections.len() < 500 {
-            for (selection, _) in selections.iter() {
-                self.remove_selection(selection);
-            }
-        } else {
+        let within = (self.0.selections.len() >= 500).then(|| {
             let (start, _) = area.start_points(self, cfg);
             let (end, _) = area.end_points(self, cfg);
-            for (selection, _) in selections.iter() {
-                let range = selection.range(self);
-                if range.end > start.byte() && range.start < end.byte() {
-                    self.remove_selection(selection);
-                }
+            (start, end)
+        });
+
+        let mut remove_selection = |selection: &Selection| {
+            let (caret, selection) = selection.tag_points(&self.0.bytes);
+            let points = [caret]
+                .into_iter()
+                .chain(selection.into_iter().flatten().find(|p| *p != caret));
+            for p in points {
+                let range = p.to_range(self.0.bytes.len().byte());
+                self.0.tags.remove_from(Tagger::for_selections(), range);
             }
-        }
-
-        self.0.selections = Some(selections)
-    }
-
-    /// Adds a [`Selection`] to the [`Text`]
-    fn add_selection(&mut self, selection: &Selection, is_main: bool) {
-        let (caret, selection) = selection.tag_points(self);
-
-        let key = Tagger::for_selections();
-        let form = if is_main {
-            self.0.tags.insert(key, caret.byte(), MainCaret);
-            form::M_SEL_ID
-        } else {
-            self.0.tags.insert(key, caret.byte(), ExtraCaret);
-            form::E_SEL_ID
         };
 
-        self.0
-            .bytes
-            .add_record([caret.byte(), caret.char(), caret.line()]);
-
-        if let Some([start, end]) = selection {
-            let range = start.byte()..end.byte();
-            self.0.tags.insert(key, range, form.to_tag(250));
-        }
-    }
-
-    /// Removes a [`Selection`] from the [`Text`]
-    fn remove_selection(&mut self, selection: &Selection) {
-        let (caret, selection) = selection.tag_points(self);
-        let points = [caret]
-            .into_iter()
-            .chain(selection.into_iter().flatten().find(|p| *p != caret));
-        for p in points {
-            self.remove_tags(Tagger::for_selections(), p.byte());
+        if let Some((start, end)) = within {
+            for (selection, _) in self.0.selections.iter() {
+                let range = selection.range(&self.0.bytes);
+                if range.end > start.byte() && range.start < end.byte() {
+                    remove_selection(selection);
+                }
+            }
+        } else {
+            for (selection, _) in self.0.selections.iter() {
+                remove_selection(selection);
+            }
         }
     }
 
@@ -935,14 +771,14 @@ impl Text {
     }
 
     /// The [`Selections`] printed to this [`Text`], if they exist
-    pub fn selections(&self) -> Option<&Selections> {
-        self.0.selections.as_ref()
+    pub fn selections(&self) -> &Selections {
+        &self.0.selections
     }
 
     /// A mut reference to this [`Text`]'s [`Selections`] if they
     /// exist
-    pub fn selections_mut(&mut self) -> Option<&mut Selections> {
-        self.0.selections.as_mut()
+    pub fn selections_mut(&mut self) -> &mut Selections {
+        &mut self.0.selections
     }
 
     pub(crate) fn history(&self) -> Option<&History> {
@@ -976,16 +812,13 @@ impl Text {
     pub fn make_contiguous(&mut self, range: impl TextRange) {
         self.0.bytes.make_contiguous(range);
     }
+}
 
-    /// Assumes that the `range` given is contiguous in `self`
-    ///
-    /// You *MUST* call [`make_contiguous`] before using this
-    /// function. The sole purpose of this function is to not keep the
-    /// [`Bytes`] mutably borrowed.
-    ///
-    /// [`make_contiguous`]: Self::make_contiguous
-    pub fn get_contiguous(&self, range: impl TextRange) -> Option<&str> {
-        self.0.bytes.get_contiguous(range)
+impl std::ops::Deref for Text {
+    type Target = Bytes;
+
+    fn deref(&self) -> &Self::Target {
+        self.bytes()
     }
 }
 
@@ -1081,7 +914,7 @@ macro impl_from_to_string($t:ty) {
         fn from(value: $t) -> Self {
             let string = <$t as ToString>::to_string(&value);
             let bytes = Bytes::new(&string);
-            Self::from_bytes(bytes, None, false)
+            Self::from_bytes(bytes, Selections::new_empty(), false)
         }
     }
 }
@@ -1120,3 +953,41 @@ impl From<Selectionless> for Text {
 // non Send/Sync part of a Text
 unsafe impl Send for Selectionless {}
 unsafe impl Sync for Selectionless {}
+
+/// Either [`Text`] or [`Bytes`]
+pub trait AsRefBytes {
+    /// Returns a [`RefBytes`]
+    fn ref_bytes(&mut self) -> RefBytes<'_>;
+}
+
+impl AsRefBytes for Bytes {
+    /// Why are you using this?
+    #[doc(hidden)]
+    fn ref_bytes(&mut self) -> RefBytes<'_> {
+        RefBytes(self)
+    }
+}
+
+impl AsRefBytes for RefBytes<'_> {
+    /// Duh
+    #[doc(hidden)]
+    fn ref_bytes(&mut self) -> RefBytes<'_> {
+        RefBytes(self.0)
+    }
+}
+
+impl AsRefBytes for Text {
+    /// A [`RefBytes`] of the [`Bytes`] within
+    ///
+    /// This takes a mutable reference because [`RefBytes`] grants
+    /// access to some methods that require "non altering mutation",
+    /// such as [`contiguous`] and [`search_fwd`], which require
+    /// that the gap of the inner [`GapBuffer`] be moved.
+    ///
+    /// [`contiguous`]: Bytes::contiguous
+    /// [`search_fwd`]: Bytes::search_fwd
+    /// [`GapBuffer`]: gapbuf::GapBuffer
+    fn ref_bytes(&mut self) -> RefBytes<'_> {
+        RefBytes(&mut self.0.bytes)
+    }
+}
