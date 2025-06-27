@@ -723,6 +723,14 @@ unsafe impl<#[may_dangle] 'a, W: Widget<A::Ui> + ?Sized + 'a, A: RawArea + 'a, S
     }
 }
 
+impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> std::fmt::Debug for Cursor<'a, W, A, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Cursor")
+            .field("selection", &self.selection)
+            .finish_non_exhaustive()
+    }
+}
+
 /// An [`Iterator`] overf all [`Cursor`]s
 pub struct Cursors<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> {
     next_i: Rc<Cell<usize>>,

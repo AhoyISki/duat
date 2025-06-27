@@ -46,6 +46,7 @@ impl History {
     ///
     /// [`EditHelper`]: crate::mode::EditHelper
     pub fn apply_change(&mut self, guess_i: Option<usize>, change: Change) -> usize {
+        crate::context::debug!("{change:#?}");
         let (changes, shift_state) = self.unproc_changes.get_or_insert_default();
         add_change(changes, guess_i, change.clone(), shift_state);
 
@@ -65,7 +66,7 @@ impl History {
             finish_shifting(&mut unproc_changes, sh_from, shift);
             self.unproc_moments.push(Moment {
                 changes: Box::leak(Box::from(unproc_changes)),
-                is_rev: true,
+                is_rev: false,
             });
         }
 
@@ -73,7 +74,7 @@ impl History {
 
         self.moments.push(Moment {
             changes: Box::leak(Box::from(new_changes)),
-            is_rev: true,
+            is_rev: false,
         });
         self.cur_moment += 1;
     }
@@ -105,7 +106,7 @@ impl History {
         } else {
             self.cur_moment -= 1;
             let mut moment = self.moments[self.cur_moment];
-            moment.is_rev = false;
+            moment.is_rev = true;
             self.unproc_moments.push(moment);
             Some(moment)
         }
@@ -120,7 +121,7 @@ impl History {
 
                 Moment {
                     changes: Box::leak(Box::from(changes)),
-                    is_rev: true,
+                    is_rev: false,
                 }
             });
 
@@ -293,7 +294,7 @@ impl Change {
             }
         };
 
-        let taken = text.strs(p0.byte()..p1.byte()).collect();
+        let taken = text.strs(p0..p1).collect();
         let added_end = p0 + Point::len_of(&added);
         Change {
             start: p0,
