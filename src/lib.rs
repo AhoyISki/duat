@@ -179,7 +179,7 @@
 //!
 //! # Troubleshooting
 //!
-//! These issues assume that you are working with the `--git-deps`
+//! These issues asume that you are working with the `--git-deps`
 //! version of `duat`
 //!
 //! ## The configuration fails to compile/recompile
@@ -195,7 +195,7 @@
 //!
 //! ## It still fails to compile!
 //!
-//! In this case, you should open an issue with th error message that
+//! In this case, you should open an issue with the error message that
 //! `cargo build --release` sent you.
 //!
 //! ## It's segfaulting sometimes when I reload
@@ -204,7 +204,7 @@
 //! going to happen from time to time. It should work correctly if you
 //! reopen though.
 //!
-//! This should be a problem of the past with #9, however.
+//! This should be a problem of the past with [#9], however.
 //!
 //! ## It's still segfaulting as I reopen!
 //!
@@ -360,6 +360,7 @@
 //! [tree-sitter]: https://tree-sitter.github.io/tree-sitter
 //! [`plug!`]: prelude::plug
 //! [dependencies section]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
+//! [#9]: https://github.com/AhoyISki/duat/issues/9
 #![feature(decl_macro, let_chains)]
 
 use std::sync::RwLock;
