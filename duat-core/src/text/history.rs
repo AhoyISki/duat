@@ -46,7 +46,6 @@ impl History {
     ///
     /// [`EditHelper`]: crate::mode::EditHelper
     pub fn apply_change(&mut self, guess_i: Option<usize>, change: Change) -> usize {
-        crate::context::debug!("{change:#?}");
         let (changes, shift_state) = self.unproc_changes.get_or_insert_default();
         add_change(changes, guess_i, change.clone(), shift_state);
 

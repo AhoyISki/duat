@@ -515,7 +515,7 @@ mod cursor {
                     area.rev_print_iter(text.iter_rev(end_points), cfg.new_line_as('\n'));
                 let wcol_and_p = iter.find_map(|(Caret { x, len, wrap }, item)| {
                     if let Some((p, _)) = item.as_real_char() {
-                        if (x..x + len).contains(&(vp.dwcol as u32))
+                        if (x..x + len.max(1)).contains(&(vp.dwcol as u32))
                             || (just_wrapped && x + len < vp.dwcol as u32)
                         {
                             last_valid = (x as u16, p);
@@ -536,6 +536,7 @@ mod cursor {
                         .fold((0, 0), |(ccol, vcol), (caret, item)| {
                             (ccol + item.is_real() as u16, vcol + caret.len as u16)
                         });
+
                     vp.known(p, ccol, vcol, wcol)
                 } else {
                     let (wcol, p) = last_valid;
@@ -545,6 +546,7 @@ mod cursor {
                         .fold((0, 0), |(ccol, vcol), (caret, item)| {
                             (ccol + item.is_real() as u16, vcol + caret.len as u16)
                         });
+
                     vp.known(p, ccol, vcol, wcol)
                 }
             });
