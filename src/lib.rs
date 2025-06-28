@@ -737,7 +737,7 @@ impl<U: Ui> Reader<U> for TsParser {
             // However, `changed_ranges` doesn't catch everything, so another
             // check is done. At a minimum, at least the lines where the changes
             // took place should be updated.
-            bytes.read(pa, |bytes| {
+            bytes.write(pa, |bytes| {
                 for change in moment.changes() {
                     let start = change.start();
                     let added = change.added_end();
@@ -829,15 +829,18 @@ impl TsParserCfg {
 impl<U: Ui> file::ReaderCfg<U> for TsParserCfg {
     type Reader = TsParser;
 
-    fn init(self, bytes: &mut RefBytes) -> Result<Self::Reader, Text> {
+    fn init(self, pa: &mut Pass, bytes: BytesDataMap<U>) -> Result<Self::Reader, Text> {
         let offset = TSPoint::default();
-        Ok(TsParser::init(
-            bytes,
-            0..bytes.len().byte(),
-            offset,
-            self.lang_parts,
-            self.form_parts,
-        ))
+        Ok(bytes.write(pa, |mut bytes| {
+            let len = bytes.len();
+            TsParser::init(
+                &mut bytes,
+                0..len.byte(),
+                offset,
+                self.lang_parts,
+                self.form_parts,
+            )
+        }))
     }
 }
 
