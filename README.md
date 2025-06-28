@@ -21,6 +21,12 @@ Just like other Duat plugins, this one can be installed by calling
 cargo add duat-kak@"*" --rename kak
 ```
 
+Or, if you are using a `--git-deps` version of duat, do this:
+
+```bash
+cargo add --git https://github.com/AhoyISki/duat-kak --rename kak
+```
+
 ## Keymaps
 
 This is a list of *currently* mapped keys, not the ones that
@@ -261,27 +267,27 @@ Go to the next [`File`][__link21] (includes other windows).
 Go to the previous [`File`][__link22] (includes other windows).
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG-u_VwqKgBGfG8NA13wLGbm0G8UUl1eZJzzlG0sBElw5QY22YWSEgmRNb2Rl9oJpZHVhdF9jb3JlZTAuNS4ygmpkdWF0X3V0aWxzZTAuMi4wgmdtYXBwaW5n9g
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG-UXbt1FTpDfGx7CpzozFw8ZG8Q6dLtj5mSgG6EgTKrWPz6QYWSEgmRNb2Rl9oJpZHVhdF9jb3JlZTAuNS4zgmpkdWF0X3V0aWxzZTAuMi4xgmdtYXBwaW5n9g
  [__link0]: https://github.com/mawww/kakoune
  [__link1]: https://crates.io/crates/mapping
- [__link10]: https://docs.rs/duat_utils/0.2.0/duat_utils/?search=modes::IncSearcher
- [__link11]: https://docs.rs/duat_core/0.5.2/duat_core/?search=mode::Cursor
- [__link12]: https://docs.rs/duat_core/0.5.2/duat_core/?search=mode::Cursor
- [__link13]: https://docs.rs/duat_core/0.5.2/duat_core/?search=mode::Cursor::caret
- [__link14]: https://docs.rs/duat_core/0.5.2/duat_core/?search=mode::Cursor::caret
- [__link15]: https://docs.rs/duat_core/0.5.2/duat_core/?search=mode::Cursor::anchor
- [__link16]: https://docs.rs/duat_core/0.5.2/duat_core/?search=mode::Cursor
- [__link17]: https://docs.rs/duat_core/0.5.2/duat_core/?search=mode::Cursor::caret
- [__link18]: https://docs.rs/duat_core/0.5.2/duat_core/?search=mode::Cursor::anchor
- [__link19]: https://docs.rs/duat_core/0.5.2/duat_core/?search=mode::Cursor
- [__link2]: https://docs.rs/duat_core/0.5.2/duat_core/?search=mode::Cursor
- [__link20]: https://docs.rs/duat_core/0.5.2/duat_core/?search=file::File
- [__link21]: https://docs.rs/duat_core/0.5.2/duat_core/?search=file::File
- [__link22]: https://docs.rs/duat_core/0.5.2/duat_core/?search=file::File
- [__link3]: https://docs.rs/duat_core/0.5.2/duat_core/?search=cfg::word_chars
- [__link4]: https://docs.rs/duat_core/0.5.2/duat_core/?search=mode::Cursor
- [__link5]: https://docs.rs/duat_core/0.5.2/duat_core/?search=text::Text::undo
- [__link6]: https://docs.rs/duat_core/0.5.2/duat_core/?search=text::Text::redo
- [__link7]: https://docs.rs/duat_utils/0.2.0/duat_utils/?search=modes::PipeSelections
- [__link8]: https://docs.rs/duat_utils/0.2.0/duat_utils/?search=modes::IncSearch
+ [__link10]: https://docs.rs/duat_utils/0.2.1/duat_utils/?search=modes::IncSearcher
+ [__link11]: https://docs.rs/duat_core/0.5.3/duat_core/?search=mode::Cursor
+ [__link12]: https://docs.rs/duat_core/0.5.3/duat_core/?search=mode::Cursor
+ [__link13]: https://docs.rs/duat_core/0.5.3/duat_core/?search=mode::Cursor::caret
+ [__link14]: https://docs.rs/duat_core/0.5.3/duat_core/?search=mode::Cursor::caret
+ [__link15]: https://docs.rs/duat_core/0.5.3/duat_core/?search=mode::Cursor::anchor
+ [__link16]: https://docs.rs/duat_core/0.5.3/duat_core/?search=mode::Cursor
+ [__link17]: https://docs.rs/duat_core/0.5.3/duat_core/?search=mode::Cursor::caret
+ [__link18]: https://docs.rs/duat_core/0.5.3/duat_core/?search=mode::Cursor::anchor
+ [__link19]: https://docs.rs/duat_core/0.5.3/duat_core/?search=mode::Cursor
+ [__link2]: https://docs.rs/duat_core/0.5.3/duat_core/?search=mode::Cursor
+ [__link20]: https://docs.rs/duat_core/0.5.3/duat_core/?search=file::File
+ [__link21]: https://docs.rs/duat_core/0.5.3/duat_core/?search=file::File
+ [__link22]: https://docs.rs/duat_core/0.5.3/duat_core/?search=file::File
+ [__link3]: https://docs.rs/duat_core/0.5.3/duat_core/?search=cfg::word_chars
+ [__link4]: https://docs.rs/duat_core/0.5.3/duat_core/?search=mode::Cursor
+ [__link5]: https://docs.rs/duat_core/0.5.3/duat_core/?search=text::Text::undo
+ [__link6]: https://docs.rs/duat_core/0.5.3/duat_core/?search=text::Text::redo
+ [__link7]: https://docs.rs/duat_utils/0.2.1/duat_utils/?search=modes::PipeSelections
+ [__link8]: https://docs.rs/duat_utils/0.2.1/duat_utils/?search=modes::IncSearch
  [__link9]: https://crates.io/crates/Mode

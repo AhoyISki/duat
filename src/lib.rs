@@ -19,6 +19,12 @@
 //! cargo add duat-kak@"*" --rename kak
 //! ```
 //!
+//! Or, if you are using a `--git-deps` version of duat, do this:
+//!
+//! ```bash
+//! cargo add --git https://github.com/AhoyISki/duat-kak --rename kak
+//! ```
+//!
 //! # Keymaps
 //!
 //! This is a list of _currently_ mapped keys, not the ones that
