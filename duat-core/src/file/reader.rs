@@ -108,7 +108,7 @@ impl<U: Ui> Readers<U> {
             apply_changes: |pa, reader, bytes, moment, mut ranges_to_update| {
                 let reader = reader.try_downcast().unwrap();
                 let mut new_ranges = if ranges_to_update.is_some() {
-                    Some(RangeList::new(bytes.read(pa, |bytes| bytes.len().byte())))
+                    Some(RangeList::new(bytes.write(pa, |bytes| bytes.len().byte())))
                 } else {
                     None
                 };
@@ -122,7 +122,7 @@ impl<U: Ui> Readers<U> {
                     });
                 }
             },
-            ranges_to_update: RwData::new(RangeList::new(bytes.read(pa, |b| b.len().byte()))),
+            ranges_to_update: RwData::new(RangeList::new(bytes.write(pa, |b| b.len().byte()))),
             ty: TypeId::of::<R::Reader>(),
         };
 
@@ -165,7 +165,7 @@ impl<U: Ui> Readers<U> {
             } else {
                 // If there are too many changes, cut on processing and
                 // just assume that everything needs to be updated.
-                let new_ru = RangeList::new(bytes.read(pa, |bytes| bytes.len().byte()));
+                let new_ru = RangeList::new(bytes.write(pa, |bytes| bytes.len().byte()));
                 entry.ranges_to_update.write(pa, |ru| *ru = new_ru);
                 None
             };

@@ -516,8 +516,8 @@ impl<U: Ui> BytesDataMap<U> {
     /// Panics if there is a mutable borrow of this struct somewhere,
     /// which could happen if you use [`RwData::write_unsafe`] or
     /// [`RwData::write_unsafe_as`]
-    pub fn read<Ret>(&self, pa: &Pass, f: impl FnOnce(&Bytes) -> Ret) -> Ret {
-        self.0.read(pa, |file| f(file.text.bytes()))
+    pub fn write<Ret>(&self, pa: &mut Pass, f: impl FnOnce(RefBytes) -> Ret) -> Ret {
+        self.0.write(pa, |file| f(file.text.ref_bytes()))
     }
 
     /// Reads the [`Bytes`] of a [`File`], alongside a [`Reader`]
