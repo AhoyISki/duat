@@ -12,8 +12,7 @@ use std::{any::TypeId, cell::RefCell, ops::Range, rc::Rc};
 use super::BytesDataMap;
 use crate::{
     data::{Pass, RwData},
-    mode::Selections,
-    text::{Change, Moment, MutTags, RefBytes, Text, txt},
+    text::{Change, Moment, RefBytes, Text, TextParts, txt},
     ui::Ui,
 };
 
@@ -65,13 +64,7 @@ pub trait Reader<U: Ui>: 'static {
     /// request if that [`Tag`] was already there.
     ///
     /// [`Tag`]: crate::text::Tag
-    fn update_range(
-        &mut self,
-        bytes: RefBytes,
-        tags: MutTags,
-        selections: &Selections,
-        within: Option<Range<usize>>,
-    );
+    fn update_range(&mut self, parts: TextParts, within: Option<Range<usize>>);
 }
 
 /// A [`Reader`] builder struct
@@ -202,11 +195,11 @@ impl<U: Ui> Readers<U> {
                             let old_ranges = std::mem::replace(ranges, RangeList::empty());
 
                             for range in old_ranges {
-                                let (bytes, tags, selections) = text.parts();
+                                let parts = text.parts();
                                 let (to_check, split_off) =
                                     split_range_within(range.clone(), within.clone());
 
-                                reader.update_range(bytes, tags, selections, to_check);
+                                reader.update_range(parts, to_check);
 
                                 for range in split_off.into_iter().flatten() {
                                     ranges.add(range);

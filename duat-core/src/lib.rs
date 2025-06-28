@@ -198,7 +198,7 @@
 //!         todo!();
 //!     }
 //!
-//!     fn update_range(&mut self, bytes: &mut Bytes, tags: MutTags, within: Range<usize>) {}
+//!     fn update_range(&mut self, bytes: RefBytes, tags: MutTags, , within: Range<usize>) {}
 //! }
 //! ```
 //!

@@ -134,12 +134,12 @@ impl<W: Widget<U>, U: Ui> PromptMode<U> for PagerSearch<W, U> {
                 crate::tag_from_ast(*PAGER_TAGGER, &mut text, &ast);
 
                 self.handle.write(pa, |widget, _| {
-                    let (mut bytes, mut tags, _) = widget.text_mut().parts();
+                    let mut parts = widget.text_mut().parts();
 
                     let id = form::id_of!("pager.search");
 
-                    for [start, end] in searcher.search_fwd(&mut bytes, ..) {
-                        tags.insert(*PAGER_TAGGER, start..end, id.to_tag(0));
+                    for [start, end] in searcher.search_fwd(&mut parts.bytes, ..) {
+                        parts.tags.insert(*PAGER_TAGGER, start..end, id.to_tag(0));
                     }
                 });
             }

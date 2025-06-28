@@ -284,12 +284,12 @@ impl Text {
     /// The [`&mut Bytes`] and [`MutTags`]
     ///
     /// [`&mut Bytes`]: Bytes
-    pub fn parts(&mut self) -> (RefBytes<'_>, MutTags<'_>, &Selections) {
-        (
-            RefBytes(&mut self.0.bytes),
-            MutTags(&mut self.0.tags),
-            &self.0.selections,
-        )
+    pub fn parts(&mut self) -> TextParts<'_> {
+        TextParts {
+            bytes: RefBytes(&mut self.0.bytes),
+            tags: MutTags(&mut self.0.tags),
+            selections: &self.0.selections,
+        }
     }
 
     /// Gets the indentation level on the current line
@@ -990,4 +990,31 @@ impl AsRefBytes for Text {
     fn ref_bytes(&mut self) -> RefBytes<'_> {
         RefBytes(&mut self.0.bytes)
     }
+}
+
+/// The Parts that make up a [`Text`]
+pub struct TextParts<'a> {
+    /// The [`Bytes`] of the [`Text`]
+    ///
+    /// [`RefBytes`], unlike [`&Bytes`], permits [contiguous `&str`]s
+    /// and [regex searching].
+    ///
+    /// [`&Bytes`]: Bytes
+    /// [contiguous `&str`]: RefBytes::contiguous
+    /// [regex searching]: RefBytes::search_fwd
+    pub bytes: RefBytes<'a>,
+    /// The [`Tags`] of the [`Text`]
+    ///
+    /// Main reason to wrap the [`&mut Tags`] within is to forbid the
+    /// usage of something like [`std::mem::replace`]
+    ///
+    /// [`&mut Tags`]: Tags
+    pub tags: MutTags<'a>,
+    /// The [`Selections`] of the [`Text`]
+    ///
+    /// For most [`Widget`]s, there should be no [`Selection`], since
+    /// they are just visual.
+    ///
+    /// [`Widget`]: crate::ui::Widget
+    pub selections: &'a Selections,
 }
