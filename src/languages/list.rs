@@ -351,9 +351,10 @@ pub static LANGUAGE_OPTIONS: LazyLock<HashMap<&str, LanguageOptions>> = LazyLock
             "https://github.com/ObserverOfTime/tree-sitter-gitattributes",
             &["@ObserverOfTime"],
         ),
-        LanguageOptions::pair(
+        LanguageOptions::pairs_with_symbol(
             "gitcommit",
             "https://github.com/gbprod/tree-sitter-gitcommit",
+            &[("language", true)],
             &["@gbprod"],
         ),
         LanguageOptions::pair(
