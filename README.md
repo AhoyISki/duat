@@ -146,6 +146,45 @@ with arguments supported by Rust’s type system. As an example,
 this command will change the [numbering][__link20] of a [`LineNumbers`][__link21]
 widget, switching between absolute and relative numbering.
 
+## Troubleshooting
+
+These issues assume that you are working with the `--git-deps`
+version of `duat`
+
+### The configuration fails to compile/recompile
+
+Try running this in `~/.config/duat`:
+
+```rust
+cargo clean && cargo update && cargo build --release
+```
+
+This could solve inconsistencies in the API, given that it could
+change without the plugins being aware of those changes.
+
+### It still fails to compile!
+
+In this case, you should open an issue with th error message that
+`cargo build --release` sent you.
+
+### It’s segfaulting sometimes when I reload
+
+For now, since duat is using `dlopen`, it’s unfortunatelly just
+going to happen from time to time. It should work correctly if you
+reopen though.
+
+This should be a problem of the past with #9, however.
+
+### It’s still segfaulting as I reopen!
+
+This is an indication that your installed version of duat became
+incompatible with that of your config. Rerun the installation
+process, no need to remove `~/.config/duat`.
+
+### It’s still segfaulting!
+
+In that case open an issue
+
 ## Default plugins
 
 When you install duat, the default config crate will come with
@@ -258,7 +297,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG098Iqh46FLTG-e7py1aLQbyG1v6xCbBzoHhG8gBAY2qSFl0YXKEG-XYb03TxaCNGyR438RuLFDKGx8zkBUapDX_G0oKrsKXq-E4YWSBgmRkdWF0ZTAuNS4z
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG098Iqh46FLTG-e7py1aLQbyG1v6xCbBzoHhG8gBAY2qSFl0YXKEG4lFlekTmZgDG7KigV__Te7SG1gME718YekhG21pEABAllA3YWSBgmRkdWF0ZTAuNS4z
  [__link0]: https://docs.rs/duat/0.5.3/duat/?search=prelude::plug
  [__link1]: https://docs.rs/duat/0.5.3/duat/?search=prelude::mode::set_default
  [__link10]: https://docs.rs/duat/0.5.3/duat/?search=prelude::PromptLine

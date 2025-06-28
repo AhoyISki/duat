@@ -177,6 +177,45 @@
 //! this command will change the [numbering] of a [`LineNumbers`]
 //! widget, switching between absolute and relative numbering.
 //!
+//! # Troubleshooting
+//!
+//! These issues assume that you are working with the `--git-deps`
+//! version of `duat`
+//!
+//! ## The configuration fails to compile/recompile
+//!
+//! Try running this in `~/.config/duat`:
+//!
+//! ```rust
+//! cargo clean && cargo update && cargo build --release
+//! ```
+//!
+//! This could solve inconsistencies in the API, given that it could
+//! change without the plugins being aware of those changes.
+//!
+//! ## It still fails to compile!
+//!
+//! In this case, you should open an issue with th error message that
+//! `cargo build --release` sent you.
+//!
+//! ## It's segfaulting sometimes when I reload
+//!
+//! For now, since duat is using `dlopen`, it's unfortunatelly just
+//! going to happen from time to time. It should work correctly if you
+//! reopen though.
+//!
+//! This should be a problem of the past with #9, however.
+//!
+//! ## It's still segfaulting as I reopen!
+//!
+//! This is an indication that your installed version of duat became
+//! incompatible with that of your config. Rerun the installation
+//! process, no need to remove `~/.config/duat`.
+//!
+//! ## It's still segfaulting!
+//!
+//! In that case open an issue
+//!
 //! # Default plugins
 //!
 //! When you install duat, the default config crate will come with
