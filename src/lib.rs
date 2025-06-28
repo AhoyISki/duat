@@ -14,6 +14,12 @@
 //! cargo add duat-treesitter@"*" --rename treesitter
 //! ```
 //!
+//! Or, if you are using a `--git-deps` version of duat, do this:
+//!
+//! ```bash
+//! cargo add --git https://github.com/AhoyISki/duat-treesitter --rename treesitter
+//! ```
+//!
 //! But this is a default plugin, so you most likely won't have to do
 //! that.
 //!
@@ -750,52 +756,10 @@ impl<U: Ui> Reader<U> for TsParser {
     }
 
     fn update_range(&mut self, mut parts: TextParts, within: Option<Range<usize>>) {
-        const PARENS: &[&str] = &["(", "[", "{", "<", ")", "]", "}", ">"];
 
         if let Some(within) = within {
             self.highlight_and_inject(&mut parts.bytes, &mut parts.tags, within);
         }
-
-        static PAREN_TAGGER: LazyLock<Tagger> = Tagger::new_static();
-
-        parts.tags.remove(*PAREN_TAGGER, ..);
-
-        let Some((i, paren)) = parts.selections.get_main().and_then(|main| {
-            let range = main.range(&parts.bytes);
-            self.tree
-                .root_node()
-                .descendant_for_byte_range(range.start, range.end)
-                .and_then(|n| {
-                    PARENS
-                        .iter()
-                        .position(|p| *p == n.grammar_name())
-                        .zip(Some(n))
-                })
-        }) else {
-            return;
-        };
-
-        let Some(parent) = paren.parent() else {
-            return;
-        };
-
-        let mut cursor = parent.walk();
-        let (start_range, end_range) =
-            if i < 4 && cursor.goto_last_child() && cursor.node().grammar_name() == PARENS[i + 4] {
-                (paren.byte_range(), cursor.node().byte_range())
-            } else if cursor.goto_first_child() && cursor.node().grammar_name() == PARENS[i - 4] {
-                (cursor.node().byte_range(), paren.byte_range())
-            } else {
-                return;
-            };
-
-        let id = form::id_of!("matched_paren.start");
-        parts
-            .tags
-            .insert(*PAREN_TAGGER, start_range, id.to_tag(248));
-
-        let id = form::id_of!("matched_paren.end");
-        parts.tags.insert(*PAREN_TAGGER, end_range, id.to_tag(248));
     }
 }
 

@@ -16,7 +16,14 @@ Just like other Duat plugins, this one can be installed by calling
 cargo add duat-treesitter@"*" --rename treesitter
 ```
 
-But this is a default plugin, so you most likely won’t have to do that.
+Or, if you are using a `--git-deps` version of duat, do this:
+
+```bash
+cargo add --git https://github.com/AhoyISki/duat-treesitter --rename treesitter
+```
+
+But this is a default plugin, so you most likely won’t have to do
+that.
 
 
  [__link0]: https://tree-sitter.github.io/tree-sitter
