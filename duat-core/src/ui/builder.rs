@@ -289,12 +289,7 @@ impl<U: Ui> FileBuilder<U> {
     /// [`Reader`]: crate::file::Reader
     /// [`Mode`]: crate::mode::Mode
     pub fn add_reader(&mut self, pa: &mut Pass, reader_cfg: impl ReaderCfg<U>) {
-        self.handle.write(pa, |file, _| {
-            // SAFETY: Because this function takes in a &mut Pass, it is safe
-            // to create new ones inside.
-            let mut pa = unsafe { Pass::new() };
-            file.add_reader(&mut pa, reader_cfg)
-        })
+        self.handle.add_reader(pa, reader_cfg);
     }
 
     /// The [`File`] that this hook is being applied to

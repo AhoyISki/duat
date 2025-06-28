@@ -170,16 +170,11 @@
 //! # struct WordCounterCfg;
 //! # impl<U: Ui> ReaderCfg<U> for WordCounterCfg {
 //! #     type Reader = WordCounter;
-//! #     fn init(self, _: &mut Bytes) -> Result<Self::Reader, Text> { todo!() }
+//! #     fn init(self, _: &mut RefBytes) -> Result<Self::Reader, Text> { todo!() }
 //! # }
 //! use std::ops::Range;
 //!
-//! use duat_core::{
-//!     data::RwData,
-//!     file::{BytesDataMap, RangeList},
-//!     prelude::*,
-//!     text::{Bytes, Moment, MutTags},
-//! };
+//! use duat_core::prelude::*;
 //!
 //! /// A [`Reader`] to keep track of words in a [`File`]
 //! struct WordCounter {
@@ -198,7 +193,7 @@
 //!         todo!();
 //!     }
 //!
-//!     fn update_range(&mut self, bytes: RefBytes, tags: MutTags, , within: Range<usize>) {}
+//!     fn update_range(&mut self, parts: TextParts, within: Option<Range<usize>>) {}
 //! }
 //! ```
 //!
@@ -207,8 +202,11 @@
 //! [`Change`]s that took place. This [`Moment`] will be sent to the
 //! [`Reader::apply_changes`] function, in which you are supposed to
 //! change the internal state of the [`Reader`] to accomodate the
-//! [`Change`]s. Also, ignore [`update_range`], it wont be used in
-//! this demonstration.
+//! [`Change`]s.
+//!
+//! Also, ignore [`update_range`], it will not be used in this
+//! demonstration, but it would be used to add or remove [`Tag`]s from
+//! the [`Text`], in case you're wondering.
 //!
 //! In order to add this [`Reader`] to the [`File`], we're going to
 //! need a [`ReaderCfg`], which is used for configuring [`Reader`]s
@@ -229,23 +227,18 @@
 //! #     ) {
 //! #         todo!();
 //! #     }
-//! #     fn update_range(&mut self, _: &mut Bytes, _: MutTags, _: Range<usize>) {}
+//! #     fn update_range(&mut self, _: TextParts, _: Option<Range<usize>>) {}
 //! # }
 //! use std::ops::Range;
 //!
-//! use duat_core::{
-//!     data::RwData,
-//!     file::{BytesDataMap, RangeList},
-//!     prelude::*,
-//!     text::{Bytes, Moment, MutTags},
-//! };
+//! use duat_core::prelude::*;
 //!
 //! struct WordCounterCfg(bool);
 //!
 //! impl<U: Ui> ReaderCfg<U> for WordCounterCfg {
 //!     type Reader = WordCounter;
 //!
-//!     fn init(self, bytes: &mut Bytes) -> Result<Self::Reader, Text> {
+//!     fn init(self, bytes: &mut RefBytes) -> Result<Self::Reader, Text> {
 //!         let regex = if self.0 { r"\S+" } else { r"\w+" };
 //!
 //!         let words = bytes.search_fwd(regex, ..).unwrap().count();
@@ -261,14 +254,9 @@
 //! update it based on [`Change`]s:
 //!
 //! ```rust
-//! use duat_core::{
-//!     data::RwData,
-//!     file::{BytesDataMap, RangeList},
-//!     prelude::*,
-//!     text::{Bytes, Change, Moment, MutTags},
-//! };
+//! use duat_core::{prelude::*, text::Change};
 //!
-//! fn word_diff(regex: &str, bytes: &mut Bytes, change: Change<&str>) -> i32 {
+//! fn word_diff(regex: &str, bytes: &mut RefBytes, change: Change<&str>) -> i32 {
 //!     let [start, _] = bytes.points_of_line(change.start().line());
 //!     let [_, end] = bytes.points_of_line(change.added_end().line());
 //!
@@ -300,17 +288,12 @@
 //! # struct WordCounterCfg;
 //! # impl<U: Ui> ReaderCfg<U> for WordCounterCfg {
 //! #     type Reader = WordCounter;
-//! #     fn init(self, _: &mut Bytes) -> Result<Self::Reader, Text> { todo!() }
+//! #     fn init(self, _: &mut RefBytes) -> Result<Self::Reader, Text> { todo!() }
 //! # }
-//! # fn word_diff(_: &str, _: &mut Bytes, _: Change<&str>) -> i32 { 0 }
+//! # fn word_diff(_: &str, _: &mut RefBytes, _: Change<&str>) -> i32 { 0 }
 //! use std::ops::Range;
 //!
-//! use duat_core::{
-//!     data::RwData,
-//!     file::{BytesDataMap, RangeList},
-//!     prelude::*,
-//!     text::{Bytes, Moment, MutTags},
-//! };
+//! use duat_core::prelude::*;
 //!
 //! /// A [`Reader`] to keep track of words in a [`File`]
 //! struct WordCounter {
@@ -336,7 +319,7 @@
 //!         });
 //!     }
 //!
-//!     fn update_range(&mut self, bytes: &mut Bytes, tags: MutTags, within: Range<usize>) {}
+//!     fn update_range(&mut self, parts: TextParts, within: Option<Range<usize>>) {}
 //! }
 //! ```
 //!
@@ -354,13 +337,10 @@
 //!
 //! ```rust
 //! # use std::ops::Range;
-//! # use duat_core::{
-//! #     data::RwData, file::{BytesDataMap, RangeList}, text::{Bytes, Moment, MutTags}
-//! # };
 //! # struct WordCounterCfg(bool);
 //! # impl<U: Ui> ReaderCfg<U> for WordCounterCfg {
 //! #     type Reader = WordCounter;
-//! #     fn init(self, _: &mut Bytes) -> Result<Self::Reader, Text> { todo!() }
+//! #     fn init(self, _: &mut RefBytes) -> Result<Self::Reader, Text> { todo!() }
 //! # }
 //! # /// A [`Reader`] to keep track of words in a [`File`]
 //! # struct WordCounter {
@@ -377,7 +357,7 @@
 //! #     ) {
 //! #
 //! #     }
-//! #     fn update_range(&mut self, bytes: &mut Bytes, tags: MutTags, within: Range<usize>) {}
+//! #     fn update_range(&mut self, _: TextParts, _: Option<Range<usize>>) {}
 //! # }
 //! use duat_core::{hook::OnFileOpen, prelude::*};
 //!
@@ -399,7 +379,7 @@
 //! impl<U: Ui> Plugin<U> for WordCount {
 //!     fn plug(self) {
 //!         let not_whitespace = self.0;
-//!         
+//!
 //!         hook::add::<OnFileOpen<U>, U>(move |pa, builder| {
 //!             builder.add_reader(pa, WordCounterCfg(not_whitespace));
 //!         });
@@ -418,13 +398,10 @@
 //!
 //! ```rust
 //! # use std::ops::Range;
-//! # use duat_core::{
-//! #     data::RwData, file::{BytesDataMap, RangeList}, text::{Bytes, Moment, MutTags}
-//! # };
 //! # struct WordCounterCfg(bool);
 //! # impl<U: Ui> ReaderCfg<U> for WordCounterCfg {
 //! #     type Reader = WordCounter;
-//! #     fn init(self, _: &mut Bytes) -> Result<Self::Reader, Text> { todo!() }
+//! #     fn init(self, _: &mut RefBytes) -> Result<Self::Reader, Text> { todo!() }
 //! # }
 //! # /// A [`Reader`] to keep track of words in a [`File`]
 //! # struct WordCounter {
@@ -441,7 +418,7 @@
 //! #     ) {
 //! #
 //! #     }
-//! #     fn update_range(&mut self, bytes: &mut Bytes, tags: MutTags, within: Range<usize>) {}
+//! #     fn update_range(&mut self, _: TextParts, _: Option<Range<usize>>) {}
 //! # }
 //! use duat_core::prelude::*;
 //!
@@ -526,7 +503,7 @@
 //!         });
 //!     }
 //!
-//!     fn update_range(&mut self, bytes: &mut Bytes, tags: MutTags, within: Range<usize>) {}
+//!     fn update_range(&mut self, parts: TextParts, within: Option<Range<usize>>) {}
 //! }
 //!
 //! struct WordCounterCfg(bool);
@@ -534,7 +511,7 @@
 //! impl<U: Ui> ReaderCfg<U> for WordCounterCfg {
 //!     type Reader = WordCounter;
 //!
-//!     fn init(self, bytes: &mut Bytes) -> Result<Self::Reader, Text> {
+//!     fn init(self, bytes: &mut RefBytes) -> Result<Self::Reader, Text> {
 //!         let regex = if self.0 { r"\S+" } else { r"\w+" };
 //!
 //!         let words = bytes.search_fwd(regex, ..).unwrap().count();
@@ -543,7 +520,7 @@
 //!     }
 //! }
 //!
-//! fn word_diff(regex: &str, bytes: &mut Bytes, change: Change<&str>) -> i32 {
+//! fn word_diff(regex: &str, bytes: &mut RefBytes, change: Change<&str>) -> i32 {
 //!     let [start, _] = bytes.points_of_line(change.start().line());
 //!     let [_, end] = bytes.points_of_line(change.added_end().line());
 //!
@@ -781,14 +758,14 @@ pub mod prelude {
         cfg::PrintCfg,
         cmd,
         context::{self, FileHandle, Handle},
-        data::Pass,
-        file::{File, RangeList, Reader, ReaderCfg},
+        data::{Pass, RwData},
+        file::{BytesDataMap, File, RangeList, Reader, ReaderCfg},
         form::{self, Form},
         hook,
         mode::{self, KeyCode, KeyEvent, KeyMod, Mode, key},
         text::{
-            AlignCenter, AlignLeft, AlignRight, Conceal, Ghost, Matcheable, Moment, Spacer, Tagger,
-            Text, txt,
+            AlignCenter, AlignLeft, AlignRight, Conceal, Ghost, Matcheable, Moment, RefBytes,
+            Spacer, Tagger, Text, TextParts, txt,
         },
         ui::{PushSpecs, RawArea, Ui, Widget, WidgetCfg},
     };

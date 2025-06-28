@@ -284,18 +284,37 @@ impl<U: Ui> File<U> {
             .is_some_and(|p| std::fs::exists(PathBuf::from(&p)).is_ok_and(|e| e))
     }
 
+    /// Gets a [`Reader`]
+    pub fn get_reader<Rd: Reader<U>>(&self) -> Option<RwData<Rd>> {
+        self.readers.get()
+    }
+}
+
+impl<U: Ui> Handle<File<U>, U> {
     /// Adds a [`Reader`] to react to [`Text`] [`Change`]s
     ///
     /// [`Change`]: crate::text::Change
     pub fn add_reader(&mut self, pa: &mut Pass, cfg: impl ReaderCfg<U>) {
-        if let Err(err) = self.readers.add(pa, self.text.ref_bytes(), cfg) {
+        let bytes = BytesDataMap(self.widget().clone());
+        let readers = self.write(pa, |file, _| file.readers.clone());
+
+        if let Err(err) = readers.add(pa, bytes, cfg) {
             context::error!("{err}");
         }
     }
+}
 
-    /// Gets a [`Reader`]
-    pub fn get_reader<Rd: Reader<U>>(&self) -> Option<RwData<Rd>> {
-        self.readers.get()
+impl<U: Ui> FileHandle<U> {
+    /// Adds a [`Reader`] to react to [`Text`] [`Change`]s
+    ///
+    /// [`Change`]: crate::text::Change
+    pub fn add_reader(&mut self, pa: &mut Pass, cfg: impl ReaderCfg<U>) {
+        let bytes = BytesDataMap(self.handle(pa).widget().clone());
+        let readers = self.write(pa, |file, _| file.readers.clone());
+
+        if let Err(err) = readers.add(pa, bytes, cfg) {
+            context::error!("{err}");
+        }
     }
 }
 
@@ -315,7 +334,7 @@ impl<U: Ui> Widget<U> for File<U> {
         let moments = widget.acquire_mut(pa).text.last_unprocessed_moment();
         if let Some(moments) = moments {
             for moment in moments {
-                readers.process_moment(map.clone(), moment);
+                readers.process_moment(pa, map.clone(), moment);
             }
         }
 

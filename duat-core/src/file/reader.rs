@@ -12,7 +12,7 @@ use std::{any::TypeId, cell::RefCell, ops::Range, rc::Rc};
 use super::BytesDataMap;
 use crate::{
     data::{Pass, RwData},
-    text::{Change, Moment, RefBytes, Text, TextParts, txt},
+    text::{Change, Moment, Text, TextParts, txt},
     ui::Ui,
 };
 
@@ -31,6 +31,7 @@ pub trait Reader<U: Ui>: 'static {
     /// is done in [`Reader::update_range`].
     ///
     /// [`Tag`]: crate::text::Tag
+    #[allow(unused_variables)]
     fn apply_changes(
         pa: &mut Pass,
         reader: RwData<Self>,
@@ -38,7 +39,9 @@ pub trait Reader<U: Ui>: 'static {
         moment: Moment,
         ranges_to_update: Option<&mut RangeList>,
     ) where
-        Self: Sized;
+        Self: Sized,
+    {
+    }
 
     /// Updates in a given [`Range`]
     ///
@@ -73,7 +76,7 @@ pub trait ReaderCfg<U: Ui> {
     type Reader: Reader<U>;
 
     /// Constructs the [`Reader`]
-    fn init(self, bytes: &mut RefBytes<'_>) -> Result<Self::Reader, Text>;
+    fn init(self, pa: &mut Pass, bytes: BytesDataMap<U>) -> Result<Self::Reader, Text>;
 }
 
 #[derive(Default, Clone)]
@@ -82,56 +85,51 @@ pub(super) struct Readers<U: Ui>(RwData<Vec<ReaderEntry<U>>>);
 impl<U: Ui> Readers<U> {
     /// Attempts to add  a [`Reader`]
     pub(super) fn add<R: ReaderCfg<U>>(
-        &mut self,
+        &self,
         pa: &mut Pass,
-        mut bytes: RefBytes,
+        bytes: BytesDataMap<U>,
         reader_cfg: R,
     ) -> Result<(), Text> {
-        self.0.write(pa, |readers| {
-            if readers.iter().any(|re| re.ty == TypeId::of::<R::Reader>()) {
-                Err(txt!(
-                    "There is already a reader of type [a]{}",
-                    crate::duat_name::<R::Reader>()
-                ))?;
-            }
+        if self.0.read(pa, |rds| {
+            rds.iter().any(|re| re.ty == TypeId::of::<R::Reader>())
+        }) {
+            Err(txt!(
+                "There is already a reader of type [a]{}",
+                crate::duat_name::<R::Reader>()
+            ))?;
+        }
 
-            readers.push(ReaderEntry {
-                reader: unsafe {
-                    RwData::new_unsized::<R::Reader>(Rc::new(RefCell::new(
-                        reader_cfg.init(&mut bytes)?,
-                    )))
-                },
-                apply_changes: |reader, bytes, moment, mut ranges_to_update| {
-                    let reader = reader.try_downcast().unwrap();
-                    // SAFETY: In the block that is executing this function, no Passes
-                    // exist beyond the one that is being mutably borrowed in the Readers
-                    // struct
-                    let mut pa = unsafe { Pass::new() };
+        let reader_entry = ReaderEntry {
+            reader: unsafe {
+                RwData::new_unsized::<R::Reader>(Rc::new(RefCell::new(
+                    reader_cfg.init(pa, bytes.clone())?,
+                )))
+            },
+            apply_changes: |pa, reader, bytes, moment, mut ranges_to_update| {
+                let reader = reader.try_downcast().unwrap();
+                let mut new_ranges = if ranges_to_update.is_some() {
+                    Some(RangeList::new(bytes.read(pa, |bytes| bytes.len().byte())))
+                } else {
+                    None
+                };
 
-                    let mut new_ranges = if ranges_to_update.is_some() {
-                        Some(RangeList::new(bytes.read(&pa, |bytes| bytes.len().byte())))
-                    } else {
-                        None
-                    };
+                <R::Reader>::apply_changes(pa, reader, bytes, moment, new_ranges.as_mut());
 
-                    <R::Reader>::apply_changes(&mut pa, reader, bytes, moment, new_ranges.as_mut());
+                if let Some(ranges_to_update) = ranges_to_update.take() {
+                    ranges_to_update.write(pa, |ru| {
+                        ru.shift_by_changes(moment.changes());
+                        ru.merge(new_ranges.unwrap())
+                    });
+                }
+            },
+            ranges_to_update: RwData::new(RangeList::new(bytes.read(pa, |b| b.len().byte()))),
+            ty: TypeId::of::<R::Reader>(),
+        };
 
-                    // SAFETY: Since the last Pass was consumed, we can create new
-                    // ones.
-                    let mut pa = unsafe { Pass::new() };
-                    if let Some(ranges_to_update) = ranges_to_update.take() {
-                        ranges_to_update.write(&mut pa, |ru| {
-                            ru.shift_by_changes(moment.changes());
-                            ru.merge(new_ranges.unwrap())
-                        });
-                    }
-                },
-                ranges_to_update: RwData::new(RangeList::new(bytes.len().byte())),
-                ty: TypeId::of::<R::Reader>(),
-            });
+        let mut readers = self.0.acquire_mut(pa);
+        readers.push(reader_entry);
 
-            Ok(())
-        })
+        Ok(())
     }
 
     /// Gets a specific [`Reader`], if it was added in
@@ -157,31 +155,25 @@ impl<U: Ui> Readers<U> {
     }
 
     /// Makes each [`Reader`] process a [`Moment`]
-    pub(super) fn process_moment(&self, bytes: BytesDataMap<U>, moment: Moment) {
+    pub(super) fn process_moment(&self, pa: &mut Pass, bytes: BytesDataMap<U>, moment: Moment) {
         const MAX_CHANGES_TO_CONSIDER: usize = 100;
-        // SAFETY: Firstly, it is impossible to aqcuire a copy of this RwData,
-        // nor is it possible to call this function from somewhere else, so
-        // this first read_unsafe is valid. Secondly, the same applies to the
-        // second write_unsafe of the RangeList RwData.
-        unsafe {
-            self.0.read_unsafe(|readers| {
-                for entry in readers.iter() {
-                    let new_ranges = if moment.len() <= MAX_CHANGES_TO_CONSIDER {
-                        Some(entry.ranges_to_update.clone())
-                    } else {
-                        // If there are too many changes, cut on processing and
-                        // just assume that everything needs to be updated.
-                        entry.ranges_to_update.write_unsafe(|ru| {
-                            let pa = Pass::new();
-                            *ru = RangeList::new(bytes.read(&pa, |bytes| bytes.len().byte()))
-                        });
-                        None
-                    };
 
-                    (entry.apply_changes)(entry.reader.clone(), bytes.clone(), moment, new_ranges);
-                }
-            });
+        let readers = std::mem::take(&mut *self.0.acquire_mut(pa));
+        for entry in readers.iter() {
+            let new_ranges = if moment.len() <= MAX_CHANGES_TO_CONSIDER {
+                Some(entry.ranges_to_update.clone())
+            } else {
+                // If there are too many changes, cut on processing and
+                // just assume that everything needs to be updated.
+                let new_ru = RangeList::new(bytes.read(pa, |bytes| bytes.len().byte()));
+                entry.ranges_to_update.write(pa, |ru| *ru = new_ru);
+                None
+            };
+
+            (entry.apply_changes)(pa, entry.reader.clone(), bytes.clone(), moment, new_ranges);
         }
+
+        self.0.acquire_mut(pa).extend(readers);
     }
 
     /// Updates the [`Reader`]s on a given range
@@ -327,7 +319,8 @@ impl RangeList {
 #[derive(Clone)]
 struct ReaderEntry<U: Ui> {
     reader: RwData<dyn Reader<U>>,
-    apply_changes: fn(RwData<dyn Reader<U>>, BytesDataMap<U>, Moment, Option<RwData<RangeList>>),
+    apply_changes:
+        fn(&mut Pass, RwData<dyn Reader<U>>, BytesDataMap<U>, Moment, Option<RwData<RangeList>>),
     ranges_to_update: RwData<RangeList>,
     ty: TypeId,
 }
