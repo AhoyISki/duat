@@ -511,10 +511,10 @@ mod cursor {
                 let mut just_wrapped = false;
                 let mut last_valid = (vp.wcol, vp.p);
 
-                let mut iter =
-                    area.rev_print_iter(text.iter_rev(end_points), cfg.new_line_as('\n'));
+                let mut iter = area.rev_print_iter(text.iter_rev(end_points), cfg);
                 let wcol_and_p = iter.find_map(|(Caret { x, len, wrap }, item)| {
                     if let Some((p, _)) = item.as_real_char() {
+                        // max(1) because it could be a '\n'
                         if (x..x + len.max(1)).contains(&(vp.dwcol as u32))
                             || (just_wrapped && x + len < vp.dwcol as u32)
                         {

@@ -294,7 +294,7 @@ impl<U: Ui> File<U> {
     }
 
     /// Gets a [`Reader`]
-    pub fn get_reader<R: Reader<U>>(&self) -> Option<RwData<R>> {
+    pub fn get_reader<Rd: Reader<U>>(&self) -> Option<RwData<Rd>> {
         self.readers.get()
     }
 }
@@ -525,6 +525,12 @@ impl<U: Ui> BytesDataMap<U> {
             self.0
                 .write_unsafe(|file| rd.write(pa, |rd| f(&mut file.text.ref_bytes(), rd)))
         }
+    }
+
+    /// Gets another [`Reader`], if it was added to this [`File`]
+    pub fn get_reader<Rd: Reader<U>>(&self, pa: &Pass) -> Option<RwData<Rd>> {
+        let file = self.0.acquire(pa);
+        file.get_reader()
     }
 
     /// Wether someone else called [`write`] or [`write_as`] since the

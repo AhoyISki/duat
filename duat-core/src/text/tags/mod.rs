@@ -56,11 +56,11 @@ pub struct MutTags<'a>(pub(super) &'a mut Tags);
 
 impl MutTags<'_> {
     /// Inserts a [`Tag`] at the given position
-    pub fn insert<R>(&mut self, key: Tagger, r: R, tag: impl Tag<R>) {
-        self.0.insert(key, r, tag);
+    pub fn insert<R>(&mut self, tagger: Tagger, r: R, tag: impl Tag<R>) {
+        self.0.insert(tagger, r, tag);
     }
 
-    /// Removes the [`Tag`]s of a [key] from a region
+    /// Removes the [`Tag`]s of a [tagger] from a region
     ///
     /// # Caution
     ///
@@ -70,7 +70,7 @@ impl MutTags<'_> {
     /// in the file, so if there are a lot of other tags, this
     /// operation may be slow.
     ///
-    /// [key]: Taggers
+    /// [tagger]: Taggers
     /// [`File`]: crate::file::File
     /// [`Point`]: super::Point
     /// [`RangeFull`]: std::ops::RangeFull

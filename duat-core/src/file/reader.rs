@@ -70,7 +70,7 @@ pub trait Reader<U: Ui>: 'static {
         bytes: RefBytes,
         tags: MutTags,
         selections: &Selections,
-        within: Range<usize>,
+        within: Option<Range<usize>>,
     );
 }
 
@@ -206,9 +206,7 @@ impl<U: Ui> Readers<U> {
                                 let (to_check, split_off) =
                                     split_range_within(range.clone(), within.clone());
 
-                                if let Some(range) = to_check {
-                                    reader.update_range(bytes, tags, selections, range);
-                                }
+                                reader.update_range(bytes, tags, selections, to_check);
 
                                 for range in split_off.into_iter().flatten() {
                                     ranges.add(range);
