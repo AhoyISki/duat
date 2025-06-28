@@ -281,7 +281,19 @@ impl Text {
         &self.0.bytes
     }
 
-    /// The [`&mut Bytes`] and [`MutTags`]
+    /// The parts that make up a [`Text`]
+    ///
+    /// This function is used when you want to add [`Tags`] (i.e.,
+    /// borrow the [`Tags`] mutably), while still being able to read
+    /// from the [`Bytes`] and [`Selections`].
+    ///
+    /// Giving direct access to mutate the [`Bytes`] is prohibited,
+    /// since that would cause a disconnect between the [`Bytes`]
+    /// and [`Tags`]. Same for [`Selections`].
+    ///
+    /// However, being able to read the [`Bytes`] and [`Selections`]
+    /// is crucial to allow for efficient [`Tag`] insertions and
+    /// removals. which is why this function exists.
     ///
     /// [`&mut Bytes`]: Bytes
     pub fn parts(&mut self) -> TextParts<'_> {
