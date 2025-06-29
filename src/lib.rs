@@ -34,7 +34,6 @@ use std::{
 };
 
 use duat_core::{
-    data::RwData,
     file::{self, Reader},
     form::FormId,
     hook::OnFileOpen,
@@ -363,7 +362,7 @@ impl TsParser {
         }
     }
 
-    fn apply_changes(&mut self, bytes: &Bytes, moment: Moment) {
+    fn apply_changes(&mut self, bytes: &mut RefBytes, moment: Moment) {
         fn changes_b_shift(changes: &[Change<&str>]) -> i32 {
             changes
                 .iter()
@@ -711,9 +710,9 @@ impl TsParser {
 
 impl<U: Ui> Reader<U> for TsParser {
     fn apply_changes(
-        pa: &mut Pass,
-        reader: RwData<Self>,
-        bytes: file::BytesDataMap<U>,
+        &mut self,
+        _: &mut Pass,
+        mut bytes: RefBytes,
         moment: text::Moment,
         ranges_to_update: Option<&mut file::RangeList>,
     ) where
@@ -732,31 +731,28 @@ impl<U: Ui> Reader<U> for TsParser {
             }
         }
 
-        bytes.write_with_reader(pa, &reader, |bytes, ts| ts.apply_changes(bytes, moment));
+        self.apply_changes(&mut bytes, moment);
 
         if let Some(list) = ranges_to_update {
             // This initial check might find larger, somewhat self contained nodes
             // that have changed, e.g. an identifier that is now recognized as a
             // function, things of that sort.
-            reader.read(pa, |ts| merge_tree_changed_ranges(ts, list));
+            merge_tree_changed_ranges(self, list);
 
             // However, `changed_ranges` doesn't catch everything, so another
             // check is done. At a minimum, at least the lines where the changes
             // took place should be updated.
-            bytes.write(pa, |bytes| {
-                for change in moment.changes() {
-                    let start = change.start();
-                    let added = change.added_end();
-                    let start = bytes.point_at_line(start.line());
-                    let end = bytes.point_at_line((added.line() + 1).min(bytes.len().line()));
-                    list.add(start.byte()..end.byte());
-                }
-            })
+            for change in moment.changes() {
+                let start = change.start();
+                let added = change.added_end();
+                let start = bytes.point_at_line(start.line());
+                let end = bytes.point_at_line((added.line() + 1).min(bytes.len().line()));
+                list.add(start.byte()..end.byte());
+            }
         }
     }
 
-    fn update_range(&mut self, mut parts: TextParts, within: Option<Range<usize>>) {
-
+    fn update_range(&mut self, mut parts: TextParts, _: Readers<U>, within: Option<Range<usize>>) {
         if let Some(within) = within {
             self.highlight_and_inject(&mut parts.bytes, &mut parts.tags, within);
         }
@@ -793,18 +789,18 @@ impl TsParserCfg {
 impl<U: Ui> file::ReaderCfg<U> for TsParserCfg {
     type Reader = TsParser;
 
-    fn init(self, pa: &mut Pass, bytes: BytesDataMap<U>) -> Result<Self::Reader, Text> {
+    fn init(self, mut bytes: RefBytes) -> Result<ReaderBox<U>, Text> {
         let offset = TSPoint::default();
-        Ok(bytes.write(pa, |mut bytes| {
-            let len = bytes.len();
-            TsParser::init(
-                &mut bytes,
-                0..len.byte(),
-                offset,
-                self.lang_parts,
-                self.form_parts,
-            )
-        }))
+        let len = bytes.len();
+        let reader = TsParser::init(
+            &mut bytes,
+            0..len.byte(),
+            offset,
+            self.lang_parts,
+            self.form_parts,
+        );
+
+        Ok(ReaderBox::new_local(bytes, reader))
     }
 }
 
@@ -1010,13 +1006,8 @@ pub trait TsFile {
 
 impl<U: Ui> TsFile for File<U> {
     fn ts_indent_on(&self, p: Point) -> Option<usize> {
-        self.get_reader::<TsParser>().and_then(|reader| {
-            // SAFETY: Since this requires the borrowing of an RwData<File>, no
-            // mutable borrows should exist.
-            unsafe {
-                reader.read_unsafe(|ts| ts.indent_on(p, self.text().bytes(), self.print_cfg()))
-            }
-        })
+        self.read_reader(|ts: &TsParser| ts.indent_on(p, self.text().bytes(), self.print_cfg()))
+            .flatten()
     }
 }
 
@@ -1045,7 +1036,7 @@ impl<U: Ui, S> TsCursor for Cursor<'_, File<U>, U::Area, S> {
     fn ts_indent_on(&self, p: Point) -> Option<usize> {
         let cfg = self.cfg();
 
-        self.read_bytes_and_reader(|bytes, reader: &TsParser| reader.indent_on(p, bytes, cfg))
+        self.read_reader(|ts: &TsParser| ts.indent_on(p, self.text().bytes(), cfg))
             .flatten()
     }
 }
