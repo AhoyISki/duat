@@ -14,7 +14,7 @@
 use std::{fs, marker::PhantomData, path::PathBuf};
 
 use self::reader::Readers;
-pub use self::reader::{RangeList, Reader, ReaderBox, ReaderCfg};
+pub use self::reader::{RangeList, Reader, ReaderBox, ReaderCfg, ReaderList};
 use crate::{
     cfg::PrintCfg,
     context::{self, FileHandle, Handle, load_cache},
@@ -284,7 +284,19 @@ impl<U: Ui> File<U> {
             .is_some_and(|p| std::fs::exists(PathBuf::from(&p)).is_ok_and(|e| e))
     }
 
-    /// Gets a [`Reader`]
+    /// Reads a specific [`Reader`], if it was [added]
+    ///
+    /// If the [`Reader`] was sent to another thread, this function
+    /// will block until it returns to this thread. If you don't wish
+    /// for this behaviour, see [`File::try_read_reader`].
+    ///
+    /// This function will also update the [`Reader`]s with the latest
+    /// changes that happened in the [`File`], keeping state
+    /// consistent even as you are actively updating it within the
+    /// same scope. Do note that a [`Reader`] that was in this thread,
+    /// could be sent to another thread because of this.
+    ///
+    /// [added]: Handle::add_reader
     pub fn read_reader<Rd: Reader<U>, Ret>(
         &mut self,
         read: impl FnOnce(&Rd, &Self) -> Ret,
@@ -292,8 +304,46 @@ impl<U: Ui> File<U> {
         // SAFETY: By virtue of &mut self, we have already managed to get
         // mutable access to this File, i.e., a Pass had to have been used at
         // some point, so we do have exclusive access here.
-        self.readers
-            .read_reader(&mut unsafe { Pass::new() }, self, read)
+        let pa = &mut unsafe { Pass::new() };
+
+        if let Some(moments) = self.text.unprocessed_moments() {
+            for moment in moments {
+                self.readers.process_moment(pa, moment);
+            }
+        }
+
+        self.readers.read_reader(pa, self, read)
+    }
+
+    /// Tries tor read a specific [`Reader`], if it was [added]
+    ///
+    /// Not only does it not trigger if the [`Reader`] doesn't exist,
+    /// also will not trigger if it was sent to another thread, and
+    /// isn't ready to be brought back. If you wish to wait for the
+    ///
+    /// This function will also update the [`Reader`]s with the latest
+    /// changes that happened in the [`File`], keeping state
+    /// consistent even as you are actively updating it within the
+    /// same scope. Do note that a [`Reader`] that was in this thread,
+    /// could be sent to another thread because of this.
+    ///
+    /// [added]: Handle::add_reader
+    pub fn try_read_reader<Rd: Reader<U>, Ret>(
+        &mut self,
+        read: impl FnOnce(&Rd, &Self) -> Ret,
+    ) -> Option<Ret> {
+        // SAFETY: By virtue of &mut self, we have already managed to get
+        // mutable access to this File, i.e., a Pass had to have been used at
+        // some point, so we do have exclusive access here.
+        let pa = &mut unsafe { Pass::new() };
+
+        if let Some(moments) = self.text.unprocessed_moments() {
+            for moment in moments {
+                self.readers.process_moment(pa, moment);
+            }
+        }
+
+        self.readers.try_read_reader(pa, self, read)
     }
 }
 
