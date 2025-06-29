@@ -527,7 +527,7 @@ impl Bytes {
     /// Applies a [`Change`] to the [`GapBuffer`] within
     ///
     /// [`Change`]: super::Change
-    pub(super) fn apply_change(&mut self, change: super::Change<&str>) {
+    pub(crate) fn apply_change(&mut self, change: super::Change<&str>) {
         let edit = change.added_str();
         let start = change.start();
 

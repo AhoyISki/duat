@@ -7,16 +7,26 @@
 //! use (usually when these become visible).
 //!
 //! [`Ui`]: crate::ui::Ui
-use std::{any::TypeId, cell::RefCell, ops::Range, rc::Rc};
+use std::{
+    any::TypeId,
+    ops::Range,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+        mpsc,
+    },
+    thread,
+};
 
-use super::BytesDataMap;
+use super::File;
 use crate::{
     data::{Pass, RwData},
-    text::{Change, Moment, Text, TextParts, txt},
+    text::{AsRefBytes, Bytes, Change, Moment, RefBytes, Text, TextParts, txt},
     ui::Ui,
 };
 
 /// A [`Text`] reader, modifying it whenever a [`Change`] happens
+#[allow(unused_variables)]
 pub trait Reader<U: Ui>: 'static {
     /// Applies the [`Change`]s to this [`Reader`]
     ///
@@ -31,16 +41,13 @@ pub trait Reader<U: Ui>: 'static {
     /// is done in [`Reader::update_range`].
     ///
     /// [`Tag`]: crate::text::Tag
-    #[allow(unused_variables)]
     fn apply_changes(
+        &mut self,
         pa: &mut Pass,
-        reader: RwData<Self>,
-        bytes: BytesDataMap<U>,
+        bytes: RefBytes,
         moment: Moment,
         ranges_to_update: Option<&mut RangeList>,
-    ) where
-        Self: Sized,
-    {
+    ) {
     }
 
     /// Updates in a given [`Range`]
@@ -68,6 +75,40 @@ pub trait Reader<U: Ui>: 'static {
     ///
     /// [`Tag`]: crate::text::Tag
     fn update_range(&mut self, parts: TextParts, within: Option<Range<usize>>);
+
+    /// Same as [`apply_changes`], but on another thread
+    ///
+    /// The biggest difference between this function and
+    /// [`apply_changes`] is that, since this one doesn't take place
+    /// on the main thread, you lose access to Duat's shared state
+    /// afforded by the [`Pass`], the only things you will have access
+    /// to are the [`RefBytes`] and the latest [`Moment`] of the
+    /// [`File`] that was updated
+    ///
+    /// [`apply_changes`]: Reader::apply_changes
+    /// [`File`]: super::File
+    fn apply_remote_changes(
+        &mut self,
+        bytes: RefBytes,
+        moment: Moment,
+        ranges_to_update: Option<&mut RangeList>,
+    ) where
+        Self: Send,
+    {
+    }
+
+    /// Wether this [`Reader`] should be sent to update its internal
+    /// state in another thread
+    ///
+    /// This should pretty much never be used, unless in very specific
+    /// circumstances, such as with very large files, or with broken
+    /// syntax trees, whose update time has become slow
+    fn make_remote(&self) -> bool
+    where
+        Self: Send,
+    {
+        false
+    }
 }
 
 /// A [`Reader`] builder struct
@@ -76,101 +117,144 @@ pub trait ReaderCfg<U: Ui> {
     type Reader: Reader<U>;
 
     /// Constructs the [`Reader`]
-    fn init(self, pa: &mut Pass, bytes: BytesDataMap<U>) -> Result<Self::Reader, Text>;
+    fn init(self, bytes: RefBytes) -> Result<ReaderBox<U>, Text>;
 }
 
-#[derive(Default, Clone)]
-pub(super) struct Readers<U: Ui>(RwData<Vec<ReaderEntry<U>>>);
+#[derive(Clone, Default)]
+pub(super) struct Readers<U: Ui>(RwData<Vec<ReaderBox<U>>>);
 
 impl<U: Ui> Readers<U> {
     /// Attempts to add  a [`Reader`]
-    pub(super) fn add<R: ReaderCfg<U>>(
+    pub(super) fn add<Rd: ReaderCfg<U>>(
         &self,
         pa: &mut Pass,
-        bytes: BytesDataMap<U>,
-        reader_cfg: R,
+        bytes: RefBytes,
+        reader_cfg: Rd,
     ) -> Result<(), Text> {
         if self.0.read(pa, |rds| {
-            rds.iter().any(|re| re.ty == TypeId::of::<R::Reader>())
+            rds.iter().any(|rb| rb.ty == TypeId::of::<Rd::Reader>())
         }) {
             Err(txt!(
                 "There is already a reader of type [a]{}",
-                crate::duat_name::<R::Reader>()
+                crate::duat_name::<Rd::Reader>()
             ))?;
         }
 
-        let reader_entry = ReaderEntry {
-            reader: unsafe {
-                RwData::new_unsized::<R::Reader>(Rc::new(RefCell::new(
-                    reader_cfg.init(pa, bytes.clone())?,
-                )))
-            },
-            apply_changes: |pa, reader, bytes, moment, mut ranges_to_update| {
-                let reader = reader.try_downcast().unwrap();
-                let mut new_ranges = if ranges_to_update.is_some() {
-                    Some(RangeList::new(bytes.write(pa, |bytes| bytes.len().byte())))
-                } else {
-                    None
-                };
-
-                <R::Reader>::apply_changes(pa, reader, bytes, moment, new_ranges.as_mut());
-
-                if let Some(ranges_to_update) = ranges_to_update.take() {
-                    ranges_to_update.write(pa, |ru| {
-                        ru.shift_by_changes(moment.changes());
-                        ru.merge(new_ranges.unwrap())
-                    });
-                }
-            },
-            ranges_to_update: RwData::new(RangeList::new(bytes.write(pa, |b| b.len().byte()))),
-            ty: TypeId::of::<R::Reader>(),
-        };
-
         let mut readers = self.0.acquire_mut(pa);
-        readers.push(reader_entry);
+        readers.push(reader_cfg.init(bytes)?);
 
         Ok(())
     }
 
-    /// Gets a specific [`Reader`], if it was added in
-    pub(super) fn get<R: Reader<U>>(&self) -> Option<RwData<R>> {
-        if TypeId::of::<R>() == TypeId::of::<()>() {
+    /// Reads a specific [`Reader`]
+    pub(super) fn read_reader<Rd: Reader<U>, Ret>(
+        &self,
+        pa: &mut Pass,
+        file: &File<U>,
+        read: impl FnOnce(&Rd, &File<U>) -> Ret,
+    ) -> Option<Ret> {
+        if TypeId::of::<Rd>() == TypeId::of::<()>() {
             return None;
         }
 
-        // SAFETY: You can't get another copy of Readers.
-        let entry = unsafe {
-            self.0.read_unsafe(|readers| {
-                readers
-                    .iter()
-                    .find(|re| re.ty == TypeId::of::<R>())
-                    .cloned()
-            })?
-        };
+        let mut readers = self.0.acquire_mut(pa);
+        if let Some(reader_box) = readers.iter_mut().find(|rb| rb.ty == TypeId::of::<Rd>()) {
+            let mut status = reader_box.status.take()?;
 
-        // Since I am forcibly borrowing self for 'a, this should be safe, as
-        // a mutable reference will prevent the removal of this Box's entry in
-        // the list.
-        entry.reader.try_downcast()
+            let ret;
+            (status, ret) = match status {
+                ReaderStatus::Local(lr) => {
+                    let ptr = Box::as_ptr(&lr.reader);
+                    let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() }, file);
+
+                    (ReaderStatus::Local(lr), ret)
+                }
+                ReaderStatus::Present(sender, sr) => {
+                    let ptr = Box::as_ptr(&sr.reader);
+                    let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() }, file);
+
+                    (ReaderStatus::Present(sender, sr), ret)
+                }
+                ReaderStatus::Sent(ms, join_handle) => {
+                    ms.sender.send(None).unwrap();
+                    let sr = join_handle.join().unwrap();
+
+                    let ptr = Box::as_ptr(&sr.reader);
+                    let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() }, file);
+
+                    (ReaderStatus::Present(ms, sr), ret)
+                }
+            };
+
+            reader_box.status = Some(status);
+
+            Some(ret)
+        } else {
+            None
+        }
     }
 
     /// Makes each [`Reader`] process a [`Moment`]
-    pub(super) fn process_moment(&self, pa: &mut Pass, bytes: BytesDataMap<U>, moment: Moment) {
-        const MAX_CHANGES_TO_CONSIDER: usize = 100;
+    pub(super) fn process_moment(&self, pa: &mut Pass, moment: Moment) {
+        let mut readers = std::mem::take(&mut *self.0.acquire_mut(pa));
+        for reader_box in readers.iter_mut() {
+            let status = reader_box.status.take().unwrap();
 
-        let readers = std::mem::take(&mut *self.0.acquire_mut(pa));
-        for entry in readers.iter() {
-            let new_ranges = if moment.len() <= MAX_CHANGES_TO_CONSIDER {
-                Some(entry.ranges_to_update.clone())
-            } else {
-                // If there are too many changes, cut on processing and
-                // just assume that everything needs to be updated.
-                let new_ru = RangeList::new(bytes.write(pa, |bytes| bytes.len().byte()));
-                entry.ranges_to_update.write(pa, |ru| *ru = new_ru);
-                None
-            };
+            reader_box.status = Some(match status {
+                ReaderStatus::Local(mut lr) => {
+                    for change in moment.changes() {
+                        lr.bytes.apply_change(change);
+                    }
 
-            (entry.apply_changes)(pa, entry.reader.clone(), bytes.clone(), moment, new_ranges);
+                    let bytes = lr.bytes.ref_bytes();
+                    let range_list = get_range_list(&mut lr.range_list, &bytes, moment);
+                    lr.reader.apply_changes(pa, bytes, moment, range_list);
+
+                    ReaderStatus::Local(lr)
+                }
+                ReaderStatus::Present(mut ms, mut sr) => {
+                    ms.sender.send(Some(moment)).unwrap();
+                    ms.latest_state += 1;
+
+                    if sr.reader.make_remote() {
+                        let join_handle = thread::spawn(move || {
+                            while let Some(moment) = sr.receiver.recv().unwrap() {
+                                for change in moment.changes() {
+                                    sr.bytes.apply_change(change);
+                                }
+
+                                let bytes = sr.bytes.ref_bytes();
+                                let range_list = get_range_list(&mut sr.range_list, &bytes, moment);
+
+                                sr.reader.apply_remote_changes(bytes, moment, range_list);
+                                sr.state.fetch_add(1, Ordering::Relaxed);
+                            }
+
+                            sr
+                        });
+
+                        ReaderStatus::Sent(ms, join_handle)
+                    } else {
+                        for change in moment.changes() {
+                            sr.bytes.apply_change(change);
+                        }
+
+                        let bytes = sr.bytes.ref_bytes();
+                        let range_list = get_range_list(&mut sr.range_list, &bytes, moment);
+
+                        sr.reader.apply_changes(pa, bytes, moment, range_list);
+                        sr.state.fetch_add(1, Ordering::Relaxed);
+
+                        ReaderStatus::Present(ms, sr)
+                    }
+                }
+                ReaderStatus::Sent(mut ms, join_handle) => {
+                    ms.sender.send(Some(moment)).unwrap();
+                    ms.latest_state += 1;
+
+                    ReaderStatus::Sent(ms, join_handle)
+                }
+            })
         }
 
         self.0.acquire_mut(pa).extend(readers);
@@ -178,43 +262,53 @@ impl<U: Ui> Readers<U> {
 
     /// Updates the [`Reader`]s on a given range
     pub(super) fn update_range(&self, pa: &mut Pass, text: &mut Text, within: Range<usize>) {
-        // SAFETY: The same as the SAFETY section above.
-        unsafe {
-            self.0.read_unsafe(|readers| {
-                for entry in readers.iter() {
-                    entry.reader.write(pa, |reader| {
-                        entry.ranges_to_update.write_unsafe(|ranges| {
-                            let old_ranges = std::mem::replace(ranges, RangeList::empty());
+        fn update_reader<U: Ui>(
+            text: &mut Text,
+            reader: &mut dyn Reader<U>,
+            range_list: &mut RangeList,
+            within: Range<usize>,
+        ) {
+            let old_ranges = std::mem::replace(range_list, RangeList::empty());
 
-                            for range in old_ranges {
-                                let parts = text.parts();
-                                let (to_check, split_off) =
-                                    split_range_within(range.clone(), within.clone());
+            for range in old_ranges {
+                let parts = text.parts();
+                let (to_check, split_off) = split_range_within(range.clone(), within.clone());
 
-                                reader.update_range(parts, to_check);
+                reader.update_range(parts, to_check);
 
-                                for range in split_off.into_iter().flatten() {
-                                    ranges.add(range);
-                                }
-                            }
-                        });
-                    });
+                for range in split_off.into_iter().flatten() {
+                    range_list.add(range);
+                }
+            }
+        }
+
+        let mut readers = self.0.acquire_mut(pa);
+
+        for reader_box in readers.iter_mut() {
+            let status = reader_box.status.take().unwrap();
+
+            reader_box.status = Some(match status {
+                ReaderStatus::Local(mut lr) => {
+                    update_reader(text, &mut *lr.reader, &mut lr.range_list, within.clone());
+                    ReaderStatus::Local(lr)
+                }
+                ReaderStatus::Present(ms, mut sr) => {
+                    update_reader(text, &mut *sr.reader, &mut sr.range_list, within.clone());
+                    ReaderStatus::Present(ms, sr)
+                }
+                ReaderStatus::Sent(ms, join_handle) => {
+                    // In this case, all moments have been processed, and we can bring the
+                    // Reader back in order to update it.
+                    if ms.latest_state == ms.remote_state.load(Ordering::Relaxed) {
+                        let mut sr = join_handle.join().unwrap();
+                        update_reader(text, &mut *sr.reader, &mut sr.range_list, within.clone());
+                        ReaderStatus::Present(ms, sr)
+                    } else {
+                        ReaderStatus::Sent(ms, join_handle)
+                    }
                 }
             });
         }
-    }
-
-    /// Wether any of the [`Reader`]s need to be updated
-    pub(super) fn needs_update(&self) -> bool {
-        // SAFETY: This function is only called on File::update within a
-        // region where a Pass was mutably borrowed, so we can create
-        // another here.
-        let pa = unsafe { Pass::new() };
-        self.0.read(&pa, |readers| {
-            readers
-                .iter()
-                .any(|re| re.ranges_to_update.read(&pa, |ru| !ru.is_empty()))
-        })
     }
 }
 
@@ -264,7 +358,9 @@ impl RangeList {
                 }
             }
         };
+
         let start_i = r_range.start;
+
         // Otherwise search ahead for another change to be merged
         let (r_range, end) = match self.0[start_i..].binary_search_by_key(&range.end, |r| r.start) {
             Ok(i) => (r_range.start..start_i + i + 1, self.0[start_i + i].end),
@@ -316,15 +412,6 @@ impl RangeList {
     }
 }
 
-#[derive(Clone)]
-struct ReaderEntry<U: Ui> {
-    reader: RwData<dyn Reader<U>>,
-    apply_changes:
-        fn(&mut Pass, RwData<dyn Reader<U>>, BytesDataMap<U>, Moment, Option<RwData<RangeList>>),
-    ranges_to_update: RwData<RangeList>,
-    ty: TypeId,
-}
-
 impl IntoIterator for RangeList {
     type IntoIter = std::vec::IntoIter<Range<usize>>;
     type Item = Range<usize>;
@@ -332,6 +419,133 @@ impl IntoIterator for RangeList {
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
+}
+
+/// A container for a [`Reader`]
+///
+/// This struct should be created inside of the [`ReaderCfg::init`]
+/// function, and nowhere else really.
+///
+/// This is used internally by Duat to coordinate how [`Reader`]s
+/// should be updated. Externally, it can be created in three ways:
+///
+/// - [`ReaderBox::new_local`]: Use this for any [`Reader`] that you
+///   want to process _only_ locally, i.e., don't send them to other
+///   threads. This should be used pretty much all the time, and is
+///   required if your [`Reader`] is not [`Send`]
+/// - [`ReaderBox::new_send`]: Use this to create a [`Reader`]
+///   locally, like with the previous function, but give it the option
+///   to be sent to other threads. The sending to other threads is
+///   done by returning `true` from [`Reader::make_remote`]. The
+///   [`Reader`] must be [`Send`].
+/// - [`ReaderBox::new_remote`]: Like the previous function, but the
+///   [`Reader`] will be created in another thread entirely. This
+///   means that you can free up the main thread for faster startup
+///   for example. This does also mean that the effects of the
+///   [`Reader`] won't be immediate, just like with other times where
+///   the [`Reader`] is made to be remote.
+pub struct ReaderBox<U: Ui> {
+    status: Option<ReaderStatus<U>>,
+    ty: TypeId,
+}
+
+impl<U: Ui> ReaderBox<U> {
+    /// Returns a [`ReaderBox`] that doesn't implement [`Send`]
+    pub fn new_local<Rd: Reader<U>>(bytes: RefBytes, reader: Rd) -> ReaderBox<U> {
+        ReaderBox {
+            status: Some(ReaderStatus::Local(LocalReader {
+                reader: Box::new(reader),
+                bytes: bytes.clone(),
+                range_list: RangeList::new(bytes.len().byte()),
+            })),
+            ty: TypeId::of::<Rd>(),
+        }
+    }
+
+    /// Returns a [`ReaderBox`] that implements [`Send`]
+    pub fn new_send<Rd: Reader<U> + Send>(bytes: RefBytes, reader: Rd) -> ReaderBox<U> {
+        let (sender, receiver) = mpsc::channel();
+
+        let state = Arc::new(AtomicUsize::new(0));
+        let moment_sender = MomentSender {
+            sender,
+            latest_state: 0,
+            remote_state: state.clone(),
+        };
+
+        ReaderBox {
+            status: Some(ReaderStatus::Present(moment_sender, SendReader {
+                reader: Box::new(reader),
+                bytes: bytes.clone(),
+                receiver,
+                range_list: RangeList::new(bytes.len().byte()),
+                state,
+            })),
+            ty: TypeId::of::<Rd>(),
+        }
+    }
+
+    /// Returns a [`ReaderBox`] from a function evaluated in another
+    /// thread
+    pub fn new_remote<Rd: Reader<U> + Send>(
+        bytes: RefBytes,
+        f: impl FnOnce(RefBytes) -> Rd + Send + 'static,
+    ) -> ReaderBox<U> {
+        let (sender, receiver) = mpsc::channel();
+        let mut bytes = bytes.clone();
+
+        let state = Arc::new(AtomicUsize::new(0));
+        let moment_sender = MomentSender {
+            sender,
+            latest_state: 0,
+            remote_state: state.clone(),
+        };
+
+        ReaderBox {
+            status: Some(ReaderStatus::Sent(
+                moment_sender,
+                thread::spawn(move || {
+                    let reader = Box::new(f(bytes.ref_bytes()));
+                    let range_list = RangeList::new(bytes.len().byte());
+
+                    SendReader {
+                        reader,
+                        bytes,
+                        receiver,
+                        range_list,
+                        state,
+                    }
+                }),
+            )),
+            ty: TypeId::of::<Rd>(),
+        }
+    }
+}
+
+enum ReaderStatus<U: Ui> {
+    Local(LocalReader<U>),
+    Present(MomentSender, SendReader<U>),
+    Sent(MomentSender, thread::JoinHandle<SendReader<U>>),
+}
+
+struct MomentSender {
+    sender: mpsc::Sender<Option<Moment>>,
+    latest_state: usize,
+    remote_state: Arc<AtomicUsize>,
+}
+
+struct LocalReader<U: Ui> {
+    reader: Box<dyn Reader<U>>,
+    bytes: Bytes,
+    range_list: RangeList,
+}
+
+struct SendReader<U: Ui> {
+    reader: Box<dyn Reader<U> + Send>,
+    bytes: Bytes,
+    receiver: mpsc::Receiver<Option<Moment>>,
+    range_list: RangeList,
+    state: Arc<AtomicUsize>,
 }
 
 /// Splits a range within a region
@@ -354,5 +568,22 @@ fn split_range_within(
         let split_ranges = [start_range, end_range];
         let range_to_check = range.start.max(within.start)..(range.end.min(within.end));
         (Some(range_to_check), split_ranges)
+    }
+}
+
+fn get_range_list<'a>(
+    ranges_to_update: &'a mut RangeList,
+    bytes: &RefBytes<'_>,
+    moment: Moment,
+) -> Option<&'a mut RangeList> {
+    const FOLDING_COULD_UPDATE_A_LOT: usize = 1_000_000;
+    const MAX_CHANGES_TO_CONSIDER: usize = 100;
+
+    if moment.len() <= MAX_CHANGES_TO_CONSIDER || bytes.len().byte() >= FOLDING_COULD_UPDATE_A_LOT {
+        ranges_to_update.shift_by_changes(moment.changes());
+        Some(ranges_to_update)
+    } else {
+        *ranges_to_update = RangeList::new(bytes.len().byte());
+        None
     }
 }

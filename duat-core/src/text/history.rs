@@ -11,12 +11,15 @@
 //!
 //! [`undo`]: Text::undo
 //! [`redo`]: Text::redo
-use std::ops::Range;
+use std::{ops::Range, sync::mpsc};
 
 use bincode::{Decode, Encode};
 
-use super::{Point, Text};
-use crate::{add_shifts, merging_range_by_guess_and_lazy_shift};
+use super::{Bytes, Point, Text};
+use crate::{
+    add_shifts, merging_range_by_guess_and_lazy_shift,
+    text::{AsRefBytes, RefBytes},
+};
 
 /// The history of edits, contains all moments
 #[derive(Default, Debug, Clone, Encode)]
@@ -447,6 +450,43 @@ fn finish_shifting(changes: &mut [Change], sh_from: usize, shift: [i32; 3]) {
     if shift != [0; 3] {
         for change in changes[sh_from..].iter_mut() {
             change.shift_by(shift);
+        }
+    }
+}
+
+/// A tracker of [`Moment`]s sent to [`Bytes`]
+///
+/// This struct is important in keeping a consistent "version" of the
+/// [`Bytes`] with the [`Change`]s that are made to it, even when more
+/// of those [`Change`]s take place.
+///
+/// This struct, unlike [`RwData<File>`] and [`Text`] is also
+/// [`Send`]/[`Sync`], which means you can keep track of changes from
+/// other threads.
+///
+/// [`RwData<File>`]: crate::data::RwData
+pub struct BytesTracker {
+    bytes: Bytes,
+    recv: mpsc::Receiver<Moment>,
+}
+
+impl BytesTracker {
+    /// Applies one [`Moment`] to the [`Bytes`], returning an updated
+    /// version
+    ///
+    /// Keep in mind that this [`RefBytes`] won't necessarily be in
+    /// sync with the [`Bytes`]
+    pub fn apply_moment(&mut self) -> Option<(RefBytes<'_>, Moment)> {
+        match self.recv.try_recv() {
+            Ok(moment) => {
+                for change in moment.changes() {
+                    self.bytes.apply_change(change);
+                }
+
+                Some((self.bytes.ref_bytes(), moment))
+            }
+            Err(mpsc::TryRecvError::Empty) => None,
+            Err(mpsc::TryRecvError::Disconnected) => panic!("😳"),
         }
     }
 }

@@ -661,7 +661,8 @@
     unboxed_closures,
     associated_type_defaults,
     dropck_eyepatch,
-    fn_traits
+    fn_traits,
+    box_as_ptr
 )]
 #![allow(clippy::single_range_in_vec_init)]
 

@@ -14,7 +14,7 @@
 use std::{fs, marker::PhantomData, path::PathBuf};
 
 use self::reader::Readers;
-pub use self::reader::{RangeList, Reader, ReaderCfg};
+pub use self::reader::{RangeList, Reader, ReaderBox, ReaderCfg};
 use crate::{
     cfg::PrintCfg,
     context::{self, FileHandle, Handle, load_cache},
@@ -285,8 +285,15 @@ impl<U: Ui> File<U> {
     }
 
     /// Gets a [`Reader`]
-    pub fn get_reader<Rd: Reader<U>>(&self) -> Option<RwData<Rd>> {
-        self.readers.get()
+    pub fn read_reader<Rd: Reader<U>, Ret>(
+        &mut self,
+        read: impl FnOnce(&Rd, &Self) -> Ret,
+    ) -> Option<Ret> {
+        // SAFETY: By virtue of &mut self, we have already managed to get
+        // mutable access to this File, i.e., a Pass had to have been used at
+        // some point, so we do have exclusive access here.
+        self.readers
+            .read_reader(&mut unsafe { Pass::new() }, self, read)
     }
 }
 
@@ -295,11 +302,13 @@ impl<U: Ui> Handle<File<U>, U> {
     ///
     /// [`Change`]: crate::text::Change
     pub fn add_reader(&mut self, pa: &mut Pass, cfg: impl ReaderCfg<U>) {
-        let bytes = BytesDataMap(self.widget().clone());
-        let readers = self.write(pa, |file, _| file.readers.clone());
-
-        if let Err(err) = readers.add(pa, bytes, cfg) {
-            context::error!("{err}");
+        // SAFETY: The Pass goes no further than the use in file.readers
+        unsafe {
+            self.widget().write_unsafe(|file| {
+                if let Err(err) = file.readers.add(pa, file.text.ref_bytes(), cfg) {
+                    context::error!("{err}");
+                }
+            })
         }
     }
 }
@@ -309,11 +318,13 @@ impl<U: Ui> FileHandle<U> {
     ///
     /// [`Change`]: crate::text::Change
     pub fn add_reader(&mut self, pa: &mut Pass, cfg: impl ReaderCfg<U>) {
-        let bytes = BytesDataMap(self.handle(pa).widget().clone());
-        let readers = self.write(pa, |file, _| file.readers.clone());
-
-        if let Err(err) = readers.add(pa, bytes, cfg) {
-            context::error!("{err}");
+        // SAFETY: The Pass goes no further than the use in file.readers
+        unsafe {
+            self.handle(pa).widget().write_unsafe(|file| {
+                if let Err(err) = file.readers.add(pa, file.text.ref_bytes(), cfg) {
+                    context::error!("{err}");
+                }
+            })
         }
     }
 }
@@ -327,14 +338,11 @@ impl<U: Ui> Widget<U> for File<U> {
 
     fn update(pa: &mut Pass, handle: Handle<Self, U>) {
         let (widget, area) = (handle.widget(), handle.area());
-        let (map, readers) = widget.read(pa, |file| {
-            (BytesDataMap(widget.clone()), file.readers.clone())
-        });
+        let readers = widget.read(pa, |file| file.readers.clone());
 
-        let moments = widget.acquire_mut(pa).text.last_unprocessed_moment();
-        if let Some(moments) = moments {
+        if let Some(moments) = handle.write_text(pa, Text::unprocessed_moments) {
             for moment in moments {
-                readers.process_moment(pa, map.clone(), moment);
+                readers.process_moment(pa, moment);
             }
         }
 
@@ -344,15 +352,12 @@ impl<U: Ui> Widget<U> for File<U> {
             area.scroll_around_point(file.text(), main.caret(), file.print_cfg());
         }
 
-        if file.readers.needs_update() {
-            let (start, _) = area.start_points(&file.text, file.cfg);
-            let (end, _) = area.end_points(&file.text, file.cfg);
+        let (start, _) = area.start_points(&file.text, file.cfg);
+        let (end, _) = area.end_points(&file.text, file.cfg);
 
-            // SAFETY: I'm not passing the Pass to inner structures, so this
-            // should be fine.
-            let mut pa = unsafe { Pass::new() };
-            readers.update_range(&mut pa, &mut file.text, start.byte()..end.byte());
-        }
+        // SAFETY: The Pass goes no further than the use in file.readers
+        let mut pa = unsafe { Pass::new() };
+        readers.update_range(&mut pa, &mut file.text, start.byte()..end.byte());
 
         file.text.update_bounds();
     }
@@ -504,6 +509,11 @@ enum TextOp {
 pub struct BytesDataMap<U: Ui>(RwData<File<U>>);
 
 impl<U: Ui> BytesDataMap<U> {
+    /// Reads the [`File`] within
+    pub fn read_file<Ret>(&self, pa: &Pass, read: impl FnOnce(&File<U>) -> Ret) -> Ret {
+        self.0.read(pa, read)
+    }
+
     /// Reads the [`Bytes`] of the [`File`]'s [`Text`]
     ///
     /// If you are looking at this method from the context of
@@ -546,10 +556,13 @@ impl<U: Ui> BytesDataMap<U> {
         }
     }
 
-    /// Gets another [`Reader`], if it was added to this [`File`]
-    pub fn get_reader<Rd: Reader<U>>(&self, pa: &Pass) -> Option<RwData<Rd>> {
-        let file = self.0.acquire(pa);
-        file.get_reader()
+    /// Reads a [`Reader`] from within the [`File`]
+    pub fn read_reader<Rd: Reader<U>, Ret>(
+        &self,
+        pa: &mut Pass,
+        read: impl FnOnce(&Rd, &File<U>) -> Ret,
+    ) -> Option<Ret> {
+        self.0.acquire_mut(pa).read_reader(read)
     }
 
     /// Wether someone else called [`write`] or [`write_as`] since the

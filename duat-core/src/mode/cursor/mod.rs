@@ -17,7 +17,7 @@ pub use self::selections::{Selection, Selections, VPoint};
 use crate::{
     cfg::PrintCfg,
     file::{File, Reader},
-    text::{Bytes, Change, Lines, Point, RegexPattern, Searcher, Strs, Text, TextRange},
+    text::{Change, Lines, Point, RegexPattern, Searcher, Strs, Text, TextRange},
     ui::{RawArea, Ui, Widget},
 };
 
@@ -629,16 +629,11 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
 
 impl<U: Ui, S> Cursor<'_, File<U>, U::Area, S> {
     /// Reads the [`Bytes`] and a [`Reader`]
-    pub fn read_bytes_and_reader<R: Reader<U>, Ret>(
-        &self,
-        f: impl FnOnce(&Bytes, &R) -> Ret,
+    pub fn read_reader<Rd: Reader<U>, Ret>(
+        &mut self,
+        read: impl FnOnce(&Rd, &File<U>) -> Ret,
     ) -> Option<Ret> {
-        // SAFETY: Since the creation of an Cursor requires the use of a &mut
-        // Pass, It should be safe to read a Reader, since it cannot be a
-        // File.
-        self.widget.get_reader().map(|reader| unsafe {
-            reader.read_unsafe(|reader| f(self.widget.text().bytes(), reader))
-        })
+        self.widget.read_reader(read)
     }
 }
 
