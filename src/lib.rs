@@ -25,21 +25,21 @@
 //!
 //! To install Duat, do the following:
 //!
-//! ```text
+//! ```bash
 //! cargo install duat
 //! ```
 //!
 //! Although, since this is an alpha, I would recommend the git
 //! version, since that is kept much  more up to date:
 //!
-//! ```text
+//! ```bash
 //! cargo install --git https://github.com/AhoyISki/duat --force --features git-deps
 //! ```
 //!
 //! And if you want to nuke your config in order to get the newest
 //! default config crate, you can do the following:
 //!
-//! ```text
+//! ```bash
 //! rm -rf ~/.config/duat
 //! cargo install --git https://github.com/AhoyISki/duat --force --features git-deps
 //! ```
@@ -186,7 +186,7 @@
 //!
 //! Try running this in `~/.config/duat`:
 //!
-//! ```rust
+//! ```bash
 //! cargo clean && cargo update && cargo build --release
 //! ```
 //!

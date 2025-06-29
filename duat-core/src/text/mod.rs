@@ -518,8 +518,8 @@ impl Text {
     ///
     /// This is useful if you want to figure out what has changed
     /// after a certain period of time has passed.
-    pub fn unprocessed_moments(&mut self) -> Option<Vec<Moment>> {
-        self.0.history.as_mut().map(|h| h.unprocessed_moments())
+    pub fn unprocessed_moments(&self) -> Option<Vec<Moment>> {
+        self.0.history.as_ref().map(|h| h.unprocessed_moments())
     }
 
     fn apply_and_process_changes(&mut self, moment: Moment) {

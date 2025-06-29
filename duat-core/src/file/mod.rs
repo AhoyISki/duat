@@ -13,16 +13,16 @@
 //! [`Cursor`]: crate::mode::Cursor
 use std::{fs, marker::PhantomData, path::PathBuf};
 
-use self::reader::Readers;
-pub use self::reader::{RangeList, Reader, ReaderBox, ReaderCfg, ReaderList};
+use self::reader::InnerReaders;
+pub use self::reader::{RangeList, Reader, ReaderBox, ReaderCfg, Readers};
 use crate::{
     cfg::PrintCfg,
     context::{self, FileHandle, Handle, load_cache},
-    data::{Pass, RwData},
+    data::Pass,
     form::Painter,
     hook::{self, FileWritten},
     mode::{Selection, Selections},
-    text::{AsRefBytes, Bytes, RefBytes, Text, txt},
+    text::{AsRefBytes, Bytes, Text, txt},
     ui::{PushSpecs, RawArea, Ui, Widget, WidgetCfg},
 };
 
@@ -116,7 +116,7 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
             text,
             cfg: self.cfg,
             printed_lines: (0..40).map(|i| (i, i == 1)).collect(),
-            readers: Readers::default(),
+            readers: InnerReaders::default(),
             layout_order: 0,
             _ghost: PhantomData,
         };
@@ -132,7 +132,7 @@ pub struct File<U: Ui> {
     text: Text,
     cfg: PrintCfg,
     printed_lines: Vec<(usize, bool)>,
-    readers: Readers<U>,
+    readers: InnerReaders<U>,
     pub(crate) layout_order: usize,
     _ghost: PhantomData<U>,
 }
@@ -297,13 +297,9 @@ impl<U: Ui> File<U> {
     /// could be sent to another thread because of this.
     ///
     /// [added]: Handle::add_reader
-    pub fn read_reader<Rd: Reader<U>, Ret>(
-        &mut self,
-        read: impl FnOnce(&Rd, &Self) -> Ret,
-    ) -> Option<Ret> {
-        // SAFETY: By virtue of &mut self, we have already managed to get
-        // mutable access to this File, i.e., a Pass had to have been used at
-        // some point, so we do have exclusive access here.
+    pub fn read_reader<Rd: Reader<U>, Ret>(&self, read: impl FnOnce(&Rd) -> Ret) -> Option<Ret> {
+        // SAFETY: The Pass is never borrowed at the same time that the `read`
+        // function is called
         let pa = &mut unsafe { Pass::new() };
 
         if let Some(moments) = self.text.unprocessed_moments() {
@@ -312,7 +308,7 @@ impl<U: Ui> File<U> {
             }
         }
 
-        self.readers.read_reader(pa, self, read)
+        self.readers.read_reader(pa, read)
     }
 
     /// Tries tor read a specific [`Reader`], if it was [added]
@@ -329,12 +325,11 @@ impl<U: Ui> File<U> {
     ///
     /// [added]: Handle::add_reader
     pub fn try_read_reader<Rd: Reader<U>, Ret>(
-        &mut self,
-        read: impl FnOnce(&Rd, &Self) -> Ret,
+        &self,
+        read: impl FnOnce(&Rd) -> Ret,
     ) -> Option<Ret> {
-        // SAFETY: By virtue of &mut self, we have already managed to get
-        // mutable access to this File, i.e., a Pass had to have been used at
-        // some point, so we do have exclusive access here.
+        // SAFETY: The Pass is never borrowed at the same time that the `read`
+        // function is called
         let pa = &mut unsafe { Pass::new() };
 
         if let Some(moments) = self.text.unprocessed_moments() {
@@ -343,7 +338,7 @@ impl<U: Ui> File<U> {
             }
         }
 
-        self.readers.try_read_reader(pa, self, read)
+        self.readers.try_read_reader(pa, read)
     }
 }
 
@@ -390,7 +385,7 @@ impl<U: Ui> Widget<U> for File<U> {
         let (widget, area) = (handle.widget(), handle.area());
         let readers = widget.read(pa, |file| file.readers.clone());
 
-        if let Some(moments) = handle.write_text(pa, Text::unprocessed_moments) {
+        if let Some(moments) = handle.read_text(pa, Text::unprocessed_moments) {
             for moment in moments {
                 readers.process_moment(pa, moment);
             }
@@ -551,86 +546,4 @@ enum TextOp {
     NewBuffer,
     TakeBuf(Bytes, PathKind, bool),
     OpenPath(PathBuf),
-}
-
-/// An [`RwData`] wrapper which only gives access to the [`Bytes`] of
-/// a [`File`]
-#[derive(Clone)]
-pub struct BytesDataMap<U: Ui>(RwData<File<U>>);
-
-impl<U: Ui> BytesDataMap<U> {
-    /// Reads the [`File`] within
-    pub fn read_file<Ret>(&self, pa: &Pass, read: impl FnOnce(&File<U>) -> Ret) -> Ret {
-        self.0.read(pa, read)
-    }
-
-    /// Reads the [`Bytes`] of the [`File`]'s [`Text`]
-    ///
-    /// If you are looking at this method from the context of
-    /// [`Reader::apply_changes`], you probably actually want to use
-    /// [`BytesDataMap::write_with_reader`], since it is far more
-    /// compatible with that usecase.
-    ///
-    /// # Panics
-    ///
-    /// Panics if there is a mutable borrow of this struct somewhere,
-    /// which could happen if you use [`RwData::write_unsafe`] or
-    /// [`RwData::write_unsafe_as`]
-    pub fn write<Ret>(&self, pa: &mut Pass, f: impl FnOnce(RefBytes) -> Ret) -> Ret {
-        self.0.write(pa, |file| f(file.text.ref_bytes()))
-    }
-
-    /// Reads the [`Bytes`] of a [`File`], alongside a [`Reader`]
-    ///
-    /// This can be very convenient when you want access to these two
-    /// things at once, and is completely safe, since [`File`] doesn't
-    /// implement [`Reader`], the other [`RwData`] will never be
-    /// [`RwData<File>`], so a double borrow could never happen.
-    ///
-    /// # Panics
-    ///
-    /// Panics if there is are any borrows of either struct elsewhere,
-    /// which could happen if you use [`RwData::write_unsafe`] or
-    /// [`RwData::write_unsafe_as`]
-    pub fn write_with_reader<Ret, Rd: Reader<U>>(
-        &self,
-        pa: &mut Pass,
-        rd: &RwData<Rd>,
-        f: impl FnOnce(&mut RefBytes, &mut Rd) -> Ret,
-    ) -> Ret {
-        // SAFETY: Since the other type is not a File, we can safely borrow
-        // both.
-        unsafe {
-            self.0
-                .write_unsafe(|file| rd.write(pa, |rd| f(&mut file.text.ref_bytes(), rd)))
-        }
-    }
-
-    /// Reads a [`Reader`] from within the [`File`]
-    pub fn read_reader<Rd: Reader<U>, Ret>(
-        &self,
-        pa: &mut Pass,
-        read: impl FnOnce(&Rd, &File<U>) -> Ret,
-    ) -> Option<Ret> {
-        self.0.acquire_mut(pa).read_reader(read)
-    }
-
-    /// Wether someone else called [`write`] or [`write_as`] since the
-    /// last [`read`] or [`write`]
-    ///
-    /// Do note that this *DOES NOT* mean that the value inside has
-    /// actually been changed, it just means a mutable reference was
-    /// acquired after the last call to [`has_changed`].
-    ///
-    /// Generally though, you can use this method to gauge that.
-    ///
-    /// [`write`]: RwData::write
-    /// [`write_as`]: RwData::write_as
-    /// [`read`]: RwData::read
-    /// [`has_changed`]: RwData::has_changed
-    /// [`Text`]: crate::text::Text
-    /// [`Widget`]: crate::ui::Widget
-    pub fn has_changed(&self) -> bool {
-        self.0.has_changed()
-    }
 }

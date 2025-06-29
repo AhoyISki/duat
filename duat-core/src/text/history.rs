@@ -11,25 +11,23 @@
 //!
 //! [`undo`]: Text::undo
 //! [`redo`]: Text::redo
-use std::{ops::Range, sync::mpsc};
+use std::ops::Range;
 
 use bincode::{Decode, Encode};
+use parking_lot::Mutex;
 
-use super::{Bytes, Point, Text};
-use crate::{
-    add_shifts, merging_range_by_guess_and_lazy_shift,
-    text::{AsRefBytes, RefBytes},
-};
+use super::{Point, Text};
+use crate::{add_shifts, merging_range_by_guess_and_lazy_shift};
 
 /// The history of edits, contains all moments
-#[derive(Default, Debug, Clone, Encode)]
+#[derive(Default, Debug)]
 pub struct History {
     moments: Vec<Moment>,
     cur_moment: usize,
     new_changes: Option<(Vec<Change>, (usize, [i32; 3]))>,
     /// Used to update ranges on the File
-    unproc_changes: Option<(Vec<Change>, (usize, [i32; 3]))>,
-    unproc_moments: Vec<Moment>,
+    unproc_changes: Mutex<Option<(Vec<Change>, (usize, [i32; 3]))>>,
+    unproc_moments: Mutex<Vec<Moment>>,
 }
 
 impl History {
@@ -49,7 +47,7 @@ impl History {
     ///
     /// [`EditHelper`]: crate::mode::EditHelper
     pub fn apply_change(&mut self, guess_i: Option<usize>, change: Change) -> usize {
-        let (changes, shift_state) = self.unproc_changes.get_or_insert_default();
+        let (changes, shift_state) = self.unproc_changes.get_mut().get_or_insert_default();
         add_change(changes, guess_i, change.clone(), shift_state);
 
         let (changes, shift_state) = self.new_changes.get_or_insert_default();
@@ -64,9 +62,9 @@ impl History {
         };
         finish_shifting(&mut new_changes, sh_from, shift);
 
-        if let Some((mut unproc_changes, (sh_from, shift))) = self.unproc_changes.take() {
+        if let Some((mut unproc_changes, (sh_from, shift))) = self.unproc_changes.get_mut().take() {
             finish_shifting(&mut unproc_changes, sh_from, shift);
-            self.unproc_moments.push(Moment {
+            self.unproc_moments.get_mut().push(Moment {
                 changes: Box::leak(Box::from(unproc_changes)),
                 is_rev: false,
             });
@@ -91,8 +89,11 @@ impl History {
             None
         } else {
             self.cur_moment += 1;
-            self.unproc_moments.push(self.moments[self.cur_moment - 1]);
-            Some(self.moments[self.cur_moment - 1])
+
+            let moment = self.moments[self.cur_moment - 1];
+            self.unproc_moments.get_mut().push(moment);
+
+            Some(moment)
         }
     }
 
@@ -107,33 +108,48 @@ impl History {
             None
         } else {
             self.cur_moment -= 1;
+
             let mut moment = self.moments[self.cur_moment];
             moment.is_rev = true;
-            self.unproc_moments.push(moment);
+            self.unproc_moments.get_mut().push(moment);
+
             Some(moment)
         }
     }
 
-    pub fn unprocessed_moments(&mut self) -> Vec<Moment> {
-        let fresh_moment = self
-            .unproc_changes
-            .take()
-            .map(|(mut changes, (sh_from, shift))| {
-                finish_shifting(&mut changes, sh_from, shift);
+    pub fn unprocessed_moments(&self) -> Vec<Moment> {
+        let fresh_moment =
+            self.unproc_changes
+                .lock()
+                .take()
+                .map(|(mut changes, (sh_from, shift))| {
+                    finish_shifting(&mut changes, sh_from, shift);
 
-                Moment {
-                    changes: Box::leak(Box::from(changes)),
-                    is_rev: false,
-                }
-            });
+                    Moment {
+                        changes: Box::leak(Box::from(changes)),
+                        is_rev: false,
+                    }
+                });
 
-        self.unproc_moments.extend(fresh_moment);
+        let mut unproc_moments = self.unproc_moments.lock();
 
-        std::mem::take(&mut self.unproc_moments)
+        unproc_moments.extend(fresh_moment);
+
+        std::mem::take(&mut unproc_moments)
     }
+}
 
-    pub fn has_unprocessed_changes(&self) -> bool {
-        self.unproc_changes.as_ref().is_some()
+impl Encode for History {
+    fn encode<E: bincode::enc::Encoder>(
+        &self,
+        encoder: &mut E,
+    ) -> Result<(), bincode::error::EncodeError> {
+        Encode::encode(&self.moments, encoder)?;
+        Encode::encode(&self.cur_moment, encoder)?;
+        Encode::encode(&self.new_changes, encoder)?;
+        Encode::encode(&*self.unproc_changes.lock(), encoder)?;
+        Encode::encode(&*self.unproc_moments.lock(), encoder)?;
+        Ok(())
     }
 }
 
@@ -145,9 +161,21 @@ impl<Context> Decode<Context> for History {
             moments: Decode::decode(decoder)?,
             cur_moment: Decode::decode(decoder)?,
             new_changes: Decode::decode(decoder)?,
-            unproc_changes: Decode::decode(decoder)?,
-            unproc_moments: Decode::decode(decoder)?,
+            unproc_changes: Mutex::new(Decode::decode(decoder)?),
+            unproc_moments: Mutex::new(Decode::decode(decoder)?),
         })
+    }
+}
+
+impl Clone for History {
+    fn clone(&self) -> Self {
+        Self {
+            moments: self.moments.clone(),
+            cur_moment: self.cur_moment,
+            new_changes: self.new_changes.clone(),
+            unproc_changes: Mutex::new(self.unproc_changes.lock().clone()),
+            unproc_moments: Mutex::new(self.unproc_moments.lock().clone()),
+        }
     }
 }
 
@@ -450,43 +478,6 @@ fn finish_shifting(changes: &mut [Change], sh_from: usize, shift: [i32; 3]) {
     if shift != [0; 3] {
         for change in changes[sh_from..].iter_mut() {
             change.shift_by(shift);
-        }
-    }
-}
-
-/// A tracker of [`Moment`]s sent to [`Bytes`]
-///
-/// This struct is important in keeping a consistent "version" of the
-/// [`Bytes`] with the [`Change`]s that are made to it, even when more
-/// of those [`Change`]s take place.
-///
-/// This struct, unlike [`RwData<File>`] and [`Text`] is also
-/// [`Send`]/[`Sync`], which means you can keep track of changes from
-/// other threads.
-///
-/// [`RwData<File>`]: crate::data::RwData
-pub struct BytesTracker {
-    bytes: Bytes,
-    recv: mpsc::Receiver<Moment>,
-}
-
-impl BytesTracker {
-    /// Applies one [`Moment`] to the [`Bytes`], returning an updated
-    /// version
-    ///
-    /// Keep in mind that this [`RefBytes`] won't necessarily be in
-    /// sync with the [`Bytes`]
-    pub fn apply_moment(&mut self) -> Option<(RefBytes<'_>, Moment)> {
-        match self.recv.try_recv() {
-            Ok(moment) => {
-                for change in moment.changes() {
-                    self.bytes.apply_change(change);
-                }
-
-                Some((self.bytes.ref_bytes(), moment))
-            }
-            Err(mpsc::TryRecvError::Empty) => None,
-            Err(mpsc::TryRecvError::Disconnected) => panic!("😳"),
         }
     }
 }

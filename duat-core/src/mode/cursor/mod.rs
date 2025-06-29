@@ -629,10 +629,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
 
 impl<U: Ui, S> Cursor<'_, File<U>, U::Area, S> {
     /// Reads the [`Bytes`] and a [`Reader`]
-    pub fn read_reader<Rd: Reader<U>, Ret>(
-        &mut self,
-        read: impl FnOnce(&Rd, &File<U>) -> Ret,
-    ) -> Option<Ret> {
+    pub fn read_reader<Rd: Reader<U>, Ret>(&self, read: impl FnOnce(&Rd) -> Ret) -> Option<Ret> {
         self.widget.read_reader(read)
     }
 }

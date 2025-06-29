@@ -18,7 +18,6 @@ use std::{
     thread,
 };
 
-use super::File;
 use crate::{
     data::{Pass, RwData},
     text::{AsRefBytes, Bytes, Change, Moment, RefBytes, Text, TextParts, txt},
@@ -102,9 +101,10 @@ pub trait Reader<U: Ui>: 'static {
     fn update_range(
         &mut self,
         parts: TextParts,
-        readers: ReaderList<U>,
+        readers: Readers<U>,
         within: Option<Range<usize>>,
-    );
+    ) {
+    }
 
     /// Same as [`apply_changes`], but on another thread
     ///
@@ -165,9 +165,9 @@ pub trait ReaderCfg<U: Ui> {
 }
 
 #[derive(Clone, Default)]
-pub(super) struct Readers<U: Ui>(RwData<Vec<ReaderBox<U>>>);
+pub(super) struct InnerReaders<U: Ui>(RwData<Vec<ReaderBox<U>>>);
 
-impl<U: Ui> Readers<U> {
+impl<U: Ui> InnerReaders<U> {
     /// Attempts to add  a [`Reader`]
     pub(super) fn add<Rd: ReaderCfg<U>>(
         &self,
@@ -194,42 +194,18 @@ impl<U: Ui> Readers<U> {
     pub(super) fn read_reader<Rd: Reader<U>, Ret>(
         &self,
         pa: &mut Pass,
-        file: &File<U>,
-        read: impl FnOnce(&Rd, &File<U>) -> Ret,
+        read: impl FnOnce(&Rd) -> Ret,
     ) -> Option<Ret> {
         if TypeId::of::<Rd>() == TypeId::of::<()>() {
             return None;
         }
 
-        let mut readers = self.0.acquire_mut(pa);
-        if let Some(reader_box) = readers.iter_mut().find(|rb| rb.ty == TypeId::of::<Rd>()) {
-            let status = reader_box.status.take()?;
+        if let Some(i) = self.0.acquire(pa).iter().position(type_equals::<U, Rd>) {
+            let status = self.0.acquire_mut(pa)[i].status.take()?;
 
-            let (status, ret) = match status {
-                ReaderStatus::Local(lr) => {
-                    let ptr = Box::as_ptr(&lr.reader);
-                    let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() }, file);
+            let (status, ret) = status_from_read(read, status);
 
-                    (ReaderStatus::Local(lr), ret)
-                }
-                ReaderStatus::Present(sender, sr) => {
-                    let ptr = Box::as_ptr(&sr.reader);
-                    let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() }, file);
-
-                    (ReaderStatus::Present(sender, sr), ret)
-                }
-                ReaderStatus::Sent(ms, join_handle) => {
-                    ms.sender.send(None).unwrap();
-                    let sr = join_handle.join().unwrap();
-
-                    let ptr = Box::as_ptr(&sr.reader);
-                    let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() }, file);
-
-                    (ReaderStatus::Present(ms, sr), ret)
-                }
-            };
-
-            reader_box.status = Some(status);
+            self.0.acquire_mut(pa)[i].status = Some(status);
 
             Some(ret)
         } else {
@@ -241,46 +217,18 @@ impl<U: Ui> Readers<U> {
     pub(super) fn try_read_reader<Rd: Reader<U>, Ret>(
         &self,
         pa: &mut Pass,
-        file: &File<U>,
-        read: impl FnOnce(&Rd, &File<U>) -> Ret,
+        read: impl FnOnce(&Rd) -> Ret,
     ) -> Option<Ret> {
         if TypeId::of::<Rd>() == TypeId::of::<()>() {
             return None;
         }
 
-        let mut readers = self.0.acquire_mut(pa);
-        if let Some(reader_box) = readers.iter_mut().find(|rb| rb.ty == TypeId::of::<Rd>()) {
-            let status = reader_box.status.take()?;
+        if let Some(i) = self.0.acquire(pa).iter().position(type_equals::<U, Rd>) {
+            let status = self.0.acquire_mut(pa)[i].status.take()?;
 
-            let (status, ret) = match status {
-                ReaderStatus::Local(lr) => {
-                    let ptr = Box::as_ptr(&lr.reader);
-                    let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() }, file);
+            let (status, ret) = status_from_try_read(read, status);
 
-                    (ReaderStatus::Local(lr), Some(ret))
-                }
-                ReaderStatus::Present(sender, sr) => {
-                    let ptr = Box::as_ptr(&sr.reader);
-                    let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() }, file);
-
-                    (ReaderStatus::Present(sender, sr), Some(ret))
-                }
-                ReaderStatus::Sent(ms, join_handle) => {
-                    if ms.latest_state == ms.remote_state.load(Ordering::Relaxed) {
-                        ms.sender.send(None).unwrap();
-                        let sr = join_handle.join().unwrap();
-
-                        let ptr = Box::as_ptr(&sr.reader);
-                        let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() }, file);
-
-                        (ReaderStatus::Present(ms, sr), Some(ret))
-                    } else {
-                        (ReaderStatus::Sent(ms, join_handle), None)
-                    }
-                }
-            };
-
-            reader_box.status = Some(status);
+            self.0.acquire_mut(pa)[i].status = Some(status);
 
             ret
         } else {
@@ -369,7 +317,7 @@ impl<U: Ui> Readers<U> {
                 let parts = text.parts();
                 let (within, split_off) = split_range_within(range.clone(), within.clone());
 
-                reader.update_range(parts, ReaderList(readers), within);
+                reader.update_range(parts, Readers(readers), within);
 
                 for range in split_off.into_iter().flatten() {
                     range_list.add(range);
@@ -658,9 +606,9 @@ struct SendReader<U: Ui> {
 /// want to wait for them to return, see [`ReaderList::read`]. If you
 /// wish to call the passed function only if the [`Reader`] is not
 /// currently updating, see [`ReaderList::try_read`].
-pub struct ReaderList<'a, U: Ui>(&'a mut [ReaderBox<U>]);
+pub struct Readers<'a, U: Ui>(&'a mut [ReaderBox<U>]);
 
-impl<U: Ui> ReaderList<'_, U> {
+impl<U: Ui> Readers<'_, U> {
     /// Reads a specific [`Reader`], if it was [added]
     ///
     /// If the [`Reader`] was sent to another thread, this function
@@ -675,29 +623,7 @@ impl<U: Ui> ReaderList<'_, U> {
         if let Some(reader_box) = self.0.iter_mut().find(|rb| rb.ty == TypeId::of::<Rd>()) {
             let status = reader_box.status.take()?;
 
-            let (status, ret) = match status {
-                ReaderStatus::Local(lr) => {
-                    let ptr = Box::as_ptr(&lr.reader);
-                    let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
-
-                    (ReaderStatus::Local(lr), ret)
-                }
-                ReaderStatus::Present(ms, sr) => {
-                    let ptr = Box::as_ptr(&sr.reader);
-                    let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
-
-                    (ReaderStatus::Present(ms, sr), ret)
-                }
-                ReaderStatus::Sent(ms, join_handle) => {
-                    ms.sender.send(None).unwrap();
-                    let sr = join_handle.join().unwrap();
-
-                    let ptr = Box::as_ptr(&sr.reader);
-                    let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
-
-                    (ReaderStatus::Present(ms, sr), ret)
-                }
-            };
+            let (status, ret) = status_from_read(read, status);
 
             reader_box.status = Some(status);
 
@@ -721,33 +647,11 @@ impl<U: Ui> ReaderList<'_, U> {
         if let Some(reader_box) = self.0.iter_mut().find(|rb| rb.ty == TypeId::of::<Rd>()) {
             let status = reader_box.status.take()?;
 
-            let (status, ret) = match status {
-                ReaderStatus::Local(lr) => {
-                    let ptr = Box::as_ptr(&lr.reader);
-                    let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
-
-                    (ReaderStatus::Local(lr), ret)
-                }
-                ReaderStatus::Present(ms, sr) => {
-                    let ptr = Box::as_ptr(&sr.reader);
-                    let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
-
-                    (ReaderStatus::Present(ms, sr), ret)
-                }
-                ReaderStatus::Sent(ms, join_handle) => {
-                    ms.sender.send(None).unwrap();
-                    let sr = join_handle.join().unwrap();
-
-                    let ptr = Box::as_ptr(&sr.reader);
-                    let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
-
-                    (ReaderStatus::Present(ms, sr), ret)
-                }
-            };
+            let (status, ret) = status_from_try_read(read, status);
 
             reader_box.status = Some(status);
 
-            Some(ret)
+            ret
         } else {
             None
         }
@@ -793,4 +697,72 @@ fn get_range_list<'a>(
         *ranges_to_update = RangeList::new(bytes.len().byte());
         None
     }
+}
+
+fn type_equals<U: Ui, Rd: Reader<U>>(rb: &ReaderBox<U>) -> bool {
+    rb.ty == TypeId::of::<Rd>()
+}
+
+fn status_from_read<Rd: Reader<U>, Ret, U: Ui>(
+    read: impl FnOnce(&Rd) -> Ret,
+    status: ReaderStatus<U>,
+) -> (ReaderStatus<U>, Ret) {
+    let (status, ret) = match status {
+        ReaderStatus::Local(lr) => {
+            let ptr = Box::as_ptr(&lr.reader);
+            let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
+
+            (ReaderStatus::Local(lr), ret)
+        }
+        ReaderStatus::Present(sender, sr) => {
+            let ptr = Box::as_ptr(&sr.reader);
+            let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
+
+            (ReaderStatus::Present(sender, sr), ret)
+        }
+        ReaderStatus::Sent(ms, join_handle) => {
+            ms.sender.send(None).unwrap();
+            let sr = join_handle.join().unwrap();
+
+            let ptr = Box::as_ptr(&sr.reader);
+            let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
+
+            (ReaderStatus::Present(ms, sr), ret)
+        }
+    };
+    (status, ret)
+}
+
+fn status_from_try_read<Rd: Reader<U>, Ret, U: Ui>(
+    read: impl FnOnce(&Rd) -> Ret,
+    status: ReaderStatus<U>,
+) -> (ReaderStatus<U>, Option<Ret>) {
+    let (status, ret) = match status {
+        ReaderStatus::Local(lr) => {
+            let ptr = Box::as_ptr(&lr.reader);
+            let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
+
+            (ReaderStatus::Local(lr), Some(ret))
+        }
+        ReaderStatus::Present(sender, sr) => {
+            let ptr = Box::as_ptr(&sr.reader);
+            let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
+
+            (ReaderStatus::Present(sender, sr), Some(ret))
+        }
+        ReaderStatus::Sent(ms, join_handle) => {
+            if ms.latest_state == ms.remote_state.load(Ordering::Relaxed) {
+                ms.sender.send(None).unwrap();
+                let sr = join_handle.join().unwrap();
+
+                let ptr = Box::as_ptr(&sr.reader);
+                let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
+
+                (ReaderStatus::Present(ms, sr), Some(ret))
+            } else {
+                (ReaderStatus::Sent(ms, join_handle), None)
+            }
+        }
+    };
+    (status, ret)
 }
