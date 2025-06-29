@@ -302,6 +302,14 @@ impl<U: Ui> File<U> {
         // function is called
         let pa = &mut unsafe { Pass::new() };
 
+        // In theory, it's possible to call try_read_reader or read_reader
+        // from within this function, which would call
+        // self.text.unprocessed_moments.
+        // Because of the Option::take of the Rd within,
+        // self.readers.process_moment would panic.
+        // However, self.text.unprocessed_moments should only return Some on
+        // the first call, i.e., before any Option::take calls, so it
+        // shouldn't be a problem.
         if let Some(moments) = self.text.unprocessed_moments() {
             for moment in moments {
                 self.readers.process_moment(pa, moment);

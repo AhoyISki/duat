@@ -746,7 +746,7 @@ pub mod prelude {
         cmd,
         context::{self, FileHandle, Handle},
         data::{Pass, RwData},
-        file::{File, RangeList, Reader, ReaderBox, ReaderCfg},
+        file::{File, RangeList, Reader, ReaderBox, ReaderCfg, Readers},
         form::{self, Form},
         hook,
         mode::{self, KeyCode, KeyEvent, KeyMod, Mode, key},
