@@ -23,7 +23,16 @@
 //!
 //! ## Getting started
 //!
-//! To install Duat, do the following:
+//! To install Duat, I am assuming that you have ´cargo´ installed on
+//! your system, if you don't, [install it]. Additionally, you're going
+//! to need the nightly toolchain installed, since Duat requires many
+//! nightly features
+//!
+//! ´´´bash
+//! rustup install nightly
+//! ´´´
+//! 
+//! Now, you can install duat:
 //!
 //! ```bash
 //! cargo install duat
@@ -327,6 +336,7 @@
 //! Also, just wanted to say that no AI was used in this project, cuz
 //! I don't like it.
 //!
+//! [install it]: https://www.rust-lang.org/tools/install
 //! [plugs]: prelude::plug
 //! [default mode]: prelude::mode::set_default
 //! [Maps]: prelude::map
