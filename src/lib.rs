@@ -23,14 +23,14 @@
 //!
 //! ## Getting started
 //!
-//! To install Duat, I am assuming that you have ´cargo´ installed on
+//! To install Duat, I am assuming that you have `cargo` installed on
 //! your system, if you don't, [install it]. Additionally, you're
 //! going to need the nightly toolchain installed, since Duat requires
 //! many nightly features
 //!
-//! ´´´bash
+//! ```bash
 //! rustup install nightly
-//! ´´´
+//! ```
 //!
 //! Also, in order to run duat, you should add `~/.cargo/bin/` to your
 //! `$PATH` variable. Alternatively, you can just add

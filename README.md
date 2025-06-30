@@ -27,14 +27,14 @@ welcome 🥰.
 
 ### Getting started
 
-To install Duat, I am assuming that you have ´cargo´ installed on
+To install Duat, I am assuming that you have `cargo` installed on
 your system, if you don’t, [install it][__link0]. Additionally, you’re
 going to need the nightly toolchain installed, since Duat requires
 many nightly features
 
-´´´bash
+```bash
 rustup install nightly
-´´´
+```
 
 Also, in order to run duat, you should add `~/.cargo/bin/` to your
 `$PATH` variable. Alternatively, you can just add
@@ -309,7 +309,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG098Iqh46FLTG-e7py1aLQbyG1v6xCbBzoHhG8gBAY2qSFl0YXKEGz1F4JxF2RmtG6t7tt2a4m0bG135uRMscC3VG9dBqeOw6tm9YWSBgmRkdWF0ZTAuNS4z
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG098Iqh46FLTG-e7py1aLQbyG1v6xCbBzoHhG8gBAY2qSFl0YXKEG9oyrw-V8ITkG7_528M_t56GG40x_T8K2SUzG-cS3CWryu1RYWSBgmRkdWF0ZTAuNS4z
  [__link0]: https://www.rust-lang.org/tools/install
  [__link1]: https://docs.rs/duat/0.5.3/duat/?search=prelude::plug
  [__link10]: https://docs.rs/duat/0.5.3/duat/?search=prelude::mode_name
