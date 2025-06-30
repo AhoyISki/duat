@@ -258,10 +258,10 @@ impl<U: Ui> InnerReaders<U> {
                     ReaderStatus::Local(lr)
                 }
                 ReaderStatus::Present(mut ms, mut sr) => {
-                    ms.latest_state += 1;
-                    ms.sender.send(Some(moment)).unwrap();
-
                     if sr.reader.make_remote() {
+                        ms.latest_state += 1;
+                        ms.sender.send(Some(moment)).unwrap();
+                        
                         let jh = thread::spawn(move || {
                             while let Some(moment) = sr.receiver.recv().unwrap() {
                                 apply_moment(&mut sr, moment);
@@ -390,7 +390,7 @@ impl<U: Ui> InnerReaders<U> {
         }
     }
 
-	/// Wether this [`InnerReaders`] is ready to be updated
+    /// Wether this [`InnerReaders`] is ready to be updated
     pub fn needs_update(&self) -> bool {
         // SAFETY: The File is read, which means I can safely acquire this.
         let pa = &unsafe { Pass::new() };
