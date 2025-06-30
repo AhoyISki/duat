@@ -1,6 +1,7 @@
 use std::{fs, path::PathBuf, process::Command, sync::Mutex};
 
 use dlopen_rs::{Dylib, OpenFlags};
+use duat_core::text::{Text, txt};
 use indoc::{formatdoc, indoc};
 use tree_sitter::Language;
 
@@ -8,11 +9,30 @@ use self::list::LANGUAGE_OPTIONS;
 
 mod list;
 
-pub fn get_language(filetype: &str) -> Option<Language> {
+/// Wether a parser for the given `filetype` exists
+pub fn parser_exists(filetype: &str) -> bool {
+    LANGUAGE_OPTIONS.get(filetype).is_some()
+}
+
+/// Wether the parser for the given `filetype` is compiled
+pub fn parser_is_compiled(filetype: &str) -> Result<bool, Text> {
+    let options = LANGUAGE_OPTIONS
+        .get(filetype)
+        .ok_or_else(|| txt!("There is no tree-sitter grammar for [a].{filetype}[] files"))?;
+
+    let lib = options.crate_name.replace("-", "_");
+    let so_path = get_workspace_dir()?.join(format!("parsers/lib/lib{lib}.so"));
+
+    Ok(so_path.try_exists()?)
+}
+
+pub fn get_language(filetype: &str) -> Result<Language, Text> {
     static LIBRARIES: Mutex<Vec<Dylib>> = Mutex::new(Vec::new());
 
     let parsers_dir = get_workspace_dir()?.join("parsers");
-    let options = LANGUAGE_OPTIONS.get(filetype)?;
+    let options = LANGUAGE_OPTIONS
+        .get(filetype)
+        .ok_or_else(|| txt!("There is no tree-sitter grammar for [a]{filetype}"))?;
 
     let lib_dir = parsers_dir.join("lib");
     let crate_dir = parsers_dir.join(format!("ts-{}", options.crate_name));
@@ -27,14 +47,16 @@ pub fn get_language(filetype: &str) -> Option<Language> {
     ) {
         let language = unsafe {
             let (symbol, _) = options.symbols[0];
-            let lang_fn = lib.get::<fn() -> Language>(&symbol.to_lowercase()).ok()?;
+            let lang_fn = lib
+                .get::<fn() -> Language>(&symbol.to_lowercase())
+                .map_err(|err| txt!("{err}"))?;
 
             lang_fn()
         };
 
         LIBRARIES.lock().unwrap().push(lib);
 
-        Some(language)
+        Ok(language)
     } else if let Ok(true) = fs::exists(&manifest_path) {
         let mut cargo = Command::new("cargo");
 
@@ -49,12 +71,11 @@ pub fn get_language(filetype: &str) -> Option<Language> {
             lib_dir.to_str().unwrap(),
         ]);
 
-        if let Ok(out) = cargo.output()
-            && out.status.success()
-        {
+        let out = cargo.output()?;
+        if out.status.success() {
             get_language(filetype)
         } else {
-            None
+            Err(String::from_utf8_lossy(&out.stderr).to_string().into())
         }
     } else {
         let lib_rs: String = options
@@ -100,15 +121,15 @@ pub fn get_language(filetype: &str) -> Option<Language> {
             package = "tree-sitter-{crate_name}"
         "#};
 
-        fs::create_dir_all(crate_dir.join("src")).ok()?;
-        fs::write(manifest_path, cargo_toml).ok()?;
-        fs::write(crate_dir.join("src/lib.rs"), lib_rs).ok()?;
+        fs::create_dir_all(crate_dir.join("src"))?;
+        fs::write(manifest_path, cargo_toml)?;
+        fs::write(crate_dir.join("src/lib.rs"), lib_rs)?;
 
         get_language(filetype)
     }
 }
 
-fn get_workspace_dir() -> Option<PathBuf> {
+fn get_workspace_dir() -> Result<PathBuf, Text> {
     const BASE_WORKSPACE_TOML: &str = indoc!(
         r#"
         [workspace]
@@ -121,11 +142,11 @@ fn get_workspace_dir() -> Option<PathBuf> {
     let parsers_dir = workspace_dir.join("parsers");
 
     if let Ok(false) | Err(_) = fs::exists(&parsers_dir) {
-        fs::create_dir_all(workspace_dir.join("parsers")).ok()?;
-        fs::write(parsers_dir.join("Cargo.toml"), BASE_WORKSPACE_TOML).ok()?
+        fs::create_dir_all(workspace_dir.join("parsers"))?;
+        fs::write(parsers_dir.join("Cargo.toml"), BASE_WORKSPACE_TOML)?
     }
 
-    Some(workspace_dir)
+    Ok(workspace_dir)
 }
 
 struct LanguageOptions {

@@ -48,6 +48,8 @@ use tree_sitter::{
     QueryCursor, TextProvider, Tree,
 };
 
+use crate::languages::{parser_exists, parser_is_compiled};
+
 mod cursor;
 mod languages;
 
@@ -219,7 +221,7 @@ impl TsParser {
                 let range = cap.node.byte_range();
                 let key_fn = |(range, ..): &(Range<usize>, _, _)| range.start;
                 if let Some(lang) = lang
-                    && let Some(mut lang_parts) = lang_parts(&lang)
+                    && let Ok(mut lang_parts) = lang_parts(&lang)
                     && let Err(i) = to_add.binary_search_by_key(&range.start, key_fn)
                 {
                     let start = cap.node.start_position();
@@ -227,10 +229,11 @@ impl TsParser {
                     // You may want to set a new injections query, only for this capture.
                     if let Some(prop) = props.iter().find(|p| p.key.as_ref() == "injection.query")
                         && let Some(value) = prop.value.as_ref()
-                        && let Some(injections) =
-                            query_from_path(format!("{lang}/{value}"), lang_parts.1)
                     {
-                        lang_parts.2.injections = injections;
+                        match query_from_path(format!("{lang}/{value}"), lang_parts.1) {
+                            Ok(injections) => lang_parts.2.injections = injections,
+                            Err(err) => context::error!("{err}"),
+                        }
                     }
 
                     to_add.insert(i, (range, start, lang_parts));
@@ -773,16 +776,12 @@ impl std::fmt::Debug for TsParser {
 }
 
 pub struct TsParserCfg {
-    lang_parts: LangParts<'static>,
-    form_parts: &'static [(FormId, u8)],
+    filetype: String,
 }
 
 impl TsParserCfg {
     pub fn new(filetype: &str) -> Option<Self> {
-        let lang_parts = lang_parts(filetype)?;
-        let form_parts = forms_from_lang_parts(&lang_parts);
-
-        Some(TsParserCfg { lang_parts, form_parts })
+        parser_exists(filetype).then(|| TsParserCfg { filetype: filetype.to_string() })
     }
 }
 
@@ -790,17 +789,31 @@ impl<U: Ui> file::ReaderCfg<U> for TsParserCfg {
     type Reader = TsParser;
 
     fn init(self, mut bytes: RefBytes) -> Result<ReaderBox<U>, Text> {
+        const MAX_LEN_FOR_LOCAL: usize = 100_000;
         let offset = TSPoint::default();
         let len = bytes.len();
-        let reader = TsParser::init(
-            &mut bytes,
-            0..len.byte(),
-            offset,
-            self.lang_parts,
-            self.form_parts,
-        );
 
-        Ok(ReaderBox::new_local(bytes, reader))
+        if parser_is_compiled(&self.filetype)? && bytes.len().byte() <= MAX_LEN_FOR_LOCAL {
+            let lang_parts = lang_parts(&self.filetype)?;
+            let form_parts = forms_from_lang_parts(&lang_parts);
+
+            let reader = TsParser::init(&mut bytes, 0..len.byte(), offset, lang_parts, form_parts);
+
+            Ok(ReaderBox::new_local(bytes, reader))
+        } else {
+            Ok(ReaderBox::new_remote(bytes, move |mut bytes| {
+                let lang_parts = lang_parts(&self.filetype)?;
+                let form_parts = forms_from_lang_parts(&lang_parts);
+
+                Ok(TsParser::init(
+                    &mut bytes,
+                    0..len.byte(),
+                    offset,
+                    lang_parts,
+                    form_parts,
+                ))
+            }))
+        }
     }
 }
 
@@ -887,12 +900,12 @@ impl<'a> TextProvider<&'a [u8]> for TsBuf<'a> {
     }
 }
 
-fn lang_parts(lang: &str) -> Option<LangParts<'static>> {
+fn lang_parts(lang: &str) -> Result<LangParts<'static>, Text> {
     static MAPS: LazyLock<Mutex<HashMap<&str, LangParts<'static>>>> = LazyLock::new(Mutex::default);
 
     let mut maps = MAPS.lock().unwrap();
 
-    Some(if let Some(lang_parts) = maps.get(lang).copied() {
+    Ok(if let Some(lang_parts) = maps.get(lang).copied() {
         lang_parts
     } else {
         let language: &'static Language = Box::leak(Box::new(languages::get_language(lang)?));
@@ -970,7 +983,7 @@ fn change_clips(change: Change<&str>, range: Range<usize>) -> bool {
         || (start.byte() < range.end && range.end <= taken.byte())
 }
 
-fn query_from_path(path: impl AsRef<Path>, language: &Language) -> Option<&'static Query> {
+fn query_from_path(path: impl AsRef<Path>, language: &Language) -> Result<&'static Query, Text> {
     static QUERIES: LazyLock<Mutex<HashMap<PathBuf, &'static Query>>> =
         LazyLock::new(Mutex::default);
 
@@ -981,12 +994,14 @@ fn query_from_path(path: impl AsRef<Path>, language: &Language) -> Option<&'stat
 
     let mut queries = QUERIES.lock().unwrap();
 
-    Some(if let Some(query) = queries.get(&path) {
+    Ok(if let Some(query) = queries.get(&path) {
         query
     } else {
-        let query = Box::leak(Box::new(
-            Query::new(language, &fs::read_to_string(&path).unwrap_or_default()).ok()?,
-        ));
+        let query = fs::read_to_string(&path).unwrap_or_default();
+        let query = Box::leak(Box::new(match Query::new(language, &query) {
+            Ok(query) => query,
+            Err(err) => return Err(txt!("{err}").build()),
+        }));
 
         queries.insert(path, query);
 
