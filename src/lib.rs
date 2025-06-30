@@ -995,9 +995,14 @@ fn query_from_path(name: &str, kind: &str, language: &Language) -> Result<&'stat
     Ok(if let Some(query) = queries.get(&path) {
         query
     } else {
-        let mut query = fs::read_to_string(&path).unwrap_or_default();
+        let Ok(mut query) = fs::read_to_string(&path) else {
+            let query = Box::leak(Box::new(Query::new(language, "").unwrap()));
+            queries.insert(path, query);
+            return Ok(query);
+        };
+
         let Some(first_line) = query.lines().map(String::from).next() else {
-            context::warn!(target: "{path:?}", "Query is empty");
+            context::warn!(target: path.to_str().unwrap(), "Query is empty");
             let query = Box::leak(Box::new(Query::new(language, "").unwrap()));
             queries.insert(path, query);
             return Ok(query);
@@ -1005,11 +1010,12 @@ fn query_from_path(name: &str, kind: &str, language: &Language) -> Result<&'stat
 
         if let Some(langs) = first_line.strip_prefix("; inherits: ") {
             for name in langs.split(',') {
-                let path = queries_dir.join(name).join(kind).with_file_name("scm");
-                match fs::read_to_string(path) {
+                let path = queries_dir.join(name).join(kind).with_extension("scm");
+                match fs::read_to_string(&path) {
                     Ok(inherited_query) => {
                         if inherited_query.is_empty() {
-                            context::warn!(target: "{path:?}", "Inherited query is empty");
+                            let target = path.to_str().unwrap();
+                            context::warn!(target: target, "Inherited query is empty");
                         }
 
                         query = format!("{inherited_query}\n{query}");
@@ -1023,6 +1029,8 @@ fn query_from_path(name: &str, kind: &str, language: &Language) -> Result<&'stat
             Ok(query) => query,
             Err(err) => return Err(txt!("{err}").build()),
         }));
+
+        queries.insert(path, query);
 
         query
     })

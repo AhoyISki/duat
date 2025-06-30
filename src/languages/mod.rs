@@ -1,7 +1,10 @@
 use std::{fs, path::PathBuf, process::Command, sync::Mutex};
 
 use dlopen_rs::{Dylib, OpenFlags};
-use duat_core::text::{Text, txt};
+use duat_core::{
+    context,
+    text::{Text, txt},
+};
 use indoc::{formatdoc, indoc};
 use tree_sitter::Language;
 
@@ -45,6 +48,7 @@ pub fn get_language(filetype: &str) -> Result<Language, Text> {
         so_path,
         OpenFlags::RTLD_NOW | OpenFlags::CUSTOM_NOT_REGISTER,
     ) {
+        context::debug!("Loading tree-sitter parser for [a]{filetype}");
         let language = unsafe {
             let (symbol, _) = options.symbols[0];
             let lang_fn = lib
@@ -58,6 +62,7 @@ pub fn get_language(filetype: &str) -> Result<Language, Text> {
 
         Ok(language)
     } else if let Ok(true) = fs::exists(&manifest_path) {
+        context::info!("Compiling tree-sitter parser for [a]{filetype}");
         let mut cargo = Command::new("cargo");
 
         cargo.args([
