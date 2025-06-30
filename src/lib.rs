@@ -983,27 +983,47 @@ fn change_clips(change: Change<&str>, range: Range<usize>) -> bool {
         || (start.byte() < range.end && range.end <= taken.byte())
 }
 
-fn query_from_path(path: impl AsRef<Path>, language: &Language) -> Result<&'static Query, Text> {
+fn query_from_path(name: &str, kind: &str, language: &Language) -> Result<&'static Query, Text> {
     static QUERIES: LazyLock<Mutex<HashMap<PathBuf, &'static Query>>> =
         LazyLock::new(Mutex::default);
 
-    let path = duat_core::plugin_dir("duat-treesitter")?
-        .join("queries")
-        .join(path.as_ref())
-        .with_extension("scm");
+    let queries_dir = duat_core::plugin_dir("duat-treesitter")?.join("queries");
+
+    let path = queries_dir.join(name).join(kind).with_extension("scm");
 
     let mut queries = QUERIES.lock().unwrap();
 
     Ok(if let Some(query) = queries.get(&path) {
         query
     } else {
-        let query = fs::read_to_string(&path).unwrap_or_default();
+        let mut query = fs::read_to_string(&path).unwrap_or_default();
+        let Some(first_line) = query.lines().map(String::from).next() else {
+            context::warn!(target: "{path:?}", "Query is empty");
+            let query = Box::leak(Box::new(Query::new(language, "").unwrap()));
+            queries.insert(path, query);
+            return Ok(query);
+        };
+
+        if let Some(langs) = first_line.strip_prefix("; inherits: ") {
+            for name in langs.split(',') {
+                let path = queries_dir.join(name).join(kind).with_file_name("scm");
+                match fs::read_to_string(path) {
+                    Ok(inherited_query) => {
+                        if inherited_query.is_empty() {
+                            context::warn!(target: "{path:?}", "Inherited query is empty");
+                        }
+
+                        query = format!("{inherited_query}\n{query}");
+                    }
+                    Err(err) => context::error!("{err}"),
+                }
+            }
+        }
+
         let query = Box::leak(Box::new(match Query::new(language, &query) {
             Ok(query) => query,
             Err(err) => return Err(txt!("{err}").build()),
         }));
-
-        queries.insert(path, query);
 
         query
     })
