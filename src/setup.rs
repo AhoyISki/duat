@@ -82,7 +82,7 @@ pub fn pre_setup(logs: Option<Logs>, duat_tx: &'static Sender<DuatEvent>) {
     hook::add_grouped::<FileWritten>("ReloadOnWrite", |_, (path, _, is_quitting)| {
         let path = Path::new(path);
         if !is_quitting
-            && let Some(crate_dir) = crate::crate_dir()
+            && let Ok(crate_dir) = crate::crate_dir()
             && path.starts_with(crate_dir)
         {
             crate::prelude::cmd::queue("reload");

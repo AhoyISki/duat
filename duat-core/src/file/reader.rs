@@ -19,6 +19,7 @@ use std::{
 };
 
 use crate::{
+    context,
     data::{Pass, RwData},
     text::{AsRefBytes, Bytes, Change, Moment, RefBytes, Text, TextParts, txt},
     ui::Ui,
@@ -200,14 +201,15 @@ impl<U: Ui> InnerReaders<U> {
             return None;
         }
 
-        if let Some(i) = self.0.acquire(pa).iter().position(type_equals::<U, Rd>) {
+        let position = self.0.acquire(pa).iter().position(type_equals::<U, Rd>);
+        if let Some(i) = position {
             let status = self.0.acquire_mut(pa)[i].status.take()?;
 
             let (status, ret) = status_from_read(read, status);
 
             self.0.acquire_mut(pa)[i].status = Some(status);
 
-            Some(ret)
+            ret
         } else {
             None
         }
@@ -223,7 +225,8 @@ impl<U: Ui> InnerReaders<U> {
             return None;
         }
 
-        if let Some(i) = self.0.acquire(pa).iter().position(type_equals::<U, Rd>) {
+        let position = self.0.acquire(pa).iter().position(type_equals::<U, Rd>);
+        if let Some(i) = position {
             let status = self.0.acquire_mut(pa)[i].status.take()?;
 
             let (status, ret) = status_from_try_read(read, status);
@@ -259,43 +262,44 @@ impl<U: Ui> InnerReaders<U> {
                     ms.sender.send(Some(moment)).unwrap();
 
                     if sr.reader.make_remote() {
-                        let join_handle = thread::spawn(move || {
+                        let jh = thread::spawn(move || {
                             while let Some(moment) = sr.receiver.recv().unwrap() {
-                                for change in moment.changes() {
-                                    sr.bytes.apply_change(change);
-                                }
-
-                                let bytes = sr.bytes.ref_bytes();
-                                let range_list = get_range_list(&mut sr.range_list, &bytes, moment);
-
-                                sr.reader.apply_remote_changes(bytes, moment, range_list);
-                                sr.state.fetch_add(1, Ordering::Relaxed);
+                                apply_moment(&mut sr, moment);
                             }
 
                             sr
                         });
 
-                        ReaderStatus::Sent(ms, join_handle)
+                        ReaderStatus::Sent(ms, jh)
                     } else {
-                        for change in moment.changes() {
-                            sr.bytes.apply_change(change);
-                        }
-
-                        let bytes = sr.bytes.ref_bytes();
-                        let range_list = get_range_list(&mut sr.range_list, &bytes, moment);
-
-                        sr.reader.apply_changes(pa, bytes, moment, range_list);
-                        sr.state.fetch_add(1, Ordering::Relaxed);
+                        apply_moment(&mut sr, moment);
 
                         ReaderStatus::Present(ms, sr)
                     }
                 }
-                ReaderStatus::Sent(mut ms, join_handle) => {
+                ReaderStatus::Sent(mut ms, jh) => {
                     ms.latest_state += 1;
                     ms.sender.send(Some(moment)).unwrap();
 
-                    ReaderStatus::Sent(ms, join_handle)
+                    ReaderStatus::Sent(ms, jh)
                 }
+                ReaderStatus::BeingBuilt(mut ms, build_status, jh) => {
+                    match build_status.load(Ordering::Relaxed) {
+                        FAILED_BUILDING => {
+                            let Err(err) = jh.join().unwrap() else {
+                                unreachable!()
+                            };
+                            context::error!("{err}");
+                            ReaderStatus::MarkedForDeletion
+                        }
+                        _ => {
+                            ms.latest_state += 1;
+                            ms.sender.send(Some(moment)).unwrap();
+                            ReaderStatus::BeingBuilt(ms, build_status, jh)
+                        }
+                    }
+                }
+                ReaderStatus::MarkedForDeletion => ReaderStatus::MarkedForDeletion,
             })
         }
 
@@ -343,22 +347,58 @@ impl<U: Ui> InnerReaders<U> {
                     update(text, reader, range_list, &mut readers, within.clone());
                     ReaderStatus::Present(ms, sr)
                 }
-                ReaderStatus::Sent(ms, join_handle) => {
+                ReaderStatus::Sent(ms, jh) => {
                     // In this case, all moments have been processed, and we can bring the
                     // Reader back in order to update it.
                     if ms.latest_state == ms.remote_state.load(Ordering::Relaxed) {
-                        let mut sr = join_handle.join().unwrap();
+                        let mut sr = jh.join().unwrap();
                         let reader = &mut *sr.reader;
                         let range_list = &mut sr.range_list;
                         update(text, reader, range_list, &mut readers, within.clone());
                         ReaderStatus::Present(ms, sr)
                     } else {
-                        ReaderStatus::Sent(ms, join_handle)
+                        ReaderStatus::Sent(ms, jh)
                     }
                 }
+                ReaderStatus::BeingBuilt(ms, build_status, jh) => {
+                    match build_status.load(Ordering::Relaxed) {
+                        FAILED_BUILDING => {
+                            let Err(err) = jh.join().unwrap() else {
+                                unreachable!()
+                            };
+                            context::error!("{err}");
+                            ReaderStatus::MarkedForDeletion
+                        }
+                        SUCCEEDED_BUILDING => {
+                            if ms.latest_state == ms.remote_state.load(Ordering::Relaxed) {
+                                let mut sr = jh.join().unwrap().unwrap();
+                                let reader = &mut *sr.reader;
+                                let range_list = &mut sr.range_list;
+                                update(text, reader, range_list, &mut readers, within.clone());
+                                ReaderStatus::Present(ms, sr)
+                            } else {
+                                ReaderStatus::BeingBuilt(ms, build_status, jh)
+                            }
+                        }
+                        _ => ReaderStatus::BeingBuilt(ms, build_status, jh),
+                    }
+                }
+                ReaderStatus::MarkedForDeletion => ReaderStatus::MarkedForDeletion,
             });
         }
     }
+}
+
+fn apply_moment<U: Ui>(sr: &mut SendReader<U>, moment: Moment) {
+    for change in moment.changes() {
+        sr.bytes.apply_change(change);
+    }
+
+    let bytes = sr.bytes.ref_bytes();
+    let range_list = get_range_list(&mut sr.range_list, &bytes, moment);
+
+    sr.reader.apply_remote_changes(bytes, moment, range_list);
+    sr.state.fetch_add(1, Ordering::Relaxed);
 }
 
 /// A list of non intersecting exclusive [`Range<usize>`]s
@@ -538,7 +578,7 @@ impl<U: Ui> ReaderBox<U> {
     /// thread
     pub fn new_remote<Rd: Reader<U> + Send>(
         bytes: RefBytes,
-        f: impl FnOnce(RefBytes) -> Rd + Send + 'static,
+        f: impl FnOnce(RefBytes) -> Result<Rd, Text> + Send + 'static,
     ) -> ReaderBox<U> {
         let (sender, receiver) = mpsc::channel();
         let mut bytes = bytes.clone();
@@ -550,20 +590,37 @@ impl<U: Ui> ReaderBox<U> {
             remote_state: state.clone(),
         };
 
+        let status = Arc::new(AtomicUsize::new(0));
+
         ReaderBox {
-            status: Some(ReaderStatus::Sent(
+            status: Some(ReaderStatus::BeingBuilt(
                 moment_sender,
+                status.clone(),
                 thread::spawn(move || {
-                    let reader = Box::new(f(bytes.ref_bytes()));
+                    let reader = Box::new(match f(bytes.ref_bytes()) {
+                        Ok(reader) => reader,
+                        Err(err) => {
+                            status.store(FAILED_BUILDING, Ordering::Relaxed);
+                            return Err(err);
+                        }
+                    });
+                    status.store(SUCCEEDED_BUILDING, Ordering::Relaxed);
+
                     let range_list = RangeList::new(bytes.len().byte());
 
-                    SendReader {
+                    let mut sr = SendReader {
                         reader,
                         bytes,
                         receiver,
                         range_list,
                         state,
+                    };
+
+                    while let Some(moment) = sr.receiver.recv().unwrap() {
+                        apply_moment(&mut sr, moment);
                     }
+
+                    Ok(sr)
                 }),
             )),
             ty: TypeId::of::<Rd>(),
@@ -575,6 +632,12 @@ enum ReaderStatus<U: Ui> {
     Local(LocalReader<U>),
     Present(MomentSender, SendReader<U>),
     Sent(MomentSender, thread::JoinHandle<SendReader<U>>),
+    BeingBuilt(
+        MomentSender,
+        Arc<AtomicUsize>,
+        thread::JoinHandle<Result<SendReader<U>, Text>>,
+    ),
+    MarkedForDeletion,
 }
 
 struct MomentSender {
@@ -627,7 +690,7 @@ impl<U: Ui> Readers<'_, U> {
 
             reader_box.status = Some(status);
 
-            Some(ret)
+            ret
         } else {
             None
         }
@@ -706,31 +769,45 @@ fn type_equals<U: Ui, Rd: Reader<U>>(rb: &ReaderBox<U>) -> bool {
 fn status_from_read<Rd: Reader<U>, Ret, U: Ui>(
     read: impl FnOnce(&Rd) -> Ret,
     status: ReaderStatus<U>,
-) -> (ReaderStatus<U>, Ret) {
-    let (status, ret) = match status {
+) -> (ReaderStatus<U>, Option<Ret>) {
+    match status {
         ReaderStatus::Local(lr) => {
             let ptr = Box::as_ptr(&lr.reader);
             let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
 
-            (ReaderStatus::Local(lr), ret)
+            (ReaderStatus::Local(lr), Some(ret))
         }
         ReaderStatus::Present(sender, sr) => {
             let ptr = Box::as_ptr(&sr.reader);
             let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
 
-            (ReaderStatus::Present(sender, sr), ret)
+            (ReaderStatus::Present(sender, sr), Some(ret))
         }
-        ReaderStatus::Sent(ms, join_handle) => {
+        ReaderStatus::Sent(ms, jh) => {
             ms.sender.send(None).unwrap();
-            let sr = join_handle.join().unwrap();
+            let sr = jh.join().unwrap();
 
             let ptr = Box::as_ptr(&sr.reader);
             let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
 
-            (ReaderStatus::Present(ms, sr), ret)
+            (ReaderStatus::Present(ms, sr), Some(ret))
         }
-    };
-    (status, ret)
+        ReaderStatus::BeingBuilt(ms, _, jh) => {
+            ms.sender.send(None).unwrap();
+            match jh.join().unwrap() {
+                Ok(sr) => {
+                    let ptr = Box::as_ptr(&sr.reader);
+                    let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
+                    (ReaderStatus::Present(ms, sr), Some(ret))
+                }
+                Err(err) => {
+                    context::error!("{err}");
+                    (ReaderStatus::MarkedForDeletion, None)
+                }
+            }
+        }
+        ReaderStatus::MarkedForDeletion => (ReaderStatus::MarkedForDeletion, None),
+    }
 }
 
 fn status_from_try_read<Rd: Reader<U>, Ret, U: Ui>(
@@ -750,19 +827,41 @@ fn status_from_try_read<Rd: Reader<U>, Ret, U: Ui>(
 
             (ReaderStatus::Present(sender, sr), Some(ret))
         }
-        ReaderStatus::Sent(ms, join_handle) => {
+        ReaderStatus::Sent(ms, jh) => {
             if ms.latest_state == ms.remote_state.load(Ordering::Relaxed) {
                 ms.sender.send(None).unwrap();
-                let sr = join_handle.join().unwrap();
+                let sr = jh.join().unwrap();
 
                 let ptr = Box::as_ptr(&sr.reader);
                 let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
 
                 (ReaderStatus::Present(ms, sr), Some(ret))
             } else {
-                (ReaderStatus::Sent(ms, join_handle), None)
+                (ReaderStatus::Sent(ms, jh), None)
             }
         }
+        ReaderStatus::BeingBuilt(ms, build_status, jh) => {
+            if ms.latest_state == ms.remote_state.load(Ordering::Relaxed) {
+                ms.sender.send(None).unwrap();
+                match jh.join().unwrap() {
+                    Ok(sr) => {
+                        let ptr = Box::as_ptr(&sr.reader);
+                        let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
+                        (ReaderStatus::Present(ms, sr), Some(ret))
+                    }
+                    Err(err) => {
+                        context::error!("{err}");
+                        (ReaderStatus::MarkedForDeletion, None)
+                    }
+                }
+            } else {
+                (ReaderStatus::BeingBuilt(ms, build_status, jh), None)
+            }
+        }
+        ReaderStatus::MarkedForDeletion => (ReaderStatus::MarkedForDeletion, None),
     };
     (status, ret)
 }
+
+const FAILED_BUILDING: usize = 1;
+const SUCCEEDED_BUILDING: usize = 2;

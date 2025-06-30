@@ -202,7 +202,7 @@
 //! ```rust
 //! # use duat_core::doc_duat as duat;
 //! setup_duat!(setup);
-//! use duat::prelude::{*, file::File};
+//! use duat::prelude::{file::File, *};
 //!
 //! fn setup() {
 //!     cmd::add!(
@@ -517,9 +517,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             IS_UPDATING.store(true, Ordering::Relaxed);
         }
 
-        let Some(crate_dir) = crate::crate_dir() else {
-            return Err(txt!("No config directory is set").build());
-        };
+        let crate_dir = crate::crate_dir()?;
 
         let toml_path = crate_dir.join("Cargo.toml");
         if let Ok(false) | Err(_) = toml_path.try_exists() {

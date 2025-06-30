@@ -501,6 +501,7 @@ impl<T: ?Sized> RwData<T> {
 
     /// Acquires a mutable reference to the value within, for
     /// compilation time improvements inside Duat
+    #[track_caller]
     pub(crate) fn acquire_mut(&self, _: &mut Pass) -> std::cell::RefMut<'_, T> {
         update_cur_state(&self.read_state, &self.cur_state);
         self.value.borrow_mut()

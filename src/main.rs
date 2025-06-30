@@ -46,7 +46,7 @@ fn main() {
     let mut prev = Vec::new();
 
     // Assert that the configuration crate actually exists.
-    let Some(crate_dir) = duat_core::crate_dir().filter(|cd| cd.exists()) else {
+    let Some(crate_dir) = duat_core::crate_dir().ok().filter(|cd| cd.exists()) else {
         context::error!("No config crate found, loading default config");
         pre_setup(None, duat_tx);
         run_duat((ms, &CLIPB), Vec::new(), duat_rx);

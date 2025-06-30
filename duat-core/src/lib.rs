@@ -974,7 +974,7 @@ pub fn src_crate<T: ?Sized + 'static>() -> &'static str {
 }
 
 /// The path for the config crate of Duat
-pub fn crate_dir() -> Option<&'static Path> {
+pub fn crate_dir() -> Result<&'static Path, Text> {
     static CRATE_DIR: LazyLock<Option<&Path>> = LazyLock::new(|| {
         dirs_next::config_dir().map(|config_dir| {
             let path: &'static str = config_dir.join("duat").to_string_lossy().to_string().leak();
@@ -983,7 +983,8 @@ pub fn crate_dir() -> Option<&'static Path> {
             Path::new(path)
         })
     });
-    *CRATE_DIR
+
+    CRATE_DIR.ok_or_else(|| txt!("Config directory is [a]undefined").build())
 }
 
 /// The path for a plugin's auxiliary files
@@ -995,7 +996,7 @@ pub fn crate_dir() -> Option<&'static Path> {
 /// This function will also create said directory, if it doesn't
 /// already exist, only returning [`Some`], if it managed to verify
 /// its existance.
-pub fn plugin_dir(plugin: &str) -> Option<PathBuf> {
+pub fn plugin_dir(plugin: &str) -> Result<PathBuf, Text> {
     assert_ne!(plugin, "", "Can't have an empty plugin name");
 
     static PLUGIN_DIR: LazyLock<Option<&Path>> = LazyLock::new(|| {
@@ -1010,10 +1011,12 @@ pub fn plugin_dir(plugin: &str) -> Option<PathBuf> {
         })
     });
 
-    let plugin_dir = (*PLUGIN_DIR)?.join(plugin);
-    std::fs::create_dir_all(&plugin_dir).ok()?;
+    let plugin_dir = (*PLUGIN_DIR)
+        .ok_or_else(|| txt!("Local directory is [a]undefined"))?
+        .join(plugin);
+    std::fs::create_dir_all(&plugin_dir)?;
 
-    Some(plugin_dir)
+    Ok(plugin_dir)
 }
 
 /// Convenience function for the bounds of a range
