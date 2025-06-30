@@ -715,12 +715,21 @@ impl<U: Ui> Reader<U> for TsParser {
     fn apply_changes(
         &mut self,
         _: &mut Pass,
-        mut bytes: RefBytes,
+        bytes: RefBytes,
         moment: text::Moment,
         ranges_to_update: Option<&mut file::RangeList>,
     ) where
         Self: Sized,
     {
+        Reader::<U>::apply_remote_changes(self, bytes, moment, ranges_to_update);
+    }
+
+    fn apply_remote_changes(
+        &mut self,
+        mut bytes: RefBytes,
+        moment: Moment,
+        ranges_to_update: Option<&mut RangeList>,
+    ) {
         fn merge_tree_changed_ranges(parser: &TsParser, list: &mut file::RangeList) {
             if let Some(old_tree) = parser.old_tree.as_ref() {
                 for range in parser.tree.changed_ranges(old_tree) {
