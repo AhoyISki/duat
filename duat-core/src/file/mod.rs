@@ -416,7 +416,7 @@ impl<U: Ui> Widget<U> for File<U> {
     }
 
     fn needs_update(&self) -> bool {
-        false
+        self.readers.needs_update()
     }
 
     fn text(&self) -> &Text {

@@ -351,6 +351,7 @@ impl<U: Ui> InnerReaders<U> {
                     // In this case, all moments have been processed, and we can bring the
                     // Reader back in order to update it.
                     if ms.latest_state == ms.remote_state.load(Ordering::Relaxed) {
+                        ms.sender.send(None).unwrap();
                         let mut sr = jh.join().unwrap();
                         let reader = &mut *sr.reader;
                         let range_list = &mut sr.range_list;
@@ -371,6 +372,7 @@ impl<U: Ui> InnerReaders<U> {
                         }
                         SUCCEEDED_BUILDING => {
                             if ms.latest_state == ms.remote_state.load(Ordering::Relaxed) {
+                                ms.sender.send(None).unwrap();
                                 let mut sr = jh.join().unwrap().unwrap();
                                 let reader = &mut *sr.reader;
                                 let range_list = &mut sr.range_list;
@@ -386,6 +388,22 @@ impl<U: Ui> InnerReaders<U> {
                 ReaderStatus::MarkedForDeletion => ReaderStatus::MarkedForDeletion,
             });
         }
+    }
+
+	/// Wether this [`InnerReaders`] is ready to be updated
+    pub fn needs_update(&self) -> bool {
+        // SAFETY: The File is read, which means I can safely acquire this.
+        let pa = &unsafe { Pass::new() };
+        let readers = self.0.acquire(pa);
+
+        readers.iter().any(|reader_box| {
+            let status = reader_box.status.as_ref();
+            if let Some(ReaderStatus::Sent(ms, _) | ReaderStatus::BeingBuilt(ms, ..)) = status {
+                ms.latest_state == ms.remote_state.load(Ordering::Relaxed)
+            } else {
+                false
+            }
+        })
     }
 }
 
@@ -721,51 +739,6 @@ impl<U: Ui> Readers<'_, U> {
     }
 }
 
-/// Splits a range within a region
-///
-/// The first return is the part of `within` that must be updated.
-/// The second return is what is left of `range`.
-///
-/// If `range` is fully inside `within`, remove `range`;
-/// If `within` is fully inside `range`, split `range` in 2;
-/// If `within` intersects `range` in one side, cut it out;
-fn split_range_within(
-    range: Range<usize>,
-    within: Range<usize>,
-) -> (Option<Range<usize>>, [Option<Range<usize>>; 2]) {
-    if range.start >= within.end || within.start >= range.end {
-        (None, [Some(range), None])
-    } else {
-        let start_range = (within.start > range.start).then_some(range.start..within.start);
-        let end_range = (range.end > within.end).then_some(within.end..range.end);
-        let split_ranges = [start_range, end_range];
-        let range_to_check = range.start.max(within.start)..(range.end.min(within.end));
-        (Some(range_to_check), split_ranges)
-    }
-}
-
-/// Decides wether a [`RangeList`] should be used or not
-fn get_range_list<'a>(
-    ranges_to_update: &'a mut RangeList,
-    bytes: &RefBytes<'_>,
-    moment: Moment,
-) -> Option<&'a mut RangeList> {
-    const FOLDING_COULD_UPDATE_A_LOT: usize = 1_000_000;
-    const MAX_CHANGES_TO_CONSIDER: usize = 100;
-
-    if moment.len() <= MAX_CHANGES_TO_CONSIDER || bytes.len().byte() >= FOLDING_COULD_UPDATE_A_LOT {
-        ranges_to_update.shift_by_changes(moment.changes());
-        Some(ranges_to_update)
-    } else {
-        *ranges_to_update = RangeList::new(bytes.len().byte());
-        None
-    }
-}
-
-fn type_equals<U: Ui, Rd: Reader<U>>(rb: &ReaderBox<U>) -> bool {
-    rb.ty == TypeId::of::<Rd>()
-}
-
 fn status_from_read<Rd: Reader<U>, Ret, U: Ui>(
     read: impl FnOnce(&Rd) -> Ret,
     status: ReaderStatus<U>,
@@ -861,6 +834,51 @@ fn status_from_try_read<Rd: Reader<U>, Ret, U: Ui>(
         ReaderStatus::MarkedForDeletion => (ReaderStatus::MarkedForDeletion, None),
     };
     (status, ret)
+}
+
+/// Splits a range within a region
+///
+/// The first return is the part of `within` that must be updated.
+/// The second return is what is left of `range`.
+///
+/// If `range` is fully inside `within`, remove `range`;
+/// If `within` is fully inside `range`, split `range` in 2;
+/// If `within` intersects `range` in one side, cut it out;
+fn split_range_within(
+    range: Range<usize>,
+    within: Range<usize>,
+) -> (Option<Range<usize>>, [Option<Range<usize>>; 2]) {
+    if range.start >= within.end || within.start >= range.end {
+        (None, [Some(range), None])
+    } else {
+        let start_range = (within.start > range.start).then_some(range.start..within.start);
+        let end_range = (range.end > within.end).then_some(within.end..range.end);
+        let split_ranges = [start_range, end_range];
+        let range_to_check = range.start.max(within.start)..(range.end.min(within.end));
+        (Some(range_to_check), split_ranges)
+    }
+}
+
+/// Decides wether a [`RangeList`] should be used or not
+fn get_range_list<'a>(
+    ranges_to_update: &'a mut RangeList,
+    bytes: &RefBytes<'_>,
+    moment: Moment,
+) -> Option<&'a mut RangeList> {
+    const FOLDING_COULD_UPDATE_A_LOT: usize = 1_000_000;
+    const MAX_CHANGES_TO_CONSIDER: usize = 100;
+
+    if moment.len() <= MAX_CHANGES_TO_CONSIDER || bytes.len().byte() >= FOLDING_COULD_UPDATE_A_LOT {
+        ranges_to_update.shift_by_changes(moment.changes());
+        Some(ranges_to_update)
+    } else {
+        *ranges_to_update = RangeList::new(bytes.len().byte());
+        None
+    }
+}
+
+fn type_equals<U: Ui, Rd: Reader<U>>(rb: &ReaderBox<U>) -> bool {
+    rb.ty == TypeId::of::<Rd>()
 }
 
 const FAILED_BUILDING: usize = 1;
