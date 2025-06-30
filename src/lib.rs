@@ -29,7 +29,7 @@ use std::{
     collections::HashMap,
     fs,
     ops::Range,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{LazyLock, Mutex},
 };
 
@@ -230,7 +230,7 @@ impl TsParser {
                     if let Some(prop) = props.iter().find(|p| p.key.as_ref() == "injection.query")
                         && let Some(value) = prop.value.as_ref()
                     {
-                        match query_from_path(format!("{lang}/{value}"), lang_parts.1) {
+                        match query_from_path(&lang, value, lang_parts.1) {
                             Ok(injections) => lang_parts.2.injections = injections,
                             Err(err) => context::error!("{err}"),
                         }
@@ -910,10 +910,9 @@ fn lang_parts(lang: &str) -> Result<LangParts<'static>, Text> {
     } else {
         let language: &'static Language = Box::leak(Box::new(languages::get_language(lang)?));
 
-        let path = PathBuf::from(lang);
-        let highlights = query_from_path(path.join("highlights"), language).unwrap();
-        let indents = query_from_path(path.join("indents"), language).unwrap();
-        let injections = query_from_path(path.join("injections"), language).unwrap();
+        let highlights = query_from_path(lang, "highlights", language).unwrap();
+        let indents = query_from_path(lang, "indents", language).unwrap();
+        let injections = query_from_path(lang, "injections", language).unwrap();
 
         let queries = Queries { highlights, indents, injections };
 
