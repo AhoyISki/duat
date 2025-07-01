@@ -274,7 +274,8 @@ impl Printer {
         let Err(i) = list.binary_search_by_key(&lines.coords(), |(_, lines)| lines.coords()) else {
             unreachable!("Colliding Lines should have been removed already");
         };
-        list.insert(i, (id, Box::new(lines)))
+        
+        list.insert(i, (id, Box::new(lines)));
     }
 
     ////////// Querying functions

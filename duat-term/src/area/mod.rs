@@ -61,14 +61,10 @@ impl Coords {
     }
 
     pub fn intersects(&self, other: Self) -> bool {
-        let and_tl = self.tl.max(other.tl);
-        let and_br = self.br.min(other.br);
-        if and_tl.x > and_br.x || and_tl.y > and_br.y {
-            return false;
-        }
-
-        let and_coords = Coords::new(and_tl, and_br);
-        and_coords.width() > 0 && and_coords.height() > 0
+        self.tl.x < other.br.x
+            && self.br.x > other.tl.x
+            && self.tl.y > other.br.y
+            && self.br.y < other.tl.y
     }
 }
 
