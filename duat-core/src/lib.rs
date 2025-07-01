@@ -183,7 +183,7 @@
 //!         pa: &mut Pass,
 //!         bytes: RefBytes,
 //!         moment: Moment,
-//!         range_list: Option<&mut RangeList>,
+//!         range_list: Option<&mut Ranges>,
 //!     ) {
 //!         todo!();
 //!     }
@@ -255,7 +255,7 @@
 //!         pa: &mut Pass,
 //!         mut bytes: RefBytes,
 //!         moment: Moment,
-//!         _: Option<&mut RangeList>,
+//!         _: Option<&mut Ranges>,
 //!     ) {
 //!         let diff: i32 = moment
 //!             .changes()
@@ -285,7 +285,7 @@
 //! #         _: &mut Pass,
 //! #         _: RefBytes,
 //! #         _: Moment,
-//! #         _: Option<&mut RangeList>,
+//! #         _: Option<&mut Ranges>,
 //! #     ) {
 //! #         todo!();
 //! #     }
@@ -352,7 +352,7 @@
 //! #         pa: &mut Pass,
 //! #         bytes: RefBytes,
 //! #         moment: Moment,
-//! #         range_list: Option<&mut RangeList>,
+//! #         range_list: Option<&mut Ranges>,
 //! #     ) {
 //! #     }
 //! # }
@@ -411,7 +411,7 @@
 //! #         pa: &mut Pass,
 //! #         bytes: RefBytes,
 //! #         moment: Moment,
-//! #         range_list: Option<&mut RangeList>,
+//! #         range_list: Option<&mut Ranges>,
 //! #     ) {
 //! #
 //! #     }
@@ -475,7 +475,7 @@
 //!         pa: &mut Pass,
 //!         mut bytes: RefBytes,
 //!         moment: Moment,
-//!         _: Option<&mut RangeList>,
+//!         _: Option<&mut Ranges>,
 //!     ) {
 //!         let diff: i32 = moment
 //!             .changes()
@@ -662,6 +662,7 @@ use std::{
 
 #[allow(unused_imports)]
 use dirs_next::cache_dir;
+pub use main_thread_only::MainThreadOnly;
 
 use self::{
     data::Pass,
@@ -746,10 +747,11 @@ pub mod prelude {
         cmd,
         context::{self, FileHandle, Handle},
         data::{Pass, RwData},
-        file::{File, RangeList, Reader, ReaderBox, ReaderCfg, Readers},
+        file::{File, Reader, ReaderBox, ReaderCfg, Readers},
         form::{self, Form},
         hook,
         mode::{self, KeyCode, KeyEvent, KeyMod, Mode, key},
+        ranges::Ranges,
         text::{
             AlignCenter, AlignLeft, AlignRight, Conceal, Ghost, Matcheable, Moment, RefBytes,
             Spacer, Tagger, Text, TextParts, txt,
@@ -757,7 +759,267 @@ pub mod prelude {
         ui::{PushSpecs, RawArea, Ui, Widget, WidgetCfg},
     };
 }
-pub use main_thread_only::MainThreadOnly;
+
+mod ranges {
+    use std::ops::Range;
+
+    use gapbuf::{GapBuffer, gap_buffer};
+
+    use crate::{context, merging_range_by_guess_and_lazy_shift};
+
+    /// A list of non intersecting exclusive [`Range<usize>`]s
+    ///
+    /// The primary purpose of this struct is to serve [`Reader`]s by
+    /// telling Duat which ranges need to be updated. This lets Duat
+    /// minimize as much as possible the amount of work done to update
+    /// the [`Text`] when it changes in a [`File`].
+    ///
+    /// [`File`]: super::File
+    #[derive(Clone, Default, Debug)]
+    pub struct Ranges {
+        list: GapBuffer<Range<usize>>,
+        shift_state: (usize, i32),
+        min_len: usize,
+    }
+
+    impl Ranges {
+        /// Return a new instance of [`Ranges`]
+        ///
+        /// This assumes that `max` is the total "length" of the
+        /// element in use.
+        pub fn full(max: usize) -> Self {
+            Self {
+                list: gap_buffer![0..max],
+                ..Self::empty()
+            }
+        }
+
+        /// Returns a new empty [`Ranges`]
+        pub fn empty() -> Self {
+            Self {
+                list: GapBuffer::new(),
+                shift_state: (0, 0),
+                min_len: 0,
+            }
+        }
+
+        /// Sets a minimum length to keep [`Range`]s
+        pub fn set_min_len(&mut self, min: usize) {
+            self.min_len = min;
+
+            let mut i = 0;
+            self.list.retain(|range| {
+                i += 1;
+
+                if range.len() < self.min_len {
+                    if i - 1 < self.shift_state.0 {
+                        self.shift_state.0 -= 1;
+                    }
+                    false
+                } else {
+                    true
+                }
+            });
+        }
+
+        /// Adds a range to the list of [`Range<usize>`]s
+        ///
+        /// This range will be merged in with the others on the list,
+        /// so it may bridge gaps between ranges or for longer
+        /// ranges within, without allowing for the existance
+        /// of intersecting ranges.
+        pub fn add(&mut self, new: Range<usize>) {
+            let (shift_from, total_diff) = std::mem::take(&mut self.shift_state);
+            let m_range = merging_range_by_guess_and_lazy_shift(
+                (&self.list, self.list.len()),
+                (shift_from, [new.start, new.end]),
+                (shift_from, total_diff, 0, sh),
+                (|r| r.start, |r| r.end),
+            );
+
+            // The ranges in this region have not been callibrated yet.
+            if shift_from <= m_range.end {
+                for range in self.list.range_mut(shift_from..m_range.end).iter_mut() {
+                    range.start = sh(range.start, total_diff);
+                    range.end = sh(range.end, total_diff);
+                }
+            }
+
+            let added_range = {
+                let slice = self.list.range(m_range.clone());
+                let mut iter = slice.iter();
+
+                let first = iter.next().cloned().unwrap_or(new.clone());
+                let last = iter.next_back().cloned().unwrap_or(first.clone());
+
+                first.start.min(new.start)..last.end.max(new.end)
+            };
+
+            let shift_from = shift_from.saturating_sub(m_range.len()).max(m_range.start) + 1;
+            if shift_from < self.list.len() + 1 - m_range.len() {
+                self.shift_state = (shift_from, total_diff);
+            }
+
+            self.list.splice(m_range.clone(), [added_range]);
+        }
+
+        /// Removes a [`Range`] from the list, returning an
+        /// [`Iterator`] over the [`Range`]s that were taken
+        pub fn remove(
+            &mut self,
+            within: Range<usize>,
+        ) -> impl ExactSizeIterator<Item = Range<usize>> {
+            let (shift_from, total_diff) = std::mem::take(&mut self.shift_state);
+            let m_range = merging_range_by_guess_and_lazy_shift(
+                (&self.list, self.list.len()),
+                (shift_from, [within.start, within.end]),
+                (shift_from, total_diff, 0, sh),
+                (|r| r.start, |r| r.end),
+            );
+
+            // The ranges in this region have not been callibrated yet.
+            if shift_from <= m_range.end {
+                for range in self.list.range_mut(shift_from..m_range.end).iter_mut() {
+                    range.start = sh(range.start, total_diff);
+                    range.end = sh(range.end, total_diff);
+                }
+            }
+
+            let split_off = {
+                let slice = self.list.range(m_range.clone());
+
+                let first = slice.iter().next().cloned();
+                let last = slice.iter().next_back().cloned();
+
+                let split_start = first.filter(|f| f.start < within.start).map(|first| {
+                    self.list[m_range.start].start = within.start;
+                    first.start..within.start
+                });
+                let split_end = last.filter(|l| l.end > within.end).map(|last| {
+                    self.list[m_range.end - 1].end = within.end;
+                    within.end..last.end
+                });
+
+                let min_len = |range: &Range<usize>| range.len() >= self.min_len;
+
+                [split_start.filter(min_len), split_end.filter(min_len)]
+            };
+
+            let added = split_off.iter().flatten().count();
+
+            let shift_from = shift_from.saturating_sub(m_range.len()).max(m_range.start) + added;
+            if shift_from < self.list.len() + added - m_range.len() {
+                self.shift_state = (shift_from, total_diff);
+            }
+
+            self.list.splice(m_range, split_off.into_iter().flatten())
+        }
+
+        /// Applies the [`add`] function to another [`Ranges`]s
+        ///
+        /// [`add`]: Self::add
+        pub fn merge(&mut self, other: Self) {
+            for range in other.list {
+                self.add(range)
+            }
+        }
+
+        /// Shifts the [`Range<usize>`]s by a list of [`Change`]s
+        pub fn shift_by(&mut self, from: usize, diff: i32) {
+            let (shift_from, total_diff) = std::mem::take(&mut self.shift_state);
+
+            // The range of changes that will be drained
+            let m_range = merging_range_by_guess_and_lazy_shift(
+                (&self.list, self.list.len()),
+                (shift_from, [from, from + ((-diff.min(0)) as usize)]),
+                (shift_from, total_diff, 0, sh),
+                (|r| r.start, |r| r.end),
+            );
+
+            // If shift_from < m_range.end, I need to shift the changes between
+            // the two, so that they match the shifting of the changes
+            // before shift_from
+            if shift_from < m_range.end && total_diff != 0 {
+                for range in self.list.range_mut(shift_from..m_range.end).iter_mut() {
+                    range.start = sh(range.start, total_diff);
+                    range.end = sh(range.end, total_diff);
+                }
+            // If shift_from > m_range.end, There are now three
+            // shifted states among ranges: The ones
+            // before m_range.end, between m_range.end
+            // and shift_from, and after shift_from. I
+            // will update the second group so that it is
+            // shifted by shift + change. shift(), that
+            // way, it will be shifted like
+            // the first group.
+            } else if shift_from > m_range.end && diff != 0 {
+                for range in &mut self.list.range_mut(m_range.end..shift_from) {
+                    range.start = sh(range.start, diff);
+                    range.end = sh(range.end, diff);
+                }
+            }
+
+            let range_left = {
+                let slice = self.list.range(m_range.clone());
+                let mut iter = slice.iter();
+
+                iter.next().and_then(|first| {
+                    let last = iter.next_back().unwrap_or(first);
+                    let range = first.start.min(from)..sh(last.end, diff).max(from);
+
+                    (range.len() >= self.min_len).then_some(range)
+                })
+            };
+
+            let added = range_left.is_some() as usize;
+
+            let shift_from = shift_from.saturating_sub(m_range.len()).max(m_range.start) + added;
+            if shift_from < self.list.len() + added - m_range.len() {
+                self.shift_state = (shift_from, total_diff + diff);
+            }
+
+            self.list.splice(m_range.clone(), range_left);
+        }
+
+        /// Returns the number of [`Range<usize>`]s
+        pub fn len(&self) -> usize {
+            self.list.len()
+        }
+
+        /// Returns `true` if there are no [`Range<usize>`]s
+        pub fn is_empty(&self) -> bool {
+            self.list.is_empty()
+        }
+    }
+
+    impl IntoIterator for Ranges {
+        type IntoIter = IntoIter;
+        type Item = Range<usize>;
+
+        #[define_opaque(IntoIter)]
+        fn into_iter(self) -> Self::IntoIter {
+            let (shift_from, diff) = self.shift_state;
+
+            let mut i = 0;
+            self.list.into_iter().map(move |mut range| {
+                if i >= shift_from {
+                    range.start = sh(range.start, diff);
+                    range.end = sh(range.end, diff);
+                }
+                i += 1;
+
+                range
+            })
+        }
+    }
+
+    /// Shorthand to shift a [`usize`] by an [`i32`]
+    fn sh(n: usize, diff: i32) -> usize {
+        (n as i32 + diff) as usize
+    }
+
+    pub type IntoIter = impl ExactSizeIterator<Item = Range<usize>>;
+}
 
 mod main_thread_only {
     /// A container meant for access in only the main thread
@@ -901,7 +1163,7 @@ mod private_exports {
     }
 }
 
-////////// General utility functions
+////////// General utility
 
 /// Takes a type and generates an appropriate name for it
 ///
@@ -1058,14 +1320,10 @@ pub fn add_shifts(lhs: [i32; 3], rhs: [i32; 3]) -> [i32; 3] {
 /// This function essentially looks at a list of entries and with a
 /// starting shift position, shifts them by an amount, before
 /// comparing inside of the binary search.
-///
-/// By using this function, it is very possible to
-/// It is currently used in 2 places, in the `History` of [`Text`]s,
-/// and in the `Cursors` list.
 fn merging_range_by_guess_and_lazy_shift<T, U: Copy + Ord + std::fmt::Debug, V: Copy>(
     (container, len): (&impl std::ops::Index<usize, Output = T>, usize),
     (guess_i, [start, end]): (usize, [U; 2]),
-    (sh_from, shift, zero_shift, shift_fn): (usize, V, V, fn(U, V) -> U),
+    (shift_from, shift, zero_shift, shift_fn): (usize, V, V, fn(U, V) -> U),
     (start_fn, end_fn): (fn(&T) -> U, fn(&T) -> U),
 ) -> Range<usize> {
     fn binary_search_by_key_and_index<T, K>(
@@ -1098,12 +1356,12 @@ fn merging_range_by_guess_and_lazy_shift<T, U: Copy + Ord + std::fmt::Debug, V: 
         Err(left)
     }
 
-    let sh = |n: usize| if n >= sh_from { shift } else { zero_shift };
+    let sh = |n: usize| if n >= shift_from { shift } else { zero_shift };
     let start_of = |i: usize| shift_fn(start_fn(&container[i]), sh(i));
     let end_of = |i: usize| shift_fn(end_fn(&container[i]), sh(i));
     let search = |n: usize, t: &T| shift_fn(start_fn(t), sh(n));
 
-    let mut c_range = if let Some(prev_i) = guess_i.checked_sub(1)
+    let mut m_range = if let Some(prev_i) = guess_i.checked_sub(1)
         && (prev_i < len && start_of(prev_i) <= start && start <= end_of(prev_i))
     {
         prev_i..guess_i
@@ -1123,23 +1381,23 @@ fn merging_range_by_guess_and_lazy_shift<T, U: Copy + Ord + std::fmt::Debug, V: 
     };
 
     // On Cursors, the Cursors can intersect, so we need to check
-    while c_range.start > 0 && start <= end_of(c_range.start - 1) {
-        c_range.start -= 1;
+    while m_range.start > 0 && start <= end_of(m_range.start - 1) {
+        m_range.start -= 1;
     }
 
     // This block determines how far ahead this cursor will merge
-    if c_range.end < len && end >= start_of(c_range.end) {
-        c_range.end = match binary_search_by_key_and_index(container, len, end, search) {
+    if m_range.end < len && end >= start_of(m_range.end) {
+        m_range.end = match binary_search_by_key_and_index(container, len, end, search) {
             Ok(i) => i + 1,
             Err(i) => i,
         }
     }
 
-    while c_range.end + 1 < len && end >= start_of(c_range.end + 1) {
-        c_range.end += 1;
+    while m_range.end + 1 < len && end >= start_of(m_range.end + 1) {
+        m_range.end += 1;
     }
 
-    c_range
+    m_range
 }
 
 /// An entry for a file with the given name

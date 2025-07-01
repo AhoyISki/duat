@@ -21,7 +21,8 @@ use std::{
 use crate::{
     context,
     data::{Pass, RwData},
-    text::{AsRefBytes, Bytes, Change, Moment, RefBytes, Text, TextParts, txt},
+    prelude::Ranges,
+    text::{AsRefBytes, Bytes, Moment, RefBytes, Text, TextParts, txt},
     ui::Ui,
 };
 
@@ -65,7 +66,7 @@ pub trait Reader<U: Ui>: 'static {
         pa: &mut Pass,
         bytes: RefBytes,
         moment: Moment,
-        ranges_to_update: Option<&mut RangeList>,
+        ranges_to_update: Option<&mut Ranges>,
     ) {
     }
 
@@ -136,7 +137,7 @@ pub trait Reader<U: Ui>: 'static {
         &mut self,
         bytes: RefBytes,
         moment: Moment,
-        ranges_to_update: Option<&mut RangeList>,
+        ranges_to_update: Option<&mut Ranges>,
     ) where
         Self: Send,
     {
@@ -201,7 +202,7 @@ impl<U: Ui> InnerReaders<U> {
             return None;
         }
 
-        let position = self.0.acquire(pa).iter().position(type_equals::<U, Rd>);
+        let position = self.0.acquire(pa).iter().position(type_eq::<U, Rd>);
         if let Some(i) = position {
             let status = self.0.acquire_mut(pa)[i].status.take()?;
 
@@ -225,7 +226,7 @@ impl<U: Ui> InnerReaders<U> {
             return None;
         }
 
-        let position = self.0.acquire(pa).iter().position(type_equals::<U, Rd>);
+        let position = self.0.acquire(pa).iter().position(type_eq::<U, Rd>);
         if let Some(i) = position {
             let status = self.0.acquire_mut(pa)[i].status.take()?;
 
@@ -261,7 +262,7 @@ impl<U: Ui> InnerReaders<U> {
                     if sr.reader.make_remote() {
                         ms.latest_state += 1;
                         ms.sender.send(Some(moment)).unwrap();
-                        
+
                         let jh = thread::spawn(move || {
                             while let Some(moment) = sr.receiver.recv().unwrap() {
                                 apply_moment(&mut sr, moment);
@@ -311,20 +312,19 @@ impl<U: Ui> InnerReaders<U> {
         fn update<U: Ui>(
             text: &mut Text,
             reader: &mut dyn Reader<U>,
-            range_list: &mut RangeList,
+            range_list: &mut Ranges,
             readers: &mut [ReaderBox<U>],
             within: Range<usize>,
         ) {
-            let old_ranges = std::mem::replace(range_list, RangeList::empty());
+            let ranges = range_list.remove(within);
 
-            for range in old_ranges {
+            if ranges.len() == 0 {
                 let parts = text.parts();
-                let (within, split_off) = split_range_within(range.clone(), within.clone());
-
-                reader.update_range(parts, Readers(readers), within);
-
-                for range in split_off.into_iter().flatten() {
-                    range_list.add(range);
+                reader.update_range(parts, Readers(readers), None);
+            } else {
+                for range in ranges {
+                    let parts = text.parts();
+                    reader.update_range(parts, Readers(readers), Some(range));
                 }
             }
         }
@@ -419,115 +419,6 @@ fn apply_moment<U: Ui>(sr: &mut SendReader<U>, moment: Moment) {
     sr.state.fetch_add(1, Ordering::Relaxed);
 }
 
-/// A list of non intersecting exclusive [`Range<usize>`]s
-///
-/// The primary purpose of this struct is to serve [`Reader`]s by
-/// telling Duat which ranges need to be updated. This lets Duat
-/// minimize as much as possible the amount of work done to update the
-/// [`Text`] when it changes in a [`File`].
-///
-/// [`File`]: super::File
-#[derive(Clone)]
-pub struct RangeList(Vec<Range<usize>>);
-
-impl RangeList {
-    /// Return a new instance of [`RangeList`]
-    ///
-    /// By default, the whole [`Text`] should be updated.
-    pub fn new(max: usize) -> Self {
-        Self(vec![0..max])
-    }
-
-    /// Returns a new empty [`RangeList`]
-    pub fn empty() -> Self {
-        Self(Vec::new())
-    }
-
-    /// Adds a range to the list of [`Range<usize>`]s
-    ///
-    /// This range will be merged in with the others on the list, so
-    /// it may bridge gaps between ranges or for longer ranges within,
-    /// without allowing for the existance of intersecting ranges.
-    pub fn add(&mut self, range: Range<usize>) {
-        let (r_range, start) = match self.0.binary_search_by_key(&range.start, |r| r.start) {
-            // Same thing here
-            Ok(i) => (i..i + 1, range.start),
-            Err(i) => {
-                // This is if we intersect the added part
-                if let Some(older_i) = i.checked_sub(1)
-                    && range.start <= self.0[older_i].end
-                {
-                    (older_i..i, self.0[older_i].start)
-                // And here is if we intersect nothing on the
-                // start, no changes drained.
-                } else {
-                    (i..i, range.start)
-                }
-            }
-        };
-
-        let start_i = r_range.start;
-
-        // Otherwise search ahead for another change to be merged
-        let (r_range, end) = match self.0[start_i..].binary_search_by_key(&range.end, |r| r.start) {
-            Ok(i) => (r_range.start..start_i + i + 1, self.0[start_i + i].end),
-            Err(i) => match (start_i + i).checked_sub(1).and_then(|i| self.0.get(i)) {
-                Some(older) => (r_range.start..start_i + i, range.end.max(older.end)),
-                None => (r_range.start..start_i + i, range.end),
-            },
-        };
-
-        self.0.splice(r_range, [start..end]);
-    }
-
-    /// Applies the [`add`] function to a list of [`Range<usize>`]s
-    ///
-    /// [`add`]: Self::add
-    pub fn merge(&mut self, other: Self) {
-        for range in other.0 {
-            self.add(range)
-        }
-    }
-
-    /// Returns the number of [`Range<usize>`]s
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    /// Returns `true` if there are no [`Range<usize>`]s
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    /// Shifts the [`Range<usize>`]s by a list of [`Change`]s
-    fn shift_by_changes<'a>(&mut self, changes: impl Iterator<Item = Change<&'a str>>) {
-        let mut bounds = {
-            let iter = self.0.iter_mut().flat_map(|r| [&mut r.start, &mut r.end]);
-            iter.peekable()
-        };
-        let mut shift = 0;
-
-        for change in changes {
-            while let Some(bound) = bounds.next_if(|b| **b < change.start().byte()) {
-                *bound = (*bound as i32 + shift) as usize;
-            }
-            shift += change.added_end().byte() as i32 - change.taken_end().byte() as i32;
-        }
-        for bound in bounds {
-            *bound = (*bound as i32 + shift) as usize
-        }
-    }
-}
-
-impl IntoIterator for RangeList {
-    type IntoIter = std::vec::IntoIter<Range<usize>>;
-    type Item = Range<usize>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
 /// A container for a [`Reader`]
 ///
 /// This struct should be created inside of the [`ReaderCfg::init`]
@@ -563,7 +454,7 @@ impl<U: Ui> ReaderBox<U> {
             status: Some(ReaderStatus::Local(LocalReader {
                 reader: Box::new(reader),
                 bytes: bytes.clone(),
-                range_list: RangeList::new(bytes.len().byte()),
+                range_list: Ranges::full(bytes.len().byte()),
             })),
             ty: TypeId::of::<Rd>(),
         }
@@ -585,7 +476,7 @@ impl<U: Ui> ReaderBox<U> {
                 reader: Box::new(reader),
                 bytes: bytes.clone(),
                 receiver,
-                range_list: RangeList::new(bytes.len().byte()),
+                range_list: Ranges::full(bytes.len().byte()),
                 state,
             })),
             ty: TypeId::of::<Rd>(),
@@ -624,7 +515,7 @@ impl<U: Ui> ReaderBox<U> {
                     });
                     status.store(SUCCEEDED_BUILDING, Ordering::Relaxed);
 
-                    let range_list = RangeList::new(bytes.len().byte());
+                    let range_list = Ranges::full(bytes.len().byte());
 
                     let mut sr = SendReader {
                         reader,
@@ -667,14 +558,14 @@ struct MomentSender {
 struct LocalReader<U: Ui> {
     reader: Box<dyn Reader<U>>,
     bytes: Bytes,
-    range_list: RangeList,
+    range_list: Ranges,
 }
 
 struct SendReader<U: Ui> {
     reader: Box<dyn Reader<U> + Send>,
     bytes: Bytes,
     receiver: mpsc::Receiver<Option<Moment>>,
-    range_list: RangeList,
+    range_list: Ranges,
     state: Arc<AtomicUsize>,
 }
 
@@ -836,48 +727,29 @@ fn status_from_try_read<Rd: Reader<U>, Ret, U: Ui>(
     (status, ret)
 }
 
-/// Splits a range within a region
-///
-/// The first return is the part of `within` that must be updated.
-/// The second return is what is left of `range`.
-///
-/// If `range` is fully inside `within`, remove `range`;
-/// If `within` is fully inside `range`, split `range` in 2;
-/// If `within` intersects `range` in one side, cut it out;
-fn split_range_within(
-    range: Range<usize>,
-    within: Range<usize>,
-) -> (Option<Range<usize>>, [Option<Range<usize>>; 2]) {
-    if range.start >= within.end || within.start >= range.end {
-        (None, [Some(range), None])
-    } else {
-        let start_range = (within.start > range.start).then_some(range.start..within.start);
-        let end_range = (range.end > within.end).then_some(within.end..range.end);
-        let split_ranges = [start_range, end_range];
-        let range_to_check = range.start.max(within.start)..(range.end.min(within.end));
-        (Some(range_to_check), split_ranges)
-    }
-}
-
-/// Decides wether a [`RangeList`] should be used or not
+/// Decides wether a [`Ranges`] should be used or not
 fn get_range_list<'a>(
-    ranges_to_update: &'a mut RangeList,
+    range_list: &'a mut Ranges,
     bytes: &RefBytes<'_>,
     moment: Moment,
-) -> Option<&'a mut RangeList> {
+) -> Option<&'a mut Ranges> {
     const FOLDING_COULD_UPDATE_A_LOT: usize = 1_000_000;
     const MAX_CHANGES_TO_CONSIDER: usize = 100;
 
     if moment.len() <= MAX_CHANGES_TO_CONSIDER || bytes.len().byte() >= FOLDING_COULD_UPDATE_A_LOT {
-        ranges_to_update.shift_by_changes(moment.changes());
-        Some(ranges_to_update)
+        for change in moment.changes() {
+            let diff = change.added_end().byte() as i32 - change.taken_end().byte() as i32;
+            range_list.shift_by(change.start().byte(), diff);
+        }
+
+        Some(range_list)
     } else {
-        *ranges_to_update = RangeList::new(bytes.len().byte());
+        *range_list = Ranges::full(bytes.len().byte());
         None
     }
 }
 
-fn type_equals<U: Ui, Rd: Reader<U>>(rb: &ReaderBox<U>) -> bool {
+fn type_eq<U: Ui, Rd: Reader<U>>(rb: &ReaderBox<U>) -> bool {
     rb.ty == TypeId::of::<Rd>()
 }
 

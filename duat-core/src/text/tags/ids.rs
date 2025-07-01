@@ -149,36 +149,36 @@ impl std::iter::Step for Tagger {
 /// [removed]: crate::text::Text::remove_tags
 pub trait Taggers: std::fmt::Debug + Clone + PartialEq + Eq {
     /// Whether this range contains a given [`Tagger`]
-    fn contains_tagger(self, tagger: Tagger) -> bool;
+    fn contains_tagger(&self, tagger: Tagger) -> bool;
 }
 
 impl Taggers for Tagger {
-    fn contains_tagger(self, tagger: Tagger) -> bool {
-        self == tagger
+    fn contains_tagger(&self, tagger: Tagger) -> bool {
+        *self == tagger
     }
 }
 
 impl Taggers for Range<Tagger> {
     /// Whether this range contains a given [`Tagger`]
-    fn contains_tagger(self, tagger: Tagger) -> bool {
+    fn contains_tagger(&self, tagger: Tagger) -> bool {
         tagger >= self.start && self.end > tagger
     }
 }
 
 impl Taggers for &[Tagger] {
-    fn contains_tagger(self, tagger: Tagger) -> bool {
+    fn contains_tagger(&self, tagger: Tagger) -> bool {
         self.contains(&tagger)
     }
 }
 
 impl Taggers for &[Range<Tagger>] {
-    fn contains_tagger(self, tagger: Tagger) -> bool {
+    fn contains_tagger(&self, tagger: Tagger) -> bool {
         self.iter().any(|r| r.contains(&tagger))
     }
 }
 
 impl<const N: usize> Taggers for [Tagger; N] {
-    fn contains_tagger(self, tagger: Tagger) -> bool {
+    fn contains_tagger(&self, tagger: Tagger) -> bool {
         self.contains(&tagger)
     }
 }

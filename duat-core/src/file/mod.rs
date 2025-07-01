@@ -14,7 +14,7 @@
 use std::{fs, marker::PhantomData, path::PathBuf};
 
 use self::reader::InnerReaders;
-pub use self::reader::{RangeList, Reader, ReaderBox, ReaderCfg, Readers};
+pub use self::reader::{Reader, ReaderBox, ReaderCfg, Readers};
 use crate::{
     cfg::PrintCfg,
     context::{self, FileHandle, Handle, load_cache},

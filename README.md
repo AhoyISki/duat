@@ -30,7 +30,7 @@ welcome 🥰.
 To install Duat, I am assuming that you have `cargo` installed on
 your system, if you don’t, [install it][__link0]. Additionally, you’re
 going to need the nightly toolchain installed, since Duat requires
-many nightly features
+many nightly features:
 
 ```bash
 rustup install nightly
@@ -309,7 +309,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG098Iqh46FLTG-e7py1aLQbyG1v6xCbBzoHhG8gBAY2qSFl0YXKEG9oyrw-V8ITkG7_528M_t56GG40x_T8K2SUzG-cS3CWryu1RYWSBgmRkdWF0ZTAuNS4z
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG098Iqh46FLTG-e7py1aLQbyG1v6xCbBzoHhG8gBAY2qSFl0YXKEG7yGQk6Xvxq-G4pj-3K9NycJG8dYqrKeuMoXG-IWZnjez3GtYWSBgmRkdWF0ZTAuNS4z
  [__link0]: https://www.rust-lang.org/tools/install
  [__link1]: https://docs.rs/duat/0.5.3/duat/?search=prelude::plug
  [__link10]: https://docs.rs/duat/0.5.3/duat/?search=prelude::mode_name

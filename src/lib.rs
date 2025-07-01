@@ -26,7 +26,7 @@
 //! To install Duat, I am assuming that you have `cargo` installed on
 //! your system, if you don't, [install it]. Additionally, you're
 //! going to need the nightly toolchain installed, since Duat requires
-//! many nightly features
+//! many nightly features:
 //!
 //! ```bash
 //! rustup install nightly

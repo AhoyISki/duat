@@ -405,7 +405,7 @@ impl<'a> Change<&'a str> {
     }
 }
 
-impl<S: AsRef<str>> Change<S> {
+impl<S: std::borrow::Borrow<str>> Change<S> {
     /// Returns a reversed version of this [`Change`]
     pub fn reverse(self) -> Change<S> {
         Change {
@@ -451,12 +451,12 @@ impl<S: AsRef<str>> Change<S> {
 
     /// The text that was taken on this [`Change`]
     pub fn added_str(&self) -> &str {
-        self.added.as_ref()
+        self.added.borrow()
     }
 
     /// The text that was added by this [`Change`]
     pub fn taken_str(&self) -> &str {
-        self.taken.as_ref()
+        self.taken.borrow()
     }
 
     /// The total shift caused by this [`Change`]
