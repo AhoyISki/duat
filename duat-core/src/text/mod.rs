@@ -672,36 +672,8 @@ impl Text {
 
     /// Adds the tags for all the selections, used after they are
     /// expected to have moved
-    pub(crate) fn remove_selections(&mut self, area: &impl RawArea, cfg: PrintCfg) {
-        let within = (self.0.selections.len() >= 500).then(|| {
-            let (start, _) = area.start_points(self, cfg);
-            let (end, _) = area.end_points(self, cfg);
-            (start, end)
-        });
-
-        let mut remove_selection = |selection: &Selection| {
-            let (caret, selection) = selection.tag_points(&self.0.bytes);
-            let points = [caret]
-                .into_iter()
-                .chain(selection.into_iter().flatten().find(|p| *p != caret));
-            for p in points {
-                let range = p.to_range(self.0.bytes.len().byte());
-                self.0.tags.remove_from(Tagger::for_selections(), range);
-            }
-        };
-
-        if let Some((start, end)) = within {
-            for (selection, _) in self.0.selections.iter() {
-                let range = selection.range(&self.0.bytes);
-                if range.end > start.byte() && range.start < end.byte() {
-                    remove_selection(selection);
-                }
-            }
-        } else {
-            for (selection, _) in self.0.selections.iter() {
-                remove_selection(selection);
-            }
-        }
+    pub(crate) fn remove_selections(&mut self) {
+        self.remove_tags(Tagger::for_selections(), ..);
     }
 
     /////////// Iterator methods

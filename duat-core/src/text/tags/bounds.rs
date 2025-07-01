@@ -1,6 +1,7 @@
 use std::{cell::Cell, ops::Range};
 
-use super::{ids::RangeId, sh};
+use self::id::RangeId;
+use super::sh;
 use crate::{ranges::Ranges, text::RawTag};
 
 /// How many [`TagOrSkip`]s to keep a [`RawTag`] range
@@ -9,11 +10,6 @@ use crate::{ranges::Ranges, text::RawTag};
 /// [`Tag`]s, and a low limit means that iteration will go back very
 /// few [`TagOrSkip`]s
 const MIN_FOR_RANGE: usize = 16;
-/// How many [`RawTag`] ranges until their minimum size is increased
-const LIMIT_TO_BUMP: usize = 128;
-/// How much to increase the minimum when enough [`RawTag`] ranges
-/// exist
-const BUMP_AMOUNT: usize = 16;
 
 /// A struct to keep better track of very long [`RawTag`] ranges
 #[derive(Debug, Clone)]
@@ -41,11 +37,11 @@ impl Bounds {
     /// Inserts a new bound to the list
     pub fn insert(&mut self, final_buf_len: usize, [s, e]: [(usize, [usize; 2], RawTag); 2]) {
         /// Declares tha the given index is shifted
-        fn declare_shifted(bounds: &mut Bounds, i: usize) {
+        fn declare_shifted(bounds: &mut Bounds, ins: usize) {
             bounds.shift_state.set({
-                if i + 1 < bounds.list.len() {
-                    let (sh_from, diff) = bounds.shift_state.get();
-                    (sh_from + 1, diff)
+                if ins + 1 < bounds.list.len() {
+                    let (shift_from, diff) = bounds.shift_state.get();
+                    (shift_from + 1, diff)
                 } else {
                     (0, [0; 2])
                 }
@@ -84,11 +80,13 @@ impl Bounds {
             return;
         };
 
-        let [(s_bound, s_tag), (e_bound, e_tag)] = [s, e];
+        if e_i >= s_i + self.min_len {
+            let [(s_bound, s_tag), (e_bound, e_tag)] = [s, e];
 
-        let id = RangeId::new();
-        self.list.insert(s_i, (Cell::new(s_bound), s_tag, id));
-        self.list.insert(e_i, (Cell::new(e_bound), e_tag, id));
+            let id = RangeId::new();
+            self.list.insert(s_i, (Cell::new(s_bound), s_tag, id));
+            self.list.insert(e_i, (Cell::new(e_bound), e_tag, id));
+        }
     }
 
     /// Shifts the bounds within by a difference in a position,
@@ -105,8 +103,8 @@ impl Bounds {
 
         let (mut shift_from, [mut total_n_diff, mut total_b_diff]) = self.shift_state.take();
 
-        let i = if let Some((first_unshifted, ..)) = self.list.get(shift_from) {
-            let mut bounds_ins = shift_from;
+        let ins = if let Some((first_unshifted, ..)) = self.list.get(shift_from) {
+            let mut ins = shift_from;
             let [unshifted_n, _] = first_unshifted.get();
             // cur_n is the first bound that has not been shifted, so we need to
             // take that into consideration.
@@ -117,7 +115,7 @@ impl Bounds {
                     && n >= from
                 {
                     bound.set([sh(n, n_diff), sh(b, b_diff)]);
-                    bounds_ins -= 1;
+                    ins -= 1;
                 }
             } else {
                 let mut iter = self.list[shift_from..].iter();
@@ -128,7 +126,7 @@ impl Bounds {
                     && sh(n, total_n_diff) < from
                 {
                     bound.set([sh(n, total_n_diff), sh(b, total_b_diff)]);
-                    bounds_ins += 1;
+                    ins += 1;
                     shift_from += 1;
                 }
             }
@@ -136,7 +134,7 @@ impl Bounds {
             total_n_diff += n_diff;
             total_b_diff += b_diff;
 
-            bounds_ins
+            ins
         } else {
             0
         };
@@ -146,7 +144,7 @@ impl Bounds {
                 .set((shift_from, [total_n_diff, total_b_diff]));
         }
 
-        i
+        ins
     }
 
     /// Finishes shifting
@@ -166,19 +164,19 @@ impl Bounds {
     pub fn remove_intersecting(
         &mut self,
         range: Range<usize>,
-        f: impl Fn(&RawTag) -> bool,
+        filter: impl Fn(&RawTag) -> bool,
     ) -> Vec<[usize; 2]> {
         fn extract(
-            sh_from: &mut usize,
+            shift_from: &mut usize,
             [n_diff, b_diff]: [i32; 2],
             f: impl Fn(usize, usize, &Cell<[usize; 2]>, &RawTag, &RangeId) -> bool,
         ) -> impl FnMut(&mut (Cell<[usize; 2]>, RawTag, RangeId)) -> bool {
             let mut i = 0;
             move |(bound, tag, id)| {
                 let [n, b] = bound.get();
-                if f(i, *sh_from, bound, tag, id) {
-                    if i < *sh_from {
-                        *sh_from -= 1;
+                if f(i, *shift_from, bound, tag, id) {
+                    if i < *shift_from {
+                        *shift_from -= 1;
                     } else {
                         *bound.get_mut() = [sh(n, n_diff), sh(b, b_diff)];
                     }
@@ -197,7 +195,7 @@ impl Bounds {
 
         let is_contained = extract(&mut shift_from, diff, |i, shift_from, bound, tag, _| {
             let diff = if i < shift_from { 0 } else { diff[1] };
-            range.clone().contains(&sh(bound.get()[1], diff)) && f(tag)
+            range.clone().contains(&sh(bound.get()[1], diff)) && filter(tag)
         });
         let removed: Vec<_> = self.list.extract_if(.., is_contained).collect();
 
@@ -263,7 +261,15 @@ impl Bounds {
         }
     }
 
+    /// Removes ranges that are too small to be kept
     pub fn cull_small_ranges(&mut self) {
+        /// How many [`RawTag`] ranges until their minimum size is
+        /// increased
+        const LIMIT_TO_BUMP: usize = 128;
+        /// How much to increase the minimum when enough [`RawTag`]
+        /// ranges exist
+        const BUMP_AMOUNT: usize = 16;
+
         while self.list.len() >= LIMIT_TO_BUMP * 2 {
             let mut bounds_to_remove = Vec::new();
             self.min_len += BUMP_AMOUNT;
@@ -356,6 +362,22 @@ impl std::fmt::Debug for DebugBounds<'_> {
             writeln!(f, "{:#?}", self.0.bounds.ranges_to_update)
         } else {
             write!(f, "{:?}", self.0.bounds)
+        }
+    }
+}
+
+mod id {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct RangeId(usize);
+
+    impl RangeId {
+        /// Creates a new [`RangeId`]
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            static RANGE_COUNT: AtomicUsize = AtomicUsize::new(0);
+            Self(RANGE_COUNT.fetch_add(1, Ordering::Relaxed))
         }
     }
 }

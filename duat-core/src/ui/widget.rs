@@ -51,7 +51,7 @@ use std::{any::TypeId, cell::Cell, rc::Rc};
 
 use crate::{
     cfg::PrintCfg,
-    context::{self, FileHandle, FileParts, Handle},
+    context::{FileHandle, FileParts, Handle},
     data::{Pass, RwData},
     file::File,
     form::{self, Painter},
@@ -616,9 +616,7 @@ impl<U: Ui> Node<U> {
 
         (self.print)(self, pa);
 
-        let mut widget = self.widget.acquire_mut(pa);
-        let cfg = widget.print_cfg();
-        widget.text_mut().remove_selections(&self.area, cfg);
+        self.widget.acquire_mut(pa).text_mut().remove_selections();
     }
 
     /// What to do when focusing
@@ -634,9 +632,6 @@ impl<U: Ui> Node<U> {
 
     /// Static dispatch inner update function
     fn update_fn<W: Widget<U>>(&self, pa: &mut Pass) {
-        if !["Notifications", "LogBook"].contains(&crate::duat_name::<W>()) {
-            context::debug!("building {}", crate::duat_name::<W>());
-        }
         let widget = self.widget.try_downcast::<W>().unwrap();
         let handle = Handle::from_parts(widget, self.area.clone(), self.mask.clone());
         Widget::update(pa, handle);

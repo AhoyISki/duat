@@ -12,10 +12,7 @@ use std::{ops::Range, sync::Arc};
 use RawTag::*;
 use crossterm::event::MouseEventKind;
 
-use super::{
-    Tagger,
-    ids::{GhostId, ToggleId},
-};
+use super::{GhostId, Tagger, ToggleId};
 use crate::{
     form::FormId,
     text::{Point, Text, TextRange},
@@ -324,15 +321,23 @@ impl PartialEq for RawTag {
             }
             (Self::MainCaret(l_tagger), Self::MainCaret(r_tagger)) => l_tagger == r_tagger,
             (Self::ExtraCaret(l_tagger), Self::ExtraCaret(r_tagger)) => l_tagger == r_tagger,
-            (Self::StartAlignCenter(l_tagger), Self::StartAlignCenter(r_tagger)) => l_tagger == r_tagger,
-            (Self::EndAlignCenter(l_tagger), Self::EndAlignCenter(r_tagger)) => l_tagger == r_tagger,
-            (Self::StartAlignRight(l_tagger), Self::StartAlignRight(r_tagger)) => l_tagger == r_tagger,
+            (Self::StartAlignCenter(l_tagger), Self::StartAlignCenter(r_tagger)) => {
+                l_tagger == r_tagger
+            }
+            (Self::EndAlignCenter(l_tagger), Self::EndAlignCenter(r_tagger)) => {
+                l_tagger == r_tagger
+            }
+            (Self::StartAlignRight(l_tagger), Self::StartAlignRight(r_tagger)) => {
+                l_tagger == r_tagger
+            }
             (Self::EndAlignRight(l_tagger), Self::EndAlignRight(r_tagger)) => l_tagger == r_tagger,
             (Self::Spacer(l_tagger), Self::Spacer(r_tagger)) => l_tagger == r_tagger,
             (Self::StartConceal(l_tagger), Self::StartConceal(r_tagger)) => l_tagger == r_tagger,
             (Self::EndConceal(l_tagger), Self::EndConceal(r_tagger)) => l_tagger == r_tagger,
             (Self::ConcealUntil(l_tagger), Self::ConcealUntil(r_tagger)) => l_tagger == r_tagger,
-            (Self::Ghost(l_tagger, l_id), Self::Ghost(r_tagger, r_id)) => l_tagger == r_tagger && l_id == r_id,
+            (Self::Ghost(l_tagger, l_id), Self::Ghost(r_tagger, r_id)) => {
+                l_tagger == r_tagger && l_id == r_id
+            }
             (Self::StartToggle(l_tagger, l_id), Self::StartToggle(r_tagger, r_id)) => {
                 l_tagger == r_tagger && l_id == r_id
             }

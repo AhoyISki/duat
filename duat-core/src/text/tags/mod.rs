@@ -6,7 +6,7 @@
 //! as well as [`TagRange`]s to keep track of tags occupying very long
 //! ranges of [`Text`].
 mod bounds;
-mod ids;
+mod taggers;
 mod types;
 
 use std::{
@@ -15,11 +15,15 @@ use std::{
 };
 
 use gapbuf::{GapBuffer, gap_buffer};
-use types::TagId;
 
-use self::types::Toggle;
+use self::{
+    bounds::Bounds,
+    taggers::TaggerExtents,
+    types::{TagId, Toggle},
+};
 pub use self::{
-    ids::{GhostId, Tagger, Taggers, ToggleId},
+    ids::*,
+    taggers::{Tagger, Taggers},
     types::{
         AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCaret, FormTag, Ghost, MainCaret,
         RawTag::{self, *},
@@ -27,7 +31,7 @@ pub use self::{
     },
 };
 use super::{Point, Text, TextRangeOrPoint, records::Records};
-use crate::{get_ends, text::tags::bounds::Bounds};
+use crate::get_ends;
 
 /// A public interface for mutating the [`Tag`]s of a [`Text`]
 ///
@@ -103,6 +107,7 @@ pub struct Tags {
     toggles: Vec<(ToggleId, Toggle)>,
     records: Records<[usize; 2]>,
     bounds: Bounds,
+    extents: TaggerExtents,
 }
 
 impl Tags {
@@ -118,6 +123,7 @@ impl Tags {
             toggles: Vec::new(),
             records: Records::with_max([(len != 0) as usize, len]),
             bounds: Bounds::new(),
+            extents: TaggerExtents::default(),
         }
     }
 
@@ -128,6 +134,7 @@ impl Tags {
         self.toggles.clear();
         self.records.clear();
         self.bounds = Bounds::new();
+        self.extents = TaggerExtents::default();
     }
 
     /// Insert a new [`Tag`] at a given byte
@@ -191,6 +198,8 @@ impl Tags {
                 tags.bounds
                     .shift_by(tags.buf.len(), ins, [n_diff as i32, 0]);
             }
+
+            tags.extents.insert(s_tag.tagger(), s_at);
 
             true
         }
@@ -313,9 +322,20 @@ impl Tags {
     pub fn remove_from(&mut self, taggers: impl Taggers, within: impl RangeBounds<usize>) {
         let (start, end) = crate::get_ends(within, self.len_bytes());
 
+        for range in self
+            .extents
+            .remove_range(start..end, |tagger| taggers.contains_tagger(tagger))
+        {
+            self.remove_from_range(&taggers, range);
+        }
+    }
+
+    fn remove_from_range(&mut self, taggers: &impl Taggers, range: Range<usize>) {
+        //crate::context::debug!("removing from {range:?}");
+        let (start, end) = (range.start, range.end);
         // It is best to do this first, so getting skips returns correct
         // entries.
-        self.bounds.remove_intersecting(start..end, |tag| {
+        self.remove_intersections(start..end, |tag| {
             taggers.clone().contains_tagger(tag.tagger())
         });
 
@@ -388,6 +408,20 @@ impl Tags {
         }
     }
 
+    /// Removes bounds from a given [`Range`], given a predicate
+    #[track_caller]
+    fn remove_intersections(&mut self, range: Range<usize>, filter: impl Fn(&RawTag) -> bool) {
+        let removed = self.bounds.remove_intersecting(range, filter);
+
+        for [n, b] in removed.into_iter().rev() {
+            // We remove both bounds in order to prevent a state of dangling
+            // bounds, which would cause a lookback or lookahead over the whole
+            // Text.
+            let ([rm_n, _], n_diff) = self.remove(n, b);
+            self.bounds.shift_by(self.buf.len(), rm_n, [n_diff, 0]);
+        }
+    }
+
     /// Removes a specific [`RawTag`] in the [`GapBuffer`]
     ///
     /// The `n` index MUST point to a [`TagOrSkip::Tag`], you should
@@ -397,6 +431,7 @@ impl Tags {
     /// will NOT handle shifting bounds, however, will return info
     /// useful for doing that.
     #[must_use]
+    #[track_caller]
     fn remove(&mut self, n: usize, b: usize) -> ([usize; 2], i32) {
         let TagOrSkip::Tag(_) = self.buf.remove(n) else {
             unreachable!("You are only supposed to remove Tags like this, not skips")
@@ -450,8 +485,8 @@ impl Tags {
             // range.
             // old.start + 1 because we don't want to get rid of bounds that
             // merely coincide with the edges.
-            self.bounds
-                .remove_intersecting(old.start + 1..old.end, |_| true);
+            self.remove_intersections(old.start + 1..old.end, |_| true);
+            self.extents.remove_range(old.start..old.end, |_| true);
 
             let [s_n, s_b, s_skip] = self.skip_at(old.start);
 
@@ -571,6 +606,8 @@ impl Tags {
                     .shift_by(self.buf.len(), s_n, [1, added_b as i32]);
             }
         }
+
+        self.extents.shift_by(s_b, new.len() as i32 - old.len() as i32);
     }
 
     fn handle_removed_tag(
@@ -876,11 +913,6 @@ impl TagOrSkip {
     }
 }
 
-enum TaggerExtent {
-    Sparse(Tagger, Vec<usize>),
-    Rampant(Tagger)
-}
-
 /// Forward iterator over a range in the [`GapBuffer`]
 #[track_caller]
 fn fwd_range(
@@ -1080,4 +1112,48 @@ type Entry = (usize, usize, RawTag);
 /// Shorthand to shift a [`usize`] by an [`i32`]
 fn sh(n: usize, diff: i32) -> usize {
     (n as i32 + diff) as usize
+}
+
+mod ids {
+    use std::sync::atomic::{AtomicU16, Ordering};
+
+    /// The id of a [ghost text]
+    ///
+    /// [ghost text]: super::Ghost
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct GhostId(u16);
+
+    impl GhostId {
+        /// Creates a new [`GhostId`]
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            static TEXT_COUNT: AtomicU16 = AtomicU16::new(0);
+            Self(TEXT_COUNT.fetch_add(1, Ordering::Relaxed))
+        }
+    }
+
+    impl std::fmt::Debug for GhostId {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "GhostId({})", self.0)
+        }
+    }
+
+    /// The id of a toggleable
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct ToggleId(u16);
+
+    impl ToggleId {
+        /// Creates a new [`ToggleId`]
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            static TOGGLE_COUNT: AtomicU16 = AtomicU16::new(0);
+            Self(TOGGLE_COUNT.fetch_add(1, Ordering::Relaxed))
+        }
+    }
+
+    impl std::fmt::Debug for ToggleId {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "ToggleId({})", self.0)
+        }
+    }
 }

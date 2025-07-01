@@ -765,7 +765,7 @@ mod ranges {
 
     use gapbuf::{GapBuffer, gap_buffer};
 
-    use crate::{context, merging_range_by_guess_and_lazy_shift};
+    use crate::merging_range_by_guess_and_lazy_shift;
 
     /// A list of non intersecting exclusive [`Range<usize>`]s
     ///
