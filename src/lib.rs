@@ -717,7 +717,7 @@ impl<U: Ui> Reader<U> for TsParser {
         _: &mut Pass,
         bytes: RefBytes,
         moment: text::Moment,
-        ranges_to_update: Option<&mut file::RangeList>,
+        ranges_to_update: Option<&mut Ranges>,
     ) where
         Self: Sized,
     {
@@ -728,9 +728,9 @@ impl<U: Ui> Reader<U> for TsParser {
         &mut self,
         mut bytes: RefBytes,
         moment: Moment,
-        ranges_to_update: Option<&mut RangeList>,
+        ranges_to_update: Option<&mut Ranges>,
     ) {
-        fn merge_tree_changed_ranges(parser: &TsParser, list: &mut file::RangeList) {
+        fn merge_tree_changed_ranges(parser: &TsParser, list: &mut Ranges) {
             if let Some(old_tree) = parser.old_tree.as_ref() {
                 for range in parser.tree.changed_ranges(old_tree) {
                     let range = range.start_byte..range.end_byte;
@@ -764,9 +764,14 @@ impl<U: Ui> Reader<U> for TsParser {
         }
     }
 
-    fn update_range(&mut self, mut parts: TextParts, _: Readers<U>, within: Option<Range<usize>>) {
+    fn make_remote(&self) -> bool {
+        self.tree.root_node().is_error()
+    }
+
+    fn update_range(&mut self, mut parts: FileParts<U>, within: Option<Range<Point>>) {
         if let Some(within) = within {
-            self.highlight_and_inject(&mut parts.bytes, &mut parts.tags, within);
+            let range = within.start.byte()..within.end.byte();
+            self.highlight_and_inject(&mut parts.bytes, &mut parts.tags, range);
         }
     }
 }
@@ -808,7 +813,7 @@ impl<U: Ui> file::ReaderCfg<U> for TsParserCfg {
 
             let reader = TsParser::init(&mut bytes, 0..len.byte(), offset, lang_parts, form_parts);
 
-            Ok(ReaderBox::new_local(bytes, reader))
+            Ok(ReaderBox::new_send(bytes, reader))
         } else {
             Ok(ReaderBox::new_remote(bytes, move |mut bytes| {
                 let lang_parts = lang_parts(&self.filetype)?;
@@ -944,7 +949,7 @@ struct Queries<'a> {
 
 /// The Key for tree-sitter
 fn ts_tagger() -> Tagger {
-    static KEY: LazyLock<Tagger> = LazyLock::new(Tagger::new);
+    static KEY: LazyLock<Tagger> = Tagger::new_static();
     *KEY
 }
 
