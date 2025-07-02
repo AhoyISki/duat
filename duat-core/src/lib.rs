@@ -868,7 +868,7 @@ mod ranges {
         pub fn remove(
             &mut self,
             within: Range<usize>,
-        ) -> impl ExactSizeIterator<Item = Range<usize>> {
+        ) -> impl ExactSizeIterator<Item = Range<usize>> + '_ {
             let (shift_from, total_diff) = std::mem::take(&mut self.shift_state);
             let m_range = merging_range_by_guess_and_lazy_shift(
                 (&self.list, self.list.len()),
@@ -1326,36 +1326,6 @@ fn merging_range_by_guess_and_lazy_shift<T, U: Copy + Ord + std::fmt::Debug, V: 
     (shift_from, shift, zero_shift, shift_fn): (usize, V, V, fn(U, V) -> U),
     (start_fn, end_fn): (fn(&T) -> U, fn(&T) -> U),
 ) -> Range<usize> {
-    fn binary_search_by_key_and_index<T, K>(
-        container: &(impl std::ops::Index<usize, Output = T> + ?Sized),
-        len: usize,
-        key: K,
-        f: impl Fn(usize, &T) -> K,
-    ) -> std::result::Result<usize, usize>
-    where
-        K: PartialEq + Eq + PartialOrd + Ord,
-    {
-        let mut size = len;
-        let mut left = 0;
-        let mut right = size;
-
-        while left < right {
-            let mid = left + size / 2;
-
-            let k = f(mid, &container[mid]);
-
-            match k.cmp(&key) {
-                std::cmp::Ordering::Less => left = mid + 1,
-                std::cmp::Ordering::Equal => return Ok(mid),
-                std::cmp::Ordering::Greater => right = mid,
-            }
-
-            size = right - left;
-        }
-
-        Err(left)
-    }
-
     let sh = |n: usize| if n >= shift_from { shift } else { zero_shift };
     let start_of = |i: usize| shift_fn(start_fn(&container[i]), sh(i));
     let end_of = |i: usize| shift_fn(end_fn(&container[i]), sh(i));
@@ -1398,6 +1368,36 @@ fn merging_range_by_guess_and_lazy_shift<T, U: Copy + Ord + std::fmt::Debug, V: 
     }
 
     m_range
+}
+
+fn binary_search_by_key_and_index<T, K>(
+    container: &(impl std::ops::Index<usize, Output = T> + ?Sized),
+    len: usize,
+    key: K,
+    f: impl Fn(usize, &T) -> K,
+) -> std::result::Result<usize, usize>
+where
+    K: PartialEq + Eq + PartialOrd + Ord,
+{
+    let mut size = len;
+    let mut left = 0;
+    let mut right = size;
+
+    while left < right {
+        let mid = left + size / 2;
+
+        let k = f(mid, &container[mid]);
+
+        match k.cmp(&key) {
+            std::cmp::Ordering::Less => left = mid + 1,
+            std::cmp::Ordering::Equal => return Ok(mid),
+            std::cmp::Ordering::Greater => right = mid,
+        }
+
+        size = right - left;
+    }
+
+    Err(left)
 }
 
 /// An entry for a file with the given name

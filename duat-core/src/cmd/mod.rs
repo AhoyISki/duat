@@ -539,10 +539,9 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         let mut cargo = std::process::Command::new("cargo");
         cargo.stdin(std::process::Stdio::null());
         cargo.stdout(std::process::Stdio::null());
-        cargo.stderr(std::process::Stdio::null());
+        cargo.stderr(std::process::Stdio::piped());
         cargo.args([
             "build",
-            "--quiet",
             "--release",
             "--manifest-path",
             toml_path.to_str().unwrap(),
@@ -557,7 +556,10 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
                     match child.wait_with_output() {
                         Ok(out) => {
                             if out.status.code() != Some(0) {
-                                context::info!("Couldn't compile config crate");
+                                context::info!(
+                                    "Couldn't compile config crate:\n{}",
+                                    String::from_utf8_lossy(&out.stderr)
+                                );
                             }
                         }
                         Err(err) => context::error!("cargo failed: [a]{err}"),

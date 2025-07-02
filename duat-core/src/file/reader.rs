@@ -253,8 +253,8 @@ impl<U: Ui> InnerReaders<U> {
                     }
 
                     let bytes = lr.bytes.ref_bytes();
-                    let range_list = get_range_list(&mut lr.range_list, &bytes, moment);
-                    lr.reader.apply_changes(pa, bytes, moment, range_list);
+                    let ranges = get_ranges(&mut lr.ranges, &bytes, moment);
+                    lr.reader.apply_changes(pa, bytes, moment, ranges);
 
                     ReaderStatus::Local(lr)
                 }
@@ -312,17 +312,18 @@ impl<U: Ui> InnerReaders<U> {
         fn update<U: Ui>(
             text: &mut Text,
             reader: &mut dyn Reader<U>,
-            range_list: &mut Ranges,
+            ranges: &mut Ranges,
             readers: &mut [ReaderBox<U>],
             within: Range<usize>,
         ) {
-            let ranges = range_list.remove(within);
+            let to_remove = ranges.remove(within);
 
-            if ranges.len() == 0 {
+            if to_remove.len() == 0 {
                 let parts = text.parts();
                 reader.update_range(parts, Readers(readers), None);
+                drop(to_remove);
             } else {
-                for range in ranges {
+                for range in to_remove {
                     let parts = text.parts();
                     reader.update_range(parts, Readers(readers), Some(range));
                 }
@@ -337,14 +338,14 @@ impl<U: Ui> InnerReaders<U> {
             readers[i].status = Some(match status {
                 ReaderStatus::Local(mut lr) => {
                     let reader = &mut *lr.reader;
-                    let range_list = &mut lr.range_list;
-                    update(text, reader, range_list, &mut readers, within.clone());
+                    let ranges = &mut lr.ranges;
+                    update(text, reader, ranges, &mut readers, within.clone());
                     ReaderStatus::Local(lr)
                 }
                 ReaderStatus::Present(ms, mut sr) => {
                     let reader = &mut *sr.reader;
-                    let range_list = &mut sr.range_list;
-                    update(text, reader, range_list, &mut readers, within.clone());
+                    let ranges = &mut sr.ranges;
+                    update(text, reader, ranges, &mut readers, within.clone());
                     ReaderStatus::Present(ms, sr)
                 }
                 ReaderStatus::Sent(ms, jh) => {
@@ -354,8 +355,8 @@ impl<U: Ui> InnerReaders<U> {
                         ms.sender.send(None).unwrap();
                         let mut sr = jh.join().unwrap();
                         let reader = &mut *sr.reader;
-                        let range_list = &mut sr.range_list;
-                        update(text, reader, range_list, &mut readers, within.clone());
+                        let ranges = &mut sr.ranges;
+                        update(text, reader, ranges, &mut readers, within.clone());
                         ReaderStatus::Present(ms, sr)
                     } else {
                         ReaderStatus::Sent(ms, jh)
@@ -375,8 +376,8 @@ impl<U: Ui> InnerReaders<U> {
                                 ms.sender.send(None).unwrap();
                                 let mut sr = jh.join().unwrap().unwrap();
                                 let reader = &mut *sr.reader;
-                                let range_list = &mut sr.range_list;
-                                update(text, reader, range_list, &mut readers, within.clone());
+                                let ranges = &mut sr.ranges;
+                                update(text, reader, ranges, &mut readers, within.clone());
                                 ReaderStatus::Present(ms, sr)
                             } else {
                                 ReaderStatus::BeingBuilt(ms, build_status, jh)
@@ -413,9 +414,9 @@ fn apply_moment<U: Ui>(sr: &mut SendReader<U>, moment: Moment) {
     }
 
     let bytes = sr.bytes.ref_bytes();
-    let range_list = get_range_list(&mut sr.range_list, &bytes, moment);
+    let ranges = get_ranges(&mut sr.ranges, &bytes, moment);
 
-    sr.reader.apply_remote_changes(bytes, moment, range_list);
+    sr.reader.apply_remote_changes(bytes, moment, ranges);
     sr.state.fetch_add(1, Ordering::Relaxed);
 }
 
@@ -454,7 +455,7 @@ impl<U: Ui> ReaderBox<U> {
             status: Some(ReaderStatus::Local(LocalReader {
                 reader: Box::new(reader),
                 bytes: bytes.clone(),
-                range_list: Ranges::full(bytes.len().byte()),
+                ranges: Ranges::full(bytes.len().byte()),
             })),
             ty: TypeId::of::<Rd>(),
         }
@@ -476,7 +477,7 @@ impl<U: Ui> ReaderBox<U> {
                 reader: Box::new(reader),
                 bytes: bytes.clone(),
                 receiver,
-                range_list: Ranges::full(bytes.len().byte()),
+                ranges: Ranges::full(bytes.len().byte()),
                 state,
             })),
             ty: TypeId::of::<Rd>(),
@@ -515,15 +516,9 @@ impl<U: Ui> ReaderBox<U> {
                     });
                     status.store(SUCCEEDED_BUILDING, Ordering::Relaxed);
 
-                    let range_list = Ranges::full(bytes.len().byte());
+                    let ranges = Ranges::full(bytes.len().byte());
 
-                    let mut sr = SendReader {
-                        reader,
-                        bytes,
-                        receiver,
-                        range_list,
-                        state,
-                    };
+                    let mut sr = SendReader { reader, bytes, receiver, ranges, state };
 
                     while let Some(moment) = sr.receiver.recv().unwrap() {
                         apply_moment(&mut sr, moment);
@@ -558,14 +553,14 @@ struct MomentSender {
 struct LocalReader<U: Ui> {
     reader: Box<dyn Reader<U>>,
     bytes: Bytes,
-    range_list: Ranges,
+    ranges: Ranges,
 }
 
 struct SendReader<U: Ui> {
     reader: Box<dyn Reader<U> + Send>,
     bytes: Bytes,
     receiver: mpsc::Receiver<Option<Moment>>,
-    range_list: Ranges,
+    ranges: Ranges,
     state: Arc<AtomicUsize>,
 }
 
@@ -728,8 +723,8 @@ fn status_from_try_read<Rd: Reader<U>, Ret, U: Ui>(
 }
 
 /// Decides wether a [`Ranges`] should be used or not
-fn get_range_list<'a>(
-    range_list: &'a mut Ranges,
+fn get_ranges<'a>(
+    ranges: &'a mut Ranges,
     bytes: &RefBytes<'_>,
     moment: Moment,
 ) -> Option<&'a mut Ranges> {
@@ -739,12 +734,12 @@ fn get_range_list<'a>(
     if moment.len() <= MAX_CHANGES_TO_CONSIDER || bytes.len().byte() >= FOLDING_COULD_UPDATE_A_LOT {
         for change in moment.changes() {
             let diff = change.added_end().byte() as i32 - change.taken_end().byte() as i32;
-            range_list.shift_by(change.start().byte(), diff);
+            ranges.shift_by(change.start().byte(), diff);
         }
 
-        Some(range_list)
+        Some(ranges)
     } else {
-        *range_list = Ranges::full(bytes.len().byte());
+        *ranges = Ranges::full(bytes.len().byte());
         None
     }
 }

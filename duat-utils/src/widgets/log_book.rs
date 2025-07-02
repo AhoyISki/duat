@@ -33,7 +33,7 @@ impl<U: Ui> Widget<U> for LogBook {
                 };
 
                 builder.push(txt!(
-                    "[log_book.bracket]([log_book.target]{}[log_book.bracket])[] {}",
+                    "[log_book.bracket]([log_book.target]{}[log_book.bracket])[]\n {}",
                     rec.target(),
                     rec.text().clone()
                 ));
@@ -43,6 +43,8 @@ impl<U: Ui> Widget<U> for LogBook {
             close_on_unfocus: true,
             hidden: true,
             side: Side::Below,
+            height: 10,
+            width: 50,
             _ghost: PhantomData,
         }
     }
@@ -122,6 +124,8 @@ pub struct LogBookCfg<U> {
     close_on_unfocus: bool,
     hidden: bool,
     side: Side,
+    height: usize,
+    width: usize,
     _ghost: PhantomData<U>,
 }
 
@@ -162,6 +166,20 @@ impl<U> LogBookCfg<U> {
     pub fn above(self) -> Self {
         Self { side: Side::Above, ..self }
     }
+
+    /// Sets the height of the [`LogBook`]
+    ///
+    /// This is ignored if pushing to the left or to the right.
+    pub fn with_height(self, height: usize) -> Self {
+        Self { height, ..self }
+    }
+
+    /// Sets the width of the [`LogBook`]
+    ///
+    /// This is ignored if pushing above or below.
+    pub fn with_width(self, width: usize) -> Self {
+        Self { width, ..self }
+    }
 }
 
 impl<U: Ui> WidgetCfg<U> for LogBookCfg<U> {
@@ -187,10 +205,10 @@ impl<U: Ui> WidgetCfg<U> for LogBookCfg<U> {
         };
 
         let specs = match self.side {
-            Side::Right => PushSpecs::right().with_hor_len(30.0),
-            Side::Left => PushSpecs::left().with_hor_len(30.0),
-            Side::Above => PushSpecs::above().with_ver_len(10.0),
-            Side::Below => PushSpecs::below().with_ver_len(10.0),
+            Side::Right => PushSpecs::right().with_hor_len(self.width as f32),
+            Side::Left => PushSpecs::left().with_hor_len(self.width as f32),
+            Side::Above => PushSpecs::above().with_ver_len(self.height as f32),
+            Side::Below => PushSpecs::below().with_ver_len(self.height as f32),
         };
 
         (lb, if self.hidden { specs.hidden() } else { specs })

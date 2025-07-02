@@ -7,6 +7,7 @@ use std::{
 };
 
 use super::sh;
+use crate::binary_search_by_key_and_index;
 
 /// The prevalence of a [`Tagger`] in a [`Text`]
 ///
@@ -15,7 +16,7 @@ use super::sh;
 pub struct TaggerExtents(Vec<(Tagger, Extent)>);
 
 impl TaggerExtents {
-    /// Inserts a new [`RawTag`]'s index
+    /// Inserts a new [`RawTag`]'s byte
     ///
     /// [`RawTag`]: super::RawTag
     pub fn insert(&mut self, tagger: Tagger, byte: usize) {
@@ -24,12 +25,20 @@ impl TaggerExtents {
         }
 
         if let Some((_, extent)) = self.0.iter_mut().find(|(t, _)| *t == tagger) {
+            if tagger == Tagger(4)
+                && let Extent::Sparse { shift_state, list } = extent
+                && *shift_state != (0, 0)
+                && byte >= 1342
+            {
+                crate::context::error!("before: {shift_state:?}, {}", list.len());
+                crate::context::error!("before: {:?}", list.get(shift_state.0));
+            }
             extent.insert(byte);
         } else {
             self.0.push((tagger, Extent::Sparse {
                 list: vec![byte],
                 shift_state: (0, 0),
-            }))
+            }));
         }
     }
 
@@ -50,6 +59,18 @@ impl TaggerExtents {
                 continue;
             }
 
+            if *tagger == Tagger(4)
+                && let Extent::Sparse { shift_state, .. } = extent
+                && range.start == 1342
+            {
+                crate::context::info!("from: {range:#?}");
+                crate::context::warn!(
+                    "shift_from: {}, total_diff: {}",
+                    shift_state.0,
+                    shift_state.1
+                );
+            }
+
             let Some(bytes) = extent.remove_from_range(range.clone()) else {
                 if !rampant_matches {
                     ranges = vec![range.clone()];
@@ -63,8 +84,11 @@ impl TaggerExtents {
                 continue;
             }
 
+            let mut bytes_list = Vec::new();
             for byte in bytes {
-                let i = ranges.iter_mut().take_while(|r| byte < r.start).count();
+                bytes_list.push(byte);
+
+                let i = ranges.iter_mut().take_while(|r| byte + 1 > r.end).count();
 
                 if let Some(range) = ranges.get_mut(i)
                     && byte + MAX_FOR_JOINING >= range.start
@@ -74,10 +98,15 @@ impl TaggerExtents {
                     && let Some(range) = ranges.get_mut(prev_i)
                     && byte <= range.end + MAX_FOR_JOINING
                 {
-                    range.end = range.end.max(byte);
+                    range.end = range.end.max(byte + 1);
                 } else {
                     ranges.insert(i, byte..byte + 1);
                 }
+            }
+
+            if *tagger == Tagger(4) && range.start == 1342 {
+                crate::context::error!("iterated over {bytes_list:?}");
+                crate::context::debug!("ranges: {ranges:?}");
             }
         }
 
@@ -96,13 +125,27 @@ impl TaggerExtents {
 /// The level of prevalence of a [`Tagger`] in the [`Tags`]
 ///
 /// [`Tags`]: super::Tags
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 enum Extent {
     Sparse {
         list: Vec<usize>,
         shift_state: (usize, i32),
     },
     Rampant,
+}
+
+impl std::fmt::Debug for Extent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Sparse { list, shift_state } => f
+                .debug_struct("Sparse")
+                .field("list", list)
+                .field("len", &list.len())
+                .field("shift_state", shift_state)
+                .finish(),
+            Self::Rampant => write!(f, "Rampant"),
+        }
+    }
 }
 
 impl Extent {
@@ -115,6 +158,7 @@ impl Extent {
         let (mut shift_from, mut total_diff) = std::mem::take(shift_state);
 
         if let Some(first_unshifted) = list.get(shift_from) {
+            crate::context::debug!("shifting backwards");
             // cur_n is the first bound that has not been shifted, so we need to
             // take that into consideration.
             if from < sh(*first_unshifted, total_diff) {
@@ -122,15 +166,18 @@ impl Extent {
                 while let Some(b) = iter.next()
                     && *b >= from
                 {
+                    crate::context::info!("shifted {} to {}", *b, sh(*b, diff));
                     *b = sh(*b, diff);
                 }
             } else {
+                crate::context::debug!("shifting forwards");
                 let mut iter = list[shift_from..].iter_mut();
                 // All bounds from cur_n have not been shifted, so we account for
                 // that.
                 while let Some(b) = iter.next()
                     && sh(*b, total_diff) < from
                 {
+                    crate::context::info!("shifted {} to {}", *b, sh(*b, total_diff));
                     *b = sh(*b, total_diff);
                     shift_from += 1;
                 }
@@ -144,37 +191,40 @@ impl Extent {
         }
     }
 
-    /// Inserts a [`RawTag`] index
+    /// Inserts a [`RawTag`] byte
     ///
     /// [`RawTag`]: super::RawTag
     fn insert(&mut self, byte: usize) {
         let Extent::Sparse { list, shift_state } = self else {
             return;
         };
+        let (mut shift_from, total_diff) = std::mem::take(shift_state);
 
-        if let Err(i) = list.binary_search(&byte) {
+        let key = |i: usize, byte: &usize| sh(*byte, if i < shift_from { 0 } else { total_diff });
+
+        if let Err(i) = binary_search_by_key_and_index(list, list.len(), byte, key) {
             const TRACKED_BYTES_LIMIT: usize = 512;
-            if list.len() + 1 == TRACKED_BYTES_LIMIT {
+            if list.len() == TRACKED_BYTES_LIMIT {
                 *self = Extent::Rampant;
                 return;
             }
 
-            let (mut shift_from, total_diff) = std::mem::take(shift_state);
-
             if i < shift_from {
                 shift_from += 1;
-            } else if total_diff != 0 {
-                for byte in list[shift_from..i].iter_mut() {
-                    *byte = sh(*byte, total_diff)
+            } else {
+                if total_diff != 0 {
+                    for byte in list[shift_from..i].iter_mut() {
+                        *byte = sh(*byte, total_diff)
+                    }
                 }
                 shift_from = i + 1;
             }
 
             list.insert(i, byte);
+        };
 
-            if shift_from < list.len() {
-                *shift_state = (shift_from, total_diff);
-            }
+        if shift_from < list.len() {
+            *shift_state = (shift_from, total_diff);
         }
     }
 
@@ -186,16 +236,18 @@ impl Extent {
             return None;
         };
 
-        let (shift_from, diff) = shift_state;
+        let (shift_from, total_diff) = shift_state;
 
         let mut i = 0;
-        Some(list.extract_if(.., move |index| {
-            if range.contains(index) {
-                if i < *shift_from {
-                    *shift_from -= 1;
-                } else {
-                    *index = sh(*index, *diff);
-                }
+        Some(list.extract_if(.., move |byte| {
+            if range.start == 1342 && *byte >= 1342 && *byte < 1500 {
+                crate::context::warn!("for {}: i = {i}, shift_from = {}", *byte, *shift_from);
+            }
+            let diff = if i < *shift_from { 0 } else { *total_diff };
+            if range.contains(&sh(*byte, diff)) {
+                *shift_from -= (i < *shift_from) as usize;
+                *byte = sh(*byte, diff);
+
                 true
             } else {
                 i += 1;

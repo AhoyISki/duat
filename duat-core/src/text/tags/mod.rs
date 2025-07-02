@@ -331,7 +331,6 @@ impl Tags {
     }
 
     fn remove_from_range(&mut self, taggers: &impl Taggers, range: Range<usize>) {
-        //crate::context::debug!("removing from {range:?}");
         let (start, end) = (range.start, range.end);
         // It is best to do this first, so getting skips returns correct
         // entries.
@@ -488,7 +487,7 @@ impl Tags {
             self.remove_intersections(old.start + 1..old.end, |_| true);
             self.extents.remove_range(old.start..old.end, |_| true);
 
-            let [s_n, s_b, s_skip] = self.skip_at(old.start);
+            let [s_n, s_b, s_skip] = self.skip_behind(old.start);
 
             let b_diff = old.end - old.start;
             // If the range to be removed is contained within one skip,
@@ -586,7 +585,7 @@ impl Tags {
 
             [s_n, s_b]
         } else {
-            let [s_n, s_b, _] = self.skip_at(old.start);
+            let [s_n, s_b, _] = self.skip_behind(old.start);
             [s_n, s_b]
         };
 
@@ -607,7 +606,8 @@ impl Tags {
             }
         }
 
-        self.extents.shift_by(s_b, new.len() as i32 - old.len() as i32);
+        self.extents
+            .shift_by(old.start, new.len() as i32 - old.len() as i32);
     }
 
     fn handle_removed_tag(

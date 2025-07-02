@@ -615,7 +615,7 @@ impl<U: Ui> Node<U> {
         };
 
         (self.print)(self, pa);
-
+        
         self.widget.acquire_mut(pa).text_mut().remove_selections();
     }
 
