@@ -324,7 +324,7 @@ impl Tags {
 
         for range in self
             .extents
-            .remove_range(start..end, |tagger| taggers.contains_tagger(tagger))
+            .remove_range(start..end, self.buf.len(), |tagger| taggers.contains_tagger(tagger))
         {
             self.remove_from_range(&taggers, range);
         }
@@ -485,9 +485,9 @@ impl Tags {
             // old.start + 1 because we don't want to get rid of bounds that
             // merely coincide with the edges.
             self.remove_intersections(old.start + 1..old.end, |_| true);
-            self.extents.remove_range(old.start..old.end, |_| true);
+            self.extents.remove_range(old.start..old.end, self.buf.len(), |_| true);
 
-            let [s_n, s_b, s_skip] = self.skip_behind(old.start);
+            let [s_n, s_b, s_skip] = self.skip_at(old.start);
 
             let b_diff = old.end - old.start;
             // If the range to be removed is contained within one skip,
@@ -585,7 +585,7 @@ impl Tags {
 
             [s_n, s_b]
         } else {
-            let [s_n, s_b, _] = self.skip_behind(old.start);
+            let [s_n, s_b, _] = self.skip_at(old.start);
             [s_n, s_b]
         };
 

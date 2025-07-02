@@ -47,6 +47,7 @@ impl TaggerExtents {
     pub fn remove_range(
         &mut self,
         range: Range<usize>,
+        buf_len: usize,
         filter: impl Fn(Tagger) -> bool,
     ) -> Vec<Range<usize>> {
         const MAX_FOR_JOINING: usize = 32;
@@ -110,7 +111,9 @@ impl TaggerExtents {
             }
         }
 
-        self.0.retain(|(_, extent)| !extent.is_empty());
+        self.0.retain(|(tagger, extent)| {
+            !extent.is_empty() || (!filter(*tagger) && range.start == 0 && range.end == buf_len)
+        });
 
         ranges
     }
@@ -159,12 +162,10 @@ impl Extent {
 
         if let Some(first_unshifted) = list.get(shift_from) {
             crate::context::debug!("shifting backwards");
-            // cur_n is the first bound that has not been shifted, so we need to
-            // take that into consideration.
-            if from < sh(*first_unshifted, total_diff) {
+            if from <= sh(*first_unshifted, total_diff) {
                 let mut iter = list[..shift_from].iter_mut().rev();
                 while let Some(b) = iter.next()
-                    && *b >= from
+                    && *b > from
                 {
                     crate::context::info!("shifted {} to {}", *b, sh(*b, diff));
                     *b = sh(*b, diff);
@@ -175,7 +176,7 @@ impl Extent {
                 // All bounds from cur_n have not been shifted, so we account for
                 // that.
                 while let Some(b) = iter.next()
-                    && sh(*b, total_diff) < from
+                    && sh(*b, total_diff) <= from
                 {
                     crate::context::info!("shifted {} to {}", *b, sh(*b, total_diff));
                     *b = sh(*b, total_diff);
