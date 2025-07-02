@@ -3,7 +3,7 @@ use std::{iter::FusedIterator, ops::RangeBounds};
 use gapbuf::GapBuffer;
 use lender::{DoubleEndedLender, ExactSizeLender, Lender, Lending};
 
-use super::{Point, TextRange, records::Records, utf8_char_width};
+use super::{records::Records, utf8_char_width, Point, RegexPattern, TextRange};
 
 /// A public reader for [`Bytes`], which doesn't allow for mutation
 pub struct RefBytes<'a>(pub(super) &'a mut Bytes);
@@ -43,7 +43,7 @@ impl RefBytes<'_> {
     /// need to do that.
     ///
     /// [range]: TextRange
-    pub fn search_fwd<R: super::RegexPattern>(
+    pub fn search_fwd<R: RegexPattern>(
         &mut self,
         pat: R,
         range: impl TextRange,
@@ -62,7 +62,7 @@ impl RefBytes<'_> {
     /// need to do that.
     ///
     /// [range]: TextRange
-    pub fn search_rev<R: super::RegexPattern>(
+    pub fn search_rev<R: RegexPattern>(
         &mut self,
         pat: R,
         range: impl TextRange,
@@ -76,7 +76,7 @@ impl RefBytes<'_> {
     /// use the `"^$"` characters.
     pub fn matches(
         &mut self,
-        pat: impl super::RegexPattern,
+        pat: impl RegexPattern,
         range: impl TextRange,
     ) -> Result<bool, Box<regex_syntax::Error>> {
         self.0.matches(pat, range)
@@ -130,12 +130,11 @@ impl Bytes {
     /// This does not check for tags, so with a [`Tag::Ghost`],
     /// there could actually be a "string" of characters on the
     /// [`Text`], it just wouldn't be considered real "text". If you
-    /// want to check for [`Tags`]'s possible emptyness, see
+    /// want to check for the `Tags`'s possible emptyness as well, see
     /// [`Text::is_empty_empty`].
     ///
     /// [`Tag::Ghost`]: super::Ghost
     /// [`Text`]: super::Text
-    /// [`Tags`]: super::Tags
     /// [`Text::is_empty_empty`]: super::Text::is_empty_empty
     pub fn is_empty(&self) -> bool {
         self.buf == [b'\n']

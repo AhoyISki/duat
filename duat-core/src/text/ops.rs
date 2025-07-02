@@ -44,7 +44,7 @@ impl Point {
     /// other than [`Text`]
     ///
     /// [`&str`]: str
-    /// [`Text::len`]: super::Text::len
+    /// [`Text::len`]: super::Bytes::len
     /// [`Text`]: super::Text
     pub fn len_of(str: impl AsRef<str>) -> Self {
         let str = str.as_ref();

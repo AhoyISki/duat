@@ -457,7 +457,7 @@ pub struct Item {
     /// every [`Point`] should point to a specific position in a byte.
     ///
     /// [`Ghost`]: super::Ghost
-    /// [lengths]: Text::len
+    /// [lengths]: super::Bytes::len
     pub ghost: Option<Point>,
     /// A [`Part`], which will either be a `char` or a [`Tag`];
     ///

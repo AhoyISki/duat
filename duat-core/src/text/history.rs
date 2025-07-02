@@ -219,6 +219,7 @@ impl Moment {
     ///
     /// [`Reader`]: crate::file::Reader
     /// [`apply_changes`]: crate::file::Reader::apply_changes
+    /// [`File`]: crate::file::File
     pub fn len(&self) -> usize {
         self.changes.len()
     }

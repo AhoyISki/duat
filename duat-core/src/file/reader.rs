@@ -21,8 +21,9 @@ use std::{
 use crate::{
     context,
     data::{Pass, RwData},
+    mode::Selections,
     prelude::Ranges,
-    text::{AsRefBytes, Bytes, Moment, RefBytes, Text, TextParts, txt},
+    text::{AsRefBytes, Bytes, Moment, MutTags, Point, RefBytes, Text, TextParts, txt},
     ui::Ui,
 };
 
@@ -33,7 +34,20 @@ pub trait Reader<U: Ui>: 'static {
     ///
     /// After this point, even if no other functions are called, the
     /// state of this [`Reader`] should reflect the state of the
-    /// [`Text`].
+    /// [`RefBytes`] that were passed.
+    ///
+    /// The [`Range`]s argument, if given, represents the ranges in
+    /// the [`Text`] that [`Reader::update_range`] should care about
+    /// updating. You can [add] and [remove] [`Range<usize>`]s from
+    /// it, and later, when these byte ranges are printed to the
+    /// screen, Duat will request that this reader update that range
+    /// via [`Reader::update_range`], allowing for efficient updating
+    /// only where it would matter.
+    ///
+    /// If you don't implement this function, it is assumed that the
+    /// [`Ranges`] should always encompass the full breadth of the
+    /// [`File`], i.e., this [`Reader`] would update the entire
+    /// screen, whenever it is updated.
     ///
     /// # Notes
     ///
@@ -61,6 +75,8 @@ pub trait Reader<U: Ui>: 'static {
     /// of the [`Pass`], they could become desynchronized.
     ///
     /// [`Tag`]: crate::text::Tag
+    /// [`Change`]: crate::text::Change
+    /// [`File`]: crate::file::File
     fn apply_changes(
         &mut self,
         pa: &mut Pass,
@@ -68,6 +84,9 @@ pub trait Reader<U: Ui>: 'static {
         moment: Moment,
         ranges_to_update: Option<&mut Ranges>,
     ) {
+        if let Some(ranges) = ranges_to_update {
+            *ranges = Ranges::full(bytes.len().byte());
+        }
     }
 
     /// Updates in a given [`Range`]
@@ -88,10 +107,12 @@ pub trait Reader<U: Ui>: 'static {
     /// called when all [`Change`]s have already been passed to the
     /// [`Reader`], so no need to worry about that.
     ///
-    /// One other thing to note is that the updated range is just a
+    /// One other thing to note is that the `within` [range] is just a
     /// suggestion. In most circumstances, it would be a little
-    /// convenient to go slightly over that range, just keep in
-    /// mind that that overhang might be updated later.
+    /// convenient to go slightly over that range. For example, a
+    /// regex searcher should look only at the range provided, but if
+    /// a match goes slightly beyond the [range], it is fine to add
+    /// [`Tag`]s in there.
     ///
     /// Finally, keep in mind that [`Tag`]s are not allowed to be
     /// repeated, and you can use this to your advantage, as in,
@@ -100,13 +121,10 @@ pub trait Reader<U: Ui>: 'static {
     /// request if that [`Tag`] was already there.
     ///
     /// [`Tag`]: crate::text::Tag
-    fn update_range(
-        &mut self,
-        parts: TextParts,
-        readers: Readers<U>,
-        within: Option<Range<usize>>,
-    ) {
-    }
+    /// [`File`]: crate::file::File
+    /// [`Change`]: crate::text::Change
+    /// [range]: std::ops::Range
+    fn update_range(&mut self, parts: FileParts<U>, within: Option<Range<Point>>) {}
 
     /// Same as [`apply_changes`], but on another thread
     ///
@@ -126,9 +144,10 @@ pub trait Reader<U: Ui>: 'static {
     /// constructs are _not_ thread safe.
     ///
     /// You can still do things like queue [commands] and [hooks],
-    /// but don't try to use [`RwData::read_unsafe`] or
-    /// [`RwData::write_unsafe`] outside of the main thread. That's
-    /// not their purpose!
+    /// which can access global state since they are triggered on the
+    /// main thread. But don't try to use [`RwData::read_unsafe`]
+    /// or [`RwData::write_unsafe`] outside of the main thread.
+    /// That's not their purpose!
     ///
     /// [`apply_changes`]: Reader::apply_changes
     /// [commands]: crate::cmd::queue
@@ -141,6 +160,9 @@ pub trait Reader<U: Ui>: 'static {
     ) where
         Self: Send,
     {
+        if let Some(ranges) = ranges_to_update {
+            *ranges = Ranges::full(bytes.len().byte());
+        }
     }
 
     /// Wether this [`Reader`] should be sent to update its internal
@@ -309,24 +331,27 @@ impl<U: Ui> InnerReaders<U> {
     }
 
     /// Updates the [`Reader`]s on a given range
-    pub(super) fn update_range(&self, pa: &mut Pass, text: &mut Text, within: Range<usize>) {
+    pub(super) fn update_range(&self, pa: &mut Pass, text: &mut Text, within: Range<Point>) {
         fn update<U: Ui>(
             text: &mut Text,
             reader: &mut dyn Reader<U>,
             ranges: &mut Ranges,
             readers: &mut [ReaderBox<U>],
-            within: Range<usize>,
+            within: Range<Point>,
         ) {
-            let to_remove = ranges.remove(within);
+            let to_remove = ranges.remove(within.start.byte()..within.end.byte());
 
             if to_remove.len() == 0 {
-                let parts = text.parts();
-                reader.update_range(parts, Readers(readers), None);
+                let parts = FileParts::new(text, Readers(readers), within);
+                reader.update_range(parts, None);
                 drop(to_remove);
             } else {
                 for range in to_remove {
-                    let parts = text.parts();
-                    reader.update_range(parts, Readers(readers), Some(range));
+                    let parts = FileParts::new(text, Readers(readers), within.clone());
+                    let start = parts.bytes.point_at(range.start);
+                    let end = parts.bytes.point_at(range.end);
+
+                    reader.update_range(parts, Some(start..end));
                 }
             }
         }
@@ -750,6 +775,147 @@ fn get_ranges<'a>(
 
 fn type_eq<U: Ui, Rd: Reader<U>>(rb: &ReaderBox<U>) -> bool {
     rb.ty == TypeId::of::<Rd>()
+}
+
+/// The parts of a [`File`], primarily for updating [`MutTags`]
+///
+/// This struct consists of the following:
+///
+/// - [`parts.bytes`]: The [`RefBytes`] of the [`File`].
+/// - [`parts.tags`]: The [`MutTags`] of the [`File`], this is the
+///   primary things that [`Reader`]s should update.
+/// - [`parts.selections`]: The [`Selections`] of the [`File`].
+/// - [`parts.readers`]: An immutable reference to all the other
+///   [`Reader`]s of the [`File`].
+///
+/// You should use these, as well as the internally updated state of
+/// the [`Reader`] through the [`Reader::apply_changes`] and
+/// [`Reader::apply_remote_changes`], in order to update the
+/// [`File`]'s [`Tag`]s. Or other things outside of the [`File`], it
+/// depends on what you're doing really.
+///
+/// [`File`]: super::File
+pub struct FileParts<'a, U: Ui> {
+    /// The [`RefBytes`] of the [`File`]
+    ///
+    /// Since this is a [`RefBytes`], you can't _actually_ modify the
+    /// [`Bytes`]. But you can do any non-mutating method. This
+    /// includes [searches], which require internal "non changing"
+    /// mutation.
+    ///
+    /// [`File`]: super::File
+    /// [searches]: RefBytes::search_fwd
+    pub bytes: RefBytes<'a>,
+    /// The [`MutTags`] of the [`File`]
+    ///
+    /// This is the primary purpose of (most) [`Reader`]s, they read
+    /// the [`File`]'s [`Bytes`] and add or remove [`Tag`]s through
+    /// the [`update_range`] method.
+    ///
+    /// [`File`]: super::File
+    /// [`Tag`]: crate::text::Tag
+    /// [`update_range`]: Reader::update_range
+    pub tags: MutTags<'a>,
+    /// The [`Selections`] of the [`File`]
+    ///
+    /// Unlike [`Change`]s in [`Moment`]s, the movement of
+    /// [`Selection`]s is not "tracked" and kept up to date via a
+    /// [`Reader::apply_changes`] analogue. Instead, if you want to
+    /// add [`Tag`]s in the [`Reader::update_range`] function based on
+    /// the [`Selections`], I recommend something like the following:
+    ///
+    /// ```rust
+    /// use std::ops::Range;
+    ///
+    /// use duat_core::prelude::*;
+    ///
+    /// struct MyReader {
+    ///     tagger: Tagger,
+    /// }
+    ///
+    /// impl<U: Ui> Reader<U> for MyReader {
+    ///     fn update_range(&mut self, mut parts: FileParts<U>, within: Option<Range<Point>>) {
+    ///         // This is efficient even in very large `Text`s.
+    ///         parts.tags.remove(self.tagger, ..);
+    ///
+    ///         // Here, since we don't check for Changes, `within` will always
+    ///         // be `None`, so no need to check it anyways.
+    ///         let within = parts.suggested_max_range;
+    ///
+    ///         for (_, selection, is_main) in parts.selections.iter_within(within) {
+    ///             let range = selection.range(&parts.bytes);
+    ///             let (start, end) = (range.start, range.end);
+    ///             let len = end - start;
+    ///
+    ///             if len > 2 {
+    ///                 let nums = len.ilog10() as usize + 1;
+    ///                 let ghost = Ghost(if is_main {
+    ///                     txt!("[sel_len.main]{len}")
+    ///                 } else {
+    ///                     txt!("[sel_len]{len}")
+    ///                 });
+    ///
+    ///                 parts.tags.insert(self.tagger, start, ghost);
+    ///                 parts.tags.insert(self.tagger, start..start + nums, Conceal);
+    ///             }
+    ///         }
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// For every [`Selection`] on screen, the [`Reader`] above will
+    /// print the length of the selection, in bytes, at the start of
+    /// the each [`Selection`] with a length greater than 2.
+    ///
+    /// The [`parts.suggested_max_range`] is a visible portion of the
+    /// screen. Adding [`Tag`]s that don't intersect with this
+    /// [`Range`] is pointless, since they won't be visible anyway.
+    ///
+    /// [`File`]: super::File
+    /// [`Change`]: crate::text::Change
+    /// [`Tag`]: crate::text::Tag
+    /// [`Selection`]: crate::mode::Selection
+    /// [`parts.suggested_max_range`]: FileParts::suggested_max_range
+    pub selections: &'a Selections,
+    /// Other [`Reader`]s that were added to this [`File`]
+    ///
+    /// This can be useful if you want to access the state of other
+    /// [`Reader`]s, a particular [`Reader`] this can  be useful is
+    /// with the [`TsParser`] [`Reader`], which can grant you
+    /// access to a syntax tree, letting you do queries and such.
+    ///
+    /// [`File`]: super::File
+    /// [`TsParser`]: https://https://docs.rs/duat-treesitter/latest/duat_treesitter/struct.TsParser.html
+    pub readers: Readers<'a, U>,
+    /// The suggested maximum [`Range`] for [inserting] and [removing]
+    /// [`Tag`]s
+    ///
+    /// This [`Range`] represents a "visible" portion of the screen,
+    /// going over it is not recommended, since the added [`Tag`]s
+    /// won't be visible anyway. The only exception is for ranged
+    /// [`Tag`]s which "contain" this [`Range`], such as a very large
+    /// [`FormId`] [tag].
+    ///
+    /// [inserting]: MutTags::insert
+    /// [removing]: MutTags::remove
+    /// [`Tag`]: crate::text::Tag
+    /// [`FormId`]: crate::form::FormId
+    /// [tag]: crate::form::FormId::to_tag
+    pub suggested_max_range: Range<Point>,
+}
+
+impl<'a, U: Ui> FileParts<'a, U> {
+    /// Returns a new [`FileParts`]
+    pub fn new(text: &'a mut Text, readers: Readers<'a, U>, range: Range<Point>) -> Self {
+        let TextParts { bytes, tags, selections } = text.parts();
+        Self {
+            bytes,
+            tags,
+            selections,
+            readers,
+            suggested_max_range: range,
+        }
+    }
 }
 
 const FAILED_BUILDING: usize = 1;

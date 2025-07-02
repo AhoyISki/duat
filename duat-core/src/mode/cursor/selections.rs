@@ -5,7 +5,7 @@ use gapbuf::{GapBuffer, gap_buffer};
 pub use self::cursor::{Selection, VPoint};
 use crate::{
     add_shifts, merging_range_by_guess_and_lazy_shift,
-    text::{Change, Point},
+    text::{Change, Point, TextRange},
 };
 
 /// The list of [`Selection`]s in a [`Text`]
@@ -88,8 +88,8 @@ impl Selections {
     pub fn remove_extras(&mut self) {
         if !self.is_empty() {
             let cursor = self.buf.remove(self.main_i);
-            let (sh_from, shift) = self.shift_state.take();
-            if sh_from <= self.main_i {
+            let (shift_from, shift) = self.shift_state.take();
+            if shift_from <= self.main_i {
                 cursor.shift_by(shift);
             }
             self.buf = gap_buffer![cursor];
@@ -109,9 +109,9 @@ impl Selections {
         if n >= self.len() {
             return None;
         }
-        let (sh_from, shift) = self.shift_state.get();
-        if n >= sh_from && shift != [0; 3] {
-            for cursor in self.buf.range(sh_from..n + 1).iter() {
+        let (shift_from, shift) = self.shift_state.get();
+        if n >= shift_from && shift != [0; 3] {
+            for cursor in self.buf.range(shift_from..n + 1).iter() {
                 cursor.shift_by(shift);
             }
             if n + 1 < self.buf.len() {
@@ -125,19 +125,74 @@ impl Selections {
     }
 
     /// Iterates over all [`Selection`]s in order
+    ///
+    /// Also tells you wether the [`Selection`] is the main selection
+    /// or not.
     pub fn iter(&self) -> impl Iterator<Item = (&Selection, bool)> {
-        // Since we don't know how many Selections will be iterated over, we
-        // shift all cursors, just in case.
-        let (sh_from, shift) = self.shift_state.take();
-        if shift != [0; 3] {
-            for cursor in self.buf.range(sh_from..).iter() {
-                cursor.shift_by(shift);
+        let (mut shift_from, shift) = self.shift_state.get();
+
+        self.buf.iter().enumerate().map(move |(i, selection)| {
+            if i >= shift_from {
+                selection.shift_by(shift);
+                if i + 1 < self.buf.len() {
+                    self.shift_state.set((i + 1, shift));
+                    shift_from = i + 1;
+                } else {
+                    self.shift_state.set((0, [0; 3]));
+                }
             }
-        }
-        self.buf
-            .iter()
-            .enumerate()
-            .map(move |(i, cursor)| (cursor, i == self.main_i))
+
+            (selection, i == self.main_i)
+        })
+    }
+
+    /// Iterates over all [`Selection`]s in a given [`TextRange`]
+    ///
+    /// Also tells you the index of the [`Selection`], as well as if
+    /// it is the main selection or not.
+    ///
+    /// This [`Iterator`] *will* include [`Selection`]s that are
+    /// partially contained.
+    pub fn iter_within(
+        &self,
+        range: impl TextRange,
+    ) -> impl Iterator<Item = (usize, &Selection, bool)> {
+        let (shift_from, shift) = self.shift_state.get();
+
+        let range = if let Some(last) = self.buf.len().checked_sub(1) {
+            range.to_range(self.buf[last].end_excl().byte())
+        } else {
+            // If there are no Selections, this value doesn't really matter.
+            0..0
+        };
+
+        let m_range = merging_range_by_guess_and_lazy_shift(
+            (&self.buf, self.buf.len()),
+            (0, [range.start, range.end]),
+            (shift_from, shift[0], 0, |byte, shift| {
+                (byte as i32 + shift) as usize
+            }),
+            (
+                |sel: &Selection| sel.start().byte(),
+                |sel: &Selection| sel.end_excl().byte(),
+            ),
+        );
+
+        let (s0, s1) = self.buf.range(m_range.clone()).as_slices();
+        let iter = [s0, s1].into_iter().flatten().enumerate();
+        iter.map(move |(i, selection)| {
+            let i = i + m_range.start;
+            if i >= shift_from {
+                selection.shift_by(shift);
+                if i + 1 < self.buf.len() {
+                    self.shift_state.set((i + 1, shift));
+                } else {
+                    self.shift_state.set((0, [0; 3]));
+                }
+            }
+
+            (i, selection, i == self.main_i)
+        })
     }
 
     /// The index of the main [`Selection`]
@@ -165,20 +220,20 @@ impl Selections {
         cursor: Selection,
         main: bool,
     ) -> ([usize; 2], bool) {
-        let (sh_from, shift) = self.shift_state.take();
-        let sh_from = sh_from.min(self.len());
+        let (shift_from, shift) = self.shift_state.take();
+        let shift_from = shift_from.min(self.len());
 
         // The range of cursors that will be drained
         let c_range = merging_range_by_guess_and_lazy_shift(
             (&self.buf, self.buf.len()),
             (guess_i, [cursor.start(), cursor.end_excl()]),
-            (sh_from, shift, [0; 3], Point::shift_by),
+            (shift_from, shift, [0; 3], Point::shift_by),
             (Selection::start, Selection::end_excl),
         );
 
         // Shift all ranges that preceed the end of the cursor's range.
-        if sh_from < c_range.end && shift != [0; 3] {
-            for cursor in self.buf.range(sh_from..c_range.end).into_iter() {
+        if shift_from < c_range.end && shift != [0; 3] {
+            for cursor in self.buf.range(shift_from..c_range.end).into_iter() {
                 cursor.shift_by(shift);
             }
         }
@@ -222,9 +277,9 @@ impl Selections {
         // If there are no more Selections after this, don't set the
         // shift_state.
         let cursors_taken = c_range.clone().count();
-        let new_sh_from = sh_from.saturating_sub(cursors_taken).max(c_range.start) + 1;
-        if new_sh_from < self.buf.len() {
-            self.shift_state.set((new_sh_from, shift));
+        let new_shift_from = shift_from.saturating_sub(cursors_taken).max(c_range.start) + 1;
+        if new_shift_from < self.buf.len() {
+            self.shift_state.set((new_shift_from, shift));
         }
 
         ([c_range.start, cursors_taken], last_cursor_overhangs)
@@ -234,14 +289,14 @@ impl Selections {
     ///
     /// Returns the number of [`Selection`]s that were removed
     pub(crate) fn apply_change(&mut self, guess_i: usize, change: Change<&str>) -> usize {
-        let (sh_from, shift) = self.shift_state.take();
-        let sh_from = sh_from.min(self.len());
+        let (shift_from, shift) = self.shift_state.take();
+        let shift_from = shift_from.min(self.len());
 
         // The range of cursors that will be drained
         let c_range = merging_range_by_guess_and_lazy_shift(
             (&self.buf, self.buf.len()),
             (guess_i, [change.start(), change.taken_end()]),
-            (sh_from, shift, [0; 3], Point::shift_by),
+            (shift_from, shift, [0; 3], Point::shift_by),
             (Selection::start, Selection::end_excl),
         );
 
@@ -249,12 +304,12 @@ impl Selections {
         // Selections in the whole range. First by the original shift, in
         // order to update them to the latest shift leve, then by the
         // change.
-        if c_range.end > sh_from && shift != [0; 3] {
-            for cursor in self.buf.range(sh_from..c_range.end).into_iter() {
+        if c_range.end > shift_from && shift != [0; 3] {
+            for cursor in self.buf.range(shift_from..c_range.end).into_iter() {
                 cursor.shift_by(shift);
             }
         }
-        let range = c_range.start..c_range.end.max(sh_from);
+        let range = c_range.start..c_range.end.max(shift_from);
         for cursor in self.buf.range(range).into_iter() {
             cursor.shift_by_change(change);
         }
@@ -274,10 +329,11 @@ impl Selections {
             }
         };
 
-        let new_sh_from = sh_from.saturating_sub(cursors_taken).max(c_range.start) + cursors_added;
-        if new_sh_from < self.buf.len() {
+        let new_shift_from =
+            shift_from.saturating_sub(cursors_taken).max(c_range.start) + cursors_added;
+        if new_shift_from < self.buf.len() {
             self.shift_state
-                .set((new_sh_from, add_shifts(shift, change.shift())));
+                .set((new_shift_from, add_shifts(shift, change.shift())));
         }
 
         cursors_taken - cursors_added
@@ -288,10 +344,10 @@ impl Selections {
         if i >= self.buf.len() {
             return None;
         }
-        let (sh_from, shift) = self.shift_state.get();
+        let (shift_from, shift) = self.shift_state.get();
 
-        if i >= sh_from && shift != [0; 3] {
-            for cursor in self.buf.range(sh_from..i + 1).iter() {
+        if i >= shift_from && shift != [0; 3] {
+            for cursor in self.buf.range(shift_from..i + 1).iter() {
                 cursor.shift_by(shift);
             }
             if i + 1 < self.buf.len() {
@@ -301,10 +357,10 @@ impl Selections {
             } else {
                 self.shift_state.take();
             }
-        } else if i < sh_from {
-            // If I am removing before sh_from, obviously the index of the first
-            // unshifted Selection is moved back.
-            self.shift_state.set((sh_from - 1, shift));
+        } else if i < shift_from {
+            // If I am removing before shift_from, obviously the index of the
+            // first unshifted Selection is moved back.
+            self.shift_state.set((shift_from - 1, shift));
         }
 
         let was_main = self.main_i == i;

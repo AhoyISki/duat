@@ -747,14 +747,14 @@ pub mod prelude {
         cmd,
         context::{self, FileHandle, Handle},
         data::{Pass, RwData},
-        file::{File, Reader, ReaderBox, ReaderCfg, Readers},
+        file::{File, FileParts, Reader, ReaderBox, ReaderCfg, Readers},
         form::{self, Form},
         hook,
         mode::{self, KeyCode, KeyEvent, KeyMod, Mode, key},
         ranges::Ranges,
         text::{
-            AlignCenter, AlignLeft, AlignRight, Conceal, Ghost, Matcheable, Moment, RefBytes,
-            Spacer, Tagger, Text, TextParts, txt,
+            AlignCenter, AlignLeft, AlignRight, Conceal, Ghost, Matcheable, Moment, Point,
+            RefBytes, Spacer, Tagger, Text, txt,
         },
         ui::{PushSpecs, RawArea, Ui, Widget, WidgetCfg},
     };
@@ -774,7 +774,9 @@ mod ranges {
     /// minimize as much as possible the amount of work done to update
     /// the [`Text`] when it changes in a [`File`].
     ///
-    /// [`File`]: super::File
+    /// [`Text`]: crate::text::Text
+    /// [`File`]: crate::File
+    /// [`Reader`]: crate::file::Reader
     #[derive(Clone, Default, Debug)]
     pub struct Ranges {
         list: GapBuffer<Range<usize>>,
@@ -925,6 +927,8 @@ mod ranges {
         }
 
         /// Shifts the [`Range<usize>`]s by a list of [`Change`]s
+        ///
+        /// [`Change`]: crate::text::Change
         pub fn shift_by(&mut self, from: usize, diff: i32) {
             let (shift_from, total_diff) = std::mem::take(&mut self.shift_state);
 

@@ -112,7 +112,7 @@ impl Bounds {
                 let mut iter = self.list[..shift_from].iter().rev();
                 while let Some((bound, ..)) = iter.next()
                     && let [n, b] = bound.get()
-                    && n >= from
+                    && n > from
                 {
                     bound.set([sh(n, n_diff), sh(b, b_diff)]);
                     ins -= 1;
@@ -123,7 +123,7 @@ impl Bounds {
                 // that.
                 while let Some((bound, ..)) = iter.next()
                     && let [n, b] = bound.get()
-                    && sh(n, total_n_diff) < from
+                    && sh(n, total_n_diff) <= from
                 {
                     bound.set([sh(n, total_n_diff), sh(b, total_b_diff)]);
                     ins += 1;

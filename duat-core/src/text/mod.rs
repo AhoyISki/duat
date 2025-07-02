@@ -261,7 +261,7 @@ impl Text {
     /// If you only want to check for the [`Bytes`], ignoring possible
     /// [`Ghost`]s, see [`is_empty`].
     ///
-    /// [`is_empty`]: Self::is_empty
+    /// [`is_empty`]: Bytes::is_empty
     pub fn is_empty_empty(&self) -> bool {
         self.0.bytes == "\n" && self.0.tags.is_empty()
     }
@@ -283,18 +283,13 @@ impl Text {
 
     /// The parts that make up a [`Text`]
     ///
-    /// This function is used when you want to add [`Tags`] (i.e.,
-    /// borrow the [`Tags`] mutably), while still being able to read
-    /// from the [`Bytes`] and [`Selections`].
+    /// This function is used when you want to [insert]/[remove]
+    /// [`Tag`]s (i.e., borrow the inner `Tags` mutably via
+    /// [`MutTags`]), while still being able to read from the
+    /// [`Bytes`] (through [`RefBytes`]) and the [`Selections`].
     ///
-    /// Giving direct access to mutate the [`Bytes`] is prohibited,
-    /// since that would cause a disconnect between the [`Bytes`]
-    /// and [`Tags`]. Same for [`Selections`].
-    ///
-    /// However, being able to read the [`Bytes`] and [`Selections`]
-    /// is crucial to allow for efficient [`Tag`] insertions and
-    /// removals. which is why this function exists.
-    ///
+    /// [insert]: MutTags::insert
+    /// [remove]: MutTags::remove
     /// [`&mut Bytes`]: Bytes
     pub fn parts(&mut self) -> TextParts<'_> {
         TextParts {
@@ -324,7 +319,7 @@ impl Text {
     /// position.
     ///
     /// [points]: TwoPoints
-    /// [point]: Self::point_at
+    /// [point]: Bytes::point_at
     #[inline(always)]
     pub fn ghost_max_points_at(&self, at: usize) -> (Point, Option<Point>) {
         let point = self.point_at(at);
@@ -338,7 +333,7 @@ impl Text {
     /// [`Ghost`] at the end of the text.
     ///
     /// [points]: TwoPoints
-    /// [last point]: Self::len
+    /// [last point]: Bytes::len
     pub fn len_points(&self) -> (Point, Option<Point>) {
         self.ghost_max_points_at(self.len().byte())
     }
@@ -987,12 +982,13 @@ pub struct TextParts<'a> {
     /// [contiguous `&str`]: RefBytes::contiguous
     /// [regex searching]: RefBytes::search_fwd
     pub bytes: RefBytes<'a>,
-    /// The [`Tags`] of the [`Text`]
+    /// The [`MutTags`] of the [`Text`]
     ///
-    /// Main reason to wrap the [`&mut Tags`] within is to forbid the
-    /// usage of something like [`std::mem::replace`]
+    /// This, unlike [`RefBytes`], allows mutation in the form of
+    /// [adding] and [removing] [`Tag`]s.
     ///
-    /// [`&mut Tags`]: Tags
+    /// [adding]: MutTags::insert
+    /// [removing]: MutTags::remove
     pub tags: MutTags<'a>,
     /// The [`Selections`] of the [`Text`]
     ///

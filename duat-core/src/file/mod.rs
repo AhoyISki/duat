@@ -14,7 +14,7 @@
 use std::{fs, marker::PhantomData, path::PathBuf};
 
 use self::reader::InnerReaders;
-pub use self::reader::{Reader, ReaderBox, ReaderCfg, Readers};
+pub use self::reader::{FileParts, Reader, ReaderBox, ReaderCfg, Readers};
 use crate::{
     cfg::PrintCfg,
     context::{self, FileHandle, Handle, load_cache},
@@ -410,7 +410,7 @@ impl<U: Ui> Widget<U> for File<U> {
 
         // SAFETY: The Pass goes no further than the use in file.readers
         let mut pa = unsafe { Pass::new() };
-        readers.update_range(&mut pa, &mut file.text, start.byte()..end.byte());
+        readers.update_range(&mut pa, &mut file.text, start..end);
 
         file.text.update_bounds();
     }

@@ -360,7 +360,7 @@
 //! [style]: prelude::form::Form
 //! [text creation system]: prelude::text::txt
 //! [`status!`]: prelude::status
-//! [numbering]: prelude::LineNum
+//! [numbering]: duat_utils::widgets::LineNumbersOptions::rel_abs
 //! [`LineNumbers`]: prelude::LineNumbers
 //! [`Widget`]: prelude::Widget
 //! [tags]: duat_core::text::Tag
@@ -402,10 +402,12 @@ pub mod cmd {
     /// - [`on_flags`]: Acts based on [`Flags`] passed, `"global"` for
     ///   [`on_each`], `"window"` for [`on_window`].
     ///
-    /// [`on_current`]: Self::on_current
-    /// [`on_each`]: Self::on_each
-    /// [`on_window`]: Self::on_window
-    /// [`on_flags`]: Self::on_flags
+    /// [`on_current`]: Handles::on_current
+    /// [`on_each`]: Handles::on_each
+    /// [`on_window`]: Handles::on_window
+    /// [`on_flags`]: Handles::on_flags
+    /// [`Widget`]: crate::prelude::Widget
+    /// [`Handle`]: crate::prelude::Handle
     pub type Handles<'a, W> = duat_core::cmd::Handles<'a, W, crate::Ui>;
 }
 

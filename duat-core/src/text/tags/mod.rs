@@ -53,18 +53,36 @@ impl MutTags<'_> {
 
     /// Removes the [`Tag`]s of a [tagger] from a region
     ///
-    /// # Caution
+    /// The input can either be a byte index, a [`Point`], or a
+    /// [range] of byte indices/[`Point`]s. If you are
+    /// implementing a [`Reader`] that applies [`Tag`]s to the
+    /// [`Text`] [when changes happen]/[on updates], you can "refresh"
+    /// those [`Tag`]s in a very efficient way -- even in very large
+    /// files -- just by doing this:
     ///
-    /// While it is fine to use a [`RangeFull`] (`..`) in your own
-    /// widgets, you should refrain from using this type of argument
-    /// in a [`File`]s [`Text`], as it must iterate over all tags
-    /// in the file, so if there are a lot of other tags, this
-    /// operation may be slow.
+    /// ```rust
+    /// use std::ops::Range;
+    ///
+    /// use duat_core::{prelude::*, text::Point};
+    ///
+    /// struct MyReader {
+    ///     tagger: Tagger,
+    /// }
+    ///
+    /// impl<U: Ui> Reader<U> for MyReader {
+    ///     fn update_range(&mut self, mut parts: FileParts<U>, within: Option<Range<Point>>) {
+    ///         // Removing on the whole File
+    ///         parts.tags.remove(self.tagger, ..);
+    ///         // Logic to add Tags...
+    ///     }
+    /// }
+    /// ```
     ///
     /// [tagger]: Taggers
-    /// [`File`]: crate::file::File
-    /// [`Point`]: super::Point
-    /// [`RangeFull`]: std::ops::RangeFull
+    /// [range]: RangeBounds
+    /// [`Reader`]: crate::file::Reader
+    /// [when changes happen]: crate::file::Reader::apply_changes
+    /// [on updates]: crate::file::Reader::update_range
     pub fn remove(&mut self, taggers: impl Taggers, range: impl TextRangeOrPoint) {
         let range = range.to_range(self.0.len_bytes());
         self.0.remove_from(taggers, range)
@@ -324,7 +342,9 @@ impl Tags {
 
         for range in self
             .extents
-            .remove_range(start..end, self.buf.len(), |tagger| taggers.contains_tagger(tagger))
+            .remove_range(start..end, self.buf.len(), |tagger| {
+                taggers.contains_tagger(tagger)
+            })
         {
             self.remove_from_range(&taggers, range);
         }
@@ -485,7 +505,8 @@ impl Tags {
             // old.start + 1 because we don't want to get rid of bounds that
             // merely coincide with the edges.
             self.remove_intersections(old.start + 1..old.end, |_| true);
-            self.extents.remove_range(old.start..old.end, self.buf.len(), |_| true);
+            self.extents
+                .remove_range(old.start + 1..old.end, self.buf.len(), |_| true);
 
             let [s_n, s_b, s_skip] = self.skip_at(old.start);
 
