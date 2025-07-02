@@ -25,14 +25,6 @@ impl TaggerExtents {
         }
 
         if let Some((_, extent)) = self.0.iter_mut().find(|(t, _)| *t == tagger) {
-            if tagger == Tagger(4)
-                && let Extent::Sparse { shift_state, list } = extent
-                && *shift_state != (0, 0)
-                && byte >= 1342
-            {
-                crate::context::error!("before: {shift_state:?}, {}", list.len());
-                crate::context::error!("before: {:?}", list.get(shift_state.0));
-            }
             extent.insert(byte);
         } else {
             self.0.push((tagger, Extent::Sparse {
@@ -58,18 +50,6 @@ impl TaggerExtents {
         for (tagger, extent) in self.0.iter_mut() {
             if !filter(*tagger) {
                 continue;
-            }
-
-            if *tagger == Tagger(4)
-                && let Extent::Sparse { shift_state, .. } = extent
-                && range.start == 1342
-            {
-                crate::context::info!("from: {range:#?}");
-                crate::context::warn!(
-                    "shift_from: {}, total_diff: {}",
-                    shift_state.0,
-                    shift_state.1
-                );
             }
 
             let Some(bytes) = extent.remove_from_range(range.clone()) else {
@@ -103,11 +83,6 @@ impl TaggerExtents {
                 } else {
                     ranges.insert(i, byte..byte + 1);
                 }
-            }
-
-            if *tagger == Tagger(4) && range.start == 1342 {
-                crate::context::error!("iterated over {bytes_list:?}");
-                crate::context::debug!("ranges: {ranges:?}");
             }
         }
 
@@ -161,24 +136,20 @@ impl Extent {
         let (mut shift_from, mut total_diff) = std::mem::take(shift_state);
 
         if let Some(first_unshifted) = list.get(shift_from) {
-            crate::context::debug!("shifting backwards");
             if from <= sh(*first_unshifted, total_diff) {
                 let mut iter = list[..shift_from].iter_mut().rev();
                 while let Some(b) = iter.next()
                     && *b > from
                 {
-                    crate::context::info!("shifted {} to {}", *b, sh(*b, diff));
                     *b = sh(*b, diff);
                 }
             } else {
-                crate::context::debug!("shifting forwards");
                 let mut iter = list[shift_from..].iter_mut();
                 // All bounds from cur_n have not been shifted, so we account for
                 // that.
                 while let Some(b) = iter.next()
                     && sh(*b, total_diff) <= from
                 {
-                    crate::context::info!("shifted {} to {}", *b, sh(*b, total_diff));
                     *b = sh(*b, total_diff);
                     shift_from += 1;
                 }
@@ -241,9 +212,6 @@ impl Extent {
 
         let mut i = 0;
         Some(list.extract_if(.., move |byte| {
-            if range.start == 1342 && *byte >= 1342 && *byte < 1500 {
-                crate::context::warn!("for {}: i = {i}, shift_from = {}", *byte, *shift_from);
-            }
             let diff = if i < *shift_from { 0 } else { *total_diff };
             if range.contains(&sh(*byte, diff)) {
                 *shift_from -= (i < *shift_from) as usize;

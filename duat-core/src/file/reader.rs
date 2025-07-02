@@ -265,7 +265,7 @@ impl<U: Ui> InnerReaders<U> {
 
                         let jh = thread::spawn(move || {
                             while let Some(moment) = sr.receiver.recv().unwrap() {
-                                apply_moment(&mut sr, moment);
+                                apply_moment(&mut sr, moment, None);
                             }
 
                             sr
@@ -273,7 +273,8 @@ impl<U: Ui> InnerReaders<U> {
 
                         ReaderStatus::Sent(ms, jh)
                     } else {
-                        apply_moment(&mut sr, moment);
+                        ms.latest_state += 1;
+                        apply_moment(&mut sr, moment, Some(pa));
 
                         ReaderStatus::Present(ms, sr)
                     }
@@ -408,7 +409,7 @@ impl<U: Ui> InnerReaders<U> {
     }
 }
 
-fn apply_moment<U: Ui>(sr: &mut SendReader<U>, moment: Moment) {
+fn apply_moment<U: Ui>(sr: &mut SendReader<U>, moment: Moment, pa: Option<&mut Pass>) {
     for change in moment.changes() {
         sr.bytes.apply_change(change);
     }
@@ -416,7 +417,11 @@ fn apply_moment<U: Ui>(sr: &mut SendReader<U>, moment: Moment) {
     let bytes = sr.bytes.ref_bytes();
     let ranges = get_ranges(&mut sr.ranges, &bytes, moment);
 
-    sr.reader.apply_remote_changes(bytes, moment, ranges);
+    if let Some(pa) = pa {
+        sr.reader.apply_changes(pa, bytes, moment, ranges);
+    } else {
+        sr.reader.apply_remote_changes(bytes, moment, ranges);
+    }
     sr.state.fetch_add(1, Ordering::Relaxed);
 }
 
@@ -521,7 +526,7 @@ impl<U: Ui> ReaderBox<U> {
                     let mut sr = SendReader { reader, bytes, receiver, ranges, state };
 
                     while let Some(moment) = sr.receiver.recv().unwrap() {
-                        apply_moment(&mut sr, moment);
+                        apply_moment(&mut sr, moment, None);
                     }
 
                     Ok(sr)
@@ -673,7 +678,7 @@ fn status_from_try_read<Rd: Reader<U>, Ret, U: Ui>(
     read: impl FnOnce(&Rd) -> Ret,
     status: ReaderStatus<U>,
 ) -> (ReaderStatus<U>, Option<Ret>) {
-    let (status, ret) = match status {
+    match status {
         ReaderStatus::Local(lr) => {
             let ptr = Box::as_ptr(&lr.reader);
             let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
@@ -718,8 +723,7 @@ fn status_from_try_read<Rd: Reader<U>, Ret, U: Ui>(
             }
         }
         ReaderStatus::MarkedForDeletion => (ReaderStatus::MarkedForDeletion, None),
-    };
-    (status, ret)
+    }
 }
 
 /// Decides wether a [`Ranges`] should be used or not
