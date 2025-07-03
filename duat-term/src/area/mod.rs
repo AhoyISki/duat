@@ -172,8 +172,8 @@ impl Area {
                             style!(lines, &mut ansi_codes, painter.relative_style())
                         }
                     }
-                    Part::PushForm(id) => {
-                        painter.apply(id);
+                    Part::PushForm(id, prio) => {
+                        painter.apply(id, prio);
                         style_was_set = true;
                     }
                     Part::PopForm(id) => {

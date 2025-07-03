@@ -72,7 +72,7 @@ pub trait Tag<I>: Sized {
 /// [`Form`]: crate::form::Form
 /// [range]: TextRange
 /// [`Builder`]: crate::text::Builder
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct FormTag(pub FormId, pub u8);
 
 impl<I: TextRange> Tag<I> for FormTag {

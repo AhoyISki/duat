@@ -647,7 +647,7 @@ impl Text {
 
             if let Some([start, end]) = selection {
                 let range = start.byte()..end.byte();
-                self.0.tags.insert(key, range, form.to_tag(250));
+                self.0.tags.insert(key, range, form.to_tag(239));
             }
         };
 

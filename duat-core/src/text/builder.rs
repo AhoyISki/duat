@@ -16,7 +16,7 @@ use std::{
 use super::{Change, Tagger, Text};
 use crate::{
     form::FormId,
-    text::{AlignCenter, AlignLeft, AlignRight, Ghost, Spacer},
+    text::{AlignCenter, AlignLeft, AlignRight, FormTag, Ghost, Spacer},
 };
 
 /// Builds and modifies a [`Text`], based on replacements applied
@@ -57,7 +57,7 @@ use crate::{
 #[derive(Clone)]
 pub struct Builder {
     text: Text,
-    last_form: Option<(usize, FormId)>,
+    last_form: Option<(usize, FormTag)>,
     last_align: Option<(usize, Alignment)>,
     buffer: String,
     last_was_empty: bool,
@@ -101,7 +101,7 @@ impl Builder {
         if let Some((b, id)) = self.last_form
             && b < self.text.len().byte()
         {
-            self.text.insert_tag(Tagger::basic(), b.., id.to_tag(0));
+            self.text.insert_tag(Tagger::basic(), b.., id);
         }
         if let Some((b, align)) = self.last_align
             && b < self.text.len().byte()
@@ -131,17 +131,17 @@ impl Builder {
             let end = builder.text.len().byte();
             match part {
                 BP::Text(text) => builder.push_text(text),
-                BP::Form(id) => {
-                    let last_form = if id == crate::form::DEFAULT_ID {
+                BP::Form(tag) => {
+                    let last_form = if tag == crate::form::DEFAULT_ID.to_tag(0) {
                         builder.last_form.take()
                     } else {
-                        builder.last_form.replace((end, id))
+                        builder.last_form.replace((end, tag))
                     };
 
-                    if let Some((b, id)) = last_form
+                    if let Some((b, tag)) = last_form
                         && b < end
                     {
-                        builder.text.insert_tag(Tagger::basic(), b.., id.to_tag(0));
+                        builder.text.insert_tag(Tagger::basic(), b.., tag);
                     }
                 }
                 BP::AlignLeft => match builder.last_align.take() {
@@ -213,7 +213,7 @@ impl Builder {
         self.last_was_empty = text.is_empty();
 
         if let Some((b, id)) = self.last_form.take() {
-            self.text.insert_tag(Tagger::basic(), b.., id.to_tag(0));
+            self.text.insert_tag(Tagger::basic(), b.., id);
         }
 
         self.text.0.bytes.extend(text.0.bytes);
@@ -255,7 +255,7 @@ pub enum BuilderPart<D: Display = String, _T = ()> {
     /// An [`impl Display`](std::fmt::Display) type
     ToString(D),
     /// A [`FormId`]
-    Form(FormId),
+    Form(FormTag),
     /// Sets the alignment to the left, i.e. resets it
     AlignLeft,
     /// Sets the alignment to the center
@@ -291,6 +291,12 @@ impl From<Builder> for BuilderPart {
 
 impl From<FormId> for BuilderPart {
     fn from(value: FormId) -> Self {
+        Self::Form(value.to_tag(0))
+    }
+}
+
+impl From<FormTag> for BuilderPart {
+    fn from(value: FormTag) -> Self {
         Self::Form(value)
     }
 }

@@ -555,7 +555,7 @@ pub enum Part {
     ///
     /// [`Form`]: crate::form::Form
     /// [`Painter`]: crate::form::Painter
-    PushForm(FormId),
+    PushForm(FormId, u8),
     /// Pop a [`Form`] from the [`Painter`]
     ///
     /// [`Form`]: crate::form::Form
@@ -609,7 +609,7 @@ impl Part {
     #[inline]
     pub(super) fn from_raw(value: RawTag) -> Self {
         match value {
-            RawTag::PushForm(_, id, _) => Part::PushForm(id),
+            RawTag::PushForm(_, id, prio) => Part::PushForm(id, prio),
             RawTag::PopForm(_, id) => Part::PopForm(id),
             RawTag::MainCaret(_) => Part::MainCaret,
             RawTag::ExtraCaret(_) => Part::ExtraCaret,

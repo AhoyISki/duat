@@ -1146,24 +1146,27 @@ mod private_exports {
     }
 
     pub macro parse_form {
-        ($builder:expr, "",) => {{
+        ($builder:expr, $priority:literal,) => {{
+            const PRIORITY: u8 = $crate::priority($priority);
             let builder = $builder;
-            builder.push($crate::form::DEFAULT_ID);
+            let id = $crate::form::ACCENT_ID;
+            builder.push(id.to_tag(PRIORITY));
             builder
         }},
-        ($builder:expr, "", a) => {{
+        ($builder:expr, $priority:literal, a) => {{
+            const PRIORITY: u8 = $crate::priority($priority);
             let builder = $builder;
-            builder.push($crate::form::ACCENT_ID);
+            let id = $crate::form::DEFAULT_ID;
+            builder.push(id.to_tag(PRIORITY));
             builder
         }},
-        ($builder:expr, "", $($form:tt)*) => {{
+        ($builder:expr, $priority:literal, $($form:tt)*) => {{
+            const PRIORITY: u8 = $crate::priority($priority);
             let builder = $builder;
-            builder.push($crate::form::id_of!(concat!($(stringify!($form)),*)));
+            let id = $crate::form::id_of!(concat!($(stringify!($form)),*));
+            builder.push(id.to_tag(PRIORITY));
             builder
         }},
-        ($builder:expr, $modif:literal, $($form:tt)*) => {{
-            compile_error!(concat!("at the moment, Forms don't support modifiers like ", $modif))
-        }}
     }
 }
 
@@ -1501,6 +1504,23 @@ fn iter_around_rev<U: Ui>(
                 .flat_map(move |(i, win)| window_index_widget((i, win)).rev())
                 .take(next_len - (widget + 1)),
         )
+}
+
+/// Converts a string to a valid priority
+#[doc(hidden)]
+pub const fn priority(priority: &str) -> u8 {
+    let mut bytes = priority.as_bytes();
+    let mut val = 0;
+
+    while let [byte, rest @ ..] = bytes {
+        assert!(b'0' <= *byte && *byte <= b'9', "invalid digit");
+        val = val * 10 + (*byte - b'0') as usize;
+        bytes = rest;
+    }
+
+    assert!(val <= 250, "priority cannot exceed 250");
+
+    val as u8
 }
 
 // Debugging objects.

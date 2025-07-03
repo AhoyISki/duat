@@ -1,6 +1,7 @@
 [package]
 name = "duat"
 version = "0.5.3"
+edition = "2024"
 authors = ["AhoyISki"]
 description = "A Highly customizable text editor, configured through the use of a rust crate."
 repository = "https://github.com/AhoyISki/duat"
@@ -9,7 +10,6 @@ readme = "README.md"
 keywords = ["editor", "text", "application", "duat"]
 categories = ["command-line-utilities", "text-editors", "config"]
 include = ["src/", "config/src/", "config/Cargo_.toml", "build.rs"]
-edition = "2024"
 
 [lints.rust]
 missing_docs = "warn"

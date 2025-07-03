@@ -1241,7 +1241,7 @@ pub struct Painter {
     inner: RwLockReadGuard<'static, InnerPalette>,
     mask_i: usize,
     default: Form,
-    forms: Vec<(Form, FormId)>,
+    forms: Vec<(Form, FormId, u8)>,
     final_form_start: usize,
     set_fg: bool,
     set_bg: bool,
@@ -1258,7 +1258,7 @@ impl Painter {
     /// background, its combination with the other [`Form`]s also
     /// won't, since it wasn't changed.
     #[inline(always)]
-    pub fn apply(&mut self, id: FormId) {
+    pub fn apply(&mut self, id: FormId, prio: u8) {
         let (_, mask) = &self.inner.masks[self.mask_i];
         let id = FormId(mask.get(id.0 as usize).copied().unwrap_or(id.0));
 
@@ -1268,10 +1268,9 @@ impl Painter {
             .map(|(_, f, _)| *f)
             .unwrap_or(Form::new().0);
 
-        self.forms.insert(self.final_form_start, (form, id));
-        if id != M_SEL_ID && id != E_SEL_ID {
-            self.final_form_start += 1;
-        }
+        let gt = |(.., p): &&(_, _, u8)| *p > prio;
+        let i = self.forms.len() - self.forms.iter().rev().take_while(gt).count();
+        self.forms.insert(i, (form, id, prio));
 
         self.set_fg |= form.fg().is_some();
         self.set_bg |= form.bg().is_some();
@@ -1287,7 +1286,7 @@ impl Painter {
         let id = FormId(mask.get(id.0 as usize).copied().unwrap_or(id.0));
 
         let mut applied_forms = self.forms.iter().enumerate();
-        if let Some((i, &(form, _))) = applied_forms.rfind(|(_, (_, lhs))| *lhs == id) {
+        if let Some((i, &(form, ..))) = applied_forms.rfind(|(_, (_, lhs, _))| *lhs == id) {
             self.forms.remove(i);
             if id != M_SEL_ID && id != E_SEL_ID {
                 self.final_form_start -= 1;
@@ -1320,7 +1319,7 @@ impl Painter {
     pub fn absolute_style(&self) -> ContentStyle {
         let mut style = self.default.style;
 
-        for &(form, _) in &self.forms {
+        for &(form, ..) in &self.forms {
             style.foreground_color = form.fg().or(style.foreground_color);
             style.background_color = form.bg().or(style.background_color);
             style.underline_color = form.ul().or(style.underline_color);
@@ -1377,7 +1376,7 @@ impl Painter {
     /// Applies the `"caret.main"` [`Form`]
     #[inline(always)]
     pub fn apply_main_cursor(&mut self) {
-        self.apply(M_CAR_ID);
+        self.apply(M_CAR_ID, 240);
         self.final_form_start -= 1;
     }
 
@@ -1391,7 +1390,7 @@ impl Painter {
     /// Applies the `"caret.extra"` [`Form`]
     #[inline(always)]
     pub fn apply_extra_cursor(&mut self) {
-        self.apply(E_CAR_ID);
+        self.apply(E_CAR_ID, 240);
         self.final_form_start -= 1;
     }
 
@@ -1546,7 +1545,7 @@ const fn str_to_color(str: &str) -> std::result::Result<Color, &'static str> {
     } else if let Some(mut rgb) = strip_prefix("rgb ", str) {
         let mut values = [0, 0, 0];
         let mut i = 0;
-        
+
         while i < values.len() {
             if let Some((cut, rest)) = split_space(rgb) {
                 rgb = rest;
