@@ -1149,14 +1149,14 @@ mod private_exports {
         ($builder:expr, $priority:literal,) => {{
             const PRIORITY: u8 = $crate::priority($priority);
             let builder = $builder;
-            let id = $crate::form::ACCENT_ID;
+            let id = $crate::form::DEFAULT_ID;
             builder.push(id.to_tag(PRIORITY));
             builder
         }},
         ($builder:expr, $priority:literal, a) => {{
             const PRIORITY: u8 = $crate::priority($priority);
             let builder = $builder;
-            let id = $crate::form::DEFAULT_ID;
+            let id = $crate::form::ACCENT_ID;
             builder.push(id.to_tag(PRIORITY));
             builder
         }},
