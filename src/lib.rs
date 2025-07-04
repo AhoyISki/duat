@@ -134,6 +134,11 @@ pub struct TsParser {
 }
 
 impl TsParser {
+    /// Returns the root [`Node`] of the tree
+    pub fn root(&self) -> Node<'_> {
+        self.tree.root_node()
+    }
+
     fn init(
         bytes: &mut RefBytes,
         range: Range<usize>,
