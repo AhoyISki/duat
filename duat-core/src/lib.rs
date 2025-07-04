@@ -179,8 +179,6 @@
 //! to keep track of changes through the [`Reader`] trait:
 //!
 //! ```rust
-//! use std::ops::Range;
-//!
 //! use duat_core::prelude::*;
 //!
 //! /// A [`Reader`] to keep track of words in a [`File`]
@@ -449,7 +447,6 @@
 //! is through a simple function:
 //!
 //! ```rust
-//! # use std::ops::Range;
 //! # struct WordCounterCfg(bool);
 //! # impl<U: Ui> ReaderCfg<U> for WordCounterCfg {
 //! #     type Reader = WordCounter;
@@ -483,8 +480,6 @@
 //! Now, we have a finished plugin:
 //!
 //! ```rust
-//! use std::ops::Range;
-//!
 //! use duat_core::{hook::OnFileOpen, prelude::*, text::Change};
 //!
 //! /// A [`Plugin`] to count the number of words in [`File`]s

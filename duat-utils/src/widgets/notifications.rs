@@ -180,10 +180,16 @@ impl<U> NotificationsCfg<U> {
 impl<U: Ui> WidgetCfg<U> for NotificationsCfg<U> {
     type Widget = Notifications<U>;
 
-    fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    fn build(mut self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+        let logs = context::logs();
+        let text = logs
+            .last()
+            .and_then(&mut self.format_rec)
+            .unwrap_or_default();
+
         let widget = Notifications {
             logs: context::logs(),
-            text: Text::new(),
+            text,
             format_rec: self.format_rec,
             get_mask: self.get_mask,
             _ghost: PhantomData,

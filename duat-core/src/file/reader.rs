@@ -637,7 +637,7 @@ impl<U: Ui> Readers<'_, U> {
         }
     }
 
-    /// Tries tor read a specific [`Reader`], if it was [added]
+    /// Tries to read a specific [`Reader`], if it was [added]
     ///
     /// Not only does it not trigger if the [`Reader`] doesn't exist,
     /// also will not trigger if it was sent to another thread, and

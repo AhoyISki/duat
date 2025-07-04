@@ -102,7 +102,7 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
     }
 
     fn cfg() -> Self::Cfg {
-        macros::status!("{file_fmt} {mode_fmt} {sels_fmt} {}", main_fmt)
+        macros::status!("{file_fmt}{Spacer}{mode_fmt} {sels_fmt} {main_fmt}")
     }
 
     fn text(&self) -> &Text {

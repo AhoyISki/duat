@@ -69,6 +69,10 @@ pub fn pre_setup(logs: Option<Logs>, duat_tx: &'static Sender<DuatEvent>) {
     mode::set_default(Regular);
     mode::set_default(Pager::<LogBook, Ui>::new());
 
+    hook::add_grouped::<OnFileOpen>("MatchPairs", |pa, builder| {
+        builder.add_reader(pa, duat_match_pairs::MatchParens);
+    });
+
     hook::add_grouped::<OnFileOpen>("FileWidgets", |pa, builder| {
         builder.push(pa, VertRule::cfg());
         builder.push(pa, LineNumbers::cfg());
