@@ -1,11 +1,11 @@
 use std::{fs, path::PathBuf, process::Command, sync::Mutex};
 
-use dlopen_rs::{Dylib, OpenFlags};
 use duat_core::{
     context,
     text::{Text, txt},
 };
 use indoc::{formatdoc, indoc};
+use libloading::Library;
 use tree_sitter::Language;
 
 use self::list::LANGUAGE_OPTIONS;
@@ -30,7 +30,7 @@ pub fn parser_is_compiled(filetype: &str) -> Result<bool, Text> {
 }
 
 pub fn get_language(filetype: &str) -> Result<Language, Text> {
-    static LIBRARIES: Mutex<Vec<Dylib>> = Mutex::new(Vec::new());
+    static LIBRARIES: Mutex<Vec<Library>> = Mutex::new(Vec::new());
 
     let parsers_dir = get_workspace_dir()?.join("parsers");
     let options = LANGUAGE_OPTIONS
@@ -44,15 +44,12 @@ pub fn get_language(filetype: &str) -> Result<Language, Text> {
     let lib = options.crate_name.replace("-", "_");
     let so_path = lib_dir.join(format!("lib{lib}.so"));
 
-    if let Ok(lib) = dlopen_rs::ElfLibrary::dlopen(
-        so_path,
-        OpenFlags::RTLD_NOW | OpenFlags::CUSTOM_NOT_REGISTER,
-    ) {
+    if let Ok(lib) = unsafe { Library::new(so_path) } {
         context::debug!("Loading tree-sitter parser for [a]{filetype}");
         let language = unsafe {
             let (symbol, _) = options.symbols[0];
             let lang_fn = lib
-                .get::<fn() -> Language>(&symbol.to_lowercase())
+                .get::<fn() -> Language>(symbol.to_lowercase().as_bytes())
                 .map_err(|err| txt!("{err}"))?;
 
             lang_fn()

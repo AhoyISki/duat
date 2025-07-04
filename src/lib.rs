@@ -74,8 +74,6 @@ pub struct TreeSitter;
 
 impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter {
     fn plug(self) {
-        dlopen_rs::init();
-
         form::set_many!(
             ("variable", Form::white()),
             ("variable.builtin", Form::dark_yellow()),
