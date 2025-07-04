@@ -41,7 +41,7 @@ static BASE_FORMS: &[(&str, Form, FormType)] = &[
         Form::white().on_dark_grey().0,
         Ref(M_SEL_ID.0 as usize),
     ),
-    ("cloak", Form::grey().0, Normal),
+    ("cloak", Form::grey().on_black().0, Normal),
 ];
 
 /// The functions that will be exposed for public use.
