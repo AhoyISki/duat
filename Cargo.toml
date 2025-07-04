@@ -1,0 +1,16 @@
+[package]
+name = "duat-match-pairs"
+version = "0.1.0"
+authors = ["AhoyISki"]
+description = "A duat plugin to highlight matched pairs"
+repository = "https://github.com/AhoyISki/duat-match-pairs"
+license = "AGPL-3.0-or-later"
+readme = "README.md"
+keywords = ["editor", "text", "plugin", "duat"]
+categories = ["command-line-utilities", "text-editors", "config"]
+edition = "2024"
+
+[dependencies]
+duat-core = { version = "0.5.3", git = "https://github.com/AhoyISki/duat" }
+
+duat-treesitter = { version = "0.2.2", git = "https://github.com/AhoyISki/duat-treesitter" }
