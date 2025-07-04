@@ -45,7 +45,7 @@ mod macros {
         }),
         ($($arg:tt)+) => (
             $crate::private_exports::log!(
-                module_path!(),
+                module_path!().to_string().leak(),
                 $crate::context::Level::Error,
                 $($arg)+
             )
@@ -88,7 +88,7 @@ mod macros {
         }),
         ($($arg:tt)+) => (
             $crate::private_exports::log!(
-                module_path!(),
+                module_path!().to_string().leak(),
                 $crate::context::Level::Warn,
                 $($arg)+
             )
@@ -124,14 +124,14 @@ mod macros {
     pub macro info {
         (target: $target:expr, $($arg:tt)+) => ({
             $crate::private_exports::log!(
-                $target.to_string().leak(),
+                $target.to_string(),
                 $crate::context::Level::Info,
                 $($arg)+
             )
         }),
         ($($arg:tt)+) => (
             $crate::private_exports::log!(
-                module_path!(),
+                module_path!().to_string().leak(),
                 $crate::context::Level::Info,
                 $($arg)+
             )
@@ -175,7 +175,7 @@ mod macros {
         }),
         ($($arg:tt)+) => (
             $crate::private_exports::log!(
-                module_path!(),
+                module_path!().to_string().leak(),
                 $crate::context::Level::Debug,
                 $($arg)+
             )
@@ -387,8 +387,8 @@ impl Record {
 
     /// Metadata about the log directive
     #[inline]
-    pub fn metadata(&self) -> &log::Metadata<'static> {
-        &self.metadata
+    pub fn metadata(&self) -> log::Metadata<'static> {
+        self.metadata.clone()
     }
 
     /// The verbosity level of the message

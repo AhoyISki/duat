@@ -252,6 +252,10 @@ impl Default for MetaStatics {
     }
 }
 
+// SAFETY: The Area (the part that is not Send + Sync) is only ever
+// accessed from the main thread.
+unsafe impl Send for MetaStatics {}
+
 #[derive(Debug)]
 pub enum Anchor {
     TopLeft,

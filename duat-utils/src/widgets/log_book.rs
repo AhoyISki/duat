@@ -25,16 +25,16 @@ impl<U: Ui> Widget<U> for LogBook {
             format_rec: Box::new(|rec| {
                 use context::Level::*;
                 let mut builder = match rec.level() {
-                    Error => txt!("[log_book.error][[ERROR]][log_book.colon]: "),
+                    Error => txt!("[log_book.error][[ERROR]][log_book.colon]:  "),
                     Warn => txt!("[log_book.warn][[WARNING]][log_book.colon]: "),
-                    Info => txt!("[log_book.info][[INFO]][log_book.colon]: "),
-                    Debug => txt!("[log_book.debug][[DEBUG]][log_book.colon]: "),
+                    Info => txt!("[log_book.info][[INFO]][log_book.colon]:   "),
+                    Debug => txt!("[log_book.debug][[DEBUG]][log_book.colon]:  "),
                     Trace => unreachable!("Trace is not meant to be useable"),
                 };
 
                 builder.push(txt!(
                     "[log_book.bracket]([log_book.target]{}[log_book.bracket])[]\n {}",
-                    rec.target(),
+                    rec.metadata().target(),
                     rec.text().clone()
                 ));
 

@@ -1522,7 +1522,3 @@ pub const fn priority(priority: &str) -> u8 {
 
     val as u8
 }
-
-// Debugging objects.
-#[doc(hidden)]
-pub static DEBUG_TIME_START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();

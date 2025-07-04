@@ -35,7 +35,6 @@ pub struct SessionCfg<U: Ui> {
 impl<U: Ui> SessionCfg<U> {
     pub fn new(clipb: &'static Mutex<Clipboard>) -> Self {
         crate::clipboard::set_clipboard(clipb);
-        crate::DEBUG_TIME_START.get_or_init(std::time::Instant::now);
 
         SessionCfg {
             file_cfg: FileCfg::new(),
@@ -537,7 +536,7 @@ fn swap<U: Ui>(
 fn wait_for_threads_to_despawn() {
     loop {
         if let Some(count) = thread_count::thread_count() {
-            if count.get() > 4 {
+            if count.get() > 5 {
                 std::thread::sleep(std::time::Duration::from_millis(10))
             } else {
                 break;

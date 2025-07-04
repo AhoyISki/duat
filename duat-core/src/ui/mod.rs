@@ -105,7 +105,7 @@ pub trait Ui: Default + Clone + 'static {
     ///
     /// [`term-ui`]: docs.rs/term-ui/latest/term_ui
     /// [`Mutex`]: std::sync::Mutex
-    type MetaStatics: Default;
+    type MetaStatics: Default + Send;
 
     ////////// Functions executed from the outer loop
 

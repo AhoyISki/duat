@@ -12,7 +12,6 @@ use std::{
     time::Instant,
 };
 
-use dlopen_rs::{Dylib, ElfLibrary, OpenFlags, Symbol};
 use duat::{Messengers, MetaStatics, pre_setup, prelude::*, run_duat};
 use duat_core::{
     clipboard::Clipboard,
@@ -20,6 +19,7 @@ use duat_core::{
     session::FileRet,
     ui::{self, DuatEvent, Ui as UiTrait},
 };
+use libloading::{Library, Symbol};
 use notify::{
     Event, EventKind,
     RecursiveMode::*,
@@ -36,8 +36,6 @@ fn main() {
 
     let ms: &'static <Ui as ui::Ui>::MetaStatics =
         Box::leak(Box::new(<Ui as ui::Ui>::MetaStatics::default()));
-
-    dlopen_rs::init();
 
     let (reload_tx, reload_rx) = mpsc::channel();
     let (duat_tx, mut duat_rx) = mpsc::channel();
@@ -70,9 +68,8 @@ fn main() {
             } else {
                 context::error!("Failed to compile [a]release[] profile");
             }
-            waiting_nap(50);
         }
-        ElfLibrary::dlopen(so_path, DEFAULT_FLAGS).ok()
+        unsafe { Library::new(so_path) }.ok()
     };
 
     // The watcher is returned as to not be dropped.
@@ -85,13 +82,23 @@ fn main() {
         let mut run_fn = running_lib.as_ref().and_then(find_run_duat);
 
         let reload_instant;
-        (prev, duat_rx, reload_instant) = if let Some(run_duat) = run_fn.take() {
-            run_duat(logs.clone(), (ms, &CLIPB), prev, (duat_tx, duat_rx))
-        } else {
-            context::error!("Failed to load config crate");
-            pre_setup(None, duat_tx);
-            run_duat((ms, &CLIPB), prev, duat_rx)
-        };
+        (prev, duat_rx, reload_instant) = std::thread::scope(|s| {
+            s.spawn(|| {
+                if let Some(run_duat) = run_fn.take() {
+                    run_duat(logs.clone(), (ms, &CLIPB), prev, (duat_tx, duat_rx))
+                } else {
+                    context::error!("Failed to load config crate");
+                    pre_setup(None, duat_tx);
+                    run_duat((ms, &CLIPB), prev, duat_rx)
+                }
+            })
+            .join()
+            .unwrap()
+        });
+
+        if let Some(lib) = running_lib {
+            lib.close().unwrap();
+        }
 
         if prev.is_empty() {
             break;
@@ -105,7 +112,7 @@ fn main() {
             None => Text::builder(),
         };
         context::info!("[a]{profile}[] profile reloaded{time}");
-        lib = ElfLibrary::dlopen(so_path, DEFAULT_FLAGS).ok();
+        lib = unsafe { Library::new(so_path) }.ok();
     }
 
     Ui::close(ms);
@@ -137,7 +144,6 @@ fn spawn_watcher(
                 paths,
                 ..
             }) if paths.iter().any(|p| p.ends_with(".cargo-lock")) && sent_reload => {
-                waiting_nap(50);
                 duat_tx.send(DuatEvent::ReloadConfig).unwrap();
                 sent_reload = false;
             }
@@ -193,13 +199,8 @@ fn run_cargo(toml_path: PathBuf, on_release: bool, print: bool) -> Result<Output
     }
 }
 
-fn find_run_duat(lib: &Dylib) -> Option<Symbol<'_, RunFn>> {
-    unsafe { lib.get::<RunFn>("run").ok() }
-}
-
-/// Time for the writing operations to finish or something.
-fn waiting_nap(len: u64) {
-    std::thread::sleep(std::time::Duration::from_millis(len));
+fn find_run_duat(lib: &Library) -> Option<Symbol<'_, RunFn>> {
+    unsafe { lib.get::<RunFn>(b"run").ok() }
 }
 
 type RunFn = fn(
@@ -208,5 +209,3 @@ type RunFn = fn(
     Vec<Vec<FileRet>>,
     Messengers,
 ) -> (Vec<Vec<FileRet>>, Receiver<DuatEvent>, Option<Instant>);
-
-const DEFAULT_FLAGS: OpenFlags = OpenFlags::RTLD_NOW.union(OpenFlags::CUSTOM_NOT_REGISTER);

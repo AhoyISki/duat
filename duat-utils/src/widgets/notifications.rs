@@ -93,10 +93,11 @@ impl<U: Ui> Widget<U> for Notifications<U> {
         handle.write(pa, |wid, _| {
             if wid.logs.has_changed()
                 && let Some(rec) = wid.logs.last()
-                && let Some(text) = (wid.format_rec)(rec.clone())
             {
-                handle.set_mask((wid.get_mask)(rec));
-                wid.text = text
+                if let Some(text) = (wid.format_rec)(rec.clone()) {
+                    handle.set_mask((wid.get_mask)(rec));
+                    wid.text = text
+                }
             } else if clear_notifs {
                 handle.set_mask("");
                 wid.text = Text::new()

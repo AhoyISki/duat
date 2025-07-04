@@ -1376,7 +1376,7 @@ impl Painter {
     /// Applies the `"caret.main"` [`Form`]
     #[inline(always)]
     pub fn apply_main_cursor(&mut self) {
-        self.apply(M_CAR_ID, 240);
+        self.apply(M_CAR_ID, 100);
         self.final_form_start -= 1;
     }
 
@@ -1390,7 +1390,7 @@ impl Painter {
     /// Applies the `"caret.extra"` [`Form`]
     #[inline(always)]
     pub fn apply_extra_cursor(&mut self) {
-        self.apply(E_CAR_ID, 240);
+        self.apply(E_CAR_ID, 100);
         self.final_form_start -= 1;
     }
 

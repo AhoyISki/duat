@@ -43,7 +43,6 @@ pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
 
 #[doc(hidden)]
 pub fn pre_setup(logs: Option<Logs>, duat_tx: &'static Sender<DuatEvent>) {
-    // Is only Some when dlopening.
     if let Some(logs) = logs {
         log::set_logger(Box::leak(Box::new(logs.clone()))).unwrap();
         context::set_logs(logs);

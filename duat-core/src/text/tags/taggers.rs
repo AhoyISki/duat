@@ -7,7 +7,7 @@ use std::{
 };
 
 use super::sh;
-use crate::{binary_search_by_key_and_index, context};
+use crate::binary_search_by_key_and_index;
 
 /// The prevalence of a [`Tagger`] in a [`Text`]
 ///
@@ -25,25 +25,12 @@ impl TaggerExtents {
         }
 
         if let Some((_, extent)) = self.0.iter_mut().find(|(t, _)| *t == tagger) {
-            if tagger == Tagger(5) {
-                context::warn!("[a]inserting on {byte}");
-                context::warn!("extent was {extent:#?}");
-            }
             extent.insert(byte);
-            if tagger == Tagger(5) {
-                context::warn!("extent is now {extent:#?}");
-            }
         } else {
-            if tagger == Tagger(5) {
-                context::warn!("[a]creating on {byte}");
-            }
             self.0.push((tagger, Extent::Sparse {
                 list: vec![byte],
                 shift_state: (0, 0),
             }));
-            if tagger == Tagger(5) {
-                context::warn!("extent is now {:#?}", self.0.last().unwrap().1);
-            }
         }
     }
 
@@ -65,11 +52,6 @@ impl TaggerExtents {
                 continue;
             }
 
-            if *tagger == Tagger(5) {
-                context::info!("[a]Removing from {range:?}");
-                context::info!("extent was {extent:#?}");
-            }
-
             let Some(bytes) = extent.remove_from_range(range.clone()) else {
                 if !rampant_matches {
                     ranges = vec![range.clone()];
@@ -85,9 +67,6 @@ impl TaggerExtents {
 
             let mut bytes_list = Vec::new();
             for byte in bytes {
-                if *tagger == Tagger(5) {
-                    context::info!("iterated over {byte}");
-                }
                 bytes_list.push(byte);
 
                 let i = ranges.iter_mut().take_while(|r| byte + 1 > r.end).count();
@@ -105,10 +84,6 @@ impl TaggerExtents {
                     ranges.insert(i, byte..byte + 1);
                 }
             }
-
-            if *tagger == Tagger(5) {
-                context::info!("extent is now {extent:#?}");
-            }
         }
 
         self.0.retain(|(tagger, extent)| {
@@ -119,16 +94,8 @@ impl TaggerExtents {
     }
 
     pub fn shift_by(&mut self, from: usize, diff: i32) {
-        for (tagger, extent) in self.0.iter_mut() {
-            if *tagger == Tagger(5) {
-                context::error!("[a]shifting by {diff} from {from}");
-                context::error!("extent was {extent:#?}");
-            }
+        for (_, extent) in self.0.iter_mut() {
             extent.shift_by(from, diff);
-
-            if *tagger == Tagger(5) {
-                context::error!("extent is now {extent:#?}");
-            }
         }
     }
 }
