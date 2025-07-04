@@ -80,7 +80,12 @@
 //! These are the elements available to you if you want to extend
 //! Duat. Additionally, there are some other things that have been
 //! left out, but they are available in the [`prelude`], so you can
-//! just import it.
+//! just import it:
+//!
+//! ```rust
+//! // Usually at the top of the crate, below `//!` comments:
+//! use duat_core::prelude::*;
+//! ```
 //!
 //! # How to extend Duat
 //!
@@ -95,8 +100,9 @@
 //!
 //! ## Creating a [`Plugin`]
 //!
-//! First of all, you will need [`cargo`], then, you should create a
-//! crate with `cargo init`:
+//! First of all, assuming that you have succeeded in following the
+//! [installation instructions of duat], you should create a crate
+//! with `cargo init`:
 //!
 //! ```bash
 //! cargo init --lib duat-word-count
@@ -107,6 +113,12 @@
 //!
 //! ```bash
 //! cargo add duat-core
+//! ```
+//!
+//! Or, if you're using git dependencies:
+//!
+//! ```bash
+//! cargo add duat-core --git https://github.com/AhoyISki/duat
 //! ```
 //!
 //! Finally, you can remove everything in `duat-word-count/src/lib.rs`
@@ -205,7 +217,7 @@
 //! [`update_range`] function, this can be safely ignored.
 //!
 //! First, I'm going to write a function that figures out how many
-//! words were added or removed, given a [`Change`]:
+//! words were added or removed by a [`Change`]:
 //!
 //! ```rust
 //! use duat_core::{prelude::*, text::Change};
@@ -215,11 +227,22 @@
 //!     let [_, end] = bytes.points_of_line(change.added_end().line());
 //!
 //!     // Recreate the line as it was before the change
-//!     let mut line_before = bytes.strs(start..change.start()).to_string();
-//!     line_before.push_str(change.taken_str());
-//!     line_before.extend(bytes.strs(change.added_end()..end));
+//!     // behind_change is just the part of the line before the point
+//!     // where a change starts.
+//!     // ahead_of_change is the part of the line after the end of
+//!     // the Change
+//!     let mut behind_change = bytes.strs(start..change.start()).to_string();
+//!     let ahead_of_change = bytes.strs(change.added_end()..end);
+//!     // change.taken_str() is the &str that was taken by the Change
+//!     behind_change.push_str(change.taken_str());
+//!     // By adding these three together, I now have:
+//!     // {behind_change}{change.taken_str()}{ahead_of_change}
+//!     // Which is what the line looked like before the Change happened
+//!     behind_change.extend(ahead_of_change);
 //!
-//!     let words_before = line_before.search_fwd(regex, ..).unwrap().count();
+//!     // Here, I'm just counting the number of occurances of the
+//!     // regex in the line before and after the change.
+//!     let words_before = behind_change.search_fwd(regex, ..).unwrap().count();
 //!     let words_after = bytes.search_fwd(regex, start..end).unwrap().count();
 //!
 //!     words_after as i32 - words_before as i32
@@ -229,18 +252,16 @@
 //! In this method, I am calculating the difference between the number
 //! of words in the line before and after the [`Change`] took place.
 //! Here [`Bytes::points_of_line`] returns the [`Point`]s where a
-//! given line starts and ends. I know there are better ways to do
-//! this by comparing the text that [was taken] to [what was added],
+//! line starts and ends. I know there are better ways to do this by
+//! comparing the text that [was taken] to [what was added],
 //! with the context of the lines of the change, but this is
 //! just a demonstration, and the more efficient method is left as an
 //! exercise to the viewer 😉.
 //!
-//! Now, just call this on [`<WordCounter as Reader>::apply_changes`]:
+//! Now, just call this on [`apply_changes`]:
 //!
 //! ```rust
 //! # fn word_diff(_: &str, _: &mut RefBytes, _: Change<&str>) -> i32 { 0 }
-//! use std::ops::Range;
-//!
 //! use duat_core::{prelude::*, text::Change};
 //!
 //! /// A [`Reader`] to keep track of words in a [`File`]
@@ -257,6 +278,7 @@
 //!         moment: Moment,
 //!         _: Option<&mut Ranges>,
 //!     ) {
+//!         // Rust iterators are magic 🪄
 //!         let diff: i32 = moment
 //!             .changes()
 //!             .map(|change| word_diff(self.regex, &mut bytes, change))
@@ -290,8 +312,6 @@
 //! #         todo!();
 //! #     }
 //! # }
-//! use std::ops::Range;
-//!
 //! use duat_core::prelude::*;
 //!
 //! struct WordCounterCfg(bool);
@@ -310,8 +330,9 @@
 //! ```
 //!
 //! In this function, I am returning the `WordCounter`, with a
-//! precalculated number of words, based on the [`Bytes`] of the
-//! [`File`]'s [`Text`].
+//! precalculated number of words (since I have to calculate this
+//! value at some point), based on the [`Bytes`] of the [`File`]'s
+//! [`Text`].
 //!
 //! The [`ReaderBox`] return value is a wrapper for "constructing the
 //! [`Reader`]". If you use a function like [`ReaderBox::new_send`],
@@ -321,21 +342,55 @@
 //! [`new_local`], the [`Reader`] won't ever be sent to other threads.
 //! This is almost always what you want.
 //!
+//! One thing to note is that the [`Reader`] and [`ReaderCfg`] can be
+//! the same struct, it all depends on your constraints. For most
+//! [`Reader`] implementations, that may not be the case, but for this
+//! one, instead of storing a `bool` in `WordCounterCfg`, I could've
+//! just stored the regex directly, like this:
 //!
-//! Note that, in order to modify the `WordCounter` or get access to
-//! the [`Bytes`], you need to use an access function:
-//! [`BytesDataMap::write_with_reader`], alongside a [`Pass`] and the
-//! [`RwData<Self>`] in question. Duat does this in order to
-//! protect massively shareable state from being modified and read at
-//! the same time, as per the [number one rule of Rust]. This also
-//! makes code much easier to reason about, and bugs much more
-//! avoidable.
+//! ```rust
+//! # struct WordCounter {
+//! #     words: usize,
+//! #     regex: &'static str,
+//! # }
+//! # impl<U: Ui> Reader<U> for WordCounter {
+//! #     fn apply_changes(
+//! #         &mut self,
+//! #         _: &mut Pass,
+//! #         _: RefBytes,
+//! #         _: Moment,
+//! #         _: Option<&mut Ranges>,
+//! #     ) {
+//! #         todo!();
+//! #     }
+//! # }
+//! use duat_core::prelude::*;
+//!
+//! impl WordCounter {
+//!     /// Returns a new instance of [`WordCounter`]
+//!     pub fn new() -> Self {
+//!         WordCounter { words: 0, regex: r"\w+" }
+//!     }
+//! }
+//!
+//! impl<U: Ui> ReaderCfg<U> for WordCounter {
+//!     type Reader = Self;
+//!
+//!     fn init(self, mut bytes: RefBytes) -> Result<ReaderBox<U>, Text> {
+//!         let words = bytes.search_fwd(self.regex, ..).unwrap().count();
+//!
+//!         Ok(ReaderBox::new_local(bytes, Self { words, ..self }))
+//!     }
+//! }
+//! ```
+//!
+//! But the former is done for the purpose of demonstration, since (I
+//! don't think) this will be the case for most [`Reader`]s.
 //!
 //! Now, to wrap this all up, the plugin needs to add this [`Reader`]
 //! to every opened [`File`]. We do this through the use of a [hook]:
 //!
 //! ```rust
-//! # use std::ops::Range;
 //! # struct WordCounterCfg(bool);
 //! # impl<U: Ui> ReaderCfg<U> for WordCounterCfg {
 //! #     type Reader = WordCounter;
@@ -632,12 +687,13 @@
 //! [dependencies]: https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html
 //! [`StatusLine`]: https://docs.rs/duat/latest/duat/prelude/macro.status.html
 //! [commands]: crate::cmd
-//! [`BytesDataMap::write_with_reader`]: crate::file::BytesDataMap::write_with_reader
 //! [`RwData<Self>`]: crate::data::RwData
 //! [`ReaderBox`]: crate::file::ReaderBox
 //! [`ReaderBox::new_send`]: crate::file::ReaderBox::new_send
 //! [`ReaderBox::new_remote`]: crate::file::ReaderBox::new_remote
 //! [`new_local`]: crate::file::ReaderBox::new_local
+//! [installation instructions of duat]: https://github.com/AhoyISki/duat?tab=readme-ov-file#getting-started
+//! [`apply_changes`]: crate::file::Reader::apply_changes
 #![feature(
     decl_macro,
     step_trait,

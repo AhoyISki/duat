@@ -28,6 +28,8 @@ use crate::{
 };
 
 /// A [`Text`] reader, modifying it whenever a [`Change`] happens
+///
+/// [`Change`]: crate::text::Change
 #[allow(unused_variables)]
 pub trait Reader<U: Ui>: 'static {
     /// Applies the [`Change`]s to this [`Reader`]
@@ -77,6 +79,9 @@ pub trait Reader<U: Ui>: 'static {
     /// [`Tag`]: crate::text::Tag
     /// [`Change`]: crate::text::Change
     /// [`File`]: crate::file::File
+    /// [add]: Ranges::add
+    /// [remove]: Ranges::remove
+    /// [`update_range`]: Reader::update_range
     fn apply_changes(
         &mut self,
         pa: &mut Pass,
@@ -152,6 +157,7 @@ pub trait Reader<U: Ui>: 'static {
     /// [`apply_changes`]: Reader::apply_changes
     /// [commands]: crate::cmd::queue
     /// [hooks]: crate::hook::queue
+    /// [`File`]: super::File
     fn apply_remote_changes(
         &mut self,
         bytes: RefBytes,
@@ -600,9 +606,9 @@ struct SendReader<U: Ui> {
 /// information for [`Reader::update_range`].
 ///
 /// Those [`Reader`]s could be in another thread, updating. If you
-/// want to wait for them to return, see [`ReaderList::read`]. If you
+/// want to wait for them to return, see [`Readers::read`]. If you
 /// wish to call the passed function only if the [`Reader`] is not
-/// currently updating, see [`ReaderList::try_read`].
+/// currently updating, see [`Readers::try_read`].
 pub struct Readers<'a, U: Ui>(&'a mut [ReaderBox<U>]);
 
 impl<U: Ui> Readers<'_, U> {
@@ -615,7 +621,8 @@ impl<U: Ui> Readers<'_, U> {
     /// This function will never return [`Some`] if you call it from a
     /// [`Reader`] that is the same as the requested one.
     ///
-    /// [added]: Handle::add_reader
+    /// [added]: crate::context::Handle::add_reader
+    /// [`File::try_read_reader`]: super::File::try_read_reader
     pub fn read<Rd: Reader<U>, Ret>(&mut self, read: impl FnOnce(&Rd) -> Ret) -> Option<Ret> {
         if let Some(reader_box) = self.0.iter_mut().find(|rb| rb.ty == TypeId::of::<Rd>()) {
             let status = reader_box.status.take()?;
@@ -795,6 +802,7 @@ fn type_eq<U: Ui, Rd: Reader<U>>(rb: &ReaderBox<U>) -> bool {
 /// depends on what you're doing really.
 ///
 /// [`File`]: super::File
+/// [`Tag`]: crate::text::Tag
 pub struct FileParts<'a, U: Ui> {
     /// The [`RefBytes`] of the [`File`]
     ///

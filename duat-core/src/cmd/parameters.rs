@@ -525,6 +525,9 @@ impl<'a, W: Widget<U>, U: Ui> Handles<'a, W, U> {
     ///
     /// If there are conflicting contexts, e.g. `"--global -w"`, then
     /// nothing will be done, and an error will be notified.
+    ///
+    /// [`word`]: Flags::word
+    /// [`blob`]: Flags::blob
     pub fn on_flags(&self, pa: &mut Pass, f: impl FnMut(&mut Pass, Handle<W, U>)) {
         let is_global = self.0.word("global") || self.0.blob("g");
         let is_window = self.0.word("window") || self.0.blob("w");
