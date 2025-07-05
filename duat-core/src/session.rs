@@ -223,6 +223,10 @@ impl<U: Ui> Session<U> {
         let mut reprint_screen = false;
 
         loop {
+            if let Some(mode_fn) = mode::take_set_mode_fn() {
+                mode_fn(&mut pa);
+            }
+            
             if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(50)) {
                 match event {
                     DuatEvent::Tagger(key) => {
