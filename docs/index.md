@@ -1,4 +1,1 @@
----
-layout: home
----
 # Introduction
