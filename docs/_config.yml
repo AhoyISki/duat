@@ -5,7 +5,4 @@ baseurl: "duat"
 url: "https://ahoyiski.github.io"
 twitter_username: AhoyISki
 github_username:  AhoyISki
-theme: minima
-remote_theme: pages-themes/minimal@v0.2.0
-plugins:
-- jekyll-remote-theme
+theme: jekyll-theme-minimal
