@@ -1,3 +1,8 @@
-theme: jekyll-theme-minimal
 title: The Duat text editor
-description: A text editor meant to be easy to extend greatly, while still having great defaults.
+email: ahoyiski@gmail.com
+description: A text editor focused on great extensibility, but with great defaults.
+baseurl: "duat"
+url: "https://ahoyiski.github.io"
+twitter_username: AhoyISki
+github_username:  AhoyISki
+theme: minima
