@@ -4,7 +4,7 @@
 [![duat on crates.io](https://img.shields.io/crates/v/duat)](https://crates.io/crates/duat)
 [![duat on docs.rs](https://docs.rs/duat/badge.svg)](https://docs.rs/duat)
 [![Source Code Repository](https://img.shields.io/badge/Code-On%20GitHub-blue?logo=GitHub)](https://github.com/AhoyISki/duat)
-[![github pages](https://github.com/AhoyISki/duat/actions/workflows/mdbook.yml/badge.svg?branch=gh-pages&event=deployment)](https://github.com/AhoyISki/duat/actions/workflows/mdbook.yml)
+[![github pages](https://github.com/AhoyISki/duat/actions/workflows/mdbook.yml/badge.svg?branch=master)](https://github.com/AhoyISki/duat/actions/workflows/mdbook.yml)
 
 ![new demonstration](./assets/new-demonstration.gif)
 
@@ -315,7 +315,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG8SYJJobPvAdGxtclfORKG5JGwo8Y4ex-EHUG04R1-fU68SEYXKEGzZGRmQtqxvrGxTmApwft5AXG6zUv9_BpoWaG7ERMCtHr0LMYWSCgmRkdWF0ZTAuNS4zgmpkdWF0X3V0aWxzZTAuMi4x
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEGydn-vM2BnHlG4pkOQYK8QlOGzd5wvydoS9JG9IOMNNM_Z3XYXKEGzZGRmQtqxvrGxTmApwft5AXG6zUv9_BpoWaG7ERMCtHr0LMYWSCgmRkdWF0ZTAuNS4zgmpkdWF0X3V0aWxzZTAuMi4x
  [__link0]: https://www.rust-lang.org/tools/install
  [__link1]: https://docs.rs/duat/0.5.3/duat/?search=prelude::plug
  [__link10]: https://docs.rs/duat/0.5.3/duat/?search=prelude::mode_name
