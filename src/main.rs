@@ -2,9 +2,8 @@
 #![feature(decl_macro)]
 
 use std::{
-    io::Read,
     path::PathBuf,
-    process::{Command, Output},
+    process::Command,
     sync::{
         LazyLock, Mutex,
         mpsc::{self, Receiver},
@@ -61,8 +60,8 @@ fn main() {
         if let Ok(false) | Err(_) = so_path.try_exists() {
             println!("Compiling config crate for the first time, this might take a while...");
             let toml_path = crate_dir.join("Cargo.toml");
-            if let Ok(out) = run_cargo(toml_path.clone(), true, true)
-                && out.status.success()
+            if let Ok(status) = run_cargo(toml_path.clone(), true, true)
+                && status.success()
             {
                 context::info!("Compiled [a]release[] profile");
             } else {
@@ -158,14 +157,13 @@ fn spawn_watcher(
     (watcher, crate_dir)
 }
 
-fn run_cargo(toml_path: PathBuf, on_release: bool, print: bool) -> Result<Output, std::io::Error> {
+fn run_cargo(
+    toml_path: PathBuf,
+    on_release: bool,
+    print: bool,
+) -> Result<std::process::ExitStatus, std::io::Error> {
     let mut cargo = Command::new("cargo");
-    cargo.args([
-        "build",
-        "--quiet",
-        "--manifest-path",
-        toml_path.to_str().unwrap(),
-    ]);
+    cargo.args(["build", "--manifest-path", toml_path.to_str().unwrap()]);
 
     if !cfg!(debug_assertions) && on_release {
         cargo.args(["--release"]);
@@ -175,27 +173,15 @@ fn run_cargo(toml_path: PathBuf, on_release: bool, print: bool) -> Result<Output
     cargo.args(["--features", "deadlocks"]);
 
     if print {
-        let mut child = cargo.stdout(std::process::Stdio::piped()).spawn()?;
-
-        let mut buf = [0u8; 100];
-        let mut stdout = child.stdout.take().unwrap();
-        let mut print_stdout = || -> Result<usize, std::io::Error> {
-            let read = stdout.read(&mut buf)?;
-
-            println!("{}", std::str::from_utf8(&buf[0..read]).unwrap());
-            Ok(read)
-        };
-        print_stdout()?;
-
-        while child.try_wait()?.is_none() {
-            print_stdout()?;
-        }
-
-        let out = child.wait_with_output()?;
-        print_stdout()?;
-        Ok(out)
+        cargo.status()
     } else {
-        cargo.output()
+        cargo.output().map(|out| {
+            if !out.status.success() {
+                context::error!("{}", String::from_utf8_lossy(&out.stderr));
+            }
+
+            out.status
+        })
     }
 }
 
