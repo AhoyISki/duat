@@ -6,9 +6,4 @@
 README.j2
 .cargo/*
 .mod*
-docs/Gemfile.lock
-docs/_site
-docs/.sass-cache
-docs/.jekyll-cache
-docs/.jekyll-metadata
-docs/vendor
+book/book/*
