@@ -1,26 +1,25 @@
 use std::{ops::Range, sync::LazyLock};
 
-use duat_core::prelude::*;
+use duat_core::{hook::OnFileOpen, prelude::*};
+use duat_filetype::FileType;
 use duat_treesitter::TsParser;
 
-/// Enables matching pairs highlighting for Duat
-pub struct MatchPairs;
-
-pub struct FindMatchingPairs {
+/// [`Plugin`] and [`Parser`] to highlight the match of the delimiter
+/// under [`Selection`]s
+///
+/// [`Selection`]: duat_core::mode::Selection
+pub struct MatchPairs {
     ts_and_bytes: Vec<[&'static str; 2]>,
     ts_only: Vec<[&'static str; 2]>,
 }
 
-impl FindMatchingPairs {
+impl MatchPairs {
     /// Returns a new [`MatchPairs`]
-    pub fn new(filetype: &'static str) -> Self {
+    pub fn new() -> Self {
         Self {
             ts_and_bytes: vec![["(", ")"], ["{", "}"], ["[", "]"]],
             // TODO: Add more filetypes
-            ts_only: match filetype {
-                "rust" => vec![["<", ">"], ["|", "|"]],
-                _ => vec![["<", ">"]],
-            },
+            ts_only: vec![["<", ">"]],
         }
     }
 
@@ -63,10 +62,18 @@ impl FindMatchingPairs {
     }
 }
 
-impl<U: Ui> Reader<U> for FindMatchingPairs {
+impl<U: Ui> Plugin<U> for MatchPairs {
+    fn plug(self) {
+        hook::add::<OnFileOpen<U>, U>(|pa, builder| {
+            builder.add_parser(pa, MatchPairs::new());
+        })
+    }
+}
+
+impl<U: Ui> Parser<U> for MatchPairs {
     fn update_range(&mut self, mut parts: FileParts<U>, _: Option<Range<Point>>) {
         fn is_delim(str: &str) -> impl Fn(&&[&str; 2]) -> bool {
-            move |delims| delims.iter().any(|d| *d == str)
+            move |delims| delims.contains(&str)
         }
         parts.tags.remove(*PAREN_TAGGER, ..);
 
@@ -86,21 +93,18 @@ impl<U: Ui> Reader<U> for FindMatchingPairs {
             };
 
             let (start_range, end_range) = if let Some(Some(ranges)) =
-                parts.readers.try_read(|ts: &TsParser| {
+                parts.parsers.try_read(|ts: &TsParser| {
                     let node = ts
                         .root()
-                        .descendant_for_byte_range(range.start, range.end)
+                        .and_then(|root| root.descendant_for_byte_range(range.start, range.end))
                         .and_then(|node| {
                             delims
                                 .iter()
                                 .position(|d| *d == node.grammar_name())
                                 .zip(Some(node))
                         });
-                    let Some(((delim_side, node), parent)) =
-                        node.and_then(|(ds, n)| Some((ds, n)).zip(n.parent()))
-                    else {
-                        return None;
-                    };
+                    let ((delim_side, node), parent) =
+                        node.and_then(|(ds, n)| Some((ds, n)).zip(n.parent()))?;
 
                     let mut c = parent.walk();
 
@@ -165,11 +169,26 @@ impl<U: Ui> Reader<U> for FindMatchingPairs {
     }
 }
 
-impl<U: Ui> ReaderCfg<U> for FindMatchingPairs {
-    type Reader = Self;
+impl<U: Ui> ParserCfg<U> for MatchPairs {
+    type Parser = Self;
 
-    fn init(self, bytes: RefBytes) -> Result<ReaderBox<U>, Text> {
-        Ok(ReaderBox::new_local(bytes, self))
+    fn init(mut self, bytes: RefBytes, path: PathKind) -> Result<ParserBox<U>, Text> {
+        if let Some(path) = path.path_set()
+            && let Some(path) = path.filetype()
+        {
+            self.ts_only = match path {
+                "rust" => vec![["<", ">"], ["|", "|"]],
+                _ => self.ts_only,
+            }
+        };
+
+        Ok(ParserBox::new_local(bytes, self))
+    }
+}
+
+impl Default for MatchPairs {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
