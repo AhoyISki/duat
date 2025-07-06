@@ -179,12 +179,12 @@
 <p>Or, if you want the <code>master</code> version of duat, from the latest commit, you can do this:</p>
 <pre><code class="language-bash">cargo install --git https://github.com/AhoyISki/duat --features git-deps
 </code></pre>
-<p>When calling either of these commands, if it didn't already exist, a default version of Duat's configuration will be installed in <code>$XDG_CONFIG_HOME/duat</code> (<code>~/.config/duat</code> for Linux). If you want to get the latest version of the default configuration, you can just remove that:</p>
-<pre><code class="language-bash">rm -rf ~/.config/duat/
+<p>When calling either of these commands, if it didn't already exist, a default version of Duat's configuration will be installed in <code>$XDG_CONFIG_HOME/duat</code> (<code>~/.config/duat</code> for Linux). If you want to get the latest version of the default configuration, you can just remove that, alongside other directories used by Duat:</p>
+<pre><code class="language-bash">rm -rf ~/.config/duat/ ~/.cache/duat/ ~/.local/share/duat/
 cargo install --git https://github.com/AhoyISki/duat --features gid-deps
 </code></pre>
 <p>If you don't have <code>~/.cargo/bin/</code> in your <code>$PATH</code> variable, you should add that in order to be able to call <code>duat</code>. Alternatively, you may add just <code>~/.cargo/bin/duat</code>, if you don't want to bring the other things in <code>~/.cargo/bin/</code> to global executable scope.</p>
-<p>In order to start config</p>
+<p>At this point, you should be able to use Duat by calling <code>duat</code> or <code>duat some_file</code>. Initially, the config for Duat will be compiled</p>
 
                     </main>
 
