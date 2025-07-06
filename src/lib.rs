@@ -110,7 +110,6 @@ impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter {
             ("markup.list.checked", Form::green()),
             ("markup.list.unchecked", Form::grey()),
             ("diff.plus", Form::red()),
-            n
             ("diff.delta", Form::blue()),
             ("diff.minus", Form::green()),
         );
