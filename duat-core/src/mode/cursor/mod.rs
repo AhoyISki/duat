@@ -16,7 +16,7 @@ use lender::{Lender, Lending};
 pub use self::selections::{Selection, Selections, VPoint};
 use crate::{
     cfg::PrintCfg,
-    file::{File, Reader},
+    file::{File, Parser},
     text::{Change, Lines, Point, RegexPattern, Searcher, Strs, Text, TextRange},
     ui::{RawArea, Ui, Widget},
 };
@@ -628,11 +628,11 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
 }
 
 impl<U: Ui, S> Cursor<'_, File<U>, U::Area, S> {
-    /// Reads the [`Bytes`] and a [`Reader`]
+    /// Reads the [`Bytes`] and a [`Parser`]
     ///
     /// [`Bytes`]: crate::text::Bytes
-    pub fn read_reader<Rd: Reader<U>, Ret>(&self, read: impl FnOnce(&Rd) -> Ret) -> Option<Ret> {
-        self.widget.read_reader(read)
+    pub fn read_parser<Rd: Parser<U>, Ret>(&self, read: impl FnOnce(&Rd) -> Ret) -> Option<Ret> {
+        self.widget.read_parser(read)
     }
 }
 

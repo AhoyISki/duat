@@ -22,7 +22,6 @@ exclude = ["config"]
 duat-core = { version = "0.5.3", path = "duat-core" }
 duat-utils = { version = "0.2.1", path = "duat-utils" }
 duat-filetype = { version = "0.2.0", git = "https://github.com/AhoyISki/duat-filetype" }
-duat-match-pairs = { version = "0.1.0", git = "https://github.com/AhoyISki/duat-match-pairs" }
 
 # List of UIs.
 duat-term = { version = "0.5.1", path = "duat-term", optional = true }

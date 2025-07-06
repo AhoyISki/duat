@@ -17,7 +17,7 @@ use crate::{
     context::{self, FileHandle},
     data::Pass,
     duat_name,
-    file::{File, ReaderCfg},
+    file::{File, ParserCfg},
     hook::{self, WidgetCreated},
     ui::{Node, Widget, WidgetCfg},
 };
@@ -274,36 +274,32 @@ impl<U: Ui> FileBuilder<U> {
         self.push_cfg_to(pa, area, cfg)
     }
 
-    /// Adds a [`Reader`] to this [`File`]
+    /// Adds a [`Parser`] to this [`File`]
     ///
-    /// [`Reader`]s read changes to [`Text`] and can act accordingly
+    /// [`Parser`]s read changes to [`Text`] and can act accordingly
     /// by adding or removing [`Tag`]s from it. They can also be
     /// accessed via a public API, in order to be used for other
-    /// things, like the treesitter [`Reader`], which, internally,
+    /// things, like the treesitter [`Parser`], which, internally,
     /// creates the syntax tree and does syntax highlighting, but
     /// externally it can also be used for indentation of [`Text`] by
     /// [`Mode`]s
     ///
     /// [`Tag`]: crate::text::Tag
     /// [`Text`]: crate::text::Text
-    /// [`Reader`]: crate::file::Reader
+    /// [`Parser`]: crate::file::Parser
     /// [`Mode`]: crate::mode::Mode
-    pub fn add_reader(&mut self, pa: &mut Pass, reader_cfg: impl ReaderCfg<U>) {
-        self.handle.add_reader(pa, reader_cfg);
+    pub fn add_parser(&mut self, pa: &mut Pass, reader_cfg: impl ParserCfg<U>) {
+        self.handle.add_parser(pa, reader_cfg);
     }
 
     /// The [`File`] that this hook is being applied to
-    pub fn read<Ret>(&mut self, pa: &Pass, f: impl FnOnce(&File<U>, &U::Area) -> Ret) -> Ret {
+    pub fn read<Ret>(&self, pa: &Pass, f: impl FnOnce(&File<U>, &U::Area) -> Ret) -> Ret {
         self.handle.read(pa, f)
     }
 
     /// Mutable reference to the [`File`] that this hooks is being
     /// applied to
-    pub fn write<Ret>(
-        &mut self,
-        pa: &mut Pass,
-        f: impl FnOnce(&mut File<U>, &U::Area) -> Ret,
-    ) -> Ret {
+    pub fn write<Ret>(&self, pa: &mut Pass, f: impl FnOnce(&mut File<U>, &U::Area) -> Ret) -> Ret {
         self.handle.write(pa, f)
     }
 

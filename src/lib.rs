@@ -76,6 +76,12 @@
 //! #         fn plug(self) {}
 //! #     }
 //! # }
+//! # mod match_pairs {
+//! #     pub struct MatchPairs;
+//! #     impl duat_core::Plugin<duat::Ui> for MatchPairs {
+//! #         fn plug(self) {}
+//! #     }
+//! # }
 //! # mod kak {
 //! #     use duat::{prelude::{*, mode::KeyEvent}};
 //! #     #[derive(Clone)]
@@ -104,9 +110,12 @@
 //! # }
 //! setup_duat!(setup);
 //! use duat::prelude::*;
+//! use match_pairs::MatchPairs;
+//! use treesitter::TreeSitter;
+//! use kak::Kak;
 //!
 //! fn setup() {
-//!     plug!(treesitter::TreeSitter, kak::Kak::new(),);
+//!     plug!(TreeSitter, MatchPairs, Kak::new());
 //!     map::<kak::Insert>("jk", "<Esc>");
 //!
 //!     print::wrap_on_edge();

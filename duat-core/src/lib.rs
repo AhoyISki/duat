@@ -176,18 +176,18 @@
 //!
 //! Next, I need to add something to keep track of the number of words
 //! in a [`File`]. For [`File`]s specifically, there is a built-in way
-//! to keep track of changes through the [`Reader`] trait:
+//! to keep track of changes through the [`Parser`] trait:
 //!
 //! ```rust
 //! use duat_core::prelude::*;
 //!
-//! /// A [`Reader`] to keep track of words in a [`File`]
+//! /// A [`Parser`] to keep track of words in a [`File`]
 //! struct WordCounter {
 //!     words: usize,
 //!     regex: &'static str,
 //! }
 //!
-//! impl<U: Ui> Reader<U> for WordCounter {
+//! impl<U: Ui> Parser<U> for WordCounter {
 //!     fn apply_changes(
 //!         &mut self,
 //!         pa: &mut Pass,
@@ -203,15 +203,15 @@
 //! Whenever changes take place in a [`File`], those changes will be
 //! reported in a [`Moment`], which is essentially just a list of
 //! [`Change`]s that took place. This [`Moment`] will be sent to the
-//! [`Reader::apply_changes`] function, in which you are supposed to
-//! change the internal state of the [`Reader`] to accomodate the
+//! [`Parser::apply_changes`] function, in which you are supposed to
+//! change the internal state of the [`Parser`] to accomodate the
 //! [`Change`]s.
 //!
 //! In this function, you have access to the [`RefBytes`], which is
 //! what the [`Text`]'s [`Bytes`] looked like _after_ the [`Moment`]
 //! was sent. The last argument, `range_list` is the list of
 //! [`Range<usize>`]s (byte indices) that should be updated by
-//! [`Reader::update_range`]. Because we are not implementing the
+//! [`Parser::update_range`]. Because we are not implementing the
 //! [`update_range`] function, this can be safely ignored.
 //!
 //! First, I'm going to write a function that figures out how many
@@ -262,13 +262,13 @@
 //! # fn word_diff(_: &str, _: &mut RefBytes, _: Change<&str>) -> i32 { 0 }
 //! use duat_core::{prelude::*, text::Change};
 //!
-//! /// A [`Reader`] to keep track of words in a [`File`]
+//! /// A [`Parser`] to keep track of words in a [`File`]
 //! struct WordCounter {
 //!     words: usize,
 //!     regex: &'static str,
 //! }
 //!
-//! impl<U: Ui> Reader<U> for WordCounter {
+//! impl<U: Ui> Parser<U> for WordCounter {
 //!     fn apply_changes(
 //!         &mut self,
 //!         pa: &mut Pass,
@@ -287,11 +287,11 @@
 //! }
 //! ```
 //!
-//! And that's it for the [`Reader`] implementation! Now, how do we
+//! And that's it for the [`Parser`] implementation! Now, how do we
 //! add it to a [`File`]?
 //!
-//! In order to add this [`Reader`] to a [`File`], we're going to
-//! need a [`ReaderCfg`], which is used for configuring [`Reader`]s
+//! In order to add this [`Parser`] to a [`File`], we're going to
+//! need a [`ParserCfg`], which is used for configuring [`Parser`]s
 //! before they are added:
 //!
 //! ```rust
@@ -299,7 +299,7 @@
 //! #     words: usize,
 //! #     regex: &'static str,
 //! # }
-//! # impl<U: Ui> Reader<U> for WordCounter {
+//! # impl<U: Ui> Parser<U> for WordCounter {
 //! #     fn apply_changes(
 //! #         &mut self,
 //! #         _: &mut Pass,
@@ -314,15 +314,15 @@
 //!
 //! struct WordCounterCfg(bool);
 //!
-//! impl<U: Ui> ReaderCfg<U> for WordCounterCfg {
-//!     type Reader = WordCounter;
+//! impl<U: Ui> ParserCfg<U> for WordCounterCfg {
+//!     type Parser = WordCounter;
 //!
-//!     fn init(self, mut bytes: RefBytes) -> Result<ReaderBox<U>, Text> {
+//!     fn init(self, mut bytes: RefBytes, path: PathKind) -> Result<ParserBox<U>, Text> {
 //!         let regex = if self.0 { r"\S+" } else { r"\w+" };
 //!
 //!         let words = bytes.search_fwd(regex, ..).unwrap().count();
 //!
-//!         Ok(ReaderBox::new_local(bytes, WordCounter { words, regex }))
+//!         Ok(ParserBox::new_local(bytes, WordCounter { words, regex }))
 //!     }
 //! }
 //! ```
@@ -332,17 +332,17 @@
 //! value at some point), based on the [`Bytes`] of the [`File`]'s
 //! [`Text`].
 //!
-//! The [`ReaderBox`] return value is a wrapper for "constructing the
-//! [`Reader`]". If you use a function like [`ReaderBox::new_send`],
-//! you'd enable out-of-thread updating for the [`Reader`]. If you
-//! used [`ReaderBox::new_remote`], the [`Reader`] itself would be
+//! The [`ParserBox`] return value is a wrapper for "constructing the
+//! [`Parser`]". If you use a function like [`ParserBox::new_send`],
+//! you'd enable out-of-thread updating for the [`Parser`]. If you
+//! used [`ParserBox::new_remote`], the [`Parser`] itself would be
 //! constructed out of thread. In this case, because we are using
-//! [`new_local`], the [`Reader`] won't ever be sent to other threads.
+//! [`new_local`], the [`Parser`] won't ever be sent to other threads.
 //! This is almost always what you want.
 //!
-//! One thing to note is that the [`Reader`] and [`ReaderCfg`] can be
+//! One thing to note is that the [`Parser`] and [`ParserCfg`] can be
 //! the same struct, it all depends on your constraints. For most
-//! [`Reader`] implementations, that may not be the case, but for this
+//! [`Parser`] implementations, that may not be the case, but for this
 //! one, instead of storing a `bool` in `WordCounterCfg`, I could've
 //! just stored the regex directly, like this:
 //!
@@ -351,7 +351,7 @@
 //! #     words: usize,
 //! #     regex: &'static str,
 //! # }
-//! # impl<U: Ui> Reader<U> for WordCounter {
+//! # impl<U: Ui> Parser<U> for WordCounter {
 //! #     fn apply_changes(
 //! #         &mut self,
 //! #         _: &mut Pass,
@@ -371,35 +371,35 @@
 //!     }
 //! }
 //!
-//! impl<U: Ui> ReaderCfg<U> for WordCounter {
-//!     type Reader = Self;
+//! impl<U: Ui> ParserCfg<U> for WordCounter {
+//!     type Parser = Self;
 //!
-//!     fn init(self, mut bytes: RefBytes) -> Result<ReaderBox<U>, Text> {
+//!     fn init(self, mut bytes: RefBytes, path: PathKind) -> Result<ParserBox<U>, Text> {
 //!         let words = bytes.search_fwd(self.regex, ..).unwrap().count();
 //!
-//!         Ok(ReaderBox::new_local(bytes, Self { words, ..self }))
+//!         Ok(ParserBox::new_local(bytes, Self { words, ..self }))
 //!     }
 //! }
 //! ```
 //!
 //! But the former is done for the purpose of demonstration, since (I
-//! don't think) this will be the case for most [`Reader`]s.
+//! don't think) this will be the case for most [`Parser`]s.
 //!
-//! Now, to wrap this all up, the plugin needs to add this [`Reader`]
+//! Now, to wrap this all up, the plugin needs to add this [`Parser`]
 //! to every opened [`File`]. We do this through the use of a [hook]:
 //!
 //! ```rust
 //! # struct WordCounterCfg(bool);
-//! # impl<U: Ui> ReaderCfg<U> for WordCounterCfg {
-//! #     type Reader = WordCounter;
-//! #     fn init(self, _: RefBytes) -> Result<ReaderBox<U>, Text> { todo!() }
+//! # impl<U: Ui> ParserCfg<U> for WordCounterCfg {
+//! #     type Parser = WordCounter;
+//! #     fn init(self, _: RefBytes, _: PathKind) -> Result<ParserBox<U>, Text> { todo!() }
 //! # }
-//! # /// A [`Reader`] to keep track of words in a [`File`]
+//! # /// A [`Parser`] to keep track of words in a [`File`]
 //! # struct WordCounter {
 //! #     words: usize,
 //! #     regex: &'static str
 //! # }
-//! # impl<U: Ui> Reader<U> for WordCounter {
+//! # impl<U: Ui> Parser<U> for WordCounter {
 //! #     fn apply_changes(
 //! #         &mut self,
 //! #         pa: &mut Pass,
@@ -431,33 +431,33 @@
 //!         let not_whitespace = self.0;
 //!
 //!         hook::add::<OnFileOpen<U>, U>(move |pa, builder| {
-//!             builder.add_reader(pa, WordCounterCfg(not_whitespace));
+//!             builder.add_parser(pa, WordCounterCfg(not_whitespace));
 //!         });
 //!     }
 //! }
 //! ```
 //!
-//! Now, whenever a [`File`] is opened, this [`Reader`] will be added
+//! Now, whenever a [`File`] is opened, this [`Parser`] will be added
 //! to it. This is just one out of many types of [hook] that Duat
 //! provides by default. In Duat, you can even [create your own], and
 //! [choose when to trigger them].
 //!
-//! However, while we have added the [`Reader`], how is the user
+//! However, while we have added the [`Parser`], how is the user
 //! supposed to access this value? Well, one convenient way to do this
 //! is through a simple function:
 //!
 //! ```rust
 //! # struct WordCounterCfg(bool);
-//! # impl<U: Ui> ReaderCfg<U> for WordCounterCfg {
-//! #     type Reader = WordCounter;
-//! #     fn init(self, _: RefBytes) -> Result<ReaderBox<U>, Text> { todo!() }
+//! # impl<U: Ui> ParserCfg<U> for WordCounterCfg {
+//! #     type Parser = WordCounter;
+//! #     fn init(self, _: RefBytes, _: PathKind) -> Result<ParserBox<U>, Text> { todo!() }
 //! # }
-//! # /// A [`Reader`] to keep track of words in a [`File`]
+//! # /// A [`Parser`] to keep track of words in a [`File`]
 //! # struct WordCounter {
 //! #     words: usize,
 //! #     regex: &'static str
 //! # }
-//! # impl<U: Ui> Reader<U> for WordCounter {
+//! # impl<U: Ui> Parser<U> for WordCounter {
 //! #     fn apply_changes(
 //! #         &mut self,
 //! #         pa: &mut Pass,
@@ -472,7 +472,7 @@
 //!
 //! /// The number of words in a [`File`]
 //! pub fn file_words<U: Ui>(file: &File<U>) -> usize {
-//!     file.read_reader(|word_counter: &WordCounter| word_counter.words)
+//!     file.read_parser(|word_counter: &WordCounter| word_counter.words)
 //!         .unwrap_or(0)
 //! }
 //! ```
@@ -502,24 +502,24 @@
 //!         let not_whitespace = self.0;
 //!
 //!         hook::add::<OnFileOpen<U>, U>(move |pa, builder| {
-//!             builder.add_reader(pa, WordCounterCfg(not_whitespace));
+//!             builder.add_parser(pa, WordCounterCfg(not_whitespace));
 //!         });
 //!     }
 //! }
 //!
 //! /// The number of words in a [`File`]
 //! pub fn file_words<U: Ui>(file: &File<U>) -> usize {
-//!     file.read_reader(|word_counter: &WordCounter| word_counter.words)
+//!     file.read_parser(|word_counter: &WordCounter| word_counter.words)
 //!         .unwrap_or(0)
 //! }
 //!
-//! /// A [`Reader`] to keep track of words in a [`File`]
+//! /// A [`Parser`] to keep track of words in a [`File`]
 //! struct WordCounter {
 //!     words: usize,
 //!     regex: &'static str,
 //! }
 //!
-//! impl<U: Ui> Reader<U> for WordCounter {
+//! impl<U: Ui> Parser<U> for WordCounter {
 //!     fn apply_changes(
 //!         &mut self,
 //!         pa: &mut Pass,
@@ -538,15 +538,15 @@
 //!
 //! struct WordCounterCfg(bool);
 //!
-//! impl<U: Ui> ReaderCfg<U> for WordCounterCfg {
-//!     type Reader = WordCounter;
+//! impl<U: Ui> ParserCfg<U> for WordCounterCfg {
+//!     type Parser = WordCounter;
 //!
-//!     fn init(self, mut bytes: RefBytes) -> Result<ReaderBox<U>, Text> {
+//!     fn init(self, mut bytes: RefBytes, _: PathKind) -> Result<ParserBox<U>, Text> {
 //!         let regex = if self.0 { r"\S+" } else { r"\w+" };
 //!
 //!         let words = bytes.search_fwd(regex, ..).unwrap().count();
 //!
-//!         Ok(ReaderBox::new_local(bytes, WordCounter { words, regex }))
+//!         Ok(ParserBox::new_local(bytes, WordCounter { words, regex }))
 //!     }
 //! }
 //!
@@ -656,20 +656,20 @@
 //! [command]: crate::cmd
 //! [`cargo`]: https://doc.rust-lang.org/book/ch01-01-installation.html
 //! [builder pattern]: https://rust-unofficial.github.io/patterns/patterns/creational/builder.html
-//! [`Reader`]: crate::file::Reader
-//! [`ReaderCfg`]: crate::file::ReaderCfg
+//! [`Parser`]: crate::file::Parser
+//! [`ParserCfg`]: crate::file::ParserCfg
 //! [`Moment`]: crate::text::Moment
 //! [`Change`]: crate::text::Change
-//! [`Reader::apply_changes`]: crate::file::Reader::apply_changes
+//! [`Parser::apply_changes`]: crate::file::Parser::apply_changes
 //! [`RefBytes`]: crate::text::RefBytes
-//! [`Reader::update_range`]: crate::file::Reader::update_range
-//! [`update_range`]: crate::file::Reader::update_range
+//! [`Parser::update_range`]: crate::file::Parser::update_range
+//! [`update_range`]: crate::file::Parser::update_range
 //! [`Bytes`]: crate::text::Bytes
 //! [`Bytes::points_of_line`]: crate::text::Bytes::points_of_line
 //! [`Point`]: crate::text::Point
 //! [was taken]: crate::text::Change::taken_str
 //! [what was added]: crate::text::Change::added_str
-//! [`<WordCounter as Reader>::apply_changes`]: crate::file::Reader::apply_changes
+//! [`<WordCounter as Parser>::apply_changes`]: crate::file::Parser::apply_changes
 //! [`read`]: crate::data::RwData::read
 //! [`write`]: crate::data::RwData::write
 //! [number one rule of Rust]: https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html
@@ -683,12 +683,12 @@
 //! [`StatusLine`]: https://docs.rs/duat/latest/duat/prelude/macro.status.html
 //! [commands]: crate::cmd
 //! [`RwData<Self>`]: crate::data::RwData
-//! [`ReaderBox`]: crate::file::ReaderBox
-//! [`ReaderBox::new_send`]: crate::file::ReaderBox::new_send
-//! [`ReaderBox::new_remote`]: crate::file::ReaderBox::new_remote
-//! [`new_local`]: crate::file::ReaderBox::new_local
+//! [`ParserBox`]: crate::file::ParserBox
+//! [`ParserBox::new_send`]: crate::file::ParserBox::new_send
+//! [`ParserBox::new_remote`]: crate::file::ParserBox::new_remote
+//! [`new_local`]: crate::file::ParserBox::new_local
 //! [installation instructions of duat]: https://github.com/AhoyISki/duat?tab=readme-ov-file#getting-started
-//! [`apply_changes`]: crate::file::Reader::apply_changes
+//! [`apply_changes`]: crate::file::Parser::apply_changes
 #![feature(
     decl_macro,
     step_trait,
@@ -798,7 +798,7 @@ pub mod prelude {
         cmd,
         context::{self, FileHandle, Handle},
         data::{Pass, RwData},
-        file::{File, FileParts, Reader, ReaderBox, ReaderCfg, Readers},
+        file::{File, FileParts, Parser, ParserBox, ParserCfg, Parsers, PathKind},
         form::{self, Form},
         hook,
         mode::{self, KeyCode, KeyEvent, KeyMod, Mode, key},
@@ -820,14 +820,14 @@ mod ranges {
 
     /// A list of non intersecting exclusive [`Range<usize>`]s
     ///
-    /// The primary purpose of this struct is to serve [`Reader`]s by
+    /// The primary purpose of this struct is to serve [`Parser`]s by
     /// telling Duat which ranges need to be updated. This lets Duat
     /// minimize as much as possible the amount of work done to update
     /// the [`Text`] when it changes in a [`File`].
     ///
     /// [`Text`]: crate::text::Text
     /// [`File`]: crate::File
-    /// [`Reader`]: crate::file::Reader
+    /// [`Parser`]: crate::file::Parser
     #[derive(Clone, Default, Debug)]
     pub struct Ranges {
         list: GapBuffer<Range<usize>>,

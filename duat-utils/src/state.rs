@@ -33,7 +33,7 @@ use duat_core::{
 ///
 /// If it has unwritten changes, a `[file.unsaved][[+]]` will be
 /// appended. If it doesn't exist, a `[file.new][[new file]]` will be
-/// appended.
+/// appendedk.
 ///
 /// If the file's `name` was not set:
 ///

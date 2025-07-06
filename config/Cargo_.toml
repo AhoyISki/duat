@@ -29,6 +29,11 @@ git = "https://github.com/AhoyISki/duat-treesitter"
 version = "0.2.0"
 package = "duat-treesitter"
 
+[dependencies.match-pairs]
+git = "https://github.com/AhoyISki/duat-match-pairs"
+version = "0.1.0"
+package = "duat-match-pairs"
+
 [dependencies.catppuccin]
 git = "https://github.com/AhoyISki/duat-catppuccin"
 version = "0.2.0"

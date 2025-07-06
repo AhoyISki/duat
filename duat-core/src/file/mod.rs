@@ -13,8 +13,8 @@
 //! [`Cursor`]: crate::mode::Cursor
 use std::{fs, marker::PhantomData, path::PathBuf};
 
-use self::reader::InnerReaders;
-pub use self::reader::{FileParts, Reader, ReaderBox, ReaderCfg, Readers};
+use self::parser::InnerParsers;
+pub use self::parser::{FileParts, Parser, ParserBox, ParserCfg, Parsers};
 use crate::{
     cfg::PrintCfg,
     context::{self, FileHandle, Handle, load_cache},
@@ -26,7 +26,7 @@ use crate::{
     ui::{PushSpecs, RawArea, Ui, Widget, WidgetCfg},
 };
 
-mod reader;
+mod parser;
 
 /// The configuration for a new [`File`]
 #[derive(Default, Clone)]
@@ -116,7 +116,7 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
             text,
             cfg: self.cfg,
             printed_lines: (0..40).map(|i| (i, i == 1)).collect(),
-            readers: InnerReaders::default(),
+            parsers: InnerParsers::default(),
             layout_order: 0,
             _ghost: PhantomData,
         };
@@ -132,7 +132,7 @@ pub struct File<U: Ui> {
     text: Text,
     cfg: PrintCfg,
     printed_lines: Vec<(usize, bool)>,
-    readers: InnerReaders<U>,
+    parsers: InnerParsers<U>,
     pub(crate) layout_order: usize,
     _ghost: PhantomData<U>,
 }
@@ -284,55 +284,55 @@ impl<U: Ui> File<U> {
             .is_some_and(|p| std::fs::exists(PathBuf::from(&p)).is_ok_and(|e| e))
     }
 
-    /// Reads a specific [`Reader`], if it was [added]
+    /// Reads a specific [`Parser`], if it was [added]
     ///
-    /// If the [`Reader`] was sent to another thread, this function
+    /// If the [`Parser`] was sent to another thread, this function
     /// will block until it returns to this thread. If you don't wish
-    /// for this behaviour, see [`File::try_read_reader`].
+    /// for this behaviour, see [`File::try_read_parser`].
     ///
-    /// This function will also update the [`Reader`]s with the latest
+    /// This function will also update the [`Parser`]s with the latest
     /// changes that happened in the [`File`], keeping state
     /// consistent even as you are actively updating it within the
-    /// same scope. Do note that a [`Reader`] that was in this thread,
+    /// same scope. Do note that a [`Parser`] that was in this thread,
     /// could be sent to another thread because of this.
     ///
-    /// [added]: Handle::add_reader
-    pub fn read_reader<Rd: Reader<U>, Ret>(&self, read: impl FnOnce(&Rd) -> Ret) -> Option<Ret> {
+    /// [added]: Handle::add_parser
+    pub fn read_parser<Rd: Parser<U>, Ret>(&self, read: impl FnOnce(&Rd) -> Ret) -> Option<Ret> {
         // SAFETY: The Pass is never borrowed at the same time that the `read`
         // function is called
         let pa = &mut unsafe { Pass::new() };
 
-        // In theory, it's possible to call try_read_reader or read_reader
+        // In theory, it's possible to call try_read_parser or read_parser
         // from within this function, which would call
         // self.text.unprocessed_moments.
         // Because of the Option::take of the Rd within,
-        // self.readers.process_moment would panic.
+        // self.parsers.process_moment would panic.
         // However, self.text.unprocessed_moments should only return Some on
         // the first call, i.e., before any Option::take calls, so it
         // shouldn't be a problem.
         if let Some(moments) = self.text.unprocessed_moments() {
             for moment in moments {
-                self.readers.process_moment(pa, moment);
+                self.parsers.process_moment(pa, moment);
             }
         }
 
-        self.readers.read_reader(pa, read)
+        self.parsers.read_parser(pa, read)
     }
 
-    /// Tries tor read a specific [`Reader`], if it was [added]
+    /// Tries tor read a specific [`Parser`], if it was [added]
     ///
-    /// Not only does it not trigger if the [`Reader`] doesn't exist,
+    /// Not only does it not trigger if the [`Parser`] doesn't exist,
     /// also will not trigger if it was sent to another thread, and
     /// isn't ready to be brought back. If you wish to wait for the
     ///
-    /// This function will also update the [`Reader`]s with the latest
+    /// This function will also update the [`Parser`]s with the latest
     /// changes that happened in the [`File`], keeping state
     /// consistent even as you are actively updating it within the
-    /// same scope. Do note that a [`Reader`] that was in this thread,
+    /// same scope. Do note that a [`Parser`] that was in this thread,
     /// could be sent to another thread because of this.
     ///
-    /// [added]: Handle::add_reader
-    pub fn try_read_reader<Rd: Reader<U>, Ret>(
+    /// [added]: Handle::add_parser
+    pub fn try_read_parser<Rd: Parser<U>, Ret>(
         &self,
         read: impl FnOnce(&Rd) -> Ret,
     ) -> Option<Ret> {
@@ -342,23 +342,24 @@ impl<U: Ui> File<U> {
 
         if let Some(moments) = self.text.unprocessed_moments() {
             for moment in moments {
-                self.readers.process_moment(pa, moment);
+                self.parsers.process_moment(pa, moment);
             }
         }
 
-        self.readers.try_read_reader(pa, read)
+        self.parsers.try_read_parser(pa, read)
     }
 }
 
 impl<U: Ui> Handle<File<U>, U> {
-    /// Adds a [`Reader`] to react to [`Text`] [`Change`]s
+    /// Adds a [`Parser`] to react to [`Text`] [`Change`]s
     ///
     /// [`Change`]: crate::text::Change
-    pub fn add_reader(&mut self, pa: &mut Pass, cfg: impl ReaderCfg<U>) {
-        // SAFETY: The Pass goes no further than the use in file.readers
+    pub fn add_parser(&mut self, pa: &mut Pass, cfg: impl ParserCfg<U>) {
+        // SAFETY: The Pass goes no further than the use in file.parsers
         unsafe {
             self.widget().write_unsafe(|file| {
-                if let Err(err) = file.readers.add(pa, file.text.ref_bytes(), cfg) {
+                let path = file.path_kind();
+                if let Err(err) = file.parsers.add(pa, file.text.ref_bytes(), path, cfg) {
                     context::error!("{err}");
                 }
             })
@@ -367,14 +368,15 @@ impl<U: Ui> Handle<File<U>, U> {
 }
 
 impl<U: Ui> FileHandle<U> {
-    /// Adds a [`Reader`] to react to [`Text`] [`Change`]s
+    /// Adds a [`Parser`] to react to [`Text`] [`Change`]s
     ///
     /// [`Change`]: crate::text::Change
-    pub fn add_reader(&mut self, pa: &mut Pass, cfg: impl ReaderCfg<U>) {
-        // SAFETY: The Pass goes no further than the use in file.readers
+    pub fn add_parser(&mut self, pa: &mut Pass, cfg: impl ParserCfg<U>) {
+        // SAFETY: The Pass goes no further than the use in file.parsers
         unsafe {
             self.handle(pa).widget().write_unsafe(|file| {
-                if let Err(err) = file.readers.add(pa, file.text.ref_bytes(), cfg) {
+                let path = file.path_kind();
+                if let Err(err) = file.parsers.add(pa, file.text.ref_bytes(), path, cfg) {
                     context::error!("{err}");
                 }
             })
@@ -391,11 +393,11 @@ impl<U: Ui> Widget<U> for File<U> {
 
     fn update(pa: &mut Pass, handle: Handle<Self, U>) {
         let (widget, area) = (handle.widget(), handle.area());
-        let readers = widget.read(pa, |file| file.readers.clone());
+        let parsers = widget.read(pa, |file| file.parsers.clone());
 
         if let Some(moments) = handle.read_text(pa, Text::unprocessed_moments) {
             for moment in moments {
-                readers.process_moment(pa, moment);
+                parsers.process_moment(pa, moment);
             }
         }
 
@@ -408,15 +410,15 @@ impl<U: Ui> Widget<U> for File<U> {
         let (start, _) = area.start_points(&file.text, file.cfg);
         let (end, _) = area.end_points(&file.text, file.cfg);
 
-        // SAFETY: The Pass goes no further than the use in file.readers
+        // SAFETY: The Pass goes no further than the use in file.parsers
         let mut pa = unsafe { Pass::new() };
-        readers.update_range(&mut pa, &mut file.text, start..end);
+        parsers.update_range(&mut pa, &mut file.text, start..end);
 
         file.text.update_bounds();
     }
 
     fn needs_update(&self) -> bool {
-        self.readers.needs_update()
+        self.parsers.needs_update()
     }
 
     fn text(&self) -> &Text {
@@ -543,6 +545,58 @@ impl PathKind {
                 })
             }
             PathKind::NotSet(_) => None,
+        }
+    }
+
+    /// A [`Text`] from the full path of this [`PathKind`]
+    ///
+    /// # Formatting
+    ///
+    /// If the file's `path` was set:
+    ///
+    /// ```text
+    /// [file]{path}
+    /// ```
+    ///
+    /// If the file's `path` was not set:
+    ///
+    /// ```text
+    /// [file.new.scratch]*scratch file #{id}*
+    /// ```
+    pub fn path_txt(&self) -> Text {
+        match self {
+            PathKind::SetExists(path) | PathKind::SetAbsent(path) => txt!("[file]{path}").build(),
+            PathKind::NotSet(id) => txt!("[file.new.scratch]*scratch file #{id}*").build(),
+        }
+    }
+
+    /// A [`Text`] from the name of this [`PathKind`]
+    ///
+    /// # Formatting
+    ///
+    /// If the file's `name` was set:
+    ///
+    /// ```text
+    /// [file]{name}
+    /// ```
+    ///
+    /// If the file's `name` was not set:
+    ///
+    /// ```text
+    /// [file.new.scratch]*scratch file #{id}*
+    /// ```
+    pub fn name_txt(&self) -> Text {
+        match self {
+            PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
+                let cur_dir = context::cur_dir();
+                if let Ok(path) = path.strip_prefix(cur_dir) {
+                    path.to_string_lossy().to_string()
+                } else {
+                    path.to_string_lossy().to_string()
+                };
+                txt!("[file]{path}").build()
+            }
+            PathKind::NotSet(id) => txt!("[file.new.scratch]*scratch file #{id}*").build(),
         }
     }
 }

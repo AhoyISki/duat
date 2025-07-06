@@ -105,12 +105,12 @@ use crate::{
 /// However, I admit that there are also some drawbacks, the most
 /// notable being the difficulty of reading or writing to [`Text`]
 /// from outside of the main thread. But for the most common usecase
-/// where that will be needed ([`Reader`]s), a [`Send`]/[`Sync`]
+/// where that will be needed ([`Parser`]s), a [`Send`]/[`Sync`]
 /// solution will be provided soon.
 ///
 /// [`Arc<Mutex>`]: std::sync::Arc
 /// [`Mutex`]: std::sync::Mutex
-/// [`Reader`]: crate::file::Reader
+/// [`Parser`]: crate::file::Parser
 #[derive(Debug)]
 pub struct RwData<T: ?Sized> {
     value: Rc<RefCell<T>>,

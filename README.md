@@ -82,9 +82,12 @@ config it is just `kak`.
 ```rust
 setup_duat!(setup);
 use duat::prelude::*;
+use match_pairs::MatchPairs;
+use treesitter::TreeSitter;
+use kak::Kak;
 
 fn setup() {
-    plug!(treesitter::TreeSitter, kak::Kak::new(),);
+    plug!(TreeSitter, MatchPairs, Kak::new());
     map::<kak::Insert>("jk", "<Esc>");
 
     print::wrap_on_edge();
@@ -315,7 +318,7 @@ Also, just wanted to say that no AI was used in this project, cuz
 I don’t like it.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEGydn-vM2BnHlG4pkOQYK8QlOGzd5wvydoS9JG9IOMNNM_Z3XYXKEGzZGRmQtqxvrGxTmApwft5AXG6zUv9_BpoWaG7ERMCtHr0LMYWSCgmRkdWF0ZTAuNS4zgmpkdWF0X3V0aWxzZTAuMi4x
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEGydn-vM2BnHlG4pkOQYK8QlOGzd5wvydoS9JG9IOMNNM_Z3XYXKEGyy2SsfQOXaWG1l_CL30QahsG14Ptr9X3rp4GwiYHT-gV-zZYWSCgmRkdWF0ZTAuNS4zgmpkdWF0X3V0aWxzZTAuMi4x
  [__link0]: https://www.rust-lang.org/tools/install
  [__link1]: https://docs.rs/duat/0.5.3/duat/?search=prelude::plug
  [__link10]: https://docs.rs/duat/0.5.3/duat/?search=prelude::mode_name

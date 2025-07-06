@@ -209,14 +209,14 @@ where
     }
 }
 
-impl<D, Reader, Checker, U> From<(Reader, Checker)> for State<U, NoArg<String>>
+impl<D, Parser, Checker, U> From<(Parser, Checker)> for State<U, NoArg<String>>
 where
     D: Display,
-    Reader: Fn(&Pass) -> D + 'static,
+    Parser: Fn(&Pass) -> D + 'static,
     Checker: Fn() -> bool + 'static,
     U: Ui,
 {
-    fn from((value, checker): (Reader, Checker)) -> Self {
+    fn from((value, checker): (Parser, Checker)) -> Self {
         State {
             appender: Appender::PassArg(Box::new(move |pa, b| b.push(value(pa)))),
             checker: Some(Box::new(checker)),
@@ -225,13 +225,13 @@ where
     }
 }
 
-impl<Reader, Checker, U> From<(Reader, Checker)> for State<U, NoArg<Text>>
+impl<Parser, Checker, U> From<(Parser, Checker)> for State<U, NoArg<Text>>
 where
-    Reader: Fn(&Pass) -> Text + 'static,
+    Parser: Fn(&Pass) -> Text + 'static,
     Checker: Fn() -> bool + 'static,
     U: Ui,
 {
-    fn from((value, checker): (Reader, Checker)) -> Self {
+    fn from((value, checker): (Parser, Checker)) -> Self {
         State {
             appender: Appender::PassArg(Box::new(move |pa, b| b.push(value(pa)))),
             checker: Some(Box::new(checker)),

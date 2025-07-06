@@ -55,7 +55,7 @@ impl MutTags<'_> {
     ///
     /// The input can either be a byte index, a [`Point`], or a
     /// [range] of byte indices/[`Point`]s. If you are
-    /// implementing a [`Reader`] that applies [`Tag`]s to the
+    /// implementing a [`Parser`] that applies [`Tag`]s to the
     /// [`Text`] [when changes happen]/[on updates], you can "refresh"
     /// those [`Tag`]s in a very efficient way -- even in very large
     /// files -- just by doing this:
@@ -65,11 +65,11 @@ impl MutTags<'_> {
     ///
     /// use duat_core::{prelude::*, text::Point};
     ///
-    /// struct MyReader {
+    /// struct MyParser {
     ///     tagger: Tagger,
     /// }
     ///
-    /// impl<U: Ui> Reader<U> for MyReader {
+    /// impl<U: Ui> Parser<U> for MyParser {
     ///     fn update_range(&mut self, mut parts: FileParts<U>, within: Option<Range<Point>>) {
     ///         // Removing on the whole File
     ///         parts.tags.remove(self.tagger, ..);
@@ -80,9 +80,9 @@ impl MutTags<'_> {
     ///
     /// [tagger]: Taggers
     /// [range]: RangeBounds
-    /// [`Reader`]: crate::file::Reader
-    /// [when changes happen]: crate::file::Reader::apply_changes
-    /// [on updates]: crate::file::Reader::update_range
+    /// [`Parser`]: crate::file::Parser
+    /// [when changes happen]: crate::file::Parser::apply_changes
+    /// [on updates]: crate::file::Parser::update_range
     pub fn remove(&mut self, taggers: impl Taggers, range: impl TextRangeOrPoint) {
         let range = range.to_range(self.0.len_bytes());
         self.0.remove_from(taggers, range)
