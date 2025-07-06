@@ -7,7 +7,17 @@
 ; (text) @none
 (branch) @markup.link
 
-(change) @keyword
+(change
+  (new) @diff.plus)
+(change
+  [
+    (modified)
+    (typechange)
+  ]  @diff.delta)
+(change
+  (renamed) @diff.delta.renamed)
+(change
+  (deleted) @diff.minus)
 
 (filepath) @string.special.path
 

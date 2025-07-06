@@ -12,11 +12,6 @@ use self::list::LANGUAGE_OPTIONS;
 
 mod list;
 
-/// Wether a parser for the given `filetype` exists
-pub fn parser_exists(filetype: &str) -> bool {
-    LANGUAGE_OPTIONS.get(filetype).is_some()
-}
-
 /// Wether the parser for the given `filetype` is compiled
 pub fn parser_is_compiled(filetype: &str) -> Result<bool, Text> {
     let options = LANGUAGE_OPTIONS

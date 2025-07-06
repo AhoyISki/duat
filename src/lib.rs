@@ -34,12 +34,12 @@ use std::{
 };
 
 use duat_core::{
-    file::{self, Reader},
+    file::{self},
     form::FormId,
     hook::OnFileOpen,
     mode::Cursor,
     prelude::*,
-    text::{self, Bytes, Change, Matcheable, Moment, MutTags, Point, RefBytes},
+    text::{Bytes, Change, Matcheable, Moment, MutTags, Point, RefBytes},
 };
 use duat_filetype::FileType;
 use streaming_iterator::StreamingIterator;
@@ -48,25 +48,25 @@ use tree_sitter::{
     QueryCursor, TextProvider, Tree,
 };
 
-use crate::languages::{parser_exists, parser_is_compiled};
+use crate::languages::parser_is_compiled;
 
 mod cursor;
 mod languages;
 
-/// The [tree-sitter] pluging for Duat
+/// The [tree-sitter] plugin for Duat
 ///
 /// For now, it adds syntax highlighting and indentation, but more
 /// features will be coming in the future.
 ///
-/// These things are done through the [`TsParser`] [`Reader`], which
+/// These things are done through the [`TsParser`] [`Parser`], which
 /// reads updates the inner syntax tree when the [`Text`] reports any
 /// changes.
 ///
 /// # NOTE
 ///
-/// If you are looking to create a [`Reader`] which can do similar
+/// If you are looking to create a [`Parser`] which can do similar
 /// things, you should look at the code for the implementation of
-/// [`Reader`] for [`TsParser`], it's relatively short and with good
+/// [`Parser`] for [`TsParser`], it's relatively short and with good
 /// explanations for what is happening.
 ///
 /// [tree-sitter]: https://tree-sitter.github.io/tree-sitter
@@ -109,19 +109,173 @@ impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter {
             ("markup.list", Form::yellow()),
             ("markup.list.checked", Form::green()),
             ("markup.list.unchecked", Form::grey()),
+            ("diff.plus", Form::red()),
+            n
+            ("diff.delta", Form::blue()),
+            ("diff.minus", Form::green()),
         );
 
         hook::add_grouped::<OnFileOpen<U>, U>("TreeSitter", |pa, builder| {
-            if let Some(filetype) = builder.read(pa, |file, _| file.filetype())
-                && let Some(ts_parser_cfg) = TsParser::cfg(filetype)
-            {
-                builder.add_reader(pa, ts_parser_cfg);
-            }
+            builder.add_parser(pa, TsParser::new());
         });
     }
 }
 
-pub struct TsParser {
+/// [`Parser`] that parses [`File`]'s as [tree-sitter] syntax trees
+///
+/// [tree-sitter]: https://tree-sitter.github.io/tree-sitter
+pub struct TsParser(Option<InnerTsParser>);
+
+impl TsParser {
+    /// Returns a new instance of a [`TsParser`]
+    pub fn new() -> Self {
+        Self(None)
+    }
+
+    /// The root [`Node`] of the syntax tree
+    pub fn root(&self) -> Option<Node<'_>> {
+        self.0.as_ref().map(|inner| inner.tree.root_node())
+    }
+
+    /// Gets the requested indentation level on a given [`Point`]
+    ///
+    /// Will be [`None`] if the [`filetype`] hasn't been set yet or if
+    /// there is no indentation query for this language.
+    ///
+    /// [`filetype`]: FileType::filetype
+    pub fn indent_on(&self, p: Point, bytes: &Bytes, cfg: PrintCfg) -> Option<usize> {
+        self.0
+            .as_ref()
+            .and_then(|inner| inner.indent_on(p, bytes, cfg))
+    }
+}
+
+impl<U: Ui> file::Parser<U> for TsParser {
+    fn apply_changes(
+        &mut self,
+        _: &mut Pass,
+        bytes: RefBytes,
+        moment: Moment,
+        ranges_to_update: Option<&mut Ranges>,
+    ) {
+        file::Parser::<U>::apply_remote_changes(self, bytes, moment, ranges_to_update);
+    }
+
+    fn update_range(&mut self, mut parts: FileParts<U>, within: Option<Range<Point>>) {
+        if let Some(inner) = self.0.as_mut()
+            && let Some(within) = within
+        {
+            let range = within.start.byte()..within.end.byte();
+            inner.highlight_and_inject(&mut parts.bytes, &mut parts.tags, range);
+        }
+    }
+
+    fn apply_remote_changes(
+        &mut self,
+        mut bytes: RefBytes,
+        moment: Moment,
+        ranges_to_update: Option<&mut Ranges>,
+    ) {
+        let Some(inner) = self.0.as_mut() else {
+            return;
+        };
+
+        fn merge_tree_changed_ranges(parser: &InnerTsParser, list: &mut Ranges) {
+            if let Some(old_tree) = parser.old_tree.as_ref() {
+                for range in parser.tree.changed_ranges(old_tree) {
+                    let range = range.start_byte..range.end_byte;
+                    list.add(range);
+                }
+
+                for st in parser.sub_trees.iter() {
+                    merge_tree_changed_ranges(st, list)
+                }
+            }
+        }
+
+        inner.apply_changes(&mut bytes, moment);
+
+        if let Some(ranges) = ranges_to_update {
+            // This initial check might find larger, somewhat self contained nodes
+            // that have changed, e.g. an identifier that is now recognized as a
+            // function, things of that sort.
+            merge_tree_changed_ranges(inner, ranges);
+
+            // However, `changed_ranges` doesn't catch everything, so another
+            // check is done. At a minimum, at least the lines where the changes
+            // took place should be updated.
+            for change in moment.changes() {
+                let start = change.start();
+                let added = change.added_end();
+                let start = bytes.point_at_line(start.line());
+                let end = bytes.point_at_line((added.line() + 1).min(bytes.len().line()));
+                ranges.add(start.byte()..end.byte());
+            }
+        }
+    }
+
+    fn make_remote(&self) -> bool
+    where
+        Self: Send,
+    {
+        self.0
+            .as_ref()
+            .is_some_and(|inner| inner.tree.root_node().is_error())
+    }
+}
+
+impl<U: Ui> ParserCfg<U> for TsParser {
+    type Parser = Self;
+
+    fn init(self, mut bytes: RefBytes, path: PathKind) -> Result<ParserBox<U>, Text> {
+        let filetype = if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &path
+            && let Some(filetype) = path.filetype()
+        {
+            filetype
+        } else {
+            context::debug!(
+                "No filetype set for {}, will try again once one is set",
+                path.name_txt()
+            );
+            return Ok(ParserBox::new_local(bytes, self));
+        };
+
+        const MAX_LEN_FOR_LOCAL: usize = 100_000;
+        let offset = TSPoint::default();
+        let len = bytes.len();
+
+        if parser_is_compiled(filetype)? && bytes.len().byte() <= MAX_LEN_FOR_LOCAL {
+            let lang_parts = lang_parts(filetype)?;
+            let form_parts = forms_from_lang_parts(&lang_parts);
+
+            let inner =
+                InnerTsParser::new(&mut bytes, 0..len.byte(), offset, lang_parts, form_parts);
+
+            Ok(ParserBox::new_send(bytes, Self(Some(inner))))
+        } else {
+            Ok(ParserBox::new_remote(bytes, move |mut bytes| {
+                let lang_parts = lang_parts(filetype)?;
+                let form_parts = forms_from_lang_parts(&lang_parts);
+
+                Ok(Self(Some(InnerTsParser::new(
+                    &mut bytes,
+                    0..len.byte(),
+                    offset,
+                    lang_parts,
+                    form_parts,
+                ))))
+            }))
+        }
+    }
+}
+
+impl Default for TsParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+struct InnerTsParser {
     parser: Parser,
     range: Range<usize>,
     offset: TSPoint,
@@ -129,23 +283,18 @@ pub struct TsParser {
     forms: &'static [(FormId, u8)],
     tree: Tree,
     old_tree: Option<Tree>,
-    sub_trees: Vec<TsParser>,
+    sub_trees: Vec<InnerTsParser>,
     tagger: Tagger,
 }
 
-impl TsParser {
-    /// Returns the root [`Node`] of the tree
-    pub fn root(&self) -> Node<'_> {
-        self.tree.root_node()
-    }
-
-    fn init(
+impl InnerTsParser {
+    fn new(
         bytes: &mut RefBytes,
         range: Range<usize>,
         offset: TSPoint,
         lang_parts: LangParts<'static>,
         forms: &'static [(FormId, u8)],
-    ) -> TsParser {
+    ) -> InnerTsParser {
         let (.., lang, _) = &lang_parts;
 
         let mut parser = Parser::new();
@@ -155,7 +304,7 @@ impl TsParser {
             .parse_with_options(&mut buf_parse(bytes, range.clone()), None, None)
             .unwrap();
 
-        TsParser {
+        InnerTsParser {
             parser,
             range,
             offset,
@@ -274,14 +423,14 @@ impl TsParser {
         // In the end, we add the sub trees that weren't already in there.
         // This should automatically handle all of the sub trees's sub trees.
         for (range, offset, lang_parts) in sub_trees_to_add {
-            let key_fn = |st: &TsParser| st.range.start;
+            let key_fn = |st: &InnerTsParser| st.range.start;
 
             let Err(i) = self.sub_trees.binary_search_by_key(&range.start, key_fn) else {
                 continue;
             };
 
             let form_parts = forms_from_lang_parts(&lang_parts);
-            let mut st = TsParser::init(bytes, range.clone(), offset, lang_parts, form_parts);
+            let mut st = InnerTsParser::new(bytes, range.clone(), offset, lang_parts, form_parts);
             st.highlight_and_inject(bytes, tags, range);
             self.sub_trees.insert(i, st)
         }
@@ -302,10 +451,6 @@ impl TsParser {
                 }
             }
         }
-    }
-
-    fn cfg(filetype: &str) -> Option<TsParserCfg> {
-        TsParserCfg::new(filetype)
     }
 
     fn apply_sub_tree_change(&mut self, change: Change<&str>, bytes: &Bytes) {
@@ -714,72 +859,7 @@ impl TsParser {
     }
 }
 
-impl<U: Ui> Reader<U> for TsParser {
-    fn apply_changes(
-        &mut self,
-        _: &mut Pass,
-        bytes: RefBytes,
-        moment: text::Moment,
-        ranges_to_update: Option<&mut Ranges>,
-    ) where
-        Self: Sized,
-    {
-        Reader::<U>::apply_remote_changes(self, bytes, moment, ranges_to_update);
-    }
-
-    fn apply_remote_changes(
-        &mut self,
-        mut bytes: RefBytes,
-        moment: Moment,
-        ranges_to_update: Option<&mut Ranges>,
-    ) {
-        fn merge_tree_changed_ranges(parser: &TsParser, list: &mut Ranges) {
-            if let Some(old_tree) = parser.old_tree.as_ref() {
-                for range in parser.tree.changed_ranges(old_tree) {
-                    let range = range.start_byte..range.end_byte;
-                    list.add(range);
-                }
-
-                for st in parser.sub_trees.iter() {
-                    merge_tree_changed_ranges(st, list)
-                }
-            }
-        }
-
-        self.apply_changes(&mut bytes, moment);
-
-        if let Some(list) = ranges_to_update {
-            // This initial check might find larger, somewhat self contained nodes
-            // that have changed, e.g. an identifier that is now recognized as a
-            // function, things of that sort.
-            merge_tree_changed_ranges(self, list);
-
-            // However, `changed_ranges` doesn't catch everything, so another
-            // check is done. At a minimum, at least the lines where the changes
-            // took place should be updated.
-            for change in moment.changes() {
-                let start = change.start();
-                let added = change.added_end();
-                let start = bytes.point_at_line(start.line());
-                let end = bytes.point_at_line((added.line() + 1).min(bytes.len().line()));
-                list.add(start.byte()..end.byte());
-            }
-        }
-    }
-
-    fn make_remote(&self) -> bool {
-        self.tree.root_node().is_error()
-    }
-
-    fn update_range(&mut self, mut parts: FileParts<U>, within: Option<Range<Point>>) {
-        if let Some(within) = within {
-            let range = within.start.byte()..within.end.byte();
-            self.highlight_and_inject(&mut parts.bytes, &mut parts.tags, range);
-        }
-    }
-}
-
-impl std::fmt::Debug for TsParser {
+impl std::fmt::Debug for InnerTsParser {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let start = self.range.start;
         f.debug_struct("TsParser")
@@ -789,48 +869,6 @@ impl std::fmt::Debug for TsParser {
             .field("old_tree", &self.old_tree)
             .field("sub_trees", &self.sub_trees)
             .finish_non_exhaustive()
-    }
-}
-
-pub struct TsParserCfg {
-    filetype: String,
-}
-
-impl TsParserCfg {
-    pub fn new(filetype: &str) -> Option<Self> {
-        parser_exists(filetype).then(|| TsParserCfg { filetype: filetype.to_string() })
-    }
-}
-
-impl<U: Ui> file::ReaderCfg<U> for TsParserCfg {
-    type Reader = TsParser;
-
-    fn init(self, mut bytes: RefBytes) -> Result<ReaderBox<U>, Text> {
-        const MAX_LEN_FOR_LOCAL: usize = 100_000;
-        let offset = TSPoint::default();
-        let len = bytes.len();
-
-        if parser_is_compiled(&self.filetype)? && bytes.len().byte() <= MAX_LEN_FOR_LOCAL {
-            let lang_parts = lang_parts(&self.filetype)?;
-            let form_parts = forms_from_lang_parts(&lang_parts);
-
-            let reader = TsParser::init(&mut bytes, 0..len.byte(), offset, lang_parts, form_parts);
-
-            Ok(ReaderBox::new_send(bytes, reader))
-        } else {
-            Ok(ReaderBox::new_remote(bytes, move |mut bytes| {
-                let lang_parts = lang_parts(&self.filetype)?;
-                let form_parts = forms_from_lang_parts(&lang_parts);
-
-                Ok(TsParser::init(
-                    &mut bytes,
-                    0..len.byte(),
-                    offset,
-                    lang_parts,
-                    form_parts,
-                ))
-            }))
-        }
     }
 }
 
@@ -872,9 +910,9 @@ fn forms_from_lang_parts(
 ) -> &'static [(FormId, u8)] {
     #[rustfmt::skip]
     const PRIORITIES: &[&str] = &[
-        "string", "variable", "module", "label", "character", "boolean", "number", "type",
+        "comment", "string", "variable", "module", "label", "character", "boolean", "number", "type",
         "attribute", "property", "function", "constant", "constructor", "operator", "keyword",
-        "punctuation", "comment", "markup"
+        "punctuation", "markup", "diff"
     ];
     type MemoizedForms<'a> = HashMap<&'a str, &'a [(FormId, u8)]>;
 
@@ -1069,7 +1107,7 @@ pub trait TsFile {
 
 impl<U: Ui> TsFile for File<U> {
     fn ts_indent_on(&self, p: Point) -> Option<usize> {
-        self.read_reader(|ts: &TsParser| ts.indent_on(p, self.text().bytes(), self.print_cfg()))
+        self.read_parser(|ts: &TsParser| ts.indent_on(p, self.text().bytes(), self.print_cfg()))
             .flatten()
     }
 }
@@ -1099,7 +1137,7 @@ impl<U: Ui, S> TsCursor for Cursor<'_, File<U>, U::Area, S> {
     fn ts_indent_on(&self, p: Point) -> Option<usize> {
         let cfg = self.cfg();
 
-        self.read_reader(|ts: &TsParser| ts.indent_on(p, self.text().bytes(), cfg))
+        self.read_parser(|ts: &TsParser| ts.indent_on(p, self.text().bytes(), cfg))
             .flatten()
     }
 }
