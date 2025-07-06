@@ -1,4 +1,8 @@
-use std::{ops::Range, sync::LazyLock};
+use std::{
+    collections::HashMap,
+    ops::Range,
+    sync::{LazyLock, Mutex},
+};
 
 use duat_core::{hook::OnFileOpen, prelude::*};
 use duat_filetype::FileType;
@@ -11,6 +15,7 @@ use duat_treesitter::TsParser;
 pub struct MatchPairs {
     ts_and_bytes: Vec<[&'static str; 2]>,
     ts_only: Vec<[&'static str; 2]>,
+    escaped: Vec<[&'static str; 2]>,
 }
 
 impl MatchPairs {
@@ -20,6 +25,7 @@ impl MatchPairs {
             ts_and_bytes: vec![["(", ")"], ["{", "}"], ["[", "]"]],
             // TODO: Add more filetypes
             ts_only: vec![["<", ">"]],
+            escaped: vec![["\\(", "\\)"], ["\\{", "\\}"], ["\\[", "\\]"]],
         }
     }
 
@@ -35,10 +41,13 @@ impl MatchPairs {
     ///
     /// [`match_ts_pairs`]: Self::match_ts_pairs
     pub fn match_pairs(self, pairs: impl IntoIterator<Item = [&'static str; 2]>) -> Self {
-        Self {
-            ts_and_bytes: pairs.into_iter().collect(),
-            ..self
-        }
+        let ts_and_bytes: Vec<[&'static str; 2]> = pairs.into_iter().collect();
+        let escaped = ts_and_bytes
+            .iter()
+            .map(|[l, r]| [escape(l), escape(r)])
+            .collect();
+
+        Self { ts_and_bytes, escaped, ..self }
     }
 
     /// Match these pairs _only_ when they are tree-sitter pairs
@@ -72,7 +81,7 @@ impl<U: Ui> Plugin<U> for MatchPairs {
 
 impl<U: Ui> Parser<U> for MatchPairs {
     fn update_range(&mut self, mut parts: FileParts<U>, _: Option<Range<Point>>) {
-        fn is_delim(str: &str) -> impl Fn(&&[&str; 2]) -> bool {
+        fn ends(str: &str) -> impl Fn(&[&str; 2]) -> bool {
             move |delims| delims.contains(&str)
         }
         parts.tags.remove(*PAREN_TAGGER, ..);
@@ -84,10 +93,10 @@ impl<U: Ui> Parser<U> for MatchPairs {
             let str = parts.bytes.contiguous(range.clone());
 
             // TODO: Support multi-character pairs
-            let (delims, ts_only) = if let Some(d) = self.ts_and_bytes.iter().find(is_delim(str)) {
-                (d, false)
-            } else if let Some(d) = self.ts_only.iter().find(is_delim(str)) {
-                (d, true)
+            let (delims, escaped) = if let Some(i) = self.ts_and_bytes.iter().position(ends(str)) {
+                (self.ts_and_bytes[i], Some(self.escaped[i]))
+            } else if let Some(i) = self.ts_only.iter().position(ends(str)) {
+                (self.ts_only[i], None)
             } else {
                 continue;
             };
@@ -122,30 +131,32 @@ impl<U: Ui> Parser<U> for MatchPairs {
                     }
                 }) {
                 ranges
-            } else if !ts_only && str == delims[0] {
-                let mut iter = parts.bytes.search_fwd(*delims, range.start..).unwrap();
-                let mut bounds = 0;
+            } else if let Some(escaped) = escaped {
+                if str == delims[0] {
+                    let mut iter = parts.bytes.search_fwd(escaped, range.start..).unwrap();
+                    let mut bounds = 0;
 
-                loop {
-                    let Some((i, points)) = iter.next() else {
-                        continue 'selections;
-                    };
-                    bounds = (bounds + (i == 0) as usize) - (i == 1) as usize;
-                    if bounds == 0 {
-                        break (range, points[0].byte()..points[1].byte());
+                    loop {
+                        let Some((i, points)) = iter.next() else {
+                            continue 'selections;
+                        };
+                        bounds = (bounds + (i == 0) as usize) - (i == 1) as usize;
+                        if bounds == 0 {
+                            break (range, points[0].byte()..points[1].byte());
+                        }
                     }
-                }
-            } else if !ts_only {
-                let mut iter = parts.bytes.search_rev(*delims, ..range.end).unwrap();
-                let mut bounds = 0;
+                } else {
+                    let mut iter = parts.bytes.search_rev(escaped, ..range.end).unwrap();
+                    let mut bounds = 0;
 
-                loop {
-                    let Some((i, points)) = iter.next() else {
-                        continue 'selections;
-                    };
-                    bounds = (bounds + (i == 1) as usize) - (i == 0) as usize;
-                    if bounds == 0 {
-                        break (points[0].byte()..points[1].byte(), range);
+                    loop {
+                        let Some((i, points)) = iter.next() else {
+                            continue 'selections;
+                        };
+                        bounds = (bounds + (i == 1) as usize) - (i == 0) as usize;
+                        if bounds == 0 {
+                            break (points[0].byte()..points[1].byte(), range);
+                        }
                     }
                 }
             } else {
@@ -193,3 +204,27 @@ impl Default for MatchPairs {
 }
 
 static PAREN_TAGGER: LazyLock<Tagger> = Tagger::new_static();
+
+/// Escapes regex pattern characters.
+fn escape(str: &'static str) -> &'static str {
+    static TOKENS: &[char] = &[
+        '(', ')', '{', '}', '[', ']', '^', '$', '.', '+', '*', '?', '|',
+    ];
+    static ESCAPED_STRS: LazyLock<Mutex<HashMap<String, &str>>> = LazyLock::new(Mutex::default);
+
+    let mut escaped_strs = ESCAPED_STRS.lock().unwrap();
+
+    if let Some(escaped) = escaped_strs.get(str) {
+        escaped
+    } else {
+        let mut escaped = str.to_string();
+        for (i, _) in str.match_indices(TOKENS) {
+            escaped.insert(i, '\\');
+        }
+
+        let escaped = escaped.leak();
+        escaped_strs.insert(str.to_string(), escaped);
+
+        escaped
+    }
+}
