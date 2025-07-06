@@ -927,9 +927,9 @@ fn lang_parts(lang: &str) -> Result<LangParts<'static>, Text> {
     } else {
         let language: &'static Language = Box::leak(Box::new(languages::get_language(lang)?));
 
-        let highlights = query_from_path(lang, "highlights", language).unwrap();
-        let indents = query_from_path(lang, "indents", language).unwrap();
-        let injections = query_from_path(lang, "injections", language).unwrap();
+        let highlights = query_from_path(lang, "highlights", language)?;
+        let indents = query_from_path(lang, "indents", language)?;
+        let injections = query_from_path(lang, "injections", language)?;
 
         let queries = Queries { highlights, indents, injections };
 
@@ -999,6 +999,10 @@ fn change_clips(change: Change<&str>, range: Range<usize>) -> bool {
         || (start.byte() < range.end && range.end <= taken.byte())
 }
 
+/// Returns a new [`Query`] for a given language and kind
+///
+/// If the [`Query`] in question does not exist, returns an emtpy
+/// [`Query`] instead.
 fn query_from_path(name: &str, kind: &str, language: &Language) -> Result<&'static Query, Text> {
     static QUERIES: LazyLock<Mutex<HashMap<PathBuf, &'static Query>>> =
         LazyLock::new(Mutex::default);
