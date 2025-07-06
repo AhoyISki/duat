@@ -313,21 +313,10 @@ impl<U: Ui> InnerReaders<U> {
 
                     ReaderStatus::Sent(ms, jh)
                 }
-                ReaderStatus::BeingBuilt(mut ms, build_status, jh) => {
-                    match build_status.load(Ordering::Relaxed) {
-                        FAILED_BUILDING => {
-                            let Err(err) = jh.join().unwrap() else {
-                                unreachable!()
-                            };
-                            context::error!("{err}");
-                            ReaderStatus::MarkedForDeletion
-                        }
-                        _ => {
-                            ms.latest_state += 1;
-                            ms.sender.send(Some(moment)).unwrap();
-                            ReaderStatus::BeingBuilt(ms, build_status, jh)
-                        }
-                    }
+                ReaderStatus::BeingBuilt(mut ms, jh) => {
+                    ms.latest_state += 1;
+                    ms.sender.send(Some(moment)).unwrap();
+                    ReaderStatus::BeingBuilt(ms, jh)
                 }
                 ReaderStatus::MarkedForDeletion => ReaderStatus::MarkedForDeletion,
             })
@@ -394,28 +383,23 @@ impl<U: Ui> InnerReaders<U> {
                         ReaderStatus::Sent(ms, jh)
                     }
                 }
-                ReaderStatus::BeingBuilt(ms, build_status, jh) => {
-                    match build_status.load(Ordering::Relaxed) {
-                        FAILED_BUILDING => {
-                            let Err(err) = jh.join().unwrap() else {
-                                unreachable!()
-                            };
-                            context::error!("{err}");
-                            ReaderStatus::MarkedForDeletion
-                        }
-                        SUCCEEDED_BUILDING => {
-                            if ms.latest_state == ms.remote_state.load(Ordering::Relaxed) {
-                                ms.sender.send(None).unwrap();
-                                let mut sr = jh.join().unwrap().unwrap();
+                ReaderStatus::BeingBuilt(ms, jh) => {
+                    if ms.latest_state == ms.remote_state.load(Ordering::Relaxed) {
+                        let _ = ms.sender.send(None);
+                        match jh.join().unwrap() {
+                            Ok(mut sr) => {
                                 let reader = &mut *sr.reader;
                                 let ranges = &mut sr.ranges;
                                 update(text, reader, ranges, &mut readers, within.clone());
                                 ReaderStatus::Present(ms, sr)
-                            } else {
-                                ReaderStatus::BeingBuilt(ms, build_status, jh)
+                            }
+                            Err(err) => {
+                                context::error!("{err}");
+                                ReaderStatus::MarkedForDeletion
                             }
                         }
-                        _ => ReaderStatus::BeingBuilt(ms, build_status, jh),
+                    } else {
+                        ReaderStatus::BeingBuilt(ms, jh)
                     }
                 }
                 ReaderStatus::MarkedForDeletion => ReaderStatus::MarkedForDeletion,
@@ -501,10 +485,10 @@ impl<U: Ui> ReaderBox<U> {
     pub fn new_send<Rd: Reader<U> + Send>(bytes: RefBytes, reader: Rd) -> ReaderBox<U> {
         let (sender, receiver) = mpsc::channel();
 
-        let state = Arc::new(AtomicUsize::new(0));
+        let state = Arc::new(AtomicUsize::new(1));
         let moment_sender = MomentSender {
             sender,
-            latest_state: 0,
+            latest_state: 1,
             remote_state: state.clone(),
         };
 
@@ -532,25 +516,24 @@ impl<U: Ui> ReaderBox<U> {
         let state = Arc::new(AtomicUsize::new(0));
         let moment_sender = MomentSender {
             sender,
-            latest_state: 0,
+            latest_state: 1,
             remote_state: state.clone(),
         };
-
-        let status = Arc::new(AtomicUsize::new(0));
 
         ReaderBox {
             status: Some(ReaderStatus::BeingBuilt(
                 moment_sender,
-                status.clone(),
                 thread::spawn(move || {
                     let reader = Box::new(match f(bytes.ref_bytes()) {
-                        Ok(reader) => reader,
+                        Ok(reader) => {
+                            state.fetch_add(1, Ordering::Relaxed);
+                            reader
+                        }
                         Err(err) => {
-                            status.store(FAILED_BUILDING, Ordering::Relaxed);
+                            state.fetch_add(1, Ordering::Relaxed);
                             return Err(err);
                         }
                     });
-                    status.store(SUCCEEDED_BUILDING, Ordering::Relaxed);
 
                     let ranges = Ranges::full(bytes.len().byte());
 
@@ -574,7 +557,6 @@ enum ReaderStatus<U: Ui> {
     Sent(MomentSender, thread::JoinHandle<SendReader<U>>),
     BeingBuilt(
         MomentSender,
-        Arc<AtomicUsize>,
         thread::JoinHandle<Result<SendReader<U>, Text>>,
     ),
     MarkedForDeletion,
@@ -688,8 +670,8 @@ fn status_from_read<Rd: Reader<U>, Ret, U: Ui>(
 
             (ReaderStatus::Present(ms, sr), Some(ret))
         }
-        ReaderStatus::BeingBuilt(ms, _, jh) => {
-            ms.sender.send(None).unwrap();
+        ReaderStatus::BeingBuilt(ms, jh) => {
+            let _ = ms.sender.send(None);
             match jh.join().unwrap() {
                 Ok(sr) => {
                     let ptr = Box::as_ptr(&sr.reader);
@@ -736,7 +718,7 @@ fn status_from_try_read<Rd: Reader<U>, Ret, U: Ui>(
                 (ReaderStatus::Sent(ms, jh), None)
             }
         }
-        ReaderStatus::BeingBuilt(ms, build_status, jh) => {
+        ReaderStatus::BeingBuilt(ms, jh) => {
             if ms.latest_state == ms.remote_state.load(Ordering::Relaxed) {
                 ms.sender.send(None).unwrap();
                 match jh.join().unwrap() {
@@ -751,7 +733,7 @@ fn status_from_try_read<Rd: Reader<U>, Ret, U: Ui>(
                     }
                 }
             } else {
-                (ReaderStatus::BeingBuilt(ms, build_status, jh), None)
+                (ReaderStatus::BeingBuilt(ms, jh), None)
             }
         }
         ReaderStatus::MarkedForDeletion => (ReaderStatus::MarkedForDeletion, None),
@@ -925,6 +907,3 @@ impl<'a, U: Ui> FileParts<'a, U> {
         }
     }
 }
-
-const FAILED_BUILDING: usize = 1;
-const SUCCEEDED_BUILDING: usize = 2;
