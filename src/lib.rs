@@ -1,7 +1,65 @@
+//! Filetypes for the Duat text editor
+//!
+//! This [`Plugin`] is included by default, as it is considered a core
+//! utility of duat. It adds the two following traits:
+//!
+//! - [`FileType`](FileType): This trait grants the [`filetype`]
+//!   method, which lets you access the filetype directly. Its
+//!   implementors are the [`File`] widget, [`String`] and [`&str`]
+//!   and [`PathBuf`] and [`Path`].
+//! - [`PassFileType`]: This trait also has a
+//!   [`filetype`](PassFileType::filetype) method, but it requires a
+//!   [`Pass`], bypassing the need to, for example, [`read`] a
+//!   [`Handle<File<Ui>, Ui>`]. Its implementors are
+//!   [`RwData<File<Ui>>`], [`Handle<File<Ui>, Ui>`],
+//!   [`FileHandle<Ui>`] and [`FileBuilder<Ui>`], from the
+//!   [`OnFileOpen`] [hook].
+//!
+//! Both of these traits are included by default in Duat's
+//! [`prelude`], but if you want to use them in a plugin, first, add
+//! `duat-filetype` to the dependencies:
+//!
+//! ```bash
+//! cargo add duat-filetype
+//! ```
+//!
+//! Or, for latest git version:
+//!
+//! ```bash
+//! cargo add --git https://github.com/AhoyISki/duat-filetype
+//! ```
+//!
+//! Then, just `use` it in the file:
+//!
+//! ```rust
+//! use duat_filetype::FileType;
+//!
+//! fn is_toml(file_name: &str) -> bool {
+//!     file_name.filetype() == Some("toml")
+//! }
+//! ```
+//!
+//! [`Plugin`]: duat_core::prelude::Plugin
+//! [`filetype`]: FileType::filetype
+//! [`File`]: duat_core::prelude::File
+//! [`&str`]: str
+//! [`Pass`]: duat_core::prelude::Pass
+//! [`read`]: duat_core::prelude::Handle::read
+//! [`Handle<File<Ui>, Ui>`]: duat_core::prelude::Handle
+//! [`RwData<File<Ui>>`]: duat_core::prelude::RwData
+//! [`FileHandle<Ui>`]: duat_core::prelude::FileHandle
+//! [`FileBuilder<Ui>`]: duat_core::ui::FileBuilder
+//! [`OnFileOpen`]: duat_core::hook::OnFileOpen
+//! [hook]: duat_core::hook
+//! [`prelude`]: https://docs.rs/duat/latest/duat/prelude
 #![feature(decl_macro)]
-use std::{collections::HashMap, path::PathBuf, sync::LazyLock};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::LazyLock,
+};
 
-use duat_core::prelude::*;
+use duat_core::{prelude::*, ui::FileBuilder};
 use regex::RegexSet;
 
 pub trait FileType {
@@ -10,33 +68,67 @@ pub trait FileType {
 
 impl<U: duat_core::ui::Ui> FileType for duat_core::file::File<U> {
     fn filetype(&self) -> Option<&'static str> {
-        let path = PathBuf::from(self.path_set()?);
+        PathBuf::from(self.path_set()?).filetype()
+    }
+}
 
-        path.extension()
+impl FileType for String {
+    fn filetype(&self) -> Option<&'static str> {
+        AsRef::<str>::as_ref(&self).filetype()
+    }
+}
+
+impl FileType for &'_ str {
+    fn filetype(&self) -> Option<&'static str> {
+        Path::new(self).filetype()
+    }
+}
+
+impl FileType for PathBuf {
+    fn filetype(&self) -> Option<&'static str> {
+        self.as_path().filetype()
+    }
+}
+
+impl FileType for &'_ Path {
+    fn filetype(&self) -> Option<&'static str> {
+        self.extension()
             .and_then(|ext| EXTENSIONS.get(ext.to_str()?).copied())
-            .or_else(|| FILENAMES.get(path.to_str()?).copied())
-            .or_else(|| FILENAMES.get(path.file_name()?.to_str()?).copied())
+            .or_else(|| FILENAMES.get(self.to_str()?).copied())
+            .or_else(|| FILENAMES.get(self.file_name()?.to_str()?).copied())
             .or_else(|| {
                 let (patterns, langs) = &*PATTERNS;
 
                 langs
-                    .get(patterns.matches(path.to_str()?).iter().min()?)
+                    .get(patterns.matches(self.to_str()?).iter().min()?)
                     .copied()
             })
     }
 }
 
-pub trait HandleFileType {
+pub trait PassFileType {
     fn filetype(&self, pa: &Pass) -> Option<&'static str>;
 }
 
-impl<U: Ui> HandleFileType for Handle<File<U>, U> {
+impl<U: Ui> PassFileType for RwData<File<U>> {
+    fn filetype(&self, pa: &Pass) -> Option<&'static str> {
+        self.read(pa, |file| file.filetype())
+    }
+}
+
+impl<U: Ui> PassFileType for Handle<File<U>, U> {
     fn filetype(&self, pa: &Pass) -> Option<&'static str> {
         self.read(pa, |file, _| file.filetype())
     }
 }
 
-impl<U: Ui> HandleFileType for FileHandle<U> {
+impl<U: Ui> PassFileType for FileHandle<U> {
+    fn filetype(&self, pa: &Pass) -> Option<&'static str> {
+        self.read(pa, |file, _| file.filetype())
+    }
+}
+
+impl<U: Ui> PassFileType for FileBuilder<U> {
     fn filetype(&self, pa: &Pass) -> Option<&'static str> {
         self.read(pa, |file, _| file.filetype())
     }
