@@ -196,6 +196,19 @@ other crates that you may want to import (such as plugins).</p>
 </span><span class="boring">fn main() {
 </span>use duat::print::*;
 <span class="boring">}</span></code></pre></pre>
+<p>This means that, for most options, their path is made up of a
+<code>{module}::{function}</code> combo. This means that the usual <code>config</code> crate should
+look something like this:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>setup_duat!(setup);
+use duat::print::*;
+
+fn setup() {
+    print::wrap_on_cap(150);
+    print::trailing_new_line('󱁐');
+}
+<span class="boring">}</span></code></pre></pre>
 
                     </main>
 
