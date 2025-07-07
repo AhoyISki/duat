@@ -168,11 +168,11 @@
                     <main>
                         <h1 id="quick-settings"><a class="header" href="#quick-settings">Quick settings</a></h1>
 <p>First of all, before you start anything, you should <em>try</em> to become at least
-<em>somewhat</em> accutomed to how rust works as a programming language. If you don't
+<em>somewhat</em> accustomed to how rust works as a programming language. If you don't
 know <strong>anything</strong> at all, the <a href="https://doc.rust-lang.org/book/">rust book</a> is a great place to start learning.</p>
 <p>One of the main aspects that Duat tries to accomplish is an emergent complexity
 for its features. That is, the more you learn about Duat, the easier it becomes
-to learn new things about Duat. Every feature should help you understand other
+to learn new things about it. Every feature should help you understand other
 features.</p>
 <p>That being said, here are some quick settings, which should hopefully compose
 later on to help you better understand duat.</p>
@@ -248,16 +248,20 @@ fn setup() {
 <span class="boring">}</span></code></pre></pre>
 <p>This will import everything in the <code>prelude</code> module of <code>duat</code>. This should have
 everything you will need in order to configure Duat, not including things from
-other crates that you may want to import.</p>
+other crates that you may want to import (such as plugins).</p>
 <p>Here are some of its items:</p>
 <h3 id="print-how-duat-should-print-files"><a class="header" href="#print-how-duat-should-print-files"><code>print</code>: How duat should print files</a></h3>
 <p>The module print has a bunch of options detailing how duat should print files.
 Every option in this module can be activated by doing something like this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use duat::prelude::*;
+</span>setup_duat!(setup);
+use duat::prelude::*;
 
-
+fn setup() {
+    print::wrap_on_edge();
+    print::new_line_after_space_as
+}
 <span class="boring">}</span></code></pre></pre>
 
                     </main>
