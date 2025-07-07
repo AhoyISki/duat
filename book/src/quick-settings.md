@@ -1,12 +1,12 @@
 # Quick settings
 
 First of all, before you start anything, you should _try_ to become at least 
-_somewhat_ accutomed to how rust works as a programming language. If you don't 
+_somewhat_ accustomed to how rust works as a programming language. If you don't
 know **anything** at all, the [rust book] is a great place to start learning.
 
 One of the main aspects that Duat tries to accomplish is an emergent complexity
 for its features. That is, the more you learn about Duat, the easier it becomes
-to learn new things about Duat. Every feature should help you understand other
+to learn new things about it. Every feature should help you understand other
 features.
 
 That being said, here are some quick settings, which should hopefully compose
@@ -93,7 +93,7 @@ fn setup() {
 
 This will import everything in the `prelude` module of `duat`. This should have
 everything you will need in order to configure Duat, not including things from
-other crates that you may want to import.
+other crates that you may want to import (such as plugins).
 
 Here are some of its items:
 
@@ -103,9 +103,13 @@ The module print has a bunch of options detailing how duat should print files.
 Every option in this module can be activated by doing something like this:
 
 ```rust
+setup_duat!(setup);
 use duat::prelude::*;
 
-
+fn setup() {
+    print::wrap_on_edge();
+    print::new_line_after_space_as
+}
 ```
 
 [rust book]: https://doc.rust-lang.org/book/

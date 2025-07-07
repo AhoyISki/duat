@@ -16,7 +16,7 @@ fn setup() {
     plug!(
         // Adds a TsParser Reader, which enables syntax highlighting.
         treesitter::TreeSitter,
-        match_pairs::MatchPairs,
+        match_pairs::MatchPairs::new(),
         // This plugin sets the mode to Kakoune's Normal.
         kak::Kak::new(),
         // This one adds the Catppuccin colorschemes.
