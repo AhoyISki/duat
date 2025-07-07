@@ -321,6 +321,7 @@ use treesitter::TsCursor;
 pub struct Kak {
     set_cursor_forms: bool,
     insert_tabs: bool,
+    normal: Normal,
 }
 
 impl Kak {
@@ -330,6 +331,7 @@ impl Kak {
         Self {
             set_cursor_forms: true,
             insert_tabs: false,
+            normal: Normal::new(),
         }
     }
 }
@@ -345,6 +347,43 @@ impl Kak {
     /// Makes the tab key insert `\t` instead of spaces
     pub fn insert_tabs(self) -> Self {
         Self { insert_tabs: true, ..self }
+    }
+
+    /// Changes what is considered a "bracket" in [`Normal`] mode
+    ///
+    /// More specifically, this will change the behavior of keys like
+    /// `'m'` and the `'u'` object, which will now consider more
+    /// patterns when selecting.
+    pub fn with_brackets<'a>(self, brackets: impl Iterator<Item = [&'a str; 2]>) -> Self {
+        Self {
+            normal: self.normal.with_brackets(brackets),
+            ..self
+        }
+    }
+
+    /// Makes it so the `'I'` key no longer indents the line
+    ///
+    /// By default, when you press `'I'`, the line will be reindented,
+    /// in order to send you to the "proper" insertion spot, not just
+    /// to the first non whitespace character.
+    ///
+    /// This function disables that behavior.
+    pub fn with_no_indent_on_capital_i(self) -> Self {
+        Self {
+            normal: self.normal.with_no_indent_on_capital_i(),
+            ..self
+        }
+    }
+
+    /// Makes the `'f'` and `'t'` keys set the search pattern
+    ///
+    /// If you type `"fm"`, for example, and then type `'n'`, `'n'`
+    /// will search for the next instance of an `'m'` in the [`File`]
+    pub fn f_and_t_set_search(self) -> Self {
+        Self {
+            normal: self.normal.f_and_t_set_search(),
+            ..self
+        }
     }
 }
 
