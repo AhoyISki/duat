@@ -121,7 +121,7 @@ fn spawn_watcher(
     reload_tx: mpsc::Sender<(PathBuf, bool)>,
     duat_tx: &mut mpsc::Sender<DuatEvent>,
     crate_dir: &'static std::path::Path,
-) -> (notify::INotifyWatcher, &'static std::path::Path) {
+) -> (notify::RecommendedWatcher, &'static std::path::Path) {
     std::fs::create_dir_all(crate_dir.join("target/debug")).unwrap();
     std::fs::create_dir_all(crate_dir.join("target/release")).unwrap();
 
