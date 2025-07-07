@@ -620,15 +620,29 @@ impl InnerTsParser {
     }
 
     fn indent_on(&self, p: Point, bytes: &Bytes, cfg: PrintCfg) -> Option<usize> {
-        let (.., Queries { indents, .. }) = &self.lang_parts;
+        fn smallest_around(ts: &InnerTsParser, b: usize) -> (Node<'_>, &Query) {
+            if let Some(sub) = ts
+                .sub_trees
+                .iter()
+                .find(|sub| sub.range.contains(&b) && sub.lang_parts.0 != "comment")
+            {
+                return smallest_around(sub, b);
+            }
+
+            let root = ts.tree.root_node_with_offset(ts.range.start, ts.offset);
+            (root, ts.lang_parts.2.indents)
+        }
+
+        let [start, _] = bytes.points_of_line(p.line());
+
+        let (root, indents) = smallest_around(self, start.byte());
+
+        // The query could be empty.
         if indents.pattern_count() == 0 {
             return None;
         }
-        let tab = cfg.tab_stops.size() as i32;
-        let [start, _] = bytes.points_of_line(p.line());
 
-        // TODO: Get injected trees
-        let root = self.tree.root_node();
+        // TODO: Don't reparse python, apparently.
 
         type Captures<'a> = HashMap<&'a str, HashMap<usize, HashMap<&'a str, Option<&'a str>>>>;
         let mut caps: Captures = HashMap::new();
@@ -740,7 +754,7 @@ impl InnerTsParser {
                 && ((s_line == p.line() && q(&caps, node, &["branch"]))
                     || (s_line != p.line() && q(&caps, node, &["dedent"])))
             {
-                indent -= tab;
+                indent -= 1;
                 is_processed = true;
             }
 
@@ -753,7 +767,7 @@ impl InnerTsParser {
                 && (s_line != p.line() || q(&caps, node, &["begin", "start_at_same_line"]))
             {
                 is_processed = true;
-                indent += tab;
+                indent += 1;
             }
 
             if is_in_err && !q(&caps, node, &["align"]) {
@@ -810,7 +824,7 @@ impl InnerTsParser {
                     // If the previous line was marked with an open_delimiter, treat it
                     // like an indent.
                     let indent_is_absolute = if o_is_last_in_line && should_process {
-                        indent += tab;
+                        indent += 1;
                         // If the aligned node ended before the current line, its @align
                         // shouldn't affect it.
                         if c_is_last_in_line && c_s_line.is_some_and(|l| l < p.line()) {
@@ -839,7 +853,7 @@ impl InnerTsParser {
                         .is_some_and(|c_s_line| c_s_line != o_s_line && c_s_line == p.line())
                         && props.contains_key("avoid_last_matching_next");
                     if avoid_last_matching_next {
-                        indent += tab;
+                        indent += 1;
                     }
                     is_processed = true;
                     if indent_is_absolute {
@@ -854,7 +868,8 @@ impl InnerTsParser {
             opt_node = node.parent();
         }
 
-        Some(indent as usize)
+		// indent < 0 means "keep level of indentation"
+        (indent >= 0).then_some(indent as usize * cfg.tab_stops.size() as usize)
     }
 }
 
@@ -909,9 +924,9 @@ fn forms_from_lang_parts(
 ) -> &'static [(FormId, u8)] {
     #[rustfmt::skip]
     const PRIORITIES: &[&str] = &[
-        "comment", "string", "variable", "module", "label", "character", "boolean", "number", "type",
-        "attribute", "property", "function", "constant", "constructor", "operator", "keyword",
-        "punctuation", "markup", "diff"
+        "markup", "comment", "string", "diff", "variable", "module", "label", "character",
+        "boolean", "number", "type", "attribute", "property", "function", "constant",
+        "constructor", "operator", "keyword", "punctuation",
     ];
     type MemoizedForms<'a> = HashMap<&'a str, &'a [(FormId, u8)]>;
 
