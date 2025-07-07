@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Installation - Duat</title>
+        <title>Quick settings - Duat</title>
 
 
         <!-- Custom HTML head -->
@@ -166,48 +166,108 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
-<p>In order to begin using Duat, you will need <code>cargo</code> installed in your system.
-See <a href="https://www.rust-lang.org/tools/install">cargo's installation instructions</a> for more info. After installing
-<code>cargo</code>, you will want to make sure you're using rust's nighlty features:</p>
-<pre><code class="language-bash">rustup install nightly
-</code></pre>
-<p>Now, you can go ahead and install duat using <code>cargo</code>. Duat will be installed
-for the current user, in the <code>~/.cargo/bin/</code> directory:</p>
-<pre><code class="language-bash">cargo install duat
-</code></pre>
-<p>Or, if you want the <code>master</code> version of duat, from the latest commit, you can
-do this:</p>
-<pre><code class="language-bash">cargo install --git https://github.com/AhoyISki/duat --features git-deps
-</code></pre>
-<p>When calling either of these commands, if it didn't already exist, a default
-version of Duat's configuration will be installed in <code>$XDG_CONFIG_HOME/duat</code>
-(<code>~/.config/duat</code> for Linux). If you want to get the latest version of the
-default configuration, you can just remove that, alongside other directories
-used by Duat:</p>
-<pre><code class="language-bash">rm -rf ~/.config/duat/ ~/.cache/duat/ ~/.local/share/duat/
-cargo install --git https://github.com/AhoyISki/duat --features gid-deps
-</code></pre>
-<p>If you don't have <code>~/.cargo/bin/</code> in your <code>$PATH</code> variable, you should add that
-in order to be able to call <code>duat</code>. Alternatively, you may add just
-<code>~/.cargo/bin/duat</code>, if you don't want to bring the other things in
-<code>~/.cargo/bin/</code> to global executable scope.</p>
-<p>At this point, you should be able to use Duat by calling <code>duat</code> or <code>duat  some_file</code>. The first time you run <code>duat</code>, the compilation of the <code>config</code> crate
-will take a while, but after running the <code>reload</code> command from duat, it should
-recompile in ~0.5 to ~2.5 seconds, depending on what you changed in the config.</p>
-<p>To see how you can configure duat, look at the next chapter in this book.</p>
+                        <h1 id="quick-settings"><a class="header" href="#quick-settings">Quick settings</a></h1>
+<p>First of all, before you start anything, you should <em>try</em> to become at least
+<em>somewhat</em> accutomed to how rust works as a programming language. If you don't
+know <strong>anything</strong> at all, the <a href="https://doc.rust-lang.org/book/">rust book</a> is a great place to start learning.</p>
+<p>One of the main aspects that Duat tries to accomplish is an emergent complexity
+for its features. That is, the more you learn about Duat, the easier it becomes
+to learn new things about Duat. Every feature should help you understand other
+features.</p>
+<p>That being said, here are some quick settings, which should hopefully compose
+later on to help you better understand duat.</p>
+<h2 id="the-setup-function-and-setup_duat"><a class="header" href="#the-setup-function-and-setup_duat">The <code>setup</code> function and <code>setup_duat!</code></a></h2>
+<p>In order for Duat to be able to run your config crate in <code>~/.config/duat</code>, it <em>needs</em> to have at the very least this in it:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>setup_duat!(setup);
+use duat::prelude::*;
+
+fn setup() {}
+<span class="boring">}</span></code></pre></pre>
+<p>That's because Duat will call the <code>setup</code> function (after some initial setup,
+and before some final setup) in order to do the initial setup for duat. For all
+intents and purposes, treat the <code>setup</code> function as if it were the <code>init.lus</code>
+on a neovim configuration, as it will do all the setup for Duat.</p>
+<p>Of course, not everything needs to be placed inside of this function. For
+example, you could separate the plugins into a separate function, if you think
+that will look cleaner:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>setup_duat!(setup);
+use duat::prelude::*;
+
+fn setup() {
+    add_plugins();
+}
+
+fn add_plugins() {
+    plug!(
+        treesitter::TreeSitter,
+        kak::Kak::new(),
+        catppuccin::Catppuccin::new()
+    );
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="the-plug-macro"><a class="header" href="#the-plug-macro">The <code>plug!</code> macro</a></h3>
+<p>The <code>plug!</code> macro serves the purpose of adding plugins to Duat. Every plugin
+will have its own configuration options, that you will need to look at their
+documentation to understand. But they should all be configured in the same way:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>setup_duat!(setup);
+use duat::prelude::*;
+
+fn setup() {
+    plug!(
+        kak::Kak::new()
+            .f_and_t_set_search()
+            .with_no_indent_on_capital_i(),
+    );
+}
+<span class="boring">}</span></code></pre></pre>
+<p>In this case, the <code>Kak</code> plugin (from <a href="https://github.com/AhoyISki/duat-kak"><code>duat-kak</code></a>) is being modified via the
+builder pattern in order to have the following settings:</p>
+<ul>
+<li>The <code>f</code> and <code>t</code> keys will set the search pattern, so <code>n</code> will look for it.</li>
+<li>When pressing <code>I</code>, don't reindent.</li>
+</ul>
+<p>Then, it is being added to Duat. The <code>f_and_t_set_search</code> and
+<code>with_no_indent_on_capital_i</code> modify the <code>Kak</code> plugin and then return it back
+to be plugged. This is the <a href="https://rust-unofficial.github.io/patterns/patterns/creational/builder.html">builder pattern</a>, and is how all plugins are added.</p>
+<h2 id="the-prelude-module"><a class="header" href="#the-prelude-module">The <code>prelude</code> module</a></h2>
+<p>At the top of your crate, you should be able to find this:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>setup_duat!(setup);
+use duat::prelude::*;
+
+fn setup() {
+    // The stuff inside your setup...
+}
+<span class="boring">}</span></code></pre></pre>
+<p>This will import everything in the <code>prelude</code> module of <code>duat</code>. This should have
+everything you will need in order to configure Duat, not including things from
+other crates that you may want to import.</p>
+<p>Here are some of its items:</p>
+<h3 id="print-how-duat-should-print-files"><a class="header" href="#print-how-duat-should-print-files"><code>print</code>: How duat should print files</a></h3>
+<p>The module print has a bunch of options detailing how duat should print files.
+Every option in this module can be activated by doing something like this:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use duat::prelude::*;
+
+
+<span class="boring">}</span></code></pre></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="introduction.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="installation.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="quick-settings.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                                <i class="fa fa-angle-right"></i>
-                            </a>
 
                         <div style="clear: both"></div>
                     </nav>
@@ -215,13 +275,10 @@ recompile in ~0.5 to ~2.5 seconds, depending on what you changed in the config.<
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="introduction.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="installation.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="quick-settings.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                        <i class="fa fa-angle-right"></i>
-                    </a>
             </nav>
 
         </div>
