@@ -1153,7 +1153,6 @@ impl Palette {
             mask_i,
             default,
             forms: Vec::new(),
-            final_form_start: 0,
             set_fg: true,
             set_bg: true,
             set_ul: true,
@@ -1243,7 +1242,6 @@ pub struct Painter {
     mask_i: usize,
     default: Form,
     forms: Vec<(Form, FormId, u8)>,
-    final_form_start: usize,
     set_fg: bool,
     set_bg: bool,
     set_ul: bool,
@@ -1289,9 +1287,6 @@ impl Painter {
         let mut applied_forms = self.forms.iter().enumerate();
         if let Some((i, &(form, ..))) = applied_forms.rfind(|(_, (_, lhs, _))| *lhs == id) {
             self.forms.remove(i);
-            if id != M_SEL_ID && id != E_SEL_ID {
-                self.final_form_start -= 1;
-            }
 
             self.set_fg |= form.fg().is_some();
             self.set_bg |= form.bg().is_some();
@@ -1307,7 +1302,6 @@ impl Painter {
     /// [`ResetState`]: crate::text::Part::ResetState
     #[inline(always)]
     pub fn reset(&mut self) -> ContentStyle {
-        self.final_form_start = 0;
         self.forms.clear();
         self.absolute_style()
     }
@@ -1378,13 +1372,11 @@ impl Painter {
     #[inline(always)]
     pub fn apply_main_cursor(&mut self) {
         self.apply(M_CAR_ID, 100);
-        self.final_form_start -= 1;
     }
 
     /// Removes the `"caret.main"` [`Form`]
     #[inline(always)]
     pub fn remove_main_caret(&mut self) {
-        self.final_form_start += 1;
         self.remove(M_CAR_ID);
     }
 
@@ -1392,13 +1384,11 @@ impl Painter {
     #[inline(always)]
     pub fn apply_extra_cursor(&mut self) {
         self.apply(E_CAR_ID, 100);
-        self.final_form_start -= 1;
     }
 
     /// Removes the `"caret.extra"` [`Form`]
     #[inline(always)]
     pub fn remove_extra_caret(&mut self) {
-        self.final_form_start += 1;
         self.remove(E_CAR_ID);
     }
 

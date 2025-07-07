@@ -226,7 +226,7 @@ impl<U: Ui> Session<U> {
             if let Some(mode_fn) = mode::take_set_mode_fn() {
                 mode_fn(&mut pa);
             }
-            
+
             if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(50)) {
                 match event {
                     DuatEvent::Tagger(key) => {
@@ -245,8 +245,12 @@ impl<U: Ui> Session<U> {
                     }
                     DuatEvent::CloseFile(name) => self.close_file(&mut pa, name),
                     DuatEvent::SwapFiles(lhs, rhs) => self.swap_files(&mut pa, lhs, rhs),
-                    DuatEvent::OpenWindow(name) => self.open_window_with(&mut pa, name),
+                    DuatEvent::OpenWindow(name) => {
+                        reprint_screen = true;
+                        self.open_window_with(&mut pa, name)
+                    }
                     DuatEvent::SwitchWindow(win) => {
+                        reprint_screen = true;
                         self.cur_window.store(win, Ordering::SeqCst);
                         U::switch_window(self.ms, win);
                     }

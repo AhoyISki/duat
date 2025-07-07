@@ -26,3 +26,17 @@ As opposed to this:
 ```rust
 use duat::print::*;
 ```
+
+This means that, for most options, their path is made up of a 
+`{module}::{function}` combo. This means that the usual `config` crate should 
+look something like this:
+
+```rust
+setup_duat!(setup);
+use duat::print::*;
+
+fn setup() {
+    print::wrap_on_cap(150);
+    print::trailing_new_line('󱁐');
+}
+```

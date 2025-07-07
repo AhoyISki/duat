@@ -108,7 +108,7 @@ impl Bytes {
         let dfas = dfas_from_pat(pat)?;
         let haystack = {
             self.make_contiguous(range.clone());
-            self.get_contiguous(range.clone()).unwrap()
+            self.get_contiguous_bytes(range.clone()).unwrap()
         };
 
         let mut fwd_input = Input::new(haystack);
@@ -167,7 +167,7 @@ impl Bytes {
         let dfas = dfas_from_pat(pat)?;
         let haystack = {
             self.make_contiguous(range.clone());
-            self.get_contiguous(range.clone()).unwrap()
+            self.get_contiguous_bytes(range.clone()).unwrap()
         };
 
         let mut fwd_input = Input::new(haystack).anchored(Anchored::Yes);
@@ -219,7 +219,10 @@ impl Bytes {
         let range = range.to_range(self.len().byte());
         let dfas = dfas_from_pat(pat)?;
 
-        let haystack = self.contiguous(range);
+        let haystack = {
+            self.make_contiguous(range.clone());
+            self.get_contiguous_bytes(range.clone()).unwrap()
+        };
         let fwd_input = Input::new(haystack);
 
         let mut fwd_cache = dfas.fwd.1.write().unwrap();
@@ -397,7 +400,10 @@ impl Searcher {
         let range = range.to_range(bytes.len().byte());
         let mut last_point = bytes.point_at(range.start);
 
-        let haystack = bytes.contiguous(range.clone());
+        let haystack = {
+            bytes.make_contiguous(range.clone());
+            bytes.get_contiguous_bytes(range.clone()).unwrap()
+        };
         let mut fwd_input = Input::new(haystack).anchored(Anchored::No);
         let mut rev_input = Input::new(haystack).anchored(Anchored::Yes);
 
@@ -432,10 +438,14 @@ impl Searcher {
             };
             let start = half.offset();
 
-            let start = haystack[last_point.byte() - gap..start]
-                .chars()
-                .fold(last_point, |p, b| p.fwd(b));
-            let end = haystack[start.byte() - gap..end]
+            // SAFETY: If a match occurred, since the pattern _must_ be utf8,
+            // every match should also be utf8, so at the very least, this
+            // sequence will be utf8.
+            let start =
+                unsafe { str::from_utf8_unchecked(&haystack[last_point.byte() - gap..start]) }
+                    .chars()
+                    .fold(last_point, |p, b| p.fwd(b));
+            let end = unsafe { str::from_utf8_unchecked(&haystack[start.byte() - gap..end]) }
                 .chars()
                 .fold(start, |p, b| p.fwd(b));
 
@@ -457,7 +467,10 @@ impl Searcher {
         let range = range.to_range(bytes.len().byte());
         let mut last_point = bytes.point_at(range.end);
 
-        let haystack = bytes.contiguous(range.clone());
+        let haystack = {
+            bytes.make_contiguous(range.clone());
+            bytes.get_contiguous_bytes(range.clone()).unwrap()
+        };
         let mut fwd_input = Input::new(haystack).anchored(Anchored::Yes);
         let mut rev_input = Input::new(haystack).anchored(Anchored::Yes);
 
@@ -489,10 +502,15 @@ impl Searcher {
                 .unwrap()
                 .unwrap();
 
-            let end = haystack[half.offset()..(last_point.byte() - gap)]
-                .chars()
-                .fold(last_point, |p, b| p.rev(b));
-            let start = haystack[start..(end.byte() - gap)]
+            // SAFETY: If a match occurred, since the pattern _must_ be utf8,
+            // every match should also be utf8, so at the very least, this
+            // sequence will be utf8.
+            let end = unsafe {
+                str::from_utf8_unchecked(&haystack[half.offset()..(last_point.byte() - gap)])
+            }
+            .chars()
+            .fold(last_point, |p, b| p.rev(b));
+            let start = unsafe { str::from_utf8_unchecked(&haystack[start..(end.byte() - gap)]) }
                 .chars()
                 .fold(end, |p, b| p.rev(b));
 

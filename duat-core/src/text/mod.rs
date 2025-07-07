@@ -455,11 +455,15 @@ impl Text {
     /// Inserts a [`Text`] into this [`Text`], in a specific [`Point`]
     pub fn insert_text(&mut self, p: Point, mut text: Text) {
         let insert = if p.byte() == 1 && self.0.bytes == "\n" {
-            let change = Change::new(text.0.bytes.contiguous(..), [Point::default(), p], self);
+            let change = Change::new(
+                text.0.bytes.contiguous(..).unwrap(),
+                [Point::default(), p],
+                self,
+            );
             self.apply_change_inner(0, change.as_ref());
             Point::default()
         } else {
-            let change = Change::str_insert(text.0.bytes.contiguous(..), p);
+            let change = Change::str_insert(text.0.bytes.contiguous(..).unwrap(), p);
             self.apply_change_inner(0, change);
             p
         };

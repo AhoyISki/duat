@@ -276,7 +276,7 @@ implTextRangeOrPoint!(RangeFrom);
 ///
 /// [`Text`]: super::Text
 /// [ghost text]: super::Ghost
-pub trait TwoPoints: Clone + Copy {
+pub trait TwoPoints: Clone + Copy + std::fmt::Debug {
     /// Returns two [`Point`]s, for `Text` and ghosts
     fn to_points(self) -> (Point, Option<Point>);
 }

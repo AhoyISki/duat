@@ -3,7 +3,7 @@ use std::{iter::FusedIterator, ops::RangeBounds};
 use gapbuf::GapBuffer;
 use lender::{DoubleEndedLender, ExactSizeLender, Lender, Lending};
 
-use super::{records::Records, utf8_char_width, Point, RegexPattern, TextRange};
+use super::{Point, RegexPattern, TextRange, records::Records, utf8_char_width};
 
 /// A public reader for [`Bytes`], which doesn't allow for mutation
 pub struct RefBytes<'a>(pub(super) &'a mut Bytes);
@@ -13,16 +13,38 @@ impl RefBytes<'_> {
     ///
     /// This is the equivalent of calling
     /// [`Bytes::make_contiguous`] and [`Bytes::get_contiguous`].
-    /// While this takes leas space in code, calling the other two
+    /// While this takes less space in code, calling the other two
     /// functions means that you won't be mutably borrowing the
     /// [`Bytes`] anymore, so if that matters to you, you should do
     /// that.
     ///
+    /// Returns [`None`] when the range doesn't match character
+    /// boundaries.
+    ///
     /// [`&str`]: str
     /// [range]: TextRange
-    pub fn contiguous(&mut self, range: impl TextRange) -> &str {
+    pub fn contiguous(&mut self, range: impl TextRange) -> Option<&str> {
         self.0.contiguous(range)
     }
+    
+    /// Gets a single `&[u8]` from a given [range]
+    ///
+    /// This is the equivalent of calling
+    /// [`Bytes::make_contiguous`] and
+    /// [`Bytes::get_contiguous_bytes`]. While this takes less
+    /// space in code, calling the other two functions means that
+    /// you won't be mutably borrowing the [`Bytes`] anymore, so
+    /// if that matters to you, you should do that.
+    ///
+    /// Also, because you aren't checking for utf8 character
+    /// boundaries, this function never fails.
+    ///
+    /// [range]: TextRange
+    pub fn contiguous_bytes(&mut self, range: impl TextRange) -> &[u8] {
+        self.make_contiguous(range.clone());
+        self.get_contiguous_bytes(range).unwrap()
+    }
+
 
     /// Moves the [`GapBuffer`]'s gap, so that the `range` is whole
     ///
@@ -571,16 +593,37 @@ impl Bytes {
     ///
     /// This is the equivalent of calling
     /// [`Bytes::make_contiguous`] and [`Bytes::get_contiguous`].
-    /// While this takes leas space in code, calling the other two
+    /// While this takes less space in code, calling the other two
     /// functions means that you won't be mutably borrowing the
     /// [`Bytes`] anymore, so if that matters to you, you should do
     /// that.
     ///
+    /// Will return [`None`] if the range doesn't coincide with
+    /// character boundaries.
+    ///
     /// [`&str`]: str
     /// [range]: TextRange
-    pub fn contiguous(&mut self, range: impl TextRange) -> &str {
+    pub fn contiguous(&mut self, range: impl TextRange) -> Option<&str> {
         self.make_contiguous(range.clone());
-        self.get_contiguous(range).unwrap()
+        self.get_contiguous(range)
+    }
+
+    /// Gets a single `&[u8]` from a given [range]
+    ///
+    /// This is the equivalent of calling
+    /// [`Bytes::make_contiguous`] and
+    /// [`Bytes::get_contiguous_bytes`]. While this takes less
+    /// space in code, calling the other two functions means that
+    /// you won't be mutably borrowing the [`Bytes`] anymore, so
+    /// if that matters to you, you should do that.
+    ///
+    /// Also, because you aren't checking for utf8 character
+    /// boundaries, this function never fails.
+    ///
+    /// [range]: TextRange
+    pub fn contiguous_bytes(&mut self, range: impl TextRange) -> &[u8] {
+        self.make_contiguous(range.clone());
+        self.get_contiguous_bytes(range).unwrap()
     }
 
     /// Moves the [`GapBuffer`]'s gap, so that the `range` is whole
@@ -605,7 +648,8 @@ impl Bytes {
     /// Tries to get a contiguous [`&str`] from the [`Bytes`]
     ///
     /// Returns [`None`] if the gap of the inner buffer was within the
-    /// given range.
+    /// given range *OR* if the range's bounds don't coincide with
+    /// character boundaries.
     ///
     /// You can ensure that the gap is outside of that range by
     /// calling [`make_contiguous`], although that requires a mutable
@@ -622,6 +666,27 @@ impl Bytes {
         } else {
             let gap = self.buf.gap();
             s1.get(range.start - gap..range.end - gap)
+        }
+    }
+
+    /// The same as [`get_contiguous`], but doesn't check for
+    /// character terminations, since it returns `&[u8]`
+    ///
+    /// Unlike [`get_contiguous`], this function will only return
+    /// [`None`] if the gap is located within the searched range,
+    /// _not_ when the range doesn't match character boundaries.
+    ///
+    /// [`&str`]: str
+    /// [`get_contiguous`]: Self::get_contiguous
+    pub fn get_contiguous_bytes(&self, range: impl TextRange) -> Option<&[u8]> {
+        let range = range.to_range(self.len().byte());
+        let [s0, s1] = self.strs(..).to_array();
+
+        if range.end <= self.buf.gap() {
+            s0.as_bytes().get(range)
+        } else {
+            let gap = self.buf.gap();
+            s1.as_bytes().get(range.start - gap..range.end - gap)
         }
     }
 }
