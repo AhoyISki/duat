@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Quick settings - Duat</title>
+        <title>Quick settings - The Duat text editor</title>
 
 
         <!-- Custom HTML head -->
@@ -134,11 +134,17 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">Duat</h1>
+                    <h1 class="menu-title">The Duat text editor</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/AhoyISki/duat" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/AhoyISki/duat/edit/master/book/src/quick-settings.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
                     </div>
@@ -176,93 +182,6 @@ to learn new things about it. Every feature should help you understand other
 features.</p>
 <p>That being said, here are some quick settings, which should hopefully compose
 later on to help you better understand duat.</p>
-<h2 id="the-setup-function-and-setup_duat"><a class="header" href="#the-setup-function-and-setup_duat">The <code>setup</code> function and <code>setup_duat!</code></a></h2>
-<p>In order for Duat to be able to run your config crate in <code>~/.config/duat</code>, it <em>needs</em> to have at the very least this in it:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>setup_duat!(setup);
-use duat::prelude::*;
-
-fn setup() {}
-<span class="boring">}</span></code></pre></pre>
-<p>That's because Duat will call the <code>setup</code> function (after some initial setup,
-and before some final setup) in order to do the initial setup for duat. For all
-intents and purposes, treat the <code>setup</code> function as if it were the <code>init.lus</code>
-on a neovim configuration, as it will do all the setup for Duat.</p>
-<p>Of course, not everything needs to be placed inside of this function. For
-example, you could separate the plugins into a separate function, if you think
-that will look cleaner:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>setup_duat!(setup);
-use duat::prelude::*;
-
-fn setup() {
-    add_plugins();
-}
-
-fn add_plugins() {
-    plug!(
-        treesitter::TreeSitter,
-        kak::Kak::new(),
-        catppuccin::Catppuccin::new()
-    );
-}
-<span class="boring">}</span></code></pre></pre>
-<h3 id="the-plug-macro"><a class="header" href="#the-plug-macro">The <code>plug!</code> macro</a></h3>
-<p>The <code>plug!</code> macro serves the purpose of adding plugins to Duat. Every plugin
-will have its own configuration options, that you will need to look at their
-documentation to understand. But they should all be configured in the same way:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>setup_duat!(setup);
-use duat::prelude::*;
-
-fn setup() {
-    plug!(
-        kak::Kak::new()
-            .f_and_t_set_search()
-            .with_no_indent_on_capital_i(),
-    );
-}
-<span class="boring">}</span></code></pre></pre>
-<p>In this case, the <code>Kak</code> plugin (from <a href="https://github.com/AhoyISki/duat-kak"><code>duat-kak</code></a>) is being modified via the
-builder pattern in order to have the following settings:</p>
-<ul>
-<li>The <code>f</code> and <code>t</code> keys will set the search pattern, so <code>n</code> will look for it.</li>
-<li>When pressing <code>I</code>, don't reindent.</li>
-</ul>
-<p>Then, it is being added to Duat. The <code>f_and_t_set_search</code> and
-<code>with_no_indent_on_capital_i</code> modify the <code>Kak</code> plugin and then return it back
-to be plugged. This is the <a href="https://rust-unofficial.github.io/patterns/patterns/creational/builder.html">builder pattern</a>, and is how all plugins are added.</p>
-<h2 id="the-prelude-module"><a class="header" href="#the-prelude-module">The <code>prelude</code> module</a></h2>
-<p>At the top of your crate, you should be able to find this:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>setup_duat!(setup);
-use duat::prelude::*;
-
-fn setup() {
-    // The stuff inside your setup...
-}
-<span class="boring">}</span></code></pre></pre>
-<p>This will import everything in the <code>prelude</code> module of <code>duat</code>. This should have
-everything you will need in order to configure Duat, not including things from
-other crates that you may want to import (such as plugins).</p>
-<p>Here are some of its items:</p>
-<h3 id="print-how-duat-should-print-files"><a class="header" href="#print-how-duat-should-print-files"><code>print</code>: How duat should print files</a></h3>
-<p>The module print has a bunch of options detailing how duat should print files.
-Every option in this module can be activated by doing something like this:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>setup_duat!(setup);
-use duat::prelude::*;
-
-fn setup() {
-    print::wrap_on_edge();
-    print::new_line_after_space_as
-}
-<span class="boring">}</span></code></pre></pre>
 
                     </main>
 
@@ -272,6 +191,9 @@ fn setup() {
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
+                            <a rel="next prefetch" href="setup-and-setup-duat.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
 
                         <div style="clear: both"></div>
                     </nav>
@@ -283,6 +205,9 @@ fn setup() {
                         <i class="fa fa-angle-left"></i>
                     </a>
 
+                    <a rel="next prefetch" href="setup-and-setup-duat.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
             </nav>
 
         </div>
