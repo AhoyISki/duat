@@ -13,8 +13,8 @@ use duat_treesitter::TsParser;
 ///
 /// [`Selection`]: duat_core::mode::Selection
 pub struct MatchPairs {
-    ts_and_bytes: Vec<[&'static str; 2]>,
-    ts_only: Vec<[&'static str; 2]>,
+    ts_and_bytes: Vec<[&'static [u8]; 2]>,
+    ts_only: Vec<[&'static [u8]; 2]>,
     escaped: Vec<[&'static str; 2]>,
 }
 
@@ -22,9 +22,9 @@ impl MatchPairs {
     /// Returns a new [`MatchPairs`]
     pub fn new() -> Self {
         Self {
-            ts_and_bytes: vec![["(", ")"], ["{", "}"], ["[", "]"]],
+            ts_and_bytes: vec![[b"(", b")"], [b"{", b"}"], [b"[", b"]"]],
             // TODO: Add more filetypes
-            ts_only: vec![["<", ">"]],
+            ts_only: vec![[b"<", b">"]],
             escaped: vec![["\\(", "\\)"], ["\\{", "\\}"], ["\\[", "\\]"]],
         }
     }
@@ -41,7 +41,10 @@ impl MatchPairs {
     ///
     /// [`match_ts_pairs`]: Self::match_ts_pairs
     pub fn match_pairs(self, pairs: impl IntoIterator<Item = [&'static str; 2]>) -> Self {
-        let ts_and_bytes: Vec<[&'static str; 2]> = pairs.into_iter().collect();
+        let ts_and_bytes: Vec<[&'static [u8]; 2]> = pairs
+            .into_iter()
+            .map(|arr| arr.map(str::as_bytes))
+            .collect();
         let escaped = ts_and_bytes
             .iter()
             .map(|[l, r]| [escape(l), escape(r)])
@@ -65,7 +68,10 @@ impl MatchPairs {
     /// [`match_pairs`]: Self::match_pairs
     pub fn match_ts_pairs(self, pairs: impl IntoIterator<Item = [&'static str; 2]>) -> Self {
         Self {
-            ts_only: pairs.into_iter().collect(),
+            ts_only: pairs
+                .into_iter()
+                .map(|arr| arr.map(str::as_bytes))
+                .collect(),
             ..self
         }
     }
@@ -81,7 +87,7 @@ impl<U: Ui> Plugin<U> for MatchPairs {
 
 impl<U: Ui> Parser<U> for MatchPairs {
     fn update_range(&mut self, mut parts: FileParts<U>, _: Option<Range<Point>>) {
-        fn ends(str: &str) -> impl Fn(&[&str; 2]) -> bool {
+        fn ends(str: &[u8]) -> impl Fn(&[&[u8]; 2]) -> bool {
             move |delims| delims.contains(&str)
         }
         parts.tags.remove(*PAREN_TAGGER, ..);
@@ -90,7 +96,7 @@ impl<U: Ui> Parser<U> for MatchPairs {
 
         'selections: for (_, selection, is_main) in parts.selections.iter_within(within) {
             let range = selection.range(&parts.bytes);
-            let str = parts.bytes.contiguous(range.clone());
+            let str = parts.bytes.contiguous_bytes(range.clone());
 
             // TODO: Support multi-character pairs
             let (delims, escaped) = if let Some(i) = self.ts_and_bytes.iter().position(ends(str)) {
@@ -109,7 +115,7 @@ impl<U: Ui> Parser<U> for MatchPairs {
                         .and_then(|node| {
                             delims
                                 .iter()
-                                .position(|d| *d == node.grammar_name())
+                                .position(|d| *d == node.grammar_name().as_bytes())
                                 .zip(Some(node))
                         });
                     let ((delim_side, node), parent) =
@@ -119,11 +125,11 @@ impl<U: Ui> Parser<U> for MatchPairs {
 
                     if delim_side == 0
                         && (c.goto_first_child() && c.node() == node && c.goto_parent())
-                        && (c.goto_last_child() && c.node().grammar_name() == delims[1])
+                        && (c.goto_last_child() && c.node().grammar_name().as_bytes() == delims[1])
                     {
                         Some((node.byte_range(), c.node().byte_range()))
                     } else if (c.goto_last_child() && c.node() == node && c.goto_parent())
-                        && (c.goto_first_child() && c.node().grammar_name() == delims[0])
+                        && (c.goto_first_child() && c.node().grammar_name().as_bytes() == delims[0])
                     {
                         Some((c.node().byte_range(), node.byte_range()))
                     } else {
@@ -188,7 +194,7 @@ impl<U: Ui> ParserCfg<U> for MatchPairs {
             && let Some(path) = path.filetype()
         {
             self.ts_only = match path {
-                "rust" => vec![["<", ">"], ["|", "|"]],
+                "rust" => vec![[b"<", b">"], [b"|", b"|"]],
                 _ => self.ts_only,
             }
         };
@@ -206,24 +212,23 @@ impl Default for MatchPairs {
 static PAREN_TAGGER: LazyLock<Tagger> = Tagger::new_static();
 
 /// Escapes regex pattern characters.
-fn escape(str: &'static str) -> &'static str {
-    static TOKENS: &[char] = &[
-        '(', ')', '{', '}', '[', ']', '^', '$', '.', '+', '*', '?', '|',
-    ];
-    static ESCAPED_STRS: LazyLock<Mutex<HashMap<String, &str>>> = LazyLock::new(Mutex::default);
+fn escape(str: &'static [u8]) -> &'static str {
+    static TOKENS: &[u8] = b"(){}[]^$.+*?|";
+    static ESCAPED_STRS: LazyLock<Mutex<HashMap<Vec<u8>, &str>>> = LazyLock::new(Mutex::default);
 
     let mut escaped_strs = ESCAPED_STRS.lock().unwrap();
 
     if let Some(escaped) = escaped_strs.get(str) {
         escaped
     } else {
-        let mut escaped = str.to_string();
-        for (i, _) in str.match_indices(TOKENS) {
+        // SAFETY: This str would have originally come from a &str
+        let mut escaped = unsafe { str::from_utf8_unchecked(str) }.to_string();
+        for (i, _) in str.iter().enumerate().filter(|(_, b)| TOKENS.contains(b)) {
             escaped.insert(i, '\\');
         }
 
         let escaped = escaped.leak();
-        escaped_strs.insert(str.to_string(), escaped);
+        escaped_strs.insert(str.to_vec(), escaped);
 
         escaped
     }
