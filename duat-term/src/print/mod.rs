@@ -251,7 +251,7 @@ impl Printer {
             coords,
             real_cursor: None,
 
-            line: Vec::with_capacity(cap as usize * 4),
+            line: Vec::with_capacity(coords.width() as usize * 4 ),
             len: 0,
             positions: Vec::new(),
             gaps: Gaps::OnRight,
