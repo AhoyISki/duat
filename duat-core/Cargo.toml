@@ -21,7 +21,6 @@ while_let_on_iterator = "allow"
 [dependencies]
 gapbuf = "0.1.4"
 dirs-next = "2.0.0"
-base64 = "0.22.1"
 bincode = "2.0.1"
 regex-automata = "0.4.9"
 regex-syntax = "0.8.5"

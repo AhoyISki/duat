@@ -27,9 +27,14 @@
 //! [`Cursors`]: crate::mode::Cursors
 //! [`Cursor`]: crate::mode::Cursor
 //! [`Point`]: crate::text::Point
-use std::{any::TypeId, fs::File, path::PathBuf};
+use std::{
+    any::TypeId,
+    ffi::OsString,
+    fs::File,
+    hash::{DefaultHasher, Hash, Hasher},
+    path::PathBuf,
+};
 
-use base64::Engine;
 pub use bincode::{self, Decode, Encode};
 
 use self::bincode::{
@@ -44,31 +49,10 @@ use crate::{duat_name, src_crate};
 /// it does not exist, or the file can't be correctly interpreted,
 /// returns [`None`]
 pub(crate) fn load_cache<C: Decode<()> + 'static>(path: impl Into<PathBuf>) -> Option<C> {
-    fn contents(path: PathBuf, type_id: TypeId, type_name: String) -> Option<File> {
-        if type_id == TypeId::of::<()>() {
-            return None;
-        }
-
-        let file_name = path.file_name()?.to_str()?;
-        let mut src = dirs_next::cache_dir()?;
-
-        let encoded: String = {
-            let base64 = base64::prelude::BASE64_URL_SAFE.encode(path.to_str().unwrap());
-            base64.chars().step_by(5).collect()
-        };
-
-        src.push("duat/structs");
-        src.push(format!("{encoded}:{file_name}"));
-        src.push(type_name);
-
-        std::fs::OpenOptions::new().read(true).open(src).ok()
-    }
-
-    let type_name = format!("{}::{}", src_crate::<C>(), duat_name::<C>());
-    let mut file = contents(path.into(), TypeId::of::<C>(), type_name)?;
+    let mut cache_file = cache_file::<C>(path.into())?;
 
     let config = Configuration::<LittleEndian, Fixint, NoLimit>::default();
-    bincode::decode_from_std_read(&mut file, config).ok()
+    bincode::decode_from_std_read(&mut cache_file, config).ok()
 }
 
 /// Stores the cache for the given type for that file
@@ -77,38 +61,7 @@ pub(crate) fn load_cache<C: Decode<()> + 'static>(path: impl Into<PathBuf>) -> O
 /// `$cache/duat/{base64_path}:{file_name}/{crate}::{type}`.
 /// The cache will then later be loaded by [`load_cache`].
 pub(crate) fn store_cache<C: Encode + 'static>(path: impl Into<PathBuf>, cache: C) {
-    fn cache_file(path: PathBuf, type_id: TypeId, type_name: String) -> Option<File> {
-        if type_id == TypeId::of::<()>() {
-            return None;
-        }
-
-        let file_name = path.file_name().unwrap().to_str().unwrap();
-        let mut src = dirs_next::cache_dir()?;
-
-        let encoded: String = {
-            let base64 = base64::prelude::BASE64_URL_SAFE.encode(path.to_str().unwrap());
-            base64.chars().step_by(5).collect()
-        };
-
-        src.push("duat/structs");
-        src.push(format!("{encoded}:{file_name}"));
-
-        if !src.exists() {
-            std::fs::create_dir_all(src.clone()).unwrap();
-        }
-
-        src.push(type_name);
-
-        std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(src)
-            .ok()
-    }
-
-    let type_name = format!("{}::{}", src_crate::<C>(), duat_name::<C>());
-    let Some(mut cache_file) = cache_file(path.into(), TypeId::of::<C>(), type_name) else {
+    let Some(mut cache_file) = cache_file::<C>(path.into()) else {
         return;
     };
 
@@ -122,48 +75,79 @@ pub(crate) fn store_cache<C: Encode + 'static>(path: impl Into<PathBuf>, cache: 
 /// incorrect storage.
 pub(crate) fn delete_cache(path: impl Into<PathBuf>) {
     fn delete_cache_inner(path: PathBuf) {
-        let file_name = path.file_name().unwrap().to_str().unwrap();
-        let Some(mut src) = dirs_next::cache_dir() else {
+        let (Some(cache_dir), Some(file_name)) = (dirs_next::cache_dir(), path.file_name()) else {
             return;
         };
 
-        let encoded: String = {
-            let base64 = base64::prelude::BASE64_URL_SAFE.encode(path.to_str().unwrap());
-            base64.chars().step_by(5).collect()
+        let mut hasher = DefaultHasher::new();
+        path.hash(&mut hasher);
+        let hash_value = hasher.finish();
+
+        let cached_file_name = {
+            let mut name = OsString::from(format!("{hash_value}:"));
+            name.push(file_name);
+            name
         };
 
-        src.push("duat/structs");
-        src.push(format!("{encoded}:{file_name}"));
-
-        if src.exists() {
-            std::fs::remove_dir_all(src).unwrap();
-        }
+        let src = cache_dir.join("duat/structs").join(cached_file_name);
+        std::fs::remove_dir(src).unwrap();
     }
 
     delete_cache_inner(path.into());
 }
 
 pub(crate) fn delete_cache_for<C: 'static>(path: impl Into<PathBuf>) {
-    fn delete_cache_for_inner(path: PathBuf, type_name: String) {
-        let file_name = path.file_name().unwrap().to_str().unwrap();
-        let Some(mut src) = dirs_next::cache_dir() else {
-            return;
-        };
+    let path: PathBuf = path.into();
+    let (Some(cache_dir), Some(file_name)) = (dirs_next::cache_dir(), path.file_name()) else {
+        return;
+    };
 
-        let encoded: String = {
-            let base64 = base64::prelude::BASE64_URL_SAFE.encode(path.to_str().unwrap());
-            base64.chars().step_by(5).collect()
-        };
+    let mut hasher = DefaultHasher::new();
+    path.hash(&mut hasher);
+    let hash_value = hasher.finish();
 
-        src.push("duat/structs");
-        src.push(format!("{encoded}:{file_name}"));
-        src.push(type_name);
+    let cached_file_name = {
+        let mut name = OsString::from(format!("{hash_value}:"));
+        name.push(file_name);
+        name
+    };
 
-        if src.exists() {
-            std::fs::remove_file(src).unwrap();
-        }
+    let src = cache_dir
+        .join("duat/structs")
+        .join(cached_file_name)
+        .join(format!("{}::{}", src_crate::<C>(), duat_name::<C>()));
+
+    std::fs::remove_file(src).unwrap();
+}
+
+fn cache_file<C: 'static>(path: PathBuf) -> Option<File> {
+    if TypeId::of::<C>() == TypeId::of::<()>() {
+        return None;
     }
 
-    let type_name = format!("{}::{}", src_crate::<C>(), duat_name::<C>());
-    delete_cache_for_inner(path.into(), type_name);
+    let mut hasher = DefaultHasher::new();
+    path.hash(&mut hasher);
+    let hash_value = hasher.finish();
+
+    let cached_file_name = {
+        let mut name = OsString::from(format!("{hash_value}:"));
+        name.push(path.file_name()?);
+        name
+    };
+
+    let src = dirs_next::cache_dir()?
+        .join("duat/structs")
+        .join(cached_file_name)
+        .join(format!("{}::{}", src_crate::<C>(), duat_name::<C>()));
+
+    if !src.exists() {
+        std::fs::create_dir_all(src.clone()).unwrap();
+    }
+
+    std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(src)
+        .ok()
 }
