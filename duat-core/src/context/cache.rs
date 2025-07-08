@@ -49,7 +49,9 @@ use crate::{duat_name, src_crate};
 /// it does not exist, or the file can't be correctly interpreted,
 /// returns [`None`]
 pub(crate) fn load_cache<C: Decode<()> + 'static>(path: impl Into<PathBuf>) -> Option<C> {
-    let mut cache_file = cache_file::<C>(path.into())?;
+    let Some(mut cache_file) = cache_file::<C>(path.into(), false) else {
+        panic!();
+    };
 
     let config = Configuration::<LittleEndian, Fixint, NoLimit>::default();
     bincode::decode_from_std_read(&mut cache_file, config).ok()
@@ -61,7 +63,7 @@ pub(crate) fn load_cache<C: Decode<()> + 'static>(path: impl Into<PathBuf>) -> O
 /// `$cache/duat/{base64_path}:{file_name}/{crate}::{type}`.
 /// The cache will then later be loaded by [`load_cache`].
 pub(crate) fn store_cache<C: Encode + 'static>(path: impl Into<PathBuf>, cache: C) {
-    let Some(mut cache_file) = cache_file::<C>(path.into()) else {
+    let Some(mut cache_file) = cache_file::<C>(path.into(), true) else {
         return;
     };
 
@@ -117,10 +119,12 @@ pub(crate) fn delete_cache_for<C: 'static>(path: impl Into<PathBuf>) {
         .join(cached_file_name)
         .join(format!("{}::{}", src_crate::<C>(), duat_name::<C>()));
 
-    std::fs::remove_file(src).unwrap();
+    if let Ok(true) = src.try_exists() {
+        std::fs::remove_file(src).unwrap();
+    }
 }
 
-fn cache_file<C: 'static>(path: PathBuf) -> Option<File> {
+fn cache_file<C: 'static>(path: PathBuf, truncate: bool) -> Option<File> {
     if TypeId::of::<C>() == TypeId::of::<()>() {
         return None;
     }
@@ -135,19 +139,21 @@ fn cache_file<C: 'static>(path: PathBuf) -> Option<File> {
         name
     };
 
-    let src = dirs_next::cache_dir()?
+    let src_dir = dirs_next::cache_dir()?
         .join("duat/structs")
-        .join(cached_file_name)
-        .join(format!("{}::{}", src_crate::<C>(), duat_name::<C>()));
+        .join(cached_file_name);
 
-    if !src.exists() {
-        std::fs::create_dir_all(src.clone()).unwrap();
+    if !src_dir.exists() {
+        std::fs::create_dir_all(src_dir.clone()).unwrap();
     }
+
+    let src = src_dir.join(format!("{}::{}", src_crate::<C>(), duat_name::<C>()));
 
     std::fs::OpenOptions::new()
         .create(true)
         .write(true)
-        .truncate(true)
+        .read(true)
+        .truncate(truncate)
         .open(src)
         .ok()
 }
