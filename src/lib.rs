@@ -869,7 +869,7 @@ impl InnerTsParser {
         }
 
 		// indent < 0 means "keep level of indentation"
-        (indent >= 0).then_some(indent as usize * cfg.tab_stops.size() as usize)
+        (indent >= 0).then(|| indent as usize * cfg.tab_stops.size() as usize)
     }
 }
 
