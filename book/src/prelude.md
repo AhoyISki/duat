@@ -15,13 +15,15 @@ This will import everything in the `prelude` module of `duat`. This should have
 everything you will need in order to configure Duat, not including things from
 other crates that you may want to import (such as plugins).
 
-Most of these imports will be imported as a module, like this:
+When calling `use duat::prelude::*`, most imported things will be in the form 
+of modules, like this:
 
 ```rust
 use duat::print;
 ```
 
-As opposed to this:
+This is importing the `print` module, as opposed to importing its items 
+directly:
 
 ```rust
 use duat::print::*;
@@ -38,5 +40,7 @@ use duat::print::*;
 fn setup() {
     print::wrap_on_cap(150);
     print::trailing_new_line('󱁐');
+    
+    form::set("caret.main", Form::yellow());
 }
 ```

@@ -28,7 +28,6 @@
 //! [`Cursor`]: crate::mode::Cursor
 //! [`Point`]: crate::text::Point
 use std::{
-    any::TypeId,
     ffi::OsString,
     fs::File,
     hash::{DefaultHasher, Hash, Hasher},
@@ -41,20 +40,20 @@ use self::bincode::{
     config::{Configuration, Fixint, LittleEndian, NoLimit},
     encode_into_std_write,
 };
-use crate::{duat_name, src_crate};
+use crate::{
+    duat_name, src_crate,
+    text::{Text, txt},
+};
 
 /// Tries to load the cache stored by Duat for the given type
 ///
 /// The cache must have been previously stored by [astore_cache`]. If
 /// it does not exist, or the file can't be correctly interpreted,
 /// returns [`None`]
-pub(crate) fn load_cache<C: Decode<()> + 'static>(path: impl Into<PathBuf>) -> Option<C> {
-    let Some(mut cache_file) = cache_file::<C>(path.into(), false) else {
-        panic!();
-    };
-
+pub(crate) fn load_cache<C: Decode<()> + 'static>(path: impl Into<PathBuf>) -> Result<C, Text> {
+    let mut cache_file = cache_file::<C>(path.into(), false)?;
     let config = Configuration::<LittleEndian, Fixint, NoLimit>::default();
-    bincode::decode_from_std_read(&mut cache_file, config).ok()
+    bincode::decode_from_std_read(&mut cache_file, config).map_err(|err| txt!("{err}").build())
 }
 
 /// Stores the cache for the given type for that file
@@ -62,13 +61,14 @@ pub(crate) fn load_cache<C: Decode<()> + 'static>(path: impl Into<PathBuf>) -> O
 /// The cache will be stored under
 /// `$cache/duat/{base64_path}:{file_name}/{crate}::{type}`.
 /// The cache will then later be loaded by [`load_cache`].
-pub(crate) fn store_cache<C: Encode + 'static>(path: impl Into<PathBuf>, cache: C) {
-    let Some(mut cache_file) = cache_file::<C>(path.into(), true) else {
-        return;
-    };
+pub(crate) fn store_cache<C: Encode + 'static>(
+    path: impl Into<PathBuf>,
+    cache: C,
+) -> Result<usize, Text> {
+    let mut cache_file = cache_file::<C>(path.into(), true)?;
 
     let config = Configuration::<LittleEndian, Fixint, NoLimit>::default();
-    encode_into_std_write(cache, &mut cache_file, config).unwrap();
+    encode_into_std_write(cache, &mut cache_file, config).map_err(|err| txt!("{err}").build())
 }
 
 /// Deletes the cache for all types for `path`
@@ -124,36 +124,39 @@ pub(crate) fn delete_cache_for<C: 'static>(path: impl Into<PathBuf>) {
     }
 }
 
-fn cache_file<C: 'static>(path: PathBuf, truncate: bool) -> Option<File> {
-    if TypeId::of::<C>() == TypeId::of::<()>() {
-        return None;
-    }
-
+fn cache_file<C: 'static>(path: PathBuf, to_write: bool) -> std::io::Result<File> {
     let mut hasher = DefaultHasher::new();
     path.hash(&mut hasher);
     let hash_value = hasher.finish();
 
     let cached_file_name = {
         let mut name = OsString::from(format!("{hash_value}:"));
-        name.push(path.file_name()?);
+        name.push(path.file_name().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::IsADirectory,
+                format!("{path:?} is a directory, not a file for caching"),
+            )
+        })?);
         name
     };
 
-    let src_dir = dirs_next::cache_dir()?
+    let src_dir = dirs_next::cache_dir()
+        .ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "cache directory isn't set")
+        })?
         .join("duat/structs")
         .join(cached_file_name);
 
     if !src_dir.exists() {
-        std::fs::create_dir_all(src_dir.clone()).unwrap();
+        std::fs::create_dir_all(src_dir.clone())?;
     }
 
     let src = src_dir.join(format!("{}::{}", src_crate::<C>(), duat_name::<C>()));
 
     std::fs::OpenOptions::new()
         .create(true)
-        .write(true)
-        .read(true)
-        .truncate(truncate)
+        .read(!to_write)
+        .write(to_write)
+        .truncate(to_write)
         .open(src)
-        .ok()
 }

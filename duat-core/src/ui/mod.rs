@@ -40,7 +40,7 @@ use layout::window_files;
 use self::layout::{FileId, Layout};
 pub(crate) use self::widget::{Node, Related};
 pub use self::{
-    builder::{FileBuilder, WindowBuilder, UiBuilder, BuilderDummy, WidgetAlias},
+    builder::{BuilderDummy, FileBuilder, UiBuilder, WidgetAlias, WindowBuilder},
     widget::{Widget, WidgetCfg},
 };
 use crate::{
@@ -456,7 +456,7 @@ impl<U: Ui> Window<U> {
 
         let cache = widget
             .read_as(pa, |f: &File<U>| {
-                load_cache::<<U::Area as RawArea>::Cache>(f.path())
+                load_cache::<<U::Area as RawArea>::Cache>(f.path()).ok()
             })
             .flatten()
             .unwrap_or_default();
@@ -505,7 +505,7 @@ impl<U: Ui> Window<U> {
         ) -> (U::Area, Option<U::Area>) {
             let cache = widget
                 .read_as(pa, |f: &File<U>| {
-                    load_cache::<<U::Area as RawArea>::Cache>(f.path())
+                    load_cache::<<U::Area as RawArea>::Cache>(f.path()).ok()
                 })
                 .flatten()
                 .unwrap_or_default();

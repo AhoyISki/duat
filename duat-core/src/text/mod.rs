@@ -195,7 +195,7 @@ impl Text {
             .has_unsaved_changes
             .store(has_unsaved_changes, Ordering::Relaxed);
 
-        if let Some(history) = context::load_cache(path.as_ref()) {
+        if let Ok(history) = context::load_cache(path.as_ref()) {
             text.0.history = Some(history);
         }
 
