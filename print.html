@@ -285,12 +285,14 @@ fn setup() {
 <p>This will import everything in the <code>prelude</code> module of <code>duat</code>. This should have
 everything you will need in order to configure Duat, not including things from
 other crates that you may want to import (such as plugins).</p>
-<p>Most of these imports will be imported as a module, like this:</p>
+<p>When calling <code>use duat::prelude::*</code>, most imported things will be in the form
+of modules, like this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use duat::print;
 <span class="boring">}</span></code></pre></pre>
-<p>As opposed to this:</p>
+<p>This is importing the <code>print</code> module, as opposed to importing its items
+directly:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use duat::print::*;
@@ -306,9 +308,11 @@ use duat::print::*;
 fn setup() {
     print::wrap_on_cap(150);
     print::trailing_new_line('󱁐');
+    
+    form::set("caret.main", Form::yellow());
 }
 <span class="boring">}</span></code></pre></pre>
-<h1 id="print-how-duat-should-print-files"><a class="header" href="#print-how-duat-should-print-files">print: How duat should print files</a></h1>
+<h1 id="print-how-duat-prints-files"><a class="header" href="#print-how-duat-prints-files">print: How duat prints files</a></h1>
 
                     </main>
 
