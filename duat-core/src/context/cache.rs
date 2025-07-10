@@ -52,6 +52,7 @@ use crate::{
 /// returns [`None`]
 pub(crate) fn load_cache<C: Decode<()> + 'static>(path: impl Into<PathBuf>) -> Result<C, Text> {
     let mut cache_file = cache_file::<C>(path.into(), false)?;
+
     let config = Configuration::<LittleEndian, Fixint, NoLimit>::default();
     bincode::decode_from_std_read(&mut cache_file, config).map_err(|err| txt!("{err}").build())
 }
@@ -154,7 +155,7 @@ fn cache_file<C: 'static>(path: PathBuf, to_write: bool) -> std::io::Result<File
     let src = src_dir.join(format!("{}::{}", src_crate::<C>(), duat_name::<C>()));
 
     std::fs::OpenOptions::new()
-        .create(true)
+        .create(to_write)
         .read(!to_write)
         .write(to_write)
         .truncate(to_write)

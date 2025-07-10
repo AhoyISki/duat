@@ -1,10 +1,6 @@
 use std::{
     path::PathBuf,
-    sync::{
-        Mutex,
-        atomic::{AtomicUsize, Ordering},
-        mpsc,
-    },
+    sync::{Mutex, mpsc},
     time::{Duration, Instant},
 };
 
@@ -60,11 +56,10 @@ impl<U: Ui> SessionCfg<U> {
         };
 
         let (window, node) = Window::new(&mut pa, ms, widget, (self.layout_fn)());
-        let cur_window = context::set_windows(vec![window]);
+        context::set_windows(vec![window]);
 
         let session = Session {
             ms,
-            cur_window,
             file_cfg: self.file_cfg,
             layout_fn: self.layout_fn,
         };
@@ -97,7 +92,7 @@ impl<U: Ui> SessionCfg<U> {
         // Passs, so this is fine.
         let mut pa = unsafe { Pass::new() };
 
-        let cur_window = context::set_windows::<U>(Vec::new());
+        context::set_windows::<U>(Vec::new());
 
         let file_cfg = self.file_cfg.clone();
         let inherited_cfgs = prev.into_iter().enumerate().map(|(i, cfgs)| {
@@ -113,7 +108,6 @@ impl<U: Ui> SessionCfg<U> {
 
         let mut session = Session {
             ms,
-            cur_window,
             file_cfg: self.file_cfg,
             layout_fn: self.layout_fn,
         };
@@ -132,7 +126,7 @@ impl<U: Ui> SessionCfg<U> {
             if is_active || hasnt_set_cur {
                 context::set_cur(&mut pa, node.as_file(), node.clone());
                 if win != context::cur_window() {
-                    session.cur_window.store(win, Ordering::Relaxed);
+                    context::set_cur_window(win);
                     U::switch_window(session.ms, win);
                 }
                 hasnt_set_cur = false;
@@ -161,7 +155,6 @@ impl<U: Ui> SessionCfg<U> {
 
 pub struct Session<U: Ui> {
     ms: &'static U::MetaStatics,
-    cur_window: &'static AtomicUsize,
     file_cfg: FileCfg,
     layout_fn: Box<dyn Fn() -> Box<dyn Layout<U> + 'static>>,
 }
@@ -171,7 +164,7 @@ impl<U: Ui> Session<U> {
         let windows = context::windows::<U>();
         let pushed = {
             let mut windows = windows.borrow_mut();
-            let cur_window = self.cur_window.load(Ordering::Relaxed);
+            let cur_window = context::cur_window();
 
             let (file, _) =
                 <FileCfg as WidgetCfg<U>>::build(self.file_cfg.clone().open_path(path), pa, None);
@@ -210,7 +203,7 @@ impl<U: Ui> Session<U> {
         mode_fn(&mut pa);
 
         {
-            let win = self.cur_window.load(Ordering::Relaxed);
+            let win = context::cur_window();
             let windows = context::windows::<U>().borrow();
             for node in windows[win].nodes() {
                 node.update_and_print(&mut pa);
@@ -251,7 +244,7 @@ impl<U: Ui> Session<U> {
                     }
                     DuatEvent::SwitchWindow(win) => {
                         reprint_screen = true;
-                        self.cur_window.store(win, Ordering::SeqCst);
+                        context::set_cur_window(win);
                         U::switch_window(self.ms, win);
                     }
                     DuatEvent::ReloadStarted(instant) => reload_instant = Some(instant),
@@ -279,7 +272,7 @@ impl<U: Ui> Session<U> {
             } else if reprint_screen {
                 let windows = context::windows::<U>().borrow();
 
-                let win = self.cur_window.load(Ordering::SeqCst);
+                let win = context::cur_window();
                 reprint_screen = false;
                 for node in windows[win].nodes() {
                     node.update_and_print(&mut pa);
@@ -289,7 +282,7 @@ impl<U: Ui> Session<U> {
             }
 
             let windows = context::windows::<U>().borrow();
-            let win = self.cur_window.load(Ordering::SeqCst);
+            let win = context::cur_window();
             for node in windows[win].nodes() {
                 if node.needs_update(&pa) {
                     node.update_and_print(&mut pa);
@@ -315,16 +308,22 @@ impl<U: Ui> Session<U> {
                         delete_cache(&path);
                         return;
                     }
-                } else if let Some(history) = file.text().history() {
-                    store_cache(&path, history.clone());
+                } else if let Some(history) = file.text().history()
+                    && let Err(err) = store_cache(&path, history.clone())
+                {
+                    context::error!("{err}");
                 }
 
-                if let Some(cache) = area.cache() {
-                    store_cache(&path, cache);
+                if let Some(cache) = area.cache()
+                    && let Err(err) = store_cache(&path, cache)
+                {
+                    context::error!("{err}");
                 }
 
-                if let Some(main) = file.selections_mut().get_main() {
-                    store_cache(path, main.clone());
+                if let Some(main) = file.selections_mut().get_main()
+                    && let Err(err) = store_cache(path, main.clone())
+                {
+                    context::error!("{err}");
                 }
             });
         }
@@ -370,7 +369,7 @@ impl<U: Ui> Session<U> {
             {
                 context::set_cur(pa, node.as_file(), node.clone());
                 if context::cur_window() != win {
-                    self.cur_window.store(win, Ordering::Relaxed);
+                    context::set_cur_window(win);
                     U::switch_window(self.ms, win);
                 }
             }
@@ -418,7 +417,7 @@ impl<U: Ui> Session<U> {
             U::remove_window(self.ms, win);
             let cur_win = context::cur_window();
             if cur_win > win {
-                self.cur_window.store(cur_win - 1, Ordering::Relaxed);
+                context::set_cur_window(cur_win - 1);
             }
         }
     }
@@ -442,7 +441,7 @@ impl<U: Ui> Session<U> {
         if wins[0] != wins[1]
             && let Some(win) = [lhs_name, rhs_name].into_iter().position(|n| n == name)
         {
-            self.cur_window.store(win, Ordering::Relaxed);
+            context::set_cur_window(win);
             U::switch_window(self.ms, win);
         }
     }
@@ -507,7 +506,7 @@ impl<U: Ui> Session<U> {
             mode::reset_to_file::<U>(pa, name, false);
         }
 
-        self.cur_window.store(new_win, Ordering::Relaxed);
+        context::set_cur_window(new_win);
         U::switch_window(self.ms, new_win);
     }
 }

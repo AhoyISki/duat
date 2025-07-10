@@ -150,9 +150,12 @@ impl<U: Ui> WidgetAlias<U, FooterWidgetsDummy> for FooterWidgets<U> {
         hook::add::<FocusedOn<PromptLine<U>, U>, U>({
             let prompt_area = prompt_area.clone();
             let notifs_area = notifs_area.clone();
-            move |pa, (_, new)| {
-                let handle = context::get_widget::<PromptLine<U>, U>(pa, &prompt_area).unwrap();
-                if new.ptr_eq(handle.widget()) {
+
+            move |pa, (_, other)| {
+                let Ok(handle) = context::get_widget::<PromptLine<U>, U>(pa, &prompt_area) else {
+                    return;
+                };
+                if other.ptr_eq(handle.widget()) {
                     prompt_area.reveal().unwrap();
                     notifs_area.hide().unwrap();
                 }
@@ -160,7 +163,9 @@ impl<U: Ui> WidgetAlias<U, FooterWidgetsDummy> for FooterWidgets<U> {
         });
 
         hook::add::<UnfocusedFrom<PromptLine<U>, U>, U>(move |pa, (old, _)| {
-            let handle = context::get_widget::<PromptLine<U>, U>(pa, &prompt_area).unwrap();
+            let Ok(handle) = context::get_widget::<PromptLine<U>, U>(pa, &prompt_area) else {
+                return;
+            };
             if old.ptr_eq(handle.widget()) {
                 prompt_area.hide().unwrap();
                 notifs_area.reveal().unwrap();

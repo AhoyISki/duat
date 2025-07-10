@@ -561,7 +561,7 @@ impl<U: Ui> Window<U> {
             })
             .next()
         else {
-            return;
+            unreachable!("This isn't supposed to fail");
         };
 
         // If this is the case, this means there is only one File left in this

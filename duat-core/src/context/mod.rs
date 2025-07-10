@@ -114,6 +114,10 @@ mod global {
 
     /// Gets the [`Widget`] from a [`U::Area`]
     ///
+    /// # Note
+    ///
+    /// This can fail if the [`Widget`] was closed.
+    ///
     /// [`U::Area`]: Ui::Area
     pub fn get_widget<W: Widget<U>, U: Ui>(_: &Pass, area: &U::Area) -> Result<Handle<W, U>, Text> {
         let windows = windows::<U>().borrow();
@@ -138,9 +142,14 @@ mod global {
         }
     }
 
-    /// The index of the currently active window.
+    /// The index of the currently active window
     pub fn cur_window() -> usize {
         CUR_WINDOW.load(Ordering::Relaxed)
+    }
+
+	/// Sets the value of the currently active window
+    pub(crate) fn set_cur_window(new: usize) {
+        CUR_WINDOW.store(new, Ordering::Relaxed);
     }
 
     /// The current directory
@@ -184,9 +193,8 @@ mod global {
     }
 
     /// Sets the [`Window`]s for Duat
-    pub(crate) fn set_windows<U: Ui>(wins: Vec<Window<U>>) -> &'static AtomicUsize {
+    pub(crate) fn set_windows<U: Ui>(wins: Vec<Window<U>>) {
         *windows().borrow_mut() = wins;
-        &CUR_WINDOW
     }
 
     /// The [`Window`]s of Duat, must be used on main thread

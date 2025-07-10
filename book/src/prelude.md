@@ -42,5 +42,9 @@ fn setup() {
     print::trailing_new_line('󱁐');
     
     form::set("caret.main", Form::yellow());
+    
+    cmd::add!("set-rel-num", |pa, ln: Handles<LineNumbers<Ui>>| {
+    
+    })
 }
 ```
