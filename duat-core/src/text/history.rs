@@ -214,11 +214,11 @@ impl Moment {
     /// Returns the number of [`Change`]s in this [`Moment`]
     ///
     /// Can be `0`, since, in the case of [`Parser`]s, a call for
-    /// [`apply_changes`] is always sent, in order to update [`File`]s
+    /// [`parse`] is always sent, in order to update [`File`]s
     /// every time they are printed.
     ///
     /// [`Parser`]: crate::file::Parser
-    /// [`apply_changes`]: crate::file::Parser::apply_changes
+    /// [`parse`]: crate::file::Parser::parse
     /// [`File`]: crate::file::File
     pub fn len(&self) -> usize {
         self.changes.len()

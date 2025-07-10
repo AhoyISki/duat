@@ -138,7 +138,7 @@ impl<W: Widget<U>, U: Ui> PromptMode<U> for PagerSearch<W, U> {
 
                     let id = form::id_of!("pager.search");
 
-                    for [start, end] in searcher.search_fwd(&mut parts.bytes, ..) {
+                    for [start, end] in searcher.search_fwd(parts.bytes, ..) {
                         parts.tags.insert(*PAGER_TAGGER, start..end, id.to_tag(0));
                     }
                 });

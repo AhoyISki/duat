@@ -231,12 +231,12 @@ impl TextRange for RangeFull {
 /// Either a [`TextRange`], a [`usize`] or a [`Point`]
 ///
 /// This trait's purpose is to be used for [`Tag`] removal in the
-/// [`MutTags::remove`] and [`Text::remove_tags`] functions. This is
+/// [`Tags::remove`] and [`Text::remove_tags`] functions. This is
 /// useful in order to reduce the number of functions exposed to API
 /// users.
 ///
 /// [`Tag`]: super::Tag
-/// [`MutTags::remove`]: super::MutTags::remove
+/// [`Tags::remove`]: super::Tags::remove
 /// [`Text::remove_tags`]: super::Text::remove_tags
 pub trait TextRangeOrPoint {
     /// Transforms `self` into a [`Range<usize>`]

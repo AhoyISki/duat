@@ -5,10 +5,10 @@
 //! lines (or bytes and tags) that show up between them and the next
 //! record.
 //!
-//! This struct is used by the [`Text`] and the [`Tags`] structs.
+//! This struct is used by the [`Text`] and the [`InnerTags`] structs.
 //!
 //! [`Text`]: super::Text
-//! [`Tags`]: super::Tags
+//! [`InnerTags`]: super::InnerTags
 
 /// A struct that keeps track of positions
 pub trait Record: std::fmt::Debug + Default + Clone + Copy + Eq + Ord + 'static {
@@ -60,10 +60,10 @@ impl Record for [usize; 3] {
     }
 }
 
-/// The records of a [`Text`] or [`Tags`]
+/// The records of a [`Text`] or [`InnerTags`]
 ///
 /// [`Text`]: super::Text
-/// [`Tags`]: super::Tags
+/// [`InnerTags`]: super::InnerTags
 #[derive(Clone, PartialEq, Eq)]
 pub struct Records<R: Record> {
     last_used: (usize, R),

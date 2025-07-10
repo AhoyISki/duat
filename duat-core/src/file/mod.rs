@@ -14,7 +14,7 @@
 use std::{fs, marker::PhantomData, path::PathBuf};
 
 use self::parser::InnerParsers;
-pub use self::parser::{FileParts, Parser, ParserBox, ParserCfg, Parsers};
+pub use self::parser::{FileParts, FileSnapshot, Parser, ParserBox, ParserCfg, Parsers};
 use crate::{
     cfg::PrintCfg,
     context::{self, FileHandle, Handle, load_cache},
@@ -22,7 +22,7 @@ use crate::{
     form::Painter,
     hook::{self, FileWritten},
     mode::{Selection, Selections},
-    text::{AsRefBytes, Bytes, Text, txt},
+    text::{Bytes, Text, txt},
     ui::{PushSpecs, RawArea, Ui, Widget, WidgetCfg},
 };
 
@@ -252,6 +252,11 @@ impl<U: Ui> File<U> {
 
     ////////// General querying functions
 
+    /// The [`Bytes`] of the [`File`]'s [`Text`]
+    pub fn bytes(&self) -> &Bytes {
+        self.text.bytes()
+    }
+
     /// The number of bytes in the file.
     pub fn len_bytes(&self) -> usize {
         self.text.len().byte()
@@ -311,8 +316,9 @@ impl<U: Ui> File<U> {
         // the first call, i.e., before any Option::take calls, so it
         // shouldn't be a problem.
         if let Some(moments) = self.text.unprocessed_moments() {
+            let cfg = self.print_cfg();
             for moment in moments {
-                self.parsers.process_moment(pa, moment);
+                self.parsers.process_moment(pa, moment, cfg);
             }
         }
 
@@ -341,8 +347,9 @@ impl<U: Ui> File<U> {
         let pa = &mut unsafe { Pass::new() };
 
         if let Some(moments) = self.text.unprocessed_moments() {
+            let cfg = self.print_cfg();
             for moment in moments {
-                self.parsers.process_moment(pa, moment);
+                self.parsers.process_moment(pa, moment, cfg);
             }
         }
 
@@ -357,9 +364,8 @@ impl<U: Ui> Handle<File<U>, U> {
     pub fn add_parser(&mut self, pa: &mut Pass, cfg: impl ParserCfg<U>) {
         // SAFETY: The Pass goes no further than the use in file.parsers
         unsafe {
-            self.widget().write_unsafe(|file| {
-                let path = file.path_kind();
-                if let Err(err) = file.parsers.add(pa, file.text.ref_bytes(), path, cfg) {
+            self.widget().read_unsafe(|file| {
+                if let Err(err) = file.parsers.add(pa, file, cfg) {
                     context::error!("{err}");
                 }
             })
@@ -374,9 +380,8 @@ impl<U: Ui> FileHandle<U> {
     pub fn add_parser(&mut self, pa: &mut Pass, cfg: impl ParserCfg<U>) {
         // SAFETY: The Pass goes no further than the use in file.parsers
         unsafe {
-            self.handle(pa).widget().write_unsafe(|file| {
-                let path = file.path_kind();
-                if let Err(err) = file.parsers.add(pa, file.text.ref_bytes(), path, cfg) {
+            self.handle(pa).widget().read_unsafe(|file| {
+                if let Err(err) = file.parsers.add(pa, file, cfg) {
                     context::error!("{err}");
                 }
             })
@@ -393,11 +398,11 @@ impl<U: Ui> Widget<U> for File<U> {
 
     fn update(pa: &mut Pass, handle: Handle<Self, U>) {
         let (widget, area) = (handle.widget(), handle.area());
-        let parsers = widget.read(pa, |file| file.parsers.clone());
+        let (parsers, cfg) = widget.read(pa, |file| (file.parsers.clone(), file.print_cfg()));
 
         if let Some(moments) = handle.read_text(pa, Text::unprocessed_moments) {
             for moment in moments {
-                parsers.process_moment(pa, moment);
+                parsers.process_moment(pa, moment, cfg);
             }
         }
 

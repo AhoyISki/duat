@@ -18,64 +18,60 @@ use std::{
     thread,
 };
 
+use super::File;
 use crate::{
+    cfg::PrintCfg,
     context,
     data::{Pass, RwData},
-    file::PathKind,
     mode::Selections,
     prelude::Ranges,
-    text::{AsRefBytes, Bytes, Moment, MutTags, Point, RefBytes, Text, TextParts, txt},
-    ui::Ui,
+    text::{Bytes, Moment, Point, Tags, Text, TextParts, txt},
+    ui::{Ui, Widget},
 };
 
-/// A [`Text`] reader, modifying it whenever a [`Change`] happens
+/// A [`Text`] reader, modifying it whenever [`Moment`]s happen
 ///
 /// [`Change`]: crate::text::Change
 #[allow(unused_variables)]
 pub trait Parser<U: Ui>: 'static {
-    /// Applies the [`Change`]s to this [`Parser`]
+    /// Parses the [`File`] after a [`Moment`] takes place
     ///
     /// After this point, even if no other functions are called, the
     /// state of this [`Parser`] should reflect the state of the
-    /// [`RefBytes`] that were passed.
+    /// [`FileSnapshot`] that were passed.
     ///
-    /// The [`Range`]s argument, if given, represents the ranges in
-    /// the [`Text`] that [`Parser::update_range`] should care about
-    /// updating. You can [add] and [remove] [`Range<usize>`]s from
-    /// it, and later, when these byte ranges are printed to the
-    /// screen, Duat will request that this reader update that range
-    /// via [`Parser::update_range`], allowing for efficient updating
-    /// only where it would matter.
+    /// The [`FileSnapshot`] has three item in it: The [`Bytes`] after
+    /// the [`Moment`] was applied, the [`Moment`] itself, and the
+    /// [`PrintCfg`] of the [`File`] _at that point in time_.
     ///
-    /// If you don't implement this function, it is assumed that the
-    /// [`Ranges`] should always encompass the full breadth of the
-    /// [`File`], i.e., this [`Parser`] would update the entire
-    /// screen, whenever it is updated.
+    /// The `ranges` argument, if given, represents the [`Ranges`]
+    /// in the [`Text`] that [`Parser::update_range`] should care
+    /// about updating. You can [add] and [remove]
+    /// [`Range<usize>`]s from it, and later, when these byte
+    /// ranges are printed to the screen, Duat will request that
+    /// this reader update that them via [`Parser::update_range`],
+    /// allowing for efficient updating only when it would matter.
+    /// If the argument is [`None`], you don't need to care about
+    /// that.
     ///
     /// # Notes
     ///
     /// This is not where [`Tag`]s will be added or removed, as you
-    /// can see by the lack of an appropriate argument for that. That
-    /// is done in [`Parser::update_range`].
+    /// can see by the lack of an appropriate argument for that (that
+    /// argument would be [`Tags`]). That is instead done in
+    /// [`Parser::update_range`].
     ///
     /// And while you _could_ still do that because of the [`Pass`],
     /// this is not recommended, since [`update_range`] gives you the
     /// exact span that you need to care about in order to update
     /// efficiently.
     ///
-    /// # Warning
+    /// # Note
     ///
-    /// If you use the [`Pass`] in order to get access to the [`File`]
-    /// this [`Parser`] was sent to, *be careful!*. The [`RefBytes`]
-    /// sent to this function won't necessarily be the same as the
-    /// [`RefBytes`] returned by the [`Text::ref_bytes`] from that
-    /// [`File`], since that one is kept up to date with every new
-    /// [`Moment`], while the passed [`RefBytes`] is only updated upto
-    /// the current [`Moment`].
-    ///
-    /// Most of the time, these two will be aligned, but if for some
-    /// reason, another [`Parser`] were to change the [`Text`] by use
-    /// of the [`Pass`], they could become desynchronized.
+    /// You _can_ access the [`File`] _as it is right now_ via the
+    /// [`Pass`] argument, but there is no guarantee of synchronicity
+    /// between the [`Bytes`] of the [`File`] and the [`Bytes`] in
+    /// the [`FileSnapshot`].
     ///
     /// [`Tag`]: crate::text::Tag
     /// [`Change`]: crate::text::Change
@@ -83,35 +79,19 @@ pub trait Parser<U: Ui>: 'static {
     /// [add]: Ranges::add
     /// [remove]: Ranges::remove
     /// [`update_range`]: Parser::update_range
-    fn apply_changes(
-        &mut self,
-        pa: &mut Pass,
-        bytes: RefBytes,
-        moment: Moment,
-        ranges_to_update: Option<&mut Ranges>,
-    ) {
-        if let Some(ranges) = ranges_to_update {
-            *ranges = Ranges::full(bytes.len().byte());
-        }
-    }
+    fn parse(&mut self, pa: &mut Pass, snap: FileSnapshot, ranges: Option<&mut Ranges>) {}
 
     /// Updates in a given [`Range`]
     ///
-    /// This should take into account all changes that have taken
-    /// place before this point.
+    /// This function, unlike [`parse`] and
+    /// [`parse_remote`] does *not* give you a snapshot of the
+    /// [`File`]. Since it is supposed to add and remove [`Tag`]s, it
+    /// gives you direct access to the [`File`]'s [parts], like a
+    /// [`Pass`] would.
     ///
-    /// It also grants you access to other [`Parsers`], which, if they
-    /// are present, are guaranteed to be synchronized with the state
-    /// of [`File`].
+    /// The `within`
     ///
     /// # NOTES
-    ///
-    /// The state of the [`Parser`] must be "finished" by this point,
-    /// as in, nothing within is actually updated to reflect what the
-    /// [`Text`] is like now, as that should have already been done in
-    /// [`Parser::apply_changes`]. This specific function is only
-    /// called when all [`Change`]s have already been passed to the
-    /// [`Parser`], so no need to worry about that.
     ///
     /// One other thing to note is that the `within` [range] is just a
     /// suggestion. In most circumstances, it would be a little
@@ -128,18 +108,22 @@ pub trait Parser<U: Ui>: 'static {
     ///
     /// [`Tag`]: crate::text::Tag
     /// [`File`]: crate::file::File
+    /// [parts]: FileParts
     /// [`Change`]: crate::text::Change
     /// [range]: std::ops::Range
+    /// [`parse`]: Parser::parse
+    /// [`parse_remote`]: Parser::parse_remote
     fn update_range(&mut self, parts: FileParts<U>, within: Option<Range<Point>>) {}
 
-    /// Same as [`apply_changes`], but on another thread
+    /// Same as [`parse`], but on another thread
     ///
     /// The biggest difference between this function and
-    /// [`apply_changes`] is that, since this one doesn't take place
+    /// [`parse`] is that, since this one doesn't take place
     /// on the main thread, you lose access to Duat's shared state
     /// afforded by the [`Pass`], the only things you will have access
-    /// to are the [`RefBytes`] and the latest [`Moment`] of the
-    /// [`File`] that was updated
+    /// to are the [`Bytes`], [`PrintCfg`] and the latest [`Moment`]
+    /// of the [`File`] that was updated, all within
+    /// the [`FileSnapshot`].
     ///
     /// # Warning
     ///
@@ -155,21 +139,14 @@ pub trait Parser<U: Ui>: 'static {
     /// or [`RwData::write_unsafe`] outside of the main thread.
     /// That's not their purpose!
     ///
-    /// [`apply_changes`]: Parser::apply_changes
+    /// [`parse`]: Parser::parse
     /// [commands]: crate::cmd::queue
     /// [hooks]: crate::hook::queue
     /// [`File`]: super::File
-    fn apply_remote_changes(
-        &mut self,
-        bytes: RefBytes,
-        moment: Moment,
-        ranges_to_update: Option<&mut Ranges>,
-    ) where
+    fn parse_remote(&mut self, snap: FileSnapshot, ranges: Option<&mut Ranges>)
+    where
         Self: Send,
     {
-        if let Some(ranges) = ranges_to_update {
-            *ranges = Ranges::full(bytes.len().byte());
-        }
     }
 
     /// Wether this [`Parser`] should be sent to update its internal
@@ -198,7 +175,7 @@ pub trait ParserCfg<U: Ui> {
     /// - Set, but with no existing file yet.
     /// - Unset, in which case it would be called something like
     ///   `"*scratch file#{num}*"`.
-    fn init(self, bytes: RefBytes, path: PathKind) -> Result<ParserBox<U>, Text>;
+    fn init(self, file: &File<U>) -> Result<ParserBox<U>, Text>;
 }
 
 #[derive(Clone, Default)]
@@ -209,8 +186,7 @@ impl<U: Ui> InnerParsers<U> {
     pub(super) fn add<Rd: ParserCfg<U>>(
         &self,
         pa: &mut Pass,
-        bytes: RefBytes,
-        path: PathKind,
+        file: &File<U>,
         reader_cfg: Rd,
     ) -> Result<(), Text> {
         if self.0.read(pa, |rds| {
@@ -223,7 +199,7 @@ impl<U: Ui> InnerParsers<U> {
         }
 
         let mut parsers = self.0.acquire_mut(pa);
-        parsers.push(reader_cfg.init(bytes, path)?);
+        parsers.push(reader_cfg.init(file)?);
 
         Ok(())
     }
@@ -277,53 +253,53 @@ impl<U: Ui> InnerParsers<U> {
     }
 
     /// Makes each [`Parser`] process a [`Moment`]
-    pub(super) fn process_moment(&self, pa: &mut Pass, moment: Moment) {
+    pub(super) fn process_moment(&self, pa: &mut Pass, moment: Moment, cfg: PrintCfg) {
         let mut parsers = std::mem::take(&mut *self.0.acquire_mut(pa));
         for reader_box in parsers.iter_mut() {
             let status = reader_box.status.take().unwrap();
 
             reader_box.status = Some(match status {
-                ParserStatus::Local(mut lr) => {
+                ParserStatus::Local(mut lp) => {
                     for change in moment.changes() {
-                        lr.bytes.apply_change(change);
+                        lp.bytes.apply_change(change);
                     }
 
-                    let bytes = lr.bytes.ref_bytes();
-                    let ranges = get_ranges(&mut lr.ranges, &bytes, moment);
-                    lr.reader.apply_changes(pa, bytes, moment, ranges);
+                    let ranges = get_ranges(&mut lp.ranges, &lp.bytes, moment);
+                    let snap = FileSnapshot { bytes: &lp.bytes, cfg, moment };
+                    lp.reader.parse(pa, snap, ranges);
 
-                    ParserStatus::Local(lr)
+                    ParserStatus::Local(lp)
                 }
-                ParserStatus::Present(mut ms, mut sr) => {
-                    if sr.reader.make_remote() {
+                ParserStatus::Present(mut ms, mut sp) => {
+                    if sp.reader.make_remote() {
                         ms.latest_state += 1;
-                        ms.sender.send(Some(moment)).unwrap();
+                        ms.sender.send(Some((moment, cfg))).unwrap();
 
                         let jh = thread::spawn(move || {
-                            while let Some(moment) = sr.receiver.recv().unwrap() {
-                                apply_moment(&mut sr, moment, None);
+                            while let Some((moment, cfg)) = sp.receiver.recv().unwrap() {
+                                parse(&mut sp, (moment, cfg), None);
                             }
 
-                            sr
+                            sp
                         });
 
                         ParserStatus::Sent(ms, jh)
                     } else {
                         ms.latest_state += 1;
-                        apply_moment(&mut sr, moment, Some(pa));
+                        parse(&mut sp, (moment, cfg), Some(pa));
 
-                        ParserStatus::Present(ms, sr)
+                        ParserStatus::Present(ms, sp)
                     }
                 }
                 ParserStatus::Sent(mut ms, jh) => {
                     ms.latest_state += 1;
-                    ms.sender.send(Some(moment)).unwrap();
+                    ms.sender.send(Some((moment, cfg))).unwrap();
 
                     ParserStatus::Sent(ms, jh)
                 }
                 ParserStatus::BeingBuilt(mut ms, jh) => {
                     ms.latest_state += 1;
-                    ms.sender.send(Some(moment)).unwrap();
+                    ms.sender.send(Some((moment, cfg))).unwrap();
                     ParserStatus::BeingBuilt(ms, jh)
                 }
                 ParserStatus::MarkedForDeletion => ParserStatus::MarkedForDeletion,
@@ -365,28 +341,28 @@ impl<U: Ui> InnerParsers<U> {
             let status = parsers[i].status.take().unwrap();
 
             parsers[i].status = Some(match status {
-                ParserStatus::Local(mut lr) => {
-                    let reader = &mut *lr.reader;
-                    let ranges = &mut lr.ranges;
+                ParserStatus::Local(mut lp) => {
+                    let reader = &mut *lp.reader;
+                    let ranges = &mut lp.ranges;
                     update(text, reader, ranges, &mut parsers, within.clone());
-                    ParserStatus::Local(lr)
+                    ParserStatus::Local(lp)
                 }
-                ParserStatus::Present(ms, mut sr) => {
-                    let reader = &mut *sr.reader;
-                    let ranges = &mut sr.ranges;
+                ParserStatus::Present(ms, mut sp) => {
+                    let reader = &mut *sp.reader;
+                    let ranges = &mut sp.ranges;
                     update(text, reader, ranges, &mut parsers, within.clone());
-                    ParserStatus::Present(ms, sr)
+                    ParserStatus::Present(ms, sp)
                 }
                 ParserStatus::Sent(ms, jh) => {
                     // In this case, all moments have been processed, and we can bring the
                     // Parser back in order to update it.
                     if ms.latest_state == ms.remote_state.load(Ordering::Relaxed) {
                         ms.sender.send(None).unwrap();
-                        let mut sr = jh.join().unwrap();
-                        let reader = &mut *sr.reader;
-                        let ranges = &mut sr.ranges;
+                        let mut sp = jh.join().unwrap();
+                        let reader = &mut *sp.reader;
+                        let ranges = &mut sp.ranges;
                         update(text, reader, ranges, &mut parsers, within.clone());
-                        ParserStatus::Present(ms, sr)
+                        ParserStatus::Present(ms, sp)
                     } else {
                         ParserStatus::Sent(ms, jh)
                     }
@@ -395,11 +371,11 @@ impl<U: Ui> InnerParsers<U> {
                     if ms.latest_state == ms.remote_state.load(Ordering::Relaxed) {
                         let _ = ms.sender.send(None);
                         match jh.join().unwrap() {
-                            Ok(mut sr) => {
-                                let reader = &mut *sr.reader;
-                                let ranges = &mut sr.ranges;
+                            Ok(mut sp) => {
+                                let reader = &mut *sp.reader;
+                                let ranges = &mut sp.ranges;
                                 update(text, reader, ranges, &mut parsers, within.clone());
-                                ParserStatus::Present(ms, sr)
+                                ParserStatus::Present(ms, sp)
                             }
                             Err(err) => {
                                 context::error!("{err}");
@@ -432,20 +408,21 @@ impl<U: Ui> InnerParsers<U> {
     }
 }
 
-fn apply_moment<U: Ui>(sr: &mut SendParser<U>, moment: Moment, pa: Option<&mut Pass>) {
+fn parse<U: Ui>(sp: &mut SendParser<U>, (moment, cfg): (Moment, PrintCfg), pa: Option<&mut Pass>) {
     for change in moment.changes() {
-        sr.bytes.apply_change(change);
+        sp.bytes.apply_change(change);
     }
 
-    let bytes = sr.bytes.ref_bytes();
-    let ranges = get_ranges(&mut sr.ranges, &bytes, moment);
+    let ranges = get_ranges(&mut sp.ranges, &sp.bytes, moment);
+
+    let snap = FileSnapshot { bytes: &sp.bytes, cfg, moment };
 
     if let Some(pa) = pa {
-        sr.reader.apply_changes(pa, bytes, moment, ranges);
+        sp.reader.parse(pa, snap, ranges);
     } else {
-        sr.reader.apply_remote_changes(bytes, moment, ranges);
+        sp.reader.parse_remote(snap, ranges);
     }
-    sr.state.fetch_add(1, Ordering::Relaxed);
+    sp.state.fetch_add(1, Ordering::Relaxed);
 }
 
 /// A container for a [`Parser`]
@@ -478,19 +455,19 @@ pub struct ParserBox<U: Ui> {
 
 impl<U: Ui> ParserBox<U> {
     /// Returns a [`ParserBox`] that doesn't implement [`Send`]
-    pub fn new_local<Rd: Parser<U>>(bytes: RefBytes, reader: Rd) -> ParserBox<U> {
+    pub fn new_local<Rd: Parser<U>>(file: &File<U>, reader: Rd) -> ParserBox<U> {
         ParserBox {
             status: Some(ParserStatus::Local(LocalParser {
                 reader: Box::new(reader),
-                bytes: bytes.clone(),
-                ranges: Ranges::full(bytes.len().byte()),
+                bytes: file.bytes().clone(),
+                ranges: Ranges::full(file.text().len().byte()),
             })),
             ty: TypeId::of::<Rd>(),
         }
     }
 
     /// Returns a [`ParserBox`] that implements [`Send`]
-    pub fn new_send<Rd: Parser<U> + Send>(bytes: RefBytes, reader: Rd) -> ParserBox<U> {
+    pub fn new_send<Rd: Parser<U> + Send>(file: &File<U>, reader: Rd) -> ParserBox<U> {
         let (sender, receiver) = mpsc::channel();
 
         let state = Arc::new(AtomicUsize::new(1));
@@ -503,9 +480,9 @@ impl<U: Ui> ParserBox<U> {
         ParserBox {
             status: Some(ParserStatus::Present(moment_sender, SendParser {
                 reader: Box::new(reader),
-                bytes: bytes.clone(),
+                bytes: file.bytes().clone(),
                 receiver,
-                ranges: Ranges::full(bytes.len().byte()),
+                ranges: Ranges::full(file.text().len().byte()),
                 state,
             })),
             ty: TypeId::of::<Rd>(),
@@ -515,11 +492,11 @@ impl<U: Ui> ParserBox<U> {
     /// Returns a [`ParserBox`] from a function evaluated in another
     /// thread
     pub fn new_remote<Rd: Parser<U> + Send>(
-        bytes: RefBytes,
-        f: impl FnOnce(RefBytes) -> Result<Rd, Text> + Send + 'static,
+        file: &File<U>,
+        f: impl FnOnce(&Bytes) -> Result<Rd, Text> + Send + 'static,
     ) -> ParserBox<U> {
         let (sender, receiver) = mpsc::channel();
-        let mut bytes = bytes.clone();
+        let bytes = file.bytes().clone();
 
         let state = Arc::new(AtomicUsize::new(0));
         let moment_sender = MomentSender {
@@ -532,7 +509,7 @@ impl<U: Ui> ParserBox<U> {
             status: Some(ParserStatus::BeingBuilt(
                 moment_sender,
                 thread::spawn(move || {
-                    let reader = Box::new(match f(bytes.ref_bytes()) {
+                    let reader = Box::new(match f(&bytes) {
                         Ok(reader) => {
                             state.fetch_add(1, Ordering::Relaxed);
                             reader
@@ -545,13 +522,13 @@ impl<U: Ui> ParserBox<U> {
 
                     let ranges = Ranges::full(bytes.len().byte());
 
-                    let mut sr = SendParser { reader, bytes, receiver, ranges, state };
+                    let mut sp = SendParser { reader, bytes, receiver, ranges, state };
 
-                    while let Some(moment) = sr.receiver.recv().unwrap() {
-                        apply_moment(&mut sr, moment, None);
+                    while let Some(moment) = sp.receiver.recv().unwrap() {
+                        parse(&mut sp, moment, None);
                     }
 
-                    Ok(sr)
+                    Ok(sp)
                 }),
             )),
             ty: TypeId::of::<Rd>(),
@@ -571,7 +548,7 @@ enum ParserStatus<U: Ui> {
 }
 
 struct MomentSender {
-    sender: mpsc::Sender<Option<Moment>>,
+    sender: mpsc::Sender<Option<(Moment, PrintCfg)>>,
     latest_state: usize,
     remote_state: Arc<AtomicUsize>,
 }
@@ -585,7 +562,7 @@ struct LocalParser<U: Ui> {
 struct SendParser<U: Ui> {
     reader: Box<dyn Parser<U> + Send>,
     bytes: Bytes,
-    receiver: mpsc::Receiver<Option<Moment>>,
+    receiver: mpsc::Receiver<Option<(Moment, PrintCfg)>>,
     ranges: Ranges,
     state: Arc<AtomicUsize>,
 }
@@ -657,34 +634,34 @@ fn status_from_read<Rd: Parser<U>, Ret, U: Ui>(
     status: ParserStatus<U>,
 ) -> (ParserStatus<U>, Option<Ret>) {
     match status {
-        ParserStatus::Local(lr) => {
-            let ptr = Box::as_ptr(&lr.reader);
+        ParserStatus::Local(lp) => {
+            let ptr = Box::as_ptr(&lp.reader);
             let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
 
-            (ParserStatus::Local(lr), Some(ret))
+            (ParserStatus::Local(lp), Some(ret))
         }
-        ParserStatus::Present(sender, sr) => {
-            let ptr = Box::as_ptr(&sr.reader);
+        ParserStatus::Present(sender, sp) => {
+            let ptr = Box::as_ptr(&sp.reader);
             let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
 
-            (ParserStatus::Present(sender, sr), Some(ret))
+            (ParserStatus::Present(sender, sp), Some(ret))
         }
         ParserStatus::Sent(ms, jh) => {
             ms.sender.send(None).unwrap();
-            let sr = jh.join().unwrap();
+            let sp = jh.join().unwrap();
 
-            let ptr = Box::as_ptr(&sr.reader);
+            let ptr = Box::as_ptr(&sp.reader);
             let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
 
-            (ParserStatus::Present(ms, sr), Some(ret))
+            (ParserStatus::Present(ms, sp), Some(ret))
         }
         ParserStatus::BeingBuilt(ms, jh) => {
             let _ = ms.sender.send(None);
             match jh.join().unwrap() {
-                Ok(sr) => {
-                    let ptr = Box::as_ptr(&sr.reader);
+                Ok(sp) => {
+                    let ptr = Box::as_ptr(&sp.reader);
                     let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
-                    (ParserStatus::Present(ms, sr), Some(ret))
+                    (ParserStatus::Present(ms, sp), Some(ret))
                 }
                 Err(err) => {
                     context::error!("{err}");
@@ -701,27 +678,27 @@ fn status_from_try_read<Rd: Parser<U>, Ret, U: Ui>(
     status: ParserStatus<U>,
 ) -> (ParserStatus<U>, Option<Ret>) {
     match status {
-        ParserStatus::Local(lr) => {
-            let ptr = Box::as_ptr(&lr.reader);
+        ParserStatus::Local(lp) => {
+            let ptr = Box::as_ptr(&lp.reader);
             let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
 
-            (ParserStatus::Local(lr), Some(ret))
+            (ParserStatus::Local(lp), Some(ret))
         }
-        ParserStatus::Present(sender, sr) => {
-            let ptr = Box::as_ptr(&sr.reader);
+        ParserStatus::Present(sender, sp) => {
+            let ptr = Box::as_ptr(&sp.reader);
             let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
 
-            (ParserStatus::Present(sender, sr), Some(ret))
+            (ParserStatus::Present(sender, sp), Some(ret))
         }
         ParserStatus::Sent(ms, jh) => {
             if ms.latest_state == ms.remote_state.load(Ordering::Relaxed) {
                 ms.sender.send(None).unwrap();
-                let sr = jh.join().unwrap();
+                let sp = jh.join().unwrap();
 
-                let ptr = Box::as_ptr(&sr.reader);
+                let ptr = Box::as_ptr(&sp.reader);
                 let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
 
-                (ParserStatus::Present(ms, sr), Some(ret))
+                (ParserStatus::Present(ms, sp), Some(ret))
             } else {
                 (ParserStatus::Sent(ms, jh), None)
             }
@@ -730,10 +707,10 @@ fn status_from_try_read<Rd: Parser<U>, Ret, U: Ui>(
             if ms.latest_state == ms.remote_state.load(Ordering::Relaxed) {
                 ms.sender.send(None).unwrap();
                 match jh.join().unwrap() {
-                    Ok(sr) => {
-                        let ptr = Box::as_ptr(&sr.reader);
+                    Ok(sp) => {
+                        let ptr = Box::as_ptr(&sp.reader);
                         let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
-                        (ParserStatus::Present(ms, sr), Some(ret))
+                        (ParserStatus::Present(ms, sp), Some(ret))
                     }
                     Err(err) => {
                         context::error!("{err}");
@@ -751,7 +728,7 @@ fn status_from_try_read<Rd: Parser<U>, Ret, U: Ui>(
 /// Decides wether a [`Ranges`] should be used or not
 fn get_ranges<'a>(
     ranges: &'a mut Ranges,
-    bytes: &RefBytes<'_>,
+    bytes: &'a Bytes,
     moment: Moment,
 ) -> Option<&'a mut Ranges> {
     const FOLDING_COULD_UPDATE_A_LOT: usize = 1_000_000;
@@ -774,37 +751,31 @@ fn type_eq<U: Ui, Rd: Parser<U>>(rb: &ParserBox<U>) -> bool {
     rb.ty == TypeId::of::<Rd>()
 }
 
-/// The parts of a [`File`], primarily for updating [`MutTags`]
+/// The parts of a [`File`], primarily for updating [`Tags`]
 ///
 /// This struct consists of the following:
 ///
-/// - [`parts.bytes`]: The [`RefBytes`] of the [`File`].
-/// - [`parts.tags`]: The [`MutTags`] of the [`File`], this is the
+/// - [`parts.bytes`]: The [`Bytes`] of the [`File`].
+/// - [`parts.tags`]: The [`Tags`] of the [`File`], this is the
 ///   primary things that [`Parser`]s should update.
 /// - [`parts.selections`]: The [`Selections`] of the [`File`].
 /// - [`parts.parsers`]: An immutable reference to all the other
 ///   [`Parser`]s of the [`File`].
 ///
 /// You should use these, as well as the internally updated state of
-/// the [`Parser`] through the [`Parser::apply_changes`] and
-/// [`Parser::apply_remote_changes`], in order to update the
+/// the [`Parser`] through the [`Parser::parse`] and
+/// [`Parser::parse_remote`], in order to update the
 /// [`File`]'s [`Tag`]s. Or other things outside of the [`File`], it
 /// depends on what you're doing really.
 ///
 /// [`File`]: super::File
 /// [`Tag`]: crate::text::Tag
 pub struct FileParts<'a, U: Ui> {
-    /// The [`RefBytes`] of the [`File`]
-    ///
-    /// Since this is a [`RefBytes`], you can't _actually_ modify the
-    /// [`Bytes`]. But you can do any non-mutating method. This
-    /// includes [searches], which require internal "non changing"
-    /// mutation.
+    /// The [`Bytes`] of the [`File`]
     ///
     /// [`File`]: super::File
-    /// [searches]: RefBytes::search_fwd
-    pub bytes: RefBytes<'a>,
-    /// The [`MutTags`] of the [`File`]
+    pub bytes: &'a Bytes,
+    /// The [`Tags`] of the [`File`]
     ///
     /// This is the primary purpose of (most) [`Parser`]s, they read
     /// the [`File`]'s [`Bytes`] and add or remove [`Tag`]s through
@@ -813,12 +784,12 @@ pub struct FileParts<'a, U: Ui> {
     /// [`File`]: super::File
     /// [`Tag`]: crate::text::Tag
     /// [`update_range`]: Parser::update_range
-    pub tags: MutTags<'a>,
+    pub tags: Tags<'a>,
     /// The [`Selections`] of the [`File`]
     ///
     /// Unlike [`Change`]s in [`Moment`]s, the movement of
     /// [`Selection`]s is not "tracked" and kept up to date via a
-    /// [`Parser::apply_changes`] analogue. Instead, if you want to
+    /// [`Parser::parse`] analogue. Instead, if you want to
     /// add [`Tag`]s in the [`Parser::update_range`] function based on
     /// the [`Selections`], I recommend something like the following:
     ///
@@ -827,11 +798,11 @@ pub struct FileParts<'a, U: Ui> {
     ///
     /// use duat_core::prelude::*;
     ///
-    /// struct MyParser {
+    /// struct SelectionLen {
     ///     tagger: Tagger,
     /// }
     ///
-    /// impl<U: Ui> Parser<U> for MyParser {
+    /// impl<U: Ui> Parser<U> for SelectionLen {
     ///     fn update_range(&mut self, mut parts: FileParts<U>, within: Option<Range<Point>>) {
     ///         // This is efficient even in very large `Text`s.
     ///         parts.tags.remove(self.tagger, ..);
@@ -894,8 +865,8 @@ pub struct FileParts<'a, U: Ui> {
     /// [`Tag`]s which "contain" this [`Range`], such as a very large
     /// [`FormId`] [tag].
     ///
-    /// [inserting]: MutTags::insert
-    /// [removing]: MutTags::remove
+    /// [inserting]: Tags::insert
+    /// [removing]: Tags::remove
     /// [`Tag`]: crate::text::Tag
     /// [`FormId`]: crate::form::FormId
     /// [tag]: crate::form::FormId::to_tag
@@ -913,5 +884,53 @@ impl<'a, U: Ui> FileParts<'a, U> {
             parsers,
             suggested_max_range: range,
         }
+    }
+}
+
+/// What the [`File`]'s [`Bytes`] and [`PrintCfg`] looked like at a
+/// point in time, as well as the last [`Moment`] applied
+///
+/// This struct is sent to [`Parser`]'s [`parse`] and
+/// [`parse_remote`], and represents what the [`File`] looked
+/// like _after_ the [`Moment`] was applied to the [`Bytes`].
+///
+/// # Note
+///
+/// In [`parse`], you _can_ access the current state of the
+/// [`File`], since you have a [`Pass`], however, there is no
+/// guarantee of synchronicity between the [`File`] gotten from
+/// something like [`context::file_named`] and the [`Bytes`] and
+/// [`PrintCfg`] within [`FileSnapshot`].
+///
+/// [`File`]: super::File
+/// [`parse`]: Parser::parse
+/// [`parse_remote`]: Parser::parse_remote
+pub struct FileSnapshot<'a> {
+    /// The [`Bytes`] of the [`File`] at _this_ moment in time
+    ///
+    /// [`File`]: super::File
+    pub bytes: &'a Bytes,
+    /// The [`PrintCfg`] of the [`File`] at _this_ moment in time
+    ///
+    /// [`File`]: super::File
+    pub cfg: PrintCfg,
+    /// The last [`Moment`] applied to the [`Bytes`], getting them to
+    /// their state in this snapshot
+    pub moment: Moment,
+}
+
+impl FileSnapshot<'_> {
+    /// The indentation in the current line
+    ///
+    /// This value only takes ascii spaces and tabs into account,
+    /// which may differ from the value from [`Text::indent`],
+    /// since that one calculates the indent through the [`Area`],
+    /// while this one only makes use of the [`PrintCfg`]'s
+    /// [`TabStops`].
+    ///
+    /// [`Area`]: crate::ui::Area
+    /// [`TabStops`]: crate::cfg::TabStops
+    pub fn indent(&self, p: Point) -> usize {
+        self.bytes.indent(p, self.cfg)
     }
 }

@@ -188,13 +188,7 @@
 //! }
 //!
 //! impl<U: Ui> Parser<U> for WordCounter {
-//!     fn apply_changes(
-//!         &mut self,
-//!         pa: &mut Pass,
-//!         bytes: RefBytes,
-//!         moment: Moment,
-//!         range_list: Option<&mut Ranges>,
-//!     ) {
+//!     fn parse(&mut self, pa: &mut Pass, snap: FileSnapshot, ranges: Option<&mut Ranges>) {
 //!         todo!();
 //!     }
 //! }
@@ -202,17 +196,15 @@
 //!
 //! Whenever changes take place in a [`File`], those changes will be
 //! reported in a [`Moment`], which is essentially just a list of
-//! [`Change`]s that took place. This [`Moment`] will be sent to the
-//! [`Parser::apply_changes`] function, in which you are supposed to
-//! change the internal state of the [`Parser`] to accomodate the
-//! [`Change`]s.
+//! [`Change`]s that took place. This [`Moment`], in a
+//! [`FileSnapshot`], will be sent to the [`Parser::parse`] function,
+//! in which you are supposed to change the internal state of the
+//! [`Parser`] to accomodate the [`Change`]s.
 //!
-//! In this function, you have access to the [`RefBytes`], which is
-//! what the [`Text`]'s [`Bytes`] looked like _after_ the [`Moment`]
-//! was sent. The last argument, `range_list` is the list of
-//! [`Range<usize>`]s (byte indices) that should be updated by
-//! [`Parser::update_range`]. Because we are not implementing the
-//! [`update_range`] function, this can be safely ignored.
+//! The [`FileSnapshot`] gives you a "snapshot" of what the [`File`]
+//! looked like after said [`Moment`] took place. It includes the
+//! [`Moment`] in question, the [`Bytes`] of the [`File`]'s [`Text`],
+//! and the [`PrintCfg`] at that moment in time.
 //!
 //! First, I'm going to write a function that figures out how many
 //! words were added or removed by a [`Change`]:
@@ -220,7 +212,7 @@
 //! ```rust
 //! use duat_core::{prelude::*, text::Change};
 //!
-//! fn word_diff(regex: &str, bytes: &mut RefBytes, change: Change<&str>) -> i32 {
+//! fn word_diff(regex: &str, bytes: &Bytes, change: Change<&str>) -> i32 {
 //!     let [start, _] = bytes.points_of_line(change.start().line());
 //!     let [_, end] = bytes.points_of_line(change.added_end().line());
 //!
@@ -256,10 +248,10 @@
 //! just a demonstration, and the more efficient method is left as an
 //! exercise to the viewer 😉.
 //!
-//! Now, just call this on [`apply_changes`]:
+//! Now, just call this on [`parse`]:
 //!
 //! ```rust
-//! # fn word_diff(_: &str, _: &mut RefBytes, _: Change<&str>) -> i32 { 0 }
+//! # fn word_diff(_: &str, _: &Bytes, _: Change<&str>) -> i32 { 0 }
 //! use duat_core::{prelude::*, text::Change};
 //!
 //! /// A [`Parser`] to keep track of words in a [`File`]
@@ -269,17 +261,12 @@
 //! }
 //!
 //! impl<U: Ui> Parser<U> for WordCounter {
-//!     fn apply_changes(
-//!         &mut self,
-//!         pa: &mut Pass,
-//!         mut bytes: RefBytes,
-//!         moment: Moment,
-//!         _: Option<&mut Ranges>,
-//!     ) {
+//!     fn parse(&mut self, pa: &mut Pass, snap: FileSnapshot, _: Option<&mut Ranges>) {
 //!         // Rust iterators are magic 🪄
-//!         let diff: i32 = moment
+//!         let diff: i32 = snap
+//!             .moment
 //!             .changes()
-//!             .map(|change| word_diff(self.regex, &mut bytes, change))
+//!             .map(|change| word_diff(self.regex, &snap.bytes, change))
 //!             .sum();
 //!
 //!         self.words = (self.words as i32 + diff) as usize;
@@ -300,15 +287,7 @@
 //! #     regex: &'static str,
 //! # }
 //! # impl<U: Ui> Parser<U> for WordCounter {
-//! #     fn apply_changes(
-//! #         &mut self,
-//! #         _: &mut Pass,
-//! #         _: RefBytes,
-//! #         _: Moment,
-//! #         _: Option<&mut Ranges>,
-//! #     ) {
-//! #         todo!();
-//! #     }
+//! #     fn parse(&mut self, _: &mut Pass, _: FileSnapshot, _: Option<&mut Ranges>) {}
 //! # }
 //! use duat_core::prelude::*;
 //!
@@ -317,20 +296,19 @@
 //! impl<U: Ui> ParserCfg<U> for WordCounterCfg {
 //!     type Parser = WordCounter;
 //!
-//!     fn init(self, mut bytes: RefBytes, path: PathKind) -> Result<ParserBox<U>, Text> {
+//!     fn init(self, file: &File<U>) -> Result<ParserBox<U>, Text> {
 //!         let regex = if self.0 { r"\S+" } else { r"\w+" };
+//!         let words = file.bytes().search_fwd(regex, ..).unwrap().count();
 //!
-//!         let words = bytes.search_fwd(regex, ..).unwrap().count();
-//!
-//!         Ok(ParserBox::new_local(bytes, WordCounter { words, regex }))
+//!         let word_counter = WordCounter { words, regex };
+//!         Ok(ParserBox::new_local(file, word_counter))
 //!     }
 //! }
 //! ```
 //!
 //! In this function, I am returning the `WordCounter`, with a
 //! precalculated number of words (since I have to calculate this
-//! value at some point), based on the [`Bytes`] of the [`File`]'s
-//! [`Text`].
+//! value at some point), based on the current state of the [`File`].
 //!
 //! The [`ParserBox`] return value is a wrapper for "constructing the
 //! [`Parser`]". If you use a function like [`ParserBox::new_send`],
@@ -352,15 +330,9 @@
 //! #     regex: &'static str,
 //! # }
 //! # impl<U: Ui> Parser<U> for WordCounter {
-//! #     fn apply_changes(
-//! #         &mut self,
-//! #         _: &mut Pass,
-//! #         _: RefBytes,
-//! #         _: Moment,
-//! #         _: Option<&mut Ranges>,
-//! #     ) {
-//! #         todo!();
-//! #     }
+//! # fn parse(&mut self, _: &mut Pass, _: FileSnapshot, _: Option<&mut Ranges>) {
+//! #     todo!();
+//! # }
 //! # }
 //! use duat_core::prelude::*;
 //!
@@ -374,10 +346,10 @@
 //! impl<U: Ui> ParserCfg<U> for WordCounter {
 //!     type Parser = Self;
 //!
-//!     fn init(self, mut bytes: RefBytes, path: PathKind) -> Result<ParserBox<U>, Text> {
-//!         let words = bytes.search_fwd(self.regex, ..).unwrap().count();
+//!     fn init(self, file: &File<U>) -> Result<ParserBox<U>, Text> {
+//!         let words = file.bytes().search_fwd(self.regex, ..).unwrap().count();
 //!
-//!         Ok(ParserBox::new_local(bytes, Self { words, ..self }))
+//!         Ok(ParserBox::new_local(file, Self { words, ..self }))
 //!     }
 //! }
 //! ```
@@ -392,7 +364,7 @@
 //! # struct WordCounterCfg(bool);
 //! # impl<U: Ui> ParserCfg<U> for WordCounterCfg {
 //! #     type Parser = WordCounter;
-//! #     fn init(self, _: RefBytes, _: PathKind) -> Result<ParserBox<U>, Text> { todo!() }
+//! #     fn init(self, _: &File<U>) -> Result<ParserBox<U>, Text> { todo!() }
 //! # }
 //! # /// A [`Parser`] to keep track of words in a [`File`]
 //! # struct WordCounter {
@@ -400,14 +372,7 @@
 //! #     regex: &'static str
 //! # }
 //! # impl<U: Ui> Parser<U> for WordCounter {
-//! #     fn apply_changes(
-//! #         &mut self,
-//! #         pa: &mut Pass,
-//! #         bytes: RefBytes,
-//! #         moment: Moment,
-//! #         range_list: Option<&mut Ranges>,
-//! #     ) {
-//! #     }
+//! #    fn parse(&mut self, _: &mut Pass, _: FileSnapshot, _: Option<&mut Ranges>) {}
 //! # }
 //! use duat_core::{hook::OnFileOpen, prelude::*};
 //!
@@ -450,7 +415,7 @@
 //! # struct WordCounterCfg(bool);
 //! # impl<U: Ui> ParserCfg<U> for WordCounterCfg {
 //! #     type Parser = WordCounter;
-//! #     fn init(self, _: RefBytes, _: PathKind) -> Result<ParserBox<U>, Text> { todo!() }
+//! #     fn init(self, _: &File<U>) -> Result<ParserBox<U>, Text> { todo!() }
 //! # }
 //! # /// A [`Parser`] to keep track of words in a [`File`]
 //! # struct WordCounter {
@@ -458,15 +423,7 @@
 //! #     regex: &'static str
 //! # }
 //! # impl<U: Ui> Parser<U> for WordCounter {
-//! #     fn apply_changes(
-//! #         &mut self,
-//! #         pa: &mut Pass,
-//! #         bytes: RefBytes,
-//! #         moment: Moment,
-//! #         range_list: Option<&mut Ranges>,
-//! #     ) {
-//! #
-//! #     }
+//! # fn parse(&mut self, _: &mut Pass, _: FileSnapshot, _: Option<&mut Ranges>) {}
 //! # }
 //! use duat_core::prelude::*;
 //!
@@ -520,16 +477,11 @@
 //! }
 //!
 //! impl<U: Ui> Parser<U> for WordCounter {
-//!     fn apply_changes(
-//!         &mut self,
-//!         pa: &mut Pass,
-//!         mut bytes: RefBytes,
-//!         moment: Moment,
-//!         _: Option<&mut Ranges>,
-//!     ) {
-//!         let diff: i32 = moment
+//!     fn parse(&mut self, pa: &mut Pass, snap: FileSnapshot, _: Option<&mut Ranges>) {
+//!         let diff: i32 = snap
+//!             .moment
 //!             .changes()
-//!             .map(|change| word_diff(self.regex, &mut bytes, change))
+//!             .map(|change| word_diff(self.regex, &snap.bytes, change))
 //!             .sum();
 //!
 //!         self.words = (self.words as i32 + diff) as usize;
@@ -541,16 +493,16 @@
 //! impl<U: Ui> ParserCfg<U> for WordCounterCfg {
 //!     type Parser = WordCounter;
 //!
-//!     fn init(self, mut bytes: RefBytes, _: PathKind) -> Result<ParserBox<U>, Text> {
+//!     fn init(self, file: &File<U>) -> Result<ParserBox<U>, Text> {
 //!         let regex = if self.0 { r"\S+" } else { r"\w+" };
 //!
-//!         let words = bytes.search_fwd(regex, ..).unwrap().count();
+//!         let words = file.bytes().search_fwd(regex, ..).unwrap().count();
 //!
-//!         Ok(ParserBox::new_local(bytes, WordCounter { words, regex }))
+//!         Ok(ParserBox::new_local(file, WordCounter { words, regex }))
 //!     }
 //! }
 //!
-//! fn word_diff(regex: &str, bytes: &mut RefBytes, change: Change<&str>) -> i32 {
+//! fn word_diff(regex: &str, bytes: &Bytes, change: Change<&str>) -> i32 {
 //!     let [start, _] = bytes.points_of_line(change.start().line());
 //!     let [_, end] = bytes.points_of_line(change.added_end().line());
 //!
@@ -660,8 +612,7 @@
 //! [`ParserCfg`]: crate::file::ParserCfg
 //! [`Moment`]: crate::text::Moment
 //! [`Change`]: crate::text::Change
-//! [`Parser::apply_changes`]: crate::file::Parser::apply_changes
-//! [`RefBytes`]: crate::text::RefBytes
+//! [`Parser::parse`]: crate::file::Parser::parse
 //! [`Parser::update_range`]: crate::file::Parser::update_range
 //! [`update_range`]: crate::file::Parser::update_range
 //! [`Bytes`]: crate::text::Bytes
@@ -669,7 +620,7 @@
 //! [`Point`]: crate::text::Point
 //! [was taken]: crate::text::Change::taken_str
 //! [what was added]: crate::text::Change::added_str
-//! [`<WordCounter as Parser>::apply_changes`]: crate::file::Parser::apply_changes
+//! [`<WordCounter as Parser>::parse`]: crate::file::Parser::parse
 //! [`read`]: crate::data::RwData::read
 //! [`write`]: crate::data::RwData::write
 //! [number one rule of Rust]: https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html
@@ -688,7 +639,9 @@
 //! [`ParserBox::new_remote`]: crate::file::ParserBox::new_remote
 //! [`new_local`]: crate::file::ParserBox::new_local
 //! [installation instructions of duat]: https://github.com/AhoyISki/duat?tab=readme-ov-file#getting-started
-//! [`apply_changes`]: crate::file::Parser::apply_changes
+//! [`parse`]: crate::file::Parser::parse
+//! [`FileSnapshot`]: crate::file::FileSnapshot
+//! [`PrintCfg`]: crate::cfg::PrintCfg
 #![feature(
     decl_macro,
     step_trait,
@@ -798,14 +751,14 @@ pub mod prelude {
         cmd,
         context::{self, FileHandle, Handle},
         data::{Pass, RwData},
-        file::{File, FileParts, Parser, ParserBox, ParserCfg, Parsers, PathKind},
+        file::{File, FileParts, FileSnapshot, Parser, ParserBox, ParserCfg},
         form::{self, Form},
         hook,
         mode::{self, KeyCode, KeyEvent, KeyMod, Mode, key},
         ranges::Ranges,
         text::{
-            AlignCenter, AlignLeft, AlignRight, Conceal, Ghost, Matcheable, Moment, Point,
-            RefBytes, Spacer, Tagger, Text, txt,
+            AlignCenter, AlignLeft, AlignRight, Bytes, Conceal, Ghost, Matcheable, Moment, Point,
+            Spacer, Tagger, Text, txt,
         },
         ui::{PushSpecs, RawArea, Ui, Widget, WidgetCfg},
     };

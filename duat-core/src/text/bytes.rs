@@ -3,115 +3,8 @@ use std::{iter::FusedIterator, ops::RangeBounds};
 use gapbuf::GapBuffer;
 use lender::{DoubleEndedLender, ExactSizeLender, Lender, Lending};
 
-use super::{Point, RegexPattern, TextRange, records::Records, utf8_char_width};
-
-/// A public reader for [`Bytes`], which doesn't allow for mutation
-pub struct RefBytes<'a>(pub(super) &'a mut Bytes);
-
-impl RefBytes<'_> {
-    /// Gets a single [`&str`] from a given [range]
-    ///
-    /// This is the equivalent of calling
-    /// [`Bytes::make_contiguous`] and [`Bytes::get_contiguous`].
-    /// While this takes less space in code, calling the other two
-    /// functions means that you won't be mutably borrowing the
-    /// [`Bytes`] anymore, so if that matters to you, you should do
-    /// that.
-    ///
-    /// Returns [`None`] when the range doesn't match character
-    /// boundaries.
-    ///
-    /// [`&str`]: str
-    /// [range]: TextRange
-    pub fn contiguous(&mut self, range: impl TextRange) -> Option<&str> {
-        self.0.contiguous(range)
-    }
-    
-    /// Gets a single `&[u8]` from a given [range]
-    ///
-    /// This is the equivalent of calling
-    /// [`Bytes::make_contiguous`] and
-    /// [`Bytes::get_contiguous_bytes`]. While this takes less
-    /// space in code, calling the other two functions means that
-    /// you won't be mutably borrowing the [`Bytes`] anymore, so
-    /// if that matters to you, you should do that.
-    ///
-    /// Also, because you aren't checking for utf8 character
-    /// boundaries, this function never fails.
-    ///
-    /// [range]: TextRange
-    pub fn contiguous_bytes(&mut self, range: impl TextRange) -> &[u8] {
-        self.make_contiguous(range.clone());
-        self.get_contiguous_bytes(range).unwrap()
-    }
-
-
-    /// Moves the [`GapBuffer`]'s gap, so that the `range` is whole
-    ///
-    /// The return value is the value of the gap, if the second `&str`
-    /// is the contiguous one.
-    pub fn make_contiguous(&mut self, range: impl TextRange) {
-        self.0.make_contiguous(range);
-    }
-
-    /// Searches forward for a [`RegexPattern`] in a [range]
-    ///
-    /// A [`RegexPattern`] can either be a single regex string, an
-    /// array of strings, or a slice of strings. When there are more
-    /// than one pattern, The return value will include which pattern
-    /// matched.
-    ///
-    /// The patterns will also automatically be cached, so you don't
-    /// need to do that.
-    ///
-    /// [range]: TextRange
-    pub fn search_fwd<R: RegexPattern>(
-        &mut self,
-        pat: R,
-        range: impl TextRange,
-    ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
-        self.0.search_fwd(pat, range)
-    }
-
-    /// Searches in reverse for a [`RegexPattern`] in a [range]
-    ///
-    /// A [`RegexPattern`] can either be a single regex string, an
-    /// array of strings, or a slice of strings. When there are more
-    /// than one pattern, The return value will include which pattern
-    /// matched.
-    ///
-    /// The patterns will also automatically be cached, so you don't
-    /// need to do that.
-    ///
-    /// [range]: TextRange
-    pub fn search_rev<R: RegexPattern>(
-        &mut self,
-        pat: R,
-        range: impl TextRange,
-    ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
-        self.0.search_rev(pat, range)
-    }
-
-    /// Returns true if the pattern is found in the given range
-    ///
-    /// This is unanchored by default, if you want an anchored search,
-    /// use the `"^$"` characters.
-    pub fn matches(
-        &mut self,
-        pat: impl RegexPattern,
-        range: impl TextRange,
-    ) -> Result<bool, Box<regex_syntax::Error>> {
-        self.0.matches(pat, range)
-    }
-}
-
-impl std::ops::Deref for RefBytes<'_> {
-    type Target = Bytes;
-
-    fn deref(&self) -> &Self::Target {
-        self.0
-    }
-}
+use super::{Point, TextRange, records::Records, utf8_char_width};
+use crate::cfg::PrintCfg;
 
 /// The bytes of a [`Text`], encoded in UTF-8
 ///
@@ -152,8 +45,8 @@ impl Bytes {
     /// This does not check for tags, so with a [`Tag::Ghost`],
     /// there could actually be a "string" of characters on the
     /// [`Text`], it just wouldn't be considered real "text". If you
-    /// want to check for the `Tags`'s possible emptyness as well, see
-    /// [`Text::is_empty_empty`].
+    /// want to check for the `InnerTags`'s possible emptyness as
+    /// well, see [`Text::is_empty_empty`].
     ///
     /// [`Tag::Ghost`]: super::Ghost
     /// [`Text`]: super::Text
@@ -231,7 +124,11 @@ impl Bytes {
     /// [`strs`]: Self::strs
     pub fn strs(&self, range: impl TextRange) -> Strs<'_> {
         let range = range.to_range(self.buf.len());
-        Strs(self.strs_in_range_inner(range).into_iter())
+        Strs {
+            arr: self.strs_in_range_inner(range),
+            fwd: 0,
+            rev: 2,
+        }
     }
 
     /// Returns an iterator over the lines in a given range
@@ -491,7 +388,7 @@ impl Bytes {
 
         let start = self.point_at_line(l);
         let end = self
-            .chars_fwd(start)
+            .chars_fwd(start..)
             .find_map(|(p, _)| (p.line() > start.line()).then_some(p))
             .unwrap_or(start);
         [start, end]
@@ -517,8 +414,10 @@ impl Bytes {
     /// Each [`char`] will be accompanied by a [`Point`], which is the
     /// position where said character starts, e.g.
     /// [`Point::default()`] for the first character
-    pub fn chars_fwd(&self, p: Point) -> impl Iterator<Item = (Point, char)> + '_ {
-        self.strs_in_range_inner(p.byte()..)
+    pub fn chars_fwd(&self, range: impl TextRange) -> impl Iterator<Item = (Point, char)> + '_ {
+        let range = range.to_range(self.len().byte());
+        let p = self.point_at(range.start);
+        self.strs_in_range_inner(range)
             .into_iter()
             .flat_map(str::chars)
             .scan(p, |p, char| {
@@ -533,8 +432,10 @@ impl Bytes {
     /// Each [`char`] will be accompanied by a [`Point`], which is the
     /// position where said character starts, e.g.
     /// [`Point::default()`] for the first character
-    pub fn chars_rev(&self, p: Point) -> impl Iterator<Item = (Point, char)> + '_ {
-        self.strs_in_range_inner(..p.byte())
+    pub fn chars_rev(&self, range: impl TextRange) -> impl Iterator<Item = (Point, char)> + '_ {
+        let range = range.to_range(self.len().byte());
+        let p = self.point_at(range.end);
+        self.strs_in_range_inner(range)
             .into_iter()
             .flat_map(str::chars)
             .rev()
@@ -542,6 +443,18 @@ impl Bytes {
                 *p = p.rev(char);
                 Some((*p, char))
             })
+    }
+
+    /// Gets the indentation level on the current line
+    pub fn indent(&self, p: Point, cfg: PrintCfg) -> usize {
+        let [start, _] = self.points_of_line(p.line());
+        self.chars_fwd(start..)
+            .map_while(|(_, c)| match c {
+                ' ' => Some(1),
+                '\t' => Some(cfg.tab_stops.size() as usize),
+                _ => None,
+            })
+            .sum()
     }
 
     ////////// Modification functions
@@ -816,23 +729,23 @@ impl<'a> DoubleEndedIterator for Buffers<'a> {
 /// [`&str`]: str
 /// [`Text`]: super::Text
 #[derive(Clone)]
-pub struct Strs<'a>(std::array::IntoIter<&'a str, 2>);
+pub struct Strs<'a> {
+    arr: [&'a str; 2],
+    fwd: usize,
+    rev: usize,
+}
 
 impl<'a> Strs<'a> {
     /// Converts this [`Iterator`] into an array of its two parts
     pub fn to_array(&self) -> [&'a str; 2] {
-        let strs = self.0.as_slice();
-        [
-            strs.first().copied().unwrap_or(""),
-            strs.last().copied().unwrap_or(""),
-        ]
+        self.arr
     }
 
     /// Iterates over the [`char`]s of both [`&str`]s
     ///
     /// [`&str`]: str
     pub fn chars(self) -> impl DoubleEndedIterator<Item = char> + 'a {
-        let [s0, s1] = self.to_array();
+        let [s0, s1] = self.arr;
         s0.chars().chain(s1.chars())
     }
 }
@@ -841,11 +754,17 @@ impl<'a> Iterator for Strs<'a> {
     type Item = &'a str;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.0.next()
+        match self.fwd {
+            0 | 1 if self.fwd != self.rev => {
+                self.fwd += 1;
+                Some(self.arr[self.fwd - 1])
+            }
+            _ => None,
+        }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.0.size_hint()
+        (self.rev - self.fwd, Some(self.rev - self.fwd))
     }
 }
 
@@ -853,11 +772,23 @@ impl ExactSizeIterator for Strs<'_> {}
 
 impl DoubleEndedIterator for Strs<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        self.0.next_back()
+        match self.rev {
+            1 | 2 if self.fwd != self.rev => {
+                self.rev -= 1;
+                Some(self.arr[self.rev])
+            }
+            _ => None,
+        }
     }
 }
 
 impl FusedIterator for Strs<'_> {}
+
+impl AsRef<Bytes> for Bytes {
+    fn as_ref(&self) -> &Bytes {
+        self
+    }
+}
 
 impl std::fmt::Display for Strs<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -105,17 +105,17 @@ use std::{
 };
 
 pub(crate) use self::history::History;
-use self::tags::{FwdTags, RevTags, Tags};
+use self::tags::{FwdTags, InnerTags, RevTags};
 pub use self::{
     builder::{Builder, BuilderPart, txt},
-    bytes::{Buffers, Bytes, Lines, RefBytes, Strs},
+    bytes::{Buffers, Bytes, Lines, Strs},
     history::{Change, Moment},
     iter::{FwdIter, Item, Part, RevIter},
     ops::{Point, TextRange, TextRangeOrPoint, TwoPoints, utf8_char_width},
     search::{Matcheable, RegexPattern, Searcher},
     tags::{
         AlignCenter, AlignLeft, AlignRight, Conceal, ExtraCaret, FormTag, Ghost, GhostId,
-        MainCaret, MutTags, RawTag, Spacer, Tag, Tagger, Taggers, ToggleId,
+        MainCaret, RawTag, Spacer, Tag, Tagger, Taggers, Tags, ToggleId,
     },
 };
 use crate::{
@@ -139,7 +139,7 @@ pub struct Text(Box<InnerText>);
 
 struct InnerText {
     bytes: Bytes,
-    tags: Tags,
+    tags: InnerTags,
     selections: Selections,
     // Specific to Files
     history: Option<History>,
@@ -208,7 +208,7 @@ impl Text {
             let end = bytes.len();
             bytes.apply_change(Change::str_insert("\n", end));
         }
-        let tags = Tags::new(bytes.len().byte());
+        let tags = InnerTags::new(bytes.len().byte());
 
         Self(Box::new(InnerText {
             bytes,
@@ -224,7 +224,7 @@ impl Text {
     fn empty() -> Self {
         Self(Box::new(InnerText {
             bytes: Bytes::default(),
-            tags: Tags::new(0),
+            tags: InnerTags::new(0),
             selections: Selections::new_empty(),
             history: None,
             has_changed: false,
@@ -253,7 +253,7 @@ impl Text {
 
     ////////// Querying functions
 
-    /// Whether the [`Bytes`] and `Tags` are empty
+    /// Whether the [`Bytes`] and `InnerTags` are empty
     ///
     /// This ignores the last `'\n'` in the [`Text`], since it is
     /// always there no matter what.
@@ -270,10 +270,7 @@ impl Text {
     ///
     /// Note that, since [`Text`] has an implementation of
     /// [`std::ops::Deref<Target = Bytes>`], you mostly don't need
-    /// to call this method. Also, some things require partial
-    /// mutability of the [`Bytes`], such as [regex searching] and
-    /// [getting contiguous `&str`s]. For those, see
-    /// [`Text::ref_bytes`].
+    /// to call this method.
     ///
     /// [regex searching]: Bytes::search_fwd
     /// [getting contiguous `&str`s]: Bytes::contiguous
@@ -284,17 +281,17 @@ impl Text {
     /// The parts that make up a [`Text`]
     ///
     /// This function is used when you want to [insert]/[remove]
-    /// [`Tag`]s (i.e., borrow the inner `Tags` mutably via
-    /// [`MutTags`]), while still being able to read from the
-    /// [`Bytes`] (through [`RefBytes`]) and the [`Selections`].
+    /// [`Tag`]s (i.e., borrow the inner `InnerTags` mutably via
+    /// [`Tags`]), while still being able to read from the
+    /// [`Bytes`] and [`Selections`].
     ///
-    /// [insert]: MutTags::insert
-    /// [remove]: MutTags::remove
+    /// [insert]: Tags::insert
+    /// [remove]: Tags::remove
     /// [`&mut Bytes`]: Bytes
     pub fn parts(&mut self) -> TextParts<'_> {
         TextParts {
-            bytes: RefBytes(&mut self.0.bytes),
-            tags: MutTags(&mut self.0.tags),
+            bytes: &self.0.bytes,
+            tags: Tags(&mut self.0.tags),
             selections: &self.0.selections,
         }
     }
@@ -612,7 +609,7 @@ impl Text {
     ///
     /// [`File`]: crate::file::File
     pub fn clear_tags(&mut self) {
-        self.0.tags = Tags::new(self.0.bytes.len().byte());
+        self.0.tags = InnerTags::new(self.0.bytes.len().byte());
     }
 
     /////////// Selection functions
@@ -696,8 +693,8 @@ impl Text {
     /// Each [`char`] will be accompanied by a [`Point`], which is the
     /// position where said character starts, e.g.
     /// [`Point::default()`] for the first character
-    pub fn chars_fwd(&self, p: Point) -> impl Iterator<Item = (Point, char)> + '_ {
-        self.0.bytes.chars_fwd(p)
+    pub fn chars_fwd(&self, range: impl TextRange) -> impl Iterator<Item = (Point, char)> + '_ {
+        self.0.bytes.chars_fwd(range)
     }
 
     /// A reverse iterator of the [`char`]s of the [`Text`]
@@ -705,8 +702,8 @@ impl Text {
     /// Each [`char`] will be accompanied by a [`Point`], which is the
     /// position where said character starts, e.g.
     /// [`Point::default()`] for the first character
-    pub fn chars_rev(&self, p: Point) -> impl Iterator<Item = (Point, char)> + '_ {
-        self.0.bytes.chars_rev(p)
+    pub fn chars_rev(&self, range: impl TextRange) -> impl Iterator<Item = (Point, char)> + '_ {
+        self.0.bytes.chars_rev(range)
     }
 
     /// A forward iterator over the [`Tag`]s of the [`Text`]
@@ -937,63 +934,24 @@ impl From<Selectionless> for Text {
 unsafe impl Send for Selectionless {}
 unsafe impl Sync for Selectionless {}
 
-/// Either [`Text`] or [`Bytes`]
-pub trait AsRefBytes {
-    /// Returns a [`RefBytes`]
-    fn ref_bytes(&mut self) -> RefBytes<'_>;
-}
-
-impl AsRefBytes for Bytes {
-    /// Why are you using this?
-    #[doc(hidden)]
-    fn ref_bytes(&mut self) -> RefBytes<'_> {
-        RefBytes(self)
-    }
-}
-
-impl AsRefBytes for RefBytes<'_> {
-    /// Duh
-    #[doc(hidden)]
-    fn ref_bytes(&mut self) -> RefBytes<'_> {
-        RefBytes(self.0)
-    }
-}
-
-impl AsRefBytes for Text {
-    /// A [`RefBytes`] of the [`Bytes`] within
-    ///
-    /// This takes a mutable reference because [`RefBytes`] grants
-    /// access to some methods that require "non altering mutation",
-    /// such as [`contiguous`] and [`search_fwd`], which require
-    /// that the gap of the inner [`GapBuffer`] be moved.
-    ///
-    /// [`contiguous`]: Bytes::contiguous
-    /// [`search_fwd`]: Bytes::search_fwd
-    /// [`GapBuffer`]: gapbuf::GapBuffer
-    fn ref_bytes(&mut self) -> RefBytes<'_> {
-        RefBytes(&mut self.0.bytes)
+impl AsRef<Bytes> for Text {
+    fn as_ref(&self) -> &Bytes {
+        self.bytes()
     }
 }
 
 /// The Parts that make up a [`Text`]
 pub struct TextParts<'a> {
     /// The [`Bytes`] of the [`Text`]
+    pub bytes: &'a Bytes,
+    /// The [`Tags`] of the [`Text`]
     ///
-    /// [`RefBytes`], unlike [`&Bytes`], permits [contiguous `&str`]s
-    /// and [regex searching].
-    ///
-    /// [`&Bytes`]: Bytes
-    /// [contiguous `&str`]: RefBytes::contiguous
-    /// [regex searching]: RefBytes::search_fwd
-    pub bytes: RefBytes<'a>,
-    /// The [`MutTags`] of the [`Text`]
-    ///
-    /// This, unlike [`RefBytes`], allows mutation in the form of
+    /// This, unlike [`Bytes`], allows mutation in the form of
     /// [adding] and [removing] [`Tag`]s.
     ///
-    /// [adding]: MutTags::insert
-    /// [removing]: MutTags::remove
-    pub tags: MutTags<'a>,
+    /// [adding]: Tags::insert
+    /// [removing]: Tags::remove
+    pub tags: Tags<'a>,
     /// The [`Selections`] of the [`Text`]
     ///
     /// For most [`Widget`]s, there should be no [`Selection`], since

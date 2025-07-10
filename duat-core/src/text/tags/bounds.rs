@@ -340,7 +340,7 @@ fn before_id((bound, tag, _): &(Cell<[usize; 2]>, RawTag, RangeId)) -> ([usize; 
     (bound.get(), *tag)
 }
 
-pub(super) struct DebugBounds<'a>(pub(super) &'a super::Tags);
+pub(super) struct DebugBounds<'a>(pub(super) &'a super::InnerTags);
 impl std::fmt::Debug for DebugBounds<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if f.alternate() && !self.0.bounds.list.is_empty() {

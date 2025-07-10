@@ -447,14 +447,14 @@ mod cursor {
             } else if by.abs() < 500 {
                 if by > 0 {
                     let (point, _) = text
-                        .chars_fwd(self.caret())
+                        .chars_fwd(self.caret()..)
                         .take(by as usize + 1)
                         .last()
                         .unwrap();
                     point
                 } else {
                     let (point, _) = text
-                        .chars_rev(self.caret())
+                        .chars_rev(..self.caret())
                         .take(by.unsigned_abs())
                         .last()
                         .unwrap();

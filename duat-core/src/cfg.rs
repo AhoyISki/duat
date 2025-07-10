@@ -26,7 +26,7 @@
 //! [show_ghosts]: PrintCfg::show_ghosts
 use std::{ops::RangeInclusive, sync::LazyLock};
 
-use regex_automata::meta::Regex;
+use regex_cursor::regex_automata::meta::Regex;
 
 /// If and how to wrap lines at the end of the screen.
 #[derive(Clone, Copy, Debug)]

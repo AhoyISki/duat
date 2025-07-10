@@ -1,7 +1,7 @@
 //! Internal struct for holding [`Tag`]s
 //!
 //! [`Tag`]s are held internally as [`RawTag`]s, which occupy much
-//! less space and can be very cheaply copied around. The [`Tags`]
+//! less space and can be very cheaply copied around. The [`InnerTags`]
 //! struct also makes use of [`Records`] to keep track of positions,
 //! as well as [`TagRange`]s to keep track of tags occupying very long
 //! ranges of [`Text`].
@@ -43,9 +43,9 @@ use crate::get_ends;
 /// for example, holding a reference to the [`Bytes`] of the [`Text`]
 ///
 /// [`Bytes`]: super::Bytes
-pub struct MutTags<'a>(pub(super) &'a mut Tags);
+pub struct Tags<'a>(pub(super) &'a mut InnerTags);
 
-impl MutTags<'_> {
+impl Tags<'_> {
     /// Inserts a [`Tag`] at the given position
     pub fn insert<R>(&mut self, tagger: Tagger, r: R, tag: impl Tag<R>) {
         self.0.insert(tagger, r, tag);
@@ -73,7 +73,7 @@ impl MutTags<'_> {
     ///     fn update_range(&mut self, mut parts: FileParts<U>, within: Option<Range<Point>>) {
     ///         // Removing on the whole File
     ///         parts.tags.remove(self.tagger, ..);
-    ///         // Logic to add Tags...
+    ///         // Logic to add InnerTags...
     ///     }
     /// }
     /// ```
@@ -81,7 +81,7 @@ impl MutTags<'_> {
     /// [tagger]: Taggers
     /// [range]: RangeBounds
     /// [`Parser`]: crate::file::Parser
-    /// [when changes happen]: crate::file::Parser::apply_changes
+    /// [when changes happen]: crate::file::Parser::parse
     /// [on updates]: crate::file::Parser::update_range
     pub fn remove(&mut self, taggers: impl Taggers, range: impl TextRangeOrPoint) {
         let range = range.to_range(self.0.len_bytes());
@@ -96,19 +96,19 @@ impl MutTags<'_> {
     ///
     /// [`File`]: crate::file::File
     pub fn clear(&mut self) {
-        *self.0 = Tags::new(self.0.len_bytes());
+        *self.0 = InnerTags::new(self.0.len_bytes());
     }
 }
 
-impl std::ops::Deref for MutTags<'_> {
-    type Target = Tags;
+impl std::ops::Deref for Tags<'_> {
+    type Target = InnerTags;
 
     fn deref(&self) -> &Self::Target {
         self.0
     }
 }
 
-impl std::fmt::Debug for MutTags<'_> {
+impl std::fmt::Debug for Tags<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
     }
@@ -119,7 +119,7 @@ impl std::fmt::Debug for MutTags<'_> {
 /// It also holds the [`Text`]s of any [`Ghost`]s, and the
 /// functions of [`ToggleStart`]s
 #[derive(Clone)]
-pub struct Tags {
+pub struct InnerTags {
     buf: GapBuffer<TagOrSkip>,
     ghosts: Vec<(GhostId, Text)>,
     toggles: Vec<(ToggleId, Toggle)>,
@@ -128,8 +128,8 @@ pub struct Tags {
     extents: TaggerExtents,
 }
 
-impl Tags {
-    /// Creates a new [`Tags`] with a given len
+impl InnerTags {
+    /// Creates a new [`InnerTags`] with a given len
     pub fn new(len: usize) -> Self {
         Self {
             buf: if len == 0 {
@@ -163,7 +163,7 @@ impl Tags {
                 .any(|lhs| lhs == tag)
         }
 
-        fn insert_id(tags: &mut Tags, id: Option<TagId>) -> Option<ToggleId> {
+        fn insert_id(tags: &mut InnerTags, id: Option<TagId>) -> Option<ToggleId> {
             match id {
                 Some(TagId::Ghost(id, ghost)) => {
                     tags.ghosts.push((id, ghost));
@@ -178,7 +178,7 @@ impl Tags {
         }
 
         fn insert_raw_tags(
-            tags: &mut Tags,
+            tags: &mut InnerTags,
             (s_at, s_tag): (usize, RawTag),
             end: Option<(usize, RawTag)>,
         ) -> bool {
@@ -257,8 +257,8 @@ impl Tags {
         }
     }
 
-    /// Insert another [`Tags`] into this one
-    pub fn insert_tags(&mut self, p: Point, mut other: Tags) {
+    /// Insert another [`InnerTags`] into this one
+    pub fn insert_tags(&mut self, p: Point, mut other: InnerTags) {
         let mut starts = Vec::new();
 
         for (_, b, tag) in fwd_range(&other.buf, ..).filter_map(entries_fwd(p.byte())) {
@@ -307,8 +307,8 @@ impl Tags {
         }
     }
 
-    /// Extends this [`Tags`] with another one
-    pub fn extend(&mut self, mut other: Tags) {
+    /// Extends this [`InnerTags`] with another one
+    pub fn extend(&mut self, mut other: InnerTags) {
         self.bounds.finish_shifting();
 
         let len = self.buf.len();
@@ -453,7 +453,7 @@ impl Tags {
     #[track_caller]
     fn remove(&mut self, n: usize, b: usize) -> ([usize; 2], i32) {
         let TagOrSkip::Tag(_) = self.buf.remove(n) else {
-            unreachable!("You are only supposed to remove Tags like this, not skips")
+            unreachable!("You are only supposed to remove InnerTags like this, not skips")
         };
 
         // Try to merge this skip with the previous one.
@@ -488,7 +488,7 @@ impl Tags {
             } else if new.end > old.start {
                 self.buf.push_back(TagOrSkip::Skip(new_len));
                 self.records.append([1, new_len as usize]);
-                // For now, since ending Tags are not shifted
+                // For now, since ending InnerTags are not shifted
                 // forwards, there is no need to use sh_bounds here.
             }
 
@@ -685,7 +685,7 @@ impl Tags {
         self.buf.len() == 0 || self.buf.len() == 1 && self.buf[0].is_skip()
     }
 
-    /// Returns the len of the [`Tags`] in bytes
+    /// Returns the len of the [`InnerTags`] in bytes
     pub fn len_bytes(&self) -> usize {
         self.records.max()[1]
     }
@@ -868,7 +868,7 @@ impl Tags {
     /// This will return the same skip if `b != at`, and the previous
     /// skip otherwise.
     ///
-    /// [`skip_at`]: Tags::skip_at
+    /// [`skip_at`]: InnerTags::skip_at
     fn skip_behind(&self, at: usize) -> [usize; 3] {
         let [n, b, skip] = self.skip_at(at);
         if b == at {
@@ -1024,7 +1024,7 @@ impl std::fmt::Debug for TagOrSkip {
     }
 }
 
-struct DebugBuf<'a, R: RangeBounds<usize>>(&'a Tags, R);
+struct DebugBuf<'a, R: RangeBounds<usize>>(&'a InnerTags, R);
 impl<R: RangeBounds<usize> + Clone> std::fmt::Debug for DebugBuf<'_, R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let (start, end) = get_ends(self.1.clone(), self.0.len_bytes());
@@ -1065,9 +1065,9 @@ impl<R: RangeBounds<usize> + Clone> std::fmt::Debug for DebugBuf<'_, R> {
     }
 }
 
-impl std::fmt::Debug for Tags {
+impl std::fmt::Debug for InnerTags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Tags")
+        f.debug_struct("InnerTags")
             .field("buf", &DebugBuf(self, ..))
             .field("bounds", &bounds::DebugBounds(self))
             .field("records", &self.records)
@@ -1075,7 +1075,7 @@ impl std::fmt::Debug for Tags {
     }
 }
 
-impl PartialEq for Tags {
+impl PartialEq for InnerTags {
     fn eq(&self, other: &Self) -> bool {
         use RawTag::*;
         use TagOrSkip::*;
@@ -1115,7 +1115,7 @@ impl PartialEq for Tags {
             })
     }
 }
-impl Eq for Tags {}
+impl Eq for InnerTags {}
 
 /// A forward [`Iterator`] of [`RawTag`]s
 ///

@@ -276,7 +276,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
         let at = self
             .text()
             .point_at_line(line.min(self.text().len().line()));
-        let (point, _) = self.text().chars_fwd(at).take(col + 1).last().unwrap();
+        let (point, _) = self.text().chars_fwd(at..).take(col + 1).last().unwrap();
         self.move_to(point);
     }
 
@@ -410,7 +410,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
     /// This iteration will begin on the `caret`. It will also include
     /// the [`Point`] of each `char`
     pub fn chars_fwd(&self) -> impl Iterator<Item = (Point, char)> + '_ {
-        self.widget.text().chars_fwd(self.caret())
+        self.widget.text().chars_fwd(self.caret()..)
     }
 
     /// Iterates over the [`char`]s, in reverse
@@ -418,7 +418,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
     /// This iteration will begin on the `caret`. It will also include
     /// the [`Point`] of each `char`
     pub fn chars_rev(&self) -> impl Iterator<Item = (Point, char)> + '_ {
-        self.widget.text().chars_rev(self.caret())
+        self.widget.text().chars_rev(..self.caret())
     }
 
     /// Searches the [`Text`] for a regex

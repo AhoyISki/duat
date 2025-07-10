@@ -57,7 +57,7 @@ pub trait Tag<I>: Sized {
     ) -> ((usize, RawTag), Option<(usize, RawTag)>, Option<TagId>);
 }
 
-////////// Form-like Tags
+////////// Form-like InnerTags
 
 /// [`Tag`]: Applies a [`Form`] to a given [range] in the [`Text`]
 ///
@@ -118,7 +118,7 @@ simple_impl_Tag!(MainCaret, RawTag::MainCaret);
 pub struct ExtraCaret;
 simple_impl_Tag!(ExtraCaret, RawTag::ExtraCaret);
 
-/////////// Alignment Tags
+/////////// Alignment InnerTags
 
 /// [`Builder`] part: Begins centered alignment
 ///
@@ -192,7 +192,7 @@ pub struct AlignLeft;
 pub struct Spacer;
 simple_impl_Tag!(Spacer, RawTag::Spacer);
 
-////////// Text modification Tags
+////////// Text modification InnerTags
 
 /// [`Builder`] part and [`Tag`]: Places ghost text
 ///
@@ -429,9 +429,9 @@ impl RawTag {
 
     /// Gets the [`Tagger`] of this [`RawTag`], if it is not
     /// [`ConcealUntil`], since that one is never actually stored in
-    /// [`Tags`]
+    /// [`InnerTags`]
     ///
-    /// [`Tags`]: super::Tags
+    /// [`InnerTags`]: super::InnerTags
     fn get_tagger(&self) -> Option<Tagger> {
         match self {
             Self::PushForm(key, ..)

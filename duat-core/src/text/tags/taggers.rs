@@ -100,9 +100,9 @@ impl TaggerExtents {
     }
 }
 
-/// The level of prevalence of a [`Tagger`] in the [`Tags`]
+/// The level of prevalence of a [`Tagger`] in the [`InnerTags`]
 ///
-/// [`Tags`]: super::Tags
+/// [`InnerTags`]: super::InnerTags
 #[derive(Clone)]
 enum Extent {
     Sparse {
