@@ -39,13 +39,13 @@ use duat_core::{
     hook::OnFileOpen,
     mode::Cursor,
     prelude::*,
-    text::{Bytes, Change, Matcheable, Moment, Point, Tags},
+    text::{Builder, Bytes, Change, Matcheable, Moment, Point, Tags},
 };
 use duat_filetype::FileType;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{
     InputEdit, Language, Node, Parser, Point as TSPoint, Query, QueryCapture as QueryCap,
-    QueryCursor, TextProvider, Tree,
+    QueryCursor, QueryMatch, TextProvider, Tree,
 };
 
 use crate::languages::parser_is_compiled;
@@ -112,6 +112,7 @@ impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter {
             ("diff.plus", Form::red()),
             ("diff.delta", Form::blue()),
             ("diff.minus", Form::green()),
+            ("node.field", "variable.member"),
         );
 
         hook::add_grouped::<OnFileOpen<U>, U>("TreeSitter", |pa, builder| {
@@ -170,9 +171,7 @@ impl<U: Ui> file::Parser<U> for TsParser {
 
         fn merge_tree_changed_ranges(parser: &InnerTsParser, list: &mut Ranges) {
             if let Some(old_tree) = parser.old_tree.as_ref() {
-                context::info!("there is an old tree on {parser.range:?}");
                 for range in parser.tree.changed_ranges(old_tree) {
-                    context::debug!("merging tree range {range:?}");
                     let range = range.start_byte..range.end_byte;
                     list.add(range);
                 }
@@ -609,7 +608,10 @@ impl InnerTsParser {
     }
 
     fn indent_on(&self, p: Point, bytes: &Bytes, cfg: PrintCfg) -> Option<usize> {
-        fn smallest_around(ts: &InnerTsParser, b: usize) -> (Node<'_>, &Query) {
+        fn smallest_around(
+            ts: &InnerTsParser,
+            b: usize,
+        ) -> (Node<'_>, &Query, [usize; 2], impl Fn(usize) -> usize) {
             if let Some(sub) = ts
                 .sub_trees
                 .iter()
@@ -618,12 +620,19 @@ impl InnerTsParser {
                 return smallest_around(sub, b);
             }
 
-            let root = ts.tree.root_node_with_offset(ts.range.start, ts.offset);
-            (root, ts.lang_parts.2.indents)
+            let offset = [ts.range.start, ts.offset.row];
+            let col_off = |line: usize| ts.offset.column * (line == ts.offset.row) as usize;
+
+            (
+                ts.tree.root_node(),
+                ts.lang_parts.2.indents,
+                offset,
+                col_off,
+            )
         }
 
         let [start, _] = bytes.points_of_line(p.line());
-        let (root, indents) = smallest_around(self, start.byte());
+        let (root, indents, [byte_off, line_off], col_off) = smallest_around(self, start.byte());
 
         // The query could be empty.
         if indents.pattern_count() == 0 {
@@ -633,36 +642,38 @@ impl InnerTsParser {
         // TODO: Don't reparse python, apparently.
 
         type Captures<'a> = HashMap<&'a str, HashMap<usize, HashMap<&'a str, Option<&'a str>>>>;
-        let mut caps: Captures = HashMap::new();
+        let mut caps = HashMap::new();
         let q = {
             let mut cursor = QueryCursor::new();
             let buf = TsBuf(bytes);
-            cursor.matches(indents, root, buf).for_each(|qm| {
-                for cap in qm.captures.iter() {
-                    let Some(cap_end) =
-                        indents.capture_names()[cap.index as usize].strip_prefix("indent.")
-                    else {
-                        continue;
-                    };
+            cursor
+                .matches(indents, root, buf)
+                .for_each(|qm: &QueryMatch| {
+                    for cap in qm.captures.iter() {
+                        let Some(cap_end) =
+                            indents.capture_names()[cap.index as usize].strip_prefix("indent.")
+                        else {
+                            continue;
+                        };
 
-                    let nodes = if let Some(nodes) = caps.get_mut(cap_end) {
-                        nodes
-                    } else {
-                        caps.insert(cap_end, HashMap::new());
-                        caps.get_mut(cap_end).unwrap()
-                    };
-                    let props = indents.property_settings(qm.pattern_index).iter();
-                    nodes.insert(
-                        cap.node.id(),
-                        props
-                            .map(|p| {
-                                let key = p.key.strip_prefix("indent.").unwrap();
-                                (key, p.value.as_deref())
-                            })
-                            .collect(),
-                    );
-                }
-            });
+                        let nodes = if let Some(nodes) = caps.get_mut(cap_end) {
+                            nodes
+                        } else {
+                            caps.insert(cap_end, HashMap::new());
+                            caps.get_mut(cap_end).unwrap()
+                        };
+                        let props = indents.property_settings(qm.pattern_index).iter();
+                        nodes.insert(
+                            cap.node.id(),
+                            props
+                                .map(|p| {
+                                    let key = p.key.strip_prefix("indent.").unwrap();
+                                    (key, p.value.as_deref())
+                                })
+                                .collect(),
+                        );
+                    }
+                });
             |caps: &Captures, node: Node, queries: &[&str]| {
                 caps.get(queries[0])
                     .and_then(|nodes| nodes.get(&node.id()))
@@ -680,7 +691,7 @@ impl InnerTsParser {
             .find_map(|(p, c)| (!c.is_whitespace()).then_some(p));
 
         let mut opt_node = if let Some(indented_start) = indented_start {
-            Some(descendant_in(root, indented_start.byte()))
+            Some(descendant_in(root, indented_start.byte(), byte_off))
         // If the line is empty, look behind for another.
         } else {
             // Find last previous empty line.
@@ -694,43 +705,44 @@ impl InnerTsParser {
             let trail = line.chars().rev().take_while(|c| c.is_whitespace()).count();
 
             let [prev_start, prev_end] = bytes.points_of_line(prev_l);
-            let mut node = descendant_in(root, prev_end.byte() - (trail + 1));
+            let mut node = descendant_in(root, prev_end.byte() - (trail + 1), byte_off);
             if node.kind().contains("comment") {
                 // Unless the whole line is a comment, try to find the last node
                 // before the comment.
                 // This technically fails if there are multiple block comments.
-                let first_node = descendant_in(root, prev_start.byte());
+                let first_node = descendant_in(root, prev_start.byte(), byte_off);
                 if first_node.id() != node.id() {
-                    node = descendant_in(root, node.start_byte() - 1)
+                    node = descendant_in(root, node.start_byte() - 1, 0)
                 }
             }
 
             Some(if q(&caps, node, &["end"]) {
-                descendant_in(root, start.byte())
+                descendant_in(root, start.byte(), byte_off)
             } else {
                 node
             })
         };
 
         if q(&caps, opt_node.unwrap(), &["zero"]) {
+            context::info!("returned Some from zero");
             return Some(0);
         }
 
         let tab = cfg.tab_stops.size() as i32;
-        let mut indent = if root.start_byte() != 0 {
-            bytes.indent(bytes.point_at(root.start_byte()), cfg) as i32
+        let mut indent = if root.start_byte() + byte_off != 0 {
+            bytes.indent(bytes.point_at(root.start_byte() + byte_off), cfg) as i32
         } else {
             0
         };
 
         let mut processed_lines = Vec::new();
         while let Some(node) = opt_node {
+            let s_line = node.start_position().row + line_off;
+            let e_line = node.end_position().row + line_off;
+
             // If a node is not an indent and is marked as auto or ignore, act
             // accordingly.
-            if !q(&caps, node, &["begin"])
-                && node.start_position().row < p.line()
-                && p.line() <= node.end_position().row
-            {
+            if !q(&caps, node, &["begin"]) && s_line < p.line() && p.line() <= e_line {
                 if !q(&caps, node, &["align"]) && q(&caps, node, &["auto"]) {
                     return None;
                 } else if q(&caps, node, &["ignore"]) {
@@ -738,8 +750,6 @@ impl InnerTsParser {
                 }
             }
 
-            let s_line = node.range().start_point.row;
-            let e_line = node.range().end_point.row;
             let should_process = !processed_lines.contains(&s_line);
 
             let mut is_processed = false;
@@ -774,13 +784,12 @@ impl InnerTsParser {
                 }
             }
 
-            type FoundDelim<'a> = (Option<Node<'a>>, bool);
-            let find_delim = for<'a, 'b> |node: Node<'a>, delim: &'b str| -> FoundDelim<'a> {
+            let fd = for<'a, 'b> |node: Node<'a>, delim: &'b str| -> (Option<Node<'a>>, bool) {
                 let mut c = node.walk();
                 let child = node.children(&mut c).find(|child| child.kind() == delim);
                 let ret = child.map(|child| {
-                    let [_, end] = bytes.points_of_line(child.range().start_point.row);
-                    let range = child.range().start_byte..end.byte();
+                    let [_, end] = bytes.points_of_line(child.start_position().row + line_off);
+                    let range = child.range().start_byte + byte_off..end.byte();
 
                     let is_last_in_line = if let Some(line) = bytes.get_contiguous(range.clone()) {
                         line.split_whitespace().any(|w| w != delim)
@@ -803,17 +812,17 @@ impl InnerTsParser {
                 let props = &caps["align"][&node.id()];
                 let (o_delim_node, o_is_last_in_line) = props
                     .get(&"open_delimiter")
-                    .and_then(|delim| delim.map(|d| find_delim(node, d)))
+                    .and_then(|delim| delim.map(|d| fd(node, d)))
                     .unwrap_or((Some(node), false));
                 let (c_delim_node, c_is_last_in_line) = props
                     .get(&"close_delimiter")
-                    .and_then(|delim| delim.map(|d| find_delim(node, d)))
+                    .and_then(|delim| delim.map(|d| fd(node, d)))
                     .unwrap_or((Some(node), false));
 
                 if let Some(o_delim_node) = o_delim_node {
-                    let o_s_line = o_delim_node.start_position().row;
-                    let o_s_col = o_delim_node.start_position().row;
-                    let c_s_line = c_delim_node.map(|n| n.start_position().row);
+                    let o_s_line = o_delim_node.start_position().row + line_off;
+                    let o_s_col = o_delim_node.start_position().column + col_off(o_s_line);
+                    let c_s_line = c_delim_node.map(|n| n.start_position().row + line_off);
 
                     // If the previous line was marked with an open_delimiter, treat it
                     // like an indent.
@@ -880,8 +889,9 @@ impl std::fmt::Debug for InnerTsParser {
     }
 }
 
-fn descendant_in(node: Node, byte: usize) -> Node {
-    node.descendant_for_byte_range(byte, byte + 1).unwrap()
+fn descendant_in(node: Node, byte: usize, offset: usize) -> Node {
+    node.descendant_for_byte_range(byte - offset, byte + 1 - offset)
+        .unwrap()
 }
 
 fn buf_parse<'a>(bytes: &'a Bytes, range: Range<usize>) -> impl FnMut(usize, TSPoint) -> &'a [u8] {
@@ -1156,4 +1166,73 @@ fn add_shifts(lhs: [i32; 3], rhs: [i32; 3]) -> [i32; 3] {
     let c = lhs[1] + rhs[1];
     let l = lhs[2] + rhs[2];
     [b, c, l]
+}
+
+#[allow(unused)]
+fn format_root(node: Node) -> Text {
+    fn format_range(node: Node, builder: &mut Builder) {
+        let mut first = true;
+        for point in [node.start_position(), node.end_position()] {
+            builder.push(txt!(
+                "[punctuation.bracket.TreeView][[[coords.TreeView]{}\
+             	 [punctuation.delimiter.TreeView],[] [coords.TreeView]{}\
+             	 [punctuation.bracket.TreeView]]]",
+                point.row,
+                point.column
+            ));
+
+            if first {
+                first = false;
+                builder.push(txt!("[punctuation.delimiter],[] "));
+            }
+        }
+        builder.push("\n");
+    }
+
+    fn format_node(
+        node: Node,
+        depth: usize,
+        pars: usize,
+        builder: &mut Builder,
+        name: Option<&str>,
+    ) {
+        builder.push("  ".repeat(depth));
+
+        if let Some(name) = name {
+            builder.push(txt!("[node.field]{name}[punctuation.delimiter.TreeView]: "));
+        }
+
+        builder.push(txt!("[punctuation.bracket.TreeView]("));
+        builder.push(txt!("[node.name]{}", node.grammar_name()));
+
+        let mut cursor = node.walk();
+        let named_children = node.named_children(&mut cursor);
+        let len = named_children.len();
+
+        if len == 0 {
+            builder.push(txt!(
+                "[punctuation.bracket.TreeView]{}[] ",
+                ")".repeat(pars)
+            ));
+            format_range(node, builder);
+        } else {
+            builder.push(" ");
+            format_range(node, builder);
+
+            let mut i = 0;
+
+            for (i, child) in named_children.enumerate() {
+                let name = node.field_name_for_named_child(i as u32);
+                let pars = if i == len - 1 { pars + 1 } else { 1 };
+                format_node(child, depth + 1, pars, builder, name);
+            }
+        }
+    }
+
+    let mut cursor = node.walk();
+    let mut builder = Text::builder();
+
+    format_node(node, 0, 1, &mut builder, None);
+
+    builder.build()
 }
