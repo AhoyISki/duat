@@ -695,7 +695,8 @@ impl<U: Ui> Mode<U> for Normal {
                     c.move_to(p3);
                     c.move_hor(-1);
 
-                    let [s_b, e_b] = self.brackets.bounds_matching(c.contiguous_in(p2..p3))?;
+                    let bound = c.strs(p2..p3).to_string();
+                    let [s_b, e_b] = self.brackets.bounds_matching(&bound)?;
                     let [p0, _] = Object::Bounds(s_b, e_b).find_behind(c, 1, None)?;
                     if key.code == Char('m') {
                         c.set_anchor();
@@ -722,7 +723,8 @@ impl<U: Ui> Mode<U> for Normal {
                     set_anchor_if_needed(key.code == Char('M'), c);
                     c.move_to(p0);
 
-                    let [s_b, e_b] = self.brackets.bounds_matching(c.contiguous_in(p0..p1))?;
+                    let bound = c.strs(p0..p1).to_string();
+                    let [s_b, e_b] = self.brackets.bounds_matching(&bound)?;
                     let [_, p3] = Object::Bounds(s_b, e_b).find_ahead(c, 1, None)?;
                     if key.code == Char('m') {
                         c.set_anchor();
@@ -792,7 +794,6 @@ impl<U: Ui> Mode<U> for Normal {
                         c.insert("\n");
                         if key.modifiers == Mod::NONE {
                             reindent(&mut c, &mut processed_lines);
-                            c.move_hor(c.indent() as i32);
                         } else {
                             c.move_hor(char_col as i32 + 1);
                         }
@@ -805,7 +806,6 @@ impl<U: Ui> Mode<U> for Normal {
                         if key.modifiers == Mod::NONE {
                             c.move_hor(1);
                             reindent(&mut c, &mut processed_lines);
-                            c.move_hor(c.indent() as i32);
                         } else {
                             c.move_to(caret);
                         }
@@ -964,28 +964,39 @@ impl<U: Ui> Mode<U> for Normal {
                     let mut p_iter = pastes.iter().cycle();
                     handle.edit_all(pa, |mut c| {
                         let paste = p_iter.next().unwrap();
+
+                        let anchor_is_start = c.anchor_is_start();
+
                         // If it ends in a new line, we gotta move to the start of the line.
-                        if key.code == Char('p') {
+                        let appended = if key.code == Char('p') {
                             c.set_caret_on_end();
                             if paste.ends_with('\n') {
-                                let caret = c.caret();
                                 let (p, _) =
                                     c.chars_fwd().find(|(_, c)| *c == '\n').unwrap_or_default();
                                 c.move_to(p);
                                 c.append(paste);
-                                c.move_to(caret);
                             } else {
-                                c.move_hor(-(c.v_caret().char_col() as i32));
+                                c.append(paste)
                             }
-                        } else if key.code == Char('P') {
+                            true
+                        } else {
                             c.set_caret_on_start();
                             if paste.ends_with('\n') {
                                 let char_col = c.v_caret().char_col();
                                 c.move_hor(-(char_col as i32));
                                 c.insert(paste);
-                                c.move_hor(char_col as i32 + 1);
                             } else {
                                 c.insert(paste)
+                            }
+                            false
+                        };
+
+                        if !paste.is_empty() {
+                            c.move_hor(appended as i32);
+                            c.set_anchor();
+                            c.move_hor(paste.chars().count() as i32 - 1);
+                            if !anchor_is_start {
+                                c.set_caret_on_start();
                             }
                         }
                     });
@@ -1198,8 +1209,6 @@ impl<U: Ui> Mode<U> for Insert {
                 let char_col = c.v_caret().char_col();
                 if self.indent_keys.contains(&'\t') && char_col == 0 {
                     reindent(&mut c, &mut processed_lines);
-                    let indent = c.indent();
-                    c.move_hor(indent as i32);
                     if c.indent() > 0 {
                         return;
                     }
@@ -1226,7 +1235,6 @@ impl<U: Ui> Mode<U> for Insert {
                 c.move_hor(1);
                 if self.indent_keys.contains(&'\n') {
                     reindent(&mut c, &mut processed_lines);
-                    c.move_hor(c.indent() as i32);
                 }
             }),
             key!(Backspace) => handle.edit_all(pa, |mut c| {
@@ -1756,44 +1764,49 @@ impl<U: Ui> IncSearcher<U> for Split {
 
 /// Sets the indentation for every cursor
 fn reindent<S, U: Ui>(c: &mut Cursor<File<U>, U::Area, S>, processed_lines: &mut Vec<usize>) {
-    let prev_caret = c.caret();
-    let prev_anchor = c.unset_anchor();
-    if processed_lines.contains(&prev_caret.line()) {
+    if processed_lines.contains(&c.caret().line()) {
         return;
     }
-    c.move_hor(-(c.v_caret().char_col() as i32));
-    c.set_anchor();
-    c.move_hor(c.indent() as i32);
 
-    let indent = if let Some(indent) = c.ts_indent() {
+    let old_col = c.v_caret().char_col();
+    let anchor_existed = c.anchor().is_some();
+
+    let old_indent = c.indent();
+    let new_indent = if let Some(indent) = c.ts_indent() {
         indent
     } else {
         let prev_non_empty = prev_non_empty_line_points(c);
         prev_non_empty.map(|[p0, _]| c.indent_on(p0)).unwrap_or(0)
     };
+    let indent_diff = new_indent as i32 - old_indent as i32;
+
+    c.move_hor(-(old_col as i32));
+    c.set_anchor();
+    c.move_hor(old_indent as i32);
 
     if c.caret() == c.anchor().unwrap() {
-        c.insert(" ".repeat(indent));
+        c.insert(" ".repeat(new_indent));
     } else {
         c.move_hor(-1);
-        c.replace(" ".repeat(indent));
+        c.replace(" ".repeat(new_indent));
     }
+    c.set_caret_on_start();
     c.unset_anchor();
 
-    if let Some(prev_anchor) = prev_anchor {
+    if anchor_existed {
         c.set_anchor();
-        if prev_anchor > prev_caret {
-            c.move_hor((prev_anchor.char() - prev_caret.char()) as i32);
+        if old_col < old_indent {
+            c.move_hor(old_col as i32);
         } else {
-            c.move_to(prev_anchor);
+            c.move_hor(old_col as i32 + indent_diff);
         }
         c.swap_ends();
     }
 
-    if prev_caret < c.caret() {
-        c.move_to(prev_caret);
+    if old_col < old_indent {
+        c.move_hor(old_col as i32);
     } else {
-        c.move_hor(prev_caret.char() as i32 - c.caret().char() as i32);
+        c.move_hor(old_col as i32 + indent_diff);
     }
 
     processed_lines.push(c.caret().line());
