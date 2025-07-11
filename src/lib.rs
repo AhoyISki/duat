@@ -34,12 +34,12 @@ use std::{
 };
 
 use duat_core::{
-    file::{self},
+    file::{self, PathKind},
     form::FormId,
     hook::OnFileOpen,
     mode::Cursor,
     prelude::*,
-    text::{Bytes, Change, Matcheable, Moment, MutTags, Point, RefBytes},
+    text::{Bytes, Change, Matcheable, Moment, Point, Tags},
 };
 use duat_filetype::FileType;
 use streaming_iterator::StreamingIterator;
@@ -150,14 +150,8 @@ impl TsParser {
 }
 
 impl<U: Ui> file::Parser<U> for TsParser {
-    fn apply_changes(
-        &mut self,
-        _: &mut Pass,
-        bytes: RefBytes,
-        moment: Moment,
-        ranges_to_update: Option<&mut Ranges>,
-    ) {
-        file::Parser::<U>::apply_remote_changes(self, bytes, moment, ranges_to_update);
+    fn parse(&mut self, _: &mut Pass, snap: FileSnapshot, ranges: Option<&mut Ranges>) {
+        file::Parser::<U>::parse_remote(self, snap, ranges);
     }
 
     fn update_range(&mut self, mut parts: FileParts<U>, within: Option<Range<Point>>) {
@@ -165,23 +159,20 @@ impl<U: Ui> file::Parser<U> for TsParser {
             && let Some(within) = within
         {
             let range = within.start.byte()..within.end.byte();
-            inner.highlight_and_inject(&mut parts.bytes, &mut parts.tags, range);
+            inner.highlight_and_inject(parts.bytes, &mut parts.tags, range);
         }
     }
 
-    fn apply_remote_changes(
-        &mut self,
-        mut bytes: RefBytes,
-        moment: Moment,
-        ranges_to_update: Option<&mut Ranges>,
-    ) {
+    fn parse_remote(&mut self, snap: FileSnapshot, ranges: Option<&mut Ranges>) {
         let Some(inner) = self.0.as_mut() else {
             return;
         };
 
         fn merge_tree_changed_ranges(parser: &InnerTsParser, list: &mut Ranges) {
             if let Some(old_tree) = parser.old_tree.as_ref() {
+                context::info!("there is an old tree on {parser.range:?}");
                 for range in parser.tree.changed_ranges(old_tree) {
+                    context::debug!("merging tree range {range:?}");
                     let range = range.start_byte..range.end_byte;
                     list.add(range);
                 }
@@ -192,9 +183,9 @@ impl<U: Ui> file::Parser<U> for TsParser {
             }
         }
 
-        inner.apply_changes(&mut bytes, moment);
+        inner.apply_changes(snap.bytes, snap.moment);
 
-        if let Some(ranges) = ranges_to_update {
+        if let Some(ranges) = ranges {
             // This initial check might find larger, somewhat self contained nodes
             // that have changed, e.g. an identifier that is now recognized as a
             // function, things of that sort.
@@ -203,11 +194,13 @@ impl<U: Ui> file::Parser<U> for TsParser {
             // However, `changed_ranges` doesn't catch everything, so another
             // check is done. At a minimum, at least the lines where the changes
             // took place should be updated.
-            for change in moment.changes() {
+            for change in snap.moment.changes() {
                 let start = change.start();
                 let added = change.added_end();
-                let start = bytes.point_at_line(start.line());
-                let end = bytes.point_at_line((added.line() + 1).min(bytes.len().line()));
+                let start = snap.bytes.point_at_line(start.line());
+                let end = snap
+                    .bytes
+                    .point_at_line((added.line() + 1).min(snap.bytes.len().line()));
                 ranges.add(start.byte()..end.byte());
             }
         }
@@ -226,7 +219,8 @@ impl<U: Ui> file::Parser<U> for TsParser {
 impl<U: Ui> ParserCfg<U> for TsParser {
     type Parser = Self;
 
-    fn init(self, mut bytes: RefBytes, path: PathKind) -> Result<ParserBox<U>, Text> {
+    fn init(self, file: &File<U>) -> Result<ParserBox<U>, Text> {
+        let path = file.path_kind();
         let filetype = if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &path
             && let Some(filetype) = path.filetype()
         {
@@ -236,28 +230,28 @@ impl<U: Ui> ParserCfg<U> for TsParser {
                 "No filetype set for {}, will try again once one is set",
                 path.name_txt()
             );
-            return Ok(ParserBox::new_local(bytes, self));
+            return Ok(ParserBox::new_local(file, self));
         };
 
         const MAX_LEN_FOR_LOCAL: usize = 100_000;
         let offset = TSPoint::default();
-        let len = bytes.len();
+        let len = file.bytes().len();
 
-        if parser_is_compiled(filetype)? && bytes.len().byte() <= MAX_LEN_FOR_LOCAL {
+        if parser_is_compiled(filetype)? && file.bytes().len().byte() <= MAX_LEN_FOR_LOCAL {
             let lang_parts = lang_parts(filetype)?;
             let form_parts = forms_from_lang_parts(&lang_parts);
 
             let inner =
-                InnerTsParser::new(&mut bytes, 0..len.byte(), offset, lang_parts, form_parts);
+                InnerTsParser::new(file.bytes(), 0..len.byte(), offset, lang_parts, form_parts);
 
-            Ok(ParserBox::new_send(bytes, Self(Some(inner))))
+            Ok(ParserBox::new_send(file, Self(Some(inner))))
         } else {
-            Ok(ParserBox::new_remote(bytes, move |mut bytes| {
+            Ok(ParserBox::new_remote(file, move |bytes| {
                 let lang_parts = lang_parts(filetype)?;
                 let form_parts = forms_from_lang_parts(&lang_parts);
 
                 Ok(Self(Some(InnerTsParser::new(
-                    &mut bytes,
+                    bytes,
                     0..len.byte(),
                     offset,
                     lang_parts,
@@ -288,7 +282,7 @@ struct InnerTsParser {
 
 impl InnerTsParser {
     fn new(
-        bytes: &mut RefBytes,
+        bytes: &Bytes,
         range: Range<usize>,
         offset: TSPoint,
         lang_parts: LangParts<'static>,
@@ -316,18 +310,13 @@ impl InnerTsParser {
         }
     }
 
-    fn highlight_and_inject(
-        &mut self,
-        bytes: &mut RefBytes,
-        tags: &mut MutTags,
-        range: Range<usize>,
-    ) {
+    fn highlight_and_inject(&mut self, bytes: &Bytes, tags: &mut Tags, range: Range<usize>) {
         if range.start >= self.range.end || range.end <= self.range.start {
             return;
         }
 
         let (.., Queries { highlights: highlight, injections, .. }) = &self.lang_parts;
-        let buf = TsBuf(&*bytes);
+        let buf = TsBuf(bytes);
 
         tags.remove(self.tagger, range.clone());
 
@@ -437,7 +426,7 @@ impl InnerTsParser {
         // We highlight at the very end, so if, for example, a sub tree gets
         // removed, tags can be readded, without leaving a blank space, in
         // case the injection was of the same language.
-        let buf = TsBuf(&*bytes);
+        let buf = TsBuf(bytes);
         cursor.set_byte_range(start..end);
         let mut hi_captures = cursor.captures(highlight, root, buf);
         while let Some((qm, _)) = hi_captures.next() {
@@ -468,7 +457,7 @@ impl InnerTsParser {
             self.range.end = (self.range.end as i32 + change.shift()[0]) as usize;
             self.offset = deoffset(self.offset, ts_taken_end);
             self.offset = reoffset(self.offset, ts_added_end);
-        } else if taken.byte() < self.range.end {
+        } else if taken.byte() <= self.range.end {
             let edit = input_edit(change, bytes, self.offset, self.range.start);
             self.tree.edit(&edit);
             self.range.end = (self.range.end as i32 + change.shift()[0]) as usize;
@@ -512,7 +501,7 @@ impl InnerTsParser {
         }
     }
 
-    fn apply_changes(&mut self, bytes: &mut RefBytes, moment: Moment) {
+    fn apply_changes(&mut self, bytes: &Bytes, moment: Moment) {
         fn changes_b_shift(changes: &[Change<&str>]) -> i32 {
             changes
                 .iter()
@@ -539,7 +528,7 @@ impl InnerTsParser {
                 } else {
                     st.range.end
                 };
-                end <= start.byte()
+                end < start.byte()
             }) {
                 if i == sh_from {
                     st.shift_tree(shift);
@@ -634,7 +623,6 @@ impl InnerTsParser {
         }
 
         let [start, _] = bytes.points_of_line(p.line());
-
         let (root, indents) = smallest_around(self, start.byte());
 
         // The query could be empty.
@@ -687,7 +675,7 @@ impl InnerTsParser {
 
         // The first non indent character of this line.
         let indented_start = bytes
-            .chars_fwd(start)
+            .chars_fwd(start..)
             .take_while(|(p, _)| p.line() == start.line())
             .find_map(|(p, c)| (!c.is_whitespace()).then_some(p));
 
@@ -728,7 +716,13 @@ impl InnerTsParser {
             return Some(0);
         }
 
-        let mut indent = 0;
+        let tab = cfg.tab_stops.size() as i32;
+        let mut indent = if root.start_byte() != 0 {
+            bytes.indent(bytes.point_at(root.start_byte()), cfg) as i32
+        } else {
+            0
+        };
+
         let mut processed_lines = Vec::new();
         while let Some(node) = opt_node {
             // If a node is not an indent and is marked as auto or ignore, act
@@ -754,7 +748,7 @@ impl InnerTsParser {
                 && ((s_line == p.line() && q(&caps, node, &["branch"]))
                     || (s_line != p.line() && q(&caps, node, &["dedent"])))
             {
-                indent -= 1;
+                indent -= tab;
                 is_processed = true;
             }
 
@@ -767,7 +761,7 @@ impl InnerTsParser {
                 && (s_line != p.line() || q(&caps, node, &["begin", "start_at_same_line"]))
             {
                 is_processed = true;
-                indent += 1;
+                indent += tab;
             }
 
             if is_in_err && !q(&caps, node, &["align"]) {
@@ -824,11 +818,11 @@ impl InnerTsParser {
                     // If the previous line was marked with an open_delimiter, treat it
                     // like an indent.
                     let indent_is_absolute = if o_is_last_in_line && should_process {
-                        indent += 1;
+                        indent += tab;
                         // If the aligned node ended before the current line, its @align
                         // shouldn't affect it.
                         if c_is_last_in_line && c_s_line.is_some_and(|l| l < p.line()) {
-                            indent = (indent - 1).max(0);
+                            indent = (indent - tab).max(0);
                         }
                         false
                     // Aligned indent
@@ -838,7 +832,7 @@ impl InnerTsParser {
                         // shouldn't affect it.
                         && (o_s_line != c_s_line && c_s_line < p.line())
                     {
-                        indent = (indent - 1).max(0);
+                        indent = (indent - tab).max(0);
                         false
                     } else {
                         let inc = props.get("increment").cloned().flatten();
@@ -853,7 +847,7 @@ impl InnerTsParser {
                         .is_some_and(|c_s_line| c_s_line != o_s_line && c_s_line == p.line())
                         && props.contains_key("avoid_last_matching_next");
                     if avoid_last_matching_next {
-                        indent += 1;
+                        indent += tab;
                     }
                     is_processed = true;
                     if indent_is_absolute {
@@ -868,8 +862,8 @@ impl InnerTsParser {
             opt_node = node.parent();
         }
 
-		// indent < 0 means "keep level of indentation"
-        (indent >= 0).then(|| indent as usize * cfg.tab_stops.size() as usize)
+        // indent < 0 means "keep level of indentation"
+        (indent >= 0).then_some(indent as usize)
     }
 }
 
