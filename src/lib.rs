@@ -3,7 +3,7 @@
 //! This [`Plugin`] is included by default, as it is considered a core
 //! utility of duat. It adds the two following traits:
 //!
-//! - [`FileType`](FileType): This trait grants the [`filetype`]
+//! - [`FileType`]: This trait grants the [`filetype`]
 //!   method, which lets you access the filetype directly. Its
 //!   implementors are the [`File`] widget, [`String`] and [`&str`]
 //!   and [`PathBuf`] and [`Path`].

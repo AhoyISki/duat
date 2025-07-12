@@ -42,9 +42,9 @@ fn is_toml(file_name: &str) -> bool {
 ```
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG2pGQum9LFWDG2ttHAKL9mlbG6iPx1QRI8g0G8xp_wellraxYWSCg21kdWF0LWZpbGV0eXBlZTAuMi4wbWR1YXRfZmlsZXR5cGWCaWR1YXRfY29yZWUwLjUuMw
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG38FhNNxxfr8G55676Eil2sdG3xkgw7fJGnlG3q7PZxNl1ykYWSCg21kdWF0LWZpbGV0eXBlZTAuMi4wbWR1YXRfZmlsZXR5cGWCaWR1YXRfY29yZWUwLjUuMw
  [__link0]: https://docs.rs/duat_core/0.5.3/duat_core/?search=prelude::Plugin
- [__link1]: https://docs.rs/duat-filetype/0.2.0/duat_filetype/trait.FileType.html
+ [__link1]: https://docs.rs/duat-filetype/0.2.0/duat_filetype/?search=FileType::filetype
  [__link10]: https://docs.rs/duat_core/0.5.3/duat_core/?search=prelude::Pass
  [__link11]: https://docs.rs/duat_core/0.5.3/duat_core/?search=prelude::Handle::read
  [__link12]: https://docs.rs/duat_core/0.5.3/duat_core/?search=prelude::Handle
