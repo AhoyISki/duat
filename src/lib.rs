@@ -942,6 +942,15 @@ impl<U: Ui> Mode<U> for Normal {
                     copy_selections(pa, &handle);
                 }
                 handle.edit_all(pa, |mut c| {
+                    let prev_char = c.chars_rev().next();
+                    if c.range()[1] == c.len()
+                        && c.selection() == "\n"
+                        && let Some((_, '\n')) = prev_char
+                    {
+                        c.set_anchor();
+                        c.move_hor(-1);
+                    }
+
                     c.replace("");
                     c.unset_anchor();
                 });
@@ -952,6 +961,16 @@ impl<U: Ui> Mode<U> for Normal {
                     copy_selections(pa, &handle);
                 }
                 handle.edit_all(pa, |mut c| {
+                    let prev_char = c.chars_rev().next();
+                    if c.range()[1] == c.len()
+                        && c.selection() == "\n"
+                        && let Some((_, '\n')) = prev_char
+                    {
+                        context::debug!("{:#?}", c.range());
+                        c.set_anchor();
+                        c.move_hor(-1);
+                    }
+
                     c.replace("");
                     c.unset_anchor();
                 });
