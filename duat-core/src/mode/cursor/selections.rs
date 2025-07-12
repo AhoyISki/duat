@@ -282,6 +282,8 @@ impl Selections {
             self.shift_state.set((new_shift_from, shift));
         }
 
+        crate::context::debug!("shift state set to {self:#?}");
+
         ([c_range.start, cursors_taken], last_cursor_overhangs)
     }
 
@@ -715,6 +717,9 @@ mod cursor {
         /// The ending [`Point`] of this [`Selection`]
         pub fn end(&self, bytes: &Bytes) -> Point {
             let raw = self.end_excl();
+            if raw == bytes.len() {
+                panic!("equals len: {raw:?}");
+            }
             raw.fwd(bytes.char_at(raw).unwrap())
         }
 

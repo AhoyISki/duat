@@ -123,18 +123,18 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
             Change::new(edit, [p0, p1], self.widget.text())
         };
 
-        let added_len = change.added_str().len();
-        let end = change.added_end();
+        // Disconsider null changes.
+        if change.added_str().len() < 10 && change.added_str() == change.taken_str() {
+            return;
+        }
+
+        let (start, end) = (change.start(), change.added_end());
 
         self.edit(change);
 
-        let caret_was_on_start = self.set_caret_on_end();
-
-        self.move_to(end);
-        if added_len > 0 {
-            self.move_hor(-1);
-        }
-        if caret_was_on_start {
+        let anchor_was_on_start = self.anchor_is_start();
+        self.move_to(start..end);
+        if !anchor_was_on_start {
             self.set_caret_on_start();
         }
     }
@@ -417,7 +417,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
     ///
     /// This iteration will begin on the `caret`. It will also include
     /// the [`Point`] of each `char`
-    pub fn chars_rev(&self) -> impl Iterator<Item = (Point, char)> + '_ {
+    pub fn chars_rev(&self) -> impl Iterator<Item = (Point, char)> {
         self.widget.text().chars_rev(..self.caret())
     }
 
@@ -534,12 +534,11 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
         self.text().strs(range)
     }
 
-    /// Shifts the gap within the [`GapBuffer`] in order to return a
-    /// contiguous `&str`
+    /// Returns the [`Strs`] for the given [`TextRange`]
     ///
     /// [`GapBuffer`]: gapbuf::GapBuffer
-    pub fn contiguous_in(&mut self, range: impl TextRange) -> &str {
-        self.widget.text_mut().contiguous(range)
+    pub fn strs(&self, range: impl TextRange) -> Strs<'_> {
+        self.widget.text().strs(range)
     }
 
     /// Returns the length of the [`Text`], in [`Point`]
@@ -682,7 +681,7 @@ impl<W: Widget<A::Ui> + ?Sized, A: RawArea> Cursor<'_, W, A, Searcher> {
     pub fn matches_inc(&mut self) -> bool {
         let range = self.selection.range(self.widget.text());
         self.inc_searcher
-            .matches(self.widget.text_mut().contiguous(range))
+            .matches(self.widget.text().strs(range).to_string().as_str())
     }
 }
 
@@ -795,7 +794,9 @@ impl PointOrPoints for Range<Point> {
         if self.start < self.end {
             cursor.set_anchor();
             cursor.selection.move_to(self.end, cursor.widget.text());
-            cursor.move_hor(-1);
+            if self.end < cursor.widget.text().len() {
+                cursor.move_hor(-1);
+            }
         }
     }
 }

@@ -450,17 +450,18 @@ impl Text {
     }
 
     /// Inserts a [`Text`] into this [`Text`], in a specific [`Point`]
-    pub fn insert_text(&mut self, p: Point, mut text: Text) {
+    pub fn insert_text(&mut self, p: Point, text: Text) {
         let insert = if p.byte() == 1 && self.0.bytes == "\n" {
             let change = Change::new(
-                text.0.bytes.contiguous(..).unwrap(),
+                text.0.bytes.strs(..).to_string(),
                 [Point::default(), p],
                 self,
             );
             self.apply_change_inner(0, change.as_ref());
             Point::default()
         } else {
-            let change = Change::str_insert(text.0.bytes.contiguous(..).unwrap(), p);
+            let added_str = text.0.bytes.strs(..).to_string();
+            let change = Change::str_insert(&added_str, p);
             self.apply_change_inner(0, change);
             p
         };
@@ -763,34 +764,6 @@ impl Text {
 
     pub(crate) fn history(&self) -> Option<&History> {
         self.0.history.as_ref()
-    }
-
-    ////////// One str functions
-
-    /// Gets a single [`&str`] from a given [range]
-    ///
-    /// This is the equivalent of calling
-    /// [`Bytes::make_contiguous`] and [`Bytes::get_contiguous`].
-    /// While this takes less space in code, calling the other two
-    /// functions means that you won't be mutably borrowing the
-    /// [`Bytes`] anymore, so if that matters to you, you should do
-    /// that.
-    ///
-    /// [`&str`]: str
-    /// [range]: TextRange
-    pub fn contiguous(&mut self, range: impl TextRange) -> &str {
-        self.make_contiguous(range.clone());
-        self.get_contiguous(range).unwrap()
-    }
-
-    /// Moves the [`GapBuffer`]'s gap, so that the `range` is whole
-    ///
-    /// The return value is the value of the gap, if the second `&str`
-    /// is the contiguous one.
-    ///
-    /// [`GapBuffer`]: gapbuf::GapBuffer
-    pub fn make_contiguous(&mut self, range: impl TextRange) {
-        self.0.bytes.make_contiguous(range);
     }
 }
 

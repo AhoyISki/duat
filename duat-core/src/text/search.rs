@@ -79,16 +79,12 @@ impl Text {
         let range = range.to_range(self.len().byte());
         let dfas = dfas_from_pat(pat)?;
 
-        let haystack = {
-            let arr = self.bytes().strs(range).to_array();
-            SearchBytes(arr.map(|str| str.as_bytes()), 0)
-        };
-
-        let mut fwd_input = Input::new(haystack);
+        let (mut fwd_input, _) = get_inputs(self, range.clone());
+        fwd_input.anchored(Anchored::Yes);
 
         let mut fwd_cache = dfas.fwd.1.write().unwrap();
-        if let Ok(Some(_)) = try_search_fwd(&dfas.fwd.0, &mut fwd_cache, &mut fwd_input) {
-            Ok(true)
+        if let Ok(Some(hm)) = try_search_fwd(&dfas.fwd.0, &mut fwd_cache, &mut fwd_input) {
+            Ok(hm.offset() == range.end)
         } else {
             Ok(false)
         }
@@ -115,13 +111,7 @@ impl Bytes {
         let range = range.to_range(self.len().byte());
         let dfas = dfas_from_pat(pat)?;
 
-        let haystack = {
-            let arr = self.strs(range).to_array();
-            SearchBytes(arr.map(|str| str.as_bytes()), 0)
-        };
-
-        let mut fwd_input = Input::new(haystack);
-        let mut rev_input = Input::new(haystack);
+        let (mut fwd_input, mut rev_input) = get_inputs(self, range);
         rev_input.anchored(Anchored::Yes);
 
         let mut fwd_cache = dfas.fwd.1.write().unwrap();
@@ -146,7 +136,7 @@ impl Bytes {
             fwd_input.set_start(end);
             rev_input.set_end(end);
 
-            let Ok(Some(half)) = try_search_rev(&dfas.fwd.0, &mut rev_cache, &mut rev_input) else {
+            let Ok(Some(half)) = try_search_rev(&dfas.rev.0, &mut rev_cache, &mut rev_input) else {
                 return None;
             };
             let start = half.offset();
@@ -177,14 +167,8 @@ impl Bytes {
         let range = range.to_range(self.len().byte());
         let dfas = dfas_from_pat(pat)?;
 
-        let haystack = {
-            let arr = self.strs(range.clone()).to_array();
-            SearchBytes(arr.map(|str| str.as_bytes()), 1)
-        };
-
-        let mut fwd_input = Input::new(haystack);
+        let (mut fwd_input, mut rev_input) = get_inputs(self, range);
         fwd_input.anchored(Anchored::Yes);
-        let mut rev_input = Input::new(haystack);
 
         let mut fwd_cache = dfas.fwd.1.write().unwrap();
         let mut rev_cache = dfas.rev.1.write().unwrap();
@@ -225,22 +209,19 @@ impl Bytes {
     /// This is unanchored by default, if you want an anchored search,
     /// use the `"^$"` characters.
     pub fn matches(
-        &mut self,
+        &self,
         pat: impl RegexPattern,
         range: impl TextRange,
     ) -> Result<bool, Box<regex_syntax::Error>> {
         let range = range.to_range(self.len().byte());
         let dfas = dfas_from_pat(pat)?;
 
-        let haystack = {
-            self.make_contiguous(range.clone());
-            self.get_contiguous_bytes(range.clone()).unwrap()
-        };
-        let mut fwd_input = Input::new(haystack);
+        let (mut fwd_input, _) = get_inputs(self, range.clone());
+        fwd_input.anchored(Anchored::Yes);
 
         let mut fwd_cache = dfas.fwd.1.write().unwrap();
-        if let Ok(Some(_)) = try_search_fwd(&dfas.fwd.0, &mut fwd_cache, &mut fwd_input) {
-            Ok(true)
+        if let Ok(Some(hm)) = try_search_fwd(&dfas.fwd.0, &mut fwd_cache, &mut fwd_input) {
+            Ok(hm.offset() == range.end)
         } else {
             Ok(false)
         }
@@ -281,10 +262,10 @@ impl<S: AsRef<str>> Matcheable for S {
         let (start, end) = crate::get_ends(range, str.len());
         let dfas = dfas_from_pat(pat)?;
 
-        let haystack = &str[start..end];
-
-        let mut fwd_input = Input::new(haystack);
-        let mut rev_input = Input::new(haystack);
+        let mut fwd_input = Input::new(str);
+        fwd_input.set_span(start..end);
+        let mut rev_input = Input::new(str);
+        rev_input.set_span(start..end);
         rev_input.anchored(Anchored::Yes);
 
         let mut fwd_cache = dfas.fwd.1.write().unwrap();
@@ -327,11 +308,11 @@ impl<S: AsRef<str>> Matcheable for S {
         let (start, end) = crate::get_ends(range, str.len());
         let dfas = dfas_from_pat(pat)?;
 
-        let haystack = &str[start..end];
-
-        let mut fwd_input = Input::new(haystack);
-        let mut rev_input = Input::new(haystack);
-        rev_input.anchored(Anchored::Yes);
+        let mut fwd_input = Input::new(str);
+        fwd_input.set_span(start..end);
+        fwd_input.anchored(Anchored::Yes);
+        let mut rev_input = Input::new(str);
+        rev_input.set_span(start..end);
 
         let mut fwd_cache = dfas.fwd.1.write().unwrap();
         let mut rev_cache = dfas.rev.1.write().unwrap();
@@ -372,11 +353,14 @@ impl<S: AsRef<str>> Matcheable for S {
         let str = self.as_ref();
         let (start, end) = crate::get_ends(range, str.len());
         let dfas = dfas_from_pat(pat)?;
-        let mut fwd_input = Input::new(&str[start..end]);
+
+        let mut fwd_input = Input::new(str);
+        fwd_input.set_span(start..end);
+        fwd_input.anchored(Anchored::Yes);
 
         let mut fwd_cache = dfas.fwd.1.write().unwrap();
-        if let Ok(Some(_)) = try_search_fwd(&dfas.fwd.0, &mut fwd_cache, &mut fwd_input) {
-            Ok(true)
+        if let Ok(Some(hm)) = try_search_fwd(&dfas.fwd.0, &mut fwd_cache, &mut fwd_input) {
+            Ok(hm.offset() == end)
         } else {
             Ok(false)
         }
@@ -419,15 +403,7 @@ impl Searcher {
         let range = range.to_range(bytes.len().byte());
         let mut last_point = bytes.point_at(range.start);
 
-        let haystack = {
-            let arr = bytes.strs(range).to_array().map(|str| str.as_bytes());
-            SearchBytes(arr, 0)
-        };
-        let mut fwd_input = Input::new(haystack);
-        fwd_input.anchored(Anchored::No);
-        let mut rev_input = Input::new(haystack);
-        rev_input.anchored(Anchored::Yes);
-
+        let (mut fwd_input, mut rev_input) = get_inputs(bytes, range);
         let fwd_dfa = &self.fwd_dfa;
         let rev_dfa = &self.rev_dfa;
         let fwd_cache = &mut self.fwd_cache;
@@ -542,16 +518,17 @@ impl Searcher {
     }
 
     /// Whether or not the regex matches a specific pattern
-    pub fn matches(&mut self, query: impl AsRef<[u8]>) -> bool {
-        let bytes = query.as_ref();
-        let mut input = Input::new(bytes);
+    pub fn matches(&mut self, cursor: impl Cursor) -> bool {
+        let total_bytes = cursor.total_bytes();
+
+        let mut input = Input::new(cursor);
         input.anchored(Anchored::Yes);
 
         let Ok(Some(half)) = try_search_fwd(self.fwd_dfa, &mut self.fwd_cache, &mut input) else {
             return false;
         };
 
-        half.offset() == query.as_ref().len()
+        total_bytes.is_some_and(|len| len == half.offset())
     }
 
     /// Whether or not there even is a pattern to search for
@@ -778,4 +755,16 @@ impl Cursor for SearchBytes<'_> {
             _ => 0,
         }
     }
+}
+
+fn get_inputs(
+    bytes: &Bytes,
+    range: std::ops::Range<usize>,
+) -> (Input<SearchBytes<'_>>, Input<SearchBytes<'_>>) {
+    let haystack = SearchBytes(bytes.buffers(..).to_array(), 0);
+    let mut fwd_input = Input::new(haystack);
+    fwd_input.set_span(range.clone());
+    let mut rev_input = Input::new(haystack);
+    rev_input.set_span(range.clone());
+    (fwd_input, rev_input)
 }

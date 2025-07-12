@@ -502,62 +502,6 @@ impl Bytes {
 
     ////////// One str functions
 
-    /// Gets a single [`&str`] from a given [range]
-    ///
-    /// This is the equivalent of calling
-    /// [`Bytes::make_contiguous`] and [`Bytes::get_contiguous`].
-    /// While this takes less space in code, calling the other two
-    /// functions means that you won't be mutably borrowing the
-    /// [`Bytes`] anymore, so if that matters to you, you should do
-    /// that.
-    ///
-    /// Will return [`None`] if the range doesn't coincide with
-    /// character boundaries.
-    ///
-    /// [`&str`]: str
-    /// [range]: TextRange
-    pub fn contiguous(&mut self, range: impl TextRange) -> Option<&str> {
-        self.make_contiguous(range.clone());
-        self.get_contiguous(range)
-    }
-
-    /// Gets a single `&[u8]` from a given [range]
-    ///
-    /// This is the equivalent of calling
-    /// [`Bytes::make_contiguous`] and
-    /// [`Bytes::get_contiguous_bytes`]. While this takes less
-    /// space in code, calling the other two functions means that
-    /// you won't be mutably borrowing the [`Bytes`] anymore, so
-    /// if that matters to you, you should do that.
-    ///
-    /// Also, because you aren't checking for utf8 character
-    /// boundaries, this function never fails.
-    ///
-    /// [range]: TextRange
-    pub fn contiguous_bytes(&mut self, range: impl TextRange) -> &[u8] {
-        self.make_contiguous(range.clone());
-        self.get_contiguous_bytes(range).unwrap()
-    }
-
-    /// Moves the [`GapBuffer`]'s gap, so that the `range` is whole
-    ///
-    /// The return value is the value of the gap, if the second `&str`
-    /// is the contiguous one.
-    pub fn make_contiguous(&mut self, range: impl TextRange) {
-        let range = range.to_range(self.len().byte());
-        let gap = self.buf.gap();
-
-        if range.end <= gap || range.start >= gap {
-            return;
-        }
-
-        if gap.abs_diff(range.start) < gap.abs_diff(range.end) {
-            self.buf.set_gap(range.start);
-        } else {
-            self.buf.set_gap(range.end);
-        }
-    }
-
     /// Tries to get a contiguous [`&str`] from the [`Bytes`]
     ///
     /// Returns [`None`] if the gap of the inner buffer was within the

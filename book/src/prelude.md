@@ -26,7 +26,10 @@ This is importing the `print` module, as opposed to importing its items
 directly:
 
 ```rust
-use duat::print::*;
+fn setup() {
+    form::set("caret.main", Form::new(
+    ));
+}
 ```
 
 This means that, for most options, their path is made up of a 
@@ -43,8 +46,5 @@ fn setup() {
     
     form::set("caret.main", Form::yellow());
     
-    cmd::add!("set-rel-num", |pa, ln: Handles<LineNumbers<Ui>>| {
-    
-    })
 }
 ```
