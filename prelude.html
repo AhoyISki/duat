@@ -196,7 +196,10 @@ of modules, like this:</p>
 directly:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use duat::print::*;
+</span>fn setup() {
+    form::set("caret.main", Form::new(
+    ));
+}
 <span class="boring">}</span></code></pre></pre>
 <p>This means that, for most options, their path is made up of a
 <code>{module}::{function}</code> combo. This means that the usual <code>config</code> crate should
@@ -212,9 +215,6 @@ fn setup() {
     
     form::set("caret.main", Form::yellow());
     
-    cmd::add!("set-rel-num", |pa, ln: Handles&lt;LineNumbers&lt;Ui&gt;&gt;| {
-    
-    })
 }
 <span class="boring">}</span></code></pre></pre>
 
