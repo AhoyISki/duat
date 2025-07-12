@@ -292,30 +292,55 @@ of modules, like this:</p>
 </span>use duat::print;
 <span class="boring">}</span></code></pre></pre>
 <p>This is importing the <code>print</code> module, as opposed to importing its items
-directly:</p>
+directly, like this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>fn setup() {
-    form::set("caret.main", Form::new(
-    ));
-}
+</span>use duat::print::*;
 <span class="boring">}</span></code></pre></pre>
 <p>This means that, for most options, their path is made up of a
 <code>{module}::{function}</code> combo. This means that the usual <code>config</code> crate should
 look something like this:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
+</span><span class="boring">mod kak {
+</span><span class="boring">    use duat::{prelude::{*, mode::KeyEvent}};
+</span><span class="boring">    #[derive(Clone)]
+</span><span class="boring">    pub struct Insert;
+</span><span class="boring">    impl Mode&lt;Ui&gt; for Insert {
+</span><span class="boring">        type Widget = File;
+</span><span class="boring">        fn send_key(&amp;mut self, _: &amp;mut Pass, _: KeyEvent, _: Handle&lt;File&gt;) {
+</span><span class="boring">            todo!();
+</span><span class="boring">        }
+</span><span class="boring">    }
+</span><span class="boring">    pub struct Kak;
+</span><span class="boring">    impl Kak {
+</span><span class="boring">        pub fn new() -&gt; Self { Self }
+</span><span class="boring">    }
+</span><span class="boring">    impl duat_core::Plugin&lt;Ui&gt; for Kak {
+</span><span class="boring">        fn plug(self) {}
+</span><span class="boring">    }
+</span><span class="boring">}
 </span>setup_duat!(setup);
 use duat::print::*;
 
 fn setup() {
+    plug!(Kak::new());
+    
     print::wrap_on_cap(150);
     print::trailing_new_line('󱁐');
     
     form::set("caret.main", Form::yellow());
     
+    cmd::add!("set-rel-lines", |pa, ln: Handles&lt;LineNumbers&lt;Ui&gt;&gt;| {
+        ln.on_flags(pa, |pa, handle| {
+            handle.write(pa, |ln, _| ln.options = ln.options.rel_abs());
+        });
+    });
+    
+    map::&lt;Insert&gt;("jk", "&lt;Esc&gt;:w&lt;Enter&gt;");
 }
 <span class="boring">}</span></code></pre></pre>
+<p>The exceptions to this are the <code>map</code> and <code>alias</code> functions, as well as the <code>plug!</code> and <code>setup_duat!</code> macros. These items are imported directly.</p>
 <h1 id="print-how-duat-prints-files"><a class="header" href="#print-how-duat-prints-files">print: How duat prints files</a></h1>
 
                     </main>
