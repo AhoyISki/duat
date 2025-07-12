@@ -696,8 +696,9 @@ impl InnerTsParser {
         } else {
             // Find last previous empty line.
             let mut lines = bytes.lines(..start).rev();
-            let Some((prev_l, line)) =
-                lines.find(|(_, line)| !(line.reg_matches(r"^\s*$", ..).unwrap()))
+            let Some((prev_l, line)) = lines
+                .find(|(_, line)| !(line.reg_matches(r"^\s*$", ..).unwrap()))
+                .filter(|(l, _)| *l >= line_off)
             else {
                 // If there is no previous non empty line, align to 0.
                 return Some(0);
@@ -889,6 +890,7 @@ impl std::fmt::Debug for InnerTsParser {
     }
 }
 
+#[track_caller]
 fn descendant_in(node: Node, byte: usize, offset: usize) -> Node {
     node.descendant_for_byte_range(byte - offset, byte + 1 - offset)
         .unwrap()
