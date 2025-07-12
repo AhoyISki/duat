@@ -313,7 +313,7 @@ impl<U: Ui> InnerParsers<U> {
     pub(super) fn update_range(&self, pa: &mut Pass, text: &mut Text, within: Range<Point>) {
         fn update<U: Ui>(
             text: &mut Text,
-            reader: &mut dyn Parser<U>,
+            parser: &mut dyn Parser<U>,
             ranges: &mut Ranges,
             parsers: &mut [ParserBox<U>],
             within: Range<Point>,
@@ -322,7 +322,7 @@ impl<U: Ui> InnerParsers<U> {
 
             if to_remove.len() == 0 {
                 let parts = FileParts::new(text, Parsers(parsers), within);
-                reader.update_range(parts, None);
+                parser.update_range(parts, None);
                 drop(to_remove);
             } else {
                 for range in to_remove {
@@ -330,7 +330,7 @@ impl<U: Ui> InnerParsers<U> {
                     let start = parts.bytes.point_at(range.start);
                     let end = parts.bytes.point_at(range.end);
 
-                    reader.update_range(parts, Some(start..end));
+                    parser.update_range(parts, Some(start..end));
                 }
             }
         }

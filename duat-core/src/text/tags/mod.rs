@@ -1,10 +1,10 @@
 //! Internal struct for holding [`Tag`]s
 //!
 //! [`Tag`]s are held internally as [`RawTag`]s, which occupy much
-//! less space and can be very cheaply copied around. The [`InnerTags`]
-//! struct also makes use of [`Records`] to keep track of positions,
-//! as well as [`TagRange`]s to keep track of tags occupying very long
-//! ranges of [`Text`].
+//! less space and can be very cheaply copied around. The
+//! [`InnerTags`] struct also makes use of [`Records`] to keep track
+//! of positions, as well as [`TagRange`]s to keep track of tags
+//! occupying very long ranges of [`Text`].
 mod bounds;
 mod taggers;
 mod types;
@@ -352,6 +352,7 @@ impl InnerTags {
 
     fn remove_from_range(&mut self, taggers: &impl Taggers, range: Range<usize>) {
         let (start, end) = (range.start, range.end);
+
         // It is best to do this first, so getting skips returns correct
         // entries.
         self.remove_intersections(start..end, |tag| {

@@ -23,13 +23,10 @@ use duat::print;
 ```
 
 This is importing the `print` module, as opposed to importing its items 
-directly:
+directly, like this:
 
 ```rust
-fn setup() {
-    form::set("caret.main", Form::new(
-    ));
-}
+use duat::print::*;
 ```
 
 This means that, for most options, their path is made up of a 
@@ -37,14 +34,43 @@ This means that, for most options, their path is made up of a
 look something like this:
 
 ```rust
+# mod kak {
+#     use duat::{prelude::{*, mode::KeyEvent}};
+#     #[derive(Clone)]
+#     pub struct Insert;
+#     impl Mode<Ui> for Insert {
+#         type Widget = File;
+#         fn send_key(&mut self, _: &mut Pass, _: KeyEvent, _: Handle<File>) {
+#             todo!();
+#         }
+#     }
+#     pub struct Kak;
+#     impl Kak {
+#         pub fn new() -> Self { Self }
+#     }
+#     impl duat_core::Plugin<Ui> for Kak {
+#         fn plug(self) {}
+#     }
+# }
 setup_duat!(setup);
 use duat::print::*;
 
 fn setup() {
+    plug!(Kak::new());
+    
     print::wrap_on_cap(150);
     print::trailing_new_line('󱁐');
     
     form::set("caret.main", Form::yellow());
     
+    cmd::add!("set-rel-lines", |pa, ln: Handles<LineNumbers<Ui>>| {
+        ln.on_flags(pa, |pa, handle| {
+            handle.write(pa, |ln, _| ln.options = ln.options.rel_abs());
+        });
+    });
+    
+    map::<Insert>("jk", "<Esc>:w<Enter>");
 }
 ```
+
+The exceptions to this are the `map` and `alias` functions, as well as the `plug!` and `setup_duat!` macros. These items are imported directly.

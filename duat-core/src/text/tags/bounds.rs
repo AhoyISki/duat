@@ -108,11 +108,11 @@ impl Bounds {
             let [unshifted_n, _] = first_unshifted.get();
             // cur_n is the first bound that has not been shifted, so we need to
             // take that into consideration.
-            if from < sh(unshifted_n, total_n_diff) {
+            if from <= sh(unshifted_n, total_n_diff) {
                 let mut iter = self.list[..shift_from].iter().rev();
                 while let Some((bound, ..)) = iter.next()
                     && let [n, b] = bound.get()
-                    && n > from
+                    && n >= from
                 {
                     bound.set([sh(n, n_diff), sh(b, b_diff)]);
                     ins -= 1;
@@ -123,7 +123,7 @@ impl Bounds {
                 // that.
                 while let Some((bound, ..)) = iter.next()
                     && let [n, b] = bound.get()
-                    && sh(n, total_n_diff) <= from
+                    && sh(n, total_n_diff) < from
                 {
                     bound.set([sh(n, total_n_diff), sh(b, total_b_diff)]);
                     ins += 1;
