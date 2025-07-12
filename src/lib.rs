@@ -95,13 +95,13 @@ impl<U: Ui> Parser<U> for MatchPairs {
         let within = parts.suggested_max_range;
 
         'selections: for (_, selection, is_main) in parts.selections.iter_within(within) {
-            let range = selection.range(&parts.bytes);
-            let str = parts.bytes.contiguous_bytes(range.clone());
+            let range = selection.range(parts.bytes);
+            let str: Vec<u8> = parts.bytes.buffers(range.clone()).collect();
 
             // TODO: Support multi-character pairs
-            let (delims, escaped) = if let Some(i) = self.ts_and_bytes.iter().position(ends(str)) {
+            let (delims, escaped) = if let Some(i) = self.ts_and_bytes.iter().position(ends(&str)) {
                 (self.ts_and_bytes[i], Some(self.escaped[i]))
-            } else if let Some(i) = self.ts_only.iter().position(ends(str)) {
+            } else if let Some(i) = self.ts_only.iter().position(ends(&str)) {
                 (self.ts_only[i], None)
             } else {
                 continue;
@@ -189,8 +189,8 @@ impl<U: Ui> Parser<U> for MatchPairs {
 impl<U: Ui> ParserCfg<U> for MatchPairs {
     type Parser = Self;
 
-    fn init(mut self, bytes: RefBytes, path: PathKind) -> Result<ParserBox<U>, Text> {
-        if let Some(path) = path.path_set()
+    fn init(mut self, file: &File<U>) -> Result<ParserBox<U>, Text> {
+        if let Some(path) = file.path_set()
             && let Some(path) = path.filetype()
         {
             self.ts_only = match path {
@@ -199,7 +199,7 @@ impl<U: Ui> ParserCfg<U> for MatchPairs {
             }
         };
 
-        Ok(ParserBox::new_local(bytes, self))
+        Ok(ParserBox::new_local(file, self))
     }
 }
 
