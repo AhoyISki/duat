@@ -177,7 +177,7 @@
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>setup_duat!(setup);
-use duat::print::*;
+use duat::prelude::*;
 
 fn setup() {
     print::no_wrapping();
@@ -212,7 +212,22 @@ default;</li>
 that are preceeded by spaces. Is not set by default;</li>
 </ul>
 <h2 id="printword_chars"><a class="header" href="#printword_chars"><code>print::word_chars!</code></a></h2>
-<p><code>print::word_chars!</code> is a macro that determines which characters should be part of a word. This is used by <code>wrap_on_words</code> and tends to also be used to modify text (in the <code>&lt;Ctrl-Backspace&gt;</code> key in most editors, for example)</p>
+<p><code>print::word_chars!</code> is a macro that determines which characters should be part
+of a word. This is used by <code>wrap_on_words</code> and tends to also be used to modify
+text (in the <code>&lt;Ctrl-Backspace&gt;</code> key in most editors, for example).</p>
+<p>This macro is evaluated at compile time, so you don't have to worry about it
+being correct or not, and the syntax is the same as in regex, like this:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>setup_duat!(setup);
+use duat::prelude::*;
+
+fn setup() {
+    print::word_chars!("A-Za-z0-9---_-_");
+}
+<span class="boring">}</span></code></pre></pre>
+<p>In this case, every sequence of lowercase and capital letters, numbers, dashes
+and underscores would be considered part of a word.</p>
 
                     </main>
 
@@ -222,7 +237,7 @@ that are preceeded by spaces. Is not set by default;</li>
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="scripting-duat.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="form-module.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -236,7 +251,7 @@ that are preceeded by spaces. Is not set by default;</li>
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="scripting-duat.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="form-module.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
