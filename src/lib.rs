@@ -172,7 +172,6 @@ impl<U: Ui> file::Parser<U> for TsParser {
         fn merge_tree_changed_ranges(parser: &InnerTsParser, list: &mut Ranges) {
             if let Some(old_tree) = parser.old_tree.as_ref() {
                 for range in parser.tree.changed_ranges(old_tree) {
-                    context::info!("{:?}, {:?}", range.start_point, range.end_point);
                     let range = range.start_byte..range.end_byte;
                     list.add(range);
                 }
@@ -203,7 +202,6 @@ impl<U: Ui> file::Parser<U> for TsParser {
                     .point_at_line((added.line() + 1).min(snap.bytes.len().line()));
                 ranges.add(start.byte()..end.byte());
             }
-            context::info!("ranges after additions:\n{ranges:#?}");
         }
     }
 
@@ -315,7 +313,6 @@ impl InnerTsParser {
         if range.start >= self.range.end || range.end <= self.range.start {
             return;
         }
-        context::debug!("affected range: {range:?}, {}", self.lang_parts.0);
 
         let (.., Queries { highlights, injections, .. }) = &self.lang_parts;
         let buf = TsBuf(bytes);
