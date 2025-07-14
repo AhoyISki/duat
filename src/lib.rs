@@ -172,6 +172,7 @@ impl<U: Ui> file::Parser<U> for TsParser {
         fn merge_tree_changed_ranges(parser: &InnerTsParser, list: &mut Ranges) {
             if let Some(old_tree) = parser.old_tree.as_ref() {
                 for range in parser.tree.changed_ranges(old_tree) {
+                    context::info!("{:?}, {:?}", range.start_point, range.end_point);
                     let range = range.start_byte..range.end_byte;
                     list.add(range);
                 }
@@ -202,6 +203,7 @@ impl<U: Ui> file::Parser<U> for TsParser {
                     .point_at_line((added.line() + 1).min(snap.bytes.len().line()));
                 ranges.add(start.byte()..end.byte());
             }
+            context::info!("ranges after additions:\n{ranges:#?}");
         }
     }
 
@@ -313,19 +315,20 @@ impl InnerTsParser {
         if range.start >= self.range.end || range.end <= self.range.start {
             return;
         }
+        context::debug!("affected range: {range:?}, {}", self.lang_parts.0);
 
-        let (.., Queries { highlights: highlight, injections, .. }) = &self.lang_parts;
+        let (.., Queries { highlights, injections, .. }) = &self.lang_parts;
         let buf = TsBuf(bytes);
 
-        tags.remove(self.tagger, range.clone());
-
+        tags.remove(self.tagger, (range.start + 1).min(range.end)..range.end);
         // Include a little bit of overhang, in order to deal with some loose
         // ends, mostly related to comments.
         // There should be no tag duplication, since Duat does not allow that.
         let start = range.start.saturating_sub(1).max(self.range.start);
         let end = (range.end + 1).min(bytes.len().byte()).min(self.range.end);
+
         let mut cursor = QueryCursor::new();
-        cursor.set_byte_range(start..end);
+        cursor.set_byte_range(range.clone());
         let root = self
             .tree
             .root_node_with_offset(self.range.start, self.offset);
@@ -382,18 +385,32 @@ impl InnerTsParser {
             to_add
         };
 
+        let buf = TsBuf(bytes);
+        cursor.set_byte_range(start..end);
+        let mut hi_captures = cursor.captures(highlights, root, buf);
+        while let Some((qm, _)) = hi_captures.next() {
+            for cap in qm.captures.iter() {
+                let range = cap.node.range();
+                let (start, end) = (range.start_byte, range.end_byte);
+                let (form, priority) = self.forms[cap.index as usize];
+                if start != end {
+                    tags.insert(self.tagger, start..end, form.to_tag(priority));
+                }
+            }
+        }
+
         // If a tree was not in sub_trees_to_add, but is part of the affected
         // range, that means it was removed.
         self.sub_trees.retain_mut(|st| {
             if let Some((.., lp)) = sub_trees_to_add.iter().find(|(lhs, ..)| *lhs == st.range) {
-                if lp.0 != st.lang_parts.0 {
+                if lp.0 == st.lang_parts.0 {
+                    st.highlight_and_inject(bytes, tags, st.range.clone());
+                    true
+                } else {
                     if !(st.range.start >= start && st.range.end <= end) {
                         tags.remove(self.tagger, st.range.clone());
                     }
                     false
-                } else {
-                    st.highlight_and_inject(bytes, tags, st.range.clone());
-                    true
                 }
             // If the sub tree was not found, but its range was
             // parsed, it was deleted
@@ -420,23 +437,6 @@ impl InnerTsParser {
             let mut st = InnerTsParser::new(bytes, range.clone(), offset, lang_parts, form_parts);
             st.highlight_and_inject(bytes, tags, range);
             self.sub_trees.insert(i, st)
-        }
-
-        // We highlight at the very end, so if, for example, a sub tree gets
-        // removed, tags can be readded, without leaving a blank space, in
-        // case the injection was of the same language.
-        let buf = TsBuf(bytes);
-        cursor.set_byte_range(start..end);
-        let mut hi_captures = cursor.captures(highlight, root, buf);
-        while let Some((qm, _)) = hi_captures.next() {
-            for cap in qm.captures.iter() {
-                let range = cap.node.range();
-                let (start, end) = (range.start_byte, range.end_byte);
-                let (form, priority) = self.forms[cap.index as usize];
-                if start != end {
-                    tags.insert(self.tagger, start..end, form.to_tag(priority));
-                }
-            }
         }
     }
 
@@ -725,7 +725,6 @@ impl InnerTsParser {
         };
 
         if q(&caps, opt_node.unwrap(), &["zero"]) {
-            context::info!("returned Some from zero");
             return Some(0);
         }
 
@@ -1010,8 +1009,8 @@ struct Queries<'a> {
 
 /// The Key for tree-sitter
 fn ts_tagger() -> Tagger {
-    static KEY: LazyLock<Tagger> = Tagger::new_static();
-    *KEY
+    static TAGGER: LazyLock<Tagger> = Tagger::new_static();
+    *TAGGER
 }
 
 fn deoffset(ts_point: TSPoint, offset: TSPoint) -> TSPoint {
