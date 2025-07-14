@@ -268,7 +268,7 @@ use crate::{
 
 mod parameters;
 
-pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
+pub(crate) fn add_session_commands<U: Ui>() {
     add!("alias", |pa,
                    flags: Flags,
                    alias: &str,
@@ -278,7 +278,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         } else {
             crate::cmd::alias(pa, alias, command)
         }
-    })?;
+    });
 
     add!(["quit", "q"], |pa, name: Option<Buffer<U>>| {
         let cur_name = context::fixed_file::<U>(pa)?.read(pa, |file, _| file.name());
@@ -315,7 +315,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             .send(DuatEvent::CloseFile(name.to_string()))
             .unwrap();
         Ok(Some(txt!("Closed [a]{name}").build()))
-    })?;
+    });
 
     add!(["quit!", "q!"], |pa, name: Option<Buffer<U>>| {
         let cur_name = context::fixed_file::<U>(pa)?.read(pa, |file, _| file.name());
@@ -339,7 +339,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             .send(DuatEvent::CloseFile(name.to_string()))
             .unwrap();
         Ok(Some(txt!("Closed [a]{name}").build()))
-    })?;
+    });
 
     add!(["quit-all", "qa"], |pa| {
         let windows = context::windows::<U>().borrow();
@@ -357,12 +357,12 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         } else {
             Err(txt!("There are [a]{unwritten}[] unsaved files").build())
         }
-    })?;
+    });
 
     add!(["quit-all!", "qa!"], |_pa| {
         sender().send(DuatEvent::Quit).unwrap();
         Ok(None)
-    })?;
+    });
 
     add!(["write", "w"], |pa, path: Option<PossibleFile>| {
         context::fixed_file::<U>(pa)?.write(pa, |file, _| {
@@ -381,7 +381,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
                 None => Ok(Some(txt!("Nothing to be written").build())),
             }
         })
-    })?;
+    });
 
     add!(["write-quit", "wq"], |pa, path: Option<PossibleFile>| {
         let handle = context::fixed_file::<U>(pa)?;
@@ -418,7 +418,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
                 txt!("No changes in [File]{name}[], so just closed it").build(),
             )),
         }
-    })?;
+    });
 
     add!(["write-all", "wa"], |pa| {
         let windows = context::windows::<U>().borrow();
@@ -447,7 +447,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             let plural = if unwritten == 1 { "" } else { "s" };
             Err(txt!("Failed to write to [a]{unwritten}[] file{plural}").build())
         }
-    })?;
+    });
 
     add!(["write-all-quit", "waq"], |pa| {
         let windows = context::windows::<U>().borrow();
@@ -474,7 +474,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             let plural = if unwritten == 1 { "" } else { "s" };
             Err(txt!("Failed to write to [a]{unwritten}[] file{plural}").build())
         }
-    })?;
+    });
 
     add!(["write-all-quit!", "waq!"], |pa| {
         let windows = context::windows::<U>().borrow();
@@ -489,7 +489,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
 
         sender().send(DuatEvent::Quit).unwrap();
         Ok(None)
-    })?;
+    });
 
     add!(["reload"], |_pa, flags: Flags| {
         static IS_UPDATING: AtomicBool = AtomicBool::new(false);
@@ -573,7 +573,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
                 Err(txt!("Failed to start cargo: [a]{err}").build())
             }
         }
-    })?;
+    });
 
     add!(["edit", "e"], |pa, path: PossibleFile| {
         let windows = context::windows::<U>().borrow();
@@ -591,7 +591,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
 
         mode::reset_to_file::<U>(pa, name.clone(), true);
         Ok(Some(txt!("Switched to [a]{name}").build()))
-    })?;
+    });
 
     add!(["open", "o"], |pa, path: PossibleFile| {
         let windows = context::windows::<U>().borrow();
@@ -614,12 +614,12 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             sender().send(DuatEvent::OpenWindow(name.clone())).unwrap();
             Ok(Some(txt!("Moved [a]{name}[] to a new window").build()))
         }
-    })?;
+    });
 
     add!(["buffer", "b"], |pa, name: OtherFileBuffer<U>| {
         mode::reset_to_file::<U>(pa, &name, true);
         Ok(Some(txt!("Switched to [a]{name}").build()))
-    })?;
+    });
 
     add!("next-file", |pa, flags: Flags| {
         let windows = context::windows().borrow();
@@ -644,7 +644,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
 
         mode::reset_to_file::<U>(pa, &name, true);
         Ok(Some(txt!("Switched to [a]{name}").build()))
-    })?;
+    });
 
     add!("prev-file", |pa, flags: Flags| {
         let windows = context::windows().borrow();
@@ -670,7 +670,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
         mode::reset_to_file::<U>(pa, &name, true);
 
         Ok(Some(txt!("Switched to [a]{name}").build()))
-    })?;
+    });
 
     add!("swap", |pa, lhs: Buffer<U>, rhs: Option<Buffer<U>>| {
         let rhs = if let Some(rhs) = rhs {
@@ -683,12 +683,12 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
             .unwrap();
 
         Ok(Some(txt!("Swapped [a]{lhs}[] and [a]{rhs}").build()))
-    })?;
+    });
 
     add!("colorscheme", |_pa, scheme: ColorSchemeArg| {
         crate::form::set_colorscheme(scheme);
         Ok(Some(txt!("Set colorscheme to [a]{scheme}[]").build()))
-    })?;
+    });
 
     add!(
         "set-form",
@@ -701,9 +701,7 @@ pub(crate) fn add_session_commands<U: Ui>() -> Result<(), Text> {
 
             Ok(Some(txt!("Set [a]{name}[] to a new Form").build()))
         }
-    )?;
-
-    Ok(())
+    );
 }
 
 mod global {
@@ -1014,7 +1012,7 @@ mod global {
     ///
     /// [`cmd::add`]: add
     #[doc(hidden)]
-    pub fn add_inner(callers: Vec<String>, cmd: CmdFn, check_args: CheckerFn) -> Result<(), Text> {
+    pub fn add_inner(callers: Vec<String>, cmd: CmdFn, check_args: CheckerFn) {
         // SAFETY: There is no way to obtain an external RwData of Commands,
         // so you can modify it from anywhere in the main thread.
         let mut pa = unsafe { Pass::new() };
@@ -1099,24 +1097,10 @@ impl Commands {
     }
 
     /// Adds a command to the list of commands
-    fn add(
-        &self,
-        pa: &mut Pass,
-        callers: Vec<String>,
-        cmd: CmdFn,
-        check_args: CheckerFn,
-    ) -> Result<(), Text> {
+    fn add(&self, pa: &mut Pass, callers: Vec<String>, cmd: CmdFn, check_args: CheckerFn) {
         let cmd = Command::new(callers, cmd, check_args);
-        self.0.write(pa, |c| c.try_add(cmd))
+        self.0.write(pa, |c| c.add(cmd))
     }
-
-    // fn add_for<W: Widget<U>, U: Ui>(
-    //     &self,
-    //     callers: Vec<String>,
-    //     mut cmd: impl FnMut(&mut W, &U::Area, Args) -> CmdResult +
-    // 'static,     check_args: CheckerFn,
-    // ) -> Result<(), Text> {
-    // }
 
     /// Gets the parameter checker for a command, if it exists
     fn check_args(
@@ -1183,20 +1167,16 @@ struct InnerCommands {
 }
 
 impl InnerCommands {
-    /// Tries to add the given command to the list.
-    fn try_add(&mut self, command: Command) -> Result<(), Text> {
+    /// Adds a command to the list
+    ///
+    /// Overrides previous commands with the same name.
+    fn add(&mut self, command: Command) {
         let mut new_callers = command.callers().iter();
 
-        let commands = self.list.iter();
-        for caller in commands.flat_map(|cmd| cmd.callers().iter()) {
-            if new_callers.any(|new_caller| new_caller == caller) {
-                return Err(txt!("The caller [a]{caller}[] already exists").build());
-            }
-        }
+        self.list
+            .retain(|cmd| new_callers.all(|caller| !cmd.callers.contains(caller)));
 
         self.list.push(command);
-
-        Ok(())
     }
 
     /// Tries to alias a full command (caller, flags, and

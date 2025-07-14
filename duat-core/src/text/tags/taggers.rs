@@ -2,7 +2,7 @@ use std::{
     ops::Range,
     sync::{
         LazyLock,
-        atomic::{AtomicU16, Ordering},
+        atomic::{AtomicU32, Ordering},
     },
 };
 
@@ -234,7 +234,7 @@ impl Extent {
     }
 }
 
-static TAGGER_COUNT: AtomicU16 = AtomicU16::new(4);
+static TAGGER_COUNT: AtomicU32 = AtomicU32::new(4);
 
 /// A struct that lets one add and remove [`Tag`]s to a [`Text`]
 ///
@@ -279,7 +279,7 @@ static TAGGER_COUNT: AtomicU16 = AtomicU16::new(4);
 /// [`Text::insert_tag`]: super::Text::insert_tag
 /// [`Text::remove_tags`]: super::Text::remove_tags
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Tagger(u16);
+pub struct Tagger(pub(super) u32);
 
 impl Tagger {
     /// Returns a new, unique [`Tagger`]
@@ -299,8 +299,8 @@ impl Tagger {
     /// control over what gets added and deleted from the [`Text`].
     ///
     /// [`Text`]: super::Text
-    pub fn new_many(amount: usize) -> Range<Self> {
-        let start = Self(TAGGER_COUNT.fetch_add(amount as u16, Ordering::Relaxed));
+    pub fn new_many(amount: u32) -> Range<Self> {
+        let start = Self(TAGGER_COUNT.fetch_add(amount, Ordering::Relaxed));
         let end = Self(TAGGER_COUNT.fetch_add(1, Ordering::Relaxed));
 
         start..end
@@ -354,11 +354,11 @@ impl std::iter::Step for Tagger {
     }
 
     fn forward_checked(start: Self, count: usize) -> Option<Self> {
-        Some(Self(start.0 + count as u16))
+        Some(Self(start.0 + count as u32))
     }
 
     fn backward_checked(start: Self, count: usize) -> Option<Self> {
-        start.0.checked_sub(count as u16).map(Self)
+        start.0.checked_sub(count as u32).map(Self)
     }
 }
 

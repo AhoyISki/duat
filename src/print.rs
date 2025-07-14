@@ -72,13 +72,13 @@ pub fn wrap_on_cap(cap: u8) {
 ///
 /// [`File`]: crate::widgets::File
 #[inline(never)]
-pub fn indent_wraps() {
+pub fn indent_wraps(value: bool) {
     let mut print_cfg = PRINT_CFG.write().unwrap();
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.indent_wraps(),
-        None => PrintCfg::default_for_input().indent_wraps(),
+        Some(prev) => prev.indent_wraps(value),
+        None => PrintCfg::default_for_input().indent_wraps(value),
     })
 }
 
@@ -135,11 +135,11 @@ pub fn scrolloff(x: u8, y: u8) {
 /// Returns a new [`WordChars`] composed of inclusive ranges of
 /// [`char`]s
 ///
-/// The syntax is as follows:
+/// The syntax (as well as the default definition) is as follows:
 ///
 /// ```rust
 /// # use duat::print::word_chars;
-/// word_chars!('a'-'z''A'-'Z''0'-'9''-'-'-''_'-'_');
+/// word_chars!('a'-'z''A'-'Z''0'-'9''_'-'_');
 /// ```
 pub macro word_chars($($w_chars:tt)+) {
     set_word_chars(w_chars!($($w_chars)+))

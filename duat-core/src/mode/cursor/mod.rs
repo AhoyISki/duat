@@ -105,14 +105,16 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
 
     /// Replaces the entire selection with new text
     ///
-    /// If the `caret` is behind the `anchor` (or in the same spot),
-    /// after replacing the selection, the `caret` will be placed on
-    /// the start of the selection, while the `anchor` will be placed
-    /// on the new end. If it is ahead, it will be placed ahead.
+    /// If there is a selection, then it is treated as _inclusive_,
+    /// therefore, a selection where `caret == anchor` will remove the
+    /// character where the caret is. If there is no selection, then
+    /// this has the same effect as [`insert`]. If you wish to
+    /// append to the `caret` instead, see [`append`].
     ///
-    /// If there is no selection, then this has the same effect as
-    /// [`insert`]. If you wish to append to the `caret` instead, see
-    /// [`append`].
+    /// After replacing the sele tion, if the `caret` is behind the
+    /// `anchor` (or in the same spot), it will be placed on the start
+    /// of the selection, while the `anchor` will be placed on the
+    /// new end. If it is ahead, it will be placed ahead.
     ///
     /// [`insert`]: Self::insert
     /// [`append`]: Self::append
@@ -120,6 +122,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
         let change = {
             let edit = edit.to_string();
             let [p0, p1] = self.selection.point_range(self.widget.text());
+            let p1 = if self.anchor().is_some() { p1 } else { p0 };
             Change::new(edit, [p0, p1], self.widget.text())
         };
 
@@ -275,8 +278,13 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
     pub fn move_to_coords(&mut self, line: usize, col: usize) {
         let at = self
             .text()
-            .point_at_line(line.min(self.text().len().line()));
-        let (point, _) = self.text().chars_fwd(at..).take(col + 1).last().unwrap();
+            .point_at_line(line.min(self.text().last_point().line()));
+        let (point, _) = self
+            .text()
+            .chars_fwd(at..)
+            .take(col + 1)
+            .last()
+            .unwrap_or((self.text().len(), '\n'));
         self.move_to(point);
     }
 
@@ -291,9 +299,14 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
     }
 
     /// Sets the `anchor` if it was not already set
-    pub fn set_anchor_if_needed(&mut self) {
+    ///
+    /// Returns `true` if the anchor was set by this command.
+    pub fn set_anchor_if_needed(&mut self) -> bool {
         if self.anchor().is_none() {
-            self.selection.set_anchor()
+            self.selection.set_anchor();
+            true
+        } else {
+            false
         }
     }
 
@@ -547,7 +560,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
     }
 
     /// Returns the position of the last [`char`] if there is one
-    pub fn last_point(&self) -> Option<Point> {
+    pub fn last_point(&self) -> Point {
         self.text().last_point()
     }
 

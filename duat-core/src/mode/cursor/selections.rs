@@ -282,8 +282,6 @@ impl Selections {
             self.shift_state.set((new_shift_from, shift));
         }
 
-        crate::context::debug!("shift state set to {self:#?}");
-
         ([c_range.start, cursors_taken], last_cursor_overhangs)
     }
 
@@ -428,7 +426,7 @@ mod cursor {
             if p == self.caret() {
                 return;
             }
-            let p = text.point_at(p.byte().min(text.last_point().unwrap().byte()));
+            let p = text.point_at(p.byte().min(text.last_point().byte()));
             *self.caret.get_mut() = LazyVPoint::Unknown(p);
         }
 
@@ -437,15 +435,15 @@ mod cursor {
         /// Returns the number of distance moved through.
         pub fn move_hor(&mut self, by: i32, text: &Text) -> i32 {
             let by = by as isize;
-            let (Some(last), false) = (text.last_point(), by == 0) else {
+            if by == 0 {
                 return 0;
             };
             let target = self.caret.get().point().char().saturating_add_signed(by);
 
             let p = if target == 0 {
                 Point::default()
-            } else if target >= last.char() {
-                last
+            } else if target >= text.last_point().char() {
+                text.last_point()
             } else if by.abs() < 500 {
                 if by > 0 {
                     let (point, _) = text
@@ -482,7 +480,7 @@ mod cursor {
             cfg: PrintCfg,
         ) -> i32 {
             let by = by as isize;
-            let (Some(last), false) = (text.last_point(), by == 0) else {
+            if by == 0 {
                 return 0;
             };
 
@@ -490,7 +488,7 @@ mod cursor {
                 let vp = self.caret.get().calculate(text, area, cfg);
                 let line_start = {
                     let target = self.caret.get().point().line().saturating_add_signed(by);
-                    text.point_at_line(target.min(last.line()))
+                    text.point_at_line(target.min(text.last_point().line()))
                 };
 
                 let mut wraps = 0;
@@ -509,7 +507,7 @@ mod cursor {
                         vcol += len as u16;
                         None
                     })
-                    .unwrap_or((0, last));
+                    .unwrap_or((0, text.last_point()));
 
                 let moved = p.line() as i32 - vp.p.line() as i32;
                 let vp = vp.known(p, (p.char() - line_start.char()) as u16, vcol, wcol);
@@ -530,7 +528,7 @@ mod cursor {
             area: &impl RawArea,
             cfg: PrintCfg,
         ) -> i32 {
-            if text.last_point().is_none() || by == 0 {
+            if by == 0 {
                 return 0;
             };
             let vp = self.caret.get().calculate(text, area, cfg);
@@ -549,7 +547,9 @@ mod cursor {
                     .find_map(|(Caret { x, len, wrap }, item)| {
                         wraps += wrap as i32;
                         if let Some((p, char)) = item.as_real_char() {
-                            if (x..x + len).contains(&(vp.dwcol as u32)) || char == '\n' {
+                            if (x..x + len).contains(&(vp.dwcol as u32))
+                                || (char == '\n' && x < vp.dwcol as u32)
+                            {
                                 last_valid = (vcol, x as u16, p);
                                 if wraps == by {
                                     return Some((vcol, x as u16, p));

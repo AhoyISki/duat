@@ -266,12 +266,12 @@ impl<U: Ui> InnerParsers<U> {
 
                     let ranges = get_ranges(&mut lp.ranges, &lp.bytes, moment);
                     let snap = FileSnapshot { bytes: &lp.bytes, cfg, moment };
-                    lp.reader.parse(pa, snap, ranges);
+                    lp.parser.parse(pa, snap, ranges);
 
                     ParserStatus::Local(lp)
                 }
                 ParserStatus::Present(mut ms, mut sp) => {
-                    if sp.reader.make_remote() {
+                    if sp.parser.make_remote() {
                         ms.latest_state += 1;
                         ms.sender.send(Some((moment, cfg))).unwrap();
 
@@ -342,15 +342,15 @@ impl<U: Ui> InnerParsers<U> {
 
             parsers[i].status = Some(match status {
                 ParserStatus::Local(mut lp) => {
-                    let reader = &mut *lp.reader;
+                    let parser = &mut *lp.parser;
                     let ranges = &mut lp.ranges;
-                    update(text, reader, ranges, &mut parsers, within.clone());
+                    update(text, parser, ranges, &mut parsers, within.clone());
                     ParserStatus::Local(lp)
                 }
                 ParserStatus::Present(ms, mut sp) => {
-                    let reader = &mut *sp.reader;
+                    let parser = &mut *sp.parser;
                     let ranges = &mut sp.ranges;
-                    update(text, reader, ranges, &mut parsers, within.clone());
+                    update(text, parser, ranges, &mut parsers, within.clone());
                     ParserStatus::Present(ms, sp)
                 }
                 ParserStatus::Sent(ms, jh) => {
@@ -359,7 +359,7 @@ impl<U: Ui> InnerParsers<U> {
                     if ms.latest_state == ms.remote_state.load(Ordering::Relaxed) {
                         ms.sender.send(None).unwrap();
                         let mut sp = jh.join().unwrap();
-                        let reader = &mut *sp.reader;
+                        let reader = &mut *sp.parser;
                         let ranges = &mut sp.ranges;
                         update(text, reader, ranges, &mut parsers, within.clone());
                         ParserStatus::Present(ms, sp)
@@ -372,7 +372,7 @@ impl<U: Ui> InnerParsers<U> {
                         let _ = ms.sender.send(None);
                         match jh.join().unwrap() {
                             Ok(mut sp) => {
-                                let reader = &mut *sp.reader;
+                                let reader = &mut *sp.parser;
                                 let ranges = &mut sp.ranges;
                                 update(text, reader, ranges, &mut parsers, within.clone());
                                 ParserStatus::Present(ms, sp)
@@ -418,9 +418,9 @@ fn parse<U: Ui>(sp: &mut SendParser<U>, (moment, cfg): (Moment, PrintCfg), pa: O
     let snap = FileSnapshot { bytes: &sp.bytes, cfg, moment };
 
     if let Some(pa) = pa {
-        sp.reader.parse(pa, snap, ranges);
+        sp.parser.parse(pa, snap, ranges);
     } else {
-        sp.reader.parse_remote(snap, ranges);
+        sp.parser.parse_remote(snap, ranges);
     }
     sp.state.fetch_add(1, Ordering::Relaxed);
 }
@@ -458,7 +458,7 @@ impl<U: Ui> ParserBox<U> {
     pub fn new_local<Rd: Parser<U>>(file: &File<U>, reader: Rd) -> ParserBox<U> {
         ParserBox {
             status: Some(ParserStatus::Local(LocalParser {
-                reader: Box::new(reader),
+                parser: Box::new(reader),
                 bytes: file.bytes().clone(),
                 ranges: Ranges::full(file.text().len().byte()),
             })),
@@ -479,7 +479,7 @@ impl<U: Ui> ParserBox<U> {
 
         ParserBox {
             status: Some(ParserStatus::Present(moment_sender, SendParser {
-                reader: Box::new(reader),
+                parser: Box::new(reader),
                 bytes: file.bytes().clone(),
                 receiver,
                 ranges: Ranges::full(file.text().len().byte()),
@@ -522,7 +522,7 @@ impl<U: Ui> ParserBox<U> {
 
                     let ranges = Ranges::full(bytes.len().byte());
 
-                    let mut sp = SendParser { reader, bytes, receiver, ranges, state };
+                    let mut sp = SendParser { parser: reader, bytes, receiver, ranges, state };
 
                     while let Some(moment) = sp.receiver.recv().unwrap() {
                         parse(&mut sp, moment, None);
@@ -554,13 +554,13 @@ struct MomentSender {
 }
 
 struct LocalParser<U: Ui> {
-    reader: Box<dyn Parser<U>>,
+    parser: Box<dyn Parser<U>>,
     bytes: Bytes,
     ranges: Ranges,
 }
 
 struct SendParser<U: Ui> {
-    reader: Box<dyn Parser<U> + Send>,
+    parser: Box<dyn Parser<U> + Send>,
     bytes: Bytes,
     receiver: mpsc::Receiver<Option<(Moment, PrintCfg)>>,
     ranges: Ranges,
@@ -635,13 +635,13 @@ fn status_from_read<Rd: Parser<U>, Ret, U: Ui>(
 ) -> (ParserStatus<U>, Option<Ret>) {
     match status {
         ParserStatus::Local(lp) => {
-            let ptr = Box::as_ptr(&lp.reader);
+            let ptr = Box::as_ptr(&lp.parser);
             let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
 
             (ParserStatus::Local(lp), Some(ret))
         }
         ParserStatus::Present(sender, sp) => {
-            let ptr = Box::as_ptr(&sp.reader);
+            let ptr = Box::as_ptr(&sp.parser);
             let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
 
             (ParserStatus::Present(sender, sp), Some(ret))
@@ -650,7 +650,7 @@ fn status_from_read<Rd: Parser<U>, Ret, U: Ui>(
             ms.sender.send(None).unwrap();
             let sp = jh.join().unwrap();
 
-            let ptr = Box::as_ptr(&sp.reader);
+            let ptr = Box::as_ptr(&sp.parser);
             let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
 
             (ParserStatus::Present(ms, sp), Some(ret))
@@ -659,7 +659,7 @@ fn status_from_read<Rd: Parser<U>, Ret, U: Ui>(
             let _ = ms.sender.send(None);
             match jh.join().unwrap() {
                 Ok(sp) => {
-                    let ptr = Box::as_ptr(&sp.reader);
+                    let ptr = Box::as_ptr(&sp.parser);
                     let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
                     (ParserStatus::Present(ms, sp), Some(ret))
                 }
@@ -679,13 +679,13 @@ fn status_from_try_read<Rd: Parser<U>, Ret, U: Ui>(
 ) -> (ParserStatus<U>, Option<Ret>) {
     match status {
         ParserStatus::Local(lp) => {
-            let ptr = Box::as_ptr(&lp.reader);
+            let ptr = Box::as_ptr(&lp.parser);
             let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
 
             (ParserStatus::Local(lp), Some(ret))
         }
         ParserStatus::Present(sender, sp) => {
-            let ptr = Box::as_ptr(&sp.reader);
+            let ptr = Box::as_ptr(&sp.parser);
             let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
 
             (ParserStatus::Present(sender, sp), Some(ret))
@@ -695,7 +695,7 @@ fn status_from_try_read<Rd: Parser<U>, Ret, U: Ui>(
                 ms.sender.send(None).unwrap();
                 let sp = jh.join().unwrap();
 
-                let ptr = Box::as_ptr(&sp.reader);
+                let ptr = Box::as_ptr(&sp.parser);
                 let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
 
                 (ParserStatus::Present(ms, sp), Some(ret))
@@ -708,7 +708,7 @@ fn status_from_try_read<Rd: Parser<U>, Ret, U: Ui>(
                 ms.sender.send(None).unwrap();
                 match jh.join().unwrap() {
                     Ok(sp) => {
-                        let ptr = Box::as_ptr(&sp.reader);
+                        let ptr = Box::as_ptr(&sp.parser);
                         let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
                         (ParserStatus::Present(ms, sp), Some(ret))
                     }
@@ -734,7 +734,9 @@ fn get_ranges<'a>(
     const FOLDING_COULD_UPDATE_A_LOT: usize = 1_000_000;
     const MAX_CHANGES_TO_CONSIDER: usize = 100;
 
-    if moment.len() <= MAX_CHANGES_TO_CONSIDER || bytes.len().byte() >= FOLDING_COULD_UPDATE_A_LOT {
+    if moment.len() <= MAX_CHANGES_TO_CONSIDER
+        || bytes.len().byte() >= FOLDING_COULD_UPDATE_A_LOT
+    {
         for change in moment.changes() {
             let diff = change.added_end().byte() as i32 - change.taken_end().byte() as i32;
             ranges.shift_by(change.start().byte(), diff);
@@ -747,8 +749,8 @@ fn get_ranges<'a>(
     }
 }
 
-fn type_eq<U: Ui, Rd: Parser<U>>(rb: &ParserBox<U>) -> bool {
-    rb.ty == TypeId::of::<Rd>()
+fn type_eq<U: Ui, Rd: Parser<U>>(pb: &ParserBox<U>) -> bool {
+    pb.ty == TypeId::of::<Rd>()
 }
 
 /// The parts of a [`File`], primarily for updating [`Tags`]

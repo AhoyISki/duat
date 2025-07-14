@@ -189,19 +189,19 @@ impl InnerTags {
             {
                 let [e_n, e_b, e_skip] = {
                     // This is very likely the hot path.
-                    let [n, b, skip] = if e_at < s_b + s_skip {
+                    let [e_n, e_b, skip] = if e_at < s_b + s_skip {
                         // These changes account for a possibly split skip.
                         [s_n, s_at, s_skip - (s_at - s_b)]
                     } else {
                         tags.skip_at(e_at)
                     };
 
-                    if exists_at(&tags.buf, s_n, s_tag) && exists_at(&tags.buf, n, e_tag) {
+                    if exists_at(&tags.buf, s_n, s_tag) && exists_at(&tags.buf, e_n, e_tag) {
                         return false;
                     }
                     let s_n_diff = if s_at == s_b { 1 } else { 2 };
 
-                    [n + s_n_diff, b, skip]
+                    [e_n + s_n_diff, e_b, skip]
                 };
 
                 let [s_ins, s_n_diff] = tags.insert_inner(s_at, s_tag, [s_n, s_b, s_skip]);
@@ -218,6 +218,9 @@ impl InnerTags {
             }
 
             tags.extents.insert(s_tag.tagger(), s_at);
+            if let Some((s_at, _)) = end {
+                tags.extents.insert(s_tag.tagger(), s_at);
+            }
 
             true
         }
@@ -419,11 +422,19 @@ impl InnerTags {
             }
         }
 
-        // This should be uncommon enought that I don't really care about
-        // optimizing it tbh.
+        // At this point in time, n should point to the index of the first
+        // thing that didn't match the byte constraint, so too should b point
+        // to where this element is.
+        // that I don't really care about optimizing it tbh.
         for (_, tag) in starts {
-            let (n, b, _) = find_match(&self.buf, (n, b, tag)).unwrap();
-            let ([rm_n, _], n_diff) = self.remove(n, b);
+            let (n1, b1, _) = find_match(&self.buf, (n, b, tag)).unwrap();
+            let ([rm_n, rm_b], n_diff) = self.remove(n1, b1);
+
+            if n >= rm_n {
+                b = rm_b;
+                n = rm_n;
+            }
+
             self.bounds.shift_by(self.buf.len(), rm_n, [n_diff, 0]);
         }
     }
@@ -451,7 +462,6 @@ impl InnerTags {
     /// will NOT handle shifting bounds, however, will return info
     /// useful for doing that.
     #[must_use]
-    #[track_caller]
     fn remove(&mut self, n: usize, b: usize) -> ([usize; 2], i32) {
         let TagOrSkip::Tag(_) = self.buf.remove(n) else {
             unreachable!("You are only supposed to remove InnerTags like this, not skips")

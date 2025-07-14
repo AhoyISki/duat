@@ -68,7 +68,9 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
                 } else {
                     handle.edit_main(pa, |mut e| {
                         e.move_hor(-1);
+                        e.set_anchor_if_needed();
                         e.replace("");
+                        e.unset_anchor();
                     });
                     let text = handle.take_text(pa);
                     let text = self.0.update(pa, text, handle.area());
@@ -519,7 +521,7 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
         };
 
         let handle = context::fixed_file::<U>(pa).unwrap().handle(pa);
-        handle.edit_all(pa, |mut e| {
+        handle.edit_all(pa, |mut c| {
             let Ok(mut child) = Command::new(caller)
                 .args(cmd::args_iter(&command).map(|(a, _)| a))
                 .stdin(Stdio::piped())
@@ -529,7 +531,7 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
                 return;
             };
 
-            let input: String = e.selection().collect();
+            let input: String = c.selection().collect();
             if let Some(mut stdin) = child.stdin.take() {
                 std::thread::spawn(move || {
                     stdin.write_all(input.as_bytes()).unwrap();
@@ -537,7 +539,8 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
             }
             if let Ok(out) = child.wait_with_output() {
                 let out = String::from_utf8_lossy(&out.stdout);
-                e.replace(out);
+                c.set_anchor_if_needed();
+                c.replace(out);
             }
         });
     }

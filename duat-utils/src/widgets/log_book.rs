@@ -33,7 +33,7 @@ impl<U: Ui> Widget<U> for LogBook {
                 };
 
                 builder.push(txt!(
-                    "[log_book.bracket]([log_book.target]{}[log_book.bracket])[]\n {}",
+                    "[log_book.bracket]([log_book.target]{}[log_book.bracket])[] {}",
                     rec.metadata().target(),
                     rec.text().clone()
                 ));
@@ -95,14 +95,13 @@ impl<U: Ui> Widget<U> for LogBook {
         cmd::add!("logs", |pa| {
             mode::set(Pager::<LogBook, U>::new());
             Ok(None)
-        })
-        .unwrap();
+        });
 
         Ok(())
     }
 
     fn print_cfg(&self) -> PrintCfg {
-        PrintCfg::new().edge_wrapped().with_scrolloff(0, 0)
+        PrintCfg::new().word_wrapped().with_scrolloff(0, 0)
     }
 
     fn on_focus(_: &mut Pass, handle: Handle<Self, U>) {

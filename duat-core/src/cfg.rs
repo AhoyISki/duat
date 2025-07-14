@@ -142,7 +142,7 @@ impl WordChars {
     ///
     /// Is equivalent to the regex character class `[A-Za-z0-9_]`.
     pub const fn default() -> Self {
-        word_chars!('A'-'Z''a'-'z''0'-'9''_'-'_')
+        word_chars!("á-éa-z0-9_-_")
     }
 
     /// Checks if a [`char`] is a word char
@@ -287,8 +287,8 @@ impl PrintCfg {
     }
 
     /// Reindent wrapped lines to the same level of indentation
-    pub const fn indent_wraps(self) -> Self {
-        Self { indent_wrapped: true, ..self }
+    pub const fn indent_wraps(self, value: bool) -> Self {
+        Self { indent_wrapped: value, ..self }
     }
 
     /// Sets the size of tabs
@@ -397,44 +397,125 @@ impl Default for PrintCfg {
 ///
 /// ```rust
 /// # use duat_core::cfg::word_chars;
-/// let word_chars = word_chars!('a'-'z''A'-'Z''0'-'9''-'-'-''_'-'_');
+/// let word_chars = word_chars!("a-zA-Z0-9---_-_");
 /// ```
-// TODO: Deal with characters that need to be escaped.
-// TODO: Probably turn this into a proc-macro that acts on strings.
-pub macro word_chars {
-    (@range $regex:expr, [$($slice:tt)*],) => {{
-        static MATCHERS: LazyLock<(Regex, &'static [RangeInclusive<char>])> =
-            LazyLock::new(|| (
-                Regex::new(concat!($regex , "]")).unwrap(),
-                &[$($slice)*]
-            ));
-        WordChars(&MATCHERS)
-    }},
-    (@range $regex:expr, [$($slice:tt)*], $start:literal - $end:literal $($rest:tt)*) => {{
-        const {
-            assert!($start <= $end, concat!("\"", $start, "-", $end, "\" is not a valid range."));
-            assert!(
-                !($start <= ' ' && ' ' <= $end),
-                concat!("\"", $start, "-", $end, "\" contains ' '.")
-            );
-            assert!(
-                !($start <= '\n' && '\n' <= $end),
-                concat!("\"", $start, "-", $end, "\" contains '\\n'.")
-            );
-            assert!(
-                !($start <= '\t' && '\t' <= $end),
-                concat!("\"", $start, "-", $end, "\" contains '\\t '.")
-            );
+///
+/// That is, it must be a list of inclusive ranges, denoted by
+/// `{char1}-{char2}`. Any character is valid, as long as a `' '`,
+/// `'\t'`, or `'\n'` is not part of the range, and `char2 >= char1`.
+///
+/// This is all evaluated at compile time, so you don't have to worry
+/// about it.
+pub macro word_chars($ranges:literal) {{
+    const { validate_ranges($ranges) };
+    static MATCHERS: LazyLock<(Regex, &'static [RangeInclusive<char>])> = LazyLock::new(|| {
+        let regex = $crate::cfg::escaped_regex($ranges);
+        let regex = Regex::new(&format!("[{regex}]")).unwrap();
+        (regex, $crate::cfg::vec_from_ranges($ranges).leak())
+    });
+    WordChars(&MATCHERS)
+}}
+
+/// Creates a vector from a ranges `&str`
+///
+/// Assumes that [`validate_ranges`] has verified its formatting.
+#[doc(hidden)]
+pub fn vec_from_ranges(ranges: &str) -> Vec<RangeInclusive<char>> {
+    ranges
+        .chars()
+        .array_chunks::<3>()
+        .map(|[char1, _dash, char2]| char1..=char2)
+        .collect()
+}
+
+/// Escapes regex characters
+#[doc(hidden)]
+pub fn escaped_regex(ranges: &str) -> String {
+    let mut escaped = String::new();
+    for char in ranges.chars() {
+        if let '(' | ')' | '{' | '}' | '[' | ']' | '$' | '^' | '.' | '*' | '+' | '?' | '|' = char {
+            escaped.push('\\');
         }
-        word_chars!(@range
-            concat!($regex, $start, "-", $end),
-            [$start..=$end, $($slice)*], $($rest)*
-        )
-    }},
-    (@range $regex:expr, $($rest:tt)*) => {
-        compile_error!("The syntax must be a sequence of \"{char}-{char}\"s")
-    },
-    ($($start:literal-$end:literal)+) => {
-        word_chars!(@range "[", [], $($start-$end)+)
+        escaped.push(char);
+    }
+    escaped
+}
+
+/// Validates the ranges of a `&str`
+#[doc(hidden)]
+pub const fn validate_ranges(mut ranges: &str) {
+    if ranges.is_empty() {
+        return;
+    }
+
+    while !ranges.is_empty() {
+        let mut split = 1;
+        // Move the split until it is between the first character and a '-'.
+        while !ranges.is_char_boundary(split) {
+            split += 1;
+        }
+
+        let (start, remainder) = ranges.split_at(split);
+        let (dash, remainder) = remainder.split_at(1);
+
+        assert!(
+            first_char(dash) == '-',
+            "ranges must be formatted like {{char1}}-{{char2}}"
+        );
+
+        let start = first_char(start);
+        let end = first_char(remainder);
+
+        assert!(
+            start <= end,
+            "the end of the range must be bigger than the start"
+        );
+        assert!(!(start <= ' ' && ' ' <= end), "range contains ' '");
+        assert!(!(start <= '\n' && '\n' <= end), "range contains '\\n'");
+        assert!(!(start <= '\t' && '\t' <= end), "range contains '\\t'");
+
+        let (_, remainder) = remainder.split_at(end.len_utf8());
+        ranges = remainder;
     }
 }
+
+const fn first_char(str: &str) -> char {
+    let bytes = str.as_bytes();
+
+    let x = bytes[0];
+    if bytes[0] < 128 {
+        return unsafe { char::from_u32_unchecked(x as u32) };
+    }
+
+    let init = utf8_first_byte(x, 2);
+    let y = bytes[1];
+    let mut ch = utf8_acc_cont_byte(init, y);
+    if x >= 0xe0 {
+        let z = bytes[2];
+        let y_z = utf8_acc_cont_byte((y & CONT_MASK) as u32, z);
+        ch = init << 12 | y_z;
+        if x >= 0xf0 {
+            let w = bytes[3];
+            ch = (init & 7) << 18 | utf8_acc_cont_byte(y_z, w);
+        }
+    }
+
+    unsafe { char::from_u32_unchecked(ch) }
+}
+
+/// Returns the initial codepoint accumulator for the first byte.
+/// The first byte is special, only want bottom 5 bits for width 2, 4
+/// bits for width 3, and 3 bits for width 4.
+#[inline]
+const fn utf8_first_byte(byte: u8, width: u32) -> u32 {
+    (byte & (0x7f >> width)) as u32
+}
+
+/// Returns the value of `ch` updated with continuation byte `byte`.
+#[inline]
+const fn utf8_acc_cont_byte(ch: u32, byte: u8) -> u32 {
+    (ch << 6) | (byte & CONT_MASK) as u32
+}
+
+/// Mask of the value bits of a continuation byte.
+const CONT_MASK: u8 = 0b0011_1111;

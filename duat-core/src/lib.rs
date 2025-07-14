@@ -652,7 +652,8 @@
     associated_type_defaults,
     dropck_eyepatch,
     fn_traits,
-    box_as_ptr
+    box_as_ptr,
+    iter_array_chunks
 )]
 #![allow(clippy::single_range_in_vec_init)]
 
@@ -882,6 +883,8 @@ mod ranges {
                 (shift_from, total_diff, 0, sh),
                 (|r| r.start, |r| r.end),
             );
+
+            crate::context::debug!("m_range: {m_range:?}");
 
             // The ranges in this region have not been callibrated yet.
             if shift_from <= m_range.end {

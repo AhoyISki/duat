@@ -941,6 +941,7 @@ pub mod prelude {
             Text, txt,
         },
         ui::{self, RawArea, Widget, WidgetCfg},
+        prelude::Lender,
     };
     pub use duat_filetype::*;
     #[cfg(feature = "term-ui")]

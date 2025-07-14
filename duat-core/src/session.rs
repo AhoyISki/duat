@@ -44,7 +44,7 @@ impl<U: Ui> SessionCfg<U> {
         // Passs, so this is fine.
         let mut pa = unsafe { Pass::new() };
 
-        cmd::add_session_commands::<U>().unwrap();
+        cmd::add_session_commands::<U>();
 
         let mut args = std::env::args();
         let first = args.nth(1).map(PathBuf::from);
@@ -86,7 +86,7 @@ impl<U: Ui> SessionCfg<U> {
         ms: &'static U::MetaStatics,
         prev: Vec<Vec<FileRet>>,
     ) -> Session<U> {
-        cmd::add_session_commands::<U>().unwrap();
+        cmd::add_session_commands::<U>();
         // SAFETY: This function is only called from the main thread in
         // ../src/setup.rs, and from there, there are no other active
         // Passs, so this is fine.

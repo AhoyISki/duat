@@ -374,6 +374,8 @@ impl Bytes {
     ///
     /// If `l == number_of_lines`, these points will be the same.
     ///
+    /// The second number _includes_ the `\n` at the end of the line.
+    ///
     /// # Panics
     ///
     /// Will panic if the number `l` is greater than the number of
@@ -402,11 +404,9 @@ impl Bytes {
     /// the text is completely empty, it will return [`None`].
     ///
     /// [`len`]: Self::len
-    pub fn last_point(&self) -> Option<Point> {
-        self.strs(..)
-            .chars()
-            .next_back()
-            .map(|char| self.len().rev(char))
+    pub fn last_point(&self) -> Point {
+        let char = self.strs(..).chars().next_back().unwrap();
+        self.len().rev(char)
     }
 
     /// A forward iterator of the [`char`]s of [`Bytes`]
@@ -522,7 +522,7 @@ impl Bytes {
             s0.get(range)
         } else {
             let gap = self.buf.gap();
-            s1.get(range.start - gap..range.end - gap)
+            s1.get(range.start.checked_sub(gap)?..range.end.checked_sub(gap)?)
         }
     }
 

@@ -71,6 +71,11 @@ fn setup() {
     
     map::<Insert>("jk", "<Esc>:w<Enter>");
 }
+
 ```
 
-The exceptions to this are the `map` and `alias` functions, as well as the `plug!` and `setup_duat!` macros. These items are imported directly.
+The exceptions to this are the `map` and `alias` functions, as well as the 
+`plug!` and `setup_duat!` macros. These items are imported directly.
+
+The following chapters should give a quick overview of these items imported 
+from the prelude module.

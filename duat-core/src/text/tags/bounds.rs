@@ -48,12 +48,12 @@ impl Bounds {
             });
         }
 
-        let [(s_skip, [s_n, s_b], s_tag), (e_skip, [e_n, e_b], e_tag)] = [s, e];
-        let s_n_diff = (s_n + 1 - s_skip) as i32;
-        let e_n_diff = (e_n + 1 - e_skip) as i32;
+        let [(s_ins, [s_n, s_b], s_tag), (e_ins, [e_n, e_b], e_tag)] = [s, e];
+        let s_n_diff = (s_n + 1 - s_ins) as i32;
+        let e_n_diff = (e_n + 1 - e_ins) as i32;
 
         let buf_len_after_s = final_buf_len - e_n_diff as usize;
-        let s_i = self.shift_by(buf_len_after_s, s_skip, [s_n_diff, 0]);
+        let s_i = self.shift_by(buf_len_after_s, s_ins, [s_n_diff, 0]);
 
         if e_n - s_n >= self.min_len {
             let id = RangeId::new();
@@ -61,12 +61,12 @@ impl Bounds {
             self.list.insert(s_i, (Cell::new([s_n, s_b]), s_tag, id));
             declare_shifted(self, s_i);
 
-            let e_i = self.shift_by(final_buf_len, e_skip, [e_n_diff, 0]);
+            let e_i = self.shift_by(final_buf_len, e_ins, [e_n_diff, 0]);
 
             self.list.insert(e_i, (Cell::new([e_n, e_b]), e_tag, id));
             declare_shifted(self, s_i);
         } else {
-            self.shift_by(final_buf_len, e_skip, [e_n_diff, 0]);
+            self.shift_by(final_buf_len, e_ins, [e_n_diff, 0]);
         }
     }
 
