@@ -142,7 +142,7 @@ impl WordChars {
     ///
     /// Is equivalent to the regex character class `[A-Za-z0-9_]`.
     pub const fn default() -> Self {
-        word_chars!("á-éa-z0-9_-_")
+        word_chars!("A-Za-z0-9_-_")
     }
 
     /// Checks if a [`char`] is a word char

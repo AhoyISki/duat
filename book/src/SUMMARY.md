@@ -9,5 +9,6 @@
   - [The `setup` function and `setup_duat!`](setup-and-setup-duat.md)
   - [The `prelude` module](prelude.md)
     - [`print`: How duat should print files](print-module.md)
+    - [`form`: How text is colored](form-module.md)
 - [Scripting Duat](scripting-duat.md)
   - [The `hook` module](hook.md)

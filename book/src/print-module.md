@@ -4,7 +4,7 @@ The print module has a bunch of simple functions to change how duat should print
 
 ```rust
 setup_duat!(setup);
-use duat::print::*;
+use duat::prelude::*;
 
 fn setup() {
     print::no_wrapping();
@@ -43,4 +43,21 @@ This is the current list of options in this module:
 
 ## `print::word_chars!`
 
-`print::word_chars!` is a macro that determines which characters should be part of a word. This is used by `wrap_on_words` and tends to also be used to modify text (in the `<Ctrl-Backspace>` key in most editors, for example)
+`print::word_chars!` is a macro that determines which characters should be part 
+of a word. This is used by `wrap_on_words` and tends to also be used to modify 
+text (in the `<Ctrl-Backspace>` key in most editors, for example).
+
+This macro is evaluated at compile time, so you don't have to worry about it 
+being correct or not, and the syntax is the same as in regex, like this:
+
+```rust
+setup_duat!(setup);
+use duat::prelude::*;
+
+fn setup() {
+    print::word_chars!("A-Za-z0-9---_-_");
+}
+```
+
+In this case, every sequence of lowercase and capital letters, numbers, dashes 
+and underscores would be considered part of a word.
