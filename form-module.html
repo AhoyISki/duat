@@ -172,7 +172,59 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="form-how-text-is-colored"><a class="header" href="#form-how-text-is-colored">form: How text is colored</a></h1>
+                        <h1 id="form-how-text-is-colored"><a class="header" href="#form-how-text-is-colored"><code>form</code>: How text is colored</a></h1>
+<p>In duat, the way text is styled is through <code>Form</code>s. The <code>Form</code> struct,
+alongside the <code>form</code> module, are imported in the prelude:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>setup_duat!(setup);
+use duat::prelude::*;
+
+fn setup() {
+    // Setting by Form
+    form::set("punctuation.bracket", Form::red());
+    form::set("default", Form::with("#575279").on("#faf4ed"));
+    form::set("matched_pair", Form::blue().underlined()); 
+    
+    // Setting by reference
+    form::set("accent.debug", "default.debug");
+}
+<span class="boring">}</span></code></pre></pre>
+<p>The main function that you will use from this module is <code>form::set</code>. This
+function sets the form with the given name on the left to the argument on the
+right. This argument can be of two types:</p>
+<ul>
+<li>A <code>Form</code> argument will just modify the named form to be shown like that;</li>
+<li>A <code>&amp;str</code> argument will "reference" the form on the right. If the form on the
+right is altered, so will the one on the left. This reduces the need for
+setting a ton of forms in things like colorschemes;</li>
+</ul>
+<h2 id="colorschemes"><a class="header" href="#colorschemes">Colorschemes</a></h2>
+<p>The other main function that you will use from this module is the
+<code>form::set_colorscheme</code> function. This function will change the colorscheme to
+a previously named one:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>setup_duat!(setup);
+use duat::prelude::*;
+use catppuccin::Catppuccin;
+
+fn setup() {
+    plug!(Catppuccin::new());
+    
+    form::set_colorscheme("catppuccin-latte");
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="form-inheritance"><a class="header" href="#form-inheritance"><code>Form</code> inheritance</a></h2>
+<p>Another aspect of duat's forms that can save a lot of typing is the concept of <code>Form</code> inheritance. In Duat, forms follow the following structure:</p>
+<ul>
+<li>If <code>my_form.my_subform</code> is unset, it will reference <code>my_form</code>;</li>
+<li>If <code>my_form.my_subform</code> is set to <code>Form::green()</code>, it won't be changed when
+<code>my_form</code> changes, staying at <code>Form::green()</code>;</li>
+<li>If <code>my_form.my_subform</code> is set to reference <code>my_other_form</code>, changing
+<code>my_other_form</code> will also change <code>my_form.my_subform</code>, but changing <code>my_form</code>
+won't;</li>
+</ul>
 
                     </main>
 
