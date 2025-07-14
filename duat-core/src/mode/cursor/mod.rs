@@ -458,12 +458,12 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
     /// }
     /// ```
     pub fn search_fwd<R: RegexPattern>(
-        &mut self,
+        &self,
         pat: R,
         end: Option<Point>,
     ) -> impl Iterator<Item = R::Match> + '_ {
         let start = self.selection.caret().byte();
-        let text = self.widget.text_mut();
+        let text = self.widget.text();
         match end {
             Some(end) => text.search_fwd(pat, start..end.byte()).unwrap(),
             None => {
@@ -502,20 +502,20 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
     /// }
     /// ```
     pub fn search_rev<R: RegexPattern>(
-        &mut self,
+        &self,
         pat: R,
         start: Option<Point>,
     ) -> impl Iterator<Item = R::Match> + '_ {
         let end = self.selection.caret().byte();
         let start = start.unwrap_or_default();
-        let text = self.widget.text_mut();
+        let text = self.widget.text();
         text.search_rev(pat, start.byte()..end).unwrap()
     }
 
     /// Wether the current selection matches a regex pattern
-    pub fn matches<R: RegexPattern>(&mut self, pat: R) -> bool {
+    pub fn matches<R: RegexPattern>(&self, pat: R) -> bool {
         let range = self.selection.range(self.widget.text());
-        self.widget.text_mut().matches(pat, range).unwrap()
+        self.widget.text().matches(pat, range).unwrap()
     }
 
     ////////// Text queries
@@ -665,7 +665,7 @@ impl<W: Widget<A::Ui> + ?Sized, A: RawArea> Cursor<'_, W, A, Searcher> {
         } else {
             (self.selection.caret()..).to_range(self.text().len().byte())
         };
-        self.inc_searcher.search_fwd(self.widget.text_mut(), range)
+        self.inc_searcher.search_fwd(self.widget.text(), range)
     }
 
     /// Search incrementally from an [`IncSearch`] request in reverse
@@ -684,7 +684,7 @@ impl<W: Widget<A::Ui> + ?Sized, A: RawArea> Cursor<'_, W, A, Searcher> {
         } else {
             (..self.selection.caret()).to_range(self.text().len().byte())
         };
-        self.inc_searcher.search_rev(self.widget.text_mut(), range)
+        self.inc_searcher.search_rev(self.widget.text(), range)
     }
 
     /// Whether the [`Selection`]'s selection matches the
