@@ -37,6 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc.js"></script>
@@ -93,10 +94,13 @@
                 sidebar = sidebar || 'visible';
             } else {
                 sidebar = 'hidden';
+                sidebar_toggle.checked = false;
             }
-            sidebar_toggle.checked = sidebar === 'visible';
-            html.classList.remove('sidebar-visible');
-            html.classList.add("sidebar-" + sidebar);
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
         </script>
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
@@ -150,7 +154,12 @@
 
                 <div id="search-wrapper" class="hidden">
                     <form id="searchbar-outer" class="searchbar-outer">
-                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
                     </form>
                     <div id="searchresults-outer" class="searchresults-outer hidden">
                         <div id="searchresults-header" class="searchresults-header"></div>
@@ -364,9 +373,9 @@ fn setup() {
 <p>These are the default options (for <code>File</code>s). One thing to note about this
 module, is that it is <em>for <code>File</code>s</em> and <code>File</code>s <em>only</em>. That is, nothing in
 here will affect other widgets, like <code>LineNumbers</code> or <code>StatusLine</code>. If you want
-to modify those, you can head over to the <a href="hook.html"><code>hook</code></a> chapter.</p>
+to modify those, you can head over to the <a href="quick-settings/prelude/hook.html"><code>hook</code></a> chapter.</p>
 <p>The functions in this module will affect all files unconditionally, if you want
-to do that on a <code>File</code> by <code>File</code> basis, again, see the <a href="hook.html"><code>hook</code></a>
+to do that on a <code>File</code> by <code>File</code> basis, again, see the <a href="quick-settings/prelude/hook.html"><code>hook</code></a>
 chapter.</p>
 <p>This is the current list of options in this module:</p>
 <ul>
@@ -403,7 +412,7 @@ fn setup() {
 and underscores would be considered part of a word.</p>
 <h1 id="form-how-text-is-colored"><a class="header" href="#form-how-text-is-colored"><code>form</code>: How text is colored</a></h1>
 <p>In duat, the way text is styled is through <code>Form</code>s. The <code>Form</code> struct,
-alongside the <code>form</code> module, are imported in the prelude:</p>
+alongside the <code>form</code> module, are imported by the prelude:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>setup_duat!(setup);
@@ -428,6 +437,14 @@ right. This argument can be of two types:</p>
 right is altered, so will the one on the left. This reduces the need for
 setting a ton of forms in things like colorschemes;</li>
 </ul>
+<h2 id="how-forms-should-be-named"><a class="header" href="#how-forms-should-be-named">How forms should be named</a></h2>
+<p>Every form in duat should be named like this: <code>[a-z0-9]+(\.[a-z0-9]+)*</code>. That
+way, inheritance of forms becomes very predictable, and it's much easier for
+plugin writers to depend on that feature.</p>
+<p>There is one exception to this rule however, that being the <code>defaut</code> form. The
+<code>default</code> form, unlike other forms, can have <code>Widget</code> specific implementations,
+like <code>default.StatusLine</code>, which will change the <code>default</code> form <em>only</em> on
+<code>StatusLine</code>s, and is set by default.</p>
 <h2 id="colorschemes"><a class="header" href="#colorschemes">Colorschemes</a></h2>
 <p>The other main function that you will use from this module is the
 <code>form::set_colorscheme</code> function. This function will change the colorscheme to
@@ -439,6 +456,7 @@ use duat::prelude::*;
 use catppuccin::Catppuccin;
 
 fn setup() {
+    // Adds four colorschemes, "catppuccin-latte" among them.
     plug!(Catppuccin::new());
     
     form::set_colorscheme("catppuccin-latte");
@@ -447,15 +465,228 @@ fn setup() {
 <h2 id="form-inheritance"><a class="header" href="#form-inheritance"><code>Form</code> inheritance</a></h2>
 <p>Another aspect of duat's forms that can save a lot of typing is the concept of <code>Form</code> inheritance. In Duat, forms follow the following structure:</p>
 <ul>
-<li>If <code>my_form.my_subform</code> is unset, it will reference <code>my_form</code>;</li>
-<li>If <code>my_form.my_subform</code> is set to <code>Form::green()</code>, it won't be changed when
-<code>my_form</code> changes, staying at <code>Form::green()</code>;</li>
-<li>If <code>my_form.my_subform</code> is set to reference <code>my_other_form</code>, changing
-<code>my_other_form</code> will also change <code>my_form.my_subform</code>, but changing <code>my_form</code>
+<li>If <code>form.subform</code> is unset, it will reference <code>form</code>;</li>
+<li>If <code>form.subform</code> is set to <code>Form::green()</code>, it won't be changed when
+<code>form</code> changes, staying at <code>Form::green()</code>;</li>
+<li>If <code>form.subform</code> is set to reference <code>other_form</code>, changing
+<code>other_form</code> will also change <code>form.subform</code>, but changing <code>form</code>
 won't;</li>
 </ul>
+<p>As a consequence of this, for example, if you were to set the <code>markup</code> form to
+something, every form with a name like <code>markup.*</code> <em>that isn't already set</em>,
+would follow the change to the <code>markup</code> form.</p>
+<p>Additionally, if the form <code>f0.f1.f2</code> is set to something, the forms <code>f0</code> and
+<code>f1.f2</code> would also be set, although they will reference the <code>default</code> form in
+that situation, not whatever <code>f0.f1.f2</code> was set to.</p>
+<h2 id="masks"><a class="header" href="#masks">Masks</a></h2>
+<p>A mask is essentially the opposite of the inheritance concept. Instead of the longer form inheriting from the shorter forms, the shorter forms will be mapped for longer ones.</p>
+<p>It works like this: Say I have a <code>File</code> widget, and in it, there are instances
+of the <code>function</code> form, used to highlight function identifiers. If there is a
+<code>function.error</code> form, and I tell the <code>File</code> to use the <code>error</code> mask, instead
+of using the <code>function</code> form, Duat will use <code>function.error</code>.</p>
+<p>In duat, by default there are four masks: <code>error</code>, <code>warning</code>, <code>info</code>, and <code>inactive</code>. The first three are used primarily to show color coded notifications. The last one is unused, but you can use it to change how unfocused files should be displayed.</p>
+<p>You can also add more masks through <code>form::enable_mask</code>. If you want to learn
+more about masks and how to use them, you should check out the <a href="quick-settings/prelude/masks.html">masks
+chapter</a></p>
+<h1 id="map-and-alias-modifying-keys"><a class="header" href="#map-and-alias-modifying-keys">map and alias: modifying keys</a></h1>
+<h1 id="cursor-how-to-print-cursors"><a class="header" href="#cursor-how-to-print-cursors">cursor: How to print cursors</a></h1>
+<h1 id="list-of-forms"><a class="header" href="#list-of-forms">List of forms</a></h1>
+<p>Currently, in <code>duat</code>, these are the forms in use:</p>
+<ul>
+<li><code>default</code>: Is applied to every text. Can be <code>Widget</code> dependent, like
+<code>default.LineNumbers</code>.</li>
+<li><code>accent</code>: This form is used when formatting error, warning, information, or
+debug messages. Is used mostly with the <code>error</code>, <code>warn</code> and <code>info</code> <a href="quick-settings/masks.html">masks</a>.</li>
+<li><code>caret.main</code>: The form to use when printing the main "caret" (each cursor has
+a selection, an anchor, and a caret).</li>
+<li><code>caret.extra</code>: Same as <code>caret.main</code>, but for cursors other than the main one.</li>
+<li><code>selection.main</code>: Color to be used on the main selection.</li>
+<li><code>selection.extra</code>: Color to be used on extra selections.</li>
+<li><code>cloak</code>: This form is supposed to be a common "get rid of all forms
+temporarily" form. You should use this when you want to, for example, remove
+all visible color from the screen, in order to highlight something.  Some
+plugins make use of this form, like <code>duat-hop</code> and <code>duat-sneak</code>, which are
+recreations of some neovim plugins.</li>
+<li><code>alias</code>: Is used on aliases, see the <a href="quick-settings/map-and-alias.html">map and alias</a>
+chapter for more information.</li>
+<li><code>matched_pair</code>: Isn't technically part of duat, but it's part of a default
+plugin.</li>
+</ul>
+<p>Some other forms are used by specific <code>Widgets</code></p>
+<ul>
+<li>
+<p><code>LineNumbers</code>:</p>
+<ul>
+<li><code>linenum.main</code>: The form to be used on the main line's number.</li>
+<li><code>linenum.wrapped</code>: The form to be used on wrapped lines.</li>
+<li><code>linenum.wrapped.main</code>: Same, but for the main line, inherits from
+<code>linenum.wrapped</code> by default.</li>
+</ul>
+<p>Do note that you can set the form of the remaining lines by setting
+<code>default.LineNumbers</code>. And due to <a href="quick-settings/form-module.html#form-inheritance">form inheritance</a>, setting <code>linenum</code> will
+set all three forms.</p>
+</li>
+<li>
+<p><code>StatusLine</code>:</p>
+<ul>
+<li><code>file</code>, <code>file.new</code>, <code>file.unsaved</code>, <code>file.new.scratch</code>: Are all used by
+<a href="https://docs.rs/duat/latest/duat/state/fn.file_fmt.html"><code>file_fmt</code></a>, which shows the <code>File</code>'s name and some other info.</li>
+<li><code>mode</code>: Is used by <a href="https://docs.rs/duat/latest/duat/state/fn.mode_fmt.html"><code>mode_fmt</code></a>.</li>
+<li><code>coord</code> and <code>separator</code>: Are used by <a href="https://docs.rs/duat/latest/duat/state/fn.main_fmt.html"><code>main_fmt</code></a>.</li>
+<li><code>selections</code>: Is used by <a href="https://docs.rs/duat/latest/duat/state/fn.selections_fmt.html"><code>selections_fmt</code></a>.</li>
+<li><code>key</code> and <code>key.special</code>: Are used by <a href="https://docs.rs/duat/latest/duat/state/fn.cur_map_fmt.html"><code>cur_map_fmt</code></a>.</li>
+</ul>
+</li>
+<li>
+<p><code>Notifications</code>:</p>
+<ul>
+<li><code>notifs.target</code>: The form for the "target" of the notification.</li>
+<li><code>notifs.colon</code>: The form used by the <code>':'</code> that follows the target.</li>
+</ul>
+<p>Since the <code>Notifications</code> widget makes heavy use of masks, you can also set
+<code>notifs.target.error</code>, if you want a different target color only when error
+messages are sent, for example.</p>
+</li>
+<li>
+<p><code>PromptLine</code>:</p>
+<ul>
+<li><code>prompt</code>: For the prompt on the prompt line.</li>
+<li><code>prompt.colon</code>: For the <code>':'</code> that follows it.</li>
+<li><code>caller.info</code> and <code>caller.error</code>: For the caller, if it exists or not,
+respectively.</li>
+<li><code>parameter.info</code> and <code>parameter.error</code>: For parameters, if they fit or not,
+respectively.</li>
+<li><code>regex.literal</code>, <code>regex.operator.(flags|dot|repetition|alternation)</code>,
+<code>regex.class.(unicode|perl|bracketed)</code>, <code>regex.bracket.(class|group)</code>: A bunch
+of forms used for highlighting regex searches.</li>
+</ul>
+</li>
+<li>
+<p><code>LogBook</code>:</p>
+<ul>
+<li><code>log_book.(error|warn|info|debug)</code>: For the types of messages.</li>
+<li><code>log_book.colon</code>: For the <code>':'</code> that follows them.</li>
+<li><code>log_book.target</code>: For the "target" of the message.</li>
+<li><code>log_book.bracket</code>: For the <code>(</code>s surrounding the target.</li>
+</ul>
+</li>
+<li>
+<p><code>VertRule</code>:</p>
+<ul>
+<li><code>rule.upper</code> and <code>rule.lower</code>: The forms to use above and below the main
+line.</li>
+</ul>
+</li>
+</ul>
+<p>And finally, there are also all the forms used by <code>duat-treesitter</code>:</p>
+<p>variable                       various variable names
+variable.builtin               built-in variable names (e.g. this, self)
+variable.parameter             parameters of a function
+variable.parameter.builtin     special parameters (e.g. _, it)
+variable.member                object and struct fields
+constant               constant identifiers
+constant.builtin       built-in constant values
+constant.macro         constants defined by the preprocessor
+module                 modules or namespaces
+module.builtin         built-in modules or namespaces
+label                  GOTO and other labels (e.g. label: in C), including heredoc labels
+string                 string literals
+string.documentation   string documenting code (e.g. Python docstrings)
+string.regexp          regular expressions
+string.escape          escape sequences
+string.special         other special strings (e.g. dates)
+string.special.symbol  symbols or atoms
+string.special.path    filenames
+string.special.url     URIs (e.g. hyperlinks)
+character              character literals
+character.special      special characters (e.g. wildcards)
+boolean                boolean literals
+number                 numeric literals
+number.float           floating-point number literals
+type                   type or class definitions and annotations
+type.builtin           built-in types
+type.definition        identifiers in type definitions (e.g. typedef <type> <identifier> in C)
+attribute              attribute annotations (e.g. Python decorators, Rust lifetimes)
+attribute.builtin      builtin annotations (e.g. @property in Python)
+property               the key in key/value pairs
+function               function definitions
+function.builtin       built-in functions
+function.call          function calls
+function.macro         preprocessor macros
+function.method        method definitions
+function.method.call   method calls
+constructor            constructor calls and definitions
+operator               symbolic operators (e.g. +, *)
+keyword                keywords not fitting into specific categories
+keyword.coroutine      keywords related to coroutines (e.g. go in Go, async/await in Python)
+keyword.function       keywords that define a function (e.g. func in Go, def in Python)
+keyword.operator       operators that are English words (e.g. and, or)
+keyword.import         keywords for including or exporting modules (e.g. import, from in Python)
+keyword.type           keywords describing namespaces and composite types (e.g. struct, enum)
+keyword.modifier       keywords modifying other constructs (e.g. const, static, public)
+keyword.repeat         keywords related to loops (e.g. for, while)
+keyword.return         keywords like return and yield
+keyword.debug          keywords related to debugging
+keyword.exception      keywords related to exceptions (e.g. throw, catch)
+keyword.conditional         keywords related to conditionals (e.g. if, else)
+keyword.conditional.ternary ternary operator (e.g. ?, :)
+keyword.directive           various preprocessor directives and shebangs
+keyword.directive.define    preprocessor definition directives
+punctuation.delimiter  delimiters (e.g. ;, ., ,)
+punctuation.bracket    brackets (e.g. (), {}, [])
+punctuation.special    special symbols (e.g. {} in string interpolation)
+comment                line and block comments
+comment.documentation  comments documenting code
+comment.error          error-type comments (e.g. ERROR, FIXME, DEPRECATED)
+comment.warning        warning-type comments (e.g. WARNING, FIX, HACK)
+comment.todo           todo-type comments (e.g. TODO, WIP)
+comment.note           note-type comments (e.g. NOTE, INFO, XXX)
+markup.strong          bold text
+markup.italic          italic text
+markup.strikethrough   struck-through text
+markup.underline       underlined text (only for literal underline markup!)
+markup.heading         headings, titles (including markers)
+markup.heading.1       top-level heading
+markup.heading.2       section heading
+markup.heading.3       subsection heading
+markup.heading.4       and so on
+markup.heading.5       and so forth
+markup.heading.6       six levels ought to be enough for anybody
+markup.quote           block quotes
+markup.math            math environments (e.g. $ ... $ in LaTeX)
+markup.link            text references, footnotes, citations, etc.
+markup.link.label      link, reference descriptions
+markup.link.url        URL-style links
+markup.raw             literal or verbatim text (e.g. inline code)
+markup.raw.block       literal or verbatim text as a stand-alone block
+markup.list            list markers
+markup.list.checked    checked todo-style list markers
+markup.list.unchecked  unchecked todo-style list markers
+diff.plus              added text (for diff files)
+diff.minus             deleted text (for diff files)
+diff.delta             changed text (for diff files)
+tag                    XML-style tag names (e.g. in XML, HTML, etc.)
+tag.builtin            builtin tag names (e.g. HTML5 tags)
+tag.attribute          XML-style tag attributes
+tag.delimiter          XML-style tag delimiters</p>
+<h1 id="frequently-used-snippets"><a class="header" href="#frequently-used-snippets">Frequently used snippets</a></h1>
+<h1 id="mapping-jk-to-esc"><a class="header" href="#mapping-jk-to-esc">mapping jk to esc</a></h1>
 <h1 id="scripting-duat"><a class="header" href="#scripting-duat">Scripting Duat</a></h1>
+<h1 id="the-pass-and-duats-global-state"><a class="header" href="#the-pass-and-duats-global-state">The Pass and Duat's global state</a></h1>
 <h1 id="the-hook-module"><a class="header" href="#the-hook-module">The hook module</a></h1>
+<h1 id="the-text-struct"><a class="header" href="#the-text-struct">The Text struct</a></h1>
+<h1 id="builder-and-txt"><a class="header" href="#builder-and-txt">Builder and txt!</a></h1>
+<h1 id="tags-manipulating-text"><a class="header" href="#tags-manipulating-text">Tags: manipulating Text</a></h1>
+<h1 id="modding-the-statusline"><a class="header" href="#modding-the-statusline">Modding the StatusLine</a></h1>
+<h1 id="the-context-module"><a class="header" href="#the-context-module">The context module</a></h1>
+<h1 id="cmd-runtime-commands"><a class="header" href="#cmd-runtime-commands">cmd: Runtime commands</a></h1>
+<h1 id="modifying-the-layout"><a class="header" href="#modifying-the-layout">Modifying the layout</a></h1>
+<h1 id="extending-duat"><a class="header" href="#extending-duat">Extending Duat</a></h1>
+<h1 id="duat-core"><a class="header" href="#duat-core">duat-core</a></h1>
+<h1 id="plugins"><a class="header" href="#plugins">Plugins</a></h1>
+<h1 id="widgets"><a class="header" href="#widgets">Widgets</a></h1>
+<h1 id="modes"><a class="header" href="#modes">Modes</a></h1>
+<h1 id="parsers"><a class="header" href="#parsers">Parsers</a></h1>
 
                     </main>
 
@@ -497,6 +728,7 @@ won't;</li>
             window.setTimeout(window.print, 100);
         });
         </script>
+
 
     </div>
     </body>

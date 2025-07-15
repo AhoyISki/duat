@@ -1,0 +1,415 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>List of forms - The Duat text editor</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "../searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">The Duat text editor</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/AhoyISki/duat" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/AhoyISki/duat/edit/master/book/src/quick-settings/list-of-forms.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="list-of-forms"><a class="header" href="#list-of-forms">List of forms</a></h1>
+<p>Currently, in <code>duat</code>, these are the forms in use:</p>
+<ul>
+<li><code>default</code>: Is applied to every text. Can be <code>Widget</code> dependent, like
+<code>default.LineNumbers</code>.</li>
+<li><code>accent</code>: This form is used when formatting error, warning, information, or
+debug messages. Is used mostly with the <code>error</code>, <code>warn</code> and <code>info</code> <a href="masks.html">masks</a>.</li>
+<li><code>caret.main</code>: The form to use when printing the main "caret" (each cursor has
+a selection, an anchor, and a caret).</li>
+<li><code>caret.extra</code>: Same as <code>caret.main</code>, but for cursors other than the main one.</li>
+<li><code>selection.main</code>: Color to be used on the main selection.</li>
+<li><code>selection.extra</code>: Color to be used on extra selections.</li>
+<li><code>cloak</code>: This form is supposed to be a common "get rid of all forms
+temporarily" form. You should use this when you want to, for example, remove
+all visible color from the screen, in order to highlight something.  Some
+plugins make use of this form, like <code>duat-hop</code> and <code>duat-sneak</code>, which are
+recreations of some neovim plugins.</li>
+<li><code>alias</code>: Is used on aliases, see the <a href="map-and-alias.html">map and alias</a>
+chapter for more information.</li>
+<li><code>matched_pair</code>: Isn't technically part of duat, but it's part of a default
+plugin.</li>
+</ul>
+<p>Some other forms are used by specific <code>Widgets</code></p>
+<ul>
+<li>
+<p><code>LineNumbers</code>:</p>
+<ul>
+<li><code>linenum.main</code>: The form to be used on the main line's number.</li>
+<li><code>linenum.wrapped</code>: The form to be used on wrapped lines.</li>
+<li><code>linenum.wrapped.main</code>: Same, but for the main line, inherits from
+<code>linenum.wrapped</code> by default.</li>
+</ul>
+<p>Do note that you can set the form of the remaining lines by setting
+<code>default.LineNumbers</code>. And due to <a href="form-module.html#form-inheritance">form inheritance</a>, setting <code>linenum</code> will
+set all three forms.</p>
+</li>
+<li>
+<p><code>StatusLine</code>:</p>
+<ul>
+<li><code>file</code>, <code>file.new</code>, <code>file.unsaved</code>, <code>file.new.scratch</code>: Are all used by
+<a href="https://docs.rs/duat/latest/duat/state/fn.file_fmt.html"><code>file_fmt</code></a>, which shows the <code>File</code>'s name and some other info.</li>
+<li><code>mode</code>: Is used by <a href="https://docs.rs/duat/latest/duat/state/fn.mode_fmt.html"><code>mode_fmt</code></a>.</li>
+<li><code>coord</code> and <code>separator</code>: Are used by <a href="https://docs.rs/duat/latest/duat/state/fn.main_fmt.html"><code>main_fmt</code></a>.</li>
+<li><code>selections</code>: Is used by <a href="https://docs.rs/duat/latest/duat/state/fn.selections_fmt.html"><code>selections_fmt</code></a>.</li>
+<li><code>key</code> and <code>key.special</code>: Are used by <a href="https://docs.rs/duat/latest/duat/state/fn.cur_map_fmt.html"><code>cur_map_fmt</code></a>.</li>
+</ul>
+</li>
+<li>
+<p><code>Notifications</code>:</p>
+<ul>
+<li><code>notifs.target</code>: The form for the "target" of the notification.</li>
+<li><code>notifs.colon</code>: The form used by the <code>':'</code> that follows the target.</li>
+</ul>
+<p>Since the <code>Notifications</code> widget makes heavy use of masks, you can also set
+<code>notifs.target.error</code>, if you want a different target color only when error
+messages are sent, for example.</p>
+</li>
+<li>
+<p><code>PromptLine</code>:</p>
+<ul>
+<li><code>prompt</code>: For the prompt on the prompt line.</li>
+<li><code>prompt.colon</code>: For the <code>':'</code> that follows it.</li>
+<li><code>caller.info</code> and <code>caller.error</code>: For the caller, if it exists or not,
+respectively.</li>
+<li><code>parameter.info</code> and <code>parameter.error</code>: For parameters, if they fit or not,
+respectively.</li>
+<li><code>regex.literal</code>, <code>regex.operator.(flags|dot|repetition|alternation)</code>,
+<code>regex.class.(unicode|perl|bracketed)</code>, <code>regex.bracket.(class|group)</code>: A bunch
+of forms used for highlighting regex searches.</li>
+</ul>
+</li>
+<li>
+<p><code>LogBook</code>:</p>
+<ul>
+<li><code>log_book.(error|warn|info|debug)</code>: For the types of messages.</li>
+<li><code>log_book.colon</code>: For the <code>':'</code> that follows them.</li>
+<li><code>log_book.target</code>: For the "target" of the message.</li>
+<li><code>log_book.bracket</code>: For the <code>(</code>s surrounding the target.</li>
+</ul>
+</li>
+<li>
+<p><code>VertRule</code>:</p>
+<ul>
+<li><code>rule.upper</code> and <code>rule.lower</code>: The forms to use above and below the main
+line.</li>
+</ul>
+</li>
+</ul>
+<p>And finally, there are also all the forms used by <code>duat-treesitter</code>:</p>
+<p>variable                       various variable names
+variable.builtin               built-in variable names (e.g. this, self)
+variable.parameter             parameters of a function
+variable.parameter.builtin     special parameters (e.g. _, it)
+variable.member                object and struct fields
+constant               constant identifiers
+constant.builtin       built-in constant values
+constant.macro         constants defined by the preprocessor
+module                 modules or namespaces
+module.builtin         built-in modules or namespaces
+label                  GOTO and other labels (e.g. label: in C), including heredoc labels
+string                 string literals
+string.documentation   string documenting code (e.g. Python docstrings)
+string.regexp          regular expressions
+string.escape          escape sequences
+string.special         other special strings (e.g. dates)
+string.special.symbol  symbols or atoms
+string.special.path    filenames
+string.special.url     URIs (e.g. hyperlinks)
+character              character literals
+character.special      special characters (e.g. wildcards)
+boolean                boolean literals
+number                 numeric literals
+number.float           floating-point number literals
+type                   type or class definitions and annotations
+type.builtin           built-in types
+type.definition        identifiers in type definitions (e.g. typedef <type> <identifier> in C)
+attribute              attribute annotations (e.g. Python decorators, Rust lifetimes)
+attribute.builtin      builtin annotations (e.g. @property in Python)
+property               the key in key/value pairs
+function               function definitions
+function.builtin       built-in functions
+function.call          function calls
+function.macro         preprocessor macros
+function.method        method definitions
+function.method.call   method calls
+constructor            constructor calls and definitions
+operator               symbolic operators (e.g. +, *)
+keyword                keywords not fitting into specific categories
+keyword.coroutine      keywords related to coroutines (e.g. go in Go, async/await in Python)
+keyword.function       keywords that define a function (e.g. func in Go, def in Python)
+keyword.operator       operators that are English words (e.g. and, or)
+keyword.import         keywords for including or exporting modules (e.g. import, from in Python)
+keyword.type           keywords describing namespaces and composite types (e.g. struct, enum)
+keyword.modifier       keywords modifying other constructs (e.g. const, static, public)
+keyword.repeat         keywords related to loops (e.g. for, while)
+keyword.return         keywords like return and yield
+keyword.debug          keywords related to debugging
+keyword.exception      keywords related to exceptions (e.g. throw, catch)
+keyword.conditional         keywords related to conditionals (e.g. if, else)
+keyword.conditional.ternary ternary operator (e.g. ?, :)
+keyword.directive           various preprocessor directives and shebangs
+keyword.directive.define    preprocessor definition directives
+punctuation.delimiter  delimiters (e.g. ;, ., ,)
+punctuation.bracket    brackets (e.g. (), {}, [])
+punctuation.special    special symbols (e.g. {} in string interpolation)
+comment                line and block comments
+comment.documentation  comments documenting code
+comment.error          error-type comments (e.g. ERROR, FIXME, DEPRECATED)
+comment.warning        warning-type comments (e.g. WARNING, FIX, HACK)
+comment.todo           todo-type comments (e.g. TODO, WIP)
+comment.note           note-type comments (e.g. NOTE, INFO, XXX)
+markup.strong          bold text
+markup.italic          italic text
+markup.strikethrough   struck-through text
+markup.underline       underlined text (only for literal underline markup!)
+markup.heading         headings, titles (including markers)
+markup.heading.1       top-level heading
+markup.heading.2       section heading
+markup.heading.3       subsection heading
+markup.heading.4       and so on
+markup.heading.5       and so forth
+markup.heading.6       six levels ought to be enough for anybody
+markup.quote           block quotes
+markup.math            math environments (e.g. $ ... $ in LaTeX)
+markup.link            text references, footnotes, citations, etc.
+markup.link.label      link, reference descriptions
+markup.link.url        URL-style links
+markup.raw             literal or verbatim text (e.g. inline code)
+markup.raw.block       literal or verbatim text as a stand-alone block
+markup.list            list markers
+markup.list.checked    checked todo-style list markers
+markup.list.unchecked  unchecked todo-style list markers
+diff.plus              added text (for diff files)
+diff.minus             deleted text (for diff files)
+diff.delta             changed text (for diff files)
+tag                    XML-style tag names (e.g. in XML, HTML, etc.)
+tag.builtin            builtin tag names (e.g. HTML5 tags)
+tag.attribute          XML-style tag attributes
+tag.delimiter          XML-style tag delimiters</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../quick-settings/prelude/cursor-module.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../quick-settings/frequent-snippets/chapter.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../quick-settings/prelude/cursor-module.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../quick-settings/frequent-snippets/chapter.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>
