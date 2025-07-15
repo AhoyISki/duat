@@ -912,9 +912,6 @@ mod ranges {
                 [split_start.filter(min_len), split_end.filter(min_len)]
             };
 
-			crate::context::info!("{self:#?}");
-            crate::context::debug!("{m_range:?}, {split_off:?}");
-
             let added = split_off.iter().flatten().count();
 
             let shift_from = shift_from.saturating_sub(m_range.len()).max(m_range.start) + added;

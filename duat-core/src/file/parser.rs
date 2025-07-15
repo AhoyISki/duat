@@ -318,7 +318,7 @@ impl<U: Ui> InnerParsers<U> {
             parsers: &mut [ParserBox<U>],
             within: Range<Point>,
         ) {
-            let to_remove = ranges.remove(within.start.byte()..within.end.byte() + 1);
+            let to_remove = ranges.remove(within.start.byte()..within.end.byte());
 
             if to_remove.len() == 0 {
                 let parts = FileParts::new(text, Parsers(parsers), within);
@@ -333,7 +333,6 @@ impl<U: Ui> InnerParsers<U> {
                     parser.update_range(parts, Some(start..end));
                 }
             }
-            context::error!("{ranges:#?}");
         }
 
         let mut parsers = self.0.acquire_mut(pa);
