@@ -578,99 +578,107 @@ line.</li>
 </ul>
 </li>
 </ul>
-<p>And finally, there are also all the forms used by <code>duat-treesitter</code>:</p>
-<p>variable                       various variable names
-variable.builtin               built-in variable names (e.g. this, self)
-variable.parameter             parameters of a function
-variable.parameter.builtin     special parameters (e.g. _, it)
-variable.member                object and struct fields
-constant               constant identifiers
-constant.builtin       built-in constant values
-constant.macro         constants defined by the preprocessor
-module                 modules or namespaces
-module.builtin         built-in modules or namespaces
-label                  GOTO and other labels (e.g. label: in C), including heredoc labels
-string                 string literals
-string.documentation   string documenting code (e.g. Python docstrings)
-string.regexp          regular expressions
-string.escape          escape sequences
-string.special         other special strings (e.g. dates)
-string.special.symbol  symbols or atoms
-string.special.path    filenames
-string.special.url     URIs (e.g. hyperlinks)
-character              character literals
-character.special      special characters (e.g. wildcards)
-boolean                boolean literals
-number                 numeric literals
-number.float           floating-point number literals
-type                   type or class definitions and annotations
-type.builtin           built-in types
-type.definition        identifiers in type definitions (e.g. typedef <type> <identifier> in C)
-attribute              attribute annotations (e.g. Python decorators, Rust lifetimes)
-attribute.builtin      builtin annotations (e.g. @property in Python)
-property               the key in key/value pairs
-function               function definitions
-function.builtin       built-in functions
-function.call          function calls
-function.macro         preprocessor macros
-function.method        method definitions
-function.method.call   method calls
-constructor            constructor calls and definitions
-operator               symbolic operators (e.g. +, *)
-keyword                keywords not fitting into specific categories
-keyword.coroutine      keywords related to coroutines (e.g. go in Go, async/await in Python)
-keyword.function       keywords that define a function (e.g. func in Go, def in Python)
-keyword.operator       operators that are English words (e.g. and, or)
-keyword.import         keywords for including or exporting modules (e.g. import, from in Python)
-keyword.type           keywords describing namespaces and composite types (e.g. struct, enum)
-keyword.modifier       keywords modifying other constructs (e.g. const, static, public)
-keyword.repeat         keywords related to loops (e.g. for, while)
-keyword.return         keywords like return and yield
-keyword.debug          keywords related to debugging
-keyword.exception      keywords related to exceptions (e.g. throw, catch)
-keyword.conditional         keywords related to conditionals (e.g. if, else)
-keyword.conditional.ternary ternary operator (e.g. ?, :)
-keyword.directive           various preprocessor directives and shebangs
-keyword.directive.define    preprocessor definition directives
-punctuation.delimiter  delimiters (e.g. ;, ., ,)
-punctuation.bracket    brackets (e.g. (), {}, [])
-punctuation.special    special symbols (e.g. {} in string interpolation)
-comment                line and block comments
-comment.documentation  comments documenting code
-comment.error          error-type comments (e.g. ERROR, FIXME, DEPRECATED)
-comment.warning        warning-type comments (e.g. WARNING, FIX, HACK)
-comment.todo           todo-type comments (e.g. TODO, WIP)
-comment.note           note-type comments (e.g. NOTE, INFO, XXX)
-markup.strong          bold text
-markup.italic          italic text
-markup.strikethrough   struck-through text
-markup.underline       underlined text (only for literal underline markup!)
-markup.heading         headings, titles (including markers)
-markup.heading.1       top-level heading
-markup.heading.2       section heading
-markup.heading.3       subsection heading
-markup.heading.4       and so on
-markup.heading.5       and so forth
-markup.heading.6       six levels ought to be enough for anybody
-markup.quote           block quotes
-markup.math            math environments (e.g. $ ... $ in LaTeX)
-markup.link            text references, footnotes, citations, etc.
-markup.link.label      link, reference descriptions
-markup.link.url        URL-style links
-markup.raw             literal or verbatim text (e.g. inline code)
-markup.raw.block       literal or verbatim text as a stand-alone block
-markup.list            list markers
-markup.list.checked    checked todo-style list markers
-markup.list.unchecked  unchecked todo-style list markers
-diff.plus              added text (for diff files)
-diff.minus             deleted text (for diff files)
-diff.delta             changed text (for diff files)
-tag                    XML-style tag names (e.g. in XML, HTML, etc.)
-tag.builtin            builtin tag names (e.g. HTML5 tags)
-tag.attribute          XML-style tag attributes
-tag.delimiter          XML-style tag delimiters</p>
-<h1 id="frequently-used-snippets"><a class="header" href="#frequently-used-snippets">Frequently used snippets</a></h1>
+<p>And finally, there are also all the forms used by <code>duat-treesitter</code>. Since the queries were taken from nvim-treesitter, the form names follow the same patters as those from neovim:</p>
+<div class="table-wrapper"><table><thead><tr><th>Form name</th><th>Purpose</th></tr></thead><tbody>
+<tr><td><code>variable</code></td><td>various variable names</td></tr>
+<tr><td><code>variable.builtin</code></td><td>built-in variable names (e.g. this, self)</td></tr>
+<tr><td><code>variable.parameter</code></td><td>parameters of a function</td></tr>
+<tr><td><code>variable.parameter.builtin</code></td><td>special parameters (e.g. _, it)</td></tr>
+<tr><td><code>variable.member</code></td><td>object and struct fields</td></tr>
+<tr><td><code>constant</code></td><td>constant identifiers</td></tr>
+<tr><td><code>constant.builtin</code></td><td>built-in constant values</td></tr>
+<tr><td><code>constant.macro</code></td><td>constants defined by the preprocessor</td></tr>
+<tr><td><code>module</code></td><td>modules or namespaces</td></tr>
+<tr><td><code>module.builtin</code></td><td>built-in modules or namespaces</td></tr>
+<tr><td><code>label</code></td><td>GOTO and other labels (e.g. label: in C), including heredoc labels</td></tr>
+<tr><td><code>string</code></td><td>string literals</td></tr>
+<tr><td><code>string.documentation</code></td><td>string documenting code (e.g. Python docstrings)</td></tr>
+<tr><td><code>string.regexp</code></td><td>regular expressions</td></tr>
+<tr><td><code>string.escape</code></td><td>escape sequences</td></tr>
+<tr><td><code>string.special</code></td><td>other special strings (e.g. dates)</td></tr>
+<tr><td><code>string.special.symbol</code></td><td>symbols or atoms</td></tr>
+<tr><td><code>string.special.path</code></td><td>filenames</td></tr>
+<tr><td><code>string.special.url</code></td><td>URIs (e.g. hyperlinks)</td></tr>
+<tr><td><code>character</code></td><td>character literals</td></tr>
+<tr><td><code>character.special</code></td><td>special characters (e.g. wildcards)</td></tr>
+<tr><td><code>boolean</code></td><td>boolean literals</td></tr>
+<tr><td><code>number</code></td><td>numeric literals</td></tr>
+<tr><td><code>number.float</code></td><td>floating-point number literals</td></tr>
+<tr><td><code>type</code></td><td>type or class definitions and annotations</td></tr>
+<tr><td><code>type.builtin</code></td><td>built-in types</td></tr>
+<tr><td><code>type.definition</code></td><td>identifiers in type definitions (e.g. typedef <type> <identifier> in C)</td></tr>
+<tr><td><code>attribute</code></td><td>attribute annotations (e.g. Python decorators, Rust lifetimes)</td></tr>
+<tr><td><code>attribute.builtin</code></td><td>builtin annotations (e.g. @property in Python)</td></tr>
+<tr><td><code>property</code></td><td>the key in key/value pairs</td></tr>
+<tr><td><code>function</code></td><td>function definitions</td></tr>
+<tr><td><code>function.builtin</code></td><td>built-in functions</td></tr>
+<tr><td><code>function.call</code></td><td>function calls</td></tr>
+<tr><td><code>function.macro</code></td><td>preprocessor macros</td></tr>
+<tr><td><code>function.method</code></td><td>method definitions</td></tr>
+<tr><td><code>function.method.call</code></td><td>method calls</td></tr>
+<tr><td><code>constructor</code></td><td>constructor calls and definitions</td></tr>
+<tr><td><code>operator</code></td><td>symbolic operators (e.g. +, *)</td></tr>
+<tr><td><code>keyword</code></td><td>keywords not fitting into specific categories</td></tr>
+<tr><td><code>keyword.coroutine</code></td><td>keywords related to coroutines (e.g. go in Go, async/await in Python)</td></tr>
+<tr><td><code>keyword.function</code></td><td>keywords that define a function (e.g. func in Go, def in Python)</td></tr>
+<tr><td><code>keyword.operator</code></td><td>operators that are English words (e.g. and, or)</td></tr>
+<tr><td><code>keyword.import</code></td><td>keywords for including or exporting modules (e.g. import, from in Python)</td></tr>
+<tr><td><code>keyword.type</code></td><td>keywords describing namespaces and composite types (e.g. struct, enum)</td></tr>
+<tr><td><code>keyword.modifier</code></td><td>keywords modifying other constructs (e.g. const, static, public)</td></tr>
+<tr><td><code>keyword.repeat</code></td><td>keywords related to loops (e.g. for, while)</td></tr>
+<tr><td><code>keyword.return</code></td><td>keywords like return and yield</td></tr>
+<tr><td><code>keyword.debug</code></td><td>keywords related to debugging</td></tr>
+<tr><td><code>keyword.exception</code></td><td>keywords related to exceptions (e.g. throw, catch)</td></tr>
+<tr><td><code>keyword.conditional</code></td><td>keywords related to conditionals (e.g. if, else)</td></tr>
+<tr><td><code>keyword.conditional.ternary</code> ternary</td><td>operator (e.g. ?, :)</td></tr>
+<tr><td><code>keyword.directive</code></td><td>various preprocessor directives and shebangs</td></tr>
+<tr><td><code>keyword.directive.define</code></td><td>preprocessor definition directives</td></tr>
+<tr><td><code>punctuation.delimiter</code></td><td>delimiters (e.g. ;, ., ,)</td></tr>
+<tr><td><code>punctuation.bracket</code></td><td>brackets (e.g. (), {}, [])</td></tr>
+<tr><td><code>punctuation.special</code></td><td>special symbols (e.g. {} in string interpolation)</td></tr>
+<tr><td><code>comment</code></td><td>line and block comments</td></tr>
+<tr><td><code>comment.documentation</code></td><td>comments documenting code</td></tr>
+<tr><td><code>comment.error</code></td><td>error-type comments (e.g. ERROR, FIXME, DEPRECATED)</td></tr>
+<tr><td><code>comment.warning</code></td><td>warning-type comments (e.g. WARNING, FIX, HACK)</td></tr>
+<tr><td><code>comment.todo</code></td><td>todo-type comments (e.g. TODO, WIP)</td></tr>
+<tr><td><code>comment.note</code></td><td>note-type comments (e.g. NOTE, INFO, XXX)</td></tr>
+<tr><td><code>markup.strong</code></td><td>bold text</td></tr>
+<tr><td><code>markup.italic</code></td><td>italic text</td></tr>
+<tr><td><code>markup.strikethrough</code></td><td>struck-through text</td></tr>
+<tr><td><code>markup.underline</code></td><td>underlined text (only for literal underline markup!)</td></tr>
+<tr><td><code>markup.heading</code></td><td>headings, titles (including markers)</td></tr>
+<tr><td><code>markup.heading.1</code></td><td>top-level heading</td></tr>
+<tr><td><code>markup.heading.2</code></td><td>section heading</td></tr>
+<tr><td><code>markup.heading.3</code></td><td>subsection heading</td></tr>
+<tr><td><code>markup.heading.4</code></td><td>and so on</td></tr>
+<tr><td><code>markup.heading.5</code></td><td>and so forth</td></tr>
+<tr><td><code>markup.heading.6</code></td><td>six levels ought to be enough for anybody</td></tr>
+<tr><td><code>markup.quote</code></td><td>block quotes</td></tr>
+<tr><td><code>markup.math</code></td><td>math environments (e.g. $ ... $ in LaTeX)</td></tr>
+<tr><td><code>markup.link</code></td><td>text references, footnotes, citations, etc.</td></tr>
+<tr><td><code>markup.link.label</code></td><td>link, reference descriptions</td></tr>
+<tr><td><code>markup.link.url</code></td><td>URL-style links</td></tr>
+<tr><td><code>markup.raw</code></td><td>literal or verbatim text (e.g. inline code)</td></tr>
+<tr><td><code>markup.raw.block</code></td><td>literal or verbatim text as a stand-alone block</td></tr>
+<tr><td><code>markup.list</code></td><td>list markers</td></tr>
+<tr><td><code>markup.list.checked</code></td><td>checked todo-style list markers</td></tr>
+<tr><td><code>markup.list.unchecked</code></td><td>unchecked todo-style list markers</td></tr>
+<tr><td><code>diff.plus</code></td><td>added text (for diff files)</td></tr>
+<tr><td><code>diff.minus</code></td><td>deleted text (for diff files)</td></tr>
+<tr><td><code>diff.delta</code></td><td>changed text (for diff files)</td></tr>
+<tr><td><code>tag</code></td><td>XML-style tag names (e.g. in XML, HTML, etc.)</td></tr>
+<tr><td><code>tag.builtin</code></td><td>builtin tag names (e.g. HTML5 tags)</td></tr>
+<tr><td><code>tag.attribute</code></td><td>XML-style tag attributes</td></tr>
+<tr><td><code>tag.delimiter</code></td><td>XML-style tag delimiters</td></tr>
+</tbody></table>
+</div><h1 id="frequently-used-snippets"><a class="header" href="#frequently-used-snippets">Frequently used snippets</a></h1>
 <h1 id="mapping-jk-to-esc"><a class="header" href="#mapping-jk-to-esc">mapping jk to esc</a></h1>
+<h1 id="statusline-on-each-file"><a class="header" href="#statusline-on-each-file">StatusLine on each File</a></h1>
+<h1 id="prompt-and-status-on-same-line"><a class="header" href="#prompt-and-status-on-same-line">Prompt and Status on same line</a></h1>
+<h1 id="common-statusline-parts"><a class="header" href="#common-statusline-parts">Common StatusLine parts</a></h1>
+<h1 id="relative-and-aligned-linenumbers"><a class="header" href="#relative-and-aligned-linenumbers">Relative and aligned LineNumbers</a></h1>
+<h1 id="file-wise-tabstops"><a class="header" href="#file-wise-tabstops">File wise tabstops</a></h1>
+<h1 id="nerdfonts-statusline"><a class="header" href="#nerdfonts-statusline">Nerdfonts StatusLine</a></h1>
 <h1 id="scripting-duat"><a class="header" href="#scripting-duat">Scripting Duat</a></h1>
 <h1 id="the-pass-and-duats-global-state"><a class="header" href="#the-pass-and-duats-global-state">The Pass and Duat's global state</a></h1>
 <h1 id="the-hook-module"><a class="header" href="#the-hook-module">The hook module</a></h1>
