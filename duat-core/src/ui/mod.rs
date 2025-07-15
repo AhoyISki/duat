@@ -423,7 +423,7 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
     /// The start points that should be printed
     fn start_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>);
 
-    /// The end points that should be printed
+    /// The points immediately after the last printed [`Point`]
     fn end_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>);
 
     /// The current printing information of the area

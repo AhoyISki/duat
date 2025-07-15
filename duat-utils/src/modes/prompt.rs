@@ -147,8 +147,8 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
             run_once::<M, U>();
 
             let tag = Ghost(match wid.prompt_of::<M>() {
-                Some(text) => text,
-                None => self.0.prompt(),
+                Some(text) => txt!("{text}[prompt.colon]:").build(),
+                None => txt!("{}[prompt.colon]:", self.0.prompt()).build(),
             });
             wid.text_mut().insert_tag(*PROMPT_TAGGER, 0, tag);
 
@@ -326,7 +326,7 @@ impl<U: Ui> PromptMode<U> for RunCommands {
     }
 
     fn prompt(&self) -> Text {
-        txt!("[prompt.colon]:").build()
+        Text::default()
     }
 }
 
@@ -449,7 +449,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
     }
 
     fn prompt(&self) -> Text {
-        txt!("{}[prompt.colon]:", self.inc.prompt()).build()
+        txt!("{}", self.inc.prompt()).build()
     }
 }
 

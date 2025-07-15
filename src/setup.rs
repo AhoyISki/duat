@@ -91,6 +91,7 @@ pub fn pre_setup(logs: Option<Logs>, duat_tx: &'static Sender<DuatEvent>) {
     form::enable_mask("error");
     form::enable_mask("warn");
     form::enable_mask("info");
+    form::enable_mask("inactive");
 
     mode::map::<mode::User>("L", Pager::<LogBook, Ui>::new())
 }

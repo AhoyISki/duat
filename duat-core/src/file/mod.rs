@@ -130,9 +130,10 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
 pub struct File<U: Ui> {
     path: PathKind,
     text: Text,
-    cfg: PrintCfg,
     printed_lines: Vec<(usize, bool)>,
     parsers: InnerParsers<U>,
+    /// The [`PrintCfg`] of this [`File`]
+    pub cfg: PrintCfg,
     pub(crate) layout_order: usize,
     _ghost: PhantomData<U>,
 }
@@ -414,6 +415,7 @@ impl<U: Ui> Widget<U> for File<U> {
 
         let (start, _) = area.start_points(&file.text, file.cfg);
         let (end, _) = area.end_points(&file.text, file.cfg);
+        context::info!("{end:?}");
 
         // SAFETY: The Pass goes no further than the use in file.parsers
         let mut pa = unsafe { Pass::new() };

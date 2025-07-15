@@ -806,13 +806,13 @@ mod ranges {
             Self {
                 list: GapBuffer::new(),
                 shift_state: (0, 0),
-                min_len: 0,
+                min_len: 1,
             }
         }
 
         /// Sets a minimum length to keep [`Range`]s
         pub fn set_min_len(&mut self, min: usize) {
-            self.min_len = min;
+            self.min_len = min.max(1);
 
             let mut i = 0;
             self.list.retain(|range| {
@@ -884,8 +884,6 @@ mod ranges {
                 (|r| r.start, |r| r.end),
             );
 
-            crate::context::debug!("m_range: {m_range:?}");
-
             // The ranges in this region have not been callibrated yet.
             if shift_from <= m_range.end {
                 for range in self.list.range_mut(shift_from..m_range.end).iter_mut() {
@@ -898,7 +896,7 @@ mod ranges {
                 let slice = self.list.range(m_range.clone());
 
                 let first = slice.iter().next().cloned();
-                let last = slice.iter().next_back().cloned();
+                let last = slice.iter().next_back().cloned().or(first.clone());
 
                 let split_start = first.filter(|f| f.start < within.start).map(|first| {
                     self.list[m_range.start].start = within.start;
@@ -913,6 +911,9 @@ mod ranges {
 
                 [split_start.filter(min_len), split_end.filter(min_len)]
             };
+
+			crate::context::info!("{self:#?}");
+            crate::context::debug!("{m_range:?}, {split_off:?}");
 
             let added = split_off.iter().flatten().count();
 

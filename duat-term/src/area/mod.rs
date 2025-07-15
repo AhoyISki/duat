@@ -875,23 +875,21 @@ mod layouted {
             (text.visual_line_start(info.s_points), 0)
         };
 
-        let iter = text.iter_fwd(line_start);
+        let mut iter = {
+            let iter = text.iter_fwd(line_start);
+            print_iter(iter, cfg.wrap_width(coords.width()), cfg, info.s_points)
+        };
 
-        let iter = print_iter(iter, cfg.wrap_width(coords.width()), cfg, info.s_points);
-        let mut points = info.s_points;
-
-        for (Caret { wrap, .. }, Item { part, real, ghost }) in iter {
-            if wrap {
+        let points = iter
+            .find_map(|(Caret { wrap, .. }, Item { part, real, ghost })| {
                 if y == coords.height() {
-                    break;
+                    Some((real, ghost))
+                } else {
+                    y += (wrap && part.is_char()) as u32;
+                    None
                 }
-                if part.is_char() {
-                    y += 1
-                }
-            } else {
-                points = (real, ghost);
-            }
-        }
+            })
+            .unwrap_or_else(|| text.len_points());
 
         info.e_points = Some(points);
         let layout = get_layout(layouts, area.id).unwrap();
