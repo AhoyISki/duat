@@ -153,8 +153,7 @@ impl<U: Ui> Mode<U> for Normal {
             ////////// Object selection keys
             key!(Char('w'), Mod::NONE | Mod::ALT) => handle.edit_all(pa, |mut c| {
                 let alt_word = key.modifiers.contains(Mod::ALT);
-                let init = no_nl_windows(c.chars_fwd()).next();
-                if let Some(((p0, c0), (p1, c1))) = init {
+                if let Some(((p0, c0), (p1, c1))) = { no_nl_windows(c.chars_fwd()).next() } {
                     if Category::of(c0, wc) == Category::of(c1, wc) {
                         c.move_to(p0);
                     } else {
@@ -171,8 +170,7 @@ impl<U: Ui> Mode<U> for Normal {
             }),
             key!(Char('e'), Mod::NONE | Mod::ALT) => handle.edit_all(pa, |mut c| {
                 let alt_word = key.modifiers.contains(Mod::ALT);
-                let init = no_nl_windows(c.chars_fwd()).next();
-                if let Some(((p0, c0), (p1, c1))) = init {
+                if let Some(((p0, c0), (p1, c1))) = { no_nl_windows(c.chars_fwd()).next() } {
                     if Category::of(c0, wc) == Category::of(c1, wc) {
                         c.move_to(p0);
                     } else {
@@ -213,8 +211,7 @@ impl<U: Ui> Mode<U> for Normal {
                 let alt_word = key.modifiers.contains(Mod::ALT);
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(1);
-                let points = c.search_fwd(word_and_space(alt_word, wc), None).next();
-                if let Some([_, p1]) = points {
+                if let Some([_, p1]) = { c.search_fwd(word_and_space(alt_word, wc), None).next() } {
                     c.move_to(p1);
                     c.move_hor(-1);
                 }
@@ -223,8 +220,7 @@ impl<U: Ui> Mode<U> for Normal {
                 let alt_word = key.modifiers.contains(Mod::ALT);
                 set_anchor_if_needed(true, &mut c);
                 c.move_hor(1);
-                let points = c.search_fwd(space_and_word(alt_word, wc), None).next();
-                if let Some([_, p1]) = points {
+                if let Some([_, p1]) = { c.search_fwd(space_and_word(alt_word, wc), None).next() } {
                     c.move_to(p1);
                     c.move_hor(-1);
                 }
@@ -232,8 +228,7 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('B'), Mod::NONE | Mod::ALT) => handle.edit_all(pa, |mut c| {
                 let alt_word = key.modifiers.contains(Mod::ALT);
                 set_anchor_if_needed(true, &mut c);
-                let points = c.search_rev(word_and_space(alt_word, wc), None).next();
-                if let Some([p0, _]) = points {
+                if let Some([p0, _]) = { c.search_rev(word_and_space(alt_word, wc), None).next() } {
                     c.move_to(p0);
                 }
             }),
@@ -613,6 +608,46 @@ impl<U: Ui> Mode<U> for Normal {
                     c.move_to_coords(caret.0, caret.1);
 
                     processed_lines.extend(range[0].line()..=range[1].line());
+                });
+            }
+            key!(Char('j'), Mod::ALT) => {
+                handle.new_moment(pa);
+                let mut processed_lines = Vec::new();
+                handle.edit_all(pa, |mut c| {
+                    let [start, end] = c.range();
+
+                    if start.line() == end.line() {
+                        if !processed_lines.contains(&start.line())
+                            && let Some([p0, p1]) = { c.search_fwd("\n", None).next() }
+                        {
+                            c.move_to(p0..p1);
+                            c.replace("");
+                            c.reset();
+                            processed_lines.push(start.line());
+                        }
+                    } else {
+                        let caret_was_on_end = c.set_caret_on_start();
+                        let nls: Vec<[Point; 2]> = c.search_fwd("\n", Some(end)).collect();
+
+                        let mut lines_joined = 0;
+                        for [p0, p1] in nls.into_iter().rev() {
+                            if processed_lines.contains(&p0.line()) {
+                                continue;
+                            }
+
+                            c.move_to(p0..p1);
+                            c.replace("");
+                            lines_joined += 1;
+                        }
+
+                        c.unset_anchor();
+                        c.move_to(start);
+                        c.set_anchor();
+                        c.move_hor((end.char() - (start.char() + lines_joined)) as i32);
+                        if !caret_was_on_end {
+                            c.swap_ends();
+                        }
+                    }
                 });
             }
 
