@@ -170,16 +170,16 @@ impl<U: Ui> Parser<U> for MatchPairs {
             };
 
             let id = if is_main {
-                form::id_of!("matched_paren.main.start")
+                form::id_of!("matched_pair.main.start")
             } else {
-                form::id_of!("matched_paren.extra.start")
+                form::id_of!("matched_pair.extra.start")
             };
             parts.tags.insert(*PAREN_TAGGER, start_range, id.to_tag(99));
 
             let id = if is_main {
-                form::id_of!("matched_paren.main.end")
+                form::id_of!("matched_pair.main.end")
             } else {
-                form::id_of!("matched_paren.extra.end")
+                form::id_of!("matched_pair.extra.end")
             };
             parts.tags.insert(*PAREN_TAGGER, end_range, id.to_tag(99));
         }
