@@ -179,12 +179,6 @@ fn match_inside_around<U: Ui>(
     brackets: Brackets,
     is_inside: bool,
 ) {
-    fn move_to_points<S, U: Ui>(m: &mut Cursor<File<U>, U::Area, S>, [p0, p1]: [Point; 2]) {
-        m.move_to(p0);
-        m.set_anchor();
-        m.move_to(p1);
-    }
-
     let Char(char) = key.code else {
         context::warn!("Key [a]{key.code}[] not mapped on this mode");
         return;
@@ -207,14 +201,14 @@ fn match_inside_around<U: Ui>(
                     let is_same_cat = char == 'W' || p0_cat == p1_cat;
                     if is_same_cat { p0 } else { c.caret() }
                 };
-                move_to_points(c, [p0, p1]);
+                c.move_to(p0..p1);
                 c.move_hor(-1);
                 Some(())
             }),
             's' | ' ' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
                 let [_, p0] = object.find_behind(c, 0, None)?;
                 let [p1, _] = object.find_ahead(c, 0, None)?;
-                move_to_points(c, [p0, p1]);
+                c.move_to(p0..p1);
                 if is_inside || char == ' ' && p0 < c.text().len() {
                     c.move_hor(-1);
                 }
@@ -238,10 +232,10 @@ fn match_inside_around<U: Ui>(
                 c.move_to(p2);
                 let [p0, p1] = object.find_behind(c, 1, None)?;
                 if is_inside {
-                    move_to_points(c, [p1, p2]);
+                    c.move_to(p1..p2);
                     c.move_hor(-1);
                 } else {
-                    move_to_points(c, [p0, p2]);
+                    c.move_to(p0..p2);
                     if !matches!(c.char_at(p2), Some(';' | ',')) {
                         c.move_hor(-1);
                     }
@@ -258,7 +252,7 @@ fn match_inside_around<U: Ui>(
                 let [p2, p3] = object.find_ahead(c, 1, None)?;
                 let [p0, p1] = object.find_behind(c, 1, None)?;
                 let [p0, p1] = if is_inside { [p1, p2] } else { [p0, p3] };
-                move_to_points(c, [p0, p1]);
+                c.move_to(p0..p1);
                 c.move_hor(-1);
                 Some(())
             }),
@@ -269,7 +263,7 @@ fn match_inside_around<U: Ui>(
                 let indent = c.indent();
                 if indent == 0 {
                     let end = c.len();
-                    move_to_points(&mut c, [Point::default(), end]);
+                    c.move_to(..end);
                 } else {
                     c.set_anchor();
                     c.move_hor(-(c.v_caret().char_col() as i32));

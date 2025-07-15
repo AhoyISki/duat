@@ -471,6 +471,7 @@ impl<U: Ui> Mode<U> for Normal {
 
                     while let Some(mut c) = iter.next() {
                         let selection = c.selection().to_string();
+                        c.set_anchor_if_needed();
                         c.replace(last_sel.replace(selection).unwrap());
                     }
 
@@ -487,6 +488,7 @@ impl<U: Ui> Mode<U> for Normal {
                 s_iter.next();
                 handle.edit_all(pa, |mut c| {
                     if let Some(next) = s_iter.next() {
+                        c.set_anchor_if_needed();
                         c.replace(next);
                     }
                 });
