@@ -156,6 +156,7 @@ impl<U: Ui> file::Parser<U> for TsParser {
     }
 
     fn update_range(&mut self, mut parts: FileParts<U>, within: Option<Range<Point>>) {
+        context::warn!("updating treesitter");
         if let Some(inner) = self.0.as_mut()
             && let Some(within) = within
         {
@@ -317,7 +318,7 @@ impl InnerTsParser {
         let (.., Queries { highlights, injections, .. }) = &self.lang_parts;
         let buf = TsBuf(bytes);
 
-        tags.remove(self.tagger, (range.start + 1).min(range.end)..range.end);
+        tags.remove(self.tagger, range.clone());
         // Include a little bit of overhang, in order to deal with some loose
         // ends, mostly related to comments.
         // There should be no tag duplication, since Duat does not allow that.
@@ -400,17 +401,18 @@ impl InnerTsParser {
         // range, that means it was removed.
         self.sub_trees.retain_mut(|st| {
             if let Some((.., lp)) = sub_trees_to_add.iter().find(|(lhs, ..)| *lhs == st.range) {
+                let hi_range = (st.range.start + 1).min(st.range.end)..st.range.end;
                 if lp.0 == st.lang_parts.0 {
-                    st.highlight_and_inject(bytes, tags, st.range.clone());
+                    st.highlight_and_inject(bytes, tags, hi_range);
                     true
                 } else {
                     if !(st.range.start >= start && st.range.end <= end) {
-                        tags.remove(self.tagger, st.range.clone());
+                        tags.remove(self.tagger, hi_range);
                     }
                     false
                 }
-            // If the sub tree was not found, but its range was
-            // parsed, it was deleted
+            // If the sub tree is not in sub_trees_to_add, but its
+            // range was parsed, it has been declared as deleted.
             // Unless it is a non-empty duat-text sub tree, in which
             // case this rule is ignored
             } else if st.range.start >= start && st.range.end <= end {
@@ -423,16 +425,17 @@ impl InnerTsParser {
 
         // In the end, we add the sub trees that weren't already in there.
         // This should automatically handle all of the sub trees's sub trees.
-        for (range, offset, lang_parts) in sub_trees_to_add {
+        for (st_range, offset, lang_parts) in sub_trees_to_add {
             let key_fn = |st: &InnerTsParser| st.range.start;
 
-            let Err(i) = self.sub_trees.binary_search_by_key(&range.start, key_fn) else {
+            let Err(i) = self.sub_trees.binary_search_by_key(&st_range.start, key_fn) else {
                 continue;
             };
 
             let form_parts = forms_from_lang_parts(&lang_parts);
-            let mut st = InnerTsParser::new(bytes, range.clone(), offset, lang_parts, form_parts);
-            st.highlight_and_inject(bytes, tags, range);
+            let hi_range = (st_range.start + 1).min(st_range.end)..st_range.end;
+            let mut st = InnerTsParser::new(bytes, st_range, offset, lang_parts, form_parts);
+            st.highlight_and_inject(bytes, tags, hi_range);
             self.sub_trees.insert(i, st)
         }
     }
