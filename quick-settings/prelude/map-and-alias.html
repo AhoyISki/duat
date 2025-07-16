@@ -182,6 +182,23 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="map-and-alias-modifying-keys"><a class="header" href="#map-and-alias-modifying-keys">map and alias: modifying keys</a></h1>
+<p>In Duat, mapping works somewhat like Vim/neovim, but not quite. This is how it works:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>setup_duat!(setup);
+use duat::prelude::*;
+use kak::Kak;
+
+fn setup() {
+    // Adds kakoune-like editing modes, like Insert, Normal and OneKey
+    plug!(Kak::new());
+  
+    map::&lt;User&gt;("f", "&lt;Esc&gt;|fold -s&lt;Enter&gt;");
+    alias::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
+    alias::&lt;Prompt&gt;("jk", "&lt;Esc&gt;");
+}
+<span class="boring">}</span></code></pre></pre>
+<p>In mapping, there are two main functions: <code>map</code> and <code>alias</code>. <code>map</code> will take the keys as is, and if the sequence matches, outputs the remapping, otherwise, outputs the keys that were sent. <code>alias</code> does the same thing, but it also ""prints"" the sequence that was sent, making it <em>look</em> like you are typing real text.</p>
 
                     </main>
 
