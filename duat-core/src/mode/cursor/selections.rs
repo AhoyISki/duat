@@ -160,7 +160,7 @@ impl Selections {
         let (shift_from, shift) = self.shift_state.get();
 
         let range = if let Some(last) = self.buf.len().checked_sub(1) {
-            range.to_range(self.buf[last].end_excl().byte())
+            range.to_range(self.buf[last].end_excl().char())
         } else {
             // If there are no Selections, this value doesn't really matter.
             0..0
@@ -426,7 +426,7 @@ mod cursor {
             if p == self.caret() {
                 return;
             }
-            let p = text.point_at(p.byte().min(text.last_point().byte()));
+            let p = text.point_at(p.char().min(text.last_point().char()));
             *self.caret.get_mut() = LazyVPoint::Unknown(p);
         }
 
@@ -461,7 +461,7 @@ mod cursor {
                     point
                 }
             } else {
-                text.point_at_char(target)
+                text.point_at(target)
             };
 
             let moved = p.char() as i32 - self.caret.get().point().char() as i32;
@@ -543,12 +543,12 @@ mod cursor {
 
                 let (vcol, wcol, p) = area
                     .print_iter(text.iter_fwd(line_start), cfg.new_line_as('\n'))
-                    .skip_while(|(_, item)| item.byte() <= self.byte())
+                    .skip_while(|(_, item)| item.char() <= self.char())
                     .find_map(|(Caret { x, len, wrap }, item)| {
                         wraps += wrap as i32;
                         if let Some((p, char)) = item.as_real_char() {
                             if (x..x + len).contains(&(vp.dwcol as u32))
-                                || (char == '\n' && x < vp.dwcol as u32)
+                                || (char == '\n' && x <= vp.dwcol as u32)
                             {
                                 last_valid = (vcol, x as u16, p);
                                 if wraps == by {
@@ -702,7 +702,7 @@ mod cursor {
         /// it will return one more byte at the end, i.e. start..=end.
         pub fn range(&self, bytes: &Bytes) -> Range<usize> {
             let [start, end] = self.point_range(bytes);
-            start.byte()..end.byte()
+            start.char()..end.char()
         }
 
         /// The starting [`Point`] of this [`Selection`]

@@ -165,8 +165,8 @@ And finally, there are also all the forms used by `duat-treesitter`. Since the q
 | `tag.attribute`               | XML-style tag attributes
 | `tag.delimiter`               | XML-style tag delimiters
 
-[masks]: masks.md
-[map and alias]: map-and-alias.md
+[masks]: ../../scripting-duat/masks.md
+[map and alias]: prelude/map-and-alias.md
 [form inheritance]: form-module.md#form-inheritance
 [`file_fmt`]: https://docs.rs/duat/latest/duat/state/fn.file_fmt.html
 [`mode_fmt`]: https://docs.rs/duat/latest/duat/state/fn.mode_fmt.html

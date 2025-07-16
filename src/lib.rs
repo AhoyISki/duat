@@ -110,9 +110,9 @@
 //! # }
 //! setup_duat!(setup);
 //! use duat::prelude::*;
+//! use kak::Kak;
 //! use match_pairs::MatchPairs;
 //! use treesitter::TreeSitter;
-//! use kak::Kak;
 //!
 //! fn setup() {
 //!     plug!(TreeSitter, MatchPairs, Kak::new());
@@ -788,6 +788,7 @@ pub mod hook {
 pub mod mode {
     pub use duat_core::mode::*;
     use duat_core::{mode, ui::Widget};
+    pub use duat_utils::modes::*;
 
     use crate::Ui;
 
@@ -936,12 +937,12 @@ pub mod prelude {
         Plugin, clipboard, context,
         data::{self, Pass},
         file,
+        prelude::Lender,
         text::{
             self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, Tagger,
             Text, txt,
         },
         ui::{self, RawArea, Widget, WidgetCfg},
-        prelude::Lender,
     };
     pub use duat_filetype::*;
     #[cfg(feature = "term-ui")]
@@ -955,7 +956,7 @@ pub mod prelude {
             FormSet, KeysSent, KeysSentTo, ModeCreated, ModeSwitched, OnFileOpen, OnWindowOpen,
             SearchPerformed, SearchUpdated, UnfocusedFrom, WidgetCreated,
         },
-        mode::{self, Mode, User, alias, map},
+        mode::{self, Mode, User, alias, map, Prompt, Pager},
         print, setup_duat,
         state::*,
         widgets::*,

@@ -819,6 +819,28 @@ impl Pass {
     pub(crate) unsafe fn new() -> Self {
         Pass(PhantomData)
     }
+
+    // /// Duplicates the [`Pass`]
+    // ///
+    // /// By using this function, you can do multiple mutable borrows of
+    // /// [`RwData`] or [`Handle`]s, as well as simultaneous mutable/non
+    // /// mutable borrows.
+    // ///
+    // /// You should almost _never_ use this function. Not only does it
+    // /// make it harder to reason about what things are borrowed at a
+    // /// given time. But it is also harder for callers of this function
+    // /// to trust that it will follow the rules of the [`Pass`].
+    // ///
+    // /// However, there is _some_ utility
+    // ///
+    // /// # Safety
+    // ///
+    // /// .
+    // #[allow(static_mut_refs)]
+    // pub unsafe fn duplicate(&mut self) -> (&mut Self, &mut Self) {
+    //     static mut PASS: Pass = Pass(PhantomData);
+    //     unsafe { (&mut PASS, &mut PASS) }
+    // }
 }
 
 fn update_read_state(read_state: &Rc<Cell<usize>>, cur_state: &Rc<Cell<usize>>) {

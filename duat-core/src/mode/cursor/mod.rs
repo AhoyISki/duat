@@ -462,14 +462,11 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
         pat: R,
         end: Option<Point>,
     ) -> impl Iterator<Item = R::Match> + '_ {
-        let start = self.selection.caret().byte();
+        let start = self.selection.caret();
         let text = self.widget.text();
         match end {
-            Some(end) => text.search_fwd(pat, start..end.byte()).unwrap(),
-            None => {
-                let end = text.len().byte();
-                text.search_fwd(pat, start..end).unwrap()
-            }
+            Some(end) => text.search_fwd(pat, start..end).unwrap(),
+            None => text.search_fwd(pat, start..text.len()).unwrap(),
         }
     }
 
@@ -506,10 +503,10 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
         pat: R,
         start: Option<Point>,
     ) -> impl Iterator<Item = R::Match> + '_ {
-        let end = self.selection.caret().byte();
+        let end = self.selection.caret();
         let start = start.unwrap_or_default();
         let text = self.widget.text();
-        text.search_rev(pat, start.byte()..end).unwrap()
+        text.search_rev(pat, start..end).unwrap()
     }
 
     /// Wether the current selection matches a regex pattern
@@ -661,9 +658,9 @@ impl<W: Widget<A::Ui> + ?Sized, A: RawArea> Cursor<'_, W, A, Searcher> {
     /// [`IncSearch`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
     pub fn search_inc_fwd(&mut self, end: Option<Point>) -> impl Iterator<Item = [Point; 2]> + '_ {
         let range = if let Some(end) = end {
-            (self.selection.caret()..end).to_range(self.text().len().byte())
+            (self.selection.caret()..end).to_range(self.text().len().char())
         } else {
-            (self.selection.caret()..).to_range(self.text().len().byte())
+            (self.selection.caret()..).to_range(self.text().len().char())
         };
         self.inc_searcher.search_fwd(self.widget.text(), range)
     }
@@ -680,9 +677,9 @@ impl<W: Widget<A::Ui> + ?Sized, A: RawArea> Cursor<'_, W, A, Searcher> {
         start: Option<Point>,
     ) -> impl Iterator<Item = [Point; 2]> + '_ {
         let range = if let Some(start) = start {
-            (start..self.selection.caret()).to_range(self.text().len().byte())
+            (start..self.selection.caret()).to_range(self.text().len().char())
         } else {
-            (..self.selection.caret()).to_range(self.text().len().byte())
+            (..self.selection.caret()).to_range(self.text().len().char())
         };
         self.inc_searcher.search_rev(self.widget.text(), range)
     }

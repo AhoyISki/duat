@@ -196,7 +196,7 @@ pub const fn utf8_char_width(b: u8) -> u32 {
 /// All of the [ranges] in [`std`] that implement either
 /// [`RangeBounds<usize>`] or [`RangeBounds<Point>`] should work as an
 /// argument. If it implements [`RangeBounds<usize>`], then the
-/// `usize` represents the a byte index in the [`Text`].
+/// `usize` represents the a char index in the [`Text`].
 ///
 /// [`Text`]: super::Text
 /// [ranges]: std::range
@@ -209,18 +209,18 @@ pub trait TextRange: Clone {
     fn to_range(self, max: usize) -> Range<usize>;
 }
 
-implTextRange!(Range, r, r.start, r.end, r.start.byte(), r.end.byte());
+implTextRange!(Range, r, r.start, r.end, r.start.char(), r.end.char());
 implTextRange!(
     RangeInclusive,
     r,
     *r.start(),
     r.end() + 1,
-    r.start().byte(),
-    r.end().byte() + 1
+    r.start().char(),
+    r.end().char() + 1
 );
-implTextRange!(RangeTo, r, 0, r.end, 0, r.end.byte());
-implTextRange!(RangeToInclusive, r, 0, r.end, 0, r.end.byte());
-implTextRange!(RangeFrom, r, r.start, MAX, r.start.byte(), MAX);
+implTextRange!(RangeTo, r, 0, r.end, 0, r.end.char());
+implTextRange!(RangeToInclusive, r, 0, r.end, 0, r.end.char());
+implTextRange!(RangeFrom, r, r.start, MAX, r.start.char(), MAX);
 
 impl TextRange for RangeFull {
     fn to_range(self, max: usize) -> Range<usize> {
@@ -251,7 +251,7 @@ impl TextRangeOrPoint for usize {
 
 impl TextRangeOrPoint for Point {
     fn to_range(self, max: usize) -> Range<usize> {
-        max.min(self.byte())..max.min(self.byte() + 1)
+        max.min(self.char())..max.min(self.char() + 1)
     }
 }
 

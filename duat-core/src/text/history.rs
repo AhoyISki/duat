@@ -441,13 +441,13 @@ impl<S: std::borrow::Borrow<str>> Change<S> {
     }
 
     /// Returns the taken [`Range`]
-    pub fn taken_range(&self) -> Range<usize> {
-        self.start.byte()..self.taken_end().byte()
+    pub fn taken_range(&self) -> Range<Point> {
+        self.start..self.taken_end()
     }
 
     /// Returns the added [`Range`]
-    pub fn added_range(&self) -> Range<usize> {
-        self.start.byte()..self.added_end().byte()
+    pub fn added_range(&self) -> Range<Point> {
+        self.start..self.added_end()
     }
 
     /// The text that was taken on this [`Change`]
@@ -471,7 +471,7 @@ impl<S: std::borrow::Borrow<str>> Change<S> {
 }
 
 /// If `lhs` contains the start of `rhs`
-fn has_start_of(lhs: Range<usize>, rhs: Range<usize>) -> bool {
+fn has_start_of(lhs: Range<Point>, rhs: Range<Point>) -> bool {
     lhs.start <= rhs.start && rhs.start <= lhs.end
 }
 

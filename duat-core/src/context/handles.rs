@@ -4,9 +4,7 @@
 //! [`RwData<W>`] conjoined to an [`Ui::Area`].
 
 use std::{
-    any::TypeId,
-    cell::{Cell, RefCell, RefMut},
-    rc::Rc,
+    any::TypeId, cell::{Cell, RefCell, RefMut}, rc::Rc
 };
 
 use lender::Lender;

@@ -208,7 +208,7 @@ impl Text {
             let end = bytes.len();
             bytes.apply_change(Change::str_insert("\n", end));
         }
-        let tags = InnerTags::new(bytes.len().byte());
+        let tags = InnerTags::new(bytes.len().char());
 
         Self(Box::new(InnerText {
             bytes,
@@ -318,9 +318,9 @@ impl Text {
     /// [points]: TwoPoints
     /// [point]: Bytes::point_at
     #[inline(always)]
-    pub fn ghost_max_points_at(&self, at: usize) -> (Point, Option<Point>) {
-        let point = self.point_at(at);
-        (point, self.0.tags.ghosts_total_at(point.byte()))
+    pub fn ghost_max_points_at(&self, c: usize) -> (Point, Option<Point>) {
+        let point = self.point_at(c);
+        (point, self.0.tags.ghosts_total_at(point.char()))
     }
 
     /// The [points] at the end of the text
@@ -332,7 +332,7 @@ impl Text {
     /// [points]: TwoPoints
     /// [last point]: Bytes::len
     pub fn len_points(&self) -> (Point, Option<Point>) {
-        self.ghost_max_points_at(self.len().byte())
+        self.ghost_max_points_at(self.len().char())
     }
 
     /// Points visually after the [`TwoPoints`]
@@ -392,7 +392,7 @@ impl Text {
     ///
     /// [range]: TextRange
     pub fn replace_range(&mut self, range: impl TextRange, edit: impl ToString) {
-        let range = range.to_range(self.len().byte());
+        let range = range.to_range(self.len().char());
         let (start, end) = (self.point_at(range.start), self.point_at(range.end));
         let change = Change::new(edit, [start, end], self);
 
@@ -422,8 +422,8 @@ impl Text {
     fn apply_change_inner(&mut self, guess_i: usize, change: Change<&str>) -> usize {
         self.0.bytes.apply_change(change);
         self.0.tags.transform(
-            change.start().byte()..change.taken_end().byte(),
-            change.added_end().byte(),
+            change.start().char()..change.taken_end().char(),
+            change.added_end().char(),
         );
 
         *self.0.has_unsaved_changes.get_mut() = true;
@@ -451,7 +451,7 @@ impl Text {
 
     /// Inserts a [`Text`] into this [`Text`], in a specific [`Point`]
     pub fn insert_text(&mut self, p: Point, text: Text) {
-        let insert = if p.byte() == 1 && self.0.bytes == "\n" {
+        let insert = if p.char() == 1 && self.0.bytes == "\n" {
             let change = Change::new(
                 text.0.bytes.strs(..).to_string(),
                 [Point::default(), p],
@@ -598,7 +598,7 @@ impl Text {
     /// [key]: Taggers
     /// [`File`]: crate::file::File
     pub fn remove_tags(&mut self, taggers: impl Taggers, range: impl TextRangeOrPoint) {
-        let range = range.to_range(self.len().byte());
+        let range = range.to_range(self.len().char());
         self.0.tags.remove_from(taggers, range)
     }
 
@@ -610,7 +610,7 @@ impl Text {
     ///
     /// [`File`]: crate::file::File
     pub fn clear_tags(&mut self) {
-        self.0.tags = InnerTags::new(self.0.bytes.len().byte());
+        self.0.tags = InnerTags::new(self.0.bytes.len().char());
     }
 
     /////////// Selection functions
@@ -638,17 +638,17 @@ impl Text {
 
             let key = Tagger::for_selections();
             let form = if is_main {
-                self.0.tags.insert(key, caret.byte(), MainCaret);
+                self.0.tags.insert(key, caret.char(), MainCaret);
                 form::M_SEL_ID
             } else {
-                self.0.tags.insert(key, caret.byte(), ExtraCaret);
+                self.0.tags.insert(key, caret.char(), ExtraCaret);
                 form::E_SEL_ID
             };
 
             bytes.add_record([caret.byte(), caret.char(), caret.line()]);
 
             if let Some([start, end]) = selection {
-                let range = start.byte()..end.byte();
+                let range = start.char()..end.char();
                 self.0.tags.insert(key, range, form.to_tag(95));
             }
         };
@@ -656,7 +656,7 @@ impl Text {
         if let Some((start, end)) = within {
             for (selection, is_main) in self.0.selections.iter() {
                 let range = selection.range(&self.0.bytes);
-                if range.end > start.byte() && range.start < end.byte() {
+                if range.end > start.char() && range.start < end.char() {
                     add_selection(selection, &mut self.0.bytes, is_main);
                 }
             }
