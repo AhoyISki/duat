@@ -101,7 +101,7 @@ impl<U: Ui> Widget<U> for LogBook {
     }
 
     fn print_cfg(&self) -> PrintCfg {
-        PrintCfg::new().word_wrapped().with_scrolloff(0, 0)
+        *PrintCfg::new().wrap_on_word().set_scrolloff(0, 0)
     }
 
     fn on_focus(_: &mut Pass, handle: Handle<Self, U>) {

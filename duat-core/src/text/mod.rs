@@ -297,10 +297,10 @@ impl Text {
     }
 
     /// Gets the indentation level on the current line
-    pub fn indent(&self, p: Point, area: &impl RawArea, cfg: PrintCfg) -> usize {
+    pub fn indent(&self, p: Point, area: &impl RawArea, mut cfg: PrintCfg) -> usize {
         let [start, _] = self.points_of_line(p.line());
         let t_iter = self.iter_fwd(start).no_ghosts().no_conceals();
-        area.print_iter(t_iter, cfg.new_line_as('\n'))
+        area.print_iter(t_iter, *cfg.new_line_as('\n'))
             .filter_map(|(caret, item)| Some(caret).zip(item.part.as_char()))
             .find(|(_, char)| !char.is_whitespace() || *char == '\n')
             .map(|(caret, _)| caret.x as usize)

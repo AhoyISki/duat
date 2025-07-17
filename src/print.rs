@@ -16,8 +16,8 @@ pub fn no_wrapping() {
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.unwrapped(),
-        None => PrintCfg::default_for_input().unwrapped(),
+        Some(mut prev) => *prev.dont_wrap(),
+        None => *PrintCfg::default_for_input().dont_wrap(),
     })
 }
 
@@ -30,8 +30,8 @@ pub fn wrap_on_edge() {
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.edge_wrapped(),
-        None => PrintCfg::default_for_input().edge_wrapped(),
+        Some(mut prev) => *prev.wrap_on_edge(),
+        None => *PrintCfg::default_for_input().wrap_on_edge(),
     })
 }
 
@@ -45,8 +45,8 @@ pub fn wrap_on_words() {
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.word_wrapped(),
-        None => PrintCfg::default_for_input().word_wrapped(),
+        Some(mut prev) => *prev.wrap_on_word(),
+        None => *PrintCfg::default_for_input().wrap_on_word(),
     })
 }
 
@@ -62,8 +62,8 @@ pub fn wrap_on_cap(cap: u8) {
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.cap_wrapped(cap),
-        None => PrintCfg::default_for_input().cap_wrapped(cap),
+        Some(mut prev) => *prev.wrap_at(cap),
+        None => *PrintCfg::default_for_input().wrap_at(cap),
     })
 }
 
@@ -77,8 +77,8 @@ pub fn indent_wraps(value: bool) {
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.indent_wraps(value),
-        None => PrintCfg::default_for_input().indent_wraps(value),
+        Some(mut prev) => *prev.indent_wraps(value),
+        None => *PrintCfg::default_for_input().indent_wraps(value),
     })
 }
 
@@ -89,8 +89,8 @@ pub fn tabstop(tab_size: u8) {
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.with_tabstop(tab_size),
-        None => PrintCfg::default_for_input().with_tabstop(tab_size),
+        Some(mut prev) => *prev.set_tabstop(tab_size),
+        None => *PrintCfg::default_for_input().set_tabstop(tab_size),
     })
 }
 
@@ -101,8 +101,8 @@ pub fn new_line(char: char) {
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.new_line_as(char),
-        None => PrintCfg::default_for_input().new_line_as(char),
+        Some(mut prev) => *prev.new_line_as(char),
+        None => *PrintCfg::default_for_input().new_line_as(char),
     })
 }
 
@@ -113,8 +113,8 @@ pub fn trailing_new_line(char: char) {
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.trailing_new_line_as(char),
-        None => PrintCfg::default_for_input().trailing_new_line_as(char),
+        Some(mut prev) => *prev.trailing_new_line_as(char),
+        None => *PrintCfg::default_for_input().trailing_new_line_as(char),
     })
 }
 
@@ -127,8 +127,8 @@ pub fn scrolloff(x: u8, y: u8) {
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.with_scrolloff(x, y),
-        None => PrintCfg::default_for_input().with_scrolloff(x, y),
+        Some(mut prev) => *prev.set_scrolloff(x, y),
+        None => *PrintCfg::default_for_input().set_scrolloff(x, y),
     })
 }
 
@@ -139,7 +139,7 @@ pub fn scrolloff(x: u8, y: u8) {
 ///
 /// ```rust
 /// # use duat::print::word_chars;
-/// word_chars!('a'-'z''A'-'Z''0'-'9''_'-'_');
+/// word_chars!("a-zA-Z0-9_-_");
 /// ```
 pub macro word_chars($($w_chars:tt)+) {
     set_word_chars(w_chars!($($w_chars)+))
@@ -154,7 +154,7 @@ pub fn set_word_chars(word_chars: WordChars) {
     let prev = print_cfg.take();
 
     *print_cfg = Some(match prev {
-        Some(prev) => prev.with_word_chars(word_chars),
-        None => PrintCfg::default_for_input().with_word_chars(word_chars),
+        Some(mut prev) => *prev.set_word_chars(word_chars),
+        None => *PrintCfg::default_for_input().set_word_chars(word_chars),
     })
 }

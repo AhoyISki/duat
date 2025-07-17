@@ -34,13 +34,11 @@ use duat_core::{
 /// fn setup_generic_over_ui<U: Ui>() {
 ///     hook::remove("WindowWidgets");
 ///     hook::add::<OnWindowOpen<U>, U>(|pa, builder| {
-///         let footer = FooterWidgets::default().notifs(Notifications::cfg().formatted(|rec| {
-///             Some(txt!(
-///                 "[notifs.bracket]([notifs.target]{}[notifs.bracket]) {}",
-///                 rec.target(),
-///                 rec.text().clone()
-///             ))
-///         }));
+///         let footer = FooterWidgets::default().notifs(Notifications::cfg().formatted(|rec| txt!(
+///             "[notifs.bracket]([notifs.target]{}[notifs.bracket]) {}",
+///             rec.target(),
+///             rec.text().clone()
+///         )));
 ///         builder.push(pa, footer);
 ///     });
 /// }

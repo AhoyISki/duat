@@ -226,7 +226,7 @@ impl PrintCfg {
     ///     tab_stops: TabStops(4),
     ///     new_line: NewLine::AlwaysAs('\n'),
     ///     scrolloff: ScrollOff { x: 3, y: 3 },
-    ///     word_chars: word_chars!('A'-'Z''a'-'z''0'-'9''_'-'_'),
+    ///     word_chars: word_chars!("A-Za-z0-9_-_"),
     ///     force_scrolloff: false,
     ///     show_ghosts: true,
     ///     allow_overscroll: false,
@@ -256,20 +256,23 @@ impl PrintCfg {
     ////////// Configuration
 
     /// Don't wrap when reaching the end of the area
-    pub const fn unwrapped(self) -> Self {
-        Self { wrap_method: WrapMethod::NoWrap, ..self }
+    pub const fn dont_wrap(&mut self) -> &mut Self {
+        self.wrap_method = WrapMethod::NoWrap;
+        self
     }
 
     /// Wrap on the right edge of the area
-    pub const fn edge_wrapped(self) -> Self {
-        Self { wrap_method: WrapMethod::Edge, ..self }
+    pub const fn wrap_on_edge(&mut self) -> &mut Self {
+        self.wrap_method = WrapMethod::Edge;
+        self
     }
 
     /// Wrap on [word] terminations
     ///
     /// [word]: word_chars
-    pub const fn word_wrapped(self) -> Self {
-        Self { wrap_method: WrapMethod::Word, ..self }
+    pub const fn wrap_on_word(&mut self) -> &mut Self {
+        self.wrap_method = WrapMethod::Edge;
+        self
     }
 
     /// Wrap on a given distance from the left edge
@@ -279,64 +282,58 @@ impl PrintCfg {
     ///
     /// [`unwrapped`]: Self::unwrapped
     /// [`edge_wrapped`]: Self::edge_wrapped
-    pub const fn cap_wrapped(self, cap: u8) -> Self {
-        Self {
-            wrap_method: WrapMethod::Capped(cap),
-            ..self
-        }
+    pub const fn wrap_at(&mut self, cap: u8) -> &mut Self {
+        self.wrap_method = WrapMethod::Capped(cap);
+        self
     }
 
     /// Reindent wrapped lines to the same level of indentation
-    pub const fn indent_wraps(self, value: bool) -> Self {
-        Self { indent_wrapped: value, ..self }
+    pub const fn indent_wraps(&mut self, value: bool) -> &mut Self {
+        self.indent_wrapped = value;
+        self
     }
 
     /// Sets the size of tabs
-    pub const fn with_tabstop(self, tab_size: u8) -> Self {
-        Self { tab_stops: TabStops(tab_size), ..self }
+    pub const fn set_tabstop(&mut self, tabstop: u8) -> &mut Self {
+        self.tab_stops = TabStops(tabstop);
+        self
     }
 
     /// Sets a character to replace `'\n'`s with
-    pub const fn new_line_as(self, char: char) -> Self {
-        Self {
-            new_line: NewLine::AlwaysAs(char),
-            ..self
-        }
+    pub const fn new_line_as(&mut self, char: char) -> &mut Self {
+        self.new_line = NewLine::AlwaysAs(char);
+        self
     }
 
     /// Sets a character to replace `'\n'` only with trailing white
     /// space
-    pub const fn trailing_new_line_as(self, char: char) -> Self {
-        Self {
-            new_line: NewLine::AfterSpaceAs(char),
-            ..self
-        }
+    pub const fn trailing_new_line_as(&mut self, char: char) -> &mut Self {
+        self.new_line = NewLine::AfterSpaceAs(char);
+        self
     }
 
     /// Sets the horizontal and vertical scrolloff, respectively
-    pub const fn with_scrolloff(self, x: u8, y: u8) -> Self {
-        Self { scrolloff: ScrollOff { x, y }, ..self }
+    pub const fn set_scrolloff(&mut self, x: u8, y: u8) -> &mut Self {
+        self.scrolloff = ScrollOff { x, y };
+        self
     }
 
     /// Sets the horizontal scrolloff
-    pub const fn with_x_scrolloff(self, x_gap: u8) -> Self {
-        Self {
-            scrolloff: ScrollOff { y: self.scrolloff.y, x: x_gap },
-            ..self
-        }
+    pub const fn set_x_scrolloff(&mut self, x: u8) -> &mut Self {
+        self.scrolloff = ScrollOff { y: self.scrolloff.y, x };
+        self
     }
 
     /// Sets the vertical scrolloff
-    pub const fn with_y_scrolloff(self, y_gap: u8) -> Self {
-        Self {
-            scrolloff: ScrollOff { x: self.scrolloff.x, y: y_gap },
-            ..self
-        }
+    pub const fn set_y_scrolloff(&mut self, y: u8) -> &mut Self {
+        self.scrolloff = ScrollOff { y, x: self.scrolloff.x };
+        self
     }
 
     /// Sets the [`WordChars`]
-    pub const fn with_word_chars(self, word_chars: WordChars) -> Self {
-        Self { word_chars, ..self }
+    pub const fn set_word_chars(&mut self, word_chars: WordChars) -> &mut Self {
+        self.word_chars = word_chars;
+        self
     }
 
     /// Sets a forced horizontal scrolloff
@@ -351,8 +348,9 @@ impl PrintCfg {
     /// command.
     ///
     /// [`PromptLine`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.PromptLine.html
-    pub const fn with_forced_horizontal_scrolloff(self) -> Self {
-        Self { force_scrolloff: true, ..self }
+    pub const fn set_forced_horizontal_scrolloff(&mut self, value: bool) -> &mut Self {
+        self.force_scrolloff = value;
+        self
     }
 
     ////////// Queries

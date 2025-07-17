@@ -116,10 +116,6 @@
 //!         // For those, you should use the `txt!` macro.
 //!         Ok(Some(txt!("Unset [a]{}[] forms", forms.len()).build()))
 //!     });
-//!
-//!     // Adding a command can fail if a command with the same
-//!     // name already exists.
-//!     assert!(result.is_ok());
 //! }
 //! ```
 //!
@@ -161,8 +157,7 @@
 //!             EXPRESSION.store('😶' as u32, Ordering::Relaxed)
 //!         }
 //!         Ok(None)
-//!     })
-//!     .unwrap();
+//!     });
 //! }
 //!
 //! fn main_thread_function(pa: &mut Pass) {

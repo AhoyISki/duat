@@ -477,7 +477,7 @@ mod cursor {
             by: i32,
             text: &Text,
             area: &impl RawArea,
-            cfg: PrintCfg,
+            mut cfg: PrintCfg,
         ) -> i32 {
             let by = by as isize;
             if by == 0 {
@@ -495,7 +495,7 @@ mod cursor {
                 let mut vcol = 0;
 
                 let (wcol, p) = area
-                    .print_iter(text.iter_fwd(line_start), cfg.new_line_as('\n'))
+                    .print_iter(text.iter_fwd(line_start), *cfg.new_line_as('\n'))
                     .find_map(|(Caret { len, x, wrap }, item)| {
                         wraps += wrap as usize;
                         if let Some((p, char)) = item.as_real_char()
@@ -526,7 +526,7 @@ mod cursor {
             by: i32,
             text: &Text,
             area: &impl RawArea,
-            cfg: PrintCfg,
+            mut cfg: PrintCfg,
         ) -> i32 {
             if by == 0 {
                 return 0;
@@ -542,7 +542,7 @@ mod cursor {
                 let mut last_valid = (vp.vcol, vp.wcol, vp.p);
 
                 let (vcol, wcol, p) = area
-                    .print_iter(text.iter_fwd(line_start), cfg.new_line_as('\n'))
+                    .print_iter(text.iter_fwd(line_start), *cfg.new_line_as('\n'))
                     .skip_while(|(_, item)| item.char() <= self.char())
                     .find_map(|(Caret { x, len, wrap }, item)| {
                         wraps += wrap as i32;
@@ -599,7 +599,7 @@ mod cursor {
                 } else {
                     let (wcol, p) = last_valid;
                     let (ccol, vcol) = area
-                        .rev_print_iter(text.iter_rev(p), cfg.new_line_as('\n'))
+                        .rev_print_iter(text.iter_rev(p), *cfg.new_line_as('\n'))
                         .take_while(|(_, item)| item.as_real_char().is_none_or(|(_, c)| c != '\n'))
                         .fold((0, 0), |(ccol, vcol), (caret, item)| {
                             (ccol + item.is_real() as u16, vcol + caret.len as u16)
