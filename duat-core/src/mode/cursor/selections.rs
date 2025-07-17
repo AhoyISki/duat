@@ -747,14 +747,19 @@ mod cursor {
             }
         }
 
-        /// Returns the range between `target` and `anchor`.
+        /// Returns the range between `caret` and `anchor`.
         ///
-        /// like [`Selection::range`], this function will not include
-        /// beyond the last character's [`Point`].
-        ///
-        /// If `anchor` isn't set, returns an empty range on `target`.
+        /// If `anchor` isn't set, returns a range that contains only
+        /// the `caret`'s current `char`.
         pub fn point_range(&self, bytes: &Bytes) -> [Point; 2] {
             [self.start(), self.end(bytes)]
+        }
+
+        /// Returns an exclusive range between `caret` and `anchor`
+        ///
+        /// If `anchor` isn't set, both [`Point`]s will be the same.
+        pub fn point_range_excl(&self) -> [Point; 2] {
+            [self.start(), self.end_excl()]
         }
 
         /// Sets both the desired visual column, as well as the

@@ -124,6 +124,7 @@ pub fn main_byte(file: &File<impl Ui>) -> usize {
 pub fn main_char(file: &File<impl Ui>) -> usize {
     file.selections().get_main().unwrap().char() + 1
 }
+status!("{file_fmt}{Spacer} {mode_fmt} {sels_fmt} [coord]c{main_col} [coord]l{main_line}|{}", |file: &File| file.text().len().line());
 
 /// [`StatusLine`] part: Line of the main selection
 ///

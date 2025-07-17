@@ -597,6 +597,11 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
         self.selection.point_range(self.text())
     }
 
+    /// An exclusive [`Point`] range of the [`Selection`]
+    pub fn range_excl(&self) -> [Point; 2] {
+        self.selection.point_range_excl()
+    }
+
     /// The [`VPoint`] range of the [`Selection`]
     ///
     /// Use only if you need the things that the [`VPoint`] provides,

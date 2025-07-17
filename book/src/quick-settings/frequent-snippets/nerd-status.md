@@ -1,0 +1,1 @@
+# Nerdfonts StatusLine 
