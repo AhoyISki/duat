@@ -76,7 +76,7 @@ fn file_fmt(file: &File) -> Text{
         } else if file.text().has_unsaved_changes() {
             b.push(txt!("[file.unsaved][[has changes]]"));
         }
-        if file.filetype() == Some("rust") {
+        if let Some("rust") = file.filetype() {
             b.push(txt!("[[🦀]]"));
         }
     } else {

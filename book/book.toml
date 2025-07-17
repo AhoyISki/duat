@@ -11,7 +11,7 @@ copy-fonts = true
 git-repository-url = "https://github.com/AhoyISki/duat"
 edit-url-template = "https://github.com/AhoyISki/duat/edit/master/book/{path}"
 site-url = "https://ahoyiski.github.io/duat"
-cname = "duat.rs"
+cname = "https://ahoyiski.github.io/duat"
 
 [output.html.print]
 page-break = false
