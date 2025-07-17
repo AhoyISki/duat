@@ -182,7 +182,8 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="map-and-alias-modifying-keys"><a class="header" href="#map-and-alias-modifying-keys">map and alias: modifying keys</a></h1>
-<p>In Duat, mapping works somewhat like Vim/neovim, but not quite. This is how it works:</p>
+<p>In Duat, mapping works somewhat like Vim/neovim, but not quite. This is how it
+works:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>setup_duat!(setup);
@@ -198,7 +199,94 @@ fn setup() {
     alias::&lt;Prompt&gt;("jk", "&lt;Esc&gt;");
 }
 <span class="boring">}</span></code></pre></pre>
-<p>In mapping, there are two main functions: <code>map</code> and <code>alias</code>. <code>map</code> will take the keys as is, and if the sequence matches, outputs the remapping, otherwise, outputs the keys that were sent. <code>alias</code> does the same thing, but it also ""prints"" the sequence that was sent, making it <em>look</em> like you are typing real text.</p>
+<p>In mapping, there are two main functions: <code>map</code> and <code>alias</code>. <code>map</code> will take
+the keys as is, and if the sequence matches, outputs the remapping, otherwise,
+outputs the keys that were sent. <code>alias</code> does the same thing, but it also
+""prints"" the sequence that was sent, making it <em>look</em> like you are typing
+real text.</p>
+<p>In the functions, you can see a type argument. This type argument is the <code>Mode</code>
+where this mapping will take place. So here, in <code>duat-kak</code>'s <code>Insert</code> mode, if
+you type <code>jk</code>, the <code>j</code> will show up as ""text"", but when you press <code>k</code>, you
+will immediately exit to <code>Normal</code> <code>Mode</code>.</p>
+<p><code>User</code> is a standard <code>Mode</code> in Duat. It is meant to be a "hub" for Plugin
+writers to put default mappings on. Sort of like the leader key in Vim/Neovim.
+On <code>duat-kak</code>, by default, this mode is entered by pressing the space bar.
+While you <em>can</em> change that like this:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>setup_duat!(setup);
+use duat::prelude::*;
+use kak::Kak;
+
+fn setup() {
+    plug!(Kak::new());
+  
+    map::&lt;Normal&gt;(" ", "");
+    // In rust, you have to escap a backslash
+    map::&lt;Normal&gt;("\\", " ");
+}
+<span class="boring">}</span></code></pre></pre>
+<p>You <em>can</em> also do this:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>setup_duat!(setup);
+use duat::prelude::*;
+use kak::Kak;
+
+fn setup() {
+    plug!(Kak::new());
+  
+    map::&lt;Normal&gt;(" ", "");
+    map::&lt;Normal&gt;("\\", User);
+}
+<span class="boring">}</span></code></pre></pre>
+<p>This is allowed in order to support custom <code>Mode</code>s. That way, you can just
+place the <code>Mode</code> as the second argument, and the mapping will switch modes,
+instead of sending keys. This also works with <code>alias</code>.</p>
+<blockquote>
+<p>[!NOTE]
+In this case, since <code>User</code> is a struct with no fields, I could just put
+<code>User</code> as the second argument, which acts as a constructor. But in most other
+<code>Mode</code>s, you're gonna have to write something like <code>Insert::new()</code> as the
+argument instead.</p>
+</blockquote>
+<h2 id="list-of-keys-and-modifiers"><a class="header" href="#list-of-keys-and-modifiers">List of keys and modifiers</a></h2>
+<p>Syntax wise, the keys are very similar to vim style. Regular characters are
+placed normally, special keys are enclosed in <code>&lt;</code>,<code>&gt;</code> pairs, and modified keys
+are enclosed in these pairs, with a <code>&lt;{mod}-{key}&gt;</code> syntax. Examples:</p>
+<ul>
+<li><code>abc&lt;C-Up&gt;&lt;F12&gt;</code>.</li>
+<li><code>&lt;A-Enter&gt;&lt;AS-Left&gt;</code>.</li>
+<li><code>づあっと</code>.</li>
+</ul>
+<p>This is the list of recognized special keys:</p>
+<ul>
+<li><code>&lt;Enter&gt;</code>,</li>
+<li><code>&lt;Tab&gt;</code>,</li>
+<li><code>&lt;Bspc&gt;</code>,</li>
+<li><code>&lt;Del&gt;</code>,</li>
+<li><code>&lt;Esc&gt;</code>,</li>
+<li><code>&lt;Up&gt;</code>,</li>
+<li><code>&lt;Down&gt;</code>,</li>
+<li><code>&lt;Left&gt;</code>,</li>
+<li><code>&lt;Right&gt;</code>,</li>
+<li><code>&lt;PageU&gt;</code>,</li>
+<li><code>&lt;PageD&gt;</code>,</li>
+<li><code>&lt;Home&gt;</code>,</li>
+<li><code>&lt;End&gt;</code>,</li>
+<li><code>&lt;Ins&gt;</code>,</li>
+<li><code>&lt;F{1-12}&gt;</code>,</li>
+</ul>
+<p>And these are the allowed modifiers, which, as you can see above, can be
+composed together:</p>
+<ul>
+<li><code>C =&gt; Control</code>,</li>
+<li><code>A =&gt; Alt</code>,</li>
+<li><code>S =&gt; Shift</code>,</li>
+<li><code>M =&gt; Meta</code>,</li>
+<li><code>super =&gt; Super</code>,</li>
+<li><code>hyper =&gt; Hyper</code>,</li>
+</ul>
 
                     </main>
 

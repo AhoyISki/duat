@@ -181,7 +181,23 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="cursor-how-to-print-cursors"><a class="header" href="#cursor-how-to-print-cursors">cursor: How to print cursors</a></h1>
+                        <h1 id="cursor-how-to-print-cursors"><a class="header" href="#cursor-how-to-print-cursors"><code>cursor</code>: How to print cursors</a></h1>
+<p>The <code>cursor</code> module is like the <code>print</code> module, in that it provides some basic
+options on how cursors should be printed. These options primarily concern if
+cursors should be printed as "real cursors" (The blinking kind, that can turn
+into a bar and stuff), or as just <code>Form</code>s.</p>
+<ul>
+<li><code>cursor::set_main</code> will set the "shape" of the main cursor. This takes a
+<code>CursorShape</code> argument, and lets you set its shape to a vertical bar, a
+horizontal bar, and make it blink.</li>
+<li><code>cursor::set_extra</code> is the same but for extra cursors. Do note that this may
+not work on some <code>Ui</code>s, mainly terminals, which only allow for one cursor at a
+time.</li>
+<li><code>cursor::unset_main</code> and <code>cursor::unset_extra</code>: Disables cursor shapes for
+every type of cursor, replacing them with a <code>Form</code>, which will be <code>caret.main</code>
+and <code>caret.extra</code>, respectively</li>
+<li><code>cursor::unset</code>: The same as calling <code>unset_main</code> and <code>unset_extra</code>.</li>
+</ul>
 
                     </main>
 
