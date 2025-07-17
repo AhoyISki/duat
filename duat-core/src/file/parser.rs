@@ -318,7 +318,7 @@ impl<U: Ui> InnerParsers<U> {
             parsers: &mut [ParserBox<U>],
             within: Range<Point>,
         ) {
-            let to_remove = ranges.remove(within.start.byte()..within.end.byte());
+            let to_remove = ranges.remove(within.start.char()..within.end.char());
 
             if to_remove.len() == 0 {
                 let parts = FileParts::new(text, Parsers(parsers), within);
@@ -460,7 +460,7 @@ impl<U: Ui> ParserBox<U> {
             status: Some(ParserStatus::Local(LocalParser {
                 parser: Box::new(reader),
                 bytes: file.bytes().clone(),
-                ranges: Ranges::full(file.text().len().byte()),
+                ranges: Ranges::full(file.text().len().char()),
             })),
             ty: TypeId::of::<Rd>(),
         }
@@ -482,7 +482,7 @@ impl<U: Ui> ParserBox<U> {
                 parser: Box::new(reader),
                 bytes: file.bytes().clone(),
                 receiver,
-                ranges: Ranges::full(file.text().len().byte()),
+                ranges: Ranges::full(file.text().len().char()),
                 state,
             })),
             ty: TypeId::of::<Rd>(),
@@ -520,7 +520,7 @@ impl<U: Ui> ParserBox<U> {
                         }
                     });
 
-                    let ranges = Ranges::full(bytes.len().byte());
+                    let ranges = Ranges::full(bytes.len().char());
 
                     let mut sp = SendParser { parser: reader, bytes, receiver, ranges, state };
 
@@ -744,7 +744,7 @@ fn get_ranges<'a>(
 
         Some(ranges)
     } else {
-        *ranges = Ranges::full(bytes.len().byte());
+        *ranges = Ranges::full(bytes.len().char());
         None
     }
 }

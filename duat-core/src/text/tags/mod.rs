@@ -182,16 +182,16 @@ impl InnerTags {
             (s_at, s_tag): (usize, RawTag),
             end: Option<(usize, RawTag)>,
         ) -> bool {
-            let [s_n, s_b, s_skip] = tags.skip_at(s_at);
+            let [s_n, s_c, s_skip] = tags.skip_at(s_at);
 
             if let Some((e_at, e_tag)) = end
                 && s_at != e_at
             {
-                let [e_n, e_b, e_skip] = {
+                let [e_n, e_c, e_skip] = {
                     // This is very likely the hot path.
-                    let [e_n, e_b, skip] = if e_at < s_b + s_skip {
+                    let [e_n, e_c, skip] = if e_at < s_c + s_skip {
                         // These changes account for a possibly split skip.
-                        [s_n, s_at, s_skip - (s_at - s_b)]
+                        [s_n, s_at, s_skip - (s_at - s_c)]
                     } else {
                         tags.skip_at(e_at)
                     };
@@ -199,20 +199,20 @@ impl InnerTags {
                     if exists_at(&tags.buf, s_n, s_tag) && exists_at(&tags.buf, e_n, e_tag) {
                         return false;
                     }
-                    let s_n_diff = if s_at == s_b { 1 } else { 2 };
+                    let s_n_diff = if s_at == s_c { 1 } else { 2 };
 
-                    [e_n + s_n_diff, e_b, skip]
+                    [e_n + s_n_diff, e_c, skip]
                 };
 
-                let [s_ins, s_n_diff] = tags.insert_inner(s_at, s_tag, [s_n, s_b, s_skip]);
-                let [e_ins, e_n_diff] = tags.insert_inner(e_at, e_tag, [e_n, e_b, e_skip]);
+                let [s_ins, s_n_diff] = tags.insert_inner(s_at, s_tag, [s_n, s_c, s_skip]);
+                let [e_ins, e_n_diff] = tags.insert_inner(e_at, e_tag, [e_n, e_c, e_skip]);
 
                 tags.bounds.insert(tags.buf.len(), [
                     (s_ins, [s_ins + s_n_diff - 1, s_at], s_tag),
                     (e_ins, [e_ins + e_n_diff - 1, e_at], e_tag),
                 ]);
             } else if end.is_none() {
-                let [ins, n_diff] = tags.insert_inner(s_at, s_tag, [s_n, s_b, s_skip]);
+                let [ins, n_diff] = tags.insert_inner(s_at, s_tag, [s_n, s_c, s_skip]);
                 tags.bounds
                     .shift_by(tags.buf.len(), ins, [n_diff as i32, 0]);
             }
@@ -238,21 +238,21 @@ impl InnerTags {
     /// were added
     ///
     /// Will NOT handle bounds creation, WILL transform [`Records`].
-    fn insert_inner(&mut self, at: usize, tag: RawTag, [n, b, skip]: [usize; 3]) -> [usize; 2] {
-        if at == b {
+    fn insert_inner(&mut self, at: usize, tag: RawTag, [n, c, skip]: [usize; 3]) -> [usize; 2] {
+        if at == c {
             let n = n - rev_range(&self.buf, ..n)
                 .take_while(|(_, ts)| ts.as_tag().is_some_and(|t| t.priority() > tag.priority()))
                 .count();
 
             self.buf.insert(n, TagOrSkip::Tag(tag));
-            self.records.transform([n, b], [0, 0], [1, 0]);
-            self.records.insert([n, b]);
+            self.records.transform([n, c], [0, 0], [1, 0]);
+            self.records.insert([n, c]);
             [n, 1]
         } else {
             self.buf.splice(n..=n, [
-                TagOrSkip::Skip((at - b) as u32),
+                TagOrSkip::Skip((at - c) as u32),
                 TagOrSkip::Tag(tag),
-                TagOrSkip::Skip((b + skip - at) as u32),
+                TagOrSkip::Skip((c + skip - at) as u32),
             ]);
             self.records.transform([n + 1, at], [0, 0], [2, 0]);
             self.records.insert([n + 1, at]);
@@ -264,45 +264,45 @@ impl InnerTags {
     pub fn insert_tags(&mut self, p: Point, mut other: InnerTags) {
         let mut starts = Vec::new();
 
-        for (_, b, tag) in fwd_range(&other.buf, ..).filter_map(entries_fwd(p.byte())) {
+        for (_, c, tag) in fwd_range(&other.buf, ..).filter_map(entries_fwd(p.byte())) {
             match tag {
-                PushForm(..) => starts.push((b, tag)),
+                PushForm(..) => starts.push((c, tag)),
                 PopForm(tagger, id) => {
                     let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
                     let (sb, _) = starts.remove(i);
-                    self.insert(tagger, sb..b, id.to_tag(tag.priority()));
+                    self.insert(tagger, sb..c, id.to_tag(tag.priority()));
                 }
                 RawTag::MainCaret(tagger) => {
-                    self.insert(tagger, b, MainCaret);
+                    self.insert(tagger, c, MainCaret);
                 }
                 RawTag::ExtraCaret(tagger) => {
-                    self.insert(tagger, b, ExtraCaret);
+                    self.insert(tagger, c, ExtraCaret);
                 }
-                StartAlignCenter(_) => starts.push((b, tag)),
+                StartAlignCenter(_) => starts.push((c, tag)),
                 EndAlignCenter(tagger) => {
                     let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
                     let (sb, _) = starts.remove(i);
-                    self.insert(tagger, sb..b, AlignCenter);
+                    self.insert(tagger, sb..c, AlignCenter);
                 }
-                StartAlignRight(_) => starts.push((b, tag)),
+                StartAlignRight(_) => starts.push((c, tag)),
                 EndAlignRight(tagger) => {
                     let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
                     let (sb, _) = starts.remove(i);
-                    self.insert(tagger, sb..b, AlignRight);
+                    self.insert(tagger, sb..c, AlignRight);
                 }
                 RawTag::Spacer(tagger) => {
-                    self.insert(tagger, b, Spacer);
+                    self.insert(tagger, c, Spacer);
                 }
-                StartConceal(_) => starts.push((b, tag)),
+                StartConceal(_) => starts.push((c, tag)),
                 EndConceal(tagger) => {
                     let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
                     let (sb, _) = starts.remove(i);
-                    self.insert(tagger, sb..b, Conceal);
+                    self.insert(tagger, sb..c, Conceal);
                 }
                 ConcealUntil(_) => unreachable!(),
                 RawTag::Ghost(tagger, id) => {
                     let entry = other.ghosts.extract_if(.., |(l, _)| l == &id).next();
-                    self.insert(tagger, b, Ghost(entry.unwrap().1));
+                    self.insert(tagger, c, Ghost(entry.unwrap().1));
                 }
                 StartToggle(..) => todo!(),
                 EndToggle(..) => todo!(),
@@ -328,8 +328,8 @@ impl InnerTags {
         };
 
         for (bound, ..) in other.bounds.iter() {
-            let [n, b] = bound.get();
-            bound.set([n + self.buf.len() - taken_from_start, b + self.len_bytes()]);
+            let [n, c] = bound.get();
+            bound.set([n + self.buf.len() - taken_from_start, c + self.len_bytes()]);
         }
 
         self.buf.extend(&other.buf);
@@ -362,17 +362,17 @@ impl InnerTags {
             taggers.clone().contains_tagger(tag.tagger())
         });
 
-        let [mut n, mut b, _] = self.skip_behind(start);
-        let (mut initial_n, mut initial_b) = (n, b);
+        let [mut n, mut c, _] = self.skip_behind(start);
+        let (mut initial_n, mut initial_c) = (n, c);
 
         let mut removed = 0;
         let mut starts = Vec::new();
 
-        while b < end {
+        while c < end {
             let ts = self.buf.get(n).copied();
             if let Some(TagOrSkip::Skip(skip)) = ts {
                 if removed > 0 {
-                    self.records.transform([n, b], [removed, 0], [0, 0]);
+                    self.records.transform([n, c], [removed, 0], [0, 0]);
 
                     // Try to merge this skip with the previous one.
                     if let Some(prev_n) = n.checked_sub(1)
@@ -380,7 +380,7 @@ impl InnerTags {
                     {
                         self.buf
                             .splice(prev_n..=n, [TagOrSkip::Skip(prev_skip + skip)]);
-                        self.records.transform([n, b], [1, 0], [0, 0]);
+                        self.records.transform([n, c], [1, 0], [0, 0]);
                         self.bounds.shift_by(self.buf.len(), n, [-1, 0]);
                     } else {
                         n += 1;
@@ -391,7 +391,7 @@ impl InnerTags {
                     n += 1;
                 }
 
-                b += skip as usize;
+                c += skip as usize;
             } else if let Some(TagOrSkip::Tag(tag)) = ts {
                 if !taggers.clone().contains_tagger(tag.tagger()) {
                     n += 1;
@@ -402,13 +402,13 @@ impl InnerTags {
                 self.bounds.shift_by(self.buf.len(), n, [-1, 0]);
 
                 // The handled removed RawTag is always before the range.
-                let ([rm_n, rm_b], n_diff) =
-                    self.handle_removed_tag((b, tag), initial_n, initial_b, &mut starts);
+                let ([rm_n, rm_c], n_diff) =
+                    self.handle_removed_tag((c, tag), initial_n, initial_c, &mut starts);
                 if n_diff != 0 {
                     n = sh(n, n_diff);
                     initial_n = sh(initial_n, n_diff);
                     if initial_n == rm_n {
-                        initial_b = rm_b
+                        initial_c = rm_c
                     }
                     self.bounds.shift_by(self.buf.len(), rm_n, [n_diff, 0]);
                 }
@@ -416,22 +416,22 @@ impl InnerTags {
                 removed += 1;
             } else {
                 if removed > 0 {
-                    self.records.transform([n, b], [removed, 0], [0, 0]);
+                    self.records.transform([n, c], [removed, 0], [0, 0]);
                 }
                 break;
             }
         }
 
         // At this point in time, n should point to the index of the first
-        // thing that didn't match the byte constraint, so too should b point
+        // thing that didn't match the byte constraint, so too should c point
         // to where this element is.
         // that I don't really care about optimizing it tbh.
         for (_, tag) in starts {
-            let (n1, b1, _) = find_match(&self.buf, (n, b, tag)).unwrap();
-            let ([rm_n, rm_b], n_diff) = self.remove(n1, b1);
+            let (n1, b1, _) = find_match(&self.buf, (n, c, tag)).unwrap();
+            let ([rm_n, rm_c], n_diff) = self.remove(n1, b1);
 
             if n >= rm_n {
-                b = rm_b;
+                c = rm_c;
                 n = rm_n;
             }
 
@@ -444,11 +444,11 @@ impl InnerTags {
     fn remove_intersections(&mut self, range: Range<usize>, filter: impl Fn(&RawTag) -> bool) {
         let removed = self.bounds.remove_intersecting(range, filter);
 
-        for [n, b] in removed.into_iter().rev() {
+        for [n, c] in removed.into_iter().rev() {
             // We remove both bounds in order to prevent a state of dangling
             // bounds, which would cause a lookback or lookahead over the whole
             // Text.
-            let ([rm_n, _], n_diff) = self.remove(n, b);
+            let ([rm_n, _], n_diff) = self.remove(n, c);
             self.bounds.shift_by(self.buf.len(), rm_n, [n_diff, 0]);
         }
     }
@@ -462,7 +462,7 @@ impl InnerTags {
     /// will NOT handle shifting bounds, however, will return info
     /// useful for doing that.
     #[must_use]
-    fn remove(&mut self, n: usize, b: usize) -> ([usize; 2], i32) {
+    fn remove(&mut self, n: usize, c: usize) -> ([usize; 2], i32) {
         let TagOrSkip::Tag(_) = self.buf.remove(n) else {
             unreachable!("You are only supposed to remove InnerTags like this, not skips")
         };
@@ -474,11 +474,11 @@ impl InnerTags {
             && let Some(&TagOrSkip::Skip(l_skip)) = self.buf.get(l_n)
         {
             self.buf.splice(l_n..=n, [TagOrSkip::Skip(l_skip + r_skip)]);
-            self.records.transform([n, b], [2, 0], [0, 0]);
-            ([l_n, b - l_skip as usize], -2)
+            self.records.transform([n, c], [2, 0], [0, 0]);
+            ([l_n, c - l_skip as usize], -2)
         } else {
-            self.records.transform([n, b], [1, 0], [0, 0]);
-            ([n, b], -1)
+            self.records.transform([n, c], [1, 0], [0, 0]);
+            ([n, c], -1)
         }
     }
 
@@ -510,7 +510,7 @@ impl InnerTags {
         // returning would prevent that.
 
         // Old length removal.
-        let [s_n, s_b] = if old.end > old.start {
+        let [s_n, s_c] = if old.end > old.start {
             // First, get rid of all ranges that start and/or end in the old
             // range.
             // old.start + 1 because we don't want to get rid of bounds that
@@ -519,36 +519,36 @@ impl InnerTags {
             self.extents
                 .remove_range(old.start + 1..old.end, self.buf.len(), |_| true);
 
-            let [s_n, s_b, s_skip] = self.skip_at(old.start);
+            let [s_n, s_c, s_skip] = self.skip_at(old.start);
 
             let b_diff = old.end - old.start;
             // If the range to be removed is contained within one skip,
             // there is no need to check for where it ends.
-            let [e_n, e_b] = if old.end <= s_b + s_skip {
-                [s_n, s_b + s_skip]
+            let [e_n, e_c] = if old.end <= s_c + s_skip {
+                [s_n, s_c + s_skip]
             } else {
                 // The check for the final skip is a `skip_behind` because we don't
                 // want to remove one skip ahead of the end in the cases of
                 // `old.start + len == some_skip`, since that would remove the tags at
                 // the end of the range.
-                let [n, b, skip] = self.skip_behind(old.end);
-                [n, b + skip]
+                let [n, c, skip] = self.skip_behind(old.end);
+                [n, c + skip]
             };
 
-            let skip = (e_b - s_b - b_diff) as u32;
+            let skip = (e_c - s_c - b_diff) as u32;
             let added_n = (skip > 0) as usize;
             let rm: Vec<(usize, TagOrSkip)> = self
                 .buf
                 .splice(s_n..=e_n, (skip > 0).then_some(TagOrSkip::Skip(skip)))
-                .scan(s_b, |b, ts| {
-                    *b += ts.len();
-                    Some((*b - ts.len(), ts))
+                .scan(s_c, |c, ts| {
+                    *c += ts.len();
+                    Some((*c - ts.len(), ts))
                 })
                 .collect();
 
-            let (mut s_n, mut s_b) = (s_n, s_b);
+            let (mut s_n, mut s_c) = (s_n, s_c);
             self.records
-                .transform([s_n, s_b], [rm.len(), b_diff], [added_n, 0]);
+                .transform([s_n, s_c], [rm.len(), b_diff], [added_n, 0]);
             self.bounds.shift_by(self.buf.len(), s_n, [
                 added_n as i32 - rm.len() as i32,
                 -(b_diff as i32),
@@ -557,24 +557,24 @@ impl InnerTags {
             // We can do the same thing that is done in remove_from, since we are
             // also "removing from".
             let mut starts = Vec::new();
-            for (b, tag) in rm
+            for (c, tag) in rm
                 .into_iter()
-                .filter_map(|(b, ts)| ts.as_tag().map(|t| (b, t)))
+                .filter_map(|(c, ts)| ts.as_tag().map(|t| (c, t)))
             {
-                let ([rm_n, rm_b], diff) = self.handle_removed_tag((b, tag), s_n, s_b, &mut starts);
+                let ([rm_n, rm_c], diff) = self.handle_removed_tag((c, tag), s_n, s_c, &mut starts);
                 if diff != 0 {
                     s_n = (s_n as i32 + diff) as usize;
                     if s_n == rm_n {
-                        s_b = rm_b;
+                        s_c = rm_c;
                     }
                     self.bounds.shift_by(self.buf.len(), rm_n, [diff, 0]);
                 }
             }
 
             for (_, tag) in starts {
-                let (n, b, _) =
-                    find_match(&self.buf, (s_n + added_n, s_b + skip as usize, tag)).unwrap();
-                let ([rm_n, _], diff) = self.remove(n, b);
+                let (n, c, _) =
+                    find_match(&self.buf, (s_n + added_n, s_c + skip as usize, tag)).unwrap();
+                let ([rm_n, _], diff) = self.remove(n, c);
                 self.bounds.shift_by(self.buf.len(), rm_n, [diff, 0]);
             }
 
@@ -607,7 +607,7 @@ impl InnerTags {
                 }
 
                 self.records
-                    .transform([s_n, s_b], [to_remove.len(), 0], [0, 0]);
+                    .transform([s_n, s_c], [to_remove.len(), 0], [0, 0]);
 
                 for n in to_remove.into_iter().rev() {
                     self.buf.remove(n);
@@ -615,26 +615,26 @@ impl InnerTags {
                 }
             }
 
-            [s_n, s_b]
+            [s_n, s_c]
         } else {
-            let [s_n, s_b, _] = self.skip_at(old.start);
-            [s_n, s_b]
+            let [s_n, s_c, _] = self.skip_at(old.start);
+            [s_n, s_c]
         };
 
         if new.end > old.start {
-            let added_b = new.len();
+            let added_c = new.len();
             if let Some(TagOrSkip::Skip(skip)) = self.buf.get_mut(s_n) {
-                *skip += added_b as u32;
-                self.records.transform([s_n, s_b], [0, 0], [0, added_b]);
+                *skip += added_c as u32;
+                self.records.transform([s_n, s_c], [0, 0], [0, added_c]);
                 self.bounds
-                    .shift_by(self.buf.len(), s_n, [0, added_b as i32]);
+                    .shift_by(self.buf.len(), s_n, [0, added_c as i32]);
             // The skip may have been deleted by now, so we add it
             // back.
             } else {
-                self.buf.insert(s_n, TagOrSkip::Skip(added_b as u32));
-                self.records.transform([s_n, s_b], [0, 0], [1, added_b]);
+                self.buf.insert(s_n, TagOrSkip::Skip(added_c as u32));
+                self.records.transform([s_n, s_c], [0, 0], [1, added_c]);
                 self.bounds
-                    .shift_by(self.buf.len(), s_n, [1, added_b as i32]);
+                    .shift_by(self.buf.len(), s_n, [1, added_c as i32]);
             }
         }
 
@@ -644,13 +644,13 @@ impl InnerTags {
 
     fn handle_removed_tag(
         &mut self,
-        (b, tag): (usize, RawTag),
+        (c, tag): (usize, RawTag),
         initial_n: usize,
-        initial_b: usize,
+        initial_c: usize,
         starts: &mut Vec<(usize, RawTag)>,
     ) -> ([usize; 2], i32) {
         if tag.is_start() {
-            starts.push((b, tag));
+            starts.push((c, tag));
         } else if tag.is_end() {
             if let Some(i) = starts.iter().rposition(|(_, lhs)| lhs.ends_with(&tag)) {
                 starts.remove(i);
@@ -658,10 +658,10 @@ impl InnerTags {
             // before start, so we need to look for it.
             } else {
                 // Search from initial positions, to skip iterating through the range.
-                let (n, b, _) = find_match(&self.buf, (initial_n, initial_b, tag)).unwrap();
+                let (n, c, _) = find_match(&self.buf, (initial_n, initial_c, tag)).unwrap();
                 // Here, we'll shift all ranges ahead, since this happens so
                 // infrequently that I don't care about the performance impact.
-                return self.remove(n, b);
+                return self.remove(n, c);
             }
         }
 
@@ -672,18 +672,18 @@ impl InnerTags {
         self.bounds.finish_shifting();
 
         for range in self.bounds.take_ranges() {
-            let b = self.byte_at(range.start);
+            let c = self.byte_at(range.start);
             // Add all tags in the range to the list, keeping only those whose
             // ranges are too long.
             let mut start_tags = Vec::new();
-            for (n, b, tag) in fwd_range(&self.buf, range).filter_map(entries_fwd(b)) {
+            for (n, c, tag) in fwd_range(&self.buf, range).filter_map(entries_fwd(c)) {
                 if tag.is_start() {
-                    start_tags.push((n, b, tag));
+                    start_tags.push((n, c, tag));
                 } else if tag.is_end()
                     && let Some(i) = start_tags.iter().rposition(|(.., lhs)| lhs.ends_with(&tag))
                 {
-                    let (s_n, s_b, s_tag) = start_tags.remove(i);
-                    self.bounds.represent([([s_n, s_b], s_tag), ([n, b], tag)]);
+                    let (s_n, s_c, s_tag) = start_tags.remove(i);
+                    self.bounds.represent([([s_n, s_c], s_tag), ([n, c], tag)]);
                 }
             }
         }
@@ -706,26 +706,26 @@ impl InnerTags {
     pub fn fwd_at(&self, at: usize) -> FwdTags<'_> {
         self.bounds.finish_shifting();
 
-        let [s_n, s_b] = {
-            let [n, b, _] = self.skip_behind(at.min(self.len_bytes()));
+        let [s_n, s_c] = {
+            let [n, c, _] = self.skip_behind(at.min(self.len_bytes()));
             rev_range(&self.buf, ..n)
                 .take(self.bounds.min_len())
-                .fold([n, b], |[_, b], (n, ts)| [n, b - ts.len()])
+                .fold([n, c], |[_, c], (n, ts)| [n, c - ts.len()])
         };
 
         let bounds = self.bounds.iter().map_while(move |(bound, tag)| {
-            let [n, b] = bound.get();
-            (n < s_n).then_some((b, tag))
+            let [n, c] = bound.get();
+            (n < s_n).then_some((c, tag))
         });
 
         let tags = {
-            let iter = fwd_range(&self.buf, s_n..).filter_map(entries_fwd(s_b));
-            iter.map(|(n, b, tag)| match tag {
+            let iter = fwd_range(&self.buf, s_n..).filter_map(entries_fwd(s_c));
+            iter.map(|(n, c, tag)| match tag {
                 StartConceal(tagger) => match self.bounds.match_of(n) {
-                    Some(([_, e_b], _)) => (b, ConcealUntil(e_b as u32)),
-                    _ => (b, StartConceal(tagger)),
+                    Some(([_, e_c], _)) => (c, ConcealUntil(e_c as u32)),
+                    _ => (c, StartConceal(tagger)),
                 },
-                tag => (b, tag),
+                tag => (c, tag),
             })
         };
 
@@ -737,52 +737,52 @@ impl InnerTags {
     pub fn rev_at(&self, at: usize) -> RevTags<'_> {
         self.bounds.finish_shifting();
 
-        let [e_n, e_b, _] = {
-            let [n, b, _] = self.skip_at(at.min(self.len_bytes()));
+        let [e_n, e_c, _] = {
+            let [n, c, _] = self.skip_at(at.min(self.len_bytes()));
             fwd_range(&self.buf, n..)
                 .take(self.bounds.min_len())
-                .fold([n, b, 0], |[_, b, len], (n, ts)| [n, b + len, ts.len()])
+                .fold([n, c, 0], |[_, c, len], (n, ts)| [n, c + len, ts.len()])
         };
 
         let bounds = self.bounds.iter().rev().map_while(move |(bound, tag)| {
-            let [n, b] = bound.get();
-            (n > e_n).then_some((b, tag))
+            let [n, c] = bound.get();
+            (n > e_n).then_some((c, tag))
         });
 
         let tags = {
-            let iter = rev_range(&self.buf, ..e_n).filter_map(entries_rev(e_b));
-            iter.map(|(n, b, tag)| match tag {
+            let iter = rev_range(&self.buf, ..e_n).filter_map(entries_rev(e_c));
+            iter.map(|(n, c, tag)| match tag {
                 EndConceal(tagger) => match self.bounds.match_of(n) {
-                    Some(([_, s_b], _)) => (b, ConcealUntil(s_b as u32)),
-                    _ => (b, EndConceal(tagger)),
+                    Some(([_, s_c], _)) => (c, ConcealUntil(s_c as u32)),
+                    _ => (c, EndConceal(tagger)),
                 },
-                tag => (b, tag),
+                tag => (c, tag),
             })
         };
 
         bounds.chain(tags).peekable()
     }
 
-    pub fn raw_fwd_at(&self, b: usize) -> impl Iterator<Item = (usize, RawTag)> + '_ {
-        let [n, b, _] = self.skip_behind(b);
+    pub fn raw_fwd_at(&self, c: usize) -> impl Iterator<Item = (usize, RawTag)> + '_ {
+        let [n, c, _] = self.skip_behind(c);
         fwd_range(&self.buf, n..)
-            .filter_map(entries_fwd(b))
-            .map(|(_, b, t)| (b, t))
+            .filter_map(entries_fwd(c))
+            .map(|(_, c, t)| (c, t))
     }
 
-    pub fn raw_rev_at(&self, b: usize) -> impl Iterator<Item = (usize, RawTag)> + '_ {
-        let [n, b, _] = self.skip_at(b);
+    pub fn raw_rev_at(&self, c: usize) -> impl Iterator<Item = (usize, RawTag)> + '_ {
+        let [n, c, _] = self.skip_at(c);
         rev_range(&self.buf, ..n)
-            .filter_map(entries_rev(b))
-            .map(|(_, b, t)| (b, t))
+            .filter_map(entries_rev(c))
+            .map(|(_, c, t)| (c, t))
     }
 
     /// Returns an iterator over a single byte
     pub fn iter_only_at(&self, at: usize) -> impl Iterator<Item = RawTag> + '_ {
         self.bounds.finish_shifting();
 
-        let [n, b, _] = self.skip_at(at);
-        (b == at)
+        let [n, c, _] = self.skip_at(at);
+        (c == at)
             .then(|| rev_range(&self.buf, ..n).map_while(|(_, ts)| ts.as_tag()))
             .into_iter()
             .flatten()
@@ -812,9 +812,9 @@ impl InnerTags {
     /// * The byte where it starts
     /// * Its length
     fn skip_at(&self, at: usize) -> [usize; 3] {
-        let [n, b] = self.records.closest_to_by_key(at, |[_, b]| *b);
+        let [n, c] = self.records.closest_to_by_key(at, |[_, c]| *c);
 
-        if at >= b {
+        if at >= c {
             let iter = {
                 let (s0, s1) = self.buf.as_slices();
                 let (start, end) = crate::get_ends(n.., self.buf.len());
@@ -826,13 +826,13 @@ impl InnerTags {
             };
 
             let mut ret = None;
-            let mut b = b;
+            let mut c = c;
             for (i, skip) in iter.filter_map(|(i, ts)| Some(i).zip(ts.as_skip())) {
-                if b + skip > at {
-                    ret = Some([n + i, b, skip]);
+                if c + skip > at {
+                    ret = Some([n + i, c, skip]);
                     break;
                 }
-                b += skip;
+                c += skip;
             }
             ret
         } else {
@@ -847,48 +847,48 @@ impl InnerTags {
             };
 
             let mut ret = None;
-            let mut b = b;
+            let mut c = c;
             for (i, skip) in iter.filter_map(|(i, ts)| Some(i).zip(ts.as_skip())) {
-                b -= skip;
-                if b <= at {
-                    ret = Some([n - (i + 1), b, skip]);
+                c -= skip;
+                if c <= at {
+                    ret = Some([n - (i + 1), c, skip]);
                     break;
                 }
             }
             ret
         }
         .unwrap_or({
-            let [n, b] = self.records.max();
-            [n, b, 0]
+            let [n, c] = self.records.max();
+            [n, c, 0]
         })
     }
 
     /// The byte in the `at`th position
     #[track_caller]
     fn byte_at(&self, at: usize) -> usize {
-        let [n, b] = self.records.closest_to(at);
+        let [n, c] = self.records.closest_to(at);
         if n < at {
-            fwd_range(&self.buf, n..at).fold(b, |b, (_, ts)| b + ts.len())
+            fwd_range(&self.buf, n..at).fold(c, |c, (_, ts)| c + ts.len())
         } else {
-            rev_range(&self.buf, at..n).fold(b, |b, (_, ts)| b - ts.len())
+            rev_range(&self.buf, at..n).fold(c, |c, (_, ts)| c - ts.len())
         }
     }
 
     /// Same as [`skip_at`], but takes the previous skip
     ///
-    /// This will return the same skip if `b != at`, and the previous
+    /// This will return the same skip if `c != at`, and the previous
     /// skip otherwise.
     ///
     /// [`skip_at`]: InnerTags::skip_at
     fn skip_behind(&self, at: usize) -> [usize; 3] {
-        let [n, b, skip] = self.skip_at(at);
-        if b == at {
+        let [n, c, skip] = self.skip_at(at);
+        if c == at {
             rev_range(&self.buf, ..n)
                 .find_map(|(n, ts)| Some(n).zip(ts.as_skip()))
-                .map(|(n, skip)| [n, b - skip, skip])
+                .map(|(n, skip)| [n, c - skip, skip])
                 .unwrap_or([0, 0, 0])
         } else {
-            [n, b, skip]
+            [n, c, skip]
         }
     }
 }
@@ -987,23 +987,23 @@ fn rev_range(
 ///
 /// This function will iterate over the positional index, byte index
 /// and [`RawTag`], respectively, assuming an initial byte.
-fn entries_fwd(mut b: usize) -> impl FnMut((usize, &TagOrSkip)) -> Option<Entry> + Clone {
+fn entries_fwd(mut c: usize) -> impl FnMut((usize, &TagOrSkip)) -> Option<Entry> + Clone {
     move |(n, ts)| {
-        b += ts.len();
-        ts.as_tag().map(|t| (n, b, t))
+        c += ts.len();
+        ts.as_tag().map(|t| (n, c, t))
     }
 }
 
 /// Reverse enumerating function for a [`TagOrSkip::Tag`] from a byte
-fn entries_rev(mut b: usize) -> impl FnMut((usize, &TagOrSkip)) -> Option<Entry> + Clone {
+fn entries_rev(mut c: usize) -> impl FnMut((usize, &TagOrSkip)) -> Option<Entry> + Clone {
     move |(n, ts)| {
-        b -= ts.len();
-        ts.as_tag().map(|t| (n, b, t))
+        c -= ts.len();
+        ts.as_tag().map(|t| (n, c, t))
     }
 }
 
 /// Look for a match for a [`RawTag`]
-fn find_match(buf: &GapBuffer<TagOrSkip>, (n, b, tag): Entry) -> Option<Entry> {
+fn find_match(buf: &GapBuffer<TagOrSkip>, (n, c, tag): Entry) -> Option<Entry> {
     let mut bound_fn = {
         let mut bounds = 1;
         move |lhs| {
@@ -1015,12 +1015,12 @@ fn find_match(buf: &GapBuffer<TagOrSkip>, (n, b, tag): Entry) -> Option<Entry> {
 
     if tag.is_start() {
         fwd_range(buf, n..)
-            .filter_map(entries_fwd(b))
-            .find_map(|(n, b, t)| bound_fn(t).then_some((n, b, t)))
+            .filter_map(entries_fwd(c))
+            .find_map(|(n, c, t)| bound_fn(t).then_some((n, c, t)))
     } else if tag.is_end() {
         rev_range(buf, ..n)
-            .filter_map(entries_rev(b))
-            .find_map(|(n, b, t)| bound_fn(t).then_some((n, b, t)))
+            .filter_map(entries_rev(c))
+            .find_map(|(n, c, t)| bound_fn(t).then_some((n, c, t)))
     } else {
         None
     }
@@ -1039,7 +1039,7 @@ struct DebugBuf<'a, R: RangeBounds<usize>>(&'a InnerTags, R);
 impl<R: RangeBounds<usize> + Clone> std::fmt::Debug for DebugBuf<'_, R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let (start, end) = get_ends(self.1.clone(), self.0.len_bytes());
-        let [n, mut b, _] = self.0.skip_behind(start);
+        let [n, mut c, _] = self.0.skip_behind(start);
 
         if f.alternate() {
             let n_spc = self.0.buf.len().checked_ilog10().unwrap_or(0) as usize + 4;
@@ -1061,11 +1061,11 @@ impl<R: RangeBounds<usize> + Clone> std::fmt::Debug for DebugBuf<'_, R> {
                 let space = " ".repeat(nesting);
 
                 let n_fmt = format!("n: {n}");
-                let b_fmt = format!("b: {b}");
+                let b_fmt = format!("c: {c}");
                 writeln!(f, "    ({n_fmt:<n_spc$}, {b_fmt:<b_spc$}): {space}{ts:?}")?;
                 nesting += ts.as_tag().is_some_and(|t| t.is_start()) as usize;
-                b += ts.len();
-                if b >= end {
+                c += ts.len();
+                if c >= end {
                     break;
                 }
             }

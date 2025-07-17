@@ -57,17 +57,41 @@ impl Point {
 
     /// Returns the byte (relative to the beginning of the file)
     /// of self. Indexed at 0
+    ///
+    /// You can use byte indices to index the [`Text`] or [`Bytes`]
+    /// with the [`Bytes::point_at_byte`] function.
+    ///
+    /// [`Text`]: super::Text
+    /// [`Bytes`]: super::Bytes
+    /// [`Bytes::point_at_byte`]: super::Bytes::point_at_byte
     pub fn byte(&self) -> usize {
         self.b as usize
     }
 
     /// Returns the char index (relative to the beginning of the
     /// file). Indexed at 0
+    ///
+    /// This is the primary value used when indexing the [`Text`] and
+    /// [`Bytes`]. That is, the [`Bytes::point_at`], [`Bytes::strs`],
+    /// and most other [`Bytes`] functions rely on a character indices
+    /// (or [`Point`]s) for indexing a [`Text`].
+    ///
+    /// [`Text`]: super::Text
+    /// [`Bytes`]: super::Bytes
+    /// [`Bytes::point_at`]: super::Bytes::point_at
+    /// [`Bytes::strs`]: super::Bytes::strs
     pub fn char(&self) -> usize {
         self.c as usize
     }
 
     /// Returns the line. Indexed at 0
+    ///
+    /// You can use byte indices to index the [`Text`] or [`Bytes`]
+    /// with the [`Bytes::point_at_line`] function.
+    ///
+    /// [`Text`]: super::Text
+    /// [`Bytes`]: super::Bytes
+    /// [`Bytes::point_at_line`]: super::Bytes::point_at_line
     pub fn line(&self) -> usize {
         self.l as usize
     }

@@ -91,7 +91,7 @@ impl Bounds {
 
     /// Shifts the bounds within by a difference in a position,
     /// returns the insertion point of that shift
-    pub fn shift_by(&mut self, buf_len: usize, from: usize, [n_diff, b_diff]: [i32; 2]) -> usize {
+    pub fn shift_by(&mut self, buf_len: usize, from: usize, [n_diff, c_diff]: [i32; 2]) -> usize {
         self.ranges_to_update.shift_by(from, n_diff);
         // This means we are adding TagOrSkips, so new ranges may be created
         if n_diff > 0 {
@@ -114,7 +114,7 @@ impl Bounds {
                     && let [n, b] = bound.get()
                     && n >= from
                 {
-                    bound.set([sh(n, n_diff), sh(b, b_diff)]);
+                    bound.set([sh(n, n_diff), sh(b, c_diff)]);
                     ins -= 1;
                 }
             } else {
@@ -132,7 +132,7 @@ impl Bounds {
             }
 
             total_n_diff += n_diff;
-            total_b_diff += b_diff;
+            total_b_diff += c_diff;
 
             ins
         } else {

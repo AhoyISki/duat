@@ -218,7 +218,7 @@ impl Clone for Logs {
             list: self.list,
             cutoffs: self.cutoffs,
             cur_state: self.cur_state,
-            read_state: AtomicUsize::new(self.read_state.load(Ordering::Relaxed)),
+            read_state: AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1),
         }
     }
 }
@@ -252,10 +252,24 @@ impl Logs {
     }
 
     /// Returns the last [`Record`], if there was one
-    pub fn last(&self) -> Option<Record> {
+    pub fn last(&self) -> Option<(usize, Record)> {
         self.read_state
             .store(self.cur_state.load(Ordering::Relaxed), Ordering::Relaxed);
-        self.list.lock().unwrap().last().cloned()
+        let list = self.list.lock().unwrap();
+        list.last().cloned().map(|last| (list.len() - 1, last))
+    }
+
+    /// Gets the last [`Record`] with a level from a list
+    pub fn last_with_levels(&self, levels: &[Level]) -> Option<(usize, Record)> {
+        self.read_state
+            .store(self.cur_state.load(Ordering::Relaxed), Ordering::Relaxed);
+        self.list
+            .lock()
+            .unwrap()
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(i, rec)| levels.contains(&rec.level()).then(|| (i, rec.clone())))
     }
 
     /// Wether there are new notifications or not

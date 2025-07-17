@@ -508,7 +508,7 @@ fn remove_alias_and<U: Ui>(pa: &mut Pass, f: impl FnOnce(&mut dyn Widget<U>, usi
         widget.mutate_data(|widget, _, _| {
             widget.write(pa, |widget| {
                 if let Some(main) = widget.text().selections().get_main() {
-                    let main = main.byte();
+                    let main = main.char();
                     widget.text_mut().remove_tags(Tagger::for_alias(), main);
                     f(&mut *widget, main)
                 }

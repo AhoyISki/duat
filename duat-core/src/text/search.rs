@@ -2,13 +2,13 @@
 //!
 //! This includes some methods for the [`Text`] itself, meant for
 //! general use when editing it. It also has the [`Searcher`] struct,
-//! which is used when doing [incremental search] in the [`CmdLine`].
-//! This iterator is then used in a [`IncSearcher`] that can decide
-//! what to do with the results.
+//! which is used when doing [incremental search] in the
+//! [`PromptLine`]. This iterator is then used in a [`IncSearcher`]
+//! that can decide what to do with the results.
 //!
-//! [incremental search]: crate::widget::IncSearch
-//! [`CmdLine`]: crate::widget::CmdLine
-//! [`IncSearcher`]: crate::mode::IncSearcher
+//! [incremental search]: https://docs.rs/duat_utils/latest/duat-utils/modes/struct.IncSearcher.html
+//! [`PromptLine`]: https://docs.rs/duat_utils/latest/duat-utils/widgets/struct.PromptLine.html
+//! [`IncSearcher`]: https://docs.rs/duat_utils/latest/duat-utils/modes/trait.IncSearcher.html
 use std::{
     collections::HashMap,
     ops::RangeBounds,
@@ -111,6 +111,8 @@ impl Bytes {
         let range = range.to_range(self.len().char());
         let dfas = dfas_from_pat(pat)?;
 
+        let b_start = self.point_at(range.start).byte();
+
         let (mut fwd_input, mut rev_input) = get_inputs(self, range.clone());
         rev_input.anchored(Anchored::Yes);
 
@@ -119,7 +121,7 @@ impl Bytes {
 
         Ok(std::iter::from_fn(move || {
             let init = fwd_input.start();
-            let end = loop {
+            let h_end = loop {
                 if let Ok(Some(half)) = try_search_fwd(&dfas.fwd.0, &mut fwd_cache, &mut fwd_input)
                 {
                     // Ignore empty matches at the start of the input.
@@ -133,16 +135,18 @@ impl Bytes {
                 }
             };
 
-            fwd_input.set_start(end);
-            rev_input.set_end(end);
+            fwd_input.set_start(h_end);
+            rev_input.set_end(h_end);
 
             let Ok(Some(half)) = try_search_rev(&dfas.rev.0, &mut rev_cache, &mut rev_input) else {
                 return None;
             };
-            let start = half.offset();
+            let h_start = half.offset();
 
-            let p0 = self.point_at(range.start + start);
-            let p1 = self.point_at(range.start + end);
+            let p0 = self.point_at_byte(b_start + h_start);
+            let p1 = self.point_at_byte(b_start + h_end);
+
+            crate::context::debug!("{b_start}, {p0}, {p1}");
 
             Some(R::get_match([p0, p1], half.pattern()))
         }))
@@ -166,6 +170,8 @@ impl Bytes {
     ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
         let range = range.to_range(self.len().char());
         let dfas = dfas_from_pat(pat)?;
+
+        let b_start = self.point_at(range.start).byte();
 
         let (mut fwd_input, mut rev_input) = get_inputs(self, range.clone());
         fwd_input.anchored(Anchored::Yes);
@@ -197,8 +203,8 @@ impl Bytes {
             };
             let end = half.offset();
 
-            let p0 = self.point_at(range.start + start);
-            let p1 = self.point_at(range.start + end);
+            let p0 = self.point_at_byte(b_start + start);
+            let p1 = self.point_at_byte(b_start + end);
 
             Some(R::get_match([p0, p1], half.pattern()))
         }))
@@ -219,9 +225,11 @@ impl Bytes {
         let (mut fwd_input, _) = get_inputs(self, range.clone());
         fwd_input.anchored(Anchored::Yes);
 
+        let b_end = self.point_at(range.end).byte();
+
         let mut fwd_cache = dfas.fwd.1.write().unwrap();
         if let Ok(Some(hm)) = try_search_fwd(&dfas.fwd.0, &mut fwd_cache, &mut fwd_input) {
-            Ok(hm.offset() == range.end)
+            Ok(hm.offset() == b_end)
         } else {
             Ok(false)
         }
@@ -398,7 +406,11 @@ impl Searcher {
         let range = range.to_range(bytes.len().char());
         let mut last_point = bytes.point_at(range.start);
 
+        let b_start = bytes.point_at(range.start).byte();
+
         let (mut fwd_input, mut rev_input) = get_inputs(bytes, range.clone());
+        rev_input.set_anchored(Anchored::Yes);
+        
         let fwd_dfa = &self.fwd_dfa;
         let rev_dfa = &self.rev_dfa;
         let fwd_cache = &mut self.fwd_cache;
@@ -434,13 +446,13 @@ impl Searcher {
             // sequence will be utf8.
             let start = unsafe {
                 bytes
-                    .buffers(last_point.byte()..range.start + h_start)
+                    .buffers(last_point.byte()..b_start + h_start)
                     .chars_unchecked()
                     .fold(last_point, |p, b| p.fwd(b))
             };
             let end = unsafe {
                 bytes
-                    .buffers(start.byte()..range.start + h_end)
+                    .buffers(start.byte()..b_start + h_end)
                     .chars_unchecked()
                     .fold(start, |p, b| p.fwd(b))
             };
@@ -462,6 +474,8 @@ impl Searcher {
         let bytes = ref_bytes.as_ref();
         let range = range.to_range(bytes.len().char());
         let mut last_point = bytes.point_at(range.end);
+
+        let b_start = bytes.point_at(range.start).byte();
 
         let (mut fwd_input, mut rev_input) = get_inputs(bytes, range.clone());
         fwd_input.anchored(Anchored::Yes);
@@ -500,13 +514,13 @@ impl Searcher {
             // sequence will be utf8.
             let end = unsafe {
                 bytes
-                    .buffers(range.start + h_end..last_point.byte())
+                    .buffers(b_start + h_end..last_point.byte())
                     .chars_unchecked()
                     .fold(last_point, |p, b| p.rev(b))
             };
             let start = unsafe {
                 bytes
-                    .buffers(range.start + h_start..end.byte())
+                    .buffers(b_start + h_start..end.byte())
                     .chars_unchecked()
                     .fold(end, |p, b| p.rev(b))
             };

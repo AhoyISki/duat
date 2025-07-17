@@ -38,7 +38,7 @@ impl Record for [usize; 2] {
     }
 
     fn len_per_record() -> usize {
-        64
+        32
     }
 }
 
@@ -56,7 +56,7 @@ impl Record for [usize; 3] {
     }
 
     fn len_per_record() -> usize {
-        64
+        32
     }
 }
 

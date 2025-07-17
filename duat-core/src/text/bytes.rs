@@ -1,4 +1,4 @@
-use std::{iter::FusedIterator, ops::RangeBounds};
+use std::{iter::FusedIterator, ops::RangeBounds, str::Utf8Error};
 
 use gapbuf::GapBuffer;
 use lender::{DoubleEndedLender, ExactSizeLender, Lender, Lending};
@@ -612,17 +612,53 @@ impl<'a> Buffers<'a> {
         self.0.clone().map(|iter| iter.as_slice())
     }
 
+    /// Tries to create a [`String`] out of the two buffers
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the bounds of the slices
+    /// don't correspond to utf8 character boundaries, or if the gap
+    /// within these slices doesn't correspond to a utf8 character
+    /// boundary.
+    pub fn try_to_string(self) -> Result<String, Utf8Error> {
+        let [s0, s1] = self.0.map(|arr| arr.as_slice());
+        Ok([str::from_utf8(s0)?, str::from_utf8(s1)?].join(""))
+    }
+
+    /// Iterates over the `char`s in the [`Buffers`]
+    ///
+    /// You will want to use this function iff you don't have access
+    /// to a character range, otherwise, you should just use
+    /// [`bytes.strs({char_range}).chars()`] instead.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the bounds of the slices
+    /// don't correspond to utf8 character boundaries, or if the gap
+    /// within these slices doesn't correspond to a utf8 character
+    /// boundary.
+    ///
+    /// If you expect _for sure_ that the slice is valid utf8, you can
+    /// use [`Buffers::chars_unchecked`] instead.
+    pub fn chars(self) -> Result<impl Iterator<Item = char>, Utf8Error> {
+        let [s0, s1] = self.0.map(|arr| arr.as_slice());
+        Ok([str::from_utf8(s0)?, str::from_utf8(s1)?]
+            .into_iter()
+            .flat_map(str::chars))
+    }
+
     /// Treats the inner slices as `&str`s and iterates over their
     /// characters
+    ///
+    /// You will want to use this function iff you don't have access
+    /// to a character range, otherwise, you should just use
+    /// [`bytes.strs({char_range}).chars()`] instead.
     ///
     /// # Safety
     ///
     /// You must ensure that the [`Buffers`] were acquired from valid
-    /// byte ranges which coincide with character terminations.
-    ///
-    /// This function is only here to allow for (almost entirely
-    /// unnecessary) optimizations. You should prefer using
-    /// [`bytes.strs({char_range}).chars()`] instead.
+    /// byte ranges which coincide with character terminations. If you
+    /// are unsure of that, you should use [`Buffers::chars`] instead.
     ///
     /// [`bytes.strs({char_range}).chars()`]: Bytes::strs
     pub unsafe fn chars_unchecked(self) -> impl Iterator<Item = char> {

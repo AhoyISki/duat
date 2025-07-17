@@ -54,9 +54,11 @@ use duat_core::{
 pub struct Notifications<U> {
     logs: context::Logs,
     text: Text,
-    _ghost: PhantomData<U>,
-    format_rec: Box<dyn FnMut(Record) -> Option<Text>>,
+    format_rec: Box<dyn FnMut(Record) -> Text>,
+    levels: Vec<Level>,
+    last_rec: Option<usize>,
     get_mask: Box<dyn FnMut(Record) -> &'static str>,
+    _ghost: PhantomData<U>,
 }
 
 static CLEAR_NOTIFS: AtomicBool = AtomicBool::new(false);
@@ -67,15 +69,12 @@ impl<U: Ui> Widget<U> for Notifications<U> {
     fn cfg() -> Self::Cfg {
         NotificationsCfg {
             format_rec: Box::new(|rec| {
-                // This is so stupid
-                (rec.level() < Level::Debug).then(|| {
-                    txt!(
-                        "[notifs.target]{}[notifs.colon]: {}",
-                        rec.target(),
-                        rec.text().clone()
-                    )
-                    .build()
-                })
+                txt!(
+                    "[notifs.target]{}[notifs.colon]: {}",
+                    rec.target(),
+                    rec.text().clone()
+                )
+                .build()
             }),
             get_mask: Box::new(|rec| match rec.level() {
                 context::Level::Error => "error",
@@ -84,6 +83,7 @@ impl<U: Ui> Widget<U> for Notifications<U> {
                 context::Level::Debug => "debug",
                 context::Level::Trace => unreachable!(),
             }),
+            levels: vec![Level::Info, Level::Warn, Level::Error],
             _ghost: PhantomData,
         }
     }
@@ -92,12 +92,12 @@ impl<U: Ui> Widget<U> for Notifications<U> {
         let clear_notifs = CLEAR_NOTIFS.swap(false, Ordering::Relaxed);
         handle.write(pa, |wid, _| {
             if wid.logs.has_changed()
-                && let Some(rec) = wid.logs.last()
+                && let Some((i, rec)) = wid.logs.last_with_levels(&wid.levels)
+                && wid.last_rec.is_none_or(|last_i| last_i < i)
             {
-                if let Some(text) = (wid.format_rec)(rec.clone()) {
-                    handle.set_mask((wid.get_mask)(rec));
-                    wid.text = text
-                }
+                handle.set_mask((wid.get_mask)(rec.clone()));
+                wid.text = (wid.format_rec)(rec);
+                wid.last_rec = Some(i);
             } else if clear_notifs {
                 handle.set_mask("");
                 wid.text = Text::new()
@@ -148,25 +148,37 @@ impl<U: Ui> Widget<U> for Notifications<U> {
 /// [`left_with_ratio`]: NotificationsCfg::left_with_ratio
 #[doc(hidden)]
 pub struct NotificationsCfg<U> {
-    format_rec: Box<dyn FnMut(Record) -> Option<Text>>,
+    format_rec: Box<dyn FnMut(Record) -> Text>,
     get_mask: Box<dyn FnMut(Record) -> &'static str>,
+    levels: Vec<Level>,
     _ghost: PhantomData<U>,
 }
 
 impl<U> NotificationsCfg<U> {
     /// Changes the way [`Record`]s are formatted by [`Notifications`]
     ///
-    /// This function returns an [`Option<Text>`], which means you can
-    /// filter out unnecessary [`Record`]s. By default, only records
-    /// with a level of [`Level::Info`] or higher will get shown.
+    /// This will be applied to every single [`Level`] of a
+    /// [`Record`]. If you wish to limit which levels will get shown,
+    /// see [`filter_levels`]
+    ///
+    /// [`filter_levels`]: Self::filter_levels
     pub fn formatted<T: Into<Text>>(
         self,
-        mut format_rec: impl FnMut(Record) -> Option<T> + 'static,
+        mut format_rec: impl FnMut(Record) -> T + 'static,
     ) -> Self {
         Self {
-            format_rec: Box::new(move |rec| format_rec(rec).map(Into::into)),
+            format_rec: Box::new(move |rec| format_rec(rec).into()),
             ..self
         }
+    }
+
+    /// Filters which [`Level`]s willl show notifications
+    ///
+    /// Is [`Level::Info`], [`Level::Warn`] and [`Level::Error`] by
+    /// default.
+    pub fn filter_levels(mut self, levels: impl IntoIterator<Item = Level>) -> Self {
+        self.levels = levels.into_iter().collect();
+        self
     }
 
     /// Changes how [`Notifications`] decides which [mask] to use
@@ -180,18 +192,14 @@ impl<U> NotificationsCfg<U> {
 impl<U: Ui> WidgetCfg<U> for NotificationsCfg<U> {
     type Widget = Notifications<U>;
 
-    fn build(mut self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
-        let logs = context::logs();
-        let text = logs
-            .last()
-            .and_then(&mut self.format_rec)
-            .unwrap_or_default();
-
+    fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
         let widget = Notifications {
             logs: context::logs(),
-            text,
+            text: Text::new(),
             format_rec: self.format_rec,
             get_mask: self.get_mask,
+            levels: self.levels,
+            last_rec: None,
             _ghost: PhantomData,
         };
 

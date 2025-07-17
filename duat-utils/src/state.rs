@@ -140,15 +140,6 @@ pub fn main_col<U: Ui>(file: &File<U>, area: &U::Area) -> usize {
     main.v_caret(file.text(), area, file.print_cfg()).char_col()
 }
 
-/// [`StatusLine`] part: Desired wrapped column of the main selection
-///
-/// [`StatusLine`]: crate::widgets::StatusLine
-pub fn main_dwcol<U: Ui>(file: &File<U>, area: &U::Area) -> usize {
-    let main = file.selections().get_main().unwrap();
-    main.v_caret(file.text(), area, file.print_cfg())
-        .desired_wrapped_col()
-}
-
 /// [`StatusLine`] part: The main selection, formatted
 ///
 /// # Formatting
