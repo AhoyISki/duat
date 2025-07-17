@@ -910,7 +910,45 @@ status!("{file_fmt}{Spacer}{mode_fmt} {sels_fmt} {main_fmt}");
 <span class="boring">}</span></code></pre></pre>
 <h1 id="relative-and-aligned-linenumbers"><a class="header" href="#relative-and-aligned-linenumbers">Relative and aligned LineNumbers</a></h1>
 <h1 id="file-wise-tabstops"><a class="header" href="#file-wise-tabstops">File wise tabstops</a></h1>
-<h1 id="nerdfonts-statusline-"><a class="header" href="#nerdfonts-statusline-">Nerdfonts StatusLine </a></h1>
+<p>If you want to change the tabstop size per file, you can just modify the
+following  snippet:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span><span class="boring">use duat::prelude::*;
+</span>
+hook::add::&lt;OnFileOpen&gt;(|pa, builder| {
+    builder.write(pa, |file, _| match file.filetype() {
+        Some("markdown" | "bash" | "lua" | "javascript" | "lisp") =&gt; {
+            file.cfg.set_tabstop(2);
+        } 
+        _ =&gt; {
+            file.cfg.set_tabstop(4);
+        }
+    })
+});
+<span class="boring">}</span></code></pre></pre>
+<p>If you want, you can also set other options with this, like which characters
+should be a part of words. In this case, I'm adding <code>'-'</code> to the list:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span><span class="boring">use duat::prelude::*;
+</span>
+hook::add::&lt;OnFileOpen&gt;(|pa, builder| {
+    builder.write(pa, |file, _| match file.filetype() {
+        Some("lisp" | "scheme" | "markdown" | "css" | "html") =&gt; {
+            let wc = word_chars!("A-Za-z0-9_-_---");
+            file.cfg.set_tabstops(2).set_word_chars(wc);
+        }
+        Some("bash" | "lua" | "javascript" | "typescript") =&gt; {
+            file.cfg.set_tabstops(2);
+        }
+        _ =&gt; {
+            file.cfg.set_tabstops(4);
+        }
+    }
+});
+<span class="boring">}</span></code></pre></pre>
+<h1 id="nerdfonts-statusline"><a class="header" href="#nerdfonts-statusline">Nerdfonts StatusLine</a></h1>
 <h1 id="scripting-duat"><a class="header" href="#scripting-duat">Scripting Duat</a></h1>
 <h1 id="the-pass-and-duats-global-state"><a class="header" href="#the-pass-and-duats-global-state">The Pass and Duat's global state</a></h1>
 <h1 id="the-hook-module"><a class="header" href="#the-hook-module">The hook module</a></h1>
