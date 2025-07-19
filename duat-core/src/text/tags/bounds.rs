@@ -1,7 +1,6 @@
 use std::{cell::Cell, ops::Range};
 
 use self::id::RangeId;
-use super::sh;
 use crate::{ranges::Ranges, text::RawTag};
 
 /// How many [`TagOrSkip`]s to keep a [`RawTag`] range
@@ -35,7 +34,7 @@ impl Bounds {
     }
 
     /// Inserts a new bound to the list
-    pub fn insert(&mut self, final_buf_len: usize, [s, e]: [(usize, [usize; 2], RawTag); 2]) {
+    pub fn insert(&mut self, final_buf_len: usize, [s, e]: [([usize; 2], RawTag); 2]) {
         /// Declares tha the given index is shifted
         fn declare_shifted(bounds: &mut Bounds, ins: usize) {
             bounds.shift_state.set({
@@ -48,12 +47,9 @@ impl Bounds {
             });
         }
 
-        let [(s_ins, [s_n, s_b], s_tag), (e_ins, [e_n, e_b], e_tag)] = [s, e];
-        let s_n_diff = (s_n + 1 - s_ins) as i32;
-        let e_n_diff = (e_n + 1 - e_ins) as i32;
+        let [([s_n, s_b], s_tag), ([e_n, e_b], e_tag)] = [s, e];
 
-        let buf_len_after_s = final_buf_len - e_n_diff as usize;
-        let s_i = self.shift_by(buf_len_after_s, s_ins, [s_n_diff, 0]);
+        let s_i = self.shift_by(final_buf_len - 1 as usize, s_n, [1, 0]);
 
         if e_n - s_n >= self.min_len {
             let id = RangeId::new();
@@ -61,12 +57,12 @@ impl Bounds {
             self.list.insert(s_i, (Cell::new([s_n, s_b]), s_tag, id));
             declare_shifted(self, s_i);
 
-            let e_i = self.shift_by(final_buf_len, e_ins, [e_n_diff, 0]);
+            let e_i = self.shift_by(final_buf_len, e_n, [1, 0]);
 
             self.list.insert(e_i, (Cell::new([e_n, e_b]), e_tag, id));
             declare_shifted(self, s_i);
         } else {
-            self.shift_by(final_buf_len, e_ins, [e_n_diff, 0]);
+            self.shift_by(final_buf_len, e_n, [1, 0]);
         }
     }
 
@@ -332,7 +328,15 @@ impl Bounds {
             self.list[..i].iter().rfind(|(.., rhs)| lhs == *rhs)
         };
 
-        matched.map(|(bound, tag, _)| (bound.get(), *tag))
+        matched.map(|(bound, tag, _)| {
+            let (shift_from, [total_n_diff, total_b_diff]) = self.shift_state.get();
+            let [n, b] = bound.get();
+            if i >= shift_from {
+                ([sh(n, total_n_diff), sh(b, total_b_diff)], *tag)
+            } else {
+                ([n, b], *tag)
+            }
+        })
     }
 }
 
@@ -380,4 +384,9 @@ mod id {
             Self(RANGE_COUNT.fetch_add(1, Ordering::Relaxed))
         }
     }
+}
+
+/// Shorthand to shift a [`usize`] by an [`i32`]
+fn sh(n: usize, diff: i32) -> usize {
+    (n as i32 + diff) as usize
 }

@@ -6,8 +6,7 @@ use std::{
     },
 };
 
-use super::sh;
-use crate::binary_search_by_key_and_index;
+use crate::{binary_search_by_key_and_index, text::sh};
 
 /// The prevalence of a [`Tagger`] in a [`Text`]
 ///
@@ -173,7 +172,6 @@ impl Extent {
         let (mut shift_from, total_diff) = std::mem::take(shift_state);
 
         let key = |i: usize, byte: &usize| sh(*byte, if i < shift_from { 0 } else { total_diff });
-
         if let Err(i) = binary_search_by_key_and_index(list, list.len(), byte, key) {
             const TRACKED_BYTES_LIMIT: usize = 512;
             if list.len() == TRACKED_BYTES_LIMIT {

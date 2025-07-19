@@ -933,3 +933,8 @@ pub struct TextParts<'a> {
     /// [`Widget`]: crate::ui::Widget
     pub selections: &'a Selections,
 }
+
+/// Shorthand to shift a [`usize`] by an [`i32`]
+fn sh(n: u32, diff: i32) -> u32 {
+    (n as i32 + diff) as u32
+}

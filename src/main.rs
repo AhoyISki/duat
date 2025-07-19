@@ -27,6 +27,7 @@ use notify::{
 };
 
 static CLIPB: LazyLock<Mutex<Clipboard>> = LazyLock::new(Mutex::default);
+static LIBRARIES: LazyLock<Mutex<Vec<Library>>> = LazyLock::new(Mutex::default);
 
 fn main() {
     let logs = duat_core::context::Logs::new();
@@ -51,13 +52,15 @@ fn main() {
     };
 
     let mut lib = {
-        let so_path = crate_dir.join(if cfg!(debug_assertions) {
-            "target/debug/libconfig.so"
+        let so_dir = crate_dir.join(if cfg!(debug_assertions) {
+            "target/debug"
         } else {
-            "target/release/libconfig.so"
+            "target/release"
         });
 
-        if let Ok(false) | Err(_) = so_path.try_exists() {
+        let libconfig_path = so_dir.join("libconfig.so");
+
+        if let Ok(false) | Err(_) = libconfig_path.try_exists() {
             println!("Compiling config crate for the first time, this might take a while...");
             let toml_path = crate_dir.join("Cargo.toml");
             if let Ok(status) = run_cargo(toml_path.clone(), true, true)
@@ -68,7 +71,20 @@ fn main() {
                 context::error!("Failed to compile [a]release[] profile");
             }
         }
-        unsafe { Library::new(so_path) }.ok()
+
+        let mut libs = LIBRARIES.lock().unwrap();
+
+        //for lib in so_dir.read_dir().unwrap() {
+        //    if let Ok(lib) = lib
+        //        && lib.path().extension() == Some(std::ffi::OsStr::new("so"))
+        //        && lib.path().file_name() != Some(std::ffi::OsStr::new("libconfig.so"))
+        //        && let Ok(lib) = unsafe { Library::new(lib.path()) }
+        //    {
+        //        libs.push(lib);
+        //    }
+        //}
+
+        Some(unsafe { Library::new(libconfig_path) }.unwrap())
     };
 
     // The watcher is returned as to not be dropped.

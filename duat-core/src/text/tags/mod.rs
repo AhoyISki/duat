@@ -14,10 +14,11 @@ use std::{
     ops::{Range, RangeBounds},
 };
 
-use gapbuf::{GapBuffer, gap_buffer};
+use gapbuf::GapBuffer;
 
 use self::{
     bounds::Bounds,
+    shift_list::ShiftList,
     taggers::TaggerExtents,
     types::{TagId, Toggle},
 };
@@ -30,7 +31,7 @@ pub use self::{
         Spacer, Tag,
     },
 };
-use super::{Point, Text, TextRangeOrPoint, records::Records};
+use super::{Point, Text, TextRangeOrPoint};
 use crate::get_ends;
 
 /// A public interface for mutating the [`Tag`]s of a [`Text`]
@@ -96,7 +97,7 @@ impl Tags<'_> {
     ///
     /// [`File`]: crate::file::File
     pub fn clear(&mut self) {
-        *self.0 = InnerTags::new(self.0.len_bytes());
+        *self.0 = InnerTags::new(self.0.list.max() as usize);
     }
 }
 
@@ -120,49 +121,29 @@ impl std::fmt::Debug for Tags<'_> {
 /// functions of [`ToggleStart`]s
 #[derive(Clone)]
 pub struct InnerTags {
-    buf: GapBuffer<TagOrSkip>,
+    list: ShiftList<(u32, RawTag)>,
     ghosts: Vec<(GhostId, Text)>,
     toggles: Vec<(ToggleId, Toggle)>,
-    records: Records<[usize; 2]>,
     bounds: Bounds,
     extents: TaggerExtents,
+    shift_state: (usize, i32),
 }
 
 impl InnerTags {
     /// Creates a new [`InnerTags`] with a given len
-    pub fn new(len: usize) -> Self {
+    pub fn new(max: usize) -> Self {
         Self {
-            buf: if len == 0 {
-                GapBuffer::new()
-            } else {
-                gap_buffer![TagOrSkip::Skip(len as u32)]
-            },
+            list: ShiftList::new(max as i32),
             ghosts: Vec::new(),
             toggles: Vec::new(),
-            records: Records::with_max([(len != 0) as usize, len]),
             bounds: Bounds::new(),
             extents: TaggerExtents::default(),
+            shift_state: (0, 0),
         }
-    }
-
-    /// Removes all [`RawTag`]s and sets the len to 0
-    pub fn clear(&mut self) {
-        self.buf = GapBuffer::new();
-        self.ghosts.clear();
-        self.toggles.clear();
-        self.records.clear();
-        self.bounds = Bounds::new();
-        self.extents = TaggerExtents::default();
     }
 
     /// Insert a new [`Tag`] at a given byte
     pub fn insert<R>(&mut self, tagger: Tagger, r: R, tag: impl Tag<R>) -> Option<ToggleId> {
-        fn exists_at(tags: &GapBuffer<TagOrSkip>, n: usize, tag: RawTag) -> bool {
-            rev_range(tags, ..n)
-                .map_while(|(_, ts)| ts.as_tag())
-                .any(|lhs| lhs == tag)
-        }
-
         fn insert_id(tags: &mut InnerTags, id: Option<TagId>) -> Option<ToggleId> {
             match id {
                 Some(TagId::Ghost(id, ghost)) => {
@@ -182,39 +163,29 @@ impl InnerTags {
             (s_at, s_tag): (usize, RawTag),
             end: Option<(usize, RawTag)>,
         ) -> bool {
-            let [s_n, s_c, s_skip] = tags.skip_at(s_at);
-
             if let Some((e_at, e_tag)) = end
                 && s_at != e_at
             {
-                let [e_n, e_c, e_skip] = {
-                    // This is very likely the hot path.
-                    let [e_n, e_c, skip] = if e_at < s_c + s_skip {
-                        // These changes account for a possibly split skip.
-                        [s_n, s_at, s_skip - (s_at - s_c)]
-                    } else {
-                        tags.skip_at(e_at)
-                    };
-
-                    if exists_at(&tags.buf, s_n, s_tag) && exists_at(&tags.buf, e_n, e_tag) {
-                        return false;
-                    }
-                    let s_n_diff = if s_at == s_c { 1 } else { 2 };
-
-                    [e_n + s_n_diff, e_c, skip]
+                let (s_i, e_i) = match (
+                    tags.list.find_by_key((s_at as u32, s_tag), |t| t),
+                    tags.list.find_by_key((e_at as u32, e_tag), |t| t),
+                ) {
+                    (Ok(_), Ok(_)) => return false,
+                    (Ok(s_i), Err(e_i)) | (Err(s_i), Ok(e_i)) | (Err(s_i), Err(e_i)) => (s_i, e_i),
                 };
 
-                let [s_ins, s_n_diff] = tags.insert_inner(s_at, s_tag, [s_n, s_c, s_skip]);
-                let [e_ins, e_n_diff] = tags.insert_inner(e_at, e_tag, [e_n, e_c, e_skip]);
+                tags.list.insert(s_i, (s_at as u32, s_tag));
+                tags.list.insert(e_i, (e_at as u32, e_tag));
 
-                tags.bounds.insert(tags.buf.len(), [
-                    (s_ins, [s_ins + s_n_diff - 1, s_at], s_tag),
-                    (e_ins, [e_ins + e_n_diff - 1, e_at], e_tag),
+                tags.bounds.insert(tags.list.buf().len(), [
+                    ([s_i, s_at], s_tag),
+                    ([e_i, e_at], e_tag),
                 ]);
             } else if end.is_none() {
-                let [ins, n_diff] = tags.insert_inner(s_at, s_tag, [s_n, s_c, s_skip]);
-                tags.bounds
-                    .shift_by(tags.buf.len(), ins, [n_diff as i32, 0]);
+                let (Ok(i) | Err(i)) = tags.list.find_by_key((s_at as u32, s_tag), |s| s);
+                tags.list.insert(i, (s_at as u32, s_tag));
+
+                tags.bounds.shift_by(tags.list.buf().len(), i, [1, 0]);
             }
 
             tags.extents.insert(s_tag.tagger(), s_at);
@@ -226,7 +197,6 @@ impl InnerTags {
         }
 
         let (start, end, tag_id) = tag.decompose(r, self.len_bytes(), tagger);
-
         if insert_raw_tags(self, start, end) {
             insert_id(self, tag_id)
         } else {
@@ -234,37 +204,11 @@ impl InnerTags {
         }
     }
 
-    /// Inserts a [`RawTag`] in `at`, returns how many [`TagOrSkip`]s
-    /// were added
-    ///
-    /// Will NOT handle bounds creation, WILL transform [`Records`].
-    fn insert_inner(&mut self, at: usize, tag: RawTag, [n, c, skip]: [usize; 3]) -> [usize; 2] {
-        if at == c {
-            let n = n - rev_range(&self.buf, ..n)
-                .take_while(|(_, ts)| ts.as_tag().is_some_and(|t| t.priority() > tag.priority()))
-                .count();
-
-            self.buf.insert(n, TagOrSkip::Tag(tag));
-            self.records.transform([n, c], [0, 0], [1, 0]);
-            self.records.insert([n, c]);
-            [n, 1]
-        } else {
-            self.buf.splice(n..=n, [
-                TagOrSkip::Skip((at - c) as u32),
-                TagOrSkip::Tag(tag),
-                TagOrSkip::Skip((c + skip - at) as u32),
-            ]);
-            self.records.transform([n + 1, at], [0, 0], [2, 0]);
-            self.records.insert([n + 1, at]);
-            [n, 2]
-        }
-    }
-
     /// Insert another [`InnerTags`] into this one
     pub fn insert_tags(&mut self, p: Point, mut other: InnerTags) {
         let mut starts = Vec::new();
 
-        for (_, c, tag) in fwd_range(&other.buf, ..).filter_map(entries_fwd(p.byte())) {
+        for (_, c, tag) in fwd_range(other.list.buf(), ..).filter_map(entries_fwd(p.byte())) {
             match tag {
                 PushForm(..) => starts.push((c, tag)),
                 PopForm(tagger, id) => {
@@ -311,32 +255,14 @@ impl InnerTags {
     }
 
     /// Extends this [`InnerTags`] with another one
-    pub fn extend(&mut self, mut other: InnerTags) {
+    pub fn extend(&mut self, other: InnerTags) {
         self.bounds.finish_shifting();
 
-        let len = self.buf.len();
-        let taken_from_start = if let Some(TagOrSkip::Skip(first)) = other.buf.get(0)
-            && let Some(TagOrSkip::Skip(last)) = self.buf.get_mut(len - 1)
-        {
-            let first = *first;
-            *last += first;
-            other.buf.remove(0);
-            other.records.transform([0, 0], [1, 0], [0, 0]);
-            1
-        } else {
-            0
-        };
-
-        for (bound, ..) in other.bounds.iter() {
-            let [n, c] = bound.get();
-            bound.set([n + self.buf.len() - taken_from_start, c + self.len_bytes()]);
-        }
-
-        self.buf.extend(&other.buf);
+        self.list.extend(other.list);
         self.ghosts.extend(other.ghosts);
         self.toggles.extend(other.toggles);
-        self.records.extend(other.records);
         self.bounds.extend(other.bounds);
+        self.extents.extend(other.extents);
     }
 
     /// Removes all [`RawTag`]s of a give [`Taggers`]
@@ -345,141 +271,83 @@ impl InnerTags {
 
         for range in self
             .extents
-            .remove_range(start..end, self.buf.len(), |tagger| {
-                taggers.contains_tagger(tagger)
-            })
+            .remove_range(start..end, |tagger| taggers.contains_tagger(tagger))
         {
-            self.remove_from_range(&taggers, range);
+            self.remove_from_if(range, |tag| taggers.contains_tagger(tag.tagger()));
         }
     }
 
-    fn remove_from_range(&mut self, taggers: &impl Taggers, range: Range<usize>) {
-        let (start, end) = (range.start, range.end);
-
-        // It is best to do this first, so getting skips returns correct
-        // entries.
-        self.remove_intersections(start..end, |tag| {
-            taggers.clone().contains_tagger(tag.tagger())
-        });
-
-        let [mut n, mut c, _] = self.skip_behind(start);
-        let (mut initial_n, mut initial_c) = (n, c);
-
-        let mut removed = 0;
-        let mut starts = Vec::new();
-
-        while c < end {
-            let ts = self.buf.get(n).copied();
-            if let Some(TagOrSkip::Skip(skip)) = ts {
-                if removed > 0 {
-                    self.records.transform([n, c], [removed, 0], [0, 0]);
-
-                    // Try to merge this skip with the previous one.
-                    if let Some(prev_n) = n.checked_sub(1)
-                        && let Some(TagOrSkip::Skip(prev_skip)) = self.buf.get(prev_n)
-                    {
-                        self.buf
-                            .splice(prev_n..=n, [TagOrSkip::Skip(prev_skip + skip)]);
-                        self.records.transform([n, c], [1, 0], [0, 0]);
-                        self.bounds.shift_by(self.buf.len(), n, [-1, 0]);
-                    } else {
-                        n += 1;
-                    }
-
-                    removed = 0;
-                } else {
-                    n += 1;
-                }
-
-                c += skip as usize;
-            } else if let Some(TagOrSkip::Tag(tag)) = ts {
-                if !taggers.clone().contains_tagger(tag.tagger()) {
-                    n += 1;
-                    continue;
-                }
-
-                self.buf.remove(n);
-                self.bounds.shift_by(self.buf.len(), n, [-1, 0]);
-
-                // The handled removed RawTag is always before the range.
-                let ([rm_n, rm_c], n_diff) =
-                    self.handle_removed_tag((c, tag), initial_n, initial_c, &mut starts);
-                if n_diff != 0 {
-                    n = sh(n, n_diff);
-                    initial_n = sh(initial_n, n_diff);
-                    if initial_n == rm_n {
-                        initial_c = rm_c
-                    }
-                    self.bounds.shift_by(self.buf.len(), rm_n, [n_diff, 0]);
-                }
-
-                removed += 1;
-            } else {
-                if removed > 0 {
-                    self.records.transform([n, c], [removed, 0], [0, 0]);
-                }
-                break;
-            }
-        }
-
-        // At this point in time, n should point to the index of the first
-        // thing that didn't match the byte constraint, so too should c point
-        // to where this element is.
-        // that I don't really care about optimizing it tbh.
-        for (_, tag) in starts {
-            let (n1, b1, _) = find_match(&self.buf, (n, c, tag)).unwrap();
-            let ([rm_n, rm_c], n_diff) = self.remove(n1, b1);
-
-            if n >= rm_n {
-                c = rm_c;
-                n = rm_n;
-            }
-
-            self.bounds.shift_by(self.buf.len(), rm_n, [n_diff, 0]);
-        }
-    }
-
-    /// Removes bounds from a given [`Range`], given a predicate
-    #[track_caller]
-    fn remove_intersections(&mut self, range: Range<usize>, filter: impl Fn(&RawTag) -> bool) {
-        let removed = self.bounds.remove_intersecting(range, filter);
-
-        for [n, c] in removed.into_iter().rev() {
+    /// Removes every [`RawTag`] from a range, as well as their
+    /// matches
+    ///
+    /// WILL remove every required [`RawTag`], WILL shift the indices
+    /// of the [`Bounds`], WILL NOT shift [`TaggerExtents`], since
+    /// there is no byte shifting, WILL NOT shift the bytes of the
+    /// [`Bounds`]
+    fn remove_from_if(&mut self, range: Range<usize>, filter: impl Fn(&RawTag) -> bool + Copy) {
+        for [i, c] in self
+            .bounds
+            .remove_intersecting(range.clone(), filter)
+            .into_iter()
+            .rev()
+        {
             // We remove both bounds in order to prevent a state of dangling
             // bounds, which would cause a lookback or lookahead over the whole
             // Text.
-            let ([rm_n, _], n_diff) = self.remove(n, c);
-            self.bounds.shift_by(self.buf.len(), rm_n, [n_diff, 0]);
+            self.list.remove(i);
+            self.bounds.shift_by(i, [-1, 0]);
         }
-    }
 
-    /// Removes a specific [`RawTag`] in the [`GapBuffer`]
-    ///
-    /// The `n` index MUST point to a [`TagOrSkip::Tag`], you should
-    /// NOT remove skips with this function.
-    ///
-    /// Will NOT handle matching [`Tag`]s, WILL transform [`Records`],
-    /// will NOT handle shifting bounds, however, will return info
-    /// useful for doing that.
-    #[must_use]
-    fn remove(&mut self, n: usize, c: usize) -> ([usize; 2], i32) {
-        let TagOrSkip::Tag(_) = self.buf.remove(n) else {
-            unreachable!("You are only supposed to remove InnerTags like this, not skips")
-        };
+        let mut removed = 0;
+        let mut starts = Vec::new();
+        let mut ends = Vec::new();
 
-        // Try to merge this skip with the previous one.
-        if let Some(&TagOrSkip::Skip(r_skip)) = self.buf.get(n)
-            // We may be at the very start
-            && let Some(l_n) = n.checked_sub(1)
-            && let Some(&TagOrSkip::Skip(l_skip)) = self.buf.get(l_n)
-        {
-            self.buf.splice(l_n..=n, [TagOrSkip::Skip(l_skip + r_skip)]);
-            self.records.transform([n, c], [2, 0], [0, 0]);
-            ([l_n, c - l_skip as usize], -2)
-        } else {
-            self.records.transform([n, c], [1, 0], [0, 0]);
-            ([n, c], -1)
-        }
+        let (Ok(start) | Err(start)) = self.list.find_by_key(range.start as u32, |(c, _)| c);
+        let (Ok(end) | Err(end)) = self.list.find_by_key(range.end as u32, |(c, _)| c);
+
+        self.list
+            .extract_if_while(start..end, |_, (_, tag)| Some(filter(&tag)))
+            .for_each(|(i, (_, tag))| {
+                removed += 1;
+                self.bounds.shift_by(i, [-1, 0]);
+                if tag.is_start() {
+                    starts.push(tag);
+                } else if tag.is_end() {
+                    if let Some(i) = starts.iter().rposition(|s| s.ends_with(&tag)) {
+                        starts.remove(i);
+                    } else {
+                        ends.push(tag);
+                    }
+                }
+            });
+
+        self.list
+            .extract_if_while(end - removed.., |i, (_, tag)| {
+                if let Some(i) = starts.iter().rposition(|s| s.ends_with(&tag)) {
+                    self.bounds.shift_by(i, [-1, 0]);
+                    starts.remove(i);
+                    Some(true)
+                } else if starts.is_empty() {
+                    None
+                } else {
+                    Some(false)
+                }
+            })
+            .for_each(|_| {});
+
+        self.list
+            .rextract_if_while(..start, |i, (_, tag)| {
+                if let Some(i) = ends.iter().rposition(|e| tag.ends_with(e)) {
+                    self.bounds.shift_by(i, [-1, 0]);
+                    ends.remove(i);
+                    Some(true)
+                } else if ends.is_empty() {
+                    None
+                } else {
+                    Some(false)
+                }
+            })
+            .for_each(|_| {});
     }
 
     /// Transforms a byte range into another byte range
@@ -489,183 +357,51 @@ impl InnerTags {
     pub fn transform(&mut self, old: Range<usize>, new_end: usize) {
         let new = old.start..new_end;
 
-        // In case we're appending to the GapBuffer, a shortcut can be made.
-        if old.start == self.len_bytes() {
-            let last = self.buf.len().saturating_sub(1);
-            let new_len = (new.end - old.start) as u32;
-            if let Some(TagOrSkip::Skip(skip)) = self.buf.get_mut(last) {
-                *skip += new_len;
-                self.records.append([0, new_len as usize]);
-            } else if new.end > old.start {
-                self.buf.push_back(TagOrSkip::Skip(new_len));
-                self.records.append([1, new_len as usize]);
-                // For now, since ending InnerTags are not shifted
-                // forwards, there is no need to use sh_bounds here.
-            }
-
-            return;
-        };
-        // You might wonder: Why not return if old == new?
-        // It is assumed that a removal must get rid of all tags within, so
-        // returning would prevent that.
-
         // Old length removal.
-        let [s_n, s_c] = if old.end > old.start {
+        if old.end > old.start {
             // First, get rid of all ranges that start and/or end in the old
             // range.
             // old.start + 1 because we don't want to get rid of bounds that
             // merely coincide with the edges.
-            self.remove_intersections(old.start + 1..old.end, |_| true);
-            self.extents
-                .remove_range(old.start + 1..old.end, self.buf.len(), |_| true);
-
-            let [s_n, s_c, s_skip] = self.skip_at(old.start);
-
-            let b_diff = old.end - old.start;
-            // If the range to be removed is contained within one skip,
-            // there is no need to check for where it ends.
-            let [e_n, e_c] = if old.end <= s_c + s_skip {
-                [s_n, s_c + s_skip]
-            } else {
-                // The check for the final skip is a `skip_behind` because we don't
-                // want to remove one skip ahead of the end in the cases of
-                // `old.start + len == some_skip`, since that would remove the tags at
-                // the end of the range.
-                let [n, c, skip] = self.skip_behind(old.end);
-                [n, c + skip]
-            };
-
-            let skip = (e_c - s_c - b_diff) as u32;
-            let added_n = (skip > 0) as usize;
-            let rm: Vec<(usize, TagOrSkip)> = self
-                .buf
-                .splice(s_n..=e_n, (skip > 0).then_some(TagOrSkip::Skip(skip)))
-                .scan(s_c, |c, ts| {
-                    *c += ts.len();
-                    Some((*c - ts.len(), ts))
-                })
-                .collect();
-
-            let (mut s_n, mut s_c) = (s_n, s_c);
-            self.records
-                .transform([s_n, s_c], [rm.len(), b_diff], [added_n, 0]);
-            self.bounds.shift_by(self.buf.len(), s_n, [
-                added_n as i32 - rm.len() as i32,
-                -(b_diff as i32),
-            ]);
-
-            // We can do the same thing that is done in remove_from, since we are
-            // also "removing from".
-            let mut starts = Vec::new();
-            for (c, tag) in rm
-                .into_iter()
-                .filter_map(|(c, ts)| ts.as_tag().map(|t| (c, t)))
-            {
-                let ([rm_n, rm_c], diff) = self.handle_removed_tag((c, tag), s_n, s_c, &mut starts);
-                if diff != 0 {
-                    s_n = (s_n as i32 + diff) as usize;
-                    if s_n == rm_n {
-                        s_c = rm_c;
-                    }
-                    self.bounds.shift_by(self.buf.len(), rm_n, [diff, 0]);
-                }
-            }
-
-            for (_, tag) in starts {
-                let (n, c, _) =
-                    find_match(&self.buf, (s_n + added_n, s_c + skip as usize, tag)).unwrap();
-                let ([rm_n, _], diff) = self.remove(n, c);
-                self.bounds.shift_by(self.buf.len(), rm_n, [diff, 0]);
-            }
+            self.remove_from_if(old.start + 1..old.end, |_| true);
+            self.extents.remove_range(old.start + 1..old.end, |_| true);
 
             // If the range becomes empty, we should remove the remainig pairs
-            if skip == 0 && new.end == old.start {
+            if new.end == old.start
+                && let Ok(i) = self.list.find_by_key(old.start as u32, |(c, _)| c)
+            {
                 let mut to_remove: Vec<usize> = Vec::new();
                 let mut starts = Vec::new();
+                let mut iter = self.list.iter_fwd(old.start..);
 
-                let s_n = s_n
-                    - rev_range(&self.buf, ..s_n)
-                        .take_while(|(_, ts)| ts.is_tag())
-                        .count();
-
-                for (n, tag) in fwd_range(&self.buf, s_n..)
-                    .map_while(|(i, ts)| Some(i).zip(ts.as_tag()))
-                    .filter(|(_, tag)| tag.is_start() || tag.is_end())
+                while let Some((i, (c, tag))) = iter.next()
+                    && c == old.start as u32
                 {
                     if tag.is_start() {
-                        starts.push((n, tag));
+                        starts.push((i, tag));
                     } else if tag.is_end()
-                        && let Some(i) = starts.iter().position(|(_, lhs)| lhs.ends_with(&tag))
-                        && let (s_n, _) = starts.remove(i)
-                        && let None | Some(true) = self.bounds.remove_range(s_n..n)
+                        && let Some(s_i) = starts.iter().rposition(|(_, s)| s.ends_with(&tag))
                     {
-                        for n in [n, s_n] {
-                            let ins = to_remove.iter().take_while(|j| **j < n).count();
-                            to_remove.insert(ins, n);
-                        }
+                        let (s_i, _) = starts.remove(s_i);
+                        let rm_i = to_remove.iter().take_while(|j| **j < s_i).count();
+                        to_remove.insert(rm_i, s_i);
+                        let rm_i = to_remove.iter().take_while(|j| **j < i).count();
+                        to_remove.insert(rm_i, i)
                     }
                 }
 
-                self.records
-                    .transform([s_n, s_c], [to_remove.len(), 0], [0, 0]);
-
-                for n in to_remove.into_iter().rev() {
-                    self.buf.remove(n);
-                    self.bounds.shift_by(self.buf.len(), n, [-1, 0]);
+                for i in to_remove.into_iter().rev() {
+                    self.list.remove(i);
+                    self.bounds.shift_by(i, [-1, 0]);
                 }
             }
-
-            [s_n, s_c]
-        } else {
-            let [s_n, s_c, _] = self.skip_at(old.start);
-            [s_n, s_c]
-        };
-
-        if new.end > old.start {
-            let added_c = new.len();
-            if let Some(TagOrSkip::Skip(skip)) = self.buf.get_mut(s_n) {
-                *skip += added_c as u32;
-                self.records.transform([s_n, s_c], [0, 0], [0, added_c]);
-                self.bounds
-                    .shift_by(self.buf.len(), s_n, [0, added_c as i32]);
-            // The skip may have been deleted by now, so we add it
-            // back.
-            } else {
-                self.buf.insert(s_n, TagOrSkip::Skip(added_c as u32));
-                self.records.transform([s_n, s_c], [0, 0], [1, added_c]);
-                self.bounds
-                    .shift_by(self.buf.len(), s_n, [1, added_c as i32]);
-            }
         }
 
-        self.extents
-            .shift_by(old.start, new.len() as i32 - old.len() as i32);
-    }
+        let shift = new.len() as i32 - old.len() as i32;
+        let (Ok(i) | Err(i)) = self.list.find_by_key(old.start as u32 + 1, |(c, _)| c);
 
-    fn handle_removed_tag(
-        &mut self,
-        (c, tag): (usize, RawTag),
-        initial_n: usize,
-        initial_c: usize,
-        starts: &mut Vec<(usize, RawTag)>,
-    ) -> ([usize; 2], i32) {
-        if tag.is_start() {
-            starts.push((c, tag));
-        } else if tag.is_end() {
-            if let Some(i) = starts.iter().rposition(|(_, lhs)| lhs.ends_with(&tag)) {
-                starts.remove(i);
-            // If the starting Tag wasn't here, it was
-            // before start, so we need to look for it.
-            } else {
-                // Search from initial positions, to skip iterating through the range.
-                let (n, c, _) = find_match(&self.buf, (initial_n, initial_c, tag)).unwrap();
-                // Here, we'll shift all ranges ahead, since this happens so
-                // infrequently that I don't care about the performance impact.
-                return self.remove(n, c);
-            }
-        }
-
-        ([0; 2], 0)
+        self.list.shift_by(i, shift);
+        self.extents.shift_by(old.start, shift);
     }
 
     pub(crate) fn update_bounds(&mut self) {
@@ -693,12 +429,12 @@ impl InnerTags {
 
     /// Returns true if there are no [`RawTag`]s
     pub fn is_empty(&self) -> bool {
-        self.buf.len() == 0 || self.buf.len() == 1 && self.buf[0].is_skip()
+        self.list.buf().is_empty()
     }
 
     /// Returns the len of the [`InnerTags`] in bytes
     pub fn len_bytes(&self) -> usize {
-        self.records.max()[1]
+        self.list.max() as usize
     }
 
     /// Returns a forward iterator at a given byte
@@ -805,273 +541,35 @@ impl InnerTags {
             .iter()
             .find_map(|(lhs, text)| (*lhs == id).then_some(text))
     }
-
-    /// Returns information about the skip in the byte `at`
-    ///
-    /// * The index in the [`GapBuffer`] where it starts
-    /// * The byte where it starts
-    /// * Its length
-    fn skip_at(&self, at: usize) -> [usize; 3] {
-        let [n, c] = self.records.closest_to_by_key(at, |[_, c]| *c);
-
-        if at >= c {
-            let iter = {
-                let (s0, s1) = self.buf.as_slices();
-                let (start, end) = crate::get_ends(n.., self.buf.len());
-
-                let r0 = start.min(s0.len())..end.min(s0.len());
-                let r1 = start.saturating_sub(s0.len())..end.saturating_sub(s0.len());
-
-                s0[r0].iter().chain(s1[r1].iter()).enumerate()
-            };
-
-            let mut ret = None;
-            let mut c = c;
-            for (i, skip) in iter.filter_map(|(i, ts)| Some(i).zip(ts.as_skip())) {
-                if c + skip > at {
-                    ret = Some([n + i, c, skip]);
-                    break;
-                }
-                c += skip;
-            }
-            ret
-        } else {
-            let iter = {
-                let (s0, s1) = self.buf.as_slices();
-                let (start, end) = crate::get_ends(..n, self.buf.len());
-
-                let r0 = start.min(s0.len())..end.min(s0.len());
-                let r1 = start.saturating_sub(s0.len())..end.saturating_sub(s0.len());
-
-                s1[r1].iter().rev().chain(s0[r0].iter().rev()).enumerate()
-            };
-
-            let mut ret = None;
-            let mut c = c;
-            for (i, skip) in iter.filter_map(|(i, ts)| Some(i).zip(ts.as_skip())) {
-                c -= skip;
-                if c <= at {
-                    ret = Some([n - (i + 1), c, skip]);
-                    break;
-                }
-            }
-            ret
-        }
-        .unwrap_or({
-            let [n, c] = self.records.max();
-            [n, c, 0]
-        })
-    }
-
-    /// The byte in the `at`th position
-    #[track_caller]
-    fn byte_at(&self, at: usize) -> usize {
-        let [n, c] = self.records.closest_to(at);
-        if n < at {
-            fwd_range(&self.buf, n..at).fold(c, |c, (_, ts)| c + ts.len())
-        } else {
-            rev_range(&self.buf, at..n).fold(c, |c, (_, ts)| c - ts.len())
-        }
-    }
-
-    /// Same as [`skip_at`], but takes the previous skip
-    ///
-    /// This will return the same skip if `c != at`, and the previous
-    /// skip otherwise.
-    ///
-    /// [`skip_at`]: InnerTags::skip_at
-    fn skip_behind(&self, at: usize) -> [usize; 3] {
-        let [n, c, skip] = self.skip_at(at);
-        if c == at {
-            rev_range(&self.buf, ..n)
-                .find_map(|(n, ts)| Some(n).zip(ts.as_skip()))
-                .map(|(n, skip)| [n, c - skip, skip])
-                .unwrap_or([0, 0, 0])
-        } else {
-            [n, c, skip]
-        }
-    }
-}
-
-/// Either a [`RawTag`] or an empty range of bytes
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum TagOrSkip {
-    Tag(RawTag),
-    Skip(u32),
-}
-
-impl TagOrSkip {
-    /// Returns how many bytes this skips, if any
-    #[inline(always)]
-    pub fn as_skip(&self) -> Option<usize> {
-        match self {
-            Self::Skip(v) => Some(*v as usize),
-            TagOrSkip::Tag(..) => None,
-        }
-    }
-
-    /// Returns the [`RawTag`] within, if any
-    #[inline(always)]
-    fn as_tag(&self) -> Option<RawTag> {
-        match self {
-            TagOrSkip::Tag(tag) => Some(*tag),
-            TagOrSkip::Skip(_) => None,
-        }
-    }
-
-    /// Returns `true` if the tag or skip is [`Skip`]
-    ///
-    /// [`Skip`]: TagOrSkip::Skip
-    #[must_use]
-    pub fn is_skip(&self) -> bool {
-        matches!(self, Self::Skip(..))
-    }
-
-    /// Returns `true` if the tag or skip is [`Tag`]
-    ///
-    /// [`Tag`]: TagOrSkip::Tag
-    #[must_use]
-    pub fn is_tag(&self) -> bool {
-        matches!(self, Self::Tag(..))
-    }
-
-    /// Returns the amount skipped, 0 if it is a [`RawTag`]
-    #[inline]
-    fn len(&self) -> usize {
-        match self {
-            TagOrSkip::Tag(_) => 0,
-            TagOrSkip::Skip(skip) => *skip as usize,
-        }
-    }
-}
-
-/// Forward iterator over a range in the [`GapBuffer`]
-#[track_caller]
-fn fwd_range(
-    buf: &GapBuffer<TagOrSkip>,
-    range: impl RangeBounds<usize> + std::fmt::Debug,
-) -> impl Iterator<Item = (usize, &TagOrSkip)> + Clone + '_ {
-    let (s0, s1) = buf.as_slices();
-    let (start, end) = crate::get_ends(range, buf.len());
-
-    let r0 = start.min(s0.len())..end.min(s0.len());
-    let r1 = start.saturating_sub(s0.len())..end.saturating_sub(s0.len());
-
-    s0[r0]
-        .iter()
-        .chain(s1[r1].iter())
-        .enumerate()
-        .map(move |(n, ts)| (n + start, ts))
-}
-
-/// Reverse iterator over a range in the [`GapBuffer`]
-fn rev_range(
-    buf: &GapBuffer<TagOrSkip>,
-    range: impl RangeBounds<usize> + std::fmt::Debug + Clone,
-) -> impl Iterator<Item = (usize, &TagOrSkip)> + Clone + '_ {
-    let (s0, s1) = buf.as_slices();
-    let (start, end) = crate::get_ends(range.clone(), buf.len());
-
-    let r0 = start.min(s0.len())..end.min(s0.len());
-    let r1 = start.saturating_sub(s0.len())..end.saturating_sub(s0.len());
-
-    s1[r1]
-        .iter()
-        .rev()
-        .chain(s0[r0].iter().rev())
-        .enumerate()
-        .map(move |(n, ts)| (end - (n + 1), ts))
-}
-
-/// Forward enumerating function for a [`TagOrSkip::Tag`] from a byte
-///
-/// This function will iterate over the positional index, byte index
-/// and [`RawTag`], respectively, assuming an initial byte.
-fn entries_fwd(mut c: usize) -> impl FnMut((usize, &TagOrSkip)) -> Option<Entry> + Clone {
-    move |(n, ts)| {
-        c += ts.len();
-        ts.as_tag().map(|t| (n, c, t))
-    }
-}
-
-/// Reverse enumerating function for a [`TagOrSkip::Tag`] from a byte
-fn entries_rev(mut c: usize) -> impl FnMut((usize, &TagOrSkip)) -> Option<Entry> + Clone {
-    move |(n, ts)| {
-        c -= ts.len();
-        ts.as_tag().map(|t| (n, c, t))
-    }
-}
-
-/// Look for a match for a [`RawTag`]
-fn find_match(buf: &GapBuffer<TagOrSkip>, (n, c, tag): Entry) -> Option<Entry> {
-    let mut bound_fn = {
-        let mut bounds = 1;
-        move |lhs| {
-            bounds -= (lhs == tag.inverse().unwrap()) as usize;
-            bounds += (lhs == tag) as usize;
-            bounds == 0
-        }
-    };
-
-    if tag.is_start() {
-        fwd_range(buf, n..)
-            .filter_map(entries_fwd(c))
-            .find_map(|(n, c, t)| bound_fn(t).then_some((n, c, t)))
-    } else if tag.is_end() {
-        rev_range(buf, ..n)
-            .filter_map(entries_rev(c))
-            .find_map(|(n, c, t)| bound_fn(t).then_some((n, c, t)))
-    } else {
-        None
-    }
-}
-
-impl std::fmt::Debug for TagOrSkip {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TagOrSkip::Tag(tag) => write!(f, "{tag:?}"),
-            TagOrSkip::Skip(amount) => write!(f, "Skip({amount})"),
-        }
-    }
 }
 
 struct DebugBuf<'a, R: RangeBounds<usize>>(&'a InnerTags, R);
 impl<R: RangeBounds<usize> + Clone> std::fmt::Debug for DebugBuf<'_, R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let (start, end) = get_ends(self.1.clone(), self.0.len_bytes());
-        let [n, mut c, _] = self.0.skip_behind(start);
 
         if f.alternate() {
-            let n_spc = self.0.buf.len().checked_ilog10().unwrap_or(0) as usize + 4;
+            let n_spc = self.0.list.buf().len().checked_ilog10().unwrap_or(0) as usize + 4;
             let b_spc = self.0.len_bytes().checked_ilog10().unwrap_or(0) as usize + 4;
 
-            let (mut nesting, _): (usize, isize) =
-                self.0.buf.iter().take(n).fold((0, 0), |(n, l), ts| {
-                    (
-                        n.saturating_add_signed(
-                            l - ts.as_tag().is_some_and(|tag| tag.is_end()) as isize,
-                        ),
-                        ts.as_tag().is_some_and(|tag| tag.is_start()) as isize,
-                    )
-                });
+            let mut nesting: usize = 0;
 
             f.write_str("[\n")?;
-            for (n, ts) in self.0.buf.iter().enumerate().skip(n) {
-                nesting = nesting.saturating_sub(ts.as_tag().is_some_and(|t| t.is_end()) as usize);
-                let space = " ".repeat(nesting);
 
-                let n_fmt = format!("n: {n}");
-                let b_fmt = format!("c: {c}");
-                writeln!(f, "    ({n_fmt:<n_spc$}, {b_fmt:<b_spc$}): {space}{ts:?}")?;
-                nesting += ts.as_tag().is_some_and(|t| t.is_start()) as usize;
-                c += ts.len();
-                if c >= end {
-                    break;
+            for (i, (c, tag)) in self.0.list.iter_fwd(..) {
+                nesting = nesting.saturating_sub(tag.is_end() as usize);
+                if (start as u32..end as u32).contains(&c) {
+                    let space = " ".repeat(nesting);
+                    let n_fmt = format!("n: {i}");
+                    let b_fmt = format!("c: {c}");
+                    writeln!(f, "    ({n_fmt:<n_spc$}, {b_fmt:<b_spc$}): {space}{tag:?}")?;
                 }
+                nesting += tag.is_start() as usize;
             }
+
             f.write_str("]")
         } else {
-            write!(f, "{:?}", self.0.buf)
+            write!(f, "{:?}", self.0.list.buf())
         }
     }
 }
@@ -1079,9 +577,8 @@ impl<R: RangeBounds<usize> + Clone> std::fmt::Debug for DebugBuf<'_, R> {
 impl std::fmt::Debug for InnerTags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("InnerTags")
-            .field("buf", &DebugBuf(self, ..))
+            .field("buf", &self.list.buf())
             .field("bounds", &bounds::DebugBounds(self))
-            .field("records", &self.records)
             .finish_non_exhaustive()
     }
 }
@@ -1089,17 +586,17 @@ impl std::fmt::Debug for InnerTags {
 impl PartialEq for InnerTags {
     fn eq(&self, other: &Self) -> bool {
         use RawTag::*;
-        use TagOrSkip::*;
 
-        self.buf
+        self.list
+            .buf()
             .iter()
-            .zip(&other.buf)
-            .all(|(lhs, rhs)| match (lhs, rhs) {
-                (Tag(PushForm(_, l_id, l_prio)), Tag(PushForm(_, r_id, r_prio))) => {
-                    l_id == r_id && l_prio == r_prio
+            .zip(other.list.buf())
+            .all(|((l_b, l_tag), (r_b, r_tag))| match (l_tag, r_tag) {
+                (PushForm(_, l_id, l_prio), PushForm(_, r_id, r_prio)) => {
+                    l_id == r_id && l_prio == r_prio && l_b == r_b
                 }
-                (Tag(PopForm(_, lhs)), Tag(PopForm(_, rhs))) => lhs == rhs,
-                (Tag(Ghost(_, lhs)), Tag(Ghost(_, rhs))) => {
+                (PopForm(_, lhs), PopForm(_, rhs)) => lhs == rhs && l_b == r_b,
+                (Ghost(_, lhs), Ghost(_, rhs)) => {
                     let self_ghost = self
                         .ghosts
                         .iter()
@@ -1108,20 +605,19 @@ impl PartialEq for InnerTags {
                         .ghosts
                         .iter()
                         .find_map(|(id, text)| (rhs == id).then_some(text));
-                    self_ghost == other_ghost
+                    self_ghost == other_ghost && l_b == r_b
                 }
-                (Tag(MainCaret(_)), Tag(MainCaret(_)))
-                | (Tag(ExtraCaret(_)), Tag(ExtraCaret(_)))
-                | (Tag(StartAlignCenter(_)), Tag(StartAlignCenter(_)))
-                | (Tag(EndAlignCenter(_)), Tag(EndAlignCenter(_)))
-                | (Tag(StartAlignRight(_)), Tag(StartAlignRight(_)))
-                | (Tag(EndAlignRight(_)), Tag(EndAlignRight(_)))
-                | (Tag(Spacer(_)), Tag(Spacer(_)))
-                | (Tag(StartConceal(_)), Tag(StartConceal(_)))
-                | (Tag(EndConceal(_)), Tag(EndConceal(_)))
-                | (Tag(StartToggle(..)), Tag(StartToggle(..)))
-                | (Tag(EndToggle(..)), Tag(EndToggle(..))) => true,
-                (Skip(lhs), Skip(rhs)) => lhs == rhs,
+                (MainCaret(_), MainCaret(_))
+                | (ExtraCaret(_), ExtraCaret(_))
+                | (StartAlignCenter(_), StartAlignCenter(_))
+                | (EndAlignCenter(_), EndAlignCenter(_))
+                | (StartAlignRight(_), StartAlignRight(_))
+                | (EndAlignRight(_), EndAlignRight(_))
+                | (Spacer(_), Spacer(_))
+                | (StartConceal(_), StartConceal(_))
+                | (EndConceal(_), EndConceal(_))
+                | (StartToggle(..), StartToggle(..))
+                | (EndToggle(..), EndToggle(..)) => l_b == r_b,
                 _ => false,
             })
     }
@@ -1140,11 +636,6 @@ pub type FwdTags<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)>
 pub type RevTags<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)> + Clone + 'a>;
 
 type Entry = (usize, usize, RawTag);
-
-/// Shorthand to shift a [`usize`] by an [`i32`]
-fn sh(n: usize, diff: i32) -> usize {
-    (n as i32 + diff) as usize
-}
 
 mod ids {
     use std::sync::atomic::{AtomicU16, Ordering};
@@ -1186,6 +677,226 @@ mod ids {
     impl std::fmt::Debug for ToggleId {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             write!(f, "ToggleId({})", self.0)
+        }
+    }
+}
+
+mod shift_list {
+    use std::ops::RangeBounds;
+
+    use gapbuf::GapBuffer;
+
+    use super::RawTag;
+    use crate::{binary_search_by_key_and_index, get_ends};
+
+    #[derive(Clone)]
+    pub(super) struct ShiftList<S: Shiftable> {
+        buf: GapBuffer<S>,
+        from: usize,
+        by: S::Shift,
+        max: S::Shift,
+    }
+
+    impl<S: Shiftable> ShiftList<S> {
+        pub(super) fn new(max: S::Shift) -> Self {
+            Self {
+                buf: GapBuffer::new(),
+                from: 0,
+                by: S::Shift::default(),
+                max,
+            }
+        }
+
+        pub(super) fn insert(&mut self, i: usize, new: S) {
+            if self.by != S::Shift::default() && self.from < self.buf.len() {
+                if i > self.from {
+                    for s in self.buf.range_mut(self.from..i).iter_mut() {
+                        *s = s.shift(self.by);
+                    }
+                } else {
+                    for s in self.buf.range_mut(i..self.from).iter_mut() {
+                        *s = s.shift(self.by.neg())
+                    }
+                }
+            }
+
+            self.buf.insert(i, new);
+
+            if i + 1 < self.buf.len() {
+                self.from = i + 1;
+            } else {
+                self.from = 0;
+                self.by = S::Shift::default();
+            }
+        }
+
+        pub(super) fn remove(&mut self, i: usize) {
+            self.buf.remove(i);
+            if self.from > i {
+                self.from -= 1;
+            }
+        }
+
+        pub(super) fn extract_if_while<'a>(
+            &'a mut self,
+            range: impl RangeBounds<usize>,
+            mut f: impl FnMut(usize, S) -> Option<bool> + 'a,
+        ) -> impl Iterator<Item = (usize, S)> + 'a {
+            let (mut i, mut end) = get_ends(range, self.buf.len());
+
+            std::iter::from_fn(move || {
+                while i < end {
+                    let shifted = if i >= self.from {
+                        self.buf[i].shift(self.by)
+                    } else {
+                        self.buf[i]
+                    };
+
+                    if f(i, shifted)? {
+                        self.from -= (i < self.from) as usize;
+                        end -= 1;
+                        return Some((i, shifted));
+                    } else {
+                        i += 1;
+                    }
+                }
+
+                None
+            })
+        }
+
+        pub(super) fn rextract_if_while<'a>(
+            &'a mut self,
+            range: impl RangeBounds<usize>,
+            mut f: impl FnMut(usize, S) -> Option<bool> + 'a,
+        ) -> impl Iterator<Item = (usize, S)> + 'a {
+            let (start, mut i) = get_ends(range, self.buf.len());
+
+            std::iter::from_fn(move || {
+                while i > start {
+                    i -= 1;
+                    let shifted = if i >= self.from {
+                        self.buf[i].shift(self.by)
+                    } else {
+                        self.buf[i]
+                    };
+
+                    if f(i, shifted)? {
+                        self.from -= (i < self.from) as usize;
+                        return Some((i, shifted));
+                    }
+                }
+
+                None
+            })
+        }
+
+        /// Shifts the items in the list after a certain point
+        pub(super) fn shift_by(&mut self, from: usize, by: S::Shift) {
+            if self.by != S::Shift::default() {
+                if from > self.from {
+                    for s in self.buf.range_mut(self.from..from).iter_mut() {
+                        *s = s.shift(self.by);
+                    }
+                } else {
+                    for s in self.buf.range_mut(from..self.from).iter_mut() {
+                        *s = s.shift(self.by.neg());
+                    }
+                }
+            }
+
+            self.from = from;
+            self.by = self.by.add(by);
+        }
+
+        pub(super) fn extend(&mut self, mut other: Self) {
+            for s in self.buf.range_mut(self.from..).iter_mut() {
+                *s = s.shift(self.by);
+            }
+
+            self.from = self.buf.len() + other.from;
+            self.by = other.by;
+
+            self.buf
+                .extend(other.buf.drain(..).map(|s| s.shift(self.max)));
+
+            self.max = self.max.add(other.max);
+        }
+
+        pub(super) fn iter_fwd(
+            &self,
+            range: impl RangeBounds<usize>,
+        ) -> impl Iterator<Item = (usize, S)> + '_ {
+            let (start, end) = get_ends(range, self.buf.len());
+            let (s0, s1) = self.buf.range(start..end).as_slices();
+            s0.into_iter().chain(s1).enumerate().map(move |(i, s)| {
+                if i + start >= self.from {
+                    (i + start, s.shift(self.by))
+                } else {
+                    (i + start, *s)
+                }
+            })
+        }
+
+        /// Will find the _first_ element in the buffer that equals
+        /// the key, if it exists
+        pub(super) fn find_by_key<K: Copy + Eq + Ord>(
+            &self,
+            key: K,
+            f: fn(S) -> K,
+        ) -> Result<usize, usize> {
+            let sh = |i: usize, s: &S| f(if i >= self.from { s.shift(self.by) } else { *s });
+
+            match binary_search_by_key_and_index(&self.buf, self.buf.len(), key, sh) {
+                Ok(mut i) => Ok(loop {
+                    if let Some(prev_i) = i.checked_sub(1)
+                        && sh(prev_i, &self.buf[prev_i]) == key
+                    {
+                        i = prev_i
+                    } else {
+                        break i;
+                    }
+                }),
+                Err(i) => Err(i),
+            }
+        }
+
+        pub(super) fn buf(&self) -> &GapBuffer<S> {
+            &self.buf
+        }
+
+        pub(super) fn max(&self) -> S::Shift {
+            self.max
+        }
+    }
+
+    pub(super) trait Shiftable: Clone + Copy + Ord {
+        type Shift: Shift;
+
+        fn shift(self, by: Self::Shift) -> Self;
+    }
+
+    impl Shiftable for (u32, RawTag) {
+        type Shift = i32;
+
+        fn shift(self, by: Self::Shift) -> Self {
+            ((self.0 as i32 + by) as u32, self.1)
+        }
+    }
+
+    pub(super) trait Shift: Default + Clone + Copy + Eq {
+        fn neg(self) -> Self;
+
+        fn add(self, other: Self) -> Self;
+    }
+
+    impl Shift for i32 {
+        fn neg(self) -> Self {
+            -self
+        }
+
+        fn add(self, other: Self) -> Self {
+            self + other
         }
     }
 }

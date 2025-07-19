@@ -522,7 +522,13 @@ impl<U: Ui> ParserBox<U> {
 
                     let ranges = Ranges::full(bytes.len().char());
 
-                    let mut sp = SendParser { parser: reader, bytes, receiver, ranges, state };
+                    let mut sp = SendParser {
+                        parser: reader,
+                        bytes,
+                        receiver,
+                        ranges,
+                        state,
+                    };
 
                     while let Some(moment) = sp.receiver.recv().unwrap() {
                         parse(&mut sp, moment, None);
@@ -734,9 +740,7 @@ fn get_ranges<'a>(
     const FOLDING_COULD_UPDATE_A_LOT: usize = 1_000_000;
     const MAX_CHANGES_TO_CONSIDER: usize = 100;
 
-    if moment.len() <= MAX_CHANGES_TO_CONSIDER
-        || bytes.len().byte() >= FOLDING_COULD_UPDATE_A_LOT
-    {
+    if moment.len() <= MAX_CHANGES_TO_CONSIDER || bytes.len().byte() >= FOLDING_COULD_UPDATE_A_LOT {
         for change in moment.changes() {
             let diff = change.added_end().byte() as i32 - change.taken_end().byte() as i32;
             ranges.shift_by(change.start().byte(), diff);

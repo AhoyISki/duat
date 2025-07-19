@@ -248,7 +248,7 @@ ranged_impl_tag!(Conceal, RawTag::StartConceal, RawTag::EndConceal);
 /// Unlike [`Tag`]s, however, each variant here is only placed in a
 /// single position, and [`Tag`]s that occupy a range are replaced by
 /// two [`RawTag`]s, like [`PushForm`] and [`PopForm`], for example.
-#[derive(Clone, Copy, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Eq, Ord)]
 pub enum RawTag {
     // Implemented:
     /// Appends a form to the stack.
@@ -498,6 +498,40 @@ impl std::fmt::Debug for RawTag {
             Self::StartToggle(key, id) => write!(f, "ToggleStart({key:?}), {id:?})"),
             Self::EndToggle(key, id) => write!(f, "ToggleEnd({key:?}, {id:?})"),
         }
+    }
+}
+
+impl PartialOrd for RawTag {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(match (self, other) {
+            (PushForm(l_tagger, l_id, l_prio), PushForm(r_tagger, r_id, r_prio)) => l_prio
+                .cmp(r_prio)
+                .then(l_id.cmp(r_id))
+                .then(l_tagger.cmp(r_tagger)),
+            (PopForm(l_tagger, l_id), PopForm(r_tagger, r_id)) => {
+                l_id.cmp(r_id).then(l_tagger.cmp(r_tagger))
+            }
+            (RawTag::MainCaret(l_tagger), RawTag::MainCaret(r_tagger))
+            | (RawTag::ExtraCaret(l_tagger), RawTag::ExtraCaret(r_tagger))
+            | (StartAlignCenter(l_tagger), StartAlignCenter(r_tagger))
+            | (EndAlignCenter(l_tagger), EndAlignCenter(r_tagger))
+            | (StartAlignRight(l_tagger), StartAlignRight(r_tagger))
+            | (EndAlignRight(l_tagger), EndAlignRight(r_tagger))
+            | (RawTag::Spacer(l_tagger), RawTag::Spacer(r_tagger))
+            | (StartConceal(l_tagger), StartConceal(r_tagger))
+            | (EndConceal(l_tagger), EndConceal(r_tagger)) => l_tagger.cmp(r_tagger),
+            (ConcealUntil(l_byte), ConcealUntil(r_byte)) => l_byte.cmp(r_byte),
+            (RawTag::Ghost(l_tagger, l_id), RawTag::Ghost(r_tagger, r_id)) => {
+                l_id.cmp(r_id).then(l_tagger.cmp(r_tagger))
+            }
+            (StartToggle(l_tagger, l_id), StartToggle(r_tagger, r_id)) => {
+                l_id.cmp(r_id).then(l_tagger.cmp(r_tagger))
+            }
+            (EndToggle(l_tagger, l_id), EndToggle(r_tagger, r_id)) => {
+                l_id.cmp(r_id).then(l_tagger.cmp(r_tagger))
+            }
+            _ => self.priority().cmp(&other.priority()),
+        })
     }
 }
 

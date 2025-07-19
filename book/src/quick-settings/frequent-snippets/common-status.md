@@ -56,7 +56,7 @@ Customized `main_fmt`:
 ```rust
 # use duat::prelude::*;
 status!(
-    "{file_fmt}{Spacer} {mode_fmt} {sels_fmt} [coord]c{main_col} l{main_line}|{}",
+    "{file_fmt}{Spacer} {mode_fmt} {sels_fmt}[coord]c{main_col} l{main_line}[separator]|[coord]{}",
     |file: &File| file.text().len().line()
 );
 ```
@@ -66,7 +66,7 @@ Customized `file_fmt`:
 ```rust
 # use duat::prelude::*;
 
-fn file_fmt(file: &File) -> Text{
+fn file_fmt(file: &File) -> Text {
     let mut b = Text::builder();
 
     if let Some(name) = file.name_set() {
