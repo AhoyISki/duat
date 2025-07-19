@@ -72,7 +72,7 @@ fn main() {
             }
         }
 
-        let mut libs = LIBRARIES.lock().unwrap();
+        let mut _libs = LIBRARIES.lock().unwrap();
 
         //for lib in so_dir.read_dir().unwrap() {
         //    if let Ok(lib) = lib

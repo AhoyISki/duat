@@ -6,15 +6,23 @@ use std::{
     },
 };
 
-use crate::{binary_search_by_key_and_index, text::sh};
+use crate::text::shift_list::{ShiftList, Shiftable};
 
 /// The prevalence of a [`Tagger`] in a [`Text`]
 ///
 /// [`Text`]: crate::text::Text
-#[derive(Clone, Default, Debug)]
-pub struct TaggerExtents(Vec<(Tagger, Extent)>);
+#[derive(Clone, Debug)]
+pub struct TaggerExtents {
+    extents: Vec<(Tagger, Extent)>,
+    max: u32,
+}
 
 impl TaggerExtents {
+    /// Returns a new instance of [`TaggerExtents`]
+    pub fn new(max: usize) -> Self {
+        Self { extents: Vec::new(), max: max as u32 }
+    }
+
     /// Inserts a new [`RawTag`]'s byte
     ///
     /// [`RawTag`]: super::RawTag
@@ -23,14 +31,37 @@ impl TaggerExtents {
             return;
         }
 
-        if let Some((_, extent)) = self.0.iter_mut().find(|(t, _)| *t == tagger) {
+        if let Some((_, extent)) = self.extents.iter_mut().find(|(t, _)| *t == tagger) {
             extent.insert(byte);
         } else {
-            self.0.push((tagger, Extent::Sparse {
-                list: vec![byte],
-                shift_state: (0, 0),
-            }));
+            self.extents
+                .push((tagger, Extent::Sparse(ShiftList::new(self.max as i32))));
         }
+    }
+
+    /// Extends this [`TaggerExtents`] with another
+    pub fn extend(&mut self, other: TaggerExtents) {
+        for (tagger, extent) in other.extents {
+            let is_tagger = |(t, _): &&mut (Tagger, _)| *t == tagger;
+            match extent {
+                Extent::Sparse(mut new_list) => match self.extents.iter_mut().find(is_tagger) {
+                    Some((_, Extent::Sparse(list))) => {
+                        list.extend(new_list);
+                    }
+                    Some((_, Extent::Rampant)) => {}
+                    None => {
+                        new_list.shift_by(0, self.max as i32);
+                        self.extents.push((tagger, Extent::Sparse(new_list)));
+                    }
+                },
+                Extent::Rampant => match self.extents.iter_mut().find(is_tagger) {
+                    Some((_, extent)) => *extent = Extent::Rampant,
+                    None => self.extents.push((tagger, Extent::Rampant)),
+                },
+            }
+        }
+
+        self.max += other.max;
     }
 
     /// Which ranges should be checked, given a removal of this
@@ -38,7 +69,6 @@ impl TaggerExtents {
     pub fn remove_range(
         &mut self,
         range: Range<usize>,
-        buf_len: usize,
         filter: impl Fn(Tagger) -> bool,
     ) -> Vec<Range<usize>> {
         const MAX_FOR_JOINING: usize = 32;
@@ -46,7 +76,7 @@ impl TaggerExtents {
         let mut ranges = Vec::new();
         let mut rampant_matches = false;
 
-        for (tagger, extent) in self.0.iter_mut() {
+        for (tagger, extent) in self.extents.iter_mut() {
             if !filter(*tagger) {
                 continue;
             }
@@ -85,16 +115,21 @@ impl TaggerExtents {
             }
         }
 
-        self.0.retain(|(tagger, extent)| {
-            !extent.is_empty() || (!filter(*tagger) && range.start == 0 && range.end == buf_len)
+        self.extents.retain(|(tagger, extent)| match extent {
+            Extent::Sparse(_) => true,
+            Extent::Rampant => {
+                !(filter(*tagger) && range.start == 0 && range.end as u32 == self.max)
+            }
         });
 
         ranges
     }
 
-    pub fn shift_by(&mut self, from: usize, diff: i32) {
-        for (_, extent) in self.0.iter_mut() {
-            extent.shift_by(from, diff);
+    /// Shifts the [`TaggerExtents`] by a given character difference
+    pub fn shift_by(&mut self, c: usize, by: i32) {
+        self.max = (self.max as i32 + by) as u32;
+        for (_, extent) in self.extents.iter_mut() {
+            extent.shift_by(c, by);
         }
     }
 }
@@ -102,99 +137,35 @@ impl TaggerExtents {
 /// The level of prevalence of a [`Tagger`] in the [`InnerTags`]
 ///
 /// [`InnerTags`]: super::InnerTags
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum Extent {
-    Sparse {
-        list: Vec<usize>,
-        shift_state: (usize, i32),
-    },
+    Sparse(ShiftList<u32>),
     Rampant,
-}
-
-impl std::fmt::Debug for Extent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Sparse { list, shift_state } => f
-                .debug_struct("Sparse")
-                .field("list", list)
-                .field("len", &list.len())
-                .field("shift_state", shift_state)
-                .finish(),
-            Self::Rampant => write!(f, "Rampant"),
-        }
-    }
 }
 
 impl Extent {
     /// Shifts the indices within
-    fn shift_by(&mut self, from: usize, diff: i32) {
-        let Extent::Sparse { list, shift_state } = self else {
-            return;
-        };
-
-        let (mut shift_from, mut total_diff) = std::mem::take(shift_state);
-
-        if let Some(first_unshifted) = list.get(shift_from) {
-            if from < sh(*first_unshifted, total_diff) {
-                let mut iter = list[..shift_from].iter_mut().rev();
-                while let Some(b) = iter.next()
-                    && *b > from
-                {
-                    *b = sh(*b, diff);
-                }
-            } else {
-                let mut iter = list[shift_from..].iter_mut();
-                // All bounds from cur_n have not been shifted, so we account for
-                // that.
-                while let Some(b) = iter.next()
-                    && sh(*b, total_diff) <= from
-                {
-                    *b = sh(*b, total_diff);
-                    shift_from += 1;
-                }
-            }
-
-            total_diff += diff;
-        }
-
-        if shift_from < list.len() {
-            *shift_state = (shift_from, total_diff);
+    fn shift_by(&mut self, c: usize, by: i32) {
+        if let Extent::Sparse(list) = self {
+            let (Ok(i) | Err(i)) = list.find_by_key(c as u32, |c| c);
+            list.shift_by(i, by);
         }
     }
 
     /// Inserts a [`RawTag`] byte
     ///
     /// [`RawTag`]: super::RawTag
-    fn insert(&mut self, byte: usize) {
-        let Extent::Sparse { list, shift_state } = self else {
-            return;
-        };
-        let (mut shift_from, total_diff) = std::mem::take(shift_state);
+    fn insert(&mut self, c: usize) {
+        const MAX_FOR_SPARSE: usize = 1024;
 
-        let key = |i: usize, byte: &usize| sh(*byte, if i < shift_from { 0 } else { total_diff });
-        if let Err(i) = binary_search_by_key_and_index(list, list.len(), byte, key) {
-            const TRACKED_BYTES_LIMIT: usize = 512;
-            if list.len() == TRACKED_BYTES_LIMIT {
-                *self = Extent::Rampant;
-                return;
-            }
-
-            if i < shift_from {
-                shift_from += 1;
+        if let Self::Sparse(list) = self
+            && let Err(i) = list.find_by_key(c as u32, |c| c)
+        {
+            if list.buf().len() < MAX_FOR_SPARSE {
+                list.insert(i, c as u32);
             } else {
-                if total_diff != 0 {
-                    for byte in list[shift_from..i].iter_mut() {
-                        *byte = sh(*byte, total_diff)
-                    }
-                }
-                shift_from = i + 1;
+                *self = Extent::Rampant;
             }
-
-            list.insert(i, byte);
-        };
-
-        if shift_from < list.len() {
-            *shift_state = (shift_from, total_diff);
         }
     }
 
@@ -202,33 +173,25 @@ impl Extent {
     ///
     /// [`RawTag`]: super::RawTag
     fn remove_from_range(&mut self, range: Range<usize>) -> Option<impl Iterator<Item = usize>> {
-        let Extent::Sparse { list, shift_state } = self else {
+        let Extent::Sparse(list) = self else {
             return None;
         };
 
-        let (shift_from, total_diff) = shift_state;
+        let (Ok(s_i) | Err(s_i)) = list.find_by_key(range.start as u32, |c| c);
+        let (Ok(e_i) | Err(e_i)) = list.find_by_key(range.end as u32, |c| c);
 
-        let mut i = 0;
-        Some(list.extract_if(.., move |byte| {
-            let diff = if i < *shift_from { 0 } else { *total_diff };
-            if range.contains(&sh(*byte, diff)) {
-                *shift_from -= (i < *shift_from) as usize;
-                *byte = sh(*byte, diff);
-
-                true
-            } else {
-                i += 1;
-                false
-            }
-        }))
+        Some(
+            list.extract_if_while(s_i..e_i, |_, _| Some(true))
+                .map(|(_, c)| c as usize),
+        )
     }
+}
 
-    /// Wether this [`Tagger`]'s extent is presumed to be empty
-    fn is_empty(&self) -> bool {
-        match self {
-            Extent::Sparse { list, .. } => list.is_empty(),
-            Extent::Rampant => false,
-        }
+impl Shiftable for u32 {
+    type Shift = i32;
+
+    fn shift(self, by: Self::Shift) -> Self {
+        (self as i32 + by) as u32
     }
 }
 

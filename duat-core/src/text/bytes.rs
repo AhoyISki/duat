@@ -12,7 +12,7 @@ use crate::cfg::PrintCfg;
 #[derive(Default, Clone)]
 pub struct Bytes {
     buf: GapBuffer<u8>,
-    records: Records<[usize; 3]>,
+    records: Records,
 }
 
 impl Bytes {
@@ -25,7 +25,7 @@ impl Bytes {
         let lines = buf.iter().filter(|b| **b == b'\n').count();
         Self {
             buf,
-            records: Records::with_max([len, chars, lines]),
+            records: Records::new([len, chars, lines]),
         }
     }
 
@@ -223,9 +223,7 @@ impl Bytes {
             "char out of bounds: the len is {}, but the char is {c}",
             self.len().char()
         );
-        let [c_b, c_c, mut c_l] = self
-            .records
-            .closest_to_by_key(c, |[_, c, _]| *c, |[_, c, _]| c);
+        let [c_b, c_c, mut c_l] = self.records.closest_to_by_key(c, |[_, c, _]| c);
 
         let found = if c >= c_c {
             let [s0, s1] = self.strs_in_range_inner(c_b..);
@@ -329,7 +327,7 @@ impl Bytes {
             self.len().line()
         );
         let (c_b, c_c, mut c_l) = {
-            let [mut b, mut c, l] = self.records.closest_to_by_key(l, |[.., l]| *l, |[.., l]| l);
+            let [mut b, mut c, l] = self.records.closest_to_by_key(l, |[.., l]| l);
             self.strs_in_range_inner(..b)
                 .into_iter()
                 .flat_map(str::chars)

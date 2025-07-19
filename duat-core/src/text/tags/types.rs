@@ -248,7 +248,7 @@ ranged_impl_tag!(Conceal, RawTag::StartConceal, RawTag::EndConceal);
 /// Unlike [`Tag`]s, however, each variant here is only placed in a
 /// single position, and [`Tag`]s that occupy a range are replaced by
 /// two [`RawTag`]s, like [`PushForm`] and [`PopForm`], for example.
-#[derive(Clone, Copy, Eq, Ord)]
+#[derive(Clone, Copy, Eq)]
 pub enum RawTag {
     // Implemented:
     /// Appends a form to the stack.
@@ -308,45 +308,6 @@ pub enum RawTag {
     StartToggle(Tagger, ToggleId),
     /// Ends a toggleable section in the text.
     EndToggle(Tagger, ToggleId),
-}
-
-impl PartialEq for RawTag {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::PushForm(l_tagger, l_id, _), Self::PushForm(r_tagger, r_id, _)) => {
-                l_tagger == r_tagger && l_id == r_id
-            }
-            (Self::PopForm(l_tagger, l_id), Self::PopForm(r_tagger, r_id)) => {
-                l_tagger == r_tagger && l_id == r_id
-            }
-            (Self::MainCaret(l_tagger), Self::MainCaret(r_tagger)) => l_tagger == r_tagger,
-            (Self::ExtraCaret(l_tagger), Self::ExtraCaret(r_tagger)) => l_tagger == r_tagger,
-            (Self::StartAlignCenter(l_tagger), Self::StartAlignCenter(r_tagger)) => {
-                l_tagger == r_tagger
-            }
-            (Self::EndAlignCenter(l_tagger), Self::EndAlignCenter(r_tagger)) => {
-                l_tagger == r_tagger
-            }
-            (Self::StartAlignRight(l_tagger), Self::StartAlignRight(r_tagger)) => {
-                l_tagger == r_tagger
-            }
-            (Self::EndAlignRight(l_tagger), Self::EndAlignRight(r_tagger)) => l_tagger == r_tagger,
-            (Self::Spacer(l_tagger), Self::Spacer(r_tagger)) => l_tagger == r_tagger,
-            (Self::StartConceal(l_tagger), Self::StartConceal(r_tagger)) => l_tagger == r_tagger,
-            (Self::EndConceal(l_tagger), Self::EndConceal(r_tagger)) => l_tagger == r_tagger,
-            (Self::ConcealUntil(l_tagger), Self::ConcealUntil(r_tagger)) => l_tagger == r_tagger,
-            (Self::Ghost(l_tagger, l_id), Self::Ghost(r_tagger, r_id)) => {
-                l_tagger == r_tagger && l_id == r_id
-            }
-            (Self::StartToggle(l_tagger, l_id), Self::StartToggle(r_tagger, r_id)) => {
-                l_tagger == r_tagger && l_id == r_id
-            }
-            (Self::EndToggle(l_tagger, l_id), Self::EndToggle(r_tagger, r_id)) => {
-                l_tagger == r_tagger && l_id == r_id
-            }
-            _ => false,
-        }
-    }
 }
 
 impl RawTag {
@@ -477,30 +438,46 @@ impl RawTag {
     }
 }
 
-impl std::fmt::Debug for RawTag {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::PushForm(key, id, prio) => {
-                write!(f, "PushForm({key:?}, {}, {prio})", id.name())
+impl PartialEq for RawTag {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::PushForm(l_tagger, l_id, _), Self::PushForm(r_tagger, r_id, _)) => {
+                l_tagger == r_tagger && l_id == r_id
             }
-            Self::PopForm(key, id) => write!(f, "PopForm({key:?}, {})", id.name()),
-            Self::MainCaret(key) => write!(f, "MainCaret({key:?})"),
-            Self::ExtraCaret(key) => write!(f, "ExtraCaret({key:?})"),
-            Self::StartAlignCenter(key) => write!(f, "StartAlignCenter({key:?})"),
-            Self::EndAlignCenter(key) => write!(f, "EndAlignCenter({key:?})"),
-            Self::StartAlignRight(key) => write!(f, "StartAlignRight({key:?})"),
-            Self::EndAlignRight(key) => write!(f, "EndAlignRight({key:?})"),
-            Self::Spacer(key) => write!(f, "Spacer({key:?})"),
-            Self::StartConceal(key) => write!(f, "StartConceal({key:?})"),
-            Self::EndConceal(key) => write!(f, "EndConceal({key:?})"),
-            Self::ConcealUntil(key) => write!(f, "ConcealUntil({key:?})"),
-            Self::Ghost(key, id) => write!(f, "Ghost({key:?}, {id:?})"),
-            Self::StartToggle(key, id) => write!(f, "ToggleStart({key:?}), {id:?})"),
-            Self::EndToggle(key, id) => write!(f, "ToggleEnd({key:?}, {id:?})"),
+            (Self::PopForm(l_tagger, l_id), Self::PopForm(r_tagger, r_id)) => {
+                l_tagger == r_tagger && l_id == r_id
+            }
+            (Self::MainCaret(l_tagger), Self::MainCaret(r_tagger)) => l_tagger == r_tagger,
+            (Self::ExtraCaret(l_tagger), Self::ExtraCaret(r_tagger)) => l_tagger == r_tagger,
+            (Self::StartAlignCenter(l_tagger), Self::StartAlignCenter(r_tagger)) => {
+                l_tagger == r_tagger
+            }
+            (Self::EndAlignCenter(l_tagger), Self::EndAlignCenter(r_tagger)) => {
+                l_tagger == r_tagger
+            }
+            (Self::StartAlignRight(l_tagger), Self::StartAlignRight(r_tagger)) => {
+                l_tagger == r_tagger
+            }
+            (Self::EndAlignRight(l_tagger), Self::EndAlignRight(r_tagger)) => l_tagger == r_tagger,
+            (Self::Spacer(l_tagger), Self::Spacer(r_tagger)) => l_tagger == r_tagger,
+            (Self::StartConceal(l_tagger), Self::StartConceal(r_tagger)) => l_tagger == r_tagger,
+            (Self::EndConceal(l_tagger), Self::EndConceal(r_tagger)) => l_tagger == r_tagger,
+            (Self::ConcealUntil(l_tagger), Self::ConcealUntil(r_tagger)) => l_tagger == r_tagger,
+            (Self::Ghost(l_tagger, l_id), Self::Ghost(r_tagger, r_id)) => {
+                l_tagger == r_tagger && l_id == r_id
+            }
+            (Self::StartToggle(l_tagger, l_id), Self::StartToggle(r_tagger, r_id)) => {
+                l_tagger == r_tagger && l_id == r_id
+            }
+            (Self::EndToggle(l_tagger, l_id), Self::EndToggle(r_tagger, r_id)) => {
+                l_tagger == r_tagger && l_id == r_id
+            }
+            _ => false,
         }
     }
 }
 
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl PartialOrd for RawTag {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(match (self, other) {
@@ -532,6 +509,36 @@ impl PartialOrd for RawTag {
             }
             _ => self.priority().cmp(&other.priority()),
         })
+    }
+}
+
+impl Ord for RawTag {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+impl std::fmt::Debug for RawTag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PushForm(key, id, prio) => {
+                write!(f, "PushForm({key:?}, {}, {prio})", id.name())
+            }
+            Self::PopForm(key, id) => write!(f, "PopForm({key:?}, {})", id.name()),
+            Self::MainCaret(key) => write!(f, "MainCaret({key:?})"),
+            Self::ExtraCaret(key) => write!(f, "ExtraCaret({key:?})"),
+            Self::StartAlignCenter(key) => write!(f, "StartAlignCenter({key:?})"),
+            Self::EndAlignCenter(key) => write!(f, "EndAlignCenter({key:?})"),
+            Self::StartAlignRight(key) => write!(f, "StartAlignRight({key:?})"),
+            Self::EndAlignRight(key) => write!(f, "EndAlignRight({key:?})"),
+            Self::Spacer(key) => write!(f, "Spacer({key:?})"),
+            Self::StartConceal(key) => write!(f, "StartConceal({key:?})"),
+            Self::EndConceal(key) => write!(f, "EndConceal({key:?})"),
+            Self::ConcealUntil(key) => write!(f, "ConcealUntil({key:?})"),
+            Self::Ghost(key, id) => write!(f, "Ghost({key:?}, {id:?})"),
+            Self::StartToggle(key, id) => write!(f, "ToggleStart({key:?}), {id:?})"),
+            Self::EndToggle(key, id) => write!(f, "ToggleEnd({key:?}, {id:?})"),
+        }
     }
 }
 

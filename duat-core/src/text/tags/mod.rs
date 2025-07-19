@@ -14,11 +14,8 @@ use std::{
     ops::{Range, RangeBounds},
 };
 
-use gapbuf::GapBuffer;
-
 use self::{
     bounds::Bounds,
-    shift_list::ShiftList,
     taggers::TaggerExtents,
     types::{TagId, Toggle},
 };
@@ -31,7 +28,10 @@ pub use self::{
         Spacer, Tag,
     },
 };
-use super::{Point, Text, TextRangeOrPoint};
+use super::{
+    Point, Text, TextRangeOrPoint,
+    shift_list::{Shift, ShiftList, Shiftable},
+};
 use crate::get_ends;
 
 /// A public interface for mutating the [`Tag`]s of a [`Text`]
@@ -126,7 +126,6 @@ pub struct InnerTags {
     toggles: Vec<(ToggleId, Toggle)>,
     bounds: Bounds,
     extents: TaggerExtents,
-    shift_state: (usize, i32),
 }
 
 impl InnerTags {
@@ -136,9 +135,8 @@ impl InnerTags {
             list: ShiftList::new(max as i32),
             ghosts: Vec::new(),
             toggles: Vec::new(),
-            bounds: Bounds::new(),
-            extents: TaggerExtents::default(),
-            shift_state: (0, 0),
+            bounds: Bounds::new(max),
+            extents: TaggerExtents::new(max),
         }
     }
 
@@ -160,35 +158,33 @@ impl InnerTags {
 
         fn insert_raw_tags(
             tags: &mut InnerTags,
-            (s_at, s_tag): (usize, RawTag),
+            (s_c, s_tag): (usize, RawTag),
             end: Option<(usize, RawTag)>,
         ) -> bool {
-            if let Some((e_at, e_tag)) = end
-                && s_at != e_at
+            if let Some((e_c, e_tag)) = end
+                && s_c != e_c
             {
                 let (s_i, e_i) = match (
-                    tags.list.find_by_key((s_at as u32, s_tag), |t| t),
-                    tags.list.find_by_key((e_at as u32, e_tag), |t| t),
+                    tags.list.find_by_key((s_c as u32, s_tag), |t| t),
+                    tags.list.find_by_key((e_c as u32, e_tag), |t| t),
                 ) {
                     (Ok(_), Ok(_)) => return false,
                     (Ok(s_i), Err(e_i)) | (Err(s_i), Ok(e_i)) | (Err(s_i), Err(e_i)) => (s_i, e_i),
                 };
 
-                tags.list.insert(s_i, (s_at as u32, s_tag));
-                tags.list.insert(e_i, (e_at as u32, e_tag));
+                tags.list.insert(s_i, (s_c as u32, s_tag));
+                tags.list.insert(e_i, (e_c as u32, e_tag));
 
-                tags.bounds.insert(tags.list.buf().len(), [
-                    ([s_i, s_at], s_tag),
-                    ([e_i, e_at], e_tag),
-                ]);
+                tags.bounds
+                    .insert([([s_i, s_c], s_tag), ([e_i, e_c], e_tag)]);
             } else if end.is_none() {
-                let (Ok(i) | Err(i)) = tags.list.find_by_key((s_at as u32, s_tag), |s| s);
-                tags.list.insert(i, (s_at as u32, s_tag));
+                let (Ok(i) | Err(i)) = tags.list.find_by_key((s_c as u32, s_tag), |s| s);
+                tags.list.insert(i, (s_c as u32, s_tag));
 
-                tags.bounds.shift_by(tags.list.buf().len(), i, [1, 0]);
+                tags.bounds.shift_by(i, [1, 0]);
             }
 
-            tags.extents.insert(s_tag.tagger(), s_at);
+            tags.extents.insert(s_tag.tagger(), s_c);
             if let Some((s_at, _)) = end {
                 tags.extents.insert(s_tag.tagger(), s_at);
             }
@@ -208,7 +204,8 @@ impl InnerTags {
     pub fn insert_tags(&mut self, p: Point, mut other: InnerTags) {
         let mut starts = Vec::new();
 
-        for (_, c, tag) in fwd_range(other.list.buf(), ..).filter_map(entries_fwd(p.byte())) {
+        for (_, (c, tag)) in other.list.iter_fwd(..) {
+            let c = c as usize + p.char();
             match tag {
                 PushForm(..) => starts.push((c, tag)),
                 PopForm(tagger, id) => {
@@ -256,8 +253,6 @@ impl InnerTags {
 
     /// Extends this [`InnerTags`] with another one
     pub fn extend(&mut self, other: InnerTags) {
-        self.bounds.finish_shifting();
-
         self.list.extend(other.list);
         self.ghosts.extend(other.ghosts);
         self.toggles.extend(other.toggles);
@@ -284,8 +279,8 @@ impl InnerTags {
     /// of the [`Bounds`], WILL NOT shift [`TaggerExtents`], since
     /// there is no byte shifting, WILL NOT shift the bytes of the
     /// [`Bounds`]
-    fn remove_from_if(&mut self, range: Range<usize>, filter: impl Fn(&RawTag) -> bool + Copy) {
-        for [i, c] in self
+    fn remove_from_if(&mut self, range: Range<usize>, filter: impl Fn(RawTag) -> bool + Copy) {
+        for i in self
             .bounds
             .remove_intersecting(range.clone(), filter)
             .into_iter()
@@ -306,7 +301,7 @@ impl InnerTags {
         let (Ok(end) | Err(end)) = self.list.find_by_key(range.end as u32, |(c, _)| c);
 
         self.list
-            .extract_if_while(start..end, |_, (_, tag)| Some(filter(&tag)))
+            .extract_if_while(start..end, |_, (_, tag)| Some(filter(tag)))
             .for_each(|(i, (_, tag))| {
                 removed += 1;
                 self.bounds.shift_by(i, [-1, 0]);
@@ -322,7 +317,7 @@ impl InnerTags {
             });
 
         self.list
-            .extract_if_while(end - removed.., |i, (_, tag)| {
+            .extract_if_while(end - removed.., |_, (_, tag)| {
                 if let Some(i) = starts.iter().rposition(|s| s.ends_with(&tag)) {
                     self.bounds.shift_by(i, [-1, 0]);
                     starts.remove(i);
@@ -336,7 +331,7 @@ impl InnerTags {
             .for_each(|_| {});
 
         self.list
-            .rextract_if_while(..start, |i, (_, tag)| {
+            .rextract_if_while(..start, |_, (_, tag)| {
                 if let Some(i) = ends.iter().rposition(|e| tag.ends_with(e)) {
                     self.bounds.shift_by(i, [-1, 0]);
                     ends.remove(i);
@@ -367,9 +362,7 @@ impl InnerTags {
             self.extents.remove_range(old.start + 1..old.end, |_| true);
 
             // If the range becomes empty, we should remove the remainig pairs
-            if new.end == old.start
-                && let Ok(i) = self.list.find_by_key(old.start as u32, |(c, _)| c)
-            {
+            if new.end == old.start && self.list.find_by_key(old.start as u32, |(c, _)| c).is_ok() {
                 let mut to_remove: Vec<usize> = Vec::new();
                 let mut starts = Vec::new();
                 let mut iter = self.list.iter_fwd(old.start..);
@@ -389,6 +382,7 @@ impl InnerTags {
                         to_remove.insert(rm_i, i)
                     }
                 }
+                drop(iter);
 
                 for i in to_remove.into_iter().rev() {
                     self.list.remove(i);
@@ -405,21 +399,19 @@ impl InnerTags {
     }
 
     pub(crate) fn update_bounds(&mut self) {
-        self.bounds.finish_shifting();
-
         for range in self.bounds.take_ranges() {
-            let c = self.byte_at(range.start);
             // Add all tags in the range to the list, keeping only those whose
             // ranges are too long.
-            let mut start_tags = Vec::new();
-            for (n, c, tag) in fwd_range(&self.buf, range).filter_map(entries_fwd(c)) {
+            let mut starts = Vec::new();
+            for (i, (c, tag)) in self.list.iter_fwd(range) {
                 if tag.is_start() {
-                    start_tags.push((n, c, tag));
+                    starts.push((i, c, tag));
                 } else if tag.is_end()
-                    && let Some(i) = start_tags.iter().rposition(|(.., lhs)| lhs.ends_with(&tag))
+                    && let Some(i) = starts.iter().rposition(|(.., lhs)| lhs.ends_with(&tag))
                 {
-                    let (s_n, s_c, s_tag) = start_tags.remove(i);
-                    self.bounds.represent([([s_n, s_c], s_tag), ([n, c], tag)]);
+                    let (s_n, s_c, s_tag) = starts.remove(i);
+                    self.bounds
+                        .represent([([s_n as u32, s_c], s_tag), ([i as u32, c], tag)]);
                 }
             }
         }
@@ -439,89 +431,69 @@ impl InnerTags {
 
     /// Returns a forward iterator at a given byte
     #[define_opaque(FwdTags)]
-    pub fn fwd_at(&self, at: usize) -> FwdTags<'_> {
-        self.bounds.finish_shifting();
-
-        let [s_n, s_c] = {
-            let [n, c, _] = self.skip_behind(at.min(self.len_bytes()));
-            rev_range(&self.buf, ..n)
-                .take(self.bounds.min_len())
-                .fold([n, c], |[_, c], (n, ts)| [n, c - ts.len()])
+    pub fn fwd_at(&self, c: usize) -> FwdTags<'_> {
+        let s_i = {
+            let (Ok(s_i) | Err(s_i)) = self.list.find_by_key(c as u32, |(c, _)| c);
+            s_i.saturating_sub(self.bounds.min_len())
         };
 
-        let bounds = self.bounds.iter().map_while(move |(bound, tag)| {
-            let [n, c] = bound.get();
-            (n < s_n).then_some((c, tag))
+        let is_before = move |([n, c], tag): ([usize; 2], _)| (n < s_i).then_some((c, tag));
+        let bounds = self.bounds.iter_fwd().map_while(is_before);
+
+        let tags = self.list.iter_fwd(s_i..).map(|(n, (c, tag))| match tag {
+            StartConceal(tagger) => match self.bounds.match_of(n) {
+                Some(([_, e_c], _)) => (c as usize, ConcealUntil(e_c as u32)),
+                _ => (c as usize, StartConceal(tagger)),
+            },
+            tag => (c as usize, tag),
         });
-
-        let tags = {
-            let iter = fwd_range(&self.buf, s_n..).filter_map(entries_fwd(s_c));
-            iter.map(|(n, c, tag)| match tag {
-                StartConceal(tagger) => match self.bounds.match_of(n) {
-                    Some(([_, e_c], _)) => (c, ConcealUntil(e_c as u32)),
-                    _ => (c, StartConceal(tagger)),
-                },
-                tag => (c, tag),
-            })
-        };
 
         bounds.into_iter().chain(tags).peekable()
     }
 
     /// Returns a reverse iterator at a given byte
     #[define_opaque(RevTags)]
-    pub fn rev_at(&self, at: usize) -> RevTags<'_> {
-        self.bounds.finish_shifting();
-
-        let [e_n, e_c, _] = {
-            let [n, c, _] = self.skip_at(at.min(self.len_bytes()));
-            fwd_range(&self.buf, n..)
-                .take(self.bounds.min_len())
-                .fold([n, c, 0], |[_, c, len], (n, ts)| [n, c + len, ts.len()])
+    pub fn rev_at(&self, c: usize) -> RevTags<'_> {
+        let e_i = {
+            let (Ok(e_i) | Err(e_i)) = self.list.find_by_key(c as u32, |(c, _)| c);
+            (e_i + self.bounds.min_len()).min(self.list.buf().len())
         };
 
-        let bounds = self.bounds.iter().rev().map_while(move |(bound, tag)| {
-            let [n, c] = bound.get();
-            (n > e_n).then_some((c, tag))
+        let is_after = move |([n, c], tag): ([usize; 2], _)| (n > e_i).then_some((c, tag));
+        let bounds = self.bounds.iter_rev().map_while(is_after);
+
+        let tags = self.list.iter_rev(..e_i).map(|(n, (c, tag))| match tag {
+            EndConceal(tagger) => match self.bounds.match_of(n) {
+                Some(([_, s_c], _)) => (c as usize, ConcealUntil(s_c as u32)),
+                _ => (c as usize, EndConceal(tagger)),
+            },
+            tag => (c as usize, tag),
         });
-
-        let tags = {
-            let iter = rev_range(&self.buf, ..e_n).filter_map(entries_rev(e_c));
-            iter.map(|(n, c, tag)| match tag {
-                EndConceal(tagger) => match self.bounds.match_of(n) {
-                    Some(([_, s_c], _)) => (c, ConcealUntil(s_c as u32)),
-                    _ => (c, EndConceal(tagger)),
-                },
-                tag => (c, tag),
-            })
-        };
 
         bounds.chain(tags).peekable()
     }
 
     pub fn raw_fwd_at(&self, c: usize) -> impl Iterator<Item = (usize, RawTag)> + '_ {
-        let [n, c, _] = self.skip_behind(c);
-        fwd_range(&self.buf, n..)
-            .filter_map(entries_fwd(c))
-            .map(|(_, c, t)| (c, t))
+        let (Ok(s_i) | Err(s_i)) = self.list.find_by_key(c as u32, |(c, _)| c);
+        self.list
+            .iter_fwd(s_i..)
+            .map(|(_, (c, tag))| (c as usize, tag))
     }
 
     pub fn raw_rev_at(&self, c: usize) -> impl Iterator<Item = (usize, RawTag)> + '_ {
-        let [n, c, _] = self.skip_at(c);
-        rev_range(&self.buf, ..n)
-            .filter_map(entries_rev(c))
-            .map(|(_, c, t)| (c, t))
+        let (Ok(e_i) | Err(e_i)) = self.list.find_by_key(c as u32, |(c, _)| c);
+        self.list
+            .iter_rev(..e_i)
+            .map(|(_, (c, tag))| (c as usize, tag))
     }
 
     /// Returns an iterator over a single byte
-    pub fn iter_only_at(&self, at: usize) -> impl Iterator<Item = RawTag> + '_ {
-        self.bounds.finish_shifting();
-
-        let [n, c, _] = self.skip_at(at);
-        (c == at)
-            .then(|| rev_range(&self.buf, ..n).map_while(|(_, ts)| ts.as_tag()))
-            .into_iter()
-            .flatten()
+    pub fn iter_only_at(&self, c: usize) -> impl Iterator<Item = RawTag> + '_ {
+        let (Ok(s_i) | Err(s_i)) = self.list.find_by_key(c as u32, |(c, _)| c);
+        self.list
+            .iter_rev(s_i..)
+            .take_while(move |(_, (cur_c, _))| *cur_c as usize == c)
+            .map(|(_, (_, tag))| tag)
     }
 
     /// Returns the length of all [`Ghost`]s in a byte
@@ -577,7 +549,7 @@ impl<R: RangeBounds<usize> + Clone> std::fmt::Debug for DebugBuf<'_, R> {
 impl std::fmt::Debug for InnerTags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("InnerTags")
-            .field("buf", &self.list.buf())
+            .field("buf", &DebugBuf(self, ..))
             .field("bounds", &bounds::DebugBounds(self))
             .finish_non_exhaustive()
     }
@@ -635,8 +607,6 @@ pub type FwdTags<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)>
 /// iterates their bounds as if they were regular [`RawTag`]s
 pub type RevTags<'a> = std::iter::Peekable<impl Iterator<Item = (usize, RawTag)> + Clone + 'a>;
 
-type Entry = (usize, usize, RawTag);
-
 mod ids {
     use std::sync::atomic::{AtomicU16, Ordering};
 
@@ -681,222 +651,20 @@ mod ids {
     }
 }
 
-mod shift_list {
-    use std::ops::RangeBounds;
+impl Shiftable for (u32, RawTag) {
+    type Shift = i32;
 
-    use gapbuf::GapBuffer;
+    fn shift(self, by: Self::Shift) -> Self {
+        ((self.0 as i32 + by) as u32, self.1)
+    }
+}
 
-    use super::RawTag;
-    use crate::{binary_search_by_key_and_index, get_ends};
-
-    #[derive(Clone)]
-    pub(super) struct ShiftList<S: Shiftable> {
-        buf: GapBuffer<S>,
-        from: usize,
-        by: S::Shift,
-        max: S::Shift,
+impl Shift for i32 {
+    fn neg(self) -> Self {
+        -self
     }
 
-    impl<S: Shiftable> ShiftList<S> {
-        pub(super) fn new(max: S::Shift) -> Self {
-            Self {
-                buf: GapBuffer::new(),
-                from: 0,
-                by: S::Shift::default(),
-                max,
-            }
-        }
-
-        pub(super) fn insert(&mut self, i: usize, new: S) {
-            if self.by != S::Shift::default() && self.from < self.buf.len() {
-                if i > self.from {
-                    for s in self.buf.range_mut(self.from..i).iter_mut() {
-                        *s = s.shift(self.by);
-                    }
-                } else {
-                    for s in self.buf.range_mut(i..self.from).iter_mut() {
-                        *s = s.shift(self.by.neg())
-                    }
-                }
-            }
-
-            self.buf.insert(i, new);
-
-            if i + 1 < self.buf.len() {
-                self.from = i + 1;
-            } else {
-                self.from = 0;
-                self.by = S::Shift::default();
-            }
-        }
-
-        pub(super) fn remove(&mut self, i: usize) {
-            self.buf.remove(i);
-            if self.from > i {
-                self.from -= 1;
-            }
-        }
-
-        pub(super) fn extract_if_while<'a>(
-            &'a mut self,
-            range: impl RangeBounds<usize>,
-            mut f: impl FnMut(usize, S) -> Option<bool> + 'a,
-        ) -> impl Iterator<Item = (usize, S)> + 'a {
-            let (mut i, mut end) = get_ends(range, self.buf.len());
-
-            std::iter::from_fn(move || {
-                while i < end {
-                    let shifted = if i >= self.from {
-                        self.buf[i].shift(self.by)
-                    } else {
-                        self.buf[i]
-                    };
-
-                    if f(i, shifted)? {
-                        self.from -= (i < self.from) as usize;
-                        end -= 1;
-                        return Some((i, shifted));
-                    } else {
-                        i += 1;
-                    }
-                }
-
-                None
-            })
-        }
-
-        pub(super) fn rextract_if_while<'a>(
-            &'a mut self,
-            range: impl RangeBounds<usize>,
-            mut f: impl FnMut(usize, S) -> Option<bool> + 'a,
-        ) -> impl Iterator<Item = (usize, S)> + 'a {
-            let (start, mut i) = get_ends(range, self.buf.len());
-
-            std::iter::from_fn(move || {
-                while i > start {
-                    i -= 1;
-                    let shifted = if i >= self.from {
-                        self.buf[i].shift(self.by)
-                    } else {
-                        self.buf[i]
-                    };
-
-                    if f(i, shifted)? {
-                        self.from -= (i < self.from) as usize;
-                        return Some((i, shifted));
-                    }
-                }
-
-                None
-            })
-        }
-
-        /// Shifts the items in the list after a certain point
-        pub(super) fn shift_by(&mut self, from: usize, by: S::Shift) {
-            if self.by != S::Shift::default() {
-                if from > self.from {
-                    for s in self.buf.range_mut(self.from..from).iter_mut() {
-                        *s = s.shift(self.by);
-                    }
-                } else {
-                    for s in self.buf.range_mut(from..self.from).iter_mut() {
-                        *s = s.shift(self.by.neg());
-                    }
-                }
-            }
-
-            self.from = from;
-            self.by = self.by.add(by);
-        }
-
-        pub(super) fn extend(&mut self, mut other: Self) {
-            for s in self.buf.range_mut(self.from..).iter_mut() {
-                *s = s.shift(self.by);
-            }
-
-            self.from = self.buf.len() + other.from;
-            self.by = other.by;
-
-            self.buf
-                .extend(other.buf.drain(..).map(|s| s.shift(self.max)));
-
-            self.max = self.max.add(other.max);
-        }
-
-        pub(super) fn iter_fwd(
-            &self,
-            range: impl RangeBounds<usize>,
-        ) -> impl Iterator<Item = (usize, S)> + '_ {
-            let (start, end) = get_ends(range, self.buf.len());
-            let (s0, s1) = self.buf.range(start..end).as_slices();
-            s0.into_iter().chain(s1).enumerate().map(move |(i, s)| {
-                if i + start >= self.from {
-                    (i + start, s.shift(self.by))
-                } else {
-                    (i + start, *s)
-                }
-            })
-        }
-
-        /// Will find the _first_ element in the buffer that equals
-        /// the key, if it exists
-        pub(super) fn find_by_key<K: Copy + Eq + Ord>(
-            &self,
-            key: K,
-            f: fn(S) -> K,
-        ) -> Result<usize, usize> {
-            let sh = |i: usize, s: &S| f(if i >= self.from { s.shift(self.by) } else { *s });
-
-            match binary_search_by_key_and_index(&self.buf, self.buf.len(), key, sh) {
-                Ok(mut i) => Ok(loop {
-                    if let Some(prev_i) = i.checked_sub(1)
-                        && sh(prev_i, &self.buf[prev_i]) == key
-                    {
-                        i = prev_i
-                    } else {
-                        break i;
-                    }
-                }),
-                Err(i) => Err(i),
-            }
-        }
-
-        pub(super) fn buf(&self) -> &GapBuffer<S> {
-            &self.buf
-        }
-
-        pub(super) fn max(&self) -> S::Shift {
-            self.max
-        }
-    }
-
-    pub(super) trait Shiftable: Clone + Copy + Ord {
-        type Shift: Shift;
-
-        fn shift(self, by: Self::Shift) -> Self;
-    }
-
-    impl Shiftable for (u32, RawTag) {
-        type Shift = i32;
-
-        fn shift(self, by: Self::Shift) -> Self {
-            ((self.0 as i32 + by) as u32, self.1)
-        }
-    }
-
-    pub(super) trait Shift: Default + Clone + Copy + Eq {
-        fn neg(self) -> Self;
-
-        fn add(self, other: Self) -> Self;
-    }
-
-    impl Shift for i32 {
-        fn neg(self) -> Self {
-            -self
-        }
-
-        fn add(self, other: Self) -> Self {
-            self + other
-        }
+    fn add(self, other: Self) -> Self {
+        self + other
     }
 }

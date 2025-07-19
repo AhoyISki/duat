@@ -1,7 +1,13 @@
-use std::{cell::Cell, ops::Range};
+use std::ops::Range;
 
 use self::id::RangeId;
-use crate::{ranges::Ranges, text::RawTag};
+use crate::{
+    ranges::Ranges,
+    text::{
+        RawTag,
+        shift_list::{Shift, ShiftList, Shiftable},
+    },
+};
 
 /// How many [`TagOrSkip`]s to keep a [`RawTag`] range
 ///
@@ -13,65 +19,50 @@ const MIN_FOR_RANGE: usize = 16;
 /// A struct to keep better track of very long [`RawTag`] ranges
 #[derive(Debug, Clone)]
 pub struct Bounds {
-    list: Vec<(Cell<[usize; 2]>, RawTag, RangeId)>,
-    shift_state: Cell<(usize, [i32; 2])>,
+    list: ShiftList<([u32; 2], RawTag, RangeId)>,
     ranges_to_update: Ranges,
     min_len: usize,
 }
 
 impl Bounds {
     /// Returns a new instance of [`Bounds`]
-    pub fn new() -> Self {
+    pub fn new(max: usize) -> Self {
         let mut ranges_to_update = Ranges::empty();
         ranges_to_update.set_min_len(MIN_FOR_RANGE);
 
         Self {
-            list: Vec::new(),
-            shift_state: Cell::default(),
+            list: ShiftList::new([max as i32, 0]),
             ranges_to_update,
             min_len: MIN_FOR_RANGE,
         }
     }
 
     /// Inserts a new bound to the list
-    pub fn insert(&mut self, final_buf_len: usize, [s, e]: [([usize; 2], RawTag); 2]) {
-        /// Declares tha the given index is shifted
-        fn declare_shifted(bounds: &mut Bounds, ins: usize) {
-            bounds.shift_state.set({
-                if ins + 1 < bounds.list.len() {
-                    let (shift_from, diff) = bounds.shift_state.get();
-                    (shift_from + 1, diff)
-                } else {
-                    (0, [0; 2])
-                }
-            });
-        }
-
+    pub fn insert(&mut self, [s, e]: [([usize; 2], RawTag); 2]) {
         let [([s_n, s_b], s_tag), ([e_n, e_b], e_tag)] = [s, e];
 
-        let s_i = self.shift_by(final_buf_len - 1 as usize, s_n, [1, 0]);
+        let s_i = self.shift_by(s_n, [1, 0]);
 
         if e_n - s_n >= self.min_len {
             let id = RangeId::new();
 
-            self.list.insert(s_i, (Cell::new([s_n, s_b]), s_tag, id));
-            declare_shifted(self, s_i);
+            self.list.insert(s_i, ([s_n as u32, s_b as u32], s_tag, id));
 
-            let e_i = self.shift_by(final_buf_len, e_n, [1, 0]);
-
-            self.list.insert(e_i, (Cell::new([e_n, e_b]), e_tag, id));
-            declare_shifted(self, s_i);
+            let e_i = self.shift_by(e_n, [1, 0]);
+            self.list.insert(e_i, ([e_n as u32, e_b as u32], e_tag, id));
         } else {
-            self.shift_by(final_buf_len, e_n, [1, 0]);
+            self.shift_by(e_n, [1, 0]);
         }
     }
 
     /// Represents the given range in the list, if it wasn't there
     /// already
-    pub fn represent(&mut self, [s, e]: [([usize; 2], RawTag); 2]) {
+    pub fn represent(&mut self, [s, e]: [([u32; 2], RawTag); 2]) {
+        let before_id = |(bound, tag, _): ([u32; 2], RawTag, _)| (bound, tag);
+
         let (Err(s_i), Err(e_i)) = (
-            self.list.binary_search_by_key(&s, before_id),
-            self.list.binary_search_by_key(&e, before_id),
+            self.list.find_by_key(s, before_id),
+            self.list.find_by_key(e, before_id),
         ) else {
             return;
         };
@@ -80,77 +71,28 @@ impl Bounds {
             let [(s_bound, s_tag), (e_bound, e_tag)] = [s, e];
 
             let id = RangeId::new();
-            self.list.insert(s_i, (Cell::new(s_bound), s_tag, id));
-            self.list.insert(e_i, (Cell::new(e_bound), e_tag, id));
+            self.list.insert(s_i, (s_bound, s_tag, id));
+            self.list.insert(e_i, (e_bound, e_tag, id));
         }
     }
 
     /// Shifts the bounds within by a difference in a position,
     /// returns the insertion point of that shift
-    pub fn shift_by(&mut self, buf_len: usize, from: usize, [n_diff, c_diff]: [i32; 2]) -> usize {
-        self.ranges_to_update.shift_by(from, n_diff);
-        // This means we are adding TagOrSkips, so new ranges may be created
+    pub fn shift_by(&mut self, n: usize, [n_diff, c_diff]: [i32; 2]) -> usize {
+        let (Ok(i) | Err(i)) = self.list.find_by_key(n as u32, |([n, _], ..)| n);
+        self.list.shift_by(i, [n_diff, c_diff]);
+
+        self.ranges_to_update.shift_by(n, n_diff);
+        // This means we are adding Tags, so new ranges might need to be
+        // accounted for.
         if n_diff > 0 {
             self.ranges_to_update.add({
-                let [s, e] = [from, from + n_diff.unsigned_abs() as usize];
-                s.saturating_sub(self.min_len)..(e + self.min_len).min(buf_len)
+                let [s, e] = [n, n + n_diff.unsigned_abs() as usize];
+                s.saturating_sub(self.min_len)..(e + self.min_len).min(self.list.max()[0] as usize)
             });
         }
 
-        let (mut shift_from, [mut total_n_diff, mut total_b_diff]) = self.shift_state.take();
-
-        let ins = if let Some((first_unshifted, ..)) = self.list.get(shift_from) {
-            let mut ins = shift_from;
-            let [unshifted_n, _] = first_unshifted.get();
-            // cur_n is the first bound that has not been shifted, so we need to
-            // take that into consideration.
-            if from <= sh(unshifted_n, total_n_diff) {
-                let mut iter = self.list[..shift_from].iter().rev();
-                while let Some((bound, ..)) = iter.next()
-                    && let [n, b] = bound.get()
-                    && n >= from
-                {
-                    bound.set([sh(n, n_diff), sh(b, c_diff)]);
-                    ins -= 1;
-                }
-            } else {
-                let mut iter = self.list[shift_from..].iter();
-                // All bounds from cur_n have not been shifted, so we account for
-                // that.
-                while let Some((bound, ..)) = iter.next()
-                    && let [n, b] = bound.get()
-                    && sh(n, total_n_diff) < from
-                {
-                    bound.set([sh(n, total_n_diff), sh(b, total_b_diff)]);
-                    ins += 1;
-                    shift_from += 1;
-                }
-            }
-
-            total_n_diff += n_diff;
-            total_b_diff += c_diff;
-
-            ins
-        } else {
-            0
-        };
-
-        if shift_from < self.list.len() {
-            self.shift_state
-                .set((shift_from, [total_n_diff, total_b_diff]));
-        }
-
-        ins
-    }
-
-    /// Finishes shifting
-    pub fn finish_shifting(&self) {
-        let (sh_from, [total_n_diff, total_b_diff]) = self.shift_state.take();
-
-        for (bound, ..) in self.list[sh_from..].iter() {
-            let [n, b] = bound.get();
-            bound.set([sh(n, total_n_diff), sh(b, total_b_diff)]);
-        }
+        i
     }
 
     /// Removes all ranges that start or end in the range
@@ -160,101 +102,57 @@ impl Bounds {
     pub fn remove_intersecting(
         &mut self,
         range: Range<usize>,
-        filter: impl Fn(&RawTag) -> bool,
-    ) -> Vec<[usize; 2]> {
-        fn extract(
-            shift_from: &mut usize,
-            [n_diff, b_diff]: [i32; 2],
-            f: impl Fn(usize, usize, &Cell<[usize; 2]>, &RawTag, &RangeId) -> bool,
-        ) -> impl FnMut(&mut (Cell<[usize; 2]>, RawTag, RangeId)) -> bool {
-            let mut i = 0;
-            move |(bound, tag, id)| {
-                let [n, b] = bound.get();
-                if f(i, *shift_from, bound, tag, id) {
-                    if i < *shift_from {
-                        *shift_from -= 1;
-                    } else {
-                        *bound.get_mut() = [sh(n, n_diff), sh(b, b_diff)];
-                    }
-                    true
+        filter: impl Fn(RawTag) -> bool,
+    ) -> Vec<usize> {
+        let mut removed = Vec::new();
+        let mut starts = Vec::new();
+        let mut ends = Vec::new();
+
+        self.list
+            .extract_if_while(range.clone(), |_, (_, tag, _)| Some(filter(tag)))
+            .for_each(|(_, ([n, _], tag, id))| {
+                removed.push(n as usize);
+                if tag.is_start() {
+                    starts.push((n, id));
                 } else {
-                    i += 1;
-                    false
+                    ends.push((n, id));
                 }
-            }
-        }
-        let (mut shift_from, diff) = self.shift_state.get();
+            });
 
-        if range.is_empty() {
-            return Vec::new();
-        }
+        removed.extend(
+            self.list
+                .extract_if_while(range.end - starts.len() - ends.len().., |_, (.., e_id)| {
+                    if let Some(i) = starts.iter().rposition(|(_, s_id)| *s_id == e_id) {
+                        starts.remove(i);
+                        Some(true)
+                    } else if starts.is_empty() {
+                        None
+                    } else {
+                        Some(false)
+                    }
+                })
+                .map(|(_, ([n, _], ..))| n as usize),
+        );
 
-        let is_contained = extract(&mut shift_from, diff, |i, shift_from, bound, tag, _| {
-            let diff = if i < shift_from { 0 } else { diff[1] };
-            range.clone().contains(&sh(bound.get()[1], diff)) && filter(tag)
-        });
-        let removed: Vec<_> = self.list.extract_if(.., is_contained).collect();
+        removed.extend(
+            self.list
+                .rextract_if_while(..range.start, |_, (.., s_id)| {
+                    if let Some(i) = ends.iter().rposition(|(_, e_id)| *e_id == s_id) {
+                        ends.remove(i);
+                        Some(true)
+                    } else if ends.is_empty() {
+                        None
+                    } else {
+                        Some(false)
+                    }
+                })
+                .map(|(_, ([n, _], ..))| n as usize),
+        );
 
-        let mut removed: Vec<[usize; 2]> = removed
-            .into_iter()
-            .filter_map(|(bound, _, id)| {
-                let is_match = extract(&mut shift_from, diff, |_, _, _, _, lhs| *lhs == id);
-                let [n0, b0] = bound.get();
-                // If there is a matching bound still in self.bounds, it means that
-                // one of the bounds was outside of the range.
-                // When this happens, we are assuming that the caller is not removing
-                // said bound, so we have to do it in this function.
-                // Also, I have to collect beforehand, in order to not remove bounds
-                // while using the sh_bounds closure.
-                self.list
-                    .extract_if(.., is_match)
-                    .next()
-                    .map(|(bound, ..)| {
-                        let [n1, b1] = bound.get();
-                        [[n0, b0], [n1, b1]]
-                    })
-            })
-            .flatten()
-            .collect();
-
-        self.shift_state.set((shift_from, diff));
-
+        // I could improve this, but idrc ¯\_(ツ)_/¯.
         removed.sort_unstable();
 
         removed
-    }
-
-    /// Attempts to remove a range in the list
-    ///
-    /// If none of the bounds matched, returns [`None`], if only one
-    /// of them matched, returns [`Some(false)`], otherwise, if
-    /// successful, returns [`Some(true)`]
-    ///
-    /// [`Some(false)`]: Some
-    /// [`Some(true)`]: Some
-    pub fn remove_range(&mut self, range: Range<usize>) -> Option<bool> {
-        let (s_n, e_n) = (range.start, range.end);
-        let s_i = self.list.binary_search_by_key(&s_n, |(b, ..)| b.get()[0]);
-        let e_i = self.list.binary_search_by_key(&e_n, |(b, ..)| b.get()[0]);
-
-        match (s_i, e_i) {
-            (Ok(s_i), Ok(e_i)) if self.list[s_i].2 == self.list[e_i].2 => {
-                let (mut shift_from, total_diff) = self.shift_state.take();
-
-                shift_from -= (e_i < shift_from) as usize;
-                self.list.remove(e_i);
-                shift_from -= (s_i < shift_from) as usize;
-                self.list.remove(s_i);
-
-                if shift_from < self.list.len() {
-                    self.shift_state.set((shift_from, total_diff));
-                }
-
-                Some(true)
-            }
-            (Ok(_), Ok(_)) | (Ok(_), Err(_)) | (Err(_), Ok(_)) => Some(false),
-            (Err(_), Err(_)) => None,
-        }
     }
 
     /// Removes ranges that are too small to be kept
@@ -266,20 +164,16 @@ impl Bounds {
         /// ranges exist
         const BUMP_AMOUNT: usize = 16;
 
-        while self.list.len() >= LIMIT_TO_BUMP * 2 {
+        while self.list.buf().len() >= LIMIT_TO_BUMP * 2 {
             let mut bounds_to_remove = Vec::new();
             self.min_len += BUMP_AMOUNT;
-            let iter = self.list.iter().filter(|(_, tag, _)| tag.is_start());
-            for (i, (bound0, _, id)) in iter.enumerate() {
-                let [n0, _] = bound0.get();
-                let (j, (bound1, ..)) = self.list[(i + 1)..]
-                    .iter()
-                    .enumerate()
-                    .find(|(_, (.., lhs))| lhs == id)
-                    .unwrap();
 
-                let [n1, _] = bound1.get();
-                if n1 - n0 < self.min_len {
+            let is_start = |(_, (_, tag, _)): &(_, (_, RawTag, _))| tag.is_start();
+            for (i, ([n0, _], _, id)) in self.list.iter_fwd(..).filter(is_start) {
+                let is_matching = |(_, (.., lhs)): &(_, (_, _, RangeId))| *lhs == id;
+                let (j, ([n1, _], ..)) = self.list.iter_fwd(i + 1..).find(is_matching).unwrap();
+
+                if n1 - n0 < self.min_len as u32 {
                     for k in [i, j] {
                         let (Ok(l) | Err(l)) = bounds_to_remove.binary_search(&k);
                         bounds_to_remove.insert(l, k);
@@ -301,8 +195,17 @@ impl Bounds {
     }
 
     /// Iterates over the bounds
-    pub fn iter(&self) -> impl DoubleEndedIterator<Item = (&Cell<[usize; 2]>, RawTag)> + Clone {
-        self.list.iter().map(|(b, tag, _)| (b, *tag))
+    pub fn iter_fwd(&self) -> impl Iterator<Item = ([usize; 2], RawTag)> + Clone {
+        self.list
+            .iter_fwd(..)
+            .map(|(_, (bound, tag, _))| (bound.map(|x| x as usize), tag))
+    }
+
+    /// Iterates over the bounds
+    pub fn iter_rev(&self) -> impl Iterator<Item = ([usize; 2], RawTag)> + Clone {
+        self.list
+            .iter_rev(..)
+            .map(|(_, (bound, tag, _))| (bound.map(|x| x as usize), tag))
     }
 
     /// Takes the ranges of ranges_to_update
@@ -316,57 +219,56 @@ impl Bounds {
     }
 
     /// Try to find the match for a RawTag at a given index
-    pub fn match_of(&self, index: usize) -> Option<([usize; 2], RawTag)> {
-        let index_of = |(bound, ..): &(Cell<[usize; 2]>, _, _)| bound.get()[0];
-        let i = self.list.binary_search_by_key(&index, index_of).ok()?;
+    pub fn match_of(&self, n: usize) -> Option<([usize; 2], RawTag)> {
+        let i = self.list.find_by_key(n as u32, |([n, _], ..)| n).ok()?;
 
-        let (_, tag, lhs) = self.list[i];
-
-        let matched = if tag.is_start() {
-            self.list[(i + 1)..].iter().find(|(.., rhs)| lhs == *rhs)
-        } else {
-            self.list[..i].iter().rfind(|(.., rhs)| lhs == *rhs)
+        let is_matching = |(_, ([n, b], tag, id)): (_, ([u32; 2], _, RangeId))| {
+            (id == self.list.buf()[i].2).then_some(([n as usize, b as usize], tag))
         };
 
-        matched.map(|(bound, tag, _)| {
-            let (shift_from, [total_n_diff, total_b_diff]) = self.shift_state.get();
-            let [n, b] = bound.get();
-            if i >= shift_from {
-                ([sh(n, total_n_diff), sh(b, total_b_diff)], *tag)
-            } else {
-                ([n, b], *tag)
-            }
+        Some(if self.list.buf()[i].1.is_start() {
+            self.list.iter_fwd(i + 1..).find_map(is_matching).unwrap()
+        } else {
+            self.list.iter_rev(..i).find_map(is_matching).unwrap()
         })
     }
-}
-
-fn before_id((bound, tag, _): &(Cell<[usize; 2]>, RawTag, RangeId)) -> ([usize; 2], RawTag) {
-    (bound.get(), *tag)
 }
 
 pub(super) struct DebugBounds<'a>(pub(super) &'a super::InnerTags);
 impl std::fmt::Debug for DebugBounds<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if f.alternate() && !self.0.bounds.list.is_empty() {
+        if f.alternate() && !self.0.bounds.list.buf().is_empty() {
             f.write_str("[\n")?;
-            let (sh_from, [total_n_diff, total_b_diff]) = self.0.bounds.shift_state.get();
-            for (i, (bound, tag, id)) in self.0.bounds.list.iter().enumerate() {
-                let bound = if i < sh_from {
-                    bound.get()
-                } else {
-                    let [n, b] = bound.get();
-                    [sh(n, total_n_diff), sh(b, total_b_diff)]
-                };
-                writeln!(f, "    {:?}", (bound, tag, id))?;
-                writeln!(f, "        {:?}", self.0.buf.get(bound[0]))?;
+            for (_, ([n, b], tag, id)) in self.0.bounds.list.iter_fwd(..) {
+                writeln!(f, "    {:?}", ([n, b], tag, id))?;
+                writeln!(f, "        {:?}", self.0.list.buf().get(n as usize))?;
             }
-            f.write_str("]\n")?;
-            writeln!(f, "{:#?}", self.0.bounds.min_len)?;
-            writeln!(f, "{:#?}", self.0.bounds.shift_state.get())?;
+            f.write_str("],\n")?;
+
+            writeln!(f, "{:#?},", self.0.bounds.min_len)?;
             writeln!(f, "{:#?}", self.0.bounds.ranges_to_update)
         } else {
             write!(f, "{:?}", self.0.bounds)
         }
+    }
+}
+
+impl Shiftable for ([u32; 2], RawTag, RangeId) {
+    type Shift = [i32; 2];
+
+    fn shift(self, by: Self::Shift) -> Self {
+        let sh = |i: usize| (self.0[i] as i32 + by[i]) as u32;
+        ([sh(0), sh(1)], self.1, self.2)
+    }
+}
+
+impl Shift for [i32; 2] {
+    fn neg(self) -> Self {
+        [-self[0], -self[1]]
+    }
+
+    fn add(self, other: Self) -> Self {
+        [self[0] + other[0], self[1] + other[1]]
     }
 }
 
@@ -384,9 +286,4 @@ mod id {
             Self(RANGE_COUNT.fetch_add(1, Ordering::Relaxed))
         }
     }
-}
-
-/// Shorthand to shift a [`usize`] by an [`i32`]
-fn sh(n: usize, diff: i32) -> usize {
-    (n as i32 + diff) as usize
 }
