@@ -182,37 +182,6 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="mapping-jk-to-esc"><a class="header" href="#mapping-jk-to-esc">mapping jk to esc</a></h1>
-<p>This one is pretty simple. Assuming you are using some sort of <code>Insert</code> <code>Mode</code>:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
-</span>use kak::Insert; // Or vim::Insert, or helix::Insert, when those come out.
-
-map::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
-<span class="boring">}</span></code></pre></pre>
-<p>This will not print out the <code>'j'</code> to the screen unless the following key is not
-<code>'k'</code>. If you wish to print <code>'j'</code> to the screen, use this:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
-</span>use kak::Insert;
-
-alias::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
-<span class="boring">}</span></code></pre></pre>
-<p>Additionally, if you want to write to the file on <code>jk</code> as well, you can do this:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
-</span>use kak::Insert;
-
-alias::&lt;Insert&gt;("jk", "&lt;Esc&gt;:w&lt;Enter&gt;");
-<span class="boring">}</span></code></pre></pre>
-<p>If you want to, you can also make this happen on the <code>PromptLine</code>, i.e., while writing commands and searches:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
-</span>alias::&lt;Prompt&gt;("jk", "&lt;Esc&gt;");
-<span class="boring">}</span></code></pre></pre>
 
                     </main>
 

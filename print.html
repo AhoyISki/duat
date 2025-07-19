@@ -807,37 +807,6 @@ fn setup() {
 }
 <span class="boring">}</span></code></pre></pre>
 <h1 id="mapping-jk-to-esc"><a class="header" href="#mapping-jk-to-esc">mapping jk to esc</a></h1>
-<p>This one is pretty simple. Assuming you are using some sort of <code>Insert</code> <code>Mode</code>:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
-</span>use kak::Insert; // Or vim::Insert, or helix::Insert, when those come out.
-
-map::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
-<span class="boring">}</span></code></pre></pre>
-<p>This will not print out the <code>'j'</code> to the screen unless the following key is not
-<code>'k'</code>. If you wish to print <code>'j'</code> to the screen, use this:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
-</span>use kak::Insert;
-
-alias::&lt;Insert&gt;("jk", "&lt;Esc&gt;");
-<span class="boring">}</span></code></pre></pre>
-<p>Additionally, if you want to write to the file on <code>jk</code> as well, you can do this:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
-</span>use kak::Insert;
-
-alias::&lt;Insert&gt;("jk", "&lt;Esc&gt;:w&lt;Enter&gt;");
-<span class="boring">}</span></code></pre></pre>
-<p>If you want to, you can also make this happen on the <code>PromptLine</code>, i.e., while writing commands and searches:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*;
-</span>alias::&lt;Prompt&gt;("jk", "&lt;Esc&gt;");
-<span class="boring">}</span></code></pre></pre>
 <h1 id="statusline-on-each-file"><a class="header" href="#statusline-on-each-file">StatusLine on each File</a></h1>
 <h1 id="prompt-and-status-on-same-line"><a class="header" href="#prompt-and-status-on-same-line">Prompt and Status on same line</a></h1>
 <h1 id="common-statusline-parts"><a class="header" href="#common-statusline-parts">Common StatusLine parts</a></h1>
@@ -908,7 +877,7 @@ all evaluated at compile time.</li>
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span>status!(
-    "{file_fmt}{Spacer} {mode_fmt} {sels_fmt}[coord]c{main_col} l{main_line}[separator]|[coord]{}",
+    "{file_fmt}{Spacer} {mode_fmt} {sels_fmt} [coord]c{main_col} l{main_line}|{}",
     |file: &amp;File| file.text().len().line()
 );
 <span class="boring">}</span></code></pre></pre>
@@ -917,7 +886,7 @@ all evaluated at compile time.</li>
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span>
-fn file_fmt(file: &amp;File) -&gt; Text {
+fn file_fmt(file: &amp;File) -&gt; Text{
     let mut b = Text::builder();
 
     if let Some(name) = file.name_set() {
@@ -980,35 +949,6 @@ hook::add::&lt;OnFileOpen&gt;(|pa, builder| {
 });
 <span class="boring">}</span></code></pre></pre>
 <h1 id="nerdfonts-statusline"><a class="header" href="#nerdfonts-statusline">Nerdfonts StatusLine</a></h1>
-<blockquote>
-<p>[!IMPORTANT]</p>
-<p>This chapter assumes that you are using some kind of <a href="https://www.nerdfonts.com/font-downloads">nerd font</a> in your
-<code>Ui</code>. This also goes for this page in the book. If you are not using
-some kind of nerd font in your browser, you will not be able to see the
-characters being displayed. For that, I will provide pictures.</p>
-</blockquote>
-<p>If you want to nerd-fontify your <code>StatusLine</code>, you should probably redefine
-some of the status line parts:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span><span class="boring">use duat::prelude::*
-</span>fn file_fmt(file: &amp;File) -&gt; Text {
-    let mut b = Text::builder();
-
-    if let Some(name) = file.name_set() {
-        b.push(txt!("[file]{name}"));
-        if !file.exists() {
-            b.push(txt!("[file.new]󰎔 "));
-        } else if file.text().has_unsaved_changes() {
-            b.push(txt!("[file.unsaved] "));
-        }
-    } else {
-        b.push(txt!("[file.new.scratch]{}󰏫 ", file.name())));
-    }
-
-    b.build()
-}
-<span class="boring">}</span></code></pre></pre>
 <h1 id="scripting-duat"><a class="header" href="#scripting-duat">Scripting Duat</a></h1>
 <h1 id="the-pass-and-duats-global-state"><a class="header" href="#the-pass-and-duats-global-state">The Pass and Duat's global state</a></h1>
 <h1 id="the-hook-module"><a class="header" href="#the-hook-module">The hook module</a></h1>
