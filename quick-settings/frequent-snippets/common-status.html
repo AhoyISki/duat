@@ -249,7 +249,7 @@ all evaluated at compile time.</li>
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span>status!(
-    "{file_fmt}{Spacer} {mode_fmt} {sels_fmt} [coord]c{main_col} l{main_line}|{}",
+    "{file_fmt}{Spacer} {mode_fmt} {sels_fmt}[coord]c{main_col} l{main_line}[separator]|[coord]{}",
     |file: &amp;File| file.text().len().line()
 );
 <span class="boring">}</span></code></pre></pre>
@@ -258,7 +258,7 @@ all evaluated at compile time.</li>
 </span><span class="boring">fn main() {
 </span><span class="boring">use duat::prelude::*;
 </span>
-fn file_fmt(file: &amp;File) -&gt; Text{
+fn file_fmt(file: &amp;File) -&gt; Text {
     let mut b = Text::builder();
 
     if let Some(name) = file.name_set() {
