@@ -156,7 +156,6 @@ impl<U: Ui> file::Parser<U> for TsParser {
     }
 
     fn update_range(&mut self, mut parts: FileParts<U>, within: Option<Range<Point>>) {
-        context::warn!("updating treesitter");
         if let Some(inner) = self.0.as_mut()
             && let Some(within) = within
         {
@@ -173,8 +172,7 @@ impl<U: Ui> file::Parser<U> for TsParser {
         fn merge_tree_changed_ranges(parser: &InnerTsParser, list: &mut Ranges) {
             if let Some(old_tree) = parser.old_tree.as_ref() {
                 for range in parser.tree.changed_ranges(old_tree) {
-                    let range = range.start_byte..range.end_byte;
-                    list.add(range);
+                    list.add(range.start_byte..range.end_byte);
                 }
 
                 for st in parser.sub_trees.iter() {
@@ -355,7 +353,12 @@ impl InnerTsParser {
                     })
                     .or_else(|| {
                         let cap = qm.captures.iter().find(is_language)?;
-                        Some(bytes.strs(cap.node.byte_range()).to_string())
+                        Some(
+                            bytes
+                                .buffers(cap.node.byte_range())
+                                .try_to_string()
+                                .unwrap(),
+                        )
                     });
 
                 let range = cap.node.byte_range();
@@ -687,6 +690,7 @@ impl InnerTsParser {
         // The first non indent character of this line.
         let indented_start = bytes
             .chars_fwd(start..)
+            .unwrap()
             .take_while(|(p, _)| p.line() == start.line())
             .find_map(|(p, c)| (!c.is_whitespace()).then_some(p));
 
@@ -730,7 +734,7 @@ impl InnerTsParser {
 
         let tab = cfg.tab_stops.size() as i32;
         let mut indent = if root.start_byte() + byte_off != 0 {
-            bytes.indent(bytes.point_at(root.start_byte() + byte_off), cfg) as i32
+            bytes.indent(bytes.point_at_byte(root.start_byte() + byte_off), cfg) as i32
         } else {
             0
         };
@@ -794,7 +798,7 @@ impl InnerTsParser {
                     let is_last_in_line = if let Some(line) = bytes.get_contiguous(range.clone()) {
                         line.split_whitespace().any(|w| w != delim)
                     } else {
-                        let line = bytes.strs(range).to_string();
+                        let line = bytes.buffers(range).try_to_string().unwrap();
                         line.split_whitespace().any(|w| w != delim)
                     };
 
@@ -896,18 +900,18 @@ fn descendant_in(node: Node, byte: usize, offset: usize) -> Node {
 }
 
 fn buf_parse<'a>(bytes: &'a Bytes, range: Range<usize>) -> impl FnMut(usize, TSPoint) -> &'a [u8] {
-    let [s0, s1] = bytes.strs(range).to_array();
+    let [s0, s1] = bytes.buffers(range).to_array();
     |byte, _point| {
         if byte < s0.len() {
-            &s0.as_bytes()[byte..]
+            &s0[byte..]
         } else {
-            &s1.as_bytes()[byte - s0.len()..]
+            &s1[byte - s0.len()..]
         }
     }
 }
 
 fn ts_point(point: Point, buffer: &Bytes) -> TSPoint {
-    let strs = buffer.strs(..point.byte());
+    let strs = buffer.strs(..point.byte()).unwrap();
     let iter = strs.into_iter().flat_map(str::chars).rev();
     let col = iter.take_while(|&b| b != '\n').count();
 
@@ -1015,7 +1019,13 @@ fn ts_tagger() -> Tagger {
 
 fn deoffset(ts_point: TSPoint, offset: TSPoint) -> TSPoint {
     if ts_point.row == offset.row {
-        TSPoint::new(ts_point.row - offset.row, ts_point.column - offset.column)
+        TSPoint::new(
+            ts_point.row - offset.row,
+            ts_point
+                .column
+                .checked_sub(offset.column)
+                .unwrap_or_else(|| panic!("{ts_point:?}, {offset:?}")),
+        )
     } else {
         TSPoint::new(ts_point.row - offset.row, ts_point.column)
     }
