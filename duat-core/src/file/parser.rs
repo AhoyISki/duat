@@ -318,7 +318,7 @@ impl<U: Ui> InnerParsers<U> {
             parsers: &mut [ParserBox<U>],
             within: Range<Point>,
         ) {
-            let to_remove = ranges.remove(within.start.char()..within.end.char());
+            let to_remove = ranges.remove(within.start.byte()..within.end.byte());
 
             if to_remove.len() == 0 {
                 let parts = FileParts::new(text, Parsers(parsers), within);
@@ -327,8 +327,8 @@ impl<U: Ui> InnerParsers<U> {
             } else {
                 for range in to_remove {
                     let parts = FileParts::new(text, Parsers(parsers), within.clone());
-                    let start = parts.bytes.point_at(range.start);
-                    let end = parts.bytes.point_at(range.end);
+                    let start = parts.bytes.point_at_byte(range.start);
+                    let end = parts.bytes.point_at_byte(range.end);
 
                     parser.update_range(parts, Some(start..end));
                 }
@@ -460,7 +460,7 @@ impl<U: Ui> ParserBox<U> {
             status: Some(ParserStatus::Local(LocalParser {
                 parser: Box::new(reader),
                 bytes: file.bytes().clone(),
-                ranges: Ranges::full(file.text().len().char()),
+                ranges: Ranges::full(file.text().len().byte()),
             })),
             ty: TypeId::of::<Rd>(),
         }
@@ -482,7 +482,7 @@ impl<U: Ui> ParserBox<U> {
                 parser: Box::new(reader),
                 bytes: file.bytes().clone(),
                 receiver,
-                ranges: Ranges::full(file.text().len().char()),
+                ranges: Ranges::full(file.text().len().byte()),
                 state,
             })),
             ty: TypeId::of::<Rd>(),
@@ -520,7 +520,7 @@ impl<U: Ui> ParserBox<U> {
                         }
                     });
 
-                    let ranges = Ranges::full(bytes.len().char());
+                    let ranges = Ranges::full(bytes.len().byte());
 
                     let mut sp = SendParser {
                         parser: reader,
@@ -748,7 +748,7 @@ fn get_ranges<'a>(
 
         Some(ranges)
     } else {
-        *ranges = Ranges::full(bytes.len().char());
+        *ranges = Ranges::full(bytes.len().byte());
         None
     }
 }

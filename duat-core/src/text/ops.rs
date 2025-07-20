@@ -233,18 +233,18 @@ pub trait TextRange: Clone {
     fn to_range(self, max: usize) -> Range<usize>;
 }
 
-implTextRange!(Range, r, r.start, r.end, r.start.char(), r.end.char());
+implTextRange!(Range, r, r.start, r.end, r.start.byte(), r.end.byte());
 implTextRange!(
     RangeInclusive,
     r,
     *r.start(),
     r.end() + 1,
-    r.start().char(),
-    r.end().char() + 1
+    r.start().byte(),
+    r.end().byte() + 1
 );
-implTextRange!(RangeTo, r, 0, r.end, 0, r.end.char());
-implTextRange!(RangeToInclusive, r, 0, r.end, 0, r.end.char());
-implTextRange!(RangeFrom, r, r.start, MAX, r.start.char(), MAX);
+implTextRange!(RangeTo, r, 0, r.end, 0, r.end.byte());
+implTextRange!(RangeToInclusive, r, 0, r.end, 0, r.end.byte());
+implTextRange!(RangeFrom, r, r.start, MAX, r.start.byte(), MAX);
 
 impl TextRange for RangeFull {
     fn to_range(self, max: usize) -> Range<usize> {
@@ -275,7 +275,7 @@ impl TextRangeOrPoint for usize {
 
 impl TextRangeOrPoint for Point {
     fn to_range(self, max: usize) -> Range<usize> {
-        max.min(self.char())..max.min(self.char() + 1)
+        max.min(self.byte())..max.min(self.byte() + 1)
     }
 }
 

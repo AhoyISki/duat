@@ -15,7 +15,7 @@ use crate::{binary_search_by_key_and_index, get_ends};
 /// having to update all elements to match changes in the underlying
 /// structure, by simply returning the shifted elements, depending on
 /// which group they belong to.
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone)]
 pub(super) struct ShiftList<S: Shiftable> {
     buf: GapBuffer<S>,
     from: usize,
@@ -94,6 +94,7 @@ impl<S: Shiftable> ShiftList<S> {
                 };
 
                 if f(i, shifted)? {
+                    self.buf.remove(i);
                     self.from -= (i < self.from) as usize;
                     end -= 1;
                     return Some((i, shifted));
@@ -132,6 +133,7 @@ impl<S: Shiftable> ShiftList<S> {
                 };
 
                 if f(i, shifted)? {
+                    self.buf.remove(i);
                     self.from -= (i < self.from) as usize;
                     return Some((i, shifted));
                 }
@@ -157,6 +159,7 @@ impl<S: Shiftable> ShiftList<S> {
 
         self.from = from;
         self.by = self.by.add(by);
+        self.max = self.max.add(by);
     }
 
     /// Extends this [`ShiftList`] with another
@@ -178,9 +181,11 @@ impl<S: Shiftable> ShiftList<S> {
     #[inline]
     pub(super) fn iter_fwd(
         &self,
-        range: impl RangeBounds<usize>,
+        range: impl RangeBounds<usize> + Clone + std::fmt::Debug,
     ) -> impl Iterator<Item = (usize, S)> + Clone + '_ {
-        let (start, end) = get_ends(range, self.buf.len());
+        let (start, end) = crate::try_get_ends(range.clone(), self.buf.len())
+            .unwrap_or_else(|| panic!("{range:?}, {self:#?}"));
+
         let (s0, s1) = self.buf.range(start..end).as_slices();
         s0.iter().chain(s1).enumerate().map(move |(i, s)| {
             if i + start >= self.from {
@@ -201,10 +206,10 @@ impl<S: Shiftable> ShiftList<S> {
         let (s0, s1) = self.buf.range(start..end).as_slices();
         let iter = s1.iter().rev().chain(s0.iter().rev());
         iter.enumerate().map(move |(i, s)| {
-            if end - i >= self.from {
-                (end - i, s.shift(self.by))
+            if end - (i + 1) >= self.from {
+                (end - (i + 1), s.shift(self.by))
             } else {
-                (end - i, *s)
+                (end - (i + 1), *s)
             }
         })
     }
@@ -232,25 +237,74 @@ impl<S: Shiftable> ShiftList<S> {
         }
     }
 
-    /// The [`GapBuffer`] within
-    pub(super) fn buf(&self) -> &GapBuffer<S> {
-        &self.buf
+    /// Gets the ith element from the list
+    ///
+    /// Use this instead of `list.buf().get()`, since this takes the
+    /// shifting into account, while that won't.
+    pub(super) fn get(&self, i: usize) -> Option<S> {
+        if i >= self.from {
+            self.buf.get(i).map(|s| s.shift(self.by))
+        } else {
+            self.buf.get(i).copied()
+        }
     }
 
     /// The maximum value allowed in the list
     pub(super) fn max(&self) -> S::Shift {
         self.max
     }
+
+    /// The length of the inner [`GapBuffer`]
+    pub(super) fn len(&self) -> usize {
+        self.buf.len()
+    }
+
+    /// Wether there are any elements in the inner [`GapBuffer`]
+    pub(super) fn is_empty(&self) -> bool {
+        self.buf.is_empty()
+    }
 }
 
-pub(super) trait Shiftable: Copy + Ord {
+pub(super) trait Shiftable: Copy + Ord + std::fmt::Debug {
     type Shift: Shift;
 
     fn shift(self, by: Self::Shift) -> Self;
 }
 
-pub(super) trait Shift: Default + Copy + Eq {
+pub(super) trait Shift: Default + Copy + Eq + std::fmt::Debug {
     fn neg(self) -> Self;
 
     fn add(self, other: Self) -> Self;
+}
+
+impl<S: Shiftable + std::fmt::Debug> std::fmt::Debug for ShiftList<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ShiftList")
+            .field("buf", &DebugBuf(&self.buf, self.from, self.by))
+            .field("from", &self.from)
+            .field("by", &self.by)
+            .field("max", &self.max)
+            .finish()
+    }
+}
+
+struct DebugBuf<'a, S: Shiftable>(&'a GapBuffer<S>, usize, S::Shift);
+
+impl<'a, S: Shiftable> std::fmt::Debug for DebugBuf<'a, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if f.alternate() && !self.0.is_empty() {
+            writeln!(f, "[")?;
+            for (i, elem) in self.0.iter().enumerate() {
+                let elem = if i >= self.1 {
+                    elem.shift(self.2)
+                } else {
+                    *elem
+                };
+                writeln!(f, "    {elem:?}")?
+            }
+            writeln!(f, "]")
+        } else {
+            f.debug_list().entries(self.0.iter()).finish()
+        }
+    }
 }

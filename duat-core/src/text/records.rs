@@ -10,7 +10,7 @@
 //! [`Text`]: super::Text
 //! [`InnerTags`]: super::InnerTags
 
-const MAX_PER_RECORD: u32 = 64;
+const MAX_PER_RECORD: u32 = 256;
 
 use super::shift_list::{Shift, ShiftList, Shiftable};
 
@@ -39,9 +39,9 @@ impl Records {
         let i = match self.0.find_by_key(new[0], |[b, ..]| b) {
             Ok(_) => return,
             Err(i) => {
-                let next = self.0.buf().get(i);
-                let prev = i.checked_sub(1).and_then(|prev_i| self.0.buf().get(prev_i));
-                if next.is_none_or(|[b, ..]| *b >= new[0] + MAX_PER_RECORD)
+                let next = self.0.get(i);
+                let prev = i.checked_sub(1).and_then(|prev_i| self.0.get(prev_i));
+                if next.is_none_or(|[b, ..]| b >= new[0] + MAX_PER_RECORD)
                     && prev.is_none_or(|[b, ..]| b + MAX_PER_RECORD <= new[0])
                 {
                     i
@@ -87,24 +87,27 @@ impl Records {
         self.0.max().map(|x| x as usize)
     }
 
-    /// Returns the [`Record`] closest to the byte
-    pub fn closest_to(&self, b: usize) -> [usize; 3] {
-        match self.0.find_by_key(b as u32, |[b, ..]| b) {
-            Ok(i) => self.0.buf()[i].map(|x| x as usize),
-            Err(i) => {
-                let rec = self.0.buf().get(i.saturating_sub(1));
-                rec.map(|rec| rec.map(|x| x as usize)).unwrap_or(self.max())
-            }
-        }
-    }
-
     /// The [`Record`] closest to `at` by a key extracting function
     pub fn closest_to_by_key(&self, key: usize, by: fn([u32; 3]) -> u32) -> [usize; 3] {
-        match self.0.find_by_key(key as u32, by) {
-            Ok(i) => self.0.buf()[i].map(|x| x as usize),
+        let key = key as u32;
+        match self.0.find_by_key(key, by) {
+            Ok(i) => self.0.get(i).unwrap().map(|x| x as usize),
             Err(i) => {
-                let rec = self.0.buf().get(i.saturating_sub(1));
-                rec.map(|rec| rec.map(|x| x as usize)).unwrap_or(self.max())
+                let prev = i.checked_sub(1).and_then(|prev_i| self.0.get(prev_i));
+                let next = self.0.get(i + 1);
+                
+                let (prev, next) = match (prev, next) {
+                    (None, None) => ([0; 3], self.0.max().map(|x| x as u32)),
+                    (None, Some(next)) => ([0; 3], next),
+                    (Some(prev), None) => (prev, self.0.max().map(|x| x as u32)),
+                    (Some(prev), Some(next)) => (prev, next),
+                };
+
+                if key - by(prev) > by(next) - key {
+                    next.map(|x| x as usize)
+                } else {
+                    prev.map(|x| x as usize)
+                }
             }
         }
     }

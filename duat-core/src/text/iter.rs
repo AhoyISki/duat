@@ -53,7 +53,7 @@ impl<'a> FwdIter<'a> {
         let point = r.min(text.len());
 
         let ghost = g.and_then(|offset| {
-            let (_, max) = text.ghost_max_points_at(r.char());
+            let (_, max) = text.ghost_max_points_at(r.byte());
             max.map(|max| (max.min(offset), 0))
         });
 
@@ -61,8 +61,8 @@ impl<'a> FwdIter<'a> {
             text,
             point,
             init_point: point,
-            chars: buf_chars_fwd(text, point.char()),
-            tags: text.tags_fwd(point.char()),
+            chars: buf_chars_fwd(text, point.byte()),
+            tags: text.tags_fwd(point.byte()),
             conceals: 0,
 
             main_iter: None,
@@ -146,20 +146,20 @@ impl<'a> FwdIter<'a> {
     ///
     /// [`Tag`]: super::Tag
     #[inline(always)]
-    fn handle_special_tag(&mut self, tag: &RawTag, c: usize) -> bool {
+    fn handle_special_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {
             RawTag::Ghost(_, id) => {
-                if !self.print_ghosts || c < self.point.char() || self.conceals > 0 {
+                if !self.print_ghosts || b < self.point.byte() || self.conceals > 0 {
                     return true;
                 }
                 let text = self.text.get_ghost(*id).unwrap();
 
                 let (this_ghost, total_ghost) = if let Some((ghost, dist)) = &mut self.ghost {
-                    if ghost.char() >= *dist + text.len().char() {
-                        *dist += text.len().char();
+                    if ghost.byte() >= *dist + text.len().byte() {
+                        *dist += text.len().byte();
                         return true;
                     }
-                    (text.point_at(ghost.char() - *dist), *ghost)
+                    (text.point_at_byte(ghost.byte() - *dist), *ghost)
                 } else {
                     (Point::default(), Point::default())
                 };
@@ -169,7 +169,7 @@ impl<'a> FwdIter<'a> {
                 let chars = std::mem::replace(&mut self.chars, iter.chars);
                 let tags = std::mem::replace(&mut self.tags, iter.tags);
 
-                self.ghost = Some((total_ghost, total_ghost.char()));
+                self.ghost = Some((total_ghost, total_ghost.byte()));
                 self.main_iter = Some((point, chars, tags));
             }
             RawTag::StartConceal(_) => {
@@ -180,18 +180,18 @@ impl<'a> FwdIter<'a> {
                 if self.conceals == 0 {
                     // If we have moved forward and were in a ghost, that ghost is no
                     // longer valid.
-                    self.ghost.take_if(|_| self.point.char() < c);
-                    self.point = self.point.max(self.text.point_at(c));
-                    self.chars = buf_chars_fwd(self.text, self.point.char());
+                    self.ghost.take_if(|_| self.point.byte() < b);
+                    self.point = self.point.max(self.text.point_at_byte(b));
+                    self.chars = buf_chars_fwd(self.text, self.point.byte());
                 }
             }
-            RawTag::ConcealUntil(c) => {
-                let point = self.text.point_at(*c as usize);
+            RawTag::ConcealUntil(b) => {
+                let point = self.text.point_at_byte(*b as usize);
                 *self = FwdIter::new_at(self.text, point);
                 return false;
             }
             RawTag::MainCaret(_) | RawTag::ExtraCaret(_) | RawTag::Spacer(_)
-                if c < self.init_point.char() => {}
+                if b < self.init_point.byte() => {}
             _ => return false,
         }
 
@@ -206,12 +206,12 @@ impl Iterator for FwdIter<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         let tag = self.tags.peek();
 
-        if let Some(&(c, tag)) = tag
-            && (c <= self.point.char() || self.conceals > 0)
+        if let Some(&(b, tag)) = tag
+            && (b <= self.point.byte() || self.conceals > 0)
         {
             self.tags.next();
 
-            if self.handle_special_tag(&tag, c) {
+            if self.handle_special_tag(&tag, b) {
                 self.next()
             } else {
                 Some(Item::new(self.points(), Part::from_raw(tag)))
@@ -264,16 +264,16 @@ impl<'a> RevIter<'a> {
         let point = r.min(text.len());
 
         let ghost = g.and_then(|offset| {
-            let (_, max) = text.ghost_max_points_at(r.char());
-            max.map(|max| (max.min(offset), max.char()))
+            let (_, max) = text.ghost_max_points_at(r.byte());
+            max.map(|max| (max.min(offset), max.byte()))
         });
 
         Self {
             text,
             point,
             init_point: point,
-            chars: buf_chars_rev(text, point.char()),
-            tags: text.tags_rev(point.char()),
+            chars: buf_chars_rev(text, point.byte()),
+            tags: text.tags_rev(point.byte()),
             conceals: 0,
 
             main_iter: None,
@@ -334,26 +334,26 @@ impl<'a> RevIter<'a> {
     ///
     /// [`Tag`]: super::Tag
     #[inline]
-    fn handled_meta_tag(&mut self, tag: &RawTag, c: usize) -> bool {
+    fn handled_meta_tag(&mut self, tag: &RawTag, b: usize) -> bool {
         match tag {
             RawTag::Ghost(_, id) => {
-                if !self.print_ghosts || c > self.point.char() || self.conceals > 0 {
+                if !self.print_ghosts || b > self.point.byte() || self.conceals > 0 {
                     return true;
                 }
                 let text = self.text.get_ghost(*id).unwrap();
 
                 let (ghost_b, offset) = if let Some((offset, dist)) = &mut self.ghost {
-                    if *dist - text.len().char() >= offset.char() {
-                        *dist -= text.len().char();
+                    if *dist - text.len().byte() >= offset.byte() {
+                        *dist -= text.len().byte();
                         return true;
                     }
                     (
-                        text.point_at(offset.char() + text.len().char() - *dist),
+                        text.point_at_byte(offset.byte() + text.len().byte() - *dist),
                         *offset,
                     )
                 } else {
                     let this = text.len();
-                    let (_, max) = self.text.ghost_max_points_at(c);
+                    let (_, max) = self.text.ghost_max_points_at(b);
                     (this, max.unwrap())
                 };
 
@@ -362,26 +362,26 @@ impl<'a> RevIter<'a> {
                 let chars = std::mem::replace(&mut self.chars, iter.chars);
                 let tags = std::mem::replace(&mut self.tags, iter.tags);
 
-                self.ghost = Some((offset, offset.char()));
+                self.ghost = Some((offset, offset.byte()));
                 self.main_iter = Some((point, chars, tags));
             }
 
             RawTag::StartConceal(_) => {
                 self.conceals = self.conceals.saturating_sub(1);
                 if self.conceals == 0 {
-                    self.ghost.take_if(|_| c < self.point.char());
-                    self.point = self.point.min(self.text.point_at(c));
-                    self.chars = buf_chars_rev(self.text, self.point.char());
+                    self.ghost.take_if(|_| b < self.point.byte());
+                    self.point = self.point.min(self.text.point_at_byte(b));
+                    self.chars = buf_chars_rev(self.text, self.point.byte());
                 }
             }
             RawTag::EndConceal(_) => self.conceals += 1,
-            RawTag::ConcealUntil(c) => {
-                let point = self.text.point_at(*c as usize);
+            RawTag::ConcealUntil(b) => {
+                let point = self.text.point_at_byte(*b as usize);
                 *self = RevIter::new_at(self.text, point);
                 return false;
             }
             RawTag::MainCaret(_) | RawTag::ExtraCaret(_) | RawTag::Spacer(_)
-                if c > self.init_point.char() => {}
+                if b > self.init_point.byte() => {}
             _ => return false,
         }
 
@@ -396,12 +396,12 @@ impl Iterator for RevIter<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         let tag = self.tags.peek();
 
-        if let Some(&(c, tag)) = tag
-            && (c >= self.point.char() || self.conceals > 0)
+        if let Some(&(b, tag)) = tag
+            && (b >= self.point.byte() || self.conceals > 0)
         {
             self.tags.next();
 
-            if self.handled_meta_tag(&tag, c) {
+            if self.handled_meta_tag(&tag, b) {
                 self.next()
             } else {
                 Some(Item::new(self.points(), Part::from_raw(tag)))
@@ -424,13 +424,13 @@ impl Iterator for RevIter<'_> {
     }
 }
 
-fn buf_chars_fwd(text: &Text, c: usize) -> FwdChars<'_> {
-    let [s0, s1] = text.strs(c..).to_array();
+fn buf_chars_fwd(text: &Text, b: usize) -> FwdChars<'_> {
+    let [s0, s1] = text.strs(b..).unwrap().to_array();
     s0.chars().chain(s1.chars())
 }
 
-fn buf_chars_rev(text: &Text, c: usize) -> RevChars<'_> {
-    let [s0, s1] = text.strs(..c).to_array();
+fn buf_chars_rev(text: &Text, b: usize) -> RevChars<'_> {
+    let [s0, s1] = text.strs(..b).unwrap().to_array();
     s1.chars().rev().chain(s0.chars().rev())
 }
 

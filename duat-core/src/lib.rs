@@ -1308,14 +1308,34 @@ fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize, usi
     };
     assert!(
         start <= max,
-        "index out of bounds: the len is {max}, but the index is {start}",
+        "start out of bounds: the len is {max}, but the index is {start}",
     );
     assert!(
         end <= max,
-        "index out of bounds: the len is {max}, but the index is {end}",
+        "end out of bounds: the len is {max}, but the index is {end}",
     );
 
     (start, end)
+}
+
+/// Convenience function for the bounds of a range
+#[track_caller]
+fn try_get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> Option<(usize, usize)> {
+    let start = match range.start_bound() {
+        std::ops::Bound::Included(start) => *start,
+        std::ops::Bound::Excluded(start) => *start + 1,
+        std::ops::Bound::Unbounded => 0,
+    };
+    let end = match range.end_bound() {
+        std::ops::Bound::Included(end) => *end + 1,
+        std::ops::Bound::Excluded(end) => *end,
+        std::ops::Bound::Unbounded => max,
+    };
+    if start > max || end > max {
+        return None;
+    }
+
+    Some((start, end))
 }
 
 /// Adds two shifts together

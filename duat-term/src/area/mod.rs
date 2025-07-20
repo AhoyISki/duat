@@ -700,7 +700,7 @@ pub struct PrintInfo {
 impl PrintInfo {
     fn fix(&mut self, text: &Text) {
         let max = text.len().min(self.s_points.0);
-        let (_, max_ghost) = text.ghost_max_points_at(max.char());
+        let (_, max_ghost) = text.ghost_max_points_at(max.byte());
         self.s_points = (max, self.s_points.1.min(max_ghost))
     }
 }
@@ -719,7 +719,7 @@ fn scroll_ver_around(
         return;
     }
 
-    let points = text.ghost_max_points_at(point.char());
+    let points = text.ghost_max_points_at(point.byte());
     let after = text
         .points_after(points)
         .unwrap_or_else(|| text.len_points());
@@ -766,7 +766,7 @@ fn scroll_hor_around(info: &mut PrintInfo, width: u32, p: Point, text: &Text, cf
     }
 
     let (max_shift, start, end) = {
-        let points = text.ghost_max_points_at(p.char());
+        let points = text.ghost_max_points_at(p.byte());
         let after = text
             .points_after(points)
             .unwrap_or_else(|| text.len_points());
@@ -794,7 +794,7 @@ fn scroll_hor_around(info: &mut PrintInfo, width: u32, p: Point, text: &Text, cf
                     Part::AlignLeft => gaps = Gaps::OnRight,
                     Part::AlignCenter => gaps = Gaps::OnSides,
                     Part::AlignRight => gaps = Gaps::OnLeft,
-                    Part::Spacer => gaps.add_spacer(real.char()),
+                    Part::Spacer => gaps.add_spacer(real.byte()),
                     _ => {}
                 })
                 .take_while(|(caret, item)| !caret.wrap || item.points() == points)
@@ -882,12 +882,8 @@ mod layouted {
 
         let points = iter
             .find_map(|(Caret { wrap, .. }, Item { part, real, ghost })| {
-                if y == coords.height() {
-                    Some((real, ghost))
-                } else {
-                    y += (wrap && part.is_char()) as u32;
-                    None
-                }
+                y += (wrap && part.is_char()) as u32;
+                (y > coords.height()).then_some((real, ghost))
             })
             .unwrap_or_else(|| text.len_points());
 

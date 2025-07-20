@@ -430,7 +430,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
                 let err = txt!(
                     "[a]{:?}, \"{}\"[prompt.colon]:[] {}",
                     range,
-                    text.strs(range),
+                    text.strs(range).unwrap(),
                     err.kind()
                 );
 

@@ -325,7 +325,7 @@ impl Change {
             }
         };
 
-        let taken = text.strs(p0..p1).collect();
+        let taken = text.strs(p0..p1).unwrap().collect();
         let added_end = p0 + Point::len_of(&added);
         Change {
             start: p0,

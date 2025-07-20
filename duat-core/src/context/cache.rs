@@ -93,7 +93,7 @@ pub(crate) fn delete_cache(path: impl Into<PathBuf>) {
         };
 
         let src = cache_dir.join("duat/structs").join(cached_file_name);
-        std::fs::remove_dir(src).unwrap();
+        std::fs::remove_dir_all(src).unwrap();
     }
 
     delete_cache_inner(path.into());

@@ -276,12 +276,13 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
     /// - If the coords isn't valid, it will move to the "maximum"
     ///   position allowed.
     pub fn move_to_coords(&mut self, line: usize, col: usize) {
-        let at = self
+        let p = self
             .text()
             .point_at_line(line.min(self.text().last_point().line()));
         let (point, _) = self
             .text()
-            .chars_fwd(at..)
+            .chars_fwd(p..)
+            .unwrap()
             .take(col + 1)
             .last()
             .unwrap_or((self.text().len(), '\n'));
@@ -423,7 +424,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
     /// This iteration will begin on the `caret`. It will also include
     /// the [`Point`] of each `char`
     pub fn chars_fwd(&self) -> impl Iterator<Item = (Point, char)> + '_ {
-        self.widget.text().chars_fwd(self.caret()..)
+        self.widget.text().chars_fwd(self.caret()..).unwrap()
     }
 
     /// Iterates over the [`char`]s, in reverse
@@ -431,7 +432,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
     /// This iteration will begin on the `caret`. It will also include
     /// the [`Point`] of each `char`
     pub fn chars_rev(&self) -> impl Iterator<Item = (Point, char)> {
-        self.widget.text().chars_rev(..self.caret())
+        self.widget.text().chars_rev(..self.caret()).unwrap()
     }
 
     /// Searches the [`Text`] for a regex
@@ -519,7 +520,9 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
 
     /// Returns the [`char`] in the `caret`
     pub fn char(&self) -> char {
-        self.text().char_at(self.selection.caret()).unwrap()
+        self.text()
+            .char_at(self.selection.caret())
+            .unwrap_or_else(|| panic!("{:#?}\n{:#?}", self.selection.caret(), self.text()))
     }
 
     /// Returns the [`char`] at a given [`Point`]
@@ -541,13 +544,13 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
     /// [`GapBuffer`]: gapbuf::GapBuffer
     pub fn selection(&self) -> Strs<'_> {
         let range = self.selection.range(self.text());
-        self.text().strs(range)
+        self.text().strs(range).unwrap()
     }
 
     /// Returns the [`Strs`] for the given [`TextRange`]
     ///
     /// [`GapBuffer`]: gapbuf::GapBuffer
-    pub fn strs(&self, range: impl TextRange) -> Strs<'_> {
+    pub fn strs(&self, range: impl TextRange) -> Option<Strs<'_>> {
         self.widget.text().strs(range)
     }
 
@@ -663,9 +666,9 @@ impl<W: Widget<A::Ui> + ?Sized, A: RawArea> Cursor<'_, W, A, Searcher> {
     /// [`IncSearch`]: https://docs.rs/duat-utils/latest/duat_utils/modes/struct.IncSearch.html
     pub fn search_inc_fwd(&mut self, end: Option<Point>) -> impl Iterator<Item = [Point; 2]> + '_ {
         let range = if let Some(end) = end {
-            (self.selection.caret()..end).to_range(self.text().len().char())
+            (self.selection.caret()..end).to_range(self.text().len().byte())
         } else {
-            (self.selection.caret()..).to_range(self.text().len().char())
+            (self.selection.caret()..).to_range(self.text().len().byte())
         };
         self.inc_searcher.search_fwd(self.widget.text(), range)
     }
@@ -682,9 +685,9 @@ impl<W: Widget<A::Ui> + ?Sized, A: RawArea> Cursor<'_, W, A, Searcher> {
         start: Option<Point>,
     ) -> impl Iterator<Item = [Point; 2]> + '_ {
         let range = if let Some(start) = start {
-            (start..self.selection.caret()).to_range(self.text().len().char())
+            (start..self.selection.caret()).to_range(self.text().len().byte())
         } else {
-            (..self.selection.caret()).to_range(self.text().len().char())
+            (..self.selection.caret()).to_range(self.text().len().byte())
         };
         self.inc_searcher.search_rev(self.widget.text(), range)
     }
@@ -696,7 +699,7 @@ impl<W: Widget<A::Ui> + ?Sized, A: RawArea> Cursor<'_, W, A, Searcher> {
     pub fn matches_inc(&mut self) -> bool {
         let range = self.selection.range(self.widget.text());
         self.inc_searcher
-            .matches(self.widget.text().strs(range).to_string().as_str())
+            .matches(self.widget.text().strs(range).unwrap().to_string().as_str())
     }
 }
 

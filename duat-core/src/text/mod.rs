@@ -93,8 +93,8 @@ mod iter;
 mod ops;
 mod records;
 mod search;
-mod tags;
 mod shift_list;
+mod tags;
 
 use std::{
     path::Path,
@@ -209,7 +209,7 @@ impl Text {
             let end = bytes.len();
             bytes.apply_change(Change::str_insert("\n", end));
         }
-        let tags = InnerTags::new(bytes.len().char());
+        let tags = InnerTags::new(bytes.len().byte());
 
         Self(Box::new(InnerText {
             bytes,
@@ -319,9 +319,9 @@ impl Text {
     /// [points]: TwoPoints
     /// [point]: Bytes::point_at
     #[inline(always)]
-    pub fn ghost_max_points_at(&self, c: usize) -> (Point, Option<Point>) {
-        let point = self.point_at(c);
-        (point, self.0.tags.ghosts_total_at(point.char()))
+    pub fn ghost_max_points_at(&self, b: usize) -> (Point, Option<Point>) {
+        let point = self.point_at_byte(b);
+        (point, self.0.tags.ghosts_total_at(point.byte()))
     }
 
     /// The [points] at the end of the text
@@ -333,7 +333,7 @@ impl Text {
     /// [points]: TwoPoints
     /// [last point]: Bytes::len
     pub fn len_points(&self) -> (Point, Option<Point>) {
-        self.ghost_max_points_at(self.len().char())
+        self.ghost_max_points_at(self.len().byte())
     }
 
     /// Points visually after the [`TwoPoints`]
@@ -393,8 +393,11 @@ impl Text {
     ///
     /// [range]: TextRange
     pub fn replace_range(&mut self, range: impl TextRange, edit: impl ToString) {
-        let range = range.to_range(self.len().char());
-        let (start, end) = (self.point_at(range.start), self.point_at(range.end));
+        let range = range.to_range(self.len().byte());
+        let (start, end) = (
+            self.point_at_byte(range.start),
+            self.point_at_byte(range.end),
+        );
         let change = Change::new(edit, [start, end], self);
 
         self.0.has_changed = true;
@@ -423,8 +426,8 @@ impl Text {
     fn apply_change_inner(&mut self, guess_i: usize, change: Change<&str>) -> usize {
         self.0.bytes.apply_change(change);
         self.0.tags.transform(
-            change.start().char()..change.taken_end().char(),
-            change.added_end().char(),
+            change.start().byte()..change.taken_end().byte(),
+            change.added_end().byte(),
         );
 
         *self.0.has_unsaved_changes.get_mut() = true;
@@ -454,14 +457,14 @@ impl Text {
     pub fn insert_text(&mut self, p: Point, text: Text) {
         let insert = if p.char() == 1 && self.0.bytes == "\n" {
             let change = Change::new(
-                text.0.bytes.strs(..).to_string(),
+                text.0.bytes.strs(..).unwrap().to_string(),
                 [Point::default(), p],
                 self,
             );
             self.apply_change_inner(0, change.as_ref());
             Point::default()
         } else {
-            let added_str = text.0.bytes.strs(..).to_string();
+            let added_str = text.0.bytes.strs(..).unwrap().to_string();
             let change = Change::str_insert(&added_str, p);
             self.apply_change_inner(0, change);
             p
@@ -547,7 +550,7 @@ impl Text {
     // NOTE: Inherent because I don't want this to implement Display
     #[allow(clippy::inherent_to_string)]
     pub fn to_string(&self) -> String {
-        let [s0, s1] = self.strs(..).to_array();
+        let [s0, s1] = self.strs(..).unwrap().to_array();
         if !s1.is_empty() {
             s0.to_string() + s1.strip_suffix('\n').unwrap_or(s1)
         } else {
@@ -599,7 +602,7 @@ impl Text {
     /// [key]: Taggers
     /// [`File`]: crate::file::File
     pub fn remove_tags(&mut self, taggers: impl Taggers, range: impl TextRangeOrPoint) {
-        let range = range.to_range(self.len().char());
+        let range = range.to_range(self.len().byte());
         self.0.tags.remove_from(taggers, range)
     }
 
@@ -611,7 +614,7 @@ impl Text {
     ///
     /// [`File`]: crate::file::File
     pub fn clear_tags(&mut self) {
-        self.0.tags = InnerTags::new(self.0.bytes.len().char());
+        self.0.tags = InnerTags::new(self.0.bytes.len().byte());
     }
 
     /////////// Selection functions
@@ -639,17 +642,17 @@ impl Text {
 
             let key = Tagger::for_selections();
             let form = if is_main {
-                self.0.tags.insert(key, caret.char(), MainCaret);
+                self.0.tags.insert(key, caret.byte(), MainCaret);
                 form::M_SEL_ID
             } else {
-                self.0.tags.insert(key, caret.char(), ExtraCaret);
+                self.0.tags.insert(key, caret.byte(), ExtraCaret);
                 form::E_SEL_ID
             };
 
             bytes.add_record([caret.byte(), caret.char(), caret.line()]);
 
             if let Some([start, end]) = selection {
-                let range = start.char()..end.char();
+                let range = start.byte()..end.byte();
                 self.0.tags.insert(key, range, form.to_tag(95));
             }
         };
@@ -657,7 +660,7 @@ impl Text {
         if let Some((start, end)) = within {
             for (selection, is_main) in self.0.selections.iter() {
                 let range = selection.range(&self.0.bytes);
-                if range.end > start.char() && range.start < end.char() {
+                if range.end > start.byte() && range.start < end.byte() {
                     add_selection(selection, &mut self.0.bytes, is_main);
                 }
             }
@@ -695,7 +698,10 @@ impl Text {
     /// Each [`char`] will be accompanied by a [`Point`], which is the
     /// position where said character starts, e.g.
     /// [`Point::default()`] for the first character
-    pub fn chars_fwd(&self, range: impl TextRange) -> impl Iterator<Item = (Point, char)> + '_ {
+    pub fn chars_fwd(
+        &self,
+        range: impl TextRange,
+    ) -> Option<impl Iterator<Item = (Point, char)> + '_> {
         self.0.bytes.chars_fwd(range)
     }
 
@@ -704,7 +710,10 @@ impl Text {
     /// Each [`char`] will be accompanied by a [`Point`], which is the
     /// position where said character starts, e.g.
     /// [`Point::default()`] for the first character
-    pub fn chars_rev(&self, range: impl TextRange) -> impl Iterator<Item = (Point, char)> + '_ {
+    pub fn chars_rev(
+        &self,
+        range: impl TextRange,
+    ) -> Option<impl Iterator<Item = (Point, char)> + '_> {
         self.0.bytes.chars_rev(range)
     }
 

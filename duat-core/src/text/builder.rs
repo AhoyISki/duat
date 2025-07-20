@@ -98,17 +98,17 @@ impl Builder {
     ///
     /// [ghosts]: super::Ghost
     fn build_no_nl(mut self) -> Text {
-        if let Some((c, id)) = self.last_form
-            && c < self.text.len().char()
+        if let Some((b, id)) = self.last_form
+            && b < self.text.len().byte()
         {
-            self.text.insert_tag(Tagger::basic(), c.., id);
+            self.text.insert_tag(Tagger::basic(), b.., id);
         }
-        if let Some((c, align)) = self.last_align
-            && c < self.text.len().char()
+        if let Some((b, align)) = self.last_align
+            && b < self.text.len().byte()
         {
             match align {
-                Alignment::Center => self.text.insert_tag(Tagger::basic(), c.., AlignCenter),
-                Alignment::Right => self.text.insert_tag(Tagger::basic(), c.., AlignRight),
+                Alignment::Center => self.text.insert_tag(Tagger::basic(), b.., AlignCenter),
+                Alignment::Right => self.text.insert_tag(Tagger::basic(), b.., AlignRight),
                 _ => {}
             }
         }
@@ -128,7 +128,7 @@ impl Builder {
             use Alignment::*;
             use BuilderPart as BP;
 
-            let end = builder.text.len().char();
+            let end = builder.text.len().byte();
             match part {
                 BP::Text(text) => builder.push_text(text),
                 BP::Form(tag) => {
@@ -145,27 +145,27 @@ impl Builder {
                     }
                 }
                 BP::AlignLeft => match builder.last_align.take() {
-                    Some((c, Center)) if c < end => {
-                        builder.text.insert_tag(Tagger::basic(), c.., AlignCenter);
+                    Some((b, Center)) if b < end => {
+                        builder.text.insert_tag(Tagger::basic(), b.., AlignCenter);
                     }
-                    Some((c, Right)) if c < end => {
-                        builder.text.insert_tag(Tagger::basic(), c.., AlignRight);
+                    Some((b, Right)) if b < end => {
+                        builder.text.insert_tag(Tagger::basic(), b.., AlignRight);
                     }
                     _ => {}
                 },
                 BP::AlignCenter => match builder.last_align.take() {
-                    Some((c, Center)) => builder.last_align = Some((c, Center)),
-                    Some((c, Right)) if c < end => {
-                        builder.text.insert_tag(Tagger::basic(), c.., AlignRight);
+                    Some((b, Center)) => builder.last_align = Some((b, Center)),
+                    Some((b, Right)) if b < end => {
+                        builder.text.insert_tag(Tagger::basic(), b.., AlignRight);
                         builder.last_align = Some((end, Center));
                     }
                     None => builder.last_align = Some((end, Center)),
                     Some(_) => {}
                 },
                 BP::AlignRight => match builder.last_align.take() {
-                    Some((c, Right)) => builder.last_align = Some((c, Right)),
-                    Some((c, Center)) if c < end => {
-                        builder.text.insert_tag(Tagger::basic(), c.., AlignCenter);
+                    Some((b, Right)) => builder.last_align = Some((b, Right)),
+                    Some((b, Center)) if b < end => {
+                        builder.text.insert_tag(Tagger::basic(), b.., AlignCenter);
                         builder.last_align = Some((end, Right));
                     }
                     None => builder.last_align = Some((end, Right)),
@@ -212,8 +212,8 @@ impl Builder {
     fn push_text(&mut self, text: Text) {
         self.last_was_empty = text.is_empty();
 
-        if let Some((c, id)) = self.last_form.take() {
-            self.text.insert_tag(Tagger::basic(), c.., id);
+        if let Some((b, id)) = self.last_form.take() {
+            self.text.insert_tag(Tagger::basic(), b.., id);
         }
 
         self.text.0.bytes.extend(text.0.bytes);

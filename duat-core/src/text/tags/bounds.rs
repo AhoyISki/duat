@@ -31,7 +31,7 @@ impl Bounds {
         ranges_to_update.set_min_len(MIN_FOR_RANGE);
 
         Self {
-            list: ShiftList::new([max as i32, 0]),
+            list: ShiftList::new([0, max as i32]),
             ranges_to_update,
             min_len: MIN_FOR_RANGE,
         }
@@ -88,7 +88,11 @@ impl Bounds {
         if n_diff > 0 {
             self.ranges_to_update.add({
                 let [s, e] = [n, n + n_diff.unsigned_abs() as usize];
-                s.saturating_sub(self.min_len)..(e + self.min_len).min(self.list.max()[0] as usize)
+                let end = (e + self.min_len).min(self.list.max()[0] as usize);
+                let range = s.saturating_sub(self.min_len)..end;
+
+                assert!(range.start <= range.end, "{range:?}, {self:#?}");
+                range
             });
         }
 
@@ -104,12 +108,15 @@ impl Bounds {
         range: Range<usize>,
         filter: impl Fn(RawTag) -> bool,
     ) -> Vec<usize> {
+        let (Ok(s) | Err(s)) = self.list.find_by_key(range.start as u32, |([_, c], ..)| c);
+        let (Ok(e) | Err(e)) = self.list.find_by_key(range.end as u32, |([_, c], ..)| c);
+
         let mut removed = Vec::new();
         let mut starts = Vec::new();
         let mut ends = Vec::new();
 
         self.list
-            .extract_if_while(range.clone(), |_, (_, tag, _)| Some(filter(tag)))
+            .extract_if_while(s..e, |_, (_, tag, _)| Some(filter(tag)))
             .for_each(|(_, ([n, _], tag, id))| {
                 removed.push(n as usize);
                 if tag.is_start() {
@@ -121,7 +128,7 @@ impl Bounds {
 
         removed.extend(
             self.list
-                .extract_if_while(range.end - starts.len() - ends.len().., |_, (.., e_id)| {
+                .extract_if_while(e - removed.len().., |_, (.., e_id)| {
                     if let Some(i) = starts.iter().rposition(|(_, s_id)| *s_id == e_id) {
                         starts.remove(i);
                         Some(true)
@@ -136,7 +143,7 @@ impl Bounds {
 
         removed.extend(
             self.list
-                .rextract_if_while(..range.start, |_, (.., s_id)| {
+                .rextract_if_while(..s, |_, (.., s_id)| {
                     if let Some(i) = ends.iter().rposition(|(_, e_id)| *e_id == s_id) {
                         ends.remove(i);
                         Some(true)
@@ -164,7 +171,7 @@ impl Bounds {
         /// ranges exist
         const BUMP_AMOUNT: usize = 16;
 
-        while self.list.buf().len() >= LIMIT_TO_BUMP * 2 {
+        while self.list.len() >= LIMIT_TO_BUMP * 2 {
             let mut bounds_to_remove = Vec::new();
             self.min_len += BUMP_AMOUNT;
 
@@ -223,10 +230,10 @@ impl Bounds {
         let i = self.list.find_by_key(n as u32, |([n, _], ..)| n).ok()?;
 
         let is_matching = |(_, ([n, b], tag, id)): (_, ([u32; 2], _, RangeId))| {
-            (id == self.list.buf()[i].2).then_some(([n as usize, b as usize], tag))
+            (id == self.list.get(i).unwrap().2).then_some(([n as usize, b as usize], tag))
         };
 
-        Some(if self.list.buf()[i].1.is_start() {
+        Some(if self.list.get(i).unwrap().1.is_start() {
             self.list.iter_fwd(i + 1..).find_map(is_matching).unwrap()
         } else {
             self.list.iter_rev(..i).find_map(is_matching).unwrap()
@@ -237,16 +244,19 @@ impl Bounds {
 pub(super) struct DebugBounds<'a>(pub(super) &'a super::InnerTags);
 impl std::fmt::Debug for DebugBounds<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if f.alternate() && !self.0.bounds.list.buf().is_empty() {
-            f.write_str("[\n")?;
+        if f.alternate() {
+            f.write_str("\nlist: [")?;
             for (_, ([n, b], tag, id)) in self.0.bounds.list.iter_fwd(..) {
-                writeln!(f, "    {:?}", ([n, b], tag, id))?;
-                writeln!(f, "        {:?}", self.0.list.buf().get(n as usize))?;
+                write!(f, "\n    {:?}", ([n, b], tag, id))?;
+                write!(f, "\n        {:?}", self.0.list.get(n as usize))?;
+            }
+            if !self.0.bounds.list.is_empty() {
+                f.write_str("\n")?;
             }
             f.write_str("],\n")?;
 
-            writeln!(f, "{:#?},", self.0.bounds.min_len)?;
-            writeln!(f, "{:#?}", self.0.bounds.ranges_to_update)
+            writeln!(f, "min_len: {:#?},", self.0.bounds.min_len)?;
+            writeln!(f, "ranges_to_update: {:#?}", self.0.bounds.ranges_to_update)
         } else {
             write!(f, "{:?}", self.0.bounds)
         }

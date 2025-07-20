@@ -158,33 +158,35 @@ impl InnerTags {
 
         fn insert_raw_tags(
             tags: &mut InnerTags,
-            (s_c, s_tag): (usize, RawTag),
+            (s_b, s_tag): (usize, RawTag),
             end: Option<(usize, RawTag)>,
         ) -> bool {
-            if let Some((e_c, e_tag)) = end
-                && s_c != e_c
+            if let Some((e_b, e_tag)) = end
+                && s_b != e_b
             {
                 let (s_i, e_i) = match (
-                    tags.list.find_by_key((s_c as u32, s_tag), |t| t),
-                    tags.list.find_by_key((e_c as u32, e_tag), |t| t),
+                    tags.list.find_by_key((s_b as u32, s_tag), |t| t),
+                    tags.list.find_by_key((e_b as u32, e_tag), |t| t),
                 ) {
                     (Ok(_), Ok(_)) => return false,
-                    (Ok(s_i), Err(e_i)) | (Err(s_i), Ok(e_i)) | (Err(s_i), Err(e_i)) => (s_i, e_i),
+                    (Ok(s_i), Err(e_i)) | (Err(s_i), Ok(e_i)) | (Err(s_i), Err(e_i)) => {
+                        (s_i, e_i + 1)
+                    }
                 };
 
-                tags.list.insert(s_i, (s_c as u32, s_tag));
-                tags.list.insert(e_i, (e_c as u32, e_tag));
+                tags.list.insert(s_i, (s_b as u32, s_tag));
+                tags.list.insert(e_i, (e_b as u32, e_tag));
 
                 tags.bounds
-                    .insert([([s_i, s_c], s_tag), ([e_i, e_c], e_tag)]);
+                    .insert([([s_i, s_b], s_tag), ([e_i, e_b], e_tag)]);
             } else if end.is_none() {
-                let (Ok(i) | Err(i)) = tags.list.find_by_key((s_c as u32, s_tag), |s| s);
-                tags.list.insert(i, (s_c as u32, s_tag));
+                let (Ok(i) | Err(i)) = tags.list.find_by_key((s_b as u32, s_tag), |s| s);
+                tags.list.insert(i, (s_b as u32, s_tag));
 
                 tags.bounds.shift_by(i, [1, 0]);
             }
 
-            tags.extents.insert(s_tag.tagger(), s_c);
+            tags.extents.insert(s_tag.tagger(), s_b);
             if let Some((s_at, _)) = end {
                 tags.extents.insert(s_tag.tagger(), s_at);
             }
@@ -204,46 +206,49 @@ impl InnerTags {
     pub fn insert_tags(&mut self, p: Point, mut other: InnerTags) {
         let mut starts = Vec::new();
 
-        for (_, (c, tag)) in other.list.iter_fwd(..) {
-            let c = c as usize + p.char();
+        for (_, (b, tag)) in other.list.iter_fwd(..) {
+            let b = b as usize + p.char();
             match tag {
-                PushForm(..) => starts.push((c, tag)),
+                PushForm(..) => starts.push((b, tag)),
                 PopForm(tagger, id) => {
-                    let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
+                    let i = starts
+                        .iter()
+                        .rposition(|(_, t)| t.ends_with(&tag))
+                        .unwrap_or_else(|| panic!("{starts:#?},{self:#?},{other:#?}"));
                     let (sb, _) = starts.remove(i);
-                    self.insert(tagger, sb..c, id.to_tag(tag.priority()));
+                    self.insert(tagger, sb..b, id.to_tag(tag.priority()));
                 }
                 RawTag::MainCaret(tagger) => {
-                    self.insert(tagger, c, MainCaret);
+                    self.insert(tagger, b, MainCaret);
                 }
                 RawTag::ExtraCaret(tagger) => {
-                    self.insert(tagger, c, ExtraCaret);
+                    self.insert(tagger, b, ExtraCaret);
                 }
-                StartAlignCenter(_) => starts.push((c, tag)),
+                StartAlignCenter(_) => starts.push((b, tag)),
                 EndAlignCenter(tagger) => {
                     let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
                     let (sb, _) = starts.remove(i);
-                    self.insert(tagger, sb..c, AlignCenter);
+                    self.insert(tagger, sb..b, AlignCenter);
                 }
-                StartAlignRight(_) => starts.push((c, tag)),
+                StartAlignRight(_) => starts.push((b, tag)),
                 EndAlignRight(tagger) => {
                     let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
                     let (sb, _) = starts.remove(i);
-                    self.insert(tagger, sb..c, AlignRight);
+                    self.insert(tagger, sb..b, AlignRight);
                 }
                 RawTag::Spacer(tagger) => {
-                    self.insert(tagger, c, Spacer);
+                    self.insert(tagger, b, Spacer);
                 }
-                StartConceal(_) => starts.push((c, tag)),
+                StartConceal(_) => starts.push((b, tag)),
                 EndConceal(tagger) => {
                     let i = starts.iter().rposition(|(_, t)| t.ends_with(&tag)).unwrap();
                     let (sb, _) = starts.remove(i);
-                    self.insert(tagger, sb..c, Conceal);
+                    self.insert(tagger, sb..b, Conceal);
                 }
                 ConcealUntil(_) => unreachable!(),
                 RawTag::Ghost(tagger, id) => {
                     let entry = other.ghosts.extract_if(.., |(l, _)| l == &id).next();
-                    self.insert(tagger, c, Ghost(entry.unwrap().1));
+                    self.insert(tagger, b, Ghost(entry.unwrap().1));
                 }
                 StartToggle(..) => todo!(),
                 EndToggle(..) => todo!(),
@@ -297,8 +302,8 @@ impl InnerTags {
         let mut starts = Vec::new();
         let mut ends = Vec::new();
 
-        let (Ok(start) | Err(start)) = self.list.find_by_key(range.start as u32, |(c, _)| c);
-        let (Ok(end) | Err(end)) = self.list.find_by_key(range.end as u32, |(c, _)| c);
+        let (Ok(start) | Err(start)) = self.list.find_by_key(range.start as u32, |(b, _)| b);
+        let (Ok(end) | Err(end)) = self.list.find_by_key(range.end as u32, |(b, _)| b);
 
         self.list
             .extract_if_while(start..end, |_, (_, tag)| Some(filter(tag)))
@@ -317,10 +322,10 @@ impl InnerTags {
             });
 
         self.list
-            .extract_if_while(end - removed.., |_, (_, tag)| {
-                if let Some(i) = starts.iter().rposition(|s| s.ends_with(&tag)) {
+            .extract_if_while(end - removed.., |i, (_, tag)| {
+                if let Some(s_i) = starts.iter().rposition(|s| s.ends_with(&tag)) {
                     self.bounds.shift_by(i, [-1, 0]);
-                    starts.remove(i);
+                    starts.remove(s_i);
                     Some(true)
                 } else if starts.is_empty() {
                     None
@@ -331,10 +336,10 @@ impl InnerTags {
             .for_each(|_| {});
 
         self.list
-            .rextract_if_while(..start, |_, (_, tag)| {
-                if let Some(i) = ends.iter().rposition(|e| tag.ends_with(e)) {
+            .rextract_if_while(..start, |i, (_, tag)| {
+                if let Some(e_i) = ends.iter().rposition(|e| tag.ends_with(e)) {
                     self.bounds.shift_by(i, [-1, 0]);
-                    ends.remove(i);
+                    ends.remove(e_i);
                     Some(true)
                 } else if ends.is_empty() {
                     None
@@ -362,13 +367,15 @@ impl InnerTags {
             self.extents.remove_range(old.start + 1..old.end, |_| true);
 
             // If the range becomes empty, we should remove the remainig pairs
-            if new.end == old.start && self.list.find_by_key(old.start as u32, |(c, _)| c).is_ok() {
+            if new.end == old.start
+                && let Ok(s_i) = self.list.find_by_key(old.start as u32, |(b, _)| b)
+            {
                 let mut to_remove: Vec<usize> = Vec::new();
                 let mut starts = Vec::new();
-                let mut iter = self.list.iter_fwd(old.start..);
+                let mut iter = self.list.iter_fwd(s_i..);
 
-                while let Some((i, (c, tag))) = iter.next()
-                    && c == old.start as u32
+                while let Some((i, (b, tag))) = iter.next()
+                    && b == old.start as u32
                 {
                     if tag.is_start() {
                         starts.push((i, tag));
@@ -392,26 +399,25 @@ impl InnerTags {
         }
 
         let shift = new.len() as i32 - old.len() as i32;
-        let (Ok(i) | Err(i)) = self.list.find_by_key(old.start as u32 + 1, |(c, _)| c);
+        let (Ok(i) | Err(i)) = self.list.find_by_key(old.start as u32 + 1, |(b, _)| b);
 
         self.list.shift_by(i, shift);
-        self.extents.shift_by(old.start, shift);
+        self.bounds.shift_by(i, [0, shift]);
+        self.extents.shift_by(old.start + 1, shift);
     }
 
     pub(crate) fn update_bounds(&mut self) {
         for range in self.bounds.take_ranges() {
-            // Add all tags in the range to the list, keeping only those whose
-            // ranges are too long.
             let mut starts = Vec::new();
-            for (i, (c, tag)) in self.list.iter_fwd(range) {
+            for (i, (b, tag)) in self.list.iter_fwd(range) {
                 if tag.is_start() {
-                    starts.push((i, c, tag));
+                    starts.push((i, b, tag));
                 } else if tag.is_end()
                     && let Some(i) = starts.iter().rposition(|(.., lhs)| lhs.ends_with(&tag))
                 {
-                    let (s_n, s_c, s_tag) = starts.remove(i);
+                    let (s_n, s_b, s_tag) = starts.remove(i);
                     self.bounds
-                        .represent([([s_n as u32, s_c], s_tag), ([i as u32, c], tag)]);
+                        .represent([([s_n as u32, s_b], s_tag), ([i as u32, b], tag)]);
                 }
             }
         }
@@ -421,7 +427,7 @@ impl InnerTags {
 
     /// Returns true if there are no [`RawTag`]s
     pub fn is_empty(&self) -> bool {
-        self.list.buf().is_empty()
+        self.list.is_empty()
     }
 
     /// Returns the len of the [`InnerTags`] in bytes
@@ -431,21 +437,21 @@ impl InnerTags {
 
     /// Returns a forward iterator at a given byte
     #[define_opaque(FwdTags)]
-    pub fn fwd_at(&self, c: usize) -> FwdTags<'_> {
+    pub fn fwd_at(&self, b: usize) -> FwdTags<'_> {
         let s_i = {
-            let (Ok(s_i) | Err(s_i)) = self.list.find_by_key(c as u32, |(c, _)| c);
+            let (Ok(s_i) | Err(s_i)) = self.list.find_by_key(b as u32, |(b, _)| b);
             s_i.saturating_sub(self.bounds.min_len())
         };
 
-        let is_before = move |([n, c], tag): ([usize; 2], _)| (n < s_i).then_some((c, tag));
+        let is_before = move |([n, b], tag): ([usize; 2], _)| (n < s_i).then_some((b, tag));
         let bounds = self.bounds.iter_fwd().map_while(is_before);
 
-        let tags = self.list.iter_fwd(s_i..).map(|(n, (c, tag))| match tag {
+        let tags = self.list.iter_fwd(s_i..).map(|(n, (b, tag))| match tag {
             StartConceal(tagger) => match self.bounds.match_of(n) {
-                Some(([_, e_c], _)) => (c as usize, ConcealUntil(e_c as u32)),
-                _ => (c as usize, StartConceal(tagger)),
+                Some(([_, e_b], _)) => (b as usize, ConcealUntil(e_b as u32)),
+                _ => (b as usize, StartConceal(tagger)),
             },
-            tag => (c as usize, tag),
+            tag => (b as usize, tag),
         });
 
         bounds.into_iter().chain(tags).peekable()
@@ -453,46 +459,46 @@ impl InnerTags {
 
     /// Returns a reverse iterator at a given byte
     #[define_opaque(RevTags)]
-    pub fn rev_at(&self, c: usize) -> RevTags<'_> {
+    pub fn rev_at(&self, b: usize) -> RevTags<'_> {
         let e_i = {
-            let (Ok(e_i) | Err(e_i)) = self.list.find_by_key(c as u32, |(c, _)| c);
-            (e_i + self.bounds.min_len()).min(self.list.buf().len())
+            let (Ok(e_i) | Err(e_i)) = self.list.find_by_key(b as u32, |(b, _)| b);
+            (e_i + self.bounds.min_len()).min(self.list.len())
         };
 
-        let is_after = move |([n, c], tag): ([usize; 2], _)| (n > e_i).then_some((c, tag));
+        let is_after = move |([n, b], tag): ([usize; 2], _)| (n > e_i).then_some((b, tag));
         let bounds = self.bounds.iter_rev().map_while(is_after);
 
-        let tags = self.list.iter_rev(..e_i).map(|(n, (c, tag))| match tag {
+        let tags = self.list.iter_rev(..e_i).map(|(n, (b, tag))| match tag {
             EndConceal(tagger) => match self.bounds.match_of(n) {
-                Some(([_, s_c], _)) => (c as usize, ConcealUntil(s_c as u32)),
-                _ => (c as usize, EndConceal(tagger)),
+                Some(([_, s_b], _)) => (b as usize, ConcealUntil(s_b as u32)),
+                _ => (b as usize, EndConceal(tagger)),
             },
-            tag => (c as usize, tag),
+            tag => (b as usize, tag),
         });
 
         bounds.chain(tags).peekable()
     }
 
-    pub fn raw_fwd_at(&self, c: usize) -> impl Iterator<Item = (usize, RawTag)> + '_ {
-        let (Ok(s_i) | Err(s_i)) = self.list.find_by_key(c as u32, |(c, _)| c);
+    pub fn raw_fwd_at(&self, b: usize) -> impl Iterator<Item = (usize, RawTag)> + '_ {
+        let (Ok(s_i) | Err(s_i)) = self.list.find_by_key(b as u32, |(b, _)| b);
         self.list
             .iter_fwd(s_i..)
-            .map(|(_, (c, tag))| (c as usize, tag))
+            .map(|(_, (b, tag))| (b as usize, tag))
     }
 
-    pub fn raw_rev_at(&self, c: usize) -> impl Iterator<Item = (usize, RawTag)> + '_ {
-        let (Ok(e_i) | Err(e_i)) = self.list.find_by_key(c as u32, |(c, _)| c);
+    pub fn raw_rev_at(&self, b: usize) -> impl Iterator<Item = (usize, RawTag)> + '_ {
+        let (Ok(e_i) | Err(e_i)) = self.list.find_by_key(b as u32, |(b, _)| b);
         self.list
             .iter_rev(..e_i)
-            .map(|(_, (c, tag))| (c as usize, tag))
+            .map(|(_, (b, tag))| (b as usize, tag))
     }
 
     /// Returns an iterator over a single byte
-    pub fn iter_only_at(&self, c: usize) -> impl Iterator<Item = RawTag> + '_ {
-        let (Ok(s_i) | Err(s_i)) = self.list.find_by_key(c as u32, |(c, _)| c);
+    pub fn iter_only_at(&self, b: usize) -> impl Iterator<Item = RawTag> + '_ {
+        let (Ok(s_i) | Err(s_i)) = self.list.find_by_key(b as u32, |(b, _)| b);
         self.list
-            .iter_rev(s_i..)
-            .take_while(move |(_, (cur_c, _))| *cur_c as usize == c)
+            .iter_fwd(s_i..)
+            .take_while(move |(_, (cur_b, _))| *cur_b as usize == b)
             .map(|(_, (_, tag))| tag)
     }
 
@@ -521,19 +527,19 @@ impl<R: RangeBounds<usize> + Clone> std::fmt::Debug for DebugBuf<'_, R> {
         let (start, end) = get_ends(self.1.clone(), self.0.len_bytes());
 
         if f.alternate() {
-            let n_spc = self.0.list.buf().len().checked_ilog10().unwrap_or(0) as usize + 4;
+            let n_spc = self.0.list.len().checked_ilog10().unwrap_or(0) as usize + 4;
             let b_spc = self.0.len_bytes().checked_ilog10().unwrap_or(0) as usize + 4;
 
             let mut nesting: usize = 0;
 
             f.write_str("[\n")?;
 
-            for (i, (c, tag)) in self.0.list.iter_fwd(..) {
+            for (i, (b, tag)) in self.0.list.iter_fwd(..) {
                 nesting = nesting.saturating_sub(tag.is_end() as usize);
-                if (start as u32..end as u32).contains(&c) {
+                if (start as u32..end as u32).contains(&b) {
                     let space = " ".repeat(nesting);
                     let n_fmt = format!("n: {i}");
-                    let b_fmt = format!("c: {c}");
+                    let b_fmt = format!("b: {b}");
                     writeln!(f, "    ({n_fmt:<n_spc$}, {b_fmt:<b_spc$}): {space}{tag:?}")?;
                 }
                 nesting += tag.is_start() as usize;
@@ -541,7 +547,7 @@ impl<R: RangeBounds<usize> + Clone> std::fmt::Debug for DebugBuf<'_, R> {
 
             f.write_str("]")
         } else {
-            write!(f, "{:?}", self.0.list.buf())
+            write!(f, "{:?}", self.0.list)
         }
     }
 }
@@ -559,11 +565,8 @@ impl PartialEq for InnerTags {
     fn eq(&self, other: &Self) -> bool {
         use RawTag::*;
 
-        self.list
-            .buf()
-            .iter()
-            .zip(other.list.buf())
-            .all(|((l_b, l_tag), (r_b, r_tag))| match (l_tag, r_tag) {
+        self.list.iter_fwd(..).zip(other.list.iter_fwd(..)).all(
+            |((_, (l_b, l_tag)), (_, (r_b, r_tag)))| match (l_tag, r_tag) {
                 (PushForm(_, l_id, l_prio), PushForm(_, r_id, r_prio)) => {
                     l_id == r_id && l_prio == r_prio && l_b == r_b
                 }
@@ -572,11 +575,11 @@ impl PartialEq for InnerTags {
                     let self_ghost = self
                         .ghosts
                         .iter()
-                        .find_map(|(id, text)| (lhs == id).then_some(text));
+                        .find_map(|(id, text)| (lhs == *id).then_some(text));
                     let other_ghost = other
                         .ghosts
                         .iter()
-                        .find_map(|(id, text)| (rhs == id).then_some(text));
+                        .find_map(|(id, text)| (rhs == *id).then_some(text));
                     self_ghost == other_ghost && l_b == r_b
                 }
                 (MainCaret(_), MainCaret(_))
@@ -591,7 +594,8 @@ impl PartialEq for InnerTags {
                 | (StartToggle(..), StartToggle(..))
                 | (EndToggle(..), EndToggle(..)) => l_b == r_b,
                 _ => false,
-            })
+            },
+        )
     }
 }
 impl Eq for InnerTags {}

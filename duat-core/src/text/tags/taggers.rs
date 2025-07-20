@@ -34,8 +34,14 @@ impl TaggerExtents {
         if let Some((_, extent)) = self.extents.iter_mut().find(|(t, _)| *t == tagger) {
             extent.insert(byte);
         } else {
-            self.extents
-                .push((tagger, Extent::Sparse(ShiftList::new(self.max as i32))));
+            self.extents.push((
+                tagger,
+                Extent::Sparse({
+                    let mut list = ShiftList::new(self.max as i32);
+                    list.insert(0, byte as u32);
+                    list
+                }),
+            ));
         }
     }
 
@@ -161,7 +167,7 @@ impl Extent {
         if let Self::Sparse(list) = self
             && let Err(i) = list.find_by_key(c as u32, |c| c)
         {
-            if list.buf().len() < MAX_FOR_SPARSE {
+            if list.len() < MAX_FOR_SPARSE {
                 list.insert(i, c as u32);
             } else {
                 *self = Extent::Rampant;

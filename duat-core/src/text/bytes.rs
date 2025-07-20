@@ -58,16 +58,19 @@ impl Bytes {
 
     /// The `char` at the [`Point`]'s position
     pub fn char_at(&self, p: Point) -> Option<char> {
-        if p.char() >= self.len().char() {
+        if p.byte() >= self.len().byte() {
             return None;
         }
 
-        let [s0, s1] = self.strs(..).to_array();
-        if p.byte() < s0.len() {
-            s0[p.byte()..].chars().next()
+        let [s0, s1] = self.strs_inner(..).unwrap();
+        Some(if p.byte() < s0.len() {
+            s0[p.byte()..].chars().next().unwrap()
         } else {
-            s1[p.byte() - s0.len()..].chars().next()
-        }
+            s1[p.byte() - s0.len()..]
+                .chars()
+                .next()
+                .unwrap_or_else(|| panic!("{self:#?}"))
+        })
     }
 
     /// An [`Iterator`] over the bytes in a given _byte_ range
@@ -130,15 +133,13 @@ impl Bytes {
     /// [`Text`]: super::Text
     /// [range]: TextRange
     /// [`strs`]: Self::strs
-    pub fn strs(&self, range: impl TextRange) -> Strs<'_> {
-        let range = range.to_range(self.len().char());
-        let start = self.point_at(range.start).byte();
-        let end = self.point_at(range.end).byte();
-        Strs {
-            arr: self.strs_in_range_inner(start..end),
+    pub fn strs(&self, range: impl TextRange) -> Option<Strs<'_>> {
+        let range = range.to_range(self.len().byte());
+        Some(Strs {
+            arr: self.strs_inner(range)?,
             fwd: 0,
             rev: 2,
-        }
+        })
     }
 
     /// Returns an iterator over the lines in a given range
@@ -148,10 +149,10 @@ impl Bytes {
     ///
     /// [range]: TextRange
     pub fn lines(&self, range: impl TextRange) -> Lines<'_> {
-        let range = range.to_range(self.len().char());
-        let start = self.point_at_line(self.point_at(range.start).line());
+        let range = range.to_range(self.len().byte());
+        let start = self.point_at_line(self.point_at_byte(range.start).line());
         let end = {
-            let end = self.point_at(range.end);
+            let end = self.point_at_byte(range.end);
             let line_start = self.point_at_line(end.line());
             match line_start == end {
                 true => end,
@@ -171,21 +172,21 @@ impl Bytes {
             && self.buf[self.buf.gap() - 1] != b'\n'
             && self.buf[self.buf.gap()] != b'\n'
         {
-            let [str_0, str_1] = self.strs(start..end).to_array();
-            let lines = [str_0.lines(), str_1.lines()];
+            let [s0, s1] = self.strs_inner(start.byte()..end.byte()).unwrap();
+            let lines = [s0.lines(), s1.lines()];
             Lines::new(lines, None, fwd_i, rev_i)
             // Otherwise, the line that was split will need to be
             // allocated and returned separately.
         } else {
-            let [str0, str1] = self.strs(start..end).to_array();
+            let [s0, s1] = self.strs_inner(start.byte()..end.byte()).unwrap();
 
-            let (before, split0) = match str0.rsplit_once('\n') {
+            let (before, split0) = match s0.rsplit_once('\n') {
                 Some((before, split)) => (before, split),
-                None => ("", str0),
+                None => ("", s0),
             };
-            let (after, split1) = match str1.split_once('\n') {
+            let (after, split1) = match s1.split_once('\n') {
                 Some((after, split)) => (after, split),
-                None => ("", str1),
+                None => ("", s1),
             };
 
             let lines = [before.lines(), after.lines()];
@@ -195,67 +196,27 @@ impl Bytes {
     }
 
     /// Returns the two `&str`s in the byte range.
-    fn strs_in_range_inner(&self, range: impl RangeBounds<usize>) -> [&str; 2] {
+    fn strs_inner(&self, range: impl RangeBounds<usize>) -> Option<[&str; 2]> {
         let (start, end) = crate::get_ends(range, self.len().byte());
         use std::str::from_utf8_unchecked;
 
         let (s0, s1) = self.buf.as_slices();
 
-        unsafe {
+        // Check if the slices match utf8 boundaries.
+        if s0.first().is_some_and(|b| utf8_char_width(*b) == 0)
+            || s1.first().is_some_and(|b| utf8_char_width(*b) == 0)
+            || self.buf.get(end).is_some_and(|b| utf8_char_width(*b) == 0)
+        {
+            return None;
+        }
+
+        Some(unsafe {
             let r0 = start.min(s0.len())..end.min(s0.len());
             let r1 = start.saturating_sub(s0.len()).min(s1.len())
                 ..end.saturating_sub(s0.len()).min(s1.len());
 
             [from_utf8_unchecked(&s0[r0]), from_utf8_unchecked(&s1[r1])]
-        }
-    }
-
-    /// The [`Point`] associated with the `c`th char
-    ///
-    /// # Panics
-    ///
-    /// Will panic if `c` is greater than the number of chars in the
-    /// text.
-    #[inline(always)]
-    pub fn point_at(&self, c: usize) -> Point {
-        assert!(
-            c <= self.len().char(),
-            "char out of bounds: the len is {}, but the char is {c}",
-            self.len().char()
-        );
-        let [c_b, c_c, mut c_l] = self.records.closest_to_by_key(c, |[_, c, _]| c);
-
-        let found = if c >= c_c {
-            let [s0, s1] = self.strs_in_range_inner(c_b..);
-
-            s0.char_indices()
-                .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
-                .enumerate()
-                .map(|(i, (this_b, char))| {
-                    c_l += (char == '\n') as usize;
-                    (c_b + this_b, c_c + i, c_l - (char == '\n') as usize)
-                })
-                .take_while(|&(_, rhs, _)| c >= rhs)
-                .last()
-        } else {
-            let mut c_len = 0;
-            self.strs_in_range_inner(..c_b)
-                .into_iter()
-                .flat_map(str::chars)
-                .rev()
-                .enumerate()
-                .map(|(i, char)| {
-                    c_l -= (char == '\n') as usize;
-                    c_len += char.len_utf8();
-                    (c_b - c_len, c_c - (i + 1), c_l)
-                })
-                .take_while(|&(_, rhs, _)| c <= rhs)
-                .last()
-        };
-
-        found
-            .map(|(b, c, l)| Point::from_raw(b, c, l))
-            .unwrap_or(self.len())
+        })
     }
 
     /// The [`Point`] corresponding to the byte position, 0 indexed
@@ -275,10 +236,15 @@ impl Bytes {
             "byte out of bounds: the len is {}, but the byte is {b}",
             self.len().byte()
         );
-        let [c_b, c_c, mut c_l] = self.records.closest_to(b);
+
+        if b == self.len().byte() {
+            return self.len();
+        }
+
+        let [c_b, c_c, mut c_l] = self.records.closest_to_by_key(b, |[b, ..]| b);
 
         let found = if b >= c_b {
-            let [s0, s1] = self.strs_in_range_inner(c_b..);
+            let [s0, s1] = self.strs_inner(c_b..).unwrap();
 
             s0.char_indices()
                 .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
@@ -291,7 +257,8 @@ impl Bytes {
                 .last()
         } else {
             let mut c_len = 0;
-            self.strs_in_range_inner(..c_b)
+            self.strs_inner(..c_b)
+                .unwrap()
                 .into_iter()
                 .flat_map(str::chars)
                 .rev()
@@ -302,6 +269,60 @@ impl Bytes {
                     (c_b - c_len, c_c - (i + 1), c_l)
                 })
                 .take_while(|&(rhs, ..)| b <= rhs)
+                .last()
+        };
+
+        found
+            .map(|(b, c, l)| Point::from_raw(b, c, l))
+            .unwrap_or(self.len())
+    }
+
+    /// The [`Point`] associated with the `c`th char
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `c` is greater than the number of chars in the
+    /// text.
+    #[inline(always)]
+    pub fn point_at_char(&self, c: usize) -> Point {
+        assert!(
+            c <= self.len().char(),
+            "char out of bounds: the len is {}, but the char is {c}",
+            self.len().char()
+        );
+
+        if c == self.len().char() {
+            return self.len();
+        }
+
+        let [c_b, c_c, mut c_l] = self.records.closest_to_by_key(c, |[_, c, _]| c);
+
+        let found = if c >= c_c {
+            let [s0, s1] = self.strs_inner(c_b..).unwrap();
+
+            s0.char_indices()
+                .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
+                .enumerate()
+                .map(|(i, (this_b, char))| {
+                    c_l += (char == '\n') as usize;
+                    (c_b + this_b, c_c + i, c_l - (char == '\n') as usize)
+                })
+                .take_while(|&(_, rhs, _)| c >= rhs)
+                .last()
+        } else {
+            let mut c_len = 0;
+            self.strs_inner(..c_b)
+                .unwrap()
+                .into_iter()
+                .flat_map(str::chars)
+                .rev()
+                .enumerate()
+                .map(|(i, char)| {
+                    c_l -= (char == '\n') as usize;
+                    c_len += char.len_utf8();
+                    (c_b - c_len, c_c - (i + 1), c_l)
+                })
+                .take_while(|&(_, rhs, _)| c <= rhs)
                 .last()
         };
 
@@ -326,9 +347,15 @@ impl Bytes {
             "line out of bounds: the len is {}, but the line is {l}",
             self.len().line()
         );
+
+        if l == self.len().line() {
+            return self.len();
+        }
+
         let (c_b, c_c, mut c_l) = {
             let [mut b, mut c, l] = self.records.closest_to_by_key(l, |[.., l]| l);
-            self.strs_in_range_inner(..b)
+            self.strs_inner(..b)
+                .unwrap()
                 .into_iter()
                 .flat_map(str::chars)
                 .rev()
@@ -341,7 +368,7 @@ impl Bytes {
         };
 
         let found = if l >= c_l {
-            let [s0, s1] = self.strs_in_range_inner(c_b..);
+            let [s0, s1] = self.strs_inner(c_b..).unwrap();
 
             s0.char_indices()
                 .chain(s1.char_indices().map(|(b, char)| (b + s0.len(), char)))
@@ -353,7 +380,8 @@ impl Bytes {
                 .find(|&(.., rhs)| l == rhs)
         } else {
             let mut c_len = 0;
-            self.strs_in_range_inner(..c_b)
+            self.strs_inner(..c_b)
+                .unwrap()
                 .into_iter()
                 .flat_map(str::chars)
                 .rev()
@@ -393,6 +421,7 @@ impl Bytes {
         let start = self.point_at_line(l);
         let end = self
             .chars_fwd(start..)
+            .unwrap()
             .find_map(|(p, _)| (p.line() > start.line()).then_some(p))
             .unwrap_or(start);
         [start, end]
@@ -407,7 +436,8 @@ impl Bytes {
     ///
     /// [`len`]: Self::len
     pub fn last_point(&self) -> Point {
-        let char = self.strs(..).chars().next_back().unwrap();
+        let strs = self.strs_inner(..).unwrap();
+        let char = strs.into_iter().flat_map(str::chars).next_back().unwrap();
         self.len().rev(char)
     }
 
@@ -416,14 +446,17 @@ impl Bytes {
     /// Each [`char`] will be accompanied by a [`Point`], which is the
     /// position where said character starts, e.g.
     /// [`Point::default()`] for the first character
-    pub fn chars_fwd(&self, range: impl TextRange) -> impl Iterator<Item = (Point, char)> + '_ {
-        let range = range.to_range(self.len().char());
-        let p = self.point_at(range.start);
-        self.strs(range).chars().scan(p, |p, char| {
+    pub fn chars_fwd(
+        &self,
+        range: impl TextRange,
+    ) -> Option<impl Iterator<Item = (Point, char)> + '_> {
+        let range = range.to_range(self.len().byte());
+        let p = self.point_at_byte(range.start);
+        Some(self.strs(range)?.chars().scan(p, |p, char| {
             let old_p = *p;
             *p = p.fwd(char);
             Some((old_p, char))
-        })
+        }))
     }
 
     /// A reverse iterator of the [`char`]s in [`Bytes`]
@@ -431,19 +464,23 @@ impl Bytes {
     /// Each [`char`] will be accompanied by a [`Point`], which is the
     /// position where said character starts, e.g.
     /// [`Point::default()`] for the first character
-    pub fn chars_rev(&self, range: impl TextRange) -> impl Iterator<Item = (Point, char)> + '_ {
-        let range = range.to_range(self.len().char());
-        let p = self.point_at(range.end);
-        self.strs(range).chars().rev().scan(p, |p, char| {
+    pub fn chars_rev(
+        &self,
+        range: impl TextRange,
+    ) -> Option<impl Iterator<Item = (Point, char)> + '_> {
+        let range = range.to_range(self.len().byte());
+        let p = self.point_at_byte(range.end);
+        Some(self.strs(range)?.chars().rev().scan(p, |p, char| {
             *p = p.rev(char);
             Some((*p, char))
-        })
+        }))
     }
 
     /// Gets the indentation level on the current line
     pub fn indent(&self, p: Point, cfg: PrintCfg) -> usize {
         let [start, _] = self.points_of_line(p.line());
         self.chars_fwd(start..)
+            .unwrap()
             .map_while(|(_, c)| match c {
                 ' ' => Some(1),
                 '\t' => Some(cfg.tab_stops.size() as usize),
@@ -462,7 +499,7 @@ impl Bytes {
         let start = change.start();
 
         let range = start.byte()..change.taken_end().byte();
-        self.buf.splice(range, edit.as_bytes().iter().cloned());
+        self.buf.splice(range, edit.bytes());
 
         let start_rec = [start.byte(), start.char(), start.line()];
         let old_len = [
@@ -506,8 +543,8 @@ impl Bytes {
     /// [`&str`]: str
     /// [`make_contiguous`]: Self::make_contiguous
     pub fn get_contiguous(&self, range: impl TextRange) -> Option<&str> {
-        let range = range.to_range(self.len().char());
-        let [s0, s1] = self.strs(..).to_array();
+        let range = range.to_range(self.len().byte());
+        let [s0, s1] = self.strs_inner(..).unwrap();
 
         if range.end <= self.buf.gap() {
             s0.get(range)
@@ -769,7 +806,7 @@ impl std::fmt::Display for Strs<'_> {
 impl std::fmt::Debug for Bytes {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Bytes")
-            .field("buf", &self.strs(..).to_array())
+            .field("buf", &self.strs_inner(..))
             .field("records", &self.records)
             .finish()
     }
@@ -783,14 +820,14 @@ impl PartialEq for Bytes {
 
 impl PartialEq<&str> for Bytes {
     fn eq(&self, other: &&str) -> bool {
-        let [s0, s1] = self.strs(..).to_array();
+        let [s0, s1] = self.strs_inner(..).unwrap();
         other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
     }
 }
 
 impl PartialEq<String> for Bytes {
     fn eq(&self, other: &String) -> bool {
-        let [s0, s1] = self.strs(..).to_array();
+        let [s0, s1] = self.strs_inner(..).unwrap();
         other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
     }
 }
@@ -813,4 +850,32 @@ impl PartialEq<String> for Strs<'_> {
         let [s0, s1] = self.to_array();
         other.len() == s0.len() + s1.len() && &other[..s0.len()] == s0 && &other[s0.len()..] == s1
     }
+}
+
+/// Given a first byte, determines how many bytes are in this UTF-8
+/// character.
+#[must_use]
+#[inline]
+pub const fn utf8_char_width(b: u8) -> usize {
+    // https://tools.ietf.org/html/rfc3629
+    const UTF8_CHAR_WIDTH: &[u8; 256] = &[
+        // 1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 0
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 1
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 2
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 3
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 4
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 5
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 6
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 7
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 8
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 9
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // A
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // B
+        0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // C
+        2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // D
+        3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, // E
+        4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // F
+    ];
+    UTF8_CHAR_WIDTH[b as usize] as usize
 }

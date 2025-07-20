@@ -76,7 +76,7 @@ impl Text {
         pat: impl RegexPattern,
         range: impl TextRange,
     ) -> Result<bool, Box<regex_syntax::Error>> {
-        let range = range.to_range(self.len().char());
+        let range = range.to_range(self.len().byte());
         let dfas = dfas_from_pat(pat)?;
 
         let (mut fwd_input, _) = get_inputs(self, range.clone());
@@ -108,10 +108,10 @@ impl Bytes {
         pat: R,
         range: impl TextRange,
     ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
-        let range = range.to_range(self.len().char());
+        let range = range.to_range(self.len().byte());
         let dfas = dfas_from_pat(pat)?;
 
-        let b_start = self.point_at(range.start).byte();
+        let b_start = self.point_at_byte(range.start).byte();
 
         let (mut fwd_input, mut rev_input) = get_inputs(self, range.clone());
         rev_input.anchored(Anchored::Yes);
@@ -168,10 +168,8 @@ impl Bytes {
         pat: R,
         range: impl TextRange,
     ) -> Result<impl Iterator<Item = R::Match> + '_, Box<regex_syntax::Error>> {
-        let range = range.to_range(self.len().char());
+        let range = range.to_range(self.len().byte());
         let dfas = dfas_from_pat(pat)?;
-
-        let b_start = self.point_at(range.start).byte();
 
         let (mut fwd_input, mut rev_input) = get_inputs(self, range.clone());
         fwd_input.anchored(Anchored::Yes);
@@ -203,8 +201,8 @@ impl Bytes {
             };
             let end = half.offset();
 
-            let p0 = self.point_at_byte(b_start + start);
-            let p1 = self.point_at_byte(b_start + end);
+            let p0 = self.point_at_byte(range.start + start);
+            let p1 = self.point_at_byte(range.start + end);
 
             Some(R::get_match([p0, p1], half.pattern()))
         }))
@@ -219,17 +217,15 @@ impl Bytes {
         pat: impl RegexPattern,
         range: impl TextRange,
     ) -> Result<bool, Box<regex_syntax::Error>> {
-        let range = range.to_range(self.len().char());
+        let range = range.to_range(self.len().byte());
         let dfas = dfas_from_pat(pat)?;
 
         let (mut fwd_input, _) = get_inputs(self, range.clone());
         fwd_input.anchored(Anchored::Yes);
 
-        let b_end = self.point_at(range.end).byte();
-
         let mut fwd_cache = dfas.fwd.1.write().unwrap();
         if let Ok(Some(hm)) = try_search_fwd(&dfas.fwd.0, &mut fwd_cache, &mut fwd_input) {
-            Ok(hm.offset() == b_end)
+            Ok(hm.offset() == range.end)
         } else {
             Ok(false)
         }
@@ -403,14 +399,12 @@ impl Searcher {
         range: impl TextRange,
     ) -> impl Iterator<Item = [Point; 2]> + 'b {
         let bytes = ref_bytes.as_ref();
-        let range = range.to_range(bytes.len().char());
-        let mut last_point = bytes.point_at(range.start);
-
-        let b_start = bytes.point_at(range.start).byte();
+        let range = range.to_range(bytes.len().byte());
+        let mut last_point = bytes.point_at_byte(range.start);
 
         let (mut fwd_input, mut rev_input) = get_inputs(bytes, range.clone());
         rev_input.set_anchored(Anchored::Yes);
-        
+
         let fwd_dfa = &self.fwd_dfa;
         let rev_dfa = &self.rev_dfa;
         let fwd_cache = &mut self.fwd_cache;
@@ -446,13 +440,13 @@ impl Searcher {
             // sequence will be utf8.
             let start = unsafe {
                 bytes
-                    .buffers(last_point.byte()..b_start + h_start)
+                    .buffers(last_point.byte()..range.start + h_start)
                     .chars_unchecked()
                     .fold(last_point, |p, b| p.fwd(b))
             };
             let end = unsafe {
                 bytes
-                    .buffers(start.byte()..b_start + h_end)
+                    .buffers(start.byte()..range.start + h_end)
                     .chars_unchecked()
                     .fold(start, |p, b| p.fwd(b))
             };
@@ -472,10 +466,8 @@ impl Searcher {
         range: impl TextRange,
     ) -> impl Iterator<Item = [Point; 2]> + 'b {
         let bytes = ref_bytes.as_ref();
-        let range = range.to_range(bytes.len().char());
-        let mut last_point = bytes.point_at(range.end);
-
-        let b_start = bytes.point_at(range.start).byte();
+        let range = range.to_range(bytes.len().byte());
+        let mut last_point = bytes.point_at_byte(range.end);
 
         let (mut fwd_input, mut rev_input) = get_inputs(bytes, range.clone());
         fwd_input.anchored(Anchored::Yes);
@@ -514,13 +506,13 @@ impl Searcher {
             // sequence will be utf8.
             let end = unsafe {
                 bytes
-                    .buffers(b_start + h_end..last_point.byte())
+                    .buffers(range.start + h_end..last_point.byte())
                     .chars_unchecked()
                     .fold(last_point, |p, b| p.rev(b))
             };
             let start = unsafe {
                 bytes
-                    .buffers(b_start + h_start..end.byte())
+                    .buffers(range.start + h_start..end.byte())
                     .chars_unchecked()
                     .fold(end, |p, b| p.rev(b))
             };
@@ -775,7 +767,14 @@ fn get_inputs(
     bytes: &Bytes,
     range: std::ops::Range<usize>,
 ) -> (Input<SearchBytes<'_>>, Input<SearchBytes<'_>>) {
-    let haystack = SearchBytes(bytes.strs(range).to_array().map(|str| str.as_bytes()), 0);
+    let haystack = SearchBytes(
+        bytes
+            .strs(range)
+            .unwrap()
+            .to_array()
+            .map(|str| str.as_bytes()),
+        0,
+    );
     let fwd_input = Input::new(haystack);
     let rev_input = Input::new(haystack);
     (fwd_input, rev_input)
