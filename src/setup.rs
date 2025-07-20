@@ -131,6 +131,7 @@ pub fn pre_setup(logs: Option<Logs>, duat_tx: &'static Sender<DuatEvent>) {
             file.text_mut().new_moment();
 
             if let Some("gitcommit") = file.filetype() {
+                cache.delete(path);
                 return;
             }
 
