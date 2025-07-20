@@ -420,8 +420,6 @@ impl<U: Ui> Widget<U> for File<U> {
         let mut pa = unsafe { Pass::new() };
         parsers.update_range(&mut pa, &mut file.text, start..end);
 
-        context::debug!("updated {}", file.name());
-
         file.text.update_bounds();
     }
 

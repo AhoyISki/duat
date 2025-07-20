@@ -295,13 +295,8 @@ impl<U: Ui> Session<U> {
 
             let windows = context::windows::<U>().borrow();
             let win = context::cur_window();
-            let mut updated_one = false;
             for node in windows[win].nodes() {
                 if node.needs_update(&pa) {
-                    if !updated_one && node.data_is::<File<U>>() {
-                        context::info!("printing cycle!");
-                        updated_one = false;
-                    }
                     node.update_and_print(&mut pa);
                 }
             }

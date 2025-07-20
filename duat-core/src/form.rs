@@ -1,5 +1,5 @@
 //! Utilities for stylizing the text of Duat
-use std::sync::{LazyLock, OnceLock, RwLock, RwLockReadGuard};
+use std::sync::{OnceLock, RwLock, RwLockReadGuard};
 
 use FormType::*;
 use crossterm::style::{Attribute, Attributes, ContentStyle};
@@ -49,7 +49,7 @@ mod global {
     use std::{
         any::TypeId,
         collections::HashMap,
-        sync::{LazyLock, Mutex, mpsc},
+        sync::{LazyLock, Mutex, OnceLock, mpsc},
         thread,
         time::Duration,
     };
@@ -60,9 +60,8 @@ mod global {
         hook::{self, ColorSchemeSet},
     };
 
-    static PALETTE: Palette = Palette::new();
-    static FORMS: LazyLock<Mutex<Vec<&str>>> =
-        LazyLock::new(|| Mutex::new(BASE_FORMS.iter().map(|(name, ..)| *name).collect()));
+    static PALETTE: OnceLock<&'static Palette> = OnceLock::new();
+    static FORMS: OnceLock<&'static Mutex<Vec<&str>>> = OnceLock::new();
     static COLORSCHEMES: LazyLock<Mutex<Vec<Box<dyn ColorScheme>>>> = LazyLock::new(Mutex::default);
 
     /// Either a [`Form`] or a name of a form
@@ -105,11 +104,11 @@ mod global {
         let name: &'static str = name.to_string().leak();
 
         match kind {
-            Kind::Form(form) => queue(move || PALETTE.set_form(name, form)),
-            Kind::Ref(refed) => queue(move || PALETTE.set_ref(name, refed)),
+            Kind::Form(form) => queue(move || PALETTE.get().unwrap().set_form(name, form)),
+            Kind::Ref(refed) => queue(move || PALETTE.get().unwrap().set_ref(name, refed)),
         };
 
-        let mut forms = FORMS.lock().unwrap();
+        let mut forms = FORMS.get().unwrap().lock().unwrap();
         if let Kind::Ref(refed) = kind {
             position_of_name(&mut forms, refed);
         }
@@ -145,11 +144,11 @@ mod global {
         let name: &'static str = name.to_string().leak();
 
         match kind {
-            Kind::Form(form) => queue(move || PALETTE.set_weak_form(name, form)),
-            Kind::Ref(refed) => queue(move || PALETTE.set_weak_ref(name, refed)),
+            Kind::Form(form) => queue(move || PALETTE.get().unwrap().set_weak_form(name, form)),
+            Kind::Ref(refed) => queue(move || PALETTE.get().unwrap().set_weak_ref(name, refed)),
         };
 
-        let mut forms = FORMS.lock().unwrap();
+        let mut forms = FORMS.get().unwrap().lock().unwrap();
         if let Kind::Ref(refed) = kind {
             position_of_name(&mut forms, refed);
         }
@@ -158,17 +157,21 @@ mod global {
 
     /// Returns a [`Form`], given a [`FormId`].
     pub fn from_id(id: FormId) -> Form {
-        PALETTE.form_from_id(id).unwrap_or(Form::new().0)
+        PALETTE
+            .get()
+            .unwrap()
+            .form_from_id(id)
+            .unwrap_or(Form::new().0)
     }
 
     /// The current main cursor, with the `"caret.main"` [`Form`]
     pub fn main_cursor() -> (Form, Option<CursorShape>) {
-        PALETTE.main_cursor()
+        PALETTE.get().unwrap().main_cursor()
     }
 
     /// The current extra cursor, with the `"caret.extra"` [`Form`]
     pub fn extra_cursor() -> (Form, Option<CursorShape>) {
-        PALETTE.extra_cursor()
+        PALETTE.get().unwrap().extra_cursor()
     }
 
     /// Sets the main cursor's [shape]
@@ -194,7 +197,7 @@ mod global {
     /// [shape]: CursorShape
     /// [`form::unset_main_cursor`]: unset_main_cursor
     pub fn set_main_cursor(shape: CursorShape) {
-        queue(move || PALETTE.set_main_cursor(shape));
+        queue(move || PALETTE.get().unwrap().set_main_cursor(shape));
     }
 
     /// Sets extra cursors's [shape]s
@@ -220,7 +223,7 @@ mod global {
     /// [shape]: CursorShape
     /// [`form::unset_extra_cursor`]: unset_extra_cursor
     pub fn set_extra_cursor(shape: CursorShape) {
-        queue(move || PALETTE.set_extra_cursor(shape));
+        queue(move || PALETTE.get().unwrap().set_extra_cursor(shape));
     }
 
     /// Removes the main cursor's [shape]
@@ -234,7 +237,7 @@ mod global {
     /// [shape]: CursorShape
     /// [`form::set_main_cursor`]: set_main_cursor
     pub fn unset_main_cursor() {
-        queue(move || PALETTE.unset_main_cursor());
+        queue(move || PALETTE.get().unwrap().unset_main_cursor());
     }
 
     /// Removes extra cursors's [shape]s
@@ -251,7 +254,7 @@ mod global {
     /// [shape]: CursorShape
     /// [`form::set_extra_cursor`]: set_extra_cursor
     pub fn unset_extra_cursor() {
-        queue(move || PALETTE.unset_extra_cursor());
+        queue(move || PALETTE.get().unwrap().unset_extra_cursor());
     }
 
     /// Removes all cursors's [shape]s
@@ -262,14 +265,17 @@ mod global {
     /// [shape]: CursorShape
     pub fn unset_cursors() {
         queue(move || {
-            PALETTE.unset_main_cursor();
-            PALETTE.unset_extra_cursor();
+            PALETTE.get().unwrap().unset_main_cursor();
+            PALETTE.get().unwrap().unset_extra_cursor();
         })
     }
 
     /// Creates a [`Painter`] with a mask
     pub(crate) fn painter_with_mask<W: ?Sized + 'static>(mask: &'static str) -> Painter {
-        PALETTE.painter(default_id(TypeId::of::<W>(), crate::duat_name::<W>()), mask)
+        PALETTE
+            .get()
+            .unwrap()
+            .painter(default_id(TypeId::of::<W>(), crate::duat_name::<W>()), mask)
     }
 
     /// Enables the use of this mask
@@ -334,7 +340,7 @@ mod global {
     /// [`Text`]: crate::text::Text
     pub fn enable_mask(mask: &'static str) {
         queue(move || {
-            let mut inner = PALETTE.0.write().unwrap();
+            let mut inner = PALETTE.get().unwrap().0.write().unwrap();
             if !inner.masks.iter().any(|(m, _)| *m == mask) {
                 let mut remaps: Vec<u16> = (0..inner.forms.len() as u16).collect();
 
@@ -424,7 +430,7 @@ mod global {
             .collect();
 
         let mut ids = Vec::new();
-        let mut forms = FORMS.lock().unwrap();
+        let mut forms = FORMS.get().unwrap().lock().unwrap();
         for name in names.iter() {
             ids.push(FormId(position_of_name(&mut forms, name) as u16));
         }
@@ -435,13 +441,13 @@ mod global {
     /// Returns the [`FormId`] of the form's name
     #[doc(hidden)]
     pub fn id_from_name(name: &'static str) -> FormId {
-        let mut forms = FORMS.lock().unwrap();
+        let mut forms = FORMS.get().unwrap().lock().unwrap();
         FormId(position_of_name(&mut forms, name) as u16)
     }
 
     #[doc(hidden)]
     pub fn add_forms(names: Vec<&'static str>) {
-        queue(move || PALETTE.set_many(names.as_ref()));
+        queue(move || PALETTE.get().unwrap().set_many(names.as_ref()));
     }
 
     /// Adds a [`ColorScheme`] to the list of colorschemes
@@ -491,7 +497,7 @@ mod global {
 
     /// Wether or not a specific [`Form`] has been set
     pub(crate) fn exists(name: &str) -> bool {
-        FORMS.lock().unwrap().contains(&name)
+        FORMS.get().unwrap().lock().unwrap().contains(&name)
     }
 
     /// Wether or not a specific [`ColorScheme`] was added
@@ -505,7 +511,7 @@ mod global {
 
     /// The name of a form, given a [`FormId`]
     pub(super) fn name_of(id: FormId) -> &'static str {
-        FORMS.lock().unwrap()[id.0 as usize]
+        FORMS.get().unwrap().lock().unwrap()[id.0 as usize]
     }
 
     fn default_id(type_id: TypeId, type_name: &'static str) -> FormId {
@@ -566,6 +572,36 @@ mod global {
                 f();
             }
         });
+    }
+
+    /// Gets a [`Mutex`] for the initial [`Form`]'s list of Duat
+    ///
+    /// ONLY MEANT TO BE USED BY THE DUAT executable
+    #[doc(hidden)]
+    pub fn get_initial() -> (&'static Mutex<Vec<&'static str>>, &'static Palette) {
+        let forms = Box::leak(Box::new(Mutex::new(
+            BASE_FORMS.iter().map(|(n, ..)| *n).collect(),
+        )));
+        let palette = Box::leak(Box::new(Palette::new()));
+        (forms, palette)
+    }
+
+    /// Sets the [`Mutex`] for the initial [`Form`]'s list of Duat
+    ///
+    /// ONLY MEANT TO BE USED BY THE DUAT executable
+    #[doc(hidden)]
+    pub fn set_initial((forms, palette): (&'static Mutex<Vec<&'static str>>, &'static Palette)) {
+        FORMS.set(forms).expect("Forms setup ran twice");
+        PALETTE.set(palette).expect("Forms setup ran twice");
+    }
+
+    /// Clears the [`Form`]s from the list
+    ///
+    /// ONLY MEANT TO BE USED BY THE DUAT executable
+    #[doc(hidden)]
+    pub fn clear() {
+        *FORMS.get().unwrap().lock().unwrap() = Vec::new();
+        PALETTE.get().unwrap().reset();
     }
 
     /// A kind of [`Form`]
@@ -958,20 +994,21 @@ struct InnerPalette {
 }
 
 /// The list of forms to be used when rendering.
-struct Palette(LazyLock<RwLock<InnerPalette>>);
+///
+/// ONLY MEANT TO BE ACCESSED BY DUAT AND DUAT-CORE.
+#[derive(Debug)]
+#[doc(hidden)]
+pub struct Palette(RwLock<InnerPalette>);
 
 impl Palette {
     /// Returns a new instance of [`FormPalette`]
-    const fn new() -> Self {
-        Self(LazyLock::new(|| {
-            let main_cursor = Some(CursorShape::DefaultUserShape);
-
-            RwLock::new(InnerPalette {
-                main_cursor,
-                extra_cursor: main_cursor,
-                forms: BASE_FORMS.to_vec(),
-                masks: vec![("", (0..BASE_FORMS.len() as u16).collect())],
-            })
+    fn new() -> Self {
+        let main_cursor = Some(CursorShape::DefaultUserShape);
+        Self(RwLock::new(InnerPalette {
+            main_cursor,
+            extra_cursor: main_cursor,
+            forms: BASE_FORMS.to_vec(),
+            masks: vec![("", (0..BASE_FORMS.len() as u16).collect())],
         }))
     }
 
@@ -1158,6 +1195,16 @@ impl Palette {
             set_ul: true,
             reset_attrs: false,
         }
+    }
+
+    fn reset(&self) {
+        let main_cursor = Some(CursorShape::DefaultUserShape);
+        *self.0.write().unwrap() = InnerPalette {
+            main_cursor,
+            extra_cursor: main_cursor,
+            forms: BASE_FORMS.to_vec(),
+            masks: vec![("", (0..BASE_FORMS.len() as u16).collect())],
+        };
     }
 }
 

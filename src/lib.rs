@@ -390,7 +390,7 @@ use std::sync::RwLock;
 use duat_core::session::SessionCfg;
 pub use duat_core::{crate_dir, duat_name, src_crate};
 
-pub use self::setup::{Messengers, MetaStatics, pre_setup, run_duat};
+pub use self::setup::{DuatChannel, MetaStatics, pre_setup, run_duat};
 
 pub mod print;
 mod setup;
@@ -436,8 +436,8 @@ pub mod form {
     //!
     //! [`Form`]: crate::form::Form
     pub use duat_core::form::{
-        Color, ColorScheme, CursorShape, Form, add_colorscheme, enable_mask, from_id, id_of, set,
-        set_colorscheme, set_many,
+        Color, ColorScheme, CursorShape, Form, Palette, add_colorscheme, enable_mask, from_id,
+        id_of, set, set_colorscheme, set_many,
     };
 }
 
@@ -942,22 +942,23 @@ use duat_core::{session::FileRet, ui::DuatEvent};
 /// This macro *MUST* be used in order for the program to run,
 /// it will generate the function that actually runs Duat.
 pub macro setup_duat($setup:expr) {
-    use std::sync::mpsc;
+    use std::sync::{Mutex, mpsc};
 
-    use $crate::prelude::{File, Text, context::Logs};
+    use $crate::prelude::{File, Text, context::Logs, form::Palette};
 
     #[unsafe(no_mangle)]
     fn run(
         logs: Logs,
+        forms_init: (&'static Mutex<Vec<&'static str>>, &'static Palette),
         ms: MetaStatics,
         prev_files: Vec<Vec<FileRet>>,
-        (duat_tx, duat_rx): Messengers,
+        (duat_tx, duat_rx): DuatChannel,
     ) -> (
         Vec<Vec<FileRet>>,
         mpsc::Receiver<DuatEvent>,
         Option<std::time::Instant>,
     ) {
-        pre_setup(Some(logs), duat_tx);
+        pre_setup(Some(logs), duat_tx, forms_init);
         $setup();
         run_duat(ms, prev_files, duat_rx)
     }

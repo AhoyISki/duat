@@ -19,6 +19,7 @@ use duat_core::{
     cfg::PrintCfg,
     clipboard::Clipboard,
     context::{self, CurFile, CurWidget, Logs},
+    form::Palette,
     session::{FileRet, SessionCfg},
     text::History,
     ui::{self, DuatEvent, RawArea, Widget, Window},
@@ -44,11 +45,17 @@ pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
     LazyLock::new(|| RwLock::new(Box::new(|_| {})));
 
 #[doc(hidden)]
-pub fn pre_setup(logs: Option<Logs>, duat_tx: &'static Sender<DuatEvent>) {
+pub fn pre_setup(
+    logs: Option<Logs>,
+    duat_tx: &'static Sender<DuatEvent>,
+    forms_init: (&'static Mutex<Vec<&'static str>>, &'static Palette),
+) {
     if let Some(logs) = logs {
         log::set_logger(Box::leak(Box::new(logs.clone()))).unwrap();
         context::set_logs(logs);
     }
+
+    duat_core::form::set_initial(forms_init);
 
     // State statics.
     let cur_file: &'static CurFile<Ui> = Box::leak(Box::new(CurFile::new()));
@@ -187,7 +194,7 @@ pub fn run_duat(
 
 type PluginFn = dyn FnOnce(&mut SessionCfg<Ui>) + Send + Sync + 'static;
 #[doc(hidden)]
-pub type Messengers = (&'static Sender<DuatEvent>, Receiver<DuatEvent>);
+pub type DuatChannel = (&'static Sender<DuatEvent>, Receiver<DuatEvent>);
 #[doc(hidden)]
 pub type MetaStatics = (
     &'static <Ui as ui::Ui>::MetaStatics,

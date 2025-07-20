@@ -11,10 +11,11 @@ use std::{
     time::Instant,
 };
 
-use duat::{Messengers, MetaStatics, pre_setup, prelude::*, run_duat};
+use duat::{DuatChannel, MetaStatics, pre_setup, prelude::*, run_duat};
 use duat_core::{
     clipboard::Clipboard,
     context,
+    form::Palette,
     session::FileRet,
     ui::{self, DuatEvent, Ui as UiTrait},
 };
@@ -27,12 +28,14 @@ use notify::{
 };
 
 static CLIPB: LazyLock<Mutex<Clipboard>> = LazyLock::new(Mutex::default);
-static LIBRARIES: LazyLock<Mutex<Vec<Library>>> = LazyLock::new(Mutex::default);
 
 fn main() {
     let logs = duat_core::context::Logs::new();
     log::set_logger(Box::leak(Box::new(logs.clone()))).unwrap();
     context::set_logs(logs.clone());
+
+    let forms_init = duat_core::form::get_initial();
+    duat_core::form::set_initial(forms_init);
 
     let ms: &'static <Ui as ui::Ui>::MetaStatics =
         Box::leak(Box::new(<Ui as ui::Ui>::MetaStatics::default()));
@@ -46,7 +49,7 @@ fn main() {
     // Assert that the configuration crate actually exists.
     let Some(crate_dir) = duat_core::crate_dir().ok().filter(|cd| cd.exists()) else {
         context::error!("No config crate found, loading default config");
-        pre_setup(None, duat_tx);
+        pre_setup(None, duat_tx, forms_init);
         run_duat((ms, &CLIPB), Vec::new(), duat_rx);
         return;
     };
@@ -72,18 +75,6 @@ fn main() {
             }
         }
 
-        let mut _libs = LIBRARIES.lock().unwrap();
-
-        //for lib in so_dir.read_dir().unwrap() {
-        //    if let Ok(lib) = lib
-        //        && lib.path().extension() == Some(std::ffi::OsStr::new("so"))
-        //        && lib.path().file_name() != Some(std::ffi::OsStr::new("libconfig.so"))
-        //        && let Ok(lib) = unsafe { Library::new(lib.path()) }
-        //    {
-        //        libs.push(lib);
-        //    }
-        //}
-
         Some(unsafe { Library::new(libconfig_path) }.unwrap())
     };
 
@@ -100,16 +91,19 @@ fn main() {
         (prev, duat_rx, reload_instant) = std::thread::scope(|s| {
             s.spawn(|| {
                 if let Some(run_duat) = run_fn.take() {
-                    run_duat(logs.clone(), (ms, &CLIPB), prev, (duat_tx, duat_rx))
+                    let channel = (&*duat_tx, duat_rx);
+                    run_duat(logs.clone(), forms_init, (ms, &CLIPB), prev, channel)
                 } else {
                     context::error!("Failed to load config crate");
-                    pre_setup(None, duat_tx);
+                    pre_setup(None, duat_tx, forms_init);
                     run_duat((ms, &CLIPB), prev, duat_rx)
                 }
             })
             .join()
             .unwrap()
         });
+
+        duat_core::form::clear();
 
         if let Some(lib) = running_lib {
             lib.close().unwrap();
@@ -207,7 +201,8 @@ fn find_run_duat(lib: &Library) -> Option<Symbol<'_, RunFn>> {
 
 type RunFn = fn(
     context::Logs,
+    (&'static Mutex<Vec<&'static str>>, &'static Palette),
     MetaStatics,
     Vec<Vec<FileRet>>,
-    Messengers,
+    DuatChannel,
 ) -> (Vec<Vec<FileRet>>, Receiver<DuatEvent>, Option<Instant>);
