@@ -546,6 +546,7 @@ impl<U: Ui> Node<U> {
         &self.widget
     }
 
+    /// The [`Ui::Area`] of this [`Widget`]
     pub(crate) fn area(&self) -> &U::Area {
         &self.area
     }
@@ -555,6 +556,7 @@ impl<U: Ui> Node<U> {
         self.widget.try_downcast()
     }
 
+	/// The "parts" of this [`Node`]
     pub(crate) fn parts(
         &self,
     ) -> (
@@ -566,6 +568,8 @@ impl<U: Ui> Node<U> {
         (&self.widget, &self.area, &self.mask, &self.related_widgets)
     }
 
+    /// Tries to return the [`FileParts`] for this [`Node`], if it's a
+    /// [`File`]
     pub(crate) fn as_file(&self) -> Option<FileParts<U>> {
         self.widget.try_downcast().map(|file: RwData<File<U>>| {
             (
@@ -575,6 +579,7 @@ impl<U: Ui> Node<U> {
         })
     }
 
+    /// The [`Widget`]s that are related to this [`Widget`]
     pub(crate) fn related_widgets(&self) -> Option<&RwData<Vec<Node<U>>>> {
         self.related_widgets.as_ref()
     }
@@ -615,7 +620,7 @@ impl<U: Ui> Node<U> {
         };
 
         (self.print)(self, pa);
-        
+
         self.widget.acquire_mut(pa).text_mut().remove_selections();
     }
 

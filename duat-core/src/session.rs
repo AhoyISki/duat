@@ -8,15 +8,20 @@ use crate::{
     cfg::PrintCfg,
     clipboard::Clipboard,
     cmd,
-    context::{self, sender, Cache},
+    context::{self, Cache, Handle, sender},
     data::Pass,
     file::{File, FileCfg, PathKind},
     file_entry, form,
-    hook::{self, ConfigLoaded, ConfigUnloaded, ExitedDuat, OnFileClose, OnFileOpen, OnFileReload, OnWindowOpen},
+    hook::{
+        self, ConfigLoaded, ConfigUnloaded, ExitedDuat, OnFileClose, OnFileOpen, OnFileReload,
+        OnWindowOpen,
+    },
     mode,
     text::Bytes,
     ui::{
-        layout::{FileId, Layout, MasterOnLeft}, DuatEvent, FileBuilder, MutArea, Node, RawArea, Sender, Ui, Widget, WidgetCfg, Window, WindowBuilder
+        DuatEvent, FileBuilder, MutArea, Node, RawArea, Sender, Ui, Widget, WidgetCfg, Window,
+        WindowBuilder,
+        layout::{FileId, Layout, MasterOnLeft},
     },
 };
 
@@ -379,6 +384,11 @@ impl<U: Ui> Session<U> {
                 .skip(lo + 1)
                 .cloned()
                 .collect();
+
+            let (widget, area, mask, _) = lhs.parts();
+            let file = widget.try_downcast::<File<U>>().unwrap();
+            let handle = Handle::from_parts(file, area.clone(), mask.clone());
+            hook::trigger(pa, OnFileClose((handle, Cache::new())));
 
             (lhs_win, lhs, nodes)
         };

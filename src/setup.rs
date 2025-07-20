@@ -130,7 +130,7 @@ pub fn pre_setup(logs: Option<Logs>, duat_tx: &'static Sender<DuatEvent>) {
             let path = file.path();
             file.text_mut().new_moment();
 
-            if let Some("gitcommit") = file.filetype() {
+            if let Some("gitcommit") = path.filetype() {
                 cache.delete(path);
                 return;
             }
