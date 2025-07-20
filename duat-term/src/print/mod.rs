@@ -238,8 +238,7 @@ impl Printer {
     }
 
     /// Returns a new [`Lines`], a struct used to print to the screen
-    pub fn lines(&self, [tl, br]: [VarPoint; 2], shift: u32, cfg: PrintCfg) -> Lines {
-        let coords = self.coords([tl, br], true);
+    pub fn lines(&self, coords: Coords, shift: u32, cfg: PrintCfg) -> Lines {
         let cap = cfg.wrap_width(coords.width());
         let area = (coords.width() * coords.height()) as usize;
         let mut cutoffs = Vec::with_capacity(coords.height() as usize);
@@ -251,7 +250,7 @@ impl Printer {
             coords,
             real_cursor: None,
 
-            line: Vec::with_capacity(coords.width() as usize * 4 ),
+            line: Vec::with_capacity(coords.width() as usize * 4),
             len: 0,
             positions: Vec::new(),
             gaps: Gaps::OnRight,
@@ -274,7 +273,7 @@ impl Printer {
         let Err(i) = list.binary_search_by_key(&lines.coords(), |(_, lines)| lines.coords()) else {
             unreachable!("Colliding Lines should have been removed already");
         };
-        
+
         list.insert(i, (id, Box::new(lines)));
     }
 
@@ -316,12 +315,9 @@ impl Printer {
     /// Wether a [`Variable`] has changed
     pub fn coords_have_changed(&self, [tl, br]: [VarPoint; 2]) -> bool {
         let vars = self.vars.lock().unwrap();
-        for var in [tl.x(), tl.y(), br.x(), br.y()] {
-            if vars.has_changed(var) {
-                return true;
-            }
-        }
-        false
+        [tl.x(), tl.y(), br.x(), br.y()]
+            .into_iter()
+            .any(|var| vars.has_changed(var))
     }
 }
 
@@ -598,7 +594,7 @@ pub struct Lines {
     real_cursor: Option<bool>,
 
     // Temporary things
-    pub line: Vec<u8>,
+    line: Vec<u8>,
     len: u32,
     positions: Vec<(usize, u32)>,
     gaps: Gaps,

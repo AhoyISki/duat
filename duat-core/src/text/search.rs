@@ -146,8 +146,6 @@ impl Bytes {
             let p0 = self.point_at_byte(b_start + h_start);
             let p1 = self.point_at_byte(b_start + h_end);
 
-            crate::context::debug!("{b_start}, {p0}, {p1}");
-
             Some(R::get_match([p0, p1], half.pattern()))
         }))
     }

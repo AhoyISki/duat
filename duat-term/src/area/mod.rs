@@ -1,26 +1,21 @@
 mod iter;
+mod print_info;
 
-use std::{
-    cell::{Cell, RefCell},
-    fmt::Alignment,
-    rc::Rc,
-    sync::Arc,
-};
+use std::{cell::RefCell, fmt::Alignment, rc::Rc, sync::Arc};
 
 use crossterm::cursor;
 use duat_core::{
     cfg::PrintCfg,
-    context::bincode::{Decode, Encode},
     form::Painter,
     text::{FwdIter, Item, Part, Point, RevIter, Text, txt},
     ui::{self, Axis, Caret, Constraint, MutArea, PushSpecs, SpawnSpecs},
 };
 use iter::{print_iter, print_iter_indented, rev_print_iter};
 
+pub use self::print_info::PrintInfo;
 use crate::{
     AreaId, CStyle, Mutex,
     layout::{Layout, Rect, transfer_vars},
-    print::Gaps,
     queue, style,
 };
 
@@ -101,23 +96,25 @@ impl Area {
 
         let (mut lines, iter) = {
             let rect = layout.get(self.id).unwrap();
-
-            let info = {
-                let mut info = rect.print_info().unwrap().get();
-                info.fix(text);
-                rect.print_info().unwrap().set(info);
-                info
-            };
-
-            let lines = layout.printer.lines(rect.var_points(), info.x_shift, cfg);
-            if lines.coords().width() == 0 || lines.coords().height() == 0 {
+            let coords = layout.printer.coords(rect.var_points(), true);
+            
+            if coords.width() == 0 || coords.height() == 0 {
                 return;
             }
 
+            let (s_points, x_shift) = {
+                let mut info = rect.print_info().unwrap().get();
+                let s_points = info.start_points(coords, text, cfg);
+                rect.print_info().unwrap().set(info);
+                (s_points, info.x_shift())
+            };
+
+            let lines = layout.printer.lines(coords, x_shift, cfg);
+
             let iter = {
-                let line_start = text.visual_line_start(info.s_points);
+                let line_start = text.visual_line_start(s_points);
                 let iter = text.iter_fwd(line_start);
-                print_iter(iter, lines.cap(), cfg, info.s_points)
+                print_iter(iter, lines.cap(), cfg, s_points)
             };
 
             (lines, iter)
@@ -449,8 +446,8 @@ impl ui::RawArea for Area {
         todo!();
     }
 
-    fn scroll_ver(&self, text: &Text, dist: i32, cfg: PrintCfg) {
-        if dist == 0 {
+    fn scroll_ver(&self, text: &Text, by: i32, cfg: PrintCfg) {
+        if by == 0 {
             return;
         }
 
@@ -458,61 +455,25 @@ impl ui::RawArea for Area {
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
 
-        let (mut info, width, height) = {
+        let (mut info, coords) = {
             let coords = layout.printer.coords(rect.var_points(), false);
             let info = rect.print_info().unwrap().get();
-            (info, coords.width(), coords.height())
+            (info, coords)
         };
-
-        let cap = cfg.wrap_width(width);
-
-        if dist > 0 {
-            let line_start = print_iter(text.iter_fwd(info.s_points), cap, cfg, info.s_points)
-                .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
-                .nth(dist as usize)
-                .unwrap_or_default();
-
-            let max_s_points = max_s_points(text, cfg, height, cap);
-
-            if line_start < max_s_points {
-                info.s_points = line_start;
-                info.e_points = None;
-            } else {
-                info.s_points = max_s_points;
-                info.e_points = Some(text.len_points());
-            }
-        } else {
-            info.s_points = rev_print_iter(text.iter_rev(info.s_points), cap, cfg)
-                .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
-                .nth(dist.unsigned_abs() as usize - 1)
-                .unwrap_or_default();
-            info.e_points = None;
-        }
-
+        info.scroll_ver(by, coords, text, cfg);
         rect.print_info().unwrap().set(info);
     }
 
     ////////// Printing
 
-    fn scroll_around_point(&self, text: &Text, point: Point, cfg: PrintCfg) {
+    fn scroll_around_point(&self, text: &Text, p: Point, cfg: PrintCfg) {
         let layouts = self.layouts.borrow();
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
+        let coords = layout.printer.coords(rect.var_points(), false);
 
-        let (mut info, width, height) = {
-            let coords = layout.printer.coords(rect.var_points(), false);
-            let info = rect.print_info().unwrap().get();
-            (info, coords.width(), coords.height())
-        };
-
-        if width > 0 && height > 0 {
-            scroll_ver_around(&mut info, width, height, point, text, cfg);
-            scroll_hor_around(&mut info, width, point, text, cfg);
-        }
-
-        info.prev_main = point;
-        info.e_points = None;
-
+        let mut info = rect.print_info().unwrap().get();
+        info.scroll_around(p, coords, text, cfg);
         rect.print_info().unwrap().set(info);
     }
 
@@ -525,30 +486,10 @@ impl ui::RawArea for Area {
         let layouts = self.layouts.borrow();
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
+        let coords = layout.printer.coords(rect.var_points(), false);
 
-        let (mut info, width, height) = {
-            let coords = layout.printer.coords(rect.var_points(), false);
-            let info = rect.print_info().unwrap().get();
-            (info, coords.width(), coords.height())
-        };
-
-        let cap = cfg.wrap_width(width);
-
-        let line_start = rev_print_iter(text.iter_rev(points), cap, cfg)
-            .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
-            .next()
-            .unwrap_or_default();
-
-        let max_line_start = max_s_points(text, cfg, height, cap);
-
-        if line_start < max_line_start {
-            info.s_points = line_start;
-            info.e_points = None;
-        } else {
-            info.s_points = max_line_start;
-            info.e_points = Some(text.len_points());
-        }
-
+        let mut info = rect.print_info().unwrap().get();
+        info.scroll_to_points(points, coords, text, cfg);
         rect.print_info().unwrap().set(info);
     }
 
@@ -638,7 +579,7 @@ impl ui::RawArea for Area {
         get_rect(&layouts, self.id)
             .unwrap()
             .print_info()
-            .map(Cell::get)
+            .map(|cell| cell.get().for_caching())
     }
 
     fn width(&self) -> u32 {
@@ -657,9 +598,9 @@ impl ui::RawArea for Area {
         coords.height()
     }
 
-    fn start_points(&self, _text: &Text, _cfg: PrintCfg) -> (Point, Option<Point>) {
+    fn start_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>) {
         let layouts = self.layouts.borrow();
-        layouted::start_points(self, &layouts)
+        layouted::start_points(self, &layouts, text, cfg)
     }
 
     fn end_points(&self, text: &Text, cfg: PrintCfg) -> (Point, Option<Point>) {
@@ -684,170 +625,30 @@ impl ui::RawArea for Area {
     }
 }
 
-// NOTE: The defaultness in here, when it comes to `last_main`, may
-// cause issues in the future.
-/// Information about how to print the file on the `Label`.
-#[derive(Default, Clone, Copy, PartialEq, Eq, Debug, Encode, Decode)]
-#[bincode(crate = "duat_core::context::bincode")]
-pub struct PrintInfo {
-    s_points: (Point, Option<Point>),
-    x_shift: u32,
-    prev_main: Point,
-    e_points: Option<(Point, Option<Point>)>,
-    vert_dist: u32,
-}
-
-impl PrintInfo {
-    fn fix(&mut self, text: &Text) {
-        let max = text.len().min(self.s_points.0);
-        let (_, max_ghost) = text.ghost_max_points_at(max.byte());
-        self.s_points = (max, self.s_points.1.min(max_ghost))
-    }
-}
-
-/// Scrolls down until the gap between the main cursor and the
-/// bottom of the widget is equal to `config.scrolloff.y_gap`.
-fn scroll_ver_around(
-    info: &mut PrintInfo,
-    width: u32,
-    height: u32,
-    point: Point,
-    text: &Text,
-    cfg: PrintCfg,
-) {
-    if info.prev_main == point {
-        return;
-    }
-
-    let points = text.ghost_max_points_at(point.byte());
-    let after = text
-        .points_after(points)
-        .unwrap_or_else(|| text.len_points());
-
-    let cap = cfg.wrap_width(width);
-
-    let mut below_dist = 0;
-    let mut total_dist = 0;
-    let mut iter = rev_print_iter(text.iter_rev(after), cap, cfg)
-        .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
-        .inspect(|points| {
-            total_dist += 1;
-            below_dist += (*points >= info.s_points) as u32;
-        });
-
-    let target = if info.prev_main > point {
-        cfg.scrolloff.y as usize
-    } else {
-        height.saturating_sub(cfg.scrolloff.y as u32 + 1) as usize
-    };
-    let first = iter.nth(target).unwrap_or_default();
-
-    if (info.prev_main > point && first <= info.s_points)
-        || (info.prev_main < point && first >= info.s_points)
-    {
-        info.s_points = first;
-        info.vert_dist = total_dist - 1;
-    } else if info.prev_main > point {
-        iter.take_while(|points| *points >= info.s_points)
-            .for_each(|_| {});
-
-        info.vert_dist = below_dist - 1;
-    }
-}
-
-/// Scrolls the file horizontally, usually when no wrapping is
-/// being used.
-fn scroll_hor_around(info: &mut PrintInfo, width: u32, p: Point, text: &Text, cfg: PrintCfg) {
-    let cap = cfg.wrap_width(width);
-    // Quick shortcut to avoid iteration.
-    if cap <= width {
-        info.x_shift = 0;
-        return;
-    }
-
-    let (max_shift, start, end) = {
-        let points = text.ghost_max_points_at(p.byte());
-        let after = text
-            .points_after(points)
-            .unwrap_or_else(|| text.len_points());
-
-        let mut iter = rev_print_iter(text.iter_rev(after), cap, cfg);
-
-        let (points, start, end, wrap) = iter
-            .find_map(|(Caret { x, len, wrap }, item)| {
-                let points = item.points();
-                item.part.as_char().and(Some((points, x, x + len, wrap)))
-            })
-            .unwrap_or(((Point::default(), None), 0, 0, true));
-
-        let (line_len, gaps) = {
-            let mut gaps = Gaps::OnRight;
-            let (indent, points) = if wrap {
-                (start, points)
-            } else {
-                iter.find_map(|(caret, item)| caret.wrap.then_some((caret.x, item.points())))
-                    .unwrap()
-            };
-
-            let len = print_iter_indented(text.iter_fwd(points), cap, cfg, indent)
-                .inspect(|(_, Item { part, real, .. })| match part {
-                    Part::AlignLeft => gaps = Gaps::OnRight,
-                    Part::AlignCenter => gaps = Gaps::OnSides,
-                    Part::AlignRight => gaps = Gaps::OnLeft,
-                    Part::Spacer => gaps.add_spacer(real.byte()),
-                    _ => {}
-                })
-                .take_while(|(caret, item)| !caret.wrap || item.points() == points)
-                .last()
-                .map(|(Caret { x, len, .. }, _)| x + len)
-                .unwrap_or(0);
-
-            (len, gaps)
-        };
-
-        let diff = match &gaps {
-            Gaps::OnRight => 0,
-            Gaps::OnLeft => cap - line_len,
-            Gaps::OnSides => (cap - line_len) / 2,
-            Gaps::Spacers(bytes) => {
-                let spaces = gaps.get_spaces(cap - line_len);
-                bytes
-                    .iter()
-                    .take_while(|b| **b <= p.byte())
-                    .zip(spaces)
-                    .fold(0, |prev_len, (_, len)| prev_len + len)
-            }
-        };
-
-        (line_len + diff, start + diff, end + diff)
-    };
-
-    info.x_shift = info
-        .x_shift
-        .min(start.saturating_sub(cfg.scrolloff.x as u32))
-        .max(if cfg.force_scrolloff {
-            (end + cfg.scrolloff.x as u32).saturating_sub(width)
-        } else {
-            (end + cfg.scrolloff.x as u32)
-                .min(max_shift)
-                .saturating_sub(width)
-        });
-}
-
 mod layouted {
     use duat_core::{
         cfg::PrintCfg,
-        text::{Item, Point, Text},
-        ui::Caret,
+        text::{Point, Text},
     };
 
-    use super::{Area, get_layout, get_rect, iter::print_iter};
+    use super::{Area, get_layout};
     use crate::layout::Layout;
 
-    pub fn start_points(area: &Area, layouts: &[Layout]) -> (Point, Option<Point>) {
-        let rect = get_rect(layouts, area.id).unwrap();
-        let info = rect.print_info().unwrap().get();
-        info.s_points
+    pub fn start_points(
+        area: &Area,
+        layouts: &[Layout],
+        text: &Text,
+        cfg: PrintCfg,
+    ) -> (Point, Option<Point>) {
+        let layout = get_layout(layouts, area.id).unwrap();
+        let rect = layout.get(area.id).unwrap();
+        let coords = layout.printer.coords(rect.var_points(), false);
+
+
+        let mut info = rect.print_info().unwrap().get();
+        let s_points = info.start_points(coords, text, cfg);
+        rect.print_info().unwrap().set(info);
+        s_points
     }
 
     pub fn end_points(
@@ -856,43 +657,14 @@ mod layouted {
         text: &Text,
         cfg: PrintCfg,
     ) -> (Point, Option<Point>) {
-        let (mut info, coords) = {
-            let layout = get_layout(layouts, area.id).unwrap();
-            let rect = layout.get(area.id).unwrap();
-            let info = rect.print_info().unwrap();
-            (info.get(), layout.printer.coords(rect.var_points(), false))
-        };
-
-        if let Some(last) = info.e_points {
-            return last;
-        }
-
-        let (line_start, mut y) = if let Some(main) = text.selections().get_main()
-            && main.caret() == info.prev_main
-        {
-            (text.visual_line_start(info.prev_main), info.vert_dist)
-        } else {
-            (text.visual_line_start(info.s_points), 0)
-        };
-
-        let mut iter = {
-            let iter = text.iter_fwd(line_start);
-            print_iter(iter, cfg.wrap_width(coords.width()), cfg, info.s_points)
-        };
-
-        let points = iter
-            .find_map(|(Caret { wrap, .. }, Item { part, real, ghost })| {
-                y += (wrap && part.is_char()) as u32;
-                (y > coords.height()).then_some((real, ghost))
-            })
-            .unwrap_or_else(|| text.len_points());
-
-        info.e_points = Some(points);
         let layout = get_layout(layouts, area.id).unwrap();
         let rect = layout.get(area.id).unwrap();
-        rect.print_info().unwrap().set(info);
+        let coords = layout.printer.coords(rect.var_points(), false);
 
-        points
+        let mut info = rect.print_info().unwrap().get();
+        let e_points = info.end_points(coords, text, cfg);
+        rect.print_info().unwrap().set(info);
+        e_points
     }
 }
 
@@ -910,15 +682,4 @@ fn get_layout_mut(layouts: &mut [Layout], id: AreaId) -> Option<&mut Layout> {
 
 fn get_layout_pos(layouts: &[Layout], id: AreaId) -> Option<usize> {
     layouts.iter().position(|l| l.get(id).is_some())
-}
-
-fn max_s_points(text: &Text, cfg: PrintCfg, height: u32, cap: u32) -> (Point, Option<Point>) {
-    rev_print_iter(text.iter_rev(text.len_points()), cap, cfg)
-        .filter_map(|(caret, item)| caret.wrap.then_some(item.points()))
-        .nth(if cfg.allow_overscroll {
-            cfg.scrolloff.y.saturating_sub(1) as usize
-        } else {
-            height.saturating_sub(1) as usize
-        })
-        .unwrap_or_default()
 }

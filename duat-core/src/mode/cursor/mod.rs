@@ -276,17 +276,23 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: RawArea, S> Cursor<'a, W, A, S> {
     /// - If the coords isn't valid, it will move to the "maximum"
     ///   position allowed.
     pub fn move_to_coords(&mut self, line: usize, col: usize) {
-        let p = self
+        let [s, e] = self
             .text()
-            .point_at_line(line.min(self.text().last_point().line()));
-        let (point, _) = self
+            .points_of_line(line.min(self.text().last_point().line()));
+        let (p, _) = self
             .text()
-            .chars_fwd(p..)
+            .chars_fwd(s..e)
             .unwrap()
             .take(col + 1)
             .last()
-            .unwrap_or((self.text().len(), '\n'));
-        self.move_to(point);
+            .unzip();
+        self.move_to(p.unwrap_or(e));
+    }
+
+    /// Moves to a column on the current line
+    pub fn move_to_col(&mut self, col: usize) {
+        let line = self.text().point_at_line(self.caret().line()).line();
+        self.move_to_coords(line, col);
     }
 
     /// Returns and takes the anchor of the [`Selection`].
