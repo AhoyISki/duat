@@ -1,7 +1,7 @@
 use std::sync::{LazyLock, Mutex};
 
 use duat_core::{
-    mode::{Cursor, KeyCode::*, Selections},
+    mode::{KeyCode::*, KeyMod, Selections},
     prelude::*,
 };
 
@@ -175,12 +175,12 @@ fn match_find_until<U: Ui>(
 fn match_inside_around<U: Ui>(
     pa: &mut Pass,
     handle: Handle<File<U>, U, ()>,
-    key: KeyEvent,
+    event: KeyEvent,
     brackets: Brackets,
     is_inside: bool,
 ) {
-    let Char(char) = key.code else {
-        context::warn!("Key [a]{key.code}[] not mapped on this mode");
+    let Char(char) = event.code else {
+        context::warn!("Key [a]{event.code}[] not mapped on this mode");
         return;
     };
 
@@ -189,20 +189,19 @@ fn match_inside_around<U: Ui>(
 
     let mut failed = false;
 
-    if let Some(object) = Object::from_char(char, wc, brackets) {
+    if let Some(object) = Object::new(event, wc, brackets) {
         match char {
-            'w' | 'W' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
+            'w' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
                 let start = object.find_behind(c, 0, None);
                 let [_, p1] = object.find_ahead(c, 0, None)?;
                 let p0 = {
                     let p0 = start.map(|[p0, _]| p0).unwrap_or(c.caret());
                     let p0_cat = Category::of(c.char_at(p0).unwrap(), wc);
                     let p1_cat = Category::of(c.char(), wc);
-                    let is_same_cat = char == 'W' || p0_cat == p1_cat;
+                    let is_same_cat = event.modifiers == KeyMod::ALT || p0_cat == p1_cat;
                     if is_same_cat { p0 } else { c.caret() }
                 };
                 c.move_to(p0..p1);
-                c.move_hor(-1);
                 Some(())
             }),
             's' | ' ' => edit_or_destroy_all(pa, &handle, &mut failed, |c| {
@@ -253,7 +252,6 @@ fn match_inside_around<U: Ui>(
                 let [p0, p1] = object.find_behind(c, 1, None)?;
                 let [p0, p1] = if is_inside { [p1, p2] } else { [p0, p3] };
                 c.move_to(p0..p1);
-                c.move_hor(-1);
                 Some(())
             }),
         }
@@ -289,7 +287,7 @@ fn match_inside_around<U: Ui>(
                     }
                 }
             }),
-            _ => context::warn!("Key [a]{key.code}[] not mapped on this mode"),
+            _ => context::warn!("Key [a]{event.code}[] not mapped on this mode"),
         }
     }
 

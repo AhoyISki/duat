@@ -289,6 +289,7 @@ use duat_core::{
 use duat_utils::hooks::SearchPerformed;
 use treesitter::TsCursor;
 
+use crate::normal::Brackets;
 pub use crate::{insert::Insert, normal::Normal};
 
 mod inc_searchers;
@@ -551,22 +552,22 @@ enum Object<'a> {
 }
 
 impl<'a> Object<'a> {
-    fn from_char(char: char, wc: WordChars, brackets: normal::Brackets) -> Option<Self> {
-        static BRACKET_PATS: Memoized<normal::Brackets, [&'static str; 3]> = Memoized::new();
-        match char {
-            'Q' => Some(Self::Bound("\"")),
-            'q' => Some(Self::Bound("'")),
-            'g' => Some(Self::Bound("`")),
-            '|' => Some(Self::Bound(r"\|")),
-            '$' => Some(Self::Bound(r"\$")),
-            '^' => Some(Self::Bound(r"\^")),
-            's' => Some(Self::Bound(r"[\.;!\?]")),
-            'p' => Some(Self::Bound("^\n")),
-            'b' | '(' | ')' => Some(Self::Bounds(r"\(", r"\)")),
-            'B' | '{' | '}' => Some(Self::Bounds(r"\{", r"\}")),
-            'r' | '[' | ']' => Some(Self::Bounds(r"\[", r"\]")),
-            'a' | '<' | '>' => Some(Self::Bounds("<", ">")),
-            'm' | 'u' => Some({
+    fn new(event: KeyEvent, wc: WordChars, brackets: Brackets) -> Option<Self> {
+        static BRACKET_PATS: Memoized<Brackets, [&'static str; 3]> = Memoized::new();
+        match event {
+            key!(Char('Q')) => Some(Self::Bound("\"")),
+            key!(Char('q')) => Some(Self::Bound("'")),
+            key!(Char('g')) => Some(Self::Bound("`")),
+            key!(Char('|')) => Some(Self::Bound(r"\|")),
+            key!(Char('$')) => Some(Self::Bound(r"\$")),
+            key!(Char('^')) => Some(Self::Bound(r"\^")),
+            key!(Char('s')) => Some(Self::Bound(r"[\.;!\?]")),
+            key!(Char('p')) => Some(Self::Bound("^\n")),
+            key!(Char('b' | '(' | ')')) => Some(Self::Bounds(r"\(", r"\)")),
+            key!(Char('B' | '{' | '}')) => Some(Self::Bounds(r"\{", r"\}")),
+            key!(Char('r' | '[' | ']')) => Some(Self::Bounds(r"\[", r"\]")),
+            key!(Char('a' | '<' | '>')) => Some(Self::Bounds("<", ">")),
+            key!(Char('m' | 'M' | 'u')) => Some({
                 let [m_b, s_b, e_b] = BRACKET_PATS.get_or_insert_with(brackets, || {
                     let (s_pat, e_pat): (String, String) = brackets
                         .iter()
@@ -576,22 +577,22 @@ impl<'a> Object<'a> {
                     [r"(;|,)\s*", s_pat.leak(), e_pat.leak()]
                 });
 
-                if char == 'm' {
+                if event.code == Char('m') {
                     Self::Bounds(s_b, e_b)
                 } else {
                     Self::Argument(m_b, s_b, e_b)
                 }
             }),
-            'w' => Some(Self::Anchored({
+            key!(Char('w')) => Some(Self::Anchored({
                 static WORD_PATS: Memoized<WordChars, &str> = Memoized::new();
                 WORD_PATS.get_or_insert_with(wc, || {
                     let cat = w_char_cat(wc);
                     format!("\\A([{cat}]+|[^{cat} \t\n]+)\\z").leak()
                 })
             })),
-            'W' => Some(Self::Anchored("\\A[^ \t\n]+\\z")),
-            ' ' => Some(Self::Anchored(r"\A\s*\z")),
-            char if !char.is_alphanumeric() => Some(Self::Bound({
+            key!(Char('w'), KeyMod::ALT) => Some(Self::Anchored("\\A[^ \t\n]+\\z")),
+            key!(Char(' ')) => Some(Self::Anchored(r"\A\s*\z")),
+            key!(Char(char)) if !char.is_alphanumeric() => Some(Self::Bound({
                 static BOUNDS: Memoized<char, &str> = Memoized::new();
                 BOUNDS.get_or_insert_with(char, || char.to_string().leak())
             })),
