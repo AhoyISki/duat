@@ -732,6 +732,40 @@ pub mod hook {
     /// [hook]: self
     pub type OnWindowOpen = duat_core::hook::OnWindowOpen<Ui>;
 
+    /// [`Hookable`]: Triggers before closing a [`File`]
+    ///
+    /// # Arguments
+    ///
+    /// - The [`File`]'s [`Handle`].
+    /// - A [`Cache`]. This can be used in order to decide wether or
+    ///   not some things will be reloaded on the next opening of
+    ///   Duat.
+    ///
+    /// This will not trigger upon reloading Duat. For that, see
+    /// [`OnFileClose`].
+    ///
+    /// [`File`]: crate::prelude::File
+    /// [`Handle`]: crate::prelude::Handle
+    /// [`Cache`]: duat_core::context::Cache
+    pub type OnFileClose = duat_core::hook::OnFileClose<Ui>;
+
+    /// [`Hookable`]: Triggers before reloading a [`File`]
+    ///
+    /// # Arguments
+    ///
+    /// - The [`File`]'s [`Handle`].
+    /// - A [`Cache`]. This can be used in order to decide wether or
+    ///   not some things will be reloaded on the next opening of
+    ///   Duat.
+    ///
+    /// This will not trigger upon closing Duat. For that, see
+    /// [`OnFileClose`].
+    ///
+    /// [`File`]: crate::prelude::File
+    /// [`Handle`]: crate::prelude::Handle
+    /// [`Cache`]: duat_core::context::Cache
+    pub type OnFileReload = duat_core::hook::OnFileReload<Ui>;
+
     /// [`Hookable`]: Triggers when the [`Widget`] is focused
     ///
     /// # Arguments
@@ -956,7 +990,7 @@ pub mod prelude {
             FormSet, KeysSent, KeysSentTo, ModeCreated, ModeSwitched, OnFileOpen, OnWindowOpen,
             SearchPerformed, SearchUpdated, UnfocusedFrom, WidgetCreated,
         },
-        mode::{self, Mode, User, alias, map, Prompt, Pager},
+        mode::{self, Mode, Pager, Prompt, User, alias, map},
         print, setup_duat,
         state::*,
         widgets::*,

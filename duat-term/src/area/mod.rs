@@ -644,7 +644,6 @@ mod layouted {
         let rect = layout.get(area.id).unwrap();
         let coords = layout.printer.coords(rect.var_points(), false);
 
-
         let mut info = rect.print_info().unwrap().get();
         let s_points = info.start_points(coords, text, cfg);
         rect.print_info().unwrap().set(info);

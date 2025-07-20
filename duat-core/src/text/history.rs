@@ -117,7 +117,8 @@ impl History {
         }
     }
 
-    pub fn unprocessed_moments(&self) -> Vec<Moment> {
+	/// The list of moments that have yet to be processed
+    pub(crate) fn unprocessed_moments(&self) -> Vec<Moment> {
         let fresh_moment =
             self.unproc_changes
                 .lock()

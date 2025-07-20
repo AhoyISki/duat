@@ -45,7 +45,7 @@ pub use self::{
 };
 use crate::{
     cfg::PrintCfg,
-    context::{Handle, load_cache},
+    context::{Cache, Handle},
     data::{Pass, RwData},
     file::File,
     form::Painter,
@@ -456,7 +456,9 @@ impl<U: Ui> Window<U> {
 
         let cache = widget
             .read_as(pa, |f: &File<U>| {
-                load_cache::<<U::Area as RawArea>::Cache>(f.path()).ok()
+                Cache::new()
+                    .load::<<U::Area as RawArea>::Cache>(f.path())
+                    .ok()
             })
             .flatten()
             .unwrap_or_default();
@@ -505,7 +507,9 @@ impl<U: Ui> Window<U> {
         ) -> (U::Area, Option<U::Area>) {
             let cache = widget
                 .read_as(pa, |f: &File<U>| {
-                    load_cache::<<U::Area as RawArea>::Cache>(f.path()).ok()
+                    Cache::new()
+                        .load::<<U::Area as RawArea>::Cache>(f.path())
+                        .ok()
                 })
                 .flatten()
                 .unwrap_or_default();

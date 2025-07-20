@@ -48,6 +48,9 @@
 //!   letting you change it, [`Widget`] can be used as its [alias]
 //! - [`OnFileOpen`], which lets you push widgets around a [`File`].
 //! - [`OnWindowOpen`], which lets you push widgets around the window.
+//! - [`OnFileClose`], which triggers on every file upon closing Duat.
+//! - [`OnFileReload`], which triggers on every file upon reloading
+//!   Duat.
 //! - [`FocusedOn`] lets you act on a [widget] when focused.
 //! - [`UnfocusedFrom`] lets you act on a [widget] when unfocused.
 //! - [`KeysSent`] lets you act on a [dyn Widget], given a[key].
@@ -141,7 +144,6 @@
 //!
 //! [alias]: HookAlias
 //! [cfg]: crate::ui::Widget::Cfg
-//! [`File`]: crate::file::File
 //! [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
 //! [widget]: Widget
 //! [dyn Widget]: Widget
@@ -157,8 +159,9 @@ use std::{any::TypeId, cell::RefCell, collections::HashMap, marker::PhantomData,
 
 pub use self::global::*;
 use crate::{
-    context::{FileHandle, Handle},
+    context::{Cache, FileHandle, Handle},
     data::Pass,
+    file::File,
     form::{Form, FormId},
     mode::{KeyEvent, Mode},
     ui::{FileBuilder, Ui, Widget, WindowBuilder},
@@ -419,7 +422,6 @@ impl<W: Widget<U>, U: Ui> Hookable for WidgetCreated<W, U> {
 /// interfere with the default hooks of `"FileWidgets"` and
 /// `"WindowWidgets"`, preset by Duat.
 ///
-/// [`File`]: crate::file::File
 /// [builder]: crate::ui::FileBuilder
 /// [hook]: self
 pub struct OnFileOpen<U: Ui>(pub(crate) FileBuilder<U>);
@@ -458,6 +460,46 @@ impl<U: Ui> Hookable for OnWindowOpen<U> {
     }
 }
 
+/// [`Hookable`]: Triggers before closing a [`File`]
+///
+/// # Arguments
+///
+/// - The [`File`]'s [`Handle`].
+/// - A [`Cache`]. This can be used in order to decide wether or not
+///   some things will be reloaded on the next opening of Duat.
+///
+/// This will not trigger upon reloading Duat. For that, see
+/// [`OnFileClose`].
+pub struct OnFileClose<U: Ui>(pub(crate) (Handle<File<U>, U>, Cache));
+
+impl<U: Ui> Hookable for OnFileClose<U> {
+    type Input<'h> = &'h (Handle<File<U>, U>, Cache);
+
+    fn get_input(&mut self) -> Self::Input<'_> {
+        &self.0
+    }
+}
+
+/// [`Hookable`]: Triggers before reloading a [`File`]
+///
+/// # Arguments
+///
+/// - The [`File`]'s [`Handle`].
+/// - A [`Cache`]. This can be used in order to decide wether or not
+///   some things will be reloaded on the next opening of Duat.
+///
+/// This will not trigger upon closing Duat. For that, see
+/// [`OnFileClose`].
+pub struct OnFileReload<U: Ui>(pub(crate) (Handle<File<U>, U>, Cache));
+
+impl<U: Ui> Hookable for OnFileReload<U> {
+    type Input<'h> = &'h (Handle<File<U>, U>, Cache);
+
+    fn get_input(&mut self) -> Self::Input<'_> {
+        &self.0
+    }
+}
+
 /// [`Hookable`]: Triggers when the [`Widget`] is focused
 ///
 /// # Arguments
@@ -467,10 +509,10 @@ impl<U: Ui> Hookable for OnWindowOpen<U> {
 pub struct FocusedOn<W: Widget<U>, U: Ui>(pub(crate) (Handle<dyn Widget<U>, U>, Handle<W, U>));
 
 impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
-    type Input<'h> = (&'h Handle<dyn Widget<U>, U>, &'h Handle<W, U>);
+    type Input<'h> = &'h (Handle<dyn Widget<U>, U>, Handle<W, U>);
 
     fn get_input(&mut self) -> Self::Input<'_> {
-        (&self.0.0, &self.0.1)
+        &self.0
     }
 }
 
@@ -483,10 +525,10 @@ impl<W: Widget<U>, U: Ui> Hookable for FocusedOn<W, U> {
 pub struct UnfocusedFrom<W: Widget<U>, U: Ui>(pub(crate) (Handle<W, U>, Handle<dyn Widget<U>, U>));
 
 impl<W: Widget<U>, U: Ui> Hookable for UnfocusedFrom<W, U> {
-    type Input<'h> = (&'h Handle<W, U>, &'h Handle<dyn Widget<U>, U>);
+    type Input<'h> = &'h (Handle<W, U>, Handle<dyn Widget<U>, U>);
 
     fn get_input(&mut self) -> Self::Input<'_> {
-        (&self.0.0, &self.0.1)
+        &self.0
     }
 }
 
@@ -571,8 +613,6 @@ impl Hookable for ModeSwitched {
 /// This hook is very useful if you want to, for example, set
 /// different options upon switching to modes, depending on things
 /// like the language of a [`File`].
-///
-/// [`File`]: crate::file::File
 pub struct ModeCreated<M: Mode<U>, U: Ui>(pub(crate) (Option<M>, Handle<M::Widget, U>));
 
 impl<M: Mode<U>, U: Ui> Hookable for ModeCreated<M, U> {
@@ -680,7 +720,7 @@ impl Hookable for ColorSchemeSet {
 pub struct FileWritten(pub(crate) (String, usize, bool));
 
 impl Hookable for FileWritten {
-    type Input<'i> = (&'i str, usize, bool);
+    type Input<'h> = (&'h str, usize, bool);
 
     fn get_input(&mut self) -> Self::Input<'_> {
         (&self.0.0, self.0.1, self.0.2)

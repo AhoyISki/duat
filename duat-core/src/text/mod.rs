@@ -105,12 +105,11 @@ use std::{
     },
 };
 
-pub(crate) use self::history::History;
 use self::tags::{FwdTags, InnerTags, RevTags};
 pub use self::{
     builder::{Builder, BuilderPart, txt},
     bytes::{Buffers, Bytes, Lines, Strs},
-    history::{Change, Moment},
+    history::{Change, Moment, History},
     iter::{FwdIter, Item, Part, RevIter},
     ops::{Point, TextRange, TextRangeOrPoint, TwoPoints, utf8_char_width},
     search::{Matcheable, RegexPattern, Searcher},
@@ -196,7 +195,7 @@ impl Text {
             .has_unsaved_changes
             .store(has_unsaved_changes, Ordering::Relaxed);
 
-        if let Ok(history) = context::load_cache(path.as_ref()) {
+        if let Ok(history) = context::Cache::new().load(path.as_ref()) {
             text.0.history = Some(history);
         }
 
@@ -772,7 +771,8 @@ impl Text {
         &mut self.0.selections
     }
 
-    pub(crate) fn history(&self) -> Option<&History> {
+	/// The [`History`] of [`Moment`]s in this [`Text`]
+    pub fn history(&self) -> Option<&History> {
         self.0.history.as_ref()
     }
 }

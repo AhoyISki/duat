@@ -17,7 +17,7 @@ use self::parser::InnerParsers;
 pub use self::parser::{FileParts, FileSnapshot, Parser, ParserBox, ParserCfg, Parsers};
 use crate::{
     cfg::PrintCfg,
-    context::{self, FileHandle, Handle, load_cache},
+    context::{self, Cache, FileHandle, Handle},
     data::Pass,
     form::Painter,
     hook::{self, FileWritten},
@@ -78,7 +78,7 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
             TextOp::TakeBuf(bytes, pk, has_unsaved_changes) => match &pk {
                 PathKind::SetExists(path) | PathKind::SetAbsent(path) => {
                     let selections = {
-                        let cursor = load_cache(path).unwrap_or_default();
+                        let cursor = Cache::new().load(path).unwrap_or_default();
                         Selections::new(cursor)
                     };
                     let text = Text::from_file(bytes, selections, path, has_unsaved_changes);
@@ -95,7 +95,7 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
                     && let Ok(file) = std::fs::read_to_string(path)
                 {
                     let selections = {
-                        let cursor = load_cache(path).unwrap_or_default();
+                        let cursor = Cache::new().load(path).unwrap_or_default();
                         Selections::new(cursor)
                     };
                     let text = Text::from_file(Bytes::new(&file), selections, path, false);

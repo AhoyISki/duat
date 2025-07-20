@@ -8,17 +8,15 @@ use crate::{
     cfg::PrintCfg,
     clipboard::Clipboard,
     cmd,
-    context::{self, delete_cache, delete_cache_for, sender, store_cache},
+    context::{self, sender, Cache},
     data::Pass,
     file::{File, FileCfg, PathKind},
     file_entry, form,
-    hook::{self, ConfigLoaded, ConfigUnloaded, ExitedDuat, OnFileOpen, OnWindowOpen},
+    hook::{self, ConfigLoaded, ConfigUnloaded, ExitedDuat, OnFileClose, OnFileOpen, OnFileReload, OnWindowOpen},
     mode,
     text::Bytes,
     ui::{
-        DuatEvent, FileBuilder, MutArea, Node, RawArea, Sender, Ui, Widget, WidgetCfg, Window,
-        WindowBuilder,
-        layout::{FileId, Layout, MasterOnLeft},
+        layout::{FileId, Layout, MasterOnLeft}, DuatEvent, FileBuilder, MutArea, Node, RawArea, Sender, Ui, Widget, WidgetCfg, Window, WindowBuilder
     },
 };
 
@@ -253,7 +251,15 @@ impl<U: Ui> Session<U> {
                         context::order_reload_or_quit();
                         wait_for_threads_to_despawn();
 
-                        self.save_cache(&mut pa, false);
+                        let windows = context::windows::<U>().borrow_mut();
+                        for (handle, _) in windows
+                            .iter()
+                            .flat_map(Window::nodes)
+                            .filter_map(|node| node.as_file())
+                        {
+                            hook::trigger(&mut pa, OnFileReload((handle, Cache::new())));
+                        }
+
                         let ms = self.ms;
                         let files = self.take_files(&mut pa);
                         U::unload(ms);
@@ -265,7 +271,15 @@ impl<U: Ui> Session<U> {
                         context::order_reload_or_quit();
                         wait_for_threads_to_despawn();
 
-                        self.save_cache(&mut pa, true);
+                        let windows = context::windows::<U>().borrow_mut();
+                        for (handle, _) in windows
+                            .iter()
+                            .flat_map(Window::nodes)
+                            .filter_map(|node| node.as_file())
+                        {
+                            hook::trigger(&mut pa, OnFileClose((handle, Cache::new())));
+                        }
+
                         return (Vec::new(), duat_rx, None);
                     }
                 }
@@ -288,44 +302,6 @@ impl<U: Ui> Session<U> {
                     node.update_and_print(&mut pa);
                 }
             }
-        }
-    }
-
-    fn save_cache(&self, pa: &mut Pass, is_quitting_duat: bool) {
-        let windows = context::windows::<U>().borrow_mut();
-        for (handle, _) in windows
-            .iter()
-            .flat_map(Window::nodes)
-            .filter_map(|node| node.as_file())
-        {
-            handle.write(pa, |file, area| {
-                let path = file.path();
-                file.text_mut().new_moment();
-
-                if is_quitting_duat {
-                    delete_cache_for::<crate::text::History>(&path);
-                    if !file.exists() || file.text().has_unsaved_changes() {
-                        delete_cache(&path);
-                        return;
-                    }
-                } else if let Some(history) = file.text().history()
-                    && let Err(err) = store_cache(&path, history.clone())
-                {
-                    context::error!("{err}");
-                }
-
-                if let Some(cache) = area.cache()
-                    && let Err(err) = store_cache(&path, cache)
-                {
-                    context::error!("{err}");
-                }
-
-                if let Some(main) = file.selections_mut().get_main()
-                    && let Err(err) = store_cache(path, main.clone())
-                {
-                    context::error!("{err}");
-                }
-            });
         }
     }
 

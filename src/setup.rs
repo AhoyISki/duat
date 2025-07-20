@@ -20,8 +20,10 @@ use duat_core::{
     clipboard::Clipboard,
     context::{self, CurFile, CurWidget, Logs},
     session::{FileRet, SessionCfg},
-    ui::{self, DuatEvent, Widget, Window},
+    text::History,
+    ui::{self, DuatEvent, RawArea, Widget, Window},
 };
+use duat_filetype::FileType;
 use duat_term::VertRule;
 use duat_utils::{
     modes::{Pager, Regular},
@@ -30,7 +32,7 @@ use duat_utils::{
 
 use crate::{
     CfgFn, Ui, form,
-    hook::{self, OnFileOpen, OnWindowOpen},
+    hook::{self, OnFileClose, OnFileOpen, OnFileReload, OnWindowOpen},
     mode,
     prelude::{FileWritten, LineNumbers},
 };
@@ -86,6 +88,64 @@ pub fn pre_setup(logs: Option<Logs>, duat_tx: &'static Sender<DuatEvent>) {
         {
             crate::prelude::cmd::queue("reload");
         }
+    });
+
+    hook::add_grouped::<OnFileReload>("SaveCacheOnReload", |pa, (handle, cache)| {
+        handle.write(pa, |file, area| {
+            let path = file.path();
+            file.text_mut().new_moment();
+
+            if let Some(history) = file.text().history()
+                && let Err(err) = cache.store(&path, history.clone())
+            {
+                context::error!("{err}");
+            }
+
+            if let Some(area_cache) = area.cache()
+                && let Err(err) = cache.store(&path, area_cache)
+            {
+                context::error!("{err}");
+            }
+
+            if let Some(main) = file.selections_mut().get_main()
+                && let Err(err) = cache.store(path, main.clone())
+            {
+                context::error!("{err}");
+            }
+        });
+    });
+
+    hook::add_grouped::<OnFileClose>("DeleteHistoryOnClose", |pa, (handle, cache)| {
+        handle.write(pa, |file, _| {
+            let path = file.path();
+            cache.delete_for::<History>(&path);
+            if !file.exists() || file.text().has_unsaved_changes() {
+                cache.delete(path);
+            }
+        });
+    });
+
+    hook::add_grouped::<OnFileClose>("SaveCacheOnClose", |pa, (handle, cache)| {
+        handle.write(pa, |file, area| {
+            let path = file.path();
+            file.text_mut().new_moment();
+
+            if let Some("gitcommit") = file.filetype() {
+                return;
+            }
+
+            if let Some(area_cache) = area.cache()
+                && let Err(err) = cache.store(&path, area_cache)
+            {
+                context::error!("{err}");
+            }
+
+            if let Some(main) = file.selections_mut().get_main()
+                && let Err(err) = cache.store(path, main.clone())
+            {
+                context::error!("{err}");
+            }
+        });
     });
 
     form::enable_mask("error");
