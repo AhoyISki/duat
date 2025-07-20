@@ -353,14 +353,11 @@ impl<U: Ui> Mode<U> for Normal {
                 handle.new_moment(pa);
                 let mut processed_lines = Vec::new();
                 handle.edit_all(pa, |mut c| {
+                    c.unset_anchor();
                     if self.indent_on_capital_i {
                         reindent(&mut c, &mut processed_lines);
                     } else {
-                        c.unset_anchor();
-                        c.move_hor(-(c.v_caret().char_col() as i32));
-                        c.set_anchor();
-                        let indent = c.indent();
-                        c.move_hor(indent as i32);
+                        c.move_to_col(c.indent());
                     }
                 });
                 mode::set::<U>(Insert::new());
