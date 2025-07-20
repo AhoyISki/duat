@@ -58,8 +58,8 @@ impl Coords {
     pub fn intersects(&self, other: Self) -> bool {
         self.tl.x < other.br.x
             && self.br.x > other.tl.x
-            && self.tl.y > other.br.y
-            && self.br.y < other.tl.y
+            && self.tl.y < other.br.y
+            && self.br.y > other.tl.y
     }
 }
 

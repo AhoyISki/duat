@@ -307,8 +307,8 @@ impl Printer {
     /// Gets [`Coords`] from two [`VarPoint`]s
     pub fn coords(&self, var_points: [VarPoint; 2], is_printing: bool) -> Coords {
         let mut vars = self.vars.lock().unwrap();
-        let (tl, _) = vars.coord(var_points[0], is_printing);
-        let (br, _) = vars.coord(var_points[1], is_printing);
+        let tl = vars.coord(var_points[0], is_printing);
+        let br = vars.coord(var_points[1], is_printing);
         Coords::new(tl, br)
     }
 
@@ -404,6 +404,7 @@ mod variables {
 
                 let new = new.round() as u32;
                 *changes += (*value != new) as usize;
+                duat_core::context::debug!("old: {}, new: {new}", *value);
                 *value = new;
             }
         }
@@ -500,10 +501,10 @@ mod variables {
         /// `false`
         ///
         /// [`Printer::has_changed`]: super::Printer::has_changed
-        pub fn coord(&mut self, var_point: VarPoint, is_printing: bool) -> (Coord, usize) {
-            let (x, x_changes) = self.value(var_point.x(), is_printing);
-            let (y, y_changes) = self.value(var_point.y(), is_printing);
-            (Coord::new(x, y), x_changes + y_changes)
+        pub fn coord(&mut self, var_point: VarPoint, is_printing: bool) -> Coord {
+            let (x, _) = self.value(var_point.x(), is_printing);
+            let (y, _) = self.value(var_point.y(), is_printing);
+            Coord::new(x, y)
         }
 
         /// Wether a [`Variable`] has been changed

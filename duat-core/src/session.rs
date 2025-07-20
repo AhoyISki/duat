@@ -120,9 +120,6 @@ impl<U: Ui> SessionCfg<U> {
             let (file_cfg, is_active) = cfgs.next().unwrap();
             let (widget, _) = file_cfg.build(&mut pa, None);
 
-            // SAFETY: Last Pass was just consumed.
-            let mut pa = unsafe { Pass::new() };
-
             let (window, node) = Window::new(&mut pa, ms, widget, (session.layout_fn)());
             context::windows::<U>().borrow_mut().push(window);
 
@@ -225,12 +222,8 @@ impl<U: Ui> Session<U> {
 
             if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(50)) {
                 match event {
-                    DuatEvent::Tagger(key) => {
-                        mode::send_key(&mut pa, key);
-                    }
-                    DuatEvent::QueuedFunction(f) => {
-                        f(&mut pa);
-                    }
+                    DuatEvent::Tagger(key) => mode::send_key(&mut pa, key),
+                    DuatEvent::QueuedFunction(f) => f(&mut pa),
                     DuatEvent::Resize | DuatEvent::FormChange => {
                         reprint_screen = true;
                         continue;
@@ -256,8 +249,8 @@ impl<U: Ui> Session<U> {
                         context::order_reload_or_quit();
                         wait_for_threads_to_despawn();
 
-                        let windows = context::windows::<U>().borrow_mut();
-                        for (handle, _) in windows
+                        for (handle, _) in context::windows::<U>()
+                            .borrow_mut()
                             .iter()
                             .flat_map(Window::nodes)
                             .filter_map(|node| node.as_file())
@@ -276,8 +269,8 @@ impl<U: Ui> Session<U> {
                         context::order_reload_or_quit();
                         wait_for_threads_to_despawn();
 
-                        let windows = context::windows::<U>().borrow_mut();
-                        for (handle, _) in windows
+                        for (handle, _) in context::windows::<U>()
+                            .borrow_mut()
                             .iter()
                             .flat_map(Window::nodes)
                             .filter_map(|node| node.as_file())
@@ -302,8 +295,13 @@ impl<U: Ui> Session<U> {
 
             let windows = context::windows::<U>().borrow();
             let win = context::cur_window();
+            let mut updated_one = false;
             for node in windows[win].nodes() {
                 if node.needs_update(&pa) {
+                    if !updated_one && node.data_is::<File<U>>() {
+                        context::info!("printing cycle!");
+                        updated_one = false;
+                    }
                     node.update_and_print(&mut pa);
                 }
             }
