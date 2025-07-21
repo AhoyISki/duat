@@ -1,7 +1,7 @@
 use std::{
     any::{Any, TypeId},
     cell::RefCell,
-    sync::LazyLock,
+    sync::{LazyLock, Mutex},
     vec::IntoIter,
 };
 
@@ -21,16 +21,16 @@ use crate::{
 };
 
 static SEND_KEYS: MainThreadOnly<RefCell<Option<KeyFn>>> = MainThreadOnly::new(RefCell::new(None));
-static RESET_MODES: MainThreadOnly<RefCell<Vec<(TypeId, Box<dyn FnMut(&mut Pass) -> bool>)>>> =
-    MainThreadOnly::new(RefCell::new(Vec::new()));
-static SET_MODE: MainThreadOnly<RefCell<Option<ModeFn>>> = MainThreadOnly::new(RefCell::new(None));
+static RESET_MODES: Mutex<Vec<(TypeId, Box<dyn FnMut(&mut Pass) -> bool + Send>)>> =
+    Mutex::new(Vec::new());
+static SET_MODE: Mutex<Option<ModeFn>> = Mutex::new(None);
 static MODE: LazyLock<MainThreadOnly<RefCell<Box<dyn Any>>>> =
     LazyLock::new(|| MainThreadOnly::new(RefCell::new(Box::new("no mode") as Box<dyn Any>)));
 static BEFORE_EXIT: MainThreadOnly<RefCell<fn(&mut Pass)>> =
     MainThreadOnly::new(RefCell::new(|_| {}));
 
 type KeyFn = fn(&mut Pass, &mut IntoIter<KeyEvent>) -> Option<ModeFn>;
-type ModeFn = Box<dyn FnOnce(&mut Pass) -> bool>;
+type ModeFn = Box<dyn FnOnce(&mut Pass) -> bool + Send>;
 
 /// Whether or not the [`Mode`] has changed
 ///
@@ -38,7 +38,7 @@ type ModeFn = Box<dyn FnOnce(&mut Pass) -> bool>;
 /// it will be called from the main thread, so no checks are done
 /// in that regard.
 pub(crate) fn take_set_mode_fn(_: &mut Pass) -> Option<ModeFn> {
-    unsafe { SET_MODE.get() }.borrow_mut().take()
+    SET_MODE.lock().unwrap().take()
 }
 
 /// Sets the new default mode
@@ -48,58 +48,52 @@ pub(crate) fn take_set_mode_fn(_: &mut Pass) -> Option<ModeFn> {
 ///
 /// [`mode::reset`]: reset
 pub fn set_default<M: Mode<U>, U: Ui>(mode: M) {
-    crate::context::queue(move |_| {
-        let mut reset_modes = unsafe { RESET_MODES.get() }.borrow_mut();
+    let mut reset_modes = RESET_MODES.lock().unwrap();
 
-        let i = if let Some(i) = reset_modes
-            .iter()
-            .position(|(ty, _)| *ty == TypeId::of::<M::Widget>())
-        {
-            reset_modes[i].1 = Box::new(move |pa| {
+    let i = if let Some(i) = reset_modes
+        .iter()
+        .position(|(ty, _)| *ty == TypeId::of::<M::Widget>())
+    {
+        reset_modes[i].1 = Box::new(move |pa| {
+            let mode = mode.clone();
+            set_mode_fn::<M, U>(pa, mode)
+        });
+        i
+    } else {
+        reset_modes.push((
+            TypeId::of::<M::Widget>(),
+            Box::new(move |pa| {
                 let mode = mode.clone();
                 set_mode_fn::<M, U>(pa, mode)
-            });
-            i
-        } else {
-            reset_modes.push((
-                TypeId::of::<M::Widget>(),
-                Box::new(move |pa| {
-                    let mode = mode.clone();
-                    set_mode_fn::<M, U>(pa, mode)
-                }),
-            ));
-            reset_modes.len() - 1
-        };
+            }),
+        ));
+        reset_modes.len() - 1
+    };
 
-        if TypeId::of::<M::Widget>() == TypeId::of::<File<U>>() {
-            let set_mode = unsafe { SET_MODE.get() };
-            let prev = set_mode.take();
-            *set_mode.borrow_mut() = Some(Box::new(move |pa| {
-                if let Some(f) = prev {
-                    f(pa);
-                    unsafe { RESET_MODES.get() }.borrow_mut()[i].1(pa)
-                } else {
-                    unsafe { RESET_MODES.get() }.borrow_mut()[i].1(pa)
-                }
-            }));
-        }
-    });
+    if TypeId::of::<M::Widget>() == TypeId::of::<File<U>>() {
+        let mut set_mode = SET_MODE.lock().unwrap();
+        let prev = set_mode.take();
+        *set_mode = Some(Box::new(move |pa| {
+            if let Some(f) = prev {
+                f(pa);
+            }
+            RESET_MODES.lock().unwrap()[i].1(pa)
+        }));
+    }
 }
 
 /// Sets the [`Mode`], switching to the appropriate [`Widget`]
 ///
 /// [`Widget`]: Mode::Widget
 pub fn set<U: Ui>(mode: impl Mode<U>) {
-    crate::context::queue(move |_| {
-        let set_mode = unsafe { SET_MODE.get() };
-        let prev = set_mode.take();
-        *set_mode.borrow_mut() = Some(Box::new(move |pa| {
-            if let Some(prev) = prev {
-                prev(pa);
-            }
-            set_mode_fn(pa, mode)
-        }));
-    });
+    let mut set_mode = SET_MODE.lock().unwrap();
+    let prev = set_mode.take();
+    *set_mode = Some(Box::new(move |pa| {
+        if let Some(prev) = prev {
+            prev(pa);
+        }
+        set_mode_fn(pa, mode)
+    }));
 }
 
 /// Resets the mode to the [default] of a given [`Widget`]
@@ -108,79 +102,74 @@ pub fn set<U: Ui>(mode: impl Mode<U>) {
 ///
 /// [default]: set_default
 pub fn reset<W: Widget<U>, U: Ui>() {
-    crate::context::queue(move |_| {
-        let reset_modes = unsafe { RESET_MODES.get() }.borrow_mut();
-        if let Some(i) = reset_modes
-            .iter()
-            .position(|(ty, _)| *ty == TypeId::of::<W>())
-        {
-            *unsafe { SET_MODE.get() }.borrow_mut() = Some(Box::new(move |pa| {
-                unsafe { RESET_MODES.get() }.borrow_mut()[i].1(pa)
-            }));
-        } else if TypeId::of::<W>() == TypeId::of::<File<U>>() {
-            panic!("Something went terribly wrong, somehow");
-        } else {
-            context::error!(
-                "There is no default [a]Mode[] set for [a]{}[]",
-                crate::duat_name::<W>()
-            );
-        };
-    })
+    let reset_modes = RESET_MODES.lock().unwrap();
+    if let Some(i) = reset_modes
+        .iter()
+        .position(|(ty, _)| *ty == TypeId::of::<W>())
+    {
+        *SET_MODE.lock().unwrap() = Some(Box::new(move |pa| RESET_MODES.lock().unwrap()[i].1(pa)));
+    } else if TypeId::of::<W>() == TypeId::of::<File<U>>() {
+        panic!("Something went terribly wrong, somehow");
+    } else {
+        context::error!(
+            "There is no default [a]Mode[] set for [a]{}[]",
+            crate::duat_name::<W>()
+        );
+    };
 }
 
 /// Resets to the default [`Mode`] of the given [`Widget`], on a
 /// given [`Handle<W, U>`]
 pub fn reset_to<W: Widget<U>, U: Ui>(handle: Handle<W, U>) {
-    crate::context::queue(move |pa| {
-        let reset_modes = unsafe { RESET_MODES.get() }.borrow_mut();
-        let windows = context::windows::<U>(pa).borrow();
+    let reset_modes = RESET_MODES.lock().unwrap();
 
-        let i = reset_modes
-            .iter()
-            .position(|(ty, _)| *ty == TypeId::of::<W>());
+    let i = reset_modes
+        .iter()
+        .position(|(ty, _)| *ty == TypeId::of::<W>());
 
-        if let Some(i) = i {
+    if let Some(i) = i {
+        *SET_MODE.lock().unwrap() = Some(Box::new(move |pa| {
+            let windows = context::windows::<U>(pa).borrow();
             if let Some(node) = windows
                 .iter()
                 .flat_map(|w| w.nodes())
                 .find(|n| n.ptr_eq(handle.widget()))
                 .cloned()
             {
-                *unsafe { SET_MODE.get() }.borrow_mut() = Some(Box::new(move |pa| {
-                    switch_widget(pa, node);
-                    (unsafe { RESET_MODES.get() }.borrow_mut()[i].1)(pa)
-                }));
+                switch_widget(pa, node);
+                (RESET_MODES.lock().unwrap()[i].1)(pa)
             } else {
-                context::error!("The Handle in question is no longer in use",);
+                context::error!("The Handle in question is no longer in use");
+                false
             }
-        } else if TypeId::of::<W>() == TypeId::of::<File<U>>() {
-            panic!("Something went terribly wrong, somehow");
-        } else {
-            context::error!(
-                "There is no default [a]Mode[] set for [a]{}[]",
-                crate::duat_name::<W>()
-            );
-        };
-    })
+        }));
+    } else if TypeId::of::<W>() == TypeId::of::<File<U>>() {
+        panic!("Something went terribly wrong, somehow");
+    } else {
+        context::error!(
+            "There is no default [a]Mode[] set for [a]{}[]",
+            crate::duat_name::<W>()
+        );
+    };
 }
 
 /// Switches to the [`File`] with the given name
-pub(crate) fn reset_to_file<U: Ui>(pa: &Pass, name: impl std::fmt::Display, switch_window: bool) {
-    let windows = context::windows::<U>(pa).borrow();
+pub(crate) fn reset_to_file<U: Ui>(name: impl std::fmt::Display, switch_window: bool) {
     let name = name.to_string();
-    match file_entry(pa, &windows, &name) {
-        Ok((win, _, node)) => {
-            if win != context::cur_window() && switch_window {
-                crate::context::sender()
-                    .send(DuatEvent::SwitchWindow(win))
-                    .unwrap();
-            }
-            let node = node.clone();
-            // SAFETY: There is a Pass argument.
-            let set_mode = unsafe { SET_MODE.get() };
-            *set_mode.borrow_mut() = Some(Box::new(move |pa| {
-                if let Some((_, f)) = unsafe { RESET_MODES.get() }
-                    .borrow_mut()
+    *SET_MODE.lock().unwrap() = Some(Box::new(move |pa| {
+        let windows = context::windows::<U>(pa).borrow();
+        match file_entry(pa, &windows, &name) {
+            Ok((win, _, node)) => {
+                if win != context::cur_window() && switch_window {
+                    crate::context::sender()
+                        .send(DuatEvent::SwitchWindow(win))
+                        .unwrap();
+                }
+                let node = node.clone();
+
+                if let Some((_, f)) = RESET_MODES
+                    .lock()
+                    .unwrap()
                     .iter_mut()
                     .find(|(ty, _)| *ty == TypeId::of::<File<U>>())
                 {
@@ -189,10 +178,13 @@ pub(crate) fn reset_to_file<U: Ui>(pa: &Pass, name: impl std::fmt::Display, swit
                 } else {
                     panic!("Something went terribly wrong, somehow");
                 }
-            }))
+            }
+            Err(err) => {
+                context::error!("{err}");
+                false
+            }
         }
-        Err(err) => context::error!("{err}"),
-    }
+    }))
 }
 
 /// Switches to a certain widget
