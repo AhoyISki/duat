@@ -155,9 +155,7 @@
 //! [`Output`]: Hookable::Output
 //! [`SearchPerformed`]: https://docs.rs/duat-utils/latest/duat_utils/hooks/struct.SearchPerformed.html
 //! [`SearchUpdated`]: https://docs.rs/duat-utils/latest/duat_utils/hooks/struct.SearchUpdated.html
-use std::{
-    any::TypeId, cell::RefCell, collections::HashMap, marker::PhantomData, rc::Rc, sync::Mutex,
-};
+use std::{any::TypeId, cell::RefCell, collections::HashMap, marker::PhantomData, sync::Mutex};
 
 pub use self::global::*;
 use crate::{
@@ -171,17 +169,16 @@ use crate::{
 
 /// Hook functions
 mod global {
-    use std::sync::LazyLock;
+    use std::{collections::HashMap, sync::OnceLock};
 
     use super::{HookAlias, Hookable, InnerHooks};
     use crate::{
         data::Pass,
         hook::HookDummy,
-        main_thread_only::MainThreadOnly,
         ui::{DuatEvent, Ui},
     };
 
-    static HOOKS: LazyLock<MainThreadOnly<InnerHooks>> = LazyLock::new(MainThreadOnly::default);
+    static HOOKS: OnceLock<InnerHooks> = OnceLock::new();
 
     /// Adds a [hook]
     ///
@@ -197,7 +194,7 @@ mod global {
     pub fn add<H: HookAlias<U, impl HookDummy>, U: Ui>(
         f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
     ) {
-        unsafe { HOOKS.get() }.add::<H::Hookable>("", Box::new(f));
+        HOOKS.get().unwrap().add::<H::Hookable>("", Box::new(f));
     }
 
     /// Adds a [hook], without accepting aliases
@@ -210,7 +207,7 @@ mod global {
     pub fn add_no_alias<H: Hookable>(
         f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
     ) {
-        unsafe { HOOKS.get() }.add::<H>("", Box::new(f));
+        HOOKS.get().unwrap().add::<H>("", Box::new(f));
     }
 
     /// Adds a grouped [hook]
@@ -230,7 +227,7 @@ mod global {
         group: &'static str,
         f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
     ) {
-        unsafe { HOOKS.get() }.add::<H::Hookable>(group, Box::new(f));
+        HOOKS.get().unwrap().add::<H::Hookable>(group, Box::new(f));
     }
 
     /// Adds a grouped [hook], without accepting aliases
@@ -243,7 +240,7 @@ mod global {
     pub fn add_grouped_no_alias<H: Hookable>(
         f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
     ) {
-        unsafe { HOOKS.get() }.add::<H>("", Box::new(f));
+        HOOKS.get().unwrap().add::<H>("", Box::new(f));
     }
 
     /// Removes a [hook] group
@@ -254,7 +251,7 @@ mod global {
     /// [hook]: Hookable
     /// [`hook::add_grouped`]: add_grouped
     pub fn remove(group: &'static str) {
-        unsafe { HOOKS.get() }.remove(group);
+        HOOKS.get().unwrap().remove(group);
     }
 
     /// Triggers a hooks for a [`Hookable`] struct
@@ -267,7 +264,7 @@ mod global {
     /// [`hook::add`]: add
     /// [`hook::add_grouped`]: add_grouped
     pub fn trigger<H: Hookable>(pa: &mut Pass, hookable: H) -> H {
-        unsafe { HOOKS.get().trigger(pa, hookable) }
+        HOOKS.get().unwrap().trigger(pa, hookable)
     }
 
     /// Queues a [`Hookable`]'s execution
@@ -286,8 +283,7 @@ mod global {
         let sender = crate::context::sender();
         sender
             .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
-                // SAFETY: There is a Pass argument
-                unsafe { HOOKS.get() }.trigger(pa, hookable);
+                HOOKS.get().unwrap().trigger(pa, hookable);
             })))
             .unwrap();
     }
@@ -301,7 +297,24 @@ mod global {
     /// [`hook::add_grouped`]: add_grouped
     /// [`hook::remove`]: remove
     pub fn group_exists(group: &'static str) -> bool {
-        unsafe { HOOKS.get() }.group_exists(group)
+        HOOKS.get().unwrap().group_exists(group)
+    }
+
+    /// Sets the [`InnerHooks`] for the usage by this module
+    ///
+    /// ONLY MEANT TO BE USED BY THE DUAT executable
+    pub fn set_initial(hooks: InnerHooks) {
+        let Ok(_) = HOOKS.set(hooks) else {
+            panic!("Hooks setup ran twice");
+        };
+    }
+
+	/// Clears the [`InnerHooks`]
+    ///
+    /// ONLY MEANT TO BE USED BY THE DUAT executable
+    pub fn clear() {
+        *HOOKS.get().unwrap().types.lock().unwrap() = HashMap::new();
+        *HOOKS.get().unwrap().groups.lock().unwrap() = Vec::new();
     }
 }
 
@@ -762,11 +775,13 @@ pub trait Hookable<_H: HookDummy = NormalHook>: Sized + 'static {
 }
 
 /// Where all hooks of Duat are stored
-#[derive(Default)]
-struct InnerHooks {
-    types: Rc<RefCell<HashMap<TypeId, Rc<dyn HookHolder>>>>,
-    groups: Rc<RefCell<Vec<&'static str>>>,
-    removed_groups: Mutex<Vec<&'static str>>,
+///
+/// ONLY MEANT TO BE USED BY THE DUAT executable
+#[derive(Clone, Copy)]
+#[doc(hidden)]
+pub struct InnerHooks {
+    types: &'static Mutex<HashMap<TypeId, Box<dyn HookHolder>>>,
+    groups: &'static Mutex<Vec<&'static str>>,
 }
 
 impl InnerHooks {
@@ -776,10 +791,10 @@ impl InnerHooks {
         group: &'static str,
         f: Box<dyn FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static>,
     ) {
-        let mut map = self.types.borrow_mut();
+        let mut map = self.types.lock().unwrap();
 
         if !group.is_empty() {
-            let mut groups = self.groups.borrow_mut();
+            let mut groups = self.groups.lock().unwrap();
             if !groups.contains(&group) {
                 groups.push(group)
             }
@@ -799,53 +814,66 @@ impl InnerHooks {
                 Box::leak(Box::new(RefCell::new(f))),
             )]));
 
-            map.insert(TypeId::of::<H>(), Rc::new(hooks_of));
+            map.insert(TypeId::of::<H>(), Box::new(hooks_of));
         }
     }
 
     /// Removes hooks with said group
     fn remove(&self, group: &'static str) {
-        self.removed_groups.lock().unwrap().push(group);
+        self.groups.lock().unwrap().retain(|g| *g != group);
+        let map = self.types.lock().unwrap();
+        for holder in map.iter() {
+            holder.1.remove(group)
+        }
     }
 
     /// Triggers hooks with args of the [`Hookable`]
     fn trigger<H: Hookable>(&self, pa: &mut Pass, mut hookable: H) -> H {
-        for group in self.removed_groups.lock().unwrap().drain(..) {
-            self.groups.borrow_mut().retain(|g| *g != group);
-            let map = self.types.borrow();
-            for holder in map.iter() {
-                holder.1.remove(group)
-            }
-        }
-
-        let holder = self.types.borrow().get(&TypeId::of::<H>()).cloned();
+        let holder = self.types.lock().unwrap().remove(&TypeId::of::<H>());
 
         let Some(holder) = holder else {
             return hookable;
         };
 
-        let holder = holder.clone();
         // SAFETY: HooksOf<H> is the only type that this HookHolder could be.
         let hooks_of = unsafe {
-            let ptr = (&*holder as *const dyn HookHolder).cast::<HooksOf<H>>();
-            ptr.as_ref().unwrap()
+            let ptr = Box::into_raw(holder) as *mut HooksOf<H>;
+            Box::from_raw(ptr)
         };
 
-        let hooks = hooks_of.0.borrow_mut();
-        for (_, hook) in hooks.iter() {
+        for (_, hook) in hooks_of.0.borrow_mut().iter() {
             let input = hookable.get_input();
             let output = hook.borrow_mut()(pa, input);
             hookable.take_output_back(output);
         }
+
+        self.types
+            .lock()
+            .unwrap()
+            .insert(TypeId::of::<H>(), unsafe {
+                Box::from_raw(Box::into_raw(hooks_of) as *mut (dyn HookHolder))
+            });
 
         hookable
     }
 
     /// Checks if a hook group exists
     fn group_exists(&self, group: &str) -> bool {
-        self.groups.borrow().contains(&group)
+        self.groups.lock().unwrap().contains(&group)
     }
 }
+
+impl Default for InnerHooks {
+    fn default() -> Self {
+        Self {
+            types: Box::leak(Box::default()),
+            groups: Box::leak(Box::default()),
+        }
+    }
+}
+
+unsafe impl Send for InnerHooks {}
+unsafe impl Sync for InnerHooks {}
 
 /// An intermediary trait, meant for group removal
 trait HookHolder {

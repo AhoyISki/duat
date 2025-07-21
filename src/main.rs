@@ -11,11 +11,10 @@ use std::{
     time::Instant,
 };
 
-use duat::{DuatChannel, MetaStatics, pre_setup, prelude::*, run_duat};
+use duat::{DuatChannel, Initials, MetaStatics, pre_setup, prelude::*, run_duat};
 use duat_core::{
     clipboard::Clipboard,
     context,
-    form::Palette,
     session::FileRet,
     ui::{self, DuatEvent, Ui as UiTrait},
 };
@@ -30,12 +29,17 @@ use notify::{
 static CLIPB: LazyLock<Mutex<Clipboard>> = LazyLock::new(Mutex::default);
 
 fn main() {
+    // Initializers for access to static variables across two different
+    // "duat-core instances"
     let logs = duat_core::context::Logs::new();
     log::set_logger(Box::leak(Box::new(logs.clone()))).unwrap();
     context::set_logs(logs.clone());
 
     let forms_init = duat_core::form::get_initial();
     duat_core::form::set_initial(forms_init);
+
+    let hooks_init = duat_core::hook::InnerHooks::default();
+    duat_core::hook::set_initial(hooks_init);
 
     let ms: &'static <Ui as ui::Ui>::MetaStatics =
         Box::leak(Box::new(<Ui as ui::Ui>::MetaStatics::default()));
@@ -49,7 +53,7 @@ fn main() {
     // Assert that the configuration crate actually exists.
     let Some(crate_dir) = duat_core::crate_dir().ok().filter(|cd| cd.exists()) else {
         context::error!("No config crate found, loading default config");
-        pre_setup(None, duat_tx, forms_init);
+        pre_setup(None, duat_tx);
         run_duat((ms, &CLIPB), Vec::new(), duat_rx);
         return;
     };
@@ -91,11 +95,12 @@ fn main() {
         (prev, duat_rx, reload_instant) = std::thread::scope(|s| {
             s.spawn(|| {
                 if let Some(run_duat) = run_fn.take() {
+                    let initials = (logs.clone(), forms_init, hooks_init);
                     let channel = (&*duat_tx, duat_rx);
-                    run_duat(logs.clone(), forms_init, (ms, &CLIPB), prev, channel)
+                    run_duat(initials, (ms, &CLIPB), prev, channel)
                 } else {
                     context::error!("Failed to load config crate");
-                    pre_setup(None, duat_tx, forms_init);
+                    pre_setup(None, duat_tx);
                     run_duat((ms, &CLIPB), prev, duat_rx)
                 }
             })
@@ -200,8 +205,7 @@ fn find_run_duat(lib: &Library) -> Option<Symbol<'_, RunFn>> {
 }
 
 type RunFn = fn(
-    context::Logs,
-    (&'static Mutex<Vec<&'static str>>, &'static Palette),
+    Initials,
     MetaStatics,
     Vec<Vec<FileRet>>,
     DuatChannel,

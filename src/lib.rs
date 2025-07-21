@@ -390,7 +390,7 @@ use std::sync::RwLock;
 use duat_core::session::SessionCfg;
 pub use duat_core::{crate_dir, duat_name, src_crate};
 
-pub use self::setup::{DuatChannel, MetaStatics, pre_setup, run_duat};
+pub use self::setup::{DuatChannel, MetaStatics, Initials, pre_setup, run_duat};
 
 pub mod print;
 mod setup;
@@ -948,8 +948,7 @@ pub macro setup_duat($setup:expr) {
 
     #[unsafe(no_mangle)]
     fn run(
-        logs: Logs,
-        forms_init: (&'static Mutex<Vec<&'static str>>, &'static Palette),
+        initials: Initials,
         ms: MetaStatics,
         prev_files: Vec<Vec<FileRet>>,
         (duat_tx, duat_rx): DuatChannel,
@@ -958,7 +957,7 @@ pub macro setup_duat($setup:expr) {
         mpsc::Receiver<DuatEvent>,
         Option<std::time::Instant>,
     ) {
-        pre_setup(Some(logs), duat_tx, forms_init);
+        pre_setup(Some(initials), duat_tx);
         $setup();
         run_duat(ms, prev_files, duat_rx)
     }

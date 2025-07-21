@@ -33,7 +33,7 @@ use duat_utils::{
 
 use crate::{
     CfgFn, Ui, form,
-    hook::{self, OnFileClose, OnFileOpen, OnFileReload, OnWindowOpen},
+    hook::{self, InnerHooks, OnFileClose, OnFileOpen, OnFileReload, OnWindowOpen},
     mode,
     prelude::{FileWritten, LineNumbers},
 };
@@ -45,17 +45,14 @@ pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
     LazyLock::new(|| RwLock::new(Box::new(|_| {})));
 
 #[doc(hidden)]
-pub fn pre_setup(
-    logs: Option<Logs>,
-    duat_tx: &'static Sender<DuatEvent>,
-    forms_init: (&'static Mutex<Vec<&'static str>>, &'static Palette),
-) {
-    if let Some(logs) = logs {
+pub fn pre_setup(initials: Option<Initials>, duat_tx: &'static Sender<DuatEvent>) {
+    if let Some((logs, forms_init, hooks_init)) = initials {
         log::set_logger(Box::leak(Box::new(logs.clone()))).unwrap();
         context::set_logs(logs);
-    }
 
-    duat_core::form::set_initial(forms_init);
+        duat_core::form::set_initial(forms_init);
+        duat_core::hook::set_initial(hooks_init);
+    }
 
     // State statics.
     let cur_file: &'static CurFile<Ui> = Box::leak(Box::new(CurFile::new()));
@@ -199,4 +196,10 @@ pub type DuatChannel = (&'static Sender<DuatEvent>, Receiver<DuatEvent>);
 pub type MetaStatics = (
     &'static <Ui as ui::Ui>::MetaStatics,
     &'static Mutex<Clipboard>,
+);
+#[doc(hidden)]
+pub type Initials = (
+    Logs,
+    (&'static Mutex<Vec<&'static str>>, &'static Palette),
+    InnerHooks,
 );
