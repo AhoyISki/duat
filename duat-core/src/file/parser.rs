@@ -401,17 +401,10 @@ fn parse<U: Ui>(sp: &mut SendParser<U>, (moment, cfg): (Moment, PrintCfg), pa: O
 /// function, and nowhere else really.
 ///
 /// This is used internally by Duat to coordinate how [`Parser`]s
-/// should be updated. Externally, it can be created in three ways:
+/// should be updated. Externally, it can be created in two ways:
 ///
-/// - [`ParserBox::new_local`]: Use this for any [`Parser`] that you
-///   want to process _only_ locally, i.e., don't send them to other
-///   threads. This should be used pretty much all the time, and is
-///   required if your [`Parser`] is not [`Send`]
-/// - [`ParserBox::new_send`]: Use this to create a [`Parser`]
-///   locally, like with the previous function, but give it the option
-///   to be sent to other threads. The sending to other threads is
-///   done by returning `true` from [`Parser::make_remote`]. The
-///   [`Parser`] must be [`Send`].
+/// - [`ParserBox::new`]: Use this to create a [`Parser`] locally.
+///   This should be used 99% of the time.
 /// - [`ParserBox::new_remote`]: Like the previous function, but the
 ///   [`Parser`] will be created in another thread entirely. This
 ///   means that you can free up the main thread for faster startup
@@ -447,7 +440,7 @@ impl<U: Ui> ParserBox<U> {
         }
     }
 
-	/// Sends a [`Parser`] to be built on another thread
+    /// Sends a [`Parser`] to be built on another thread
     pub fn new_remote<Rd: Parser<U>>(
         file: &File<U>,
         f: impl FnOnce(&Bytes) -> Result<Rd, Text> + Send + 'static,
