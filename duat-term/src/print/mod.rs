@@ -306,11 +306,11 @@ impl Printer {
     }
 
     /// Gets [`Coords`] from two [`VarPoint`]s
-    pub fn coords(&self, var_points: [VarPoint; 2], is_printing: bool) -> Coords {
+    pub fn coords(&self, var_points: [VarPoint; 2], is_printing: bool) -> (Coords, bool) {
         let mut vars = self.vars.lock().unwrap();
-        let tl = vars.coord(var_points[0], is_printing);
-        let br = vars.coord(var_points[1], is_printing);
-        Coords::new(tl, br)
+        let (tl, tl_has_changed) = vars.coord(var_points[0], is_printing);
+        let (br, br_has_changed) = vars.coord(var_points[1], is_printing);
+        (Coords::new(tl, br), tl_has_changed || br_has_changed)
     }
 
     /// Wether a [`Variable`] has changed
@@ -501,10 +501,10 @@ mod variables {
         /// `false`
         ///
         /// [`Printer::has_changed`]: super::Printer::has_changed
-        pub fn coord(&mut self, var_point: VarPoint, is_printing: bool) -> Coord {
-            let (x, _) = self.value(var_point.x(), is_printing);
-            let (y, _) = self.value(var_point.y(), is_printing);
-            Coord::new(x, y)
+        pub fn coord(&mut self, var_point: VarPoint, is_printing: bool) -> (Coord, bool) {
+            let (x, x_changes) = self.value(var_point.x(), is_printing);
+            let (y, y_change) = self.value(var_point.y(), is_printing);
+            (Coord::new(x, y), x_changes + y_change != 0)
         }
 
         /// Wether a [`Variable`] has been changed

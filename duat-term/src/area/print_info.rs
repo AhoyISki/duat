@@ -21,7 +21,6 @@ pub struct PrintInfo {
     s_points: Option<(Point, Option<Point>)>,
     x_shift: u32,
     prev_main: Point,
-    e_points: Option<(Point, Option<Point>)>,
     vert_dist: u32,
 }
 
@@ -32,10 +31,13 @@ impl PrintInfo {
         coords: Coords,
         text: &Text,
         cfg: PrintCfg,
+        has_changed: bool,
     ) -> (Point, Option<Point>) {
         self.prev_main = text.point_at_byte(self.prev_main.byte().min(text.len().byte()));
 
-        if let Some(s_points) = self.s_points {
+        if let Some(s_points) = self.s_points
+            && !has_changed
+        {
             s_points
         } else if coords.width() > 0 && coords.height() > 0 {
             self.set_first_start(coords, text, cfg)
@@ -51,10 +53,6 @@ impl PrintInfo {
         text: &Text,
         cfg: PrintCfg,
     ) -> (Point, Option<Point>) {
-        if let Some(last) = self.e_points {
-            return last;
-        }
-
         let s_points = if let Some(s_points) = self.s_points {
             s_points
         } else if coords.width() > 0 && coords.height() > 0 {
@@ -76,15 +74,11 @@ impl PrintInfo {
             print_iter(iter, cfg.wrap_width(coords.width()), cfg, s_points)
         };
 
-        let points = iter
-            .find_map(|(Caret { wrap, .. }, Item { part, real, ghost })| {
-                y += (wrap && part.is_char()) as u32;
-                (y > coords.height()).then_some((real, ghost))
-            })
-            .unwrap_or_else(|| text.len_points());
-
-        self.e_points = Some(points);
-        points
+        iter.find_map(|(Caret { wrap, .. }, Item { part, real, ghost })| {
+            y += (wrap && part.is_char()) as u32;
+            (y > coords.height()).then_some((real, ghost))
+        })
+        .unwrap_or_else(|| text.len_points())
     }
 
     /// Prepares this [`PrintInfo`] for caching
@@ -105,7 +99,6 @@ impl PrintInfo {
         }
 
         self.prev_main = p;
-        self.e_points = None;
     }
 
     /// Scrolls vertically
@@ -130,10 +123,8 @@ impl PrintInfo {
 
             if line_start < max_s_points {
                 self.s_points = Some(line_start);
-                self.e_points = None;
             } else {
                 self.s_points = Some(max_s_points);
-                self.e_points = Some(text.len_points());
             }
         } else {
             self.s_points = Some(
@@ -142,7 +133,6 @@ impl PrintInfo {
                     .nth(by.unsigned_abs() as usize - 1)
                     .unwrap_or_default(),
             );
-            self.e_points = None;
         }
     }
 
@@ -164,10 +154,8 @@ impl PrintInfo {
 
         if line_start < max_line_start {
             self.s_points = Some(line_start);
-            self.e_points = None;
         } else {
             self.s_points = Some(max_line_start);
-            self.e_points = Some(text.len_points());
         }
     }
 

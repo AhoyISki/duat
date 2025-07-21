@@ -96,15 +96,15 @@ impl Area {
 
         let (mut lines, iter) = {
             let rect = layout.get(self.id).unwrap();
-            let coords = layout.printer.coords(rect.var_points(), true);
-            
+            let (coords, has_changed) = layout.printer.coords(rect.var_points(), true);
+
             if coords.width() == 0 || coords.height() == 0 {
                 return;
             }
 
             let (s_points, x_shift) = {
                 let mut info = rect.print_info().unwrap().get();
-                let s_points = info.start_points(coords, text, cfg);
+                let s_points = info.start_points(coords, text, cfg, has_changed);
                 rect.print_info().unwrap().set(info);
                 (s_points, info.x_shift())
             };
@@ -454,12 +454,9 @@ impl ui::RawArea for Area {
         let layouts = self.layouts.borrow();
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
+        let (coords, _) = layout.printer.coords(rect.var_points(), false);
 
-        let (mut info, coords) = {
-            let coords = layout.printer.coords(rect.var_points(), false);
-            let info = rect.print_info().unwrap().get();
-            (info, coords)
-        };
+        let mut info = rect.print_info().unwrap().get();
         info.scroll_ver(by, coords, text, cfg);
         rect.print_info().unwrap().set(info);
     }
@@ -470,7 +467,7 @@ impl ui::RawArea for Area {
         let layouts = self.layouts.borrow();
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
-        let coords = layout.printer.coords(rect.var_points(), false);
+        let (coords, _) = layout.printer.coords(rect.var_points(), false);
 
         let mut info = rect.print_info().unwrap().get();
         info.scroll_around(p, coords, text, cfg);
@@ -486,7 +483,7 @@ impl ui::RawArea for Area {
         let layouts = self.layouts.borrow();
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
-        let coords = layout.printer.coords(rect.var_points(), false);
+        let (coords, _) = layout.printer.coords(rect.var_points(), false);
 
         let mut info = rect.print_info().unwrap().get();
         info.scroll_to_points(points, coords, text, cfg);
@@ -586,7 +583,7 @@ impl ui::RawArea for Area {
         let layouts = self.layouts.borrow();
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
-        let coords = layout.printer.coords(rect.var_points(), false);
+        let (coords, _) = layout.printer.coords(rect.var_points(), false);
         coords.width()
     }
 
@@ -594,7 +591,7 @@ impl ui::RawArea for Area {
         let layouts = self.layouts.borrow();
         let layout = get_layout(&layouts, self.id).unwrap();
         let rect = layout.get(self.id).unwrap();
-        let coords = layout.printer.coords(rect.var_points(), false);
+        let (coords, _) = layout.printer.coords(rect.var_points(), false);
         coords.height()
     }
 
@@ -642,10 +639,10 @@ mod layouted {
     ) -> (Point, Option<Point>) {
         let layout = get_layout(layouts, area.id).unwrap();
         let rect = layout.get(area.id).unwrap();
-        let coords = layout.printer.coords(rect.var_points(), false);
+        let (coords, has_changed) = layout.printer.coords(rect.var_points(), false);
 
         let mut info = rect.print_info().unwrap().get();
-        let s_points = info.start_points(coords, text, cfg);
+        let s_points = info.start_points(coords, text, cfg, has_changed);
         rect.print_info().unwrap().set(info);
         s_points
     }
@@ -658,7 +655,7 @@ mod layouted {
     ) -> (Point, Option<Point>) {
         let layout = get_layout(layouts, area.id).unwrap();
         let rect = layout.get(area.id).unwrap();
-        let coords = layout.printer.coords(rect.var_points(), false);
+        let (coords, _) = layout.printer.coords(rect.var_points(), false);
 
         let mut info = rect.print_info().unwrap().get();
         let e_points = info.end_points(coords, text, cfg);

@@ -42,8 +42,8 @@ impl Edge {
 
     /// The [`Coords`] that will be used to draw the line.
     pub fn coords(&self, vars: &mut Variables) -> Option<EdgeCoords> {
-        let lhs = vars.coord(self.lhs, false);
-        let rhs = vars.coord(self.rhs, false);
+        let (lhs, _) = vars.coord(self.lhs, false);
+        let (rhs, _) = vars.coord(self.rhs, false);
         if lhs.x == rhs.x || lhs.y == rhs.y {
             return None;
         }
