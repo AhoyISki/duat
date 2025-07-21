@@ -4,7 +4,9 @@
 //! [`RwData<W>`] conjoined to an [`Ui::Area`].
 
 use std::{
-    any::TypeId, cell::{Cell, RefCell, RefMut}, rc::Rc
+    any::TypeId,
+    cell::{RefCell, RefMut},
+    sync::{Arc, Mutex},
 };
 
 use lender::Lender;
@@ -107,16 +109,15 @@ impl<U: Ui> FileHandle<U> {
         if let Some((handle, _)) = self.fixed.as_ref() {
             f(&mut handle.widget.acquire_mut(pa), &handle.area)
         } else {
-            // SAFETY: Since the update closure only uses a write method, the
-            // Pass becomes unusable for other purposes, making it impossible
-            // to make further borrows, asserting that there is no other borrow
-            // for self.current.
-            unsafe {
-                self.current.read_unsafe(|parts| {
-                    let (handle, _) = parts.as_ref().unwrap();
-                    f(&mut handle.widget.acquire_mut(pa), &handle.area)
-                })
-            }
+            self.current.read(pa, |parts| {
+                // SAFETY: Since the update closure only uses a write method, the
+                // Pass becomes unusable for other purposes, making it impossible
+                // to make further borrows, asserting that there is no other borrow
+                // for self.current.
+                let pa = unsafe { &mut Pass::new() };
+                let (handle, _) = parts.as_ref().unwrap();
+                f(&mut handle.widget.acquire_mut(pa), &handle.area)
+            })
         }
     }
 
@@ -136,7 +137,7 @@ impl<U: Ui> FileHandle<U> {
     ) -> Option<R> {
         let read = |(handle, related): &FileParts<U>| {
             if TypeId::of::<W>() == TypeId::of::<File<U>>() {
-                let area = handle.area();
+                let area = handle.area(pa);
                 handle.widget().read_as(pa, |w| f(w, area))
             } else {
                 let related = related.acquire(pa);
@@ -169,7 +170,7 @@ impl<U: Ui> FileHandle<U> {
                 let widget = handle.widget().try_downcast()?;
                 Some(Handle::from_parts(
                     widget,
-                    handle.area().clone(),
+                    handle.area(pa).clone(),
                     handle.mask().clone(),
                 ))
             } else {
@@ -197,11 +198,10 @@ impl<U: Ui> FileHandle<U> {
         if let Some((.., related)) = self.fixed.as_ref() {
             related.write(pa, f)
         } else {
-            // SAFETY: Same situation as the write method
-            unsafe {
-                self.current
-                    .read_unsafe(|parts| parts.as_ref().unwrap().1.write(pa, f))
-            }
+            self.current.read(pa, |parts| {
+                let pa = unsafe { &mut Pass::new() };
+                parts.as_ref().unwrap().1.write(pa, f)
+            })
         }
     }
 
@@ -421,7 +421,7 @@ impl<U: Ui> FileHandle<U> {
 pub struct Handle<W: Widget<U> + ?Sized, U: Ui, S = ()> {
     widget: RwData<W>,
     area: U::Area,
-    mask: Rc<Cell<&'static str>>,
+    mask: Arc<Mutex<&'static str>>,
     searcher: RefCell<S>,
 }
 
@@ -430,7 +430,7 @@ impl<W: Widget<U> + ?Sized, U: Ui> Handle<W, U> {
     pub(crate) fn from_parts(
         widget: RwData<W>,
         area: U::Area,
-        mask: Rc<Cell<&'static str>>,
+        mask: Arc<Mutex<&'static str>>,
     ) -> Self {
         Self {
             widget,
@@ -736,7 +736,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// [`PrintCfg.allow_overscroll`]: crate::cfg::PrintCfg::allow_overscroll
     pub fn scroll_ver(&self, pa: &Pass, dist: i32) {
         let widget = self.widget.acquire(pa);
-        self.area()
+        self.area(pa)
             .scroll_ver(widget.text(), dist, widget.print_cfg());
         self.widget.declare_written();
     }
@@ -775,7 +775,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// This [`Handle`]'s [`U::Area`]
     ///
     /// [`U::Area`]: crate::ui::Ui::Area
-    pub fn area(&self) -> &U::Area {
+    pub fn area(&self, _: &Pass) -> &U::Area {
         &self.area
     }
 
@@ -787,7 +787,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     ///
     /// [`Form`]: crate::form::Form
     /// [`form::enable_mask`]: crate::form::enable_mask
-    pub fn mask(&self) -> &Rc<Cell<&'static str>> {
+    pub fn mask(&self) -> &Arc<Mutex<&'static str>> {
         &self.mask
     }
 
@@ -801,7 +801,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// [`form::enable_mask`]: crate::form::enable_mask
     pub fn set_mask(&self, mask: &'static str) -> &'static str {
         self.widget.declare_written();
-        self.mask.replace(mask)
+        std::mem::replace(&mut self.mask.lock().unwrap(), mask)
     }
 
     /// Wether someone else called [`write`] or [`write_as`] since the
@@ -869,7 +869,13 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     }
 }
 
-impl<W: Widget<U> + ?Sized, U: Ui, S: Clone> Clone for Handle<W, U, S> {
+// SAFETY: The only parts that are accessible from other threads are
+// the atomic counters from the Arcs. Everything else can only be
+// acquired when there is a Pass, i.e., on the main thread.
+unsafe impl<W: Widget<U>, U: Ui, S> Send for Handle<W, U, S> {}
+unsafe impl<W: Widget<U>, U: Ui, S> Sync for Handle<W, U, S> {}
+
+impl<W: Widget<U> + ?Sized, U: Ui> Clone for Handle<W, U, ()> {
     fn clone(&self) -> Self {
         Self {
             widget: self.widget.clone(),

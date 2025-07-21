@@ -3,7 +3,10 @@
 //! This module lets you access and mutate some things:
 //!
 //! # Files
-use std::{any::TypeId, cell::Cell, rc::Rc};
+use std::{
+    any::TypeId,
+    sync::{Arc, Mutex},
+};
 
 pub use self::{cache::*, global::*, handles::*, log::*};
 use crate::{
@@ -30,22 +33,18 @@ mod global {
 
     use super::{CurFile, CurWidget, FileHandle, FileParts};
     use crate::{
+        MainThreadOnly,
         context::Handle,
         data::{DataMap, Pass, RwData},
-        main_thread_only::MainThreadOnly,
         text::{Text, txt},
         ui::{DuatEvent, Node, Ui, Widget, Window},
     };
 
-    static MAIN_THREAD_ID: OnceLock<std::thread::ThreadId> = OnceLock::new();
-    static CUR_FILE: MainThreadOnly<OnceLock<&'static dyn Any>> =
+    static CUR_FILE: OnceLock<&'static (dyn Any + Send + Sync)> = OnceLock::new();
+    static CUR_WIDGET: OnceLock<&'static (dyn Any + Send + Sync)> = OnceLock::new();
+    static WINDOWS: MainThreadOnly<OnceLock<&'static (dyn Any)>> =
         MainThreadOnly::new(OnceLock::new());
-    static CUR_WIDGET: MainThreadOnly<OnceLock<&'static dyn Any>> =
-        MainThreadOnly::new(OnceLock::new());
-    static WINDOWS: MainThreadOnly<OnceLock<&'static dyn Any>> =
-        MainThreadOnly::new(OnceLock::new());
-    static MODE_NAME: LazyLock<MainThreadOnly<RwData<&'static str>>> =
-        LazyLock::new(MainThreadOnly::default);
+    static MODE_NAME: LazyLock<RwData<&'static str>> = LazyLock::new(RwData::default);
 
     static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
     static WILL_RELOAD_OR_QUIT: AtomicBool = AtomicBool::new(false);
@@ -58,22 +57,20 @@ mod global {
     /// name.
     ///
     /// [`Mode`]: crate::mode::Mode
-    pub fn mode_name() -> DataMap<&'static str, &'static str> {
-        assert_is_on_main_thread();
-        unsafe { MODE_NAME.get() }.map(|name| *name)
+    pub fn mode_name(pa: &Pass) -> DataMap<&'static str, &'static str> {
+        MODE_NAME.map(pa, |name| *name)
     }
 
     // pub(crate) in order to keep just the DataMap one public
     pub(crate) fn raw_mode_name() -> RwData<&'static str> {
-        assert_is_on_main_thread();
-        unsafe { MODE_NAME.get() }.clone()
+        MODE_NAME.clone()
     }
 
     /// Returns a [`FileHandle`] for a [`File`] with the given name
     ///
     /// [`File`]: crate::file::File
     pub fn file_named<U: Ui>(pa: &Pass, name: impl ToString) -> Result<FileHandle<U>, Text> {
-        let windows = windows::<U>().borrow();
+        let windows = windows::<U>(pa).borrow();
         let name = name.to_string();
         let (.., node) = crate::file_entry(pa, &windows, &name)?;
 
@@ -119,8 +116,11 @@ mod global {
     /// This can fail if the [`Widget`] was closed.
     ///
     /// [`U::Area`]: Ui::Area
-    pub fn get_widget<W: Widget<U>, U: Ui>(_: &Pass, area: &U::Area) -> Result<Handle<W, U>, Text> {
-        let windows = windows::<U>().borrow();
+    pub fn get_widget<W: Widget<U>, U: Ui>(
+        pa: &Pass,
+        area: &U::Area,
+    ) -> Result<Handle<W, U>, Text> {
+        let windows = windows::<U>(pa).borrow();
 
         let node = windows
             .iter()
@@ -147,7 +147,7 @@ mod global {
         CUR_WINDOW.load(Ordering::Relaxed)
     }
 
-	/// Sets the value of the currently active window
+    /// Sets the value of the currently active window
     pub(crate) fn set_cur_window(new: usize) {
         CUR_WINDOW.store(new, Ordering::Relaxed);
     }
@@ -177,7 +177,7 @@ mod global {
         parts: Option<FileParts<U>>,
         node: Node<U>,
     ) -> Option<(FileParts<U>, Node<U>)> {
-        let old = parts.and_then(|new| inner_cur_file().0.write(pa, |old| old.replace(new)));
+        let old = parts.and_then(|new| inner_cur_file(pa).0.write(pa, |old| old.replace(new)));
 
         old.zip(inner_cur_widget().0.write(pa, |cw| cw.replace(node)))
     }
@@ -193,22 +193,22 @@ mod global {
     }
 
     /// Sets the [`Window`]s for Duat
-    pub(crate) fn set_windows<U: Ui>(wins: Vec<Window<U>>) {
-        *windows().borrow_mut() = wins;
+    pub(crate) fn set_windows<U: Ui>(pa: &Pass, wins: Vec<Window<U>>) {
+        *windows(pa).borrow_mut() = wins;
     }
 
     /// The [`Window`]s of Duat, must be used on main thread
-    pub(crate) fn windows<U: Ui>() -> &'static RefCell<Vec<Window<U>>> {
-        assert_is_on_main_thread();
-        let windows = unsafe { WINDOWS.get() };
-        windows.get().unwrap().downcast_ref().expect("1 Ui only")
+    pub(crate) fn windows<U: Ui>(_: &Pass) -> &'static RefCell<Vec<Window<U>>> {
+        unsafe { WINDOWS.get() }
+            .get()
+            .unwrap()
+            .downcast_ref()
+            .expect("1 Ui only")
     }
 
     /// The [`CurFile`], must be used on main thread
-    pub(crate) fn inner_cur_file<U: Ui>() -> &'static CurFile<U> {
-        assert_is_on_main_thread();
-        let cur_file = unsafe { CUR_FILE.get() };
-        cur_file.get().unwrap().downcast_ref().expect("1 Ui only")
+    pub(crate) fn inner_cur_file<U: Ui>(_: &Pass) -> &'static CurFile<U> {
+        CUR_FILE.get().unwrap().downcast_ref().expect("1 Ui only")
     }
 
     /// Orders to quit Duat
@@ -218,7 +218,7 @@ mod global {
 
     /// The inner [`CurFile`]
     fn cur_file<U: Ui>(pa: &Pass) -> Result<&'static CurFile<U>, Text> {
-        let cur_file = inner_cur_file();
+        let cur_file = inner_cur_file(pa);
         if cur_file.0.read(pa, |f| f.is_none()) {
             return Err(txt!("No file yet").build());
         }
@@ -227,26 +227,19 @@ mod global {
 
     /// The inner [`CurWidget`]
     fn inner_cur_widget<U: Ui>() -> &'static CurWidget<U> {
-        let cur_widget = unsafe { CUR_WIDGET.get() };
-        cur_widget.get().unwrap().downcast_ref().expect("1 Ui only")
+        CUR_WIDGET.get().unwrap().downcast_ref().expect("1 Ui only")
     }
 
-    /// Asserts that the current thread is the main one
+    /// Queues a function to be done on the main thread with a
+    /// [`Pass`]
     ///
-    /// This is important because many of the objects in Duat are
-    /// meant to be initialized only once and are also not [`Send`],
-    /// so the free functions that return said objects should not be
-    /// allowed outside of the main thread of execution.
-    ///
-    /// # Panics
-    ///
-    /// Panics if not on the main thread of execution.
-    pub fn assert_is_on_main_thread() {
-        assert_eq!(
-            std::thread::current().id(),
-            *MAIN_THREAD_ID.get().unwrap(),
-            "Not on main thread"
-        );
+    /// You can use this whenever you don't have access to a [`Pass`],
+    /// in order to execute an action on the main thread, gaining
+    /// access to Duat's global state within that function.
+    pub fn queue(f: impl FnOnce(&mut Pass) + Send + 'static) {
+        sender()
+            .send(DuatEvent::QueuedFunction(Box::new(f)))
+            .unwrap();
     }
 
     /// Sets us static variables that were created by leaking memory
@@ -258,15 +251,11 @@ mod global {
         windows: &'static RefCell<Vec<Window<U>>>,
         sender: &'static mpsc::Sender<DuatEvent>,
     ) {
-        MAIN_THREAD_ID
-            .set(std::thread::current().id())
+        CUR_FILE.set(cur_file).expect("setup ran twice");
+        CUR_WIDGET.set(cur_widget).expect("setup ran twice");
+        unsafe { WINDOWS.get() }
+            .set(windows)
             .expect("setup ran twice");
-
-        unsafe {
-            CUR_FILE.get().set(cur_file).expect("setup ran twice");
-            CUR_WIDGET.get().set(cur_widget).expect("setup ran twice");
-            WINDOWS.get().set(windows).expect("setup ran twice");
-        }
 
         CUR_WINDOW.store(cur_window, Ordering::Relaxed);
         SENDER.set(sender).expect("setup ran twice");
@@ -341,30 +330,28 @@ impl<U: Ui> CurWidget<U> {
 
     /// Mutates the [`RwData<dyn Widget<U>>`], its
     /// [`Area`](crate::ui::RawArea), and related [`Widget`]s
-    pub(crate) unsafe fn mutate_data<R>(
+    pub(crate) fn mutate_data<R>(
         &self,
+        pa: &Pass,
         f: impl FnOnce(&RwData<dyn Widget<U>>, &U::Area, &Related<U>) -> R,
     ) -> R {
-        unsafe {
-            self.0.read_unsafe(|node| {
-                let (widget, area, _, related) = node.as_ref().unwrap().parts();
-                f(widget, area, related)
-            })
-        }
+        self.0.read(pa, |node| {
+            let (widget, area, _, related) = node.as_ref().unwrap().parts();
+            f(widget, area, related)
+        })
     }
 
     /// Mutates the [`RwData<dyn Widget<U>>`] as `W`, its
     /// [`Area`](crate::ui::RawArea), and related [`Widget`]s
-    pub(crate) unsafe fn mutate_data_as<W: Widget<U>, R>(
+    pub(crate) fn mutate_data_as<W: Widget<U>, R>(
         &self,
-        f: impl FnOnce(&RwData<W>, &U::Area, &Rc<Cell<&'static str>>, &Related<U>) -> R,
+        pa: &Pass,
+        f: impl FnOnce(&RwData<W>, &U::Area, &Arc<Mutex<&'static str>>, &Related<U>) -> R,
     ) -> Option<R> {
-        unsafe {
-            self.0.read_unsafe(|node| {
-                let (widget, area, mask, related) = node.as_ref().unwrap().parts();
-                Some(f(&widget.try_downcast()?, area, mask, related))
-            })
-        }
+        self.0.read(pa, |node| {
+            let (widget, area, mask, related) = node.as_ref().unwrap().parts();
+            Some(f(&widget.try_downcast()?, area, mask, related))
+        })
     }
 
     /// The inner [`Node`]

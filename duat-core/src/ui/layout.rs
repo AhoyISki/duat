@@ -39,7 +39,7 @@
 //! Also notice that this function can fail, which means you can set a
 //! limit to how many [`File`]s should can open in a single window.
 use super::{Node, PushSpecs, RawArea, Ui};
-use crate::{data::Pass, file::File, prelude::Handle, text::Text};
+use crate::{data::Pass, file::File, prelude::Handle, text::Text, ui::AreaId};
 
 /// A form of organizing opened [`File`]s
 ///
@@ -63,8 +63,8 @@ where
     fn new_file(
         &mut self,
         file: &File<U>,
-        prev: Vec<(Handle<File<U>, U>, FileId<U>)>,
-    ) -> Result<(FileId<U>, PushSpecs), Text>;
+        prev: Vec<(Handle<File<U>, U>, AreaId<U>)>,
+    ) -> Result<(AreaId<U>, PushSpecs), Text>;
 }
 
 /// [`Layout`]: One [`File`] on the left, others on the right
@@ -81,8 +81,8 @@ where
     fn new_file(
         &mut self,
         _file: &File<U>,
-        mut prev: Vec<(Handle<File<U>, U>, FileId<U>)>,
-    ) -> Result<(FileId<U>, PushSpecs), Text> {
+        mut prev: Vec<(Handle<File<U>, U>, AreaId<U>)>,
+    ) -> Result<(AreaId<U>, PushSpecs), Text> {
         let (_, last) = prev.pop().unwrap();
         Ok(if prev.is_empty() {
             (last, PushSpecs::right())
@@ -96,8 +96,8 @@ where
 pub(super) fn window_files<U: Ui>(
     pa: &Pass,
     nodes: &[Node<U>],
-) -> Vec<(Handle<File<U>, U>, FileId<U>)> {
-    let mut files: Vec<(Handle<File<U>, U>, FileId<U>)> = nodes
+) -> Vec<(Handle<File<U>, U>, AreaId<U>)> {
+    let mut files: Vec<(Handle<File<U>, U>, AreaId<U>)> = nodes
         .iter()
         .filter(|&node| node.widget().data_is::<File<U>>())
         .map(|node| {
@@ -106,7 +106,7 @@ pub(super) fn window_files<U: Ui>(
                 .get_cluster_master()
                 .unwrap_or_else(|| node.area().clone());
             let (file, ..) = node.as_file().unwrap();
-            (file, FileId(area))
+            (file, AreaId(area))
         })
         .collect();
 
@@ -114,7 +114,3 @@ pub(super) fn window_files<U: Ui>(
 
     files
 }
-
-/// A unique identifier for a [`File`]
-#[derive(Clone)]
-pub struct FileId<U: Ui>(pub(crate) U::Area);

@@ -13,6 +13,7 @@ use crossterm::style::Color;
 use crate::{
     context::{self, Handle},
     data::Pass,
+    form::{self, FormId},
     text::{Text, txt},
     ui::{Node, Ui, Widget},
 };
@@ -41,7 +42,7 @@ pub trait Parameter<'a>: Sized {
     ///
     /// Since parameters shouldn't mutate data, pa is just a regular
     /// shared reference.
-    fn new(pa: &Pass, args: &mut Args<'a>) -> Result<Self::Returns, Text>;
+    fn new(pa: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text>;
 }
 
 impl<'a, P: Parameter<'a>> Parameter<'a> for Option<P> {
@@ -53,11 +54,11 @@ impl<'a, P: Parameter<'a>> Parameter<'a> for Option<P> {
     /// [`Parameter`] list, as it will either match correcly, finish
     /// matching, or match incorrectly in order to give accurate
     /// feedback.
-    fn new(pa: &Pass, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
+    fn new(pa: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
         match args.next_as::<P>(pa) {
-            Ok(arg) => Ok(Some(arg)),
+            Ok(arg) => Ok((Some(arg), None)),
             Err(err) if args.is_forming_param => Err(err),
-            Err(_) => Ok(None),
+            Err(_) => Ok((None, None)),
         }
     }
 }
@@ -71,14 +72,14 @@ impl<'a, P: Parameter<'a>> Parameter<'a> for Vec<P> {
     /// [`Parameter`] list, as it will either match correcly, finish
     /// matching, or match incorrectly in order to give accurate
     /// feedback.
-    fn new(pa: &Pass, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
+    fn new(pa: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
         let mut returns = Vec::new();
 
         loop {
             match args.next_as::<P>(pa) {
                 Ok(ret) => returns.push(ret),
                 Err(err) if args.is_forming_param => return Err(err),
-                Err(_) => break Ok(returns),
+                Err(_) => break Ok((returns, None)),
             }
         }
     }
@@ -93,7 +94,7 @@ impl<'a, const N: usize, P: Parameter<'a>> Parameter<'a> for [P; N] {
     /// [`Parameter`] list, as it will either match correcly, finish
     /// matching, or match incorrectly in order to give accurate
     /// feedback.
-    fn new(pa: &Pass, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
+    fn new(pa: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
         use std::mem::MaybeUninit;
         let mut returns = [const { MaybeUninit::uninit() }; N];
 
@@ -104,7 +105,7 @@ impl<'a, const N: usize, P: Parameter<'a>> Parameter<'a> for [P; N] {
             }
         }
 
-        Ok(returns.map(|ret| unsafe { ret.assume_init() }))
+        Ok((returns.map(|ret| unsafe { ret.assume_init() }), None))
     }
 }
 
@@ -114,7 +115,7 @@ impl<'a, const N: usize, P: Parameter<'a>> Parameter<'a> for [P; N] {
 /// [`Parameter`] list, as it will either match correcly, finish
 /// matching, or match incorrectly in order to give accurate
 /// feedback.
-pub struct Between<const MIN: usize, const MAX: usize, P>(std::marker::PhantomData<P>);
+pub struct Between<const MIN: usize, const MAX: usize, P>(PhantomData<P>);
 
 impl<'a, const MIN: usize, const MAX: usize, P: Parameter<'a>> Parameter<'a>
     for Between<MIN, MAX, P>
@@ -127,20 +128,20 @@ impl<'a, const MIN: usize, const MAX: usize, P: Parameter<'a>> Parameter<'a>
     /// [`Parameter`] list, as it will either match correcly, finish
     /// matching, or match incorrectly in order to give accurate
     /// feedback.
-    fn new(pa: &Pass, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
+    fn new(pa: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
         let mut returns = Vec::new();
 
         for _ in 0..MAX {
             match args.next_as::<P>(pa) {
                 Ok(ret) => returns.push(ret),
                 Err(err) if args.is_forming_param => return Err(err),
-                Err(_) if returns.len() >= MIN => return Ok(returns),
+                Err(_) if returns.len() >= MIN => return Ok((returns, None)),
                 Err(err) => return Err(err),
             }
         }
 
         if returns.len() >= MIN {
-            Ok(returns)
+            Ok((returns, None))
         } else {
             Err(txt!(
                 "List needed at least [a]{MIN}[] elements, got only [a]{}",
@@ -154,16 +155,16 @@ impl<'a, const MIN: usize, const MAX: usize, P: Parameter<'a>> Parameter<'a>
 impl<'a> Parameter<'a> for &'a str {
     type Returns = &'a str;
 
-    fn new(_: &Pass, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
-        args.next()
+    fn new(_: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
+        args.next().map(|arg| (arg, None))
     }
 }
 
 impl Parameter<'_> for String {
     type Returns = String;
 
-    fn new(_: &Pass, args: &mut Args) -> Result<Self::Returns, Text> {
-        Ok(args.next()?.to_string())
+    fn new(_: &Pass, args: &mut Args) -> Result<(Self::Returns, Option<FormId>), Text> {
+        Ok((args.next()?.to_string(), None))
     }
 }
 
@@ -175,14 +176,14 @@ pub struct Remainder;
 impl Parameter<'_> for Remainder {
     type Returns = String;
 
-    fn new(_: &Pass, args: &mut Args) -> Result<Self::Returns, Text> {
+    fn new(_: &Pass, args: &mut Args) -> Result<(Self::Returns, Option<FormId>), Text> {
         let remainder: String = std::iter::from_fn(|| args.next().ok())
             .collect::<Vec<&str>>()
             .join(" ");
         if remainder.is_empty() {
             Err(txt!("There are no more arguments").build())
         } else {
-            Ok(remainder)
+            Ok((remainder, None))
         }
     }
 }
@@ -195,10 +196,10 @@ pub struct ColorSchemeArg;
 impl<'a> Parameter<'a> for ColorSchemeArg {
     type Returns = &'a str;
 
-    fn new(_: &Pass, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
+    fn new(_: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
         let scheme = args.next()?;
         if crate::form::colorscheme_exists(scheme) {
-            Ok(scheme)
+            Ok((scheme, None))
         } else {
             Err(txt!("The colorscheme [a]{scheme}[] was not found").build())
         }
@@ -208,20 +209,20 @@ impl<'a> Parameter<'a> for ColorSchemeArg {
 /// Command [`Parameter`]: An open [`File`]'s name
 ///
 /// [`File`]: crate::file::File
-pub struct Buffer<U>(std::marker::PhantomData<U>);
+pub struct Buffer<U>(PhantomData<U>);
 
 impl<'a, U: crate::ui::Ui> Parameter<'a> for Buffer<U> {
     type Returns = &'a str;
 
-    fn new(pa: &Pass, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
+    fn new(pa: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
         let buffer = args.next()?;
-        let windows = crate::context::windows::<U>().borrow();
+        let windows = crate::context::windows::<U>(pa).borrow();
         if windows
             .iter()
             .flat_map(|w| w.file_names(pa))
             .any(|f| f == buffer)
         {
-            Ok(buffer)
+            Ok((buffer, Some(form::id_of!("param.file.open"))))
         } else {
             Err(txt!("No buffer called [a]{buffer}[] open").build())
         }
@@ -231,18 +232,18 @@ impl<'a, U: crate::ui::Ui> Parameter<'a> for Buffer<U> {
 /// Command [`Parameter`]: An open [`File`]'s name, except the current
 ///
 /// [`File`]: crate::file::File
-pub struct OtherFileBuffer<U>(std::marker::PhantomData<U>);
+pub struct OtherFileBuffer<U>(PhantomData<U>);
 
 impl<'a, U: crate::ui::Ui> Parameter<'a> for OtherFileBuffer<U> {
     type Returns = &'a str;
 
-    fn new(pa: &Pass, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
+    fn new(pa: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
         let buffer = args.next_as::<Buffer<U>>(pa)?;
         let handle = crate::context::fixed_file::<U>(pa).unwrap();
         if buffer == handle.read(pa, |file, _| file.name()) {
             Err(txt!("Argument can't be the current file").build())
         } else {
-            Ok(buffer)
+            Ok((buffer, Some(form::id_of!("param.file.open"))))
         }
     }
 }
@@ -250,30 +251,45 @@ impl<'a, U: crate::ui::Ui> Parameter<'a> for OtherFileBuffer<U> {
 /// Command [`Parameter`]: A [`File`] whose parent is real
 ///
 /// [`File`]: crate::file::File
-pub struct PossibleFile;
+pub struct ValidFile<U>(PhantomData<U>);
 
-impl Parameter<'_> for PossibleFile {
+impl<U: Ui> Parameter<'_> for ValidFile<U> {
     type Returns = PathBuf;
 
-    fn new(pa: &Pass, args: &mut Args<'_>) -> Result<Self::Returns, Text> {
+    fn new(pa: &Pass, args: &mut Args) -> Result<(Self::Returns, Option<FormId>), Text> {
         let path = args.next_as::<PathBuf>(pa)?;
 
         let canon_path = path.canonicalize();
-        if let Ok(path) = &canon_path {
+        let path = if let Ok(path) = &canon_path {
             if !path.is_file() {
                 return Err(txt!("Path is not a file").build());
             }
-            Ok(path.clone())
+            path.clone()
         } else if canon_path.is_err()
             && let Ok(canon_path) = path.with_file_name(".").canonicalize()
         {
-            Ok(canon_path.join(
+            canon_path.join(
                 path.file_name()
                     .ok_or_else(|| txt!("Path has no file name"))?,
-            ))
+            )
         } else {
-            Err(txt!("Path was not found").build())
-        }
+            return Err(txt!("Path was not found").build());
+        };
+
+        let windows = crate::context::windows::<U>(pa).borrow();
+        let form = if windows
+            .iter()
+            .flat_map(|win| win.file_paths(pa))
+            .any(|p| PathBuf::from(p) == path)
+        {
+            form::id_of!("param.file.open")
+        } else if let Ok(true) = path.try_exists() {
+            form::id_of!("param.file.exists")
+        } else {
+            form::id_of!("param.file")
+        };
+
+        Ok((path, Some(form)))
     }
 }
 
@@ -286,14 +302,14 @@ pub struct F32PercentOfU8;
 impl Parameter<'_> for F32PercentOfU8 {
     type Returns = f32;
 
-    fn new(_: &Pass, args: &mut Args) -> Result<Self::Returns, Text> {
+    fn new(_: &Pass, args: &mut Args) -> Result<(Self::Returns, Option<FormId>), Text> {
         let arg = args.next()?;
         if let Some(percentage) = arg.strip_suffix("%") {
             let percentage: u8 = percentage
                 .parse()
                 .map_err(|_| txt!("[a]{arg}[] is not a valid percentage").build())?;
             if percentage <= 100 {
-                Ok(percentage as f32 / 100.0)
+                Ok((percentage as f32 / 100.0, None))
             } else {
                 Err(txt!("[a]{arg}[] is more than [a]100%").build())
             }
@@ -301,7 +317,7 @@ impl Parameter<'_> for F32PercentOfU8 {
             let byte: u8 = arg
                 .parse()
                 .map_err(|_| txt!("[a]{arg}[] couldn't be parsed"))?;
-            Ok(byte as f32 / 255.0)
+            Ok((byte as f32 / 255.0, None))
         }
     }
 }
@@ -309,7 +325,7 @@ impl Parameter<'_> for F32PercentOfU8 {
 impl<'a> Parameter<'a> for Color {
     type Returns = Color;
 
-    fn new(pa: &Pass, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
+    fn new(pa: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
         const fn hue_to_rgb(p: f32, q: f32, mut t: f32) -> f32 {
             t = if t < 0.0 { t + 1.0 } else { t };
             t = if t > 1.0 { t - 1.0 } else { t };
@@ -334,13 +350,13 @@ impl<'a> Parameter<'a> for Color {
             let r = (total >> 16) as u8;
             let g = (total >> 8) as u8;
             let b = total as u8;
-            Ok(Color::Rgb { r, g, b })
+            Ok((Color::Rgb { r, g, b }, None))
             // Expects "rgb {red} {green} {blue}"
         } else if arg == "rgb" {
             let r = args.next_as::<u8>(pa)?;
             let g = args.next_as::<u8>(pa)?;
             let b = args.next_as::<u8>(pa)?;
-            Ok(Color::Rgb { r, g, b })
+            Ok((Color::Rgb { r, g, b }, None))
             // Expects "hsl {hue%?} {saturation%?} {lightness%?}"
         } else if arg == "hsl" {
             let hue = args.next_as::<F32PercentOfU8>(pa)?;
@@ -360,7 +376,7 @@ impl<'a> Parameter<'a> for Color {
                 let b = hue_to_rgb(p, q, hue - 1.0 / 3.0);
                 [r.round() as u8, g.round() as u8, b.round() as u8]
             };
-            Ok(Color::Rgb { r, g, b })
+            Ok((Color::Rgb { r, g, b }, None))
         } else {
             Err(txt!("Color format was not recognized").build())
         }
@@ -376,13 +392,13 @@ pub struct FormName;
 impl<'a> Parameter<'a> for FormName {
     type Returns = &'a str;
 
-    fn new(_: &Pass, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
+    fn new(_: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
         let arg = args.next()?;
         if !arg.chars().all(|c| c.is_ascii_alphanumeric() || c == '.') {
             return Err(txt!("Expected identifiers separated by '.'s, found [a]{arg}").build());
         }
         if crate::form::exists(arg) {
-            Ok(arg)
+            Ok((arg, Some(form::id_of_non_static(arg))))
         } else {
             Err(txt!("The form [a]{arg}[] has not been set").build())
         }
@@ -437,7 +453,7 @@ impl<'a, W: Widget<U>, U: Ui> Handles<'a, W, U> {
         {
             Some(f(pa, handle))
         } else {
-            let windows = context::windows::<U>().borrow();
+            let windows = context::windows::<U>(pa).borrow();
             let w = context::cur_window();
 
             if windows.is_empty() {
@@ -476,7 +492,7 @@ impl<'a, W: Widget<U>, U: Ui> Handles<'a, W, U> {
     /// This function will be called by [`Handles::on_flags`], if the
     /// `"--global"` or `"-g"` [`Flags`] are passed.
     pub fn on_each(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W, U>)) {
-        let nodes: Vec<Node<U>> = context::windows::<U>()
+        let nodes: Vec<Node<U>> = context::windows::<U>(pa)
             .borrow()
             .iter()
             .flat_map(|win| win.nodes().cloned())
@@ -502,7 +518,7 @@ impl<'a, W: Widget<U>, U: Ui> Handles<'a, W, U> {
     /// `"--window"` or `"-w"` [`Flags`] are passed.
     pub fn on_window(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W, U>)) {
         let cur_win = context::cur_window();
-        let nodes: Vec<Node<U>> = context::windows::<U>().borrow()[cur_win]
+        let nodes: Vec<Node<U>> = context::windows::<U>(pa).borrow()[cur_win]
             .nodes()
             .cloned()
             .collect();
@@ -549,16 +565,16 @@ impl<'a, W: Widget<U>, U: Ui> Handles<'a, W, U> {
 impl<'a, W: Widget<U>, U: Ui> Parameter<'a> for Handles<'a, W, U> {
     type Returns = Self;
 
-    fn new(_: &Pass, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
-        Ok(Self(args.flags.clone(), PhantomData))
+    fn new(_: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
+        Ok((Self(args.flags.clone(), PhantomData), None))
     }
 }
 
 impl<'a> Parameter<'a> for Flags<'a> {
     type Returns = Flags<'a>;
 
-    fn new(_: &Pass, args: &mut Args<'a>) -> Result<Self::Returns, Text> {
-        Ok(args.flags.clone())
+    fn new(_: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
+        Ok((args.flags.clone(), None))
     }
 }
 
@@ -611,7 +627,7 @@ impl<'a> Args<'a> {
         if ret.is_ok() {
             self.is_forming_param = false;
         }
-        ret
+        ret.map(|(arg, _)| arg)
     }
 
     /// Tries to parse the next argument as `P`, otherwise returns a
@@ -779,11 +795,12 @@ macro parse_impl($t:ty) {
     impl Parameter<'_> for $t {
         type Returns = Self;
 
-        fn new(_: &Pass, args: &mut Args) -> Result<Self::Returns, Text> {
+        fn new(_: &Pass, args: &mut Args) -> Result<(Self::Returns, Option<FormId>), Text> {
             let arg = args.next()?;
-            arg.parse().map_err(|_| {
+            let arg = arg.parse().map_err(|_| {
                 txt!("[a]{arg}[] couldn't be parsed as [a]{}[]", stringify!($t)).build()
-            })
+            });
+            arg.map(|arg| (arg, None))
         }
     }
 }

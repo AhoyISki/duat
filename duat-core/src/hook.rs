@@ -59,9 +59,9 @@
 //! - [`ModeSwitched`] triggers when you change [`Mode`].
 //! - [`ModeCreated`] lets you act on a [`Mode`] after switching.
 //! - [`FileWritten`] triggers after the [`File`] is written.
-//! - [`SearchPerformed`] (from duat-utils) triggers after a search is
-//!   performed.
-//! - [`SearchUpdated`] (from duat-utils) triggers after a search
+//! - [`SearchPerformed`] (from `duat-utils`) triggers after a search
+//!   is performed.
+//! - [`SearchUpdated`] (from `duat-utils`) triggers after a search
 //!   updates.
 //!
 //! # Basic makeout
@@ -155,7 +155,9 @@
 //! [`Output`]: Hookable::Output
 //! [`SearchPerformed`]: https://docs.rs/duat-utils/latest/duat_utils/hooks/struct.SearchPerformed.html
 //! [`SearchUpdated`]: https://docs.rs/duat-utils/latest/duat_utils/hooks/struct.SearchUpdated.html
-use std::{any::TypeId, cell::RefCell, collections::HashMap, marker::PhantomData, rc::Rc};
+use std::{
+    any::TypeId, cell::RefCell, collections::HashMap, marker::PhantomData, rc::Rc, sync::Mutex,
+};
 
 pub use self::global::*;
 use crate::{
@@ -173,7 +175,6 @@ mod global {
 
     use super::{HookAlias, Hookable, InnerHooks};
     use crate::{
-        context,
         data::Pass,
         hook::HookDummy,
         main_thread_only::MainThreadOnly,
@@ -194,9 +195,8 @@ mod global {
     /// [`hook::add_no_alias`]: add_no_alias
     #[inline(never)]
     pub fn add<H: HookAlias<U, impl HookDummy>, U: Ui>(
-        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static,
+        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
     ) {
-        context::assert_is_on_main_thread();
         unsafe { HOOKS.get() }.add::<H::Hookable>("", Box::new(f));
     }
 
@@ -208,9 +208,8 @@ mod global {
     /// [hook]: Hookable
     #[doc(hidden)]
     pub fn add_no_alias<H: Hookable>(
-        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static,
+        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
     ) {
-        context::assert_is_on_main_thread();
         unsafe { HOOKS.get() }.add::<H>("", Box::new(f));
     }
 
@@ -229,9 +228,8 @@ mod global {
     #[inline(never)]
     pub fn add_grouped<H: HookAlias<U, impl HookDummy>, U: Ui>(
         group: &'static str,
-        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static,
+        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
     ) {
-        context::assert_is_on_main_thread();
         unsafe { HOOKS.get() }.add::<H::Hookable>(group, Box::new(f));
     }
 
@@ -243,9 +241,8 @@ mod global {
     /// [hook]: Hookable
     #[doc(hidden)]
     pub fn add_grouped_no_alias<H: Hookable>(
-        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static,
+        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
     ) {
-        context::assert_is_on_main_thread();
         unsafe { HOOKS.get() }.add::<H>("", Box::new(f));
     }
 
@@ -257,7 +254,6 @@ mod global {
     /// [hook]: Hookable
     /// [`hook::add_grouped`]: add_grouped
     pub fn remove(group: &'static str) {
-        context::assert_is_on_main_thread();
         unsafe { HOOKS.get() }.remove(group);
     }
 
@@ -270,7 +266,6 @@ mod global {
     /// [hook]: Hookable
     /// [`hook::add`]: add
     /// [`hook::add_grouped`]: add_grouped
-    #[inline(never)]
     pub fn trigger<H: Hookable>(pa: &mut Pass, hookable: H) -> H {
         unsafe { HOOKS.get().trigger(pa, hookable) }
     }
@@ -306,7 +301,6 @@ mod global {
     /// [`hook::add_grouped`]: add_grouped
     /// [`hook::remove`]: remove
     pub fn group_exists(group: &'static str) -> bool {
-        context::assert_is_on_main_thread();
         unsafe { HOOKS.get() }.group_exists(group)
     }
 }
@@ -768,10 +762,11 @@ pub trait Hookable<_H: HookDummy = NormalHook>: Sized + 'static {
 }
 
 /// Where all hooks of Duat are stored
-#[derive(Default, Clone)]
+#[derive(Default)]
 struct InnerHooks {
     types: Rc<RefCell<HashMap<TypeId, Rc<dyn HookHolder>>>>,
     groups: Rc<RefCell<Vec<&'static str>>>,
+    removed_groups: Mutex<Vec<&'static str>>,
 }
 
 impl InnerHooks {
@@ -810,15 +805,19 @@ impl InnerHooks {
 
     /// Removes hooks with said group
     fn remove(&self, group: &'static str) {
-        self.groups.borrow_mut().retain(|g| *g != group);
-        let map = self.types.borrow();
-        for holder in map.iter() {
-            holder.1.remove(group)
-        }
+        self.removed_groups.lock().unwrap().push(group);
     }
 
     /// Triggers hooks with args of the [`Hookable`]
     fn trigger<H: Hookable>(&self, pa: &mut Pass, mut hookable: H) -> H {
+        for group in self.removed_groups.lock().unwrap().drain(..) {
+            self.groups.borrow_mut().retain(|g| *g != group);
+            let map = self.types.borrow();
+            for holder in map.iter() {
+                holder.1.remove(group)
+            }
+        }
+
         let holder = self.types.borrow().get(&TypeId::of::<H>()).cloned();
 
         let Some(holder) = holder else {

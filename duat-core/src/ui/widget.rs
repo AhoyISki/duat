@@ -47,7 +47,10 @@
 //! [`OnFileOpen`]: crate::hook::OnFileOpen
 //! [`OnWindowOpen`]: crate::hook::OnWindowOpen
 //! [`Constraint`]: crate::ui::Constraint
-use std::{any::TypeId, cell::Cell, rc::Rc};
+use std::{
+    any::TypeId,
+    sync::{Arc, Mutex},
+};
 
 use crate::{
     cfg::PrintCfg,
@@ -99,7 +102,7 @@ use crate::{
 /// #     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
 /// #     fn once() -> Result<(), Text> { Ok(()) }
 /// #     fn update(_: &mut Pass, handle: Handle<Self, U>) {}
-/// #     fn needs_update(&self) -> bool { todo!(); }
+/// #     fn needs_update(&self, pa: &Pass) -> bool { todo!(); }
 /// }
 /// ```
 ///
@@ -133,7 +136,7 @@ use crate::{
 /// #     fn text_mut(&mut self) -> &mut Text{ &mut self.0 }
 /// #     fn once() -> Result<(), Text> { Ok(()) }
 /// #     fn update(_: &mut Pass, handle: Handle<Self, U>) {}
-/// #     fn needs_update(&self) -> bool { todo!(); }
+/// #     fn needs_update(&self, pa: &Pass) -> bool { todo!(); }
 /// # }
 /// ```
 ///
@@ -195,7 +198,7 @@ use crate::{
 /// #     fn cfg() -> Self::Cfg { UpTimeCfg(PhantomData) }
 /// #     fn text(&self) -> &Text { &self.0 }
 /// #     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
-/// #     fn needs_update(&self) -> bool { todo!(); }
+/// #     fn needs_update(&self, pa: &Pass) -> bool { todo!(); }
 ///     // ...
 ///     fn update(pa: &mut Pass, handle: Handle<Self, U>) {
 ///         let start = START_TIME.get().unwrap();
@@ -234,7 +237,7 @@ use crate::{
 /// impl<U: Ui> Widget<U> for UpTime {
 ///     type Cfg = UpTimeCfg<U>;
 ///
-///     fn needs_update(&self) -> bool {
+///     fn needs_update(&self, pa: &Pass) -> bool {
 ///         // Returns `true` once per second
 ///         self.1.check()
 ///     }
@@ -304,7 +307,7 @@ use crate::{
 /// [`form::set_weak*`]: crate::form::set_weak
 /// [`txt!`]: crate::text::txt
 /// [`Plugin`]: crate::Plugin
-pub trait Widget<U: Ui>: 'static {
+pub trait Widget<U: Ui>: Send + 'static {
     /// The configuration type
     type Cfg: WidgetCfg<U, Widget = Self>
     where
@@ -402,8 +405,8 @@ pub trait Widget<U: Ui>: 'static {
     /// #   fn text_mut(&mut self) -> &mut Text { todo!() }
     /// #   fn once() -> Result<(), Text> { todo!() }
     ///     // ...
-    ///     fn needs_update(&self) -> bool {
-    ///         self.0.has_changed()
+    ///     fn needs_update(&self, pa: &Pass) -> bool {
+    ///         self.0.has_changed(pa)
     ///     }
     /// }
     /// ```
@@ -418,7 +421,7 @@ pub trait Widget<U: Ui>: 'static {
     ///
     /// [`FileHandle`]: crate::context::FileHandle
     /// [`StatusLine`]: https://docs.rs/duat-core/latest/duat_utils/widgets/struct.StatusLine.html
-    fn needs_update(&self) -> bool;
+    fn needs_update(&self, pa: &Pass) -> bool;
 
     /// The text that this widget prints out
     fn text(&self) -> &Text;
@@ -506,7 +509,7 @@ pub trait WidgetCfg<U: Ui>: Sized {
 pub(crate) struct Node<U: Ui> {
     widget: RwData<dyn Widget<U>>,
     area: U::Area,
-    mask: Rc<Cell<&'static str>>,
+    mask: Arc<Mutex<&'static str>>,
     related_widgets: Related<U>,
     update: fn(&Self, &mut Pass),
     print: fn(&Self, &mut Pass),
@@ -522,7 +525,7 @@ impl<U: Ui> Node<U> {
         Self {
             widget,
             area,
-            mask: Rc::new(Cell::new("")),
+            mask: Arc::new(Mutex::new("")),
             related_widgets,
             update: Self::update_fn::<W>,
             print: Self::print_fn::<W>,
@@ -556,13 +559,13 @@ impl<U: Ui> Node<U> {
         self.widget.try_downcast()
     }
 
-	/// The "parts" of this [`Node`]
+    /// The "parts" of this [`Node`]
     pub(crate) fn parts(
         &self,
     ) -> (
         &RwData<dyn Widget<U>>,
         &<U as Ui>::Area,
-        &Rc<Cell<&'static str>>,
+        &Arc<Mutex<&'static str>>,
         &Related<U>,
     ) {
         (&self.widget, &self.area, &self.mask, &self.related_widgets)
@@ -600,7 +603,7 @@ impl<U: Ui> Node<U> {
     pub(crate) fn needs_update(&self, pa: &Pass) -> bool {
         self.area.has_changed()
             || self.widget.has_changed()
-            || self.widget.read(pa, |w| w.needs_update())
+            || self.widget.read(pa, |w| w.needs_update(pa))
     }
 
     ////////// Eventful functions
@@ -644,7 +647,7 @@ impl<U: Ui> Node<U> {
 
     /// Static dispatch inner print function
     fn print_fn<W: Widget<U>>(&self, pa: &mut Pass) {
-        let painter = form::painter_with_mask::<W>(self.mask.get());
+        let painter = form::painter_with_mask::<W>(*self.mask.lock().unwrap());
         let mut widget = self.widget.acquire_mut(pa);
 
         widget.print(painter, &self.area);

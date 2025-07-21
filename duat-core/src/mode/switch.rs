@@ -37,8 +37,7 @@ type ModeFn = Box<dyn FnOnce(&mut Pass) -> bool>;
 /// Since this function is only called by Duat, I can ensure that
 /// it will be called from the main thread, so no checks are done
 /// in that regard.
-pub(crate) fn take_set_mode_fn() -> Option<ModeFn> {
-    // SAFETY: The caller of this function's caller has a Pass argument.
+pub(crate) fn take_set_mode_fn(_: &mut Pass) -> Option<ModeFn> {
     unsafe { SET_MODE.get() }.borrow_mut().take()
 }
 
@@ -49,57 +48,58 @@ pub(crate) fn take_set_mode_fn() -> Option<ModeFn> {
 ///
 /// [`mode::reset`]: reset
 pub fn set_default<M: Mode<U>, U: Ui>(mode: M) {
-    context::assert_is_on_main_thread();
+    crate::context::queue(move |_| {
+        let mut reset_modes = unsafe { RESET_MODES.get() }.borrow_mut();
 
-    let mut reset_modes = unsafe { RESET_MODES.get() }.borrow_mut();
-
-    let i = if let Some(i) = reset_modes
-        .iter()
-        .position(|(ty, _)| *ty == TypeId::of::<M::Widget>())
-    {
-        reset_modes[i].1 = Box::new(move |pa| {
-            let mode = mode.clone();
-            set_mode_fn::<M, U>(pa, mode)
-        });
-        i
-    } else {
-        reset_modes.push((
-            TypeId::of::<M::Widget>(),
-            Box::new(move |pa| {
+        let i = if let Some(i) = reset_modes
+            .iter()
+            .position(|(ty, _)| *ty == TypeId::of::<M::Widget>())
+        {
+            reset_modes[i].1 = Box::new(move |pa| {
                 let mode = mode.clone();
                 set_mode_fn::<M, U>(pa, mode)
-            }),
-        ));
-        reset_modes.len() - 1
-    };
+            });
+            i
+        } else {
+            reset_modes.push((
+                TypeId::of::<M::Widget>(),
+                Box::new(move |pa| {
+                    let mode = mode.clone();
+                    set_mode_fn::<M, U>(pa, mode)
+                }),
+            ));
+            reset_modes.len() - 1
+        };
 
-    if TypeId::of::<M::Widget>() == TypeId::of::<File<U>>() {
-        let set_mode = unsafe { SET_MODE.get() };
-        let prev = set_mode.take();
-        *set_mode.borrow_mut() = Some(Box::new(move |pa| {
-            if let Some(f) = prev {
-                f(pa);
-                unsafe { RESET_MODES.get() }.borrow_mut()[i].1(pa)
-            } else {
-                unsafe { RESET_MODES.get() }.borrow_mut()[i].1(pa)
-            }
-        }));
-    }
+        if TypeId::of::<M::Widget>() == TypeId::of::<File<U>>() {
+            let set_mode = unsafe { SET_MODE.get() };
+            let prev = set_mode.take();
+            *set_mode.borrow_mut() = Some(Box::new(move |pa| {
+                if let Some(f) = prev {
+                    f(pa);
+                    unsafe { RESET_MODES.get() }.borrow_mut()[i].1(pa)
+                } else {
+                    unsafe { RESET_MODES.get() }.borrow_mut()[i].1(pa)
+                }
+            }));
+        }
+    });
 }
 
 /// Sets the [`Mode`], switching to the appropriate [`Widget`]
 ///
 /// [`Widget`]: Mode::Widget
 pub fn set<U: Ui>(mode: impl Mode<U>) {
-    context::assert_is_on_main_thread();
-    let set_mode = unsafe { SET_MODE.get() };
-    let prev = set_mode.take();
-    *set_mode.borrow_mut() = Some(Box::new(move |pa| {
-        if let Some(prev) = prev {
-            prev(pa);
-        }
-        set_mode_fn(pa, mode)
-    }));
+    crate::context::queue(move |_| {
+        let set_mode = unsafe { SET_MODE.get() };
+        let prev = set_mode.take();
+        *set_mode.borrow_mut() = Some(Box::new(move |pa| {
+            if let Some(prev) = prev {
+                prev(pa);
+            }
+            set_mode_fn(pa, mode)
+        }));
+    });
 }
 
 /// Resets the mode to the [default] of a given [`Widget`]
@@ -108,63 +108,65 @@ pub fn set<U: Ui>(mode: impl Mode<U>) {
 ///
 /// [default]: set_default
 pub fn reset<W: Widget<U>, U: Ui>() {
-    context::assert_is_on_main_thread();
-    let reset_modes = unsafe { RESET_MODES.get() }.borrow_mut();
-    if let Some(i) = reset_modes
-        .iter()
-        .position(|(ty, _)| *ty == TypeId::of::<W>())
-    {
-        *unsafe { SET_MODE.get() }.borrow_mut() = Some(Box::new(move |pa| {
-            unsafe { RESET_MODES.get() }.borrow_mut()[i].1(pa)
-        }));
-    } else if TypeId::of::<W>() == TypeId::of::<File<U>>() {
-        panic!("Something went terribly wrong, somehow");
-    } else {
-        context::error!(
-            "There is no default [a]Mode[] set for [a]{}[]",
-            crate::duat_name::<W>()
-        );
-    };
+    crate::context::queue(move |_| {
+        let reset_modes = unsafe { RESET_MODES.get() }.borrow_mut();
+        if let Some(i) = reset_modes
+            .iter()
+            .position(|(ty, _)| *ty == TypeId::of::<W>())
+        {
+            *unsafe { SET_MODE.get() }.borrow_mut() = Some(Box::new(move |pa| {
+                unsafe { RESET_MODES.get() }.borrow_mut()[i].1(pa)
+            }));
+        } else if TypeId::of::<W>() == TypeId::of::<File<U>>() {
+            panic!("Something went terribly wrong, somehow");
+        } else {
+            context::error!(
+                "There is no default [a]Mode[] set for [a]{}[]",
+                crate::duat_name::<W>()
+            );
+        };
+    })
 }
 
 /// Resets to the default [`Mode`] of the given [`Widget`], on a
 /// given [`Handle<W, U>`]
 pub fn reset_to<W: Widget<U>, U: Ui>(handle: Handle<W, U>) {
-    context::assert_is_on_main_thread();
-    let reset_modes = unsafe { RESET_MODES.get() }.borrow_mut();
-    let windows = context::windows::<U>().borrow();
+    crate::context::queue(move |pa| {
+        let reset_modes = unsafe { RESET_MODES.get() }.borrow_mut();
+        let windows = context::windows::<U>(pa).borrow();
 
-    let i = reset_modes
-        .iter()
-        .position(|(ty, _)| *ty == TypeId::of::<W>());
-
-    if let Some(i) = i {
-        if let Some(node) = windows
+        let i = reset_modes
             .iter()
-            .flat_map(|w| w.nodes())
-            .find(|n| n.ptr_eq(handle.widget()))
-            .cloned()
-        {
-            *unsafe { SET_MODE.get() }.borrow_mut() = Some(Box::new(move |pa| {
-                switch_widget(pa, node);
-                (unsafe { RESET_MODES.get() }.borrow_mut()[i].1)(pa)
-            }));
+            .position(|(ty, _)| *ty == TypeId::of::<W>());
+
+        if let Some(i) = i {
+            if let Some(node) = windows
+                .iter()
+                .flat_map(|w| w.nodes())
+                .find(|n| n.ptr_eq(handle.widget()))
+                .cloned()
+            {
+                *unsafe { SET_MODE.get() }.borrow_mut() = Some(Box::new(move |pa| {
+                    switch_widget(pa, node);
+                    (unsafe { RESET_MODES.get() }.borrow_mut()[i].1)(pa)
+                }));
+            } else {
+                context::error!("The Handle in question is no longer in use",);
+            }
+        } else if TypeId::of::<W>() == TypeId::of::<File<U>>() {
+            panic!("Something went terribly wrong, somehow");
         } else {
-            context::error!("The Handle in question is no longer in use",);
-        }
-    } else if TypeId::of::<W>() == TypeId::of::<File<U>>() {
-        panic!("Something went terribly wrong, somehow");
-    } else {
-        context::error!(
-            "There is no default [a]Mode[] set for [a]{}[]",
-            crate::duat_name::<W>()
-        );
-    };
+            context::error!(
+                "There is no default [a]Mode[] set for [a]{}[]",
+                crate::duat_name::<W>()
+            );
+        };
+    })
 }
 
 /// Switches to the [`File`] with the given name
 pub(crate) fn reset_to_file<U: Ui>(pa: &Pass, name: impl std::fmt::Display, switch_window: bool) {
-    let windows = context::windows::<U>().borrow();
+    let windows = context::windows::<U>(pa).borrow();
     let name = name.to_string();
     match file_entry(pa, &windows, &name) {
         Ok((win, _, node)) => {
@@ -253,7 +255,7 @@ fn send_keys_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, keys: &mut IntoIter<KeyEvent>)
         let mode: &mut M = mode.downcast_mut().unwrap();
 
         loop {
-            if let Some(mode_fn) = take_set_mode_fn() {
+            if let Some(mode_fn) = take_set_mode_fn(pa) {
                 break Some(mode_fn);
             }
             let Some(key) = keys.next() else { break None };
@@ -274,7 +276,7 @@ fn set_mode_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, mode: M) -> bool {
     // If we are on the correct widget, no switch is needed.
     if context::cur_widget::<U>(pa).unwrap().type_id(pa) != TypeId::of::<M::Widget>() {
         let node = {
-            let windows = context::windows().borrow();
+            let windows = context::windows(pa).borrow();
             let w = context::cur_window();
             if TypeId::of::<M::Widget>() == TypeId::of::<File<U>>() {
                 let name = context::fixed_file::<U>(pa)
@@ -301,12 +303,11 @@ fn set_mode_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, mode: M) -> bool {
     wid.node(pa).parts();
     // SAFETY: Other than the internal borrow in CurWidget, no other
     // borrows happen
-    let (wid, area, mask) = unsafe {
-        wid.mutate_data_as(|w: &RwData<M::Widget>, area, mask, _| {
+    let (wid, area, mask) = wid
+        .mutate_data_as(pa, |w: &RwData<M::Widget>, area, mask, _| {
             (w.clone(), area.clone(), mask.clone())
         })
-        .unwrap()
-    };
+        .unwrap();
 
     let handle = Handle::from_parts(wid, area, mask);
     let mc = ModeCreated((Some(mode), handle.clone()));
@@ -344,12 +345,11 @@ fn set_mode_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, mode: M) -> bool {
 fn before_exit_fn<M: Mode<U>, U: Ui>(pa: &mut Pass) {
     let wid = context::cur_widget(pa).unwrap();
 
-    let (wid, area, mask) = unsafe {
-        wid.mutate_data_as(|w: &RwData<M::Widget>, area, mask, _| {
+    let (wid, area, mask) = wid
+        .mutate_data_as(pa, |w: &RwData<M::Widget>, area, mask, _| {
             (w.clone(), area.clone(), mask.clone())
         })
-        .unwrap()
-    };
+        .unwrap();
 
     let handle = Handle::from_parts(wid, area, mask);
 

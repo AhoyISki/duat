@@ -31,13 +31,18 @@
 //!
 //! [`OnFileOpen`]: crate::hook::OnFileOpen
 //! [`hook`]: crate::hook
-use std::{cell::RefCell, fmt::Debug, rc::Rc, sync::mpsc, time::Instant};
+use std::{
+    cell::RefCell,
+    fmt::Debug,
+    sync::{Arc, mpsc},
+    time::Instant,
+};
 
 use bincode::{Decode, Encode};
 use crossterm::event::KeyEvent;
 use layout::window_files;
 
-use self::layout::{FileId, Layout};
+use self::layout::Layout;
 pub(crate) use self::widget::{Node, Related};
 pub use self::{
     builder::{BuilderDummy, FileBuilder, UiBuilder, WidgetAlias, WindowBuilder},
@@ -85,7 +90,7 @@ mod widget;
 ///     }
 /// }
 /// ```
-pub trait Ui: Default + Clone + 'static {
+pub trait Ui: Default + Clone + Send + 'static {
     /// The [`RawArea`] of this [`Ui`]
     type Area: RawArea<Ui = Self>;
     /// Variables to initialize at the Duat application, outside the
@@ -193,7 +198,7 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
     /// use of smooth scrolling, for example.
     ///
     /// [`term-ui`]: docs.rs/term-ui/latest/term_ui
-    type PrintInfo: Default + Clone + PartialEq + Eq;
+    type PrintInfo: Default + Clone + Send + PartialEq + Eq;
 
     ////////// Area modification
 
@@ -452,7 +457,7 @@ impl<U: Ui> Window<U> {
         layout: Box<dyn Layout<U>>,
     ) -> (Self, Node<U>) {
         let widget =
-            unsafe { RwData::<dyn Widget<U>>::new_unsized::<W>(Rc::new(RefCell::new(widget))) };
+            unsafe { RwData::<dyn Widget<U>>::new_unsized::<W>(Arc::new(RefCell::new(widget))) };
 
         let cache = widget
             .read_as(pa, |f: &File<U>| {
@@ -498,7 +503,7 @@ impl<U: Ui> Window<U> {
     ) -> (Node<U>, Option<U::Area>) {
         #[inline(never)]
         fn get_areas<U: Ui>(
-            pa: &mut Pass,
+            pa: &Pass,
             area: &<U as Ui>::Area,
             specs: PushSpecs,
             do_cluster: bool,
@@ -520,7 +525,7 @@ impl<U: Ui> Window<U> {
         }
 
         let widget =
-            unsafe { RwData::<dyn Widget<U>>::new_unsized::<W>(Rc::new(RefCell::new(widget))) };
+            unsafe { RwData::<dyn Widget<U>>::new_unsized::<W>(Arc::new(RefCell::new(widget))) };
 
         let (child, parent) = get_areas(pa, area, specs, do_cluster, on_files, &widget);
 
@@ -575,7 +580,7 @@ impl<U: Ui> Window<U> {
             && parent == self.files_area
         {
             let files = self.file_nodes(pa);
-            let (_, FileId(area)) = files.first().unwrap();
+            let (_, AreaId(area)) = files.first().unwrap();
             self.files_area = area.clone();
         }
 
@@ -671,7 +676,7 @@ impl<U: Ui> Window<U> {
     }
 
     /// An [`Iterator`] over the [`File`] [`Node`]s in a [`Window`]
-    pub(crate) fn file_nodes(&self, pa: &Pass) -> Vec<(Handle<File<U>, U>, FileId<U>)> {
+    pub(crate) fn file_nodes(&self, pa: &Pass) -> Vec<(Handle<File<U>, U>, AreaId<U>)> {
         window_files(pa, &self.nodes)
     }
 
@@ -1379,5 +1384,25 @@ impl<U: Ui> std::ops::Deref for Area<U> {
 
     fn deref(&self) -> &Self::Target {
         &self.area
+    }
+}
+
+/// A unique identifier for an [`Area`]
+#[derive(Clone)]
+pub struct AreaId<U: Ui>(pub(crate) U::Area);
+
+impl<U: Ui> AreaId<U> {
+    /// The [`Ui::Area`] of this [`AreaId`]
+    pub fn area(&self, _: &Pass) -> &U::Area {
+        &self.0
+    }
+}
+
+// SAFETY: The U::Area within can't actually be accessed
+unsafe impl<U: Ui> Send for AreaId<U> {}
+
+impl<U: Ui> PartialEq for AreaId<U> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
     }
 }

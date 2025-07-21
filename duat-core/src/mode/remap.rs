@@ -22,7 +22,6 @@ mod global {
 
     use super::{Gives, Remapper};
     use crate::{
-        context,
         data::{DataMap, Pass},
         main_thread_only::MainThreadOnly,
         mode::Mode,
@@ -71,9 +70,11 @@ mod global {
     /// would intersect with this one, the new sequence will not be
     /// added.
     pub fn map<M: Mode<U>, U: Ui>(take: &str, give: impl AsGives<U>) {
-        context::assert_is_on_main_thread();
-        let remapper = unsafe { REMAPPER.get() };
-        remapper.remap::<M, U>(str_to_keys(take), give.into_gives(), false);
+        let keys = str_to_keys(take);
+        crate::context::queue(move |_| {
+            let remapper = unsafe { REMAPPER.get() };
+            remapper.remap::<M, U>(keys, give.into_gives(), false);
+        });
     }
 
     /// Aliases a sequence of keys to another
@@ -100,16 +101,17 @@ mod global {
     /// [ghost text]: crate::text::Ghost
     /// [form]: crate::form::Form
     pub fn alias<M: Mode<U>, U: Ui>(take: &str, give: impl AsGives<U>) {
-        context::assert_is_on_main_thread();
-        let remapper = unsafe { REMAPPER.get() };
-        remapper.remap::<M, U>(str_to_keys(take), give.into_gives(), true);
+        let keys = str_to_keys(take);
+        crate::context::queue(move |_| {
+            let remapper = unsafe { REMAPPER.get() };
+            remapper.remap::<M, U>(keys, give.into_gives(), true);
+        });
     }
 
     /// The current sequence of [`KeyEvent`]s being mapped
-    pub fn cur_sequence() -> DataMap<(Vec<KeyEvent>, bool), (Vec<KeyEvent>, bool)> {
-        context::assert_is_on_main_thread();
+    pub fn cur_sequence(pa: &Pass) -> DataMap<(Vec<KeyEvent>, bool), (Vec<KeyEvent>, bool)> {
         let remapper = unsafe { REMAPPER.get() };
-        remapper.cur_seq.map(|seq| seq.clone())
+        remapper.cur_seq.map(pa, |seq| seq.clone())
     }
 
     /// Turns a sequence of [`KeyEvent`]s into a [`Text`]
@@ -321,7 +323,7 @@ mod global {
 
     /// Trait to distinguish [`Mode`]s from [`KeyEvent`]s
     #[doc(hidden)]
-    pub trait AsGives<U> {
+    pub trait AsGives<U>: Send + 'static {
         fn into_gives(self) -> Gives;
     }
 
@@ -342,7 +344,7 @@ mod global {
             key.modifiers.remove(KeyMod::SHIFT);
         }
 
-        if let Some(set_mode) = crate::mode::take_set_mode_fn() {
+        if let Some(set_mode) = crate::mode::take_set_mode_fn(pa) {
             set_mode(pa);
         }
 
@@ -447,7 +449,7 @@ impl Remapper {
                         }
                         Gives::Mode(set_mode) => {
                             set_mode();
-                            if let Some(mode_fn) = super::take_set_mode_fn() {
+                            if let Some(mode_fn) = super::take_set_mode_fn(pa) {
                                 mode_fn(pa);
                             }
                         }
@@ -504,15 +506,14 @@ fn remove_alias_and<U: Ui>(pa: &mut Pass, f: impl FnOnce(&mut dyn Widget<U>, usi
     let widget = context::cur_widget::<U>(pa).unwrap();
     // SAFETY: Given that the Pass is immediately mutably borrowed, it
     // can't be used to act on CurWidget.current.
-    unsafe {
-        widget.mutate_data(|widget, _, _| {
-            widget.write(pa, |widget| {
-                if let Some(main) = widget.text().selections().get_main() {
-                    let main = main.char();
-                    widget.text_mut().remove_tags(Tagger::for_alias(), main);
-                    f(&mut *widget, main)
-                }
-            });
-        })
-    }
+    widget.mutate_data(pa, |widget, _, _| {
+        let pa = unsafe { &mut Pass::new() };
+        widget.write(pa, |widget| {
+            if let Some(main) = widget.text().selections().get_main() {
+                let main = main.char();
+                widget.text_mut().remove_tags(Tagger::for_alias(), main);
+                f(&mut *widget, main)
+            }
+        });
+    })
 }

@@ -71,9 +71,9 @@ impl Widget<Ui> for VertRule {
         handle.widget().replace_text(pa, text);
     }
 
-    fn needs_update(&self) -> bool {
+    fn needs_update(&self, _: &Pass) -> bool {
         matches!(self.sep_char, SepChar::ThreeWay(..) | SepChar::TwoWay(..))
-            && self.handle.as_ref().is_some_and(FileHandle::has_changed)
+            && self.handle.as_ref().is_some_and(|fh| fh.has_changed())
     }
 
     fn cfg() -> Self::Cfg {

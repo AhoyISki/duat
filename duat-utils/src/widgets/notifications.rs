@@ -34,11 +34,13 @@ use duat_core::{
 /// fn setup_generic_over_ui<U: Ui>() {
 ///     hook::remove("WindowWidgets");
 ///     hook::add::<OnWindowOpen<U>, U>(|pa, builder| {
-///         let footer = FooterWidgets::default().notifs(Notifications::cfg().formatted(|rec| txt!(
-///             "[notifs.bracket]([notifs.target]{}[notifs.bracket]) {}",
-///             rec.target(),
-///             rec.text().clone()
-///         )));
+///         let footer = FooterWidgets::default().notifs(Notifications::cfg().formatted(|rec| {
+///             txt!(
+///                 "[notifs.bracket]([notifs.target]{}[notifs.bracket]) {}",
+///                 rec.target(),
+///                 rec.text().clone()
+///             )
+///         }));
 ///         builder.push(pa, footer);
 ///     });
 /// }
@@ -52,10 +54,10 @@ use duat_core::{
 pub struct Notifications<U> {
     logs: context::Logs,
     text: Text,
-    format_rec: Box<dyn FnMut(Record) -> Text>,
+    format_rec: Box<dyn FnMut(Record) -> Text + Send>,
     levels: Vec<Level>,
     last_rec: Option<usize>,
-    get_mask: Box<dyn FnMut(Record) -> &'static str>,
+    get_mask: Box<dyn FnMut(Record) -> &'static str + Send>,
     _ghost: PhantomData<U>,
 }
 
@@ -123,7 +125,7 @@ impl<U: Ui> Widget<U> for Notifications<U> {
         Ok(())
     }
 
-    fn needs_update(&self) -> bool {
+    fn needs_update(&self, _: &Pass) -> bool {
         self.logs.has_changed() || CLEAR_NOTIFS.load(Ordering::Relaxed)
     }
 
@@ -146,8 +148,8 @@ impl<U: Ui> Widget<U> for Notifications<U> {
 /// [`left_with_ratio`]: NotificationsCfg::left_with_ratio
 #[doc(hidden)]
 pub struct NotificationsCfg<U> {
-    format_rec: Box<dyn FnMut(Record) -> Text>,
-    get_mask: Box<dyn FnMut(Record) -> &'static str>,
+    format_rec: Box<dyn FnMut(Record) -> Text + Send>,
+    get_mask: Box<dyn FnMut(Record) -> &'static str + Send>,
     levels: Vec<Level>,
     _ghost: PhantomData<U>,
 }
@@ -162,10 +164,10 @@ impl<U> NotificationsCfg<U> {
     /// [`filter_levels`]: Self::filter_levels
     pub fn formatted<T: Into<Text>>(
         self,
-        mut format_rec: impl FnMut(Record) -> T + 'static,
+        mut fmt: impl FnMut(Record) -> T + Send + 'static,
     ) -> Self {
         Self {
-            format_rec: Box::new(move |rec| format_rec(rec).into()),
+            format_rec: Box::new(move |rec| fmt(rec).into()),
             ..self
         }
     }
@@ -182,7 +184,7 @@ impl<U> NotificationsCfg<U> {
     /// Changes how [`Notifications`] decides which [mask] to use
     ///
     /// [mask]: duat_core::context::Handle::set_mask
-    pub fn with_mask(self, get_mask: impl FnMut(Record) -> &'static str + 'static) -> Self {
+    pub fn with_mask(self, get_mask: impl FnMut(Record) -> &'static str + Send + 'static) -> Self {
         Self { get_mask: Box::new(get_mask), ..self }
     }
 }

@@ -420,6 +420,21 @@ mod global {
     /// question are not known at compile time. And if that is the
     /// case, you should try to find a way to memoize around this
     /// issue (usually with something like a [`HashMap`]).
+    pub fn id_of_non_static(name: impl ToString) -> FormId {
+        let name = name.to_string().leak();
+
+        let mut forms = FORMS.get().unwrap().lock().unwrap();
+        let id = FormId(position_of_name(&mut forms, name) as u16);
+        add_forms(vec![name]);
+        id
+    }
+
+    /// Non static version of [`id_of!`], for many [`Form`]s
+    ///
+    /// You should only use this if the names of the [`Form`]s in
+    /// question are not known at compile time. And if that is the
+    /// case, you should try to find a way to memoize around this
+    /// issue (usually with something like a [`HashMap`]).
     pub fn ids_of_non_static(names: impl IntoIterator<Item = impl ToString>) -> Vec<FormId> {
         let names: Vec<&str> = names
             .into_iter()

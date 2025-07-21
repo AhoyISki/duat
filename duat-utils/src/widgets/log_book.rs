@@ -13,7 +13,7 @@ pub struct LogBook {
     logs: Logs,
     len_of_taken: usize,
     text: Text,
-    format_rec: Box<dyn FnMut(Record) -> Option<Text>>,
+    format_rec: Box<dyn FnMut(Record) -> Option<Text> + Send>,
     close_on_unfocus: bool,
 }
 
@@ -71,7 +71,7 @@ impl<U: Ui> Widget<U> for LogBook {
         });
     }
 
-    fn needs_update(&self) -> bool {
+    fn needs_update(&self, _: &Pass) -> bool {
         self.logs.has_changed()
     }
 
@@ -104,8 +104,8 @@ impl<U: Ui> Widget<U> for LogBook {
         *PrintCfg::new().wrap_on_word().set_scrolloff(0, 0)
     }
 
-    fn on_focus(_: &mut Pass, handle: Handle<Self, U>) {
-        handle.area().reveal().unwrap();
+    fn on_focus(pa: &mut Pass, handle: Handle<Self, U>) {
+        handle.area(pa).reveal().unwrap();
     }
 
     fn on_unfocus(pa: &mut Pass, handle: Handle<Self, U>) {
@@ -119,7 +119,7 @@ impl<U: Ui> Widget<U> for LogBook {
 
 /// [`WidgetCfg`] for the [`LogBook`]
 pub struct LogBookCfg<U> {
-    format_rec: Box<dyn FnMut(Record) -> Option<Text>>,
+    format_rec: Box<dyn FnMut(Record) -> Option<Text> + Send>,
     close_on_unfocus: bool,
     hidden: bool,
     side: Side,
@@ -147,8 +147,8 @@ impl<U> LogBookCfg<U> {
     /// [`Record`]s (those with level [`Debug`] or higher.
     ///
     /// [`Debug`]: context::Level::Debug
-    pub fn formatted(self, format_rec: impl FnMut(Record) -> Option<Text> + 'static) -> Self {
-        Self { format_rec: Box::new(format_rec), ..self }
+    pub fn formatted(self, fmt: impl FnMut(Record) -> Option<Text> + Send + 'static) -> Self {
+        Self { format_rec: Box::new(fmt), ..self }
     }
 
     /// Pushes the [`LogBook`] to the right, as opposed to below

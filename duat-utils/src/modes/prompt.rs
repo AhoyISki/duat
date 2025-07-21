@@ -57,7 +57,7 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
                     handle.write_selections(pa, |c| c.clear());
 
                     let text = handle.take_text(pa);
-                    let text = self.0.update(pa, text, handle.area());
+                    let text = self.0.update(pa, text, handle.area(pa));
                     handle.replace_text(pa, text);
 
                     if let Some(ret_handle) = self.0.return_handle() {
@@ -73,14 +73,14 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
                         e.unset_anchor();
                     });
                     let text = handle.take_text(pa);
-                    let text = self.0.update(pa, text, handle.area());
+                    let text = self.0.update(pa, text, handle.area(pa));
                     handle.replace_text(pa, text);
                 }
             }
             key!(KeyCode::Delete) => {
                 handle.edit_main(pa, |mut e| e.replace(""));
                 let text = handle.take_text(pa);
-                let text = self.0.update(pa, text, handle.area());
+                let text = self.0.update(pa, text, handle.area(pa));
                 handle.replace_text(pa, text);
             }
 
@@ -90,19 +90,19 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
                     e.move_hor(1);
                 });
                 let text = handle.take_text(pa);
-                let text = self.0.update(pa, text, handle.area());
+                let text = self.0.update(pa, text, handle.area(pa));
                 handle.replace_text(pa, text);
             }
             key!(KeyCode::Left) => {
                 handle.edit_main(pa, |mut e| e.move_hor(-1));
                 let text = handle.take_text(pa);
-                let text = self.0.update(pa, text, handle.area());
+                let text = self.0.update(pa, text, handle.area(pa));
                 handle.replace_text(pa, text);
             }
             key!(KeyCode::Right) => {
                 handle.edit_main(pa, |mut e| e.move_hor(1));
                 let text = handle.take_text(pa);
-                let text = self.0.update(pa, text, handle.area());
+                let text = self.0.update(pa, text, handle.area(pa));
                 handle.replace_text(pa, text);
             }
 
@@ -116,7 +116,7 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
                 });
                 handle.write_selections(pa, |c| c.clear());
                 let text = handle.take_text(pa);
-                let text = self.0.update(pa, text, handle.area());
+                let text = self.0.update(pa, text, handle.area(pa));
                 handle.replace_text(pa, text);
 
                 if let Some(ret_handle) = self.0.return_handle() {
@@ -128,7 +128,7 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
             key!(KeyCode::Enter) => {
                 handle.write_selections(pa, |c| c.clear());
                 let text = handle.take_text(pa);
-                let text = self.0.update(pa, text, handle.area());
+                let text = self.0.update(pa, text, handle.area(pa));
                 handle.replace_text(pa, text);
 
                 if let Some(ret_handle) = self.0.return_handle() {
@@ -155,14 +155,14 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
             std::mem::take(wid.text_mut())
         });
 
-        let text = self.0.on_switch(pa, text, handle.area());
+        let text = self.0.on_switch(pa, text, handle.area(pa));
 
         handle.widget().replace_text(pa, text);
     }
 
     fn before_exit(&mut self, pa: &mut Pass, handle: Handle<Self::Widget, U>) {
         let text = handle.take_text(pa);
-        self.0.before_exit(pa, text, handle.area());
+        self.0.before_exit(pa, text, handle.area(pa));
     }
 }
 
@@ -226,7 +226,7 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
 ///
 /// [`U::Area`]: Ui::Area
 #[allow(unused_variables)]
-pub trait PromptMode<U: Ui>: Clone + 'static {
+pub trait PromptMode<U: Ui>: Clone + Send + 'static {
     /// What [`Widget`] to exit to, upon pressing enter, esc, or
     /// backspace in an empty [`PromptLine`]
     type ExitWidget: Widget<U> = File<U>;
@@ -294,9 +294,9 @@ impl<U: Ui> PromptMode<U> for RunCommands {
                 let id = form::id_of!("caller.info");
                 text.insert_tag(*TAGGER, 0..caller.len(), id.to_tag(0));
 
-                let id = form::id_of!("parameter.info");
-                for range in ok_ranges {
-                    text.insert_tag(*TAGGER, range, id.to_tag(0));
+                let default_id = form::id_of!("parameter.info");
+                for (range, id) in ok_ranges {
+                    text.insert_tag(*TAGGER, range, id.unwrap_or(default_id).to_tag(0));
                 }
                 if let Some((range, _)) = err_range {
                     let id = form::id_of!("parameter.error");

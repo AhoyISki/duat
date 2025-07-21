@@ -9,6 +9,7 @@
 //! [`Ui`]: crate::ui::Ui
 use std::{
     any::TypeId,
+    cell::RefCell,
     ops::Range,
     sync::{
         Arc,
@@ -22,7 +23,7 @@ use super::File;
 use crate::{
     cfg::PrintCfg,
     context,
-    data::{Pass, RwData},
+    data::Pass,
     mode::Selections,
     prelude::Ranges,
     text::{Bytes, Moment, Point, Tags, Text, TextParts, txt},
@@ -33,7 +34,7 @@ use crate::{
 ///
 /// [`Change`]: crate::text::Change
 #[allow(unused_variables)]
-pub trait Parser<U: Ui>: 'static {
+pub trait Parser<U: Ui>: Send + 'static {
     /// Parses the [`File`] after a [`Moment`] takes place
     ///
     /// After this point, even if no other functions are called, the
@@ -143,10 +144,8 @@ pub trait Parser<U: Ui>: 'static {
     /// [commands]: crate::cmd::queue
     /// [hooks]: crate::hook::queue
     /// [`File`]: super::File
-    fn parse_remote(&mut self, snap: FileSnapshot, ranges: Option<&mut Ranges>)
-    where
-        Self: Send,
-    {
+    fn parse_remote(&mut self, snap: FileSnapshot, ranges: Option<&mut Ranges>) {
+        panic!("Parser was sent to another thread, but parse_remote wasn't implemented");
     }
 
     /// Wether this [`Parser`] should be sent to update its internal
@@ -155,10 +154,7 @@ pub trait Parser<U: Ui>: 'static {
     /// This should pretty much never be used, unless in very specific
     /// circumstances, such as with very large files, or with broken
     /// syntax trees, whose update time has become slow
-    fn make_remote(&self) -> bool
-    where
-        Self: Send,
-    {
+    fn make_remote(&self) -> bool {
         false
     }
 }
@@ -178,27 +174,20 @@ pub trait ParserCfg<U: Ui> {
     fn init(self, file: &File<U>) -> Result<ParserBox<U>, Text>;
 }
 
-#[derive(Clone, Default)]
-pub(super) struct InnerParsers<U: Ui>(RwData<Vec<ParserBox<U>>>);
+#[derive(Default)]
+pub(super) struct InnerParsers<U: Ui>(RefCell<Vec<ParserBox<U>>>);
 
 impl<U: Ui> InnerParsers<U> {
     /// Attempts to add  a [`Parser`]
-    pub(super) fn add<Rd: ParserCfg<U>>(
-        &self,
-        pa: &mut Pass,
-        file: &File<U>,
-        reader_cfg: Rd,
-    ) -> Result<(), Text> {
-        if self.0.read(pa, |rds| {
-            rds.iter().any(|rb| rb.ty == TypeId::of::<Rd::Parser>())
-        }) {
+    pub(super) fn add<Rd: ParserCfg<U>>(&self, file: &File<U>, reader_cfg: Rd) -> Result<(), Text> {
+        let mut parsers = self.0.borrow_mut();
+        if parsers.iter().any(|rb| rb.ty == TypeId::of::<Rd::Parser>()) {
             Err(txt!(
                 "There is already a reader of type [a]{}",
                 crate::duat_name::<Rd::Parser>()
             ))?;
         }
 
-        let mut parsers = self.0.acquire_mut(pa);
         parsers.push(reader_cfg.init(file)?);
 
         Ok(())
@@ -207,20 +196,20 @@ impl<U: Ui> InnerParsers<U> {
     /// Reads a specific [`Parser`]
     pub(super) fn read_parser<Rd: Parser<U>, Ret>(
         &self,
-        pa: &mut Pass,
         read: impl FnOnce(&Rd) -> Ret,
     ) -> Option<Ret> {
         if TypeId::of::<Rd>() == TypeId::of::<()>() {
             return None;
         }
+        let mut parsers = self.0.borrow_mut();
 
-        let position = self.0.acquire(pa).iter().position(type_eq::<U, Rd>);
+        let position = parsers.iter().position(type_eq::<U, Rd>);
         if let Some(i) = position {
-            let status = self.0.acquire_mut(pa)[i].status.take()?;
+            let status = parsers[i].status.take()?;
 
             let (status, ret) = status_from_read(read, status);
 
-            self.0.acquire_mut(pa)[i].status = Some(status);
+            parsers[i].status = Some(status);
 
             ret
         } else {
@@ -231,20 +220,21 @@ impl<U: Ui> InnerParsers<U> {
     /// Tries to read a specific [`Parser`]. Fails if it was sent
     pub(super) fn try_read_parser<Rd: Parser<U>, Ret>(
         &self,
-        pa: &mut Pass,
         read: impl FnOnce(&Rd) -> Ret,
     ) -> Option<Ret> {
         if TypeId::of::<Rd>() == TypeId::of::<()>() {
             return None;
         }
 
-        let position = self.0.acquire(pa).iter().position(type_eq::<U, Rd>);
+        let mut parsers = self.0.borrow_mut();
+
+        let position = parsers.iter().position(type_eq::<U, Rd>);
         if let Some(i) = position {
-            let status = self.0.acquire_mut(pa)[i].status.take()?;
+            let status = parsers[i].status.take()?;
 
             let (status, ret) = status_from_try_read(read, status);
 
-            self.0.acquire_mut(pa)[i].status = Some(status);
+            parsers[i].status = Some(status);
 
             ret
         } else {
@@ -254,22 +244,12 @@ impl<U: Ui> InnerParsers<U> {
 
     /// Makes each [`Parser`] process a [`Moment`]
     pub(super) fn process_moment(&self, pa: &mut Pass, moment: Moment, cfg: PrintCfg) {
-        let mut parsers = std::mem::take(&mut *self.0.acquire_mut(pa));
+        let mut parsers = self.0.borrow_mut();
+
         for reader_box in parsers.iter_mut() {
             let status = reader_box.status.take().unwrap();
 
             reader_box.status = Some(match status {
-                ParserStatus::Local(mut lp) => {
-                    for change in moment.changes() {
-                        lp.bytes.apply_change(change);
-                    }
-
-                    let ranges = get_ranges(&mut lp.ranges, &lp.bytes, moment);
-                    let snap = FileSnapshot { bytes: &lp.bytes, cfg, moment };
-                    lp.parser.parse(pa, snap, ranges);
-
-                    ParserStatus::Local(lp)
-                }
                 ParserStatus::Present(mut ms, mut sp) => {
                     if sp.parser.make_remote() {
                         ms.latest_state += 1;
@@ -305,12 +285,10 @@ impl<U: Ui> InnerParsers<U> {
                 ParserStatus::MarkedForDeletion => ParserStatus::MarkedForDeletion,
             })
         }
-
-        self.0.acquire_mut(pa).extend(parsers);
     }
 
     /// Updates the [`Parser`]s on a given range
-    pub(super) fn update_range(&self, pa: &mut Pass, text: &mut Text, within: Range<Point>) {
+    pub(super) fn update_range(&self, text: &mut Text, within: Range<Point>) {
         fn update<U: Ui>(
             text: &mut Text,
             parser: &mut dyn Parser<U>,
@@ -335,18 +313,12 @@ impl<U: Ui> InnerParsers<U> {
             }
         }
 
-        let mut parsers = self.0.acquire_mut(pa);
+        let mut parsers = self.0.borrow_mut();
 
         for i in 0..parsers.len() {
             let status = parsers[i].status.take().unwrap();
 
             parsers[i].status = Some(match status {
-                ParserStatus::Local(mut lp) => {
-                    let parser = &mut *lp.parser;
-                    let ranges = &mut lp.ranges;
-                    update(text, parser, ranges, &mut parsers, within.clone());
-                    ParserStatus::Local(lp)
-                }
                 ParserStatus::Present(ms, mut sp) => {
                     let parser = &mut *sp.parser;
                     let ranges = &mut sp.ranges;
@@ -393,9 +365,7 @@ impl<U: Ui> InnerParsers<U> {
 
     /// Wether this [`InnerParsers`] is ready to be updated
     pub fn needs_update(&self) -> bool {
-        // SAFETY: The File is read, which means I can safely acquire this.
-        let pa = &unsafe { Pass::new() };
-        let parsers = self.0.acquire(pa);
+        let parsers = self.0.borrow_mut();
 
         parsers.iter().any(|reader_box| {
             let status = reader_box.status.as_ref();
@@ -454,20 +424,8 @@ pub struct ParserBox<U: Ui> {
 }
 
 impl<U: Ui> ParserBox<U> {
-    /// Returns a [`ParserBox`] that doesn't implement [`Send`]
-    pub fn new_local<Rd: Parser<U>>(file: &File<U>, reader: Rd) -> ParserBox<U> {
-        ParserBox {
-            status: Some(ParserStatus::Local(LocalParser {
-                parser: Box::new(reader),
-                bytes: file.bytes().clone(),
-                ranges: Ranges::full(file.text().len().byte()),
-            })),
-            ty: TypeId::of::<Rd>(),
-        }
-    }
-
-    /// Returns a [`ParserBox`] that implements [`Send`]
-    pub fn new_send<Rd: Parser<U> + Send>(file: &File<U>, reader: Rd) -> ParserBox<U> {
+    /// Sends a built [`Parser`]
+    pub fn new<Rd: Parser<U>>(file: &File<U>, reader: Rd) -> ParserBox<U> {
         let (sender, receiver) = mpsc::channel();
 
         let state = Arc::new(AtomicUsize::new(1));
@@ -489,9 +447,8 @@ impl<U: Ui> ParserBox<U> {
         }
     }
 
-    /// Returns a [`ParserBox`] from a function evaluated in another
-    /// thread
-    pub fn new_remote<Rd: Parser<U> + Send>(
+	/// Sends a [`Parser`] to be built on another thread
+    pub fn new_remote<Rd: Parser<U>>(
         file: &File<U>,
         f: impl FnOnce(&Bytes) -> Result<Rd, Text> + Send + 'static,
     ) -> ParserBox<U> {
@@ -543,7 +500,6 @@ impl<U: Ui> ParserBox<U> {
 }
 
 enum ParserStatus<U: Ui> {
-    Local(LocalParser<U>),
     Present(MomentSender, SendParser<U>),
     Sent(MomentSender, thread::JoinHandle<SendParser<U>>),
     BeingBuilt(
@@ -557,12 +513,6 @@ struct MomentSender {
     sender: mpsc::Sender<Option<(Moment, PrintCfg)>>,
     latest_state: usize,
     remote_state: Arc<AtomicUsize>,
-}
-
-struct LocalParser<U: Ui> {
-    parser: Box<dyn Parser<U>>,
-    bytes: Bytes,
-    ranges: Ranges,
 }
 
 struct SendParser<U: Ui> {
@@ -640,12 +590,6 @@ fn status_from_read<Rd: Parser<U>, Ret, U: Ui>(
     status: ParserStatus<U>,
 ) -> (ParserStatus<U>, Option<Ret>) {
     match status {
-        ParserStatus::Local(lp) => {
-            let ptr = Box::as_ptr(&lp.parser);
-            let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
-
-            (ParserStatus::Local(lp), Some(ret))
-        }
         ParserStatus::Present(sender, sp) => {
             let ptr = Box::as_ptr(&sp.parser);
             let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
@@ -684,12 +628,6 @@ fn status_from_try_read<Rd: Parser<U>, Ret, U: Ui>(
     status: ParserStatus<U>,
 ) -> (ParserStatus<U>, Option<Ret>) {
     match status {
-        ParserStatus::Local(lp) => {
-            let ptr = Box::as_ptr(&lp.parser);
-            let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });
-
-            (ParserStatus::Local(lp), Some(ret))
-        }
         ParserStatus::Present(sender, sp) => {
             let ptr = Box::as_ptr(&sp.parser);
             let ret = read(unsafe { (ptr as *const Rd).as_ref().unwrap() });

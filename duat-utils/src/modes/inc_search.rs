@@ -57,7 +57,7 @@ use duat_core::{prelude::*, text::Searcher};
 /// There are more advanced implementations in the [`duat-kak`] crate
 ///
 /// [`duat-kak`]: https://docs.rs/duat-kak
-pub trait IncSearcher<U: Ui>: Clone + 'static {
+pub trait IncSearcher<U: Ui>: Clone + Send + 'static {
     /// Performs the incremental search
     fn search(&mut self, pa: &mut Pass, handle: Handle<File<U>, U, Searcher>);
 

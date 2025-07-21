@@ -18,7 +18,7 @@ use duat_core::{
     context,
     hook::{self, FocusedOn, UnfocusedFrom},
     prelude::Pass,
-    ui::{BuilderDummy, RawArea, Ui, UiBuilder, Widget, WidgetAlias},
+    ui::{AreaId, BuilderDummy, RawArea, Ui, UiBuilder, Widget, WidgetAlias},
 };
 
 pub use self::{
@@ -26,7 +26,7 @@ pub use self::{
     log_book::{LogBook, LogBookCfg},
     notifications::{Notifications, NotificationsCfg},
     prompt_line::{PromptLine, PromptLineCfg},
-    status_line::{State, StatusLine, StatusLineCfg, status},
+    status_line::{State, StatusLine, StatusLineCfg, status, FromWithPass},
 };
 
 mod line_numbers;
@@ -132,47 +132,52 @@ impl<U: Ui> FooterWidgets<U> {
 }
 
 impl<U: Ui> WidgetAlias<U, FooterWidgetsDummy> for FooterWidgets<U> {
-    fn push(self, pa: &mut Pass, builder: &mut impl UiBuilder<U>) -> (U::Area, Option<U::Area>) {
-        let (child, parent) = if self.is_above {
+    fn push(
+        self,
+        pa: &mut Pass,
+        builder: &mut impl UiBuilder<U>,
+    ) -> (AreaId<U>, Option<AreaId<U>>) {
+        let (child_id, parent_id) = if self.is_above {
             builder.push_cfg(pa, self.status_cfg.above())
         } else {
             builder.push_cfg(pa, self.status_cfg.below())
         };
 
-        let (prompt_area, footer_parent) = if self.is_one_line {
-            builder.push_cfg_to(pa, child, self.prompt_cfg.left_ratioed(3, 7).hidden())
+        let (prompt_id, footer_id) = if self.is_one_line {
+            builder.push_cfg_to(pa, child_id, self.prompt_cfg.left_ratioed(3, 7).hidden())
         } else {
-            builder.push_cfg_to(pa, child, self.prompt_cfg.below().hidden())
+            builder.push_cfg_to(pa, child_id, self.prompt_cfg.below().hidden())
         };
 
-        let (notifs_area, _) = builder.push_cfg_to(pa, prompt_area.clone(), self.notifs_cfg);
+        let (notifs_area, _) = builder.push_cfg_to(pa, prompt_id.clone(), self.notifs_cfg);
 
         hook::add::<FocusedOn<PromptLine<U>, U>, U>({
-            let prompt_area = prompt_area.clone();
-            let notifs_area = notifs_area.clone();
+            let prompt_id = prompt_id.clone();
+            let notifs_id = notifs_area.clone();
 
             move |pa, (_, other)| {
-                let Ok(handle) = context::get_widget::<PromptLine<U>, U>(pa, &prompt_area) else {
+                let Ok(handle) = context::get_widget::<PromptLine<U>, U>(pa, prompt_id.area(pa))
+                else {
                     return;
                 };
                 if other.ptr_eq(handle.widget()) {
-                    prompt_area.reveal().unwrap();
-                    notifs_area.hide().unwrap();
+                    prompt_id.area(pa).reveal().unwrap();
+                    notifs_id.area(pa).hide().unwrap();
                 }
             }
         });
 
         hook::add::<UnfocusedFrom<PromptLine<U>, U>, U>(move |pa, (old, _)| {
-            let Ok(handle) = context::get_widget::<PromptLine<U>, U>(pa, &prompt_area) else {
+            let Ok(handle) = context::get_widget::<PromptLine<U>, U>(pa, prompt_id.area(pa)) else {
                 return;
             };
             if old.ptr_eq(handle.widget()) {
-                prompt_area.hide().unwrap();
-                notifs_area.reveal().unwrap();
+                prompt_id.area(pa).hide().unwrap();
+                notifs_area.area(pa).reveal().unwrap();
             }
         });
 
-        (footer_parent.unwrap(), parent)
+        (footer_id.unwrap(), parent_id)
     }
 }
 

@@ -620,7 +620,7 @@ pub mod hook {
     /// [hook]: Hookable
     /// [`hook::add_grouped`]: add_grouped
     pub fn add<H: HookAlias<Ui, impl HookDummy>>(
-        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static,
+        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
     ) {
         duat_core::hook::add::<H, Ui>(f);
     }
@@ -636,7 +636,7 @@ pub mod hook {
     /// [`hook::add`]: add
     pub fn add_grouped<H: HookAlias<Ui, impl HookDummy>>(
         group: &'static str,
-        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + 'static,
+        f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
     ) {
         duat_core::hook::add_grouped::<H, Ui>(group, f);
     }

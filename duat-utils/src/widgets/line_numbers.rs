@@ -98,7 +98,7 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
         handle.write(pa, |ln, _| ln.text = text);
     }
 
-    fn needs_update(&self) -> bool {
+    fn needs_update(&self, _: &Pass) -> bool {
         self.handle.has_changed()
     }
 

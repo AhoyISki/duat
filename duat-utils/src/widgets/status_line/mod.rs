@@ -15,11 +15,12 @@
 //! [data]: crate::data
 mod state;
 
-use std::{cell::RefCell, rc::Rc};
-
 use duat_core::{prelude::*, text::Builder, ui::Side};
 
-pub use self::{macros::status, state::State};
+pub use self::{
+    macros::status,
+    state::{FromWithPass, State},
+};
 use crate::state::{file_fmt, main_fmt, mode_fmt, mode_name, sels_fmt};
 
 /// A widget to show information, usually about a [`File`]
@@ -86,19 +87,19 @@ pub struct StatusLine<U: Ui> {
     handle: FileHandle<U>,
     text_fn: TextFn<U>,
     text: Text,
-    checker: Box<dyn Fn() -> bool>,
+    checker: Box<dyn Fn(&Pass) -> bool + Send>,
 }
 
 impl<U: Ui> Widget<U> for StatusLine<U> {
     type Cfg = StatusLineCfg<U>;
 
     fn update(pa: &mut Pass, handle: Handle<Self, U>) {
-        let text = handle.read(pa, |wid, _| wid.text_fn.borrow_mut()(pa, &wid.handle));
+        let text = handle.read(pa, |wid, _| (wid.text_fn)(pa, &wid.handle));
         handle.widget().replace_text(pa, text);
     }
 
-    fn needs_update(&self) -> bool {
-        self.handle.has_changed() || (self.checker)()
+    fn needs_update(&self, pa: &Pass) -> bool {
+        self.handle.has_changed() || (self.checker)(pa)
     }
 
     fn cfg() -> Self::Cfg {
@@ -125,22 +126,14 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
 
 /// The [`WidgetCfg`] for a [`StatusLine`]
 pub struct StatusLineCfg<U: Ui> {
-    builder: Option<BuilderFn<U>>,
-    checker: Option<Box<dyn Fn() -> bool>>,
+    constructor: Option<ConstructorFn<U>>,
     specs: PushSpecs,
 }
 
 impl<U: Ui> StatusLineCfg<U> {
     #[doc(hidden)]
-    pub fn new_with(
-        (builder, checker): (BuilderFn<U>, Box<dyn Fn() -> bool>),
-        specs: PushSpecs,
-    ) -> Self {
-        Self {
-            builder: Some(builder),
-            checker: Some(checker),
-            specs,
-        }
+    pub fn new_with(constructor: ConstructorFn<U>, specs: PushSpecs) -> Self {
+        Self { constructor: Some(constructor), specs }
     }
 
     /// Replaces the previous formatting with a new one
@@ -188,27 +181,12 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
     type Widget = StatusLine<U>;
 
     fn build(self, pa: &mut Pass, handle: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
-        let handle = match handle {
-            Some(handle) => handle,
-            None => context::dyn_file(pa).unwrap(),
-        };
-
-        let checker = match self.checker {
-            Some(checker) => checker,
-            // mode checker because mode_name is used in the default
-            None => Box::new(crate::state::mode_name().checker()),
-        };
-
-        let text_fn: TextFn<U> = match self.builder {
-            Some(mut text_fn) => Rc::new(RefCell::new(
-                for<'a, 'b> move |pa: &'a Pass, handle: &'b FileHandle<U>| -> Text {
-                    text_fn(pa, Text::builder(), handle)
-                },
-            )),
+        let (text_fn, checker) = match self.constructor {
+            Some(constructor) => constructor(pa),
             None => {
                 let cfg = match self.specs.side() {
                     Side::Above | Side::Below => {
-                        let mode_upper_fmt = mode_name().map(|mode| {
+                        let mode_upper_fmt = mode_name(pa).map(pa, |mode| {
                             let mode = match mode.split_once('<') {
                                 Some((mode, _)) => mode,
                                 None => mode,
@@ -223,18 +201,16 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
                     Side::Left => unreachable!(),
                 };
 
-                let mut text_fn = cfg.builder.unwrap();
-                Rc::new(RefCell::new(
-                    for<'a, 'b> move |pa: &'a Pass, handle: &'b FileHandle<U>| -> Text {
-                        text_fn(pa, Text::builder(), handle)
-                    },
-                ))
+                (cfg.constructor.unwrap())(pa)
             }
         };
 
         let widget = StatusLine {
-            handle,
-            text_fn,
+            handle: handle.unwrap_or_else(|| context::dyn_file(pa).unwrap()),
+            text_fn: Box::new(move |pa, fh| {
+                let builder = Text::builder();
+                text_fn(pa, builder, fh)
+            }),
             text: Text::default(),
             checker: Box::new(checker),
         };
@@ -382,18 +358,18 @@ mod macros {
             widgets::StatusLineCfg,
         };
 
-        let text_fn= |_: &Pass, _: &mut Builder, _: &FileHandle<_>| {};
-        let checker = || false;
-
-        let (mut text_fn, checker) = format_like!(
-            parse_str,
-            [('{', parse_status_part, false), ('[', parse_form, true)],
-            (text_fn, checker),
-            $($parts)*
-        );
-
         StatusLineCfg::new_with(
-            {
+            Box::new(move |pa| {
+                let text_fn= |_: &Pass, _: &mut Builder, _: &FileHandle<_>| {};
+                let checker = |_: &Pass| false;
+
+                let (_, text_fn, checker) = format_like!(
+                    parse_str,
+                    [('{', parse_status_part, false), ('[', parse_form, true)],
+                    (pa, text_fn, checker),
+                    $($parts)*
+                );
+
                 (
                     Box::new(move |pa: &Pass, mut builder: Builder, handle: &FileHandle<_>| {
                         text_fn(pa, &mut builder, &handle);
@@ -401,11 +377,13 @@ mod macros {
                     }),
                     Box::new(checker),
                 )
-            },
+            }),
             PushSpecs::below().with_ver_len(1.0),
         )
     }}
 }
 
-type TextFn<U> = Rc<RefCell<dyn FnMut(&Pass, &FileHandle<U>) -> Text>>;
-type BuilderFn<U> = Box<dyn FnMut(&Pass, Builder, &FileHandle<U>) -> Text>;
+type TextFn<U> = Box<dyn Fn(&Pass, &FileHandle<U>) -> Text + Send>;
+type BuilderFn<U> = Box<dyn Fn(&Pass, Builder, &FileHandle<U>) -> Text + Send>;
+type ConstructorFn<U> = Box<dyn FnOnce(&Pass) -> (BuilderFn<U>, CheckerFn)>;
+type CheckerFn = Box<dyn Fn(&Pass) -> bool + Send>;

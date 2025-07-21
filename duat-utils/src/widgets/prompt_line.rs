@@ -71,7 +71,7 @@ impl<U: Ui> Widget<U> for PromptLine<U> {
         })
     }
 
-    fn needs_update(&self) -> bool {
+    fn needs_update(&self, _: &Pass) -> bool {
         false
     }
 

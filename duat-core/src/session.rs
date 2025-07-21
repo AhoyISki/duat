@@ -19,9 +19,9 @@ use crate::{
     mode,
     text::Bytes,
     ui::{
-        DuatEvent, FileBuilder, MutArea, Node, RawArea, Sender, Ui, Widget, WidgetCfg, Window,
-        WindowBuilder,
-        layout::{FileId, Layout, MasterOnLeft},
+        AreaId, DuatEvent, FileBuilder, MutArea, Node, RawArea, Sender, Ui, Widget, WidgetCfg,
+        Window, WindowBuilder,
+        layout::{Layout, MasterOnLeft},
     },
 };
 
@@ -45,7 +45,7 @@ impl<U: Ui> SessionCfg<U> {
         // SAFETY: This function is only called from the main thread in
         // ../src/setup.rs, and from there, there are no other active
         // Passs, so this is fine.
-        let mut pa = unsafe { Pass::new() };
+        let pa = unsafe { &mut Pass::new() };
 
         cmd::add_session_commands::<U>();
 
@@ -53,13 +53,13 @@ impl<U: Ui> SessionCfg<U> {
         let first = args.nth(1).map(PathBuf::from);
 
         let (widget, _) = if let Some(name) = first {
-            self.file_cfg.clone().open_path(name).build(&mut pa, None)
+            self.file_cfg.clone().open_path(name).build(pa, None)
         } else {
-            self.file_cfg.clone().build(&mut pa, None)
+            self.file_cfg.clone().build(pa, None)
         };
 
-        let (window, node) = Window::new(&mut pa, ms, widget, (self.layout_fn)());
-        context::set_windows(vec![window]);
+        let (window, node) = Window::new(pa, ms, widget, (self.layout_fn)());
+        context::set_windows(pa, vec![window]);
 
         let session = Session {
             ms,
@@ -67,19 +67,19 @@ impl<U: Ui> SessionCfg<U> {
             layout_fn: self.layout_fn,
         };
 
-        context::set_cur(&mut pa, node.as_file(), node.clone());
+        context::set_cur(pa, node.as_file(), node.clone());
 
         // Open and process files.
-        let builder = FileBuilder::new(&mut pa, node, context::cur_window());
-        hook::trigger(&mut pa, OnFileOpen(builder));
+        let builder = FileBuilder::new(pa, node, context::cur_window());
+        hook::trigger(pa, OnFileOpen(builder));
 
         for file in args {
-            session.open_file(&mut pa, PathBuf::from(file));
+            session.open_file(pa, PathBuf::from(file));
         }
 
         // Build the window's widgets.
-        let builder = WindowBuilder::<U>::new(0);
-        hook::trigger(&mut pa, OnWindowOpen(builder));
+        let builder = WindowBuilder::<U>::new(pa, 0);
+        hook::trigger(pa, OnWindowOpen(builder));
 
         session
     }
@@ -93,9 +93,9 @@ impl<U: Ui> SessionCfg<U> {
         // SAFETY: This function is only called from the main thread in
         // ../src/setup.rs, and from there, there are no other active
         // Passs, so this is fine.
-        let mut pa = unsafe { Pass::new() };
+        let pa = unsafe { &mut Pass::new() };
 
-        context::set_windows::<U>(Vec::new());
+        context::set_windows::<U>(pa, Vec::new());
 
         let file_cfg = self.file_cfg.clone();
         let inherited_cfgs = prev.into_iter().enumerate().map(|(i, cfgs)| {
@@ -118,13 +118,13 @@ impl<U: Ui> SessionCfg<U> {
         let mut hasnt_set_cur = true;
         for (win, mut cfgs) in inherited_cfgs {
             let (file_cfg, is_active) = cfgs.next().unwrap();
-            let (widget, _) = file_cfg.build(&mut pa, None);
+            let (widget, _) = file_cfg.build(pa, None);
 
-            let (window, node) = Window::new(&mut pa, ms, widget, (session.layout_fn)());
-            context::windows::<U>().borrow_mut().push(window);
+            let (window, node) = Window::new(pa, ms, widget, (session.layout_fn)());
+            context::windows::<U>(pa).borrow_mut().push(window);
 
             if is_active || hasnt_set_cur {
-                context::set_cur(&mut pa, node.as_file(), node.clone());
+                context::set_cur(pa, node.as_file(), node.clone());
                 if win != context::cur_window() {
                     context::set_cur_window(win);
                     U::switch_window(session.ms, win);
@@ -132,16 +132,16 @@ impl<U: Ui> SessionCfg<U> {
                 hasnt_set_cur = false;
             }
 
-            let builder = FileBuilder::new(&mut pa, node, context::cur_window());
-            hook::trigger(&mut pa, OnFileOpen(builder));
+            let builder = FileBuilder::new(pa, node, context::cur_window());
+            hook::trigger(pa, OnFileOpen(builder));
 
             for (file_cfg, is_active) in cfgs {
-                session.open_file_from_cfg(&mut pa, file_cfg, is_active, win);
+                session.open_file_from_cfg(pa, file_cfg, is_active, win);
             }
 
             // Build the window's widgets.
-            let builder = WindowBuilder::<U>::new(win);
-            hook::trigger(&mut pa, OnWindowOpen(builder));
+            let builder = WindowBuilder::<U>::new(pa, win);
+            hook::trigger(pa, OnWindowOpen(builder));
         }
 
         session
@@ -161,7 +161,7 @@ pub struct Session<U: Ui> {
 
 impl<U: Ui> Session<U> {
     fn open_file(&self, pa: &mut Pass, path: PathBuf) {
-        let windows = context::windows::<U>();
+        let windows = context::windows::<U>(pa);
         let pushed = {
             let mut windows = windows.borrow_mut();
             let cur_window = context::cur_window();
@@ -193,20 +193,20 @@ impl<U: Ui> Session<U> {
         form::set_sender(Sender::new(sender()));
 
         // SAFETY: No Passes exists at this point in time.
-        let mut pa = unsafe { Pass::new() };
+        let pa = unsafe { &mut Pass::new() };
 
-        hook::trigger(&mut pa, ConfigLoaded(()));
+        hook::trigger(pa, ConfigLoaded(()));
 
-        let Some(mode_fn) = mode::take_set_mode_fn() else {
+        let Some(mode_fn) = mode::take_set_mode_fn(pa) else {
             unreachable!("Somebody forgot to set a default mode, I'm looking at you `duat`!");
         };
-        mode_fn(&mut pa);
+        mode_fn(pa);
 
         {
             let win = context::cur_window();
-            let windows = context::windows::<U>().borrow();
+            let windows = context::windows::<U>(pa).borrow();
             for node in windows[win].nodes() {
-                node.update_and_print(&mut pa);
+                node.update_and_print(pa);
             }
         }
 
@@ -216,27 +216,27 @@ impl<U: Ui> Session<U> {
         let mut reprint_screen = false;
 
         loop {
-            if let Some(mode_fn) = mode::take_set_mode_fn() {
-                mode_fn(&mut pa);
+            if let Some(mode_fn) = mode::take_set_mode_fn(pa) {
+                mode_fn(pa);
             }
 
             if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(50)) {
                 match event {
-                    DuatEvent::Tagger(key) => mode::send_key(&mut pa, key),
-                    DuatEvent::QueuedFunction(f) => f(&mut pa),
+                    DuatEvent::Tagger(key) => mode::send_key(pa, key),
+                    DuatEvent::QueuedFunction(f) => f(pa),
                     DuatEvent::Resize | DuatEvent::FormChange => {
                         reprint_screen = true;
                         continue;
                     }
                     DuatEvent::OpenFile(name) => {
-                        self.open_file(&mut pa, PathBuf::from(&name));
-                        mode::reset_to_file::<U>(&pa, name, false);
+                        self.open_file(pa, PathBuf::from(&name));
+                        mode::reset_to_file::<U>(pa, name, false);
                     }
-                    DuatEvent::CloseFile(name) => self.close_file(&mut pa, name),
-                    DuatEvent::SwapFiles(lhs, rhs) => self.swap_files(&mut pa, lhs, rhs),
+                    DuatEvent::CloseFile(name) => self.close_file(pa, name),
+                    DuatEvent::SwapFiles(lhs, rhs) => self.swap_files(pa, lhs, rhs),
                     DuatEvent::OpenWindow(name) => {
                         reprint_screen = true;
-                        self.open_window_with(&mut pa, name)
+                        self.open_window_with(pa, name)
                     }
                     DuatEvent::SwitchWindow(win) => {
                         reprint_screen = true;
@@ -245,66 +245,66 @@ impl<U: Ui> Session<U> {
                     }
                     DuatEvent::ReloadStarted(instant) => reload_instant = Some(instant),
                     DuatEvent::ReloadConfig => {
-                        hook::trigger(&mut pa, ConfigUnloaded(()));
+                        hook::trigger(pa, ConfigUnloaded(()));
                         context::order_reload_or_quit();
                         wait_for_threads_to_despawn();
 
-                        for (handle, _) in context::windows::<U>()
+                        for (handle, _) in context::windows::<U>(pa)
                             .borrow_mut()
                             .iter()
                             .flat_map(Window::nodes)
                             .filter_map(|node| node.as_file())
                         {
-                            hook::trigger(&mut pa, OnFileReload((handle, Cache::new())));
+                            hook::trigger(pa, OnFileReload((handle, Cache::new())));
                         }
 
                         let ms = self.ms;
-                        let files = self.take_files(&mut pa);
+                        let files = self.take_files(pa);
                         U::unload(ms);
                         return (files, duat_rx, reload_instant);
                     }
                     DuatEvent::Quit => {
-                        hook::trigger(&mut pa, ConfigUnloaded(()));
-                        hook::trigger(&mut pa, ExitedDuat(()));
+                        hook::trigger(pa, ConfigUnloaded(()));
+                        hook::trigger(pa, ExitedDuat(()));
                         context::order_reload_or_quit();
                         wait_for_threads_to_despawn();
 
-                        for (handle, _) in context::windows::<U>()
+                        for (handle, _) in context::windows::<U>(pa)
                             .borrow_mut()
                             .iter()
                             .flat_map(Window::nodes)
                             .filter_map(|node| node.as_file())
                         {
-                            hook::trigger(&mut pa, OnFileClose((handle, Cache::new())));
+                            hook::trigger(pa, OnFileClose((handle, Cache::new())));
                         }
 
                         return (Vec::new(), duat_rx, None);
                     }
                 }
             } else if reprint_screen {
-                let windows = context::windows::<U>().borrow();
+                let windows = context::windows::<U>(pa).borrow();
 
                 let win = context::cur_window();
                 reprint_screen = false;
                 for node in windows[win].nodes() {
-                    node.update_and_print(&mut pa);
+                    node.update_and_print(pa);
                 }
 
                 continue;
             }
 
-            let windows = context::windows::<U>().borrow();
+            let windows = context::windows::<U>(pa).borrow();
             let win = context::cur_window();
             for node in windows[win].nodes() {
-                if node.needs_update(&pa) {
-                    node.update_and_print(&mut pa);
+                if node.needs_update(pa) {
+                    node.update_and_print(pa);
                 }
             }
         }
     }
 
     fn take_files(self, pa: &mut Pass) -> Vec<Vec<FileRet>> {
-        context::windows::<U>()
+        context::windows::<U>(pa)
             .borrow()
             .iter()
             .map(|w| {
@@ -333,7 +333,7 @@ impl<U: Ui> Session<U> {
         win: usize,
     ) {
         let pushed = {
-            let mut windows = context::windows::<U>().borrow_mut();
+            let mut windows = context::windows::<U>(pa).borrow_mut();
             let (widget, _) = file_cfg.build(pa, None);
 
             let result = windows[win].push_file(pa, widget);
@@ -364,7 +364,7 @@ impl<U: Ui> Session<U> {
 // Loop functions
 impl<U: Ui> Session<U> {
     fn close_file(&self, pa: &mut Pass, name: String) {
-        let mut windows = context::windows::<U>().borrow_mut();
+        let mut windows = context::windows::<U>(pa).borrow_mut();
         let (win, lhs, nodes) = {
             let (lhs_win, _, lhs) = file_entry(pa, &windows, &name).unwrap();
             let lhs = lhs.clone();
@@ -402,7 +402,7 @@ impl<U: Ui> Session<U> {
     }
 
     fn swap_files(&self, pa: &mut Pass, lhs_name: String, rhs_name: String) {
-        let mut windows = context::windows::<U>().borrow_mut();
+        let mut windows = context::windows::<U>(pa).borrow_mut();
         let (wins, [lhs_node, rhs_node]) = {
             let (lhs_win, _, lhs_node) = file_entry(pa, &windows, &lhs_name).unwrap();
             let (rhs_win, _, rhs_node) = file_entry(pa, &windows, &rhs_name).unwrap();
@@ -428,7 +428,7 @@ impl<U: Ui> Session<U> {
     #[allow(clippy::await_holding_refcell_ref)]
     fn open_window_with(&self, pa: &mut Pass, name: String) {
         // Holding of the RefCell
-        let mut windows = context::windows::<U>().borrow_mut();
+        let mut windows = context::windows::<U>(pa).borrow_mut();
         let new_win = windows.len();
 
         if let Ok((win, .., node)) = file_entry(pa, &windows, &name) {
@@ -448,7 +448,7 @@ impl<U: Ui> Session<U> {
             // Swap the Files ahead of the swapped new_root
             let lo = node.read_as(pa, |f: &File<U>| f.layout_order).unwrap();
 
-            for (_, FileId(area)) in &windows[win].file_nodes(pa)[lo..] {
+            for (_, AreaId(area)) in &windows[win].file_nodes(pa)[lo..] {
                 MutArea(&new_root).swap(area);
             }
             // RefCell dropped here, before any .await
@@ -474,7 +474,7 @@ impl<U: Ui> Session<U> {
             hook::trigger(pa, OnFileOpen(builder));
         }
 
-        let builder = WindowBuilder::<U>::new(new_win);
+        let builder = WindowBuilder::<U>::new(pa, new_win);
         hook::trigger(pa, OnWindowOpen(builder));
 
         if context::fixed_file::<U>(pa)

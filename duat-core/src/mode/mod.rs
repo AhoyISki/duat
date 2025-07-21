@@ -416,7 +416,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// [`Text`]: crate::Text
 /// [`&mut Selections`]: Selections
 #[allow(unused_variables)]
-pub trait Mode<U: Ui>: Sized + Clone + 'static {
+pub trait Mode<U: Ui>: Sized + Clone + Send + 'static {
     /// The [`Widget`] that this [`Mode`] controls
     type Widget: Widget<U>;
 

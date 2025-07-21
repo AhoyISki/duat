@@ -248,14 +248,14 @@ pub mod doc_print {
 #[rustfmt::skip]
 mod doc_state {
     use crossterm::event::KeyEvent;
-    use crate::{data::{DataMap, RwData}, file::File, text::Text, ui::Ui};
+    use crate::{data::{DataMap, Pass, RwData}, file::File, text::Text, ui::Ui};
 
     pub fn file_fmt(_: &File<impl Ui>) -> Text { Text::default() }
-    pub fn mode_name() -> DataMap<&'static str, &'static str> {
-        RwData::default().map(|_| "")
+    pub fn mode_name(pa: &Pass) -> DataMap<&'static str, &'static str> {
+        RwData::default().map(pa, |_| "")
     }
-    pub fn mode_fmt() -> DataMap<&'static str, Text> {
-        RwData::default().map(|_| Text::new())
+    pub fn mode_fmt(pa: &Pass) -> DataMap<&'static str, Text> {
+        RwData::default().map(pa, |_| Text::new())
     }
     pub fn main_byte(_: &File<impl Ui>) -> usize { 0 }
     pub fn main_char(_: &File<impl Ui>) -> usize { 0 }
@@ -265,8 +265,8 @@ mod doc_state {
     pub fn main_fmt<U: Ui>(_: &File<U>, _: &U::Area) -> Text { Text::default() }
     pub fn selections(_: &File<impl Ui>) -> usize { 0 }
     pub fn sels_fmt(_: &File<impl Ui>) -> Text { Text::default() }
-    pub fn cur_map_fmt() -> DataMap<(Vec<KeyEvent>, bool), Text> {
-        RwData::default().map(|_| Text::new())
+    pub fn cur_map_fmt(pa: &Pass) -> DataMap<(Vec<KeyEvent>, bool), Text> {
+        RwData::default().map(pa, |_| Text::new())
     }
     pub fn last_key() -> RwData<String> { RwData::default() }
 }
@@ -393,7 +393,7 @@ mod doc_widgets {
     impl<U: Ui> Widget<U> for LineNumbers<U> {
         type Cfg = LineNumbersOptions<U>;
         fn update(_: &mut Pass, _: Handle<Self, U>) {}
-        fn needs_update(&self) -> bool { false }
+        fn needs_update(&self, _: &Pass) -> bool { false }
         fn cfg() -> Self::Cfg { LineNumbersOptions(PhantomData) }
         fn text(&self) -> &Text { &self.0 }
         fn text_mut(&mut self) -> &mut Text { &mut self.0 }
@@ -425,7 +425,7 @@ mod doc_widgets {
     impl<U: Ui> Widget<U> for StatusLine<U> {
         type Cfg = StatusLineCfg<U>;
         fn update(_: &mut Pass, _: Handle<Self, U>) {}
-        fn needs_update(&self) -> bool { false }
+        fn needs_update(&self, _: &Pass) -> bool { false }
         fn cfg() -> Self::Cfg { StatusLineCfg(PhantomData) }
         fn text(&self) -> &Text { &self.0 }
         fn text_mut(&mut self) -> &mut Text { &mut self.0 }
@@ -457,7 +457,7 @@ mod doc_widgets {
     impl<U: Ui> Widget<U> for PromptLine<U> {
         type Cfg = PromptLineCfg<U>;
         fn update(_: &mut Pass, _: Handle<Self, U>) {}
-        fn needs_update(&self) -> bool { false }
+        fn needs_update(&self, _: &Pass) -> bool { false }
         fn cfg() -> Self::Cfg { PromptLineCfg(PhantomData) }
         fn text(&self) -> &Text { &self.0 }
         fn text_mut(&mut self) -> &mut Text { &mut self.0 }
@@ -483,7 +483,7 @@ mod doc_widgets {
     impl<U: Ui> Widget<U> for Notifications<U> {
         type Cfg = NotificationsCfg<U>;
         fn update(_: &mut Pass, _: Handle<Self, U>) {}
-        fn needs_update(&self) -> bool { false }
+        fn needs_update(&self, _: &Pass) -> bool { false }
         fn cfg() -> Self::Cfg { NotificationsCfg(PhantomData) }
         fn text(&self) -> &Text { &self.0 }
         fn text_mut(&mut self) -> &mut Text { &mut self.0 }
@@ -512,7 +512,7 @@ mod doc_widgets {
     impl<U: Ui> Widget<U> for LogBook<U> {
         type Cfg = LogBookCfg<U>;
         fn update(_: &mut Pass, _: Handle<Self, U>) {}
-        fn needs_update(&self) -> bool { false }
+        fn needs_update(&self, _: &Pass) -> bool { false }
         fn cfg() -> Self::Cfg { LogBookCfg(PhantomData) }
         fn text(&self) -> &Text { &self.0 }
         fn text_mut(&mut self) -> &mut Text { &mut self.0 }

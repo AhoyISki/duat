@@ -323,7 +323,7 @@ impl<U: Ui> File<U> {
             }
         }
 
-        self.parsers.read_parser(pa, read)
+        self.parsers.read_parser(read)
     }
 
     /// Tries tor read a specific [`Parser`], if it was [added]
@@ -354,7 +354,7 @@ impl<U: Ui> File<U> {
             }
         }
 
-        self.parsers.try_read_parser(pa, read)
+        self.parsers.try_read_parser(read)
     }
 }
 
@@ -363,14 +363,11 @@ impl<U: Ui> Handle<File<U>, U> {
     ///
     /// [`Change`]: crate::text::Change
     pub fn add_parser(&mut self, pa: &mut Pass, cfg: impl ParserCfg<U>) {
-        // SAFETY: The Pass goes no further than the use in file.parsers
-        unsafe {
-            self.widget().read_unsafe(|file| {
-                if let Err(err) = file.parsers.add(pa, file, cfg) {
-                    context::error!("{err}");
-                }
-            })
-        }
+        self.widget().read(pa, |file| {
+            if let Err(err) = file.parsers.add(file, cfg) {
+                context::error!("{err}");
+            }
+        })
     }
 }
 
@@ -379,14 +376,11 @@ impl<U: Ui> FileHandle<U> {
     ///
     /// [`Change`]: crate::text::Change
     pub fn add_parser(&mut self, pa: &mut Pass, cfg: impl ParserCfg<U>) {
-        // SAFETY: The Pass goes no further than the use in file.parsers
-        unsafe {
-            self.handle(pa).widget().read_unsafe(|file| {
-                if let Err(err) = file.parsers.add(pa, file, cfg) {
-                    context::error!("{err}");
-                }
-            })
-        }
+        self.handle(pa).widget().read(pa, |file| {
+            if let Err(err) = file.parsers.add(file, cfg) {
+                context::error!("{err}");
+            }
+        })
     }
 }
 
@@ -398,8 +392,10 @@ impl<U: Ui> Widget<U> for File<U> {
     }
 
     fn update(pa: &mut Pass, handle: Handle<Self, U>) {
-        let (widget, area) = (handle.widget(), handle.area());
-        let (parsers, cfg) = widget.read(pa, |file| (file.parsers.clone(), file.print_cfg()));
+        let (widget, area) = (handle.widget(), handle.area(pa));
+        let (parsers, cfg) = widget.write(pa, |file| {
+            (std::mem::take(&mut file.parsers), file.print_cfg())
+        });
 
         if let Some(moments) = handle.read_text(pa, Text::unprocessed_moments) {
             for moment in moments {
@@ -416,14 +412,13 @@ impl<U: Ui> Widget<U> for File<U> {
         let (start, _) = area.start_points(&file.text, file.cfg);
         let (end, _) = area.end_points(&file.text, file.cfg);
 
-        // SAFETY: The Pass goes no further than the use in file.parsers
-        let mut pa = unsafe { Pass::new() };
-        parsers.update_range(&mut pa, &mut file.text, start..end);
+        parsers.update_range(&mut file.text, start..end);
+        file.parsers = parsers;
 
         file.text.update_bounds();
     }
 
-    fn needs_update(&self) -> bool {
+    fn needs_update(&self, _: &Pass) -> bool {
         self.parsers.needs_update()
     }
 

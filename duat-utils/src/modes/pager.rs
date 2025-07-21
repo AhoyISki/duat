@@ -36,10 +36,10 @@ impl<W: Widget<U>, U: Ui> Mode<U> for Pager<W, U> {
                 handle.scroll_ver(pa, -1);
             }
             (key!(Char('/')), _) => {
-                mode::set::<U>(PagerSearch::new(&handle, true));
+                mode::set::<U>(PagerSearch::new(pa, &handle, true));
             }
             (key!(Char('/'), KeyMod::ALT), true) | (key!(Char('?')), false) => {
-                mode::set::<U>(PagerSearch::new(&handle, false));
+                mode::set::<U>(PagerSearch::new(pa, &handle, false));
             }
             (key!(Char('n')), _) => {
                 let se = SEARCH.lock().unwrap();
@@ -96,11 +96,11 @@ pub struct PagerSearch<W: Widget<U>, U: Ui> {
 }
 
 impl<W: Widget<U>, U: Ui> PagerSearch<W, U> {
-    fn new(handle: &Handle<W, U>, is_fwd: bool) -> Prompt<Self, U> {
+    fn new(pa: &Pass, handle: &Handle<W, U>, is_fwd: bool) -> Prompt<Self, U> {
         Prompt::new(Self {
             is_fwd,
             prev: String::new(),
-            orig: handle.area().print_info(),
+            orig: handle.area(pa).print_info(),
             handle: handle.clone(),
         })
     }

@@ -87,8 +87,8 @@ pub fn file_fmt(file: &File<impl Ui>) -> Text {
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [mode]: duat_core::mode::Mode
 /// [`IncSearch`]: crate::modes::IncSearch
-pub fn mode_name() -> DataMap<&'static str, &'static str> {
-    context::mode_name()
+pub fn mode_name(pa: &Pass) -> DataMap<&'static str, &'static str> {
+    context::mode_name(pa)
 }
 
 /// [`StatusLine`] part: The active mode of Duat, formatted
@@ -100,8 +100,8 @@ pub fn mode_name() -> DataMap<&'static str, &'static str> {
 /// ```
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
-pub fn mode_fmt() -> DataMap<&'static str, Text> {
-    context::mode_name().map(|mode| {
+pub fn mode_fmt(pa: &Pass) -> DataMap<&'static str, Text> {
+    context::mode_name(pa).map(pa, |mode| {
         let mode = mode.to_lowercase();
         let mode = match mode.split_once('<') {
             Some((mode, _)) => mode,
@@ -210,8 +210,8 @@ pub fn sels_fmt(file: &File<impl Ui>) -> Text {
 ///
 /// [`StatusLine`]: crate::widgets::StatusLine
 /// [keys]: KeyEvent
-pub fn cur_map_fmt() -> DataMap<(Vec<KeyEvent>, bool), Text> {
-    mode::cur_sequence().map(|(keys, is_alias)| {
+pub fn cur_map_fmt(pa: &Pass) -> DataMap<(Vec<KeyEvent>, bool), Text> {
+    mode::cur_sequence(pa).map(pa, |(keys, is_alias)| {
         if is_alias {
             Text::default()
         } else {

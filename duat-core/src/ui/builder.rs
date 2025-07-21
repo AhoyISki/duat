@@ -19,7 +19,7 @@ use crate::{
     duat_name,
     file::{File, ParserCfg},
     hook::{self, WidgetCreated},
-    ui::{Node, Widget, WidgetCfg},
+    ui::{AreaId, Node, Widget, WidgetCfg},
 };
 
 /// A trait used to make [`Ui`] building generic
@@ -30,7 +30,11 @@ pub trait UiBuilder<U: Ui>: Sized {
     /// [`U::Area`]
     ///
     /// [`U::Area`]: Ui::Area
-    fn push_cfg<W: WidgetCfg<U>>(&mut self, pa: &mut Pass, cfg: W) -> (U::Area, Option<U::Area>);
+    fn push_cfg<W: WidgetCfg<U>>(
+        &mut self,
+        pa: &mut Pass,
+        cfg: W,
+    ) -> (AreaId<U>, Option<AreaId<U>>);
 
     /// Pushes a [`Widget`] to this [`UiBuilder`], on a given
     /// [`U::Area`]
@@ -39,13 +43,17 @@ pub trait UiBuilder<U: Ui>: Sized {
     fn push_cfg_to<W: WidgetCfg<U>>(
         &mut self,
         pa: &mut Pass,
-        area: U::Area,
+        area: AreaId<U>,
         cfg: W,
-    ) -> (U::Area, Option<U::Area>);
+    ) -> (AreaId<U>, Option<AreaId<U>>);
 }
 
 impl<U: Ui> UiBuilder<U> for FileBuilder<U> {
-    fn push_cfg<W: WidgetCfg<U>>(&mut self, pa: &mut Pass, cfg: W) -> (U::Area, Option<U::Area>) {
+    fn push_cfg<W: WidgetCfg<U>>(
+        &mut self,
+        pa: &mut Pass,
+        cfg: W,
+    ) -> (AreaId<U>, Option<AreaId<U>>) {
         run_once::<W::Widget, U>();
 
         let cfg = {
@@ -55,7 +63,7 @@ impl<U: Ui> UiBuilder<U> for FileBuilder<U> {
 
         let (widget, specs) = cfg.build(pa, Some(self.handle.clone()));
 
-        let mut windows = context::windows().borrow_mut();
+        let mut windows = context::windows(pa).borrow_mut();
         let window = &mut windows[self.window_i];
 
         let (node, parent) = window.push(pa, widget, &self.area, specs, true, true);
@@ -66,9 +74,9 @@ impl<U: Ui> UiBuilder<U> for FileBuilder<U> {
     fn push_cfg_to<W: WidgetCfg<U>>(
         &mut self,
         pa: &mut Pass,
-        area: U::Area,
+        area: AreaId<U>,
         cfg: W,
-    ) -> (U::Area, Option<U::Area>) {
+    ) -> (AreaId<U>, Option<AreaId<U>>) {
         run_once::<W::Widget, U>();
 
         let cfg = {
@@ -78,10 +86,10 @@ impl<U: Ui> UiBuilder<U> for FileBuilder<U> {
 
         let (widget, specs) = cfg.build(pa, Some(self.handle.clone()));
 
-        let mut windows = context::windows().borrow_mut();
+        let mut windows = context::windows(pa).borrow_mut();
         let window = &mut windows[self.window_i];
 
-        let (node, parent) = window.push(pa, widget, &area, specs, true, true);
+        let (node, parent) = window.push(pa, widget, &area.0, specs, true, true);
 
         self.get_areas(pa, window, node, parent)
     }
@@ -223,7 +231,7 @@ impl<U: Ui> FileBuilder<U> {
         &mut self,
         pa: &mut Pass,
         widget: W,
-    ) -> (U::Area, Option<U::Area>) {
+    ) -> (AreaId<U>, Option<AreaId<U>>) {
         widget.push(pa, self)
     }
 
@@ -268,9 +276,9 @@ impl<U: Ui> FileBuilder<U> {
     pub fn push_to<W: WidgetCfg<U>>(
         &mut self,
         pa: &mut Pass,
-        area: U::Area,
+        area: AreaId<U>,
         cfg: W,
-    ) -> (U::Area, Option<U::Area>) {
+    ) -> (AreaId<U>, Option<AreaId<U>>) {
         self.push_cfg_to(pa, area, cfg)
     }
 
@@ -309,7 +317,7 @@ impl<U: Ui> FileBuilder<U> {
         window: &mut super::Window<U>,
         node: Node<U>,
         parent: Option<U::Area>,
-    ) -> (U::Area, Option<U::Area>) {
+    ) -> (AreaId<U>, Option<AreaId<U>>) {
         self.handle
             .write_related_widgets(pa, |related| related.push(node.clone()));
 
@@ -320,7 +328,7 @@ impl<U: Ui> FileBuilder<U> {
             self.area = parent.clone();
         }
 
-        (node.area().clone(), parent)
+        (AreaId(node.area().clone()), parent.map(AreaId))
     }
 }
 
@@ -395,7 +403,11 @@ pub struct WindowBuilder<U: Ui> {
 }
 
 impl<U: Ui> UiBuilder<U> for WindowBuilder<U> {
-    fn push_cfg<W: WidgetCfg<U>>(&mut self, pa: &mut Pass, cfg: W) -> (U::Area, Option<U::Area>) {
+    fn push_cfg<W: WidgetCfg<U>>(
+        &mut self,
+        pa: &mut Pass,
+        cfg: W,
+    ) -> (AreaId<U>, Option<AreaId<U>>) {
         run_once::<W::Widget, U>();
 
         let cfg = {
@@ -405,7 +417,7 @@ impl<U: Ui> UiBuilder<U> for WindowBuilder<U> {
 
         let (widget, specs) = cfg.build(pa, None);
 
-        let mut windows = context::windows().borrow_mut();
+        let mut windows = context::windows(pa).borrow_mut();
         let window = &mut windows[self.window_i];
 
         let (child, parent) = window.push(pa, widget, &self.area, specs, false, false);
@@ -414,37 +426,37 @@ impl<U: Ui> UiBuilder<U> for WindowBuilder<U> {
             self.area = parent.clone();
         }
 
-        (child.area().clone(), parent)
+        (AreaId(child.area().clone()), parent.map(AreaId))
     }
 
     fn push_cfg_to<W: WidgetCfg<U>>(
         &mut self,
         pa: &mut Pass,
-        area: U::Area,
+        id: AreaId<U>,
         cfg: W,
-    ) -> (U::Area, Option<U::Area>) {
+    ) -> (AreaId<U>, Option<AreaId<U>>) {
         run_once::<W::Widget, U>();
         let (widget, specs) = cfg.build(pa, None);
 
-        let mut windows = context::windows().borrow_mut();
+        let mut windows = context::windows(pa).borrow_mut();
         let window = &mut windows[self.window_i];
 
-        let (node, parent) = window.push(pa, widget, &area, specs, true, false);
+        let (node, parent) = window.push(pa, widget, &id.0, specs, true, false);
 
-        if area == self.area
+        if *id.area(pa) == self.area
             && let Some(parent) = &parent
         {
             self.area = parent.clone();
         }
 
-        (node.area().clone(), parent)
+        (AreaId(node.area().clone()), parent.map(AreaId))
     }
 }
 
 impl<U: Ui> WindowBuilder<U> {
     /// Creates a new [`WindowBuilder`].
-    pub(crate) fn new(window_i: usize) -> Self {
-        let windows = context::windows::<U>().borrow();
+    pub(crate) fn new(pa: &Pass, window_i: usize) -> Self {
+        let windows = context::windows::<U>(pa).borrow();
         let area = windows[window_i].files_area.clone();
         Self { window_i, area }
     }
@@ -483,7 +495,7 @@ impl<U: Ui> WindowBuilder<U> {
         &mut self,
         pa: &mut Pass,
         widget: W,
-    ) -> (U::Area, Option<U::Area>) {
+    ) -> (AreaId<U>, Option<AreaId<U>>) {
         widget.push(pa, self)
     }
 
@@ -534,9 +546,9 @@ impl<U: Ui> WindowBuilder<U> {
     pub fn push_to<W: WidgetCfg<U>>(
         &mut self,
         pa: &mut Pass,
-        area: U::Area,
+        area: AreaId<U>,
         cfg: W,
-    ) -> (U::Area, Option<U::Area>) {
+    ) -> (AreaId<U>, Option<AreaId<U>>) {
         self.push_cfg_to(pa, area, cfg)
     }
 }
@@ -557,11 +569,16 @@ pub trait WidgetAlias<U: Ui, D: BuilderDummy = WidgetCfgDummy> {
     /// [`U::Area`]
     ///
     /// [`U::Area`]: Ui::Area
-    fn push(self, pa: &mut Pass, builder: &mut impl UiBuilder<U>) -> (U::Area, Option<U::Area>);
+    fn push(self, pa: &mut Pass, builder: &mut impl UiBuilder<U>)
+    -> (AreaId<U>, Option<AreaId<U>>);
 }
 
 impl<W: WidgetCfg<U>, U: Ui> WidgetAlias<U> for W {
-    fn push(self, pa: &mut Pass, builder: &mut impl UiBuilder<U>) -> (U::Area, Option<U::Area>) {
+    fn push(
+        self,
+        pa: &mut Pass,
+        builder: &mut impl UiBuilder<U>,
+    ) -> (AreaId<U>, Option<AreaId<U>>) {
         builder.push_cfg(pa, self)
     }
 }
