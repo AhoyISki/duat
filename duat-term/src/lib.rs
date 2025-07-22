@@ -11,7 +11,7 @@ use std::{
 pub use area::{Area, Coords};
 use crossterm::{
     cursor,
-    event::{Event as CtEvent, poll as ct_poll, read as ct_read},
+    event::{self, Event as CtEvent, poll as ct_poll, read as ct_read},
     execute,
     style::{ContentStyle, Print},
     terminal::{self, ClearType},
@@ -40,6 +40,8 @@ impl ui::Ui for Ui {
     type MetaStatics = Mutex<MetaStatics>;
 
     fn open(ms: &'static Self::MetaStatics, tx: Sender) {
+        use event::{KeyboardEnhancementFlags as KEF, PushKeyboardEnhancementFlags};
+
         let thread = std::thread::Builder::new().name("print loop".to_string());
         let rx = ms.lock().unwrap().rx.take().unwrap();
 
@@ -50,27 +52,30 @@ impl ui::Ui for Ui {
                 unreachable!("Failed to load the Ui");
             };
 
+            terminal::enable_raw_mode().unwrap();
+
             // Initial terminal setup
-            use crossterm::event::{KeyboardEnhancementFlags as KEF, PushKeyboardEnhancementFlags};
-            execute!(
-                io::stdout(),
-                terminal::EnterAlternateScreen,
-                terminal::Clear(ClearType::All),
-                terminal::DisableLineWrap
-            )
-            .unwrap();
             // Some key chords (like alt+shift+o for some reason) don't work
             // without this.
-            if terminal::supports_keyboard_enhancement().is_ok() {
-                execute!(
+            if let Ok(true) = terminal::supports_keyboard_enhancement() {
+                queue!(
                     io::stdout(),
                     PushKeyboardEnhancementFlags(
                         KEF::DISAMBIGUATE_ESCAPE_CODES | KEF::REPORT_ALTERNATE_KEYS
                     )
-                )
-                .unwrap()
+                );
             }
-            terminal::enable_raw_mode().unwrap();
+
+            execute!(
+                io::stdout(),
+                terminal::EnterAlternateScreen,
+                terminal::Clear(ClearType::All),
+                terminal::DisableLineWrap,
+                event::EnableBracketedPaste,
+                event::EnableFocusChange,
+                event::EnableMouseCapture
+            )
+            .unwrap();
 
             loop {
                 if let Ok(true) = ct_poll(Duration::from_millis(20)) {
@@ -80,10 +85,9 @@ impl ui::Ui for Ui {
                             printer.update(true);
                             tx.send_resize()
                         }
-                        CtEvent::FocusGained
-                        | CtEvent::FocusLost
-                        | CtEvent::Mouse(_)
-                        | CtEvent::Paste(_) => Ok(()),
+                        CtEvent::FocusGained => tx.send_focused(),
+                        CtEvent::FocusLost => tx.send_unfocused(),
+                        CtEvent::Mouse(_) | CtEvent::Paste(_) => Ok(()),
                     };
                     if res.is_err() {
                         break;
@@ -103,15 +107,18 @@ impl ui::Ui for Ui {
 
     fn close(ms: &'static Self::MetaStatics) {
         ms.lock().unwrap().tx.send(Event::Quit).unwrap();
-        terminal::disable_raw_mode().unwrap();
         execute!(
             io::stdout(),
             terminal::Clear(ClearType::All),
             terminal::LeaveAlternateScreen,
             terminal::EnableLineWrap,
+            event::DisableBracketedPaste,
+            event::DisableFocusChange,
+            event::DisableMouseCapture,
             cursor::Show,
         )
         .unwrap();
+        terminal::disable_raw_mode().unwrap();
     }
 
     fn new_root(

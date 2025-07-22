@@ -13,8 +13,8 @@ use crate::{
     file::{File, FileCfg, PathKind},
     file_entry, form,
     hook::{
-        self, ConfigLoaded, ConfigUnloaded, ExitedDuat, OnFileClose, OnFileOpen, OnFileReload,
-        OnWindowOpen,
+        self, ConfigLoaded, ConfigUnloaded, ExitedDuat, FocusedOnDuat, OnFileClose, OnFileOpen,
+        OnFileReload, OnWindowOpen, UnfocusedFromDuat,
     },
     mode,
     text::Bytes,
@@ -224,7 +224,7 @@ impl<U: Ui> Session<U> {
                 match event {
                     DuatEvent::Tagger(key) => mode::send_key(pa, key),
                     DuatEvent::QueuedFunction(f) => f(pa),
-                    DuatEvent::Resize | DuatEvent::FormChange => {
+                    DuatEvent::Resized | DuatEvent::FormChange => {
                         reprint_screen = true;
                         continue;
                     }
@@ -234,14 +234,17 @@ impl<U: Ui> Session<U> {
                     }
                     DuatEvent::CloseFile(name) => self.close_file(pa, name),
                     DuatEvent::SwapFiles(lhs, rhs) => self.swap_files(pa, lhs, rhs),
-                    DuatEvent::OpenWindow(name) => {
-                        reprint_screen = true;
-                        self.open_window_with(pa, name)
-                    }
+                    DuatEvent::OpenWindow(name) => self.open_window_with(pa, name),
                     DuatEvent::SwitchWindow(win) => {
                         reprint_screen = true;
                         context::set_cur_window(win);
                         U::switch_window(self.ms, win);
+                    }
+                    DuatEvent::FocusedOnDuat => {
+                        hook::trigger(pa, FocusedOnDuat(()));
+                    }
+                    DuatEvent::UnfocusedFromDuat => {
+                        hook::trigger(pa, UnfocusedFromDuat(()));
                     }
                     DuatEvent::ReloadStarted(instant) => reload_instant = Some(instant),
                     DuatEvent::ReloadConfig => {

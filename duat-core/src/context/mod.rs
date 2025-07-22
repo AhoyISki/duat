@@ -40,11 +40,10 @@ mod global {
         ui::{DuatEvent, Node, Ui, Widget, Window},
     };
 
-    static CUR_FILE: OnceLock<&'static (dyn Any + Send + Sync)> = OnceLock::new();
-    static CUR_WIDGET: OnceLock<&'static (dyn Any + Send + Sync)> = OnceLock::new();
-    static WINDOWS: MainThreadOnly<OnceLock<&'static (dyn Any)>> =
-        MainThreadOnly::new(OnceLock::new());
-    static MODE_NAME: LazyLock<RwData<&'static str>> = LazyLock::new(RwData::default);
+    static CUR_FILE: OnceLock<&(dyn Any + Send + Sync)> = OnceLock::new();
+    static CUR_WIDGET: OnceLock<&(dyn Any + Send + Sync)> = OnceLock::new();
+    static WINDOWS: MainThreadOnly<OnceLock<&(dyn Any)>> = MainThreadOnly::new(OnceLock::new());
+    static MODE_NAME: LazyLock<RwData<&str>> = LazyLock::new(RwData::default);
 
     static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
     static WILL_RELOAD_OR_QUIT: AtomicBool = AtomicBool::new(false);
@@ -243,13 +242,19 @@ mod global {
     }
 
     /// Sets us static variables that were created by leaking memory
+    ///
+    /// ONLY MEANT TO BE USED BY THE pre_setup FUNCTION
+    ///
+    /// # Safety
+    ///
+    /// This sets the `WINDOWS` constant, so this should only run on
+    /// the main thread.
     #[doc(hidden)]
     pub unsafe fn setup_context<U: Ui>(
         cur_file: &'static CurFile<U>,
         cur_widget: &'static CurWidget<U>,
         cur_window: usize,
         windows: &'static RefCell<Vec<Window<U>>>,
-        sender: &'static mpsc::Sender<DuatEvent>,
     ) {
         CUR_FILE.set(cur_file).expect("setup ran twice");
         CUR_WIDGET.set(cur_widget).expect("setup ran twice");
@@ -258,6 +263,13 @@ mod global {
             .expect("setup ran twice");
 
         CUR_WINDOW.store(cur_window, Ordering::Relaxed);
+    }
+
+    /// Sets the sender for [`DuatEvent`]s
+    ///
+    /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
+    #[doc(hidden)]
+    pub fn set_sender(sender: &'static mpsc::Sender<DuatEvent>) {
         SENDER.set(sender).expect("setup ran twice");
     }
 }

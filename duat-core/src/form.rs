@@ -591,7 +591,7 @@ mod global {
 
     /// Gets a [`Mutex`] for the initial [`Form`]'s list of Duat
     ///
-    /// ONLY MEANT TO BE USED BY THE DUAT executable
+    /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
     #[doc(hidden)]
     pub fn get_initial() -> (&'static Mutex<Vec<&'static str>>, &'static Palette) {
         let forms = Box::leak(Box::new(Mutex::new(
@@ -603,7 +603,7 @@ mod global {
 
     /// Sets the [`Mutex`] for the initial [`Form`]'s list of Duat
     ///
-    /// ONLY MEANT TO BE USED BY THE DUAT executable
+    /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
     #[doc(hidden)]
     pub fn set_initial((forms, palette): (&'static Mutex<Vec<&'static str>>, &'static Palette)) {
         FORMS.set(forms).expect("Forms setup ran twice");
@@ -612,10 +612,10 @@ mod global {
 
     /// Clears the [`Form`]s from the list
     ///
-    /// ONLY MEANT TO BE USED BY THE DUAT executable
+    /// ONLY MEANT TO BE USED BY THE DUAT EXECUTABLE
     #[doc(hidden)]
     pub fn clear() {
-        *FORMS.get().unwrap().lock().unwrap() = Vec::new();
+        *FORMS.get().unwrap().lock().unwrap() = BASE_FORMS.iter().map(|(n, ..)| *n).collect();
         PALETTE.get().unwrap().reset();
     }
 

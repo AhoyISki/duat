@@ -737,8 +737,8 @@ pub enum DuatEvent {
     Tagger(KeyEvent),
     /// A function was queued
     QueuedFunction(Box<dyn FnOnce(&mut Pass) + Send>),
-    /// The application resized
-    Resize,
+    /// The Screen has resized
+    Resized,
     /// A [`Form`] was altered, which one it is, doesn't matter
     ///
     /// [`Form`]: crate::form::Form
@@ -753,31 +753,16 @@ pub enum DuatEvent {
     OpenWindow(String),
     /// Switch to the n'th window
     SwitchWindow(usize),
+    /// Focused on Duat
+    FocusedOnDuat,
+    /// Unfocused from Duat
+    UnfocusedFromDuat,
     /// Started a reload/recompilation at an [`Instant`]
     ReloadStarted(Instant),
     /// The Duat app sent a message to reload the config
     ReloadConfig,
     /// Quit Duat
     Quit,
-}
-
-impl Debug for DuatEvent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Tagger(key) => f.debug_tuple("Tagger").field(key).finish(),
-            Self::Resize => write!(f, "Resize"),
-            Self::FormChange => write!(f, "FormChange"),
-            Self::ReloadConfig => write!(f, "ReloadConfig"),
-            Self::OpenFile(file) => f.debug_tuple("OpenFile").field(file).finish(),
-            Self::CloseFile(file) => f.debug_tuple("CloseFile").field(file).finish(),
-            Self::SwapFiles(lhs, rhs) => f.debug_tuple("SwapFiles").field(lhs).field(rhs).finish(),
-            Self::OpenWindow(file) => f.debug_tuple("OpenWindow").field(file).finish(),
-            Self::SwitchWindow(win) => f.debug_tuple("SwitchWindow").field(win).finish(),
-            Self::ReloadStarted(instant) => f.debug_tuple("ReloadStarted").field(instant).finish(),
-            Self::QueuedFunction(_) => f.debug_struct("InnerFunction").finish(),
-            Self::Quit => write!(f, "Quit"),
-        }
-    }
 }
 
 /// A sender of [`DuatEvent`]s
@@ -796,7 +781,17 @@ impl Sender {
 
     /// Sends a notice that the app has resized
     pub fn send_resize(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
-        self.0.send(DuatEvent::Resize)
+        self.0.send(DuatEvent::Resized)
+    }
+
+    /// Triggers the [`FocusedOnDuat`] [`hook`]
+    pub fn send_focused(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
+        self.0.send(DuatEvent::FocusedOnDuat)
+    }
+
+    /// Triggers the [`UnfocusedFromDuat`] [`hook`]
+    pub fn send_unfocused(&self) -> Result<(), mpsc::SendError<DuatEvent>> {
+        self.0.send(DuatEvent::UnfocusedFromDuat)
     }
 
     /// Sends a notice that a [`Form`] has changed

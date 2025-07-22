@@ -38,17 +38,12 @@ fn main() {
     let forms_init = duat_core::form::get_initial();
     duat_core::form::set_initial(forms_init);
 
-    let hooks_init = duat_core::hook::InnerHooks::default();
-    duat_core::hook::set_initial(hooks_init);
+    let (duat_tx, mut duat_rx) = mpsc::channel();
+    let duat_tx: &'static mpsc::Sender<DuatEvent> = Box::leak(Box::new(duat_tx));
+    duat_core::context::set_sender(duat_tx);
 
     let ms: &'static <Ui as ui::Ui>::MetaStatics =
         Box::leak(Box::new(<Ui as ui::Ui>::MetaStatics::default()));
-
-    let (reload_tx, reload_rx) = mpsc::channel();
-    let (duat_tx, mut duat_rx) = mpsc::channel();
-    let duat_tx = Box::leak(Box::new(duat_tx));
-
-    let mut prev = Vec::new();
 
     // Assert that the configuration crate actually exists.
     let Some(crate_dir) = duat_core::crate_dir().ok().filter(|cd| cd.exists()) else {
@@ -83,10 +78,12 @@ fn main() {
     };
 
     // The watcher is returned as to not be dropped.
+    let (reload_tx, reload_rx) = mpsc::channel();
     let _watcher = spawn_watcher(reload_tx, duat_tx, crate_dir);
 
     Ui::open(ms, ui::Sender::new(duat_tx));
 
+    let mut prev = Vec::new();
     loop {
         let running_lib = lib.take();
         let mut run_fn = running_lib.as_ref().and_then(find_run_duat);
@@ -95,8 +92,8 @@ fn main() {
         (prev, duat_rx, reload_instant) = std::thread::scope(|s| {
             s.spawn(|| {
                 if let Some(run_duat) = run_fn.take() {
-                    let initials = (logs.clone(), forms_init, hooks_init);
-                    let channel = (&*duat_tx, duat_rx);
+                    let initials = (logs.clone(), forms_init);
+                    let channel = (duat_tx, duat_rx);
                     run_duat(initials, (ms, &CLIPB), prev, channel)
                 } else {
                     context::error!("Failed to load config crate");
@@ -134,7 +131,7 @@ fn main() {
 
 fn spawn_watcher(
     reload_tx: mpsc::Sender<(PathBuf, bool)>,
-    duat_tx: &mut mpsc::Sender<DuatEvent>,
+    duat_tx: &mpsc::Sender<DuatEvent>,
     crate_dir: &'static std::path::Path,
 ) -> (notify::RecommendedWatcher, &'static std::path::Path) {
     std::fs::create_dir_all(crate_dir.join("target/debug")).unwrap();

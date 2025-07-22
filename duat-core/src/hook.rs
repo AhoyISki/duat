@@ -169,7 +169,7 @@ use crate::{
 
 /// Hook functions
 mod global {
-    use std::{collections::HashMap, sync::OnceLock};
+    use std::sync::LazyLock;
 
     use super::{HookAlias, Hookable, InnerHooks};
     use crate::{
@@ -178,7 +178,7 @@ mod global {
         ui::{DuatEvent, Ui},
     };
 
-    static HOOKS: OnceLock<InnerHooks> = OnceLock::new();
+    static HOOKS: LazyLock<InnerHooks> = LazyLock::new(InnerHooks::default);
 
     /// Adds a [hook]
     ///
@@ -194,7 +194,7 @@ mod global {
     pub fn add<H: HookAlias<U, impl HookDummy>, U: Ui>(
         f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
     ) {
-        HOOKS.get().unwrap().add::<H::Hookable>("", Box::new(f));
+        HOOKS.add::<H::Hookable>("", Box::new(f));
     }
 
     /// Adds a [hook], without accepting aliases
@@ -207,7 +207,7 @@ mod global {
     pub fn add_no_alias<H: Hookable>(
         f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
     ) {
-        HOOKS.get().unwrap().add::<H>("", Box::new(f));
+        HOOKS.add::<H>("", Box::new(f));
     }
 
     /// Adds a grouped [hook]
@@ -227,7 +227,7 @@ mod global {
         group: &'static str,
         f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
     ) {
-        HOOKS.get().unwrap().add::<H::Hookable>(group, Box::new(f));
+        HOOKS.add::<H::Hookable>(group, Box::new(f));
     }
 
     /// Adds a grouped [hook], without accepting aliases
@@ -240,7 +240,7 @@ mod global {
     pub fn add_grouped_no_alias<H: Hookable>(
         f: impl FnMut(&mut Pass, H::Input<'_>) -> H::Output + Send + 'static,
     ) {
-        HOOKS.get().unwrap().add::<H>("", Box::new(f));
+        HOOKS.add::<H>("", Box::new(f));
     }
 
     /// Removes a [hook] group
@@ -251,7 +251,7 @@ mod global {
     /// [hook]: Hookable
     /// [`hook::add_grouped`]: add_grouped
     pub fn remove(group: &'static str) {
-        HOOKS.get().unwrap().remove(group);
+        HOOKS.remove(group);
     }
 
     /// Triggers a hooks for a [`Hookable`] struct
@@ -264,7 +264,7 @@ mod global {
     /// [`hook::add`]: add
     /// [`hook::add_grouped`]: add_grouped
     pub fn trigger<H: Hookable>(pa: &mut Pass, hookable: H) -> H {
-        HOOKS.get().unwrap().trigger(pa, hookable)
+        HOOKS.trigger(pa, hookable)
     }
 
     /// Queues a [`Hookable`]'s execution
@@ -283,7 +283,7 @@ mod global {
         let sender = crate::context::sender();
         sender
             .send(DuatEvent::QueuedFunction(Box::new(move |pa| {
-                HOOKS.get().unwrap().trigger(pa, hookable);
+                trigger(pa, hookable);
             })))
             .unwrap();
     }
@@ -297,24 +297,7 @@ mod global {
     /// [`hook::add_grouped`]: add_grouped
     /// [`hook::remove`]: remove
     pub fn group_exists(group: &'static str) -> bool {
-        HOOKS.get().unwrap().group_exists(group)
-    }
-
-    /// Sets the [`InnerHooks`] for the usage by this module
-    ///
-    /// ONLY MEANT TO BE USED BY THE DUAT executable
-    pub fn set_initial(hooks: InnerHooks) {
-        let Ok(_) = HOOKS.set(hooks) else {
-            panic!("Hooks setup ran twice");
-        };
-    }
-
-	/// Clears the [`InnerHooks`]
-    ///
-    /// ONLY MEANT TO BE USED BY THE DUAT executable
-    pub fn clear() {
-        *HOOKS.get().unwrap().types.lock().unwrap() = HashMap::new();
-        *HOOKS.get().unwrap().groups.lock().unwrap() = Vec::new();
+        HOOKS.group_exists(group)
     }
 }
 
@@ -349,6 +332,32 @@ impl Hookable for ConfigUnloaded {
 pub struct ExitedDuat(pub(crate) ());
 
 impl Hookable for ExitedDuat {
+    type Input<'h> = ();
+
+    fn get_input(&mut self) -> Self::Input<'_> {}
+}
+
+/// [`Hookable`]: Triggers when Duat is refocused
+///
+/// # Arguments
+///
+/// There are no arguments
+pub struct FocusedOnDuat(pub(crate) ());
+
+impl Hookable for FocusedOnDuat {
+    type Input<'h> = ();
+
+    fn get_input(&mut self) -> Self::Input<'_> {}
+}
+
+/// [`Hookable`]: Triggers when Duat is unfocused
+///
+/// # Arguments
+///
+/// There are no arguments
+pub struct UnfocusedFromDuat(pub(crate) ());
+
+impl Hookable for UnfocusedFromDuat {
     type Input<'h> = ();
 
     fn get_input(&mut self) -> Self::Input<'_> {}
@@ -775,11 +784,8 @@ pub trait Hookable<_H: HookDummy = NormalHook>: Sized + 'static {
 }
 
 /// Where all hooks of Duat are stored
-///
-/// ONLY MEANT TO BE USED BY THE DUAT executable
 #[derive(Clone, Copy)]
-#[doc(hidden)]
-pub struct InnerHooks {
+struct InnerHooks {
     types: &'static Mutex<HashMap<TypeId, Box<dyn HookHolder>>>,
     groups: &'static Mutex<Vec<&'static str>>,
 }

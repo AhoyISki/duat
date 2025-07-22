@@ -33,7 +33,7 @@ use duat_utils::{
 
 use crate::{
     CfgFn, Ui, form,
-    hook::{self, InnerHooks, OnFileClose, OnFileOpen, OnFileReload, OnWindowOpen},
+    hook::{self, OnFileClose, OnFileOpen, OnFileReload, OnWindowOpen},
     mode,
     prelude::{FileWritten, LineNumbers},
 };
@@ -46,12 +46,10 @@ pub static PLUGIN_FN: LazyLock<RwLock<Box<PluginFn>>> =
 
 #[doc(hidden)]
 pub fn pre_setup(initials: Option<Initials>, duat_tx: &'static Sender<DuatEvent>) {
-    if let Some((logs, forms_init, hooks_init)) = initials {
+    if let Some((logs, forms_init)) = initials {
         log::set_logger(Box::leak(Box::new(logs.clone()))).unwrap();
         context::set_logs(logs);
-
         duat_core::form::set_initial(forms_init);
-        duat_core::hook::set_initial(hooks_init);
     }
 
     // State statics.
@@ -68,9 +66,10 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: &'static Sender<DuatEvent>
             cur_widget,
             CUR_WINDOW.load(Ordering::Relaxed),
             windows,
-            duat_tx,
         );
     }
+
+    duat_core::context::set_sender(duat_tx);
 
     mode::set_default(Regular);
     mode::set_default(Pager::<LogBook, Ui>::new());
@@ -198,8 +197,4 @@ pub type MetaStatics = (
     &'static Mutex<Clipboard>,
 );
 #[doc(hidden)]
-pub type Initials = (
-    Logs,
-    (&'static Mutex<Vec<&'static str>>, &'static Palette),
-    InnerHooks,
-);
+pub type Initials = (Logs, (&'static Mutex<Vec<&'static str>>, &'static Palette));

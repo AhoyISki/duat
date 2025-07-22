@@ -390,7 +390,7 @@ use std::sync::RwLock;
 use duat_core::session::SessionCfg;
 pub use duat_core::{crate_dir, duat_name, src_crate};
 
-pub use self::setup::{DuatChannel, MetaStatics, Initials, pre_setup, run_duat};
+pub use self::setup::{DuatChannel, Initials, MetaStatics, pre_setup, run_duat};
 
 pub mod print;
 mod setup;
@@ -987,8 +987,9 @@ pub mod prelude {
         form::{self, CursorShape, Form},
         hook::{
             self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FocusedOn,
-            FormSet, KeysSent, KeysSentTo, ModeCreated, ModeSwitched, OnFileOpen, OnWindowOpen,
-            SearchPerformed, SearchUpdated, UnfocusedFrom, WidgetCreated,
+            FocusedOnDuat, FormSet, KeysSent, KeysSentTo, ModeCreated, ModeSwitched, OnFileOpen,
+            OnWindowOpen, SearchPerformed, SearchUpdated, UnfocusedFrom, UnfocusedFromDuat,
+            WidgetCreated,
         },
         mode::{self, Mode, Pager, Prompt, User, alias, map},
         print, setup_duat,
