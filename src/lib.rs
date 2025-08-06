@@ -36,7 +36,6 @@ use std::{
 use duat_core::{
     file::{self, PathKind},
     form::FormId,
-    hook::OnFileOpen,
     mode::Cursor,
     prelude::*,
     text::{Builder, Bytes, Change, Matcheable, Moment, Point, Tags},
@@ -115,8 +114,9 @@ impl<U: duat_core::ui::Ui> duat_core::Plugin<U> for TreeSitter {
             ("node.field", "variable.member"),
         );
 
-        hook::add_grouped::<OnFileOpen<U>, U>("TreeSitter", |pa, builder| {
-            builder.add_parser(pa, TsParser::new());
+        hook::add_grouped::<File<U>, U>("TreeSitter", |_, (mut cfg, _)| {
+            cfg.add_parser(TsParser::new());
+            cfg
         });
     }
 }
@@ -228,7 +228,7 @@ impl<U: Ui> ParserCfg<U> for TsParser {
                 "No filetype set for {}, will try again once one is set",
                 path.name_txt()
             );
-            return Ok(ParserBox::new_local(file, self));
+            return Ok(ParserBox::new(file, self));
         };
 
         const MAX_LEN_FOR_LOCAL: usize = 100_000;
@@ -242,7 +242,7 @@ impl<U: Ui> ParserCfg<U> for TsParser {
             let inner =
                 InnerTsParser::new(file.bytes(), 0..len.byte(), offset, lang_parts, form_parts);
 
-            Ok(ParserBox::new_send(file, Self(Some(inner))))
+            Ok(ParserBox::new(file, Self(Some(inner))))
         } else {
             Ok(ParserBox::new_remote(file, move |bytes| {
                 let lang_parts = lang_parts(filetype)?;
@@ -416,8 +416,6 @@ impl InnerTsParser {
                 }
             // If the sub tree is not in sub_trees_to_add, but its
             // range was parsed, it has been declared as deleted.
-            // Unless it is a non-empty duat-text sub tree, in which
-            // case this rule is ignored
             } else if st.range.start >= start && st.range.end <= end {
                 false
             } else {
