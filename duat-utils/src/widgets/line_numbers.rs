@@ -20,7 +20,7 @@ use duat_core::{prelude::*, text::Builder, ui::Constraint};
 /// get, for example: relative numbering, different alignment,
 /// hidden/shown wrapped lines, etc.
 pub struct LineNumbers<U: Ui> {
-    handle: FileHandle<U>,
+    handle: Handle<File<U>, U>,
     text: Text,
     /// The options of these [`LineNumbers`]
     pub opts: LineNumbersOptions<U>,
@@ -29,12 +29,13 @@ pub struct LineNumbers<U: Ui> {
 impl<U: Ui> LineNumbers<U> {
     /// The minimum width that would be needed to show the last line.
     fn calculate_width(&self, pa: &Pass) -> f32 {
-        let len = self.handle.read(pa, |file, _| file.text().len().line());
+        let len = self.handle.read(pa).text().len().line();
         len.ilog10() as f32
     }
 
     fn form_text(&self, pa: &Pass) -> Text {
-        let (main_line, printed_lines) = self.handle.read(pa, |file, _| {
+        let (main_line, printed_lines) = {
+            let file = self.handle.read(pa);
             let main_line = if file.selections().is_empty() {
                 usize::MAX
             } else {
@@ -42,7 +43,7 @@ impl<U: Ui> LineNumbers<U> {
             };
 
             (main_line, file.printed_lines().to_vec())
-        });
+        };
 
         let mut builder = Text::builder();
         align(&mut builder, self.opts.align);
@@ -88,14 +89,13 @@ impl<U: Ui> Widget<U> for LineNumbers<U> {
     type Cfg = LineNumbersOptions<U>;
 
     fn update(pa: &mut Pass, handle: Handle<Self, U>) {
-        handle.read(pa, |ln, area| {
-            let width = ln.calculate_width(pa);
-            area.constrain_hor([Constraint::Len(width + 1.0)]).unwrap();
-            ln.form_text(pa);
-        });
+        let width = handle.read(pa).calculate_width(pa);
+        handle
+            .area(pa)
+            .constrain_hor([Constraint::Len(width + 1.0)])
+            .unwrap();
 
-        let text = handle.read(pa, |ln, _| ln.form_text(pa));
-        handle.write(pa, |ln, _| ln.text = text);
+        handle.write(pa).text = handle.read(pa).form_text(pa);
     }
 
     fn needs_update(&self, _: &Pass) -> bool {
@@ -241,8 +241,8 @@ impl<U> LineNumbersOptions<U> {
 impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
     type Widget = LineNumbers<U>;
 
-    fn build(self, pa: &mut Pass, handle: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
-        let Some(handle) = handle else {
+    fn build(self, pa: &mut Pass, info: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
+        let Some(handle) = info.file() else {
             panic!("For now, you can't push LineNumbers to something that is not a File");
         };
         let specs = self.specs;

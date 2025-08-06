@@ -232,7 +232,7 @@ pub fn last_key() -> RwData<String> {
             hook::add_no_alias::<KeysSent>({
                 let last_key = last_key.clone();
                 move |pa, keys| {
-                    last_key.write(pa, |lk| *lk = mode::keys_to_string(keys));
+                    *last_key.write(pa) = mode::keys_to_string(keys)
                 }
             });
 

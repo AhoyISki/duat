@@ -297,6 +297,13 @@ impl<U: Ui> UiBuilder<U> {
             window_id
         }
     }
+
+    ////////// Querying functions
+
+    /// The [`AreaId`] for the [`Widget`] being built
+    pub fn widget_id(&self) -> Option<AreaId> {
+        self.widget_id
+    }
 }
 
 /// A struct over the regular [`UiBuilder`], which grants direct
@@ -349,7 +356,7 @@ impl<U: Ui> RawUiBuilder<'_, U> {
     }
 
     /// Same as [`UiBuilder::push_to`]
-    fn push_to<Cfg: WidgetCfg<U>>(&mut self, to_id: AreaId, cfg: Cfg) -> AreaId {
+    pub fn push_to<Cfg: WidgetCfg<U>>(&mut self, to_id: AreaId, cfg: Cfg) -> AreaId {
         let prev_build_fn = self.0.builder_fn.take();
         let widget_id = AreaId::new();
 

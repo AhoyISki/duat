@@ -268,9 +268,24 @@ impl<U: Ui> CurFile<U> {
         Self(RwData::new(None))
     }
 
-    /// Returns a new "fixed" [`FileHandle`]
-    fn fixed(&self, pa: &Pass) -> Handle<File<U>, U> {
+    /// Returns a new "fixed" [`Handle<File>`]
+    pub fn fixed(&self, pa: &Pass) -> Handle<File<U>, U> {
         self.0.read(pa).as_ref().unwrap().clone()
+    }
+
+    /// Wether the current [`File`] has been changed _or_ swapped
+    pub fn has_changed(&self, pa: &Pass) -> bool {
+        self.0.has_changed()
+            || self
+                .0
+                .read_raw(pa)
+                .as_ref()
+                .is_some_and(|handle| handle.has_changed())
+    }
+
+    /// Wether the current [`File`] has been swapped
+    pub fn has_swapped(&self) -> bool {
+        self.0.has_changed()
     }
 }
 
@@ -341,5 +356,3 @@ impl<U: Ui> Default for CurWidget<U> {
         Self::new()
     }
 }
-
-type Related<U> = RwData<Vec<Handle<dyn Widget<U>, U>>>;

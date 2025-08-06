@@ -691,26 +691,6 @@ pub mod hook {
     /// [direction]: crate::prelude::ui::PushSpecs
     pub type WidgetCreated<W> = duat_core::hook::WidgetCreated<W, Ui>;
 
-    /// [`Hookable`]: Triggers when a [`File`] is opened
-    ///
-    /// # Arguments
-    ///
-    /// - The file [builder], which can be used to push widgets to the
-    ///   file, and to eachother.
-    ///
-    /// This is a rather "advanced" [hook], since it lets you change
-    /// the layout of [`Widget`]s around the screen. If you don't
-    /// need all that power, you can check out [`WidgetCreated`],
-    /// which is a more straightforward form of changing
-    /// [`Widget`]s, and doesn't interfere with the default hooks
-    /// of `"FileWidgets"` and `"WindowWidgets"`, preset by Duat.
-    ///
-    /// [`File`]: crate::prelude::File
-    /// [`Widget`]: crate::prelude::Widget
-    /// [builder]: crate::prelude::ui::FileBuilder
-    /// [hook]: self
-    pub type OnFileOpen = duat_core::hook::OnFileOpen<Ui>;
-
     /// [`Hookable`]: Triggers when a new window is opened
     ///
     /// # Arguments
@@ -730,7 +710,7 @@ pub mod hook {
     /// [`Widget`]: crate::prelude::Widget
     /// [builder]: crate::prelude::ui::WindowBuilder
     /// [hook]: self
-    pub type OnWindowOpen = duat_core::hook::OnWindowOpen<Ui>;
+    pub type OnWindowOpen = duat_core::hook::WindowCreated<Ui>;
 
     /// [`Hookable`]: Triggers before closing a [`File`]
     ///
@@ -976,7 +956,7 @@ pub mod prelude {
             self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, Tagger,
             Text, txt,
         },
-        ui::{self, RawArea, Widget, WidgetCfg},
+        ui::{self, Area as AreaTrait, Widget, WidgetCfg},
     };
     pub use duat_filetype::*;
     #[cfg(feature = "term-ui")]
@@ -987,9 +967,8 @@ pub mod prelude {
         form::{self, CursorShape, Form},
         hook::{
             self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FocusedOn,
-            FocusedOnDuat, FormSet, KeysSent, KeysSentTo, ModeCreated, ModeSwitched, OnFileOpen,
-            OnWindowOpen, SearchPerformed, SearchUpdated, UnfocusedFrom, UnfocusedFromDuat,
-            WidgetCreated,
+            FocusedOnDuat, FormSet, KeysSent, KeysSentTo, ModeCreated, ModeSwitched,
+            SearchPerformed, SearchUpdated, UnfocusedFrom, UnfocusedFromDuat, WidgetCreated,
         },
         mode::{self, Mode, Pager, Prompt, User, alias, map},
         print, setup_duat,

@@ -64,11 +64,12 @@ impl<U: Ui> Widget<U> for PromptLine<U> {
     type Cfg = PromptLineCfg<U>;
 
     fn update(pa: &mut Pass, handle: Handle<Self, U>) {
-        handle.write(pa, |pl, area| {
-            if let Some(main) = pl.text.selections().get_main() {
-                area.scroll_around_point(&pl.text, main.caret(), pl.print_cfg());
-            }
-        })
+        let pl = handle.read(pa);
+        if let Some(main) = pl.text.selections().get_main() {
+            handle
+                .area(pa)
+                .scroll_around_point(&pl.text, main.caret(), pl.print_cfg());
+        }
     }
 
     fn needs_update(&self, _: &Pass) -> bool {
@@ -103,7 +104,7 @@ impl<U: Ui> Widget<U> for PromptLine<U> {
 impl<U: Ui> WidgetCfg<U> for PromptLineCfg<U> {
     type Widget = PromptLine<U>;
 
-    fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
         let specs = if hook::group_exists("HidePromptLine") {
             self.specs.with_ver_len(0.0)
         } else {

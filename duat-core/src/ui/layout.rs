@@ -38,8 +38,8 @@
 //!
 //! Also notice that this function can fail, which means you can set a
 //! limit to how many [`File`]s should can open in a single window.
-use super::{Node, PushSpecs, Ui};
-use crate::{data::Pass, file::File, prelude::Handle, text::Text};
+use super::{PushSpecs, Ui};
+use crate::{file::File, prelude::Handle, text::Text};
 
 /// A form of organizing opened [`File`]s
 ///
@@ -90,16 +90,4 @@ where
             (last, PushSpecs::below())
         })
     }
-}
-
-/// The list of all [`File`]s in a window
-pub(super) fn window_files<U: Ui>(pa: &Pass, nodes: &[Node<U>]) -> Vec<Handle<File<U>, U>> {
-    let mut files: Vec<Handle<File<U>, U>> = nodes
-        .iter()
-        .filter_map(|node| node.try_downcast())
-        .collect();
-
-    files.sort_unstable_by_key(|file| file.read(pa).layout_order);
-
-    files
 }

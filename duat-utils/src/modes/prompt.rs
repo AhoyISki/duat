@@ -51,14 +51,18 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
     type Widget = PromptLine<U>;
 
     fn send_key(&mut self, pa: &mut Pass, key: KeyEvent, handle: Handle<Self::Widget, U>) {
+        let mut update = |pa: &mut Pass| {
+            let text = std::mem::take(handle.write(pa).text_mut());
+            let text = self.0.update(pa, text, handle.area(pa));
+            *handle.write(pa).text_mut() = text;
+        };
+
         match key {
             key!(KeyCode::Backspace) => {
-                if handle.read(pa, |pl, _| pl.text().is_empty()) {
-                    handle.write_selections(pa, |c| c.clear());
+                if handle.read(pa).text().is_empty() {
+                    handle.write(pa).text_mut().selections_mut().clear();
 
-                    let text = handle.take_text(pa);
-                    let text = self.0.update(pa, text, handle.area(pa));
-                    handle.replace_text(pa, text);
+                    update(pa);
 
                     if let Some(ret_handle) = self.0.return_handle() {
                         mode::reset_to(ret_handle);
@@ -72,16 +76,12 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
                         e.replace("");
                         e.unset_anchor();
                     });
-                    let text = handle.take_text(pa);
-                    let text = self.0.update(pa, text, handle.area(pa));
-                    handle.replace_text(pa, text);
+                    update(pa);
                 }
             }
             key!(KeyCode::Delete) => {
                 handle.edit_main(pa, |mut e| e.replace(""));
-                let text = handle.take_text(pa);
-                let text = self.0.update(pa, text, handle.area(pa));
-                handle.replace_text(pa, text);
+                update(pa);
             }
 
             key!(KeyCode::Char(char)) => {
@@ -89,35 +89,27 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
                     e.insert(char);
                     e.move_hor(1);
                 });
-                let text = handle.take_text(pa);
-                let text = self.0.update(pa, text, handle.area(pa));
-                handle.replace_text(pa, text);
+                update(pa);
             }
             key!(KeyCode::Left) => {
                 handle.edit_main(pa, |mut e| e.move_hor(-1));
-                let text = handle.take_text(pa);
-                let text = self.0.update(pa, text, handle.area(pa));
-                handle.replace_text(pa, text);
+                update(pa);
             }
             key!(KeyCode::Right) => {
                 handle.edit_main(pa, |mut e| e.move_hor(1));
-                let text = handle.take_text(pa);
-                let text = self.0.update(pa, text, handle.area(pa));
-                handle.replace_text(pa, text);
+                update(pa);
             }
 
             key!(KeyCode::Esc) => {
-                let p = handle.read(pa, |wid, _| wid.text().len());
+                let p = handle.read(pa).text().len();
                 handle.edit_main(pa, |mut e| {
                     e.move_to_start();
                     e.set_anchor();
                     e.move_to(p);
                     e.replace("");
                 });
-                handle.write_selections(pa, |c| c.clear());
-                let text = handle.take_text(pa);
-                let text = self.0.update(pa, text, handle.area(pa));
-                handle.replace_text(pa, text);
+                handle.write(pa).text_mut().selections_mut().clear();
+                update(pa);
 
                 if let Some(ret_handle) = self.0.return_handle() {
                     mode::reset_to(ret_handle);
@@ -126,10 +118,9 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
                 }
             }
             key!(KeyCode::Enter) => {
-                handle.write_selections(pa, |c| c.clear());
-                let text = handle.take_text(pa);
-                let text = self.0.update(pa, text, handle.area(pa));
-                handle.replace_text(pa, text);
+                handle.write(pa).text_mut().selections_mut().clear();
+
+                update(pa);
 
                 if let Some(ret_handle) = self.0.return_handle() {
                     mode::reset_to(ret_handle);
@@ -142,26 +133,27 @@ impl<M: PromptMode<U>, U: Ui> mode::Mode<U> for Prompt<M, U> {
     }
 
     fn on_switch(&mut self, pa: &mut Pass, handle: Handle<Self::Widget, U>) {
-        let text = handle.write(pa, |wid, _| {
-            *wid.text_mut() = Text::new_with_selections();
+        let text = {
+            let pl = handle.write(pa);
+            *pl.text_mut() = Text::new_with_selections();
             run_once::<M, U>();
 
-            let tag = Ghost(match wid.prompt_of::<M>() {
+            let tag = Ghost(match pl.prompt_of::<M>() {
                 Some(text) => txt!("{text}[prompt.colon]:").build(),
                 None => txt!("{}[prompt.colon]:", self.0.prompt()).build(),
             });
-            wid.text_mut().insert_tag(*PROMPT_TAGGER, 0, tag);
+            pl.text_mut().insert_tag(*PROMPT_TAGGER, 0, tag);
 
-            std::mem::take(wid.text_mut())
-        });
+            std::mem::take(pl.text_mut())
+        };
 
         let text = self.0.on_switch(pa, text, handle.area(pa));
 
-        handle.widget().replace_text(pa, text);
+        *handle.write(pa).text_mut() = text;
     }
 
     fn before_exit(&mut self, pa: &mut Pass, handle: Handle<Self::Widget, U>) {
-        let text = handle.take_text(pa);
+        let text = std::mem::take(handle.write(pa).text_mut());
         self.0.before_exit(pa, text, handle.area(pa));
     }
 }
@@ -348,7 +340,7 @@ impl<U: Ui> PromptMode<U> for RunCommands {
 #[derive(Clone)]
 pub struct IncSearch<I: IncSearcher<U>, U: Ui> {
     inc: I,
-    orig: Option<(mode::Selections, <U::Area as RawArea>::PrintInfo)>,
+    orig: Option<(mode::Selections, <U::Area as Area>::PrintInfo)>,
     ghost: PhantomData<U>,
     prev: String,
 }
@@ -371,7 +363,7 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
         let (orig_selections, orig_print_info) = self.orig.as_ref().unwrap();
         text.remove_tags(*TAGGER, ..);
 
-        let handle = context::fixed_file::<U>(pa).unwrap().handle(pa);
+        let handle = context::fixed_file::<U>(pa).unwrap();
 
         if text == self.prev {
             return text;
@@ -382,10 +374,9 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
 
         match Searcher::new(text.to_string()) {
             Ok(searcher) => {
-                handle.write(pa, |file, area| {
-                    area.set_print_info(orig_print_info.clone());
-                    *file.selections_mut() = orig_selections.clone();
-                });
+                let (file, area) = handle.write_with_area(pa);
+                area.set_print_info(orig_print_info.clone());
+                *file.selections_mut() = orig_selections.clone();
 
                 let ast = regex_syntax::ast::parse::Parser::new()
                     .parse(&text.to_string())
@@ -412,9 +403,11 @@ impl<I: IncSearcher<U>, U: Ui> PromptMode<U> for IncSearch<I, U> {
 
     fn on_switch(&mut self, pa: &mut Pass, text: Text, _: &<U as Ui>::Area) -> Text {
         let handle = context::fixed_file::<U>(pa).unwrap();
-        handle.read(pa, |file, area| {
-            self.orig = Some((file.selections().clone(), area.print_info()));
-        });
+
+        self.orig = Some((
+            handle.read(pa).selections().clone(),
+            handle.area(pa).print_info(),
+        ));
 
         text
     }
@@ -520,7 +513,7 @@ impl<U: Ui> PromptMode<U> for PipeSelections<U> {
             return;
         };
 
-        let handle = context::fixed_file::<U>(pa).unwrap().handle(pa);
+        let handle = context::fixed_file::<U>(pa).unwrap();
         handle.edit_all(pa, |mut c| {
             let Ok(mut child) = Command::new(caller)
                 .args(cmd::args_iter(&command).map(|(a, _)| a))

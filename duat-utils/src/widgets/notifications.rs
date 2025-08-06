@@ -90,19 +90,19 @@ impl<U: Ui> Widget<U> for Notifications<U> {
 
     fn update(pa: &mut Pass, handle: Handle<Self, U>) {
         let clear_notifs = CLEAR_NOTIFS.swap(false, Ordering::Relaxed);
-        handle.write(pa, |wid, _| {
-            if wid.logs.has_changed()
-                && let Some((i, rec)) = wid.logs.last_with_levels(&wid.levels)
-                && wid.last_rec.is_none_or(|last_i| last_i < i)
-            {
-                handle.set_mask((wid.get_mask)(rec.clone()));
-                wid.text = (wid.format_rec)(rec);
-                wid.last_rec = Some(i);
-            } else if clear_notifs {
-                handle.set_mask("");
-                wid.text = Text::new()
-            }
-        });
+        let notifs = handle.write(pa);
+
+        if notifs.logs.has_changed()
+            && let Some((i, rec)) = notifs.logs.last_with_levels(&notifs.levels)
+            && notifs.last_rec.is_none_or(|last_i| last_i < i)
+        {
+            handle.set_mask((notifs.get_mask)(rec.clone()));
+            notifs.text = (notifs.format_rec)(rec);
+            notifs.last_rec = Some(i);
+        } else if clear_notifs {
+            handle.set_mask("");
+            notifs.text = Text::new()
+        }
     }
 
     fn text(&self) -> &Text {
@@ -192,7 +192,7 @@ impl<U> NotificationsCfg<U> {
 impl<U: Ui> WidgetCfg<U> for NotificationsCfg<U> {
     type Widget = Notifications<U>;
 
-    fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
         let widget = Notifications {
             logs: context::logs(),
             text: Text::new(),

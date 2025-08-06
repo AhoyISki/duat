@@ -786,7 +786,7 @@ impl<'a, W: Widget<A::Ui> + ?Sized, A: Area, S> Lender for Cursors<'a, W, A, S> 
             selection,
             current_i,
             was_main,
-            &mut self.widget,
+            self.widget,
             self.area,
             Some(self.next_i.clone()),
             &mut self.inc_searcher,

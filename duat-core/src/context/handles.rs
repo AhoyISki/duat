@@ -535,7 +535,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
             widget: self.widget.clone(),
             area: self.area.clone(),
             mask: self.mask.clone(),
-            id: self.id.clone(),
+            id: self.id,
             related: self.related.clone(),
             searcher: RefCell::new(searcher),
         }
@@ -544,12 +544,12 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// Spawns a floating [`Widget`]
     pub fn spawn_widget<Cfg: WidgetCfg<U>>(
         &self,
-        pa: &mut Pass,
-        cfg: Cfg,
-        specs: SpawnSpecs,
+        _pa: &mut Pass,
+        _cfg: Cfg,
+        _specs: SpawnSpecs,
     ) -> Result<AreaId, Text> {
-        let area = MutArea(&self.area);
-        //let _spawned = area.spawn_floating(pa, cfg, specs)?;
+        let _area = MutArea(&self.area);
+        // let _spawned = area.spawn_floating(pa, cfg, specs)?;
         todo!();
     }
 }
@@ -574,6 +574,7 @@ impl<U: Ui> Handle<dyn Widget<U>, U> {
 }
 
 impl<W: Widget<U>, U: Ui> Handle<W, U> {
+    /// Transforms this [`Handle`] into a [`Handle<dyn Widget>`]
     pub fn to_dyn(&self) -> Handle<dyn Widget<U>, U> {
         Handle {
             widget: self.widget.to_dyn_widget(),
@@ -611,7 +612,7 @@ impl<W: Widget<U> + ?Sized, U: Ui> Clone for Handle<W, U> {
             widget: self.widget.clone(),
             area: self.area.clone(),
             mask: self.mask.clone(),
-            id: self.id.clone(),
+            id: self.id,
             related: self.related.clone(),
             searcher: self.searcher.clone(),
         }
@@ -620,5 +621,3 @@ impl<W: Widget<U> + ?Sized, U: Ui> Clone for Handle<W, U> {
 
 #[derive(Clone)]
 struct RelatedWidgets<U: Ui>(RwData<Vec<Handle<dyn Widget<U>, U>>>);
-
-

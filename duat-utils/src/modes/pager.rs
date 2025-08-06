@@ -46,9 +46,8 @@ impl<W: Widget<U>, U: Ui> Mode<U> for Pager<W, U> {
 
                 let (point, _) = handle.start_points(pa);
 
-                let Some([point, _]) =
-                    handle.write_text(pa, |t| t.search_fwd(&*se, point..).unwrap().next())
-                else {
+                let text = handle.read(pa).text();
+                let Some([point, _]) = text.search_fwd(&*se, point..).unwrap().next() else {
                     context::error!("[a]{se}[] was not found");
                     return;
                 };
@@ -60,9 +59,8 @@ impl<W: Widget<U>, U: Ui> Mode<U> for Pager<W, U> {
 
                 let (point, _) = handle.start_points(pa);
 
-                let Some([point, _]) =
-                    handle.write_text(pa, |t| t.search_rev(&*se, point..).unwrap().next())
-                else {
+                let text = handle.read(pa).text();
+                let Some([point, _]) = text.search_rev(&*se, ..point).unwrap().next() else {
                     context::error!("[a]{se}[] was not found");
                     return;
                 };
@@ -91,7 +89,7 @@ impl<W: Widget<U>, U: Ui> Default for Pager<W, U> {
 pub struct PagerSearch<W: Widget<U>, U: Ui> {
     is_fwd: bool,
     prev: String,
-    orig: <U::Area as RawArea>::PrintInfo,
+    orig: <U::Area as Area>::PrintInfo,
     handle: Handle<W, U>,
 }
 
@@ -122,10 +120,11 @@ impl<W: Widget<U>, U: Ui> PromptMode<U> for PagerSearch<W, U> {
 
         match Searcher::new(text.to_string()) {
             Ok(mut searcher) => {
-                self.handle.write(pa, |widget, area| {
-                    area.set_print_info(self.orig.clone());
-                    widget.text_mut().remove_tags(*PAGER_TAGGER, ..);
-                });
+                self.handle.area(pa).set_print_info(self.orig.clone());
+                self.handle
+                    .write(pa)
+                    .text_mut()
+                    .remove_tags(*PAGER_TAGGER, ..);
 
                 let ast = regex_syntax::ast::parse::Parser::new()
                     .parse(&text.to_string())
@@ -133,15 +132,12 @@ impl<W: Widget<U>, U: Ui> PromptMode<U> for PagerSearch<W, U> {
 
                 crate::tag_from_ast(*PAGER_TAGGER, &mut text, &ast);
 
-                self.handle.write(pa, |widget, _| {
-                    let mut parts = widget.text_mut().parts();
+                let mut parts = self.handle.write(pa).text_mut().parts();
+                let id = form::id_of!("pager.search");
 
-                    let id = form::id_of!("pager.search");
-
-                    for [start, end] in searcher.search_fwd(parts.bytes, ..) {
-                        parts.tags.insert(*PAGER_TAGGER, start..end, id.to_tag(0));
-                    }
-                });
+                for [start, end] in searcher.search_fwd(parts.bytes, ..) {
+                    parts.tags.insert(*PAGER_TAGGER, start..end, id.to_tag(0));
+                }
             }
             Err(err) => {
                 let regex_syntax::Error::Parse(err) = *err else {
@@ -167,9 +163,8 @@ impl<W: Widget<U>, U: Ui> PromptMode<U> for PagerSearch<W, U> {
             Ok(mut se) => {
                 let (point, _) = self.handle.start_points(pa);
                 if self.is_fwd {
-                    let Some([point, _]) = self
-                        .handle
-                        .write_text(pa, |t| se.search_fwd(t, point..).next())
+                    let Some([point, _]) =
+                        se.search_fwd(self.handle.read(pa).text(), point..).next()
                     else {
                         context::error!("[a]{}[] was not found", text.to_string());
                         return;
@@ -177,9 +172,8 @@ impl<W: Widget<U>, U: Ui> PromptMode<U> for PagerSearch<W, U> {
 
                     self.handle.scroll_to_points(pa, point);
                 } else {
-                    let Some([point, _]) = self
-                        .handle
-                        .write_text(pa, |t| se.search_rev(t, ..point).next())
+                    let Some([point, _]) =
+                        se.search_rev(self.handle.read(pa).text(), ..point).next()
                     else {
                         context::error!("[a]{}[] was not found", text.to_string());
                         return;

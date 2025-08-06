@@ -154,7 +154,8 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// [`read_as`]: Self::read_as
     /// [`write_as`]: Self::write_as
-    pub(crate) unsafe fn new_unsized<SizedT: 'static>(value: Arc<UnsafeCell<T>>) -> Self {
+    #[doc(hidden)]
+    pub unsafe fn new_unsized<SizedT: 'static>(value: Arc<UnsafeCell<T>>) -> Self {
         Self {
             value,
             ty: TypeId::of::<SizedT>(),
@@ -223,7 +224,7 @@ impl<T: ?Sized> RwData<T> {
 
     /// Reads the data without updating its read state, might be
     /// removed, idk
-    pub(crate) fn read_raw(&self) -> &T {
+    pub(crate) fn read_raw<'a>(&'a self, _: &'a Pass) -> &'a T {
         // SAFETY: Same as Self::read
         unsafe { &*self.value.get() }
     }

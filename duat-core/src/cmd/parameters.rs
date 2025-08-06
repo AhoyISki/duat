@@ -499,7 +499,8 @@ impl<'a, W: Widget<U>, U: Ui> Handles<'a, W, U> {
         let cur_win = context::cur_window();
         let nodes: Vec<Node<U>> = context::windows::<U>()
             .entries(pa)
-            .filter_map(|(win, _, node)| (win == cur_win).then(|| node.clone()))
+            .filter(|&(win, ..)| win == cur_win)
+            .map(|(.., node)| node.clone())
             .collect();
 
         for handle in nodes.iter().map(Node::handle) {

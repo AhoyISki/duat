@@ -155,7 +155,7 @@ impl<U: Ui> Windows<U> {
 
         let mut windows = std::mem::take(&mut self.0.write(pa).windows);
 
-        windows[win].remove_file(pa, &name);
+        windows[win].remove_file(pa, name);
         if windows[win].file_names(pa).is_empty() {
             windows.remove(win);
             U::remove_window(ms, win);
@@ -264,15 +264,12 @@ impl<U: Ui> Windows<U> {
         (to_id, widget_id): (AreaId, AreaId),
         (do_cluster, on_files): (bool, bool),
     ) -> (Node<U>, Option<AreaId>) {
-        fn get_areas<U: Ui>(
+        fn push_and_get_areas<U: Ui>(
             windows: &Windows<U>,
             pa: &mut Pass,
-            to_id: AreaId,
-            widget_id: AreaId,
-            specs: PushSpecs,
-            do_cluster: bool,
-            on_files: bool,
-            widget: &RwData<dyn Widget<U> + 'static>,
+            (widget, specs): (&RwData<dyn Widget<U> + 'static>, PushSpecs),
+            (to_id, widget_id): (AreaId, AreaId),
+            (do_cluster, on_files): (bool, bool),
         ) -> (U::Area, Option<(AreaId, U::Area)>) {
             let area = windows.0.read(pa).find_area(to_id);
 
@@ -304,8 +301,12 @@ impl<U: Ui> Windows<U> {
 
         let widget = RwData::new(widget).to_dyn_widget();
 
-        let (widget_area, parent) = get_areas(
-            self, pa, to_id, widget_id, specs, do_cluster, on_files, &widget,
+        let (widget_area, parent) = push_and_get_areas(
+            self,
+            pa,
+            (&widget, specs),
+            (to_id, widget_id),
+            (do_cluster, on_files),
         );
 
         let (parent_id, parent_area) = parent.unzip();
@@ -381,7 +382,7 @@ impl<U: Ui> Windows<U> {
     ///
     /// Returns the index of the window, the index of the [`Widget`],
     /// and the [`Widget`]'s [`Node`]
-    pub fn widget_entry<'a, W: Widget<U>>(
+    pub(crate) fn widget_entry<'a, W: Widget<U>>(
         &'a self,
         pa: &'a Pass,
         w: usize,
@@ -404,12 +405,12 @@ impl<U: Ui> Windows<U> {
     }
 
     /// Iterates around a specific widget, going forwards
-    pub fn iter_around<'a>(
+    pub(crate) fn iter_around<'a>(
         &'a self,
         pa: &'a Pass,
         window: usize,
         widget: usize,
-    ) -> impl Iterator<Item = (usize, usize, &Node<U>)> + 'a {
+    ) -> impl Iterator<Item = (usize, usize, &'a Node<U>)> + 'a {
         let windows = &self.0.read(pa).windows;
 
         let prev_len: usize = windows.iter().take(window).map(Window::len_widgets).sum();
@@ -431,12 +432,12 @@ impl<U: Ui> Windows<U> {
     }
 
     /// Iterates around a specific widget, going backwards
-    pub fn iter_around_rev<'a>(
+    pub(crate) fn iter_around_rev<'a>(
         &'a self,
         pa: &'a Pass,
         window: usize,
         widget: usize,
-    ) -> impl Iterator<Item = (usize, usize, &Node<U>)> + 'a {
+    ) -> impl Iterator<Item = (usize, usize, &'a Node<U>)> + 'a {
         let windows = &self.0.read(pa).windows;
 
         let next_len: usize = windows.iter().skip(window).map(Window::len_widgets).sum();
@@ -488,7 +489,7 @@ impl<U: Ui> Windows<U> {
 
     /// Iterates over all widget entries, with window and widget
     /// indices, in that order
-    pub fn entries<'a>(
+    pub(crate) fn entries<'a>(
         &'a self,
         pa: &'a Pass,
     ) -> impl Iterator<Item = (usize, usize, &'a Node<U>)> {
@@ -526,7 +527,7 @@ impl<U: Ui> InnerWindows<U> {
 /// A container for a master [`Area`] in Duat
 pub struct Window<U: Ui> {
     nodes: Vec<Node<U>>,
-    floating: Vec<(U::Area, Node<U>)>,
+    _floating: Vec<(U::Area, Node<U>)>,
     files_area: U::Area,
     layout: Box<dyn Layout<U>>,
 }
@@ -545,8 +546,7 @@ impl<U: Ui> Window<U> {
 
         let cache = widget
             .read_as(pa)
-            .map(|f: &File<U>| Cache::new().load::<<U::Area as Area>::Cache>(f.path()).ok())
-            .flatten()
+            .and_then(|f: &File<U>| Cache::new().load::<<U::Area as Area>::Cache>(f.path()).ok())
             .unwrap_or_default();
 
         let area = U::new_root(ms, cache);
@@ -555,7 +555,7 @@ impl<U: Ui> Window<U> {
 
         let window = Self {
             nodes: vec![node.clone()],
-            floating: Vec::new(),
+            _floating: Vec::new(),
             files_area: area.clone(),
             layout,
         };
@@ -572,7 +572,7 @@ impl<U: Ui> Window<U> {
         let files_area = files_area.get_cluster_master().unwrap_or(files_area);
         Self {
             nodes,
-            floating: Vec::new(),
+            _floating: Vec::new(),
             files_area,
             layout,
         }
@@ -591,16 +591,17 @@ impl<U: Ui> Window<U> {
         self.nodes
             .push(Node::new::<W>(widget, widget_area, widget_id));
 
-        if let Some(parent) = &parent_area {
-            if on_files && parent.is_master_of(&self.files_area) {
-                self.files_area = parent.clone();
-            }
+        if let Some(parent) = &parent_area
+            && on_files
+            && parent.is_master_of(&self.files_area)
+        {
+            self.files_area = parent.clone();
         }
 
         self.nodes.last().unwrap().clone()
     }
 
-    pub(crate) fn spawn<W: Widget<U>>(&mut self, _pa: &mut Pass, _widget: W) {}
+    pub(crate) fn _spawn<W: Widget<U>>(&mut self, _pa: &mut Pass, _widget: W) {}
 
     /// Removes all [`Node`]s whose [`Area`]s where deleted
     pub(crate) fn remove_file(&mut self, pa: &Pass, name: &str) {
@@ -738,6 +739,8 @@ impl<U: Ui> Window<U> {
 pub(super) mod id {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    use crate::{context, data::Pass, ui::Ui};
+
     /// An id for uniquely identifying a [`Ui::Area`]
     ///
     /// > [!NOTE]
@@ -763,6 +766,13 @@ pub(super) mod id {
         pub(in crate::ui) fn new() -> Self {
             static AREA_COUNT: AtomicUsize = AtomicUsize::new(0);
             AreaId(AREA_COUNT.fetch_add(1, Ordering::Relaxed))
+        }
+
+        /// The [`Ui::Area`] associated with this [`AreaId`]
+        pub fn area<'a, U: Ui>(&self, pa: &'a Pass) -> Option<&'a U::Area> {
+            context::windows::<U>()
+                .entries(pa)
+                .find_map(|(.., node)| (node.area_id() == *self).then(|| node.area(pa)))
         }
     }
 

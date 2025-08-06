@@ -26,7 +26,7 @@ use duat_core::{
 use crate::widgets::status_line::CheckerFn;
 
 /// A struct that reads state in order to return [`Text`].
-enum Appender<U: Ui, _T: Clone = (), D: Display + Clone = String, W = ()> {
+enum Appender<U: Ui, _T: Clone = (), D: Display + Clone = String, W: Widget<U> = File<U>> {
     PassArg(PassArgFn),
     FromWidget(WidgetAreaFn<W, U>),
     Part(BuilderPart<D, _T>),
@@ -42,7 +42,12 @@ enum Appender<U: Ui, _T: Clone = (), D: Display + Clone = String, W = ()> {
 /// [`impl Display`]: std::fmt::Display
 /// [`File`]: crate::file::File
 #[doc(hidden)]
-pub struct State<U: Ui, _T: Clone + Send = (), D: Display + Clone + Send = String, W: 'static = ()>
+pub struct State<U, _T = (), D = String, W = File<U>>
+where
+    U: Ui,
+    _T: Clone + Send,
+    D: Display + Clone + Send,
+    W: Widget<U>,
 {
     appender: Appender<U, _T, D, W>,
     checker: Option<CheckerFn>,
@@ -54,7 +59,7 @@ where
     U: Ui,
     _T: Clone + Send + 'static,
     D: Display + Clone + Send + 'static,
-    W: 'static,
+    W: Widget<U>,
 {
     /// Returns the two building block functions for the
     /// [`Statusline`]
@@ -65,7 +70,9 @@ where
             match self.appender {
                 Appender::PassArg(f) => Box::new(move |pa, b, _| f(pa, b)),
                 Appender::FromWidget(f) => Box::new(move |pa, b, reader| {
-                    reader.read_related(pa, |w, a| f(b, pa, w, a));
+                    if let Some(handle) = reader.get_related(pa) {
+                        f(b, pa, handle.read(pa), handle.area(pa));
+                    }
                 }),
                 Appender::Part(builder_part) => {
                     Box::new(move |_, b, _| b.push(builder_part.clone()))
@@ -107,7 +114,7 @@ impl<D: Display + Clone + Send + 'static, U: Ui> FromWithPass<RwData<D>> for Sta
         Self {
             appender: Appender::PassArg({
                 let value = value.clone();
-                Box::new(move |pa, b| value.read(pa, |d| b.push(d)))
+                Box::new(move |pa, b| b.push(value.read(pa)))
             }),
             checker: Some({
                 let checker = value.checker();
@@ -122,9 +129,7 @@ impl<U: Ui> FromWithPass<RwData<Text>> for State<U, DataArg<()>> {
     fn from_with_pass(_: &Pass, value: RwData<Text>) -> Self {
         let checker = value.checker();
         Self {
-            appender: Appender::PassArg({
-                Box::new(move |pa, b| value.read(pa, |d| b.push(d.clone())))
-            }),
+            appender: Appender::PassArg(Box::new(move |pa, b| b.push(value.read(pa).clone()))),
             checker: Some(Box::new(move |_| checker())),
             ghost: PhantomData,
         }
@@ -198,7 +203,7 @@ where
         let value = value(pa);
         let checker = value.checker();
         State {
-            appender: Appender::PassArg(Box::new(move |pa, b| b.push(value.get(pa)))),
+            appender: Appender::PassArg(Box::new(move |pa, b| b.push(value.read(pa).clone()))),
             checker: Some(Box::new(move |_| checker())),
             ghost: PhantomData,
         }
@@ -214,7 +219,7 @@ where
         let value = value(pa);
         let checker = value.checker();
         State {
-            appender: Appender::PassArg(Box::new(move |pa, b| b.push(value.get(pa)))),
+            appender: Appender::PassArg(Box::new(move |pa, b| b.push(value.read(pa).clone()))),
             checker: Some(Box::new(move |_| checker())),
             ghost: PhantomData,
         }
@@ -465,5 +470,5 @@ pub struct PassWidgetAreaArg<W>(PhantomData<W>);
 // The various types of function aliases
 type PassArgFn = Box<dyn Fn(&Pass, &mut Builder) + 'static + Send>;
 type WidgetAreaFn<W, U> = Box<dyn Fn(&mut Builder, &Pass, &W, &<U as Ui>::Area) + Send + 'static>;
-type BuilderFn<U> = Box<dyn Fn(&Pass, &mut Builder, &FileHandle<U>) + Send>;
+type BuilderFn<U> = Box<dyn Fn(&Pass, &mut Builder, &Handle<File<U>, U>) + Send>;
 type StateFns<U> = (BuilderFn<U>, Box<dyn Fn(&Pass) -> bool + Send>);

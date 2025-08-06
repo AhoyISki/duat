@@ -26,7 +26,7 @@ use crate::Ui;
 /// [`LineNumbers`]: https://docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
 /// [`with_main_char`]: VertRuleCfg::with_main_char
 pub struct VertRule {
-    handle: Option<FileHandle<Ui>>,
+    handle: Option<Handle<File<Ui>, Ui>>,
     text: Text,
     sep_char: SepChar,
 }
@@ -35,40 +35,40 @@ impl Widget<Ui> for VertRule {
     type Cfg = VertRuleCfg;
 
     fn update(pa: &mut Pass, handle: Handle<Self, Ui>) {
-        let text = handle.read(pa, |wid, area| {
-            if let Some(handle) = wid.handle.as_ref()
-                && let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = wid.sep_char
-            {
-                let (upper, middle, lower) = handle.read(pa, |file, _| {
-                    let lines = file.printed_lines();
-                    if let Some(main) = file.selections().get_main() {
-                        let main = main.line();
-                        let upper = lines.iter().filter(|&(line, _)| *line < main).count();
-                        let middle = lines.iter().filter(|&(line, _)| *line == main).count();
-                        let lower = lines.iter().filter(|&(line, _)| *line > main).count();
-                        (upper, middle, lower)
-                    } else {
-                        (0, lines.len(), 0)
-                    }
-                });
+        let vr = handle.read(pa);
+        let text = if let Some(handle) = vr.handle.as_ref()
+            && let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = vr.sep_char
+        {
+            let (upper, middle, lower) = {
+                let file = handle.read(pa);
 
-                let chars = wid.sep_char.chars();
-                txt!(
-                    "[rule.upper]{}[]{}[rule.lower]{}",
-                    form_string(chars[0], upper),
-                    form_string(chars[1], middle),
-                    form_string(chars[2], lower)
-                )
-                .build()
-            } else {
-                let full_line =
-                    format!("{}\n", wid.sep_char.chars()[1]).repeat(area.height() as usize);
+                let lines = file.printed_lines();
+                if let Some(main) = file.selections().get_main() {
+                    let main = main.line();
+                    let upper = lines.iter().filter(|&(line, _)| *line < main).count();
+                    let middle = lines.iter().filter(|&(line, _)| *line == main).count();
+                    let lower = lines.iter().filter(|&(line, _)| *line > main).count();
+                    (upper, middle, lower)
+                } else {
+                    (0, lines.len(), 0)
+                }
+            };
 
-                txt!("{full_line}").build()
-            }
-        });
+            let chars = vr.sep_char.chars();
+            txt!(
+                "[rule.upper]{}[]{}[rule.lower]{}",
+                form_string(chars[0], upper),
+                form_string(chars[1], middle),
+                form_string(chars[2], lower)
+            )
+        } else {
+            let full_line =
+                format!("{}\n", vr.sep_char.chars()[1]).repeat(handle.area(pa).height() as usize);
 
-        handle.widget().replace_text(pa, text);
+            txt!("{full_line}")
+        };
+
+        handle.write(pa).text = text.build();
     }
 
     fn needs_update(&self, _: &Pass) -> bool {
@@ -198,9 +198,9 @@ impl Default for VertRuleCfg {
 impl WidgetCfg<Ui> for VertRuleCfg {
     type Widget = VertRule;
 
-    fn build(self, _: &mut Pass, handle: Option<FileHandle<Ui>>) -> (Self::Widget, PushSpecs) {
+    fn build(self, _: &mut Pass, info: BuildInfo<Ui>) -> (Self::Widget, PushSpecs) {
         let widget = VertRule {
-            handle,
+            handle: info.file(),
             text: Text::default(),
             sep_char: self.sep_char,
         };

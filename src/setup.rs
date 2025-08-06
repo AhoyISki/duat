@@ -5,7 +5,6 @@
 //! variables are not set in the start of the program, since they
 //! require a [`Ui`], which cannot be defined in static time.
 use std::{
-    cell::RefCell,
     path::Path,
     sync::{
         LazyLock, Mutex, RwLock,
@@ -19,10 +18,11 @@ use duat_core::{
     cfg::PrintCfg,
     clipboard::Clipboard,
     context::{self, CurFile, CurWidget, Logs},
+    file::File,
     form::Palette,
     session::{FileRet, SessionCfg},
     text::History,
-    ui::{self, DuatEvent, RawArea, Widget, Window},
+    ui::{self, Area, DuatEvent, Widget},
 };
 use duat_filetype::FileType;
 use duat_term::VertRule;
@@ -33,7 +33,7 @@ use duat_utils::{
 
 use crate::{
     CfgFn, Ui, form,
-    hook::{self, OnFileClose, OnFileOpen, OnFileReload, OnWindowOpen},
+    hook::{self, OnFileClose, OnFileReload, OnWindowOpen},
     mode,
     prelude::{FileWritten, LineNumbers},
 };
@@ -55,28 +55,27 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: &'static Sender<DuatEvent>
     // State statics.
     let cur_file: &'static CurFile<Ui> = Box::leak(Box::new(CurFile::new()));
     let cur_widget: &'static CurWidget<Ui> = Box::leak(Box::new(CurWidget::new()));
-    let windows: &'static RefCell<Vec<Window<Ui>>> = Box::leak(Box::new(RefCell::new(Vec::new())));
     static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
 
-        duat_core::context::setup_context::<Ui>(
-            cur_file,
-            cur_widget,
-            CUR_WINDOW.load(Ordering::Relaxed),
-            windows,
-        );
+    duat_core::context::setup_context::<Ui>(
+        cur_file,
+        cur_widget,
+        CUR_WINDOW.load(Ordering::Relaxed),
+    );
 
     duat_core::context::set_sender(duat_tx);
 
     mode::set_default(Regular);
     mode::set_default(Pager::<LogBook, Ui>::new());
 
-    hook::add_grouped::<OnFileOpen>("FileWidgets", |pa, builder| {
-        builder.push(pa, VertRule::cfg());
-        builder.push(pa, LineNumbers::cfg());
+    hook::add_grouped::<File<Ui>>("FileWidgets", |_, (cfg, builder)| {
+        builder.push(VertRule::cfg());
+        builder.push(LineNumbers::cfg());
+        cfg
     });
 
-    hook::add_grouped::<OnWindowOpen>("WindowWidgets", |pa, builder| {
-        builder.push(pa, FooterWidgets::default());
+    hook::add_grouped::<OnWindowOpen>("WindowWidgets", |_, builder| {
+        builder.push(FooterWidgets::default());
     });
 
     hook::add_grouped::<FileWritten>("ReloadOnWrite", |_, (path, _, is_quitting)| {
@@ -125,8 +124,8 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: &'static Sender<DuatEvent>
     });
 
     hook::add_grouped::<OnFileClose>("SaveCacheOnClose", |pa, (handle, cache)| {
-        let (file, area) = handle.write(pa);
-        
+        let (file, area) = handle.write_with_area(pa);
+
         let path = file.path();
         file.text_mut().new_moment();
 

@@ -67,6 +67,16 @@ impl FileCfg {
     pub(crate) fn set_print_cfg(&mut self, cfg: PrintCfg) {
         self.cfg = cfg;
     }
+
+    ////////// Querying functions
+
+    pub fn path_set(&self) -> Option<PathBuf> {
+        match &self.text_op {
+            TextOp::TakeBuf(_, PathKind::NotSet(_), _) | TextOp::NewBuffer => None,
+            TextOp::TakeBuf(_, PathKind::SetExists(path) | PathKind::SetAbsent(path), _)
+            | TextOp::OpenPath(path) => Some(path.clone()),
+        }
+    }
 }
 
 impl<U: Ui> WidgetCfg<U> for FileCfg {

@@ -756,7 +756,7 @@ pub mod prelude {
             AlignCenter, AlignLeft, AlignRight, Bytes, Conceal, Ghost, Matcheable, Moment, Point,
             Spacer, Tagger, Text, txt,
         },
-        ui::{Area, PushSpecs, Ui, Widget, WidgetCfg},
+        ui::{Area, PushSpecs, Ui, Widget, WidgetCfg, BuildInfo, GetAreaId},
     };
 }
 

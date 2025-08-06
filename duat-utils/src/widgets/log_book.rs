@@ -53,22 +53,21 @@ impl<U: Ui> Widget<U> for LogBook {
     where
         Self: Sized,
     {
-        handle.write(pa, |lb, area| {
-            let Some(new_records) = lb.logs.get(lb.len_of_taken..) else {
-                return;
-            };
+        let (lb, area) = handle.write_with_area(pa);
+        let Some(new_records) = lb.logs.get(lb.len_of_taken..) else {
+            return;
+        };
 
-            let records_were_added = !new_records.is_empty();
-            lb.len_of_taken += new_records.len();
+        let records_were_added = !new_records.is_empty();
+        lb.len_of_taken += new_records.len();
 
-            for rec_text in new_records.into_iter().filter_map(&mut lb.format_rec) {
-                lb.text.insert_text(lb.text.len(), rec_text);
-            }
+        for rec_text in new_records.into_iter().filter_map(&mut lb.format_rec) {
+            lb.text.insert_text(lb.text.len(), rec_text);
+        }
 
-            if records_were_added {
-                area.scroll_to_points(&lb.text, lb.text.len(), Widget::<U>::print_cfg(lb));
-            }
-        });
+        if records_were_added {
+            area.scroll_to_points(&lb.text, lb.text.len(), Widget::<U>::print_cfg(lb));
+        }
     }
 
     fn needs_update(&self, _: &Pass) -> bool {
@@ -109,11 +108,9 @@ impl<U: Ui> Widget<U> for LogBook {
     }
 
     fn on_unfocus(pa: &mut Pass, handle: Handle<Self, U>) {
-        handle.read(pa, |lb, area| {
-            if lb.close_on_unfocus {
-                area.hide().unwrap()
-            }
-        });
+        if handle.read(pa).close_on_unfocus {
+            handle.area(pa).hide().unwrap()
+        }
     }
 }
 
@@ -184,7 +181,7 @@ impl<U> LogBookCfg<U> {
 impl<U: Ui> WidgetCfg<U> for LogBookCfg<U> {
     type Widget = LogBook;
 
-    fn build(mut self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    fn build(mut self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
         let logs = context::logs();
 
         let mut text = Text::new();

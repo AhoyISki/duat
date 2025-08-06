@@ -15,7 +15,7 @@
 //! [data]: crate::data
 mod state;
 
-use duat_core::{prelude::*, text::Builder, ui::Side};
+use duat_core::{context::CurFile, prelude::*, text::Builder, ui::Side};
 
 pub use self::{
     macros::status,
@@ -84,7 +84,7 @@ use crate::state::{file_fmt, main_fmt, mode_fmt, mode_name, sels_fmt};
 /// [`Notifications`]: super::Notifications
 /// [`FooterWidgets`]: super::FooterWidgets
 pub struct StatusLine<U: Ui> {
-    handle: FileHandle<U>,
+    file_handle: FileHandle<U>,
     text_fn: TextFn<U>,
     text: Text,
     checker: Box<dyn Fn(&Pass) -> bool + Send>,
@@ -94,12 +94,21 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
     type Cfg = StatusLineCfg<U>;
 
     fn update(pa: &mut Pass, handle: Handle<Self, U>) {
-        let text = handle.read(pa, |wid, _| (wid.text_fn)(pa, &wid.handle));
-        handle.widget().replace_text(pa, text);
+        let sl = handle.read(pa);
+
+        handle.write(pa).text = match &sl.file_handle {
+            FileHandle::Fixed(file) => (sl.text_fn)(pa, file),
+            FileHandle::Dynamic(cur_file) => (sl.text_fn)(pa, &cur_file.fixed(pa)),
+        };
     }
 
     fn needs_update(&self, pa: &Pass) -> bool {
-        self.handle.has_changed() || (self.checker)(pa)
+        let file_changed = match &self.file_handle {
+            FileHandle::Fixed(handle) => handle.has_changed(),
+            FileHandle::Dynamic(cur_file) => cur_file.has_changed(pa),
+        };
+
+        file_changed || (self.checker)(pa)
     }
 
     fn cfg() -> Self::Cfg {
@@ -180,7 +189,7 @@ impl<U: Ui> StatusLineCfg<U> {
 impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
     type Widget = StatusLine<U>;
 
-    fn build(self, pa: &mut Pass, handle: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    fn build(self, pa: &mut Pass, info: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
         let (text_fn, checker) = match self.constructor {
             Some(constructor) => constructor(pa),
             None => {
@@ -206,7 +215,10 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
         };
 
         let widget = StatusLine {
-            handle: handle.unwrap_or_else(|| context::dyn_file(pa).unwrap()),
+            file_handle: match info.file() {
+                Some(handle) => FileHandle::Fixed(handle),
+                None => FileHandle::Dynamic(context::dyn_file(pa).unwrap()),
+            },
             text_fn: Box::new(move |pa, fh| {
                 let builder = Text::builder();
                 text_fn(pa, builder, fh)
@@ -352,7 +364,7 @@ mod macros {
         #[allow(unused_imports)]
         use $crate::{
             private_exports::{
-                duat_core::{context::FileHandle, data::Pass, text::Builder, ui::PushSpecs},
+                duat_core::{context::Handle, data::Pass, file::File, ui::PushSpecs, text::Builder},
                 format_like, parse_form, parse_status_part, parse_str
             },
             widgets::StatusLineCfg,
@@ -360,7 +372,7 @@ mod macros {
 
         StatusLineCfg::new_with(
             Box::new(move |pa| {
-                let text_fn= |_: &Pass, _: &mut Builder, _: &FileHandle<_>| {};
+                let text_fn= |_: &Pass, _: &mut Builder, _: &Handle<File<_>, _>| {};
                 let checker = |_: &Pass| false;
 
                 let (_, text_fn, checker) = format_like!(
@@ -371,7 +383,7 @@ mod macros {
                 );
 
                 (
-                    Box::new(move |pa: &Pass, mut builder: Builder, handle: &FileHandle<_>| {
+                    Box::new(move |pa: &Pass, mut builder: Builder, handle: &Handle<File<_>, _>| {
                         text_fn(pa, &mut builder, &handle);
                         builder.build()
                     }),
@@ -383,7 +395,12 @@ mod macros {
     }}
 }
 
-type TextFn<U> = Box<dyn Fn(&Pass, &FileHandle<U>) -> Text + Send>;
-type BuilderFn<U> = Box<dyn Fn(&Pass, Builder, &FileHandle<U>) -> Text + Send>;
+type TextFn<U> = Box<dyn Fn(&Pass, &Handle<File<U>, U>) -> Text + Send>;
+type BuilderFn<U> = Box<dyn Fn(&Pass, Builder, &Handle<File<U>, U>) -> Text + Send>;
 type ConstructorFn<U> = Box<dyn FnOnce(&Pass) -> (BuilderFn<U>, CheckerFn)>;
 type CheckerFn = Box<dyn Fn(&Pass) -> bool + Send>;
+
+enum FileHandle<U: Ui> {
+    Fixed(Handle<File<U>, U>),
+    Dynamic(CurFile<U>),
+}
