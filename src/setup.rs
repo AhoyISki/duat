@@ -18,7 +18,6 @@ use duat_core::{
     cfg::PrintCfg,
     clipboard::Clipboard,
     context::{self, CurFile, CurWidget, Logs},
-    file::File,
     form::Palette,
     session::{FileRet, SessionCfg},
     text::History,
@@ -33,9 +32,10 @@ use duat_utils::{
 
 use crate::{
     CfgFn, Ui, form,
-    hook::{self, OnFileClose, OnFileReload, OnWindowOpen},
+    hook::{self, OnFileClose, OnFileReload, WindowCreated},
     mode,
     prelude::{FileWritten, LineNumbers},
+    widgets::File,
 };
 
 // Setup statics.
@@ -68,13 +68,13 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: &'static Sender<DuatEvent>
     mode::set_default(Regular);
     mode::set_default(Pager::<LogBook, Ui>::new());
 
-    hook::add_grouped::<File<Ui>>("FileWidgets", |_, (cfg, builder)| {
+    hook::add_grouped::<File>("FileWidgets", |_, (cfg, builder)| {
         builder.push(VertRule::cfg());
         builder.push(LineNumbers::cfg());
         cfg
     });
 
-    hook::add_grouped::<OnWindowOpen>("WindowWidgets", |_, builder| {
+    hook::add_grouped::<WindowCreated>("WindowWidgets", |_, builder| {
         builder.push(FooterWidgets::default());
     });
 

@@ -26,7 +26,7 @@ use crate::{
 
 #[doc(hidden)]
 pub struct SessionCfg<U: Ui> {
-    file_cfg: FileCfg,
+    file_cfg: FileCfg<U>,
     layout_fn: Box<dyn Fn() -> Box<dyn Layout<U> + 'static>>,
 }
 
@@ -132,13 +132,13 @@ impl<U: Ui> SessionCfg<U> {
 
     #[doc(hidden)]
     pub fn set_print_cfg(&mut self, cfg: PrintCfg) {
-        self.file_cfg.set_print_cfg(cfg);
+        *self.file_cfg.print_cfg() = cfg;
     }
 }
 
 pub struct Session<U: Ui> {
     ms: &'static U::MetaStatics,
-    file_cfg: FileCfg,
+    file_cfg: FileCfg<U>,
     layout_fn: Box<dyn Fn() -> Box<dyn Layout<U> + 'static>>,
 }
 
@@ -297,7 +297,7 @@ impl<U: Ui> Session<U> {
     fn open_file_from_cfg(
         &mut self,
         pa: &mut Pass,
-        file_cfg: FileCfg,
+        file_cfg: FileCfg<U>,
         is_active: bool,
         win: usize,
     ) {

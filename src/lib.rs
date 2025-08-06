@@ -643,52 +643,92 @@ pub mod hook {
 
     /// [`Hookable`]: Triggers when a [`Widget`]'s [cfg] is created
     ///
+    /// # Arguments
+    ///
+    /// - The [`WidgetCfg`] in question.
+    /// - A [`UiBuilder`], which lets you push [`Widget`]s around this
+    ///   one.
+    ///
     /// # Aliases
     ///
     /// Since every [`Widget`] implements the [`HookAlias`] trait,
-    /// instead of writing this:
+    /// instead of writing this in the config crate:
     ///
     /// ```rust
+    /// # use duat_core::doc_duat as duat;
     /// setup_duat!(setup);
-    /// use duat::{hook::WidgetCreated, prelude::*};
+    /// use duat::prelude::*;
     ///
     /// fn setup() {
-    ///     hook::add::<WidgetCreated<LineNumbers<Ui>>>(|pa, (ln, handle)| ln.rel_abs());
+    ///     hook::add::<WidgetCreated<LineNumbers<Ui>>>(|pa, (ln, _)| ln.rel_abs());
     /// }
     /// ```
     ///
     /// You can just write this:
     ///
     /// ```rust
+    /// # use duat_core::doc_duat as duat;
     /// setup_duat!(setup);
-    /// use duat::{hook::WidgetCreated, prelude::*};
+    /// use duat::prelude::*;
     ///
     /// fn setup() {
-    ///     hook::add::<LineNumbers<Ui>>(|pa, (ln, handle)| ln.rel_abs());
+    ///     hook::add::<LineNumbers<Ui>>(|_, (ln, _)| ln.rel_abs());
     /// }
     /// ```
     ///
-    /// # Arguments
+    /// # Changing the layout
     ///
-    /// - The [`WidgetCfg`] in question.
-    /// - The [`FileHandle`] to which it was pushed, if there was one.
+    /// Assuming you are using `duat-term`, you could make it so every
+    /// [`LineNumbers`] comes with a [`VertRule`] on the right, like
+    /// this:
     ///
-    /// Do note that this [hook] doesn't let you change the layout of
-    /// the pushed [`Widget`]s, only their configuration. So if
-    /// one of these changes changed the [direction] where the
-    /// [`Widget`] was pushed, for example, the layout could get
-    /// messed up.
+    /// ```rust
+    /// # pub struct VertRule<U: Ui>(Text, std::marker::PhantomData<U>);
+    /// # impl<U: Ui> Widget<U> for VertRule<U> {
+    /// #     type Cfg = VertRuleCfg<U>;
+    /// #     fn update(_: &mut Pass, _: Handle<Self, U>) {}
+    /// #     fn needs_update(&self, _: &Pass) -> bool { false }
+    /// #     fn cfg() -> Self::Cfg { VertRuleCfg(PhantomData) }
+    /// #     fn text(&self) -> &Text { &self.0 }
+    /// #     fn text_mut(&mut self) -> &mut Text { &mut self.0 }
+    /// #     fn once() -> Result<(), Text> { Ok(()) }
+    /// # }
+    /// # pub struct VertRuleCfg<U>(std::marker::PhantomData<U>);
+    /// # impl<U> VertRuleCfg<U> {
+    /// #     pub fn on_the_right(self) -> Self { self }
+    /// # }
+    /// # impl<U: Ui> WidgetCfg<U> for VertRuleCfg<U> {
+    /// #     type Widget = VertRule<U>;
+    /// #     fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
+    /// #         (VertRule(Text::new(), PhantomData), PushSpecs::left())
+    /// #     }
+    /// # }
+    /// # use duat_core::doc_duat as duat;
+    /// setup_duat!(setup);
+    /// use duat::prelude::*;
     ///
-    /// If you want to change the layout of the [`Widget`]s in a
-    /// controled fashion, look at [`OnFileOpen`] and
-    /// [`OnWindowOpen`].
+    /// fn setup() {
+    ///     hook::add::<LineNumbers<Ui>>(|_, (ln, builder)| {
+    ///         builder.push(VertRule::cfg().on_the_right());
+    ///         ln
+    ///     });
+    /// }
+    /// ```
     ///
-    /// [`Widget`]: crate::prelude::Widget
-    /// [`FileHandle`]: crate::prelude::context::FileHandle
-    /// [cfg]: crate::prelude::Widget::Cfg
-    /// [`WidgetCfg`]: crate::prelude::WidgetCfg
+    /// Now, every time a [`LineNumbers`]s [`Widget`] is inserted in
+    /// Duat, a [`VertRule`] will be pushed on the right of it.
+    /// You could even further add a [hook] on [`VertRule`], that
+    /// would push further [`Widget`]s if you wanted to.
+    ///
+    /// By default, this is [hook]
+    ///
+    /// [cfg]: crate::ui::Widget::Cfg
+    /// [`WidgetCfg`]: crate::ui::WidgetCfg
     /// [hook]: self
-    /// [direction]: crate::prelude::ui::PushSpecs
+    /// [direction]: crate::ui::PushSpecs
+    /// [`LineNumbers`]: duat_utils::widgets::LineNumbers
+    /// [`VertRule`]: duat_term::VertRule
+    /// [`Widget`]: duat_core::ui::Widget
     pub type WidgetCreated<W> = duat_core::hook::WidgetCreated<W, Ui>;
 
     /// [`Hookable`]: Triggers when a new window is opened
@@ -710,7 +750,7 @@ pub mod hook {
     /// [`Widget`]: crate::prelude::Widget
     /// [builder]: crate::prelude::ui::WindowBuilder
     /// [hook]: self
-    pub type OnWindowOpen = duat_core::hook::WindowCreated<Ui>;
+    pub type WindowCreated = duat_core::hook::WindowCreated<Ui>;
 
     /// [`Hookable`]: Triggers before closing a [`File`]
     ///
@@ -969,6 +1009,7 @@ pub mod prelude {
             self, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten, FocusedOn,
             FocusedOnDuat, FormSet, KeysSent, KeysSentTo, ModeCreated, ModeSwitched,
             SearchPerformed, SearchUpdated, UnfocusedFrom, UnfocusedFromDuat, WidgetCreated,
+            WindowCreated,
         },
         mode::{self, Mode, Pager, Prompt, User, alias, map},
         print, setup_duat,

@@ -13,7 +13,7 @@ use lender::Lender;
 use crate::{
     cfg::PrintCfg,
     data::{Pass, RwData},
-    mode::{Cursor, Cursors, Selection},
+    mode::{Cursor, Cursors, Selection, Selections},
     text::{Point, Searcher, Text, TwoPoints},
     ui::{Area, AreaId, GetAreaId, MutArea, SpawnSpecs, Ui, Widget, WidgetCfg},
 };
@@ -209,6 +209,37 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// [`Area`]: crate::ui::Area
     pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut W, &'a U::Area) {
         (self.widget.write(pa), &self.area)
+    }
+
+    /// A shared reference to the [`Text`] of the [`Widget`]
+    ///
+    /// This is the same as calling `handle.read(pa).text()`.
+    pub fn text<'a>(&'a self, pa: &'a Pass) -> &'a Text {
+        self.read(pa).text()
+    }
+
+    /// A mutable reference to the [`Text`] of the [`Widget`]
+    ///
+    /// This is the same as calling `handle.write(pa).text_mut()`.
+    pub fn text_mut<'a>(&'a self, pa: &'a mut Pass) -> &'a mut Text {
+        self.write(pa).text_mut()
+    }
+
+    /// A shared reference to the [`Selections`] of the [`Widget`]'s
+    /// [`Text`]
+    ///
+    /// This is the same as calling `handle.read(pa).selections()`.
+    pub fn selections<'a>(&'a self, pa: &'a Pass) -> &'a Selections {
+        self.read(pa).text().selections()
+    }
+
+    /// A mutable reference to the [`Selections`] of the [`Widget`]'s
+    /// [`Text`]
+    ///
+    /// This is the same as calling
+    /// `handle.write(pa).selections_mut()`.
+    pub fn selections_mut<'a>(&'a self, pa: &'a mut Pass) -> &'a mut Selections {
+        self.write(pa).text_mut().selections_mut()
     }
 
     ////////// Selection Editing functions

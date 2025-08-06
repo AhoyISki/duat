@@ -29,20 +29,41 @@ use crate::{
 mod parser;
 
 /// The configuration for a new [`File`]
-#[derive(Default, Clone)]
+#[derive(Default)]
 #[doc(hidden)]
-pub struct FileCfg {
+pub struct FileCfg<U: Ui> {
     text_op: TextOp,
-    cfg: PrintCfg,
+    print_cfg: PrintCfg,
+    add_parsers: Option<Box<dyn FnOnce(&mut File<U>)>>,
 }
 
-impl FileCfg {
+impl<U: Ui> FileCfg<U> {
     /// Returns a new instance of [`FileCfg`], opening a new buffer
     pub(crate) fn new() -> Self {
         FileCfg {
             text_op: TextOp::NewBuffer,
-            cfg: PrintCfg::default_for_input(),
+            print_cfg: PrintCfg::default_for_input(),
+            add_parsers: None,
         }
+    }
+
+    /// Adds a [`Parser`] to the [`File`]
+    pub fn add_parser(&mut self, parser_cfg: impl ParserCfg<U> + 'static) {
+        let add_parsers = std::mem::take(&mut self.add_parsers);
+        self.add_parsers = Some(Box::new(move |file| {
+            if let Some(prev_add_parsers) = add_parsers {
+                prev_add_parsers(file)
+            }
+
+            if let Err(err) = file.parsers.add(file, parser_cfg) {
+                context::error!("{err}");
+            }
+        }));
+    }
+
+    /// Sets the [`PrintCfg`]
+    pub fn print_cfg(&mut self) -> &mut PrintCfg {
+        &mut self.print_cfg
     }
 
     /// Changes the path of this cfg
@@ -63,23 +84,18 @@ impl FileCfg {
         }
     }
 
-    /// Sets the [`PrintCfg`]
-    pub(crate) fn set_print_cfg(&mut self, cfg: PrintCfg) {
-        self.cfg = cfg;
-    }
-
     ////////// Querying functions
 
-    pub fn path_set(&self) -> Option<PathBuf> {
+    pub fn path_set(&self) -> Option<String> {
         match &self.text_op {
             TextOp::TakeBuf(_, PathKind::NotSet(_), _) | TextOp::NewBuffer => None,
             TextOp::TakeBuf(_, PathKind::SetExists(path) | PathKind::SetAbsent(path), _)
-            | TextOp::OpenPath(path) => Some(path.clone()),
+            | TextOp::OpenPath(path) => Some(path.to_str()?.to_string()),
         }
     }
 }
 
-impl<U: Ui> WidgetCfg<U> for FileCfg {
+impl<U: Ui> WidgetCfg<U> for FileCfg<U> {
     type Widget = File<U>;
 
     fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
@@ -121,18 +137,32 @@ impl<U: Ui> WidgetCfg<U> for FileCfg {
             }
         };
 
-        let file = File {
+        let mut file = File {
             path,
             text,
-            cfg: self.cfg,
+            cfg: self.print_cfg,
             printed_lines: (0..40).map(|i| (i, i == 1)).collect(),
             parsers: InnerParsers::default(),
             layout_order: 0,
             _ghost: PhantomData,
         };
 
+        if let Some(add_parsers) = self.add_parsers {
+            add_parsers(&mut file);
+        }
+
         // The PushSpecs don't matter
         (file, PushSpecs::above())
+    }
+}
+
+impl<U: Ui> Clone for FileCfg<U> {
+    fn clone(&self) -> Self {
+        Self {
+            text_op: self.text_op.clone(),
+            print_cfg: self.print_cfg,
+            add_parsers: None,
+        }
     }
 }
 
@@ -382,7 +412,7 @@ impl<U: Ui> Handle<File<U>, U> {
 }
 
 impl<U: Ui> Widget<U> for File<U> {
-    type Cfg = FileCfg;
+    type Cfg = FileCfg<U>;
 
     fn cfg() -> Self::Cfg {
         FileCfg::new()

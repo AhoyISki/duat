@@ -42,7 +42,7 @@ impl<U: Ui> Windows<U> {
         &self,
         pa: &mut Pass,
         ms: &'static U::MetaStatics,
-        file_cfg: FileCfg,
+        file_cfg: FileCfg<U>,
         layout: Box<dyn Layout<U>>,
     ) -> Node<U> {
         let widget_id = AreaId::new();
@@ -84,7 +84,7 @@ impl<U: Ui> Windows<U> {
         &self,
         pa: &mut Pass,
         win: usize,
-        file_cfg: FileCfg,
+        file_cfg: FileCfg<U>,
     ) -> Result<Node<U>, Text> {
         let widget_id = AreaId::new();
         let (file_cfg, builder) = {
@@ -203,7 +203,7 @@ impl<U: Ui> Windows<U> {
         name: &str,
         ms: &'static U::MetaStatics,
         layout: Box<dyn Layout<U>>,
-        default_file_cfg: FileCfg,
+        default_file_cfg: FileCfg<U>,
     ) {
         match self.file_entry(pa, name) {
             Ok((win, _, handle)) => {
