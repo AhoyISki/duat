@@ -3,10 +3,10 @@
 //! This [`Plugin`] is included by default, as it is considered a core
 //! utility of duat. It adds the two following traits:
 //!
-//! - [`FileType`]: This trait grants the [`filetype`]
-//!   method, which lets you access the filetype directly. Its
-//!   implementors are the [`File`] widget, [`String`] and [`&str`]
-//!   and [`PathBuf`] and [`Path`].
+//! - [`FileType`]: This trait grants the [`filetype`] method, which
+//!   lets you access the filetype directly. Its implementors are the
+//!   [`File`] widget, [`String`] and [`&str`] and [`PathBuf`] and
+//!   [`Path`].
 //! - [`PassFileType`]: This trait also has a
 //!   [`filetype`](PassFileType::filetype) method, but it requires a
 //!   [`Pass`], bypassing the need to, for example, [`read`] a
@@ -59,16 +59,22 @@ use std::{
     sync::LazyLock,
 };
 
-use duat_core::{prelude::*, ui::FileBuilder};
+use duat_core::{context::CurFile, file::FileCfg, prelude::*};
 use regex::RegexSet;
 
 pub trait FileType {
     fn filetype(&self) -> Option<&'static str>;
 }
 
-impl<U: duat_core::ui::Ui> FileType for duat_core::file::File<U> {
+impl<U: duat_core::ui::Ui> FileType for File<U> {
     fn filetype(&self) -> Option<&'static str> {
         PathBuf::from(self.path_set()?).filetype()
+    }
+}
+
+impl<U: duat_core::ui::Ui> FileType for FileCfg<U> {
+    fn filetype(&self) -> Option<&'static str> {
+        self.path_set()?.filetype()
     }
 }
 
@@ -112,25 +118,19 @@ pub trait PassFileType {
 
 impl<U: Ui> PassFileType for RwData<File<U>> {
     fn filetype(&self, pa: &Pass) -> Option<&'static str> {
-        self.read(pa, |file| file.filetype())
+        self.read(pa).filetype()
     }
 }
 
 impl<U: Ui> PassFileType for Handle<File<U>, U> {
     fn filetype(&self, pa: &Pass) -> Option<&'static str> {
-        self.read(pa, |file, _| file.filetype())
+        self.read(pa).filetype()
     }
 }
 
-impl<U: Ui> PassFileType for FileHandle<U> {
+impl<U: Ui> PassFileType for CurFile<U> {
     fn filetype(&self, pa: &Pass) -> Option<&'static str> {
-        self.read(pa, |file, _| file.filetype())
-    }
-}
-
-impl<U: Ui> PassFileType for FileBuilder<U> {
-    fn filetype(&self, pa: &Pass) -> Option<&'static str> {
-        self.read(pa, |file, _| file.filetype())
+        self.fixed(pa).read(pa).filetype()
     }
 }
 
