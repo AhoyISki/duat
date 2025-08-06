@@ -46,10 +46,9 @@ pub use self::{
 };
 use crate::{
     cfg::PrintCfg,
-    context,
     data::Pass,
     form::Painter,
-    text::{FwdIter, Item, Point, RevIter, Text, TwoPoints, txt},
+    text::{FwdIter, Item, Point, RevIter, Text, TwoPoints},
 };
 
 pub mod layout;
@@ -1089,25 +1088,25 @@ impl<A: Area> MutArea<'_, A> {
         A::swap(self, other);
     }
 
-    /// Calls [`Area::spawn_floating`] on `self`
-    pub fn spawn_floating<Cfg: WidgetCfg<A::Ui>>(
-        self,
-        pa: &mut Pass,
-        _cfg: Cfg,
-        specs: SpawnSpecs,
-    ) -> Result<A, Text> {
-        let area = A::spawn_floating(MutArea(self.0), specs)?;
-        let mut windows = context::windows::<A::Ui>().borrow_mut();
+    // /// Calls [`Area::spawn_floating`] on `self`
+    // pub fn spawn_floating<Cfg: WidgetCfg<A::Ui>>(
+    //     self,
+    //     pa: &mut Pass,
+    //     _cfg: Cfg,
+    //     specs: SpawnSpecs,
+    // ) -> Result<A, Text> {
+    //     let area = A::spawn_floating(MutArea(self.0), specs)?;
+    //     let mut windows = context::windows::<A::Ui>().borrow_mut();
 
-        let Some(_win) = windows
-            .iter_mut()
-            .find(|win| win.nodes().any(|n| n.area(pa) == self.0))
-        else {
-            return Err(txt!("Tried to spawn floating from a deleted Area").build());
-        };
+    //     let Some(_win) = windows
+    //         .iter_mut()
+    //         .find(|win| win.nodes().any(|n| n.area(pa) == self.0))
+    //     else {
+    //         return Err(txt!("Tried to spawn floating from a deleted
+    // Area").build());     };
 
-        Ok(area)
-    }
+    //     Ok(area)
+    // }
 
     /// Calls [`Area::spawn_floating_at`] on `self`
     pub fn spawn_floating_at(

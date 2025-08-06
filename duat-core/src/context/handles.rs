@@ -549,7 +549,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         specs: SpawnSpecs,
     ) -> Result<AreaId, Text> {
         let area = MutArea(&self.area);
-        let _spawned = area.spawn_floating(pa, cfg, specs)?;
+        //let _spawned = area.spawn_floating(pa, cfg, specs)?;
         todo!();
     }
 }
