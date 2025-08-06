@@ -407,7 +407,7 @@ pub fn set_alt_is_reverse(value: bool) -> bool {
 /// [`print`]: Widget::print
 /// [`on_focus`]: Widget::on_focus
 /// [`on_unfocus`]: Widget::on_unfocus
-/// [resizing]: crate::ui::RawArea::constrain_ver
+/// [resizing]: crate::ui::Area::constrain_ver
 /// [`Form`]: crate::form::Form
 /// [`duat-kak`]: https://docs.rs/duat-kak/latest/duat_kak/index.html
 /// [`form::set_weak`]: crate::form::set_weak

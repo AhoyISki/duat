@@ -216,10 +216,9 @@ impl<'a, U: crate::ui::Ui> Parameter<'a> for Buffer<U> {
 
     fn new(pa: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
         let buffer = args.next()?;
-        let windows = crate::context::windows::<U>(pa).borrow();
-        if windows
-            .iter()
-            .flat_map(|w| w.file_names(pa))
+        if crate::context::windows::<U>()
+            .file_handles(pa)
+            .map(|handle| handle.read(pa).name())
             .any(|f| f == buffer)
         {
             Ok((buffer, Some(form::id_of!("param.file.open"))))
@@ -240,7 +239,7 @@ impl<'a, U: crate::ui::Ui> Parameter<'a> for OtherFileBuffer<U> {
     fn new(pa: &Pass, args: &mut Args<'a>) -> Result<(Self::Returns, Option<FormId>), Text> {
         let buffer = args.next_as::<Buffer<U>>(pa)?;
         let handle = crate::context::fixed_file::<U>(pa).unwrap();
-        if buffer == handle.read(pa, |file, _| file.name()) {
+        if buffer == handle.read(pa).name() {
             Err(txt!("Argument can't be the current file").build())
         } else {
             Ok((buffer, Some(form::id_of!("param.file.open"))))
@@ -276,10 +275,9 @@ impl<U: Ui> Parameter<'_> for ValidFile<U> {
             return Err(txt!("Path was not found").build());
         };
 
-        let windows = crate::context::windows::<U>(pa).borrow();
-        let form = if windows
-            .iter()
-            .flat_map(|win| win.file_paths(pa))
+        let form = if crate::context::windows::<U>()
+            .file_handles(pa)
+            .map(|handle| handle.read(pa).path())
             .any(|p| PathBuf::from(p) == path)
         {
             form::id_of!("param.file.open")
@@ -447,36 +445,23 @@ impl<'a, W: Widget<U>, U: Ui> Handles<'a, W, U> {
         pa: &mut Pass,
         f: impl FnOnce(&mut Pass, Handle<W, U>) -> Ret,
     ) -> Option<Ret> {
-        if let Some(handle) = context::fixed_file::<U>(pa)
-            .unwrap()
-            .get_related_widget::<W>(pa)
-        {
+        if let Some(handle) = context::fixed_file::<U>(pa).unwrap().get_related(pa) {
             Some(f(pa, handle))
         } else {
-            let windows = context::windows::<U>(pa).borrow();
             let w = context::cur_window();
 
-            if windows.is_empty() {
-                context::error!(
-                    "Widget command executed before the [a]Ui[] was initiated, try executing \
-                     after [a]OnUiStart[]"
-                );
-                return None;
-            }
-
-            let node = match crate::widget_entry::<W, U>(pa, &windows, w) {
-                Ok((.., node)) => node,
+            let node = match context::windows::<U>()
+                .widget_entry::<W>(pa, w)
+                .map(|(.., node)| node.clone())
+            {
+                Ok(node) => node,
                 Err(err) => {
                     context::error!("{err}");
                     return None;
                 }
             };
 
-            let (widget, area, mask, _) = node.parts();
-            let widget = widget.try_downcast().unwrap();
-            let handle = Handle::from_parts(widget, area.clone(), mask.clone());
-
-            Some(f(pa, handle))
+            Some(f(pa, node.try_downcast().unwrap()))
         }
     }
 
@@ -492,15 +477,9 @@ impl<'a, W: Widget<U>, U: Ui> Handles<'a, W, U> {
     /// This function will be called by [`Handles::on_flags`], if the
     /// `"--global"` or `"-g"` [`Flags`] are passed.
     pub fn on_each(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W, U>)) {
-        let nodes: Vec<Node<U>> = context::windows::<U>(pa)
-            .borrow()
-            .iter()
-            .flat_map(|win| win.nodes().cloned())
-            .collect();
-
-        for (widget, area, mask, _) in nodes.iter().map(Node::parts) {
-            if let Some(widget) = widget.try_downcast() {
-                let handle = Handle::from_parts(widget, area.clone(), mask.clone());
+        let handles: Vec<_> = context::windows::<U>().handles(pa).cloned().collect();
+        for handle in handles {
+            if let Some(handle) = handle.try_downcast() {
                 f(pa, handle)
             }
         }
@@ -518,14 +497,13 @@ impl<'a, W: Widget<U>, U: Ui> Handles<'a, W, U> {
     /// `"--window"` or `"-w"` [`Flags`] are passed.
     pub fn on_window(&self, pa: &mut Pass, mut f: impl FnMut(&mut Pass, Handle<W, U>)) {
         let cur_win = context::cur_window();
-        let nodes: Vec<Node<U>> = context::windows::<U>(pa).borrow()[cur_win]
-            .nodes()
-            .cloned()
+        let nodes: Vec<Node<U>> = context::windows::<U>()
+            .entries(pa)
+            .filter_map(|(win, _, node)| (win == cur_win).then(|| node.clone()))
             .collect();
 
-        for (widget, area, mask, _) in nodes.iter().map(Node::parts) {
-            if let Some(widget) = widget.try_downcast() {
-                let handle = Handle::from_parts(widget, area.clone(), mask.clone());
+        for handle in nodes.iter().map(Node::handle) {
+            if let Some(handle) = handle.try_downcast() {
                 f(pa, handle)
             }
         }

@@ -44,16 +44,18 @@
 //! - [`ConfigLoaded`] triggers after loading the config crate.
 //! - [`ConfigUnloaded`] triggers after unloading the config crate.
 //! - [`ExitedDuat`] triggers after Duat has exited.
+//! - [`FocusedOnDuat`] triggers when Duat gains focus.
+//! - [`UnfocusedFromDuat`] triggers when Duat loses focus.
 //! - [`WidgetCreated`] triggers when a [`Widget`]'s [cfg] is created,
 //!   letting you change it, [`Widget`] can be used as its [alias]
 //! - [`OnFileOpen`], which lets you push widgets around a [`File`].
-//! - [`OnWindowOpen`], which lets you push widgets around the window.
-//! - [`OnFileClose`], which triggers on every file upon closing Duat.
-//! - [`OnFileReload`], which triggers on every file upon reloading
-//!   Duat.
+//! - [`WindowCreated`], which lets you push widgets around the
+//!   window.
+//! - [`OnFileClose`] triggers on every file upon closing Duat.
+//! - [`OnFileReload`] triggers on every file upon reloading Duat.
 //! - [`FocusedOn`] lets you act on a [widget] when focused.
 //! - [`UnfocusedFrom`] lets you act on a [widget] when unfocused.
-//! - [`KeysSent`] lets you act on a [dyn Widget], given a[key].
+//! - [`KeysSent`] lets you act on a [dyn Widget], given a [key].
 //! - [`KeysSentTo`] lets you act on a given [widget], given a [key].
 //! - [`FormSet`] triggers whenever a [`Form`] is added/altered.
 //! - [`ModeSwitched`] triggers when you change [`Mode`].
@@ -159,12 +161,12 @@ use std::{any::TypeId, cell::RefCell, collections::HashMap, marker::PhantomData,
 
 pub use self::global::*;
 use crate::{
-    context::{Cache, FileHandle, Handle},
+    context::{Cache, Handle},
     data::Pass,
     file::File,
     form::{Form, FormId},
     mode::{KeyEvent, Mode},
-    ui::{FileBuilder, Ui, Widget, WindowBuilder},
+    ui::{Ui, UiBuilder, Widget},
 };
 
 /// Hook functions
@@ -403,50 +405,24 @@ impl Hookable for UnfocusedFromDuat {
 /// for example, the layout could get messed up.
 ///
 /// If you want to change the layout of the [`Widget`]s in a controled
-/// fashion, look at [`OnFileOpen`] and [`OnWindowOpen`].
+/// fashion, look at [`OnFileOpen`] and [`WindowCreated`].
 ///
 /// [cfg]: crate::ui::Widget::Cfg
 /// [`WidgetCfg`]: crate::ui::WidgetCfg
 /// [hook]: self
 /// [direction]: crate::ui::PushSpecs
-pub struct WidgetCreated<W: Widget<U>, U: Ui>(pub(crate) (Option<W::Cfg>, Option<FileHandle<U>>));
+pub struct WidgetCreated<W: Widget<U>, U: Ui>(pub(crate) (Option<W::Cfg>, UiBuilder<U>));
 
 impl<W: Widget<U>, U: Ui> Hookable for WidgetCreated<W, U> {
-    type Input<'h> = (W::Cfg, Option<&'h FileHandle<U>>);
+    type Input<'h> = (W::Cfg, &'h mut UiBuilder<U>);
     type Output = W::Cfg;
 
     fn get_input(&mut self) -> Self::Input<'_> {
-        (self.0.0.take().unwrap(), self.0.1.as_ref())
+        (self.0.0.take().unwrap(), &mut self.0.1)
     }
 
     fn take_output_back(&mut self, output: Self::Output) {
         self.0.0 = Some(output)
-    }
-}
-
-/// [`Hookable`]: Triggers when a [`File`] is opened
-///
-/// # Arguments
-///
-/// - The file [builder], which can be used to push widgets to the
-///   file, and to eachother.
-///
-/// This is a rather "advanced" [hook], since it lets you change the
-/// layout of [`Widget`]s around the screen. If you don't need all
-/// that power, you can check out [`WidgetCreated`], which is a more
-/// straightforward form of changing [`Widget`]s, and doesn't
-/// interfere with the default hooks of `"FileWidgets"` and
-/// `"WindowWidgets"`, preset by Duat.
-///
-/// [builder]: crate::ui::FileBuilder
-/// [hook]: self
-pub struct OnFileOpen<U: Ui>(pub(crate) FileBuilder<U>);
-
-impl<U: Ui> Hookable for OnFileOpen<U> {
-    type Input<'h> = &'h mut FileBuilder<U>;
-
-    fn get_input(&mut self) -> Self::Input<'_> {
-        &mut self.0
     }
 }
 
@@ -466,10 +442,10 @@ impl<U: Ui> Hookable for OnFileOpen<U> {
 ///
 /// [builder]: crate::ui::WindowBuilder
 /// [hook]: self
-pub struct OnWindowOpen<U: Ui>(pub(crate) WindowBuilder<U>);
+pub struct WindowCreated<U: Ui>(pub(crate) UiBuilder<U>);
 
-impl<U: Ui> Hookable for OnWindowOpen<U> {
-    type Input<'h> = &'h mut WindowBuilder<U>;
+impl<U: Ui> Hookable for WindowCreated<U> {
+    type Input<'h> = &'h mut UiBuilder<U>;
 
     fn get_input(&mut self) -> Self::Input<'_> {
         &mut self.0

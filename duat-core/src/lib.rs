@@ -19,8 +19,8 @@
 //!     [`Widget`] is [`File`], which displays the contents of a file.
 //!   - [`WidgetCfg`]s: These are [`Widget`] builders. They are used
 //!     in the `setup` function of Duat's config, through the
-//!     [`OnFileOpen`] and [`OnWindowOpen`] [hook]s.
-//!   - [`Ui`] and [`RawArea`]s: These are used if you want to create
+//!     [`OnFileOpen`] and [`WindowCreated`] [hook]s.
+//!   - [`Ui`] and [`Area`]s: These are used if you want to create
 //!     your own interface for Duat. Very much a work in progress, so
 //!     I wouldn't recommend trying that yet.
 //!
@@ -582,8 +582,8 @@
 //!
 //! [`WidgetCfg`]: crate::ui::WidgetCfg
 //! [`OnFileOpen`]: crate::hook::OnFileOpen
-//! [`OnWindowOpen`]: crate::hook::OnWindowOpen
-//! [`RawArea`]: crate::ui::RawArea
+//! [`WindowCreated`]: crate::hook::WindowCreated
+//! [`Area`]: crate::ui::Area
 //! [`send_key`]: crate::mode::Mode::send_key
 //! [key]: crate::mode::KeyEvent
 //! [widget]: crate::context::Handle
@@ -658,7 +658,7 @@
 #![allow(clippy::single_range_in_vec_init)]
 
 use std::{
-    any::{TypeId, type_name},
+    any::TypeId,
     collections::HashMap,
     ops::Range,
     path::{Path, PathBuf},
@@ -669,12 +669,7 @@ use std::{
 use dirs_next::cache_dir;
 pub use main_thread_only::MainThreadOnly;
 
-use self::{
-    data::Pass,
-    file::File,
-    text::Text,
-    ui::{Node, Ui, Widget, Window},
-};
+use self::{text::Text, ui::Ui};
 use crate::text::txt;
 
 pub mod cfg;
@@ -750,7 +745,7 @@ pub mod prelude {
         Plugin,
         cfg::PrintCfg,
         cmd,
-        context::{self, FileHandle, Handle},
+        context::{self, Handle},
         data::{Pass, RwData},
         file::{File, FileParts, FileSnapshot, Parser, ParserBox, ParserCfg},
         form::{self, Form},
@@ -761,7 +756,7 @@ pub mod prelude {
             AlignCenter, AlignLeft, AlignRight, Bytes, Conceal, Ghost, Matcheable, Moment, Point,
             Spacer, Tagger, Text, txt,
         },
-        ui::{PushSpecs, RawArea, Ui, Widget, WidgetCfg},
+        ui::{Area, PushSpecs, Ui, Widget, WidgetCfg},
     };
 }
 
@@ -1430,105 +1425,6 @@ where
     }
 
     Err(left)
-}
-
-/// An entry for a file with the given name
-#[allow(clippy::result_large_err)]
-fn file_entry<'a, U: Ui>(
-    pa: &Pass,
-    windows: &'a [Window<U>],
-    name: &str,
-) -> Result<(usize, usize, &'a Node<U>), Text> {
-    windows
-        .iter()
-        .enumerate()
-        .flat_map(window_index_widget)
-        .find(|(.., node)| node.read_as(pa, |f: &File<U>| f.name() == name) == Some(true))
-        .ok_or_else(|| txt!("File with name [a]{name}[] not found").build())
-}
-
-/// An entry for a widget of a specific type
-#[allow(clippy::result_large_err)]
-fn widget_entry<'a, W: Widget<U>, U: Ui>(
-    pa: &Pass,
-    windows: &'a [Window<U>],
-    w: usize,
-) -> Result<(usize, usize, &'a Node<U>), Text> {
-    let handle = context::fixed_file::<U>(pa).unwrap();
-
-    if let Some(handle) = handle.get_related_widget::<W>(pa) {
-        windows
-            .iter()
-            .enumerate()
-            .flat_map(window_index_widget)
-            .find(|(.., n)| n.ptr_eq(handle.widget()))
-    } else {
-        iter_around(windows, w, 0).find(|(.., node)| node.data_is::<W>())
-    }
-    .ok_or(txt!("No widget of type [a]{}[] found", type_name::<W>()).build())
-}
-
-/// Iterator over a group of windows, that returns the window's index
-fn window_index_widget<U: Ui>(
-    (index, window): (usize, &Window<U>),
-) -> impl ExactSizeIterator<Item = (usize, usize, &Node<U>)> + DoubleEndedIterator {
-    window
-        .nodes()
-        .enumerate()
-        .map(move |(i, entry)| (index, i, entry))
-}
-
-/// Iterates around a specific widget, going forwards
-fn iter_around<U: Ui>(
-    windows: &[Window<U>],
-    window: usize,
-    widget: usize,
-) -> impl Iterator<Item = (usize, usize, &Node<U>)> + '_ {
-    let prev_len: usize = windows.iter().take(window).map(Window::len_widgets).sum();
-
-    windows
-        .iter()
-        .enumerate()
-        .skip(window)
-        .flat_map(window_index_widget)
-        .skip(widget + 1)
-        .chain(
-            windows
-                .iter()
-                .enumerate()
-                .take(window + 1)
-                .flat_map(window_index_widget)
-                .take(prev_len + widget),
-        )
-}
-
-/// Iterates around a specific widget, going backwards
-fn iter_around_rev<U: Ui>(
-    windows: &[Window<U>],
-    window: usize,
-    widget: usize,
-) -> impl Iterator<Item = (usize, usize, &Node<U>)> {
-    let next_len: usize = windows.iter().skip(window).map(Window::len_widgets).sum();
-
-    windows
-        .iter()
-        .enumerate()
-        .rev()
-        .skip(windows.len() - window)
-        .flat_map(move |(i, win)| {
-            window_index_widget((i, win))
-                .rev()
-                .skip(win.len_widgets() - widget)
-        })
-        .chain(
-            windows
-                .iter()
-                .enumerate()
-                .rev()
-                .take(windows.len() - window)
-                .flat_map(move |(i, win)| window_index_widget((i, win)).rev())
-                .take(next_len - (widget + 1)),
-        )
 }
 
 /// Converts a string to a valid priority

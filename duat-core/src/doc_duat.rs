@@ -101,8 +101,8 @@ pub mod prelude {
         doc_cmd as cmd, doc_cursor as cursor,
         doc_hook::{
             self as hook, ColorSchemeSet, ConfigLoaded, ConfigUnloaded, ExitedDuat, FileWritten,
-            FocusedOn, FormSet, KeysSent, KeysSentTo, ModeCreated, ModeSwitched, OnFileOpen,
-            OnWindowOpen, SearchPerformed, SearchUpdated, UnfocusedFrom, WidgetCreated,
+            FocusedOn, FormSet, KeysSent, KeysSentTo, ModeCreated, ModeSwitched, SearchPerformed,
+            SearchUpdated, UnfocusedFrom, WidgetCreated, WindowCreated,
         },
         doc_mode::{self, Mode, User, alias, map},
         doc_print as print,
@@ -119,7 +119,7 @@ pub mod prelude {
             self, AlignCenter, AlignLeft, AlignRight, Builder, Conceal, Ghost, Spacer, Tagger,
             Text, txt,
         },
-        ui::{self, RawArea, Widget, WidgetCfg},
+        ui::{self, Area, Widget, WidgetCfg},
     };
 
     pub macro setup_duat($setup:ident) {
@@ -194,8 +194,7 @@ pub mod doc_hook {
     }
 
     pub type WidgetCreated<W> = crate::hook::WidgetCreated<W, Ui>;
-    pub type OnFileOpen = crate::hook::OnFileOpen<Ui>;
-    pub type OnWindowOpen = crate::hook::OnWindowOpen<Ui>;
+    pub type WindowCreated = crate::hook::WindowCreated<Ui>;
     pub type FocusedOn<W> = crate::hook::FocusedOn<W, Ui>;
     pub type UnfocusedFrom<W> = crate::hook::UnfocusedFrom<W, Ui>;
     pub type KeySentTo<W> = crate::hook::KeysSentTo<W, Ui>;
@@ -288,7 +287,7 @@ mod doc_ui {
         fn close(_: &'static Self::MetaStatics) {}
         fn new_root(
             _: &'static Self::MetaStatics,
-            _: <Self::Area as crate::prelude::RawArea>::Cache,
+            _: <Self::Area as crate::prelude::Area>::Cache,
         ) -> Self::Area {
             Area
         }
@@ -301,7 +300,7 @@ mod doc_ui {
 
     #[derive(Clone, Copy, Default, PartialEq, Eq)]
     pub struct Area;
-    impl crate::ui::RawArea for Area {
+    impl crate::ui::Area for Area {
         type Cache = ();
         type PrintInfo = ();
         type Ui = Ui;
@@ -385,8 +384,7 @@ mod doc_ui {
 mod doc_widgets {
     use std::marker::PhantomData;
     use crate::{
-        context::{FileHandle, Handle, Record}, data::Pass, text::Text,
-        ui::{PushSpecs, Ui, Widget, WidgetCfg},
+        context::{Handle, Record}, data::Pass, text::Text, ui::{BuildInfo, PushSpecs, Ui, Widget, WidgetCfg}
     };
 
     pub struct LineNumbers<U: Ui>(Text, std::marker::PhantomData<U>);
@@ -416,7 +414,7 @@ mod doc_widgets {
     }
     impl<U: Ui> WidgetCfg<U> for LineNumbersOptions<U> {
         type Widget = LineNumbers<U>;
-        fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+        fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
             (LineNumbers(Text::new(), PhantomData), PushSpecs::left())
         }
     }
@@ -442,7 +440,7 @@ mod doc_widgets {
     }
     impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
         type Widget = StatusLine<U>;
-        fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+        fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
             (StatusLine(Text::new(), PhantomData), PushSpecs::left())
         }
     }
@@ -465,7 +463,7 @@ mod doc_widgets {
     }
     impl<U: Ui> WidgetCfg<U> for PromptLineCfg<U> {
         type Widget = PromptLine<U>;
-        fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+        fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
             (PromptLine(Text::new(), PhantomData), PushSpecs::left())
         }
     }
@@ -491,7 +489,7 @@ mod doc_widgets {
     }
     impl<U: Ui> WidgetCfg<U> for NotificationsCfg<U> {
         type Widget = Notifications<U>;
-        fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+        fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
             (Notifications(Text::new(), PhantomData), PushSpecs::left())
         }
     }
@@ -520,7 +518,7 @@ mod doc_widgets {
     }
     impl<U: Ui> WidgetCfg<U> for LogBookCfg<U> {
         type Widget = LogBook<U>;
-        fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+        fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
             (LogBook(Text::new(), PhantomData), PushSpecs::left())
         }
     }

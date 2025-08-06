@@ -10,14 +10,12 @@ use crossterm::event::KeyEvent;
 use super::Mode;
 use crate::{
     context::{self, Handle},
-    data::{Pass, RwData},
+    data::Pass,
     duat_name,
     file::File,
-    file_entry,
     hook::{self, KeysSent, KeysSentTo, ModeCreated, ModeSwitched},
     main_thread_only::MainThreadOnly,
     ui::{DuatEvent, Node, Ui, Widget},
-    widget_entry,
 };
 
 static SEND_KEYS: MainThreadOnly<RefCell<Option<KeyFn>>> = MainThreadOnly::new(RefCell::new(None));
@@ -129,13 +127,13 @@ pub fn reset_to<W: Widget<U>, U: Ui>(handle: Handle<W, U>) {
 
     if let Some(i) = i {
         *SET_MODE.lock().unwrap() = Some(Box::new(move |pa| {
-            let windows = context::windows::<U>(pa).borrow();
-            if let Some(node) = windows
-                .iter()
-                .flat_map(|w| w.nodes())
-                .find(|n| n.ptr_eq(handle.widget()))
-                .cloned()
-            {
+            let node = context::windows::<U>()
+                .entries(pa)
+                .find(|(.., node)| node.ptr_eq(handle.widget()))
+                .map(|(.., node)| node.clone());
+
+            if let Some(node) = node {
+                let node = node.clone();
                 switch_widget(pa, node);
                 (RESET_MODES.lock().unwrap()[i].1)(pa)
             } else {
@@ -157,15 +155,13 @@ pub fn reset_to<W: Widget<U>, U: Ui>(handle: Handle<W, U>) {
 pub(crate) fn reset_to_file<U: Ui>(name: impl std::fmt::Display, switch_window: bool) {
     let name = name.to_string();
     *SET_MODE.lock().unwrap() = Some(Box::new(move |pa| {
-        let windows = context::windows::<U>(pa).borrow();
-        match file_entry(pa, &windows, &name) {
-            Ok((win, _, node)) => {
+        match context::windows::<U>().file_entry(pa, &name) {
+            Ok((win, _, handle)) => {
                 if win != context::cur_window() && switch_window {
                     crate::context::sender()
                         .send(DuatEvent::SwitchWindow(win))
                         .unwrap();
                 }
-                let node = node.clone();
 
                 if let Some((_, f)) = RESET_MODES
                     .lock()
@@ -173,7 +169,7 @@ pub(crate) fn reset_to_file<U: Ui>(name: impl std::fmt::Display, switch_window: 
                     .iter_mut()
                     .find(|(ty, _)| *ty == TypeId::of::<File<U>>())
                 {
-                    switch_widget(pa, node);
+                    switch_widget(pa, Node::from_handle(handle));
                     f(pa)
                 } else {
                     panic!("Something went terribly wrong, somehow");
@@ -192,20 +188,12 @@ pub(super) fn switch_widget<U: Ui>(pa: &mut Pass, node: Node<U>) {
     let cur_widget = context::cur_widget::<U>(pa).unwrap();
     unsafe { BEFORE_EXIT.get() }.replace(|_| {})(pa);
 
-    let handle = {
-        let (widget, area, mask, _) = node.parts();
-        Handle::from_parts(widget.clone(), area.clone(), mask.clone())
-    };
+    let handle = node.handle().clone();
     cur_widget.node(pa).on_unfocus(pa, handle);
 
-    context::set_cur(pa, node.as_file(), node.clone());
+    context::set_cur(pa, node.try_downcast(), node.clone());
 
-    let handle = {
-        let node = cur_widget.node(pa);
-        let (widget, area, mask, _) = node.parts();
-        Handle::from_parts(widget.clone(), area.clone(), mask.clone())
-    };
-    node.on_focus(pa, handle);
+    node.on_focus(pa, cur_widget.node(pa).handle().clone());
 }
 
 /// Sends the [`KeyEvent`] to the active [`Mode`]
@@ -233,13 +221,13 @@ pub(super) fn send_keys_to(pa: &mut Pass, keys: Vec<KeyEvent>) {
 /// Static dispatch function that sends keys to a [`Mode`]
 #[allow(clippy::await_holding_refcell_ref)]
 fn send_keys_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, keys: &mut IntoIter<KeyEvent>) -> Option<ModeFn> {
-    let node = context::cur_widget::<U>(pa).map(|cw| cw.node(pa)).unwrap();
-
-    let (widget, area, mask, _) = node.parts();
-    let widget = widget.try_downcast::<M::Widget>().unwrap();
+    let handle = context::cur_widget::<U>(pa)
+        .map(|cw| cw.node(pa))
+        .unwrap()
+        .try_downcast()
+        .unwrap();
 
     let mut sent_keys = Vec::new();
-    let handle = Handle::from_parts(widget.clone(), area.clone(), mask.clone());
 
     let mode_fn = {
         // SAFETY: This function's caller has a Pass argument.
@@ -268,15 +256,17 @@ fn set_mode_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, mode: M) -> bool {
     // If we are on the correct widget, no switch is needed.
     if context::cur_widget::<U>(pa).unwrap().type_id(pa) != TypeId::of::<M::Widget>() {
         let node = {
-            let windows = context::windows(pa).borrow();
+            let windows = context::windows();
             let w = context::cur_window();
             if TypeId::of::<M::Widget>() == TypeId::of::<File<U>>() {
-                let name = context::fixed_file::<U>(pa)
-                    .unwrap()
-                    .read(pa, |file, _| file.name());
-                file_entry(pa, &windows, &name).map(|(.., node)| node.clone())
+                let name = context::fixed_file::<U>(pa).unwrap().read(pa).name();
+                windows
+                    .file_entry(pa, &name)
+                    .map(|(.., handle)| Node::from_handle(handle))
             } else {
-                widget_entry::<M::Widget, U>(pa, &windows, w).map(|(.., node)| node.clone())
+                windows
+                    .widget_entry::<M::Widget>(pa, w)
+                    .map(|(.., node)| node.clone())
             }
         };
 
@@ -292,16 +282,11 @@ fn set_mode_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, mode: M) -> bool {
     }
 
     let wid = context::cur_widget::<U>(pa).unwrap();
-    wid.node(pa).parts();
-    // SAFETY: Other than the internal borrow in CurWidget, no other
-    // borrows happen
-    let (wid, area, mask) = wid
-        .mutate_data_as(pa, |w: &RwData<M::Widget>, area, mask, _| {
-            (w.clone(), area.clone(), mask.clone())
-        })
+
+    let handle = wid
+        .mutate_data_as(pa, |handle: &Handle<M::Widget, U>| handle.clone())
         .unwrap();
 
-    let handle = Handle::from_parts(wid, area, mask);
     let mc = ModeCreated((Some(mode), handle.clone()));
     let mut mode = hook::trigger(pa, mc).0.0.unwrap();
 
@@ -312,14 +297,10 @@ fn set_mode_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, mode: M) -> bool {
         crate::mode::set_send_key::<M, U>();
     }
 
-    let (old, new) = context::raw_mode_name().write(pa, |old_mode| {
-        let new_mode = duat_name::<M>();
-        let ret = (*old_mode, new_mode);
-        *old_mode = new_mode;
-        ret
-    });
+    let new_name = duat_name::<M>();
+    let old_name = std::mem::replace(context::raw_mode_name().write(pa), new_name);
 
-    hook::trigger(pa, ModeSwitched((old, new)));
+    hook::trigger(pa, ModeSwitched((old_name, new_name)));
 
     unsafe {
         MODE.get().replace(Box::new(mode));
@@ -337,13 +318,9 @@ fn set_mode_fn<M: Mode<U>, U: Ui>(pa: &mut Pass, mode: M) -> bool {
 fn before_exit_fn<M: Mode<U>, U: Ui>(pa: &mut Pass) {
     let wid = context::cur_widget(pa).unwrap();
 
-    let (wid, area, mask) = wid
-        .mutate_data_as(pa, |w: &RwData<M::Widget>, area, mask, _| {
-            (w.clone(), area.clone(), mask.clone())
-        })
+    let handle = wid
+        .mutate_data_as(pa, |handle: &Handle<M::Widget, U>| handle.clone())
         .unwrap();
-
-    let handle = Handle::from_parts(wid, area, mask);
 
     // SAFETY: This function's caller has a Pass argument.
     let mut mode = unsafe { MODE.get() }.borrow_mut();

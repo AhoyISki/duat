@@ -2,7 +2,7 @@
 //!
 //! Most extensible features of Duat have the primary purpose of
 //! serving the [`File`], such as multiple [`Cursor`]s, a
-//! `History` system, [`RawArea::PrintInfo`], etc.
+//! `History` system, [`Area::PrintInfo`], etc.
 //!
 //! The [`File`] also provides a list of printed lines through the
 //! [`File::printed_lines`] method. This method is notably used by the
@@ -17,13 +17,13 @@ use self::parser::InnerParsers;
 pub use self::parser::{FileParts, FileSnapshot, Parser, ParserBox, ParserCfg, Parsers};
 use crate::{
     cfg::PrintCfg,
-    context::{self, Cache, FileHandle, Handle},
+    context::{self, Cache, Handle},
     data::Pass,
     form::Painter,
     hook::{self, FileWritten},
     mode::{Selection, Selections},
     text::{Bytes, Text, txt},
-    ui::{PushSpecs, RawArea, Ui, Widget, WidgetCfg},
+    ui::{Area, BuildInfo, PushSpecs, Ui, Widget, WidgetCfg},
 };
 
 mod parser;
@@ -72,7 +72,7 @@ impl FileCfg {
 impl<U: Ui> WidgetCfg<U> for FileCfg {
     type Widget = File<U>;
 
-    fn build(self, _: &mut Pass, _: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs) {
+    fn build(self, _: &mut Pass, _: BuildInfo<U>) -> (Self::Widget, PushSpecs) {
         let (text, path) = match self.text_op {
             TextOp::NewBuffer => (Text::new_with_history(), PathKind::new_unset()),
             TextOp::TakeBuf(bytes, pk, has_unsaved_changes) => match &pk {
@@ -142,11 +142,11 @@ impl<U: Ui> File<U> {
     ////////// Writing the File
 
     /// Writes the file to the current [`PathBuf`], if one was set
-    pub fn write(&mut self) -> Result<Option<usize>, Text> {
-        self.write_quit(false)
+    pub fn save(&mut self) -> Result<Option<usize>, Text> {
+        self.save_quit(false)
     }
 
-    pub(crate) fn write_quit(&mut self, quit: bool) -> Result<Option<usize>, Text> {
+    pub(crate) fn save_quit(&mut self, quit: bool) -> Result<Option<usize>, Text> {
         if let PathKind::SetExists(path) | PathKind::SetAbsent(path) = &self.path {
             let path = path.clone();
             if self.text.has_unsaved_changes() {
@@ -170,14 +170,14 @@ impl<U: Ui> File<U> {
     /// Writes the file to the given [`Path`]
     ///
     /// [`Path`]: std::path::Path
-    pub fn write_to(&self, path: impl AsRef<std::path::Path>) -> std::io::Result<Option<usize>> {
-        self.write_quit_to(path, false)
+    pub fn save_to(&self, path: impl AsRef<std::path::Path>) -> std::io::Result<Option<usize>> {
+        self.save_quit_to(path, false)
     }
 
     /// Writes the file to the given [`Path`]
     ///
     /// [`Path`]: std::path::Path
-    pub(crate) fn write_quit_to(
+    pub(crate) fn save_quit_to(
         &self,
         path: impl AsRef<std::path::Path>,
         quit: bool,
@@ -363,24 +363,11 @@ impl<U: Ui> Handle<File<U>, U> {
     ///
     /// [`Change`]: crate::text::Change
     pub fn add_parser(&mut self, pa: &mut Pass, cfg: impl ParserCfg<U>) {
-        self.widget().read(pa, |file| {
-            if let Err(err) = file.parsers.add(file, cfg) {
-                context::error!("{err}");
-            }
-        })
-    }
-}
+        let file = self.widget().read(pa);
 
-impl<U: Ui> FileHandle<U> {
-    /// Adds a [`Parser`] to react to [`Text`] [`Change`]s
-    ///
-    /// [`Change`]: crate::text::Change
-    pub fn add_parser(&mut self, pa: &mut Pass, cfg: impl ParserCfg<U>) {
-        self.handle(pa).widget().read(pa, |file| {
-            if let Err(err) = file.parsers.add(file, cfg) {
-                context::error!("{err}");
-            }
-        })
+        if let Err(err) = file.parsers.add(file, cfg) {
+            context::error!("{err}");
+        }
     }
 }
 
@@ -392,18 +379,16 @@ impl<U: Ui> Widget<U> for File<U> {
     }
 
     fn update(pa: &mut Pass, handle: Handle<Self, U>) {
-        let (widget, area) = (handle.widget(), handle.area(pa));
-        let (parsers, cfg) = widget.write(pa, |file| {
-            (std::mem::take(&mut file.parsers), file.print_cfg())
-        });
+        let parsers = std::mem::take(&mut handle.write(pa).parsers);
 
-        if let Some(moments) = handle.read_text(pa, Text::unprocessed_moments) {
-            for moment in moments {
-                parsers.process_moment(pa, moment, cfg);
-            }
+        let file = handle.read(pa);
+        let cfg = file.cfg;
+
+        for moment in file.text.unprocessed_moments().into_iter().flatten() {
+            parsers.process_moment(pa, moment, cfg);
         }
 
-        let mut file = widget.acquire_mut(pa);
+        let (file, area) = handle.write_with_area(pa);
 
         if let Some(main) = file.text().selections().get_main() {
             area.scroll_around_point(file.text(), main.caret(), file.print_cfg());

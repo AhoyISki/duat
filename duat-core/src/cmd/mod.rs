@@ -256,11 +256,10 @@ use crate::{
     context::{self, sender},
     data::{Pass, RwData},
     file::File,
-    file_entry,
     form::FormId,
-    iter_around, iter_around_rev, mode,
+    mode,
     text::{Text, txt},
-    ui::{DuatEvent, Ui, Widget},
+    ui::{DuatEvent, Node, Ui, Widget},
 };
 
 mod parameters;
@@ -278,26 +277,20 @@ pub(crate) fn add_session_commands<U: Ui>() {
     });
 
     add!(["quit", "q"], |pa, name: Option<Buffer<U>>| {
-        let cur_name = context::fixed_file::<U>(pa)?.read(pa, |file, _| file.name());
+        let cur_name = context::fixed_file::<U>(pa)?.read(pa).name();
         let name = name.unwrap_or(&cur_name);
 
-        let windows = context::windows::<U>(pa).borrow();
-        let (win, wid, file) = file_entry(pa, &windows, name).unwrap();
+        let windows = context::windows::<U>();
+        let (win, wid, handle) = windows.file_entry(pa, name)?;
 
-        let has_unsaved_changes = file
-            .read_as(pa, |f: &File<U>| {
-                f.text().has_unsaved_changes() && f.exists()
-            })
-            .unwrap();
-        if has_unsaved_changes {
+        let file = handle.read(pa);
+        if file.text().has_unsaved_changes() && file.exists() {
             return Err(txt!("[a]{name}[] has unsaved changes").build());
         }
 
         // If we are on the current File, switch to the next one.
         if name == cur_name {
-            let Some(next_name) = iter_around::<U>(&windows, win, wid)
-                .find_map(|(.., node)| node.read_as(pa, |f: &File<U>| f.name()))
-            else {
+            let Some(next_name) = windows.iter_around(pa, win, wid).find_map(get_name(pa)) else {
                 sender().send(DuatEvent::Quit).unwrap();
                 return Ok(None);
             };
@@ -315,17 +308,15 @@ pub(crate) fn add_session_commands<U: Ui>() {
     });
 
     add!(["quit!", "q!"], |pa, name: Option<Buffer<U>>| {
-        let cur_name = context::fixed_file::<U>(pa)?.read(pa, |file, _| file.name());
+        let cur_name = context::fixed_file::<U>(pa)?.read(pa).name();
         let name = name.unwrap_or(&cur_name);
 
         // Should wait here until I'm out of `session_loop`
-        let windows = context::windows::<U>(pa).borrow();
-        let (win, wid, file) = file_entry(pa, &windows, name).unwrap();
+        let windows = context::windows::<U>();
+        let (win, wid, handle) = windows.file_entry(pa, name)?;
 
         if name == cur_name {
-            let Some(next_name) = iter_around::<U>(&windows, win, wid)
-                .find_map(|(.., node)| node.read_as(pa, |f: &File<U>| f.name()))
-            else {
+            let Some(next_name) = windows.iter_around(pa, win, wid).find_map(get_name(pa)) else {
                 sender().send(DuatEvent::Quit).unwrap();
                 return Ok(None);
             };
@@ -339,11 +330,13 @@ pub(crate) fn add_session_commands<U: Ui>() {
     });
 
     add!(["quit-all", "qa"], |pa| {
-        let windows = context::windows::<U>(pa).borrow();
+        let windows = context::windows::<U>();
         let unwritten = windows
-            .iter()
-            .flat_map(|w| w.file_nodes(pa))
-            .filter(|(node, _)| node.read(pa, |f, _| f.text().has_unsaved_changes() && f.exists()))
+            .file_handles(pa)
+            .filter(|handle| {
+                let file = handle.read(pa);
+                file.text().has_unsaved_changes() && file.exists()
+            })
             .count();
 
         if unwritten == 0 {
@@ -362,44 +355,45 @@ pub(crate) fn add_session_commands<U: Ui>() {
     });
 
     add!(["write", "w"], |pa, path: Option<ValidFile<U>>| {
-        context::fixed_file::<U>(pa)?.write(pa, |file, _| {
-            let (bytes, name) = if let Some(path) = path {
-                (file.write_to(&path)?, path)
-            } else if let Some(name) = file.name_set() {
-                (file.write()?, std::path::PathBuf::from(name))
-            } else {
-                return Err(txt!("File has no name path to write to").build());
-            };
+        let handle = context::fixed_file::<U>(pa)?;
+        let file = handle.write(pa);
 
-            match bytes {
-                Some(bytes) => Ok(Some(
-                    txt!("Wrote [a]{bytes}[] bytes to [file]{name}").build(),
-                )),
-                None => Ok(Some(txt!("Nothing to be written").build())),
-            }
-        })
+        let (bytes, name) = if let Some(path) = path {
+            (file.save_to(&path)?, path)
+        } else if let Some(name) = file.name_set() {
+            (file.save()?, std::path::PathBuf::from(name))
+        } else {
+            return Err(txt!("File has no name path to write to").build());
+        };
+
+        match bytes {
+            Some(bytes) => Ok(Some(
+                txt!("Wrote [a]{bytes}[] bytes to [file]{name}").build(),
+            )),
+            None => Ok(Some(txt!("Nothing to be written").build())),
+        }
     });
 
     add!(["write-quit", "wq"], |pa, path: Option<ValidFile<U>>| {
         let handle = context::fixed_file::<U>(pa)?;
-        let (bytes, name) = handle.write(pa, |file, _| {
+
+        let (bytes, name) = {
+            let file = handle.write(pa);
             let bytes = if let Some(path) = path {
-                file.write_quit_to(path, true)?
+                file.save_quit_to(path, true)?
             } else {
-                file.write_quit(true)?
+                file.save_quit(true)?
             };
-            Result::<_, Text>::Ok((bytes, file.name()))
-        })?;
+            (bytes, file.name())
+        };
 
         // Should wait here until I'm out of `session_loop`
-        let windows = context::windows::<U>(pa).borrow();
+        let windows = context::windows::<U>();
         let w = context::cur_window();
 
-        let (win, wid, file) = file_entry(pa, &windows, &name).unwrap();
+        let (win, wid, file) = windows.file_entry(pa, &name)?;
 
-        let Some(next_name) = iter_around::<U>(&windows, win, wid)
-            .find_map(|(.., node)| node.read_as(pa, |f: &File<U>| f.name()))
-        else {
+        let Some(next_name) = windows.iter_around(pa, win, wid).find_map(get_name(pa)) else {
             sender().send(DuatEvent::Quit).unwrap();
             return Ok(None);
         };
@@ -418,63 +412,54 @@ pub(crate) fn add_session_commands<U: Ui>() {
     });
 
     add!(["write-all", "wa"], |pa| {
-        let windows = context::windows::<U>(pa).borrow();
+        let windows = context::windows::<U>();
 
         let mut written = 0;
-        let nodes: Vec<_> = windows
-            .iter()
-            .flat_map(|w| w.file_nodes(pa))
-            .filter(|(handle, _)| handle.read(pa, |f, _| f.path_set().is_some()))
+        let handles: Vec<_> = windows
+            .file_handles(pa)
+            .filter(|handle| handle.read(pa).path_set().is_some())
             .collect();
 
-        for (handle, ..) in &nodes {
-            written += handle
-                .widget()
-                .write_as(pa, |f: &mut File<U>| f.write().is_ok())
-                .unwrap() as usize
+        for handle in &handles {
+            written += handle.write(pa).save().is_ok() as usize;
         }
 
-        if written == nodes.len() {
+        if written == handles.len() {
             Ok(Some(txt!("Wrote to [a]{written}[] files").build()))
         } else {
-            let unwritten = nodes.len() - written;
+            let unwritten = handles.len() - written;
             let plural = if unwritten == 1 { "" } else { "s" };
             Err(txt!("Failed to write to [a]{unwritten}[] file{plural}").build())
         }
     });
 
     add!(["write-all-quit", "waq"], |pa| {
-        let windows = context::windows::<U>(pa).borrow();
+        let windows = context::windows::<U>();
 
         let mut written = 0;
-        let nodes: Vec<_> = windows
-            .iter()
-            .flat_map(|w| w.file_nodes(pa))
-            .filter(|(handle, _)| handle.read(pa, |f, _| f.path_set().is_some()))
+        let handles: Vec<_> = windows
+            .file_handles(pa)
+            .filter(|handle| handle.read(pa).path_set().is_some())
             .collect();
-        for (handle, ..) in &nodes {
-            written += handle.widget().write(pa, |f| f.write_quit(true).is_ok()) as usize
+        for handle in &handles {
+            written += handle.write(pa).save_quit(true).is_ok() as usize;
         }
 
-        if written == nodes.len() {
+        if written == handles.len() {
             sender().send(DuatEvent::Quit).unwrap();
             Ok(None)
         } else {
-            let unwritten = nodes.len() - written;
+            let unwritten = handles.len() - written;
             let plural = if unwritten == 1 { "" } else { "s" };
             Err(txt!("Failed to write to [a]{unwritten}[] file{plural}").build())
         }
     });
 
     add!(["write-all-quit!", "waq!"], |pa| {
-        let windows = context::windows::<U>(pa).borrow();
-        let nodes = windows
-            .iter()
-            .flat_map(|w| w.file_nodes(pa))
-            .collect::<Vec<_>>();
+        let handles: Vec<_> = context::windows::<U>().file_handles(pa).collect();
 
-        for (handle, _) in nodes {
-            let _ = handle.widget().write(pa, |f| f.write_quit(true));
+        for handle in handles {
+            let _ = handle.write(pa).save_quit(true);
         }
 
         sender().send(DuatEvent::Quit).unwrap();
@@ -566,15 +551,13 @@ pub(crate) fn add_session_commands<U: Ui>() {
     });
 
     add!(["edit", "e"], |pa, path: ValidFile<U>| {
-        let windows = context::windows::<U>(pa).borrow();
-
         let name = if let Ok(path) = path.strip_prefix(context::cur_dir()) {
             path.to_string_lossy().to_string()
         } else {
             path.to_string_lossy().to_string()
         };
 
-        if file_entry(pa, &windows, &name).is_err() {
+        if context::windows::<U>().file_entry(pa, &name).is_err() {
             sender().send(DuatEvent::OpenFile(name.clone())).unwrap();
             return Ok(Some(txt!("Opened [a]{name}").build()));
         }
@@ -584,7 +567,7 @@ pub(crate) fn add_session_commands<U: Ui>() {
     });
 
     add!(["open", "o"], |pa, path: ValidFile<U>| {
-        let windows = context::windows::<U>(pa).borrow();
+        let windows = context::windows::<U>();
 
         let name = if let Ok(path) = path.strip_prefix(context::cur_dir()) {
             path.to_string_lossy().to_string()
@@ -592,12 +575,12 @@ pub(crate) fn add_session_commands<U: Ui>() {
             path.to_string_lossy().to_string()
         };
 
-        let Ok((win, wid, node)) = file_entry(pa, &windows, &name) else {
+        let Ok((win, wid, node)) = windows.file_entry(pa, &name) else {
             sender().send(DuatEvent::OpenWindow(name.clone())).unwrap();
             return Ok(Some(txt!("Opened [a]{name}[] on new window").build()));
         };
 
-        if windows[win].file_nodes(pa).len() == 1 {
+        if windows.get(pa, win).unwrap().file_handles(pa).len() == 1 {
             mode::reset_to_file::<U>(name.clone(), true);
             Ok(Some(txt!("Switched to [a]{name}").build()))
         } else {
@@ -612,23 +595,27 @@ pub(crate) fn add_session_commands<U: Ui>() {
     });
 
     add!("next-file", |pa, flags: Flags| {
-        let windows = context::windows(pa).borrow();
+        let windows = context::windows::<U>();
         let handle = context::fixed_file::<U>(pa)?;
         let win = context::cur_window();
 
-        let wid = windows[win]
+        let wid = windows
+            .get(pa, win)
+            .unwrap()
             .nodes()
-            .position(|node| handle.ptr_eq(pa, node.widget()))
+            .position(|node| handle.ptr_eq(node.widget()))
             .unwrap();
 
         let name = if flags.word("global") {
-            iter_around::<U>(&windows, win, wid)
-                .find_map(|(.., node)| node.read_as(pa, |f: &File<U>| f.name()))
+            windows
+                .iter_around(pa, win, wid)
+                .find_map(get_name(pa))
                 .ok_or_else(|| txt!("There are no other open files"))?
         } else {
-            let slice = &windows[win..=win];
-            iter_around(slice, 0, wid)
-                .find_map(|(.., node)| node.read_as(pa, |f: &File<U>| f.name()))
+            windows
+                .iter_around(pa, win, wid)
+                .filter(|(lhs, ..)| *lhs == win)
+                .find_map(get_name(pa))
                 .ok_or_else(|| txt!("There are no other files open in this window"))?
         };
 
@@ -637,23 +624,27 @@ pub(crate) fn add_session_commands<U: Ui>() {
     });
 
     add!("prev-file", |pa, flags: Flags| {
-        let windows = context::windows(pa).borrow();
+        let windows = context::windows::<U>();
         let handle = context::fixed_file::<U>(pa)?;
-        let w = context::cur_window();
+        let win = context::cur_window();
 
-        let widget_i = windows[w]
+        let wid = windows
+            .get(pa, win)
+            .unwrap()
             .nodes()
-            .position(|node| handle.ptr_eq(pa, node.widget()))
+            .position(|node| handle.ptr_eq(node.widget()))
             .unwrap();
 
         let name = if flags.word("global") {
-            iter_around_rev::<U>(&windows, w, widget_i)
-                .find_map(|(.., node)| node.read_as(pa, |f: &File<U>| f.name()))
+            windows
+                .iter_around_rev(pa, win, wid)
+                .find_map(get_name(pa))
                 .ok_or_else(|| txt!("There are no other open files"))?
         } else {
-            let slice = &windows[w..=w];
-            iter_around_rev(slice, 0, widget_i)
-                .find_map(|(.., node)| node.read_as(pa, |f: &File<U>| f.name()))
+            windows
+                .iter_around(pa, win, wid)
+                .filter(|(lhs, ..)| *lhs == win)
+                .find_map(get_name(pa))
                 .ok_or_else(|| txt!("There are no other files open in this window"))?
         };
 
@@ -666,7 +657,7 @@ pub(crate) fn add_session_commands<U: Ui>() {
         let rhs = if let Some(rhs) = rhs {
             rhs.to_string()
         } else {
-            context::fixed_file::<U>(pa)?.read(pa, |file, _| file.name())
+            context::fixed_file::<U>(pa)?.read(pa).name()
         };
         sender()
             .send(DuatEvent::SwapFiles(lhs.to_string(), rhs.clone()))
@@ -731,7 +722,7 @@ mod global {
     ///         Ok(None)
     ///     });
     ///
-    ///     hook::add::<OnWindowOpen>(move |mut pa, builder| {
+    ///     hook::add::<WindowCreated>(move |mut pa, builder| {
     ///         // status! macro is from duat-utils.
     ///         builder.push(&mut pa, status!("The value is currently {var}"));
     ///     });
@@ -747,7 +738,7 @@ mod global {
     pub macro add(
         $callers:expr, |$pa:ident $(: &mut Pass)? $(, $arg:tt: $t:ty)* $(,)?| $f:tt
     ) {{
-        use std::{sync::Arc, cell::RefCell};
+        use std::{sync::Arc, cell::UnsafeCell};
         #[allow(unused_imports)]
         use $crate::{
             data::{Pass, RwData},
@@ -798,7 +789,7 @@ mod global {
 
         let callers: Vec<String> = $callers.into_callers().map(str::to_string).collect();
         // SAFETY: This type will never actually be queried
-        let cmd: CmdFn = unsafe { RwData::new_unsized::<()>(Arc::new(RefCell::new(cmd))) };
+        let cmd: CmdFn = unsafe { RwData::new_unsized::<()>(Arc::new(UnsafeCell::new(cmd))) };
 
         add_inner(callers, cmd, check_args)
     }}
@@ -1051,9 +1042,9 @@ impl Commands {
 
     /// Aliases a command to a specific word
     fn alias(&self, pa: &mut Pass, alias: impl ToString, command: impl ToString) -> CmdResult {
-        self.0.write(pa, |inner| {
-            inner.try_alias(alias.to_string(), command.to_string())
-        })
+        self.0
+            .write(pa)
+            .try_alias(alias.to_string(), command.to_string())
     }
 
     /// Runs a command from a call
@@ -1062,8 +1053,10 @@ impl Commands {
         let mut args = call.split_whitespace();
         let caller = args.next().ok_or(txt!("The command is empty"))?.to_string();
 
-        let (command, call) = self.0.read(pa, |inner| {
-            Result::<_, Text>::Ok(if let Some(command) = inner.aliases.get(&caller) {
+        let inner = self.0.read(pa);
+
+        let (command, call) = {
+            if let Some(command) = inner.aliases.get(&caller) {
                 let (command, call) = command;
                 let mut call = call.clone() + " ";
                 call.extend(args);
@@ -1077,8 +1070,8 @@ impl Commands {
                     .ok_or(txt!("No such command"))?;
 
                 (command.clone(), call.clone())
-            })
-        })?;
+            }
+        };
 
         let args = get_args(&call);
 
@@ -1087,14 +1080,13 @@ impl Commands {
         }
 
         let silent = call.len() > call.trim_start().len();
-        command.cmd.acquire_mut(&mut unsafe { Pass::new() })(pa, args)
-            .map(|ok| ok.filter(|_| !silent))
+        command.cmd.write(&mut unsafe { Pass::new() })(pa, args).map(|ok| ok.filter(|_| !silent))
     }
 
     /// Adds a command to the list of commands
     fn add(&self, pa: &mut Pass, callers: Vec<String>, cmd: CmdFn, check_args: CheckerFn) {
         let cmd = Command::new(callers, cmd, check_args);
-        self.0.write(pa, |c| c.add(cmd))
+        self.0.write(pa).add(cmd)
     }
 
     /// Gets the parameter checker for a command, if it exists
@@ -1109,18 +1101,17 @@ impl Commands {
         let mut args = call.split_whitespace();
         let caller = args.next()?.to_string();
 
-        self.0.read(pa, |inner| {
-            if let Some((command, _)) = inner.aliases.get(&caller) {
-                Some((command.check_args)(pa, get_args(call)))
-            } else {
-                let command = inner
-                    .list
-                    .iter()
-                    .find(|cmd| cmd.callers().contains(&caller))?;
+        let inner = self.0.read(pa);
+        if let Some((command, _)) = inner.aliases.get(&caller) {
+            Some((command.check_args)(pa, get_args(call)))
+        } else {
+            let command = inner
+                .list
+                .iter()
+                .find(|cmd| cmd.callers().contains(&caller))?;
 
-                Some((command.check_args)(pa, get_args(call)))
-            }
-        })
+            Some((command.check_args)(pa, get_args(call)))
+        }
     }
 }
 
@@ -1243,3 +1234,7 @@ pub type CheckerFn = fn(
     Vec<(Range<usize>, Option<FormId>)>,
     Option<(Range<usize>, Text)>,
 );
+
+fn get_name<U: Ui>(pa: &Pass) -> impl Fn((usize, usize, &Node<U>)) -> Option<String> {
+    |(.., node)| node.read_as(pa).map(|f: &File<U>| f.name())
+}

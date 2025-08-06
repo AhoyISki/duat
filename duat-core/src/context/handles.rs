@@ -4,303 +4,19 @@
 //! [`RwData<W>`] conjoined to an [`Ui::Area`].
 
 use std::{
-    any::TypeId,
-    cell::{RefCell, RefMut},
+    cell::RefCell,
     sync::{Arc, Mutex},
 };
 
 use lender::Lender;
 
-use super::FileParts;
 use crate::{
     cfg::PrintCfg,
     data::{Pass, RwData},
-    file::File,
-    mode::{Cursor, Cursors, Selection, Selections},
+    mode::{Cursor, Cursors, Selection},
     text::{Point, Searcher, Text, TwoPoints},
-    ui::{Node, RawArea, Ui, Widget},
+    ui::{Area, AreaId, GetAreaId, MutArea, SpawnSpecs, Ui, Widget, WidgetCfg},
 };
-
-/// A handle to a [`File`] widget
-///
-/// This handle acts much like an [`RwData<File>`], but it also
-/// includes an [`Area`] that can be acted upon alongside the
-/// [`File`].
-///
-/// This is the only way you are supposed to read information about
-/// the [`File`], in order to display it on [`Widget`]s, create
-/// [`Text`]s, and do all sorts of things. You can, of course, also
-/// modify a [`File`] from within this struct, but you should be
-/// careful to prevent infinite loops, where you modify a [`File`], it
-/// gets updated, and then you modify it again after noticing that it
-/// has changed.
-///
-/// The main difference between a [`FileHandle<U>`] and a
-/// [`Handle<File<U>, U>`] is that the [`Handle`] is capable of acting
-/// on selections, but is fixed to just one [`File`], while the
-/// [`FileHandle`] can automatically point to the current [`File`].
-///
-/// [`Area`]: crate::ui::RawArea
-/// [`Text`]: crate::text::Text
-#[derive(Clone)]
-pub struct FileHandle<U: Ui> {
-    fixed: Option<FileParts<U>>,
-    current: RwData<Option<FileParts<U>>>,
-}
-
-impl<U: Ui> FileHandle<U> {
-    /// Returns a new [`FileHandle`] from its parts
-    pub(crate) fn from_parts(
-        fixed: Option<FileParts<U>>,
-        current: RwData<Option<FileParts<U>>>,
-    ) -> Self {
-        Self { fixed, current }
-    }
-
-    /// Reads from the [`File`] and the [`Area`] using a [`Pass`]
-    ///
-    /// The consistent use of a [`Pass`] for the purposes of
-    /// reading/writing to the values of [`RwData`]s ensures that no
-    /// panic or invalid borrow happens at runtime, even while working
-    /// with untrusted code. More importantly, Duat uses these
-    /// guarantees in order to give the end user a ridiculous amount
-    /// of freedom in where they can do things, whilst keeping Rust's
-    /// number one rule and ensuring thread safety, even with a
-    /// relatively large amount of shareable state.
-    ///
-    /// # Panics
-    ///
-    /// Panics if there is a mutable borrow of this struct somewhere,
-    /// which could happen if you use [`RwData::write_unsafe`] or
-    /// [`RwData::write_unsafe_as`] from some other place
-    ///
-    /// [`Area`]: crate::ui::RawArea
-    pub fn read<Ret>(&self, pa: &Pass, f: impl FnOnce(&File<U>, &U::Area) -> Ret) -> Ret {
-        if let Some((handle, _)) = self.fixed.as_ref() {
-            f(&handle.widget.acquire(pa), &handle.area)
-        } else {
-            self.current.read(pa, |parts| {
-                let (handle, _) = parts.as_ref().unwrap();
-                f(&handle.widget.acquire(pa), &handle.area)
-            })
-        }
-    }
-
-    /// Writes to the [`File`] and [`Area`] within using a [`Pass`]
-    ///
-    /// The consistent use of a [`Pass`] for the purposes of
-    /// reading/writing to the values of [`RwData`]s ensures that no
-    /// panic or invalid borrow happens at runtime, even while working
-    /// with untrusted code. More importantly, Duat uses these
-    /// guarantees in order to give the end user a ridiculous amount
-    /// of freedom in where they can do things, whilst keeping Rust's
-    /// number one rule and ensuring thread safety, even with a
-    /// relatively large amount of shareable state.
-    ///
-    /// # Panics
-    ///
-    /// Panics if there is any type of borrow of this struct
-    /// somewhere, which could happen if you use
-    /// [`RwData::read_unsafe`] or [`RwData::write_unsafe`], for
-    /// example.
-    ///
-    /// [`Area`]: crate::ui::RawArea
-    pub fn write<Ret>(&self, pa: &mut Pass, f: impl FnOnce(&mut File<U>, &U::Area) -> Ret) -> Ret {
-        if let Some((handle, _)) = self.fixed.as_ref() {
-            f(&mut handle.widget.acquire_mut(pa), &handle.area)
-        } else {
-            self.current.read(pa, |parts| {
-                // SAFETY: Since the update closure only uses a write method, the
-                // Pass becomes unusable for other purposes, making it impossible
-                // to make further borrows, asserting that there is no other borrow
-                // for self.current.
-                let pa = unsafe { &mut Pass::new() };
-                let (handle, _) = parts.as_ref().unwrap();
-                f(&mut handle.widget.acquire_mut(pa), &handle.area)
-            })
-        }
-    }
-
-    /// Reads a [`Widget`] related to this [`File`], alongside its
-    /// [`Area`], with a [`Pass`]
-    ///
-    /// A related [`Widget`] is one that was pushed to this [`File`]
-    /// during the [`OnFileOpen`] [hook].
-    ///
-    /// [`Area`]: crate::ui::Area
-    /// [`OnFileOpen`]: crate::hook::OnFileOpen
-    /// [hook]: crate::hook
-    pub fn read_related<W: 'static, R>(
-        &self,
-        pa: &Pass,
-        f: impl FnOnce(&W, &U::Area) -> R,
-    ) -> Option<R> {
-        let read = |(handle, related): &FileParts<U>| {
-            if TypeId::of::<W>() == TypeId::of::<File<U>>() {
-                let area = handle.area(pa);
-                handle.widget().read_as(pa, |w| f(w, area))
-            } else {
-                let related = related.acquire(pa);
-                related
-                    .iter()
-                    .find(|node| node.data_is::<W>())
-                    .and_then(|node| node.widget().read_as(pa, |w| f(w, node.area())))
-            }
-        };
-
-        if let Some(parts) = self.fixed.as_ref() {
-            read(parts)
-        } else {
-            self.current.read(pa, |parts| read(parts.as_ref().unwrap()))
-        }
-    }
-
-    /// Gets the [`RwData`] and [`Area`] of a related widget, with a
-    /// [`Pass`]
-    ///
-    /// A related [`Widget`] is one that was pushed to this [`File`]
-    /// during the [`OnFileOpen`] [hook].
-    ///
-    /// [`Area`]: crate::ui::Area
-    /// [`OnFileOpen`]: crate::hook::OnFileOpen
-    /// [hook]: crate::hook
-    pub fn get_related_widget<W: Widget<U> + 'static>(&self, pa: &Pass) -> Option<Handle<W, U>> {
-        let get_related = |(handle, related): &FileParts<U>| {
-            if TypeId::of::<W>() == TypeId::of::<File<U>>() {
-                let widget = handle.widget().try_downcast()?;
-                Some(Handle::from_parts(
-                    widget,
-                    handle.area(pa).clone(),
-                    handle.mask().clone(),
-                ))
-            } else {
-                related.read(pa, |related| {
-                    related.iter().find_map(|node| {
-                        let (widget, area, mask, _) = node.parts();
-                        widget
-                            .try_downcast()
-                            .map(|data| Handle::from_parts(data, area.clone(), mask.clone()))
-                    })
-                })
-            }
-        };
-
-        if let Some(parts) = self.fixed.as_ref() {
-            get_related(parts)
-        } else {
-            self.current
-                .read(pa, |parts| get_related(parts.as_ref().unwrap()))
-        }
-    }
-
-    /// Writes to the related widgets
-    pub(crate) fn write_related_widgets(&self, pa: &mut Pass, f: impl FnOnce(&mut Vec<Node<U>>)) {
-        if let Some((.., related)) = self.fixed.as_ref() {
-            related.write(pa, f)
-        } else {
-            self.current.read(pa, |parts| {
-                let pa = unsafe { &mut Pass::new() };
-                parts.as_ref().unwrap().1.write(pa, f)
-            })
-        }
-    }
-
-    ////////// Querying functions
-
-    /// Gets a [`Handle`] from this [`FileHandle`]
-    pub fn handle(&self, pa: &Pass) -> Handle<File<U>, U> {
-        if let Some((handle, _)) = self.fixed.as_ref() {
-            handle.clone()
-        } else {
-            self.current.acquire(pa).as_ref().unwrap().0.clone()
-        }
-    }
-
-    /// Wether someone else called [`write`] or [`write_as`] since the
-    /// last [`read`] or [`write`]
-    ///
-    /// Do note that this *DOES NOT* mean that the value inside has
-    /// actually been changed, it just means a mutable reference was
-    /// acquired after the last call to [`has_changed`].
-    ///
-    /// Some types like [`Text`], and traits like [`Widget`] offer
-    /// [`needs_update`] methods, you should try to determine what
-    /// parts to look for changes.
-    ///
-    /// Generally though, you can use this method to gauge that.
-    ///
-    /// [`write`]: RwData::write
-    /// [`write_as`]: RwData::write_as
-    /// [`read`]: RwData::read
-    /// [`has_changed`]: RwData::has_changed
-    /// [`Text`]: crate::text::Text
-    /// [`Widget`]: crate::ui::Widget
-    /// [`needs_update`]: crate::ui::Widget::needs_update
-    pub fn has_changed(&self) -> bool {
-        if let Some((handle, _)) = self.fixed.as_ref() {
-            handle.has_changed()
-        } else {
-            self.current.has_changed()
-                || self.current.read_raw(|parts| {
-                    let (handle, _) = parts.as_ref().unwrap();
-                    handle.has_changed()
-                })
-        }
-    }
-
-    /// Wether the [`File`] within has swapped to another
-    ///
-    /// This can only happen when this is a
-    pub fn has_swapped(&self) -> bool {
-        let has_changed = self.current.has_changed();
-        self.current.declare_as_read();
-        has_changed
-    }
-
-    /// Wether the [`RwData`] within and another point to the same
-    /// value
-    pub fn ptr_eq<T: ?Sized>(&self, pa: &Pass, other: &RwData<T>) -> bool {
-        if let Some((handle, ..)) = self.fixed.as_ref() {
-            handle.ptr_eq(other)
-        } else {
-            self.current
-                .read(pa, |parts| parts.as_ref().unwrap().0.ptr_eq(other))
-        }
-    }
-
-    /// The name of the [`File`] in question
-    pub fn name(&self, pa: &Pass) -> String {
-        if let Some((handle, ..)) = self.fixed.as_ref() {
-            handle.read(pa, |f, _| f.name())
-        } else {
-            self.current.read(pa, |parts| {
-                parts.as_ref().unwrap().0.read(pa, |f, _| f.name())
-            })
-        }
-    }
-
-    /// The path of the [`File`] in question
-    pub fn path(&self, pa: &Pass) -> String {
-        if let Some((handle, ..)) = self.fixed.as_ref() {
-            handle.read(pa, |f, _| f.path())
-        } else {
-            self.current.read(pa, |parts| {
-                parts.as_ref().unwrap().0.read(pa, |f, _| f.path())
-            })
-        }
-    }
-
-    /// The path of the [`File`] in question, if it was set
-    pub fn set_path(&self, pa: &Pass) -> Option<String> {
-        if let Some((handle, ..)) = self.fixed.as_ref() {
-            handle.read(pa, |f, _| f.path_set())
-        } else {
-            self.current.read(pa, |parts| {
-                parts.as_ref().unwrap().0.read(pa, |f, _| f.path_set())
-            })
-        }
-    }
-}
 
 /// A handle to a [`Widget`] in Duat
 ///
@@ -417,32 +133,36 @@ impl<U: Ui> FileHandle<U> {
 /// [moving]: Cursor
 /// [`Mode`]: crate::mode::Mode
 /// [`U::Area`]: Ui::Area
-#[derive(Debug)]
 pub struct Handle<W: Widget<U> + ?Sized, U: Ui, S = ()> {
     widget: RwData<W>,
     area: U::Area,
     mask: Arc<Mutex<&'static str>>,
+    id: AreaId,
+    related: RelatedWidgets<U>,
     searcher: RefCell<S>,
 }
 
 impl<W: Widget<U> + ?Sized, U: Ui> Handle<W, U> {
     /// Returns a new instance of a [`Handle<W, U>`]
-    pub(crate) fn from_parts(
+    pub(crate) fn new(
         widget: RwData<W>,
         area: U::Area,
         mask: Arc<Mutex<&'static str>>,
+        id: AreaId,
     ) -> Self {
         Self {
             widget,
             area,
             mask,
+            id,
+            related: RelatedWidgets(RwData::default()),
             searcher: RefCell::new(()),
         }
     }
 }
 
 impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
-    /// Reads from the [`Widget`] and the [`Area`] using a [`Pass`]
+    /// Reads from the [`Widget`], making use of a [`Pass`]
     ///
     /// The consistent use of a [`Pass`] for the purposes of
     /// reading/writing to the values of [`RwData`]s ensures that no
@@ -453,18 +173,12 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// number one rule and ensuring thread safety, even with a
     /// relatively large amount of shareable state.
     ///
-    /// # Panics
-    ///
-    /// Panics if there is a mutable borrow of this struct somewhere,
-    /// which could happen if you use [`RwData::write_unsafe`] or
-    /// [`RwData::write_unsafe_as`] from some other place
-    ///
-    /// [`Area`]: crate::ui::RawArea
-    pub fn read<Ret>(&self, pa: &Pass, f: impl FnOnce(&W, &U::Area) -> Ret) -> Ret {
-        f(&self.widget.acquire(pa), &self.area)
+    /// [`Area`]: crate::ui::Area
+    pub fn read<'a>(&'a self, pa: &'a Pass) -> &'a W {
+        self.widget.read(pa)
     }
 
-    /// Writes to the [`Widget`] and [`Area`] within using a [`Pass`]
+    /// Writes to the [`Widget`], making use of a [`Pass`]
     ///
     /// The consistent use of a [`Pass`] for the purposes of
     /// reading/writing to the values of [`RwData`]s ensures that no
@@ -475,16 +189,26 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// number one rule and ensuring thread safety, even with a
     /// relatively large amount of shareable state.
     ///
-    /// # Panics
+    /// [`Area`]: crate::ui::Area
+    pub fn write<'a>(&'a self, pa: &'a mut Pass) -> &'a mut W {
+        self.widget.write(pa)
+    }
+
+    /// Writes to the [`Widget`] and [`Area`], making use of a
+    /// [`Pass`]
     ///
-    /// Panics if there is any type of borrow of this struct
-    /// somewhere, which could happen if you use
-    /// [`RwData::read_unsafe`] or [`RwData::write_unsafe`], for
-    /// example.
+    /// The consistent use of a [`Pass`] for the purposes of
+    /// reading/writing to the values of [`RwData`]s ensures that no
+    /// panic or invalid borrow happens at runtime, even while working
+    /// with untrusted code. More importantly, Duat uses these
+    /// guarantees in order to give the end user a ridiculous amount
+    /// of freedom in where they can do things, whilst keeping Rust's
+    /// number one rule and ensuring thread safety, even with a
+    /// relatively large amount of shareable state.
     ///
-    /// [`Area`]: crate::ui::RawArea
-    pub fn write<Ret>(&self, pa: &mut Pass, f: impl FnOnce(&mut W, &U::Area) -> Ret) -> Ret {
-        f(&mut self.widget.acquire_mut(pa), &self.area)
+    /// [`Area`]: crate::ui::Area
+    pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut W, &'a U::Area) {
+        (self.widget.write(pa), &self.area)
     }
 
     ////////// Selection Editing functions
@@ -514,11 +238,11 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         edit: impl FnOnce(Cursor<W, U::Area, S>) -> Ret,
     ) -> Ret {
         fn get_parts<'a, W: Widget<U> + ?Sized, U: Ui>(
-            pa: &mut Pass,
+            pa: &'a mut Pass,
             widget: &'a RwData<W>,
             n: usize,
-        ) -> (Selection, bool, RefMut<'a, W>) {
-            let mut widget = widget.acquire_mut(pa);
+        ) -> (Selection, bool, &'a mut W) {
+            let widget = widget.write(pa);
             let selections = widget.text_mut().selections_mut();
             selections.populate();
             let Some((selection, was_main)) = selections.remove(n) else {
@@ -528,7 +252,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
             (selection, was_main, widget)
         }
 
-        let (selection, was_main, mut widget) = get_parts(pa, &self.widget, n);
+        let (selection, was_main, widget) = get_parts(pa, &self.widget, n);
 
         // This is safe because of the &mut Pass argument
         let mut searcher = self.searcher.borrow_mut();
@@ -570,8 +294,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     ) -> Ret {
         self.edit_nth(
             pa,
-            self.widget
-                .read(pa, |wid| wid.text().selections().main_index()),
+            self.widget.read(pa).text().selections().main_index(),
             edit,
         )
     }
@@ -600,13 +323,8 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         pa: &mut Pass,
         edit: impl FnOnce(Cursor<W, U::Area, S>) -> Ret,
     ) -> Ret {
-        self.edit_nth(
-            pa,
-            self.widget
-                .read(pa, |wid| wid.text().selections().len())
-                .saturating_sub(1),
-            edit,
-        )
+        let len = self.widget.read(pa).text().selections().len();
+        self.edit_nth(pa, len.saturating_sub(1), edit)
     }
 
     /// A [`Lender`] over all [`Cursor`]s of the [`Text`]
@@ -653,76 +371,13 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         self.get_iter(pa).for_each(edit);
     }
 
-    fn get_iter(&self, pa: &mut Pass) -> Cursors<'_, W, U::Area, S> {
-        let mut widget = self.widget.acquire_mut(pa);
+    fn get_iter<'a>(&'a self, pa: &'a mut Pass) -> Cursors<'a, W, U::Area, S> {
+        let widget = self.widget.write(pa);
         widget.text_mut().selections_mut().populate();
 
         let searcher = self.searcher.borrow_mut();
 
         Cursors::new(0, widget, &self.area, searcher)
-    }
-
-    ////////// Functions derived from RwData
-
-    /// Reads the [`Text`] of the [`Widget`]
-    pub fn read_text<Ret>(&self, pa: &Pass, read: impl FnOnce(&Text) -> Ret) -> Ret {
-        let widget = self.widget.acquire(pa);
-        read(widget.text())
-    }
-
-    /// Writes to the [`Text`] of the [`Widget`]
-    pub fn write_text<Ret>(&self, pa: &mut Pass, write: impl FnOnce(&mut Text) -> Ret) -> Ret {
-        let mut widget = self.widget.acquire_mut(pa);
-        write(widget.text_mut())
-    }
-
-    /// Reads the [`Selections`] of the [`Widget`]
-    pub fn read_selections<Ret>(&self, pa: &Pass, read: impl FnOnce(&Selections) -> Ret) -> Ret {
-        let widget = self.widget.acquire(pa);
-        read(widget.text().selections())
-    }
-
-    /// Writes to the [`Selections`] of the [`Widget`]
-    pub fn write_selections<Ret>(
-        &self,
-        pa: &mut Pass,
-        write: impl FnOnce(&mut Selections) -> Ret,
-    ) -> Ret {
-        let mut widget = self.widget.acquire_mut(pa);
-        write(widget.text_mut().selections_mut())
-    }
-
-    ////////// Direct Text manipulation
-
-    /// Clones the [`Text`] within
-    pub fn clone_text(&self, pa: &Pass) -> Text {
-        self.widget.clone_text(pa)
-    }
-
-    /// Replaces the [`Text`] within with a [`Default`] version
-    pub fn take_text(&self, pa: &mut Pass) -> Text {
-        self.widget.take_text(pa)
-    }
-
-    /// Replaces the [`Text`] of the [`Widget`], returning the
-    /// previous value
-    pub fn replace_text(&self, pa: &mut Pass, text: impl Into<Text>) -> Text {
-        self.widget.replace_text(pa, text.into())
-    }
-
-    /// Undoes the last moment in the history, if there is one
-    pub fn undo(&self, pa: &mut Pass) {
-        self.widget.write(pa, |wid| wid.text_mut().undo());
-    }
-
-    /// Redoes the last moment in the history, if there is one
-    pub fn redo(&self, pa: &mut Pass) {
-        self.widget.write(pa, |wid| wid.text_mut().redo());
-    }
-
-    /// Finishes the current moment and adds a new one to the history
-    pub fn new_moment(&self, pa: &mut Pass) {
-        self.widget.write(pa, |wid| wid.text_mut().new_moment());
     }
 
     ////////// Area functions
@@ -735,7 +390,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     ///
     /// [`PrintCfg.allow_overscroll`]: crate::cfg::PrintCfg::allow_overscroll
     pub fn scroll_ver(&self, pa: &Pass, dist: i32) {
-        let widget = self.widget.acquire(pa);
+        let widget = self.widget.read(pa);
         self.area(pa)
             .scroll_ver(widget.text(), dist, widget.print_cfg());
         self.widget.declare_written();
@@ -747,7 +402,7 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// to scroll beyond the last line, up until reaching the
     /// `scrolloff.y` value.
     pub fn scroll_to_points(&self, pa: &Pass, points: impl TwoPoints) {
-        let widget = self.widget.acquire(pa);
+        let widget = self.widget.read(pa);
         self.area
             .scroll_to_points(widget.text(), points, widget.print_cfg());
         self.widget.declare_written();
@@ -755,13 +410,13 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
 
     /// The start points that should be printed
     pub fn start_points(&self, pa: &Pass) -> (Point, Option<Point>) {
-        let widget = self.widget.acquire(pa);
+        let widget = self.widget.read(pa);
         self.area.start_points(widget.text(), widget.print_cfg())
     }
 
     /// The end points that should be printed
     pub fn end_points(&self, pa: &Pass) -> (Point, Option<Point>) {
-        let widget = self.widget.acquire(pa);
+        let widget = self.widget.read(pa);
         self.area.end_points(widget.text(), widget.print_cfg())
     }
 
@@ -836,8 +491,24 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
 
     /// The [`Widget`]'s [`PrintCfg`]
     pub fn cfg(&self, pa: &Pass) -> PrintCfg {
-        self.widget.read(pa, Widget::print_cfg)
+        self.widget.read(pa).print_cfg()
     }
+
+    /// Gets the [`Handle`] of a related [`Widget`]
+    pub fn get_related<W2: Widget<U>>(&self, pa: &Pass) -> Option<Handle<W2, U>> {
+        self.related
+            .0
+            .read(pa)
+            .iter()
+            .find_map(|handle| handle.try_downcast())
+    }
+
+    /// Raw access to the related widgets
+    pub(crate) fn related(&self) -> &RwData<Vec<Handle<dyn Widget<U>, U>>> {
+        &self.related.0
+    }
+
+    ////////// Other methods
 
     /// Attaches a [`Searcher`] to this [`Handle`], so you can do
     /// incremental search
@@ -864,7 +535,54 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
             widget: self.widget.clone(),
             area: self.area.clone(),
             mask: self.mask.clone(),
+            id: self.id.clone(),
+            related: self.related.clone(),
             searcher: RefCell::new(searcher),
+        }
+    }
+
+    /// Spawns a floating [`Widget`]
+    pub fn spawn_widget<Cfg: WidgetCfg<U>>(
+        &self,
+        pa: &mut Pass,
+        cfg: Cfg,
+        specs: SpawnSpecs,
+    ) -> Result<AreaId, Text> {
+        let area = MutArea(&self.area);
+        let _spawned = area.spawn_floating(pa, cfg, specs)?;
+        todo!();
+    }
+}
+
+impl<U: Ui> Handle<dyn Widget<U>, U> {
+    /// Tries to read as a concrete [`Widget`] implementor
+    pub fn read_as<'a, W: Widget<U>>(&'a self, pa: &'a Pass) -> Option<&'a W> {
+        self.widget.read_as(pa)
+    }
+
+    /// Tries to downcast from `dyn Widget` to a concrete [`Widget`]
+    pub fn try_downcast<W: Widget<U>>(&self) -> Option<Handle<W, U>> {
+        Some(Handle {
+            widget: self.widget.try_downcast()?,
+            area: self.area.clone(),
+            mask: self.mask.clone(),
+            id: self.id,
+            related: self.related.clone(),
+            searcher: self.searcher.clone(),
+        })
+    }
+}
+
+impl<W: Widget<U>, U: Ui> Handle<W, U> {
+    pub fn to_dyn(&self) -> Handle<dyn Widget<U>, U> {
+        Handle {
+            widget: self.widget.to_dyn_widget(),
+            // TODO: Arc wrapper, and Area: !Clone
+            area: self.area.clone(),
+            mask: self.mask.clone(),
+            id: self.id,
+            related: self.related.clone(),
+            searcher: RefCell::new(()),
         }
     }
 }
@@ -875,13 +593,32 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
 unsafe impl<W: Widget<U>, U: Ui, S> Send for Handle<W, U, S> {}
 unsafe impl<W: Widget<U>, U: Ui, S> Sync for Handle<W, U, S> {}
 
-impl<W: Widget<U> + ?Sized, U: Ui> Clone for Handle<W, U, ()> {
+impl<W: Widget<U> + ?Sized, U: Ui, S> GetAreaId for Handle<W, U, S> {
+    fn area_id(&self) -> AreaId {
+        self.id
+    }
+}
+
+impl<T: GetAreaId, W: Widget<U> + ?Sized, U: Ui, S> PartialEq<T> for Handle<W, U, S> {
+    fn eq(&self, other: &T) -> bool {
+        self.area_id() == other.area_id()
+    }
+}
+
+impl<W: Widget<U> + ?Sized, U: Ui> Clone for Handle<W, U> {
     fn clone(&self) -> Self {
         Self {
             widget: self.widget.clone(),
             area: self.area.clone(),
             mask: self.mask.clone(),
+            id: self.id.clone(),
+            related: self.related.clone(),
             searcher: self.searcher.clone(),
         }
     }
 }
+
+#[derive(Clone)]
+struct RelatedWidgets<U: Ui>(RwData<Vec<Handle<dyn Widget<U>, U>>>);
+
+

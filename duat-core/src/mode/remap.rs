@@ -422,15 +422,14 @@ impl Remapper {
 
             let (_, remaps) = &remaps_list[i];
 
-            let (cur_seq, is_alias) = remapper.cur_seq.write(pa, |(cur_seq, is_alias)| {
+            let (cur_seq, is_alias) = {
+                let (cur_seq, is_alias) = remapper.cur_seq.write(pa);
                 cur_seq.push(key);
                 (cur_seq.clone(), *is_alias)
-            });
+            };
 
             let clear_cur_seq = |pa| {
-                remapper.cur_seq.write(pa, |(cur_seq, is_alias)| {
-                    (*cur_seq, *is_alias) = (Vec::new(), false)
-                })
+                *remapper.cur_seq.write(pa) = (Vec::new(), false);
             };
 
             if let Some(remap) = remaps.iter().find(|r| r.takes.starts_with(&cur_seq)) {
@@ -455,7 +454,7 @@ impl Remapper {
                         }
                     }
                 } else if remap.is_alias {
-                    remapper.cur_seq.write(pa, |(_, is_alias)| *is_alias = true);
+                    remapper.cur_seq.write(pa).1 = true;
 
                     remove_alias_and::<U>(pa, |widget, main| {
                         widget.text_mut().insert_tag(
@@ -506,14 +505,13 @@ fn remove_alias_and<U: Ui>(pa: &mut Pass, f: impl FnOnce(&mut dyn Widget<U>, usi
     let widget = context::cur_widget::<U>(pa).unwrap();
     // SAFETY: Given that the Pass is immediately mutably borrowed, it
     // can't be used to act on CurWidget.current.
-    widget.mutate_data(pa, |widget, _, _| {
+    widget.mutate_data(pa, |handle| {
         let pa = unsafe { &mut Pass::new() };
-        widget.write(pa, |widget| {
-            if let Some(main) = widget.text().selections().get_main() {
-                let main = main.char();
-                widget.text_mut().remove_tags(Tagger::for_alias(), main);
-                f(&mut *widget, main)
-            }
-        });
+        let widget = handle.write(pa);
+        if let Some(main) = widget.text().selections().get_main() {
+            let main = main.char();
+            widget.text_mut().remove_tags(Tagger::for_alias(), main);
+            f(&mut *widget, main)
+        }
     })
 }

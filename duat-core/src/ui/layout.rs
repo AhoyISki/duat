@@ -38,8 +38,8 @@
 //!
 //! Also notice that this function can fail, which means you can set a
 //! limit to how many [`File`]s should can open in a single window.
-use super::{Node, PushSpecs, RawArea, Ui};
-use crate::{data::Pass, file::File, prelude::Handle, text::Text, ui::AreaId};
+use super::{Node, PushSpecs, Ui};
+use crate::{data::Pass, file::File, prelude::Handle, text::Text};
 
 /// A form of organizing opened [`File`]s
 ///
@@ -63,8 +63,8 @@ where
     fn new_file(
         &mut self,
         file: &File<U>,
-        prev: Vec<(Handle<File<U>, U>, AreaId<U>)>,
-    ) -> Result<(AreaId<U>, PushSpecs), Text>;
+        prev: Vec<Handle<File<U>, U>>,
+    ) -> Result<(Handle<File<U>, U>, PushSpecs), Text>;
 }
 
 /// [`Layout`]: One [`File`] on the left, others on the right
@@ -81,10 +81,10 @@ where
     fn new_file(
         &mut self,
         _file: &File<U>,
-        mut prev: Vec<(Handle<File<U>, U>, AreaId<U>)>,
-    ) -> Result<(AreaId<U>, PushSpecs), Text> {
-        let (_, last) = prev.pop().unwrap();
-        Ok(if prev.is_empty() {
+        prev: Vec<Handle<File<U>, U>>,
+    ) -> Result<(Handle<File<U>, U>, PushSpecs), Text> {
+        let last = prev.last().unwrap().clone();
+        Ok(if prev.len() == 1 {
             (last, PushSpecs::right())
         } else {
             (last, PushSpecs::below())
@@ -93,24 +93,13 @@ where
 }
 
 /// The list of all [`File`]s in a window
-pub(super) fn window_files<U: Ui>(
-    pa: &Pass,
-    nodes: &[Node<U>],
-) -> Vec<(Handle<File<U>, U>, AreaId<U>)> {
-    let mut files: Vec<(Handle<File<U>, U>, AreaId<U>)> = nodes
+pub(super) fn window_files<U: Ui>(pa: &Pass, nodes: &[Node<U>]) -> Vec<Handle<File<U>, U>> {
+    let mut files: Vec<Handle<File<U>, U>> = nodes
         .iter()
-        .filter(|&node| node.widget().data_is::<File<U>>())
-        .map(|node| {
-            let area = node
-                .area()
-                .get_cluster_master()
-                .unwrap_or_else(|| node.area().clone());
-            let (file, ..) = node.as_file().unwrap();
-            (file, AreaId(area))
-        })
+        .filter_map(|node| node.try_downcast())
         .collect();
 
-    files.sort_unstable_by_key(|(file, _)| file.read(pa, |f, _| f.layout_order));
+    files.sort_unstable_by_key(|file| file.read(pa).layout_order);
 
     files
 }

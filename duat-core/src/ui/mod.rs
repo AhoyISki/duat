@@ -31,35 +31,30 @@
 //!
 //! [`OnFileOpen`]: crate::hook::OnFileOpen
 //! [`hook`]: crate::hook
-use std::{
-    cell::RefCell,
-    fmt::Debug,
-    sync::{Arc, mpsc},
-    time::Instant,
-};
+use std::{fmt::Debug, sync::mpsc, time::Instant};
 
 use bincode::{Decode, Encode};
 use crossterm::event::KeyEvent;
-use layout::window_files;
 
-use self::layout::Layout;
-pub(crate) use self::widget::{Node, Related};
+pub(crate) use self::widget::Node;
 pub use self::{
-    builder::{BuilderDummy, FileBuilder, UiBuilder, WidgetAlias, WindowBuilder},
     widget::{Widget, WidgetCfg},
+    window::{
+        BuildInfo, BuilderDummy, RawUiBuilder, UiBuilder, WidgetAlias, Window, Windows,
+        id::{AreaId, GetAreaId},
+    },
 };
 use crate::{
     cfg::PrintCfg,
-    context::{Cache, Handle},
-    data::{Pass, RwData},
-    file::File,
+    context,
+    data::Pass,
     form::Painter,
-    text::{FwdIter, Item, Point, RevIter, Text, TwoPoints},
+    text::{FwdIter, Item, Point, RevIter, Text, TwoPoints, txt},
 };
 
-pub(crate) mod builder;
 pub mod layout;
 mod widget;
+mod window;
 
 /// All the methods that a working gui/tui will need to implement, in
 /// order to use Duat.
@@ -91,8 +86,8 @@ mod widget;
 /// }
 /// ```
 pub trait Ui: Default + Clone + Send + 'static {
-    /// The [`RawArea`] of this [`Ui`]
-    type Area: RawArea<Ui = Self>;
+    /// The [`Area`] of this [`Ui`]
+    type Area: Area<Ui = Self>;
     /// Variables to initialize at the Duat application, outside the
     /// config
     ///
@@ -132,10 +127,7 @@ pub trait Ui: Default + Clone + Send + 'static {
     /// a new window, that is, a plain region with nothing in it.
     ///
     /// [`Area`]: Ui::Area
-    fn new_root(
-        ms: &'static Self::MetaStatics,
-        cache: <Self::Area as RawArea>::Cache,
-    ) -> Self::Area;
+    fn new_root(ms: &'static Self::MetaStatics, cache: <Self::Area as Area>::Cache) -> Self::Area;
 
     /// Switches the currently active window
     ///
@@ -175,19 +167,19 @@ pub trait Ui: Default + Clone + Send + 'static {
     fn remove_window(ms: &'static Self::MetaStatics, win: usize);
 }
 
-/// An [`RawArea`] that supports printing [`Text`]
+/// An [`Area`] that supports printing [`Text`]
 ///
 /// These represent the entire GUI of Duat, the only parts of the
 /// screen where text may be printed.
-pub trait RawArea: Clone + PartialEq + Sized + 'static {
-    /// The [`Ui`] this [`RawArea`] belongs to
+pub trait Area: Clone + PartialEq + Sized + 'static {
+    /// The [`Ui`] this [`Area`] belongs to
     type Ui: Ui<Area = Self>;
     /// Something to be kept between app instances/reloads
     ///
     /// The most useful thing to keep in this case is the
     /// [`PrintInfo`], but you could include other things
     ///
-    /// [`PrintInfo`]: RawArea::PrintInfo
+    /// [`PrintInfo`]: Area::PrintInfo
     type Cache: Default + Encode + Decode<()> + 'static;
     /// Information about what parts of a [`Text`] should be printed
     ///
@@ -202,7 +194,7 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
 
     ////////// Area modification
 
-    /// Bisects the [`RawArea`][Ui::Area] with the given index into
+    /// Bisects the [`Area`][Ui::Area] with the given index into
     /// two.
     ///
     /// Will return 2 indices, the first one is the index of a new
@@ -237,7 +229,7 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
     /// ╰─────────────────╯     ╰─────────────────╯
     /// ```
     ///
-    /// And so [`RawArea::bisect`] should return `(3, None)`.
+    /// And so [`Area::bisect`] should return `(3, None)`.
     fn bisect(
         area: MutArea<Self>,
         specs: PushSpecs,
@@ -246,20 +238,20 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
         cache: Self::Cache,
     ) -> (Self, Option<Self>);
 
-    /// Deletes this [`RawArea`], signaling the closing of a
+    /// Deletes this [`Area`], signaling the closing of a
     /// [`Widget`]
     ///
-    /// If the [`RawArea`]'s parent was also deleted, return it.
+    /// If the [`Area`]'s parent was also deleted, return it.
     fn delete(area: MutArea<Self>) -> Option<Self>;
 
-    /// Swaps this [`RawArea`] with another one
+    /// Swaps this [`Area`] with another one
     ///
-    /// The swapped [`RawArea`]s will be cluster masters of the
-    /// respective [`RawArea`]s. As such, if they belong to the same
+    /// The swapped [`Area`]s will be cluster masters of the
+    /// respective [`Area`]s. As such, if they belong to the same
     /// master, nothing happens.
     fn swap(lhs: MutArea<Self>, rhs: &Self);
 
-    /// Spawns a floating area on this [`RawArea`]
+    /// Spawns a floating area on this [`Area`]
     ///
     /// This function will take a list of [`SpawnSpecs`], taking the
     /// first one that fits, and readapting as the constraints are
@@ -269,7 +261,7 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
     /// Spawns a floating area
     ///
     /// If the [`TwoPoints`] parameter is not specified, this new
-    /// [`RawArea`] will be pushed to the edges of the old one, the
+    /// [`Area`] will be pushed to the edges of the old one, the
     /// pushed edge being the same as the [`Side`] used for pushing.
     ///
     /// If there is a [`TwoPoints`] argument, the
@@ -289,11 +281,11 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
     /// Changes the vertical constraint of the area
     fn constrain_ver(&self, cons: impl IntoIterator<Item = Constraint>) -> Result<(), Text>;
 
-    /// Changes [`Constraint`]s such that the [`RawArea`] becomes
+    /// Changes [`Constraint`]s such that the [`Area`] becomes
     /// hidden
     fn hide(&self) -> Result<(), Text>;
 
-    /// Changes [`Constraint`]s such that the [`RawArea`] is revealed
+    /// Changes [`Constraint`]s such that the [`Area`] is revealed
     fn reveal(&self) -> Result<(), Text>;
 
     /// Requests that the width be enough to fit a certain piece of
@@ -310,14 +302,14 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
     /// Scrolls the [`Text`] on all four directions until the given
     /// [`Point`] is within the [`ScrollOff`] range
     ///
-    /// There are two other scrolling methods for [`RawArea`]:
+    /// There are two other scrolling methods for [`Area`]:
     /// [`scroll_ver`] and [`scroll_to_points`]. The difference
     /// between this and [`scroll_to_points`] is that this method
     /// doesn't do anything if the [`Point`] is already on screen.
     ///
     /// [`ScrollOff`]: crate::cfg::ScrollOff
-    /// [`scroll_ver`]: RawArea::scroll_ver
-    /// [`scroll_to_points`]: RawArea::scroll_to_points
+    /// [`scroll_ver`]: Area::scroll_ver
+    /// [`scroll_to_points`]: Area::scroll_to_points
     fn scroll_around_point(&self, text: &Text, point: Point, cfg: PrintCfg);
 
     /// Scrolls the [`Text`] to the visual line of a [`TwoPoints`]
@@ -333,11 +325,11 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
     /// [line wrapping]: crate::cfg::WrapMethod
     fn scroll_to_points(&self, text: &Text, points: impl TwoPoints, cfg: PrintCfg);
 
-    /// Tells the [`Ui`] that this [`RawArea`] is the one that is
+    /// Tells the [`Ui`] that this [`Area`] is the one that is
     /// currently focused.
     ///
-    /// Should make [`self`] the active [`RawArea`] while deactivating
-    /// any other active [`RawArea`].
+    /// Should make [`self`] the active [`Area`] while deactivating
+    /// any other active [`Area`].
     fn set_as_active(&self);
 
     ////////// Printing
@@ -356,7 +348,7 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
 
     /// Sets a previously acquired [`PrintInfo`] to the area
     ///
-    /// [`PrintInfo`]: RawArea::PrintInfo
+    /// [`PrintInfo`]: Area::PrintInfo
     fn set_print_info(&self, info: Self::PrintInfo);
 
     /// Returns a printing iterator
@@ -367,7 +359,7 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
     /// be printed.
     ///
     /// If you want a reverse iterator, see
-    /// [`RawArea::rev_print_iter`].
+    /// [`Area::rev_print_iter`].
     ///
     /// [`text::Item`]: Item
     fn print_iter<'a>(
@@ -383,7 +375,7 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
     /// struct essentially represents where horizontally each
     /// character would be printed.
     ///
-    /// If you want a forwards iterator, see [`RawArea::print_iter`].
+    /// If you want a forwards iterator, see [`Area::print_iter`].
     ///
     /// [`text::Item`]: Item
     fn rev_print_iter<'a>(
@@ -400,7 +392,7 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
     /// by [`PrintInfo`], this is most likely going to be the bounding
     /// box, but it may be something else.
     ///
-    /// [`PrintInfo`]: RawArea::PrintInfo
+    /// [`PrintInfo`]: Area::PrintInfo
     fn has_changed(&self) -> bool;
 
     /// Whether or not [`self`] is the "master" of `other`
@@ -434,256 +426,10 @@ pub trait RawArea: Clone + PartialEq + Sized + 'static {
     /// The current printing information of the area
     fn print_info(&self) -> Self::PrintInfo;
 
-    /// Returns `true` if this is the currently active [`RawArea`]
+    /// Returns `true` if this is the currently active [`Area`]
     ///
-    /// Only one [`RawArea`] should be active at any given moment.
+    /// Only one [`Area`] should be active at any given moment.
     fn is_active(&self) -> bool;
-}
-
-/// A container for a master [`RawArea`] in Duat
-#[doc(hidden)]
-pub struct Window<U: Ui> {
-    nodes: Vec<Node<U>>,
-    files_area: U::Area,
-    layout: Box<dyn Layout<U>>,
-}
-
-impl<U: Ui> Window<U> {
-    /// Returns a new instance of [`Window`]
-    pub(crate) fn new<W: Widget<U>>(
-        pa: &mut Pass,
-        ms: &'static U::MetaStatics,
-        widget: W,
-        layout: Box<dyn Layout<U>>,
-    ) -> (Self, Node<U>) {
-        let widget =
-            unsafe { RwData::<dyn Widget<U>>::new_unsized::<W>(Arc::new(RefCell::new(widget))) };
-
-        let cache = widget
-            .read_as(pa, |f: &File<U>| {
-                Cache::new()
-                    .load::<<U::Area as RawArea>::Cache>(f.path())
-                    .ok()
-            })
-            .flatten()
-            .unwrap_or_default();
-
-        let area = U::new_root(ms, cache);
-
-        let node = Node::new::<W>(widget, area.clone());
-
-        let window = Self {
-            nodes: vec![node.clone()],
-            files_area: area.clone(),
-            layout,
-        };
-
-        (window, node)
-    }
-
-    /// Returns a new [`Window`] from raw elements
-    pub(crate) fn from_raw(
-        files_area: U::Area,
-        nodes: Vec<Node<U>>,
-        layout: Box<dyn Layout<U>>,
-    ) -> Self {
-        let files_area = files_area.get_cluster_master().unwrap_or(files_area);
-        Self { nodes, files_area, layout }
-    }
-
-    /// Pushes a [`Widget`] onto an existing one
-    pub(crate) fn push<W: Widget<U>>(
-        &mut self,
-        pa: &mut Pass,
-        widget: W,
-        area: &U::Area,
-        specs: PushSpecs,
-        do_cluster: bool,
-        on_files: bool,
-    ) -> (Node<U>, Option<U::Area>) {
-        #[inline(never)]
-        fn get_areas<U: Ui>(
-            pa: &Pass,
-            area: &<U as Ui>::Area,
-            specs: PushSpecs,
-            do_cluster: bool,
-            on_files: bool,
-            widget: &RwData<dyn Widget<U> + 'static>,
-        ) -> (U::Area, Option<U::Area>) {
-            let cache = widget
-                .read_as(pa, |f: &File<U>| {
-                    Cache::new()
-                        .load::<<U::Area as RawArea>::Cache>(f.path())
-                        .ok()
-                })
-                .flatten()
-                .unwrap_or_default();
-
-            let (child, parent) = MutArea(area).bisect(specs, do_cluster, on_files, cache);
-
-            (child, parent)
-        }
-
-        let widget =
-            unsafe { RwData::<dyn Widget<U>>::new_unsized::<W>(Arc::new(RefCell::new(widget))) };
-
-        let (child, parent) = get_areas(pa, area, specs, do_cluster, on_files, &widget);
-
-        self.nodes.push(Node::new::<W>(widget, child));
-
-        (self.nodes.last().unwrap().clone(), parent)
-    }
-
-    /// Pushes a [`File`] to the file's parent
-    ///
-    /// This function will push to the edge of `self.files_parent`
-    /// This is an area, usually in the center, that contains all
-    /// [`File`]s, and their associated [`Widget`]s,
-    /// with others being at the perifery of this area.
-    pub(crate) fn push_file(
-        &mut self,
-        pa: &mut Pass,
-        mut file: File<U>,
-    ) -> Result<(Node<U>, Option<U::Area>), Text> {
-        let window_files = window_files(pa, &self.nodes);
-        file.layout_order = window_files.len();
-        let (id, specs) = self.layout.new_file(&file, window_files)?;
-
-        let (child, parent) = self.push(pa, file, &id.0, specs, false, true);
-
-        if let Some(parent) = &parent
-            && id.0 == self.files_area
-        {
-            self.files_area = parent.clone();
-        }
-
-        Ok((child, parent))
-    }
-
-    /// Removes all [`Node`]s whose [`RawArea`]s where deleted
-    pub(crate) fn remove_file(&mut self, pa: &Pass, name: &str) {
-        let Some(node) = self
-            .nodes
-            .extract_if(.., |node| {
-                node.as_file()
-                    .is_some_and(|(handle, ..)| handle.read(pa, |file, _| file.name()) == name)
-            })
-            .next()
-        else {
-            unreachable!("This isn't supposed to fail");
-        };
-
-        // If this is the case, this means there is only one File left in this
-        // Window, so the files_area should be the cluster master of that
-        // File.
-        if let Some(parent) = MutArea(node.area()).delete()
-            && parent == self.files_area
-        {
-            let files = self.file_nodes(pa);
-            let (_, AreaId(area)) = files.first().unwrap();
-            self.files_area = area.clone();
-        }
-
-        if let Some(related) = node.related_widgets() {
-            related.read(pa, |related| {
-                for node in self.nodes.extract_if(.., |node| related.contains(node)) {
-                    MutArea(node.area()).delete();
-                }
-            });
-        }
-    }
-
-    /// Takes all [`Node`]s related to a given [`Node`]
-    pub(crate) fn take_file_and_related_nodes(
-        &mut self,
-        pa: &mut Pass,
-        node: &Node<U>,
-    ) -> Vec<Node<U>> {
-        if let Some(related) = node.related_widgets() {
-            let lo = node
-                .widget()
-                .read_as(pa, |f: &File<U>| f.layout_order)
-                .unwrap();
-
-            let nodes = related.read(pa, |related| {
-                self.nodes
-                    .extract_if(.., |n| related.contains(n) || n == node)
-                    .collect()
-            });
-
-            for node in &self.nodes {
-                node.widget().write_as(pa, |f: &mut File<U>| {
-                    if f.layout_order > lo {
-                        f.layout_order -= 1;
-                    }
-                });
-            }
-
-            nodes
-        } else {
-            Vec::new()
-        }
-    }
-
-    /// Inserts [`File`] nodes orderly
-    pub(crate) fn insert_file_nodes(
-        &mut self,
-        pa: &mut Pass,
-        layout_ordering: usize,
-        nodes: Vec<Node<U>>,
-    ) {
-        if let Some(i) = self.nodes.iter().position(|node| {
-            node.widget()
-                .read_as(pa, |f: &File<U>| f.layout_order >= layout_ordering)
-                == Some(true)
-        }) {
-            for node in self.nodes[i..].iter() {
-                node.widget().write_as(pa, |f: &mut File<U>| {
-                    f.layout_order += 1;
-                });
-            }
-            self.nodes.splice(i..i, nodes);
-        } else {
-            self.nodes.extend(nodes);
-        }
-    }
-
-    /// An [`Iterator`] over the [`Node`]s in a [`Window`]
-    pub(crate) fn nodes(&self) -> impl ExactSizeIterator<Item = &Node<U>> + DoubleEndedIterator {
-        self.nodes.iter()
-    }
-
-    /// Returns an [`Iterator`] over the names of [`File`]s
-    /// and their respective [`Widget`] indices
-    ///
-    /// [`Widget`]: crate::ui::Widget
-    pub fn file_names(&self, pa: &Pass) -> Vec<String> {
-        window_files(pa, &self.nodes)
-            .into_iter()
-            .map(|f| f.0.widget().read_as(pa, |f: &File<U>| f.name()).unwrap())
-            .collect()
-    }
-
-    /// Returns an [`Iterator`] over the paths of [`File`]s
-    /// and their respective [`Widget`] indices
-    ///
-    /// [`Widget`]: crate::ui::Widget
-    pub fn file_paths(&self, pa: &Pass) -> Vec<String> {
-        window_files(pa, &self.nodes)
-            .into_iter()
-            .map(|f| f.0.widget().read_as(pa, |f: &File<U>| f.name()).unwrap())
-            .collect()
-    }
-
-    /// An [`Iterator`] over the [`File`] [`Node`]s in a [`Window`]
-    pub(crate) fn file_nodes(&self, pa: &Pass) -> Vec<(Handle<File<U>, U>, AreaId<U>)> {
-        window_files(pa, &self.nodes)
-    }
-
-    /// How many [`Widget`]s are in this [`Window`]
-    pub(crate) fn len_widgets(&self) -> usize {
-        self.nodes.len()
-    }
 }
 
 /// A dimension on screen, can either be horizontal or vertical
@@ -811,7 +557,7 @@ impl Sender {
 /// * A vertical [`Constraint`];
 ///
 /// Constraints are demands that must be met by the widget's
-/// [`RawArea`], on a best effort basis.
+/// [`Area`], on a best effort basis.
 ///
 /// So, for example, if the [`PushSpecs`] are:
 ///
@@ -877,8 +623,8 @@ impl PushSpecs {
     /// Hiding [`Widget`]s, as opposed to calling something like
     /// [`PushSpecs::with_hor_len(0.0)`] has a few advantages.
     ///
-    /// - Can be undone just by calling [`RawArea::reveal`]
-    /// - Can be redone just by calling [`RawArea::hide`]
+    /// - Can be undone just by calling [`Area::reveal`]
+    /// - Can be redone just by calling [`Area::hide`]
     /// - Is agnostic to other [`Constraint`]s, i.e., kind of
     ///   memorizes what they should be before being hidden.
     ///
@@ -1308,21 +1054,21 @@ const fn constrain(cons: &mut [Option<Constraint>; 4], con: Constraint) {
     }
 }
 
-/// A struct used to modify the layout of [`RawArea`]s
+/// A struct used to modify the layout of [`Area`]s
 ///
 /// The end user should not have access to methods that directly
-/// modify the layout, like [`RawArea::delete`] or
-/// [`RawArea::bisect`], since they will modify the layout without
+/// modify the layout, like [`Area::delete`] or
+/// [`Area::bisect`], since they will modify the layout without
 /// any coordination with the rest of Duat, so this struct is used to
 /// "hide" those methods, in order to prevent users from directly
 /// accessing them.
 ///
 /// Higher lever versions of these methods are still available to the
 /// end user, in the more controled APIs of [`Area`]
-pub struct MutArea<'area, A: RawArea>(pub(crate) &'area A);
+pub struct MutArea<'area, A: Area>(pub(crate) &'area A);
 
-impl<A: RawArea> MutArea<'_, A> {
-    /// Bisects the [`RawArea`] in two
+impl<A: Area> MutArea<'_, A> {
+    /// Bisects the [`Area`] in two
     pub fn bisect(
         self,
         specs: PushSpecs,
@@ -1333,22 +1079,37 @@ impl<A: RawArea> MutArea<'_, A> {
         A::bisect(self, specs, cluster, on_files, cache)
     }
 
-    /// Calls [`RawArea::delete`] on `self`
+    /// Calls [`Area::delete`] on `self`
     pub fn delete(self) -> Option<A> {
         A::delete(self)
     }
 
-    /// Calls [`RawArea::swap`] on `self`
+    /// Calls [`Area::swap`] on `self`
     pub fn swap(self, other: &A) {
         A::swap(self, other);
     }
 
-    /// Calls [`RawArea::spawn_floating`] on `self`
-    pub fn spawn_floating(self, specs: SpawnSpecs) -> Result<A, Text> {
-        A::spawn_floating(self, specs)
+    /// Calls [`Area::spawn_floating`] on `self`
+    pub fn spawn_floating<Cfg: WidgetCfg<A::Ui>>(
+        self,
+        pa: &mut Pass,
+        _cfg: Cfg,
+        specs: SpawnSpecs,
+    ) -> Result<A, Text> {
+        let area = A::spawn_floating(MutArea(self.0), specs)?;
+        let mut windows = context::windows::<A::Ui>().borrow_mut();
+
+        let Some(_win) = windows
+            .iter_mut()
+            .find(|win| win.nodes().any(|n| n.area(pa) == self.0))
+        else {
+            return Err(txt!("Tried to spawn floating from a deleted Area").build());
+        };
+
+        Ok(area)
     }
 
-    /// Calls [`RawArea::spawn_floating_at`] on `self`
+    /// Calls [`Area::spawn_floating_at`] on `self`
     pub fn spawn_floating_at(
         self,
         specs: SpawnSpecs,
@@ -1360,44 +1121,10 @@ impl<A: RawArea> MutArea<'_, A> {
     }
 }
 
-impl<A: RawArea> std::ops::Deref for MutArea<'_, A> {
+impl<A: Area> std::ops::Deref for MutArea<'_, A> {
     type Target = A;
 
     fn deref(&self) -> &Self::Target {
         self.0
-    }
-}
-
-/// A public API for [`Ui::Area`]
-#[derive(Clone, PartialEq)]
-pub struct Area<U: Ui> {
-    area: U::Area,
-}
-
-impl<U: Ui> std::ops::Deref for Area<U> {
-    type Target = U::Area;
-
-    fn deref(&self) -> &Self::Target {
-        &self.area
-    }
-}
-
-/// A unique identifier for an [`Area`]
-#[derive(Clone)]
-pub struct AreaId<U: Ui>(pub(crate) U::Area);
-
-impl<U: Ui> AreaId<U> {
-    /// The [`Ui::Area`] of this [`AreaId`]
-    pub fn area(&self, _: &Pass) -> &U::Area {
-        &self.0
-    }
-}
-
-// SAFETY: The U::Area within can't actually be accessed
-unsafe impl<U: Ui> Send for AreaId<U> {}
-
-impl<U: Ui> PartialEq for AreaId<U> {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
     }
 }

@@ -206,7 +206,7 @@ impl PrintCfg {
     /// There is, essentially, almost no reason to deviate from this
     /// in any [`Widget`] other than a [`File`], since those most
     /// likely will only be printed with the [default `PrintInfo`]
-    /// from a [`RawArea`], i.e., no scrolling is involved, and you
+    /// from a [`Area`], i.e., no scrolling is involved, and you
     /// should usually strive to control the other elements of
     /// [`Text`]s that the options of a [`PrintCfg`] will want to
     /// change.
@@ -235,8 +235,8 @@ impl PrintCfg {
     ///
     /// [`Widget`]: crate::ui::Widget
     /// [`File`]: crate::file::File
-    /// [default `PrintInfo`]: crate::ui::RawArea::PrintInfo
-    /// [`RawArea`]: crate::ui::RawArea
+    /// [default `PrintInfo`]: crate::ui::Area::PrintInfo
+    /// [`Area`]: crate::ui::Area
     /// [`Text`]: crate::text::Text
     /// [`Widget::print_cfg`]: crate::ui::Widget::print_cfg
     pub const fn new() -> Self {

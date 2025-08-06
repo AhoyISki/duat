@@ -109,7 +109,7 @@ use self::tags::{FwdTags, InnerTags, RevTags};
 pub use self::{
     builder::{Builder, BuilderPart, txt},
     bytes::{Buffers, Bytes, Lines, Strs},
-    history::{Change, Moment, History},
+    history::{Change, History, Moment},
     iter::{FwdIter, Item, Part, RevIter},
     ops::{Point, TextRange, TextRangeOrPoint, TwoPoints, utf8_char_width},
     search::{Matcheable, RegexPattern, Searcher},
@@ -122,7 +122,7 @@ use crate::{
     cfg::PrintCfg,
     context, form,
     mode::{Selection, Selections},
-    ui::RawArea,
+    ui::Area,
 };
 
 /// The text of a given [`Widget`]
@@ -297,7 +297,7 @@ impl Text {
     }
 
     /// Gets the indentation level on the current line
-    pub fn indent(&self, p: Point, area: &impl RawArea, mut cfg: PrintCfg) -> usize {
+    pub fn indent(&self, p: Point, area: &impl Area, mut cfg: PrintCfg) -> usize {
         let [start, _] = self.points_of_line(p.line());
         let t_iter = self.iter_fwd(start).no_ghosts().no_conceals();
         area.print_iter(t_iter, *cfg.new_line_as('\n'))
@@ -629,7 +629,7 @@ impl Text {
 
     /// Removes the tags for all the selections, used before they are
     /// expected to move
-    pub(crate) fn add_selections(&mut self, area: &impl RawArea, cfg: PrintCfg) {
+    pub(crate) fn add_selections(&mut self, area: &impl Area, cfg: PrintCfg) {
         let within = (self.0.selections.len() >= 500).then(|| {
             let (start, _) = area.start_points(self, cfg);
             let (end, _) = area.end_points(self, cfg);
@@ -657,11 +657,8 @@ impl Text {
         };
 
         if let Some((start, end)) = within {
-            for (selection, is_main) in self.0.selections.iter() {
-                let range = selection.range(&self.0.bytes);
-                if range.end > start.byte() && range.start < end.byte() {
-                    add_selection(selection, &mut self.0.bytes, is_main);
-                }
+            for (_, selection, is_main) in self.0.selections.iter_within(start..end) {
+                add_selection(selection, &mut self.0.bytes, is_main);
             }
         } else {
             for (selection, is_main) in self.0.selections.iter() {
@@ -771,7 +768,7 @@ impl Text {
         &mut self.0.selections
     }
 
-	/// The [`History`] of [`Moment`]s in this [`Text`]
+    /// The [`History`] of [`Moment`]s in this [`Text`]
     pub fn history(&self) -> Option<&History> {
         self.0.history.as_ref()
     }

@@ -89,7 +89,7 @@ impl Selections {
         if !self.is_empty() {
             let cursor = self.buf.remove(self.main_i);
             let (shift_from, shift) = self.shift_state.take();
-            if shift_from <= self.main_i {
+            if shift_from <= self.main_i && shift != [0; 3] {
                 cursor.shift_by(shift);
             }
             self.buf = gap_buffer![cursor];
@@ -132,7 +132,7 @@ impl Selections {
         let (mut shift_from, shift) = self.shift_state.get();
 
         self.buf.iter().enumerate().map(move |(i, selection)| {
-            if i >= shift_from {
+            if i >= shift_from && shift != [0; 3] {
                 selection.shift_by(shift);
                 if i + 1 < self.buf.len() {
                     self.shift_state.set((i + 1, shift));
@@ -182,7 +182,7 @@ impl Selections {
         let iter = [s0, s1].into_iter().flatten().enumerate();
         iter.map(move |(i, selection)| {
             let i = i + m_range.start;
-            if i >= shift_from {
+            if i >= shift_from && shift != [0; 3] {
                 selection.shift_by(shift);
                 if i + 1 < self.buf.len() {
                     self.shift_state.set((i + 1, shift));
@@ -217,23 +217,23 @@ impl Selections {
     pub(crate) fn insert(
         &mut self,
         guess_i: usize,
-        cursor: Selection,
+        sel: Selection,
         main: bool,
     ) -> ([usize; 2], bool) {
         let (shift_from, shift) = self.shift_state.take();
         let shift_from = shift_from.min(self.len());
 
         // The range of cursors that will be drained
-        let c_range = merging_range_by_guess_and_lazy_shift(
+        let m_range = merging_range_by_guess_and_lazy_shift(
             (&self.buf, self.buf.len()),
-            (guess_i, [cursor.start(), cursor.end_excl()]),
+            (guess_i, [sel.start(), sel.end_excl()]),
             (shift_from, shift, [0; 3], Point::shift_by),
             (Selection::start, Selection::end_excl),
         );
 
         // Shift all ranges that preceed the end of the cursor's range.
-        if shift_from < c_range.end && shift != [0; 3] {
-            for cursor in self.buf.range(shift_from..c_range.end).into_iter() {
+        if shift_from < m_range.end && shift != [0; 3] {
+            for cursor in self.buf.range(shift_from..m_range.end).into_iter() {
                 cursor.shift_by(shift);
             }
         }
@@ -241,48 +241,48 @@ impl Selections {
         // Get the minimum and maximum Points in the taken range, designate
         // those as the new Selection's bounds.
         let (caret, anchor, last_cursor_overhangs) = {
-            let mut c_range = c_range.clone();
+            let mut c_range = m_range.clone();
             let first = c_range.next().and_then(|i| self.get(i));
             let last = c_range.last().and_then(|i| self.get(i)).or(first);
             let start = first
-                .map(|first| first.lazy_v_start().min(cursor.lazy_v_start()))
-                .unwrap_or(cursor.lazy_v_start());
-            let (end, last_cursor_overhangs) = if let Some(last) = last
-                && last.lazy_v_end() >= cursor.lazy_v_end()
+                .map(|first| first.lazy_v_start().min(sel.lazy_v_start()))
+                .unwrap_or(sel.lazy_v_start());
+            let (end, last_sel_overhangs) = if let Some(last) = last
+                && last.lazy_v_end() >= sel.lazy_v_end()
             {
                 (last.lazy_v_end(), true)
             } else {
-                (cursor.lazy_v_end(), false)
+                (sel.lazy_v_end(), false)
             };
 
-            if let Some(anchor) = cursor.anchor() {
-                match cursor.caret() < anchor {
-                    true => (start, Some(end), last_cursor_overhangs),
-                    false => (end, Some(start), last_cursor_overhangs),
+            if let Some(anchor) = sel.anchor() {
+                match sel.caret() < anchor {
+                    true => (start, Some(end), last_sel_overhangs),
+                    false => (end, Some(start), last_sel_overhangs),
                 }
             } else {
-                (end, (start != end).then_some(start), last_cursor_overhangs)
+                (end, (start != end).then_some(start), last_sel_overhangs)
             }
         };
 
-        let cursor = Selection::from_v(caret, anchor, cursor.change_i);
-        self.buf.splice(c_range.clone(), [cursor]);
+        let selection = Selection::from_v(caret, anchor, sel.change_i);
+        self.buf.splice(m_range.clone(), [selection]);
 
         if main {
-            self.main_i = c_range.start;
-        } else if self.main_i >= c_range.start {
-            self.main_i = (self.main_i + 1 - c_range.clone().count()).max(c_range.start)
+            self.main_i = m_range.start;
+        } else if self.main_i >= m_range.start {
+            self.main_i = (self.main_i + 1 - m_range.clone().count()).max(m_range.start)
         }
 
         // If there are no more Selections after this, don't set the
         // shift_state.
-        let cursors_taken = c_range.clone().count();
-        let new_shift_from = shift_from.saturating_sub(cursors_taken).max(c_range.start) + 1;
+        let cursors_taken = m_range.clone().count();
+        let new_shift_from = shift_from.saturating_sub(cursors_taken).max(m_range.start) + 1;
         if new_shift_from < self.buf.len() {
             self.shift_state.set((new_shift_from, shift));
         }
 
-        ([c_range.start, cursors_taken], last_cursor_overhangs)
+        ([m_range.start, cursors_taken], last_cursor_overhangs)
     }
 
     /// Applies a [`Change`] to the [`Selection`]s list
@@ -387,7 +387,7 @@ mod cursor {
     use crate::{
         cfg::PrintCfg,
         text::{Bytes, Change, Point, Text},
-        ui::{Caret, RawArea},
+        ui::{Caret, Area},
     };
 
     /// A cursor in the text file. This is an editing cursor, -(not
@@ -478,7 +478,7 @@ mod cursor {
             &mut self,
             by: i32,
             text: &Text,
-            area: &impl RawArea,
+            area: &impl Area,
             mut cfg: PrintCfg,
         ) -> i32 {
             let by = by as isize;
@@ -527,7 +527,7 @@ mod cursor {
             &mut self,
             by: i32,
             text: &Text,
-            area: &impl RawArea,
+            area: &impl Area,
             mut cfg: PrintCfg,
         ) -> i32 {
             if by == 0 {
@@ -785,7 +785,7 @@ mod cursor {
         /// [`VPoint`]s include a lot more information than regular
         /// [`Point`]s, like visual distance form the left edge, what
         /// the desired distance is, etc.
-        pub fn v_caret(&self, text: &Text, area: &impl RawArea, cfg: PrintCfg) -> VPoint {
+        pub fn v_caret(&self, text: &Text, area: &impl Area, cfg: PrintCfg) -> VPoint {
             let vp = self.caret.get().calculate(text, area, cfg);
             self.caret.set(LazyVPoint::Known(vp));
             vp
@@ -796,7 +796,7 @@ mod cursor {
         /// [`VPoint`]s include a lot more information than regular
         /// [`Point`]s, like visual distance form the left edge, what
         /// the desired distance is, etc.
-        pub fn v_anchor(&self, text: &Text, area: &impl RawArea, cfg: PrintCfg) -> Option<VPoint> {
+        pub fn v_anchor(&self, text: &Text, area: &impl Area, cfg: PrintCfg) -> Option<VPoint> {
             self.anchor.get().map(|anchor| {
                 let vp = anchor.calculate(text, area, cfg);
                 self.anchor.set(Some(LazyVPoint::Known(vp)));
@@ -810,7 +810,7 @@ mod cursor {
         /// [`VPoint`]s include a lot more information than regular
         /// [`Point`]s, like visual distance form the left edge, what
         /// the desired distance is, etc.
-        pub fn v_range(&self, text: &Text, area: &impl RawArea, cfg: PrintCfg) -> [VPoint; 2] {
+        pub fn v_range(&self, text: &Text, area: &impl Area, cfg: PrintCfg) -> [VPoint; 2] {
             let v_caret = self.v_caret(text, area, cfg);
             let v_anchor = self.v_anchor(text, area, cfg).unwrap_or(v_caret);
             [v_caret.min(v_anchor), v_caret.max(v_anchor)]
@@ -853,7 +853,7 @@ mod cursor {
         }
 
         /// Calculates the [`VPoint`], to be used sparingly
-        fn calculate(self, text: &Text, area: &impl RawArea, cfg: PrintCfg) -> VPoint {
+        fn calculate(self, text: &Text, area: &impl Area, cfg: PrintCfg) -> VPoint {
             match self {
                 Self::Known(vp) => vp,
                 Self::Unknown(p) => VPoint::new(p, text, area, cfg),
@@ -928,7 +928,7 @@ mod cursor {
 
     impl VPoint {
         /// Returns a new [`VPoint`]
-        fn new(p: Point, text: &Text, area: &impl RawArea, cfg: PrintCfg) -> Self {
+        fn new(p: Point, text: &Text, area: &impl Area, cfg: PrintCfg) -> Self {
             let [start, _] = text.points_of_line(p.line());
 
             let mut vcol = 0;
@@ -1036,7 +1036,7 @@ mod cursor {
             match self {
                 Self::Known(vp) => write!(f, "Known({:?})", vp.p),
                 Self::Unknown(p) => write!(f, "Unknown({p:?}"),
-                Self::Desired { p, .. } => write!(f, "Desired({p:?})"),
+                Self::Desired { p, dvcol, dwcol } => write!(f, "Desired({p:?}, {dvcol}, {dwcol})"),
             }
         }
     }

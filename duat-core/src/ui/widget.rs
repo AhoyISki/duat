@@ -8,7 +8,7 @@
 //! one of three contexts:
 //!
 //! - Being pushed to a [`File`] via the hook [`OnFileOpen`];
-//! - Being pushed to the outer edges via [`OnWindowOpen`];
+//! - Being pushed to the outer edges via [`WindowCreated`];
 //! - Being pushed to popup widgets via `OnPopupOpen` (TODO);
 //!
 //! These widgets can be pushed to all 4 sides of other widgets,
@@ -45,22 +45,19 @@
 //! [`duat-term`]: https://docs.rs/duat-term/latest/duat_term/
 //! [`VertRule`]: https://docs.rs/duat-term/latest/duat_term/struct.VertRule.html
 //! [`OnFileOpen`]: crate::hook::OnFileOpen
-//! [`OnWindowOpen`]: crate::hook::OnWindowOpen
+//! [`WindowCreated`]: crate::hook::WindowCreated
 //! [`Constraint`]: crate::ui::Constraint
-use std::{
-    any::TypeId,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
+use super::{Area, AreaId, PushSpecs, Ui};
 use crate::{
     cfg::PrintCfg,
-    context::{FileHandle, FileParts, Handle},
+    context::Handle,
     data::{Pass, RwData},
-    file::File,
     form::{self, Painter},
     hook::{self, FocusedOn, UnfocusedFrom},
     text::Text,
-    ui::{PushSpecs, RawArea, Ui},
+    ui::{GetAreaId, BuildInfo},
 };
 
 /// An area where [`Text`] will be printed to the screen
@@ -108,7 +105,7 @@ use crate::{
 ///
 /// Notice the `UpTimeCfg` defined as the `Widget::Cfg` for `UpTime`.
 /// [`WidgetCfg`]s  exist to let users push [`Widget`]s to [`File`]s
-/// and the window through the [`OnFileOpen`] and [`OnWindowOpen`]
+/// and the window through the [`OnFileOpen`] and [`WindowCreated`]
 /// [hooks]. It lets users configure widgets through methods defined
 /// by the widget author.
 ///
@@ -296,7 +293,7 @@ use crate::{
 /// [How]: PushSpecs
 /// [`PeriodicChecker`]: crate::data::PeriodicChecker
 /// [`OnFileOpen`]: crate::hook::OnFileOpen
-/// [`OnWindowOpen`]: crate::hook::OnWindowOpen\
+/// [`WindowCreated`]: crate::hook::WindowCreated\
 /// [hooks]: crate::hook
 /// [`PhantomData<U>`]: std::marker::PhantomData
 /// [`Instant`]: std::time::Instant
@@ -343,7 +340,7 @@ pub trait Widget<U: Ui>: Send + 'static {
     ////////// Stateful functions
 
     /// Updates the widget, allowing the modification of its
-    /// [`RawArea`]
+    /// [`Area`]
     ///
     /// This function will be triggered when Duat deems that a change
     /// has happened to this [`Widget`], which is when
@@ -443,7 +440,7 @@ pub trait Widget<U: Ui>: Send + 'static {
     ///
     /// Very rarely shouuld you actually implement this method, one
     /// example of where this is actually implemented is in
-    /// [`File::print`], where [`RawArea::print_with`] is called in
+    /// [`File::print`], where [`Area::print_with`] is called in
     /// order to simultaneously update the list of lines numbers,
     /// for widgets like [`LineNumbers`] to read.
     ///
@@ -488,7 +485,7 @@ pub trait Widget<U: Ui>: Send + 'static {
 ///     });
 /// }
 /// ```
-pub trait WidgetCfg<U: Ui>: Sized {
+pub trait WidgetCfg<U: Ui>: Sized + 'static {
     /// The [`Widget`] that will be created by this [`WidgetCfg`]
     type Widget: Widget<U, Cfg = Self>;
 
@@ -501,16 +498,13 @@ pub trait WidgetCfg<U: Ui>: Sized {
     /// [`File`], for example.
     ///
     /// [`LineNumbers`]: docs.rs/duat-utils/latest/duat_utils/widgets/struct.LineNumbers.html
-    fn build(self, pa: &mut Pass, handle: Option<FileHandle<U>>) -> (Self::Widget, PushSpecs);
+    fn build(self, pa: &mut Pass, info: BuildInfo<U>) -> (Self::Widget, PushSpecs);
 }
 
 /// Elements related to the [`Widget`]s
 #[derive(Clone)]
 pub(crate) struct Node<U: Ui> {
-    widget: RwData<dyn Widget<U>>,
-    area: U::Area,
-    mask: Arc<Mutex<&'static str>>,
-    related_widgets: Related<U>,
+    handle: Handle<dyn Widget<U>, U>,
     update: fn(&Self, &mut Pass),
     print: fn(&Self, &mut Pass),
     on_focus: fn(&Self, &mut Pass, Handle<dyn Widget<U>, U>),
@@ -519,14 +513,23 @@ pub(crate) struct Node<U: Ui> {
 
 impl<U: Ui> Node<U> {
     /// Returns a new [`Node`]
-    pub(crate) fn new<W: Widget<U>>(widget: RwData<dyn Widget<U>>, area: U::Area) -> Self {
-        let related_widgets = (TypeId::of::<W>() == TypeId::of::<File<U>>()).then(RwData::default);
-
+    pub(crate) fn new<W: Widget<U>>(
+        widget: RwData<dyn Widget<U>>,
+        area: U::Area,
+        id: AreaId,
+    ) -> Self {
         Self {
-            widget,
-            area,
-            mask: Arc::new(Mutex::new("")),
-            related_widgets,
+            handle: Handle::new(widget, area, Arc::new(Mutex::new("")), id),
+            update: Self::update_fn::<W>,
+            print: Self::print_fn::<W>,
+            on_focus: Self::on_focus_fn::<W>,
+            on_unfocus: Self::on_unfocus_fn::<W>,
+        }
+    }
+
+    pub(crate) fn from_handle<W: Widget<U>>(handle: Handle<W, U>) -> Self {
+        Self {
+            handle: handle.to_dyn(),
             update: Self::update_fn::<W>,
             print: Self::print_fn::<W>,
             on_focus: Self::on_focus_fn::<W>,
@@ -536,74 +539,50 @@ impl<U: Ui> Node<U> {
 
     ////////// Reading and parts acquisition
 
-    pub(crate) fn read_as<W: 'static, Ret>(
-        &self,
-        pa: &Pass,
-        f: impl FnOnce(&W) -> Ret,
-    ) -> Option<Ret> {
-        self.widget.clone().read_as(pa, f)
+    pub(crate) fn read_as<'a, W: Widget<U>>(&'a self, pa: &'a Pass) -> Option<&'a W> {
+        self.handle.read_as(pa)
     }
 
     /// The [`Widget`] of this [`Node`]
     pub(crate) fn widget(&self) -> &RwData<dyn Widget<U>> {
-        &self.widget
+        self.handle.widget()
     }
 
     /// The [`Ui::Area`] of this [`Widget`]
-    pub(crate) fn area(&self) -> &U::Area {
-        &self.area
+    pub(crate) fn area(&self, pa: &Pass) -> &U::Area {
+        self.handle.area(pa)
     }
 
     /// Returns the downcast ref of this [`Widget`].
-    pub(crate) fn try_downcast<W: 'static>(&self) -> Option<RwData<W>> {
-        self.widget.try_downcast()
+    pub(crate) fn try_downcast<W: Widget<U>>(&self) -> Option<Handle<W, U>> {
+        self.handle.try_downcast()
     }
 
     /// The "parts" of this [`Node`]
-    pub(crate) fn parts(
-        &self,
-    ) -> (
-        &RwData<dyn Widget<U>>,
-        &<U as Ui>::Area,
-        &Arc<Mutex<&'static str>>,
-        &Related<U>,
-    ) {
-        (&self.widget, &self.area, &self.mask, &self.related_widgets)
-    }
-
-    /// Tries to return the [`FileParts`] for this [`Node`], if it's a
-    /// [`File`]
-    pub(crate) fn as_file(&self) -> Option<FileParts<U>> {
-        self.widget.try_downcast().map(|file: RwData<File<U>>| {
-            (
-                Handle::from_parts(file, self.area.clone(), self.mask.clone()),
-                self.related_widgets.clone().unwrap(),
-            )
-        })
+    pub(crate) fn handle(&self) -> &Handle<dyn Widget<U>, U> {
+        &self.handle
     }
 
     /// The [`Widget`]s that are related to this [`Widget`]
-    pub(crate) fn related_widgets(&self) -> Option<&RwData<Vec<Node<U>>>> {
-        self.related_widgets.as_ref()
+    pub(crate) fn related_widgets(&self) -> &RwData<Vec<Handle<dyn Widget<U>, U>>> {
+        self.handle.related()
     }
 
     ////////// Querying functions
 
     /// Wether the value within is `W`
     pub(crate) fn data_is<W: 'static>(&self) -> bool {
-        self.widget.data_is::<W>()
+        self.handle.widget().data_is::<W>()
     }
 
     /// Wether this and [`RwData`] point to the same value
     pub(crate) fn ptr_eq<W: ?Sized>(&self, other: &RwData<W>) -> bool {
-        self.widget.ptr_eq(other)
+        self.handle.ptr_eq(other)
     }
 
     /// Wether this [`Widget`] needs to be updated
     pub(crate) fn needs_update(&self, pa: &Pass) -> bool {
-        self.area.has_changed()
-            || self.widget.has_changed()
-            || self.widget.read(pa, |w| w.needs_update(pa))
+        self.handle.has_changed() || self.handle.read(pa).needs_update(pa)
     }
 
     ////////// Eventful functions
@@ -612,24 +591,22 @@ impl<U: Ui> Node<U> {
     pub(crate) fn update_and_print(&self, pa: &mut Pass) {
         (self.update)(self, pa);
 
-        {
-            let mut widget = self.widget.acquire_mut(pa);
-            let cfg = widget.print_cfg();
-            widget.text_mut().add_selections(&self.area, cfg);
+        let (widget, area) = self.handle.write_with_area(pa);
+        let cfg = widget.print_cfg();
+        widget.text_mut().add_selections(area, cfg);
 
-            if self.area.print_info() != <U::Area as RawArea>::PrintInfo::default() {
-                widget.text_mut().update_bounds();
-            }
-        };
+        if area.print_info() != <U::Area as Area>::PrintInfo::default() {
+            widget.text_mut().update_bounds();
+        }
 
         (self.print)(self, pa);
 
-        self.widget.acquire_mut(pa).text_mut().remove_selections();
+        self.handle.write(pa).text_mut().remove_selections();
     }
 
     /// What to do when focusing
     pub(crate) fn on_focus(&self, pa: &mut Pass, old: Handle<dyn Widget<U>, U>) {
-        self.area.set_as_active();
+        self.handle.area(pa).set_as_active();
         (self.on_focus)(self, pa, old)
     }
 
@@ -640,25 +617,21 @@ impl<U: Ui> Node<U> {
 
     /// Static dispatch inner update function
     fn update_fn<W: Widget<U>>(&self, pa: &mut Pass) {
-        let widget = self.widget.try_downcast::<W>().unwrap();
-        let handle = Handle::from_parts(widget, self.area.clone(), self.mask.clone());
-        Widget::update(pa, handle);
+        W::update(pa, self.try_downcast().unwrap());
     }
 
     /// Static dispatch inner print function
     fn print_fn<W: Widget<U>>(&self, pa: &mut Pass) {
-        let painter = form::painter_with_mask::<W>(*self.mask.lock().unwrap());
-        let mut widget = self.widget.acquire_mut(pa);
-
-        widget.print(painter, &self.area);
+        let painter = form::painter_with_mask::<W>(*self.handle.mask().lock().unwrap());
+        let (widget, area) = self.handle.write_with_area(pa);
+        widget.print(painter, area);
     }
 
     /// Static dispatch inner update on_focus
     fn on_focus_fn<W: Widget<U>>(&self, pa: &mut Pass, old: Handle<dyn Widget<U>, U>) {
-        self.area.set_as_active();
-        let widget: RwData<W> = self.widget.try_downcast().unwrap();
+        let handle = self.try_downcast::<W>().unwrap();
+        handle.area(pa).set_as_active();
 
-        let handle = Handle::from_parts(widget, self.area.clone(), self.mask.clone());
         hook::trigger(pa, FocusedOn((old, handle.clone())));
 
         Widget::on_focus(pa, handle);
@@ -666,22 +639,24 @@ impl<U: Ui> Node<U> {
 
     /// Static dispatch inner update on_unfocus
     fn on_unfocus_fn<W: Widget<U>>(&self, pa: &mut Pass, new: Handle<dyn Widget<U>, U>) {
-        let widget: RwData<W> = self.widget.try_downcast().unwrap();
+        let handle = self.try_downcast::<W>().unwrap();
 
-        let handle = Handle::from_parts(widget, self.area.clone(), self.mask.clone());
         hook::trigger(pa, UnfocusedFrom((handle.clone(), new)));
 
         Widget::on_unfocus(pa, handle);
     }
 }
 
-impl<U: Ui> PartialEq for Node<U> {
-    fn eq(&self, other: &Self) -> bool {
-        self.widget.ptr_eq(&other.widget)
+impl<U: Ui> GetAreaId for Node<U> {
+    fn area_id(&self) -> AreaId {
+        self.handle.area_id()
+    }
+}
+
+impl<T: GetAreaId, U: Ui> PartialEq<T> for Node<U> {
+    fn eq(&self, other: &T) -> bool {
+        self.area_id() == other.area_id()
     }
 }
 
 impl<U: Ui> Eq for Node<U> {}
-
-/// [`Widget`]s related to another [`Widget`]
-pub(crate) type Related<U> = Option<RwData<Vec<Node<U>>>>;

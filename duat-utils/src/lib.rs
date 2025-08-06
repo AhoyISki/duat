@@ -110,7 +110,6 @@
     closure_lifetime_binder,
     default_field_values,
     associated_type_defaults,
-    impl_trait_in_bindings
 )]
 
 use duat_core::prelude::*;
@@ -293,7 +292,7 @@ mod private_exports {
             let (pa, mut appender, checker) = $pass_appender_checker;
             let (ap, ch) = State::from_with_pass(pa, $part).fns();
 
-            let checker: impl Fn(&Pass) -> bool + Send = move |pa| checker(pa) || ch(pa);
+            let checker = move |pa: &Pass| checker(pa) || ch(pa);
 
             let appender = move |pa: &Pass, builder: &mut Builder, handle: &FileHandle<_>| {
                 appender(pa, builder, handle);
@@ -312,7 +311,7 @@ mod private_exports {
             let (ap, ch) =
                 State::from_with_pass(pa, format!(concat!("{:", $modif, "}"), $part)).fns();
 
-            let checker = move |pa| checker(pa) || ch(pa);
+            let checker = move |pa: &Pass| checker(pa) || ch(pa);
 
             let appender = move |pa: &Pass, builder: &mut Builder, handle: &FileHandle<_>| {
                 appender(pa, builder, handle);

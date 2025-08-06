@@ -8,19 +8,18 @@ use crate::{
     cfg::PrintCfg,
     clipboard::Clipboard,
     cmd,
-    context::{self, Cache, Handle, sender},
+    context::{self, Cache, sender},
     data::Pass,
     file::{File, FileCfg, PathKind},
-    file_entry, form,
+    form,
     hook::{
-        self, ConfigLoaded, ConfigUnloaded, ExitedDuat, FocusedOnDuat, OnFileClose, OnFileOpen,
-        OnFileReload, OnWindowOpen, UnfocusedFromDuat,
+        self, ConfigLoaded, ConfigUnloaded, ExitedDuat, FocusedOnDuat, OnFileClose, OnFileReload,
+        UnfocusedFromDuat,
     },
     mode,
     text::Bytes,
     ui::{
-        AreaId, DuatEvent, FileBuilder, MutArea, Node, RawArea, Sender, Ui, Widget, WidgetCfg,
-        Window, WindowBuilder,
+        Area, DuatEvent, Sender, Ui, Widget, Windows,
         layout::{Layout, MasterOnLeft},
     },
 };
@@ -47,19 +46,20 @@ impl<U: Ui> SessionCfg<U> {
         // Passs, so this is fine.
         let pa = unsafe { &mut Pass::new() };
 
+        context::set_windows(Windows::<U>::new());
+
         cmd::add_session_commands::<U>();
 
         let mut args = std::env::args();
         let first = args.nth(1).map(PathBuf::from);
 
-        let (widget, _) = if let Some(name) = first {
-            self.file_cfg.clone().open_path(name).build(pa, None)
+        let file_cfg = if let Some(name) = first {
+            self.file_cfg.clone().open_path(name)
         } else {
-            self.file_cfg.clone().build(pa, None)
+            self.file_cfg.clone()
         };
 
-        let (window, node) = Window::new(pa, ms, widget, (self.layout_fn)());
-        context::set_windows(pa, vec![window]);
+        let node = context::windows().new_window(pa, ms, file_cfg, (self.layout_fn)());
 
         let session = Session {
             ms,
@@ -67,19 +67,11 @@ impl<U: Ui> SessionCfg<U> {
             layout_fn: self.layout_fn,
         };
 
-        context::set_cur(pa, node.as_file(), node.clone());
-
-        // Open and process files.
-        let builder = FileBuilder::new(pa, node, context::cur_window());
-        hook::trigger(pa, OnFileOpen(builder));
+        context::set_cur(pa, node.try_downcast(), node.clone());
 
         for file in args {
-            session.open_file(pa, PathBuf::from(file));
+            session.open_file_from_path(pa, context::cur_window(), PathBuf::from(file));
         }
-
-        // Build the window's widgets.
-        let builder = WindowBuilder::<U>::new(pa, 0);
-        hook::trigger(pa, OnWindowOpen(builder));
 
         session
     }
@@ -95,7 +87,7 @@ impl<U: Ui> SessionCfg<U> {
         // Passs, so this is fine.
         let pa = unsafe { &mut Pass::new() };
 
-        context::set_windows::<U>(pa, Vec::new());
+        context::set_windows::<U>(Windows::new());
 
         let file_cfg = self.file_cfg.clone();
         let inherited_cfgs = prev.into_iter().enumerate().map(|(i, cfgs)| {
@@ -118,13 +110,11 @@ impl<U: Ui> SessionCfg<U> {
         let mut hasnt_set_cur = true;
         for (win, mut cfgs) in inherited_cfgs {
             let (file_cfg, is_active) = cfgs.next().unwrap();
-            let (widget, _) = file_cfg.build(pa, None);
 
-            let (window, node) = Window::new(pa, ms, widget, (session.layout_fn)());
-            context::windows::<U>(pa).borrow_mut().push(window);
+            let node = context::windows().new_window(pa, ms, file_cfg, (session.layout_fn)());
 
             if is_active || hasnt_set_cur {
-                context::set_cur(pa, node.as_file(), node.clone());
+                context::set_cur(pa, node.try_downcast(), node.clone());
                 if win != context::cur_window() {
                     context::set_cur_window(win);
                     U::switch_window(session.ms, win);
@@ -132,16 +122,9 @@ impl<U: Ui> SessionCfg<U> {
                 hasnt_set_cur = false;
             }
 
-            let builder = FileBuilder::new(pa, node, context::cur_window());
-            hook::trigger(pa, OnFileOpen(builder));
-
             for (file_cfg, is_active) in cfgs {
                 session.open_file_from_cfg(pa, file_cfg, is_active, win);
             }
-
-            // Build the window's widgets.
-            let builder = WindowBuilder::<U>::new(pa, win);
-            hook::trigger(pa, OnWindowOpen(builder));
         }
 
         session
@@ -160,27 +143,6 @@ pub struct Session<U: Ui> {
 }
 
 impl<U: Ui> Session<U> {
-    fn open_file(&self, pa: &mut Pass, path: PathBuf) {
-        let windows = context::windows::<U>(pa);
-        let pushed = {
-            let mut windows = windows.borrow_mut();
-            let cur_window = context::cur_window();
-
-            let (file, _) =
-                <FileCfg as WidgetCfg<U>>::build(self.file_cfg.clone().open_path(path), pa, None);
-
-            windows[cur_window].push_file(pa, file)
-        };
-
-        match pushed {
-            Ok((node, _)) => {
-                let builder = FileBuilder::new(pa, node, context::cur_window());
-                hook::trigger(pa, OnFileOpen(builder));
-            }
-            Err(err) => context::error!("{err}"),
-        }
-    }
-
     /// Start the application, initiating a read/response loop.
     pub fn start(
         self,
@@ -194,6 +156,10 @@ impl<U: Ui> Session<U> {
 
         // SAFETY: No Passes exists at this point in time.
         let pa = unsafe { &mut Pass::new() };
+        // SAFETY: Windows won't be accessible via &mut Pass by the end user,
+        // so I should be able to use a shared Pass in order to allow easier
+        // use here, whilst using the other &mut Pass for mutation operations.
+        let wins_pa = unsafe { &Pass::new() };
 
         hook::trigger(pa, ConfigLoaded(()));
 
@@ -204,8 +170,8 @@ impl<U: Ui> Session<U> {
 
         {
             let win = context::cur_window();
-            let windows = context::windows::<U>(pa).borrow();
-            for node in windows[win].nodes() {
+            let window = context::windows::<U>().get(wins_pa, win).unwrap();
+            for node in window.nodes() {
                 node.update_and_print(pa);
             }
         }
@@ -229,7 +195,7 @@ impl<U: Ui> Session<U> {
                         continue;
                     }
                     DuatEvent::OpenFile(name) => {
-                        self.open_file(pa, PathBuf::from(&name));
+                        self.open_file_from_path(pa, context::cur_window(), PathBuf::from(&name));
                         mode::reset_to_file::<U>(name, false);
                     }
                     DuatEvent::CloseFile(name) => self.close_file(pa, name),
@@ -252,12 +218,7 @@ impl<U: Ui> Session<U> {
                         context::order_reload_or_quit();
                         wait_for_threads_to_despawn();
 
-                        for (handle, _) in context::windows::<U>(pa)
-                            .borrow_mut()
-                            .iter()
-                            .flat_map(Window::nodes)
-                            .filter_map(|node| node.as_file())
-                        {
+                        for handle in context::windows::<U>().file_handles(wins_pa) {
                             hook::trigger(pa, OnFileReload((handle, Cache::new())));
                         }
 
@@ -272,12 +233,7 @@ impl<U: Ui> Session<U> {
                         context::order_reload_or_quit();
                         wait_for_threads_to_despawn();
 
-                        for (handle, _) in context::windows::<U>(pa)
-                            .borrow_mut()
-                            .iter()
-                            .flat_map(Window::nodes)
-                            .filter_map(|node| node.as_file())
-                        {
+                        for handle in context::windows::<U>().file_handles(wins_pa) {
                             hook::trigger(pa, OnFileClose((handle, Cache::new())));
                         }
 
@@ -285,20 +241,17 @@ impl<U: Ui> Session<U> {
                     }
                 }
             } else if reprint_screen {
-                let windows = context::windows::<U>(pa).borrow();
-
                 let win = context::cur_window();
-                reprint_screen = false;
-                for node in windows[win].nodes() {
+                let window = context::windows::<U>().get(wins_pa, win).unwrap();
+                for node in window.nodes() {
                     node.update_and_print(pa);
                 }
-
                 continue;
             }
 
-            let windows = context::windows::<U>(pa).borrow();
             let win = context::cur_window();
-            for node in windows[win].nodes() {
+            let window = context::windows::<U>().get(wins_pa, win).unwrap();
+            for node in window.nodes() {
                 if node.needs_update(pa) {
                     node.update_and_print(pa);
                 }
@@ -307,21 +260,34 @@ impl<U: Ui> Session<U> {
     }
 
     fn take_files(self, pa: &mut Pass) -> Vec<Vec<FileRet>> {
-        context::windows::<U>(pa)
-            .borrow()
-            .iter()
-            .map(|w| {
-                let files = w.nodes().filter_map(|node| {
-                    node.try_downcast::<File<U>>().map(|file| {
-                        file.write(pa, |file| {
-                            let text = std::mem::take(file.text_mut());
-                            let has_unsaved_changes = text.has_unsaved_changes();
-                            let bytes = text.take_bytes();
-                            let pk = file.path_kind();
-                            let is_active = node.area().is_active();
-                            FileRet::new(bytes, pk, is_active, has_unsaved_changes)
-                        })
-                    })
+        let files = context::windows::<U>().entries(pa).fold(
+            Vec::new(),
+            |mut file_handles, (win, _, node)| {
+                if win >= file_handles.len() {
+                    file_handles.push(Vec::new());
+                }
+
+                if let Some(handle) = node.try_downcast::<File<U>>() {
+                    file_handles.last_mut().unwrap().push(handle)
+                }
+
+                file_handles
+            },
+        );
+
+        files
+            .into_iter()
+            .map(|files| {
+                let files = files.into_iter().map(|handle| {
+                    let (file, area) = handle.write_with_area(pa);
+
+                    let text = std::mem::take(file.text_mut());
+                    let has_unsaved_changes = text.has_unsaved_changes();
+                    let bytes = text.take_bytes();
+                    let pk = file.path_kind();
+                    let is_active = area.is_active();
+
+                    FileRet::new(bytes, pk, is_active, has_unsaved_changes)
                 });
                 files.collect()
             })
@@ -335,31 +301,25 @@ impl<U: Ui> Session<U> {
         is_active: bool,
         win: usize,
     ) {
-        let pushed = {
-            let mut windows = context::windows::<U>(pa).borrow_mut();
-            let (widget, _) = file_cfg.build(pa, None);
-
-            let result = windows[win].push_file(pa, widget);
-
-            if let Ok((node, _)) = &result
-                && is_active
-            {
-                context::set_cur(pa, node.as_file(), node.clone());
-                if context::cur_window() != win {
-                    context::set_cur_window(win);
-                    U::switch_window(self.ms, win);
+        match context::windows::<U>().new_file(pa, win, file_cfg) {
+            Ok(node) => {
+                if is_active {
+                    context::set_cur(pa, node.try_downcast(), node.clone());
+                    if context::cur_window() != win {
+                        context::set_cur_window(win);
+                        U::switch_window(self.ms, win);
+                    }
                 }
             }
-
-            result
-        };
-
-        match pushed {
-            Ok((node, _)) => {
-                let builder = FileBuilder::new(pa, node, context::cur_window());
-                hook::trigger(pa, OnFileOpen(builder));
-            }
             Err(err) => context::error!("{err}"),
+        }
+    }
+
+    fn open_file_from_path(&self, pa: &mut Pass, win: usize, path: PathBuf) {
+        if let Err(err) =
+            context::windows::<U>().new_file(pa, win, self.file_cfg.clone().open_path(path))
+        {
+            context::error!("{err}")
         }
     }
 }
@@ -367,159 +327,22 @@ impl<U: Ui> Session<U> {
 // Loop functions
 impl<U: Ui> Session<U> {
     fn close_file(&self, pa: &mut Pass, name: String) {
-        let mut windows = context::windows::<U>(pa).borrow_mut();
-        let (win, lhs, nodes) = {
-            let (lhs_win, _, lhs) = file_entry(pa, &windows, &name).unwrap();
-            let lhs = lhs.clone();
-
-            let lo = lhs.read_as(pa, |f: &File<U>| f.layout_order).unwrap();
-
-            let nodes: Vec<Node<U>> = windows[lhs_win]
-                .nodes()
-                .filter(|n| n.data_is::<File<U>>())
-                .skip(lo + 1)
-                .cloned()
-                .collect();
-
-            let (widget, area, mask, _) = lhs.parts();
-            let file = widget.try_downcast::<File<U>>().unwrap();
-            let handle = Handle::from_parts(file, area.clone(), mask.clone());
-            hook::trigger(pa, OnFileClose((handle, Cache::new())));
-
-            (lhs_win, lhs, nodes)
-        };
-
-        for rhs in nodes {
-            swap(pa, &mut windows, [win, win], [&lhs, &rhs]);
-        }
-
-        windows[win].remove_file(pa, &name);
-        if windows[win].file_names(pa).is_empty() {
-            windows.remove(win);
-            U::remove_window(self.ms, win);
-            let cur_win = context::cur_window();
-            if cur_win > win {
-                context::set_cur_window(cur_win - 1);
-            }
-        }
+        context::windows::<U>().close_file(pa, &name, self.ms);
     }
 
     fn swap_files(&self, pa: &mut Pass, lhs_name: String, rhs_name: String) {
-        let mut windows = context::windows::<U>(pa).borrow_mut();
-        let (wins, [lhs_node, rhs_node]) = {
-            let (lhs_win, _, lhs_node) = file_entry(pa, &windows, &lhs_name).unwrap();
-            let (rhs_win, _, rhs_node) = file_entry(pa, &windows, &rhs_name).unwrap();
-            let lhs_node = lhs_node.clone();
-            let rhs_node = rhs_node.clone();
-            ([lhs_win, rhs_win], [lhs_node, rhs_node])
-        };
-
-        swap(pa, &mut windows, wins, [&lhs_node, &rhs_node]);
-        drop(windows);
-
-        let name = context::fixed_file::<U>(pa)
-            .unwrap()
-            .read(pa, |file, _| file.name());
-        if wins[0] != wins[1]
-            && let Some(win) = [lhs_name, rhs_name].into_iter().position(|n| n == name)
-        {
-            context::set_cur_window(win);
-            U::switch_window(self.ms, win);
-        }
+        context::windows::<U>().swap_files(pa, &lhs_name, &rhs_name, self.ms);
     }
 
-    #[allow(clippy::await_holding_refcell_ref)]
     fn open_window_with(&self, pa: &mut Pass, name: String) {
-        // Holding of the RefCell
-        let mut windows = context::windows::<U>(pa).borrow_mut();
-        let new_win = windows.len();
-
-        if let Ok((win, .., node)) = file_entry(pa, &windows, &name) {
-            // Take the nodes in the original Window
-            let node = node.clone();
-            node.widget()
-                .write_as(pa, |f: &mut File<U>| f.layout_order = 0);
-            let nodes = windows[win].take_file_and_related_nodes(pa, &node);
-            let layout = (self.layout_fn)();
-
-            // Create a new Window Swapping the new root with files_area
-            let new_root = U::new_root(self.ms, <U::Area as RawArea>::Cache::default());
-            U::Area::swap(MutArea(node.area()), &new_root);
-            let window = Window::<U>::from_raw(node.area().clone(), nodes, layout);
-            windows.push(window);
-
-            // Swap the Files ahead of the swapped new_root
-            let lo = node.read_as(pa, |f: &File<U>| f.layout_order).unwrap();
-
-            for (_, AreaId(area)) in &windows[win].file_nodes(pa)[lo..] {
-                MutArea(&new_root).swap(area);
-            }
-            // RefCell dropped here, before any .await
-            drop(windows);
-
-            // Delete the new_root, which should be the last "File" in the
-            // list of the original Window.
-            MutArea(&new_root).delete();
-        } else {
-            let (widget, _) = self
-                .file_cfg
-                .clone()
-                .open_path(PathBuf::from(name.clone()))
-                .build(pa, None);
-
-            let (window, node) = Window::new(pa, self.ms, widget, (self.layout_fn)());
-            windows.push(window);
-            // RefCell dropped here, before any .await
-            drop(windows);
-
-            // Open and process files.
-            let builder = FileBuilder::new(pa, node, new_win);
-            hook::trigger(pa, OnFileOpen(builder));
-        }
-
-        let builder = WindowBuilder::<U>::new(pa, new_win);
-        hook::trigger(pa, OnWindowOpen(builder));
-
-        if context::fixed_file::<U>(pa)
-            .unwrap()
-            .read(pa, |file, _| file.name())
-            != name
-        {
-            mode::reset_to_file::<U>(name, false);
-        }
-
-        context::set_cur_window(new_win);
-        U::switch_window(self.ms, new_win);
+        context::windows::<U>().open_or_move_to_new_window(
+            pa,
+            &name,
+            self.ms,
+            (self.layout_fn)(),
+            self.file_cfg.clone(),
+        );
     }
-}
-
-fn swap<U: Ui>(
-    pa: &mut Pass,
-    windows: &mut [Window<U>],
-    [lhs_w, rhs_w]: [usize; 2],
-    [lhs, rhs]: [&Node<U>; 2],
-) {
-    let rhs_lo = rhs
-        .widget()
-        .read_as(pa, |f: &File<U>| f.layout_order)
-        .unwrap();
-    let lhs_lo = lhs
-        .widget()
-        .write_as(pa, |f: &mut File<U>| {
-            std::mem::replace(&mut f.layout_order, rhs_lo)
-        })
-        .unwrap();
-
-    rhs.widget()
-        .write_as(pa, |f: &mut File<U>| f.layout_order = lhs_lo);
-
-    let lhs_nodes = windows[lhs_w].take_file_and_related_nodes(pa, lhs);
-    windows[rhs_w].insert_file_nodes(pa, rhs_lo, lhs_nodes);
-
-    let rhs_nodes = windows[rhs_w].take_file_and_related_nodes(pa, rhs);
-    windows[lhs_w].insert_file_nodes(pa, lhs_lo, rhs_nodes);
-
-    MutArea(lhs.area()).swap(rhs.area());
 }
 
 fn wait_for_threads_to_despawn() {

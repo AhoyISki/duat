@@ -47,7 +47,7 @@
 use std::{
     self,
     any::TypeId,
-    cell::RefCell,
+    cell::{RefCell, UnsafeCell},
     marker::PhantomData,
     sync::{
         Arc,
@@ -56,11 +56,7 @@ use std::{
     time::Duration,
 };
 
-use crate::{
-    cfg::PrintCfg,
-    text::Text,
-    ui::{Ui, Widget},
-};
+use crate::ui::{Ui, Widget};
 
 /// A container for shared read/write state
 ///
@@ -112,7 +108,7 @@ use crate::{
 /// [`Parser`]: crate::file::Parser
 #[derive(Debug)]
 pub struct RwData<T: ?Sized> {
-    value: Arc<RefCell<T>>,
+    value: Arc<UnsafeCell<T>>,
     cur_state: Arc<AtomicUsize>,
     read_state: Arc<AtomicUsize>,
     ty: TypeId,
@@ -126,60 +122,11 @@ impl<T: 'static> RwData<T> {
     /// [`RwData::new_unsized`].
     pub fn new(value: T) -> Self {
         Self {
-            value: Arc::new(RefCell::new(value)),
+            value: Arc::new(UnsafeCell::new(value)),
             ty: TypeId::of::<T>(),
             cur_state: Arc::new(AtomicUsize::new(1)),
             read_state: Arc::new(AtomicUsize::new(0)),
         }
-    }
-
-    /// Replaces the value within using a [`Pass`]
-    ///
-    /// The consistent use of a [`Pass`] for the purposes of
-    /// reading/writing to the values of [`RwData`]s ensures that no
-    /// panic or invalid borrow happens at runtime, even while working
-    /// with untrusted code. More importantly, Duat uses these
-    /// guarantees in order to give the end user a ridiculous amount
-    /// of freedom in where they can do things, whilst keeping Rust's
-    /// number one rule and ensuring thread safety, even with a
-    /// relatively large amount of shareable state.
-    ///
-    /// # Panics
-    ///
-    /// Panics if there is any type of borrow of this struct
-    /// somewhere, which could happen if you use [`read_unsafe`]
-    /// or [`write_unsafe`], for example.
-    ///
-    /// [`read_unsafe`]: Self::read_unsafe
-    /// [`write_unsafe`]: Self::write_unsafe
-    pub fn replace(&self, pa: &mut Pass, new: T) -> T {
-        self.write(pa, |value| std::mem::replace(value, new))
-    }
-
-    /// Gets the value within using a [`Pass`]
-    ///
-    /// The consistent use of a [`Pass`] for the purposes of
-    /// reading/writing to the values of [`RwData`]s ensures that no
-    /// panic or invalid borrow happens at runtime, even while working
-    /// with untrusted code. More importantly, Duat uses these
-    /// guarantees in order to give the end user a ridiculous amount
-    /// of freedom in where they can do things, whilst keeping Rust's
-    /// number one rule and ensuring thread safety, even with a
-    /// relatively large amount of shareable state.
-    ///
-    /// # Panics
-    ///
-    /// Panics if there is a mutable borrow of this struct somewhere,
-    /// which could happen if you use [`write_unsafe`] or
-    /// [`write_unsafe_as`]
-    ///
-    /// [`write_unsafe`]: Self::write_unsafe
-    /// [`write_unsafe_as`]: Self::write_unsafe_as
-    pub fn get(&self, pa: &Pass) -> T
-    where
-        T: Clone,
-    {
-        self.read(pa, |value| value.clone())
     }
 }
 
@@ -207,7 +154,7 @@ impl<T: ?Sized> RwData<T> {
     ///
     /// [`read_as`]: Self::read_as
     /// [`write_as`]: Self::write_as
-    pub unsafe fn new_unsized<SizedT: 'static>(value: Arc<RefCell<T>>) -> Self {
+    pub(crate) unsafe fn new_unsized<SizedT: 'static>(value: Arc<UnsafeCell<T>>) -> Self {
         Self {
             value,
             ty: TypeId::of::<SizedT>(),
@@ -228,9 +175,12 @@ impl<T: ?Sized> RwData<T> {
     /// of freedom in where they can do things, whilst keeping Rust's
     /// number one rule and ensuring thread safety, even with a
     /// relatively large amount of shareable state.
-    pub fn read<Ret>(&self, _: &Pass, f: impl FnOnce(&T) -> Ret) -> Ret {
+    pub fn read<'a>(&'a self, _: &'a Pass) -> &'a T {
         update_read_state(&self.read_state, &self.cur_state);
-        f(&*self.value.borrow())
+        // SAFETY: If one were to try and write to this value, this reference
+        // would instantly become invalid, and trying to read from it again
+        // would cause a compile error due to a Pass borrowing conflict.
+        unsafe { &*self.value.get() }
     }
 
     /// Reads the value within as `U` using a [`Pass`]
@@ -243,19 +193,19 @@ impl<T: ?Sized> RwData<T> {
     /// of freedom in where they can do things, whilst keeping Rust's
     /// number one rule and ensuring thread safety, even with a
     /// relatively large amount of shareable state.
-    pub fn read_as<Ret, U: 'static>(&self, _: &Pass, f: impl FnOnce(&U) -> Ret) -> Option<Ret> {
-        fn prepare<T: ?Sized, U: 'static>(data: &RwData<T>) -> Option<std::cell::Ref<'_, U>> {
-            if TypeId::of::<U>() != data.ty {
-                return None;
-            }
-
-            data.read_state
-                .store(data.cur_state.load(Ordering::Relaxed), Ordering::Relaxed);
-            let ptr = Arc::as_ptr(&data.value);
-            Some(unsafe { (ptr as *const RefCell<U>).as_ref().unwrap().borrow() })
+    pub fn read_as<'a, U: 'static>(&'a self, _: &'a Pass) -> Option<&'a U> {
+        if TypeId::of::<U>() != self.ty {
+            return None;
         }
 
-        prepare(self).map(|mapped| f(&*mapped))
+        self.read_state
+            .store(self.cur_state.load(Ordering::Relaxed), Ordering::Relaxed);
+
+        let ptr = Arc::as_ptr(&self.value) as *const UnsafeCell<U>;
+
+        // SAFETY: Same as above, but also, the TypeId in the Handle
+        // "guarantees" that this is the correct type.
+        Some(unsafe { &*(&*ptr).get() })
     }
 
     /// Simulates a [`read`] without actually reading
@@ -273,15 +223,9 @@ impl<T: ?Sized> RwData<T> {
 
     /// Reads the data without updating its read state, might be
     /// removed, idk
-    pub(crate) fn read_raw<Ret>(&self, f: impl FnOnce(&T) -> Ret) -> Ret {
-        f(&*self.value.borrow())
-    }
-
-    /// Acquires the value within, meant for improving compile times
-    /// internally.
-    pub(crate) fn acquire(&self, _: &Pass) -> std::cell::RefMut<'_, T> {
-        update_read_state(&self.read_state, &self.cur_state);
-        self.value.borrow_mut()
+    pub(crate) fn read_raw(&self) -> &T {
+        // SAFETY: Same as Self::read
+        unsafe { &*self.value.get() }
     }
 
     ////////// Writing functions
@@ -296,10 +240,13 @@ impl<T: ?Sized> RwData<T> {
     /// of freedom in where they can do things, whilst keeping Rust's
     /// number one rule and ensuring thread safety, even with a
     /// relatively large amount of shareable state.
-    #[track_caller]
-    pub fn write<Ret>(&self, _: &mut Pass, f: impl FnOnce(&mut T) -> Ret) -> Ret {
+    pub fn write<'a>(&'a self, _: &'a mut Pass) -> &'a mut T {
         update_cur_state(&self.read_state, &self.cur_state);
-        f(&mut *self.value.borrow_mut())
+        // SAFETY: Again, the mutable reference to the Pass ensures that this
+        // is the only _valid_ mutable reference, if another reference,
+        // created prior to this one, were to be reused, that would be a
+        // compile error.
+        unsafe { &mut *self.value.get() }
     }
 
     /// Writes to the value within as `U` using a [`Pass`]
@@ -312,26 +259,22 @@ impl<T: ?Sized> RwData<T> {
     /// of freedom in where they can do things, whilst keeping Rust's
     /// number one rule and ensuring thread safety, even with a
     /// relatively large amount of shareable state.
-    pub fn write_as<Ret, U: 'static>(
-        &self,
-        _: &mut Pass,
-        f: impl FnOnce(&mut U) -> Ret,
-    ) -> Option<Ret> {
-        fn prepare<T: ?Sized, U: 'static>(data: &RwData<T>) -> Option<std::cell::RefMut<'_, U>> {
-            if TypeId::of::<U>() != data.ty {
-                return None;
-            }
-
-            let prev = data.cur_state.fetch_add(1, Ordering::Relaxed);
-            data.read_state.store(prev + 1, Ordering::Relaxed);
-            let ptr = Arc::as_ptr(&data.value);
-            Some(unsafe { (ptr as *const RefCell<U>).as_ref().unwrap().borrow_mut() })
+    pub fn write_as<'a, U: 'static>(&'a self, _: &'a mut Pass) -> Option<&'a mut U> {
+        if TypeId::of::<U>() != self.ty {
+            return None;
         }
 
-        prepare(self).map(|mut mapped| f(&mut *mapped))
+        let prev = self.cur_state.fetch_add(1, Ordering::Relaxed);
+        self.read_state.store(prev + 1, Ordering::Relaxed);
+
+        let ptr = Arc::as_ptr(&self.value) as *const UnsafeCell<U>;
+
+        // SAFETY: Same as above, but also, the TypeId in the Handle
+        // "guarantees" that this is the correct type.
+        Some(unsafe { &mut *(&*ptr).get() })
     }
 
-    /// Simulates a [`write`] without actually reading
+    /// Simulates a [`write`] without actually writing
     ///
     /// This is useful if you want to tell Duat that you want
     /// [`has_changed`] to return `true`, but you don't have a
@@ -341,14 +284,6 @@ impl<T: ?Sized> RwData<T> {
     /// [`has_changed`]: Self::has_changed
     pub fn declare_written(&self) {
         update_cur_state(&self.read_state, &self.cur_state);
-    }
-
-    /// Acquires a mutable reference to the value within, for
-    /// compilation time improvements inside Duat
-    #[track_caller]
-    pub(crate) fn acquire_mut(&self, _: &mut Pass) -> std::cell::RefMut<'_, T> {
-        update_cur_state(&self.read_state, &self.cur_state);
-        self.value.borrow_mut()
     }
 
     ////////// Mapping of the inner value
@@ -387,7 +322,8 @@ impl<T: ?Sized> RwData<T> {
         }
 
         let ptr = Arc::into_raw(self.value.clone());
-        let value = unsafe { Arc::from_raw(ptr as *const RefCell<U>) };
+        // SAFETY: TypeId argument "guarantees" this
+        let value = unsafe { Arc::from_raw(ptr as *const UnsafeCell<U>) };
         Some(RwData {
             value,
             cur_state: self.cur_state.clone(),
@@ -400,7 +336,7 @@ impl<T: ?Sized> RwData<T> {
 
     /// Wether this [`RwData`] and another point to the same value
     pub fn ptr_eq<U: ?Sized>(&self, other: &RwData<U>) -> bool {
-        self.value.as_ptr().addr() == other.value.as_ptr().addr()
+        Arc::as_ptr(&self.value).addr() == Arc::as_ptr(&other.value).addr()
     }
 
     /// The [`TypeId`] of the concrete type within
@@ -448,54 +384,24 @@ impl<T: ?Sized> RwData<T> {
         let (cur, read) = (self.cur_state.clone(), self.read_state.clone());
         move || read.load(Ordering::Relaxed) < cur.load(Ordering::Relaxed)
     }
+}
 
-    ////////// Widget Functions
-
-    /// Clones the [`Text`] of the [`Widget`]
-    pub fn clone_text<U>(&self, pa: &Pass) -> Text
+impl<W> RwData<W> {
+    /// Downcasts [`RwData<impl Widget<U>`] to [`RwData<dyn
+    /// Widget<U>>`]
+    pub fn to_dyn_widget<U: Ui>(&self) -> RwData<dyn Widget<U>>
     where
-        T: Widget<U>,
-        U: Ui,
+        W: Widget<U>,
     {
-        self.acquire(pa).text().clone()
-    }
-
-    /// Takes the [`Text`] from the [`Widget`], replacing it with the
-    /// [`Default`]
-    pub fn take_text<U>(&self, pa: &mut Pass) -> Text
-    where
-        T: Widget<U>,
-        U: Ui,
-    {
-        std::mem::take(self.acquire_mut(pa).text_mut())
-    }
-
-    /// Replaces the [`Text`] of the [`Widget`], returning the
-    /// previous value
-    pub fn replace_text<U>(&self, pa: &mut Pass, text: impl Into<Text>) -> Text
-    where
-        T: Widget<U>,
-        U: Ui,
-    {
-        std::mem::replace(self.acquire_mut(pa).text_mut(), text.into())
-    }
-
-    /// The [`PrintCfg`] of the [`Widget`]
-    pub fn print_cfg<U>(&self, pa: &Pass) -> PrintCfg
-    where
-        T: Widget<U>,
-        U: Ui,
-    {
-        self.acquire(pa).print_cfg()
-    }
-
-    /// Whether the [`Widget`] needs to be updated
-    pub fn needs_update<U>(&self, pa: &Pass) -> bool
-    where
-        T: Widget<U>,
-        U: Ui,
-    {
-        self.acquire(pa).needs_update(pa)
+        let ptr = Arc::into_raw(self.value.clone());
+        // SAFETY: Implements Widget<U>
+        let value = unsafe { Arc::from_raw(ptr as *const UnsafeCell<dyn Widget<U>>) };
+        RwData {
+            value,
+            cur_state: self.cur_state.clone(),
+            read_state: Arc::new(AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1)),
+            ty: TypeId::of::<U>(),
+        }
     }
 }
 
@@ -603,19 +509,19 @@ impl<I: ?Sized + 'static, O: 'static> FnOnce<(&Pass,)> for DataMap<I, O> {
     type Output = O;
 
     extern "rust-call" fn call_once(self, (key,): (&Pass,)) -> Self::Output {
-        self.data.read(key, |input| self.map.borrow_mut()(input))
+        self.map.borrow_mut()(self.data.read(key))
     }
 }
 
 impl<I: ?Sized + 'static, O: 'static> FnMut<(&Pass,)> for DataMap<I, O> {
     extern "rust-call" fn call_mut(&mut self, (key,): (&Pass,)) -> Self::Output {
-        self.data.read(key, |input| self.map.borrow_mut()(input))
+        self.map.borrow_mut()(self.data.read(key))
     }
 }
 
 impl<I: ?Sized + 'static, O: 'static> Fn<(&Pass,)> for DataMap<I, O> {
     extern "rust-call" fn call(&self, (key,): (&Pass,)) -> Self::Output {
-        self.data.read(key, |input| self.map.borrow_mut()(input))
+        self.map.borrow_mut()(self.data.read(key))
     }
 }
 
@@ -679,28 +585,6 @@ impl Pass {
     pub(crate) unsafe fn new() -> Self {
         Pass(PhantomData)
     }
-
-    // /// Duplicates the [`Pass`]
-    // ///
-    // /// By using this function, you can do multiple mutable borrows of
-    // /// [`RwData`] or [`Handle`]s, as well as simultaneous mutable/non
-    // /// mutable borrows.
-    // ///
-    // /// You should almost _never_ use this function. Not only does it
-    // /// make it harder to reason about what things are borrowed at a
-    // /// given time. But it is also harder for callers of this function
-    // /// to trust that it will follow the rules of the [`Pass`].
-    // ///
-    // /// However, there is _some_ utility
-    // ///
-    // /// # Safety
-    // ///
-    // /// .
-    // #[allow(static_mut_refs)]
-    // pub unsafe fn duplicate(&mut self) -> (&mut Self, &mut Self) {
-    //     static mut PASS: Pass = Pass(PhantomData);
-    //     unsafe { (&mut PASS, &mut PASS) }
-    // }
 }
 
 fn update_read_state(read_state: &Arc<AtomicUsize>, cur_state: &Arc<AtomicUsize>) {

@@ -60,8 +60,15 @@ impl Cache {
     /// The cache must have been previously stored by [astore_cache`].
     /// If it does not exist, or the file can't be correctly
     /// interpreted, returns [`None`]
-    pub fn load<C: Decode<()> + 'static>(&self, path: impl Into<PathBuf>) -> Result<C, Text> {
+    pub fn load<C: Decode<()> + Default + 'static>(
+        &self,
+        path: impl Into<PathBuf>,
+    ) -> Result<C, Text> {
         let mut cache_file = cache_file::<C>(path.into(), false)?;
+
+        if cache_file.metadata()?.len() == 0 {
+            return Ok(C::default());
+        }
 
         let config = Configuration::<LittleEndian, Fixint, NoLimit>::default();
         bincode::decode_from_std_read(&mut cache_file, config).map_err(|err| txt!("{err}").build())
@@ -169,7 +176,7 @@ fn cache_file<C: 'static>(path: PathBuf, to_write: bool) -> std::io::Result<File
     let src = src_dir.join(format!("{}::{}", src_crate::<C>(), duat_name::<C>()));
 
     std::fs::OpenOptions::new()
-        .create(to_write)
+        .create(true)
         .read(!to_write)
         .write(to_write)
         .truncate(to_write)

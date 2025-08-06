@@ -58,16 +58,12 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: &'static Sender<DuatEvent>
     let windows: &'static RefCell<Vec<Window<Ui>>> = Box::leak(Box::new(RefCell::new(Vec::new())));
     static CUR_WINDOW: AtomicUsize = AtomicUsize::new(0);
 
-    // SAFETY: This function is supposed to be called only from the main
-    // thread, this is that thread.
-    unsafe {
         duat_core::context::setup_context::<Ui>(
             cur_file,
             cur_widget,
             CUR_WINDOW.load(Ordering::Relaxed),
             windows,
         );
-    }
 
     duat_core::context::set_sender(duat_tx);
 
@@ -94,62 +90,62 @@ pub fn pre_setup(initials: Option<Initials>, duat_tx: &'static Sender<DuatEvent>
     });
 
     hook::add_grouped::<OnFileReload>("SaveCacheOnReload", |pa, (handle, cache)| {
-        handle.write(pa, |file, area| {
-            let path = file.path();
-            file.text_mut().new_moment();
+        let (file, area) = handle.write_with_area(pa);
 
-            if let Some(history) = file.text().history()
-                && let Err(err) = cache.store(&path, history.clone())
-            {
-                context::error!("{err}");
-            }
+        let path = file.path();
+        file.text_mut().new_moment();
 
-            if let Some(area_cache) = area.cache()
-                && let Err(err) = cache.store(&path, area_cache)
-            {
-                context::error!("{err}");
-            }
+        if let Some(history) = file.text().history()
+            && let Err(err) = cache.store(&path, history.clone())
+        {
+            context::error!("{err}");
+        }
 
-            if let Some(main) = file.selections_mut().get_main()
-                && let Err(err) = cache.store(path, main.clone())
-            {
-                context::error!("{err}");
-            }
-        });
+        if let Some(area_cache) = area.cache()
+            && let Err(err) = cache.store(&path, area_cache)
+        {
+            context::error!("{err}");
+        }
+
+        if let Some(main) = file.selections_mut().get_main()
+            && let Err(err) = cache.store(path, main.clone())
+        {
+            context::error!("{err}");
+        }
     });
 
     hook::add_grouped::<OnFileClose>("DeleteHistoryOnClose", |pa, (handle, cache)| {
-        handle.write(pa, |file, _| {
-            let path = file.path();
-            cache.delete_for::<History>(&path);
-            if !file.exists() || file.text().has_unsaved_changes() {
-                cache.delete(path);
-            }
-        });
+        let file = handle.write(pa);
+
+        let path = file.path();
+        cache.delete_for::<History>(&path);
+        if !file.exists() || file.text().has_unsaved_changes() {
+            cache.delete(path);
+        }
     });
 
     hook::add_grouped::<OnFileClose>("SaveCacheOnClose", |pa, (handle, cache)| {
-        handle.write(pa, |file, area| {
-            let path = file.path();
-            file.text_mut().new_moment();
+        let (file, area) = handle.write(pa);
+        
+        let path = file.path();
+        file.text_mut().new_moment();
 
-            if let Some("gitcommit") = path.filetype() {
-                cache.delete(path);
-                return;
-            }
+        if let Some("gitcommit") = path.filetype() {
+            cache.delete(path);
+            return;
+        }
 
-            if let Some(area_cache) = area.cache()
-                && let Err(err) = cache.store(&path, area_cache)
-            {
-                context::error!("{err}");
-            }
+        if let Some(area_cache) = area.cache()
+            && let Err(err) = cache.store(&path, area_cache)
+        {
+            context::error!("{err}");
+        }
 
-            if let Some(main) = file.selections_mut().get_main()
-                && let Err(err) = cache.store(path, main.clone())
-            {
-                context::error!("{err}");
-            }
-        });
+        if let Some(main) = file.selections_mut().get_main()
+            && let Err(err) = cache.store(path, main.clone())
+        {
+            context::error!("{err}");
+        }
     });
 
     form::enable_mask("error");
