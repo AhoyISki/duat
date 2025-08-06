@@ -121,6 +121,7 @@ impl<U: Ui> Mode<U> for Normal {
                 set_anchor_if_needed(event.code == Char('J'), &mut c);
                 c.move_ver(1);
                 let v_caret = c.v_caret();
+                context::debug!("{v_caret:#?}");
                 if c.char() == '\n'
                     && v_caret.char_col() > 0
                     && self.sel_type != SelType::ToEndOfLine
@@ -343,14 +344,14 @@ impl<U: Ui> Mode<U> for Normal {
 
             ////////// Insertion mode keys
             key!(Char('i')) => {
-                handle.new_moment(pa);
+                handle.text_mut(pa).new_moment();
                 handle.edit_all(pa, |mut c| {
                     c.set_caret_on_start();
                 });
                 mode::set::<U>(Insert::new());
             }
             key!(Char('I')) => {
-                handle.new_moment(pa);
+                handle.text_mut(pa).new_moment();
                 let mut processed_lines = Vec::new();
                 handle.edit_all(pa, |mut c| {
                     c.unset_anchor();
@@ -363,7 +364,7 @@ impl<U: Ui> Mode<U> for Normal {
                 mode::set::<U>(Insert::new());
             }
             key!(Char('a')) => {
-                handle.new_moment(pa);
+                handle.text_mut(pa).new_moment();
                 handle.edit_all(pa, |mut c| {
                     c.set_caret_on_end();
                     c.move_hor(1);
@@ -371,7 +372,7 @@ impl<U: Ui> Mode<U> for Normal {
                 mode::set::<U>(Insert::new());
             }
             key!(Char('A')) => {
-                handle.new_moment(pa);
+                handle.text_mut(pa).new_moment();
                 handle.edit_all(pa, |mut c| {
                     c.unset_anchor();
                     let (p, _) = c.chars_fwd().find(|(_, c)| *c == '\n').unwrap();
@@ -380,7 +381,7 @@ impl<U: Ui> Mode<U> for Normal {
                 mode::set::<U>(Insert::new());
             }
             key!(Char('o' | 'O'), Mod::NONE | Mod::ALT) => {
-                handle.new_moment(pa);
+                handle.text_mut(pa).new_moment();
                 let mut processed_lines = Vec::new();
                 handle.edit_all(pa, |mut c| {
                     if event.code == Char('O') {
@@ -414,11 +415,11 @@ impl<U: Ui> Mode<U> for Normal {
 
             ////////// Selection alteration keys
             key!(Char('r')) => {
-                handle.new_moment(pa);
+                handle.text_mut(pa).new_moment();
                 mode::set::<U>(OneKey::Replace)
             }
             key!(Char('`')) => {
-                handle.new_moment(pa);
+                handle.text_mut(pa).new_moment();
                 handle.edit_all(pa, |mut c| {
                     let lower = c
                         .selection()
@@ -428,7 +429,7 @@ impl<U: Ui> Mode<U> for Normal {
                 })
             }
             key!(Char('~')) => {
-                handle.new_moment(pa);
+                handle.text_mut(pa).new_moment();
                 handle.edit_all(pa, |mut c| {
                     let upper = c
                         .selection()
@@ -438,7 +439,7 @@ impl<U: Ui> Mode<U> for Normal {
                 })
             }
             key!(Char('`'), Mod::ALT) => {
-                handle.new_moment(pa);
+                handle.text_mut(pa).new_moment();
                 handle.edit_all(pa, |mut c| {
                     let inverted = c.selection().flat_map(str::chars).map(|c| {
                         if c.is_uppercase() {
@@ -459,10 +460,10 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char(':'), Mod::ALT) => handle.edit_all(pa, |mut c| {
                 c.set_caret_on_end();
             }),
-            key!(Char(')')) => handle.write_selections(pa, |s| s.rotate_main(1)),
-            key!(Char('(')) => handle.write_selections(pa, |s| s.rotate_main(-1)),
+            key!(Char(')')) => handle.selections_mut(pa).rotate_main(1),
+            key!(Char('(')) => handle.selections_mut(pa).rotate_main(-1),
             key!(Char(')'), Mod::ALT) => {
-                handle.new_moment(pa);
+                handle.text_mut(pa).new_moment();
                 let last_sel = handle.edit_iter(pa, |mut iter| {
                     let mut last_sel = iter.next().map(|c| c.selection().to_string());
 
@@ -478,7 +479,7 @@ impl<U: Ui> Mode<U> for Normal {
                 handle.edit_nth(pa, 0, |mut c| c.replace(last_sel.unwrap()));
             }
             key!(Char('('), Mod::ALT) => {
-                handle.new_moment(pa);
+                handle.text_mut(pa).new_moment();
                 let mut selections = Vec::<String>::new();
                 handle.edit_all(pa, |c| selections.push(c.selection().collect()));
                 let mut s_iter = selections.into_iter().cycle();
@@ -531,7 +532,7 @@ impl<U: Ui> Mode<U> for Normal {
 
             ////////// Line alteration keys
             key!(Char('>')) => {
-                handle.new_moment(pa);
+                handle.text_mut(pa).new_moment();
                 let mut processed_lines = Vec::new();
                 handle.edit_all(pa, |mut c| {
                     let range = c.range_excl();
@@ -564,7 +565,7 @@ impl<U: Ui> Mode<U> for Normal {
                 });
             }
             key!(Char('<')) => {
-                handle.new_moment(pa);
+                handle.text_mut(pa).new_moment();
                 let mut processed_lines = Vec::new();
                 handle.edit_all(pa, |mut c| {
                     let range = c.range_excl();
@@ -581,13 +582,11 @@ impl<U: Ui> Mode<U> for Normal {
                             continue;
                         }
                         let [p0, p1] = c.text().points_of_line(line);
-                        context::debug!("line points are {p0}, {p1}");
                         c.move_to(p0);
                         let Some([p0, p1]) = c.search_fwd(&find, Some(p1)).next() else {
                             continue;
                         };
 
-                        context::info!("deindent points are {p0}, {p1}");
                         c.move_to(p0..p1);
                         c.replace("");
                         if line == caret.0 {
@@ -603,6 +602,8 @@ impl<U: Ui> Mode<U> for Normal {
                     if let Some((line, col)) = anchor {
                         c.move_to_coords(line, col);
                         c.set_anchor();
+                    } else {
+                        c.unset_anchor();
                     }
                     c.move_to_coords(caret.0, caret.1);
 
@@ -610,7 +611,7 @@ impl<U: Ui> Mode<U> for Normal {
                 });
             }
             key!(Char('j'), Mod::ALT) => {
-                handle.new_moment(pa);
+                handle.text_mut(pa).new_moment();
                 let mut processed_lines = Vec::new();
                 handle.edit_all(pa, |mut c| {
                     let [start, end] = c.range();
@@ -652,11 +653,11 @@ impl<U: Ui> Mode<U> for Normal {
 
             ////////// Clipboard keys
             key!(Char('y')) => {
-                handle.new_moment(pa);
+                handle.text_mut(pa).new_moment();
                 copy_selections(pa, &handle)
             }
             key!(Char('d' | 'c'), Mod::NONE | Mod::ALT) => {
-                handle.new_moment(pa);
+                handle.text_mut(pa).new_moment();
                 if event.modifiers == Mod::NONE {
                     copy_selections(pa, &handle);
                 }
@@ -681,7 +682,7 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('p' | 'P')) => {
                 let pastes = paste_strings();
                 if !pastes.is_empty() {
-                    handle.new_moment(pa);
+                    handle.text_mut(pa).new_moment();
                     let mut p_iter = pastes.iter().cycle();
                     handle.edit_all(pa, |mut c| {
                         let paste = p_iter.next().unwrap();
@@ -726,18 +727,16 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char('R')) => {
                 let pastes = paste_strings();
                 if !pastes.is_empty() {
-                    handle.new_moment(pa);
+                    handle.text_mut(pa).new_moment();
                     let mut p_iter = pastes.iter().cycle();
                     handle.edit_all(pa, |mut c| c.replace(p_iter.next().unwrap()));
                 }
             }
 
             ////////// Cursor creation and destruction
-            key!(Char(',')) => {
-                handle.write(pa, |f, _| f.text_mut().selections_mut().remove_extras())
-            }
+            key!(Char(',')) => handle.selections_mut(pa).remove_extras(),
             key!(Char('C')) => {
-                handle.new_moment(pa);
+                handle.text_mut(pa).new_moment();
                 handle.edit_last(pa, |mut c| {
                     let v_caret = c.v_caret();
                     c.copy();
@@ -771,7 +770,7 @@ impl<U: Ui> Mode<U> for Normal {
                 });
             }
             key!(Char('C'), Mod::ALT) => {
-                handle.new_moment(pa);
+                handle.text_mut(pa).new_moment();
                 handle.edit_nth(pa, 0, |mut c| {
                     let v_caret = c.v_caret();
                     c.copy();
@@ -840,7 +839,7 @@ impl<U: Ui> Mode<U> for Normal {
             ////////// Other mode changing keys
             key!(Char(':')) => mode::set::<U>(RunCommands::new()),
             key!(Char('|')) => {
-                handle.new_moment(pa);
+                handle.text_mut(pa).new_moment();
                 mode::set::<U>(PipeSelections::new())
             }
             key!(Char('G')) => mode::set::<U>(OneKey::GoTo(SelType::Extend)),
@@ -848,8 +847,8 @@ impl<U: Ui> Mode<U> for Normal {
             key!(Char(' ')) => mode::set::<U>(mode::User),
 
             ////////// History manipulation
-            key!(Char('u')) => handle.undo(pa),
-            key!(Char('U')) => handle.redo(pa),
+            key!(Char('u')) => handle.text_mut(pa).undo(),
+            key!(Char('U')) => handle.text_mut(pa).redo(),
             _ => {}
         }
     }

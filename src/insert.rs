@@ -159,7 +159,7 @@ impl<U: Ui> Mode<U> for Insert {
             }),
 
             key!(Esc) => {
-                handle.new_moment(pa);
+                handle.text_mut(pa).new_moment();
                 mode::set::<U>(Normal::new());
             }
             _ => {}

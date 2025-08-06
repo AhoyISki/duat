@@ -567,7 +567,7 @@ impl<'a> Object<'a> {
             key!(Char('B' | '{' | '}')) => Some(Self::Bounds(r"\{", r"\}")),
             key!(Char('r' | '[' | ']')) => Some(Self::Bounds(r"\[", r"\]")),
             key!(Char('a' | '<' | '>')) => Some(Self::Bounds("<", ">")),
-            key!(Char('m' | 'M' | 'u')) => Some({
+            key!(Char('m' | 'M'), KeyMod::NONE | KeyMod::ALT) | key!(Char('u')) => Some({
                 let [m_b, s_b, e_b] = BRACKET_PATS.get_or_insert_with(brackets, || {
                     let (s_pat, e_pat): (String, String) = brackets
                         .iter()

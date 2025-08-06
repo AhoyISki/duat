@@ -1,7 +1,7 @@
 use std::sync::{LazyLock, Mutex};
 
 use duat_core::{
-    mode::{KeyCode::*, KeyMod, Selections},
+    mode::{KeyCode::*, KeyMod},
     prelude::*,
 };
 
@@ -68,6 +68,9 @@ fn match_goto<S, U: Ui>(
 ) -> SelType {
     static LAST_FILE: LazyLock<Mutex<Option<String>>> = LazyLock::new(Mutex::default);
 
+    let cur_name = handle.read(pa).name();
+    let last_file = LAST_FILE.lock().unwrap().clone();
+
     match key {
         key!(Char('h')) => handle.edit_all(pa, |mut c| {
             set_anchor_if_needed(sel_type == SelType::Extend, &mut c);
@@ -100,35 +103,24 @@ fn match_goto<S, U: Ui>(
         }),
 
         ////////// File change keys
-        key!(Char('a')) => {
-            let cur_name = handle.read(pa, |file, _| file.name());
-            let last_file = LAST_FILE.lock().unwrap().clone();
-            if let Some(last_file) = last_file {
-                cmd::queue_notify_and(format!("b {last_file}"), |res| {
-                    if res.is_ok() {
-                        *LAST_FILE.lock().unwrap() = Some(cur_name)
-                    }
-                })
-            } else {
-                context::error!("There is no previous file");
+        key!(Char('a')) => match last_file {
+            Some(last_file) => cmd::queue_notify_and(format!("b {last_file}"), |res| {
+                if res.is_ok() {
+                    *LAST_FILE.lock().unwrap() = Some(cur_name)
+                }
+            }),
+            None => context::error!("There is no previous file"),
+        },
+        key!(Char('n')) => cmd::queue_notify_and("next-file --global", |res| {
+            if res.is_ok() {
+                *LAST_FILE.lock().unwrap() = Some(cur_name)
             }
-        }
-        key!(Char('n')) => {
-            let cur_name = handle.read(pa, |file, _| file.name());
-            cmd::queue_notify_and("next-file --global", |res| {
-                if res.is_ok() {
-                    *LAST_FILE.lock().unwrap() = Some(cur_name)
-                }
-            })
-        }
-        key!(Char('N')) => {
-            let cur_name = handle.read(pa, |file, _| file.name());
-            cmd::queue_notify_and("prev-file --global", |res| {
-                if res.is_ok() {
-                    *LAST_FILE.lock().unwrap() = Some(cur_name)
-                }
-            })
-        }
+        }),
+        key!(Char('N')) => cmd::queue_notify_and("prev-file --global", |res| {
+            if res.is_ok() {
+                *LAST_FILE.lock().unwrap() = Some(cur_name)
+            }
+        }),
         KeyEvent { code, .. } => {
             let code = format!("{code:?}");
             context::warn!("Key [a]{code}[] not mapped on [a]go to")
@@ -185,7 +177,7 @@ fn match_inside_around<U: Ui>(
     };
 
     let wc = handle.cfg(pa).word_chars;
-    let initial_cursors_len = handle.read_selections(pa, Selections::len);
+    let initial_cursors_len = handle.selections(pa).len();
 
     let mut failed = false;
 
