@@ -4,7 +4,7 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 
-use duat_core::{hook::OnFileOpen, prelude::*};
+use duat_core::prelude::*;
 use duat_filetype::FileType;
 use duat_treesitter::TsParser;
 
@@ -79,8 +79,9 @@ impl MatchPairs {
 
 impl<U: Ui> Plugin<U> for MatchPairs {
     fn plug(self) {
-        hook::add::<OnFileOpen<U>, U>(|pa, builder| {
-            builder.add_parser(pa, MatchPairs::new());
+        hook::add::<File<U>, U>(|_, (mut cfg, _)| {
+            cfg.add_parser(MatchPairs::new());
+            cfg
         })
     }
 }
@@ -199,7 +200,7 @@ impl<U: Ui> ParserCfg<U> for MatchPairs {
             }
         };
 
-        Ok(ParserBox::new_local(file, self))
+        Ok(ParserBox::new(file, self))
     }
 }
 
