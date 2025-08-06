@@ -9,6 +9,7 @@ pub use self::{cache::*, global::*, handles::*, log::*};
 use crate::{
     data::{Pass, RwData},
     file::File,
+    text::{Text, txt},
     ui::{Node, Ui, Widget},
 };
 
@@ -80,7 +81,7 @@ mod global {
     ///
     /// [`File`]: crate::file::File
     pub fn fixed_file<U: Ui>(pa: &Pass) -> Result<Handle<File<U>, U>, Text> {
-        Ok(cur_file(pa)?.fixed(pa))
+        cur_file(pa).fixed(pa)
     }
 
     /// Returns a "dynamic" [`FileHandle`] for the active [`File`]
@@ -91,8 +92,8 @@ mod global {
     /// [`File`], see [`fixed_file`].
     ///
     /// [`File`]: crate::file::File
-    pub fn dyn_file<U: Ui>(pa: &Pass) -> Result<CurFile<U>, Text> {
-        Ok(cur_file(pa)?.clone())
+    pub fn dyn_file<U: Ui>(pa: &Pass) -> CurFile<U> {
+        cur_file(pa).clone()
     }
 
     /// Gets the [`Widget`] from a [`U::Area`]
@@ -159,7 +160,7 @@ mod global {
         file: Option<Handle<File<U>, U>>,
         node: Node<U>,
     ) -> Option<(Handle<File<U>, U>, Node<U>)> {
-        let old = file.and_then(|new| inner_cur_file(pa).0.write(pa).replace(new));
+        let old = file.and_then(|new| cur_file(pa).0.write(pa).replace(new));
 
         old.zip(inner_cur_widget().0.write(pa).replace(node))
     }
@@ -186,23 +187,14 @@ mod global {
         WINDOWS.get().unwrap().downcast_ref().expect("1 Ui only")
     }
 
-    /// The [`CurFile`], must be used on main thread
-    pub(crate) fn inner_cur_file<U: Ui>(_: &Pass) -> &'static CurFile<U> {
-        CUR_FILE.get().unwrap().downcast_ref().expect("1 Ui only")
-    }
-
     /// Orders to quit Duat
     pub(crate) fn order_reload_or_quit() {
         WILL_RELOAD_OR_QUIT.store(true, Ordering::Relaxed);
     }
 
     /// The inner [`CurFile`]
-    fn cur_file<U: Ui>(pa: &Pass) -> Result<&'static CurFile<U>, Text> {
-        let cur_file = inner_cur_file(pa);
-        if cur_file.0.read(pa).is_none() {
-            return Err(txt!("No file yet").build());
-        }
-        Ok(cur_file)
+    fn cur_file<U: Ui>(_: &Pass) -> &'static CurFile<U> {
+        CUR_FILE.get().unwrap().downcast_ref().expect("1 Ui only")
     }
 
     /// The inner [`CurWidget`]
@@ -238,7 +230,6 @@ mod global {
     ) {
         CUR_FILE.set(cur_file).expect("setup ran twice");
         CUR_WIDGET.set(cur_widget).expect("setup ran twice");
-
         CUR_WINDOW.store(cur_window, Ordering::Relaxed);
     }
 
@@ -269,8 +260,17 @@ impl<U: Ui> CurFile<U> {
     }
 
     /// Returns a new "fixed" [`Handle<File>`]
-    pub fn fixed(&self, pa: &Pass) -> Handle<File<U>, U> {
-        self.0.read(pa).as_ref().unwrap().clone()
+    ///
+    /// This can fail if there is no [`File`] open yet, which can
+    /// happen right as Duat is starting up, such as in a
+    /// [`WidgetCreated<File>`] hook.
+    ///
+    /// [`WidgetCreated<File>`]: crate::hook::WidgetCreated
+    pub fn fixed(&self, pa: &Pass) -> Result<Handle<File<U>, U>, Text> {
+        self.0
+            .read(pa)
+            .clone()
+            .ok_or_else(|| txt!("No file yet").build())
     }
 
     /// Wether the current [`File`] has been changed _or_ swapped

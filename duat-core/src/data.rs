@@ -401,7 +401,7 @@ impl<W> RwData<W> {
             value,
             cur_state: self.cur_state.clone(),
             read_state: Arc::new(AtomicUsize::new(self.cur_state.load(Ordering::Relaxed) - 1)),
-            ty: TypeId::of::<U>(),
+            ty: self.ty,
         }
     }
 }

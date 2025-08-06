@@ -70,8 +70,8 @@ where
             match self.appender {
                 Appender::PassArg(f) => Box::new(move |pa, b, _| f(pa, b)),
                 Appender::FromWidget(f) => Box::new(move |pa, b, reader| {
-                    if let Some(handle) = reader.get_related(pa) {
-                        f(b, pa, handle.read(pa), handle.area(pa));
+                    if let Some((widget, area)) = reader.read_related(pa) {
+                        f(b, pa, widget, area);
                     }
                 }),
                 Appender::Part(builder_part) => {

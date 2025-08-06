@@ -1,9 +1,4 @@
-use std::{
-    any::type_name,
-    cell::UnsafeCell,
-    path::PathBuf,
-    sync::{Arc, Mutex},
-};
+use std::{any::type_name, path::PathBuf, sync::Mutex};
 
 pub use self::{
     builder::{BuildInfo, BuilderDummy, RawUiBuilder, UiBuilder, WidgetAlias},
@@ -60,13 +55,14 @@ impl<U: Ui> Windows<U> {
         let (file, _) = file_cfg.build(pa, BuildInfo::for_main());
         let (window, node) = Window::new(pa, ms, file, widget_id, layout);
 
-        let files_id = builder.finish_around_widget(pa, None, node.handle().clone());
-
         let area = node.area(pa);
         let inner = self.0.write(pa);
         inner.windows.push(window);
         inner.areas.push((node.area_id(), area.clone()));
 
+        let files_id = builder.finish_around_widget(pa, None, node.handle().clone());
+
+        let inner = self.0.write(pa);
         let builder = UiBuilder::<U>::new_window(inner.windows.len() - 1);
         let WindowCreated(builder) = hook::trigger(pa, WindowCreated(builder));
         builder.finish_around_window(pa, files_id);
@@ -541,8 +537,7 @@ impl<U: Ui> Window<U> {
         widget_id: AreaId,
         layout: Box<dyn Layout<U>>,
     ) -> (Self, Node<U>) {
-        let widget =
-            unsafe { RwData::<dyn Widget<U>>::new_unsized::<W>(Arc::new(UnsafeCell::new(widget))) };
+        let widget = RwData::new(widget).to_dyn_widget();
 
         let cache = widget
             .read_as(pa)

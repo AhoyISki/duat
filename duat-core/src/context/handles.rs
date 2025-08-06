@@ -162,6 +162,8 @@ impl<W: Widget<U> + ?Sized, U: Ui> Handle<W, U> {
 }
 
 impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
+    ////////// Read and write access functions
+
     /// Reads from the [`Widget`], making use of a [`Pass`]
     ///
     /// The consistent use of a [`Pass`] for the purposes of
@@ -176,6 +178,11 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     /// [`Area`]: crate::ui::Area
     pub fn read<'a>(&'a self, pa: &'a Pass) -> &'a W {
         self.widget.read(pa)
+    }
+
+    /// Tries to read as a concrete [`Widget`] implementor
+    pub fn read_as<'a, W2: Widget<U>>(&'a self, pa: &'a Pass) -> Option<&'a W2> {
+        self.widget.read_as(pa)
     }
 
     /// Writes to the [`Widget`], making use of a [`Pass`]
@@ -210,6 +217,20 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
     pub fn write_with_area<'a>(&'a self, pa: &'a mut Pass) -> (&'a mut W, &'a U::Area) {
         (self.widget.write(pa), &self.area)
     }
+
+    /// Tries to downcast from `dyn Widget` to a concrete [`Widget`]
+    pub fn try_downcast<W2: Widget<U>>(&self) -> Option<Handle<W2, U>> {
+        Some(Handle {
+            widget: self.widget.try_downcast()?,
+            area: self.area.clone(),
+            mask: self.mask.clone(),
+            id: self.id,
+            related: self.related.clone(),
+            searcher: RefCell::new(()),
+        })
+    }
+
+    ////////// Refined access functions
 
     /// A shared reference to the [`Text`] of the [`Widget`]
     ///
@@ -525,13 +546,38 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         self.widget.read(pa).print_cfg()
     }
 
+    /// Reads a related [`Widget`] of type `W2`, as well as it s
+    /// [`Ui::Area`]
+    ///
+    /// This can also be done by calling [`Handle::get_related`], and
+    /// [`Handle::read`], but this function should generally be
+    /// faster, since there is no cloning of [`Arc`]s going on.
+    pub fn read_related<'a, W2: Widget<U>>(
+        &'a self,
+        pa: &'a Pass,
+    ) -> Option<(&'a W2, &'a U::Area)> {
+        self.read_as(pa).map(|w| (w, self.area(pa))).or_else(|| {
+            self.related
+                .0
+                .read(pa)
+                .iter()
+                .find_map(|handle| handle.read_as(pa).map(|w| (w, handle.area(pa))))
+        })
+    }
+
     /// Gets the [`Handle`] of a related [`Widget`]
+    ///
+    /// If you are doing this just to read the [`Widget`] and
+    /// [`Ui::Area`], consider using [`Handle::read_related`], since
+    /// that function is generally faster.
     pub fn get_related<W2: Widget<U>>(&self, pa: &Pass) -> Option<Handle<W2, U>> {
-        self.related
-            .0
-            .read(pa)
-            .iter()
-            .find_map(|handle| handle.try_downcast())
+        self.try_downcast().or_else(|| {
+            self.related
+                .0
+                .read(pa)
+                .iter()
+                .find_map(|handle| handle.try_downcast())
+        })
     }
 
     /// Raw access to the related widgets
@@ -582,25 +628,6 @@ impl<W: Widget<U> + ?Sized, U: Ui, S> Handle<W, U, S> {
         let _area = MutArea(&self.area);
         // let _spawned = area.spawn_floating(pa, cfg, specs)?;
         todo!();
-    }
-}
-
-impl<U: Ui> Handle<dyn Widget<U>, U> {
-    /// Tries to read as a concrete [`Widget`] implementor
-    pub fn read_as<'a, W: Widget<U>>(&'a self, pa: &'a Pass) -> Option<&'a W> {
-        self.widget.read_as(pa)
-    }
-
-    /// Tries to downcast from `dyn Widget` to a concrete [`Widget`]
-    pub fn try_downcast<W: Widget<U>>(&self) -> Option<Handle<W, U>> {
-        Some(Handle {
-            widget: self.widget.try_downcast()?,
-            area: self.area.clone(),
-            mask: self.mask.clone(),
-            id: self.id,
-            related: self.related.clone(),
-            searcher: self.searcher.clone(),
-        })
     }
 }
 

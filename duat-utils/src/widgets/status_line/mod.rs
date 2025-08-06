@@ -98,7 +98,10 @@ impl<U: Ui> Widget<U> for StatusLine<U> {
 
         handle.write(pa).text = match &sl.file_handle {
             FileHandle::Fixed(file) => (sl.text_fn)(pa, file),
-            FileHandle::Dynamic(cur_file) => (sl.text_fn)(pa, &cur_file.fixed(pa)),
+            FileHandle::Dynamic(cur_file) => match cur_file.fixed(pa) {
+                Ok(file) => (sl.text_fn)(pa, &file),
+                Err(_) => Text::default(),
+            },
         };
     }
 
@@ -217,7 +220,7 @@ impl<U: Ui> WidgetCfg<U> for StatusLineCfg<U> {
         let widget = StatusLine {
             file_handle: match info.file() {
                 Some(handle) => FileHandle::Fixed(handle),
-                None => FileHandle::Dynamic(context::dyn_file(pa).unwrap()),
+                None => FileHandle::Dynamic(context::dyn_file(pa)),
             },
             text_fn: Box::new(move |pa, fh| {
                 let builder = Text::builder();
