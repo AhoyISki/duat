@@ -765,14 +765,7 @@ fn get_inputs(
     bytes: &Bytes,
     range: std::ops::Range<usize>,
 ) -> (Input<SearchBytes<'_>>, Input<SearchBytes<'_>>) {
-    let haystack = SearchBytes(
-        bytes
-            .strs(range)
-            .unwrap()
-            .to_array()
-            .map(|str| str.as_bytes()),
-        0,
-    );
+    let haystack = SearchBytes(bytes.buffers(range).to_array(), 0);
     let fwd_input = Input::new(haystack);
     let rev_input = Input::new(haystack);
     (fwd_input, rev_input)

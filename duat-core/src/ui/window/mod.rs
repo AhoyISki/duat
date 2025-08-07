@@ -401,26 +401,26 @@ impl<U: Ui> Windows<U> {
     pub(crate) fn iter_around<'a>(
         &'a self,
         pa: &'a Pass,
-        window: usize,
-        widget: usize,
+        win: usize,
+        wid: usize,
     ) -> impl Iterator<Item = (usize, usize, &'a Node<U>)> + 'a {
         let windows = &self.0.read(pa).windows;
 
-        let prev_len: usize = windows.iter().take(window).map(Window::len_widgets).sum();
+        let prev_len: usize = windows.iter().take(win).map(Window::len_widgets).sum();
 
         windows
             .iter()
             .enumerate()
-            .skip(window)
+            .skip(win)
             .flat_map(window_index_widget)
-            .skip(widget + 1)
+            .skip(wid + 1)
             .chain(
                 windows
                     .iter()
                     .enumerate()
-                    .take(window + 1)
+                    .take(win + 1)
                     .flat_map(window_index_widget)
-                    .take(prev_len + widget),
+                    .take(prev_len + wid),
             )
     }
 
@@ -428,31 +428,31 @@ impl<U: Ui> Windows<U> {
     pub(crate) fn iter_around_rev<'a>(
         &'a self,
         pa: &'a Pass,
-        window: usize,
-        widget: usize,
+        win: usize,
+        wid: usize,
     ) -> impl Iterator<Item = (usize, usize, &'a Node<U>)> + 'a {
         let windows = &self.0.read(pa).windows;
 
-        let next_len: usize = windows.iter().skip(window).map(Window::len_widgets).sum();
+        let next_len: usize = windows.iter().skip(win).map(Window::len_widgets).sum();
 
         windows
             .iter()
             .enumerate()
             .rev()
-            .skip(windows.len() - window)
+            .skip(windows.len() - (win + 1))
             .flat_map(move |(i, win)| {
                 window_index_widget((i, win))
                     .rev()
-                    .skip(win.len_widgets() - widget)
+                    .skip(win.len_widgets() - wid)
             })
             .chain(
                 windows
                     .iter()
                     .enumerate()
                     .rev()
-                    .take(windows.len() - window)
+                    .take(windows.len() - win)
                     .flat_map(move |(i, win)| window_index_widget((i, win)).rev())
-                    .take(next_len - (widget + 1)),
+                    .take(next_len - (wid + 1)),
             )
     }
 
@@ -629,7 +629,6 @@ impl<U: Ui> Window<U> {
             .nodes
             .extract_if(.., |node| related.contains(node.handle()))
         {
-            
             MutArea(node.area(pa)).delete();
         }
     }
