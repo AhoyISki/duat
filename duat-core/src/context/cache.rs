@@ -146,7 +146,7 @@ impl Cache {
     }
 }
 
-fn cache_file<C: 'static>(path: PathBuf, to_write: bool) -> std::io::Result<File> {
+fn cache_file<C: 'static>(path: PathBuf, truncate: bool) -> std::io::Result<File> {
     let mut hasher = DefaultHasher::new();
     path.hash(&mut hasher);
     let hash_value = hasher.finish();
@@ -167,7 +167,7 @@ fn cache_file<C: 'static>(path: PathBuf, to_write: bool) -> std::io::Result<File
             std::io::Error::new(std::io::ErrorKind::NotFound, "cache directory isn't set")
         })?
         .join("duat/structs")
-        .join(cached_file_name);
+        .join(cached_file_name.clone());
 
     if !src_dir.exists() {
         std::fs::create_dir_all(src_dir.clone())?;
@@ -175,10 +175,12 @@ fn cache_file<C: 'static>(path: PathBuf, to_write: bool) -> std::io::Result<File
 
     let src = src_dir.join(format!("{}::{}", src_crate::<C>(), duat_name::<C>()));
 
-    std::fs::OpenOptions::new()
+    let result = std::fs::OpenOptions::new()
         .create(true)
-        .read(!to_write)
-        .write(to_write)
-        .truncate(to_write)
-        .open(src)
+        .read(true)
+        .write(true)
+        .truncate(truncate)
+        .open(src);
+
+    result
 }
