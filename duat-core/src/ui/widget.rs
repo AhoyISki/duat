@@ -57,7 +57,7 @@ use crate::{
     form::{self, Painter},
     hook::{self, FocusedOn, UnfocusedFrom},
     text::Text,
-    ui::{GetAreaId, BuildInfo},
+    ui::{BuildInfo, GetAreaId},
 };
 
 /// An area where [`Text`] will be printed to the screen
@@ -358,13 +358,13 @@ pub trait Widget<U: Ui>: Send + 'static {
     /// [`Mode`]: crate::mode::Mode
     /// [`update`]: Widget::update
     #[allow(unused)]
-    fn update(pa: &mut Pass, handle: Handle<Self, U>)
+    fn update(pa: &mut Pass, handle: &Handle<Self, U>)
     where
         Self: Sized;
 
     /// Actions to do whenever this [`Widget`] is focused
     #[allow(unused)]
-    fn on_focus(pa: &mut Pass, handle: Handle<Self, U>)
+    fn on_focus(pa: &mut Pass, handle: &Handle<Self, U>)
     where
         Self: Sized,
     {
@@ -372,7 +372,7 @@ pub trait Widget<U: Ui>: Send + 'static {
 
     /// Actions to do whenever this [`Widget`] is unfocused
     #[allow(unused)]
-    fn on_unfocus(pa: &mut Pass, handle: Handle<Self, U>)
+    fn on_unfocus(pa: &mut Pass, handle: &Handle<Self, U>)
     where
         Self: Sized,
     {
@@ -505,35 +505,48 @@ pub trait WidgetCfg<U: Ui>: Sized + 'static {
 #[derive(Clone)]
 pub(crate) struct Node<U: Ui> {
     handle: Handle<dyn Widget<U>, U>,
-    update: fn(&Self, &mut Pass),
-    print: fn(&Self, &mut Pass),
-    on_focus: fn(&Self, &mut Pass, Handle<dyn Widget<U>, U>),
-    on_unfocus: fn(&Self, &mut Pass, Handle<dyn Widget<U>, U>),
+    update: Arc<dyn Fn(&mut Pass) + Send>,
+    print: Arc<dyn Fn(&mut Pass) + Send>,
+    on_focus: Arc<dyn Fn(&mut Pass, Handle<dyn Widget<U>, U>) + Send>,
+    on_unfocus: Arc<dyn Fn(&mut Pass, Handle<dyn Widget<U>, U>) + Send>,
 }
 
 impl<U: Ui> Node<U> {
     /// Returns a new [`Node`]
-    pub(crate) fn new<W: Widget<U>>(
-        widget: RwData<dyn Widget<U>>,
-        area: U::Area,
-        id: AreaId,
-    ) -> Self {
-        Self {
-            handle: Handle::new(widget, area, Arc::new(Mutex::new("")), id),
-            update: Self::update_fn::<W>,
-            print: Self::print_fn::<W>,
-            on_focus: Self::on_focus_fn::<W>,
-            on_unfocus: Self::on_unfocus_fn::<W>,
-        }
+    pub(crate) fn new<W: Widget<U>>(widget: RwData<W>, area: U::Area, id: AreaId) -> Self {
+        let handle = Handle::new(widget, area, Arc::new(Mutex::new("")), id);
+        Self::from_handle(handle)
     }
 
     pub(crate) fn from_handle<W: Widget<U>>(handle: Handle<W, U>) -> Self {
         Self {
             handle: handle.to_dyn(),
-            update: Self::update_fn::<W>,
-            print: Self::print_fn::<W>,
-            on_focus: Self::on_focus_fn::<W>,
-            on_unfocus: Self::on_unfocus_fn::<W>,
+            update: Arc::new({
+                let handle = handle.clone();
+                move |pa| W::update(pa, &handle)
+            }),
+            print: Arc::new({
+                let handle = handle.clone();
+                move |pa| {
+                    let painter = form::painter_with_mask::<W>(*handle.mask().lock().unwrap());
+                    let (widget, area) = handle.write_with_area(pa);
+                    W::print(widget, painter, area);
+                }
+            }),
+            on_focus: Arc::new({
+                let handle = handle.clone();
+                move |pa, old| {
+                    hook::trigger(pa, FocusedOn((old, handle.clone())));
+                    W::on_focus(pa, &handle);
+                }
+            }),
+            on_unfocus: Arc::new({
+                let handle = handle.clone();
+                move |pa, new| {
+                    hook::trigger(pa, UnfocusedFrom((handle.clone(), new)));
+                    W::on_unfocus(pa, &handle);
+                }
+            }),
         }
     }
 
@@ -589,7 +602,7 @@ impl<U: Ui> Node<U> {
 
     /// Updates and prints this [`Node`]
     pub(crate) fn update_and_print(&self, pa: &mut Pass) {
-        (self.update)(self, pa);
+        (self.update)(pa);
 
         let (widget, area) = self.handle.write_with_area(pa);
         let cfg = widget.print_cfg();
@@ -599,7 +612,7 @@ impl<U: Ui> Node<U> {
             widget.text_mut().update_bounds();
         }
 
-        (self.print)(self, pa);
+        (self.print)(pa);
 
         self.handle.text_mut(pa).remove_selections();
     }
@@ -607,43 +620,12 @@ impl<U: Ui> Node<U> {
     /// What to do when focusing
     pub(crate) fn on_focus(&self, pa: &mut Pass, old: Handle<dyn Widget<U>, U>) {
         self.handle.area(pa).set_as_active();
-        (self.on_focus)(self, pa, old)
+        (self.on_focus)(pa, old)
     }
 
     /// What to do when unfocusing
     pub(crate) fn on_unfocus(&self, pa: &mut Pass, new: Handle<dyn Widget<U>, U>) {
-        (self.on_unfocus)(self, pa, new)
-    }
-
-    /// Static dispatch inner update function
-    fn update_fn<W: Widget<U>>(&self, pa: &mut Pass) {
-        W::update(pa, self.try_downcast().unwrap());
-    }
-
-    /// Static dispatch inner print function
-    fn print_fn<W: Widget<U>>(&self, pa: &mut Pass) {
-        let painter = form::painter_with_mask::<W>(*self.handle.mask().lock().unwrap());
-        let (widget, area) = self.handle.write_with_area(pa);
-        widget.print(painter, area);
-    }
-
-    /// Static dispatch inner update on_focus
-    fn on_focus_fn<W: Widget<U>>(&self, pa: &mut Pass, old: Handle<dyn Widget<U>, U>) {
-        let handle = self.try_downcast::<W>().unwrap();
-        handle.area(pa).set_as_active();
-
-        hook::trigger(pa, FocusedOn((old, handle.clone())));
-
-        Widget::on_focus(pa, handle);
-    }
-
-    /// Static dispatch inner update on_unfocus
-    fn on_unfocus_fn<W: Widget<U>>(&self, pa: &mut Pass, new: Handle<dyn Widget<U>, U>) {
-        let handle = self.try_downcast::<W>().unwrap();
-
-        hook::trigger(pa, UnfocusedFrom((handle.clone(), new)));
-
-        Widget::on_unfocus(pa, handle);
+        (self.on_unfocus)(pa, new)
     }
 }
 

@@ -390,7 +390,7 @@ mod doc_widgets {
     pub struct LineNumbers<U: Ui>(Text, std::marker::PhantomData<U>);
     impl<U: Ui> Widget<U> for LineNumbers<U> {
         type Cfg = LineNumbersOptions<U>;
-        fn update(_: &mut Pass, _: Handle<Self, U>) {}
+        fn update(_: &mut Pass, _: &Handle<Self, U>) {}
         fn needs_update(&self, _: &Pass) -> bool { false }
         fn cfg() -> Self::Cfg { LineNumbersOptions(PhantomData) }
         fn text(&self) -> &Text { &self.0 }
@@ -422,7 +422,7 @@ mod doc_widgets {
     pub struct StatusLine<U: Ui>(Text, std::marker::PhantomData<U>);
     impl<U: Ui> Widget<U> for StatusLine<U> {
         type Cfg = StatusLineCfg<U>;
-        fn update(_: &mut Pass, _: Handle<Self, U>) {}
+        fn update(_: &mut Pass, _: &Handle<Self, U>) {}
         fn needs_update(&self, _: &Pass) -> bool { false }
         fn cfg() -> Self::Cfg { StatusLineCfg(PhantomData) }
         fn text(&self) -> &Text { &self.0 }
@@ -454,7 +454,7 @@ mod doc_widgets {
     }
     impl<U: Ui> Widget<U> for PromptLine<U> {
         type Cfg = PromptLineCfg<U>;
-        fn update(_: &mut Pass, _: Handle<Self, U>) {}
+        fn update(_: &mut Pass, _: &Handle<Self, U>) {}
         fn needs_update(&self, _: &Pass) -> bool { false }
         fn cfg() -> Self::Cfg { PromptLineCfg(PhantomData) }
         fn text(&self) -> &Text { &self.0 }
@@ -480,7 +480,7 @@ mod doc_widgets {
     pub struct Notifications<U: Ui>(Text, std::marker::PhantomData<U>);
     impl<U: Ui> Widget<U> for Notifications<U> {
         type Cfg = NotificationsCfg<U>;
-        fn update(_: &mut Pass, _: Handle<Self, U>) {}
+        fn update(_: &mut Pass, _: &Handle<Self, U>) {}
         fn needs_update(&self, _: &Pass) -> bool { false }
         fn cfg() -> Self::Cfg { NotificationsCfg(PhantomData) }
         fn text(&self) -> &Text { &self.0 }
@@ -509,7 +509,7 @@ mod doc_widgets {
     pub struct LogBook<U: Ui>(Text, std::marker::PhantomData<U>);
     impl<U: Ui> Widget<U> for LogBook<U> {
         type Cfg = LogBookCfg<U>;
-        fn update(_: &mut Pass, _: Handle<Self, U>) {}
+        fn update(_: &mut Pass, _: &Handle<Self, U>) {}
         fn needs_update(&self, _: &Pass) -> bool { false }
         fn cfg() -> Self::Cfg { LogBookCfg(PhantomData) }
         fn text(&self) -> &Text { &self.0 }

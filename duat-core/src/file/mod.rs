@@ -418,7 +418,7 @@ impl<U: Ui> Widget<U> for File<U> {
         FileCfg::new()
     }
 
-    fn update(pa: &mut Pass, handle: Handle<Self, U>) {
+    fn update(pa: &mut Pass, handle: &Handle<Self, U>) {
         let parsers = std::mem::take(&mut handle.write(pa).parsers);
 
         let file = handle.read(pa);

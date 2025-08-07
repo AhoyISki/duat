@@ -63,7 +63,7 @@ impl<U: Ui> PromptLine<U> {
 impl<U: Ui> Widget<U> for PromptLine<U> {
     type Cfg = PromptLineCfg<U>;
 
-    fn update(pa: &mut Pass, handle: Handle<Self, U>) {
+    fn update(pa: &mut Pass, handle: &Handle<Self, U>) {
         let pl = handle.read(pa);
         if let Some(main) = pl.text.selections().get_main() {
             handle

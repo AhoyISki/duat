@@ -88,7 +88,7 @@ impl<U: Ui> LineNumbers<U> {
 impl<U: Ui> Widget<U> for LineNumbers<U> {
     type Cfg = LineNumbersOptions<U>;
 
-    fn update(pa: &mut Pass, handle: Handle<Self, U>) {
+    fn update(pa: &mut Pass, handle: &Handle<Self, U>) {
         let width = handle.read(pa).calculate_width(pa);
         handle
             .area(pa)

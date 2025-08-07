@@ -34,7 +34,7 @@ pub struct VertRule {
 impl Widget<Ui> for VertRule {
     type Cfg = VertRuleCfg;
 
-    fn update(pa: &mut Pass, handle: Handle<Self, Ui>) {
+    fn update(pa: &mut Pass, handle: &Handle<Self, Ui>) {
         let vr = handle.read(pa);
         let text = if let Some(handle) = vr.handle.as_ref()
             && let SepChar::ThreeWay(..) | SepChar::TwoWay(..) = vr.sep_char

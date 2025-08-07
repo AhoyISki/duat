@@ -49,7 +49,7 @@ impl<U: Ui> Widget<U> for LogBook {
         }
     }
 
-    fn update(pa: &mut Pass, handle: Handle<Self, U>)
+    fn update(pa: &mut Pass, handle: &Handle<Self, U>)
     where
         Self: Sized,
     {
@@ -103,11 +103,11 @@ impl<U: Ui> Widget<U> for LogBook {
         *PrintCfg::new().wrap_on_word().set_scrolloff(0, 0)
     }
 
-    fn on_focus(pa: &mut Pass, handle: Handle<Self, U>) {
+    fn on_focus(pa: &mut Pass, handle: &Handle<Self, U>) {
         handle.area(pa).reveal().unwrap();
     }
 
-    fn on_unfocus(pa: &mut Pass, handle: Handle<Self, U>) {
+    fn on_unfocus(pa: &mut Pass, handle: &Handle<Self, U>) {
         if handle.read(pa).close_on_unfocus {
             handle.area(pa).hide().unwrap()
         }

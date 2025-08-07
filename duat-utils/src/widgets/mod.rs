@@ -148,22 +148,20 @@ impl<U: Ui> WidgetAlias<U, FooterWidgetsDummy> for FooterWidgets<U> {
         hook::add::<FocusedOn<PromptLine<U>, U>, U>({
             move |pa, (_, prompt)| {
                 if prompt.area_id() == prompt_id
-                    && let Some(prompt_area) = prompt_id.area::<U>(pa)
                     && let Some(notifs_area) = notifs_id.area::<U>(pa)
                 {
-                    prompt_area.reveal().unwrap();
                     notifs_area.hide().unwrap();
+                    prompt.area(pa).reveal().unwrap();
                 }
             }
         });
 
         hook::add::<UnfocusedFrom<PromptLine<U>, U>, U>(move |pa, (prompt, _)| {
             if prompt.area_id() == prompt_id
-                && let Some(prompt_area) = prompt_id.area::<U>(pa)
                 && let Some(notifs_area) = notifs_id.area::<U>(pa)
             {
-                prompt_area.hide().unwrap();
                 notifs_area.reveal().unwrap();
+                prompt.area(pa).hide().unwrap();
             }
         });
 

@@ -88,7 +88,7 @@ impl<U: Ui> Widget<U> for Notifications<U> {
         }
     }
 
-    fn update(pa: &mut Pass, handle: Handle<Self, U>) {
+    fn update(pa: &mut Pass, handle: &Handle<Self, U>) {
         let clear_notifs = CLEAR_NOTIFS.swap(false, Ordering::Relaxed);
         let notifs = handle.write(pa);
 

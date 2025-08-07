@@ -318,6 +318,7 @@ impl<U: Ui> RawUiBuilder<'_, U> {
 
         let win = self.0.win;
         self.0.builder_fn = Some(Box::new(move |pa, mut master_id, main| {
+            let do_cluster = main.is_some();
             let on_file = main
                 .as_ref()
                 .is_some_and(|w| w.widget().data_is::<File<U>>());
@@ -340,16 +341,18 @@ impl<U: Ui> RawUiBuilder<'_, U> {
                 win,
                 (widget, specs),
                 (master_id, widget_id),
-                (true, on_file),
+                (do_cluster, on_file),
             );
 
-            let master_id = parent_id.unwrap_or(master_id);
+            if let Some(main) = builder.main.as_ref() {
+                main.related().write(pa).push(node.handle().clone())
+            }
 
             if let Some(builder_fn) = builder.builder_fn {
-                builder_fn(pa, master_id, builder.main.or(Some(node.handle().clone())))
-            } else {
-                master_id
+                builder_fn(pa, widget_id, builder.main.or(Some(node.handle().clone())));
             }
+
+            parent_id.unwrap_or(master_id)
         }));
 
         widget_id
@@ -362,6 +365,11 @@ impl<U: Ui> RawUiBuilder<'_, U> {
 
         let win = self.0.win;
         self.0.builder_fn = Some(Box::new(move |pa, mut master_id, main| {
+            let do_cluster = main.is_some();
+            let on_file = main
+                .as_ref()
+                .is_some_and(|h| h.widget().data_is::<File<U>>());
+
             if let Some(prev) = prev_build_fn {
                 master_id = prev(pa, master_id, main.clone());
             }
@@ -372,12 +380,6 @@ impl<U: Ui> RawUiBuilder<'_, U> {
                 let (cfg, builder) = hook::trigger(pa, wc).0;
                 (cfg.unwrap(), builder)
             };
-
-            let do_cluster = builder.main.is_some();
-            let on_file = builder
-                .main
-                .as_ref()
-                .is_some_and(|h| h.widget().data_is::<File<U>>());
 
             let (widget, specs) = cfg.build(pa, BuildInfo {
                 main: builder.main.clone(),
@@ -392,13 +394,15 @@ impl<U: Ui> RawUiBuilder<'_, U> {
                 (do_cluster, on_file),
             );
 
-            let master_id = parent_id.filter(|_| do_cluster).unwrap_or(node.area_id());
+            if let Some(main) = builder.main.as_ref() {
+                main.related().write(pa).push(node.handle().clone())
+            }
 
             if let Some(builder_fn) = builder.builder_fn {
-                builder_fn(pa, master_id, builder.main.or(Some(node.handle().clone())))
-            } else {
-                master_id
+                builder_fn(pa, widget_id, builder.main.or(Some(node.handle().clone())));
             }
+
+            parent_id.unwrap_or(master_id)
         }));
 
         widget_id

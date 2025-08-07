@@ -93,7 +93,7 @@ pub struct StatusLine<U: Ui> {
 impl<U: Ui> Widget<U> for StatusLine<U> {
     type Cfg = StatusLineCfg<U>;
 
-    fn update(pa: &mut Pass, handle: Handle<Self, U>) {
+    fn update(pa: &mut Pass, handle: &Handle<Self, U>) {
         let sl = handle.read(pa);
 
         handle.write(pa).text = match &sl.file_handle {

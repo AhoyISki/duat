@@ -550,7 +550,10 @@ impl ui::Area for Area {
             return true;
         }
         let layouts = self.layouts.borrow();
-        let layout = get_layout(&layouts, self.id).unwrap();
+        let Some(layout) = get_layout(&layouts, self.id) else {
+            return false;
+        };
+
         let mut parent_id = other.id;
         while let Some((_, parent)) = layout.get_parent(parent_id) {
             parent_id = parent.id();
@@ -564,8 +567,7 @@ impl ui::Area for Area {
 
     fn get_cluster_master(&self) -> Option<Self> {
         let layouts = self.layouts.borrow();
-        get_layout(&layouts, self.id)
-            .unwrap()
+        get_layout(&layouts, self.id)?
             .rects
             .get_cluster_master(self.id)
             .map(|id| Self::new(id, self.layouts.clone()))
@@ -573,15 +575,17 @@ impl ui::Area for Area {
 
     fn cache(&self) -> Option<Self::Cache> {
         let layouts = self.layouts.borrow();
-        get_rect(&layouts, self.id)
-            .unwrap()
+        get_rect(&layouts, self.id)?
             .print_info()
             .map(|cell| cell.get().for_caching())
     }
 
     fn width(&self) -> u32 {
         let layouts = self.layouts.borrow();
-        let layout = get_layout(&layouts, self.id).unwrap();
+        let Some(layout) = get_layout(&layouts, self.id) else {
+            return 0;
+        };
+
         let rect = layout.get(self.id).unwrap();
         let (coords, _) = layout.printer.coords(rect.var_points(), false);
         coords.width()
@@ -589,7 +593,10 @@ impl ui::Area for Area {
 
     fn height(&self) -> u32 {
         let layouts = self.layouts.borrow();
-        let layout = get_layout(&layouts, self.id).unwrap();
+        let Some(layout) = get_layout(&layouts, self.id) else {
+            return 0;
+        };
+
         let rect = layout.get(self.id).unwrap();
         let (coords, _) = layout.printer.coords(rect.var_points(), false);
         coords.height()
@@ -608,17 +615,17 @@ impl ui::Area for Area {
     fn print_info(&self) -> Self::PrintInfo {
         let layouts = self.layouts.borrow();
         get_rect(&layouts, self.id)
-            .unwrap()
-            .print_info()
-            .unwrap()
-            .get()
+            .and_then(|rect| rect.print_info())
+            .map(|pi| pi.get())
+            .unwrap_or_default()
     }
 
     fn is_active(&self) -> bool {
-        get_layout(&self.layouts.borrow(), self.id)
-            .unwrap()
-            .active_id
-            == self.id
+        if let Some(layout) = get_layout(&self.layouts.borrow(), self.id) {
+            layout.active_id == self.id
+        } else {
+            false
+        }
     }
 }
 

@@ -86,10 +86,7 @@ impl<U: Ui> Windows<U> {
         let (file_cfg, builder) = {
             let wc = hook::trigger(
                 pa,
-                WidgetCreated::<File<U>, U>((
-                    Some(file_cfg),
-                    UiBuilder::new_main(self.0.read(pa).windows.len(), widget_id),
-                )),
+                WidgetCreated::<File<U>, U>((Some(file_cfg), UiBuilder::new_main(win, widget_id))),
             );
             (wc.0.0.unwrap(), wc.0.1)
         };
@@ -263,7 +260,7 @@ impl<U: Ui> Windows<U> {
         fn push_and_get_areas<U: Ui>(
             windows: &Windows<U>,
             pa: &mut Pass,
-            (widget, specs): (&RwData<dyn Widget<U> + 'static>, PushSpecs),
+            (widget, specs): (RwData<dyn Widget<U> + 'static>, PushSpecs),
             (to_id, widget_id): (AreaId, AreaId),
             (do_cluster, on_files): (bool, bool),
         ) -> (U::Area, Option<(AreaId, U::Area)>) {
@@ -295,12 +292,12 @@ impl<U: Ui> Windows<U> {
 
         run_once::<W, U>();
 
-        let widget = RwData::new(widget).to_dyn_widget();
+        let widget = RwData::new(widget);
 
         let (widget_area, parent) = push_and_get_areas(
             self,
             pa,
-            (&widget, specs),
+            (widget.to_dyn_widget(), specs),
             (to_id, widget_id),
             (do_cluster, on_files),
         );
@@ -537,7 +534,7 @@ impl<U: Ui> Window<U> {
         widget_id: AreaId,
         layout: Box<dyn Layout<U>>,
     ) -> (Self, Node<U>) {
-        let widget = RwData::new(widget).to_dyn_widget();
+        let widget = RwData::new(widget);
 
         let cache = widget
             .read_as(pa)
@@ -578,7 +575,7 @@ impl<U: Ui> Window<U> {
     /// Pushes a [`Widget`] onto an existing one
     fn add<W: Widget<U>>(
         &mut self,
-        widget: RwData<dyn Widget<U> + 'static>,
+        widget: RwData<W>,
         parent_area: Option<U::Area>,
         (widget_id, widget_area): (AreaId, U::Area),
         on_files: bool,
@@ -632,6 +629,7 @@ impl<U: Ui> Window<U> {
             .nodes
             .extract_if(.., |node| related.contains(node.handle()))
         {
+            
             MutArea(node.area(pa)).delete();
         }
     }

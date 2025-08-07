@@ -170,8 +170,7 @@ impl<U: Ui> Session<U> {
 
         {
             let win = context::cur_window();
-            let window = context::windows::<U>().get(wins_pa, win).unwrap();
-            for node in window.nodes() {
+            for node in context::windows::<U>().get(wins_pa, win).unwrap().nodes() {
                 node.update_and_print(pa);
             }
         }
@@ -186,7 +185,7 @@ impl<U: Ui> Session<U> {
                 mode_fn(pa);
             }
 
-            if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(100)) {
+            if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(20)) {
                 match event {
                     DuatEvent::Tagger(key) => mode::send_key(pa, key),
                     DuatEvent::QueuedFunction(f) => f(pa),
@@ -242,8 +241,7 @@ impl<U: Ui> Session<U> {
                 }
             } else if reprint_screen {
                 let win = context::cur_window();
-                let window = context::windows::<U>().get(wins_pa, win).unwrap();
-                for node in window.nodes() {
+                for node in context::windows::<U>().get(wins_pa, win).unwrap().nodes() {
                     node.update_and_print(pa);
                 }
                 reprint_screen = false;
@@ -251,8 +249,7 @@ impl<U: Ui> Session<U> {
             }
 
             let win = context::cur_window();
-            let window = context::windows::<U>().get(wins_pa, win).unwrap();
-            for node in window.nodes() {
+            for node in context::windows::<U>().get(wins_pa, win).unwrap().nodes() {
                 if node.needs_update(pa) {
                     node.update_and_print(pa);
                 }
