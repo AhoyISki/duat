@@ -179,13 +179,22 @@ impl<U: Ui> Session<U> {
 
         let mut reload_instant = None;
         let mut reprint_screen = false;
+        let mut idle_count = 0;
 
         loop {
             if let Some(mode_fn) = mode::take_set_mode_fn(pa) {
                 mode_fn(pa);
             }
 
-            if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(20)) {
+            // After five seconds of inactivity, switch to a dormant state.
+            let event = if idle_count > 250 {
+                duat_rx.recv().ok()
+            } else {
+                duat_rx.recv_timeout(Duration::from_millis(12)).ok()
+            };
+
+            if let Some(event) = event {
+                idle_count = 0;
                 match event {
                     DuatEvent::Tagger(key) => mode::send_key(pa, key),
                     DuatEvent::QueuedFunction(f) => f(pa),
@@ -246,6 +255,8 @@ impl<U: Ui> Session<U> {
                 }
                 reprint_screen = false;
                 continue;
+            } else {
+                idle_count += 1;
             }
 
             let win = context::cur_window();
