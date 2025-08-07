@@ -667,8 +667,7 @@ impl Text {
         }
     }
 
-    /// Adds the tags for all the selections, used after they are
-    /// expected to have moved
+	/// Removes the [`Tag`]s for all [`Selection`]s
     pub(crate) fn remove_selections(&mut self) {
         self.remove_tags(Tagger::for_selections(), ..);
     }

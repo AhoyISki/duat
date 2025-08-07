@@ -601,7 +601,7 @@ impl<U: Ui> Node<U> {
 
         (self.print)(self, pa);
 
-        self.handle.write(pa).text_mut().remove_selections();
+        self.handle.text_mut(pa).remove_selections();
     }
 
     /// What to do when focusing

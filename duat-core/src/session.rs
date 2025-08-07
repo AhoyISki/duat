@@ -186,7 +186,7 @@ impl<U: Ui> Session<U> {
                 mode_fn(pa);
             }
 
-            if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(50)) {
+            if let Ok(event) = duat_rx.recv_timeout(Duration::from_millis(100)) {
                 match event {
                     DuatEvent::Tagger(key) => mode::send_key(pa, key),
                     DuatEvent::QueuedFunction(f) => f(pa),
@@ -246,6 +246,7 @@ impl<U: Ui> Session<U> {
                 for node in window.nodes() {
                     node.update_and_print(pa);
                 }
+                reprint_screen = false;
                 continue;
             }
 
