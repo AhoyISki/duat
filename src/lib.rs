@@ -130,7 +130,7 @@ impl<U: Ui> PassFileType for Handle<File<U>, U> {
 
 impl<U: Ui> PassFileType for CurFile<U> {
     fn filetype(&self, pa: &Pass) -> Option<&'static str> {
-        self.fixed(pa).read(pa).filetype()
+        self.fixed(pa).ok()?.read(pa).filetype()
     }
 }
 
