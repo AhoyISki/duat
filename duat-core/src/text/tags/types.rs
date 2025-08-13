@@ -46,7 +46,7 @@ use crate::{
 /// [range]: TextRange
 /// [`File`]: crate::file::File
 /// [`Widget`]: crate::ui::Widget
-pub trait Tag<I>: Sized {
+pub trait Tag<I>: Sized + std::fmt::Debug {
     /// Decomposes the [`Tag`] to its base elements
     #[doc(hidden)]
     fn decompose(
@@ -72,7 +72,7 @@ pub trait Tag<I>: Sized {
 /// [`Form`]: crate::form::Form
 /// [range]: TextRange
 /// [`Builder`]: crate::text::Builder
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FormTag(pub FormId, pub u8);
 
 impl<I: TextRange> Tag<I> for FormTag {
@@ -95,7 +95,7 @@ impl<I: TextRange> Tag<I> for FormTag {
 /// automatically for you.
 ///
 /// [`Selections`]: crate::mode::Selections
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct MainCaret;
 simple_impl_Tag!(MainCaret, RawTag::MainCaret);
 
@@ -114,7 +114,7 @@ simple_impl_Tag!(MainCaret, RawTag::MainCaret);
 /// [`Ui`]: crate::ui::Ui
 /// [`duat-term`]: https://crates.io/crates/duat-term
 /// [`Form`]: crate::form::Form
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct ExtraCaret;
 simple_impl_Tag!(ExtraCaret, RawTag::ExtraCaret);
 
@@ -126,7 +126,7 @@ simple_impl_Tag!(ExtraCaret, RawTag::ExtraCaret);
 ///
 /// [`Builder`]: crate::text::Builder
 /// [range]: TextRange
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct AlignCenter;
 ranged_impl_tag!(
     AlignCenter,
@@ -140,7 +140,7 @@ ranged_impl_tag!(
 ///
 /// [`Builder`]: crate::text::Builder
 /// [range]: TextRange
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct AlignRight;
 ranged_impl_tag!(AlignRight, RawTag::StartAlignRight, RawTag::EndAlignRight);
 
@@ -154,7 +154,7 @@ ranged_impl_tag!(AlignRight, RawTag::StartAlignRight, RawTag::EndAlignRight);
 ///
 /// [`Builder`]: crate::text::Builder
 /// [range]: TextRange
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct AlignLeft;
 
 /// [`Builder`] part and [`Tag`]: A spacer for more advanced alignment
@@ -188,7 +188,7 @@ pub struct AlignLeft;
 /// ```
 ///
 /// [`Builder`]: crate::text::Builder
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Spacer;
 simple_impl_Tag!(Spacer, RawTag::Spacer);
 
@@ -200,10 +200,10 @@ simple_impl_Tag!(Spacer, RawTag::Spacer);
 /// since the text is non interactable.
 ///
 /// [`Builder`]: crate::text::Builder
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Ghost<T: Into<Text>>(pub T);
 
-impl<T: Into<Text>> Tag<usize> for Ghost<T> {
+impl<T: Into<Text> + std::fmt::Debug> Tag<usize> for Ghost<T> {
     fn decompose(
         self,
         byte: usize,
@@ -220,7 +220,7 @@ impl<T: Into<Text>> Tag<usize> for Ghost<T> {
     }
 }
 
-impl<T: Into<Text>> Tag<Point> for Ghost<T> {
+impl<T: Into<Text> + std::fmt::Debug> Tag<Point> for Ghost<T> {
     fn decompose(
         self,
         point: Point,
@@ -239,7 +239,7 @@ impl<T: Into<Text>> Tag<Point> for Ghost<T> {
 /// [`Text`].
 ///
 /// [range]: TextRange
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Conceal;
 ranged_impl_tag!(Conceal, RawTag::StartConceal, RawTag::EndConceal);
 

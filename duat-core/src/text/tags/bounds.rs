@@ -78,9 +78,9 @@ impl Bounds {
 
     /// Shifts the bounds within by a difference in a position,
     /// returns the insertion point of that shift
-    pub fn shift_by(&mut self, n: usize, [n_diff, c_diff]: [i32; 2]) -> usize {
+    pub fn shift_by(&mut self, n: usize, [n_diff, b_diff]: [i32; 2]) -> usize {
         let (Ok(i) | Err(i)) = self.list.find_by_key(n as u32, |([n, _], ..)| n);
-        self.list.shift_by(i, [n_diff, c_diff]);
+        self.list.shift_by(i, [n_diff, b_diff]);
 
         self.ranges_to_update.shift_by(n, n_diff);
         // This means we are adding Tags, so new ranges might need to be
@@ -89,10 +89,7 @@ impl Bounds {
             self.ranges_to_update.add({
                 let [s, e] = [n, n + n_diff.unsigned_abs() as usize];
                 let end = (e + self.min_len).min(self.list.max()[0] as usize);
-                let range = s.saturating_sub(self.min_len)..end;
-
-                assert!(range.start <= range.end, "{range:?}, {self:#?}");
-                range
+                s.saturating_sub(self.min_len)..end
             });
         }
 

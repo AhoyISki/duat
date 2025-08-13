@@ -756,7 +756,7 @@ pub mod prelude {
             AlignCenter, AlignLeft, AlignRight, Bytes, Conceal, Ghost, Matcheable, Moment, Point,
             Spacer, Tagger, Text, txt,
         },
-        ui::{Area, PushSpecs, Ui, Widget, WidgetCfg, BuildInfo, GetAreaId},
+        ui::{Area, BuildInfo, GetAreaId, PushSpecs, Ui, Widget, WidgetCfg},
     };
 }
 
@@ -1114,6 +1114,7 @@ mod private_exports {
     pub use format_like::format_like;
 
     pub macro log($target:expr, $lvl:expr, $($arg:tt)*) {{
+        #[allow(unused_must_use)]
         let text = $crate::text::txt!($($arg)*).build();
 
 		$crate::context::logs().push_record($crate::context::Record::new(
@@ -1311,26 +1312,6 @@ fn get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> (usize, usi
     );
 
     (start, end)
-}
-
-/// Convenience function for the bounds of a range
-#[track_caller]
-fn try_get_ends(range: impl std::ops::RangeBounds<usize>, max: usize) -> Option<(usize, usize)> {
-    let start = match range.start_bound() {
-        std::ops::Bound::Included(start) => *start,
-        std::ops::Bound::Excluded(start) => *start + 1,
-        std::ops::Bound::Unbounded => 0,
-    };
-    let end = match range.end_bound() {
-        std::ops::Bound::Included(end) => *end + 1,
-        std::ops::Bound::Excluded(end) => *end,
-        std::ops::Bound::Unbounded => max,
-    };
-    if start > max || end > max {
-        return None;
-    }
-
-    Some((start, end))
 }
 
 /// Adds two shifts together

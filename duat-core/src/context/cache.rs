@@ -175,12 +175,10 @@ fn cache_file<C: 'static>(path: PathBuf, truncate: bool) -> std::io::Result<File
 
     let src = src_dir.join(format!("{}::{}", src_crate::<C>(), duat_name::<C>()));
 
-    let result = std::fs::OpenOptions::new()
+    std::fs::OpenOptions::new()
         .create(true)
         .read(true)
         .write(true)
         .truncate(truncate)
-        .open(src);
-
-    result
+        .open(src)
 }

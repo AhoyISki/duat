@@ -237,10 +237,6 @@ impl Bytes {
             self.len().byte()
         );
 
-        if b == self.len().byte() {
-            return self.len();
-        }
-
         let [c_b, c_c, mut c_l] = self.records.closest_to_by_key(b, |[b, ..]| b);
 
         let found = if b >= c_b {
@@ -290,10 +286,6 @@ impl Bytes {
             "char out of bounds: the len is {}, but the char is {c}",
             self.len().char()
         );
-
-        if c == self.len().char() {
-            return self.len();
-        }
 
         let [c_b, c_c, mut c_l] = self.records.closest_to_by_key(c, |[_, c, _]| c);
 
@@ -347,10 +339,6 @@ impl Bytes {
             "line out of bounds: the len is {}, but the line is {l}",
             self.len().line()
         );
-
-        if l == self.len().line() {
-            return self.len();
-        }
 
         let (c_b, c_c, mut c_l) = {
             let [mut b, mut c, l] = self.records.closest_to_by_key(l, |[.., l]| l);

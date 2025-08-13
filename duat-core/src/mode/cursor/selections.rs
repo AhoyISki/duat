@@ -438,7 +438,7 @@ mod cursor {
             if by == 0 {
                 return 0;
             };
-            let target = self.caret.get().point().byte().saturating_add_signed(by);
+            let target = self.caret.get().point().char().saturating_add_signed(by);
 
             let p = if target == 0 {
                 Point::default()
@@ -463,7 +463,7 @@ mod cursor {
                     point
                 }
             } else {
-                text.point_at_byte(target)
+                text.point_at_char(target)
             };
 
             let moved = p.char() as i32 - self.caret.get().point().char() as i32;
@@ -720,7 +720,7 @@ mod cursor {
         pub fn end(&self, bytes: &Bytes) -> Point {
             let raw = self.end_excl();
             if raw == bytes.len() {
-                panic!("equals len: {raw:?}");
+                panic!("equals len: {raw:?}, {bytes:#?}");
             }
             raw.fwd(bytes.char_at(raw).unwrap())
         }

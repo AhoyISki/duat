@@ -18,9 +18,9 @@ use crate::{binary_search_by_key_and_index, get_ends};
 #[derive(Default, Clone)]
 pub(super) struct ShiftList<S: Shiftable> {
     buf: GapBuffer<S>,
-    from: usize,
-    by: S::Shift,
-    max: S::Shift,
+    pub(super) from: usize,
+    pub(super) by: S::Shift,
+    pub(super) max: S::Shift,
 }
 
 impl<S: Shiftable> ShiftList<S> {
@@ -39,8 +39,8 @@ impl<S: Shiftable> ShiftList<S> {
     /// The position where this element will be inserted needs to
     /// first be acquired by calling [`ShiftList::find_by_key`].
     pub(super) fn insert(&mut self, i: usize, new: S) {
-        if self.by != S::Shift::default() && self.from < self.buf.len() {
-            if i > self.from {
+        if self.by != S::Shift::default() {
+            if i >= self.from {
                 for s in self.buf.range_mut(self.from..i).iter_mut() {
                     *s = s.shift(self.by);
                 }
@@ -146,7 +146,7 @@ impl<S: Shiftable> ShiftList<S> {
     /// Shifts the items in the list after a certain point
     pub(super) fn shift_by(&mut self, from: usize, by: S::Shift) {
         if self.by != S::Shift::default() {
-            if from > self.from {
+            if from >= self.from {
                 for s in self.buf.range_mut(self.from..from).iter_mut() {
                     *s = s.shift(self.by);
                 }
@@ -183,8 +183,7 @@ impl<S: Shiftable> ShiftList<S> {
         &self,
         range: impl RangeBounds<usize> + Clone + std::fmt::Debug,
     ) -> impl Iterator<Item = (usize, S)> + Clone + '_ {
-        let (start, end) = crate::try_get_ends(range.clone(), self.buf.len())
-            .unwrap_or_else(|| panic!("{range:?}, {self:#?}"));
+        let (start, end) = get_ends(range.clone(), self.buf.len());
 
         let (s0, s1) = self.buf.range(start..end).as_slices();
         s0.iter().chain(s1).enumerate().map(move |(i, s)| {
